@@ -9,7 +9,7 @@ import com.particlesdevs.photoncamera.util.Log;
 import android.util.Range;
 
 import com.particlesdevs.photoncamera.api.CameraMode;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 
@@ -161,7 +161,7 @@ public class IsoExpoSelector {
             High
         }
         public exposureLayer curlayer;
-        /** Capture role survives radiometric layer reclassification in HdrxProcessor. */
+        /** Capture role survives radiometric layer reclassification in ScamProcessor. */
         public boolean isHighlightFrame;
         public boolean isLongFrame;
         public float layerMpy = 1.f;

@@ -6,7 +6,7 @@ import android.view.*;
 import android.widget.*;
 import android.graphics.*;
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.circularbarlib.ui.views.scaleview.LinearScaleView;
 import com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobItemInfo;
 import com.particlesdevs.photoncamera.circularbarlib.camera.ManualWhiteBalance;
@@ -24,15 +24,15 @@ import static org.mockito.Mockito.*;
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class ViewfinderUiTest {
     private Context context;
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
     @Before public void setup(){
-        context=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Photon_SettingsActivity);
+        context=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Scamera_SettingsActivity);
         SettingsManager manager=new SettingsManager(context);
-        camera=mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(context);
-        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        camera.when(()->PhotonCamera.getStringStatic(anyInt())).thenAnswer(i->context.getString(i.getArgument(0)));
-        camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
+        camera=mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(context);
+        camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(()->ScameraApp.getStringStatic(anyInt())).thenAnswer(i->context.getString(i.getArgument(0)));
+        camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
         PreferenceKeys.initialise(manager);
     }
     @After public void teardown(){camera.close();}

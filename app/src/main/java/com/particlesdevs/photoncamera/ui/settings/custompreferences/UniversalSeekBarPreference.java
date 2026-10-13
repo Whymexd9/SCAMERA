@@ -17,7 +17,7 @@ import androidx.preference.Preference;
 import androidx.preference.PreferenceViewHolder;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.control.Vibration;
 
 import com.particlesdevs.photoncamera.settings.PreferenceNumber;
@@ -55,7 +55,7 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         super(context, attrs, defStyleAttr, defStyleRes);
         TypedArray a = context.obtainStyledAttributes(
                 attrs, R.styleable.UniversalSeekBarPreference, defStyleAttr, defStyleRes);
-        vibration = PhotonCamera.getVibration();
+        vibration = ScameraApp.getVibration();
         mMax = a.getFloat(R.styleable.UniversalSeekBarPreference_maxValue, 100.0f);
         mMin = a.getFloat(R.styleable.UniversalSeekBarPreference_minValue, 0.0f);
         mStepPerUnit = a.getFloat(R.styleable.UniversalSeekBarPreference_stepPerUnit, 1.0f);

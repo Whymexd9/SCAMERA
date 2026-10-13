@@ -7,7 +7,7 @@ import android.view.ContextThemeWrapper;
 import android.view.LayoutInflater;
 import androidx.preference.*;
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.annotations.Tunable;
 import org.junit.*;
 import org.junit.runner.RunWith;
@@ -27,20 +27,20 @@ public class SettingsMenuTest {
     private Context context;
     private SettingsManager manager;
     private SharedPreferences prefs;
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
     @Before public void setUp(){
         // SCAM HDR and its settings exist only on the Snapdragon 8 Elite; these tests cover both routes.
         org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8750");
-        context=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Photon_SettingsActivity);
+        context=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Scamera_SettingsActivity);
         manager=new SettingsManager(context); prefs=manager.getDefaultPreferences();prefs.edit().clear().commit();
-        camera=mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(context);
-        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        camera.when(()->PhotonCamera.getStringStatic(anyInt())).thenAnswer(inv->context.getString(inv.getArgument(0)));
+        camera=mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(context);
+        camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(()->ScameraApp.getStringStatic(anyInt())).thenAnswer(inv->context.getString(inv.getArgument(0)));
         PreferenceKeys.initialise(manager);
-        camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
-        PhotonCamera app=mock(PhotonCamera.class,RETURNS_DEEP_STUBS);when(app.getSettingsManager()).thenReturn(manager);
-        camera.when(()->PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
+        camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
+        ScameraApp app=mock(ScameraApp.class,RETURNS_DEEP_STUBS);when(app.getSettingsManager()).thenReturn(manager);
+        camera.when(()->ScameraApp.getInstance(any(Context.class))).thenReturn(app);
     }
     @Test public void scamInternalTuningKeepsValidatedValues() {
         PreferenceScreen screen=inflate();
@@ -449,7 +449,7 @@ public class SettingsMenuTest {
             // shared by both routes: active on SCAM HDR too
             assertTrue(page.findPreference("pref_scam_hybrid_ark_ae_target").isEnabled());
             assertTrue(PreferenceKeys.isScamHdrEnabled());
-            camera.verify(()->PhotonCamera.restartApp(any(android.content.Context.class)),never());
+            camera.verify(()->ScameraApp.restartApp(any(android.content.Context.class)),never());
         }
     }
 
@@ -469,7 +469,7 @@ public class SettingsMenuTest {
             activity.getOnBackPressedDispatcher().onBackPressed();fm.executePendingTransactions();
             assertEquals(0,fm.getBackStackEntryCount());assertFalse(activity.isFinishing());
             assertSame(root,fm.findFragmentById(R.id.settings_container));
-            camera.verify(()->PhotonCamera.restartApp(any(android.content.Context.class)),never());
+            camera.verify(()->ScameraApp.restartApp(any(android.content.Context.class)),never());
         }
     }
 
@@ -505,7 +505,7 @@ public class SettingsMenuTest {
             activity.getOnBackPressedDispatcher().onBackPressed();fm.executePendingTransactions();
             input=descendant(fm.findFragmentById(R.id.settings_container).requireView(),android.widget.EditText.class);
             assertEquals("hexquad_luma",input.getText().toString());
-            camera.verify(()->PhotonCamera.restartApp(any(android.content.Context.class)),never());
+            camera.verify(()->ScameraApp.restartApp(any(android.content.Context.class)),never());
         }
     }
 
@@ -766,15 +766,5 @@ public class SettingsMenuTest {
         // nothing were removed)
         keys.remove("oismode");
         assertEquals(Arrays.asList("blackleveloverride","whiteleveloverride","sessiontype","add_tunablekey"),keys);
-    }
-    @Test public void sharedPhotoExposureCurveIsFiniteAndRespondsToTarget() throws Exception {
-        // The live RAW viewfinder's meter: its fixed target (no settings row since the legacy tone went).
-        com.particlesdevs.photoncamera.processing.opengl.postpipeline.AutoExposureCurve model=new com.particlesdevs.photoncamera.processing.opengl.postpipeline.AutoExposureCurve();
-        int[][] hist=new int[3][256];for(int c=0;c<3;c++){hist[c][20]=900;hist[c][240]=100;}
-        float[] first=model.calculateCurve(hist,new float[]{1,1,1},0,0);
-        assertNotNull(first);for(float v:first)assertTrue(Float.isFinite(v)&&v>=0&&v<=1);
-        Field target=model.getClass().getDeclaredField("target");target.setAccessible(true);target.setFloat(model,180f);
-        float[] brighter=model.calculateCurve(hist,new float[]{1,1,1},0,0);
-        assertTrue(brighter[200]>first[200]);
     }
 }

@@ -24,10 +24,6 @@ import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.control.Gravity;
 import com.particlesdevs.photoncamera.control.Gyro;
 import com.particlesdevs.photoncamera.control.Vibration;
-import com.particlesdevs.photoncamera.debugclient.Debugger;
-import com.particlesdevs.photoncamera.pro.SensorSpecifics;
-import com.particlesdevs.photoncamera.pro.Specific;
-import com.particlesdevs.photoncamera.pro.SupportedDevice;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
 import com.particlesdevs.photoncamera.processing.render.PreviewParameters;
 import com.particlesdevs.photoncamera.settings.MigrationManager;
@@ -43,9 +39,9 @@ import com.particlesdevs.photoncamera.util.log.ActivityLifecycleMonitor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class PhotonCamera extends Application {
+public class ScameraApp extends Application {
     public static final boolean DEBUG = false;
-    private static PhotonCamera sPhotonCamera;
+    private static ScameraApp sApp;
     //    private final ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 //    private final ExecutorService executorService = Executors.newWorkStealingPool();
     private final ExecutorService executorService = Executors.newSingleThreadExecutor(r -> {
@@ -61,19 +57,17 @@ public class PhotonCamera extends Application {
     //private Parameters mParameters;
     private PreviewParameters mPreviewParameters;
     private CaptureController mCaptureController;
-    private SupportedDevice mSupportedDevice;
     private SettingsManager mSettingsManager;
     private AssetLoader mAssetLoader;
     private ObjectLoader objectLoader;
-    private Debugger mDebugger;
     private AudioManager audioManager;
 
     @Nullable
-    public static PhotonCamera getInstance(Context context) {
+    public static ScameraApp getInstance(Context context) {
         if (context instanceof Activity) {
             Application application = ((Activity) context).getApplication();
-            if (application instanceof PhotonCamera) {
-                return (PhotonCamera) application;
+            if (application instanceof ScameraApp) {
+                return (ScameraApp) application;
             }
         }
         return null;
@@ -81,63 +75,51 @@ public class PhotonCamera extends Application {
 
     @Nullable
     public static Context getAppContext() {
-        return sPhotonCamera;
+        return sApp;
     }
 
     public static AudioManager getAudioManager() {
-        return sPhotonCamera.audioManager;
+        return sApp.audioManager;
     }
 
     public static Handler getMainHandler() {
-        return sPhotonCamera.mainThreadHandler;
+        return sApp.mainThreadHandler;
     }
 
     public static Settings getSettings() {
-        return sPhotonCamera.mSettings;
+        return sApp.mSettings;
     }
 
     public static Gravity getGravity() {
-        return sPhotonCamera.mGravity;
+        return sApp.mGravity;
     }
 
     public static Gyro getGyro() {
-        return sPhotonCamera.mGyro;
+        return sApp.mGyro;
     }
 
     public static Vibration getVibration() {
-        return sPhotonCamera.mVibration;
+        return sApp.mVibration;
     }
 
     /*public static Parameters getParameters() {
-        return sPhotonCamera.mParameters;
+        return sApp.mParameters;
     }*/
 
     public static PreviewParameters getPreviewParameters() {
-        return sPhotonCamera.mPreviewParameters;
+        return sApp.mPreviewParameters;
     }
-
-    public static Debugger getDebugger(){
-        return sPhotonCamera.mDebugger;
-    }
-
-    public static Specific getSpecific(){
-        return sPhotonCamera.mSupportedDevice.specific;
-    }
-    public static SensorSpecifics getSpecificSensor(){
-        return sPhotonCamera.mSupportedDevice.sensorSpecifics;
-    }
-
 
     public static CaptureController getCaptureController() {
-        return sPhotonCamera.mCaptureController;
+        return sApp.mCaptureController;
     }
 
     public static void setCaptureController(CaptureController captureController) {
-        sPhotonCamera.mCaptureController = captureController;
+        sApp.mCaptureController = captureController;
     }
 
     public static AssetLoader getAssetLoader() {
-        return sPhotonCamera.mAssetLoader;
+        return sApp.mAssetLoader;
     }
 
     public static void restartWithDelay(Context context, long delayMs) {
@@ -154,37 +136,37 @@ public class PhotonCamera extends Application {
     }
 
     public static void showToast(String msg) {
-        getMainHandler().post(() -> Toast.makeText(sPhotonCamera, msg, Toast.LENGTH_LONG).show());
+        getMainHandler().post(() -> Toast.makeText(sApp, msg, Toast.LENGTH_LONG).show());
     }
 
     public static void showToast(@StringRes int stringRes) {
-        getMainHandler().post(() -> Toast.makeText(sPhotonCamera, stringRes, Toast.LENGTH_LONG).show());
+        getMainHandler().post(() -> Toast.makeText(sApp, stringRes, Toast.LENGTH_LONG).show());
     }
 
     public static void showToastFast(@StringRes int stringRes) {
-        getMainHandler().post(() -> Toast.makeText(sPhotonCamera, stringRes, Toast.LENGTH_SHORT).show());
+        getMainHandler().post(() -> Toast.makeText(sApp, stringRes, Toast.LENGTH_SHORT).show());
     }
 
     public static Resources getResourcesStatic() {
-        return sPhotonCamera.getResources();
+        return sApp.getResources();
     }
 
     public static String getStringStatic(@StringRes int stringRes) {
-        return sPhotonCamera.getResources().getString(stringRes);
+        return sApp.getResources().getString(stringRes);
     }
 
     public static Drawable getDrawableStatic(int resID) {
-        return ContextCompat.getDrawable(sPhotonCamera, resID);
+        return ContextCompat.getDrawable(sApp, resID);
     }
 
     public static PackageInfo getPackageInfo() throws PackageManager.NameNotFoundException {
-        return sPhotonCamera.getPackageManager().getPackageInfo(sPhotonCamera.getPackageName(), 0);
+        return sApp.getPackageManager().getPackageInfo(sApp.getPackageName(), 0);
     }
 
     public static String getVersion() {
         String version = "";
         try {
-            PackageInfo pInfo = PhotonCamera.getPackageInfo();
+            PackageInfo pInfo = ScameraApp.getPackageInfo();
             version = pInfo.versionName + '(' + pInfo.versionCode + ')';
         } catch (PackageManager.NameNotFoundException e) {
             e.printStackTrace();
@@ -192,15 +174,11 @@ public class PhotonCamera extends Application {
         return version;
     }
     public static String getLibsDirectory(){
-        return sPhotonCamera.getApplicationInfo().nativeLibraryDir;
+        return sApp.getApplicationInfo().nativeLibraryDir;
     }
 
     public ExecutorService getExecutorService() {
         return executorService;
-    }
-
-    public SupportedDevice getSupportedDevice() {
-        return mSupportedDevice;
     }
 
     public SettingsManager getSettingsManager() {
@@ -208,7 +186,7 @@ public class PhotonCamera extends Application {
     }
     
     public static SettingsManager getSettingsManagerStatic() {
-        return sPhotonCamera != null ? sPhotonCamera.mSettingsManager : null;
+        return sApp != null ? sApp.mSettingsManager : null;
     }
 
     @Override
@@ -225,8 +203,8 @@ public class PhotonCamera extends Application {
         // so make sure it always lands in a file we can ask for.
         ScameraCrashReporter.install(this);
         registerActivityLifecycleCallbacks(new ActivityLifecycleMonitor());
-        sPhotonCamera = this;
-        Log.d("PhotonCamera", "Initializing PhotonCamera Modules");
+        sApp = this;
+        Log.d("ScameraApp", "Initializing modules");
         initModules();
         super.onCreate();
         // Why the previous process ended (a native crash or a kill leaves no line of ours): into the log once
@@ -245,7 +223,6 @@ public class PhotonCamera extends Application {
         mVibration = new Vibration(this);
 
         mSettingsManager = new SettingsManager(this);
-        mSupportedDevice = new SupportedDevice(mSettingsManager, this);
 
         MigrationManager.migrate(mSettingsManager);
 
@@ -257,7 +234,6 @@ public class PhotonCamera extends Application {
         //mParameters = new Parameters();
         mPreviewParameters = new PreviewParameters();
         mAssetLoader = new AssetLoader(this);
-        mDebugger = new Debugger();
         
         // Initialize gallery icon visibility based on preference
         applyGalleryIconVisibility();
@@ -273,7 +249,7 @@ public class PhotonCamera extends Application {
             com.particlesdevs.photoncamera.gallery.GalleryLauncherIcon.apply(this,
                     mSettingsManager.getBoolean(SettingsManager.SCOPE_GLOBAL, PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON));
         } catch (Exception e) {
-            Log.e("PhotonCamera", "Error applying gallery icon visibility: " + e.getMessage());
+            Log.e("ScameraApp", "Error applying gallery icon visibility: " + e.getMessage());
         }
     }
     //  a MemoryInfo object for the device's current memory status.
@@ -289,6 +265,6 @@ public class PhotonCamera extends Application {
         super.onTerminate();
         executorService.shutdownNow();
         mCaptureController = null;
-        sPhotonCamera = null;
+        sApp = null;
     }
 }

@@ -15,7 +15,6 @@
     <string name="long_exposure_ev">Long-frame increase (EV)</string>
     <string name="highlight_suppression">Highlight recovery (0–200)</string>
 
-    <string name="hdrx" translatable="false">HDRX</string>
     <string name="ultrahdr" translatable="false">Ultra HDR</string>
     <string name="ultrahdr_summary">Encode JPEGs with an Ultra HDR gain map (requires a second, lightweight tone pass)</string>
     <string name="ai_denoise">AI Bayer noise reduction</string>
@@ -48,7 +47,7 @@
     <string name="show_gradient">Show Gradient Background</string>
     <string name="unprocessed_raw">Unprocessed RAW</string>
     <string name="frame_count_summary">Number of constant-exposure denoising frames</string>
-    <string name="photon_camera_summary">An Open-Source Android Camera with Enhanced Image Processing</string>
+    <string name="app_summary">RAW camera with multi-frame SCAM Hybrid and SCAM HDR processing</string>
     <string name="version_title">Version</string>
     <string name="eis_toggle_text">Image Stabilization</string>
     <string name="fps_60_toggle_text">Frame rate</string>

@@ -2,7 +2,7 @@ package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
 import android.graphics.Bitmap;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.opengl.PostGlMode;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
@@ -39,7 +39,7 @@ public final class PostAb {
     public static boolean wanted(Parameters p) {
         if (!PreferenceKeys.scamDevSwitch("post_ab", false)) return false;
         final boolean fits = p != null && p.scamRgb != null && p.scamRgbOwned && p.rawSize != null
-                && (long) p.rawSize.x * p.rawSize.y <= 16_000_000L && !PhotonCamera.getSettings().gainMapPass();
+                && (long) p.rawSize.x * p.rawSize.y <= 16_000_000L && !ScameraApp.getSettings().gainMapPass();
         if (!fits) Log.i("SCAM_PIPELINE", "POST AB skipped: needs the owned worker RGB of 16 MP or less without Ultra HDR");
         return fits;
     }
@@ -101,7 +101,7 @@ public final class PostAb {
     private static void dump(Bitmap bitmap, String name) {
         if (!PreferenceKeys.scamDevSwitch("post_ab_dump", false)) return;
         try {
-            final java.io.File dir = PhotonCamera.getAppContext().getExternalFilesDir(null);
+            final java.io.File dir = ScameraApp.getAppContext().getExternalFilesDir(null);
             if (dir == null) return;
             try (java.io.OutputStream out = new java.io.FileOutputStream(new java.io.File(dir, name))) {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);

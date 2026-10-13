@@ -13,7 +13,7 @@ import androidx.preference.Preference;
 import androidx.preference.PreferenceViewHolder;
 import com.google.android.material.color.MaterialColors;
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.PreferenceNumber;
 
 /** The bar snaps; numeric entry preserves the exact value. Binding is strictly read-only. */
@@ -81,7 +81,7 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
     }
     @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
         if (!fromUser || !isEnabled()) return;
-        if (PhotonCamera.getVibration() != null) PhotonCamera.getVibration().Tick();
+        if (ScameraApp.getVibration() != null) ScameraApp.getVibration().Tick();
         save((float) (progress / (double) mStepPerUnit + mMin), false);
     }
     @Override public void onStartTrackingTouch(SeekBar bar) {}

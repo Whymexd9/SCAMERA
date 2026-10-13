@@ -27,7 +27,7 @@ public class ImagePath {
     public static Path getNewImageFilePath(String extension) {
         File dir = FileManager.sDCIM_CAMERA;
         if (extension.equalsIgnoreCase("dng")) {
-            dir = FileManager.sPHOTON_RAW_DIR;
+            dir = FileManager.sRAW_DIR;
         }
         if(!extension.isEmpty()) {
             return Paths.get(dir.getAbsolutePath(), generateNewFileName("IMG") + '.' + extension);
@@ -37,12 +37,12 @@ public class ImagePath {
     }
 
     public static Path getNewImageFolderPath() {
-        File dir = FileManager.sPHOTON_RAW_DIR;
+        File dir = FileManager.sRAW_DIR;
         return Paths.get(dir.getAbsolutePath(), generateNewFileName("IMG"));
     }
 
     public static Path getNewVideoFolderPath() {
-        File dir = FileManager.sPHOTON_RAW_DIR;
+        File dir = FileManager.sRAW_DIR;
         return Paths.get(dir.getAbsolutePath(), generateNewFileName("VID"));
     }
 }

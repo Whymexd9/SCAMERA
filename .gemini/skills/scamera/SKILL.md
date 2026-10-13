@@ -56,13 +56,13 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 `api` (Camera2, вендорные теги `VendorTagUtils`, `CameraManager2`) · `capture` (`CaptureController`, ZSL/брекет,
 превью, стабилизация `ForcedStabilization`/`StabilizationTrace`, `ScamPreview` профиль vivo, `XiaomiTeleZoom`) ·
 `control` (зум `ZoomController`, `FovSelfCheck`, фокус) · `processing` (сохранение, DNG, форматы, `opengl/postpipeline`,
-`processor/HdrxProcessor`, `color`, `heif`, `avif`, `ultrahdr`) · `settings` (`PreferenceKeys`, `ModuleRegistry`,
+`processor/ScamProcessor`, `color`, `heif`, `avif`, `ultrahdr`) · `settings` (`PreferenceKeys`, `ModuleRegistry`,
 `DeviceDefaults`, `SettingsMigration`, `BrandMigration`) · `gallery` (SGallery, DNG-превью, Glide) · `ui` · `util`
 (`Log`, `Lang`, `WorkerSpawn`) · `manual` · `remosaic` · `pro`.
 
 Путь кадра:
 1. `CaptureController`: сессия Camera2, RAW ImageReader, ZSL-кольцо + брекет (N из кольца до нажатия, L/S/ES после).
-2. `ImageSaver` → `DefaultSaver` → `processing/processor/HdrxProcessor`.
+2. `ImageSaver` → `DefaultSaver` → `processing/processor/ScamProcessor`.
 3. `ScamHybridBurst.process` (Hybrid) или `ScamBurst.process` (SCAM HDR) → `ScamNeuralClient` → воркер
    `scam-neural-worker` (отдельный процесс, `WorkerSpawn` fork/exec, данные через memfd `fd:3/4`, `--scam-capture`).
 4. Воркер: выравнивание, склейка на GPU (Sabre + отбраковка + Bento + Shasta, Mochi, нативные мозаики Quad/Tetra),
@@ -171,7 +171,7 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 adb / логи:
 - Свободен ли телефон: `adb -s <serial> shell "dumpsys window | grep mCurrentFocus; dumpsys power | grep lastUserActivityTime; dumpsys media.camera | grep 'Client Package'"`.
 - `adb logcat -s SCAM_CAPTURE SCAM_HDR SCAM_PIPELINE SCAM_AE SCAM_DIAG SCAM_TIMELINE VF_DRAW STAB_TRACE XiaomiTeleZoom CaptureController`.
-- На телефоне: `DCIM/PhotonCamera/PhotonLog/log-YYYY-MM-DD.txt`, `Download/SCAMERA/SCAMERA-debug.log`,
+- На телефоне: `DCIM/SCAMERA/Log/log-YYYY-MM-DD.txt` (RAW: `DCIM/SCAMERA/Raw`), `Download/SCAMERA/SCAMERA-debug.log`,
   `SCAMERA-crash.log` (Download/SCAMERA и files приложения), диагностика `Download/SCAMERA/SCAM-*.zip`
   (замедляет съёмку). Отчёты воркера (`WORKER EXIT/CRASH`, `HYBRID …`) — в SharedPreferences `scam_*_report`.
 - Dev-переключатели: `/sdcard/Android/data/org.codeaurora.snapcam/files/scam_dev.txt`, строки `key value`

@@ -22,7 +22,7 @@ import androidx.fragment.app.Fragment;
 import androidx.preference.PreferenceManager;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.app.base.BaseActivity;
 import com.particlesdevs.photoncamera.settings.MigrationManager;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
@@ -67,7 +67,7 @@ public class CameraActivity extends BaseActivity {
 
         PreferenceManager.setDefaultValues(this, R.xml.preferences, MigrationManager.readAgain);
         PreferenceKeys.setDefaults(this);
-        PhotonCamera.getSettings().loadCache();
+        ScameraApp.getSettings().loadCache();
 
         permissionPlan = PermissionPlan.restore(SDK_INT,
                 savedInstanceState == null ? null : savedInstanceState.getIntArray(STATE_PERMISSION_PLAN));
@@ -232,10 +232,6 @@ public class CameraActivity extends BaseActivity {
         // Reads the "Full debug" switch and, when on, opens Download/SCAMERA/SCAMERA-debug.log
         // and writes the build/device/camera header for this session.
         com.particlesdevs.photoncamera.util.ScameraDebugLog.init(getApplicationContext());
-        PhotonCamera photonCamera = PhotonCamera.getInstance(this);
-        if (photonCamera != null) {
-            photonCamera.getSupportedDevice().loadCheck();
-        }
         if (getSupportFragmentManager().findFragmentById(R.id.container) == null) {
             getSupportFragmentManager().beginTransaction()
                     .replace(R.id.container, CameraFragment.newInstance())
@@ -252,7 +248,7 @@ public class CameraActivity extends BaseActivity {
 
     private String appliedThemeSignature;
     private String themeSignature() {
-        com.particlesdevs.photoncamera.settings.SettingsManager sm=PhotonCamera.getSettingsManagerStatic();
+        com.particlesdevs.photoncamera.settings.SettingsManager sm=ScameraApp.getSettingsManagerStatic();
         return sm.getString("default_scope",PreferenceKeys.Key.KEY_THEME)+"/"+
                 sm.getString("default_scope",PreferenceKeys.Key.KEY_THEME_ACCENT)+"/"+
                 sm.getBoolean("default_scope",PreferenceKeys.Key.KEY_SHOW_GRADIENT);

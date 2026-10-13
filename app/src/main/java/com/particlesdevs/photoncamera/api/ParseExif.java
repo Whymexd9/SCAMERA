@@ -5,7 +5,7 @@ import android.hardware.camera2.CaptureResult;
 import android.os.Build;
 import com.particlesdevs.photoncamera.util.Log;
 import androidx.exifinterface.media.ExifInterface;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
 import java.io.File;
@@ -44,10 +44,10 @@ public class ParseExif {
     public static ExifData parse(CaptureResult result, CaptureRequest request) {
         ExifData data = new ExifData();
 
-        int rotation = PhotonCamera.getCaptureController().cameraRotation;
+        int rotation = ScameraApp.getCaptureController().cameraRotation;
         String TAG = "ParseExif";
-        Log.d(TAG, "Gravity rotation:" + PhotonCamera.getGravity().getRotation());
-        Log.d(TAG, "Sensor rotation:" + PhotonCamera.getCaptureController().mSensorOrientation);
+        Log.d(TAG, "Gravity rotation:" + ScameraApp.getGravity().getRotation());
+        Log.d(TAG, "Sensor rotation:" + ScameraApp.getCaptureController().mSensorOrientation);
         int orientation = ORIENTATION_NORMAL;
         switch (rotation) {
             case 90:
@@ -154,8 +154,8 @@ public class ParseExif {
     }
 
     public static int getOrientation(int cameraRotation) {
-        Log.d(TAG, "Gravity rotation:" + PhotonCamera.getGravity().getRotation());
-        Log.d(TAG, "Sensor rotation:" + PhotonCamera.getCaptureController().mSensorOrientation);
+        Log.d(TAG, "Gravity rotation:" + ScameraApp.getGravity().getRotation());
+        Log.d(TAG, "Sensor rotation:" + ScameraApp.getCaptureController().mSensorOrientation);
         int orientation = ORIENTATION_NORMAL;
         switch (cameraRotation) {
             case 90:
@@ -174,7 +174,7 @@ public class ParseExif {
     public static class ExifData {
         public final String MODEL = Build.MODEL;
         public final String MAKE = Build.BRAND;
-        public final String COPYRIGHT = "PhotonCamera";
+        public final String COPYRIGHT = "SCAMERA";
         public String SENSITIVITY_TYPE;
         public String APERTURE_VALUE;
         public String COMPRESSION;

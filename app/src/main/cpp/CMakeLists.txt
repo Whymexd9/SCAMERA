@@ -15,17 +15,6 @@ set(VERSION_BUILD ${CMAKE_MATCH_1})
 string(REGEX MATCH "VERSION_NAME=([0-9,.]*)" _ ${ver})
 set(VERSION_NAME ${CMAKE_MATCH_1})
 
-if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/tiny_dng_writer.h)
-    file(DOWNLOAD
-            https://raw.githubusercontent.com/ParticlesDevs/tinydng/refs/heads/master/tiny_dng_writer.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/deps/tiny_dng_writer.h
-            STATUS TINYDNG_DOWNLOAD_STATUS)
-    list(GET TINYDNG_DOWNLOAD_STATUS 0 TINYDNG_DOWNLOAD_CODE)
-    if(NOT TINYDNG_DOWNLOAD_CODE EQUAL 0)
-        message(FATAL_ERROR "tiny_dng_writer.h download failed: ${TINYDNG_DOWNLOAD_STATUS}")
-    endif()
-endif()
-
 if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/deps/archive.h)
     file(DOWNLOAD
             https://raw.githubusercontent.com/libarchive/libarchive/master/libarchive/archive.h

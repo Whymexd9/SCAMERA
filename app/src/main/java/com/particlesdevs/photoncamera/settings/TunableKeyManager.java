@@ -9,7 +9,7 @@ import androidx.preference.PreferenceManager;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.particlesdevs.photoncamera.api.VendorTagUtils;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.util.Log;
 
 import java.lang.reflect.Type;
@@ -49,8 +49,8 @@ public class TunableKeyManager {
      * the stream depends on them (OPPO engineer-mode select, vendor remosaic switches), so they key its measured colour block.
      */
     public static String signature(String physicalId) {
-        Context context = PhotonCamera.getSettingsManagerStatic() != null
-                ? PhotonCamera.getSettingsManagerStatic().getContext() : null;
+        Context context = ScameraApp.getSettingsManagerStatic() != null
+                ? ScameraApp.getSettingsManagerStatic().getContext() : null;
         if (context == null || physicalId == null || physicalId.isEmpty()) return "";
         StringBuilder out = new StringBuilder();
         for (VendorTagUtils.TunableKey k : loadKeys(context, ModuleSensorSettings.runtimeScope(physicalId)))
@@ -70,8 +70,8 @@ public class TunableKeyManager {
      * the settings UI can show green/red feedback.
      */
     public static void applyTunableKeys(CaptureRequest.Builder builder, String physicalId) {
-        Context context = PhotonCamera.getSettingsManagerStatic() != null
-                ? PhotonCamera.getSettingsManagerStatic().getContext() : null;
+        Context context = ScameraApp.getSettingsManagerStatic() != null
+                ? ScameraApp.getSettingsManagerStatic().getContext() : null;
         if (context == null || builder == null || physicalId == null || physicalId.isEmpty()) return;
         String scope = ModuleSensorSettings.runtimeScope(physicalId);
         List<VendorTagUtils.TunableKey> keys = loadKeys(context, scope);

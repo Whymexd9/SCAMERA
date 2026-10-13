@@ -78,7 +78,6 @@ public class CameraFragmentViewModel extends AndroidViewModel {
                 cameraFragmentModel.setOrientation(rot);
 
                 //mCameraUIView.rotateViews(rot, RotationDur);
-                //PhotonCamera.getManualMode().rotate(rot, RotationDur);
             }
         };
     }

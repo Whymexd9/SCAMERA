@@ -6,7 +6,7 @@ import android.content.SharedPreferences;
 import android.view.ContextThemeWrapper;
 import androidx.preference.*;
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import org.junit.*;
 import org.junit.runner.RunWith;
 import org.mockito.MockedStatic;
@@ -27,19 +27,19 @@ public class SettingsAuditFixTest {
     private Context context;
     private SettingsManager manager;
     private SharedPreferences prefs;
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
     @Before public void setUp(){
         org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8750");
-        context=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Photon_SettingsActivity);
+        context=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Scamera_SettingsActivity);
         manager=new SettingsManager(context); prefs=manager.getDefaultPreferences();prefs.edit().clear().commit();
-        camera=mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(context);
-        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        camera.when(()->PhotonCamera.getStringStatic(anyInt())).thenAnswer(inv->context.getString(inv.getArgument(0)));
+        camera=mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(context);
+        camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(()->ScameraApp.getStringStatic(anyInt())).thenAnswer(inv->context.getString(inv.getArgument(0)));
         PreferenceKeys.initialise(manager);
-        camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
-        PhotonCamera app=mock(PhotonCamera.class,RETURNS_DEEP_STUBS);when(app.getSettingsManager()).thenReturn(manager);
-        camera.when(()->PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
+        camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
+        ScameraApp app=mock(ScameraApp.class,RETURNS_DEEP_STUBS);when(app.getSettingsManager()).thenReturn(manager);
+        camera.when(()->ScameraApp.getInstance(any(Context.class))).thenReturn(app);
     }
     @After public void tearDown(){
         context.getSharedPreferences("module_profiles_meta",Context.MODE_PRIVATE).edit().clear().commit();
@@ -198,14 +198,14 @@ public class SettingsAuditFixTest {
         assertEquals("0.9",String.valueOf(PreferenceKeys.profiles().snapshot("back1").get("pref_scam_hybrid_cdm")));
     }
 
-    /** Owner: the upstream PhotonCamera rows (about page, contributors, Telegram, device list, config download) are gone. */
+    /** Owner: the upstream rows (about page, contributors, Telegram, device list, config download) are gone. */
     @Test public void upstreamRowsAreGone() {
         PreferenceScreen screen=inflate();
         for(String key:new String[]{"pref_about_key","pref_contributors_key","pref_telegram_channel_key","all_devices_names",
                 "pref_fetch_configurations_key"})
             assertNull(key,screen.findPreference(key));
         PreferenceScreen system=screen.findPreference("system_settings_screen");
-        for(String key:new String[]{"pref_photoncamera","pref_version_key","pref_this_device_key"})
+        for(String key:new String[]{"pref_app_key","pref_version_key","pref_this_device_key"})
             assertNotNull("the app, version and device rows stay on «Система»: "+key,system.findPreference(key));
     }
 
@@ -310,8 +310,8 @@ public class SettingsAuditFixTest {
         assertNull(((PreferenceGroup)screen.findPreference("photo_processing_screen")).findPreference("sharp_settings_screen"));
     }
 
-    /** S5: PhotonCamera keys without a row that api/Settings still read are dropped; the AF data key they aliased stays. */
-    @Test public void readersOfRemovedPhotonCameraKeysAreGone() {
+    /** S5: inherited keys without a row that api/Settings still read are dropped; the AF data key they aliased stays. */
+    @Test public void readersOfRemovedInheritedKeysAreGone() {
         prefs.edit().putString("pref_hdrx_nr_key","1").putString("pref_enable_system_nr_key","2").putString("pref_sharpness_seekbar_key","0.5")
                 .putBoolean("pref_live_viewfinder_look_key",true).putString("pref_show_afdata_key","1").commit();
         assertTrue(SettingsMigration.removeObsolete(prefs));

@@ -32,7 +32,7 @@ public final class HexQuadBurst {
         this.quad=quad;
         if(com.particlesdevs.photoncamera.util.Allocator.binning)
             throw new IOException(quad?Lang.t("Quad 2×2 требует исходный Quad RAW: отключите программный биннинг","Quad 2×2 needs the original Quad RAW: turn off software binning"):Lang.t("HexQuad требует исходный Tetra RAW: отключите программный биннинг","HexQuad needs the original Tetra RAW: turn off software binning"));
-        if(com.particlesdevs.photoncamera.app.PhotonCamera.getSettings().aspect169)
+        if(com.particlesdevs.photoncamera.app.ScameraApp.getSettings().aspect169)
             throw new IOException(Lang.t("Выберите 4:3: обрезка 16:9 меняет фазу мозаики","Choose 4:3: the 16:9 crop shifts the mosaic phase"));
         int[] phase=PreferenceKeys.getRemosaicPhase();
         if(quad){
@@ -83,7 +83,7 @@ public final class HexQuadBurst {
     private static boolean isHp9(String cameraId){
         try{
             android.hardware.camera2.CameraManager manager=(android.hardware.camera2.CameraManager)
-                    com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext().getSystemService(Context.CAMERA_SERVICE);
+                    com.particlesdevs.photoncamera.app.ScameraApp.getAppContext().getSystemService(Context.CAMERA_SERVICE);
             android.util.Size max=manager.getCameraCharacteristics(cameraId).get(
                     android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE_MAXIMUM_RESOLUTION);
             return max!=null&&max.getWidth()>=16000;

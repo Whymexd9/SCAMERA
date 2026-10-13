@@ -25,20 +25,20 @@ import static org.mockito.Mockito.*;
 @Config(sdk=35, application=Application.class)
 public class ParametersBlackFloorTest {
     private MockedStatic<PreferenceKeys> prefs;
-    private MockedStatic<com.particlesdevs.photoncamera.app.PhotonCamera> photon;
+    private MockedStatic<com.particlesdevs.photoncamera.app.ScameraApp> appStatic;
 
     @Before public void setup() {
         android.content.Context context = org.robolectric.RuntimeEnvironment.getApplication();
         com.particlesdevs.photoncamera.settings.SettingsManager settings = new com.particlesdevs.photoncamera.settings.SettingsManager(context);
-        photon = mockStatic(com.particlesdevs.photoncamera.app.PhotonCamera.class);
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getAppContext).thenReturn(context);
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getSettingsManagerStatic).thenReturn(settings);
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getSettings).thenReturn(new com.particlesdevs.photoncamera.api.Settings());
+        appStatic = mockStatic(com.particlesdevs.photoncamera.app.ScameraApp.class);
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getAppContext).thenReturn(context);
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getSettingsManagerStatic).thenReturn(settings);
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getSettings).thenReturn(new com.particlesdevs.photoncamera.api.Settings());
         prefs = mockStatic(PreferenceKeys.class);
         prefs.when(PreferenceKeys::isRawBlackFromData).thenReturn(true);
     }
-    @After public void cleanup() { prefs.close(); photon.close(); }
+    @After public void cleanup() { prefs.close(); appStatic.close(); }
 
     private static Parameters parameters() throws Exception {
         Parameters p = new Parameters();

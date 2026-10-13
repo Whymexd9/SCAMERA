@@ -342,7 +342,7 @@ public final class ScamNeuralClient {
                 if(marker!=null && !new File(dir,marker).createNewFile())throw new IOException(Lang.t("Не удалось создать маркер CRE","Could not create the CRE marker"));
             }
             // Only the hybrid burst asks for the hybrid merge: a ScamBurst reaches the worker when the engine is
-            // the network or the burst is a Quad/Tetra mosaic (HdrxProcessor), and the hybrid would read the mosaic
+            // the network or the burst is a Quad/Tetra mosaic (ScamProcessor), and the hybrid would read the mosaic
             // as plain Bayer (vivo tele in ISZ: blue image, 3 October). Without the model the worker falls back itself.
             final boolean hybridMerge=scamBurst instanceof ScamHybridBurst;
             // P80: the hybrid RGB comes back as half floats (marker rgb-half): half the bytes written, read and uploaded

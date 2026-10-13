@@ -1,6 +1,6 @@
 package com.particlesdevs.photoncamera.processing.parameters;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 import java.util.Locale;
 
@@ -8,8 +8,8 @@ public class ExposureIndex {
     public static final long sec = 1000000000;
 
     public static double index() {
-        long exposureTime = PhotonCamera.getCaptureController().mPreviewExposureTime;
-        int iso = PhotonCamera.getCaptureController().mPreviewIso;
+        long exposureTime = ScameraApp.getCaptureController().mPreviewExposureTime;
+        int iso = ScameraApp.getCaptureController().mPreviewIso;
         double time = (double) (exposureTime) / sec;
         return iso * time;
     }

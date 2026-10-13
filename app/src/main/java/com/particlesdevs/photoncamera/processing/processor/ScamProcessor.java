@@ -11,7 +11,7 @@ import com.particlesdevs.photoncamera.util.Log;
 import com.particlesdevs.photoncamera.api.Camera2ApiAutoFix;
 import com.particlesdevs.photoncamera.api.CameraMode;
 import com.particlesdevs.photoncamera.api.ParseExif;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.control.GyroBurst;
 import com.particlesdevs.photoncamera.processing.ImageFrame;
@@ -33,11 +33,11 @@ import java.util.Comparator;
 import java.util.HashMap;
 import com.particlesdevs.photoncamera.util.Lang;
 
-public class HdrxProcessor extends ProcessorBase {
+public class ScamProcessor extends ProcessorBase {
     /** P33: frees the shot's big buffers off the save path (one at a time, in order). */
     private static final java.util.concurrent.ExecutorService BUFFER_FREE = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "hdrx-buffer-free"); t.setDaemon(true); return t; });
-    private static final String TAG = "HdrxProcessor";
+        Thread t = new Thread(r, "scam-buffer-free"); t.setDaemon(true); return t; });
+    private static final String TAG = "ScamProcessor";
     private ArrayList<ImageFrame> mImageFramesToProcess;
     private HashMap<Long, Double> exposures;
     private int imageFormat;
@@ -58,7 +58,7 @@ public class HdrxProcessor extends ProcessorBase {
     private PostPipeline deferredPipeline;
 
 
-    public HdrxProcessor(ProcessingEventsListener processingEventsListener) {
+    public ScamProcessor(ProcessingEventsListener processingEventsListener) {
         super(processingEventsListener);
     }
 
@@ -103,7 +103,7 @@ public class HdrxProcessor extends ProcessorBase {
         ownedHybridRoute = null;
         android.util.Log.i("SCAM_HDR", "route=" + PreferenceKeys.mergeRoute() + (hybridShot ? " (SCAM Hybrid merges)" : scamCapture ? " (SCAM HDR merges)" : " (no SCAM route)"));
         this.fullpairs = ownedPairs != null ? ownedPairs : IsoExpoSelector.fullpairs;
-        Log.d(TAG, "HdrxProcessor called start()");
+        Log.d(TAG, "start()");
         PreferenceKeys.beginShotProfile(hybridShot);
         try {
             Run();
@@ -117,9 +117,9 @@ public class HdrxProcessor extends ProcessorBase {
             processingStage = "camera metadata";
             Camera2ApiAutoFix.ApplyRes(captureResult);
             if (CaptureController.isRawFormat(imageFormat)) {
-                ApplyHdrX();
+                processBurst();
             } else {
-                Log.d(TAG, "HdrX processing skipped due to unsupported image format: " + imageFormat);
+                Log.d(TAG, "Processing skipped: unsupported image format " + imageFormat);
                 callback.onFinished();
                 return;
             }
@@ -129,7 +129,7 @@ public class HdrxProcessor extends ProcessorBase {
         } catch (Exception | OutOfMemoryError e) {
             // P27 any resolution: an allocation that grows with the frame (Java heap) fails the shot, not the processing thread.
             Log.e(TAG, ProcessingEventsListener.FAILED_MSG);
-            Log.e(TAG, "Error in HdrX Processing:"+stackTrace(e));
+            Log.e(TAG, "Processing failed: "+stackTrace(e));
             callback.onFailed();
             String detail = e.getClass().getSimpleName();
             if (e.getMessage() != null && !e.getMessage().isEmpty()) {
@@ -143,7 +143,7 @@ public class HdrxProcessor extends ProcessorBase {
                     detail += ": " + root.getMessage();
                 }
             }
-            processingEventsListener.onProcessingError("HDRX failed at "
+            processingEventsListener.onProcessingError("SCAM processing failed at "
                     + processingStage + " — " + detail);
          } finally {
             finishDeferredTeardown();
@@ -220,16 +220,16 @@ public class HdrxProcessor extends ProcessorBase {
         return own;
     }
 
-    private void ApplyHdrX() {
+    private void processBurst() {
         processingStage = "input validation";
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("prep");
         callback.onStarted();
-        processingEventsListener.onProcessingStarted("HDRX");
+        processingEventsListener.onProcessingStarted("SCAM");
 
-        Log.d(TAG, "ApplyHdrX() called from" + Thread.currentThread().getName());
+        Log.d(TAG, "processBurst() called from " + Thread.currentThread().getName());
 
         long startTime = System.currentTimeMillis();
-        Log.d(TAG, "ApplyHdrX() mImageFramesToProcess.size():" + mImageFramesToProcess.size());
+        Log.d(TAG, "processBurst() mImageFramesToProcess.size():" + mImageFramesToProcess.size());
         if (mImageFramesToProcess == null || mImageFramesToProcess.isEmpty()) {
             throw new IllegalStateException("no RAW frames received");
         }
@@ -259,7 +259,7 @@ public class HdrxProcessor extends ProcessorBase {
         }
         int width = mImageFramesToProcess.get(0).width;
         int height = mImageFramesToProcess.get(0).height;
-        Log.d(TAG, "APPLY HDRX: buffer:" + mImageFramesToProcess.get(0).buffer.asShortBuffer().remaining());
+        Log.d(TAG, "processBurst: buffer:" + mImageFramesToProcess.get(0).buffer.asShortBuffer().remaining());
         Log.d(TAG, "Api WhiteLevel:" + characteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL));
         Log.d(TAG, "Api BlackLevel:" + characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN));
         Parameters processingParameters = new Parameters();
@@ -270,8 +270,8 @@ public class HdrxProcessor extends ProcessorBase {
         if (!scamCapture) throw new IllegalStateException("no merge route: Hybrid or SCAM HDR needs the ZSL RAW stream");
         // sort by timestamp first
         mImageFramesToProcess.sort(Comparator.comparingLong(ImageFrame::getTimestamp));
-        if(PhotonCamera.getCaptureController()!=null) for(ImageFrame frame:mImageFramesToProcess)
-            frame.setCaptureMetadata(PhotonCamera.getCaptureController().takeRawMetadata(frame.timestamp));
+        if(ScameraApp.getCaptureController()!=null) for(ImageFrame frame:mImageFramesToProcess)
+            frame.setCaptureMetadata(ScameraApp.getCaptureController().takeRawMetadata(frame.timestamp));
 
         java.util.HashSet<Long> seen = new java.util.HashSet<>();
         for (java.util.Iterator<ImageFrame> it = mImageFramesToProcess.iterator(); it.hasNext();) {
@@ -469,12 +469,12 @@ public class HdrxProcessor extends ProcessorBase {
                             // Quad / Tetra stream (ISZ modules): plain bayer before the transport, by the module's mosaic mode.
                             processingStage = Lang.t("SCAM HDR: ремозаик мозаики", "SCAM HDR: mosaic remosaic");
                             images = new ArrayList<>(com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamMosaic.prepare(
-                                    PhotonCamera.getAppContext(), images, processingParameters));
+                                    ScameraApp.getAppContext(), images, processingParameters));
                             ParseExif.syncWithParameters(exifData, processingParameters);
                         }
                         processingStage = "SCAM HDR neural burst";
                         scamOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.process(
-                                PhotonCamera.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
+                                ScameraApp.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
                     } catch (Exception scam) {
                         Log.w("SCAM_HDR", "SCAM HDR fallback=hybrid reason=" + scam.getMessage());
                         android.util.Log.w("SCAM_HDR", "SCAM HDR fallback=hybrid", scam);
@@ -490,7 +490,7 @@ public class HdrxProcessor extends ProcessorBase {
                     processingStage = "Hybrid merge";
                     com.particlesdevs.photoncamera.processing.ShotTimeline.mark("hybrid_call");
                     scamOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.process(
-                            PhotonCamera.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
+                            ScameraApp.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
                 }
                 scamOutputParameters=processingParameters;
                 processingParameters.scamRgb=scamOwnedOutput;
@@ -507,7 +507,7 @@ public class HdrxProcessor extends ProcessorBase {
         for(ImageFrame frame:images)frame.close();
         ByteBuffer scamMergedDng=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.lastMergedDng;
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.lastMergedDng=null;
-        Log.d(TAG, "HDRX Alignment elapsed:" + (System.currentTimeMillis() - startTime) + " ms");
+        Log.d(TAG, "Alignment elapsed:" + (System.currentTimeMillis() - startTime) + " ms");
         if ((saveRAW >= 1) && alignAlgorithm != 2) {
             boolean imageSaved = false;
             try {
@@ -534,7 +534,7 @@ public class HdrxProcessor extends ProcessorBase {
             }
             processingEventsListener.notifyImageSavedStatus(imageSaved, dngFile);
             if (saveRAW == 2) {
-                processingEventsListener.onProcessingFinished("HdrX RAW Processing Finished");
+                processingEventsListener.onProcessingFinished("RAW processing finished");
                 callback.onFinished();
                 Allocator.free(output);
                 Allocator.getMemoryCount();
@@ -592,7 +592,7 @@ public class HdrxProcessor extends ProcessorBase {
         pipeline.tenBitOutput = com.particlesdevs.photoncamera.processing.heif.Heic10Support.wanted()
                 || com.particlesdevs.photoncamera.processing.avif.AvifEncoder.tenBitImageWanted();
         // P46 «Цветовое пространство»: Display P3 renders the final image in P3 primaries; every file of the shot says so.
-        final com.particlesdevs.photoncamera.processing.color.OutputColour.Space colourSpace = PhotonCamera.getSettings().colourSpace;
+        final com.particlesdevs.photoncamera.processing.color.OutputColour.Space colourSpace = ScameraApp.getSettings().colourSpace;
         pipeline.p3Output = colourSpace == com.particlesdevs.photoncamera.processing.color.OutputColour.Space.DISPLAY_P3;
         // W1.3: at 16 MP or less without Ultra HDR the GL teardown waits until the JPEG is saved (finishDeferredTeardown).
         pipeline.deferTeardown = PostPipeline.canDeferTeardown(processingParameters);
@@ -614,7 +614,7 @@ public class HdrxProcessor extends ProcessorBase {
         // and the digital zoom crop was skipped with Ultra HDR on. Now the map follows the resize and the crop instead.
         // Must run before the raw frame buffer is freed.
         PostPipeline.GainMapRaw gm = null;
-        if (PhotonCamera.getSettings().gainMapPass()) {
+        if (ScameraApp.getSettings().gainMapPass()) {
             processingStage = "Ultra HDR gain map";
             try {
                 gm = pipeline.RunHDRGainMap(jpegInput, processingParameters, img,
@@ -681,12 +681,12 @@ public class HdrxProcessor extends ProcessorBase {
         }
         final long tailFinished = System.nanoTime();
         try {
-            processingEventsListener.onProcessingFinished("HdrX JPG Processing Finished");
+            processingEventsListener.onProcessingFinished("Processing finished");
         }
         catch (Exception e){
             Log.d(TAG,"Error in processingEventsListener.onProcessingFinished:"+Log.getStackTraceString(e));
         }
-        Log.d(TAG, "HDRX tail ms: free=" + (tailOverlay - tailFree) / 1000000 + " overlay+close=" + (tailFinished - tailOverlay) / 1000000
+        Log.d(TAG, "Shot tail ms: free=" + (tailOverlay - tailFree) / 1000000 + " overlay+close=" + (tailFinished - tailOverlay) / 1000000
                 + " finished=" + (System.nanoTime() - tailFinished) / 1000000);
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("encode");
         GainMapComputer.Result gain = null;
@@ -703,10 +703,10 @@ public class HdrxProcessor extends ProcessorBase {
         // imageFile has no extension yet: PhotoOutput names the files by the chosen format (.jpg / .heic / .webp).
         // P46: the gain map makes the JPEG an Ultra HDR JPEG only with Ultra HDR in effect, and the HEIC / AVIF HDR only with
         // «HDR в HEIC / AVIF» in effect; without either option this is the call as before (sRGB, the map for the JPEG).
-        final boolean hdrOutput = PhotonCamera.getSettings().hdrOutput;
+        final boolean hdrOutput = ScameraApp.getSettings().hdrOutput;
         final com.particlesdevs.photoncamera.processing.PhotoOutput.Result saved = hdrOutput || pipeline.p3Output
                 ? com.particlesdevs.photoncamera.processing.PhotoOutput.save(imageFile, img, exifData,
-                        PhotonCamera.getSettings().ultraHdr ? gain : null, hdrOutput ? gain : null, colourSpace)
+                        ScameraApp.getSettings().ultraHdr ? gain : null, hdrOutput ? gain : null, colourSpace)
                 : com.particlesdevs.photoncamera.processing.PhotoOutput.save(imageFile, img, exifData, gain);
         if (gain != null) gain.gainMap.recycle();
         final java.util.List<Path> savedFiles = saved.notifyOrder();

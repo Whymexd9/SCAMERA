@@ -537,7 +537,7 @@ public final class ScamRgb extends Node {
             p.main2=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
             p.main3=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
             int ox=0,oy=0;
-            if(com.particlesdevs.photoncamera.app.PhotonCamera.getSettings().aspect169){
+            if(com.particlesdevs.photoncamera.app.ScameraApp.getSettings().aspect169){
                 int w=size.x,h=size.y;
                 if(w>h)oy=2*((h-w*9/16)/4);else ox=2*((w-h*9/16)/4);
             }
@@ -609,7 +609,7 @@ public final class ScamRgb extends Node {
             glProg.setVar("cropOffset",ox,oy);
             glProg.setVar("inverseSize",1f/size.x,1f/size.y);
             // Keep the ping-pong cursor in sync for every following postprocessing pass.
-            WorkingTexture=p.getMain();glProg.drawBlocks(WorkingTexture);glProg.closed=true;p.regenerationSense=1;
+            WorkingTexture=p.getMain();glProg.drawBlocks(WorkingTexture);glProg.closed=true;
             // Clip band: the dashed orange/blue line where a slanted clip edge alternates between clipped-mean and
             // unclipped-sample colours (assets/shaders/scamhdr/clipband.glsl). pref_scam_hybrid_highlight_band 0..1.
             final float band=perChannel&&flagsTex!=null?Math.max(0f,Math.min(1f,PreferenceKeys.hybridValue("highlight_band",1f))):0f;

@@ -8,7 +8,7 @@ import android.media.Image;
 import android.media.ImageReader;
 import java.nio.ByteBuffer;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.control.GyroBurst;
 import com.particlesdevs.photoncamera.processing.processor.ProcessorBase;
@@ -69,9 +69,9 @@ public class SaverImplementation {
         }
         if (!payload.plain()) {
             com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter " + payload.error);
-            RawPayloadCheck.dumpOnce(image, payload, PhotonCamera.getSettings().mCameraID);
+            RawPayloadCheck.dumpOnce(image, payload, ScameraApp.getSettings().mCameraID);
         }
-        if(PhotonCamera.getSettings().aspect169){
+        if(ScameraApp.getSettings().aspect169){
             if(width > height){
                 height = width * 9 / 16;
                 int offsetH = (image.getHeight() - height) / 2;
@@ -80,7 +80,7 @@ public class SaverImplementation {
                 capacity = rowStride * height;
             }
         }
-        Allocator.binning = PhotonCamera.getSettings().binning;
+        Allocator.binning = ScameraApp.getSettings().binning;
         ImageFrame frame = new ImageFrame(buffer, format, width, rowStride, offset, capacity, shotArena);
         frame.rawPayloadError = payload.error;
         frame.sourceFormat = format;

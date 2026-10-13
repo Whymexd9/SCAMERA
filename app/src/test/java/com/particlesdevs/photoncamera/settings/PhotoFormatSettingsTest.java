@@ -13,7 +13,7 @@ import androidx.preference.PreferenceManager;
 import androidx.preference.PreferenceScreen;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.gallery.files.ImageFile;
 import com.particlesdevs.photoncamera.gallery.model.GalleryItem;
 import com.particlesdevs.photoncamera.processing.PhotoFormat;
@@ -54,25 +54,25 @@ public class PhotoFormatSettingsTest {
     private Context context;
     private SettingsManager manager;
     private SharedPreferences prefs;
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
 
     @Before
     public void setUp() {
         org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8750");
-        context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Photon_SettingsActivity);
+        context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Scamera_SettingsActivity);
         manager = new SettingsManager(context);
         prefs = manager.getDefaultPreferences();
         prefs.edit().clear().commit();
-        camera = mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(context);
-        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        camera.when(() -> PhotonCamera.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
-        camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
+        camera = mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(context);
+        camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(() -> ScameraApp.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
+        camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
         com.particlesdevs.photoncamera.api.Settings settings = mock(com.particlesdevs.photoncamera.api.Settings.class);
-        camera.when(PhotonCamera::getSettings).thenReturn(settings);
-        PhotonCamera app = mock(PhotonCamera.class, RETURNS_DEEP_STUBS);
+        camera.when(ScameraApp::getSettings).thenReturn(settings);
+        ScameraApp app = mock(ScameraApp.class, RETURNS_DEEP_STUBS);
         when(app.getSettingsManager()).thenReturn(manager);
-        camera.when(() -> PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
+        camera.when(() -> ScameraApp.getInstance(any(Context.class))).thenReturn(app);
         PreferenceKeys.initialise(manager);
         PreferenceKeys.setDefaults(context);
     }
@@ -218,10 +218,10 @@ public class PhotoFormatSettingsTest {
     @Test
     public void galleryListsHeicAndWebp() throws Exception {
         File camera = tmp.newFolder("Camera"), raw = tmp.newFolder("Raw");
-        File dcimOld = FileManager.sDCIM_CAMERA, rawOld = FileManager.sPHOTON_RAW_DIR;
+        File dcimOld = FileManager.sDCIM_CAMERA, rawOld = FileManager.sRAW_DIR;
         try {
             FileManager.sDCIM_CAMERA = camera;
-            FileManager.sPHOTON_RAW_DIR = raw;
+            FileManager.sRAW_DIR = raw;
             FileManager.tempImageFiles = null;
             for (String name : new String[]{"a.jpg", "b.heic", "c.webp", "d.HEIF", "e.png", "f.txt"})
                 Files.write(new File(camera, name).toPath(), new byte[]{1, 2, 3});
@@ -232,7 +232,7 @@ public class PhotoFormatSettingsTest {
             assertEquals(new HashSet<>(Arrays.asList("a.jpg", "b.heic", "c.webp", "d.HEIF", "g.dng")), names);
         } finally {
             FileManager.sDCIM_CAMERA = dcimOld;
-            FileManager.sPHOTON_RAW_DIR = rawOld;
+            FileManager.sRAW_DIR = rawOld;
         }
         assertEquals("HEIC", tag("IMG_1.heic"));
         assertEquals("WEBP", tag("IMG_1.webp"));

@@ -25,7 +25,7 @@ import java.util.TreeMap;
  *   &lt;prefs file="module_profile_v2_common"&gt; ... &lt;/prefs&gt;
  * &lt;/scamera-config&gt;
  * </pre>
- * A plain shared_prefs file (root {@code <map>}, the old PhotonCamera XML backup) reads as the "main" file.
+ * A plain shared_prefs file (root {@code <map>}, the XML backup of older builds) reads as the "main" file.
  */
 public final class ConfigXml {
     public static final String ROOT = "scamera-config";

@@ -15,7 +15,7 @@ import android.view.View.OnTouchListener;
 
 import androidx.annotation.Nullable;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.ui.camera.views.FocusCircleView;
@@ -251,7 +251,7 @@ public class TouchFocus {
             if (display != null) return display.getRotation() * 90 + 90;
         } catch (Exception ignored) {
         }
-        Gravity gravity = PhotonCamera.getGravity();
+        Gravity gravity = ScameraApp.getGravity();
         return gravity != null ? gravity.getRotation() : 90;
     }
 

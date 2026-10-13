@@ -230,7 +230,7 @@ public class SensorConfigPreferenceGenerator {
      */
     private static Set<String> getAvailableSensorIds() {
         try {
-            SettingsManager settingsManager = com.particlesdevs.photoncamera.app.PhotonCamera.getSettingsManagerStatic();
+            SettingsManager settingsManager = com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic();
             if (settingsManager == null) {
                 Log.w(TAG, "SettingsManager is null, cannot read camera ids");
                 return null;
@@ -331,7 +331,7 @@ public class SensorConfigPreferenceGenerator {
     private static Map<String, CameraLensData> getCameraLensMap() {
         Map<String, CameraLensData> lensMap = new HashMap<>();
         try {
-            SettingsManager settingsManager = com.particlesdevs.photoncamera.app.PhotonCamera.getSettingsManagerStatic();
+            SettingsManager settingsManager = com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic();
             if (settingsManager == null) return lensMap;
             Set<String> jsonSet = settingsManager.getStringSet(
                     PreferenceKeys.Key.CAMERAS_PREFERENCE_FILE_NAME.mValue,

@@ -1,6 +1,6 @@
 package com.particlesdevs.photoncamera.remosaic;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.util.Allocator;
 import com.particlesdevs.photoncamera.util.Log;
 import java.io.*;
@@ -16,7 +16,7 @@ public final class RemosaicCalibrationStore {
     private static final int MAGIC=0x4d465031;
     static final class Profile { ByteBuffer map; float scale; }
     static File dir() throws IOException {
-        File d=new File(PhotonCamera.getAppContext().getFilesDir(),"mfsr-calibration-v2");
+        File d=new File(ScameraApp.getAppContext().getFilesDir(),"mfsr-calibration-v2");
         if(!d.isDirectory() && !d.mkdirs())throw new IOException(Lang.t("Не удалось создать каталог калибровки","Could not create the calibration folder"));
         return d;
     }

@@ -21,7 +21,7 @@ import android.util.AttributeSet;
 
 import androidx.preference.SwitchPreferenceCompat;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 
 /**
@@ -48,11 +48,11 @@ public class ManagedSwitchPreference extends SwitchPreferenceCompat {
 
     @Override
     public boolean getPersistedBoolean(boolean defaultReturnValue) {
-        PhotonCamera photonCamera = PhotonCamera.getInstance(getContext());
-        if (photonCamera == null)
+        ScameraApp app = ScameraApp.getInstance(getContext());
+        if (app == null)
             return defaultReturnValue;
         else {
-            SettingsManager settingsManager = photonCamera.getSettingsManager();
+            SettingsManager settingsManager = app.getSettingsManager();
             if (settingsManager != null)
                 return settingsManager.getBoolean(SettingsManager.SCOPE_GLOBAL, getKey(), defaultReturnValue);
             else
@@ -62,11 +62,11 @@ public class ManagedSwitchPreference extends SwitchPreferenceCompat {
 
     @Override
     public boolean persistBoolean(boolean value) {
-        PhotonCamera photonCamera = PhotonCamera.getInstance(getContext());
-        if (photonCamera == null)
+        ScameraApp app = ScameraApp.getInstance(getContext());
+        if (app == null)
             return false;
         else {
-            SettingsManager settingsManager = photonCamera.getSettingsManager();
+            SettingsManager settingsManager = app.getSettingsManager();
             if (settingsManager != null) {
                 // Opening a screen is read-only. Keep the Boolean representation
                 // used by Android preferences/migration, and notify only on changes.

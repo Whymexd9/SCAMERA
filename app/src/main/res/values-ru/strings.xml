@@ -28,7 +28,7 @@
     <string name="cfa">Фильтр Байера</string>
     <string name="energy_saving">Энергосбережение</string>
     <string name="show_gradient">Показать градиентный фон</string>
-    <string name="photon_camera_summary">Камера с открытым исходным кодом, с улучшенной обработкой фото</string>
+    <string name="app_summary">RAW-камера с многокадровой обработкой SCAM Hybrid и SCAM HDR</string>
     <string name="version_title">Версия</string>
     <string name="eis_toggle_text">Стабилизация тряски</string>
     <string name="fps_60_toggle_text">Частота кадров</string>

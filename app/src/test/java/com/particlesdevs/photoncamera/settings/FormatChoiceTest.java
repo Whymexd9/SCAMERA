@@ -7,7 +7,7 @@ import android.graphics.drawable.Drawable;
 import android.view.ContextThemeWrapper;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.PhotoFormat;
 
 import org.junit.After;
@@ -37,23 +37,23 @@ import static org.mockito.Mockito.*;
 public class FormatChoiceTest {
     private Context context;
     private SharedPreferences prefs;
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
 
     @Before
     public void setUp() {
-        context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Photon_SettingsActivity);
+        context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Scamera_SettingsActivity);
         SettingsManager manager = new SettingsManager(context);
         prefs = manager.getDefaultPreferences();
         prefs.edit().clear().commit();
-        camera = mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(context);
-        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        camera.when(() -> PhotonCamera.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
-        camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
-        camera.when(PhotonCamera::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
-        PhotonCamera app = mock(PhotonCamera.class, RETURNS_DEEP_STUBS);
+        camera = mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(context);
+        camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(() -> ScameraApp.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
+        camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
+        camera.when(ScameraApp::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
+        ScameraApp app = mock(ScameraApp.class, RETURNS_DEEP_STUBS);
         when(app.getSettingsManager()).thenReturn(manager);
-        camera.when(() -> PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
+        camera.when(() -> ScameraApp.getInstance(any(Context.class))).thenReturn(app);
         PreferenceKeys.initialise(manager);
         PreferenceKeys.setDefaults(context);
         // The host has no native AVIF encoder: the phone's state (library loaded) is what the menus are checked for.

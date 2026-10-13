@@ -23,7 +23,7 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.util.Log;
 import java.util.ArrayList;
@@ -55,7 +55,7 @@ public class LensDiscoveryActivity extends AppCompatActivity {
     @Override // androidx.fragment.app.FragmentActivity, androidx.activity.ComponentActivity, androidx.core.app.ComponentActivity, android.app.Activity
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        this.settingsManager = PhotonCamera.getSettingsManagerStatic();
+        this.settingsManager = ScameraApp.getSettingsManagerStatic();
         setContentView(R.layout.activity_lens_discovery);
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -140,7 +140,7 @@ public class LensDiscoveryActivity extends AppCompatActivity {
                 super.onBackPressed();
                 return;
             } else {
-                PhotonCamera.restartApp(this);
+                ScameraApp.restartApp(this);
                 return;
             }
         }

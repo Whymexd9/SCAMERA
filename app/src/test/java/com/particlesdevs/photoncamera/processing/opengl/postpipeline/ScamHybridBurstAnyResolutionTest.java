@@ -39,19 +39,19 @@ import static org.mockito.Mockito.*;
 public class ScamHybridBurstAnyResolutionTest {
     private static final GLLimits ADRENO_750 = GLLimits.of(16384, 16384, 16384, 16384);
     private MockedStatic<PreferenceKeys> prefs;
-    private MockedStatic<com.particlesdevs.photoncamera.app.PhotonCamera> photon;
+    private MockedStatic<com.particlesdevs.photoncamera.app.ScameraApp> appStatic;
     private long clock = 1_000_000_000L;
     private String outputMode = "2x";
 
     @Before public void setup() {
         Context context = org.robolectric.RuntimeEnvironment.getApplication();
         com.particlesdevs.photoncamera.settings.SettingsManager settings = new com.particlesdevs.photoncamera.settings.SettingsManager(context);
-        photon = mockStatic(com.particlesdevs.photoncamera.app.PhotonCamera.class);
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getAppContext).thenReturn(context);
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getSettingsManagerStatic).thenReturn(settings);
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getSettings).thenReturn(new com.particlesdevs.photoncamera.api.Settings());
-        photon.when(() -> com.particlesdevs.photoncamera.app.PhotonCamera.getStringStatic(anyInt())).thenAnswer(i -> context.getString(i.getArgument(0)));
+        appStatic = mockStatic(com.particlesdevs.photoncamera.app.ScameraApp.class);
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getAppContext).thenReturn(context);
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getSettingsManagerStatic).thenReturn(settings);
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getSettings).thenReturn(new com.particlesdevs.photoncamera.api.Settings());
+        appStatic.when(() -> com.particlesdevs.photoncamera.app.ScameraApp.getStringStatic(anyInt())).thenAnswer(i -> context.getString(i.getArgument(0)));
         prefs = mockStatic(PreferenceKeys.class);
         prefs.when(() -> PreferenceKeys.hybridSwitch(anyString(), anyBoolean())).thenAnswer(i -> i.getArgument(1));
         prefs.when(() -> PreferenceKeys.hybridValue(anyString(), anyFloat())).thenAnswer(i -> i.getArgument(1));
@@ -61,7 +61,7 @@ public class ScamHybridBurstAnyResolutionTest {
         prefs.when(() -> PreferenceKeys.hybridFinalSize(anyInt(), anyInt())).thenAnswer(i -> new Point(i.getArgument(0), i.getArgument(1)));
         GLLimits.setForTesting(ADRENO_750);
     }
-    @After public void cleanup() { GLLimits.setForTesting(null); prefs.close(); photon.close(); }
+    @After public void cleanup() { GLLimits.setForTesting(null); prefs.close(); appStatic.close(); }
 
     private ImageFrame frame(int w, int h, ByteBuffer buffer) {
         ImageFrame f = mock(ImageFrame.class);

@@ -12,7 +12,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.util.ConfigFolder;
 import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.util.Log;
@@ -101,7 +101,7 @@ public class BackupRestoreUtil {
         } else {
             result = apply(context, ConfigXml.read(new ByteArrayInputStream(data))) + label;
         }
-        PhotonCamera.restartWithDelay(context, 1000);
+        ScameraApp.restartWithDelay(context, 1000);
         return result;
     }
 

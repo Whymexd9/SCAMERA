@@ -8,8 +8,7 @@ import com.particlesdevs.photoncamera.util.Log;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
-import com.particlesdevs.photoncamera.pro.SpecificSetting;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 
@@ -54,16 +53,6 @@ public final class CameraManager2 {
     public CameraManager2(CameraManager cameraManager, SettingsManager settingsManager) {
         this.mSettingsManager = settingsManager;
 
-        //Spinlock waiting for specific manager
-        for(int i =0; i<100; i++){
-            if(PhotonCamera.getSpecific().isLoaded) break;
-            try {
-                Thread.sleep(1);
-            } catch (InterruptedException ignored) {}
-        }
-        SpecificSetting sp = PhotonCamera.getSpecific().specificSetting;
-        String[] ids = sp.cameraIDS;
-        Log.d("CameraManager2", "Loaded ids:"+ Arrays.toString(ids));
             // The scan is cached; a changed package spoof changes which cameras the service
             // exposes (hidden lenses appear), so the cached list would keep hiding them.
             String spoofSignature = com.particlesdevs.photoncamera.capture.spoof.CameraPackageSpoof
@@ -92,28 +81,10 @@ public final class CameraManager2 {
                 Log.d("CameraManager2", "Pixel: camera scan cache dropped (P66 sensor-crop modules)");
             }
             if (!isLoaded()) {
-                if(ids == null)
-                    scanAllCameras(cameraManager);
-                else {
-                    for (String id : ids) {
-                        try {
-                            String physicalID = id;
-                            if(id.contains("-")){
-                                physicalID = id.split("-")[1];
-                            }
-                            CameraCharacteristics cameraCharacteristics = cameraManager.getCameraCharacteristics(physicalID);
-                            CameraLensData cameraLensData = createNewCameraLensData(id, cameraCharacteristics);
-                            mAllCameraIDsSet.add(id);
-                            mCameraLensDataMap.put(id, cameraLensData);
-                        } catch (Exception ignored) {
-                        }
-                    }
-                    findLensZoomFactor(mCameraLensDataMap);
-                }
-                //Override ID detection
+                scanAllCameras(cameraManager);
                 save();
             } else {
-                loadFromSave(cameraManager,ids);
+                loadFromSave();
             }
         // Lens discovery may expose vendor/physical IDs which are absent from
         // the normal CameraManager enumeration.  Materialize the user's
@@ -145,26 +116,12 @@ public final class CameraManager2 {
             save();
         }
     }
-    private void initExt(CameraManager cameraManager, String[] ids) {
-        for (String id : ids) {
-            try {
-                int num = Integer.parseInt(id);
-                CameraCharacteristics cameraCharacteristics = cameraManager.getCameraCharacteristics(String.valueOf(num));
-                log("BitAnalyser:" + num + ":" + intToReverseBinary(num));
-                CameraLensData cameraLensData = createNewCameraLensData(String.valueOf(num), cameraCharacteristics);
-                mAllCameraIDsSet.add(String.valueOf(num));
-                mCameraLensDataMap.put(String.valueOf(num), cameraLensData);
-                findLensZoomFactor(mCameraLensDataMap);
-            } catch (Exception ignored) {
-            }
-        }
-    }
 
     private boolean isLoaded(){
         return mSettingsManager.isSet(_CAMERAS, ALL_CAMERA_IDS_KEY);
     }
 
-    private void loadFromSave(CameraManager cameraManager,String ids[]){
+    private void loadFromSave(){
         mAllCameraIDsSet = mSettingsManager.getStringSet(_CAMERAS, ALL_CAMERA_IDS_KEY, null);
         //Retrieve the saved Set of CameraLensData JSON strings from SharedPreferences
         mCameraLensDataJSONSet = mSettingsManager.getStringSet(_CAMERAS, ALL_CAMERA_LENS_KEY, null);
@@ -173,10 +130,6 @@ public final class CameraManager2 {
             CameraLensData cameraLensData = GSON.fromJson(jsonString, CameraLensData.class);
             mCameraLensDataMap.put(cameraLensData.getCameraId(), cameraLensData);
         });
-        if(ids != null && mCameraLensDataJSONSet.size() < ids.length){
-            initExt(cameraManager,ids);
-            save();
-        }
     }
 
     /**

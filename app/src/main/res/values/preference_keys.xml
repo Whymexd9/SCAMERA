@@ -3,7 +3,6 @@
            tools:ignore="MissingTranslation">
     <string name="_pref_version" translatable="false">_pref_version</string>
     <string name="pref_category_jpg_key" translatable="false">pref_category_jpg_key</string>
-    <string name="pref_category_hdrx_key" translatable="false">pref_category_hdrx_key</string>
     <string name="pref_category_photo_key" translatable="false">pref_category_photo_key</string>
     <string name="pref_category_video_key" translatable="false">pref_category_video_key</string>
     <string name="pref_category_rawvideo_key" translatable="false">pref_category_rawvideo_key</string>
@@ -26,7 +25,6 @@
     <string name="pref_theme_accent_key" translatable="false">pref_theme_accent_key</string>
     <string name="pref_show_gradient_key" translatable="false">pref_show_gradient_key</string>
     <string name="pref_af_mode_key" translatable="false">pref_af_mode_key</string>
-    <string name="pref_hdrx_key" translatable="false">pref_hdrx_key</string>
     <string name="pref_eis_photo_key" translatable="false">pref_eis_photo_key</string>
     <string name="pref_quad_bayer_key" translatable="false">pref_quad_bayer_key</string>
     <string name="pref_fps_preview_key" translatable="false">pref_fps_preview_key</string>
@@ -54,7 +52,7 @@
     <string name="pref_backup_preferences_key" translatable="false">pref_backup_preferences_key</string>
     <string name="pref_restore_preferences_key" translatable="false">pref_restore_preferences_key</string>
     <string name="pref_reset_preferences_key" translatable="false">pref_reset_preferences_key</string>
-    <string name="pref_photoncamera" translatable="false">pref_photoncamera</string>
+    <string name="pref_app_key" translatable="false">pref_app_key</string>
     <string name="pref_version_key" translatable="false">pref_version_key</string>
     <string name="pref_folders_list" translatable="false">pref_folders_list</string>
     <string name="pref_hide_gallery_icon_key" translatable="false">pref_hide_gallery_icon_key</string>

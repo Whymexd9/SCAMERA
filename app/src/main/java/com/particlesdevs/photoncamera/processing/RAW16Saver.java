@@ -6,7 +6,7 @@ import com.particlesdevs.photoncamera.util.Log;
 
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.api.CameraMode;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 public class RAW16Saver extends DefaultSaver{
     private static final String TAG = "RAW16Saver";

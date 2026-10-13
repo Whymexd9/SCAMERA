@@ -13,7 +13,7 @@ import androidx.preference.SwitchPreferenceCompat;
 
 import com.google.android.material.color.MaterialColors;
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.util.Log;
 
 /**
@@ -226,7 +226,7 @@ public class TunableCheckBoxPreference extends SwitchPreferenceCompat {
         isUserInteraction = wasUserInteraction;
         
         // Show feedback
-        PhotonCamera.showToast("Reset to default: " + (mDefaultValue != 0 ? "enabled" : "disabled"));
+        ScameraApp.showToast("Reset to default: " + (mDefaultValue != 0 ? "enabled" : "disabled"));
         Log.d(TAG, "Reset to default (removed persisted value): " + mDefaultValue + " for " + getKey());
     }
 }

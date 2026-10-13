@@ -16,7 +16,7 @@ import androidx.preference.PreferenceManager;
 import androidx.preference.PreferenceScreen;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.gallery.files.ImageFile;
 import com.particlesdevs.photoncamera.gallery.model.GalleryItem;
 import com.particlesdevs.photoncamera.processing.PhotoFormat;
@@ -63,24 +63,24 @@ public class AvifSettingsTest {
     @Rule public TemporaryFolder tmp = new TemporaryFolder();
     private Context context;
     private SharedPreferences prefs;
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
 
     @Before
     public void setUp() {
         org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8750");
-        context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Photon_SettingsActivity);
+        context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Scamera_SettingsActivity);
         SettingsManager manager = new SettingsManager(context);
         prefs = manager.getDefaultPreferences();
         prefs.edit().clear().commit();
-        camera = mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(context);
-        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        camera.when(() -> PhotonCamera.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
-        camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
-        camera.when(PhotonCamera::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
-        PhotonCamera app = mock(PhotonCamera.class, RETURNS_DEEP_STUBS);
+        camera = mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(context);
+        camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(() -> ScameraApp.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
+        camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
+        camera.when(ScameraApp::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
+        ScameraApp app = mock(ScameraApp.class, RETURNS_DEEP_STUBS);
         when(app.getSettingsManager()).thenReturn(manager);
-        camera.when(() -> PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
+        camera.when(() -> ScameraApp.getInstance(any(Context.class))).thenReturn(app);
         PreferenceKeys.initialise(manager);
         PreferenceKeys.setDefaults(context);
         // The phone's state: the native encoder loaded (this JVM has no native library).
@@ -285,10 +285,10 @@ public class AvifSettingsTest {
     @Test
     public void galleryListsAndTagsAvif() throws Exception {
         File dir = tmp.newFolder("Camera"), raw = tmp.newFolder("Raw");
-        File dcimOld = FileManager.sDCIM_CAMERA, rawOld = FileManager.sPHOTON_RAW_DIR;
+        File dcimOld = FileManager.sDCIM_CAMERA, rawOld = FileManager.sRAW_DIR;
         try {
             FileManager.sDCIM_CAMERA = dir;
-            FileManager.sPHOTON_RAW_DIR = raw;
+            FileManager.sRAW_DIR = raw;
             FileManager.tempImageFiles = null;
             for (String name : new String[]{"a.jpg", "b.avif", "c.AVIF", "d.txt"})
                 Files.write(new File(dir, name).toPath(), new byte[]{1, 2, 3});
@@ -298,7 +298,7 @@ public class AvifSettingsTest {
             assertEquals(new HashSet<>(Arrays.asList("a.jpg", "b.avif", "c.AVIF")), names);
         } finally {
             FileManager.sDCIM_CAMERA = dcimOld;
-            FileManager.sPHOTON_RAW_DIR = rawOld;
+            FileManager.sRAW_DIR = rawOld;
         }
         assertEquals("AVIF", new GalleryItem(new ImageFile(1, Uri.parse("content://media/1"), "IMG_1.avif", 0, 1, "/x/IMG_1.avif"))
                 .getMediaTypeTag());

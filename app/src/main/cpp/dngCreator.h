@@ -2,8 +2,8 @@
 // Created by eszdman on 02.06.2025.
 //
 
-#ifndef PHOTONCAMERA_DNGCREATOR_H
-#define PHOTONCAMERA_DNGCREATOR_H
+#ifndef SCAMERA_DNGCREATOR_H
+#define SCAMERA_DNGCREATOR_H
 
 #include <jni.h>
 #include <string>
@@ -178,4 +178,4 @@ JNIEXPORT void JNICALL Java_com_particlesdevs_photoncamera_processing_DngCreator
 }
 #endif
 
-#endif //PHOTONCAMERA_DNGCREATOR_H
+#endif //SCAMERA_DNGCREATOR_H

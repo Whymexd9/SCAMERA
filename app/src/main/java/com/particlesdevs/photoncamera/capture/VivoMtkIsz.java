@@ -6,7 +6,7 @@ import android.content.SharedPreferences;
 import androidx.annotation.Nullable;
 
 import com.particlesdevs.photoncamera.api.VendorTagUtils;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.ModuleRegistry;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.TunableKeyManager;
@@ -73,7 +73,7 @@ public final class VivoMtkIsz {
     public static int activeFactor() {
         if (!enabled()) return 0;
         try {
-            SharedPreferences p = PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
+            SharedPreferences p = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
             return p.getInt(MARK + ModuleRegistry.active(), 0);
         } catch (RuntimeException e) {
             return 0;
@@ -87,7 +87,7 @@ public final class VivoMtkIsz {
     public static void ensureModules(@Nullable Context context) {
         if (context == null || !enabled()) return;
         try {
-            SharedPreferences p = PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
+            SharedPreferences p = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
             android.hardware.camera2.CameraManager manager =
                     (android.hardware.camera2.CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
             removeExtras(p, manager);
@@ -263,7 +263,7 @@ public final class VivoMtkIsz {
         if (!ROI_KEY.equals(keyName)) return;
         try {
             String camera = physicalId != null && !physicalId.isEmpty() ? physicalId : ModuleRegistry.camera(ModuleRegistry.active());
-            SharedPreferences p = PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
+            SharedPreferences p = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
             boolean was = p.getBoolean(ROI_REFUSED + camera, false);
             if (was == !supported) return;
             if (supported) p.edit().remove(ROI_REFUSED + camera).apply();
@@ -277,7 +277,7 @@ public final class VivoMtkIsz {
     static boolean roiKeyKnown(@Nullable android.hardware.camera2.CameraManager manager, @Nullable String cameraId) {
         if (cameraId == null) return false;
         try {
-            return !PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getBoolean(ROI_REFUSED + cameraId, false);
+            return !ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getBoolean(ROI_REFUSED + cameraId, false);
         } catch (RuntimeException e) {
             return true;
         }
@@ -334,7 +334,7 @@ public final class VivoMtkIsz {
     }
 
     private static boolean hasRoiKey(String slot) {
-        Context context = PhotonCamera.getSettingsManagerStatic() == null ? null : PhotonCamera.getSettingsManagerStatic().getContext();
+        Context context = ScameraApp.getSettingsManagerStatic() == null ? null : ScameraApp.getSettingsManagerStatic().getContext();
         for (VendorTagUtils.TunableKey k : TunableKeyManager.loadKeys(context, slot))
             if (k != null && ROI_KEY.equals(k.name)) return true;
         return false;

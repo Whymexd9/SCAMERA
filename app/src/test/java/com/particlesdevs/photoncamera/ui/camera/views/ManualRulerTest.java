@@ -51,7 +51,7 @@ public class ManualRulerTest {
 
     @Before
     public void setUp() {
-        Context c = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Photon_SettingsActivity);
+        Context c = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Scamera_SettingsActivity);
         ruler = new LinearScaleView(c);
         ruler.setAccent(ACCENT);
         items = new ArrayList<>();

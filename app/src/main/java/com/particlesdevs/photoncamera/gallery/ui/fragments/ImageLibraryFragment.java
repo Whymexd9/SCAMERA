@@ -27,7 +27,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.snackbar.Snackbar;
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.gallery.adapters.DragSelectionItemTouchListener;
 import com.particlesdevs.photoncamera.gallery.files.GalleryFileOperations;
 import com.particlesdevs.photoncamera.gallery.files.ImageFile;
@@ -335,7 +335,7 @@ public class ImageLibraryFragment extends Fragment implements LibraryAdapter.Hos
             }
             Set<String> set = new HashSet<>();
             for (GallerySheets.Folder r : rows) if (r.on) set.add(r.id);
-            PhotonCamera.getSettingsManagerStatic().set("default_scope", PreferenceKeys.Key.FOLDERS_LIST, set);
+            ScameraApp.getSettingsManagerStatic().set("default_scope", PreferenceKeys.Key.FOLDERS_LIST, set);
             clearSelection();
             viewModel.setUpdatePending(true);
         }));

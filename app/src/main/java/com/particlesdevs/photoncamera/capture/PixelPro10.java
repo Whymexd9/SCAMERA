@@ -13,7 +13,7 @@ import android.util.SizeF;
 
 import androidx.annotation.Nullable;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.ModuleRegistry;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.ZoomLabels;
@@ -85,7 +85,7 @@ public final class PixelPro10 {
     public static void ensureModules(@Nullable Context context) {
         if (context == null || !device() || !PreferenceKeys.scamDevSwitch("pixel_modules", true)) return;
         try {
-            SharedPreferences p = PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
+            SharedPreferences p = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
             CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
             if (manager == null) return;
             CameraCharacteristics logical = manager.getCameraCharacteristics("0");
@@ -179,7 +179,7 @@ public final class PixelPro10 {
 
     @Nullable
     private static SharedPreferences prefs() {
-        Context c = PhotonCamera.getAppContext();
+        Context c = ScameraApp.getAppContext();
         return c == null ? null : c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 

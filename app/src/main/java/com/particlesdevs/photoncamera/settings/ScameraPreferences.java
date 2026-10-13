@@ -2,15 +2,15 @@ package com.particlesdevs.photoncamera.settings;
 
 import android.content.SharedPreferences;
 import androidx.preference.PreferenceManager;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
-/** Preferences for SCAMERA processing extensions that do not belong to Photon settings. */
+/** Preferences of the SCAMERA processing extensions. */
 public final class ScameraPreferences {
     private ScameraPreferences() {}
 
     private static SharedPreferences prefs() {
         return PreferenceManager.getDefaultSharedPreferences(
-                PhotonCamera.getSettingsManagerStatic().getContext());
+                ScameraApp.getSettingsManagerStatic().getContext());
     }
 
     public static boolean quadBayerEnabled() {

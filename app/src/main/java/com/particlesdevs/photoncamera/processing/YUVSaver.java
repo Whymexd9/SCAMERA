@@ -3,7 +3,7 @@ package com.particlesdevs.photoncamera.processing;
 import android.media.Image;
 import com.particlesdevs.photoncamera.util.Log;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 public class YUVSaver extends DefaultSaver{
     private static final String TAG = "YUVSaver";
@@ -14,15 +14,15 @@ public class YUVSaver extends DefaultSaver{
     public void addImage(Image image) {
         Log.d(TAG, "start buffersize:" + IMAGE_BUFFER.size());
         IMAGE_BUFFER.add(getFrame(image));
-        if (IMAGE_BUFFER.size() == PhotonCamera.getCaptureController().mMeasuredFrameCnt && PhotonCamera.getSettings().frameCount != 1) {
+        if (IMAGE_BUFFER.size() == ScameraApp.getCaptureController().mMeasuredFrameCnt && ScameraApp.getSettings().frameCount != 1) {
 
-//            hdrxProcessor.start(dngFile, jpgFile, IMAGE_BUFFER, mImage.getFormat(),
+//            scamProcessor.start(dngFile, jpgFile, IMAGE_BUFFER, mImage.getFormat(),
 //                        CaptureController.mCameraCharacteristics, CaptureController.mCaptureResult,
 //                        () -> clearImageReader(mReader));
 
             IMAGE_BUFFER.clear();
         }
-        if (PhotonCamera.getSettings().frameCount == 1) {
+        if (ScameraApp.getSettings().frameCount == 1) {
             IMAGE_BUFFER.clear();
             processingEventsListener.onProcessingFinished("YUV: Single Frame, Not Processed!");
 

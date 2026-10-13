@@ -12,7 +12,7 @@ import android.view.Surface;
 import android.view.View;
 import androidx.annotation.Nullable;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.control.Gyro;
 
 import java.util.Locale;
@@ -153,7 +153,7 @@ public class HorizonIndicatorView extends View {
         if (isVisible) {
             int centerX = getWidth() / 2;
             int centerY = getHeight() / 2;
-        /*if (isViewfinderMagnified && PhotonCamera.getSettings().useAlternateLoupe) {
+        /*if (isViewfinderMagnified && ScameraApp.getSettings().useAlternateLoupe) {
             centerY -= offset;
         }*/
             float lineHalf = LINE_LENGTH_PX / 2f;
@@ -172,7 +172,7 @@ public class HorizonIndicatorView extends View {
             canvas.rotate(currentDisplayRotation, centerX, centerY);
             canvas.drawLine(centerX - 220, centerY, centerX - 180, centerY, targetPaint);
             canvas.drawLine(centerX + 180, centerY, centerX + 220, centerY, targetPaint);
-        /*if (PhotonCamera.getSettings().useVirtualHorizonText) {
+        /*if (ScameraApp.getSettings().useVirtualHorizonText) {
             String formattedPitch = String.format(Locale.US, "%.2f°", pitchAngle);
             String formattedRoll = String.format(Locale.US, "%.2f°", rollAngle);
             String formattedYaw = String.format(Locale.US, "%.2f°", yawAngle);

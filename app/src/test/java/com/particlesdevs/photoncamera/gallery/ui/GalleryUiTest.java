@@ -23,7 +23,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.gallery.files.ImageFile;
 import com.particlesdevs.photoncamera.gallery.model.GalleryItem;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
@@ -48,7 +48,7 @@ import java.util.List;
 @Config(sdk = 35, application = Application.class, qualifiers = "ru-w360dp-h800dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class GalleryUiTest {
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
     private ActivityController<AppCompatActivity> controller;
     private Context context;
 
@@ -56,16 +56,16 @@ public class GalleryUiTest {
     public void setUp() {
         controller = Robolectric.buildActivity(AppCompatActivity.class);
         AppCompatActivity activity = controller.get();
-        activity.setTheme(R.style.Theme_Photon_SettingsActivity);
+        activity.setTheme(R.style.Theme_Scamera_SettingsActivity);
         controller.setup();
         context = activity;
         SettingsManager manager = new SettingsManager(context);
-        camera = mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(context);
-        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        camera.when(() -> PhotonCamera.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
-        camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
-        camera.when(PhotonCamera::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
+        camera = mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(context);
+        camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(() -> ScameraApp.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
+        camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
+        camera.when(ScameraApp::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
         LibraryAdapter.loadPictures = false;
     }
 

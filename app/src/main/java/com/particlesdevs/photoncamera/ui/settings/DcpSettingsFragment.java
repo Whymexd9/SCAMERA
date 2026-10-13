@@ -2,7 +2,7 @@ package com.particlesdevs.photoncamera.ui.settings;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.color.DcpProfiles;
 import com.particlesdevs.photoncamera.settings.ModuleRegistry;
 import com.particlesdevs.photoncamera.util.Lang;
@@ -22,10 +22,10 @@ public class DcpSettingsFragment extends ModuleConceptFragment {
             else {android.widget.Toast.makeText(app,result[1],android.widget.Toast.LENGTH_LONG).show();render();}
         }));
     });
-    private void choose(String id){PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit().putString(DcpProfiles.KEY,id).apply();render();}
+    private void choose(String id){ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putString(DcpProfiles.KEY,id).apply();render();}
     @Override protected void render(){
         page(Lang.t(getContext(),"Матрицы DCP","DCP matrices"),ModuleRegistry.label(ModuleRegistry.active()));
-        String selected=PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getString(DcpProfiles.KEY,"");
+        String selected=ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getString(DcpProfiles.KEY,"");
         DcpProfiles.list(requireContext()).forEach((id,label)->navigation("◉",(id.equals(selected)?"✓  ":"")+label,null,()->choose(id)));
         note(Lang.t(getContext(),"Выбирайте профиль для этого сенсора. Используются ColorMatrix, ForwardMatrix и источники освещения. Таблицы оттенков и тональные кривые DCP не применяются.","Pick a profile for this sensor. ColorMatrix, ForwardMatrix and the illuminants are used. DCP hue tables and tone curves are not applied."));
         note(Lang.t(getContext(),"Выбор сохраняется в профиле модуля и доступен для копирования между модулями.","The choice is saved in the module profile and can be copied between modules."));

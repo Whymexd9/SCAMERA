@@ -14,7 +14,7 @@ public class NoiseModeler {
     double adaptiveMpy = 1.0;
     /** ISO fed to the model (the capture sensitivity). */
     private int modelIso1;
-    public NoiseModeler(Pair<Double,Double>[] inModel, Integer analogISO, Integer ISO, int bayer, SpecificSettingSensor specificSettingSensor) {
+    public NoiseModeler(Pair<Double,Double>[] inModel, Integer analogISO, Integer ISO, int bayer) {
         AnalogueISO = analogISO;
         SensivityISO = ISO;
         baseModel = new Pair[3];
@@ -39,30 +39,10 @@ public class NoiseModeler {
                     + " Gb=" + inModel[2] + " B=" + inModel[3]);
         }
         //inModel = null;
-        if (inModel == null || inModel.length == 0 || inModel[0].first == 0.0 || (profile == null && specificSettingSensor != null && specificSettingSensor.ModelerExists)) {
-            Pair<Double, Double> CustomGeneratorS;
-            Pair<Double, Double> CustomGeneratorO;
-            if(specificSettingSensor != null) {
-                double[] avrdouble = new double[4];
-                int cnt = 0;
-                for (double[] ind : specificSettingSensor.NoiseModelerArr) {
-                    for (double v : ind) {
-                        //Average only bayer models, not cross generators
-                        avrdouble[cnt] += v;
-                    }
-                    avrdouble[cnt]/=ind.length;
-                    /*avrdouble[0] += ind[0];
-                    avrdouble[1] += ind[1];
-                    avrdouble[2] += ind[2];
-                    avrdouble[3] += ind[3];*/
-                    cnt++;
-                }
-                CustomGeneratorS = new Pair<>(avrdouble[0], avrdouble[1]);
-                CustomGeneratorO = new Pair<>(avrdouble[2], avrdouble[3]);
-            } else {
-                CustomGeneratorS = new Pair<>(0.0000025720647, 0.000028855721);
-                CustomGeneratorO = new Pair<>(0.000000000039798506, 0.000000046578279);
-            }
+        if (inModel == null || inModel.length == 0 || inModel[0].first == 0.0) {
+            // The camera reports no noise profile: a generic model of a phone sensor (S and O linear / quadratic in ISO)
+            Pair<Double, Double> CustomGeneratorS = new Pair<>(0.0000025720647, 0.000028855721);
+            Pair<Double, Double> CustomGeneratorO = new Pair<>(0.000000000039798506, 0.000000046578279);
             Pair<Double,Double> computedModel = new Pair<>(computeNoiseModelS(modelIso1,CustomGeneratorS),computeNoiseModelO(modelIso1,CustomGeneratorO));
             //Test
             /*

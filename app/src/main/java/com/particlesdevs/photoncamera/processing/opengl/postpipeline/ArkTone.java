@@ -4,7 +4,6 @@ import android.graphics.Point;
 
 import com.particlesdevs.photoncamera.processing.opengl.GLProg;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
-import com.particlesdevs.photoncamera.processing.render.ColorCorrectionTransform;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 
@@ -119,9 +118,7 @@ public final class ArkTone {
 
     /** ProPhoto -> sRGB matrix of the render. */
     static float[] intermediateToSRGB(Parameters p) {
-        float[] m = p.CCT.matrix;
-        if (p.CCT.correctionMode == ColorCorrectionTransform.CorrectionMode.MATRIXES) m = p.CCT.combineMatrix(p.whitePoint);
-        return m;
+        return p.CCT.matrix;
     }
 
     /** Colour uniforms of ark/low.glsl and ark/combine.glsl (sceneLinear): the chain of headroom/render.glsl. */

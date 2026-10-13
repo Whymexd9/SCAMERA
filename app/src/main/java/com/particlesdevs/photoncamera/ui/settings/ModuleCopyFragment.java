@@ -6,7 +6,7 @@ import android.widget.*;
 import androidx.preference.*;
 import androidx.appcompat.app.AlertDialog;
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.*;
 import com.particlesdevs.photoncamera.util.Lang;
 import java.util.*;
@@ -91,7 +91,7 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
             }
             note(Lang.t(getContext(),"Общие параметры помечены внутри групп","Shared parameters are marked inside the groups"));
             primary(Lang.t(getContext(),"Копировать в "+targets.size()+" "+(targets.size()==1?"модуль":targets.size()<5?"модуля":"модулей"),"Copy to "+targets.size()+(targets.size()==1?" module":" modules")),!targets.isEmpty()&&!selected.isEmpty(),()->{
-                PreferenceKeys.profiles().copy(source,targets,selected);if(PhotonCamera.getSettings()!=null)PhotonCamera.getSettings().loadCache();
+                PreferenceKeys.profiles().copy(source,targets,selected);if(ScameraApp.getSettings()!=null)ScameraApp.getSettings().loadCache();
                 new AlertDialog.Builder(requireContext()).setMessage(Lang.t(getContext(),"Выбранные настройки скопированы","The selected settings are copied")).setPositiveButton(Lang.t(getContext(),"Готово","Done"),null).show();
             });
         }else{

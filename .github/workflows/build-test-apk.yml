@@ -131,7 +131,7 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_tetra_detail.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_remosaic_shaders.py
           /usr/bin/python3 tools/check_lanczos_downscale.py
-          LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 tools/checks/photo_look_gl.py
+          LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 tools/checks/preview_gl.py
           g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_scam_preprocess.cpp -lEGL -lGLESv2 -o /tmp/check-scam-preprocess
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-scam-preprocess
           g++ -std=c++17 -O2 -fsanitize=address,undefined tools/check_scam_capture.cpp -lEGL -lGLESv2 -o /tmp/check-scam-capture
@@ -206,8 +206,18 @@ jobs:
           "$RUNNER_TEMP/asset-tools/bin/pip" install cryptography==46.0.0
           "$RUNNER_TEMP/asset-tools/bin/python" tools/ci_neural_assets.py --output "$RUNNER_TEMP/neural-assets"
 
+      # The SCAMERA release key is not in the repository (it is public): a base64 .jks and its password as secrets.
       - name: Package and sign the final APK
+        env:
+          SCAMERA_SIGNING_KEYSTORE: ${{ secrets.SCAMERA_SIGNING_KEYSTORE }}
+          SCAMERA_KEYSTORE_PASSWORD: ${{ secrets.SCAMERA_SIGNING_PASSWORD }}
         run: |
+          if [ -z "$SCAMERA_SIGNING_KEYSTORE" ] || [ -z "$SCAMERA_KEYSTORE_PASSWORD" ]; then
+            echo "::error::The SCAMERA signing key is missing: secrets SCAMERA_SIGNING_KEYSTORE and SCAMERA_SIGNING_PASSWORD (key/README.md)"
+            exit 1
+          fi
+          export SCAMERA_KEYSTORE="$RUNNER_TEMP/scamera-release.jks" SCAMERA_KEY_ALIAS=scamera
+          printf '%s' "$SCAMERA_SIGNING_KEYSTORE" | base64 -d > "$SCAMERA_KEYSTORE"
           mkdir -p out
           APK=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
           python3 tools/package_scam_neural.py \

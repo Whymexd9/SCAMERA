@@ -4,7 +4,7 @@ import android.content.Context;
 import android.content.res.Resources;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 import java.util.Locale;
 
@@ -20,7 +20,7 @@ public final class Lang {
 
     /** True when the UI is Russian. */
     public static boolean ru() {
-        return ru(PhotonCamera.getAppContext());
+        return ru(ScameraApp.getAppContext());
     }
 
     /** True when the UI of {@code context}'s resources is Russian ({@code context} may be null). */

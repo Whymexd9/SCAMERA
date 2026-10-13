@@ -36,7 +36,7 @@ setting; the dev key `mosaic_block` (2 / 4, `nice_dev.txt`) overrides it.
 other branch (capture plan, shutter queue, `quadCfa`, `isVivoHdrEnabled`, ESD4D, HexQuad capture) sees a plain-bayer
 module, and gives `getRemosaicBlockSize()` / `getRemosaicBackend()` the values above for `RemosaicCore`.
 `PreferenceKeys.mosaicBlock()` is the block for statistics and the raw viewfinder (a correct viewfinder colour on ISZ).
-`HdrxProcessor` calls `VivoNiceMosaic.prepare()` before `VivoNiceBurst.process()`; afterwards `cfaPattern` is the emitted
+`ScamProcessor` calls `VivoNiceMosaic.prepare()` before `VivoNiceBurst.process()`; afterwards `cfaPattern` is the emitted
 plain pattern, `quadCfa=false`, `remosaicDone=true`, so the DNG of the reference is a valid plain-bayer DNG.
 
 ## Measured (phone on a stand, 12 N, 10x Tetra / 6.7x Quad)

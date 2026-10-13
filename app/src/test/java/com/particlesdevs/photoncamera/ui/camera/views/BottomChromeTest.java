@@ -117,7 +117,7 @@ public class BottomChromeTest {
 
     @Test
     public void controlsRiseTogetherAndTheHandleUncoversTheViewfinder() throws Exception {
-        Context context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Photon_SettingsActivity);
+        Context context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Scamera_SettingsActivity);
         try (ActivityController<Activity> controller = Robolectric.buildActivity(Activity.class)) {
             controller.setup();
             // camera_fragment.xml's camera_container in short: the viewfinder from the top bar down, the bottom bar

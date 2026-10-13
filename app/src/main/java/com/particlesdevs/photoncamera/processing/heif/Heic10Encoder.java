@@ -45,7 +45,7 @@ public final class Heic10Encoder {
 
     private Heic10Encoder() {}
 
-    /** What one encode did, for the PhotonLog line. */
+    /** What one encode did, for the log line. */
     public static final class Stats {
         public String codec = "-", mode = "-", sps = "-";
         public int tiles;

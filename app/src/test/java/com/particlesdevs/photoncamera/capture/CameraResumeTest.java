@@ -11,7 +11,7 @@ import android.media.Image;
 import android.media.ImageReader;
 import com.particlesdevs.photoncamera.api.CameraManager2;
 import com.particlesdevs.photoncamera.api.Settings;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.*;
 import org.junit.*;
 import org.junit.runner.RunWith;
@@ -35,7 +35,7 @@ public class CameraResumeTest {
         protected static void __staticInitializer__() { /* Native memory is mocked in this selection test. */ }
     }
     private CaptureController controller;
-    private MockedStatic<PhotonCamera> photon;
+    private MockedStatic<ScameraApp> appStatic;
     private MockedConstruction<CameraManager2> managers;
     private CameraEventsListener events;
     private static Object get(Object o,String name) throws Exception {Field f=CaptureController.class.getDeclaredField(name);f.setAccessible(true);return f.get(o);}
@@ -47,14 +47,14 @@ public class CameraResumeTest {
     }
     @Before public void setup() {
         Context context=RuntimeEnvironment.getApplication();SettingsManager settings=new SettingsManager(context);
-        photon=mockStatic(PhotonCamera.class);
-        photon.when(PhotonCamera::getAppContext).thenReturn(context);
-        photon.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        photon.when(PhotonCamera::getSettingsManagerStatic).thenReturn(settings);
-        photon.when(PhotonCamera::getSettings).thenReturn(new Settings());
-        PhotonCamera app=mock(PhotonCamera.class);when(app.getSettingsManager()).thenReturn(settings);
-        photon.when(()->PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
-        photon.when(()->PhotonCamera.getStringStatic(anyInt())).thenAnswer(i->context.getString(i.getArgument(0)));
+        appStatic=mockStatic(ScameraApp.class);
+        appStatic.when(ScameraApp::getAppContext).thenReturn(context);
+        appStatic.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        appStatic.when(ScameraApp::getSettingsManagerStatic).thenReturn(settings);
+        appStatic.when(ScameraApp::getSettings).thenReturn(new Settings());
+        ScameraApp app=mock(ScameraApp.class);when(app.getSettingsManager()).thenReturn(settings);
+        appStatic.when(()->ScameraApp.getInstance(any(Context.class))).thenReturn(app);
+        appStatic.when(()->ScameraApp.getStringStatic(anyInt())).thenAnswer(i->context.getString(i.getArgument(0)));
         PreferenceKeys.initialise(settings);
         managers=mockConstruction(CameraManager2.class,(mock,c)->when(mock.getCameraIdList()).thenReturn(new String[]{"3"}));
         Activity activity=mock(Activity.class);CameraManager manager=mock(CameraManager.class);
@@ -63,7 +63,7 @@ public class CameraResumeTest {
         controller=new CaptureController(activity,mock(ExecutorService.class),events);
         CaptureController.isProcessing=false;
     }
-    @After public void cleanup(){CaptureController.mPreviewCaptureResult=null;CaptureController.mPreviewCaptureRequest=null;managers.close();photon.close();}
+    @After public void cleanup(){CaptureController.mPreviewCaptureResult=null;CaptureController.mPreviewCaptureRequest=null;managers.close();appStatic.close();}
     private Image rawImage(long timestamp) {
         Image image=mock(Image.class);Image.Plane plane=mock(Image.Plane.class);
         when(image.getTimestamp()).thenReturn(timestamp);
@@ -245,7 +245,7 @@ public class CameraResumeTest {
         verifyNoInteractions(late,events);
     }
     @Test public void zslCapacityIsGlobalAndIndependentOfFrameCount() {
-        SettingsManager manager=PhotonCamera.getSettingsManagerStatic();
+        SettingsManager manager=ScameraApp.getSettingsManagerStatic();
         assertEquals(50,CaptureController.zslRingCapacity());
         assertFalse(ModuleProfiles.isLocal("pref_zsl_buffer_count_key"));
         assertEquals(50,CaptureController.zslRingCapacity());
@@ -259,13 +259,13 @@ public class CameraResumeTest {
         for(com.particlesdevs.photoncamera.api.CameraMode mode:new com.particlesdevs.photoncamera.api.CameraMode[]{
                 com.particlesdevs.photoncamera.api.CameraMode.MOTION,com.particlesdevs.photoncamera.api.CameraMode.PHOTO,
                 com.particlesdevs.photoncamera.api.CameraMode.NIGHT}) {
-            PhotonCamera.getSettings().selectedMode=mode;assertTrue(controller.isZslMode());
+            ScameraApp.getSettings().selectedMode=mode;assertTrue(controller.isZslMode());
         }
-        PhotonCamera.getSettings().selectedMode=com.particlesdevs.photoncamera.api.CameraMode.RAWVIDEO;
+        ScameraApp.getSettings().selectedMode=com.particlesdevs.photoncamera.api.CameraMode.RAWVIDEO;
         assertFalse(controller.isZslMode());
     }
     @Test public void shutterWaitsForFreshMetadataThenSubmitsWithoutRestart() throws Exception {
-        controller.isDualSession=true;
+        ScameraApp.getSettings().selectedMode=com.particlesdevs.photoncamera.api.CameraMode.RAWVIDEO; // the shutter path without the ZSL ring
         CameraCaptureSession session=mock(CameraCaptureSession.class);
         put(controller,"isCameraResumed",true);put(controller,"mCaptureSession",session);
         put(controller,"mConfiguredSessionGeneration",0);
@@ -294,7 +294,7 @@ public class CameraResumeTest {
         verifyNoInteractions(events);
     }
     @Test public void rejectedAuxiliaryPreviewRequestReleasesPendingShot() throws Exception {
-        controller.isDualSession=true;
+        ScameraApp.getSettings().selectedMode=com.particlesdevs.photoncamera.api.CameraMode.RAWVIDEO; // the shutter path without the ZSL ring
         CameraCaptureSession session=mock(CameraCaptureSession.class);
         put(controller,"isCameraResumed",true);put(controller,"mCaptureSession",session);
         put(controller,"mConfiguredSessionGeneration",0);
@@ -413,8 +413,8 @@ public class CameraResumeTest {
     /** OPPO PHY110 modules: back0 "2x" and back4 "1x" on the main camera 2, back3 "2.8x" on the hidden tele 4. */
     private Settings oppoModules() {
         Settings settings=new Settings();settings.mCameraID="4";
-        photon.when(PhotonCamera::getSettings).thenReturn(settings);
-        android.content.SharedPreferences.Editor e=PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit();
+        appStatic.when(ScameraApp::getSettings).thenReturn(settings);
+        android.content.SharedPreferences.Editor e=ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit();
         for(String[] r:new String[][]{{"back0","2","2\u00d7"},{"back3","4","2.8\u00d7"},{"back4","2","1\u00d7"},{"front0","1","1\u00d7"}})
             e.putString("module_auto_"+r[0],r[1]).putBoolean("module_visible_"+r[0],true).putString("module_label_"+r[0],r[2]);
         e.putString("module_active","back3").commit();

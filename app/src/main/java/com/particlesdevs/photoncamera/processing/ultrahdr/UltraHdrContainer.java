@@ -302,7 +302,7 @@ public final class UltraHdrContainer {
 
     private static byte[] buildPrimaryXmp(int gainMapLen) {
         final String xml = "<?xpacket begin=\"﻿\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n"
-                + "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"PhotonCamera\">\n"
+                + "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"SCAMERA\">\n"
                 + " <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n"
                 + "  <rdf:Description rdf:about=\"\"\n"
                 + "    xmlns:Container=\"http://ns.google.com/photos/1.0/container/\"\n"
@@ -329,7 +329,7 @@ public final class UltraHdrContainer {
 
     private static byte[] buildGainMapXmp(float gMin, float gMax, float hdrCap) {
         final String xml = "<?xpacket begin=\"﻿\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n"
-                + "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"PhotonCamera\">\n"
+                + "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"SCAMERA\">\n"
                 + " <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n"
                 + "  <rdf:Description rdf:about=\"\"\n"
                 + "    xmlns:hdrgm=\"http://ns.adobe.com/hdr-gain-map/1.0/\"\n"

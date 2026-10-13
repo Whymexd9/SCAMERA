@@ -13,7 +13,7 @@ import androidx.lifecycle.Observer;
 
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.api.CameraMode;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.control.CountdownTimer;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
@@ -43,7 +43,7 @@ final class CameraUIController implements CameraUIEventsListener,
         switch (view.getId()) {
             case R.id.shutter_button:
                 shutterButton = view;
-                switch (PhotonCamera.getSettings().selectedMode) {
+                switch (ScameraApp.getSettings().selectedMode) {
                     case PHOTO:
                     case MOTION:
                     case NIGHT:
@@ -93,7 +93,7 @@ final class CameraUIController implements CameraUIEventsListener,
                 cameraFragment.launchGallery();
                 break;
 
-            // Flash, self-timer and grid are quick-settings tiles now (P25); HDRX, EIS, FPS and the Quad toggle are gone.
+            // Flash, self-timer and grid are quick-settings tiles now (P25); EIS, FPS and the Quad toggle are gone.
             case R.id.flip_camera_button:
                 cameraFragment.onLensSwitch();
                 view.animate().rotationBy(180).setDuration(450).start();
@@ -204,14 +204,6 @@ final class CameraUIController implements CameraUIEventsListener,
                     case FLASH:
                         PreferenceKeys.setAeMode((Integer) value); // 0 torch, 1 off
                         cameraFragment.captureController.setPreviewAEModeRebuild(PreferenceKeys.getAeMode());
-                        break;
-                    case HDRX:
-                        PreferenceKeys.setHdrX(value.equals(1));
-                        if (value.equals(1))
-                            CaptureController.setTargetFormat(CaptureController.RAW_FORMAT);
-                        else
-                            CaptureController.setTargetFormat(CaptureController.YUV_FORMAT);
-                        this.restartCamera();
                         break;
                     case QUAD:
                         PreferenceKeys.setQuadBayer(value.equals(1));

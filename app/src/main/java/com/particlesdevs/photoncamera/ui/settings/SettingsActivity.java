@@ -34,9 +34,8 @@ import androidx.preference.PreferenceScreen;
 import com.google.android.material.snackbar.Snackbar;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.api.CameraMode;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.app.base.BaseActivity;
-import com.particlesdevs.photoncamera.pro.SupportedDevice;
 import com.particlesdevs.photoncamera.settings.BackupRestoreUtil;
 import com.particlesdevs.photoncamera.processing.render.NoiseModelProfile;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
@@ -174,7 +173,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
             mContext = requireContext();
-            mSettingsManager = PhotonCamera.getSettingsManagerStatic();
+            mSettingsManager = ScameraApp.getSettingsManagerStatic();
             com.particlesdevs.photoncamera.settings.SettingsMigration.prepare(requireContext(), mSettingsManager.getDefaultPreferences());
             setPreferencesFromResource(R.xml.preferences, null);
             generateTunablePreferences();
@@ -370,7 +369,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         | (bounds[2]==1 ? 0 : android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL)));
                 edit.setOnPreferenceChangeListener((preference,value) -> {
                     String error=com.particlesdevs.photoncamera.settings.SettingsNumericRules.error(p.getKey(),value);
-                    if(error!=null) PhotonCamera.showToast(error);
+                    if(error!=null) ScameraApp.showToast(error);
                     return error==null;
                 });
             }
@@ -426,7 +425,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             super.onCreate(savedInstanceState);
             activity = getActivity();
             mContext = getContext();
-            mSettingsManager = Objects.requireNonNull(PhotonCamera.getInstance(activity)).getSettingsManager();
+            mSettingsManager = Objects.requireNonNull(ScameraApp.getInstance(activity)).getSettingsManager();
 
             // Register PNG import launcher for TunablePngPreference
             // Uses OpenDocument to show the system file picker instead of gallery
@@ -436,9 +435,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         if (uri != null) {
                             String error = TunablePngPreference.handleImportResult(mContext, uri);
                             if (error != null) {
-                                PhotonCamera.showToast("PNG import failed: " + error);
+                                ScameraApp.showToast("PNG import failed: " + error);
                             } else {
-                                PhotonCamera.showToast("PNG imported successfully");
+                                ScameraApp.showToast("PNG imported successfully");
                             }
                             TunablePngPreference.refreshActivePreference();
                         }
@@ -455,7 +454,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                             return;
                         }
                         String result = importNoiseModel(uri);
-                        PhotonCamera.showToast(result);
+                        ScameraApp.showToast(result);
                     }
             );
 
@@ -475,7 +474,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         if (uri == null) return;
                         String result = BackupRestoreUtil.restoreFromUri(mContext, uri);
                         if (mRootView != null) Snackbar.make(mRootView, result, Snackbar.LENGTH_LONG).show();
-                        else PhotonCamera.showToast(result);
+                        else ScameraApp.showToast(result);
                     }
             );
             
@@ -495,7 +494,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
             // Keep every category reachable regardless of the last camera mode.
             setVersionDetails();
-            checkEszdTheme();
             setBackupPref();
             setRestorePref();
             setThisDevice();
@@ -730,7 +728,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private void setThisDevice() {
             Preference preference = findPreference(mContext.getString(R.string.pref_this_device_key));
             if (preference != null) {
-                preference.setSummary(mContext.getString(R.string.this_device, SupportedDevice.THIS_DEVICE));
+                preference.setSummary(mContext.getString(R.string.this_device,
+                        android.os.Build.BRAND.toLowerCase(java.util.Locale.ROOT) + ":" + android.os.Build.DEVICE.toLowerCase(java.util.Locale.ROOT)));
             }
         }
 
@@ -756,7 +755,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 com.particlesdevs.photoncamera.util.ScameraDebugLog.attach(mContext);
                 com.particlesdevs.photoncamera.util.ScameraDebugLog.setEnabled(on);
                 if (on) {
-                    PhotonCamera.showToast(
+                    ScameraApp.showToast(
                             com.particlesdevs.photoncamera.util.ScameraDebugLog.getPath());
                 }
             }
@@ -771,7 +770,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 restartActivity();
             }
             if (key.equalsIgnoreCase(PreferenceKeys.Key.KEY_THEME_ACCENT.mValue)) {
-                checkEszdTheme();
                 restartActivity();
 
             }
@@ -790,12 +788,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 }
             }
             updateSettingsAvailability();
-        }
-
-        private void checkEszdTheme() {
-            Preference p = findPreference(PreferenceKeys.Key.KEY_SHOW_GRADIENT.mValue);
-            if (p != null)
-                p.setEnabled(!"eszdman".equalsIgnoreCase(mSettingsManager.getString(SCOPE_GLOBAL, PreferenceKeys.Key.KEY_THEME_ACCENT)));
         }
 
 
@@ -932,7 +924,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 return true;
             }
             if ("pref_noise_model_export_key".equals(preference.getKey())) {
-                PhotonCamera.showToast(exportNoiseModel());
+                ScameraApp.showToast(exportNoiseModel());
                 return true;
             }
             

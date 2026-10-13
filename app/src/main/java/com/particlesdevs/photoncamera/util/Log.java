@@ -18,7 +18,7 @@ import java.text.SimpleDateFormat;
 import java.util.Locale;
 
 public class Log {
-    private static final String PHOTON_LOG_SUBFOLDER = "PhotonLog";
+    private static final String LOG_SUBFOLDER = "Log";
 
     private static java.io.File logDir = null;
     private static Context logContext = null; // Application context for SimpleStorage
@@ -64,7 +64,7 @@ public class Log {
     }
 
     /**
-     * Use SimpleStorage to write logs to DCIM/PhotonCamera/PhotonLog.
+     * Use SimpleStorage to write logs to DCIM/SCAMERA/Log.
      * Call this when the app has SAF storage access (e.g. from SplashActivity).
      */
     public static void setLogFolder(Context context) {
@@ -79,25 +79,25 @@ public class Log {
         });
     }
 
-    /** Returns PhotonCamera/PhotonLog folder via SimpleStorage, or null if no access. */
+    /** Returns the DCIM/SCAMERA/Log folder via SimpleStorage, or null if no access. */
     private static DocumentFile getLogFolderDocumentFile() {
         if (logContext == null || !SimpleStorageHelper.hasStorageAccess(logContext)) {
             return null;
         }
-        DocumentFile photonCamera = DocumentFileCompat.fromSimplePath(
+        DocumentFile appDir = DocumentFileCompat.fromSimplePath(
                 logContext,
                 StorageId.PRIMARY,
-                SimpleStorageHelper.PHOTON_CAMERA_RELATIVE_PATH,
+                SimpleStorageHelper.SCAMERA_RELATIVE_PATH,
                 DocumentFileType.FOLDER,
                 true);
-        if (photonCamera == null || !photonCamera.exists()) {
+        if (appDir == null || !appDir.exists()) {
             return null;
         }
-        DocumentFile logFolder = photonCamera.findFile(PHOTON_LOG_SUBFOLDER);
+        DocumentFile logFolder = appDir.findFile(LOG_SUBFOLDER);
         if (logFolder != null && logFolder.exists()) {
             return logFolder;
         }
-        logFolder = photonCamera.createDirectory(PHOTON_LOG_SUBFOLDER);
+        logFolder = appDir.createDirectory(LOG_SUBFOLDER);
         return logFolder;
     }
 
@@ -194,7 +194,7 @@ public class Log {
 
     private static void writeToFile(String level, String tag, String message) {
         // Full debug mirrors every line into Download/SCAMERA/SCAMERA-debug.log. This runs
-        // before the early returns below so the mirror still works when the regular PhotonLog
+        // before the early returns below so the mirror still works when the regular log
         // folder is unavailable. ScameraDebugLog is a no-op while the switch is off.
         ScameraDebugLog.mirror(level, tag, message);
 

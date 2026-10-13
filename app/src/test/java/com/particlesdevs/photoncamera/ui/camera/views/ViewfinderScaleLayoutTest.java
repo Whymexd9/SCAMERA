@@ -15,7 +15,7 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel;
 import com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens;
 import com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView;
@@ -72,20 +72,20 @@ public class ViewfinderScaleLayoutTest {
     /** The strip's height may grow with the font size, but never toward the ~95dp seen on the vivo. */
     private static final float STRIP_MAX_DP = 84f;
 
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
     private float density;
     private View screen;
 
     @Before
     public void setUp() {
-        Context context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Photon_SettingsActivity);
+        Context context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Scamera_SettingsActivity);
         SettingsManager manager = new SettingsManager(context);
-        camera = mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(context);
-        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        camera.when(() -> PhotonCamera.getStringStatic(anyInt())).thenAnswer(i -> context.getString(i.getArgument(0)));
-        camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
-        camera.when(PhotonCamera::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
+        camera = mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(context);
+        camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(() -> ScameraApp.getStringStatic(anyInt())).thenAnswer(i -> context.getString(i.getArgument(0)));
+        camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
+        camera.when(ScameraApp::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
         PreferenceKeys.initialise(manager);
     }
 
@@ -156,7 +156,7 @@ public class ViewfinderScaleLayoutTest {
         try (ActivityController<Activity> controller = Robolectric.buildActivity(Activity.class)) {
             controller.setup();
             Activity activity = controller.get();
-            Context context = new ContextThemeWrapper(activity, R.style.Theme_Photon_SettingsActivity);
+            Context context = new ContextThemeWrapper(activity, R.style.Theme_Scamera_SettingsActivity);
             assertEquals(fontScale, context.getResources().getConfiguration().fontScale, 1e-4f);
             density = context.getResources().getDisplayMetrics().density;
             int w = context.getResources().getDisplayMetrics().widthPixels, h = context.getResources().getDisplayMetrics().heightPixels;

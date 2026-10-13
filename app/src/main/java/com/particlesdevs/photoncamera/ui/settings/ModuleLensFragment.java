@@ -5,7 +5,7 @@ import android.hardware.camera2.*;
 import android.widget.*;
 import androidx.appcompat.app.AlertDialog;
 import com.particlesdevs.photoncamera.settings.*;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.util.Lang;
 import java.util.*;
 
@@ -16,7 +16,7 @@ public class ModuleLensFragment extends ModuleConceptFragment {
     private void rename(String slot){
         EditText input=new EditText(requireContext());input.setSingleLine(true);input.setText(ModuleRegistry.label(slot));
         new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Название модуля","Module name")).setView(input).setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(d,w)->{
-            PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit().putString("module_name_"+slot,input.getText().toString().trim()).apply();render();
+            ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putString("module_name_"+slot,input.getText().toString().trim()).apply();render();
         }).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show();
     }
     /** One module: name, Camera ID, zoom and sensor crop, visibility, its sensor settings and vendor requests, duplicates. */
@@ -25,11 +25,11 @@ public class ModuleLensFragment extends ModuleConceptFragment {
         String source=ModuleRegistry.duplicateOf(slot);
         page(ModuleRegistry.label(slot)+" · ID "+ModuleRegistry.camera(slot),source==null?null:Lang.t(getContext(),"Дубликат модуля «"+ModuleRegistry.label(source)+"»","Duplicate of “"+ModuleRegistry.label(source)+"”"));
         navigation("◇",Lang.t(getContext(),"Название","Name"),ModuleRegistry.label(slot),()->rename(slot));
-        navigation("▣","Camera ID",ModuleRegistry.camera(slot)+(PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getString("module_id_"+slot,"").isEmpty()?Lang.t(getContext()," · авто"," · auto"):Lang.t(getContext()," · вручную"," · manual")),this::choose);
+        navigation("▣","Camera ID",ModuleRegistry.camera(slot)+(ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getString("module_id_"+slot,"").isEmpty()?Lang.t(getContext()," · авто"," · auto"):Lang.t(getContext()," · вручную"," · manual")),this::choose);
         navigation("⌕",Lang.t(getContext(),"Зум и кроп на сенсоре","Zoom and sensor crop"),String.format(java.util.Locale.US,Lang.t(getContext(),"Зум %.2f×","Zoom %.2f×"),ModuleRegistry.zoom(slot)).replaceAll("\\.?0+×","×")+(ModuleRegistry.sensorCrop(slot)?Lang.t(getContext()," · кроп на сенсоре"," · sensor crop"):""),()->zoomDialog(slot));
         boolean shown=ModuleRegistry.visible(slot);
         navigation(shown?"●":"○",Lang.t(getContext(),"Кнопка в видоискателе","Viewfinder button"),shown?Lang.t(getContext(),"Показывается · нажмите, чтобы скрыть","Shown · tap to hide"):Lang.t(getContext(),"Скрыта · нажмите, чтобы показать","Hidden · tap to show"),()->{
-            PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit().putBoolean("module_visible_"+slot,!shown).apply();render();});
+            ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putBoolean("module_visible_"+slot,!shown).apply();render();});
         int mode=ModuleRegistry.sensorMode(slot);
         navigation("⚙︎",Lang.t(getContext(),"Сенсор и вендорные ключи","Sensor and vendor keys"),(mode!=0?Lang.t(getContext(),"Сенсормод "+mode+" · ","Sensor mode "+mode+" · "):"")+Lang.t(getContext(),"Уровни RAW, экспозиция, стабилизация и vendor tags этого модуля","RAW levels, exposure, stabilization and vendor tags of this module"),()->
             // straight to this module's sensor page (it no longer has a module list row to pick it in)
@@ -61,11 +61,11 @@ public class ModuleLensFragment extends ModuleConceptFragment {
         CheckBox crop=new CheckBox(requireContext());crop.setText(Lang.t(getContext(),"Кроп на сенсоре (кадр уже обрезан режимом сенсора)","Sensor crop (the sensor mode already crops the frame)"));crop.setChecked(ModuleRegistry.sensorCrop(slot));box.addView(crop);
         new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Зум · ","Zoom · ")+ModuleRegistry.label(slot)+" · ID "+ModuleRegistry.camera(slot)).setView(box)
             .setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(d,w)->{
-                var e=PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit();
+                var e=ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit();
                 String text=ratio.getText().toString().trim().replace(',','.');
                 if(text.isEmpty())e.remove("module_zoom_"+slot);else try{Float.parseFloat(text);e.putString("module_zoom_"+slot,text);}catch(NumberFormatException bad){}
                 e.putBoolean("module_sensorcrop_"+slot,crop.isChecked()).apply();render();
-            }).setNeutralButton(Lang.t(getContext(),"Авто","Auto"),(d,w)->{PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().edit().remove("module_zoom_"+slot).remove("module_sensorcrop_"+slot).apply();render();})
+            }).setNeutralButton(Lang.t(getContext(),"Авто","Auto"),(d,w)->{ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().remove("module_zoom_"+slot).remove("module_sensorcrop_"+slot).apply();render();})
             .setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show();
     }
     private void choose(){
@@ -84,7 +84,7 @@ public class ModuleLensFragment extends ModuleConceptFragment {
             CameraManager cm=(CameraManager)requireContext().getSystemService(Context.CAMERA_SERVICE);
             if(!Arrays.asList(cm.getCameraIdList()).contains(id))for(String logical:cm.getCameraIdList())if(cm.getCameraCharacteristics(logical).getPhysicalCameraIds().contains(id)){id=logical+"-"+id;break;}
         }catch(Exception ignored){}
-        android.content.SharedPreferences prefs=PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
+        android.content.SharedPreferences prefs=ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
         Set<String> user=new HashSet<>(prefs.getStringSet("user_camera_ids",new HashSet<>()));if(!id.isEmpty())user.add(id);
         Set<String> hidden=new HashSet<>(prefs.getStringSet("hidden_camera_ids",new HashSet<>()));hidden.remove(id);
         prefs.edit().putString("module_id_"+page,id).putStringSet("user_camera_ids",user).putStringSet("hidden_camera_ids",hidden).apply();render();

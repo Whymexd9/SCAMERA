@@ -93,18 +93,14 @@ lint/tmp/
 /app/google-services.json
 .idea/.name
 
+# Signing keys never go into this public repository (key/README.md)
+*.jks
+*.keystore
+
 # SCAMERA: vendored prebuilts that MUST be tracked (CI has no other source for them)
 !app/libs/*.aar
 !app/src/main/cpp/deps/
 
-# ncnn prebuilt SDK, fetched by CI from upstream PhotonCamera
-app/src/main/cpp/ncnn/
-
-# forked ncnn SDK, fetched by CI from eszdman/PhotonCamera
-app/src/main/cpp/ncnn/
-
-# ncnn prebuilt SDK, fetched by CI (see build-test-apk.yml)
-app/src/main/cpp/ncnn/
 # Generated from the pinned official release by tools/fetch_scam_ae_runtime.py.
 app/src/main/assets/scam-aec/frida-inject.gz
 app/src/main/assets/scam-aec/frida-inject.bin

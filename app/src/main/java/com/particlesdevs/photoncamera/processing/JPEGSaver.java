@@ -2,7 +2,7 @@ package com.particlesdevs.photoncamera.processing;
 
 import android.media.Image;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -20,18 +20,18 @@ public class JPEGSaver extends DefaultSaver {
         try {
             IMAGE_BUFFER.add(getFrame(image));
             byte[] bytes = new byte[buffer.remaining()];
-            if (IMAGE_BUFFER.size() == PhotonCamera.getCaptureController().mMeasuredFrameCnt && PhotonCamera.getSettings().frameCount != 1) {
+            if (IMAGE_BUFFER.size() == ScameraApp.getCaptureController().mMeasuredFrameCnt && ScameraApp.getSettings().frameCount != 1) {
                 Path jpgPath = PhotoFormat.JPEG.fileFor(ImagePath.newImageFilePath()); // the camera's own JPEG bytes: always .jpg
                 buffer.duplicate().get(bytes);
                 Files.write(jpgPath, bytes);
 
-//                hdrxProcessor.start(dngFile, jpgFile, IMAGE_BUFFER, mImage.getFormat(),
+//                scamProcessor.start(dngFile, jpgFile, IMAGE_BUFFER, mImage.getFormat(),
 //                        CaptureController.mCameraCharacteristics, CaptureController.mCaptureResult,
 //                        () -> clearImageReader(mReader));
 
                 IMAGE_BUFFER.clear();
             }
-            if (PhotonCamera.getSettings().frameCount == 1) {
+            if (ScameraApp.getSettings().frameCount == 1) {
                 Path jpgPath = PhotoFormat.JPEG.fileFor(ImagePath.newImageFilePath()); // the camera's own JPEG bytes: always .jpg
                 IMAGE_BUFFER.clear();
                 buffer.get(bytes);

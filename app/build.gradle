@@ -3,13 +3,29 @@ apply plugin: 'kotlin-android'
 apply from: rootProject.file('gradle/verify-apk.gradle')
 //apply plugin: "io.github.wurensen.android-aspectjx"
 Properties versionProps = new Properties()
+// The SCAMERA release key is never in the repository (it is public): CI passes it in the environment, a local build
+// reads SCAMERA-PC/signing/signing.properties next to the project (key/README.md). Without either the build is signed
+// with the local Android debug key.
+Properties scameraSigning = new Properties()
+def signingFile = rootProject.file('../signing/signing.properties')
+if (System.getenv('SCAMERA_KEYSTORE') != null) {
+    scameraSigning.setProperty('storeFile', System.getenv('SCAMERA_KEYSTORE'))
+    scameraSigning.setProperty('storePassword', System.getenv('SCAMERA_KEYSTORE_PASSWORD') ?: '')
+    scameraSigning.setProperty('keyPassword', System.getenv('SCAMERA_KEYSTORE_PASSWORD') ?: '')
+    scameraSigning.setProperty('keyAlias', System.getenv('SCAMERA_KEY_ALIAS') ?: 'scamera')
+} else if (signingFile.canRead()) {
+    signingFile.withInputStream { scameraSigning.load(it) }
+    scameraSigning.setProperty('storeFile', new File(signingFile.parentFile, scameraSigning.getProperty('storeFile')).path)
+}
 android {
     signingConfigs {
         debug {
-            storeFile file('../key/PcamLeak.jks')
-            storePassword 'photoncamera'
-            keyPassword 'photoncamera'
-            keyAlias 'key0'
+            if (scameraSigning.getProperty('storeFile') != null) {
+                storeFile file(scameraSigning.getProperty('storeFile'))
+                storePassword scameraSigning.getProperty('storePassword')
+                keyPassword scameraSigning.getProperty('keyPassword')
+                keyAlias scameraSigning.getProperty('keyAlias')
+            }
         }
     }
     def versionPropsFile = file('version.properties')

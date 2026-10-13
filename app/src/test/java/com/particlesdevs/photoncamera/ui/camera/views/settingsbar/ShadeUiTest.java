@@ -15,7 +15,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingType;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
@@ -48,7 +48,7 @@ import static org.mockito.Mockito.*;
 @Config(sdk = 35, application = Application.class, qualifiers = "w360dp-h800dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class ShadeUiTest {
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
     private ActivityController<AppCompatActivity> controller;
     private AppCompatActivity activity;
     private SettingsManager manager;
@@ -66,21 +66,21 @@ public class ShadeUiTest {
         org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8750");
         controller = Robolectric.buildActivity(AppCompatActivity.class);
         activity = controller.get();
-        activity.setTheme(R.style.Theme_Photon_SettingsActivity);
+        activity.setTheme(R.style.Theme_Scamera_SettingsActivity);
         controller.setup();
         Context context = activity;
         manager = new SettingsManager(context);
         prefs = manager.getDefaultPreferences();
         prefs.edit().clear().commit();
-        camera = mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(context);
-        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        camera.when(() -> PhotonCamera.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
-        camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
-        camera.when(PhotonCamera::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
-        PhotonCamera app = mock(PhotonCamera.class, RETURNS_DEEP_STUBS);
+        camera = mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(context);
+        camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(() -> ScameraApp.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
+        camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
+        camera.when(ScameraApp::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
+        ScameraApp app = mock(ScameraApp.class, RETURNS_DEEP_STUBS);
         when(app.getSettingsManager()).thenReturn(manager);
-        camera.when(() -> PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
+        camera.when(() -> ScameraApp.getInstance(any(Context.class))).thenReturn(app);
         PreferenceKeys.initialise(manager);
         PreferenceKeys.setDefaults(context);
         ShadeCatalog.setFlashAvailable(true);

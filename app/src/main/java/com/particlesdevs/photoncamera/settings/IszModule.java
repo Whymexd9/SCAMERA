@@ -5,7 +5,7 @@ import android.content.SharedPreferences;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.capture.CroppedRaw;
 import com.particlesdevs.photoncamera.util.Log;
 
@@ -31,7 +31,7 @@ public final class IszModule {
         // vivo MediaTek: VivoMtkIsz makes the main «2×» (a second «2×» here was one too many, X200 Pro video 2026-10-13)
         if (com.particlesdevs.photoncamera.capture.VivoMtkIsz.enabled()) return;
         try {
-            SharedPreferences p = PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();
+            SharedPreferences p = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
             CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
             if (manager == null) return;
             String main = null;

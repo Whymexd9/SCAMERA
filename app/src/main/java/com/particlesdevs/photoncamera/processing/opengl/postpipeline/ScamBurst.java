@@ -87,7 +87,7 @@ public final class ScamBurst implements ScamTransport {
             if(snapshot.hasMeasuredExposure())vendorFrames++;
         }
         // Keep one radiometric domain for the entire burst; never mix ISO and linear gain (P27: such a burst is merged by the
-        // Hybrid, HdrxProcessor).
+        // Hybrid, ScamProcessor).
         if(vendorFrames!=0 && vendorFrames!=source.size())
             throw new IOException(Lang.t("SCAM HDR: неполные измеренные vendor AE в серии","SCAM HDR: incomplete measured vendor AE in the burst"));
         vendorExposureDomain=vendorFrames==source.size();

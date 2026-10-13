@@ -33,7 +33,7 @@ import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.ui.camera.binding.CustomBinding;
 import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 import com.particlesdevs.photoncamera.ui.camera.model.AuxButtonsModel;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.util.Lang;
 
@@ -125,7 +125,7 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
     }
 
     private void setAuxButtons(List<CameraLensData> cameraLensDataList, String activeId) {
-        SettingsManager manager = PhotonCamera.getSettingsManagerStatic();
+        SettingsManager manager = ScameraApp.getSettingsManagerStatic();
         ModuleRegistry.initialize("front", auxButtonsModel.getFrontCameras());
         ModuleRegistry.initialize("back", auxButtonsModel.getBackCameras());
         // P100: a main camera with in-sensor zoom (CROPPED_RAW, Galaxy S24 Ultra) gets its «2×» button once

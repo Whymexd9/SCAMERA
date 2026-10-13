@@ -7,7 +7,7 @@ on:
       - 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/HexQuadBurst.java'
       - 'app/src/main/java/com/particlesdevs/photoncamera/processing/render/Parameters.java'
       - 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/PostPipeline.java'
-      - 'app/src/main/java/com/particlesdevs/photoncamera/processing/processor/HdrxProcessor.java'
+      - 'app/src/main/java/com/particlesdevs/photoncamera/processing/processor/ScamProcessor.java'
       - 'app/src/main/res/xml/preferences.xml'
       - 'tools/java/HexQuad*Check.java'
       - 'app/src/main/java/com/particlesdevs/photoncamera/settings/HexQuadOptions.java'

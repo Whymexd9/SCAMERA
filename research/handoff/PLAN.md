@@ -2844,3 +2844,32 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   measured over every block except zero padding (blocks of exact zeros and their neighbours); log «RAW black floor: … not
   padding, the RAW came without its black pedestal». The X200 Pro padding and the OPPO's 64 -> 60 drift stay as they were.
   Tests: ParametersBlackFloorTest (pedestal lost -> black < 5; noisy night with padding keeps ~64).
+
+### P115 - PhotonCamera / HdrX leftovers removed or replaced (owner, 2026-10-13: «Удали и замени все хвосты связанные с оригинальной Photon Camera, HdrX и тд. Замени всё это на наш лучший вариант, либо сделай сам»)
+- Owner's answers: a new signing key (CN=SCAMERA; every phone uninstalls the app once), the Java package
+  com.particlesdevs.photoncamera stays (other agents' uncommitted work lives in it).
+- Renamed: the PhotonCamera application class -> ScameraApp; HdrxProcessor -> ScamProcessor (log lines «SCAM processing failed
+  at», «Shot tail ms»); Theme.Photon.* -> Theme.Scamera.*; the app row of «Система» pref_photoncamera -> pref_app_key.
+- Removed (Photon-only or dead): the device specifics (pro/*, assets/specific: camera ID lists, noise models, CCM / HSV / Look
+  tables of old OnePlus / Xiaomi phones, DCIM/.../Tuning/*.txt), customCCT.txt, PhotonCameraTuning.ini (getTuning had no
+  caller), the TCP debug client (debugclient/*), the dual session (isDualSession came only from the specifics), the HDRX switch
+  (KEY_HDRX, SettingType.HDRX; SettingsMigration drops the stored pref_hdrx_key), the eszdman accent, the duplicate
+  processing/opengl/preview renderer, ABL, ColorCorrectionCube / FillCCT, the camera2native sample JNI functions, the INTERNET
+  permission (nothing uses the network), fastlane metadata (Photon's store listing), HDRPLUS_ULTRA.md.
+- Replaced: DCIM/PhotonCamera -> DCIM/SCAMERA (Raw/, logs in Log/ instead of PhotonLog/, no Tuning/; the gallery lists
+  DCIM/SCAMERA and DCIM/Camera); EXIF copyright, DNG Software, XMP toolkit, gyro CSV -> SCAMERA; the watermark logo is a SCAMERA
+  camera glyph drawn in code (RotateWatermark.drawLogo), and nothing is drawn when logo and both lines are off (was the full
+  «SHOT ON PHOTON CAMERA» banner); the themed launcher icon scamera_launch_mono (was the Photon ring); the live RAW viewfinder
+  renders the ArkCore path of rawdevelop_fs (the libvf_demosaic port: exposure fusion metered by LiveRawMeter, ACES, OKLab
+  vibrance, gamma 2.2 + film toe; its uniforms were already set) instead of the Photon gamma / tone curve (PreviewPhotoLook +
+  AutoExposureCurve every frame); the retired ISP-viewfinder tone curve (PreviewLook / ToneCurveBuilder, always off) is gone,
+  LiveSceneMeter only measures SceneLuma for the manual priorities. CI runs tools/checks/preview_gl.py (photo_look_gl.py gone).
+- Signing: key/PcamLeak.jks (CN=PhotonCamera developers, its password in this public repository) is gone. The SCAMERA key lives in
+  SCAMERA-PC/signing (outside git): app/build.gradle and tools/package_scam_neural.py read signing/signing.properties or
+  SCAMERA_KEYSTORE / SCAMERA_KEYSTORE_PASSWORD / SCAMERA_KEY_ALIAS; CI needs the secrets SCAMERA_SIGNING_KEYSTORE (base64 .jks) and
+  SCAMERA_SIGNING_PASSWORD, else the packaging step fails with an error (key/README.md).
+- Kept on purpose: the GPL copyright headers (PhotonCamera / Eszdman), «From <fork>/PhotonCamera <hash>» attributions, the
+  README licence note, the lists of old stored keys that the migrations remove.
+- Checks: a clean copy of the commit: 806 unit tests, failing only the old CaptureControllerTest (809 / + DevKeysCoverageTest
+  in the shared tree: another agent's uncommitted vivo_qcom keys); check_ui_language / check_settings_model / check_scam_* PASS; rawdevelop_fs compiles offline (glslc).
+  Not tested on a phone: the RAW viewfinder look (ISZ / mosaic modes), the watermark, DCIM/SCAMERA/Log, the themed icon.

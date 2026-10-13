@@ -3,7 +3,7 @@ package com.particlesdevs.photoncamera.remosaic;
 import com.particlesdevs.photoncamera.processing.ImageFrame;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.util.Allocator;
 import com.particlesdevs.photoncamera.util.Log;
 import java.nio.ByteBuffer;
@@ -25,7 +25,7 @@ public final class MobileRemosaicProcessor {
         int width=p.rawSize.x, height=p.rawSize.y;
         int allowed=BurstPolicy.frameCount(frames.size(),width,height);
         if (frames.size()<minimum || frames.size()>allowed) throw new IllegalArgumentException(Lang.t("MFSR: размер серии превышает лимит памяти", "MFSR: the burst size exceeds the memory limit"));
-        if (Allocator.binning || PhotonCamera.getSettings().aspect169)
+        if (Allocator.binning || ScameraApp.getSettings().aspect169)
             throw new IllegalArgumentException(Lang.t("MFSR: выберите 4:3 и отключите программный биннинг", "MFSR: choose 4:3 and turn off software binning"));
         if (width%(block*2)!=0 || height%(block*2)!=0)
             throw new IllegalArgumentException(Lang.t("MFSR: размеры не кратны периоду мозаики", "MFSR: the size is not a multiple of the mosaic period"));

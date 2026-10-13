@@ -14,7 +14,7 @@ import androidx.preference.Preference;
 import androidx.preference.PreferenceManager;
 import androidx.preference.PreferenceViewHolder;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.util.Log;
 
 import java.io.File;
@@ -118,7 +118,7 @@ public class TunablePngPreference extends Preference {
                 sImportLauncher.launch(new String[]{"image/png"});
             } else {
                 Log.w(TAG, "No import launcher set");
-                PhotonCamera.showToast("Cannot open file picker");
+                ScameraApp.showToast("Cannot open file picker");
             }
         });
 

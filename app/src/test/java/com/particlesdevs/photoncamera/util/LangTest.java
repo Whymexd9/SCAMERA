@@ -9,7 +9,7 @@ import android.app.Application;
 import android.content.Context;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -28,8 +28,8 @@ public class LangTest {
         assertEquals(russian, Lang.ru(context));
         assertEquals(russian ? "Снимок" : "Shot", Lang.t(context, "Снимок", "Shot"));
         // the app-wide form reads the app context
-        try (MockedStatic<PhotonCamera> camera = mockStatic(PhotonCamera.class)) {
-            camera.when(PhotonCamera::getAppContext).thenReturn(context);
+        try (MockedStatic<ScameraApp> camera = mockStatic(ScameraApp.class)) {
+            camera.when(ScameraApp::getAppContext).thenReturn(context);
             assertEquals(russian, Lang.ru());
             assertEquals(russian ? "Кадры: %d" : "Frames: %d", Lang.t("Кадры: %d", "Frames: %d"));
         }

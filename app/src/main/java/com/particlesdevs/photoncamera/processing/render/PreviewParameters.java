@@ -5,7 +5,7 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 public class PreviewParameters {
     public NoiseModeler noiseModeler;
@@ -18,12 +18,12 @@ public class PreviewParameters {
         } else analogIso = 100;
         Object ptr = characteristics.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
         if (ptr != null) cfaPattern = (byte) (int) ptr;
-        if (PhotonCamera.getSettings().cfaPattern >= 0) {
-            cfaPattern = (byte) PhotonCamera.getSettings().cfaPattern;
+        if (ScameraApp.getSettings().cfaPattern >= 0) {
+            cfaPattern = (byte) ScameraApp.getSettings().cfaPattern;
         }
     }
     public void FillDynamicParameters(CaptureResult result) {
-        noiseModeler = new NoiseModeler( result.get(CaptureResult.SENSOR_NOISE_PROFILE),analogIso,result.get(CaptureResult.SENSOR_SENSITIVITY),cfaPattern,null);
+        noiseModeler = new NoiseModeler( result.get(CaptureResult.SENSOR_NOISE_PROFILE),analogIso,result.get(CaptureResult.SENSOR_SENSITIVITY),cfaPattern);
 
     }
 }

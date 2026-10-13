@@ -214,7 +214,6 @@ public final class SettingsAvailability {
             if (key.equals("pref_sharp_halo_amount_key") && !on("pref_sharp_halo_control_key",false)) return Lang.t("Включите контроль ореолов Unsharp Mask.", "Turn on Unsharp Mask halo control.");
         }
         if (key.equals("pref_color_method_key") && colorMethodOverride != null) return colorMethodOverride;
-        if (key.equals("pref_show_gradient_key") && text("pref_theme_accent_key","default").equals("eszdman")) return Lang.t("Оформление задаётся выбранной темой.", "The look is set by the selected theme.");
         return null;
     }
 }

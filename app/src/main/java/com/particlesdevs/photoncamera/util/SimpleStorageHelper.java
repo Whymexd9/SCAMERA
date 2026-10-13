@@ -20,9 +20,9 @@ import java.util.Set;
 
 /**
  * Wrapper around SimpleStorage library for folder access and path resolution.
- * Uses DCIM/PhotonCamera as the target path; persists via SAF so export/import and native writing work.
+ * Uses DCIM/SCAMERA as the target path; persists via SAF so export/import and native writing work.
  *
- * <p>Call {@link #init(Context)} once from {@code PhotonCamera.initModules()} so all
+ * <p>Call {@link #init(Context)} once from {@code ScameraApp.initModules()} so all
  * methods can operate without a per-call Context parameter.
  *
  * @see <a href="https://github.com/anggrayudi/SimpleStorage">SimpleStorage</a>
@@ -33,7 +33,7 @@ public final class SimpleStorageHelper {
 
     private static Context sContext;
 
-    /** Initialize the module. Call once from {@code PhotonCamera.initModules()}. */
+    /** Initialize the module. Call once from {@code ScameraApp.initModules()}. */
     public static void init(Context context) {
         sContext = context.getApplicationContext();
     }
@@ -41,10 +41,10 @@ public final class SimpleStorageHelper {
     /** Base path we request access to (picker opens here when supported). */
     public static final String DCIM_BASE_PATH = "DCIM";
 
-    /** Relative path for settings backup/restore. */
-    public static final String PHOTON_CAMERA_RELATIVE_PATH = "DCIM/PhotonCamera";
+    /** The app's folder: RAW files (Raw/), logs (Log/). */
+    public static final String SCAMERA_RELATIVE_PATH = "DCIM/SCAMERA";
 
-    /** True if the app has SAF access to DCIM/PhotonCamera on primary storage. */
+    /** True if the app has SAF access to DCIM (or DCIM/SCAMERA) on primary storage. */
     public static boolean hasStorageAccess(Context context) {
         if (context == null) return false;
         try {
@@ -53,7 +53,7 @@ public final class SimpleStorageHelper {
             for (Set<String> paths : pathMap.values()) {
                 if (paths == null) continue;
                 for (String path : paths) {
-                    if (path != null && (path.contains("DCIM") || path.contains("PhotonCamera"))) {
+                    if (path != null && (path.contains("DCIM") || path.contains("SCAMERA"))) {
                         return true;
                     }
                 }
@@ -79,9 +79,8 @@ public final class SimpleStorageHelper {
                 String dcimPath = base.contains("DCIM") ? base : base + "DCIM/";
                 if (!dcimPath.endsWith("/")) dcimPath += "/";
                 FileManager.sDCIM_CAMERA    = new File(dcimPath + "Camera");
-                FileManager.sPHOTON_DIR     = new File(dcimPath + "PhotonCamera");
-                FileManager.sPHOTON_RAW_DIR = new File(dcimPath + "PhotonCamera/Raw");
-                FileManager.sPHOTON_TUNING_DIR = new File(dcimPath + "PhotonCamera/Tuning");
+                FileManager.sSCAMERA_DIR = new File(dcimPath + "SCAMERA");
+                FileManager.sRAW_DIR     = new File(dcimPath + "SCAMERA/Raw");
                 Log.d(TAG, "Updated paths from SAF: DCIM_CAMERA=" + FileManager.sDCIM_CAMERA);
                 return;
             }

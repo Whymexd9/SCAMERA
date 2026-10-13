@@ -12,7 +12,7 @@ import android.hardware.camera2.CaptureResult;
 import android.os.Build;
 import android.os.SystemClock;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
 
@@ -231,7 +231,7 @@ final class StabilizationTrace {
     private void startGyro() {
         if (gyro != null) return;
         try {
-            Context c = PhotonCamera.getAppContext();
+            Context c = ScameraApp.getAppContext();
             sensors = c == null ? null : (SensorManager) c.getSystemService(Context.SENSOR_SERVICE);
             Sensor s = sensors == null ? null : sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
             if (s == null) return;

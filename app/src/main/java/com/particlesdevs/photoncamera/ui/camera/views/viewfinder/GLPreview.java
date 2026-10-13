@@ -42,7 +42,7 @@ public class GLPreview extends GLSurfaceView {
     }
 
     private void init() {
-        // In the layout editor there is no EGL context and the PhotonCamera singleton
+        // In the layout editor there is no EGL context and the ScameraApp singleton
         // is never created, so skip GL/OpenGL setup and render a static placeholder.
         if (isInEditMode()) {
             isPlaceholder = true;

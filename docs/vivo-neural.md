@@ -73,7 +73,7 @@ this test reports it and does not alter linker namespaces, permissions or HAL
 access controls. DSP device permissions, signed domain requirements, skeleton
 search paths and operation packages can independently prevent context loading.
 
-The test runs in `:vivo_neural`; PhotonCamera skips camera/GPU initialization
+The test runs in `:vivo_neural`; ScameraApp skips camera/GPU initialization
 there. Only this process is terminated on timeout (45 seconds) or closing the
 test screen. The last report survives a native crash. Reopen the entry to copy
 it if the test window closes. Vendor files and model weights are not bundled in

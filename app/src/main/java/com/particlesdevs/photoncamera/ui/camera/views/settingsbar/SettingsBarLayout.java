@@ -48,7 +48,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.control.Vibration;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.settings.ShadeCatalog;
@@ -187,9 +187,9 @@ public class SettingsBarLayout extends LinearLayout {
 
     public SettingsBarLayout(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
-        // In the layout editor (isInEditMode) the PhotonCamera Application instance
-        // is never created, so the static sPhotonCamera is null.
-        vibration = isInEditMode() ? null : PhotonCamera.getVibration();
+        // In the layout editor (isInEditMode) the ScameraApp Application instance
+        // is never created, so the static sApp is null.
+        vibration = isInEditMode() ? null : ScameraApp.getVibration();
         setOrientation(VERTICAL);
         setBackground(ShadeStyle.sheet(context));
 
@@ -998,7 +998,7 @@ public class SettingsBarLayout extends LinearLayout {
     public void setLive(boolean live) {
         if (live) {
             if (!Sync.registered && !isInEditMode()) {
-                SettingsManager manager = PhotonCamera.getSettingsManagerStatic();
+                SettingsManager manager = ScameraApp.getSettingsManagerStatic();
                 if (manager != null) {
                     manager.addListener(Sync.INSTANCE);
                     Sync.registered = true;

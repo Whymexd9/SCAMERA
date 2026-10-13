@@ -4,30 +4,14 @@ import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import android.opengl.GLES30;
 
-import com.particlesdevs.photoncamera.processing.PreviewLook;
-import com.particlesdevs.photoncamera.processing.ToneCurveBuilder;
 import com.particlesdevs.photoncamera.util.Log;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * Measures the live stream on the GPU and publishes the exposure curve derived
- * from it, so the viewfinder shows the shot's tone placement before the shutter
- * rather than after.
- *
- * <p>The curve used to come only from AutoExposureCurve, which runs once per
- * shot - which is why the viewfinder changed to match only after processing had
- * finished. This runs the measuring half continuously: the external preview
- * texture is rendered into a small offscreen target, read back once, turned
- * into a histogram, and the same response {@link ToneCurveBuilder} bakes for the
- * shot is built from it.
- *
- * <p>What it cannot show is anything that needs the burst - merged noise
- * reduction, MFSR detail, highlight reconstruction from the bracket. Those are
- * absent from the viewfinder by construction, so the photo stays cleaner and
- * more detailed than the preview. The tone placement matches; the detail does
- * not.
+ * Measures the mean brightness of the live stream on the GPU for the manual panel's software shutter / ISO
+ * priority (P82, SceneLuma): the external preview texture is rendered into a small offscreen target and read back.
  *
  * <p>Cost is bounded by measuring at {@link #TILE} squared and only every
  * {@link #EVERY_N_FRAMES} frames: the readback is the expensive part because it
@@ -40,7 +24,6 @@ final class LiveSceneMeter {
     private static final int TILE = 64;
     /** Frames between measurements. At 30 fps this is about four updates a second. */
     private static final int EVERY_N_FRAMES = 8;
-    private static final int BINS = 128;
 
     private static final String VS =
             "attribute vec2 vPosition;\n" +
@@ -51,11 +34,7 @@ final class LiveSceneMeter {
             "  gl_Position = vec4(vPosition, 0.0, 1.0);\n" +
             "}\n";
 
-    /**
-     * Averages a block of the preview per output texel. The preview stream is
-     * already display-encoded, which is the domain the curve is built in, so no
-     * conversion is needed here - only the luminance.
-     */
+    /** Averages a block of the preview per output texel: its (display-encoded) luminance. */
     private static final String FS =
             "#extension GL_OES_EGL_image_external : require\n" +
             "precision mediump float;\n" +
@@ -74,22 +53,15 @@ final class LiveSceneMeter {
     private boolean failed = false;
     private int frameCounter = 0;
 
-    private final int[] hist = new int[BINS];
     private final ByteBuffer readback =
             ByteBuffer.allocateDirect(TILE * TILE * 4).order(ByteOrder.nativeOrder());
-
-    /** Target mean of the response; AutoExposureCurve's default target is 128/255. */
-    private static final float TARGET = 128.0f / 255.0f;
-    private static final float GAIN_MAX = 9.0f;
-    private static final float GAMMA_MIX = 0.1f;
 
     /**
      * Called once per drawn frame with the vertex buffers already prepared by
      * the renderer. Does nothing on most frames; the caller's GL state is
      * restored before returning.
      */
-    void measure(java.nio.FloatBuffer pVertex, java.nio.FloatBuffer pTexCoord,
-                 int previewTexture, boolean curve) {
+    void measure(java.nio.FloatBuffer pVertex, java.nio.FloatBuffer pTexCoord, int previewTexture) {
         if (failed) return;
         if (++frameCounter < EVERY_N_FRAMES) return;
         frameCounter = 0;
@@ -124,36 +96,21 @@ final class LiveSceneMeter {
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, prevFbo[0]);
         GLES20.glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
 
-        publish(curve);
+        publish();
     }
 
     void onContextCreated() {
         program = fbo = tex = 0;
         failed = false;
         frameCounter = 0;
-        PreviewLook.clear();
     }
 
-    private void publish(boolean withCurve) {
-        java.util.Arrays.fill(hist, 0);
+    private void publish() {
         readback.position(0);
         long sum = 0;
-        for (int i = 0; i < TILE * TILE; i++) {
-            int y = readback.get(i * 4) & 0xFF;
-            sum += y;
-            hist[y * (BINS - 1) / 255]++;
-        }
+        for (int i = 0; i < TILE * TILE; i++) sum += readback.get(i * 4) & 0xFF;
         // P82: the mean brightness for the manual panel's shutter / ISO priority
         com.particlesdevs.photoncamera.manual.SceneLuma.publish(sum / (255.0 * TILE * TILE));
-        if (!withCurve) return;
-        float mpy = ToneCurveBuilder.gainFromHistogram(hist, TARGET, GAIN_MAX);
-        mpy = ToneCurveBuilder.normalizeGain(mpy, BINS);
-        if (!Float.isFinite(mpy) || mpy <= 0.0f) return;
-        // No white point search here: it needs the over-range detail only the
-        // raw path has. The response uses the gain as its own white point, which
-        // is what AutoExposureCurve falls back to when the search is disabled.
-        float[] curve = ToneCurveBuilder.build(PreviewLook.CURVE_SIZE, mpy, mpy, GAMMA_MIX, 1.0f);
-        PreviewLook.setToneCurve(curve);
     }
 
     private boolean init() {

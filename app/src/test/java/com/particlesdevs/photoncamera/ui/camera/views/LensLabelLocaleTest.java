@@ -5,7 +5,7 @@ import static org.mockito.Mockito.mockStatic;
 
 import android.app.Application;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 import org.junit.After;
 import org.junit.Before;
@@ -20,11 +20,11 @@ import org.robolectric.annotation.Config;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35, application = Application.class)
 public class LensLabelLocaleTest {
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
 
     @Before public void context() {
-        camera = mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(RuntimeEnvironment.getApplication());
+        camera = mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(RuntimeEnvironment.getApplication());
     }
     @After public void cleanup() { camera.close(); }
 

@@ -25,7 +25,7 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 
 import com.particlesdevs.photoncamera.api.ParseExif;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.ProcessingEventsListener;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
 

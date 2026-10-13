@@ -39,7 +39,7 @@ public class LensButtonTest {
 
     @Before
     public void setUp() {
-        context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Photon_SettingsActivity);
+        context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Scamera_SettingsActivity);
     }
 
     private int dp(float v) {

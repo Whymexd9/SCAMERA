@@ -69,7 +69,7 @@ import com.particlesdevs.photoncamera.api.CameraEventsListener;
 import com.particlesdevs.photoncamera.api.CameraManager2;
 import com.particlesdevs.photoncamera.api.CameraMode;
 import com.particlesdevs.photoncamera.api.CameraReflectionApi;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.app.base.BaseActivity;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.capture.CaptureEventsListener;
@@ -79,7 +79,6 @@ import com.particlesdevs.photoncamera.control.Swipe;
 import com.particlesdevs.photoncamera.control.TouchFocus;
 import com.particlesdevs.photoncamera.databinding.CameraFragmentBinding;
 import com.particlesdevs.photoncamera.gallery.ui.GalleryActivity;
-import com.particlesdevs.photoncamera.pro.SupportedDevice;
 import com.particlesdevs.photoncamera.processing.ProcessingEventsListener;
 import com.particlesdevs.photoncamera.processing.parameters.ExposureIndex;
 import com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector;
@@ -158,7 +157,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     public GLPreview textureView;
     private NotificationManagerCompat notificationManager;
     private SettingsManager settingsManager;
-    private SupportedDevice supportedDevice;
     private ManualModeConsole manualModeConsole;
     public float displayAspectRatio;
     private HorizonIndicatorView mHorizonIndicatorView;
@@ -220,8 +218,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         activity = getActivity();
         assert activity != null;
         notificationManager = NotificationManagerCompat.from(activity);
-        settingsManager = Objects.requireNonNull(PhotonCamera.getInstance(activity)).getSettingsManager();
-        supportedDevice = Objects.requireNonNull(PhotonCamera.getInstance(activity)).getSupportedDevice();
+        settingsManager = Objects.requireNonNull(ScameraApp.getInstance(activity)).getSettingsManager();
     }
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container,
@@ -328,11 +325,10 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         // The manual panel's toasts («ISO: авто», the EV lock) use the camera screen's card toast.
         this.manualModeConsole.setMessageSink(this::showCardToast);
         this.textureView.setManualModeConsole(manualModeConsole);
-        PhotonCamera.setCaptureController(captureController);
-        captureController.isDualSession = supportedDevice.specific.specificSetting.isDualSessionSupported;
+        ScameraApp.setCaptureController(captureController);
         mHorizonIndicatorView = cameraFragmentBinding.layoutViewfinder.horizonIndicatorView;
         this.mSwipe = new Swipe(this);
-        var gyro = PhotonCamera.getGyro();
+        var gyro = ScameraApp.getGyro();
         if ((mHorizonIndicatorView != null) && (gyro != null)) {
             mHorizonIndicatorView.updateDisplayRotation(getCameraFragmentViewModel().getCameraFragmentModel().getOrientation());
             mHorizonIndicatorView.setGyro(gyro);
@@ -676,7 +672,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     @Override
     public void onViewStateRestored(@Nullable Bundle savedInstanceState) {
         super.onViewStateRestored(savedInstanceState);
-        if (PhotonCamera.DEBUG)
+        if (ScameraApp.DEBUG)
             Log.d("FragmentMonitor", "[" + getClass().getSimpleName() + "] : onViewStateRestored(), savedInstanceState = [" + savedInstanceState + "]");
         if (savedInstanceState != null) {
             sActiveBackCamId = savedInstanceState.getString(ACTIVE_BACKCAM_ID);
@@ -708,8 +704,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         mSwipe.init();
         this.mCameraUIView.refresh(CaptureController.isProcessing);
         AsyncTask.execute(() -> {
-            PhotonCamera.getGyro().register();
-            PhotonCamera.getGravity().register();
+            ScameraApp.getGyro().register();
+            ScameraApp.getGravity().register();
             // onPause may already have released the sounds if the app was
             // backgrounded before this task ran; load() only creates what is missing.
             sounds().load();
@@ -759,9 +755,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             mSubjectFocus.release();
             mSubjectFocus = null;
         }
-        PhotonCamera.getGravity().unregister();
-        PhotonCamera.getGyro().unregister();
-        PhotonCamera.getSettings().saveID();
+        ScameraApp.getGravity().unregister();
+        ScameraApp.getGyro().unregister();
+        ScameraApp.getSettings().saveID();
         // Stop camera outputs before GLSurfaceView destroys their SurfaceTexture.
         captureController.closeCamera();
         textureView.onPause();
@@ -820,8 +816,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         manualModeConsole.onDestroy();
 
         // Only clear global controller reference if it still points to this dying fragment instance
-        if (PhotonCamera.getCaptureController() == this.captureController) {
-            PhotonCamera.setCaptureController(null);
+        if (ScameraApp.getCaptureController() == this.captureController) {
+            ScameraApp.setCaptureController(null);
         }
         this.captureController = null;
 
@@ -884,9 +880,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 stringMap.put("FOCUS_DISTANCE", String.valueOf(result.get(CaptureResult.LENS_FOCUS_DISTANCE)));
                 stringMap.put("EXPOSURE_TIME", exposureStr);
                 stringMap.put("ISO", isoStr);
-                stringMap.put("Shakiness", String.valueOf(PhotonCamera.getGyro().getShakiness()));
-                stringMap.put("TripodShakiness", String.valueOf(PhotonCamera.getGyro().tripodShakiness));
-                stringMap.put("Tripod", String.valueOf(PhotonCamera.getGyro().getTripod()));
+                stringMap.put("Shakiness", String.valueOf(ScameraApp.getGyro().getShakiness()));
+                stringMap.put("TripodShakiness", String.valueOf(ScameraApp.getGyro().tripodShakiness));
+                stringMap.put("Tripod", String.valueOf(ScameraApp.getGyro().getTripod()));
                 stringMap.put("FrameNumber", String.valueOf(result.getFrameNumber()));
                 float[] temp = new float[3];
                 temp[0] = captureController.mPreviewTemp[0].floatValue();
@@ -1057,7 +1053,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         String wbStr = calculateWhitebalanceString(result);
 
         // Tripod indicator
-        boolean isTripod = PhotonCamera.getGyro() != null && PhotonCamera.getGyro().getTripod();
+        boolean isTripod = ScameraApp.getGyro() != null && ScameraApp.getGyro().getTripod();
 
         // OIS hardware & runtime active status
         boolean oisSupported = false;
@@ -1074,7 +1070,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 if (oisMode == 2) {
                     oisActive = false;
                 } else if (oisMode == 1) {
-                    CameraMode curMode = PhotonCamera.getSettings().selectedMode;
+                    CameraMode curMode = ScameraApp.getSettings().selectedMode;
                     boolean isContinuous = (curMode == CameraMode.UNLIMITED);
                     oisActive = !(isTripod || isContinuous);
                 } else {
@@ -1536,7 +1532,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         @Override
         public void onCaptureStillPictureStarted(Object o) {
             instantShot = "ScamZslCaptureStarted".equals(o) || "ZSLCaptureStarted!".equals(o);
-            if (PhotonCamera.getSettings().selectedMode != CameraMode.RAWVIDEO) {
+            if (ScameraApp.getSettings().selectedMode != CameraMode.RAWVIDEO) {
                 sounds().shutter(); // one shutter sound per shot, at the press (P16)
                 if (instantShot) {
                     snapshotViewfinderThumb();
@@ -1579,7 +1575,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         @Override
         public void onFrameCaptureCompleted(Object o) {
             if (instantShot) return; // one shutter sound at the press, no per-frame ring
-            if (PhotonCamera.getSettings().selectedMode != CameraMode.RAWVIDEO) {
+            if (ScameraApp.getSettings().selectedMode != CameraMode.RAWVIDEO) {
                 ui().incrementCaptureProgressBar(1);
                 if (o instanceof TimerFrameCountViewModel.FrameCntTime) {
                     timerFrameCountViewModel.setFrameTimeCnt((TimerFrameCountViewModel.FrameCntTime) o);

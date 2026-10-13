@@ -127,7 +127,7 @@ public final class ScamHybridBurst implements ScamTransport {
             throw new IOException(Lang.t("Hybrid: размер RAW ", "Hybrid: RAW size ") + width + "x" + height
                     + Lang.t(" (нужны чётные стороны от 64)", " (needs even sides of at least 64)"));
         // P27 any resolution: no megapixel cap. Only the hard limits stop the hybrid (sensor-grid RGB above one 2 GB buffer, a side
-        // above the GPU's limit); HdrxProcessor bins such a stream with RawBin before, so this is a defensive check.
+        // above the GPU's limit); ScamProcessor bins such a stream with RawBin before, so this is a defensive check.
         final int gpuMaxSide = com.particlesdevs.photoncamera.processing.opengl.GLLimits.get().maxSide();
         final String beyond = com.particlesdevs.photoncamera.processing.RawBin.limitExceeded(width, height, gpuMaxSide);
         if (beyond != null) throw new IOException("Hybrid: RAW " + width + "x" + height
@@ -393,7 +393,7 @@ public final class ScamHybridBurst implements ScamTransport {
     public float outputScale() { return (float) outWidth / width; }
     private static long availableMemory() {
         try {
-            android.app.ActivityManager am = (android.app.ActivityManager) com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext().getSystemService(android.content.Context.ACTIVITY_SERVICE);
+            android.app.ActivityManager am = (android.app.ActivityManager) com.particlesdevs.photoncamera.app.ScameraApp.getAppContext().getSystemService(android.content.Context.ACTIVITY_SERVICE);
             android.app.ActivityManager.MemoryInfo info = new android.app.ActivityManager.MemoryInfo();
             if (am == null) return 0;
             am.getMemoryInfo(info);
@@ -403,7 +403,7 @@ public final class ScamHybridBurst implements ScamTransport {
     /** P27 any resolution: ActivityManager.MemoryInfo.availMem (also under lowMemory), -1 when unknown. */
     private static long memoryAvailable() {
         try {
-            android.app.ActivityManager am = (android.app.ActivityManager) com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext().getSystemService(android.content.Context.ACTIVITY_SERVICE);
+            android.app.ActivityManager am = (android.app.ActivityManager) com.particlesdevs.photoncamera.app.ScameraApp.getAppContext().getSystemService(android.content.Context.ACTIVITY_SERVICE);
             if (am == null) return -1;
             android.app.ActivityManager.MemoryInfo info = new android.app.ActivityManager.MemoryInfo();
             am.getMemoryInfo(info);

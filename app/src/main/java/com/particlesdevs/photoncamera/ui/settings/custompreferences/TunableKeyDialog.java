@@ -9,7 +9,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import com.particlesdevs.photoncamera.api.VendorTagUtils;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.TunableKeyManager;
 import com.particlesdevs.photoncamera.util.Lang;
 
@@ -45,7 +45,7 @@ public class TunableKeyDialog {
         builder.setPositiveButton(Lang.t(context,"Сохранить","Save"), (dialog, which) -> {
             String name = nameEdit.getText().toString().trim();
             if (name.isEmpty()) {
-                PhotonCamera.showToast(Lang.t(context,"Имя ключа не может быть пустым","The key name can't be empty"));
+                ScameraApp.showToast(Lang.t(context,"Имя ключа не может быть пустым","The key name can't be empty"));
                 return;
             }
             VendorTagUtils.TunableKey key = new VendorTagUtils.TunableKey();

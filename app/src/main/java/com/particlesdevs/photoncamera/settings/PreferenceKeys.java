@@ -8,7 +8,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.api.CameraMode;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.util.Log;
 import java.util.Arrays;
@@ -105,7 +105,6 @@ public class PreferenceKeys {
     public static void setDefaults(Context context) {
         SettingsManager settingsManager = preferenceKeys.settingsManager;
         Resources resources = context.getResources();
-        settingsManager.setInitial("default_scope", Key.KEY_HDRX, resources.getBoolean(R.bool.pref_hdrx_mode_default));
         settingsManager.setInitial("default_scope", Key.KEY_EIS_PHOTO, resources.getBoolean(R.bool.pref_eis_photo_default));
         settingsManager.setInitial("default_scope", Key.KEY_QUAD_BAYER, resources.getBoolean(R.bool.pref_quad_bayer_default));
         settingsManager.setInitial("default_scope", Key.KEY_REMOSAIC, resources.getBoolean(R.bool.pref_remosaic_default));
@@ -135,7 +134,7 @@ public class PreferenceKeys {
         }
         if(profiles().isApplying())return;
         profiles().changed(key);
-        PhotonCamera.getSettings().loadCache();
+        ScameraApp.getSettings().loadCache();
     }
 
     public static void addIds(String[] ids) {
@@ -170,7 +169,6 @@ public class PreferenceKeys {
         map.put("blue", Integer.valueOf(R.style.BlueTheme));
         map.put("orange", Integer.valueOf(R.style.OrangeTheme));
         map.put("green", Integer.valueOf(R.style.GreenTheme));
-        map.put("eszdman", Integer.valueOf(R.style.EszdmanTheme));
         map.put("pink", Integer.valueOf(R.style.PinkTheme));
         map.put("cyan", Integer.valueOf(R.style.CyanTheme));
         map.put("teal", Integer.valueOf(R.style.TealTheme));
@@ -827,7 +825,7 @@ public class PreferenceKeys {
 
     private static final int SHOT_SCAM = 1, SHOT_HYBRID = 2;
     /**
-     * Per-shot settings profile of the thread that processes the shot: HdrxProcessor sets it around its whole processing
+     * Per-shot settings profile of the thread that processes the shot: ScamProcessor sets it around its whole processing
      * (merge, post pipeline, saving) and clears it afterwards. The nodes shared by SCAM HDR and the hybrid then read the
      * knobs of the route that merged the shot, even when the switches changed between the press and the processing.
      * Thread-confined on purpose: the camera thread plans and captures the next shot (and the viewfinder runs) while the
@@ -846,7 +844,7 @@ public class PreferenceKeys {
         final Integer profile = shotProfile.get();
         return profile != null ? profile == SHOT_HYBRID : isScamHybridEnabled();
     }
-    /** A hybrid shot is being post-processed on this thread (strict: false outside HdrxProcessor). */
+    /** A hybrid shot is being post-processed on this thread (strict: false outside ScamProcessor). */
     public static boolean isHybridShotProcessing() {
         final Integer profile = shotProfile.get();
         return profile != null && profile == SHOT_HYBRID;
@@ -1109,7 +1107,7 @@ public class PreferenceKeys {
             java.util.Map<String, Float> values = java.util.Collections.emptyMap();
             long stamp = 0;
             try {
-                java.io.File dir = com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext().getExternalFilesDir(null);
+                java.io.File dir = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext().getExternalFilesDir(null);
                 java.io.File file = dir == null ? null : new java.io.File(dir, "scam_dev.txt");
                 if (file != null && file.isFile()) {
                     stamp = file.lastModified();
@@ -1342,12 +1340,6 @@ public class PreferenceKeys {
                 "default_scope", Key.KEY_LIVE_VIEWFINDER_RAW, false);
     }
 
-    /** Retired ISP tone approximation. Old backups must not enable a second preview path. */
-    @Deprecated
-    public static boolean isLiveViewfinderLookEnabled() {
-        return false;
-    }
-
 
 
 
@@ -1412,14 +1404,6 @@ public class PreferenceKeys {
 
     public static int getThemeValue() {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_THEME).intValue();
-    }
-
-    public static boolean isHdrXOn() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_HDRX);
-    }
-
-    public static void setHdrX(boolean value) {
-        preferenceKeys.settingsManager.set("default_scope", Key.KEY_HDRX, value);
     }
 
     public static boolean isEisPhotoOn() {
@@ -1602,7 +1586,6 @@ public class PreferenceKeys {
         KEY_SAVE_RAW(R.string.pref_save_raw_key),
         KEY_CFA(R.string.pref_cfa_key),
         KEY_REMOSAIC(R.string.pref_remosaic_key),
-        KEY_HDRX(R.string.pref_hdrx_key),
         KEY_EIS_PHOTO(R.string.pref_eis_photo_key),
         KEY_QUAD_BAYER(R.string.pref_quad_bayer_key),
         KEY_FPS_PREVIEW(R.string.pref_fps_preview_key),
@@ -1624,7 +1607,7 @@ public class PreferenceKeys {
         public final String mValue;
 
         Key(int stringId) {
-            this.mValue = PhotonCamera.getStringStatic(stringId);
+            this.mValue = ScameraApp.getStringStatic(stringId);
         }
     }
 }

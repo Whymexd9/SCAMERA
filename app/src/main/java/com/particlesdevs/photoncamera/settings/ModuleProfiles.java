@@ -68,7 +68,7 @@ public final class ModuleProfiles {
         applying=true;
         try {SharedPreferences.Editor e=prefs.edit();for(String k:prefs.getAll().keySet())if(isLocal(k))e.remove(k);values.forEach((k,v)->{if(isLocal(k))put(e,k,v);});e.commit();SettingsMigration.migrateMultiFrame(prefs);SettingsMigration.migrateScamHybrid(prefs,false);SettingsMigration.removeObsolete(prefs);}
         finally{applying=false;}
-        if(com.particlesdevs.photoncamera.app.PhotonCamera.getSettings()!=null)com.particlesdevs.photoncamera.app.PhotonCamera.getSettings().loadCache();
+        if(com.particlesdevs.photoncamera.app.ScameraApp.getSettings()!=null)com.particlesdevs.photoncamera.app.ScameraApp.getSettings().loadCache();
     }
     public synchronized void changed(String key){
         if(applying)return;

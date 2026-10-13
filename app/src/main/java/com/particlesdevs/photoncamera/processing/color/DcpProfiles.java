@@ -4,7 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.provider.OpenableColumns;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.render.Converter;
 import java.io.*;
 import java.security.MessageDigest;
@@ -56,9 +56,9 @@ public final class DcpProfiles {
         while((n=in.read(buffer))!=-1){if(out.size()+n>DcpProfile.MAX_BYTES)throw new IOException(Lang.t("DCP больше 16 МБ","DCP larger than 16 MB"));out.write(buffer,0,n);}return out.toByteArray();
     }
     public static synchronized float[] activeToXyz(float[] neutral){
-        if(PhotonCamera.getSettingsManagerStatic()==null)return null;
-        Context c=PhotonCamera.getSettingsManagerStatic().getContext();
-        String id=PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getString(KEY,"");
+        if(ScameraApp.getSettingsManagerStatic()==null)return null;
+        Context c=ScameraApp.getSettingsManagerStatic().getContext();
+        String id=ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getString(KEY,"");
         if(id.isEmpty())return null;
         if(!id.equals(cachedId)){
             cachedId=id;cached=null;

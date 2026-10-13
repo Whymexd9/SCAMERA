@@ -20,7 +20,7 @@ import java.nio.ByteOrder;
  *
  * <p>Held statically because the producer (CaptureController's image callback)
  * and the consumer (the GL renderer) have no other connection, the same
- * arrangement {@link PreviewLook} uses.
+ * arrangement SceneLuma uses.
  */
 public final class LiveRawFrame {
 

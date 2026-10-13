@@ -8,7 +8,7 @@ import android.graphics.Color;
 import androidx.exifinterface.media.ExifInterface;
 
 import com.particlesdevs.photoncamera.api.ParseExif;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.avif.AvifEncoder;
 import com.particlesdevs.photoncamera.processing.opengl.GLLimits;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
@@ -49,21 +49,21 @@ import static org.mockito.Mockito.*;
 public class AvifOutputTest {
     @Rule public TemporaryFolder tmp = new TemporaryFolder();
     private SettingsManager manager;
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
 
     @Before
     public void setUp() {
         Context context = RuntimeEnvironment.getApplication();
         manager = new SettingsManager(context);
         manager.getDefaultPreferences().edit().clear().commit();
-        camera = mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(context);
-        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        camera.when(() -> PhotonCamera.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
-        camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
-        PhotonCamera app = mock(PhotonCamera.class, RETURNS_DEEP_STUBS);
+        camera = mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(context);
+        camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(() -> ScameraApp.getStringStatic(anyInt())).thenAnswer(inv -> context.getString(inv.getArgument(0)));
+        camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
+        ScameraApp app = mock(ScameraApp.class, RETURNS_DEEP_STUBS);
         when(app.getSettingsManager()).thenReturn(manager);
-        camera.when(() -> PhotonCamera.getInstance(any(Context.class))).thenReturn(app);
+        camera.when(() -> ScameraApp.getInstance(any(Context.class))).thenReturn(app);
         PreferenceKeys.initialise(manager);
         GLLimits.setForTesting(GLLimits.of(16384, 16384, 16384, 16384));
     }

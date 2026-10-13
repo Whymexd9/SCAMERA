@@ -63,7 +63,7 @@ public final class ScamDenoise extends Node {
             // Added to a route directly while the engine is "nlm" (or not a hybrid shot): the NLM node does the work.
             ScamHdrDenoise nlm = new ScamHdrDenoise();
             nlm.basePipeline = basePipeline; nlm.glProg = glProg; nlm.previousNode = previousNode;
-            nlm.glInt = glInt; nlm.glUtils = glUtils; nlm.mProp = mProp;
+            nlm.glInt = glInt; nlm.glUtils = glUtils;
             nlm.runNlm();
             WorkingTexture = nlm.WorkingTexture;
             glProg.closed = true;

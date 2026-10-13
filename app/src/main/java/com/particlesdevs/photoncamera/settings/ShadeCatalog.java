@@ -19,7 +19,7 @@ import androidx.preference.PreferenceScreen;
 import androidx.preference.TwoStatePreference;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.RestorePreference;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableCheckBoxPreference;
@@ -306,7 +306,7 @@ public final class ShadeCatalog {
         final Context app = context.getApplicationContext() != null ? context.getApplicationContext() : context;
         // A language change recreates the activity, not the process: the cached strings are rebuilt in the new language.
         if (instance == null || !instance.lang.equals(app.getString(R.string.ui_language)))
-            instance = new ShadeCatalog(app, PhotonCamera.getSettingsManagerStatic().getDefaultPreferences());
+            instance = new ShadeCatalog(app, ScameraApp.getSettingsManagerStatic().getDefaultPreferences());
         return instance;
     }
 
@@ -422,7 +422,7 @@ public final class ShadeCatalog {
     public synchronized void ensureTree() {
         if (treeBuilt) return;
         treeBuilt = true;
-        Context themed = new ContextThemeWrapper(context, R.style.Theme_Photon_SettingsActivity);
+        Context themed = new ContextThemeWrapper(context, R.style.Theme_Scamera_SettingsActivity);
         PreferenceManager manager = new PreferenceManager(themed);
         manager.setPreferenceDataStore(new DefaultsOnly());
         PreferenceScreen tree = manager.inflateFromResource(themed, R.xml.preferences, null);

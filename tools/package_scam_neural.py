@@ -4,6 +4,7 @@ No network downloads and no vendor binaries are committed to the repository.
 """
 import argparse
 import hashlib
+import os
 from pathlib import Path
 import re
 import shutil
@@ -83,6 +84,20 @@ def verify_bundle(apk, assets, hex_assets, scam_assets):
             raise ValueError('Invalid APK CRC')
 
 
+def signing_key():
+    """The SCAMERA release key: SCAMERA_KEYSTORE / SCAMERA_KEYSTORE_PASSWORD / SCAMERA_KEY_ALIAS (CI), else
+    SCAMERA-PC/signing/signing.properties next to the repository. The repository is public: the key is never in it."""
+    keystore = os.environ.get('SCAMERA_KEYSTORE')
+    if keystore:
+        return keystore, os.environ.get('SCAMERA_KEY_ALIAS', 'scamera'), os.environ.get('SCAMERA_KEYSTORE_PASSWORD', '')
+    props = ROOT.parent / 'signing' / 'signing.properties'
+    if props.is_file():
+        values = dict(line.split('=', 1) for line in props.read_text(encoding='utf-8').splitlines()
+                      if '=' in line and not line.lstrip().startswith('#'))
+        return str(props.parent / values['storeFile']), values.get('keyAlias', 'scamera'), values['storePassword']
+    raise SystemExit('SCAMERA signing key missing: set SCAMERA_KEYSTORE and SCAMERA_KEYSTORE_PASSWORD, or create ' + str(props))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--template', type=Path, required=True)
@@ -134,9 +149,12 @@ def main():
                         raise ValueError('Template already contains ' + prefix + name)
                     archive.write(directory / name, prefix + name)
             archive.writestr(LIB_PREFIX + LIB_WORKER, archive.read(PREFIX + 'scam-neural-worker'))
-        subprocess.run(['java', '-jar', str(args.apksigner), 'sign', '--ks', str(ROOT / 'key/PcamLeak.jks'),
-                        '--ks-key-alias', 'key0', '--ks-pass', 'pass:photoncamera',
-                        '--key-pass', 'pass:photoncamera', '--out', str(signed), str(unsigned)], check=True)
+        keystore, alias, password = signing_key()
+        # The password reaches apksigner through its environment, never the command line.
+        subprocess.run(['java', '-jar', str(args.apksigner), 'sign', '--ks', keystore, '--ks-key-alias', alias,
+                        '--ks-pass', 'env:SCAMERA_APKSIGNER_PASS', '--key-pass', 'env:SCAMERA_APKSIGNER_PASS',
+                        '--out', str(signed), str(unsigned)], check=True,
+                       env=dict(os.environ, SCAMERA_APKSIGNER_PASS=password))
         subprocess.run(['java', '-jar', str(args.apksigner), 'verify', '--verbose', '--print-certs', str(signed)], check=True)
         verify_bundle(signed, assets, hex_assets, scam_assets)
         signed.rename(args.output)

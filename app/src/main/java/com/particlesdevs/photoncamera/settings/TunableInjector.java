@@ -3,7 +3,7 @@ package com.particlesdevs.photoncamera.settings;
 import android.content.Context;
 import com.particlesdevs.photoncamera.util.Log;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.annotations.Tunable;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunablePngPreference;
 
@@ -30,7 +30,7 @@ public class TunableInjector {
         Class<?> clazz = target.getClass();
         String className = clazz.getSimpleName();
         
-        SettingsManager settingsManager = PhotonCamera.getSettingsManagerStatic();
+        SettingsManager settingsManager = ScameraApp.getSettingsManagerStatic();
         if (settingsManager == null) {
             Log.w(TAG, "SettingsManager is null, cannot inject");
             return;

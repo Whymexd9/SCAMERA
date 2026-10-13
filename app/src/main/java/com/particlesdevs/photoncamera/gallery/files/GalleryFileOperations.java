@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
  */
 public class GalleryFileOperations {
     public static final int REQUEST_PERM_DELETE = 1010;
-    private static final String[] INCLUDED_IMAGE_FOLDERS = new String[]{"%DCIM/PhotonCamera/%", "%DCIM/PhotonCamera/Raw/%", "%DCIM/Camera/%"};
+    private static final String[] INCLUDED_IMAGE_FOLDERS = new String[]{"%DCIM/SCAMERA/%", "%DCIM/Camera/%"};
     private static final ArrayList<String> SELECTED_FOLDERS_IDS = new ArrayList<>();
     private static final ArrayList<ImagesFolder> ALL_FOLDERS = new ArrayList<>();
     private static final ArrayList<ImagesFolder> SELECTED_FOLDERS = new ArrayList<>();

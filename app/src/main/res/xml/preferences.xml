@@ -597,7 +597,7 @@
     </PreferenceScreen>
     <PreferenceScreen android:key="developer_settings_screen" android:title="@string/prefs_developer_settings_screen_title" android:summary="@string/prefs_developer_settings_screen_summary" app:iconSpaceReserved="false" android:icon="@drawable/settings_ic_chip"/>
     <SwitchPreferenceCompat android:key="scamera_full_debug" android:title="@string/prefs_scamera_full_debug_title" android:summary="@string/full_debug_summary" android:defaultValue="false" android:icon="@drawable/settings_ic_list"/>
-    <Preference android:icon="@drawable/settings_ic_info" android:title="@string/app_name" android:key="@string/pref_photoncamera" android:summary="@string/photon_camera_summary" android:selectable="false"/>
+    <Preference android:icon="@drawable/settings_ic_info" android:title="@string/app_name" android:key="@string/pref_app_key" android:summary="@string/app_summary" android:selectable="false"/>
     <Preference android:title="@string/version_title" android:key="@string/pref_version_key" android:summary="@string/version_summary" android:icon="@drawable/settings_ic_info" android:selectable="false"/>
     <Preference android:persistent="false" android:key="@string/pref_this_device_key" app:singleLineTitle="true" android:icon="@drawable/settings_ic_camera" android:selectable="false"/>
   </PreferenceScreen>

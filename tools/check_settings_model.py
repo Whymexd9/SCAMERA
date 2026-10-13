@@ -4,7 +4,7 @@ import tempfile,subprocess,shutil
 root=Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory() as d:
     out=Path(d);stubs=out/'stubs';p=stubs/'com/particlesdevs/photoncamera/app';p.mkdir(parents=True)
-    (p/'PhotonCamera.java').write_text('package com.particlesdevs.photoncamera.app; public class PhotonCamera { public static com.particlesdevs.photoncamera.settings.SettingsManager getSettingsManagerStatic(){return null;} }')
+    (p/'ScameraApp.java').write_text('package com.particlesdevs.photoncamera.app; public class ScameraApp { public static com.particlesdevs.photoncamera.settings.SettingsManager getSettingsManagerStatic(){return null;} }')
     p=stubs/'com/particlesdevs/photoncamera/settings';p.mkdir(parents=True)
     (p/'SettingsManager.java').write_text('package com.particlesdevs.photoncamera.settings; public class SettingsManager { public static final String SCOPE_GLOBAL=""; public String getString(String a,String b,String c){return c;} }')
     p=stubs/'com/particlesdevs/photoncamera/util';p.mkdir(parents=True)

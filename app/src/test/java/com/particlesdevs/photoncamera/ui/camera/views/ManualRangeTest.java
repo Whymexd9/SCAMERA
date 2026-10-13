@@ -40,7 +40,7 @@ import static org.mockito.Mockito.mock;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35, application = Application.class, qualifiers = "w400dp-h880dp-mdpi")
 public class ManualRangeTest {
-    private final Context context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Photon_SettingsActivity);
+    private final Context context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Scamera_SettingsActivity);
 
     /** The ruler as ViewObserver builds it from a model. */
     private LinearScaleView ruler(ManualModel<?> model, int mode) {

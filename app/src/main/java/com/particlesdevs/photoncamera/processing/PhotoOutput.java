@@ -636,7 +636,7 @@ public final class PhotoOutput {
     /** ActivityManager.MemoryInfo.availMem, -1 when unknown. */
     private static long availableMemory() {
         try {
-            android.content.Context context = com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext();
+            android.content.Context context = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext();
             android.app.ActivityManager am = context == null ? null
                     : (android.app.ActivityManager) context.getSystemService(android.content.Context.ACTIVITY_SERVICE);
             if (am == null) return -1;

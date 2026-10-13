@@ -7,7 +7,7 @@ import android.os.Message;
 import androidx.annotation.NonNull;
 import androidx.lifecycle.ViewModel;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.ui.camera.model.TimerFrameCountModel;
 
 public class TimerFrameCountViewModel extends ViewModel {
@@ -39,7 +39,7 @@ public class TimerFrameCountViewModel extends ViewModel {
 
     public void setFrameTimeCnt(FrameCntTime frameCntTime) {
         Message msg = new Message();
-        switch (PhotonCamera.getSettings().selectedMode) {
+        switch (ScameraApp.getSettings().selectedMode) {
             case NIGHT:
             case PHOTO:
             case MOTION:

@@ -1,3 +1,4 @@
-PhotonCamera accesses and records camera sensor and microphone data, which is used for the purpose of taking photos and recording videos, to fulfil its purpose as a camera.
-PhotonCamera requires permission to storage access, as this permission is required for Android to save resultant files such as photos and videos to your device.
-PhotonCamera requires Precise Location permission in order to embed the location into the picture, this permission is optional and can be disabled or denied.
+SCAMERA uses the camera to take photos and videos, and the microphone only to record the sound of a video.
+SCAMERA needs access to storage to save photos, videos and RAW files on the device (DCIM/Camera, DCIM/SCAMERA).
+SCAMERA does not use the location and does not connect to the internet: photos, settings, logs (DCIM/SCAMERA/Log) and
+crash reports (Download/SCAMERA) stay on the device and leave it only when the user shares them.

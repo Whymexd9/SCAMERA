@@ -1,7 +1,6 @@
 package com.particlesdevs.photoncamera.settings;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
-import com.particlesdevs.photoncamera.processing.render.SpecificSettingSensor;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.annotations.SensorConfig;
 import com.particlesdevs.photoncamera.util.Log;
 
@@ -11,8 +10,8 @@ import static com.particlesdevs.photoncamera.settings.SettingsManager.SCOPE_GLOB
 
 /**
  * Runtime injector for {@code @SensorConfig} annotated fields.
- * Reads per-sensor values from SharedPreferences and applies them to a
- * {@link SpecificSettingSensor} instance, so tuning works per physical camera id.
+ * Reads per-sensor values from SharedPreferences and applies them to the annotated fields of the
+ * target (CaptureController), so tuning works per physical camera id.
  */
 public class SensorConfigInjector {
     private static final String TAG = "SensorConfigInjector";
@@ -46,7 +45,7 @@ public class SensorConfigInjector {
             return;
         }
 
-        SettingsManager settingsManager = PhotonCamera.getSettingsManagerStatic();
+        SettingsManager settingsManager = ScameraApp.getSettingsManagerStatic();
         if (settingsManager == null) {
             Log.w(TAG, "SettingsManager is null, cannot inject");
             return;

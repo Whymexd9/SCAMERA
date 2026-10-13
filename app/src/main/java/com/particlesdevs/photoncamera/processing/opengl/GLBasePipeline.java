@@ -8,19 +8,14 @@ import com.particlesdevs.photoncamera.api.Settings;
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Properties;
 
 import static android.opengl.GLES20.GL_FRAMEBUFFER;
 import static android.opengl.GLES20.GL_FRAMEBUFFER_BINDING;
 import static android.opengl.GLES20.glBindFramebuffer;
 import static android.opengl.GLES20.glGetIntegerv;
 import static com.particlesdevs.photoncamera.processing.opengl.GLCoreBlockProcessing.checkEglError;
-import static com.particlesdevs.photoncamera.util.FileManager.sPHOTON_TUNING_DIR;
 
 public class GLBasePipeline implements AutoCloseable {
     public final ArrayList<Node> Nodes = new ArrayList<>();
@@ -38,8 +33,6 @@ public class GLBasePipeline implements AutoCloseable {
      */
     public boolean remosaicApplied = false;
     public Parameters mParameters;
-    public Properties mProp;
-    private final boolean loggedTuning = false;
     private final String Name;
     public Point workSize;
     public float noiseS;
@@ -50,16 +43,6 @@ public class GLBasePipeline implements AutoCloseable {
 
     public GLBasePipeline(String name){
         Name = name;
-        Properties properties = new Properties();
-        try {
-            // Read only when present: creating it under scoped storage failed with EPERM on every pipeline.
-            File init = new File(sPHOTON_TUNING_DIR, "PhotonCameraTuning.ini");
-            if (init.canRead()) try (FileInputStream in = new FileInputStream(init)) { properties.load(in); }
-        } catch (Exception e) {
-            // Optional tuning file; absence is normal, not an error.
-            Log.d("PostPipeline", "No tuning properties, using built-in defaults (" + e + ")");
-        }
-        mProp = properties;
     }
     public GLTexture getMain(){
         if(texnum == 1) {
@@ -84,41 +67,6 @@ public class GLBasePipeline implements AutoCloseable {
             main3 = temp;
             return main2;
         }
-    }
-
-    private void tuningLog(String name, String value){
-        if(loggedTuning) Log.d("Tuning",name+" = "+ value);
-    }
-    public boolean getTuning(String name, boolean Default){
-        tuningLog(Name+"_"+name,String.valueOf(Default));
-        return Boolean.parseBoolean(mProp.getProperty(Name+"_"+name,String.valueOf(Default)));
-    }
-    public float getTuning(String name,float Default){
-        tuningLog(Name+"_"+name,String.valueOf(Default));
-        return Float.parseFloat(mProp.getProperty(Name+"_"+name,String.valueOf(Default)));
-    }
-    public float[] getTuning(String name,float[] Default){
-        String ins = Arrays.toString(Default).replace("[","").replace("]","");
-        tuningLog(Name+"_"+name,ins);
-        String inp = mProp.getProperty(Name+"_"+name, ins);
-        String[] divided = inp.split(",");
-        float[] output = new float[Default.length];
-        for(int i = 0; i<divided.length;i++){
-            output[i] = Float.parseFloat(divided[i]);
-        }
-        return output;
-    }
-    public double getTuning(String name,double Default){
-        tuningLog(Name+"_"+name,String.valueOf(Default));
-        return Double.parseDouble(mProp.getProperty(Name+"_"+name,String.valueOf(Default)));
-    }
-    public short getTuning(String name,short Default){
-        tuningLog(Name+"_"+name,String.valueOf(Default));
-        return Short.parseShort(mProp.getProperty(Name+"_"+name,String.valueOf(Default)));
-    }
-    public int getTuning(String name,int Default){
-        tuningLog(Name+"_"+name,String.valueOf(Default));
-        return Integer.parseInt(mProp.getProperty(Name+"_"+name,String.valueOf(Default)));
     }
 
     public void startTimeMeasure() {
@@ -353,7 +301,6 @@ public class GLBasePipeline implements AutoCloseable {
     }
 
     private void prepareNode(Node node, int index) {
-        node.mProp = mProp;
         node.BeforeCompile();
         node.Compile();
         node.BeforeRun();

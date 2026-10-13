@@ -36,7 +36,7 @@ public class ApprovedConceptsTest {
         assertTrue(ManualStops.iso(100,800).stream().noneMatch(v->v>800));
     }
     @Test public void photographicRulerDragsUnderFixedMarkerAndHonorsCancel() throws Exception {
-        Context c=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Photon_SettingsActivity);
+        Context c=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Scamera_SettingsActivity);
         LinearScaleView v=new LinearScaleView(c);v.setMode(LinearScaleView.MODE_ISO,com.particlesdevs.photoncamera.circularbarlib.ui.ManualFormat.EN);
         List<KnobItemInfo> items=new ArrayList<>();items.add(new KnobItemInfo(null,"A",0,0));
         for(long iso:ManualStops.iso(72,12800)) {
@@ -60,7 +60,7 @@ public class ApprovedConceptsTest {
         try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,"approved-iso-ruler.png"))){b.compress(Bitmap.CompressFormat.PNG,100,out);}
     }
     @Test public void searchTraversesNestedPagesAndReturnsRealDestination() {
-        Context c=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Photon_SettingsActivity);
+        Context c=new ContextThemeWrapper(RuntimeEnvironment.getApplication(),R.style.Theme_Scamera_SettingsActivity);
         PreferenceManager manager=new PreferenceManager(c);PreferenceScreen root=manager.createPreferenceScreen(c);root.setKey("prefscreen");
         PreferenceScreen page=manager.createPreferenceScreen(c);page.setKey("noise");page.setTitle("Шумоподавление");root.addPreference(page);
         Preference p=new Preference(c);p.setKey("luma");p.setTitle("Яркостное шумоподавление");p.setSummary("Сила обработки");page.addPreference(p);

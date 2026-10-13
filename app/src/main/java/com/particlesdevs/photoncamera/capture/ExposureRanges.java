@@ -202,7 +202,7 @@ public final class ExposureRanges {
     private static final java.util.Map<String, int[]> LOGGED_AE = new java.util.concurrent.ConcurrentHashMap<>();
 
     private static SharedPreferences prefs() {
-        Context c = com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext();
+        Context c = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext();
         return c == null ? null : c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 

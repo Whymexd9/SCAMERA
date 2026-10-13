@@ -28,7 +28,7 @@ import com.particlesdevs.photoncamera.ui.camera.CameraFragment;
 import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 import com.particlesdevs.photoncamera.ui.camera.model.AuxButtonsModel;
 import com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 
 import java.util.ArrayList;
@@ -51,7 +51,7 @@ public class AuxButtonsViewModel extends ViewModel {
         if (!initialized) {
             List<CameraLensData> frontCameras = new ArrayList<>();
             List<CameraLensData> backCameras = new ArrayList<>();
-            SettingsManager manager = PhotonCamera.getSettingsManagerStatic();
+            SettingsManager manager = ScameraApp.getSettingsManagerStatic();
             Set<String> hiddenIds = manager == null
                     ? new HashSet<>()
                     : manager.getStringSet("default_scope", "hidden_camera_ids", new HashSet<>());

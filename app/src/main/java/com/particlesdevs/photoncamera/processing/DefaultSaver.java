@@ -6,16 +6,16 @@ import android.hardware.camera2.CaptureResult;
 
 import com.particlesdevs.photoncamera.util.Log;
 import com.particlesdevs.photoncamera.api.ParseExif;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.control.GyroBurst;
-import com.particlesdevs.photoncamera.processing.processor.HdrxProcessor;
+import com.particlesdevs.photoncamera.processing.processor.ScamProcessor;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 
 public class DefaultSaver extends SaverImplementation {
     private static final String TAG = "DefaultSaver";
-    final HdrxProcessor hdrxProcessor;
+    final ScamProcessor scamProcessor;
     ArrayList<ImageFrame> ownedFrames;
     Path ownedDngFile, ownedImageFile;
     java.util.List<com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.ExpoPair> ownedPairs;
@@ -24,7 +24,7 @@ public class DefaultSaver extends SaverImplementation {
 
     public DefaultSaver(ProcessingEventsListener processingEventsListener) {
         super(processingEventsListener);
-        this.hdrxProcessor = new HdrxProcessor(processingEventsListener);
+        this.scamProcessor = new ScamProcessor(processingEventsListener);
     }
 
     public void runRaw(int imageFormat, CameraCharacteristics characteristics, CaptureResult captureResult, CaptureRequest captureRequest, ArrayList<GyroBurst> burstShakiness, int cameraRotation, HashMap<Long, Double> exposures) {
@@ -34,12 +34,12 @@ public class DefaultSaver extends SaverImplementation {
             // shared buffers on the camera thread when the burst completed.
             ArrayList<ImageFrame> frames = ownedFrames;
             ownedFrames = null;
-            hdrxProcessor.ownedPairs = ownedPairs;
-            hdrxProcessor.ownedHybridRoute = ownedHybridRoute;
+            scamProcessor.ownedPairs = ownedPairs;
+            scamProcessor.ownedHybridRoute = ownedHybridRoute;
             ownedHybridRoute = null;
-            hdrxProcessor.configure(PhotonCamera.getSettings().alignAlgorithm,
-                    PhotonCamera.getSettings().rawSaver, PhotonCamera.getSettings().selectedMode);
-            hdrxProcessor.start(ownedDngFile, ownedImageFile,
+            scamProcessor.configure(ScameraApp.getSettings().alignAlgorithm,
+                    ScameraApp.getSettings().rawSaver, ScameraApp.getSettings().selectedMode);
+            scamProcessor.start(ownedDngFile, ownedImageFile,
                     ParseExif.parse(captureResult, captureRequest), burstShakiness, frames, exposures,
                     imageFormat, cameraRotation, characteristics, captureResult, captureRequest,
                     processingCallback);
@@ -51,7 +51,7 @@ public class DefaultSaver extends SaverImplementation {
         Log.d(TAG, "Acquired:" + IMAGE_BUFFER.size());
         bufferLock = true;
         Log.d(TAG,"Size:"+IMAGE_BUFFER.size());
-        /*if (PhotonCamera.getSettings().frameCount == 1) {
+        /*if (ScameraApp.getSettings().frameCount == 1) {
             Path dngFile = ImagePath.newDNGFilePath();
             Log.d(TAG, "Size:" + IMAGE_BUFFER.size());
             boolean imageSaved = ImageSaver.Util.saveSingleRaw(dngFile, IMAGE_BUFFER.get(0),
@@ -75,10 +75,10 @@ public class DefaultSaver extends SaverImplementation {
                     e.printStackTrace();
                 }
             }*/
-        hdrxProcessor.configure(
-                PhotonCamera.getSettings().alignAlgorithm,
-                PhotonCamera.getSettings().rawSaver,
-                PhotonCamera.getSettings().selectedMode
+        scamProcessor.configure(
+                ScameraApp.getSettings().alignAlgorithm,
+                ScameraApp.getSettings().rawSaver,
+                ScameraApp.getSettings().selectedMode
         );
         ArrayList<ImageFrame> slicedBuffer = new ArrayList<>();
         ArrayList<ImageFrame> imagebuffer = new ArrayList<>();
@@ -101,7 +101,7 @@ public class DefaultSaver extends SaverImplementation {
 
         Log.d(TAG,"moving images");
         //Log.d(TAG,"moved images:"+slicedBuffer.size());
-        hdrxProcessor.start(
+        scamProcessor.start(
                 dngFile,
                 imageFile,
                 ParseExif.parse(captureResult, captureRequest),

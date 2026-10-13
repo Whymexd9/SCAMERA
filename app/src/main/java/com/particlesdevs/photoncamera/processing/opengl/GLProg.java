@@ -3,7 +3,7 @@ package com.particlesdevs.photoncamera.processing.opengl;
 import android.graphics.Point;
 import com.particlesdevs.photoncamera.util.Log;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -62,7 +62,7 @@ public class GLProg implements AutoCloseable {
         if (!diskTried) {
             diskTried = true;
             try {
-                android.content.Context context = PhotonCamera.getAppContext();
+                android.content.Context context = ScameraApp.getAppContext();
                 if (context != null) disk = new GLProgramDiskCache(new File(context.getCacheDir(), "glprog"));
             } catch (RuntimeException ignored) {}
         }
@@ -175,7 +175,7 @@ public class GLProg implements AutoCloseable {
     }
     public void useAssetProgram(String name,boolean compute){
         if (PostGlMode.legacy()) {
-            useProgram(PhotonCamera.getAssetLoader().getString("shaders/"+name+".glsl"),compute);
+            useProgram(ScameraApp.getAssetLoader().getString("shaders/"+name+".glsl"),compute);
             return;
         }
         // W1.11: the asset text, its #import / #define processing and the compute layouts are the same for the same name and
@@ -183,7 +183,7 @@ public class GLProg implements AutoCloseable {
         final String key = assetKey(name);
         Prepared prepared = PREPARED.get(key);
         if (prepared == null) {
-            final String source = PhotonCamera.getAssetLoader().getString("shaders/"+name+".glsl");
+            final String source = ScameraApp.getAssetLoader().getString("shaders/"+name+".glsl");
             final String shader = changedDef ? GLInterface.loadShader(source, Defines) : GLInterface.loadShader(source);
             prepared = new Prepared(shader, GLInterface.getLayouts(shader));
             if (PREPARED.size() >= PREPARED_LIMIT) PREPARED.clear();
@@ -214,7 +214,7 @@ public class GLProg implements AutoCloseable {
         useUtilProgram(name,false);
     }
     public void useUtilProgram(String name,boolean compute){
-        useProgram(PhotonCamera.getAssetLoader().getString("shaders/utils/"+name+".glsl"),compute);
+        useProgram(ScameraApp.getAssetLoader().getString("shaders/utils/"+name+".glsl"),compute);
     }
     public void useProgram(int fragmentRes){
         useProgram(fragmentRes,false);

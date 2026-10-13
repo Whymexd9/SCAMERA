@@ -8,7 +8,7 @@ import com.particlesdevs.photoncamera.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 /**
  * Added by vibhorSrv on 16/09/2020
@@ -17,7 +17,7 @@ public class ActivityLifecycleMonitor implements Application.ActivityLifecycleCa
     private static final String TAG = "ActivityMonitor";
 
     void log(String msg) {
-        if (PhotonCamera.DEBUG)
+        if (ScameraApp.DEBUG)
             Log.d(TAG, msg);
     }
 

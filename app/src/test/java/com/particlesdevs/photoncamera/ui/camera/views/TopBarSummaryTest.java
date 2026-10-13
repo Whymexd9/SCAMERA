@@ -13,7 +13,7 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 import com.particlesdevs.photoncamera.R;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.circularbarlib.ui.ManualSummaryView;
 import com.particlesdevs.photoncamera.circularbarlib.ui.ViewObserver;
 import com.particlesdevs.photoncamera.databinding.CameraFragmentBinding;
@@ -48,18 +48,18 @@ import static org.mockito.Mockito.*;
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class TopBarSummaryTest {
     private Context context;
-    private MockedStatic<PhotonCamera> camera;
+    private MockedStatic<ScameraApp> camera;
 
     @Before
     public void setUp() {
-        context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Photon_SettingsActivity);
+        context = new ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_Scamera_SettingsActivity);
         SettingsManager manager = new SettingsManager(context);
-        camera = mockStatic(PhotonCamera.class);
-        camera.when(PhotonCamera::getAppContext).thenReturn(context);
-        camera.when(PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        camera.when(() -> PhotonCamera.getStringStatic(anyInt())).thenAnswer(i -> context.getString(i.getArgument(0)));
-        camera.when(PhotonCamera::getSettingsManagerStatic).thenReturn(manager);
-        camera.when(PhotonCamera::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
+        camera = mockStatic(ScameraApp.class);
+        camera.when(ScameraApp::getAppContext).thenReturn(context);
+        camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        camera.when(() -> ScameraApp.getStringStatic(anyInt())).thenAnswer(i -> context.getString(i.getArgument(0)));
+        camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
+        camera.when(ScameraApp::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
         PreferenceKeys.initialise(manager);
     }
 
@@ -81,7 +81,7 @@ public class TopBarSummaryTest {
             controller.setup();
             Activity activity = controller.get();
             CameraFragmentBinding binding = CameraFragmentBinding.inflate(LayoutInflater.from(new ContextThemeWrapper(activity,
-                    R.style.Theme_Photon_SettingsActivity)));
+                    R.style.Theme_Scamera_SettingsActivity)));
             CameraFragmentModel model = new CameraFragmentModel();
             float density = context.getResources().getDisplayMetrics().density;
             model.setScreenAspectRatio(20f / 9f); // a tall phone: the preview starts under the top bar

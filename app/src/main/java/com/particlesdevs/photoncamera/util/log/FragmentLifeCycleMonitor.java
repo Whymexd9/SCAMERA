@@ -10,7 +10,7 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 /**
  * Added by vibhorSrv on 17/09/2020
@@ -19,7 +19,7 @@ public class FragmentLifeCycleMonitor extends FragmentManager.FragmentLifecycleC
     private static final String TAG = "FragmentMonitor";
 
     private void log(String msg) {
-        if (PhotonCamera.DEBUG)
+        if (ScameraApp.DEBUG)
             Log.d(TAG, msg);
     }
 

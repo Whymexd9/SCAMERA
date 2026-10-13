@@ -10,7 +10,7 @@ import com.particlesdevs.photoncamera.util.Log;
 
 import androidx.annotation.NonNull;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.circularbarlib.api.ManualModeConsole;
 
@@ -37,7 +37,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private volatile boolean mMirrorPreview;
 
     private final GLPreview mView;
-    /** Measures the live stream so the tone curve is current before the shutter. */
+    /** Measures the live stream's brightness for the manual panel's software shutter / ISO priority (SceneLuma). */
     private final LiveSceneMeter mSceneMeter = new LiveSceneMeter();
     /** Develops the preview RAW stream; replaces the ISP image when it has a frame. */
     private final LiveRawRenderer mRawRenderer = new LiveRawRenderer();
@@ -126,20 +126,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         GLES20.glUniform1i(enablePeak, peakEnabled);
         GLES20.glUniform1i(mirror, mMirrorPreview ? 1 : 0);
 
-        final boolean liveLook =
-                com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderLookEnabled();
-        if (liveLook) updateToneCurve();
-        final boolean lookOn = mCurveReady && liveLook;
-        GLES20.glUniform1i(uLookEnabled, lookOn ? 1 : 0);
         GLES20.glUniform1f(uGain, mFrameGain);
-        // Bind the curve to unit 1 unconditionally. An unset sampler2D defaults to
-        // unit 0, where the external OES preview texture already lives, and two
-        // samplers of different types on one unit is undefined - on this device it
-        // rendered the viewfinder black until something else rebound the units.
-        GLES20.glUniform1i(uToneCurve, 1);
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lookOn ? mCurveTex[0] : 0);
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
 
         GLES20.glVertexAttribPointer(vPosition, 2, GLES20.GL_FLOAT, false, 4 * 2, pVertex);
         GLES20.glVertexAttribPointer(vTexCoord, 2, GLES20.GL_FLOAT, false, 4 * 2, pTexCoord);
@@ -148,12 +135,9 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         // Measure after drawing, so a failure here cannot leave the viewfinder
         // blank, and re-bind this program afterwards since the meter uses its
         // own. Only runs on one frame in eight.
-        // Driven by the setting, not by lookOn: on the first frames no curve
-        // has been published yet, and gating on one would mean never producing
-        // the first one.
-        // P82: also while the manual panel's software shutter / ISO priority needs the viewfinder's brightness
-        if (liveLook || com.particlesdevs.photoncamera.manual.SceneLuma.wanted()) {
-            mSceneMeter.measure(pVertex, pTexCoord, hTex[0], liveLook);
+        // P82: while the manual panel's software shutter / ISO priority needs the viewfinder's brightness
+        if (com.particlesdevs.photoncamera.manual.SceneLuma.wanted()) {
+            mSceneMeter.measure(pVertex, pTexCoord, hTex[0]);
             GLES20.glUseProgram(hProgramHandle);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, hTex[0]);
@@ -164,44 +148,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
     private int hProgramHandle;
     private int uTexRotateMatrix;
-    private int uToneCurve;
-    private int uLookEnabled;
-    private final int[] mCurveTex = new int[1];
-    private int mCurveVersion = -1;
-    private boolean mCurveReady = false;
 
-    /**
-     * Upload the published tone curve when it changes. Runs on the GL thread; the
-     * version check keeps this to an integer compare on all but the first frame
-     * after a shot.
-     */
-    private void updateToneCurve() {
-        int v = com.particlesdevs.photoncamera.processing.PreviewLook.getVersion();
-        if (v == mCurveVersion) return;
-        float[] curve = com.particlesdevs.photoncamera.processing.PreviewLook.getToneCurve();
-        mCurveVersion = v;
-        if (curve == null || curve.length == 0) {
-            mCurveReady = false;
-            return;
-        }
-        if (mCurveTex[0] == 0) {
-            GLES20.glGenTextures(1, mCurveTex, 0);
-        }
-        FloatBuffer buf = ByteBuffer.allocateDirect(curve.length * 4)
-                .order(ByteOrder.nativeOrder()).asFloatBuffer();
-        buf.put(curve);
-        buf.position(0);
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE1);
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mCurveTex[0]);
-        GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES30.GL_R16F,
-                curve.length, 1, 0, GLES30.GL_RED, GLES20.GL_FLOAT, buf);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        mCurveReady = true;
-    }
     private int vPosition;
     private int vTexCoord;
     private int enablePeak;
@@ -229,8 +176,8 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         // looper, posts them to the main thread: every busy moment of the UI during processing held the viewfinder back)
         mSTexture.setOnFrameAvailableListener(this, frameHandler());
 
-        String vss_default = PhotonCamera.getAssetLoader().getString("shaders/preview/main_vs.glsl");
-        String fss_default = PhotonCamera.getAssetLoader().getString("shaders/preview/main_fs.glsl");
+        String vss_default = ScameraApp.getAssetLoader().getString("shaders/preview/main_vs.glsl");
+        String fss_default = ScameraApp.getAssetLoader().getString("shaders/preview/main_fs.glsl");
         int hProgram = loadShader(vss_default, fss_default);
         hProgramHandle = hProgram;
         GLES20.glUseProgram(hProgram);
@@ -239,15 +186,6 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         vPosition = GLES20.glGetAttribLocation(hProgram, "vPosition");
         vTexCoord = GLES20.glGetAttribLocation(hProgram, "vTexCoord");
         enablePeak = GLES20.glGetUniformLocation(hProgram, "enablePeak");
-        // The GL context is recreated when the activity returns from the gallery,
-        // which invalidates every texture name. Keeping the old one bound a name
-        // that no longer exists and the viewfinder went black. Drop it and let the
-        // next frame upload the curve again.
-        mCurveTex[0] = 0;
-        mCurveVersion = -1;
-        mCurveReady = false;
-        uToneCurve = GLES20.glGetUniformLocation(hProgram, "uToneCurve");
-        uLookEnabled = GLES20.glGetUniformLocation(hProgram, "uLookEnabled");
         uGain = GLES20.glGetUniformLocation(hProgram, "uGain");
         mirror = GLES20.glGetUniformLocation(hProgram, "mirror");
         GLES20.glVertexAttribPointer(vPosition, 2, GLES20.GL_FLOAT, false, 4 * 2, pVertex);
@@ -434,7 +372,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     }
 
     private int getPeakEnabled() {
-        int focusPeakSetting = PhotonCamera.getSettings().focusPeak;
+        int focusPeakSetting = ScameraApp.getSettings().focusPeak;
         if (focusPeakSetting == 1) {
             return 1; // On
         } else if (focusPeakSetting == 2) {

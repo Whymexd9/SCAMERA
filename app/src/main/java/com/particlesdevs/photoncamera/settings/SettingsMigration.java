@@ -46,18 +46,16 @@ public final class SettingsMigration {
         editor.apply();
     }
     /**
-     * Parameters the camera screen no longer offers, left over from PhotonCamera: the HDRX switch (read by nothing), EIS
-     * (only while recording video), exposure bracketing (only the old PhotonCamera planner; the hybrid and SCAM HDR plan
+     * Parameters the camera screen no longer offers: EIS
+     * (only while recording video), exposure bracketing (only the old planner; the hybrid and SCAM HDR plan
      * their own frames), Quad Bayer (switches the RAW stream to the full sensor mode, which the ZSL burst of the hybrid
      * must not) and a fixed preview FPS (caps the exposure of the ZSL frames). They go back to their defaults, so a value
      * chosen in an older build cannot stay on unseen. Capture still reads EIS, FPS and Quad, so these resets stay even
      * though the settings bar that showed them is gone (P25: moved here from SettingsBarEntryProvider).
      */
     public static void resetRemovedSettings(android.content.res.Resources res) {
-        boolean hdrx = res.getBoolean(R.bool.pref_hdrx_mode_default);
         boolean eis = res.getBoolean(R.bool.pref_eis_photo_default);
         boolean quad = res.getBoolean(R.bool.pref_quad_bayer_default);
-        if (PreferenceKeys.isHdrXOn() != hdrx) PreferenceKeys.setHdrX(hdrx);
         if (PreferenceKeys.isEisPhotoOn() != eis) PreferenceKeys.setEisPhoto(eis);
         if (PreferenceKeys.isQuadBayerOn() != quad) PreferenceKeys.setQuadBayer(quad);
         if (PreferenceKeys.getFpsMode() != 0) PreferenceKeys.setFpsMode(0);
@@ -101,7 +99,7 @@ public final class SettingsMigration {
             "pref_ai_denoise_strength_key", "pref_ai_denoise_luma_key", "pref_ai_denoise_chroma_key",
             "pref_ai_denoise_model_key", "pref_remosaic_dump_key", "pref_noise_dynamic_enabled_key",
             // P5: the legacy post-processing (RT / ESD3D denoise, GCam finish, tone pipelines, ACES, Capture One,
-            // darktable, false colour / CA, PhotonCamera tone sliders, noise-model ISO overrides)
+            // darktable, false colour / CA, the old tone sliders, noise-model ISO overrides)
             "pref_rt_denoise_backend", "pref_capture_one_enabled_key", "pref_false_color_enabled_key",
             "pref_saliency_protection_key", "pref_false_color_strength_key", "pref_defringe_purple_key",
             "pref_defringe_green_key", "pref_ca_red_key", "pref_ca_blue_key", "pref_saturation_seekbar_key",
@@ -126,10 +124,12 @@ public final class SettingsMigration {
             "pref_tunable_camerauiviewimpl_enablequadres", "ui_sheet_quick", "settings_favorite_keys",
             // Settings audit (8 October 2026): «Формат превью» only added an ImageReader nobody read to the session
             "pref_preview_format_key",
-            // Settings audit S5: keys of PhotonCamera settings with no row since P4 / P5 that api/Settings still read
+            // Settings audit S5: keys of inherited settings with no row since P4 / P5 that api/Settings still read
             "pref_enable_system_nr_key", "pref_disable_aligning_key", "pref_enhanced_processing_key", "pref_hdrx_nr_key",
             "pref_chroma_nr_seekbar_key", "pref_luma_nr_seekbar_key", "pref_gain_seekbar_key", "pref_sharpness_seekbar_key",
-            "pref_nr_luma_enabled_key", "pref_nr_chroma_enabled_key", "pref_live_viewfinder_look_key", "pref_align_method_key"));
+            "pref_nr_luma_enabled_key", "pref_nr_chroma_enabled_key", "pref_live_viewfinder_look_key", "pref_align_method_key",
+            // The former HDR switch of the top bar (read by nothing since the two SCAM routes)
+            "pref_hdrx_key"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes
@@ -246,7 +246,7 @@ public final class SettingsMigration {
     static final String LEGACY_QUICK = "ui_sheet_quick";
     /** The ☆ favourites of the viewfinder: a JSON array of preference keys. */
     static final String LEGACY_FAVOURITES = "settings_favorite_keys";
-    /** The concept E quick buttons that have a key; HDRX, EIS, Quad, FPS and bracketing are gone. */
+    /** The concept E quick buttons that have a key; the others (EIS, Quad, FPS, bracketing, the former HDR switch) are gone. */
     private static final Map<String, String> QUICK_KEYS = new java.util.LinkedHashMap<>();
     static {
         QUICK_KEYS.put("FLASH", ShadeCatalog.FLASH);

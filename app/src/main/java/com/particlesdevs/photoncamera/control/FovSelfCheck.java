@@ -170,7 +170,7 @@ public final class FovSelfCheck implements SubjectFrames.Sink {
         store(appContext, key(), crop);
         sessionCrop = crop;
         final Runnable changed = onCrop;
-        com.particlesdevs.photoncamera.app.PhotonCamera.getMainHandler().post(() -> {
+        com.particlesdevs.photoncamera.app.ScameraApp.getMainHandler().post(() -> {
             if (ZoomController.setStreamCrop(crop) && changed != null) changed.run();
         });
     }

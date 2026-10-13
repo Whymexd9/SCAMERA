@@ -11,7 +11,7 @@ import android.os.Looper;
 
 import androidx.annotation.Nullable;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.RawPayloadCheck;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
@@ -93,7 +93,7 @@ public final class Dcg14Mode {
 
     @Nullable
     private static SharedPreferences prefs() {
-        Context c = PhotonCamera.getAppContext();
+        Context c = ScameraApp.getAppContext();
         return c == null ? null : c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 

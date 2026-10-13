@@ -31,7 +31,7 @@ SCAM HDR, которые гибрид раньше читал (fusion, тон, A
 конвейер, алгоритмы склейки HDR+), показаны неактивными с причиной (`SettingsAvailability`).
 
 Все ключи — `pref_lmc_hybrid_*`, пер‑модульные. Обработка снимка идёт под **профилем снимка**
-(`PreferenceKeys.beginShotProfile/endShotProfile` вокруг `HdrxProcessor`, `ThreadLocal` потока обработки — захват следующего
+(`PreferenceKeys.beginShotProfile/endShotProfile` вокруг `ScamProcessor`, `ThreadLocal` потока обработки — захват следующего
 снимка и видоискатель читают живой маршрут): общие узлы SCAM HDR и гибрида (`niceInternalValue/Switch`, `vivoHdrValue`,
 `profileKey/profileNumber` — AE в `LinearExposure`, колено в `AgxTone`; фьюжн, despeckle, модель шума, CRE) на снимке
 гибрида читают копии `pref_lmc_hybrid_<k>` и никогда — ключи SCAM HDR. `nice_dev.txt` (Android/data/…/files): `hybrid 0/1`
@@ -103,7 +103,7 @@ Sabre 6.1 умеет сливать на сетке вдвое плотнее с
 32 МБ и лестница вариантов в `HybridGpu::get`). Расширение ядра базы считается по покрытию в каждой субпозиции;
 DNG строится из среднего четырёх субпозиций (сенсорная сетка, 14 бит).
 
-Обработка идёт **целиком на сетке 2×**: `HdrxProcessor` после сохранения DNG переводит `rawSize`/`sensorPix`/
+Обработка идёт **целиком на сетке 2×**: `ScamProcessor` после сохранения DNG переводит `rawSize`/`sensorPix`/
 `XPerMm` на размер RGB воркера (`LmcHybridBurst.lastOutputSize`, `Parameters.outputScale` = 2 → радиус резкости
 NiceSharpen ×2), и только после всего конвейера, включая резкость, готовый кадр уменьшается до выбранного размера.
 Уменьшение делает GPU последним узлом конвейера перед поворотом (`HybridFinalResize`, шейдер

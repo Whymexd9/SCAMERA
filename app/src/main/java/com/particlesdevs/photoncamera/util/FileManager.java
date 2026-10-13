@@ -5,7 +5,7 @@ import com.particlesdevs.photoncamera.util.Log;
 
 import androidx.annotation.NonNull;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 import java.io.File;
 import java.io.FilenameFilter;
@@ -20,17 +20,16 @@ public class FileManager {
             com.particlesdevs.photoncamera.processing.PhotoFormat.isGalleryFile(name) && new File(dir, name).length() > 0;
     public static File sEXTERNAL_DIR = Environment.getExternalStorageDirectory();
     public static File sCACHE_DIR;
-    public static File sPHOTON_DIR = new File(sEXTERNAL_DIR + "//DCIM//PhotonCamera//");
-    public static File sPHOTON_RAW_DIR = new File(sEXTERNAL_DIR + "//DCIM//PhotonCamera//Raw//");
-    public static File sPHOTON_TUNING_DIR = new File(sEXTERNAL_DIR + "//DCIM//PhotonCamera//Tuning//");
+    /** DCIM/SCAMERA: the RAW (DNG) files in Raw/, the logs in Log/ (util/Log). Photos go to DCIM/Camera. */
+    public static File sSCAMERA_DIR = new File(sEXTERNAL_DIR + "//DCIM//SCAMERA//");
+    public static File sRAW_DIR = new File(sEXTERNAL_DIR + "//DCIM//SCAMERA//Raw//");
     public static File sDCIM_CAMERA = new File(sEXTERNAL_DIR + "//DCIM//Camera//");
     public static List<File> tempImageFiles;
 
 
     public static void CreateFolders() {
         Log.d(TAG, "CreatedFolder : " + sDCIM_CAMERA + '=' + sDCIM_CAMERA.mkdirs());
-        Log.d(TAG, "CreatedFolder : " + sPHOTON_RAW_DIR + '=' + sPHOTON_RAW_DIR.mkdirs());
-        Log.d(TAG, "CreatedFolder : " + sPHOTON_TUNING_DIR + '=' + sPHOTON_TUNING_DIR.mkdirs());
+        Log.d(TAG, "CreatedFolder : " + sRAW_DIR + '=' + sRAW_DIR.mkdirs());
     }
 
     public static void ScanRemovedFile(File f){
@@ -58,10 +57,10 @@ public class FileManager {
     @NonNull
     public static List<File> getAllImageFiles() {
         File[] dcimFiles = FileManager.sDCIM_CAMERA.listFiles(FILENAME_FILTER);
-        File[] photonRawFiles = FileManager.sPHOTON_RAW_DIR.listFiles(FILENAME_FILTER);
+        File[] rawFiles = FileManager.sRAW_DIR.listFiles(FILENAME_FILTER);
         List<File> filesList = new ArrayList<>();
         filesList.addAll(Arrays.asList(dcimFiles != null ? dcimFiles : new File[0]));
-        filesList.addAll(Arrays.asList(photonRawFiles != null ? photonRawFiles : new File[0]));
+        filesList.addAll(Arrays.asList(rawFiles != null ? rawFiles : new File[0]));
         if(tempImageFiles != null && tempImageFiles.size() > 2) {
             //On added Images
             if (tempImageFiles.size() < filesList.size()) {

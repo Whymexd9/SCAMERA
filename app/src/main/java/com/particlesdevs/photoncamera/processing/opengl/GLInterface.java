@@ -2,7 +2,7 @@ package com.particlesdevs.photoncamera.processing.opengl;
 
 import com.particlesdevs.photoncamera.util.Log;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
 
 import java.io.BufferedReader;
@@ -38,7 +38,7 @@ public class GLInterface {
         return loadShader(fragment,null);
     }
     public static String loadShader(int fragment,ArrayList<String[]> defines){
-        BufferedReader reader = new BufferedReader(new InputStreamReader(PhotonCamera.getResourcesStatic().openRawResource(fragment)));
+        BufferedReader reader = new BufferedReader(new InputStreamReader(ScameraApp.getResourcesStatic().openRawResource(fragment)));
         return readProgram(reader,defines);
     }
     public static String loadShader(String code,ArrayList<String[]> defines){
@@ -106,7 +106,7 @@ public class GLInterface {
             if(val.contains("#import")){
                 String imported = "";
                 if(!val.contains("//")) {
-                    imported = PhotonCamera.getAssetLoader().getString(
+                    imported = ScameraApp.getAssetLoader().getString(
                             "shaders/utils/" +
                                     val
                                             .replace("#", "")

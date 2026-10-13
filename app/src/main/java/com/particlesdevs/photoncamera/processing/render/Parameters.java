@@ -10,7 +10,6 @@ import android.hardware.camera2.params.BlackLevelPattern;
 import android.hardware.camera2.params.ColorSpaceTransform;
 import android.hardware.camera2.params.LensShadingMap;
 import android.os.Build;
-import android.os.Environment;
 
 import com.particlesdevs.photoncamera.settings.annotations.SensorConfig;
 import com.particlesdevs.photoncamera.settings.annotations.Tunable;
@@ -20,7 +19,7 @@ import android.util.SizeF;
 
 import androidx.annotation.NonNull;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.parameters.ExposureIndex;
 import com.particlesdevs.photoncamera.processing.parameters.FrameNumberSelector;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
@@ -29,10 +28,7 @@ import com.particlesdevs.photoncamera.api.VendorTagUtils;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.util.Allocator;
 
-import java.io.File;
-import java.io.FileNotFoundException;
 import java.util.Arrays;
-import java.util.Scanner;
 
 
 public class Parameters {
@@ -104,15 +100,10 @@ public class Parameters {
     public double[] cameraIntrinsicRev = new double[9];
     public float[][] tonemapCurves = new float[3][];
     public float gammaCurve = 2.0f;
-    public SpecificSettingSensor sensorSpecifics;
 
     public int tile = 16;
     public int tilesX = 0;
     public Point alignmentSize = new Point(0, 0);
-    public float[] HSVMap = null;
-    public float[] LookMap = null;
-    public int[] HSVMapSize = new int[2];
-    public int[] LookMapSize = new int[3];
 
     public int calibrationIlluminant1 = -1;
     public int calibrationIlluminant2 = -1;
@@ -125,7 +116,7 @@ public class Parameters {
     public float[] ForwardTransform2 = new float[9];
 
     public boolean mirror = false;
-    public String cameraID = PhotonCamera.getSettings().mCameraID;
+    public String cameraID = ScameraApp.getSettings().mCameraID;
     public int physicalID = 0;
     public int logicalID = 0;
 
@@ -156,13 +147,12 @@ public class Parameters {
 
     public void FillConstParameters(CameraCharacteristics characteristics, Point size) {
         com.particlesdevs.photoncamera.settings.TunableInjector.inject(this);
-        cameraID = PhotonCamera.getSettings().mCameraID;
+        cameraID = ScameraApp.getSettings().mCameraID;
         // Split x-y, x - logical, y - physical
         if(cameraID.contains("-")){
             String[] ids = cameraID.split("-");
             logicalID = Integer.parseInt(ids[0]);
             physicalID = Integer.parseInt(ids[1]);
-            //isDualSession = true;
         } else {
             physicalID = Integer.parseInt(cameraID);
             logicalID = Integer.parseInt(cameraID);
@@ -179,8 +169,8 @@ public class Parameters {
         for (int i = 0; i < 4; i++) blackLevel[i] = 64;
         Object ptr = characteristics.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
         if (ptr != null) cfaPattern = (byte) (int) ptr;
-        if (PhotonCamera.getSettings().cfaPattern >= 0) {
-            cfaPattern = (byte) PhotonCamera.getSettings().cfaPattern;
+        if (ScameraApp.getSettings().cfaPattern >= 0) {
+            cfaPattern = (byte) ScameraApp.getSettings().cfaPattern;
         }
         baseCfaPattern = (cfaPattern >= 0 && cfaPattern <= 3) ? cfaPattern : 0;
         quadCfa = ScameraPreferences.quadBayerDirectRequested()
@@ -268,7 +258,7 @@ public class Parameters {
         if(disableMirror){
             mirror = false;
         }
-        //hotPixels = PhotonCamera.getCameraFragment().mHotPixelMap;
+        //hotPixels = ScameraApp.getCameraFragment().mHotPixelMap;
     }
 
     /**
@@ -294,7 +284,6 @@ public class Parameters {
         hasGainMap = false;
         Integer staticWhite = CaptureController.mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
         if (staticWhite != null) whiteLevel = staticWhite;
-        sensorSpecifics = PhotonCamera.getSpecificSensor().selectedSensorSpecifics;
         Integer sensivity = result.get(CaptureResult.SENSOR_SENSITIVITY);
         if (sensivity == null) {
             sensivity = request.get(CaptureRequest.SENSOR_SENSITIVITY);
@@ -303,7 +292,7 @@ public class Parameters {
             }
         }
         iso = sensivity;
-        noiseModeler = new NoiseModeler(result.get(CaptureResult.SENSOR_NOISE_PROFILE), analogIso, sensivity, cfaPattern, sensorSpecifics);
+        noiseModeler = new NoiseModeler(result.get(CaptureResult.SENSOR_NOISE_PROFILE), analogIso, sensivity, cfaPattern);
         Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
         if (exposure == null) {
             exposure = request.get(CaptureRequest.SENSOR_EXPOSURE_TIME);
@@ -578,37 +567,6 @@ public class Parameters {
         ColorSpaceTransform forwardt1 = characteristics.get(CameraCharacteristics.SENSOR_FORWARD_MATRIX1);
         ColorSpaceTransform forwardt2 = characteristics.get(CameraCharacteristics.SENSOR_FORWARD_MATRIX2);
 
-        if (sensorSpecifics.CCTExists) {
-            if (sensorSpecifics.calibrationTransform1 != null) {
-                calibration1 = sensorSpecifics.calibrationTransform1;
-                Log.d(TAG, "Using custom calibration transform 1:"+ calibration1);
-            }
-            if (sensorSpecifics.calibrationTransform2 != null) {
-                calibration2 = sensorSpecifics.calibrationTransform2;
-            }
-
-            if (sensorSpecifics.colorTransform1 != null) {
-                colorMat1 = sensorSpecifics.colorTransform1;
-                Log.d(TAG, "Using custom color transform 1:"+ colorMat1.toString());
-            }
-            if (sensorSpecifics.colorTransform2 != null) {
-                colorMat2 = sensorSpecifics.colorTransform2;
-            }
-
-            if (sensorSpecifics.forwardMatrix1 != null) {
-                forwardt1 = sensorSpecifics.forwardMatrix1;
-            }
-            if (sensorSpecifics.forwardMatrix2 != null) {
-                forwardt2 = sensorSpecifics.forwardMatrix2;
-            }
-            if (sensorSpecifics.referenceIlluminant1 != -1) {
-                ref1 = sensorSpecifics.referenceIlluminant1;
-            }
-            if (sensorSpecifics.referenceIlluminant2 != -1) {
-                ref2 = sensorSpecifics.referenceIlluminant2;
-            }
-
-        }
         // Check if forward matrices have each component non-zero, otherwise replace with identity
         boolean invertible = true;
         for (int i = 0; i < 3; i++) {
@@ -698,31 +656,8 @@ public class Parameters {
                 calibrationTransform1, calibrationTransform2, whitePoint,
                 interpolationFactor, /*out*/sensorToXYZ);
         Log.d("Parameters", "sensorToXYZ: " + Arrays.toString(sensorToXYZ));
-        if (sensorSpecifics.profileHueSatMapDims != null && sensorSpecifics.profileHueSatMapData1 != null && sensorSpecifics.profileHueSatMapData2 != null) {
-            HSVMapSize[0] = sensorSpecifics.profileHueSatMapDims[0];
-            HSVMapSize[1] = sensorSpecifics.profileHueSatMapDims[1];
-            HSVMap = new float[HSVMapSize[0] * HSVMapSize[1] * 3];
-            for (int i = 0; i < HSVMap.length; i+=3) {
-                HSVMap[i] = sensorSpecifics.profileHueSatMapData1[i] * (1.f - (float)interpolationFactor) + sensorSpecifics.profileHueSatMapData2[i] * (float)interpolationFactor;
-                HSVMap[i+1] = sensorSpecifics.profileHueSatMapData1[i+1] * (1.f - (float)interpolationFactor) + sensorSpecifics.profileHueSatMapData2[i+1] * (float)interpolationFactor;
-                HSVMap[i+2] = sensorSpecifics.profileHueSatMapData1[i+2] * (1.f - (float)interpolationFactor) + sensorSpecifics.profileHueSatMapData2[i+2] * (float)interpolationFactor;
-                HSVMap[i] /= 360.f;
-            }
-        }
-        if (sensorSpecifics.profileLookTableDims != null && sensorSpecifics.profileLookTableData != null) {
-            LookMapSize[0] = sensorSpecifics.profileLookTableDims[0];
-            LookMapSize[1] = sensorSpecifics.profileLookTableDims[1];
-            LookMapSize[2] = sensorSpecifics.profileLookTableDims[2];
-            LookMap = new float[LookMapSize[0] * LookMapSize[1] * LookMapSize[2] * 3];
-            for (int i = 0; i < LookMap.length; i+=3) {
-                LookMap[i] = sensorSpecifics.profileLookTableData[i] / 360.f;
-                LookMap[i+1] = sensorSpecifics.profileLookTableData[i+1];
-                LookMap[i+2] = sensorSpecifics.profileLookTableData[i+2];
-            }
-        }
         Converter.multiply(Converter.sXYZtoProPhoto, sensorToXYZ, /*out*/sensorToProPhoto);
-        File customCCT = new File(Environment.getExternalStorageDirectory() + "//DCIM//PhotonCamera//", "customCCT.txt");
-        //ColorSpaceTransform CST = PhotonCamera.getCaptureController().mColorSpaceTransform;//= result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
+        //ColorSpaceTransform CST = ScameraApp.getCaptureController().mColorSpaceTransform;//= result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
         ColorSpaceTransform CST = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
         CST = oplusCcmInstead(CST, result);
         Log.d(TAG, "result colorCorrection transform=" + CST + " gains=" + result.get(CaptureResult.COLOR_CORRECTION_GAINS));
@@ -736,10 +671,10 @@ public class Parameters {
                         forwardt1.getElement(2, 2).floatValue() == forwardt2.getElement(2, 2).floatValue() &&
                         forwardt1.getElement(1, 2).floatValue() == forwardt2.getElement(1, 2).floatValue();
         Rational[] rat = new Rational[9];
-        if (PhotonCamera.getSettings().colorMethod == 1){
+        if (ScameraApp.getSettings().colorMethod == 1){
             wrongCalibration = false;
         }
-        if (PhotonCamera.getSettings().colorMethod == 2){
+        if (ScameraApp.getSettings().colorMethod == 2){
             wrongCalibration = true;
         }
         if (CST != null) {
@@ -750,10 +685,7 @@ public class Parameters {
             }
             if (cnt <= 4) wrongCalibration = false;
         } else wrongCalibration = false;
-        if (sensorSpecifics.CCTExists) wrongCalibration = false;
         if (oppoTuned) wrongCalibration = false;
-        if (PhotonCamera.getSpecific().specificSetting.isRawColorCorrection)
-            wrongCalibration = false;
         // vivo X200 Ultra: the DNG matrices in the characteristics are generic (the interpolation always lands near D65), but the
         // HAL reports the colour transform its ISP tuning uses at the scene's colour temperature, together with the
         // matching white balance gains. SCAM HDR renders with that matrix (the same idea as the OPPO tuned CCM per CCT).
@@ -761,7 +693,7 @@ public class Parameters {
             wrongCalibration = true;
             Log.d(TAG, "Using the ISP colour transform of the capture result (vivo)");
         }
-        if (wrongCalibration && !customCCT.exists()) {
+        if (wrongCalibration) {
             sensorToProPhoto[0] = 1.0f / whitePoint[0];
             sensorToProPhoto[1] = 0.0f;
             sensorToProPhoto[2] = 0.0f;
@@ -777,9 +709,9 @@ public class Parameters {
         } else {
             Log.d(TAG, "Using calculated color correction transform");
         }
-        Log.d(TAG, Arrays.toString(sensorToProPhoto) + PhotonCamera.getSettings().colorMethod);
+        Log.d(TAG, Arrays.toString(sensorToProPhoto) + ScameraApp.getSettings().colorMethod);
         Converter.multiply(Converter.sXYZtoSRGB, Converter.sProPhotoToXYZ, /*out*/proPhotoToSRGB);
-        if (CST != null && wrongCalibration && !customCCT.exists()) {
+        if (CST != null && wrongCalibration) {
             Rational[] temp = new Rational[9];
             CST.copyElements(temp, 0);
             for (int i = 0; i < 9; i++) {
@@ -789,24 +721,7 @@ public class Parameters {
             normalize(proPhotoToSRGB);
         }
 
-        Log.d(TAG, "customCCT exist:" + customCCT.exists());
-        Scanner sc = null;
         CCT.matrix = proPhotoToSRGB;
-        if (customCCT.exists()) {
-            try {
-                sc = new Scanner(customCCT);
-            } catch (FileNotFoundException ignored) {
-            }
-            assert sc != null;
-            CCT.FillCCT(sc);
-            /*sc.useDelimiter(",");
-            sc.useLocale(Locale.US);
-            for (int i = 0; i < 9; i++) {
-                String inp = sc.next();
-                proPhotoToSRGB[i] = Float.parseFloat(inp);
-                //Log.d(TAG, "Read1:" + proPhotoToSRGB[i]);
-            }*/
-        }
         float[] dcpXyz = com.particlesdevs.photoncamera.processing.color.DcpProfiles.activeToXyz(whitePoint);
         if (dcpXyz != null) {
             Converter.multiply(Converter.sXYZtoProPhoto, dcpXyz, sensorToProPhoto);
@@ -817,7 +732,7 @@ public class Parameters {
         // vivo: the DNG estimate above lands on a reference illuminant for every scene; the white balance of the shot
         // against the camera's daylight white gives the real colour temperature (the warm cast kept in the render,
         // the warm-light hue look).
-        if (!oppoTuned && dcpXyz == null && !customCCT.exists() && wrongCalibration) {
+        if (!oppoTuned && dcpXyz == null && wrongCalibration) {
             float wbCct = com.particlesdevs.photoncamera.processing.color.SceneIlluminant.cct(cameraID, whitePoint, CCT.matrix);
             if (wbCct > 0f) {
                 Log.d(TAG, "Scene light from the white balance: " + wbCct + " K (DNG estimate " + sceneCct + " K, camera " + cameraID + ")");
@@ -924,11 +839,11 @@ public class Parameters {
                 "\n hasGainMap=" + hasGainMap +
                 "\n FrameCount=" + (multiFrameCount>0 ? multiFrameCount : FrameNumberSelector.frameCount) +
                 "\n CameraID=" + cameraID +
-                "\n Noise Merging=" + FltFormat(PhotonCamera.getSettings().mergeStrength) +
-                "\n Align=" + PhotonCamera.getSettings().alignAlgorithm +
-                "\n Color=" + PhotonCamera.getSettings().colorMethod +
+                "\n Noise Merging=" + FltFormat(ScameraApp.getSettings().mergeStrength) +
+                "\n Align=" + ScameraApp.getSettings().alignAlgorithm +
+                "\n Color=" + ScameraApp.getSettings().colorMethod +
                 "\n FocalL=" + FltFormat(focalLength) +
-                "\n Version=" + PhotonCamera.getVersion();
+                "\n Version=" + ScameraApp.getVersion();
     }
 
     @SuppressLint("DefaultLocale")

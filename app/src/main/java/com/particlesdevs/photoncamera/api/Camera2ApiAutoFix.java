@@ -11,7 +11,7 @@ import android.util.Range;
 import android.util.Rational;
 import android.util.Size;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.processing.opengl.GLDrawParams;
 import com.particlesdevs.photoncamera.processing.parameters.ExposureIndex;
@@ -82,25 +82,25 @@ public class Camera2ApiAutoFix {
         fix.whitePoint();
         fix.CCM();
         /*Camera2ApiAutoFix.WhiteLevel(CameraFragment.mCaptureResult, (int)oldWL);
-        Camera2ApiAutoFix.BlackLevel(CameraFragment.mCaptureResult, PhotonCamera.getParameters().blackLevel, 1.f);
+        Camera2ApiAutoFix.BlackLevel(CameraFragment.mCaptureResult, ScameraApp.getParameters().blackLevel, 1.f);
         oldWL = -1.0;*/
     }
 
     public static void ApplyBurst() {
         /*if(oldWL == -1.0) {
-            PhotonCamera.getParameters().FillParameters(null,CameraFragment.mCameraCharacteristics,null);
+            ScameraApp.getParameters().FillParameters(null,CameraFragment.mCameraCharacteristics,null);
             Camera2ApiAutoFix.WhiteLevel(null, 65535);
-            Camera2ApiAutoFix.BlackLevel(null, PhotonCamera.getParameters().blackLevel, (float) (65535) / PhotonCamera.getParameters().whiteLevel);
-            oldWL = PhotonCamera.getParameters().whiteLevel;
+            Camera2ApiAutoFix.BlackLevel(null, ScameraApp.getParameters().blackLevel, (float) (65535) / ScameraApp.getParameters().whiteLevel);
+            oldWL = ScameraApp.getParameters().whiteLevel;
         }*/
     }
 
     private void whitePoint() {
-        CameraReflectionApi.set(SENSOR_NEUTRAL_COLOR_POINT, PhotonCamera.getCaptureController().mPreviewTemp);
+        CameraReflectionApi.set(SENSOR_NEUTRAL_COLOR_POINT, ScameraApp.getCaptureController().mPreviewTemp);
     }
 
     private void CCM() {
-        CameraReflectionApi.set(COLOR_CORRECTION_TRANSFORM, PhotonCamera.getCaptureController().mColorSpaceTransform);
+        CameraReflectionApi.set(COLOR_CORRECTION_TRANSFORM, ScameraApp.getCaptureController().mColorSpaceTransform);
     }
 
     public void curve() {
@@ -198,8 +198,8 @@ public class Camera2ApiAutoFix {
                                int patchWL) {
         if (patchWL != 0) {
             WhiteLevel(captureResult, patchWL);
-            BlackLevel(characteristics, captureResult, PhotonCamera.getParameters().blackLevel,
-                    (float) (patchWL) / PhotonCamera.getParameters().whiteLevel);
+            BlackLevel(characteristics, captureResult, ScameraApp.getParameters().blackLevel,
+                    (float) (patchWL) / ScameraApp.getParameters().whiteLevel);
         }
     }
 
@@ -207,8 +207,8 @@ public class Camera2ApiAutoFix {
                                CaptureResult captureResult,
                                int patchWL) {
         if (patchWL != 0) {
-            WhiteLevel(captureResult, PhotonCamera.getParameters().whiteLevel);
-            BlackLevel(characteristics, captureResult, PhotonCamera.getParameters().blackLevel,
+            WhiteLevel(captureResult, ScameraApp.getParameters().whiteLevel);
+            BlackLevel(characteristics, captureResult, ScameraApp.getParameters().blackLevel,
                     1.f);
         }
     }*/

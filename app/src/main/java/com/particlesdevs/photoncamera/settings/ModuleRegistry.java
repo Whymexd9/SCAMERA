@@ -2,13 +2,13 @@ package com.particlesdevs.photoncamera.settings;
 
 import android.content.SharedPreferences;
 import java.util.*;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 
 /** Stable button slots are distinct from physical IDs and from their display names. */
 public final class ModuleRegistry {
-    private static SharedPreferences prefs(){return PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();}
+    private static SharedPreferences prefs(){return ScameraApp.getSettingsManagerStatic().getDefaultPreferences();}
     public static String active(){String id=prefs().getString("module_active",PreferenceKeys.getCameraID());return id==null||id.isEmpty()?"0":id;}
     public static List<String> slots(){
         List<String> out=new ArrayList<>();for(String side:new String[]{"back","front"})for(int i=0;i<8;i++)if(prefs().contains("module_auto_"+side+i))out.add(side+i);return out;

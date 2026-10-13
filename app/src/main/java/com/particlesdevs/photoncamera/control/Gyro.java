@@ -6,7 +6,7 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import com.particlesdevs.photoncamera.util.Log;
 import com.particlesdevs.photoncamera.api.CameraMode;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -406,7 +406,7 @@ public class Gyro {
     }
     /** On a tripod in a photo mode (P25: the detection moved from the retired Night mode to Photo). */
     public boolean getTripod(){
-        return (tripodShakiness < 25) && CameraMode.isStill(PhotonCamera.getSettings().selectedMode);
+        return (tripodShakiness < 25) && CameraMode.isStill(ScameraApp.getSettings().selectedMode);
     }
 
     private void updateOrientationHistory() {
@@ -607,14 +607,14 @@ public class Gyro {
         try (PrintWriter p = pw) {
             p.println("GYROFLOW IMU LOG");
             p.println("version,1.3");
-            p.println("id,photoncamera_android");
+            p.println("id,scamera_android");
             // XYZ = identity mapping; user may need to adjust in Gyroflow's
             // IMU Orientation field to match their specific device.
             p.println("orientation,XYZ");
-            p.println("note,PhotonCamera RAW Video");
-            p.println("fwversion," + PhotonCamera.getVersion());
+            p.println("note,SCAMERA RAW video");
+            p.println("fwversion," + ScameraApp.getVersion());
             p.println("timestamp," + (wallTimeMs / 1000L));
-            p.println("vendor,PhotonCamera");
+            p.println("vendor,SCAMERA");
             p.println("videofilename," + outPath.getParent().getFileName());
             // tscale: timestamps are stored as nanoseconds → seconds = × 1e-9
             p.println("tscale,1.0e-9");

@@ -103,7 +103,7 @@ public final class MosaicBlockStore {
     private static Backing createBacking() {
         android.content.Context context = null;
         try {
-            context = com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext();
+            context = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext();
         } catch (RuntimeException ignored) { }
         if (context == null) return memoryBacking();
         final android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE);

@@ -1,17 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="EszdmanTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
-        <item name="colorAccent">#9F39B9</item>
-        <item name="colorPrimary">#9F39B9</item>
-        <item name="colorPrimaryContainer">#7B2D8F</item>
-        <!-- Black behind the viewfinder: a gradient competes with the scene and
-             tints the glass panels sitting on top of it. -->
-        <item name="cameraFragmentBackground">@color/settings_bg</item>
-    </style>
-
-
-
     <style name="BlueTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimaryContainer">@color/md_blue_600</item>
         <item name="colorPrimary">#90C7FF</item>

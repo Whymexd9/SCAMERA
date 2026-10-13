@@ -40,7 +40,7 @@ public final class ScamHdrDenoise extends Node {
     private void dumpInput(PostPipeline pipeline) { dumpTexture(pipeline, previousNode.WorkingTexture, "denoise-in"); }
 
     private void dumpTexture(PostPipeline pipeline, GLTexture source, String name) {
-        java.io.File dir = com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext().getExternalFilesDir(null);
+        java.io.File dir = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext().getExternalFilesDir(null);
         if (dir == null || !new java.io.File(dir, "dump-denoise").exists()) return;
         int[] oldRead = new int[1], framebuffer = new int[1];
         android.opengl.GLES30.glGetIntegerv(android.opengl.GLES30.GL_READ_FRAMEBUFFER_BINDING, oldRead, 0);
@@ -82,7 +82,7 @@ public final class ScamHdrDenoise extends Node {
      */
     private float effRef = 1f;
     private GLTexture loadEffectiveFrames(Point size) {
-        java.io.File debugDir = com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext().getExternalFilesDir(null);
+        java.io.File debugDir = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext().getExternalFilesDir(null);
         if (debugDir != null && new java.io.File(debugDir, "noeff").exists()) return null; // developer switch: uniform noise
         java.nio.ByteBuffer eff = ScamBurst.lastEffectiveFrames;
         if (eff == null || eff.capacity() != size.x * size.y) return null;

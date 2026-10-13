@@ -1,7 +1,7 @@
 package com.particlesdevs.photoncamera.settings;
 
 import android.content.SharedPreferences;
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.util.Lang;
 import java.util.*;
 
@@ -9,7 +9,7 @@ import java.util.*;
 public final class ModuleSensorSettings {
     private ModuleSensorSettings() {}
     public static final String COPY_PREFIX="sensor_copy_";
-    private static SharedPreferences prefs(){return PhotonCamera.getSettingsManagerStatic().getDefaultPreferences();}
+    private static SharedPreferences prefs(){return ScameraApp.getSettingsManagerStatic().getDefaultPreferences();}
     public static String title(String title){
         switch(title){
             case "Black Level Override":return Lang.t("Уровень чёрного","Black level");

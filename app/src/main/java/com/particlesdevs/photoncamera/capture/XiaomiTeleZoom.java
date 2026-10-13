@@ -409,7 +409,7 @@ public final class XiaomiTeleZoom {
     public static boolean enabled() {
         if (!phone()) return false;
         try {
-            return com.particlesdevs.photoncamera.app.PhotonCamera.getSettingsManagerStatic().getDefaultPreferences().getBoolean(PREF, true);
+            return com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getBoolean(PREF, true);
         } catch (RuntimeException notReady) {
             return false;
         }

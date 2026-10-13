@@ -25,18 +25,18 @@ public class HybridPlanTest {
     private MockedStatic<PreferenceKeys> prefs;
     /** Settings of the logs the plans below came from (before P68: Bento auto, 5 Shasta frames); empty = the app defaults. */
     private final java.util.Map<String, Float> pinned = new java.util.HashMap<>();
-    private MockedStatic<com.particlesdevs.photoncamera.app.PhotonCamera> photon;
+    private MockedStatic<com.particlesdevs.photoncamera.app.ScameraApp> appStatic;
 
     @Before public void setup() {
-        // PreferenceKeys' class initialisation reads strings through PhotonCamera (as in CameraResumeTest).
+        // PreferenceKeys' class initialisation reads strings through ScameraApp (as in CameraResumeTest).
         android.content.Context context = org.robolectric.RuntimeEnvironment.getApplication();
         com.particlesdevs.photoncamera.settings.SettingsManager settings = new com.particlesdevs.photoncamera.settings.SettingsManager(context);
-        photon = mockStatic(com.particlesdevs.photoncamera.app.PhotonCamera.class);
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getAppContext).thenReturn(context);
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getResourcesStatic).thenReturn(context.getResources());
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getSettingsManagerStatic).thenReturn(settings);
-        photon.when(com.particlesdevs.photoncamera.app.PhotonCamera::getSettings).thenReturn(new com.particlesdevs.photoncamera.api.Settings());
-        photon.when(() -> com.particlesdevs.photoncamera.app.PhotonCamera.getStringStatic(anyInt())).thenAnswer(i -> context.getString(i.getArgument(0)));
+        appStatic = mockStatic(com.particlesdevs.photoncamera.app.ScameraApp.class);
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getAppContext).thenReturn(context);
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getResourcesStatic).thenReturn(context.getResources());
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getSettingsManagerStatic).thenReturn(settings);
+        appStatic.when(com.particlesdevs.photoncamera.app.ScameraApp::getSettings).thenReturn(new com.particlesdevs.photoncamera.api.Settings());
+        appStatic.when(() -> com.particlesdevs.photoncamera.app.ScameraApp.getStringStatic(anyInt())).thenAnswer(i -> context.getString(i.getArgument(0)));
         prefs = mockStatic(PreferenceKeys.class);
         prefs.when(() -> PreferenceKeys.hybridSwitch(anyString(), anyBoolean())).thenAnswer(i -> i.getArgument(1));
         pinned.put("bento", 1f);
@@ -44,7 +44,7 @@ public class HybridPlanTest {
         prefs.when(() -> PreferenceKeys.hybridValue(anyString(), anyFloat())).thenAnswer(i -> pinned.getOrDefault(i.<String>getArgument(0), i.getArgument(1)));
         prefs.when(PreferenceKeys::getAntibandingHz).thenReturn(0);
     }
-    @After public void cleanup() { prefs.close(); photon.close(); }
+    @After public void cleanup() { prefs.close(); appStatic.close(); }
 
     private static CameraCharacteristics camera(int isoMax) {
         CameraCharacteristics c = mock(CameraCharacteristics.class);

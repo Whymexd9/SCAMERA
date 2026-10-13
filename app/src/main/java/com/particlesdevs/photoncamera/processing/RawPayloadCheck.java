@@ -335,7 +335,7 @@ public final class RawPayloadCheck {
     }
 
     private static void export(String name, String meta, byte[] head, byte[] mid58, byte[] mid34) {
-        android.content.Context context = com.particlesdevs.photoncamera.app.PhotonCamera.getAppContext();
+        android.content.Context context = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext();
         android.net.Uri uri = null;
         try {
             java.io.OutputStream stream;

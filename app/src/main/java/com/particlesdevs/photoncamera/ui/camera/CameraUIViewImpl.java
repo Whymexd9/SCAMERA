@@ -9,7 +9,7 @@ import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
 import android.widget.TextView;
 
-import com.particlesdevs.photoncamera.app.PhotonCamera;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import android.view.View;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
@@ -387,7 +387,7 @@ public class CameraUIViewImpl implements CameraUIView {
                 cameraFragment.cameraFragmentBinding.layoutViewfinder.captureProgressBar.setVisibility(View.VISIBLE);
                 setVideoRecordingInfoVisible(false);
             }
-            if(PhotonCamera.getSettings().aspect169 || mode == CameraMode.RAWVIDEO) {
+            if(ScameraApp.getSettings().aspect169 || mode == CameraMode.RAWVIDEO) {
                 // Set the dummy view's aspect ratio to 16:9
                 if(cameraFragment.displayAspectRatio <= 16f / 9f)
                     cameraFragment.cameraFragmentBinding.getUimodel().setDummyAspectRatio("3:4");
@@ -416,7 +416,7 @@ public class CameraUIViewImpl implements CameraUIView {
             setVideoRecordingInfoVisible(false);
             mShutterButton.setBackground(shutterRing);
 
-            if(PhotonCamera.getSettings().aspect169) {
+            if(ScameraApp.getSettings().aspect169) {
                 // Set the dummy view's aspect ratio to 16:9
                 if(cameraFragment.displayAspectRatio <= 16f / 9f)
                     cameraFragment.cameraFragmentBinding.getUimodel().setDummyAspectRatio("3:4");

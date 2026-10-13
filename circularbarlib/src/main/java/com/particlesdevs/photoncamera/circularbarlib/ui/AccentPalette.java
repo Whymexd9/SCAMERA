@@ -20,7 +20,7 @@ public final class AccentPalette {
             case "blue":return 0xFF90C7FF;case "green":return 0xFFABE0BA;
             case "amber":case "orange":return 0xFFFFD47E;case "red":return 0xFFFFA99E;
             case "pink":return 0xFFF1ACD8;case "cyan":case "teal":return 0xFF93DEDF;
-            case "white":return 0xFFE7E9F0;case "eszdman":return 0xFFD999EC;
+            case "white":return 0xFFE7E9F0;
             default:return 0xFFC7B5FF;
         }
     }
