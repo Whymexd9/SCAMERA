@@ -140,7 +140,7 @@ public final class DevKeys {
         k.add(n(vivo, "dcg14_uimode", "-1", Lang.t("vivo.control.currentmodeS — режим интерфейса vivo для селектора (-1 — не слать)", "vivo.control.currentmodeS, the vivo UI mode for the selector (-1: not sent)")));
         k.add(n(vivo, "dcg14_shdr", "1", Lang.t("vivo.control.shdr_enable — сенсорный HDR (-1 — не слать)", "vivo.control.shdr_enable, the sensor HDR (-1: not sent)")));
         k.add(n(vivo, "dcg14_dcghdr", "1", Lang.t("vivo.control.EnableDCGHDR (-1 — не слать)", "vivo.control.EnableDCGHDR (-1: not sent)")));
-        k.add(n(vivo, "dcg14_seamless", "1", Lang.t("vivo.control.session.seamlesscontrol (-1 — не слать)", "vivo.control.session.seamlesscontrol (-1: not sent)")));
+        k.add(n(vivo, "dcg14_seamless", "2", Lang.t("vivo.control.session.seamlesscontrol: 2 — DCG (с режимом видео vivo_ui_module 3), 1 — без DCG (-1 — не слать)", "vivo.control.session.seamlesscontrol: 2 DCG (with the video UI mode vivo_ui_module 3), 1 no DCG (-1: not sent)")));
         k.add(n(vivo, "dcg14_camera_scenario", "-1", Lang.t("cameraScenario вручную (-1 — нет)", "cameraScenario by hand (-1: none)")));
         k.add(n(vivo, "dcg14_sensor_scenario", "-1", Lang.t("sensorScenario вручную (-1 — нет)", "sensorScenario by hand (-1: none)")));
         // Pixel 10 Pro / Pro XL

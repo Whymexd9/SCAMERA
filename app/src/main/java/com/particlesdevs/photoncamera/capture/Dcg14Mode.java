@@ -26,7 +26,7 @@ import java.util.List;
  * <p>
  * P104 sent the HDR keys a third-party app has (session keys; values from scam_dev, -1 = not sent):
  * {@code com.mediatek.hdrfeature.hdrMode} / {@code SessionParamhdrMode} = dcg14_hdr_mode (P104: 3, P107c: 1), {@code vivo.control.EnableDCGHDR} =
- * dcg14_dcghdr (1), {@code vivo.control.session.seamlesscontrol} = dcg14_seamless (1). The owner's log of 2026-10-12 shows them
+ * dcg14_dcghdr (1), {@code vivo.control.session.seamlesscontrol} = dcg14_seamless (2). The owner's log of 2026-10-12 shows them
  * accepted but the main camera still binned (sensorScenario [2, 1], dynamic white 1023). P107 adds the sensor-mode choice of
  * MediaTek's seamless feature: the tries of {@link DcgSearch} (session {@code com.mediatek.seamlessfeature.cameraScenario},
  * {@code sensorScenarioCustomHint} = [camera, 100 + sensor mode] of the FORCE_CAMERA_CHOOSE table, request
@@ -227,7 +227,9 @@ public final class Dcg14Mode {
         }
         int dcg = Math.round(PreferenceKeys.scamDevNumber("dcg14_dcghdr", 1f));
         if (dcg >= 0) set(builder, "vivo.control.EnableDCGHDR", new int[]{dcg}, out);
-        int seamless = Math.round(PreferenceKeys.scamDevNumber("dcg14_seamless", 1f));
+        // P109i: the selectors (PD2602 / PD2502) map seamlesscontrol 1 to DCGHDR1 = NORMAL1EXP (binning) and 2 to DCGHDR2 =
+        // DCGHDR2EXP (sensor scenario 17, the DCG mode) under the video UI modes, 2 to PHOTOHDR2 (stagger) under the photo ones
+        int seamless = Math.round(PreferenceKeys.scamDevNumber("dcg14_seamless", 2f));
         if (seamless >= 0) set(builder, "vivo.control.session.seamlesscontrol", new int[]{seamless}, out);
         // P107c: the sensor-HDR key (session and request; vivo's own video path picks MFHDR by it), type unknown: int, else byte
         int shdr = Math.round(PreferenceKeys.scamDevNumber("dcg14_shdr", 1f));
