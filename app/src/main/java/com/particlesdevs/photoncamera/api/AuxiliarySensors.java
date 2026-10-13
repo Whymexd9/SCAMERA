@@ -12,4 +12,15 @@ final class AuxiliarySensors {
     static boolean noLensGainOrExposure(float focalMm, int isoMax, long exposureMaxNs) {
         return focalMm == 0f || isoMax == 0 || exposureMaxNs == 0L;
     }
+
+    /**
+     * A vivo camera profile that is no lens of its own (com.vivo.chi.override.CameraType): the teleconverter calibrations of the
+     * tele («Tele3xLongExternal» on the X300, which takes no extender; «Tele3P5xExternal» / «…External400» on the X500 Pro Max,
+     * the second «3.5×» of its strip) and «DUMMY». Each shows the plain tele's picture under the extender's focal length.
+     */
+    static boolean vivoProfileOnly(String cameraType) {
+        if (cameraType == null) return false;
+        String t = cameraType.trim();
+        return t.contains("External") || t.equals("DUMMY");
+    }
 }

@@ -100,7 +100,8 @@ public final class VivoMtkIsz {
                 if (p.getInt(MARK + slot, 0) > 0) continue;
                 // P109c (V2515 log 2026-10-13_4): the logical «0-2» got «17×» / «33×»; ISZ is a physical camera's, and a slot
                 // left from another camera list (spoof on / off) is not a source either
-                if (!source(ModuleRegistry.camera(slot), opens(manager, ModuleRegistry.camera(slot)))) continue;
+                if (!source(ModuleRegistry.camera(slot), opens(manager, ModuleRegistry.camera(slot))
+                        && !profileOnly(manager, ModuleRegistry.camera(slot)))) continue;
                 float z = ModuleRegistry.zoom(slot);
                 if (main == null && Math.abs(z - 1f) < 0.05f) main = slot;
                 if (wide == null && z > 0.3f && z < 0.9f) { wide = slot; wideZoom = z; }
@@ -212,6 +213,15 @@ public final class VivoMtkIsz {
         for (String slot : ModuleRegistry.slots()) {
             if (!slot.startsWith("back") || !ModuleRegistry.visible(slot)) continue;
             String camera = ModuleRegistry.camera(slot);
+            if (profileOnly(manager, camera)) {
+                // P109j (owner: «X300 его не поддерживает»): the teleconverter / dummy profile's buttons go, ISZ ones too
+                String label = ModuleRegistry.label(slot);
+                if (ModuleRegistry.duplicateOf(slot) != null) ModuleRegistry.remove(slot);
+                else p.edit().putBoolean("module_visible_" + slot, false).apply();
+                p.edit().remove(MARK + slot).apply();
+                Log.i(TAG, "module " + slot + " («" + label + "», camera " + camera + ") hidden: vivo teleconverter profile");
+                continue;
+            }
             if (opens(manager, camera)) physical.add(camera);
             mods.add(new Mod(slot, camera, ModuleRegistry.zoom(slot), p.getInt(MARK + slot, 0), ModuleRegistry.duplicateOf(slot) != null));
         }
@@ -230,6 +240,12 @@ public final class VivoMtkIsz {
     /** A physical camera of the current camera list: not «logical-physical», and its characteristics are there. */
     static boolean source(@Nullable String cameraId, boolean opens) {
         return cameraId != null && !cameraId.isEmpty() && !cameraId.contains("-") && opens;
+    }
+
+    /** A vivo teleconverter / dummy profile (CameraManager2.isAuxiliarySensor): no ISZ source, its buttons are hidden. */
+    private static boolean profileOnly(@Nullable android.hardware.camera2.CameraManager manager, @Nullable String cameraId) {
+        return manager != null && cameraId != null && !cameraId.contains("-")
+                && com.particlesdevs.photoncamera.api.CameraManager2.isAuxiliarySensor(manager, cameraId);
     }
 
     private static boolean opens(@Nullable android.hardware.camera2.CameraManager manager, @Nullable String cameraId) {

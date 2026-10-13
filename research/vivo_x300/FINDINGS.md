@@ -41,9 +41,11 @@ Inputs from the owner's rooted X300: `x300_camera_cfg.tgz` (/odm/etc/camera, /ve
   vHDR mode -> `hdrMode` / `SessionParamhdrMode` 3 is the vHDR request, 1 is photo HDR.
 
 ## Teleconverter camera 5
-- Camera 5 is the tele sensor with the external teleconverter calibration (focal 31.25 mm, 6.97x). Without the extender lens
-  the picture is the 3x tele's while the module says «7×» / «14×» (VivoMtkIsz offers 2x on it). Open: ask the owner whether
-  the extender is used; otherwise hide camera 5 or label it «телеконвертер».
+- Camera 5 is the tele sensor with the external teleconverter calibration (focal 31.25 mm, 6.97x,
+  `com.vivo.chi.override.CameraType` «Tele3xLongExternal», `vivo.feedback.sensor_name` IMX885ULTRA_PD2509, only it has
+  `com.vivo.ExternalTeleRawCropSize` 3360x2520). Owner: the X300 does not take the extender. P109j: CameraType «…External…»
+  and «DUMMY» are auxiliary (not scanned; X500 Pro Max cameras 5 «Tele3P5xExternal», 6 «Tele3P5xExternal400», 9 «DUMMY»),
+  their buttons hidden and their duplicates / ISZ modules removed; scam_dev vivo_teleconverter 1 keeps them.
 
 ## Stock-camera log
 - `x300_stock_zoom.txt` covers 10:52:03-10:52:18 only and no camera open (logcat ended with Termux in the background). The two

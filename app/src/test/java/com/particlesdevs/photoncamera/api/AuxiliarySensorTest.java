@@ -19,4 +19,15 @@ public class AuxiliarySensorTest {
         assertFalse(AuxiliarySensors.noLensGainOrExposure(3.09f, 1536, 430_464_311L));    // X200 Pro front
         assertFalse(AuxiliarySensors.noLensGainOrExposure(Float.NaN, -1, -1L));           // keys missing
     }
+
+    @Test
+    public void vivoTeleconverterAndDummyProfilesAreNoLenses() {
+        org.junit.Assert.assertTrue(AuxiliarySensors.vivoProfileOnly("Tele3xLongExternal"));   // X300 camera 5
+        org.junit.Assert.assertTrue(AuxiliarySensors.vivoProfileOnly("Tele3P5xExternal400"));  // X500 Pro Max camera 6
+        org.junit.Assert.assertTrue(AuxiliarySensors.vivoProfileOnly("DUMMY"));
+        org.junit.Assert.assertFalse(AuxiliarySensors.vivoProfileOnly("Tele3xLong"));
+        org.junit.Assert.assertFalse(AuxiliarySensors.vivoProfileOnly("Master"));
+        org.junit.Assert.assertFalse(AuxiliarySensors.vivoProfileOnly("MultiCamera"));
+        org.junit.Assert.assertFalse(AuxiliarySensors.vivoProfileOnly(null));
+    }
 }

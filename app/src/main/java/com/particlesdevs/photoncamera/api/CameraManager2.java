@@ -76,8 +76,8 @@ public final class CameraManager2 {
                 Log.d("CameraManager2", "Package spoof changed (" + spoofSignature + "): camera scan cache dropped");
             }
             // A scan from before the auxiliary sensors without lens / gain / exposure were left out (isAuxiliarySensor) runs once more.
-            if (!"aux2".equals(mSettingsManager.getString(_CAMERAS, "aux_revision", ""))) {
-                mSettingsManager.set(_CAMERAS, "aux_revision", "aux2");
+            if (!"aux3".equals(mSettingsManager.getString(_CAMERAS, "aux_revision", ""))) {
+                mSettingsManager.set(_CAMERAS, "aux_revision", "aux3"); // aux3: vivo teleconverter / dummy profiles
                 mSettingsManager.remove(_CAMERAS, ALL_CAMERA_IDS_KEY);
                 mSettingsManager.remove(_CAMERAS, ALL_CAMERA_LENS_KEY);
                 mSettingsManager.remove(_CAMERAS, CAMERA_COUNT_KEY);
@@ -188,6 +188,9 @@ public final class CameraManager2 {
         if (characteristics == null) return false;
         Integer cfa = characteristics.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
         if (cfa != null && (cfa == 5 || cfa == 6)) return true; // SENSOR_INFO_COLOR_FILTER_ARRANGEMENT_MONO / _NIR (API 29)
+        // vivo teleconverter / dummy profiles (owner, 2026-10-13: «X300 его не поддерживает»); scam_dev vivo_teleconverter 1 keeps them
+        if (AuxiliarySensors.vivoProfileOnly(vivoCameraType(characteristics))
+                && !com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vivo_teleconverter", false)) return true;
         float[] focal = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
         android.util.Range<Integer> iso = characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
         android.util.Range<Long> exposure = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
@@ -195,6 +198,20 @@ public final class CameraManager2 {
                 iso != null ? iso.getUpper() : -1, exposure != null ? exposure.getUpper() : -1L);
     }
 
+
+    /** com.vivo.chi.override.CameraType («Master», «Tele3xLong», «Tele3xLongExternal», «DUMMY»…), null when absent. */
+    @androidx.annotation.Nullable
+    static String vivoCameraType(CameraCharacteristics characteristics) {
+        try {
+            byte[] v = characteristics.get(new CameraCharacteristics.Key<>("com.vivo.chi.override.CameraType", byte[].class));
+            if (v == null) return null;
+            int n = 0;
+            while (n < v.length && v[n] != 0) n++;
+            return new String(v, 0, n, java.nio.charset.StandardCharsets.US_ASCII);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
 
     public static boolean isAuxiliarySensor(CameraManager cameraManager, String id) {
         if (cameraManager == null || id == null) return false;
