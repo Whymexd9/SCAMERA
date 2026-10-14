@@ -57,12 +57,21 @@ import java.util.TimeZone;
 import static com.particlesdevs.photoncamera.settings.PreferenceKeys.SCOPE_GLOBAL;
 
 public class SettingsActivity extends BaseActivity implements PreferenceFragmentCompat.OnPreferenceStartScreenCallback {
+    /** P140: the launcher shortcut «Настройки» (res/xml/shortcuts.xml) opens this screen with this action. */
+    public static final String ACTION_SHORTCUT = "org.codeaurora.snapcam.action.SETTINGS";
     private static int sCameraMode = -1;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         getDelegate().setLocalNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES);
         super.onCreate(savedInstanceState);
+        // P140: from the shortcut the camera may never have run in this process: its defaults and the module-profile
+        // listener (CameraActivity.onCreate) come first, so a change made here lands in the module's profile as usual
+        if (ACTION_SHORTCUT.equals(getIntent().getAction())) {
+            PreferenceManager.setDefaultValues(this, R.xml.preferences, com.particlesdevs.photoncamera.settings.MigrationManager.readAgain);
+            PreferenceKeys.setDefaults(this);
+            ScameraApp.getSettings().loadCache();
+        }
         setContentView(R.layout.activity_settings);
         
         // Get camera mode from intent

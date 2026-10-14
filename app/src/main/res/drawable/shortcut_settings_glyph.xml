@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P140: the shortcut «Настройки» draws the camera's own gear (settings_ic_gear), so the P136 icon restyle reaches it too;
+     the inset keeps it inside the adaptive icon's safe zone. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/settings_ic_gear"
+    android:inset="32dp" />

@@ -723,4 +723,7 @@
     <string name="prefs_shdr_neural_remosaic_screen_summary">ISZ modules on the Snapdragon 8 Elite: the NPU network merges the N frames</string>
     <string name="prefs_scam_hybrid_neural_remosaic_title">Neural remosaic (NPU)</string>
     <string name="prefs_scam_hybrid_neural_remosaic_summary">ISZ modules with a Quad / Tetra mosaic: the vivo network on the NPU merges the N frames first, then SHDR. If it fails, the usual mosaic merge.</string>
+    <!-- P140: the launcher shortcut (long press on the app icon) -->
+    <string name="shortcut_settings_short">Settings</string>
+    <string name="shortcut_settings_long">Open settings</string>
 </resources>

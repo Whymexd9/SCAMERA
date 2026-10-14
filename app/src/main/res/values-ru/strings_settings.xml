@@ -723,4 +723,7 @@
     <string name="prefs_shdr_neural_remosaic_screen_summary">Модули ISZ на Snapdragon 8 Elite: кадры N склеивает нейросеть на NPU</string>
     <string name="prefs_scam_hybrid_neural_remosaic_title">Нейроремозаик (NPU)</string>
     <string name="prefs_scam_hybrid_neural_remosaic_summary">Модули ISZ с мозаикой Quad / Tetra: кадры N сначала склеивает нейросеть vivo на NPU, затем SHDR. При ошибке — обычная склейка мозаики.</string>
+    <!-- P140: the launcher shortcut (long press on the app icon) -->
+    <string name="shortcut_settings_short">Настройки</string>
+    <string name="shortcut_settings_long">Открыть настройки</string>
 </resources>

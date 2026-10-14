@@ -439,6 +439,49 @@ public class SettingsMenuTest {
         }
     }
 
+    /** P140: long press on the launcher icon offers «Настройки»; it opens the settings with the camera's set-up done. */
+    @Test public void launcherShortcutOpensTheSettings() throws Exception {
+        android.content.pm.ActivityInfo splash=context.getPackageManager().getActivityInfo(
+                new android.content.ComponentName(context,com.particlesdevs.photoncamera.ui.SplashActivity.class),
+                android.content.pm.PackageManager.GET_META_DATA);
+        assertEquals(R.xml.shortcuts,splash.metaData.getInt("android.app.shortcuts"));
+        String id=null,target=null,pkg=null,action=null;int shortLabel=0,longLabel=0,icon=0;
+        try(android.content.res.XmlResourceParser xml=context.getResources().getXml(R.xml.shortcuts)){
+            String ns="http://schemas.android.com/apk/res/android";
+            for(int e=xml.next();e!=org.xmlpull.v1.XmlPullParser.END_DOCUMENT;e=xml.next()){
+                if(e!=org.xmlpull.v1.XmlPullParser.START_TAG)continue;
+                if("shortcut".equals(xml.getName())){id=xml.getAttributeValue(ns,"shortcutId");
+                    shortLabel=xml.getAttributeResourceValue(ns,"shortcutShortLabel",0);longLabel=xml.getAttributeResourceValue(ns,"shortcutLongLabel",0);
+                    icon=xml.getAttributeResourceValue(ns,"icon",0);}
+                if("intent".equals(xml.getName())){target=xml.getAttributeValue(ns,"targetClass");pkg=xml.getAttributeValue(ns,"targetPackage");
+                    action=xml.getAttributeValue(ns,"action");}
+            }
+        }
+        assertEquals("settings",id);
+        assertEquals(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class.getName(),target);
+        assertEquals(context.getPackageName(),pkg);
+        assertEquals(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.ACTION_SHORTCUT,action);
+        assertEquals(R.string.shortcut_settings_short,shortLabel);assertEquals(R.string.shortcut_settings_long,longLabel);
+        assertEquals(R.drawable.shortcut_settings,icon);
+        assertTrue(context.getString(shortLabel).length()<=10); // the launcher's short-label limit
+        // the icon is the camera's own gear (it follows the P136 restyle)
+        assertTrue(context.getDrawable(icon) instanceof android.graphics.drawable.AdaptiveIconDrawable);
+        // From the shortcut: the camera's defaults and one module-profile listener, however often it is set up
+        com.particlesdevs.photoncamera.api.Settings cache=mock(com.particlesdevs.photoncamera.api.Settings.class);
+        camera.when(ScameraApp::getSettings).thenReturn(cache);
+        android.content.Intent intent=new android.content.Intent(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.ACTION_SHORTCUT)
+                .setClass(context,com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class);
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class,intent)){
+            controller.setup();
+            assertNotNull(controller.get().getSupportFragmentManager().findFragmentById(R.id.settings_container));
+        }
+        verify(cache,atLeastOnce()).loadCache(); // and again by the profile listener on the defaults it writes
+        PreferenceKeys.setDefaults(context);PreferenceKeys.setDefaults(context);
+        Field listeners=SettingsManager.class.getDeclaredField("mListeners");listeners.setAccessible(true);
+        assertEquals(1,java.util.Collections.frequency((java.util.Collection<?>)listeners.get(manager),PreferenceKeys.PROFILE_LISTENER));
+        assertEquals("0",String.valueOf(prefs.getAll().get(PreferenceKeys.Key.KEY_COUNTDOWN_TIMER.mValue)));
+    }
+
     @Test public void settingsBackPopsOnePageWithoutRestart(){
         try(org.robolectric.android.controller.ActivityController<com.particlesdevs.photoncamera.ui.settings.SettingsActivity> controller=
                 org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)) {

@@ -120,13 +120,11 @@ public class PreferenceKeys {
         settingsManager.setDefaults(Key.TONEMAP, resources.getString(R.string.tonemap_default), new String[]{resources.getString(R.string.tonemap_default)});
         settingsManager.setDefaults(Key.GAMMA, resources.getString(R.string.gamma_default), new String[]{resources.getString(R.string.gamma_default)});
         settingsManager.setDefaults(Key.KEY_SHOW_AF_DATA, "0", new String[]{"0", "1", ExifInterface.GPS_MEASUREMENT_2D, ExifInterface.GPS_MEASUREMENT_3D});
-        settingsManager.addListener(new SettingsManager.OnSettingChangedListener() { // from class: com.particlesdevs.photoncamera.settings.PreferenceKeys$$ExternalSyntheticLambda1
-            @Override // com.particlesdevs.photoncamera.settings.SettingsManager.OnSettingChangedListener
-            public final void onSettingChanged(SettingsManager settingsManager2, String str) {
-                PreferenceKeys.lambda$setDefaults$0(settingsManager2, str);
-            }
-        });
+        settingsManager.addListener(PROFILE_LISTENER);
     }
+
+    /** One listener per process: every CameraActivity start and the settings shortcut (P140) call setDefaults. */
+    static final SettingsManager.OnSettingChangedListener PROFILE_LISTENER = PreferenceKeys::lambda$setDefaults$0;
 
     static /* synthetic */ void lambda$setDefaults$0(SettingsManager settingsManager1, String key) {
         if (key == null) {

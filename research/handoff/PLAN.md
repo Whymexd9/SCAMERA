@@ -3116,6 +3116,8 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   tools/make_launcher_icons.py so they stay consistent; the accent detail follows the chosen accent where the icon is tinted.
 - Also the shade (шторка) and the viewfinder icons (owner, 2026-10-15: «В шторке и видоискателе тоже сделай иконки в таком
   стиле»): the shade tiles' glyphs and the viewfinder's top bar / side buttons in the same filled style.
+- The launcher shortcut «Настройки» (P140) has no picture of its own: its icon is an inset of settings_ic_gear, so the restyled
+  gear reaches it too (keep the gear inside the 66 dp safe zone; the shortcut's monochrome layer uses the same glyph).
 
 ### P137 - value editors in the camera's style, «add to the shade» from them (owner, 2026-10-15, screenshots of the «N-кадров из ZSL» / «Bento: отказ при движении» editors: «все вот такие меню переделай под стиль интерфейса нашей камеры, так же добавь возможность прямо из этого подменю добавлять настройки в шторку»)
 - OPEN, after P136. The number / list editors of the settings (the ruler dialog with the step chips, «По умолчанию», Отмена /
@@ -3132,6 +3134,15 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - OPEN (quick, with the settings work). Every settings row (XML rows through SettingsStyle.bind, the Java pages of
   ModuleConceptFragment, the shade's rows): title medium weight, a little larger and in the full text colour; the description
   smaller, regular and in the muted colour, with a small gap between them, so the two never read as one paragraph.
+
+### P140 - «Настройки» shortcut on the launcher icon (owner, 2026-10-15, screenshot of GCam's long-press menu: «добавить шортат для перехода в настройки»; «Учитывай что мы будем обновлять иконки по плану»)
+- Done locally. res/xml/shortcuts.xml (static shortcut «settings»: «Настройки» / «Открыть настройки», en Settings / Open
+  settings) on SplashActivity, the camera launcher icon (the gallery's own icon has none); the intent is
+  SettingsActivity.ACTION_SHORTCUT. From the shortcut SettingsActivity first does what CameraActivity.onCreate would
+  (setDefaultValues, PreferenceKeys.setDefaults, the settings cache), so a change made there still lands in the active
+  module's profile; PreferenceKeys.PROFILE_LISTENER makes that listener one per process (every camera start used to add one
+  more). Icon: adaptive, the launcher icon's dark background + the camera's own gear (settings_ic_gear inset), so P136
+  restyles it with the rest. Test SettingsMenuTest.launcherShortcutOpensTheSettings. Not checked on a phone.
 
 ### P127 - RAW black / white levels by bit depth (owner, 2026-10-15: «Переделай алгоритм определения уровня белого и черного, не всегда 8 бит: 16/255 10 бит: 64/1023 12 бит: 256/4095 14 бит: 1024/16383 16 бит: 4096/65535. Нам нужен надёжный и точный алгоритм который будет определять правильно уровень, при этом не замедлять съёмку и тд. На гит не надо лить»)
 - Done locally (not pushed, owner). processing/RawLevels: one resolver for every consumer (shot Parameters, RAW viewfinder,

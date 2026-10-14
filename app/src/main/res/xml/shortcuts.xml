@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P140: long press on the launcher icon -> «Настройки» (SettingsActivity.ACTION_SHORTCUT sets up what the camera would). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/shortcut_settings"
+        android:shortcutId="settings"
+        android:shortcutLongLabel="@string/shortcut_settings_long"
+        android:shortcutShortLabel="@string/shortcut_settings_short">
+        <intent
+            android:action="org.codeaurora.snapcam.action.SETTINGS"
+            android:targetClass="com.particlesdevs.photoncamera.ui.settings.SettingsActivity"
+            android:targetPackage="org.codeaurora.snapcam" />
+    </shortcut>
+</shortcuts>
