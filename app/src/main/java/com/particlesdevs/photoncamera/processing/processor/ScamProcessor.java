@@ -395,7 +395,7 @@ public class ScamProcessor extends ProcessorBase {
         // which lowers the noise part of the gradient energy on its own - so it is logged for diagnosis and used only
         // against the same exposure, never as a cross-exposure threshold.
         // W1.5: the frames are independent, so they are measured in parallel (each writes its own sharpness).
-        final int sharpnessBlock = PreferenceKeys.isScamMosaic() ? PreferenceKeys.getRemosaicBlockSize() : 1;
+        final int sharpnessBlock = 1; // P129: SHDR measures the sharpness on the frames as streamed (SCAM HDR's mosaic modes are gone)
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("sharp_start");
         final ArrayList<ImageFrame> measured = images;
         com.particlesdevs.photoncamera.util.ParallelWork.forEach(measured.size(), k -> measured.get(k).computeSharpness(sharpnessBlock));
@@ -460,33 +460,8 @@ public class ScamProcessor extends ProcessorBase {
                 Log.i("SCAM_HDR", "Reference calibration timestamp=" + scamReference.timestamp
                         + " ISO=" + processingParameters.iso
                         + " exposureSeconds=" + processingParameters.exposureTime);
-                if (!hybridShot) {
-                    // P27: SCAM HDR builds its fixed 4 N + L + S + ES graph when the frames allow it; a burst it cannot use
-                    // (frames lost, exposures off plan, the worker failed) is merged by the Hybrid from the same frames
-                    // instead of losing the photo.
-                    try {
-                        if (PreferenceKeys.isScamMosaic() && scamMosaicStream(images, processingParameters)) {
-                            // Quad / Tetra stream (ISZ modules): plain bayer before the transport, by the module's mosaic mode.
-                            processingStage = Lang.t("SCAM HDR: ремозаик мозаики", "SCAM HDR: mosaic remosaic");
-                            images = new ArrayList<>(com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamMosaic.prepare(
-                                    ScameraApp.getAppContext(), images, processingParameters));
-                            ParseExif.syncWithParameters(exifData, processingParameters);
-                        }
-                        processingStage = "SCAM HDR neural burst";
-                        scamOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.process(
-                                ScameraApp.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
-                    } catch (Exception scam) {
-                        Log.w("SCAM_HDR", "SCAM HDR fallback=hybrid reason=" + scam.getMessage());
-                        android.util.Log.w("SCAM_HDR", "SCAM HDR fallback=hybrid", scam);
-                        com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.lastMergedDng = null;
-                        hybridShot = true;
-                        PreferenceKeys.endShotProfile();
-                        PreferenceKeys.beginShotProfile(true);
-                        // ScamMosaic may have closed frames it did not keep: the hybrid drops frames without data.
-                        images.removeIf(f -> f == null || f.buffer == null);
-                    }
-                }
-                if (hybridShot) {
+                // P129: SHDR is the only merge (the SCAM HDR neural graph and its mosaic modes are gone)
+                {
                     // P129: «Нейроремозаик» on an ISZ Quad / Tetra stream (SM8750): the NPU merges the N frames first
                     final java.util.List<ImageFrame> neural = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamMosaic
                             .prepareForShdr(ScameraApp.getAppContext(), images, processingParameters);
@@ -509,8 +484,8 @@ public class ScamProcessor extends ProcessorBase {
         ByteBuffer output=ref.buffer;ref.buffer=null;
         if ((long) width * height > 16_000_000L) output = outOfArena(output);
         for(ImageFrame frame:images)frame.close();
-        ByteBuffer scamMergedDng=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.lastMergedDng;
-        com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.lastMergedDng=null;
+        ByteBuffer scamMergedDng=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDng;
+        com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDng=null;
         Log.d(TAG, "Alignment elapsed:" + (System.currentTimeMillis() - startTime) + " ms");
         if ((saveRAW >= 1) && alignAlgorithm != 2) {
             boolean imageSaved = false;
@@ -731,11 +706,6 @@ public class ScamProcessor extends ProcessorBase {
     }
 
     /**
-     * SCAM HDR's mosaic mode applies to a burst that really is a mosaic: a forced block or an ISZ sensor mode, else a confident
-     * colour block measured on the first frame. A plain-Bayer module keeps its Bayer frames (vivo X100 Ultra main, owner's log
-     * 2026-10-05: 'mode=neural_sabre block=4' remosaicked a 4096x3072 Bayer stream as Tetra).
-     */
-    /**
      * P121: a Quad / Tetra stream (an ISZ module without the sensor's remosaic): the camera's neutral is not the scene's (its ISP
      * reads the mosaic as Bayer), so the neutral of the reference frame is measured and put on the camera's curve learned in
      * plain-Bayer sessions (MosaicNeutral). scam_dev.txt "mosaic_awb 0": the camera's neutral as before.
@@ -765,30 +735,6 @@ public class ScamProcessor extends ProcessorBase {
         p.customNeutral = own.neutral;
         p.ownNeutral = true;
         p.ReCalcColor(true, meta);
-    }
-
-    private static boolean scamMosaicStream(java.util.List<ImageFrame> images, Parameters p) {
-        if (PreferenceKeys.scamMosaicDeclared()) return true;
-        // P35: the stream's stored block decides without the detector (a binned burst is always measured).
-        final int stored = p.rawBinning > 1 ? 0 : com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(0);
-        if (stored > 0) {
-            Log.i("SCAM_HDR", "SCAM HDR mosaic: stored stream colour block " + stored + " for "
-                    + com.particlesdevs.photoncamera.processing.MosaicBlockStore.shotKey()
-                    + (stored > 1 ? "" : "; mosaic mode ignored, plain Bayer") + " (detector skipped)");
-            return stored > 1;
-        }
-        for (ImageFrame f : images) {
-            if (f.buffer == null || f.buffer.capacity() < (long) f.width * f.height * 2) continue;
-            float black = (p.blackLevel[0] + p.blackLevel[1] + p.blackLevel[2] + p.blackLevel[3]) / 4f;
-            com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result r =
-                    com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(f.buffer, f.width, f.height, f.width * 2,
-                            black, p.whiteLevel, 8);
-            boolean mosaic = r.confident && r.block > 1;
-            Log.i("SCAM_HDR", "SCAM HDR mosaic: stream colour block " + r + (mosaic ? "" : "; mosaic mode ignored, plain Bayer"));
-            if (p.rawBinning <= 1) com.particlesdevs.photoncamera.processing.MosaicBlockStore.observeShot(r, "SCAM HDR shot");
-            return mosaic;
-        }
-        return false;
     }
 
     /** The shortest exposure has the most pixels at the dark floor, so it bounds black best. */

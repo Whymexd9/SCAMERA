@@ -58,14 +58,8 @@ public final class ScamNeuralClient {
     static synchronized ByteBuffer processBurst(Context context,HexQuadBurst burst) throws Exception {
         return job(context,null,burst.width,burst.height,burst.red,true,false,false,burst,null,line->Log.d("ScamNeural",line));
     }
-    public static synchronized void selfTestScam(Context context,Consumer<String> log) throws Exception {
-        job(context,null,0,0,0,true,true,false,null,null,log);
-    }
     static synchronized ByteBuffer processScamBurst(Context context,ScamTransport burst) throws Exception {
         return job(context,null,burst.width(),burst.height(),burst.cfa(),true,true,false,null,burst,line->Log.i("SCAM_HDR",line));
-    }
-    public static synchronized void selfTestScamTone(Context context,Consumer<String> log) throws Exception {
-        job(context,null,0,0,0,true,true,true,null,null,log);
     }
     /** memfd shared with the root worker through /proc/<pid>/fd/<n>. */
     private static final class SharedMemory implements java.io.Closeable {
@@ -304,7 +298,7 @@ public final class ScamNeuralClient {
                 java.util.ArrayList<String> names=new java.util.ArrayList<>();
                 java.util.HashSet<String> scamAssets=new java.util.HashSet<>();
                 names.add("scam-neural-worker");
-                if(scam)for(String[] item:scamTone?ScamNeuralWorker.SCAM_TONE_FILES:ScamNeuralWorker.SCAM_FILES){names.add(item[0]);scamAssets.add(item[0]);}
+                if(scam)for(String[] item:ScamNeuralWorker.SCAM_FILES){names.add(item[0]);scamAssets.add(item[0]);}
                 final boolean quad=burst!=null&&burst.quad;
                 for(String[] item:hex?ScamNeuralWorker.HEX_FILES:ScamNeuralWorker.FILES)
                     if(!scam && !quad || item[0].endsWith(".so"))names.add(item[0]);
@@ -501,7 +495,7 @@ public final class ScamNeuralClient {
                             if(outputBytes==expected+d+e+c){dngBytes=d;effBytes=e;clipBytes=c;sized=true;break search;}
             }
             if(!sized)throw new IOException(Lang.t("Неверный размер нейрорезультата","Wrong neural result size"));
-            if(scamBurst!=null){ScamBurst.lastMergedDng=null;ScamBurst.lastEffectiveFrames=null;ScamRgb.lastClipFlags=null;
+            if(scamBurst!=null){ScamHybridBurst.lastMergedDng=null;ScamHybridBurst.lastEffectiveFrames=null;ScamRgb.lastClipFlags=null;
                 ScamHybridBurst.lastBentoApplied=report.indexOf("HYBRID BENTO: applied")>=0;
                 ScamHybridBurst.lastBentoFactor=reportNumber(report,"HYBRID BENTO: applied","factor=",1f);
                 ScamHybridBurst.lastBentoUsClipped=reportNumber(report,"HYBRID BENTO: applied","usClippedRatio=",0f);
@@ -531,7 +525,7 @@ public final class ScamNeuralClient {
                             long position=expected;
                             while(dng.hasRemaining()){int n=channel.read(dng,position);if(n<0)throw new EOFException(Lang.t("Неполный RAW","Incomplete RAW"));position+=n;}
                         }
-                        dng.flip();ScamBurst.lastMergedDng=dng;
+                        dng.flip();ScamHybridBurst.lastMergedDng=dng;
                     }catch(Exception e){com.particlesdevs.photoncamera.util.Allocator.free(dng);log.accept("CLIENT: merged DNG not read: "+e);}
                 }
             }
@@ -546,7 +540,7 @@ public final class ScamNeuralClient {
                         long position=expected+dngBytes;
                         while(eff.hasRemaining()){int n=channel.read(eff,position);if(n<0)throw new EOFException(Lang.t("Неполная карта кадров","Incomplete frame map"));position+=n;}
                     }
-                    eff.flip();ScamBurst.lastEffectiveFrames=eff;
+                    eff.flip();ScamHybridBurst.lastEffectiveFrames=eff;
                 }catch(Exception e){log.accept("CLIENT: effective-frame map not read: "+e);}
             }
             ByteBuffer clip=null;

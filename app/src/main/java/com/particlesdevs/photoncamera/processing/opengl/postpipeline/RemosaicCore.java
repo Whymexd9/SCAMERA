@@ -53,8 +53,6 @@ public class RemosaicCore {
      */
     private float[] sharedGains;
     private boolean profileMeasured;
-    private TetraResponseProfile.GainMap detailMap;
-    private String activeBackend;
 
     public RemosaicCore(GLProg glProg) {
         this.glProg = glProg;
@@ -72,27 +70,7 @@ public class RemosaicCore {
      */
     public GLTexture run(GLTexture raw, Point rawSize, int cfaPattern, float black, float white,
                          boolean verbose) {
-        if (activeBackend == null) activeBackend = PreferenceKeys.getRemosaicBackend();
-        if ("tetra_detail".equals(activeBackend)) {
-            int[] phase = PreferenceKeys.getRemosaicPhase();
-            if (PreferenceKeys.getRemosaicBlockSize() != 4 || rawSize.x < 8 || rawSize.y < 8
-                    || rawSize.x % 8 != 0 || rawSize.y % 8 != 0) {
-                throw new IllegalArgumentException("Tetra Detail requires 4x4 colour blocks and dimensions divisible by 8");
-            }
-            // Normalize phase for signed/imported values as well as UI values.
-            phase[0] = Math.floorMod(phase[0], 8);
-            phase[1] = Math.floorMod(phase[1], 8);
-            int[] quad = quadColorsFor(cfaPattern);
-            if (sharedGains == null) sharedGains = measureGains(raw, rawSize, 4, phase, quad, black, white);
-            if (detailMap == null) detailMap = PreferenceKeys.isTetraResponseCorrection()
-                    ? measureDetailMap(raw, rawSize, phase, black, white) : new TetraResponseProfile.GainMap();
-            if (verbose) Log.d(Name, "backend=" + activeBackend + " block=4 phase=" + phase[0] + "," + phase[1]
-                    + " spatial response=" + java.util.Arrays.toString(detailMap.spatial));
-            return TetraDetailRemosaic.run(glProg, raw, rawSize, phase, quad, black, white, sharedGains, detailMap);
-        }
-        if (!"scamera".equals(activeBackend)) {
-            throw new IllegalStateException("Selected remosaic backend is unavailable; select SCAMERA in settings");
-        }
+        // P129: the GPU remosaic (SCAMERA) is the only backend; SCAM HDR's «Tetra Detail» mosaic mode went with SCAM HDR.
         int blockSize = PreferenceKeys.getRemosaicBlockSize();
         int profile = PreferenceKeys.getRemosaicProfile();
         // Profile picks how much the interpolation smooths. The widest kernel
@@ -268,29 +246,6 @@ public class RemosaicCore {
         }
     }
 
-
-    /** The response map is measured once and frozen across the entire RAW burst. */
-    private TetraResponseProfile.GainMap measureDetailMap(GLTexture raw, Point size, int[] phase,
-                                                        float black, float white) {
-        Point tiles = new Point((size.x + MEAN_TILE - 1) / MEAN_TILE, (size.y + MEAN_TILE - 1) / MEAN_TILE);
-        Point gridSize = new Point(tiles.x * 4, tiles.y * 4);
-        GLTexture grid = new GLTexture(gridSize, new GLFormat(GLFormat.DataType.FLOAT_32, 4),
-                null, GL_NEAREST, GL_CLAMP_TO_EDGE);
-        try {
-            glProg.useAssetProgram("remosaic/blockprofile");
-            glProg.setTexture("RawBuffer",raw);
-            glProg.setVar("rawWidth",size.x); glProg.setVar("rawHeight",size.y);
-            glProg.setVar("blockSize",4); glProg.setVar("phase",phase[0],phase[1]);
-            glProg.setVar("blackLevel",black); glProg.setVar("whiteLevel",white);
-            glProg.setVar("tileSize",MEAN_TILE);
-            glProg.drawBlocks(grid); glProg.closed=true;
-            FloatBuffer f=grid.textureBuffer(new GLFormat(GLFormat.DataType.FLOAT_32,4))
-                    .order(ByteOrder.nativeOrder()).asFloatBuffer();
-            TetraResponseProfile.GainMap map=TetraResponseProfile.estimateMap(f,gridSize.x,gridSize.y);
-            Log.d(Name,"Tetra v2 spatial response quadrant support="+java.util.Arrays.toString(map.spatial));
-            return map;
-        } finally { grid.close(); }
-    }
 
     private void maskStage(GLTexture raw, GLTexture green, GLTexture out, Point size, int stage,
                            int blockSize, int[] phase, int[] quad, float black, float white,

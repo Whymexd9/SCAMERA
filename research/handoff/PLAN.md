@@ -3214,8 +3214,24 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   SettingsMenuTest.checkNoOldNames now also walks every string and string array of the APK (en and ru).
   Left for later: the Lang.t texts of CaptureController and DevKeys (ChatGPT's uncommitted work there), and the SCAM HDR
   classes' own texts (they go with the code).
-- Still to do: delete the SCAM HDR code (ScamBurst / ScamAe / stock AE / planner branches in CaptureController / native
-  reconstruct / nice-main-forward and nice-tone models -> BUNDLE_ONLY).
+- Step 3a done locally (2026-10-15), the SCAM HDR code outside CaptureController: ScamBurst / ScamAe gone (SHDR's merged DNG
+  and frame map statics now ScamHybridBurst.lastMergedDng / lastEffectiveFrames); ScamProcessor's SCAM HDR branch and its
+  mosaic detection; ScamMosaic is the SHDR neural remosaic only (prepare / Sabre-over-mosaic copies / mfr gone); the
+  Multi-frame Remosaic (remosaic package, libmobileRemosaic.so 400 KB, its CI binary check) and Tetra Detail
+  (TetraDetailRemosaic, shaders remosaic/tetra, RemosaicCore's backend switch, tools/check_tetra_*.py) - both were SCAM HDR
+  mosaic modes; the HighlightRecovery node (a pass-through under SHDR, ScamRgb recovers the highlights) and its prep / apply
+  shaders; the stock AE runtime (assets/scam-aec: the Frida observer scripts and the 24 MB frida-inject the CI downloaded,
+  tools/fetch_scam_ae_runtime.py, the scamAe JNI library with scam-aec-*.h, scam-camx-ae-plan.h) - useStockBracketPlanner()
+  is false; the scamProbe JNI target; SCAM HDR's forward and tone networks (nice-main-forward, 5 nice-tone) out of
+  ScamNeuralWorker / the APK, still verified in the private bundle (ci_neural_assets.py BUNDLE_ONLY, 28 entries as before);
+  the dead PreferenceKeys mosaic helpers (mosaicBlock() = 1), ImageFrame.mosaic, tools/check_scam_measured_exposure.py;
+  the CI APK check now fails if scam-aec / libscamAe / libscamProbe / libmobileRemosaic come back. 847 unit tests green,
+  the host checks (legacy isolation, AE context, capture sequence, settings model, UI language) pass.
+- Still to do (step 3b, waits for ChatGPT's uncommitted CaptureController work): CaptureController's stock-AE / SCAM HDR
+  planner branches, then ScamStockAe (keep a slim Plan for SHDR's N exposure), ScamAeContext, their tests and checks; the
+  worker's SCAM HDR paths (MappedScamBurst, scam::reconstruct, --scam-check / --scam-tone-check / --scam-forward, the
+  dump-forward marker) with the C++ host checks that drive them (check_scam_capture.cpp, check_scam_motion_capture.cpp,
+  check_scam_reference_metadata.py) - needs an NDK worker build and the OPPO replay md5 check.
 
 ### P130 - accent colour from the system (owner, 2026-10-15: «сделай так чтобы цветовые акценты брались автоматически из самого смартфона, В пункте меню где можно менять цветовой акцент добавь пункт "Из Системы"»)
 - Done locally. AccentPalette.SYSTEM «Из системы» / «From system» is the first choice and the default (an accent never chosen

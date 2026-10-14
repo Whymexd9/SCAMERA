@@ -15,15 +15,11 @@ public final class ScamNeuralWorker {
         {"libQnnHtp.so","73683f1dabfafe1199ff922b43cf748198bbc793783d50585aeeb22e0e14caa2"},
         {"libQnnHtpV79Skel.so","3353856643575df6ff215ca430e0d9274e5c8ba62a172907b7bc5a5c716f6494"}
     };
-    public static final String[][] SCAM_TONE_FILES = {
-        {"nice-tone-fasttm-v79.bin","696317a4f1478fa5a8b048425dc45c03af525b2db53a8e05eb66666df5231e2b"},
-        {"nice-tone-adams-v79.bin","6b484f11c748007978d928e14813ba6b98bddcbf53c3a8fef445094824e0d0fe"},
-        {"nice-tone-adams-landscape-v79.bin","14185fa7ea113e8fd3fc205281b9b83ccea9f2fc6346e44b6e121d0902a80b51"},
-        {"nice-tone-hdrnet-coeff-v79.bin","9bee14bddfd9dc0a7820c5e20087700d1a3a09c13939a4f8795f6a6cc52f3297"},
-        {"nice-tone-hdrnet-weight-v79.bin","ae050107939723b545c194f41fa70245dcd3c25f358e6c9cc1b7e6d8435cdb56"}
-    };
+    /**
+     * The SHDR merge job's runtime: the PD2454 CRE motion. P129: SCAM HDR's forward and tone networks (nice-main-forward,
+     * nice-tone-*) are gone with SCAM HDR (still verified in the private bundle, tools/ci_neural_assets.py BUNDLE_ONLY).
+     */
     public static final String[][] SCAM_FILES = {
-        {"nice-main-forward-v79.bin","a551304d938af0cab76091557414f46a64cae05aaf68ef8030c1bcc42decac8c"},
         // PD2454 CRE motion (same pinned file as /vendor) plus its runtime for non-scam
         // devices; the three vivo libraries it links are scam-cre-compat.cpp stubs.
         {"libvivo_nice_cre.so","41b277753f7fedbe4dda1e1c4b76d2086d6e79768904d8a4922b48a0e023e76e"},
@@ -52,16 +48,15 @@ public final class ScamNeuralWorker {
         int exit=1;
         try {
             boolean scamCapture=args.length==4 && args[1].equals("--scam-capture");
-            boolean scamTone=args.length==2 && args[1].equals("--scam-tone-check");
-            boolean scam=scamTone || scamCapture || (args.length==2 && args[1].equals("--scam"));
+            boolean scam=scamCapture;
             boolean quad=args.length==4 && args[1].equals("--quad-capture");
             boolean capture=quad || (args.length==4 && (args[1].equals("--hexquad-capture") || args[1].equals("--hexquad-capture-cached")));
             boolean hex=capture || (args.length==2 && args[1].equals("--hexquad"));
-            System.out.println("SCAMERA SCAM Neural bundled; path="+(scamTone?"SCAM tone runtime check":scamCapture?"SCAM HDR capture":scam?"SCAM HDR runtime check":quad?"Quad 2x2 capture":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
+            System.out.println("SCAMERA SCAM Neural bundled; path="+(scamCapture?"SHDR capture":quad?"Quad 2x2 capture":capture?"HP9 HexQuad capture":hex?"HP9 HexQuad check":"TELE capture")+" root="+android.os.Process.myUid());
             if(!scam && !hex && args.length!=1 && args.length!=6)throw new IllegalArgumentException("Worker argument count");
             java.util.ArrayList<String[]> required=new java.util.ArrayList<>();
             if(scam){
-                java.util.Collections.addAll(required,scamTone?SCAM_TONE_FILES:SCAM_FILES);
+                java.util.Collections.addAll(required,SCAM_FILES);
                 for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
             } else if(quad){
                 for(String[] item:HEX_FILES)if(item[0].endsWith(".so"))required.add(item);
@@ -85,9 +80,7 @@ public final class ScamNeuralWorker {
             if(!executable.isFile()||!executable.canExecute())throw new IllegalStateException("Native executable unavailable");
             java.util.ArrayList<String> command=new java.util.ArrayList<>();
             command.add(executable.getCanonicalPath());
-            if(scamTone){command.add("--scam-tone-check");command.add(args[0]);}
-            else if(scamCapture){command.add("--scam-capture");command.add(args[0]);command.add(args[2]);command.add(args[3]);}
-            else if(scam){command.add("--scam-check");command.add(args[0]);}
+            if(scamCapture){command.add("--scam-capture");command.add(args[0]);command.add(args[2]);command.add(args[3]);}
             else if(capture){command.add(args[1]);command.add(args[0]);command.add(args[2]);command.add(args[3]);}
             else if(hex){command.add("--hexquad-check");command.add(args[0]);}
             else java.util.Collections.addAll(command,args);

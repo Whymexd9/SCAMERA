@@ -372,10 +372,6 @@ public class PreferenceKeys {
 
 
 
-    private static float sharpFloat(Key key) {
-        return preferenceKeys.settingsManager.getFloat("default_scope", key).floatValue();
-    }
-
     private static int sharpInt(Key key) {
         return preferenceKeys.settingsManager.getInteger("default_scope", key).intValue();
     }
@@ -383,57 +379,15 @@ public class PreferenceKeys {
 
     /** Samples per colour block: 2 quad bayer, 4 tetra squared. */
     public static int getRemosaicBlockSize() {
-        if (isScamMosaic()) return scamMosaicBlock();
         return sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
     }
 
     /**
-     * SCAM HDR on a Quad / Tetra stream (the ISZ modules): off (plain Bayer only, as before), scamera (GPU remosaic of
-     * every frame), detail (Tetra Detail v2 on every frame), mfr (Multi-frame Remosaic of the N frames), neural
-     * (the NPU quad / HexQuad models on the N frames); the short and long frames always take the GPU remosaic.
+     * Colour-block side of the RAW stream for statistics and the raw viewfinder when MosaicStream has not measured one: 1
+     * (P129: SCAM HDR's declared mosaic modes are gone).
      */
-    public static String scamMosaicMode() {
-        String mode = preferenceKeys.settingsManager.getString("default_scope", "pref_scamhdr_mosaic", "off");
-        return mode == null ? "off" : mode;
-    }
-
-    /** The Sabre kernel over the frames' own mosaic samples (sabre / neural_sabre): the donors of the merge are the raw Quad / Tetra sites. */
-    public static boolean isScamMosaicSabre() {
-        String mode = scamMosaicMode();
-        return "sabre".equals(mode) || "neural_sabre".equals(mode);
-    }
-
-    /** How the plain-bayer burst for the network is built: scamera / detail / mfr / neural (sabre = scamera, neural_sabre = neural). */
-    public static String scamMosaicBase() {
-        String mode = scamMosaicMode();
-        return "sabre".equals(mode) ? "scamera" : "neural_sabre".equals(mode) ? "neural" : mode;
-    }
-
-    /** Raw preferences only: this is consulted by isRemosaicEnabled() and isScamHdrEnabled(). */
-    public static boolean isScamMosaic() {
-        return isScamHdrRoute() && !"off".equals(scamMosaicMode());
-    }
-
-    /** Colour block of the module's mosaic: from its forced sensor mode (7 = Tetra 4x4, 5 = Quad 2x2), else the remosaic block. */
-    public static int scamMosaicBlock() {
-        int forced = Math.round(scamInternalValue("mosaic_block", 0f)); // SCAM HDR only: the hybrid merges plain Bayer
-        if (forced == 2 || forced == 4) return forced;
-        int mode = ModuleRegistry.sensorMode(ModuleRegistry.active());
-        if (mode == 7) return 4;
-        if (mode == 5) return 2;
-        return sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
-    }
-
-    /** A forced colour block or an ISZ sensor mode (5 Quad, 7 Tetra): the module streams a mosaic by its own settings. */
-    public static boolean scamMosaicDeclared() {
-        int forced = Math.round(scamInternalValue("mosaic_block", 0f));
-        int mode = ModuleRegistry.sensorMode(ModuleRegistry.active());
-        return forced == 2 || forced == 4 || mode == 5 || mode == 7;
-    }
-
-    /** Colour-block side of the RAW stream for statistics and the raw viewfinder: 1 for plain bayer. */
     public static int mosaicBlock() {
-        return isScamMosaic() ? getRemosaicBlockSize() : 1;
+        return 1;
     }
 
     /** Interpolate green along edges instead of across them. */
@@ -457,9 +411,6 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_tetra_response_key", true);
     }
 
-    public static String getRemosaicBackend() {
-        return isScamMosaic() && "detail".equals(scamMosaicMode()) && scamMosaicBlock() == 4 ? "tetra_detail" : "scamera";
-    }
 
 
 
@@ -603,11 +554,9 @@ public class PreferenceKeys {
      * SCAMERA planner (no root, any device; the default since 8 October 2026).
      */
     public static boolean useStockBracketPlanner() {
-        // The hybrid's N frames are the ZSL ring at the preview exposure: always the SCAMERA plan of that exposure.
-        if (isHybridShot()) return false;
-        return isRootEnabled()
-                && "stock".equals(preferenceKeys.settingsManager.getString("default_scope", "pref_scamhdr_planner", "scamera"))
-                && com.particlesdevs.photoncamera.capture.ScamStockAe.supportedDevice();
+        // P129: the stock AE observer (root + Frida) planned SCAM HDR's bracket only; SHDR's N frames are the ZSL ring at the
+        // preview exposure, always the SCAMERA plan of that exposure. Its native library and assets are gone.
+        return false;
     }
     /** SCAM: build L from the ZSL N frames instead of capturing it after the shutter. */
     public static boolean isScamZslLong() {

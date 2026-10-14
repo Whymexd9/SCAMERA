@@ -28,6 +28,10 @@ import com.particlesdevs.photoncamera.util.Lang;
  * effective-frame map (uint8 per output pixel, always from the hybrid), clip flags (uint8 per output pixel, flag 4).
  */
 public final class ScamHybridBurst implements ScamTransport {
+    /** Merged Bayer RAW of the last SHDR shot (uint16, sensor layout, white 16383), or null (ScamNeuralClient fills it). */
+    public static volatile java.nio.ByteBuffer lastMergedDng;
+    /** Effective merged frames per pixel of the last SHDR result (uint8, 1/8 frame), or null (the denoisers' frame map). */
+    public static volatile java.nio.ByteBuffer lastEffectiveFrames;
     static final int ROLE_NORMAL = 1, ROLE_BRACKETED = 3, ROLE_ULTRASHORT = 5;
     private static final long BASE_WINDOW_NS = 205_000_000L; // SCAM: base candidates within 205 ms of the newest frame
     private static final int BASE_CANDIDATES = 4;
@@ -838,8 +842,8 @@ public final class ScamHybridBurst implements ScamTransport {
         lastOutputSize = new android.graphics.Point(w, h);
         lastBentoApplied = false; lastBentoFactor = 1f; lastBentoUsClipped = 0f; lastNoiseFactor = 1f; lastRgbHalf = false;
         ScamRgb.lastClipFlags = null;
-        ScamBurst.lastEffectiveFrames = null;
-        ScamBurst.lastMergedDng = null;
+        lastEffectiveFrames = null;
+        lastMergedDng = null;
         lastMergeTier = "cpu-single";
         Log.w("SCAM_HDR", "Hybrid fallback=cpu-single: base frame " + burst.base.number + " " + w + "x" + h + " block " + block
                 + " demosaicked on the CPU in " + (android.os.SystemClock.elapsedRealtime() - start) + " ms");

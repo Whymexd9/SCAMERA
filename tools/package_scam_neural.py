@@ -113,9 +113,8 @@ def main():
     hex_assets.update(pinned_assets('QUAD_FILES', 3))
     # Every pinned file is required (bundle v2 carries the Quad/VSR contexts and the CRE runtime): an APK without
     # them is not published (the v1 bundle lacked them and the Actions APK silently differed from local builds).
-    # SCAM model + bundled CRE motion (libvivo_nice_cre.so, libc++_shared.so, 3 compat stubs)
-    scam_assets = pinned_assets('SCAM_FILES', 6)
-    scam_assets.update(pinned_assets('SCAM_TONE_FILES', 5))
+    # SHDR's bundled CRE motion (libvivo_nice_cre.so, libc++_shared.so, 3 compat stubs); P129: no SCAM HDR networks
+    scam_assets = pinned_assets('SCAM_FILES', 5)
     missing = sorted(str(d / n) for d, m in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets), (args.scam_dir, scam_assets))
                      for n in m if not (d / n).is_file())
     if missing:

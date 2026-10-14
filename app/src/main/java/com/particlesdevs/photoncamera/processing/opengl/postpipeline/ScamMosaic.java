@@ -12,8 +12,6 @@ import com.particlesdevs.photoncamera.processing.opengl.GLDrawParams;
 import com.particlesdevs.photoncamera.processing.opengl.GLFormat;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
-import com.particlesdevs.photoncamera.remosaic.BurstPolicy;
-import com.particlesdevs.photoncamera.remosaic.MobileRemosaicProcessor;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Allocator;
 import com.particlesdevs.photoncamera.util.Log;
@@ -25,59 +23,13 @@ import java.util.List;
 import com.particlesdevs.photoncamera.util.Lang;
 
 /**
- * SCAM HDR on a Quad / Tetra stream (the ISZ modules). The SCAM transport, the merge and the network read plain
- * bayer, so the burst is rearranged first:
- * <ul>
- * <li>scamera / detail: every frame (N, L, S, ES) through the GPU remosaic, in place;</li>
- * <li>mfr: the N frames merged by Multi-frame Remosaic into one plain-bayer frame, which becomes the N reference;</li>
- * <li>neural: the N frames through the NPU Quad 2x2 / HP9 HexQuad model, the result likewise the N reference.</li>
- * </ul>
- * In the merged modes the three newest other N frames stay as ordinary (GPU-remosaiced) donors, older N frames are
- * dropped (the merged frame already holds them), and the short / long frames always take the GPU remosaic. A merged
- * mode that cannot run (too few frames, no model, memory) falls back to the GPU remosaic of every frame.
+ * «Нейроремозаик» of SHDR on a Quad / Tetra stream (the ISZ modules, SM8750): the equal-exposure N frames go through the NPU
+ * Quad 2x2 / HP9 HexQuad model into one plain-bayer frame (SHDR's base), every other frame through the GPU remosaic. P129: the
+ * SCAM HDR mosaic modes (scamera / detail / mfr and the Sabre-over-mosaic copies) went with SCAM HDR.
  */
 public final class ScamMosaic {
     private static final String TAG = "SCAM_MOSAIC";
     private ScamMosaic() {}
-
-    public static List<ImageFrame> prepare(Context context, List<ImageFrame> images, Parameters p) throws Exception {
-        final boolean sabre = PreferenceKeys.isScamMosaicSabre();
-        String base = PreferenceKeys.scamMosaicBase();
-        // The quad / HexQuad networks are Hexagon v79 contexts (SM8750): elsewhere the QNN device cannot be created (status 14001
-        // on the 8 Gen 3 of the OPPO and the vivo X100 Ultra, ~0.4 s lost per shot), so the GPU remosaic runs at once.
-        if ("neural".equals(base) && !PreferenceKeys.isScamNetSoc()) {
-            Log.i(TAG, "SCAM HDR mosaic: neural remosaic needs the SM8750 NPU, GPU remosaic (scamera) on this SoC");
-            base = "scamera";
-        }
-        final String mode = base;
-        final int block = PreferenceKeys.scamMosaicBlock();
-        final long start = SystemClock.elapsedRealtime();
-        validate(images, p, block);
-        final int cfa = p.cfaPattern;
-        final int emitted = RemosaicCore.emittedCfaPattern(cfa);
-        Log.i(TAG, "SCAM HDR mosaic: mode=" + PreferenceKeys.scamMosaicMode() + " (network input: " + mode + ") block=" + block + " cfa=" + cfa + "->" + emitted
-                + " frames=" + images.size() + " size=" + p.rawSize.x + "x" + p.rawSize.y);
-        List<ImageFrame> work = new ArrayList<>(images);
-        if (sabre) keepMosaicCopies(work);
-        ImageFrame merged = null;
-        if ("mfr".equals(mode) || "neural".equals(mode)) {
-            try {
-                Merged m = mergeNormals(context, work, p, mode, block, cfa, emitted, sabre);
-                work = m.frames;
-                merged = m.reference;
-            } catch (Exception e) {
-                Log.w(TAG, mode + " unavailable, GPU remosaic of every frame: " + e);
-                work = new ArrayList<>(images);
-                p.cfaPattern = (byte) cfa;
-            }
-        }
-        remosaicGpu(work, merged, p, cfa);
-        p.cfaPattern = (byte) emitted;
-        p.remosaicDone = true;
-        Log.i(TAG, "SCAM HDR mosaic done: frames=" + work.size() + (merged != null ? " merged reference (" + mode + ")" : "")
-                + " ms=" + (SystemClock.elapsedRealtime() - start));
-        return work;
-    }
 
     /**
      * P129: SHDR on a Quad / Tetra stream (an ISZ module without the sensor's remosaic) with «Нейроремозаик» on: the
@@ -107,7 +59,7 @@ public final class ScamMosaic {
             final int emitted = RemosaicCore.emittedCfaPattern(cfa);
             Log.i(TAG, "SHDR neural remosaic: block=" + block + " cfa=" + cfa + "->" + emitted + " frames=" + images.size()
                     + " size=" + p.rawSize.x + "x" + p.rawSize.y);
-            Merged m = mergeNormals(context, new ArrayList<>(images), p, "neural", block, cfa, emitted, true);
+            Merged m = mergeNormals(context, new ArrayList<>(images), p, block);
             remosaicGpu(m.frames, m.reference, p, cfa);
             m.reference.neuralReference = true;
             p.cfaPattern = (byte) emitted;
@@ -150,39 +102,14 @@ public final class ScamMosaic {
     }
 
     /**
-     * Sabre over the mosaic sites: every N frame keeps a copy of its own mosaic samples (the merge's donor sites), taken
-     * before the buffers are rearranged. At most 16 N frames (the four slots and 12 extras), the oldest are dropped.
+     * N frames -> one plain-bayer frame (the NPU model) placed in the slot of the N reference; the other N frames stay as SHDR's
+     * donors. Frames change only after success.
      */
-    private static void keepMosaicCopies(List<ImageFrame> work) {
+    private static Merged mergeNormals(Context context, List<ImageFrame> work, Parameters p, int block) throws Exception {
         List<ImageFrame> normals = new ArrayList<>();
         for (ImageFrame f : work) if (!isBracket(f)) normals.add(f);
         normals.sort(Comparator.comparingLong(f -> f.timestamp));
-        while (normals.size() > 16) {
-            ImageFrame old = normals.remove(0);
-            work.remove(old);
-            old.close();
-        }
-        for (ImageFrame f : normals) {
-            ByteBuffer copy = Allocator.allocateAndCopy(f.buffer.capacity(), f.buffer, 0);
-            if (copy == null) {
-                Log.w(TAG, "no memory for the mosaic copy of frame " + f.number + ": Sabre over mosaic sites off");
-                for (ImageFrame g : normals) if (g.mosaic != null) { Allocator.free(g.mosaic); g.mosaic = null; }
-                return;
-            }
-            copy.position(0);
-            f.mosaic = copy;
-        }
-        Log.i(TAG, "mosaic copies of " + normals.size() + " N frames kept for the Sabre merge");
-    }
-
-    /** N frames -> one plain-bayer frame placed in the slot of the N reference. Frames change only after success. */
-    private static Merged mergeNormals(Context context, List<ImageFrame> work, Parameters p, String mode, int block,
-                                       int cfa, int emitted, boolean keepExtras) throws Exception {
-        List<ImageFrame> normals = new ArrayList<>();
-        for (ImageFrame f : work) if (!isBracket(f)) normals.add(f);
-        normals.sort(Comparator.comparingLong(f -> f.timestamp));
-        final boolean neural = "neural".equals(mode);
-        final int minimum = neural ? (block == 2 ? 4 : 6) : 3;
+        final int minimum = block == 2 ? 4 : 6;
         if (normals.size() < Math.max(4, minimum))
             throw new IOException(Lang.t("нужно не меньше ", "needs at least ") + Math.max(4, minimum) + Lang.t(" кадров N (увеличьте «Кадров в склейке»), есть ", " N frames (raise “Frames in the merge”), has ") + normals.size());
         // The models and the merge need equal exposures: the frames of the newest N's exposure and ISO.
@@ -192,12 +119,10 @@ public final class ScamMosaic {
             if (f.measuredExposure == newest.measuredExposure && f.measuredIso == newest.measuredIso) same.add(f);
         if (same.size() < minimum)
             throw new IOException(Lang.t("нужно не меньше ", "needs at least ") + minimum + Lang.t(" кадров N с одной выдержкой и ISO, есть ", " N frames with one shutter and ISO, has ") + same.size() + Lang.t(" из ", " of ") + normals.size());
-        // With the Sabre merge the other N frames are donors of the merge itself: the model gets just the frames it needs.
-        int cap = neural ? (keepExtras ? minimum : 50) : BurstPolicy.frameCount(same.size(), p.rawSize.x, p.rawSize.y);
-        List<ImageFrame> use = new ArrayList<>(same.subList(Math.max(0, same.size() - cap), same.size()));
-        // The merged frame must lie in the geometry of the N reference (the transport aligns the others to it, and with
-        // the Sabre merge its mosaic sites are residuals against the network output): the neural model registers to its
-        // first frame, Multi-frame Remosaic to the middle one.
+        // The other N frames are donors of SHDR's merge itself: the model gets just the frames it needs.
+        List<ImageFrame> use = new ArrayList<>(same.subList(Math.max(0, same.size() - minimum), same.size()));
+        // The merged frame must lie in the geometry of the N reference (SHDR aligns the others to it): the model registers to
+        // its first frame.
         ImageFrame reference = normals.get(normals.size() - 4);
         if (!use.contains(reference)) {
             reference = null;
@@ -205,20 +130,12 @@ public final class ScamMosaic {
             if (reference == null) throw new IOException(Lang.t("опорный кадр N не входит в серию одной экспозиции", "the N reference frame is not in the single-exposure series"));
         }
         use.remove(reference);
-        use.add(neural ? 0 : use.size() / 2, reference);
-        ByteBuffer result;
+        use.add(0, reference);
         final long start = SystemClock.elapsedRealtime();
-        if (neural) {
-            result = HexQuadBurst.processForScam(context, use, p, block == 2);
-        } else {
-            String name = new String[]{"RGGB", "GRBG", "GBRG", "BGGR"}[emitted];
-            result = MobileRemosaicProcessor.mergeForScam(use, p, block, name);
-        }
+        ByteBuffer result = HexQuadBurst.processForScam(context, use, p, block == 2);
         if (result == null) throw new IOException(Lang.t("пустой результат", "empty result"));
-        Log.i(TAG, mode + ": " + use.size() + " N frames -> 1, ms=" + (SystemClock.elapsedRealtime() - start));
-        // The four newest N are the transport's slots; its reference is the oldest of them.
-        List<ImageFrame> kept = keepExtras ? new ArrayList<>(normals) : new ArrayList<>(normals.subList(normals.size() - 4, normals.size()));
-        if (!kept.contains(reference)) kept.add(reference);
+        Log.i(TAG, "neural: " + use.size() + " N frames -> 1, ms=" + (SystemClock.elapsedRealtime() - start));
+        List<ImageFrame> kept = new ArrayList<>(normals);
         ByteBuffer old = reference.buffer;
         reference.buffer = result;
         Allocator.free(old);

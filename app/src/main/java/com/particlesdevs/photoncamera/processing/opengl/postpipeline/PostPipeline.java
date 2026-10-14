@@ -567,7 +567,7 @@ public class PostPipeline extends GLBasePipeline {
                 +" tone=ARK (ArkStats/ArkFusion/ArkCombine)"
                 +"; actual node order/timings follow in Pipeline log");
         add(new ScamRgb());
-        add(new HighlightRecovery());
+        // P129: HighlightRecovery is gone (SCAM HDR's; SHDR recovers the highlights per channel in ScamRgb)
         add(new ScamHdrDenoise());
         // The ArkCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX. LinearExposure only keeps the
         // Ultra HDR linear snapshot.

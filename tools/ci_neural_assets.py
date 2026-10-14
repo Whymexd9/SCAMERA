@@ -24,10 +24,18 @@ ARCHIVE = 'scamera-neural-assets-v2.zip'
 LIMIT = 128 * 1024 * 1024
 # Entries of bundle v2 that are verified but no longer packaged (the vivo VSR upscale was removed in the settings cleanup;
 # the encrypted bundle and its secret stay unchanged).
+# P129: SCAM HDR's forward and tone networks went with SCAM HDR (SHDR is the only merge) in the same way.
 BUNDLE_ONLY = {'hexquad': {
     'vsr1x-v79.bin': 'db7eec6b89c9040e05be84bfacebb9d7dacb725817998047f7c51e199027b72c',
     'vsr2x-v79.bin': 'd392f3c23181bd792f766ab21b7635f966edbc188ff323d166ed6859a395d118',
-    'vsr4x-v79.bin': 'cc6d236a3f6da5214c687d93e16f35715fbeffd36c52eef417ad68f2a0dcb83e'}}
+    'vsr4x-v79.bin': 'cc6d236a3f6da5214c687d93e16f35715fbeffd36c52eef417ad68f2a0dcb83e'},
+    'nice': {
+    'nice-main-forward-v79.bin': 'a551304d938af0cab76091557414f46a64cae05aaf68ef8030c1bcc42decac8c',
+    'nice-tone-fasttm-v79.bin': '696317a4f1478fa5a8b048425dc45c03af525b2db53a8e05eb66666df5231e2b',
+    'nice-tone-adams-v79.bin': '6b484f11c748007978d928e14813ba6b98bddcbf53c3a8fef445094824e0d0fe',
+    'nice-tone-adams-landscape-v79.bin': '14185fa7ea113e8fd3fc205281b9b83ccea9f2fc6346e44b6e121d0902a80b51',
+    'nice-tone-hdrnet-coeff-v79.bin': '9bee14bddfd9dc0a7820c5e20087700d1a3a09c13939a4f8795f6a6cc52f3297',
+    'nice-tone-hdrnet-weight-v79.bin': 'ae050107939723b545c194f41fa70245dcd3c25f358e6c9cc1b7e6d8435cdb56'}}
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -112,7 +120,7 @@ def unpack(data, output):
         raise ValueError('Private bundle SHA256 mismatch')
     manifests = {'bundle': pinned_assets(),
                  'hexquad': {**pinned_assets('HEX_FILES', 6), **pinned_assets('QUAD_FILES', 3), **BUNDLE_ONLY['hexquad']},
-                 'nice': {**pinned_assets('SCAM_FILES', 6), **pinned_assets('SCAM_TONE_FILES', 5)}}
+                 'nice': {**pinned_assets('SCAM_FILES', 5), **BUNDLE_ONLY['nice']}}
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         expected = {group + '/' + name for group, manifest in manifests.items() for name in manifest}
         if len(archive.namelist()) != len(expected) or set(archive.namelist()) != expected:

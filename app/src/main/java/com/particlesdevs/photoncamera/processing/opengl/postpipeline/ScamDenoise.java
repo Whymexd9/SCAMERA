@@ -22,7 +22,7 @@ import static android.opengl.GLES20.GL_NEAREST;
 
 /**
  * "SCAM Noise Reduction" of the SCAM Hybrid: the finish denoise of SCAM 9.6 (GCam) as ArkCam 2.85 runs it, on the
- * white-balanced linear RGB after {@link HighlightRecovery} (the space where GCam denoises, before the colour matrix).
+ * white-balanced linear RGB after ScamRgb (the space where GCam denoises, before the colour matrix).
  * <ol>
  * <li>Despeckle (as the NLM route: isolated dots, also hot pixels the merge let through), then the YUV of GCam's
  *     common.cl. On the Sabre 2x grid everything below runs at the SENSOR scale (luma through kD8, colour through
@@ -237,7 +237,7 @@ public final class ScamDenoise extends Node {
 
     /** Effective-frame map of the worker as a texture (codes, 0 = unknown); median code in effRef[0]. Null when absent. */
     private static GLTexture loadEffectiveFrames(List<GLTexture> owned, Point size, float[] effRef) {
-        ByteBuffer eff = ScamBurst.lastEffectiveFrames;
+        ByteBuffer eff = ScamHybridBurst.lastEffectiveFrames;
         if (eff == null || eff.capacity() != size.x * size.y) return null;
         eff.rewind();
         int[] histogram = new int[256];

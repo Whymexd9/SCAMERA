@@ -61,15 +61,11 @@ target_link_libraries(
         log
 )
 
-add_library(scamAe SHARED scam-aec-jni.cpp)
-set_property(TARGET scamAe PROPERTY CXX_STANDARD 17)
-target_compile_options(scamAe PRIVATE -ffp-contract=off)
-
+# P129: scamAe (SCAM HDR's stock AE observer) and the scamProbe launch check went with SCAM HDR; scam-probe.cpp stays
+# (the worker includes it).
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     add_library(scamNeuralProbe SHARED scam-neural-probe.cpp)
     target_link_libraries(scamNeuralProbe PRIVATE dl)
-    add_library(scamProbe SHARED scam-probe.cpp)
-    target_link_libraries(scamProbe PRIVATE dl)
 endif()
 
 # P24: every saved JPEG through jpegli, 4:4:4 (third_party/README.md); Highway gives it NEON / SVE.

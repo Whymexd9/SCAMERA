@@ -27,7 +27,7 @@ import static android.opengl.GLES20.GL_NEAREST;
  * Luma: non-local means on sqrt(Y + c) plus an edge-stopping correction of the blotch-scale residue,
  * then a share of the removed noise is put back so the remaining grain is fine and even (a flat
  * spectrum like a GCam render) instead of a denoiser's cloudy mid-frequency residue.
- * Runs on the white-balanced linear image after {@link HighlightRecovery}.
+ * Runs on the white-balanced linear image after ScamRgb.
  * <p>
  * SCAM Hybrid shots go to {@link ScamDenoise} (GCam/SCAM 9.6 finish denoise, pref_scam_hybrid_dn_engine = gcam, default);
  * this NLM route stays the hybrid's "nlm" engine and the SCAM HDR (SCAM) denoise, unchanged.
@@ -84,7 +84,7 @@ public final class ScamHdrDenoise extends Node {
     private GLTexture loadEffectiveFrames(Point size) {
         java.io.File debugDir = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext().getExternalFilesDir(null);
         if (debugDir != null && new java.io.File(debugDir, "noeff").exists()) return null; // developer switch: uniform noise
-        java.nio.ByteBuffer eff = ScamBurst.lastEffectiveFrames;
+        java.nio.ByteBuffer eff = ScamHybridBurst.lastEffectiveFrames;
         if (eff == null || eff.capacity() != size.x * size.y) return null;
         eff.rewind();
         int[] histogram = new int[256];

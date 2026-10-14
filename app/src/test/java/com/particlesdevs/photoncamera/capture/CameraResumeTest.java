@@ -82,45 +82,6 @@ public class CameraResumeTest {
     }
     @Test
     @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
-    public void scamAcceptsArbitraryBayerSensorAndRequiresItsNoiseProfile() throws Exception {
-        var p=new com.particlesdevs.photoncamera.processing.render.Parameters();
-        p.rawSize=new android.graphics.Point(64,64);p.physicalID=77;p.cfaPattern=3;p.whiteLevel=1023;
-        var frames=new java.util.ArrayList<com.particlesdevs.photoncamera.processing.ImageFrame>();
-        for(int i=0;i<7;i++) {
-            var f=mock(com.particlesdevs.photoncamera.processing.ImageFrame.class);
-            frames.add(f);
-            f.width=64;f.height=64;f.buffer=java.nio.ByteBuffer.allocate(64*64*2);
-            f.timestamp=(i+1)*1_000_000_000L;
-            f.measuredIso=25600;f.measuredExposure=i<4?1000000:i==4?2000000:i==5?250000:62500;
-            var role=i<4?com.particlesdevs.photoncamera.processing.ImageFrame.CaptureRole.NORMAL
-                    :i==4?com.particlesdevs.photoncamera.processing.ImageFrame.CaptureRole.LONG
-                    :i==5?com.particlesdevs.photoncamera.processing.ImageFrame.CaptureRole.SHORT
-                    :com.particlesdevs.photoncamera.processing.ImageFrame.CaptureRole.EXTRA_SHORT;
-            when(f.getCaptureRole()).thenReturn(role);
-            f.noiseSlope=.00015f;f.noiseOffset=.000002f;
-            var metadata=exposure(f.measuredExposure,f.measuredIso);
-            when(metadata.get(CaptureResult.SENSOR_TIMESTAMP)).thenReturn(f.timestamp);
-            when(f.getMatchedCaptureMetadata()).thenReturn(metadata);
-            f.pair=mock(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.ExpoPair.class);
-        }
-        var normal=frames.get(0);
-        var constructor=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamBurst.class
-                .getDeclaredConstructor(java.util.List.class,com.particlesdevs.photoncamera.processing.render.Parameters.class);
-        constructor.setAccessible(true);
-        try(var prefs=mockStatic(PreferenceKeys.class)) {
-            assertNotNull(constructor.newInstance(frames,p));
-            normal.noiseSlope=Float.NaN;
-            var error=assertThrows(java.lang.reflect.InvocationTargetException.class,
-                    ()->constructor.newInstance(frames,p));
-            assertTrue(error.getCause().getMessage().contains("Camera2"));
-            normal.noiseSlope=.00015f;p.cfaPattern=4; // RGB: no 2x2 CFA
-            error=assertThrows(java.lang.reflect.InvocationTargetException.class,
-                    ()->constructor.newInstance(frames,p));
-            assertTrue(error.getCause().getMessage().contains("Bayer"));
-        }
-    }
-    @Test
-    @Config(shadows=ShadowAllocator.class, instrumentedPackages="com.particlesdevs.photoncamera.util")
     public void scamZslSelectsOlderMatchedFrameWhenNewestResultIsLate() throws Exception {
         put(controller,"scamZslShutterTimestamp",9L);
         var ring=(ArrayDeque<RingFrame>)get(controller,"mZslRingBuffer");
