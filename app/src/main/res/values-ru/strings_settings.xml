@@ -678,7 +678,7 @@
     <string name="prefs_photo_color_space_title">Цветовое пространство</string>
     <string name="prefs_photo_color_space_summary">sRGB одинаков везде. Display P3 — насыщеннее цвета на P3-экранах; где P3 не читают, бледнее.</string>
     <string name="prefs_photo_hdr_title">HDR в HEIC / AVIF</string>
-    <string name="prefs_photo_hdr_summary">HEIC / AVIF в настоящем HDR: на HDR-экране света ярче белого. Нужны 10 бит и Android 13+.</string>
+    <string name="prefs_photo_hdr_summary">Добавляет HDR-карту, как Ultra HDR в JPEG: HDR-экран покажет яркие света, остальные — обычное фото.</string>
     <string name="prefs_photo_also_jpeg_title">Также сохранять JPEG</string>
     <string name="prefs_photo_also_jpeg_summary">Копия в JPEG рядом с HEIC / WebP / AVIF для программ, которые их не открывают.</string>
     <!-- P42: распознавание лиц и следящий автофокус (по ArkCamera v50) -->

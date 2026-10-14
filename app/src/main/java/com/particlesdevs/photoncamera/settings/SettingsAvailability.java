@@ -142,8 +142,7 @@ public final class SettingsAvailability {
         }
         // «HEIC 10 бит» needs Android 13 and an HEVC Main10 encoder with P010 input; without them the shot is an 8-bit HEIC.
         if (key.equals("pref_heic_10bit") && heic10Unavailable != null) return heic10Unavailable;
-        // «HDR в HEIC / AVIF» (P46): HLG needs 10 bits - the 10-bit HEIC, or AVIF at 10 / 12 bit (lossless keeps 10) - and
-        // RGBA_1010102 bitmaps (Android 13); otherwise the HEIC / AVIF stays SDR.
+        // «HDR в HEIC / AVIF» (P46, P125 gain map): the HEIC needs the app's 10-bit HEIC writer; AVIF holds the map at any depth.
         if (key.equals("pref_photo_hdr")) {
             if (hdrUnavailable != null) return hdrUnavailable;
             if (photoFormat().equals("heic")) {
@@ -154,9 +153,6 @@ public final class SettingsAvailability {
                     return Lang.t("HDR хранится только в 10-битном HEIC, а он здесь недоступен. ", "HDR needs the 10-bit HEIC, which is unavailable here. ")
                             + heic10Unavailable;
             }
-            if (photoFormat().equals("avif") && !on("pref_avif_lossless", false) && text("pref_avif_depth", "10").trim().startsWith("8"))
-                return Lang.t("Выберите «Глубина цвета» 10 или 12 бит: в 8 битах HDR не хранится.",
-                        "Choose “Colour depth” 10 or 12 bit: 8 bits cannot hold HDR.");
         }
         if (key.equals("pref_webp_quality") && on("pref_webp_lossless", false))
             return Lang.t("Не используется в WebP без потерь.", "Not used by lossless WebP.");

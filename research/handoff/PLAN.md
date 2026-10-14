@@ -3068,3 +3068,27 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   removed with all module_vivo_isz_* flags.
 - Tests: IszModuleTest; VivoQcomIszTest takes the on / off step; VivoMtkIszTest, DcgSearchTest and the X500 Pro Max device test
   removed.
+
+### P125 - ISO 21496-1 gain map in HEIC / AVIF (owner, 2026-10-14: formats like AVIF with good compatibility, «Делаем только пункт 1»)
+- «HDR в HEIC / AVIF» now writes the SDR photo with the Ultra HDR JPEG's gain map (ultrahdr/IsoGainMap: GainMapMin/Max, gamma 1,
+  offsets 1/64, headroom 0 / HDRCapacityMax, one channel, base colour space; the map at half size per axis) instead of the HLG
+  picture: every viewer shows the photo, HDR screens the highlights (Android 15+ / Chrome AVIF / iOS 18 HEIC).
+- AVIF: libavif's own gain map (8-bit monochrome image, 'tmap' item, altr, brand), any depth (8-bit too), Android 12.
+- HEIC: the app's HEIF writer (HeifContainerWriter.setGainMap): a second hidden grid of Main10 tiles coded by the same encoder
+  (Heic10Encoder.writeWithGainMap), a 'tmap' item (ToneMapImage v0 + GainMapMetadata, the bytes libavif writes) deriving from
+  the primary grid and the map, grpl/altr {tmap, grid}, ftyp 'tmap'; primary stays the SDR grid. Needs «HEIC 10 бит».
+- A failed map encode writes the SDR file. HlgRendition stays (tools/check_colour_output checks it) but the app no longer uses it.
+- Checks: IsoGainMapTest, HeifGainMapTest, PhotoOutputColourTest (gain map paths and fallbacks); tools/check_avif.py: libavif
+  reads the map back (size, metadata exact, map within 0 codes, SDR photo in Pillow) - run locally with AOM_TARGET_CPU=generic;
+  tools/check_heic10.py --self-test: the HEIC with a map passes the structure check and libheif decodes the primary unchanged
+  (CI only: pillow-heif). Not checked on a phone: whether the gallery / Google Photos show the HDR.
+
+### P126 - X300 Ultra: ISZ modules doubled and coming back; dark DCG photos (owner, 2026-10-14, video + log)
+- Modules: IszModule (CROPPED_RAW «2×») skips the X300 Ultra (VivoQcomIsz makes its main 2x); an ISZ offer is spent at the first
+  try (a module that had no free slot came back as soon as another button was deleted); an existing duplicate with the same
+  camera and forced mode is not made again; extras removed (a second ISZ module of the same camera + mode always, the plain
+  twin at an ISZ module's zoom once). Log: 8 back buttons in use, «no free module slot» at every start, two «4.8×» / «9.6×».
+- DCG levels: the DCG modes stream 14 bits with the HAL's white 1023 and static black 64, the dynamic black 1021.75 / 1030.75;
+  the measured range flapped 4095 / 16383 / 1023 with the scene (dark first photo, others over / under): RawPayloadCheck.
+  pedestalWhite - a dynamic black 2^k x the static one is a k bits wider stream (white (1023 + 1) * 2^k - 1); Parameters takes
+  that black and white for the shot, the clip estimate and the motion level read it through wideWhite(). Not phone-checked.

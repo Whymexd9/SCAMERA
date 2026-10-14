@@ -4,7 +4,8 @@
 // from an Android Bitmap: RGBA_8888 or RGBA_1010102 (a 10-bit processing output keeps its 10 bits; an 8-bit one is
 // expanded when a higher depth is chosen). Colour: BT.709 primaries, sRGB transfer (13), BT.709 matrix (identity when
 // lossless), full range - unless the options name another colour (P46: Display P3 12/13/1 with its ICC profile, HDR HLG
-// 9/18/9; the matrix also drives libavif's RGB -> YCbCr conversion). Shared by the JNI library (scamera-avif.cpp) and the
+// 9/18/9; the matrix also drives libavif's RGB -> YCbCr conversion). P125: an ISO 21496-1 gain map (8-bit monochrome image +
+// metadata, libavif's 'tmap' item) next to the SDR image. Shared by the JNI library (scamera-avif.cpp) and the
 // host check (tools/check_avif.py), so both encode the same way. Dependencies: scamera-avif-deps.cmake.
 #include <avif/avif.h>
 
@@ -40,6 +41,11 @@ struct Options {
     int transfer = 13;      // 13 sRGB, 18 HLG, 16 PQ
     int matrix = 1;         // 1 BT.709, 9 BT.2020 non-constant luminance (identity when lossless)
     std::vector<uint8_t> icc;
+    // P125: the gain map (one byte per pixel, rows without padding; empty: none) and its ISO 21496-1 metadata, log2 values:
+    // gainMapMin, gainMapMax, gamma, base offset, alternate offset, base headroom, alternate headroom (one channel).
+    std::vector<uint8_t> gainMap;
+    int gainWidth = 0, gainHeight = 0;
+    double gainMeta[7] = {0, 0, 1, 0, 0, 0, 0};
 };
 
 struct Stats {
@@ -47,6 +53,7 @@ struct Stats {
     bool yuv444 = true;
     bool lossless = false;
     bool exif = false;      // the EXIF block is in the file
+    bool gainMap = false;   // P125: the gain map is in the file
     double convertMs = 0;   // RGB -> YCbCr
     double encodeMs = 0;    // AV1 + container
     size_t bytes = 0;
@@ -190,6 +197,44 @@ inline ImagePtr toYuv(const uint8_t* pixels, int width, int height, size_t strid
     return image;
 }
 
+// P125: the gain map of o (when set) as image->gainMap: an 8-bit monochrome full-range image and its metadata, applied in the
+// base image's colour space. Returns "" or the reason (the caller then writes no file: the photo goes JPEG / without map).
+inline std::string attachGainMap(avifImage* image, const Options& o) {
+    if (o.gainMap.empty()) return "";
+    if (o.gainWidth <= 0 || o.gainHeight <= 0 || o.gainMap.size() != size_t(o.gainWidth) * size_t(o.gainHeight))
+        return "gain map geometry";
+    avifGainMap* gm = avifGainMapCreate();
+    if (gm == nullptr) return "out of memory (gain map)";
+    image->gainMap = gm; // owned by the image from here
+    gm->image = avifImageCreate(uint32_t(o.gainWidth), uint32_t(o.gainHeight), 8, AVIF_PIXEL_FORMAT_YUV400);
+    if (gm->image == nullptr) return "out of memory (gain map image)";
+    gm->image->yuvRange = AVIF_RANGE_FULL;
+    gm->image->colorPrimaries = AVIF_COLOR_PRIMARIES_UNSPECIFIED;
+    gm->image->transferCharacteristics = AVIF_TRANSFER_CHARACTERISTICS_UNSPECIFIED;
+    avifResult r = avifImageAllocatePlanes(gm->image, AVIF_PLANES_YUV);
+    if (r != AVIF_RESULT_OK) return std::string("gain map planes: ") + avifResultToString(r);
+    for (int y = 0; y < o.gainHeight; ++y)
+        std::copy_n(o.gainMap.data() + size_t(y) * o.gainWidth, size_t(o.gainWidth),
+                    gm->image->yuvPlanes[AVIF_CHAN_Y] + size_t(y) * gm->image->yuvRowBytes[AVIF_CHAN_Y]);
+    bool fractions = true;
+    for (int c = 0; c < 3; ++c) {
+        fractions &= avifDoubleToSignedFraction(o.gainMeta[0], &gm->gainMapMin[c]) == AVIF_TRUE;
+        fractions &= avifDoubleToSignedFraction(o.gainMeta[1], &gm->gainMapMax[c]) == AVIF_TRUE;
+        fractions &= avifDoubleToUnsignedFraction(o.gainMeta[2], &gm->gainMapGamma[c]) == AVIF_TRUE;
+        fractions &= avifDoubleToSignedFraction(o.gainMeta[3], &gm->baseOffset[c]) == AVIF_TRUE;
+        fractions &= avifDoubleToSignedFraction(o.gainMeta[4], &gm->alternateOffset[c]) == AVIF_TRUE;
+    }
+    fractions &= avifDoubleToUnsignedFraction(o.gainMeta[5], &gm->baseHdrHeadroom) == AVIF_TRUE;
+    fractions &= avifDoubleToUnsignedFraction(o.gainMeta[6], &gm->alternateHdrHeadroom) == AVIF_TRUE;
+    if (!fractions) return "gain map metadata out of range";
+    gm->useBaseColorSpace = AVIF_TRUE;
+    gm->altColorPrimaries = image->colorPrimaries;
+    gm->altTransferCharacteristics = AVIF_TRANSFER_CHARACTERISTICS_UNSPECIFIED;
+    gm->altMatrixCoefficients = AVIF_MATRIX_COEFFICIENTS_UNSPECIFIED;
+    gm->altYUVRange = AVIF_RANGE_FULL;
+    return "";
+}
+
 // Step 2: encodes the image (with the EXIF block, "Exif\0\0" + TIFF header as in a JPEG APP1, or none) and writes the
 // file. Returns "" on success, else the reason; a partial file is removed.
 inline std::string encodeImage(avifImage* image, const Options& o, const uint8_t* exif, size_t exifSize,
@@ -206,6 +251,8 @@ inline std::string encodeImage(avifImage* image, const Options& o, const uint8_t
         // A block libavif cannot parse costs the EXIF, never the photo.
         exifStored = avifImageSetMetadataExif(image, exif, exifSize) == AVIF_RESULT_OK;
     }
+    const std::string gainError = attachGainMap(image, o);
+    if (!gainError.empty()) return gainError;
     std::unique_ptr<avifEncoder, detail::EncoderDeleter> encoder(avifEncoderCreate());
     if (!encoder) return "out of memory (encoder)";
     encoder->codecChoice = AVIF_CODEC_CHOICE_AOM;
@@ -213,6 +260,7 @@ inline std::string encodeImage(avifImage* image, const Options& o, const uint8_t
     encoder->speed = std::max(0, std::min(10, o.speed));
     encoder->quality = o.lossless ? AVIF_QUALITY_LOSSLESS : std::max(1, std::min(100, o.quality));
     encoder->qualityAlpha = AVIF_QUALITY_LOSSLESS;
+    encoder->qualityGainMap = std::max(1, std::min(100, o.lossless ? 90 : o.quality));
     encoder->autoTiling = AVIF_TRUE; // tiles by image size and thread count: the threads encode in parallel
     for (const auto& option : o.codecOptions) {
         if (avifEncoderSetCodecSpecificOption(encoder.get(), option.first.c_str(), option.second.c_str()) != AVIF_RESULT_OK)
@@ -235,6 +283,7 @@ inline std::string encodeImage(avifImage* image, const Options& o, const uint8_t
     }
     if (stats) {
         stats->exif = exifStored;
+        stats->gainMap = image->gainMap != nullptr;
         stats->bytes = out.data.size;
         stats->encodeMs = detail::msSince(start);
     }

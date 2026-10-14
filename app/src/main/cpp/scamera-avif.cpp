@@ -3,6 +3,7 @@
 #include <android/bitmap.h>
 #include <jni.h>
 
+#include <algorithm>
 #include <exception>
 #include <new>
 #include <string>
@@ -64,14 +65,17 @@ std::string encode(JNIEnv* env, jobject bitmap, jstring path, const scamera_avif
 }  // namespace
 
 // Returns null on success, else the reason (no file is left behind). primaries / transfer / matrix: the H.273 colour of
-// the file (1 / 13 / 1 by default), icc: an ICC profile or null (P46). stats (long[6] or null) receives: bit depth,
-// 1 when 4:4:4, conversion ms, encode ms, file bytes, 1 when the EXIF block was stored.
+// the file (1 / 13 / 1 by default), icc: an ICC profile or null (P46). gainMap (P125): one byte per pixel of a
+// gainWidth x gainHeight map or null, gainMeta its ISO 21496-1 values (Options::gainMeta). stats (long[7] or null) receives:
+// bit depth, 1 when 4:4:4, conversion ms, encode ms, file bytes, 1 when the EXIF block was stored, 1 when the gain map was.
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_particlesdevs_photoncamera_processing_avif_AvifEncoder_encode(JNIEnv* env, jclass, jobject bitmap, jstring path,
                                                                        jint quality, jboolean lossless, jint depth,
                                                                        jboolean yuv444, jint speed, jint threads,
                                                                        jbyteArray exif, jint primaries, jint transfer,
-                                                                       jint matrix, jbyteArray icc, jlongArray stats) {
+                                                                       jint matrix, jbyteArray icc, jbyteArray gainMap,
+                                                                       jint gainWidth, jint gainHeight,
+                                                                       jdoubleArray gainMeta, jlongArray stats) {
     scamera_avif::Options options;
     options.quality = quality;
     options.lossless = lossless == JNI_TRUE;
@@ -91,6 +95,16 @@ Java_com_particlesdevs_photoncamera_processing_avif_AvifEncoder_encode(JNIEnv* e
             if (n > 0) env->GetByteArrayRegion(icc, 0, n, reinterpret_cast<jbyte*>(options.icc.data()));
             if (env->ExceptionCheck()) error = "ICC profile unreadable";
         }
+        if (error.empty() && gainMap != nullptr) {
+            const jsize n = env->GetArrayLength(gainMap);
+            options.gainMap.resize(size_t(n));
+            if (n > 0) env->GetByteArrayRegion(gainMap, 0, n, reinterpret_cast<jbyte*>(options.gainMap.data()));
+            options.gainWidth = gainWidth;
+            options.gainHeight = gainHeight;
+            if (gainMeta == nullptr || env->GetArrayLength(gainMeta) < 7) error = "gain map metadata missing";
+            else env->GetDoubleArrayRegion(gainMeta, 0, 7, options.gainMeta);
+            if (env->ExceptionCheck()) error = "gain map unreadable";
+        }
         if (error.empty()) error = encode(env, bitmap, path, options, exif, &result);
     } catch (const std::bad_alloc&) {
         error = "out of memory";
@@ -104,9 +118,10 @@ Java_com_particlesdevs_photoncamera_processing_avif_AvifEncoder_encode(JNIEnv* e
         if (error.empty()) error = "JNI exception";
     }
     if (error.empty() && stats != nullptr && env->GetArrayLength(stats) >= 6) {
-        const jlong values[6] = {result.depth, result.yuv444 ? 1 : 0, jlong(result.convertMs + 0.5),
-                                 jlong(result.encodeMs + 0.5), jlong(result.bytes), result.exif ? 1 : 0};
-        env->SetLongArrayRegion(stats, 0, 6, values);
+        const jlong values[7] = {result.depth, result.yuv444 ? 1 : 0, jlong(result.convertMs + 0.5),
+                                 jlong(result.encodeMs + 0.5), jlong(result.bytes), result.exif ? 1 : 0,
+                                 result.gainMap ? 1 : 0};
+        env->SetLongArrayRegion(stats, 0, std::min<jsize>(7, env->GetArrayLength(stats)), values);
     }
     return error.empty() ? nullptr : env->NewStringUTF(error.c_str());
 }

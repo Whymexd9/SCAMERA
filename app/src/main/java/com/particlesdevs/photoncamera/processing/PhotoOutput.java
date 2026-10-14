@@ -8,7 +8,6 @@ import androidx.exifinterface.media.ExifInterface;
 
 import com.particlesdevs.photoncamera.api.ParseExif;
 import com.particlesdevs.photoncamera.processing.avif.AvifEncoder;
-import com.particlesdevs.photoncamera.processing.color.HlgRendition;
 import com.particlesdevs.photoncamera.processing.color.IccEmbed;
 import com.particlesdevs.photoncamera.processing.color.IccProfiles;
 import com.particlesdevs.photoncamera.processing.color.OutputColour;
@@ -18,6 +17,7 @@ import com.particlesdevs.photoncamera.processing.heif.Heic10Support;
 import com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps;
 import com.particlesdevs.photoncamera.processing.opengl.GLLimits;
 import com.particlesdevs.photoncamera.processing.ultrahdr.GainMapComputer;
+import com.particlesdevs.photoncamera.processing.ultrahdr.IsoGainMap;
 import com.particlesdevs.photoncamera.processing.ultrahdr.UltraHdrEncoder;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
@@ -45,9 +45,10 @@ import java.util.List;
  * P46: {@link #save(Path, Bitmap, ParseExif.ExifData, GainMapComputer.Result, GainMapComputer.Result, OutputColour.Space)}
  * - «Цветовое пространство» Display P3: the image is already P3 (PostPipeline.p3Output); JPEG / Ultra HDR get the ICC
  * profile as APP2, WebP as ICCP, the 8-bit HEIC a colr 'prof' added to HeifWriter's file (HeifColourPatch), the 10-bit
- * HEIC nclx 12/13/1 + the profile, AVIF CICP 12/13/1 + the profile. «HDR в HEIC / AVIF»: the HEIC / AVIF is the HLG
- * picture of the image and the gain map (HlgRendition: BT.2020, nclx / CICP 9/18/9); a failed HDR encode writes the SDR
- * file as without the option. The four-argument save is the sRGB, SDR call and takes exactly the paths above.
+ * HEIC nclx 12/13/1 + the profile, AVIF CICP 12/13/1 + the profile. «HDR в HEIC / AVIF» (P125): the HEIC / AVIF is the
+ * SDR photo with its ISO 21496-1 gain map (IsoGainMap: the Ultra HDR JPEG's map and values, a 'tmap' item), so every
+ * viewer shows the photo and an HDR screen its highlights; a failed encode writes the SDR file as without the option. The
+ * four-argument save is the sRGB, SDR call and takes exactly the paths above.
  */
 public final class PhotoOutput {
     private static final String TAG = "PhotoOutput";
@@ -73,30 +74,29 @@ public final class PhotoOutput {
         return ok;
     };
 
-    /** The HLG picture of the HDR HEIC / AVIF (HlgRendition.render); replaced in tests. */
-    interface HdrRenderer {
-        Bitmap render(Bitmap base, GainMapComputer.Result gain, OutputColour.Space baseSpace) throws Exception;
+    /**
+     * P125: writes the 10-bit HEIC of {@code img} (the SDR photo in {@code colour}) with {@code gainMap} and its 'tmap' data
+     * (Heic10Encoder.writeWithGainMap); replaced in tests.
+     */
+    interface GainMapHeicWriter {
+        boolean write(Path file, Bitmap img, Bitmap gainMap, byte[] toneMap, int quality, byte[] exifBlock, long timeoutMs,
+                      StringBuilder detail, OutputColour.Signal colour);
     }
 
-    static HdrRenderer hdrRenderer = (base, gain, space) -> {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) throw new IllegalStateException("HDR needs Android 13");
-        return HlgRendition.render(base, gain, space);
+    static GainMapHeicWriter gainMapHeic = (file, img, gainMap, toneMap, quality, exifBlock, timeoutMs, detail, colour) -> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false;
+        final Heic10Encoder.Stats stats = new Heic10Encoder.Stats(), gainStats = new Heic10Encoder.Stats();
+        final boolean ok = Heic10Encoder.writeWithGainMap(file, img, gainMap, toneMap, quality, exifBlock, timeoutMs, stats, gainStats,
+                colour);
+        detail.append(stats).append("; gain map ").append(gainMap.getWidth()).append('x').append(gainMap.getHeight())
+                .append(": ").append(gainStats);
+        return ok;
     };
 
-    /** The HLG picture for the HDR file, or null (logged) when it cannot be made: the file is then written SDR. */
-    static Bitmap hdrPicture(Bitmap base, GainMapComputer.Result gain, OutputColour.Space space, String what) {
-        final long start = System.nanoTime();
-        try {
-            final Bitmap hlg = hdrRenderer.render(base, gain, space);
-            Log.i(TAG, what + " HDR: HLG BT.2020 picture " + hlg.getWidth() + "x" + hlg.getHeight() + " from " + base.getConfig() + " ("
-                    + space + ", gain map " + gain.gainW + "x" + gain.gainH + " max " + gain.gainMapMax + " stops, weight "
-                    + String.format(java.util.Locale.ROOT, "%.2f", HlgRendition.Renderer.weight(gain.hdrCapacityMax)) + ") in "
-                    + (System.nanoTime() - start) / 1000000 + " ms");
-            return hlg;
-        } catch (Exception | OutOfMemoryError e) {
-            Log.e(TAG, what + " HDR picture failed, SDR file instead: " + android.util.Log.getStackTraceString(e));
-            return null;
-        }
+    /** The log line of a shot's gain map (P125). */
+    static String gainMapLine(GainMapComputer.Result gain, Bitmap stored) {
+        return String.format(java.util.Locale.ROOT, "ISO 21496-1 gain map %dx%d of %dx%d, log2 %.3f..%.3f, headroom %.3f",
+                stored.getWidth(), stored.getHeight(), gain.gainW, gain.gainH, gain.gainMapMin, gain.gainMapMax, gain.hdrCapacityMax);
     }
 
     /** Whether the HEIC of a shot goes through the 10-bit encoder: a 10-bit image and «HEIC 10 бит» in effect. */
@@ -311,9 +311,9 @@ public final class PhotoOutput {
 
     /**
      * P46: the HEIC of a shot with «Цветовое пространство» Display P3 and / or «HDR в HEIC / AVIF» ({@code hdrGain} non-null).
-     * HDR: the HLG picture of the image (8 or 10-bit) through the 10-bit encoder (nclx 9/18/9, VUI BT.2020 / HLG); when the
-     * picture or its encode fails, the SDR HEIC as below. SDR: the 10-bit HEIC declaring the colour (P3: nclx 12/13/1 + ICC),
-     * else HeifWriter's 8-bit HEIC with the P3 profile added (HeifColourPatch).
+     * HDR (P125): the image (as 10-bit) in its colour with the ISO 21496-1 gain map through the 10-bit encoder; when that
+     * fails, the SDR HEIC as below. SDR: the 10-bit HEIC declaring the colour (P3: nclx 12/13/1 + ICC), else HeifWriter's
+     * 8-bit HEIC with the P3 profile added (HeifColourPatch).
      */
     static boolean writeHeic(Path file, Pixels pixels, int quality, ParseExif.ExifData exif, StringBuilder how,
                              OutputColour.Space space, GainMapComputer.Result hdrGain) {
@@ -326,18 +326,9 @@ public final class PhotoOutput {
             exifBlock = ExifBlock.exifDataBlock(ExifBlock.app1Segment(exif, width, height));
         }
         if (hdrGain != null && tenBitRoute) {
-            final Bitmap hlg = hdrPicture(img, hdrGain, space, "HEIC");
-            if (hlg != null) {
-                final boolean ok;
-                try {
-                    ok = writeTenBitHeic(file, hlg, quality, exifBlock, OutputColour.Signal.HLG);
-                } finally {
-                    hlg.recycle();
-                }
-                if (ok) {
-                    how.append(" 10-bit HDR HLG");
-                    return true;
-                }
+            if (writeGainMapHeic(file, pixels, hdrGain, quality, exifBlock, OutputColour.Signal.of(space))) {
+                how.append(" 10-bit").append(space == OutputColour.Space.DISPLAY_P3 ? " Display P3" : "").append(" + ISO gain map");
+                return true;
             }
         } else if (hdrGain != null) {
             Log.w(TAG, "HDR HEIC without the 10-bit HEIC in effect: SDR HEIC");
@@ -360,6 +351,35 @@ public final class PhotoOutput {
             } catch (IOException | RuntimeException e) {
                 Log.e(TAG, "HEIC: Display P3 profile not added (the colours read as sRGB): " + e);
             }
+        }
+        return ok;
+    }
+
+    /** P125: the 10-bit HEIC with the gain map; false (file deleted, logged) on any failure. */
+    private static boolean writeGainMapHeic(Path file, Pixels pixels, GainMapComputer.Result gain, int quality, byte[] exifBlock,
+                                            OutputColour.Signal colour) {
+        final Bitmap img = pixels.image;
+        final long start = System.nanoTime();
+        final StringBuilder detail = new StringBuilder();
+        Bitmap base = null, map = null;
+        boolean ok = false;
+        try {
+            base = pixels.tenBit ? img : img.copy(Bitmap.Config.RGBA_1010102, false);
+            map = IsoGainMap.stored(gain.gainMap);
+            detail.append(gainMapLine(gain, map)).append("; ");
+            ok = base != null && gainMapHeic.write(file, base, map, IsoGainMap.of(gain).toneMapPayload(), quality, exifBlock,
+                    heicTimeoutMs(img.getWidth(), img.getHeight()) * 3 / 2, detail, colour);
+        } catch (RuntimeException | OutOfMemoryError e) {
+            Log.e(TAG, "HEIC with gain map threw: " + android.util.Log.getStackTraceString(e));
+            ok = false;
+        } finally {
+            if (base != null && base != img) base.recycle();
+            if (map != null && map != gain.gainMap) map.recycle();
+        }
+        Log.i(TAG, "HEIC 10-bit " + colour + " + gain map " + (ok ? "written" : "failed, SDR HEIC instead") + " in "
+                + (System.nanoTime() - start) / 1000000 + " ms: " + detail);
+        if (!ok) {
+            try { Files.deleteIfExists(file); } catch (IOException ignored) {}
         }
         return ok;
     }
@@ -559,30 +579,35 @@ public final class PhotoOutput {
     }
 
     /**
-     * P46: the AVIF with «Цветовое пространство» Display P3 (CICP 12/13/1 + ICC) and / or «HDR в HEIC / AVIF»: the HLG picture
-     * (RGBA_1010102) at the chosen 10 / 12 bit or lossless, CICP 9/18/9; when the picture or its encode fails, the SDR AVIF.
+     * P46: the AVIF with «Цветовое пространство» Display P3 (CICP 12/13/1 + ICC) and / or «HDR в HEIC / AVIF» (P125): the photo
+     * at its depth with the ISO 21496-1 gain map (libavif's 'tmap' item, any depth); when that encode fails, the SDR AVIF.
      */
     static boolean writeAvif(Path file, Pixels pixels, AvifEncoder.Options options, ParseExif.ExifData exif, boolean last,
                              StringBuilder how, OutputColour.Space space, GainMapComputer.Result hdrGain) {
-        if (hdrGain != null && AvifEncoder.keepsTenBits(options)) {
-            final Bitmap hlg = hdrPicture(pixels.image, hdrGain, space, "AVIF");
-            if (hlg != null) {
-                final boolean ok;
-                try {
-                    ok = saveAvif(file, hlg, options.withColour(OutputColour.Signal.HLG), exif);
-                } finally {
-                    hlg.recycle();
-                }
-                if (ok) {
-                    how.append(" HDR HLG");
-                    return true;
-                }
-            }
-        }
         final boolean tenBitSource = pixels.tenBit && AvifEncoder.keepsTenBits(options);
+        final AvifEncoder.Options sdr = options.withColour(OutputColour.Signal.of(space));
         if (tenBitSource) how.append(" from 10-bit");
         if (space == OutputColour.Space.DISPLAY_P3) how.append(" Display P3");
-        return saveAvif(file, tenBitSource ? pixels.image : pixels.eightBit(last), options.withColour(OutputColour.Signal.of(space)), exif);
+        if (hdrGain != null) {
+            AvifEncoder.Options withMap = null;
+            Bitmap map = null;
+            try {
+                map = IsoGainMap.stored(hdrGain.gainMap);
+                withMap = sdr.withGainMap(IsoGainMap.luma(map), map.getWidth(), map.getHeight(), IsoGainMap.of(hdrGain).values());
+                Log.i(TAG, "AVIF " + gainMapLine(hdrGain, map));
+            } catch (RuntimeException | OutOfMemoryError e) {
+                Log.e(TAG, "AVIF gain map not prepared, SDR AVIF: " + e);
+            } finally {
+                if (map != null && map != hdrGain.gainMap) map.recycle();
+            }
+            // the base pixels stay for the SDR attempt: the last use is that one
+            if (withMap != null && saveAvif(file, tenBitSource ? pixels.image : pixels.eightBit(false), withMap, exif)) {
+                how.append(" + ISO gain map");
+                return true;
+            }
+            if (withMap != null) Log.w(TAG, "AVIF with gain map failed, SDR AVIF instead");
+        }
+        return saveAvif(file, tenBitSource ? pixels.image : pixels.eightBit(last), sdr, exif);
     }
 
     /** Writes the AVIF file (AvifEncoder.encode); replaced in tests. */

@@ -379,6 +379,23 @@ public class Parameters {
         if(blackLevelOverride >= 0) {
             for (int i = 0; i < 4; i++) blackLevel[i] = blackLevelOverride;
         }
+        // P126: a pedestal far above the static black (vivo X300 Ultra DCG 14 bit: dynamic 1030.75, static 64, white 1023
+        // declared) is a wider stream: its own black and the white of its bit depth, however dark the scene
+        final float[] pedestal = result == null ? null : result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
+        if (!usedDynamic && blackLevelOverride < 0 && whiteLevelOverride < 0 && level != null && pedestal != null && pedestal.length >= 4) {
+            float stat = Float.MAX_VALUE, dyn = Float.MAX_VALUE;
+            for (int i = 0; i < 4; i++) {
+                stat = Math.min(stat, level.getOffsetForIndex(i % 2, i / 2));
+                dyn = Math.min(dyn, pedestal[i]);
+            }
+            final int wide = com.particlesdevs.photoncamera.processing.RawPayloadCheck.pedestalWhite(stat, dyn, whiteLevel);
+            if (wide > 0) {
+                System.arraycopy(pedestal, 0, blackLevel, 0, 4);
+                Log.i(TAG, "wide RAW by its black: " + java.util.Arrays.toString(pedestal) + " (static " + stat + "), white "
+                        + whiteLevel + " -> " + wide);
+                whiteLevel = wide;
+            }
+        }
         applyWideRaw(com.particlesdevs.photoncamera.processing.RawPayloadCheck.wideWhite(),
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.wideLow());
         Float aperture = result.get(CaptureResult.LENS_APERTURE);

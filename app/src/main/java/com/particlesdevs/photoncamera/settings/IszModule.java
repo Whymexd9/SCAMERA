@@ -32,6 +32,8 @@ public final class IszModule {
     public static void ensure(Context context) {
         if (context == null || !PreferenceKeys.scamDevSwitch("isz_module", true)) return;
         removeVivoMtk();
+        // P126: the X300 Ultra's main has its own ISZ module (VivoQcomIsz, sensor mode 10): no second «2×» crop here
+        if (com.particlesdevs.photoncamera.capture.VivoQcomIsz.enabled()) return;
         try {
             SharedPreferences p = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
             CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);

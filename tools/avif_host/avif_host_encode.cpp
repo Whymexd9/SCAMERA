@@ -6,6 +6,8 @@
 //                    [quality=90] [lossless=0] [depth=10] [yuv=444|420] [speed=6] [threads=<cpus>] [exif=<file>]
 //                    [aom=<key>:<value>,...]   (extra libaom options, for tuning runs)
 //                    [cicp=<primaries>/<transfer>/<matrix>] [icc=<file>]   (P46 colour; default 1/13/1, no ICC)
+//                    [gain=<file> gainsize=<w>x<h> gainmeta=<min>,<max>,<gamma>,<baseOffset>,<altOffset>,<baseHr>,<altHr>]
+//                    (P125: an ISO 21496-1 gain map, one byte per pixel)
 //
 // The raw file holds rows of 4-byte pixels without padding, in the Android Bitmap memory layout of the layout.
 #include <cstdio>
@@ -97,6 +99,17 @@ int main(int argc, char** argv) {
     const std::string iccPath = get("icc", "");
     if (!iccPath.empty() && !readFile(iccPath, &options.icc)) fail("cannot read icc");
 
+    const std::string gainPath = get("gain", "");
+    if (!gainPath.empty()) {
+        if (!readFile(gainPath, &options.gainMap)) fail("cannot read gain");
+        if (std::sscanf(get("gainsize", nullptr).c_str(), "%dx%d", &options.gainWidth, &options.gainHeight) != 2)
+            fail("gainsize must be <w>x<h>");
+        double* m = options.gainMeta;
+        if (std::sscanf(get("gainmeta", nullptr).c_str(), "%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m[0], &m[1], &m[2], &m[3], &m[4], &m[5],
+                        &m[6]) != 7)
+            fail("gainmeta needs 7 values");
+    }
+
     std::vector<uint8_t> pixels, exif;
     if (!readFile(get("in", nullptr), &pixels)) fail("cannot read in");
     if (width <= 0 || height <= 0 || pixels.size() != size_t(width) * size_t(height) * 4) fail("in size does not match");
@@ -108,10 +121,10 @@ int main(int argc, char** argv) {
         scamera_avif::encodeToFile(pixels.data(), width, height, size_t(width) * 4, layout, options,
                                    exif.empty() ? nullptr : exif.data(), exif.size(), get("out", nullptr), &stats);
     if (!error.empty()) fail(error);
-    std::printf("{\"ok\":true,\"depth\":%d,\"yuv444\":%s,\"lossless\":%s,\"exif\":%s,\"convert_ms\":%.1f,"
-                "\"encode_ms\":%.1f,\"bytes\":%zu,\"threads\":%d,\"peak_rss_mb\":%.1f}\n",
+    std::printf("{\"ok\":true,\"depth\":%d,\"yuv444\":%s,\"lossless\":%s,\"exif\":%s,\"gain_map\":%s,"
+                "\"convert_ms\":%.1f,\"encode_ms\":%.1f,\"bytes\":%zu,\"threads\":%d,\"peak_rss_mb\":%.1f}\n",
                 stats.depth, stats.yuv444 ? "true" : "false", stats.lossless ? "true" : "false",
-                stats.exif ? "true" : "false", stats.convertMs, stats.encodeMs, stats.bytes, options.threads,
-                peakRssMb());
+                stats.exif ? "true" : "false", stats.gainMap ? "true" : "false", stats.convertMs, stats.encodeMs, stats.bytes,
+                options.threads, peakRssMb());
     return 0;
 }

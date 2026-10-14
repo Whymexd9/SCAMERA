@@ -243,4 +243,16 @@ public class RawPayloadCheckTest {
             RawPayloadCheck.setWideEnabled(true);
         }
     }
+
+    /** P126: X300 Ultra DCG 14 bit - dynamic black 1021.75 / 1030.75 against the static 64, white 1023 declared. */
+    @Test
+    public void pedestalNamesTheBitDepth() {
+        org.junit.Assert.assertEquals(16383, RawPayloadCheck.pedestalWhite(64, 1021.75f, 1023));
+        org.junit.Assert.assertEquals(16383, RawPayloadCheck.pedestalWhite(64, 1030.75f, 1023));
+        org.junit.Assert.assertEquals("12 bit", 4095, RawPayloadCheck.pedestalWhite(64, 256f, 1023));
+        org.junit.Assert.assertEquals("the static black", 0, RawPayloadCheck.pedestalWhite(64, 64.5f, 1023));
+        org.junit.Assert.assertEquals("a drifting black is no bit depth", 0, RawPayloadCheck.pedestalWhite(64, 150f, 1023));
+        org.junit.Assert.assertEquals("already wide", 0, RawPayloadCheck.pedestalWhite(64, 1024f, 4095));
+        org.junit.Assert.assertEquals(0, RawPayloadCheck.pedestalWhite(0, 1024f, 1023));
+    }
 }

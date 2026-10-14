@@ -119,12 +119,48 @@ public final class RawPayloadCheck {
 
     public static void setWideEnabled(boolean enabled) {
         sWideEnabled = enabled;
-        if (!enabled) sWideWhite = 0;
+        if (!enabled) sWideWhite = sPedestalWhite = 0;
     }
 
-    /** White level of the last checked plain frame when it was wider than declared (4095 / 16383), else 0. */
+    /**
+     * White level of the stream when it is wider than declared, else 0: the larger of the last checked plain frame's measured
+     * range (4095 / 16383) and the range its dynamic black says (P126, {@link #pedestalWhite}).
+     */
     public static int wideWhite() {
-        return sWideWhite;
+        return Math.max(sWideWhite, sPedestalWhite);
+    }
+
+    private static volatile int sPedestalWhite;
+
+    /**
+     * P126 (vivo X300 Ultra DCG 14 bit, log 2026-10-14: dynamic black 1030.75 against the static 64, white 1023 declared; the
+     * measured range read the dark scene as 12 bits, then as 10, and the first DCG photo came out dark): a frame's dynamic black
+     * 2^k times (k = 2..6) the static black is the same pedestal in a k bits wider stream, white = (declared + 1) * 2^k - 1, at
+     * any scene brightness. 0 when the black is the static one (or the declared white is already wide).
+     */
+    public static int pedestalWhite(float staticBlack, float dynamicBlack, int declaredWhite) {
+        if (!(staticBlack > 0) || declaredWhite <= 0 || declaredWhite >= 4095 || !(dynamicBlack >= 3.5f * staticBlack)) return 0;
+        final double bits = Math.log(dynamicBlack / staticBlack) / Math.log(2);
+        final int k = (int) Math.round(bits);
+        if (k < 2 || k > 6 || Math.abs(bits - k) > 0.25) return 0;
+        return (int) Math.min(65535L, ((declaredWhite + 1L) << k) - 1);
+    }
+
+    /** P126: notes the pedestal of a frame's metadata (CaptureResult dynamic black against the camera's static black). */
+    static void notePedestal(CameraCharacteristics characteristics, CaptureResult result, int declaredWhite) {
+        if (!sWideEnabled || characteristics == null || result == null) return;
+        final float[] dynamic = result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
+        final android.hardware.camera2.params.BlackLevelPattern pattern =
+                characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
+        if (dynamic == null || dynamic.length == 0 || pattern == null) return;
+        float stat = Float.MAX_VALUE, dyn = Float.MAX_VALUE;
+        for (int i = 0; i < 4; i++) stat = Math.min(stat, pattern.getOffsetForIndex(i % 2, i / 2));
+        for (float d : dynamic) dyn = Math.min(dyn, d);
+        final int white = pedestalWhite(stat, dyn, declaredWhite);
+        if (white != sPedestalWhite) com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", white > 0
+                ? String.format(Locale.ROOT, "wide RAW: dynamic black %.2f over static %.0f -> white %d", dyn, stat, white)
+                : "RAW black back at the static " + stat);
+        sPedestalWhite = white;
     }
 
     /** 0.5th percentile of that frame's samples (where its black sits). */
@@ -285,6 +321,12 @@ public final class RawPayloadCheck {
         if (stat != null) white = stat;
         Integer dynamic = result == null ? null : result.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL);
         if (dynamic != null) white = Math.max(white, dynamic);
+        if (result != null) {
+            try {
+                notePedestal(characteristics, result, white);
+            } catch (RuntimeException ignored) {
+            }
+        }
         return white;
     }
 

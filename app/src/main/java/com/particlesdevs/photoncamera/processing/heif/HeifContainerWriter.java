@@ -24,7 +24,10 @@ import java.util.List;
  * names the Main10 profile. colr: BT.709 primaries, sRGB transfer (13), BT.709 matrix, full range - the encoder's VUI says
  * BT.709 SDR video, the container carries the real sRGB transfer. P46 ({@link #setColour}): another nclx (Display P3
  * 12/13/1, HLG 9/18/9) and, when the colour has one, an ICC profile as a second colr ('prof') on the tiles and the grid;
- * the default colour writes exactly the boxes above. Pure Java (no Android types).
+ * the default colour writes exactly the boxes above. P125 ({@link #setGainMap}): an ISO 21496-1 gain map - a second hidden
+ * grid of hidden 'hvc1' tiles (colr nclx 2/2, its own hvcC / pixi), a 'tmap' item (the gain map metadata as its data, 'dimg'
+ * -> the image grid and the gain map grid, the image's ispe / colr), 'grpl' / 'altr' {tmap, grid} and the 'tmap' brand; the
+ * primary item stays the SDR grid, so readers without gain maps show the photo as before. Pure Java (no Android types).
  */
 public final class HeifContainerWriter {
     /** nclx colour of the image: BT.709 primaries, sRGB transfer, BT.709 matrix, full range. */
@@ -39,6 +42,10 @@ public final class HeifContainerWriter {
     private final List<byte[]> tiles = new ArrayList<>();
     private byte[] exif;
     private OutputColour.Signal colour = OutputColour.Signal.SRGB;
+    private TileGrid gainGrid;
+    private byte[] gainHvcC, toneMap;
+    private int gainBitDepth;
+    private final List<byte[]> gainTiles = new ArrayList<>();
 
     /**
      * @param grid     the tile layout of the image
@@ -76,6 +83,32 @@ public final class HeifContainerWriter {
         colour = signal == null ? OutputColour.Signal.SRGB : signal;
     }
 
+    /**
+     * P125: the gain map: its tile layout, the hvcC of its tiles, its coded bit depth and the 'tmap' item's data
+     * (IsoGainMap.toneMapPayload). The tiles follow with {@link #addGainTile}.
+     */
+    public void setGainMap(TileGrid grid, byte[] hvcC, int bitDepth, byte[] toneMapPayload) {
+        if (hvcC == null || hvcC.length < 23) throw new IllegalArgumentException("gain map hvcC missing");
+        if (toneMapPayload == null || toneMapPayload.length == 0) throw new IllegalArgumentException("tmap data missing");
+        gainGrid = grid;
+        gainHvcC = hvcC.clone();
+        gainBitDepth = bitDepth;
+        toneMap = toneMapPayload.clone();
+        gainTiles.clear();
+    }
+
+    /** Sample of the next gain map tile in raster order. */
+    public void addGainTile(byte[] sample) {
+        if (gainGrid == null) throw new IllegalStateException("no gain map set");
+        if (sample == null || sample.length < 5) throw new IllegalArgumentException("empty gain map tile sample");
+        if (gainTiles.size() >= gainGrid.count()) throw new IllegalStateException("more gain map tiles than its grid holds");
+        gainTiles.add(sample);
+    }
+
+    boolean hasGainMap() {
+        return gainGrid != null;
+    }
+
     /** Exif item data: exif_tiff_header_offset (bytes from the start of the payload to the TIFF header) + the payload. */
     static byte[] exifItem(byte[] block) {
         final int offset = startsWithExifId(block) ? 6 : 0;
@@ -94,6 +127,10 @@ public final class HeifContainerWriter {
 
     /** ImageGrid (ISO/IEC 23008-12 6.6.2.3.2): 16-bit output size unless a side needs 32 bits. */
     byte[] imageGrid() {
+        return imageGrid(grid);
+    }
+
+    static byte[] imageGrid(TileGrid grid) {
         final boolean large = grid.width > 0xFFFF || grid.height > 0xFFFF;
         final Box b = new Box();
         b.u8(0); // version
@@ -118,6 +155,19 @@ public final class HeifContainerWriter {
         return grid.count() + 2;
     }
 
+    /** P125: gain map tiles exifItemId()+1 .. +m, then the gain map grid and the 'tmap' item. */
+    int gainTileId(int index) {
+        return exifItemId() + 1 + index;
+    }
+
+    int gainGridItemId() {
+        return exifItemId() + 1 + gainGrid.count();
+    }
+
+    int toneMapItemId() {
+        return gainGridItemId() + 1;
+    }
+
     /** The whole file. */
     public byte[] toByteArray() throws IOException {
         final ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -130,18 +180,25 @@ public final class HeifContainerWriter {
         if (tiles.size() != grid.count())
             throw new IllegalStateException(tiles.size() + " tiles for a grid of " + grid.count());
         final int n = grid.count();
-        if (n + 2 > 0xFFFF) throw new IllegalStateException("too many items: " + (n + 2));
+        final boolean gain = hasGainMap();
+        if (gain && gainTiles.size() != gainGrid.count())
+            throw new IllegalStateException(gainTiles.size() + " gain map tiles for a grid of " + gainGrid.count());
+        final int lastId = gain ? toneMapItemId() : n + 2;
+        if (lastId > 0xFFFF) throw new IllegalStateException("too many items: " + lastId);
         final byte[] gridData = imageGrid();
         final byte[] exifData = exif == null ? null : exifItem(exif);
+        final byte[] gainGridData = gain ? imageGrid(gainGrid) : null;
         long mdatPayload = gridData.length + (exifData == null ? 0 : exifData.length);
+        if (gain) mdatPayload += toneMap.length + gainGridData.length;
         for (byte[] t : tiles) mdatPayload += t.length;
+        for (byte[] t : gainTiles) mdatPayload += t.length;
         final boolean largeMdat = mdatPayload + 8 > 0xFFFFFFFFL;
-        final byte[] ftyp = ftyp();
+        final byte[] ftyp = ftyp(gain);
         // The meta box has the same size whatever the offsets are (4-byte offset fields): size it, then fill the offsets.
-        final int metaSize = meta(0, gridData.length, exifData).length;
+        final int metaSize = meta(0, gridData.length, exifData, gainGridData).length;
         final long dataStart = ftyp.length + metaSize + (largeMdat ? 16 : 8);
         if (dataStart + mdatPayload > 0xFFFFFFFFL) throw new IOException("HEIC above 4 GB");
-        final byte[] meta = meta(dataStart, gridData.length, exifData);
+        final byte[] meta = meta(dataStart, gridData.length, exifData, gainGridData);
         out.write(ftyp);
         out.write(meta);
         final Box header = new Box();
@@ -156,21 +213,34 @@ public final class HeifContainerWriter {
         out.write(header.bytes());
         out.write(gridData);
         if (exifData != null) out.write(exifData);
+        if (gain) {
+            out.write(toneMap);
+            out.write(gainGridData);
+        }
         for (byte[] t : tiles) out.write(t);
+        for (byte[] t : gainTiles) out.write(t);
     }
 
     static byte[] ftyp() {
+        return ftyp(false);
+    }
+
+    /** {@code toneMap}: the 'tmap' brand of a file with a tone-map derived item (ISO/IEC 23008-12:2024 AMD 1). */
+    static byte[] ftyp(boolean toneMap) {
         final Box b = new Box();
         b.start("ftyp");
         b.fourcc(MAJOR_BRAND);
         b.u32(0); // minor_version
         for (String brand : BRANDS) b.fourcc(brand);
+        if (toneMap) b.fourcc("tmap");
         b.end();
         return b.bytes();
     }
 
-    private byte[] meta(long dataStart, int gridLength, byte[] exifData) {
+    private byte[] meta(long dataStart, int gridLength, byte[] exifData, byte[] gainGridData) {
         final int n = grid.count(), gridId = gridItemId(), exifId = exifItemId();
+        final boolean gain = gainGridData != null;
+        final int m = gain ? gainGrid.count() : 0;
         final Box b = new Box();
         b.startFull("meta", 0, 0);
 
@@ -188,10 +258,15 @@ public final class HeifContainerWriter {
         b.end();
 
         b.startFull("iinf", 0, 0);
-        b.u16(n + (exifData != null ? 2 : 1));
+        b.u16(n + (exifData != null ? 2 : 1) + (gain ? m + 2 : 0));
         for (int id = 1; id <= n; id++) infe(b, id, "hvc1", true);
         infe(b, gridId, "grid", false);
         if (exifData != null) infe(b, exifId, "Exif", false);
+        if (gain) {
+            for (int i = 0; i < m; i++) infe(b, gainTileId(i), "hvc1", true);
+            infe(b, gainGridItemId(), "grid", true);
+            infe(b, toneMapItemId(), "tmap", false);
+        }
         b.end();
 
         b.startFull("iref", 0, 0);
@@ -205,6 +280,19 @@ public final class HeifContainerWriter {
             b.u16(exifId);
             b.u16(1);
             b.u16(gridId);
+            b.end();
+        }
+        if (gain) {
+            b.start("dimg");
+            b.u16(gainGridItemId());
+            b.u16(m);
+            for (int i = 0; i < m; i++) b.u16(gainTileId(i));
+            b.end();
+            b.start("dimg"); // the base image first, the gain map second
+            b.u16(toneMapItemId());
+            b.u16(2);
+            b.u16(gridId);
+            b.u16(gainGridItemId());
             b.end();
         }
         b.end();
@@ -234,9 +322,30 @@ public final class HeifContainerWriter {
             b.raw(colour.icc());
             b.end();
         }
+        // P125: the gain map's properties after the image's: hvcC, ispe of its grid, colr nclx 2/2 (ISO 21496-1: the map has
+        // no colour of its own), pixi
+        final int gHvcC = icc ? 7 : 6, gIspe = gHvcC + 1, gColr = gHvcC + 2, gPixi = gHvcC + 3;
+        if (gain) {
+            b.start("hvcC");
+            b.raw(gainHvcC);
+            b.end();
+            ispe(b, gainGrid.width, gainGrid.height);
+            b.start("colr");
+            b.fourcc("nclx");
+            b.u16(2);
+            b.u16(2);
+            b.u16(colour.matrix);
+            b.u8(0x80);
+            b.end();
+            b.startFull("pixi", 0, 0);
+            b.u8(3);
+            for (int c = 0; c < 3; c++) b.u8(gainBitDepth);
+            b.end();
+        }
         b.end(); // ipco
         b.startFull("ipma", 0, 0);
-        b.u32(n + 1); // entry_count: the tiles and the grid (the Exif item has no properties)
+        // entry_count: the tiles and the grid (the Exif item has no properties); with a gain map its tiles, its grid, 'tmap'
+        b.u32(n + 1 + (gain ? m + 2 : 0));
         for (int id = 1; id <= n; id++) {
             b.u16(id);
             b.u8(icc ? 5 : 4);
@@ -252,6 +361,27 @@ public final class HeifContainerWriter {
         b.u8(4);
         b.u8(5);
         if (icc) b.u8(6);
+        if (gain) {
+            for (int i = 0; i < m; i++) {
+                b.u16(gainTileId(i));
+                b.u8(4);
+                b.u8(0x80 | gHvcC);
+                b.u8(2); // the 512 x 512 tile ispe of the image (one tile size)
+                b.u8(gColr);
+                b.u8(gPixi);
+            }
+            b.u16(gainGridItemId());
+            b.u8(3);
+            b.u8(gIspe);
+            b.u8(gColr);
+            b.u8(gPixi);
+            // 'tmap': the image's size and colour (the HDR rendition is in the base image's colour space)
+            b.u16(toneMapItemId());
+            b.u8(icc ? 3 : 2);
+            b.u8(3);
+            b.u8(4);
+            if (icc) b.u8(6);
+        }
         b.end(); // ipma
         b.end(); // iprp
 
@@ -259,12 +389,16 @@ public final class HeifContainerWriter {
         b.startFull("iloc", 1, 0);
         b.u8(0x44);
         b.u8(0x00);
-        b.u16(n + (exifData != null ? 2 : 1));
+        b.u16(n + (exifData != null ? 2 : 1) + (gain ? m + 2 : 0));
         long offset = dataStart;
         final long gridOffset = offset;
         offset += gridLength;
         final long exifOffset = offset;
         if (exifData != null) offset += exifData.length;
+        final long toneMapOffset = offset;
+        if (gain) offset += toneMap.length;
+        final long gainGridOffset = offset;
+        if (gain) offset += gainGridData.length;
         for (int id = 1; id <= n; id++) {
             final int length = tiles.isEmpty() ? 0 : tiles.get(id - 1).length;
             iloc(b, id, offset, length);
@@ -272,7 +406,28 @@ public final class HeifContainerWriter {
         }
         iloc(b, gridId, gridOffset, gridLength);
         if (exifData != null) iloc(b, exifId, exifOffset, exifData.length);
+        if (gain) {
+            for (int i = 0; i < m; i++) {
+                final int length = gainTiles.isEmpty() ? 0 : gainTiles.get(i).length;
+                iloc(b, gainTileId(i), offset, length);
+                offset += length;
+            }
+            iloc(b, gainGridItemId(), gainGridOffset, gainGridData.length);
+            iloc(b, toneMapItemId(), toneMapOffset, toneMap.length);
+        }
         b.end();
+
+        if (gain) {
+            // the HDR rendition ('tmap') and the SDR photo are alternatives, the preferred first
+            b.start("grpl");
+            b.startFull("altr", 0, 0);
+            b.u32(toneMapItemId() + 1); // group_id: an id no item uses
+            b.u32(2);
+            b.u32(toneMapItemId());
+            b.u32(gridId);
+            b.end();
+            b.end();
+        }
 
         b.end(); // meta
         return b.bytes();

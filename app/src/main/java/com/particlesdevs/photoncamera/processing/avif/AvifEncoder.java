@@ -22,6 +22,7 @@ import java.nio.file.Path;
  * its 10 bits; 8-bit pixels are expanded when a higher depth is chosen). Every failure is an IOException: the caller saves
  * the photo as JPEG instead. P46: {@link Options#withColour} declares another colour - Display P3 (CICP 12/13/1 and the
  * P3 ICC profile) or HDR HLG (CICP 9/18/9, the BT.2020 matrix of the RGB -> YCbCr conversion); the default is the above.
+ * P125 {@link Options#withGainMap}: an ISO 21496-1 gain map (libavif's 'tmap' item) next to the SDR image.
  */
 public final class AvifEncoder {
     private static final String TAG = "AvifEncoder";
@@ -78,12 +79,21 @@ public final class AvifEncoder {
         public final int threads;
         /** P46: the colour the file declares (CICP + optional ICC); {@link OutputColour.Signal#SRGB} by default. */
         public final OutputColour.Signal colour;
+        /** P125: the gain map (or null): one byte per pixel of a {@link #gainWidth} x {@link #gainHeight} map, its metadata. */
+        @Nullable public final byte[] gainMap;
+        public final int gainWidth, gainHeight;
+        @Nullable public final double[] gainMeta;
 
         public Options(int quality, boolean lossless, int depth, boolean yuv444, int speed, int threads) {
             this(quality, lossless, depth, yuv444, speed, threads, OutputColour.Signal.SRGB);
         }
 
         private Options(int quality, boolean lossless, int depth, boolean yuv444, int speed, int threads, OutputColour.Signal colour) {
+            this(quality, lossless, depth, yuv444, speed, threads, colour, null, 0, 0, null);
+        }
+
+        private Options(int quality, boolean lossless, int depth, boolean yuv444, int speed, int threads, OutputColour.Signal colour,
+                        @Nullable byte[] gainMap, int gainWidth, int gainHeight, @Nullable double[] gainMeta) {
             this.quality = Math.max(1, Math.min(100, quality));
             this.lossless = lossless;
             this.depth = depth == 8 || depth == 12 ? depth : 10;
@@ -91,11 +101,22 @@ public final class AvifEncoder {
             this.speed = Math.max(0, Math.min(10, speed));
             this.threads = Math.max(1, threads);
             this.colour = colour == null ? OutputColour.Signal.SRGB : colour;
+            this.gainMap = gainMap;
+            this.gainWidth = gainWidth;
+            this.gainHeight = gainHeight;
+            this.gainMeta = gainMeta;
         }
 
         /** These settings declaring {@code signal} (P46). */
         public Options withColour(OutputColour.Signal signal) {
-            return new Options(quality, lossless, depth, yuv444, speed, threads, signal);
+            return new Options(quality, lossless, depth, yuv444, speed, threads, signal, gainMap, gainWidth, gainHeight, gainMeta);
+        }
+
+        /** P125: these settings with the gain map {@code luma} ({@code width} x {@code height}, IsoGainMap.luma) and its values. */
+        public Options withGainMap(byte[] luma, int width, int height, double[] meta) {
+            if (luma == null || meta == null || meta.length < 7 || (long) width * height != luma.length)
+                throw new IllegalArgumentException("gain map " + width + "x" + height);
+            return new Options(quality, lossless, depth, yuv444, speed, threads, colour, luma, width, height, meta);
         }
 
         /** Whether the file has full-resolution chroma (lossless always does). */
@@ -106,7 +127,7 @@ public final class AvifEncoder {
         /** "10-bit 4:4:4 q90 speed 6" / "lossless speed 6": the log's description. */
         public String describe() {
             return (lossless ? "lossless" : depth + "-bit " + (yuv444 ? "4:4:4" : "4:2:0") + " q" + quality) + " speed " + speed
-                    + (colour.isDefault() ? "" : " " + colour);
+                    + (colour.isDefault() ? "" : " " + colour) + (gainMap == null ? "" : " + gain map " + gainWidth + "x" + gainHeight);
         }
     }
 
@@ -117,6 +138,8 @@ public final class AvifEncoder {
         public final long convertMs, encodeMs, bytes;
         /** Whether the EXIF block is in the file. */
         public final boolean exif;
+        /** P125: whether the gain map is in the file. */
+        public final boolean gainMap;
 
         /** {@code stats} as the native side fills them: depth, 4:4:4, conversion ms, encode ms, bytes, EXIF stored. */
         public Result(long[] stats) {
@@ -126,6 +149,7 @@ public final class AvifEncoder {
             encodeMs = stats[3];
             bytes = stats[4];
             exif = stats[5] != 0;
+            gainMap = stats.length > 6 && stats[6] != 0;
         }
     }
 
@@ -155,7 +179,8 @@ public final class AvifEncoder {
     /** Null on success, else the reason; stats: depth, 4:4:4, conversion ms, encode ms, bytes, EXIF stored. */
     private static native String encode(Bitmap bitmap, String path, int quality, boolean lossless, int depth, boolean yuv444,
                                         int speed, int threads, byte[] exif, int primaries, int transfer, int matrix,
-                                        byte[] icc, long[] stats);
+                                        byte[] icc, byte[] gainMap, int gainWidth, int gainHeight, double[] gainMeta,
+                                        long[] stats);
 
     /**
      * Writes {@code bitmap} (ARGB_8888 or RGBA_1010102) to {@code file} as AVIF with {@code exif} ("Exif\0\0" + TIFF, the
@@ -165,12 +190,13 @@ public final class AvifEncoder {
     public static Result encode(Bitmap bitmap, Path file, Options options, @Nullable byte[] exif) throws IOException {
         if (!LOADED) throw new IOException("AVIF encoder unavailable");
         if (bitmap.isRecycled()) throw new IOException("bitmap is recycled");
-        long[] stats = new long[6];
+        long[] stats = new long[7];
         String error;
         try {
             final OutputColour.Signal c = options.colour;
             error = encode(bitmap, file.toString(), options.quality, options.lossless, options.depth, options.yuv444,
-                    options.speed, options.threads, exif, c.primaries, c.transfer, c.matrix, c.icc(), stats);
+                    options.speed, options.threads, exif, c.primaries, c.transfer, c.matrix, c.icc(), options.gainMap,
+                    options.gainWidth, options.gainHeight, options.gainMeta, stats);
         } catch (RuntimeException | LinkageError e) {
             error = String.valueOf(e);
         }

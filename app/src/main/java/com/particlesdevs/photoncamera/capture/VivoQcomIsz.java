@@ -31,11 +31,17 @@ import java.util.Locale;
  * natively (their colour block is measured), P121 sets their white balance; a forced sensor mode is a sensor crop, so the frame is
  * not cropped again. The camera role comes from com.vivo.chi.override.CameraType («Master», «Wide», «Tele3P5x»).
  * scam_dev "vivo_qcom_roi 0": no new modules.
+ * <p>
+ * P126 (X300 Ultra video / log 2026-10-14: «ISZ модули дублируются и не удаляются через настройки»): an offer is made once
+ * whether or not a slot is free (a module the strip had no room for came back as soon as the owner deleted another one), a
+ * module already on the strip (same camera, same forced mode) is not made again, and the extras are removed: a second ISZ
+ * module of the same camera and mode, and once the plain «2×» crop the CROPPED_RAW module (IszModule) put next to the ISZ one.
  */
 public final class VivoQcomIsz {
     private static final String TAG = "VivoQcomIsz";
     static final String KEY = "vivo.control.forceSensorMode";
     private static final String OFFERED = "module_vivo_qcom_roi_offered_";
+    private static final String CLEANUP = "module_vivo_qcom_roi_cleanup_1";
 
     static final int MAIN_2X = 10, WIDE_2X = 21, TELE_2X = 5, TELE_4X = 7;
     /** DCG 14 bit «Open Gate» (the full 4:3 field) of each camera (owner: «ISZ и DCG доступен у 300 ультра на всех трех модулях»). */
@@ -97,6 +103,7 @@ public final class VivoQcomIsz {
             CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
             if (manager == null) return;
             SharedPreferences p = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
+            removeExtras(p);
             for (String slot : ModuleRegistry.slots()) {
                 if (!slot.startsWith("back") || !ModuleRegistry.visible(slot) || ModuleRegistry.duplicateOf(slot) != null) continue;
                 String camera = ModuleRegistry.camera(slot);
@@ -133,16 +140,79 @@ public final class VivoQcomIsz {
         return s + "×";
     }
 
+    /** A module button as {@link #extras} sees it: camera, zoom, its forced sensor mode (0: none), duplicate or original. */
+    static final class Mod {
+        final String slot, camera;
+        final float zoom;
+        final int mode;
+        final boolean duplicate;
+
+        Mod(String slot, String camera, float zoom, int mode, boolean duplicate) {
+            this.slot = slot;
+            this.camera = camera;
+            this.zoom = zoom;
+            this.mode = mode;
+            this.duplicate = duplicate;
+        }
+    }
+
+    /**
+     * P126: the back buttons that are too many: a duplicate with the same camera and forced mode as an earlier one, and (once,
+     * {@code plainTwins}) a duplicate without a forced mode at the zoom of an ISZ module of its camera. Originals stay.
+     */
+    static List<String> extras(List<Mod> mods, boolean plainTwins) {
+        List<String> out = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Mod m : mods)
+            if (m.mode > 0 && !seen.add(m.camera + "_" + m.mode) && m.duplicate) out.add(m.slot);
+        if (plainTwins) for (Mod m : mods) {
+            if (!m.duplicate || m.mode > 0) continue;
+            for (Mod isz : mods)
+                if (isz.mode > 0 && isz.camera.equals(m.camera) && !out.contains(isz.slot) && Math.abs(m.zoom / isz.zoom - 1f) < 0.05f) {
+                    out.add(m.slot);
+                    break;
+                }
+        }
+        return out;
+    }
+
+    private static void removeExtras(SharedPreferences p) {
+        List<Mod> mods = new ArrayList<>();
+        for (String slot : ModuleRegistry.slots())
+            if (slot.startsWith("back") && ModuleRegistry.visible(slot))
+                mods.add(new Mod(slot, ModuleRegistry.camera(slot), ModuleRegistry.zoom(slot), ModuleRegistry.sensorMode(slot),
+                        ModuleRegistry.duplicateOf(slot) != null));
+        final boolean once = !p.getBoolean(CLEANUP, false);
+        for (String slot : extras(mods, once)) {
+            String label = ModuleRegistry.label(slot), camera = ModuleRegistry.camera(slot);
+            if (ModuleRegistry.remove(slot)) Log.i(TAG, "extra module " + slot + " («" + label + "», camera " + camera + ") removed");
+        }
+        if (once) p.edit().putBoolean(CLEANUP, true).apply();
+    }
+
+    /** A visible duplicate of {@code camera} that forces {@code mode} already (made before, or restored with the settings). */
+    @Nullable
+    private static String existing(String camera, int mode) {
+        for (String slot : ModuleRegistry.slots())
+            if (slot.startsWith("back") && ModuleRegistry.visible(slot) && ModuleRegistry.duplicateOf(slot) != null
+                    && camera.equals(ModuleRegistry.camera(slot)) && ModuleRegistry.sensorMode(slot) == mode) return slot;
+        return null;
+    }
+
     private static void offer(Context context, SharedPreferences p, String source, String camera, String what, int mode, float zoom) {
         String offered = OFFERED + camera + "_" + what;
         if (p.getBoolean(offered, false)) return;
+        // offered once, made or not: a module deleted (or never made for want of a slot) does not come back
+        p.edit().putBoolean(offered, true).apply();
+        if (existing(camera, mode) != null) return;
         String target = ModuleRegistry.duplicate(source);
         if (target == null) {
-            Log.w(TAG, "no free module slot for the " + what + " ISZ of camera " + camera);
+            Log.w(TAG, "no free module slot for the " + what + " ISZ of camera " + camera + " (delete a button and add it by hand: "
+                    + "duplicate the module, session key " + KEY + " " + mode + ")");
             return;
         }
         String label = label(zoom);
-        p.edit().putBoolean(offered, true)
+        p.edit()
                 .putString("module_name_" + target, label)
                 .putString("module_zoom_" + target, String.format(Locale.US, "%.2f", zoom))
                 .apply();

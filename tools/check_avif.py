@@ -518,6 +518,50 @@ def run_colour(exe: Path, work: Path, width: int, height: int, baseline: Path | 
         print(f'  default colour: {same} of {len(CASES)} files byte-identical to {baseline}')
 
 
+def run_gain_map(exe: Path, work: Path, width: int, height: int) -> None:
+    """P125: the ISO 21496-1 gain map ('tmap' item) next to the SDR photo, read back by libavif and by Pillow."""
+    rgb10 = synthetic(width, height)
+    raw8 = work / f'gain8888_{width}x{height}.raw'
+    raw8.write_bytes(pack8888(to8(rgb10)))
+    gw, gh = max(1, width // 2), max(1, height // 2)
+    yy, xx = np.mgrid[0:gh, 0:gw]
+    gain = ((xx * 255) // max(1, gw - 1)).astype(np.uint8)  # a ramp: 0 left .. 255 right
+    gain_file = work / 'gain.raw'
+    gain_file.write_bytes(gain.tobytes())
+    meta = (0.0, 2.75, 1.0, 1 / 64, 1 / 64, 0.0, 2.75)
+    decoder = exe.with_name(exe.name.replace('encode', 'decode'))
+    for name, options in (('10-bit 4:4:4', dict(quality=90, depth=10, yuv='444')), ('8-bit 4:2:0', dict(quality=90, depth=8, yuv='420')),
+                          ('Display P3 12-bit', dict(quality=90, depth=12, yuv='444', cicp='12/13/1'))):
+        out = work / ('gain_' + name.replace(' ', '_').replace(':', '') + '.avif')
+        r = encode(exe, raw8, width, height, '8888', out, None, speed=6, threads=4, gain=gain_file, gainsize=f'{gw}x{gh}',
+                   gainmeta=','.join(repr(v) for v in meta), **options)
+        check(r.get('gain_map') is True, f'gain map {name}: not stored')
+        data = out.read_bytes()
+        check(b'tmap' in data[:64], f'gain map {name}: no tmap brand in ftyp')
+        raw = work / 'gain_decoded.raw'
+        gout = work / 'gain_map_decoded.raw'
+        run = subprocess.run([str(decoder), f'in={out}', f'out={raw}', f'gainout={gout}'], capture_output=True, text=True)
+        line = json.loads(run.stdout.strip().splitlines()[-1]) if run.stdout.strip() else {}
+        g = line.get('gain_map')
+        check(run.returncode == 0 and isinstance(g, dict), f'gain map {name}: libavif reads none ({line or run.stderr.strip()})')
+        if not isinstance(g, dict):
+            continue
+        check((g['width'], g['height'], g['monochrome']) == (gw, gh, True), f'gain map {name}: {g}')
+        for key, want in (('min', meta[0]), ('max', meta[1]), ('gamma', meta[2]), ('base_offset', meta[3]), ('alt_offset', meta[4]),
+                          ('base_headroom', meta[5]), ('alt_headroom', meta[6])):
+            check(abs(g[key] - want) < 1e-4, f'gain map {name}: {key} {g[key]} != {want}')
+        check(g['base_colour_space'] is True, f'gain map {name}: not in the base colour space')
+        back = np.frombuffer(gout.read_bytes(), np.uint8).reshape(gh, gw)
+        err = int(np.abs(back.astype(int) - gain.astype(int)).max())
+        check(err <= 6, f'gain map {name}: the map comes back off by {err} codes')
+        with Image.open(out) as im:  # a reader without gain maps: the SDR photo (4:2:0: on the grey detail, as run_cases)
+            part = regions(width, height)['gray' if '4:2:0' in name else 'all']
+            value = psnr(np.asarray(im.convert('RGB'))[part], to8(rgb10)[part])
+        check(value >= (38.0 if '4:2:0' in name else 45.0), f'gain map {name}: the SDR photo PSNR {value:.2f} dB')
+        print(f'  gain map {name}: tmap brand, libavif reads {gw}x{gh} monochrome, metadata exact, map within {err} codes, '
+              f'SDR photo PSNR {value:.2f} dB in Pillow')
+
+
 def bench(exe: Path, work: Path, photos: list[Path]) -> None:
     """12 MP and 50 MP (2 x 2 mosaic) photos at the app's defaults, 8 threads (the phones' core count)."""
     tiles = []
@@ -568,13 +612,15 @@ def main() -> int:
         for width, height in ((512, 384), (333, 211)):
             run_cases(exe, work, width, height)
         run_colour(exe, work, 512, 384, args.baseline_exe)
+        run_gain_map(exe, work, 512, 384)
         if args.bench:
             bench(exe, work, args.bench)
     if failures:
         print(f'{len(failures)} AVIF check(s) failed')
         return 1
     print(f'AVIF output OK: {len(CASES) * 2} files (8 / 10 / 12-bit, 4:4:4 / 4:2:0, lossless, RGBA_8888 / RGBA_1010102)'
-          ' decode independently with the expected depth, colour, EXIF and quality; Display P3 and HLG signalled')
+          ' decode independently with the expected depth, colour, EXIF and quality; Display P3 and HLG signalled;'
+          ' the ISO 21496-1 gain map read back by libavif')
     return 0
 
 

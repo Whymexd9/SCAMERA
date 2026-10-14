@@ -678,7 +678,7 @@
     <string name="prefs_photo_color_space_title">Colour space</string>
     <string name="prefs_photo_color_space_summary">sRGB looks the same everywhere. Display P3: richer colours on P3 screens; flatter where P3 is ignored.</string>
     <string name="prefs_photo_hdr_title">HDR in HEIC / AVIF</string>
-    <string name="prefs_photo_hdr_summary">HEIC / AVIF as real HDR: highlights brighter than white on HDR screens. Needs 10 bits and Android 13+.</string>
+    <string name="prefs_photo_hdr_summary">Adds an HDR gain map, as Ultra HDR in JPEG: HDR screens show brighter highlights, other screens the normal photo.</string>
     <string name="prefs_photo_also_jpeg_title">Also save a JPEG</string>
     <string name="prefs_photo_also_jpeg_summary">A JPEG copy next to the HEIC / WebP / AVIF for apps that cannot open them.</string>
     <!-- P42: face detection and tracking autofocus (after ArkCamera v50) -->

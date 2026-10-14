@@ -50,4 +50,19 @@ public class VivoQcomIszTest {
         assertEquals("2×", VivoQcomIsz.label(2f));
         assertEquals("1.2×", VivoQcomIsz.label(0.6f * 2));
     }
+
+    /** P126 (X300 Ultra 2026-10-14): two «4.8×» and two «9.6×» on the tele, a plain «2×» crop next to the ISZ «2×». */
+    @Test public void extraModulesGo() {
+        java.util.List<VivoQcomIsz.Mod> mods = java.util.Arrays.asList(
+                new VivoQcomIsz.Mod("back0", "4", 0.4f, 0, false),
+                new VivoQcomIsz.Mod("back1", "3", 1f, 0, false),
+                new VivoQcomIsz.Mod("back2", "5", 2.4f, 0, false),
+                new VivoQcomIsz.Mod("back3", "3", 2f, 0, true),   // IszModule's CROPPED_RAW «2×»
+                new VivoQcomIsz.Mod("back4", "5", 4.8f, 5, true),
+                new VivoQcomIsz.Mod("back5", "5", 4.8f, 5, true),  // the second «4.8×»
+                new VivoQcomIsz.Mod("back6", "3", 2f, 10, true),
+                new VivoQcomIsz.Mod("back7", "5", 9.6f, 7, true));
+        assertEquals(java.util.Arrays.asList("back5", "back3"), VivoQcomIsz.extras(mods, true));
+        assertEquals("the plain twin only once", java.util.Collections.singletonList("back5"), VivoQcomIsz.extras(mods, false));
+    }
 }

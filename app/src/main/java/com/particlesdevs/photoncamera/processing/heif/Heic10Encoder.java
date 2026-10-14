@@ -36,6 +36,8 @@ import java.util.concurrent.TimeUnit;
  * P46: {@link #write(Path, Bitmap, int, byte[], long, Stats, OutputColour.Signal)} declares another colour - Display P3
  * (nclx 12/13/1 + ICC profile in the container; the VUI stays BT.709, MediaFormat has no P3 standard) or HLG (BT.2020
  * matrix in the P010 conversion, VUI BT.2020 / HLG / full range, nclx 9/18/9). The sRGB default is the path above.
+ * P125 {@link #writeWithGainMap}: the SDR image and its ISO 21496-1 gain map (a grey image coded the same way, its own tile
+ * grid) in one file with the 'tmap' item (HeifContainerWriter.setGainMap).
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 public final class Heic10Encoder {
@@ -69,6 +71,22 @@ public final class Heic10Encoder {
     /** As above, declaring {@code colour} (P46); {@link OutputColour.Signal#SRGB} is the call above. */
     public static boolean write(Path file, Bitmap img, int quality, byte[] exifBlock, long timeoutMs, Stats stats,
                                 OutputColour.Signal colour) {
+        return write(file, img, null, null, quality, exifBlock, timeoutMs, stats, null, colour);
+    }
+
+    /**
+     * P125: {@code img} (RGBA_1010102, the SDR photo in {@code colour}) with {@code gainMap} (a grey ARGB_8888 or RGBA_1010102
+     * map, IsoGainMap.stored) and its 'tmap' data ({@code toneMap}, IsoGainMap.toneMapPayload). {@code gainStats} gets the
+     * map's encode. False (no file left) when either encode fails: the caller then writes the plain HEIC.
+     */
+    public static boolean writeWithGainMap(Path file, Bitmap img, Bitmap gainMap, byte[] toneMap, int quality, byte[] exifBlock,
+                                           long timeoutMs, Stats stats, Stats gainStats, OutputColour.Signal colour) {
+        if (gainMap == null || toneMap == null) return false;
+        return write(file, img, gainMap, toneMap, quality, exifBlock, timeoutMs, stats, gainStats, colour);
+    }
+
+    private static boolean write(Path file, Bitmap img, Bitmap gainMap, byte[] toneMap, int quality, byte[] exifBlock,
+                                 long timeoutMs, Stats stats, Stats gainStats, OutputColour.Signal colour) {
         final long started = System.nanoTime();
         final List<Heic10Support.Encoder> candidates = Heic10Support.ranked(Heic10Support.candidates());
         if (candidates.isEmpty()) {
@@ -79,11 +97,62 @@ public final class Heic10Encoder {
             Log.w(TAG, "not a 10-bit image: " + img.getConfig());
             return false;
         }
-        final TileGrid grid = new TileGrid(img.getWidth(), img.getHeight());
         final long deadline = started + timeoutMs * 1_000_000L;
+        Bitmap gainTen = null;
+        boolean ok = false;
+        try {
+            final Coded image = encode(candidates, img, quality, colour, deadline, stats);
+            final HeifContainerWriter writer = new HeifContainerWriter(image.grid, image.encoded.sets.hvcC(), image.sps.bitDepthLuma);
+            for (byte[] sample : image.encoded.samples) writer.addTile(sample);
+            if (gainMap != null) {
+                // the grey map through the same encoder (R = G = B: Y is the map, chroma neutral, any matrix)
+                gainTen = TenBitBitmaps.isTenBit(gainMap) ? gainMap : gainMap.copy(Bitmap.Config.RGBA_1010102, false);
+                if (gainTen == null) throw new IllegalStateException("no 10-bit copy of the gain map");
+                final Coded map = encode(candidates, gainTen, quality, OutputColour.Signal.SRGB, deadline,
+                        gainStats != null ? gainStats : new Stats());
+                writer.setGainMap(map.grid, map.encoded.sets.hvcC(), map.sps.bitDepthLuma, toneMap);
+                for (byte[] sample : map.encoded.samples) writer.addGainTile(sample);
+                if (gainStats != null) gainStats.tiles = map.encoded.samples.size();
+            }
+            writer.setExif(exifBlock);
+            if (!colour.isDefault()) writer.setColour(colour);
+            try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(file), 1 << 20)) {
+                writer.writeTo(out);
+            }
+            stats.tiles = image.encoded.samples.size();
+            stats.bytes = Files.size(file);
+            ok = stats.bytes > 0;
+        } catch (Exception | OutOfMemoryError e) {
+            Log.e(TAG, "10-bit HEIC encode failed (" + stats.codec + " " + stats.mode + "): " + android.util.Log.getStackTraceString(e));
+        } finally {
+            if (gainTen != null && gainTen != gainMap) gainTen.recycle();
+            if (!ok) {
+                try { Files.deleteIfExists(file); } catch (IOException ignored) {}
+            }
+            stats.totalMs = (System.nanoTime() - started) / 1_000_000;
+        }
+        return ok;
+    }
+
+    /** One image coded as 512 x 512 Main10 tiles: its grid, the samples and parameter sets, the checked SPS. */
+    private static final class Coded {
+        final TileGrid grid;
+        final Encoded encoded;
+        final HevcNal.Sps sps;
+
+        Coded(TileGrid grid, Encoded encoded, HevcNal.Sps sps) {
+            this.grid = grid;
+            this.encoded = encoded;
+            this.sps = sps;
+        }
+    }
+
+    /** Codes {@code img} (RGBA_1010102) with the first encoder that takes Main10 P010; the codec is released here. */
+    private static Coded encode(List<Heic10Support.Encoder> candidates, Bitmap img, int quality, OutputColour.Signal colour,
+                                long deadline, Stats stats) throws Exception {
+        final TileGrid grid = new TileGrid(img.getWidth(), img.getHeight());
         MediaCodec codec = null;
         TileSource source = null;
-        boolean ok = false;
         try {
             MediaFormat input = null;
             // An encoder that refuses Main10 / P010 at configure or start (nothing coded yet) hands over to the next one.
@@ -112,30 +181,14 @@ public final class Heic10Encoder {
                 throw new IllegalStateException("the encoder did not code 10-bit 4:2:0: " + sps);
             if (sps.width != grid.tile || sps.height != grid.tile)
                 throw new IllegalStateException("tile coded as " + sps.width + "x" + sps.height + ", not " + grid.tile);
-            final HeifContainerWriter writer = new HeifContainerWriter(grid, encoded.sets.hvcC(), sps.bitDepthLuma);
-            for (byte[] sample : encoded.samples) writer.addTile(sample);
-            writer.setExif(exifBlock);
-            if (!colour.isDefault()) writer.setColour(colour);
-            try (OutputStream out = new BufferedOutputStream(Files.newOutputStream(file), 1 << 20)) {
-                writer.writeTo(out);
-            }
-            stats.tiles = encoded.samples.size();
-            stats.bytes = Files.size(file);
-            ok = stats.bytes > 0;
-        } catch (Exception | OutOfMemoryError e) {
-            Log.e(TAG, "10-bit HEIC encode failed (" + stats.codec + " " + stats.mode + "): " + android.util.Log.getStackTraceString(e));
+            return new Coded(grid, encoded, sps);
         } finally {
             if (codec != null) {
                 try { codec.stop(); } catch (RuntimeException ignored) {}
                 try { codec.release(); } catch (RuntimeException ignored) {}
             }
             if (source != null) source.close();
-            if (!ok) {
-                try { Files.deleteIfExists(file); } catch (IOException ignored) {}
-            }
-            stats.totalMs = (System.nanoTime() - started) / 1_000_000;
         }
-        return ok;
     }
 
     /** Configures the encoder for 512 x 512 Main10 P010 intra frames: CQ at the HEIC quality when it has CQ, else VBR. */

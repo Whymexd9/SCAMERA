@@ -49,7 +49,8 @@ import static org.mockito.Mockito.*;
 
 /**
  * P46 in PhotoOutput: «Цветовое пространство» Display P3 tags every format (JPEG / Ultra HDR APP2, WebP ICCP, 10-bit HEIC nclx
- * 12 + ICC, AVIF CICP 12 + ICC), «HDR в HEIC / AVIF» writes the HLG picture (nclx / CICP 9/18/9) with an SDR fallback, and the
+ * 12 + ICC, AVIF CICP 12 + ICC), «HDR в HEIC / AVIF» writes the SDR photo with its ISO 21496-1 gain map (P125) with an SDR
+ * fallback, and the
  * defaults write exactly the files of the four-argument save (no profile, the old encoder calls). The HEVC / AV1 encoders are
  * stubs (the host has neither; the real ones: tools/check_heic10.py, tools/check_avif.py).
  */
@@ -62,7 +63,12 @@ public class PhotoOutputColourTest {
     private MockedStatic<ScameraApp> camera;
     private PhotoOutput.TenBitHeicWriter realHeic;
     private PhotoOutput.AvifWriter realAvif;
-    private PhotoOutput.HdrRenderer realHdr;
+    private PhotoOutput.GainMapHeicWriter realGainHeic;
+    private final List<Bitmap.Config> gainHeicConfigs = new ArrayList<>();
+    private final List<OutputColour.Signal> gainHeicColours = new ArrayList<>();
+    private final List<int[]> gainHeicMapSizes = new ArrayList<>();
+    private final List<byte[]> gainHeicToneMaps = new ArrayList<>();
+    private boolean gainHeicFails;
     private final List<OutputColour.Signal> heicColours = new ArrayList<>();
     private final List<Bitmap.Config> heicConfigs = new ArrayList<>();
     private final List<int[]> heicPixels = new ArrayList<>();
@@ -89,7 +95,16 @@ public class PhotoOutputColourTest {
         GLLimits.setForTesting(GLLimits.of(16384, 16384, 16384, 16384));
         realHeic = PhotoOutput.tenBitHeic;
         realAvif = PhotoOutput.avifWriter;
-        realHdr = PhotoOutput.hdrRenderer;
+        realGainHeic = PhotoOutput.gainMapHeic;
+        PhotoOutput.gainMapHeic = (file, img, gainMap, toneMap, quality, exifBlock, timeoutMs, detail, colour) -> {
+            gainHeicConfigs.add(img.getConfig());
+            gainHeicColours.add(colour);
+            gainHeicMapSizes.add(new int[]{gainMap.getWidth(), gainMap.getHeight()});
+            gainHeicToneMaps.add(toneMap);
+            if (gainHeicFails) return false;
+            write(file, "heic10+gainmap");
+            return true;
+        };
         AvifEncoder.setAvailableForTesting(true);
         PhotoOutput.tenBitHeic = (file, img, quality, exifBlock, timeoutMs, detail, colour) -> {
             heicColours.add(colour);
@@ -110,7 +125,7 @@ public class PhotoOutputColourTest {
     public void tearDown() {
         PhotoOutput.tenBitHeic = realHeic;
         PhotoOutput.avifWriter = realAvif;
-        PhotoOutput.hdrRenderer = realHdr;
+        PhotoOutput.gainMapHeic = realGainHeic;
         AvifEncoder.setAvailableForTesting(null);
         Heic10Support.clearForTesting();
         GLLimits.setForTesting(null);
@@ -300,52 +315,80 @@ public class PhotoOutputColourTest {
     // ------------------------------------------------------------------------------------------------ HDR
 
     @Test
-    public void hdrHeicIsTheHlgPicture() throws Exception {
+    public void hdrHeicIsTheSdrPhotoWithItsGainMap() throws Exception {
         Heic10Support.setForTesting(HW);
         prefs("heic", false);
-        final Bitmap img = tenBitPicture(32, 16);
-        final PhotoOutput.Result r = PhotoOutput.save(tmp.getRoot().toPath().resolve("IMG_HH"), img, exif(), null, gain(32, 16, 0, 2f),
-                OutputColour.Space.SRGB);
+        final PhotoOutput.Result r = PhotoOutput.save(tmp.getRoot().toPath().resolve("IMG_HH"), tenBitPicture(32, 16), exif(), null,
+                gain(32, 16, 0, 2f), OutputColour.Space.SRGB);
         assertEquals(Collections.singletonList(PhotoFormat.HEIC.fileFor(tmp.getRoot().toPath().resolve("IMG_HH"))), r.files);
-        assertEquals(1, heicColours.size());
-        assertEquals(OutputColour.Signal.HLG.toString(), heicColours.get(0).toString());
-        assertEquals(Bitmap.Config.RGBA_1010102, heicConfigs.get(0));
-        // top-right pixel: (1023, 0, 1023) magenta; bottom-right (1023, 1023, 1023) white -> 75 % HLG
-        final int white = heicPixels.get(0)[15 * 32 + 31];
-        assertEquals(767, (white >>> 10) & 0x3FF, 2);
+        assertEquals(1, gainHeicColours.size());
+        assertTrue("the SDR photo in its own colour, no HLG", gainHeicColours.get(0).isDefault());
+        assertEquals(Bitmap.Config.RGBA_1010102, gainHeicConfigs.get(0));
+        assertArrayEquals("the map at half size per axis", new int[]{16, 8}, gainHeicMapSizes.get(0));
+        final byte[] expected = com.particlesdevs.photoncamera.processing.ultrahdr.IsoGainMap.of(gain(32, 16, 0, 2f)).toneMapPayload();
+        assertArrayEquals(expected, gainHeicToneMaps.get(0));
+        assertTrue("no plain 10-bit encode", heicColours.isEmpty());
+        // an 8-bit picture goes as its 10-bit copy
+        gainHeicConfigs.clear();
+        PhotoOutput.save(tmp.getRoot().toPath().resolve("IMG_H8"), picture(32, 16), exif(), null, gain(32, 16, 0, 2f),
+                OutputColour.Space.DISPLAY_P3);
+        assertEquals(Bitmap.Config.RGBA_1010102, gainHeicConfigs.get(0));
+        assertEquals(12, gainHeicColours.get(1).primaries);
     }
 
     @Test
     public void failedHdrFallsBackToTheSdrHeic() throws Exception {
         Heic10Support.setForTesting(HW);
         prefs("heic", false);
-        PhotoOutput.hdrRenderer = (base, gain, space) -> {
-            throw new IllegalStateException("no memory");
-        };
+        gainHeicFails = true;
         final PhotoOutput.Result r = PhotoOutput.save(tmp.getRoot().toPath().resolve("IMG_HF"), tenBitPicture(32, 16), exif(), null,
                 gain(32, 16, 0, 2f), OutputColour.Space.SRGB);
         assertEquals(1, r.files.size());
+        assertEquals(1, gainHeicColours.size());
         assertEquals(1, heicColours.size());
         assertTrue("SDR 10-bit HEIC in the default colour", heicColours.get(0).isDefault());
     }
 
     @Test
-    public void hdrAvifTakesTheHlgPictureAtItsDepth() throws Exception {
+    public void hdrAvifCarriesTheGainMapAtAnyDepth() throws Exception {
         prefs("avif", false);
         manager.getDefaultPreferences().edit().putString(PhotoFormat.KEY_AVIF_DEPTH, "12").commit();
         PhotoOutput.save(tmp.getRoot().toPath().resolve("IMG_HA"), picture(32, 16), exif(), null, gain(32, 16, 200, 3f),
                 OutputColour.Space.DISPLAY_P3);
         assertEquals(1, avifOptions.size());
-        assertEquals(OutputColour.Signal.HLG.toString(), avifOptions.get(0).colour.toString());
-        assertEquals(12, avifOptions.get(0).depth);
-        assertEquals(Bitmap.Config.RGBA_1010102, avifConfigs.get(0));
-        // 8-bit AVIF cannot hold HDR: SDR (here the P3 colour)
+        final AvifEncoder.Options o = avifOptions.get(0);
+        assertEquals("the SDR photo in its colour", 12, o.colour.primaries);
+        assertEquals(12, o.depth);
+        assertEquals(16, o.gainWidth);
+        assertEquals(8, o.gainHeight);
+        assertEquals(16 * 8, o.gainMap.length);
+        assertEquals(200, o.gainMap[0] & 0xFF);
+        assertEquals("GainMapMax", 3.0, o.gainMeta[1], 1e-6);
+        assertEquals("alternate headroom", 3.0, o.gainMeta[6], 1e-6);
+        // 8-bit AVIF holds the map too (the HLG picture needed 10 bits)
         avifOptions.clear();
         manager.getDefaultPreferences().edit().putString(PhotoFormat.KEY_AVIF_DEPTH, "8").commit();
         PhotoOutput.save(tmp.getRoot().toPath().resolve("IMG_H8"), picture(32, 16), exif(), null, gain(32, 16, 200, 3f),
-                OutputColour.Space.DISPLAY_P3);
-        assertEquals(12, avifOptions.get(0).colour.primaries);
+                OutputColour.Space.SRGB);
+        assertNotNull(avifOptions.get(0).gainMap);
+        assertTrue(avifOptions.get(0).colour.isDefault());
         assertEquals(Bitmap.Config.ARGB_8888, avifConfigs.get(1));
+    }
+
+    @Test
+    public void failedAvifGainMapFallsBackToTheSdrAvif() throws Exception {
+        prefs("avif", false);
+        PhotoOutput.avifWriter = (img, file, options, exifBlock) -> {
+            avifOptions.add(options);
+            if (options.gainMap != null) throw new java.io.IOException("AVIF: encode: gain map failed");
+            write(file, "avif");
+            return new AvifEncoder.Result(new long[]{options.depth, 1, 1, 1, 4, 1});
+        };
+        final PhotoOutput.Result r = PhotoOutput.save(tmp.getRoot().toPath().resolve("IMG_AF"), picture(32, 16), exif(), null,
+                gain(32, 16, 200, 3f), OutputColour.Space.SRGB);
+        assertEquals(1, r.files.size());
+        assertEquals(2, avifOptions.size());
+        assertNull(avifOptions.get(1).gainMap);
     }
 
     @Test

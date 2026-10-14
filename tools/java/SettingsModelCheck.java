@@ -192,7 +192,7 @@ public class SettingsModelCheck {
         if(!"старый".equals(new SettingsAvailability(c).hdrUnavailable("старый").reason("pref_photo_hdr")))throw new AssertionError("HDR device reason lost");
         if(new SettingsAvailability(c).hdrUnavailable("старый").reason("pref_heic_10bit")!=null)throw new AssertionError("HDR reason on 10-bit HEIC");
         c.put("pref_photo_format","avif");c.remove("pref_heic_10bit");active(c,"pref_photo_hdr");
-        c.put("pref_avif_depth","8");inactive(c,"pref_photo_hdr");
+        c.put("pref_avif_depth","8");active(c,"pref_photo_hdr"); // P125: the gain map fits an 8-bit AVIF
         c.put("pref_avif_lossless",true);active(c,"pref_photo_hdr");
         c.put("pref_avif_lossless",false);c.put("pref_avif_depth","12");active(c,"pref_photo_hdr");
         // Settings audit H3: rows that do nothing in the current configuration explain why.

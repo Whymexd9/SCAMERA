@@ -118,7 +118,7 @@ if(NOT MSVC)
 endif()
 # The compilers come from the toolchain file (Android) or the CC / CXX environment (host); the rest is passed on.
 foreach(var CMAKE_TOOLCHAIN_FILE ANDROID_ABI ANDROID_PLATFORM ANDROID_NDK ANDROID_STL CMAKE_MAKE_PROGRAM CMAKE_AR
-        CMAKE_RANLIB CMAKE_POLICY_VERSION_MINIMUM CMAKE_ASM_NASM_COMPILER CMAKE_OSX_ARCHITECTURES)
+        CMAKE_RANLIB CMAKE_POLICY_VERSION_MINIMUM CMAKE_ASM_NASM_COMPILER CMAKE_OSX_ARCHITECTURES AOM_TARGET_CPU)
     if(DEFINED ${var} AND NOT "${${var}}" STREQUAL "")
         # Windows paths with backslashes would be read as escapes in the external project's generated scripts.
         string(REPLACE "\\" "/" value "${${var}}")

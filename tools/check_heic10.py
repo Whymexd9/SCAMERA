@@ -15,7 +15,9 @@
       5. the 8-bit path stays as it was: PhotoOutput still writes the 8-bit HEIC through HeifWriter with the same builder
          and the post pipeline renders the 8-bit final image into the same RGBA8 target (source guard);
       6. P46 colours: the same grid declared Display P3 (nclx 12/13/1 + the ICC profile libheif hands out, pixels as the
-         sRGB file) and an HLG grid (tiles coded with the BT.2020 matrix, nclx 9/18/9, decoded within the codec tolerance).
+         sRGB file) and an HLG grid (tiles coded with the BT.2020 matrix, nclx 9/18/9, decoded within the codec tolerance);
+      7. P125: the same grid with an ISO 21496-1 gain map (a hidden grid of its own, a 'tmap' item, 'altr', the 'tmap'
+         brand): the structure check takes it and libheif decodes the primary image exactly as the file without the map.
 
 What a file must have (ISO/IEC 23008-12, ISO/IEC 14496-15):
   * ftyp with 'mif1' and 'heic' among the brands (androidx ExifInterface needs both, Skia / MediaExtractor take either);
@@ -271,6 +273,31 @@ def check_file(path, data=None, app_brands=True):
     colr = prop(primary, 'colr')
     if colr is not None and colr[1][:4] == b'nclx':
         summary['nclx'] = struct.unpack('>HHH', colr[1][4:10]) + (colr[1][10] >> 7,)
+    # P125: an ISO 21496-1 gain map ('tmap' derived item: the primary image and the map's hidden grid, in an 'altr' group)
+    tmaps = [i for i, it in items.items() if it['type'] == 'tmap']
+    summary['gain_map'] = None
+    for t in tmaps:
+        need('tmap' in brands, "a 'tmap' item without the 'tmap' brand")
+        src = refs.get('dimg', {}).get(t, [])
+        need(len(src) == 2 and src[0] == primary, "'tmap' %d must derive from the primary image first: %s" % (t, src))
+        gain = src[1]
+        need(items.get(gain, {}).get('type') == 'grid' and items[gain]['hidden'], 'the gain map %d is not a hidden grid' % gain)
+        g = item_data(gain)
+        g_rows, g_cols = g[2] + 1, g[3] + 1
+        g_tiles = refs.get('dimg', {}).get(gain, [])
+        need(len(g_tiles) == g_rows * g_cols, 'gain map grid %dx%d with %d tiles' % (g_cols, g_rows, len(g_tiles)))
+        for tile in g_tiles:
+            need(items[tile]['type'] == 'hvc1' and items[tile]['hidden'], 'gain map tile %d' % tile)
+            coded(tile)
+        payload = item_data(t)
+        need(len(payload) >= 6 and payload[0] == 0 and u(payload, 1, 2) == 0, "'tmap' %d: not ToneMapImage v0 / GainMapMetadata v0" % t)
+        need(ispe(t) == (summary['width'], summary['height']), "'tmap' %d ispe %s" % (t, ispe(t)))
+        grpl = child(data, meta, 'grpl', required=False)
+        need(grpl is not None, "'tmap' without a grpl box")
+        altr = [(s, e) for kind, s, e in boxes(data, grpl[0], grpl[1]) if kind == 'altr']
+        need(altr and u(data, altr[0][0] + 8, 4) >= 2 and u(data, altr[0][0] + 12, 4) == t and u(data, altr[0][0] + 16, 4) == primary,
+             "'altr' must list the 'tmap' item, then the primary image")
+        summary['gain_map'] = dict(item=gain, ispe=ispe(gain), tiles=len(g_tiles), payload=payload)
     exif_items = [i for i, it in items.items() if it['type'] == 'Exif']
     summary['exif'] = None
     for i in exif_items:
@@ -478,6 +505,43 @@ def self_test():
                      'libheif does not hand out the Display P3 profile')
                 need(np.array_equal(np.asarray(dp), np.asarray(decoded)), 'the P3 file decodes differently from the sRGB one')
                 print('  the same grid declared Display P3: nclx 12/13/1, ICC profile (%d bytes) read by libheif, same pixels' % len(icc))
+                # P125: the same grid with a gain map (a grey ramp at half size, coded like the image) and its 'tmap' item
+                gw, gh = width // 2, height // 2
+                gdir = work / 'gain'
+                gdir.mkdir()
+                gy, gx = np.mgrid[0:gh, 0:gw]
+                ramp = (gx * 1023 // max(1, gw - 1)).astype(np.int64)
+                gsrc = np.stack([ramp, ramp, ramp], axis=-1)
+                gcols, grows = -(-gw // tile), -(-gh // tile)
+                gpad = np.pad(gsrc, ((0, grows * tile - gh), (0, gcols * tile - gw), (0, 0)), mode='edge')
+                for r in range(grows):
+                    for c in range(gcols):
+                        block = gpad[r * tile:(r + 1) * tile, c * tile:(c + 1) * tile]
+                        gheif = pillow_heif.from_bytes(mode='RGB;16', size=(tile, tile), data=(block.astype(np.uint16) << 6).tobytes())
+                        gout = tmp / 'gain_enc.heic'
+                        gheif.save(str(gout), quality=96, chroma=420, matrix_coefficients=1, color_primaries=1,
+                                   transfer_characteristic=13, full_range_flag=1)
+                        arrays, sample = hevc_of(gout.read_bytes())
+                        gsets = arrays[32] + arrays[33] + arrays[34]
+                        if r == 0 and c == 0:
+                            (gdir / 'csd.bin').write_bytes(annex_b(gsets))
+                        (gdir / ('tile_%d.bin' % (r * gcols + c))).write_bytes(annex_b(length_prefixed_to_nals(sample)))
+                # ToneMapImage v0 + GainMapMetadata (IsoGainMap.toneMapPayload: headrooms 0 / 2.5, min 0, max 2.5, gamma 1)
+                d = 1000000
+                tmap = struct.pack('>BHHB', 0, 0, 0, 0x40) + struct.pack('>IIII', 0, d, 2500000, d) + struct.pack(
+                    '>iIiIIIiIiI', 0, d, 2500000, d, 1000000, d, 15625, d, 15625, d)
+                (gdir / 'tmap.bin').write_bytes(tmap)
+                withmap = work / 'out_gain.heic'
+                subprocess.run([java, '-cp', str(classes), 'Heic10ContainerSample', str(work), str(width), str(height), str(tile),
+                                str(withmap), 'srgb', str(gdir), str(gw), str(gh), str(gdir / 'tmap.bin')], check=True)
+                sg = check_file(withmap)
+                gm = sg['gain_map']
+                need(gm is not None and gm['ispe'] == (gw, gh) and gm['payload'] == tmap, 'gain map summary %s' % (gm,))
+                dg = pillow_heif.open_heif(str(withmap), convert_hdr_to_8bit=False)
+                need(dg.size == (width, height) and np.array_equal(np.asarray(dg), np.asarray(decoded)),
+                     'with the gain map libheif decodes the primary image differently')
+                print('  the same grid with an ISO 21496-1 gain map (%dx%d, %d tile(s), tmap %d bytes, altr): structure OK, '
+                      'libheif decodes the primary image unchanged' % (gw, gh, gm['tiles'], len(tmap)))
         good = bytearray((tmp / '1100x700' / 'out.heic').read_bytes())
         # Broken variants.
         bad = bytearray(good)

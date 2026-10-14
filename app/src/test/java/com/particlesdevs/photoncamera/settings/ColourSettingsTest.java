@@ -158,7 +158,7 @@ public class ColourSettingsTest {
         assertEquals("old", new SettingsAvailability(v).hdrUnavailable("old").reason(PhotoFormat.KEY_HDR));
         v.put(PhotoFormat.KEY, "avif");
         v.put(PhotoFormat.KEY_AVIF_DEPTH, "8");
-        assertNotNull(new SettingsAvailability(v).reason(PhotoFormat.KEY_HDR));
+        assertNull("P125: the gain map fits an 8-bit AVIF", new SettingsAvailability(v).reason(PhotoFormat.KEY_HDR));
         v.put(PhotoFormat.KEY_AVIF_LOSSLESS, true);
         assertNull(new SettingsAvailability(v).reason(PhotoFormat.KEY_HDR));
         v.remove(PhotoFormat.KEY_AVIF_LOSSLESS);
@@ -166,7 +166,8 @@ public class ColourSettingsTest {
         assertNull(new SettingsAvailability(v).reason(PhotoFormat.KEY_HDR));
         // the device fact on this (Android 15) runtime
         assertNull(HdrOutput.unavailableReason());
-        assertNotNull(HdrOutput.reason(32));
+        assertNull("AVIF from Android 12", HdrOutput.reason(32));
+        assertNotNull(HdrOutput.reason(30));
         assertNull(DeviceAvailability.of(v).reason(PhotoFormat.KEY_HDR));
     }
 
@@ -178,10 +179,12 @@ public class ColourSettingsTest {
         assertFalse("off", HdrOutput.applies(false, PhotoFormat.HEIC, true, null, 35));
         assertTrue(HdrOutput.applies(true, PhotoFormat.HEIC, true, null, 35));
         assertFalse("no 10-bit HEIC", HdrOutput.applies(true, PhotoFormat.HEIC, false, null, 35));
-        assertFalse("Android 12", HdrOutput.applies(true, PhotoFormat.HEIC, true, null, 32));
+        assertFalse("Android 12: no 10-bit HEIC", HdrOutput.applies(true, PhotoFormat.HEIC, true, null, 32));
         assertTrue(HdrOutput.applies(true, PhotoFormat.AVIF, false, ten, 33));
         assertTrue(HdrOutput.applies(true, PhotoFormat.AVIF, false, lossless, 33));
-        assertFalse(HdrOutput.applies(true, PhotoFormat.AVIF, false, eight, 33));
+        assertTrue("P125: the gain map fits an 8-bit AVIF", HdrOutput.applies(true, PhotoFormat.AVIF, false, eight, 33));
+        assertTrue("AVIF on Android 12", HdrOutput.applies(true, PhotoFormat.AVIF, false, eight, 31));
+        assertFalse("Android 11", HdrOutput.applies(true, PhotoFormat.AVIF, false, eight, 30));
         assertFalse(HdrOutput.applies(true, PhotoFormat.JPEG, true, ten, 35));
         assertFalse(HdrOutput.applies(true, PhotoFormat.WEBP, true, ten, 35));
         // stored settings: HEIC with 10 bit on a capable phone

@@ -2,7 +2,9 @@
 // libaom pins as the APK's libscameraAvif.so) for tools/check_avif.py: decodes an AVIF file to raw RGBA rows and prints
 // one JSON line.
 //
-//   avif_host_decode in=<file.avif> out=<file.raw> [maxside=0] [threads=4]
+//   avif_host_decode in=<file.avif> out=<file.raw> [maxside=0] [threads=4] [gainout=<file.raw>]
+//   gainout (P125): the file's ISO 21496-1 gain map (decoded by libavif, AVIF_IMAGE_CONTENT_ALL) to one byte per pixel, its
+//   size and metadata added to the JSON line ("gain_map": null when the file has none).
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -39,7 +41,46 @@ int main(int argc, char** argv) {
     }
     std::ofstream out(a["out"], std::ios::binary);
     out.write(reinterpret_cast<const char*>(decoded.rgba.data()), std::streamsize(decoded.rgba.size()));
-    std::printf("{\"width\":%u,\"height\":%u,\"source_width\":%u,\"source_height\":%u,\"depth\":%u}\n", decoded.width,
-                decoded.height, decoded.sourceWidth, decoded.sourceHeight, decoded.depth);
+    std::string gain = "null";
+    if (a.count("gainout")) {
+        avifDecoder* d = avifDecoderCreate();
+        if (d == nullptr) {
+            std::printf("{\"error\":\"avifDecoderCreate failed\"}\n");
+            return 1;
+        }
+        d->imageContentToDecode = AVIF_IMAGE_CONTENT_ALL;
+        d->strictFlags = AVIF_STRICT_ENABLED; // the writer's own files: spec-strict
+        avifResult r = avifDecoderSetIOMemory(d, data.data(), data.size());
+        if (r == AVIF_RESULT_OK) r = avifDecoderParse(d);
+        if (r == AVIF_RESULT_OK) r = avifDecoderNextImage(d);
+        if (r != AVIF_RESULT_OK) {
+            std::printf("{\"error\":\"gain map decode: %s %s\"}\n", avifResultToString(r), d->diag.error);
+            avifDecoderDestroy(d);
+            return 1;
+        }
+        const avifGainMap* gm = d->image->gainMap;
+        if (gm != nullptr && gm->image != nullptr) {
+            const avifImage* g = gm->image;
+            std::ofstream gout(a["gainout"], std::ios::binary);
+            for (uint32_t y = 0; y < g->height; ++y)
+                gout.write(reinterpret_cast<const char*>(g->yuvPlanes[AVIF_CHAN_Y] + size_t(y) * g->yuvRowBytes[AVIF_CHAN_Y]),
+                           std::streamsize(g->width));
+            char buf[512];
+            std::snprintf(buf, sizeof(buf),
+                          "{\"width\":%u,\"height\":%u,\"depth\":%u,\"monochrome\":%s,\"min\":%.6f,\"max\":%.6f,\"gamma\":%.6f,"
+                          "\"base_offset\":%.6f,\"alt_offset\":%.6f,\"base_headroom\":%.6f,\"alt_headroom\":%.6f,"
+                          "\"base_colour_space\":%s}",
+                          g->width, g->height, g->depth, g->yuvFormat == AVIF_PIXEL_FORMAT_YUV400 ? "true" : "false",
+                          double(gm->gainMapMin[0].n) / gm->gainMapMin[0].d, double(gm->gainMapMax[0].n) / gm->gainMapMax[0].d,
+                          double(gm->gainMapGamma[0].n) / gm->gainMapGamma[0].d, double(gm->baseOffset[0].n) / gm->baseOffset[0].d,
+                          double(gm->alternateOffset[0].n) / gm->alternateOffset[0].d,
+                          double(gm->baseHdrHeadroom.n) / gm->baseHdrHeadroom.d,
+                          double(gm->alternateHdrHeadroom.n) / gm->alternateHdrHeadroom.d, gm->useBaseColorSpace ? "true" : "false");
+            gain = buf;
+        }
+        avifDecoderDestroy(d);
+    }
+    std::printf("{\"width\":%u,\"height\":%u,\"source_width\":%u,\"source_height\":%u,\"depth\":%u,\"gain_map\":%s}\n",
+                decoded.width, decoded.height, decoded.sourceWidth, decoded.sourceHeight, decoded.depth, gain.c_str());
     return out ? 0 : 1;
 }
