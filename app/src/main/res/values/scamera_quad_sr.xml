@@ -1,15 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="mosaic_sr_title">RAW SR Mosaic DNG</string>
-    <string name="mosaic_sr_summary">Experimental synthetic Bayer DNG for later AMaZE/RCD demosaicing. It is not untouched sensor RAW.</string>
-    <string name="mosaic_sr_enable">Save RAW SR Mosaic DNG</string>
-    <string name="mosaic_sr_jpeg">Use RAW SR Mosaic for JPEG</string>
-    <string name="mosaic_sr_jpeg_summary">Demosaic the reconstructed high-resolution CFA and save the result as JPEG too.</string>
-    <string name="mosaic_sr_scale">Output resolution scale</string>
-    <string name="mosaic_sr_kernel">CFA reconstruction kernel</string>
-    <string-array name="mosaic_sr_scale_entries"><item>1.225× — approximately 18 MP</item><item>1.414× — approximately 24 MP</item><item>2.000× — approximately 48 MP</item></string-array>
-    <string-array name="mosaic_sr_scale_values" translatable="false"><item>1.22474487</item><item>1.41421356</item><item>2.0</item></string-array>
-    <string-array name="mosaic_sr_kernel_entries"><item>Bilinear — fastest</item><item>Catmull-Rom — balanced</item><item>Lanczos2 — maximum detail</item></string-array>
-    <string-array name="mosaic_sr_kernel_values" translatable="false"><item>bilinear</item><item>catmull_rom</item><item>lanczos2</item></string-array>
     <string name="full_debug_summary">Writes a detailed processing log to Download/SCAMERA for bug hunting.</string>
 </resources>

@@ -3,37 +3,20 @@
     <string name="ui_language">ru</string>
     <string name="request_permission">Этому приложению требуется разрешение камеры.</string>
     <string name="camera_error">Это устройство не поддерживает Camera2 API.</string>
-    <string name="frame_count">Количество кадров</string>
-    <string name="short_frame_count">Количество коротких RAW-кадров</string>
-    <string name="long_frame_count">Количество длинных RAW-кадров</string>
-    <string name="short_exposure_ev">Насколько короче короткий кадр (EV)</string>
-    <string name="long_exposure_ev">Насколько длиннее длинный кадр (EV)</string>
-    <string name="highlight_suppression">Света / восстановление хайлайтов (0–200)</string>
-    <string name="ai_denoise_available">UNet Fast или NAFNet Quality · NPU через NNAPI, с явным переходом на CPU</string>
 
     <string name="turn_on_grid">Сетка</string>
     <string name="turn_on_round_edges">Включить закруглённые края</string>
     <string name="turn_on_watermark">Водяной знак</string>
     <string name="turn_on_afdata">Информация на экране</string>
-    <string name="image_deleted">Изображение удалено</string>
     <string name="yes">Да</string>
     <string name="cancel">Отмена</string>
-    <string name="sure_delete">Вы уверены, что хотите удалить?</string>
     <string name="hide_gallery_icon">Скрыть иконку галереи</string>
-    <string name="theme">Тема</string>
-    <string name="camera_sounds">Звуки камеры</string>
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
     <string name="theme_follow_system">Как в системе</string>
     <string name="cfa">Фильтр Байера</string>
-    <string name="energy_saving">Энергосбережение</string>
-    <string name="app_summary">RAW-камера с многокадровой обработкой SCAM Hybrid и SCAM HDR</string>
+    <string name="app_summary">RAW-камера с многокадровой обработкой SHDR</string>
     <string name="version_title">Версия</string>
-    <string name="eis_toggle_text">Стабилизация тряски</string>
-    <string name="fps_60_toggle_text">Частота кадров</string>
-    <string name="quad_bayer_toggle_text">Сверхвысокое разрешение</string>
-    <string name="frame_count_summary">Количество кадров изображения, которые необходимо объединить</string>
-    <string name="unprocessed_raw">Необработанный RAW</string>
     <string name="backup">Сохранить</string>
     <string name="reset_preferences_warning">Это сбросит настройки на стандартные, продолжить?</string>
     <string name="backup_summary_json">Сохранить все настройки и профили модулей в файл в Download/SCAMERA/XML</string>
@@ -42,21 +25,12 @@
     <string name="restore_summary_json">Загрузить настройки из XML-файла в Download/SCAMERA/XML или выбрать файл</string>
     <string name="empty_file_name_error">Название не может быть пустым</string>
     <string name="reset">Сбросить всё</string>
-    <string name="backup_restore">Сохранение/Восстановление настроек</string>
-    <string name="sure_delete_multiple">Вы уверены, что хотите удалить %1$s изображение(-ий)? %2$s будут удалены.</string>
     <string name="af_mode">Режим автофокуса</string>
-    <string name="multiple_deleted_success">%1$s файл(ов) удалены! %2$s очищено.</string>
     <string name="this_device">Ваше устройство - %1$s</string>
     <string name="on">Вкл.</string>
-    <string name="t_3s">3 сек.</string>
-    <string name="t_10s">10 сек.</string>
-    <string name="jpg_only">Только JPEG</string>
     <string name="off">Выкл.</string>
     <string name="golden_ratio">Золотое сеч.</string>
     <string name="diag_triangle">Диаг. треуг.</string>
-    <string name="torch">Фонарик</string>
-    <string name="flash">Вспышка</string>
-    <string name="countdown_timer">Таймер</string>
     <string name="processing_processname">Обработка %1$s...</string>
     <string name="mode_video">Видео</string>
     <string name="mode_unlimited">Бесконечный</string>
@@ -64,8 +38,6 @@
     <string name="mode_motion">Фото</string>
     <string name="mode_photo">Фото</string>
     <string name="mode_night">Ночь</string>
-    <string name="sync_on">Синхр. вкл.</string>
-    <string name="sync_off">Синхр. выкл.</string>
     <string name="perm_rationale_media_settings">Полный доступ к фото и видео требуется для просмотра фото с других приложений в галерее. Пожалуйста выберите полный доступ.</string>
     <string name="perm_dcim_hint">Выберите папку DCIM и разрешите доступ к ней</string>
     <string name="perm_dcim_wrong_folder">Это не папка DCIM. Выберите DCIM</string>
@@ -73,21 +45,6 @@
     <string name="perm_dcim_failed">Без доступа к папке DCIM нельзя сохранить RAW видео и прочитать конфиги устройства. Нажмите «Повторить» и выберите папку DCIM.</string>
     <string name="perm_retry">Повторить</string>
     <string name="session_on_configure_failed">"Системная ошибка конфигурации, попробуйте другой формат превью "</string>
-    <string name="exposure_bracketing">Брекетинг экспозиции</string>
-    <string name="hybrid_output_title">Разрешение</string>
-    <string name="hybrid_output_sensor">Сенсор</string>
-    <string name="hybrid_output_12">12 МП (2×)</string>
-    <string name="hybrid_output_16">16 МП (2×)</string>
-    <string name="hybrid_output_20">20 МП (2×)</string>
-    <string name="hybrid_output_2x">2× без уменьшения</string>
-    <string name="hybrid_downsampler_title">Даунсемплер</string>
-    <string name="hybrid_ds_lanczos">Lanczos-3</string>
-    <string name="hybrid_ds_bicubic">Bicubic</string>
-    <string name="hybrid_ds_area">Area</string>
-    <string name="hybrid_ds_bilinear">Bilinear</string>
-    <string name="bracketing_off">Выкл (1x)</string>
-    <string name="bracketing_normal">Нормальный (1x, 4x)</string>
-    <string name="bracketing_high">Высокий (1x, 8x)</string>
     <string name="binning">Обрабатывать вчетверо меньшее разрешение</string>
     <string name="gallery_folders">Папки галереи</string>
     <string name="color_method">Цветовой метод</string>
@@ -101,17 +58,7 @@
     <!-- Top bar gear that opens SettingsActivity (TalkBack, tooltip) -->
     <string name="sheet_all_settings">Все настройки</string>
     <!-- AE metering -->
-    <string name="ae_metering_off">Авто</string>
-    <string name="ae_metering_center">Центровзвешенный</string>
-    <string name="ae_metering_average">Среднее по кадру</string>
-    <string name="ae_metering_spot">Точечный</string>
-    <string name="ae_metering_std">Замер AE</string>
     <string name="ultrahdr_summary">В JPEG добавляется карта яркости: на HDR-экранах света ярче. Обычный экран покажет обычное фото.</string>
-    <string name="ai_denoise">ИИ-шумоподавление Bayer</string>
-    <string name="ai_denoise_strength">Сила ИИ-шумоподавления</string>
-    <string name="ai_denoise_luma">ИИ Luma, %</string>
-    <string name="ai_denoise_chroma">ИИ Chroma, %</string>
-    <string name="ai_denoise_model">Модель ИИ-шумоподавления</string>
     <string name="show_horizon_on_preview">Показывать горизонт в превью</string>
     <string name="sensor_configurations">Настройки сенсоров по модулям</string>
     <string name="sensor_configurations_summary">Уровни RAW, стабилизация, сессия и вендорные ключи каждого модуля</string>
@@ -132,8 +79,6 @@
     </string-array>
     <string name="live_viewfinder_raw">Живой видоискатель</string>
     <string name="live_viewfinder_raw_summary">Видоискатель сам проявляет RAW. Выкл. — обычное превью камеры. На готовое фото не влияет.</string>
-    <string name="remosaic_enabled">Включить ремозаик</string>
-    <string name="remosaic_enabled_desc">Только для камер, отдающих quad или tetra мозаику</string>
     <string name="remosaic_phase_x">Фаза по X</string>
     <string name="remosaic_phase_y">Фаза по Y</string>
     <string name="remosaic_phase_desc">Сдвиг сетки блоков по горизонтали. Неверное значение даёт цветную сетку; нейросети нужен 0.</string>
@@ -149,18 +94,8 @@
     <string name="remosaic_steered_desc">Достраивает зелёный вдоль краёв, а не поперёк — меньше цветной каймы у букв и контуров.</string>
     <string name="remosaic_clamp">Ограничение цветовых разностей</string>
     <string name="remosaic_clamp_desc">Не даёт цвету на краях выходить за соседние значения — убирает розовый ореол.</string>
-    <string name="remosaic_dump">Сохранять выход ремозаика</string>
-    <string name="remosaic_dump_desc">Кладёт рядом с обычным DNG ещё один — ровно то, что записал узел, до демозаика. Нужен, чтобы отличить ошибку самого ремозаика от ошибки стадий после него. Каждый снимок занимает ещё 24 МБ</string>
     <string name="remosaic_flatfield">Плоское поле блока</string>
     <string name="remosaic_flatfield_desc">Выравнивает разный отклик пикселей в блоке — меньше цветного налёта. Эксперимент.</string>
-    <string name="remosaic_backend_title">Алгоритм ремозаика</string>
-    <string-array name="remosaic_backend_entries">
-        <item>SCAMERA</item>
-        <item>Tetra Detail v2 — по мотивам Vivo</item>
-        <item>SCAM Neural — NPU, root (эксперимент)</item>
-        <item>HP9 HexQuad — NPU, 6 кадров (тест)</item>
-        <item>Quad 2×2 — NPU, 4 кадра (основная, 2x ISZ)</item>
-    </string-array>
     <string name="tetra_response_summary">Убирает периодическую сетку на снимках Tetra 4×4, выравнивая отклик пикселей.</string>
     <string-array name="hexquad_model_entries">
         <item>x2 — текущая модель</item>

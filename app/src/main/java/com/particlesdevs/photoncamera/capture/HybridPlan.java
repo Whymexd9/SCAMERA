@@ -119,7 +119,7 @@ public final class HybridPlan {
         Range<Long> times = capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE), limits == null ? Long.MAX_VALUE : limits.shutterCap());
         Range<Integer> isos = capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE), limits == null ? Integer.MAX_VALUE : limits.isoCap());
         if (times == null || isos == null || nShutterNs <= 0 || nIso <= 0)
-            throw new IllegalStateException(Lang.t("Hybrid: нет экспозиции превью или диапазонов сенсора", "Hybrid: no preview exposure or sensor ranges"));
+            throw new IllegalStateException(Lang.t("SHDR: нет экспозиции превью или диапазонов сенсора", "SHDR: no preview exposure or sensor ranges"));
         final double n = (double) nShutterNs * nIso;
         List<Request> out = new ArrayList<>();
         StringBuilder why = new StringBuilder();

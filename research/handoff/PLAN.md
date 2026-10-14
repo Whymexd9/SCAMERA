@@ -3182,9 +3182,20 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   other frames GPU-remosaiced, SHDR then merges block 1; any failure leaves the frames untouched (native mosaic merge). EXIF
   Route=SHDR (the gallery still reads Hybrid / SCAM HDR), top-bar badge «SHDR». Not phone-checked (the NPU path needs the
   X200 Ultra).
+- Step 2 done locally (2026-10-15), the visible names: Hybrid -> SHDR, Bento -> «Кадры светов» / "Highlight frames",
+  Shasta -> «Кадры теней» / "Shadow frames", Sabre -> «Ядро склейки» / "Merge kernel" (Sabre 6.1 -> «Новое ядро склейки»,
+  the round-4 core -> «прежнее ядро», Sabre 2x -> «Суперразрешение 2×», the Sabre Low / Med / High denoise points -> dark / dim
+  / bright), Mochi -> «Фотометрическая склейка», the GCam denoiser -> «Многомасштабный шумодав», ArkCore -> ARK, «(AGC)»
+  dropped, «Фотонный шум» -> «Дробовой шум»; the literal XML titles (Bento, Shasta, Sabre Luma Denoise, Luma Denoise GID14,
+  Revert, Guided filter) became translated strings. 835 unreferenced string / array entries removed (most of them SCAM HDR's
+  and the 26790 recovery's). The gallery shows an old Route=Hybrid shot as SHDR (old SCAM HDR shots keep their name). The
+  SHDR capture report (it used to sit behind the SCAM HDR launch check) is «Система -> Диагностика -> Отчёт последней
+  съёмки SHDR» (ScamActivity, now the report viewer only); the worker's failure message points there.
+  SettingsMenuTest.checkNoOldNames now also walks every string and string array of the APK (en and ru).
+  Left for later: the Lang.t texts of CaptureController and DevKeys (ChatGPT's uncommitted work there), and the SCAM HDR
+  classes' own texts (they go with the code).
 - Still to do: delete the SCAM HDR code (ScamBurst / ScamAe / stock AE / planner branches in CaptureController / native
-  reconstruct / nice-main-forward and nice-tone models -> BUNDLE_ONLY) and the visible renames (Hybrid -> SHDR in every text,
-  own names for Sabre / Bento / Shasta / Mochi / GCam, no LMC / AGC).
+  reconstruct / nice-main-forward and nice-tone models -> BUNDLE_ONLY).
 
 ### P130 - accent colour from the system (owner, 2026-10-15: «сделай так чтобы цветовые акценты брались автоматически из самого смартфона, В пункте меню где можно менять цветовой акцент добавь пункт "Из Системы"»)
 - Done locally. AccentPalette.SYSTEM «Из системы» / «From system» is the first choice and the default (an accent never chosen

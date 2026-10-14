@@ -4,8 +4,7 @@
 <resources>
     <string name="shade_group_shoot">Съёмка</string>
     <string name="shade_group_format">Формат</string>
-    <string name="shade_group_hybrid">Hybrid</string>
-    <string name="shade_group_scamhdr">SCAM HDR</string>
+    <string name="shade_group_hybrid">SHDR</string>
     <string name="shade_group_view">Видоискатель</string>
 
     <string name="shade_on">Вкл.</string>
@@ -38,22 +37,18 @@
     <string name="shade_t_format">Формат</string>
     <string name="shade_t_metering_std">Замер Camera2</string>
     <string name="shade_t_metering">Замер</string>
-    <string name="shade_t_route">Склейка</string>
     <string name="shade_t_output">Разрешение</string>
     <string name="shade_t_downsampler">Даунсемплер</string>
     <string name="shade_t_ultrahdr">Ultra HDR</string>
     <string name="shade_t_wide169">16:9</string>
     <string name="shade_t_watermark">Водяной знак</string>
-    <string name="shade_t_bento">Bento</string>
-    <string name="shade_t_bento_frames">Bento: кадров</string>
-    <string name="shade_t_shasta">Shasta</string>
-    <string name="shade_t_hybrid_frames">N-кадров Hybrid</string>
+    <string name="shade_t_bento">Кадры светов</string>
+    <string name="shade_t_bento_frames">Кадры светов: число</string>
+    <string name="shade_t_shasta">Кадры теней</string>
+    <string name="shade_t_hybrid_frames">Кадров SHDR</string>
     <string name="shade_t_luma">Luma</string>
     <string name="shade_t_chroma">Chroma</string>
     <string name="shade_t_rejection">Отбраковка</string>
-    <string name="shade_t_scam_frames">N-кадров SCAM</string>
-    <string name="shade_t_long_boost">Удлинение L</string>
-    <string name="shade_t_mosaic">Мозаика ISZ</string>
     <string name="shade_t_grid">Сетка</string>
     <string name="shade_t_peak">Пик фокуса</string>
     <string name="shade_t_live_raw">Живой RAW</string>
@@ -74,10 +69,6 @@
         <item>Центр</item>
         <item>Сред.</item>
         <item>Точка</item>
-    </string-array>
-    <string-array name="shade_s_route">
-        <item>Hybrid</item>
-        <item>SCAM HDR</item>
     </string-array>
     <string-array name="shade_s_output">
         <item>1×</item>
@@ -101,15 +92,6 @@
         <item>1</item>
         <item>2</item>
         <item>3</item>
-    </string-array>
-    <string-array name="shade_s_mosaic">
-        <item>Bayer</item>
-        <item>GPU</item>
-        <item>Tetra</item>
-        <item>MFR</item>
-        <item>Нейро</item>
-        <item>Sabre</item>
-        <item>Нейро+Sabre</item>
     </string-array>
     <string-array name="shade_s_grid">
         <item>Выкл.</item>
@@ -178,13 +160,11 @@
     <string name="shade_shutter">Снимок</string>
     <string name="shade_flip_camera">Фронтальная / основная камера</string>
     <string name="shade_gallery">Галерея</string>
-    <string name="shade_all_settings_summary">Hybrid, SCAM HDR, цвет, захват, конфиг</string>
-    <string name="shade_all_settings_summary_hybrid_only">Hybrid, цвет, захват, конфиг</string>
+    <string name="shade_all_settings_summary">Фото, съёмка, цвет, SHDR, камеры</string>
     <string name="shade_hint">Свайп вверх — шторка\nЗажми плитку — переставить</string>
 
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">У этого объектива нет вспышки</string>
-    <string name="shade_reason_scamhdr_soc">Только Hybrid: SCAM HDR работает только на Snapdragon 8 Elite</string>
     <string name="shade_reason_scam_dev">Задано в scam_dev.txt</string>
     <string name="shade_reason_dependency">Включите «%1$s».</string>
     <!-- P42 -->

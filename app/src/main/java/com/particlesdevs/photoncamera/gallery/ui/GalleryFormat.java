@@ -84,7 +84,9 @@ public enum GalleryFormat {
     public static String routeOf(@Nullable String description) {
         if (description == null) return null;
         Matcher m = ROUTE.matcher(description);
-        return m.find() ? m.group(1) : null;
+        if (!m.find()) return null;
+        // P129: «Hybrid» is SHDR's old name (same merge); old SCAM HDR shots keep theirs
+        return "Hybrid".equals(m.group(1)) ? "SHDR" : m.group(1);
     }
 
     /** The route's monogram (the viewfinder's top bar icons). */

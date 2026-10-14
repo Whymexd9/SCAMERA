@@ -151,7 +151,9 @@ public class GalleryUiTest {
         assertNull(sheet.findViewWithTag("route"));
         assertNotNull(sheet.findViewWithTag("format"));
         d.route = GalleryFormat.routeOf("parameters:\n Version=1\n Route=Hybrid");
-        assertEquals("Hybrid", d.route);
+        assertEquals("SHDR", d.route); // P129: the same merge under its new name
+        assertEquals("SHDR", GalleryFormat.routeOf("parameters:\n Route=SHDR"));
+        assertEquals("SCAM HDR", GalleryFormat.routeOf("parameters:\n Route=SCAM HDR")); // old shots of the removed route
         assertNotNull(GallerySheets.details(context, d, null).findViewWithTag("route"));
         assertNull(GalleryFormat.routeOf("parameters:\n Version=1"));
     }
@@ -307,7 +309,7 @@ public class GalleryUiTest {
             @Override public void hdr() {}
             @Override public void openPosition(int position) {}
         });
-        chrome.bindMeta("Сегодня, 11:17", "24 мм · ISO 100 · 1/250", "Hybrid", GalleryFormat.RAW_JPEG, true);
+        chrome.bindMeta("Сегодня, 11:17", "24 мм · ISO 100 · 1/250", "SHDR", GalleryFormat.RAW_JPEG, true);
         chrome.bindHdr(true, true);
         chrome.filmstrip.setItems(items);
         viewer.addView(chrome.top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP));

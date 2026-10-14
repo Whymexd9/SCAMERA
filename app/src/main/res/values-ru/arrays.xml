@@ -1,16 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string-array name="processing_backend_entries">
-        <item>Auto</item>
-        <item>CPU (AI models)</item>
-        <item>GPU (Vulkan + OpenGL)</item>
-        <item>NPU (experimental, reported fallback)</item>
-        <item>GPU — включая RAISR</item>
-    </string-array>
-    <string-array name="ai_denoise_model_entries">
-        <item>Быстродействие — UNet Bayer Fast</item>
-        <item>Качество — NAFNet Bayer Small</item>
-    </string-array>
     <string-array name="cfapat_entries">
         <item>Авто</item>
         <item>RGGB</item>
@@ -44,13 +33,6 @@
         <item>HUD</item>
         <item>HUD + гистограмма</item>
         <item>Рамки AF / AE и данные кадра</item>
-    </string-array>
-    <string-array name="scam_noise_source_entries">
-        <item>Авто (по камере)</item>
-        <item>IMX06C — стоковый (основная и широкоугольная)</item>
-        <item>HP9 — стоковый (телевик)</item>
-        <item>Camera2 SENSOR_NOISE_PROFILE</item>
-        <item>Из настроек «Модель шума сенсора»</item>
     </string-array>
     <string-array name="raw_stream_format_entries">
         <item>Авто</item>
@@ -95,10 +77,10 @@
     <string-array name="scam_hybrid_bento_frames_entries">
         <item>1 кадр</item>
         <item>2 кадра</item>
-        <item>3 кадра (Mochi)</item>
+        <item>3 кадра (фотометрия)</item>
     </string-array>
     <string-array name="scam_hybrid_dn_engine_entries">
-        <item>GCam / Hybrid (ArkCam)</item>
+        <item>Многомасштабный (ArkCam)</item>
         <item>NLM (прежний)</item>
     </string-array>
     <string-array name="scam_hybrid_dn_map_entries">
@@ -108,11 +90,11 @@
     <string-array name="scam_hybrid_local_align_entries">
         <item>Выкл.</item>
         <item>Поле по тайлам (по умолчанию)</item>
-        <item>Постоянное на тайл (как 6.1)</item>
+        <item>Постоянное на тайл (новое ядро)</item>
     </string-array>
     <string-array name="scam_hybrid_mochi_entries">
         <item>Выкл. (сток)</item>
-        <item>Авто (правило GCam 11: &gt; 3 коротких)</item>
+        <item>Авто (&gt; 3 коротких)</item>
         <item>Всегда (принудительно для брекетинга)</item>
     </string-array>
     <string-array name="scam_hybrid_mosaic_path_entries">
@@ -134,7 +116,7 @@
         <item>T1: нативная Tetra (по умолчанию)</item>
     </string-array>
     <string-array name="scam_hybrid_sabre61_entries">
-        <item>Выключено (ядро раунда 4)</item>
+        <item>Выключено (прежнее ядро)</item>
         <item>Всегда</item>
         <item>Авто (ночью)</item>
     </string-array>
@@ -142,23 +124,10 @@
         <item>Camera2 SENSOR_NOISE_PROFILE каждого кадра</item>
         <item>Из настроек «Модель шума сенсора»</item>
     </string-array>
-    <string-array name="scam_planner_entries">
-        <item>Стоковый AE vivo (root)</item>
-        <item>SCAMERA (без root)</item>
-    </string-array>
     <string-array name="scam_cre_entries">
         <item>Авто (системная, иначе встроенная)</item>
         <item>Системная (/vendor, только vivo)</item>
         <item>Встроенная в приложение</item>
-    </string-array>
-    <string-array name="scam_mosaic_entries">
-        <item>Выключено (только обычный Bayer)</item>
-        <item>GPU-ремозаик SCAMERA — каждый кадр</item>
-        <item>GPU Tetra Detail v2 — каждый кадр (только Tetra 4×4)</item>
-        <item>Multi-frame Remosaic — слияние N-кадров (CPU)</item>
-        <item>Нейроремозаик (NPU) — слияние N-кадров</item>
-        <item>Sabre по сырым точкам мозаики (сеть — GPU-ремозаик)</item>
-        <item>Нейроремозаик + Sabre по сырым точкам мозаики</item>
     </string-array>
     <string-array name="raw_lsc_mode_entries">
         <item>Авто (применять)</item>

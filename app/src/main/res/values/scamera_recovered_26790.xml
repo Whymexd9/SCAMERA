@@ -1,73 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="abc_action_bar_home_description">Navigate home</string>
-    <string name="abc_action_bar_up_description">Navigate up</string>
-    <string name="abc_action_menu_overflow_description">More options</string>
-    <string name="abc_action_mode_done">Done</string>
-    <string name="abc_activity_chooser_view_see_all">See all</string>
-    <string name="abc_activitychooserview_choose_application">Choose an app</string>
-    <string name="abc_capital_off">OFF</string>
-    <string name="abc_capital_on">ON</string>
-    <string name="abc_menu_alt_shortcut_label">Alt+</string>
-    <string name="abc_menu_ctrl_shortcut_label">Ctrl+</string>
-    <string name="abc_menu_delete_shortcut_label">delete</string>
-    <string name="abc_menu_enter_shortcut_label">enter</string>
-    <string name="abc_menu_function_shortcut_label">Function+</string>
-    <string name="abc_menu_meta_shortcut_label">Meta+</string>
-    <string name="abc_menu_shift_shortcut_label">Shift+</string>
-    <string name="abc_menu_space_shortcut_label">space</string>
-    <string name="abc_menu_sym_shortcut_label">Sym+</string>
-    <string name="abc_prepend_shortcut_label">Menu+</string>
-    <string name="abc_search_hint">Search…</string>
-    <string name="abc_searchview_description_clear">Clear query</string>
-    <string name="abc_searchview_description_query">Search query</string>
-    <string name="abc_searchview_description_search">Search</string>
-    <string name="abc_searchview_description_submit">Submit query</string>
-    <string name="abc_searchview_description_voice">Voice search</string>
-    <string name="abc_shareactionprovider_share_with">Share with</string>
-    <string name="abc_shareactionprovider_share_with_application">Share with %s</string>
-    <string name="abc_toolbar_collapse_description">Collapse</string>
-    <string name="androidx_startup" translatable="false">androidx.startup</string>
-    <string name="appbar_scrolling_view_behavior" translatable="false">com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior</string>
     <string name="bottom_sheet_behavior" translatable="false">com.google.android.material.bottomsheet.BottomSheetBehavior</string>
-    <string name="bottomsheet_action_collapse">Collapse the bottom sheet</string>
-    <string name="bottomsheet_action_expand">Expand the bottom sheet</string>
-    <string name="bottomsheet_action_expand_halfway">Expand halfway</string>
-    <string name="bottomsheet_drag_handle_content_description">Drag handle</string>
-    <string name="call_notification_answer_action">Answer</string>
-    <string name="call_notification_answer_video_action">Video</string>
-    <string name="call_notification_decline_action">Decline</string>
-    <string name="call_notification_hang_up_action">Hang Up</string>
-    <string name="call_notification_incoming_text">Incoming call</string>
-    <string name="call_notification_ongoing_text">Ongoing call</string>
-    <string name="call_notification_screening_text">Screening an incoming call</string>
-    <string name="character_counter_content_description">Characters entered %1$d of %2$d</string>
-    <string name="character_counter_overflowed_content_description">Character limit exceeded %1$d of %2$d</string>
-    <string name="character_counter_pattern" translatable="false">%1$d/%2$d</string>
-    <string name="clear_text_end_icon_content_description">Clear text</string>
     <string name="copy">Copy</string>
-    <string name="error_a11y_label">Error: invalid</string>
-    <string name="error_icon_content_description">Error</string>
-    <string name="expand_button_title">Advanced</string>
-    <string name="exposed_dropdown_menu_content_description">Show dropdown menu</string>
-    <string name="fab_transformation_scrim_behavior" translatable="false">com.google.android.material.transformation.FabTransformationScrimBehavior</string>
-    <string name="fab_transformation_sheet_behavior" translatable="false">com.google.android.material.transformation.FabTransformationSheetBehavior</string>
-    <string name="hdrplus_chroma_denoise">HDR+ chroma denoise</string>
-    <string name="hdrplus_chroma_denoise_summary">Suppress colour disagreement between aligned RAW frames</string>
-    <string name="hdrplus_high_denoise">HDR+ high-frequency denoise</string>
-    <string name="hdrplus_high_denoise_summary">Fine grain and pixel-level noise</string>
-    <string name="hdrplus_low_denoise">HDR+ low-frequency denoise</string>
-    <string name="hdrplus_low_denoise_summary">Smooth noise and broad luminance variations</string>
-    <string name="hide_bottom_view_on_scroll_behavior" translatable="false">com.google.android.material.behavior.HideBottomViewOnScrollBehavior</string>
-    <string name="icon_content_description">Dialog Icon</string>
-    <string name="item_view_role_description">Tab</string>
     <string name="lens_custom_label">Viewfinder label (blank = automatic)</string>
     <string name="lens_custom_order">Viewfinder order</string>
     <string name="lens_custom_save">Save name and order</string>
     <string name="lens_discovery_add_to_switcher">Show in lens switcher</string>
     <string name="lens_discovery_found_count">Found: %1$d</string>
     <string name="lens_discovery_scanning">Scanning camera IDs…</string>
-    <string name="lens_discovery_summary">Find, enable or hide logical and physical camera IDs</string>
     <string name="lens_discovery_title">Lens Discovery</string>
     <string name="lens_edit_name_hint">Name, for example 35mm or Main</string>
     <string name="lens_edit_order_hint">Position: 0 is first</string>
@@ -77,180 +17,13 @@
     <string name="lens_menu_names">Rename and reorder lenses</string>
     <string name="lens_menu_visibility">Lens visibility</string>
     <string name="lens_settings_saved">Lens settings saved. Restart SCAMERA to apply.</string>
-    <string name="m3_exceed_max_badge_text_suffix" translatable="false">%1$s%2$s</string>
-    <string name="m3_loading_indicator_content_description">Loading</string>
-    <string name="m3_ref_typeface_brand_medium" translatable="false">sans-serif-medium</string>
-    <string name="m3_ref_typeface_brand_regular" translatable="false">sans-serif</string>
-    <string name="m3_ref_typeface_plain_medium" translatable="false">sans-serif-medium</string>
-    <string name="m3_ref_typeface_plain_regular" translatable="false">sans-serif</string>
-    <string name="m3_sys_motion_easing_emphasized" translatable="false">path(M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1)</string>
-    <string name="m3_sys_motion_easing_emphasized_accelerate" translatable="false">cubic-bezier(0.3, 0, 0.8, 0.2)</string>
-    <string name="m3_sys_motion_easing_emphasized_decelerate" translatable="false">cubic-bezier(0.1, 0.7, 0.1, 1)</string>
-    <string name="m3_sys_motion_easing_emphasized_path_data" translatable="false">M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1</string>
-    <string name="m3_sys_motion_easing_legacy" translatable="false">cubic-bezier(0.4, 0, 0.2, 1)</string>
-    <string name="m3_sys_motion_easing_legacy_accelerate" translatable="false">cubic-bezier(0.4, 0, 1, 1)</string>
-    <string name="m3_sys_motion_easing_legacy_decelerate" translatable="false">cubic-bezier(0, 0, 0.2, 1)</string>
-    <string name="m3_sys_motion_easing_linear" translatable="false">cubic-bezier(0, 0, 1, 1)</string>
-    <string name="m3_sys_motion_easing_standard" translatable="false">cubic-bezier(0.2, 0, 0, 1)</string>
-    <string name="m3_sys_motion_easing_standard_accelerate" translatable="false">cubic-bezier(0.3, 0, 1, 1)</string>
-    <string name="m3_sys_motion_easing_standard_decelerate" translatable="false">cubic-bezier(0, 0, 0, 1)</string>
     <string name="manual_mode_auto">Auto</string>
     <string name="manual_mode_fixed">Fixed</string>
-    <string name="material_clock_display_divider" translatable="false">:</string>
-    <string name="material_clock_toggle_content_description">Select AM or PM</string>
-    <string name="material_hour_24h_suffix">%1$s hours</string>
-    <string name="material_hour_selection">Select hour</string>
-    <string name="material_hour_suffix">%1$s o\'clock</string>
-    <string name="material_minute_selection">Select minutes</string>
-    <string name="material_minute_suffix">%1$s minutes</string>
-    <string name="material_motion_easing_accelerated" translatable="false">cubic-bezier(0.4, 0.0, 1.0, 1.0)</string>
-    <string name="material_motion_easing_decelerated" translatable="false">cubic-bezier(0.0, 0.0, 0.2, 1.0)</string>
-    <string name="material_motion_easing_emphasized" translatable="false">path(M 0,0 C 0.05, 0, 0.133333, 0.06, 0.166666, 0.4 C 0.208333, 0.82, 0.25, 1, 1, 1)</string>
-    <string name="material_motion_easing_linear" translatable="false">cubic-bezier(0.0, 0.0, 1.0, 1.0)</string>
-    <string name="material_motion_easing_standard" translatable="false">cubic-bezier(0.4, 0.0, 0.2, 1.0)</string>
-    <string name="material_slider_range_end">Range end</string>
-    <string name="material_slider_range_start">Range start</string>
-    <string name="material_slider_value">Value</string>
-    <string name="material_timepicker_am">AM</string>
-    <string name="material_timepicker_clock_mode_description">Switch to clock mode for the time input.</string>
-    <string name="material_timepicker_hour">Hour</string>
-    <string name="material_timepicker_minute">Minute</string>
-    <string name="material_timepicker_pm">PM</string>
-    <string name="material_timepicker_select_time">Select time</string>
-    <string name="material_timepicker_text_input_mode_description">Switch to text input mode for the time input.</string>
-    <string name="merge_algorithm_hdrplus">HDR+ robust frequency merge</string>
-    <string name="merge_algorithm_legacy">SCAMERA legacy</string>
-    <string name="mtrl_badge_numberless_content_description">New notification</string>
-    <string name="mtrl_button_collapsed_content_description">Collapsed</string>
-    <string name="mtrl_button_expanded_content_description">Expanded</string>
-    <string name="mtrl_checkbox_button_icon_path_checked" translatable="false">M14,18.2 11.4,15.6 10,17 14,21 22,13 20.6,11.6z</string>
-    <string name="mtrl_checkbox_button_icon_path_group_name" translatable="false">icon</string>
-    <string name="mtrl_checkbox_button_icon_path_indeterminate" translatable="false">M13.4,15 11,15 11,17 13.4,17 21,17 21,15z</string>
-    <string name="mtrl_checkbox_button_icon_path_name" translatable="false">icon path</string>
-    <string name="mtrl_checkbox_button_path_checked" translatable="false">M23,7H9C7.9,7,7,7.9,7,9v14c0,1.1,0.9,2,2,2h14c1.1,0,2-0.9,2-2V9C25,7.9,24.1,7,23,7z</string>
-    <string name="mtrl_checkbox_button_path_group_name" translatable="false">button</string>
-    <string name="mtrl_checkbox_button_path_name" translatable="false">button path</string>
-    <string name="mtrl_checkbox_button_path_unchecked" translatable="false">M23,7H9C7.9,7,7,7.9,7,9v14c0,1.1,0.9,2,2,2h14c1.1,0,2-0.9,2-2V9C25,7.9,24.1,7,23,7z M23,23H9V9h14V23z</string>
-    <string name="mtrl_checkbox_state_description_checked">Checked</string>
-    <string name="mtrl_checkbox_state_description_indeterminate">Partially checked</string>
-    <string name="mtrl_checkbox_state_description_unchecked">Not checked</string>
-    <string name="mtrl_chip_close_icon_content_description">Remove %1$s</string>
-    <string name="mtrl_exceed_max_badge_number_content_description">More than %1$d new notifications</string>
-    <string name="mtrl_exceed_max_badge_number_suffix" translatable="false">%1$d%2$s</string>
-    <string name="mtrl_picker_a11y_next_month">Change to next month</string>
-    <string name="mtrl_picker_a11y_prev_month">Change to previous month</string>
-    <string name="mtrl_picker_announce_current_range_selection">Start date selection: %1$s – End date selection: %2$s</string>
-    <string name="mtrl_picker_announce_current_selection">Current selection: %1$s</string>
-    <string name="mtrl_picker_announce_current_selection_none">none</string>
-    <string name="mtrl_picker_cancel">Cancel</string>
-    <string name="mtrl_picker_confirm">OK</string>
-    <string name="mtrl_picker_date_header_selected">%1$s</string>
-    <string name="mtrl_picker_date_header_title">Select Date</string>
-    <string name="mtrl_picker_date_header_unselected">Selected date</string>
-    <string name="mtrl_picker_day_of_week_column_header">%1$s</string>
-    <string name="mtrl_picker_end_date_description">End date %1$s</string>
-    <string name="mtrl_picker_invalid_format">Invalid format.</string>
-    <string name="mtrl_picker_invalid_format_example">Example: %1$s</string>
-    <string name="mtrl_picker_invalid_format_use">Use: %1$s</string>
-    <string name="mtrl_picker_invalid_range">Invalid range.</string>
-    <string name="mtrl_picker_navigate_to_current_year_description">Navigate to current year %1$d</string>
-    <string name="mtrl_picker_navigate_to_year_description">Navigate to year %1$d</string>
-    <string name="mtrl_picker_out_of_range">Out of range: %1$s</string>
-    <string name="mtrl_picker_range_header_only_end_selected">Start date – %1$s</string>
-    <string name="mtrl_picker_range_header_only_start_selected">%1$s – End date</string>
-    <string name="mtrl_picker_range_header_selected">%1$s – %2$s</string>
-    <string name="mtrl_picker_range_header_title">Select Range</string>
-    <string name="mtrl_picker_range_header_unselected">Start date – End date</string>
-    <string name="mtrl_picker_save">Save</string>
-    <string name="mtrl_picker_start_date_description">Start date %1$s</string>
-    <string name="mtrl_picker_text_input_date_hint">Date</string>
-    <string name="mtrl_picker_text_input_date_range_end_hint">End date</string>
-    <string name="mtrl_picker_text_input_date_range_start_hint">Start date</string>
-    <string name="mtrl_picker_text_input_day_abbr">d</string>
-    <string name="mtrl_picker_text_input_month_abbr">m</string>
-    <string name="mtrl_picker_text_input_year_abbr">y</string>
-    <string name="mtrl_picker_today_description">Today %1$s</string>
-    <string name="mtrl_picker_toggle_to_calendar_input_mode">Switch to calendar input mode</string>
-    <string name="mtrl_picker_toggle_to_day_selection">Switch to Calendar view</string>
-    <string name="mtrl_picker_toggle_to_text_input_mode">Switch to text input mode</string>
-    <string name="mtrl_picker_toggle_to_year_selection">Switch to year view</string>
-    <string name="mtrl_picker_toggled_to_day_selection">Switched to Calendar view</string>
-    <string name="mtrl_picker_toggled_to_year_selection">Switched to year view</string>
-    <string name="mtrl_switch_thumb_group_name" translatable="false">circle_group</string>
-    <string name="mtrl_switch_thumb_path_checked" translatable="false">M4,16 A12,12 0 0,1 16,4 H16 A12,12 0 0,1 16,28 H16 A12,12 0 0,1 4,16</string>
-    <string name="mtrl_switch_thumb_path_morphing" translatable="false">M0,16 A11,11 0 0,1 11,5 H21 A11,11 0 0,1 21,27 H11 A11,11 0 0,1 0,16</string>
-    <string name="mtrl_switch_thumb_path_name" translatable="false">circle</string>
-    <string name="mtrl_switch_thumb_path_pressed" translatable="false">M2,16 A14,14 0 0,1 16,2 H16 A14,14 0 0,1 16,30 H16 A14,14 0 0,1 2,16</string>
-    <string name="mtrl_switch_thumb_path_unchecked" translatable="false">M8,16 A8,8 0 0,1 16,8 H16 A8,8 0 0,1 16,24 H16 A8,8 0 0,1 8,16</string>
-    <string name="mtrl_switch_track_decoration_path" translatable="false">M1,16 A15,15 0 0,1 16,1 H36 A15,15 0 0,1 36,31 H16 A15,15 0 0,1 1,16</string>
-    <string name="mtrl_switch_track_path" translatable="false">M0,16 A16,16 0 0,1 16,0 H36 A16,16 0 0,1 36,32 H16 A16,16 0 0,1 0,16</string>
-    <string name="mtrl_timepicker_cancel">Cancel</string>
-    <string name="mtrl_timepicker_confirm">OK</string>
-    <string name="not_set">Not set</string>
-    <string name="password_toggle_content_description">Show password</string>
-    <string name="pref_hdrplus_denoise_strength_key" translatable="false">pref_hdrplus_denoise_strength_key</string>
-    <string name="snr_verylow_low">Very low SNR (&lt; 8): low frequencies</string>
-    <string name="snr_verylow_low_sum">Broad brightness changes and smooth noise. Higher smooths the background more</string>
-    <string name="snr_verylow_high">Very low SNR (&lt; 8): high frequencies</string>
-    <string name="snr_verylow_high_sum">Fine grain and texture. Low and high frequencies are blended by their ratio, so change them separately</string>
-    <string name="snr_verylow_chroma">Very low SNR (&lt; 8): colour</string>
-    <string name="snr_verylow_chroma_sum">Colour blotches. Colour noise averages out across frames less well, so this is usually higher than for luma</string>
-    <string name="snr_low_low">Low SNR (8–20): low frequencies</string>
-    <string name="snr_low_low_sum">Broad brightness changes and smooth noise. Higher smooths the background more</string>
-    <string name="snr_low_high">Low SNR (8–20): high frequencies</string>
-    <string name="snr_low_high_sum">Fine grain and texture. Low and high frequencies are blended by their ratio, so change them separately</string>
-    <string name="snr_low_chroma">Low SNR (8–20): colour</string>
-    <string name="snr_low_chroma_sum">Colour blotches. Colour noise averages out across frames less well, so this is usually higher than for luma</string>
-    <string name="snr_med_low">Medium SNR (20–45): low frequencies</string>
-    <string name="snr_med_low_sum">Broad brightness changes and smooth noise. Higher smooths the background more</string>
-    <string name="snr_med_high">Medium SNR (20–45): high frequencies</string>
-    <string name="snr_med_high_sum">Fine grain and texture. Low and high frequencies are blended by their ratio, so change them separately</string>
-    <string name="snr_med_chroma">Medium SNR (20–45): colour</string>
-    <string name="snr_med_chroma_sum">Colour blotches. Colour noise averages out across frames less well, so this is usually higher than for luma</string>
-    <string name="snr_high_low">High SNR (45–90): low frequencies</string>
-    <string name="snr_high_low_sum">Broad brightness changes and smooth noise. Higher smooths the background more</string>
-    <string name="snr_high_high">High SNR (45–90): high frequencies</string>
-    <string name="snr_high_high_sum">Fine grain and texture. Low and high frequencies are blended by their ratio, so change them separately</string>
-    <string name="snr_high_chroma">High SNR (45–90): colour</string>
-    <string name="snr_high_chroma_sum">Colour blotches. Colour noise averages out across frames less well, so this is usually higher than for luma</string>
-    <string name="snr_veryhigh_low">Very high SNR (&gt; 90): low frequencies</string>
-    <string name="snr_veryhigh_low_sum">Broad brightness changes and smooth noise. Higher smooths the background more</string>
-    <string name="snr_veryhigh_high">Very high SNR (&gt; 90): high frequencies</string>
-    <string name="snr_veryhigh_high_sum">Fine grain and texture. Low and high frequencies are blended by their ratio, so change them separately</string>
-    <string name="snr_veryhigh_chroma">Very high SNR (&gt; 90): colour</string>
-    <string name="snr_veryhigh_chroma_sum">Colour blotches. Colour noise averages out across frames less well, so this is usually higher than for luma</string>
-    <string name="hdrplus_snr_target">HDR+: target SNR</string>
-    <string name="hdrplus_snr_target_summary">The signal-to-noise ratio the merge aims for. Noise reduction strength scales with how far the frame falls short of it. GCam estimates about 110 after the merge on a bright scene</string>
-    <string name="preference_copied">\"%1$s\" copied to clipboard.</string>
-    <string name="searchbar_scrolling_view_behavior" translatable="false">com.google.android.material.search.SearchBar$ScrollingViewBehavior</string>
-    <string name="side_sheet_accessibility_pane_title">Side Sheet</string>
-    <string name="side_sheet_behavior" translatable="false">com.google.android.material.sidesheet.SideSheetBehavior</string>
-    <string name="status_bar_notification_info_overflow">999+</string>
-    <string name="summary_collapsed_preference_list">%1$s, %2$s</string>
-    <string name="v7_preference_off">OFF</string>
-    <string name="v7_preference_on">ON</string>
-    <string-array name="merge_algorithm_entries" translatable="false">
-        <item>@string/merge_algorithm_legacy</item>
-        <item>@string/merge_algorithm_hdrplus</item>
-    </string-array>
-    <string-array name="merge_algorithm_values" translatable="false">
-        <item>legacy</item>
-        <item>hdrplus</item>
-    </string-array>
     <bool name="abc_action_bar_embed_tabs">true</bool>
     <bool name="abc_config_actionMenuItemAllCaps">true</bool>
     <bool name="config_materialPreferenceIconSpaceReserved">false</bool>
     <bool name="mtrl_btn_textappearance_all_caps">true</bool>
     <string name="highlight_recovery">Highlight recovery</string>
-    <string name="highlight_recovery_summary">If only part of a quad is clipped, the merge uses the surviving channels instead of rejecting the whole quad. Green pixels clip before red and blue</string>
-    <string name="highlight_recovery_min_ok">Recovery: minimum channels</string>
-    <string name="highlight_recovery_min_ok_summary">How many of the four channels must stay unclipped for recovery. Fewer is more aggressive, with a higher risk of colour shifts</string>
-    <string name="highlight_protection">Highlight protection</string>
-    <string name="highlight_protection_summary">Desaturates near the clipping point. Removes the colour tint in blown areas caused by the different saturation points of the channels</string>
-    <string name="highlight_protection_knee">Highlight protection: knee</string>
-    <string name="highlight_protection_knee_summary">Share of the clipping point where desaturation starts. 0.8 means from 80%</string>
-    <string name="highlight_protection_strength">Highlight protection: strength</string>
-    <string name="highlight_protection_strength_summary">How strongly to pull towards the quad average right at the clipping point. 1.0 is fully grey, 0 is no effect</string>
     <integer name="abc_config_activityDefaultDur">220</integer>
     <integer name="abc_config_activityShortDur">150</integer>
     <integer name="bottom_sheet_slide_duration">150</integer>
@@ -342,47 +115,10 @@
     <string name="noise_model_import_summary">Load your own noise calibration file (.c)</string>
     <string name="noise_model_export">Export noise model</string>
     <string name="noise_model_export_summary">Save the current profile to Download/SCAMERA</string>
-    <string name="merge_robustness">Merge robustness</string>
-    <string name="merge_robustness_summary">Tolerance from the noise model; higher gives stronger noise reduction, lower gives fewer ghosts (HDR+ = 8)</string>
-    <string name="merge_clip_level">Clipped highlight threshold</string>
-    <string name="merge_clip_level_summary">Share of full scale above which a sample counts as clipped and is not merged in (0.99)</string>
-    <string name="merge_tiling_tolerance">Tile mismatch tolerance</string>
-    <string name="merge_tiling_tolerance_summary">Disagreement between neighbouring alignment tiles, in pixels, at which the field counts as invalid (4.0)</string>
-    <string name="merge_floor_sigmas">Noise floor threshold</string>
-    <string name="merge_floor_sigmas_summary">Short-frame samples below this many noise sigmas are not merged in; 0: no check (2.0)</string>
-    <string name="merge_max_exposure_ratio">Exposure spread limit</string>
-    <string name="merge_max_exposure_ratio_summary">Frames that differ from the reference by more than this are not merged; 0: no limit (64)</string>
-    <string name="long_frame_shutter_cap">Long-frame shutter cap</string>
-    <string name="long_frame_shutter_cap_summary">In sensor readout periods (1/30 s); the rest of the EV goes to gain. 0: no cap (2.0)</string>
-    <string name="hdrplus_luma_gain_slope">Luma noise reduction: growth with ISO</string>
-    <string name="hdrplus_luma_gain_slope_desc">How much stronger the luma noise reduction of the merge gets per doubling of ISO. 0: a fixed strength, as before</string>
-    <string name="hdrplus_chroma_gain_slope">Chroma noise reduction: growth with ISO</string>
-    <string name="hdrplus_chroma_gain_slope_desc">The same for the chroma noise reduction. Usually higher than for luma: colour speckle bothers sooner than grain, and removing it costs almost no detail</string>
-    <string name="max_hdr_ratio">HDR ratio cap</string>
-    <string name="max_hdr_ratio_summary">Limit on the ratio of the longest frame to the shortest; the short one is raised. GCam: 9.8 (night 15.3). 0: no cap</string>
     <string name="antibanding_hz">Lamp flicker</string>
-    <string name="antibanding_hz_summary">Long Hybrid frames are timed to the lamp flicker, so they show no stripes. Auto: as the camera sees it</string>
-    <string name="tet_model_enabled">TET exposure model</string>
-    <string name="tet_model_enabled_summary">The shutter comes from the shutter/gain curve of the GCam dump and stays the same for the whole burst; the bracket differs only in gain. Off: the previous heuristics</string>
-    <string name="mosaic_sr_enabled_desc">Super-resolution on the Bayer mosaic: scaling runs before demosaicing, on the raw samples</string>
-    <string name="mosaic_sr_scale_desc">How many times the output resolution grows. Higher is sharper, but much slower and needs more memory</string>
-    <string name="mosaic_sr_kernel_desc">Interpolation kernel for scaling. Affects edge sharpness and ringing</string>
+    <string name="antibanding_hz_summary">Long SHDR frames are timed to the lamp flicker, so they show no stripes. Auto: as the camera sees it</string>
     <string name="noise_model_profile_desc">How the sensor is noisy. Decides what the denoise treats as noise and what as detail.</string>
-    <string name="zsl_merge_algorithm_desc">Merge algorithm for normal ZSL frames</string>
-    <string name="night_merge_algorithm_desc">Merge algorithm in night mode</string>
-    <string name="ai_denoise_model_desc">Neural network model for noise reduction. Larger ones are cleaner but slower</string>
-    <string name="ai_denoise_strength_desc">Overall strength of the AI noise reduction. Too much wipes out texture</string>
-    <string name="ai_denoise_luma_desc">AI noise reduction strength for luma: grain</string>
-    <string name="ai_denoise_chroma_desc">AI noise reduction strength for chroma: colour blotches</string>
     <string name="wide169_desc">A 16:9 frame instead of the full sensor frame: cropped at the top and bottom.</string>
-    <string name="short_frame_count_desc">How many short frames to capture to save highlights. 0: none</string>
-    <string name="short_exposure_ev_desc">How much darker the short frame is than the base one, in stops</string>
-    <string name="long_frame_count_desc">How many long frames to capture for shadow detail. 0: none</string>
-    <string name="long_exposure_ev_desc">How much brighter the long frame is than the base one, in stops</string>
-    <string name="highlight_suppression_desc">Highlight suppression in the merge: how strongly bright areas are compressed</string>
-    <string name="binning_desc">Combines neighbouring pixels 4:1. Lower resolution, cleaner image in the dark</string>
-    <string name="energy_safe_desc">Saves power: less load and heat at the cost of processing speed</string>
-    <string name="camera_sounds_desc">Shutter sound when shooting</string>
     <string name="hide_gallery_icon_desc">Removes the SGallery icon from the app list. The SCAMERA icon stays.</string>
     <string name="show_grid_desc">Composition lines over the viewfinder</string>
     <string name="show_roundedge_desc">Rounded viewfinder corners. Off: square corners.</string>
@@ -390,11 +126,8 @@
     <string name="af_mode_desc">How focus works: continuous (photo is faster, video is smoother) or once (Auto).</string>
     <string name="peak_method_desc">Highlights sharp areas in the viewfinder. Auto: only during manual focus.</string>
     <string name="show_afdata_desc">What to show over the viewfinder: HUD (shutter, ISO, focus, white balance), histogram or AF / AE boxes.</string>
-    <string name="frame_count_desc">How many frames are merged into one photo. More is cleaner but slower, with a higher risk of blur</string>
     <string name="cfa_desc">Order of the colour pixels of the sensor. Auto: as the camera reports; a wrong one breaks colours.</string>
     <string name="color_method_desc">Where the colour matrix comes from: the camera calibration or each shot. Changes the colours.</string>
     <string name="horizon_desc">A level line in the viewfinder to keep the horizon straight.</string>
     <string name="theme_desc">Light or dark gallery. The camera and the settings are always dark.</string>
-    <string name="zsl_merge_algorithm">ZSL merge algorithm</string>
-    <string name="night_merge_algorithm">Night merge algorithm</string>
 </resources>

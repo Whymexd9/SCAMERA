@@ -4,8 +4,7 @@
 <resources>
     <string name="shade_group_shoot">Capture</string>
     <string name="shade_group_format">Format</string>
-    <string name="shade_group_hybrid">Hybrid</string>
-    <string name="shade_group_scamhdr">SCAM HDR</string>
+    <string name="shade_group_hybrid">SHDR</string>
     <string name="shade_group_view">Viewfinder</string>
 
     <string name="shade_on">On</string>
@@ -38,22 +37,18 @@
     <string name="shade_t_format">Format</string>
     <string name="shade_t_metering_std">Camera2 metering</string>
     <string name="shade_t_metering">Metering</string>
-    <string name="shade_t_route">Merge</string>
     <string name="shade_t_output">Resolution</string>
     <string name="shade_t_downsampler">Downsampler</string>
     <string name="shade_t_ultrahdr">Ultra HDR</string>
     <string name="shade_t_wide169">16:9</string>
     <string name="shade_t_watermark">Watermark</string>
-    <string name="shade_t_bento">Bento</string>
-    <string name="shade_t_bento_frames">Bento frames</string>
-    <string name="shade_t_shasta">Shasta</string>
-    <string name="shade_t_hybrid_frames">N frames Hybrid</string>
+    <string name="shade_t_bento">Highlight frames</string>
+    <string name="shade_t_bento_frames">Highlight frame count</string>
+    <string name="shade_t_shasta">Shadow frames</string>
+    <string name="shade_t_hybrid_frames">SHDR frames</string>
     <string name="shade_t_luma">Luma</string>
     <string name="shade_t_chroma">Chroma</string>
     <string name="shade_t_rejection">Rejection</string>
-    <string name="shade_t_scam_frames">N frames SCAM</string>
-    <string name="shade_t_long_boost">L boost</string>
-    <string name="shade_t_mosaic">ISZ mosaic</string>
     <string name="shade_t_grid">Grid</string>
     <string name="shade_t_peak">Focus peak</string>
     <string name="shade_t_live_raw">Live RAW</string>
@@ -74,10 +69,6 @@
         <item>Center</item>
         <item>Average</item>
         <item>Spot</item>
-    </string-array>
-    <string-array name="shade_s_route">
-        <item>Hybrid</item>
-        <item>SCAM HDR</item>
     </string-array>
     <string-array name="shade_s_output">
         <item>1×</item>
@@ -101,15 +92,6 @@
         <item>1</item>
         <item>2</item>
         <item>3</item>
-    </string-array>
-    <string-array name="shade_s_mosaic">
-        <item>Bayer</item>
-        <item>GPU</item>
-        <item>Tetra</item>
-        <item>MFR</item>
-        <item>Neural</item>
-        <item>Sabre</item>
-        <item>Neural+Sabre</item>
     </string-array>
     <string-array name="shade_s_grid">
         <item>Off</item>
@@ -178,13 +160,11 @@
     <string name="shade_shutter">Take a photo</string>
     <string name="shade_flip_camera">Front / back camera</string>
     <string name="shade_gallery">Gallery</string>
-    <string name="shade_all_settings_summary">Hybrid, SCAM HDR, colour, capture, config</string>
-    <string name="shade_all_settings_summary_hybrid_only">Hybrid, colour, capture, config</string>
+    <string name="shade_all_settings_summary">Photo, shooting, colour, SHDR, cameras</string>
     <string name="shade_hint">Swipe up for the panel\nHold a tile to move it</string>
 
     <!-- Why a tile is dimmed -->
     <string name="shade_reason_no_flash">This lens has no flash</string>
-    <string name="shade_reason_scamhdr_soc">Hybrid only: SCAM HDR runs on the Snapdragon 8 Elite only</string>
     <string name="shade_reason_scam_dev">Set by scam_dev.txt</string>
     <string name="shade_reason_dependency">Turn on “%1$s”.</string>
     <!-- P42 -->

@@ -2,60 +2,31 @@
     <!-- UI language marker read by util/Lang.java: "ru" only in values-ru. -->
     <string name="ui_language">en</string>
     <string name="version_summary" translatable="false">v%1$s\n%2$s</string>
-    <string name="icon_string" translatable="false">Icon</string>
     <string name="backup_file_name" translatable="false">SCAMERA_%1$s</string>
     <string name="app_name" translatable="false">SCAMERA</string>
     <string name="gallery_name" translatable="false">SGallery</string>
     <string name="request_permission">This app needs camera permission.</string>
     <string name="camera_error">This device doesn\'t support Camera2 API.</string>
-    <string name="frame_count">Normal RAW frames</string>
-    <string name="short_frame_count">Short RAW frames</string>
-    <string name="long_frame_count">Long RAW frames</string>
-    <string name="short_exposure_ev">Short-frame reduction (EV)</string>
-    <string name="long_exposure_ev">Long-frame increase (EV)</string>
-    <string name="highlight_suppression">Highlight recovery (0–200)</string>
 
     <string name="ultrahdr" translatable="false">Ultra HDR</string>
     <string name="ultrahdr_summary">Adds a brightness map to the JPEG: brighter highlights on HDR screens. Normal screens show a normal photo.</string>
-    <string name="ai_denoise">AI Bayer noise reduction</string>
-    <string name="ai_denoise_available">UNet Fast or NAFNet Quality · NPU via NNAPI, with an explicit CPU fallback</string>
-    <string name="ai_denoise_strength">AI noise reduction strength</string>
-    <string name="ai_denoise_luma">AI luma, %</string>
-    <string name="ai_denoise_chroma">AI chroma, %</string>
-    <string name="ai_denoise_model">AI noise reduction model</string>
     <string name="turn_on_grid">Show Grid</string>
     <string name="turn_on_round_edges">Enable Round Edges</string>
     <string name="turn_on_watermark">Watermark</string>
-    <string name="sure_delete">Are you sure to delete this image?</string>
-    <string name="sure_delete_multiple">Are you sure to delete %1$s image(s)? %2$s will be cleared.</string>
     <string name="cancel">Cancel</string>
     <string name="yes">Yes</string>
-    <string name="image_deleted">Image Deleted</string>
     <string name="turn_on_afdata">On-screen information</string>
     <string name="cfa">Bayer Filter Pattern</string>
     <string name="color_method">Color Method</string>
     <string name="focus_peaking">Focus Peaking</string>
     <string name="focus_peaking_auto">Auto</string>
     <string name="show_horizon_on_preview">Show horizon on preview</string>
-    <string name="camera_sounds">Camera Sounds</string>
-    <string name="energy_saving">Battery Saver</string>
     <string name="hide_gallery_icon">Hide Gallery Icon</string>
-    <string name="theme">Theme</string>
     <string name="theme_follow_system">Follow system</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    <string name="unprocessed_raw">Unprocessed RAW</string>
-    <string name="frame_count_summary">Number of constant-exposure denoising frames</string>
-    <string name="app_summary">RAW camera with multi-frame SCAM Hybrid and SCAM HDR processing</string>
+    <string name="app_summary">RAW camera with multi-frame SHDR processing</string>
     <string name="version_title">Version</string>
-    <string name="eis_toggle_text">Image Stabilization</string>
-    <string name="fps_60_toggle_text">Frame rate</string>
-    <string name="fps_auto" translatable="false">AUTO</string>
-    <string name="fps_24" translatable="false">24fps</string>
-    <string name="fps_30" translatable="false">30fps</string>
-    <string name="fps_60" translatable="false">60fps</string>
-    <string name="quad_bayer_toggle_text">Quad Bayer Res. (48/64 MP)</string>
-    <string name="backup_restore">Backup/Restore Settings</string>
     <string name="reset">Reset All</string>
     <string name="reset_preferences_warning">This will reset all settings to their default values. Continue?</string>
     <string name="backup">Backup</string>
@@ -65,27 +36,16 @@
     <string name="restore_summary_json">Load settings from an XML file in Download/SCAMERA/XML, or pick a file</string>
     <string name="empty_file_name_error">File name cannot be an empty string</string>
     <string name="af_mode">Auto Focus Mode</string>
-    <string name="multiple_deleted_success">%1$s file(s) deleted! %2$s cleared.</string>
     <string name="sensor_configurations">Sensor settings per module</string>
     <string name="sensor_configurations_summary">RAW levels, stabilization, session and vendor keys of each module</string>
     <string name="this_device">Your Device - %1$s</string>
-    <string name="sync_on">Sync. On</string>
-    <string name="sync_off">Sync. Off</string>
     <string name="mode_unlimited">Unlimited</string>
     <string name="mode_rawvideo">RAW Video</string>
     <string name="mode_motion">Photo</string>
     <string name="mode_photo">Photo</string>
     <string name="mode_night">Night</string>
     <string name="mode_video">Video</string>
-    <string name="countdown_timer">Countdown Timer</string>
-    <string name="flash">Flash</string>
-    <string name="torch">Torch</string>
     <string name="on">On</string>
-    <string name="t_3s">3s</string>
-    <string name="t_10s">10s</string>
-    <string name="raw_string" translatable="false">RAW</string>
-    <string name="raw_plus_jpg" translatable="false">RAW + JPEG</string>
-    <string name="jpg_only">JPEG</string>
     <string name="off">Off</string>
     <string name="golden_ratio">Golden Ratio</string>
     <string name="diag_triangle">Diag. Triangles</string>
@@ -98,29 +58,9 @@
     <string name="session_on_configure_failed">System session configuration failed try changing preview format</string>
 
   <!-- Metering mode strings -->
-    <string name="ae_metering_off">Auto</string>
-    <string name="ae_metering_center">Center Weighted</string>
-    <string name="ae_metering_average">Frame Average</string>
-    <string name="ae_metering_spot">Spot Metering</string>
-    <string name="ae_metering_std">AE Metering</string>
     <string name="pref_ae_metering_std_key" translatable="false">pref_ae_metering_std_mode_key</string>
 
     <!-- Bracketing mode strings -->
-    <string name="exposure_bracketing">Exposure Bracketing</string>
-    <string name="hybrid_output_title">Resolution</string>
-    <string name="hybrid_output_sensor">Sensor</string>
-    <string name="hybrid_output_12">12 MP (2x)</string>
-    <string name="hybrid_output_16">16 MP (2x)</string>
-    <string name="hybrid_output_20">20 MP (2x)</string>
-    <string name="hybrid_output_2x">2x, no resize</string>
-    <string name="hybrid_downsampler_title">Downsampler</string>
-    <string name="hybrid_ds_lanczos">Lanczos-3</string>
-    <string name="hybrid_ds_bicubic">Bicubic</string>
-    <string name="hybrid_ds_area">Area</string>
-    <string name="hybrid_ds_bilinear">Bilinear</string>
-    <string name="bracketing_off">Off (1x)</string>
-    <string name="bracketing_normal">Normal (1x, 4x)</string>
-    <string name="bracketing_high">High (1x, 8x)</string>
     <string name="pref_bracketing_key" translatable="false">pref_bracketing_mode_key</string>
 
     <!-- Video Settings -->
@@ -165,8 +105,6 @@
     <string name="live_viewfinder_raw">Live viewfinder</string>
     <string name="live_viewfinder_raw_summary">The viewfinder develops the RAW itself. Off: the standard camera preview. The photo is not affected.</string>
     <string name="pref_remosaic_phase_default" translatable="false">0</string>
-    <string name="remosaic_enabled">Enable remosaic</string>
-    <string name="remosaic_enabled_desc">Only for cameras that output a quad or tetra mosaic</string>
     <string name="remosaic_phase_x">X phase</string>
     <string name="remosaic_phase_y">Y phase</string>
     <string name="remosaic_phase_desc">Horizontal offset of the block grid. A wrong value gives a colour grid; the neural mode needs 0.</string>
@@ -193,13 +131,8 @@
     <string name="remosaic_steered_desc">Fills in green along edges, not across them: fewer colour fringes on letters and outlines.</string>
     <string name="remosaic_clamp">Colour difference clamp</string>
     <string name="remosaic_clamp_desc">Keeps colour on edges within the nearby values: removes the pink halo.</string>
-    <string name="remosaic_dump">Save the remosaic output</string>
-    <string name="remosaic_dump_desc">Saves one more DNG next to the normal one: exactly what the node wrote, before demosaicing. It tells an error of the remosaic itself from an error of the later stages. Each shot takes 24 MB more</string>
     <string name="remosaic_flatfield">Block flat field</string>
     <string name="remosaic_flatfield_desc">Evens out the different pixel response inside a block: less colour cast. Experimental.</string>
-    <string name="remosaic_backend_title">Remosaic algorithm</string>
-    <string-array name="remosaic_backend_entries"><item>SCAMERA</item><item>Tetra Detail v2 — after Vivo</item><item>SCAM Neural — NPU, root (experimental)</item><item>HP9 HexQuad — NPU, 6 frames (test)</item><item>Quad 2×2 — NPU, 4 frames (main, 2x ISZ)</item></string-array>
-    <string-array name="remosaic_backend_values" translatable="false"><item>scamera</item><item>tetra_detail</item><item>scam_neural</item><item>hp9_hexquad</item><item>imx06c_quad</item></string-array>
     <string name="tetra_response_summary">Removes the periodic grid on Tetra 4×4 shots by evening out the pixel response.</string>
     <string-array name="hexquad_model_entries"><item>x2 — current model</item><item>x1 — experimental</item></string-array>
     <string-array name="hexquad_model_values" translatable="false"><item>2</item><item>1</item></string-array>

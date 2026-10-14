@@ -47,19 +47,7 @@
     </string>
     <string name="gamma_default" translatable="false">[0f, 0.99981f]
     </string>
-    <string name="pref_framecount_default" translatable="false">8</string>
-    <string name="pref_short_framecount_default" translatable="false">1</string>
-    <string name="pref_long_framecount_default" translatable="false">1</string>
-    <string name="pref_short_exposure_ev_default" translatable="false">4</string>
-    <string name="pref_long_exposure_ev_default" translatable="false">4</string>
-    <string name="pref_highlight_suppression_default" translatable="false">100</string>
-    <string name="pref_processing_backend_default" translatable="false">0</string>
     <bool name="pref_ai_denoise_enabled_default">false</bool>
-    <string name="pref_ai_denoise_strength_default" translatable="false">50</string>
-    <string name="pref_ai_denoise_luma_default" translatable="false">100</string>
-    <string name="pref_ai_denoise_chroma_default" translatable="false">100</string>
-    <string name="pref_ai_denoise_model_default" translatable="false">fast</string>
-    <string name="pref_noise_merge_seekbar_default" translatable="false">0.0</string>
     <string name="pref_align_method_default" translatable="false">1</string>
     <string name="pref_cfa_default_value" translatable="false">-1</string>
     <string name="pref_theme_default_value" translatable="false">-1</string>

@@ -560,11 +560,22 @@ public class SettingsMenuTest {
             for(CharSequence t:texts){
                 if(t==null)continue;checked++;
                 String s=t.toString();
-                if(s.contains("LMC")||s.contains("NICE")||s.contains("Nice")||s.toLowerCase(Locale.ROOT).contains("гибрид"))found.add(p.getKey()+": "+s);
+                if(oldName(s))found.add(p.getKey()+": "+s);
             }
         }
         assertTrue(found.toString(),found.isEmpty());assertTrue(checked>500);
+        // P129: and in every string and string array of the APK (the shade, the gallery, dialogs), not only the settings rows
+        for(Field f:R.string.class.getFields())try{String s=context.getString(f.getInt(null));if(oldName(s))found.add(f.getName()+": "+s);}catch(Exception ignored){}
+        for(Field f:R.array.class.getFields())try{for(String s:context.getResources().getStringArray(f.getInt(null)))if(s!=null&&oldName(s))found.add(f.getName()+": "+s);}catch(Exception ignored){}
+        assertTrue(found.toString(),found.isEmpty());
         assertEquals("SHDR",String.valueOf(screen.findPreference("scam_hybrid_screen").getTitle()));
+    }
+
+    /** P129: the merge is SHDR; the borrowed code names (LMC, AGC, Sabre, Bento, Shasta, Mochi, GCam, SCAM HDR) are ours now. */
+    private static boolean oldName(String s){
+        for(String old:new String[]{"LMC","NICE","Nice","Hybrid","Bento","Shasta","Sabre","Mochi","GCam","AGC","SCAM HDR","ArkCore","Sabre 6.1","round 4","раунда 4"})
+            if(s.contains(old))return true;
+        return s.toLowerCase(Locale.ROOT).contains("гибрид");
     }
 
     private android.view.View row(Preference p){

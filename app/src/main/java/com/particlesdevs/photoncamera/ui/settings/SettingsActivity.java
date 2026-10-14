@@ -371,6 +371,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
 
         private void setupRemosaicBackend() {
+            // P129: the last SHDR shot's worker report (it used to sit behind the SCAM HDR launch check)
+            Preference report = findPreference("shdr_capture_report");
+            if (report != null) report.setOnPreferenceClickListener(pref -> {
+                startActivity(new android.content.Intent(requireContext(), ScamActivity.class));
+                return true;
+            });
             Preference neural = findPreference("scam_neural_probe");
             if (neural != null) neural.setOnPreferenceClickListener(pref -> {
                 startActivity(new android.content.Intent(requireContext(), ScamNeuralActivity.class));

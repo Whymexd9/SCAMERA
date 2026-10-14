@@ -303,11 +303,11 @@ public class HybridSettingsTest {
     }
 
     @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void mochiKeysReachTheTuningFileAndDefaultAlways() {
-        mochiKeysReachTheTuningFileAndDefaultAlways("Фотометрия Mochi");
+        mochiKeysReachTheTuningFileAndDefaultAlways("Фотометрическая склейка");
     }
 
     @Test public void mochiKeysReachTheTuningFileAndDefaultAlwaysInEnglish() {
-        mochiKeysReachTheTuningFileAndDefaultAlways("Mochi photometric merge");
+        mochiKeysReachTheTuningFileAndDefaultAlways("Photometric merge");
     }
 
     private void mochiKeysReachTheTuningFileAndDefaultAlways(String pageTitle) {

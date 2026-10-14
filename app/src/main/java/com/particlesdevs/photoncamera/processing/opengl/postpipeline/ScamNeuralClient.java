@@ -351,7 +351,7 @@ public final class ScamNeuralClient {
             if(hybridMerge){
                 // SCAM Hybrid merge (scam-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.
-                if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException(Lang.t("Не удалось создать маркер склейки Hybrid","Could not create the Hybrid merge marker"));
+                if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException(Lang.t("Не удалось создать маркер склейки SHDR","Could not create the SHDR merge marker"));
                 // A worker of this process died inside the CRE: this one aligns with SCAMERA's own tile alignment.
                 if(((ScamHybridBurst)scamBurst).creOff()&&!new File(dir,"cre-off").createNewFile())
                     throw new IOException(Lang.t("Не удалось создать маркер CRE","Could not create the CRE marker"));
@@ -479,9 +479,9 @@ public final class ScamNeuralClient {
                         :code>128?"signal "+(code-128):"code "+code)+(completed[0]?"":", no completion line"));
             }
             if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException(
-                    scamBurst instanceof ScamHybridBurst?Lang.t("Hybrid: склейка не завершена. Отчёт: SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.","Hybrid: merge not finished. Report: “SCAM HDR: launch check” → “Last SCAM HDR capture report”."):
+                    scamBurst instanceof ScamHybridBurst?Lang.t("SHDR: склейка не завершена. Отчёт: Система → Диагностика → «Отчёт последней съёмки SHDR».","SHDR: merge not finished. Report: System → Diagnostics → “Last SHDR capture report”."):
                     scamBurst!=null?Lang.t("SCAM HDR не завершён. Откройте SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.","SCAM HDR not finished. Open “SCAM HDR: launch check” → “Last SCAM HDR capture report”."):
-                    (scam?Lang.t("Проверка SCAM HDR не завершена. Скопируйте этот отчёт. ","SCAM HDR check not finished. Copy this report. "):Lang.t("Нейроремозаик не завершён. Откройте SCAM Neural — проверка → ","Neural remosaic not finished. Open SCAM Neural check → "))+
+                    (scam?Lang.t("Проверка SCAM HDR не завершена. Скопируйте этот отчёт. ","SCAM HDR check not finished. Copy this report. "):Lang.t("Нейроремозаик не завершён. Откройте Система → Диагностика → «Нейроремозаик — проверка и отчёты» → ","Neural remosaic not finished. Open System → Diagnostics → “Neural remosaic: check and reports” → "))+
                     (raw!=null||burst!=null?Lang.t("Отчёт последней съёмки","Last capture report"):Lang.t("Скопировать отчёт","Copy report"))+".");
             if(raw==null&&burst==null&&scamBurst==null)return null;
             final int ow=scamBurst!=null?scamBurst.outputWidth():w,oh=scamBurst!=null?scamBurst.outputHeight():h;

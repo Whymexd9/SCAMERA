@@ -233,7 +233,7 @@ public class ShadeCatalogTest {
         assertEquals("pref_scam_hybrid_shasta", frames.dependency);
         assertNull(catalog.unavailable(frames));
         prefs.edit().putBoolean("pref_scam_hybrid_shasta", false).commit();
-        assertEquals(context.getString(R.string.shade_reason_dependency, "Shasta"), catalog.unavailable(frames));
+        assertEquals(context.getString(R.string.shade_reason_dependency, "Shadow frames"), catalog.unavailable(frames));
 
         ShadeCatalog.Entry flash = catalog.entry(ShadeCatalog.FLASH);
         assertNull(catalog.unavailable(flash));

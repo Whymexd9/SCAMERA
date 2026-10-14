@@ -124,16 +124,16 @@ public final class ScamMosaic {
 
     private static void validate(List<ImageFrame> images, Parameters p, int block) throws IOException {
         if (p.cfaPattern < 0 || p.cfaPattern > 3)
-            throw new IOException(Lang.t("SCAM HDR: для мозаики нужен порядок CFA 2×2 (RGGB/GRBG/GBRG/BGGR), сейчас ", "SCAM HDR: the mosaic needs a 2×2 CFA order (RGGB/GRBG/GBRG/BGGR), now ") + p.cfaPattern);
+            throw new IOException(Lang.t("Нейроремозаик: для мозаики нужен порядок CFA 2×2 (RGGB/GRBG/GBRG/BGGR), сейчас ", "Neural remosaic: the mosaic needs a 2×2 CFA order (RGGB/GRBG/GBRG/BGGR), now ") + p.cfaPattern);
         if (Allocator.binning)
-            throw new IOException(Lang.t("SCAM HDR: для мозаики отключите программный биннинг", "SCAM HDR: turn off software binning for the mosaic"));
+            throw new IOException(Lang.t("Нейроремозаик: для мозаики отключите программный биннинг", "Neural remosaic: turn off software binning for the mosaic"));
         int w = p.rawSize.x, h = p.rawSize.y;
         if (w % 8 != 0 || h % 8 != 0 || (long) w * h > 16000000)
-            throw new IOException(Lang.t("SCAM HDR: мозаика — размер кадра кратный 8, до 16 МП (сейчас ", "SCAM HDR: mosaic — frame size a multiple of 8, up to 16 MP (now ") + w + "x" + h + ")");
-        if (block != 2 && block != 4) throw new IOException(Lang.t("SCAM HDR: неизвестный размер блока мозаики ", "SCAM HDR: unknown mosaic block size ") + block);
+            throw new IOException(Lang.t("Нейроремозаик: мозаика — размер кадра кратный 8, до 16 МП (сейчас ", "Neural remosaic: mosaic — frame size a multiple of 8, up to 16 MP (now ") + w + "x" + h + ")");
+        if (block != 2 && block != 4) throw new IOException(Lang.t("Нейроремозаик: неизвестный размер блока мозаики ", "Neural remosaic: unknown mosaic block size ") + block);
         for (ImageFrame f : images)
             if (f.buffer == null || f.width != w || f.height != h || f.buffer.capacity() != (long) w * h * 2)
-                throw new IOException(Lang.t("SCAM HDR: неполный RAW кадра ", "SCAM HDR: incomplete RAW of frame ") + f.number);
+                throw new IOException(Lang.t("Нейроремозаик: неполный RAW кадра ", "Neural remosaic: incomplete RAW of frame ") + f.number);
     }
 
     /** Short / extra-short / long frames, by the capture role of their matched metadata (as the transport sorts them). */

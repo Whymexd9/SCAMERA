@@ -94,9 +94,9 @@ public final class SettingsAvailability {
         // Denoise engine (pref_scam_hybrid_dn_engine): the GCam finish (ScamDenoise) reads the dn_ rows, NLM (ScamHdrDenoise) its two strengths.
         boolean nlm = text("pref_scam_hybrid_dn_engine", "gcam").trim().equals("nlm");
         if (key.startsWith("pref_scam_hybrid_dn_") && !key.equals("pref_scam_hybrid_dn_engine") && nlm)
-            return Lang.t("Только для шумодава GCam в «Шумодав Hybrid».", "GCam denoiser only (“Hybrid denoiser”).");
+            return Lang.t("Только для многомасштабного шумодава в «Шумодав SHDR».", "Multiscale denoiser only (“SHDR denoiser”).");
         if (any(key, "pref_scam_hybrid_post_luma", "pref_scam_hybrid_post_chroma") && !nlm)
-            return Lang.t("Только для шумодава NLM в «Шумодав Hybrid».", "NLM denoiser only (“Hybrid denoiser”).");
+            return Lang.t("Только для шумодава NLM в «Шумодав SHDR».", "NLM denoiser only (“SHDR denoiser”).");
         // Output size (pref_scam_hybrid_output): every size but the sensor's merges on the Sabre 2x grid; 12 / 16 / 20 MP are
         // then made with the downsampler (HybridFinalResize), 2x is kept as it is.
         String output = text("pref_scam_hybrid_output", "sensor").trim();
@@ -109,7 +109,7 @@ public final class SettingsAvailability {
             return Lang.t("Действует только в режиме «Движение» (кнопка в верхней панели).", "Acts only in “Motion” mode (the button in the top bar).");
         // P128: «Мерцание ламп» rounds only the long frames' shutter to whole flicker periods (HybridPlan): nothing without them
         if (key.equals("pref_antibanding_hz_key") && !on("pref_scam_hybrid_shasta", true))
-            return Lang.t("Подгоняет выдержку длинных кадров Shasta, а они выключены.", "Fits the shutter of the long Shasta frames, which are off.");
+            return Lang.t("Подгоняет выдержку длинных кадров теней, а они выключены.", "Fits the shutter of the long shadow frames, which are off.");
         // P128: the mosaic merge acts on Quad / Tetra streams (ISZ modules without the sensor's remosaic) only
         if (key.startsWith("pref_scam_hybrid_mosaic_") && !mosaicStreams)
             return Lang.t("Только для модулей с мозаикой Quad / Tetra (ISZ без ремозаика); на этом телефоне её ещё не было.",
@@ -131,14 +131,14 @@ public final class SettingsAvailability {
         // P118: rows that act only with another setting off its default (found while the descriptions were rewritten)
         final String sabre61 = text("pref_scam_hybrid_sabre61", "1");
         if (any(key, "pref_scam_hybrid_s61_max_key", "pref_scam_hybrid_s61_min_motion") && !sabre61.equals("2"))
-            return Lang.t("Только при «Ядро Sabre 6.1» = «Авто (ночью)».", "Only with “Sabre 6.1 kernel” = “Auto (at night)”.");
+            return Lang.t("Только при «Новое ядро склейки» = «Авто (ночью)».", "Only with “New merge kernel” = “Auto (at night)”.");
         if (any(key, "pref_scam_hybrid_snr_scale", "pref_scam_hybrid_tensor_noise") && sabre61.equals("1"))
-            return Lang.t("Только для ядра раунда 4: «Ядро Sabre 6.1» выключено или «Авто».", "Round-4 kernel only: “Sabre 6.1 kernel” off or “Auto”.");
+            return Lang.t("Только для прежнего ядра: «Новое ядро склейки» выключено или «Авто».", "Previous kernel only: “New merge kernel” off or “Auto”.");
         if (any(key, "pref_scam_hybrid_shasta_sharpness", "pref_scam_hybrid_shasta_max_ratio") && !text("pref_scam_hybrid_shasta_mode", "2").equals("1"))
-            return Lang.t("Только при «Shasta: режим» = «Авто».", "Only with “Shasta: mode” = “Auto”.");
+            return Lang.t("Только при «Кадры теней: режим» = «Авто».", "Only with “Shadow frames: mode” = “Auto”.");
         if (key.equals("pref_scam_hybrid_bento_trigger") && !text("pref_scam_hybrid_bento", "2").equals("1")
                 && !(on("pref_motion_mode", false) && text("pref_scam_hybrid_mm_bento", "1").equals("1")))
-            return Lang.t("Только при «Bento» = «Авто».", "Only with “Bento” = “Auto”.");
+            return Lang.t("Только при «Кадры светов» = «Авто».", "Only with “Highlight frames” = “Auto”.");
         if (any(key, "pref_scam_hybrid_motion_boost", "pref_scam_hybrid_mm_motion_boost") && text("pref_scam_hybrid_local_align", "1").equals("0"))
             return Lang.t("Нужно «Локальное выравнивание F6».", "Needs “Local alignment F6”.");
         if (key.startsWith("pref_scam_hybrid_ark_agx_") && !key.equals("pref_scam_hybrid_ark_agx_look")

@@ -119,10 +119,10 @@ public final class ScamHybridBurst implements ScamTransport {
         clipFlags = PreferenceKeys.hybridSwitch("clip_flags", true) && PreferenceKeys.hybridValue("highlight_recovery", 100f) > 0f;
         // The hybrid measures the colour block (Quad / Tetra) of the stream itself (header word 14).
         if (cfa < 0 || cfa > 3 || com.particlesdevs.photoncamera.util.Allocator.binning)
-            throw new IOException(Lang.t("Hybrid: нужен RAW с порядком CFA 2×2, без программного биннинга", "Hybrid: needs a RAW with a 2×2 CFA order, without software binning"));
-        if (black.length != 4) throw new IOException(Lang.t("Hybrid: нужны четыре уровня чёрного", "Hybrid: needs four black levels"));
+            throw new IOException(Lang.t("SHDR: нужен RAW с порядком CFA 2×2, без программного биннинга", "SHDR: needs a RAW with a 2×2 CFA order, without software binning"));
+        if (black.length != 4) throw new IOException(Lang.t("SHDR: нужны четыре уровня чёрного", "SHDR: needs four black levels"));
         if (width < 64 || height < 64 || (width & 1) != 0 || (height & 1) != 0)
-            throw new IOException(Lang.t("Hybrid: размер RAW ", "Hybrid: RAW size ") + width + "x" + height
+            throw new IOException(Lang.t("SHDR: размер RAW ", "SHDR: RAW size ") + width + "x" + height
                     + Lang.t(" (нужны чётные стороны от 64)", " (needs even sides of at least 64)"));
         // P27 any resolution: no megapixel cap. Only the hard limits stop the hybrid (sensor-grid RGB above one 2 GB buffer, a side
         // above the GPU's limit); ScamProcessor bins such a stream with RawBin before, so this is a defensive check.
@@ -130,7 +130,7 @@ public final class ScamHybridBurst implements ScamTransport {
         final String beyond = com.particlesdevs.photoncamera.processing.RawBin.limitExceeded(width, height, gpuMaxSide);
         if (beyond != null) throw new IOException("Hybrid: RAW " + width + "x" + height
                 + Lang.t(" за пределами склейки (", " is beyond the merge limits (") + beyond + ")");
-        if (source.isEmpty() || source.size() > 64) throw new IOException(Lang.t("Hybrid: нужны 1–64 кадра", "Hybrid: needs 1–64 frames"));
+        if (source.isEmpty() || source.size() > 64) throw new IOException(Lang.t("SHDR: нужны 1–64 кадра", "SHDR: needs 1–64 frames"));
         android.graphics.Point fin = PreferenceKeys.hybridFinalSize(width, height);
         List<ImageFrame> usable = new ArrayList<>();
         Set<Long> stamps = new HashSet<>();
@@ -149,7 +149,7 @@ public final class ScamHybridBurst implements ScamTransport {
             }
             usable.add(f);
         }
-        if (usable.isEmpty()) throw new IOException(Lang.t("Hybrid: ни одного пригодного RAW-кадра (", "Hybrid: no usable RAW frame (") + source.size() + Lang.t(" получено)", " received)"));
+        if (usable.isEmpty()) throw new IOException(Lang.t("SHDR: ни одного пригодного RAW-кадра (", "SHDR: no usable RAW frame (") + source.size() + Lang.t(" получено)", " received)"));
         keepOneLayout(usable);
         // P35: the stream's stored block (or a declared Quad / Tetra sensor mode) without the detector; a binned burst is another
         // grid and is always measured.
@@ -321,7 +321,7 @@ public final class ScamHybridBurst implements ScamTransport {
     private boolean add(ImageFrame f, int role, double ref, long newest) throws IOException {
         double ratio = product(f) / ref;
         if (!(ratio > 1.0 / 512) || !(ratio < 512)) {
-            if (f == base) throw new IOException(Lang.t("Hybrid: экспозиция базового кадра вне диапазона frame=", "Hybrid: base frame exposure out of range frame=") + f.number);
+            if (f == base) throw new IOException(Lang.t("SHDR: экспозиция базового кадра вне диапазона frame=", "SHDR: base frame exposure out of range frame=") + f.number);
             Log.w("SCAM_HDR", "hybrid: frame " + f.number + " dropped, exposure x" + ratio + " of the base is outside the merge range");
             return false;
         }
@@ -770,10 +770,10 @@ public final class ScamHybridBurst implements ScamTransport {
         final long start = android.os.SystemClock.elapsedRealtime();
         final int w = burst.width, h = burst.height;
         final long bytes = 12L * w * h;
-        if (bytes > Integer.MAX_VALUE) throw new IOException(Lang.t("Hybrid: одиночный кадр ", "Hybrid: the single frame ") + w + "x" + h
+        if (bytes > Integer.MAX_VALUE) throw new IOException(Lang.t("SHDR: одиночный кадр ", "SHDR: the single frame ") + w + "x" + h
                 + Lang.t(" больше 2 ГБ", " is above 2 GB"));
         ByteBuffer out = com.particlesdevs.photoncamera.util.Allocator.allocate((int) bytes);
-        if (out == null) throw new IOException(Lang.t("Hybrid: недостаточно памяти для одиночного кадра", "Hybrid: not enough memory for the single frame"));
+        if (out == null) throw new IOException(Lang.t("SHDR: недостаточно памяти для одиночного кадра", "SHDR: not enough memory for the single frame"));
         out.order(ByteOrder.nativeOrder());
         final int block = Math.max(1, burst.mosaicBlock);
         final int[] channel = cfaChannels(burst.cfa);
@@ -826,7 +826,7 @@ public final class ScamHybridBurst implements ScamTransport {
                         view.put(row);
                     }
                 } catch (RuntimeException e) {
-                    synchronized (failure) { failure[0] = new IOException(Lang.t("Hybrid: одиночный кадр не проявлен: ", "Hybrid: the single frame was not developed: ") + e, e); }
+                    synchronized (failure) { failure[0] = new IOException(Lang.t("SHDR: одиночный кадр не проявлен: ", "SHDR: the single frame was not developed: ") + e, e); }
                 }
             }, "hybrid-cpu-" + t);
             workers[t].start();
