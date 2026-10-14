@@ -609,6 +609,23 @@ public class SettingsMenuTest {
         assertEquals(6,checked);
     }
 
+    /** P139: in every kind of row the title (medium, larger) and its description (smaller, dimmer) look different. */
+    @Test public void titlesStandOutFromTheirDescriptions(){
+        PreferenceScreen screen=inflate();
+        // a switch, a list, a slider and a page row
+        for(String key:new String[]{"pref_scam_hybrid_shasta","pref_scam_hybrid_output","pref_scam_hybrid_shasta_ev","scam_hybrid_screen"}){
+            Preference p=screen.findPreference(key);assertNotNull(key,p);
+            android.view.View r=row(p);
+            android.widget.TextView title=r.findViewById(android.R.id.title),summary=r.findViewById(android.R.id.summary);
+            assertNotNull(key,title);assertNotNull(key,summary);
+            assertEquals(key,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.SUMMARY,summary.getCurrentTextColor());
+            assertNotEquals(key,summary.getCurrentTextColor(),title.getCurrentTextColor());
+            assertTrue(key,title.getTextSize()>summary.getTextSize());
+            assertNotNull(key+": the title's face",title.getTypeface());
+            assertNotEquals(key+": title and description share a face",summary.getTypeface(),title.getTypeface());
+        }
+    }
+
     /** P129: the merge is SHDR; the borrowed code names (LMC, AGC, Sabre, Bento, Shasta, Mochi, GCam, SCAM HDR) are ours now. */
     private static boolean oldName(String s){
         for(String old:new String[]{"LMC","NICE","Nice","Hybrid","Bento","Shasta","Sabre","Mochi","GCam","AGC","SCAM HDR","ArkCore","Sabre 6.1","round 4","раунда 4"})

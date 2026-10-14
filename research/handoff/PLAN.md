@@ -3141,6 +3141,11 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - OPEN (quick, with the settings work). Every settings row (XML rows through SettingsStyle.bind, the Java pages of
   ModuleConceptFragment, the shade's rows): title medium weight, a little larger and in the full text colour; the description
   smaller, regular and in the muted colour, with a small gap between them, so the two never read as one paragraph.
+- Done locally (2026-10-15). UiTokens.title (sans-serif-medium) / UiTokens.SUMMARY (#959EAD, a step dimmer than MUTED) and
+  @color/settings_summary: the XML rows (preference_card / _seekbar / _info / _tile), the Java pages (ModuleConceptFragment
+  navigation rows, the module-profile switch, the search results) and the shade (ShadeRows, the catalog, «Все настройки»,
+  «Ещё», the slider card) take the medium title and the dimmer description. Test SettingsMenuTest.
+  titlesStandOutFromTheirDescriptions (switch, list, slider and page rows). Not seen on a phone yet.
 
 ### P140 - «Настройки» shortcut on the launcher icon (owner, 2026-10-15, screenshot of GCam's long-press menu: «добавить шортат для перехода в настройки»; «Учитывай что мы будем обновлять иконки по плану»)
 - Done locally. res/xml/shortcuts.xml (static shortcut «settings»: «Настройки» / «Открыть настройки», en Settings / Open

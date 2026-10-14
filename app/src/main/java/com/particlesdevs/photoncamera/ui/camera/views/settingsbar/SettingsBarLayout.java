@@ -297,6 +297,7 @@ public class SettingsBarLayout extends LinearLayout {
         sliderTitle = new TextView(context);
         sliderTitle.setTextColor(ShadeStyle.TEXT);
         sliderTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(sliderTitle); // P139
         sliderTop.addView(sliderTitle, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         int accent = isInEditMode() ? 0xFFFFD447 : ShadeStyle.accent(context);
         sliderPill = ShadeRows.valuePill(context, accent);
@@ -419,10 +420,11 @@ public class SettingsBarLayout extends LinearLayout {
         title.setText(R.string.sheet_all_settings);
         title.setTextColor(ShadeStyle.TEXT);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(title); // P139
         texts.addView(title);
         TextView summary = new TextView(c);
         summary.setText(R.string.shade_all_settings_summary);
-        summary.setTextColor(ShadeStyle.MUTED);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.summary(summary);
         summary.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         texts.addView(summary);
         row.addView(texts, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -466,10 +468,11 @@ public class SettingsBarLayout extends LinearLayout {
         title.setText(R.string.shade_more);
         title.setTextColor(ShadeStyle.TEXT);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(title); // P139
         texts.addView(title);
         TextView summary = new TextView(c);
         summary.setText(c.getString(R.string.shade_more_summary, catalog().all().size()));
-        summary.setTextColor(ShadeStyle.MUTED);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.summary(summary);
         summary.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         texts.addView(summary);
         row.addView(texts, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));

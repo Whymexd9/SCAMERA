@@ -187,13 +187,14 @@ final class ShadeRows {
             title.setText(entry.title);
             title.setTextColor(ShadeStyle.TEXT);
             title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(title); // P139
             title.setEllipsize(null);
             texts.addView(title);
             String crumb = showPath ? entry.section(context) + (entry.crumb().isEmpty() ? "" : " › " + entry.crumb()) : "";
             if (!crumb.isEmpty()) {
                 TextView path = new TextView(context);
                 path.setText(crumb);
-                path.setTextColor(ShadeStyle.MUTED);
+                com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.summary(path);
                 path.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
                 LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 pp.topMargin = dp(3);

@@ -31,8 +31,9 @@ public class ModuleSettingsFragment extends ModuleConceptFragment {
         caption(Lang.t(getContext(),"Профили модулей","Module profiles"));
         LinearLayout c=card(),r=row();r.setPadding(dp(12),dp(16),dp(10),dp(16));
         ImageView gear=icon("gear");gear.setPadding(0,0,dp(12),0);r.addView(gear,new LinearLayout.LayoutParams(dp(40),dp(28)));
-        LinearLayout labels=column();labels.addView(text(Lang.t(getContext(),"Свои настройки для каждого модуля","Separate settings for each module"),15,TEXT));
-        TextView sub=text(Lang.t(getContext(),"При смене объектива применяется его профиль","Switching lenses applies the lens profile"),12,MUTED);sub.setLineSpacing(dp(4),1);labels.addView(sub,space(-1,-2,8));r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout labels=column();TextView head=text(Lang.t(getContext(),"Свои настройки для каждого модуля","Separate settings for each module"),15,TEXT);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(head);labels.addView(head);
+        TextView sub=text(Lang.t(getContext(),"При смене объектива применяется его профиль","Switching lenses applies the lens profile"),12,SettingsStyle.SUMMARY);sub.setLineSpacing(dp(4),1);labels.addView(sub,space(-1,-2,8));r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
         SwitchCompat toggle=new SwitchCompat(requireContext());toggle.setContentDescription(Lang.t(getContext(),"Свои настройки для каждого модуля","Separate settings for each module"));toggle.setChecked(PreferenceKeys.isPerLensSettingsOn());toggle.setThumbTintList(ColorStateList.valueOf(0xFFFFFFFF));toggle.setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked},{}},new int[]{accent,0xFF606570}));
         r.addView(toggle,new LinearLayout.LayoutParams(dp(56),dp(48)));c.addView(r);
         toggle.setOnCheckedChangeListener((v,on)->{PreferenceKeys.profiles();ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,on).apply();render();});

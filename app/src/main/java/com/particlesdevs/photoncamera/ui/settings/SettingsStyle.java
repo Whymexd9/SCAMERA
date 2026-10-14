@@ -65,6 +65,8 @@ public final class SettingsStyle {
     public static final int WARN = 0xFFFFB4A8;
     public static final int OFF_TRACK = 0xFF3A3E45, OFF_THUMB = 0xFF9AA0A7;
     public static final float DIMMED = UiTokens.DIMMED;
+    /** P139: a row's description (dimmer than MUTED); titles take UiTokens.title (medium weight). */
+    public static final int SUMMARY = UiTokens.SUMMARY;
 
     /** «Конфиг»: Сохранить / Восстановить / Сбросить всё share one row of three tiles. */
     static final Set<String> TILES = new HashSet<>(Arrays.asList("pref_backup_preferences_key", "pref_restore_preferences_key", "pref_reset_preferences_key"));

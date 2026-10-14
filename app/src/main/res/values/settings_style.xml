@@ -5,6 +5,8 @@
     <color name="settings_card">#FF1B2023</color>
     <color name="settings_text">#FFF4F3F7</color>
     <color name="settings_muted">#FFB2BAC9</color>
+    <!-- P139: a row's description, a step dimmer than settings_muted; titles are medium weight (UiTokens.SUMMARY / title) -->
+    <color name="settings_summary">#FF959EAD</color>
     <color name="settings_line">#FF30363C</color>
     <color name="settings_field">#FF121417</color>
     <color name="settings_sheet">#FF202428</color>

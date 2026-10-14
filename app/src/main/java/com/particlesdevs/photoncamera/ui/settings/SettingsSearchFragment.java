@@ -197,7 +197,8 @@ public class SettingsSearchFragment extends Fragment {
             LinearLayout row=new LinearLayout(requireContext());row.setOrientation(LinearLayout.VERTICAL);
             row.setPadding(dp(16),dp(13),dp(12),dp(13));row.setMinimumHeight(dp(64));row.setFocusable(true);
             row.setBackgroundResource(R.drawable.settings_card); // the same card as the preference rows
-            TextView title=label("",16,SettingsStyle.TEXT),path=label("",12,SettingsStyle.MUTED);
+            TextView title=label("",16,SettingsStyle.TEXT),path=label("",12,SettingsStyle.SUMMARY);
+            com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(title);
             path.setPadding(0,dp(5),0,0);row.addView(title);row.addView(path);
             RecyclerView.LayoutParams lp=new RecyclerView.LayoutParams(-1,-2);lp.topMargin=dp(10);
             row.setLayoutParams(lp);return new Holder(row,title,path);

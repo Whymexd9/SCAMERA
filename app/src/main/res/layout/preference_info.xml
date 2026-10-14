@@ -24,6 +24,7 @@
         android:orientation="vertical">
         <TextView
             android:id="@android:id/title"
+            android:fontFamily="sans-serif-medium"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="3dp"
@@ -34,7 +35,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:lineSpacingExtra="3dp"
-            android:textColor="@color/settings_muted"
+            android:textColor="@color/settings_summary"
             android:textSize="13sp" />
     </LinearLayout>
 </LinearLayout>

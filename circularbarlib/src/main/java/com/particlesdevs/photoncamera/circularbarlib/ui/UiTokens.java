@@ -14,6 +14,23 @@ public final class UiTokens {
 
     public static final int BG = 0xFF101416, CARD = 0xFF1B2023, TEXT = 0xFFF4F3F7, MUTED = 0xFFB2BAC9, LINE = 0xFF30363C;
     public static final int FIELD = 0xFF121417, SHEET = 0xFF202428, INK = 0xFF17141F;
+    /**
+     * P139: a row's description, a step dimmer than {@link #MUTED}; with the title in {@link #title medium weight} the two
+     * never read as one paragraph (owner: «заголовки отличались от описания чтобы они не сливались вместе»).
+     */
+    public static final int SUMMARY = 0xFF959EAD;
+    private static android.graphics.Typeface titleFace;
+
+    /** P139: a setting's title: medium weight (sans-serif-medium), the colour stays the caller's. */
+    public static void title(android.widget.TextView view) {
+        if (titleFace == null) titleFace = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL);
+        view.setTypeface(titleFace);
+    }
+
+    /** P139: a setting's description under its title. */
+    public static void summary(android.widget.TextView view) {
+        view.setTextColor(SUMMARY);
+    }
     /** Alpha of an unavailable row, tile or chip. */
     public static final float DIMMED = .45f;
 

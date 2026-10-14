@@ -274,9 +274,10 @@ public class ShadeCatalogView extends LinearLayout {
             TextView title = new TextView(c);
             title.setTextColor(ShadeStyle.TEXT);
             title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(title); // P139
             texts.addView(title);
             TextView crumb = new TextView(c);
-            crumb.setTextColor(ShadeStyle.MUTED);
+            com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.summary(crumb);
             crumb.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
             texts.addView(crumb);
             TextView value = new TextView(c);
