@@ -47,6 +47,30 @@ public final class ShadeTiles {
         return out;
     }
 
+    /** P137: whether the setting is in the shade (the stored list, or the default tiles before anything was stored). */
+    public static boolean isPinned(SharedPreferences prefs, String key) {
+        List<String> keys = stored(prefs);
+        return (keys == null ? ShadeCatalog.defaultTiles() : keys).contains(key);
+    }
+
+    /**
+     * P137: «В шторку» of a value editor in the settings: pins the setting at the end of the shade or takes it out. True when
+     * it is pinned now, false when it was taken out, null when the shade is full ({@link ShadeCatalog#MAX_TILES}).
+     */
+    @Nullable
+    public static Boolean toggle(SharedPreferences prefs, String key) {
+        List<String> stored = stored(prefs);
+        List<String> keys = new ArrayList<>(stored == null ? ShadeCatalog.defaultTiles() : stored);
+        if (keys.remove(key)) {
+            save(prefs, keys);
+            return false;
+        }
+        if (keys.size() >= ShadeCatalog.MAX_TILES) return null;
+        keys.add(key);
+        save(prefs, keys);
+        return true;
+    }
+
     public static void save(SharedPreferences prefs, List<String> keys) {
         prefs.edit().putString(KEY, join(keys)).apply();
     }

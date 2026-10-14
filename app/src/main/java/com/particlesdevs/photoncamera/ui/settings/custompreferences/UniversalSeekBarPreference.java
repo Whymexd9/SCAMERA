@@ -295,7 +295,7 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
     public float stepPerUnit(){return mStepPerUnit;}
     private void showPreciseValueDialog() {
         if (!isEnabled()) return;
-        com.particlesdevs.photoncamera.ui.controls.PrecisionEditor.show(getContext(),String.valueOf(getTitle()),
+        com.particlesdevs.photoncamera.ui.controls.PrecisionEditor.show(getContext(),getKey(),String.valueOf(getTitle()),
             mMin,mMax,clamp(parseValue(getValue(),defaultNumber())),defaultNumber(),isFloat,this::setDirectValue);
     }
 }

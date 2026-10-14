@@ -94,7 +94,7 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
     public float stepPerUnit(){return mStepPerUnit;}
     private void showPreciseValueDialog() {
         if (!isEnabled()) return;
-        com.particlesdevs.photoncamera.ui.controls.PrecisionEditor.show(getContext(),String.valueOf(getTitle()),
+        com.particlesdevs.photoncamera.ui.controls.PrecisionEditor.show(getContext(),getKey(),String.valueOf(getTitle()),
             mMin,mMax,getFloatValue(),mDefaultValue,isFloat,value->save(value,false));
     }
 }

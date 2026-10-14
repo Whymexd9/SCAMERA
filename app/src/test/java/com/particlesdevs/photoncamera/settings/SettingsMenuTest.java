@@ -609,6 +609,68 @@ public class SettingsMenuTest {
         assertEquals(6,checked);
     }
 
+    /**
+     * P137: a slider's exact-value editor is a sheet in the camera's style (no stock dialog): the value typed in place,
+     * «Применить»; and «В шторку» on the title line of every value editor pins the setting in the shade and takes it out.
+     */
+    @Test public void valueEditorsAreSheetsAndPinToTheShade(){
+        ShadeCatalog.reset();
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();
+            final float[] saved={Float.NaN};
+            String key="pref_scam_hybrid_shasta_ev";
+            com.google.android.material.bottomsheet.BottomSheetDialog d=com.particlesdevs.photoncamera.ui.controls.PrecisionEditor.show(
+                    activity,key,"Кадры теней: EV над N",1,4,1.5,1,true,v->saved[0]=v);
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            android.view.View root=d.getWindow().getDecorView();
+            assertNull("no stock dialog",org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog());
+            android.widget.TextView value=root.findViewWithTag("precision_value");assertEquals("1.5",value.getText().toString());
+            value.performClick();
+            android.widget.EditText field=root.findViewWithTag("precision_field");
+            assertEquals(android.view.View.VISIBLE,field.getVisibility());
+            field.setText("2,5");
+            root.findViewWithTag("sheet_save").performClick();
+            assertEquals(2.5f,saved[0],1e-6f);assertFalse(d.isShowing());
+            // out of range: the sheet stays, nothing is saved
+            saved[0]=Float.NaN;
+            d=com.particlesdevs.photoncamera.ui.controls.PrecisionEditor.show(activity,key,"x",1,4,1.5,1,true,v->saved[0]=v);
+            root=d.getWindow().getDecorView();
+            ((android.widget.TextView)root.findViewWithTag("precision_value")).performClick();
+            ((android.widget.EditText)root.findViewWithTag("precision_field")).setText("9");
+            root.findViewWithTag("sheet_save").performClick();
+            assertTrue(Float.isNaN(saved[0]));assertTrue(d.isShowing());
+            // «В шторку»: pinned at the end of the shade, then out again
+            android.widget.TextView pin=root.findViewWithTag("sheet_pin");assertNotNull(pin);
+            assertFalse(ShadeTiles.isPinned(prefs,key));
+            pin.performClick();
+            assertTrue(ShadeTiles.isPinned(prefs,key));assertEquals(key,ShadeTiles.stored(prefs).get(ShadeTiles.stored(prefs).size()-1));
+            assertTrue(pin.isSelected());
+            pin.performClick();
+            assertFalse(ShadeTiles.isPinned(prefs,key));assertFalse(pin.isSelected());
+            d.dismiss();
+            // a full shade keeps its tiles
+            java.util.List<String> full=new java.util.ArrayList<>();for(int i=0;i<ShadeCatalog.MAX_TILES;i++)full.add("tile"+i);
+            ShadeTiles.save(prefs,full);
+            assertNull(ShadeTiles.toggle(prefs,key));assertEquals(full,ShadeTiles.stored(prefs));
+            ShadeTiles.save(prefs,new java.util.ArrayList<>(ShadeCatalog.defaultTiles()));
+            // the list picker of a setting has the pin too; a key the shade cannot show has none
+            ListPreference output=new ListPreference(activity);output.setKey("pref_scam_hybrid_output");output.setTitle("x");
+            output.setEntries(new CharSequence[]{"a"});output.setEntryValues(new CharSequence[]{"sensor"});
+            assertTrue(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.showDialog(activity,output));
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertNotNull(latestSheet().findViewWithTag("sheet_pin"));
+            assertNull(com.particlesdevs.photoncamera.ui.controls.PrecisionEditor.show(activity,"no_such_key","x",0,1,0,0,false,v->{})
+                    .getWindow().getDecorView().findViewWithTag("sheet_pin"));
+        }
+        ShadeCatalog.reset();
+    }
+
+    private static android.view.View latestSheet(){
+        android.app.Dialog d=org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertTrue(String.valueOf(d),d instanceof com.google.android.material.bottomsheet.BottomSheetDialog);
+        return d.getWindow().getDecorView();
+    }
+
     /** P139: in every kind of row the title (medium, larger) and its description (smaller, dimmer) look different. */
     @Test public void titlesStandOutFromTheirDescriptions(){
         PreferenceScreen screen=inflate();

@@ -298,6 +298,14 @@ public final class SettingsStyle {
     }
 
     private static LinearLayout sheetBody(Context c, CharSequence title) {
+        return sheetBody(c, title, null);
+    }
+
+    /**
+     * A picker's sheet: the grab handle and the title; with {@code pinKey} a setting the camera's shade can hold, the title
+     * line also carries «В шторку» (P137: from any value editor of the settings straight into the shade).
+     */
+    public static LinearLayout sheetBody(Context c, CharSequence title, String pinKey) {
         LinearLayout body = new LinearLayout(c);
         body.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable bg = new GradientDrawable();
@@ -315,11 +323,62 @@ public final class SettingsStyle {
         TextView t = text(c, title, 18, TEXT);
         t.setTypeface(null, android.graphics.Typeface.BOLD);
         t.setPadding(dp(c, 4), 0, dp(c, 4), dp(c, 12));
-        body.addView(t);
+        TextView pin = pinChip(c, pinKey);
+        if (pin == null) {
+            body.addView(t);
+            return body;
+        }
+        LinearLayout head = new LinearLayout(c);
+        head.setGravity(Gravity.TOP);
+        head.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-2, -2);
+        pp.setMarginStart(dp(c, 10));
+        head.addView(pin, pp);
+        body.addView(head);
         return body;
     }
 
-    private static BottomSheetDialog sheet(Context c, View body) {
+    /**
+     * «В шторку» / «В шторке»: pins the setting in the camera's quick-settings shade or takes it out (ShadeTiles; the shade
+     * reloads its tiles when the camera comes back). Null for keys the shade cannot show.
+     */
+    static TextView pinChip(Context c, String key) {
+        if (key == null) return null;
+        boolean known;
+        try {
+            known = com.particlesdevs.photoncamera.settings.ShadeCatalog.get(c).isKnown(key);
+        } catch (RuntimeException e) {
+            known = false;
+        }
+        if (!known) return null;
+        final android.content.SharedPreferences prefs = com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
+        int accent = accent(c);
+        TextView chip = text(c, "", 13, accent);
+        chip.setTag("sheet_pin");
+        chip.setGravity(Gravity.CENTER_VERTICAL);
+        chip.setPadding(dp(c, 10), dp(c, 7), dp(c, 14), dp(c, 7));
+        chip.setCompoundDrawablePadding(dp(c, 6));
+        chip.setCompoundDrawableTintList(ColorStateList.valueOf(accent));
+        Runnable paint = () -> {
+            boolean on = com.particlesdevs.photoncamera.settings.ShadeTiles.isPinned(prefs, key);
+            chip.setText(on ? Lang.t(c, "В шторке", "In the shade") : Lang.t(c, "В шторку", "To the shade"));
+            chip.setContentDescription(on ? Lang.t(c, "Убрать из шторки", "Remove from the shade") : Lang.t(c, "Добавить в шторку", "Add to the shade"));
+            chip.setCompoundDrawablesRelativeWithIntrinsicBounds(on ? R.drawable.ic_sheet_pin_on : R.drawable.ic_sheet_pin, 0, 0, 0);
+            chip.setBackground(shape(c, on ? tint(accent, .22f) : 0, on ? 0 : tint(accent, .55f), 18));
+            chip.setSelected(on);
+        };
+        chip.setOnClickListener(v -> {
+            if (com.particlesdevs.photoncamera.settings.ShadeTiles.toggle(prefs, key) == null)
+                android.widget.Toast.makeText(c, c.getString(R.string.shade_full, com.particlesdevs.photoncamera.settings.ShadeCatalog.MAX_TILES),
+                        android.widget.Toast.LENGTH_SHORT).show();
+            paint.run();
+        });
+        paint.run();
+        return chip;
+    }
+
+    /** A bottom sheet over the dark surface, opened full height (the pickers and the slider's exact-value editor). */
+    public static BottomSheetDialog sheet(Context c, View body) {
         BottomSheetDialog d = new BottomSheetDialog(c);
         d.setContentView(body);
         d.setOnShowListener(x -> {
@@ -351,10 +410,10 @@ public final class SettingsStyle {
         if (entries == null || values == null) entries = values = new CharSequence[0];
         final CharSequence[] tags = values;
         return optionSheet(c, p.getDialogTitle() != null ? p.getDialogTitle() : p.getTitle(), entries, tags,
-                p.findIndexOfValue(p.getValue()), accent(c), i -> {
+                p.findIndexOfValue(p.getValue()), accent(c), null, i -> {
                     String v = tags[i].toString();
                     if (!v.equals(p.getValue()) && p.callChangeListener(v)) p.setValue(v);
-                });
+                }, p.getKey());
     }
 
     /**
@@ -373,7 +432,13 @@ public final class SettingsStyle {
      */
     public static BottomSheetDialog optionSheet(Context c, CharSequence title, CharSequence[] labels, CharSequence[] tags,
                                                 int selected, int accent, int[] icons, java.util.function.IntConsumer onPick) {
-        LinearLayout body = sheetBody(c, title);
+        return optionSheet(c, title, labels, tags, selected, accent, icons, onPick, null);
+    }
+
+    /** The list picker of a setting: {@code pinKey} adds «В шторку» to its title line (P137). */
+    static BottomSheetDialog optionSheet(Context c, CharSequence title, CharSequence[] labels, CharSequence[] tags,
+                                         int selected, int accent, int[] icons, java.util.function.IntConsumer onPick, String pinKey) {
+        LinearLayout body = sheetBody(c, title, pinKey);
         LinearLayout options = new LinearLayout(c);
         options.setOrientation(LinearLayout.VERTICAL);
         ScrollView scroll = new ScrollView(c);
@@ -415,7 +480,7 @@ public final class SettingsStyle {
 
     static BottomSheetDialog editSheet(Context c, EditTextPreference p) {
         int accent = accent(c);
-        LinearLayout body = sheetBody(c, p.getDialogTitle() != null ? p.getDialogTitle() : p.getTitle());
+        LinearLayout body = sheetBody(c, p.getDialogTitle() != null ? p.getDialogTitle() : p.getTitle(), p.getKey());
         if (!TextUtils.isEmpty(p.getDialogMessage())) {
             TextView m = text(c, p.getDialogMessage(), 14, MUTED);
             m.setPadding(dp(c, 4), 0, dp(c, 4), dp(c, 10));

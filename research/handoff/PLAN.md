@@ -3124,6 +3124,14 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   Применить: ui/controls/PrecisionEditor, PrecisionRuler and their dialog host) redrawn as the camera's own sheets (the shade /
   manual panel look: dark sheet, rounded top, the accent ruler, pill buttons), and a «В шторку» / «Add to shade» action that
   pins the setting as a shade tile (ShadeTiles, max 12; «Убрать из шторки» when it is pinned; hidden for NOT_PINNABLE keys).
+- Done locally (2026-10-15, before P136). PrecisionEditor.show is a bottom sheet like the list / text pickers
+  (SettingsStyle.sheetBody / sheet, now public): the value large in the middle (tap: typed in place in a field, «2,5» accepted,
+  out of range marked and not saved), the range, the ruler with the settings accent (PrecisionRuler.setAccent), the step as
+  chips, «По умолчанию: x», «Применить» as the accent button; no stock AlertDialog left in the slider path. Every value editor
+  (slider sheet, list sheet, text sheet) has «В шторку» / «В шторке» on its title line when ShadeCatalog knows the key:
+  ShadeTiles.toggle pins the setting at the end of the shade or takes it out (null when the shade holds 12, a toast says so);
+  the shade reloads its tiles on its next refresh (camera resume). Test SettingsMenuTest.valueEditorsAreSheetsAndPinToTheShade.
+  Not seen on a phone yet.
 
 ### P138 - sliders without drawing bugs (owner, 2026-10-15, screenshot of «Shasta: EV над N» = 1.00: «Исправить все ползунки чтобы нигде не было таких багов»)
 - OPEN (quick, with the settings work). A value at the end of its range draws the thumb cut in half at the card's edge (the
