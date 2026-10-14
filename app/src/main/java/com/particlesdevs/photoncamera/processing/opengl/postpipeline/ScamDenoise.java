@@ -122,10 +122,11 @@ public final class ScamDenoise extends Node {
         p50 = Math.max(p50, 1.0e-5f); p90 = Math.max(p90, 1.0e-5f);
         float gain50 = mid / p50, gain90 = high / p90;
         float sceneGain = (float) Math.sqrt(Math.max(1f, gain50) * Math.max(1f, gain90));
-        boolean limited = scamSoc && PreferenceKeys.profileNumber("pref_scamold_ae_limit_mode", 1f, 0f, 1f) > 0f;
-        float brightMid = PreferenceKeys.profileNumber("pref_scamold_ae_bright_mid", 0.25f, 0f, 1f);
+        // P128: the former SCAM AE limit / bright-mid / high-limit settings had no row and no scam_dev line: their defaults
+        boolean limited = scamSoc;
+        final float brightMid = 0.25f;
         if (limited) {
-            float limit = PreferenceKeys.profileNumber("pref_scamold_ae_high_limit", 0.40f, 0.05f, 1f);
+            final float limit = 0.40f;
             float highGain = Math.max(1f, limit / p90);
             sceneGain = Math.min(Math.max(1f, gain50), highGain);
             if (brightMid > 0f && p50 >= mid) sceneGain = Math.max(sceneGain, Math.min(highGain, Math.max(1f, Math.min(2.2f, brightMid / p50))));

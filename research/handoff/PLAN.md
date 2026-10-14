@@ -3182,6 +3182,18 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - OPEN, after P127 (then P129). Every preference screen and key: duplicates merged (one key, one place), settings whose value no code reads
   fixed or removed, unneeded ones removed (with SettingsMigration cleanup of the stale keys); check_settings_model.py and
   SettingsAuditFixTest stay green.
+- Done locally (2026-10-15; part 1 with P135, the rest after P129 step 3a), from the inventory (350 rows, no key without a
+  reader): duplicates of SCAM HDR gone with it; the highlight frames and the shadow frames each in one category of one page
+  («Кадры светов и теней», the old «… в склейке» page dissolved, LUT σ with the shadow frames); the two highlight-denoise rows
+  and the two dark-colour rows side by side on the noise page; every diagnostics row in «Система › Диагностика»; «Замер для
+  тона» / «Замер камеры» in the shade (two «Замер» before); local contrast of the sharpening vs the tone's layer filter told
+  apart; the noise source says what it does («Из профиля модели шума (при «Авто» — от камеры)», it silently fell back);
+  «Кадров в склейке» says the ZSL buffer bounds it; the denoise tables' t-row titles, the chroma points (Low / Med / High),
+  «Revert», «GID14» translated / renamed; the SCAM AE limit / bright-mid / high-limit reads with no row and no scam_dev line
+  are constants (ScamDenoise.displayGain). Test SettingsMenuTest.oneTopicInOnePlaceAndNoLiteralTitles (also: no literal
+  title left in preferences.xml but «SHDR»).
+- Not done: the hidden scam_dev keys missing from DevKeys and the DevKeys group still titled «vivo X500 Pro Max: DCG»
+  (DevKeys.java has ChatGPT's uncommitted work); the saturation rows (#12) go with P134 «Цвет».
 
 ### P129 - one merge only: SCAM HDR removed, the Hybrid becomes SHDR, own names for the code names (owner, 2026-10-15: «SCAM HDR можешь вырезать из приложения, оставляем нейроремозаик. Все настройки что связаны с scamhdr, если они не связаны с гибридом вырезаем. У нас должен остаться только гибрид как единственный тип склейки. Его же мы переименовываем в SHDR. Так же убери из приложения упоминание LMC/AGC. Все кодовые названия по типу Bento, Shasta, mochi, Sabre и другие переделываем в наши собственные названия. Все названия придумай сам, главное чтобы звучало логично и нормально.»)
 - OPEN, after P128. Remove the SCAM HDR merge route (NPU 4N + L/S/ES graph, its settings and UI) but keep the neural remosaic

@@ -257,13 +257,13 @@ public class ShadeCatalogTest {
     @Test
     @Config(qualifiers = "ru-w400dp-h880dp-mdpi")
     public void searchFindsTitlesSectionsAndTheOtherLanguage() {
-        searchFindsTitlesSectionsAndTheOtherLanguage("Кадры и захват");
+        searchFindsTitlesSectionsAndTheOtherLanguage("Кадры светов и теней");
     }
 
     /** The same on an English system: the Russian synonyms still find the rows, the crumb is English. */
     @Test
     public void searchFindsTitlesSectionsAndTheOtherLanguageInEnglish() {
-        searchFindsTitlesSectionsAndTheOtherLanguage("Frames and capture");
+        searchFindsTitlesSectionsAndTheOtherLanguage("Highlight and shadow frames");
     }
 
     /** The process-wide catalog follows a language change (the activity is recreated, the process is not). */
@@ -272,12 +272,12 @@ public class ShadeCatalogTest {
         ShadeCatalog.reset();
         try {
             ShadeCatalog english = ShadeCatalog.get(context);
-            assertTrue(english.entry("pref_scam_hybrid_bento").crumb().startsWith("Frames and capture"));
+            assertTrue(english.entry("pref_scam_hybrid_bento").crumb().startsWith("Highlight and shadow frames"));
             assertSame(english, ShadeCatalog.get(context));
             org.robolectric.RuntimeEnvironment.setQualifiers("+ru");
             ShadeCatalog russian = ShadeCatalog.get(context);
             assertNotSame(english, russian);
-            assertTrue(russian.entry("pref_scam_hybrid_bento").crumb(), russian.entry("pref_scam_hybrid_bento").crumb().startsWith("Кадры и захват"));
+            assertTrue(russian.entry("pref_scam_hybrid_bento").crumb(), russian.entry("pref_scam_hybrid_bento").crumb().startsWith("Кадры светов и теней"));
         } finally {
             ShadeCatalog.reset();
         }
@@ -296,7 +296,7 @@ public class ShadeCatalogTest {
         for (ShadeCatalog.Entry e : catalog.search("grid")) grid.add(e.key);
         assertTrue(grid.contains("pref_show_grid_key"));
         assertEquals(catalog.all().size(), catalog.search("  ").size());
-        // Sections come from the tree: the hybrid's Bento rows are under «Hybrid › Кадры и захват».
+        // Sections come from the tree: the highlight-frame rows are under «SHDR › Кадры светов и теней» (P128).
         ShadeCatalog.Entry bento = catalog.entry("pref_scam_hybrid_bento");
         assertEquals("SHDR", bento.section(context));
         assertTrue(bento.crumb(), bento.crumb().startsWith(captureSection));

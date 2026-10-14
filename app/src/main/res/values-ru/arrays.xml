@@ -121,8 +121,8 @@
         <item>Авто (ночью)</item>
     </string-array>
     <string-array name="scam_hybrid_noise_source_entries">
-        <item>Camera2 SENSOR_NOISE_PROFILE каждого кадра</item>
-        <item>Из настроек «Модель шума сенсора»</item>
+        <item>От камеры (каждый кадр)</item>
+        <item>Из профиля модели шума (при «Авто» — от камеры)</item>
     </string-array>
     <string-array name="scam_cre_entries">
         <item>Авто (системная, иначе встроенная)</item>

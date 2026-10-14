@@ -14,7 +14,7 @@
     <string name="shade_title_flash">Flash</string>
     <string name="shade_title_timer">Timer</string>
     <string name="shade_title_format">File format</string>
-    <string name="shade_title_metering_std">Camera2 metering</string>
+    <string name="shade_title_metering_std">Camera metering</string>
     <string-array name="shade_l_flash">
         <item>Torch</item>
         <item>Off</item>
@@ -35,8 +35,8 @@
     <string name="shade_t_flash">Flash</string>
     <string name="shade_t_timer">Timer</string>
     <string name="shade_t_format">Format</string>
-    <string name="shade_t_metering_std">Camera2 metering</string>
-    <string name="shade_t_metering">Metering</string>
+    <string name="shade_t_metering_std">Camera metering</string>
+    <string name="shade_t_metering">Tone metering</string>
     <string name="shade_t_output">Resolution</string>
     <string name="shade_t_downsampler">Downsampler</string>
     <string name="shade_t_ultrahdr">Ultra HDR</string>

@@ -688,6 +688,37 @@ public class SettingsMenuTest {
         }
     }
 
+    /**
+     * P128 (settings audit): one topic in one place - the highlight / shadow frames each in their category of one page, the
+     * highlight denoise rows and the dark-colour rows side by side on the noise page, every diagnostics row in «Система ›
+     * Диагностика»; and no row title written straight into the XML (each is a translated string).
+     */
+    @Test public void oneTopicInOnePlaceAndNoLiteralTitles() throws Exception {
+        PreferenceScreen screen=inflate();
+        for(String k:new String[]{"pref_scam_hybrid_bento","pref_scam_hybrid_bento_weight","pref_scam_hybrid_bento_sigma",
+                "pref_scam_hybrid_bento_chroma_sigma","pref_scam_hybrid_bento_scam"})
+            assertEquals(k,"scam_hybrid_capture_category",screen.findPreference(k).getParent().getKey());
+        for(String k:new String[]{"pref_scam_hybrid_shasta","pref_scam_hybrid_shasta_sharpness","pref_scam_hybrid_shasta_max_ratio",
+                "pref_scam_hybrid_lut_sigma"})
+            assertEquals(k,"scam_hybrid_shasta_category",screen.findPreference(k).getParent().getKey());
+        assertNull(screen.findPreference("scam_hybrid_frames_screen"));assertNull(screen.findPreference("scam_hybrid_diag_category"));
+        PreferenceGroup noise=screen.findPreference("scam_hybrid_photo_screen");
+        java.util.List<String> order=new java.util.ArrayList<>();
+        for(int i=0;i<noise.getPreferenceCount();i++)order.add(noise.getPreference(i).getKey());
+        int hl=order.indexOf("pref_scam_hybrid_bento_denoise_max"),dark=order.indexOf("pref_scam_hybrid_dn_dark_fade");
+        assertTrue(order.toString(),hl>0&&dark>0);
+        assertEquals("pref_scam_hybrid_ark_bracket_denoise",order.get(hl+1));
+        assertEquals("pref_scam_hybrid_ark_chroma_denoise",order.get(dark+1));
+        for(String k:new String[]{"pref_scam_hybrid_diagnostics","pref_scam_hybrid_profile","pref_scam_hybrid_dev_note",
+                "shdr_capture_report","scamera_full_debug"})
+            assertEquals(k,"scam_diagnostics_screen",screen.findPreference(k).getParent().getKey());
+        String xml;
+        try(java.io.InputStream in=new java.io.FileInputStream("src/main/res/xml/preferences.xml")){xml=new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);}
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("android:title=\"([^\"@][^\"]*)\"").matcher(xml);
+        java.util.List<String> literal=new java.util.ArrayList<>();while(m.find())if(!m.group(1).equals("SHDR"))literal.add(m.group(1));
+        assertTrue(literal.toString(),literal.isEmpty());
+    }
+
     /** P129: the merge is SHDR; the borrowed code names (LMC, AGC, Sabre, Bento, Shasta, Mochi, GCam, SCAM HDR) are ours now. */
     private static boolean oldName(String s){
         for(String old:new String[]{"LMC","NICE","Nice","Hybrid","Bento","Shasta","Sabre","Mochi","GCam","AGC","SCAM HDR","ArkCore","Sabre 6.1","round 4","раунда 4"})

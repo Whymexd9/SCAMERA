@@ -14,7 +14,7 @@
     <string name="shade_title_flash">Вспышка</string>
     <string name="shade_title_timer">Таймер</string>
     <string name="shade_title_format">Формат файла</string>
-    <string name="shade_title_metering_std">Замер Camera2</string>
+    <string name="shade_title_metering_std">Замер камеры</string>
     <string-array name="shade_l_flash">
         <item>Фонарик</item>
         <item>Выключена</item>
@@ -35,8 +35,8 @@
     <string name="shade_t_flash">Вспышка</string>
     <string name="shade_t_timer">Таймер</string>
     <string name="shade_t_format">Формат</string>
-    <string name="shade_t_metering_std">Замер Camera2</string>
-    <string name="shade_t_metering">Замер</string>
+    <string name="shade_t_metering_std">Замер камеры</string>
+    <string name="shade_t_metering">Замер для тона</string>
     <string name="shade_t_output">Разрешение</string>
     <string name="shade_t_downsampler">Даунсемплер</string>
     <string name="shade_t_ultrahdr">Ultra HDR</string>
