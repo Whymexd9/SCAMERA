@@ -81,18 +81,12 @@ public final class ShadeCatalog {
     public static final List<String> VIRTUAL = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, METERING_STD));
 
     /** First value of ui_shade_tiles (owner's answer 10: after the user's old pins); see {@link #defaultTiles()}. */
-    public static final List<String> DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, ROUTE,
+    public static final List<String> DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT,
             OUTPUT, "pref_show_grid_key", "pref_ultrahdr_key", "pref_scam_hybrid_bento"));
 
-    /**
-     * The default tiles of this phone: {@link #DEFAULT_TILES}, without the route tile where SCAM HDR cannot run (no Snapdragon
-     * 8 Elite: the route is always Hybrid, the tile would only ever be dimmed).
-     */
+    /** The default tiles of this phone (P129: SHDR is the only merge, no route tile). */
     public static List<String> defaultTiles() {
-        if (PreferenceKeys.isScamHdrSupported()) return DEFAULT_TILES;
-        List<String> tiles = new ArrayList<>(DEFAULT_TILES);
-        tiles.remove(ROUTE);
-        return Collections.unmodifiableList(tiles);
+        return DEFAULT_TILES;
     }
 
     /** A curated group of the FULL level. */
@@ -111,14 +105,12 @@ public final class ShadeCatalog {
      * «тон ARK» and Exposure Fusion are gone, Luma / Chroma are the gcam engine's multipliers, «удлинение L» a 0-2 slider).
      */
     public static final List<Group> GROUPS = Collections.unmodifiableList(Arrays.asList(
-            new Group(R.string.shade_group_shoot, FLASH, TIMER, "pref_scam_hybrid_ark_metering", ROUTE),
+            new Group(R.string.shade_group_shoot, FLASH, TIMER, "pref_scam_hybrid_ark_metering"),
             new Group(R.string.shade_group_format, FORMAT, OUTPUT, DOWNSAMPLER, "pref_ultrahdr_key", "pref_wide169_key",
                     "pref_show_watermark_key"),
             new Group(R.string.shade_group_hybrid, "pref_scam_hybrid_bento", "pref_scam_hybrid_bento_frames",
                     "pref_scam_hybrid_shasta", "pref_scam_hybrid_zsl_frames", "pref_scam_hybrid_dn_luma_mult",
                     "pref_scam_hybrid_dn_chroma_mult", "pref_scam_hybrid_cdm"),
-            new Group(R.string.shade_group_scamhdr, "pref_scamhdr_zsl_frames", "pref_scamhdr_long_boost_ev",
-                    "pref_scamhdr_mosaic"),
             new Group(R.string.shade_group_view, "pref_show_grid_key", "pref_peak_method_key", "pref_live_viewfinder_raw_key",
                     "pref_show_afdata_key", "pref_face_detect_mode", "pref_tracking_af_mode")));
 
@@ -128,7 +120,6 @@ public final class ShadeCatalog {
     /** Free-text rows that hold one number: a slider with the bounds of SettingsNumericRules and this step. */
     private static final Map<String, Float> NUMERIC_TEXT = new HashMap<>();
     static {
-        NUMERIC_TEXT.put("pref_scamhdr_long_boost_ev", 0.1f);
     }
     /** Never pinnable: belongs to one phone only, is part of the FORMAT choice (the codec), or is set once for the place (the lamp flicker). */
     private static final Set<String> NOT_PINNABLE = new HashSet<>(Arrays.asList(
@@ -163,7 +154,6 @@ public final class ShadeCatalog {
         spec(FORMAT, R.string.shade_t_format, 0, R.drawable.ic_shade_jpeg); // value icons: FormatChoice
         spec(METERING_STD, R.string.shade_t_metering_std, R.array.shade_s_metering_std, R.drawable.ic_sheet_metering);
         spec("pref_scam_hybrid_ark_metering", R.string.shade_t_metering, R.array.shade_s_ark_metering, R.drawable.ic_shade_meter);
-        spec(ROUTE, R.string.shade_t_route, R.array.shade_s_route, R.drawable.settings_ic_layers);
         spec(OUTPUT, R.string.shade_t_output, R.array.shade_s_output, R.drawable.settings_ic_zoom);
         spec(DOWNSAMPLER, R.string.shade_t_downsampler, R.array.shade_s_downsampler, R.drawable.ic_sheet_downsampler);
         spec("pref_ultrahdr_key", R.string.shade_t_ultrahdr, 0, R.drawable.settings_ic_hdr);
@@ -176,9 +166,6 @@ public final class ShadeCatalog {
         spec("pref_scam_hybrid_dn_luma_mult", R.string.shade_t_luma, 0, R.drawable.settings_ic_noise);
         spec("pref_scam_hybrid_dn_chroma_mult", R.string.shade_t_chroma, 0, R.drawable.settings_ic_palette);
         spec("pref_scam_hybrid_cdm", R.string.shade_t_rejection, 0, R.drawable.settings_ic_eye);
-        spec("pref_scamhdr_zsl_frames", R.string.shade_t_scam_frames, 0, R.drawable.settings_ic_frames);
-        spec("pref_scamhdr_long_boost_ev", R.string.shade_t_long_boost, 0, R.drawable.settings_ic_sun);
-        spec("pref_scamhdr_mosaic", R.string.shade_t_mosaic, R.array.shade_s_mosaic, R.drawable.settings_ic_mosaic);
         spec("pref_show_grid_key", R.string.shade_t_grid, R.array.shade_s_grid, R.drawable.settings_ic_grid,
                 R.drawable.ic_sheet_grid_off, R.drawable.ic_grid_3x3, R.drawable.ic_grid_4x4, R.drawable.ic_grid_golden,
                 R.drawable.ic_grid_diagonal);
@@ -431,10 +418,12 @@ public final class ShadeCatalog {
         walk(tree, new ArrayList<>(), null, true);
     }
 
-    /** The visibility rules of SettingsActivity: SCAM HDR only on the 8 Elite, the Xiaomi 17 Ultra zoom row only there. */
+    /** The visibility rules of SettingsActivity: the neural remosaic only on the 8 Elite, the Xiaomi 17 Ultra zoom row only there. */
     private static void applyRuntimeRules(PreferenceScreen tree) {
-        Preference scamHdr = tree.findPreference("scam_hdr_screen");
-        if (scamHdr != null && !PreferenceKeys.isScamHdrSupported()) scamHdr.setVisible(false);
+        for (String key : new String[]{"shdr_neural_remosaic_screen", "scam_neural_probe"}) {
+            Preference npu = tree.findPreference(key);
+            if (npu != null && !PreferenceKeys.isScamNetSoc()) npu.setVisible(false);
+        }
         Preference xiaomiZoom = tree.findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
         if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
     }
@@ -580,7 +569,6 @@ public final class ShadeCatalog {
             }
         }
         switch (e.key) {
-            case ROUTE: return PreferenceKeys.mergeRoute();
             case OUTPUT: return PreferenceKeys.hybridOutputMode();
             case DOWNSAMPLER: return PreferenceKeys.hybridDownsampler();
             default: break;
@@ -739,22 +727,15 @@ public final class ShadeCatalog {
 
     /**
      * Why the setting does nothing now (the tile is dimmed and a tap shows this), or null when it is available: no flash
-     * on this lens, the hybrid-only route lock (no 8 Elite), a scam_dev.txt override, the other route (SettingsAvailability with the
-     * effective route), a switch it depends on.
+     * on this lens, a scam_dev.txt override, SettingsAvailability, a switch it depends on.
      */
     @Nullable
     public String unavailable(Entry e) {
         if (FLASH.equals(e.key)) return flashAvailable ? null : res.getString(R.string.shade_reason_no_flash);
-        if (ROUTE.equals(e.key)) {
-            if (!PreferenceKeys.isScamHdrSupported()) return res.getString(R.string.shade_reason_scamhdr_soc);
-            if (PreferenceKeys.scamDevOverrides("hybrid")) return res.getString(R.string.shade_reason_scam_dev);
-            return null;
-        }
         if (e.key.startsWith(ScamHybridKeys.PREFIX)
                 && PreferenceKeys.scamDevOverrides("hybrid_" + e.key.substring(ScamHybridKeys.PREFIX.length())))
             return res.getString(R.string.shade_reason_scam_dev);
         Map<String, Object> values = new HashMap<>(prefs.getAll());
-        values.put(ROUTE, PreferenceKeys.mergeRoute());
         String reason = DeviceAvailability.of(values).reason(e.key);
         if (reason != null) return reason;
         if (e.dependency != null) {

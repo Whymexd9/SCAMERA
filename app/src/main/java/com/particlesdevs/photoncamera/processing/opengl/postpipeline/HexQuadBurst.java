@@ -41,7 +41,7 @@ public final class HexQuadBurst {
             if(frames.size()<4 || frames.size()>50 || width<544 || height<544 || width%8!=0 || height%8!=0 || (long)width*height>16000000)
                 throw new IOException(Lang.t("Нужны 4–50 RAW Quad 2×2, до 16 МП. Используйте режим Фото и 2× ISZ","Needs 4–50 Quad 2×2 RAWs, up to 16 MP. Use the Photo mode and 2× ISZ"));
         } else {
-        if(PreferenceKeys.getRemosaicBlockSize()!=4 || Math.floorMod(phase[0],8)!=0 || Math.floorMod(phase[1],8)!=0)
+        if(Math.floorMod(phase[0],8)!=0 || Math.floorMod(phase[1],8)!=0)
             throw new IOException(Lang.t("Нужны Tetra 4×4 и фаза 0,0","Needs Tetra 4×4 and phase 0,0"));
         if(frames.size()<6 || frames.size()>50 || width<288 || height<288 || width%8!=0 || height%8!=0 || (long)width*height>16000000)
             throw new IOException(Lang.t("Нужны 6–50 RAW Tetra, до 16 МП. Используйте режим Фото и 4× ISZ телевика","Needs 6–50 Tetra RAWs, up to 16 MP. Use the Photo mode and the telephoto 4× ISZ"));

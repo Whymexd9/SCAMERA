@@ -211,8 +211,8 @@ public class PhotoFormatSettingsTest {
         for (ShadeCatalog.Group g : ShadeCatalog.GROUPS) if (g.keys.contains(ShadeCatalog.FORMAT)) group.addAll(g.keys);
         assertFalse(group.contains(ShadeCatalog.PHOTO_FORMAT));
         // other entries keep their own labels
-        ShadeCatalog.Entry route = catalog.entry(ShadeCatalog.ROUTE);
-        assertSame(route.labels, ShadeCatalog.labels(route));
+        ShadeCatalog.Entry output = catalog.entry("pref_scam_hybrid_output");
+        assertSame(output.labels, ShadeCatalog.labels(output));
     }
 
     @Test

@@ -5,7 +5,7 @@
     <string name="prefs_prefscreen_title">Настройки камеры</string>
     <string name="prefs_merge_route_title">Склейка</string>
     <string name="prefs_merge_route_summary">Чем собирается снимок: Hybrid — склейка многих RAW-кадров, SCAM HDR — нейросеть HDR.</string>
-    <string name="prefs_scam_hybrid_screen_summary">Разрешение, кадры, движение, склейка, шумодав и обработка ArkCore</string>
+    <string name="prefs_scam_hybrid_screen_summary">Шумодав, резкость, тон и склейка кадров</string>
     <string name="prefs_scam_hybrid_output_title">Разрешение</string>
     <string name="prefs_scam_hybrid_output_summary">%s. Размер фото. Режимы 2× склеивают на вдвое более плотной сетке: больше деталей, но вчетверо дольше.</string>
     <string name="prefs_scam_hybrid_downsampler_title">Даунсемплер</string>
@@ -326,7 +326,7 @@
     <string name="prefs_scam_hybrid_ark_sharp_protect_highlights_summary">Ослабляет резкость в светлых местах. Больше — света мягче, без ореолов; меньше — резче.</string>
     <string name="prefs_scam_hybrid_ark_sharp_halo_control_title">Контроль ореолов</string>
     <string name="prefs_scam_hybrid_ark_sharp_halo_control_summary">Ограничивает ореолы на резких краях. Больше — ореолов меньше, меньше — края резче, но с ореолами.</string>
-    <string name="prefs_scam_hybrid_ark_tone_screen_title">Тонмап ArkCore</string>
+    <string name="prefs_scam_hybrid_ark_tone_screen_title">Тон ARK</string>
     <string name="prefs_scam_hybrid_ark_tone_screen_summary">Экспозиция, Smart HDR, веса слоёв и кривые тона ArkCore.</string>
     <string name="prefs_scam_hybrid_ark_ae_category_title">Автоэкспозиция и замер</string>
     <string name="prefs_scam_hybrid_ark_metering_title">Режим экспозамера AE</string>
@@ -586,7 +586,7 @@
     <string name="prefs_photo_processing_screen_summary">Цветовые матрицы DCP модулей</string>
     <string name="prefs_dcp_profile_title">Матрицы DCP</string>
     <string name="prefs_dcp_profile_summary">Цветовая матрица модуля: камерная или импортированный DCP. Меняет передачу цветов.</string>
-    <string name="prefs_capture_settings_screen_title">Захват и RAW</string>
+    <string name="prefs_capture_settings_screen_title">RAW и сенсор (для опытных)</string>
     <string name="prefs_capture_settings_screen_summary">Буфер ZSL, мерцание ламп, DNG, уровни RAW, модель шума</string>
     <string name="prefs_dng_lossless_title">Сжатие DNG без потерь</string>
     <string name="prefs_dng_lossless_summary">DNG сжимается без потерь: файл на 40 процентов меньше, сохранение чуть дольше. Не все программы читают.</string>
@@ -603,7 +603,7 @@
     <string name="prefs_noise_model_screen_summary">Профиль шума сенсора, импорт и экспорт</string>
     <string name="prefs_noise_model_note_summary">Выбранный профиль заменяет шум камеры в шумодаве Hybrid, в DNG и в склейках с источником «Из настроек».</string>
     <string name="prefs_theme_gallery_title">Тема галереи</string>
-    <string name="prefs_viewfinder_settings_screen_title">Видоискатель и интерфейс</string>
+    <string name="prefs_viewfinder_settings_screen_title">Видоискатель</string>
     <string name="prefs_viewfinder_settings_screen_summary">Звуки, сетка, фокус, лица, HUD, горизонт и тема</string>
     <string name="prefs_camera_sounds_title">Звук затвора</string>
     <string name="prefs_camera_sounds_summary">Щелчок при съёмке. Только в обычном режиме звонка; где закон требует звук, он есть всегда.</string>
@@ -611,7 +611,7 @@
     <string name="prefs_timer_sound_summary">Звуковой отсчёт автоспуска. Только в обычном режиме звонка.</string>
     <string name="prefs_theme_accent_title">Цветовой акцент</string>
     <string name="prefs_theme_accent_summary">Цвет выделения, переключателей и кнопок камеры.</string>
-    <string name="prefs_output_settings_screen_title">Конфиг</string>
+    <string name="prefs_output_settings_screen_title">Фото</string>
     <string name="prefs_output_settings_screen_summary">Формат и качество фото, цвет, Ultra HDR, 16:9, имя файла, водяной знак, бэкап настроек</string>
     <string name="prefs_jpeg_quality_title">Качество JPEG</string>
     <string name="prefs_jpeg_quality_summary">Сжатие JPEG. Больше — файл крупнее и детальнее; меньше — файл меньше, мелочи теряются.</string>
@@ -713,4 +713,14 @@
     <string name="prefs_desc_pref_scam_hybrid_dn_chroma_t4_strength">Полумрак: сила шумодава цвета, 5 чисел от мелких пятен к крупным. Больше — чище цвет, меньше — точнее.</string>
     <string name="prefs_desc_hexquad_model">Какая нейросеть собирает кадр Tetra. x2 — основная, x1 — эксперимент, возможны ошибки цвета.</string>
     <string name="prefs_desc_pref_remosaic_phase_y_key">Сдвиг сетки блоков по вертикали. Неверное значение даёт цветную сетку; нейросети нужен 0.</string>
+    <string name="prefs_shooting_settings_screen_title">Съёмка</string>
+    <string name="prefs_shooting_settings_screen_summary">Кадры, мерцание ламп, звуки, режим «Движение»</string>
+    <string name="prefs_interface_settings_screen_title">Интерфейс</string>
+    <string name="prefs_interface_settings_screen_summary">Тема, цветовой акцент, значок галереи</string>
+    <string name="prefs_backup_settings_screen_title">Резервная копия</string>
+    <string name="prefs_backup_settings_screen_summary">Сохранить, восстановить или сбросить настройки</string>
+    <string name="prefs_shdr_neural_remosaic_screen_title">Нейроремозаик</string>
+    <string name="prefs_shdr_neural_remosaic_screen_summary">Модули ISZ на Snapdragon 8 Elite: кадры N склеивает нейросеть на NPU</string>
+    <string name="prefs_scam_hybrid_neural_remosaic_title">Нейроремозаик (NPU)</string>
+    <string name="prefs_scam_hybrid_neural_remosaic_summary">Модули ISZ с мозаикой Quad / Tetra: кадры N сначала склеивает нейросеть vivo на NPU, затем SHDR. При ошибке — обычная склейка мозаики.</string>
 </resources>

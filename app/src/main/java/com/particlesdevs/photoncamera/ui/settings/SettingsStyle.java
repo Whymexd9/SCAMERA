@@ -41,7 +41,6 @@ import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.BackupPreferences;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.ResetPreferences;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.RestorePreference;
-import com.particlesdevs.photoncamera.ui.settings.custompreferences.RouteSelectorPreference;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyPreference;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableSeekBarPreference;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference;
@@ -70,7 +69,7 @@ public final class SettingsStyle {
     /** «Конфиг»: Сохранить / Восстановить / Сбросить всё share one row of three tiles. */
     static final Set<String> TILES = new HashSet<>(Arrays.asList("pref_backup_preferences_key", "pref_restore_preferences_key", "pref_reset_preferences_key"));
     /** Plain preferences that open a page (handled in SettingsFragment.onPreferenceTreeClick): a chevron, not an action. */
-    static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key", "scam_hdr_ark_link"));
+    static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key"));
 
     public static int dp(Context c, float v) { return UiTokens.dp(c, v); }
 
@@ -172,7 +171,6 @@ public final class SettingsStyle {
                 continue;
             }
             p.setSingleLineTitle(false);
-            if (p instanceof RouteSelectorPreference) continue;
             if (p.getKey() != null && TILES.contains(p.getKey())) {
                 p.setLayoutResource(R.layout.preference_tile);
                 continue;
@@ -230,7 +228,6 @@ public final class SettingsStyle {
         int accent = accent(c);
         float alpha = p.isEnabled() ? 1f : DIMMED;
         String key = p.getKey();
-        if (key != null && !inRoute(key)) alpha = DIMMED; // the root row of the route that is not selected still opens
         row.setAlpha(alpha);
         if (p instanceof PreferenceCategory) {
             TextView title = (TextView) holder.findViewById(android.R.id.title);
@@ -278,17 +275,8 @@ public final class SettingsStyle {
         }
     }
 
-    /** False for the root row of the merge route that is not selected. */
-    static boolean inRoute(String key) {
-        String route;
-        try { route = PreferenceKeys.mergeRoute(); } catch (RuntimeException e) { return true; }
-        if ("scam_hybrid_screen".equals(key)) return "hybrid".equals(route);
-        if ("scam_hdr_screen".equals(key)) return !"hybrid".equals(route);
-        return true;
-    }
-
     static CharSequence valueOf(Preference p) {
-        if (p instanceof RestorePreference || p instanceof RouteSelectorPreference) return null;
+        if (p instanceof RestorePreference) return null;
         if (p instanceof ListPreference) return ((ListPreference) p).getEntry();
         if (p instanceof EditTextPreference && !(p instanceof BackupPreferences)) {
             String t = ((EditTextPreference) p).getText();

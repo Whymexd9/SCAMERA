@@ -102,7 +102,7 @@ public class ViewfinderUiTest {
         ImageButton route=top.findViewById(R.id.route_badge),format=top.findViewById(R.id.format_badge);
         assertEquals(44,badges.getHeight());assertEquals(40,route.getWidth());assertEquals(40,format.getWidth());
         assertEquals(1,top.findViewById(R.id.topbar_divider).getWidth());
-        assertTrue(route.getContentDescription().toString().endsWith("Hybrid"));assertTrue(format.getContentDescription().toString().endsWith("JPEG"));
+        assertTrue(route.getContentDescription().toString().endsWith("SHDR"));assertTrue(format.getContentDescription().toString().endsWith("JPEG"));
         assertEquals(route.getContentDescription(),route.getTooltipText());assertEquals(format.getContentDescription(),format.getTooltipText());
         assertNotNull(route.getDrawable());assertNotNull(format.getDrawable());
         for(ImageButton b:new ImageButton[]{route,format}){assertEquals(24,b.getDrawable().getIntrinsicWidth());assertEquals(24,b.getWidth()-b.getPaddingLeft()-b.getPaddingRight());}

@@ -109,11 +109,11 @@ public class SettingsAuditFixTest {
         assertEquals(android.graphics.ImageFormat.JPEG,com.particlesdevs.photoncamera.capture.CaptureController.mPreviewTargetFormat);
     }
 
-    /** The probe of the old vivo system remosaic path (removed in P4) is gone; the SCAM HDR and neural checks stay. */
+    /** The probe of the old vivo system remosaic path (removed in P4) and the SCAM HDR check (P129) are gone; the neural check stays. */
     @Test public void scamRemosaicProbeIsGone() {
         PreferenceScreen screen=inflate();
         assertNull(screen.findPreference("remosaic_scam_probe"));
-        assertNotNull(screen.findPreference("scam_probe"));assertNotNull(screen.findPreference("scam_neural_probe"));
+        assertNull(screen.findPreference("scam_probe"));assertNotNull(screen.findPreference("scam_neural_probe"));
     }
 
     /**
@@ -172,13 +172,14 @@ public class SettingsAuditFixTest {
                 "pref_binder_spoof_package_key","pref_face_detect_mode","pref_tracking_af_mode","pref_hide_gallery_icon_key",
                 "pref_theme_key","pref_antibanding_hz_key"};
         for(String key:global){assertTrue(key,ModuleProfiles.isGlobal(key));assertFalse(key,ModuleProfiles.isLocal(key));}
-        for(String key:new String[]{"pref_scam_hybrid_cdm","pref_scamhdr_luma","pref_scam_hybrid_ark_sharp_gain","pref_cfa_key","pref_dng_lossless",
+        for(String key:new String[]{"pref_scam_hybrid_cdm","pref_scam_hybrid_ark_sharp_gain","pref_cfa_key","pref_dng_lossless",
                 "pref_dcp_profile_key","pref_raw_stream_format","hexquad_luma"})
             assertTrue(key,ModuleProfiles.isLocal(key));
-        // Every listed key is a real row (the RAW save mode is the virtual «Формат» of the top bar and the shade).
+        // Every listed key is a real row (the RAW save mode is the virtual «Формат» of the top bar and the shade; the route is the
+        // migrations' marker since P129: SHDR is the only merge, the row is gone).
         PreferenceScreen screen=inflate();
         for(String key:ModuleProfiles.GLOBAL_KEYS)
-            if(!key.equals(ShadeCatalog.FORMAT))assertNotNull(key,screen.findPreference(key));
+            if(!key.equals(ShadeCatalog.FORMAT)&&!key.equals(PreferenceKeys.ROUTE_KEY))assertNotNull(key,screen.findPreference(key));
         // Old per-module copies leave the module profiles and the baseline; the main settings keep their value.
         SharedPreferences[] module=profiles();
         prefs.edit().putString(PreferenceKeys.ROUTE_KEY,"scamhdr").putBoolean("pref_camera_sounds_key",false).commit();
@@ -222,49 +223,43 @@ public class SettingsAuditFixTest {
             assertNotNull("the app, version and device rows stay on «Система»: "+key,system.findPreference(key));
     }
 
-    /** Owner: SCAM HDR saves no processing stages and plans with SCAMERA by default; stored former defaults move once. */
-    @Test public void scamHdrDefaultsAreDiagnosticsOffAndTheScameraPlanner() {
-        Map<String,String> xml=XmlDefaults.read(context);
-        assertEquals("0",xml.get("pref_scamhdr_diagnostics"));assertEquals("scamera",xml.get("pref_scamhdr_planner"));
-        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"scamhdr").commit();
-        assertFalse(PreferenceKeys.isScamDiagnosticsEnabled());
-        prefs.edit().putBoolean("pref_root_enabled",true).commit();
-        assertFalse("no stock planner without the stored choice",PreferenceKeys.useStockBracketPlanner());
-        SharedPreferences[] module=profiles();
-        prefs.edit().putBoolean("pref_scamhdr_diagnostics",true).putString("pref_scamhdr_planner","stock").commit();
-        module[0].edit().clear().putString("pref_scamhdr_diagnostics","1").putString("pref_scamhdr_planner","stock").commit();
-        module[1].edit().clear().putInt(SettingsMigration.SCAM_DEFAULTS_REV,1).putBoolean("pref_scamhdr_diagnostics",true).commit();
-        SettingsMigration.migrateScamHybrid(context,prefs);
-        assertFalse(prefs.getBoolean("pref_scamhdr_diagnostics",true));assertEquals("scamera",prefs.getString("pref_scamhdr_planner",""));
-        assertFalse(module[0].getBoolean("pref_scamhdr_diagnostics",true));assertEquals("scamera",module[0].getString("pref_scamhdr_planner",""));
-        assertTrue("a profile that already moved keeps a later choice",module[1].getBoolean("pref_scamhdr_diagnostics",false));
-        prefs.edit().putBoolean("pref_scamhdr_diagnostics",true).putString("pref_scamhdr_planner","stock").commit();
-        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
-        assertTrue(prefs.getBoolean("pref_scamhdr_diagnostics",false));assertEquals("stock",prefs.getString("pref_scamhdr_planner",""));
+    /** P129: SCAM HDR is gone: its settings (and the L frame / stock planner keys) are obsolete everywhere, the route row too. */
+    @Test public void scamHdrSettingsAreObsolete() {
+        for(String key:new String[]{"pref_scamhdr_diagnostics","pref_scamhdr_planner","pref_scamhdr_luma_radius","pref_scamhdr_mosaic",
+                "pref_scamold_zsl_long","pref_scamold_fast_capture"})
+            assertTrue(key,SettingsMigration.isObsolete(key));
+        assertFalse(SettingsMigration.isObsolete("pref_scam_hybrid_neural_remosaic"));
+        prefs.edit().clear().putString("pref_scamhdr_mosaic","neural").putString(PreferenceKeys.ROUTE_KEY,"scamhdr").commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertTrue("SCAM HDR's neural mosaic mode becomes SHDR's switch",prefs.getBoolean("pref_scam_hybrid_neural_remosaic",false));
+        SettingsMigration.removeObsolete(prefs);
+        assertFalse(prefs.contains("pref_scamhdr_mosaic"));
+        prefs.edit().putBoolean("pref_scam_hybrid_neural_remosaic",false).commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertFalse("once",prefs.getBoolean("pref_scam_hybrid_neural_remosaic",true));
     }
 
-    /** Without the 8 Elite there is no SCAM HDR: no route tile among the default tiles, no SCAM HDR / neural checks. */
-    @Test public void noScamHdrChecksOrRouteTileWithoutThe8Elite() {
-        assertTrue(ShadeCatalog.defaultTiles().contains(ShadeCatalog.ROUTE));
-        org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8650");
+    /** P129: no route tile; without the 8 Elite the neural remosaic page and its check are hidden, the diagnostics page stays. */
+    @Test public void noRouteTileAndNoNpuRowsWithoutThe8Elite() {
         assertFalse(ShadeCatalog.defaultTiles().contains(ShadeCatalog.ROUTE));
-        assertEquals(ShadeCatalog.DEFAULT_TILES.size()-1,ShadeCatalog.defaultTiles().size());
+        org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8650");
         assertFalse(ShadeTiles.load(prefs,key->true).contains(ShadeCatalog.ROUTE));
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();
             PreferenceFragmentCompat page=(PreferenceFragmentCompat)controller.get().getSupportFragmentManager().findFragmentById(R.id.settings_container);
-            for(String key:new String[]{"scam_probe","scam_neural_probe","scam_diagnostics_screen","scam_hdr_screen"})
+            for(String key:new String[]{"scam_neural_probe","shdr_neural_remosaic_screen"})
                 assertFalse(key,page.findPreference(key).isVisible());
+            assertTrue(page.findPreference("scam_diagnostics_screen").isVisible());
             assertTrue(page.findPreference("pref_root_enabled").isVisible());
         }
     }
 
     /** The settings screen and the shade see the same device facts (DeviceAvailability). */
     @Test public void deviceFactsReachTheAvailability() {
-        Map<String,Object> values=new HashMap<>();values.put(PreferenceKeys.ROUTE_KEY,"scamhdr");values.put("pref_root_enabled",true);
-        // Robolectric is no vivo X200 Ultra: the stock planner is explained; no OPPO / vivo matrix replaces the colour method.
-        assertNotNull(DeviceAvailability.of(values).reason("pref_scamhdr_planner"));
+        Map<String,Object> values=new HashMap<>();values.put("pref_root_enabled",true);
+        // Robolectric is no vivo / OPPO: no tuned or ISP matrix replaces the colour method, the OPPO saturation row is hidden
         assertNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
+        assertTrue(DeviceAvailability.of(values).hidden("pref_scam_hybrid_ark_ccm_sat"));
         org.robolectric.shadows.ShadowBuild.setManufacturer("vivo");
         assertNotNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
         org.robolectric.shadows.ShadowBuild.setManufacturer("OPPO");org.robolectric.shadows.ShadowBuild.setModel("PHY110");
@@ -295,16 +290,16 @@ public class SettingsAuditFixTest {
                 "pref_scam_hybrid_ark_sharp_rl1_kernel","pref_scam_hybrid_ark_sharp_rl2_kernel","pref_scam_hybrid_ark_sharp_rl3_kernel"};
         SharedPreferences[] module=profiles();
         prefs.edit().putString("pref_scam_hybrid_ark_metering","1.00").putFloat("pref_scam_hybrid_ark_agx_look",3f)
-                .putString("pref_scam_hybrid_ark_sharp_rl1_kernel","7").putString("pref_scamhdr_luma_radius","2.00")
+                .putString("pref_scam_hybrid_ark_sharp_rl1_kernel","7")
                 .putString("pref_scam_hybrid_ark_sharp_domain","x").commit();
-        module[0].edit().clear().putString("pref_scam_hybrid_ark_metering","2.0").putString("pref_scamhdr_chroma_radius","4.00").commit();
+        module[0].edit().clear().putString("pref_scam_hybrid_ark_metering","2.0").commit();
         // read as before the migration
         assertEquals(1f,PreferenceKeys.hybridValue("ark_metering",0f),0f);
         SettingsMigration.removeObsolete(context,prefs);
         assertEquals("1",prefs.getString("pref_scam_hybrid_ark_metering",""));assertEquals("3",prefs.getString("pref_scam_hybrid_ark_agx_look",""));
         assertEquals("clamped to the list","2",prefs.getString("pref_scam_hybrid_ark_sharp_rl1_kernel",""));
-        assertEquals("2",prefs.getString("pref_scamhdr_luma_radius",""));assertFalse(prefs.contains("pref_scam_hybrid_ark_sharp_domain"));
-        assertEquals("2",module[0].getString("pref_scam_hybrid_ark_metering",""));assertEquals("4",module[0].getString("pref_scamhdr_chroma_radius",""));
+        assertFalse(prefs.contains("pref_scam_hybrid_ark_sharp_domain"));
+        assertEquals("2",module[0].getString("pref_scam_hybrid_ark_metering",""));
         assertFalse("a second run changes nothing",SettingsMigration.removeObsolete(prefs));
         assertEquals(1f,PreferenceKeys.hybridValue("ark_metering",0f),0f);assertEquals(3f,PreferenceKeys.hybridValue("ark_agx_look",4f),0f);
         PreferenceScreen screen=inflate();
@@ -316,8 +311,6 @@ public class SettingsAuditFixTest {
             assertNotNull(key+" shows a named value",l.getEntry());
         }
         assertEquals("1",((ListPreference)screen.findPreference("pref_scam_hybrid_ark_metering")).getValue());
-        for(String key:new String[]{"pref_scamhdr_luma_radius","pref_scamhdr_chroma_radius"})
-            assertFalse(key,((com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference)screen.findPreference(key)).decimal());
         // P118: only the ARK sharpening stays; the RawTherapee page is gone everywhere.
         PreferenceGroup sharp=screen.findPreference("scam_hybrid_sharp_category");
         assertNotNull(sharp.findPreference("pref_scam_hybrid_ark_sharp_gain"));assertNull(screen.findPreference("sharp_settings_screen"));

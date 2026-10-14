@@ -177,7 +177,10 @@ public final class SettingsMigration {
             "pref_scam_hybrid_jsr_",
             // P118: only the ARK sharpening stays (owner, 2026-10-13): the RawTherapee sharpening page (USM, RL deconvolution,
             // microcontrast) and the SCAM HDR sharpening knobs ScamSharpen read (pref_scamhdr_sharp_*)
-            "pref_sharp_", "pref_scamhdr_sharp_"};
+            "pref_sharp_", "pref_scamhdr_sharp_",
+            // P129: SCAM HDR is gone (its settings, the L frame from the ZSL ring, the stock planner); migrateScamHybrid runs
+            // first everywhere, so the values the hybrid shared were copied before (pref_merge_route stays: its marker)
+            "pref_scamhdr_", "pref_scamold_"};
     /**
      * Removed rows of the per-module sensor settings (pref_sensorconfig_&lt;slot or camera id&gt;_&lt;field&gt;): the exposure limits
      * «Максимальное ISO», «Максимальная выдержка» and «Баланс выдержки и ISO», which no capture code read (settings audit).
@@ -608,6 +611,17 @@ public final class SettingsMigration {
             e.putInt(NIGHT_THRESH_REV, 1);
             markOnly = true;
         }
+        // P129: SCAM HDR's neural mosaic mode (with the SCAM HDR route) becomes SHDR's «Нейроремозаик (NPU)»; once
+        if (!values.containsKey(NEURAL_REMOSAIC_REV)) {
+            Object mosaic = values.get("pref_scamhdr_mosaic");
+            if (mosaic != null && mosaic.toString().startsWith("neural")
+                    && ScamHybridKeys.ROUTE_SCAM_HDR.equals(String.valueOf(values.get(ScamHybridKeys.ROUTE)))) {
+                e.putBoolean(ScamHybridKeys.PREFIX + "neural_remosaic", true);
+                changed = true;
+            }
+            e.putInt(NEURAL_REMOSAIC_REV, 1);
+            markOnly = true;
+        }
         // P135 (owner, 2026-10-15: strong grain in poor light): the stored former defaults of the night denoise tier (ArkCam's
         // SabreLow {1, 3, 0, 0, 0} with revert {9, 9, ...}) and of the revert limit (9) move to the P135 tier (GCam's stock
         // strengths, half the fine grain put back) and the limit 1; a value chosen by hand stays. Own marker.
@@ -642,6 +656,9 @@ public final class SettingsMigration {
         for (int i = 0; i < parts.length; i++) if (!isNumber(parts[i], expected[i])) return false;
         return true;
     }
+
+    /** Marker of the one-time move of SCAM HDR's neural mosaic mode to «Нейроремозаик (NPU)», P129. */
+    static final String NEURAL_REMOSAIC_REV = "pref_scam_hybrid_neural_remosaic_rev";
 
     /** Marker of the one-time move of the former night denoise defaults (ArkCam SabreLow, revert limit 9), P135. */
     static final String LOW_LIGHT_DN_REV = "pref_scam_hybrid_low_light_dn_rev";

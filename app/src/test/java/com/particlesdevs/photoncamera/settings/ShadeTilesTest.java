@@ -79,7 +79,7 @@ public class ShadeTilesTest {
     @Test
     public void orderSurvivesSaveAndLoad() {
         List<String> order = Arrays.asList("pref_scam_hybrid_cdm", ShadeCatalog.FORMAT, "pref_show_grid_key", ShadeCatalog.FLASH,
-                "pref_scamhdr_long_boost_ev", "pref_scam_hybrid_post_luma");
+                "pref_scam_hybrid_dn_luma_mult", "pref_scam_hybrid_post_luma");
         ShadeTiles.save(prefs, order);
         assertEquals(order, ShadeTiles.stored(prefs));
         assertEquals(order, load());
@@ -117,16 +117,16 @@ public class ShadeTilesTest {
     @Test
     public void oldPinsThenFavouritesThenTheDefaultsBecomeTheTiles() {
         prefs.edit().putString(SettingsMigration.LEGACY_QUICK, "GRID,HDRX,HYBRID_OUTPUT,QUAD,AE_METERING_STD")
-                .putString(SettingsMigration.LEGACY_FAVOURITES, "[\"pref_scam_hybrid_cdm\",\"pref_agx_contrast\",\"pref_show_grid_key\",\"pref_scamhdr_mosaic\"]")
+                .putString(SettingsMigration.LEGACY_FAVOURITES, "[\"pref_scam_hybrid_cdm\",\"pref_agx_contrast\",\"pref_show_grid_key\",\"pref_scamhdr_mosaic\",\"pref_scam_hybrid_shasta\"]")
                 .commit();
         assertTrue(SettingsMigration.migrateShadeTiles(prefs));
         assertFalse(prefs.contains(SettingsMigration.LEGACY_QUICK));
         assertFalse(prefs.contains(SettingsMigration.LEGACY_FAVOURITES));
         List<String> expected = new ArrayList<>(Arrays.asList("pref_show_grid_key", "pref_scam_hybrid_output",
-                ShadeCatalog.METERING_STD, "pref_scam_hybrid_cdm", "pref_scamhdr_mosaic"));
+                ShadeCatalog.METERING_STD, "pref_scam_hybrid_cdm", "pref_scam_hybrid_shasta"));
         for (String key : ShadeCatalog.DEFAULT_TILES) if (!expected.contains(key)) expected.add(key);
         assertEquals(expected, ShadeTiles.stored(prefs));
-        assertEquals(11, expected.size());
+        assertEquals(10, expected.size());
         assertEquals(expected, load());
         // Once only.
         assertFalse(SettingsMigration.migrateShadeTiles(prefs));
@@ -143,7 +143,7 @@ public class ShadeTilesTest {
 
     @Test
     public void configFileKeepsTheTileOrderOnThisAndAnotherPhone() throws Exception {
-        List<String> order = Arrays.asList("pref_scam_hybrid_post_luma", ShadeCatalog.TIMER, "pref_show_grid_key", ShadeCatalog.ROUTE);
+        List<String> order = Arrays.asList("pref_scam_hybrid_post_luma", ShadeCatalog.TIMER, "pref_show_grid_key", "pref_scam_hybrid_output");
         ShadeTiles.save(prefs, order);
         prefs.edit().commit();
         ByteArrayOutputStream out = new ByteArrayOutputStream();

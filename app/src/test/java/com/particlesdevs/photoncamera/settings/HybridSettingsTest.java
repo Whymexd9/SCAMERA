@@ -54,62 +54,53 @@ public class HybridSettingsTest {
         }
     }
 
-    @Test public void scamHdrOnlyOnTheSnapdragon8Elite() {
+    /** P129: SHDR is the only merge; a stored SCAM HDR route is ignored; the NPU (neural remosaic) is the 8 Elite's only. */
+    @Test public void shdrIsTheOnlyMergeAndTheNpuIsThe8Elites() {
         manager.set("default_scope", PreferenceKeys.ROUTE_KEY, ScamHybridKeys.ROUTE_SCAM_HDR);
         assertTrue(PreferenceKeys.isScamHdrSupported());
-        assertTrue(PreferenceKeys.isScamHdrRoute());
+        assertFalse(PreferenceKeys.isScamHdrRoute());
+        assertEquals(ScamHybridKeys.ROUTE_HYBRID, PreferenceKeys.mergeRoute());
         org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8750-AC");
         assertTrue("8 Elite variants carry a suffix", PreferenceKeys.isScamHdrSupported());
         for (String other : new String[]{"SM8650", "SM8850", "MT6991", ""}) {
             org.robolectric.shadows.ShadowBuild.setSystemOnChipModel(other);
             assertFalse(other, PreferenceKeys.isScamHdrSupported());
-            assertFalse("a stored SCAM HDR route falls back to the hybrid on " + other, PreferenceKeys.isScamHdrRoute());
+            assertFalse(other, PreferenceKeys.isShdrNeuralRemosaic());
             assertEquals(ScamHybridKeys.ROUTE_HYBRID, PreferenceKeys.mergeRoute());
         }
     }
-    @Test public void hybridSectionOwnsAllHybridKeysAndScamHdrHasNone() {
+
+    /**
+     * P129 / P132: the SHDR section (noise reduction, sharpening, ARK tone, frames, merge); SCAM HDR and the route row gone. The
+     * SHDR keys may sit in the groups an ordinary user looks in (resolution in «Фото», frames and «Движение» in «Съёмка», vibrance
+     * in «Цвет», the noise source in «RAW и сенсор»), but they stay per-module values with numeric bounds.
+     */
+    @Test public void shdrSectionAndItsKeysWhereverTheyAre() {
         PreferenceScreen root=inflate();
         PreferenceScreen hybrid=root.findPreference("scam_hybrid_screen");
-        assertNotNull(hybrid);assertEquals("Hybrid",hybrid.getTitle().toString());
-        // The concept tree (P6 / P6b): Кадры и захват / Модель шума / Склейка / Шумоподавление / Обработка ArkCore (+ Диагностика).
-        // ArkCore is shared with SCAM HDR, which links to the same page.
-        PreferenceScreen ark=root.findPreference("scam_hybrid_arkcore_screen");
-        assertNotNull(ark);assertTrue(hybrid.findPreference("scam_hybrid_arkcore_screen") instanceof PreferenceScreen);
-        assertNotNull(root.findPreference("scam_hdr_ark_link"));
-        for(String screen:new String[]{"scam_hybrid_capture_screen","scam_hybrid_noise_screen","scam_hybrid_merge_screen","scam_hybrid_photo_screen",
-                "scam_hybrid_nr_snr_screen","scam_hybrid_nr_mult_screen","scam_hybrid_nr_safe_screen","scam_hybrid_rejection_screen"})
+        assertNotNull(hybrid);assertEquals("SHDR",hybrid.getTitle().toString());
+        for(String screen:new String[]{"scam_hybrid_photo_screen","scam_hybrid_ark_sharp_screen","scam_hybrid_ark_tone_screen",
+                "scam_hybrid_capture_screen","scam_hybrid_merge_screen","scam_hybrid_nr_snr_screen","scam_hybrid_nr_mult_screen",
+                "scam_hybrid_nr_safe_screen","scam_hybrid_rejection_screen","scam_hybrid_ark_rl_screen","shdr_neural_remosaic_screen"})
             assertTrue(screen,hybrid.findPreference(screen) instanceof PreferenceScreen);
-        for(String screen:new String[]{"scam_hybrid_ark_sharp_screen","scam_hybrid_ark_rl_screen","scam_hybrid_ark_tone_screen","scam_hybrid_ark_vibrance_screen"})
-            assertTrue(screen,ark.findPreference(screen) instanceof PreferenceScreen);
-        for(String category:new String[]{"scam_hybrid_capture_category","scam_hybrid_shasta_category","scam_hybrid_boost_category",
-                "scam_hybrid_zipper_category","scam_hybrid_weights_category","scam_hybrid_diag_category"})
-            assertTrue(category,hybrid.findPreference(category) instanceof PreferenceCategory);
-        for(String category:new String[]{"scam_hybrid_sharp_category","scam_hybrid_ark_artifacts_category"})
-            assertTrue(category,ark.findPreference(category) instanceof PreferenceCategory);
-        assertNull(root.findPreference("pref_scam_hybrid_enabled"));
-        assertTrue(root.findPreference(PreferenceKeys.ROUTE_KEY) instanceof androidx.preference.ListPreference);
-        List<Preference> inside=new ArrayList<>();collect(hybrid,inside);collect(ark,inside);
-        // P118: only the ARK sharpening stays; the RawTherapee page (the one part of ArkCore without the hybrid prefix) is gone.
-        assertNull(ark.findPreference("sharp_settings_screen"));
-        Set<String> insideKeys=new HashSet<>();
-        for(Preference p:inside){
-            String key=p.getKey();
-            assertNotNull(key);insideKeys.add(key);
-            if(p instanceof PreferenceGroup)continue;
-            assertTrue(key,key.startsWith(PreferenceKeys.HYBRID_PREFIX));
-            assertTrue(key,ModuleProfiles.isLocal(key));
-            if(p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference){
-                assertNotNull(key+" needs numeric bounds",SettingsNumericRules.bounds(key));
-            }
-        }
-        assertTrue(insideKeys.size()>45);
+        assertTrue(root.findPreference("scam_hybrid_ark_vibrance_screen") instanceof PreferenceScreen);
+        assertTrue(root.findPreference("scam_hybrid_motion_screen") instanceof PreferenceScreen);
+        for(String gone:new String[]{"scam_hdr_screen","scam_hybrid_arkcore_screen","scam_hdr_ark_link","scam_probe",PreferenceKeys.ROUTE_KEY,
+                "pref_scam_hybrid_enabled","sharp_settings_screen"})
+            assertNull(gone,root.findPreference(gone));
         List<Preference> all=new ArrayList<>();collect(root,all);
+        int hybridRows=0;
         for(Preference p:all){
             String key=p.getKey();if(key==null)continue;
-            assertFalse(key,key.startsWith("pref_scamhdr_hybrid"));
-            assertFalse(key,key.equals("pref_scamhdr_engine"));
-            if(key.startsWith(PreferenceKeys.HYBRID_PREFIX))assertTrue(key+" outside the hybrid / ArkCore sections",insideKeys.contains(key));
+            assertFalse(key,key.startsWith("pref_scamhdr_"));
+            assertFalse(key,key.startsWith("pref_scamold_"));
+            if(p instanceof PreferenceGroup||!key.startsWith(PreferenceKeys.HYBRID_PREFIX))continue;
+            hybridRows++;
+            assertTrue(key,ModuleProfiles.isLocal(key));
+            if(p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference)
+                assertNotNull(key+" needs numeric bounds",SettingsNumericRules.bounds(key));
         }
+        assertTrue(hybridRows>45);
     }
 
     /** Every nested screen opens as its own fragment: a dependency on a key of another screen crashes on opening it. */
@@ -133,7 +124,7 @@ public class HybridSettingsTest {
         PreferenceScreen hybrid=inflate().findPreference("scam_hybrid_screen");
         List<Preference> inside=new ArrayList<>();collect(hybrid,inside);
         int lists=0;
-        for(Preference p:inside) if(p instanceof ListPreference){
+        for(Preference p:inside) if(p instanceof ListPreference&&p.getKey().startsWith(PreferenceKeys.HYBRID_PREFIX)){
             ListPreference l=(ListPreference)p;lists++;
             assertEquals(p.getKey(),l.getEntries().length,l.getEntryValues().length);
             l.setValueIndex(0);
@@ -145,18 +136,15 @@ public class HybridSettingsTest {
         assertTrue(lists>=6);
     }
 
-    @Test public void routeSelectsOneMergeAndTheHybridIsTheDefault() {
-        // nothing stored: the hybrid, on every phone
-        assertEquals("hybrid",PreferenceKeys.mergeRoute());
-        assertTrue(PreferenceKeys.isScamHybridEnabled());assertTrue(PreferenceKeys.isScamEnabled());
-        assertTrue(PreferenceKeys.isScamHdrEnabled());assertFalse(PreferenceKeys.isScamHdrScamEnabled());
-        assertTrue(PreferenceKeys.isHybridShot());
-        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr");
-        assertTrue(PreferenceKeys.isScamHdrSwitchOn());assertTrue(PreferenceKeys.isScamHdrScamEnabled());
-        assertFalse(PreferenceKeys.isScamHybridEnabled());assertFalse(PreferenceKeys.isHybridShot());
-        assertTrue(PreferenceKeys.isScamEnabled());
-        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"something else");
-        assertEquals("hybrid",PreferenceKeys.mergeRoute());
+    @Test public void shdrTakesEveryShot() {
+        // nothing stored, a stored SCAM HDR route, anything: SHDR (P129)
+        for(String stored:new String[]{null,"scamhdr","something else"}){
+            if(stored!=null)manager.set("default_scope",PreferenceKeys.ROUTE_KEY,stored);
+            assertEquals("hybrid",PreferenceKeys.mergeRoute());
+            assertTrue(PreferenceKeys.isScamHybridEnabled());assertTrue(PreferenceKeys.isScamEnabled());
+            assertFalse(PreferenceKeys.isScamHdrScamEnabled());assertFalse(PreferenceKeys.isScamHdrSwitchOn());
+            assertTrue(PreferenceKeys.isHybridShot());
+        }
     }
 
     @Test public void hybridShotReadsItsOwnCopiesNeverScamHdrKeys() {
@@ -390,8 +378,8 @@ public class HybridSettingsTest {
         prefs.edit().clear().commit();
         PreferenceScreen settings=inflate();
         assertNull(settings.findPreference("scam_hybrid_jsr_screen"));
-        PreferenceScreen hybrid=settings.findPreference("scam_hybrid_screen");
-        assertNotNull(hybrid.findPreference("pref_scam_hybrid_auto2x"));
+        PreferenceScreen photo=settings.findPreference("output_settings_screen");
+        assertNotNull("P132: with the resolution in «Фото»",photo.findPreference("pref_scam_hybrid_auto2x"));
         assertTrue(prefs.getBoolean("pref_scam_hybrid_auto2x",false));
         String tuning=PreferenceKeys.hybridTuningText();
         assertTrue(tuning,tuning.contains("auto2x 1\n"));
@@ -834,17 +822,14 @@ public class HybridSettingsTest {
     }
 
     @Test public void shotProfileStaysOnTheProcessingThread() throws Exception {
-        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"scamhdr");
         PreferenceKeys.beginShotProfile(true);
         assertTrue(PreferenceKeys.isHybridShot());assertTrue(PreferenceKeys.isHybridShotProcessing());
-        // The camera thread captures the next (SCAM HDR) shot meanwhile: it must see the live route, not this profile.
+        // The camera thread captures the next shot meanwhile: SHDR too (P129), but it is not processing one
         final boolean[] other=new boolean[2];
         Thread camera=new Thread(()->{other[0]=PreferenceKeys.isHybridShot();other[1]=PreferenceKeys.isHybridShotProcessing();});
         camera.start();camera.join();
-        assertFalse(other[0]);assertFalse(other[1]);
+        assertTrue(other[0]);assertFalse(other[1]);
         PreferenceKeys.endShotProfile();
-        assertFalse(PreferenceKeys.isHybridShot());
-        manager.set("default_scope",PreferenceKeys.ROUTE_KEY,"hybrid");
         assertTrue(PreferenceKeys.isHybridShot());assertFalse(PreferenceKeys.isHybridShotProcessing());
     }
 

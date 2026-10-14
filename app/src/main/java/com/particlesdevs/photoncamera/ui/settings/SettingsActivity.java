@@ -185,29 +185,14 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 PreferenceScreen selected = findPreference(rootKey);
                 if (selected == null) throw new IllegalArgumentException("Unknown settings page: " + rootKey);
                 setPreferenceScreen(selected);
-                // The XML page of «Камеры и сенсоры» opens from that page's «Сенсоры и вендорные ключи» row: same name in its header
-                if ("camera_settings_screen".equals(rootKey))
-                    selected.setTitle(Lang.t(getContext(),"Сенсоры и вендорные ключи","Sensors and vendor keys"));
             }
             seedMissingListValues(fullPreferenceScreen);
             setupScalarInputs(getPreferenceScreen());
-            ListPreference route = findPreference(PreferenceKeys.ROUTE_KEY);
-            if (route != null && !PreferenceKeys.isScamHdrSupported()) {
-                // SCAM HDR needs the 8 Elite NPU: the hybrid is the only route here (PreferenceKeys.mergeRoute).
-                route.setEntries(new CharSequence[]{"Hybrid"});
-                route.setEntryValues(new CharSequence[]{"hybrid"});
-                route.setValue("hybrid");
-                route.setEnabled(false);
-                route.setSummary(Lang.t(getContext(),"Только Hybrid: SCAM HDR и нейроремозаик работают только на Snapdragon 8 Elite","Hybrid only: SCAM HDR and the neural remosaic run on the Snapdragon 8 Elite only"));
-            }
-            // No 8 Elite: no SCAM HDR, so neither its screen (mosaic and neural remosaic tuning included).
-            Preference scamHdr = findPreference("scam_hdr_screen");
-            if (scamHdr != null && !PreferenceKeys.isScamHdrSupported()) scamHdr.setVisible(false);
-            // Nor its launch check and the neural remosaic check (the only rows of the diagnostics page).
-            if (!PreferenceKeys.isScamHdrSupported())
-                for (String key : new String[]{"scam_probe", "scam_neural_probe", "scam_diagnostics_screen"}) {
-                    Preference probe = findPreference(key);
-                    if (probe != null) probe.setVisible(false);
+            // P129: the neural remosaic (its page and its check) needs the 8 Elite NPU (Hexagon v79)
+            if (!PreferenceKeys.isScamNetSoc())
+                for (String key : new String[]{"shdr_neural_remosaic_screen", "scam_neural_probe"}) {
+                    Preference npu = findPreference(key);
+                    if (npu != null) npu.setVisible(false);
                 }
             // P17: the tele's smooth optical zoom exists on the Xiaomi 17 Ultra only
             Preference xiaomiZoom = findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
@@ -309,9 +294,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             chipBox.removeAllViews();
             String chip = null;
             boolean picker = false;
-            if (screen != null && KEY_MAIN_PARENT_SCREEN.equals(screen.getKey()))
-                chip = Lang.t(getContext(),"Активна: ","Active: ") + ("hybrid".equals(PreferenceKeys.mergeRoute()) ? "Hybrid" : "SCAM HDR") + Lang.t(getContext()," · по умолчанию Hybrid"," · Hybrid by default");
-            else if (screen != null && SENSOR_PAGE.equals(screen.getKey()) && sensorSelection != null) {
+            if (screen != null && SENSOR_PAGE.equals(screen.getKey()) && sensorSelection != null) {
                 // Sensor settings always belong to one module, per-module profiles on or off. The chip names it and,
                 // with more than one module, is the module picker (the page has no picker row of its own).
                 chip = Lang.t(getContext(),"Настраивается: ","Editing: ") + sensorSelection.title(sensorSelection.selected());
@@ -379,11 +362,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
 
         private void setupRemosaicBackend() {
-            Preference scam = findPreference("scam_probe");
-            if (scam != null) scam.setOnPreferenceClickListener(pref -> {
-                startActivity(new android.content.Intent(requireContext(), ScamActivity.class));
-                return true;
-            });
             Preference neural = findPreference("scam_neural_probe");
             if (neural != null) neural.setOnPreferenceClickListener(pref -> {
                 startActivity(new android.content.Intent(requireContext(), ScamNeuralActivity.class));
@@ -750,11 +728,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             
             Log.d("SettingsFragment", "onSharedPreferenceChanged: key=" + key);
-            if (key.equals(PreferenceKeys.ROUTE_KEY)) {
-                // the chip and the dimmed root row of the other route follow the selection
-                updateHeader();
-                if (getListView() != null && getListView().getAdapter() != null) getListView().getAdapter().notifyDataSetChanged();
-            }
             if (key.equals(com.particlesdevs.photoncamera.util.ScameraDebugLog.PREF_KEY)) {
                 boolean on = sharedPreferences.getBoolean(key, false);
                 // Only bind the context here. Calling init() would itself call
@@ -908,12 +881,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             if ("pref_dcp_profile_key".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new DcpSettingsFragment()).addToBackStack("dcp").commit();return true;
-            }
-            if ("scam_hdr_ark_link".equals(preference.getKey())) {
-                // SCAM HDR shares the ArkCore finish of the Hybrid: one page, opened from both routes
-                PreferenceScreen ark = fullPreferenceScreen.findPreference("scam_hybrid_arkcore_screen");
-                if (ark != null && activity instanceof SettingsActivity) ((SettingsActivity) activity).onPreferenceStartScreen(this, ark);
-                return true;
             }
             if ("module_copy_settings".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleCopyFragment()).addToBackStack("module_copy").commit();

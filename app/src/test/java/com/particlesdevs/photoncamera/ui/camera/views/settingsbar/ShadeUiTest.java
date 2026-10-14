@@ -192,7 +192,7 @@ public class ShadeUiTest {
         layoutFull();
         assertEquals(ShadeCatalog.DEFAULT_TILES, sheet.pinnedKeys());
         RecyclerView grid = grid();
-        assertEquals(9, grid.getChildCount()); // 8 tiles and «Добавить»
+        assertEquals(8, grid.getChildCount()); // 7 tiles and «Добавить»
         assertNotNull(addTile());
         for (int i = 0; i < grid.getChildCount(); i++) {
             ShadeTileView t = (ShadeTileView) grid.getChildAt(i);
@@ -249,7 +249,7 @@ public class ShadeUiTest {
         assertEquals(2, catalogOpened);
         int[] closed = {0};
         ShadeCatalogView view = new ShadeCatalogView(activity, catalog, sheet.pins(), () -> closed[0]++);
-        assertTrue(String.valueOf(view.shownKeys().size()), view.shownKeys().size() > 280); // 291 since P118
+        assertTrue(String.valueOf(view.shownKeys().size()), view.shownKeys().size() > 240); // 260 since P129
         assertEquals(ShadeCatalog.VIRTUAL, view.shownKeys().subList(0, 4));
         android.widget.EditText search = view.findViewWithTag("shade_catalog_search");
         search.setText("Luma");
@@ -257,7 +257,7 @@ public class ShadeUiTest {
         assertTrue(view.shownKeys().contains("pref_scam_hybrid_dn_luma_mult"));
         assertFalse(view.shownKeys().contains("pref_show_grid_key"));
         String counter = ((android.widget.TextView) view.findViewWithTag("shade_catalog_count")).getText().toString();
-        assertTrue(counter, counter.contains("8"));
+        assertTrue(counter, counter.contains("7 "));
         int width = dp(360), height = dp(800);
         view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
         view.layout(0, 0, width, height);
@@ -332,7 +332,7 @@ public class ShadeUiTest {
         assertEquals(2, after.indexOf(ShadeCatalog.FLASH));
         assertEquals(after, ShadeTiles.stored(prefs));
         ShadeCatalog.Entry flash = catalog.entry(ShadeCatalog.FLASH);
-        assertEquals(activity.getString(R.string.shade_place, flash.shortTitle, 3, 8), messages.get(messages.size() - 1));
+        assertEquals(activity.getString(R.string.shade_place, flash.shortTitle, 3, 7), messages.get(messages.size() - 1));
         // Edit mode: «×» on the tiles, the rows step aside, «Готово».
         assertEquals(View.VISIBLE, tile(ShadeCatalog.TIMER).remove.getVisibility());
         android.widget.TextView edit = sheet.findViewWithTag("shade_edit");
@@ -368,17 +368,18 @@ public class ShadeUiTest {
         assertFalse(sheet.isEditing());
         layoutFull();
         // TalkBack: «Позже», «Раньше», «Убрать из шторки».
-        ShadeTileView route = tile(ShadeCatalog.ROUTE);
-        int at = sheet.pinnedKeys().indexOf(ShadeCatalog.ROUTE);
-        assertTrue(route.performAccessibilityAction(R.id.shade_action_later, null));
-        assertEquals(at + 1, sheet.pinnedKeys().indexOf(ShadeCatalog.ROUTE));
+        final String output = "pref_scam_hybrid_output";
+        ShadeTileView moved = tile(output);
+        int at = sheet.pinnedKeys().indexOf(output);
+        assertTrue(moved.performAccessibilityAction(R.id.shade_action_later, null));
+        assertEquals(at + 1, sheet.pinnedKeys().indexOf(output));
         layoutFull();
-        assertTrue(tile(ShadeCatalog.ROUTE).performAccessibilityAction(R.id.shade_action_earlier, null));
-        assertEquals(at, sheet.pinnedKeys().indexOf(ShadeCatalog.ROUTE));
+        assertTrue(tile(output).performAccessibilityAction(R.id.shade_action_earlier, null));
+        assertEquals(at, sheet.pinnedKeys().indexOf(output));
         assertEquals(sheet.pinnedKeys(), ShadeTiles.stored(prefs));
         layoutFull();
-        assertTrue(tile(ShadeCatalog.ROUTE).performAccessibilityAction(R.id.shade_action_remove, null));
-        assertFalse(sheet.pinnedKeys().contains(ShadeCatalog.ROUTE));
+        assertTrue(tile(output).performAccessibilityAction(R.id.shade_action_remove, null));
+        assertFalse(sheet.pinnedKeys().contains(output));
     }
 
     @Test
@@ -430,11 +431,11 @@ public class ShadeUiTest {
     public void russianTilesFitAt360dpWithoutEllipsis() throws Exception {
         // The twelve longest names and values of the curated rows, in Russian, on the narrowest phone.
         List<String> longest = Arrays.asList("pref_scam_hybrid_downsampler", "pref_show_watermark_key", "pref_scam_hybrid_zsl_frames",
-                "pref_scamhdr_zsl_frames", "pref_scamhdr_long_boost_ev", "pref_scamhdr_mosaic", "pref_peak_method_key",
+                "pref_scam_hybrid_shasta", "pref_scam_hybrid_dn_luma_mult", "pref_face_detect_mode", "pref_peak_method_key",
                 "pref_live_viewfinder_raw_key", "pref_show_afdata_key", "pref_scam_hybrid_cdm", ShadeCatalog.METERING_STD,
                 "pref_scam_hybrid_bento_frames");
         ShadeTiles.save(prefs, longest);
-        prefs.edit().putString("pref_scamhdr_mosaic", "neural_sabre").putString("pref_show_afdata_key", "2")
+        prefs.edit().putString("pref_show_afdata_key", "2")
                 .putString("pref_scam_hybrid_downsampler", "bilinear").commit();
         layoutFull();
         assertEquals(longest, sheet.pinnedKeys());
@@ -497,16 +498,18 @@ public class ShadeUiTest {
     @Test
     public void unavailableTilesAreDimmedAndExplain() throws Exception {
         layoutFull();
-        manager.set("default_scope", PreferenceKeys.ROUTE_KEY, "scamhdr");
+        // «Даунсемплер» acts only with a 12 / 16 / 20 MP output (P129: a stored SCAM HDR route dims nothing any more)
+        sheet.togglePin("pref_scam_hybrid_downsampler");
         sheet.refresh();
+        layoutFull();
         Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-        ShadeTileView bento = tile("pref_scam_hybrid_bento");
-        assertTrue(bento.dimmed);
-        assertEquals(ShadeStyle.DIMMED, bento.card.getAlpha(), 1e-6f);
-        String before = prefs.getString("pref_scam_hybrid_bento", "1");
-        bento.performClick();
-        assertEquals(before, prefs.getString("pref_scam_hybrid_bento", "1"));
-        assertEquals(catalog.unavailable(catalog.entry("pref_scam_hybrid_bento")), messages.get(messages.size() - 1));
+        ShadeTileView down = tile("pref_scam_hybrid_downsampler");
+        assertTrue(down.dimmed);
+        assertEquals(ShadeStyle.DIMMED, down.card.getAlpha(), 1e-6f);
+        String before = prefs.getString("pref_scam_hybrid_downsampler", "lanczos");
+        down.performClick();
+        assertEquals(before, prefs.getString("pref_scam_hybrid_downsampler", "lanczos"));
+        assertEquals(catalog.unavailable(catalog.entry("pref_scam_hybrid_downsampler")), messages.get(messages.size() - 1));
         // No flash on this lens: the flash tile is dimmed, a tap says why.
         sheet.setFlashAvailable(false);
         Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
@@ -521,7 +524,7 @@ public class ShadeUiTest {
     public void sliderTileOpensTheInlineCardAndPinsAreLimitedToTwelve() throws Exception {
         layoutFull();
         sheet.togglePin("pref_scam_hybrid_dn_luma_mult");
-        assertEquals(9, sheet.pinnedKeys().size());
+        assertEquals(8, sheet.pinnedKeys().size());
         assertEquals(sheet.pinnedKeys(), ShadeTiles.stored(prefs));
         layoutFull();
         View card = sheet.findViewWithTag("shade_slider_card");
@@ -533,11 +536,12 @@ public class ShadeUiTest {
         tile("pref_scam_hybrid_dn_luma_mult").performClick();
         layoutFull();
         assertEquals(View.GONE, card.getVisibility());
-        for (String key : new String[]{"pref_scam_hybrid_shasta", "pref_scam_hybrid_cdm", "pref_scam_hybrid_zsl_frames"}) sheet.togglePin(key);
+        for (String key : new String[]{"pref_scam_hybrid_shasta", "pref_scam_hybrid_cdm", "pref_scam_hybrid_zsl_frames",
+                "pref_scam_hybrid_downsampler"}) sheet.togglePin(key);
         assertEquals(12, sheet.pinnedKeys().size());
         layoutFull();
         assertNull("no «Добавить» tile at 12", addTile());
-        sheet.togglePin("pref_scamhdr_mosaic");
+        sheet.togglePin("pref_show_afdata_key");
         assertEquals(12, sheet.pinnedKeys().size());
         assertEquals(activity.getString(R.string.shade_full, 12), messages.get(messages.size() - 1));
         sheet.togglePin("pref_scam_hybrid_cdm");

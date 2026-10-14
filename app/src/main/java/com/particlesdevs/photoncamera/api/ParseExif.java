@@ -116,15 +116,9 @@ public class ParseExif {
         data.IMAGE_DESCRIPTION = parameters.toString() + routeLine();
     }
 
-    /** "\n Route=Hybrid" / "\n Route=SCAM HDR" for the hybrid and SCAM HDR routes, empty otherwise. */
+    /** "\n Route=SHDR": the merge every shot goes through (P129; older photos carry «Hybrid» / «SCAM HDR»). */
     static String routeLine() {
-        try {
-            if (com.particlesdevs.photoncamera.settings.PreferenceKeys.isScamHdrRoute()) return "\n Route=SCAM HDR";
-            if (com.particlesdevs.photoncamera.settings.PreferenceKeys.isScamHybridEnabled()) return "\n Route=Hybrid";
-        } catch (RuntimeException ignored) {
-            // no settings (tests): no route line
-        }
-        return "";
+        return "\n Route=SHDR";
     }
 
     public static ExifInterface setAllAttributes(File file, ExifData data) {

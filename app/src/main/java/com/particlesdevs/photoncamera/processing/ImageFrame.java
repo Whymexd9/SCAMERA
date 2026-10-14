@@ -14,6 +14,8 @@ public class ImageFrame {
     public ByteBuffer buffer;
     /** SCAM HDR on a Quad / Tetra stream: the frame's own mosaic samples, kept when its buffer is rearranged into plain bayer. */
     public ByteBuffer mosaic;
+    /** P129: the plain-Bayer frame the NPU remosaic network made of the N frames (ScamMosaic.prepareForShdr): SHDR's base. */
+    public boolean neuralReference;
     public long timestamp;
     public boolean fromZsl = false;
     /** RawPayloadCheck verdict of the reader Image this frame was copied from; null = plain 16-bit. */

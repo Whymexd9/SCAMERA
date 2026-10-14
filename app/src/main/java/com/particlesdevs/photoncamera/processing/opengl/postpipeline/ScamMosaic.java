@@ -79,6 +79,49 @@ public final class ScamMosaic {
         return work;
     }
 
+    /**
+     * P129: SHDR on a Quad / Tetra stream (an ISZ module without the sensor's remosaic) with «Нейроремозаик» on: the
+     * equal-exposure N frames go through the NPU Quad 2x2 / HP9 HexQuad model into one plain-Bayer frame (marked
+     * {@link ImageFrame#neuralReference}, SHDR's base), every other frame (the other N as donors, the short and long ones)
+     * through the GPU remosaic, so SHDR merges plain Bayer (block 1). Null when it does not run (the setting is off, not the
+     * SM8750, not a mosaic stream, a binned or 16:9 burst, too few equal N frames, the network failed): the frames are then
+     * untouched and SHDR merges the mosaic natively, as without the setting.
+     */
+    public static List<ImageFrame> prepareForShdr(Context context, List<ImageFrame> images, Parameters p) {
+        if (!PreferenceKeys.isShdrNeuralRemosaic() || p.rawBinning > 1 || images.isEmpty()) return null;
+        int block = com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(0);
+        if (block == 0) {
+            final ImageFrame f = images.get(0);
+            final float black = (p.blackLevel[0] + p.blackLevel[1] + p.blackLevel[2] + p.blackLevel[3]) / 4f;
+            final com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result r = f.buffer == null ? null
+                    : com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(f.buffer, f.width, f.height, f.width * 2,
+                    black, p.whiteLevel, 8);
+            block = r != null && r.confident ? r.block : 1;
+            if (r != null) com.particlesdevs.photoncamera.processing.MosaicBlockStore.observeShot(r, "SHDR neural remosaic");
+        }
+        if (block != 2 && block != 4) return null;
+        final int cfa = p.cfaPattern;
+        final long start = SystemClock.elapsedRealtime();
+        try {
+            validate(images, p, block);
+            final int emitted = RemosaicCore.emittedCfaPattern(cfa);
+            Log.i(TAG, "SHDR neural remosaic: block=" + block + " cfa=" + cfa + "->" + emitted + " frames=" + images.size()
+                    + " size=" + p.rawSize.x + "x" + p.rawSize.y);
+            Merged m = mergeNormals(context, new ArrayList<>(images), p, "neural", block, cfa, emitted, true);
+            remosaicGpu(m.frames, m.reference, p, cfa);
+            m.reference.neuralReference = true;
+            p.cfaPattern = (byte) emitted;
+            p.remosaicDone = true;
+            Log.i(TAG, "SHDR neural remosaic done: frames=" + m.frames.size() + " reference=frame " + m.reference.number
+                    + " ms=" + (SystemClock.elapsedRealtime() - start));
+            return m.frames;
+        } catch (Exception e) {
+            p.cfaPattern = (byte) cfa;
+            Log.w(TAG, "SHDR neural remosaic not used, the mosaic merge as without it: " + e);
+            return null;
+        }
+    }
+
     private static void validate(List<ImageFrame> images, Parameters p, int block) throws IOException {
         if (p.cfaPattern < 0 || p.cfaPattern > 3)
             throw new IOException(Lang.t("SCAM HDR: для мозаики нужен порядок CFA 2×2 (RGGB/GRBG/GBRG/BGGR), сейчас ", "SCAM HDR: the mosaic needs a 2×2 CFA order (RGGB/GRBG/GBRG/BGGR), now ") + p.cfaPattern);
@@ -141,7 +184,7 @@ public final class ScamMosaic {
         final boolean neural = "neural".equals(mode);
         final int minimum = neural ? (block == 2 ? 4 : 6) : 3;
         if (normals.size() < Math.max(4, minimum))
-            throw new IOException(Lang.t("нужно не меньше ", "needs at least ") + Math.max(4, minimum) + Lang.t(" кадров N (увеличьте «SCAM HDR — N-кадров из ZSL»), есть ", " N frames (raise “SCAM HDR — N frames from ZSL”), has ") + normals.size());
+            throw new IOException(Lang.t("нужно не меньше ", "needs at least ") + Math.max(4, minimum) + Lang.t(" кадров N (увеличьте «Кадров в склейке»), есть ", " N frames (raise “Frames in the merge”), has ") + normals.size());
         // The models and the merge need equal exposures: the frames of the newest N's exposure and ISO.
         ImageFrame newest = normals.get(normals.size() - 1);
         List<ImageFrame> same = new ArrayList<>();

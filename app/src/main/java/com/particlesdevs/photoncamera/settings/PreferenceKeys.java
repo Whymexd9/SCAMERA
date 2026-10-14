@@ -577,11 +577,8 @@ public class PreferenceKeys {
      * tests on such a phone.
      */
     public static String mergeRoute() {
-        if (!isScamHdrSupported()) return ScamHybridKeys.ROUTE_HYBRID;
-        Float override = scamDevValue("hybrid");
-        if (override != null) return override > 0f ? ScamHybridKeys.ROUTE_HYBRID : ScamHybridKeys.ROUTE_SCAM_HDR;
-        String route = preferenceKeys.settingsManager.getString("default_scope", ScamHybridKeys.ROUTE, ScamHybridKeys.ROUTE_HYBRID);
-        return ScamHybridKeys.ROUTE_SCAM_HDR.equals(route) ? ScamHybridKeys.ROUTE_SCAM_HDR : ScamHybridKeys.ROUTE_HYBRID;
+        // P129 (owner, 2026-10-15): SCAM HDR is gone, SHDR (the former Hybrid) is the only merge; a stored route is ignored
+        return ScamHybridKeys.ROUTE_HYBRID;
     }
     public static boolean isScamHdrRoute() {
         return ScamHybridKeys.ROUTE_SCAM_HDR.equals(mergeRoute());
@@ -655,6 +652,15 @@ public class PreferenceKeys {
     /** The SoC the SCAM HDR network was built for (Hexagon v79): SCAM HDR (SCAM) runs there; the SCAM Hybrid runs anywhere. */
     public static boolean isScamNetSoc() {
         return ScamHybridKeys.scamNetSoc();
+    }
+
+    /**
+     * P129: SHDR on an ISZ Quad / Tetra stream merges the equal-exposure N frames with the NPU remosaic network first («Нейро-
+     * ремозаик», pref_scam_hybrid_neural_remosaic, off by default as SCAM HDR's mosaic mode was): Hexagon v79 contexts, so the
+     * Snapdragon 8 Elite (SM8750) only.
+     */
+    public static boolean isShdrNeuralRemosaic() {
+        return isScamNetSoc() && hybridSwitch("neural_remosaic", false);
     }
 
     // ---- SCAM Hybrid: a route of its own (section «SCAM-гибрид», scam_hybrid_screen), separate from SCAM HDR ----

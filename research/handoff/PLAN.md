@@ -3109,6 +3109,30 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   from 24; daylight shots unchanged); ParamController.pslIso capped by honouredIsoCap. Tests: ScamDenoiseTablesTest (now in the
   CI list), ArkSharpenLowLightTest, HybridSettingsTest.lowLightDenoiseDefaultsMoveOnce. Not phone-checked.
 
+### P136 - settings icons in the style of the new launcher icon (owner, 2026-10-15, on the P131b preview: «Переделай стиль иконок настроек под подобный стиль»)
+- OPEN, after the current P129 step. Every settings icon (res/drawable/settings_ic_*, the module page glyphs of ModuleConceptFragment,
+  the shade tiles if they share them) redrawn like the P131b launcher icon: filled light glyphs with a soft vertical gradient,
+  dark inner parts, coral (accent) details, on the existing dark cards; generated from one script like
+  tools/make_launcher_icons.py so they stay consistent; the accent detail follows the chosen accent where the icon is tinted.
+- Also the shade (шторка) and the viewfinder icons (owner, 2026-10-15: «В шторке и видоискателе тоже сделай иконки в таком
+  стиле»): the shade tiles' glyphs and the viewfinder's top bar / side buttons in the same filled style.
+
+### P137 - value editors in the camera's style, «add to the shade» from them (owner, 2026-10-15, screenshots of the «N-кадров из ZSL» / «Bento: отказ при движении» editors: «все вот такие меню переделай под стиль интерфейса нашей камеры, так же добавь возможность прямо из этого подменю добавлять настройки в шторку»)
+- OPEN, after P136. The number / list editors of the settings (the ruler dialog with the step chips, «По умолчанию», Отмена /
+  Применить: ui/controls/PrecisionEditor, PrecisionRuler and their dialog host) redrawn as the camera's own sheets (the shade /
+  manual panel look: dark sheet, rounded top, the accent ruler, pill buttons), and a «В шторку» / «Add to shade» action that
+  pins the setting as a shade tile (ShadeTiles, max 12; «Убрать из шторки» when it is pinned; hidden for NOT_PINNABLE keys).
+
+### P138 - sliders without drawing bugs (owner, 2026-10-15, screenshot of «Shasta: EV над N» = 1.00: «Исправить все ползунки чтобы нигде не было таких багов»)
+- OPEN (quick, with the settings work). A value at the end of its range draws the thumb cut in half at the card's edge (the
+  SeekBar's padding / thumb offset in the settings row layout); every UniversalSeekBarPreference / tunable / shade slider row
+  checked at min, max and mid values (thumb whole, track and value pill agree, the value matches the stored one).
+
+### P139 - row titles that stand out from their descriptions (owner, 2026-10-15: «Сделать так чтобы у всех параметров/настроек заголовки отличались от описания чтобы они не сливались вместе»)
+- OPEN (quick, with the settings work). Every settings row (XML rows through SettingsStyle.bind, the Java pages of
+  ModuleConceptFragment, the shade's rows): title medium weight, a little larger and in the full text colour; the description
+  smaller, regular and in the muted colour, with a small gap between them, so the two never read as one paragraph.
+
 ### P127 - RAW black / white levels by bit depth (owner, 2026-10-15: «Переделай алгоритм определения уровня белого и черного, не всегда 8 бит: 16/255 10 бит: 64/1023 12 бит: 256/4095 14 бит: 1024/16383 16 бит: 4096/65535. Нам нужен надёжный и точный алгоритм который будет определять правильно уровень, при этом не замедлять съёмку и тд. На гит не надо лить»)
 - Done locally (not pushed, owner). processing/RawLevels: one resolver for every consumer (shot Parameters, RAW viewfinder,
   motion level, clip estimate, mosaic check, RawBin) instead of the separate P104 measured range, P126 pedestal and the
@@ -3136,6 +3160,20 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   Code names Sabre, Bento, Shasta, Mochi and the like get
   our own descriptive names (UI, settings, log tags, class / method names where cheap); keys renamed with a migration so owners'
   settings survive. Vendor names (vivo.*, libvivo*, model files) stay as they are (P55 rule).
+- Step 1 done locally (2026-10-15): PreferenceKeys.mergeRoute() is always SHDR (a stored route ignored; pref_merge_route
+  stays as the migrations' hidden marker, no row); the route row, its chip, the dimmed route sections, the route tile and the
+  SCAM HDR shade group, the SCAM HDR screen (66 rows), its launch check (scam_probe) and the SCAM HDR -> ArkCore link are gone;
+  pref_scamhdr_* / pref_scamold_* are obsolete (migrateScamHybrid runs first everywhere). The neural remosaic stays and is
+  SHDR's now: «Нейроремозаик (NPU)» (pref_scam_hybrid_neural_remosaic, off by default as SCAM HDR's mosaic mode was; a stored
+  SCAM HDR «neural*» mode with the SCAM HDR route turns it on once) on the mosaic page with the HexQuad / Quad 2x2 / GPU remosaic
+  / Tetra response rows; ScamMosaic.prepareForShdr before ScamHybridBurst.process (SM8750, ISZ Quad / Tetra stream, unbinned):
+  the equal-exposure N frames through the NPU model into one plain-Bayer frame (SHDR's base, ImageFrame.neuralReference), the
+  other frames GPU-remosaiced, SHDR then merges block 1; any failure leaves the frames untouched (native mosaic merge). EXIF
+  Route=SHDR (the gallery still reads Hybrid / SCAM HDR), top-bar badge «SHDR». Not phone-checked (the NPU path needs the
+  X200 Ultra).
+- Still to do: delete the SCAM HDR code (ScamBurst / ScamAe / stock AE / planner branches in CaptureController / native
+  reconstruct / nice-main-forward and nice-tone models -> BUNDLE_ONLY) and the visible renames (Hybrid -> SHDR in every text,
+  own names for Sabre / Bento / Shasta / Mochi / GCam, no LMC / AGC).
 
 ### P130 - accent colour from the system (owner, 2026-10-15: «сделай так чтобы цветовые акценты брались автоматически из самого смартфона, В пункте меню где можно менять цветовой акцент добавь пункт "Из Системы"»)
 - Done locally. AccentPalette.SYSTEM «Из системы» / «From system» is the first choice and the default (an accent never chosen
@@ -3160,6 +3198,15 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   then per-sensor options, expert keys at the end or under «Для разработчика»). Then every group: settings moved to where a
   non-expert looks for them, short clear group titles, rarely used / expert rows grouped at the bottom. Supersedes the
   «settings follow the LMC layout» rule; preference keys stay (only screens / order / titles change), check_settings_model.py green.
+- Core done locally (2026-10-15, with P129 step 1): root = «Режим «Движение»», «Фото» (formats, resolution / downsampler /
+  2x from SHDR, DNG compression, file name, watermark), «Съёмка» (new: frames in the merge, ZSL buffer, lamp flicker, sounds,
+  Xiaomi zoom, «Движение» page), «Видоискатель», «Цвет» (DCP, colour method, vibrance), «SHDR» (noise reduction, sharpening,
+  ARK tone first; frames, merge, noise expert pages after; the «Обработка ArkCore» container dissolved), «Камеры и сенсоры»
+  (Java page: rear / front / hidden modules, module profiles, «Для опытных» -> «RAW и сенсор» = the former «Захват и RAW» with
+  SHDR's noise source next to the noise-model profile), «Интерфейс» (new: theme, accent, gallery icon), «Система» (root, spoof,
+  new «Резервная копия» page, diagnostics with the full log, developer, about). Keys unchanged; tests updated
+  (HybridSettingsTest, SettingsAuditFixTest, SettingsMenuTest.rootGroupsForOrdinaryUsers, shade tests), SettingsModelCheck,
+  CI aapt checks. 847 unit tests green.
 
 ### P133 - processing speed on every SoC (owner, 2026-10-15: «Проверить чтобы на всех процессорах скорость обработки была нормальная, потому что на 8 элит ген 5 на 300 ультра и на оппо х9 ультра обработка занимает больше времени чем на 8 элит на 200 ультра»)
 - OPEN, after P131. Snapdragon 8 Elite Gen 5 (vivo X300 Ultra, OPPO Find X9 Ultra) processes slower than 8 Elite (X200 Ultra).

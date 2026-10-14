@@ -149,9 +149,8 @@ public class CameraUIViewImpl implements CameraUIView {
     public static void bindBadges(LayoutMainTopbarBinding topbar) {
         Context context = topbar.getRoot().getContext();
         int accent = ShadeStyle.accent(context);
-        boolean scam = PreferenceKeys.isScamHdrRoute();
-        String route = context.getString(R.string.shade_badge_route, scam ? "SCAM HDR" : "Hybrid");
-        icon(topbar.routeBadge, scam ? R.drawable.topbar_ic_route_scamhdr : R.drawable.topbar_ic_route_hybrid, accent, route);
+        // P129: SHDR is the only merge; the badge names it
+        icon(topbar.routeBadge, R.drawable.topbar_ic_route_hybrid, accent, context.getString(R.string.shade_badge_route, "SHDR"));
         com.particlesdevs.photoncamera.settings.FormatChoice format = com.particlesdevs.photoncamera.settings.FormatChoice.current();
         icon(topbar.formatBadge, format.icon, accent, context.getString(R.string.topbar_format, format.longLabel()));
         topbar.formatBadge.setTag(format.name());

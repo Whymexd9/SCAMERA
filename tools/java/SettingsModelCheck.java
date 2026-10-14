@@ -28,42 +28,34 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_scamhdr_noise_readout","NaN",1),1);
         eq(SettingsNumericRules.value("pref_scamhdr_noise_readout","8",1),4);
         Map<String,Object> p=new HashMap<>();
-        // HexQuad / Quad network rows: only for SCAM HDR's mosaic «neural» modes (ISZ modules).
+        // P129: the HexQuad / Quad network rows and the GPU remosaic follow SHDR's «Нейроремозаик (NPU)» (ISZ modules).
         inactive(p,"hexquad_luma");inactive(p,"pref_remosaic_block_key");
         p.put("pref_merge_route","scamhdr");inactive(p,"hexquad_luma");
-        p.put("pref_scamhdr_mosaic","scamera");inactive(p,"hexquad_luma");active(p,"pref_remosaic_block_key");
-        p.put("pref_scamhdr_mosaic","neural");active(p,"hexquad_luma");active(p,"quad2x2_luma");
+        p.put("pref_scam_hybrid_neural_remosaic",true);active(p,"hexquad_luma");active(p,"quad2x2_luma");active(p,"pref_remosaic_block_key");
         p.put("hexquad_auto_iso",true);inactive(p,"hexquad_luma");active(p,"hexquad_iso_low_luma");
-        p.put("pref_merge_route","hybrid");inactive(p,"hexquad_iso_low_luma");inactive(p,"pref_remosaic_block_key");
-        // (The plain legacy route and its tone / denoise availability are gone: every shot is the hybrid or SCAM HDR.)
+        p.put("pref_scam_hybrid_neural_remosaic",false);inactive(p,"hexquad_iso_low_luma");inactive(p,"pref_remosaic_block_key");
+        // Retired route values from saved / imported configs (the SCAM HDR route included) never hide the sharpening.
         p.clear();
         p.put("pref_camera_mode_key", "3");
         p.put("pref_merge_route", "scamhdr");
         p.put("pref_scamhdr_route", "vcf2");
         Map<String,Object> saved = new HashMap<>(p);
-        // Retired route values from saved/imported configs must not bypass RAW
-        // processing or hide sharpening. Exercise every mode, not only Photo.
         for (String mode : new String[]{"0", "1", "2", "3", "4", "5"}) {
             p.put("pref_camera_mode_key", mode);
             for (String route : new String[]{"raw", "vcf2", "invalid"}) {
                 p.put("pref_scamhdr_route", route);
-                active(p,"pref_scamhdr_noise_scale");
-                active(p,"pref_scamhdr_noise_photon");active(p,"pref_scamhdr_noise_readout");
-                active(p,"pref_scam_hybrid_ark_sharp_gain");
+                active(p,"pref_scam_hybrid_ark_sharp_gain");active(p,"pref_scam_hybrid_cdm");
             }
         }
         p.clear();p.putAll(saved);
-        new SettingsAvailability(p).reason("pref_scamhdr_noise_scale");
+        new SettingsAvailability(p).reason("pref_scam_hybrid_cdm");
         if (!saved.equals(p)) throw new AssertionError("Availability changed stored settings");
-        p.put("pref_merge_route","hybrid");inactive(p,"pref_scamhdr_noise_scale");
-        p.put("pref_merge_route","scamhdr");
         // SCAM Hybrid availability: its rows need the hybrid route (the default) and a plain Bayer route; then the stages its
         // route skips are inactive and SCAM HDR's own rows are inactive too.
         Map<String,Object> h=new HashMap<>();
-        h.put("pref_merge_route","scamhdr");inactive(h,"pref_scam_hybrid_cdm");
+        h.put("pref_merge_route","scamhdr");active(h,"pref_scam_hybrid_cdm"); // P129: SHDR is the only merge
         h.remove("pref_merge_route");
         active(h,"pref_scam_hybrid_cdm");active(h,"pref_scam_hybrid_sabre61");active(h,"pref_scam_hybrid_highlight_recovery");
-        inactive(h,"pref_scamhdr_noise_photon");
         // P118: the ARK sharpening is the only one, its rows are always active
         active(h,"pref_scam_hybrid_ark_sharp_gain");
         // the removed legacy switches (RAW MFSR, standalone remosaic) no longer take the hybrid off
@@ -81,9 +73,9 @@ public class SettingsModelCheck {
         // P10: the SCAMERA tone keys (headroom, AgX, Exposure Fusion) and their hybrid copies are gone and unbounded
         if(SettingsNumericRules.bounds("pref_scamroute_gamma")!=null||SettingsNumericRules.bounds("pref_scam_hybrid_hdr_shadows")!=null
                 ||SettingsNumericRules.bounds("pref_scam_hybrid_fusion_dark_ev")!=null)throw new AssertionError("removed tone key still bounded");
-        // the ARK tone and its sharpening stay active on SCAM HDR (one tone for both routes)
+        // P129: a stored SCAM HDR route takes nothing off: SHDR is the only merge
         Map<String,Object> s=new HashMap<>();s.put("pref_merge_route","scamhdr");
-        active(s,"pref_scam_hybrid_ark_ae_target");active(s,"pref_scam_hybrid_ark_sharp_gain");inactive(s,"pref_scam_hybrid_cdm");
+        active(s,"pref_scam_hybrid_ark_ae_target");active(s,"pref_scam_hybrid_ark_sharp_gain");active(s,"pref_scam_hybrid_cdm");
         if(SettingsNumericRules.bounds("pref_scam_hybrid_agx_desat")!=null||SettingsNumericRules.bounds("pref_scam_hybrid_enabled")!=null)
             throw new AssertionError("unbounded hybrid copies got bounds");
         // P62 Mochi (GCam 11 PhotometricMerge): 0 off / 1 auto / 2 force
@@ -108,7 +100,7 @@ public class SettingsModelCheck {
         mo.put("pref_scam_hybrid_mosaic_tetra","2");inactive(mo,"pref_scam_hybrid_mosaic_edge_scale");
         mo.put("pref_scam_hybrid_mosaic_tetra","1");inactive(mo,"pref_scam_hybrid_mosaic_edge_scale");
         mo.put("pref_scam_hybrid_mosaic_chroma_fill","1");active(mo,"pref_scam_hybrid_mosaic_fill_support");
-        mo.put("pref_merge_route","scamhdr");inactive(mo,"pref_scam_hybrid_mosaic_path");inactive(mo,"pref_scam_hybrid_mosaic_window");
+        mo.put("pref_merge_route","scamhdr");active(mo,"pref_scam_hybrid_mosaic_path");
         eq(SettingsNumericRules.value("pref_scam_hybrid_mosaic_path","3",0),1);
         eq(SettingsNumericRules.value("pref_scam_hybrid_mosaic_window","9",3),6);
         eq(SettingsNumericRules.value("pref_scam_hybrid_mosaic_window","2.6",3),3);
@@ -210,22 +202,21 @@ public class SettingsModelCheck {
         inactive(out,"pref_scam_hybrid_downsampler");inactive(out,"pref_scam_hybrid_dn_chroma_2x_keep");active(out,"pref_scam_hybrid_output");
         out.put("pref_scam_hybrid_output","2x");inactive(out,"pref_scam_hybrid_downsampler");active(out,"pref_scam_hybrid_dn_chroma_2x_keep");
         for(String mp:new String[]{"12","16","20"}){out.put("pref_scam_hybrid_output",mp);active(out,"pref_scam_hybrid_downsampler");active(out,"pref_scam_hybrid_dn_chroma_2x_keep");}
-        // SCAM HDR's pref_scamold_ rows follow the route like pref_scamhdr_; the stock planner needs the X200 Ultra and Root
         Map<String,Object> scam=new HashMap<>();
-        inactive(scam,"pref_scamold_zsl_long");
-        scam.put("pref_merge_route","scamhdr");active(scam,"pref_scamold_zsl_long");
-        inactive(scam,"pref_scamhdr_planner");
-        if(new SettingsAvailability(scam).stockAeDevice(true).reason("pref_scamhdr_planner")==null)throw new AssertionError("stock planner without Root");
-        scam.put("pref_root_enabled",true);
-        if(new SettingsAvailability(scam).stockAeDevice(true).reason("pref_scamhdr_planner")!=null)throw new AssertionError("stock planner with Root on the X200 Ultra");
-        inactive(scam,"pref_scamhdr_planner"); // another phone
         // «Цветовой метод»: inactive where a tuned / ISP matrix replaces it
         active(scam,"pref_color_method_key");
         if(!"matrix".equals(new SettingsAvailability(scam).colorMethodOverride("matrix").reason("pref_color_method_key")))throw new AssertionError("colour method reason");
-        // Without the 8 Elite the SCAM HDR screen and its checks stay hidden (the availability pass used to show them again)
-        for(String k:new String[]{"scam_hdr_screen","scam_diagnostics_screen","scam_probe","scam_neural_probe"})
-            if(!new SettingsAvailability(scam).scamHdrSupported(false).hidden(k)||new SettingsAvailability(scam).hidden(k))throw new AssertionError("SCAM HDR row visibility "+k);
+        // Without the 8 Elite the neural remosaic page and its check stay hidden (P129); the diagnostics page stays
+        for(String k:new String[]{"shdr_neural_remosaic_screen","scam_neural_probe"})
+            if(!new SettingsAvailability(scam).scamHdrSupported(false).hidden(k)||new SettingsAvailability(scam).hidden(k))throw new AssertionError("NPU row visibility "+k);
+        if(new SettingsAvailability(scam).scamHdrSupported(false).hidden("scam_diagnostics_screen"))throw new AssertionError("diagnostics hidden");
+        // P128: the «Движение» rows act only in that mode; the lamp flicker only with the long frames; the OPPO saturation only there
+        Map<String,Object> m=new HashMap<>();
+        inactive(m,"pref_scam_hybrid_mm_shutter");m.put("pref_motion_mode",true);active(m,"pref_scam_hybrid_mm_shutter");
+        active(m,"pref_antibanding_hz_key");m.put("pref_scam_hybrid_shasta",false);inactive(m,"pref_antibanding_hz_key");
+        if(!new SettingsAvailability(m).oppoTunedColor(false).hidden("pref_scam_hybrid_ark_ccm_sat"))throw new AssertionError("OPPO saturation shown");
+        if(new SettingsAvailability(m).mosaicStreams(false).reason("pref_scam_hybrid_mosaic_path")==null)throw new AssertionError("mosaic rows without a mosaic");
         if(!new SettingsAvailability(scam).xiaomiSmoothZoom(false).hidden("pref_xiaomi_smooth_zoom"))throw new AssertionError("Xiaomi zoom shown");
-        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, SCAM Hybrid bounds, native mosaic, photo format, 10-bit HEIC, AVIF, sharpening / denoise / output / planner / colour method availability");
+        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, SHDR bounds, native mosaic, neural remosaic, photo format, 10-bit HEIC, AVIF, sharpening / denoise / output / motion / colour method availability");
     }
 }

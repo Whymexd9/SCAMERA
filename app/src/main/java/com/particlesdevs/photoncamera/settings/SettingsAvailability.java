@@ -69,7 +69,8 @@ public final class SettingsAvailability {
      */
     public boolean hidden(String key) {
         // Rows of what this phone does not have (the settings screen also hides them when it builds the tree, for the search).
-        if (!scamHdrSupported && any(key, "scam_hdr_screen", "scam_diagnostics_screen", "scam_probe", "scam_neural_probe")) return true;
+        // P129: the neural remosaic needs the 8 Elite NPU (its page and its check)
+        if (!scamHdrSupported && any(key, "shdr_neural_remosaic_screen", "scam_neural_probe")) return true;
         if (!xiaomiSmoothZoom && key.equals("pref_xiaomi_smooth_zoom")) return true;
         // P128: the AgX saturation of the OPPO tuned matrix acts only on the phones that matrix renders (ArkTone.ccmSatComp)
         if (!oppoTunedColor && key.equals("pref_scam_hybrid_ark_ccm_sat")) return true;
@@ -86,15 +87,8 @@ public final class SettingsAvailability {
     }
 
     public String reason(String key) {
-        // Route selector pref_merge_route (PreferenceKeys.mergeRoute): hybrid (default) or scamhdr. Every shot is one of them.
-        boolean autonomous=text("pref_merge_route","hybrid").equals("scamhdr");
-        String mosaicMode=text("pref_scamhdr_mosaic","off");
-        boolean scamMosaic=!mosaicMode.equals("off") && autonomous;
-        boolean neuralMosaic=scamMosaic && mosaicMode.startsWith("neural");
-        boolean hybrid=!autonomous;
-        // The ARK tone (ArkCore) and its sharpening are shared by both routes.
-        boolean arkShared = key.startsWith("pref_scam_hybrid_ark_");
-        if (key.startsWith("pref_scam_hybrid_") && !hybrid && !arkShared) return Lang.t("Выберите склейку «Hybrid».", "Select the “Hybrid” merge.");
+        // P129: SHDR is the only merge; the neural remosaic of ISZ streams has its own switch
+        boolean neuralMosaic = on("pref_scam_hybrid_neural_remosaic", false);
         // The denoise and watermark switches sit on a parent page of these rows (P6), so the rule replaces android:dependency.
         if (key.startsWith("pref_scam_hybrid_dn_") && !on("pref_scam_hybrid_denoise", true)) return Lang.t("Включите «Шумоподавление».", "Turn on “Noise reduction”.");
         // Denoise engine (pref_scam_hybrid_dn_engine): the GCam finish (ScamDenoise) reads the dn_ rows, NLM (ScamHdrDenoise) its two strengths.
@@ -184,27 +178,19 @@ public final class SettingsAvailability {
                         "Lossless keeps the photo's own depth: 10 bit from Android 13, else 8.");
             if (key.equals("pref_avif_chroma")) return Lang.t("Без потерь — всегда 4:4:4.", "Lossless is always 4:4:4.");
         }
-        // pref_scamold_* (the L frame from the ZSL ring) are SCAM HDR keys too: the hybrid takes no L frame (PreferenceKeys.isScamZslLong).
-        if ((key.startsWith("pref_scamhdr_") || key.startsWith("pref_scamold_")) && !autonomous)
-            return Lang.t("Выберите склейку «SCAM HDR».", "Select the “SCAM HDR” merge.");
-        // The stock vivo AE plans only with Root on the vivo X200 Ultra (PreferenceKeys.useStockBracketPlanner); else SCAMERA plans.
-        if (key.equals("pref_scamhdr_planner") && !(stockAeDevice && on("pref_root_enabled", false)))
-            return stockAeDevice ? Lang.t("Стоковому AE vivo нужен «Root-доступ» (раздел «Система»); без него планирует SCAMERA.",
-                            "The stock vivo AE needs “Root access” (System); without it SCAMERA plans.")
-                    : Lang.t("Стоковый AE vivo есть только на vivo X200 Ultra с Root-доступом; здесь планирует SCAMERA.",
-                            "The stock vivo AE exists only on the vivo X200 Ultra with Root access; SCAMERA plans here.");
-        // SCAM HDR mosaic «neural» / «neural_sabre»: tuning of the Quad 2x2 and HexQuad networks.
+        // P129: tuning of the Quad 2x2 and HexQuad networks of «Нейроремозаик (NPU)»
         if ((key.startsWith("quad2x2_") || key.startsWith("hexquad_")) && !key.endsWith("screen")) {
-            if (!neuralMosaic) return Lang.t("Используется в SCAM HDR с мозаикой «Нейросеть» (модули ISZ).", "Used in SCAM HDR with a “Neural remosaic” mosaic mode (ISZ modules).");
+            if (!neuralMosaic) return Lang.t("Включите «Нейроремозаик (NPU)».", "Turn on “Neural remosaic (NPU)”.");
             String p = key.startsWith("quad2x2_") ? "quad2x2_" : "hexquad_";
             boolean auto = on(p + "auto_iso", false);
             if (any(key, p + "luma", p + "chroma") && auto) return Lang.t("Сила задаётся ниже по ISO. Для ручной настройки выключите автоматику.", "The strength is set by ISO below. Turn off the auto mode to set it by hand.");
             if (key.startsWith(p + "iso_") && !auto) return Lang.t("Включите «Люма и хрома по ISO».", "Turn on “Luma and chroma by ISO”.");
         }
-        // GPU remosaic of SCAM HDR's mosaic modes (S / ES / L always, N in «SCAMERA» / «Sabre»).
-        if (key.startsWith("pref_remosaic_") && !scamMosaic) return Lang.t("Используется в SCAM HDR с мозаикой Quad / Tetra (модули ISZ).", "Used in SCAM HDR with a Quad / Tetra mosaic (ISZ modules).");
-        if (key.equals("pref_tetra_response_key") && !(scamMosaic && (mosaicMode.equals("detail") || mosaicMode.startsWith("neural"))))
-            return Lang.t("Коррекция для мозаики «Tetra Detail» и «Нейросеть» SCAM HDR.", "Correction for the SCAM HDR “Tetra Detail” and “Neural remosaic” mosaic modes.");
+        // P129: the GPU remosaic of the frames the network does not merge, and the Tetra response of its input
+        if (key.startsWith("pref_remosaic_") && !neuralMosaic)
+            return Lang.t("Ремозаик остальных кадров при «Нейроремозаик (NPU)».", "Remosaic of the other frames with “Neural remosaic (NPU)”.");
+        if (key.equals("pref_tetra_response_key") && !neuralMosaic)
+            return Lang.t("Коррекция Tetra для «Нейроремозаик (NPU)».", "Tetra correction for “Neural remosaic (NPU)”.");
         if (key.equals("pref_color_method_key") && colorMethodOverride != null) return colorMethodOverride;
         return null;
     }

@@ -77,7 +77,7 @@ public enum GalleryFormat {
         return of(name, !"dng".equals(extension(name)) && rawBases.contains(baseName(name)));
     }
 
-    private static final Pattern ROUTE = Pattern.compile("Route=(Hybrid|SCAM HDR)");
+    private static final Pattern ROUTE = Pattern.compile("Route=(SHDR|Hybrid|SCAM HDR)");
 
     /** «Hybrid» / «SCAM HDR» from a SCAMERA description, null when the file does not record it. */
     @Nullable

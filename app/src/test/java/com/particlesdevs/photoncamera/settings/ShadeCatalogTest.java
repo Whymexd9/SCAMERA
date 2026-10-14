@@ -100,19 +100,19 @@ public class ShadeCatalogTest {
                 assertTrue(key, e.isCurated());
             }
         }
-        assertEquals(26, curated); // «Кодек» (pref_photo_format) is part of the FORMAT choice now, no row of its own; P42 added «Лица» and «Трекинг»;
+        assertEquals(22, curated); // P129: the route tile and the SCAM HDR group (frames, L boost, mosaic) are gone; «Кодек» (pref_photo_format) is part of the FORMAT choice now, no row of its own; P42 added «Лица» and «Трекинг»;
                                    // P64 removed «Кривая» (the Hybrid tone curve); P118 «Резкость» (sharp_mode) and «USM» with its group
         // The rows the owner dropped (answer 8) stay out.
         for (String gone : new String[]{"pref_scam_hybrid_ark_tone", "pref_scamhdr_fusion_enabled", "pref_scam_tone_curve"})
             assertFalse(gone, ShadeCatalog.isCurated(gone));
         for (String key : ShadeCatalog.DEFAULT_TILES) assertTrue(key, catalog.isKnown(key));
-        assertEquals(8, ShadeCatalog.DEFAULT_TILES.size());
+        assertEquals(7, ShadeCatalog.DEFAULT_TILES.size());
     }
 
     @Test
     public void everyEntryHasAnIconAndAKind() {
         List<ShadeCatalog.Entry> all = catalog.all();
-        assertTrue("the catalog walks the whole tree: " + all.size(), all.size() > 280); // 291 rows since P118 (the RawTherapee sharpening page is gone)
+        assertTrue("the catalog walks the whole tree: " + all.size(), all.size() > 240); // 260 rows since P129 (SCAM HDR is gone)
         for (ShadeCatalog.Entry e : all) {
             assertNotNull("no icon: " + e.key, catalog.icon(e));
             assertNotNull("no icon: " + e.key, catalog.settingIcon(e));
@@ -193,15 +193,7 @@ public class ShadeCatalogTest {
         assertEquals("0" + point + "60", catalog.valueText(luma, true));
         assertTrue(catalog.changed(luma));
 
-        // «Удлинение L» is free text in the settings; the shade shows it as a 0-2 slider (owner's answer 8).
-        ShadeCatalog.Entry boost = catalog.entry("pref_scamhdr_long_boost_ev");
-        assertEquals(ShadeCatalog.SLIDER, boost.kind);
-        assertEquals(0f, boost.min, 0f);
-        assertEquals(2f, boost.max, 0f);
-        assertEquals(0.1f, boost.step, 1e-6f);
-        assertEquals("1" + point + "1", catalog.valueText(boost, true));
-        catalog.write(boost, 1.5f);
-        assertEquals("1.5", prefs.getString("pref_scamhdr_long_boost_ev", null));
+        assertNull("P129: SCAM HDR's «Удлинение L» is gone", catalog.entry("pref_scamhdr_long_boost_ev"));
 
         // «Замер» is the ARK metering, a list of named modes since the settings audit (H4: it was a 0-2 slider whose numbers only
         // the summary explained); the Camera2 metering stays a camera control.
@@ -232,11 +224,10 @@ public class ShadeCatalogTest {
     public void availabilityUsesTheEffectiveRouteDependenciesAndTheFlash() {
         ShadeCatalog.Entry cdm = catalog.entry("pref_scam_hybrid_cdm");
         assertNull(catalog.unavailable(cdm));
+        // P129: SHDR is the only merge: a stored SCAM HDR route dims nothing
         manager.set("default_scope", PreferenceKeys.ROUTE_KEY, "scamhdr");
-        assertNotNull(catalog.unavailable(cdm));
-        assertNull(catalog.unavailable(catalog.entry("pref_scamhdr_zsl_frames")));
-        manager.set("default_scope", PreferenceKeys.ROUTE_KEY, "hybrid");
-        assertNotNull(catalog.unavailable(catalog.entry("pref_scamhdr_zsl_frames")));
+        assertNull(catalog.unavailable(cdm));
+        assertNull(catalog.entry("pref_scamhdr_zsl_frames"));
 
         ShadeCatalog.Entry frames = catalog.entry("pref_scam_hybrid_shasta_frames");
         assertEquals("pref_scam_hybrid_shasta", frames.dependency);
@@ -307,8 +298,8 @@ public class ShadeCatalogTest {
         assertEquals(catalog.all().size(), catalog.search("  ").size());
         // Sections come from the tree: the hybrid's Bento rows are under «Hybrid › Кадры и захват».
         ShadeCatalog.Entry bento = catalog.entry("pref_scam_hybrid_bento");
-        assertEquals("Hybrid", bento.section(context));
+        assertEquals("SHDR", bento.section(context));
         assertTrue(bento.crumb(), bento.crumb().startsWith(captureSection));
-        assertEquals(context.getString(R.string.shade_group_shoot), catalog.entry(ShadeCatalog.ROUTE).section(context));
+        assertNull(catalog.entry(ShadeCatalog.ROUTE));
     }
 }

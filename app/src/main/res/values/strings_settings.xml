@@ -5,7 +5,7 @@
     <string name="prefs_prefscreen_title">Camera settings</string>
     <string name="prefs_merge_route_title">Merge</string>
     <string name="prefs_merge_route_summary">What builds the shot: Hybrid merges many RAW frames, SCAM HDR uses the HDR neural network.</string>
-    <string name="prefs_scam_hybrid_screen_summary">Resolution, frames, motion, merge, noise reduction and ArkCore processing</string>
+    <string name="prefs_scam_hybrid_screen_summary">Noise reduction, sharpening, tone and the frame merge</string>
     <string name="prefs_scam_hybrid_output_title">Resolution</string>
     <string name="prefs_scam_hybrid_output_summary">%s. Photo size. The 2× modes merge on a twice denser grid: more detail, but about four times slower.</string>
     <string name="prefs_scam_hybrid_downsampler_title">Downsampler</string>
@@ -326,7 +326,7 @@
     <string name="prefs_scam_hybrid_ark_sharp_protect_highlights_summary">Weakens sharpening in bright areas. Higher: softer highlights without halos; lower: sharper.</string>
     <string name="prefs_scam_hybrid_ark_sharp_halo_control_title">Halo control</string>
     <string name="prefs_scam_hybrid_ark_sharp_halo_control_summary">Limits halos on strong edges. Higher: fewer halos; lower: crisper edges, but with halos.</string>
-    <string name="prefs_scam_hybrid_ark_tone_screen_title">ArkCore tone mapping</string>
+    <string name="prefs_scam_hybrid_ark_tone_screen_title">ARK tone</string>
     <string name="prefs_scam_hybrid_ark_tone_screen_summary">Exposure, Smart HDR, layer weights and tone curves of ArkCore.</string>
     <string name="prefs_scam_hybrid_ark_ae_category_title">Auto exposure and metering</string>
     <string name="prefs_scam_hybrid_ark_metering_title">AE metering mode</string>
@@ -586,7 +586,7 @@
     <string name="prefs_photo_processing_screen_summary">DCP colour matrices of the modules</string>
     <string name="prefs_dcp_profile_title">DCP matrices</string>
     <string name="prefs_dcp_profile_summary">Colour matrix of the module: the camera one or an imported DCP. Changes how colours look.</string>
-    <string name="prefs_capture_settings_screen_title">Capture and RAW</string>
+    <string name="prefs_capture_settings_screen_title">RAW and sensor (advanced)</string>
     <string name="prefs_capture_settings_screen_summary">ZSL buffer, lamp flicker, DNG, RAW levels, noise model</string>
     <string name="prefs_dng_lossless_title">Lossless DNG compression</string>
     <string name="prefs_dng_lossless_summary">DNG is compressed losslessly: about 40 percent smaller, a bit slower to save. Not every app reads it.</string>
@@ -603,7 +603,7 @@
     <string name="prefs_noise_model_screen_summary">Sensor noise profile, import and export</string>
     <string name="prefs_noise_model_note_summary">The chosen profile replaces the camera noise in the Hybrid denoise, the DNG and merges set to From settings.</string>
     <string name="prefs_theme_gallery_title">Gallery theme</string>
-    <string name="prefs_viewfinder_settings_screen_title">Viewfinder and interface</string>
+    <string name="prefs_viewfinder_settings_screen_title">Viewfinder</string>
     <string name="prefs_viewfinder_settings_screen_summary">Sounds, grid, focus, faces, HUD, horizon and theme</string>
     <string name="prefs_camera_sounds_title">Shutter sound</string>
     <string name="prefs_camera_sounds_summary">A click when shooting. Only in normal ringer mode; where the law requires it, it always plays.</string>
@@ -611,7 +611,7 @@
     <string name="prefs_timer_sound_summary">Audible self-timer countdown. Only in normal ringer mode.</string>
     <string name="prefs_theme_accent_title">Accent colour</string>
     <string name="prefs_theme_accent_summary">Colour of highlights, switches and camera buttons.</string>
-    <string name="prefs_output_settings_screen_title">Config</string>
+    <string name="prefs_output_settings_screen_title">Photo</string>
     <string name="prefs_output_settings_screen_summary">Photo format and quality, colour, Ultra HDR, 16:9, file name, watermark, settings backup</string>
     <string name="prefs_jpeg_quality_title">JPEG quality</string>
     <string name="prefs_jpeg_quality_summary">JPEG compression. Higher: larger, more detailed file; lower: smaller file, fine detail lost.</string>
@@ -713,4 +713,14 @@
     <string name="prefs_desc_pref_scam_hybrid_dn_chroma_t4_strength">Dim light: colour denoise strength, 5 numbers small to large blotches. Higher: cleaner; lower: truer colour.</string>
     <string name="prefs_desc_hexquad_model">Which network builds the Tetra frame. x2 is the main one; x1 is experimental and may give colour errors.</string>
     <string name="prefs_desc_pref_remosaic_phase_y_key">Vertical offset of the block grid. A wrong value gives a colour grid; the neural mode needs 0.</string>
+    <string name="prefs_shooting_settings_screen_title">Shooting</string>
+    <string name="prefs_shooting_settings_screen_summary">Frames, lamp flicker, sounds, “Motion” mode</string>
+    <string name="prefs_interface_settings_screen_title">Interface</string>
+    <string name="prefs_interface_settings_screen_summary">Theme, accent colour, gallery icon</string>
+    <string name="prefs_backup_settings_screen_title">Backup</string>
+    <string name="prefs_backup_settings_screen_summary">Save, restore or reset the settings</string>
+    <string name="prefs_shdr_neural_remosaic_screen_title">Neural remosaic</string>
+    <string name="prefs_shdr_neural_remosaic_screen_summary">ISZ modules on the Snapdragon 8 Elite: the NPU network merges the N frames</string>
+    <string name="prefs_scam_hybrid_neural_remosaic_title">Neural remosaic (NPU)</string>
+    <string name="prefs_scam_hybrid_neural_remosaic_summary">ISZ modules with a Quad / Tetra mosaic: the vivo network on the NPU merges the N frames first, then SHDR. If it fails, the usual mosaic merge.</string>
 </resources>
