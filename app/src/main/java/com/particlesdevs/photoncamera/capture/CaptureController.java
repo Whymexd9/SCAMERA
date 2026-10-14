@@ -3649,24 +3649,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     /**
      * P110: the RAW level of a ring frame for the «Движение» shutter ceiling (RawLevel), only while the mode is on and the
-     * payload is a plain 16-bit RAW (no packed layout in use). The previewed physical camera's levels, the frame's dynamic
-     * white when its result is at hand, a wide payload (P104 DCG 14 bit) at its own range.
+     * payload is a plain 16-bit RAW (no packed layout in use). The previewed physical camera's levels at the stream's bit depth
+     * (P127 RawLevels, with the frame's own metadata when its result is at hand).
      */
     private void observeRawLevel(Image img, CaptureResult result) {
         if (!com.particlesdevs.photoncamera.settings.MotionMode.on()) return;
         CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
         if (c == null) c = mCameraCharacteristics;
         if (c == null) return;
-        final int white = com.particlesdevs.photoncamera.processing.RawPayloadCheck.whiteLevel(c, result);
-        if (white <= 0) return;
-        android.hardware.camera2.params.BlackLevelPattern pattern = c.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
-        float black = 0;
-        if (pattern != null) {
-            for (int i = 0; i < 4; i++) black += pattern.getOffsetForIndex(i % 2, i / 2);
-            black /= 4f;
-        }
-        final float[] range = RawLevel.range(black, white, com.particlesdevs.photoncamera.processing.RawPayloadCheck.wideWhite());
-        RawLevel.observe(img, !mPayloadBad && mPreviewLayouts.isEmpty(), range[0], range[1]);
+        final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
+                com.particlesdevs.photoncamera.processing.RawLevels.current(c, result);
+        RawLevel.observe(img, !mPayloadBad && mPreviewLayouts.isEmpty(), levels.meanBlack(), levels.white);
     }
 
     /** P110: the ISO the HAL honours for AE-off requests of this camera and RAW size (P27), MAX_VALUE while none is learned. */
@@ -3780,13 +3773,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P35: the measurement is the background check of the stored block: never while a shot takes its frames.
             if (!shotInFlight() && !mShotInProgress && com.particlesdevs.photoncamera.processing.MosaicStream.wantsFrame()) {
                 Image.Plane plane = img.getPlanes()[0];
-                float black = 0, white = 1023f;
                 CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
                 if (c == null) c = mCameraCharacteristics;
-                BlackLevelPattern blp = c == null ? null : c.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
-                if (blp != null) { int[] bl = new int[4]; blp.copyTo(bl, 0); black = (bl[0] + bl[1] + bl[2] + bl[3]) / 4f; }
-                Integer wl = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
-                if (wl != null && wl > black) white = wl;
+                // P127: the stream's levels at its bit depth (RawLevels)
+                final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
+                        com.particlesdevs.photoncamera.processing.RawLevels.current(c, null);
+                final float black = levels.meanBlack(), white = levels.white;
                 java.nio.ByteBuffer samples = plane.getBuffer();
                 int sampleStride = readStride(img);
                 final int readFormat = readFormat(img);
@@ -3846,18 +3838,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Image.Plane plane = img.getPlanes()[0];
             CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
             if (c == null) c = mCameraCharacteristics;
-            float white = 1023.0f;
-            float[] black = new float[]{0, 0, 0, 0};
             int cfa = 0;
             if (c != null) {
-                Integer wl = c.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
-                if (wl != null) white = wl;
-                BlackLevelPattern blp = c.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
-                if (blp != null) {
-                    int[] bl = new int[4];
-                    blp.copyTo(bl, 0);
-                    for (int i = 0; i < 4; i++) black[i] = bl[i];
-                }
                 if (mLiveCfaPattern >= 0) {
                     cfa = mLiveCfaPattern;
                 } else {
@@ -3878,13 +3860,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if(wb!=null){gains[0]=wb.getRed();gains[1]=(wb.getGreenEven()+wb.getGreenOdd())*.5f;gains[2]=wb.getBlue();}
                 android.hardware.camera2.params.ColorSpaceTransform matrix=colorResult.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
                 if(matrix!=null)for(int col=0;col<3;col++)for(int row=0;row<3;row++)ccm[col*3+row]=matrix.getElement(col,row).floatValue();
-                float[] dynamicBlack=colorResult.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
-                // A dynamic black far from the static one is another scale, not a drift (Realme GT8 Pro: 16 for a static 64, the
-                // RAW viewfinder's shadows lifted by 48 DN; the photo uses 64): kept only within 25 % of it (OPPO X8U drifts 64 -> 60)
-                if(dynamicBlack!=null&&dynamicBlack.length==4&&plausibleDynamicBlack(dynamicBlack,black))black=dynamicBlack;
-                Integer dynamicWhite=colorResult.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL);
-                if(dynamicWhite!=null)white=dynamicWhite;
             }
+            // P127: black and white at the stream's bit depth (RawLevels): the frame's dynamic black when it is in the stream's
+            // units or only drifts (OPPO X8U 64 -> 60), rescaled when it is in other units (Realme GT8 Pro: 16 for 64, X300 Ultra
+            // DCG: 1030.75 for 64 over 14-bit samples)
+            final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
+                    com.particlesdevs.photoncamera.processing.RawLevels.current(c, colorResult);
+            float white = levels.white;
+            float[] black = levels.black.clone();
             String sensorPrefix=com.particlesdevs.photoncamera.settings.ModuleSensorSettings.prefix(
                     com.particlesdevs.photoncamera.settings.ModuleSensorSettings.runtimeScope(physicalID));
             android.content.SharedPreferences sensorValues=ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
@@ -4106,10 +4089,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         if (newest == null || mCameraCharacteristics == null || newest.getFormat() != ImageFormat.RAW_SENSOR) return 0f;
         try {
-            Integer white = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
-            // P104: a RAW measured wider than declared (DCG 14 bit) clips at its own range
-            int limit = (int) (Math.max(white == null ? 1023 : white,
-                    com.particlesdevs.photoncamera.processing.RawPayloadCheck.wideWhite()) * 0.95f);
+            // P104 / P127: the stream clips at the white of its own bit depth (RawLevels: DCG 14 bit under a declared 1023)
+            CameraCharacteristics lc = mCameraCharacteristicsMap.get(physicalID);
+            int limit = (int) (com.particlesdevs.photoncamera.processing.RawLevels.current(
+                    lc == null ? mCameraCharacteristics : lc, null).white * 0.95f);
             if (packed != null) {
                 // MIPI RAW10 / RAW14: bytes 0..3 of each 5- / 7-byte group are the high 8 bits of four samples (RAW14 read >> 4:
                 // its high byte is the 10-bit value >> 2 as RAW10's)
@@ -4147,14 +4130,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.w("SCAM_CAPTURE", "ZSL clip estimate unavailable: " + e);
             return 0f;
         }
-    }
-
-    /** A dynamic black level within 25 % of the static one (per channel; a static black of 0 accepts anything). */
-    static boolean plausibleDynamicBlack(float[] dynamic, float[] fixed) {
-        if (dynamic == null || fixed == null || fixed.length < dynamic.length) return dynamic != null;
-        for (int i = 0; i < dynamic.length; i++)
-            if (fixed[i] > 0f && Math.abs(dynamic[i] - fixed[i]) > 0.25f * fixed[i]) return false;
-        return true;
     }
 
     /** White level for RawPayloadCheck: the previewed physical camera, the frame's dynamic white when its result is known. */

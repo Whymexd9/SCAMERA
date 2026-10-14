@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P130: the «Из системы» accent on Android 12+: the phone's own (Material You) accent palette. -->
+<resources>
+    <color name="accent_system">@android:color/system_accent1_200</color>
+    <color name="accent_system_container">@android:color/system_accent1_800</color>
+</resources>

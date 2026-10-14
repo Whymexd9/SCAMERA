@@ -210,27 +210,39 @@ public class RawPayloadCheckTest {
         assertEquals(null, RawPayloadCheck.packedLayout(plain(scene(1, 25), 1), W, H, BLACK, WHITE));
     }
 
-    /** P104: a plain 14-bit RAW behind white 1023 (vivo X500 Pro Max DCG sensor merge) is taken, with its own white. */
+    /**
+     * P104 / P127: a plain 14-bit RAW behind white 1023 (vivo DCG sensor merge) is taken; two such frames make 14 bits the
+     * stream's (RawLevels), and a frame that looks 10-bit (a dark scene) does not take it back until the next session.
+     */
     @Test
-    public void wide14BitPlainRawIsKeptWithItsWhite() {
+    public void wide14BitPlainRawIsKeptAndLearnt() {
         RawPayloadCheck.setWideEnabled(true);
         RawPayloadCheck.Result r = RawPayloadCheck.check(plain(scene(1, 31), 16), W, H, STRIDE, WHITE);
         assertTrue(r.error, r.plain());
-        assertEquals(16383, RawPayloadCheck.wideWhite());
-        assertTrue(RawPayloadCheck.wideLow() >= 4 * BLACK);
+        assertEquals("one frame proves nothing yet", 0, RawLevels.sampledBits());
+        assertTrue(RawPayloadCheck.check(plain(scene(1, 34), 16), W, H, STRIDE, WHITE).plain());
+        assertEquals(14, RawLevels.sampledBits());
+        assertTrue(RawLevels.sampledFloor() >= 4 * BLACK);
         assertTrue(RawPayloadCheck.check(plain(scene(1, 32), 1), W, H, STRIDE, WHITE).plain());
-        assertEquals(0, RawPayloadCheck.wideWhite());
+        assertEquals(14, RawLevels.sampledBits());
+        RawPayloadCheck.setWideEnabled(true);
+        assertEquals("a new session starts over", 0, RawLevels.sampledBits());
     }
 
+    /** P127: a 14-bit stream lit to 12 bits only (DCG at night): its floor on the 14-bit pedestal (64 x 16) tells 14 bits. */
     @Test
-    public void wideWhiteRules() {
-        assertEquals(16383, RawPayloadCheck.wideWhite(16000, 100, 0f, 1023));
-        assertEquals(4095, RawPayloadCheck.wideWhite(4000, 100, 0f, 1023));
-        assertEquals(0, RawPayloadCheck.wideWhite(1023, 0, 0f, 1023));     // plain 10-bit
-        assertEquals(0, RawPayloadCheck.wideWhite(16000, 1, 0f, 1023));    // a single sample is no range
-        assertEquals(0, RawPayloadCheck.wideWhite(16000, 100, 0.3f, 1023)); // zero tail: packed payload
-        assertEquals(0, RawPayloadCheck.wideWhite(60000, 100, 0f, 1023));  // beyond 14 bits
-        assertEquals(0, RawPayloadCheck.wideWhite(16000, 100, 0f, 4095));  // declared 12 bits and more: not judged
+    public void dark14BitFrameIsToldByItsFloor() {
+        RawPayloadCheck.setWideEnabled(true);
+        RawLevels.noteCamera(new float[]{BLACK, BLACK, BLACK, BLACK}, WHITE);
+        for (long seed = 35; seed < 37; seed++)
+            assertTrue(RawPayloadCheck.check(plain(scene(0.1, seed), 16), W, H, STRIDE, WHITE).plain());
+        assertEquals(14, RawLevels.sampledBits());
+        // a real 12-bit stream (black 256): its floor is no 14-bit pedestal
+        RawPayloadCheck.setWideEnabled(true);
+        RawLevels.noteCamera(new float[]{BLACK, BLACK, BLACK, BLACK}, WHITE);
+        for (long seed = 37; seed < 39; seed++)
+            assertTrue(RawPayloadCheck.check(plain(scene(1, seed), 4), W, H, STRIDE, WHITE).plain());
+        assertEquals(12, RawLevels.sampledBits());
     }
 
     @Test
@@ -238,21 +250,19 @@ public class RawPayloadCheckTest {
         RawPayloadCheck.setWideEnabled(false);
         try {
             assertFalse(RawPayloadCheck.check(plain(scene(1, 33), 16), W, H, STRIDE, WHITE).plain());
-            assertEquals(0, RawPayloadCheck.wideWhite());
+            assertFalse(RawPayloadCheck.check(plain(scene(1, 33), 16), W, H, STRIDE, WHITE).plain());
+            assertEquals(0, RawLevels.sampledBits());
         } finally {
             RawPayloadCheck.setWideEnabled(true);
         }
     }
 
-    /** P126: X300 Ultra DCG 14 bit - dynamic black 1021.75 / 1030.75 against the static 64, white 1023 declared. */
     @Test
-    public void pedestalNamesTheBitDepth() {
-        org.junit.Assert.assertEquals(16383, RawPayloadCheck.pedestalWhite(64, 1021.75f, 1023));
-        org.junit.Assert.assertEquals(16383, RawPayloadCheck.pedestalWhite(64, 1030.75f, 1023));
-        org.junit.Assert.assertEquals("12 bit", 4095, RawPayloadCheck.pedestalWhite(64, 256f, 1023));
-        org.junit.Assert.assertEquals("the static black", 0, RawPayloadCheck.pedestalWhite(64, 64.5f, 1023));
-        org.junit.Assert.assertEquals("a drifting black is no bit depth", 0, RawPayloadCheck.pedestalWhite(64, 150f, 1023));
-        org.junit.Assert.assertEquals("already wide", 0, RawPayloadCheck.pedestalWhite(64, 1024f, 4095));
-        org.junit.Assert.assertEquals(0, RawPayloadCheck.pedestalWhite(0, 1024f, 1023));
+    public void floorSkipsZeroPadding() {
+        int[] v = new int[1000];
+        for (int i = 0; i < 400; i++) v[i] = 0;
+        for (int i = 400; i < 1000; i++) v[i] = 1000 + i;
+        assertEquals(1403f, RawPayloadCheck.floor(v, 1000), 0f);
+        assertEquals("too few samples", -1f, RawPayloadCheck.floor(new int[]{5, 6}, 2), 0f);
     }
 }

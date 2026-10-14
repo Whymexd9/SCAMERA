@@ -23,17 +23,6 @@ public class RawLevelTest {
     }
 
     @Test
-    public void wideRawAtItsOwnRange() {
-        // P104 DCG 14 bit on the X500 Pro Max: white 1023 declared, samples to 16383, black scaled alike
-        float[] wide = RawLevel.range(64, 1023, 16383);
-        assertEquals(1024, wide[0], 0.5);
-        assertEquals(16383, wide[1], 0);
-        float[] plain = RawLevel.range(64, 1023, 0);
-        assertEquals(64, plain[0], 0);
-        assertEquals(1023, plain[1], 0);
-    }
-
-    @Test
     public void badInputsGiveNoLevel() {
         assertTrue(Double.isNaN(RawLevel.mean(flat(400, 300, 400, 500), 400, 300, 399, 64, 1023)));
         assertTrue(Double.isNaN(RawLevel.mean(flat(400, 300, 400, 500), 400, 300, 400, 64, 64)));

@@ -3092,3 +3092,77 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   the measured range flapped 4095 / 16383 / 1023 with the scene (dark first photo, others over / under): RawPayloadCheck.
   pedestalWhite - a dynamic black 2^k x the static one is a k bits wider stream (white (1023 + 1) * 2^k - 1); Parameters takes
   that black and white for the shot, the clip estimate and the motion level read it through wideWhite(). Not phone-checked.
+
+### P127 - RAW black / white levels by bit depth (owner, 2026-10-15: «Переделай алгоритм определения уровня белого и черного, не всегда 8 бит: 16/255 10 бит: 64/1023 12 бит: 256/4095 14 бит: 1024/16383 16 бит: 4096/65535. Нам нужен надёжный и точный алгоритм который будет определять правильно уровень, при этом не замедлять съёмку и тд. На гит не надо лить»)
+- Done locally (not pushed, owner). processing/RawLevels: one resolver for every consumer (shot Parameters, RAW viewfinder,
+  motion level, clip estimate, mosaic check, RawBin) instead of the separate P104 measured range, P126 pedestal and the
+  viewfinder's 25 % rule. Depth (even 8..16) = max of: the declared white; the dynamic black against the static one (ratio 4^n
+  within 0.25 octave = 2n bits; 0.75..1.25 = drift; anything else ignored) and the dynamic white; the samples of RawPayloadCheck
+  (second largest value beyond the declared range, no zero tail, up to 14 bits; a frame lit to 12 bits whose 0.5 % floor sits
+  on static black x 16 is 14 bits). Metadata never narrows (Realme 16-for-64 is rescaled x4); a wider metadata reading is
+  refused when the sampled floor is under half its pedestal. Sampled depth needs two frames and only grows within a camera
+  session (RawPayloadCheck.setWideEnabled = new session), so no flapping. Black: the dynamic one in the stream's units (X300U
+  1030.75), else static x 2^n (static kept when the samples' floor shows the pedestal did not move); white: dynamic in the
+  stream's units, else (declared + 1) x 2^n - 1. Shot frame check in Parameters.refineBlackLevel (same pass as the black floor):
+  its own samples beyond the resolved white widen the levels. No extra frame reads. Tests: RawLevelsTest (new),
+  RawPayloadCheckTest, ParametersBlackFloorTest. Not phone-checked.
+
+### P128 - settings audit: duplicates, broken and useless settings (owner, 2026-10-15: «пройдись по всем настройкам и удали/исправь все дубликаты и если найдешь какие-либо не рабочие настройки, то исправь их, либо, если они не нужны, удали из приложения»)
+- OPEN, after P127 (then P129). Every preference screen and key: duplicates merged (one key, one place), settings whose value no code reads
+  fixed or removed, unneeded ones removed (with SettingsMigration cleanup of the stale keys); check_settings_model.py and
+  SettingsAuditFixTest stay green.
+
+### P129 - one merge only: SCAM HDR removed, the Hybrid becomes SHDR, own names for the code names (owner, 2026-10-15: «SCAM HDR можешь вырезать из приложения, оставляем нейроремозаик. Все настройки что связаны с scamhdr, если они не связаны с гибридом вырезаем. У нас должен остаться только гибрид как единственный тип склейки. Его же мы переименовываем в SHDR. Так же убери из приложения упоминание LMC/AGC. Все кодовые названия по типу Bento, Shasta, mochi, Sabre и другие переделываем в наши собственные названия. Все названия придумай сам, главное чтобы звучало логично и нормально.»)
+- OPEN, after P128. Remove the SCAM HDR merge route (NPU 4N + L/S/ES graph, its settings and UI) but keep the neural remosaic
+  (Quad / Tetra / HP9 HexQuad models and their assets). Settings of the SCAM HDR route that the Hybrid does not use go
+  (SettingsMigration drops the stale keys). The Hybrid stays as the only merge and is called SHDR in the UI and logs.
+- No «LMC» / «AGC» left in the app (UI, logs, settings, code names). ARK stays (owner, 2026-10-15: «ARK можешь оставить»).
+  Code names Sabre, Bento, Shasta, Mochi and the like get
+  our own descriptive names (UI, settings, log tags, class / method names where cheap); keys renamed with a migration so owners'
+  settings survive. Vendor names (vivo.*, libvivo*, model files) stay as they are (P55 rule).
+
+### P130 - accent colour from the system (owner, 2026-10-15: «сделай так чтобы цветовые акценты брались автоматически из самого смартфона, В пункте меню где можно менять цветовой акцент добавь пункт "Из Системы"»)
+- Done locally. AccentPalette.SYSTEM «Из системы» / «From system» is the first choice and the default (an accent never chosen
+  = system): Android 12+ android.R.color.system_accent1_200 for the UI and the camera controls, SystemAccentTheme for the
+  settings activity (res values-v31/accent_system.xml = system_accent1_200 / _800; values/ = the old lavender); before Android
+  12 the old defaults (lavender UI, yellow camera controls). Test AccentSystemTest. Not phone-checked.
+
+### P131 - app icon in the style of our UI (owner, 2026-10-15: «переделать иконку приложения под стиль нашего интерфейса»)
+- Done locally. SCAMERA and SGallery launcher icons redrawn in the UI's style: the dark surface gradient (#23272E -> #121417)
+  as the background, light outline glyphs (#ECEEF4) with the lavender accent (camera: body + lens + LED; gallery: two photo
+  cards, hills, sun), monochrome layers of the same geometry for Android 13 themed icons, the splash raster from the same
+  drawing. Vectors only (minSdk 26: the density PNG mipmaps were never used - removed with the old 0.7 MB generated PNG
+  foregrounds and the unused gallery_launch_bg / fg). Generator: tools/make_launcher_icons.py [PREVIEW_DIR]. Not phone-checked.
+
+### P132 - settings groups reorganised for ordinary users (owner, 2026-10-15: «группу настроек "Камеры и сенсоры" упорядочить и превести в логический и более простой вид. В целом пересмотри все группы настроек и упорядочи/перераспредели всё для того чтобы было проще ориентироваться и обычному не сильно понимающему человеку было проще все найти»)
+- OPEN, done in the same pass as P128 (after P127). «Камеры и сенсоры» first: a simple logical order (modules / cameras,
+  then per-sensor options, expert keys at the end or under «Для разработчика»). Then every group: settings moved to where a
+  non-expert looks for them, short clear group titles, rarely used / expert rows grouped at the bottom. Supersedes the
+  «settings follow the LMC layout» rule; preference keys stay (only screens / order / titles change), check_settings_model.py green.
+
+### P133 - processing speed on every SoC (owner, 2026-10-15: «Проверить чтобы на всех процессорах скорость обработки была нормальная, потому что на 8 элит ген 5 на 300 ультра и на оппо х9 ультра обработка занимает больше времени чем на 8 элит на 200 ультра»)
+- OPEN, after P131. Snapdragon 8 Elite Gen 5 (vivo X300 Ultra, OPPO Find X9 Ultra) processes slower than 8 Elite (X200 Ultra).
+  Find why from ShotTimeline / worker timings in the owners' logs (SoC-gated paths: NPU / QNN only on 8 Elite, GPU paths
+  chosen by device or GPU name, thread counts / big-core affinity, Adreno 840 shader or driver fallbacks, frame sizes 14-bit
+  DCG / ISZ); make every SoC take the fast path it can. Needs a log of one shot from each phone to compare stage times.
+- Analysed 2026-10-15 from the owner's logs on the desktop (X300 Ultra V2562 log-2026-10-14, 9 shots; X200 Ultra V2454A
+  log 2026-10-13, 2 shots; the X9 Ultra log-2026-10-10 has no stage timings - an older build). Same route (Hybrid, sensor-size
+  output): X300 Ultra 2.5-3.6 s per shot (merge 0.8-1.2 s for 23-26 frames, post 0.43-0.78 s), X200 Ultra 5.4-6.9 s (merge
+  1.6-2.7 s for 11-26 frames, post 0.7-1.1 s, JPEG encode + save ~1.4 s) - the 8 Elite Gen 5 is not slower per shot here.
+  The slow X300 Ultra shots (5.7 s) are the 2x modules: "hybrid output mode=12 twoX=true", Sabre 2x grid 8160x6128 (4x the
+  pixels): local align 331 ms, merge 2.3 s, post 1.7 s (the queued GPU work of the nodes lands in the readback after the
+  last node: 870 ms). No SoC-specific path in the code: the merge's Adreno fast path (SHARED_TILES) matches any "Adreno"
+  (Adreno 840 included), the program cache hits (11/11), gpuPrio=low on both phones, thread counts by core count only;
+  SCAM HDR / neural remosaic need Hexagon v79 (SM8750) - not used by the Hybrid route. Nothing to fix without a log of the
+  same scene / module on both phones; the 2x modules cost 2x the time by design.
+
+### P134 - colour settings from Lightcraft and RawTherapee, all in «Цвет» (owner, 2026-10-15: «Изучи https://github.com/storytold/lightcraft https://github.com/RawTherapee/RawTherapee И добавь нам настройки цвета которые логически должны подойти нашему приложению, не дублируй одни и те же параметры, так же можешь сделать свои варианты настроек которых нет в данных примерах. Все настройки собирай в группе "Цвет"»)
+- OPEN, after P132 (the settings regrouping makes the «Цвет» group; P129 names apply). Study the colour tools of both
+  projects (RawTherapee: white balance, colour toning, channel mixer, HSV equalizer, colour appearance CIECAM, vibrance,
+  Lab adjustments, film simulation; Lightcraft: its colour / look controls; ArkCam - the standalone app, not the LMC mod
+  (owner, 2026-10-15: «можешь так же изучить и ArkCam(не мод LMC, а отдельное приложение)»; research/hybrid5 has its APK
+  notes: colour / tone / vibrance settings tree) and our existing colour rows (WB, saturation, hue
+  look, ARK tone, DCP / ISP CCM, output colour space). Add the ones that fit a phone camera's processed photo, each a real
+  stage of our pipeline (GPU shader / post-pipeline node) that changes the output, no duplicate of an existing control; own
+  variants where useful. Every colour setting (new and existing) moves into one «Цвет» / «Colour» group. Licences: RawTherapee
+  is GPL-3 - reimplement from the published maths, copy no code; Lightcraft's licence checked before reading code.

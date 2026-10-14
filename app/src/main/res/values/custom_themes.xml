@@ -62,6 +62,10 @@
     <style name="LavenderAccentTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimary">#C7B5FF</item><item name="colorAccent">#C7B5FF</item><item name="colorSecondary">#C7B5FF</item><item name="colorControlActivated">#C7B5FF</item><item name="android:colorAccent">#C7B5FF</item><item name="colorPrimaryContainer">#413555</item><item name="colorOnPrimary">#18131F</item><item name="colorOnSecondary">#18131F</item>
     </style>
+    <!-- P130 «Из системы»: colours from accent_system.xml (the phone's accent on Android 12+, values-v31) -->
+    <style name="SystemAccentTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
+        <item name="colorPrimary">@color/accent_system</item><item name="colorAccent">@color/accent_system</item><item name="colorSecondary">@color/accent_system</item><item name="colorControlActivated">@color/accent_system</item><item name="android:colorAccent">@color/accent_system</item><item name="colorPrimaryContainer">@color/accent_system_container</item><item name="colorOnPrimary">#18131F</item><item name="colorOnSecondary">#18131F</item>
+    </style>
     <style name="AmberAccentTheme" parent="ThemeOverlay.Material3.DynamicColors.DayNight">
         <item name="colorPrimary">#FFD47E</item><item name="colorAccent">#FFD47E</item><item name="colorSecondary">#FFD47E</item><item name="colorControlActivated">#FFD47E</item><item name="android:colorAccent">#FFD47E</item><item name="colorPrimaryContainer">#594720</item><item name="colorOnPrimary">#18131F</item><item name="colorOnSecondary">#18131F</item>
     </style>

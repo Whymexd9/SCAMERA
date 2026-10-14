@@ -67,6 +67,9 @@ public class Parameters {
     /** Correlated colour temperature of the scene light (K): the DNG estimate, or the neutral-based one on the OPPO HAL. */
     public float sceneCct = 6504f;
     public int whiteLevel = 1023;
+    /** P127: bit depth of the shot's RAW stream (RawLevels) and where its black / white came from. */
+    public int levelBits;
+    public String levelSource = "";
     public static int mergeWhiteLevel = 65535;
     public int realWL = -1;
     public boolean hasGainMap;
@@ -254,22 +257,6 @@ public class Parameters {
         //hotPixels = ScameraApp.getCameraFragment().mHotPixelMap;
     }
 
-    /**
-     * P104: the shot's RAW was measured wider than the declared white (RawPayloadCheck: the X500 Pro Max's DCG 14-bit sensor
-     * merge with white 1023 in the metadata): the white rises to the measured range, the black scales with it when the darkest
-     * samples sit well above the declared black (the pedestal moved with the data). No override set by the user is touched.
-     */
-    void applyWideRaw(int wide, int low) {
-        if (wide <= whiteLevel || whiteLevelOverride >= 0) return;
-        final float scale = (wide + 1f) / (whiteLevel + 1f);
-        float black = Float.MAX_VALUE;
-        for (float b : blackLevel) black = Math.min(black, b);
-        final boolean scaleBlack = blackLevelOverride < 0 && black > 0 && low >= 4f * black;
-        if (scaleBlack) for (int i = 0; i < blackLevel.length; i++) blackLevel[i] *= scale;
-        Log.i(TAG, "wide RAW: white " + whiteLevel + " -> " + wide + (scaleBlack ? ", black x" + scale : ", black kept") + " (low " + low + ")");
-        whiteLevel = wide;
-    }
-
     public void FillDynamicParameters(CaptureResult result, CaptureRequest request, int ISO) {
         // Selection may change the reference after the first metadata pass.
         // Missing tags must not retain another frame's dynamic calibration.
@@ -303,21 +290,6 @@ public class Parameters {
             float[] reportedBlack = result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
             Log.i(TAG, "black level static=" + level + " dynamic=" + java.util.Arrays.toString(reportedBlack)
                     + " whiteDynamic=" + result.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL));
-            if(useDynamicBlackLevel) {
-                float[] dynbl = result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
-                if (dynbl != null) {
-                    System.arraycopy(dynbl, 0, blackLevel, 0, 4);
-                    usedDynamic = true;
-                }
-            }
-            Object white = result.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL);
-            if (white != null && useDynamicWhiteLevel) {
-                whiteLevel = (int) white;
-            }
-
-            if(whiteLevelOverride >= 0) {
-                whiteLevel = (int) whiteLevelOverride;
-            }
             try {
                 gainMap = new float[]{1.f, 1.f, 1.f, 1.f};
                 mapSize = new Point(1, 1);
@@ -371,33 +343,27 @@ public class Parameters {
             if (rawBinning > 1) hotPixels = new Point[0]; // sensor coordinates; a binned site averages it away
             ReCalcColor(false, result);
         }
-        if (!usedDynamic)
-            if (level != null) {
-                level.copyTo(blarr, 0);
-                for (int i = 0; i < 4; i++) blackLevel[i] = blarr[i];
-            }
-        if(blackLevelOverride >= 0) {
+        // P127: black and white at the bit depth of the stream (RawLevels: declared levels, the frame's dynamic ones in their own
+        // units, what the session's samples proved), then the user's overrides
+        if (level != null) level.copyTo(blarr, 0);
+        final Integer dynamicWhite = result == null ? null : result.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL);
+        final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
+                com.particlesdevs.photoncamera.processing.RawLevels.forFrame(
+                        level == null ? null : new float[]{blarr[0], blarr[1], blarr[2], blarr[3]},
+                        staticWhite == null ? 0 : staticWhite,
+                        result == null ? null : result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL),
+                        dynamicWhite == null ? 0 : dynamicWhite, useDynamicBlackLevel, useDynamicWhiteLevel);
+        System.arraycopy(levels.black, 0, blackLevel, 0, 4);
+        whiteLevel = levels.white;
+        usedDynamic = levels.dynamicBlack;
+        levelBits = levels.bits;
+        levelSource = levels.source;
+        if (whiteLevelOverride >= 0) whiteLevel = whiteLevelOverride;
+        if (blackLevelOverride >= 0) {
             for (int i = 0; i < 4; i++) blackLevel[i] = blackLevelOverride;
         }
-        // P126: a pedestal far above the static black (vivo X300 Ultra DCG 14 bit: dynamic 1030.75, static 64, white 1023
-        // declared) is a wider stream: its own black and the white of its bit depth, however dark the scene
-        final float[] pedestal = result == null ? null : result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
-        if (!usedDynamic && blackLevelOverride < 0 && whiteLevelOverride < 0 && level != null && pedestal != null && pedestal.length >= 4) {
-            float stat = Float.MAX_VALUE, dyn = Float.MAX_VALUE;
-            for (int i = 0; i < 4; i++) {
-                stat = Math.min(stat, level.getOffsetForIndex(i % 2, i / 2));
-                dyn = Math.min(dyn, pedestal[i]);
-            }
-            final int wide = com.particlesdevs.photoncamera.processing.RawPayloadCheck.pedestalWhite(stat, dyn, whiteLevel);
-            if (wide > 0) {
-                System.arraycopy(pedestal, 0, blackLevel, 0, 4);
-                Log.i(TAG, "wide RAW by its black: " + java.util.Arrays.toString(pedestal) + " (static " + stat + "), white "
-                        + whiteLevel + " -> " + wide);
-                whiteLevel = wide;
-            }
-        }
-        applyWideRaw(com.particlesdevs.photoncamera.processing.RawPayloadCheck.wideWhite(),
-                com.particlesdevs.photoncamera.processing.RawPayloadCheck.wideLow());
+        Log.i(TAG, "RAW levels: " + levels + (whiteLevelOverride >= 0 ? ", white override " + whiteLevelOverride : "")
+                + (blackLevelOverride >= 0 ? ", black override " + blackLevelOverride : ""));
         Float aperture = result.get(CaptureResult.LENS_APERTURE);
         if (aperture == null) {
             aperture = request.get(CaptureRequest.LENS_APERTURE);
@@ -435,10 +401,14 @@ public class Parameters {
      * buffer: packed 16-bit RAW, rowStride = width*2.
      */
     public void refineBlackLevel(java.nio.ByteBuffer buffer, int width, int height) {
-        if (buffer == null || width < 128 || height < 128 || blackLevelOverride >= 0) return;
-        if (!PreferenceKeys.isRawBlackFromData()) return;
-        // Same frame again (SCAM re-reads the reference metadata): reuse the floor.
-        if (buffer == blackFloorSource) { applyBlackFloor(blackFloorEstimate); return; }
+        if (buffer == null || width < 128 || height < 128) return;
+        final boolean floorOn = blackLevelOverride < 0 && PreferenceKeys.isRawBlackFromData();
+        // Same frame again (SCAM re-reads the reference metadata): reuse what it showed.
+        if (buffer == blackFloorSource) {
+            widenToSamples(blackFloorMax, blackFloorLow);
+            if (floorOn && blackFloorEstimate != Float.MAX_VALUE) applyBlackFloor(blackFloorEstimate);
+            return;
+        }
         java.nio.ShortBuffer data = buffer.duplicate().order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
         if (data.capacity() < width * height) return;
         final int bs = 32;
@@ -454,7 +424,8 @@ public class Parameters {
         final int blocks = bw * bh;
         final float[][] means = new float[4][blocks];
         final boolean[][] low = new boolean[4][blocks], zero = new boolean[4][blocks];
-        int padding = 0;
+        int padding = 0, max = 0, max2 = 0;
+        float lowest = Float.MAX_VALUE;
         for (int c = 0; c < 4; c++) {
             int ox = c % 2, oy = c / 2;
             for (int by = 0; by < bh; by++) for (int bx = 0; bx < bw; bx++) {
@@ -468,17 +439,31 @@ public class Parameters {
                     for (int x = 0; x < bs; x += 4) {
                         int v = data.get(base + x * 2) & 0xffff;
                         sum += v;
+                        if (v > max) { max2 = max; max = v; } else if (v > max2) max2 = v;
                         padded |= v < paddingBelow; // a block on the border of the padding: its mean is half signal
                         allZero &= v == 0;
                     }
                 }
                 final int i = by * bw + bx;
                 means[c][i] = sum / (float) ((bs / 4) * (bs / 4));
+                if (!allZero) lowest = Math.min(lowest, means[c][i]);
                 low[c][i] = padded;
                 zero[c][i] = allZero;
                 if (padded) padding++;
             }
         }
+        // P127: the frame's own samples beyond its white: a wider stream than the session had shown (black and white rescaled; the
+        // padding test below depends on the black, so the blocks are read again at the new levels)
+        final float darkest = lowest == Float.MAX_VALUE ? -1f : lowest;
+        if (widenToSamples(max2, darkest)) {
+            refineBlackLevel(buffer, width, height);
+            return;
+        }
+        blackFloorSource = buffer;
+        blackFloorMax = max2;
+        blackFloorLow = darkest;
+        blackFloorEstimate = Float.MAX_VALUE;
+        if (!floorOn) return;
         // P114: padding is a strip of the frame (X200 Pro: 4.6 % of it), a noisy night dips below the quarter now and then. When
         // most of the frame holds such samples the HAL delivered the RAW without its black pedestal (OPPO Find X8 Ultra, owner's
         // log 2026-10-13 11:51-12:43 until the phone was restarted: 80-97 % of the blocks, data floor 18-23 DN for a reported 64,
@@ -503,9 +488,31 @@ public class Parameters {
             estimate = Math.min(estimate, low3);
         }
         if (estimate == Float.MAX_VALUE) return;
-        blackFloorSource = buffer;
         blackFloorEstimate = estimate;
         applyBlackFloor(estimate);
+    }
+
+    /**
+     * P127: two samples of the shot's frame above its white (the second largest: one hot pixel is no range) prove a stream wider
+     * than the levels were resolved for (RawLevels.sampledBits: its range, 14 instead of 12 bits when the frame's darkest block
+     * sits on the 14-bit pedestal): black and white rescaled to that depth (the user's overrides kept). True when changed.
+     */
+    boolean widenToSamples(int secondMax, float lowestBlock) {
+        if (whiteLevelOverride >= 0 || secondMax <= whiteLevel || !com.particlesdevs.photoncamera.processing.RawLevels.wideEnabled())
+            return false;
+        final int from = levelBits > 0 ? levelBits : com.particlesdevs.photoncamera.processing.RawLevels.bitsOfWhite(whiteLevel);
+        float black = Float.MAX_VALUE;
+        for (float b : blackLevel) black = Math.min(black, b);
+        final int bits = com.particlesdevs.photoncamera.processing.RawLevels.sampledBits(secondMax, whiteLevel, black, lowestBlock);
+        if (from <= 0 || bits <= from) return false;
+        final int k = bits - from;
+        if (blackLevelOverride < 0) for (int i = 0; i < 4; i++) blackLevel[i] = Math.min(65535f, blackLevel[i] * (1 << k));
+        whiteLevel = (int) Math.min(65535L, ((whiteLevel + 1L) << k) - 1);
+        levelBits = bits;
+        levelSource += ", widened to the frame's samples (" + secondMax + ")";
+        Log.i(TAG, "RAW levels: the frame's samples reach " + secondMax + ": " + from + " -> " + bits + " bit, black "
+                + Arrays.toString(blackLevel) + ", white " + whiteLevel);
+        return true;
     }
 
     /** P114: a block of exact zeros (padding) or next to one (its border holds both). */
@@ -518,14 +525,16 @@ public class Parameters {
     }
 
     private java.nio.ByteBuffer blackFloorSource;
-    /** Where the black and white levels of the shot came from (diagnostics): override / data floor / dynamic / static. */
+    private int blackFloorMax;
+    private float blackFloorLow = -1f;
+    /** Where the black and white levels of the shot came from (diagnostics): bit depth, override / data floor / dynamic / static. */
     public String levelSources() {
-        String black = blackLevelOverride >= 0 ? "override" : blackFloorSource != null ? "data floor (" + blackFloorEstimate + ")"
-                : usedDynamic ? "dynamic" : "static";
+        String black = blackLevelOverride >= 0 ? "override" : blackFloorSource != null && blackFloorEstimate != Float.MAX_VALUE
+                ? "data floor (" + blackFloorEstimate + ")" : usedDynamic ? "dynamic" : "static";
         String white = whiteLevelOverride >= 0 ? "override" : useDynamicWhiteLevel ? "dynamic if reported" : "static";
-        return "black=" + black + " white=" + white;
+        return levelBits + " bit, black=" + black + " white=" + white + " [" + levelSource + "]";
     }
-    private float blackFloorEstimate;
+    private float blackFloorEstimate = Float.MAX_VALUE;
 
     private void applyBlackFloor(float estimate) {
         // ~1 DN of a 10-bit range; below that it is noise in the estimate, not a wrong black.
@@ -838,6 +847,8 @@ public class Parameters {
         params.whitePoint = whitePoint.clone();
         params.sceneCct = sceneCct;
         params.whiteLevel = whiteLevel;
+        params.levelBits = levelBits;
+        params.levelSource = levelSource;
         params.realWL = realWL;
         params.hasGainMap = hasGainMap;
         params.mapSize = new Point(mapSize);

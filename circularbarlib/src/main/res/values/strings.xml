@@ -11,6 +11,7 @@
     <string name="manual_wb_unavailable">Manual white balance is not available for this camera</string>
     <string name="manual_panel_open">Open manual controls</string>
     <string name="manual_panel_close">Collapse manual controls</string>
+    <string name="accent_name_system">From system</string>
     <string name="accent_name_lavender">Lavender</string>
     <string name="accent_name_blue">Blue</string>
     <string name="accent_name_green">Green</string>

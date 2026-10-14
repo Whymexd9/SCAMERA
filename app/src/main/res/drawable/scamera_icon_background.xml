@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- P131: the launcher icons' background - the UI's dark surface, a little lighter at the top. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#FFFDFD" />
+    <gradient android:angle="270" android:startColor="#23272E" android:endColor="#121417" />
 </shape>

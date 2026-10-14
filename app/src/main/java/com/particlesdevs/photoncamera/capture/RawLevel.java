@@ -76,15 +76,4 @@ public final class RawLevel {
         }
         return n == 0 ? Double.NaN : sum / n;
     }
-
-    /**
-     * Black and white of the ring's RAW: the physical camera's static black, the larger of the static and the frame's dynamic
-     * white, and a payload measured wider than declared (P104 DCG 14 bit: white 1023 declared, 14-bit samples) at its own
-     * range with the black scaled alike. Returns {black, white}.
-     */
-    static float[] range(float staticBlack, int declaredWhite, int wideWhite) {
-        if (wideWhite > declaredWhite && declaredWhite > 0)
-            return new float[]{staticBlack * (wideWhite + 1f) / (declaredWhite + 1f), wideWhite};
-        return new float[]{staticBlack, declaredWhite};
-    }
 }

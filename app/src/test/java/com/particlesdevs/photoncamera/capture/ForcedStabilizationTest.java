@@ -65,13 +65,4 @@ public class ForcedStabilizationTest {
         assertEquals(1, CaptureController.getPreferredVideoStabilizationMode(chars, true, true));
         assertEquals(0, CaptureController.getPreferredVideoStabilizationMode(chars, true, false));
     }
-
-    /** The RAW viewfinder's dynamic black: a drift is taken, another scale (16 for 64, Realme GT8 Pro) is not. */
-    @Test
-    public void dynamicBlackOnlyNearTheStaticOne() {
-        float[] fixed = {64, 64, 64, 64};
-        assertTrue(CaptureController.plausibleDynamicBlack(new float[]{60, 61, 60, 62}, fixed));
-        assertFalse(CaptureController.plausibleDynamicBlack(new float[]{16, 16, 16, 16}, fixed));
-        assertTrue(CaptureController.plausibleDynamicBlack(new float[]{16, 16, 16, 16}, new float[]{0, 0, 0, 0}));
-    }
 }

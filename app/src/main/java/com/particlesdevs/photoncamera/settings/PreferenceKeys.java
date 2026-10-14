@@ -162,7 +162,9 @@ public class PreferenceKeys {
 
     public static void setActivityTheme(Activity activity) {
         Map<String, Integer> map = new HashMap<>();
-        map.put("default", R.style.LavenderAccentTheme);
+        // P130: «Из системы» (and the default) - the phone's accent on Android 12+ (values-v31), lavender before
+        map.put("default", R.style.SystemAccentTheme);
+        map.put("system", R.style.SystemAccentTheme);
         map.put("lavender", R.style.LavenderAccentTheme);
         map.put("amber", R.style.AmberAccentTheme);
         map.put("red", Integer.valueOf(R.style.RedTheme));

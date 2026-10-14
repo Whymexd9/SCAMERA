@@ -12,8 +12,8 @@ public class AccentSettingsFragment extends ModuleConceptFragment {
         for(int i=0;i<AccentPalette.VALUES.length;i++){
             String value=AccentPalette.VALUES[i];String name=requireContext().getString(AccentPalette.NAMES[i]);
             LinearLayout c=card(),r=row();r.setPadding(dp(10),dp(4),dp(14),dp(4));
-            TextView swatch=text("●",30,AccentPalette.color(value));swatch.setGravity(Gravity.CENTER);r.addView(swatch,new LinearLayout.LayoutParams(dp(48),dp(48)));r.addView(text(name,15,TEXT),new LinearLayout.LayoutParams(0,-2,1));
-            String selected=AccentPalette.selected(requireContext());boolean on=value.equals(selected)||("lavender".equals(value)&&"default".equals(selected));
+            TextView swatch=text("●",30,AccentPalette.swatch(requireContext(),value));swatch.setGravity(Gravity.CENTER);r.addView(swatch,new LinearLayout.LayoutParams(dp(48),dp(48)));r.addView(text(name,15,TEXT),new LinearLayout.LayoutParams(0,-2,1));
+            String selected=AccentPalette.selected(requireContext());boolean on=value.equals(selected)||(AccentPalette.SYSTEM.equals(value)&&"default".equals(selected));
             r.addView(text(on?"✓":"",22,accent));r.setTag("accent_"+value);r.setContentDescription(name+(on?Lang.t(getContext(),", выбран",", selected"):""));
             r.setOnClickListener(v->{AccentPalette.select(requireContext(),value);requireActivity().recreate();});c.addView(r);
         }

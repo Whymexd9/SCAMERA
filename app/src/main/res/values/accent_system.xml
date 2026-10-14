@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P130: the «Из системы» accent before Android 12 (no system palette): the old default, lavender. -->
+<resources>
+    <color name="accent_system">#C7B5FF</color>
+    <color name="accent_system_container">#413555</color>
+</resources>

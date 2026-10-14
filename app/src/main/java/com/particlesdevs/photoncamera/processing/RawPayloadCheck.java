@@ -76,9 +76,8 @@ public final class RawPayloadCheck {
         ShortBuffer data = view.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer();
         final int limit = 4 * (whiteLevel + 1), rows = Math.min(ROWS, height), step = Math.max(1, width / SAMPLES);
         long impossible = 0, total = 0;
-        int zeroRows = 0, max = 0, overWhite = 0, n = 0;
+        int zeroRows = 0, max = 0, max2 = 0, n = 0;
         final int[] samples = new int[ROWS * SAMPLES];
-        final float wideFrom = whiteLevel * 1.5f;
         for (int r = 0; r < rows; r++) {
             int y = rows == 1 ? 0 : (int) ((long) r * (height - 1) / (rows - 1));
             int base = (int) ((long) y * rowStride / 2);
@@ -86,8 +85,7 @@ public final class RawPayloadCheck {
             for (int i = 0, x = step / 2; i < SAMPLES && x < width; i++, x += step) {
                 int v = data.get(base + x) & 0xffff;
                 if (v >= limit) impossible++;
-                if (v > max) max = v;
-                if (v > wideFrom) overWhite++;
+                if (v > max) { max2 = max; max = v; } else if (v > max2) max2 = v;
                 if (n < samples.length) samples[n++] = v;
                 if (v != 0) zero = false;
                 total++;
@@ -97,95 +95,38 @@ public final class RawPayloadCheck {
         float share = total == 0 ? 0 : (float) impossible / total, zeroShare = (float) zeroRows / rows;
         boolean packed10 = (share >= IMPOSSIBLE_WITH_ZERO_ROWS && zeroShare >= 0.28f && zeroShare <= 0.45f)
                 || (share >= 0.50f && zeroShare >= 0.28f);
-        // P104: a plain RAW wider than its declared white (vivo X500 Pro Max DCG sensor merge: 14-bit Bayer, white 1023 declared)
-        final int wide = sWideEnabled ? wideWhite(max, overWhite, zeroShare, whiteLevel) : 0;
-        if (wide > 0) {
-            int[] sorted = java.util.Arrays.copyOf(samples, n);
-            java.util.Arrays.sort(sorted);
-            noteWide(wide, sorted[n / 200], max, whiteLevel);
-            return new Result(null, share, zeroShare, false);
+        // P104 / P127: a plain RAW wider than its declared white (vivo DCG: 14-bit Bayer under white 1023). Two samples the
+        // declared depth cannot hold (the second largest value: one hot pixel is no range) and no zero tail (packed payloads end
+        // in zero rows) prove a wider stream; its floor (0.5 % of the non-zero samples) is measured then, and while the metadata
+        // says the stream is wider, to tell 12 from 14 bits and to check the metadata (RawLevels).
+        if (RawLevels.wideEnabled()) {
+            final int declaredBits = RawLevels.bitsOfWhite(whiteLevel), sampled = RawLevels.bitsOfWhite(max2);
+            final boolean wider = zeroShare < 0.05f && sampled > declaredBits && sampled <= RawLevels.MAX_SAMPLED_BITS;
+            final float floor = wider || RawLevels.metadataWider() ? floor(samples, n) : -1f;
+            final int bits = wider ? RawLevels.sampledBits(max2, whiteLevel, RawLevels.staticBlack(), floor) : 0;
+            RawLevels.noteSamples(whiteLevel, bits, floor);
+            if (bits > 0) return new Result(null, share, zeroShare, false);
         }
         if (share >= IMPOSSIBLE_SHARE || (share >= IMPOSSIBLE_WITH_ZERO_ROWS && zeroShare >= ZERO_ROW_SHARE))
             return new Result(String.format(Locale.ROOT,
                     "RAW is not plain 16-bit: %.1f %% of samples at or above 4x white %d, %.1f %% zero rows (%s)",
                     share * 100, whiteLevel, zeroShare * 100, geometry), share, zeroShare, packed10);
-        noteWide(0, 0, max, whiteLevel);
         return new Result(null, share, zeroShare, false);
     }
 
-    /** P104 dev switch raw_wide (CaptureController sets it per session). */
-    private static volatile boolean sWideEnabled = true;
-    private static volatile int sWideWhite, sWideLow;
+    /** 0.5 % of the non-zero samples (zero is padding, not the floor), -1 when there are too few. */
+    static float floor(int[] samples, int n) {
+        final int[] sorted = java.util.Arrays.copyOf(samples, n);
+        java.util.Arrays.sort(sorted);
+        int zeros = 0;
+        while (zeros < n && sorted[zeros] == 0) zeros++;
+        final int left = n - zeros;
+        return left < 200 ? -1f : sorted[zeros + left / 200];
+    }
 
+    /** P104 dev switch raw_wide; CaptureController calls it for every camera session, which starts the stream's levels over. */
     public static void setWideEnabled(boolean enabled) {
-        sWideEnabled = enabled;
-        if (!enabled) sWideWhite = sPedestalWhite = 0;
-    }
-
-    /**
-     * White level of the stream when it is wider than declared, else 0: the larger of the last checked plain frame's measured
-     * range (4095 / 16383) and the range its dynamic black says (P126, {@link #pedestalWhite}).
-     */
-    public static int wideWhite() {
-        return Math.max(sWideWhite, sPedestalWhite);
-    }
-
-    private static volatile int sPedestalWhite;
-
-    /**
-     * P126 (vivo X300 Ultra DCG 14 bit, log 2026-10-14: dynamic black 1030.75 against the static 64, white 1023 declared; the
-     * measured range read the dark scene as 12 bits, then as 10, and the first DCG photo came out dark): a frame's dynamic black
-     * 2^k times (k = 2..6) the static black is the same pedestal in a k bits wider stream, white = (declared + 1) * 2^k - 1, at
-     * any scene brightness. 0 when the black is the static one (or the declared white is already wide).
-     */
-    public static int pedestalWhite(float staticBlack, float dynamicBlack, int declaredWhite) {
-        if (!(staticBlack > 0) || declaredWhite <= 0 || declaredWhite >= 4095 || !(dynamicBlack >= 3.5f * staticBlack)) return 0;
-        final double bits = Math.log(dynamicBlack / staticBlack) / Math.log(2);
-        final int k = (int) Math.round(bits);
-        if (k < 2 || k > 6 || Math.abs(bits - k) > 0.25) return 0;
-        return (int) Math.min(65535L, ((declaredWhite + 1L) << k) - 1);
-    }
-
-    /** P126: notes the pedestal of a frame's metadata (CaptureResult dynamic black against the camera's static black). */
-    static void notePedestal(CameraCharacteristics characteristics, CaptureResult result, int declaredWhite) {
-        if (!sWideEnabled || characteristics == null || result == null) return;
-        final float[] dynamic = result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL);
-        final android.hardware.camera2.params.BlackLevelPattern pattern =
-                characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
-        if (dynamic == null || dynamic.length == 0 || pattern == null) return;
-        float stat = Float.MAX_VALUE, dyn = Float.MAX_VALUE;
-        for (int i = 0; i < 4; i++) stat = Math.min(stat, pattern.getOffsetForIndex(i % 2, i / 2));
-        for (float d : dynamic) dyn = Math.min(dyn, d);
-        final int white = pedestalWhite(stat, dyn, declaredWhite);
-        if (white != sPedestalWhite) com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", white > 0
-                ? String.format(Locale.ROOT, "wide RAW: dynamic black %.2f over static %.0f -> white %d", dyn, stat, white)
-                : "RAW black back at the static " + stat);
-        sPedestalWhite = white;
-    }
-
-    /** 0.5th percentile of that frame's samples (where its black sits). */
-    public static int wideLow() {
-        return sWideLow;
-    }
-
-    /**
-     * The white of a plain RAW whose samples pass the declared white: at least two sampled values above 1.5x the declared white
-     * (a plain 10-bit sample never passes it), no zero tail (packed payloads end in zero rows), and every value within 12 / 14
-     * bits; 0 otherwise.
-     */
-    static int wideWhite(int max, int overWhite, float zeroShare, int declaredWhite) {
-        if (declaredWhite <= 0 || declaredWhite >= 4095 || zeroShare >= 0.05f || overWhite < 2 || max <= declaredWhite * 1.5f) return 0;
-        if (max <= 4095) return 4095;
-        if (max <= 16383) return 16383;
-        return 0;
-    }
-
-    private static void noteWide(int wide, int low, int max, int declaredWhite) {
-        if (wide != sWideWhite) com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", wide > 0
-                ? String.format(Locale.ROOT, "wide RAW: samples up to %d over declared white %d -> white %d (0.5%% at %d)", max, declaredWhite, wide, low)
-                : "RAW back within declared white " + declaredWhite);
-        sWideWhite = wide;
-        sWideLow = low;
+        RawLevels.newSession(enabled);
     }
 
     /**
@@ -321,11 +262,12 @@ public final class RawPayloadCheck {
         if (stat != null) white = stat;
         Integer dynamic = result == null ? null : result.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL);
         if (dynamic != null) white = Math.max(white, dynamic);
-        if (result != null) {
-            try {
-                notePedestal(characteristics, result, white);
-            } catch (RuntimeException ignored) {
-            }
+        try {
+            // P127: the camera of the checked frames, and the frame's metadata in its own units (RawLevels)
+            if (result != null) RawLevels.noteMetadata(RawLevels.staticBlack(characteristics), stat == null ? 0 : stat,
+                    result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL), dynamic == null ? 0 : dynamic);
+            else RawLevels.noteCamera(RawLevels.staticBlack(characteristics), stat == null ? 0 : stat);
+        } catch (RuntimeException ignored) {
         }
         return white;
     }

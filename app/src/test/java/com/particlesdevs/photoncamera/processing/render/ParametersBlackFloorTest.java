@@ -45,6 +45,8 @@ public class ParametersBlackFloorTest {
         p.whiteLevel = 1023; p.blackLevel = new float[]{64, 64, 64, 64};
         Field override = Parameters.class.getDeclaredField("blackLevelOverride");
         override.setAccessible(true); override.setFloat(p, -1f);
+        Field white = Parameters.class.getDeclaredField("whiteLevelOverride");
+        white.setAccessible(true); white.setInt(p, -1);
         return p;
     }
 
@@ -127,5 +129,45 @@ public class ParametersBlackFloorTest {
         Parameters p = parameters();
         p.refineBlackLevel(scene(1024, 768, 928, 696, 64, 30, (x, y) -> true), 1024, 768);
         for (float v : p.blackLevel) assertTrue("black " + v, v > 50f);
+    }
+    /**
+     * P127: the shot's own frame holds samples its resolved white cannot (a session that had not shown its 14 bits yet): black
+     * and white rescaled to that depth; a frame lit to 12 bits only whose darkest blocks sit on 64 x 16 is 14 bits too.
+     */
+    @Test public void shotFrameBeyondItsWhiteWidensTheLevels() throws Exception {
+        com.particlesdevs.photoncamera.processing.RawLevels.newSession(true);
+        Parameters p = parameters();
+        p.levelBits = 10;
+        // 14-bit DCG frame lit to 12 bits only: pedestal 1024, the lit half ~2500
+        p.refineBlackLevel(lit(1024, 768, 1024, 1500, 20), 1024, 768);
+        assertEquals(14, p.levelBits);
+        assertEquals(16383, p.whiteLevel);
+        for (float v : p.blackLevel) assertEquals(1024f, v, 30f);
+
+        Parameters q = parameters();
+        q.levelBits = 10;
+        // a real 12-bit stream: pedestal 256, the lit half ~1756
+        q.refineBlackLevel(lit(1024, 768, 256, 1500, 10), 1024, 768);
+        assertEquals(12, q.levelBits);
+        assertEquals(4095, q.whiteLevel);
+        for (float v : q.blackLevel) assertEquals(256f, v, 10f);
+    }
+
+    /** w x h RAW16: the left half at the pedestal, the right half {@code light} above it, Gaussian noise. */
+    private static ByteBuffer lit(int w, int h, int pedestal, int light, double sigma) {
+        ByteBuffer b = ByteBuffer.allocateDirect(w * h * 2).order(ByteOrder.nativeOrder());
+        ShortBuffer s = b.asShortBuffer();
+        Random r = new Random(17);
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++)
+            s.put(y * w + x, (short) Math.max(0, Math.round(pedestal + (x < w / 2 ? 0 : light) + sigma * r.nextGaussian())));
+        return b;
+    }
+
+    @Test public void tenBitFrameKeepsItsLevels() throws Exception {
+        Parameters p = parameters();
+        p.levelBits = 10;
+        p.refineBlackLevel(scene(1024, 768, 1024, 768, 64, 5, (x, y) -> x < 512), 1024, 768);
+        assertEquals(10, p.levelBits);
+        assertEquals(1023, p.whiteLevel);
     }
 }
