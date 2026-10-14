@@ -3129,6 +3129,13 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - OPEN (quick, with the settings work). A value at the end of its range draws the thumb cut in half at the card's edge (the
   SeekBar's padding / thumb offset in the settings row layout); every UniversalSeekBarPreference / tunable / shade slider row
   checked at min, max and mid values (thumb whole, track and value pill agree, the value matches the stored one).
+- Done locally (2026-10-15). Cause: preference_seekbar.xml pulls the SeekBar 14 dp left / 10 dp right out of the text column
+  (so the track lines up with the text); at the minimum the thumb (centre 16 dp in, 9 dp radius) reached 7 dp past the column,
+  which the card clipped (clipChildren). The column and the card no longer clip (clipChildren / clipToPadding false): the
+  thumb stays whole at both ends and the track keeps its alignment. Every slider row of the settings uses this layout
+  (UniversalSeekBarPreference, the tunables, the SHDR rows); the shade's sliders (ShadeRows, SettingsBarLayout) keep the
+  SeekBar's own padding inside their card and were not affected. Test SettingsMenuTest.sliderThumbIsNeverClipped walks the
+  thumb's rectangle up to the card at the minimum and maximum (fails on the old layout).
 
 ### P139 - row titles that stand out from their descriptions (owner, 2026-10-15: «Сделать так чтобы у всех параметров/настроек заголовки отличались от описания чтобы они не сливались вместе»)
 - OPEN (quick, with the settings work). Every settings row (XML rows through SettingsStyle.bind, the Java pages of

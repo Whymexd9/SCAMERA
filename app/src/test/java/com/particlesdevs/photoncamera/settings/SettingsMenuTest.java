@@ -571,6 +571,44 @@ public class SettingsMenuTest {
         assertEquals("SHDR",String.valueOf(screen.findPreference("scam_hybrid_screen").getTitle()));
     }
 
+    /**
+     * P138 (owner's screenshot: «Кадры теней: EV над N» at its minimum 1.00 with half a thumb): at both ends of the range the
+     * slider's thumb is drawn whole - no view between it and the card clips it - in rows with and without an icon.
+     */
+    @Test public void sliderThumbIsNeverClipped(){
+        PreferenceScreen screen=inflate();
+        int checked=0;
+        for(String key:new String[]{"pref_scam_hybrid_shasta_ev","pref_scam_hybrid_dn_luma_mult","pref_scam_hybrid_dn_sabre_luma_mult"}){
+            Preference p=screen.findPreference(key);assertNotNull(key,p);
+            android.view.View card=row(p);
+            android.widget.SeekBar bar=card.findViewById(R.id.seekbar);
+            int w=Math.round(400*context.getResources().getDisplayMetrics().density);
+            for(int progress:new int[]{0,bar.getMax()}){
+                bar.setProgress(progress);
+                card.measure(android.view.View.MeasureSpec.makeMeasureSpec(w,android.view.View.MeasureSpec.EXACTLY),
+                        android.view.View.MeasureSpec.makeMeasureSpec(0,android.view.View.MeasureSpec.UNSPECIFIED));
+                card.layout(0,0,w,card.getMeasuredHeight());
+                // AbsSeekBar.drawThumb: translate(paddingLeft - thumbOffset, paddingTop), then the thumb's bounds
+                android.graphics.Rect r=new android.graphics.Rect(bar.getThumb().getBounds());
+                assertTrue(key+" thumb laid out",r.width()>0);
+                r.offset(bar.getPaddingLeft()-bar.getThumbOffset(),bar.getPaddingTop());
+                android.view.View child=bar;
+                while(child!=card){
+                    android.view.ViewGroup parent=(android.view.ViewGroup)child.getParent();
+                    if(parent.getClipChildren())assertTrue(key+"@"+progress+": clipped by "+child+" "+r,
+                            r.left>=0&&r.top>=0&&r.right<=child.getWidth()&&r.bottom<=child.getHeight());
+                    r.offset(child.getLeft(),child.getTop());
+                    if(parent.getClipToPadding())assertTrue(key+"@"+progress+": clipped by the padding of "+parent+" "+r,
+                            r.left>=parent.getPaddingLeft()&&r.right<=parent.getWidth()-parent.getPaddingRight());
+                    child=parent;
+                }
+                assertTrue(key+"@"+progress+": outside the card "+r,r.left>=0&&r.right<=card.getWidth());
+                checked++;
+            }
+        }
+        assertEquals(6,checked);
+    }
+
     /** P129: the merge is SHDR; the borrowed code names (LMC, AGC, Sabre, Bento, Shasta, Mochi, GCam, SCAM HDR) are ours now. */
     private static boolean oldName(String s){
         for(String old:new String[]{"LMC","NICE","Nice","Hybrid","Bento","Shasta","Sabre","Mochi","GCam","AGC","SCAM HDR","ArkCore","Sabre 6.1","round 4","раунда 4"})
