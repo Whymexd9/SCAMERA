@@ -128,6 +128,13 @@ public final class SettingsAvailability {
             if (key.equals("pref_scam_hybrid_mosaic_fill_support") && text("pref_scam_hybrid_mosaic_chroma_fill", "0").equals("0"))
                 return Lang.t("Только с добором ArkCam.", "Only with the ArkCam fill.");
         }
+        // P134 «Цвет»: the AgX looks but «Custom» set their own saturation (ArkAe.LOOKS); a grading zone's hue needs its strength
+        if (key.equals("pref_scam_hybrid_ark_agx_sat") && !text("pref_scam_hybrid_ark_agx_look", "4").equals("4"))
+            return Lang.t("Только при «Стиль AgX» = «Custom»: другие стили задают насыщенность сами.",
+                    "Only with “AgX look” = “Custom”: the other looks set their own saturation.");
+        for (String zone : new String[]{"shadows", "mids", "highlights"})
+            if (key.equals("pref_scam_hybrid_colour_grade_" + zone + "_hue") && PreferenceNumber.read(values.get("pref_scam_hybrid_colour_grade_" + zone + "_str"), 0) <= 0)
+                return Lang.t("Сначала задайте силу этой зоны.", "Set this zone's strength first.");
         // P118: rows that act only with another setting off its default (found while the descriptions were rewritten)
         final String sabre61 = text("pref_scam_hybrid_sabre61", "1");
         if (any(key, "pref_scam_hybrid_s61_max_key", "pref_scam_hybrid_s61_min_motion") && !sabre61.equals("2"))

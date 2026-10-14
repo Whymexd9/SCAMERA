@@ -3298,9 +3298,33 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - OPEN, after P132 (the settings regrouping makes the «Цвет» group; P129 names apply). Study the colour tools of both
   projects (RawTherapee: white balance, colour toning, channel mixer, HSV equalizer, colour appearance CIECAM, vibrance,
   Lab adjustments, film simulation; Lightcraft: its colour / look controls; ArkCam - the standalone app, not the LMC mod
-  (owner, 2026-10-15: «можешь так же изучить и ArkCam(не мод LMC, а отдельное приложение)»; research/hybrid5 has its APK
-  notes: colour / tone / vibrance settings tree) and our existing colour rows (WB, saturation, hue
+  (owner, 2026-10-15: «можешь так же изучить и ArkCam(не мод LMC, а отдельное приложение)»; that app is research/ark50,
+  com.arkcam v1.0.50 - research/hybrid5 describes ArkCam 1.23 / LMC 9.6, the wrong one) and our existing colour rows (WB, saturation, hue
   look, ARK tone, DCP / ISP CCM, output colour space). Add the ones that fit a phone camera's processed photo, each a real
   stage of our pipeline (GPU shader / post-pipeline node) that changes the output, no duplicate of an existing control; own
   variants where useful. Every colour setting (new and existing) moves into one «Цвет» / «Colour» group. Licences: RawTherapee
   is GPL-3 - reimplement from the published maths, copy no code; Lightcraft's licence checked before reading code.
+- Done locally (2026-10-15). «Цвет» now: «Баланс белого» (new Тепло / Оттенок / Сохранять тёплый свет / Сохранять холодный
+  свет + Цветовой метод, Матрицы DCP), «Насыщенность» (Насыщенность = the AgX one, moved; the three vibrance rows, their page
+  dissolved; new Сочность теней / светов, Защита кожи, Тон кожи, Ровность тона кожи), «Цветовой микшер» (8 colours x hue /
+  saturation / lightness), «Цветокоррекция» (shadows / mid-tones / highlights hue + strength, balance, blending), «Стиль»
+  (Монохром: neutral or a yellow / orange / red / green / blue filter), «Для опытных» (Сжатие охвата, Удержание оттенка:
+  full / blues only / off, Насыщенность при матрице OPPO and Путь к белому, both moved). Keys pref_scam_hybrid_colour_*
+  (per module like the other SHDR rows), moved rows keep their keys; the colour space stays in «Фото» (a file property).
+  How: processing/color/ColourLook - warmth / tint / scene light as one CAT16 3x3 on linear sRGB folded into ArkTone's colour
+  chain once per shot (AE statistics and photo agree, no GPU cost; the scene light uses Parameters.sceneCct, unused since P10;
+  white keeps its luminance); everything else in ark/combine.glsl under COLOUR_LOOK 1, which ArkCombine sets only when a
+  colour row is off its default - COLOUR_LOOK 0 is the shader before P134 token for token (check_colour_output.py's pinned
+  hash still matches, so default photos are bit-identical). Scene-OKLab stage before the hue direction is saved (mono filter,
+  skin protection of positive gains, vibrance by brightness, 8-band raised-cosine mixer after Lightcraft, skin hue /
+  evenness), ACES RGC gamut compression of the linear colour, the hue-lock mode, and the grading in display OKLab after the
+  hue lock. The grading hue is a colour-wheel (HSV) angle mapped to OKLab. Availability: a grading hue waits for its strength,
+  the AgX saturation acts only with the «Custom» AgX look. Licences: Lightcraft (MIT / Apache-2.0) formulas noted in
+  THIRD_PARTY_NOTICES.md; RawTherapee and ArkCam v50's SkinSat (GPL-derived) not used - the skin mask is our own (OKLab
+  hue ~50°, C/L 0.03..0.32). Checks: ColourLookTest (matrix identity at defaults, warmth / tint / scene-light directions,
+  white luminance, wheel -> OKLab), tools/check_colour_look.py on the GPU (defaults bit-exact in sRGB and P3; mono, filters,
+  skin protection, band-limited mixer, grading zones, hue-lock modes, gamut compression near the boundary only, skin hue),
+  SettingsMenuTest.colourRowsSayWhenTheyAct; both added to CI.
+- Not done: the film LUT (.cube / Hald import, a sampler3D stage - needs a file import page and 3D textures in GLProg), the
+  primaries calibration, the skin protection of the AgX saturation above 1, and the live RAW viewfinder's preview of the
+  look (it renders with its own ArkCore defaults). Not seen on a phone.

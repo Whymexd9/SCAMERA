@@ -2,6 +2,7 @@ package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
 import android.graphics.Point;
 
+import com.particlesdevs.photoncamera.processing.color.ColourLook;
 import com.particlesdevs.photoncamera.processing.opengl.GLProg;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
@@ -35,6 +36,8 @@ public final class ArkTone {
         public GLTexture lumaS;
         /** Domain multiplier of lumaS: Ya = min(sharpMul * Y709, 1) (1 = G_CLEAN scale, ae = the delta's domain). */
         public float sharpMul = 1f;
+        /** P134: the colour chain's linear -> sRGB matrix of this shot (the white-balance rows of «Цвет» folded in). */
+        float[] colourMatrix;
 
         void closeTextures() {
             if (low != null) low.close();
@@ -115,12 +118,61 @@ public final class ArkTone {
         return p.CCT.matrix;
     }
 
+    /**
+     * P134 «Цвет»: the colour settings of the shot (pref_scam_hybrid_colour_*; scam_dev.txt "hybrid_colour_<key>" overrides).
+     * Every default is «no change».
+     */
+    static ColourLook colourLook() {
+        ColourLook c = new ColourLook();
+        c.warmth = PreferenceKeys.hybridValue("colour_warmth", 0f);
+        c.tint = PreferenceKeys.hybridValue("colour_tint", 0f);
+        c.keepWarm = PreferenceKeys.hybridValue("colour_keep_warm", 0f);
+        c.keepCool = PreferenceKeys.hybridValue("colour_keep_cool", 0f);
+        c.skinProtect = PreferenceKeys.hybridValue("colour_skin_protect", 0f);
+        c.skinHue = PreferenceKeys.hybridValue("colour_skin_hue", 0f);
+        c.skinEven = PreferenceKeys.hybridValue("colour_skin_even", 0f);
+        c.vibShadows = PreferenceKeys.hybridValue("colour_vib_shadows", 0f);
+        c.vibHighlights = PreferenceKeys.hybridValue("colour_vib_highlights", 0f);
+        final String[] parts = {"hue", "sat", "light"};
+        for (int b = 0; b < ColourLook.BANDS.length; b++)
+            for (int k = 0; k < 3; k++) c.mix[b * 3 + k] = PreferenceKeys.hybridValue("colour_mix_" + ColourLook.BANDS[b] + "_" + parts[k], 0f);
+        for (int z = 0; z < 3; z++) {
+            c.gradeHue[z] = PreferenceKeys.hybridValue("colour_grade_" + ColourLook.ZONES[z] + "_hue", 0f);
+            c.gradeStr[z] = PreferenceKeys.hybridValue("colour_grade_" + ColourLook.ZONES[z] + "_str", 0f);
+        }
+        c.gradeBalance = PreferenceKeys.hybridValue("colour_grade_balance", 0f);
+        c.gradeBlend = PreferenceKeys.hybridValue("colour_grade_blend", 50f);
+        c.mono = Math.max(0, java.util.Arrays.asList(ColourLook.MONO).indexOf(PreferenceKeys.hybridString("colour_mono", "off")));
+        c.hueLock = Math.max(0, java.util.Arrays.asList(ColourLook.HUE_LOCK).indexOf(PreferenceKeys.hybridString("colour_hue_lock", "full")));
+        c.gamut = PreferenceKeys.hybridValue("colour_gamut", 0f);
+        return c;
+    }
+
+    /**
+     * Linear -> sRGB matrix of the colour chain: the camera's ProPhoto -> sRGB, with the white-balance rows of «Цвет»
+     * (warmth, tint, the scene light kept) on top; once per shot, so the AE statistics and the photo share it.
+     */
+    static float[] colourMatrix(PostPipeline pipeline) {
+        State st = pipeline.ark;
+        if (st != null && st.colourMatrix != null) return st.colourMatrix;
+        Parameters p = pipeline.mParameters;
+        float[] m = intermediateToSRGB(p);
+        float[] white = colourLook().whiteMatrix(p.sceneCct);
+        if (white != null) {
+            m = ColourLook.mul(white, m);
+            com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE", "colour: white matrix " + java.util.Arrays.toString(white)
+                    + " scene " + p.sceneCct + " K");
+        }
+        if (st != null) st.colourMatrix = m;
+        return m;
+    }
+
     /** Colour uniforms of ark/low.glsl and ark/combine.glsl (sceneLinear): the chain of headroom/render.glsl. */
     static void setColour(GLProg prog, PostPipeline pipeline, GLTexture gainMap, float inScale) {
         Parameters p = pipeline.mParameters;
         prog.setTexture("GainMap", gainMap);
         prog.setVar("sensorToIntermediate", p.sensorToProPhoto);
-        prog.setVar("intermediateToSRGB", intermediateToSRGB(p));
+        prog.setVar("intermediateToSRGB", colourMatrix(pipeline));
         prog.setVar("neutralPointU", p.whitePoint[0], p.whitePoint[1], p.whitePoint[2]);
         prog.setVar("inScaleU", inScale);
     }

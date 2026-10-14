@@ -189,4 +189,19 @@
         <item>После экспозиции ae</item>
         <item>G_CLEAN, как ArkCam</item>
     </string-array>
+    <!-- P134 «Цвет» -->
+    <string-array name="colour_mono_entries">
+        <item>Выкл</item>
+        <item>Нейтральный</item>
+        <item>Жёлтый фильтр</item>
+        <item>Оранжевый фильтр</item>
+        <item>Красный фильтр</item>
+        <item>Зелёный фильтр</item>
+        <item>Синий фильтр</item>
+    </string-array>
+    <string-array name="colour_hue_lock_entries">
+        <item>Полное</item>
+        <item>Только синие</item>
+        <item>Выкл</item>
+    </string-array>
 </resources>

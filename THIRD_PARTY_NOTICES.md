@@ -41,3 +41,10 @@ BSD 2-Clause License) and libaom 3.15.1 (<https://aomedia.googlesource.com/aom>,
 2016, Alliance for Open Media, with the Alliance for Open Media Patent License 1.0). Both are fetched at build time
 from their pinned release archives (`app/src/main/cpp/scamera-avif-deps.cmake`, SHA-256 checked); the full licence
 texts are the `LICENSE` and `PATENTS` files of those archives.
+
+## Lightcraft (colour controls of «Цвет», P134)
+
+The band centres of the colour mixer, its raised-cosine band weights and the shape of the colour-grading zones in
+`processing/color/ColourLook.java` and `assets/shaders/ark/combine.glsl` (COLOUR_LOOK) follow the published formulas of
+Lightcraft, <https://github.com/storytold/lightcraft>, available under the MIT License or the Apache License 2.0 at your
+option. No Lightcraft source code is included; the implementation is SCAMERA's own.

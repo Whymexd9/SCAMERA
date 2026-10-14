@@ -33,7 +33,13 @@ precision highp sampler2D;
 // (x C_in / C_reduced), the gamut limit is P3, and the output is display-encoded P3. A colour inside sRGB takes exactly the
 // sRGB operations (the same image, written in P3 primaries); a wider one keeps up to P3 of its chroma. P3_OUT 0 (the
 // default): every #if P3_OUT block below drops out and the #else branches are the sRGB shader unchanged.
+// COLOUR_LOOK 1 (P134 «Цвет», processing.color.ColourLook; ArkCombine sets it only when a colour setting is off its default):
+// in scene OKLab before the hue direction is saved - monochrome filter, skin protection of positive gains, vibrance by
+// brightness, the 8-band mixer, skin hue / evenness; the gamut compression of the linear colour; the hue-lock mode; in
+// display OKLab after the hue lock - the grading of shadows / mid-tones / highlights. COLOUR_LOOK 0: every block drops out
+// and the shader is the one before P134 (tools/check_colour_output.py pins its token stream).
 #define P3_OUT 0
+#define COLOUR_LOOK 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -69,6 +75,17 @@ uniform vec4 agxBU;                 // min EV, max EV, EV, look; all 0 (unset) -
 uniform int ditherU;                // 1 = interleaved-gradient dither +-0.5 LSB (as the kernel); unset -> none
 uniform int headroomU;              // 1: real headroom above 1 (clipped RAW recovered / Bento); 0: the excess is WB headroom
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
+#if COLOUR_LOOK == 1
+uniform vec3 skinU;                 // skin: protection of positive gains 0..1, hue shift -1..1 (x 12 deg), evenness 0..1
+uniform vec2 vibLU;                 // vibrance of the shadows, of the highlights (-1..1)
+uniform float mixU[24];             // mixer: band * 3 + (hue, saturation, lightness), -1..1
+uniform int mixOnU;                 // 1: some mixer value is not 0
+uniform vec3 monoU;                 // monochrome filter transmission; 0 = colour
+uniform float gamutU;               // gamut compression 0..1
+uniform int hueLockU;               // 0 full (as before), 1 blues only, 2 off
+uniform vec4 gradeAU;               // grading offsets in OKLab: shadows a, b, mid-tones a, b
+uniform vec4 gradeBU;               // highlights a, b, balance -1..1, blending 0..1
+#endif
 out vec4 Output;
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -223,6 +240,35 @@ float agxTonescale(float x, float slope, float sp, float tp, float px) {
     return py - ts * ft;
 }
 
+#if COLOUR_LOOK == 1
+// OKLab hue centres of the mixer bands: red, orange, yellow, green, aqua, blue, purple, magenta.
+const float BAND_HUE[8] = float[8](29.0, 53.0, 110.0, 143.0, 195.0, 264.0, 294.0, 344.0);
+
+// Skin: OKLab hue around 50 deg and a chroma / lightness ratio of real skin (0.03..0.32): exposure independent.
+float skinWeight(vec3 lab) {
+    float c = length(lab.yz);
+    if (c < 0.000001) return 0.0;
+    float r = c / max(lab.x, 0.0001);
+    float d = mod(degrees(atan(lab.z, lab.y)) - 50.0 + 180.0, 360.0) - 180.0;
+    return exp(-(d * d) / 400.0) * smoothstep(0.03, 0.06, r) * (1.0 - smoothstep(0.22, 0.32, r));
+}
+
+// ACES Reference Gamut Compression: the distance of each channel from the achromatic maximum, compressed above its
+// threshold, so a colour outside the gamut (a negative channel: neon, LED) keeps its hue instead of being clipped.
+vec3 gamutCompress(vec3 c) {
+    float ach = max3(c);
+    if (ach <= 0.0) return c;
+    const vec3 thr = vec3(0.815, 0.803, 0.880);
+    const vec3 lim = vec3(1.147, 1.264, 1.312);
+    const float pw = 1.2;
+    vec3 d = (vec3(ach) - c) / ach;
+    vec3 sc = (lim - thr) / pow(pow((vec3(1.0) - thr) / (lim - thr), vec3(-pw)) - vec3(1.0), vec3(1.0 / pw));
+    vec3 x = max(d - thr, vec3(0.0)) / sc;
+    vec3 dc = mix(d, thr + sc * x / pow(vec3(1.0) + pow(x, vec3(pw)), vec3(1.0 / pw)), step(thr, d));
+    return vec3(ach) - dc * ach;
+}
+#endif
+
 void main() {
     ivec2 xy = ivec2(gl_FragCoord.xy);
     ivec2 size = textureSize(InputBuffer, 0);
@@ -340,6 +386,10 @@ void main() {
     }
 
     // === OKLab grading [:1599-1658] ===
+#if COLOUR_LOOK == 1
+    // Monochrome through a colour filter: the luminance of the filtered light (a neutral grey keeps its own).
+    if (monoU != vec3(0.0)) lin = vec3(max(dot(lin, LUMA * monoU) / dot(LUMA, monoU), 0.0));
+#endif
     vec3 lab = toOklab(lin);
     if (abs(macro - 1.0) > 0.001) lab.x = max(0.40 + (lab.x - 0.40) * macro, 0.0001);
     float sat = max(length(lab.yz), 0.0001);
@@ -348,6 +398,50 @@ void main() {
     if (abs(vibU.y) > 0.001 && lab.z < 0.0) satMult += vibU.y * clamp(-lab.z / sat, 0.0, 1.0) * protect;
     if (abs(vibU.z) > 0.001 && lab.y < 0.0) satMult += vibU.z * clamp(-lab.y / sat, 0.0, 1.0) * protect;
     lab.yz *= satMult;
+#if COLOUR_LOOK == 1
+    float skinW = 0.0;
+    if (length(lab.yz) > 0.000001) {
+        skinW = skinWeight(lab);
+        float keep = 1.0 - skinU.x * skinW;
+        // skin protection: positive vibrance reaches skin only with (1 - protection)
+        if (satMult > 1.0 && keep < 1.0) lab.yz *= (1.0 + (satMult - 1.0) * keep) / satMult;
+        if (vibLU != vec2(0.0)) {
+            float mSh = (1.0 - smoothstep(0.25, 0.45, lab.x)) * smoothstep(0.05, 0.12, lab.x);
+            float mHl = smoothstep(0.6, 0.8, lab.x) * (1.0 - smoothstep(0.88, 0.98, lab.x));
+            float g = (vibLU.x * mSh + vibLU.y * mHl) * max(1.0 - length(lab.yz) * 2.0, 0.0);
+            if (g > 0.0) g *= keep;
+            lab.yz *= max(1.0 + g, 0.0);
+        }
+        if (mixOnU == 1) {
+            float c = length(lab.yz);
+            float h = mod(degrees(atan(lab.z, lab.y)), 360.0);
+            int i = 7;
+            for (int k = 0; k < 8; k++) if (h >= BAND_HUE[k]) i = k;
+            int j = i == 7 ? 0 : i + 1;
+            float c0 = BAND_HUE[i];
+            float c1 = j == 0 ? BAND_HUE[0] + 360.0 : BAND_HUE[j];
+            float hh = h < c0 ? h + 360.0 : h;
+            float wi = 0.5 + 0.5 * cos(3.14159265 * clamp((hh - c0) / (c1 - c0), 0.0, 1.0));
+            float wj = 1.0 - wi;
+            float cw = min(c / 0.12, 1.0);
+            float ang = radians(23.0) * (wi * mixU[i * 3] + wj * mixU[j * 3]) * cw;
+            lab.yz = mat2(cos(ang), sin(ang), -sin(ang), cos(ang)) * lab.yz;
+            float sg = wi * mixU[i * 3 + 1] + wj * mixU[j * 3 + 1];
+            if (sg > 0.0) sg *= keep;
+            lab.yz *= max(1.0 + sg, 0.0);
+            lab.x = max(lab.x + (wi * mixU[i * 3 + 2] + wj * mixU[j * 3 + 2]) * 0.15 * cw * sqrt(max(lab.x, 0.0)), 0.0001);
+        }
+        if (skinU.y != 0.0 || skinU.z != 0.0) {
+            float w = skinWeight(lab);
+            if (w > 0.0) {
+                float c = length(lab.yz);
+                float d = mod(atan(lab.z, lab.y) - radians(52.0) + 3.14159265, 6.28318531) - 3.14159265;
+                float hn = radians(52.0) + d * (1.0 - skinU.z * w) + radians(12.0) * skinU.y * w;
+                lab.yz = c * vec2(cos(hn), sin(hn));
+            }
+        }
+    }
+#endif
     if (chromaDnU > 0.001) {
         float lift = targetLin / max(origLuma * ae, 0.0001);
         if (lift > 4.0) lab.yz *= max(1.0 - chromaDnU * clamp((lift - 4.0) * 0.1, 0.0, 1.0), 0.0);
@@ -358,6 +452,16 @@ void main() {
     vec3 scene = clampP3(fromOklab(lab));
 #else
     vec3 scene = max(fromOklab(lab), vec3(0.0));
+#endif
+#if COLOUR_LOOK == 1
+    if (gamutU > 0.0) {
+#if P3_OUT == 1
+        vec3 compressed = clampP3(P3_TO_SRGB * gamutCompress(SRGB_TO_P3 * fromOklab(lab)));
+#else
+        vec3 compressed = max(gamutCompress(fromOklab(lab)), vec3(0.0));
+#endif
+        scene = mix(scene, compressed, gamutU);
+    }
 #endif
     // Bento roll-off of the linear maximum above 0.5 [:1673-1681] (same shoulder measure as the ceiling)
     if (headroom) {
@@ -414,7 +518,23 @@ void main() {
 
     // === hue lock and post-tone detail [:1763-1802] ===
     vec3 post = toOklab(graded);
+#if COLOUR_LOOK == 1
+    if (look != 3 && inChroma > 0.000001 && hueLockU != 2) {
+        vec2 locked = length(post.yz) * hueDir;
+        post.yz = hueLockU == 1 ? mix(post.yz, locked, clamp(-hueDir.y, 0.0, 1.0)) : locked;
+    }
+    // grading: OKLab offsets of shadows / mid-tones / highlights by display lightness (zones around 0.5 - balance / 4)
+    if (gradeAU != vec4(0.0) || gradeBU.xy != vec2(0.0)) {
+        float m = 0.5 - 0.25 * gradeBU.z;
+        float wd = 0.15 + 0.5 * gradeBU.w;
+        float wSh = 1.0 - smoothstep(m - wd, m, post.x);
+        float wHl = smoothstep(m, m + wd, post.x);
+        float wMid = max(1.0 - wSh - wHl, 0.0);
+        post.yz += (gradeAU.xy * wSh + gradeAU.zw * wMid + gradeBU.xy * wHl) * (1.0 - skinU.x * skinW);
+    }
+#else
     if (look != 3 && inChroma > 0.000001) post.yz = length(post.yz) * hueDir;
+#endif
     if (lRef > 0.0) {
         // Where the tone compresses (Bento roll-off, fusion darkening, AgX shoulder: L_base below the cube-root
         // reference) the delta is scaled down with it; lifted shadows and mid-tones (ratio >= 1) keep the full delta.

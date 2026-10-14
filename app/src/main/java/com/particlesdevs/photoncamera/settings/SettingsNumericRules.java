@@ -191,6 +191,17 @@ public final class SettingsNumericRules {
             case "pref_scamhdr_luma_iso4": case "pref_scamhdr_chroma_iso4": return new double[]{0,2,0};
             case "pref_scamhdr_luma_iso5": case "pref_scamhdr_chroma_iso5": return new double[]{0,2,0};
         }
+        // P134 «Цвет»: the colour look (processing.color.ColourLook)
+        if (key.startsWith(HYBRID + "colour_")) {
+            String k = key.substring(HYBRID.length() + 7);
+            if (k.startsWith("mix_") || k.equals("warmth") || k.equals("tint") || k.equals("skin_hue") || k.equals("grade_balance"))
+                return new double[]{-100,100,1};
+            if (k.startsWith("vib_")) return new double[]{-1,1,0};
+            if (k.endsWith("_hue")) return new double[]{0,360,1};
+            if (k.equals("keep_warm") || k.equals("keep_cool") || k.equals("skin_protect") || k.equals("skin_even") || k.equals("gamut")
+                    || k.endsWith("_str") || k.equals("grade_blend")) return new double[]{0,100,1};
+            return null;
+        }
         // SCAM Hybrid noise reduction: the SNR keys of the luma (t1..t5) and chroma (t1..t4) tier tables.
         if (key.matches("pref_scam_hybrid_dn_(luma_t[1-5]|chroma_t[1-4])_snr")) return new double[]{0.1,500,0};
         // The SCAM Hybrid's copies of SCAM HDR knobs (PreferenceKeys.hybridCopyKey) keep the bounds of the original key.

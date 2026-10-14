@@ -83,7 +83,10 @@ public class HybridSettingsTest {
                 "scam_hybrid_capture_screen","scam_hybrid_merge_screen","scam_hybrid_nr_snr_screen","scam_hybrid_nr_mult_screen",
                 "scam_hybrid_nr_safe_screen","scam_hybrid_rejection_screen","scam_hybrid_ark_rl_screen","shdr_neural_remosaic_screen"})
             assertTrue(screen,hybrid.findPreference(screen) instanceof PreferenceScreen);
-        assertTrue(root.findPreference("scam_hybrid_ark_vibrance_screen") instanceof PreferenceScreen);
+        // P134: «Цвет» holds the colour rows (the vibrance page dissolved into its «Насыщенность»)
+        assertTrue(root.findPreference("colour_mixer_screen") instanceof PreferenceScreen);
+        assertTrue(root.findPreference("colour_grading_screen") instanceof PreferenceScreen);
+        assertNull(root.findPreference("scam_hybrid_ark_vibrance_screen"));
         assertTrue(root.findPreference("scam_hybrid_motion_screen") instanceof PreferenceScreen);
         for(String gone:new String[]{"scam_hdr_screen","scam_hybrid_arkcore_screen","scam_hdr_ark_link","scam_probe",PreferenceKeys.ROUTE_KEY,
                 "pref_scam_hybrid_enabled","sharp_settings_screen"})

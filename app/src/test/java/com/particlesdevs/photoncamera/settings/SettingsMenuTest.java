@@ -671,6 +671,21 @@ public class SettingsMenuTest {
         return d.getWindow().getDecorView();
     }
 
+    /** P134: a grading zone's hue acts only with its strength; the AgX saturation only with the «Custom» AgX look. */
+    @Test public void colourRowsSayWhenTheyAct(){
+        java.util.Map<String,Object> v=new java.util.HashMap<>();
+        assertNotNull(new SettingsAvailability(v).reason("pref_scam_hybrid_colour_grade_highlights_hue"));
+        v.put("pref_scam_hybrid_colour_grade_highlights_str","30");
+        assertNull(new SettingsAvailability(v).reason("pref_scam_hybrid_colour_grade_highlights_hue"));
+        assertNotNull(new SettingsAvailability(v).reason("pref_scam_hybrid_colour_grade_shadows_hue"));
+        assertNull(new SettingsAvailability(v).reason("pref_scam_hybrid_ark_agx_sat"));
+        v.put("pref_scam_hybrid_ark_agx_look","1");
+        assertNotNull(new SettingsAvailability(v).reason("pref_scam_hybrid_ark_agx_sat"));
+        for(String k:new String[]{"pref_scam_hybrid_colour_warmth","pref_scam_hybrid_colour_mix_red_hue","pref_scam_hybrid_colour_vib_shadows",
+                "pref_scam_hybrid_colour_grade_mids_hue","pref_scam_hybrid_colour_grade_blend"})
+            assertNotNull(k+" needs numeric bounds",SettingsNumericRules.bounds(k));
+    }
+
     /** P139: in every kind of row the title (medium, larger) and its description (smaller, dimmer) look different. */
     @Test public void titlesStandOutFromTheirDescriptions(){
         PreferenceScreen screen=inflate();
@@ -797,7 +812,12 @@ public class SettingsMenuTest {
         for(String key:new String[]{"pref_scam_hybrid_zsl_frames","pref_zsl_buffer_count_key","pref_antibanding_hz_key","scam_hybrid_motion_screen"})
             assertNotNull(key,shooting.findPreference(key));
         PreferenceScreen colour=screen.findPreference("photo_processing_screen");
-        for(String key:new String[]{"pref_dcp_profile_key","pref_color_method_key","scam_hybrid_ark_vibrance_screen"})assertNotNull(key,colour.findPreference(key));
+        // P134: every colour row in «Цвет» (white balance, saturation, mixer, grading, style, advanced)
+        for(String key:new String[]{"pref_dcp_profile_key","pref_color_method_key","pref_scam_hybrid_colour_warmth","pref_scam_hybrid_colour_tint",
+                "pref_scam_hybrid_colour_keep_warm","pref_scam_hybrid_ark_agx_sat","pref_scam_hybrid_ark_vibrance","pref_scam_hybrid_ark_vibrance_sky",
+                "pref_scam_hybrid_colour_skin_protect","colour_mixer_screen","pref_scam_hybrid_colour_mix_blue_sat","colour_grading_screen",
+                "pref_scam_hybrid_colour_grade_highlights_hue","pref_scam_hybrid_colour_mono","pref_scam_hybrid_colour_gamut",
+                "pref_scam_hybrid_colour_hue_lock","pref_scam_hybrid_ark_ccm_sat","pref_scam_hybrid_ark_hl_white"})assertNotNull(key,colour.findPreference(key));
         PreferenceScreen cameras=screen.findPreference("camera_settings_screen");
         assertNotNull(cameras.findPreference("capture_settings_screen"));assertNotNull(cameras.findPreference("pref_sensor_config_submenu"));
         PreferenceScreen ui=screen.findPreference("interface_settings_screen");
