@@ -543,7 +543,10 @@ public class ParamController implements Observer {
      */
     public synchronized int pslIso(long shutterNs) {
         if (manualIso()) return (int) manualParamModel.getCurrentISOValue();
-        return pslIso(captureController.mPreviewIso, captureController.mPreviewExposureTime, shutterNs, isoMin(), isoMax());
+        // P135: the automatic ISO stays within what the HAL honours for AE-off requests (P110 ExposureLimits; log 2026-10-15:
+        // ISO 12800 asked for 0.8 s, 6400 delivered, the four N frames came half as bright as planned and were taken for ES)
+        return pslIso(captureController.mPreviewIso, captureController.mPreviewExposureTime, shutterNs, isoMin(),
+                Math.min(isoMax(), Math.max(isoMin(), captureController.honouredIsoCap())));
     }
 
     static int pslIso(int previewIso, long previewNs, long shutterNs, int isoMin, int isoMax) {

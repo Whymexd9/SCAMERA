@@ -9,6 +9,8 @@ public class ScamDenoiseTablesTest {
     private static ScamDenoiseTables.Config arkcam() {
         ScamDenoiseTables.Config c = new ScamDenoiseTables.Config();
         c.revertMax = 9f; c.coarseStock = 0f; c.chromaFloor = 0f;   // exact emulation, no safeguards
+        c.lumaStrength[0] = new float[]{1f, 3f, 0f, 0f, 0f};        // ArkCam's SabreLow (P135: GCam stock by default)
+        c.lumaRevert[0] = new float[]{9f, 9f, 0.08f, 0.12f, 0f};
         return c;
     }
 
@@ -29,10 +31,35 @@ public class ScamDenoiseTablesTest {
         assertEquals(0.5f, ScamDenoiseTables.chroma(arkcam(), 25f, null)[0][0], 1e-6f);
     }
 
+    /**
+     * P135: a night shot (SCA_20261015_024212: SNR 3.04) keeps its grain but not an abnormal amount: every level denoised with
+     * GCam's stock SabreLow strengths, half the fine grain put back, nothing stronger than it was - instead of ArkCam's
+     * {1, 3, 0, 0, 0} with revert 9 (the fine grain amplified, the coarse levels untouched).
+     */
+    @Test public void nightTierNeverAmplifiesTheNoise() {
+        ScamDenoiseTables.Config c = new ScamDenoiseTables.Config();
+        assertEquals(1f, c.revertMax, 0f);
+        for (float snr : new float[]{0.5f, 3.04f, 5f, 7.8f, 10f, 20f, 80f, 300f}) {
+            float[][] l = ScamDenoiseTables.luma(c, snr, null);
+            for (int b = 0; b < 5; b++) assertTrue("revert " + l[b][1] + " at SNR " + snr, l[b][1] <= 1f);
+        }
+        float[][] night = ScamDenoiseTables.luma(c, 3.04f, null);
+        float[] stock = {1.2f, 1.1f, 1.2f, 1.1f, 1.0f};
+        for (int b = 0; b < 5; b++) assertEquals(stock[b], night[b][0], 1e-6f);
+        assertEquals(0.6f, night[0][1], 1e-6f);
+        assertEquals(0.5f, night[1][1], 1e-6f);
+        assertTrue("the grain kept: a share of it put back", night[0][1] > 0.3f);
+        // between the night and the GID14 tier (SNR 7.8, ArkCam's dump): revert well under 1 on the fine levels
+        float[][] mid = ScamDenoiseTables.luma(c, 7.80806f, null);
+        assertTrue(mid[0][1] <= 0.75f && mid[1][1] <= 0.7f);
+        assertTrue("coarse levels denoised", mid[2][0] > 0.5f && mid[3][0] > 0.3f);
+    }
+
     @Test public void safeguardsAndMultipliers() {
-        ScamDenoiseTables.Config c = new ScamDenoiseTables.Config();       // defaults: ArkCam exactly, no safeguards
-        assertEquals(9f, c.revertMax, 0f); assertEquals(0f, c.coarseStock, 0f); assertEquals(0f, c.chromaFloor, 0f);
-        c.revertMax = 2f; c.coarseStock = 0.5f; c.chromaFloor = 2.75f;   // the optional safeguards
+        ScamDenoiseTables.Config c = new ScamDenoiseTables.Config();       // defaults: ArkCam above SNR 5, revert limit 1
+        assertEquals(1f, c.revertMax, 0f); assertEquals(0f, c.coarseStock, 0f); assertEquals(0f, c.chromaFloor, 0f);
+        c = arkcam();
+        c.revertMax = 2f; c.coarseStock = 0.5f; c.chromaFloor = 2.75f;   // the optional safeguards on ArkCam's tables
         float[][] l = ScamDenoiseTables.luma(c, 3f, null);
         assertEquals(2f, l[0][1], 0f);
         assertEquals(2f, l[1][1], 0f);

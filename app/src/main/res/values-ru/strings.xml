@@ -14,7 +14,7 @@
     <string name="turn_on_grid">Сетка</string>
     <string name="turn_on_round_edges">Включить закруглённые края</string>
     <string name="turn_on_watermark">Водяной знак</string>
-    <string name="turn_on_afdata">Показать данные отладки</string>
+    <string name="turn_on_afdata">Информация на экране</string>
     <string name="image_deleted">Изображение удалено</string>
     <string name="yes">Да</string>
     <string name="cancel">Отмена</string>

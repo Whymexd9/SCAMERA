@@ -22,7 +22,9 @@ public final class DeviceAvailability {
                 .stockAeDevice(com.particlesdevs.photoncamera.capture.ScamStockAe.supportedDevice())
                 .colorMethodOverride(colorMethodOverride())
                 .scamHdrSupported(PreferenceKeys.isScamHdrSupported())
-                .xiaomiSmoothZoom(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone());
+                .xiaomiSmoothZoom(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone())
+                .oppoTunedColor(com.particlesdevs.photoncamera.processing.render.OppoTunedColor.applies())
+                .mosaicStreams(com.particlesdevs.photoncamera.processing.MosaicBlockStore.anyMosaic());
     }
 
     /**

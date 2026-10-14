@@ -3093,6 +3093,22 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   pedestalWhite - a dynamic black 2^k x the static one is a k bits wider stream (white (1023 + 1) * 2^k - 1); Parameters takes
   that black and white for the shot, the clip estimate and the motion level read it through wideWhite(). Not phone-checked.
 
+### P135 - low light: very strong grain made stronger by sharpening, on every phone (owner, 2026-10-15: «часто при плохом освещении ловлю вот такие отвалы обработки с непонятным очень сильным зерном и выделяющим его нереально сильным шарпингом на абсолютно разных телефонах. Исправь чтобы такого никогда не было. Добавил парную с гкама для сравнения.»)
+- Done locally (owner, then: «Мне не нужно устранять зерно полностью, мне нужно устранить аномальное его количество»). Inputs:
+  SCAM-20261015-024212-860 diagnostics, SCA_20261015_024212.heic + log-2026-10-15, the ArkCam pair ARK_20261015_024247781.jpg.
+  The shot: «Движение» with a hand-set 0.8 s, ISO 12800 asked, 6400 delivered, 4 N + 3 ES frames, finish SNR 3.04.
+  Causes: (1) the denoise's night tier (SNR <= 5, ArkCam's SabreLow) was {1, 3, 0, 0, 0} with revert {9, 9, ..}: the fine levels
+  put the removed noise back amplified (out = d + rf (recon - d), rf' = 9/2 at 4 effective frames), the coarse ones were not
+  denoised at all - every shot below SNR 10 got some of it (interpolated with the SNR-10 tier); (2) the ARK sharpening (USM,
+  bilateral boost, local contrast, two Richardson-Lucy stages x3) ran at full strength whatever the noise; (3) the automatic
+  ISO of a hand-set long shutter ignored the ISO the HAL honours for AE-off frames (P110).
+  Fixes: night tier = GCam's stock SabreLow strengths (all levels, the coarse blotches and colour mottle cleaned) with 60 / 50 %
+  of the fine grain put back (revert 0.6 / 0.5 < the SNR-10 tier's 0.75 / 0.7: a darker shot is never grainier), revert limit
+  dn_revert_max 9 -> 1 (never more grain than the shot had), migration of the stored former defaults (LOW_LIGHT_DN_REV);
+  ArkLumaSharpen.lowLightFactor: share of every sharpening amount by the finish SNR (0.3 at <= 4, 0.66 at 10, 0.84 at 16, all
+  from 24; daylight shots unchanged); ParamController.pslIso capped by honouredIsoCap. Tests: ScamDenoiseTablesTest (now in the
+  CI list), ArkSharpenLowLightTest, HybridSettingsTest.lowLightDenoiseDefaultsMoveOnce. Not phone-checked.
+
 ### P127 - RAW black / white levels by bit depth (owner, 2026-10-15: «Переделай алгоритм определения уровня белого и черного, не всегда 8 бит: 16/255 10 бит: 64/1023 12 бит: 256/4095 14 бит: 1024/16383 16 бит: 4096/65535. Нам нужен надёжный и точный алгоритм который будет определять правильно уровень, при этом не замедлять съёмку и тд. На гит не надо лить»)
 - Done locally (not pushed, owner). processing/RawLevels: one resolver for every consumer (shot Parameters, RAW viewfinder,
   motion level, clip estimate, mosaic check, RawBin) instead of the separate P104 measured range, P126 pedestal and the
@@ -3133,6 +3149,11 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   cards, hills, sun), monochrome layers of the same geometry for Android 13 themed icons, the splash raster from the same
   drawing. Vectors only (minSdk 26: the density PNG mipmaps were never used - removed with the old 0.7 MB generated PNG
   foregrounds and the unused gallery_launch_bg / fg). Generator: tools/make_launcher_icons.py [PREVIEW_DIR]. Not phone-checked.
+- P131b (owner, 2026-10-15, on the preview: «фиолетовый замени на коралловый, а стиль иконок сделай чуть ближе к старым которые
+  были до изменения»): done locally. Coral (#FFA99E, the UI's «Коралловый») instead of the lavender; filled glyphs like the old
+  icon: a light camera body (vertical gradient), a dark glass lens (radial gradient, highlight) in a coral ring, coral shutter
+  button and LED; the gallery as a grey back card and a light front card with a dark picture window, grey hills, coral sun;
+  the dark UI surface kept. Themed (monochrome) layers cut the lens / picture out with evenOdd paths.
 
 ### P132 - settings groups reorganised for ordinary users (owner, 2026-10-15: «группу настроек "Камеры и сенсоры" упорядочить и превести в логический и более простой вид. В целом пересмотри все группы настроек и упорядочи/перераспредели всё для того чтобы было проще ориентироваться и обычному не сильно понимающему человеку было проще все найти»)
 - OPEN, done in the same pass as P128 (after P127). «Камеры и сенсоры» first: a simple logical order (modules / cameras,

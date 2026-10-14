@@ -12,6 +12,16 @@ import java.util.Arrays;
  * (x16 = share of the strict 3x3 weights). Chroma tiers {1: Low, 5: Med, 10: High, 20: VeryHigh}: strength and the
  * integer outlier threshold. Between tiers everything is linear in SNR, outside the first/last tier it is clamped
  * (0x33ec5d4 + 0x54b36e8).
+ * <p>
+ * P135 (owner, 2026-10-15: very strong grain, made stronger by the sharpening, in poor light on every phone): ArkCam's
+ * SabreLow tier (SNR 5) is {1, 3, 0, 0, 0} with revert {9, 9, ...}: the fine levels put the removed noise back amplified
+ * (out = d + rf (recon - d), rf' = 9 / 2 at 4 effective frames) and the coarse levels are not denoised at all, so the darker
+ * the shot the grainier it came out (SCA_20261015_024212: SNR 3.04, 0.8 s ISO 6400, 4 frames). The owner wants the grain,
+ * not its abnormal amount: the tier now denoises every level with GCam's stock SabreLow strengths (the coarse levels, where
+ * the blotches and colour mottle are, as GCam) and puts back 60 / 50 % of the fine grain (revert 0.6 / 0.5 on b0 / b1,
+ * under the 0.75 / 0.7 of the SNR-10 tier, so a darker shot is never grainier than a brighter one); and no revert above 1
+ * by default (dn_revert_max 1: the removed noise never comes back stronger than it was). The tiers from SNR 10 up stay
+ * ArkCam's.
  */
 final class ScamDenoiseTables {
     private ScamDenoiseTables() {}
@@ -21,9 +31,9 @@ final class ScamDenoiseTables {
     /** Tier source: the Sabre tiers (multiplier dn_sabre_luma_mult) and luma_denoise_004 = "GID14" (dn_luma_gid14_mult). */
     static final boolean[] LUMA_SABRE = {true, false, true, true, false};
     static final float[][] LUMA_STRENGTH = {
-            {1f, 3f, 0f, 0f, 0f}, {2f, 1f, 0.2f, 0f, 0f}, {1f, 3f, 0f, 0f, 0f}, {1f, 3f, 0f, 0f, 0f}, {3f, 0.75f, 0.38f, 0f, 0f}};
+            {1.2f, 1.1f, 1.2f, 1.1f, 1.0f}, {2f, 1f, 0.2f, 0f, 0f}, {1f, 3f, 0f, 0f, 0f}, {1f, 3f, 0f, 0f, 0f}, {3f, 0.75f, 0.38f, 0f, 0f}};
     static final float[][] LUMA_REVERT = {
-            {9f, 9f, 0.08f, 0.12f, 0f}, {0.75f, 0.7f, 0.7f, 0.0625f, 0f}, {1f, 1f, 0.1f, 0.14f, 0f}, {1f, 1f, 0.1f, 0.1f, 0f},
+            {0.6f, 0.5f, 0.08f, 0.12f, 0f}, {0.75f, 0.7f, 0.7f, 0.0625f, 0f}, {1f, 1f, 0.1f, 0.14f, 0f}, {1f, 1f, 0.1f, 0.1f, 0f},
             {0.95f, 0.95f, 0.95f, 0.1f, 0f}};
     static final float[][] LUMA_OUTLIER = {
             {0.6f, 0.4f, 0.2447f, 0.2383f, 0.3473f}, {1f, 1f, 1f, 0.3731f, 0.4647f}, {0.7f, 0.4f, 0.322f, 0.508f, 0.582f},
@@ -39,14 +49,14 @@ final class ScamDenoiseTables {
     static final float[][] CHROMA_STRENGTH = {{5f, 5f, 5f, 4f, 4f}, {5f, 5f, 5f, 1f, 2f}, {1f, 1f, 1f, 1f, 1.5f}, {0.5f, 0.5f, 0f, 0f, 0f}};
     static final float[][] CHROMA_OUTLIER = {{0f, 5f, 5f, 4f, 4f}, {0f, 5f, 5f, 4f, 4f}, {0f, 5f, 5f, 4f, 4f}, {0f, 5f, 5f, 4f, 4f}};
 
-    /** User configuration (defaults = ArkCam 2.85 effective values with the safeguards of verify_denoise.md). */
+    /** User configuration (defaults = ArkCam 2.85 effective values, SabreLow = GCam stock and the revert limit 1, P135). */
     static final class Config {
         float[] lumaSnr = LUMA_SNR.clone();
         float[][] lumaStrength = copy(LUMA_STRENGTH), lumaRevert = copy(LUMA_REVERT), lumaOutlier = copy(LUMA_OUTLIER);
         float[] chromaSnr = CHROMA_SNR.clone();
         float[][] chromaStrength = copy(CHROMA_STRENGTH), chromaOutlier = copy(CHROMA_OUTLIER);
         float lumaMult = 1f, sabreMult = 1f, gid14Mult = 1f, chromaMult = 1f;
-        float chromaFloor = 0f, revertMult = 1f, revertMax = 9f, coarseStock = 0f;   // ArkCam 2.85 exactly (no safeguards)
+        float chromaFloor = 0f, revertMult = 1f, revertMax = 1f, coarseStock = 0f;   // P135: no amplified revert
     }
 
     static float[][] copy(float[][] a) {

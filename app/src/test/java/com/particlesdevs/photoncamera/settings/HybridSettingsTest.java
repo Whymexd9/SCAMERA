@@ -594,6 +594,27 @@ public class HybridSettingsTest {
         assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
     }
 
+    /** P135: the stored former night denoise defaults (ArkCam SabreLow, revert limit 9) move once; chosen values stay. */
+    @Test public void lowLightDenoiseDefaultsMoveOnce() {
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",9)
+                .putString("pref_scam_hybrid_dn_luma_t1_strength","1,3,0,0,0").putString("pref_scam_hybrid_dn_luma_t1_revert","9,9,0.08,0.12,0")
+                .putString("pref_scam_hybrid_dn_revert_max","9").commit();
+        assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("1.2,1.1,1.2,1.1,1",prefs.getString("pref_scam_hybrid_dn_luma_t1_strength",""));
+        assertEquals("0.6,0.5,0.08,0.12,0",prefs.getString("pref_scam_hybrid_dn_luma_t1_revert",""));
+        assertEquals("1",prefs.getString("pref_scam_hybrid_dn_revert_max",""));
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
+        // a value chosen by hand stays, and a later 9 too (the marker is set)
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",9)
+                .putString("pref_scam_hybrid_dn_luma_t1_revert","2,2,0.08,0.12,0").putString("pref_scam_hybrid_dn_revert_max","4").commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertEquals("2,2,0.08,0.12,0",prefs.getString("pref_scam_hybrid_dn_luma_t1_revert",""));
+        assertEquals("4",prefs.getString("pref_scam_hybrid_dn_revert_max",""));
+        prefs.edit().putString("pref_scam_hybrid_dn_revert_max","9").commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertEquals("9",prefs.getString("pref_scam_hybrid_dn_revert_max",""));
+    }
+
     @Test public void defaultsRevisionThreeMovesTheFormerNoiseDefaultsToArk() {
         // the former noise-reduction safeguards (stored XML defaults) become ArkCam's values; other values stay
         // (its former sharp_mode "rt" -> "ark" step is gone with the mode list, P118)
@@ -601,7 +622,8 @@ public class HybridSettingsTest {
                 .putString("pref_scam_hybrid_dn_revert_max","2").putString("pref_scam_hybrid_dn_coarse_stock","0.5")
                 .putString("pref_scam_hybrid_dn_chroma_floor","1.5").commit();
         assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
-        assertEquals(9f,Float.parseFloat(prefs.getString("pref_scam_hybrid_dn_revert_max","")),0f);
+        // P135: ArkCam's 9 is then the night grain amplifier: the default limit is 1
+        assertEquals(1f,Float.parseFloat(prefs.getString("pref_scam_hybrid_dn_revert_max","")),0f);
         assertEquals(0f,Float.parseFloat(prefs.getString("pref_scam_hybrid_dn_coarse_stock","")),0f);
         assertEquals("1.5",prefs.getString("pref_scam_hybrid_dn_chroma_floor",""));
         assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));

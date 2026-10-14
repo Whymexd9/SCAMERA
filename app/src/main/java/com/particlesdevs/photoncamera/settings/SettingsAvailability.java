@@ -22,6 +22,10 @@ public final class SettingsAvailability {
     private boolean scamHdrSupported = true;
     /** The tele's smooth optical zoom exists here (capture.XiaomiTeleZoom.phone: the Xiaomi 17 Ultra); assumed unless told otherwise. */
     private boolean xiaomiSmoothZoom = true;
+    /** P128: the OPPO tuned ISP matrix renders this phone's photos (OppoTunedColor.applies); assumed unless told otherwise. */
+    private boolean oppoTunedColor = true;
+    /** P128: a module of this phone has streamed a Quad / Tetra mosaic (MosaicBlockStore); assumed unless told otherwise. */
+    private boolean mosaicStreams = true;
     public SettingsAvailability(Map<String, ?> values) { this.values = values; }
     /** The device fact behind «HEIC 10 бит»: the reason it is unavailable here (Android version, no Main10 / P010 encoder) or null. */
     public SettingsAvailability heic10Unavailable(String reason) { heic10Unavailable = reason; return this; }
@@ -35,6 +39,10 @@ public final class SettingsAvailability {
     public SettingsAvailability scamHdrSupported(boolean supported) { scamHdrSupported = supported; return this; }
     /** The device fact behind «Плавный оптический зум»: hidden on any other phone than the Xiaomi 17 Ultra. */
     public SettingsAvailability xiaomiSmoothZoom(boolean supported) { xiaomiSmoothZoom = supported; return this; }
+    /** The device fact behind «Насыщенность матрицы OPPO»: hidden where the OPPO tuned matrix never renders a photo. */
+    public SettingsAvailability oppoTunedColor(boolean applies) { oppoTunedColor = applies; return this; }
+    /** The device fact behind the mosaic merge rows: whether a module here has streamed a Quad / Tetra mosaic. */
+    public SettingsAvailability mosaicStreams(boolean seen) { mosaicStreams = seen; return this; }
     private String text(String key, String fallback) {
         Object value = values.get(key); return value == null ? fallback : value.toString();
     }
@@ -63,6 +71,8 @@ public final class SettingsAvailability {
         // Rows of what this phone does not have (the settings screen also hides them when it builds the tree, for the search).
         if (!scamHdrSupported && any(key, "scam_hdr_screen", "scam_diagnostics_screen", "scam_probe", "scam_neural_probe")) return true;
         if (!xiaomiSmoothZoom && key.equals("pref_xiaomi_smooth_zoom")) return true;
+        // P128: the AgX saturation of the OPPO tuned matrix acts only on the phones that matrix renders (ArkTone.ccmSatComp)
+        if (!oppoTunedColor && key.equals("pref_scam_hybrid_ark_ccm_sat")) return true;
         String format = photoFormat();
         switch (key) {
             case "pref_heic_quality": case "pref_heic_10bit": return !format.equals("heic");
@@ -100,6 +110,16 @@ public final class SettingsAvailability {
             return Lang.t("Только при «Разрешение» 12, 16 или 20 МП.", "Only with “Resolution” 12, 16 or 20 MP.");
         if (any(key, "pref_scam_hybrid_dn_chroma_2x_keep", "pref_scam_hybrid_auto2x") && output.equals("sensor"))
             return Lang.t("Только на сетке 2×: «Разрешение» 12, 16, 20 МП или 2×.", "2× grid only: “Resolution” 12, 16, 20 MP or 2×.");
+        // P128: the «Движение» rows replace the normal ones only while the mode is on (MotionMode, ParamController)
+        if (key.startsWith("pref_scam_hybrid_mm_") && !on("pref_motion_mode", false))
+            return Lang.t("Действует только в режиме «Движение» (кнопка в верхней панели).", "Acts only in “Motion” mode (the button in the top bar).");
+        // P128: «Мерцание ламп» rounds only the long frames' shutter to whole flicker periods (HybridPlan): nothing without them
+        if (key.equals("pref_antibanding_hz_key") && !on("pref_scam_hybrid_shasta", true))
+            return Lang.t("Подгоняет выдержку длинных кадров Shasta, а они выключены.", "Fits the shutter of the long Shasta frames, which are off.");
+        // P128: the mosaic merge acts on Quad / Tetra streams (ISZ modules without the sensor's remosaic) only
+        if (key.startsWith("pref_scam_hybrid_mosaic_") && !mosaicStreams)
+            return Lang.t("Только для модулей с мозаикой Quad / Tetra (ISZ без ремозаика); на этом телефоне её ещё не было.",
+                    "Only for modules streaming a Quad / Tetra mosaic (ISZ without remosaic); none has on this phone yet.");
         // P29 mosaic merge: the native rows follow the merge list, the split's edge kernel only acts on the split (P35: Tetra takes
         // the native merge too with "Tetra path" at its default, so the row is live only with the split for Quad or for Tetra).
         if (key.startsWith("pref_scam_hybrid_mosaic_")) {

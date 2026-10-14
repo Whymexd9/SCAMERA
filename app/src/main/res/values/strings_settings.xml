@@ -194,7 +194,7 @@
     <string name="prefs_scam_hybrid_nr_safe_screen_title">Differences from ArkCam</string>
     <string name="prefs_scam_hybrid_nr_safe_screen_summary">Denoiser tweaks; same as ArkCam by default</string>
     <string name="prefs_scam_hybrid_dn_revert_max_title">Revert: limit</string>
-    <string name="prefs_scam_hybrid_dn_revert_max_summary">Limit of the grain put back, matters at night. Higher: sharper, grainier; lower: smoother; 0: none.</string>
+    <string name="prefs_scam_hybrid_dn_revert_max_summary">Limit of the grain put back, matters at night. 1: never more grain than the shot had (default); above 1 the grain is amplified; 0: none.</string>
     <string name="prefs_scam_hybrid_dn_coarse_stock_title">Coarse luma: GCam stock share</string>
     <string name="prefs_scam_hybrid_dn_coarse_stock_summary">Cleaning of large luma blotches. Higher: fewer blotches but washed-out texture; 0: texture is left alone.</string>
     <string name="prefs_scam_hybrid_dn_chroma_floor_title">Colour: strength floor</string>

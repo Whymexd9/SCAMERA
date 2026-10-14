@@ -40,6 +40,24 @@ public final class ArkLumaSharpen extends Node {
         return new GLTexture(size, new GLFormat(type, channels), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
     }
 
+    /** P135: the sharpening at SNR 4 and below (a share of its amounts), at {@link #LOW_LIGHT_FULL} and above all of it. */
+    static final float LOW_LIGHT_MIN = 0.3f, LOW_LIGHT_START = 4f, LOW_LIGHT_FULL = 24f;
+
+    /**
+     * P135 (owner, 2026-10-15: grain made «нереально» strong by the sharpening in poor light): the share of the sharpening a
+     * shot gets by the SNR of the finish input (ScamDenoise, mid grey after the display gain): {@link #LOW_LIGHT_MIN} at SNR 4
+     * and below, all of it from SNR 24, linear in log SNR between (SNR 10: 0.66, 16: 0.84). The USM, the bilateral high boost,
+     * the local contrast and the Richardson-Lucy stages lift noise as much as detail; on a noisy night shot they made the grain
+     * the denoise had left. 1 when the SNR is unknown (the NLM engine, no denoise).
+     */
+    static float lowLightFactor(float snr) {
+        if (!(snr > 0f) || Float.isInfinite(snr)) return 1f;
+        if (snr <= LOW_LIGHT_START) return LOW_LIGHT_MIN;
+        if (snr >= LOW_LIGHT_FULL) return 1f;
+        final double t = Math.log(snr / LOW_LIGHT_START) / Math.log(LOW_LIGHT_FULL / LOW_LIGHT_START);
+        return (float) (LOW_LIGHT_MIN + (1 - LOW_LIGHT_MIN) * t);
+    }
+
     /** Amount factor at grid scale s: 1 at s <= 1, k at s >= 2, linear in between. */
     static float scaleComp(float s, float k) {
         return 1f + (k - 1f) * Math.min(Math.max(s - 1f, 0f), 1f);
@@ -213,28 +231,30 @@ public final class ArkLumaSharpen extends Node {
         int down = Math.max(1, (int) Math.floor(s + 1e-4f));
         int nb = Math.max(1, Math.round(s));
 
+        // P135: a noisy (night) shot gets a share of the sharpening, by the SNR the denoise measured
+        final float lowLight = lowLightFactor(pipeline.mParameters.finishSnr);
         float usmRadius = ArkTone.value("sharp_usm_radius", 0.5f);
-        float usmAmount = ArkTone.value("sharp_usm_amount", 1f);
+        float usmAmount = ArkTone.value("sharp_usm_amount", 1f) * lowLight;
         float usmThresh = ArkTone.value("sharp_usm_thresh", 50f) / 255f;
         float bilRadius = ArkTone.value("sharp_bilateral_radius", 0.5f);
-        float bilAmount = ArkTone.value("sharp_bilateral_amount", 1f);
+        float bilAmount = ArkTone.value("sharp_bilateral_amount", 1f) * lowLight;
         float bilColor = Math.max(ArkTone.value("sharp_bilateral_color", 10f) / 100f, 0.001f);
         float halo = clamp01(ArkTone.value("sharp_halo_control", 100f) / 100f);
         float protectShadows = clamp01(ArkTone.value("sharp_protect_shadows", 0f) / 100f);
         float protectHighlights = clamp01(ArkTone.value("sharp_protect_highlights", 100f) / 100f);
         int gfRadius = Math.round(ArkTone.value("sharp_gf_radius", 8f));
         float gfEps = Math.max(ArkTone.value("sharp_gf_eps_e3", 10f) * 0.001f, 1e-6f);
-        float gfLc = ArkTone.value("sharp_gf_lc", 0.25f);
+        float gfLc = ArkTone.value("sharp_gf_lc", 0.25f) * lowLight;
         float grain = ArkTone.value("sharp_film_grain", 0f) / 255f;
         float rlHalo = clamp01(ArkTone.value("sharp_rl_halo_control", 100f) / 100f);
         float rlMargin = ArkTone.value("sharp_rl_halo_margin", 0.15f);
         float rlMacro = ArkTone.value("sharp_rl_halo_macro", 0.4f);
         // (kernel, radius, amount, iterations) of the three RL stages; X8U: Airy 1 x3, off, Gaussian 0.5 x3
         float[][] rl = {
-                {ArkTone.value("sharp_rl1_kernel", 2f), ArkTone.value("sharp_rl1_rad", 1f), ArkTone.value("sharp_rl1_amount", 1f), ArkTone.value("sharp_rl1_iters", 3f)},
-                {ArkTone.value("sharp_rl2_kernel", 1f), ArkTone.value("sharp_rl2_rad", 0f), ArkTone.value("sharp_rl2_amount", 0f), ArkTone.value("sharp_rl2_iters", 0f)},
+                {ArkTone.value("sharp_rl1_kernel", 2f), ArkTone.value("sharp_rl1_rad", 1f), ArkTone.value("sharp_rl1_amount", 1f) * lowLight, ArkTone.value("sharp_rl1_iters", 3f)},
+                {ArkTone.value("sharp_rl2_kernel", 1f), ArkTone.value("sharp_rl2_rad", 0f), ArkTone.value("sharp_rl2_amount", 0f) * lowLight, ArkTone.value("sharp_rl2_iters", 0f)},
                 {ArkTone.value("sharp_rl3_kernel", 0f), ArkTone.value("sharp_rl3_rad", 0.5f),
-                        com.particlesdevs.photoncamera.settings.DeviceDefaults.rl3Amount(ArkTone.value("sharp_rl3_amount", 1f), pipeline.mParameters.cameraID),
+                        com.particlesdevs.photoncamera.settings.DeviceDefaults.rl3Amount(ArkTone.value("sharp_rl3_amount", 1f), pipeline.mParameters.cameraID) * lowLight,
                         ArkTone.value("sharp_rl3_iters", 3f)}};
 
         GLTexture gainMap = pipeline.GainMap;

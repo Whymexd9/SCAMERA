@@ -70,6 +70,8 @@ public class Parameters {
     /** P127: bit depth of the shot's RAW stream (RawLevels) and where its black / white came from. */
     public int levelBits;
     public String levelSource = "";
+    /** P135: SNR of the finish input the denoise measured (ScamDenoise), NaN until it ran: the sharpening backs off by it. */
+    public float finishSnr = Float.NaN;
     public static int mergeWhiteLevel = 65535;
     public int realWL = -1;
     public boolean hasGainMap;
@@ -849,6 +851,7 @@ public class Parameters {
         params.whiteLevel = whiteLevel;
         params.levelBits = levelBits;
         params.levelSource = levelSource;
+        params.finishSnr = finishSnr;
         params.realWL = realWL;
         params.hasGainMap = hasGainMap;
         params.mapSize = new Point(mapSize);

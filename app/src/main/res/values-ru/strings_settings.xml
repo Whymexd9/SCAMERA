@@ -194,7 +194,7 @@
     <string name="prefs_scam_hybrid_nr_safe_screen_title">Отличия от ArkCam</string>
     <string name="prefs_scam_hybrid_nr_safe_screen_summary">Доработки шумодава; по умолчанию как в ArkCam</string>
     <string name="prefs_scam_hybrid_dn_revert_max_title">Revert: предел</string>
-    <string name="prefs_scam_hybrid_dn_revert_max_summary">Предел возврата зерна, важен ночью. Больше — резче и зернистее, меньше — глаже; 0 — без возврата.</string>
+    <string name="prefs_scam_hybrid_dn_revert_max_summary">Предел возврата зерна, важен ночью. 1 — зерна не больше, чем было в кадре (по умолчанию); больше 1 — зерно усиливается; 0 — без возврата.</string>
     <string name="prefs_scam_hybrid_dn_coarse_stock_title">Крупная яркость: доля стока GCam</string>
     <string name="prefs_scam_hybrid_dn_coarse_stock_summary">Чистка крупных пятен яркости. Больше — меньше пятен, но замывается фактура; 0 — фактура не трогается.</string>
     <string name="prefs_scam_hybrid_dn_chroma_floor_title">Цвет: нижний предел силы</string>

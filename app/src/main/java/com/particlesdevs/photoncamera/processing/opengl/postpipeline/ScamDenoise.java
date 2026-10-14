@@ -105,7 +105,7 @@ public final class ScamDenoise extends Node {
         c.chromaMult = clamp(PreferenceKeys.hybridValue("dn_chroma_mult", 1f), 0f, 4f);
         c.chromaFloor = clamp(PreferenceKeys.hybridValue("dn_chroma_floor", 0f), 0f, 5f);
         c.revertMult = clamp(PreferenceKeys.hybridValue("dn_revert_mult", 1f), 0f, 4f);
-        c.revertMax = clamp(PreferenceKeys.hybridValue("dn_revert_max", 9f), 0f, 9f);
+        c.revertMax = clamp(PreferenceKeys.hybridValue("dn_revert_max", 1f), 0f, 9f);
         c.coarseStock = clamp(PreferenceKeys.hybridValue("dn_coarse_stock", 0f), 0f, 1f);
         return c;
     }
@@ -513,6 +513,7 @@ public final class ScamDenoise extends Node {
             }
             final float snrMeasured = ScamDenoiseTables.snr(mu, GY[0][0], sG, rG, rhoS, rhoR);
             final float snr = snrFixed > 0f ? snrFixed : snrMeasured * snrScale;
+            par.finishSnr = snr; // P135: the ARK sharpening backs off on a noisy shot
 
             // ---- tiers
             ScamDenoiseTables.Pick[] lp = new ScamDenoiseTables.Pick[1], cp = new ScamDenoiseTables.Pick[1];

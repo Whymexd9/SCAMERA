@@ -608,9 +608,43 @@ public final class SettingsMigration {
             e.putInt(NIGHT_THRESH_REV, 1);
             markOnly = true;
         }
+        // P135 (owner, 2026-10-15: strong grain in poor light): the stored former defaults of the night denoise tier (ArkCam's
+        // SabreLow {1, 3, 0, 0, 0} with revert {9, 9, ...}) and of the revert limit (9) move to the P135 tier (GCam's stock
+        // strengths, half the fine grain put back) and the limit 1; a value chosen by hand stays. Own marker.
+        if (!values.containsKey(LOW_LIGHT_DN_REV)) {
+            final String p = ScamHybridKeys.PREFIX;
+            if (sameList(values.get(p + "dn_luma_t1_strength"), 1f, 3f, 0f, 0f, 0f)) {
+                e.putString(p + "dn_luma_t1_strength", "1.2,1.1,1.2,1.1,1");
+                changed = true;
+            }
+            if (sameList(values.get(p + "dn_luma_t1_revert"), 9f, 9f, 0.08f, 0.12f, 0f)) {
+                e.putString(p + "dn_luma_t1_revert", "0.6,0.5,0.08,0.12,0");
+                changed = true;
+            }
+            // 9 = ArkCam's (revision 3 above may have just written it over the older default 2)
+            Object max = values.get(p + "dn_revert_max");
+            if (max != null && (isNumber(max, 9f) || isNumber(max, 2f) && revision < 3)) {
+                ModuleProfiles.put(e, p + "dn_revert_max", max instanceof String ? "1" : (Object) 1f);
+                changed = true;
+            }
+            e.putInt(LOW_LIGHT_DN_REV, 1);
+            markOnly = true;
+        }
         if (changed || markOnly) e.commit();
         return changed;
     }
+
+    /** A stored "a,b,c,d,e" list equal to {@code expected} (the former default written by setDefaultValues). */
+    private static boolean sameList(Object stored, float... expected) {
+        if (stored == null) return false;
+        final String[] parts = stored.toString().split(",");
+        if (parts.length != expected.length) return false;
+        for (int i = 0; i < parts.length; i++) if (!isNumber(parts[i], expected[i])) return false;
+        return true;
+    }
+
+    /** Marker of the one-time move of the former night denoise defaults (ArkCam SabreLow, revert limit 9), P135. */
+    static final String LOW_LIGHT_DN_REV = "pref_scam_hybrid_low_light_dn_rev";
 
     private static final String DEFAULTS_REV = "pref_scam_hybrid_defaults_rev";
     /** Marker of the one-time move of a stored former default of pref_scam_hybrid_zsl_frames (20) to 30. */

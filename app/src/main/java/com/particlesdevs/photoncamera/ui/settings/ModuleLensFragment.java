@@ -31,7 +31,7 @@ public class ModuleLensFragment extends ModuleConceptFragment {
         navigation(shown?"●":"○",Lang.t(getContext(),"Кнопка в видоискателе","Viewfinder button"),shown?Lang.t(getContext(),"Показывается · нажмите, чтобы скрыть","Shown · tap to hide"):Lang.t(getContext(),"Скрыта · нажмите, чтобы показать","Hidden · tap to show"),()->{
             ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putBoolean("module_visible_"+slot,!shown).apply();render();});
         int mode=ModuleRegistry.sensorMode(slot);
-        navigation("⚙︎",Lang.t(getContext(),"Сенсор и вендорные ключи","Sensor and vendor keys"),(mode!=0?Lang.t(getContext(),"Сенсормод "+mode+" · ","Sensor mode "+mode+" · "):"")+Lang.t(getContext(),"Уровни RAW, экспозиция, стабилизация и vendor tags этого модуля","RAW levels, exposure, stabilization and vendor tags of this module"),()->
+        navigation("⚙︎",Lang.t(getContext(),"Сенсор и вендорные ключи","Sensor and vendor keys"),(mode!=0?Lang.t(getContext(),"Сенсормод "+mode+" · ","Sensor mode "+mode+" · "):"")+Lang.t(getContext(),"Уровни RAW, стабилизация, тип сессии и vendor tags этого модуля","RAW levels, stabilization, session type and vendor tags of this module"),()->
             // straight to this module's sensor page (it no longer has a module list row to pick it in)
             getParentFragmentManager().beginTransaction().replace(com.particlesdevs.photoncamera.R.id.settings_container,SettingsActivity.SettingsFragment.sensorPage(slot)).addToBackStack("sensor").commit());
         if(slot.equals(ModuleRegistry.active())){

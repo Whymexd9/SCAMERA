@@ -121,6 +121,24 @@ public final class MosaicBlockStore {
         };
     }
 
+    /**
+     * P128: a stream of this phone has been stored as a Quad / Tetra mosaic (block 2 / 4), or a module declares a mosaic sensor
+     * mode: the mosaic merge settings act here. True when the store cannot be read (the rows stay as they are).
+     */
+    public static boolean anyMosaic() {
+        try {
+            final android.content.Context context = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext();
+            if (context == null) return true;
+            for (Object v : context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getAll().values())
+                if (v instanceof Integer && ((Integer) v == 2 || (Integer) v == 4)) return true;
+            for (String slot : com.particlesdevs.photoncamera.settings.ModuleRegistry.slots())
+                if (declaredBlock(com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(slot)) > 1) return true;
+            return false;
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
     /** Tests: replace the app's store. */
     static void setInstance(MosaicBlockStore store) { instance = store; }
 
