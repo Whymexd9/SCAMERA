@@ -774,7 +774,9 @@ public class SettingsMenuTest {
             android.view.View r=row(p);
             assertTrue(p.getKey()+" is a card",r.getBackground() instanceof android.graphics.drawable.RippleDrawable);
             android.widget.ImageView icon=r.findViewById(android.R.id.icon);
-            assertNotNull(p.getKey(),icon);assertNotNull(p.getKey()+" has an icon",icon.getDrawable());assertNotNull(p.getKey()+" tinted",icon.getColorFilter());
+            assertNotNull(p.getKey(),icon);assertNotNull(p.getKey()+" has an icon",icon.getDrawable());
+            // P136: the multi-tone glyphs are drawn as they are; only the reset tile takes the warning colour
+            if(p==tile)assertNotNull(p.getKey()+" tinted",icon.getColorFilter());else assertNull(p.getKey()+" tinted",icon.getColorFilter());
         }
         assertNotNull("pages end in a chevron",row(page).findViewById(R.id.settings_chevron));
         android.widget.TextView label=row(category).findViewById(android.R.id.title);assertEquals(accent,label.getCurrentTextColor());

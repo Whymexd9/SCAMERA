@@ -163,7 +163,7 @@ public class SensorConfigPreferenceGenerator {
         addButton.setTitle(Lang.t(context, "Добавить vendor tag", "Add vendor tag"));
         addButton.setSummary(Lang.t(context, "Ключ камеры для этого модуля: имя, тип и значение. Переключатель у ключа включает и выключает его",
                 "A camera key for this module: name, type and value. The switch next to a key turns it on and off"));
-        addButton.setIcon(com.particlesdevs.photoncamera.R.drawable.ic_add);
+        addButton.setIcon(com.particlesdevs.photoncamera.R.drawable.settings_ic_plus);
         addButton.setOrder(10000);
         addButton.setOnPreferenceClickListener(preference -> {
             TunableKeyDialog.show(context, physicalId, -1, refresh);

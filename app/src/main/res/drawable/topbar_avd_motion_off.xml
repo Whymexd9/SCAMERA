@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- P86 «Движение» switch off: the subject stops and the speed lines are wiped away. -->
+<!-- P86 «Движение» switch off (P136: the filled style of tools/make_ui_icons.py): the subject stops and the speed lines are wiped away. -->
 <animated-vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
     <aapt:attr name="android:drawable">
         <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
         <group android:name="lines">
-            <path android:name="line1" android:pathData="M10,8.2 L3.2,8.2" android:trimPathStart="0" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round"/>
-            <path android:name="line2" android:pathData="M9.6,12 L1.6,12" android:trimPathStart="0" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round"/>
-            <path android:name="line3" android:pathData="M10,15.8 L4.6,15.8" android:trimPathStart="0" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round"/>
+            <path android:name="line1" android:pathData="M8.4,8.2 L3.2,8.2" android:trimPathStart="0" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="2" android:strokeLineCap="round"/>
+            <path android:name="line2" android:pathData="M7.8,12 L1.6,12" android:trimPathStart="0" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="2" android:strokeLineCap="round"/>
+            <path android:name="line3" android:pathData="M8.4,15.8 L4.6,15.8" android:trimPathStart="0" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="2" android:strokeLineCap="round"/>
         </group>
         <group android:name="subject" android:translateX="0">
-            <path android:pathData="M12,12 a4.2,4.2 0 1,0 8.4,0 a4.2,4.2 0 1,0 -8.4,0" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7"/>
-            <path android:pathData="M14.6,12 a1.6,1.6 0 1,0 3.2,0 a1.6,1.6 0 1,0 -3.2,0" android:fillColor="#FFFFFFFF"/>
+            <path android:pathData="M11,12 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0 Z M13.4,12 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0 Z" android:fillType="evenOdd" android:fillColor="#FFFFFFFF"/>
+            <path android:pathData="M14.5,12 a1.5,1.5 0 1,0 3,0 a1.5,1.5 0 1,0 -3,0 Z" android:fillColor="#FFFFFFFF"/>
         </group>
     </vector>
     </aapt:attr>

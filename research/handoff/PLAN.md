@@ -3116,8 +3116,21 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   tools/make_launcher_icons.py so they stay consistent; the accent detail follows the chosen accent where the icon is tinted.
 - Also the shade (шторка) and the viewfinder icons (owner, 2026-10-15: «В шторке и видоискателе тоже сделай иконки в таком
   стиле»): the shade tiles' glyphs and the viewfinder's top bar / side buttons in the same filled style.
-- The launcher shortcut «Настройки» (P140) has no picture of its own: its icon is an inset of settings_ic_gear, so the restyled
-  gear reaches it too (keep the gear inside the 66 dp safe zone; the shortcut's monochrome layer uses the same glyph).
+- Done locally (2026-10-15). tools/make_ui_icons.py makes every UI icon from one geometry per glyph (24-unit viewport,
+  primitives written as polygons so the winding is exact): the body in the launcher icon's light vertical gradient, the
+  «dark inner parts» as cut-outs (the card shows through), the details in ?android:attr/colorAccent (the activity's accent
+  theme, so they follow «Цветовой акцент»), the grey back card, and a 40 % «dim» body for things that are off. 83 drawables:
+  the 39 settings_ic_* (+ settings_ic_motion / _focus / _plus, so every row icon of the settings is a generated glyph), the
+  shade's own (flash, torch, timers, grids, metering, focus, downsampler, pins, plus, slash, the format glyphs and the RAW +
+  format pairs with the film dimmed behind), the top bar's (motion on / off - the AVDs restyled to match, the SHDR badge «S»,
+  the legacy SCAM HDR badge «N») and the manual controls' (circularbarlib manual_ic_ev / focus / iso / shutter / sliders /
+  wb). The settings rows draw them as they are (SettingsStyle / ModuleConceptFragment no longer tint; the reset rows keep
+  the warning colour); the shade, the top bar and the manual panel tint them with SRC_IN as before - the glyphs are built
+  to read as silhouettes there (cut-outs, not dark paint). The «Настройки» shortcut (P140) takes shortcut_ic_gear, the same
+  gear with the coral fixed (a launcher applies no app theme), and its mono twin for themed icons. Checks: make_ui_icons.py
+  --check in CI (the drawables are what the script makes), IconStyleTest (rows untinted but reset, every XML row icon a
+  generated glyph, all load in the accent theme and in the application context; contact sheets in build/reports/icons).
+  Not seen on a phone; ChatGPT's manual_ic_dcg14 / manual_ic_fullres were left as they are.
 
 ### P137 - value editors in the camera's style, «add to the shade» from them (owner, 2026-10-15, screenshots of the «N-кадров из ZSL» / «Bento: отказ при движении» editors: «все вот такие меню переделай под стиль интерфейса нашей камеры, так же добавь возможность прямо из этого подменю добавлять настройки в шторку»)
 - OPEN, after P136. The number / list editors of the settings (the ruler dialog with the step chips, «По умолчанию», Отмена /
@@ -3161,8 +3174,8 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   SettingsActivity.ACTION_SHORTCUT. From the shortcut SettingsActivity first does what CameraActivity.onCreate would
   (setDefaultValues, PreferenceKeys.setDefaults, the settings cache), so a change made there still lands in the active
   module's profile; PreferenceKeys.PROFILE_LISTENER makes that listener one per process (every camera start used to add one
-  more). Icon: adaptive, the launcher icon's dark background + the camera's own gear (settings_ic_gear inset), so P136
-  restyles it with the rest. Test SettingsMenuTest.launcherShortcutOpensTheSettings. Not checked on a phone.
+  more). Icon: adaptive, the launcher icon's dark background + the settings gear of tools/make_ui_icons.py (shortcut_ic_gear,
+  coral fixed since a launcher applies no app theme; P136 regenerates it with the rest). Test SettingsMenuTest.launcherShortcutOpensTheSettings. Not checked on a phone.
 
 ### P127 - RAW black / white levels by bit depth (owner, 2026-10-15: «Переделай алгоритм определения уровня белого и черного, не всегда 8 бит: 16/255 10 бит: 64/1023 12 бит: 256/4095 14 бит: 1024/16383 16 бит: 4096/65535. Нам нужен надёжный и точный алгоритм который будет определять правильно уровень, при этом не замедлять съёмку и тд. На гит не надо лить»)
 - Done locally (not pushed, owner). processing/RawLevels: one resolver for every consumer (shot Parameters, RAW viewfinder,

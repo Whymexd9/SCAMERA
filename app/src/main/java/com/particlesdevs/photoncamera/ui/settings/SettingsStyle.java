@@ -237,8 +237,12 @@ public final class SettingsStyle {
             return;
         }
         ImageView icon = (ImageView) holder.findViewById(android.R.id.icon);
-        boolean warn = "pref_reset_preferences_key".equals(key);
-        if (icon != null && !(p instanceof TunableKeyPreference)) icon.setColorFilter(warn ? WARN : accent, PorterDuff.Mode.SRC_IN);
+        boolean warn = "pref_reset_preferences_key".equals(key) || "pref_reset_sensor_config_settings".equals(key);
+        // P136: the row icons are the multi-tone glyphs of tools/make_ui_icons.py (light body, accent details from the theme):
+        // drawn as they are; only the reset rows tint theirs in the warning colour
+        if (icon != null && !(p instanceof TunableKeyPreference)) {
+            if (warn) icon.setColorFilter(WARN, PorterDuff.Mode.SRC_IN); else icon.clearColorFilter();
+        }
         TextView title = (TextView) holder.findViewById(android.R.id.title);
         if (title != null && warn) title.setTextColor(WARN);
         else if (title != null && action(p)) title.setTextColor(accent);

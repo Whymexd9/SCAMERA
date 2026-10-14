@@ -573,7 +573,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 resetButton.setKey("pref_reset_sensor_config_settings");
                 resetButton.setTitle(Lang.t(getContext(),"Сбросить настройки выбранного модуля","Reset the selected module settings"));
                 resetButton.setSummary(Lang.t(getContext(),"Остальные модули сохранят свои значения","Other modules keep their values"));
-                resetButton.setIcon(android.R.drawable.ic_menu_revert);
+                resetButton.setIcon(R.drawable.settings_ic_reset);
                 resetButton.setOrder(9999); // Force to the end
 
                 resetButton.setOnPreferenceClickListener(preference -> {

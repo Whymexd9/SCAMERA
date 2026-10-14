@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- P140 / P136: the shortcut «Настройки» for themed icons: the gear's silhouette (shortcut_ic_gear_mono), inset like the colour one. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/shortcut_ic_gear_mono"
+    android:inset="32dp" />
