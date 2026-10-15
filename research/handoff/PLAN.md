@@ -3446,6 +3446,24 @@ Each step moves with a check that the GPU gives the CPU's result; the CPU path s
   the same final size (final_resize LINEAR_IN 1, "area": no clamp, no sRGB) before its read-back, and RunHDRGainMap builds
   the map for that size. The read-back shrinks (16 B a pixel: 800 MB -> 320 MB), and the 200 MP grid no longer exceeds the
   2 GB snapshot limit (Ultra HDR fell back to SDR there). tools/check_linear_resize.py.
+- NEXT (worker, needs the OPPO for the md5 replay of the control series, rp0.sh; not done without it): measured in the X200
+  Ultra log of 2026-10-15 - the CPU front end is spawn -> w_f6 = 0.64 s of a 1.4 s worker on a 12 MP shot, 1.3-1.7 s on the 2x
+  grid ("HYBRID STAGES ms: align=366 localAlign=983", up to align=1740 localAlign=3727 on FULLRES). In order:
+  1. F6 tile Lucas-Kanade (scam-hybrid.h 4233-4314, 5897-5938, LaStream): a compute pass per pyramid level (the gray
+     pyramid, the 32x32 windows every 16 px, 2 iterations), the field already goes to the GPU (originL). Check: the field
+     against the CPU's within 1/64 px, then md5-free replay metrics (dark_fade, texture) on the 8 series.
+  2. RAW CA correction (H 5021-5075): the R/B resample as a pass on the merged strip before its read-back (halo rows of
+     the largest shift); the fit stays on the CPU (sampled).
+  3. Bento mask (H 4049-4132): clip scan, dilation and the 7x7 Gaussian as passes on the half-res cell grid; the hole search
+     (connected components) stays on the CPU.
+  4. Effective map / clip flags / half conversion after the merge (H 6317-6359, W 224-256): written by the merge shader
+     directly in the transport format.
+- Remaining CPU work, why it stays: jpegli JPEG (entropy coding; ~1 s at 20 MP q100, 4-5 s at 50 MP - could run in strips on
+  several threads with restart markers, a CPU change), ExifInterface rewrite (I/O), frame copies (camera buffers must be
+  released), CRE global alignment (vendor library), ScamRgb's sampled clip statistics (every 17th pixel, overlapped with the
+  upload), HEIC 10-bit P010 (Java on 4 threads; a GPU pass needs the pipeline to read back P010 planes instead of the
+  1010102 bitmap - a restructure), AVIF (libaom), live-RAW copies and Quad binning (binning before the upload is the cheap
+  side), gallery DNG preview (Java render outside any GL pipeline).
 - Not for the GPU: JPEG / AV1 entropy coding, the vendor CRE alignment (closed library), memory copies, EXIF, the cpu-single
   fallback (it exists for a GPU that failed).
 - Checks: ToneCurveTest 5, SettingsMenuTest (groups, one at a time, graph + sliders + typed values, a render to
