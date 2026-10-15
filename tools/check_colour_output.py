@@ -209,10 +209,16 @@ def shader_part(strict: bool) -> None:
         (failures if strict else skipped).append('glslc not found: the shader variants were not compiled')
         print('  glslc not found: compile skipped')
         return
-    for label, define in (('P3_OUT 0', '0'), ('P3_OUT 1', '1')):
+    # P144: the tone operators (TONE_OP 1) alone and with P3 and the colour look
+    variants = (('P3_OUT 0', {'P3_OUT': '0'}), ('P3_OUT 1', {'P3_OUT': '1'}), ('TONE_OP 1', {'TONE_OP': '1'}),
+                ('TONE_OP 1 + P3_OUT 1 + COLOUR_LOOK 1', {'TONE_OP': '1', 'P3_OUT': '1', 'COLOUR_LOOK': '1'}))
+    for label, defines in variants:
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / 'combine.frag'
-            f.write_text('#version 310 es\n' + expand_imports(set_define(new, 'P3_OUT', define)), encoding='utf-8')
+            src = new
+            for name, value in defines.items():
+                src = set_define(src, name, value)
+            f.write_text('#version 310 es\n' + expand_imports(src), encoding='utf-8')
             r = subprocess.run([glslc, '--target-env=opengl', '-fshader-stage=fragment', '-std=310es', '-fauto-map-locations',
                                 '-fauto-bind-uniforms', '-o', os.devnull, str(f)], capture_output=True, text=True)
             check(r.returncode == 0, 'glslc: %s does not compile:\n%s' % (label, r.stderr))

@@ -97,6 +97,38 @@ public final class ArkTone {
         return p != null && p.oppoTunedCcm ? Math.max(value("ccm_sat", 1.1f), 0f) : 1f;
     }
 
+    /**
+     * P144: the tone operator of «Кривая AgX и ACES» - ToneCurve.AGX unless the own curve, Uchimura or ACES is switched on (the
+     * settings keep one on at a time; should several be stored, that order wins).
+     */
+    static int toneOperator() {
+        if (PreferenceKeys.hybridSwitch("ark_curve_on", false)) return com.particlesdevs.photoncamera.processing.color.ToneCurve.CUSTOM;
+        if (PreferenceKeys.hybridSwitch("ark_uchi_on", false)) return com.particlesdevs.photoncamera.processing.color.ToneCurve.UCHIMURA;
+        if (PreferenceKeys.hybridSwitch("ark_aces_on", false)) return com.particlesdevs.photoncamera.processing.color.ToneCurve.ACES;
+        return com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX;
+    }
+
+    /** ACES (ArkCam defaults): pre-gain 1, a 2.61, d 0.59, toe (the same toe as the inversion of the fusion target). */
+    static float[] acesUniform() {
+        return new float[]{value("aces_pre_gain", 1.0f), value("aces_a", 2.61f), value("aces_d", 0.59f), value("aces_toe", 0.05f)};
+    }
+
+    /** Uchimura (ArkCam defaults): pre-gain 1, post-gain 0.9, P 1, a 1 | m 0.22, l 0.4, c 1.33, b 0. */
+    static float[][] uchimuraUniforms() {
+        float m = Math.max(value("uchi_m", 0.22f), 0.01f), a = Math.max(value("uchi_a", 1.0f), 0.05f);
+        // the shoulder needs P above the linear start (P - S1 = (P - m)(1 - l) > 0): the ranges allow P 0.5 with m 0.8
+        float p = Math.max(value("uchi_p", 1.0f), m + 0.05f), l = Math.min(Math.max(value("uchi_l", 0.4f), 0f), 0.95f);
+        return new float[][]{{value("uchi_pre_gain", 1.0f), value("uchi_post_gain", 0.9f), p, a},
+                {m, l, value("uchi_c", 1.33f), value("uchi_b", 0.0f)}};
+    }
+
+    /** The own curve's 256 samples (pref_scam_hybrid_ark_curve_points, ArkCam's S when empty). */
+    static float[] curveSamples() {
+        return com.particlesdevs.photoncamera.processing.color.ToneCurve
+                .parse(PreferenceKeys.hybridString("ark_curve_points", com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS))
+                .samples(com.particlesdevs.photoncamera.processing.color.ToneCurve.SAMPLES);
+    }
+
     /** ef_gamma; the mod takes 2.2 for a value at or below 0.1 [pushCurrentLut 0x80da4]. */
     static float gamma() {
         float g = value("gamma", 2.2f);

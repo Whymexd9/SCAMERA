@@ -173,6 +173,11 @@ public final class SettingsStyle {
                 continue;
             }
             p.setSingleLineTitle(false);
+            // P144: the own tone curve draws its own card (graph and shortcuts)
+            if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference) {
+                p.setIconSpaceReserved(false);
+                continue;
+            }
             if (p.getKey() != null && TILES.contains(p.getKey())) {
                 p.setLayoutResource(R.layout.preference_tile);
                 continue;

@@ -104,6 +104,16 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_ark_gf_radius": return new double[]{4,128,1};
             case "pref_scam_hybrid_ark_gf_eps_e3": return new double[]{0.001,100,0};
             case "pref_scam_hybrid_ark_aces_toe": return new double[]{0.005,0.2,0};
+            // P144: ACES and Uchimura of «Кривая AgX и ACES» (ArkCam 1.42 ParamRegistry ranges)
+            case "pref_scam_hybrid_ark_aces_pre_gain": case "pref_scam_hybrid_ark_uchi_pre_gain":
+            case "pref_scam_hybrid_ark_uchi_post_gain": return new double[]{0.2,3,0};
+            case "pref_scam_hybrid_ark_aces_a": return new double[]{1,5,0};
+            case "pref_scam_hybrid_ark_aces_d": return new double[]{0.1,2,0};
+            case "pref_scam_hybrid_ark_uchi_p": return new double[]{0.5,2,0};
+            case "pref_scam_hybrid_ark_uchi_a": case "pref_scam_hybrid_ark_uchi_c": return new double[]{0.5,3,0};
+            case "pref_scam_hybrid_ark_uchi_m": return new double[]{0.05,0.8,0};
+            case "pref_scam_hybrid_ark_uchi_l": return new double[]{0.1,0.8,0};
+            case "pref_scam_hybrid_ark_uchi_b": return new double[]{0,0.2,0};
             case "pref_scam_hybrid_ark_bracket_denoise": return new double[]{0,1,0};
             case "pref_scam_hybrid_ark_gamma": return new double[]{1.6,2.8,0};
             case "pref_scam_hybrid_ark_film_toe": return new double[]{0,0.5,0};

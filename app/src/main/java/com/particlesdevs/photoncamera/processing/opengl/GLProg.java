@@ -586,6 +586,13 @@ public class GLProg implements AutoCloseable {
         checkEglError("setVarFloats:" + name);
     }
 
+    /** Sets a vec4 array uniform (uniform vec4 name[len]) from 4 * len floats (P144: the own tone curve's table). */
+    public void setVarVec4s(String name, float... vars) {
+        int address = glGetUniformLocation(mCurrentProgramActive, name);
+        glUniform4fv(address, vars.length / 4, vars, 0);
+        checkEglError("setVarVec4s:" + name);
+    }
+
     public void setVarU(String name, Point var) {
         setVarU(name,var.x,var.y);
     }

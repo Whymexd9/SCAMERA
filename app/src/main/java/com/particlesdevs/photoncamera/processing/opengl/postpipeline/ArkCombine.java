@@ -51,6 +51,7 @@ public final class ArkCombine extends Node {
         // P134 «Цвет»: COLOUR_LOOK only when a colour setting is off its default (else the shader before P134)
         final com.particlesdevs.photoncamera.processing.color.ColourLook look = ArkTone.colourLook();
         final boolean colourOn = !look.shaderNeutral();
+        final int toneOp = ArkTone.toneOperator();
         try {
             GLTexture colour = st.lowDn != null ? st.lowDn : st.low;
             int colourFactor = st.factor;
@@ -83,6 +84,8 @@ public final class ArkCombine extends Node {
             // P46 Display P3: the same shader with P3_OUT 1 (colour source, OKLab and gamut in P3); sRGB sets no define.
             if (pipeline.p3Output) glProg.setDefine("P3_OUT", 1);
             if (colourOn) glProg.setDefine("COLOUR_LOOK", 1);
+            // P144: ACES / Uchimura / the own curve instead of AgX (TONE_OP 0, the AgX shader, otherwise)
+            if (toneOp != com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX) glProg.setDefine("TONE_OP", 1);
             glProg.useAssetProgram("ark/combine", false);
             glProg.setTexture("InputBuffer", input);
             ArkTone.setColour(glProg, pipeline, gainMap, st.inScale);
@@ -113,7 +116,16 @@ public final class ArkCombine extends Node {
             glProg.setVar("deltaChromaU", Math.max(0f, Math.min(1f, ArkTone.value("delta_chroma", 1f))));
             glProg.setVar("filmToeU", ArkTone.value("film_toe", 0.10f));
             glProg.setVar("agxAU", r.slope, r.sp, r.tp, r.sat);
-            glProg.setVar("agxBU", r.minEv, r.maxEv, r.ev, (float) r.look);
+            glProg.setVar("agxBU", r.minEv, r.maxEv, r.ev,
+                    toneOp == com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX ? (float) r.look : 0f);
+            if (toneOp != com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX) {
+                glProg.setVar("toneOpU", toneOp);
+                glProg.setVar("acesU", ArkTone.acesUniform());
+                float[][] uchi = ArkTone.uchimuraUniforms();
+                glProg.setVar("uchiAU", uchi[0]);
+                glProg.setVar("uchiBU", uchi[1]);
+                glProg.setVarVec4s("curveU", ArkTone.curveSamples());
+            }
             glProg.setVar("ditherU", 1);
             if (colourOn) {
                 glProg.setVar("skinU", look.skinUniform());

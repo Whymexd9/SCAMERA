@@ -38,8 +38,12 @@ precision highp sampler2D;
 // brightness, the 8-band mixer, skin hue / evenness; the gamut compression of the linear colour; the hue-lock mode; in
 // display OKLab after the hue lock - the grading of shadows / mid-tones / highlights. COLOUR_LOOK 0: every block drops out
 // and the shader is the one before P134 (tools/check_colour_output.py pins its token stream).
+// TONE_OP 1 (P144, processing.color.ToneCurve; ArkCombine sets it for an operator other than AgX): the AgX tonescale gives way
+// to ArkCam 1.42's ACES (eval_acescg), Uchimura (uchimura_curve) or the own curve (u_tex_custom_curve) on the same AgX inset
+// and outset (toneOpU 1 / 2 / 3). TONE_OP 0: AgX as before (the token stream stays the pinned one).
 #define P3_OUT 0
 #define COLOUR_LOOK 0
+#define TONE_OP 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -85,6 +89,13 @@ uniform float gamutU;               // gamut compression 0..1
 uniform int hueLockU;               // 0 full (as before), 1 blues only, 2 off
 uniform vec4 gradeAU;               // grading offsets in OKLab: shadows a, b, mid-tones a, b
 uniform vec4 gradeBU;               // highlights a, b, balance -1..1, blending 0..1
+#endif
+#if TONE_OP == 1
+uniform int toneOpU;                // 1 ACES, 2 Uchimura, 3 own curve
+uniform vec4 acesU;                 // ACES: pre-gain, a, d, toe
+uniform vec4 uchiAU;                // Uchimura: pre-gain, post-gain, P (max brightness), a (contrast)
+uniform vec4 uchiBU;                // Uchimura: m (linear start), l (linear length), c (toe power), b (black offset)
+uniform vec4 curveU[64];            // own curve: 256 samples over x 0..1 (0.5 + EV / 10 around the 0.18 grey)
 #endif
 out vec4 Output;
 
@@ -136,6 +147,44 @@ vec3 finiteTap(vec3 c) {
 vec3 sanitize(vec3 c) {
     return finiteTap(max(c, vec3(0.0)));
 }
+
+#if TONE_OP == 1
+// ArkCam 1.42 eval_acescg: Narkowicz ACES with the toe-driven b, e of the inverse below and its own pre-gain, a, d.
+float toneAces(float v) {
+    float x = max(v, 0.0) * acesU.x;
+    float b = max(acesU.w * 0.75, 0.005);
+    float e = max(0.14 - (acesU.w - 0.04) * 0.8, 0.03);
+    return (x * (acesU.y * x + b)) / (x * (2.43 * x + acesU.z) + e);
+}
+
+// ArkCam 1.42 uchimura_curve (Gran Turismo): toe power c up to m, a linear section of slope a and length l, a shoulder to P.
+float toneUchimura(float v) {
+    float x = max(v, 0.0) * uchiAU.x;
+    float P = uchiAU.z, a = uchiAU.w, m = uchiBU.x, l = uchiBU.y, c = uchiBU.z;
+    float l0 = ((P - m) * l) / a;
+    float s0 = m + l0;
+    float s1 = m + a * l0;
+    float c2 = (a * P) / (P - s1);
+    float cp = -c2 / P;
+    float w0 = 1.0 - smoothstep(0.0, m, x);
+    float w2 = step(m + l0, x);
+    float w1 = 1.0 - w0 - w2;
+    float t = m * pow(max(x / m, 0.0), c) + uchiBU.w;
+    float sh = P - (P - s1) * exp(cp * (x - s0));
+    float li = m + a * (x - m);
+    return (t * w0 + li * w1 + sh * w2) * uchiAU.y;
+}
+
+// The own curve at x 0..1: linear between its 256 samples.
+float curveSample(int i) {
+    return curveU[i >> 2][i & 3];
+}
+float toneCurve(float x) {
+    float f = clamp(x, 0.0, 1.0) * 255.0;
+    int i = min(int(f), 254);
+    return mix(curveSample(i), curveSample(i + 1), f - float(i));
+}
+#endif
 
 // Exact quadratic inverse of the kernel's ACES curve, pre-gain 1.5, a 2.51, d 0.59 [:987-1004].
 float inverseAcescg(float y, float toe) {
@@ -489,6 +538,26 @@ void main() {
     vec3 ins = max(vec3(0.842479062253094 * scene.r + 0.0784335999999992 * scene.g + 0.0792237451477643 * scene.b,
                         0.0423282422610123 * scene.r + 0.8784686364697720 * scene.g + 0.0791661274605434 * scene.b,
                         0.0423756549057051 * scene.r + 0.0784336000000000 * scene.g + 0.8791429737931040 * scene.b), vec3(0.0));
+#if TONE_OP == 1
+    vec3 graded;
+    if (toneOpU == 3) {
+        // the own curve on -5..+5 EV around the grey, display values -> linear (2.4) -> the AgX outset, as AgX itself
+        vec3 nx = clamp(vec3(0.5) + log2(max(ins, vec3(0.0000001)) / 0.18) * 0.1, 0.0, 1.0);
+        vec3 curDisp = vec3(toneCurve(nx.r), toneCurve(nx.g), toneCurve(nx.b));
+        vec3 dispLinC = pow(max(curDisp, vec3(0.0)), vec3(2.4));
+        graded = vec3(1.19687902425835 * dispLinC.r - 0.09802088114013 * dispLinC.g - 0.09902975707567 * dispLinC.b,
+                      -0.05289685400450 * dispLinC.r + 1.15190312998791 * dispLinC.g - 0.09896117934484 * dispLinC.b,
+                      -0.05297163539640 * dispLinC.r - 0.09804337634422 * dispLinC.g + 1.15107253721836 * dispLinC.b);
+    } else {
+        // ACES / Uchimura per channel on the inset, a linear display value, then the outset (ArkCam: no 2.4 here)
+        vec3 curOp = toneOpU == 2 ? vec3(toneUchimura(ins.r), toneUchimura(ins.g), toneUchimura(ins.b))
+                                  : vec3(toneAces(ins.r), toneAces(ins.g), toneAces(ins.b));
+        curOp = clamp(curOp, 0.0, 1.0);
+        graded = vec3(1.19687902425835 * curOp.r - 0.09802088114013 * curOp.g - 0.09902975707567 * curOp.b,
+                      -0.05289685400450 * curOp.r + 1.15190312998791 * curOp.g - 0.09896117934484 * curOp.b,
+                      -0.05297163539640 * curOp.r - 0.09804337634422 * curOp.g + 1.15107253721836 * curOp.b);
+    }
+#else
     float minEv = agxB.x, maxEv = agxB.y, ev = agxB.z;
     float range = max(maxEv + max(ev, 0.0) - minEv, 1.0);
     float px = clamp(-minEv / range, 0.05, 0.95);
@@ -507,6 +576,7 @@ void main() {
         float ol = dot(graded, LUMA);
         graded = vec3(ol) + (graded - vec3(ol)) * agxA.w;
     }
+#endif
     // In gamut by chroma, not per channel: a channel of a saturated light over 1 would otherwise stop its brightening.
 #if P3_OUT == 1
     vec3 gradedLab = toOklab(max(graded, vec3(0.0)));

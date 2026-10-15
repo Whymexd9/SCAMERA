@@ -151,6 +151,14 @@ public final class SettingsAvailability {
             return Lang.t("Только при «Кадры светов» = «Авто».", "Only with “Highlight frames” = “Auto”.");
         if (any(key, "pref_scam_hybrid_motion_boost", "pref_scam_hybrid_mm_motion_boost") && text("pref_scam_hybrid_local_align", "1").equals("0"))
             return Lang.t("Нужно «Локальное выравнивание F6».", "Needs “Local alignment F6”.");
+        // P144: AgX and its look give way to the tone operator switched on in «Кривая AgX и ACES»
+        if (key.startsWith("pref_scam_hybrid_ark_agx_")) {
+            String other = on("pref_scam_hybrid_ark_curve_on", false) ? Lang.t("своя кривая", "the own curve")
+                    : on("pref_scam_hybrid_ark_uchi_on", false) ? "Uchimura" : on("pref_scam_hybrid_ark_aces_on", false) ? "ACES" : null;
+            if (other != null)
+                return Lang.t("Сейчас вместо AgX работает " + other + " (в «Кривая AgX и ACES»).",
+                        "Now " + other + " works instead of AgX (in “AgX and ACES curve”).");
+        }
         if (key.startsWith("pref_scam_hybrid_ark_agx_") && !key.equals("pref_scam_hybrid_ark_agx_look")
                 && !text("pref_scam_hybrid_ark_agx_look", "4").equals("4"))
             return Lang.t("Только в стиле AgX «Custom»: другие стили задают эти значения сами.", "AgX look “Custom” only: the other looks set these values themselves.");

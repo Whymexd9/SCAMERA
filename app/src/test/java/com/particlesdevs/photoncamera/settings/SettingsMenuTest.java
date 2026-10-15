@@ -721,6 +721,236 @@ public class SettingsMenuTest {
             assertTrue(TunableKeyManager.loadKeys(activity,sensor).isEmpty());
         }
     }
+    /**
+     * P144: «Кривая AgX и ACES» - AgX, then ACES, Uchimura and the own curve, each switched on in its own group that holds only
+     * its own settings; one operator at a time; AgX's rows say which one works instead.
+     */
+    @Test public void toneOperatorsInTheirOwnGroups(){
+        PreferenceScreen root=inflate();
+        androidx.preference.PreferenceGroup screen=root.findPreference("scam_hybrid_ark_curves_screen");
+        assertNotNull(screen);
+        String[] order={"scam_hybrid_ark_agx_category","scam_hybrid_ark_aces_category","scam_hybrid_ark_uchi_category","scam_hybrid_ark_curve_category"};
+        for(int i=0;i<order.length;i++)assertEquals(order[i],screen.getPreference(i).getKey());
+        String[][] groups={{"scam_hybrid_ark_aces_category","pref_scam_hybrid_ark_aces_on","pref_scam_hybrid_ark_aces_"},
+                {"scam_hybrid_ark_uchi_category","pref_scam_hybrid_ark_uchi_on","pref_scam_hybrid_ark_uchi_"},
+                {"scam_hybrid_ark_curve_category","pref_scam_hybrid_ark_curve_on","pref_scam_hybrid_ark_curve_"}};
+        for(String[] g:groups){
+            androidx.preference.PreferenceGroup cat=root.findPreference(g[0]);
+            assertTrue(g[0]+" starts with its switch",cat.getPreference(0) instanceof androidx.preference.TwoStatePreference);
+            assertEquals(g[1],cat.getPreference(0).getKey());
+            assertFalse("off by default",((androidx.preference.TwoStatePreference)cat.getPreference(0)).isChecked());
+            for(int i=0;i<cat.getPreferenceCount();i++)
+                assertTrue("only its own settings in "+g[0]+": "+cat.getPreference(i).getKey(),cat.getPreference(i).getKey().startsWith(g[2]));
+        }
+        assertEquals("pref_scam_hybrid_ark_aces_on",root.findPreference("pref_scam_hybrid_ark_aces_a").getDependency());
+        assertEquals("pref_scam_hybrid_ark_uchi_on",root.findPreference("pref_scam_hybrid_ark_uchi_m").getDependency());
+        assertTrue(root.findPreference("pref_scam_hybrid_ark_curve_points") instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference);
+        assertEquals("pref_scam_hybrid_ark_curve_on",root.findPreference("pref_scam_hybrid_ark_curve_points").getDependency());
+        // AgX's rows tell which operator works instead
+        java.util.Map<String,Object> values=new java.util.HashMap<>();
+        assertNull(new SettingsAvailability(values).reason("pref_scam_hybrid_ark_agx_look"));
+        values.put("pref_scam_hybrid_ark_uchi_on",true);
+        String why=new SettingsAvailability(values).reason("pref_scam_hybrid_ark_agx_look");
+        assertNotNull(why);assertTrue(why,why.contains("Uchimura"));
+    }
+
+    /** P144: one tone operator at a time - switching one on in the settings turns the other two off. */
+    @Test public void oneToneOperatorAtATime(){
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();
+            SharedPreferences sp=prefs; // the settings' own store (SettingsManager), which the screen listens to
+            sp.edit().putBoolean("pref_scam_hybrid_ark_uchi_on",true).commit();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            sp.edit().putBoolean("pref_scam_hybrid_ark_aces_on",true).commit();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertTrue(sp.getBoolean("pref_scam_hybrid_ark_aces_on",false));
+            assertFalse("Uchimura went off",sp.getBoolean("pref_scam_hybrid_ark_uchi_on",true));
+            sp.edit().putBoolean("pref_scam_hybrid_ark_curve_on",true).commit();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertFalse("ACES went off",sp.getBoolean("pref_scam_hybrid_ark_aces_on",true));
+            assertTrue(sp.getBoolean("pref_scam_hybrid_ark_curve_on",false));
+        }
+    }
+
+    /**
+     * P144: the own curve's graph - a tap adds a point, a drag moves it, «Прямая» / «S-кривая» reset it; stored as x:y pairs. The
+     * touched point stays selected: its «Яркость» slider and its typed «Экспозиция» move it, ‹ › step, «Удалить» removes it.
+     */
+    @Test public void ownCurveIsEditedOnItsGraph(){
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();
+            PreferenceManager pm=new PreferenceManager(activity);PreferenceScreen screen=pm.createPreferenceScreen(activity);
+            var pref=new com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference(activity);
+            pref.setKey("pref_scam_hybrid_ark_curve_points");screen.addPreference(pref);
+            android.view.View row=android.view.LayoutInflater.from(activity).inflate(R.layout.preference_tone_curve,null);
+            androidx.preference.PreferenceViewHolder holder=androidx.preference.PreferenceViewHolder.createInstanceForTests(row);
+            pref.onBindViewHolder(holder);
+            var graph=(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView)row.findViewWithTag("tone_curve_view");
+            assertNotNull(graph);
+            int w=600;row.measure(android.view.View.MeasureSpec.makeMeasureSpec(w,android.view.View.MeasureSpec.EXACTLY),android.view.View.MeasureSpec.makeMeasureSpec(0,android.view.View.MeasureSpec.UNSPECIFIED));
+            row.layout(0,0,w,row.getMeasuredHeight());
+            assertEquals("the default S",5,graph.curve().size());
+            // a tap on an empty spot of the graph (x 0.6, y 0.3 of the plot) adds a point there, a drag moves it
+            float x=graph.getLeft()+graph.getWidth()*0.6f,y=graph.getHeight()*0.62f;
+            long t=android.os.SystemClock.uptimeMillis();
+            graph.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t,android.view.MotionEvent.ACTION_DOWN,graph.getWidth()*0.6f,y,0));
+            graph.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t+50,android.view.MotionEvent.ACTION_MOVE,graph.getWidth()*0.6f,y-40,0));
+            graph.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t+80,android.view.MotionEvent.ACTION_UP,graph.getWidth()*0.6f,y-40,0));
+            assertEquals("a sixth point",6,graph.curve().size());
+            String stored=pref.points();
+            assertEquals(6,stored.split(",").length);
+            assertEquals(stored,com.particlesdevs.photoncamera.processing.color.ToneCurve.parse(stored).serialize());
+            // the new point is the selected one
+            int sel=graph.selected();
+            assertTrue("an inner point",sel>0&&sel<graph.curve().size()-1);
+            assertEquals("Point "+(sel+1)+" of 6",((android.widget.TextView)row.findViewWithTag("tone_curve_point_label")).getText().toString());
+            // the brightness slider dragged to its end: the point goes to 100 %
+            android.widget.SeekBar yBar=row.findViewWithTag("tone_curve_y");
+            assertTrue(yBar.isEnabled());
+            t+=500;
+            yBar.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t,android.view.MotionEvent.ACTION_DOWN,yBar.getWidth()*0.5f,yBar.getHeight()/2f,0));
+            yBar.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t+40,android.view.MotionEvent.ACTION_MOVE,yBar.getWidth()-1f,yBar.getHeight()/2f,0));
+            yBar.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t+80,android.view.MotionEvent.ACTION_UP,yBar.getWidth()-1f,yBar.getHeight()/2f,0));
+            assertEquals(1f,graph.curve().get(sel).y,1e-4f);
+            assertEquals("100.0 %",((android.widget.TextView)row.findViewWithTag("tone_curve_y_value")).getText().toString());
+            assertEquals("stored when the finger lifts",1f,com.particlesdevs.photoncamera.processing.color.ToneCurve.parse(pref.points()).get(sel).y,1e-4f);
+            // the exposure typed in: +1.5 EV (x 0.65), between its neighbours
+            row.findViewWithTag("tone_curve_x_value").performClick();
+            android.app.Dialog sheet=org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            assertNotNull(sheet);
+            android.view.View sv=sheet.getWindow().getDecorView();
+            ((android.widget.TextView)sv.findViewWithTag("precision_value")).performClick();
+            ((android.widget.EditText)sv.findViewWithTag("precision_field")).setText("1,5");
+            sv.findViewWithTag("sheet_save").performClick();
+            assertFalse(sheet.isShowing());
+            assertEquals(0.65f,graph.curve().get(sel).x,1e-4f);
+            assertEquals("+1.50 EV",((android.widget.TextView)row.findViewWithTag("tone_curve_x_value")).getText().toString());
+            assertEquals(0.65f,com.particlesdevs.photoncamera.processing.color.ToneCurve.parse(pref.points()).get(sel).x,1e-4f);
+            // past a neighbour: refused, the sheet stays
+            row.findViewWithTag("tone_curve_x_value").performClick();
+            sheet=org.robolectric.shadows.ShadowDialog.getLatestDialog();sv=sheet.getWindow().getDecorView();
+            ((android.widget.TextView)sv.findViewWithTag("precision_value")).performClick();
+            ((android.widget.EditText)sv.findViewWithTag("precision_field")).setText("4");
+            sv.findViewWithTag("sheet_save").performClick();
+            assertTrue(sheet.isShowing());sheet.dismiss();
+            assertEquals(0.65f,graph.curve().get(sel).x,1e-4f);
+            // ‹ steps back; the black end keeps its exposure and cannot go
+            row.findViewWithTag("tone_curve_prev").performClick();
+            assertEquals(sel-1,graph.selected());
+            graph.select(0);
+            assertFalse(row.findViewWithTag("tone_curve_x").isEnabled());
+            assertFalse(row.findViewWithTag("tone_curve_delete").isEnabled());
+            assertFalse(row.findViewWithTag("tone_curve_prev").isEnabled());
+            // «Удалить» removes an inner point
+            graph.select(sel);
+            row.findViewWithTag("tone_curve_delete").performClick();
+            assertEquals(5,graph.curve().size());
+            assertEquals(5,pref.points().split(",").length);
+            row.findViewWithTag("tone_curve_identity").performClick();
+            assertEquals("0.0000:0.0000,1.0000:1.0000",pref.points());
+            row.findViewWithTag("tone_curve_default").performClick();
+            assertEquals(com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS,pref.points());
+        }
+    }
+
+    /**
+     * P144: the curves page as the phone shows it (400 x 880 dp, xhdpi), kept in build/reports/tone-curve for a look - the own
+     * curve's group, a new point being dragged, an edited curve with more points, then the ACES and Uchimura groups.
+     */
+    @Test @Config(qualifiers="ru-w400dp-h880dp-xhdpi") public void toneCurvePageRenderedForReview() throws Exception {
+        prefs.edit().putBoolean("pref_scam_hybrid_ark_curve_on",true).commit();
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
+            var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            activity.onPreferenceStartScreen(root,root.findPreference("scam_hybrid_ark_tone_screen"));fm.executePendingTransactions();
+            var tone=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            activity.onPreferenceStartScreen(tone,tone.findPreference("scam_hybrid_ark_curves_screen"));fm.executePendingTransactions();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            var page=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            assertEquals("scam_hybrid_ark_curves_screen",page.getPreferenceScreen().getKey());
+            float density=activity.getResources().getDisplayMetrics().density;
+            int w=Math.round(400*density),h=Math.round(880*density);
+            android.view.View view=page.requireView();
+            frame(view,w,h);
+            var list=page.getListView();
+            int curvePos=((androidx.preference.PreferenceGroup.PreferencePositionCallback)list.getAdapter()).getPreferenceAdapterPosition("scam_hybrid_ark_curve_category");
+            ((androidx.recyclerview.widget.LinearLayoutManager)list.getLayoutManager()).scrollToPositionWithOffset(curvePos,Math.round(8*density));
+            frame(view,w,h);
+            var graph=(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView)list.findViewWithTag("tone_curve_view");
+            assertNotNull("the graph is on screen",graph);
+            assertTrue("on when its switch is on",graph.isEnabled());
+            shot(view,w,h,"1-own-curve");
+            // a tap on an empty spot adds a point; it shows filled while the finger drags it
+            // the plot inside the graph: 14 dp around, 22 dp under it for the EV labels (ToneCurveView.onSizeChanged)
+            float pad=14*density,gw=graph.getWidth(),gh=graph.getHeight();
+            java.util.function.BiFunction<Float,Float,float[]> at=(x,y)->new float[]{pad+x*(gw-2*pad),gh-22*density-y*(gh-36*density)};
+            long t=android.os.SystemClock.uptimeMillis();
+            float[] a=at.apply(0.62f,0.66f),b=at.apply(0.62f,0.74f);
+            graph.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t,android.view.MotionEvent.ACTION_DOWN,a[0],a[1],0));
+            graph.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t+60,android.view.MotionEvent.ACTION_MOVE,b[0],b[1],0));
+            shot(view,w,h,"2-drag-new-point");
+            graph.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t+90,android.view.MotionEvent.ACTION_UP,b[0],b[1],0));
+            assertEquals(6,graph.curve().size());
+            // more points: as many as wanted
+            float[][] taps={{0.12f,0.05f},{0.375f,0.30f},{0.88f,0.95f}};
+            for(float[] p:taps){
+                t+=500;float[] q=at.apply(p[0],p[1]);
+                graph.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t,android.view.MotionEvent.ACTION_DOWN,q[0],q[1],0));
+                graph.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t+40,android.view.MotionEvent.ACTION_UP,q[0],q[1],0));
+            }
+            assertEquals(9,graph.curve().size());
+            assertEquals(9,prefs.getString("pref_scam_hybrid_ark_curve_points","").split(",").length);
+            shot(view,w,h,"3-more-points");
+            // the selected point's sliders: the point at +2.5 EV raised by its brightness slider
+            graph.select(6);
+            list.scrollBy(0,Math.round(330*density));frame(view,w,h);
+            android.widget.SeekBar yBar=list.findViewWithTag("tone_curve_y");
+            assertNotNull(yBar);
+            float cy=yBar.getHeight()/2f,track=yBar.getWidth()-yBar.getPaddingLeft()-yBar.getPaddingRight();
+            float from=yBar.getPaddingLeft()+track*graph.curve().get(6).y,to=yBar.getPaddingLeft()+track*0.90f;
+            t+=500;
+            yBar.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t,android.view.MotionEvent.ACTION_DOWN,from,cy,0));
+            yBar.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t+40,android.view.MotionEvent.ACTION_MOVE,to,cy,0));
+            yBar.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t+80,android.view.MotionEvent.ACTION_UP,to,cy,0));
+            assertEquals(0.90f,graph.curve().get(6).y,0.01f);
+            frame(view,w,h);
+            shot(view,w,h,"4-point-sliders");
+            // a value typed in: the exposure's sheet
+            list.findViewWithTag("tone_curve_x_value").performClick();
+            android.app.Dialog sheet=org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            android.view.View sv=sheet.getWindow().getDecorView();
+            ((android.widget.TextView)sv.findViewWithTag("precision_value")).performClick();
+            ((android.widget.EditText)sv.findViewWithTag("precision_field")).setText("2.8");
+            frame(sv,w,h);
+            android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(w,h,android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas canvas=new android.graphics.Canvas(bitmap);view.draw(canvas);canvas.drawColor(0x99000000);sv.draw(canvas);
+            java.io.File dir=new java.io.File("build/reports/tone-curve");dir.mkdirs();
+            try(var out=new java.io.FileOutputStream(new java.io.File(dir,"5-type-value.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+            sv.findViewWithTag("sheet_save").performClick();
+            assertEquals(0.78f,graph.curve().get(6).x,1e-4f);
+            // ACES and Uchimura in their own groups (the jump without the item animator: a finger scroll binds the rows plainly,
+            // while a jump in the same pass as the rows the curve's save changed would fade them in at full alpha)
+            list.setItemAnimator(null);
+            int acesPos=((androidx.preference.PreferenceGroup.PreferencePositionCallback)list.getAdapter()).getPreferenceAdapterPosition("scam_hybrid_ark_aces_category");
+            ((androidx.recyclerview.widget.LinearLayoutManager)list.getLayoutManager()).scrollToPositionWithOffset(acesPos,Math.round(8*density));
+            frame(view,w,h);
+            shot(view,w,h,"6-aces-uchimura");
+        }
+    }
+    private void frame(android.view.View view,int w,int h){
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        int exact=android.view.View.MeasureSpec.EXACTLY;
+        view.measure(android.view.View.MeasureSpec.makeMeasureSpec(w,exact),android.view.View.MeasureSpec.makeMeasureSpec(h,exact));view.layout(0,0,w,h);
+        // the list's item animations (a jump in the same pass as a changed row fades the new rows in) run to their end
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1));
+    }
+    private void shot(android.view.View view,int w,int h,String name) throws Exception {
+        android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(w,h,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
+        java.io.File dir=new java.io.File("build/reports/tone-curve");dir.mkdirs();
+        try(var out=new java.io.FileOutputStream(new java.io.File(dir,name+".png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+    }
+
     /** «Кривая AgX и ACES» is the first row of «Тон ARK» (owner, 2026-10-15). */
     @Test public void curvesOpenTheArkTonePage(){
         PreferenceScreen root=inflate();

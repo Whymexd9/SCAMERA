@@ -180,6 +180,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private ActivityResultLauncher<String[]> lutImportLauncher;
         private ActivityResultLauncher<String[]> noiseModelImportLauncher;
         private ActivityResultLauncher<String[]> configImportLauncher;
+        /** P144: the switches of «Кривая AgX и ACES» of which one at most is on. */
+        static final java.util.List<String> TONE_OPERATORS = java.util.Arrays.asList(
+                "pref_scam_hybrid_ark_aces_on", "pref_scam_hybrid_ark_uchi_on", "pref_scam_hybrid_ark_curve_on");
         /** P143: this screen was opened by the camera's config menu for the picker only. */
         private boolean importFromCamera;
 
@@ -758,6 +761,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             
             Log.d("SettingsFragment", "onSharedPreferenceChanged: key=" + key);
+            // P144: one tone operator at a time - ACES, Uchimura or the own curve switched on turns the other two off
+            if (TONE_OPERATORS.contains(key) && sharedPreferences.getBoolean(key, false)) {
+                for (String other : TONE_OPERATORS) {
+                    if (other.equals(key)) continue;
+                    // the store first (a switch row may not know a value written elsewhere), then the row on screen
+                    if (sharedPreferences.getBoolean(other, false)) sharedPreferences.edit().putBoolean(other, false).apply();
+                    androidx.preference.TwoStatePreference p = findPreference(other);
+                    if (p != null) p.setChecked(false);
+                }
+            }
             if (key.equals(com.particlesdevs.photoncamera.util.ScameraDebugLog.PREF_KEY)) {
                 boolean on = sharedPreferences.getBoolean(key, false);
                 // Only bind the context here. Calling init() would itself call

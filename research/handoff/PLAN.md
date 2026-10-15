@@ -3396,6 +3396,26 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   list (the menu stays open). ConfigFolder.delete: MediaStore for the app's files, the File API otherwise, names only.
 - Tests ConfigMenuTest (8 + a render to build/reports/config-menu). Not seen on a phone yet.
 
+### P144 - ACES, Uchimura and an own curve in «Кривая AgX и ACES» (owner, 2026-10-15, ArkCam 1.42 APK: «Добавь алгоритмы тоноотображения как в arkcam "ACES" "Uchimura" Включение каждой из них сделай в отдельной группе. Также дай возможность вводить свою кривую с наглядной визуализацией, также на визуализации дай возможность менять кривую пальцем. Мы должны иметь возможность добавлять сколько хотим точек у кривой»; «Для "ACES" "Uchimura" в отдельных группах настроек где они включаются должны быть только настройки касающиеся их»; «Дай также возможность ползунками двигать добавленные точки и ползунками, либо вписывать вручную значения»)
+- ArkCam v142 tonemap_final: eval_acescg x(ax+b)/(x(2.43x+d)+e) with b = max(toe*0.75, 0.005), e = max(0.14-(toe-0.04)*0.8,
+  0.03) after a pre-gain; uchimura_curve (GT: P, a, m, l, c, b) between a pre- and a post-gain; the own curve as a 256-entry LUT
+  over x = 0.5 + EV/10 (±5 EV around 0.18) -> display -> ^2.4. Ours: the same, in place of the AgX sigmoid inside ark/combine.glsl
+  (AgX inset and outset kept; ACES / Uchimura clamp 0..1 before the outset). `#define TONE_OP 0` keeps the old token stream
+  (check_colour_output pins it); ArkCombine sets TONE_OP 1 only when one of them is on (ArkTone.toneOperator: curve > Uchimura >
+  ACES > AgX) and drops the AgX look then. Uniforms toneOpU, acesU, uchiAU, uchiBU, curveU[64] (GLProg.setVarVec4s).
+- Settings: the curves page holds AgX, then the groups ACES, Uchimura, «Своя кривая»; each starts with its «… вместо AgX»
+  switch and holds only its own rows (they depend on it; ACES Toe stays live - it also shapes the ACES inversion). One at a time:
+  switching one on turns the other two off (SettingsActivity.TONE_OPERATORS, the store first). AgX's rows say which one works
+  instead. Bounds as ArkCam (SettingsNumericRules).
+- The own curve (processing.color.ToneCurve, "x:y,..." in pref_scam_hybrid_ark_curve_points, default ArkCam's S): a
+  Fritsch-Carlson monotone cubic, as many points as wanted (0.01 apart), the ends keep x. ToneCurvePreference / ToneCurveView:
+  a graph with a grid, the straight line dashed, −5 EV / 0 (grey) / +5 EV; tap = a point, drag = move, hold = delete; «S-кривая»
+  and «Прямая». The touched point stays selected: ‹ ›, «Удалить», sliders «Экспозиция» (EV) and «Яркость» (%), each value taps
+  open the exact-value sheet (PrecisionEditor; exposure limited to the neighbours). Stored when a gesture / slider ends.
+- Checks: ToneCurveTest 5, SettingsMenuTest (groups, one at a time, graph + sliders + typed values, a render to
+  build/reports/tone-curve), tools/check_tone_ops.py (GPU vs numpy: ACES, Uchimura, the straight and the S curve, max 1e-4);
+  glslc for every TONE_OP variant. Not seen on a phone yet; the look vs ArkCam not compared on photos.
+
 ### P141 - config files: saving, applying, moving between phones (owner, 2026-10-15: «Ещё добавь в план работы перепроверка работы с конфиг файлами. Проверь чтобы всё правильно сохранялось и применялось. Так же проверь чтобы на разных смартфонах с разными айди модулей конфиг применялся нормально и автоматически подставлялся/адаптировался под другое количество модулей, при этом сделай так чтобы модули не дублировались и не появлялись лишние»)
 - Audit «Сохранить / Восстановить» (BackupPreferences, RestorePreference, ModuleProfiles, module_profile_v2_* files, the
   sensor-config keys pref_sensorconfig_<id>_*, vendor tags, shade tiles, the colour settings): everything saved is restored
