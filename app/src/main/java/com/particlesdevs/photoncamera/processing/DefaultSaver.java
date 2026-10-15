@@ -21,6 +21,7 @@ public class DefaultSaver extends SaverImplementation {
     java.util.List<com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.ExpoPair> ownedPairs;
     /** P27: the merge route the shot was captured for (null: read the setting when processing starts). */
     Boolean ownedHybridRoute;
+    Boolean ownedIszAspect4x3;
 
     public DefaultSaver(ProcessingEventsListener processingEventsListener) {
         super(processingEventsListener);
@@ -29,6 +30,8 @@ public class DefaultSaver extends SaverImplementation {
 
     public void runRaw(int imageFormat, CameraCharacteristics characteristics, CaptureResult captureResult, CaptureRequest captureRequest, ArrayList<GyroBurst> burstShakiness, int cameraRotation, HashMap<Long, Double> exposures) {
         super.runRaw(imageFormat, characteristics, captureResult,captureRequest, burstShakiness, cameraRotation, exposures);
+        scamProcessor.ownedIszAspect4x3 = ownedIszAspect4x3 != null ? ownedIszAspect4x3 : iszAspect4x3;
+        ownedIszAspect4x3 = null;
         if (ownedFrames != null) {
             // Queued shot: frames and exposure pairs were detached from the
             // shared buffers on the camera thread when the burst completed.

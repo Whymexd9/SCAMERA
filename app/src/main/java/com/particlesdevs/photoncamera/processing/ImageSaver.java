@@ -42,6 +42,7 @@ public class ImageSaver {
     private int frameCounter = 0;
     private int desiredFrameCount = 0;
     public boolean newBurst = false;
+    public boolean iszAspect4x3;
 
     public void setFrameCount(int desiredFrameCount){
         this.desiredFrameCount = desiredFrameCount;
@@ -78,6 +79,7 @@ public class ImageSaver {
             throw new IllegalStateException("Queued processing requires the RAW saver");
         DefaultSaver saver = (DefaultSaver) implementation;
         saver.ownedHybridRoute = hybridRoute;
+        saver.ownedIszAspect4x3 = iszAspect4x3;
         saver.ownedFrames = new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
         saver.ownedPairs = new ArrayList<>(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.fullpairs);
         SaverImplementation.IMAGE_BUFFER.clear();
@@ -128,6 +130,7 @@ public class ImageSaver {
             imageFormat = image.getFormat();
             implementation = getImageSaver(imageFormat, implementation);
             implementation.shotArena = shotArena; // the implementation can change with the format (P30)
+            implementation.iszAspect4x3 = iszAspect4x3;
             implementation.frameCount = desiredFrameCount;
             implementation.newBurst = newBurst;
             implementation.addImage(image);
@@ -136,6 +139,7 @@ public class ImageSaver {
     }
 
     public void runRaw(CameraCharacteristics characteristics, CaptureResult captureResult, CaptureRequest captureRequest, ArrayList<GyroBurst> burstShakiness, int cameraRotation, HashMap<Long, Double> exposures) {
+        implementation.iszAspect4x3 = iszAspect4x3;
         implementation.runRaw(imageFormat,characteristics,captureResult, captureRequest,burstShakiness,cameraRotation, exposures);
     }
 

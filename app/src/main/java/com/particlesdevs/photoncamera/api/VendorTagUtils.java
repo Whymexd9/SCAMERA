@@ -240,5 +240,8 @@ public class VendorTagUtils {
         // P103: the HAL keys of «Движение» / Ideal RAW, on the session and every request
         com.particlesdevs.photoncamera.capture.HiddenFeatures.apply(builder,
                 com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics);
+        com.particlesdevs.photoncamera.capture.VivoQcomModes.apply(builder,
+                com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics, physicalId);
+        com.particlesdevs.photoncamera.capture.VivoPd2454Isz.mirrorRequest(builder, physicalId);
     }
 }

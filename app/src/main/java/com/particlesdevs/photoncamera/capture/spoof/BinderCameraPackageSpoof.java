@@ -5,6 +5,8 @@ import android.os.IBinder;
 import android.os.IInterface;
 import android.os.Parcel;
 import android.os.RemoteException;
+import android.os.Build;
+import android.os.Parcelable;
 import android.util.Log;
 
 import com.particlesdevs.photoncamera.api.NativeEngine;
@@ -12,6 +14,9 @@ import com.particlesdevs.photoncamera.api.NativeEngine;
 import java.io.FileDescriptor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -76,6 +81,18 @@ public final class BinderCameraPackageSpoof {
             }
             serviceField.setAccessible(true);
             Object cameraService = serviceField.get(global);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (Proxy.isProxyClass(cameraService.getClass())
+                        && Proxy.getInvocationHandler(cameraService) instanceof TypedCameraService) {
+                    ((TypedCameraService) Proxy.getInvocationHandler(cameraService)).setPackages(nativePackage, targetPackage);
+                } else {
+                    Class<?> iface = Class.forName("android.hardware.ICameraService");
+                    serviceField.set(global, Proxy.newProxyInstance(iface.getClassLoader(), new Class<?>[]{iface},
+                            new TypedCameraService(cameraService, nativePackage, targetPackage)));
+                }
+                Log.i(TAG, "Typed ICameraService attribution hook installed: " + targetPackage);
+                return true;
+            }
             Field remoteField = findRemoteField(cameraService);
             if (remoteField == null) {
                 Log.w(TAG, "ICameraService mRemote IBinder field not found");
@@ -106,6 +123,11 @@ public final class BinderCameraPackageSpoof {
             if (serviceField == null) return;
             serviceField.setAccessible(true);
             Object cameraService = serviceField.get(global);
+            if (Proxy.isProxyClass(cameraService.getClass())
+                    && Proxy.getInvocationHandler(cameraService) instanceof TypedCameraService) {
+                ((TypedCameraService) Proxy.getInvocationHandler(cameraService)).setPackages(nativePackage, targetPackage);
+                return;
+            }
             Field remoteField = findRemoteField(cameraService);
             if (remoteField == null) return;
             remoteField.setAccessible(true);
@@ -115,6 +137,56 @@ public final class BinderCameraPackageSpoof {
             }
         } catch (Throwable ignored) {
             // Default mode must never interfere with normal camera startup.
+        }
+    }
+
+    private static final class TypedCameraService implements InvocationHandler {
+        private final Object original;
+        private volatile String nativePackage, targetPackage;
+
+        TypedCameraService(Object original, String nativePackage, String targetPackage) {
+            this.original = original;
+            setPackages(nativePackage, targetPackage);
+        }
+
+        void setPackages(String nativePackage, String targetPackage) {
+            this.nativePackage = nativePackage;
+            this.targetPackage = targetPackage;
+        }
+
+        @Override
+        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+            Object[] forwarded = args == null ? null : args.clone();
+            String from = nativePackage, to = targetPackage;
+            if (forwarded != null && !from.equals(to)) {
+                for (int i = 0; i < forwarded.length; i++) {
+                    Object value = forwarded[i];
+                    if (value != null && value.getClass().getName().equals("android.content.AttributionSourceState")) {
+                        forwarded[i] = rewriteAttribution((Parcelable) value, to);
+                    } else if (from.equals(value)) {
+                        forwarded[i] = to;
+                    }
+                }
+            }
+            try {
+                return method.invoke(original, forwarded);
+            } catch (InvocationTargetException e) {
+                throw e.getCause();
+            }
+        }
+    }
+
+    static Parcelable rewriteAttribution(Parcelable value, String packageName) throws ReflectiveOperationException {
+        Parcel parcel = Parcel.obtain();
+        try {
+            value.writeToParcel(parcel, 0);
+            parcel.setDataPosition(0);
+            Parcelable.Creator<?> creator = (Parcelable.Creator<?>) value.getClass().getField("CREATOR").get(null);
+            Parcelable copy = (Parcelable) creator.createFromParcel(parcel);
+            copy.getClass().getField("packageName").set(copy, packageName);
+            return copy;
+        } finally {
+            parcel.recycle();
         }
     }
 

@@ -64,4 +64,17 @@ public class ModuleDuplicatesTest {
         assertNull(ModuleDuplicates.freeSlot(p, "back0"));
         assertEquals("the front side has its own slots", null, ModuleDuplicates.freeSlot(p, "front0"));
     }
+
+    @Test public void expandedCapacityUsesOnlyTheNinthSlotAndKeepsTheEightOwners() {
+        Map<String, Object> p = x7();
+        for (int i = 0; i < 8; i++) p.put("module_visible_back" + i, true);
+        p.put("module_auto_back8", "5");
+        p.put("module_visible_back8", false);
+        Map<String, Object> before = new HashMap<>(p);
+        assertNull(ModuleDuplicates.freeSlot(p, "back1"));
+        assertEquals("back8", ModuleDuplicates.freeSlot(p, "back1", 9));
+        p.putAll(ModuleDuplicates.copyOf(p, "back1", "back8", "4×", 4f));
+        for (Map.Entry<String, Object> entry : before.entrySet())
+            if (!entry.getKey().endsWith("back8")) assertEquals(entry.getValue(), p.get(entry.getKey()));
+    }
 }

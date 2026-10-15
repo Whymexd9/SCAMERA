@@ -63,14 +63,20 @@ final class Dcg14Button {
 
     private static void toggle(CameraFragment fragment, ImageButton button) {
         int mode = Dcg14Mode.next(Dcg14Mode.mode());
-        Dcg14Mode.setMode(mode);
+        if (!com.particlesdevs.photoncamera.capture.SensorModeSwitches.setDcg(mode != Dcg14Mode.OFF)) {
+            fragment.showSnackBar(com.particlesdevs.photoncamera.util.Lang.t(
+                    "Нет обычного модуля этой камеры для DCG", "No plain module of this camera for DCG"));
+            return;
+        }
         style(button, mode);
         button.animate().cancel();
         button.setScaleX(0.86f);
         button.setScaleY(0.86f);
         button.animate().scaleX(1f).scaleY(1f).setDuration(260)
                 .setInterpolator(new android.view.animation.OvershootInterpolator(2.2f)).start();
-        fragment.showSnackBar(fragment.getString(mode == Dcg14Mode.DCG ? R.string.dcg14_on_toast : R.string.dcg14_off_toast));
+        fragment.showSnackBar(mode == Dcg14Mode.DCG ? com.particlesdevs.photoncamera.util.Lang.t(
+                "DCG запрошен; остальные режимы отключены", "DCG requested; other sensor modes disabled")
+                : fragment.getString(R.string.dcg14_off_toast));
         Log.i(TAG, "DCG 14 bit mode " + Dcg14Mode.name(mode));
         if (fragment.captureController != null) fragment.captureController.restartCamera();
     }

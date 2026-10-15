@@ -271,12 +271,12 @@ public final class PixelPro10 {
     }
 
     public static boolean fullResAvailable(@Nullable CameraCharacteristics c) {
-        return device() && PreferenceKeys.scamDevSwitch("pixel_full_res", true) && fullResStream(c) != null;
+        return (device() || VivoQcomModes.device()) && PreferenceKeys.scamDevSwitch("pixel_full_res", true) && fullResStream(c) != null;
     }
 
     /** The full-resolution stream while the switch is on (null otherwise). */
     @Nullable
     public static FullRes fullRes(@Nullable CameraCharacteristics c) {
-        return fullResOn() && device() && PreferenceKeys.scamDevSwitch("pixel_full_res", true) ? fullResStream(c) : null;
+        return fullResOn() && (device() || VivoQcomModes.device()) && PreferenceKeys.scamDevSwitch("pixel_full_res", true) ? fullResStream(c) : null;
     }
 }

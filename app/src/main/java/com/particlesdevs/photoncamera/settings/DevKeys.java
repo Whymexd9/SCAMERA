@@ -133,6 +133,16 @@ public final class DevKeys {
         k.add(s(xiaomi, "xiaomi_isz", false, Lang.t("ISZ теле (опыт)", "Tele ISZ (experiment)")));
         k.add(s(xiaomi, "xiaomi_tele_fallback", false, Lang.t("Запасной путь теле при сбое", "Tele fallback route on failure")));
         // vivo
+        k.add(s(vivo, "vivo_sdk_fullres", true, Lang.t("X200 Ultra, основная камера 3: SDK RAW 50 Мп, последовательная съёмка после нажатия, Hybrid", "X200 Ultra, main camera 3: SDK 50 MP RAW, serial post-shutter capture, Hybrid")));
+        k.add(s(vivo, "vivo_qcom_modes", true, Lang.t("X200 Ultra: экспериментальные модули Qualcomm", "X200 Ultra: experimental Qualcomm modules")));
+        k.add(s(vivo, "vivo_qcom_raw_psl", false, Lang.t("X200 Ultra: диагностический RAW без ZSL", "X200 Ultra: diagnostic RAW without ZSL")));
+        k.add(s(vivo, "vivo_qcom_stream_usage", true, Lang.t("X200 Ultra: назначения потоков для экспериментальных режимов", "X200 Ultra: stream purposes for experimental modes")));
+        k.add(s(vivo, "vivo_qcom_spoof", false, Lang.t("vivo Snapdragon: экспериментальная подмена клиента (RAW-сессия пока не работает)", "vivo Snapdragon: experimental client spoof (RAW session does not work yet)")));
+        k.add(s(vivo, "vivo_qcom_sensor_routes", false, Lang.t("X200 Ultra: экспериментальные ISZ/DCG-параметры сессии", "X200 Ultra: experimental ISZ/DCG session parameters")));
+        k.add(s(vivo, "vivo_qcom_provider_app", false, Lang.t("X200 Ultra: экспериментальный AppType vivo после открытия камеры", "X200 Ultra: experimental vivo AppType after opening the camera")));
+        k.add(s(vivo, "vivo_qcom_logical", false, Lang.t("X200 Ultra: экспериментальная логическая камера 2", "X200 Ultra: experimental logical camera 2")));
+        k.add(s(vivo, "vivo_qcom_vcf_bypass", false, Lang.t("X200 Ultra: диагностический VCFAppType 2 (RAW не исправляет)", "X200 Ultra: diagnostic VCFAppType 2 (does not fix RAW)")));
+        k.add(s(vivo, "vivo_qcom_reprocess", false, Lang.t("X200 Ultra: диагностический reprocessMode 1 (ошибка камеры 4)", "X200 Ultra: diagnostic reprocessMode 1 (camera error 4)")));
         k.add(s(vivo, "dcg14", true, Lang.t("Кнопка DCG 14 бит (X300 Ultra)", "The DCG 14-bit button (X300 Ultra)")));
         k.add(s(vivo, "vivo_teleconverter", false, Lang.t("Показывать камеры-профили телеконвертера vivo (Tele…External) — только с надетой насадкой", "Show the vivo teleconverter camera profiles (Tele…External): only with the extender attached")));
         // Pixel 10 Pro / Pro XL

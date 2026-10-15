@@ -30,13 +30,17 @@ public final class ModuleDuplicates {
 
     /**
      * A hidden slot of the source's side for the copy: first one whose automatic camera another slot already shows (the filler
-     * slots beyond the lens count), else any hidden one. Null when all eight are in use.
+     * slots beyond the lens count), else any hidden one. Null when all slots are in use.
      */
     static String freeSlot(Map<String, ?> p, String source) {
+        return freeSlot(p, source, 8);
+    }
+
+    static String freeSlot(Map<String, ?> p, String source, int capacity) {
         String side = source.startsWith("front") ? "front" : "back";
         List<String> hidden = new ArrayList<>();
         List<String> shownCameras = new ArrayList<>();
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < capacity; i++) {
             String s = side + i;
             if (!p.containsKey("module_auto_" + s)) continue;
             if (visible(p, s)) shownCameras.add(camera(p, s)); else hidden.add(s);

@@ -33,7 +33,7 @@ final class FullResButton {
         // the slot first: the strip may not be inside the fragment's view
         ImageButton button = slot.findViewById(R.id.full_res_button);
         if (button == null && rootView != null) button = rootView.findViewById(R.id.full_res_button);
-        if (!PixelPro10.device() || !(rootView instanceof ViewGroup)) {
+        if (!(PixelPro10.device() || com.particlesdevs.photoncamera.capture.VivoQcomModes.device()) || !(rootView instanceof ViewGroup)) {
             detach(button);
             return;
         }
@@ -45,7 +45,9 @@ final class FullResButton {
             button = null;
         }
         if (button == null) button = create(fragment, c);
-        boolean here = PixelPro10.fullResAvailable(characteristics);
+        boolean here = PixelPro10.fullResAvailable(characteristics)
+                || com.particlesdevs.photoncamera.capture.VivoSdkFullRes.offered(
+                        com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID);
         View dcg = slot.findViewById(R.id.dcg14_button);
         boolean overDcg = dcg != null && dcg.getVisibility() == View.VISIBLE;
         ViewGroup wanted = overDcg ? root : slot;
@@ -123,7 +125,11 @@ final class FullResButton {
 
     private static void toggle(CameraFragment fragment, ImageButton button) {
         boolean on = !PixelPro10.fullResOn();
-        PixelPro10.setFullRes(on);
+        if (!com.particlesdevs.photoncamera.capture.SensorModeSwitches.setFullRes(on)) {
+            fragment.showSnackBar(com.particlesdevs.photoncamera.util.Lang.t(
+                    "Нет обычного модуля этой камеры для полного разрешения", "No plain module of this camera for full resolution"));
+            return;
+        }
         style(button, on);
         button.animate().cancel();
         button.setScaleX(0.86f);

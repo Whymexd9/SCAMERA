@@ -1,7 +1,12 @@
 package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.Point;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.opengl.GLES30;
 import com.particlesdevs.photoncamera.util.Log;
 
@@ -553,6 +558,28 @@ public class PostPipeline extends GLBasePipeline {
             final Bitmap cropped = com.particlesdevs.photoncamera.control.ZoomController.crop(bitmap, factor);
             if (cropped == bitmap) return this;
             return new GainMapRaw(cropped, cropped.getWidth(), cropped.getHeight(), down, scale);
+        }
+
+        public GainMapRaw croppedTo(Rect crop, int baseWidth, int baseHeight) {
+            if (baseWidth <= 0 || baseHeight <= 0 || crop.isEmpty() || crop.left < 0 || crop.top < 0
+                    || crop.right > baseWidth || crop.bottom > baseHeight)
+                throw new IllegalArgumentException("Invalid SDR/gain-map crop");
+            if (crop.left == 0 && crop.top == 0 && crop.width() == baseWidth && crop.height() == baseHeight) return this;
+            int gw = Math.max(1, crop.width() / Math.max(1, down));
+            int gh = Math.max(1, crop.height() / Math.max(1, down));
+            RectF source = new RectF((float) crop.left * w / baseWidth, (float) crop.top * h / baseHeight,
+                    (float) crop.right * w / baseWidth, (float) crop.bottom * h / baseHeight);
+            Matrix transform = new Matrix();
+            transform.setRectToRect(source, new RectF(0, 0, gw, gh), Matrix.ScaleToFit.FILL);
+            Bitmap out = Bitmap.createBitmap(gw, gh, Bitmap.Config.ARGB_8888);
+            try {
+                new Canvas(out).drawBitmap(bitmap, transform, new Paint(Paint.FILTER_BITMAP_FLAG));
+            } catch (RuntimeException failure) {
+                out.recycle();
+                throw failure;
+            }
+            bitmap.recycle();
+            return new GainMapRaw(out, gw, gh, down, scale);
         }
     }
 

@@ -290,6 +290,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /*An {@link ImageReader} that handles still image capture.*/
     public ImageReader mImageReaderPreview;
     public volatile ImageReader mImageReaderRaw;
+    private ImageReader mVivoSdkJpeg;
+    private volatile VivoSdkRawSession mVivoSdkRawSession;
+    private volatile CameraDevice mVivoSdkRawDevice;
+    private volatile VivoSdkFullResCapture mVivoSdkCapture;
+    private final Object mVivoSdkLock = new Object();
+    private HandlerThread mVivoSdkCallbackThread;
+    private Handler mVivoSdkCallbackHandler;
+    private volatile boolean mVivoSdkRestorePending;
+    private int mVivoSdkRestoreAttempts;
+    private volatile java.util.concurrent.CountDownLatch mVivoSdkClosed = new java.util.concurrent.CountDownLatch(0);
     /*{@link CaptureRequest.Builder} for the camera preview*/
     public volatile CaptureRequest.Builder mPreviewRequestBuilder;
     public CaptureRequest mPreviewInputRequest;
@@ -345,6 +355,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     });
     private static final java.util.concurrent.atomic.AtomicInteger sScamPending = new java.util.concurrent.atomic.AtomicInteger();
     private long mShutterGeneration;
+    private boolean mShutterIszAspect4x3;
     private volatile boolean mLiveRawSession;
     /**
      * P13: the stream of this session is a colour-block mosaic (a sensor mode without remosaic, MosaicStream): its ISP preview
@@ -437,6 +448,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (!isCameraResumed || reader != mImageReaderRaw) {
                 try { Image stale=reader.acquireLatestImage(); if(stale!=null)stale.close(); }
                 catch (IllegalStateException ignored) { }
+                return;
+            }
+
+            if (mVivoSdkRawSession != null) {
+                Image image;
+                try { image = reader.acquireNextImage(); } catch (IllegalStateException closed) { return; }
+                if (image != null) {
+                    VivoSdkFullResCapture capture = mVivoSdkCapture;
+                    if (capture == null) image.close(); else capture.image(image);
+                }
                 return;
             }
 
@@ -758,6 +779,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mPreviewCaptureRequest = request;
                 mPreviewCaptureResult = result;
                 logSensorModeIndex(result);
+                VivoQcomModes.onResult(result, physicalID);
                 if (XiaomiTeleZoom.active() && isCurrentPreviewSession(session)
                         && XiaomiTeleZoom.onResult(result, xiaomiLensResult(result), PreferenceKeys.scamDevSwitch("xiaomi_lens_check", true)))
                     onZoomChanged();
@@ -803,6 +825,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         @Override
         public void onOpened(@NonNull CameraDevice cameraDevice) {
             synchronized (mPreviewStateLock) {
+                if (mVivoSdkRawSession != null) mVivoSdkRawDevice = cameraDevice;
                 // This method is called when the camera is opened.  We start camera preview here.
                 mCameraOpenCloseLock.release();
                 mCameraOpening.set(false);
@@ -814,13 +837,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     return;
                 }
                 mCameraDevice = cameraDevice;
+                if (mVivoSdkRawSession == null) VivoQcomModes.onCameraOpened();
                 mImageSaver = new ImageSaver(cameraEventsListener);
                 createCameraPreviewSession(false);
             }
         }
 
+        @Override public void onClosed(@NonNull CameraDevice cameraDevice) {
+            closeVivoSdkRawSession(cameraDevice);
+        }
+
         @Override
         public void onDisconnected(@NonNull CameraDevice cameraDevice) {
+            if (mVivoSdkRawSession != null && mVivoSdkRawDevice == null) mVivoSdkRawDevice = cameraDevice;
             rescueInFlightShot("camera disconnected");
             stopStallWatch();
             mCameraOpenCloseLock.release();
@@ -831,6 +860,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         @Override
         public void onError(@NonNull CameraDevice cameraDevice, int error) {
+            if (mVivoSdkRawSession != null && mVivoSdkRawDevice == null) mVivoSdkRawDevice = cameraDevice;
             rescueInFlightShot("camera error " + error);
             stopStallWatch();
             mCameraOpenCloseLock.release();
@@ -838,6 +868,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             cameraDevice.close();
             mCameraDevice = null;
             Log.w(TAG, "onError() : cameraDevice = [" + cameraDevice + "], error = [" + error + "]");
+            if (retryWithoutVivoSdkFullRes(null, "camera error " + error)) return;
+            if (retryWithoutRequestedSensorMode(null, "camera error " + error)) return;
             if (mXiaomiRouted) {
                 // P41b: the logical camera failed for this app: the tele alone from now on
                 mXiaomiRouted = false;
@@ -1109,7 +1141,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     private void routeXiaomiTele() {
         mXiaomiRouted = false;
+        if (mVivoSdkRawSession != null) return;
         if (!Objects.equals(logicalID, physicalID)) return;
+        if (VivoQcomModes.device() && VivoQcomModes.spoofPackage() != null
+                && PreferenceKeys.scamDevSwitch("vivo_qcom_logical", false)) {
+            try {
+                CameraCharacteristics sat = mCameraManager.getCameraCharacteristics("2");
+                if (sat.getPhysicalCameraIds().contains(physicalID)) {
+                    logicalID = "2";
+                    Log.i(TAG, "vivo Qualcomm: physical camera " + physicalID + " through logical camera 2");
+                    return;
+                }
+            } catch (CameraAccessException | RuntimeException e) {
+                Log.w(TAG, "vivo Qualcomm logical route unavailable: " + e.getMessage());
+            }
+        }
         try {
             String logical = XiaomiTeleZoom.logicalRoute(mCameraManager, physicalID, mCameraCharacteristicsMap.get(physicalID),
                     PreferenceKeys.scamDevSwitch("xiaomi_logical", true));
@@ -1515,6 +1561,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // device this code runs.
             Log.e(TAG, Log.getStackTraceString(e));
             showToast(activity.getString(R.string.camera_error));
+            if (mVivoSdkRawSession != null) throw new IllegalStateException("SDK camera output setup failed", e);
             //cameraEventsListener.onError(R.string.camera_error);
         }
     }
@@ -1535,6 +1582,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     public void closeCamera() {
+        boolean wasOpening = mCameraOpening.get();
+        VivoSdkFullResCapture sdkCapture = mVivoSdkCapture;
+        mVivoSdkCapture = null;
+        if (sdkCapture != null) sdkCapture.cancel();
         rescueInFlightShot("camera closed");
         releaseZslRing();
         mStabTrace.stop();
@@ -1570,7 +1621,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (null != mCameraDevice) {
                 mCameraDevice.close();
                 mCameraDevice = null;
+            } else if (!wasOpening) {
+                closeVivoSdkRawSession(null);
             }
+            if (mVivoSdkJpeg != null) { mVivoSdkJpeg.close(); mVivoSdkJpeg = null; }
             if (!isProcessing) {
                 if (mImageReaderPreview != null) {
                     mImageReaderPreview.close();
@@ -1876,6 +1930,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         try {
 //            mCaptureSession.stopRepeating();
+            if (mVivoSdkRawSession != null) applyVivoSdkPreview(mPreviewRequestBuilder);
             mCaptureSession.setRepeatingRequest(mPreviewInputRequest = mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
         } catch (IllegalStateException | IllegalArgumentException | NullPointerException e) {
             Logger.warnShort(TAG, "Cannot rebuildPreviewBuilder()!", e);
@@ -2171,6 +2226,52 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /**
      * Opens the camera specified by {@link Settings#mCameraID}.
      */
+    private void prepareVivoSdkRawSession() throws Exception {
+        if (mVivoSdkRestorePending) closeVivoSdkRawSession(null);
+        if (!mVivoSdkClosed.await(2000, TimeUnit.MILLISECONDS))
+            throw new IllegalStateException("Previous Vivo SDK camera has not closed");
+        String id = ScameraApp.getSettings().mCameraID;
+        CameraMode mode = ScameraApp.getSettings().selectedMode;
+        if (!VivoSdkFullRes.available(id) || !PixelPro10.fullResOn()
+                || !PreferenceKeys.isScamEnabled()
+                || !VivoSdkFullRes.supportsMode(mode) || mIsRecordingVideo) return;
+        synchronized (mVivoSdkLock) {
+            mVivoSdkRawSession = VivoSdkRawSession.open();
+            mVivoSdkRestorePending = false;
+            mVivoSdkRestoreAttempts = 0;
+            mVivoSdkClosed = new java.util.concurrent.CountDownLatch(1);
+            mVivoSdkCallbackThread = new HandlerThread("VivoSdkCameraClose");
+            mVivoSdkCallbackThread.start();
+            mVivoSdkCallbackHandler = new Handler(mVivoSdkCallbackThread.getLooper());
+            mCameraCharacteristicsMap.remove("3");
+        }
+        Log.i("SCAM_CAPTURE", "SDK FULLRES50 main3: automatic AE, serial PSL, Hybrid processing");
+    }
+
+    private void closeVivoSdkRawSession(@Nullable CameraDevice device) {
+        synchronized (mVivoSdkLock) {
+            if (mVivoSdkRawSession == null || device != mVivoSdkRawDevice) return;
+            try {
+                mVivoSdkRawSession.close();
+                mVivoSdkRawSession = null;
+                mVivoSdkRawDevice = null;
+                mVivoSdkRestorePending = false;
+                mCameraCharacteristicsMap.remove("3");
+                mVivoSdkClosed.countDown();
+                if (mVivoSdkCallbackThread != null) mVivoSdkCallbackThread.quitSafely();
+                mVivoSdkCallbackThread = null;
+                mVivoSdkCallbackHandler = null;
+            } catch (Exception failure) {
+                mVivoSdkRawDevice = null;
+                mVivoSdkRestorePending = true;
+                Log.e(TAG, "SDK provider properties not restored: " + failure);
+                if (++mVivoSdkRestoreAttempts <= 3 && mVivoSdkCallbackHandler != null)
+                    mVivoSdkCallbackHandler.postDelayed(() -> closeVivoSdkRawSession(null), 500);
+                else showToast(Lang.t("Не удалось восстановить параметры SDK камеры", "Camera SDK properties could not be restored"));
+            }
+        }
+    }
+
     public void openCamera(int width, int height) {
         // Both the SurfaceTexture listener and resumeCamera() can request an
         // open for the same surface lifecycle event; a second open while one is
@@ -2203,26 +2304,50 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             processExecutor.execute(()-> {
                 mMediaRecorder = new MediaRecorder();
             });
+            try {
+                prepareVivoSdkRawSession();
+            } catch (Exception failure) {
+                mCameraOpening.set(false);
+                if (VivoSdkFullRes.offered(ScameraApp.getSettings().mCameraID)) PixelPro10.setFullRes(false);
+                closeVivoSdkRawSession(null);
+                Log.e(TAG, "SDK camera setup failed: " + failure);
+                cameraEventsListener.onProcessingError(failure.getMessage());
+                return;
+            }
             // Attaching the stock AE observer takes seconds; start it with the
             // camera instead of on the first SCAM preview frame.
-            if (PreferenceKeys.isScamEnabled() && PreferenceKeys.useStockBracketPlanner()) ScamStockAe.warmUp(ScameraApp.getAppContext());
-            cameraEventsListener.onOpenCamera(this.mCameraManager);
-            // The package spoof first: a module only the spoof lists (OPPO tele 5, a "system only device" otherwise) has no
-            // characteristics without it, so no reader was set up when the previous module ran without the spoof.
-            com.particlesdevs.photoncamera.capture.spoof.CameraPackageSpoof.apply(activity, mCameraManager);
-            setUpCameraOutputs(width, height);
-            configureTransform(width, height);
+            if (mVivoSdkRawSession == null && PreferenceKeys.isScamEnabled() && PreferenceKeys.useStockBracketPlanner())
+                ScamStockAe.warmUp(ScameraApp.getAppContext());
+            try {
+                cameraEventsListener.onOpenCamera(this.mCameraManager);
+                // The package spoof first: a module only the spoof lists has no characteristics without it.
+                com.particlesdevs.photoncamera.capture.spoof.CameraPackageSpoof.apply(activity, mCameraManager);
+                setUpCameraOutputs(width, height);
+                if (mVivoSdkRawSession != null && (mCameraCharacteristics == null || mImageReaderRaw == null || mVivoSdkJpeg == null))
+                    throw new IllegalStateException("SDK RAW outputs are incomplete");
+                configureTransform(width, height);
+            } catch (RuntimeException failure) {
+                mCameraOpening.set(false);
+                if (mVivoSdkRawSession != null) PixelPro10.setFullRes(false);
+                closeVivoSdkRawSession(null);
+                Log.e(TAG, "Camera outputs failed before open: " + failure);
+                cameraEventsListener.onProcessingError(failure.getMessage());
+                return;
+            }
             if (!isCameraResumed) {
                 // The app was backgrounded while outputs were being set up.
                 mCameraOpening.set(false);
+                closeVivoSdkRawSession(null);
                 Log.d(TAG, "openCamera(): app backgrounded during setup, skipping");
                 return;
             }
+            boolean openLockAcquired = false;
             try {
                 if (!mCameraOpenCloseLock.tryAcquire(1000, TimeUnit.MILLISECONDS)) {
                     mCameraOpening.set(false);
                     throw new RuntimeException("Time out waiting to lock camera opening.");
                 }
+                openLockAcquired = true;
                 physicalID = ScameraApp.getSettings().mCameraID;
                 logicalID = ScameraApp.getSettings().mCameraID;
                 // Split x-y, x - logical, y - physical
@@ -2236,13 +2361,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
                 // The retry budget belongs to one camera: switching modules during a provider restart used it up for the next one.
                 if (!logicalID.equals(mOpenRetryId)) { mOpenRetryId = logicalID; mOpenRetries = 0; }
-                this.mCameraManager.openCamera(logicalID, mStateCallback, mBackgroundHandler);
+                this.mCameraManager.openCamera(logicalID, mStateCallback,
+                        mVivoSdkRawSession != null ? mVivoSdkCallbackHandler : mBackgroundHandler);
                 mOpenRetries = 0;
             } catch (CameraAccessException e) {
                 mCameraOpening.set(false);
+                closeVivoSdkRawSession(null);
                 // No device callback follows a refused open: the lock taken above is released here (it used to stay held, so
                 // the next open waited 1 s and failed with "Time out waiting to lock camera opening").
-                mCameraOpenCloseLock.release();
+                if (openLockAcquired) mCameraOpenCloseLock.release();
                 Log.e(TAG, Log.getStackTraceString(e));
                 if (retryWithoutXiaomiRoute(width, height, e)) return;
                 // CAMERA_ERROR / CAMERA_DISCONNECTED while the provider restarts: the same retry as an unknown device.
@@ -2253,12 +2380,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // crash: the device list comes back a few seconds later. Retry instead of
                 // taking the app down with the HAL.
                 mCameraOpening.set(false);
-                mCameraOpenCloseLock.release();
+                closeVivoSdkRawSession(null);
+                if (openLockAcquired) mCameraOpenCloseLock.release();
                 if (retryWithoutXiaomiRoute(width, height, e)) return;
                 retryOpen(width, height, e);
             } catch (InterruptedException e) {
                 mCameraOpening.set(false);
+                closeVivoSdkRawSession(null);
+                if (openLockAcquired) mCameraOpenCloseLock.release();
                 throw new RuntimeException("Interrupted while trying to lock camera opening.", e);
+            } catch (RuntimeException e) {
+                mCameraOpening.set(false);
+                closeVivoSdkRawSession(null);
+                if (openLockAcquired) mCameraOpenCloseLock.release();
+                cameraEventsListener.onProcessingError(e.getMessage());
+                Log.e(TAG, Log.getStackTraceString(e));
             }
     });
     }
@@ -2300,6 +2436,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (map == null) {
             return;
         }
+        final boolean sdkFullRes = mVivoSdkRawSession != null;
+        if (sdkFullRes) { mTargetFormat = ImageFormat.RAW_SENSOR; useMaximumResolutionKey = false; }
         if (sDemotedFrom != 0) { // the previous camera ran without a RAW stream: this one starts from the RAW format again
             if (mTargetFormat == YUV_FORMAT) mTargetFormat = sDemotedFrom;
             sDemotedFrom = 0;
@@ -2331,8 +2469,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         // P108: the Pixel 10 Pro / Pro XL's full-resolution switch: the RAW stream of the max-resolution map (RAW10 8160x6144)
         mFullResSession = false;
-        Size fullRes = null;
-        if (isRawFormat(mTargetFormat) && !sFullResRefused.contains(physicalID) && !mIsRecordingVideo) {
+        Size fullRes = sdkFullRes ? new Size(8192, 6144) : null;
+        if (!sdkFullRes && isRawFormat(mTargetFormat) && !sFullResRefused.contains(physicalID) && !mIsRecordingVideo) {
             PixelPro10.FullRes fr = PixelPro10.fullRes(characteristics);
             if (fr != null) {
                 mTargetFormat = fr.format;
@@ -2401,8 +2539,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (fullPreview != null) preview = fullPreview;
             maxjpg = Math.min(maxjpg, 8); // 50 MP frames: a short reader, every frame is copied on arrival (P91)
         }
-        mImageReaderPreview = ImageReader.newInstance(preview.getWidth(), preview.getHeight(), mPreviewTargetFormat, maxjpg);
-        mImageReaderPreview.setOnImageAvailableListener(mOnYuvImageAvailableListener, mBackgroundHandler);
+        mImageReaderPreview = null;
+        if (!sdkFullRes) {
+            mImageReaderPreview = ImageReader.newInstance(preview.getWidth(), preview.getHeight(), mPreviewTargetFormat, maxjpg);
+            mImageReaderPreview.setOnImageAvailableListener(mOnYuvImageAvailableListener, mBackgroundHandler);
+        }
             mBufferSize = getPreviewOutputSize(getSafeDisplay(),characteristics,ScameraApp.getSettings().selectedMode);
         if (sSafeStreams.getOrDefault(physicalID, 0) >= 1 && mBufferSize != null) {
             // mBufferSize is portrait (short x long); the stream sizes are sensor-oriented
@@ -2417,14 +2558,32 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             target = fullRes;
             this.target = fullRes;
             // P108: the viewfinder stream too is a size of the max-resolution map (Pixel 10 Pro XL: 1440x1080 for 4:3)
-            Size st = PixelPro10.maxResSize(characteristics, -1, fullRes);
+            Size st = sdkFullRes ? new Size(1440, 1080) : PixelPro10.maxResSize(characteristics, -1, fullRes);
             if (st != null) mBufferSize = new Size(Math.min(st.getWidth(), st.getHeight()), Math.max(st.getWidth(), st.getHeight()));
             Log.i("SCAM_CAPTURE", "full resolution: viewfinder " + st + ", YUV " + preview + ", readers " + maxjpg);
         }
         clearZslPreviewFrames();
         if(mImageReaderRaw != null)
             mImageReaderRaw.close();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && (!(Build.BRAND.equalsIgnoreCase("oppo")
+        if (mVivoSdkJpeg != null) { mVivoSdkJpeg.close(); mVivoSdkJpeg = null; }
+        if (sdkFullRes) {
+            mTargetFormat = ImageFormat.RAW_SENSOR;
+            mImageReaderRaw = ImageReader.newInstance(8192, 6144, ImageFormat.RAW_SENSOR, 3, 0);
+            mVivoSdkJpeg = ImageReader.newInstance(8192, 6144, ImageFormat.JPEG, 3);
+            mVivoSdkJpeg.setOnImageAvailableListener(reader -> {
+                try {
+                    Image image;
+                    while ((image = reader.acquireNextImage()) != null) {
+                        long timestamp = image.getTimestamp();
+                        image.close();
+                        VivoSdkFullResCapture capture = mVivoSdkCapture;
+                        if (capture != null) capture.jpegDrained(timestamp);
+                    }
+                } catch (IllegalStateException closed) { }
+            }, mBackgroundHandler);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && VivoPd2454Isz.active(physicalID)) {
+            mImageReaderRaw = ImageReader.newInstance(target.getWidth(), target.getHeight(), mTargetFormat, maxjpg, 0);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && (!(Build.BRAND.equalsIgnoreCase("oppo")
                 || Build.BRAND.equalsIgnoreCase("vivo")
                 || Build.BRAND.equalsIgnoreCase("oneplus")
                 || Build.BRAND.equalsIgnoreCase("realme")
@@ -2546,8 +2705,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final int generation = mSessionGeneration.incrementAndGet();
         final CameraDevice sessionDevice = mCameraDevice;
         if (!isCameraResumed || sessionDevice == null) return;
+        final boolean sdkFullRes = mVivoSdkRawSession != null;
         try {
-            SensorConfigInjector.applyToSensor(physicalID, this);
+            if (!sdkFullRes) SensorConfigInjector.applyToSensor(physicalID, this);
             SurfaceTexture texture = mTextureView.getSurfaceTexture();
             if (texture == null) {
                 Log.w(TAG, "createCameraPreviewSession(): SurfaceTexture not ready, waiting for surface");
@@ -2589,14 +2749,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             boolean photoMode = ScameraApp.getSettings().selectedMode == CameraMode.PHOTO
                     || ScameraApp.getSettings().selectedMode == CameraMode.NIGHT
                     || ScameraApp.getSettings().selectedMode == CameraMode.MOTION;
+            VivoQcomModes.ensureModules(ScameraApp.getAppContext());
+            VivoPd2454Isz.ensureModules(ScameraApp.getAppContext());
+            final boolean vivoQcomIsz = VivoQcomModes.activeFactor() > 0 || VivoPd2454Isz.active(physicalID);
             // Vendor detector tags exist only on a vivo HAL and were recorded on the X200 Ultra, the one vivo phone SCAM HDR runs
             // on (P54: none on the X300 Ultra and other vivo phones); elsewhere SCAM HDR uses the plain preview.
             final boolean scamPreview = PreferenceKeys.isScamEnabled() && photoMode
-                    && ScamPreview.vendorKeys() && !isBurstSession && !mIsRecordingVideo
+                    && ScamPreview.vendorKeys() && !isBurstSession && !mIsRecordingVideo && !vivoQcomIsz && !sdkFullRes
                     && !sPlainPreviewCameras.contains(physicalID);
             mScamPreviewActive = scamPreview;
             // P54b: X300 Ultra - stabilisation held on for the whole session (OIS + vivo EIS key in every request, no flush)
-            mForcedStab = photoMode && !isBurstSession && !mIsRecordingVideo && ForcedStabilization.active();
+            mForcedStab = photoMode && !isBurstSession && !mIsRecordingVideo && !sdkFullRes && ForcedStabilization.active();
             mForcedStabEis = mForcedStab && ForcedStabilization.eisKey() && !sPlainPreviewCameras.contains(physicalID);
             mPayloadFrames = 0;
             mPayloadBad = false;
@@ -2606,7 +2769,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     + " route=" + (PreferenceKeys.isScamHybridEnabled() ? "SCAM_HYBRID" : PreferenceKeys.isScamEnabled() ? "SCAM_RAW" : "SCAMERA"));
             // RAW_SENSOR, RAW10 and RAW12: packed rows are unpacked for the viewfinder (RawUnpack).
             // P108: the full-resolution session always shows the RAW viewfinder (the Pixel ISP's own one is green in that mode)
-            mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected
+            mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected && !sdkFullRes
                     && isRawFormat(mTargetFormat) && (PreferenceKeys.isLiveViewfinderRawEnabled() || mFullResSession);
             LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
             LiveRawFrame.setEnabled(mLiveRawSession);
@@ -2659,14 +2822,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 var config = new OutputConfiguration(surfacei);
                 // P41b: on the Xiaomi logical camera the viewfinder (and a recording) is the logical camera's stream, zoomed and
                 // switched by the HAL as for the stock camera; the image readers stay the tele's physical streams
-                final boolean logicalStream = xiaomiLogical && surfacei != rawSurface && surfacei != yuvSurface;
+                final boolean vivoLogicalStream = VivoQcomModes.wantsStreamUsage() && "2".equals(logicalID);
+                final boolean logicalStream = vivoLogicalStream || xiaomiLogical && surfacei != rawSurface && surfacei != yuvSurface;
                 if(!Objects.equals(physicalID, logicalID) && !logicalStream && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P){
                     config.setPhysicalCameraId(physicalID);
                 }
                 // P100: in-sensor zoom (ISZ) through the RAW stream's CROPPED_RAW use case where the camera lists it; not on the
                 // Xiaomi tele (P41 / P41b crop the photo from the HAL's own zoom report: a second crop source would divide twice)
                 if (surfacei == rawSurface && mTargetFormat == ImageFormat.RAW_SENSOR && Build.VERSION.SDK_INT >= 34
-                        && !xiaomiLogical && !XiaomiTeleZoom.active()
+                        && !xiaomiLogical && !XiaomiTeleZoom.active() && !vivoQcomIsz
+                        && !sdkFullRes
                         && !sCroppedRawRefused.contains(physicalID) && CroppedRaw.supported(mCameraCharacteristics)) {
                     try {
                         config.setStreamUseCase(CroppedRaw.USE_CASE);
@@ -2727,7 +2892,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             resetPreviewAEMode();
                             applyAeMeteringRegions(mPreviewRequestBuilder);
                             Camera2ApiAutoFix.applyPrev(mPreviewRequestBuilder);
-                            VendorTagUtils.builderSessionApply(mPreviewRequestBuilder, false, useMaximumResolutionKey, physicalID);
+                            if (!sdkFullRes) VendorTagUtils.builderSessionApply(mPreviewRequestBuilder, false, useMaximumResolutionKey, physicalID);
                             XiaomiTeleZoom.applyLast(mPreviewRequestBuilder, physicalID);
                             if (scamPreview) {
                                 try {
@@ -2751,7 +2916,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             // Apply dynamic OIS for preview stream
                             applyOisMode(mPreviewRequestBuilder, false);
                             applyVideoStabilization(mPreviewRequestBuilder);
-                            if (ScamPreview.supported() && PreferenceKeys.isEisPhotoOn() && !ForcedStabilization.active() && !sPlainPreviewCameras.contains(physicalID)) {
+                            if (!sdkFullRes && ScamPreview.supported() && PreferenceKeys.isEisPhotoOn() && !ForcedStabilization.active() && !sPlainPreviewCameras.contains(physicalID)) {
                                 ScamPreview.applyPreviewEis(mPreviewRequestBuilder);
                             }
                             if (mForcedStab) Log.i("SCAM_CAPTURE", "forced stabilisation (P54b) camera " + physicalID + ": preview "
@@ -2776,12 +2941,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, motionFps);
                                 Log.i("SCAM_CAPTURE", "motion mode: camera " + physicalID + " AE range " + motionFps);
                             }
+                            if (sdkFullRes) applyVivoSdkPreview(mPreviewRequestBuilder);
                             mPreviewInputRequest = mPreviewRequestBuilder.build();
                             mCaptureSession.setRepeatingRequest(mPreviewInputRequest,
                                     mCaptureCallback, mBackgroundHandler);
                             unlockFocus();
                         } catch (Exception e) {
                             Log.e(TAG, Log.getStackTraceString(e));
+                            if (retryWithoutVivoSdkFullRes(cameraCaptureSession, "preview: " + e.getMessage())) return;
                             if (retryWithoutLiveRaw(cameraCaptureSession)) return;
                         }
                         if (mIsRecordingVideo)
@@ -2802,6 +2969,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             return;
                         }
                         Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
+                        if (retryWithoutVivoSdkFullRes(cameraCaptureSession, "session configuration failed")) return;
+                        if (retryWithoutRequestedSensorMode(cameraCaptureSession, "session configuration failed")) return;
                         if (retryXiaomiRoute(cameraCaptureSession, "session configuration")) return;
                         if (retryWithoutCroppedRaw(cameraCaptureSession)) return;
                         if (retryWithoutFullRes(cameraCaptureSession, "session configuration failed")) return;
@@ -2820,7 +2989,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         processExecutor,
                         stateCallback
                 );
-                boolean vivoEis = ScamPreview.supported() && PreferenceKeys.isEisPhotoOn() && !ForcedStabilization.active() && !sPlainPreviewCameras.contains(physicalID);
+                boolean vivoEis = !sdkFullRes && ScamPreview.supported() && PreferenceKeys.isEisPhotoOn() && !ForcedStabilization.active() && !vivoQcomIsz && !sPlainPreviewCameras.contains(physicalID);
                 mVivoEisSession = vivoEis;
                 // P54d's stabilisation mode as a session parameter on vivo only: on the Xiaomi 13 Ultra and the OPPO Find X9 Ultra
                 // (2026-10-10 logs) every session with session parameters / PREVIEW_STABILIZATION next to the RAW stream stopped
@@ -2833,15 +3002,33 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // P103: the HAL features of «Движение» and Ideal RAW are session keys
                 final boolean hiddenKeys = HiddenFeatures.wantsSession(mCameraCharacteristics);
                 final boolean dcg14 = Dcg14Mode.active(mCameraCharacteristics);
+                final boolean vivoQcomStreams = VivoQcomModes.wantsStreamUsage();
                 com.particlesdevs.photoncamera.processing.RawPayloadCheck.setWideEnabled(PreferenceKeys.scamDevSwitch("raw_wide", true));
-                if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || hiddenKeys || dcg14
+                if (sdkFullRes) {
+                    CaptureRequest.Builder sdkSession = sessionDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                    mVivoSdkRawSession.apply(sdkSession, false, 0);
+                    mVivoSdkRawSession.applyStreamUsage(sdkSession);
+                    configuration.setSessionParameters(sdkSession.build());
+                } else if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || hiddenKeys || dcg14 || vivoQcomIsz || vivoQcomStreams
                         || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
                     try {
                         CaptureRequest.Builder scamSession = sessionDevice.createCaptureRequest(
                                 CameraDevice.TEMPLATE_PREVIEW);
                         VendorTagUtils.builderSessionApply(scamSession, false, useMaximumResolutionKey, physicalID);
+                        if (vivoQcomStreams) {
+                            int[] roles = new int[surfaces.size()];
+                            for (int i = 0; i < roles.length; i++) {
+                                Surface output = surfaces.get(i);
+                                roles[i] = output == rawSurface ? (mIsRecordingVideo ? 12 : 7)
+                                        : output == yuvSurface ? 2 : mIsRecordingVideo ? 6 : 1;
+                            }
+                            Log.i("SCAM_CAPTURE", "vivo Qualcomm stream purposes: "
+                                    + VivoQcomModes.applyStreamUsage(scamSession, roles));
+                        }
                         if (dcg14) Log.i("SCAM_CAPTURE", "DCG 14 bit on camera " + physicalID + ": "
                                 + Dcg14Mode.apply(scamSession, mCameraCharacteristics, physicalID));
+                        if (vivoQcomIsz) Log.i("SCAM_CAPTURE", "vivo Qualcomm ISZ session keys on camera " + physicalID + ": "
+                                + VivoQcomModes.apply(scamSession, mCameraCharacteristics, physicalID));
                         if (scamPreview) ScamPreview.applySession(scamSession);
                         // P54b: the stock Photo mode sets the EIS key as a session parameter too
                         if (mForcedStabEis) ForcedStabilization.apply(scamSession, false, true);
@@ -2864,6 +3051,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
+            if (retryWithoutVivoSdkFullRes(null, "session: " + e.getMessage())) return;
+            if (retryWithoutRequestedSensorMode(null, "session: " + e.getMessage())) return;
             // P41b: a logical session the framework refuses outright (no onConfigureFailed follows) steps down as well
             if (mXiaomiRouted) retryXiaomiRoute(null, "session: " + e.getMessage());
             else retryWithoutFullRes(null, "session: " + e.getMessage());
@@ -2898,10 +3087,45 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * P108: a full-resolution session the camera refuses (or that the framework rejects) runs binned again: the camera restarts
      * with the normal RAW stream (this camera, this run) and the owner sees why.
      */
+    private boolean retryWithoutVivoSdkFullRes(@Nullable CameraCaptureSession session, String why) {
+        synchronized (mVivoSdkLock) {
+            if (mVivoSdkRawSession == null || !PixelPro10.fullResOn()) return false;
+            PixelPro10.setFullRes(false);
+        }
+        if (session != null) try { session.close(); } catch (RuntimeException ignored) { }
+        Log.w("SCAM_CAPTURE", "SDK FULLRES50 refused: " + why);
+        showToast(Lang.t("SDK 50 Мп: камера отказала, обычный RAW", "SDK 50 MP: camera refused, normal RAW"));
+        new Handler(Looper.getMainLooper()).post(this::restartCamera);
+        return true;
+    }
+
+    private boolean retryWithoutRequestedSensorMode(@Nullable CameraCaptureSession session, String why) {
+        final boolean dcg = Dcg14Mode.on();
+        try {
+            String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+            if (!dcg && !SensorModeSwitches.sensorPreset(slot)) return false;
+            if (!SensorModeSwitches.selectPlain()) {
+                Dcg14Mode.setMode(Dcg14Mode.OFF);
+                showToast(Lang.t("Режим сенсора отклонён; выберите обычный модуль", "Sensor mode refused; choose a plain module"));
+                return false;
+            }
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
+        Dcg14Mode.setMode(Dcg14Mode.OFF);
+        PixelPro10.setFullRes(false);
+        if (session != null) try { session.close(); } catch (RuntimeException ignored) { }
+        Log.w("SCAM_CAPTURE", "requested " + (dcg ? "DCG" : "sensor preset") + " refused: " + why);
+        showToast(Lang.t("Режим сенсора отклонён; обычный модуль", "Sensor mode refused; using a plain module"));
+        new Handler(Looper.getMainLooper()).post(this::restartCamera);
+        return true;
+    }
+
     private boolean retryWithoutFullRes(@Nullable CameraCaptureSession session, String why) {
         if (!mFullResSession || !sFullResRefused.add(physicalID)) return false;
         Log.w("SCAM_CAPTURE", "camera " + physicalID + ": full resolution refused (" + why + "), binned RAW again");
         mFullResSession = false;
+        PixelPro10.setFullRes(false);
         if (session != null) try { session.close(); } catch (Exception ignored) {}
         showToast(Lang.t("Полное разрешение: камера отказала, обычный режим", "Full resolution: refused by the camera, normal mode"));
         final Handler main = new Handler(android.os.Looper.getMainLooper());
@@ -2942,6 +3166,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     @NotNull
     private List<Surface> configureSurfaces(boolean isBurstSession) {
+        if (mVivoSdkRawSession != null)
+            return Arrays.asList(surface, mImageReaderRaw.getSurface(), mVivoSdkJpeg.getSurface());
         // The viewfinder and the RAW stream.
         List<Surface> surfaces = Arrays.asList(surface, mImageReaderRaw.getSurface());
         if (mLiveRawSession && !surfaces.contains(mImageReaderRaw.getSurface())) {
@@ -2965,6 +3191,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
 
         mPreviewRequestBuilder.addTarget(surface);
+        if (mVivoSdkRawSession != null) {
+            clearZslPreviewFrames();
+            mInitialMeteringAF = mPreviewRequestBuilder.get(CONTROL_AF_REGIONS);
+            mPreviewMeteringAF = mInitialMeteringAF;
+            mInitialMeteringAE = mPreviewRequestBuilder.get(CONTROL_AE_REGIONS);
+            mPreviewMeteringAE = mInitialMeteringAE;
+            mPreviewAFMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+            mPreviewAEMode = CONTROL_AE_MODE_ON;
+            applyVivoSdkPreview(mPreviewRequestBuilder);
+            return;
+        }
         synchronized (mZslBufferLock) {
             mHexZslResults.clear();
             while (!mZslRingBuffer.isEmpty()) {
@@ -3010,6 +3247,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
+    private void applyVivoSdkPreview(CaptureRequest.Builder builder) {
+        mVivoSdkRawSession.apply(builder, false, 0);
+        builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
+        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+        builder.set(CaptureRequest.CONTROL_AE_LOCK, false);
+        builder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF);
+    }
+
     /**
      * Initiate a still image capture.
      */
@@ -3031,8 +3276,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.i(TAG, "SHUTTER camera=" + physicalID + " state=" + mState
                     + " processing=" + isProcessing + " zsl=" + mZslCapturing
                     + " shot=" + mShotInProgress + " burst=" + burst);
-            boolean processingBlocks = isProcessing && !(PreferenceKeys.isScamEnabled()
-                    && scamQueueMemoryAvailable());
+            boolean processingBlocks = mVivoSdkRawSession != null ? isProcessing || sScamPending.get() > 0
+                    : isProcessing && !(PreferenceKeys.isScamEnabled() && scamQueueMemoryAvailable());
             if (scamShutterQueues() && !processingBlocks
                     && (mZslCapturing || mShotInProgress || burst || mScamFireWaiting)) {
                 // Stock-like: a press during the tail capture is kept, not dropped.
@@ -3095,6 +3340,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     + " route " + PreferenceKeys.mergeRoute());
             com.particlesdevs.photoncamera.processing.ShotTimeline.begin("shutter");
             final long shotGeneration = ++mShutterGeneration;
+            mShutterIszAspect4x3 = IszCapturePolicy.isIsz(
+                    com.particlesdevs.photoncamera.settings.ModuleRegistry.active(), mCameraCharacteristics,
+                    mPreviewCaptureResult, physicalID, logicalID, mCroppedRawSession);
+            if (mVivoSdkRawSession != null) {
+                mBackgroundHandler.post(this::captureVivoSdkFullRes);
+                return true;
+            }
             if (isZslMode()) {
                 mScamRingFrozen = PreferenceKeys.isScamEnabled();
                 mScamPlanDeadline = android.os.SystemClock.elapsedRealtime() + 3000;
@@ -3564,6 +3816,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
     public boolean isZslMode() {
+        if (mVivoSdkRawSession != null) return false;
+        if (VivoQcomModes.wantsStreamUsage()
+                && PreferenceKeys.scamDevSwitch("vivo_qcom_raw_psl", false)) return false;
         CameraMode mode=ScameraApp.getSettings().selectedMode;
         return mode==CameraMode.MOTION || mode==CameraMode.PHOTO || mode==CameraMode.NIGHT;
     }
@@ -4287,7 +4542,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 capacity = packedLayout.stride * height;
             }
             int offset = 0;
-            if (ScameraApp.getSettings().aspect169 && width > height) {
+            if (!mShutterIszAspect4x3 && ScameraApp.getSettings().aspect169 && width > height) {
                 // P118: the one 16:9 crop of every frame of the shot (whole colour blocks, the post-shutter frames the same size)
                 final int full = img.getHeight();
                 height = com.particlesdevs.photoncamera.processing.Wide169.rows(width, full);
@@ -4492,6 +4747,151 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         Long ns = result == null ? null : result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
         Integer iso = result == null ? null : result.get(CaptureResult.SENSOR_SENSITIVITY);
         return ns == null || iso == null ? 0 : (double) ns * iso;
+    }
+
+    private void captureVivoSdkFullRes() {
+        try {
+            captureVivoSdkFullResChecked();
+        } catch (RuntimeException failure) {
+            if (mInFlightRescue != null) rescueInFlightShot("SDK setup: " + failure.getMessage());
+            else {
+                if (mShotArena != null) { mShotArena.release(); mShotArena = null; }
+                failPendingShutter(failure);
+            }
+        }
+    }
+
+    private void captureVivoSdkFullResChecked() {
+        final VivoSdkRawSession sdk = mVivoSdkRawSession;
+        final CameraCaptureSession session = mCaptureSession;
+        if (sdk == null || !isCurrentPreviewSession(session) || mCameraDevice == null || mVivoSdkJpeg == null) {
+            failPendingShutter(new IllegalStateException(Lang.t("Сессия SDK RAW закрыта", "SDK RAW session closed")));
+            return;
+        }
+        final int count = 3;
+        final ImageSaver saver = new ImageSaver(cameraEventsListener);
+        saver.iszAspect4x3 = mShutterIszAspect4x3;
+        saver.setFrameCount(count);
+        saver.setImageFormat(ImageFormat.RAW_SENSOR);
+        mImageSaver = saver;
+        clearZslPreviewFrames();
+        mPendingZslNormalFrames = new ArrayList<>();
+        IsoExpoSelector.fullpairs.clear();
+        BurstShakiness = new ArrayList<>();
+        final long[] times = new long[count];
+        Arrays.fill(times, Math.max(1L, (long) mPreviewExposureTime));
+        ScameraApp.getGyro().PrepareGyroBurst(times, BurstShakiness, true);
+        final CameraCharacteristics characteristics = mCameraCharacteristics;
+        final int rotation = ScameraApp.getGravity().getCameraRotation(mSensorOrientation);
+        final com.particlesdevs.photoncamera.util.ShotArena arena = ScameraApp.getSettings().binning
+                ? null : shotArena(count, 8192L * 6144 * 2);
+        saver.shotArena = arena;
+        mShotArena = arena;
+        final java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean();
+        final VivoSdkFullResCapture.Listener listener = new VivoSdkFullResCapture.Listener() {
+            public void started() {
+                cameraEventsListener.onFrameCaptureStarted(null);
+            }
+
+            public void result(int index, TotalCaptureResult result) {
+                if (done.get()) return;
+                rememberRawMetadata(result);
+                mCaptureResult = result;
+                mCaptureRequest = result.getRequest();
+                long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+                int iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+                IsoExpoSelector.fullpairs.add(new IsoExpoSelector.ExpoPair(exposure, exposure, exposure, iso, iso, iso, iso));
+                ScamCaptureLog.result(result.getRequest(), result, scamZslShutterTimestamp, false);
+                ScameraApp.getGyro().CaptureGyroBurst();
+                cameraEventsListener.onFrameCaptureCompleted(new TimerFrameCountViewModel.FrameCntTime(index + 1, count, exposure / 1e9));
+            }
+
+            public void complete(ScamCaptureSequence sequence, HashMap<Long, Double> exposures) {
+                if (done.get()) return;
+                try {
+                    for (ImageFrame frame : saver.snapshotFrames())
+                        if (frame == null || frame.rawPayloadError != null)
+                            throw new IllegalStateException(frame == null ? "SDK RAW frame missing" : frame.rawPayloadError);
+                    CaptureResult base = sequence.firstBoundResult(ImageFrame.CaptureRole.NORMAL);
+                    if (base == null) throw new IllegalStateException("SDK RAW base metadata missing");
+                    saver.updateFrameCount(count);
+                    saver.detachForQueue(true);
+                    ScameraApp.getGyro().CompleteSequence();
+                    final ArrayList<GyroBurst> shakiness = new ArrayList<>(BurstShakiness);
+                    final String mosaicKey = com.particlesdevs.photoncamera.processing.MosaicStream.key();
+                    final com.particlesdevs.photoncamera.processing.ShotTimeline timeline =
+                            com.particlesdevs.photoncamera.processing.ShotTimeline.detach();
+                    sScamPending.incrementAndGet();
+                    SCAM_PROCESSING.execute(() -> {
+                        com.particlesdevs.photoncamera.processing.ShotTimeline.attach(timeline);
+                        try {
+                            com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey(mosaicKey, 1);
+                            saver.runRaw(characteristics, base, base.getRequest(), shakiness, rotation, exposures);
+                        } catch (Exception failure) {
+                            Log.e(TAG, "SDK FULLRES50 processing: " + Log.getStackTraceString(failure));
+                            cameraEventsListener.onProcessingError(failure.getLocalizedMessage());
+                        } finally {
+                            if (arena != null) arena.release();
+                            sScamPending.decrementAndGet();
+                            com.particlesdevs.photoncamera.processing.ShotTimeline.print();
+                        }
+                    });
+                    done.set(true);
+                    mMeasuredFrameCnt = count;
+                    mInFlightRescue = null;
+                    mVivoSdkCapture = null;
+                    mShotArena = null;
+                    mNativeRawPslCapture = false;
+                    mShotInProgress = false;
+                    burst = false;
+                    mState = STATE_PREVIEW;
+                    cameraEventsListener.onCaptureSequenceCompleted(null);
+                    Log.i("SCAM_CAPTURE", "SDK FULLRES50: 3 matched future RAWs; Hybrid PSL, stock ZSL=false");
+                } catch (RuntimeException failure) {
+                    failed(failure.getMessage());
+                }
+            }
+
+            public void failed(String reason) {
+                if (!done.compareAndSet(false, true)) return;
+                VivoSdkFullResCapture capture = mVivoSdkCapture;
+                mVivoSdkCapture = null;
+                if (capture != null) capture.cancel();
+                mInFlightRescue = null;
+                saver.discardFrames();
+                if (arena != null) arena.release();
+                if (mShotArena == arena) mShotArena = null;
+                ScameraApp.getGyro().CompleteSequence();
+                mNativeRawPslCapture = false;
+                mShotInProgress = false;
+                burst = false;
+                mState = STATE_PREVIEW;
+                cameraEventsListener.onCaptureSequenceCompleted(null);
+                cameraEventsListener.onProcessingError(reason);
+                Log.w("SCAM_CAPTURE", "SDK FULLRES50 failed: " + reason);
+                PixelPro10.setFullRes(false);
+                if (isCameraResumed && mCaptureSession == session)
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        if (isCurrentPreviewSession(session)) restartCamera();
+                    });
+            }
+        };
+        mNativeRawPslCapture = true;
+        burst = true;
+        mState = STATE_PICTURE_TAKEN;
+        VivoSdkFullResCapture capture = new VivoSdkFullResCapture(mCameraDevice, session, sdk,
+                mImageReaderRaw.getSurface(), mVivoSdkJpeg.getSurface(), saver, mBackgroundHandler,
+                () -> {
+                    CaptureResult latest = mPreviewCaptureResult;
+                    Long timestamp = latest == null ? null : latest.get(CaptureResult.SENSOR_TIMESTAMP);
+                    return timestamp == null ? 0 : timestamp;
+                }, rotation, mShutterGeneration, scamZslShutterTimestamp, count, listener);
+        mVivoSdkCapture = capture;
+        mInFlightRescue = () -> listener.failed(Lang.t("Серия SDK RAW прервана", "SDK RAW series interrupted"));
+        cameraEventsListener.onCaptureStillPictureStarted("CaptureStarted!");
+        cameraEventsListener.onBurstPrepared(null);
+        ScameraApp.getGyro().startBurstRegistration();
+        capture.start();
     }
 
     private boolean isGyroClockComparable() {
@@ -4895,6 +5295,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             //img
             Log.d(TAG, "FrameCount:" + frameCount);
             mImageSaver = new ImageSaver(cameraEventsListener);
+            mImageSaver.iszAspect4x3 = mShutterIszAspect4x3;
             final ScamCaptureSequence scamSequence = hybridPlanHolder[0]!=null
                         ? (hybridZsl ? ScamCaptureSequence.hybridZsl(captures,mPendingZslNormalFrames,scamZslShutterTimestamp)
                                      : ScamCaptureSequence.hybridFuture(captures,scamZslShutterTimestamp))

@@ -20,6 +20,7 @@
 
 package com.particlesdevs.photoncamera.ui.camera.views;
 
+import android.app.AlertDialog;
 import android.content.Context;
 import com.particlesdevs.photoncamera.settings.ModuleRegistry;
 import android.util.AttributeSet;
@@ -135,6 +136,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         // P109: the vivo X500 Pro Max's ISZ modules (main 2x, ultra-wide 2x, tele 2x / 4x), once
         // P122: the vivo X300 Ultra's tele 2x ISZ (forceSensorMode of camera_config.xml), once
         com.particlesdevs.photoncamera.capture.VivoQcomIsz.ensureModules(manager.getContext());
+        com.particlesdevs.photoncamera.capture.VivoQcomModes.ensureModules(manager.getContext());
+        com.particlesdevs.photoncamera.capture.VivoPd2454Isz.ensureModules(manager.getContext());
         // A config imported before the slots existed (fresh install) maps its module profiles now.
         com.particlesdevs.photoncamera.settings.BackupRestoreUtil.applyPending(manager.getContext());
         String side = cameraLensDataList == auxButtonsModel.getFrontCameras() ? "front" : "back";
@@ -265,11 +268,51 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         b.setText(display(buttonText));
         b.setLabelRotation(labelRotation);
         b.setContentDescription(Lang.t(getContext(), "Объектив ", "Lens ") + display(buttonText));
+        b.setOnLongClickListener(view -> showAllModules());
         int buttonId = View.generateViewId();
         b.setId(buttonId);
         this.auxButtonsMap.put(buttonId, cameraId);
         addView(b);
         return buttonId;
+    }
+
+    private boolean modulesOverflow() {
+        if (getWidth() <= 0) return false;
+        int total = getPaddingLeft() + getPaddingRight();
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (child.getVisibility() == View.GONE) continue;
+            total += child.getMeasuredWidth();
+            if (child.getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams) {
+                android.view.ViewGroup.MarginLayoutParams margins =
+                        (android.view.ViewGroup.MarginLayoutParams) child.getLayoutParams();
+                total += margins.leftMargin + margins.rightMargin;
+            }
+            if (child.getLeft() < getPaddingLeft() || child.getRight() > getWidth() - getPaddingRight()) return true;
+        }
+        return total > getWidth();
+    }
+
+    private boolean showAllModules() {
+        if (!modulesOverflow() || auxButtonsModel == null || !auxButtonsModel.isEnabled()) return false;
+        List<View> buttons = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        for (int i = 0; i < getChildCount(); i++) {
+            View button = getChildAt(i);
+            String slot = auxButtonsMap.get(button.getId());
+            if (slot == null || presetMap.containsKey(button.getId()) || !ModuleRegistry.visible(slot)) continue;
+            buttons.add(button);
+            labels.add(display(ModuleRegistry.label(slot)) + Lang.t(getContext(), " · камера ", " · camera ")
+                    + ModuleRegistry.camera(slot));
+        }
+        if (buttons.size() <= 1) return false;
+        new AlertDialog.Builder(getContext()).setTitle(Lang.t(getContext(), "Модули", "Modules"))
+                .setItems(labels.toArray(new String[0]), (dialog, which) -> {
+                    View button = buttons.get(which);
+                    String slot = auxButtonsMap.get(button.getId());
+                    if (button.getParent() == this && slot != null && ModuleRegistry.visible(slot)) onAuxButtonClick(button);
+                }).show();
+        return true;
     }
 
     /** The selected button shows the live zoom ("2.3×") while it differs from the module's own ratio. */

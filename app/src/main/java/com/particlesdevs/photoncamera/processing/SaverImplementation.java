@@ -25,6 +25,7 @@ public class SaverImplementation {
     /** P30: the arena of the shot this saver collects (post-shutter RAWs are copied into it), or null. */
     public volatile com.particlesdevs.photoncamera.util.ShotArena shotArena;
     public int frameCount = 0;
+    public boolean iszAspect4x3;
     private int imageFormat;
     public final ProcessingEventsListener processingEventsListener;
 
@@ -71,7 +72,7 @@ public class SaverImplementation {
             com.particlesdevs.photoncamera.util.Log.w(TAG, "post-shutter " + payload.error);
             RawPayloadCheck.dumpOnce(image, payload, ScameraApp.getSettings().mCameraID);
         }
-        if(ScameraApp.getSettings().aspect169 && width > height){
+        if(!iszAspect4x3 && ScameraApp.getSettings().aspect169 && width > height){
             // P118: the crop of the ZSL ring's frames (Wide169); this one kept an odd row count the merge dropped
             final int full = image.getHeight();
             height = Wide169.rows(width, full);

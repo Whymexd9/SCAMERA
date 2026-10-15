@@ -16,12 +16,15 @@ final class CameraPackageSpoofSettings {
         return getPackage(context, KEY_OPLUS_PACKAGE);
     }
 
+    // The owner's spoof settings win (owner, 2026-10-13: «я разрешаю работу с любым пакетом»)
     static String getGenericPackage(Context context) {
-        return getPackage(context, KEY_GENERIC_PACKAGE);
+        String dcg = enabled(context) ? null : com.particlesdevs.photoncamera.capture.VivoQcomModes.spoofPackage();
+        return dcg != null ? dcg : getPackage(context, KEY_GENERIC_PACKAGE);
     }
 
     static String getBinderPackage(Context context) {
-        return getPackage(context, KEY_BINDER_PACKAGE);
+        String dcg = enabled(context) ? null : com.particlesdevs.photoncamera.capture.VivoQcomModes.spoofPackage();
+        return dcg != null ? dcg : getPackage(context, KEY_BINDER_PACKAGE);
     }
 
     private static boolean enabled(Context context) {

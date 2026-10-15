@@ -28,12 +28,13 @@ public final class Dcg14Mode {
 
     /** A phone with the switch: the vivo X300 Ultra. */
     public static boolean device() {
-        return VivoQcomIsz.enabled();
+        return VivoQcomIsz.enabled() || VivoQcomModes.device();
     }
 
     /** Whether this camera has a DCG mode (X300 Ultra: main, ultra-wide, tele). */
     public static boolean available(@Nullable CameraCharacteristics c) {
         if (c == null || !device() || !PreferenceKeys.scamDevSwitch("dcg14", true)) return false;
+        if (VivoQcomModes.device()) return VivoQcomModes.dcgAvailable(c);
         return VivoQcomIsz.dcgAvailable(c);
     }
 
@@ -75,6 +76,7 @@ public final class Dcg14Mode {
     /** Sets the mode on the session parameters; returns what was set ("" when inactive). */
     public static String apply(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c, @Nullable String physicalId) {
         if (builder == null || !active(c)) return "";
+        if (VivoQcomModes.device()) return VivoQcomModes.apply(builder, c, physicalId);
         return VivoQcomIsz.applyDcg(builder, c);
     }
 }

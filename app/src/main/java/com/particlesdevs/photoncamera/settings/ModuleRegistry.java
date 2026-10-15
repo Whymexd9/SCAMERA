@@ -9,13 +9,14 @@ import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 /** Stable button slots are distinct from physical IDs and from their display names. */
 public final class ModuleRegistry {
     private static SharedPreferences prefs(){return ScameraApp.getSettingsManagerStatic().getDefaultPreferences();}
+    public static int capacity(String side){return "back".equals(side)&&com.particlesdevs.photoncamera.capture.VivoQcomModes.device()?9:8;}
     public static String active(){String id=prefs().getString("module_active",PreferenceKeys.getCameraID());return id==null||id.isEmpty()?"0":id;}
     public static List<String> slots(){
-        List<String> out=new ArrayList<>();for(String side:new String[]{"back","front"})for(int i=0;i<8;i++)if(prefs().contains("module_auto_"+side+i))out.add(side+i);return out;
+        List<String> out=new ArrayList<>();for(String side:new String[]{"back","front"})for(int i=0;i<capacity(side);i++)if(prefs().contains("module_auto_"+side+i))out.add(side+i);return out;
     }
     public static List<String> initialize(String side,List<CameraLensData> cameras){
         SharedPreferences.Editor e=prefs().edit();
-        for(int i=0;i<8;i++){
+        for(int i=0;i<capacity(side);i++){
             String slot=side+i;
             if(!prefs().contains("module_auto_"+slot)&&!cameras.isEmpty()){
                 CameraLensData c=cameras.get(Math.min(i,cameras.size()-1));
@@ -29,9 +30,9 @@ public final class ModuleRegistry {
         StringBuilder signature=new StringBuilder();for(CameraLensData c:cameras)signature.append(c.getCameraId()).append(',');
         if(!cameras.isEmpty()&&!signature.toString().equals(prefs().getString("module_lens_sig_"+side,""))){
             SharedPreferences.Editor fill=prefs().edit();Set<String> assigned=new HashSet<>();
-            for(int i=0;i<8;i++)if(visible(side+i))assigned.add(camera(side+i));
+            for(int i=0;i<capacity(side);i++)if(visible(side+i))assigned.add(camera(side+i));
             int next=0;
-            for(int i=0;i<8;i++){
+            for(int i=0;i<capacity(side);i++){
                 String slot=side+i;if(visible(slot))continue;
                 while(next<cameras.size()&&assigned.contains(cameras.get(next).getCameraId()))next++;
                 if(next>=cameras.size())break;
@@ -45,7 +46,7 @@ public final class ModuleRegistry {
         // label of the automatic modules created before (an S24 Ultra kept «2.7×» / «5.1×» for its 3× / 5× teles)
         SharedPreferences.Editor fov=prefs().edit();
         for(CameraLensData c:cameras)fov.putFloat("module_fov_"+c.getCameraId(),c.getZoomFactor());
-        if(ZoomLabels.snaps(android.os.Build.BRAND))for(int i=0;i<8;i++){
+        if(ZoomLabels.snaps(android.os.Build.BRAND))for(int i=0;i<capacity(side);i++){
             String slot=side+i;String auto=prefs().getString("module_auto_"+slot,null);if(auto==null)continue;
             for(CameraLensData c:cameras)if(c.getCameraId().equals(auto)){
                 String measured=String.format(java.util.Locale.US,"%.1f×",c.getZoomFactor()).replace(".0×","×");
@@ -53,7 +54,7 @@ public final class ModuleRegistry {
             }
         }
         fov.apply();
-        List<String> out=new ArrayList<>();for(int i=0;i<8;i++)out.add(side+i);return out;
+        List<String> out=new ArrayList<>();for(int i=0;i<capacity(side);i++)out.add(side+i);return out;
     }
     public static String camera(String slot){String manual=prefs().getString("module_id_"+slot,"").trim();return manual.isEmpty()?prefs().getString("module_auto_"+slot,slot):manual;}
     /** P41: on the Xiaomi 17 Ultra with smooth zoom the tele's automatic label reads as the stock camera's («3.2×» = 75 mm). */
@@ -115,7 +116,7 @@ public final class ModuleRegistry {
      */
     public static String duplicate(String source){
         java.util.Map<String,?> all=prefs().getAll();
-        String target=ModuleDuplicates.freeSlot(all,source);
+        String target=ModuleDuplicates.freeSlot(all,source,capacity(source.startsWith("front")?"front":"back"));
         if(target==null)return null;
         SharedPreferences.Editor e=prefs().edit();
         for(java.util.Map.Entry<String,Object> w:ModuleDuplicates.copyOf(all,source,target,label(source),zoom(source)).entrySet())ModuleProfiles.put(e,w.getKey(),w.getValue());
@@ -151,7 +152,7 @@ public final class ModuleRegistry {
     public static String moduleForCamera(String side,String cameraId){
         List<String> slots=new ArrayList<>();Map<String,String> cameraOf=new HashMap<>();Set<String> shown=new HashSet<>();
         Map<String,Float> zooms=new HashMap<>();Map<String,Integer> modes=new HashMap<>();
-        for(int i=0;i<8;i++){
+        for(int i=0;i<capacity(side);i++){
             String slot=side+i;if(!prefs().contains("module_auto_"+slot))continue;
             slots.add(slot);cameraOf.put(slot,camera(slot));if(visible(slot))shown.add(slot);
             zooms.put(slot,zoom(slot));modes.put(slot,sensorMode(slot));
@@ -161,6 +162,7 @@ public final class ModuleRegistry {
     private static volatile String pendingSlot="";
     private static volatile long pendingAt;
     public static void select(String slot){
+        com.particlesdevs.photoncamera.capture.SensorModeSwitches.onModuleSelected(slot);
         PreferenceKeys.profiles().activate(slot);
         SharedPreferences.Editor e=prefs().edit().putString("module_active",slot);
         // The module of each side is remembered, so flipping back to that side returns to it (and not to the side's 1x).

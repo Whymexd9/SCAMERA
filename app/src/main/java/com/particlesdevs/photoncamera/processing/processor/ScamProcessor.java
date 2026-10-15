@@ -71,6 +71,8 @@ public class ScamProcessor extends ProcessorBase {
     // Per-shot copy when processing is queued: the camera thread rebuilds the
     // static list for the next shot while this one is still processing.
     public java.util.List<IsoExpoSelector.ExpoPair> ownedPairs;
+    public boolean ownedIszAspect4x3;
+    private boolean iszAspect4x3;
     private java.util.List<IsoExpoSelector.ExpoPair> fullpairs;
 
     public void start(Path dngFile, Path imageFile,
@@ -96,6 +98,8 @@ public class ScamProcessor extends ProcessorBase {
         this.characteristics = characteristics;
         this.captureResult = captureResult;
         this.captureRequest = captureRequest;
+        this.iszAspect4x3 = ownedIszAspect4x3;
+        ownedIszAspect4x3 = false;
         this.scamCapture = PreferenceKeys.isScamEnabled();
         // The route of the shot fixes the settings profile of its whole processing: pref_scam_hybrid_* for a hybrid shot,
         // the SCAM HDR keys otherwise (PreferenceKeys.isHybridShot), even if the route changes meanwhile.
@@ -631,6 +635,24 @@ public class ScamProcessor extends ProcessorBase {
             processingStage = "digital zoom crop";
             img = com.particlesdevs.photoncamera.control.ZoomController.crop(img, zoomCrop);
             if (gm != null) gm = gm.croppedBy(zoomCrop);
+        }
+        if (iszAspect4x3) {
+            processingStage = "ISZ 4:3 crop";
+            final int baseWidth = img.getWidth(), baseHeight = img.getHeight();
+            android.graphics.Rect crop = com.particlesdevs.photoncamera.processing.IszAspectCrop.bounds(baseWidth, baseHeight);
+            Bitmap cropped = com.particlesdevs.photoncamera.processing.IszAspectCrop.crop(img, crop);
+            if (cropped != img) {
+                if (gm != null) try {
+                    gm = gm.croppedTo(crop, baseWidth, baseHeight);
+                } catch (RuntimeException | OutOfMemoryError failure) {
+                    Log.e(TAG, "ISZ gain-map crop failed, SDR output", failure);
+                    gm.bitmap.recycle();
+                    gm = null;
+                }
+                img.recycle();
+                img = cropped;
+                Log.i("SCAM_HDR", "ISZ output 4:3 " + img.getWidth() + "x" + img.getHeight() + "; native RAW retained");
+            }
         }
         processingStage = "image encoding";
 
