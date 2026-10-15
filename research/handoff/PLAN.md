@@ -3395,6 +3395,19 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   inline step has «Загрузить» and «Удалить»; «Удалить» turns into «Отмена / Удалить», and the deleted row folds out of the
   list (the menu stays open). ConfigFolder.delete: MediaStore for the app's files, the File API otherwise, names only.
 - Tests ConfigMenuTest (8 + a render to build/reports/config-menu). Not seen on a phone yet.
+- Fixes 2026-10-16 (owner's screenshot: «нельзя прокрутить это меню вниз из-за чего кнопки сбросить не видно»; «кнопка сброса
+  должна полностью все настройки сбрасывать на дефолтные»; «Полный сброс должен быть по кнопке в меню конфигов»; «Полный сброс
+  не должен удалять конфиги»; «наш апк должен автоматически добавлять новые конфиги в список в случае если я закину его к нам
+  в папку /storage/emulated/0/Download/SCAMERA/XML/»; «Android/data не подходит»):
+  - the whole card is one scroll (ConfigMenu.MaxHeightScroll), never taller than the room under the button (limitHeight
+    from getWindowVisibleDisplayFrame); the saved list is part of it (no scroll in a scroll).
+  - BackupRestoreUtil.resetPreferences: every shared_prefs file cleared through its SharedPreferences (Android keeps them in
+    memory: a write before the restart put the whole old file back when only the folder was deleted), then deleted;
+    scam_dev.txt -> scam_dev.txt.bak. Configs (Download/SCAMERA/XML) and curves are not touched; the reset text says so.
+  - Download/SCAMERA opened to the app once through the system folder picker (SAF, a lasting grant; no storage permission):
+    ScameraFolder lists, opens and deletes every file of XML / ToneCurves through it (MediaStore shows an app only its own
+    files). «Открыть папку конфигов» in the config menu (SettingsActivity.ACTION_OPEN_FOLDER) and «Открыть папку» in
+    «Загрузить кривую» until the grant exists.
 
 ### P144 - ACES, Uchimura and an own curve in «Кривая AgX и ACES» (owner, 2026-10-15, ArkCam 1.42 APK: «Добавь алгоритмы тоноотображения как в arkcam "ACES" "Uchimura" Включение каждой из них сделай в отдельной группе. Также дай возможность вводить свою кривую с наглядной визуализацией, также на визуализации дай возможность менять кривую пальцем. Мы должны иметь возможность добавлять сколько хотим точек у кривой»; «Для "ACES" "Uchimura" в отдельных группах настроек где они включаются должны быть только настройки касающиеся их»; «Дай также возможность ползунками двигать добавленные точки и ползунками, либо вписывать вручную значения»)
 - ArkCam v142 tonemap_final: eval_acescg x(ax+b)/(x(2.43x+d)+e) with b = max(toe*0.75, 0.005), e = max(0.14-(toe-0.04)*0.8,

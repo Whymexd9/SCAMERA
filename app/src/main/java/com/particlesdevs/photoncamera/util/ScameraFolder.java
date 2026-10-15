@@ -3,6 +3,7 @@ package com.particlesdevs.photoncamera.util;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.UriPermission;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
@@ -17,13 +18,21 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TreeSet;
 
 /**
  * A folder of the app in Download/SCAMERA: XML for the configs (ConfigFolder), ToneCurves for the own tone curves (P144). Android
  * 10+ writes through MediaStore (no storage permission); MediaStore lists only the files this app created there, so a file
  * copied in from another phone is opened with the system picker, which starts in the folder ({@link #initialPickerUri()}).
+ * <p>
+ * Files that other apps, a PC or a file manager put there are not listed by MediaStore (Android 11+ shows an app only its
+ * own non-media files). Once the folder is opened to the app through the system folder picker (Download/SCAMERA, a lasting
+ * grant: {@link #grantedTree}), every file in it is listed, opened and deleted through that grant (owner, 2026-10-16: «наш
+ * апк должен автоматически добавлять новые конфиги в список в случае если я закину его к нам в папку
+ * Download/SCAMERA/XML»; «Android/data не подходит»).
  */
 public final class ScameraFolder {
     public static final ScameraFolder CONFIGS = new ScameraFolder("XML", "text/xml", ".xml", ".json");
@@ -40,6 +49,64 @@ public final class ScameraFolder {
         this.mime = mime;
         this.extensions = extensions;
         this.relative = Environment.DIRECTORY_DOWNLOADS + "/SCAMERA/" + sub;
+    }
+
+    private static final String EXTERNAL = "com.android.externalstorage.documents";
+
+    /** The folder's document id on the primary storage ("primary:Download/SCAMERA/XML"). */
+    public String documentId() {
+        return "primary:" + relative;
+    }
+
+    /** Where the folder picker starts for the grant: Download/SCAMERA (one grant covers XML and ToneCurves). */
+    public static Uri grantHint() {
+        return DocumentsContract.buildDocumentUri(EXTERNAL, "primary:" + Environment.DIRECTORY_DOWNLOADS + "/SCAMERA");
+    }
+
+    /** Whether a tree granted at {@code treeId} reaches the document {@code docId} (the same folder or one inside it). */
+    public static boolean covers(String treeId, String docId) {
+        if (treeId == null || docId == null) return false;
+        if (docId.equals(treeId)) return true;
+        String prefix = treeId.endsWith(":") || treeId.endsWith("/") ? treeId : treeId + "/";
+        return docId.startsWith(prefix);
+    }
+
+    /** A lasting folder grant that reaches this folder, null without one. */
+    @androidx.annotation.Nullable
+    public Uri grantedTree(Context context) {
+        try {
+            for (UriPermission p : context.getContentResolver().getPersistedUriPermissions()) {
+                Uri u = p.getUri();
+                if (!p.isReadPermission() || u == null || !EXTERNAL.equals(u.getAuthority())) continue;
+                try {
+                    if (covers(DocumentsContract.getTreeDocumentId(u), documentId())) return u;
+                } catch (IllegalArgumentException notATree) {
+                    // a single document, not a folder
+                }
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "folder grants unreadable: " + e);
+        }
+        return null;
+    }
+
+    /** The folder's files (name -> document) through the grant; empty without one or when the folder is not there. */
+    Map<String, Uri> treeFiles(Context context) {
+        Map<String, Uri> out = new LinkedHashMap<>();
+        Uri tree = grantedTree(context);
+        if (tree == null) return out;
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, documentId());
+        try (Cursor c = context.getContentResolver().query(children, new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
+            while (c != null && c.moveToNext()) {
+                String id = c.getString(0), name = c.getString(1), mime = c.getString(2);
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime) || !accepts(name)) continue;
+                out.put(name, DocumentsContract.buildDocumentUriUsingTree(tree, id));
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "folder listing through the grant failed: " + e);
+        }
+        return out;
     }
 
     private File legacyDir() {
@@ -108,6 +175,7 @@ public final class ScameraFolder {
         // the File API sees what MediaStore hides on some builds (and everything below Android 10)
         String[] files = legacyDir().list((dir, n) -> accepts(n));
         if (files != null) names.addAll(Arrays.asList(files));
+        names.addAll(treeFiles(context).keySet());
         return names.toArray(new String[0]);
     }
 
@@ -120,7 +188,12 @@ public final class ScameraFolder {
             }
         }
         File file = new File(legacyDir(), name);
-        if (!file.isFile()) throw new IOException("file not found: " + relative + "/" + name);
+        if (!file.isFile()) {
+            Uri doc = treeFiles(context).get(name);
+            InputStream in = doc == null ? null : context.getContentResolver().openInputStream(doc);
+            if (in != null) return in;
+            throw new IOException("file not found: " + relative + "/" + name);
+        }
         return new FileInputStream(file);
     }
 
@@ -143,6 +216,14 @@ public final class ScameraFolder {
         }
         File file = new File(legacyDir(), name);
         if (file.isFile()) gone = file.delete() || gone;
+        if (!gone) {
+            Uri doc = treeFiles(context).get(name);
+            try {
+                if (doc != null) gone = DocumentsContract.deleteDocument(context.getContentResolver(), doc);
+            } catch (Exception e) {
+                Log.w(TAG, "delete through the grant failed: " + e);
+            }
+        }
         return gone;
     }
 

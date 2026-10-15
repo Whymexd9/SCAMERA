@@ -25,4 +25,7 @@ public interface ShadeHost {
 
     /** P143: the config menu's «Импорт из файла…» - the system picker (SettingsActivity.ACTION_IMPORT_CONFIG). */
     default void importConfigFile() { }
+
+    /** P143: «Открыть папку конфигов» - the lasting access to Download/SCAMERA (SettingsActivity.ACTION_OPEN_FOLDER). */
+    default void openConfigFolder() { }
 }

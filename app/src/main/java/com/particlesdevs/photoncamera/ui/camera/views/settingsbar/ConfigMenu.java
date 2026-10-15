@@ -23,7 +23,6 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.annotation.Nullable;
@@ -59,9 +58,14 @@ final class ConfigMenu {
         String reset();
         /** Deletes a saved config's file (the settings stay), true when it is gone. */
         boolean delete(String fileName);
+
+        /** Whether Download/SCAMERA is open to the app (every file there listed); true hides «Открыть папку». */
+        default boolean folderOpen() { return true; }
+
+        /** «Открыть папку»: the system folder picker for the lasting access (the menu closes). */
+        default void openFolder() { }
     }
 
-    static final int MAX_LIST_DP = 196;
     private final Context c;
     private final ConfigChip anchor;
     private final Actions actions;
@@ -70,6 +74,12 @@ final class ConfigMenu {
     private final PopupWindow window;
     private final FrameLayout root;
     private final LinearLayout card;
+    /**
+     * Everything in the card, in one scroll (owner, 2026-10-16: the menu could not scroll and «Сбросить настройки» stayed
+     * under the screen's edge): the scroll is never taller than the room under the button ({@link #limitHeight}).
+     */
+    private final LinearLayout body;
+    private final MaxHeightScroll scroll;
     private final int accent;
     private boolean closing;
     @Nullable private View openPanel;
@@ -109,6 +119,16 @@ final class ConfigMenu {
         });
         card.setClipToOutline(true);
         card.setLayoutTransition(transition());
+        body = new LinearLayout(c);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setLayoutTransition(transition());
+        scroll = new MaxHeightScroll(c);
+        scroll.setTag("config_menu_scroll");
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        scroll.setFillViewport(false);
+        scroll.addView(body, new FrameLayout.LayoutParams(-1, -2));
+        card.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         // as wide as the shade's header allows, 240..300dp
         View head = anchor.getParent() instanceof View && ((View) anchor.getParent()).getParent() instanceof View
                 ? (View) ((View) anchor.getParent()).getParent() : anchor;
@@ -134,10 +154,47 @@ final class ConfigMenu {
     static ConfigMenu show(ConfigChip anchor, Actions actions, Consumer<CharSequence> message, Runnable onClosed) {
         ConfigMenu menu = new ConfigMenu(anchor, actions, message, onClosed);
         int pad = menu.root.getPaddingLeft();
+        menu.limitHeight(roomBelow(anchor, dp(anchor.getContext(), 6)));
         menu.window.showAsDropDown(anchor, -pad, dp(anchor.getContext(), 6) - pad, Gravity.START);
         anchor.setOpen(true);
         menu.enter();
         return menu;
+    }
+
+    /** The room from under the button (+ gap) to the bottom of the visible window, 0 when the view is not laid out. */
+    static int roomBelow(View anchor, int gap) {
+        android.graphics.Rect frame = new android.graphics.Rect();
+        anchor.getWindowVisibleDisplayFrame(frame);
+        int[] at = new int[2];
+        anchor.getLocationOnScreen(at);
+        int room = frame.bottom - (at[1] + anchor.getHeight() + gap);
+        return frame.height() > 0 ? room : 0;
+    }
+
+    /**
+     * The scroll's height limit from the room below the button: the window's shadow margin and the card's padding come off;
+     * at least 3 rows' worth; without a room (not laid out yet) 60 % of the screen.
+     */
+    void limitHeight(int room) {
+        int chrome = 2 * root.getPaddingTop() + card.getPaddingTop() + card.getPaddingBottom() + dp(8);
+        int max = room > 0 ? room - chrome : (int) (c.getResources().getDisplayMetrics().heightPixels * .6f);
+        scroll.maxHeight = Math.max(dp(150), max);
+        scroll.requestLayout();
+    }
+
+    /** A vertical scroll no taller than {@link #maxHeight} (its content scrolls inside). */
+    static final class MaxHeightScroll extends androidx.core.widget.NestedScrollView {
+        int maxHeight = Integer.MAX_VALUE;
+
+        MaxHeightScroll(Context c) {
+            super(c);
+        }
+
+        @Override
+        protected void onMeasure(int w, int h) {
+            int limit = MeasureSpec.getMode(h) == MeasureSpec.UNSPECIFIED ? maxHeight : Math.min(maxHeight, MeasureSpec.getSize(h));
+            super.onMeasure(w, MeasureSpec.makeMeasureSpec(limit, MeasureSpec.AT_MOST));
+        }
     }
 
     boolean isShowing() {
@@ -170,14 +227,14 @@ final class ConfigMenu {
         eyebrow.setText(Lang.t(c, "Конфиг", "Config"));
         ShadeStyle.label(eyebrow, accent);
         eyebrow.setPadding(dp(10), 0, dp(10), dp(6));
-        card.addView(eyebrow);
+        body.addView(eyebrow);
         title = text(ConfigState.label(c), 17, ShadeStyle.TEXT);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         title.setSingleLine(true);
         title.setEllipsize(TextUtils.TruncateAt.MIDDLE);
         title.setPadding(dp(10), 0, dp(10), dp(10));
         title.setTag("config_menu_name");
-        card.addView(title);
+        body.addView(title);
         divider();
 
         final String[] files = actions.saved();
@@ -189,7 +246,7 @@ final class ConfigMenu {
             View save = row(R.drawable.settings_ic_save, Lang.t(c, "Сохранить", "Save"),
                     Lang.t(c, "Перезаписать «" + active + "»", "Overwrite «" + active + "»"), accent, "config_save",
                     () -> done(actions.save(active)));
-            card.addView(save);
+            body.addView(save);
             activeRows.add(save);
         }
         final LinearLayout saveAs = panel("config_save_panel");
@@ -214,9 +271,9 @@ final class ConfigMenu {
         };
         field.setOnEditorActionListener((v, id, e) -> { if (id == EditorInfo.IME_ACTION_DONE) { saveNamed.run(); return true; } return false; });
         saveAs.addView(button(Lang.t(c, "Сохранить", "Save"), ShadeStyle.INK, accent, "config_save_confirm", saveNamed), buttonParams());
-        card.addView(row(R.drawable.settings_ic_plus, Lang.t(c, "Сохранить как…", "Save as…"), null, accent, "config_save_as",
+        body.addView(row(R.drawable.settings_ic_plus, Lang.t(c, "Сохранить как…", "Save as…"), null, accent, "config_save_as",
                 () -> toggle(saveAs, field)));
-        card.addView(saveAs);
+        body.addView(saveAs);
         if (activeFile != null) {
             final String file = activeFile;
             LinearLayout ask = panel("config_delete_panel");
@@ -226,8 +283,8 @@ final class ConfigMenu {
                     "config_delete_confirm", () -> deleteFile(file)), buttonParams());
             View delete = row(R.drawable.settings_ic_delete, Lang.t(c, "Удалить конфиг", "Delete the config"),
                     Lang.t(c, "Файл «" + file + "»", "File «" + file + "»"), SettingsStyle.WARN, "config_delete", () -> toggle(ask, null));
-            card.addView(delete);
-            card.addView(ask);
+            body.addView(delete);
+            body.addView(ask);
             activeRows.add(delete);
             activeRows.add(ask);
         }
@@ -238,7 +295,7 @@ final class ConfigMenu {
             section.setText(Lang.t(c, "Сохранённые", "Saved"));
             ShadeStyle.label(section, accent);
             section.setPadding(dp(10), dp(4), dp(10), dp(4));
-            card.addView(section);
+            body.addView(section);
             listSection = section;
             list = new LinearLayout(c);
             list.setOrientation(LinearLayout.VERTICAL);
@@ -287,30 +344,29 @@ final class ConfigMenu {
                 list.addView(panel);
                 items.put(file, new View[]{item, panel});
             }
-            ScrollView scroll = new ScrollView(c) {
-                @Override protected void onMeasure(int w, int h) {
-                    super.onMeasure(w, MeasureSpec.makeMeasureSpec(dp(MAX_LIST_DP), MeasureSpec.AT_MOST));
-                }
-            };
-            scroll.setVerticalScrollBarEnabled(false);
-            scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-            scroll.setTag("config_list");
-            scroll.addView(list);
-            card.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
-            listScroll = scroll;
+            list.setTag("config_list");
+            body.addView(list, new LinearLayout.LayoutParams(-1, -2));
+            listScroll = list;
         }
         divider();
-        card.addView(row(R.drawable.settings_ic_restore, Lang.t(c, "Импорт из файла…", "Import a file…"),
+        if (!actions.folderOpen()) {
+            // files put into Download/SCAMERA/XML by a PC or a file manager: listed once the folder is open to the app
+            body.addView(row(R.drawable.settings_ic_list, Lang.t(c, "Открыть папку конфигов", "Open the config folder"),
+                    Lang.t(c, "Один раз: конфиги, закинутые в Download/SCAMERA/XML, появятся здесь",
+                            "Once: configs put into Download/SCAMERA/XML show up here"), accent,
+                    "config_open_folder", () -> { actions.openFolder(); close(); }));
+        }
+        body.addView(row(R.drawable.settings_ic_restore, Lang.t(c, "Импорт из файла…", "Import a file…"),
                 Lang.t(c, "Конфиг с другого телефона или из другой папки", "A config from another phone or folder"), accent,
                 "config_import", () -> { actions.importFile(); close(); }));
         LinearLayout reset = panel("config_reset_panel");
-        reset.addView(text(Lang.t(c, "Все настройки и модули вернутся к стандартным, камера перезапустится",
-                "Every setting and module goes back to the defaults, the camera restarts"), 13, ShadeStyle.MUTED));
+        reset.addView(text(Lang.t(c, "Все настройки и модули вернутся к стандартным, камера перезапустится. Сохранённые конфиги и кривые не удаляются",
+                "Every setting and module goes back to the defaults, the camera restarts. Saved configs and curves stay"), 13, ShadeStyle.MUTED));
         reset.addView(button(Lang.t(c, "Сбросить", "Reset"), ShadeStyle.INK, SettingsStyle.WARN, "config_reset_confirm",
                 () -> done(actions.reset())), buttonParams());
-        card.addView(row(R.drawable.settings_ic_reset, Lang.t(c, "Сбросить настройки", "Reset settings"), null,
+        body.addView(row(R.drawable.settings_ic_reset, Lang.t(c, "Сбросить настройки", "Reset settings"), null,
                 SettingsStyle.WARN, "config_reset", () -> toggle(reset, null)));
-        card.addView(reset);
+        body.addView(reset);
     }
 
     private void done(String result) {
@@ -444,7 +500,7 @@ final class ConfigMenu {
         d.setBackgroundColor(ShadeStyle.LINE);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, Math.max(1, dp(1)));
         p.setMargins(dp(10), dp(4), dp(10), dp(4));
-        card.addView(d, p);
+        body.addView(d, p);
     }
 
     private TextView text(CharSequence value, float sp, int color) {
@@ -468,8 +524,8 @@ final class ConfigMenu {
         card.setTranslationY(-dp(10));
         card.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setDuration(240)
                 .setInterpolator(ConfigChip.EASE).start();
-        for (int i = 0; i < card.getChildCount(); i++) {
-            View child = card.getChildAt(i);
+        for (int i = 0; i < body.getChildCount(); i++) {
+            View child = body.getChildAt(i);
             if (child.getVisibility() != View.VISIBLE) continue;
             child.setAlpha(0f);
             child.setTranslationY(-dp(4));

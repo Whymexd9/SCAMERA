@@ -296,6 +296,60 @@ public class ConfigMenuTest {
         assertNull("the edit mode closes it", sheet.configMenu());
     }
 
+    /**
+     * The whole menu scrolls inside the room under the button (owner, 2026-10-16: it could not scroll and «Сбросить настройки»
+     * stayed under the screen's edge); the reset says the saved configs stay.
+     */
+    @Test
+    public void menuScrollsWithinTheRoomBelowTheButton() {
+        ConfigState.set(activity, "Night_City.xml");
+        openMenu();
+        ConfigMenu menu = sheet.configMenu();
+        menu.limitHeight(dp(300));
+        View content = menu.content();
+        content.measure(View.MeasureSpec.makeMeasureSpec(dp(330), View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        content.layout(0, 0, content.getMeasuredWidth(), content.getMeasuredHeight());
+        androidx.core.widget.NestedScrollView scroll = (androidx.core.widget.NestedScrollView) menuView("config_menu_scroll");
+        View body = scroll.getChildAt(0);
+        assertTrue("the menu is taller than the room", body.getHeight() > scroll.getHeight());
+        assertTrue("the card fits the room: " + content.getMeasuredHeight(), content.getMeasuredHeight() <= dp(300));
+        View reset = menuView("config_reset");
+        assertTrue("under the edge before scrolling", reset.getBottom() > scroll.getHeight());
+        scroll.scrollTo(0, body.getHeight() - scroll.getHeight());
+        int top = reset.getTop() - scroll.getScrollY();
+        assertTrue("reachable at the end: " + top, top >= 0 && top + reset.getHeight() <= scroll.getHeight());
+        reset.performClick();
+        String text = ((android.widget.TextView) ((ViewGroup) menuView("config_reset_panel")).getChildAt(0)).getText().toString();
+        assertTrue(text, text.contains("Saved configs and curves stay"));
+    }
+
+    /** «Открыть папку конфигов» until Download/SCAMERA is open to the app; it hands over to the camera's folder picker. */
+    @Test
+    public void openFolderRowUntilTheFolderIsOpen() {
+        openMenu();
+        assertNull("the folder is open (the default of the test actions)", sheet.configMenu().content().findViewWithTag("config_open_folder"));
+        sheet.configMenu().dismissNow();
+        idle();
+        final boolean[] open = {false};
+        sheet.setConfigActions(new ConfigMenu.Actions() {
+            @Override public String save(String name) { return "saved"; }
+            @Override public String[] saved() { return new String[0]; }
+            @Override public String load(String fileName) { return "loaded"; }
+            @Override public void importFile() { }
+            @Override public String reset() { return "reset"; }
+            @Override public boolean delete(String fileName) { return true; }
+            @Override public boolean folderOpen() { return open[0]; }
+            @Override public void openFolder() { calls.add("folder"); open[0] = true; }
+        });
+        openMenu();
+        menuView("config_open_folder").performClick();
+        idle();
+        assertEquals(List.of("folder"), calls);
+        assertFalse("the menu closes for the picker", sheet.configMenu() != null && sheet.configMenu().isShowing());
+        openMenu();
+        assertNull("gone once open", sheet.configMenu().content().findViewWithTag("config_open_folder"));
+    }
+
     /** The header and the open menu rendered into build/reports/config-menu for a look (the rows unfolded at the end). */
     @Test
     public void renderForReview() throws Exception {
@@ -319,6 +373,21 @@ public class ConfigMenuTest {
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
         content.layout(0, 0, content.getMeasuredWidth(), content.getMeasuredHeight());
         save(content, new java.io.File(dir, "menu-saved.png"), content.getMeasuredWidth(), content.getMeasuredHeight());
+        // a short room under the button: the menu scrolls, here at its top and at its end (the reset reachable)
+        sheet.configMenu().limitHeight(dp(340));
+        content.measure(View.MeasureSpec.makeMeasureSpec(content.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        content.layout(0, 0, content.getMeasuredWidth(), content.getMeasuredHeight());
+        save(content, new java.io.File(dir, "menu-short-top.png"), content.getMeasuredWidth(), content.getMeasuredHeight());
+        androidx.core.widget.NestedScrollView scroll = (androidx.core.widget.NestedScrollView) menuView("config_menu_scroll");
+        scroll.scrollTo(0, scroll.getChildAt(0).getHeight() - scroll.getHeight());
+        menuView("config_reset").performClick();
+        idle();
+        content.measure(View.MeasureSpec.makeMeasureSpec(content.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        content.layout(0, 0, content.getMeasuredWidth(), content.getMeasuredHeight());
+        scroll.scrollTo(0, scroll.getChildAt(0).getHeight() - scroll.getHeight());
+        save(content, new java.io.File(dir, "menu-short-end.png"), content.getMeasuredWidth(), content.getMeasuredHeight());
         assertTrue(new java.io.File(dir, "menu.png").length() > 0);
     }
 

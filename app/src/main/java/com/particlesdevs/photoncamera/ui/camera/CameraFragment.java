@@ -493,6 +493,15 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             intent.putExtra("camera_mode", PreferenceKeys.getCameraModeOrdinal());
             startActivity(intent);
         }
+
+        @Override
+        public void openConfigFolder() {
+            // P143: the settings screen owns the folder picker; it opens it at once and comes back
+            Intent intent = new Intent(activity, SettingsActivity.class);
+            intent.setAction(SettingsActivity.ACTION_OPEN_FOLDER);
+            intent.putExtra("camera_mode", PreferenceKeys.getCameraModeOrdinal());
+            startActivity(intent);
+        }
     };
 
     /** First-run hint (once ever, owner's answer 11): how to open the shade and move a tile. */

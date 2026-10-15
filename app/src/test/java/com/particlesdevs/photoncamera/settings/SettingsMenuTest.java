@@ -853,6 +853,43 @@ public class SettingsMenuTest {
         }
     }
 
+    /**
+     * The full reset (owner, 2026-10-16: «кнопка сброса должна полностью все настройки сбрасывать на дефолтные», «Полный сброс
+     * не должен удалять конфиги»): every preferences file empty - also the copies Android keeps in memory, so a write while
+     * the camera still runs brings nothing old back - the developer switches set aside, the saved configs untouched.
+     */
+    @Test public void resetClearsEverySettingAndKeepsTheConfigs() throws Exception {
+        Context app=RuntimeEnvironment.getApplication();
+        SharedPreferences def=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
+        def.edit().putString("pref_jpeg_quality","90").putBoolean("pref_scam_hybrid_ark_curve_on",true).commit();
+        SharedPreferences module=app.getSharedPreferences("module_profile_v2_back0",0);
+        module.edit().putFloat("pref_scam_hybrid_ark_aces_a",3f).commit();
+        prefs.edit().putBoolean("pref_scam_hybrid_ark_uchi_on",true).commit();
+        java.io.File dev=ScamDevFile.file(app);dev.getParentFile().mkdirs();
+        java.nio.file.Files.write(dev.toPath(),"hybrid 1\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        java.io.File configs=new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),"SCAMERA/XML");
+        configs.mkdirs();java.io.File saved=new java.io.File(configs,"Day.xml");
+        java.nio.file.Files.write(saved.toPath(),"<config/>".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertTrue(BackupRestoreUtil.resetPreferences(app));
+        assertTrue("default file empty in memory: "+def.getAll(),def.getAll().isEmpty());
+        assertTrue("module profile empty: "+module.getAll(),module.getAll().isEmpty());
+        assertTrue("the settings' own store empty: "+prefs.getAll(),prefs.getAll().isEmpty());
+        // a write right after (the camera runs until the restart) brings nothing old back
+        def.edit().putInt("zoom_last",2).commit();
+        assertEquals(java.util.Set.of("zoom_last"),app.getSharedPreferences(app.getPackageName()+"_preferences",0).getAll().keySet());
+        assertFalse("developer switches set aside",dev.isFile());
+        assertTrue(new java.io.File(dev.getParentFile(),"scam_dev.txt.bak").isFile());
+        assertTrue("the saved config stays",saved.isFile());
+        // the folder grant: Download/SCAMERA (or Download) reaches XML and ToneCurves, other folders do not
+        assertTrue(com.particlesdevs.photoncamera.util.ScameraFolder.covers("primary:Download/SCAMERA","primary:Download/SCAMERA/XML"));
+        assertTrue(com.particlesdevs.photoncamera.util.ScameraFolder.covers("primary:Download","primary:Download/SCAMERA/ToneCurves"));
+        assertTrue(com.particlesdevs.photoncamera.util.ScameraFolder.covers("primary:","primary:Download/SCAMERA/XML"));
+        assertTrue(com.particlesdevs.photoncamera.util.ScameraFolder.covers("primary:Download/SCAMERA/XML","primary:Download/SCAMERA/XML"));
+        assertFalse(com.particlesdevs.photoncamera.util.ScameraFolder.covers("primary:Download/SCAM","primary:Download/SCAMERA/XML"));
+        assertFalse(com.particlesdevs.photoncamera.util.ScameraFolder.covers("primary:DCIM","primary:Download/SCAMERA/XML"));
+        assertEquals("primary:Download/SCAMERA/XML",com.particlesdevs.photoncamera.util.ScameraFolder.CONFIGS.documentId());
+    }
+
     /** An in-memory Download/SCAMERA/ToneCurves for the curve tests. */
     static final class MemoryCurves implements com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.Files {
         final java.util.TreeMap<String,String> files=new java.util.TreeMap<>();

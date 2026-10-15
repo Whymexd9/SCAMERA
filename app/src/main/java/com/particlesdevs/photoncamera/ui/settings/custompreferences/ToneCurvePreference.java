@@ -54,7 +54,7 @@ public class ToneCurvePreference extends Preference {
     /** The selected point, kept over rebinds (-1: the middle one on the next bind). */
     private int selected = -1;
     @Nullable private ToneCurveView shown;
-    @Nullable private Runnable importer;
+    @Nullable private Runnable importer, folderOpener;
     @Nullable private Files files;
 
     /** The curve files (Download/SCAMERA/ToneCurves; the tests give their own). */
@@ -96,6 +96,11 @@ public class ToneCurvePreference extends Preference {
     /** «Из файла…»: the settings screen opens the system picker and hands the result to {@link #load}. */
     public void setImporter(@Nullable Runnable importer) {
         this.importer = importer;
+    }
+
+    /** «Открыть папку»: the lasting access to Download/SCAMERA, so curves put there by a PC or a file manager are listed. */
+    public void setFolderOpener(@Nullable Runnable folderOpener) {
+        this.folderOpener = folderOpener;
     }
 
     public void setFiles(@Nullable Files files) {
@@ -278,6 +283,22 @@ public class ToneCurvePreference extends Preference {
             rows.addView(curveRow(c, d, rows, empty, name, curve));
         }
         if (rows.getChildCount() == 0) rows.addView(empty);
+        if (folderOpener != null && ScameraFolder.CURVES.grantedTree(c) == null) {
+            // curves put into Download/SCAMERA/ToneCurves by others: listed once the folder is open to the app
+            TextView open = SettingsStyle.text(c, Lang.t(c, "Открыть папку: закинутые в неё кривые появятся здесь",
+                    "Open the folder: curves put into it show up here"), 14, SettingsStyle.accent(c));
+            open.setGravity(Gravity.CENTER);
+            open.setPadding(SettingsStyle.dp(c, 12), SettingsStyle.dp(c, 12), SettingsStyle.dp(c, 12), SettingsStyle.dp(c, 12));
+            open.setBackground(SettingsStyle.shape(c, 0, SettingsStyle.LINE, 16));
+            open.setTag("curve_open_folder");
+            open.setOnClickListener(v -> {
+                d.dismiss();
+                folderOpener.run();
+            });
+            LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(-1, -2);
+            op.topMargin = SettingsStyle.dp(c, 10);
+            body.addView(open, op);
+        }
         TextView pick = SettingsStyle.text(c, Lang.t(c, "Из файла…", "From a file…"), 16, SettingsStyle.accent(c));
         pick.setTypeface(null, Typeface.BOLD);
         pick.setGravity(Gravity.CENTER);

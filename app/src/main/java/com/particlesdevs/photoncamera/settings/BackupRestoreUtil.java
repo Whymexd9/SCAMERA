@@ -598,16 +598,38 @@ public class BackupRestoreUtil {
         }
     }
 
+    /**
+     * Every setting back to its default (the settings' «Сбросить настройки» and the shade's config menu; the app restarts
+     * right after). Owner, 2026-10-16: «кнопка сброса должна полностью все настройки сбрасывать на дефолтные». Deleting the
+     * shared_prefs folder alone did not hold: the camera runs on until the restart and Android keeps every preferences file
+     * in memory, so the next write there (the zoom, the module, a queued apply) put the whole old file back. Each file is now
+     * cleared through its SharedPreferences - memory and disk - and then deleted. The developer switches (scam_dev.txt of
+     * «Для разработчика») go to scam_dev.txt.bak, so they can be taken back by hand.
+     */
     public static boolean resetPreferences(Context context) {
-        ConfigState.clear(context); // P143: the defaults are no config (the prefs files go next anyway)
-        File data_dir = context.getDataDir();
-        File shared_prefs_dir = Paths.get(data_dir.toPath() + File.separator + "shared_prefs").toFile();
-        try {
-            FileUtils.deleteDirectory(shared_prefs_dir);
-            return true;
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
+        ConfigState.clear(context); // P143: the defaults are no config
+        boolean ok = true;
+        File dir = Paths.get(context.getDataDir().toPath() + File.separator + "shared_prefs").toFile();
+        String[] files = dir.list();
+        if (files != null) {
+            for (String f : files) {
+                if (!f.endsWith(".xml")) continue;
+                ok &= context.getSharedPreferences(f.substring(0, f.length() - 4), Context.MODE_PRIVATE).edit().clear().commit();
+            }
         }
+        // the default file also when it is not on disk yet (its cached copy may hold values)
+        ok &= PreferenceManager.getDefaultSharedPreferences(context).edit().clear().commit();
+        try {
+            FileUtils.deleteDirectory(dir);
+        } catch (IOException e) {
+            Log.e(TAG, "reset: shared_prefs not deleted (cleared already): " + e);
+        }
+        File dev = ScamDevFile.file(context);
+        if (dev != null && dev.isFile()) {
+            File bak = new File(dev.getParentFile(), "scam_dev.txt.bak");
+            if (bak.isFile() && !bak.delete()) ok = false;
+            if (!dev.renameTo(bak)) ok = false;
+        }
+        return ok;
     }
 }

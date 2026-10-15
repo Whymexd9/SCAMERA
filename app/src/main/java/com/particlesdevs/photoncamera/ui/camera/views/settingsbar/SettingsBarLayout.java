@@ -417,6 +417,14 @@ public class SettingsBarLayout extends LinearLayout {
                 if (host != null) host.importConfigFile();
             }
 
+            @Override public boolean folderOpen() {
+                return com.particlesdevs.photoncamera.util.ScameraFolder.CONFIGS.grantedTree(c) != null;
+            }
+
+            @Override public void openFolder() {
+                if (host != null) host.openConfigFolder();
+            }
+
             @Override public String reset() {
                 boolean ok = com.particlesdevs.photoncamera.settings.BackupRestoreUtil.resetPreferences(c);
                 com.particlesdevs.photoncamera.app.ScameraApp.restartWithDelay(c, 1000);

@@ -61,6 +61,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
     public static final String ACTION_SHORTCUT = "org.codeaurora.snapcam.action.SETTINGS";
     /** P143: the shade's config menu «Импорт из файла…»: the config picker at once, back to the camera when cancelled. */
     public static final String ACTION_IMPORT_CONFIG = "org.codeaurora.snapcam.action.IMPORT_CONFIG";
+    /** P143: the camera's config menu asks for the lasting access to Download/SCAMERA (the system folder picker). */
+    public static final String ACTION_OPEN_FOLDER = "org.codeaurora.snapcam.action.OPEN_FOLDER";
     private static int sCameraMode = -1;
     
     @Override
@@ -187,6 +189,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 "pref_scam_hybrid_ark_aces_on", "pref_scam_hybrid_ark_uchi_on", "pref_scam_hybrid_ark_curve_on");
         /** P143: this screen was opened by the camera's config menu for the picker only. */
         private boolean importFromCamera;
+        /** P143: Download/SCAMERA opened to the app once (ScameraFolder.grantedTree): every file there is listed. */
+        private ActivityResultLauncher<android.net.Uri> folderGrantLauncher;
 
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
@@ -498,9 +502,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         if (uri != null) importToneCurve(uri);
                     }
             );
+            folderGrantLauncher = registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
+                if (uri != null) grantFolder(uri);
+                if (importFromCamera && getActivity() != null) getActivity().finish();
+            });
             com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference curve =
                     findPreference(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.KEY);
-            if (curve != null) curve.setImporter(() -> curveImportLauncher.launch(new String[]{"*/*"}));
+            if (curve != null) {
+                curve.setImporter(() -> curveImportLauncher.launch(new String[]{"*/*"}));
+                curve.setFolderOpener(() -> folderGrantLauncher.launch(com.particlesdevs.photoncamera.util.ScameraFolder.grantHint()));
+            }
 
             // Check if we're opening the tunable submenu specifically
             String rootKey = getArguments() != null ? getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) : null;
@@ -510,6 +521,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 getActivity().getIntent().setAction(null);
                 importFromCamera = true;
                 configImportLauncher.launch(new String[]{"*/*"});
+            }
+            if (rootKey == null && savedInstanceState == null && getActivity() != null
+                    && ACTION_OPEN_FOLDER.equals(getActivity().getIntent().getAction())) {
+                getActivity().getIntent().setAction(null);
+                importFromCamera = true;
+                folderGrantLauncher.launch(com.particlesdevs.photoncamera.util.ScameraFolder.grantHint());
             }
             Log.d("SettingsFragment", "onCreate with rootKey: " + rootKey);
             
@@ -691,6 +708,27 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         private final java.util.Map<String, Preference.SummaryProvider> originalProviders = new java.util.HashMap<>();
         private final java.util.Map<String, CharSequence> originalSummaries = new java.util.HashMap<>();
+        /**
+         * P143: keeps the folder the user opened (read and write, across restarts) and says what it reaches: Download/SCAMERA
+         * (or Download) covers the configs and the curves; another folder covers neither.
+         */
+        void grantFolder(android.net.Uri tree) {
+            try {
+                mContext.getContentResolver().takePersistableUriPermission(tree,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            } catch (RuntimeException e) {
+                Log.w("SettingsFragment", "folder grant not kept: " + e);
+            }
+            boolean configs = com.particlesdevs.photoncamera.util.ScameraFolder.CONFIGS.grantedTree(mContext) != null;
+            String text = configs
+                    ? com.particlesdevs.photoncamera.util.Lang.t(mContext, "Папка открыта: все файлы из " + com.particlesdevs.photoncamera.util.ScameraFolder.CONFIGS.relative
+                            + " теперь в списке конфигов", "Folder open: every file in " + com.particlesdevs.photoncamera.util.ScameraFolder.CONFIGS.relative
+                            + " is in the config list now")
+                    : com.particlesdevs.photoncamera.util.Lang.t(mContext, "Эта папка не Download/SCAMERA: конфиги из неё в список не попадут",
+                            "This folder is not Download/SCAMERA: its configs are not listed");
+            android.widget.Toast.makeText(mContext, text, android.widget.Toast.LENGTH_LONG).show();
+        }
+
         /** P144: a picked file's "x:y" points onto the own curve's graph (and into the store). */
         void importToneCurve(android.net.Uri uri) {
             com.particlesdevs.photoncamera.processing.color.ToneCurve curve = null;
