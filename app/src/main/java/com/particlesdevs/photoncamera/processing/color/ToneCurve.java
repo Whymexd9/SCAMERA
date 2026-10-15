@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * P144: the tone operators of «Кривая AgX и ACES» besides AgX - ACES, Uchimura (Gran Turismo) and an own curve - as ArkCam
@@ -73,6 +75,49 @@ public final class ToneCurve {
         p.add(new Point(0f, 0f));
         p.add(new Point(1f, 1f));
         return new ToneCurve(p);
+    }
+
+    /** "x:y" anywhere in a text: two numbers around a colon. */
+    private static final Pattern PAIR = Pattern.compile(
+            "([-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?)\\s*:\\s*([-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?)");
+    /** The first line of a saved curve file. */
+    public static final String FILE_HEADER = "# SCAMERA tone curve: x = 0.5 + EV / 10 (-5..+5 EV around middle grey), y = display 0..1";
+
+    /** The text of a saved curve file (Download/SCAMERA/ToneCurves): the header line, then the points as stored. */
+    public String toFileText() {
+        return FILE_HEADER + "\n" + serialize() + "\n";
+    }
+
+    /**
+     * A curve from a file's text, or null when it holds fewer than two points: every "x:y" pair outside the lines starting
+     * with '#' (commas, spaces, new lines or semicolons between them - our files, ArkCam's "x:y,..." string, a list typed by
+     * hand); values up to 255 (an 8-bit curve) are scaled to 0..1, larger ones refuse the file.
+     */
+    @Nullable
+    public static ToneCurve fromFileText(@Nullable String text) {
+        if (text == null) return null;
+        StringBuilder body = new StringBuilder();
+        for (String line : text.split("\\r?\\n")) if (!line.trim().startsWith("#")) body.append(line).append('\n');
+        List<float[]> raw = new ArrayList<>();
+        float max = 0f;
+        Matcher m = PAIR.matcher(body);
+        while (m.find()) {
+            try {
+                float x = Float.parseFloat(m.group(1)), y = Float.parseFloat(m.group(2));
+                if (!Float.isFinite(x) || !Float.isFinite(y)) continue;
+                raw.add(new float[]{x, y});
+                max = Math.max(max, Math.max(x, y));
+            } catch (NumberFormatException ignored) {
+                // not a number after all
+            }
+        }
+        if (raw.size() < 2 || max > 255.5f) return null;
+        float scale = max > 1.0001f ? 1f / 255f : 1f;
+        List<Point> out = new ArrayList<>();
+        for (float[] p : raw) out.add(new Point(clamp01(p[0] * scale), clamp01(p[1] * scale)));
+        ToneCurve c = new ToneCurve(out);
+        c.normalise();
+        return c.size() >= 2 ? c : null;
     }
 
     public String serialize() {

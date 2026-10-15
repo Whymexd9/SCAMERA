@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- P144: the own tone curve - title, hint, the editable graph, its two shortcuts and the selected point's sliders
-     (exposure and brightness, their values tap to type them), one settings card. -->
+     (exposure and brightness, their values tap to type them), then «Сохранить» / «Загрузить», one settings card. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -47,4 +47,10 @@
         android:paddingTop="10dp"
         android:paddingEnd="12dp"
         android:paddingBottom="4dp" />
+    <LinearLayout
+        android:id="@+id/tone_curve_files"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="horizontal" />
 </LinearLayout>

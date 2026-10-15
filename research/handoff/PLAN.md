@@ -3412,6 +3412,13 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   a graph with a grid, the straight line dashed, −5 EV / 0 (grey) / +5 EV; tap = a point, drag = move, hold = delete; «S-кривая»
   and «Прямая». The touched point stays selected: ‹ ›, «Удалить», sliders «Экспозиция» (EV) and «Яркость» (%), each value taps
   open the exact-value sheet (PrecisionEditor; exposure limited to the neighbours). Stored when a gesture / slider ends.
+- Curve files (owner: «Дай также возможность сохранять и импортировать тоновые кривые, папку можешь сделать для них в
+  Download/SCAMERA»; «для тоновых кривых сделай отдельную папку»): Download/SCAMERA/ToneCurves, apart from the configs' XML
+  (util/ScameraFolder: one MediaStore / File API folder class, ConfigFolder now delegates to ScameraFolder.CONFIGS). A file
+  is a header comment and the "x:y,..." points (.txt); reading takes every "x:y" pair of any text (ArkCam's string, hand-typed
+  lists; 0..255 scaled), refuses fewer than two points. «Сохранить» (a free «Кривая_N» offered), «Загрузить» (the saved
+  curves with a preview, a tap loads, the bin asks once more and deletes; «Из файла…» = the system picker, opened by
+  SettingsFragment.curveImportLauncher in that folder).
 - Checks: ToneCurveTest 5, SettingsMenuTest (groups, one at a time, graph + sliders + typed values, a render to
   build/reports/tone-curve), tools/check_tone_ops.py (GPU vs numpy: ACES, Uchimura, the straight and the S curve, max 1e-4);
   glslc for every TONE_OP variant. Not seen on a phone yet; the look vs ArkCam not compared on photos.

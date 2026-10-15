@@ -180,6 +180,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private ActivityResultLauncher<String[]> lutImportLauncher;
         private ActivityResultLauncher<String[]> noiseModelImportLauncher;
         private ActivityResultLauncher<String[]> configImportLauncher;
+        /** P144: «Загрузить» → «Из файла…» of the own tone curve (the picker starts in Download/SCAMERA/ToneCurves). */
+        private ActivityResultLauncher<String[]> curveImportLauncher;
         /** P144: the switches of «Кривая AgX и ACES» of which one at most is on. */
         static final java.util.List<String> TONE_OPERATORS = java.util.Arrays.asList(
                 "pref_scam_hybrid_ark_aces_on", "pref_scam_hybrid_ark_uchi_on", "pref_scam_hybrid_ark_curve_on");
@@ -482,6 +484,24 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     }
             );
             
+            curveImportLauncher = registerForActivityResult(
+                    new ActivityResultContracts.OpenDocument() {
+                        @NonNull @Override
+                        public Intent createIntent(@NonNull android.content.Context context, @NonNull String[] input) {
+                            Intent intent = super.createIntent(context, input);
+                            intent.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI,
+                                    com.particlesdevs.photoncamera.util.ScameraFolder.CURVES.initialPickerUri());
+                            return intent;
+                        }
+                    },
+                    uri -> {
+                        if (uri != null) importToneCurve(uri);
+                    }
+            );
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference curve =
+                    findPreference(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.KEY);
+            if (curve != null) curve.setImporter(() -> curveImportLauncher.launch(new String[]{"*/*"}));
+
             // Check if we're opening the tunable submenu specifically
             String rootKey = getArguments() != null ? getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) : null;
             // P143: the camera's config menu asked for a file: the picker opens over the settings' root once
@@ -671,6 +691,30 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         private final java.util.Map<String, Preference.SummaryProvider> originalProviders = new java.util.HashMap<>();
         private final java.util.Map<String, CharSequence> originalSummaries = new java.util.HashMap<>();
+        /** P144: a picked file's "x:y" points onto the own curve's graph (and into the store). */
+        void importToneCurve(android.net.Uri uri) {
+            com.particlesdevs.photoncamera.processing.color.ToneCurve curve = null;
+            try (java.io.InputStream in = mContext.getContentResolver().openInputStream(uri)) {
+                if (in != null) curve = com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.readCurve(in);
+            } catch (java.io.IOException | RuntimeException e) {
+                Log.w("SettingsFragment", "tone curve import failed: " + e);
+            }
+            if (curve == null) {
+                android.widget.Toast.makeText(mContext, com.particlesdevs.photoncamera.util.Lang.t(mContext,
+                        "В файле нет кривой: нужны точки «x:y» от 0 до 1", "No curve in the file: it needs «x:y» points from 0 to 1"),
+                        android.widget.Toast.LENGTH_LONG).show();
+                return;
+            }
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference pref =
+                    findPreference(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.KEY);
+            if (pref != null) pref.load(curve);
+            else mSettingsManager.getDefaultPreferences().edit()
+                    .putString(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.KEY, curve.serialize()).apply();
+            android.widget.Toast.makeText(mContext, com.particlesdevs.photoncamera.util.Lang.t(mContext,
+                    "Кривая загружена: " + curve.size() + " точек", "Curve loaded: " + curve.size() + " points"),
+                    android.widget.Toast.LENGTH_SHORT).show();
+        }
+
         private void updateSettingsAvailability() {
             if (!isAdded() || mSettingsManager == null) return;
             com.particlesdevs.photoncamera.settings.SettingsAvailability state =

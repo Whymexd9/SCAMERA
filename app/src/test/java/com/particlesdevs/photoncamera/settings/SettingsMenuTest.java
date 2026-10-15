@@ -853,6 +853,97 @@ public class SettingsMenuTest {
         }
     }
 
+    /** An in-memory Download/SCAMERA/ToneCurves for the curve tests. */
+    static final class MemoryCurves implements com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.Files {
+        final java.util.TreeMap<String,String> files=new java.util.TreeMap<>();
+        @Override public String[] list(){return files.keySet().toArray(new String[0]);}
+        @Override public String read(String name)throws java.io.IOException{String t=files.get(name);if(t==null)throw new java.io.IOException(name);return t;}
+        @Override public String save(String name,String text){files.put(name,text);return folder()+"/"+name;}
+        @Override public boolean delete(String name){return files.remove(name)!=null;}
+        @Override public String folder(){return com.particlesdevs.photoncamera.util.ScameraFolder.CURVES.relative;}
+    }
+
+    /**
+     * P144: own curves saved to and loaded from their own folder (Download/SCAMERA/ToneCurves, apart from the configs' XML):
+     * «Сохранить» names the file, «Загрузить» lists them with a preview, a tap loads one, the bin deletes it after a second tap,
+     * «Из файла…» hands over to the settings screen's picker.
+     */
+    @Test public void ownCurvesAreSavedAndLoaded(){
+        assertEquals("Download/SCAMERA/ToneCurves",com.particlesdevs.photoncamera.util.ScameraFolder.CURVES.relative);
+        assertEquals("Download/SCAMERA/XML",com.particlesdevs.photoncamera.util.ConfigFolder.RELATIVE);
+        assertTrue(com.particlesdevs.photoncamera.util.ScameraFolder.CURVES.accepts("Night.txt"));
+        assertFalse(com.particlesdevs.photoncamera.util.ScameraFolder.CURVES.accepts("Night.xml"));
+        assertEquals("My_film_look",com.particlesdevs.photoncamera.util.ScameraFolder.CURVES.baseName("  My film/look.txt "));
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();
+            PreferenceManager pm=new PreferenceManager(activity);PreferenceScreen screen=pm.createPreferenceScreen(activity);
+            var pref=new com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference(activity);
+            pref.setKey(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.KEY);screen.addPreference(pref);
+            MemoryCurves folder=new MemoryCurves();pref.setFiles(folder);
+            final int[] picks={0};pref.setImporter(()->picks[0]++);
+            android.view.View row=android.view.LayoutInflater.from(activity).inflate(R.layout.preference_tone_curve,null);
+            pref.onBindViewHolder(androidx.preference.PreferenceViewHolder.createInstanceForTests(row));
+            var graph=(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView)row.findViewWithTag("tone_curve_view");
+            // save the straight line as «Linear»
+            row.findViewWithTag("tone_curve_identity").performClick();
+            row.findViewWithTag("tone_curve_save").performClick();
+            android.app.Dialog sheet=org.robolectric.shadows.ShadowDialog.getLatestDialog();android.view.View sv=sheet.getWindow().getDecorView();
+            android.widget.EditText name=sv.findViewWithTag("curve_name");
+            assertEquals("a free name offered","Curve_1",name.getText().toString());
+            assertTrue(((android.widget.TextView)sv.findViewWithTag("curve_folder")).getText().toString().contains("Download/SCAMERA/ToneCurves"));
+            name.setText("Linear");sv.findViewWithTag("sheet_save").performClick();
+            assertFalse(sheet.isShowing());
+            assertEquals(com.particlesdevs.photoncamera.processing.color.ToneCurve.identity().toFileText(),folder.files.get("Linear.txt"));
+            // an empty name is refused
+            row.findViewWithTag("tone_curve_save").performClick();
+            sheet=org.robolectric.shadows.ShadowDialog.getLatestDialog();sv=sheet.getWindow().getDecorView();
+            assertEquals("Curve_1",((android.widget.EditText)sv.findViewWithTag("curve_name")).getText().toString());
+            ((android.widget.EditText)sv.findViewWithTag("curve_name")).setText("  ");sv.findViewWithTag("sheet_save").performClick();
+            assertTrue(sheet.isShowing());sheet.dismiss();
+            assertEquals(1,folder.files.size());
+            // another curve in the folder, a file that is no curve (not listed)
+            folder.files.put("Soft.txt",com.particlesdevs.photoncamera.processing.color.ToneCurve.parse("0:0.05,0.5:0.5,1:0.95").toFileText());
+            folder.files.put("notes.txt","hello");
+            row.findViewWithTag("tone_curve_load").performClick();
+            sheet=org.robolectric.shadows.ShadowDialog.getLatestDialog();sv=sheet.getWindow().getDecorView();
+            assertNotNull(sv.findViewWithTag("curve_row_Linear.txt"));
+            assertNotNull(sv.findViewWithTag("curve_row_Soft.txt"));
+            assertNull("not a curve",sv.findViewWithTag("curve_row_notes.txt"));
+            sv.findViewWithTag("curve_row_Soft.txt").performClick();
+            assertFalse(sheet.isShowing());
+            assertEquals(3,graph.curve().size());
+            assertEquals(0.05f,graph.curve().get(0).y,1e-4f);
+            assertEquals("loaded and stored",graph.curve().serialize(),pref.points());
+            // the bin: the first tap asks, the second deletes the file and folds the row out
+            row.findViewWithTag("tone_curve_load").performClick();
+            sheet=org.robolectric.shadows.ShadowDialog.getLatestDialog();sv=sheet.getWindow().getDecorView();
+            sv.findViewWithTag("curve_bin_Linear.txt").performClick();
+            assertTrue(folder.files.containsKey("Linear.txt"));
+            android.view.View confirm=sv.findViewWithTag("curve_delete_Linear.txt");
+            assertEquals(android.view.View.VISIBLE,confirm.getVisibility());
+            confirm.performClick();
+            assertFalse(folder.files.containsKey("Linear.txt"));
+            assertNull(sv.findViewWithTag("curve_row_Linear.txt"));
+            assertTrue(sheet.isShowing());
+            // «Из файла…»: the picker of the settings screen
+            sv.findViewWithTag("curve_import").performClick();
+            assertEquals(1,picks[0]);assertFalse(sheet.isShowing());
+            // a picked file goes through the same reading
+            var picked=new java.io.ByteArrayInputStream("0:0,0.3:0.2,0.7:0.8,1:1".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            com.particlesdevs.photoncamera.processing.color.ToneCurve read=null;
+            try{read=com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.readCurve(picked);}catch(java.io.IOException e){fail(e.toString());}
+            pref.load(read);
+            assertEquals(4,graph.curve().size());assertEquals(read.serialize(),pref.points());
+            assertEquals("the middle point selected",2,graph.selected());
+            // empty folder: the hint names it
+            folder.files.clear();
+            row.findViewWithTag("tone_curve_load").performClick();
+            sheet=org.robolectric.shadows.ShadowDialog.getLatestDialog();sv=sheet.getWindow().getDecorView();
+            assertTrue(((android.widget.TextView)sv.findViewWithTag("curve_empty")).getText().toString().contains("Download/SCAMERA/ToneCurves"));
+            sheet.dismiss();
+        }
+    }
+
     /**
      * P144: the curves page as the phone shows it (400 x 880 dp, xhdpi), kept in build/reports/tone-curve for a look - the own
      * curve's group, a new point being dragged, an edited curve with more points, then the ACES and Uchimura groups.
@@ -929,13 +1020,48 @@ public class SettingsMenuTest {
             try(var out=new java.io.FileOutputStream(new java.io.File(dir,"5-type-value.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
             sv.findViewWithTag("sheet_save").performClick();
             assertEquals(0.78f,graph.curve().get(6).x,1e-4f);
+            // «Загрузить»: the saved curves of Download/SCAMERA/ToneCurves with their previews
+            var curvePref=(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference)page.findPreference(
+                    com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.KEY);
+            MemoryCurves folder=new MemoryCurves();curvePref.setFiles(folder);
+            folder.files.put("Плёнка_мягкая.txt",com.particlesdevs.photoncamera.processing.color.ToneCurve.parse("0:0.04,0.3:0.22,0.5:0.5,0.75:0.8,1:0.96").toFileText());
+            folder.files.put("Контраст.txt",com.particlesdevs.photoncamera.processing.color.ToneCurve.parse("0:0,0.25:0.1,0.5:0.5,0.75:0.92,1:1").toFileText());
+            folder.files.put("Прямая.txt",com.particlesdevs.photoncamera.processing.color.ToneCurve.identity().toFileText());
+            folder.files.put("Ночь_тени.txt",com.particlesdevs.photoncamera.processing.color.ToneCurve.parse("0:0,0.2:0.16,0.45:0.5,0.8:0.86,1:1").toFileText());
+            list.scrollBy(0,Math.round(400*density));frame(view,w,h);
+            android.view.View loadChip=list.findViewWithTag("tone_curve_load");
+            assertNotNull("«Загрузить» on screen",loadChip);
+            shot(view,w,h,"6-save-load-buttons");
+            loadChip.performClick();
+            sheet=org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            sv=sheet.getWindow().getDecorView();
+            sv.findViewWithTag("curve_bin_Прямая.txt").performClick();
+            frame(sv,w,h);
+            bitmap=android.graphics.Bitmap.createBitmap(w,h,android.graphics.Bitmap.Config.ARGB_8888);
+            canvas=new android.graphics.Canvas(bitmap);view.draw(canvas);canvas.drawColor(0x99000000);sv.draw(canvas);
+            try(var out=new java.io.FileOutputStream(new java.io.File(dir,"7-load-curve.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+            sheet.dismiss();
+            // «Сохранить»: the name sheet
+            loadChip=list.findViewWithTag("tone_curve_save");
+            loadChip.performClick();
+            sheet=org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            sv=sheet.getWindow().getDecorView();
+            ((android.widget.EditText)sv.findViewWithTag("curve_name")).setText("Мой_закат");
+            frame(sv,w,h);
+            bitmap=android.graphics.Bitmap.createBitmap(w,h,android.graphics.Bitmap.Config.ARGB_8888);
+            canvas=new android.graphics.Canvas(bitmap);view.draw(canvas);canvas.drawColor(0x99000000);sv.draw(canvas);
+            try(var out=new java.io.FileOutputStream(new java.io.File(dir,"8-save-curve.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+            sv.findViewWithTag("sheet_save").performClick();
+            assertTrue(folder.files.containsKey("Мой_закат.txt"));
             // ACES and Uchimura in their own groups (the jump without the item animator: a finger scroll binds the rows plainly,
             // while a jump in the same pass as the rows the curve's save changed would fade them in at full alpha)
             list.setItemAnimator(null);
             int acesPos=((androidx.preference.PreferenceGroup.PreferencePositionCallback)list.getAdapter()).getPreferenceAdapterPosition("scam_hybrid_ark_aces_category");
             ((androidx.recyclerview.widget.LinearLayoutManager)list.getLayoutManager()).scrollToPositionWithOffset(acesPos,Math.round(8*density));
             frame(view,w,h);
-            shot(view,w,h,"6-aces-uchimura");
+            shot(view,w,h,"9-aces-uchimura");
         }
     }
     private void frame(android.view.View view,int w,int h){

@@ -2,6 +2,7 @@ package com.particlesdevs.photoncamera.processing.color;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -94,5 +95,27 @@ public class ToneCurveTest {
             assertTrue("monotone at " + i, y >= prev - 1e-5f);
             prev = y;
         }
+    }
+
+    /** P144: a saved curve file - the header line and the points; reading takes «x:y» pairs from any text. */
+    @Test public void curveFiles() {
+        ToneCurve c = ToneCurve.parse("0:0,0.2:0.1,0.5:0.55,1:1");
+        String text = c.toFileText();
+        assertTrue(text.startsWith(ToneCurve.FILE_HEADER + "\n"));
+        assertEquals(c.serialize(), ToneCurve.fromFileText(text).serialize());
+        // ArkCam's string, new lines, semicolons, comments
+        assertEquals(c.serialize(), ToneCurve.fromFileText("# my curve 1:1\r\n0:0; 0.2 : 0.1\n0.5:0.55  1:1").serialize());
+        // an 8-bit curve (0..255) is scaled
+        ToneCurve eight = ToneCurve.fromFileText("0:0,64:32,128:140,255:255");
+        assertEquals(4, eight.size());
+        assertEquals(128 / 255f, eight.get(2).x, 1e-4f);
+        assertEquals(140 / 255f, eight.get(2).y, 1e-4f);
+        // nothing usable
+        assertNull(ToneCurve.fromFileText(null));
+        assertNull(ToneCurve.fromFileText(""));
+        assertNull(ToneCurve.fromFileText("<xml>not a curve</xml>"));
+        assertNull("one point", ToneCurve.fromFileText("0.5:0.5"));
+        assertNull("values past 8 bit", ToneCurve.fromFileText("0:0,1000:1000"));
+        assertNull("only comments", ToneCurve.fromFileText("# 0:0,1:1"));
     }
 }
