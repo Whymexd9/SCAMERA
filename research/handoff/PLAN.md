@@ -3483,6 +3483,17 @@ Each step moves with a check that the GPU gives the CPU's result; the CPU path s
   build/reports/tone-curve), tools/check_tone_ops.py (GPU vs numpy: ACES, Uchimura, the straight and the S curve, max 1e-4);
   glslc for every TONE_OP variant. Not seen on a phone yet; the look vs ArkCam not compared on photos.
 
+### P146 - FULLRES as its own settings group (owner, 2026-10-16: «Так же сделай отдельные настройки для 50мп как для отдельного модуля, сделай отдельную группу "FULLRES" где я смогу полностью всё так же настраивать как для остальных. Пункт пускай будет доступен только на смартфонах где у нас будет рабочий фулрез»)
+- A FULLRES profile beside the module profiles (ModuleProfiles / module_profile_v2_<slot>): every per-module setting
+  (capture, SHDR / Hybrid, ARK tone and curves, denoise, sharpening, output) stored for the 50 MP FULLRES shot of a lens and
+  applied when the shot runs FULLRES (VivoSdkFullRes route), the normal module profile otherwise.
+- Settings: a «FULLRES» group in the module settings, built like a module page (the same rows, copy from / to a module);
+  shown only where FULLRES works on this phone (the VivoSdkFullRes support check of the lens: today the X200 Ultra main
+  camera; never on phones / lenses without it).
+- Configs (ConfigXml) carry the FULLRES profiles like module profiles; moving to another phone maps them by lens (P141).
+- Before starting: the FULLRES route is ChatGPT's uncommitted work in CaptureController / VivoSdkFullRes* - build on it only
+  once it is committed; the open onError 4 of FULLRES + 2x (HANDOFF §6) first.
+
 ### P141 - config files: saving, applying, moving between phones (owner, 2026-10-15: «Ещё добавь в план работы перепроверка работы с конфиг файлами. Проверь чтобы всё правильно сохранялось и применялось. Так же проверь чтобы на разных смартфонах с разными айди модулей конфиг применялся нормально и автоматически подставлялся/адаптировался под другое количество модулей, при этом сделай так чтобы модули не дублировались и не появлялись лишние»)
 - Audit «Сохранить / Восстановить» (BackupPreferences, RestorePreference, ModuleProfiles, module_profile_v2_* files, the
   sensor-config keys pref_sensorconfig_<id>_*, vendor tags, shade tiles, the colour settings): everything saved is restored

@@ -153,20 +153,39 @@ final class ConfigMenu {
     /** Opens the menu under {@code anchor}. */
     static ConfigMenu show(ConfigChip anchor, Actions actions, Consumer<CharSequence> message, Runnable onClosed) {
         ConfigMenu menu = new ConfigMenu(anchor, actions, message, onClosed);
-        int pad = menu.root.getPaddingLeft();
-        menu.limitHeight(roomBelow(anchor, dp(anchor.getContext(), 6)));
-        menu.window.showAsDropDown(anchor, -pad, dp(anchor.getContext(), 6) - pad, Gravity.START);
+        int pad = menu.root.getPaddingLeft(), gap = dp(anchor.getContext(), 6);
+        menu.limitHeight(roomBelow(anchor, gap));
+        // Placed from the button's laid-out frame, not showAsDropDown: the button is still springing back from its press dip
+        // (scale .96 -> 1) when the menu opens, a drop-down took that shrunken frame and the window then followed the button
+        // to its full size - the card jumped 3-4 dp sideways during or right after its unfolding (owner's video, 2026-10-16).
+        int[] at = frameOnScreen(anchor);
+        menu.window.showAtLocation(anchor, Gravity.TOP | Gravity.LEFT, at[0] - pad, at[1] + anchor.getHeight() + gap - pad);
         anchor.setOpen(true);
         menu.enter();
         return menu;
+    }
+
+    /**
+     * The view's top-left on the screen from its layout (its parent's place plus its left / top), without its own
+     * scale or translation - getLocationOnScreen includes those (the press dip).
+     */
+    static int[] frameOnScreen(View v) {
+        int[] at = new int[2];
+        if (v.getParent() instanceof View) {
+            ((View) v.getParent()).getLocationOnScreen(at);
+            at[0] += v.getLeft();
+            at[1] += v.getTop();
+        } else {
+            v.getLocationOnScreen(at);
+        }
+        return at;
     }
 
     /** The room from under the button (+ gap) to the bottom of the visible window, 0 when the view is not laid out. */
     static int roomBelow(View anchor, int gap) {
         android.graphics.Rect frame = new android.graphics.Rect();
         anchor.getWindowVisibleDisplayFrame(frame);
-        int[] at = new int[2];
-        anchor.getLocationOnScreen(at);
+        int[] at = frameOnScreen(anchor);
         int room = frame.bottom - (at[1] + anchor.getHeight() + gap);
         return frame.height() > 0 ? room : 0;
     }

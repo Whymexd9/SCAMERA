@@ -323,6 +323,32 @@ public class ConfigMenuTest {
         assertTrue(text, text.contains("Saved configs and curves stay"));
     }
 
+    /**
+     * The menu opens at the button's laid-out place even while the button still springs back from its press dip (owner's
+     * video, 2026-10-16: the card jumped 3-4 dp sideways during or right after unfolding).
+     */
+    @Test
+    public void menuOpensAtTheButtonsPlaceDuringItsPressDip() {
+        ConfigChip chip = sheet.configChip();
+        chip.setScaleX(.96f);
+        chip.setScaleY(.96f);
+        openMenu();
+        android.view.WindowManager.LayoutParams dipped =
+                (android.view.WindowManager.LayoutParams) sheet.configMenu().content().getRootView().getLayoutParams();
+        int dx = dipped.x, dy = dipped.y;
+        sheet.configMenu().dismissNow();
+        idle();
+        chip.setScaleX(1f);
+        chip.setScaleY(1f);
+        openMenu();
+        android.view.WindowManager.LayoutParams rest =
+                (android.view.WindowManager.LayoutParams) sheet.configMenu().content().getRootView().getLayoutParams();
+        assertEquals("x", rest.x, dx);
+        assertEquals("y", rest.y, dy);
+        int[] frame = ConfigMenu.frameOnScreen(chip);
+        assertEquals("from the button's left", frame[0] - sheet.configMenu().content().getPaddingLeft(), rest.x);
+    }
+
     /** «Открыть папку конфигов» until Download/SCAMERA is open to the app; it hands over to the camera's folder picker. */
     @Test
     public void openFolderRowUntilTheFolderIsOpen() {
