@@ -47,7 +47,7 @@ public final class ArkStats extends Node {
      * The half-float read type of the bound read framebuffer when the implementation reads an RGBA16F target natively as
      * RGBA halves (GL_IMPLEMENTATION_COLOR_READ_FORMAT / _TYPE), else 0.
      */
-    private static int halfReadType() {
+    static int halfReadType() {
         int[] v = new int[2];
         android.opengl.GLES30.glGetIntegerv(android.opengl.GLES30.GL_IMPLEMENTATION_COLOR_READ_FORMAT, v, 0);
         android.opengl.GLES30.glGetIntegerv(android.opengl.GLES30.GL_IMPLEMENTATION_COLOR_READ_TYPE, v, 1);

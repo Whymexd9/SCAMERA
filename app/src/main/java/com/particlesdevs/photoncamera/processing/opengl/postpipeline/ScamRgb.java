@@ -499,10 +499,14 @@ public final class ScamRgb extends Node {
         sideThread.start();
         final long uploadStart=System.nanoTime();
         GLTexture input=null;
-        boolean rgbaBands=false;
+        boolean rgbaBands=false,gpuRepack=false;
         try{
             if(half){
-                input=uploadHalfRgba(size,big);rgbaBands=input!=null;
+                // P145: the 3 -> 4 halves repack as a compute pass (HalfRgbUpload); the CPU repack on drivers that would not keep
+                // every half, for the old model (post_ab) and when a GL call fails
+                if(!com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()){input=HalfRgbUpload.upload(glProg,size,big);gpuRepack=input!=null;}
+                if(input==null)input=uploadHalfRgba(size,big);
+                rgbaBands=input!=null;
                 if(input==null)throw new IllegalStateException("no staging memory for the half-float RGB upload");
             } else {
             if(rgbaUploadWanted(glGetString(GL_RENDERER))){input=uploadRgba(size,big);rgbaBands=input!=null;}
@@ -540,7 +544,7 @@ public final class ScamRgb extends Node {
         // P33 W2.4 / P48: where the time between the worker result and the lens shading goes (stats and decimate on the helper
         // thread, alongside the upload; wait = what the upload left of them)
         com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","scamrgb input ms: upload="+(uploadDone-uploadStart)/1000000
-                +(half?" (rgba16f bands)":rgbaBands?" (rgba bands)":" (rgb)")+" stats="+stats.statMs+" decimate="+stats.decimateMs
+                +(gpuRepack?" (half rgb, gpu repack)":half?" (rgba16f bands)":rgbaBands?" (rgba bands)":" (rgb)")+" stats="+stats.statMs+" decimate="+stats.decimateMs
                 +" wait="+(sideDone-uploadDone)/1000000+" free="+(System.nanoTime()-sideDone)/1000000);
         GLTexture flagsTex=null,chromaNear=null,chromaWide=null,chromaHuge=null;
         try {

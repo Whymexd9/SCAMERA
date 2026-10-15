@@ -3431,6 +3431,10 @@ Each step moves with a check that the GPU gives the CPU's result; the CPU path s
   per bin), per-group sums; 33 KB back instead of 25 MB; self-check of the total weight, else the old read-back.
   ArkAe split into stats / finish (same code for both). tools/check_ark_ae_gpu.py (GPU vs a float32 copy of the Java loops:
   max exact, <= 0.0015 % of the weight in a neighbour bin from fused multiply-adds), ArkAeTest.gpuStatisticsGiveTheSameExposure.
+- b. DONE: ScamRgb's half RGB -> RGBA16F repack -> compute scamhdr/halfrgba (HalfRgbUpload): bands copied unchanged into an
+  SSBO (two, alternating), widened by unpackHalf2x16 and stored with imageStore. Used only where a once-per-process probe
+  of all 65536 halves comes back bit for bit (GLES may flush 16-bit denormals); the CPU repack otherwise, for post_ab and
+  on a GL error. tools/check_half_rgba.py, HalfRgbUploadTest. Log: "scamrgb input ms: upload=.. (half rgb, gpu repack)".
 - Not for the GPU: JPEG / AV1 entropy coding, the vendor CRE alignment (closed library), memory copies, EXIF, the cpu-single
   fallback (it exists for a GPU that failed).
 - Checks: ToneCurveTest 5, SettingsMenuTest (groups, one at a time, graph + sliders + typed values, a render to
