@@ -3489,6 +3489,16 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
 - a. DONE: the EXIF APP1 goes into the JPEG stream right after SOI (ExifBlock.app1Segment: the same tags) together with the ICC
   segments (IccEmbed.jpegInserting(out, exif, icc)); no rewrite. Without the block (it failed) the old rewrite runs.
   JpegExifStreamTest: the tags equal the rewrite's, one EXIF segment, the profile kept.
+- b. DONE: the JPEG in strips on every core (scamera-jpeg-parallel.h; owner: «можешь добавить другие варианты помимо jpegli
+  если они будут эффективней»). Whole MCU rows a strip, each strip a baseline jpegli JPEG on its own thread; pass 1 (every
+  k-th strip) gives code lengths -> shared optimal Huffman tables (Annex K.2, every valid symbol keeps a code); pass 2 encodes
+  every strip with them; the entropy data joined with RSTn (DRI = the MCUs of a strip). Headers of all strips must match,
+  else the one-thread progressive encode (nothing written yet). From 4 MP; scam_dev "jpeg_threads" (1 = one thread).
+  X200 Ultra (tools/jpeg-check, adb shell): 20 MP photo q100 542 -> 152 ms (3.6x), 8 % smaller; 50 MP q95 1026 -> 251 ms
+  (4.1x), 10 % smaller; PSNR to the source the same, strips vs one thread 71-84 dB (only jpegli's adaptive quantisation at a
+  strip's edge differs, max 1-4 levels); libjpeg-turbo (Pillow) decodes it the same. CI builds and runs the check on Linux.
+  libjpeg-turbo not added: jpegli in strips is already ~0.15 s for 20 MP; another library (a download, a new dependency) would
+  save ~0.1 s more at a slightly lower quality per byte.
 
 ### P148 - «Камера и сенсоры» simpler for an ordinary user (owner, 2026-10-16: «Займись меню камеры и сенсоры, упрости его максимально чтобы обычному человеку было проще им пользоваться, при этом функционал никак не урезай. Можешь перестроить/переделать его как хочешь, главное чтобы оно соответствовало общему стилю нашего приложения»)
 - The page pref_sensor_config_submenu (SettingsFragment.generateSensorConfigPreferences, ModuleSettingsFragment, the module

@@ -129,6 +129,8 @@ jobs:
           java -ea -cp /tmp/zsl-quality-check RawFrameQualityCheck
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_remosaic_shaders.py
           /usr/bin/python3 tools/check_lanczos_downscale.py
+          cmake -S tools/jpeg-check -B /tmp/jpeg-check -DCMAKE_BUILD_TYPE=Release && cmake --build /tmp/jpeg-check -j 4
+          /tmp/jpeg-check/scamera-jpeg-check 2592 1944 95 4 - /tmp && /tmp/jpeg-check/scamera-jpeg-check 1000 3000 100 3 - /tmp
           LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 tools/checks/preview_gl.py
           g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_scam_preprocess.cpp -lEGL -lGLESv2 -o /tmp/check-scam-preprocess
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-scam-preprocess

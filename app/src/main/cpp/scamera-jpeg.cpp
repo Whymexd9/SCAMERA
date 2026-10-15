@@ -7,6 +7,7 @@
 #include <string>
 
 #include "scamera-jpeg-core.h"
+#include "scamera-jpeg-parallel.h"
 
 namespace {
 struct PixelLock {
@@ -21,9 +22,11 @@ struct PixelLock {
 }  // namespace
 
 // Returns null on success, else the reason (nothing usable was written when it fails before the first chunk).
+// P147: threads > 1 and at least 4 MP: strips on that many threads (scamera-jpeg-parallel.h); when the strips cannot be
+// joined (nothing written yet) the one-thread progressive encode runs. *modeOut: "strips N" / "one thread".
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_particlesdevs_photoncamera_processing_JpegliEncoder_encode(JNIEnv* env, jclass, jobject bitmap, jint quality,
-                                                                    jobject out) {
+                                                                    jobject out, jint threads, jintArray modeOut) {
     AndroidBitmapInfo info{};
     if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS)
         return env->NewStringUTF("bitmap info unavailable");
@@ -50,12 +53,32 @@ Java_com_particlesdevs_photoncamera_processing_JpegliEncoder_encode(JNIEnv* env,
                 }
                 return true;
             };
-            try {
-                scamera_jpeg::encodeRgba(static_cast<const uint8_t*>(lock.pixels), int(info.width), int(info.height),
-                                         info.stride, quality, writer);
-            } catch (const std::exception& e) {
-                error = e.what();
+            bool written = false;
+            bool started = false;
+            const scamera_jpeg::Writer counting = [&](const uint8_t* data, size_t size) {
+                started = true;
+                return writer(data, size);
+            };
+            jint mode = 1;
+            if (threads > 1 && uint64_t(info.width) * info.height >= 4000000ull) {
+                try {
+                    scamera_jpeg::parallel::encodeRgba(static_cast<const uint8_t*>(lock.pixels), int(info.width), int(info.height),
+                                                       info.stride, quality, int(threads), 0, counting);
+                    written = true;
+                    mode = threads;
+                } catch (const std::exception& e) {
+                    if (started) error = e.what();   // part of a file is out: the caller starts again with Android's encoder
+                }
             }
+            if (!written && error.empty()) {
+                try {
+                    scamera_jpeg::encodeRgba(static_cast<const uint8_t*>(lock.pixels), int(info.width), int(info.height),
+                                             info.stride, quality, writer);
+                } catch (const std::exception& e) {
+                    error = e.what();
+                }
+            }
+            if (modeOut != nullptr && env->GetArrayLength(modeOut) > 0) env->SetIntArrayRegion(modeOut, 0, 1, &mode);
         }
     }
     env->DeleteLocalRef(chunk);

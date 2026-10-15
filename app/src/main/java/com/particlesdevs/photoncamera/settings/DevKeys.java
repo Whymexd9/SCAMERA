@@ -122,6 +122,7 @@ public final class DevKeys {
         k.add(n(post, "post_priority", null, Lang.t("Приоритет потока обработки (nice; пусто — не менять)", "Priority of the processing thread (nice; empty: unchanged)")));
         k.add(n(post, "gpu_low_priority", "1", Lang.t("Низкий приоритет GPU-контекста обработки (0 — обычный)", "Low priority of the processing GPU context (0: normal)")));
         k.add(s(post, "effmap_real", true, Lang.t("Карта числа кадров для шумоподавления — реальная (выкл — старая)", "Frame-count map for the denoise: the real one (off: the old one)")));
+        k.add(n(post, "jpeg_threads", null, Lang.t("Потоков кодирования JPEG (1 — один поток, прогрессивный; пусто — все ядра)", "Threads of the JPEG encode (1: one thread, progressive; empty: every core)")));
         k.add(sAuto(post, "rgba_upload", Lang.t("Загрузка RGB в GPU как RGBA (по умолчанию решает приложение)", "RGB uploaded to the GPU as RGBA (default: chosen by the app)")));
         // Xiaomi 17 Ultra
         k.add(n(xiaomi, "xiaomi_opmode", String.valueOf(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.STOCK_OPERATION_MODE), Lang.t("Режим работы логической сессии (36866 = стоковый 0x9002, 0 — обычный)", "Operation mode of the logical session (36866 = stock 0x9002, 0 regular)")));
