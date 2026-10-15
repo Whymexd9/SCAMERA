@@ -3338,6 +3338,10 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   white luminance, wheel -> OKLab), tools/check_colour_look.py on the GPU (defaults bit-exact in sRGB and P3; mono, filters,
   skin protection, band-limited mixer, grading zones, hue-lock modes, gamut compression near the boundary only, skin hue),
   SettingsMenuTest.colourRowsSayWhenTheyAct; both added to CI.
+- Added after (2026-10-15): «Для опытных › Калибровка основных цветов» - hue and saturation of the camera's red, green and
+  blue (pref_scam_hybrid_colour_cal_*), ColourLook.calibrationMatrix: each primary turned in OKLab hue (up to 0.5 rad) and
+  its chroma scaled, columns rescaled so white stays white; folded into the same per-shot matrix before the white-balance
+  rows (ColourLookTest.primariesCalibrationKeepsWhite).
 - Not done: the film LUT (.cube / Hald import, a sampler3D stage - needs a file import page and 3D textures in GLProg), the
-  primaries calibration, the skin protection of the AgX saturation above 1, and the live RAW viewfinder's preview of the
-  look (it renders with its own ArkCore defaults). Not seen on a phone.
+  skin protection of the AgX saturation above 1, and the live RAW viewfinder's preview of the look (it renders with its own
+  ArkCore defaults). Not seen on a phone.

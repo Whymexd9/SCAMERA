@@ -749,4 +749,15 @@
     <string name="prefs_colour_gamut_summary">Неон, светодиоды и другие очень насыщенные цвета сохраняют оттенок, а не обрезаются. Больше — сильнее; 0 — выкл.</string>
     <string name="prefs_colour_hue_lock_title">Удержание оттенка</string>
     <string name="prefs_colour_hue_lock_summary">%s. Может ли тоновая кривая сдвигать оттенки (яркий синий в фиолетовый, оранжевый в жёлтый). Полное — без сдвига; только синие — держатся лишь синие; выкл — как делает кривая.</string>
+    <!-- P134: primaries calibration -->
+    <string name="prefs_colour_calibration_screen_title">Калибровка основных цветов</string>
+    <string name="prefs_colour_calibration_screen_summary">Оттенок и насыщенность красного, зелёного и синего камеры</string>
+    <string name="prefs_colour_cal_hue_summary">Поворачивает этот основной цвет камеры и все цвета, в которых он есть, по цветовому кругу. 0 — как передаёт камера.</string>
+    <string name="prefs_colour_cal_sat_summary">Больше — этот основной цвет сочнее, меньше — блёклее; 0 — как передаёт камера. Белый остаётся белым.</string>
+    <string name="prefs_colour_cal_red_hue_title">Красный: оттенок</string>
+    <string name="prefs_colour_cal_red_sat_title">Красный: насыщенность</string>
+    <string name="prefs_colour_cal_green_hue_title">Зелёный: оттенок</string>
+    <string name="prefs_colour_cal_green_sat_title">Зелёный: насыщенность</string>
+    <string name="prefs_colour_cal_blue_hue_title">Синий: оттенок</string>
+    <string name="prefs_colour_cal_blue_sat_title">Синий: насыщенность</string>
 </resources>

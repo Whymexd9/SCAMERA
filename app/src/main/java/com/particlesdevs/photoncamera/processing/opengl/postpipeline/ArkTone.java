@@ -145,6 +145,11 @@ public final class ArkTone {
         c.mono = Math.max(0, java.util.Arrays.asList(ColourLook.MONO).indexOf(PreferenceKeys.hybridString("colour_mono", "off")));
         c.hueLock = Math.max(0, java.util.Arrays.asList(ColourLook.HUE_LOCK).indexOf(PreferenceKeys.hybridString("colour_hue_lock", "full")));
         c.gamut = PreferenceKeys.hybridValue("colour_gamut", 0f);
+        final String[] primaries = {"red", "green", "blue"};
+        for (int p = 0; p < 3; p++) {
+            c.calHue[p] = PreferenceKeys.hybridValue("colour_cal_" + primaries[p] + "_hue", 0f);
+            c.calSat[p] = PreferenceKeys.hybridValue("colour_cal_" + primaries[p] + "_sat", 0f);
+        }
         return c;
     }
 

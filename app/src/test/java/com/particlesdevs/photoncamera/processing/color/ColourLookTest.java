@@ -85,6 +85,27 @@ public class ColourLookTest {
         assertFalse(c.shaderNeutral());
     }
 
+    @Test public void primariesCalibrationKeepsWhite() {
+        ColourLook c = new ColourLook();
+        assertNull(c.calibrationMatrix());
+        c.calHue[0] = 100f;
+        float[] m = c.calibrationMatrix();
+        float[] w = white(m);
+        assertArrayEquals("white stays white", new float[]{1f, 1f, 1f}, w, 1e-4f);
+        assertTrue("red turned towards yellow: green in the red column " + java.util.Arrays.toString(m), m[3] > 0.02f);
+        assertFalse(c.matrixNeutral(6504f));
+        assertArrayEquals("the white matrix is the calibration alone", m, c.whiteMatrix(6504f), 1e-6f);
+        c.calHue[0] = 0f;
+        c.calSat[2] = 100f;
+        m = c.calibrationMatrix();
+        assertArrayEquals(new float[]{1f, 1f, 1f}, white(m), 1e-4f);
+        // white stays white, so the richer blue shows in the column of blue: less green (and red) mixed into it
+        assertTrue("richer blue: a blue input carries less green " + java.util.Arrays.toString(m), m[5] < -0.02f);
+        c.warmth = 40f;
+        float[] both = c.whiteMatrix(6504f);
+        assertTrue("warmth still acts with the calibration", white(both)[0] > white(both)[2]);
+    }
+
     @Test public void uniformsAreScaledAndClamped() {
         ColourLook c = new ColourLook();
         c.mix[5 * 3 + 1] = -100f;

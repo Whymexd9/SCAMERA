@@ -39,6 +39,8 @@ public final class ColourLook {
     public float gradeBalance, gradeBlend = 50f;
     public int mono, hueLock;
     public float gamut;
+    /** Primaries calibration: hue and saturation of the red, green and blue primaries, -100..100. */
+    public final float[] calHue = new float[3], calSat = new float[3];
 
     /** No shader stage to run: every G1 / G2 value at its default. */
     public boolean shaderNeutral() {
@@ -55,7 +57,52 @@ public final class ColourLook {
 
     /** No matrix to apply (warmth, tint and the scene light all off, or no scene CCT for the scene light). */
     public boolean matrixNeutral(float sceneCct) {
-        return warmth == 0f && tint == 0f && sceneLightK(sceneCct)[0] == 0f && sceneLightK(sceneCct)[1] == 0f;
+        return warmth == 0f && tint == 0f && sceneLightK(sceneCct)[0] == 0f && sceneLightK(sceneCct)[1] == 0f && calibrationNeutral();
+    }
+
+    private boolean calibrationNeutral() {
+        for (int i = 0; i < 3; i++) if (calHue[i] != 0f || calSat[i] != 0f) return false;
+        return true;
+    }
+
+    /**
+     * Primaries calibration (row-major, linear sRGB): each primary's OKLab hue turned by up to 0.5 rad and its chroma scaled by
+     * 1 + 0.6 * s, the columns rescaled so white stays white (M * diag(M^-1 * 1)). Null = identity.
+     */
+    public float[] calibrationMatrix() {
+        if (calibrationNeutral()) return null;
+        double[] m = new double[9];
+        for (int p = 0; p < 3; p++) {
+            double[] lab = oklab(p == 0 ? 1 : 0, p == 1 ? 1 : 0, p == 2 ? 1 : 0);
+            double c = Math.hypot(lab[1], lab[2]) * (1 + 0.6 * clamp(calSat[p] / 100f, -1f, 1f));
+            double h = Math.atan2(lab[2], lab[1]) + 0.5 * clamp(calHue[p] / 100f, -1f, 1f);
+            double[] rgb = linearOf(lab[0], c * Math.cos(h), c * Math.sin(h));
+            for (int r = 0; r < 3; r++) m[r * 3 + p] = rgb[r];
+        }
+        double[] k = mulVec(invert(m), new double[]{1, 1, 1});
+        float[] out = new float[9];
+        for (int r = 0; r < 3; r++)
+            for (int p = 0; p < 3; p++) out[r * 3 + p] = (float) (m[r * 3 + p] * k[p]);
+        return out;
+    }
+
+    private static double[] oklab(double r, double g, double b) {
+        double l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+        double m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+        double s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+        return new double[]{0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+                0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s};
+    }
+
+    private static double[] linearOf(double L, double a, double b) {
+        double l = L + 0.3963377774 * a + 0.2158037573 * b, m = L - 0.1055613458 * a - 0.0638541728 * b, s = L - 0.0894841775 * a - 1.2914855480 * b;
+        l = l * l * l; m = m * m * m; s = s * s * s;
+        return new double[]{4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+                -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s};
+    }
+
+    private static double[] mulVec(double[] m, double[] v) {
+        return new double[]{m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], m[6] * v[0] + m[7] * v[1] + m[8] * v[2]};
     }
 
     // ---------------------------------------------------------------- uniforms of ark/combine.glsl (COLOUR_LOOK 1)
@@ -136,10 +183,13 @@ public final class ColourLook {
      * The matrix (row-major, linear sRGB in and out) of the white-balance rows: the image adapted (CAT16) from D65 to the
      * target white - the daylight white of the warmth (0.5 mired per step: -100..100 is 9600..4900 K), moved off the locus
      * by the tint (Duv -0.00015 per step, positive = magenta), and partly towards the scene's light when it is kept (warm:
-     * from 5000 K, full at 2700 K; cool: from 7000 K, full at 12000 K). White keeps its luminance. Null = identity.
+     * from 5000 K, full at 2700 K; cool: from 7000 K, full at 12000 K); after the primaries calibration
+     * ({@link #calibrationMatrix}). White keeps its luminance. Null = identity.
      */
     public float[] whiteMatrix(float sceneCct) {
         if (matrixNeutral(sceneCct)) return null;
+        float[] cal = calibrationMatrix();
+        if (warmth == 0f && tint == 0f && sceneLightK(sceneCct)[0] == 0f && sceneLightK(sceneCct)[1] == 0f) return cal;
         double[] ref = lms(daylightXy(REF_T));
         double t = 1e6 / (1e6 / REF_T + 0.5 * clamp(warmth, -100f, 100f));
         double[] uv = xyToUv(daylightXy(t));
@@ -162,7 +212,7 @@ public final class ColourLook {
         double y = 0.2126 * (b[0] + b[1] + b[2]) + 0.7152 * (b[3] + b[4] + b[5]) + 0.0722 * (b[6] + b[7] + b[8]);
         float[] out = new float[9];
         for (int i = 0; i < 9; i++) out[i] = (float) (b[i] / y);
-        return out;
+        return cal == null ? out : mul(out, cal);   // the primaries first, then the white balance
     }
 
     /** Share kept of the scene light: {warm, cool}, 0 when off or the CCT is unknown. */

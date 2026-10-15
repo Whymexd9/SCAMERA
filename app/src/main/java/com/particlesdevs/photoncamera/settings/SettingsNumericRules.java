@@ -194,7 +194,7 @@ public final class SettingsNumericRules {
         // P134 «Цвет»: the colour look (processing.color.ColourLook)
         if (key.startsWith(HYBRID + "colour_")) {
             String k = key.substring(HYBRID.length() + 7);
-            if (k.startsWith("mix_") || k.equals("warmth") || k.equals("tint") || k.equals("skin_hue") || k.equals("grade_balance"))
+            if (k.startsWith("mix_") || k.startsWith("cal_") || k.equals("warmth") || k.equals("tint") || k.equals("skin_hue") || k.equals("grade_balance"))
                 return new double[]{-100,100,1};
             if (k.startsWith("vib_")) return new double[]{-1,1,0};
             if (k.endsWith("_hue")) return new double[]{0,360,1};

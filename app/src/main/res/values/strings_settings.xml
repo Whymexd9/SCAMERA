@@ -749,4 +749,15 @@
     <string name="prefs_colour_gamut_summary">Neon, LED and other very saturated colours keep their hue instead of clipping. Higher: stronger; 0: off.</string>
     <string name="prefs_colour_hue_lock_title">Hue lock</string>
     <string name="prefs_colour_hue_lock_summary">%s. Whether the tone curve may shift hues (bright blues turning purple, oranges turning yellow). Full: no shift; blues only: only the blues are held; off: as the curve does.</string>
+    <!-- P134: primaries calibration -->
+    <string name="prefs_colour_calibration_screen_title">Primaries calibration</string>
+    <string name="prefs_colour_calibration_screen_summary">Hue and saturation of the camera\'s red, green and blue</string>
+    <string name="prefs_colour_cal_hue_summary">Turns this primary of the camera, and every colour made of it, round the colour wheel. 0: as the camera renders it.</string>
+    <string name="prefs_colour_cal_sat_summary">Higher: this primary richer; lower: duller; 0: as the camera renders it. White stays white.</string>
+    <string name="prefs_colour_cal_red_hue_title">Red: hue</string>
+    <string name="prefs_colour_cal_red_sat_title">Red: saturation</string>
+    <string name="prefs_colour_cal_green_hue_title">Green: hue</string>
+    <string name="prefs_colour_cal_green_sat_title">Green: saturation</string>
+    <string name="prefs_colour_cal_blue_hue_title">Blue: hue</string>
+    <string name="prefs_colour_cal_blue_sat_title">Blue: saturation</string>
 </resources>
