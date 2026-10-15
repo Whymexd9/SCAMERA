@@ -3533,6 +3533,28 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
 - Before starting: the FULLRES route is ChatGPT's uncommitted work in CaptureController / VivoSdkFullRes* - build on it only
   once it is committed; the open onError 4 of FULLRES + 2x (HANDOFF §6) first.
 
+### P149 - «Уровень чёрного» / «Уровень белого» of a module checked and brought up to date (owner, 2026-10-16, screenshot of the two rows on the sensor page, both -1 with the thumb at the left end: «перепроверить работоспособность этих настроек, обнови их под нынешние реалии»)
+- Today: Parameters @SensorConfig blackLevelOverride (float -1..8192) / whiteLevelOverride (int -1..65535), per module slot
+  (ModuleSensorSettings pref_sensorconfig_<slot>_*); applied in Parameters after RawLevels.forFrame as absolute values in the
+  stream's units, then Allocator.binning multiplies them by 4, widenToSamples keeps them; an active black override turns
+  the data floor («Уровень чёрного по кадру», refineBlackLevel) off. The slider runs over the whole range: one step of
+  the thumb is hundreds of levels, -1 sits at the left end and reads as a number, not as «Авто».
+- Check every consumer gets the override, on each path, by a log line and a test: post pipeline / SCAM HDR (ScamProcessor,
+  ProcessorBase), Hybrid worker (ScamHybridBurst: the levels sent with the burst), Quad / Tetra mosaic (ScamMosaic,
+  HexQuadBurst), DNG tags (DngCreator, SaverImplementation), live RAW viewfinder (LiveRawFrame / LiveRawRenderer /
+  LiveRawMeter), ScamDiagnostics' levels, FULLRES and ISZ shots (another stream depth on the same lens), binned and
+  10 / 12 / 14-bit streams (P127 RawLevels, X300 Ultra DCG 14 bit of P140c). The override must act once (not twice through
+  binning or widening) and in the same units everywhere.
+- Bring up to date: the row shows the camera's own value for the active module (e.g. «Авто: 64 / 1023, 10 бит», from the
+  last shot's levelSources or the characteristics), «Авто» instead of -1, the range of the current stream's depth (not
+  0..65535) with a fine slider and the typed value (PrecisionEditor as in P144); a value given at one bit depth follows the
+  stream's depth (stored with its depth, rescaled like widenToSamples) so a FULLRES / ISZ / DCG shot of the same module is
+  not wrong. Keep the related rows together (dynamic white level, «Уровень чёрного по кадру») and say in the description
+  that the override turns the data floor off. Configs (P141) carry the values with their depth.
+- Checks: unit tests for each path (override set -> the consumer's levels), the binning / widening cases, SettingsMenuTest
+  for the row (Авто, range, typed value), check_ui_language / check_settings_model; on the X200 Ultra a shot with a black
+  override and the «RAW levels: ... black override» line in the log; DNG tags read back.
+
 ### P141 - config files: saving, applying, moving between phones (owner, 2026-10-15: «Ещё добавь в план работы перепроверка работы с конфиг файлами. Проверь чтобы всё правильно сохранялось и применялось. Так же проверь чтобы на разных смартфонах с разными айди модулей конфиг применялся нормально и автоматически подставлялся/адаптировался под другое количество модулей, при этом сделай так чтобы модули не дублировались и не появлялись лишние»)
 - Audit «Сохранить / Восстановить» (BackupPreferences, RestorePreference, ModuleProfiles, module_profile_v2_* files, the
   sensor-config keys pref_sensorconfig_<id>_*, vendor tags, shade tiles, the colour settings): everything saved is restored
