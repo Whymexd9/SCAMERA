@@ -3346,6 +3346,40 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   skin protection of the AgX saturation above 1, and the live RAW viewfinder's preview of the look (it renders with its own
   ArkCore defaults). Not seen on a phone.
 
+### P140b - fixes after the 30816/30817 builds (owner, 2026-10-15: screenshots + OPPO Find X7 Ultra log, «Исправь»)
+- OPPO Find X7 Ultra (PHY110), build 30817: black viewfinder, «Камера не отвечает» / «Сбой камеры (код 4)» on every module. The log:
+  with the package spoof ON (5 cameras listed) the first request after onConfigured failed in submitRequestList with
+  «Function not implemented (-38)» -> onError 4, three restarts; with the spoof OFF (12:26:32, 3 cameras) the session ran.
+  Cause: P109l's typed AttributionSource spoof (ICameraService java Proxy + SpoofCameraContext.getAttributionSource with the
+  foreign package) replaced the raw Binder package rewrite of build 30799 on Android 12+. Fix: the typed path only for the vivo
+  Qualcomm experiment (CameraPackageSpoof.typedAttribution(): dev switch vivo_qcom_spoof), the owner's spoof uses the raw
+  Binder rewrite again; an installed typed proxy is taken out when the experiment is off. Test
+  CameraAttributionSpoofTest.ownersSpoofKeepsTheRealAttribution. Not seen on the OPPO yet (not connected).
+- «Новый vendor tag»: the stock AlertDialog became a bottom sheet like the other editors (P137), the key type is an explicit
+  choice CaptureRequest / Session (the X300 Ultra's forceSensorMode is a Session key) instead of the checkbox, the value is
+  checked against its type before saving, «Удалить» on an existing key (SettingsMenuTest.vendorTagEditorIsASheetWithTheSessionType).
+- «Цвет» and «Интерфейс» had the same palette icon: «Интерфейс» gets settings_ic_ui (a window with an accent switch, from
+  tools/make_ui_icons.py); SettingsMenuTest.rootPagesHaveTheirOwnIcons.
+- Option sheets scroll in landscape (P137 fix, f68ec29 / 0554978).
+
+### P141 - config files: saving, applying, moving between phones (owner, 2026-10-15: «Ещё добавь в план работы перепроверка работы с конфиг файлами. Проверь чтобы всё правильно сохранялось и применялось. Так же проверь чтобы на разных смартфонах с разными айди модулей конфиг применялся нормально и автоматически подставлялся/адаптировался под другое количество модулей, при этом сделай так чтобы модули не дублировались и не появлялись лишние»)
+- Audit «Сохранить / Восстановить» (BackupPreferences, RestorePreference, ModuleProfiles, module_profile_v2_* files, the
+  sensor-config keys pref_sensorconfig_<id>_*, vendor tags, shade tiles, the colour settings): everything saved is restored
+  and acts after a restart; nothing restored that the app no longer has.
+- Another phone: modules are matched by what they are (lens: facing, focal length / zoom, camera kind - BackupLensMatchTest is
+  the start), not by slot or camera id; a config from a phone with more modules drops the extras, one with fewer leaves the
+  phone's own; ISZ / sensor-mode presets and vendor keys only land on a camera of the same model (Build.DEVICE + id), else
+  they are skipped and said so.
+- No duplicates and no extra modules after a restore (ModuleDuplicates, ModuleRegistry capacity, the vivo QCOM / PD2454 ISZ
+  offers must not run again for a restored module).
+- Tests with configs of the X200 Ultra, X300 Ultra, OPPO X7U and a Pixel restored onto each other.
+
+### P142 - separate exposure and focus points (owner, 2026-10-15: «добавь раздельную экспозицию и фокусировку. Сделай это как опцию. Т.е. при тапе появляется кольцо фокусировки и вокруг него квадрат экспозиции, я должен иметь возможность переносить куда мне нужно раздельно квадрат экспозиции и круг фокусировки»)
+- An option (off by default): a tap shows the focus ring with the exposure square around it; each can be dragged on its own
+  (AF regions follow the ring, AE regions the square), both in the viewfinder's coordinates mapped to the sensor crop of the
+  current module / zoom (control/SubjectMapping). Long press or a reset tap joins them again; the existing AE/AF lock stays.
+- Exposure metering of the square also for the SHDR plan (the N exposure is taken from the preview AE).
+
 
 ## P109l - Snapdragon client attribution and VCF RAW boundary
 

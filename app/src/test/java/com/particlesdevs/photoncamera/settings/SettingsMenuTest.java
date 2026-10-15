@@ -687,6 +687,59 @@ public class SettingsMenuTest {
     }
 
     /** P139: in every kind of row the title (medium, larger) and its description (smaller, dimmer) look different. */
+    /** The vendor tag editor is a sheet like the other editors, and the key type Session (X300 Ultra forceSensorMode) is a choice. */
+    @Test public void vendorTagEditorIsASheetWithTheSessionType(){
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();
+            String sensor="t_vendor";
+            TunableKeyManager.saveKeys(activity,sensor,new java.util.ArrayList<>());
+            final int[] done={0};
+            var d=com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyDialog.show(activity,sensor,-1,()->done[0]++);
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertNotNull(d);assertNull("no stock dialog",org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog());
+            android.view.View root=d.getWindow().getDecorView();
+            assertNotNull(root.findViewWithTag("vendor_type_CaptureRequest"));
+            android.view.View session=root.findViewWithTag("vendor_type_Session");assertNotNull(session);
+            assertTrue("a new key goes into every request",root.findViewWithTag("vendor_type_CaptureRequest").isSelected());
+            session.performClick();assertTrue(session.isSelected());
+            ((android.widget.EditText)root.findViewWithTag("vendor_name")).setText("vivo.control.forceSensorMode");
+            ((android.widget.EditText)root.findViewWithTag("vendor_value")).setText("six");
+            root.findViewWithTag("sheet_save").performClick();
+            assertTrue("a value that does not fit Integer keeps the sheet",d.isShowing());assertEquals(0,done[0]);
+            ((android.widget.EditText)root.findViewWithTag("vendor_value")).setText("6");
+            root.findViewWithTag("sheet_save").performClick();
+            assertFalse(d.isShowing());assertEquals(1,done[0]);
+            java.util.List<com.particlesdevs.photoncamera.api.VendorTagUtils.TunableKey> keys=TunableKeyManager.loadKeys(activity,sensor);
+            assertEquals(1,keys.size());
+            assertEquals(com.particlesdevs.photoncamera.api.VendorTagUtils.TunableKey.TYPE_SESSION,keys.get(0).type);
+            assertEquals("Integer",keys.get(0).valueType);assertEquals("6",keys.get(0).value);
+            // editing keeps the type and offers deleting
+            d=com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableKeyDialog.show(activity,sensor,0,()->done[0]++);
+            root=d.getWindow().getDecorView();
+            assertTrue(root.findViewWithTag("vendor_type_Session").isSelected());
+            root.findViewWithTag("vendor_delete").performClick();
+            assertTrue(TunableKeyManager.loadKeys(activity,sensor).isEmpty());
+        }
+    }
+    /** Every page of the settings root has its own icon («Цвет» and «Интерфейс» both showed the palette, 2026-10-15). */
+    @Test public void rootPagesHaveTheirOwnIcons() throws Exception{
+        String xml;
+        try(java.io.InputStream in=new java.io.FileInputStream("src/main/res/xml/preferences.xml")){xml=new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);}
+        java.util.Map<String,String> byIcon=new java.util.HashMap<>();
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("(?m)^  <PreferenceScreen [^>]*>").matcher(xml);
+        int pages=0;
+        while(m.find()){
+            String tag=m.group();
+            java.util.regex.Matcher key=java.util.regex.Pattern.compile("android:key=\"([^\"]+)\"").matcher(tag);
+            java.util.regex.Matcher icon=java.util.regex.Pattern.compile("android:icon=\"([^\"]+)\"").matcher(tag);
+            assertTrue(tag,key.find());assertTrue("root page without an icon: "+key.group(1),icon.find());
+            String before=byIcon.put(icon.group(1),key.group(1));
+            assertNull(icon.group(1)+" on both "+before+" and "+key.group(1),before);
+            pages++;
+        }
+        assertTrue("root pages found: "+pages,pages>=7);
+        assertEquals("@drawable/settings_ic_ui",byIcon.entrySet().stream().filter(e->e.getValue().equals("interface_settings_screen")).findFirst().get().getKey());
+    }
     @Test public void titlesStandOutFromTheirDescriptions(){
         PreferenceScreen screen=inflate();
         // a switch, a list, a slider and a page row

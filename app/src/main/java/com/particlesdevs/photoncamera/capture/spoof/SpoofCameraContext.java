@@ -30,7 +30,8 @@ final class SpoofCameraContext extends ContextWrapper {
 
     @Override
     public AttributionSource getAttributionSource() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return super.getAttributionSource();
+        // only for the typed experiment: with the owner's spoof a foreign package in the source failed every request (-38)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || !CameraPackageSpoof.typedAttribution()) return super.getAttributionSource();
         // CameraManager on Android 16 sends this source instead of getOpPackageName().
         return new AttributionSource.Builder(super.getAttributionSource())
                 .setPackageName(packageName).build();

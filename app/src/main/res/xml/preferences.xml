@@ -530,7 +530,7 @@
       </PreferenceScreen>
     </PreferenceScreen>
   </PreferenceScreen>
-  <PreferenceScreen android:key="interface_settings_screen" android:title="@string/prefs_interface_settings_screen_title" android:summary="@string/prefs_interface_settings_screen_summary" android:icon="@drawable/settings_ic_palette" app:iconSpaceReserved="false">
+  <PreferenceScreen android:key="interface_settings_screen" android:title="@string/prefs_interface_settings_screen_title" android:summary="@string/prefs_interface_settings_screen_summary" android:icon="@drawable/settings_ic_ui" app:iconSpaceReserved="false">
     <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference android:icon="@drawable/settings_ic_camera" android:title="@string/hide_gallery_icon" android:key="@string/pref_hide_gallery_icon_key" android:summary="@string/hide_gallery_icon_desc" android:defaultValue="@bool/pref_hide_gallery_icon_default" />
     <ListPreference android:icon="@drawable/settings_ic_palette" android:entries="@array/theme_entries" android:title="@string/prefs_theme_gallery_title" android:key="@string/pref_theme_key" android:summary="@string/theme_desc" android:defaultValue="@string/pref_theme_default_value" android:entryValues="@array/theme_entryValues" />
     <Preference android:icon="@drawable/settings_ic_palette" android:title="@string/prefs_theme_accent_title" android:key="@string/pref_theme_accent_key" android:summary="@string/prefs_theme_accent_summary" />

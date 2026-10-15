@@ -5,7 +5,6 @@ import android.os.IBinder;
 import android.os.IInterface;
 import android.os.Parcel;
 import android.os.RemoteException;
-import android.os.Build;
 import android.os.Parcelable;
 import android.util.Log;
 
@@ -81,9 +80,16 @@ public final class BinderCameraPackageSpoof {
             }
             serviceField.setAccessible(true);
             Object cameraService = serviceField.get(global);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (Proxy.isProxyClass(cameraService.getClass())
-                        && Proxy.getInvocationHandler(cameraService) instanceof TypedCameraService) {
+            boolean typedInstalled = Proxy.isProxyClass(cameraService.getClass())
+                    && Proxy.getInvocationHandler(cameraService) instanceof TypedCameraService;
+            if (typedInstalled && !CameraPackageSpoof.typedAttribution()) {
+                // the experiment was switched off: the generated proxy again, then the raw Binder rewrite below
+                cameraService = ((TypedCameraService) Proxy.getInvocationHandler(cameraService)).original;
+                serviceField.set(global, cameraService);
+                typedInstalled = false;
+            }
+            if (CameraPackageSpoof.typedAttribution()) {
+                if (typedInstalled) {
                     ((TypedCameraService) Proxy.getInvocationHandler(cameraService)).setPackages(nativePackage, targetPackage);
                 } else {
                     Class<?> iface = Class.forName("android.hardware.ICameraService");

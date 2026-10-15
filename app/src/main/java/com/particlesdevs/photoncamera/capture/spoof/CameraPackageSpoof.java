@@ -67,6 +67,22 @@ public final class CameraPackageSpoof {
         }
     }
 
+    /** Tests only: forces {@link #typedAttribution()} (null: the device and the dev switch decide). */
+    static volatile Boolean typedForTest;
+
+    /**
+     * The typed AttributionSource rewrite (ICameraService proxy + the context's AttributionSource) is the vivo Qualcomm
+     * experiment only (dev switch vivo_qcom_spoof, P109l). With the owner's spoof it broke every camera: the OPPO Find X7 Ultra
+     * (2026-10-15 log) opened all five cameras, then every request failed with -38 and onError 4; the raw Binder package
+     * rewrite of build 30799 ran there.
+     */
+    static boolean typedAttribution() {
+        Boolean forced = typedForTest;
+        if (forced != null) return forced;
+        return android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+                && com.particlesdevs.photoncamera.capture.VivoQcomModes.spoofPackage() != null;
+    }
+
     public static synchronized void apply(Context context, CameraManager cameraManager) {
         try {
             if (!initialized) {

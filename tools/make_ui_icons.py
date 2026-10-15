@@ -346,6 +346,11 @@ icon('settings_ic_noise', 'noise: a waveform with an accent peak') \
 icon('settings_ic_palette', 'palette: a palette with a thumb hole and paint dots') \
     .b(circle(12, 12, 9.6)).h(circle(15.6, 15.8, 2.2), circle(7.8, 10, 2.2), circle(11.6, 6.6, 2.2), circle(16, 9.2, 2.2), circle(7.8, 15, 2.0)) \
     .a(circle(7.8, 10, 1.3), circle(16, 9.2, 1.3)).s(circle(11.6, 6.6, 1.3), circle(7.8, 15, 1.2))
+icon('settings_ic_ui', 'interface: a window with title-bar dots, an accent switch and rows') \
+    .b(rrect(2.4, 3.4, 19.2, 17.2, 3.4)).h(rrect(4.6, 8.4, 14.8, 10.0, 1.6)) \
+    .a(circle(5.9, 5.9, 0.95)).h(circle(8.7, 5.9, 0.95), circle(11.5, 5.9, 0.95)) \
+    .a(rrect(6.2, 10.0, 6.8, 3.4, 1.7)).s(circle(11.3, 11.7, 1.15)) \
+    .s(capsule(14.8, 11.7, 17.6, 11.7, 1.4), capsule(6.6, 15.8, 17.6, 15.8, 1.4))
 icon('settings_ic_ratio', 'ratio: a frame with an accent bar of the image').b(rrect(2.4, 5.6, 19.2, 12.8, 3.2)) \
     .h(rrect(4.9, 8.1, 14.2, 7.8, 1.6)).a(rrect(7, 10.3, 10, 3.4, 1.2))
 def _reset():

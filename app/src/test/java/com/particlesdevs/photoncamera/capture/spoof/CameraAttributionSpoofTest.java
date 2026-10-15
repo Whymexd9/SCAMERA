@@ -51,12 +51,32 @@ public class CameraAttributionSpoofTest {
 
     @Test
     public void contextAttributionFollowsPackageSwitchAndKeepsUid() {
-        SpoofCameraContext context = new SpoofCameraContext(RuntimeEnvironment.getApplication(), "com.android.camera");
+        CameraPackageSpoof.typedForTest = true; // the vivo Qualcomm experiment (dev switch vivo_qcom_spoof)
+        try {
+            SpoofCameraContext context = new SpoofCameraContext(RuntimeEnvironment.getApplication(), "com.android.camera");
+            AttributionSource original = RuntimeEnvironment.getApplication().getAttributionSource();
+            assertEquals("com.android.camera", context.getAttributionSource().getPackageName());
+            assertEquals(original.getUid(), context.getAttributionSource().getUid());
+            context.setPackageName("org.codeaurora.snapcam");
+            assertEquals("org.codeaurora.snapcam", context.getAttributionSource().getPackageName());
+            assertEquals(original.getUid(), context.getAttributionSource().getUid());
+        } finally {
+            CameraPackageSpoof.typedForTest = null;
+        }
+    }
+
+    /**
+     * The owner's spoof keeps the app's real attribution: a foreign package in it failed every request of the OPPO Find X7
+     * Ultra (-38, onError 4, 2026-10-15); the package names are rewritten at the raw Binder boundary as in build 30799.
+     */
+    @Test
+    public void ownersSpoofKeepsTheRealAttribution() {
+        CameraPackageSpoof.typedForTest = null;
+        assertFalse("off on a non-vivo phone", CameraPackageSpoof.typedAttribution());
+        SpoofCameraContext context = new SpoofCameraContext(RuntimeEnvironment.getApplication(), "com.ss.android.ugc.aweme");
         AttributionSource original = RuntimeEnvironment.getApplication().getAttributionSource();
-        assertEquals("com.android.camera", context.getAttributionSource().getPackageName());
-        assertEquals(original.getUid(), context.getAttributionSource().getUid());
-        context.setPackageName("org.codeaurora.snapcam");
-        assertEquals("org.codeaurora.snapcam", context.getAttributionSource().getPackageName());
+        assertEquals("the package still spoofed for getOpPackageName", "com.ss.android.ugc.aweme", context.getOpPackageName());
+        assertEquals(original.getPackageName(), context.getAttributionSource().getPackageName());
         assertEquals(original.getUid(), context.getAttributionSource().getUid());
     }
 }
