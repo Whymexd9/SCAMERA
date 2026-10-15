@@ -3490,6 +3490,18 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   segments (IccEmbed.jpegInserting(out, exif, icc)); no rewrite. Without the block (it failed) the old rewrite runs.
   JpegExifStreamTest: the tags equal the rewrite's, one EXIF segment, the profile kept.
 
+### P148 - «Камера и сенсоры» simpler for an ordinary user (owner, 2026-10-16: «Займись меню камеры и сенсоры, упрости его максимально чтобы обычному человеку было проще им пользоваться, при этом функционал никак не урезай. Можешь перестроить/переделать его как хочешь, главное чтобы оно соответствовало общему стилю нашего приложения»)
+- The page pref_sensor_config_submenu (SettingsFragment.generateSensorConfigPreferences, ModuleSettingsFragment, the module
+  chips and the per-slot sensor overrides, vendor tags, TunableKeyPreference): every setting stays reachable, nothing
+  removed.
+- Plan before building: map every row of the page today (rows, what each changes, who needs it); then a structure for an
+  ordinary user - the module first (a chip row as now), then a few plain groups (Изображение / Экспозиция / Фокус /
+  Стабилизация / Для опытных), the vendor tags and raw sensor values under «Для опытных» (folded), plain titles and
+  one-line descriptions, the reason a row is off (SettingsAvailability) as elsewhere; the cards, icons and sheets of
+  SettingsStyle (P132 / P136 / P137).
+- Checks: every key of today still on the page and bound (SettingsMenuTest: allPagesAndRegisteredTunablesAreReachableAndBind,
+  the sensor page tests), renders for a look (build/reports/module-concept), check_ui_language / check_settings_model.
+
 ### P146 - FULLRES as its own settings group (owner, 2026-10-16: «Так же сделай отдельные настройки для 50мп как для отдельного модуля, сделай отдельную группу "FULLRES" где я смогу полностью всё так же настраивать как для остальных. Пункт пускай будет доступен только на смартфонах где у нас будет рабочий фулрез»)
 - A FULLRES profile beside the module profiles (ModuleProfiles / module_profile_v2_<slot>): every per-module setting
   (capture, SHDR / Hybrid, ARK tone and curves, denoise, sharpening, output) stored for the 50 MP FULLRES shot of a lens and
