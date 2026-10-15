@@ -39,8 +39,8 @@ import java.util.Locale;
 import java.util.function.Consumer;
 
 /**
- * P143: the config menu under the shade's config button - save over the active config, save as a new one, load a saved one,
- * import a file, reset to the defaults. A card in the shade's style that unfolds from the button (scale, fade, a short drop,
+ * P143: the config menu under the shade's config button - save over the active config, save as a new one, load or delete a
+ * saved one, delete the active one's file, import a file, reset to the defaults. A card in the shade's style that unfolds from the button (scale, fade, a short drop,
  * the rows following one after another) and folds back; «Сохранить как…», a saved config and the reset open their inline
  * step in place (one at a time, the card resizes smoothly). Loading, importing and the reset restart the camera.
  */
@@ -57,6 +57,8 @@ final class ConfigMenu {
         void importFile();
         /** Back to the defaults (the app restarts), returns the message. */
         String reset();
+        /** Deletes a saved config's file (the settings stay), true when it is gone. */
+        boolean delete(String fileName);
     }
 
     static final int MAX_LIST_DP = 196;
@@ -71,6 +73,13 @@ final class ConfigMenu {
     private final int accent;
     private boolean closing;
     @Nullable private View openPanel;
+    /** The header's name and the rows that belong to the active config (gone when its file is deleted). */
+    private TextView title;
+    private final java.util.List<View> activeRows = new java.util.ArrayList<>();
+    @Nullable private LinearLayout list;
+    @Nullable private View listSection, listScroll;
+    /** Every saved config's row and its inline panel, by file name. */
+    private final java.util.Map<String, View[]> items = new java.util.HashMap<>();
 
     private ConfigMenu(ConfigChip anchor, Actions actions, Consumer<CharSequence> message, Runnable onClosed) {
         this.c = anchor.getContext();
@@ -162,7 +171,7 @@ final class ConfigMenu {
         ShadeStyle.label(eyebrow, accent);
         eyebrow.setPadding(dp(10), 0, dp(10), dp(6));
         card.addView(eyebrow);
-        TextView title = text(ConfigState.label(c), 17, ShadeStyle.TEXT);
+        title = text(ConfigState.label(c), 17, ShadeStyle.TEXT);
         title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         title.setSingleLine(true);
         title.setEllipsize(TextUtils.TruncateAt.MIDDLE);
@@ -171,10 +180,17 @@ final class ConfigMenu {
         card.addView(title);
         divider();
 
+        final String[] files = actions.saved();
+        // the active config's own file in the folder (an imported file from elsewhere has none to delete)
+        String activeFile = null;
+        if (active != null && files != null)
+            for (String f : files) if (ConfigState.base(f).equals(active)) activeFile = f;
         if (active != null) {
-            card.addView(row(R.drawable.settings_ic_save, Lang.t(c, "Сохранить", "Save"),
+            View save = row(R.drawable.settings_ic_save, Lang.t(c, "Сохранить", "Save"),
                     Lang.t(c, "Перезаписать «" + active + "»", "Overwrite «" + active + "»"), accent, "config_save",
-                    () -> done(actions.save(active))));
+                    () -> done(actions.save(active)));
+            card.addView(save);
+            activeRows.add(save);
         }
         final LinearLayout saveAs = panel("config_save_panel");
         EditText field = new EditText(c);
@@ -201,8 +217,21 @@ final class ConfigMenu {
         card.addView(row(R.drawable.settings_ic_plus, Lang.t(c, "Сохранить как…", "Save as…"), null, accent, "config_save_as",
                 () -> toggle(saveAs, field)));
         card.addView(saveAs);
+        if (activeFile != null) {
+            final String file = activeFile;
+            LinearLayout ask = panel("config_delete_panel");
+            ask.addView(text(Lang.t(c, "Файл «" + file + "» удалится из Download/SCAMERA/XML. Настройки останутся как есть",
+                    "«" + file + "» is deleted from Download/SCAMERA/XML. The settings stay as they are"), 13, ShadeStyle.MUTED));
+            ask.addView(button(Lang.t(c, "Удалить «" + active + "»", "Delete «" + active + "»"), ShadeStyle.INK, SettingsStyle.WARN,
+                    "config_delete_confirm", () -> deleteFile(file)), buttonParams());
+            View delete = row(R.drawable.settings_ic_delete, Lang.t(c, "Удалить конфиг", "Delete the config"),
+                    Lang.t(c, "Файл «" + file + "»", "File «" + file + "»"), SettingsStyle.WARN, "config_delete", () -> toggle(ask, null));
+            card.addView(delete);
+            card.addView(ask);
+            activeRows.add(delete);
+            activeRows.add(ask);
+        }
 
-        String[] files = actions.saved();
         if (files != null && files.length > 0) {
             divider();
             TextView section = new TextView(c);
@@ -210,23 +239,53 @@ final class ConfigMenu {
             ShadeStyle.label(section, accent);
             section.setPadding(dp(10), dp(4), dp(10), dp(4));
             card.addView(section);
-            LinearLayout list = new LinearLayout(c);
+            listSection = section;
+            list = new LinearLayout(c);
             list.setOrientation(LinearLayout.VERTICAL);
             list.setLayoutTransition(transition());
             for (int i = files.length - 1; i >= 0; i--) { // newest (dated names) first
                 final String file = files[i];
                 final String base = ConfigState.base(file);
                 boolean current = base.equals(active);
-                LinearLayout confirm = panel("config_load_panel_" + base);
-                TextView warn = text(Lang.t(c, "Текущие настройки заменятся, камера перезапустится",
-                        "The current settings are replaced, the camera restarts"), 13, ShadeStyle.MUTED);
-                confirm.addView(warn);
-                confirm.addView(button(Lang.t(c, "Загрузить «" + base + "»", "Load «" + base + "»"), ShadeStyle.INK, accent,
-                        "config_load_confirm", () -> done(actions.load(file))), buttonParams());
-                list.addView(row(current ? R.drawable.settings_ic_config : R.drawable.settings_ic_list, base,
+                LinearLayout panel = panel("config_load_panel_" + base);
+                panel.setLayoutTransition(transition());
+                // step 1: load or delete; step 2 (after «Удалить»): delete for sure or back
+                LinearLayout choose = new LinearLayout(c);
+                choose.setOrientation(LinearLayout.VERTICAL);
+                choose.setTag("config_choose_" + base);
+                choose.addView(text(Lang.t(c, "Загрузить: текущие настройки заменятся, камера перезапустится",
+                        "Load: the current settings are replaced, the camera restarts"), 13, ShadeStyle.MUTED));
+                LinearLayout sure = new LinearLayout(c);
+                sure.setOrientation(LinearLayout.VERTICAL);
+                sure.setTag("config_sure_" + base);
+                sure.setVisibility(View.GONE);
+                sure.addView(text(Lang.t(c, "Удалить «" + file + "»? Файл пропадёт из Download/SCAMERA/XML",
+                        "Delete «" + file + "»? The file goes from Download/SCAMERA/XML"), 13, ShadeStyle.MUTED));
+                choose.addView(pair(
+                        button(Lang.t(c, "Загрузить", "Load"), ShadeStyle.INK, accent, "config_load_confirm", () -> done(actions.load(file))),
+                        outlined(Lang.t(c, "Удалить", "Delete"), SettingsStyle.WARN, "config_item_delete", () -> {
+                            choose.setVisibility(View.GONE);
+                            sure.setVisibility(View.VISIBLE);
+                        })), buttonParams());
+                sure.addView(pair(
+                        outlined(Lang.t(c, "Отмена", "Cancel"), ShadeStyle.TEXT, "config_item_keep", () -> {
+                            sure.setVisibility(View.GONE);
+                            choose.setVisibility(View.VISIBLE);
+                        }),
+                        button(Lang.t(c, "Удалить", "Delete"), ShadeStyle.INK, SettingsStyle.WARN, "config_item_delete_confirm",
+                                () -> deleteFile(file))), buttonParams());
+                panel.addView(choose);
+                panel.addView(sure);
+                View item = row(current ? R.drawable.settings_ic_config : R.drawable.settings_ic_list, base,
                         current ? Lang.t(c, "Сейчас", "Now") : null, current ? accent : ShadeStyle.MUTED, "config_item_" + base,
-                        () -> toggle(confirm, null)));
-                list.addView(confirm);
+                        () -> {
+                            sure.setVisibility(View.GONE);
+                            choose.setVisibility(View.VISIBLE);
+                            toggle(panel, null);
+                        });
+                list.addView(item);
+                list.addView(panel);
+                items.put(file, new View[]{item, panel});
             }
             ScrollView scroll = new ScrollView(c) {
                 @Override protected void onMeasure(int w, int h) {
@@ -238,6 +297,7 @@ final class ConfigMenu {
             scroll.setTag("config_list");
             scroll.addView(list);
             card.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
+            listScroll = scroll;
         }
         divider();
         card.addView(row(R.drawable.settings_ic_restore, Lang.t(c, "Импорт из файла…", "Import a file…"),
@@ -256,6 +316,37 @@ final class ConfigMenu {
     private void done(String result) {
         if (result != null) message.accept(result);
         close();
+    }
+
+    /**
+     * Deletes a saved config's file; the menu stays open: its row folds out of the list, and when it was the active config the
+     * settings stay as they are under «Без конфига» (no «Сохранить» / «Удалить конфиг» for it any more).
+     */
+    private void deleteFile(String file) {
+        String base = ConfigState.base(file);
+        if (!actions.delete(file)) {
+            message.accept(Lang.t(c, "Не удалось удалить «" + file + "»", "Could not delete «" + file + "»"));
+            return;
+        }
+        View[] views = items.remove(file);
+        if (views != null && list != null) {
+            if (openPanel == views[1]) openPanel = null;
+            list.removeView(views[1]);
+            list.removeView(views[0]);
+        }
+        if (list != null && list.getChildCount() == 0) {
+            if (listSection != null) listSection.setVisibility(View.GONE);
+            if (listScroll != null) listScroll.setVisibility(View.GONE);
+        }
+        if (base.equals(ConfigState.active(c))) {
+            ConfigState.detach(c);
+            for (View v : activeRows) {
+                if (openPanel == v) openPanel = null;
+                v.setVisibility(View.GONE);
+            }
+            title.setText(ConfigState.label(c));
+        }
+        message.accept(Lang.t(c, "Удалён «" + file + "»", "Deleted «" + file + "»"));
     }
 
     /** One inline step at a time: the open one folds, this one unfolds (the layout transition animates both). */
@@ -322,6 +413,24 @@ final class ConfigMenu {
         b.setTag(tag);
         b.setOnClickListener(v -> click.run());
         return b;
+    }
+
+    /** A secondary button: a coloured label in a thin frame of that colour. */
+    private TextView outlined(CharSequence label, int color, String tag, Runnable click) {
+        TextView b = button(label, color, 0, tag, click);
+        b.setBackground(ShadeStyle.pressable(c, ShadeStyle.tint(color, .08f), (color & 0x00FFFFFF) | 0x66000000, 14));
+        return b;
+    }
+
+    /** Two buttons side by side, 8dp apart. */
+    private LinearLayout pair(View left, View right) {
+        LinearLayout p = new LinearLayout(c);
+        p.setOrientation(LinearLayout.HORIZONTAL);
+        p.addView(left, new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(0, -2, 1f);
+        rp.setMarginStart(dp(8));
+        p.addView(right, rp);
+        return p;
     }
 
     private LinearLayout.LayoutParams buttonParams() {

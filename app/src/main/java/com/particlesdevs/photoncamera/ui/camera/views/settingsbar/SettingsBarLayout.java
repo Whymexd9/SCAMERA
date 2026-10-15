@@ -423,6 +423,10 @@ public class SettingsBarLayout extends LinearLayout {
                 return ok ? c.getString(R.string.app_will_restart)
                         : com.particlesdevs.photoncamera.util.Lang.t(c, "Сброс не удался", "The reset failed");
             }
+
+            @Override public boolean delete(String fileName) {
+                return com.particlesdevs.photoncamera.util.ConfigFolder.delete(c, fileName);
+            }
         };
     }
 

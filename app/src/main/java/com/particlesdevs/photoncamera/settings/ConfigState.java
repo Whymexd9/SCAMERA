@@ -14,6 +14,8 @@ import com.particlesdevs.photoncamera.util.Lang;
  */
 public final class ConfigState {
     static final String PREFS = "scam_config_state", KEY_ACTIVE = "active";
+    /** The settings came from a config whose file was deleted: «Без конфига», not the defaults. */
+    static final String KEY_DETACHED = "detached";
 
     private ConfigState() {}
 
@@ -28,21 +30,28 @@ public final class ConfigState {
         return name == null || name.trim().isEmpty() ? null : name;
     }
 
-    /** What the shade shows: the active config, or «Стандартный» for the defaults / own settings. */
+    /** What the shade shows: the active config, «Без конфига» after its file was deleted, «Стандартный» otherwise. */
     public static String label(Context c) {
         String name = active(c);
-        return name != null ? name : Lang.t(c, "Стандартный", "Default");
+        if (name != null) return name;
+        return prefs(c).getBoolean(KEY_DETACHED, false) ? Lang.t(c, "Без конфига", "No config") : Lang.t(c, "Стандартный", "Default");
     }
 
     /** A config was saved under / imported from {@code fileName} (a path, a document id or a bare name). */
     public static void set(Context c, @Nullable String fileName) {
         String name = base(fileName);
         if (name.isEmpty()) clear(c);
-        else prefs(c).edit().putString(KEY_ACTIVE, name).commit();
+        else prefs(c).edit().putString(KEY_ACTIVE, name).remove(KEY_DETACHED).commit();
     }
 
+    /** The defaults (the reset). */
     public static void clear(Context c) {
-        prefs(c).edit().remove(KEY_ACTIVE).commit();
+        prefs(c).edit().remove(KEY_ACTIVE).remove(KEY_DETACHED).commit();
+    }
+
+    /** The active config's file was deleted: the settings stay, they belong to no config now. */
+    public static void detach(Context c) {
+        prefs(c).edit().remove(KEY_ACTIVE).putBoolean(KEY_DETACHED, true).commit();
     }
 
     /** «Download/SCAMERA/XML/Night_1.xml» -> «Night_1»; «primary:Download/x.json» -> «x». */

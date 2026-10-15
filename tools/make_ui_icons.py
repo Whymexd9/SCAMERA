@@ -300,6 +300,9 @@ icon('settings_ic_copy', 'copy: a card in front of another').s(rrect(8.2, 2.8, 1
     .h(rrect(5.4, 10.8, 7.8, 7.8, 1.4)).a(circle(9.3, 14.7, 1.7))
 icon('settings_ic_corner', 'corner: a rounded frame with the corner in the accent') \
     .b(rrect(3, 3, 18, 18, 7)).h(rrect(5.9, 5.9, 12.2, 12.2, 4.3)).a(arc(10, 10, 5.9, 2.6, 180, 270, caps=False))
+icon('settings_ic_delete', 'delete: a bin with slits, an accent lid and handle') \
+    .b(poly((6.2, 8.2), (17.8, 8.2), (16.7, 20.2), (7.3, 20.2))).h(capsule(10.0, 11.4, 10.2, 17.2, 1.5), capsule(14.0, 11.4, 13.8, 17.2, 1.5)) \
+    .a(capsule(4.6, 5.9, 19.4, 5.9, 2.3), rrect(9.5, 2.6, 5.0, 2.8, 1.0))
 icon('settings_ic_diag', 'diagnostics: axes and an accent chart line') \
     .b(capsule(4, 3.8, 4, 20, 2.6), capsule(4, 20, 20.4, 20, 2.6)).a(polyline([(7.6, 15.6), (11, 10.6), (14, 13.4), (19.2, 6.6)], 2.6))
 icon('settings_ic_edit', 'edit: a pencil with an accent cap') \

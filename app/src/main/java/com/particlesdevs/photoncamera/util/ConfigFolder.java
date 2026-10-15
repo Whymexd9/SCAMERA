@@ -112,6 +112,28 @@ public final class ConfigFolder {
         return new FileInputStream(file);
     }
 
+    /**
+     * P143: deletes a config of the folder (MediaStore: one this app saved; the File API for the rest), true when it is gone.
+     * Only {@link #isConfig} names inside the folder: a name with a path never leaves it.
+     */
+    public static boolean delete(Context context, String name) {
+        if (!isConfig(name) || name.contains("/") || name.contains("\\")) return false;
+        boolean gone = false;
+        if (mediaStore()) {
+            Uri uri = find(context, name);
+            if (uri != null) {
+                try {
+                    gone = context.getContentResolver().delete(uri, null, null) > 0;
+                } catch (RuntimeException e) {
+                    Log.w(TAG, "MediaStore delete failed: " + e);
+                }
+            }
+        }
+        File file = new File(legacyDir(), name);
+        if (file.isFile()) gone = file.delete() || gone;
+        return gone;
+    }
+
     /** Document id of the folder for ACTION_OPEN_DOCUMENT's EXTRA_INITIAL_URI. */
     public static Uri initialPickerUri() {
         return DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:" + RELATIVE);

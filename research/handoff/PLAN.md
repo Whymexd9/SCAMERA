@@ -3389,7 +3389,12 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   «Сбросить настройки» (inline confirm, warn colour; the app restarts). Motion: the card unfolds from the button (scale .9,
   fade, a 10dp drop, 240ms, PathInterpolator 0.2/0/0/1), its rows follow 18ms apart, inline steps open one at a time with a
   layout transition, the chevron turns, the button dips on press; it folds back on a tap outside / on the button.
-- Tests ConfigMenuTest (5 + a render to build/reports/config-menu). Not seen on a phone yet.
+- Deleting (owner: «Добавь также кнопку удаления текущего конфига»; «Сохраненные тоже дай возможность удалять»): «Удалить
+  конфиг» (bin icon settings_ic_delete, warn) deletes the active config's file after an inline confirm - shown only when that
+  file is in Download/SCAMERA/XML; the settings stay, the button says «Без конфига» (ConfigState.detach). A saved config's
+  inline step has «Загрузить» and «Удалить»; «Удалить» turns into «Отмена / Удалить», and the deleted row folds out of the
+  list (the menu stays open). ConfigFolder.delete: MediaStore for the app's files, the File API otherwise, names only.
+- Tests ConfigMenuTest (8 + a render to build/reports/config-menu). Not seen on a phone yet.
 
 ### P141 - config files: saving, applying, moving between phones (owner, 2026-10-15: «Ещё добавь в план работы перепроверка работы с конфиг файлами. Проверь чтобы всё правильно сохранялось и применялось. Так же проверь чтобы на разных смартфонах с разными айди модулей конфиг применялся нормально и автоматически подставлялся/адаптировался под другое количество модулей, при этом сделай так чтобы модули не дублировались и не появлялись лишние»)
 - Audit «Сохранить / Восстановить» (BackupPreferences, RestorePreference, ModuleProfiles, module_profile_v2_* files, the

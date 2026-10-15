@@ -95,6 +95,7 @@ public class ConfigMenuTest {
             @Override public String load(String fileName) { calls.add("load " + fileName); return "loaded"; }
             @Override public void importFile() { calls.add("import"); }
             @Override public String reset() { calls.add("reset"); return "reset"; }
+            @Override public boolean delete(String fileName) { calls.add("delete " + fileName); return true; }
         });
         CoordinatorLayout coordinator = new CoordinatorLayout(context);
         CoordinatorLayout.LayoutParams lp = new CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -227,6 +228,63 @@ public class ConfigMenuTest {
         assertTrue(messages.contains("reset"));
     }
 
+    /** «Удалить конфиг» deletes the active config's file: the settings stay, the button says «Без конфига». */
+    @Test
+    public void deletingTheActiveConfigKeepsTheSettings() {
+        ConfigState.set(activity, "Night_City.xml");
+        sheet.refreshConfigName();
+        openMenu();
+        View ask = menuView("config_delete_panel");
+        assertEquals(View.GONE, ask.getVisibility());
+        menuView("config_delete").performClick();
+        assertEquals(View.VISIBLE, ask.getVisibility());
+        assertTrue("nothing deleted before the confirm", calls.isEmpty());
+        menuView("config_delete_confirm").performClick();
+        idle();
+        assertEquals(List.of("delete Night_City.xml"), calls);
+        assertNull("no active config any more", ConfigState.active(activity));
+        assertEquals("No config", sheet.configChip().getName().toString());
+        assertTrue(messages.contains("Deleted «Night_City.xml»"));
+        assertTrue("the menu stays for more", sheet.configMenu() != null && sheet.configMenu().isShowing());
+        assertEquals(View.GONE, menuView("config_save").getVisibility());
+        assertEquals(View.GONE, menuView("config_delete").getVisibility());
+        assertNull("its row left the list", sheet.configMenu().content().findViewWithTag("config_item_Night_City"));
+        assertEquals("No config", ((TextView) menuView("config_menu_name")).getText().toString());
+        // a config imported from elsewhere has no file here: nothing to delete
+        sheet.configMenu().dismissNow();
+        ConfigState.set(activity, "From_another_phone.xml");
+        openMenu();
+        assertNull(sheet.configMenu().content().findViewWithTag("config_delete"));
+    }
+
+    /** A saved config: «Удалить» asks again, «Отмена» goes back, the confirm deletes it and its row folds away. */
+    @Test
+    public void savedConfigsCanBeDeleted() {
+        openMenu();
+        menuView("config_item_Day").performClick();
+        View choose = menuView("config_choose_Day"), sure = menuView("config_sure_Day");
+        assertEquals(View.VISIBLE, choose.getVisibility());
+        assertEquals(View.GONE, sure.getVisibility());
+        choose.findViewWithTag("config_item_delete").performClick();
+        assertEquals(View.GONE, choose.getVisibility());
+        assertEquals(View.VISIBLE, sure.getVisibility());
+        sure.findViewWithTag("config_item_keep").performClick();
+        assertEquals("back to load / delete", View.VISIBLE, choose.getVisibility());
+        choose.findViewWithTag("config_item_delete").performClick();
+        sure.findViewWithTag("config_item_delete_confirm").performClick();
+        idle();
+        assertEquals(List.of("delete Day.xml"), calls);
+        assertNull(sheet.configMenu().content().findViewWithTag("config_item_Day"));
+        assertNotNull("the others stay", menuView("config_item_Night_City"));
+        assertEquals("not the active one: the button keeps its name", "Default", sheet.configChip().getName().toString());
+        // the last one gone: the section folds too
+        menuView("config_item_Night_City").performClick();
+        menuView("config_choose_Night_City").findViewWithTag("config_item_delete").performClick();
+        menuView("config_sure_Night_City").findViewWithTag("config_item_delete_confirm").performClick();
+        idle();
+        assertEquals(View.GONE, menuView("config_list").getVisibility());
+    }
+
     @Test
     public void aTapOnTheButtonAgainClosesAndHidingTheShadeDropsTheMenu() {
         openMenu();
@@ -255,6 +313,12 @@ public class ConfigMenuTest {
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
         content.layout(0, 0, content.getMeasuredWidth(), content.getMeasuredHeight());
         save(content, new java.io.File(dir, "menu.png"), content.getMeasuredWidth(), content.getMeasuredHeight());
+        menuView("config_item_Day").performClick();
+        idle();
+        content.measure(View.MeasureSpec.makeMeasureSpec(content.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        content.layout(0, 0, content.getMeasuredWidth(), content.getMeasuredHeight());
+        save(content, new java.io.File(dir, "menu-saved.png"), content.getMeasuredWidth(), content.getMeasuredHeight());
         assertTrue(new java.io.File(dir, "menu.png").length() > 0);
     }
 
@@ -279,5 +343,13 @@ public class ConfigMenuTest {
         ConfigState.clear(activity);
         assertNull(ConfigState.active(activity));
         assertEquals("Default", ConfigState.label(activity));
+        ConfigState.set(activity, "Day.xml");
+        ConfigState.detach(activity);
+        assertNull(ConfigState.active(activity));
+        assertEquals("its file deleted: no config, not the defaults", "No config", ConfigState.label(activity));
+        ConfigState.set(activity, "Night.xml");
+        assertEquals("Night", ConfigState.label(activity));
+        ConfigState.clear(activity);
+        assertEquals("the reset: the defaults", "Default", ConfigState.label(activity));
     }
 }
