@@ -1,6 +1,6 @@
 ---
 name: scamera
-description: Работа над SCAMERA — Android-камерой (форк PhotonCamera) с многокадровой склейкой RAW Hybrid, SCAM HDR на NPU, модулями сенсоров vivo/OPPO/Xiaomi. Применять при любой правке, сборке, проверке или разборе логов в этом репозитории (Java/C++/GLSL, Camera2, воркер склейки, шейдеры, CI, тесты на телефонах владельца), а также при вопросах про устройства, camera ID, сенсоры и формат RAW.
+description: Работа над SCAMERA — Android-камерой (форк PhotonCamera) с многокадровой склейкой RAW SHDR (бывш. Hybrid; SCAM HDR вырезан в P129), нейроремозаиком на NPU, модулями сенсоров vivo/OPPO/Xiaomi. Применять при любой правке, сборке, проверке или разборе логов в этом репозитории (Java/C++/GLSL, Camera2, воркер склейки, шейдеры, CI, тесты на телефонах владельца), а также при вопросах про устройства, camera ID, сенсоры и формат RAW.
 ---
 
 # SCAMERA
@@ -47,7 +47,7 @@ description: Работа над SCAMERA — Android-камерой (форк Ph
 | Язык | Строк | Что |
 |---|---|---|
 | Java | ~80.7 тыс. (393 файла main, 114 тестов) | всё приложение |
-| C++ | ~22 тыс. (`.cpp` 3.7 тыс., `.h` 18.5 тыс.) | воркер склейки, SCAM HDR/NPU, AE, кодеки |
+| C++ | ~22 тыс. (`.cpp` 3.7 тыс., `.h` 18.5 тыс.) | воркер склейки, нейроремозаик на NPU, кодеки |
 | GLSL | ~6.3 тыс. (88 файлов в ассетах) + шейдеры строками в `.h` | обработка на GPU |
 
 Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, NDK 27.2.12479018, CMake 3.22.1.
@@ -65,14 +65,16 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 Путь кадра:
 1. `CaptureController`: сессия Camera2, RAW ImageReader, ZSL-кольцо + брекет (N из кольца до нажатия, L/S/ES после).
 2. `ImageSaver` → `DefaultSaver` → `processing/processor/ScamProcessor`.
-3. `ScamHybridBurst.process` (Hybrid) или `ScamBurst.process` (SCAM HDR) → `ScamNeuralClient` → воркер
-   `scam-neural-worker` (отдельный процесс, `WorkerSpawn` fork/exec, данные через memfd `fd:3/4`, `--scam-capture`).
-4. Воркер: выравнивание, склейка на GPU (Sabre + отбраковка + Bento + Shasta, Mochi, нативные мозаики Quad/Tetra),
-   либо NPU-модели SCAM HDR (QNN HTP V79). Результат — float RGB обратно в приложение.
+3. (ISZ Quad/Tetra на SM8750 с «Нейроремозаиком»: `ScamMosaic.prepareForShdr` — NPU-модель склеивает N кадров) →
+   `ScamHybridBurst.process` (SHDR, единственная склейка с P129) → `ScamNeuralClient` → воркер `scam-neural-worker`
+   (отдельный процесс, `WorkerSpawn` fork/exec, данные через memfd `fd:3/4`, `--scam-capture`).
+4. Воркер: выравнивание, склейка на GPU (ядро склейки = Sabre + отбраковка + кадры светов = Bento + кадры теней = Shasta,
+   фотометрическая склейка = Mochi, нативные мозаики Quad/Tetra). Результат — float RGB обратно в приложение. Ветки SCAM HDR
+   в воркере (`MappedScamBurst`, `scam::reconstruct`) и в `CaptureController` ещё в коде — шаг 3b P129.
 5. `PostPipeline` (тон ARK, шумодав, света, резкость) → `RunHDRGainMap` → `PhotoOutput.save` (JPEG/HEIC/WebP/AVIF/DNG).
 
 Нативные модули (`app/src/main/cpp/CMakeLists.txt`): `dngCreator`, `allocator` (+`worker-spawn.cpp`),
-`camera2native`, `scamAe` (`scam-aec-*`, AE vivo), `scamNeuralProbe`/`scamProbe` (диагностика), `scameraJpeg`
+`camera2native`, `scamNeuralProbe` (диагностика; `scamAe` и `scamProbe` убраны в P129), `scameraJpeg`
 (jpegli+Highway), `scameraAvif`, `lanczosDownscale`. Воркер `scam-neural-worker.cpp` — отдельный PIE-исполняемый
 файл (не JNI), собирается задачей `buildScamNeuralWorker` (на Windows не работает — собирать NDK clang вручную,
 см. HANDOFF §3). В APK: `assets/scam-neural/arm64-v8a/scam-neural-worker` + `lib/arm64-v8a/libscamera_worker.so`.
@@ -112,7 +114,7 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 Известные особенности:
 - X200U: теле объявляет ложный ISO [400,800] (в пробе 50–6400 — противоречие); `LENS_SHADING_APPLIED=true` не
   верить; DNG-матрицы общие — цвет от ISP CCM. P45 чёрный видоискатель после смены формата (watchdog, причина открыта).
-  SCAM HDR (NPU) работает только здесь и на 8 Elite. Стоковый профиль превью (~80 тегов vivo) — только PD2454.
+  Нейроремозаик (NPU) работает только на 8 Elite (SM8750). Стоковый профиль превью (~80 тегов vivo) — только PD2454.
 - X300U: после снимка пропадает стабилизация превью (P38/P54: `ForcedStabilization`, без flush, ждёт проверки);
   после flush теряются первые запросы (`FlushLossStats`).
 - X200 Pro: воркер падал SIGSEGV на компиляции шейдера (Mali, P26/P39); фронт не конфигурировался со стоковым
@@ -135,9 +137,10 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
   (режим задан модулем, сами не переключаем). Применение: `SensorConfigInjector`, `TunableKeyManager`,
   `VendorTagUtils.applyTunableKeys`.
 - BIN — контекстные бинарники QNN HTP V79, закреплены SHA256 в `ScamNeuralWorker.java`:
-  `FILES` (`tele576-v79.bin` + QNN .so), `SCAM_FILES` (`nice-main-forward-v79.bin` + CRE `libvivo_nice_cre.so` и
-  зависимости), `SCAM_TONE_FILES` (`nice-tone-*-v79.bin`), `HEX_FILES` (`hexquad-x1/x2-v79.bin`, HP9 HexQuad),
-  `QUAD_FILES` (`quad-x1` IMX06C, `quad-hp9-x1`, `quad-hp9-highdrc-x1`). `vsr*` не упаковываются.
+  `FILES` (`tele576-v79.bin` + QNN .so), `SCAM_FILES` (CRE `libvivo_nice_cre.so` и зависимости — выравнивание SHDR),
+  `HEX_FILES` (`hexquad-x1/x2-v79.bin`, HP9 HexQuad), `QUAD_FILES` (`quad-x1` IMX06C, `quad-hp9-x1`,
+  `quad-hp9-highdrc-x1`). Не упаковываются (только сверяются в бандле, `BUNDLE_ONLY`): `vsr*`, `nice-main-forward`,
+  `nice-tone-*` (модели SCAM HDR, P129).
 - Хранение: зашифровано (AES-256-GCM) в ветке `origin/neural-assets-v2`; ключ — секрет Actions
   `SCAMERA_NEURAL_ASSETS_KEY_V2` и локальный файл в `local-secrets/` (не читать). Запасные пути: артефакт
   `SCAMERA-neural-assets-v2`, секрет `SCAMERA_NEURAL_ASSETS_URL`. Распаковка `tools/ci_neural_assets.py` (группы
@@ -147,8 +150,7 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
   реконструкция полного 200 Мп не делается. Есть: HP9 теле 4× ISZ Tetra 4080×3072 → ремозаик в Bayer того же размера,
   нативная склейка Sabre на Tetra (P40, 10× у X200U), Sabre ×2 для ISZ 2× Quad (P56, 8192×6144). Для Tetra 4× ×2 — не
   сделано. Стоковый ремозаик HP9 (`libremosaiclib_s5khp3.so`, `EngineerRemosaicMode`) — только диагностика.
-- Статус: SCAM HDR без root работает (воркер в APK), TCE стока не подключён, ZSL-брекет 4N + L/S/ES проверен на
-  сенсоре X200U.
+- Статус: SHDR без root работает (воркер в APK); SCAM HDR вырезан (P129), его стоковый AE (Frida, `assets/scam-aec`) тоже.
 
 ## Сборка и проверка
 
