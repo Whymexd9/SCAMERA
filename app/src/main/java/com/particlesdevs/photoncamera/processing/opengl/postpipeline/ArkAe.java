@@ -98,8 +98,61 @@ public final class ArkAe {
         }, channels, width, height, s, iso, maxIso);
     }
 
+    /** Bins of the luma / max histograms (0x727f8: * 4095.99). */
+    public static final int BINS = 4096;
+
+    /**
+     * P145: the per-pixel part of smart_hdr - the maximum of the finite samples, the two weighted 4096-bin histograms (luma
+     * and max channel, scaled by the clip) and the weighted sums of luma and log luma. Collected on the CPU
+     * ({@link #stats(Rows, int, int, int, int)}) or by the compute shader ark/aestats ({@link #fromGpu}); {@link #finish} turns
+     * either into the exposure. The weights are whole numbers (metering 1, 2, 4, 10 or 0), so the histograms are counts and the
+     * total weight is the luma histogram's sum.
+     */
+    public static final class Stats {
+        public float gmax = -1000f;
+        public final double[] hy = new double[BINS], hm = new double[BINS];
+        public double tot, sumY, sumLog;
+    }
+
+    /**
+     * Stats from the compute shader's buffers: {@code maxKey} the order-preserving key of the largest finite sample (0 when
+     * none; key = bits | 0x80000000 for a positive float, ~bits for a negative one), the two histograms as counts, and
+     * {@code sums} one (sum of luma, sum of log luma) float pair per work group, added here in double.
+     */
+    public static Stats fromGpu(int maxKey, int[] hy, int[] hm, int[] sums) {
+        Stats st = new Stats();
+        // the CPU loop starts at -1000: a smaller maximum stays -1000 as there
+        if (maxKey != 0) st.gmax = Math.max(Float.intBitsToFloat(maxKey < 0 ? maxKey & 0x7fffffff : ~maxKey), -1000f);
+        double tot = 0;
+        for (int i = 0; i < BINS; i++) {
+            st.hy[i] = hy[i] & 0xffffffffL;
+            st.hm[i] = hm[i] & 0xffffffffL;
+            tot += st.hy[i];
+        }
+        st.tot = tot;
+        double y = 0, l = 0;
+        for (int i = 0; i + 1 < sums.length; i += 2) {
+            y += Float.intBitsToFloat(sums[i]);
+            l += Float.intBitsToFloat(sums[i + 1]);
+        }
+        st.sumY = y;
+        st.sumLog = l;
+        return st;
+    }
+
+    /** The order-preserving key of a finite float that {@link #fromGpu} decodes (as the shader builds it). */
+    static int maxKey(float f) {
+        int b = Float.floatToRawIntBits(f);
+        return b < 0 ? ~b : b | 0x80000000;
+    }
+
     /** ark_ae.smart_hdr on rows from any source (see the FloatBuffer variant). */
     public static Result smartHdr(Rows rows, int channels, int width, int height, Settings s, int iso, int maxIso) {
+        return finish(stats(rows, channels, width, height, s.metering), s, iso, maxIso);
+    }
+
+    /** The per-pixel part of smart_hdr on the CPU (two passes over the rows). */
+    public static Stats stats(Rows rows, int channels, int width, int height, int mode) {
         final int rowLen = width * channels;
         final float[] row = new float[rowLen];
         // 0x725a8 loop: maximum over all finite samples
@@ -113,11 +166,11 @@ public final class ArkAe {
                 }
             }
         }
-        final double clip = gmax > 1.05f ? Math.min(gmax, 4.0) : 1.0;                     // 0x72608-0x72634
-        final float invClip = (float) (1.0 / clip);
-        final int mode = s.metering;
+        final float invClip = invClip(gmax);
         final float halfW = width * 0.5f, halfH = height * 0.5f;
-        final double[] hy = new double[4096], hm = new double[4096];
+        final Stats st = new Stats();
+        st.gmax = gmax;
+        final double[] hy = st.hy, hm = st.hm;
         double tot = 0, sumY = 0, sumLog = 0;
         for (int y = 0; y < height; y++) {
             rows.get(y, row);
@@ -145,7 +198,28 @@ public final class ArkAe {
                 }
             }
         }
-        tot = Math.max(tot, 1);
+        st.tot = tot;
+        st.sumY = sumY;
+        st.sumLog = sumLog;
+        return st;
+    }
+
+    /** The data ceiling of smart_hdr: the maximum when above 1.05, at most 4, else 1. */
+    static double clip(float gmax) {
+        return gmax > 1.05f ? Math.min(gmax, 4.0) : 1.0;                                     // 0x72608-0x72634
+    }
+
+    /** 1 / clip as the histograms scale by it (a float, as the native code). */
+    public static float invClip(float gmax) {
+        return (float) (1.0 / clip(gmax));
+    }
+
+    /** The exposure, ceiling, fusion strengths and AgX parameters from the statistics (the rest of smart_hdr). */
+    public static Result finish(Stats st, Settings s, int iso, int maxIso) {
+        final float gmax = st.gmax;
+        final double clip = clip(gmax);
+        final double[] hy = st.hy, hm = st.hm;
+        final double tot = Math.max(st.tot, 1), sumY = st.sumY, sumLog = st.sumLog;
         Result r = new Result();
         r.gmax = gmax;
         r.clip = (float) clip;

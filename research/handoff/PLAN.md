@@ -3419,6 +3419,20 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   lists; 0..255 scaled), refuses fewer than two points. «Сохранить» (a free «Кривая_N» offered), «Загрузить» (the saved
   curves with a preview, a tap loads, the bin asks once more and deletes; «Из файла…» = the system picker, opened by
   SettingsFragment.curveImportLauncher in that folder).
+
+### P145 - processing from the CPU to the GPU (owner, 2026-10-16: «Какие из процессов обработки у нас всё ещё идут на ЦПУ?», then «Переноси всё что можно из этого списка на гпу»)
+The CPU audit (three readers over capture, worker and post pipeline) found on every default shot: CRE + tile LK alignment,
+RAW CA correction, the Bento mask and the effective-map / output passes in the worker; the frame copies (ZSL ring, arena,
+worker result); the ScamRgb half -> RGBA16F upload repack; ArkAe statistics (arkLow read back, 2 single-threaded passes);
+the single-threaded jpegli encode and the ExifInterface rewrite. By option: HEIC 10-bit RGB -> P010 in Java, AVIF (libaom),
+Ultra HDR GainMapComputer (2 Java passes), live-RAW viewfinder copies and Quad 2x2 binning, gallery DNG render.
+Each step moves with a check that the GPU gives the CPU's result; the CPU path stays as the fallback.
+- a. DONE: ArkAe statistics -> compute ark/aestats (ArkAeGpu): max key, two 4096-bin histograms (luma / max in one shared uint
+  per bin), per-group sums; 33 KB back instead of 25 MB; self-check of the total weight, else the old read-back.
+  ArkAe split into stats / finish (same code for both). tools/check_ark_ae_gpu.py (GPU vs a float32 copy of the Java loops:
+  max exact, <= 0.0015 % of the weight in a neighbour bin from fused multiply-adds), ArkAeTest.gpuStatisticsGiveTheSameExposure.
+- Not for the GPU: JPEG / AV1 entropy coding, the vendor CRE alignment (closed library), memory copies, EXIF, the cpu-single
+  fallback (it exists for a GPU that failed).
 - Checks: ToneCurveTest 5, SettingsMenuTest (groups, one at a time, graph + sliders + typed values, a render to
   build/reports/tone-curve), tools/check_tone_ops.py (GPU vs numpy: ACES, Uchimura, the straight and the S curve, max 1e-4);
   glslc for every TONE_OP variant. Not seen on a phone yet; the look vs ArkCam not compared on photos.

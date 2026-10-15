@@ -5,6 +5,7 @@ import org.junit.Test;
 import java.nio.FloatBuffer;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * ArkAe (Java port of the ArkCam Smart-HDR AE) against the Python reference research/hybrid5/ref/tone/ark_ae.py, which
@@ -75,5 +76,57 @@ public class ArkAeTest {
         em = ArkAe.exposures(r);
         assertEquals(8f, em[2], 0f);
         assertEquals(16f, em[3], 0f);
+    }
+
+    /**
+     * P145: the GPU statistics path (ArkAeGpu: the max key, two histograms of counts, per-group float sums) decodes into the
+     * same exposure as the CPU count, for every metering and with a highlight; the max key orders negatives and positives.
+     */
+    @Test
+    public void gpuStatisticsGiveTheSameExposure() {
+        for (int mode = 0; mode <= 2; mode++) {
+            for (boolean bento : new boolean[]{false, true}) {
+                FloatBuffer px = synth(1.0, bento);
+                ArkAe.Settings s = new ArkAe.Settings();
+                s.metering = mode;
+                ArkAe.Result cpu = ArkAe.smartHdr(px, 3, W, H, s, 400, 6400);
+                ArkAe.Stats st = ArkAe.stats((y, row) -> {
+                    FloatBuffer d = px.duplicate();
+                    d.position(y * W * 3);
+                    d.get(row, 0, W * 3);
+                }, 3, W, H, mode);
+                // as the shader leaves them: counts, and the sums split over a few groups in float
+                int[] hy = new int[ArkAe.BINS], hm = new int[ArkAe.BINS];
+                for (int i = 0; i < ArkAe.BINS; i++) {
+                    hy[i] = (int) st.hy[i];
+                    hm[i] = (int) st.hm[i];
+                }
+                int[] sums = {Float.floatToRawIntBits((float) (st.sumY * 0.25)), Float.floatToRawIntBits((float) (st.sumLog * 0.25)),
+                        Float.floatToRawIntBits((float) (st.sumY * 0.75)), Float.floatToRawIntBits((float) (st.sumLog * 0.75))};
+                ArkAe.Result gpu = ArkAe.finish(ArkAe.fromGpu(ArkAe.maxKey(st.gmax), hy, hm, sums), s, 400, 6400);
+                String c = "metering " + mode + (bento ? " bento" : "");
+                assertEquals(c, cpu.gmax, gpu.gmax, 0f);
+                assertEquals(c, cpu.clip, gpu.clip, 0f);
+                assertEquals(c, cpu.p10, gpu.p10, 0f);
+                assertEquals(c, cpu.p50, gpu.p50, 0f);
+                assertEquals(c, cpu.p98, gpu.p98, 0f);
+                assertEquals(c, cpu.p995, gpu.p995, 0f);
+                assertEquals(c, cpu.ovArea, gpu.ovArea, 0f);
+                assertEquals(c, cpu.ae, gpu.ae, cpu.ae * 1e-6f);
+                assertEquals(c, cpu.geo, gpu.geo, cpu.geo * 1e-6f);
+                assertEquals(c, cpu.effS, gpu.effS, 1e-5f);
+                assertEquals(c, cpu.effH, gpu.effH, 1e-5f);
+            }
+        }
+        // the key keeps the order of floats across the sign
+        float[] v = {-3.5f, -0.01f, -0f, 0f, 1e-6f, 0.5f, 1.05f, 3.99f, 65504f};
+        for (int i = 1; i < v.length; i++)
+            assertTrue(v[i] + " above " + v[i - 1], Integer.compareUnsigned(ArkAe.maxKey(v[i]), ArkAe.maxKey(v[i - 1])) >= 0);
+        for (float f : v) assertEquals(Math.max(f, -1000f), ArkAe.fromGpu(ArkAe.maxKey(f), new int[ArkAe.BINS], new int[ArkAe.BINS], new int[0]).gmax, 0f);
+        assertEquals("no finite sample", -1000f, ArkAe.fromGpu(0, new int[ArkAe.BINS], new int[ArkAe.BINS], new int[0]).gmax, 0f);
+        // the metering weight the GPU result is checked against
+        assertEquals(96.0 * 64, ArkAeGpu.totalWeight(96, 64, 0), 0);
+        assertEquals(ArkAe.stats((y, row) -> java.util.Arrays.fill(row, 0.2f), 3, 96, 64, 1).tot, ArkAeGpu.totalWeight(96, 64, 1), 0);
+        assertEquals(ArkAe.stats((y, row) -> java.util.Arrays.fill(row, 0.2f), 3, 96, 64, 2).tot, ArkAeGpu.totalWeight(96, 64, 2), 0);
     }
 }

@@ -25,6 +25,9 @@ import static android.opengl.GLES20.GL_NEAREST;
  * and auto exposure of the mod on it (ArkAe). The ceiling clip comes from the data (max of arkLow, at most 4), the
  * night factor from the ISO of the reference frame (a ZSL frame at the preview exposure, as the mod's preview ISO)
  * against SENSOR_MAX_ANALOG_SENSITIVITY. The image passes through unchanged.
+ * <p>
+ * P145: the statistics are counted on the GPU (ArkAeGpu, compute ark/aestats) and only the histograms come back; the
+ * read-back and the CPU count stay for the old model (post_ab), the diagnostics dump and a GPU result that fails its check.
  */
 public final class ArkStats extends Node {
     public ArkStats() { super("", "ArkStats"); }
@@ -179,6 +182,23 @@ public final class ArkStats extends Node {
             glProg.closed = true;
             st.low.BufferLoad();
             final boolean legacy = com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy();
+            int iso = pipeline.mParameters.iso, maxIso = maxAnalogIso();
+            ArkAe.Settings settings = ArkTone.settings();
+            settings.noiseS = pipeline.noiseS;
+            settings.noiseO = pipeline.noiseO;
+            settings.sat *= ArkTone.ccmSatComp(pipeline.mParameters);
+            ArkAe.Stats gpu = legacy || ScamDiagnostics.active() ? null : ArkAeGpu.stats(glProg, st.low, settings.metering);
+            glProg.closed = true;
+            if (gpu != null) {
+                final boolean early = earlySharpen != null && earlySharpen.runEarly(pipeline, WorkingTexture);
+                ArkAe.Result r = ArkAe.finish(gpu, settings, iso, maxIso);
+                st.ae = r;
+                pipeline.linearDisplayGain = r.ae;
+                Log.i("SCAM_PIPELINE", "ARK SMART_HDR_STAT " + r.describe() + " iso=" + iso + " maxIso=" + maxIso
+                        + " inScale=" + st.inScale + " low=" + lowSize.x + "x" + lowSize.y + " factor=" + st.factor
+                        + " ms=" + (System.currentTimeMillis() - started) + " stats=gpu" + (early ? " sharpen=early" : ""));
+                return;
+            }
             // W1.6: arkLow read back as the IEEE halves it holds (8 B/pixel: 25 MB at 2048x1536) and widened exactly on the
             // CPU, instead of the driver's conversion into a 50 MB float buffer. The diagnostics dump and the old model read
             // floats as before, and so does a driver whose native read type is not RGBA / HALF_FLOAT or whose float
@@ -209,11 +229,6 @@ public final class ArkStats extends Node {
             pixels.rewind();
             if (!half) ScamDiagnostics.buffer("02-ArkLow", pixels, lowSize.x, lowSize.y, 4, true);
             final boolean early = !legacy && earlySharpen != null && earlySharpen.runEarly(pipeline, WorkingTexture);
-            int iso = pipeline.mParameters.iso, maxIso = maxAnalogIso();
-            ArkAe.Settings settings = ArkTone.settings();
-            settings.noiseS = pipeline.noiseS;
-            settings.noiseO = pipeline.noiseO;
-            settings.sat *= ArkTone.ccmSatComp(pipeline.mParameters);
             ArkAe.Result r = half ? ArkAe.smartHdrHalf(pixels.asShortBuffer(), 4, lowSize.x, lowSize.y, settings, iso, maxIso)
                     : ArkAe.smartHdr(pixels.asFloatBuffer(), 4, lowSize.x, lowSize.y, settings, iso, maxIso);
             st.ae = r;
