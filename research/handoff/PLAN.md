@@ -3440,6 +3440,12 @@ Each step moves with a check that the GPU gives the CPU's result; the CPU path s
   normalisedMax, ScamProcessor takes the map as it is. At 1x bit for bit the CPU's map and range (GainMapComputerTest); a
   later resize / crop (2x grid, zoom, ISZ) filters the requantised bytes instead of the encoded ones (within 1/255, the
   range stays). tools/check_gainmap_gpu.py.
+- e. DONE (Ultra HDR on the 2x grid): the base was resized on the CPU after the pipeline (ScamPostDownscale Lanczos:
+  816 ms 50 MP -> 20 MP, 2650 ms 200 MP -> 20 MP in the X200 Ultra log of 2026-10-15) because the gain-map pass needed the
+  base at the grid size. Now HybridFinalResize runs with the gain-map pass too; the linear snapshot is resized on the GPU to
+  the same final size (final_resize LINEAR_IN 1, "area": no clamp, no sRGB) before its read-back, and RunHDRGainMap builds
+  the map for that size. The read-back shrinks (16 B a pixel: 800 MB -> 320 MB), and the 200 MP grid no longer exceeds the
+  2 GB snapshot limit (Ultra HDR fell back to SDR there). tools/check_linear_resize.py.
 - Not for the GPU: JPEG / AV1 entropy coding, the vendor CRE alignment (closed library), memory copies, EXIF, the cpu-single
   fallback (it exists for a GPU that failed).
 - Checks: ToneCurveTest 5, SettingsMenuTest (groups, one at a time, graph + sliders + typed values, a render to

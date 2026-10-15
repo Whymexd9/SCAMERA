@@ -34,6 +34,25 @@ public class HybridFinalResize extends Node {
     @Override
     public void Compile() {}
 
+    /**
+     * P145: {@code in} - linear light, values above 1 kept (the Ultra HDR linear snapshot) - resized to {@code target} on the
+     * GPU with the same shader (LINEAR_IN 1; "area": a box mean) into a new texture of its format; the caller closes it.
+     */
+    static GLTexture resized(com.particlesdevs.photoncamera.processing.opengl.GLProg prog, GLTexture in, Point target, String kernelName) {
+        if (target.x >= in.mSize.x || target.y >= in.mSize.y || target.x * 4 < in.mSize.x || target.y * 4 < in.mSize.y)
+            throw new IllegalStateException("resize " + in.mSize.x + "x" + in.mSize.y + " -> " + target.x + "x" + target.y + " out of range");
+        prog.setDefine("LINEAR_IN", 1);
+        prog.useAssetProgram("hybrid/final_resize", false);
+        prog.setTexture("InputBuffer", in);
+        prog.setVar("kernel", kernelIndex(kernelName));
+        prog.setVar("inSize", in.mSize.x, in.mSize.y);
+        prog.setVar("outSize", target.x, target.y);
+        GLTexture out = new GLTexture(target, in.mFormat, null, GL_LINEAR, GL_CLAMP_TO_EDGE);
+        prog.drawBlocks(out);
+        prog.closed = true;
+        return out;
+    }
+
     @Override
     public void Run() {
         GLTexture in = previousNode.WorkingTexture;

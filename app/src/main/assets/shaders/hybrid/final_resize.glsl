@@ -11,6 +11,9 @@ precision highp sampler2D;
 // declared, so above 2048 input px it snapped to 2- and 4-pixel steps (period-4 duplicate pixels in every 20 MP
 // JPEG). The centre is therefore split exactly with integer arithmetic into an integer base and a fraction in
 // [0, 1); every float below stays small (tap offsets, fraction, ratio).
+// LINEAR_IN 1 (P145, the Ultra HDR linear scene snapshot): the input is linear light already, values above 1 included - no
+// clamp, no sRGB decode / encode, the weighted mean as it is.
+#define LINEAR_IN 0
 uniform sampler2D InputBuffer;
 uniform int yOffset;
 uniform int kernel;
@@ -22,7 +25,11 @@ float sincf(float x) { float p = PI * x; return abs(x) < 1.0e-4 ? 1.0 : sin(p) /
 float lanczos(float x, float lobes) { return abs(x) < lobes ? sincf(x) * sincf(x / lobes) : 0.0; }
 vec3 toLinear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
 vec3 toDisplay(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+#if LINEAR_IN == 1
+vec3 fetchLin(ivec2 p) { return texelFetch(InputBuffer, p, 0).rgb; }
+#else
 vec3 fetchLin(ivec2 p) { return toLinear(clamp(texelFetch(InputBuffer, p, 0).rgb, 0.0, 1.0)); }
+#endif
 // Overlap of the input pixel [d - 0.5, d + 0.5] with the box [f - r, f + r] (all relative to the base pixel).
 float boxW(float d, float f, float r) { return clamp(min(d + 0.5, f + r) - max(d - 0.5, f - r), 0.0, 1.0); }
 void main() {
@@ -62,5 +69,9 @@ void main() {
             }
         }
     }
+#if LINEAR_IN == 1
+    Output = vec4(sum / max(wsum, 1.0e-6), 1.0);
+#else
     Output = vec4(toDisplay(clamp(sum / max(wsum, 1.0e-6), 0.0, 1.0)), 1.0);
+#endif
 }

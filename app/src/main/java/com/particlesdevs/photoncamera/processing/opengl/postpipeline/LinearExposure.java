@@ -19,7 +19,7 @@ public class LinearExposure extends Node {
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
         if (pipeline.captureDemosaic) {
-            pipeline.captureDemosaicLinear(previousNode.WorkingTexture);
+            pipeline.captureDemosaicLinear(previousNode.WorkingTexture, glProg);
         }
         WorkingTexture = previousNode.WorkingTexture;
         glProg.closed = true;

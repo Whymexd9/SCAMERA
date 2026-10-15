@@ -175,7 +175,9 @@ public class PostPipeline extends GLBasePipeline {
         cropSize = new Point(parameters.rawSize);
         finalSize = null;
         finalResized = false;
-        if (!mSettings.gainMapPass() && parameters.hybridFinalSize != null
+        // P145: with Ultra HDR too - the linear snapshot is taken at this size (captureDemosaicLinear) and the gain map is
+        // built for the resized base, instead of the base resized on the CPU (Lanczos: 0.8 s at 50 MP, 2.6 s at 200 MP)
+        if (parameters.hybridFinalSize != null
                 && parameters.hybridFinalSize.x < parameters.rawSize.x && parameters.hybridFinalSize.y < parameters.rawSize.y) {
             // The output image, the crop and the rotation work on the resized image (HybridFinalResize before Rotate).
             finalSize = new Point(parameters.hybridFinalSize);
@@ -252,7 +254,37 @@ public class PostPipeline extends GLBasePipeline {
 
     /** Called from LinearExposure.Run to keep the linear scene buffer. */
     public void captureDemosaicLinear(GLTexture tex) {
+        captureDemosaicLinear(tex, glint != null ? glint.glProgram : null);
+    }
+
+    /**
+     * The linear scene snapshot; P145: when the pipeline resizes to the hybrid's final size, the snapshot is that size too
+     * (the "area" box mean of HybridFinalResize on the GPU), so the gain map matches the base resized on the GPU and the
+     * read-back shrinks (16 B a pixel: 800 MB of the 50 MP grid -> 320 MB of 20 MP; the 200 MP grid fits under 2 GB).
+     */
+    public void captureDemosaicLinear(GLTexture full, com.particlesdevs.photoncamera.processing.opengl.GLProg prog) {
         if (mCaptured || demosaicLinear != null) return;
+        GLTexture reduced = null;
+        if (finalSize != null && (full.mSize.x != finalSize.x || full.mSize.y != finalSize.y)) {
+            if (prog == null) {
+                Log.e("PostPipeline", "Linear scene snapshot: no program to resize it; Ultra HDR will fall back to SDR");
+                return;
+            }
+            try {
+                reduced = HybridFinalResize.resized(prog, full, finalSize, "area");
+            } catch (RuntimeException e) {
+                Log.e("PostPipeline", "Linear scene snapshot resize failed (" + e + "); Ultra HDR will fall back to SDR");
+                return;
+            }
+        }
+        try {
+            snapshot(reduced != null ? reduced : full);
+        } finally {
+            if (reduced != null) reduced.close();
+        }
+    }
+
+    private void snapshot(GLTexture tex) {
         // FLOAT_16 textures are read back as GL_FLOAT (4 B/channel, RGBA),
         // i.e. 16 B/pixel: ~768 MB at 50 MP - above the Java heap growth
         // limit, so the snapshot is allocated in native memory instead
@@ -320,11 +352,13 @@ public class PostPipeline extends GLBasePipeline {
         }
         mParameters = parameters;
         mSettings = ScameraApp.getSettings();
-        workSize = new Point(mParameters.rawSize.x, mParameters.rawSize.y);
+        // P145: the snapshot and the base are at the hybrid's final size when the pipeline resized on the GPU (Run)
+        final Point base = finalSize != null ? new Point(finalSize) : new Point(mParameters.rawSize);
+        workSize = new Point(base.x, base.y);
         computeNoise(parameters);
         captureDemosaic = false;
-        Point rawSliced = parameters.rawSize;
-        cropSize = new Point(parameters.rawSize);
+        Point rawSliced = base;
+        cropSize = new Point(base);
         Point rotatedSize = getRotatedCoords(rawSliced);
         // The gain map must be pixel-aligned with the stored SDR base; any
         // size/orientation mismatch displaces the boost field from the scene.
@@ -397,7 +431,7 @@ public class PostPipeline extends GLBasePipeline {
             prog.setVar("rotate", rotationIndex());
             prog.setVar("mirror", parameters.mirror ? 1 : 0);
             prog.setVar("cropSize", cropSize);
-            prog.setVar("rawSize", mParameters.rawSize);
+            prog.setVar("rawSize", base);
             GLES30.glDisable(GLES30.GL_SCISSOR_TEST);
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, lTex.mBuffer);
             GLES30.glViewport(0, 0, rotatedSize.x, rotatedSize.y);
