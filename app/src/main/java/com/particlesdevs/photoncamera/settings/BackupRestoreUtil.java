@@ -57,7 +57,9 @@ public class BackupRestoreUtil {
             if (base.isEmpty()) throw new IOException(context.getString(R.string.empty_file_name_error));
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             ConfigXml.write(out, header(context), collect(context));
-            return Lang.t(context, "Сохранено: ", "Saved: ") + ConfigFolder.save(context, base + ".xml", out.toByteArray());
+            String path = ConfigFolder.save(context, base + ".xml", out.toByteArray());
+            ConfigState.set(context, path); // P143: the shade shows the config the settings now are (MediaStore may rename)
+            return Lang.t(context, "Сохранено: ", "Saved: ") + path;
         } catch (Exception e) {
             Log.e(TAG, "Config save failed", e);
             return Lang.t(context, "Ошибка сохранения: ", "Save failed: ") + e.getLocalizedMessage();
@@ -101,6 +103,7 @@ public class BackupRestoreUtil {
         } else {
             result = apply(context, ConfigXml.read(new ByteArrayInputStream(data))) + label;
         }
+        ConfigState.set(context, label); // P143: before the restart (commit), the shade's config button shows it
         ScameraApp.restartWithDelay(context, 1000);
         return result;
     }
@@ -596,6 +599,7 @@ public class BackupRestoreUtil {
     }
 
     public static boolean resetPreferences(Context context) {
+        ConfigState.clear(context); // P143: the defaults are no config (the prefs files go next anyway)
         File data_dir = context.getDataDir();
         File shared_prefs_dir = Paths.get(data_dir.toPath() + File.separator + "shared_prefs").toFile();
         try {

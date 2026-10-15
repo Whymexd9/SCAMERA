@@ -22,4 +22,7 @@ public interface ShadeHost {
 
     /** Values may have changed (a write, a refresh): the camera screen updates what shows them (top bar badges). */
     void onValuesChanged();
+
+    /** P143: the config menu's «Импорт из файла…» - the system picker (SettingsActivity.ACTION_IMPORT_CONFIG). */
+    default void importConfigFile() { }
 }

@@ -3376,6 +3376,21 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   Tests RawLevelsTest.measuredClipIsTheWhiteOfAWiderStream / clipPlateauOfTheSamples. Not seen on the X300 Ultra yet.
 - «Кривая AgX и ACES» is the first row of «Тон ARK» (SettingsMenuTest.curvesOpenTheArkTonePage).
 
+### P143 - the config button in the shade (owner, 2026-10-15, screenshot of the shade header: «Сделай так чтобы в этой области отображалось название действующего конфига в рамке. Убедись что длинные названия не выходят за рамки и масштабируются внутри. Также сделай её как рабочую кнопку с всплывающим меню менеджмента конфигов через которое можно сохранять и импортировать конфиги. Все это должно быть в стиле нашей камеры и с красивыми плавными анимациями»; «Помимо сохранения и применения конфига также должна быть кнопка сброса настроек»)
+- «ЗАКРЕПЛЕНО» gives its place to ConfigChip: the config icon, the active config's name and a chevron in an accent frame; a
+  long name shrinks 13 -> 9sp and only then ends in an ellipsis, never past the frame (its slot ends before «Изменить»). The
+  edit mode still shows «Перетащи плитки» there.
+- settings/ConfigState: the active config's name in its own prefs file (scam_config_state, never inside a config); set by
+  BackupRestoreUtil on save (the name MediaStore kept) and import (before the restart), cleared by the reset; «Стандартный»
+  without one.
+- ConfigMenu (a PopupWindow card in the shade's style): «Сохранить» (over the active config), «Сохранить как…» (an inline
+  name field; spaces -> «_»), the saved configs (newest first, the active one marked; load after an inline confirm), «Импорт
+  из файла…» (SettingsActivity.ACTION_IMPORT_CONFIG opens the system picker at once, back to the camera when cancelled),
+  «Сбросить настройки» (inline confirm, warn colour; the app restarts). Motion: the card unfolds from the button (scale .9,
+  fade, a 10dp drop, 240ms, PathInterpolator 0.2/0/0/1), its rows follow 18ms apart, inline steps open one at a time with a
+  layout transition, the chevron turns, the button dips on press; it folds back on a tap outside / on the button.
+- Tests ConfigMenuTest (5 + a render to build/reports/config-menu). Not seen on a phone yet.
+
 ### P141 - config files: saving, applying, moving between phones (owner, 2026-10-15: «Ещё добавь в план работы перепроверка работы с конфиг файлами. Проверь чтобы всё правильно сохранялось и применялось. Так же проверь чтобы на разных смартфонах с разными айди модулей конфиг применялся нормально и автоматически подставлялся/адаптировался под другое количество модулей, при этом сделай так чтобы модули не дублировались и не появлялись лишние»)
 - Audit «Сохранить / Восстановить» (BackupPreferences, RestorePreference, ModuleProfiles, module_profile_v2_* files, the
   sensor-config keys pref_sensorconfig_<id>_*, vendor tags, shade tiles, the colour settings): everything saved is restored

@@ -59,6 +59,8 @@ import static com.particlesdevs.photoncamera.settings.PreferenceKeys.SCOPE_GLOBA
 public class SettingsActivity extends BaseActivity implements PreferenceFragmentCompat.OnPreferenceStartScreenCallback {
     /** P140: the launcher shortcut «Настройки» (res/xml/shortcuts.xml) opens this screen with this action. */
     public static final String ACTION_SHORTCUT = "org.codeaurora.snapcam.action.SETTINGS";
+    /** P143: the shade's config menu «Импорт из файла…»: the config picker at once, back to the camera when cancelled. */
+    public static final String ACTION_IMPORT_CONFIG = "org.codeaurora.snapcam.action.IMPORT_CONFIG";
     private static int sCameraMode = -1;
     
     @Override
@@ -178,6 +180,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private ActivityResultLauncher<String[]> lutImportLauncher;
         private ActivityResultLauncher<String[]> noiseModelImportLauncher;
         private ActivityResultLauncher<String[]> configImportLauncher;
+        /** P143: this screen was opened by the camera's config menu for the picker only. */
+        private boolean importFromCamera;
 
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
@@ -464,7 +468,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         }
                     },
                     uri -> {
-                        if (uri == null) return;
+                        if (uri == null) {
+                            // P143: opened from the camera for the picker only: back to the camera
+                            if (importFromCamera && getActivity() != null) getActivity().finish();
+                            return;
+                        }
                         String result = BackupRestoreUtil.restoreFromUri(mContext, uri);
                         if (mRootView != null) Snackbar.make(mRootView, result, Snackbar.LENGTH_LONG).show();
                         else ScameraApp.showToast(result);
@@ -473,6 +481,13 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             
             // Check if we're opening the tunable submenu specifically
             String rootKey = getArguments() != null ? getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) : null;
+            // P143: the camera's config menu asked for a file: the picker opens over the settings' root once
+            if (rootKey == null && savedInstanceState == null && getActivity() != null
+                    && ACTION_IMPORT_CONFIG.equals(getActivity().getIntent().getAction())) {
+                getActivity().getIntent().setAction(null);
+                importFromCamera = true;
+                configImportLauncher.launch(new String[]{"*/*"});
+            }
             Log.d("SettingsFragment", "onCreate with rootKey: " + rootKey);
             
             if ("pref_sensor_config_submenu".equals(rootKey)) {

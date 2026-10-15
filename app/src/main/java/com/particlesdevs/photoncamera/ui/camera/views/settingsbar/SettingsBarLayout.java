@@ -100,6 +100,10 @@ public class SettingsBarLayout extends LinearLayout {
     private final TextView headTitle;
     /** «Изменить» / «Готово». */
     private final TextView editButton;
+    /** P143: the active config's name in a frame, opening the config menu (the header title only in the edit mode). */
+    private final ConfigChip configChip;
+    @androidx.annotation.Nullable private ConfigMenu configMenu;
+    @androidx.annotation.Nullable private ConfigMenu.Actions configActions;
     /** The header's settings gear (hidden in the edit mode). */
     private final ImageView headGear;
     private final RecyclerView tiles;
@@ -165,6 +169,8 @@ public class SettingsBarLayout extends LinearLayout {
             sheetLevel = level;
             if (level != LEVEL_FULL) listScroll.scrollTo(0, 0);
             if (level == LEVEL_HIDDEN && editing) setEditing(false);
+            if (level == LEVEL_HIDDEN) closeConfigMenu();
+            else refreshConfigName();
             if (levelListener != null) levelListener.onSheetLevelChanged(level);
         }
 
@@ -223,7 +229,18 @@ public class SettingsBarLayout extends LinearLayout {
         head.setPadding(dp(9), dp(2), dp(5), dp(7));
         headTitle = new TextView(context);
         headTitle.setText(R.string.shade_pinned);
-        head.addView(headTitle, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        headTitle.setVisibility(GONE);
+        // P143: the config button takes the title's place; the slot limits it, a long name shrinks inside its frame
+        android.widget.FrameLayout headSlot = new android.widget.FrameLayout(context);
+        headSlot.addView(headTitle, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
+        configChip = new ConfigChip(context);
+        configChip.setOnClickListener(v -> toggleConfigMenu());
+        headSlot.addView(configChip, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL | Gravity.START));
+        LayoutParams slotParams = new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        slotParams.setMarginEnd(dp(10));
+        head.addView(headSlot, slotParams);
         editButton = new TextView(context);
         editButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         editButton.setPadding(dp(14), dp(7), dp(14), dp(7));
@@ -339,6 +356,74 @@ public class SettingsBarLayout extends LinearLayout {
         ShadeStyle.label(headTitle, accent);
         styleEditButton(accent);
         headGear.setImageTintList(ColorStateList.valueOf(accent));
+        configChip.setAccent(accent);
+        refreshConfigName();
+    }
+
+    // ───────────────────────────────── P143: the config button and its menu
+
+    /** The active config's name on the button (after a save, an import, the reset; when the shade shows). */
+    public void refreshConfigName() {
+        configChip.setName(com.particlesdevs.photoncamera.settings.ConfigState.label(getContext()));
+    }
+
+    private void toggleConfigMenu() {
+        if (configMenu != null && configMenu.isShowing()) {
+            configMenu.close();
+            return;
+        }
+        refreshConfigName();
+        configMenu = ConfigMenu.show(configChip, configActions(), text -> {
+            refreshConfigName();
+            if (host != null) host.showMessage(text);
+        }, () -> configMenu = null);
+    }
+
+    private void closeConfigMenu() {
+        if (configMenu != null) configMenu.dismissNow();
+        configMenu = null;
+    }
+
+    /** Tests: the menu's actions instead of the files and the restart. */
+    void setConfigActions(ConfigMenu.Actions actions) {
+        configActions = actions;
+    }
+
+    ConfigChip configChip() {
+        return configChip;
+    }
+
+    @androidx.annotation.Nullable ConfigMenu configMenu() {
+        return configMenu;
+    }
+
+    private ConfigMenu.Actions configActions() {
+        if (configActions != null) return configActions;
+        final Context c = getContext();
+        return new ConfigMenu.Actions() {
+            @Override public String save(String name) {
+                return com.particlesdevs.photoncamera.settings.BackupRestoreUtil.backupSettings(c, name);
+            }
+
+            @Override public String[] saved() {
+                return com.particlesdevs.photoncamera.util.ConfigFolder.list(c);
+            }
+
+            @Override public String load(String fileName) {
+                return com.particlesdevs.photoncamera.settings.BackupRestoreUtil.restorePreferences(c, fileName);
+            }
+
+            @Override public void importFile() {
+                if (host != null) host.importConfigFile();
+            }
+
+            @Override public String reset() {
+                boolean ok = com.particlesdevs.photoncamera.settings.BackupRestoreUtil.resetPreferences(c);
+                com.particlesdevs.photoncamera.app.ScameraApp.restartWithDelay(c, 1000);
+                return ok ? c.getString(R.string.app_will_restart)
+                        : com.particlesdevs.photoncamera.util.Lang.t(c, "Сброс не удался", "The reset failed");
+            }
+        };
     }
 
     private void styleEditButton(int accent) {
@@ -380,6 +465,8 @@ public class SettingsBarLayout extends LinearLayout {
         if (host == null) return false;
         contentBuilt = true;
         ShadeStyle.label(headTitle, ShadeStyle.accent(getContext()));
+        configChip.setAccent(ShadeStyle.accent(getContext()));
+        refreshConfigName();
         pinned.clear();
         pinned.addAll(ShadeTiles.load(catalog().prefs(), catalog()::isKnown));
         adapter.submit(pinned, pinned.size() < ShadeCatalog.MAX_TILES);
@@ -746,6 +833,10 @@ public class SettingsBarLayout extends LinearLayout {
         editing = on;
         if (on) openSlider = null;
         headTitle.setText(on ? R.string.shade_drag_title : R.string.shade_pinned);
+        // P143: the edit mode's header is the drag hint; the config button comes back after it
+        headTitle.setVisibility(on ? VISIBLE : GONE);
+        configChip.setVisibility(on ? GONE : VISIBLE);
+        if (on) closeConfigMenu();
         styleEditButton(ShadeStyle.accent(getContext()));
         headGear.setVisibility(on ? GONE : VISIBLE);
         fullList.setVisibility(on ? GONE : VISIBLE);

@@ -484,6 +484,15 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         public void onValuesChanged() {
             if (mCameraUIView != null) mCameraUIView.updateBadges();
         }
+
+        @Override
+        public void importConfigFile() {
+            // P143: the settings screen owns the picker; it opens it at once and imports (the app restarts)
+            Intent intent = new Intent(activity, SettingsActivity.class);
+            intent.setAction(SettingsActivity.ACTION_IMPORT_CONFIG);
+            intent.putExtra("camera_mode", PreferenceKeys.getCameraModeOrdinal());
+            startActivity(intent);
+        }
     };
 
     /** First-run hint (once ever, owner's answer 11): how to open the shade and move a tile. */
