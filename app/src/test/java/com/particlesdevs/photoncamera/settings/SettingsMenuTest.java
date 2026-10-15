@@ -864,7 +864,7 @@ public class SettingsMenuTest {
             assertTrue(sheet.findViewById(android.R.id.content).findViewWithTag("option_list") instanceof androidx.core.widget.NestedScrollView);
             assertTrue(sheet.findViewById(android.R.id.content).findViewWithTag("sheet_scroll") instanceof androidx.core.widget.NestedScrollView);
             assertEquals("portrait: 60 % of the screen",1900,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(3168,380,1900,3.5f));
-            assertEquals("landscape: what the window leaves under the title",1440-380-196,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(1440,380,1300,3.5f));
+            assertEquals("landscape: what the window leaves under the title",1440-380-252,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(1440,380,1300,3.5f));
             assertEquals("never under two rows",364,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(600,380,864,3.5f));
             assertEquals("no window yet",864,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(0,380,864,3.5f));
             sheet.findViewById(android.R.id.content).findViewWithTag("option_b").performClick();

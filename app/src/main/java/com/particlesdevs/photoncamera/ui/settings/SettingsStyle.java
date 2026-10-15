@@ -501,7 +501,8 @@ public final class SettingsStyle {
      */
     public static int listCap(int windowHeight, int rest, int max, float density) {
         if (windowHeight <= 0) return max;
-        int room = windowHeight - rest - Math.round(56 * density);
+        // the sheet opens below the status bar: on the X200 Ultra in landscape it starts 62 dp down
+        int room = windowHeight - rest - Math.round(72 * density);
         return Math.max(Math.round(104 * density), Math.min(max, room));
     }
 
