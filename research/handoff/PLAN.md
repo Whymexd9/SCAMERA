@@ -3499,6 +3499,10 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   strip's edge differs, max 1-4 levels); libjpeg-turbo (Pillow) decodes it the same. CI builds and runs the check on Linux.
   libjpeg-turbo not added: jpegli in strips is already ~0.15 s for 20 MP; another library (a download, a new dependency) would
   save ~0.1 s more at a slightly lower quality per byte.
+- c. DONE: Ultra HDR's linear snapshot read back and uploaded again as the halves the texture holds (8 B a pixel instead of
+  16; only where ArkStats' probe finds the driver's half read-back exact - the same texels): LinearExposure took 1.2 s at
+  50 MP. ScamRgb's decimated copy (every 61st pixel, 140 ms on one thread at 50 MP - the slowest input step once the repack
+  went to the GPU) on the worker threads.
 
 ### P148 - «Камера и сенсоры» simpler for an ordinary user (owner, 2026-10-16: «Займись меню камеры и сенсоры, упрости его максимально чтобы обычному человеку было проще им пользоваться, при этом функционал никак не урезай. Можешь перестроить/переделать его как хочешь, главное чтобы оно соответствовало общему стилю нашего приложения»)
 - The page pref_sensor_config_submenu (SettingsFragment.generateSensorConfigPreferences, ModuleSettingsFragment, the module
@@ -3509,6 +3513,12 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   Стабилизация / Для опытных), the vendor tags and raw sensor values under «Для опытных» (folded), plain titles and
   one-line descriptions, the reason a row is off (SettingsAvailability) as elsewhere; the cards, icons and sheets of
   SettingsStyle (P132 / P136 / P137).
+- A module copy with its own lens crop (owner, 2026-10-16: «я хочу иметь возможность при копировании выставлять кроп
+  объектива, как мне нужно. Например я копирую 1х камеру и я хочу чтобы копия всегда была условно с 1.3х кропом»): the copy
+  step (ModuleCopyFragment / ModuleRegistry slot) asks for the crop (1.0 = none, e.g. 1.3x; a slider plus a typed value), the
+  slot keeps it ("crop" of the lens passport, LensProfileMatcher already reads it), the camera on that module starts at that
+  crop (ZoomController: the module's base zoom, the zoom label shows 1.3x) and the photo is the cropped field of view
+  (ZoomController.crop / the digital zoom path, the gain map follows). Configs carry it (P141).
 - Checks: every key of today still on the page and bound (SettingsMenuTest: allPagesAndRegisteredTunablesAreReachableAndBind,
   the sensor page tests), renders for a look (build/reports/module-concept), check_ui_language / check_settings_model.
 

@@ -64,7 +64,7 @@ public final class ArkStats extends Node {
      * {@link HalfFloat#TABLE} is not by itself the driver's conversion; a 128x128 RGBA16F texture with every half pattern is
      * read back both ways once per process and compared ({@link #firstHalfMismatch}). Any GL error counts as a mismatch.
      */
-    private static boolean halfReadbackExact(int halfType) {
+    static boolean halfReadbackExact(int halfType) {
         final int state = halfReadbackState;
         if (state != 0) return state > 0;
         final long started = System.nanoTime();

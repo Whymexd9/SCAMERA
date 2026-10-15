@@ -256,7 +256,13 @@ public final class ScamRgb extends Node {
             int n=f.limit()/3,m=(n+stride-1)/stride;
             java.nio.ByteBuffer out=java.nio.ByteBuffer.allocateDirect(m*12).order(java.nio.ByteOrder.nativeOrder());
             java.nio.FloatBuffer o=out.asFloatBuffer();
-            for(int i=0,k=0;i<n;i+=stride,k++)for(int c=0;c<3;c++)o.put(k*3+c,HalfFloat.TABLE[f.get(i*3+c)&0xffff]);
+            // P147: in chunks on the worker threads (140 ms on one thread for the 50 MP grid, the slowest part of the input
+            // once the repack went to the GPU); absolute reads and writes, each output sample written once
+            final int chunk=1<<15,count=(m+chunk-1)/chunk;
+            ParallelWork.forEach(count,j->{
+                final int k0=j*chunk,k1=Math.min(m,k0+chunk);
+                for(int k=k0;k<k1;k++){final int i=k*stride;for(int c=0;c<3;c++)o.put(k*3+c,HalfFloat.TABLE[f.get(i*3+c)&0xffff]);}
+            });
             return out;
         }
         java.nio.FloatBuffer f=rgb.duplicate().order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();

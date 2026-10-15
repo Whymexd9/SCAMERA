@@ -85,6 +85,8 @@ public class PostPipeline extends GLBasePipeline {
      */
     public ByteBuffer demosaicLinear;
     public Point demosaicLinearSize;
+    /** P147: the snapshot holds the texture's IEEE halves (8 B a pixel) instead of floats (16 B a pixel). */
+    boolean demosaicLinearHalf;
     /**
      * W1.3: {@link #Run} leaves the GL state (the EGL context and the textures still open) for {@link #finishDeferredTeardown},
      * which the caller runs after the JPEG is saved. Only at 16 MP or less without Ultra HDR ({@link #canDeferTeardown}):
@@ -290,6 +292,29 @@ public class PostPipeline extends GLBasePipeline {
         // limit, so the snapshot is allocated in native memory instead
         // (same backing as the pipeline's other large I/O buffers).
         // P27 any resolution: in long; above one 2 GB buffer (~134 MP) the snapshot is skipped like a failed allocation.
+        // P147: as the halves the texture holds (8 B/pixel) where the driver reads them back exactly (ArkStats' probe): half
+        // the read-back and the upload of RunHDRGainMap (1.2 s for the 50 MP snapshot on the X200 Ultra), the same values.
+        tex.BindBuffer();
+        final int halfType = com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy() ? 0 : ArkStats.halfReadType();
+        if (halfType != 0 && ArkStats.halfReadbackExact(halfType)) {
+            final long halfBytes = 8L * tex.mSize.x * tex.mSize.y;
+            ByteBuffer buf = halfBytes > Integer.MAX_VALUE ? null : Allocator.allocate((int) halfBytes);
+            if (buf != null) {
+                buf.order(java.nio.ByteOrder.nativeOrder());
+                tex.BindBuffer();
+                GLES30.glReadPixels(0, 0, tex.mSize.x, tex.mSize.y, GLES30.GL_RGBA, halfType, buf);
+                if (GLES30.glGetError() == GLES30.GL_NO_ERROR) {
+                    buf.rewind();
+                    demosaicLinear = buf;
+                    demosaicLinearSize = new Point(tex.mSize.x, tex.mSize.y);
+                    demosaicLinearHalf = true;
+                    mCaptured = true;
+                    return;
+                }
+                Allocator.free(buf);
+            }
+        }
+        demosaicLinearHalf = false;
         final long bytes = 16L * tex.mSize.x * tex.mSize.y;
         if (bytes > Integer.MAX_VALUE) {
             Log.e("PostPipeline", "Linear scene snapshot of " + (bytes >> 20) + " MB is above 2 GB; Ultra HDR will fall back to SDR");
@@ -315,6 +340,7 @@ public class PostPipeline extends GLBasePipeline {
             Allocator.free(demosaicLinear);
             demosaicLinear = null;
         }
+        demosaicLinearHalf = false;
         demosaicLinearSize = null;
     }
 
@@ -392,8 +418,17 @@ public class PostPipeline extends GLBasePipeline {
         GLTexture gainTex = null;
         try {
             demosaicLinear.rewind();
-            GLTexture linTex = new GLTexture(demosaicLinearSize,
-                    new GLFormat(GLFormat.DataType.FLOAT_16, 4), demosaicLinear);
+            GLTexture linTex;
+            if (demosaicLinearHalf) {
+                // P147: the halves go up as they came (GL_HALF_FLOAT into the RGBA16F texture): the same texels
+                linTex = new GLTexture(demosaicLinearSize, new GLFormat(GLFormat.DataType.FLOAT_16, 4));
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, linTex.mTextureID);
+                GLES30.glTexSubImage2D(GLES30.GL_TEXTURE_2D, 0, 0, 0, demosaicLinearSize.x, demosaicLinearSize.y,
+                        GLES30.GL_RGBA, GLES30.GL_HALF_FLOAT, demosaicLinear);
+                checkGlError("half snapshot upload");
+            } else {
+                linTex = new GLTexture(demosaicLinearSize, new GLFormat(GLFormat.DataType.FLOAT_16, 4), demosaicLinear);
+            }
             GLImage sdrImage = new GLImage(sdr);
             GLTexture sdrTex = new GLTexture(sdrImage);
             // The direct copy of the SDR bitmap (~200 MB at 50 MP) is only needed for the upload; drop it now instead of
