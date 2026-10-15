@@ -858,7 +858,16 @@ public class SettingsMenuTest {
             assertTrue(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.showDialog(activity,list));
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
-            assertNotNull(sheet);sheet.findViewById(android.R.id.content).findViewWithTag("option_b").performClick();
+            assertNotNull(sheet);
+            // the list and the whole sheet scroll by nested scrolling: a plain ScrollView let the sheet take the drag, and in
+            // landscape the fifth option of «Разрешение» could not be reached (X200 Ultra, 2026-10-15)
+            assertTrue(sheet.findViewById(android.R.id.content).findViewWithTag("option_list") instanceof androidx.core.widget.NestedScrollView);
+            assertTrue(sheet.findViewById(android.R.id.content).findViewWithTag("sheet_scroll") instanceof androidx.core.widget.NestedScrollView);
+            assertEquals("portrait: 60 % of the screen",1900,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(3168,380,1900,3.5f));
+            assertEquals("landscape: what the window leaves under the title",1440-380-196,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(1440,380,1300,3.5f));
+            assertEquals("never under two rows",364,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(600,380,864,3.5f));
+            assertEquals("no window yet",864,com.particlesdevs.photoncamera.ui.settings.SettingsStyle.listCap(0,380,864,3.5f));
+            sheet.findViewById(android.R.id.content).findViewWithTag("option_b").performClick();
             assertEquals("b",list.getValue());assertFalse(sheet.isShowing());
             EditTextPreference edit=new EditTextPreference(activity);edit.setKey("t_sheet_edit");edit.setTitle("Поле");screen.addPreference(edit);edit.setText("1");
             edit.setOnBindEditTextListener(field->field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER));

@@ -16,11 +16,11 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.appcompat.widget.SwitchCompat;
+import androidx.core.widget.NestedScrollView;
 import androidx.preference.DialogPreference;
 import androidx.preference.EditTextPreference;
 import androidx.preference.EditTextPreferenceAccess;
@@ -381,10 +381,16 @@ public final class SettingsStyle {
         return chip;
     }
 
-    /** A bottom sheet over the dark surface, opened full height (the pickers and the slider's exact-value editor). */
+    /**
+     * A bottom sheet over the dark surface, opened full height (the pickers and the slider's exact-value editor). The body
+     * sits in a nested-scrolling view: a sheet taller than the window (landscape) scrolls instead of being cut at the edge.
+     */
     public static BottomSheetDialog sheet(Context c, View body) {
         BottomSheetDialog d = new BottomSheetDialog(c);
-        d.setContentView(body);
+        NestedScrollView scroll = new NestedScrollView(c);
+        scroll.setTag("sheet_scroll");
+        scroll.addView(body, new ViewGroup.LayoutParams(-1, -2));
+        d.setContentView(scroll);
         d.setOnShowListener(x -> {
             View host = d.findViewById(com.google.android.material.R.id.design_bottom_sheet);
             if (host != null) host.setBackgroundColor(0);
@@ -445,7 +451,9 @@ public final class SettingsStyle {
         LinearLayout body = sheetBody(c, title, pinKey);
         LinearLayout options = new LinearLayout(c);
         options.setOrientation(LinearLayout.VERTICAL);
-        ScrollView scroll = new ScrollView(c);
+        // nested scrolling: a drag scrolls the list (a plain ScrollView let the sheet take the drag and slide away)
+        NestedScrollView scroll = new NestedScrollView(c);
+        scroll.setTag("option_list");
         scroll.addView(options);
         int max = (int) (c.getResources().getDisplayMetrics().heightPixels * .6f);
         body.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
@@ -477,9 +485,24 @@ public final class SettingsStyle {
             });
             options.addView(row);
         }
-        scroll.post(() -> { if (scroll.getHeight() > max) scroll.getLayoutParams().height = max; scroll.requestLayout(); });
+        scroll.post(() -> {
+            View window = d.getWindow() != null ? d.getWindow().getDecorView() : null;
+            int cap = listCap(window != null ? window.getHeight() : 0, body.getHeight() - scroll.getHeight(), max,
+                    c.getResources().getDisplayMetrics().density);
+            if (scroll.getHeight() > cap) { scroll.getLayoutParams().height = cap; scroll.requestLayout(); }
+        });
         d.show();
         return d;
+    }
+
+    /**
+     * The option list's height limit: 60 % of the screen ({@code max}), and never more than the window leaves under the
+     * sheet's title (landscape: 5 options did not fit and the last one was under the screen edge), at least two rows.
+     */
+    public static int listCap(int windowHeight, int rest, int max, float density) {
+        if (windowHeight <= 0) return max;
+        int room = windowHeight - rest - Math.round(56 * density);
+        return Math.max(Math.round(104 * density), Math.min(max, room));
     }
 
     static BottomSheetDialog editSheet(Context c, EditTextPreference p) {
