@@ -65,4 +65,30 @@ public class GainMapComputerTest {
         assertTrue(r.gainMapMax > r.gainMapMin);
         assertTrue(r.hdrCapacityMax > 0f);
     }
+
+    /**
+     * P145: the GPU normalisation (ultrahdr/gainmax: the largest byte, ultrahdr/gainquant: GainMapComputer.requantisation per
+     * byte) gives compute's map and range bit for bit at full resolution.
+     */
+    @Test
+    public void gpuRequantisationIsCompute() {
+        java.util.Random rnd = new java.util.Random(5);
+        for (int top : new int[]{0, 1, 37, 128, 254, 255}) {
+            final int t = top;
+            Bitmap src = gpuMap(48, 32, (x, y) -> (x * 7 + y * 13) % 5 == 0 ? t / 255f * GainMapComputer.SCALE
+                    : rnd.nextInt(t + 1) / 255f * GainMapComputer.SCALE);
+            int maxByte = 0;
+            for (int y = 0; y < 32; y++) for (int x = 0; x < 48; x++) maxByte = Math.max(maxByte, (src.getPixel(x, y) >> 16) & 0xFF);
+            float gMax = GainMapComputer.rangeMax(GainMapComputer.boost(maxByte, GainMapComputer.SCALE));
+            int[] lut = GainMapComputer.requantisation(gMax, GainMapComputer.SCALE);
+            GainMapComputer.Result cpu = GainMapComputer.compute(src, 1, GainMapComputer.SCALE);
+            assertEquals("range, top " + top, cpu.gainMapMax, gMax, 0f);
+            for (int y = 0; y < 32; y++)
+                for (int x = 0; x < 48; x++)
+                    assertEquals("byte at " + x + "," + y, cpu.gainMap.getPixel(x, y) & 0xFF, lut[(src.getPixel(x, y) >> 16) & 0xFF]);
+            GainMapComputer.Result gpu = GainMapComputer.normalised(cpu.gainMap, gMax);
+            assertEquals(cpu.hdrCapacityMax, gpu.hdrCapacityMax, 0f);
+            assertEquals(0f, gpu.gainMapMin, 0f);
+        }
+    }
 }

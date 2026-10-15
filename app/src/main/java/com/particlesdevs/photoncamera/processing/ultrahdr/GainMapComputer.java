@@ -87,14 +87,8 @@ public final class GainMapComputer {
             for (float lb : row) if (lb > maxBoost) maxBoost = lb;
         }
 
-        // Gains are non-negative by construction (headroom >= 1), so the
-        // metadata range is anchored at exactly 0: identity gain for everything
-        // below white, matching the midtone-exact behaviour of the shader.
-        if (!Float.isFinite(maxBoost) || maxBoost < 0f) maxBoost = 0f;
-        if (maxBoost < MIN_RANGE) maxBoost = MIN_RANGE;
-
         final float gMin = 0f;
-        final float gMax = maxBoost + Math.max(maxBoost * RANGE_PAD_FRACTION, MIN_RANGE);
+        final float gMax = rangeMax(maxBoost);
         final float range = gMax - gMin;
 
         final Bitmap out = Bitmap.createBitmap(gw, gh, Bitmap.Config.ARGB_8888);
@@ -112,6 +106,44 @@ public final class GainMapComputer {
         }
 
         return new Result(out, gMin, gMax);
+    }
+
+    /**
+     * GainMapMax of a map whose largest log2 boost is {@code maxBoost}. Gains are non-negative by construction (headroom
+     * >= 1), so the metadata range is anchored at exactly 0: identity gain for everything below white, matching the
+     * midtone-exact behaviour of the shader; the top is padded so extreme pixels don't sit on the endpoint.
+     */
+    public static float rangeMax(float maxBoost) {
+        if (!Float.isFinite(maxBoost) || maxBoost < 0f) maxBoost = 0f;
+        if (maxBoost < MIN_RANGE) maxBoost = MIN_RANGE;
+        return maxBoost + Math.max(maxBoost * RANGE_PAD_FRACTION, MIN_RANGE);
+    }
+
+    /** The log2 boost of an encoded byte of the GPU map at full resolution (boostRow with down 1). */
+    public static float boost(int encoded, float scale) {
+        return (encoded / (1 * 255f)) * scale;
+    }
+
+    /**
+     * P145: the requantisation of {@link #compute} at full resolution as a table - for every encoded byte of the GPU map, the
+     * byte it becomes in a map whose range is [0, gMax] (ultrahdr/gainquant applies it on the GPU; the same arithmetic
+     * as compute's second pass).
+     */
+    public static int[] requantisation(float gMax, float scale) {
+        final float range = gMax - 0f;
+        final int[] lut = new int[256];
+        for (int v = 0; v < 256; v++) {
+            float vNorm = (boost(v, scale) - 0f) / range;
+            if (vNorm < 0f) vNorm = 0f;
+            else if (vNorm > 1f) vNorm = 1f;
+            lut[v] = Math.round(vNorm * 255.0f);
+        }
+        return lut;
+    }
+
+    /** P145: a map the GPU already requantised to [0, gMax] (PostPipeline.RunHDRGainMap). */
+    public static Result normalised(Bitmap map, float gMax) {
+        return new Result(map, 0f, gMax);
     }
 
     /**

@@ -3435,6 +3435,11 @@ Each step moves with a check that the GPU gives the CPU's result; the CPU path s
   SSBO (two, alternating), widened by unpackHalf2x16 and stored with imageStore. Used only where a once-per-process probe
   of all 65536 halves comes back bit for bit (GLES may flush 16-bit denormals); the CPU repack otherwise, for post_ab and
   on a GL error. tools/check_half_rgba.py, HalfRgbUploadTest. Log: "scamrgb input ms: upload=.. (half rgb, gpu repack)".
+- d. DONE (Ultra HDR option): GainMapComputer's two Java passes -> ultrahdr/gainmax (the largest byte, compute) and
+  ultrahdr/gainquant (GainMapComputer.requantisation as a 256-entry table) inside RunHDRGainMap; GainMapRaw carries
+  normalisedMax, ScamProcessor takes the map as it is. At 1x bit for bit the CPU's map and range (GainMapComputerTest); a
+  later resize / crop (2x grid, zoom, ISZ) filters the requantised bytes instead of the encoded ones (within 1/255, the
+  range stays). tools/check_gainmap_gpu.py.
 - Not for the GPU: JPEG / AV1 entropy coding, the vendor CRE alignment (closed library), memory copies, EXIF, the cpu-single
   fallback (it exists for a GPU that failed).
 - Checks: ToneCurveTest 5, SettingsMenuTest (groups, one at a time, graph + sliders + typed values, a render to

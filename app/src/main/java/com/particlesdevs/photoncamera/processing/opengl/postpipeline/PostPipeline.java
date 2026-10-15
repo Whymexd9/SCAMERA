@@ -440,7 +440,36 @@ public class PostPipeline extends GLBasePipeline {
             prog.draw();
             checkGlError("gain-map comparison draw");
 
-            ByteBuffer gm = outTex.textureBuffer(new GLFormat(GLFormat.DataType.SIMPLE_8, 4), false);
+            // P145: GainMapComputer's range and requantisation on the GPU (the CPU's two passes over the map otherwise)
+            float normalisedMax = Float.NaN;
+            GLTexture quantTex = null;
+            if (down == 1 && !com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) {
+                final int maxByte = gainMapMaxByte(prog, outTex, gw, gh);
+                if (maxByte >= 0) {
+                    final float gMax = GainMapComputer.rangeMax(GainMapComputer.boost(maxByte, scale));
+                    final int[] lut = GainMapComputer.requantisation(gMax, scale);
+                    final float[] lutF = new float[256];
+                    for (int i = 0; i < 256; i++) lutF[i] = lut[i];
+                    quantTex = new GLTexture(new Point(gw, gh), new GLFormat(GLFormat.DataType.SIMPLE_8, 4));
+                    quantTex.BufferLoad();
+                    prog.useAssetProgram("ultrahdr/gainquant");
+                    prog.setTexture("InputBuffer", outTex);
+                    prog.setVarVec4s("lutU", lutF);
+                    GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, quantTex.mBuffer);
+                    GLES30.glViewport(0, 0, gw, gh);
+                    prog.draw();
+                    if (GLES30.glGetError() == GLES30.GL_NO_ERROR) {
+                        normalisedMax = gMax;
+                    } else {
+                        quantTex.close();
+                        quantTex = null;
+                    }
+                    Log.d("PostPipeline", "UltraHDR gain map on the GPU: max byte " + maxByte + " -> GainMapMax " + gMax
+                            + (quantTex == null ? " (GL error: CPU normalisation)" : ""));
+                }
+            }
+
+            ByteBuffer gm = (quantTex != null ? quantTex : outTex).textureBuffer(new GLFormat(GLFormat.DataType.SIMPLE_8, 4), false);
             gm.position(0);
             Bitmap gmBmp = Bitmap.createBitmap(gw, gh, Bitmap.Config.ARGB_8888);
             gmBmp.copyPixelsFromBuffer(gm);
@@ -449,11 +478,12 @@ public class PostPipeline extends GLBasePipeline {
             linTex.close();
             lTex.close();
             outTex.close();
+            if (quantTex != null) quantTex.close();
             if (gainTex != null) {
                 try { gainTex.close(); } catch (Exception ignored) {}
                 gainTex = null;
             }
-            return new GainMapRaw(gmBmp, gw, gh, down, scale);
+            return new GainMapRaw(gmBmp, gw, gh, down, scale, normalisedMax);
         } finally {
             if (gainTex != null) {
                 try { gainTex.close(); } catch (Exception ignored) {}
@@ -518,18 +548,53 @@ public class PostPipeline extends GLBasePipeline {
         return c <= 0.04045f ? c / 12.92f : (float) Math.pow((c + 0.055) / 1.055, 2.4);
     }
 
+    /**
+     * P145: the largest encoded byte of the gain map (compute ultrahdr/gainmax), -1 when the pass failed (the CPU
+     * normalisation then runs).
+     */
+    static int gainMapMaxByte(GLProg prog, GLTexture map, int w, int h) {
+        while (GLES30.glGetError() != GLES30.GL_NO_ERROR) {
+            // drain: only the pass below decides
+        }
+        try (com.particlesdevs.photoncamera.processing.opengl.GLBuffer max = new com.particlesdevs.photoncamera.processing.opengl.GLBuffer(
+                1, new GLFormat(GLFormat.DataType.UNSIGNED_32))) {
+            prog.setLayout(16, 16, 1);
+            prog.useAssetProgram("ultrahdr/gainmax", true);
+            prog.setTexture("InputBuffer", map);
+            prog.setVar("sizeU", w, h);
+            prog.setBufferCompute("gainMax", max);
+            prog.computeManual((w + 15) / 16, (h + 15) / 16, 1);
+            final int[] v = max.readBufferIntegers(false);
+            if (GLES30.glGetError() != GLES30.GL_NO_ERROR || v == null || v[0] < 0 || v[0] > 255) return -1;
+            return v[0];
+        } catch (RuntimeException e) {
+            Log.w("PostPipeline", "UltraHDR gain map max on the GPU failed: " + e);
+            return -1;
+        }
+    }
+
     public static class GainMapRaw {
         public final Bitmap bitmap;
         public final int w;
         public final int h;
         public final int down;
         public final float scale;
+        /**
+         * P145: GainMapMax when the GPU already requantised the map to [0, it] (GainMapComputer.normalised); NaN for the
+         * encoded map that GainMapComputer.compute normalises. A resize or crop afterwards filters the requantised bytes, which
+         * the same range still decodes (within one step of 1/255).
+         */
+        public final float normalisedMax;
         GainMapRaw(Bitmap bitmap, int w, int h, int down, float scale) {
+            this(bitmap, w, h, down, scale, Float.NaN);
+        }
+        GainMapRaw(Bitmap bitmap, int w, int h, int down, float scale, float normalisedMax) {
             this.bitmap = bitmap;
             this.w = w;
             this.h = h;
             this.down = down;
             this.scale = scale;
+            this.normalisedMax = normalisedMax;
         }
 
         /**
@@ -550,14 +615,14 @@ public class PostPipeline extends GLBasePipeline {
             final Bitmap scaled = Bitmap.createScaledBitmap(cur, gw, gh, true);
             if (cur != bitmap && cur != scaled) cur.recycle();
             if (scaled != bitmap) bitmap.recycle();
-            return new GainMapRaw(scaled, gw, gh, down, scale);
+            return new GainMapRaw(scaled, gw, gh, down, scale, normalisedMax);
         }
 
         /** The map following a centre crop of the base (digital zoom): the same crop factor (ZoomController.crop). */
         public GainMapRaw croppedBy(float factor) {
             final Bitmap cropped = com.particlesdevs.photoncamera.control.ZoomController.crop(bitmap, factor);
             if (cropped == bitmap) return this;
-            return new GainMapRaw(cropped, cropped.getWidth(), cropped.getHeight(), down, scale);
+            return new GainMapRaw(cropped, cropped.getWidth(), cropped.getHeight(), down, scale, normalisedMax);
         }
 
         public GainMapRaw croppedTo(Rect crop, int baseWidth, int baseHeight) {
@@ -579,7 +644,7 @@ public class PostPipeline extends GLBasePipeline {
                 throw failure;
             }
             bitmap.recycle();
-            return new GainMapRaw(out, gw, gh, down, scale);
+            return new GainMapRaw(out, gw, gh, down, scale, normalisedMax);
         }
     }
 

@@ -692,13 +692,16 @@ public class ScamProcessor extends ProcessorBase {
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("encode");
         GainMapComputer.Result gain = null;
         if (gm != null) {
+            // P145: a map the GPU already requantised is the result itself (its bitmap stays); the CPU normalises the others
+            final boolean gpu = !Float.isNaN(gm.normalisedMax);
             try {
-                gain = GainMapComputer.compute(gm.bitmap, gm.down, gm.scale);
-                Log.i(TAG, "Ultra HDR gain map: min=" + gain.gainMapMin + " max=" + gain.gainMapMax + " (log2) " + gain.gainW + "x" + gain.gainH);
+                gain = gpu ? GainMapComputer.normalised(gm.bitmap, gm.normalisedMax) : GainMapComputer.compute(gm.bitmap, gm.down, gm.scale);
+                Log.i(TAG, "Ultra HDR gain map: min=" + gain.gainMapMin + " max=" + gain.gainMapMax + " (log2) " + gain.gainW + "x" + gain.gainH
+                        + (gpu ? " normalised on the GPU" : ""));
             } catch (Exception | OutOfMemoryError e) {
                 Log.e(TAG, "Ultra HDR gain map normalisation failed, falling back to SDR JPEG", e);
             } finally {
-                gm.bitmap.recycle();
+                if (!gpu || gain == null) gm.bitmap.recycle();
             }
         }
         // imageFile has no extension yet: PhotoOutput names the files by the chosen format (.jpg / .heic / .webp).
