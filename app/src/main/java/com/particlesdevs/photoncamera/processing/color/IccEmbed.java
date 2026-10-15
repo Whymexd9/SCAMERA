@@ -23,6 +23,7 @@ public final class IccEmbed {
     private IccEmbed() {}
 
     static final byte[] ICC_ID = "ICC_PROFILE\0".getBytes(StandardCharsets.US_ASCII);
+    static final byte[] EXIF_ID = "Exif\0\0".getBytes(StandardCharsets.US_ASCII);
     /** Largest profile piece of one APP2 segment: 65535 - 2 (length) - 12 (id) - 2 (sequence, count). */
     static final int MAX_CHUNK = 65519;
 
@@ -55,20 +56,32 @@ public final class IccEmbed {
      * and does not close {@code out}.
      */
     public static OutputStream jpegInserting(OutputStream out, byte[] icc) {
-        return new JpegIccStream(out, jpegSegments(icc));
+        return new JpegIccStream(out, jpegSegments(icc), null);
+    }
+
+    /**
+     * P147: as {@link #jpegInserting(OutputStream, byte[])}, with the photo's EXIF APP1 segment ({@code exifApp1}, may be
+     * null) right after SOI - where ExifInterface puts it - so the file needs no EXIF rewrite after the encode (it read and
+     * wrote the whole JPEG again: 56-654 ms a shot on the X200 Ultra). {@code icc} may be null: no profile segments then.
+     */
+    public static OutputStream jpegInserting(OutputStream out, byte[] exifApp1, byte[] icc) {
+        return new JpegIccStream(out, icc == null ? new byte[0] : jpegSegments(icc), exifApp1);
     }
 
     private static final class JpegIccStream extends OutputStream {
         private static final int MAX_HEAD = 1 << 20;
         private final OutputStream out;
         private final byte[] segments;
+        /** P147: written right after SOI (the EXIF APP1); null for none. */
+        private final byte[] first;
         private byte[] head = new byte[1024];
         private int headLength;
         private boolean streaming;
 
-        JpegIccStream(OutputStream out, byte[] segments) {
+        JpegIccStream(OutputStream out, byte[] segments, byte[] first) {
             this.out = out;
             this.segments = segments;
+            this.first = first;
         }
 
         @Override
@@ -116,13 +129,17 @@ public final class IccEmbed {
                 out.write(head, 0, headLength); // not even a SOI: passed on as it is
             } else {
                 out.write(head, 0, 2);
+                if (this.first != null) out.write(this.first);
                 int pos = 2;
                 boolean first = true;
                 while (pos + 4 <= end) {
                     final int marker = head[pos + 1] & 0xFF;
                     final int next = Math.min(end, pos + 2 + (((head[pos + 2] & 0xFF) << 8) | (head[pos + 3] & 0xFF)));
                     if (first && marker != 0xE0) out.write(segments);
-                    if (!(marker == 0xE2 && startsWith(head, pos + 4, ICC_ID))) out.write(head, pos, next - pos);
+                    final boolean icc = marker == 0xE2 && startsWith(head, pos + 4, ICC_ID);
+                    // with an EXIF of our own, an encoder's EXIF APP1 would be a second one
+                    final boolean exif = this.first != null && marker == 0xE1 && startsWith(head, pos + 4, EXIF_ID);
+                    if (!icc && !exif) out.write(head, pos, next - pos);
                     if (first && marker == 0xE0) out.write(segments);
                     first = false;
                     pos = next;

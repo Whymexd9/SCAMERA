@@ -181,16 +181,21 @@ public class ImageSaver {
                                               byte[] icc) {
             exifData.COMPRESSION = ParseExif.COMPRESSION_JPEG;
             boolean encoded = false;
+            // P147: the EXIF goes into the stream as its APP1 (ExifBlock: the same tags), no rewrite of the whole file after
+            // the encode; without the block (it failed) the rewrite runs as before
+            final long exifStart0 = System.nanoTime();
+            final byte[] exifApp1 = ExifBlock.app1Segment(exifData, img.getWidth(), img.getHeight());
+            final long exifBlockMs = (System.nanoTime() - exifStart0) / 1000000;
             final long encodeStart = System.nanoTime();
             try {
                 // jpegli 4:4:4 first; if it fails, the file is rewritten from the start by Android's encoder (4:2:0).
                 // P80 «Быстрый JPEG»: Android's encoder directly.
                 if (JpegliEncoder.available() && !com.particlesdevs.photoncamera.settings.PreferenceKeys.getJpegFastEncoder()) {
                     try (OutputStream outputStream = new java.io.BufferedOutputStream(Files.newOutputStream(fileToSave), SAVE_BUFFER_BYTES)) {
-                        if (icc == null) {
+                        if (icc == null && exifApp1 == null) {
                             JpegliEncoder.compress(img, jpgQuality, outputStream);
                         } else {
-                            final OutputStream tagged = com.particlesdevs.photoncamera.processing.color.IccEmbed.jpegInserting(outputStream, icc);
+                            final OutputStream tagged = com.particlesdevs.photoncamera.processing.color.IccEmbed.jpegInserting(outputStream, exifApp1, icc);
                             JpegliEncoder.compress(img, jpgQuality, tagged);
                             tagged.close();
                         }
@@ -202,10 +207,10 @@ public class ImageSaver {
                 }
                 if (!encoded) {
                     try (OutputStream outputStream = new java.io.BufferedOutputStream(Files.newOutputStream(fileToSave), SAVE_BUFFER_BYTES)) {
-                        if (icc == null) {
+                        if (icc == null && exifApp1 == null) {
                             JpegliEncoder.compressFallback(img, jpgQuality, outputStream);
                         } else {
-                            final OutputStream tagged = com.particlesdevs.photoncamera.processing.color.IccEmbed.jpegInserting(outputStream, icc);
+                            final OutputStream tagged = com.particlesdevs.photoncamera.processing.color.IccEmbed.jpegInserting(outputStream, exifApp1, icc);
                             JpegliEncoder.compressFallback(img, jpgQuality, tagged);
                             tagged.close();
                         }
@@ -224,6 +229,10 @@ public class ImageSaver {
             }
             final long exifStart = System.nanoTime();
             Log.d(TAG, "JPEG encode ms=" + (exifStart - encodeStart) / 1000000); // P33
+            if (exifApp1 != null) {
+                Log.d(TAG, "EXIF in the stream (block ms=" + exifBlockMs + "), no rewrite"); // P147
+                return true;
+            }
             try {
                 ExifInterface inter = ParseExif.setAllAttributes(fileToSave.toFile(), exifData);
                 if (inter != null) inter.saveAttributes();

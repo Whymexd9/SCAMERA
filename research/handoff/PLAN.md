@@ -3483,6 +3483,13 @@ Each step moves with a check that the GPU gives the CPU's result; the CPU path s
   build/reports/tone-curve), tools/check_tone_ops.py (GPU vs numpy: ACES, Uchimura, the straight and the S curve, max 1e-4);
   glslc for every TONE_OP variant. Not seen on a phone yet; the look vs ArkCam not compared on photos.
 
+### P147 - faster saving and processing without the OPPO (owner, 2026-10-16: «Сделай полностью всё что можешь по ускорению без оппо»)
+From the X200 Ultra log of 2026-10-15: JPEG save 0.6-1.0 s at 20 MP and 3.8-4.8 s at 50 MP (jpegli on one thread), and the
+EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file again).
+- a. DONE: the EXIF APP1 goes into the JPEG stream right after SOI (ExifBlock.app1Segment: the same tags) together with the ICC
+  segments (IccEmbed.jpegInserting(out, exif, icc)); no rewrite. Without the block (it failed) the old rewrite runs.
+  JpegExifStreamTest: the tags equal the rewrite's, one EXIF segment, the profile kept.
+
 ### P146 - FULLRES as its own settings group (owner, 2026-10-16: «Так же сделай отдельные настройки для 50мп как для отдельного модуля, сделай отдельную группу "FULLRES" где я смогу полностью всё так же настраивать как для остальных. Пункт пускай будет доступен только на смартфонах где у нас будет рабочий фулрез»)
 - A FULLRES profile beside the module profiles (ModuleProfiles / module_profile_v2_<slot>): every per-module setting
   (capture, SHDR / Hybrid, ARK tone and curves, denoise, sharpening, output) stored for the 50 MP FULLRES shot of a lens and
