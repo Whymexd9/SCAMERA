@@ -30,6 +30,12 @@ import java.util.Locale;
  * by 2^bits (unless the samples show the pedestal stayed where it was); the dynamic white in the stream's units, else the declared
  * white scaled ((white + 1) * 2^bits - 1). Everything here is arithmetic on metadata and on the samples the payload check has
  * already read: no frame is read again for it.
+ * <p>
+ * The scaled white of a wider stream is a guess, and the vivo X300 Ultra's DCG 14-bit stream does not reach it: its blown
+ * window clipped at 8694 = 1022 + 8 x (1023 - 64), half of 16383 (owner's log 2026-10-15: every channel of the merge at
+ * 0.4995). Read as unclipped, the equal raw channels of the blown area turned pink after the white balance. A clip plateau the
+ * samples show (RawPayloadCheck: many samples on one top value, few just under it) is the white of a wider stream when it lies
+ * under the scaled one ({@link #noteSaturation}, a camera session).
  */
 public final class RawLevels {
     public static final int MIN_BITS = 8, MAX_BITS = 16;
@@ -115,6 +121,13 @@ public final class RawLevels {
      */
     public static Levels resolve(float[] staticBlack, int staticWhite, float[] dynamicBlack, int dynamicWhite, int sampledBits,
                                  float sampledFloor, boolean wide, boolean useDynamicBlack, boolean useDynamicWhite) {
+        return resolve(staticBlack, staticWhite, dynamicBlack, dynamicWhite, sampledBits, sampledFloor, 0, wide, useDynamicBlack,
+                useDynamicWhite);
+    }
+
+    /** As above, with {@code saturation}: the clip plateau the session's samples showed (0: none), the white of a wider stream. */
+    public static Levels resolve(float[] staticBlack, int staticWhite, float[] dynamicBlack, int dynamicWhite, int sampledBits,
+                                 float sampledFloor, int saturation, boolean wide, boolean useDynamicBlack, boolean useDynamicWhite) {
         int declared = bitsOfWhite(staticWhite);
         if (declared == 0) {
             declared = 10;
@@ -178,6 +191,11 @@ public final class RawLevels {
         } else {
             white = (int) Math.min(65535L, ((staticWhite + 1L) << (bits - declared)) - 1);
             why += ", white static x" + (1 << (bits - declared));
+            // the scaled white is a guess: the clip the samples measured, when the stream clips under it (X300 Ultra DCG: 8694)
+            if (saturation > 0 && saturation < white && saturation > 2f * max(black)) {
+                white = saturation;
+                why += ", white = measured clip " + saturation;
+            }
         }
         if (min(black) >= white) {
             black = filled(0);
@@ -206,6 +224,8 @@ public final class RawLevels {
     private static int sDynamicWhite;
     private static int sSampledBits;
     private static float sSampledFloor = -1;
+    /** The clip plateau the samples of this session showed (0: none seen), see {@link #noteSaturation}. */
+    private static int sSaturation;
     /** Frames of this session whose samples proved at least 10 / 12 / 14 bits (index (bits - 8) / 2). */
     private static final int[] sVotes = new int[5];
 
@@ -230,6 +250,7 @@ public final class RawLevels {
         sDynamicWhite = 0;
         sSampledBits = 0;
         sSampledFloor = -1;
+        sSaturation = 0;
         Arrays.fill(sVotes, 0);
     }
 
@@ -283,6 +304,25 @@ public final class RawLevels {
         }
     }
 
+    /**
+     * RawPayloadCheck: a frame of a stream wider than declared clipped on {@code value} (a plateau of its samples). The highest
+     * plateau of the session is kept: a clip does not move, a lower one would be a flat content level.
+     */
+    static void noteSaturation(int value) {
+        synchronized (LOCK) {
+            if (!sWide || value <= sSaturation) return;
+            com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", "RAW clip plateau at " + value
+                    + (sSaturation > 0 ? " (was " + sSaturation + ")" : "") + ": the white of the wider stream");
+            sSaturation = value;
+        }
+    }
+
+    public static int sampledSaturation() {
+        synchronized (LOCK) {
+            return sSaturation;
+        }
+    }
+
     /** The metadata of the session says the stream is wider than declared: RawPayloadCheck measures the floor to check it. */
     static boolean metadataWider() {
         synchronized (LOCK) {
@@ -314,7 +354,7 @@ public final class RawLevels {
     }
 
     private static Levels resolveLocked(float[] staticBlack, int staticWhite) {
-        return resolve(staticBlack, staticWhite, sDynamicBlack, sDynamicWhite, sSampledBits, sSampledFloor, sWide, true, true);
+        return resolve(staticBlack, staticWhite, sDynamicBlack, sDynamicWhite, sSampledBits, sSampledFloor, sSaturation, sWide, true, true);
     }
 
     /**
@@ -326,7 +366,7 @@ public final class RawLevels {
         synchronized (LOCK) {
             final boolean session = sessionCamera(staticBlack, staticWhite);
             return resolve(staticBlack, staticWhite, dynamicBlack, dynamicWhite, session ? sSampledBits : 0,
-                    session ? sSampledFloor : -1f, sWide, useDynamicBlack, useDynamicWhite);
+                    session ? sSampledFloor : -1f, session ? sSaturation : 0, sWide, useDynamicBlack, useDynamicWhite);
         }
     }
 
@@ -367,6 +407,12 @@ public final class RawLevels {
     public static int staticWhite(CameraCharacteristics c) {
         final Integer w = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
         return w == null ? 0 : w;
+    }
+
+    static float max(float[] v) {
+        float m = -Float.MAX_VALUE;
+        for (int i = 0; i < Math.min(4, v.length); i++) m = Math.max(m, v[i]);
+        return m;
     }
 
     static float min(float[] v) {

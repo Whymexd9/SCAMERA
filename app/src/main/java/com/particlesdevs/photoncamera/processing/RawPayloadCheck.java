@@ -105,6 +105,11 @@ public final class RawPayloadCheck {
             final float floor = wider || RawLevels.metadataWider() ? floor(samples, n) : -1f;
             final int bits = wider ? RawLevels.sampledBits(max2, whiteLevel, RawLevels.staticBlack(), floor) : 0;
             RawLevels.noteSamples(whiteLevel, bits, floor);
+            // the white of the wider stream from the data: its clip plateau (X300 Ultra DCG clips at 8694, not at 16383)
+            if (wider) {
+                final int clip = clipPlateau(samples, n);
+                if (clip > 0) RawLevels.noteSaturation(clip);
+            }
             if (bits > 0) return new Result(null, share, zeroShare, false);
         }
         if (share >= IMPOSSIBLE_SHARE || (share >= IMPOSSIBLE_WITH_ZERO_ROWS && zeroShare >= ZERO_ROW_SHARE))
@@ -112,6 +117,28 @@ public final class RawPayloadCheck {
                     "RAW is not plain 16-bit: %.1f %% of samples at or above 4x white %d, %.1f %% zero rows (%s)",
                     share * 100, whiteLevel, zeroShare * 100, geometry), share, zeroShare, packed10);
         return new Result(null, share, zeroShare, false);
+    }
+
+    /**
+     * The value a frame clips on, 0 when its samples show no clip: at least 0.2 % of them (16 at least) within 0.1 % (2 DN at
+     * least) of the top sample, and the band of three times that width just under it holding fewer than half as many. A blown
+     * area piles up on one value; bright content, however flat, spreads with its noise and thins out towards its maximum.
+     */
+    static int clipPlateau(int[] samples, int n) {
+        if (n < 16) return 0;
+        // the 4th largest sample: a few hot pixels above a clip are no plateau of their own
+        final int[] sorted = java.util.Arrays.copyOf(samples, n);
+        java.util.Arrays.sort(sorted);
+        final int top = sorted[n - 4];
+        if (top <= 0) return 0;
+        final int tol = Math.max(2, top / 1000);
+        int at = 0, below = 0;
+        for (int i = 0; i < n; i++) {
+            final int v = samples[i];
+            if (v >= top - tol) at++;
+            else if (v >= top - 4 * tol) below++;
+        }
+        return at >= Math.max(16, n / 500) && 2 * below < at ? top : 0;
     }
 
     /** 0.5 % of the non-zero samples (zero is padding, not the floor), -1 when there are too few. */

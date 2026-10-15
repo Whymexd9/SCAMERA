@@ -198,6 +198,55 @@ public class RawLevelsTest {
         assertEquals("a new session starts over", 0, RawLevels.sampledBits());
     }
 
+    /**
+     * vivo X300 Ultra DCG 14 bit (owner's log 2026-10-15): black 1022, the scaled white 16383, but the blown window clipped at
+     * 8694 = 1022 + 8 x (1023 - 64) - every channel of the merge at 0.4995, the equal raw channels pink after the white balance.
+     */
+    @Test public void measuredClipIsTheWhiteOfAWiderStream() {
+        RawLevels.Levels guess = RawLevels.resolve(B64, 1023, all(1022f), 1023, 14, 1045f, 0, true, false, true);
+        assertEquals(14, guess.bits);
+        assertEquals("without a clip seen: the scaled white", 16383, guess.white);
+        RawLevels.Levels measured = RawLevels.resolve(B64, 1023, all(1022f), 1023, 14, 1045f, 8694, true, false, true);
+        assertEquals(8694, measured.white);
+        assertArrayEquals(all(1022f), measured.black, 0f);
+        assertTrue(measured.source, measured.source.contains("measured clip 8694"));
+        assertEquals("the declared depth keeps its white", 1023,
+                RawLevels.resolve(B64, 1023, all(64f), 1023, 0, -1f, 900, true, false, true).white);
+        assertEquals("a clip above the scaled white changes nothing", 16383,
+                RawLevels.resolve(B64, 1023, all(1022f), 1023, 14, 1045f, 16383, true, false, true).white);
+        assertEquals("a level at the black is no clip", 16383,
+                RawLevels.resolve(B64, 1023, all(1022f), 1023, 14, 1045f, 1500, true, false, true).white);
+        // the session: the highest plateau is kept, the shot's frame gets it, a new session forgets it
+        RawLevels.noteCamera(B64, 1023);
+        RawLevels.noteSamples(1023, 14, 1045f);
+        RawLevels.noteSamples(1023, 14, 1045f);
+        RawLevels.noteSaturation(8694);
+        RawLevels.noteSaturation(7000);
+        assertEquals(8694, RawLevels.sampledSaturation());
+        assertEquals(8694, RawLevels.forFrame(B64, 1023, all(1022f), 1023, false, true).white);
+        RawLevels.newSession(true);
+        assertEquals(0, RawLevels.sampledSaturation());
+        assertEquals(16383, RawLevels.resolve(B64, 1023, all(1022f), 1023, 14, 1045f, RawLevels.sampledSaturation(), true, false, true).white);
+    }
+
+    /** The clip plateau of a frame's samples: a blown window piles up on one value, bright content spreads with its noise. */
+    @Test public void clipPlateauOfTheSamples() {
+        java.util.Random r = new java.util.Random(7);
+        int n = 8192;
+        int[] s = new int[n];
+        for (int i = 0; i < n; i++) s[i] = 1022 + (int) (r.nextDouble() * 5000);    // the room
+        for (int i = 0; i < 1200; i++) s[i * 6] = 8694;                               // the blown window (15 %)
+        s[5] = 9400; s[11] = 9900;                                                     // two hot pixels above the clip
+        assertEquals(8694, RawPayloadCheck.clipPlateau(s, n));
+        int[] smooth = new int[n];
+        for (int i = 0; i < n; i++) smooth[i] = 1022 + (int) (7600.0 * i / n + r.nextGaussian() * 40); // a bright gradient
+        assertEquals("unclipped bright content", 0, RawPayloadCheck.clipPlateau(smooth, n));
+        int[] few = s.clone();
+        for (int i = 0; i < 1200; i++) few[i * 6] = 1022 + (int) (r.nextDouble() * 5000);
+        for (int i = 0; i < 10; i++) few[i * 6] = 8694;
+        assertEquals("ten samples are no plateau", 0, RawPayloadCheck.clipPlateau(few, n));
+    }
+
     @Test public void sessionMetadataForFramesWithoutResult() {
         RawLevels.noteMetadata(B64, 1023, all(1030.75f), 1023);
         assertTrue(RawLevels.metadataWider());

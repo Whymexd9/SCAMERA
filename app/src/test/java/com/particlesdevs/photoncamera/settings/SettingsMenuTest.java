@@ -721,6 +721,14 @@ public class SettingsMenuTest {
             assertTrue(TunableKeyManager.loadKeys(activity,sensor).isEmpty());
         }
     }
+    /** «Кривая AgX и ACES» is the first row of «Тон ARK» (owner, 2026-10-15). */
+    @Test public void curvesOpenTheArkTonePage(){
+        PreferenceScreen root=inflate();
+        androidx.preference.PreferenceGroup tone=root.findPreference("scam_hybrid_ark_tone_screen");
+        assertNotNull(tone);
+        assertEquals("scam_hybrid_ark_curves_screen",tone.getPreference(0).getKey());
+        assertNotNull(root.findPreference("pref_scam_hybrid_ark_agx_look"));assertNotNull(root.findPreference("pref_scam_hybrid_ark_aces_toe"));
+    }
     /** Every page of the settings root has its own icon («Цвет» and «Интерфейс» both showed the palette, 2026-10-15). */
     @Test public void rootPagesHaveTheirOwnIcons() throws Exception{
         String xml;

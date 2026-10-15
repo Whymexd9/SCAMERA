@@ -3362,6 +3362,20 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   tools/make_ui_icons.py); SettingsMenuTest.rootPagesHaveTheirOwnIcons.
 - Option sheets scroll in landscape (P137 fix, f68ec29 / 0554978).
 
+### P140c - X300 Ultra DCG white level; AgX / ACES curve on top of «Тон ARK» (owner, 2026-10-15: «На Vivo X300 Ultra мы не исправили уровень белого, займись этим. Причём появляется проблема например в этой сцене если тапнуть по темному участку»; «Пункт "Кривая AgX и ACES" перенеси в самый верх группы Тон ARK»)
+- Log + photo (pink window behind the curtain): the pink shots are the DCG 14-bit ones (forceSensorMode 17). RawLevels took the
+  scaled white 16383 (14 bit, black 1022 dynamic), but the merge's highlight statistics show every channel clipped at 0.4995
+  of it (12:10:43 R/G/B 0.4995; 12:17:24 G 0.4990 B 0.4988): the stream clips at ~8694 = 1022 + 8 x (1023 - 64). A blown area
+  under half the white is not a clip for the worker flags nor for the highlight recovery (lo 1.0, nearClip false), so its equal
+  raw channels went through the white balance (R x2.47, B x1.58): pink. A tap on a dark area raised the exposure and blew the
+  window. The 10-bit shots (white 1023) clip where declared.
+- Fix: RawPayloadCheck.clipPlateau finds a clip in a wider stream's samples (>= 0.2 % on one top value within 0.1 %, the band
+  under it thinner; the 4th largest sample as top against hot pixels); RawLevels.noteSaturation keeps the session's highest
+  plateau and resolve() takes it as the white of a wider stream when it lies under the scaled one ("white = measured clip").
+  Shots, viewfinder and meters use it (forFrame / current). A DCG scene without a blown area keeps 16383 (nothing to measure).
+  Tests RawLevelsTest.measuredClipIsTheWhiteOfAWiderStream / clipPlateauOfTheSamples. Not seen on the X300 Ultra yet.
+- «Кривая AgX и ACES» is the first row of «Тон ARK» (SettingsMenuTest.curvesOpenTheArkTonePage).
+
 ### P141 - config files: saving, applying, moving between phones (owner, 2026-10-15: «Ещё добавь в план работы перепроверка работы с конфиг файлами. Проверь чтобы всё правильно сохранялось и применялось. Так же проверь чтобы на разных смартфонах с разными айди модулей конфиг применялся нормально и автоматически подставлялся/адаптировался под другое количество модулей, при этом сделай так чтобы модули не дублировались и не появлялись лишние»)
 - Audit «Сохранить / Восстановить» (BackupPreferences, RestorePreference, ModuleProfiles, module_profile_v2_* files, the
   sensor-config keys pref_sensorconfig_<id>_*, vendor tags, shade tiles, the colour settings): everything saved is restored
