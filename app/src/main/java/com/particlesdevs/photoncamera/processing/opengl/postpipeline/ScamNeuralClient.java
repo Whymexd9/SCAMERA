@@ -340,7 +340,7 @@ public final class ScamNeuralClient {
             // as plain Bayer (vivo tele in ISZ: blue image, 3 October). Without the model the worker falls back itself.
             final boolean hybridMerge=scamBurst instanceof ScamHybridBurst;
             // P80: the hybrid RGB comes back as half floats (marker rgb-half): half the bytes written, read and uploaded
-            final boolean rgbHalf=hybridMerge&&ScamHybridBurst.halfTransport();
+            final boolean rgbHalf=hybridMerge&&((ScamHybridBurst)scamBurst).rgbHalfTransport();
             if(rgbHalf&&!new File(dir,"rgb-half").createNewFile())throw new IOException(Lang.t("Не удалось создать маркер half","Could not create the half marker"));
             if(hybridMerge){
                 // SCAM Hybrid merge (scam-hybrid.h): no neural model, any GPU. The worker reads the marker

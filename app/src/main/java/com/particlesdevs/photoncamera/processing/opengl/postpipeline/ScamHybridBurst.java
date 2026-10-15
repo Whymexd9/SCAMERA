@@ -17,7 +17,7 @@ import com.particlesdevs.photoncamera.util.Lang;
  * kernel, the SCAM rejection and frame weights, Bento (ultrashort) and Shasta (bracketed) rules.
  * <pre>
  * header 128 B: magic 'NCH1', version 11, w, h, cfa, frameCount, white f32, black f32[4], flags u32
- *               (1 diagnostics, 2 merged DNG, 4 clip flags), baseIndex u32 (0), grid u32 (1 = sensor grid, 2 = the Sabre 6.1 2x
+ *               (1 diagnostics, 2 merged DNG, 4 clip flags, 8 strict 2x), baseIndex u32 (0), grid u32 (1 = sensor grid, 2 = the Sabre 6.1 2x
  *               grid: RGB 2w x 2h, four sub-positions +-0.25 px per sensor pixel), colour block u32 (0 = unknown: the worker
  *               measures it, 1 plain Bayer, 2 Quad, 4 Tetra: a mosaic is merged from its own sites), reserved
  * frame table:  frameCount x 32 B: role u32 (1 normal, 3 bracketed, 5 ultrashort), exposure f32 (ratio to base),
@@ -62,12 +62,8 @@ public final class ScamHybridBurst implements ScamTransport {
     }
 
     private static final String CONSERVATIVE_TUNING = "localAlign 0\nsabre61 0\nrimRatio 0\nchromaDiff 0\n";
-    /**
-     * P27 any resolution: largest input of the Sabre 2x grid (its 2w x 2h RGB float32 is 768 MB at 16 MP, today's largest 2x
-     * output). Above it the hybrid merges on the sensor grid and the per-resolution guards below apply; at or below it nothing
-     * changes.
-     */
-    static final long SABRE_2X_MAX_INPUT = 16_000_000L;
+    /** Threshold for the larger-stream memory planner and transport; not a resolution limit. */
+    static final long CLASSIC_INPUT_PIXELS = 16_000_000L;
     /** P27 any resolution: worker memory that does not grow with N (output stage, RGB result transport), bytes per sensor pixel. */
     static final double FIXED_BYTES_PER_PIXEL = 40;
     /**
@@ -83,6 +79,7 @@ public final class ScamHybridBurst implements ScamTransport {
     private final int width, height, cfa;
     /** RGB size the worker returns: the sensor grid or the Sabre 2x grid (pref_scam_hybrid_output). */
     private final int outWidth, outHeight;
+    private final boolean strictTwoX, rgbHalf;
     /** Final JPEG size: the pipeline runs on the worker grid, the bitmap is resized at the very end (after sharpening). */
     private final int finalWidth, finalHeight;
     private final float white;
@@ -179,19 +176,24 @@ public final class ScamHybridBurst implements ScamTransport {
         }
         // P56: a Quad (2x ISZ) or Tetra (4x ISZ, Realme GT8 Pro 2026-10-09) mosaic gets the Sabre 2x grid too, merged natively by the
         // worker (kHybMergeMosaic / Fast at g = 2b: the sites at +-0.25 px).
-        final boolean outputMode2x = !conservative && !"sensor".equals(PreferenceKeys.hybridOutputMode());
+        final String outputMode = PreferenceKeys.hybridOutputMode();
+        strictTwoX = !conservative && "2x".equals(outputMode);
+        final boolean outputMode2x = !conservative && !"sensor".equals(outputMode);
         final boolean wants2x = outputMode2x && mosaicBlock <= 4;
+        if (strictTwoX && !wants2x) throw new IOException(Lang.t("SHDR: склейка 2× недоступна для цветового блока ",
+                "SHDR: Sabre 2x is unavailable for colour block ") + mosaicBlock);
         if (outputMode2x && !wants2x) Log.i("SCAM_HDR", "hybrid output: sensor grid " + width + "x" + height + " (Sabre 2x grid off for a block "
                 + mosaicBlock + " mosaic stream: the native merge has no 2x grid for it)");
-        // P27 any resolution: the 2x grid only where it fits (input up to 16 MP, 2w x 2h within the GPU's limit, 2x RGB within one
-        // Java buffer); otherwise the sensor grid. Up to 16 MP on a GPU of 16384 (Adreno 750) this is today's choice exactly.
         final boolean twoX = wants2x && sabre2xFits(width, height, gpuMaxSide);
+        if (strictTwoX && !twoX) throw new IOException(Lang.t("SHDR: склейка 2× ", "SHDR: Sabre 2x ") + 2L * width + "x" + 2L * height
+                + Lang.t(" превышает предел стороны GPU ", " exceeds GPU side ") + gpuMaxSide
+                + Lang.t(" или размер буфера RGB FP16 (2 ГБ)", " or one FP16 RGB buffer (2 GB)"));
         if (wants2x && !twoX) Log.i("SCAM_HDR", "hybrid output: sensor grid " + width + "x" + height + " (Sabre 2x grid "
-                + 2L * width + "x" + 2L * height + " needs an input up to 16 MP within GPU side " + gpuMaxSide + ")");
-        // No memory gate (user's call): the 2x pipeline holds the 2w x 2h float RGB plus the GL working set; availMem is logged.
+                + 2L * width + "x" + 2L * height + " exceeds GPU side " + gpuMaxSide + " or one FP16 RGB buffer)");
         Log.i("SCAM_HDR", "hybrid output mode=" + PreferenceKeys.hybridOutputMode() + " availMem=" + (availableMemory() >> 20) + " MB twoX=" + twoX
                 + (conservative ? " (conservative retry)" : ""));
         outWidth = twoX ? 2 * width : width; outHeight = twoX ? 2 * height : height;
+        rgbHalf = transportHalf(outWidth, outHeight, halfTransport());
         finalWidth = fin.x; finalHeight = fin.y;
         if (twoX) Log.i("SCAM_HDR", "hybrid output: Sabre 2x grid " + outWidth + "x" + outHeight + ", final " + finalWidth + "x" + finalHeight
                 + " (resize after the pipeline, " + PreferenceKeys.hybridDownsamplerName() + ")");
@@ -223,12 +225,17 @@ public final class ScamHybridBurst implements ScamTransport {
         final int reservedExtras = com.particlesdevs.photoncamera.capture.HybridPlan.bentoFrames() + 5;
         int normalLimit = conservative ? CONSERVATIVE_NORMALS : WORKER_MAX_FRAMES - reservedExtras;
         String limitReason = "worker limit";
-        final long available = (long) width * height > SABRE_2X_MAX_INPUT ? memoryAvailable() : -1;
-        final int budget = memoryFrameBudget(width, height, mosaicBlock, available);
+        final long available = (long) width * height > CLASSIC_INPUT_PIXELS ? memoryAvailable() : -1;
+        final int grid = twoX ? 2 : 1;
+        final int budget = memoryFrameBudget(width, height, mosaicBlock, grid, available);
+        // The input and three post-pipeline RGBA16F textures coexist. A smaller frame budget alone is only an estimate.
+        if (strictTwoX && available > 0 && minimumPostBytes(outWidth, outHeight) > available)
+            throw new IOException(Lang.t("SHDR: недостаточно свободной памяти для склейки 2× ",
+                    "SHDR: not enough available memory for the requested Sabre 2x grid ") + outWidth + "x" + outHeight);
         if (budget != Integer.MAX_VALUE) {
             final int byMemory = Math.max(MIN_NORMALS, budget - Math.min(reservedExtras, bracketed.size() + shorts.size()));
             Log.i("SCAM_HDR", "hybrid memory budget " + width + "x" + height + ": " + budget + " frames (available " + (available >> 20)
-                    + " MB, fixed " + (long) (FIXED_BYTES_PER_PIXEL * width * height) / (1 << 20) + " MB, "
+                    + " MB, fixed " + (long) (FIXED_BYTES_PER_PIXEL * outWidth * outHeight) / (1 << 20) + " MB, "
                     + (long) perFrameBytes(width, height, mosaicBlock) / (1 << 20) + " MB per frame) -> at most "
                     + Math.min(byMemory, normalLimit) + " N");
             if (byMemory < normalLimit) { normalLimit = byMemory; limitReason = "memory budget"; }
@@ -416,15 +423,18 @@ public final class ScamHybridBurst implements ScamTransport {
         } catch (RuntimeException e) { return -1; }
     }
 
-    /**
-     * P27 any resolution: the Sabre 2x grid fits a w x h stream: input up to {@link #SABRE_2X_MAX_INPUT} (today's largest 2x
-     * output), 2w and 2h within the GPU's {@code gpuMaxSide} (GLLimits.maxSide()), and the 2x RGB float32 (48 B per sensor pixel)
-     * within one Java buffer.
-     */
     static boolean sabre2xFits(int w, int h, int gpuMaxSide) {
         final long px = (long) w * h;
-        return px <= SABRE_2X_MAX_INPUT && 2L * Math.max(w, h) <= gpuMaxSide && 48L * px <= Integer.MAX_VALUE;
+        return w > 0 && h > 0 && 2L * Math.max(w, h) <= gpuMaxSide && px <= Integer.MAX_VALUE / 24L;
     }
+
+    static boolean transportHalf(int w, int h, boolean preferredHalf) {
+        return preferredHalf || (long) w * h > Integer.MAX_VALUE / 12L;
+    }
+
+    static long minimumPostBytes(int outputWidth, int outputHeight) { return 32L * outputWidth * outputHeight; }
+
+    public boolean rgbHalfTransport() { return rgbHalf; }
 
     /**
      * P35: block of the active module's declared ISZ sensor mode (5 Quad -> 2, 7 Tetra -> 4), else 0. Only a fallback: a shot
@@ -454,9 +464,13 @@ public final class ScamHybridBurst implements ScamTransport {
      * over {@link #perFrameBytes}. Integer.MAX_VALUE (no cap) at 16 MP or less or when the available memory is unknown.
      */
     static int memoryFrameBudget(int w, int h, int mosaicBlock, long availableBytes) {
+        return memoryFrameBudget(w, h, mosaicBlock, 1, availableBytes);
+    }
+
+    static int memoryFrameBudget(int w, int h, int mosaicBlock, int grid, long availableBytes) {
         final long px = (long) w * h;
-        if (px <= SABRE_2X_MAX_INPUT || availableBytes <= 0) return Integer.MAX_VALUE;
-        final double free = MEMORY_SHARE * availableBytes - FIXED_BYTES_PER_PIXEL * px;
+        if (px <= CLASSIC_INPUT_PIXELS || availableBytes <= 0) return Integer.MAX_VALUE;
+        final double free = MEMORY_SHARE * availableBytes - FIXED_BYTES_PER_PIXEL * px * grid * grid;
         return (int) Math.max(0, Math.min(Integer.MAX_VALUE - 1, Math.floor(free / perFrameBytes(w, h, mosaicBlock))));
     }
 
@@ -466,7 +480,7 @@ public final class ScamHybridBurst implements ScamTransport {
      */
     public static long workerTimeoutSeconds(int w, int h) {
         final long px = (long) w * h;
-        return px <= SABRE_2X_MAX_INPUT ? 900 : Math.min(3600, (long) Math.ceil(900.0 * px / SABRE_2X_MAX_INPUT));
+        return px <= CLASSIC_INPUT_PIXELS ? 900 : Math.min(3600, (long) Math.ceil(900.0 * px / CLASSIC_INPUT_PIXELS));
     }
 
     @Override public int cfa() { return cfa; }
@@ -477,7 +491,9 @@ public final class ScamHybridBurst implements ScamTransport {
      * P27: extra hybrid_tuning.txt lines for this burst (the conservative retry), appended after the user's tuning; then the steps
      * a worker of this process died in (see {@link #avoidedSteps}).
      */
-    public String tuningOverride() { return (conservative ? CONSERVATIVE_TUNING : "") + avoidedTuning(); }
+    public String tuningOverride() {
+        return (conservative ? CONSERVATIVE_TUNING : "") + avoidedTuning() + (strictTwoX ? "grid 2\nauto2x 0\n" : "");
+    }
     /** The worker leaves the CRE motion out (job marker cre-off) after a worker of this process died inside it. */
     public boolean creOff() { return avoidedSteps.contains(STEP_CRE); }
 
@@ -487,7 +503,7 @@ public final class ScamHybridBurst implements ScamTransport {
         ByteBuffer h = ByteBuffer.allocate(128 + 32 * frames.size()).order(ByteOrder.LITTLE_ENDIAN);
         h.putInt(0x3143484e).putInt(pages != null ? 12 : 11).putInt(width).putInt(height).putInt(cfa).putInt(frames.size()).putFloat(white);
         for (float b : black) h.putFloat(b);
-        h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0) | (clipFlags ? 4 : 0)).putInt(0)
+        h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0) | (clipFlags ? 4 : 0) | (strictTwoX ? 8 : 0)).putInt(0)
          .putInt(outWidth == width && outHeight == height ? 1 : 2).putInt(mosaicBlock).putInt(0).putInt(0);
         h.position(128);
         for (int i = 0; i < frames.size(); i++) {
@@ -535,7 +551,7 @@ public final class ScamHybridBurst implements ScamTransport {
 
     /** P30: every frame of the burst is a view of one shot arena: header into its first page, its memfd to the worker. */
     @Override public android.os.ParcelFileDescriptor sharedBurst() {
-        if ((long) width * height > SABRE_2X_MAX_INPUT) moveIntoArena();
+        if ((long) width * height > CLASSIC_INPUT_PIXELS) moveIntoArena();
         int arena = -1;
         final long[] pages = new long[frames.size()];
         for (int i = 0; i < frames.size(); i++) {
@@ -706,18 +722,22 @@ public final class ScamHybridBurst implements ScamTransport {
             ScamDiagnostics.frames(burst.frames, burst.base);
         }
         if (gpuUnusable != null) {
+            if (burst.strictTwoX) throw new IOException(Lang.t("SHDR: склейка 2× на GPU недоступна (",
+                    "SHDR: Sabre 2x GPU merge is unavailable (") + gpuUnusable + ")");
             Log.w("SCAM_HDR", "Hybrid fallback=cpu-single: GPU merge unusable in this session (" + gpuUnusable + ")");
             return cpuSingle(burst);
         }
         try {
             return ScamNeuralClient.processScamBurst(context, burst);
         } catch (Exception first) {
+            if (burst.strictTwoX) throw new IOException(Lang.t("SHDR: склейка 2× не завершена; замена на 1× или увеличение отключена",
+                    "SHDR: Sabre 2x merge failed; no sensor-grid or upscale fallback"), first);
             final String report = ScamNeuralClient.lastJobReport;
             final String why = String.valueOf(first.getMessage());
             final boolean timeout = first instanceof ScamNeuralClient.WorkerTimeoutException;
             // Only a stream of 16 MP or less marks the GPU unusable for the session: a larger one runs memory-heavy CPU stages
             // before the GPU context, where the low-memory killer can stop the worker; it takes the conservative retry instead.
-            final boolean gpuInitDeath = (long) burst.width * burst.height <= SABRE_2X_MAX_INPUT
+            final boolean gpuInitDeath = (long) burst.width * burst.height <= CLASSIC_INPUT_PIXELS
                     && report != null && report.contains("WORKER EXIT: signal") && !report.contains("HYBRID GPU:");
             Log.e("SCAM_HDR", "Hybrid merge failed (" + why + ")" + (gpuInitDeath ? ", worker died before the GPU context" : ""));
             if (gpuInitDeath) {

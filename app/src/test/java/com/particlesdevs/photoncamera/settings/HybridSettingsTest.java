@@ -393,6 +393,10 @@ public class HybridSettingsTest {
         Map<String,Object> s=new HashMap<>();
         assertNotNull("sensor grid: nothing to decide",new SettingsAvailability(s).reason("pref_scam_hybrid_auto2x"));
         s.put("pref_scam_hybrid_output","16");assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_auto2x"));
+        s.put("pref_scam_hybrid_output","2x");
+        assertNotNull("native 2x cannot be replaced by a coarse merge",new SettingsAvailability(s).reason("pref_scam_hybrid_auto2x"));
+        assertNull("chroma strength still acts on native 2x",new SettingsAvailability(s).reason("pref_scam_hybrid_dn_chroma_2x_keep"));
+        s.put("pref_scam_hybrid_output","12");assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_auto2x"));
     }
 
     /** P79: the per-pass GPU times (a glFinish after every pass, 30-60 % slower merge) are off by default on every phone. */

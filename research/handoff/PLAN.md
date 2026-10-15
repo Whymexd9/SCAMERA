@@ -3345,3 +3345,99 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
 - Not done: the film LUT (.cube / Hald import, a sampler3D stage - needs a file import page and 3D textures in GLProg), the
   skin protection of the AgX saturation above 1, and the live RAW viewfinder's preview of the look (it renders with its own
   ArkCore defaults). Not seen on a phone.
+
+
+## P109l - Snapdragon client attribution and VCF RAW boundary
+
+Typed AttributionSourceState spoof is implemented and observed on PD2454. An ordinary open followed by
+VivoCameraManager.setValue(1,1) yields AppType 1 / VCFAppType 2 after the one-way Binder call completes.
+26 RAWs and JPEG were delivered with sensor routes off; AppType subsequently resets to 2.
+Further research: typed spoof's first-request failure is the CameraService permission check against real UID,
+and the provider empty-map crash is secondary to closing that errored session. Property 40=1 promotes the
+real app to AppType 1 and allows full VCF preview/JPEG, but 12 MP RAW remains zero. Stock's 50 MP RAW is a
+dummy too; stock's 12 MP RAW is nonzero. Replaying stock availableStreamMap does not fix our 12 MP delivery.
+ModeSelector Parameter offsets are bytes: ROI triplet [3,5,0]. Native forceSensorMode 1/2 gives identical
+FOV, white 1023. ISZ/DCG/FULLRES remain unverified; investigate stock versus SDK RAW routing. Experiments default off.
+Evidence, tests and continuation prompt: SNAPDRAGON-CLIENT-HANDOFF-20261013.md.
+
+
+### P109m - PD2454 SDK RAW usage and actual sensor selection (local research, 2026-10-14)
+- Corrected stock Pro ID to camera3. Default RAW usage rejects 8192x6144 in CameraService rounding;
+  usage0 supplies nonzero Camera2 RAW on ordinary UID10349 after SDK40 before open and Pro UI16.
+- Main DNGHWREMOSAIC mode13 (8192x6144); tele mode18 (8160x6144). Wide delivers 8192x6144 too.
+  Tele200 MP stays empty. Pro capture sensorMode0 delivers 12 MP auxiliary RAW; mode1 delivers 50 MP.
+- Minimal probe: three streams, no Vivo API registration or copied availableStreamMap. Not yet integrated
+  into production CaptureController or a live RAW ZSL ring. SDK40/restoration code remains diagnostic.
+- SHDR1/AutoHDR0/UI3/EIS0 reaches DCGHDR30_LOG mode12 RAW14, then CHI aborts in AcquireResource.
+  ISZ without remosaic remains open. Real com.vivo.bsptest resolves to AppType7, not ENGINEER5.
+- SCAMERA diagnostic APK27098 SHA256 in SNAPDRAGON-CLIENT-HANDOFF. No push or Actions artifact.
+  Host regression 24/24; all logs, runnable commands and readiness boundaries preserved locally.
+
+### P109n - SDK lifecycle and internal selector IDs (local, 2026-10-14)
+- VivoSdkRawSession readback/rollback/restore is exercised on ordinary UID10467 with PRIVATE preview
+  and RAW50MP. Four lifecycle tests plus prior checks: 28/28. Production CaptureController not wired.
+- SDK RAW repeating target suppresses all RAW delivery. ISO72/10ms delivers50MP; ISO2300/30ms
+  falls back to BIN. Exact AE gate unknown; do not fake ISO/vendor gain or claim ZSL.
+- JSON Camera ID is internal: Camera2 main3 resolves0. Its ROI needs SCENARIO6; selector sees
+  scenario0 and seamlessMode.4=null despite public [3,5,0]. Previous main/wide tuple interpretation wrong.
+- Encoder PRIVATE and logical2/physical3 DCG graphs still abort in CHI. Stock video AutoHDR1 route
+  is DCG1_4 RAW10, distinct from LOG RAW14. Readiness and runnable commands in latest handoff section.
+
+### P109o - Bright scene and SDK request lifetime (local, 2026-10-14)
+- Owner supplied the bright scene. Genuine com.scamera.probe UID10467 obtains automatic-AE RAW50MP,
+  main mode13, ISO250/16.7ms. Three serial STILL requests produce three nonzero RAW50MP frames with
+  different timestamps/hashes; captureBurst(3) produces only one. No full RAW ZSL claim.
+- Native force7 session-only does not crop delivered RAW: measured scale1, correlation0.9932.
+  Force7 also in requests crashes the native graph. EnableInsensorZoom/CROPPED_RAW/zoom2 alone
+  remains BIN1. SDK photo RAW12MP is dummy, including Vivo global zoom3 and VCFAppType1.
+- Stock main ISZ uses global zoom3 = base1.5 * ROI2, SAT1, lux below380; VAS returns [3,3,-1].
+  SDK UI1/scene0/config1 resolves SeamlessDecisionRule modern0 and runs legacy. Scene+8 is subUI,
+  previously mislabelled camType. Public enableSeamlessMode is overwritten by HAL.
+- Explicit SHDR1/numHDRexposure2/EnableHDRDCGMode2 initializes main DCG3/14, caps8192/type0;
+  AutoHDR1/DCG3 initializes DCG4/10, caps8192/type1, with working preview. RAW request still
+  aborts RTMCX after semaphore timeout. Observer shows repeated HDR configure of same3/0,
+  first4/10 then0/0; no camera-ID mismatch proved. Request num/DCG propagation alone does not fix it.
+- Standalone v15 has request/session DCG keys, capture-template/usecase options, independent
+  burst builders, serial capture with fresh SDK IDs, and a capture-only BitSwitchMode probe.
+  Production CaptureController remains unwired to SDK. No push or final Actions APK.
+
+### P109p - Verified production SDK50 and tele HW-remosaic4x fallback (local, 2026-10-15)
+- P109l-o above retain their historical snapshot status. Preserve concurrent owner commit
+  a0f5911462253ae3443797cf3eba4ae746b5118a and all other AI changes. Firmware scope: tested PD2454 only.
+- Production30802 / org.codeaurora.snapcam UID10349 main3 SDK50: three matched serial future NORMAL RAWs,
+  mode13,8192x6144, automatic AE ISO250/16666667ns -> ordinary-UID Hybrid PSL -> JPEG8192x6144.
+  RAW/JPEG-only STILL targets, preview-only repeating, usage0, exact timestamp/nonzero guards and40/33 restore.
+  This is three-frame PSL, not the stock NICE ZSL bracket. Detailed timestamps/hashes are in SDK-RAW-ROUTES.
+- Rootless tele5 force6 diagnostic proves4x sensor ROI4080x3072 inside16320x12288, HW remosaicType1,
+  nonzero RAW and continuous RAW ring. Production fallback keeps enabled Session/Integer6 in every request,
+  RAW usage0, baseTele*4 label, and mutual exclusion with existing DCG/FULLRES controls.
+- PD2454 rear capacity9 preserves all8 owner modules; front/other devices stay8. A failed duplicate consumes
+  no offer, a successfully offered/deleted module stays deleted. Existing phone marker was not reset.
+  Overflow long hold -> all visible module labels/camera IDs -> existing switch handler;4/4 UI tests PASS,
+  including a real stationary hold and unchanged zoom drag. Capacity/coordinator/session67/67 PASS.
+- Installed diagnostic30805 selected ordinary-UI back8 camera5 zoom9.6(remosaic), measured mode6/Bayer block1.
+  At04:01:41 Hybrid took8matched pre-shutter RAWs, future0, and processed as UID10349. Native RAW4080x3072
+  was retained; existing2x/Lanczos output5184x3904 received final RGB/HDR-map crop5184x3888 (exact4:3).
+  JPEG33355826B SHA256ed5246ae5efe7c0f38d674a08dc480126bda7680537d25d27b3bccbb62716293 verified.
+  reports/pd2454-30805-isz-capture-result-20261015.txt and reports/isz-live-20261015/JPEG-SHA256.json.
+- APK30805 SHA2564ea7694e2f3f0bd3e74d777144495fa68133c0fa2c439adf2f2c38d10bee1bae verified against
+  local .sha256/manifest (25 pinned assets), immutable source-snapshot-20261015-033646. Local diagnostic only.
+- Native-mosaic ISZ, DCG RAW, tele200, SDK50 RAW repeating and stock7-frame NICE ZSL remain unfinished.
+  The8N/future0 tele shot is not a4N+S+ES+L equivalence claim; no stock image-quality equivalence was tested.
+  No push/Actions run for this transfer. Final APK requires the owner's separate push command, Actions artifact,
+  and byte-for-byte SHA256SUMS verification. Current sharpening is ArkLuma, not the retired RawTherapee stage.
+
+### P109q - SHDR-only local handoff, unrestricted Sabre2x input and native DCG boundary (2026-10-15)
+- Owner supersedes the old stock NICE/ZSL bracket and Actions delivery requirements: no push/Actions;
+  prepare current source/evidence for another AI to build a local APK. DCG/ISZ/FULLRES target SHDR only.
+- Removed the artificial16MP Sabre2x cap in Java/native, added strict explicit2x, forced FP16 above RGB32
+  ByteBuffer capacity, overflow-safe import and actual GPU texture checks. Hardware/overflow bounds remain.
+  94 Java tests pass; native50MP transport/guard fixture passes on X200 UID2000. No201MP photo/APK proof.
+  kHybMergeMain1 unchanged. FULLRES-SABRE2X-SHDR-20261015.md documents memory and fresh worker rebuild.
+- Four fresh native DCG probes are saved.4096x2632 rejected-38; advertised3072 with HDR controls stalls;
+  force12-only+JPEG crashes on null Bayer RS config; RECORD/useCase3 plus HDR controls produces nonnull
+  primary/alternate AFD configs but still preview0/RAW0. AFD null alone is not the remaining blocker.
+  No production DCG availability change. Native tag_ints early-return limitation is explicit in the prompt.
+- Primary continuation: CONTINUE-SNAPDRAGON-CLIENT.txt; raw proof/observer note:
+  ../reports/pd2454-native-dcg14-video-afd-verification-20261015.txt from the repository root.
+  Preserve all parallel P127-P140 work. Old30805 is historical, not a build of these new changes.

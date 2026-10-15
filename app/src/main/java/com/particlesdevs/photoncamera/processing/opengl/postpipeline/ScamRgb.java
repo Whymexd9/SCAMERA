@@ -228,6 +228,26 @@ public final class ScamRgb extends Node {
         return hybrid && !(PostGlMode.legacy() && PreferenceKeys.scamDevSwitch("post_ab_clamp", false));
     }
 
+    static boolean halfInput(boolean hybrid, boolean halfTransport, int w, int h, long bytes) {
+        final long pixels = (long) w * h;
+        return hybrid && halfTransport && w > 0 && h > 0 && pixels <= Long.MAX_VALUE / 12L
+                && bytes >= pixels * 6L && bytes < pixels * 12L;
+    }
+
+    private static void requireTextureStorage(GLTexture texture) {
+        final int[] size = new int[2];
+        glBindTexture(GL_TEXTURE_2D, texture.mTextureID);
+        android.opengl.GLES31.glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, android.opengl.GLES31.GL_TEXTURE_WIDTH, size, 0);
+        android.opengl.GLES31.glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, android.opengl.GLES31.GL_TEXTURE_HEIGHT, size, 1);
+        if (size[0] != texture.mSize.x || size[1] != texture.mSize.y)
+            throw new IllegalStateException(com.particlesdevs.photoncamera.util.Lang.t("SHDR: GPU не смог выделить текстуру склейки 2× ",
+                    "SHDR: GPU could not allocate the Sabre 2x texture ") + texture.mSize);
+        texture.BufferLoad();
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            throw new IllegalStateException(com.particlesdevs.photoncamera.util.Lang.t("SHDR: GPU не поддерживает обработку текстуры склейки 2× ",
+                    "SHDR: GPU cannot render the Sabre 2x texture ") + texture.mSize);
+    }
+
     /** Every `stride`-th pixel of the linear RGB: enough for the percentile statistics of the later nodes. */
     private static java.nio.ByteBuffer decimate(java.nio.ByteBuffer rgb,int stride,boolean half){
         // P80: a half-float RGB gives the same float32 copy (widened) to the later nodes
@@ -446,6 +466,7 @@ public final class ScamRgb extends Node {
         // Bento is applied only by the hybrid merge (reset for every SCAM burst): a safety net for the shot profile.
         final boolean hybrid=PreferenceKeys.isHybridShot()||ScamHybridBurst.lastBentoApplied;
         final Point size=p.mParameters.rawSize;
+        final boolean largeTwoX=p.mParameters.outputScale>1f&&(long)size.x*size.y>64_000_000L;
         java.nio.ByteBuffer flags=lastClipFlags;lastClipFlags=null;
         if(flags!=null&&(!hybrid||flags.capacity()!=(long)size.x*size.y)){
             com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","highlight recovery: clip flags ignored (hybrid="+hybrid
@@ -462,7 +483,7 @@ public final class ScamRgb extends Node {
         final float bentoK=ScamHybridBurst.lastBentoFactor,bentoUs=ScamHybridBurst.lastBentoUsClipped;
         final boolean withFlags=flags!=null;
         // P80: the worker's half-float RGB (6 B a pixel); its size confirms it
-        final boolean half=hybrid&&ScamHybridBurst.lastRgbHalf&&big!=null&&big.limit()>=size.x*size.y*6&&big.limit()<size.x*size.y*12; // (a copy may be larger: PostAb)
+        final boolean half=big!=null&&halfInput(hybrid,ScamHybridBurst.lastRgbHalf,size.x,size.y,big.limit());
         if(hybrid)strength=Math.max(0f,Math.min(1f,PreferenceKeys.hybridValue("highlight_recovery",100f)/100f));
         final java.util.concurrent.FutureTask<InputStats> side=new java.util.concurrent.FutureTask<>(()->{
             InputStats s=new InputStats();
@@ -523,6 +544,7 @@ public final class ScamRgb extends Node {
                 +" wait="+(sideDone-uploadDone)/1000000+" free="+(System.nanoTime()-sideDone)/1000000);
         GLTexture flagsTex=null,chromaNear=null,chromaWide=null,chromaHuge=null;
         try {
+            if(largeTwoX)requireTextureStorage(input);
             float[] gm=p.mParameters.gainMap;
             if(gm!=null&&p.mParameters.mapSize!=null&&gm.length>=4*p.mParameters.mapSize.x*p.mParameters.mapSize.y){
                 int mw=p.mParameters.mapSize.x,mh=p.mParameters.mapSize.y;
@@ -536,6 +558,7 @@ public final class ScamRgb extends Node {
             p.main1=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
             p.main2=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
             p.main3=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
+            if(largeTwoX){requireTextureStorage(p.main1);requireTextureStorage(p.main2);requireTextureStorage(p.main3);}
             int ox=0,oy=0; // «16:9»: the frames arrive cropped (Wide169, P118)
             // Sabre 2x grid: the local chroma blocks keep their SENSOR size (8 x 8), sampled one sensor pixel apart.
             final int s=Math.max(1,Math.round(p.mParameters.outputScale));
@@ -623,6 +646,14 @@ public final class ScamRgb extends Node {
             if(perChannel)com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","highlight recovery per channel: chroma="
                     +(chromaNear!=null?chromaNear.mSize.x+"x"+chromaNear.mSize.y+" block "+block:"neutral")
                     +" limit="+chromaLimit+" band="+band+" gpu ms="+(System.currentTimeMillis()-gpuStart));
+        }catch(RuntimeException|Error failure){
+            if(largeTwoX){
+                if(p.main1!=null){p.main1.close();p.main1=null;}
+                if(p.main2!=null){p.main2.close();p.main2=null;}
+                if(p.main3!=null){p.main3.close();p.main3=null;}
+                if(p.GainMap!=null){p.GainMap.close();p.GainMap=null;}
+            }
+            throw failure;
         }finally{
             input.close();
             if(flagsTex!=null)flagsTex.close();

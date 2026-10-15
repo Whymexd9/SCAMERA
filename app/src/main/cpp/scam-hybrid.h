@@ -60,6 +60,7 @@ struct HybridInput {
     std::vector<HybridFrame> frames; // frames[0] = base (normal)
     bool diagnostics=false,mergedDng=false;
     bool clipFlags=false; // header flag 4: append the per-pixel clip flags (uint8 per output pixel) after the effective map
+    bool strict2x=false; // header flag 8: native 2x samples; no coarse-grid resize or sensor-grid fallback
     // Output grid (NCH v11): 1 = sensor grid (today), 2 = the Sabre 6.1 2x grid (four sub-positions +-0.25 px per
     // sensor pixel, RGB 2w x 2h). The app runs its whole pipeline on that grid and resizes at the end.
     int grid=1;
@@ -425,6 +426,15 @@ inline void shiftOrigin(std::vector<float>& v,int w,int h,int channels,int dx,in
     for(int b=1;b<bands;++b)pool.emplace_back(band,b);
     band(0);
     for(auto& t:pool)t.join();
+}
+
+inline int hybridRequestedGrid(const HybridInput& input,const HybridTuning& tune) {
+    if(input.strict2x)return input.grid;
+    return tune.grid==4||tune.grid==8?tune.grid:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+}
+
+inline bool hybridAuto2x(const HybridInput& input,const HybridTuning& tune,bool fine2x) {
+    return tune.auto2x>0&&fine2x&&!input.strict2x;
 }
 
 inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::function<void(const std::string&)>& report) {
@@ -5363,10 +5373,6 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // Any RAW size: pixels of the stream (a mosaic's sub-frames: b^2 per stream frame). Above kHybridClassicPixels the merge follows
     // the real limits (memory, GPU strips, output grid); up to it every step is exactly as before.
     const bool large=int64_t(w)*h*std::max(1,input.subFrames)>kHybridClassicPixels;
-    // The Sabre 2x grid (and any finer one) of a plain stream only up to 16 MP: its RGB (48 B/px) is 768 MB there and the app takes
-    // at most 2 GiB. The header refuses it (MappedHybridBurst); a replay's tuning grid falls back to the sensor grid. A mosaic's
-    // sub-frames take their b x grid: it is the sensor grid of the stream.
-    const bool fineGridRefused=input.subFrames<=1&&int64_t(w)*h>kHybridClassicPixels;
     // A Burst view for the shared helpers (sampleRaw, guides, alignment): slot 0 = base.
     Burst b;b.w=w;b.h=h;b.cfa=input.cfa;b.white=input.white;b.black=input.black;b.canonicalRggb=true;
     for(int s=0;s<7;++s){b.raw[s]=input.frames[0].raw;b.exposure[s]=1;b.iso[s]=std::max(1u,input.frames[0].iso);}
@@ -5466,11 +5472,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // whole field first as before. tune laStream 0 / SCAM_NO_F6_STREAM / SCAM_LA_DUMP: the whole field first.
     // P118: a requested 2x grid (Sabre 2x of a plain stream or of a native mosaic) that «Sabre 2× только когда есть смысл» checks
     // with the whole F6 field (not the banded stream)
-    const int requestedGrid=tune.grid==4||tune.grid==8?tune.grid:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    const int requestedGrid=hybridRequestedGrid(input,tune);
     const int colourBlock=native?std::max(1,native->block):1;
     const bool fine2x=native?requestedGrid==2*colourBlock:requestedGrid==2;
     std::unique_ptr<LaStream> laStream;double laStreamBaseMs=0;bool laStreamTried=false;
-    const bool laStreamOn=tune.localAlign>0&&n>1&&tune.laStream!=0&&!(tune.auto2x>0&&fine2x)&&!large&&input.subFrames<=1&&laAhead.valid()
+    const bool laStreamOn=tune.localAlign>0&&n>1&&tune.laStream!=0&&!hybridAuto2x(input,tune,fine2x)&&!large&&input.subFrames<=1&&laAhead.valid()
             &&!std::getenv("SCAM_LA_DUMP")&&!std::getenv("SCAM_NO_F6_STREAM");
     auto streamFeed=[&](int f){
         if(!laStreamOn||!aligned[f]||(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort))return;
@@ -5612,7 +5618,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         report("HYBRID KERNEL: native mosaic at night (key "+std::to_string(key61)+(tetraNight?", Tetra":"")+"): kernel scale "
             +std::to_string(nativeNight.kernelScale)+", edge scale "+std::to_string(nightEs)+", flat kernel x"+std::to_string(std::clamp(flatScale,0.25f,4.f)));
     }
-    const int gridOut=fineGridRefused?1:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    const int gridOut=requestedGrid;
     if(!sabre61&&gridOut==1&&tune.dayKernelScale>0.f&&tune.dayKernelScale!=1.f&&key61>tune.s61MaxKey){
         const float lo=std::max(tune.s61MaxKey,1.f),t=std::clamp((key61-lo)/lo,0.f,1.f),s=1.f+(tune.dayKernelScale-1.f)*t*t*(3.f-2.f*t);
         kernel.base*=s;kernel.shrunk*=s;kernel.stretched*=s;kernel.flat*=s;
@@ -5966,7 +5972,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // ---- P118 Sabre 2x only when it helps (P74's jsrAuto2x, now with the light): the phase coverage of the burst and the SNR of a
     // 2x cell decide whether a requested 2x grid is merged as such or on the 1x grid and resized
     bool coarse2x=false;
-    if(tune.auto2x>0&&fine2x){
+    if(hybridAuto2x(input,tune,fine2x)){
         std::vector<int> donors;
         for(int f=1;f<n;++f)if(keep[f]&&aligned[f]&&input.frames[f].role!=kRoleUltrashort)donors.push_back(f);
         // the F6 field (whole-field path: the measure needs it before the merge), nearest tile, RAW px of the stream
@@ -6113,14 +6119,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     std::vector<float> out,effective,sensorRgb;std::vector<double> share;std::vector<uint8_t> flagsRaw;
     // grid 4 only for the Tetra sub-frames of hybridReconstructMosaic (their 4x grid is the sensor grid of the stream) and the native
     // mosaic merge (Tetra sensor grid, Quad Sabre 2x grid); grid 8 only for the native Tetra Sabre 2x grid (P56)
-    int grid=tune.grid==4||tune.grid==8?tune.grid:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    int grid=requestedGrid;
     const int up2x=coarse2x&&grid>=2?2:1; // P118 Sabre 2x not worth it: merged on the coarse grid, resized 2x at the end
     if(up2x==2)grid/=2;
-    if(grid>1&&fineGridRefused){
-        report("HYBRID OUTPUT: "+std::to_string(grid)+"x grid refused for "+std::to_string(w)+"x"+std::to_string(h)+" ("+std::to_string(grid)+"x RGB "
-            +hybridMB(uint64_t(w)*h*grid*grid*12)+" MB, only up to 16 MP); sensor grid");
-        grid=1;
-    }
     const int outW=w*grid,outH=h*grid;
     in.large=large;
     // P31 (W1.7): the context goes to a helper thread after the merge (its buffers and programs take 19-57 ms to destroy), joined
@@ -6630,6 +6631,7 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
 inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int block,const HybridTuning& tune,const ScamAlignment& alignment,
                                                   const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
                                                   std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags){
+    if(input.strict2x)throw std::runtime_error("HYBRID: strict Sabre 2x needs the native mosaic merge, not sub-frame resampling");
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
@@ -6851,11 +6853,6 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
         report("HYBRID MOSAIC: chroma median (dual 5-point, taps "+std::to_string(std::max(1,b/2))+" px, "+how+") "+std::to_string(int(millis(Clock::now()-t0)))+" ms");
     }
     int gridOut=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2)); // replays: the tuning grid
-    if(gridOut==2&&int64_t(W)*Ht>kHybridClassicPixels){ // any RAW size: the 2x grid only up to 16 MP (see hybridReconstruct)
-        report("HYBRID OUTPUT: 2x grid refused for "+std::to_string(W)+"x"+std::to_string(Ht)+" (2x RGB "+hybridMB(uint64_t(W)*Ht*48)
-            +" MB, only up to 16 MP); sensor grid");
-        gridOut=1;
-    }
     const int tw=W*gridOut,th=Ht*gridOut;
     std::vector<float> out;std::vector<uint8_t> eOut,cOut;
     if(tw==ow&&th==oh){out.swap(rgb);eOut.swap(vEff);cOut.swap(vClip);}
@@ -6921,6 +6918,8 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
 inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& input,int block,const HybridTuning& tune,const ScamAlignment& alignment,
                                                              const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
                                                              std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags){
+    if(input.strict2x&&((block==4&&tune.mosaicTetra!=1)||tune.mosaicNative2x==0))
+        throw std::runtime_error("HYBRID: strict Sabre 2x needs native mosaic sites; resampling is disabled");
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
@@ -6968,8 +6967,8 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     // Quad pass on its Quad mosaic with mosaicWindow itself
     // P56: a Tetra T1 burst merged natively on the Sabre 2x grid (4x the output pixels of its sensor grid) takes its own window
     // (mosaicTetraWindow2x sensor px, 0 = as the sensor grid)
-    const int gridAsked=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
-    const bool tetra2x=b==4&&!t2&&gridAsked==2&&int64_t(W)*Ht<=kHybridClassicPixels&&tune.mosaicNative2x!=0;
+    const int gridAsked=input.strict2x?2:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    const bool tetra2x=b==4&&!t2&&gridAsked==2&&tune.mosaicNative2x!=0;
     const int window=b==4&&!t2?std::clamp(tetra2x&&tune.mosaicTetraWindow2x>0?tune.mosaicTetraWindow2x:2*tune.mosaicWindow,1,8)
                               :std::clamp(tune.mosaicWindow,1,6);
     // P73: Tetra T1 by day has its own scale (the Quad kernel in sensor px)
@@ -7032,21 +7031,17 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
         }
     });
     // ---- the binned burst through hybridReconstruct with the native merge pass
-    // The requested output: sensor grid W x H, or the 2x grid (only up to 16 MP, as the split). P56: a Quad or Tetra T1 mosaic merges
+    // The requested output: sensor grid W x H, or the 2x grid. P56: a Quad or Tetra T1 mosaic merges
     // the 2x grid itself (kHybMergeMosaic / Fast at g = 2b: the Sabre sub-positions of the native sites); T2 resamples its
     // sensor-grid result below.
-    int gridOut=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
-    if(gridOut==2&&int64_t(W)*Ht>kHybridClassicPixels){
-        report("HYBRID OUTPUT: 2x grid refused for "+std::to_string(W)+"x"+std::to_string(Ht)+" (2x RGB "+hybridMB(uint64_t(W)*Ht*48)
-            +" MB, only up to 16 MP); sensor grid");
-        gridOut=1;
-    }
+    int gridOut=input.strict2x?2:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
     const int k2=gridOut==2&&!t2&&tune.mosaicNative2x!=0?2:1;
+    if(input.strict2x&&k2!=2)throw std::runtime_error("HYBRID: strict Sabre 2x needs native mosaic sites; resampling is disabled");
     if(gridOut==2)report(k2==2?"HYBRID MOSAIC NATIVE: Sabre 2x grid merged natively ("+std::to_string(2*W)+"x"+std::to_string(2*Ht)+", "
             +(mb==4?"Tetra":"Quad")+" sites at +-0.25 px)"
         :std::string("HYBRID MOSAIC NATIVE: 2x grid resampled from the sensor-grid merge (")+(t2?"Tetra T2":"mosaicNative2x 0")+")");
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
-    bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=mb*k2;bin.mosaic=1;bin.subFrames=0;
+    bin.mergedDng=false;bin.clipFlags=input.clipFlags;bin.grid=mb*k2;bin.mosaic=1;bin.subFrames=0;bin.strict2x=input.strict2x;
     HybridMosaicNative nat;nat.block=mb;nat.W=MW;nat.H=MH;nat.window=window;nat.fullWindow=fullWindow;nat.kernelScale=kernelScale;nat.ksG=ksG;nat.ksRB=ksRB;nat.fillSupport=fill;
     nat.rawGains=!t2;nat.gains=gain;nat.widenRule=std::clamp(tune.mosaicNativeWiden,0,2);
     nat.widenMul=std::clamp(mb==4?tune.mosaicTetraWidenMul:tune.mosaicNativeWidenMul,1.f,8.f);
@@ -7186,6 +7181,7 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
     try{
         return hybridReconstructMosaicNativeMerge(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
     } catch(const std::exception& error){
+        if(input.strict2x)throw;
         report(std::string("HYBRID MOSAIC NATIVE: failed (")+error.what()+"); merging on the sub-frame split (mosaicPath 0) instead");
     }
     return hybridReconstructMosaic(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
@@ -7217,15 +7213,13 @@ struct MappedHybridBurst {
             input.w=int(h[2]);input.h=int(h[3]);input.cfa=int(h[4]);
             const int n=int(h[5]);
             std::memcpy(&input.white,h+6,4);std::memcpy(input.black.data(),h+7,16);
-            const uint32_t flags=h[11];input.diagnostics=flags&1;input.mergedDng=flags&2;input.clipFlags=flags&4;
+            const uint32_t flags=h[11];input.diagnostics=flags&1;input.mergedDng=flags&2;input.clipFlags=flags&4;input.strict2x=flags&8;
             if(h[1]>=11){ // v11: h[12] = base index (0), h[13] = output grid 1|2, h[14] = colour block 0 (unknown) | 1 | 2 | 4
                 if(h[13]!=0&&h[13]!=1&&h[13]!=2)throw std::runtime_error("Unsupported hybrid output grid");
                 input.grid=h[13]==0?1:int(h[13]);
                 if(h[14]!=0&&h[14]!=1&&h[14]!=2&&h[14]!=4)throw std::runtime_error("Unsupported hybrid colour block");
                 input.mosaic=int(h[14]);
-                // the 2x grid (48 B per pixel) only up to 16 MP: today's largest result (768 MB). The worker does not switch the grid
-                // itself: the app checks the result size exactly.
-                if(input.grid==2&&int64_t(streamPixels)>kHybridClassicPixels)throw std::runtime_error("Hybrid: Sabre 2x grid only up to 16 MP");
+                if(input.strict2x&&input.grid!=2)throw std::runtime_error("Hybrid: strict Sabre 2x requires output grid 2");
             }
             if(!std::isfinite(input.white)||input.white<=1||input.white>65535)throw std::runtime_error("Hybrid white level");
             for(float b:input.black)if(!std::isfinite(b)||b<0||b+1>=input.white)throw std::runtime_error("Hybrid black level");

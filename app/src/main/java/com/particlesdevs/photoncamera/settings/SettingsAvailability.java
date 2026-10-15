@@ -104,6 +104,9 @@ public final class SettingsAvailability {
             return Lang.t("Только при «Разрешение» 12, 16 или 20 МП.", "Only with “Resolution” 12, 16 or 20 MP.");
         if (any(key, "pref_scam_hybrid_dn_chroma_2x_keep", "pref_scam_hybrid_auto2x") && output.equals("sensor"))
             return Lang.t("Только на сетке 2×: «Разрешение» 12, 16, 20 МП или 2×.", "2× grid only: “Resolution” 12, 16, 20 MP or 2×.");
+        if (key.equals("pref_scam_hybrid_auto2x") && output.equals("2x"))
+            return Lang.t("В «Разрешение 2×» всегда используется настоящая сетка склейки 2×; автоматическая замена на 1× выключена.",
+                    "“Resolution 2×” always uses the native 2× merge grid; automatic 1× replacement is disabled.");
         // P128: the «Движение» rows replace the normal ones only while the mode is on (MotionMode, ParamController)
         if (key.startsWith("pref_scam_hybrid_mm_") && !on("pref_motion_mode", false))
             return Lang.t("Действует только в режиме «Движение» (кнопка в верхней панели).", "Acts only in “Motion” mode (the button in the top bar).");

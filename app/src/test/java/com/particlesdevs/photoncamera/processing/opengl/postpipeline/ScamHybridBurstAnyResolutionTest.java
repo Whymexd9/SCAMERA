@@ -30,8 +30,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * P27 any resolution: the Hybrid takes any RAW resolution (no 16 MP cap) and merges it at its own resolution: the Sabre 2x grid
- * only where it fits (input up to 16 MP within the GPU's side), otherwise the sensor grid; only the hard limits refuse a stream.
+ * Output dimensions, transport, memory planning and failure behavior across sensor and native Sabre 2x grids.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk=35, application=Application.class, shadows=CameraResumeTest.ShadowAllocator.class,
@@ -56,6 +55,7 @@ public class ScamHybridBurstAnyResolutionTest {
         prefs.when(() -> PreferenceKeys.hybridSwitch(anyString(), anyBoolean())).thenAnswer(i -> i.getArgument(1));
         prefs.when(() -> PreferenceKeys.hybridValue(anyString(), anyFloat())).thenAnswer(i -> i.getArgument(1));
         prefs.when(() -> PreferenceKeys.hybridString(anyString(), anyString())).thenAnswer(i -> i.getArgument(1));
+        prefs.when(() -> PreferenceKeys.scamDevSwitch(anyString(), anyBoolean())).thenAnswer(i -> i.getArgument(1));
         prefs.when(PreferenceKeys::hybridOutputMode).thenAnswer(i -> outputMode);
         prefs.when(PreferenceKeys::hybridDownsamplerName).thenReturn("test");
         prefs.when(() -> PreferenceKeys.hybridFinalSize(anyInt(), anyInt())).thenAnswer(i -> new Point(i.getArgument(0), i.getArgument(1)));
@@ -90,17 +90,24 @@ public class ScamHybridBurstAnyResolutionTest {
         Field f = ScamHybridBurst.class.getDeclaredField("frames"); f.setAccessible(true); return (List<ImageFrame>) f.get(burst);
     }
 
-    @Test public void aFiftyMegapixelStreamIsAcceptedAndMergedOnTheSensorGrid() throws Exception {
-        // 8160 x 6120 (50 MP): refused by the old 16 MP guard. With "2x" asked for, the 2x grid (16320 x 12240, 2.4 GB RGB) does
-        // not fit: the stream is merged at its own resolution.
-        final int w = 8160, h = 6120;
-        ScamHybridBurst b = burst(List.of(frame(w, h, ByteBuffer.allocate(w * h * 2))), parameters(w, h));
+    @Test public void sdk50RequestsTheReal201MegapixelGridAndForcesHalfTransport() throws Exception {
+        final int w = 8192, h = 6144;
+        memory(16L << 30);
+        prefs.when(() -> PreferenceKeys.scamDevSwitch("hybrid_rgb_half", true)).thenReturn(false);
+        ByteBuffer raw = ByteBuffer.allocate(w * h * 2);
+        ScamHybridBurst b = burst(List.of(frame(w, h, raw), frame(w, h, raw), frame(w, h, raw)), parameters(w, h));
         assertEquals(w, b.width());
         assertEquals(h, b.height());
-        assertEquals(w, b.outputWidth());
-        assertEquals(h, b.outputHeight());
-        assertEquals(1f, b.outputScale(), 0f);
-        assertEquals(1, frames(b).size());
+        assertEquals(16384, b.outputWidth());
+        assertEquals(12288, b.outputHeight());
+        assertEquals(2f, b.outputScale(), 0f);
+        assertTrue(b.rgbHalfTransport());
+        assertTrue(b.tuningOverride().endsWith("grid 2\nauto2x 0\n"));
+        java.lang.reflect.Method header = ScamHybridBurst.class.getDeclaredMethod("header");
+        header.setAccessible(true);
+        ByteBuffer encoded = (ByteBuffer) header.invoke(b);
+        assertEquals("native worker must not auto-resize a coarse merge", 8, encoded.getInt(44) & 8);
+        assertEquals(2, encoded.getInt(52));
     }
 
     @Test public void upTo16MegapixelsThe2xChoiceIsUnchanged() throws Exception {
@@ -114,12 +121,42 @@ public class ScamHybridBurstAnyResolutionTest {
             assertTrue(ScamHybridBurst.sabre2xFits(4080, 3060, side));    // 12.5 MP
             assertTrue(ScamHybridBurst.sabre2xFits(4608, 3456, side));    // 15.9 MP
             assertTrue(ScamHybridBurst.sabre2xFits(4000, 4000, side));    // 16.0 MP exactly
-            assertFalse(ScamHybridBurst.sabre2xFits(4624, 3472, side));   // 16.05 MP
-            assertFalse(ScamHybridBurst.sabre2xFits(8160, 6120, side));   // 50 MP
+            assertTrue(ScamHybridBurst.sabre2xFits(4624, 3472, side));
+            assertTrue(ScamHybridBurst.sabre2xFits(8192, 6144, side));
         }
         // A GPU whose textures stop at 8192: 2w x 2h must fit them.
         assertTrue(ScamHybridBurst.sabre2xFits(4080, 3060, 8192));
         assertFalse(ScamHybridBurst.sabre2xFits(4608, 3456, 8192));
+        assertFalse("FP16 output above one ByteBuffer", ScamHybridBurst.sabre2xFits(12000, 9000, 32768));
+        assertFalse(ScamHybridBurst.sabre2xFits(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE));
+        assertFalse(ScamHybridBurst.sabre2xFits(0, 6144, 16384));
+    }
+
+    @Test public void strict2xReportsGpuLimitsInsteadOfReturningTheSensorGrid() {
+        GLLimits.setForTesting(GLLimits.of(100, 100, 100, 100));
+        IOException failure = assertThrows(IOException.class, () -> burst(
+                List.of(frame(64, 64, ByteBuffer.allocate(64 * 64 * 2))), parameters(64, 64)));
+        assertTrue(failure.getMessage(), failure.getMessage().contains("Sabre 2x 128x128 exceeds GPU"));
+    }
+
+    @Test public void strict2xNeverRetriesAWorkerFailureOnTheSensorGrid() throws Exception {
+        Context context = org.robolectric.RuntimeEnvironment.getApplication();
+        List<ImageFrame> input = List.of(frame(64, 64, ByteBuffer.allocate(64 * 64 * 2)));
+        try (MockedStatic<ScamNeuralClient> worker = mockStatic(ScamNeuralClient.class)) {
+            worker.when(() -> ScamNeuralClient.processScamBurst(eq(context), any(ScamTransport.class)))
+                    .thenThrow(new IOException("GPU output allocation failed"));
+            IOException failure = assertThrows(IOException.class, () -> ScamHybridBurst.process(context, input, parameters(64, 64), false));
+            assertTrue(failure.getMessage(), failure.getMessage().contains("no sensor-grid or upscale fallback"));
+            assertEquals("GPU output allocation failed", failure.getCause().getMessage());
+            worker.verify(() -> ScamNeuralClient.processScamBurst(eq(context), any(ScamTransport.class)), times(1));
+            assertEquals(new Point(128, 128), ScamHybridBurst.lastOutputSize);
+        }
+    }
+
+    @Test public void halfTransportIsRequiredOnlyWhenFloat32CannotFitOrItWasSelected() {
+        assertTrue(ScamHybridBurst.transportHalf(16384, 12288, false));
+        assertFalse(ScamHybridBurst.transportHalf(8192, 6144, false));
+        assertTrue(ScamHybridBurst.transportHalf(8192, 6144, true));
     }
 
     @Test public void onlyTheHardLimitsRefuseAStream() {
@@ -133,6 +170,7 @@ public class ScamHybridBurstAnyResolutionTest {
     }
 
     @Test public void theMemoryBudgetCapsNOnlyAbove16Megapixels() throws Exception {
+        outputMode = "sensor";
         assertEquals(Integer.MAX_VALUE, ScamHybridBurst.memoryFrameBudget(4080, 3060, 1, 1L << 30));
         assertEquals(Integer.MAX_VALUE, ScamHybridBurst.memoryFrameBudget(4000, 4000, 1, 1L << 30));
         assertEquals("unknown memory: no cap", Integer.MAX_VALUE, ScamHybridBurst.memoryFrameBudget(8160, 6120, 1, -1));
@@ -164,6 +202,24 @@ public class ScamHybridBurstAnyResolutionTest {
         List<ImageFrame> smallBurst = new ArrayList<>();
         for (int i = 0; i < 10; i++) smallBurst.add(frame(64, 64, small));
         assertEquals(10, frames(burst(smallBurst, parameters(64, 64))).size());
+    }
+
+    private static void memory(long available) {
+        ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
+        info.availMem = available; info.totalMem = 24L << 30;
+        Context context = org.robolectric.RuntimeEnvironment.getApplication();
+        Shadows.shadowOf((ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE)).setMemoryInfo(info);
+    }
+
+    @Test public void large2xBudgetCountsOutputPixelsAndRejectsImpossiblePostWorkingSet() {
+        int one = ScamHybridBurst.memoryFrameBudget(8192, 6144, 1, 1, 16L << 30);
+        int two = ScamHybridBurst.memoryFrameBudget(8192, 6144, 1, 2, 16L << 30);
+        assertTrue(one + " vs " + two, one > two && two > 0);
+        assertEquals(6L << 30, ScamHybridBurst.minimumPostBytes(16384, 12288));
+        memory(1L << 30);
+        IOException failure = assertThrows(IOException.class, () -> burst(
+                List.of(frame(4800, 3400, ByteBuffer.allocate(4800 * 3400 * 2))), parameters(4800, 3400)));
+        assertTrue(failure.getMessage(), failure.getMessage().contains("not enough available memory"));
     }
 
     @Test public void theWorkerWaitGrowsOnlyAbove16Megapixels() {
