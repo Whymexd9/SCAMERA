@@ -127,11 +127,18 @@ public final class BottomChrome {
                 if (lp.width > 0) lp.width = Math.round(lp.width * f);
                 if (lp.height > 0) lp.height = Math.round(lp.height * f);
                 if (lp instanceof ViewGroup.MarginLayoutParams) {
+                    // Start / end read before any change and set only when the view has them: reading them after
+                    // setMarginStart resolved the unset end margin to 0 and scaled the start twice (the gallery thumbnail's
+                    // 3dp margin became 3dp f^2 on the left and 0 on the right, the picture slid over the card's right edge).
                     ViewGroup.MarginLayoutParams m = (ViewGroup.MarginLayoutParams) lp;
+                    boolean relative = m.isMarginRelative();
+                    int start = m.getMarginStart(), end = m.getMarginEnd();
                     m.setMargins(Math.round(m.leftMargin * f), Math.round(m.topMargin * f), Math.round(m.rightMargin * f),
                             Math.round(m.bottomMargin * f));
-                    m.setMarginStart(Math.round(m.getMarginStart() * f));
-                    m.setMarginEnd(Math.round(m.getMarginEnd() * f));
+                    if (relative) {
+                        m.setMarginStart(Math.round(start * f));
+                        m.setMarginEnd(Math.round(end * f));
+                    }
                 }
                 v.setLayoutParams(lp);
             }

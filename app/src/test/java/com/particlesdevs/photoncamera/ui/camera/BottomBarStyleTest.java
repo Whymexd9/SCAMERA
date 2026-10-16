@@ -57,8 +57,9 @@ import static org.mockito.Mockito.mockStatic;
 /**
  * P157 / P158: the bottom bar of the camera screen on the owner's two phones (X300 Ultra, 434dp; X200 Ultra at a large
  * display size, 361dp): the same share of the screen (the shutter a fifth of the width), the tonal containers of the camera's
- * accent (no grey card with a line), the accent ring of the shutter, the processing ring round the gallery card. Renders to
- * build/reports/viewfinder/bottom-style-*.png for review.
+ * accent (no grey card with a line), the accent ring of the shutter, the processing ring round the gallery card, the last
+ * shot's thumbnail inside the card with the same margin on every side (owner, 2026-10-16: the picture covered the card's
+ * right edge). Renders to build/reports/viewfinder/bottom-style-*.png for review.
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35, application = Application.class)
@@ -132,6 +133,11 @@ public class BottomBarStyleTest {
             row.shutterButton.setActivated(true);
             row.flipCameraButton.setImageTintList(ColorStateList.valueOf(accent));
             row.galleryPlaceholder.setImageTintList(ColorStateList.valueOf(accent));
+            // the last shot's thumbnail (the placeholder goes when there is one)
+            Bitmap shot = Bitmap.createBitmap(64, 48, Bitmap.Config.ARGB_8888);
+            shot.eraseColor(0xFFC8B48C);
+            row.galleryImageButton.setImageBitmap(shot);
+            row.galleryPlaceholder.setVisibility(View.GONE);
             FrameLayout root = new FrameLayout(context);
             root.addView(binding.getRoot(), new FrameLayout.LayoutParams(w, h));
             activity.setContentView(root);
@@ -159,6 +165,13 @@ public class BottomBarStyleTest {
             assertEquals(at + "the processing ring is shown", View.VISIBLE, ring.getVisibility());
             assertEquals(at + "the ring at 60 %", .6f, ring.shown(), 1e-4f);
             assertEquals(at + "the ring covers the gallery card", row.galeryButtonContainer.getWidth(), ring.getWidth());
+            // the thumbnail: inside the card, the same margin (3dp times the scale) on every side
+            Rect cardBox = box(row.galeryButtonContainer, binding.getRoot()), thumb = box(row.galleryImageButton, binding.getRoot());
+            float margin = 3 * density * s;
+            assertEquals(at + "thumbnail: left margin", margin, thumb.left - cardBox.left, 1f);
+            assertEquals(at + "thumbnail: right margin", margin, cardBox.right - thumb.right, 1f);
+            assertEquals(at + "thumbnail: top margin", margin, thumb.top - cardBox.top, 1f);
+            assertEquals(at + "thumbnail: bottom margin", margin, cardBox.bottom - thumb.bottom, 1f);
             // render the bottom 40 % of the screen
             Bitmap image = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             image.eraseColor(0xFF101416);

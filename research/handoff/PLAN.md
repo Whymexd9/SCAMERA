@@ -3827,6 +3827,18 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   ceiling), the GPU path with its tail; tools/check_ark_ae_gpu.py compares the tail (2 boundary pixels of 6856 may move).
   Not seen on a phone: the same scene again; the log should show p98x above 4 and effH near 2.
 
+### P160 - the gallery thumbnail slid over the card's right edge (owner, 2026-10-16, screenshot of 30866: «Исправь галерею»)
+- Seen: the last shot's picture inside the gallery card had a wide margin on the left and none on the right: it covered the
+  card's right outline and its rounded right corners were cut by the card's edge.
+- Cause: BottomChrome.scaleTree (P157) scaled the left / right margins, then set start = getMarginStart() x f and end =
+  getMarginEnd() x f. The thumbnail has a plain layout_margin (no start / end): getMarginStart returned the already scaled
+  left margin (scaled twice), and setMarginStart marked the margins for resolution, so getMarginEnd resolved the unset end
+  to 0. The 3dp margin became 3dp x f^2 on the left and 0 on the right; centred in the card, the picture moved right by
+  1.5 x that and the card clipped it. The P157 renders had no thumbnail (the placeholder), so it did not show there.
+- DONE 2026-10-16: start / end are read before any change and set only when the view has relative margins.
+  BottomBarStyleTest puts a thumbnail in the card and checks the same 3dp x scale margin on all four sides (failed on the
+  old code: 18 px on the left against 9.7 at 434dp).
+
 ## P109l - Snapdragon client attribution and VCF RAW boundary
 
 Typed AttributionSourceState spoof is implemented and observed on PD2454. An ordinary open followed by
