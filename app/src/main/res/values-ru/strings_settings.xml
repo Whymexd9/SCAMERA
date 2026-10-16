@@ -411,6 +411,8 @@
     <string name="prefs_scam_hybrid_ark_bracket_denoise_title">Шумодав кадров светов</string>
     <string name="prefs_scam_hybrid_ark_bracket_denoise_summary">Шумодав самых ярких участков (короткий кадр светов). Больше — чище, меньше — детальнее; 0 — выкл.</string>
     <string name="prefs_scam_hybrid_ark_hl_white_title">Путь к белому для яркого цветного света</string>
+    <string name="prefs_scam_hybrid_ark_hl_soft_title">Мягкость засветов</string>
+    <string name="prefs_scam_hybrid_ark_hl_soft_summary">Засвеченный свет плавно доходит до чистого белого, цветной — до своего цвета на полной яркости. Больше — переход начинается раньше и мягче; 0 — выкл. (только тоновая кривая).</string>
     <string name="prefs_scam_hybrid_ark_hl_white_summary">Яркий цветной свет (LED, неон) уходит в белое. Больше — белеет раньше, меньше — держит цвет; 0 — выкл.</string>
     <string name="prefs_scam_hybrid_ark_delta_chroma_title">Цвет следует за деталью</string>
     <string name="prefs_scam_hybrid_ark_delta_chroma_summary">Убирает цветную линию на тёмной стороне контрастных краёв. Больше — сильнее; 0 — выкл.</string>

@@ -163,6 +163,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_ark_agx_ev": return new double[]{-2,2,0};
             case "pref_scam_hybrid_ark_agx_sat": return new double[]{0,2,0};
             case "pref_scam_hybrid_ark_hl_white": return new double[]{0,1,0};
+            case "pref_scam_hybrid_ark_hl_soft": return new double[]{0,0.9,0};
             case "pref_scam_hybrid_motion_threshold": return new double[]{0.25,8,0};
             case "pref_scam_hybrid_mosaic_edge_scale": return new double[]{0.25,1,0};
             case "pref_scam_hybrid_mosaic_frames": return new double[]{4,32,1};

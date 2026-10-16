@@ -93,6 +93,9 @@ public final class ArkCombine extends Node {
             // P144: ACES / Uchimura / the own curve instead of AgX (TONE_OP 0, the AgX shader, otherwise)
             if (toneOp != com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX) glProg.setDefine("TONE_OP", 1);
             if (lut != null) glProg.setDefine("FILM_LUT", 1);
+            // P154: the highlight landing and the upward path to white (HL_LANDING 0 = the shader before P154)
+            final float hlSoft = Math.max(0f, Math.min(0.9f, ArkTone.value("hl_soft", 0.5f)));
+            if (hlSoft > 0f) glProg.setDefine("HL_LANDING", 1);
             glProg.useAssetProgram("ark/combine", false);
             if (lut != null) {
                 lutTexture = lut.upload();
@@ -120,6 +123,8 @@ public final class ArkCombine extends Node {
             // P11: the Bento ceiling / roll-off only with real headroom; saturated light fades towards white in the shoulder.
             glProg.setVar("headroomU", ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f ? 1 : 0);
             glProg.setVar("hlWhiteU", Math.max(0f, Math.min(1f, ArkTone.value("hl_white", 0.15f))));
+            // P154 «Мягкость засветов»: the landing of blown light on the white point starts this far below the ceiling
+            if (hlSoft > 0f) glProg.setVar("hlSoftU", hlSoft);
             glProg.setVar("toeU", ArkTone.value("aces_toe", 0.05f));
             glProg.setVar("gammaInvU", 1f / ArkTone.gamma());
             glProg.setVar("macroU", ArkTone.value("macro_contrast", 1.1f));
@@ -163,7 +168,7 @@ public final class ArkCombine extends Node {
             if (lutTexture != 0) android.opengl.GLES30.glDeleteTextures(1, new int[]{lutTexture}, 0);
         }
         Log.i("SCAM_PIPELINE", "ARK combine ae=" + r.ae + " clip=" + r.clip + " headroom=" + (ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f)
-                + " hlWhite=" + ArkTone.value("hl_white", 0.15f) + " grid=" + input.mSize.x + "x" + input.mSize.y
+                + " hlWhite=" + ArkTone.value("hl_white", 0.15f) + " hlSoft=" + ArkTone.value("hl_soft", 0.5f) + " grid=" + input.mSize.x + "x" + input.mSize.y
                 + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=arkMid" : " colour=arkLow") + " detail=" + detail
                 + (sharp ? " (ArkLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")
                 + (pipeline.p3Output ? " output=DisplayP3" : "") + (colourOn ? " colourLook" : "")

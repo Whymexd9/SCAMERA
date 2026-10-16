@@ -46,6 +46,8 @@ precision highp sampler2D;
 #define TONE_OP 0
 // P134 «Плёночный LUT»: a 3D LUT (.cube, FilmLut) on the display-encoded output, mixed by its strength; ArkCombine sets 1
 #define FILM_LUT 0
+// P154 «Мягкость засветов»: blown light lands smoothly on the white point, the path to white goes up (ArkCombine sets 1)
+#define HL_LANDING 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -81,6 +83,9 @@ uniform vec4 agxBU;                 // min EV, max EV, EV, look; all 0 (unset) -
 uniform int ditherU;                // 1 = interleaved-gradient dither +-0.5 LSB (as the kernel); unset -> none
 uniform int headroomU;              // 1: real headroom above 1 (clipped RAW recovered / Bento); 0: the excess is WB headroom
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
+#if HL_LANDING == 1
+uniform float hlSoftU;              // P154 highlight landing: where it starts below the data ceiling (fraction, 0 = off)
+#endif
 #if COLOUR_LOOK == 1
 uniform vec3 skinU;                 // skin: protection of positive gains 0..1, hue shift -1..1 (x 12 deg), evenness 0..1
 uniform vec2 vibLU;                 // vibrance of the shadows, of the highlights (-1..1)
@@ -536,7 +541,13 @@ void main() {
         float mx = max3(scene);
         float yS = dot(scene, LUMA);
         float w = hlWhiteU * satW * smoothstep(0.6, 2.4, mx);
+#if HL_LANDING == 1
+        // P154 (owner: «белый цвет никогда не уходил в серый»): towards the white of its brightest channel, not down to its
+        // luminance (a grey of the same Y)
+        scene = mix(scene, vec3(mx), clamp(w, 0.0, 0.9));
+#else
         scene = mix(scene, vec3(yS), clamp(w, 0.0, 0.9));
+#endif
     }
 
     // === AgX (Blender 4 / Kraken matrices of the kernel) [:1079-1094, :1687-1730] ===
@@ -645,6 +656,23 @@ void main() {
     if (filmToeU > 0.0) {
         float ls = max(dot(outRgb, LUMA), 0.0001);
         if (ls < 0.15) outRgb *= (pow(max(ls / 0.15, 0.000001), 1.0 + filmToeU) * 0.15) / ls;
+    }
+#endif
+    // P154 highlight landing (owner, X300 Ultra backlit window: the blown light rendered as a flat 0.92 grey whose gradient
+    // stopped at once at the plateau). Only with clipped data in the frame (headroomU: clipped RAW recovered / Bento): as the
+    // colour source approaches the data ceiling the display value lands on the white point - a smoothstep of
+    // max3(orig) / ceiling from 1 - hlSoftU to 1, zero slope at both ends, so the gradient fades into the plateau instead
+    // of stopping at it. It lands on the pixel's own colour at full brightness (max channel 1: a coloured light keeps its
+    // hue, the colour recovered below the clip stays), and a near-neutral one (saturation below ~0.1) on pure white.
+#if HL_LANDING == 1
+    if (headroomU != 0 && hlSoftU > 0.0) {
+        float landing = smoothstep(1.0 - hlSoftU, 1.0, max3(orig) / clipCeiling);
+        if (landing > 0.0) {
+            float peak = max(max3(outRgb), 0.000001);
+            float satOut = (peak - min(outRgb.r, min(outRgb.g, outRgb.b))) / peak;
+            vec3 top = mix(outRgb / peak, vec3(1.0), 1.0 - smoothstep(0.04, 0.15, satOut));
+            outRgb = mix(outRgb, top, landing);
+        }
     }
 #endif
 #if FILM_LUT == 1

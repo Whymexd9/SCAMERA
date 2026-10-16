@@ -3640,6 +3640,17 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   path to white goes up to white, not down to grey. (3) Fully clipped (no channel left) = white. Check on host (the combine
   shader on ramps and a clipped plateau: white = 1.0, C1 at the landing, hue kept below the clip) and on the owner's
   shots: no grey whites, no new halos, mid-tones unchanged.
+- DONE 2026-10-16 (ArkCombine HL_LANDING 1, «Мягкость засветов» pref_scam_hybrid_ark_hl_soft 0..0.9, default 0.5, 0 = the
+  shader before): only with clipped data in the frame (headroomU; the ARK clip is the frame's maximum, so a frame without a
+  real clip keeps its tone - a white paper in shade is not pushed to white), the display value lands on the white point by
+  smoothstep(1 - soft, 1, max3(colour source) / ceiling): the pixel's own colour at full brightness (max channel 1), a
+  near-neutral one (saturation < ~0.1) pure white; the path to white goes to the white of the brightest channel, not the
+  grey of its luminance. On the owner's diagnostic stages (numpy of the same formula): the DCG window 0.906-0.919 grey ->
+  0.965 / 0.991 / 0.999 / 1.0 by fifths up to the ceiling; the non-DCG window 0.88/0.90/0.93 blue-grey -> 1.0 white.
+  tools/check_highlight_landing.py (GPU: the blown grey and a slightly blue near-white end on 1.0, nothing changes below the
+  start, monotonic, the last steps shrink, an orange light keeps its channel ratios, nothing without clipped data; in CI);
+  check_colour_output still pins HL_LANDING 0 to the pre-P46 render. Not seen on a phone yet; the AgX desaturation of very
+  saturated light below the clip is as before.
 
 ### P141 - config files: saving, applying, moving between phones (owner, 2026-10-15: «Ещё добавь в план работы перепроверка работы с конфиг файлами. Проверь чтобы всё правильно сохранялось и применялось. Так же проверь чтобы на разных смартфонах с разными айди модулей конфиг применялся нормально и автоматически подставлялся/адаптировался под другое количество модулей, при этом сделай так чтобы модули не дублировались и не появлялись лишние»)
 - Audit «Сохранить / Восстановить» (BackupPreferences, RestorePreference, ModuleProfiles, module_profile_v2_* files, the

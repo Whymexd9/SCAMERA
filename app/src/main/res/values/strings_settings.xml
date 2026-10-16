@@ -411,6 +411,8 @@
     <string name="prefs_scam_hybrid_ark_bracket_denoise_title">Highlight frame denoise</string>
     <string name="prefs_scam_hybrid_ark_bracket_denoise_summary">Denoise of the brightest areas (the short highlight frame). Higher: cleaner; lower: more detail; 0: off.</string>
     <string name="prefs_scam_hybrid_ark_hl_white_title">Path to white for bright coloured light</string>
+    <string name="prefs_scam_hybrid_ark_hl_soft_title">Highlight softness</string>
+    <string name="prefs_scam_hybrid_ark_hl_soft_summary">Blown light rises smoothly to pure white, a coloured light to its own colour at full brightness. Higher: the roll-off starts earlier and is softer; 0: off (the tone curve alone).</string>
     <string name="prefs_scam_hybrid_ark_hl_white_summary">Bright coloured light (LED, neon) turns white. Higher: whitens sooner; lower: keeps colour; 0: off.</string>
     <string name="prefs_scam_hybrid_ark_delta_chroma_title">Colour follows detail</string>
     <string name="prefs_scam_hybrid_ark_delta_chroma_summary">Removes the coloured line on the dark side of contrasty edges. Higher: stronger; 0: off.</string>
