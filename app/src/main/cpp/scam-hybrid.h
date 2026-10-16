@@ -186,6 +186,8 @@ struct HybridTuning {
     // Highlights and outliers (research/hybrid5/highlights.md P2, P3, P5)
     int cellClip=1;              // 1: a 2x2 cell with any site >= clipLevel is clipped for EVERY colour of that frame (a clip border
                                  // no longer averages green from the dark side only and R/B from both = magenta rim); 0: per site
+    float staticShift=0.75f;     // P150: a still burst (fewer than a quarter of the donors moved this far, RAW px at the corners and
+                                 // the centre) merges with cellClip 0; 0 = never (cellClip as set)
     float hotSigma=5.f;          // fixed-pattern (hot/warm/dead) sites: deviation from the median of the 8 same-colour neighbours in
                                  // the mean of hotFrames normal frames at the same SENSOR site, in sigma of that mean; 0 = off
     int hotFrames=8;             // normal frames averaged for the fixed-pattern test (base included)
@@ -460,7 +462,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
-            ||set("cellClip",nullptr,&t.cellClip)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
+            ||set("cellClip",nullptr,&t.cellClip)||set("staticShift",&t.staticShift)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
             ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("bentoScam",nullptr,&t.bentoScam)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
             ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)
             ||set("s61TensorNoise",&t.s61TensorNoise)||set("s61GdNoise",&t.s61GdNoise)||set("s61MinMotion",&t.s61MinMotion)
@@ -5316,6 +5318,24 @@ inline HybridNoiseCheck hybridMeasureNoise(const HybridInput& in){
     return res;
 }
 
+// P150: donors (homographies 1.., 0 is the base) that moved at least `shift` RAW px against the base at the corners or the centre
+// of a w x h frame; *largest gets the largest move.
+inline int hybridMovedDonors(const std::vector<BackwardHomography>& homography,int w,int h,float shift,float* largest=nullptr){
+    int moved=0;float most=0.f;
+    for(size_t i=1;i<homography.size();++i){
+        const BackwardHomography& hm=homography[i];float d=0.f;
+        for(const auto& q:{std::pair<int,int>{0,0},{w-2,0},{0,h-2},{w-2,h-2},{w/2,h/2}}){
+            const DonorPoint pt=hm.project(q.first,q.second);
+            d=std::max(d,std::hypot(pt.x/hm.upRatio-float(q.first),pt.y/hm.upRatio-float(q.second)));
+        }
+        most=std::max(most,d);
+        if(d>=shift)++moved;
+    }
+    if(largest)*largest=most;
+    return moved;
+}
+// P150: a still burst - fewer than a quarter of its donors moved (the rest sample the base's sites)
+inline bool hybridStillBurst(int moved,int donors){return donors>0&&moved*4<donors;}
 inline std::vector<float> hybridReconstruct(const HybridInput& input,const HybridTuning& tune,
                                             const ScamAlignment& alignment,
                                             const std::function<void(const std::string&)>& report,
@@ -6195,7 +6215,25 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 }
             }
         }
-        gpu.merge(in,tune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr);
+        // P150: a still burst (tripod, a phone on a table) samples the same sites in every frame. cellClip then takes the same
+        // sites next to a clip away from every frame, and a thin dark detail in front of a clipped light loses every sample of a
+        // colour phase: dashed wires, dotted edges and purple dots along a lit lamp (owner's chandelier, vivo V2419A, 2026-10-16;
+        // the checker sits on one Bayer phase). With motion other frames hold those phases. A still burst merges per site
+        // (synthetic still burst on the X200 Ultra: error at the detail 0.079 -> 0.034, chroma p99 0.24 -> 0.15; the green-clipped
+        // sky of the magenta-rim case unchanged); a moving burst keeps cellClip (its merge unchanged).
+        HybridTuning mergeTune=tune;
+        if(tune.cellClip&&tune.staticShift>0.f&&in.frames.size()>1){
+            const int donors=int(in.frames.size())-1;float largest=0.f;
+            const int moved=hybridMovedDonors(in.homography,w,h,tune.staticShift,&largest);
+            if(hybridStillBurst(moved,donors)){
+                mergeTune.cellClip=0;
+                char line[200];
+                std::snprintf(line,sizeof(line),"HYBRID STILL: %d of %d donors moved >= %.2f px (largest %.2f px): cell clip off, per-site clip",
+                    moved,donors,tune.staticShift,largest);
+                report(line);
+            }
+        }
+        gpu.merge(in,mergeTune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr);
         if(gpu.profile){
             const double* p=gpu.passMs;char pl[200];
             std::snprintf(pl,sizeof(pl),"HYBRID GPU ms: flags=%.0f mark=%.0f guide=%.0f cells=%.0f reject=%.0f dilate=%.0f merge=%.0f readback=%.0f",p[0],p[7],p[1],p[2],p[3],p[4],p[5],p[6]);

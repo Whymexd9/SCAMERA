@@ -3471,6 +3471,13 @@ Each step moves with a check that the GPU gives the CPU's result; the CPU path s
      (connected components) stays on the CPU.
   4. Effective map / clip flags / half conversion after the merge (H 6317-6359, W 224-256): written by the merge shader
      directly in the transport format.
+- Replay on the X200 Ultra instead of the OPPO (2026-10-16): the worker runs over adb shell from /data/local/tmp/scam_rp
+  (job/ = symlinks of the installed APK's .so, SCAM_HYBRID=1, scratchpad vrp/vrp.sh). Its outputs flipped between two md5 on
+  the same burst: the Adreno 830 driver compiles the merge program (with LOCAL_ALIGN) into one of two binaries (8425 / 8427 B,
+  output follows the binary 1:1; every input buffer, the frame table and the uniforms byte-identical, per-pass hashes). Not a
+  race of ours; both give the same quality (syn_b1 against its truth: PSNR 20.33 / 20.32, MAE 0.0334 both). The app keeps
+  the first binary (program cache + prewarm). Replays pin it: SCAM_GL_CACHE=<dir>, then md5 repeat (5/5). vivo references
+  (cache glc_head, SCAM_NO_CRE=1): syn_b1 3079e529.
 - Remaining CPU work, why it stays: jpegli JPEG (entropy coding; ~1 s at 20 MP q100, 4-5 s at 50 MP - could run in strips on
   several threads with restart markers, a CPU change), ExifInterface rewrite (I/O), frame copies (camera buffers must be
   released), CRE global alignment (vendor library), ScamRgb's sampled clip statistics (every 17th pixel, overlapped with the
@@ -3554,6 +3561,23 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
 - Checks: unit tests for each path (override set -> the consumer's levels), the binning / widening cases, SettingsMenuTest
   for the row (Авто, range, typed value), check_ui_language / check_settings_model; on the X200 Ultra a shot with a black
   override and the «RAW levels: ... black override» line in the log; DNG tags read back.
+
+### P150 - artifacts of a still shot: dashed wires, dotted edges, purple dots at a lit lamp (owner, 2026-10-16, SCA_20261016_001335.jpg in SCAMERA.zip, crop of a chandelier: «словил вот такие артефакты, пойми в чём причина и исправь»; «Учитывай что виво сейчас неподвижен, а у нас детализация увеличивается за счёт тряски рук/сдвига кадра»)
+- The shot: vivo V2419A (not the X200 Ultra; Dimensity / Mali), camera 3 (13.3 mm f/2.57 tele), ISO 199, 1/50 s, 4096x3072,
+  Ultra HDR; no log in the archive. Artifacts only next to the lit lamps and the dark metal in front of them (a map of the 2x2
+  checker energy over the frame): 1 px checker / dashes along dark edges on clipped glass, purple dots, broken horizontal
+  segments at the orange / white rim. The checker sits on ONE Bayer phase (odd row, even column: 3.3x the others, nothing at
+  mod 4): a Bayer-domain merge problem, not the RGB post pipeline and not a Quad remosaic.
+- Cause (DONE, reproduced on the X200 Ultra by worker replay of synthetic bursts, scratchpad vrp/gen_static.py): cellClip
+  (a 2x2 cell with any clipped site is clipped for every colour of that frame) takes the same sites away from EVERY frame of a
+  still burst; a thin dark detail in front of a clipped light then has no sample of a colour phase and gets the clipped mean:
+  dashed wires, dotted edges. With hand shake other frames hold those phases (the same scene with +-1.5 px jitter is clean).
+- Fix (DONE): hybridMovedDonors / hybridStillBurst - fewer than a quarter of the donors moved >= staticShift (0.75 RAW px,
+  homography at the corners and the centre) = a still burst: the merge runs with cellClip 0 (log «HYBRID STILL: ...»). Moving
+  bursts are untouched (syn_b1 and the jittered synthetic burst: the same md5). Synthetic still burst, error at the detail
+  0.079 -> 0.034, p99 0.75 -> 0.26, chroma p99 0.24 -> 0.15; the green-clipped sky (the magenta-rim case cellClip was made for)
+  shows no magenta rim either way. tools/check_hybrid_still.cpp (CI; run on the X200 via NDK clang + adb: PASS).
+- Open: the owner's phone's log of such a shot (DCIM/SCAMERA/Log) to confirm «HYBRID STILL» there; Mali was not checked.
 
 ### P141 - config files: saving, applying, moving between phones (owner, 2026-10-15: «Ещё добавь в план работы перепроверка работы с конфиг файлами. Проверь чтобы всё правильно сохранялось и применялось. Так же проверь чтобы на разных смартфонах с разными айди модулей конфиг применялся нормально и автоматически подставлялся/адаптировался под другое количество модулей, при этом сделай так чтобы модули не дублировались и не появлялись лишние»)
 - Audit «Сохранить / Восстановить» (BackupPreferences, RestorePreference, ModuleProfiles, module_profile_v2_* files, the
