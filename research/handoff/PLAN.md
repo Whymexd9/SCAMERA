@@ -3983,8 +3983,20 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   unchanged. Render sent to the owner: deliverables/p157/p171-lens-strip-434dp-361dp.png.
 
 ### P172 - the value editor's step chips step the value (owner, 2026-10-16, «Кадров в буфере ZSL» editor with «Шаг 1 / 10 /
-100»: «Сделай так чтобы при выборе шага с таким шагом параметр и менялся»; not started)
-- PrecisionEditor: with «Шаг 10» chosen the ruler moves the value in steps of 10 (and the ruler's ticks follow the step).
+100»: «Сделай так чтобы при выборе шага с таким шагом параметр и менялся»)
+- The ruler (PrecisionRuler) moved the value continuously: fractions of a step per pixel, a whole-number setting rounded them,
+  so «Шаг 10» still gave 51, 52...
+- DONE 2026-10-16: a drag or a fling moves the value by whole steps, one 16dp tick a step, from where it is (53 with «Шаг
+  10»: 63, 73); the part of a tick not yet passed only slides the scale, which settles on the tick when the finger lifts or
+  the fling ends (and on a new touch). PrecisionRulerTest (new, in the CI list).
+
+### P173 - the shade at 16:9 (owner, 2026-10-16: «Исправь отображение шторки при 16:9»; not started)
+- Look at the quick-settings shade with the 16:9 preview (its height / anchoring against the taller preview and the bottom
+  bar) and fix what is off.
+
+### P174 - the horizon level in our style, a colour and a light haptic at 0 degrees (owner, 2026-10-16: «поменяй стиль уровня
+горизонта на схожий с нашим общим стилем камеры. Сделай так чтобы при 0° он менял цвет и давай слабый виброотклик»; not
+started)
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach
