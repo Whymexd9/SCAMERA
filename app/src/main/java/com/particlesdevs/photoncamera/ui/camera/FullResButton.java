@@ -21,6 +21,10 @@ import com.particlesdevs.photoncamera.util.Log;
  * активации»): a square like the DCG button. With the DCG button in the manual strip's end slot it floats above it (an overlay
  * in the fragment's root, kept over the slot on every frame and shown while the slot is); on a camera without DCG (the 2x crop
  * module has no RAW12) it takes the slot itself. A tap toggles PixelPro10's full resolution and restarts the camera.
+ * <p>
+ * P179 (owner, 2026-10-16: «сделай отдельную кнопку на телевике для 50мп и для 200мп. По иконке 200мп должно быть понятно что
+ * это выше разрешение»): on the X200 Ultra's telephoto (native build) the button is 50 MP and a second one floats above it,
+ * 200 MP, its icon the same frame with twice as fine a grid; one of them or none is on.
  */
 final class FullResButton {
     private static final String TAG = "FullResButton";
@@ -67,12 +71,45 @@ final class FullResButton {
         }
         button.setTag(R.id.full_res_button, here);
         if (!overDcg) button.setVisibility(here ? View.VISIBLE : View.GONE);
-        style(button, PixelPro10.fullResOn());
+        boolean two = here && com.particlesdevs.photoncamera.capture.VivoSdkFullRes.teleSizes(
+                com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID);
+        bind200(fragment, root, slot, c, size, two);
+        restyle(root);
         panel.refreshEndSlot();
+    }
+
+    /** P179: the tele's 200 MP button, an overlay one place above the 50 MP button (two above the slot over DCG). */
+    private static void bind200(CameraFragment fragment, ViewGroup root, FrameLayout slot, Context c, int size, boolean two) {
+        ImageButton button = root.findViewById(R.id.full_res_200_button);
+        if (!two) {
+            detach(button);
+            return;
+        }
+        if (button == null || button.getParent() != root) {
+            detach(button);
+            button = new ImageButton(c);
+            button.setId(R.id.full_res_200_button);
+            int pad = ShadeStyle.dp(c, 8);
+            button.setPadding(pad, pad, pad, pad);
+            button.setScaleType(ImageButton.ScaleType.FIT_CENTER);
+            button.setImageResource(R.drawable.manual_ic_fullres_200);
+            button.setOnClickListener(v -> toggle(fragment, (ImageButton) v, true));
+            root.addView(button, new ViewGroup.LayoutParams(size, size));
+            follow(button, slot, root, size, ShadeStyle.dp(c, GAP_DP), R.id.full_res_200_button, 1);
+        }
+        button.setTag(R.id.full_res_200_button, true);
     }
 
     /** Keeps the overlay above the slot (centred, a gap above it) and visible only while the slot is shown. */
     private static void follow(ImageButton button, View slot, ViewGroup root, int size, int gap) {
+        follow(button, slot, root, size, gap, R.id.full_res_button, 0);
+    }
+
+    /**
+     * As above, {@code above} more places up (P179: the 200 MP button over the 50 MP one), one more over a shown DCG
+     * button; shown while the tag {@code tag} is true.
+     */
+    private static void follow(ImageButton button, View slot, ViewGroup root, int size, int gap, int tag, int above) {
         final int[] s = new int[2], r = new int[2];
         ViewTreeObserver.OnPreDrawListener l = new ViewTreeObserver.OnPreDrawListener() {
             @Override
@@ -81,14 +118,16 @@ final class FullResButton {
                     root.getViewTreeObserver().removeOnPreDrawListener(this);
                     return true;
                 }
-                boolean here = Boolean.TRUE.equals(button.getTag(R.id.full_res_button));
+                boolean here = Boolean.TRUE.equals(button.getTag(tag));
                 boolean show = here && slot.isShown() && slot.getWidth() > 0;
+                View dcg = slot.findViewById(R.id.dcg14_button);
+                int level = above + (above == 0 || (dcg != null && dcg.getVisibility() == View.VISIBLE) ? 1 : 0);
                 int vis = show ? View.VISIBLE : View.GONE;
                 if (button.getVisibility() != vis) button.setVisibility(vis);
                 if (show) {
                     slot.getLocationInWindow(s);
                     root.getLocationInWindow(r);
-                    float x = s[0] - r[0] + (slot.getWidth() - size) / 2f, y = s[1] - r[1] - size - gap;
+                    float x = s[0] - r[0] + (slot.getWidth() - size) / 2f, y = s[1] - r[1] - level * (size + gap);
                     if (button.getX() != x) button.setX(x);
                     if (button.getY() != y) button.setY(y);
                 }
@@ -123,28 +162,59 @@ final class FullResButton {
         }
     }
 
+    /** The camera's one button (the 50 MP one on the tele with two sizes). */
     private static void toggle(CameraFragment fragment, ImageButton button) {
-        boolean on = !PixelPro10.fullResOn();
+        toggle(fragment, button, false);
+    }
+
+    /** A tap: FULLRES on or off; on the tele with two sizes, the tapped size on (the other off), or off when it was on. */
+    private static void toggle(CameraFragment fragment, ImageButton button, boolean tele200) {
+        boolean two = com.particlesdevs.photoncamera.capture.VivoSdkFullRes.teleSizes(
+                com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID);
+        boolean active = PixelPro10.fullResOn() && (!two || PixelPro10.tele200() == tele200);
+        boolean on = !active;
+        if (on && two) PixelPro10.setTele200(tele200);
         if (!com.particlesdevs.photoncamera.capture.SensorModeSwitches.setFullRes(on)) {
             fragment.showSnackBar(com.particlesdevs.photoncamera.util.Lang.t(
                     "Нет обычного модуля этой камеры для полного разрешения", "No plain module of this camera for full resolution"));
             return;
         }
-        style(button, on);
+        View root = fragment.getView();
+        if (root instanceof ViewGroup) restyle((ViewGroup) root);
+        else style(button, on);
         button.animate().cancel();
         button.setScaleX(0.86f);
         button.setScaleY(0.86f);
         button.animate().scaleX(1f).scaleY(1f).setDuration(260)
                 .setInterpolator(new android.view.animation.OvershootInterpolator(2.2f)).start();
-        fragment.showSnackBar(fragment.getString(on ? R.string.full_res_on_toast : R.string.full_res_off_toast));
-        Log.i(TAG, "full resolution " + (on ? "on" : "off"));
+        if (on && two) fragment.showSnackBar(tele200 ? com.particlesdevs.photoncamera.util.Lang.t(
+                "Полное разрешение: 200 Мп", "Full resolution: 200 MP") : com.particlesdevs.photoncamera.util.Lang.t(
+                "Полное разрешение: 50 Мп", "Full resolution: 50 MP"));
+        else fragment.showSnackBar(fragment.getString(on ? R.string.full_res_on_toast : R.string.full_res_off_toast));
+        Log.i(TAG, "full resolution " + (on ? "on" : "off") + (two ? (tele200 ? " 200 MP" : " 50 MP") : ""));
         if (fragment.captureController != null) fragment.captureController.restartCamera();
     }
 
+    /** Both buttons from the state: on the tele with two sizes only the chosen one lights. */
+    private static void restyle(ViewGroup root) {
+        boolean on = PixelPro10.fullResOn();
+        ImageButton fifty = root.findViewById(R.id.full_res_button), twoHundred = root.findViewById(R.id.full_res_200_button);
+        boolean two = twoHundred != null && twoHundred.getParent() != null;
+        boolean is200 = two && PixelPro10.tele200();
+        if (fifty != null) style(fifty, on && !is200, two ? "50" : null);
+        if (two) style(twoHundred, on && is200, "200");
+    }
+
     private static void style(ImageButton button, boolean on) {
+        style(button, on, null);
+    }
+
+    /** {@code megapixels}: «50» / «200» on the tele with two sizes (in the name read out and the tooltip), else null. */
+    private static void style(ImageButton button, boolean on, @androidx.annotation.Nullable String megapixels) {
         Context c = button.getContext();
         int accent = ShadeStyle.accent(c);
         String name = c.getString(on ? R.string.full_res_on : R.string.full_res_off);
+        if (megapixels != null) name = name + " · " + megapixels + com.particlesdevs.photoncamera.util.Lang.t(c, " Мп", " MP");
         button.setContentDescription(name);
         button.setTooltipText(name);
         button.setActivated(on);

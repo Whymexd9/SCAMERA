@@ -52,6 +52,8 @@ public final class PixelPro10 {
     private static final String TAG = "PixelPro10";
     private static final String PREFS = "scam_pixel10";
     private static final String KEY_FULL = "full_res";
+    /** P179: the telephoto's native FULLRES size on the X200 Ultra: 200 MP (mode 0, Tetra) or 50 MP (mode 1, Quad). */
+    private static final String KEY_TELE_200 = "full_res_tele_200";
     private static final String OFFERED = "module_pixel_offered_";
     /** Fields closer than this to a visible module's are the same module. */
     static final float SAME_FIELD = 0.15f;
@@ -204,6 +206,17 @@ public final class PixelPro10 {
     public static void setFullRes(boolean on) {
         SharedPreferences p = prefs();
         if (p != null) p.edit().putBoolean(KEY_FULL, on).apply();
+    }
+
+    /** P179: the telephoto's FULLRES is 200 MP (the default, as before the choice) rather than 50 MP. */
+    public static boolean tele200() {
+        SharedPreferences p = prefs();
+        return p == null || p.getBoolean(KEY_TELE_200, true);
+    }
+
+    public static void setTele200(boolean on) {
+        SharedPreferences p = prefs();
+        if (p != null) p.edit().putBoolean(KEY_TELE_200, on).apply();
     }
 
     /** The largest RAW of the camera's max-resolution map (RAW_SENSOR, else RAW10, else RAW12), null without one. */

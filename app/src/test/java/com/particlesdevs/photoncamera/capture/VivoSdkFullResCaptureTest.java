@@ -49,6 +49,27 @@ public class VivoSdkFullResCaptureTest {
         assertEquals(4, VivoSdkFullRes.nativeProfile("5").nativeBlock);
         assertNull(VivoSdkFullRes.nativeProfile("1"));
     }
+
+    /** P179: the tele's 50 MP button takes mode 1 (Quad 8160x6144), the 200 MP one mode 0 (Tetra); 200 MP until chosen. */
+    @Test public void theTeleTakesTheChosenNativeSize() {
+        try (org.mockito.MockedStatic<com.particlesdevs.photoncamera.app.ScameraApp> app =
+                     mockStatic(com.particlesdevs.photoncamera.app.ScameraApp.class)) {
+            app.when(com.particlesdevs.photoncamera.app.ScameraApp::getAppContext)
+                    .thenReturn(org.robolectric.RuntimeEnvironment.getApplication());
+            assertTrue(PixelPro10.tele200());
+            PixelPro10.setTele200(false);
+            VivoSdkFullRes.Profile fifty = VivoSdkFullRes.nativeProfile("5");
+            assertEquals(8160, fifty.size.getWidth());
+            assertEquals(6144, fifty.size.getHeight());
+            assertEquals(1, fifty.sensorMode);
+            assertEquals(2, fifty.nativeBlock);
+            assertEquals("main and UW keep their one size", 8192, VivoSdkFullRes.nativeProfile("3").size.getWidth());
+            PixelPro10.setTele200(true);
+            assertEquals(16320, VivoSdkFullRes.nativeProfile("5").size.getWidth());
+            assertEquals(0, VivoSdkFullRes.nativeProfile("5").sensorMode);
+            assertFalse("the default package has no native sizes", VivoSdkFullRes.teleSizes("5"));
+        }
+    }
     private static final ByteBuffer RAW_PIXELS = ByteBuffer.allocateDirect(8192 * 6144 * 2);
     @Test public void usesFreshStillRequestsRawJpegOnlyAndOneMatchedFrameAtATime() throws Exception {
         verifyCamera("3", 8192, 6144, 13);

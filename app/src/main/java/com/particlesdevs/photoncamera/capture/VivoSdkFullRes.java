@@ -27,20 +27,31 @@ public final class VivoSdkFullRes {
     }
 
     public static Profile profile(String cameraId) {
-        android.content.Context context = ScameraApp.getAppContext();
-        if (context != null && VivoQcomModes.device()
-                && VivoPd2454NativeRaw.PACKAGE.equals(context.getPackageName()))
-            return nativeProfile(cameraId);
+        if (nativeRaw()) return nativeProfile(cameraId);
         if ("3".equals(cameraId)) return new Profile(8192, 6144, 13);
         if ("4".equals(cameraId)) return new Profile(8192, 6144, 11);
         if ("5".equals(cameraId)) return new Profile(8160, 6144, 18);
         return null;
     }
 
+    /** The native FULLRES build on the X200 Ultra (its own package; the default package takes the SDK profiles). */
+    static boolean nativeRaw() {
+        android.content.Context context = ScameraApp.getAppContext();
+        return context != null && VivoQcomModes.device() && VivoPd2454NativeRaw.PACKAGE.equals(context.getPackageName());
+    }
+
     static Profile nativeProfile(String cameraId) {
         if ("3".equals(cameraId) || "4".equals(cameraId)) return new Profile(8192, 6144, 4, 2);
-        if ("5".equals(cameraId)) return new Profile(16320, 12288, 0, 4);
+        if ("5".equals(cameraId)) return PixelPro10.tele200() ? TELE_200 : TELE_50;
         return null;
+    }
+
+    /** P179: the telephoto's two native sizes - 200 MP (mode 0, Tetra 16320x12288) and 50 MP (mode 1, Quad 8160x6144). */
+    static final Profile TELE_200 = new Profile(16320, 12288, 0, 4), TELE_50 = new Profile(8160, 6144, 1, 2);
+
+    /** P179: the camera offers both sizes (the X200 Ultra's telephoto, native build): a FULLRES button for each. */
+    public static boolean teleSizes(String cameraId) {
+        return "5".equals(cameraId) && nativeRaw();
     }
 
     static int frameCount(int requested, long frameBytes, long availableBytes) {
