@@ -59,7 +59,7 @@ public final class DevKeys {
         final String merge = Lang.t("Склейка Hybrid (воркер)", "Hybrid merge (worker)");
         final String post = Lang.t("Обработка", "Processing");
         final String xiaomi = Lang.t("Xiaomi 17 Ultra (теле)", "Xiaomi 17 Ultra (tele)");
-        final String vivo = Lang.t("vivo X500 Pro Max: DCG", "vivo X500 Pro Max: DCG");
+        final String vivo = Lang.t("vivo", "vivo");
         final String pixel = Lang.t("Pixel 10 Pro / Pro XL", "Pixel 10 Pro / Pro XL");
         final String diag = Lang.t("Диагностика и A/B", "Diagnostics and A/B");
         List<Key> k = new ArrayList<>();
@@ -90,6 +90,12 @@ public final class DevKeys {
         k.add(s(cap, "mosaic_awb", true, Lang.t("ISZ без ремозаика: баланс белого по кадру на кривой камеры, а не от камеры", "ISZ without remosaic: white balance from the frame on the camera curve, not the camera's")));
         k.add(s(cap, "oplus_ccm", true, Lang.t("OPPO: цветовая матрица com.oplus.custom.ccm вместо единичной", "OPPO: the com.oplus.custom.ccm colour matrix instead of an identity one")));
         k.add(s(cap, "fov_check", true, Lang.t("Замер реального поля зрения вендорных модулей", "Measure the real field of view of vendor modules")));
+        k.add(s(cap, "hybrid_fast_capture", true, Lang.t("Сброс очереди HAL перед серией (задержка затвора ~0.4 → ~0.15 с)", "Flush the HAL request queue before the series (shutter lag ~0.4 -> ~0.15 s)")));
+        k.add(s(cap, "hybrid_planner_adaptive", true, Lang.t("Планировщик серии подстраивает L / S / ES под клип кадров кольца", "The series planner fits L / S / ES to the clip of the ring frames")));
+        k.add(n(cap, "hybrid_planner_l_ev", "1", Lang.t("Планировщик: EV длинного кадра над обычным", "Planner: EV of the long frame above the normal one")));
+        k.add(n(cap, "hybrid_planner_s_ev", "3", Lang.t("Планировщик: EV короткого кадра под обычным", "Planner: EV of the short frame below the normal one")));
+        k.add(n(cap, "hybrid_planner_es_ev", "6", Lang.t("Планировщик: EV сверхкороткого кадра под обычным", "Planner: EV of the extra-short frame below the normal one")));
+        k.add(n(cap, "hybrid_long_boost_ev", "1.1", Lang.t("Добавка EV длинного кадра к стоковому плану (0 — стоковый)", "Extra EV of the long frame over the stock plan (0: stock)")));
         // viewfinder
         k.add(s(vf, "mosaic_preview", true, Lang.t("Модуль, измеренный как мозаика, сразу показывает RAW-видоискатель", "A module measured as a mosaic starts on the RAW viewfinder")));
         k.add(n(vf, "vf_priority", "1", Lang.t("Высокий приоритет потока видоискателя (0 — обычный)", "High priority of the viewfinder thread (0: normal)")));
@@ -118,12 +124,27 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_la_threads", null, Lang.t("Потоков локального выравнивания F6", "Threads of the F6 local alignment")));
         k.add(n(merge, "hybrid_la_stream", null, Lang.t("F6 полосами вместе со склейкой (0 — сначала всё поле)", "F6 in bands alongside the merge (0: the whole field first)")));
         k.add(n(merge, "hybrid_la_scam", null, Lang.t("Понижение приоритета потоков F6", "Lower priority of the F6 threads")));
+        k.add(s(merge, "hybrid_clip_flags", true, Lang.t("Флаги клипа каналов от воркера для восстановления светов", "The worker's channel clip flags for the highlight recovery")));
+        k.add(n(merge, "hybrid_mosaic_gain", "1", Lang.t("Усиление результата склейки Quad / Tetra (HexQuad)", "Gain of the Quad / Tetra merge result (HexQuad)")));
         // processing
         k.add(n(post, "post_priority", null, Lang.t("Приоритет потока обработки (nice; пусто — не менять)", "Priority of the processing thread (nice; empty: unchanged)")));
         k.add(n(post, "gpu_low_priority", "1", Lang.t("Низкий приоритет GPU-контекста обработки (0 — обычный)", "Low priority of the processing GPU context (0: normal)")));
         k.add(s(post, "effmap_real", true, Lang.t("Карта числа кадров для шумоподавления — реальная (выкл — старая)", "Frame-count map for the denoise: the real one (off: the old one)")));
         k.add(n(post, "jpeg_threads", null, Lang.t("Потоков кодирования JPEG (1 — один поток, прогрессивный; пусто — все ядра)", "Threads of the JPEG encode (1: one thread, progressive; empty: every core)")));
         k.add(sAuto(post, "rgba_upload", Lang.t("Загрузка RGB в GPU как RGBA (по умолчанию решает приложение)", "RGB uploaded to the GPU as RGBA (default: chosen by the app)")));
+        k.add(n(post, "hybrid_isp_ccm", "1", Lang.t("vivo: цветовая матрица ISP по кадру (0 — матрицы DNG)", "vivo: the ISP colour matrix of the frame (0: the DNG matrices)")));
+        k.add(n(post, "hybrid_dn_dark_chroma_hi", "4", Lang.t("Шумодав: цвет в тенях, верхний порог (x1e-4)", "Denoise: colour in the shadows, upper threshold (x1e-4)")));
+        k.add(n(post, "hybrid_dn_dark_chroma_lo", "1.5", Lang.t("Шумодав: цвет в тенях, нижний порог (x1e-4)", "Denoise: colour in the shadows, lower threshold (x1e-4)")));
+        k.add(n(post, "hybrid_dn_dark_chroma_noise", "0.35", Lang.t("Шумодав: цвет в тенях, доля шума", "Denoise: colour in the shadows, noise share")));
+        k.add(n(post, "hybrid_grain_level", "0.0002", Lang.t("Шумодав: уровень оставляемого зерна", "Denoise: level of the grain left")));
+        k.add(n(post, "hybrid_grain_min", "0.12", Lang.t("Шумодав: наименьшая доля возвращаемого зерна", "Denoise: least share of the grain put back")));
+        k.add(n(post, "hybrid_texture_g0", null, Lang.t("Текстура: усиление полосы 0 (по умолчанию 1.5, на 8 Elite 1.35)", "Texture: gain of band 0 (default 1.5, 1.35 on the 8 Elite)")));
+        k.add(n(post, "hybrid_texture_g1", "1.25", Lang.t("Текстура: усиление полосы 1", "Texture: gain of band 1")));
+        k.add(n(post, "hybrid_texture_g2", "1.3", Lang.t("Текстура: усиление полосы 2", "Texture: gain of band 2")));
+        k.add(n(post, "hybrid_texture_g3", "1.3", Lang.t("Текстура: усиление полосы 3", "Texture: gain of band 3")));
+        k.add(n(post, "hybrid_texture_core0", "0.8", Lang.t("Текстура: порог ядра (начало)", "Texture: coring threshold (start)")));
+        k.add(n(post, "hybrid_texture_core1", "1.8", Lang.t("Текстура: порог ядра (конец)", "Texture: coring threshold (end)")));
+        k.add(n(post, "hybrid_texture_bmax", "0.12", Lang.t("Текстура: предел добавки", "Texture: limit of the boost")));
         // Xiaomi 17 Ultra
         k.add(n(xiaomi, "xiaomi_opmode", String.valueOf(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.STOCK_OPERATION_MODE), Lang.t("Режим работы логической сессии (36866 = стоковый 0x9002, 0 — обычный)", "Operation mode of the logical session (36866 = stock 0x9002, 0 regular)")));
         k.add(s(xiaomi, "xiaomi_logical", true, Lang.t("Теле через логическую камеру", "Tele through the logical camera")));

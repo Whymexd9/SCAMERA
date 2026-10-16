@@ -26,6 +26,9 @@ import java.util.stream.Stream;
 public class DevKeysCoverageTest {
     private static final Pattern DEV = Pattern.compile("scamDev(?:Switch|Number|Value|Overrides)\\(\"([a-z0-9_]+)\"");
     private static final Pattern TUNE = Pattern.compile("\\{\"[A-Za-z0-9]+\", *\"([a-z0-9_]+)\"}");
+    // P128: hybrid settings read by literal key (scam_dev.txt "hybrid_<key>" overrides each); ArkTone.value adds "ark_"
+    private static final Pattern HYBRID = Pattern.compile("(?:hybridValue|hybridSwitch|hybridString|routeInternalValue)\\(\"([a-z0-9_]+)\"\\s*[,)]");
+    private static final Pattern ARK = Pattern.compile("(?<![A-Za-z])value\\(\"([a-z0-9_]+)\"\\s*[,)]");
 
     private static File src(String path) {
         File f = new File(path);
@@ -55,12 +58,33 @@ public class DevKeysCoverageTest {
         return out;
     }
 
+    /** "hybrid_<key>" of a hybrid setting read by literal key whose pref_scam_hybrid_<key> row is not in preferences.xml. */
+    private static Set<String> hiddenHybridKeys() throws IOException {
+        String xml = new String(Files.readAllBytes(src("src/main/res/xml/preferences.xml").toPath()), StandardCharsets.UTF_8);
+        Set<String> out = new TreeSet<>();
+        try (Stream<java.nio.file.Path> files = Files.walk(src("src/main/java").toPath())) {
+            for (java.nio.file.Path p : (Iterable<java.nio.file.Path>) files.filter(x -> x.toString().endsWith(".java"))::iterator) {
+                String code = new String(Files.readAllBytes(p), StandardCharsets.UTF_8);
+                Set<String> keys = new TreeSet<>();
+                Matcher m = HYBRID.matcher(code);
+                while (m.find()) keys.add(m.group(1).startsWith("hybrid_") ? m.group(1).substring("hybrid_".length()) : m.group(1));
+                if (p.getFileName().toString().equals("ArkTone.java")) {
+                    m = ARK.matcher(code);
+                    while (m.find()) keys.add("ark_" + m.group(1));
+                }
+                for (String k : keys) if (!xml.contains("\"pref_scam_hybrid_" + k + "\"")) out.add("hybrid_" + k);
+            }
+        }
+        return out;
+    }
+
     @Test
     public void everyHiddenScamDevKeyIsOnTheDeveloperPage() throws IOException {
         Set<String> listed = DevKeys.keys();
         List<String> missing = new ArrayList<>();
         Set<String> wanted = new TreeSet<>(codeKeys());
         wanted.addAll(hiddenTuningKeys());
+        wanted.addAll(hiddenHybridKeys());
         for (String k : wanted) if (!listed.contains(k) && !DevKeys.MENU_BACKED.contains(k)) missing.add(k);
         assertTrue("scam_dev keys missing from DevKeys (add them to «Для разработчика»): " + missing, missing.isEmpty());
     }
@@ -69,6 +93,7 @@ public class DevKeysCoverageTest {
     public void developerPageListsNoStaleKey() throws IOException {
         Set<String> used = new TreeSet<>(codeKeys());
         used.addAll(hiddenTuningKeys());
+        used.addAll(hiddenHybridKeys());
         List<String> stale = new ArrayList<>();
         for (String k : DevKeys.keys()) if (!used.contains(k)) stale.add(k);
         assertTrue("DevKeys lists keys the code no longer reads: " + stale, stale.isEmpty());

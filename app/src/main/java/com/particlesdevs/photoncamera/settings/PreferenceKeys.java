@@ -602,17 +602,6 @@ public class PreferenceKeys {
         if (isHybridShot()) return hybridString("cre_source", "auto");
         return preferenceKeys.settingsManager.getString("default_scope", "pref_scamhdr_cre_source", "auto");
     }
-    /** ISO level 1..5 of the SCAM normal reference, as in the settings screen. */
-    public static int scamIsoLevel(int iso) {
-        return iso <= 200 ? 1 : iso <= 800 ? 2 : iso <= 3200 ? 3 : iso <= 12800 ? 4 : 5;
-    }
-    /** Luma/chroma strength inside SCAM (0..2, 1 = model as trained), with the ISO-level multiplier. */
-    public static float getScamLuma(int iso) {
-        return Math.max(0f, Math.min(2f, routeInternalValue("luma", 1f) * routeInternalValue("luma_iso" + scamIsoLevel(iso), 1f)));
-    }
-    public static float getScamChroma(int iso) {
-        return Math.max(0f, Math.min(2f, routeInternalValue("chroma", 1f) * routeInternalValue("chroma_iso" + scamIsoLevel(iso), 1f)));
-    }
     /** The SoC the SCAM HDR network was built for (Hexagon v79): SCAM HDR (SCAM) runs there; the SCAM Hybrid runs anywhere. */
     public static boolean isScamNetSoc() {
         return ScamHybridKeys.scamNetSoc();
@@ -894,10 +883,6 @@ public class PreferenceKeys {
      */
     public static boolean isHybridDenoiseEnabled() {
         return hybridSwitch("denoise", true);
-    }
-    /** Weight of the other burst frames in the SCAM reference, 0..1 (1 = all frames). */
-    public static float getScamMerge() {
-        return Math.max(0f, Math.min(1f, routeInternalValue("merge", 100f) / 100f));
     }
     /** Extra EV for the SCAM long frame over the stock plan (0 = stock). */
     public static float getScamLongBoostEv() {
