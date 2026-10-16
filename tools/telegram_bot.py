@@ -30,7 +30,7 @@ TOOLS = Path(__file__).resolve().parent
 WORKFLOW = 'build-test-apk.yml'
 ARTIFACT = re.compile(r'SCAMERA-Build-(\d+)')
 ZIP_LIMIT = 512 << 20
-TOGGLES = ('commits', 'sha', 'cilink')
+TOGGLES = ('commits', 'sha')
 
 
 class TelegramError(Exception):
@@ -95,7 +95,6 @@ def help_text(lang):
         '/here — написать в нужной теме группы: сборки пойдут туда',
         '/commits on|off — список коммитов в подписи',
         '/sha on|off — SHA-256 в подписи',
-        '/cilink on|off — ссылка на сборку в CI',
         '/header текст — свой текст в начале поста, /header - убрать']), '\n'.join([
         '<b>SCAMERA builds bot</b>',
         'New builds of main are posted to the group automatically (the APK only).',
@@ -106,7 +105,6 @@ def help_text(lang):
         '/here — write it in the topic of the group: builds go there',
         '/commits on|off — commit list in the caption',
         '/sha on|off — SHA-256 in the caption',
-        '/cilink on|off — link to the CI run',
         '/header text — your text at the top of the post, /header - removes it']))
 
 
@@ -118,7 +116,6 @@ def set_commands():
                    ('off', t(lang, 'выключить автопостинг', 'auto-posting off')),
                    ('commits', t(lang, 'коммиты в подписи on|off', 'commits in the caption on|off')),
                    ('sha', t(lang, 'SHA-256 в подписи on|off', 'SHA-256 in the caption on|off')),
-                   ('cilink', t(lang, 'ссылка на CI on|off', 'CI link on|off')),
                    ('header', t(lang, 'текст в начале поста', 'text at the top of the post')),
                    ('help', t(lang, 'все команды', 'all commands'))]
         group = [('here', t(lang, 'выкладывать сборки в эту тему', 'post builds to this topic'))]
@@ -390,8 +387,6 @@ def post_build(number, chat_id, lang, announce=True):
     build = ARTIFACT.fullmatch(artifact['name'])[1]
     if announce:   # the Worker has already said it is posting
         say(chat_id, t(lang, f'⏳ Выкладываю сборку {build}…', f'⏳ Posting build {build}…'))
-    server = os.environ.get('GITHUB_SERVER_URL', 'https://github.com')
-    repo = os.environ['GITHUB_REPOSITORY']
     with tempfile.TemporaryDirectory() as folder:
         try:
             github(artifact['archive_download_url'], Path(folder) / 'build.zip')
@@ -401,8 +396,7 @@ def post_build(number, chat_id, lang, announce=True):
             return 1
         subject = ((wf_run.get('head_commit') or {}).get('message') or '').strip().splitlines()[:1]
         command = [publisher_python(), str(TOOLS / 'telegram_publish.py'), '--apk', str(apk), '--force',
-                   '--notify', 'all', '--commit', wf_run['head_sha'], '--branch', wf_run['head_branch'],
-                   '--commit-url', f'{server}/{repo}/commit/{wf_run["head_sha"]}', '--run-url', wf_run['html_url']]
+                   '--notify', 'all']
         for line in subject:
             command += ['--subject', line]
         if subprocess.run(command).returncode:   # telegram_publish has told the owner why, when it got that far

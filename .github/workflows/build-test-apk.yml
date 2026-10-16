@@ -277,6 +277,4 @@ jobs:
           "$RUNNER_TEMP/telegram/bin/pip" install -q -r tools/telegram-requirements.txt
           "$RUNNER_TEMP/telegram/bin/python" tools/telegram_publish.py --notify fail \
             --apk "out/SCAMERA-0.98-${{ steps.ver.outputs.code }}-SCAM.apk" \
-            --from-rev "${{ github.event.before }}" --to-rev "${{ github.sha }}" --branch main \
-            --commit-url "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}" \
-            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            --from-rev "${{ github.event.before }}" --to-rev "${{ github.sha }}"

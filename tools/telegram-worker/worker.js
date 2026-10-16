@@ -11,10 +11,9 @@
 // write). Optional plain variable GITHUB_REPO (default Whymexd9/SCAMERA).
 // Once after deploying: open https://<worker>/setup?key=<WEBHOOK_SECRET> to register the webhook and the commands.
 
-const DEFAULTS = {auto: true, chat: null, topic: null, where: '', commits: true, sha: true, cilink: true, header: '',
-  lang: 'ru'};
+const DEFAULTS = {auto: true, chat: null, topic: null, where: '', commits: true, sha: true, header: '', lang: 'ru'};
 const HEADER_LIMIT = 300;
-const TOGGLES = ['commits', 'sha', 'cilink'];
+const TOGGLES = ['commits', 'sha'];
 const WORKFLOW = 'telegram-bot.yml';
 
 class TelegramError extends Error {
@@ -76,7 +75,7 @@ function describeSettings(s) {
   const off = t(lang, 'выкл', 'off');
   const where = esc(s.where || (s.chat ? String(s.chat) : '')) ||
     t(lang, 'не задано — напиши /here в нужной теме группы', 'not set: write /here in the topic of the group');
-  const parts = [['commits', t(lang, 'коммиты', 'commits')], ['sha', 'SHA-256'], ['cilink', t(lang, 'ссылка CI', 'CI link')]];
+  const parts = [['commits', t(lang, 'коммиты', 'commits')], ['sha', 'SHA-256']];
   return [
     t(lang, 'Автопостинг новых сборок: ', 'Auto-posting new builds: ') + `<b>${s.auto ? on : off}</b>`,
     t(lang, 'Куда: ', 'Where: ') + where,
@@ -150,7 +149,6 @@ function helpText(lang) {
     '/here — написать в нужной теме группы: сборки пойдут туда',
     '/commits on|off — список коммитов в подписи',
     '/sha on|off — SHA-256 в подписи',
-    '/cilink on|off — ссылка на сборку в CI',
     '/header текст — свой текст в начале поста, /header - убрать',
   ].join('\n'), [
     '<b>SCAMERA builds bot</b>',
@@ -162,7 +160,6 @@ function helpText(lang) {
     '/here — write it in the topic of the group: builds go there',
     '/commits on|off — commit list in the caption',
     '/sha on|off — SHA-256 in the caption',
-    '/cilink on|off — link to the CI run',
     '/header text — your text at the top of the post, /header - removes it',
   ].join('\n'));
 }
@@ -176,7 +173,6 @@ async function setCommands(env) {
       ['off', t(lang, 'выключить автопостинг', 'auto-posting off')],
       ['commits', t(lang, 'коммиты в подписи on|off', 'commits in the caption on|off')],
       ['sha', t(lang, 'SHA-256 в подписи on|off', 'SHA-256 in the caption on|off')],
-      ['cilink', t(lang, 'ссылка на CI on|off', 'CI link on|off')],
       ['header', t(lang, 'текст в начале поста', 'text at the top of the post')],
       ['help', t(lang, 'все команды', 'all commands')]];
     const groupCommands = [['here', t(lang, 'выкладывать сборки в эту тему', 'post builds to this topic')]];

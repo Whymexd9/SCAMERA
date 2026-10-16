@@ -1,8 +1,9 @@
 # SCAMERA builds bot (Telegram)
 
 Every successful CI build of a push to `main` posts its APK (`SCAMERA-0.98-<code>-SCAM.apk`) to a Telegram group
-topic or channel. Only the APK is posted: `SHA256SUMS.txt`, the neural-assets bundle and the test reports stay in
-Actions. The owner configures the bot in a private chat with it; it answers at once.
+topic or channel and pins it there (silently). Only the APK is posted: `SHA256SUMS.txt`, the neural-assets bundle
+and the test reports stay in Actions, and the caption has no links to GitHub. The owner configures the bot in a
+private chat with it; it answers at once. The bot needs the rights to send messages and to pin them.
 
 | Piece | What it does |
 |---|---|
@@ -49,7 +50,7 @@ write `/here` in the topic that should get the builds.
 | `/on`, `/off` | auto-posting of new builds (`/post` works either way) |
 | `/post`, `/post 30830` | post the latest successful `main` build, or a given build (artifacts are kept 90 days); 1–3 min |
 | `/here` | in a group or one of its topics: post builds there |
-| `/commits on\|off`, `/sha on\|off`, `/cilink on\|off` | commit list, SHA-256, CI link in the caption |
+| `/commits on\|off`, `/sha on\|off` | commit subjects, SHA-256 in the caption |
 | `/header text`, `/header -` | your text at the top of each post / remove it |
 
 Other people get a refusal; commands of other bots in the group are ignored. The settings message must stay pinned

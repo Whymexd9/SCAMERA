@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Post a CI-built SCAMERA APK to a Telegram group or channel (docs/telegram-channel.md).
 
-Only the APK is posted; SHA256SUMS.txt and the other artifacts stay in Actions. The APK is larger than the Bot API
-upload limit (50 MB), so the bot logs in over MTProto (Telethon), where a bot may upload files up to 2 GB.
+Only the APK is posted, and pinned; SHA256SUMS.txt and the other artifacts stay in Actions, and the caption has no
+links to GitHub (owner's wish). The APK is larger than the Bot API upload limit (50 MB), so the bot logs in over
+MTProto (Telethon), where a bot may upload files up to 2 GB.
 Where to post and what the caption shows come from the bot's settings: the owner changes them in a private chat with
 the bot (tools/telegram_bot.py) and they live in the bot's pinned message of that chat.
 
@@ -30,8 +31,8 @@ CAPTION_LIMIT = 1000        # Telegram allows 1024 visible characters; keep a ma
 SUBJECT_LIMIT = 140
 HEADER_LIMIT = 300
 SECRETS = ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH')
-DEFAULTS = {'auto': True, 'chat': None, 'topic': None, 'where': '', 'commits': True, 'sha': True, 'cilink': True,
-            'header': '', 'lang': 'ru'}
+DEFAULTS = {'auto': True, 'chat': None, 'topic': None, 'where': '', 'commits': True, 'sha': True, 'header': '',
+            'lang': 'ru'}
 
 
 def t(lang, ru, en):
@@ -74,7 +75,7 @@ def describe_settings(s):
         t(lang, 'Куда: ', 'Where: ') + where,
         t(lang, 'Подпись: ', 'Caption: ') + ', '.join(
             f'{name} {on if s[key] else off}' for key, name in
-            (('commits', t(lang, 'коммиты', 'commits')), ('sha', 'SHA-256'), ('cilink', t(lang, 'ссылка CI', 'CI link')))),
+            (('commits', t(lang, 'коммиты', 'commits')), ('sha', 'SHA-256'))),
         t(lang, 'Текст сверху: ', 'Header: ') + header])
 
 
@@ -124,20 +125,13 @@ def build_title(apk):
     return f'SCAMERA {m["ver"]} · {m["code"]}' if m else apk.stem
 
 
-def build_caption(apk, digest, subjects, commit='', branch='', commit_url='', run_url='', settings=None):
+def build_caption(apk, digest, subjects, settings=None):
+    """Header, title, commit subjects, SHA-256; no links to GitHub (the owner does not want them in the group)."""
     s = settings or DEFAULTS
     head = f'<b>{html.escape(build_title(apk))}</b>'
     if s['header']:
         head = html.escape(s['header'][:HEADER_LIMIT], quote=False) + '\n\n' + head
-    if commit:
-        short = html.escape(commit[:8])
-        ref = f'<a href="{html.escape(commit_url, quote=True)}">{short}</a>' if commit_url else f'<code>{short}</code>'
-        head += '\n' + ref + (f' · {html.escape(branch)}' if branch else '')
-    tail = []
-    if s['sha']:
-        tail.append(f'SHA-256 <code>{digest}</code>')
-    if s['cilink'] and run_url:
-        tail.append(f'<a href="{html.escape(run_url, quote=True)}">CI run</a>')
+    tail = [f'SHA-256 <code>{digest}</code>'] if s['sha'] else []
 
     def join(lines):
         return '\n'.join([head, *([''] + lines if lines else []), *([''] + tail if tail else [])])
@@ -153,7 +147,7 @@ def build_caption(apk, digest, subjects, commit='', branch='', commit_url='', ru
             break
         lines.append(line)
     caption = join(lines)
-    if visible_length(caption) > CAPTION_LIMIT:   # only an absurd title/branch gets here
+    if visible_length(caption) > CAPTION_LIMIT:   # only an absurd header gets here
         caption = join([])
     return caption
 
@@ -199,7 +193,7 @@ async def notify(client, owner, text):
         print(f'::warning::Could not message the owner: {type(e).__name__}')
 
 
-async def publish(args, digest, subjects, commit):
+async def publish(args, digest, subjects):
     """Message id of the post, or None when skipped."""
     from telethon import TelegramClient
     from telethon.sessions import StringSession
@@ -231,8 +225,7 @@ async def publish(args, digest, subjects, commit):
                                           'write /here in the topic of the group.'))
             print('::notice::Telegram post skipped: no target (/here in the bot, or the TELEGRAM_CHAT secret)')
             return None
-        caption = build_caption(args.apk, digest, subjects, commit, args.branch, args.commit_url, args.run_url,
-                                settings)
+        caption = build_caption(args.apk, digest, subjects, settings)
         try:
             # A reply to a topic's first message (its id is the topic id) is posted inside that topic.
             message = await client.send_file(target, str(args.apk), caption=caption, parse_mode='html',
@@ -243,6 +236,16 @@ async def publish(args, digest, subjects, commit):
                 await notify(client, owner, t(lang, f'❌ Не удалось выложить {title} в «{html.escape(where)}»: {detail}',
                                               f'❌ Could not post {title} to “{html.escape(where)}”: {detail}'))
             raise
+        try:   # the newest APK on top of its topic; silent, the post itself has notified
+            await client.pin_message(target, message, notify=False)
+        except Exception as e:
+            print(f'::warning::Post not pinned: {type(e).__name__}')
+            if args.notify in ('fail', 'all'):
+                detail = html.escape(redact(f'{type(e).__name__}: {e}'), quote=False)
+                await notify(client, owner, t(lang, f'⚠️ {title} выложена, но не закреплена: {detail}. '
+                                                    'Дай боту право закреплять сообщения.',
+                                              f'⚠️ {title} is posted but not pinned: {detail}. '
+                                              'Allow the bot to pin messages.'))
         if args.notify == 'all':
             await notify(client, owner, t(lang, f'✅ {title} выложена в «{html.escape(where)}».',
                                           f'✅ {title} posted to “{html.escape(where)}”.'))
@@ -256,11 +259,7 @@ def main():
     ap.add_argument('--apk', required=True, type=Path)
     ap.add_argument('--from-rev', default='', help='previous head of the branch (github.event.before)')
     ap.add_argument('--to-rev', default='HEAD')
-    ap.add_argument('--commit', default='', help='commit of the build (default: git rev-parse of --to-rev)')
     ap.add_argument('--subject', action='append', default=[], help='caption commit line instead of git log (repeat)')
-    ap.add_argument('--branch', default='')
-    ap.add_argument('--commit-url', default='')
-    ap.add_argument('--run-url', default='')
     ap.add_argument('--force', action='store_true', help='post even when auto-posting is off (/post in the bot)')
     ap.add_argument('--notify', choices=('none', 'fail', 'all'), default='fail', help='message the owner about it')
     ap.add_argument('--dry-run', action='store_true', help='print the caption and do not post')
@@ -270,19 +269,11 @@ def main():
     if not args.apk.is_file() or args.apk.suffix.lower() != '.apk':
         print(f'::error::Not an APK: {args.apk}')
         return 1
-    commit = args.commit
-    if not commit:
-        try:
-            commit = subprocess.run(['git', 'rev-parse', args.to_rev], check=True, capture_output=True,
-                                    text=True).stdout.strip()
-        except (OSError, subprocess.CalledProcessError):
-            pass
     subjects = args.subject or commit_subjects(args.from_rev, args.to_rev)
     digest = sha256(args.apk)
     if args.dry_run:
         settings = {**DEFAULTS, **(json.loads(args.settings_json) if args.settings_json else {})}
-        caption = build_caption(args.apk, digest, subjects, commit, args.branch, args.commit_url, args.run_url,
-                                settings)
+        caption = build_caption(args.apk, digest, subjects, settings)
         print(caption)
         print(f'[{visible_length(caption)} visible characters]')
         return 0
@@ -293,7 +284,7 @@ def main():
         return 0
     size_mb = args.apk.stat().st_size / (1 << 20)
     try:
-        message_id = asyncio.run(publish(args, digest, subjects, commit))
+        message_id = asyncio.run(publish(args, digest, subjects))
     except Exception as e:
         print(f'::error::Telegram post failed: {redact(f"{type(e).__name__}: {e}")}')
         return 1
