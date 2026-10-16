@@ -739,6 +739,7 @@ public class SettingsBarLayout extends LinearLayout {
 
     /** A long list (the tone curve, the ISZ mosaic): the list sheet of the settings screens. */
     private void openList(ShadeCatalog.Entry e) {
+        catalog().refreshChoices(e);   // P170: the film LUTs as they are now
         CharSequence[] tags = new CharSequence[e.values.length];
         System.arraycopy(e.values, 0, tags, 0, tags.length);
         SettingsStyle.optionSheet(getContext(), e.title, ShadeCatalog.labels(e), tags, catalog().index(e), ShadeStyle.accent(getContext()),
@@ -748,7 +749,7 @@ public class SettingsBarLayout extends LinearLayout {
         });
     }
 
-    /** Pins a setting as the last tile or unpins it; the 13th pin is refused. Stored at once. */
+    /** Pins a setting as the last tile or unpins it (any number since P167). Stored at once. */
     public void togglePin(String key) {
         if (!ensureContent()) return;
         ShadeCatalog.Entry e = catalog().entry(key);

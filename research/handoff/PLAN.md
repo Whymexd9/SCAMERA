@@ -3978,9 +3978,19 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   deliverables/p157/p169-shade-curve.png), ShadeCatalogTest.
 
 ### P170 - imported LUTs in the shade, five own film LUTs (owner, 2026-10-16: «дай возможность выбора импортированных лутов из
-списка в шторке. Так же добавь 5 своих лутов. Сделай их сам в плёночном стиле»; not started)
+списка в шторке. Так же добавь 5 своих лутов. Сделай их сам в плёночном стиле»; done)
 - A shade entry listing the imported .cube LUTs (and the built-in ones) to pick from; five own film-style 3D LUTs made here
   (generated .cube files bundled in the APK, listed with the imported ones).
+- DONE 2026-10-16: FilmLooks - five looks built in code as 33-point 3D LUTs of the display output (no files in the APK):
+  «Тёплая 400» (portrait negative: soft S, lifted warm blacks, olive greens), «Прохладная 160» (pastel, cyan-green
+  shadows), «Слайд 100» (reversal: deep blacks, contrast, dense blues), «Кино 500» (print: teal shadows, warm highlights),
+  «Ч/Б 400» (panchromatic mix, firm S); a film S per channel, luma-keeping split toning, hue bands, saturation. Stored as
+  «scam:<id>» in pref_film_lut (no .cube has that name); FilmLut.chosen builds them, so the photo (ArkCombine) and the
+  viewfinder (LiveRawRenderer) take them as any LUT, the strength slider applies. The settings row lists them after «Нет»,
+  before the folder's files. The shade: pref_film_lut is a pinnable list (ShadeCatalog LIST, the list sheet; its values
+  read again from Download/SCAMERA/LUT whenever it opens), search «лут» / «плёнка». FilmLooksTest (new, in the CI list:
+  range, grey ramp monotone, smooth nodes, each look's character; renders deliverables/p157/p170-film-looks-*.png),
+  ShadeCatalogTest filmLutListsOurLooksThenTheFolder, SettingsMenuTest.
 
 ### P171 - a rounder outline round the lens strip (owner, 2026-10-16: «Сделай обводку вокруг модулей камер более
 закругленную»)
@@ -4032,6 +4042,58 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   the shade - load one as an own curve of nine points following it (never falling), to edit and save as any curve.
   ToneCurveTest operatorsInTheOwnCurvesDomain, ToneCurveCompareTest (new, in the CI list; render
   deliverables/p157/p177-curve-compare.png).
+
+### P178 - undo and redo while editing the curve (owner, 2026-10-16: «Добавь возможность делать шаг действий назад и вперед
+при редактировании кривой»)
+- Each finished edit of the own curve (a drag let go, a point added or deleted, a typed value, a template, S-curve /
+  straight) is a step; «Отменить» / «Повторить» buttons next to the graph walk the steps back and forth, both on the
+  settings page and in the shade; the curve shown is stored as any edit.
+
+### P179 - finish the ISZ / FULLRES integration on the X200 Ultra (owner, 2026-10-16, a task brief; DCG postponed)
+- Read first: AGENTS.md, the scamera skill, HANDOFF.md, this plan, then research/handoff/FULLRES-NATIVE-READY-20261016.md
+  and research/handoff/NATIVE-ISZ-READY-20261016.md (newer RAW / photos outrank older negative notes). Start from git
+  status / diff / log; no reset / stash / clean, no archived patches over changed sources, kHybMergeMain1 untouched, other
+  agents' TouchFocus / settings / workflow edits kept.
+- Confirmed on PD2454 (SM8750, adb 10AFAQ1QE60071E): (1) a real separate android.camera.cts build
+  (-PscameraCtsNativeRaw=true, UID 10469, AppType 21; org.codeaurora.snapcam 30820 / UID 10349 kept) - not an
+  AttributionSource under the same UID; (2) native ISZ without HW remosaic: one RAW_SENSOR usage 3, int[] forceSensorMode
+  in the session AND every request; MAIN3 / mode 3 and UW4 / mode 3 Quad 2x, TELE5 / mode 5 Quad 2x, mode 7 Tetra 4x - all
+  four gave real UI / RAW preview / SHDR / JPEG at 4:3 in 30827 (RAW / CFA / FOV evidence kept); no native 4x on main / UW
+  (a digital crop is not ISZ 4x); (3) native FULLRES: SDK40 = 1 held through configure / capture, SDK33 / 40 restored after
+  CameraDevice.onClosed; one RAW_SENSOR usage 0 / maxImages 4, no PRIVATE / YUV / JPEG, no ProUI16 / streamsUsage; Main3 /
+  mode 4 and UW4 / mode 4 Quad 8192x6144, Tele5 / mode 1 Quad 8160x6144, Tele5 / mode 0 Tetra 16320x12288 - real non-zero
+  RAW, metadata timestamps, SHA, CFA 25/25 tiles; (4) main / UW 50 MP save SHDR JPEG 8192x6144; FULLRES AE on all three
+  rear cameras checked EV 0 -> +0.8 -> 0 (AE_ON, lock false, CONVERGED, the exposure follows and comes back).
+- Left, in order:
+  - Tele 200 MP: 30833 took 4 different RAW (20 requested, a real memory guard), chose 2N, finished the GPU merge
+    16320x12288, then LOW_MEMORY (reason 3) killed the app on the full-size chroma / moire planes - no 200 MP JPEG.
+    mosaicChromaMedian now runs in 256-row bands with the original halo 8*block (native Quad / Tetra / 2x tests, seams /
+    edges / osc pass, max abs delta 7.15e-7, green unchanged) - a candidate after 30833, not yet a full 200 MP
+    app / PostPipeline / JPEG test: build a fresh worker from source, check the whole path, fix the next real limit by the
+    log.
+  - The old FP32-only limit is fixed in RawBin / SHDR and MappedHybridBurst (the real FP16 / FP32 format and output grid;
+    the real GPU / 2 GiB limits kept).
+  - SDK lease: after an LMK the finally does not run and SDK40 stays 1 (set back to 0 by hand through the public API from
+    a temporary app, UID 10471, then removed; a passive check later showed mUseVivocamera = 0). Needed: a reliable journal
+    of our SDK lease and recovery after our own crash / LMK, never resetting another client's global SDK; not the
+    app_process / run-as way (the CTS APK is not debuggable).
+  - Prove explicit FULLRES + Sabre 2x on native 50 MP: a real merge / JPEG 16384x12288 on main / UW (the Sabre 2x 8192x6144
+    line on a proxy native mosaic does not prove it). Tele 200 MP x2 exceeds the real GPU 16384 side - do not hide a
+    smaller result.
+  - P146 (FULLRES profiles / settings) by this plan; today's diagnostics are not the general integration for every vivo.
+  - Another agent may take the ready source / capture mechanisms: re-check all four ISZ, FULLRES on three cameras, 4:3
+    output, AE and a correct lease return.
+  - DCG not touched. No stock NICE / ZSL bracket / SCAM HDR.
+  - X100 Ultra / X300 Ultra: no checked port of this FULLRES path - needs Camera2 / firmware reports, the HAL's configs and
+    their own RAW probes; do not copy PD2454's sensor-mode indices, keep the device guard without proof.
+- The local diagnostic 30833 (not a release, not Actions):
+  deliverables/local-shdr-20261015/SCAMERA-0.98-30833-CTS-NATIVE-ISZ-LOCAL-DIAGNOSTIC.apk, SHA256
+  c30984db256247759928100220e7c4149d9ff948751ced5996e4bb38afcf5a59, without the banded chroma. Paths from SCAMERA-PC;
+  research / tools in evidence/vivo_hal_2026-10-13/, results in reports/pd2454-*. Builds only on a separate checked
+  snapshot, never over the shared tree; tests not disabled or weakened; the phone only when free, taps only in SCAMERA, no
+  other apps' data.
+- Status: these files (CaptureController, VivoSdkFullRes*, VivoSdkRawSession, RawBin, ScamProcessor, scam-hybrid.h, the
+  worker) carry ChatGPT's uncommitted edits - not started here until the owner says.
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach

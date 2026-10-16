@@ -127,6 +127,28 @@ public class ShadeCatalogTest {
             for (String key : group.keys) assertNotEquals(key, 0, catalog.entry(key).icon);
     }
 
+    /** P170: the film LUT is a list in the shade: «Нет», our five film looks, then the folder's .cube files. */
+    @Test
+    public void filmLutListsOurLooksThenTheFolder() {
+        String key = com.particlesdevs.photoncamera.processing.color.FilmLut.KEY;
+        ShadeCatalog.Entry e = catalog.entry(key);
+        assertNotNull("the film LUT is pinnable", e);
+        assertEquals(ShadeCatalog.LIST, e.kind);
+        assertTrue("opens the list sheet", e.isLongList());
+        assertEquals("", e.values[0].toString());
+        String[] looks = com.particlesdevs.photoncamera.processing.color.FilmLooks.values();
+        for (int i = 0; i < looks.length; i++) assertEquals(looks[i], e.values[1 + i].toString());
+        assertEquals("Warm 400", e.labels[1].toString());
+        assertFalse(catalog.changed(e));
+        assertEquals("None", catalog.valueText(e, true));
+        prefs.edit().putString(key, "scam:cine500").commit();
+        assertTrue(catalog.changed(e));
+        assertEquals("Cine 500", catalog.valueText(e, true));
+        assertTrue(catalog.search("лут").contains(e));
+        catalog.refreshChoices(e);
+        assertEquals(1 + looks.length + com.particlesdevs.photoncamera.util.ScameraFolder.LUTS.list(context).length, e.values.length);
+    }
+
     @Test
     public void shortLabelsFitEightCharactersInBothLocales() {
         for (Locale locale : new Locale[]{Locale.ENGLISH, new Locale("ru")}) {

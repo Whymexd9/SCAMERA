@@ -62,6 +62,7 @@ ALLOW = {
             'отладк|hud|диагност|diagnost|журнал|debug', 'отладка debug hud лог log',
             'водян|подпис|watermark|caption', 'водяной знак watermark подпись caption',
             'agx|aces|кривая|гамма|gamma|curve', 'кривая curve тон agx гамма gamma',
+            'lut|плёнк|пленк|film', 'лут lut плёнка пленка film cube',
             'dcp|матриц|matri', 'dcp матрица цвет профиль matrix colour color profile',
             'мерцан|flicker|antiband', 'мерцание flicker антибандинг antibanding',
             'вспышк|фонар|flash|torch', 'вспышка flash фонарик torch',

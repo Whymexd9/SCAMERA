@@ -6,6 +6,7 @@ import android.util.AttributeSet;
 import androidx.annotation.Nullable;
 import androidx.preference.Preference;
 
+import com.particlesdevs.photoncamera.processing.color.FilmLooks;
 import com.particlesdevs.photoncamera.processing.color.FilmLut;
 import com.particlesdevs.photoncamera.ui.settings.SettingsStyle;
 import com.particlesdevs.photoncamera.util.Lang;
@@ -13,8 +14,9 @@ import com.particlesdevs.photoncamera.util.ScameraFolder;
 
 /**
  * P134 «Плёночный LUT»: the .cube file of Download/SCAMERA/LUT the photo's look goes through (ArkCombine, FILM_LUT), or none.
- * A tap opens the list sheet: «Нет», the folder's files, «Импортировать .cube…» (the picker; the file is copied into the folder)
- * and, until the folder is granted, «Открыть папку» (files dropped there by another app are listed then).
+ * A tap opens the list sheet: «Нет», our five film looks (P170, FilmLooks), the folder's files, «Импортировать .cube…» (the
+ * picker; the file is copied into the folder) and, until the folder is granted, «Открыть папку» (files dropped there by
+ * another app are listed then).
  */
 public class FilmLutPreference extends Preference {
     public interface Files {
@@ -52,14 +54,24 @@ public class FilmLutPreference extends Preference {
     @Override
     public CharSequence getSummary() {
         String name = chosen();
-        return name.isEmpty() ? Lang.t(getContext(), "Нет · свои .cube в Download/SCAMERA/LUT", "None · your .cube files in Download/SCAMERA/LUT")
-                : name;
+        if (name.isEmpty()) return Lang.t(getContext(), "Нет · свои .cube в Download/SCAMERA/LUT", "None · your .cube files in Download/SCAMERA/LUT");
+        String look = FilmLooks.label(getContext(), name);
+        return look != null ? look : name;
+    }
+
+    /** P170: our looks first, then the folder's files. */
+    public static String[] choices(String[] files) {
+        String[] looks = FilmLooks.values();
+        String[] out = new String[looks.length + files.length];
+        System.arraycopy(looks, 0, out, 0, looks.length);
+        System.arraycopy(files, 0, out, looks.length, files.length);
+        return out;
     }
 
     @Override
     protected void onClick() {
         Context c = getContext();
-        String[] names = files.list(c);
+        String[] names = choices(files.list(c));
         boolean grant = folderOpener != null && ScameraFolder.LUTS.grantedTree(c) == null;
         int extra = 1 + (importer != null ? 1 : 0) + (grant ? 1 : 0);
         CharSequence[] labels = new CharSequence[names.length + extra], tags = new CharSequence[names.length + extra];
@@ -67,7 +79,8 @@ public class FilmLutPreference extends Preference {
         tags[0] = "lut_none";
         int selected = chosen().isEmpty() ? 0 : -1;
         for (int i = 0; i < names.length; i++) {
-            labels[1 + i] = names[i];
+            String look = FilmLooks.label(c, names[i]);
+            labels[1 + i] = look != null ? look : names[i];
             tags[1 + i] = "lut_" + names[i];
             if (names[i].equals(chosen())) selected = 1 + i;
         }

@@ -40,6 +40,11 @@ public final class FilmLut {
         this.title = title;
     }
 
+    /** P170: a LUT built here (FilmLooks): n^3 x 3 values, red fastest, over 0..1. */
+    static FilmLut of(int n, float[] rgb, String title) {
+        return new FilmLut(n, rgb, new float[]{0, 0, 0}, new float[]{1, 1, 1}, title);
+    }
+
     /** The identity LUT of size n (tests, and the strength check). */
     public static FilmLut identity(int n) {
         float[] v = new float[n * n * n * 3];
@@ -151,13 +156,15 @@ public final class FilmLut {
     private static String cachedName;
     private static FilmLut cached;
 
-    /** The LUT chosen in the settings, or null (none, missing, unreadable). */
+    /** The LUT chosen in the settings, or null (none, missing, unreadable); one of our looks (FilmLooks) is built here. */
     @Nullable
     public static synchronized FilmLut chosen(android.content.Context context, String name) {
         if (name == null || name.isEmpty()) return null;
         if (name.equals(cachedName)) return cached;
         FilmLut lut = null;
-        try (InputStream in = com.particlesdevs.photoncamera.util.ScameraFolder.LUTS.open(context, name)) {
+        if (FilmLooks.isBuiltIn(name)) {
+            lut = FilmLooks.lut(name);
+        } else try (InputStream in = com.particlesdevs.photoncamera.util.ScameraFolder.LUTS.open(context, name)) {
             if (in != null) lut = parse(in);
         } catch (IOException | RuntimeException e) {
             com.particlesdevs.photoncamera.util.Log.w("FilmLut", "cannot read " + name + ": " + e);

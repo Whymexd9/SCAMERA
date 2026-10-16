@@ -198,6 +198,7 @@ public final class ShadeCatalog {
             {"отладк|hud|диагност|diagnost|журнал|debug", "отладка debug hud лог log"},
             {"водян|подпис|watermark|caption", "водяной знак watermark подпись caption"},
             {"agx|aces|кривая|гамма|gamma|curve", "кривая curve тон agx гамма gamma"},
+            {"lut|плёнк|пленк|film", "лут lut плёнка пленка film cube"},
             {"dcp|матриц|matri", "dcp матрица цвет профиль matrix colour color profile"},
             {"мерцан|flicker|antiband", "мерцание flicker антибандинг antibanding"},
             {"вспышк|фонар|flash|torch", "вспышка flash фонарик torch"},
@@ -450,6 +451,12 @@ public final class ShadeCatalog {
             e.kind = CURVE;
             e.defaultValue = com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS;
             e.storage = STORE_STRING;
+        } else if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference) {
+            // P170 (owner, 2026-10-16: «дай возможность выбора импортированных лутов из списка в шторке»)
+            e.kind = LIST;
+            e.defaultValue = "";
+            e.storage = STORE_STRING;
+            refreshChoices(e);
         } else if (p instanceof UniversalSeekBarPreference) {
             UniversalSeekBarPreference s = (UniversalSeekBarPreference) p;
             slider(e, s.minimum(), s.maximum(), s.decimal(), s.stepPerUnit(), s.defaultNumber());
@@ -662,6 +669,33 @@ public final class ShadeCatalog {
         int d = n % 10, h = n % 100;
         if (d == 1 && h != 11) return n + Lang.t(" точка", n == 1 ? " point" : " points");
         return n + (d >= 2 && d <= 4 && (h < 12 || h > 14) ? Lang.t(" точки", " points") : Lang.t(" точек", " points"));
+    }
+
+    /**
+     * P170: the film LUT's values read again (the list sheet calls this as it opens): «Нет», our film looks (FilmLooks) and
+     * the .cube files of Download/SCAMERA/LUT, which change while the camera runs (an import in the settings, a file
+     * dropped into the folder). Other entries are left as they are.
+     */
+    public void refreshChoices(Entry e) {
+        if (!com.particlesdevs.photoncamera.processing.color.FilmLut.KEY.equals(e.key)) return;
+        String[] files;
+        try {
+            files = com.particlesdevs.photoncamera.util.ScameraFolder.LUTS.list(context);
+        } catch (RuntimeException ex) {
+            files = new String[0];
+        }
+        String[] all = com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference.choices(files);
+        CharSequence[] values = new CharSequence[all.length + 1], labels = new CharSequence[all.length + 1];
+        values[0] = "";
+        labels[0] = Lang.t(context, "Нет", "None");
+        for (int i = 0; i < all.length; i++) {
+            values[1 + i] = all[i];
+            String look = com.particlesdevs.photoncamera.processing.color.FilmLooks.label(context, all[i]);
+            boolean cube = all[i].toLowerCase(Locale.ROOT).endsWith(".cube");
+            labels[1 + i] = look != null ? look : cube ? all[i].substring(0, all[i].length() - 5) : all[i];
+        }
+        e.values = values;
+        e.labels = labels;
     }
 
     /** Labels of the list values for the list sheet and the segments (FORMAT: «RAW + HEIC» and the like). */

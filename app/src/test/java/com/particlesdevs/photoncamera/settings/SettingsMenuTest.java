@@ -1642,6 +1642,8 @@ public class SettingsMenuTest {
         var content=sheet.findViewById(android.R.id.content);
         assertNotNull(content.findViewWithTag("option_lut_none"));
         assertNotNull(content.findViewWithTag("option_lut_import"));
+        assertNotNull("P170: our film looks before the files",content.findViewWithTag("option_lut_scam:warm400"));
+        assertNotNull(content.findViewWithTag("option_lut_scam:mono400"));
         content.findViewWithTag("option_lut_Kodak 2383.cube").performClick();
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
         assertEquals("Kodak 2383.cube",lut.chosen());
