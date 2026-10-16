@@ -4182,6 +4182,18 @@ the other agent's notes, «Изучи и реализуй, учитывай чт
 - 25557ca6: a 50 MP Quad viewfinder frame takes one site of each 2 x 2 cell (a quarter of the reads, as 200 MP).
 - Not yet seen on the phone (the X200 Ultra was disconnected): the strip with every module, the FULLRES profiles switching,
   the 50 MP viewfinder.
+- 1a5f0ef8: fixes of a review of this round (5 reviewers, each finding checked by a skeptic): no ultrashort with Bento off
+  (four N then); the strip never squeezes a tile unnoticed; an unopened FULLRES profile reads as its module's; every FULLRES
+  state change switches the profile (DCG, fallbacks); a deleted module's FULLRES profiles go; the X100 / X300 stale lease is
+  given back with the test switch off.
+
+### P182 - FULLRES with the sensor's hardware remosaic (owner, 2026-10-17: «дай возможность для fullres включать аппаратный
+ремозаик»; done, not yet seen on the phone)
+- 91b376e2: «FULLRES: аппаратный ремозаик» (Съёмка, off by default, per module profile - so FULLRES 50 / 200 MP keep their
+  own) in the native build on the X200 Ultra: 50 MP shots by the SDK route's DNGHWREMOSAIC modes (main 13 / UW 11 8192x6144,
+  tele 18 8160x6144, plain Bayer); 200 MP keeps the own remosaic (no hardware 200 MP mode). Hidden elsewhere.
+- To check on the phone: the SDK route inside the CTS package (verified so far only in the default package): RAW non-zero,
+  JPEG reader drained, AE, SHDR JPEG 8192x6144.
 
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
