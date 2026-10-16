@@ -14,6 +14,9 @@ Environment (Actions secrets):
   TELEGRAM_OWNER      the owner's @username or numeric id: the only account the bot obeys, settings are read there
   TELEGRAM_CHAT       optional target until /here is used: @username, -100... id or a topic link t.me/c/<id>/<topic>
   TELEGRAM_TOPIC      optional topic id for TELEGRAM_CHAT
+  GH_TOKEN            the workflow's token: finds the previous build and the commits since it (changelog)
+  CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_AI_TOKEN   Workers AI retells those commits for users; without them (or when it
+                      fails) the changelog is the commit subjects
 Without the token/id/hash the post is skipped (forks, a repository without the secrets). Never print the secrets.
 """
 import argparse
@@ -25,11 +28,16 @@ import os
 import re
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 
 CAPTION_LIMIT = 1000        # Telegram allows 1024 visible characters; keep a margin
 SUBJECT_LIMIT = 140
 HEADER_LIMIT = 300
+WORKFLOW = 'build-test-apk.yml'
+AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'   # Workers AI free plan: 10k neurons a day, ~200 a changelog
+AI_INPUT_LIMIT = 12000      # characters of commit messages sent to the model
+CHANGELOG_ITEMS = 6
 SECRETS = ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH')
 DEFAULTS = {'auto': True, 'chat': None, 'topic': None, 'where': '', 'commits': True, 'sha': True, 'header': '',
             'lang': 'ru'}
@@ -40,7 +48,7 @@ def t(lang, ru, en):
 
 
 def redact(text):
-    for name in ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_API_HASH', 'GH_TOKEN'):
+    for name in ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_API_HASH', 'GH_TOKEN', 'CLOUDFLARE_AI_TOKEN'):
         secret = os.environ.get(name, '').strip()
         if secret:
             text = text.replace(secret, '***')
@@ -75,7 +83,7 @@ def describe_settings(s):
         t(lang, 'Куда: ', 'Where: ') + where,
         t(lang, 'Подпись: ', 'Caption: ') + ', '.join(
             f'{name} {on if s[key] else off}' for key, name in
-            (('commits', t(lang, 'коммиты', 'commits')), ('sha', 'SHA-256'))),
+            (('commits', t(lang, 'что нового', 'what is new')), ('sha', 'SHA-256'))),
         t(lang, 'Текст сверху: ', 'Header: ') + header])
 
 
@@ -97,22 +105,152 @@ def sha256(path):
     return h.hexdigest()
 
 
-def commit_subjects(rev_from, rev_to, limit=1000):
-    """Subjects of the commits this push added; only the head commit for a new branch, a force push or a manual run."""
-    ranges = []
-    if rev_from and set(rev_from) != {'0'}:
-        ranges.append([f'{rev_from}..{rev_to}'])
-    ranges.append(['-1', rev_to])
-    for rng in ranges:
-        try:
-            out = subprocess.run(['git', 'log', '--no-merges', '--format=%s', f'--max-count={limit}', *rng],
-                                 check=True, capture_output=True, text=True, encoding='utf-8').stdout
-        except (OSError, subprocess.CalledProcessError):
+# ---- changelog: the commits since the previous build, retold for users by Workers AI ------------------------------
+
+def github_api(path):
+    token, repo = os.environ.get('GH_TOKEN', '').strip(), os.environ.get('GITHUB_REPOSITORY', '').strip()
+    if not token or not repo:
+        raise RuntimeError('GH_TOKEN / GITHUB_REPOSITORY not set')
+    request = urllib.request.Request(os.environ.get('GITHUB_API_URL', 'https://api.github.com') + f'/repos/{repo}{path}',
+                                     headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'SCAMERA-bot',
+                                              'Authorization': 'Bearer ' + token})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        return json.load(response)
+
+
+def previous_build(head):
+    """(commit, build number or '') of the last successful push build of main before the build of commit <head>."""
+    runs = github_api(f'/actions/workflows/{WORKFLOW}/runs?branch=main&event=push&status=success&per_page=30')
+    runs = runs['workflow_runs']   # newest first
+    same = [i for i, run in enumerate(runs) if run['head_sha'] == head]
+    for run in runs[same[-1] + 1:] if same else runs:
+        if run['head_sha'] == head:
             continue
-        subjects = [s.strip() for s in out.splitlines() if s.strip()]
-        if subjects:
-            return subjects
-    return []
+        number = ''
+        try:
+            for artifact in github_api(f'/actions/runs/{run["id"]}/artifacts?per_page=50')['artifacts']:
+                m = re.fullmatch(r'SCAMERA-Build-(\d+)', artifact['name'])
+                if m:
+                    number = m[1]
+                    break
+        except (OSError, ValueError, KeyError, RuntimeError):
+            pass
+        return run['head_sha'], number
+    return None, ''
+
+
+def commit_messages(base, head):
+    """Full messages of the commits base..head, oldest first, merges left out: GitHub's compare API, else local git."""
+    try:
+        data = github_api(f'/compare/{base}...{head}')
+        return [c['commit']['message'] for c in data['commits'] if len(c.get('parents') or []) < 2]
+    except (OSError, ValueError, KeyError, RuntimeError):
+        pass
+    try:
+        out = subprocess.run(['git', 'log', '--no-merges', '--reverse', '--format=%B%x00', f'{base}..{head}'],
+                             check=True, capture_output=True, text=True, encoding='utf-8').stdout
+    except (OSError, subprocess.CalledProcessError):
+        return []
+    return [m.strip() for m in out.split('\0') if m.strip()]
+
+
+def plain_changes(messages):
+    """Fallback without AI: commit subjects without task numbers, plan and merge commits."""
+    out = []
+    for message in messages:
+        subject = message.strip().split('\n', 1)[0].strip()
+        if not subject or re.match(r'(?i)(plan|merge)\b', subject):
+            continue
+        subject = re.sub(r'^P\d+[a-z]?(?:\s+v\d+)?(?:\s+fix)?\s*:\s*', '', subject)
+        out.append(subject[:1].upper() + subject[1:])
+    return out
+
+
+AI_PROMPT = {
+    'ru': '\n'.join([
+        'Ты пишешь чейнжлог тестовой сборки Android-камеры SCAMERA для её пользователей в Telegram. Тебе дают '
+        'сообщения коммитов между прошлой и новой сборкой (английский технический язык разработчика). Напиши '
+        'по-русски, что изменилось для пользователя камеры.',
+        'Правила:',
+        '- от 1 до 6 пунктов, самое заметное первым; каждый пункт — одно короткое предложение до 100 символов;',
+        '- простыми словами: что стало лучше или быстрее, что исправлено, что появилось; без номеров задач (P123), '
+        'хэшей, имён файлов, классов, функций, шейдеров и тестов;',
+        '- пропусти то, что пользователь не заметит: тесты, CI, планы, документацию, рефакторинг, отладку;',
+        '- связанные изменения объединяй в один пункт; ничего не выдумывай сверх сообщений;',
+        '- названия телефонов, режимов и форматов (X200 Ultra, SHDR, ISZ, DCG, HEIC, Ultra HDR) оставляй как есть;',
+        '- если заметных пользователю изменений нет, ответь одной строкой: • Внутренние улучшения и исправления',
+        'Формат ответа: только пункты, каждый с новой строки и с «• » в начале, без заголовка и пояснений.']),
+    'en': '\n'.join([
+        'You write the changelog of a test build of the SCAMERA Android camera app for its users on Telegram. You get '
+        'the commit messages between the previous and the new build (developer jargon). Write in plain English what '
+        'changed for a user of the camera.',
+        'Rules:',
+        '- 1 to 6 items, the most noticeable first; each item one short sentence under 100 characters;',
+        '- plain words: what got better or faster, what was fixed, what is new; no task numbers (P123), hashes, file, '
+        'class, function, shader or test names;',
+        '- skip what a user would not notice: tests, CI, plans, docs, refactoring, debugging tools;',
+        '- merge related changes into one item; invent nothing beyond the messages;',
+        '- keep phone, mode and format names (X200 Ultra, SHDR, ISZ, DCG, HEIC, Ultra HDR) as they are;',
+        '- if nothing a user would notice changed, answer one line: • Internal improvements and fixes',
+        'Answer format: only the items, one per line, each starting with "• ", no title or remarks.'])}
+
+
+def ai_changes(messages, lang):
+    """Up to CHANGELOG_ITEMS plain-language items from Cloudflare Workers AI, or None (no secrets, an error)."""
+    account = os.environ.get('CLOUDFLARE_ACCOUNT_ID', '').strip()
+    token = os.environ.get('CLOUDFLARE_AI_TOKEN', '').strip()
+    if not (account and token and messages):
+        return None
+    commits = []
+    for message in messages:
+        subject, _, body = message.strip().partition('\n')
+        commits.append((subject.strip(), re.sub(r'(?im)^co-authored-by:.*$', '', body).strip()))
+    # Every subject, and as much of each body as fits ('- ', '\n' and the '\n\n' between entries cost 5 characters)
+    budget = max(0, AI_INPUT_LIMIT - sum(len(s) + 5 for s, _ in commits)) // len(commits)
+    text = '\n\n'.join(f'- {s}\n{b[:min(600, budget)]}'.rstrip() for s, b in commits)[:AI_INPUT_LIMIT]
+    lang = 'ru' if str(lang).startswith('ru') else 'en'
+    request = urllib.request.Request(
+        f'https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{os.environ.get("CHANGELOG_MODEL") or AI_MODEL}',
+        data=json.dumps({'messages': [{'role': 'system', 'content': AI_PROMPT[lang]},
+                                      {'role': 'user', 'content': t(lang, 'Коммиты, старые сверху:\n\n',
+                                                                    'Commits, oldest first:\n\n') + text}],
+                         'max_tokens': 500, 'temperature': 0.2}).encode(),
+        headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            answer = (json.load(response).get('result') or {}).get('response') or ''
+    except (OSError, ValueError, AttributeError) as e:
+        print(f'::warning::Changelog AI failed: {type(e).__name__}; commit subjects instead')
+        return None
+    items = []
+    for line in str(answer).splitlines():
+        m = re.match(r'\s*(?:[•\-*–]|\d+[.)])\s+(.*\S)', line)
+        if m and (item := re.sub(r'[*_`]+', '', m[1]).strip()):
+            items.append(item)
+    return items[:CHANGELOG_ITEMS] or None
+
+
+def make_changes(args, lang):
+    """(changelog items, previous build number or '') for the build of --to-rev."""
+    head = args.to_rev
+    if not re.fullmatch(r'[0-9a-f]{40}', head):
+        try:
+            head = subprocess.run(['git', 'rev-parse', head], check=True, capture_output=True, text=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            head = ''
+    base, since, messages = None, '', []
+    if head:
+        try:
+            base, since = previous_build(head)
+        except (OSError, ValueError, KeyError, RuntimeError) as e:
+            print(f'::warning::Previous build not found: {type(e).__name__}')
+        if not base and args.from_rev and set(args.from_rev) != {'0'}:
+            base = args.from_rev   # the push's own range (github.event.before)
+        if base:
+            messages = commit_messages(base, head)
+    if not messages:
+        messages, since = list(args.subject), ''
+    return ai_changes(messages, lang) or plain_changes(messages), since
 
 
 def visible_length(text):
@@ -125,25 +263,32 @@ def build_title(apk):
     return f'SCAMERA {m["ver"]} · {m["code"]}' if m else apk.stem
 
 
-def build_caption(apk, digest, subjects, settings=None):
-    """Header, title, commit subjects, SHA-256; no links to GitHub (the owner does not want them in the group)."""
+def build_caption(apk, digest, changes, settings=None, since=''):
+    """Header, title, what is new since the previous build, SHA-256; no links to GitHub (owner's wish)."""
     s = settings or DEFAULTS
+    lang = s['lang']
     head = f'<b>{html.escape(build_title(apk))}</b>'
     if s['header']:
         head = html.escape(s['header'][:HEADER_LIMIT], quote=False) + '\n\n' + head
     tail = [f'SHA-256 <code>{digest}</code>'] if s['sha'] else []
+    changes = changes if s['commits'] else []
+    title = [f'<i>{t(lang, f"Что нового после {since}:", f"New since {since}:")}</i>' if since
+             else f'<i>{t(lang, "Что нового:", "What is new:")}</i>'] if changes else []
 
     def join(lines):
-        return '\n'.join([head, *([''] + lines if lines else []), *([''] + tail if tail else [])])
+        return '\n'.join([head, *([''] + title + lines if lines else []), *([''] + tail if tail else [])])
+
+    def more(n):
+        return t(lang, f'… и ещё {n}', f'… +{n} more')
 
     lines = []
-    for i, subject in enumerate(subjects if s['commits'] else []):
-        if len(subject) > SUBJECT_LIMIT:
-            subject = subject[:SUBJECT_LIMIT - 1].rstrip() + '…'
-        line = '• ' + html.escape(subject, quote=False)
-        rest = len(subjects) - i - 1
-        if visible_length(join(lines + [line] + ([f'… +{rest} more'] if rest else []))) > CAPTION_LIMIT:
-            lines.append(f'… +{len(subjects) - i} more')
+    for i, change in enumerate(changes):
+        if len(change) > SUBJECT_LIMIT:
+            change = change[:SUBJECT_LIMIT - 1].rstrip() + '…'
+        line = '• ' + html.escape(change, quote=False)
+        rest = len(changes) - i - 1
+        if visible_length(join(lines + [line] + ([more(rest)] if rest else []))) > CAPTION_LIMIT:
+            lines.append(more(len(changes) - i))
             break
         lines.append(line)
     caption = join(lines)
@@ -193,7 +338,7 @@ async def notify(client, owner, text):
         print(f'::warning::Could not message the owner: {type(e).__name__}')
 
 
-async def publish(args, digest, subjects):
+async def publish(args, digest):
     """Message id of the post, or None when skipped."""
     from telethon import TelegramClient
     from telethon.sessions import StringSession
@@ -225,7 +370,8 @@ async def publish(args, digest, subjects):
                                           'write /here in the topic of the group.'))
             print('::notice::Telegram post skipped: no target (/here in the bot, or the TELEGRAM_CHAT secret)')
             return None
-        caption = build_caption(args.apk, digest, subjects, settings)
+        changes, since = make_changes(args, lang) if settings['commits'] else ([], '')
+        caption = build_caption(args.apk, digest, changes, settings, since)
         try:
             # A reply to a topic's first message (its id is the topic id) is posted inside that topic.
             message = await client.send_file(target, str(args.apk), caption=caption, parse_mode='html',
@@ -257,9 +403,10 @@ async def publish(args, digest, subjects):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--apk', required=True, type=Path)
-    ap.add_argument('--from-rev', default='', help='previous head of the branch (github.event.before)')
-    ap.add_argument('--to-rev', default='HEAD')
-    ap.add_argument('--subject', action='append', default=[], help='caption commit line instead of git log (repeat)')
+    ap.add_argument('--to-rev', default='HEAD', help='commit of the build (a full sha needs no local git history)')
+    ap.add_argument('--from-rev', default='', help='changelog range start when no previous build is found '
+                                                   '(github.event.before)')
+    ap.add_argument('--subject', action='append', default=[], help='changelog source when no range is known (repeat)')
     ap.add_argument('--force', action='store_true', help='post even when auto-posting is off (/post in the bot)')
     ap.add_argument('--notify', choices=('none', 'fail', 'all'), default='fail', help='message the owner about it')
     ap.add_argument('--dry-run', action='store_true', help='print the caption and do not post')
@@ -269,11 +416,11 @@ def main():
     if not args.apk.is_file() or args.apk.suffix.lower() != '.apk':
         print(f'::error::Not an APK: {args.apk}')
         return 1
-    subjects = args.subject or commit_subjects(args.from_rev, args.to_rev)
     digest = sha256(args.apk)
     if args.dry_run:
         settings = {**DEFAULTS, **(json.loads(args.settings_json) if args.settings_json else {})}
-        caption = build_caption(args.apk, digest, subjects, settings)
+        changes, since = make_changes(args, settings['lang'])
+        caption = build_caption(args.apk, digest, changes, settings, since)
         print(caption)
         print(f'[{visible_length(caption)} visible characters]')
         return 0
@@ -284,7 +431,7 @@ def main():
         return 0
     size_mb = args.apk.stat().st_size / (1 << 20)
     try:
-        message_id = asyncio.run(publish(args, digest, subjects))
+        message_id = asyncio.run(publish(args, digest))
     except Exception as e:
         print(f'::error::Telegram post failed: {redact(f"{type(e).__name__}: {e}")}')
         return 1

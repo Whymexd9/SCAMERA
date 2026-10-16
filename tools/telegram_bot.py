@@ -93,7 +93,7 @@ def help_text(lang):
         '/on, /off — автопостинг новых сборок',
         '/post — выложить последнюю сборку, /post 30830 — конкретную',
         '/here — написать в нужной теме группы: сборки пойдут туда',
-        '/commits on|off — список коммитов в подписи',
+        '/commits on|off — «Что нового» (чейнжлог) в подписи',
         '/sha on|off — SHA-256 в подписи',
         '/header текст — свой текст в начале поста, /header - убрать']), '\n'.join([
         '<b>SCAMERA builds bot</b>',
@@ -103,7 +103,7 @@ def help_text(lang):
         '/on, /off — auto-posting of new builds',
         '/post — post the latest build, /post 30830 — a given one',
         '/here — write it in the topic of the group: builds go there',
-        '/commits on|off — commit list in the caption',
+        '/commits on|off — the “What is new” changelog in the caption',
         '/sha on|off — SHA-256 in the caption',
         '/header text — your text at the top of the post, /header - removes it']))
 
@@ -114,7 +114,7 @@ def set_commands():
                    ('post', t(lang, 'выложить последнюю сборку', 'post the latest build')),
                    ('on', t(lang, 'включить автопостинг', 'auto-posting on')),
                    ('off', t(lang, 'выключить автопостинг', 'auto-posting off')),
-                   ('commits', t(lang, 'коммиты в подписи on|off', 'commits in the caption on|off')),
+                   ('commits', t(lang, 'чейнжлог в подписи on|off', 'changelog in the caption on|off')),
                    ('sha', t(lang, 'SHA-256 в подписи on|off', 'SHA-256 in the caption on|off')),
                    ('header', t(lang, 'текст в начале поста', 'text at the top of the post')),
                    ('help', t(lang, 'все команды', 'all commands'))]
@@ -396,7 +396,7 @@ def post_build(number, chat_id, lang, announce=True):
             return 1
         subject = ((wf_run.get('head_commit') or {}).get('message') or '').strip().splitlines()[:1]
         command = [publisher_python(), str(TOOLS / 'telegram_publish.py'), '--apk', str(apk), '--force',
-                   '--notify', 'all']
+                   '--notify', 'all', '--to-rev', wf_run['head_sha']]
         for line in subject:
             command += ['--subject', line]
         if subprocess.run(command).returncode:   # telegram_publish has told the owner why, when it got that far

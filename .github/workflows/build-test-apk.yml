@@ -272,6 +272,9 @@ jobs:
           TELEGRAM_OWNER: ${{ secrets.TELEGRAM_OWNER }}
           TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT }}
           TELEGRAM_TOPIC: ${{ secrets.TELEGRAM_TOPIC }}
+          GH_TOKEN: ${{ github.token }}          # the previous build and the commits since it (changelog)
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_AI_TOKEN: ${{ secrets.CLOUDFLARE_AI_TOKEN }}
         run: |
           python3 -m venv "$RUNNER_TEMP/telegram"
           "$RUNNER_TEMP/telegram/bin/pip" install -q -r tools/telegram-requirements.txt
