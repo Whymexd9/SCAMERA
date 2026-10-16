@@ -4004,7 +4004,11 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   owner (deliverables/p157/p174-horizon-tilted-level.png).
 
 ### P175 - remove the neural remosaic (owner, 2026-10-16: «Вырежи нейроремозаик который работает только на 200у и 8 элит из
-нашей камеры»; in progress)
+нашей камеры»; blocked)
+- Blocked: its call (ScamMosaic.prepareForShdr) is in ScamProcessor, which ChatGPT has uncommitted edits in (2026-10-16
+  evening; owner: «Если файл используется ChatGPT, то мы это не делаем»). When that file is free: the «Нейроремозаик (NPU)»
+  setting (isShdrNeuralRemosaic, its XML / strings / availability / numeric rules / migration P129), ScamMosaic.prepareForShdr
+  and its call, the NPU remosaic graphs it loads (the QUAD_FILES group of the bundle, if nothing else uses them), the tests.
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach
