@@ -243,5 +243,6 @@ public class VendorTagUtils {
         com.particlesdevs.photoncamera.capture.VivoQcomModes.apply(builder,
                 com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics, physicalId);
         com.particlesdevs.photoncamera.capture.VivoPd2454Isz.mirrorRequest(builder, physicalId);
+        com.particlesdevs.photoncamera.capture.VivoPd2454NativeRaw.apply(builder, physicalId);
     }
 }

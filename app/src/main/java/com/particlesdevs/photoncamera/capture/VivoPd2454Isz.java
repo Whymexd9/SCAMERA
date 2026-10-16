@@ -26,6 +26,10 @@ public final class VivoPd2454Isz {
     private VivoPd2454Isz() { }
 
     public static void ensureModules(@Nullable Context context) {
+        if (context != null && VivoPd2454NativeRaw.PACKAGE.equals(context.getPackageName())) {
+            VivoPd2454NativeRaw.ensureModules(context);
+            return;
+        }
         if (context == null || !VivoQcomModes.device() || !VivoQcomModes.enabled()) return;
         SharedPreferences prefs = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
         if (prefs.getBoolean(OFFERED, false)) return;

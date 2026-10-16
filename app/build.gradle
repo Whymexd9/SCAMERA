@@ -77,7 +77,8 @@ android {
     defaultConfig {
         compileSdk 36
         ndkVersion "27.2.12479018"
-        applicationId 'org.codeaurora.snapcam'
+        applicationId (providers.gradleProperty('scameraCtsNativeRaw').orNull == 'true'
+                ? 'android.camera.cts' : 'org.codeaurora.snapcam')
         minSdkVersion 26
         targetSdkVersion 35
         versionCode ciVersionCode

@@ -98,6 +98,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         // P13: a colour-block mosaic stream (sensor mode without remosaic) has a purple ISP preview: developed RAW then too
         final boolean rawLook =
                 com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderRawEnabled()
+                        || com.particlesdevs.photoncamera.processing.LiveRawFrame.isEnabled()
                         || com.particlesdevs.photoncamera.processing.LiveRawFrame.isMosaicPreview();
         boolean rawActive = rawLook && mRawRenderer.draw(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview, getPeakEnabled());
         if (mLastRawActive == null || mLastRawActive != rawActive) {

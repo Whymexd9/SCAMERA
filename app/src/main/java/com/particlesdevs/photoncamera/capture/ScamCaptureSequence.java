@@ -105,8 +105,8 @@ public final class ScamCaptureSequence {
      * {@link #hybridZsl}; the merge uses whatever arrived (at least one RAW).
      */
     public static ScamCaptureSequence hybridFuture(List<CaptureRequest> requests,long shutterTimestamp) {
-        if(shutterTimestamp<=0 || requests.isEmpty() || requests.size()>16)
-            throw new IllegalArgumentException("SCAM hybrid normal-back requires 1..16 requests");
+        if(shutterTimestamp<=0 || requests.isEmpty() || requests.size()>64)
+            throw new IllegalArgumentException("SCAM hybrid normal-back requires 1..64 requests");
         ScamCaptureSequence sequence=new ScamCaptureSequence(requests,new ArrayList<>());
         sequence.shutterTimestamp=shutterTimestamp;
         sequence.optionalFuture=true;

@@ -79,6 +79,16 @@ public final class VivoSdkRawSession implements AutoCloseable {
         ints(builder, "vivo.control.streamsUsage", 2, 1, 0);
     }
 
+    public static void applyAutomaticExposure(CaptureRequest.Builder builder) {
+        builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
+        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+        builder.set(CaptureRequest.CONTROL_AE_LOCK, false);
+        // Stock Vivo Pro uses zero sensor values for AUTO instead of retaining the template's manual values.
+        builder.set(CaptureRequest.SENSOR_SENSITIVITY, 0);
+        builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, 0L);
+        builder.set(CaptureRequest.SENSOR_FRAME_DURATION, 0L);
+    }
+
     private static void ints(CaptureRequest.Builder builder, String name, int... values) {
         builder.set(new CaptureRequest.Key<>(name, int[].class), values);
     }

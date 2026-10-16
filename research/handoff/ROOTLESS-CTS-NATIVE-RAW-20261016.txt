@@ -1,0 +1,79 @@
+LATEST 2026-10-16: read FULLRES-NATIVE-READY-20261016.md and CONTINUE-ISZ-FULLRES-20261016.txt first. Native FULLRES RAW/AE is proven on all rear lenses; main/UW50 JPEG proven; tele200 JPEG remains a LOW_MEMORY boundary with a separately tested source fix. Full app integration is delegated; DCG deferred. Older statuses below are historical.
+
+АКТУАЛЬНО: NATIVE-ISZ-READY-20261016.md содержит подтверждённую интеграцию
+SCAMERA/SHDR: native Main2x, UW2x, Tele2x, Tele4x, сохранённые JPEG4:3 и SHA256.
+30826: developed RAW viewfinder,60 изолированных Java-тестов PASS.
+FULLRES без аппаратного ремозаика и DCG RAW пока не работают. Ничего не заливать.
+Нижеследующий текст — история; старое отсутствие SHDR/JPEG больше не актуально.
+
+CURRENT OWNER PRIORITY, 2026-10-16: finish ISZ and native FULLRES first; do not start new DCG work.
+The updated shared HANDOFF.md (2026-10-16 11:17) and PLAN P145-P155 were reread.
+Other AI committed/pushed its own changes; we did not commit/push or reset anything.
+Our CTS integration snapshot includes HEAD217e6da1 plus the dirty source; the primary APK30820 is preserved.
+Read agent_native_isz_integration_20261016.txt in evidence/client_identity before older instructions below.
+
+Продолжение SCAMERA: подтверждённый rootless native ISZ на PD2454.
+Сначала прочитай DEVICE-FRONTIER-20261016.md и
+../evidence/vivo_hal_2026-10-13/client_identity/agent_cts_native_raw_breakthrough_20261016.txt
+(путь evidence отсчитывается от SCAMERA-PC, не от handoff).
+
+Не пушить, не коммитить чужое, не накладывать patches поверх изменённого дерева.
+Другая нейросеть активно меняет основной проект; сначала git status/diff/log.
+Не трогать kHybMergeMain1. Основной APK30820 остаётся отдельным от диагностики.
+
+Что действительно готово для переноса:
+- Собственный applicationId android.camera.cts, обычный UID10469, CAMERA.
+  Это точное имя, которое CameraService относит к AppType21. Суффикс не подходит.
+  Подмена AttributionSource под старым UID не заменяет действительный applicationId.
+- Обычная Camera2 с одним RAW_SENSOR ImageReader, без PRIVATE/YUV/JPEG;
+  repeating PREVIEW направлен только в RAW. Без root, VIF, SDK, гонки setValue(1,5).
+- vivo.control.forceSensorMode: int[] в session parameters И каждом request.
+  MAIN3: mode3/4096x3072/Quad; UW4: mode3/4096x3072/Quad;
+  TELE5: mode5/4080x3072/Quad, mode7/4080x3072/Tetra.
+- Каждый тест дал32 разных непустых RAW с уникальными timestamp. Первый RAW
+  сохранён, hash совпадает с телефоном, timestamp совпадает с CaptureResult.
+  Анализ мозаики25/25 участков для каждого режима; это не просто эхо тега.
+- Теле2x: измерено2.000/NCC0.97034. Теле4x: около4x/NCC0.98789.
+  FOV main/UW ещё сравнить с их baseline; нативных4x строк у main/UW не найдено.
+- ISZ проверен с DEFAULT buffer usage3. Usage0 отдельно пропускает нестандартные
+  RAW-размеры через createConfiguredSurface, но не делает FULLRES/DCG рабочими.
+
+Точные команды/данные:
+SCAMERA-PC/reports/pd2454-cts-raw-only-*-command-20261016.txt
+SCAMERA-PC/reports/pd2454-engineer-native-raw-20261016/cts-*/manifest.json
+Логи/пиксели/SHA и ограничения перечислены в agent_cts_native_raw_breakthrough.
+Скрипты tools/run_camera_probe_without_observer.py, save_camera2_probe_evidence.py;
+client_identity/agent_raw_mosaic_periods_20261016.py, agent_raw_fov_fit_20261016.py.
+Для NumPy/Pillow используется bundled Python, не системный py312.
+
+Что НЕ готово:
+- Это диагностика, не новая сборка SCAMERA с рабочими ISZ-модулями/SHDR.
+- Родная FULLRES Quad/Tetra и DCG RAW приложению пока не получены.
+  С usage0 RAW50/RAW10 проходят проверку размера, затем endConfigure=-38.
+  Tele DCG14 с обычным3072 контейнером даёт HWL f8e08 NULL+18;
+  с нативным2616 и usage0 получает-38. UI3/Log32/RECORD с точными ключами также-38.
+  Полный результат последней логической0+physical3 проверки смотреть в новых reports.
+- Ранее рабочая FULLRES50 SDK на3/4/5 остаётся аппаратно-ремозаичной.
+  Не выдавать её за native no-remosaic и не подменять4x цифровым crop.
+
+Реализация в приложении:
+1. Подготовить отдельную сборку с настоящим applicationId android.camera.cts.
+   Не менять основной applicationId/CI молча и не заменять подпись/установленный
+   чужой пакет. Сейчас под этим именем стоит наш отдельный диагностический APK.
+2. Для подтверждённых профилей создать отдельные ISZ-модули с реальной кратностью
+   и Quad/Tetra в ModuleRegistry. Не использовать старый PD2454 mode6 HW-fallback.
+3. Для этого пути включить существующий RAW-видоискатель и RAW routing; поддержка
+   добавочной PRIVATE/YUV поверхности пока НЕ проверена. RAW-only нельзя молча
+   превратить в прежнюю двухпоточную сессию: граф может измениться.
+4. Подавать настоящую мозаику в существующий SHDR/ScamMosaic; не демозаичить её
+   как Bayer и не менять kHybMergeMain1. Нейроремозаик/NPU остаётся реальной
+   обработкой, а не флагом для аппаратно-ремозаичного RAW.
+5. 4:3 для TELE делать после RGB/remosaic как в IszAspectCrop, не смещать CFA
+   необдуманным crop сырых строк; MAIN/UW4096x3072 уже4:3.
+6. Подтвердить viewfinder/AE, серию RAW и сохранённый SHDR JPEG на каждом модуле.
+   Только после этого называть интеграцию рабочей. Не завершать FULLRES/DCG
+   по наличию новых переключателей или одному forceSensorMode.
+
+Диагностические SDK bootstrap/endConfigure hooks в Probe не переносить в
+production: они не дали нативный FULLRES. SDK-состояние восстанавливать после
+закрытия; синхронный getInfo не доказывает опустошение one-way Binder очереди.

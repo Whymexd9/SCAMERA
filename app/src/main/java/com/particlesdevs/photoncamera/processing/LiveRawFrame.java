@@ -57,6 +57,12 @@ public final class LiveRawFrame {
      * from a packed RAW10 / RAW12 (unpacked first, natively) or a plain 16-bit frame; null when the geometry does not fit.
      */
     static synchronized ByteBuffer binQuad(ByteBuffer plane, int w, int h, int stride, int format) {
+        return binMosaic(plane, w, h, stride, format, 2);
+    }
+
+    static synchronized ByteBuffer binMosaic(ByteBuffer plane, int w, int h, int stride, int format, int block) {
+        if (plane == null || (block != 2 && block != 4) || w < block * 2 || h < block * 2
+                || w % (block * 2) != 0 || h % (block * 2) != 0 || (long) w * h * 2 > Integer.MAX_VALUE) return null;
         final java.nio.ShortBuffer src;
         final int srcRow;
         if (com.particlesdevs.photoncamera.util.RawUnpack.isPacked(format)) {
@@ -72,17 +78,22 @@ public final class LiveRawFrame {
             src = b.slice().order(ByteOrder.nativeOrder()).asShortBuffer();
             srcRow = stride / 2;
         }
-        final int bw = w / 2, bh = h / 2;
+        final int bw = w / block, bh = h / block;
         if (quadBinned == null || quadBinned.capacity() < bw * bh * 2) quadBinned = ByteBuffer.allocateDirect(bw * bh * 2).order(ByteOrder.nativeOrder());
         java.nio.ShortBuffer out = quadBinned.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
-        for (int y = 0; y < bh; y++) {
-            final int r0 = 2 * y * srcRow, r1 = r0 + srcRow, o = y * bw;
+        final int chunks = Math.max(1, Math.min(bh, com.particlesdevs.photoncamera.util.ParallelWork.threads() * 4));
+        com.particlesdevs.photoncamera.util.ParallelWork.forEach(chunks, chunk -> {
+        for (int y = bh * chunk / chunks; y < bh * (chunk + 1) / chunks; y++) {
+            final int r0 = block * y * srcRow, o = y * bw;
             for (int x = 0; x < bw; x++) {
-                final int c = 2 * x;
-                int s = (src.get(r0 + c) & 0xFFFF) + (src.get(r0 + c + 1) & 0xFFFF) + (src.get(r1 + c) & 0xFFFF) + (src.get(r1 + c + 1) & 0xFFFF);
-                out.put(o + x, (short) ((s + 2) >> 2));
+                final int c = block * x;
+                int s = 0;
+                for (int dy = 0; dy < block; dy++) for (int dx = 0; dx < block; dx++)
+                    s += src.get(r0 + dy * srcRow + c + dx) & 0xFFFF;
+                out.put(o + x, (short) ((s + block * block / 2) / (block * block)));
             }
         }
+        });
         ByteBuffer result = quadBinned.duplicate().order(ByteOrder.nativeOrder());
         result.clear();
         result.limit(bw * bh * 2);
@@ -151,13 +162,14 @@ public final class LiveRawFrame {
         if (!enabled || plane == null) return;
         // P108: a full-resolution Quad-Bayer frame (Pixel 10 Pro: 8160x6144 RAW10, the ISP's own viewfinder is green in that
         // mode) is shown 2x2-binned as the plain Bayer 4080x3072, at most every QUAD_BIN_INTERVAL_NS (the camera thread)
-        if (block == 2 && (long) w * h >= QUAD_BIN_PIXELS && w % 4 == 0 && h % 4 == 0) {
+        if ((block == 2 || block == 4) && (long) w * h >= QUAD_BIN_PIXELS
+                && w % (block * 2) == 0 && h % (block * 2) == 0) {
             final long now = System.nanoTime();
             if (now - quadAtNs < QUAD_BIN_INTERVAL_NS) return;
             quadAtNs = now;
-            ByteBuffer binned = binQuad(plane, w, h, stride, format);
+            ByteBuffer binned = binMosaic(plane, w, h, stride, format, block);
             if (binned == null) return;
-            publish(binned, w / 2, h / 2, w, cfa, white, black, gains, ccm, lensShading, sw, sh, cropRect, 1, sensorIso, analogIso,
+            publish(binned, w / block, h / block, w / block * 2, cfa, white, black, gains, ccm, lensShading, sw, sh, cropRect, 1, sensorIso, analogIso,
                     automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR);
             return;
         }

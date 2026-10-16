@@ -71,6 +71,7 @@ public class VivoSdkFullResModeTest {
         sdk = mockStatic(VivoSdkRawSession.class);
         sdk.when(() -> VivoSdkRawSession.open(provider)).thenCallRealMethod();
         sdk.when(VivoSdkRawSession::open).thenAnswer(call -> VivoSdkRawSession.open(provider));
+        sdk.when(() -> VivoSdkRawSession.applyAutomaticExposure(any())).thenCallRealMethod();
         managers = mockConstruction(CameraManager2.class,
                 (mock, call) -> when(mock.getCameraIdList()).thenReturn(new String[]{"3"}));
         Activity activity = mock(Activity.class);
@@ -126,6 +127,38 @@ public class VivoSdkFullResModeTest {
         assertEquals(Integer.valueOf(1), provider.values.get(33));
     }
 
+    @Test public void sdkPreviewKeepsVariableFpsInsteadOfTheMotionRingRate() throws Exception {
+        settings.selectedMode = CameraMode.userModeAt(0);
+        prepare();
+        android.util.Range<Integer> auto = new android.util.Range<>(15, 30);
+        Field fps = CaptureController.class.getDeclaredField("FpsRangeAuto");
+        fps.setAccessible(true);
+        fps.set(controller, auto);
+        Class<?> metadata = Class.forName("android.hardware.camera2.impl.CameraMetadataNative");
+        android.hardware.camera2.CaptureRequest.Builder builder = android.hardware.camera2.CaptureRequest.Builder.class
+                .getConstructor(metadata, boolean.class, int.class, String.class, java.util.Set.class)
+                .newInstance(metadata.getConstructor().newInstance(), false, -1, "4", null);
+        builder.set(android.hardware.camera2.CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                new android.util.Range<>(30, 30));
+        builder.set(android.hardware.camera2.CaptureRequest.SENSOR_SENSITIVITY, 250);
+        builder.set(android.hardware.camera2.CaptureRequest.SENSOR_EXPOSURE_TIME, 16_666_667L);
+        Method apply = CaptureController.class.getDeclaredMethod("applyVivoSdkPreview",
+                android.hardware.camera2.CaptureRequest.Builder.class);
+        apply.setAccessible(true);
+        apply.invoke(controller, builder);
+        assertEquals(auto, builder.get(android.hardware.camera2.CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE));
+        assertEquals(Integer.valueOf(0), builder.get(android.hardware.camera2.CaptureRequest.SENSOR_SENSITIVITY));
+        assertEquals(Long.valueOf(0), builder.get(android.hardware.camera2.CaptureRequest.SENSOR_EXPOSURE_TIME));
+        Method motion = CaptureController.class.getDeclaredMethod("motionFpsRange");
+        motion.setAccessible(true);
+        try (MockedStatic<com.particlesdevs.photoncamera.settings.MotionMode> mode =
+                     mockStatic(com.particlesdevs.photoncamera.settings.MotionMode.class)) {
+            mode.when(com.particlesdevs.photoncamera.settings.MotionMode::on).thenReturn(true);
+            assertNull(motion.invoke(controller));
+            mode.verify(() -> com.particlesdevs.photoncamera.settings.MotionMode.fpsRange(any(), anyInt(), any()), never());
+        }
+    }
+
     @Test public void refusedSdkClearsTheRequestAndOnlyAnExplicitRetryReopensSdkAfterRestore() throws Exception {
         java.util.concurrent.atomic.AtomicBoolean requested = new java.util.concurrent.atomic.AtomicBoolean(true);
         pixel.when(PixelPro10::fullResOn).thenAnswer(call -> requested.get());
@@ -155,5 +188,13 @@ public class VivoSdkFullResModeTest {
         prepare();
         assertNotNull(session());
         sdk.verify(VivoSdkRawSession::open, times(2));
+    }
+
+    @Test public void frameCountUsesTheSettingAndAvailableRawMemory() {
+        long raw = 8192L * 6144 * 2;
+        assertEquals(20, VivoSdkFullRes.frameCount(20, raw, raw * 50));
+        assertEquals(44, VivoSdkFullRes.frameCount(44, raw, raw * 100));
+        assertEquals(8, VivoSdkFullRes.frameCount(20, raw, raw * 16));
+        assertEquals(0, VivoSdkFullRes.frameCount(20, raw, raw));
     }
 }

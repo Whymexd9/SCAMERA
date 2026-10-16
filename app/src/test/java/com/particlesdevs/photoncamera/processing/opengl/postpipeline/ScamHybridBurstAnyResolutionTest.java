@@ -160,8 +160,8 @@ public class ScamHybridBurstAnyResolutionTest {
     }
 
     @Test public void onlyTheHardLimitsRefuseAStream() {
-        // 16384 x 12288 (201 MP): its sensor-grid RGB (2.3 GB) is above one Java buffer; RawBin bins it before the hybrid.
-        IOException rgb = assertThrows(IOException.class, () -> burst(List.of(frame(16384, 12288, null)), parameters(16384, 12288)));
+        // Even FP16 RGB exceeds one Java buffer at 432 MP; native 200 MP now fits FP16.
+        IOException rgb = assertThrows(IOException.class, () -> burst(List.of(frame(24000, 18000, null)), parameters(24000, 18000)));
         assertTrue(rgb.getMessage(), rgb.getMessage().contains("above 2 GB"));
         // A side above the GPU's limit.
         GLLimits.setForTesting(GLLimits.of(8192, 8192, 8192, 8192));

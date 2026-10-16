@@ -1,0 +1,47 @@
+Заметка Claude для параллельной нейросети (ChatGPT), 2026-10-15 ~11:05. Локальная, в git не идёт.
+
+1. Что закоммичено и ЗАЛИТО (origin/main = 05549787, CI #403; владелец: «Можешь заливать на гит»):
+   eaf851da P109l-p  — твоя работа из рабочего дерева на ~10:30 (SDK FULLRES50, VivoPd2454Isz, IszAspectCrop,
+                       SensorModeSwitches, spoof, debug VivoQcomProbeActivity, их тесты). Ничего не правил, только закоммитил.
+   3b3d193c P109q    — твой Sabre 2x (scam-hybrid.h, ScamHybridBurst, ScamNeuralClient, ScamRgb, SettingsAvailability,
+                       тесты, tools/check_hybrid_fullres_2x.cpp, workflow, PLAN P109l-q). kHybMergeMain1 sha256 a43afbb4… не менялся.
+   f68ec295, 05549787 — мой фикс P137: нижние панели выбора прокручиваются в альбомной ориентации (SettingsStyle).
+   Твои правки после 10:30 (CaptureController, VivoSdkFullRes, VivoSdkFullResCapture, VivoSdkFullResCaptureTest,
+   SensorModeSwitchesTest — профили камер 4/5) НЕ закоммичены и не тронуты. Untracked handoff-заметки — тоже.
+
+2. На X200 Ultra сейчас стоит МОЙ локальный APK 30816 (versionCode 30816 > твоего 30806), подписан тем же
+   scamera-legacy-diagnostic.jks (CN=PhotonCamera developers), поставлен `adb install -r`, данные сохранены.
+   Твой 30806 поверх не встанет без `adb install -r -d` (debug-APK, понижение разрешено) или кода > 30816.
+   APK: SCAMERA-PC/deliverables/local-shdr/SCAMERA-0.98-30816-SCAM-local-DIAGKEY.apk
+        sha256 b6e17c05ff584d00a6dc0ea86e8bb030e622f473ee77a8fa45f0d370735acb72
+   Тот же код, подпись SCAMERA (CN=SCAMERA): SCAMERA-0.98-30816-SCAM-local.apk
+        sha256 74be1672df49d85aeac278beffc866d091ae6f3f0d09f9b74a7017bff1776577
+   Воркер пересобран NDK из текущих scam-neural-worker.cpp + scam-hybrid.h: sha256 931e4028…4d50
+   (asset == lib/arm64-v8a/libscamera_worker.so). 19 закреплённых ассетов сверены по текущим pin.
+
+3. Проверка на телефоне (30815/30816):
+   - ISZ back8 9.6x (remosaic): 8 RAW 4080x3072 mode 6, SHDR в процессе приложения UID10349,
+     JPEG 5184x3888 = ровно 4:3, кроп 100% — субпиксели монитора, снимок осмысленный.
+     /sdcard/DCIM/Camera/SCA_20261015_104128.jpg, sha256 d0194299…520e.
+   - FULLRES + Разрешение 2x (модуль back1, камера 3, режим «Движение» ВКЛ): снимок НЕ получился.
+     До склейки 2x не дошло: cameraserver «Camera 3: reconfigureCamera: Can't idle device in 5.000000 seconds!»
+     → onError 4 → «SDK FULLRES50 failed: Серия SDK RAW прервана». Лог: scratchpad Claude apk/fullres-30816-logcat.txt
+     (C:/Users/MECHREVO/AppData/Local/Temp/claude/C--Users-MECHREVO-Downloads-x200u/927aac59-4b1d-45c0-aa1b-8452443099f4/scratchpad/apk/).
+     Причина (по логу, не проверено исправлением): reconfigureCamera вызывается только при смене параметров сессии.
+     aeTargetFpsRange — session key камеры 3 (availableSessionKeys). Превью в «Движении» ставит [30,30]
+     («motion mode: camera 3 AE range [30, 30]»), а STILL в VivoSdkFullResCapture.submitFrame строится из
+     TEMPLATE_STILL_CAPTURE без этого ключа → другое значение session key → реконфигурация посреди потока → HAL
+     не уходит в idle за 5 с. В успешном 30802 строки «motion mode … AE range» не было (превью без фиксированного FPS).
+     Предлагаемая правка: в STILL копировать значения всех availableSessionKeys из текущего запроса превью
+     (как минимум CONTROL_AE_TARGET_FPS_RANGE и CONTROL_VIDEO_STABILIZATION_MODE). Я её НЕ делал — ты сейчас
+     правишь эти файлы. Sabre 2x 16384x12288 на телефоне так и не проверен.
+   - Нативный tools/check_hybrid_fullres_2x.cpp (NDK, su 2000): PASS.
+   - В 10:57:24 твоя проба (com.scamera.probe, камера 5) выбила SCAMERA с камеры 3. После этого я телефон не трогал.
+
+4. Тесты: полный список CI на чистом 05549787 (wt-apk) — 864/864; хост-проверки PASS. Твои правки после 10:30 поверх
+   origin/main — коммить их сам поверх 05549787 (ветка уже fast-forward с main).
+
+5. 2026-10-15 позже: коммит 96269b16 (локально). Твоя типизированная подмена (TypedCameraService + SpoofCameraContext.getAttributionSource)
+   ломала OPPO Find X7 Ultra с обычной подменой владельца: каждый запрос -38 → onError 4 (лог владельца, 30817). Теперь она
+   включается только при CameraPackageSpoof.typedAttribution() = твой dev-ключ vivo_qcom_spoof на vivo Qualcomm; иначе прежняя
+   Binder-подмена 30799. Если тебе нужна типизированная на PD2454 — включай vivo_qcom_spoof, код цел.

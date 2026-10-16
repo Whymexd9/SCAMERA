@@ -2,6 +2,7 @@ package com.particlesdevs.photoncamera.capture;
 
 import android.app.Application;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.SharedPreferences;
 import android.hardware.camera2.CaptureRequest;
 
@@ -64,7 +65,9 @@ public class VivoPd2454IszTest {
     private SharedPreferences prefs;
 
     @Before public void setup() {
-        context = RuntimeEnvironment.getApplication();
+        context = new ContextWrapper(RuntimeEnvironment.getApplication()) {
+            @Override public String getPackageName() { return "org.codeaurora.snapcam"; }
+        };
         SettingsManager manager = new SettingsManager(context);
         app = mockStatic(ScameraApp.class);
         app.when(ScameraApp::getAppContext).thenReturn(context);
@@ -99,6 +102,90 @@ public class VivoPd2454IszTest {
         List<String> out = new ArrayList<>();
         for (String slot : ModuleRegistry.slots()) if (ModuleRegistry.visible(slot)) out.add(slot);
         return out;
+    }
+
+    @Test public void nativeProfilesRequireRealCtsIdentityAndExcludeFullResAndDcg() {
+        for (String camera : Arrays.asList("3", "4", "5")) {
+            int mode = "5".equals(camera) ? 5 : 3;
+            assertEquals(2, VivoPd2454NativeRaw.factor(camera, mode));
+            assertTrue(VivoPd2454NativeRaw.eligible(true, "android.camera.cts", camera, mode, false, false));
+            assertFalse(VivoPd2454NativeRaw.eligible(false, "android.camera.cts", camera, mode, false, false));
+            assertFalse(VivoPd2454NativeRaw.eligible(true, "org.codeaurora.snapcam", camera, mode, false, false));
+            assertFalse(VivoPd2454NativeRaw.eligible(true, "android.camera.cts.extra", camera, mode, false, false));
+            assertFalse(VivoPd2454NativeRaw.eligible(true, "android.camera.cts", camera, mode, true, false));
+            assertFalse(VivoPd2454NativeRaw.eligible(true, "android.camera.cts", camera, mode, false, true));
+        }
+        assertEquals(4, VivoPd2454NativeRaw.factor("5", 7));
+        assertEquals(0, VivoPd2454NativeRaw.factor("3", 7));
+        assertEquals(0, VivoPd2454NativeRaw.factor("4", 7));
+        assertEquals(0, VivoPd2454NativeRaw.factor("5", 6));
+        assertEquals(0, VivoPd2454NativeRaw.factor("5", 17));
+        assertEquals(0, VivoPd2454NativeRaw.factor("0", 3));
+        assertEquals(0, VivoPd2454NativeRaw.factor(null, 3));
+    }
+
+    private Context nativeContext() {
+        Context cts = new android.content.ContextWrapper(context) {
+            @Override public String getPackageName() { return "android.camera.cts"; }
+            @Override public SharedPreferences getSharedPreferences(String name, int mode) {
+                return "android.camera.cts_preferences".equals(name) ? prefs : super.getSharedPreferences(name, mode);
+            }
+        };
+        app.when(ScameraApp::getAppContext).thenReturn(cts);
+        ScameraApp.getSettings().selectedMode = com.particlesdevs.photoncamera.api.CameraMode.PHOTO;
+        return cts;
+    }
+
+    @Test public void nativeModulesOfferOnlyMeasuredModesAndRemainDeleted() {
+        Context cts = nativeContext();
+        prefs.edit().putString("module_auto_back0", "3").putString("module_zoom_back0", "1")
+                .putString("module_auto_back1", "4").putString("module_zoom_back1", "0.4")
+                .putString("module_auto_back2", "5").putString("module_zoom_back2", "3.7")
+                .putBoolean("module_visible_back1", true).putBoolean("module_visible_back2", true)
+                .putString("module_auto_back8", "5").putBoolean("module_visible_back8", false).apply();
+        VivoPd2454NativeRaw.ensureModules(cts);
+        assertEquals(7, shown().size());
+        Map<String, Integer> offered = new HashMap<>();
+        String deleted = null;
+        for (String slot : shown()) if (ModuleRegistry.duplicateOf(slot) != null) {
+            int mode = ModuleRegistry.sensorMode(slot);
+            String camera = ModuleRegistry.camera(slot);
+            offered.put(camera + ":" + mode, VivoPd2454NativeRaw.factor(camera, mode));
+            assertTrue(ModuleRegistry.sensorCrop(slot));
+            assertEquals(ModuleRegistry.zoom(slot), ModuleRegistry.nativeRatio(slot), .0001f);
+            deleted = slot;
+        }
+        assertEquals(offered.toString(), Integer.valueOf(2), offered.get("3:3"));
+        assertEquals(Integer.valueOf(2), offered.get("4:3"));
+        assertEquals(Integer.valueOf(2), offered.get("5:5"));
+        assertEquals(Integer.valueOf(4), offered.get("5:7"));
+        assertEquals(4, offered.size());
+        VivoPd2454Isz.ensureModules(cts);
+        assertEquals(7, shown().size());
+        assertNotNull(deleted);
+        assertTrue(ModuleRegistry.remove(deleted));
+        VivoPd2454NativeRaw.ensureModules(cts);
+        assertEquals(6, shown().size());
+    }
+
+    @Test public void nativeForceIsAnArrayOnEveryBuilderAndInactiveInVideo() throws Exception {
+        nativeContext();
+        prefs.edit().putString("module_auto_back0", "3").apply();
+        save("back0", VivoQcomIsz.sessionKey(3));
+        for (int i = 0; i < 3; i++) {
+            CaptureRequest.Builder request = builder();
+            VivoPd2454NativeRaw.apply(request, "3");
+            assertArrayEquals(new int[]{3}, request.get(new CaptureRequest.Key<>(VivoQcomIsz.KEY, int[].class)));
+        }
+        ScameraApp.getSettings().selectedMode = com.particlesdevs.photoncamera.api.CameraMode.MOTION;
+        assertTrue(VivoPd2454NativeRaw.active("3"));
+        ScameraApp.getSettings().selectedMode = com.particlesdevs.photoncamera.api.CameraMode.NIGHT;
+        assertTrue(VivoPd2454NativeRaw.active("3"));
+        ScameraApp.getSettings().selectedMode = com.particlesdevs.photoncamera.api.CameraMode.VIDEO;
+        assertFalse(VivoPd2454NativeRaw.active("3"));
+        CaptureRequest.Builder request = builder();
+        VivoPd2454NativeRaw.apply(request, "3");
+        assertNull(request.get(new CaptureRequest.Key<>(VivoQcomIsz.KEY, int[].class)));
     }
 
     private String offer() {

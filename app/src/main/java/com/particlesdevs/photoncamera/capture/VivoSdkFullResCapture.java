@@ -19,6 +19,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.function.LongSupplier;
 import java.nio.ByteBuffer;
+import java.util.function.Consumer;
+import com.particlesdevs.photoncamera.processing.MosaicBlockDetector;
 
 final class VivoSdkFullResCapture {
     interface Listener {
@@ -37,17 +39,38 @@ final class VivoSdkFullResCapture {
     private final LongSupplier previewTimestamp;
     private final Listener listener;
     private final int rotation;
+    private final VivoSdkFullRes.Profile profile;
+    private final CaptureRequest preview;
+    private final List<CaptureRequest.Key<?>> sessionKeys;
     private final long generation, cutoff;
     private final List<CaptureRequest> requests = new ArrayList<>();
     private final List<TotalCaptureResult> results = new ArrayList<>();
     private final SerialRawCapture serial;
     private final TimestampFrameRouter<Image> router;
     private volatile boolean stopped;
+    private final Consumer<Image> previewConsumer;
+    private boolean nativeMosaicVerified;
 
     VivoSdkFullResCapture(CameraDevice device, CameraCaptureSession session, VivoSdkRawSession sdk,
                          Surface raw, Surface jpeg, ImageSaver saver, Handler handler,
                          LongSupplier previewTimestamp, int rotation, long generation, long cutoff,
-                         int count, Listener listener) {
+                         int count, VivoSdkFullRes.Profile profile, CaptureRequest preview,
+                         List<CaptureRequest.Key<?>> sessionKeys, Listener listener) {
+        this(device, session, sdk, raw, jpeg, saver, handler, previewTimestamp, rotation, generation,
+                cutoff, count, profile, preview, sessionKeys, listener, null);
+    }
+
+    VivoSdkFullResCapture(CameraDevice device, CameraCaptureSession session, VivoSdkRawSession sdk,
+                         Surface raw, Surface jpeg, ImageSaver saver, Handler handler,
+                         LongSupplier previewTimestamp, int rotation, long generation, long cutoff,
+                         int count, VivoSdkFullRes.Profile profile, CaptureRequest preview,
+                         List<CaptureRequest.Key<?>> sessionKeys, Listener listener, Consumer<Image> previewConsumer) {
+        if (profile == null) throw new IllegalArgumentException("SDK FULLRES profile is missing");
+        if (preview == null) throw new IllegalArgumentException("SDK FULLRES preview request is missing");
+        this.profile = profile;
+        this.previewConsumer = previewConsumer;
+        this.preview = preview;
+        this.sessionKeys = sessionKeys == null ? java.util.Collections.emptyList() : new ArrayList<>(sessionKeys);
         this.device = device;
         this.session = session;
         this.sdk = sdk;
@@ -60,22 +83,37 @@ final class VivoSdkFullResCapture {
         this.generation = generation;
         this.cutoff = cutoff;
         this.listener = listener;
-        serial = new SerialRawCapture(count, new SerialRawCapture.Listener() {
+        serial = new SerialRawCapture(count, profile.nativeBlock == 0, new SerialRawCapture.Listener() {
             public void submit(int index) { submitFrame(index); }
             public void complete() { finish(); }
             public void failed(String reason) { fail(reason); }
         });
         router = new TimestampFrameRouter<>((image, still) -> {
+            if (!still && profile.nativeBlock > 1 && !stopped) {
+                if (this.previewConsumer == null) image.close(); else this.previewConsumer.accept(image);
+                return;
+            }
             long timestamp = image.getTimestamp();
             if (stopped || !serial.acceptsRaw(timestamp)) { image.close(); return; }
             try {
                 Image.Plane plane = image.getPlanes()[0];
-                if (image.getFormat() != ImageFormat.RAW_SENSOR || image.getWidth() != 8192 || image.getHeight() != 6144
+                if (image.getFormat() != ImageFormat.RAW_SENSOR
+                        || image.getWidth() != profile.size.getWidth() || image.getHeight() != profile.size.getHeight()
                         || plane.getPixelStride() != 2
                         || !hasNonZeroPixels(plane.getBuffer(), image.getWidth(), image.getHeight(), plane.getRowStride())) {
                     image.close();
                     serial.fail("SDK FULLRES50 delivered an empty or invalid RAW buffer");
                     return;
+                }
+                if (profile.nativeBlock > 1) {
+                    MosaicBlockDetector.Result mosaic = MosaicBlockDetector.detect(plane.getBuffer(),
+                            image.getWidth(), image.getHeight(), plane.getRowStride(), 64, 1023, 64);
+                    if (mosaic.confident && mosaic.block != profile.nativeBlock) {
+                        image.close();
+                        serial.fail("Native FULLRES mosaic does not match its sensor profile");
+                        return;
+                    }
+                    nativeMosaicVerified |= mosaic.confident && mosaic.block == profile.nativeBlock;
                 }
                 saver.initProcess(image);
                 serial.raw(timestamp);
@@ -91,6 +129,7 @@ final class VivoSdkFullResCapture {
         if (stopped) image.close(); else router.image(image.getTimestamp(), image);
     }
     void jpegDrained(long timestamp) { if (!stopped) serial.jpeg(timestamp); }
+    void previewStarted(long timestamp) { if (!stopped && profile.nativeBlock > 1) router.request(timestamp, false); }
 
     void cancel() {
         stopped = true;
@@ -104,11 +143,22 @@ final class VivoSdkFullResCapture {
             if (displayTimestamp <= 0) throw new IllegalStateException("SDK RAW requires a live preview timestamp");
             CaptureRequest.Builder builder = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             builder.addTarget(rawSurface);
-            builder.addTarget(jpegSurface);
+            if (jpegSurface != null) builder.addTarget(jpegSurface);
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
             builder.set(CaptureRequest.JPEG_ORIENTATION, rotation);
             builder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON);
-            sdk.apply(builder, true, displayTimestamp);
+            if (profile.nativeBlock > 1) VivoPd2454NativeRaw.applyFullRes(builder, profile);
+            else {
+                sdk.apply(builder, true, displayTimestamp);
+                VivoSdkRawSession.applyAutomaticExposure(builder);
+            }
+            for (CaptureRequest.Key<?> key : sessionKeys) copySessionKey(builder, key);
+            if (profile.nativeBlock > 1) {
+                VivoPd2454NativeRaw.applyFullRes(builder, profile);
+                builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
+                        preview.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION));
+                builder.set(CaptureRequest.CONTROL_AE_REGIONS, preview.get(CaptureRequest.CONTROL_AE_REGIONS));
+            }
             builder.setTag(new ImageFrame.ScamCaptureTag(generation, index, ImageFrame.CaptureRole.NORMAL));
             CaptureRequest request = builder.build();
             requests.add(request);
@@ -126,7 +176,8 @@ final class VivoSdkFullResCapture {
                     Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                     Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
                     int[] mode = result.get(new CaptureResult.Key<>("com.qti.sensorbps.mode_index", int[].class));
-                    if (mode == null || mode.length == 0 || mode[0] != 13) {
+                    if ((profile.nativeBlock == 0 || mode != null)
+                            && (mode == null || mode.length == 0 || mode[0] != profile.sensorMode)) {
                         serial.fail("SDK FULLRES50 sensor mode is not active");
                         return;
                     }
@@ -161,8 +212,14 @@ final class VivoSdkFullResCapture {
         }
     }
 
+    private <T> void copySessionKey(CaptureRequest.Builder builder, CaptureRequest.Key<T> key) {
+        builder.set(key, preview.get(key));
+    }
+
     private void finish() {
         try {
+            if (profile.nativeBlock > 1 && !nativeMosaicVerified)
+                throw new IllegalStateException("Native FULLRES mosaic has not been verified from RAW pixels");
             ScamCaptureSequence sequence = ScamCaptureSequence.hybridFuture(requests, cutoff);
             HashMap<Long, Double> exposures = new HashMap<>();
             for (TotalCaptureResult result : results) {

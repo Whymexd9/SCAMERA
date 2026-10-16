@@ -8,6 +8,17 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 public class LiveRawQuadBinTest {
+    @Test public void tetraCellsAverageAllSixteenSitesWithoutReadingPaddingOrMovingTheInput() {
+        int stride = 24, offset = 6;
+        ByteBuffer data = ByteBuffer.allocateDirect(offset + stride * 8).order(ByteOrder.nativeOrder());
+        data.position(offset);
+        for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
+            data.putShort(offset + y * stride + x * 2, (short) (100 + (y / 4 * 2 + x / 4) * 100 + y % 4 * 4 + x % 4));
+        ByteBuffer result = LiveRawFrame.binMosaic(data, 8, 8, stride, 0x20, 4).order(ByteOrder.nativeOrder());
+        assertEquals(offset, data.position());
+        assertEquals(8, result.remaining());
+        for (int i = 0; i < 4; i++) assertEquals(108 + i * 100, result.getShort(i * 2) & 0xffff);
+    }
     @Test
     public void quadCellsBecomeOneBayerSiteEach() {
         // 4x4 plain 16-bit Quad-Bayer: four 2x2 cells of one colour each, values 100/200/300/400 with a small spread

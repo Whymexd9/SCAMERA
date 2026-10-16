@@ -164,22 +164,31 @@ public class SensorModeSwitchesTest {
         assertFalse(VivoSdkFullRes.offered("5"));
     }
 
-    @Test public void movingFromVerifiedSdkMainToUnverifiedWideClearsTheFullResRequest() {
+    @Test public void movingBetweenSdkRearLensesKeepsFullResButFrontClearsIt() {
         module("back2", "4", "0.6", null);
         modules.edit().putString("module_active", "back0").apply();
         PixelPro10.setFullRes(true);
         assertTrue(VivoSdkFullRes.available("3"));
         ModuleRegistry.select("back2");
         assertEquals("back2", ModuleRegistry.active());
+        assertTrue(PixelPro10.fullResOn());
+        assertTrue(VivoSdkFullRes.offered("4"));
+        module("back3", "5", "2.4", null);
+        ModuleRegistry.select("back3");
+        assertTrue(PixelPro10.fullResOn());
+        assertTrue(VivoSdkFullRes.offered("5"));
+        module("front0", "1", "1", null);
+        ModuleRegistry.select("front0");
         assertFalse(PixelPro10.fullResOn());
-        assertFalse(VivoSdkFullRes.offered("4"));
+        assertFalse(VivoSdkFullRes.offered("1"));
     }
 
     @Test public void cleanInstallOffersVerifiedMainSdkWithoutEnablingTheUserToggle() {
         ModuleRegistry.select("back0");
         assertFalse(PreferenceKeys.scamDevOverrides("vivo_sdk_fullres"));
         assertTrue(VivoSdkFullRes.offered("3"));
-        assertFalse(VivoSdkFullRes.offered("4"));
+        assertTrue(VivoSdkFullRes.offered("4"));
+        assertTrue(VivoSdkFullRes.offered("5"));
         assertFalse(PixelPro10.fullResOn());
     }
 

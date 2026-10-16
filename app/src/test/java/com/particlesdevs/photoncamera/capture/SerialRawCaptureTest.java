@@ -7,6 +7,21 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 public class SerialRawCaptureTest {
+    @Test public void rawOnlyStillRequiresDistinctStartedRawResultAndSequenceWithoutInventingJpegEvents() {
+        Events events = new Events();
+        SerialRawCapture series = new SerialRawCapture(4, false, events);
+        series.start();
+        for (int i = 0; i < 4; i++) {
+            series.started(i, 100 + i);
+            series.raw(100 + i);
+            series.result(i, 100 + i);
+            assertEquals(i + 1, events.submitted.size());
+            series.sequenceCompleted(i);
+        }
+        assertEquals(4, events.submitted.size());
+        assertEquals(1, events.completed);
+        assertEquals(0, events.failed);
+    }
     private static final class Events implements SerialRawCapture.Listener {
         final List<Integer> submitted = new ArrayList<>();
         int completed, failed;

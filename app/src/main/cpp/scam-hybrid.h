@@ -6586,7 +6586,33 @@ constexpr double kMosaicOscTau=0.05,kMosaicLumaTau=0.25;
 // osc (optional): per colour block of the base RAW, the oscillation of its own sites (see hybridReconstructMosaic), (w/b) x (h/b).
 // P80: gpu = try ChromaMedianGpu first (float rounding of its boxes and soft counts only); *how gets "gpu" or "cpu (reason)".
 inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,const std::vector<float>* osc=nullptr,bool gpu=false,
-                               std::string* how=nullptr){
+                               std::string* how=nullptr,int bandRows=0){
+    if(bandRows>=0&&(bandRows>0||uint64_t(w)*h>64000000)){
+        const int halo=8*block,core=std::max(block,((bandRows>0?bandRows:256)/block)*block);
+        const size_t row=size_t(w)*3;
+        const int bw=w/block;
+        const bool rawOsc=osc&&osc->size()==size_t(bw)*(h/block);
+        std::vector<float> originalHalo;
+        for(int y0=0;y0<h;y0+=core){
+            const int y1=std::min(y0+core,h),first=std::max(0,y0-halo),last=std::min(h,y1+halo);
+            std::vector<float> tile(size_t(last-first)*row);
+            for(int y=first;y<last;++y){
+                const float* source=y<y0?originalHalo.data()+size_t(y-first)*row:rgb.data()+size_t(y)*row;
+                std::copy_n(source,row,tile.data()+size_t(y-first)*row);
+            }
+            // Later strips must read the original overlap, not the already filtered R/B sites.
+            const int keep=std::max(0,y1-halo);
+            std::vector<float> nextHalo(tile.begin()+size_t(keep-first)*row,tile.begin()+size_t(y1-first)*row);
+            std::vector<float> tileOsc;
+            if(rawOsc)tileOsc.assign(osc->begin()+size_t(first/block)*bw,
+                                    osc->begin()+size_t(first/block+(last-first)/block)*bw);
+            mosaicChromaMedian(tile,w,last-first,block,rawOsc?&tileOsc:nullptr,false,nullptr,-1);
+            std::copy_n(tile.data()+size_t(y0-first)*row,size_t(y1-y0)*row,rgb.data()+size_t(y0)*row);
+            originalHalo.swap(nextHalo);
+        }
+        if(how)*how="cpu (bounded rows "+std::to_string(core)+")";
+        return;
+    }
     if(gpu){
         // within the GPU storage of one call and a quarter of MemAvailable (any RAW size: 8192x6144 needs 2.4 GB, it stays here)
         const uint64_t avail=hybridMemAvailable();
@@ -7252,7 +7278,7 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
 // base, iso, noise slope, noise offset, order ms, flags, reserved), then the uint16 planes in sensor layout.
 struct MappedHybridBurst {
     void* address=MAP_FAILED;size_t length=0;HybridInput input;bool hybrid=false;
-    explicit MappedHybridBurst(const std::string& path) {
+    explicit MappedHybridBurst(const std::string& path, bool halfRgb=false) {
         const int fd=openArgument(path,O_RDONLY);
         if(fd<0)throw std::runtime_error("Cannot open SCAM burst");
         struct stat st{};
@@ -7262,14 +7288,10 @@ struct MappedHybridBurst {
         uint32_t h[32];std::memcpy(h,address,128);
         if(h[0]!=0x3143484e||(h[1]!=10&&h[1]!=11&&h[1]!=12)){munmap(address,length);address=MAP_FAILED;return;}
         try {
-            // Any RAW size (owner 2026-10-07): no megapixel cap. The real limit is the result: the sensor-grid RGB (12 B per pixel)
-            // must fit the app's direct buffer (2 GiB, ~178 MP); beyond it the app bins the frames first (RawBin).
+            // The Java RGB buffer holds the selected FP16/FP32 transport, not the worker's float32 intermediates.
             if(h[2]<64||h[3]<64||h[2]>65534||h[3]>65534||h[2]%2||h[3]%2||h[4]>3||h[5]<1||h[5]>64)
                 throw std::runtime_error("Unsupported hybrid burst dimensions/CFA/count");
             const uint64_t streamPixels=uint64_t(h[2])*h[3];
-            if(streamPixels*12>uint64_t(INT32_MAX))
-                throw std::runtime_error("Hybrid: "+std::to_string(h[2])+"x"+std::to_string(h[3])+" needs a "+hybridMB(streamPixels*12)
-                    +" MB result, above 2 GiB: bin the frames");
             input.w=int(h[2]);input.h=int(h[3]);input.cfa=int(h[4]);
             const int n=int(h[5]);
             std::memcpy(&input.white,h+6,4);std::memcpy(input.black.data(),h+7,16);
@@ -7281,6 +7303,10 @@ struct MappedHybridBurst {
                 input.mosaic=int(h[14]);
                 if(input.strict2x&&input.grid!=2)throw std::runtime_error("Hybrid: strict Sabre 2x requires output grid 2");
             }
+            const uint64_t rgbBytes=streamPixels*uint64_t(input.grid)*input.grid*(halfRgb?6:12);
+            if(rgbBytes>uint64_t(INT32_MAX))
+                throw std::runtime_error("Hybrid: "+std::to_string(h[2])+"x"+std::to_string(h[3])+" needs a "+hybridMB(rgbBytes)
+                    +" MB result, above 2 GiB: select FP16 or reduce the output grid");
             if(!std::isfinite(input.white)||input.white<=1||input.white>65535)throw std::runtime_error("Hybrid white level");
             for(float b:input.black)if(!std::isfinite(b)||b<0||b+1>=input.white)throw std::runtime_error("Hybrid black level");
             const size_t pixels=size_t(input.w)*input.h,headerBytes=128+32*size_t(n);

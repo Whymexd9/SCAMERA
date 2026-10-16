@@ -1,0 +1,182 @@
+АКТУАЛЬНО: сначала NATIVE-ISZ-READY-20261016.md. На обычном UID10469 в самой
+SCAMERA/SHDR сохранены снимки native Main2x, UW2x, Tele2x и Tele4x, ровно4:3.
+В30826 проверен developed RAW viewfinder;60 изолированных Java-тестов PASS.
+FULLRES без аппаратного ремозаика и DCG RAW пока не получены. Ничего не заливать.
+Ниже оставлена история исследований; старые "SHDR ещё не сделан" уже устарели.
+
+CURRENT OWNER PRIORITY, 2026-10-16: finish ISZ and native FULLRES first; do not start new DCG work.
+The updated shared HANDOFF.md (2026-10-16 11:17) and PLAN P145-P155 were reread.
+Other AI committed/pushed its own changes; we did not commit/push or reset anything.
+Our CTS integration snapshot includes HEAD217e6da1 plus the dirty source; the primary APK30820 is preserved.
+Read agent_native_isz_integration_20261016.txt in evidence/client_identity before older instructions below.
+
+НОВЫЙ РЕЗУЛЬТАТ 2026-10-16: читать client_identity/agent_cts_native_raw_breakthrough_20261016.txt
+и НОВЫЙ первый раздел DEVICE-FRONTIER. Реальный applicationId android.camera.cts/UID10469,
+RAW-only, forceSensorMode в session И каждом request: TELE5 даётQuadRAW/2x иTetraRAW/4x,
+MAIN3/UW4 даютQuadRAW/mode3.32 разныхRAW/тест, SHA иmatchingCaptureResult сохранены.
+ТелеFOVизмерен2.000x иоколо4x. Это БЕЗroot/Frida/VIF/SDK в этих захватах.
+Полный перенос вSHDR ещё НЕ сделан; CTS — отдельный диагностическийпакет, не приложение30820.
+NativeFULLRES/DCG пока НЕработают. Не применять старые patch поверх дерева и не пушить.
+
+АКТУАЛЬНОЕ ДОПОЛНЕНИЕ 2026-10-16: сначала прочитай FULLRES-NATIVE-MOSAIC-20261015.md (обновлён16-го).
+Последний рубеж: DEVICE-FRONTIER-20261016.md и client_identity/agent_cfa80_ingress_boundary_20261016.txt.
+20 точных проверок reset/pointer-chain PASS; генератор native markers7/8 после reset
+ещё не найден. Прямые usage/dataspace/streamUseCase управляют intent90, не marker80.
+Не подменять проверку пикселей флагом CFA. SDK/VIF не дал отдельного refresh карты;
+Reprocess backend в прошивке отсутствует. Main задаёт thread pools6, а не1.
+ADB снова online; основной APK30820 повторно проверен, probe45 установлен (SHA вDEVICE-FRONTIER).
+Новая граница: собственный UID10467 без спуфа достиг ENGINEER5 вVCF+VCH под пассивным
+наблюдателем, затем БЕЗ наблюдателя получен31 настоящий BIN RAW/mode2, matching timestamps.
+Это НЕ нативный ISZ/FULLRES/DCG и НЕ стабильный производственный обход.
+Читать client_identity/agent_engineer_own_uid_raw_followup_20261016.txt и новый первый
+раздел DEVICE-FRONTIER. Force5 теперь действительно копируется ДО early return Alpha;
+v42/43 выдавалиBIN из-за пропущенного ключа, v44 с исправлением дал0RAW/MCTFE/SIGABRT.
+Selector1 v45 также0RAW/MCTFE. TeleFULLRES50/8160x6144 безSDK иDCGnative2616 не настроили сессию.
+Новые чужие коммиты и dirty files сохранить; повторно читатьgitstatus перед правками.
+ВАЖНЫЙ контроль: MCTFE/HWL10-entry observer ломает дажеbaselineSDK50. БЕЗFridaтотжебазовый
+Teleprofileдаёт581preview+реальныйRAW8160x6144,mode18,100270080B,matchingVIFResult/UID10467.
+Негативныеinstrumentedresultsнеприравниватьнеинструментированномуповедению.
+force20+ultra1повторёнБЕЗFrida:0frames,тотжеMCTFEsystemevent. Этототказподтверждённезависимо.
+Свежий фактический рубеж: DEVICE-FRONTIER-20261016.md. Log32 дал552 DCG14 PRIVATE кадра, SDK UI3 дал577,
+но RAW ещё нет. После холодного старта main/UW/tele native preview дают лишь3 кадра/20s.
+Typed attribution alpha под UID10467 реально достиг AppType5 (VCF+VCH), затем PRIVATE-only упал в buffer cache.
+Установлен probe40 (SHAe526a17ac45bbfbc9c42f28d99a20906583e6fac1168e767dfc15fd444675916);
+ни успешный спуф, ни DCG preview не являются завершением пользовательской цели.
+Эксперимент configure-only с собственным UID10467 в свежем процессе:
+ограниченный цикл SDK setValue(1,5) во время configure не перевёл VCF в5
+(фактически2/isEng0), VCH не вызван, configure вернул-38. Всего36 вызовов;
+repeating/STILL не отправлялись. onClosed получен, saved0/-1/0 прочитаны трижды.
+Завершение всей очереди Binder не доказано.123 host-проверки,22 guards,
+javac/D8/signverify PASS. VCF-1 — подтверждённое начальное значение ELF;
+v39 остановился до configure, в v40 проверка исправлена.
+Подробности: agent_engineer_own_uid_race_live_boundary_20261016.txt, client_identity.
+SDK UI3 и полный ProUI16 при STILL упали в classifyOLBuilder16f718 (нет RDI output port).
+Реальные внутренние RAW14/stride7168 и LongRaw10/ShortRaw17/RAW3 наблюдены; PreviewRAW43 отсутствует.
+VIF capture.id контракт ПРОВЕРЕН на UID10467:3 разных RAW12 основной и3 разных RAW50 телевика,
+с реальными VIFResult timestamp/white/black/mode, JSON и SHA в reports/pd2454-vif-raw-20261016/.
+DCG с корректными3ролями и fresh VIF id опять падает в classifyOLBuilder16f718.
+Tele SW0 force20 вместо рабочегоHW18: preview0/RAW0, platform OL abort; это не готовый native Quad.
+Минимальныйforce20+ultra_highresolution1 тоже уже ПРОВЕРЕН:0кадров,MCTFE93359c→SIGABRT;
+earlyGetType/UpdateNZSLobserverнеполучилвызовов,поэтомуliveSW0/CPP4графнеустановлен.
+Не повторятькакнетестированныйкандидат; reports/pd2454-tele50-vif-force20-ultra-*.
+Log32 выбирает только realtime scene810 без capture nodes18/20. БезLog ProUI16 эти узлы есть,
+но VCF PHOTO3072 не соответствует CHI DCG14/2632, итог OL abort. UI3+P010 безLog даёт177 preview,
+но нынешний Pro/PAP STILL usecase1 снова не находит captureRDI.
+Stock VideoSnapshot template4/finalintent2 безPro/PAP проверен: actualscene1300=SAT_VIDEO_NORTYP,
+сноваNULLRDI. Usecase9 оказался MFNR auxiliary, не установленным VSS enum.
+Добавлен реальный encoderPRIVATE34/65536 в repeating Иcapture,4roles[4,1,0,0,6]:
+433preview/434encoder кадров и реальныйJPEG2891621B; RAW0,metadata/buffer1 зависают, позднийCHIRecovery.
+VSS source поELF/XML — YUV/Y2Y -> JPEG, неBayer14. Role12 вIC/Y2Y также не доказан Bayer RAW.
+SDK восстановлен, камеры закрыты. Отчёты pd2454-dcg14-video-encoder-vif-p010-*.
+Proper Alpha RAW graph конфигурирует3 external streams, но start-data-delivery permission(-1)
+падает до выдачи кадров; -1 точноHARD_DENIED, внутреннийsubcheck не наблюдён. FMQ-null после close — следствие.
+Engineer1 на плохом baseline не запускался. Trusted attribution chain не обходит проверку package/UID;
+публичного отдельногоHAL clientName нет. BSP7 не даёт нового доказанного DCG/NoRemo admission.
+Классификатор Alpha использует exact match; suffix не поможет. Provider1=5 перезаписывается CameraService
+при configure до HALrefresh, поэтому его поздний global readback не доказывает ENGINEER capture.
+APK30820 установлен: AE меняет ISO/выдержку при sensor requests0; серия20 RAW полностью склеена,
+JPEG8192x6144 SCA_20261015_205030.jpg SHA256e155a3bb35d40e53082c994ef93e9e2916e9fc33f8e1cb63298f064802882ca0.
+Это рабочий промежуточный HW-remosaic SDK путь, не требуемая нативная мозаика.
+Безремозаичные FULLRES/ISZ и DCG ещё НЕ получены. XCFA0 удаляется из session metadata до CHI;
+RAW-VIF10 и RAW-only rejected до CHI; получение внутреннего14bit не доказывает выдачу RAW приложению.
+UW inventory получен (Camera2 4 = internal2): nativefull4,2x3/21,DCG14mode10; main/UW4x не объявлен.
+Владелец освободил телефон, проверки разрешены; только ADB10AFAQ1QE60071E. Другие камеры закрывать корректно.
+Новый HEAD d26c5bf2 и последующие чужие коммиты сохранять. Наша новая правка arena.release ещё не в30820.
+Ниже предыдущая передача сохранена как история; её «не установлен/ждём ответа/>3 не проверено» устарели.
+
+ДОПОЛНЕНИЕ 2026-10-15:
+Владелец теперь требует FULLRES и ISZ 2x/4x БЕЗ аппаратного ремозаика плюс DCG на всех задних камерах.
+Прежнее разрешение считать HW-remosaic fallback завершением отменено. Не обещать поддержку до RAW/логов.
+В дереве уже профили FULLRES3/4/5, session-key/FPS fixes, снятый лимит3кадров и кандидат исправления AE.
+38 host tests PASS. Sabre201MP JPEG main/tele подтверждены; UW201MP save подтверждён логом,
+файл UW150822 уже отсутствует на телефоне, не пытайся его восстанавливать.
+Подготовлен APK30820 SHA25619541ebf918840482693800346faf044ab54d5e1f0ad35e841c8821dbafa3274,
+ещё НЕ установлен; установлен30819. Исправление AE/серия>3/нативная FULLRES-мозаика ещё не проверены на телефоне.
+Рабочий HEAD e40d6ed4 и последующие чужие коммиты сохранить. APK собирались из отдельных snapshots.
+Телефоном пользуется владелец; вопрос о свободном телефоне для тестов задан, ответ пока не получен.
+Первый следующий шаг после ответа: проверить AE30820, затем main full-mode4 / tele full-mode0,20
+с фактической проверкой ненулевого Quad/Tetra RAW. Подробности и ограничения NPU16MP в новом документе.
+Ниже сохранён прежний контекст; его main-only/не-собран/не-проверен201MP статусы исторические.
+
+Продолжи SCAMERA локально и собери новый APK из текущего дерева.
+Репозиторий: C:/Users/MECHREVO/Downloads/x200u/SCAMERA-PC/project.
+Ветка migration/nice-camera2, HEAD передачи 0a1573918363d3610868371be2b9820a8e7752e4 плюс незакоммиченные изменения.
+Другая нейросеть работает параллельно: сначала git status/diff, сохраняй все её коммиты и правки.
+НЕ делай git push, GitHub Actions, reset/stash/clean и не накладывай старые патчи поверх изменённых файлов.
+Всё уже сохранено в рабочем дереве. Git-история остаётся в исходном репозитории.
+
+СНАЧАЛА ПРОЧИТАЙ:
+1. research/handoff/HANDOFF.md и PLAN.md (P127–P140, P109l–q).
+2. .claude/skills/scamera/SKILL.md, AGENTS.md.
+3. research/handoff/FULLRES-SABRE2X-SHDR-20261015.md.
+4. research/handoff/SDK-RAW-ROUTES-20261014.md (старые результаты и свежий раздел Current owner scope).
+5. ../reports/pd2454-native-dcg14-video-afd-verification-20261015.txt.
+6. ../evidence/vivo_hal_2026-10-13/client_identity/agent_dcg_native_afd_null_boundary_20261015.txt.
+Последние сообщения владельца и этот промпт отменяют старые требования стокового NICE/AE/ZSL и финального APK из Actions.
+
+АКТУАЛЬНАЯ ЦЕЛЬ:
+Единственная склейка — HYBRID/SHDR. SCAM HDR удаляется; не возвращать его модели, Frida AE или старый планировщик.
+DCG, ISZ и FULLRES должны подавать настоящие Camera2 RAW в SHDR без root у приложения/worker.
+Стоковый ZSL-брекет не нужен. SDK FULLRES допускает проверенные три serial PSL RAW; не называть их ZSL.
+ISZ — отдельные модули с честной кратностью, processed output строго4:3. Ремозаичный fallback разрешён.
+Существующие DCG/FULLRES кнопки и ISZ-модули взаимоисключаются.
+FULLRES должна поддерживать НАСТОЯЩЕЕ Sabre2x: 8192x6144 RAW ->16384x12288 merge, без1x+resize.
+Порог16MP уже снят в Java и C++; оставлены реальные GPU/ByteBuffer/overflow/память, а не произвольный MP cap.
+
+ЧТО УЖЕ ЕСТЬ В ИСХОДНИКАХ:
+- VivoSdkRawSession/VivoSdkFullResCapture/SerialRawCapture: SDK40/33 до open, восстановление после close,
+  usage0, PRIVATE preview отдельно, STILL только RAW+JPEG; совпадение RAW/JPEG/result timestamp,
+  три разных ненулевых RAW8192x6144/mode13. Основная PD2454 camera3 проверена в APK30802.
+- VivoPd2454Isz: camera5 forceSensorMode6 в SESSION и каждом REQUEST, usage0,
+  реальный4x crop с HW remosaic. В APK30805 сохранён JPEG5184x3888, восемь прошлых RAW, workerUID10349.
+  Модуль на телефоне back8:9.6x(remosaic)=baseTele2.4*4. Долгое нажатие на кнопку объектива открывает overflow.
+  IszAspectCrop и matching gain-map crop дают4:3 без изменения native RAW4080x3072/CFA.
+- Sabre2x: NCH flag8 strict2x, FP16 для результата>INT_MAX RGB32, long-размеры в ScamRgb,
+  реальная проверка GPU texture/FBO allocation. Явный output2x не подменяется sensor-grid/CPU/upscale fallback.
+  Auto2x отключён для явного2x с пояснением; адаптивные12/16/20MP сохраняются.
+- Проверки:94/94 Java tests (11 suites), main compile; NDK syntax worker; native transport/guards test
+  реально выполнен на X200 с UID2000, PASS. XML:../reports/pd2454-sabre2x-host-tests-20261015/.
+  Native result:../reports/pd2454-sabre2x-native-check-result-20261015.txt.
+  Нативный unit-test не является фотосъёмкой201MP. Новый APK с этими изменениями ещё не собран.
+- kHybMergeMain1 НЕ менять. Его канонический SHA256:
+  a43afbb4c03af969e37e6f35f218ef033021e0b76135c2d67d583c15ca7f41f1.
+  Не менять CFA/шумовую модель и не подменять vendor gain значением ISO.
+
+DCG ПОКА НЕ РАБОТАЕТ — НЕ ВКЛЮЧАТЬ КАК ГОТОВУЮ ФУНКЦИЮ:
+Main native mode12 =4096x2632,14bit,DCG3, fused single output. Public RAW map только4096x3072.
+Свежие native пробы без SDK:2632 ->HAL-38;3072+SHDR1/count2/DCG2 ->configure/timeout безкадров;
+force12-only+JPEG ->SIGSEGV в HAL libcamxhwlfrontend+f8e08 на null Bayer RS/AFD config.
+Последняя video-проба (RAW useCase3 --el, TEMPLATE_RECORD, configuredJPEG, SHDR1/count2/DCG2):
+configure PASS, preview0/RAW0. Пассивный observer увидел HDRFeatureMode1 и обе RS-конфигурации nonnull,
+то есть прежний null устранён на этом graph, но доставка RAW всё равно не работает. Provider17595 сохранился.
+Не зацикливайся на уже устранённом null и не выдавай выбранный mode/white metadata за настоящий DCG RAW.
+Точные команды/логи:../reports/pd2454-native-dcg14-*20261015.txt.
+Установленный com.scamera.probe v23 соответствует локальному APK, UID10467.
+У native_raw ветки tag_ints сейчас игнорируются из-за раннего return: не заявлять проверку переданного AutoHDR без исправления probe/эхо.
+Безремозаичные ISZ main/tele тоже не подтверждены. Не переносить сенсормоды X300 Ultra на X200 Ultra.
+Mid-function HWL observers v1/v2/v3 RETIRED после instrumentation SIGILL; не запускать их.
+Пассивный AFD observer уже отсоединён, его injector остановлен. Не менять прошивку/HAL для приложения.
+
+СБОРКА НОВОГО ЛОКАЛЬНОГО APK:
+1. Сними свежий полный source snapshot: рабочее дерево включает мои untracked классы, одного HEAD недостаточно.
+2. Прогони нужные Java tests и native check tools/check_hybrid_fullres_2x.cpp; тесты не ослаблять.
+3. Пересобери CURRENT app/src/main/cpp/scam-neural-worker.cpp с CURRENT scam-hybrid.h через NDK.
+   Windows: ручной clang++ Android26/C++17/O2/pthread/fPIE/pie/static-libstdc++/max-page-size16384,
+   -ldl -lEGL -lGLESv3. Положи свежий worker в generated/scamNeuralAssets по рецепту HANDOFF.
+   Старый worker из local-sdk50-prep-20261014 не имеет новой логики: не переиспользовать.
+4. Собери template из snapshot, упакуй ТЕКУЩИМ tools/package_scam_neural.py и pinned manifest ScamNeuralWorker.java.
+   После P129 SCAM_TONE_FILES/SCAM HDR models удалены; старые verify-sdk50-local.py/build-sdk50 helpers
+   несовместимы без адаптации. Не возвращай removed assets/scam-aec и tone/forward-модели ради старого проверяльщика.
+   Нужные cached SHDR CRE/QNN/remosaic assets есть в ../evidence/vivo_hal_2026-10-13/local-sdk50-prep-20261014/assets/;
+   сверяй их по ТЕКУЩИМ pin hashes. Не читать/копировать local-secrets и приватные ключи в handoff/ответ.
+   Подпись через существующий package helper по HANDOFF. Не менять version.properties общего дерева.
+5. Проверь идентичность нового worker в assets и lib/arm64-v8a/libscamera_worker.so,
+   состав APK после P129, DEX/manifest, подпись, versionCode выше установленного30805 и SHA256 итогового APK.
+6. На телефоне X200 Ultra -s10AFAQ1QE60071E проверь ISZ4:3 и FULLRES+output2x.
+   Для Sabre2x нужен native log настоящей сетки16384x12288 и осмысленный сохранённый снимок,
+   не resize1x. Риск201MP: только4RGBA16F textures=6GiB, RGB16transport1.125GiB; запас памяти не гарантирован.
+   UltraHDR linear snapshot201MP>одного2GiB ByteBuffer: этот вариант пока имеет SDR fallback.
+   При OOM указать точную стадию; следующий шаг — полосовой FP16 transport/postpipeline без изменения ядра.
+7. DCG продолжать только по новым фактам HAL graph; подтверждение — ненулевой реальный RAW с нужным mode/bitdepth
+   и успешная обработка SHDR, не metadata. Если не получится, оставить выключенным и точно описать границу.
+8. Передай новый локальный APK, SHA256, исходники/логи и обновлённый handoff. НИЧЕГО НЕ ПУШИТЬ.

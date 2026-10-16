@@ -34,6 +34,13 @@ import org.robolectric.annotation.Implements;
 @Config(sdk = 35, application = Application.class, shadows = RawBinTest.HeapAllocator.class,
         instrumentedPackages = "com.particlesdevs.photoncamera.util")
 public class RawBinTest {
+    @Test public void halfCapableShdrRetainsNative200MpButKeepsRealBufferAndGpuBounds() {
+        assertTrue(RawBin.fits(16320, 12288, 16384, true));
+        assertFalse(RawBin.fits(16320, 12288, 16384));
+        assertFalse(RawBin.fits(16320, 12288, 8192, true));
+        assertFalse(RawBin.fits(24000, 18000, 65534, true));
+        assertFalse(RawBin.fits(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, true));
+    }
     /** Native memory as Java direct buffers (the binning itself is plain Java). */
     @Implements(Allocator.class)
     public static class HeapAllocator {

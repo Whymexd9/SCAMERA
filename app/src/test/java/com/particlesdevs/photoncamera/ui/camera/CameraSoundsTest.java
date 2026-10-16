@@ -46,6 +46,14 @@ public class CameraSoundsTest {
         assertFalse(CameraSounds.timerAudible(true, false));
     }
 
+    @Test public void synthesizedSoundsOnlyOnPd2454WithTheActualCtsPackage() {
+        assertTrue(CameraSounds.synthesizedFor(true, "android.camera.cts"));
+        assertFalse(CameraSounds.synthesizedFor(false, "android.camera.cts"));
+        assertFalse(CameraSounds.synthesizedFor(true, "org.codeaurora.snapcam"));
+        assertFalse(CameraSounds.synthesizedFor(true, "android.camera.cts.extra"));
+        assertFalse(CameraSounds.synthesizedFor(true, null));
+    }
+
     @Test
     public void bothSwitchesAreInTheSettingsAndTheOldBurstSoundsAreGone() throws Exception {
         File xml = new File("src/main/res/xml/preferences.xml");

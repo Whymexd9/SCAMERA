@@ -1,0 +1,97 @@
+LATEST 2026-10-16: read FULLRES-NATIVE-READY-20261016.md and CONTINUE-ISZ-FULLRES-20261016.txt first. Native FULLRES RAW/AE is proven on all rear lenses; main/UW50 JPEG proven; tele200 JPEG remains a LOW_MEMORY boundary with a separately tested source fix. Full app integration is delegated; DCG deferred. Older statuses below are historical.
+
+Продолжи SCAMERA локально. Ничего не коммитить, не пушить, не запускать Actions,
+не загружать изменения/артефакты во внешние сервисы. Владелец передаёт работу другой
+нейросети; старые требования CI-публикации здесь отменены его последней командой.
+
+Рабочий репозиторий:
+C:\Users\MECHREVO\Downloads\x200u\SCAMERA-PC\project
+Ветка migration/nice-camera2. Другая нейросеть работает в том же дереве. Начни с
+git status/diff/log, прочитай AGENTS.md, research/handoff/HANDOFF.md и PLAN.md
+(в том числе новые P145-P159), .claude/skills/scamera/SKILL.md, затем обязательно
+research/handoff/NATIVE-ISZ-READY-20261016.md — это текущая граница готовности.
+Старые отрицательные статусы в DEVICE-FRONTIER/CONTINUE-SNAPDRAGON-CLIENT оставлены
+как история и не отменяют свежую успешную интеграцию ISZ/SHDR.
+
+Не откатывай, не stash/reset/clean, не накладывай архивные патчи поверх проекта.
+Не коммить чужое. Не трогай kHybMergeMain1. Исследования HAL/библиотеки в evidence/;
+local-secrets и приватные ключи не читать. Архив содержит целые исходники и патчи
+для сравнения; его project/ можно использовать только как отдельную копию.
+
+Подтверждено НА ТЕЛЕФОНЕ vivo X200 Ultra PD2454/SM8750, adb10AFAQ1QE60071E:
+- Настоящий applicationId android.camera.cts попадает в AppType21. Это отдельно
+  установленный обычный UID10469, не поддельный AttributionSource под чужим UID.
+  -PscameraCtsNativeRaw=true включает этот вариант; default org.codeaurora.snapcam
+  не меняется, основной APK30820/UID10349 сохранён.
+- Один RAW_SENSOR ImageReader, обычный usage3, никаких PRIVATE/YUV/JPEG surfaces.
+  forceSensorMode int[] в SESSION И КАЖДОМ REQUEST, developed RAW viewfinder.
+  MAIN camera3/mode3=Quad2x; UW4/mode3=Quad2x;
+  TELE5/mode5=Quad2x, mode7=Tetra4x. Без root/Frida/VIF/SDK в успешных захватах.
+- Все ЧЕТЫРЕ профиля реально выбраны в UI SCAMERA30827, сделаны SHDR, собственный
+  ремозаик и сохранены JPEG: main/UW4096x3072, tele4080x3060, строго4:3.
+  PID14268/UID10469. Логи, JPEG, screenshots, geometry/SHA:
+  SCAMERA-PC/reports/pd2454-30827-native-isz-ui-20261016/.
+  Уникальные RAW и их CFA/FOV подтверждены отдельными сохранёнными измерениями.
+- RAW-only preview исправлен: observeMosaic+requestRender на matched RAW,
+  MainRenderer учитывает forced LiveRawFrame. P134 цвет/LUT сохранены.
+- Exact CTS+PD2454 audio fallback на ToneGenerator исправляет native SIGBUS
+  SoundDecoder до открытия камеры. Оригинальные MP3 не изменены. Не возвращай
+  известный падающий VivoCtsAudioProbeActivity (только архив исследований).
+
+Актуальный ЛОКАЛЬНЫЙ диагностический APK (не релиз/не Actions):
+SCAMERA-PC/deliverables/local-shdr-20261015/SCAMERA-0.98-30827-CTS-NATIVE-ISZ-LOCAL-DIAGNOSTIC.apk
+SHA256 6cb35d9960dca418d88c1295704b094c614d5852ecbd63c9db759dc39e5339fd
+Установленные байты совпали. Свежий native worker,25 pinned assets проверены.
+Снимок исходников source-snapshot-20261016-134254/project, HEADe357ee43+dirty.
+Не заменяй основной пакет и не удаляй данные. После тестов CTS остановлен,
+последний dumpsys reports/pd2454-30827-final-idle-camera-20261016.txt показывает[]
+активных клиентов. Перед следующими тестами заново проверь свободный телефон/ADB.
+
+Проверки:
+- 60 Java-тестов/8 suites PASS на отдельном30827 source snapshot, без пропусков.
+  reports/pd2454-30827-isolated-host-tests-20261016/manifest.json и XML/log.
+  Общий app/build может перезаписываться другой нейросетью — не путай результаты.
+- Воспроизводимый actual-source host runner:
+  py -3 evidence/vivo_hal_2026-10-13/client_identity/agent_cts_sdk_bootstrap_host_20261016/run_checks.py
+  29 bootstrap guards +16 proxy/delegation checks +123 lifecycle assertions PASS.
+  Android/provider/reflection/spoof зависимости здесь host fakes, не доказательство
+  Binder/HAL или работы телефона. Ещё22 source-order guards PASS.
+- Все JPEG декодированы, SHA перепроверены,4:3 проверено:
+  tools/verify_native_isz_jpegs.py (bundled Python с Pillow), contact sheet просмотрен.
+- git diff --check PASS. Исходный verify_transfer.py сравнивает давний перенос,
+  сейчас даёт1130 несовпадений после накопленных изменений. Это НЕ текущая успешная
+  проверка. Оригинальный manifest не переписывали; у нового checkpoint свои
+  SHA256SUMS.txt и проверка каждого файла ZIP. Подробный старый результат сохранён.
+
+Что ОСТАЛОСЬ, в заданном владельцем порядке:
+1. FULLRES БЕЗ аппаратного ремозаика. SDK50 на main/UW/tele ранее работал, но это
+   HW-remosaic и не удовлетворяет запросу. Нативные50/200MP приложению не получены.
+   Usage3 отсекает нестандартный RAW размер в CameraService; usage0 проходит
+   createStream и упирается в HAL endConfigure Function not implemented/onError4.
+   Последние6 свежих no-observer тестов подтвердили это и со специальным bootstrap:
+   SDK40=1/-1 до open, восстановление0 ПЕРЕД настоящим endConfigure после создания
+   потоков. Main4 SDK1/-1, UW4, tele50 mode20(SW0)/mode1(NoRemosaic2), tele200 mode0
+   все дали0 RAW. Сводка reports/pd2454-cts-native-fullres-end-gate-summary-20261016.json.
+   Не повторяй эти же проверки без новой причины. Debug hook не переносить в production.
+   Изучай writer внутреннего stream.cfaPattern7/8 и согласованный native full-RAW
+   graph. Зарегистрированный XCFA session tag фильтруется сервером, поскольку его
+   нет в availableSessionKeys; клиентская подмена характеристик это не обходит.
+   Читать agent_xcfa_session_filter_20261015.txt, agent_cfa80_ingress_boundary_20261016.txt,
+   agent_native_fullres_route_20261015.txt. Echo тега не доказывает реальный RAW.
+2. Довести требуемый4x для main/UW: настоящих native4x строк у них не найдено.
+   Не выдавать native2x+software crop за4x сенсора. Владелец ранее допускал честный
+   запасной вариант с4:3; сейчас такой fallback не добавлен. Сохранить P148 lens
+   crop и пользовательские модули; не занимать/переписывать их слоты молча.
+3. Только затем DCG на rear-модулях: работающий app-delivered DCG RAW ещё не
+   подтверждён. Новых DCG-проб после приоритета ISZ/FULLRES не запускали.
+   Metadata14bit/PRIVATE preview сами по себе не доказывают DCG RAW/SHDR.
+4. P146 отдельная группа FULLRES настроек всё ещё открыта. Sabre2x искусственный
+   лимит снят ранее; аппаратные/memory guards сохранять. Настоящий201MP результат
+   не подтверждён. SCAM HDR/старый NICE ZSL bracket не возвращать, нужен SHDR.
+
+Пользуйся root только для чтения/изучения HAL. Никаких правок HAL, прошивки,
+системных свойств или подмены возвращаемых значений ради видимости успеха.
+Снимать и обрабатывать нужно обычным UID приложения. «Работает» — по кадрам,
+matching timestamps, пиксельной мозаике/увеличению, SHDR и сохранённому результату.
+Все решения принимай самостоятельно; спрашивай только если действительно нужны
+данные/подключение/сцена с телефона. Ничего никуда не загружать.

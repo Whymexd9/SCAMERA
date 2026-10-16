@@ -128,7 +128,7 @@ public final class ScamHybridBurst implements ScamTransport {
         // P27 any resolution: no megapixel cap. Only the hard limits stop the hybrid (sensor-grid RGB above one 2 GB buffer, a side
         // above the GPU's limit); ScamProcessor bins such a stream with RawBin before, so this is a defensive check.
         final int gpuMaxSide = com.particlesdevs.photoncamera.processing.opengl.GLLimits.get().maxSide();
-        final String beyond = com.particlesdevs.photoncamera.processing.RawBin.limitExceeded(width, height, gpuMaxSide);
+        final String beyond = com.particlesdevs.photoncamera.processing.RawBin.limitExceeded(width, height, gpuMaxSide, true);
         if (beyond != null) throw new IOException("Hybrid: RAW " + width + "x" + height
                 + Lang.t(" за пределами склейки (", " is beyond the merge limits (") + beyond + ")");
         if (source.isEmpty() || source.size() > 64) throw new IOException(Lang.t("SHDR: нужны 1–64 кадра", "SHDR: needs 1–64 frames"));

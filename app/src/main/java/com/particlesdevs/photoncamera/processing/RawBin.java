@@ -37,11 +37,20 @@ public final class RawBin {
         return limitExceeded(w, h, gpuMaxSide) == null;
     }
 
+    public static boolean fits(int w, int h, int gpuMaxSide, boolean halfTransport) {
+        return limitExceeded(w, h, gpuMaxSide, halfTransport) == null;
+    }
+
     /** Which hard limit a w x h stream is beyond (for the log), or null when it {@link #fits}. */
     public static String limitExceeded(int w, int h, int gpuMaxSide) {
+        return limitExceeded(w, h, gpuMaxSide, false);
+    }
+
+    public static String limitExceeded(int w, int h, int gpuMaxSide, boolean halfTransport) {
         if (w <= 0 || h <= 0) return "no size";
-        final long rgb = 12L * w * h;
-        if (rgb > MAX_RGB_BYTES) return "sensor-grid RGB " + (rgb >> 20) + " MB above 2 GB";
+        final long pixels = (long) w * h, bytesPerPixel = halfTransport ? 6 : 12;
+        if (pixels > MAX_RGB_BYTES / bytesPerPixel)
+            return "sensor-grid RGB " + (pixels / 1048576 * bytesPerPixel) + " MB above 2 GB";
         final int side = Math.max(w, h);
         if (side > gpuMaxSide) return "side " + side + " above the GPU limit " + gpuMaxSide;
         if (side > MAX_SIDE) return "side " + side + " above the merge transport's " + MAX_SIDE;
@@ -53,9 +62,14 @@ public final class RawBin {
      * them). Returns the linear factor (1 = untouched, 2 = half width and height, ...). A stream that fits is never touched.
      */
     public static int binOversized(List<ImageFrame> frames, float black, float white, int gpuMaxSide) throws IOException {
+        return binOversized(frames, black, white, gpuMaxSide, false);
+    }
+
+    public static int binOversized(List<ImageFrame> frames, float black, float white, int gpuMaxSide,
+                                   boolean halfTransport) throws IOException {
         if (frames.isEmpty() || frames.get(0).buffer == null) return 1;
         int w = frames.get(0).width, h = frames.get(0).height;
-        final String reason = limitExceeded(w, h, gpuMaxSide);
+        final String reason = limitExceeded(w, h, gpuMaxSide, halfTransport);
         if (reason == null) return 1;
         final int w0 = w, h0 = h;
         final MosaicBlockDetector.Result mosaic = MosaicBlockDetector.detect(frames.get(0).buffer, w, h, w * 2, black, white, 8);
@@ -63,7 +77,7 @@ public final class RawBin {
         final int block0 = block;
         int factor = 1;
         final long started = System.nanoTime();
-        while (!fits(w, h, gpuMaxSide)) {
+        while (!fits(w, h, gpuMaxSide, halfTransport)) {
             final int[] out = outputSize(w, h, block);
             if (out[0] < 64 || out[1] < 64) throw new IOException("RAW " + w0 + "x" + h0 + ": too small to bin");
             final long inBytes = (long) w * h * 2, outBytes = (long) out[0] * out[1] * 2;

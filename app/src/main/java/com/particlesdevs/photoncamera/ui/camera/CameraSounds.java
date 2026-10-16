@@ -5,7 +5,10 @@ import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.SoundPool;
+import android.media.ToneGenerator;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
@@ -32,6 +35,18 @@ public final class CameraSounds {
     private volatile boolean shutterLoaded;
     private MediaPlayer timer;
     private Boolean forced;
+    private ToneGenerator tones;
+    private final Handler toneHandler = new Handler(Looper.getMainLooper());
+    private int timerTicks;
+    private final Runnable timerTick = new Runnable() {
+        @Override public void run() {
+            synchronized (CameraSounds.this) {
+                if (tones == null || timerTicks <= 0) return;
+                tones.startTone(ToneGenerator.TONE_PROP_BEEP, 80);
+                if (--timerTicks > 0) toneHandler.postDelayed(this, 1000);
+            }
+        }
+    };
 
     public CameraSounds(Context context) {
         this.context = context.getApplicationContext();
@@ -47,7 +62,23 @@ public final class CameraSounds {
         return switchOn && normalRinger;
     }
 
+    static boolean synthesizedFor(boolean pd2454, String packageName) {
+        return pd2454 && "android.camera.cts".equals(packageName);
+    }
+
+    private boolean synthesized() {
+        return synthesizedFor(com.particlesdevs.photoncamera.capture.VivoQcomModes.device(), context.getPackageName());
+    }
+
     public synchronized void load() {
+        // PD2454's CTS media path crashes natively in MP3 extraction, including an explicit AOSP decoder.
+        if (synthesized()) {
+            if (tones == null) {
+                try { tones = new ToneGenerator(AudioManager.STREAM_SYSTEM, 100); }
+                catch (RuntimeException error) { Log.w(TAG, "CTS tone unavailable: " + error.getMessage()); }
+            }
+            return;
+        }
         if (pool == null) {
             AudioAttributes attrs = new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
@@ -66,6 +97,9 @@ public final class CameraSounds {
     }
 
     public synchronized void release() {
+        toneHandler.removeCallbacks(timerTick);
+        timerTicks = 0;
+        if (tones != null) { tones.release(); tones = null; }
         if (pool != null) { pool.release(); pool = null; shutterLoaded = false; }
         if (timer != null) { timer.release(); timer = null; }
     }
@@ -97,12 +131,25 @@ public final class CameraSounds {
     public void shutter() {
         if (!shutterAudible(PreferenceKeys.isCameraSoundsOn(), regionForces(), normalRinger())) return;
         SoundPool p;
-        synchronized (this) { p = pool; }
+        synchronized (this) {
+            if (synthesized()) {
+                if (tones != null) tones.startTone(ToneGenerator.TONE_PROP_ACK, 120);
+                return;
+            }
+            p = pool;
+        }
         if (p != null && shutterLoaded) p.play(shutterId, 1f, 1f, 1, 0, 1f);
     }
 
     /** The countdown sound, from its start. */
     public synchronized void timerStart() {
+        if (synthesized()) {
+            if (tones == null || !timerAudible(PreferenceKeys.isTimerSoundOn(), normalRinger())) return;
+            toneHandler.removeCallbacks(timerTick);
+            timerTicks = 11;
+            toneHandler.post(timerTick);
+            return;
+        }
         if (timer == null || !timerAudible(PreferenceKeys.isTimerSoundOn(), normalRinger())) return;
         try {
             timer.seekTo(0);
@@ -114,6 +161,9 @@ public final class CameraSounds {
 
     /** Cut the countdown sound (timer finished or cancelled). */
     public synchronized void timerStop() {
+        toneHandler.removeCallbacks(timerTick);
+        timerTicks = 0;
+        if (tones != null) tones.stopTone();
         if (timer == null) return;
         try {
             if (timer.isPlaying()) timer.pause();

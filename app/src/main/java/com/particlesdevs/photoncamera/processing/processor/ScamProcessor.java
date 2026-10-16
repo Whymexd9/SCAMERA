@@ -281,13 +281,14 @@ public class ScamProcessor extends ProcessorBase {
         // sensor-grid RGB float result above 2 GB, i.e. above ~178 MP, or a side above the GPU's texture / render-target limit) is
         // binned 2x2 (same colours averaged) as the last resort instead of failing.
         final int gpuMaxSide = GLLimits.get().maxSide();
+        final boolean halfCapable = PreferenceKeys.isScamHybridEnabled();
         int rawBinning = 1;
-        if (!RawBin.fits(mImageFramesToProcess.get(0).width, mImageFramesToProcess.get(0).height, gpuMaxSide)) {
+        if (!RawBin.fits(mImageFramesToProcess.get(0).width, mImageFramesToProcess.get(0).height, gpuMaxSide, halfCapable)) {
             // P127: the stream's levels at its bit depth (RawLevels) for the mosaic check of the binning
             final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
                     com.particlesdevs.photoncamera.processing.RawLevels.current(characteristics, captureResult);
             try {
-                rawBinning = RawBin.binOversized(mImageFramesToProcess, levels.meanBlack(), levels.white, gpuMaxSide);
+                rawBinning = RawBin.binOversized(mImageFramesToProcess, levels.meanBlack(), levels.white, gpuMaxSide, halfCapable);
             } catch (java.io.IOException e) {
                 throw new IllegalStateException(e.getMessage(), e);
             }

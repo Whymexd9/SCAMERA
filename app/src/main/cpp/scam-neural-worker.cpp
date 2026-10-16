@@ -123,7 +123,8 @@ int main(int argc,char** argv) {
             }
             // NCH v10 = the SCAM Hybrid transport (per-frame roles and noise); anything else is the SCAM 7-slot burst.
             worker_crash::mark("burst map");
-            scam::MappedHybridBurst hybridBurst(argv[3]);
+            const bool requestedHalf=access((std::string(argv[2])+"/rgb-half").c_str(),F_OK)==0;
+            scam::MappedHybridBurst hybridBurst(argv[3],requestedHalf);
             std::unique_ptr<scam::MappedScamBurst> mapped;
             if(!hybridBurst.hybrid)mapped=std::make_unique<scam::MappedScamBurst>(argv[3]);
             // Debug: keep the burst (touch <external files>/scam_keep) so the merge can be replayed
@@ -260,7 +261,7 @@ int main(int argc,char** argv) {
             };
             // P153: the halves go straight into the mapped output (below): no 1.2 GB half copy of a 200 MP 2x grid and one pass less;
             // a null source marks that part. Only the plain write path (no mapping) still converts into `half` first.
-            const bool halfOut=hybrid&&access((std::string(argv[2])+"/rgb-half").c_str(),F_OK)==0;
+            const bool halfOut=hybrid&&requestedHalf;
             if(halfOut){
                 parts[0]={nullptr,result.size()*sizeof(uint16_t)};
                 report("SCAM RGB: written as half floats ("+std::to_string(result.size()*2>>20)+" MB)");

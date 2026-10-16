@@ -11,6 +11,7 @@ public final class SerialRawCapture {
     }
 
     private final int count;
+    private final boolean requiresJpeg;
     private final Listener listener;
     private final HashSet<Long> timestamps = new HashSet<>();
     private int index = -1;
@@ -19,8 +20,13 @@ public final class SerialRawCapture {
     private boolean raw, result, jpeg, sequence, finished;
 
     public SerialRawCapture(int count, Listener listener) {
-        if (count < 1 || count > 16 || listener == null) throw new IllegalArgumentException("Invalid serial RAW series");
+        this(count, true, listener);
+    }
+
+    public SerialRawCapture(int count, boolean requiresJpeg, Listener listener) {
+        if (count < 1 || count > 64 || listener == null) throw new IllegalArgumentException("Invalid serial RAW series");
         this.count = count;
+        this.requiresJpeg = requiresJpeg;
         this.listener = listener;
     }
 
@@ -86,7 +92,7 @@ public final class SerialRawCapture {
     public synchronized void cancel() { finished = true; }
 
     private void check() {
-        if (raw && result && jpeg && sequence) advance();
+        if (raw && result && (!requiresJpeg || jpeg) && sequence) advance();
     }
 
     private void advance() {

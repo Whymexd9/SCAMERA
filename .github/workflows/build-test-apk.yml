@@ -149,6 +149,8 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-native-widen
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_fullres_2x.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-fullres-2x
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-fullres-2x
+          g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_mosaic_chroma_bands.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-mosaic-chroma-bands
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-mosaic-chroma-bands
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_still.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-still
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-still
           g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_scam_probe.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-scam-probe
