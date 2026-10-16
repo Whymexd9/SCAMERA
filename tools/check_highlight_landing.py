@@ -16,8 +16,6 @@ of the ceiling, i.e. a large blown area):
 - without clipped data (headroomU 0) the landing does nothing.
 A blown disc with a soft edge on a mid grey, with the real mask: the disc lands on white, and the steepest step across its
 edge is not steeper than without the landing (owner: «очень резкие переходы с уходом в серый» of the per-pixel landing).
-P159: a negative detail delta (the sharpening's undershoot) no longer darkens a pixel the tone took to near white when the
-frame has clipped data; without clipped data, or with the landing off, the same delta still darkens it.
 """
 import sys
 from pathlib import Path
@@ -226,37 +224,6 @@ def main():
     check(s1 <= s0 * 1.05, 'the landing makes the edge of the blown disc sharper (%.4f > %.4f)' % (s1, s0))
     check(np.all(np.diff(row1[:S // 2]) >= -1e-5), 'the edge of the blown disc does not rise monotonically')
 
-    # P159: the sharpening's undershoot on a near-white pixel (the full-size merge darker than the colour source: a negative
-    # detail delta)
-    lv = np.geomspace(0.3 * clip, clip, 48).astype(np.float32)
-    flat = np.zeros((1, len(lv), 4), np.float32)
-    flat[0, :, :3] = lv[:, None]
-    darker = flat.copy()
-    darker[0, :, :3] *= 0.6
-    lum_f = flat[0, :, :3] @ np.array([0.2126, 0.7152, 0.0722])
-    fz_f = np.zeros_like(flat)
-    fz_f[0, :, 0] = np.interp(np.minimum(lum_f, table.max()), table, grid) ** (1 / 2.2)
-    # no blown neighbourhood (ArkHl 0): no landing, only the undershoot rule acts (it follows the pixel's own lightness)
-    sh = np.zeros((1, len(lv)), np.float32)
-    plain = render(flat, fz_f, sh, soft)[0]
-    rimmed = render(flat, fz_f, sh, soft, full=darker, detail=1.0)[0]
-    rimmed_off = render(flat, fz_f, sh, 0.0, full=darker, detail=1.0)[0]
-    plain_off = render(flat, fz_f, sh, 0.0)[0]
-    L = lambda c: oklab(np.maximum(c, 0) ** 2.2)[:, 0]
-    white = L(plain) >= 0.9
-    dark_on = (L(plain) - L(rimmed))[white].max() if white.any() else 0.0
-    dark_off = (L(plain_off) - L(rimmed_off))[white].max() if white.any() else 0.0
-    print('  undershoot on near-white pixels (L >= 0.9): L lost %.4f with P159, %.4f without' % (dark_on, dark_off))
-    check(white.any(), 'the test is moot: no near-white pixel')
-    check(dark_off > 0.01, 'the test is moot: the delta does not darken without the landing')
-    check(dark_on < 0.35 * dark_off, 'a near-white pixel is still darkened by the undershoot (%.4f)' % dark_on)
-    same = np.abs(render(flat, fz_f, sh, soft, headroom=0, full=darker, detail=1.0)[0]
-                  - render(flat, fz_f, sh, 0.0, headroom=0, full=darker, detail=1.0)[0]).max()
-    check(same < 1e-6, 'the undershoot rule acts without clipped data (%.2e)' % same)
-    keep = L(plain) < 0.75
-    if keep.any():
-        kept = (L(plain) - L(rimmed))[keep].min()
-        check(kept > 0.005, 'the undershoot on a darker pixel was removed too (%.4f)' % kept)
     if FAILURES:
         print('highlight landing check FAILED (%d)' % len(FAILURES))
         return 1

@@ -40,6 +40,8 @@ public final class ArkAe {
     public static final class Result {
         public float ae = 1f, clip = 1f, deficit = 1f, effS, effH, nf = 1f;
         public float p10, p50, p98, p995, mean, geo, gmax, ovArea, flat, spread, r, m, realPeak;
+        /** P159: p98 / p995 of the max channel beyond the ceiling ({@link Stats#tail}); = p98 / p995 below it. */
+        public float p98x, p995x;
         public float maxGainByNoise = 0f;
         public boolean bento;
         public float slope, sp, tp, minEv, maxEv, sat, ev;
@@ -48,10 +50,10 @@ public final class ArkAe {
         /** One line in the spirit of the mod's SMART_HDR_STAT log (for a side-by-side with logcat FC_HOOK of ArkCam). */
         public String describe() {
             return String.format(Locale.ROOT,
-                    "clip=%.3f gmax=%.3f ae=%.4f geo=%.5f mean=%.5f p10=%.5f p50=%.5f p98=%.5f p995=%.5f nf=%.3f deficit=%.4f"
+                    "clip=%.3f gmax=%.3f ae=%.4f geo=%.5f mean=%.5f p10=%.5f p50=%.5f p98=%.5f p995=%.5f p98x=%.3f p995x=%.3f nf=%.3f deficit=%.4f"
                             + (maxGainByNoise > 0f ? String.format(Locale.ROOT, " gainClamp=%.3f", maxGainByNoise) : "")
                             + " effS=%.4f effH=%.4f flat=%.3f spread=%.4f ov=%.4f bento=%d agx(slope=%.3f sp=%.2f tp=%.2f ev=[%.2f,%.2f]+%.2f sat=%.2f look=%d)",
-                    clip, gmax, ae, geo, mean, p10, p50, p98, p995, nf, deficit, effS, effH, flat, spread, ovArea, bento ? 1 : 0,
+                    clip, gmax, ae, geo, mean, p10, p50, p98, p995, p98x, p995x, nf, deficit, effS, effH, flat, spread, ovArea, bento ? 1 : 0,
                     slope, sp, tp, minEv, maxEv, ev, sat, look);
         }
     }
@@ -111,6 +113,8 @@ public final class ArkAe {
     public static final class Stats {
         public float gmax = -1000f;
         public final double[] hy = new double[BINS], hm = new double[BINS];
+        /** P159: the max channel's weight above the ceiling by {@link #tailBin} (zeros when nothing is above it). */
+        public final double[] tail = new double[TAIL_BINS];
         public double tot, sumY, sumLog;
     }
 
@@ -120,7 +124,13 @@ public final class ArkAe {
      * {@code sums} one (sum of luma, sum of log luma) float pair per work group, added here in double.
      */
     public static Stats fromGpu(int maxKey, int[] hy, int[] hm, int[] sums) {
+        return fromGpu(maxKey, hy, hm, sums, null);
+    }
+
+    /** {@link #fromGpu(int, int[], int[], int[])} with the tail beyond the ceiling (P159; null: none). */
+    public static Stats fromGpu(int maxKey, int[] hy, int[] hm, int[] sums, @androidx.annotation.Nullable int[] tail) {
         Stats st = new Stats();
+        if (tail != null) for (int i = 0; i < Math.min(tail.length, TAIL_BINS); i++) st.tail[i] = tail[i] & 0xffffffffL;
         // the CPU loop starts at -1000: a smaller maximum stays -1000 as there
         if (maxKey != 0) st.gmax = Math.max(Float.intBitsToFloat(maxKey < 0 ? maxKey & 0x7fffffff : ~maxKey), -1000f);
         double tot = 0;
@@ -191,6 +201,7 @@ public final class ArkAe {
                 int im = (int) (clamp(mv * invClip, 0f, 1f) * 4095.99f);
                 hy[iy] += w;
                 hm[im] += w;
+                if (mv * invClip > 1f) st.tail[tailBin(mv * invClip)] += w;                      // P159
                 tot += w;
                 if (w != 0) {
                     sumY += yv * w;
@@ -202,6 +213,37 @@ public final class ArkAe {
         st.sumY = sumY;
         st.sumLog = sumLog;
         return st;
+    }
+
+    /**
+     * P159: the max channel above the ceiling in log2 bins, 12 an octave over 4 octaves (16 x the ceiling; the last bin takes
+     * everything higher). The native smart_hdr caps the ceiling at 4, but the Bento frames here bring data far above it (an
+     * LED screen over a concert hall: 2 % of the frame at 7-10 against the ceiling 4): its p98 / p995 stood at the ceiling and
+     * the highlight strength of the fusion came out too small (effH 1.26 of 2), the screen stayed above white and the dark
+     * text on it went pale. Only the highlight strength reads the tail; the exposure and the rest stay as they were.
+     */
+    public static final int TAIL_BINS = 48, TAIL_PER_OCTAVE = 12;
+
+    /** The tail bin of a max channel at {@code ratio} x the ceiling (> 1). */
+    static int tailBin(float ratio) {
+        return Math.min(TAIL_BINS - 1, Math.max(0, (int) ((float) (Math.log(ratio) / Math.log(2.0)) * TAIL_PER_OCTAVE)));
+    }
+
+    /**
+     * The q-quantile of the max channel with the tail beyond the ceiling: {@code below} when the quantile lies at or under
+     * the ceiling, else the upper edge of the tail bin that reaches it.
+     */
+    static double beyond(double q, double below, double clip, double tot, double[] tail) {
+        double above = 0;
+        for (double v : tail) above += v;
+        double need = q * tot - (tot - above);
+        if (above <= 0 || need <= 0) return below;
+        double acc = 0;
+        for (int k = 0; k < tail.length; k++) {
+            acc += tail[k];
+            if (acc >= need) return clip * Math.pow(2.0, (k + 1) / (double) TAIL_PER_OCTAVE);
+        }
+        return clip * Math.pow(2.0, tail.length / (double) TAIL_PER_OCTAVE);
     }
 
     /** The data ceiling of smart_hdr: the maximum when above 1.05, at most 4, else 1. */
@@ -242,6 +284,9 @@ public final class ArkAe {
         if (p995 < 0) p995 = p98;
         if (p98 == clip) p98 = clip * 0.99975586;
         r.p10 = (float) p10; r.p50 = (float) p50; r.p98 = (float) p98; r.p995 = (float) p995;
+        // P159: the bright area's own level beyond the ceiling, for the highlight strength only
+        final double p98x = beyond(0.98, p98, clip, tot, st.tail), p995x = beyond(0.995, p995, clip, tot, st.tail);
+        r.p98x = (float) p98x; r.p995x = (float) p995x;
         final double meter = r.geo;
         final double fp = 0.0;                                                               // no face metering
         double nf = 1.0;                                                                     // iso ratio 0x72bac-0x72c3c
@@ -312,8 +357,8 @@ public final class ArkAe {
             double m = Math.min(Math.max((sp50 - 0.2) / 0.22, 0), 1);                          // 0x72f3c-0x72f6c
             double shadowF = (1 - 0.35 * m * m) * (rr + 0.5 * rr * rr) / (1 + 1.5 * rr);        // 0x72f50-0x72f78
             double effS = Math.max(nf * (s.shadowStr * shadowF + 0.5 * log2(Math.max(deficit, 1))), 0);   // 0x72f7c-0x72fd4
-            double e = Math.min(Math.max(p995 * a - bt, 0) / Math.max(bt, 0.5), 0.5);           // 0x72f98-0x72fb8
-            double realPeak = a * (p98 * (1 - e) + p995 * e);                                   // 0x72fc0-0x72fd8
+            double e = Math.min(Math.max(p995x * a - bt, 0) / Math.max(bt, 0.5), 0.5);          // 0x72f98-0x72fb8
+            double realPeak = a * (p98x * (1 - e) + p995x * e);                                 // 0x72fc0-0x72fd8 (P159: x)
             double need = realPeak > bt ? log2(realPeak / bt) / 1.5 : 0.0;                      // 0x72fdc-0x72ffc
             double effH = Math.min(need * Math.max(s.hlBoost, 0), s.highlightStr);              // 0x73038-0x7305c
             double q = Math.max(1 - spread / Math.max(s.darkPixelThresh * 0.05, 0.001), 0);      // 0x73000-0x73058

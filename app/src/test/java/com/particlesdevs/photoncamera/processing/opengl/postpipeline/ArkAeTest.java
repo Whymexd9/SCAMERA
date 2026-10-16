@@ -37,7 +37,9 @@ public class ArkAeTest {
     private static final Object[][] CASES = {
             {"day", 1.0, false, 0, 0, 0, 4, "", new double[]{1.20914799, 1.9526, 0.00286025391, 0.177812451, 1.65656372, 1.83199263, 0.103620653, 1, 1.19719661, 0.566959553, 0.93236604, 2.7, -8.5, 0.26578776}},
             {"dark", 0.05, false, 0, 0, 0, 4, "", new double[]{5, 1, 0, 0.0087890625, 0.0827636719, 0.0915527344, 0.0051851803, 1, 1, 0.457088279, 0, 2.7, -8.5, 0}},
-            {"bento", 1.0, true, 0, 0, 0, 4, "", new double[]{0.784602368, 4, 0.0029296875, 0.177734375, 3.99902344, 3.99902344, 0.110117321, 1, 1.73614505, 0.841465513, 1.31440628, 2.7, -8.5, 0.158040365}},
+            // P159: effH 2 (the highlight strength reads the bright area beyond the ceiling of 4, ArkAe.tailBin) instead of the
+            // native 1.31440628, which saw the 7x Bento corner at the ceiling; everything else as the reference
+            {"bento", 1.0, true, 0, 0, 0, 4, "", new double[]{0.784602368, 4, 0.0029296875, 0.177734375, 3.99902344, 3.99902344, 0.110117321, 1, 1.73614505, 0.841465513, 2.0, 2.7, -8.5, 0.158040365}},
             {"iso400c", 1.0, false, 1, 400, 6400, 4, "", new double[]{1.1336874, 1.9526, 0.00858076173, 0.181149414, 1.50878394, 1.77335742, 0.124550977, 0.888888889, 1.01053609, 0.373311703, 0.811725578, 2.7, -8.5, 0.164631429}},
             {"iso6400s", 0.3, true, 2, 6400, 6400, 1, "", new double[]{0.807773814, 4, 0.0283203125, 0.0546875, 0.149414062, 0.170898438, 0.0530558731, 0, 1, 0, 0, 3.12951265, -7.5, 0}},
             {"flat", 0.02, false, 0, 0, 0, 4, "dark_pixel=40", new double[]{5, 1, 0, 0.00341796875, 0.0329589844, 0.0366210938, 0.00225962501, 1, 1, 0.309606331, 0, 3.1465642, -8.5, 0}},
@@ -82,6 +84,44 @@ public class ArkAeTest {
      * P145: the GPU statistics path (ArkAeGpu: the max key, two histograms of counts, per-group float sums) decodes into the
      * same exposure as the CPU count, for every metering and with a highlight; the max key orders negatives and positives.
      */
+    /**
+     * P159: a bright area beyond the ceiling (an LED screen at 2-3 stops over the hall's white: 7 % of the frame at 10x the
+     * hall) is measured by the tail: p98x / p995x at its level, the highlight strength up to its setting; without data above
+     * the ceiling nothing changes.
+     */
+    @Test
+    public void theHighlightStrengthReadsTheBrightAreaBeyondTheCeiling() {
+        final int w = 100, h = 100;
+        ArkAe.Rows rows = (y, row) -> {
+            for (int x = 0; x < w; x++) {
+                boolean screen = y < 8 && x < 90;                       // 7.2 % of the frame
+                float v = screen ? 10f : 0.05f + 0.6f * x / w;
+                row[3 * x] = v;
+                row[3 * x + 1] = v;
+                row[3 * x + 2] = v * (screen ? 1.2f : 1f);
+            }
+        };
+        ArkAe.Settings s = new ArkAe.Settings();
+        ArkAe.Stats st = ArkAe.stats(rows, 3, w, h, 0);
+        double above = 0;
+        for (double v : st.tail) above += v;
+        assertEquals("the screen's pixels in the tail", 720, above, 0);
+        ArkAe.Result r = ArkAe.finish(st, s, 400, 6400);
+        assertEquals("p98 at the ceiling", 4.0, r.p98, 0.01);
+        assertTrue("p98x at the screen's level: " + r.p98x, r.p98x > 9f && r.p98x < 13f);
+        assertTrue("the highlight strength near its setting: " + r.effH, r.effH > 1.9f && r.effH <= s.highlightStr);
+        // the exposure does not read the tail
+        ArkAe.Stats noTail = ArkAe.stats(rows, 3, w, h, 0);
+        java.util.Arrays.fill(noTail.tail, 0);
+        ArkAe.Result native_ = ArkAe.finish(noTail, s, 400, 6400);
+        assertEquals("the same exposure", native_.ae, r.ae, 0f);
+        assertTrue("the native strength was smaller: " + native_.effH, native_.effH < r.effH);
+        // nothing above the ceiling: as before
+        ArkAe.Result dim = ArkAe.finish(ArkAe.stats((y, row) -> java.util.Arrays.fill(row, 0.3f), 3, w, h, 0), s, 400, 6400);
+        assertEquals(dim.p98, dim.p98x, 0f);
+        assertEquals(dim.p995, dim.p995x, 0f);
+    }
+
     @Test
     public void gpuStatisticsGiveTheSameExposure() {
         for (int mode = 0; mode <= 2; mode++) {
@@ -96,14 +136,15 @@ public class ArkAeTest {
                     d.get(row, 0, W * 3);
                 }, 3, W, H, mode);
                 // as the shader leaves them: counts, and the sums split over a few groups in float
-                int[] hy = new int[ArkAe.BINS], hm = new int[ArkAe.BINS];
+                int[] hy = new int[ArkAe.BINS], hm = new int[ArkAe.BINS], tail = new int[ArkAe.TAIL_BINS];
                 for (int i = 0; i < ArkAe.BINS; i++) {
                     hy[i] = (int) st.hy[i];
                     hm[i] = (int) st.hm[i];
                 }
+                for (int i = 0; i < ArkAe.TAIL_BINS; i++) tail[i] = (int) st.tail[i];
                 int[] sums = {Float.floatToRawIntBits((float) (st.sumY * 0.25)), Float.floatToRawIntBits((float) (st.sumLog * 0.25)),
                         Float.floatToRawIntBits((float) (st.sumY * 0.75)), Float.floatToRawIntBits((float) (st.sumLog * 0.75))};
-                ArkAe.Result gpu = ArkAe.finish(ArkAe.fromGpu(ArkAe.maxKey(st.gmax), hy, hm, sums), s, 400, 6400);
+                ArkAe.Result gpu = ArkAe.finish(ArkAe.fromGpu(ArkAe.maxKey(st.gmax), hy, hm, sums, tail), s, 400, 6400);
                 String c = "metering " + mode + (bento ? " bento" : "");
                 assertEquals(c, cpu.gmax, gpu.gmax, 0f);
                 assertEquals(c, cpu.clip, gpu.clip, 0f);

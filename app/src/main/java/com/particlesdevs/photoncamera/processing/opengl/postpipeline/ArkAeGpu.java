@@ -33,7 +33,8 @@ final class ArkAeGpu {
             // drain: only the passes below decide
         }
         try (GLBuffer max = new GLBuffer(1, u32); GLBuffer hy = new GLBuffer(ArkAe.BINS, u32);
-             GLBuffer hm = new GLBuffer(ArkAe.BINS, u32); GLBuffer sums = new GLBuffer(2 * gx * gy, u32)) {
+             GLBuffer hm = new GLBuffer(ArkAe.BINS, u32); GLBuffer sums = new GLBuffer(2 * gx * gy, u32);
+             GLBuffer tail = new GLBuffer(ArkAe.TAIL_BINS, u32)) {
             prog.setDefine("PASS", 1);
             prog.setLayout(8, 8, 1);
             prog.useAssetProgram("ark/aestats", true);
@@ -54,14 +55,16 @@ final class ArkAeGpu {
             prog.setBufferCompute("aeHistY", hy);
             prog.setBufferCompute("aeHistM", hm);
             prog.setBufferCompute("aeSums", sums);
+            prog.setBufferCompute("aeTail", tail);
             prog.computeManual(gx, gy, 1);
             int[] y = hy.readBufferIntegers(false), m = hm.readBufferIntegers(false), s = sums.readBufferIntegers(false);
+            int[] t = tail.readBufferIntegers(false);
             int error = GLES31.glGetError();
-            if (error != GLES31.GL_NO_ERROR || y == null || m == null || s == null) {
+            if (error != GLES31.GL_NO_ERROR || y == null || m == null || s == null || t == null) {
                 Log.w("SCAM_PIPELINE", "ARK AE GPU: GL error 0x" + Integer.toHexString(error) + ", CPU statistics");
                 return null;
             }
-            ArkAe.Stats st = ArkAe.fromGpu(key, y, m, s);
+            ArkAe.Stats st = ArkAe.fromGpu(key, y, m, s, t);
             double weight = totalWeight(w, h, mode), hmTotal = 0;
             for (double v : st.hm) hmTotal += v;
             // both histograms count every pixel once with its weight; the average metering's total is exact, the centre and

@@ -3805,11 +3805,27 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   (1) the landing takes a coloured light to ITS scene colour at full brightness (the linear colour before the tone,
   display-encoded; near-neutral below ~0.1 linear saturation still to pure white): the host cone comes out orange
   (255, 197, 149) inside, its chroma highest inside, no outline; the P154 owner request «восстановление цвета в областях
-  засветов» now holds for blown colour as well; (2) a negative detail delta (the sharpening's undershoot) fades out on
-  pixels the tone took above ~0.8 L (none above 0.96): the rim ring inside a blown area; dark detail on darker pixels kept.
-  check_highlight_landing: the orange at the ceiling = its scene colour, never more bleached than the tone left it; the
-  undershoot on near-white pixels 0.024 -> 0.007 L; nothing without clipped data. Not checked on the owner's burst (no
-  stages / DNG of it): to confirm, the same scene with «Диагностика» on.
+  засветов» now holds for blown colour as well. check_highlight_landing: the orange at the ceiling = its scene colour, never
+  more bleached than the tone left it; nothing without clipped data. (A second rule of 214e63e3 - no negative detail on
+  near-white pixels - was taken out again: in ARK a pixel's base is the reduced colour source, so thin dark text on a white
+  card exists only as that negative detail and would have gone.)
+- Second example, with stages (owner, 2026-10-16, «screen artifacts.zip»: SCA_20261016_122610 + its Diagnostics ZIP + the
+  stock camera's auto JPEG and its SRAW developed): the slide «Единый день профилактики» - dark blue text on a white card -
+  came out as pale blue hollow letters with dark outlines, the small white text below unreadable; the stock SRAW develop
+  shows solid dark blue letters. Stages (white card of the screen, 1020x766 thumbnails): letters / background Y 0.21 in
+  after-ivst, ScamRgb and ArkLow (the data is right: letters Y ~1.1, background ~5.2), 0.89 after ArkCombine. Cause: the
+  ARK statistics (smart_hdr, ported from ArkCam's native code) cap the data ceiling at 4.0, while the Bento frames (x1/8)
+  give data up to ~16: the screen (7.2 % of the frame) all lay at the ceiling (log: p98 = p995 = 3.999, gmax 16.5), the
+  highlight peak was read as ae x 4 = 2.96, the fusion's highlight strength came out effH 1.26 (its setting allows 2): the
+  low layer pulled the screen only to x0.27 and background and letters both stayed in the tone's shoulder (letters 0.88).
+- DONE 2026-10-16 (second part): ArkAe counts the max channel above the ceiling in 48 log2 bins (12 an octave, up to 16x;
+  CPU stats and the compute shader ark/aestats, binding 5), p98x / p995x read it, and only the highlight strength
+  (realPeak -> effH) uses them; the exposure, the ceiling and the histograms stay the native ones. This shot: realPeak
+  2.96 -> 12.2, effH 1.26 -> 2.0, the screen's low layer x0.27 -> x0.125 (background ~0.93, letters ~0.2 in it). SMART_HDR_STAT
+  logs p98x / p995x. ArkAeTest: theHighlightStrengthReadsTheBrightAreaBeyondTheCeiling (same exposure, effH near its
+  setting, nothing without data above the ceiling), the reference case «bento» now effH 2 (was 1.314: the 7x corner at the
+  ceiling), the GPU path with its tail; tools/check_ark_ae_gpu.py compares the tail (2 boundary pixels of 6856 may move).
+  Not seen on a phone: the same scene again; the log should show p98x above 4 and effH near 2.
 
 ## P109l - Snapdragon client attribution and VCF RAW boundary
 

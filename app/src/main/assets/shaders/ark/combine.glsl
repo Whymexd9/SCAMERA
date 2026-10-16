@@ -643,13 +643,6 @@ void main() {
         delta *= compression * compression;
     }
     float lBefore = post.x;
-#if HL_LANDING == 1
-    // P159 (owner, X300 Ultra, an LED screen over a concert hall: orange cones drawn as a saturated outline round a pale
-    // inside): with clipped data in the frame the detail no longer darkens a pixel the tone already took to near white -
-    // the sharpening's undershoot along an edge inside a blown area was a darker rim, and a darker rim keeps the colour the
-    // shoulder bleaches out of the brighter inside. Dark detail on a darker pixel (text, an edge's dark side) keeps it all.
-    if (headroomU != 0 && hlSoftU > 0.0 && delta < 0.0) delta *= 1.0 - smoothstep(0.80, 0.96, lBefore);
-#endif
     post.x = clamp(post.x + delta * (1.0 - smoothstep(0.75, 1.0, post.x) * 0.5), 0.0001, 1.0);
     // The kernel keeps a, b while the delta moves L. At a strong edge the colour is the B-spline mix of both sides, and
     // on the dark side the delta pulls L far down: the same a, b at a low L read as a saturated purple/green line. Scaling

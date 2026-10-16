@@ -8,7 +8,8 @@ precision highp sampler2D;
 // metering (whole numbers: one shared uint per bin holds the luma count in the low and the max count in the high 16 bits,
 // a tile adds at most 4096 x 10), then added to aeHistY / aeHistM; the weighted sums of luma and log luma per group ->
 // aeSums[2 * group] (the CPU adds them in double). Same arithmetic as ArkAe.stats: Rec.709 luma, NaN -> 0, the bin
-// int(clamp(v * invClip, 0, 1) * 4095.99).
+// int(clamp(v * invClip, 0, 1) * 4095.99). P159: the max channel above the ceiling in 48 log2 bins (12 an octave,
+// ArkAe.tailBin) -> aeTail.
 #define PASS 1
 #define LAYOUT //
 LAYOUT
@@ -54,11 +55,14 @@ void main() {
 layout(std430, binding = 2) buffer aeHistY { uint histY[]; };
 layout(std430, binding = 3) buffer aeHistM { uint histM[]; };
 layout(std430, binding = 4) buffer aeSums { float sums[]; };
+layout(std430, binding = 5) buffer aeTail { uint tail[]; };
 shared uint bins[4096];
+shared uint tailBins[48];
 
 void main() {
     uint li = gl_LocalInvocationIndex;
     for (uint b = li; b < 4096u; b += uint(GROUP * GROUP)) bins[b] = 0u;
+    if (li < 48u) tailBins[li] = 0u;
     barrier();
     ivec2 origin = ivec2(gl_WorkGroupID.xy) * TILE + ivec2(gl_LocalInvocationID.xy);
     float halfW = float(sizeU.x) * 0.5, halfH = float(sizeU.y) * 0.5;
@@ -85,6 +89,7 @@ void main() {
             if (w != 0u) {
                 atomicAdd(bins[iy], w);
                 atomicAdd(bins[im], w << 16);
+                if (mv * invClipU > 1.0) atomicAdd(tailBins[min(47, max(0, int(log2(mv * invClipU) * 12.0)))], w);
                 sumY += yv * float(w);
                 sumLog += log(max(yv, 1e-4)) * float(w);
             }
@@ -96,6 +101,7 @@ void main() {
         if ((n & 0xffffu) != 0u) atomicAdd(histY[b], n & 0xffffu);
         if ((n >> 16) != 0u) atomicAdd(histM[b], n >> 16);
     }
+    if (li < 48u && tailBins[li] != 0u) atomicAdd(tail[li], tailBins[li]);
     barrier();
     // the group's sums: a tree over the 64 invocations in the (now free) shared bins
     bins[2u * li] = floatBitsToUint(sumY);

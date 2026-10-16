@@ -68,11 +68,17 @@ def cpu_stats(img, mode):
         im = (np.clip(mv * inv, f32(0), f32(1)) * f32(4095.99)).astype(np.int64)
     hy = np.bincount(iy.ravel(), weights=wt.ravel(), minlength=4096)
     hm = np.bincount(im.ravel(), weights=wt.ravel(), minlength=4096)
+    # P159: the max channel above the ceiling in 48 log2 bins (ArkAe.tailBin: 12 an octave)
+    with np.errstate(invalid='ignore', over='ignore', divide='ignore'):
+        ratio = (mv * inv).astype(np.float32)
+        above = ratio > f32(1)
+        k = np.clip((np.log2(np.where(above, ratio, f32(1))).astype(np.float32) * f32(12)).astype(np.int64), 0, 47)
+    tail = np.bincount(k[above].ravel(), weights=wt[above].ravel(), minlength=48)
     nz = wt != 0
     with np.errstate(invalid='ignore', over='ignore'):
         sum_y = float(np.sum(yv[nz].astype(np.float64) * wt[nz]))
         sum_log = float(np.sum(np.log(np.maximum(yv[nz], f32(1e-4))).astype(np.float32).astype(np.float64) * wt[nz]))
-    return gmax, inv, hy, hm, sum_y, sum_log, float(wt.sum())
+    return gmax, inv, hy, hm, sum_y, sum_log, float(wt.sum()), tail
 
 
 def rel(a, b):
@@ -147,6 +153,9 @@ def main():
         hyb.bind_to_storage_buffer(2)
         hmb.bind_to_storage_buffer(3)
         sums.bind_to_storage_buffer(4)
+        tailb = ctx.buffer(reserve=48 * 4)
+        tailb.write(np.zeros(48, np.uint32).tobytes())
+        tailb.bind_to_storage_buffer(5)
         pass2['arkLow'] = 0
         pass2['sizeU'] = (w, h)
         pass2['invClipU'] = float(inv)
@@ -157,7 +166,12 @@ def main():
         hm = np.frombuffer(hmb.read(), np.uint32).astype(np.float64)
         s = np.frombuffer(sums.read(), np.float32).astype(np.float64)
         sum_y, sum_log = s[0::2].sum(), s[1::2].sum()
-        c_gmax, c_inv, c_hy, c_hm, c_sy, c_sl, c_tot = cpu_stats(img.astype(np.float32), mode)
+        c_gmax, c_inv, c_hy, c_hm, c_sy, c_sl, c_tot, c_tail = cpu_stats(img.astype(np.float32), mode)
+        tail = np.frombuffer(tailb.read(), np.uint32).astype(np.float64)
+        # a pixel exactly at the ceiling may fall either side (the GPU fuses the luma's multiply-adds)
+        check(abs(tail.sum() - c_tail.sum()) <= 2 + 1e-3 * c_tail.sum(), 'tail weight %d vs %d' % (tail.sum(), c_tail.sum()))
+        moved_t = np.abs(tail - c_tail).sum() / 2 / max(c_tail.sum(), 1)
+        check(moved_t <= 1e-3, 'tail: %.4f %% of its weight in another bin' % (moved_t * 100))
         label = '%dx%d metering %d%s' % (w, h, mode, '' if bright else ' (no highlights)')
         check(g_gmax == c_gmax, '%s: max %r vs CPU %r' % (label, g_gmax, c_gmax))
         check(inv == c_inv, '%s: 1/clip differs' % label)
@@ -174,7 +188,7 @@ def main():
         check(ry < 1e-5 and rl < 1e-5, '%s: sums differ (%.2e, %.2e)' % (label, ry, rl))
         print('  %-34s max %.4f  bins moved %.5f %% / %.5f %%  sums %.1e / %.1e' % (label, float(g_gmax), moved_y * 100,
                                                                                    moved_m * 100, ry, rl))
-        for b in (tex, maxbuf, hyb, hmb, sums):
+        for b in (tex, maxbuf, hyb, hmb, sums, tailb):
             b.release()
     if FAILURES:
         print('ARK AE GPU check FAILED (%d)' % len(FAILURES))
