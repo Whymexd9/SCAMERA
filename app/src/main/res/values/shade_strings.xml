@@ -122,7 +122,6 @@
     <string name="shade_changed">changed</string>
     <string name="shade_added">Added: %1$s</string>
     <string name="shade_removed">Removed: %1$s</string>
-    <string name="shade_full">At most %1$d tiles in the panel</string>
     <string name="shade_pin">Pin %1$s</string>
     <string name="shade_unpin">Unpin %1$s</string>
     <string name="shade_group_extra">Added from settings</string>
@@ -132,8 +131,8 @@
     <string name="shade_catalog_close">Close</string>
     <string name="shade_catalog_search">Search all settings</string>
     <string name="shade_catalog_clear">Clear the search</string>
-    <string name="shade_catalog_count">In the panel: %1$d of %2$d · settings: %3$d</string>
-    <string name="shade_catalog_found">Found: %1$d · in the panel: %2$d of %3$d</string>
+    <string name="shade_catalog_count">In the panel: %1$d · settings: %2$d</string>
+    <string name="shade_catalog_found">Found: %1$d · in the panel: %2$d</string>
     <string name="shade_catalog_nothing">Nothing found</string>
     <string name="shade_catalog_note">Text fields (captions, denoise tables, Camera ID) change in the settings only.</string>
     <string name="shade_catalog_pinned">Pinned</string>

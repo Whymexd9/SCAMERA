@@ -198,8 +198,8 @@ public class ShadeCatalogView extends LinearLayout {
     private void updateCount(int found) {
         int pinned = pins.count();
         count.setText(query.trim().isEmpty()
-                ? getContext().getString(R.string.shade_catalog_count, pinned, ShadeCatalog.MAX_TILES, catalog.all().size())
-                : getContext().getString(R.string.shade_catalog_found, found, pinned, ShadeCatalog.MAX_TILES));
+                ? getContext().getString(R.string.shade_catalog_count, pinned, catalog.all().size())
+                : getContext().getString(R.string.shade_catalog_found, found, pinned));
     }
 
     private void onRowTap(ShadeCatalog.Entry e, int position) {

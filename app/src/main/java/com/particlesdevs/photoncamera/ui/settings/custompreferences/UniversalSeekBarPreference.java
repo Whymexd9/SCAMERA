@@ -209,9 +209,22 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
             if (showSeekBarValue) {
                 seekBarValue.setVisibility(View.VISIBLE);
                 seekBarValue.setText(valueToPersist);
+                // P168: off the default the pill turns to the theme's opposite, at once while the bar moves
+                com.particlesdevs.photoncamera.ui.settings.SettingsStyle.paintPill(seekBarValue, differs(valueToPersist),
+                        com.particlesdevs.photoncamera.ui.settings.SettingsStyle.accent(getContext()));
             } else
                 seekBarValue.setVisibility(View.GONE);
         }
+    }
+
+    /** P168: the stored value is off the default (the XML default; a float within 1e-5 of it is the default). */
+    public boolean isChanged() {
+        return differs(getValue());
+    }
+
+    private boolean differs(String text) {
+        final float d = defaultNumber(), v = parseValue(text, d);
+        return Math.abs(v - d) > Math.max(1e-6f, Math.abs(d) * 1e-5f);
     }
 
     private void updateSeekbar(int progress) {

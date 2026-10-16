@@ -90,20 +90,20 @@ public class ShadeTilesTest {
     }
 
     @Test
-    public void unknownRepeatedAndExtraKeysAreDroppedOnReadAtMostTwelve() {
+    public void unknownAndRepeatedKeysAreDroppedOnReadWithoutALimit() {
         List<String> stored = new ArrayList<>(Arrays.asList("not_a_setting", ShadeCatalog.FLASH, ShadeCatalog.FLASH,
                 "pref_sensorconfig_0_mode", "pref_dcp_profile_key"));
         for (ShadeCatalog.Group group : ShadeCatalog.GROUPS) stored.addAll(group.keys);
         prefs.edit().putString(ShadeTiles.KEY, String.join(",", stored)).commit();
         List<String> tiles = load();
-        assertEquals(ShadeCatalog.MAX_TILES, tiles.size());
+        // P167: every known key stays (no limit of 12)
+        java.util.Set<String> known = new java.util.LinkedHashSet<>();
+        for (String key : stored) if (catalog.isKnown(key)) known.add(key);
+        assertEquals(new ArrayList<>(known), tiles);
+        assertTrue("more than the former 12", tiles.size() > 12);
         assertEquals(ShadeCatalog.FLASH, tiles.get(0));
         assertEquals(new java.util.HashSet<>(tiles).size(), tiles.size());
         for (String key : tiles) assertTrue(key, catalog.isKnown(key));
-        // The first twelve known keys, in the stored order.
-        List<String> expected = new ArrayList<>();
-        for (String key : stored) if (catalog.isKnown(key) && !expected.contains(key) && expected.size() < 12) expected.add(key);
-        assertEquals(expected, tiles);
     }
 
     @Test

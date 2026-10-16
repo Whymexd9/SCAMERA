@@ -741,10 +741,10 @@ public class SettingsMenuTest {
             pin.performClick();
             assertFalse(ShadeTiles.isPinned(prefs,key));assertFalse(pin.isSelected());
             d.dismiss();
-            // a full shade keeps its tiles
-            java.util.List<String> full=new java.util.ArrayList<>();for(int i=0;i<ShadeCatalog.MAX_TILES;i++)full.add("tile"+i);
-            ShadeTiles.save(prefs,full);
-            assertNull(ShadeTiles.toggle(prefs,key));assertEquals(full,ShadeTiles.stored(prefs));
+            // P167: no limit - a shade of 30 tiles takes one more
+            java.util.List<String> many=new java.util.ArrayList<>();for(int i=0;i<30;i++)many.add("tile"+i);
+            ShadeTiles.save(prefs,many);
+            assertTrue(ShadeTiles.toggle(prefs,key));assertEquals(31,ShadeTiles.stored(prefs).size());
             ShadeTiles.save(prefs,new java.util.ArrayList<>(ShadeCatalog.defaultTiles()));
             // the list picker of a setting has the pin too; a key the shade cannot show has none
             ListPreference output=new ListPreference(activity);output.setKey("pref_scam_hybrid_output");output.setTitle("x");

@@ -15,7 +15,8 @@ import java.util.function.Predicate;
  * tiles must not change with the lens. Being in the main settings, the list travels in the config file's main part.
  * <p>
  * Nothing stored yet: {@link ShadeCatalog#defaultTiles()}. An empty string is a valid choice (every tile removed). Keys the
- * catalog does not know on this phone, repeats and everything after {@link ShadeCatalog#MAX_TILES} are dropped on read;
+ * catalog does not know on this phone and repeats are dropped on read (P167, owner 2026-10-16: «убери лимит на 12 плиток в
+ * шторке и дай возможность закреплять столько сколько я хочу»: no limit);
  * keys of removed settings are also dropped from the stored value by SettingsMigration.removeObsolete.
  */
 public final class ShadeTiles {
@@ -30,17 +31,16 @@ public final class ShadeTiles {
         return raw == null ? null : split(raw.toString());
     }
 
-    /** The tiles to show: the stored keys (or the defaults) that {@code known} accepts, without repeats, at most 12. */
+    /** The tiles to show: the stored keys (or the defaults) that {@code known} accepts, without repeats. */
     public static List<String> load(SharedPreferences prefs, Predicate<String> known) {
         List<String> stored = stored(prefs);
         return clean(stored == null ? ShadeCatalog.defaultTiles() : stored, known);
     }
 
-    /** Known keys in order, without repeats, the first {@link ShadeCatalog#MAX_TILES}. */
+    /** Known keys in order, without repeats. */
     public static List<String> clean(Collection<String> keys, Predicate<String> known) {
         List<String> out = new ArrayList<>();
         for (String key : keys) {
-            if (out.size() >= ShadeCatalog.MAX_TILES) break;
             if (key == null || key.isEmpty() || out.contains(key) || !known.test(key)) continue;
             out.add(key);
         }
@@ -55,17 +55,15 @@ public final class ShadeTiles {
 
     /**
      * P137: «В шторку» of a value editor in the settings: pins the setting at the end of the shade or takes it out. True when
-     * it is pinned now, false when it was taken out, null when the shade is full ({@link ShadeCatalog#MAX_TILES}).
+     * it is pinned now, false when it was taken out (P167: the shade has no limit).
      */
-    @Nullable
-    public static Boolean toggle(SharedPreferences prefs, String key) {
+    public static boolean toggle(SharedPreferences prefs, String key) {
         List<String> stored = stored(prefs);
         List<String> keys = new ArrayList<>(stored == null ? ShadeCatalog.defaultTiles() : stored);
         if (keys.remove(key)) {
             save(prefs, keys);
             return false;
         }
-        if (keys.size() >= ShadeCatalog.MAX_TILES) return null;
         keys.add(key);
         save(prefs, keys);
         return true;

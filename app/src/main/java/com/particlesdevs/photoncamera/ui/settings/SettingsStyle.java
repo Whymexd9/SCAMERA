@@ -281,10 +281,22 @@ public final class SettingsStyle {
             s.setProgressBackgroundTintList(ColorStateList.valueOf(0xFF4A5058));
             TextView pill = (TextView) holder.findViewById(R.id.seekbar_value);
             if (pill != null) {
-                pill.setBackgroundTintList(ColorStateList.valueOf(tint(accent, .18f)));
-                if (!(p instanceof TunableSeekBarPreference)) pill.setTextColor(accent); // tunables keep their green «changed» mark
+                boolean changed = p instanceof UniversalSeekBarPreference ? ((UniversalSeekBarPreference) p).isChanged()
+                        : p instanceof TunableSeekBarPreference && ((TunableSeekBarPreference) p).isChanged();
+                paintPill(pill, changed, accent);
             }
         }
+    }
+
+    /**
+     * P168 (owner, 2026-10-16: «Если параметр отличается от стандартного, то пускай пилюля со значением меняет цвет на
+     * противоположный от используемой темы»): the value pill of a setting off its default in the theme's opposite - the
+     * theme's light text colour as its fill, its dark background colour as the text; at the default the accent's tint with
+     * the accent, as before.
+     */
+    public static void paintPill(TextView pill, boolean changed, int accent) {
+        pill.setBackgroundTintList(ColorStateList.valueOf(changed ? TEXT : tint(accent, .18f)));
+        pill.setTextColor(changed ? BG : accent);
     }
 
     static CharSequence valueOf(Preference p) {
@@ -378,9 +390,7 @@ public final class SettingsStyle {
             chip.setSelected(on);
         };
         chip.setOnClickListener(v -> {
-            if (com.particlesdevs.photoncamera.settings.ShadeTiles.toggle(prefs, key) == null)
-                android.widget.Toast.makeText(c, c.getString(R.string.shade_full, com.particlesdevs.photoncamera.settings.ShadeCatalog.MAX_TILES),
-                        android.widget.Toast.LENGTH_SHORT).show();
+            com.particlesdevs.photoncamera.settings.ShadeTiles.toggle(prefs, key);
             paint.run();
         });
         paint.run();

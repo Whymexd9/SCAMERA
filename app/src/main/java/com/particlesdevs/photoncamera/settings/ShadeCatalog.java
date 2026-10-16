@@ -60,8 +60,6 @@ public final class ShadeCatalog {
     public static final int TOGGLE = 0, LIST = 1, SLIDER = 2;
     /** How a value is stored: as the settings screen stores it. */
     static final int STORE_STRING = 0, STORE_BOOLEAN = 1, STORE_INT = 2, STORE_FLOAT = 3, STORE_VIRTUAL = 4;
-    /** Most pinned tiles. */
-    public static final int MAX_TILES = 12;
     /** A list with more values than this opens the list sheet instead of cycling on a tap. */
     public static final int LONG_LIST = 5;
 

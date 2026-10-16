@@ -122,7 +122,6 @@
     <string name="shade_changed">изменено</string>
     <string name="shade_added">Добавлено: %1$s</string>
     <string name="shade_removed">Убрано: %1$s</string>
-    <string name="shade_full">В шторке максимум %1$d плиток</string>
     <string name="shade_pin">Закрепить %1$s</string>
     <string name="shade_unpin">Открепить %1$s</string>
     <string name="shade_group_extra">Добавлено из настроек</string>
@@ -132,8 +131,8 @@
     <string name="shade_catalog_close">Закрыть</string>
     <string name="shade_catalog_search">Поиск по всем настройкам</string>
     <string name="shade_catalog_clear">Очистить поиск</string>
-    <string name="shade_catalog_count">В шторке %1$d из %2$d · всего настроек: %3$d</string>
-    <string name="shade_catalog_found">Найдено: %1$d · в шторке %2$d из %3$d</string>
+    <string name="shade_catalog_count">В шторке %1$d · всего настроек: %2$d</string>
+    <string name="shade_catalog_found">Найдено: %1$d · в шторке %2$d</string>
     <string name="shade_catalog_nothing">Ничего не найдено</string>
     <string name="shade_catalog_note">Текстовые поля (подписи, таблицы шумодава, Camera ID) меняются только в настройках.</string>
     <string name="shade_catalog_pinned">В шторке</string>

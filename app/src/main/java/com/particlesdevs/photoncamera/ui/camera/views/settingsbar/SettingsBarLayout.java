@@ -481,7 +481,7 @@ public class SettingsBarLayout extends LinearLayout {
         refreshConfigName();
         pinned.clear();
         pinned.addAll(ShadeTiles.load(catalog().prefs(), catalog()::isKnown));
-        adapter.submit(pinned, pinned.size() < ShadeCatalog.MAX_TILES);
+        adapter.submit(pinned, true);   // P167: «Добавить» always (no limit)
         rows = new ShadeRows(getContext(), catalog(), rowActions);
         buildRows();
         bindSliderCard();
@@ -637,7 +637,7 @@ public class SettingsBarLayout extends LinearLayout {
     }
 
     private void onPinnedChanged() {
-        adapter.submit(pinned, pinned.size() < ShadeCatalog.MAX_TILES);
+        adapter.submit(pinned, true);
         List<String> extra = new ArrayList<>();
         for (String key : pinned) if (!ShadeCatalog.isCurated(key)) extra.add(key);
         if (!extra.equals(extraRows)) buildRows();
@@ -754,10 +754,6 @@ public class SettingsBarLayout extends LinearLayout {
         if (pinned.remove(key)) {
             message(getContext().getString(R.string.shade_removed, e.shortTitle));
         } else {
-            if (pinned.size() >= ShadeCatalog.MAX_TILES) {
-                message(getContext().getString(R.string.shade_full, ShadeCatalog.MAX_TILES));
-                return;
-            }
             pinned.add(key);
             message(getContext().getString(R.string.shade_added, e.shortTitle));
         }

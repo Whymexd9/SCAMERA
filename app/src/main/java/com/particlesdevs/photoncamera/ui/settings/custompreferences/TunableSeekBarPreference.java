@@ -3,7 +3,6 @@ package com.particlesdevs.photoncamera.ui.settings.custompreferences;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.Color;
 import android.text.InputType;
 import android.widget.EditText;
 import android.widget.SeekBar;
@@ -11,7 +10,6 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceViewHolder;
-import com.google.android.material.color.MaterialColors;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.PreferenceNumber;
@@ -66,10 +64,9 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
         if (seekBar != null) seekBar.setProgress(PreferenceNumber.progress(value, mMin, mStepPerUnit, maxProgress()));
         if (seekBarValue != null) {
             seekBarValue.setText(valueText(value));
-            SharedPreferences prefs = getSharedPreferences();
-            boolean custom = prefs != null && prefs.contains(getKey());
-            seekBarValue.setTextColor(custom ? Color.parseColor("#4CAF50")
-                    : MaterialColors.getColor(getContext(), android.R.attr.textColorPrimary, Color.WHITE));
+            // P168: off the default the pill turns to the theme's opposite (was green text)
+            com.particlesdevs.photoncamera.ui.settings.SettingsStyle.paintPill(seekBarValue, isChanged(),
+                    com.particlesdevs.photoncamera.ui.settings.SettingsStyle.accent(getContext()));
         }
     }
     private void save(float requested, boolean reset) {
@@ -99,6 +96,11 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
     public float maximum(){return mMax;}
     public boolean decimal(){return isFloat;}
     public float defaultNumber(){return mDefaultValue;}
+    /** P168: a value of its own is stored (the tunable differs from the camera's default). */
+    public boolean isChanged() {
+        SharedPreferences prefs = getSharedPreferences();
+        return prefs != null && prefs.contains(getKey());
+    }
     public float stepPerUnit(){return mStepPerUnit;}
     private void showPreciseValueDialog() {
         if (!isEnabled()) return;

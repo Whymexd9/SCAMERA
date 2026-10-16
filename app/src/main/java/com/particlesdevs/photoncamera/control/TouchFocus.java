@@ -131,6 +131,13 @@ public class TouchFocus {
     // a tap elsewhere puts both there. They stay on screen (dimmed) while they mean something.
     static final long METER_INTERVAL_MS = 80;
     static final float SQUARE_SCALE = 1.7f;
+    /**
+     * P166 (owner, 2026-10-16: «квадрат сделай на 35% меньше, кружок фокусировки на 15% меньше»): the split ring and square,
+     * on screen and as metering regions, as shares of what they were (the ring of a plain tap stays as it is).
+     */
+    static final float SPLIT_RING_SCALE = 0.85f, SPLIT_SQUARE_SCALE = 0.65f;
+    /** The ring's own size (its layout's), before the split mode resizes it. */
+    private int ringBase = -1;
     @Nullable
     private ExposureSquareView exposureView;
     @Nullable
@@ -195,22 +202,24 @@ public class TouchFocus {
     }
 
     public void processTouchToFocus(float fx, float fy) {
-        MeteringRectangle region = computeTapRegion(fx, fy);
-        if (region == null) {
+        final boolean split = split();
+        MeteringRectangle region = computeTapRegion(fx, fy, split ? SPLIT_RING_SCALE : 1f);
+        MeteringRectangle aeRegion = split ? computeTapRegion(fx, fy, SPLIT_SQUARE_SCALE) : region;
+        if (region == null || aeRegion == null) {
             Log.w(TAG, "processTouchToFocus(): camera or viewfinder not ready, ignoring tap");
             return;
         }
         focusCircleView.removeCallbacks(hideFocusCircleRunnable);
         focusCircleView.removeCallbacks(dimSplitRunnable);
-        final boolean split = split();
         focusCircleView.post(() -> {
+            sizeRing(split);
             showFocusCircle(fx, fy);
             if (split) showExposureSquare(fx, fy);
             else hideExposureSquare();
         });
         // P110: the «Движение» shutter ceiling lets the AE meter the tapped point first
         if (captureController.getParamController() != null) captureController.getParamController().motionMeteringTap();
-        startFocusSequence(region, region);
+        startFocusSequence(region, aeRegion);
         if (split) focusCircleView.postDelayed(dimSplitRunnable, AUTO_HIDE_DELAY_MS);
         else focusCircleView.postDelayed(hideFocusCircleRunnable, AUTO_HIDE_DELAY_MS);
     }
@@ -218,6 +227,26 @@ public class TouchFocus {
     /** P142: the option is on. */
     boolean split() {
         return PreferenceKeys.isSplitAfAe();
+    }
+
+    /** The ring's own size: its layout's (the first one seen), else its width. */
+    private int ringBase() {
+        if (ringBase <= 0) {
+            ViewGroup.LayoutParams lp = focusCircleView.getLayoutParams();
+            ringBase = lp != null && lp.width > 0 ? lp.width : Math.max(focusCircleView.getWidth(), 1);
+        }
+        return ringBase;
+    }
+
+    /** P166: the ring at its split size (SPLIT_RING_SCALE of its own) or its own size. */
+    private void sizeRing(boolean split) {
+        ViewGroup.LayoutParams lp = focusCircleView.getLayoutParams();
+        if (lp == null) return;
+        int size = split ? Math.max(1, Math.round(ringBase() * SPLIT_RING_SCALE)) : ringBase();
+        if (lp.width == size && lp.height == size) return;
+        lp.width = size;
+        lp.height = size;
+        focusCircleView.setLayoutParams(lp);
     }
 
     /** P142: the exposure square (made on first use, beneath the ring in the ring's parent), null before a split tap. */
@@ -230,9 +259,7 @@ public class TouchFocus {
         if (exposureView != null) return exposureView;
         ViewGroup parent = (ViewGroup) focusCircleView.getParent();
         ExposureSquareView view = new ExposureSquareView(focusCircleView.getContext());
-        int ring = focusCircleView.getLayoutParams() != null && focusCircleView.getLayoutParams().width > 0
-                ? focusCircleView.getLayoutParams().width : Math.max(focusCircleView.getWidth(), 1);
-        int side = Math.round(ring * SQUARE_SCALE);
+        int side = Math.max(1, Math.round(ringBase() * SQUARE_SCALE * SPLIT_SQUARE_SCALE));
         view.setVisibility(View.INVISIBLE);
         view.setOnTouchListener((v, event) -> drag(v, event, false));
         if (parent != null) parent.addView(view, Math.max(0, parent.indexOfChild(focusCircleView)), new ViewGroup.LayoutParams(side, side));
@@ -318,10 +345,10 @@ public class TouchFocus {
 
     /** P142: the ring was let go: a focus sequence on its region, the square's region kept for the AE. */
     private void refocusAtRing() {
-        MeteringRectangle af = computeTapRegion(centreX(focusCircleView), centreY(focusCircleView));
+        MeteringRectangle af = computeTapRegion(centreX(focusCircleView), centreY(focusCircleView), SPLIT_RING_SCALE);
         if (af == null) return;
         MeteringRectangle ae = exposureView != null && exposureView.getVisibility() == View.VISIBLE
-                ? computeTapRegion(centreX(exposureView), centreY(exposureView)) : null;
+                ? computeTapRegion(centreX(exposureView), centreY(exposureView), SPLIT_SQUARE_SCALE) : null;
         startFocusSequence(af, ae != null ? ae : lastAeRegion != null ? lastAeRegion : af);
     }
 
@@ -335,7 +362,7 @@ public class TouchFocus {
     /** P142: the AE regions to the square's place: the repeating request only (no AF trigger, the AF regions stay). */
     private void meterAtSquare() {
         if (exposureView == null) return;
-        MeteringRectangle ae = computeTapRegion(centreX(exposureView), centreY(exposureView));
+        MeteringRectangle ae = computeTapRegion(centreX(exposureView), centreY(exposureView), SPLIT_SQUARE_SCALE);
         if (ae == null) return;
         lastMeterAt = SystemClock.elapsedRealtime();
         if (captureController.getParamController() != null) captureController.getParamController().motionMeteringTap();
@@ -353,8 +380,12 @@ public class TouchFocus {
     }
 
     private void showFocusCircle(float fx, float fy) {
-        focusCircleView.setX(fx - focusCircleView.getMeasuredWidth() / 2.0f);
-        focusCircleView.setY(fy - focusCircleView.getMeasuredHeight() / 2.0f);
+        // the layout's size: a split resize has not been measured yet
+        ViewGroup.LayoutParams lp = focusCircleView.getLayoutParams();
+        int w = lp != null && lp.width > 0 ? lp.width : focusCircleView.getMeasuredWidth();
+        int h = lp != null && lp.height > 0 ? lp.height : focusCircleView.getMeasuredHeight();
+        focusCircleView.setX(fx - w / 2.0f);
+        focusCircleView.setY(fy - h / 2.0f);
         focusCircleView.setVisibility(View.VISIBLE);
         focusCircleView.animate().scaleY(1.2f).scaleX(1.2f).setDuration(250)
                 .withEndAction(() -> focusCircleView.animate().scaleY(1f).scaleX(1f).setDuration(250).start())
@@ -388,6 +419,12 @@ public class TouchFocus {
      */
     @Nullable
     private MeteringRectangle computeTapRegion(float viewX, float viewY) {
+        return computeTapRegion(viewX, viewY, 1f);
+    }
+
+    /** {@code sizeScale}: the region's side as a share of the tap region's (P166: the split ring and square). */
+    @Nullable
+    private MeteringRectangle computeTapRegion(float viewX, float viewY, float sizeScale) {
         CameraCharacteristics characteristics = CaptureController.mCameraCharacteristics;
         if (characteristics == null) return null;
         Rect crop = currentCropRegion(characteristics);
@@ -398,7 +435,7 @@ public class TouchFocus {
         logPreCorrectionMismatch(characteristics);
         int[] r = mapTapToCrop(viewX, viewY, textureView.getWidth(), textureView.getHeight(),
                 crop.left, crop.top, crop.width(), crop.height(),
-                captureController.mSensorOrientation, gravityRotation, mirrored);
+                captureController.mSensorOrientation, gravityRotation, mirrored, sizeScale);
         if (r == null) return null;
         Log.d(TAG, "tap (" + (int) viewX + "," + (int) viewY + ")v" + textureView.getWidth() + "x" + textureView.getHeight()
                 + " so=" + captureController.mSensorOrientation + " rot=" + gravityRotation + " mirror=" + mirrored
@@ -464,6 +501,15 @@ public class TouchFocus {
     static int[] mapTapToCrop(float viewX, float viewY, int viewWidth, int viewHeight,
                               int cropLeft, int cropTop, int cropWidth, int cropHeight,
                               int sensorOrientation, int gravityRotation, boolean mirrored) {
+        return mapTapToCrop(viewX, viewY, viewWidth, viewHeight, cropLeft, cropTop, cropWidth, cropHeight, sensorOrientation,
+                gravityRotation, mirrored, 1f);
+    }
+
+    /** {@link #mapTapToCrop} with the region's side times {@code sizeScale} (P166), around the same point. */
+    @Nullable
+    static int[] mapTapToCrop(float viewX, float viewY, int viewWidth, int viewHeight,
+                              int cropLeft, int cropTop, int cropWidth, int cropHeight,
+                              int sensorOrientation, int gravityRotation, boolean mirrored, float sizeScale) {
         if (viewWidth <= 0 || viewHeight <= 0 || cropWidth <= 0 || cropHeight <= 0) return null;
         int rotation = ((90 - sensorOrientation - gravityRotation) % 360 + 360) % 360;
         float u = viewX / viewWidth;
@@ -477,7 +523,7 @@ public class TouchFocus {
         // Visually-clockwise rotation in a y-down coordinate system.
         float rx = (float) (dx * cos - dy * sin) + 0.5f;
         float ry = (float) (dx * sin + dy * cos) + 0.5f;
-        int side = Math.max(2, Math.round(REGION_HALF_SIDE_RATIO * 2f * Math.min(cropWidth, cropHeight)));
+        int side = Math.max(2, Math.round(REGION_HALF_SIDE_RATIO * 2f * sizeScale * Math.min(cropWidth, cropHeight)));
         int half = side / 2;
         int cx = cropLeft + Math.round(rx * cropWidth);
         int cy = cropTop + Math.round(ry * cropHeight);

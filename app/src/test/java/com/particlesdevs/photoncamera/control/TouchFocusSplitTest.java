@@ -133,8 +133,22 @@ public class TouchFocusSplitTest {
 
     /** The region a tap at view point (x, y) maps to (the same geometry TouchFocus uses). */
     private MeteringRectangle region(float x, float y) {
-        int[] r = TouchFocus.mapTapToCrop(x, y, VIEW_W, VIEW_H, active.left, active.top, active.width(), active.height(), 90, 90, false);
+        return region(x, y, 1f);
+    }
+
+    /** P166: the region of the split ring (SPLIT_RING_SCALE) or square (SPLIT_SQUARE_SCALE) at view point (x, y). */
+    private MeteringRectangle region(float x, float y, float scale) {
+        int[] r = TouchFocus.mapTapToCrop(x, y, VIEW_W, VIEW_H, active.left, active.top, active.width(), active.height(), 90, 90,
+                false, scale);
         return new MeteringRectangle(r[0], r[1], r[2], r[2], TouchFocus.REGION_WEIGHT);
+    }
+
+    private static float cx(MeteringRectangle r) {
+        return r.getX() + r.getWidth() / 2f;
+    }
+
+    private static float cy(MeteringRectangle r) {
+        return r.getY() + r.getHeight() / 2f;
     }
 
     private static boolean same(MeteringRectangle a, MeteringRectangle b) {
@@ -167,8 +181,13 @@ public class TouchFocusSplitTest {
     public void aTapPutsBothRegionsOnThePointAndShowsTheSquare() {
         touch.processTouchToFocus(500, 600);
         idle();
-        assertTrue(same(region(500, 600), af()));
-        assertTrue(same(af(), ae()));
+        // P166: the ring's region 15 % smaller, the square's 35 % smaller than the tap region, both on the point
+        assertTrue(same(region(500, 600, TouchFocus.SPLIT_RING_SCALE), af()));
+        assertTrue(same(region(500, 600, TouchFocus.SPLIT_SQUARE_SCALE), ae()));
+        assertEquals(Math.round(region(500, 600).getWidth() * TouchFocus.SPLIT_RING_SCALE), af().getWidth(), 1);
+        assertEquals(Math.round(region(500, 600).getWidth() * TouchFocus.SPLIT_SQUARE_SCALE), ae().getWidth(), 1);
+        assertEquals(cx(af()), cx(ae()), 1f);
+        assertEquals(cy(af()), cy(ae()), 1f);
         View square = touch.exposureSquare();
         assertNotNull(square);
         assertEquals(View.VISIBLE, square.getVisibility());
@@ -176,6 +195,10 @@ public class TouchFocusSplitTest {
         assertEquals(500f, square.getX() + square.getLayoutParams().width / 2f, 1f);
         assertEquals(600f, square.getY() + square.getLayoutParams().width / 2f, 1f);
         assertTrue("the square is larger than the ring", square.getLayoutParams().width > ring.getLayoutParams().width);
+        assertEquals("the split ring 15 % smaller", Math.round(120 * TouchFocus.SPLIT_RING_SCALE), ring.getLayoutParams().width);
+        assertEquals("the split square 35 % smaller", Math.round(120 * TouchFocus.SQUARE_SCALE * TouchFocus.SPLIT_SQUARE_SCALE),
+                square.getLayoutParams().width);
+        assertEquals("the ring centred on the tap", 500f, ring.getX() + ring.getLayoutParams().width / 2f, 1f);
     }
 
     @Test
@@ -187,7 +210,7 @@ public class TouchFocusSplitTest {
         triggers.clear();
         drag(square, 260, -180);
         assertTrue("the AF regions stay on the ring", same(focus, af()));
-        assertTrue("the AE regions follow the square", same(region(760, 420), ae()));
+        assertTrue("the AE regions follow the square", same(region(760, 420, TouchFocus.SPLIT_SQUARE_SCALE), ae()));
         assertNotEquals(af().getX(), ae().getX());
         assertTrue("repeating updates only, no AF start", !triggers.isEmpty());
         for (Integer t : triggers) assertTrue(t == null || t == CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
@@ -202,11 +225,12 @@ public class TouchFocusSplitTest {
         MeteringRectangle exposure = ae();
         triggers.clear();
         drag(ring, -300, 250);
-        assertTrue("the AF regions follow the ring", same(region(200, 850), af()));
+        assertTrue("the AF regions follow the ring", same(region(200, 850, TouchFocus.SPLIT_RING_SCALE), af()));
         assertTrue("the AE regions stay on the square", same(exposure, ae()));
         assertTrue("a focus sequence started (CANCEL first)", triggers.contains(CameraMetadata.CONTROL_AF_TRIGGER_CANCEL));
         tap(square);
-        assertTrue("a tap on the square brings the exposure back to the ring", same(af(), ae()));
+        assertEquals("a tap on the square brings the exposure back to the ring", cx(af()), cx(ae()), 1f);
+        assertEquals(cy(af()), cy(ae()), 1f);
         assertEquals(ring.getX() + ring.getLayoutParams().width / 2f, square.getX() + square.getLayoutParams().width / 2f, 1f);
     }
 
@@ -244,6 +268,8 @@ public class TouchFocusSplitTest {
         idle();
         assertNull(touch.exposureSquare());
         assertTrue(same(af(), ae()));
+        assertTrue("a plain tap keeps the full region", same(region(500, 600), af()));
+        assertEquals("a plain tap keeps the ring's size", 120, ring.getLayoutParams().width);
         tap(ring);
         assertEquals(0, af().getWidth());
     }

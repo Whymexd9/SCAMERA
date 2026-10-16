@@ -3946,6 +3946,45 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   before, at 16 bit. ScamHdrDenoise / ArkFusion: the master switch alone. ScamNoiseFactorReportTest.mergedDngHeadroomIsRead;
   the worker builds (NDK), dngCreator compiles. Not seen on a phone: a Bento shot's DNG should open in a raw converter with
   the window's highlights, the log says «DNG: merged burst RAW (N, bracketed and ultrashort frames), 16-bit, headroom x...».
+
+### P166 - smaller split focus ring and exposure square (owner, 2026-10-16: «Уменьши область для раздельных квадрата экспозиции
+и кружка фокусировки, квадрат сделай на 35% меньше, кружок фокусировки на 15% меньше»)
+- DONE 2026-10-16 (TouchFocus): in the split mode (P142) the ring is 0.85 of its own size (its layout, so the pulse / hide
+  scale animations keep working) and the square 0.65 of the former 1.7 x ring; their metering regions shrink the same way
+  around the same points (AF x0.85, AE x0.65: mapTapToCrop with a size scale). A plain tap keeps the ring and region as they
+  were. TouchFocusSplitTest: the regions and sizes.
+
+### P167 - no limit of 12 tiles in the shade (owner, 2026-10-16: «убери лимит на 12 плиток в шторке и дай возможность
+закреплять столько сколько я хочу»)
+- DONE 2026-10-16: ShadeCatalog.MAX_TILES is gone; ShadeTiles keeps every known key, toggle always pins, «Добавить» is always
+  there, the catalog counter says «В шторке N» (no «из 12»), the «шторка заполнена» message is gone. The tile grid scrolls
+  with the shade's list. Tests: ShadeTilesTest, ShadeUiTest (13 tiles), SettingsMenuTest (31 pinned).
+
+### P168 - the value pill of a changed setting in the theme's opposite (owner, 2026-10-16: «Если параметр отличается от
+стандартного, то пускай пилюля со значением меняет цвет на противоположный от используемой темы»)
+- DONE 2026-10-16: SettingsStyle.paintPill - off the default the seekbar's value pill is filled with the theme's light text
+  colour and written in its dark background colour; at the default the accent's tint as before. Live while the bar moves
+  (UniversalSeekBarPreference.updateLabel, isChanged = 1e-5 off the XML default) and for the tunables (a stored value of
+  their own; was green text).
+
+### P169 - the own tone curve in the shade (owner, 2026-10-16: «дай возможность добавлять кастомную кривую в шторку чтобы там
+её регулировать»; not started)
+- The curve (pref_scam_hybrid_ark_curve_points, ToneCurvePreference / ToneCurveView) as a pinnable shade entry whose tile
+  opens the curve editor in the shade's card (as the slider card), the switch «Своя кривая вместо AgX» next to it.
+
+### P170 - imported LUTs in the shade, five own film LUTs (owner, 2026-10-16: «дай возможность выбора импортированных лутов из
+списка в шторке. Так же добавь 5 своих лутов. Сделай их сам в плёночном стиле»; not started)
+- A shade entry listing the imported .cube LUTs (and the built-in ones) to pick from; five own film-style 3D LUTs made here
+  (generated .cube files bundled in the APK, listed with the imported ones).
+
+### P171 - a rounder outline round the lens strip (owner, 2026-10-16: «Сделай обводку вокруг модулей камер более
+закругленную»)
+- DONE 2026-10-16: BottomChrome.STRIP_RADIUS_DP 18 -> 22 (of the strip's 46dp height), the drawable too; the tiles inside
+  unchanged. Render sent to the owner: deliverables/p157/p171-lens-strip-434dp-361dp.png.
+
+### P172 - the value editor's step chips step the value (owner, 2026-10-16, «Кадров в буфере ZSL» editor with «Шаг 1 / 10 /
+100»: «Сделай так чтобы при выборе шага с таким шагом параметр и менялся»; not started)
+- PrecisionEditor: with «Шаг 10» chosen the ruler moves the value in steps of 10 (and the ruler's ticks follow the step).
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach

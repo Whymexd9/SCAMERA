@@ -257,7 +257,7 @@ public class ShadeUiTest {
         assertTrue(view.shownKeys().contains("pref_scam_hybrid_dn_luma_mult"));
         assertFalse(view.shownKeys().contains("pref_show_grid_key"));
         String counter = ((android.widget.TextView) view.findViewWithTag("shade_catalog_count")).getText().toString();
-        assertTrue(counter, counter.contains("7 "));
+        assertTrue(counter, counter.trim().endsWith(" 7"));   // P167: «in the panel: 7», no «of 12»
         int width = dp(360), height = dp(800);
         view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
         view.layout(0, 0, width, height);
@@ -441,7 +441,7 @@ public class ShadeUiTest {
         assertEquals(longest, sheet.pinnedKeys());
         assertEquals("Даунсемплер", catalog.entry("pref_scam_hybrid_downsampler").shortTitle.toString());
         RecyclerView grid = grid();
-        assertEquals(12, grid.getChildCount());
+        assertEquals("twelve tiles and «Добавить» (P167: no limit)", 13, grid.getChildCount());
         for (int i = 0; i < grid.getChildCount(); i++) assertTileTextFits((ShadeTileView) grid.getChildAt(i));
         render("shade-ru-360dp.png");
         // The rows' segments too: one or two lines, never an ellipsis.
@@ -540,14 +540,17 @@ public class ShadeUiTest {
                 "pref_scam_hybrid_downsampler"}) sheet.togglePin(key);
         assertEquals(12, sheet.pinnedKeys().size());
         layoutFull();
-        assertNull("no «Добавить» tile at 12", addTile());
+        // P167: no limit - «Добавить» stays at 12 and a 13th tile is pinned
+        assertNotNull("«Добавить» at 12 too", addTile());
         sheet.togglePin("pref_show_afdata_key");
-        assertEquals(12, sheet.pinnedKeys().size());
-        assertEquals(activity.getString(R.string.shade_full, 12), messages.get(messages.size() - 1));
+        assertEquals(13, sheet.pinnedKeys().size());
+        layoutFull();
+        assertNotNull(tile("pref_show_afdata_key"));
+        assertNotNull(addTile());
+        render("shade-full-thirteen.png");
         sheet.togglePin("pref_scam_hybrid_cdm");
         layoutFull();
-        assertEquals(11, sheet.pinnedKeys().size());
+        assertEquals(12, sheet.pinnedKeys().size());
         assertNotNull(addTile());
-        render("shade-full-eleven.png");
     }
 }
