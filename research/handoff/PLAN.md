@@ -4118,8 +4118,25 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   research / tools in evidence/vivo_hal_2026-10-13/, results in reports/pd2454-*. Builds only on a separate checked
   snapshot, never over the shared tree; tests not disabled or weakened; the phone only when free, taps only in SCAMERA, no
   other apps' data.
-- Status: these files (CaptureController, VivoSdkFullRes*, VivoSdkRawSession, RawBin, ScamProcessor, scam-hybrid.h, the
-  worker) carry ChatGPT's uncommitted edits - not started here until the owner says.
+- Status 2026-10-16 evening: the owner allowed ChatGPT's files («Теперь ты можешь трогать файлы ChatGPT»); its tree was
+  checked (973 CI-list tests) and committed (f87e3cc8); the SDK lease journal (2c213746) and the tele 50 / 200 MP buttons
+  (430ba5b4) are done; owner: «Не забудь исправить вылет по памяти для 200мп» - the 200 MP memory boundary is next, on the
+  phone.
+
+### P180 - FULLRES without hardware remosaic on the X100 Ultra and the X300 Ultra (owner, 2026-10-16: a task brief from
+the other agent's notes, «Изучи и реализуй, учитывай что х300у есть для разных регионов»)
+- Brief: research/handoff/PROMPT-FULLRES-X100U-X300U-20261016.txt and FULLRES-X100U-X300U-20261016.md, data in
+  evidence/vivo_hal_2026-10-13/fullres-x100u-x300u-20261016/. Only FULLRES: real RAW, own remosaic + SHDR, AUTO AE, 4:3
+  output; ISZ / DCG on these phones (forceSensorMode requests) stay as they are; nothing on the X200 Ultra changes.
+- Facts: X100 Ultra PD2366 (SM8650): main 2 (profile 0 max 8192x6144), UW 3 8192x6144, tele 4 16320x12288; RGGB main,
+  BGGR UW / tele. X300 Ultra PD2547 (SM8850; V2547DA satellite edition, other regions too): main 3 16320x12256, UW 4
+  8192x6144, tele 5 16320x12288, all RGGB. Both selectors have DNGSATREMOSAIC (QuadCFA, NORemosaic, DNG) - a candidate,
+  not proof; internal selector camera IDs differ from Android IDs; no forceSensorMode index is known for FULLRES there
+  (do not copy PD2454's); the SDK 40 / 33 contract and the CTS app category are unproven on these firmwares.
+- Plan: per-device FULLRES profile tables (camera IDs, geometry, CFA / block, region variants of PD2547), gated off until
+  verified (a sensor mode found from the module descriptors or a targeted test); the PD2454 transport (CTS package, SDK
+  lease, one RAW_SENSOR usage 0, own RAW preview, matched capture) reused per device; tests for the tables, the isolation
+  from ISZ / DCG and the lease; ask only for the exact missing sensor-module descriptors.
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach
