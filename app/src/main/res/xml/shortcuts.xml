@@ -10,6 +10,6 @@
         <intent
             android:action="org.codeaurora.snapcam.action.SETTINGS"
             android:targetClass="com.particlesdevs.photoncamera.ui.settings.SettingsActivity"
-            android:targetPackage="org.codeaurora.snapcam" />
+            android:targetPackage="@string/shortcut_target_package" />
     </shortcut>
 </shortcuts>

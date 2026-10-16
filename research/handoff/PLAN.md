@@ -4195,6 +4195,18 @@ the other agent's notes, «Изучи и реализуй, учитывай чт
 - To check on the phone: the SDK route inside the CTS package (verified so far only in the default package): RAW non-zero,
   JPEG reader drained, AE, SHDR JPEG 8192x6144.
 
+### P183 - one APK with everything: CI builds the CTS package (owner, 2026-10-17: «соберай только один апк. Собери сейчас
+один апк со всеми нововведениями и залей на гит»; done)
+- Why: the X200 Ultra's native ISZ (main / UW 2x, tele 2x / 4x), FULLRES without remosaic and 200 MP need the package
+  android.camera.cts (the HAL gives RAW without remosaic only to it); the CI APK was org.codeaurora.snapcam, where only the
+  tele «9,6× (ремозаик)» module exists - the owner took that for the ISZ modules being deleted by P181.
+- CI's assembleDebug runs with -PscameraCtsNativeRaw=true: the one APK (SCAMERA-Build-<code>) is android.camera.cts, signed
+  with the SCAMERA key. The launcher shortcut targets the build's own package (resValue shortcut_target_package). Unit tests
+  run with the same flag.
+- For the owner: a different package from org.codeaurora.snapcam (its own settings; a config export / import carries them),
+  and a different key from the local CTS diagnostics (uninstall those once). Not yet seen on non-vivo phones under this
+  package (installing it there needs the camera permission granted by the owner).
+
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach

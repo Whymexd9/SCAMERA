@@ -79,6 +79,8 @@ android {
         ndkVersion "27.2.12479018"
         applicationId (providers.gradleProperty('scameraCtsNativeRaw').orNull == 'true'
                 ? 'android.camera.cts' : 'org.codeaurora.snapcam')
+        // P183: the launcher shortcut targets whichever package this build is (CI builds the CTS one)
+        resValue "string", "shortcut_target_package", applicationId
         minSdkVersion 26
         targetSdkVersion 35
         versionCode ciVersionCode

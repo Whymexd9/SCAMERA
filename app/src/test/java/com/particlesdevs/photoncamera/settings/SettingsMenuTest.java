@@ -546,7 +546,9 @@ public class SettingsMenuTest {
                 if("shortcut".equals(xml.getName())){id=xml.getAttributeValue(ns,"shortcutId");
                     shortLabel=xml.getAttributeResourceValue(ns,"shortcutShortLabel",0);longLabel=xml.getAttributeResourceValue(ns,"shortcutLongLabel",0);
                     icon=xml.getAttributeResourceValue(ns,"icon",0);}
-                if("intent".equals(xml.getName())){target=xml.getAttributeValue(ns,"targetClass");pkg=xml.getAttributeValue(ns,"targetPackage");
+                // P183: the package is the build's own (a string the launcher resolves, as here), not a fixed name
+                if("intent".equals(xml.getName())){target=xml.getAttributeValue(ns,"targetClass");int ref=xml.getAttributeResourceValue(ns,"targetPackage",0);
+                    pkg=ref!=0?context.getString(ref):xml.getAttributeValue(ns,"targetPackage");
                     action=xml.getAttributeValue(ns,"action");}
             }
         }
