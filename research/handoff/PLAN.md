@@ -3881,7 +3881,7 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   deliverables/p157/p162-crop-screen.png). Not seen on a phone: a shot on the X200 Pro / Pro Mini should log «RAW crop
   4096x3072 -> 4000x3000 at 0,0» and give a photo without the stripes.
 
-### P163 - highlights on the LED screen still wrong after P159 (owner, 2026-10-16 15:06: «Изучи света, всё еще не исправил»; DCG part done)
+### P163 - highlights on the LED screen still wrong after P159 (owner, 2026-10-16 15:06: «Изучи света, всё еще не исправил»; DCG part and LED specks done)
 - Input: Telegram.zip (kept in SCAMERA-PC/evidence/p163/Telegram-2026-10-16-1506.zip): SCA_20261016_132656.jpg and
   SCA_20261016_132710.jpg with their Diagnostics ZIPs (SCAM-20261016-132656-989-6fd25a5e.zip, SCAM-20261016-132710-365-7f0060eb.zip),
   log-2026-10-16.txt, SCAMERA-debug.log.txt. X300 Ultra (PD2547), camera 5 (tele, CROPPED_RAW), a build with P159 (the log
@@ -3906,8 +3906,22 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
 - DONE 2026-10-16 (HybridPlan.build): in a DCG session (Dcg14Mode.active) the ultrashort keeps the N gain and takes its x1/8
   from the shutter (10 ms x ISO 1339 -> 1.25 ms x ISO 1339); the plan's description says «DCG: ultrashort by the shutter».
   Outside DCG the gain still goes first. HybridPlanTest.aDcgSessionTakesTheUltrashortFromTheShutter. Not seen on the phone.
-- Still open in P163: the LED-screen letters (first input); in DCG the LONG frames come x4 instead of x2 (ISO 1600 -> 3200;
-  merged by their measured ratio, harmless); ExposureLimits is keyed by camera and RAW size only, so DCG and plain share it.
+- LED screen (first input), measured on the Diagnostics stages (13:26:56 tele, 13:27:10 main): the white letters are clipped
+  in N, the Bento merge gives them (after WB) R/G 1.04, B/G 1.31 - a lavender LED white, kept as such by the P159 landing
+  (saturation 0.24, above its 0.08-0.30 white ramp). Defect: white specks in the letters (3 % of their pixels, the brightest
+  diodes clipped even in the ultrashort frames, neutral after the highlight recovery: saturation 0.05 against 0.25 around
+  them) landed on white amid lavender neighbours - the P159 landing took its colour per pixel.
+- DONE 2026-10-16 (ark/combine.glsl, HL_LANDING only): landingColour - the light's colour from the colour source at the pixel
+  (a quarter weight) and on a ring of eight taps ~12 output px around it, each weighted by how near the ceiling it is (a dark
+  or saturated ground beside the light does not tint it). check_highlight_landing: each tint now a band of its own (the ramp
+  along x) and a new LED case (a lavender letter at the ceiling on a blue ground with neutral 3x3 dots): the dots differ from
+  the letter by 0.020 (0.096 with the former shader: white specks), the letter keeps its tint; orange still lands on its own
+  colour, every other case as before; glslc 33 variants, check_colour_output / look / ark_highlights / tone_ops / film_lut /
+  viewfinder_look PASS. Not seen on a phone.
+- Seen, not changed: the magenta rim of the podium and the red ribbon is the defocused blend of the blue screen with the
+  orange podium (camera RGB 0.62 / 0.62 / 0.82, not clipped, magenta after the warm WB), no landing or recovery in it.
+- Still open in P163: in DCG the LONG frames come x4 instead of x2 (ISO 1600 -> 3200; merged by their measured ratio,
+  harmless); ExposureLimits is keyed by camera and RAW size only, so DCG and plain share it.
 
 
 

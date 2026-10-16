@@ -51,21 +51,21 @@ def main():
     soft = 0.7
     k = np.geomspace(0.02, 1.0, 96)                      # fraction of the ceiling
     tints = {'grey': np.array([1.0, 1.0, 1.0]), 'orange': np.array([1.0, 0.55, 0.2]), 'cool white': np.array([0.95, 0.97, 1.0])}
-    rows = [np.outer(k * clip, t) for t in tints.values()]
-    cols = np.concatenate(rows).astype(np.float32)
-    n = len(cols)
-    W = 32
-    H = -(-n // W)
+    # P163: each tint a band of its own (the ramp along x, the same in every row), so a pixel's neighbourhood is the same
+    # light (the landing takes its colour from there); the band's middle row is measured
+    W, BH = len(k), 33
+    H = BH * len(tints)
     img = np.zeros((H, W, 4), np.float32)
-    img.reshape(-1, 4)[:n, :3] = cols
+    for i, t in enumerate(tints.values()):
+        img[i * BH:(i + 1) * BH, :, :3] = np.outer(k * clip, t)[None].astype(np.float32)
     # the fused display luma whose ACES inversion gives the luminance back (as check_tone_ops builds it)
     grid = np.linspace(0, 2.51 / 2.43 - 0.0101, 40000)
     b, e = 0.0375, 0.132
     A, B, C = 2.43 * grid - 2.51, 0.59 * grid - b, e * grid
     table = np.maximum((-B - np.sqrt(np.maximum(B * B - 4 * A * C, 0))) / (2 * A - 1e-6) / 1.5, 0)
-    lum = cols @ np.array([0.2126, 0.7152, 0.0722])
+    lum = img[..., :3] @ np.array([0.2126, 0.7152, 0.0722])
     fused = np.zeros((H, W, 4), np.float32)
-    fused.reshape(-1, 4)[:n, 0] = np.interp(np.minimum(lum, table.max()), table, grid) ** (1 / 2.2)
+    fused[..., 0] = np.interp(np.minimum(lum, table.max()), table, grid) ** (1 / 2.2)
 
     def tex(a):
         t = ctx.texture((a.shape[1], a.shape[0]), 4, a.astype('f4').tobytes(), dtype='f4')
@@ -154,11 +154,11 @@ def main():
             t_full.release()
         return res
 
-    own = np.zeros((H, W), np.float32)
-    own.reshape(-1)[:n] = cols.max(1) / clip
+    own = (img[..., :3].max(2) / clip).astype(np.float32)
 
     def ramps(hl, share=own, headroom=1):
-        return render(img, fused, share, hl, headroom).reshape(-1, 3)[:n].reshape(len(tints), len(k), 3)
+        out = render(img, fused, share, hl, headroom)
+        return np.stack([out[i * BH + BH // 2] for i in range(len(tints))])
 
     base, land = ramps(0.0), ramps(soft)
     check(np.all(np.isfinite(land)), 'not finite')
@@ -223,6 +223,28 @@ def main():
     print('  blown disc edge: steepest step / rise without %.4f  with %.4f' % (s0, s1))
     check(s1 <= s0 * 1.05, 'the landing makes the edge of the blown disc sharper (%.4f > %.4f)' % (s1, s0))
     check(np.all(np.diff(row1[:S // 2]) >= -1e-5), 'the edge of the blown disc does not rise monotonically')
+
+    # P163: a tinted light (an LED wall's lavender letter on its blue ground) with neutral dots inside it (its diodes clipped
+    # even in the ultrashort frames): the dots land on the letter's colour, not on white specks; the letter keeps its tint
+    S2 = 96
+    letter = np.array([0.79, 0.76, 1.0])
+    led = np.zeros((S2, S2, 4), np.float32)
+    led[..., :3] = np.array([0.09, 0.19, 1.0]) * 0.45 * clip
+    led[24:72, 24:72, :3] = letter * clip
+    dots = [(30, 30), (40, 52), (55, 35), (60, 64), (47, 47)]
+    for y, x in dots:
+        led[y - 1:y + 2, x - 1:x + 2, :3] = 1.3 * clip
+    led[..., :3] = np.minimum(led[..., :3], clip)
+    lum_l = led[..., :3] @ np.array([0.2126, 0.7152, 0.0722])
+    fz_l = np.zeros_like(led)
+    fz_l[..., 0] = np.interp(np.minimum(lum_l, table.max()), table, grid) ** (1 / 2.2)
+    out_l = render(led, fz_l, run_mask(led, max(1.0, 0.012 * S2)), soft)
+    inside = out_l[36:62, 36:62].reshape(-1, 3)
+    ref = np.median(inside, 0)
+    worst = max(np.abs(out_l[y, x] - ref).max() for y, x in dots)
+    print('  LED letter: inside %s, its neutral dots differ by at most %.4f' % (np.round(ref, 4), worst))
+    check(worst < 0.03, 'the neutral dots of a tinted light land apart from it (white specks): %.4f' % worst)
+    check(ref[2] - ref[1] > 0.02, 'the lavender letter lost its tint: %s' % ref)
 
     if FAILURES:
         print('highlight landing check FAILED (%d)' % len(FAILURES))

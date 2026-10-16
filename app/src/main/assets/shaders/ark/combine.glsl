@@ -333,6 +333,31 @@ vec3 gamutCompress(vec3 c) {
 }
 #endif
 
+#if HL_LANDING == 1
+// P163 (owner, 2026-10-16 13:27, an LED screen: white speckles in its lavender letters): the colour a light lands on, from
+// its neighbourhood instead of the pixel alone - the colour source at the pixel ({@code own}) and on a ring of eight taps
+// ~12 output px around it, each tap weighted by how near the ceiling it is (the dark or saturated background beside a light
+// does not tint it). The brightest dots of a light (an LED wall's diodes clipped even in the ultrashort frames) come out of
+// the highlight recovery neutral; alone they landed on white amid their tinted neighbours.
+vec3 landingColour(ivec2 xy, int fc, float clipCeiling, vec3 own) {
+    ivec2 lastColour = textureSize(ArkColour, 0) - ivec2(1);
+    vec2 c = (vec2(xy) + 0.5) / float(fc);
+    float r = 12.0 / float(fc);
+    vec3 sum = own * 0.25;   // the pixel itself counts a quarter of a ring tap: alone (no bright ring) it is the colour
+    float wsum = 0.25;
+    for (int i = 0; i < 8; i++) {
+        float a = float(i) * 0.7853982;
+        ivec2 p = clamp(ivec2(c + vec2(cos(a), sin(a)) * r), ivec2(0), lastColour);
+        vec3 tap = max(texelFetch(ArkColour, p, 0).rgb, vec3(0.0));
+        if (!(tap.r < 1.0e30 && tap.g < 1.0e30 && tap.b < 1.0e30)) continue;
+        float w = smoothstep(0.5, 0.9, max3(tap) / clipCeiling);
+        sum += tap * w;
+        wsum += w;
+    }
+    return sum / wsum;
+}
+#endif
+
 void main() {
     ivec2 xy = ivec2(gl_FragCoord.xy);
     ivec2 size = textureSize(InputBuffer, 0);
@@ -552,10 +577,6 @@ void main() {
     }
 
     // === AgX (Blender 4 / Kraken matrices of the kernel) [:1079-1094, :1687-1730] ===
-#if HL_LANDING == 1
-    // P159: the light's own colour (linear sRGB, before the tone's shoulder bleaches it) for the highlight landing
-    vec3 sceneTone = scene;
-#endif
 #if P3_OUT == 1
     float chromaBack;
     scene = intoSrgbPositive(scene, chromaBack);
@@ -684,9 +705,10 @@ void main() {
         float t = clamp((rBlur - (1.0 - hlSoftU)) / hlSoftU, 0.0, 1.0);
         float landing = (1.0 - (1.0 - t) * (1.0 - t)) * smoothstep(0.15, 0.45, max3(orig) / clipCeiling);
         if (landing > 0.0) {
-            // P159: a coloured light lands on ITS colour at full brightness, taken from the scene before the tone (the
-            // shoulder had bleached a blown orange to pale pink: the inside of a cone on an LED screen); a near-neutral one
-            // (linear saturation below ~0.1) on pure white
+            // P159: a coloured light lands on ITS colour at full brightness, taken from the colour source before the tone
+            // (the shoulder had bleached a blown orange to pale pink: the inside of a cone on an LED screen); a near-neutral
+            // one (linear saturation below ~0.1) on pure white. P163: the light's colour from its neighbourhood.
+            vec3 sceneTone = landingColour(xy, fc, clipCeiling, max(orig, vec3(0.0)));
             vec3 sN = clamp(sceneTone / max(max3(sceneTone), 0.000001), 0.0, 1.0);
             float satS = 1.0 - min(sN.r, min(sN.g, sN.b));
 #if P3_OUT == 1
