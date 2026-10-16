@@ -43,6 +43,28 @@ public class ModuleDuplicatesTest {
         assertEquals("back1", w.get(ModuleDuplicates.MARK + "back4"));
     }
 
+    /** P148: a copy with a lens crop is named after its zoom and keeps the crop; a copy of a copy multiplies the crops. */
+    @Test
+    public void aCopyWithACropTakesTheCroppedZoomAndKeepsItsCrop() {
+        Map<String, Object> p = x7();
+        Map<String, Object> w = ModuleDuplicates.copyOf(p, "back1", "back4", "1×", 1f, 1f, 1.3f);
+        assertEquals("1.3×", w.get("module_name_back4"));
+        assertEquals("1.3", w.get("module_zoom_back4"));
+        assertEquals("1.3", w.get("module_crop_back4"));
+        assertEquals("2", w.get("module_id_back4"));
+        assertEquals("64", w.get("pref_sensorconfig_back4_blackleveloverride"));
+        p.putAll(w);
+        Map<String, Object> again = ModuleDuplicates.copyOf(p, "back4", "back5", "1.3×", 1.3f, 1.3f, 1.2f);
+        assertEquals("1.56", again.get("module_zoom_back5"));
+        assertEquals("1.56", again.get("module_crop_back5"));
+        Map<String, Object> plainOfCopy = ModuleDuplicates.copyOf(p, "back4", "back5", "1.3×", 1.3f, 1.3f, 1f);
+        assertEquals("a plain duplicate of a cropped copy keeps its crop", "1.3", plainOfCopy.get("module_crop_back5"));
+        assertEquals("1.3× (2)", plainOfCopy.get("module_name_back5"));
+        Map<String, Object> plain = ModuleDuplicates.copyOf(x7(), "back1", "back4", "1×", 1f);
+        assertFalse("a plain duplicate has no crop", plain.containsKey("module_crop_back4"));
+        assertTrue("the crop goes with a deleted copy", ModuleDuplicates.removalOf(p, "back4").contains("module_crop_back4"));
+    }
+
     @Test
     public void onlyDuplicatesAreDeletedAndTheSlotBecomesAFillerAgain() {
         Map<String, Object> p = x7();

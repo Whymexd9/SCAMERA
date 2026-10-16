@@ -74,4 +74,36 @@ public abstract class ModuleConceptFragment extends Fragment {
         @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info){super.onInitializeAccessibilityNodeInfo(info);info.setClassName("android.widget.CheckBox");info.setCheckable(true);info.setChecked(state>0);}
     };v.setContentDescription(label+(state==1?Lang.t(getContext(),", выбрано частично",", partly selected"):""));v.setFocusable(true);v.setOnClickListener(w->action.run());return v;}
     protected void open(Fragment fragment){getParentFragmentManager().beginTransaction().replace(R.id.settings_container,fragment).addToBackStack(null).commit();}
+    /** P148: the crop presets of a copy (1 = none). */
+    protected static final float[] CROPS={1f,1.2f,1.3f,1.5f,2f};
+    protected static String cropText(float v){return String.format(java.util.Locale.US,"%.3f",v).replaceAll("\\.?0+$","");}
+    /** P148: the crop of a copy of {@code source}: the presets (the button's zoom beside each) and a typed value. */
+    protected void cropSheet(String source,float current,java.util.function.Consumer<Float> onCrop){
+        float base=com.particlesdevs.photoncamera.settings.ModuleRegistry.zoom(source);
+        CharSequence[] labels=new CharSequence[CROPS.length+1],tags=new CharSequence[CROPS.length+1];int selected=-1;
+        for(int i=0;i<CROPS.length;i++){
+            float c=CROPS[i];tags[i]="crop_"+cropText(c);
+            labels[i]=c==1f?Lang.t(getContext(),"Без кропа · кнопка "+cropText(base)+"×","No crop · button "+cropText(base)+"×")
+                :Lang.t(getContext(),"Кроп "+cropText(c)+"× · кнопка "+cropText(base*c)+"×","Crop "+cropText(c)+"× · button "+cropText(base*c)+"×");
+            if(Math.abs(c-current)<0.001f)selected=i;
+        }
+        tags[CROPS.length]="crop_custom";labels[CROPS.length]=Lang.t(getContext(),"Своё значение…","Custom value…");
+        SettingsStyle.optionSheet(requireContext(),Lang.t(getContext(),"Кроп копии «"+com.particlesdevs.photoncamera.settings.ModuleRegistry.label(source)+"»","Copy crop of “"+com.particlesdevs.photoncamera.settings.ModuleRegistry.label(source)+"”"),labels,tags,selected,accent,i->{
+            if(i<CROPS.length){onCrop.accept(CROPS[i]);return;}
+            android.widget.EditText input=new android.widget.EditText(requireContext());input.setSingleLine(true);input.setTag("crop_value");
+            input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            input.setHint(Lang.t(getContext(),"От 1 до 10, например 1.3","1 to 10, e.g. 1.3"));input.setText(cropText(current));
+            new androidx.appcompat.app.AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Кроп копии","Copy crop")).setView(input)
+                .setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(d,w)->{
+                    try{float c=Float.parseFloat(input.getText().toString().trim().replace(',','.'));if(c>=1f&&c<=10f)onCrop.accept(c);}catch(NumberFormatException bad){}
+                }).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show();
+        }).show();
+    }
+    /** P148: a copy of {@code slot} with {@code crop}; its page opens (a message when the side has no free slot). */
+    protected void copyWithCrop(String slot,float crop){
+        String copy=com.particlesdevs.photoncamera.settings.ModuleRegistry.duplicate(slot,crop);
+        if(copy==null){android.widget.Toast.makeText(requireContext(),Lang.t(getContext(),"Нет свободного слота: скройте или удалите другой модуль","No free slot: hide or delete another module"),android.widget.Toast.LENGTH_LONG).show();return;}
+        android.widget.Toast.makeText(requireContext(),Lang.t(getContext(),"Создан «"+com.particlesdevs.photoncamera.settings.ModuleRegistry.label(copy)+"»","Created “"+com.particlesdevs.photoncamera.settings.ModuleRegistry.label(copy)+"”"),android.widget.Toast.LENGTH_SHORT).show();
+        getParentFragmentManager().beginTransaction().replace(com.particlesdevs.photoncamera.R.id.settings_container,ModuleLensFragment.module(copy)).addToBackStack("module").commit();
+    }
 }

@@ -71,6 +71,15 @@ public final class ModuleRegistry {
         }
         return 1f;
     }
+    /**
+     * P148: the lens crop of a module made as a copy «с кропом» (owner: a copy of the 1x camera that always shoots with a 1.3x
+     * crop): its zoom is the source's times this, and the frame is cropped by it; 1 for every other module.
+     */
+    public static float crop(String slot){
+        String v=prefs().getString("module_crop_"+slot,"").trim();
+        try{if(!v.isEmpty()){float c=Float.parseFloat(v.replace(',','.'));if(c>=1f&&c<=20f)return c;}}catch(NumberFormatException ignored){}
+        return 1f;
+    }
     /** True when the module's frames are already cropped on the sensor (vendor mode), not by digital zoom. */
     /** The owner's explicit «crop on the sensor» setting of the module, or null when it is on «Auto». */
     public static Boolean sensorCropExplicit(String slot){
@@ -97,29 +106,38 @@ public final class ModuleRegistry {
     }
     /** Zoom ratio at which the module's frame is uncropped: its own ratio for sensor-crop modules, else the widest module on the same Camera ID. */
     public static float nativeRatio(String slot){
-        if(sensorCrop(slot))return zoom(slot);
+        // P148: a module with a lens crop starts from the uncropped zoom of its lens (zoom / crop), whether the original module
+        // is shown or hidden and whether its frames are cropped on the sensor: the crop stays a digital crop of that frame
+        if(sensorCrop(slot))return zoom(slot)/crop(slot);
         String id=camera(slot);
         // P100c: where labels snap to stock steps, the lens's measured field of view is its native zoom (S24 Ultra 3× tele = 2.73)
         if(ZoomLabels.snaps(android.os.Build.BRAND)&&prefs().contains("module_fov_"+id)){
             float fov=prefs().getFloat("module_fov_"+id,0f);
             if(fov>0f)return fov;
         }
-        float min=zoom(slot);
-        for(String other:slots())if(visible(other)&&!sensorCrop(other)&&camera(other).equals(id))min=Math.min(min,zoom(other));
+        float min=zoom(slot)/crop(slot);
+        for(String other:slots())if(visible(other)&&!sensorCrop(other)&&camera(other).equals(id))min=Math.min(min,zoom(other)/crop(other));
         return min;
     }
+    /** P148: a hidden filler slot nobody set up: a free place for a copy (the module list counts these instead of showing them). */
+    public static boolean freeSlot(String slot){return ModuleDuplicates.untouchedFiller(prefs().getAll(),slot);}
     /** P21: the source module of a duplicate, or null for an original. */
     public static String duplicateOf(String slot){return ModuleDuplicates.sourceOf(prefs().getAll(),slot);}
     /**
      * P21: a second button on the same lens (own name, zoom, vendor requests and profile) in a free slot of the same side;
      * returns the new slot, or null when the side has no free slot.
      */
-    public static String duplicate(String source){
+    public static String duplicate(String source){return duplicate(source,1f);}
+    /**
+     * P148: a copy of {@code source} with a lens crop (1 = none, as {@link #duplicate(String)}): its button zoom is the source's
+     * times the crop («1.3×» for a 1.3x copy of the 1x camera) and the camera crops its frame by it; null without a free slot.
+     */
+    public static String duplicate(String source,float crop){
         java.util.Map<String,?> all=prefs().getAll();
         String target=ModuleDuplicates.freeSlot(all,source,capacity(source.startsWith("front")?"front":"back"));
         if(target==null)return null;
         SharedPreferences.Editor e=prefs().edit();
-        for(java.util.Map.Entry<String,Object> w:ModuleDuplicates.copyOf(all,source,target,label(source),zoom(source)).entrySet())ModuleProfiles.put(e,w.getKey(),w.getValue());
+        for(java.util.Map.Entry<String,Object> w:ModuleDuplicates.copyOf(all,source,target,label(source),zoom(source),crop(source),crop).entrySet())ModuleProfiles.put(e,w.getKey(),w.getValue());
         e.apply();
         try{
             java.util.Set<String> keys=new java.util.HashSet<>(PreferenceKeys.profiles().snapshot(source).keySet());

@@ -1422,6 +1422,68 @@ public class SettingsMenuTest {
         keys.remove("oismode");
         assertEquals(Arrays.asList("blackleveloverride","whiteleveloverride","sessiontype","add_tunablekey"),keys);
     }
+    /**
+     * P148: the module page groups its rows (basics, copies, advanced) and makes a copy with a lens crop: «1.3×» of the 1× camera
+     * crops its frame 1.3x from the lens's uncropped zoom - also with the 1× button hidden -, its page shows and changes the crop;
+     * a copy of a sensor-cropped module crops that module's frame.
+     */
+    @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void aModuleCopyWithItsOwnLensCrop() throws Exception {
+        for(int i=0;i<3;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.6×","2×"}[i]).putBoolean("module_visible_back"+i,true).commit();
+        for(int i=3;i<8;i++)prefs.edit().putString("module_auto_back"+i,"5").putString("module_label_back"+i,"2×").putBoolean("module_visible_back"+i,false).commit(); // the hidden filler slots
+        prefs.edit().putString("module_active","back0").putBoolean("module_sensorcrop_back2",true).commit();
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
+            var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();
+            assertNotNull("the page's own «add a copy» action",modules.requireView().findViewWithTag("Добавить модуль с кропом"));
+            assertFalse("untouched filler slots are a count, not hidden modules",shownText(modules.requireView(),"Скрытые модули"));
+            assertTrue(shownText(modules.requireView(),"свободных мест: 5"));
+            renderPage(modules.requireView(),"modules-p148");
+            var page=com.particlesdevs.photoncamera.ui.settings.ModuleLensFragment.module("back0");fm.beginTransaction().replace(R.id.settings_container,page).commitNow();
+            renderPage(page.requireView(),"module-page-p148");
+            for(String row:new String[]{"Название","Зум и кроп на сенсоре","Кнопка в видоискателе","Сделать копию с кропом","Camera ID","Сенсор и вендорные ключи"})
+                assertNotNull(row,page.requireView().findViewWithTag(row));
+            page.requireView().findViewWithTag("Сделать копию с кропом").performClick();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            assertNotNull(sheet);sheet.findViewById(android.R.id.content).findViewWithTag("option_crop_1.3").performClick();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();fm.executePendingTransactions();
+            String copy=null;for(String slot:ModuleRegistry.slots())if("back0".equals(ModuleRegistry.duplicateOf(slot)))copy=slot;
+            assertNotNull("a copy of the 1× module",copy);
+            assertEquals("1.3×",ModuleRegistry.label(copy));
+            assertEquals(1.3f,ModuleRegistry.zoom(copy),1e-4f);
+            assertEquals(1.3f,ModuleRegistry.crop(copy),1e-4f);
+            assertEquals("the lens's uncropped zoom: the camera crops 1.3x",1f,ModuleRegistry.nativeRatio(copy),1e-4f);
+            assertTrue(ModuleRegistry.visible(copy));
+            var copyPage=fm.findFragmentById(R.id.settings_container);
+            assertTrue(copyPage instanceof com.particlesdevs.photoncamera.ui.settings.ModuleLensFragment);
+            assertNotNull("the copy's page shows its crop",copyPage.requireView().findViewWithTag("Кроп копии"));
+            assertNotNull(copyPage.requireView().findViewWithTag("Удалить копию"));
+            renderPage(copyPage.requireView(),"module-copy-p148");
+            prefs.edit().putBoolean("module_visible_back0",false).commit();
+            assertEquals("the crop stays with the 1× button hidden",1f,ModuleRegistry.nativeRatio(copy),1e-4f);
+            // the crop of the copy changed on its page: 1.5x
+            copyPage.requireView().findViewWithTag("Кроп копии").performClick();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            sheet.findViewById(android.R.id.content).findViewWithTag("option_crop_1.5").performClick();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertEquals(1.5f,ModuleRegistry.zoom(copy),1e-4f);
+            assertEquals(1.5f,ModuleRegistry.crop(copy),1e-4f);
+            // a copy of the sensor-cropped 2× module: its frame is cropped 1.5x more (native = the 2× module's frame)
+            String isz=ModuleRegistry.duplicate("back2",1.5f);
+            assertNotNull(isz);
+            assertEquals(3f,ModuleRegistry.zoom(isz),1e-4f);
+            assertEquals(2f,ModuleRegistry.nativeRatio(isz),1e-4f);
+            assertEquals("the original modules are unchanged",1f,ModuleRegistry.crop("back0"),0f);
+            assertEquals(2f,ModuleRegistry.nativeRatio("back2"),1e-4f);
+        }
+    }
+    /** A TextView under {@code view} whose text contains {@code part}. */
+    private static boolean shownText(android.view.View view,String part){
+        if(view instanceof android.widget.TextView&&String.valueOf(((android.widget.TextView)view).getText()).contains(part))return true;
+        if(view instanceof android.view.ViewGroup)for(int i=0;i<((android.view.ViewGroup)view).getChildCount();i++)if(shownText(((android.view.ViewGroup)view).getChildAt(i),part))return true;
+        return false;
+    }
     /** P149: the RAW level rows say «Авто» for -1, show the module's own levels and run over that module's RAW range. */
     @Test public void rawLevelRowsShowAutoAndTheModulesOwnLevels(){
         prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5")

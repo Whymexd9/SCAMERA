@@ -3528,6 +3528,22 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   (ZoomController.crop / the digital zoom path, the gain map follows). Configs carry it (P141).
 - Checks: every key of today still on the page and bound (SettingsMenuTest: allPagesAndRegisteredTunablesAreReachableAndBind,
   the sensor page tests), renders for a look (build/reports/module-concept), check_ui_language / check_settings_model.
+- DONE 2026-10-16 (nothing removed):
+  - «Камеры и сенсоры»: one line on what a module is; the untouched filler slots (hidden slots beyond the lens count that
+    nobody set up) are a count («свободных мест: 5») instead of five «2× · ID 5 · скрыт» rows; «Добавить модуль с кропом»
+    on the page (pick the module, then the crop); hidden modules someone set up are listed as before.
+  - Module page in three groups: «Основное» (name, zoom and sensor crop, viewfinder button), «Копии модуля» / «Копия модуля»
+    («Сделать копию с кропом», «Кроп копии» on a copy, «Удалить копию»), «Для опытных» (Camera ID, «Сенсор и вендорные
+    ключи», the stream's colour block). «Дубликат» is «копия» in the texts.
+  - Copy with a lens crop: ModuleRegistry.duplicate(source, crop) - the copy's zoom = the source's x crop, named after it
+    («1.3×»), module_crop_<slot> keeps the crop (a copy of a copy multiplies it); nativeRatio uses zoom / crop, so the
+    camera crops the frame by it from the lens's uncropped zoom also with the original button hidden and for a copy of a
+    sensor-cropped (ISZ) module; every other module has crop 1 (unchanged). The crop sheet: none / 1.2 / 1.3 / 1.5 / 2 / a
+    typed value (1..10) with the resulting button zoom beside each. Configs carry module_crop_ with the other module_ keys.
+  - ModuleDuplicates.freeSlot takes an untouched filler first (before a hidden lens module the owner may still want).
+  - Tests: SettingsMenuTest.aModuleCopyWithItsOwnLensCrop (page groups, the sheet, zoom / crop / nativeRatio, hidden 1×, ISZ
+    copy), ModuleDuplicatesTest.aCopyWithACropTakesTheCroppedZoomAndKeepsItsCrop; renders modules-p148 / module-page-p148 /
+    module-copy-p148. Not seen on a phone yet (the photo's crop follows ZoomController's residual as for any zoom).
 
 ### P146 - FULLRES as its own settings group (owner, 2026-10-16: «Так же сделай отдельные настройки для 50мп как для отдельного модуля, сделай отдельную группу "FULLRES" где я смогу полностью всё так же настраивать как для остальных. Пункт пускай будет доступен только на смартфонах где у нас будет рабочий фулрез»)
 - A FULLRES profile beside the module profiles (ModuleProfiles / module_profile_v2_<slot>): every per-module setting

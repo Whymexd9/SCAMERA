@@ -23,13 +23,33 @@ public class ModuleLensFragment extends ModuleConceptFragment {
     private void renderModule(String slot){
         page=slot;
         String source=ModuleRegistry.duplicateOf(slot);
-        page(ModuleRegistry.label(slot)+" · ID "+ModuleRegistry.camera(slot),source==null?null:Lang.t(getContext(),"Дубликат модуля «"+ModuleRegistry.label(source)+"»","Duplicate of “"+ModuleRegistry.label(source)+"”"));
+        page(ModuleRegistry.label(slot)+" · ID "+ModuleRegistry.camera(slot),source==null?null:Lang.t(getContext(),"Копия модуля «"+ModuleRegistry.label(source)+"»","Copy of “"+ModuleRegistry.label(source)+"”"));
+        // P148 (owner, 2026-10-16: simpler for an ordinary user, nothing removed): what most people change first - name, zoom,
+        // the viewfinder button -, then the copies of the module (a copy with its own lens crop), then the expert rows
+        // (Camera ID, the sensor page with RAW levels, stabilization, session type and vendor tags).
+        caption(Lang.t(getContext(),"Основное","Basics"));
         navigation("◇",Lang.t(getContext(),"Название","Name"),ModuleRegistry.label(slot),()->rename(slot));
-        navigation("▣","Camera ID",ModuleRegistry.camera(slot)+(ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getString("module_id_"+slot,"").isEmpty()?Lang.t(getContext()," · авто"," · auto"):Lang.t(getContext()," · вручную"," · manual")),this::choose);
         navigation("⌕",Lang.t(getContext(),"Зум и кроп на сенсоре","Zoom and sensor crop"),String.format(java.util.Locale.US,Lang.t(getContext(),"Зум %.2f×","Zoom %.2f×"),ModuleRegistry.zoom(slot)).replaceAll("\\.?0+×","×")+(ModuleRegistry.sensorCrop(slot)?Lang.t(getContext()," · кроп на сенсоре"," · sensor crop"):""),()->zoomDialog(slot));
         boolean shown=ModuleRegistry.visible(slot);
         navigation(shown?"●":"○",Lang.t(getContext(),"Кнопка в видоискателе","Viewfinder button"),shown?Lang.t(getContext(),"Показывается · нажмите, чтобы скрыть","Shown · tap to hide"):Lang.t(getContext(),"Скрыта · нажмите, чтобы показать","Hidden · tap to show"),()->{
             ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putBoolean("module_visible_"+slot,!shown).apply();render();});
+        // P148: copies of the module, each with its own lens crop (owner: «копирую 1х камеру и я хочу чтобы копия всегда была
+        // условно с 1.3х кропом»)
+        caption(source==null?Lang.t(getContext(),"Копии модуля","Copies of the module"):Lang.t(getContext(),"Копия модуля","Module copy"));
+        if(source!=null)navigation("⌕",Lang.t(getContext(),"Кроп копии","Copy crop"),cropSummary(slot,source),()->cropSheet(source,ModuleRegistry.crop(slot)/ModuleRegistry.crop(source),crop->{
+            float base=ModuleRegistry.zoom(source);
+            ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit()
+                .putString("module_crop_"+slot,cropText(ModuleRegistry.crop(source)*crop))
+                .putString("module_zoom_"+slot,cropText(base*crop)).apply();
+            render();
+        }));
+        navigation("⧉",Lang.t(getContext(),"Сделать копию с кропом","Make a copy with a crop"),Lang.t(getContext(),"Ещё одна кнопка на этом объективе: свой кроп (например, 1.3×), свои реквесты и профиль","Another button on this lens: its own crop (e.g. 1.3×), requests and profile"),()->
+            cropSheet(slot,1f,crop->copyWithCrop(slot,crop)));
+        if(source!=null)navigation("✕",Lang.t(getContext(),"Удалить копию","Delete copy"),Lang.t(getContext(),"Кнопка, её реквесты и настройки сенсора удаляются; исходный модуль остаётся","The button, its requests and sensor settings are deleted; the original module stays"),()->
+            new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Удалить «"+ModuleRegistry.label(slot)+"»?","Delete “"+ModuleRegistry.label(slot)+"”?")).setPositiveButton(Lang.t(getContext(),"Удалить","Delete"),(d,w)->{ModuleRegistry.remove(slot);back();}).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show());
+        else note(Lang.t(getContext(),"Исходный модуль объектива удалить нельзя — его можно скрыть.","The original module of a lens can't be deleted, only hidden."));
+        caption(Lang.t(getContext(),"Для опытных","Advanced"));
+        navigation("▣","Camera ID",ModuleRegistry.camera(slot)+(ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getString("module_id_"+slot,"").isEmpty()?Lang.t(getContext()," · авто"," · auto"):Lang.t(getContext()," · вручную"," · manual")),this::choose);
         int mode=ModuleRegistry.sensorMode(slot);
         navigation("⚙︎",Lang.t(getContext(),"Сенсор и вендорные ключи","Sensor and vendor keys"),(mode!=0?Lang.t(getContext(),"Сенсормод "+mode+" · ","Sensor mode "+mode+" · "):"")+Lang.t(getContext(),"Уровни RAW, стабилизация, тип сессии и vendor tags этого модуля","RAW levels, stabilization, session type and vendor tags of this module"),()->
             // straight to this module's sensor page (it no longer has a module list row to pick it in)
@@ -38,16 +58,11 @@ public class ModuleLensFragment extends ModuleConceptFragment {
             int block=com.particlesdevs.photoncamera.processing.MosaicStream.block();
             note(Lang.t(getContext(),"Цветовой блок потока: ","Stream colour block: ")+(block==0?Lang.t(getContext(),"ещё не измерен (откройте видоискатель)","not measured yet (open the viewfinder)"):block==1?Lang.t(getContext(),"обычный Bayer","plain Bayer"):block==2?Lang.t(getContext(),"Quad 2×2 (сенсормод без ремозаика)","Quad 2×2 (sensor mode without remosaic)"):Lang.t(getContext(),"Tetra 4×4 (сенсормод без ремозаика)","Tetra 4×4 (sensor mode without remosaic)")));
         }
-        caption(Lang.t(getContext(),"Дубликаты","Duplicates"));
-        navigation("⧉",Lang.t(getContext(),"Дублировать модуль","Duplicate module"),Lang.t(getContext(),"Вторая кнопка на том же объективе со своими реквестами и профилем — например, 1× с ISZ и без","A second button on the same lens with its own requests and profile, e.g. 1× with and without ISZ"),()->{
-            String copy=ModuleRegistry.duplicate(slot);
-            if(copy==null){android.widget.Toast.makeText(requireContext(),Lang.t(getContext(),"Нет свободного слота: скройте или удалите другой модуль","No free slot: hide or delete another module"),android.widget.Toast.LENGTH_LONG).show();return;}
-            android.widget.Toast.makeText(requireContext(),Lang.t(getContext(),"Создан «"+ModuleRegistry.label(copy)+"»","Created “"+ModuleRegistry.label(copy)+"”"),android.widget.Toast.LENGTH_SHORT).show();
-            getParentFragmentManager().beginTransaction().replace(com.particlesdevs.photoncamera.R.id.settings_container,module(copy)).addToBackStack("module").commit();
-        });
-        if(source!=null)navigation("✕",Lang.t(getContext(),"Удалить дубликат","Delete duplicate"),Lang.t(getContext(),"Кнопка, её реквесты и настройки сенсора удаляются; исходный модуль остаётся","The button, its requests and sensor settings are deleted; the original module stays"),()->
-            new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Удалить «"+ModuleRegistry.label(slot)+"»?","Delete “"+ModuleRegistry.label(slot)+"”?")).setPositiveButton(Lang.t(getContext(),"Удалить","Delete"),(d,w)->{ModuleRegistry.remove(slot);back();}).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show());
-        else note(Lang.t(getContext(),"Исходный модуль объектива удалить нельзя — его можно скрыть.","The original module of a lens can't be deleted, only hidden."));
+    }
+    private String cropSummary(String slot,String source){
+        float c=ModuleRegistry.crop(slot)/ModuleRegistry.crop(source);
+        return c<=1.0001f?Lang.t(getContext(),"Без кропа · как «"+ModuleRegistry.label(source)+"»","No crop · like “"+ModuleRegistry.label(source)+"”")
+            :Lang.t(getContext(),cropText(c)+"× от «"+ModuleRegistry.label(source)+"» · кнопка "+cropText(ModuleRegistry.zoom(slot))+"×",cropText(c)+"× of “"+ModuleRegistry.label(source)+"” · button "+cropText(ModuleRegistry.zoom(slot))+"×");
     }
     @Override protected void render(){
         renderModule(getArguments()==null?ModuleRegistry.active():getArguments().getString("slot",ModuleRegistry.active()));
