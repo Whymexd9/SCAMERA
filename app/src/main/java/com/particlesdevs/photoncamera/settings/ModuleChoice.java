@@ -101,6 +101,31 @@ public final class ModuleChoice {
         return da < db - 1e-4f;
     }
 
+    /**
+     * P156: the module the camera opens on after the app was closed for good (owner, 2026-10-16: «после полного закрытия
+     * приложения у нас открывалась не последняя используемая камера, а сбрасывалось на 1х»): the shown back module whose
+     * zoom is nearest 1x; at the same zoom a plain one (no forced sensor mode, no lens crop of a copy) first, then slot order.
+     * Null without a shown back module.
+     */
+    public static String home(List<String> slots, Set<String> visible, Map<String, Float> zoom, Map<String, Integer> sensorMode,
+                              Map<String, Float> crop) {
+        String best = null;
+        for (String slot : slots) {
+            if (!"back".equals(side(slot)) || !visible.contains(slot)) continue;
+            if (best == null || nearerOne(slot, best, zoom, sensorMode, crop)) best = slot;
+        }
+        return best;
+    }
+
+    private static boolean nearerOne(String a, String b, Map<String, Float> zoom, Map<String, Integer> sensorMode,
+                                     Map<String, Float> crop) {
+        float da = Math.abs(value(zoom, a, 1f) - 1f), db = Math.abs(value(zoom, b, 1f) - 1f);
+        if (Math.abs(da - db) > 0.02f) return da < db;
+        boolean plainA = value(sensorMode, a, 0) == 0 && value(crop, a, 1f) <= 1f;
+        boolean plainB = value(sensorMode, b, 0) == 0 && value(crop, b, 1f) <= 1f;
+        return plainA && !plainB;
+    }
+
     private static <T> T value(Map<String, T> map, String key, T fallback) {
         T v = map == null ? null : map.get(key);
         return v == null ? fallback : v;

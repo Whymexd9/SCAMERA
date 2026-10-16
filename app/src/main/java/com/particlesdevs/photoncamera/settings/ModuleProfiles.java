@@ -16,6 +16,8 @@ public final class ModuleProfiles {
         if(!meta.getBoolean("baseline",false)){write(file("common"),current());meta.edit().putBoolean("baseline",true).apply();}
     }
     public boolean isApplying(){return applying||QUIET.get()>0;}
+    /** P156: the module whose profile the main settings hold now (the settings chip can edit another than the camera's). */
+    public synchronized String editing(){return active;}
     /**
      * P141: a config being written into the prefs files: the profile listener stays quiet meanwhile (a CAMERA_ID or per-lens
      * change in the new main settings loaded this phone's OLD profile of the module into them before the config's own

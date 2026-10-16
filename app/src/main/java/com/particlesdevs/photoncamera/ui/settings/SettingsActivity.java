@@ -118,6 +118,14 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
     public void back(View view) {
         onBackPressed();
     }
+
+    @Override
+    protected void onPause() {
+        // P156: leaving the settings returns the main settings to the camera module's profile (the chip may have chosen
+        // another module for editing); before the camera's onResume, so the camera never opens with the edited module's values
+        if (isFinishing()) com.particlesdevs.photoncamera.settings.ModuleRegistry.syncProfile();
+        super.onPause();
+    }
     @Override
     public boolean onPreferenceStartScreen(@NonNull PreferenceFragmentCompat preferenceFragmentCompat,
                                            PreferenceScreen preferenceScreen) {
@@ -317,7 +325,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             header.subtitle.setVisibility(View.GONE);
             chipBox.removeAllViews();
             String chip = null;
-            boolean picker = false;
+            boolean picker = false, modulePicker = false;
             if (screen != null && SENSOR_PAGE.equals(screen.getKey()) && sensorSelection != null) {
                 // Sensor settings always belong to one module, per-module profiles on or off. The chip names it and,
                 // with more than one module, is the module picker (the page has no picker row of its own).
@@ -326,21 +334,69 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 if (picker) chip += "  ▾";
             }
             else if (screen != null && PreferenceKeys.isPerLensSettingsOn() && SettingsStyle.hasModuleSettings(screen)) {
-                String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+                // P156 (owner: «Сделай так чтобы эта кнопка была интерактивна и мы могли менять модули тут для настройки»):
+                // the module whose profile is edited here; with more than one shown module the chip picks another one
+                String slot = editedModule();
                 chip = Lang.t(getContext(),"Настраивается: ","Editing: ") + com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)
                         + " · ID " + com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot);
+                modulePicker = editableModules().size() > 1;
+                if (modulePicker) chip += "  ▾";
             }
             if (chip != null) {
                 android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(-2, -2);
                 lp.bottomMargin = SettingsStyle.dp(requireContext(), 4);
                 android.widget.TextView view = SettingsStyle.chip(requireContext(), chip);
-                if (picker) {
-                    view.setOnClickListener(v -> pickSensorModule());
+                if (picker || modulePicker) {
+                    view.setOnClickListener(picker ? v -> pickSensorModule() : v -> pickEditedModule());
                     view.setFocusable(true);
                     view.setContentDescription(chip.replace("  ▾", "") + Lang.t(getContext(),". Выбрать другой модуль",". Choose another module"));
                 }
                 chipBox.addView(view, lp);
             }
+        }
+
+        /** P156: the module whose profile the main settings hold (the camera's module unless the chip chose another). */
+        static String editedModule() {
+            String slot = null;
+            try { slot = PreferenceKeys.profiles().editing(); } catch (RuntimeException ignored) { }
+            return slot == null || slot.isEmpty() ? com.particlesdevs.photoncamera.settings.ModuleRegistry.active() : slot;
+        }
+
+        /** P156: the shown modules, the back ones by zoom, then the front ones. */
+        static java.util.List<String> editableModules() {
+            java.util.List<String> out = new java.util.ArrayList<>();
+            try {
+                for (String slot : com.particlesdevs.photoncamera.settings.ModuleRegistry.slots())
+                    if (com.particlesdevs.photoncamera.settings.ModuleRegistry.visible(slot)) out.add(slot);
+            } catch (RuntimeException ignored) { }
+            out.sort(java.util.Comparator.comparing((String s) -> s.startsWith("front"))
+                    .thenComparingDouble(com.particlesdevs.photoncamera.settings.ModuleRegistry::zoom));
+            return out;
+        }
+
+        /**
+         * P156: the chip's picker on the pages with per-module values: the chosen module's profile goes into the main settings,
+         * the pages show and edit its values (the activity is recreated, the open page stays); the camera keeps its module,
+         * and leaving the settings returns to the camera module's profile.
+         */
+        private void pickEditedModule() {
+            java.util.List<String> slots = editableModules();
+            String editing = editedModule(), camera = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+            CharSequence[] labels = new CharSequence[slots.size()], tags = new CharSequence[slots.size()];
+            for (int i = 0; i < slots.size(); i++) {
+                String slot = slots.get(i);
+                labels[i] = com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot) + " · ID "
+                        + com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot)
+                        + (slot.equals(camera) ? Lang.t(getContext(), " — сейчас в камере", " — in the camera now") : "");
+                tags[i] = slot;
+            }
+            SettingsStyle.optionSheet(requireContext(), Lang.t(getContext(),"Настраивать модуль","Module to edit"), labels, tags,
+                    slots.indexOf(editing), SettingsStyle.accent(requireContext()), i -> {
+                        String slot = slots.get(i);
+                        if (slot.equals(editing)) return;
+                        PreferenceKeys.profiles().activate(slot);
+                        if (getActivity() != null) getActivity().recreate();
+                    });
         }
 
         /** The module picker of the sensor page: shows another module's sensor settings; the camera stays as it is. */

@@ -115,4 +115,29 @@ public class ModuleChoiceTest {
         assertEquals("module_last_back", ModuleChoice.lastKey("back0"));
         assertEquals("module_last_front", ModuleChoice.lastKey("front1"));
     }
+
+    /**
+     * P156: a fresh start opens on the shown back module nearest 1x: the plain 1x before a «1.3×» copy, an ISZ «2×» or the
+     * 0.6x; a hidden 1x is skipped (then the nearest shown one); a front module never; nothing shown on the back: null.
+     */
+    @Test
+    public void freshStartHomeIsTheShownBackModuleNearestOneX() {
+        List<String> slots = Arrays.asList("back0", "back1", "back2", "back3", "back4", "front0");
+        Map<String, Float> zoom = new HashMap<>();
+        zoom.put("back0", 2.4f); zoom.put("back1", 1f); zoom.put("back2", 0.6f); zoom.put("back3", 1.3f); zoom.put("back4", 2f);
+        zoom.put("front0", 1f);
+        Map<String, Integer> mode = new HashMap<>();
+        mode.put("back4", 7);
+        Map<String, Float> crop = new HashMap<>();
+        crop.put("back3", 1.3f);
+        Set<String> shown = new HashSet<>(slots);
+        assertEquals("back1", ModuleChoice.home(slots, shown, zoom, mode, crop));
+        shown.remove("back1");
+        assertEquals("the hidden 1x: the nearest shown, the 1.3x copy", "back3", ModuleChoice.home(slots, shown, zoom, mode, crop));
+        // a sensor-mode module at 1x loses against a plain one at 1x
+        zoom.put("back4", 1f);
+        shown.add("back1");
+        assertEquals("back1", ModuleChoice.home(Arrays.asList("back4", "back1"), shown, zoom, mode, crop));
+        assertNull(ModuleChoice.home(slots, new HashSet<>(Collections.singletonList("front0")), zoom, mode, crop));
+    }
 }

@@ -177,6 +177,45 @@ public final class ModuleRegistry {
         }
         return ModuleChoice.moduleFor(slots,side,cameraId,cameraOf,shown,zooms,modes);
     }
+    /** P156: {@link ModuleChoice#home} over this phone's back modules. */
+    public static String homeSlot(){
+        List<String> slots=new ArrayList<>();Set<String> shown=new HashSet<>();
+        Map<String,Float> zooms=new HashMap<>(),crops=new HashMap<>();Map<String,Integer> modes=new HashMap<>();
+        for(int i=0;i<capacity("back");i++){
+            String slot="back"+i;if(!prefs().contains("module_auto_"+slot))continue;
+            slots.add(slot);if(visible(slot))shown.add(slot);
+            zooms.put(slot,zoom(slot));modes.put(slot,sensorMode(slot));crops.put(slot,crop(slot));
+        }
+        return ModuleChoice.home(slots,shown,zooms,modes,crops);
+    }
+    private static boolean homeChecked;
+    /**
+     * P156: on the camera's first start in this process. A fresh start (the app was closed for good; not the system bringing
+     * back a screen it closed) opens on the back 1x module ({@link #homeSlot}) with its profile, whatever module was used
+     * last. Returns the slot switched to, null when nothing changed.
+     */
+    public static synchronized String openHomeOnce(boolean freshStart){
+        if(homeChecked)return null;
+        homeChecked=true;
+        if(!freshStart)return null;
+        String home=homeSlot();
+        if(home==null)return null;
+        if(home.equals(active())&&camera(home).equals(PreferenceKeys.getCameraID())){syncProfile();return null;}
+        select(home);
+        PreferenceKeys.setCameraID(camera(home));
+        return home;
+    }
+    /** Tests: the next {@link #openHomeOnce} counts as the process's first camera start. */
+    static synchronized void forgetHomeCheck(){homeChecked=false;}
+    /**
+     * P156: the main settings hold the camera module's profile again. The settings screen can show another module's values
+     * for editing (its chip); leaving it, or the camera coming back, returns to the module the camera uses. Not while the app
+     * is about to restart (an imported config or a reset wrote the files behind the profiles' back).
+     */
+    public static void syncProfile(){
+        if(ScameraApp.restarting)return;
+        try{PreferenceKeys.profiles().activate(active());}catch(RuntimeException ignored){}
+    }
     private static volatile String pendingSlot="";
     private static volatile long pendingAt;
     public static void select(String slot){

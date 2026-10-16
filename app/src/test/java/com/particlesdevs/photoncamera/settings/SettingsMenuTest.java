@@ -1497,6 +1497,60 @@ public class SettingsMenuTest {
             assertTrue(chip.getText().toString(),chip.getText().toString().startsWith("Editing: 1× · ID 3"));
         }
     }
+    /**
+     * P156: on a page with per-module values the chip picks the module to edit: its profile comes into the main settings, the
+     * camera keeps its module; leaving the settings saves the edit into that module and brings the camera module's values back.
+     */
+    @Test public void moduleChipEditsAnotherModuleAndLeavingReturnsToTheCameraModule(){
+        prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5")
+            .putString("module_label_back0","1×").putString("module_label_back1","3×")
+            .putBoolean("module_visible_back0",true).putBoolean("module_visible_back1",true)
+            .putString("module_active","back0").putBoolean("pref_save_per_lens_settings",true)
+            .putString("pref_scam_hybrid_cdm","0.9").commit();
+        context.getSharedPreferences("module_profiles_meta",0).edit().clear().putBoolean("baseline",true)
+            .putBoolean("exists_back0",true).putBoolean("exists_back1",true).putString("active","back0").commit();
+        context.getSharedPreferences("module_profile_v2_back1",0).edit().clear().putString("pref_scam_hybrid_cdm","0.5").commit();
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            android.widget.TextView chip=controller.get().findViewById(R.id.settings_container).findViewWithTag("settings_chip");
+            assertNotNull(chip);
+            assertTrue(chip.getText().toString(),chip.getText().toString().startsWith("Editing: 1× · ID 3")&&chip.getText().toString().endsWith("▾"));
+            chip.performClick();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            assertNotNull(sheet);
+            android.view.View row=sheet.findViewById(android.R.id.content).findViewWithTag("option_back0");
+            assertNotNull(row);
+            sheet.findViewById(android.R.id.content).findViewWithTag("option_back1").performClick();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertEquals("back1",PreferenceKeys.profiles().editing());
+            assertEquals("the 3x values to edit","0.5",prefs.getString("pref_scam_hybrid_cdm",""));
+            assertEquals("the camera keeps its module","back0",ModuleRegistry.active());
+            prefs.edit().putString("pref_scam_hybrid_cdm","0.4").commit();   // an edit of the 3x
+            controller.get().finish();
+            controller.pause();
+        }
+        assertEquals("back0",PreferenceKeys.profiles().editing());
+        assertEquals("the camera module's value back","0.9",prefs.getString("pref_scam_hybrid_cdm",""));
+        assertEquals("the edit kept in the 3x","0.4",context.getSharedPreferences("module_profile_v2_back1",0).getString("pref_scam_hybrid_cdm",""));
+    }
+    /** P156: a fresh start of the app opens on the back 1x module; a restored screen keeps its module; once per process. */
+    @Test public void aFreshStartOpensOnTheBackOneX(){
+        prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5").putString("module_auto_front0","1")
+            .putString("module_label_back0","1×").putString("module_label_back1","3×").putString("module_label_front0","1×")
+            .putBoolean("module_visible_back0",true).putBoolean("module_visible_back1",true).putBoolean("module_visible_front0",true)
+            .putString("module_active","back1").commit();
+        ModuleRegistry.forgetHomeCheck();
+        assertNull("the system restored the screen: the module stays",ModuleRegistry.openHomeOnce(false));
+        assertEquals("back1",ModuleRegistry.active());
+        assertNull("checked once per process",ModuleRegistry.openHomeOnce(true));
+        ModuleRegistry.forgetHomeCheck();
+        prefs.edit().putString("module_active","front0").commit();
+        assertEquals("back0",ModuleRegistry.openHomeOnce(true));
+        assertEquals("back0",ModuleRegistry.active());
+        assertEquals("3",PreferenceKeys.getCameraID());
+        ModuleRegistry.forgetHomeCheck();
+    }
     /** A module page opens its own sensor settings, even for a hidden module; the rows keep one fixed order. */
     @Test public void sensorPageOpensAtTheRequestedModuleInFixedRowOrder(){
         prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5")

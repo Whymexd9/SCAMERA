@@ -3736,6 +3736,24 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   Not seen on the X300 Ultra yet: check that a tap without DCG now shows ACTIVE_SCAN in the log («sending AF START in
   AF_MODE_AUTO») and the object comes sharp.
 
+### P156 - the settings chip picks the module to edit; a fresh start opens on 1x (owner, 2026-10-16, screenshot of «Настраивается: 1× · ID 3» on the settings root: «Сделай так чтобы эта кнопка была интерактивна и мы могли менять модули тут для настройки. Так же сделай так чтобы после полного закрытия приложения у нас открывалась не последняя используемая камера, а сбрасывалось на 1х»)
+- DONE 2026-10-16. The chip on pages with per-module values (per-lens settings on) is a picker with more than one shown module
+  (back by zoom, then front; the camera's module marked «сейчас в камере»): the chosen module's profile goes into the main
+  settings (ModuleProfiles.activate, the activity recreated, the page stays), so every page shows and edits its values; the
+  camera keeps its module. Leaving the settings (SettingsActivity.onPause while finishing) and the camera's onResume bring
+  the camera module's profile back (ModuleRegistry.syncProfile; the edit stays in the edited module), not while an import /
+  reset restart is pending (ScameraApp.restarting). Fresh start: CameraActivity.onCreate without a saved state, once per
+  process (ModuleRegistry.openHomeOnce), selects the shown back module nearest 1x (a plain one before a sensor-mode or
+  cropped one at the same zoom; ModuleChoice.home) and its Camera ID; a screen the system restores keeps its module.
+  Tests: ModuleChoiceTest.freshStartHomeIsTheShownBackModuleNearestOneX, SettingsMenuTest.moduleChipEditsAnotherModuleAndLeaving
+  ReturnsToTheCameraModule / aFreshStartOpensOnTheBackOneX. Not seen on a phone.
+
+### P157 - the bottom bar of the viewfinder: the same proportions at every display scale, restyled in the camera's style (owner, 2026-10-16, two screenshots - an empty band above the zoom strip on one phone, not on the other: «Исправь масштабирование нижних кнопок в видоискателе, чтобы при разных масштабах было примерно одинаково, так же переделай стиль всех кнопкок в нижней части видоискателя под стиль нашей камеры»)
+- OPEN.
+
+### P158 - processing progress around the gallery thumbnail, as in ArkCam (owner, 2026-10-16: «сделай процесс обработки фото как в ArkCam, прогресс постепенно должен идти вокруг иконки галереи»)
+- OPEN.
+
 ## P109l - Snapdragon client attribution and VCF RAW boundary
 
 Typed AttributionSourceState spoof is implemented and observed on PD2454. An ordinary open followed by

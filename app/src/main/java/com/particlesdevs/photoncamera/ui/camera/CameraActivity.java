@@ -67,6 +67,9 @@ public class CameraActivity extends BaseActivity {
 
         PreferenceManager.setDefaultValues(this, R.xml.preferences, MigrationManager.readAgain);
         PreferenceKeys.setDefaults(this);
+        // P156: a fresh start of the app opens on the back 1x module, not on the module used last
+        String home = com.particlesdevs.photoncamera.settings.ModuleRegistry.openHomeOnce(savedInstanceState == null);
+        if (home != null) Log.d("CameraActivity", "fresh start: module " + home + " (1x)");
         ScameraApp.getSettings().loadCache();
 
         permissionPlan = PermissionPlan.restore(SDK_INT,
@@ -263,6 +266,8 @@ public class CameraActivity extends BaseActivity {
             return;
         }
         appliedThemeSignature=signature;
+        // P156: the settings may have shown another module's profile for editing: the camera's module again
+        com.particlesdevs.photoncamera.settings.ModuleRegistry.syncProfile();
         // Apply hideSystemUI in onResume to prevent flickering when returning to the camera
         hideSystemUI();
         // Ensure portrait orientation is enforced every time activity resumes

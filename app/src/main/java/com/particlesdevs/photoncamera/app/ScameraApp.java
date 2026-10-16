@@ -122,7 +122,11 @@ public class ScameraApp extends Application {
         return sApp.mAssetLoader;
     }
 
+    /** P156: a restart is on its way (an imported config or a reset): nothing may move the module profiles meanwhile. */
+    public static volatile boolean restarting;
+
     public static void restartWithDelay(Context context, long delayMs) {
+        restarting = true;
         getMainHandler().postDelayed(() -> restartApp(context), delayMs);
     }
 
