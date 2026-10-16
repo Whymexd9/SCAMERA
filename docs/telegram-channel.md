@@ -1,8 +1,9 @@
 # SCAMERA builds bot (Telegram)
 
 Every successful CI build of a push to `main` posts its APK (`SCAMERA-0.98-<code>-SCAM.apk`) to a Telegram group
-topic or channel. Only the APK is posted: `SHA256SUMS.txt`, the neural-assets bundle and the test reports stay in
-Actions. The owner configures the bot in a private chat with it; it answers at once.
+topic or channel and pins it there (silently). Only the APK is posted: `SHA256SUMS.txt`, the neural-assets bundle
+and the test reports stay in Actions, and the caption has no links to GitHub. The owner configures the bot in a
+private chat with it; it answers at once. The bot needs the rights to send messages and to pin them.
 
 | Piece | What it does |
 |---|---|
@@ -15,6 +16,12 @@ The APK (~54 MB) is above the Bot API upload limit (50 MB), so posting logs the 
 where bots upload up to 2 GB; that needs an application id/hash besides the bot token. The Worker only sends text.
 `telegram_bot.py` without `--post` answers waiting messages once by polling; it works only while no webhook is set.
 
+Changelog ("Что нового после <previous build>"): `telegram_publish.py` finds the previous successful push build of
+`main` (Actions API), takes the commits between the two builds (compare API, merges left out) and has Cloudflare
+Workers AI (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`, free plan: 10k neurons a day, one changelog ~200) retell them
+as 1–6 short items for users, in the bot's language. Without the Cloudflare secrets, or when the model fails, the
+changelog is the commit subjects without task numbers and plan/merge commits.
+
 ## Setup (once)
 
 GitHub → repository Settings → Secrets and variables → Actions:
@@ -25,6 +32,8 @@ GitHub → repository Settings → Secrets and variables → Actions:
 | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | https://my.telegram.org → API development tools |
 | `TELEGRAM_OWNER` | the owner's username without `@` (or numeric id, shown by `/status`): the only account the bot obeys |
 | `TELEGRAM_CHAT`, `TELEGRAM_TOPIC` | optional, instead of `/here`: `@channel`, `-100…` id or a topic link `https://t.me/c/<id>/<topic>` |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account id (dashboard URL `dash.cloudflare.com/<id>/…`, or Workers & Pages → Account details) |
+| `CLOUDFLARE_AI_TOKEN` | Cloudflare → AI → Workers AI → Use REST API → "Create a Workers AI API Token" (Workers AI Read + Edit) |
 
 GitHub token for `/post`: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens →
 Generate: Repository access "Only select repositories" → SCAMERA; Permissions → Repository → Actions: Read and write.
@@ -49,7 +58,7 @@ write `/here` in the topic that should get the builds.
 | `/on`, `/off` | auto-posting of new builds (`/post` works either way) |
 | `/post`, `/post 30830` | post the latest successful `main` build, or a given build (artifacts are kept 90 days); 1–3 min |
 | `/here` | in a group or one of its topics: post builds there |
-| `/commits on\|off`, `/sha on\|off`, `/cilink on\|off` | commit list, SHA-256, CI link in the caption |
+| `/commits on\|off`, `/sha on\|off` | the changelog, SHA-256 in the caption |
 | `/header text`, `/header -` | your text at the top of each post / remove it |
 
 Other people get a refusal; commands of other bots in the group are ignored. The settings message must stay pinned
