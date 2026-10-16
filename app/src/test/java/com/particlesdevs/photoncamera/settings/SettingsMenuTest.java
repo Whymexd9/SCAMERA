@@ -1422,4 +1422,40 @@ public class SettingsMenuTest {
         keys.remove("oismode");
         assertEquals(Arrays.asList("blackleveloverride","whiteleveloverride","sessiontype","add_tunablekey"),keys);
     }
+    /** P149: the RAW level rows say «Авто» for -1, show the module's own levels and run over that module's RAW range. */
+    @Test public void rawLevelRowsShowAutoAndTheModulesOwnLevels(){
+        prefs.edit().putString("module_auto_back0","3").putString("module_auto_back1","5")
+            .putBoolean("module_visible_back0",true).putBoolean("module_visible_back1",true)
+            .putString("module_active","back0").putString("pref_sensorconfig_back1_whiteleveloverride","20000").commit();
+        java.util.function.BiFunction<android.content.Context,String,int[]> was=SensorConfigPreferenceGenerator.cameraLevels;
+        List<String> asked=new ArrayList<>();
+        SensorConfigPreferenceGenerator.cameraLevels=(c,id)->{asked.add(id);return "3".equals(id)?new int[]{64,1023,10}:"5".equals(id)?new int[]{256,4095,12}:null;};
+        try{
+            PreferenceScreen screen=inflate();
+            SensorConfigPreferenceGenerator.generatePreferences(context,screen,"back0");
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableSeekBarPreference black=screen.findPreference("pref_sensorconfig_back0_blackleveloverride");
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableSeekBarPreference white=screen.findPreference("pref_sensorconfig_back0_whiteleveloverride");
+            assertNotNull(black);assertNotNull(white);
+            assertTrue("the module's camera, by its physical id",asked.contains("3")&&asked.contains("5"));
+            assertEquals(com.particlesdevs.photoncamera.util.Lang.t("Авто","Auto"),black.valueText(-1f));
+            assertEquals(com.particlesdevs.photoncamera.util.Lang.t("Авто","Auto"),white.valueText(-1f));
+            assertEquals("64",black.valueText(64f));
+            assertEquals("black: a quarter of the 10-bit white",256f,black.maximum(),0f);
+            assertEquals("white: four bits above the declared 10",16383f,white.maximum(),0f);
+            assertEquals(-1f,black.getFloatValue(),0f);
+            String summary=String.valueOf(black.getSummary());
+            assertTrue(summary,summary.contains(String.format(java.util.Locale.ROOT,
+                com.particlesdevs.photoncamera.util.Lang.t("Авто у этого модуля: чёрный %d, белый %d (%d бит)","Auto for this module: black %d, white %d (%d bit)"),64,1023,10)));
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableSeekBarPreference white1=screen.findPreference("pref_sensorconfig_back1_whiteleveloverride");
+            assertEquals("12-bit module: up to 16 bits",65535f,white1.maximum(),0f);
+            assertEquals("a stored value beyond the range stays as the shot uses it",20000f,white1.getFloatValue(),0f);
+            // an unknown camera keeps the annotation's range, still «Авто»
+            SensorConfigPreferenceGenerator.cameraLevels=(c,id)->null;
+            PreferenceScreen plain=inflate();
+            SensorConfigPreferenceGenerator.generatePreferences(context,plain,"back0");
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableSeekBarPreference fallback=plain.findPreference("pref_sensorconfig_back0_blackleveloverride");
+            assertEquals(8192f,fallback.maximum(),0f);
+            assertEquals(com.particlesdevs.photoncamera.util.Lang.t("Авто","Auto"),fallback.valueText(-1f));
+        }finally{SensorConfigPreferenceGenerator.cameraLevels=was;}
+    }
 }

@@ -395,8 +395,57 @@ public class SensorConfigPreferenceGenerator {
 
         float defaultValue = getFieldDefaultValue(info);
         seekBar.setDefaultValue(defaultValue);
+        rawLevelRow(context, seekBar, sensorId, info.fieldName, prefKey);
 
         category.addPreference(seekBar);
+    }
+
+    /**
+     * P149: the module's own RAW levels for the «Уровень чёрного / белого» rows: {black, white, bits} of the module's camera
+     * (characteristics: the black pattern's largest value, the white level), null when the camera is unknown. Tests set it.
+     */
+    static java.util.function.BiFunction<Context, String, int[]> cameraLevels = SensorConfigPreferenceGenerator::readCameraLevels;
+
+    private static int[] readCameraLevels(Context context, String physicalId) {
+        try {
+            android.hardware.camera2.CameraManager manager = context.getSystemService(android.hardware.camera2.CameraManager.class);
+            if (manager == null || physicalId == null) return null;
+            android.hardware.camera2.CameraCharacteristics c = manager.getCameraCharacteristics(physicalId);
+            final int white = com.particlesdevs.photoncamera.processing.RawLevels.staticWhite(c);
+            final float[] black = com.particlesdevs.photoncamera.processing.RawLevels.staticBlack(c);
+            if (white <= 0) return null;
+            float b = 0;
+            if (black != null) for (float v : black) b = Math.max(b, v);
+            return new int[]{Math.round(b), white, com.particlesdevs.photoncamera.processing.RawLevels.bitsOfWhite(white)};
+        } catch (Exception | LinkageError e) {
+            return null;
+        }
+    }
+
+    /**
+     * P149: «Авто» for -1 in the value pill, the module's own levels under the description, and a range in that module's RAW
+     * units: black up to a quarter of its white (and 4x its black), white up to four bits above its white (streams wider than
+     * declared, P127) - instead of 0..8192 / 0..65535, where one step of the bar was hundreds of levels. A stored value outside
+     * that range widens it (it is what the shot uses).
+     */
+    private static void rawLevelRow(Context context, TunableSeekBarPreference seekBar, String slot, String field, String prefKey) {
+        final boolean black = "blackLevelOverride".equals(field);
+        if (!black && !"whiteLevelOverride".equals(field)) return;
+        seekBar.setAutoValue(-1f, Lang.t("Авто", "Auto"));
+        final int[] camera = cameraLevels.apply(context, ModuleSensorSettings.physical(slot));
+        if (camera == null) return;
+        float max = black ? Math.max(4f * camera[0], (camera[1] + 1) / 4f) : Math.min(65535f, (camera[1] + 1) * 16f - 1f);
+        try {
+            float stored = (float) PreferenceNumber.read(PreferenceValue.get(
+                    PreferenceManager.getDefaultSharedPreferences(context), prefKey), -1);
+            if (Float.isFinite(stored)) max = Math.max(max, stored);
+        } catch (Exception ignored) {
+        }
+        seekBar.setMaxValue((float) Math.ceil(max));
+        CharSequence summary = seekBar.getSummary();
+        seekBar.setSummary((summary == null ? "" : summary + "\n") + String.format(Locale.ROOT,
+                Lang.t("Авто у этого модуля: чёрный %d, белый %d (%d бит)", "Auto for this module: black %d, white %d (%d bit)"),
+                camera[0], camera[1], camera[2]));
     }
 
     private static float getFieldDefaultValue(TunableFieldInfo info) {

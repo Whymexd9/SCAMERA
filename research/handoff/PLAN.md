@@ -3561,6 +3561,17 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
 - Checks: unit tests for each path (override set -> the consumer's levels), the binning / widening cases, SettingsMenuTest
   for the row (Авто, range, typed value), check_ui_language / check_settings_model; on the X200 Ultra a shot with a black
   override and the «RAW levels: ... black override» line in the log; DNG tags read back.
+- DONE 2026-10-16 (audit + UI): every consumer takes the override - Parameters (FillDynamicParameters) feeds the post
+  pipeline / SCAM HDR, Hybrid (ScamHybridBurst: p.black / p.white with the burst), ScamMosaic, HexQuadBurst, DngCreator tags,
+  ScamDiagnostics; the live RAW viewfinder reads the same keys per frame (CaptureController publishLiveRawFrame). Units: both
+  apply the value in the stream's resolved units (after P127 depth resolution: the viewfinder after RawLevels.current, the
+  shot after RawLevels.forFrame; a black override is kept when the shot's samples widen the depth, a white override stops the
+  widening): consistent, so no rescaling added. Binning (x4) scales the override with the data. UI: «Авто» for -1
+  (TunableSeekBarPreference.setAutoValue), the module's own levels under the description («Авто у этого модуля: чёрный 64,
+  белый 1023 (10 бит)», its physical camera's characteristics), ranges in that module's units (black up to white / 4 and 4x
+  black, white up to four bits above the declared white; a stored value beyond widens it), descriptions say the units and
+  that a black override turns «Уровень чёрного по кадру» off. SettingsMenuTest.rawLevelRowsShowAutoAndTheModulesOwnLevels.
+  Not seen on a phone yet.
 
 ### P150 - artifacts of a still shot: dashed wires, dotted edges, purple dots at a lit lamp (owner, 2026-10-16, SCA_20261016_001335.jpg in SCAMERA.zip, crop of a chandelier: «словил вот такие артефакты, пойми в чём причина и исправь»; «Учитывай что виво сейчас неподвижен, а у нас детализация увеличивается за счёт тряски рук/сдвига кадра»)
 - The shot: vivo V2419A (not the X200 Ultra; Dimensity / Mali), camera 3 (13.3 mm f/2.57 tele), ISO 199, 1/50 s, 4096x3072,

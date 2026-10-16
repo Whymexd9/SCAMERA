@@ -134,7 +134,7 @@ public class Parameters {
 
     @SensorConfig(title = "White Level Override",
             defaultValue = -1, min = -1, max = 65535, step = 1,
-            description = "Ручной уровень белого, -1 — от камеры. Больше — снимок темнее; меньше — света выгорают раньше.")
+            description = "Белый уровень RAW вручную, в единицах RAW этого модуля; Авто — от камеры и по отсчётам кадра. Больше — снимок темнее; меньше — света выгорают раньше.")
     int whiteLevelOverride;
 
     @Tunable(title = "Disable front mirror", category = "Parameters", defaultValue = 0, min = 0, max = 1, step = 1,
@@ -142,7 +142,7 @@ public class Parameters {
     boolean disableMirror;
 
     @SensorConfig(title = "Black Level Override",
-            description = "Ручной уровень чёрного, -1 — авто. Больше — тени темнее и проваливаются; меньше — тени серые.",
+            description = "Чёрный уровень RAW вручную, в единицах RAW этого модуля; Авто — от камеры, ручное значение выключает «Уровень чёрного по кадру». Больше — тени темнее и проваливаются; меньше — тени серые.",
             min = -1.0f, max = 8192.0f, step = 1.0f, defaultValue = -1.0f
     )
     float blackLevelOverride;

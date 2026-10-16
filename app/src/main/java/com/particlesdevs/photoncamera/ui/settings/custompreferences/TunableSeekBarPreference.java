@@ -20,6 +20,8 @@ import com.particlesdevs.photoncamera.settings.PreferenceNumber;
 public class TunableSeekBarPreference extends Preference implements SeekBar.OnSeekBarChangeListener {
     private float mMin = 0f, mMax = 100f, mStepPerUnit = 1f, mDefaultValue = 0f;
     private boolean isFloat;
+    private float autoValue = Float.NaN;
+    private String autoLabel;
     private SeekBar seekBar;
     private TextView seekBarValue;
 
@@ -33,6 +35,12 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
     public void setIsFloat(boolean value) { isFloat = value; }
     public void setStepPerUnit(float value) { mStepPerUnit = value > 0 ? value : 1f; }
     public void setDefaultValue(float value) { mDefaultValue = value; super.setDefaultValue(value); }
+    /** P149: the value that means «the camera's own» (the RAW level rows: -1) shows {@code label} instead of the number. */
+    public void setAutoValue(float value, String label) { autoValue = value; autoLabel = label; }
+    /** The text of the value pill. */
+    public String valueText(float value) {
+        return autoLabel != null && value == autoValue ? autoLabel : PreferenceNumber.format(value, isFloat);
+    }
     private int maxProgress() { return Math.max(1, Math.round((mMax - mMin) * mStepPerUnit)); }
 
     public float getFloatValue() {
@@ -57,7 +65,7 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
         float value = getFloatValue();
         if (seekBar != null) seekBar.setProgress(PreferenceNumber.progress(value, mMin, mStepPerUnit, maxProgress()));
         if (seekBarValue != null) {
-            seekBarValue.setText(PreferenceNumber.format(value, isFloat));
+            seekBarValue.setText(valueText(value));
             SharedPreferences prefs = getSharedPreferences();
             boolean custom = prefs != null && prefs.contains(getKey());
             seekBarValue.setTextColor(custom ? Color.parseColor("#4CAF50")
