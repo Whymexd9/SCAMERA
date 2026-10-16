@@ -3995,8 +3995,16 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   bar) and fix what is off.
 
 ### P174 - the horizon level in our style, a colour and a light haptic at 0 degrees (owner, 2026-10-16: «поменяй стиль уровня
-горизонта на схожий с нашим общим стилем камеры. Сделай так чтобы при 0° он менял цвет и давай слабый виброотклик»; not
-started)
+горизонта на схожий с нашим общим стилем камеры. Сделай так чтобы при 0° он менял цвет и давай слабый виброотклик»)
+- DONE 2026-10-16 (HorizonIndicatorView): a thin white line with round ends and a gap in its middle turning with the phone,
+  two fixed marks at its ends, a small ring in the centre, the tilt in degrees above it, soft shadows (was yellow / magenta
+  pitch lines and a cross); level (within 0.5 degrees of the frame's horizontal in any orientation, leaving at 1 degree)
+  everything turns the camera accent, the line closes, and a light haptic tick (CLOCK_TICK, system haptics setting).
+  HorizonIndicatorViewTest (new, in the CI list): the tilt per orientation, the hysteresis and the tick, renders sent to the
+  owner (deliverables/p157/p174-horizon-tilted-level.png).
+
+### P175 - remove the neural remosaic (owner, 2026-10-16: «Вырежи нейроремозаик который работает только на 200у и 8 элит из
+нашей камеры»; in progress)
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach
