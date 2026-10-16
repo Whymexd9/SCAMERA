@@ -251,3 +251,25 @@ jobs:
           path: out/*
           if-no-files-found: error
           compression-level: 0
+
+      # Every main build's APK (only the APK) goes to Telegram (docs/telegram-channel.md): where and with what caption
+      # is set in the bot's private chat (tools/telegram_bot.py); skipped without the secrets or with /off.
+      # The APK is already in the artifact above, so a Telegram failure only marks this step, not the build.
+      - name: Post the APK to Telegram
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_OWNER: ${{ secrets.TELEGRAM_OWNER }}
+          TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT }}
+          TELEGRAM_TOPIC: ${{ secrets.TELEGRAM_TOPIC }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/telegram"
+          "$RUNNER_TEMP/telegram/bin/pip" install -q -r tools/telegram-requirements.txt
+          "$RUNNER_TEMP/telegram/bin/python" tools/telegram_publish.py --notify fail \
+            --apk "out/SCAMERA-0.98-${{ steps.ver.outputs.code }}-SCAM.apk" \
+            --from-rev "${{ github.event.before }}" --to-rev "${{ github.sha }}" --branch main \
+            --commit-url "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
