@@ -172,6 +172,18 @@ public final class ArkLumaSharpen extends Node {
         return k;
     }
 
+    /**
+     * P179 (200 MP: the app was killed for LOW_MEMORY in this node): above this the guided filter's (a, b) come from the 2x2
+     * means of Ya (the fast guided filter on the 50 MP-equivalent grid, the same radius in sensor px): its full-grid stack (RG32F
+     * box sums, RG16F passes) was the pipeline's peak, 4.4 GB with the image at 16320x12288.
+     */
+    static final long HUGE_GF_PIXELS = 100_000_000L;
+
+    /** The grid reduction of the guided filter for a w x h image whose own reduction is {@code down}. */
+    static int gfDown(int w, int h, int down) {
+        return (long) w * h > HUGE_GF_PIXELS ? Math.max(down, 2) : down;
+    }
+
     /** A free texture of the pool (any but the busy ones), allocated on demand. */
     private static GLTexture spare(List<GLTexture> pool, Point size, GLTexture... busy) {
         for (GLTexture t : pool) {
@@ -275,15 +287,16 @@ public final class ArkLumaSharpen extends Node {
         boolean gf = gfRadius >= 1 && Math.abs(gfLc) > 0.001f;
         GLTexture ab = null;
         int gfBox = 0;
+        final int gfDown = gfDown(size.x, size.y, down);
         if (gf) {
-            gfBox = Math.max(1, Math.round(gfRadius * s / down));
-            Point reduced = ArkTone.reduced(size, down);
+            gfBox = Math.max(1, Math.round(gfRadius * s / gfDown));
+            Point reduced = ArkTone.reduced(size, gfDown);
             GLTexture h = plane(reduced, GLFormat.DataType.FLOAT_32, 2);
             glProg.useAssetProgram("ark/sharp_box", false);
             glProg.setTexture("InputBuffer", ya);
             glProg.setVar("modeU", 0);
             glProg.setVar("radiusU", gfBox);
-            glProg.setVar("downU", down);
+            glProg.setVar("downU", gfDown);
             glProg.drawBlocks(h);
             for (int mode = 1; mode <= 3; mode++) {
                 GLTexture next = plane(reduced, GLFormat.DataType.FLOAT_16, 2);
@@ -306,7 +319,7 @@ public final class ArkLumaSharpen extends Node {
         glProg.useAssetProgram("ark/sharp_compose", false);
         glProg.setTexture("InputBuffer", ya);
         glProg.setTexture("GfAB", ab != null ? ab : ya);
-        glProg.setVar("downU", down);
+        glProg.setVar("downU", gfDown);
         glProg.setVar("gfLcU", gf ? gfLc : 0f);
         glProg.setVar("usmSigmaU", usm ? usmRadius * s : 0f);
         glProg.setVar("usmAmountU", usmAmount);
@@ -371,7 +384,7 @@ public final class ArkLumaSharpen extends Node {
         st.lumaS = obs;
         st.sharpMul = mul;
         Log.i("SCAM_PIPELINE", "ARK luma sharpen grid=" + size.x + "x" + size.y + " scale=" + s + " domain=" + (gClean ? "G_CLEAN" : "ae")
-                + " mul=" + mul + " bil=" + (bil ? bilAmount * scaleComp(s, SCALE2_BIL) : 0f) + " gf=" + (gf ? gfLc + "@r" + gfBox + "/" + down : "off")
+                + " mul=" + mul + " bil=" + (bil ? bilAmount * scaleComp(s, SCALE2_BIL) : 0f) + " gf=" + (gf ? gfLc + "@r" + gfBox + "/" + gfDown : "off")
                 + " usm=" + (usm ? usmAmount + "@" + usmRadius * s : "off") + stages + " ms=" + (System.currentTimeMillis() - started)
                 + (early ? " (issued before the AE)" : ""));
     }
