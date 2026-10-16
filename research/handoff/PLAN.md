@@ -4021,7 +4021,12 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   owner (deliverables/p157/p174-horizon-tilted-level.png).
 
 ### P175 - remove the neural remosaic (owner, 2026-10-16: «Вырежи нейроремозаик который работает только на 200у и 8 элит из
-нашей камеры»; blocked)
+нашей камеры»; done)
+- DONE 2026-10-17 (7d8b986b, cherry-picked from the agent's worktree onto the 200 MP memory work; the one conflict, the
+  shrinking read-back of ScamNeuralClient, kept with the Hybrid-only allocation): the setting, its page, ScamNeuralActivity,
+  the HexQuad / Quad / tele576 / check jobs and their assets, RemosaicCore / TetraResponseProfile and the remosaic shaders,
+  the worker's other modes; the private bundle unchanged (BUNDLE_ONLY). 995 CI-list tests; OPPO replays 8/8 bit-identical to
+  origin/main's worker.
 - Blocked: its call (ScamMosaic.prepareForShdr) is in ScamProcessor, which ChatGPT has uncommitted edits in (2026-10-16
   evening; owner: «Если файл используется ChatGPT, то мы это не делаем»). When that file is free: the «Нейроремозаик (NPU)»
   setting (isShdrNeuralRemosaic, its XML / strings / availability / numeric rules / migration P129), ScamMosaic.prepareForShdr
@@ -4122,6 +4127,20 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   checked (973 CI-list tests) and committed (f87e3cc8); the SDK lease journal (2c213746) and the tele 50 / 200 MP buttons
   (430ba5b4) are done; owner: «Не забудь исправить вылет по памяти для 200мп» - the 200 MP memory boundary is next, on the
   phone.
+- Status 2026-10-17 (verified on PD2454, CTS 30834-30840, reports/pd2454-3083x-*):
+  - 200 MP saves its JPEG 16320x12240 (4:3): the worker's sparse output and the app's shrinking read-back (026e8d0f), frames
+    queued back to back (3ad14b56), the merge alone - no pipeline denoise above 100 MP (90e32945), the preview stopped at the
+    shutter (fdeda96a), a live viewfinder in the plain session during the merge and a sparse 200 MP viewfinder bin (449ea1ff).
+  - Owner: «хотя бы 3 кадра и один из них был ультракороткий», «Сделай 4 кадра» (169f24e0): 3 N (AE) + 1 ultrashort (manual,
+    the preview's exposure / bento_factor, same ISO, EXTRA_SHORT) whatever the frame setting; app and worker merge all four
+    (30840: «0N 1N 2N 3U», merged=4, bento=1).
+  - 30839 was killed for low memory in the ARK luma sharpening (its guided filter's full-grid RG32F stack, 4.4 GB with the
+    image); above 100 MP it now runs on the 2x2 means (6f99c9f2): 30840 sharpening 678 ms (6.2 s before), MemAvailable min
+    1.8 GB, worker peakRss 5286 MB, shutter -> saved 38.4 s (63 s at the start). Memory timeline:
+    reports/pd2454-30840-memory-timeline-20261016.txt.
+  - P146 is done by P181 (FULLRES 50 / 200 MP profiles of their own).
+  - Left (phone needed): Sabre 2x on native 50 MP (main / UW 16384x12288); a re-check of the four ISZ and of FULLRES on the
+    three cameras with the final build.
 
 ### P180 - FULLRES without hardware remosaic on the X100 Ultra and the X300 Ultra (owner, 2026-10-16: a task brief from
 the other agent's notes, «Изучи и реализуй, учитывай что х300у есть для разных регионов»)
@@ -4137,6 +4156,33 @@ the other agent's notes, «Изучи и реализуй, учитывай чт
   verified (a sensor mode found from the module descriptors or a targeted test); the PD2454 transport (CTS package, SDK
   lease, one RAW_SENSOR usage 0, own RAW preview, matched capture) reused per device; tests for the tables, the isolation
   from ISZ / DCG and the lease; ask only for the exact missing sensor-module descriptors.
+- DONE 2026-10-17 (8620dc85), gated: VivoNativeFullRes - X200 Ultra unchanged; X100 Ultra (PD2366 / V2366*) main 2 /
+  ultra-wide 3 8192x6144 Quad, tele 4 16320x12288 Tetra or 8160x6144 Quad; X300 Ultra of every region (PD2547 / V2547A /
+  V2547DA, V2562, market name) main 3 16320x12256 Tetra or 8160x6128 Quad, ultra-wide 4 8192x6144 Quad, tele 5 16320x12288
+  Tetra or 8160x6144 Quad (two FULLRES buttons on its main camera and telephoto). Sizes from each phone's own sensor-mode
+  table (tag 0x8038 X100 / 0x8017 X300: row 0; row 1 the first 50 MP full-field row); no X200 Ultra mode copied. Off until a
+  targeted test: scam_dev.txt vivo_fullres_x100u / vivo_fullres_x300u 1 (CTS package); vivo_fullres_mode_main / main50 /
+  wide / tele / tele50 try another row of the table (X100: main rows 0 / 11 / 31, UW 0 / 9, tele 0 and 1 / 14 / 18 / 20;
+  X300: main 0 and 1 / 2 / 3, UW 0 / 4, tele 0 and 1 / 14 / 27). Every shot proves its Quad / Tetra mosaic from the pixels.
+- To verify without guessing (ask the owner for exactly these, from /vendor/lib64/camera/ of each phone): X100 Ultra
+  com.qti.sensormodule.pd2366_imx06a.bin, pd2366_imx882.bin, pd2366_s5khp9sp.bin; X300 Ultra pd2547_imx09e.bin (and
+  pd2547_imx09e_MP.bin - whichever the phone loads), pd2547_wide_imx06c.bin (or pd2547_wide_imx09a.bin), pd2547_s5khpe.bin -
+  the per-row remosaic type of the sensor mode tables. Then a targeted test per camera: real RAW without HW remosaic ->
+  SHDR -> JPEG 4:3, AE EV 0 -> + -> 0, the SDK lease returned.
+
+### P181 - the lens strip, ISZ names, FULLRES 50 / 200 MP settings, a lighter 50 MP viewfinder (owner, 2026-10-16 / 17:
+«модули выходят за границы экрана», «у 0.8x/2x/4.8x/9.6x убери подпись "ISZ"», «ты должен был сделать отдельные настройки для
+50мп/200мп как для отдельных модулей», «Для 50мп сделай тоже упрощенный видоискатель как ты сделал для 200мп»; done)
+- ca82baea: the lens tiles shrink together (least width, padding, text, gaps; down to half) when they do not fit the strip;
+  their own size whenever they fit; the long press's module list stays for a narrower strip. The X200 Ultra's ISZ modules are
+  «2×», «4,8×», old «… ISZ» names migrated, the owner's own names kept.
+- 3e0e50c6 / af06e1ad: per-module settings profiles «slot@full200» / «slot@full50» («@full» for the Pixel) taken while FULLRES
+  is on for the module, starting as a copy of the module's; listed after their module by the settings' module chip and the
+  copy page; carried by a config with their module.
+- 25557ca6: a 50 MP Quad viewfinder frame takes one site of each 2 x 2 cell (a quarter of the reads, as 200 MP).
+- Not yet seen on the phone (the X200 Ultra was disconnected): the strip with every module, the FULLRES profiles switching,
+  the 50 MP viewfinder.
+
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach
