@@ -5466,7 +5466,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(ahead&&tune.bento>0&&anyUltrashort)bentoAhead=tasks.run([&b,&tune]{return bentoBase(b,tune);}).share();
     struct LaBaseBuilt { LaBase base;double ms=0; };
     std::future<LaBaseBuilt> laAhead;
-    if(ahead&&tune.localAlign>0&&n>1)laAhead=tasks.run([&b,&input]{
+    // P151: above kHybridClassicPixels as well (FULLRES 50 MP on the X200 Ultra: F6 1.98 s before the merge, the GPU idle): the
+    // base pyramid on the pool and the field in bands alongside the merge. The stream's own MemAvailable test (windowed gray rows,
+    // else the whole field first) bounds its memory. SCAM_NO_LARGE_F6_STREAM: the whole field first, as before.
+    const bool largeStream=large&&!std::getenv("SCAM_NO_PREFETCH")&&!std::getenv("SCAM_NO_LARGE_F6_STREAM")&&input.subFrames<=1;
+    if((ahead||largeStream)&&tune.localAlign>0&&n>1)laAhead=tasks.run([&b,&input]{
         const auto t0=Clock::now();
         LaBaseBuilt built;
         const float slope=std::max(input.frames[0].slope,1e-9f),offset=std::max(input.frames[0].offset,0.f); // baseSlope, baseOffset
@@ -5496,7 +5500,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const int colourBlock=native?std::max(1,native->block):1;
     const bool fine2x=native?requestedGrid==2*colourBlock:requestedGrid==2;
     std::unique_ptr<LaStream> laStream;double laStreamBaseMs=0;bool laStreamTried=false;
-    const bool laStreamOn=tune.localAlign>0&&n>1&&tune.laStream!=0&&!hybridAuto2x(input,tune,fine2x)&&!large&&input.subFrames<=1&&laAhead.valid()
+    const bool laStreamOn=tune.localAlign>0&&n>1&&tune.laStream!=0&&!hybridAuto2x(input,tune,fine2x)&&(!large||largeStream)&&input.subFrames<=1&&laAhead.valid()
             &&!std::getenv("SCAM_LA_DUMP")&&!std::getenv("SCAM_NO_F6_STREAM");
     auto streamFeed=[&](int f){
         if(!laStreamOn||!aligned[f]||(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort))return;
