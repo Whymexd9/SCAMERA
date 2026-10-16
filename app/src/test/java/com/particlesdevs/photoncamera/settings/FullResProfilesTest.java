@@ -57,7 +57,7 @@ public class FullResProfilesTest {
     public void tearDown() {
         PixelPro10.setFullRes(false);
         context.getSharedPreferences("module_profiles_meta", Context.MODE_PRIVATE).edit().clear().commit();
-        for (String id : new String[]{"back0", "back1", "back0@full", "common"})
+        for (String id : new String[]{"back0", "back1", "back0@full", "back1@full", "common"})
             context.getSharedPreferences("module_profile_v2_" + id, Context.MODE_PRIVATE).edit().clear().commit();
         if (camera != null) camera.close();
     }
@@ -75,6 +75,46 @@ public class FullResProfilesTest {
         assertEquals("200", FullResProfiles.tagOf("back2@full200"));
         assertEquals("", FullResProfiles.tagOf("back0@full"));
         assertNull(FullResProfiles.tagOf("back0"));
+    }
+
+    /**
+     * Review fixes: a FULLRES profile never opened reads as its module's (a copy into it keeps the module's other values),
+     * a deleted module's FULLRES profiles go with it, and turning FULLRES off by any path switches the profile back.
+     */
+    @Test
+    public void unopenedAndDroppedFullResProfilesAreTheirModules() {
+        for (int i = 0; i < 2; i++)
+            prefs.edit().putString("module_auto_back" + i, "" + (3 + i)).putString("module_label_back" + i, new String[]{"1×", "0.6×"}[i])
+                    .putBoolean("module_visible_back" + i, true).commit();
+        prefs.edit().putString("module_active", "back0").putString(CDM, "0.5").putString("pref_scam_hybrid_kernel_scale", "0.7").commit();
+        String perLens = PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue;
+        prefs.edit().putBoolean(perLens, true).commit();
+        PreferenceKeys.profiles().changed(perLens);
+        FullResProfiles.remember("3", true);
+        FullResProfiles.remember("4", true);
+        assertEquals("never opened: the module's", "0.5", String.valueOf(PreferenceKeys.profiles().snapshot("back0@full").get(CDM)));
+        // back1's own profile, then a copy of one key into its FULLRES profile that was never opened
+        PreferenceKeys.profiles().activate("back1");
+        prefs.edit().putString(CDM, "0.2").putString("pref_scam_hybrid_kernel_scale", "0.4").commit();
+        PreferenceKeys.profiles().changed(CDM);
+        PreferenceKeys.profiles().activate("back0");
+        PreferenceKeys.profiles().copy("back0", Arrays.asList("back1@full"), Collections.singleton(CDM));
+        assertEquals("0.5", String.valueOf(PreferenceKeys.profiles().snapshot("back1@full").get(CDM)));
+        assertEquals("the rest from back1, not the baseline", "0.4",
+                String.valueOf(PreferenceKeys.profiles().snapshot("back1@full").get("pref_scam_hybrid_kernel_scale")));
+
+        // FULLRES on and off switch the profile by themselves (DCG, a fallback - any path through PixelPro10)
+        PixelPro10.setFullRes(true);
+        assertEquals("back0@full", PreferenceKeys.profiles().editing());
+        prefs.edit().putString(CDM, "0.9").commit();
+        PreferenceKeys.profiles().changed(CDM);
+        PixelPro10.setFullRes(false);
+        assertEquals("back0", PreferenceKeys.profiles().editing());
+        assertEquals("0.5", prefs.getString(CDM, ""));
+        assertEquals("0.9", String.valueOf(PreferenceKeys.profiles().snapshot("back0@full").get(CDM)));
+        PreferenceKeys.profiles().dropFullRes("back0");
+        assertEquals("dropped: the module's again", "0.5", String.valueOf(PreferenceKeys.profiles().snapshot("back0@full").get(CDM)));
+        assertEquals("another module's stays", "0.5", String.valueOf(PreferenceKeys.profiles().snapshot("back1@full").get(CDM)));
     }
 
     /** P146 / P181: a config's FULLRES profiles go with their module to the module it maps to on this phone. */

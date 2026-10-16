@@ -60,15 +60,16 @@ public class ShrinkingReadTest {
     }
 
     /**
-     * P179 (owner: «хотя бы 3 кадра и один из них был ультракороткий», «Сделай 4 кадра»): a 200 MP merge keeps three N
-     * whatever its estimate says (the capture sized the series); 50 MP keeps the old two; 16 MP or less is not capped.
+     * P179 (owner: «хотя бы 3 кадра и один из них был ультракороткий», «Сделай 4 кадра»): a 200 MP merge keeps all the N of
+     * its series (three, or four with Bento off) whatever its estimate says (the capture sized the series); 50 MP keeps the old
+     * two; 16 MP or less is not capped.
      */
     @Test
     public void a200MpMergeKeepsThreeNormals() {
         final long gb = 1L << 30;
         assertEquals("200 MP, little memory: the estimate alone takes none", 0, ScamHybridBurst.memoryFrameBudget(16320, 12288, 4, 3 * gb));
-        assertEquals(3, ScamHybridBurst.minNormals(16320, 12288));
-        assertEquals("the main camera's 200 MP too", 3, ScamHybridBurst.minNormals(16320, 12256));
+        assertEquals(4, ScamHybridBurst.minNormals(16320, 12288));
+        assertEquals("the main camera's 200 MP too", 4, ScamHybridBurst.minNormals(16320, 12256));
         assertEquals("50 MP: two", 2, ScamHybridBurst.minNormals(8192, 6144));
         assertEquals(2, ScamHybridBurst.minNormals(4096, 3072));
         int roomy = ScamHybridBurst.memoryFrameBudget(16320, 12288, 4, 12 * gb);

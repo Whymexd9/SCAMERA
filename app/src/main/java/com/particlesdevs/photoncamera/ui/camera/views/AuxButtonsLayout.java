@@ -125,7 +125,9 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
             tiles++;
         }
         if (tiles == 0) return;
-        final float f = fit(need, available);
+        // the rounded sizes must add up to no more than the strip: a step down until they do (a squeezed last tile otherwise)
+        float f = fit(need, available);
+        while (f > LensButton.MIN_FIT && roundedWidth(f) > available) f = Math.max(LensButton.MIN_FIT, f - 0.005f);
         final int gap = Math.round(baseGap * f);
         for (int i = 0; i < getChildCount(); i++) {
             View child = getChildAt(i);
@@ -136,6 +138,28 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
                 if (margins.leftMargin != gap || margins.rightMargin != gap) margins.setMargins(gap, 0, gap, 0);
             }
         }
+    }
+
+    /** P181: the tiles' total width at fit {@code f} as they will be measured (rounded sizes and gaps). */
+    private int roundedWidth(float f) {
+        final int gap = Math.round(baseGap * f);
+        int total = 0;
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (child.getVisibility() == View.GONE || !(child instanceof LensButton)) continue;
+            total += ((LensButton) child).widthAt(f) + 2 * gap;
+        }
+        return total;
+    }
+
+    /** P181: the tiles' total width at their own size (tests: a strip they fit only shrunk). */
+    float naturalNeed() {
+        float need = 0f;
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (child.getVisibility() != View.GONE && child instanceof LensButton) need += ((LensButton) child).naturalWidth() + 2 * baseGap;
+        }
+        return need;
     }
 
     /** P181: the share of their own size the tiles take: 1 when {@code need} fits {@code available}, at least MIN_FIT. */
@@ -338,6 +362,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
                 total += margins.leftMargin + margins.rightMargin;
             }
             if (child.getLeft() < getPaddingLeft() || child.getRight() > getWidth() - getPaddingRight()) return true;
+            // P181: a tile measured narrower than its (fitted) least width was squeezed: it does not fit either
+            if (child instanceof LensButton && child.getMeasuredWidth() < ((LensButton) child).getMinWidth()) return true;
         }
         return total > getWidth();
     }

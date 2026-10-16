@@ -138,6 +138,8 @@ public final class ModuleRegistry {
         if(target==null)return null;
         SharedPreferences.Editor e=prefs().edit();
         for(java.util.Map.Entry<String,Object> w:ModuleDuplicates.copyOf(all,source,target,label(source),zoom(source),crop(source),crop).entrySet())ModuleProfiles.put(e,w.getKey(),w.getValue());
+        // P181: no FULLRES profile of a module that had the slot before
+        try{PreferenceKeys.profiles().dropFullRes(target);}catch(RuntimeException ignored){}
         e.apply();
         try{
             java.util.Set<String> keys=new java.util.HashSet<>(PreferenceKeys.profiles().snapshot(source).keySet());
@@ -154,6 +156,8 @@ public final class ModuleRegistry {
         for(String k:ModuleDuplicates.removalOf(all,slot))e.remove(k);
         e.putBoolean("module_visible_"+slot,false).apply();
         if(slot.equals(active()))select(source);
+        // P181: its FULLRES profiles go with it (after the switch away, which saves the profile in use)
+        try{PreferenceKeys.profiles().dropFullRes(slot);}catch(RuntimeException ignored){}
         return true;
     }
     /**

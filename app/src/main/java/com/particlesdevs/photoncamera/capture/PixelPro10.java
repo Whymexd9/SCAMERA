@@ -224,7 +224,24 @@ public final class PixelPro10 {
 
     public static void setFullRes(boolean on) {
         SharedPreferences p = prefs();
-        if (p != null) p.edit().putBoolean(KEY_FULL, on).apply();
+        if (p == null) return;
+        final boolean changed = p.getBoolean(KEY_FULL, false) != on;
+        p.edit().putBoolean(KEY_FULL, on).apply();
+        if (changed) syncProfile();
+    }
+
+    /**
+     * P181: FULLRES on / off or its size changed: the settings profile follows (a module's FULLRES 50 / 200 MP keep their own),
+     * whichever path changed it - the buttons, DCG, a FULLRES failure falling back, a module switch. On the main thread at once
+     * (before the camera restarts), from another thread posted to it.
+     */
+    private static void syncProfile() {
+        try {
+            android.os.Looper main = android.os.Looper.getMainLooper();
+            if (main == null || android.os.Looper.myLooper() == main) com.particlesdevs.photoncamera.settings.ModuleRegistry.syncProfile();
+            else new android.os.Handler(main).post(com.particlesdevs.photoncamera.settings.ModuleRegistry::syncProfile);
+        } catch (RuntimeException ignored) {
+        }
     }
 
     /** P179: the telephoto's FULLRES is 200 MP (the default, as before the choice) rather than 50 MP. */
@@ -235,7 +252,10 @@ public final class PixelPro10 {
 
     public static void setTele200(boolean on) {
         SharedPreferences p = prefs();
-        if (p != null) p.edit().putBoolean(KEY_TELE_200, on).apply();
+        if (p == null) return;
+        final boolean changed = p.getBoolean(KEY_TELE_200, true) != on;
+        p.edit().putBoolean(KEY_TELE_200, on).apply();
+        if (changed) syncProfile();
     }
 
     /** The largest RAW of the camera's max-resolution map (RAW_SENSOR, else RAW10, else RAW12), null without one. */

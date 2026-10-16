@@ -88,10 +88,10 @@ public final class ScamHybridBurst implements ScamTransport {
     static final int MIN_NORMALS = 2;
     /**
      * P179 (owner, 2026-10-16: «хотя бы 3 кадра и один из них был ультракороткий», «Сделай 4 кадра»): above HUGE_INPUT_PIXELS
-     * the capture sized the series itself (three N, then one ultrashort; the camera in its plain session for the merge), so
-     * the merge keeps three N whatever its estimate says, and the ultrashort.
+     * the capture sized the series itself (four stills: three N and an ultrashort, or four N with Bento off; the camera in its
+     * plain session for the merge), so the merge keeps all its N whatever its estimate says, and the ultrashort.
      */
-    static final int HUGE_MIN_NORMALS = 3;
+    static final int HUGE_MIN_NORMALS = 4;
 
     private final int width, height, cfa;
     /** RGB size the worker returns: the sensor grid or the Sabre 2x grid (pref_scam_hybrid_output). */

@@ -50,6 +50,8 @@ public class AuxButtonsFitTest {
             View tile = strip.getChildAt(i);
             assertTrue("tile " + i + " " + tile.getLeft() + ".." + tile.getRight(), tile.getLeft() >= 0 && tile.getRight() <= strip.getWidth());
             assertTrue("tile " + i + " visible", tile.getWidth() > 0);
+            assertTrue("tile " + i + " whole: " + tile.getMeasuredWidth() + " of " + ((LensButton) tile).getMinWidth(),
+                    tile.getMeasuredWidth() >= ((LensButton) tile).getMinWidth());
             assertTrue("shrunk", ((LensButton) tile).fit() < 1f);
         }
         // a relayout keeps the same fit (no layout loop)

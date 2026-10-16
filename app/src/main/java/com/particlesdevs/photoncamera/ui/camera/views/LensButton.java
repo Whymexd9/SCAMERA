@@ -90,16 +90,30 @@ public class LensButton extends Button {
     /** The text size, least width and side padding at fit 1 (px), as {@link #applyState} last set them. */
     private float baseTextPx, baseMinWidth, basePadding;
 
-    /** Shrinks the tile to {@code f} of its own size (MIN_FIT..1). */
+    /** Shrinks the tile to {@code f} of its own size (MIN_FIT..1); a smaller fit always applies (it must fit). */
     void setFit(float f) {
         f = Math.max(MIN_FIT, Math.min(1f, f));
-        if (Math.abs(f - fit) < 0.005f) return;
+        if (f == fit || f > fit && f - fit < 0.005f) return;
         fit = f;
         applyState();
     }
 
     float fit() {
         return fit;
+    }
+
+    /** The tile's measured width at fit {@code f}: its rounded least width, or its label and rounded padding (a pixel spare). */
+    int widthAt(float f) {
+        final int least = Math.round(baseMinWidth * f);
+        return Math.max(least, (int) Math.ceil(labelWidth() * f) + 1 + 2 * Math.round(basePadding * f));
+    }
+
+    /** The label's width at the full text size. */
+    private float labelWidth() {
+        CharSequence text = getText();
+        android.text.TextPaint paint = new android.text.TextPaint(getPaint());
+        paint.setTextSize(baseTextPx);
+        return text == null ? 0f : paint.measureText(text, 0, text.length());
     }
 
     /** The tile's width at fit 1: its label at the full text size between its padding, at least its least width. */

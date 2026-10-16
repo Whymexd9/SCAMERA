@@ -2302,8 +2302,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private void prepareVivoSdkRawSession() throws Exception {
         if (mVivoSdkRestorePending) closeVivoSdkRawSession(null);
         // P179: a FULLRES lease left by a process of ours that died (LOW_MEMORY) is given back before a camera opens
-        if (mVivoSdkRawSession == null && (VivoQcomModes.device() || VivoNativeFullRes.device()))
-            VivoSdkRawSession.recoverStale(ScameraApp.getAppContext());
+        // (any phone of the native route, its test switch on or off: a lease of a test that was killed must come back)
+        if (mVivoSdkRawSession == null && VivoNativeFullRes.phone() != null) VivoSdkRawSession.recoverStale(ScameraApp.getAppContext());
         if (!mVivoSdkClosed.await(2000, TimeUnit.MILLISECONDS))
             throw new IllegalStateException("Previous Vivo SDK camera has not closed");
         String id = ScameraApp.getSettings().mCameraID;
@@ -5045,9 +5045,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 VivoSdkFullRes.profile(mVivoSdkCameraId), mPreviewCaptureResult.getRequest(),
                 characteristics.getAvailableSessionKeys(), listener,
                 image -> mLiveMetadata.image(image.getTimestamp(), image));
-        if (hugeSeries) {
+        if (hugeSeries && HybridPlan.bentoMode() > 0) {
             // P179: the last still of a 200 MP series is the ultrashort (Bento) one: the preview's exposure over the ultrashort
-            // factor at its sensitivity
+            // factor at its sensitivity; with Bento off (the worker would leave it out) the series is all N
             CaptureResult latest = mPreviewCaptureResult;
             Long exposure = latest == null ? null : latest.get(CaptureResult.SENSOR_EXPOSURE_TIME);
             Integer iso = latest == null ? null : latest.get(CaptureResult.SENSOR_SENSITIVITY);

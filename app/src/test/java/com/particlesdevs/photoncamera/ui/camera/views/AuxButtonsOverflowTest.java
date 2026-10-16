@@ -167,15 +167,26 @@ public class AuxButtonsOverflowTest {
         assertNull(ShadowAlertDialog.getLatestAlertDialog());
     }
 
-    /** P181 (owner: «у нас модули выходят за границы экрана»): nine modules that overflowed 200 px now shrink into it. */
+    /**
+     * P181 (owner: «у нас модули выходят за границы экрана»): nine modules too wide at their own size shrink into a strip
+     * 3/4 of it, every tile whole (none squeezed below its fitted least width); a strip they cannot fit even at MIN_FIT
+     * (200 px here) offers the module list again - a squeezed tile counts as one that does not fit.
+     */
     @Test public void nineModulesShrinkIntoAStripTheyOverflowedBefore() {
-        size(200);
+        size(3000);
+        int width = (int) Math.ceil(strip.naturalNeed() * 0.75f);
+        size(width);
         for (int i = 0; i < strip.getChildCount(); i++) {
-            View tile = strip.getChildAt(i);
+            LensButton tile = (LensButton) strip.getChildAt(i);
             assertTrue("tile " + i + " " + tile.getLeft() + ".." + tile.getRight(), tile.getLeft() >= 0 && tile.getRight() <= strip.getWidth());
+            assertTrue("tile " + i + " whole: " + tile.getMeasuredWidth() + " of " + tile.getMinWidth(), tile.getMeasuredWidth() >= tile.getMinWidth());
+            assertTrue("shrunk", tile.fit() < 1f);
         }
         assertFalse("nothing clipped: no module list", strip.getChildAt(0).performLongClick());
         assertNull(ShadowAlertDialog.getLatestAlertDialog());
+        size(200);
+        assertTrue("too narrow even shrunk: the module list", strip.getChildAt(0).performLongClick());
+        assertNotNull(ShadowAlertDialog.getLatestAlertDialog());
     }
 
     @Test public void continuousDragStillZoomsAndDoesNotSelectAnotherModuleOrOpenADialog() {

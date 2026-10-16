@@ -70,7 +70,17 @@ public final class ModuleProfiles {
     public synchronized Map<String,?> snapshot(String id){
         if(PreferenceKeys.isPerLensSettingsOn()&&id.equals(active))return current();
         if(meta.getBoolean("exists_"+id,false))return new HashMap<>(file(id).getAll());
+        // P181: a FULLRES profile never opened is its module's (as snapshotStored)
+        if(FullResProfiles.isVariant(id))return snapshot(FullResProfiles.slotOf(id));
         return meta.getBoolean("baseline",false)?new HashMap<>(file("common").getAll()):current();
+    }
+    /** P181: the FULLRES profiles of a module slot go (a deleted module: a new one in the slot starts from its own settings). */
+    public synchronized void dropFullRes(String slot){
+        final String prefix="exists_"+slot+FullResProfiles.SEP;
+        SharedPreferences.Editor e=meta.edit();
+        for(String key:new ArrayList<>(meta.getAll().keySet()))
+            if(key.startsWith(prefix)){e.remove(key);file(key.substring("exists_".length())).edit().clear().apply();}
+        e.apply();
     }
     private void restore(Map<String,?> values){
         values=BrandMigration.map(values); // P55: a profile written before the SCAM rename
