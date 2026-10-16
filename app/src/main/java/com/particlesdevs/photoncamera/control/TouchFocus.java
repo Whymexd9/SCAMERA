@@ -10,14 +10,18 @@ import android.os.Handler;
 import android.os.SystemClock;
 import android.util.Size;
 import android.view.Display;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnTouchListener;
+import android.view.ViewConfiguration;
+import android.view.ViewGroup;
 
 import androidx.annotation.Nullable;
 
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
+import com.particlesdevs.photoncamera.ui.camera.views.ExposureSquareView;
 import com.particlesdevs.photoncamera.ui.camera.views.FocusCircleView;
 import com.particlesdevs.photoncamera.ui.camera.views.viewfinder.GLPreview;
 import com.particlesdevs.photoncamera.util.Log;
@@ -112,11 +116,28 @@ public class TouchFocus {
     private final Runnable hideFocusCircleRunnable = this::hideFocusCircleView;
     public volatile boolean isTouchFocus = false;
     private final OnTouchListener focusListener = (v, event) -> {
+        if (split()) return drag(v, event, true);
         v.performClick();
         resetFocusCircle();
         setInitialAFAE();
         return true;
     };
+
+    // P142 «Раздельные фокус и экспозиция» (PreferenceKeys.isSplitAfAe, off by default): a tap puts the focus ring and the
+    // exposure square around it at the tapped point (both regions there, as before); each is then dragged on its own - the AF
+    // regions follow the ring (a new focus sequence when it is let go), the AE regions the square (the repeating request while
+    // it moves, no AF trigger). A tap on the ring resets to auto as before, a tap on the square brings it back to the ring,
+    // a tap elsewhere puts both there. They stay on screen (dimmed) while they mean something.
+    static final long METER_INTERVAL_MS = 80;
+    static final float SQUARE_SCALE = 1.7f;
+    @Nullable
+    private ExposureSquareView exposureView;
+    @Nullable
+    private MeteringRectangle lastAeRegion;
+    private float dragStartX, dragStartY, dragViewX, dragViewY;
+    private boolean dragging;
+    private long lastMeterAt;
+    private final Runnable dimSplitRunnable = this::dimSplit;
 
     private final Object seqLock = new Object();
     private int seqState = SEQ_IDLE;
@@ -179,11 +200,155 @@ public class TouchFocus {
             return;
         }
         focusCircleView.removeCallbacks(hideFocusCircleRunnable);
-        focusCircleView.post(() -> showFocusCircle(fx, fy));
+        focusCircleView.removeCallbacks(dimSplitRunnable);
+        final boolean split = split();
+        focusCircleView.post(() -> {
+            showFocusCircle(fx, fy);
+            if (split) showExposureSquare(fx, fy);
+            else hideExposureSquare();
+        });
         // P110: the «Движение» shutter ceiling lets the AE meter the tapped point first
         if (captureController.getParamController() != null) captureController.getParamController().motionMeteringTap();
-        startFocusSequence(region);
-        focusCircleView.postDelayed(hideFocusCircleRunnable, AUTO_HIDE_DELAY_MS);
+        startFocusSequence(region, region);
+        if (split) focusCircleView.postDelayed(dimSplitRunnable, AUTO_HIDE_DELAY_MS);
+        else focusCircleView.postDelayed(hideFocusCircleRunnable, AUTO_HIDE_DELAY_MS);
+    }
+
+    /** P142: the option is on. */
+    boolean split() {
+        return PreferenceKeys.isSplitAfAe();
+    }
+
+    /** P142: the exposure square (made on first use, beneath the ring in the ring's parent), null before a split tap. */
+    @Nullable
+    View exposureSquare() {
+        return exposureView;
+    }
+
+    private ExposureSquareView ensureExposureSquare() {
+        if (exposureView != null) return exposureView;
+        ViewGroup parent = (ViewGroup) focusCircleView.getParent();
+        ExposureSquareView view = new ExposureSquareView(focusCircleView.getContext());
+        int ring = focusCircleView.getLayoutParams() != null && focusCircleView.getLayoutParams().width > 0
+                ? focusCircleView.getLayoutParams().width : Math.max(focusCircleView.getWidth(), 1);
+        int side = Math.round(ring * SQUARE_SCALE);
+        view.setVisibility(View.INVISIBLE);
+        view.setOnTouchListener((v, event) -> drag(v, event, false));
+        if (parent != null) parent.addView(view, Math.max(0, parent.indexOfChild(focusCircleView)), new ViewGroup.LayoutParams(side, side));
+        exposureView = view;
+        return view;
+    }
+
+    private void showExposureSquare(float fx, float fy) {
+        ExposureSquareView view = ensureExposureSquare();
+        int side = view.getLayoutParams() != null ? view.getLayoutParams().width : view.getWidth();
+        view.setX(fx - side / 2f);
+        view.setY(fy - side / 2f);
+        view.setAlpha(1f);
+        view.setVisibility(View.VISIBLE);
+        focusCircleView.setAlpha(1f);
+    }
+
+    private void hideExposureSquare() {
+        if (exposureView != null) exposureView.setVisibility(View.GONE);
+    }
+
+    private void dimSplit() {
+        focusCircleView.animate().alpha(0.55f).setDuration(250).start();
+        if (exposureView != null) exposureView.animate().alpha(0.55f).setDuration(250).start();
+    }
+
+    private static float centreX(View v) {
+        int w = v.getLayoutParams() != null && v.getLayoutParams().width > 0 ? v.getLayoutParams().width : v.getWidth();
+        return v.getX() + w / 2f;
+    }
+
+    private static float centreY(View v) {
+        int h = v.getLayoutParams() != null && v.getLayoutParams().height > 0 ? v.getLayoutParams().height : v.getHeight();
+        if (h <= 0) h = v.getLayoutParams() != null && v.getLayoutParams().width > 0 ? v.getLayoutParams().width : v.getWidth();
+        return v.getY() + h / 2f;
+    }
+
+    /** P142: drags the ring (ring) or the square; a touch that does not move is a tap on it. */
+    boolean drag(View v, MotionEvent event, boolean ring) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                dragStartX = event.getRawX();
+                dragStartY = event.getRawY();
+                dragViewX = v.getX();
+                dragViewY = v.getY();
+                dragging = false;
+                focusCircleView.removeCallbacks(dimSplitRunnable);
+                focusCircleView.setAlpha(1f);
+                if (exposureView != null) exposureView.setAlpha(1f);
+                return true;
+            case MotionEvent.ACTION_MOVE: {
+                float dx = event.getRawX() - dragStartX, dy = event.getRawY() - dragStartY;
+                int slop = ViewConfiguration.get(v.getContext()).getScaledTouchSlop();
+                if (!dragging && Math.hypot(dx, dy) < slop) return true;
+                dragging = true;
+                float w = Math.max(1, textureView.getWidth()), h = Math.max(1, textureView.getHeight());
+                float cx = Math.max(0, Math.min(w, dragViewX + dx + (centreX(v) - v.getX())));
+                float cy = Math.max(0, Math.min(h, dragViewY + dy + (centreY(v) - v.getY())));
+                v.setX(cx - (centreX(v) - v.getX()));
+                v.setY(cy - (centreY(v) - v.getY()));
+                if (!ring && SystemClock.elapsedRealtime() - lastMeterAt >= METER_INTERVAL_MS) meterAtSquare();
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+                if (!dragging) {
+                    v.performClick();
+                    if (ring) {
+                        resetFocusCircle();
+                        setInitialAFAE();
+                    } else joinSquare();
+                } else if (ring) refocusAtRing();
+                else meterAtSquare();
+                dragging = false;
+                focusCircleView.postDelayed(dimSplitRunnable, AUTO_HIDE_DELAY_MS);
+                return true;
+            case MotionEvent.ACTION_CANCEL:
+                dragging = false;
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    /** P142: the ring was let go: a focus sequence on its region, the square's region kept for the AE. */
+    private void refocusAtRing() {
+        MeteringRectangle af = computeTapRegion(centreX(focusCircleView), centreY(focusCircleView));
+        if (af == null) return;
+        MeteringRectangle ae = exposureView != null && exposureView.getVisibility() == View.VISIBLE
+                ? computeTapRegion(centreX(exposureView), centreY(exposureView)) : null;
+        startFocusSequence(af, ae != null ? ae : lastAeRegion != null ? lastAeRegion : af);
+    }
+
+    /** P142: a tap on the square: back to the ring, the AE on the focus point again. */
+    private void joinSquare() {
+        if (exposureView == null) return;
+        showExposureSquare(centreX(focusCircleView), centreY(focusCircleView));
+        meterAtSquare();
+    }
+
+    /** P142: the AE regions to the square's place: the repeating request only (no AF trigger, the AF regions stay). */
+    private void meterAtSquare() {
+        if (exposureView == null) return;
+        MeteringRectangle ae = computeTapRegion(centreX(exposureView), centreY(exposureView));
+        if (ae == null) return;
+        lastMeterAt = SystemClock.elapsedRealtime();
+        if (captureController.getParamController() != null) captureController.getParamController().motionMeteringTap();
+        synchronized (seqLock) {
+            if (CaptureController.burst) return;
+            CaptureRequest.Builder builder = captureController.mPreviewRequestBuilder;
+            CameraCharacteristics characteristics = CaptureController.mCameraCharacteristics;
+            if (builder == null || characteristics == null) return;
+            lastAeRegion = ae;
+            if (maxRegions(characteristics, CameraCharacteristics.CONTROL_MAX_REGIONS_AE) <= 0) return;
+            isTouchFocus = true;
+            builder.set(CaptureRequest.CONTROL_AE_REGIONS, new MeteringRectangle[]{ae});
+            captureController.rebuildPreviewBuilder();
+        }
     }
 
     private void showFocusCircle(float fx, float fy) {
@@ -322,7 +487,7 @@ public class TouchFocus {
 
     // ------------------------------------------------------------------ sequence
 
-    private void startFocusSequence(MeteringRectangle region) {
+    private void startFocusSequence(MeteringRectangle region, MeteringRectangle aeRegion) {
         CaptureRequest.Builder builder = captureController.mPreviewRequestBuilder;
         CameraCharacteristics characteristics = CaptureController.mCameraCharacteristics;
         if (builder == null || characteristics == null) {
@@ -354,7 +519,10 @@ public class TouchFocus {
             Float minFocusDistance = characteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
             boolean lensCanFocus = minFocusDistance == null || minFocusDistance > 0;
             MeteringRectangle[] regions = {region};
+            // P142: the exposure square's own region (the tap's region without the option)
+            MeteringRectangle[] aeRegions = {aeRegion != null ? aeRegion : region};
             lastTapRegion = region;
+            lastAeRegion = aeRegions[0];
 
             activeAfMode = afMode;
             isTouchFocus = true;
@@ -365,7 +533,7 @@ public class TouchFocus {
                 afRegionsWritten = true;
             }
             if (maxRegions(characteristics, CameraCharacteristics.CONTROL_MAX_REGIONS_AE) > 0) {
-                builder.set(CaptureRequest.CONTROL_AE_REGIONS, regions);
+                builder.set(CaptureRequest.CONTROL_AE_REGIONS, aeRegions);
                 aeRegionsWritten = true;
             }
             armedRegionsTag = (afRegionsWritten || aeRegionsWritten) ? regions : null;
@@ -527,7 +695,7 @@ public class TouchFocus {
                                 touchAfAutoOverride = true;
                                 Log.w(TAG, "continuous touch focus failed " + consecutiveTouchFailures
                                         + " consecutive taps — switching tap-to-focus to AF_MODE_AUTO for this session");
-                                startFocusSequence(lastTapRegion);
+                                startFocusSequence(lastTapRegion, lastAeRegion);
                                 return;
                             }
                         }
@@ -764,7 +932,10 @@ public class TouchFocus {
     //call when focus circle needs to be hidden immediately
     public void resetFocusCircle() {
         focusCircleView.removeCallbacks(hideFocusCircleRunnable);
+        focusCircleView.removeCallbacks(dimSplitRunnable);
         focusCircleView.post(hideFocusCircleRunnable);
+        focusCircleView.post(this::hideExposureSquare);
+        lastAeRegion = null;
         resetAutoFocus();
     }
 

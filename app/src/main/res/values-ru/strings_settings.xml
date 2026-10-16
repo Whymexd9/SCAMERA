@@ -601,6 +601,8 @@
     <string name="prefs_face_detect_summary">Находит лица, обводит их и наводит на них фокус и экспозицию. Ручной фокус и касание важнее.</string>
     <string name="prefs_tracking_af_title">Следящий автофокус</string>
     <string name="prefs_tracking_af_summary">Как включить слежение: фокус и экспозиция идут за выбранным объектом по кадру.</string>
+    <string name="prefs_split_af_ae_title">Раздельные фокус и экспозиция</string>
+    <string name="prefs_split_af_ae_summary">Тап ставит кольцо фокуса и квадрат экспозиции вокруг него; каждый перетаскивается куда нужно. Тап по кольцу — снова авто, тап по квадрату — вернуть его к кольцу.</string>
     <string name="prefs_scam_hybrid_auto2x_title">Суперразрешение 2× только когда есть смысл</string>
     <string name="prefs_scam_hybrid_auto2x_summary">Склейка 2× только при хорошем свете и если кадры дают новые детали. Иначе 1× и увеличение: быстрее и без сетки</string>
     <string name="prefs_file_name_title">Название фото</string>

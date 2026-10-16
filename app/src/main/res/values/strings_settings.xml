@@ -601,6 +601,8 @@
     <string name="prefs_face_detect_summary">Finds faces, frames them and aims focus and exposure at them. Manual focus and a tap win.</string>
     <string name="prefs_tracking_af_title">Tracking autofocus</string>
     <string name="prefs_tracking_af_summary">How to start tracking: focus and exposure follow the chosen subject across the frame.</string>
+    <string name="prefs_split_af_ae_title">Separate focus and exposure</string>
+    <string name="prefs_split_af_ae_summary">A tap puts the focus ring and the exposure square around it; drag each where you need it. Tap the ring to return to auto, tap the square to bring it back to the ring.</string>
     <string name="prefs_scam_hybrid_auto2x_title">2× super-resolution only when it helps</string>
     <string name="prefs_scam_hybrid_auto2x_summary">Merges at 2× only in good light and if frames add detail. Otherwise 1× and upscaling: faster, no grid pattern</string>
     <string name="prefs_file_name_title">Photo file name</string>

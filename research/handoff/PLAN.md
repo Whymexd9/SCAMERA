@@ -3607,6 +3607,14 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   (AF regions follow the ring, AE regions the square), both in the viewfinder's coordinates mapped to the sensor crop of the
   current module / zoom (control/SubjectMapping). Long press or a reset tap joins them again; the existing AE/AF lock stays.
 - Exposure metering of the square also for the SHDR plan (the N exposure is taken from the preview AE).
+- DONE 2026-10-16: «Раздельные фокус и экспозиция» (pref_split_af_ae, off by default, after «Следящий автофокус»). A tap puts
+  both regions on the point and shows the ring with the exposure square (ExposureSquareView, 1.7x the ring, a sun at its
+  corner) around it; dragging the square sends only the AE regions in the repeating request (throttled to 80 ms, no AF
+  trigger), dragging the ring runs the focus sequence on its new region with the square's AE region kept; a tap on the ring
+  resets to auto as before, a tap on the square joins it back to the ring, a tap elsewhere puts both there; while separate
+  they stay on screen, dimmed after 3 s. The AUTO fallback retry keeps the square's region. CaptureController untouched
+  (TouchFocus only). TouchFocusSplitTest (5). Long press stays the tracking AF (P42), so it does not join them. Not seen on a
+  phone yet.
 
 
 ## P109l - Snapdragon client attribution and VCF RAW boundary

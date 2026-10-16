@@ -576,6 +576,10 @@ public class PreferenceKeys {
     public static String getRawLscMode() {
         return preferenceKeys.settingsManager.getString("default_scope", "pref_raw_lsc_mode", "auto");
     }
+    /** P142: «Раздельные фокус и экспозиция»: the tap's focus ring and exposure square are dragged on their own. */
+    public static boolean isSplitAfAe() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_split_af_ae", false);
+    }
     /** Lower the reported RAW black level to the frame's measured dark floor when it is higher. */
     public static boolean isRawBlackFromData() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_raw_black_from_data", true);
