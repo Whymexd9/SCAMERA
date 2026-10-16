@@ -23,8 +23,8 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from telegram_publish import DEFAULTS, HEADER_LIMIT, describe_settings, parse_settings, redact, render_settings, \
-    sha256, t
+from telegram_publish import HEADER_LIMIT, MAX_TARGETS, default_settings, describe_settings, describe_targets, \
+    parse_settings, redact, render_settings, sha256, t, target_name
 
 TOOLS = Path(__file__).resolve().parent
 WORKFLOW = 'build-test-apk.yml'
@@ -92,7 +92,8 @@ def help_text(lang):
         '/status — текущие настройки',
         '/on, /off — автопостинг новых сборок',
         '/post — выложить последнюю сборку, /post 30830 — конкретную',
-        '/here — написать в нужной теме группы: сборки пойдут туда',
+        '/here — написать в теме группы: сборки пойдут и туда (до 5 мест)',
+        '/where — куда выкладываются сборки, /forget 2 — убрать место №2',
         '/commits on|off — «Что нового» (чейнжлог) в подписи',
         '/sha on|off — SHA-256 в подписи',
         '/header текст — свой текст в начале поста, /header - убрать']), '\n'.join([
@@ -102,7 +103,8 @@ def help_text(lang):
         '/status — current settings',
         '/on, /off — auto-posting of new builds',
         '/post — post the latest build, /post 30830 — a given one',
-        '/here — write it in the topic of the group: builds go there',
+        '/here — write it in a topic of a group: builds go there too (up to 5 places)',
+        '/where — where builds go, /forget 2 removes place 2',
         '/commits on|off — the “What is new” changelog in the caption',
         '/sha on|off — SHA-256 in the caption',
         '/header text — your text at the top of the post, /header - removes it']))
@@ -117,8 +119,10 @@ def set_commands():
                    ('commits', t(lang, 'чейнжлог в подписи on|off', 'changelog in the caption on|off')),
                    ('sha', t(lang, 'SHA-256 в подписи on|off', 'SHA-256 in the caption on|off')),
                    ('header', t(lang, 'текст в начале поста', 'text at the top of the post')),
+                   ('where', t(lang, 'куда выкладываются сборки', 'where builds go')),
+                   ('forget', t(lang, 'убрать место: /forget 2', 'remove a place: /forget 2')),
                    ('help', t(lang, 'все команды', 'all commands'))]
-        group = [('here', t(lang, 'выкладывать сборки в эту тему', 'post builds to this topic'))]
+        group = [('here', t(lang, 'выкладывать сборки и в эту тему', 'post builds to this topic too'))]
         for scope, commands in (('all_private_chats', private), ('all_group_chats', group)):
             bot('setMyCommands', scope={'type': scope}, language_code=code,
                 commands=[{'command': c, 'description': d} for c, d in commands])
@@ -131,7 +135,7 @@ class Settings:
         self.chat_id = owner_id
         pinned = bot('getChat', chat_id=owner_id).get('pinned_message') or {}
         found = parse_settings(pinned.get('text')) if (pinned.get('from') or {}).get('is_bot') else None
-        self.values = found or dict(DEFAULTS)
+        self.values = found or default_settings()
         self.message_id = pinned['message_id'] if found else None
         self.dirty = False
 
@@ -235,6 +239,18 @@ def handle_private(msg, cmd, arg, run):
     elif cmd == 'here':
         say(chat_id, t(lang, 'Напиши /here в нужной теме группы (бот должен быть в группе с правом писать).',
                        'Write /here in the topic of the group (the bot must be a member allowed to post).'))
+    elif cmd == 'where':
+        say(chat_id, describe_targets(v) + ('\n\n' + t(lang, 'Убрать место: /forget номер', 'Remove one: /forget number')
+                                            if v['targets'] else ''))
+    elif cmd == 'forget':
+        if not arg.isdigit() or not 1 <= int(arg) <= len(v['targets']):
+            say(chat_id, describe_targets(v) + '\n\n' + t(lang, 'Напиши /forget и номер места из списка.',
+                                                           'Write /forget and the number of a place in the list.'))
+            return
+        gone = v['targets'].pop(int(arg) - 1)
+        s.save()
+        say(chat_id, t(lang, f'Убрал «{escape(target_name(gone))}».', f'Removed “{escape(target_name(gone))}”.')
+            + '\n' + describe_targets(v))
     elif cmd == 'post':
         if arg and not arg.isdigit():
             say(chat_id, t(lang, 'Номер сборки — число: /post 30830.', 'The build number is a number: /post 30830.'))
@@ -245,7 +261,7 @@ def handle_private(msg, cmd, arg, run):
 
 
 def handle_here(msg, run):
-    """/here in a group or one of its topics: posts go there from now on."""
+    """/here in a group or one of its topics: posts go there too from now on (up to MAX_TARGETS places)."""
     chat, user = msg['chat'], msg['from']
     topic = msg.get('message_thread_id') if msg.get('is_topic_message') else None
     topic_name = ((msg.get('reply_to_message') or {}).get('forum_topic_created') or {}).get('name')
@@ -262,6 +278,13 @@ def handle_here(msg, run):
     if s is None:
         say(chat['id'], open_first, topic)
         return
+    targets = s.values['targets']
+    known = next((i for i, x in enumerate(targets) if x['chat'] == chat['id'] and x.get('topic') == topic), None)
+    if known is None and len(targets) >= MAX_TARGETS:
+        notify_owner(user['id'], t(lang, f'Уже {MAX_TARGETS} мест, больше нельзя. Убери лишнее: /forget номер.\n',
+                                   f'{MAX_TARGETS} places already, no more. Remove one: /forget number.\n')
+                     + describe_targets(s.values))
+        return
     try:
         say(chat['id'], t(lang, 'Сборки SCAMERA будут приходить сюда.', 'SCAMERA builds will be posted here.'), topic)
     except TelegramError as e:
@@ -270,14 +293,19 @@ def handle_here(msg, run):
                                    f'Cannot post to “{escape(where)}”: {escape(e.description)}. '
                                    'Allow the bot to send messages and repeat /here.'))
         return
-    s.values.update(chat=chat['id'], topic=topic, where=where)
+    entry = {'chat': chat['id'], 'topic': topic, 'where': where}
+    if known is None:
+        targets.append(entry)
+    else:
+        targets[known] = entry   # the same place again: its name may have changed
     try:
         s.save()
     except TelegramError:   # the owner blocked the bot or never pressed Start
         say(chat['id'], open_first, topic)
         return
-    notify_owner(user['id'], t(lang, f'✅ Сборки будут приходить в «{escape(where)}».',
-                               f'✅ Builds will be posted to “{escape(where)}”.'))
+    notify_owner(user['id'], (t(lang, f'✅ Добавил «{escape(where)}».', f'✅ Added “{escape(where)}”.') if known is None
+                              else t(lang, f'«{escape(where)}» уже в списке.', f'“{escape(where)}” is already there.'))
+                 + '\n' + describe_targets(s.values))
 
 
 def notify_owner(chat_id, text):
