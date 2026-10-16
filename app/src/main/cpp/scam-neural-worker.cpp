@@ -232,6 +232,8 @@ int main(int argc,char** argv) {
             }
             report("SCAM RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));
             worker_crash::mark("output write");
+            // write-only: a file (root worker, replay) is written with write(), faster than a mapping on f2fs (P153, 50 MP: 1.5 s
+            // mapped against 0.6 s written); the app's memfd (fd:N, read-write) takes the mapped fill below
             const int out=scam::openArgument(outputPath,O_WRONLY|O_CREAT|O_TRUNC);
             if(out<0)throw std::runtime_error("Cannot open SCAM output");
             auto writeAll=[&](const void* data,size_t bytes){
@@ -244,15 +246,24 @@ int main(int argc,char** argv) {
             // even), half the bytes to write, read and upload; the app's first stage stores it in half floats anyway (its input
             // texture is sampled into RGBA16F). The trailers stay as they are.
             std::vector<uint16_t> half; // (scam::floatToHalf: portable, the host checks build this file with g++ on x86 too)
-            if(hybrid&&access((std::string(argv[2])+"/rgb-half").c_str(),F_OK)==0){
-                half.resize(result.size());
-                scam::mergeRowBands(int((result.size()+65535)/65536),[&](int b0,int b1){
-                    for(size_t i=size_t(b0)*65536;i<std::min(result.size(),size_t(b1)*65536);++i){
-                        half[i]=scam::floatToHalf(result[i]);
-                    }
-                });
-                parts[0]={half.data(),half.size()*sizeof(uint16_t)};
-                report("SCAM RGB: written as half floats ("+std::to_string(half.size()*2>>20)+" MB)");
+            auto toHalf=[&](uint16_t* dst,size_t i0,size_t i1){
+                size_t i=i0;
+#if defined(__aarch64__)
+                // P153: FCVT (round to nearest even, the default FPCR): the same halves as floatToHalf for every one of the 2^32
+                // float bit patterns (checked on the X200 Ultra), eight at a time
+                for(;i+8<=i1;i+=8){
+                    const float16x4_t a=vcvt_f16_f32(vld1q_f32(result.data()+i)),c=vcvt_f16_f32(vld1q_f32(result.data()+i+4));
+                    vst1q_u16(dst+i,vreinterpretq_u16_f16(vcombine_f16(a,c)));
+                }
+#endif
+                for(;i<i1;++i)dst[i]=scam::floatToHalf(result[i]);
+            };
+            // P153: the halves go straight into the mapped output (below): no 1.2 GB half copy of a 200 MP 2x grid and one pass less;
+            // a null source marks that part. Only the plain write path (no mapping) still converts into `half` first.
+            const bool halfOut=hybrid&&access((std::string(argv[2])+"/rgb-half").c_str(),F_OK)==0;
+            if(halfOut){
+                parts[0]={nullptr,result.size()*sizeof(uint16_t)};
+                report("SCAM RGB: written as half floats ("+std::to_string(result.size()*2>>20)+" MB)");
             }
             // Optional trailer: merged Bayer RAW (uint16, sensor layout) for the DNG.
             if(!mergedDng.empty())parts.emplace_back(mergedDng.data(),mergedDng.size()*sizeof(uint16_t));
@@ -266,6 +277,7 @@ int main(int argc,char** argv) {
             // The same bytes in the same order; anything the mapping cannot take (a pipe, a sealed or non-empty file, no memory for
             // the reservation, SCAM_NO_MAP_WRITE) is written as before.
             bool mappedWrite=false;
+            const double writeStarted=sinceStart();double filledAt=0;
             if(!std::getenv("SCAM_NO_MAP_WRITE")){
                 size_t total=0;for(const auto& part:parts)total+=part.second;
                 struct stat st{};
@@ -276,6 +288,14 @@ int main(int argc,char** argv) {
                         char* dst=static_cast<char*>(map);
                         for(const auto& part:parts){
                             const char* src=static_cast<const char*>(part.first);const size_t bytes=part.second;
+                            if(!src){ // P153: the RGB as halves, converted into the mapping on all cores
+                                uint16_t* h=reinterpret_cast<uint16_t*>(dst);const size_t n=result.size();
+                                constexpr size_t kElems=size_t(1)<<20;
+                                scam::mergeRowBands(int((n+kElems-1)/kElems),[&](int c0,int c1){
+                                    toHalf(h,size_t(c0)*kElems,std::min(n,size_t(c1)*kElems));
+                                });
+                                dst+=bytes;continue;
+                            }
                             constexpr size_t kChunk=size_t(4)<<20;
                             scam::mergeRowBands(int((bytes+kChunk-1)/kChunk),[&](int c0,int c1){
                                 const size_t a=size_t(c0)*kChunk,e=std::min(bytes,size_t(c1)*kChunk);
@@ -283,13 +303,30 @@ int main(int argc,char** argv) {
                             });
                             dst+=bytes;
                         }
+                        filledAt=sinceStart();
                         mappedWrite=munmap(map,total)==0;
                         if(!mappedWrite){close(out);throw std::runtime_error("Incomplete SCAM output");}
                     } else if(ftruncate(out,0)!=0){close(out);throw std::runtime_error("Incomplete SCAM output");}
                 }
             }
-            if(!mappedWrite)for(const auto& part:parts)writeAll(part.first,part.second);
+            if(!mappedWrite){
+                if(halfOut&&!parts[0].first){
+                    half.resize(result.size());
+                    scam::mergeRowBands(int((result.size()+65535)/65536),[&](int b0,int b1){
+                        toHalf(half.data(),size_t(b0)*65536,std::min(result.size(),size_t(b1)*65536));
+                    });
+                    parts[0]={half.data(),half.size()*sizeof(uint16_t)};
+                }
+                for(const auto& part:parts)writeAll(part.first,part.second);
+            }
             if(close(out))throw std::runtime_error("Incomplete SCAM output");
+            {
+                size_t total=0;for(const auto& part:parts)total+=part.second;
+                char line[200]; // P153: where the output write spends its time (filled = the mapping filled; the rest unmap / close)
+                std::snprintf(line,sizeof(line),"SCAM OUTPUT: %zu MB %s in %.0f ms (filled %.0f ms)",total>>20,mappedWrite?"mapped":"written",
+                    sinceStart()-writeStarted,filledAt>0?filledAt-writeStarted:0.0);
+                report(line);
+            }
             {
                 char line[200];
                 std::snprintf(line,sizeof(line),"SCAM WORKER TIMELINE ms: cre=%.0f mapped=%.0f merged=%.0f written=%.0f",creMs,mappedMs,mergedMs,sinceStart());
