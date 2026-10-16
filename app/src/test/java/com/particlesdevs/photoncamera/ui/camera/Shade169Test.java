@@ -177,31 +177,45 @@ public class Shade169Test {
             layout(root, w, h);
             assertEquals(BottomSheetBehavior.STATE_COLLAPSED, BottomSheetBehavior.from(sheet).getState());
             assertEquals(View.GONE, pill.getVisibility());
-            Bitmap open = draw(root, w, h, photo, preview);
-            // the sheet alone, its visible part, for the frames
+            // P185: at 16:9 the sheet is clipped to its shape (rounded at the bottom too) - a hardware outline clip, which a
+            // software draw leaves out: the frames below draw the shape by hand
+            assertTrue("clipped to its shape at 16:9", sheet.getClipToOutline());
             View container = (View) sheet.getParent();
             Rect sheetBox = box(sheet, root), containerBox = box(container, root);
-            Bitmap shade = Bitmap.createBitmap(sheet.getWidth(), Math.max(1, containerBox.bottom - sheetBox.top), Bitmap.Config.ARGB_8888);
+            assertTrue("the visible part ends above the strip", containerBox.bottom <= stripBox.top + 1);
+            // the whole sheet (also its part below the visible one, which must never show), for the frames
+            Bitmap shade = Bitmap.createBitmap(sheet.getWidth(), sheet.getHeight(), Bitmap.Config.ARGB_8888);
             sheet.draw(new Canvas(shade));
-            RectF pillF = new RectF(pillBox), visible = new RectF(sheetBox.left, sheetBox.top, sheetBox.right, containerBox.bottom);
-            long[] at = {0, 50, 100, 170, 260, 420};
+            RectF pillF = new RectF(pillBox), visible = new RectF(sheetBox.left, sheetBox.top, sheetBox.right, Math.min(containerBox.bottom, sheetBox.bottom));
+            float pillR = pillF.height() / 2f, sheetR = 26 * context.getResources().getDisplayMetrics().density;
+            long[] at = {0, 40, 80, 140, 220, 380};
             Bitmap[] frames = new Bitmap[at.length + 2];
             frames[0] = hidden;
-            for (int i = 0; i < at.length; i++) {
+            for (int i = 0; i <= at.length; i++) {
                 Bitmap frame = ground.copy(Bitmap.Config.ARGB_8888, true);
                 Canvas c = new Canvas(frame);
-                float t = com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeZoom.at(at[i]);
-                float[] f = com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeZoom.frame(pillF, visible, t);
+                float t = i < at.length ? com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeZoom.at(at[i]) : 1f;
+                float[] f = com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeZoom.frame(pillF, visible, t, pillR, sheetR);
+                android.graphics.Path shape = new android.graphics.Path();
+                shape.addRoundRect(new RectF(f[0], f[1], f[2], f[3]), f[4], f[4], android.graphics.Path.Direction.CW);
                 c.save();
-                c.translate(sheetBox.left + f[1], sheetBox.top + f[2]);
-                c.scale(f[0], f[0]);
+                c.clipPath(shape);
+                Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG);
+                bg.setColor(ShadeStyle.BG);
+                c.drawPaint(bg);
+                c.translate(sheetBox.left + f[6], sheetBox.top + f[7]);
+                c.scale(f[5], f[5]);
                 Paint p = new Paint(Paint.FILTER_BITMAP_FLAG);
-                p.setAlpha(Math.round(f[3] * 255));
+                p.setAlpha(Math.round(f[8] * 255));
                 c.drawBitmap(shade, 0, 0, p);
                 c.restore();
+                Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
+                line.setStyle(Paint.Style.STROKE);
+                line.setStrokeWidth(context.getResources().getDisplayMetrics().density);
+                line.setColor(ShadeStyle.LINE);
+                c.drawPath(shape, line);
                 frames[1 + i] = frame;
             }
-            frames[frames.length - 1] = open;
             int fw = w / 2, fh = h / 2, gap = 12;
             Bitmap sheetImage = Bitmap.createBitmap(frames.length * (fw + gap) - gap, fh + 40, Bitmap.Config.ARGB_8888);
             sheetImage.eraseColor(0xFF000000);

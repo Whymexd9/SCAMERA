@@ -76,9 +76,9 @@ public final class BottomChrome {
     public static final float SIDE_RADIUS_DP = 20f;
     /**
      * Corner radius of the lens strip (dp before the scale). P171 (owner, 2026-10-16: «Сделай обводку вокруг модулей камер более
-     * закругленную»): 22 of its 46dp height (was 18, the tiles' 14 plus the padding), nearly round ends.
+     * закругленную»): 22 of its 46dp height; P185: a capsule - 24 of its 48dp (40dp lenses and the padding), round ends.
      */
-    public static final float STRIP_RADIUS_DP = 22f;
+    public static final float STRIP_RADIUS_DP = 24f;
 
     /**
      * P157 (owner, 2026-10-16: «переделай их полностью под наш стиль», then «Сделай эти иконки ближе к monet стилю, но чтобы

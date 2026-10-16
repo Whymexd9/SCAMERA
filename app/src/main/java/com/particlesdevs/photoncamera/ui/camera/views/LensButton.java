@@ -17,13 +17,12 @@ import com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette;
 import com.particlesdevs.photoncamera.ui.settings.SettingsStyle;
 
 /**
- * One lens of the strip ({@link AuxButtonsLayout}). P161 (owner, 2026-10-16: the P157 discs and capsule were «один в один
- * гугл камера», «Сделай стиль что-то между material you и нашим»): Material You's tonal colours of the camera accent on our
- * card shapes - every lens a rounded tile, wider than tall, with the corners of the gallery card in proportion, a tonal
- * fill and a faint tonal outline (our CARD + LINE), its short number («0,6», «2», «2,8»); the active lens a tile of the
- * same height filled with the accent, its full label in bold INK («1×», the live zoom «2,3×»), as an active tile of the
- * shade. No size jump, no circles. A press ripples in the accent. Sizes in proportion to the screen's width
- * ({@link BottomChrome#scale}).
+ * One lens of the strip ({@link AuxButtonsLayout}). P185 (owner, 2026-10-17: the strip «ближе к тому что на 3 скриншоте, но при
+ * этом в стиле Material You/Gcam» - one capsule, «0,4× ··· 1× ··· 2,4× ··· 5x ··· 10x», the active lens a filled pill):
+ * a lens not in use is its label alone («0,4×», in the accent's tone of the muted text, Material You's on-surface-variant),
+ * no tile of its own; the active lens a pill of the same height filled with the accent, its label in bold INK («1×», the
+ * live zoom «2,3×»). The strip draws the dots between them. A press ripples in the accent, in the pill's shape. Sizes in
+ * proportion to the screen's width ({@link BottomChrome#scale}).
  * <p>
  * P32 (owner, 2026-10-07): the button itself never rotates, so its background and the selected pill keep their portrait
  * shape inside the strip in every orientation. Only the label turns upright with the phone (0 / 90 / 180 / 270 degrees,
@@ -57,14 +56,10 @@ public class LensButton extends Button {
         GradientDrawable selected = new GradientDrawable();
         selected.setColor(accent);
         selected.setCornerRadius(radius);
-        GradientDrawable tile = new GradientDrawable();
-        tile.setColor(BottomChrome.tone(SettingsStyle.CARD, accent, .12f));
-        tile.setStroke(Math.max(1, Math.round(getResources().getDisplayMetrics().density)),
-                BottomChrome.tone(SettingsStyle.CARD, accent, .26f));
-        tile.setCornerRadius(radius);
         StateListDrawable states = new StateListDrawable();
         states.addState(new int[]{android.R.attr.state_selected}, selected);
-        states.addState(new int[]{}, tile);
+        // P185: a lens not in use has no tile of its own (its label on the strip's capsule)
+        states.addState(new int[]{}, new android.graphics.drawable.ColorDrawable(0));
         GradientDrawable mask = new GradientDrawable();
         mask.setColor(0xFFFFFFFF);
         mask.setCornerRadius(radius);
@@ -76,10 +71,10 @@ public class LensButton extends Button {
     }
 
     /**
-     * P161: every tile's height, the least width of a tile and of the active one, and the corner radius (dp before the
-     * scale; the corner is the gallery card's 20 of 52dp in proportion).
+     * P185: every lens's height, the least width of a lens and of the active one, and the active pill's corner radius (half
+     * its height: a pill) - dp before the scale.
      */
-    static final float HEIGHT_DP = 38f, WIDTH_DP = 42f, SELECTED_WIDTH_DP = 56f, CORNER_DP = 14f;
+    static final float HEIGHT_DP = 40f, WIDTH_DP = 36f, SELECTED_WIDTH_DP = 54f, CORNER_DP = 20f;
     private final float unit;
     /**
      * P181 (owner, 2026-10-16: «у нас модули выходят за границы экрана»): the strip's fit, MIN_FIT..1 - the tile's least
@@ -124,15 +119,8 @@ public class LensButton extends Button {
         float label = text == null ? 0f : paint.measureText(text, 0, text.length());
         return Math.max(baseMinWidth, (float) Math.ceil(label) + 2 * basePadding);
     }
-    /** The label as the strip set it; a tile not in use shows its short form ({@link #shortLabel}). */
+    /** The label as the strip set it (P185: shown whole, in use or not). */
     private CharSequence fullLabel;
-
-    /** «2,8×» -> «2,8», «1x» -> «1»; anything else (a custom name, «1× (2)») stays as it is. */
-    static CharSequence shortLabel(CharSequence label) {
-        if (label == null) return null;
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^\\s*(\\d+(?:[.,]\\d+)?)\\s*[×xX]\\s*$").matcher(label);
-        return m.matches() ? m.group(1) : label;
-    }
 
     /** The label as the strip set it (the full one, also on a tile not in use). */
     public CharSequence fullLabel() {
@@ -142,7 +130,7 @@ public class LensButton extends Button {
     @Override
     public void setText(CharSequence text, BufferType type) {
         fullLabel = text;
-        super.setText(isSelected() || text == null ? text : shortLabel(text), type);
+        super.setText(text, type);
     }
 
     @Override
@@ -150,16 +138,15 @@ public class LensButton extends Button {
         boolean changed = selected != isSelected();
         super.setSelected(selected);
         if (!changed) return;
-        if (fullLabel != null) super.setText(selected ? fullLabel : shortLabel(fullLabel), BufferType.NORMAL);
         applyState();
         requestLayout();
     }
 
-    /** The active tile: 14sp bold, at least 56dp wide; the others 13sp, 42dp; all 38dp high (times the scale). */
+    /** The active lens: 15sp bold, at least 54dp wide; the others 14sp, 36dp; all 40dp high (times the scale). */
     private void applyState() {
         if (unit == 0f) return;   // the TextView constructor sets the text before this one runs
         boolean on = isSelected();
-        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.setTextSp(this, on ? 14 : 13);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.setTextSp(this, on ? 15 : 14);
         baseTextPx = getTextSize() * BottomChrome.scale(getContext());
         setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, baseTextPx * fit);
         setTypeface(null, on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
@@ -167,7 +154,7 @@ public class LensButton extends Button {
         int width = Math.round(baseMinWidth * fit);
         setMinWidth(width);
         setMinimumWidth(width);
-        basePadding = (on ? 10f : 6f) * unit;
+        basePadding = (on ? 14f : 6f) * unit;
         int padding = Math.round(basePadding * fit);
         setPadding(padding, 0, padding, 0);
     }

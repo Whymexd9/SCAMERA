@@ -71,6 +71,29 @@ public class AuxButtonsLayout extends LinearLayout {
     private final LinearLayout.LayoutParams buttonParams;
     /** P181: the gap on each side of a tile at fit 1 (px). */
     private final int baseGap;
+    /** P185: the three dots between two lenses («0,4× ··· 1×»): their radius and spacing at fit 1 (px), their paint. */
+    private final float dotRadius, dotStep;
+    private final android.graphics.Paint dots = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+
+    @Override
+    protected void dispatchDraw(android.graphics.Canvas canvas) {
+        super.dispatchDraw(canvas);
+        View previous = null;
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (child.getVisibility() != View.VISIBLE || !(child instanceof LensButton)) continue;
+            if (previous != null) {
+                float fit = ((LensButton) child).fit(), step = dotStep * fit, r = dotRadius * Math.max(.75f, fit);
+                float gap = child.getLeft() + child.getTranslationX() - (previous.getRight() + previous.getTranslationX());
+                if (gap >= 2 * step + 2 * r + 2) {
+                    float x = (previous.getRight() + previous.getTranslationX() + child.getLeft() + child.getTranslationX()) / 2f;
+                    float y = (child.getTop() + child.getBottom()) / 2f;
+                    for (int d = -1; d <= 1; d++) canvas.drawCircle(x + d * step, y, r, dots);
+                }
+            }
+            previous = child;
+        }
+    }
     private AuxButtonListener auxButtonListener;
     private AuxButtonsModel auxButtonsModel;
     private long lastSwitch = -500;
@@ -84,10 +107,15 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
 
         // P157: the strip in proportion to the screen's width (BottomChrome.scale)
         float density = context.getResources().getDisplayMetrics().density * BottomChrome.scale(context);
-        // P161: the lens tiles 6dp apart, centred on one line (all of one height)
+        // P185: the lenses 14dp apart, the dots between them, centred on one line (all of one height)
         buttonParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         buttonParams.gravity = android.view.Gravity.CENTER_VERTICAL;
-        baseGap = Math.round(3 * density);
+        baseGap = Math.round(7 * density);
+        dotRadius = 1.4f * density;
+        dotStep = 4.2f * density;
+        dots.setColor(BottomChrome.tone(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED,
+                com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(context), .22f));
+        dots.setAlpha(170);
         buttonParams.setMargins(baseGap, 0, baseGap, 0);
 
         // The layout editor runs this constructor but not the data-binding adapters,

@@ -4207,6 +4207,25 @@ the other agent's notes, «Изучи и реализуй, учитывай чт
   and a different key from the local CTS diagnostics (uninstall those once). Not yet seen on non-vivo phones under this
   package (installing it there needs the camera permission granted by the owner).
 
+### P184 - FULLRES buttons on the X100 Ultra and the X300 Ultra (owner, 2026-10-17: «На х100 ультра не появляются кнопки с
+переключением фулреза, исправь. на 300у они тоже должны быть»; «на X300 Ultra не только теле камера имеет 200мп фулрез, нам
+нужно чтобы он был и на основной»; done)
+- 9e2806d9: the P180 profiles are on (scam_dev vivo_fullres_x100u / x300u 0 turns a phone off); the X100 Ultra's listed main
+  camera 0 takes the main profile too. The X300 Ultra's main camera 3 has both sizes (16320x12256 Tetra 200 MP, 8160x6128
+  Quad 50 MP): two FULLRES buttons there and on its telephoto. On the phones: which row gives the raw mosaic, the lease.
+
+### P185 - the shade's morph out of the pill, its rounded bottom, the lens strip as a capsule with dots (owner, 2026-10-17:
+«Исправь анимацию шторки» - a jump, not out of the pill, «При раскрытии шторки нижняя часть не должна появляться и
+исчезать»; «сделай такие же закругления как сверху шторки снизу»; the strip «ближе к тому что на 3 скриншоте, но при этом в
+стиле Material You/Gcam»; done)
+- Cause of the jump: the zoom scaled the whole sheet with the containers' clipping off, so its part below the visible one
+  showed while it grew and went at the end; and it started as a small copy of the shade, not as the pill.
+- Now a container transform (ShadeZoom.frame): the sheet's outline clip is the pill's rectangle and radius at the start and
+  its visible part at the end, the content fitted to the shape's width fading in; nothing outside the shape is ever drawn.
+  In place at 16:9 the sheet keeps that clip: its bottom corners are rounded like the top (and lined).
+- The strip: one capsule (24dp radius), lenses 40dp high with their whole labels («0,4×») and no tiles, the active one an
+  accent pill (54dp+), three dots between lenses. Renders: build/reports/viewfinder/shade-169.png (Shade169Test).
+
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach

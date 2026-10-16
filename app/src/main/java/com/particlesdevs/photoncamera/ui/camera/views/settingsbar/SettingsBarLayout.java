@@ -183,6 +183,7 @@ public class SettingsBarLayout extends LinearLayout {
         public void onSlide(@NonNull View bottomSheet, float slideOffset) {
             // 0 at PEEK, 1 at FULL; between HIDDEN and PEEK (negative) there is no scrim.
             updateScrim(Math.max(0f, Math.min(1f, slideOffset)));
+            updateShape();
         }
     };
 
@@ -203,6 +204,11 @@ public class SettingsBarLayout extends LinearLayout {
         vibration = isInEditMode() ? null : ScameraApp.getVibration();
         setOrientation(VERTICAL);
         setBackground(ShadeStyle.sheet(context));
+        // P185: the outline clips the sheet to its shape at 16:9 (the morph out of the pill, the rounded bottom)
+        setOutlineProvider(sheetOutline);
+        shapeStroke.setStyle(android.graphics.Paint.Style.STROKE);
+        shapeStroke.setStrokeWidth(dp(1));
+        shapeStroke.setColor(ShadeStyle.LINE);
 
         // Handle at the top of the sheet. A tap goes on round the cycle: PEEK -> FULL -> HIDDEN.
         // A drag past the touch slop is taken by the BottomSheetBehavior, which moves the sheet.
@@ -1258,6 +1264,7 @@ public class SettingsBarLayout extends LinearLayout {
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         super.onLayout(changed, l, t, r, b);
+        updateShape();
         // PEEK: the handle, the header and the grid, or down to the slider card when it is open.
         View last = sliderCard.getVisibility() == VISIBLE ? sliderCard : tiles;
         int peek = listScroll.getTop() + content.getTop() + last.getBottom() + dp(14);
@@ -1524,6 +1531,82 @@ public class SettingsBarLayout extends LinearLayout {
         if (pill == pillHandle) return;
         pillHandle = pill;
         styleHiddenHandle();
+        updateShape();
+    }
+
+    // ───────────────────────────────── P185: the sheet's shape at 16:9
+
+    /** The clip of the sheet in its own coordinates and its corner radius, while {@link #shaped}. */
+    private final android.graphics.RectF shape = new android.graphics.RectF();
+    private float shapeRadius;
+    /** The sheet is clipped to {@link #shape} (16:9: in place or on its way out of the pill); else its background's outline. */
+    private boolean shaped;
+    private final android.graphics.Paint shapeStroke = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+    private final android.view.ViewOutlineProvider sheetOutline = new android.view.ViewOutlineProvider() {
+        @Override
+        public void getOutline(View view, android.graphics.Outline outline) {
+            if (shaped && shape.width() > 0 && shape.height() > 0)
+                outline.setRoundRect(Math.round(shape.left), Math.round(shape.top), Math.round(shape.right), Math.round(shape.bottom), shapeRadius);
+            else android.view.ViewOutlineProvider.BACKGROUND.getOutline(view, outline);
+        }
+    };
+
+    /** The shade's corner radius (ShadeStyle.sheet's). */
+    private float sheetRadius() {
+        return dp(26);
+    }
+
+    /**
+     * P185 (owner: «сделай такие же закругления как сверху шторки снизу»): at 16:9 the sheet floats over the preview above the
+     * lens strip - its visible part (down to its container's bottom) is clipped with the top's corners at the bottom too.
+     * Elsewhere, and while the morph runs (it sets the shape itself), as before.
+     */
+    private void updateShape() {
+        if (zoom != null) return;
+        boolean want = pillHandle && getParent() instanceof View && getHeight() > 0;
+        if (want) {
+            int visible = Math.min(getHeight(), ((View) getParent()).getHeight() - getTop());
+            if (visible <= 0) want = false;
+            else setShape(0f, 0f, getWidth(), visible, sheetRadius());
+        }
+        if (!want && shaped) {
+            shaped = false;
+            setClipToOutline(false);
+            invalidateOutline();
+            invalidate();
+        }
+    }
+
+    private void setShape(float l, float t, float r, float b, float radius) {
+        if (shaped && shape.left == l && shape.top == t && shape.right == r && shape.bottom == b && shapeRadius == radius) return;
+        shape.set(l, t, r, b);
+        shapeRadius = radius;
+        shaped = true;
+        setClipToOutline(true);
+        invalidateOutline();
+        invalidate();
+    }
+
+    @Override
+    protected void dispatchDraw(android.graphics.Canvas canvas) {
+        super.dispatchDraw(canvas);
+        // the shape's line: all round while it morphs (the background's line lies outside the shape then), in place only
+        // along the bottom (the background draws the top and the sides)
+        if (shaped && shape.width() > 0 && shape.height() > 0) {
+            float h = shapeStroke.getStrokeWidth() / 2f;
+            float l = shape.left + h, t = shape.top + h, r = shape.right - h, b = shape.bottom - h;
+            float rad = Math.max(0f, Math.min(shapeRadius - h, Math.min(r - l, b - t) / 2f));
+            if (zoom != null) canvas.drawRoundRect(l, t, r, b, rad, rad, shapeStroke);
+            else {
+                android.graphics.Path bottom = new android.graphics.Path();
+                bottom.moveTo(l, b - rad);
+                bottom.arcTo(l, b - 2 * rad, l + 2 * rad, b, 180f, -90f, false);
+                bottom.lineTo(r - rad, b);
+                bottom.arcTo(r - 2 * rad, b - 2 * rad, r, b, 90f, -90f, false);
+                bottom.lineTo(r, b - rad);
+                canvas.drawPath(bottom, shapeStroke);
+            }
+        }
     }
 
     public boolean isPillHandle() {
@@ -1628,14 +1711,18 @@ public class SettingsBarLayout extends LinearLayout {
     private void runZoom(android.graphics.RectF pill, android.graphics.RectF visible, boolean open, Runnable done) {
         setPivotX(0f);
         setPivotY(0f);
-        apply(ShadeZoom.frame(pill, visible, open ? 0f : 1f));
+        final float pillRadius = pill.height() / 2f, radius = sheetRadius();
+        // the content's own alpha comes back at the end (the morph fades it in / out)
+        final float[] alphas = new float[getChildCount()];
+        for (int i = 0; i < alphas.length; i++) alphas[i] = getChildAt(i).getAlpha();
+        apply(ShadeZoom.frame(pill, visible, open ? 0f : 1f, pillRadius, radius), alphas);
         zoomRuns++;
         zoomStartScale = getScaleX();
         unclip(true);
         android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(open ? 0f : 1f, open ? 1f : 0f);
         a.setDuration(open ? ShadeZoom.OPEN_MS : ShadeZoom.CLOSE_MS);
         a.setInterpolator(open ? ShadeZoom.OPEN : ShadeZoom.CLOSE);
-        a.addUpdateListener(v -> apply(ShadeZoom.frame(pill, visible, (float) v.getAnimatedValue())));
+        a.addUpdateListener(v -> apply(ShadeZoom.frame(pill, visible, (float) v.getAnimatedValue(), pillRadius, radius), alphas));
         a.addListener(new android.animation.AnimatorListenerAdapter() {
             private boolean finished;
 
@@ -1647,7 +1734,13 @@ public class SettingsBarLayout extends LinearLayout {
                 zoomTarget = -1;
                 unclip(false);
                 done.run();
-                apply(new float[]{1f, 0f, 0f, 1f});
+                setScaleX(1f);
+                setScaleY(1f);
+                setTranslationX(0f);
+                setTranslationY(0f);
+                setAlpha(1f);
+                for (int i = 0; i < alphas.length && i < getChildCount(); i++) getChildAt(i).setAlpha(alphas[i]);
+                updateShape();
                 updateHiddenHandle();
             }
         });
@@ -1674,12 +1767,16 @@ public class SettingsBarLayout extends LinearLayout {
         }
     }
 
-    private void apply(float[] f) {
-        setScaleX(f[0]);
-        setScaleY(f[0]);
-        setTranslationX(f[1]);
-        setTranslationY(f[2]);
-        setAlpha(f[3]);
+    /** One frame of the morph (ShadeZoom.frame): the content's scale and place, the shape's clip, the content's alpha. */
+    private void apply(float[] f, float[] alphas) {
+        setScaleX(f[ShadeZoom.SCALE]);
+        setScaleY(f[ShadeZoom.SCALE]);
+        setTranslationX(f[ShadeZoom.TX]);
+        setTranslationY(f[ShadeZoom.TY]);
+        setAlpha(1f);
+        android.graphics.RectF clip = ShadeZoom.localClip(f, getLeft(), getTop());
+        setShape(clip.left, clip.top, clip.right, clip.bottom, f[ShadeZoom.RADIUS] / Math.max(0.05f, f[ShadeZoom.SCALE]));
+        for (int i = 0; i < alphas.length && i < getChildCount(); i++) getChildAt(i).setAlpha(alphas[i] * f[ShadeZoom.CONTENT]);
     }
 
     /** The pill in the sheet parent's coordinates, null while it is not laid out. */

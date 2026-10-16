@@ -626,6 +626,15 @@ public class ShadeUiTest {
         assertEquals(1f, sheet.getScaleX(), 0f);
         assertEquals(0f, sheet.getTranslationY(), 0f);
         assertEquals(1f, sheet.getAlpha(), 0f);
+        for (int i = 0; i < sheet.getChildCount(); i++) assertEquals("the content's alpha back", 1f, sheet.getChildAt(i).getAlpha(), 0f);
+        // P185: in place at 16:9 the sheet is clipped to its visible part, rounded at the bottom like the top
+        assertTrue("its shape clips it", sheet.getClipToOutline());
+        android.graphics.Outline outline = new android.graphics.Outline();
+        sheet.getOutlineProvider().getOutline(sheet, outline);
+        android.graphics.Rect shapeRect = new android.graphics.Rect();
+        assertTrue(outline.getRect(shapeRect));
+        assertEquals("rounded", dp(26), outline.getRadius(), 1f);
+        assertEquals("down to its container's bottom", coordinator.getHeight() - sheet.getTop(), shapeRect.bottom);
         assertEquals(SettingsBarLayout.LEVEL_PEEK, sheet.getSheetLevel());
         assertEquals(View.GONE, handle.getVisibility());
         // close: shrinks into the pill, then hidden; the pill comes back
@@ -639,6 +648,7 @@ public class ShadeUiTest {
         // outside 16:9: the edge again, and the usual slide (no scale)
         sheet.setPillHandle(false);
         assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, handle.getLayoutParams().width);
+        assertTrue("no shape clip outside 16:9", !sheet.getClipToOutline());
         sheet.setSheetLevel(SettingsBarLayout.LEVEL_PEEK);
         Shadows.shadowOf(main).idleFor(java.time.Duration.ofSeconds(1));
         assertEquals("slides as before", 2, sheet.zoomRuns);

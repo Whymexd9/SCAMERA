@@ -294,10 +294,11 @@ public class ViewfinderScaleLayoutTest {
             for (int i = 0; i < strip.getChildCount(); i++) {
                 View lens = strip.getChildAt(i);
                 if (!(lens instanceof TextView)) continue;
-                // P161: every lens a 38dp tile (times the scale), the active one too
+                // P185: every lens 40dp high (times the scale), the active one too; its label 14sp (the active 15sp) at most
+                // the font scale's cap
                 assertEquals(at + "lens size", dp(LensButton.HEIGHT_DP * s), lens.getHeight(), 1);
                 TextView label = (TextView) lens;
-                assertTrue(at + "lens label over the cap", label.getTextSize() <= 14f * UiTokens.FONT_SCALE_CAP * density * s + .5f);
+                assertTrue(at + "lens label over the cap", label.getTextSize() <= (lens.isSelected() ? 15f : 14f) * UiTokens.FONT_SCALE_CAP * density * s + .5f);
                 assertTrue(at + "lens label cut", label.getLayout() == null || label.getLayout().getLineCount() == 1);
             }
 

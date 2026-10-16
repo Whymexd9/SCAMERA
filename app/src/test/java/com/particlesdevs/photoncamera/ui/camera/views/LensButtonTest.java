@@ -79,33 +79,36 @@ public class LensButtonTest {
     }
 
     /**
-     * P161: a lens not in use is a 38dp rounded tile, wider than tall, with its short number; chosen, a tile of the same
-     * height, at least 56dp wide, with the full label in bold. Not a circle (P157's discs were Google Camera's).
+     * P185 (owner: the strip «ближе к тому что на 3 скриншоте, но при этом в стиле Material You/Gcam»): a lens not in use is
+     * its whole label on the strip, no tile of its own; chosen, a pill of the same height filled with the accent, at least
+     * 54dp wide, its label in bold.
      */
     @Test
-    public void aTileShowsTheShortNumberAndTheActiveTileTheFullLabel() {
-        assertEquals("2,8", LensButton.shortLabel("2,8×").toString());
-        assertEquals("1", LensButton.shortLabel("1x").toString());
-        assertEquals("0.6", LensButton.shortLabel("0.6×").toString());
-        assertEquals("a custom name stays", "Tele", LensButton.shortLabel("Tele").toString());
-        assertEquals("a preset stays", "1× (2)", LensButton.shortLabel("1× (2)").toString());
+    public void aLensShowsItsWholeLabelAndTheActiveOneIsAPill() {
         LensButton button = new LensButton(context);
         button.setLayoutParams(new android.view.ViewGroup.LayoutParams(-2, -2));   // as in the strip
         button.setText("2,8×");
         measure(button);
-        assertEquals("2,8", button.getText().toString());
+        assertEquals("the whole label", "2,8×", button.getText().toString());
         assertEquals("2,8×", button.fullLabel().toString());
         assertEquals(dp(LensButton.HEIGHT_DP), button.getHeight());
-        assertEquals("a tile wider than tall", dp(LensButton.WIDTH_DP), button.getWidth());
-        assertTrue("corners well under half the height: not a disc", dp(LensButton.CORNER_DP) < button.getHeight() * .4f);
+        assertTrue("no tile of its own", Color.alpha(drawn(button).getPixel(dp(2), button.getHeight() / 2)) == 0);
         button.setSelected(true);
         measure(button);
         assertEquals("2,8×", button.getText().toString());
-        assertEquals("the active tile keeps the height", dp(LensButton.HEIGHT_DP), button.getHeight());
-        assertTrue("the active tile at least 56dp wide", button.getWidth() >= dp(LensButton.SELECTED_WIDTH_DP));
+        assertEquals("the active pill keeps the height", dp(LensButton.HEIGHT_DP), button.getHeight());
+        assertTrue("the active pill at least 54dp wide", button.getWidth() >= dp(LensButton.SELECTED_WIDTH_DP));
+        assertEquals("a pill: corners half its height", button.getHeight() / 2f, dp(LensButton.CORNER_DP), 1f);
         assertTrue(button.getTypeface() != null && button.getTypeface().isBold());
         button.setSelected(false);
-        assertEquals("2,8", button.getText().toString());
+        assertEquals("2,8×", button.getText().toString());
+    }
+
+    /** The button drawn on its own (transparent around it). */
+    private Bitmap drawn(LensButton button) {
+        Bitmap image = Bitmap.createBitmap(button.getWidth(), button.getHeight(), Bitmap.Config.ARGB_8888);
+        button.draw(new Canvas(image));
+        return image;
     }
 
     @Test
@@ -117,7 +120,7 @@ public class LensButtonTest {
         int accent = AccentPalette.camera(context);
         measure(button);
         int width = button.getWidth(), height = button.getHeight();
-        assertEquals("the active tile 38dp (P161)", dp(LensButton.HEIGHT_DP), height);
+        assertEquals("the active pill 40dp (P185)", dp(LensButton.HEIGHT_DP), height);
         assertTrue("a tile wider than tall", width > height);
         for (int o : ORIENTATIONS) {
             button.turnLabel(o, 0);
