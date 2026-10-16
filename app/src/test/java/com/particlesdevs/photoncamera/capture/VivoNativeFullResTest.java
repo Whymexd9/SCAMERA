@@ -107,6 +107,36 @@ public class VivoNativeFullResTest {
                 }
     }
 
+    /**
+     * P186 (owner, X300 Ultra: the main camera's 50 / 200 MP and the tele's 200 MP gave no frame or killed the camera, the tele's
+     * 50 MP and the ultra-wide worked): each size tries its own table's rows in order, a failed row is passed, a size whose rows
+     * all failed is off; a test row of scam_dev.txt always wins.
+     */
+    @Test
+    public void eachSizeTriesItsOwnRowsInTurn() {
+        assertArrayEquals(new int[]{1, 2, 3}, VivoNativeFullRes.candidates(X300, "3", false));
+        assertArrayEquals(new int[]{0}, VivoNativeFullRes.candidates(X300, "3", true));
+        assertArrayEquals(new int[]{0, 4}, VivoNativeFullRes.candidates(X300, "4", true));
+        assertArrayEquals(new int[]{1, 14, 27}, VivoNativeFullRes.candidates(X300, "5", false));
+        assertArrayEquals(new int[]{0, 11, 31}, VivoNativeFullRes.candidates(X100, "0", false));
+        assertArrayEquals(new int[]{1, 14, 18, 20}, VivoNativeFullRes.candidates(X100, "4", false));
+        assertEquals(0, VivoNativeFullRes.candidates(X200, "3", false).length);
+        int[] rows = {1, 2, 3};
+        assertEquals("first", 1, VivoNativeFullRes.rowFor(rows, 0, -1));
+        int tried = VivoNativeFullRes.next(rows, 0, 1);
+        assertEquals("row 1 failed: row 2 next", 2, VivoNativeFullRes.rowFor(rows, tried, -1));
+        assertEquals("a row not tried now changes nothing", tried, VivoNativeFullRes.next(rows, tried, 14));
+        tried = VivoNativeFullRes.next(rows, VivoNativeFullRes.next(rows, tried, 2), 3);
+        assertEquals("all failed: the size is off", -1, VivoNativeFullRes.rowFor(rows, tried, -1));
+        assertEquals("a test row wins", 7, VivoNativeFullRes.rowFor(rows, tried, 7));
+        assertEquals("main50", VivoNativeFullRes.role(X300, "3", false));
+        assertEquals("main", VivoNativeFullRes.role(X300, "3", true));
+        assertEquals("tele", VivoNativeFullRes.role(X300, "5", true));
+        assertEquals("wide", VivoNativeFullRes.role(X100, "3", true));
+        assertArrayEquals(new int[]{16320, 12256, 4}, VivoNativeFullRes.size(X300, "3", true));
+        assertArrayEquals(new int[]{8160, 6128, 2}, VivoNativeFullRes.size(X300, "3", false));
+    }
+
     @Test
     public void aTestRowReplacesTheTablesWhenItIsAValidRow() {
         assertEquals(0, VivoNativeFullRes.rowOf(-1f, 0));

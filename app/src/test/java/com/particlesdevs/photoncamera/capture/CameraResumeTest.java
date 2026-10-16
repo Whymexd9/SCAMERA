@@ -407,6 +407,24 @@ public class CameraResumeTest {
         verify(manager).registerAvailabilityCallback(any(CameraManager.AvailabilityCallback.class),any(android.os.Handler.class));
     }
 
+    /**
+     * P186 (X300 Ultra: a FULLRES mode killed the main camera, the provider restarted, the app went to the ultra-wide): just after
+     * a device error the requested camera is waited for - the module stays, nothing opens in its place, a restart is posted.
+     */
+    @Test public void aCameraJustDeadIsWaitedForNotReplaced() throws Exception {
+        Settings settings=oppoModules();
+        CameraManager manager=(CameraManager)get(controller,"mCameraManager");
+        when(manager.getCameraCharacteristics("4")).thenThrow(new IllegalArgumentException("unknown device 4"));
+        coldStartList(facing(CameraCharacteristics.LENS_FACING_BACK));
+        var error=CaptureController.class.getDeclaredField("mDeviceErrorMs");error.setAccessible(true);
+        error.setLong(controller,android.os.SystemClock.elapsedRealtime());
+        var method=CaptureController.class.getDeclaredMethod("requestedCharacteristics");method.setAccessible(true);
+        assertNull("not opened in its place yet",method.invoke(controller));
+        assertEquals("4",settings.mCameraID);
+        assertEquals("the module stays","back3",ModuleRegistry.active());
+        verify(manager,never()).registerAvailabilityCallback(any(CameraManager.AvailabilityCallback.class),any(android.os.Handler.class));
+    }
+
     /** A camera the start-up list lacks but the camera service knows is opened as requested. */
     @Test public void unlistedCameraKnownToTheServiceOpensAsRequested() throws Exception {
         Settings settings=oppoModules();

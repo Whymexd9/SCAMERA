@@ -876,6 +876,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         @Override
         public void onError(@NonNull CameraDevice cameraDevice, int error) {
+            mDeviceErrorMs = android.os.SystemClock.elapsedRealtime();
             if (mVivoSdkRawSession != null && mVivoSdkRawDevice == null) mVivoSdkRawDevice = cameraDevice;
             rescueInFlightShot("camera error " + error);
             stopStallWatch();
@@ -1080,6 +1081,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (isCameraResumed && mCameraDevice == null && !mCameraOpening.get()) restartCamera();
         }, delay);
     }
+    /** P186: when the open camera last died (onError), and how often its return has been waited for since. */
+    private volatile long mDeviceErrorMs;
+    private int mProviderWaits;
     /** Set when filling the characteristics failed (camera provider died during startup): refilled before the next open. */
     private volatile boolean mCharacteristicsIncomplete;
     /** Waits for the requested camera after a fallback to the main camera of its side (see {@link #awaitRequestedCamera}). */
@@ -1107,8 +1111,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         CameraCharacteristics chars = mCameraCharacteristicsMap.get(physicalID);
         if (chars == null) chars = characteristicsOnDemand(physicalID);
         if (chars != null) {
+            mProviderWaits = 0;
             routeXiaomiTele();
             return chars;
+        }
+        // P186 (X300 Ultra: a FULLRES mode the camera could not run killed it; the provider restarts and hides its cameras for a
+        // moment): shortly after a device error the same camera is waited for, not replaced by the main camera of its side
+        if (mDeviceErrorMs > 0 && android.os.SystemClock.elapsedRealtime() - mDeviceErrorMs < 15_000 && mProviderWaits < 12) {
+            mProviderWaits++;
+            Log.w(TAG, "camera " + physicalID + " not back yet after a device error: again in 700 ms (" + mProviderWaits + ")");
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                if (isCameraResumed && mCameraDevice == null && !mCameraOpening.get()) restartCamera();
+            }, 700);
+            return null;
         }
         String requestedSlot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
         int wanted = com.particlesdevs.photoncamera.settings.ModuleChoice.wantedFacing(requestedSlot, null);
@@ -2118,6 +2133,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 + (now - mPreviewSessionStartMs) + " ms) liveRaw=" + mLiveRawSession + " mosaicPreview=" + mMosaicPreview
                 + " block=" + com.particlesdevs.photoncamera.processing.MosaicStream.block() + " scamRouted=" + mScamRouted
                 + " frameMs=" + mPreviewFrameMs + " restartsInARow=" + mStallRestarts);
+        // P186: a native FULLRES session that never gave a frame runs a mode the camera cannot: FULLRES goes off (its mode is
+        // noted on the X100 / X300 Ultra) instead of the same session again and again
+        if (mLastPreviewResultMs == 0 && mVivoSdkRawSession != null && nativeVivoFullRes()
+                && retryWithoutVivoSdkFullRes(mCaptureSession, "no preview frame for " + noFrame + " ms")) {
+            mPreviewSessionStartMs = 0;
+            handler.removeCallbacks(mStallCheck);
+            return;
+        }
         if (!PreviewStall.mayRestart(mStallRestarts)) {
             mPreviewSessionStartMs = 0;   // one log line, no more restarts until the next session
             Log.w(TAG, "PREVIEW_STALL: " + mStallRestarts + " restarts brought no frame, leaving the camera as it is");
@@ -3187,13 +3210,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * with the normal RAW stream (this camera, this run) and the owner sees why.
      */
     private boolean retryWithoutVivoSdkFullRes(@Nullable CameraCaptureSession session, String why) {
+        final String note;
         synchronized (mVivoSdkLock) {
             if (mVivoSdkRawSession == null || !PixelPro10.fullResOn()) return false;
+            // P186: the X100 / X300 Ultra note the row that failed and try the next one of its size the next time
+            note = nativeVivoFullRes() ? VivoNativeFullRes.failed(mVivoSdkCameraId, VivoSdkFullRes.profile(mVivoSdkCameraId), why) : null;
             PixelPro10.setFullRes(false);
         }
         if (session != null) try { session.close(); } catch (RuntimeException ignored) { }
         Log.w("SCAM_CAPTURE", "SDK FULLRES50 refused: " + why);
-        showToast(Lang.t("SDK 50 Мп: камера отказала, обычный RAW", "SDK 50 MP: camera refused, normal RAW"));
+        showToast(note != null ? note : Lang.t("SDK 50 Мп: камера отказала, обычный RAW", "SDK 50 MP: camera refused, normal RAW"));
         new Handler(Looper.getMainLooper()).post(this::restartCamera);
         return true;
     }

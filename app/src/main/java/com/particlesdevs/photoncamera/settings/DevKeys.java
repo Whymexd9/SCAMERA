@@ -158,11 +158,11 @@ public final class DevKeys {
         // P180 / P184: FULLRES without hardware remosaic on the X100 / X300 Ultra - on (the owner tests it), off by these
         k.add(s(vivo, "vivo_fullres_x100u", true, Lang.t("X100 Ultra: FULLRES без аппаратного ремозаика (проверяется)", "X100 Ultra: FULLRES without hardware remosaic (being tested)")));
         k.add(s(vivo, "vivo_fullres_x300u", true, Lang.t("X300 Ultra: FULLRES без аппаратного ремозаика (проверяется)", "X300 Ultra: FULLRES without hardware remosaic (being tested)")));
-        k.add(n(vivo, "vivo_fullres_mode_main", "-1", Lang.t("X100/X300 Ultra FULLRES: режим сенсора основной (-1: строка 0 таблицы)", "X100/X300 Ultra FULLRES: main sensor mode (-1: the table's row 0)")));
-        k.add(n(vivo, "vivo_fullres_mode_main50", "-1", Lang.t("X300 Ultra FULLRES 50 Мп: режим сенсора основной (-1: строка 1)", "X300 Ultra FULLRES 50 MP: main sensor mode (-1: row 1)")));
-        k.add(n(vivo, "vivo_fullres_mode_wide", "-1", Lang.t("X100/X300 Ultra FULLRES: режим сенсора сверхширика (-1: строка 0)", "X100/X300 Ultra FULLRES: ultra-wide sensor mode (-1: row 0)")));
-        k.add(n(vivo, "vivo_fullres_mode_tele", "-1", Lang.t("X100/X300 Ultra FULLRES 200 Мп: режим сенсора теле (-1: строка 0)", "X100/X300 Ultra FULLRES 200 MP: telephoto sensor mode (-1: row 0)")));
-        k.add(n(vivo, "vivo_fullres_mode_tele50", "-1", Lang.t("X100/X300 Ultra FULLRES 50 Мп: режим сенсора теле (-1: строка 1)", "X100/X300 Ultra FULLRES 50 MP: telephoto sensor mode (-1: row 1)")));
+        k.add(n(vivo, "vivo_fullres_mode_main", "-1", Lang.t("X100/X300 Ultra FULLRES: режим сенсора основной (-1: режимы таблицы по очереди)", "X100/X300 Ultra FULLRES: main sensor mode (-1: the table's rows in turn)")));
+        k.add(n(vivo, "vivo_fullres_mode_main50", "-1", Lang.t("X300 Ultra FULLRES 50 Мп: режим сенсора основной (-1: режимы таблицы по очереди)", "X300 Ultra FULLRES 50 MP: main sensor mode (-1: the table's rows in turn)")));
+        k.add(n(vivo, "vivo_fullres_mode_wide", "-1", Lang.t("X100/X300 Ultra FULLRES: режим сенсора сверхширика (-1: режимы таблицы по очереди)", "X100/X300 Ultra FULLRES: ultra-wide sensor mode (-1: the table's rows in turn)")));
+        k.add(n(vivo, "vivo_fullres_mode_tele", "-1", Lang.t("X100/X300 Ultra FULLRES 200 Мп: режим сенсора теле (-1: режимы таблицы по очереди)", "X100/X300 Ultra FULLRES 200 MP: telephoto sensor mode (-1: the table's rows in turn)")));
+        k.add(n(vivo, "vivo_fullres_mode_tele50", "-1", Lang.t("X100/X300 Ultra FULLRES 50 Мп: режим сенсора теле (-1: режимы таблицы по очереди)", "X100/X300 Ultra FULLRES 50 MP: telephoto sensor mode (-1: the table's rows in turn)")));
         k.add(s(vivo, "vivo_qcom_modes", true, Lang.t("X200 Ultra: экспериментальные модули Qualcomm", "X200 Ultra: experimental Qualcomm modules")));
         k.add(s(vivo, "vivo_qcom_raw_psl", false, Lang.t("X200 Ultra: диагностический RAW без ZSL", "X200 Ultra: diagnostic RAW without ZSL")));
         k.add(s(vivo, "vivo_qcom_stream_usage", true, Lang.t("X200 Ultra: назначения потоков для экспериментальных режимов", "X200 Ultra: stream purposes for experimental modes")));

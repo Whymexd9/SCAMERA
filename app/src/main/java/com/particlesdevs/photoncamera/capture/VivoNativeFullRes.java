@@ -62,10 +62,14 @@ public final class VivoNativeFullRes {
         return phone == Phone.X200_ULTRA || testSwitch;
     }
 
-    /** The camera offers two sizes (200 MP and 50 MP): a FULLRES button for each. */
+    /**
+     * The camera offers two sizes (200 MP and 50 MP): a FULLRES button for each. P186: on the X100 / X300 Ultra only while both
+     * sizes still have a row to try.
+     */
     static boolean twoSizes(String cameraId) {
         Phone p = phone();
-        return twoSizes(p == null ? Phone.X200_ULTRA : p, cameraId);
+        if (p == null || p == Phone.X200_ULTRA) return twoSizes(Phone.X200_ULTRA, cameraId);
+        return twoSizes(p, cameraId) && profile(p, cameraId, true, true) != null && profile(p, cameraId, false, true) != null;
     }
 
     static boolean twoSizes(Phone phone, String cameraId) {
@@ -76,35 +80,35 @@ public final class VivoNativeFullRes {
         }
     }
 
-    /** The camera's native FULLRES profile on this phone ({@code large}: the 200 MP size of a camera with two). */
+    /**
+     * The camera's native FULLRES profile on this phone ({@code large}: the 200 MP size of a camera with two). P186: on the X100
+     * / X300 Ultra a size whose rows all failed gives way to the camera's other size.
+     */
     @Nullable
     static VivoSdkFullRes.Profile profile(String cameraId, boolean large) {
         Phone p = phone();
-        return p == null || p == Phone.X200_ULTRA ? profile(Phone.X200_ULTRA, cameraId, large, false) : profile(p, cameraId, large, true);
+        if (p == null || p == Phone.X200_ULTRA) return profile(Phone.X200_ULTRA, cameraId, large, false);
+        VivoSdkFullRes.Profile own = profile(p, cameraId, large, true);
+        return own != null || !twoSizes(p, cameraId) ? own : profile(p, cameraId, !large, true);
     }
 
-    /** {@code override}: the test's own rows (scam_dev.txt vivo_fullres_mode_*), never on the X200 Ultra. */
+    /**
+     * {@code live}: the row this phone tries now - the test's own (scam_dev.txt vivo_fullres_mode_*), else the first of the
+     * table's {@link #candidates} not yet failed (null once all failed); else the table's first. Never on the X200 Ultra.
+     */
     @Nullable
-    static VivoSdkFullRes.Profile profile(Phone phone, String cameraId, boolean large, boolean override) {
+    static VivoSdkFullRes.Profile profile(Phone phone, String cameraId, boolean large, boolean live) {
         if (cameraId == null) return null;
         switch (phone) {
             case X100_ULTRA:
-                // tag 0x8038: main (2, and the listed 0: its other profile, the same table) rows 0 / 11 / 31 8192x6144;
-                // ultra-wide (3) rows 0 / 9 8192x6144; tele (4) row 0 16320x12288, rows 1 / 14 / 18 / 20 8160x6144
-                if ("0".equals(cameraId) || "2".equals(cameraId)) return new VivoSdkFullRes.Profile(8192, 6144, row("main", 0, override), 2);
-                if ("3".equals(cameraId)) return new VivoSdkFullRes.Profile(8192, 6144, row("wide", 0, override), 2);
-                if ("4".equals(cameraId)) return large ? new VivoSdkFullRes.Profile(16320, 12288, row("tele", 0, override), 4)
-                        : new VivoSdkFullRes.Profile(8160, 6144, row("tele50", 1, override), 2);
-                return null;
-            case X300_ULTRA:
-                // tag 0x8017: main (3) row 0 16320x12256, rows 1-3 8160x6128; ultra-wide (4) rows 0 / 4 8192x6144; tele (5)
-                // row 0 16320x12288, rows 1 / 14 / 27 8160x6144
-                if ("3".equals(cameraId)) return large ? new VivoSdkFullRes.Profile(16320, 12256, row("main", 0, override), 4)
-                        : new VivoSdkFullRes.Profile(8160, 6128, row("main50", 1, override), 2);
-                if ("4".equals(cameraId)) return new VivoSdkFullRes.Profile(8192, 6144, row("wide", 0, override), 2);
-                if ("5".equals(cameraId)) return large ? new VivoSdkFullRes.Profile(16320, 12288, row("tele", 0, override), 4)
-                        : new VivoSdkFullRes.Profile(8160, 6144, row("tele50", 1, override), 2);
-                return null;
+            case X300_ULTRA: {
+                final int[] rows = candidates(phone, cameraId, large);
+                final int[] size = size(phone, cameraId, large);
+                if (rows.length == 0 || size == null) return null;
+                final boolean big = twoSizes(phone, cameraId) && large;
+                final int row = live ? rowFor(rows, failures(cameraId, big), forced(role(phone, cameraId, large))) : rows[0];
+                return row < 0 ? null : new VivoSdkFullRes.Profile(size[0], size[1], row, size[2]);
+            }
             default:
                 // the X200 Ultra (P179, measured on the phone): main / ultra-wide mode 4 Quad, tele mode 0 Tetra / 1 Quad
                 if ("3".equals(cameraId) || "4".equals(cameraId)) return new VivoSdkFullRes.Profile(8192, 6144, 4, 2);
@@ -113,18 +117,125 @@ public final class VivoNativeFullRes {
         }
     }
 
-    /** The sensor-mode row of a profile: the table's, or the test's own (scam_dev.txt vivo_fullres_mode_<role>, 0..63). */
-    private static int row(String role, int row, boolean override) {
-        if (!override) return row;
+    /**
+     * P186: the rows of a camera's size in its own sensor-mode table (tag 0x8038 X100 / 0x8017 X300), tried in this order:
+     * X100 main (2, and the listed 0: its other profile, the same table) 0 / 11 / 31 8192x6144, ultra-wide (3) 0 / 9 8192x6144,
+     * tele (4) 0 16320x12288 or 1 / 14 / 18 / 20 8160x6144; X300 main (3) 0 16320x12256 or 1 / 2 / 3 8160x6128, ultra-wide (4)
+     * 0 / 4 8192x6144, tele (5) 0 16320x12288 or 1 / 14 / 27 8160x6144.
+     */
+    static int[] candidates(Phone phone, String cameraId, boolean large) {
+        if (phone == Phone.X100_ULTRA) {
+            if ("0".equals(cameraId) || "2".equals(cameraId)) return new int[]{0, 11, 31};
+            if ("3".equals(cameraId)) return new int[]{0, 9};
+            if ("4".equals(cameraId)) return large ? new int[]{0} : new int[]{1, 14, 18, 20};
+        } else if (phone == Phone.X300_ULTRA) {
+            if ("3".equals(cameraId)) return large ? new int[]{0} : new int[]{1, 2, 3};
+            if ("4".equals(cameraId)) return new int[]{0, 4};
+            if ("5".equals(cameraId)) return large ? new int[]{0} : new int[]{1, 14, 27};
+        }
+        return new int[0];
+    }
+
+    /** {width, height, colour block} of a camera's size on the X100 / X300 Ultra, null for another camera. */
+    @Nullable
+    static int[] size(Phone phone, String cameraId, boolean large) {
+        if (phone == Phone.X100_ULTRA) {
+            if ("0".equals(cameraId) || "2".equals(cameraId) || "3".equals(cameraId)) return new int[]{8192, 6144, 2};
+            if ("4".equals(cameraId)) return large ? new int[]{16320, 12288, 4} : new int[]{8160, 6144, 2};
+        } else if (phone == Phone.X300_ULTRA) {
+            if ("3".equals(cameraId)) return large ? new int[]{16320, 12256, 4} : new int[]{8160, 6128, 2};
+            if ("4".equals(cameraId)) return new int[]{8192, 6144, 2};
+            if ("5".equals(cameraId)) return large ? new int[]{16320, 12288, 4} : new int[]{8160, 6144, 2};
+        }
+        return null;
+    }
+
+    /** The dev key of a camera's size: main, main50, wide, tele, tele50. */
+    static String role(Phone phone, String cameraId, boolean large) {
+        if (phone == Phone.X100_ULTRA) {
+            if ("3".equals(cameraId)) return "wide";
+            if ("4".equals(cameraId)) return large ? "tele" : "tele50";
+            return "main";
+        }
+        if ("4".equals(cameraId)) return "wide";
+        if ("5".equals(cameraId)) return large ? "tele" : "tele50";
+        return large ? "main" : "main50";
+    }
+
+    /** The test's own row of a size (scam_dev.txt vivo_fullres_mode_<role>, 0..63), -1 for none. */
+    private static int forced(String role) {
         float v;
         switch (role) {
-            case "main": v = PreferenceKeys.scamDevNumber("vivo_fullres_mode_main", row); break;
-            case "main50": v = PreferenceKeys.scamDevNumber("vivo_fullres_mode_main50", row); break;
-            case "wide": v = PreferenceKeys.scamDevNumber("vivo_fullres_mode_wide", row); break;
-            case "tele": v = PreferenceKeys.scamDevNumber("vivo_fullres_mode_tele", row); break;
-            default: v = PreferenceKeys.scamDevNumber("vivo_fullres_mode_tele50", row); break;
+            case "main": v = PreferenceKeys.scamDevNumber("vivo_fullres_mode_main", -1); break;
+            case "main50": v = PreferenceKeys.scamDevNumber("vivo_fullres_mode_main50", -1); break;
+            case "wide": v = PreferenceKeys.scamDevNumber("vivo_fullres_mode_wide", -1); break;
+            case "tele": v = PreferenceKeys.scamDevNumber("vivo_fullres_mode_tele", -1); break;
+            default: v = PreferenceKeys.scamDevNumber("vivo_fullres_mode_tele50", -1); break;
         }
-        return rowOf(v, row);
+        return rowOf(v, -1);
+    }
+
+    /** The row to try: the test's own, else the first candidate not yet failed, -1 once all failed. */
+    static int rowFor(int[] rows, int tried, int forced) {
+        if (forced >= 0) return forced;
+        return tried >= 0 && tried < rows.length ? rows[tried] : -1;
+    }
+
+    /**
+     * P186 (owner, X300 Ultra 2026-10-17: «На основном объективе - 50/200мп не работают, видоискатель зависает, переключает на
+     * ширик. Телевик - 50мп работают, 200мп нет»): the rows a size has tried and failed (a session that gave no frame, a camera
+     * that died), kept per camera and size; bumping ROW_TRIALS starts them again in a later build.
+     */
+    static final int ROW_TRIALS = 1;
+    private static final String FAILED = "module_fullres_rowfail_", FAILED_TRIALS = "module_fullres_rowfail_trials";
+
+    static int failures(String cameraId, boolean big) {
+        try {
+            android.content.SharedPreferences p = com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
+            if (p.getInt(FAILED_TRIALS, ROW_TRIALS) != ROW_TRIALS) return 0;
+            return p.getInt(FAILED + cameraId + (big ? "_200" : "_50"), 0);
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /** The tried count after {@code failedRow} failed: one more when it is the row tried now, as it was otherwise. */
+    static int next(int[] rows, int tried, int failedRow) {
+        return tried >= 0 && tried < rows.length && rows[tried] == failedRow ? tried + 1 : tried;
+    }
+
+    /**
+     * P186: a native FULLRES session of this phone failed (no frame, the camera died): the row is noted and the next one of its
+     * size is tried at the next FULLRES; the owner's message (null on the X200 Ultra, whose rows are measured, or under a test
+     * row of scam_dev.txt).
+     */
+    @Nullable
+    public static String failed(String cameraId, VivoSdkFullRes.Profile profile, String why) {
+        Phone phone = phone();
+        if (phone == null || phone == Phone.X200_ULTRA || profile == null || cameraId == null) return null;
+        final boolean huge = (long) profile.size.getWidth() * profile.size.getHeight() > 100_000_000L;
+        final boolean big = twoSizes(phone, cameraId) && huge;
+        final int mp = huge ? 200 : 50;
+        if (forced(role(phone, cameraId, huge)) >= 0) {
+            com.particlesdevs.photoncamera.util.Log.w("VivoNativeFullRes", "camera " + cameraId + " test row " + profile.sensorMode + " failed: " + why);
+            return com.particlesdevs.photoncamera.util.Lang.t("FULLRES " + mp + " Мп: режим " + profile.sensorMode + " (scam_dev) не работает",
+                    "FULLRES " + mp + " MP: mode " + profile.sensorMode + " (scam_dev) does not work");
+        }
+        final int[] rows = candidates(phone, cameraId, huge);
+        final int tried = next(rows, failures(cameraId, big), profile.sensorMode);
+        try {
+            com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit()
+                    .putInt(FAILED_TRIALS, ROW_TRIALS).putInt(FAILED + cameraId + (big ? "_200" : "_50"), tried).apply();
+        } catch (RuntimeException ignored) {
+        }
+        final int nextRow = tried < rows.length ? rows[tried] : -1;
+        com.particlesdevs.photoncamera.util.Log.w("VivoNativeFullRes", "camera " + cameraId + " " + mp + " MP row " + profile.sensorMode
+                + " failed (" + why + "); next " + (nextRow >= 0 ? "row " + nextRow : "none: this size is off"));
+        return nextRow >= 0
+                ? com.particlesdevs.photoncamera.util.Lang.t("FULLRES " + mp + " Мп: режим " + profile.sensorMode + " не работает на этой камере; в следующий раз попробую режим " + nextRow,
+                        "FULLRES " + mp + " MP: mode " + profile.sensorMode + " does not work on this camera; the next time mode " + nextRow + " is tried")
+                : com.particlesdevs.photoncamera.util.Lang.t("FULLRES " + mp + " Мп недоступен на этой камере: ни один его режим не работает",
+                        "FULLRES " + mp + " MP is not available on this camera: none of its modes works");
     }
 
     static int rowOf(float value, int row) {
