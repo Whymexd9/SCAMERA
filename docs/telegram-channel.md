@@ -2,37 +2,44 @@
 
 Every successful CI build of a push to `main` posts its APK (`SCAMERA-0.98-<code>-SCAM.apk`) to a Telegram group
 topic or channel. Only the APK is posted: `SHA256SUMS.txt`, the neural-assets bundle and the test reports stay in
-Actions. The owner configures the bot in a private chat with it.
+Actions. The owner configures the bot in a private chat with it; it answers at once.
 
 | Piece | What it does |
 |---|---|
+| `tools/telegram-worker/worker.js` | Cloudflare Worker = the Telegram webhook: answers the owner's commands at once |
 | `tools/telegram_publish.py` | posts one APK; step "Post the APK to Telegram" of `build-test-apk.yml` |
-| `tools/telegram_bot.py` | answers the owner's commands; `.github/workflows/telegram-bot.yml`, every 5 minutes |
-| bot's pinned message in the owner's chat | the settings (summary + JSON line); both scripts read it there |
+| `tools/telegram_bot.py --post` | `/post`: the Worker starts `telegram-bot.yml`, which takes the APK out of the artifact |
+| bot's pinned message in the owner's chat | the settings (summary + JSON line); the Worker and both scripts read it there |
 
 The APK (~54 MB) is above the Bot API upload limit (50 MB), so posting logs the bot in over MTProto (Telethon),
-where bots upload up to 2 GB; that needs an application id/hash besides the bot token. The commands go through the
-plain Bot API. GitHub starts the schedule every 5 minutes at best, so the bot answers in 5–15 minutes.
+where bots upload up to 2 GB; that needs an application id/hash besides the bot token. The Worker only sends text.
+`telegram_bot.py` without `--post` answers waiting messages once by polling; it works only while no webhook is set.
 
 ## Setup (once)
 
-1. @BotFather → `/newbot` → copy the token.
-2. https://my.telegram.org → API development tools → create an application → copy `api_id` and `api_hash`.
-3. GitHub → repository Settings → Secrets and variables → Actions → New repository secret:
+GitHub → repository Settings → Secrets and variables → Actions:
 
 | Secret | Value |
 |---|---|
-| `TELEGRAM_BOT_TOKEN` | the bot token |
-| `TELEGRAM_API_ID` | `api_id` (a number) |
-| `TELEGRAM_API_HASH` | `api_hash` |
+| `TELEGRAM_BOT_TOKEN` | token from @BotFather |
+| `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | https://my.telegram.org → API development tools |
 | `TELEGRAM_OWNER` | the owner's username without `@` (or numeric id, shown by `/status`): the only account the bot obeys |
-| `TELEGRAM_CHAT` | optional, instead of `/here`: `@channel`, `-100…` id or a topic link `https://t.me/c/<id>/<topic>` |
-| `TELEGRAM_TOPIC` | optional: topic id for `TELEGRAM_CHAT` |
+| `TELEGRAM_CHAT`, `TELEGRAM_TOPIC` | optional, instead of `/here`: `@channel`, `-100…` id or a topic link `https://t.me/c/<id>/<topic>` |
 
-4. Push to `main` (the schedule runs only from the default branch).
-5. Open the bot, press Start: it pins its settings message.
-6. Add the bot to the group (as an admin, or a member allowed to send messages and files) and write `/here` in the
-   topic that should get the builds. The bot confirms there and in the private chat.
+GitHub token for `/post`: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens →
+Generate: Repository access "Only select repositories" → SCAMERA; Permissions → Repository → Actions: Read and write.
+
+Cloudflare Worker (free plan, no card):
+1. https://dash.cloudflare.com → sign up → Workers & Pages → Create → Worker → name `scamera-bot` → Deploy.
+2. Edit code → replace everything with `tools/telegram-worker/worker.js` → Deploy.
+3. Worker → Settings → Variables and Secrets → Add, type Secret:
+   `TELEGRAM_BOT_TOKEN`, `TELEGRAM_OWNER`, `GITHUB_TOKEN` (the fine-grained token), `WEBHOOK_SECRET` (any 20–40
+   letters/digits, invented once). Deploy.
+4. Open `https://scamera-bot.<your-subdomain>.workers.dev/setup?key=<WEBHOOK_SECRET>`: it must print
+   `Webhook set: …`. From then on Telegram delivers every message to the Worker.
+
+Then: in the bot's private chat press Start (it pins its settings message); make the bot an admin of the group and
+write `/here` in the topic that should get the builds.
 
 ## Commands (private chat, owner only)
 
@@ -40,7 +47,7 @@ plain Bot API. GitHub starts the schedule every 5 minutes at best, so the bot an
 |---|---|
 | `/status` | settings and your numeric id |
 | `/on`, `/off` | auto-posting of new builds (`/post` works either way) |
-| `/post`, `/post 30830` | post the latest successful `main` build, or a given build (artifacts are kept 90 days) |
+| `/post`, `/post 30830` | post the latest successful `main` build, or a given build (artifacts are kept 90 days); 1–3 min |
 | `/here` | in a group or one of its topics: post builds there |
 | `/commits on\|off`, `/sha on\|off`, `/cilink on\|off` | commit list, SHA-256, CI link in the caption |
 | `/header text`, `/header -` | your text at the top of each post / remove it |
@@ -48,7 +55,7 @@ plain Bot API. GitHub starts the schedule every 5 minutes at best, so the bot an
 Other people get a refusal; commands of other bots in the group are ignored. The settings message must stay pinned
 (unpinned = defaults; `/start` pins a new one). A Telegram error fails only the post step (the build stays green,
 the APK is in the artifact) and the bot sends the owner the reason, e.g. `ChatWriteForbiddenError` = the bot may not
-write to that topic. If the username changes, update `TELEGRAM_OWNER`.
+write to that topic. If the username changes, update `TELEGRAM_OWNER` in GitHub and in the Worker.
 
 ## Check locally
 

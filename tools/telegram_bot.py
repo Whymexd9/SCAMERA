@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""The owner's private chat with the SCAMERA bot: settings and manual posts (docs/telegram-channel.md).
+"""The SCAMERA bot's /post and its polling fallback (docs/telegram-channel.md); workflow telegram-bot.yml.
 
-.github/workflows/telegram-bot.yml runs this every 5 minutes: it takes what the bot received since the last run
-(Bot API getUpdates), answers the owner's commands and exits. The settings live in the bot's pinned message of the
-owner's chat; tools/telegram_publish.py reads them there when a build is posted. Nobody else can change anything.
+The bot answers in real time from a Cloudflare Worker (tools/telegram-worker/worker.js, a Telegram webhook). Its /post
+starts telegram-bot.yml, which runs this with --post: take the APK out of a build artifact and post it through
+tools/telegram_publish.py (the Worker cannot upload 50+ MB). Without --post this answers the owner's commands by
+polling (Bot API getUpdates) once and exits: the same commands as the Worker, for when no webhook is set.
+The settings live in the bot's pinned message of the owner's chat; tools/telegram_publish.py reads them there.
 
-Environment: TELEGRAM_BOT_TOKEN, TELEGRAM_OWNER (@username or numeric id); for /post also TELEGRAM_API_ID,
+Environment: TELEGRAM_BOT_TOKEN, TELEGRAM_OWNER (@username or numeric id); for posting also TELEGRAM_API_ID,
 TELEGRAM_API_HASH, GH_TOKEN and GITHUB_REPOSITORY (the workflow's token reads the build artifacts).
 """
+import argparse
 import json
 import os
 import re
@@ -93,9 +96,7 @@ def help_text(lang):
         '/commits on|off — список коммитов в подписи',
         '/sha on|off — SHA-256 в подписи',
         '/cilink on|off — ссылка на сборку в CI',
-        '/header текст — свой текст в начале поста, /header - убрать',
-        '',
-        'Я отвечаю через 5–15 минут: меня запускает расписание GitHub Actions.']), '\n'.join([
+        '/header текст — свой текст в начале поста, /header - убрать']), '\n'.join([
         '<b>SCAMERA builds bot</b>',
         'New builds of main are posted to the group automatically (the APK only).',
         '',
@@ -106,9 +107,7 @@ def help_text(lang):
         '/commits on|off — commit list in the caption',
         '/sha on|off — SHA-256 in the caption',
         '/cilink on|off — link to the CI run',
-        '/header text — your text at the top of the post, /header - removes it',
-        '',
-        'I answer within 5–15 minutes: a GitHub Actions schedule runs me.']))
+        '/header text — your text at the top of the post, /header - removes it']))
 
 
 def set_commands():
@@ -370,25 +369,27 @@ def publisher_python():
     return str(python)
 
 
-def post_build(number, chat_id, lang):
+def post_build(number, chat_id, lang, announce=True):
+    """0 when posted; 1 when not (the owner is told why)."""
     if not (os.environ.get('TELEGRAM_API_ID', '').strip() and os.environ.get('TELEGRAM_API_HASH', '').strip()):
         say(chat_id, t(lang, 'Для /post нужны секреты TELEGRAM_API_ID и TELEGRAM_API_HASH.',
                        '/post needs the TELEGRAM_API_ID and TELEGRAM_API_HASH secrets.'))
-        return
+        return 1
     try:
         artifact, wf_run = find_build(number)
     except (OSError, ValueError, KeyError) as e:
         say(chat_id, t(lang, f'GitHub не ответил: {type(e).__name__}. Повтори позже.',
                        f'GitHub did not answer: {type(e).__name__}. Try again later.'))
-        return
+        return 1
     if artifact is None:
         say(chat_id, t(lang, f'Сборки {number} нет: номер неверный или её артефакт уже удалён (хранится 90 дней).'
                        if number else 'Готовых сборок main не нашёл.',
                        f'No build {number}: a wrong number, or its artifact expired (kept 90 days).'
                        if number else 'No finished build of main found.'))
-        return
+        return 1
     build = ARTIFACT.fullmatch(artifact['name'])[1]
-    say(chat_id, t(lang, f'⏳ Выкладываю сборку {build}…', f'⏳ Posting build {build}…'))
+    if announce:   # the Worker has already said it is posting
+        say(chat_id, t(lang, f'⏳ Выкладываю сборку {build}…', f'⏳ Posting build {build}…'))
     server = os.environ.get('GITHUB_SERVER_URL', 'https://github.com')
     repo = os.environ['GITHUB_REPOSITORY']
     with tempfile.TemporaryDirectory() as folder:
@@ -397,7 +398,7 @@ def post_build(number, chat_id, lang):
             apk = extract_apk(Path(folder) / 'build.zip', Path(folder))
         except (OSError, RuntimeError, zipfile.BadZipFile) as e:
             say(chat_id, t(lang, f'❌ Не скачал сборку {build}: {escape(e)}', f'❌ Could not fetch build {build}: {escape(e)}'))
-            return
+            return 1
         subject = ((wf_run.get('head_commit') or {}).get('message') or '').strip().splitlines()[:1]
         command = [publisher_python(), str(TOOLS / 'telegram_publish.py'), '--apk', str(apk), '--force',
                    '--notify', 'all', '--commit', wf_run['head_sha'], '--branch', wf_run['head_branch'],
@@ -406,12 +407,29 @@ def post_build(number, chat_id, lang):
             command += ['--subject', line]
         if subprocess.run(command).returncode:   # telegram_publish has told the owner why, when it got that far
             print('::warning::/post failed')
+            return 1
+    return 0
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--post', metavar='BUILD', help='post build BUILD ("" = the latest main build) and exit')
+    ap.add_argument('--chat', default='', help="with --post: the owner's chat id for the replies")
+    ap.add_argument('--lang', default='ru', help='with --post: reply language')
+    args = ap.parse_args()
     if not os.environ.get('TELEGRAM_BOT_TOKEN', '').strip():
         print('::notice::TELEGRAM_BOT_TOKEN is not set; the bot is off')
         return 0
+    if args.post is not None:   # workflow inputs: never trust their shape
+        number, chat = args.post.strip(), args.chat.strip()
+        if not re.fullmatch(r'\d*', number) or not re.fullmatch(r'\d+', chat):
+            print('::error::--post takes a build number (or "") and --chat a numeric chat id')
+            return 1
+        try:
+            return post_build(number, int(chat), 'en' if args.lang == 'en' else 'ru', announce=False)
+        except TelegramError as e:
+            print(f'::error::{redact(str(e))}')
+            return 1
     try:
         updates = take_updates()
     except TelegramError as e:   # Telegram unreachable: the next run picks the messages up

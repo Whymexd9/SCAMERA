@@ -1,0 +1,4 @@
+# Optional CLI deploy (`npx wrangler deploy` here); the dashboard paste in docs/telegram-channel.md does the same.
+name = "scamera-bot"
+main = "worker.js"
+compatibility_date = "2026-09-01"
