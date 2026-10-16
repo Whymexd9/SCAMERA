@@ -77,6 +77,22 @@ public class FullResProfilesTest {
         assertNull(FullResProfiles.tagOf("back0"));
     }
 
+    /** P146 / P181: a config's FULLRES profiles go with their module to the module it maps to on this phone. */
+    @Test
+    public void aConfigCarriesTheFullResProfilesOfAModule() {
+        java.util.Map<String, java.util.Map<String, Object>> files = new java.util.LinkedHashMap<>();
+        files.put("module_profile_v2_back2", Collections.singletonMap(CDM, "0.1"));
+        files.put("module_profile_v2_back2@full200", Collections.singletonMap(CDM, "0.2"));
+        files.put("module_profile_v2_back2@full50", Collections.singletonMap(CDM, "0.3"));
+        files.put("module_profile_v2_back20@full50", Collections.singletonMap(CDM, "0.4"));
+        files.put("module_profile_v2_back3@full50", Collections.singletonMap(CDM, "0.5"));
+        java.util.Map<String, java.util.Map<String, ?>> carried = BackupRestoreUtil.fullResProfiles(files, "back2", "back5");
+        assertEquals(Arrays.asList("back5@full200", "back5@full50"), new java.util.ArrayList<>(carried.keySet()));
+        assertEquals("0.2", carried.get("back5@full200").get(CDM));
+        assertEquals("0.3", carried.get("back5@full50").get(CDM));
+        assertTrue(BackupRestoreUtil.fullResProfiles(files, "back4", "back4").isEmpty());
+    }
+
     @Test
     public void fullResKeepsItsOwnSettingsStartingFromTheModules() {
         for (int i = 0; i < 2; i++)

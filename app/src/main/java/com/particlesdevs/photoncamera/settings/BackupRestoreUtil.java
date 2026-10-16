@@ -45,6 +45,19 @@ public class BackupRestoreUtil {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     static final String META = "module_profiles_meta";
     static final String PROFILE_PREFIX = "module_profile_v2_";
+
+    /**
+     * P181: the FULLRES profiles of the config's module {@code from} («from@full200», «from@full50») under the names they
+     * take on this phone's module {@code slot}.
+     */
+    static Map<String, Map<String, ?>> fullResProfiles(Map<String, ? extends Map<String, ?>> files, String from, String slot) {
+        Map<String, Map<String, ?>> out = new LinkedHashMap<>();
+        final String prefix = PROFILE_PREFIX + from + FullResProfiles.SEP;
+        for (Map.Entry<String, ? extends Map<String, ?>> f : files.entrySet())
+            if (f.getKey().startsWith(prefix) && f.getValue() != null)
+                out.put(slot + f.getKey().substring((PROFILE_PREFIX + from).length()), f.getValue());
+        return out;
+    }
     static final String PER_LENS = "per_lens";
     /** Lens passports of the saving phone's module slots ("slot.facing", ".focal", ".zoom", ".crop", ".mode", ".label", ".camera"). */
     static final String LENSES = "lenses";
@@ -298,7 +311,7 @@ public class BackupRestoreUtil {
         SharedPreferences.Editor meta = context.getSharedPreferences(META, Context.MODE_PRIVATE).edit();
         writeProfile(context, "common", portable(context, baseline));
         meta.putBoolean("baseline", true);
-        java.util.Set<String> used = new java.util.HashSet<>();
+        java.util.Set<String> used = new java.util.HashSet<>(), carried = new java.util.HashSet<>();
         for (LensProfileMatcher.Lens t : targets) {
             String from = mapping.get(t.slot);
             Map<String, ?> values;
@@ -310,7 +323,19 @@ public class BackupRestoreUtil {
             }
             writeProfile(context, t.slot, portable(context, values));
             meta.putBoolean("exists_" + t.slot, true);
+            // P181: the module's FULLRES profiles (50 / 200 MP) go with it; the source's active one is in its main settings
+            if (from != null && perLens)
+                for (Map.Entry<String, Map<String, ?>> v : fullResProfiles(config.files, from, t.slot).entrySet()) {
+                    String id = from + v.getKey().substring(t.slot.length());
+                    writeProfile(context, v.getKey(), portable(context, id.equals(srcActive) && srcMain != null ? srcMain : v.getValue()));
+                    meta.putBoolean("exists_" + v.getKey(), true);
+                    carried.add(v.getKey());
+                }
         }
+        // P181: this phone's FULLRES profiles the config did not carry start again from their module's
+        for (String key : context.getSharedPreferences(META, Context.MODE_PRIVATE).getAll().keySet())
+            if (key.startsWith("exists_") && FullResProfiles.isVariant(key) && !carried.contains(key.substring("exists_".length())))
+                meta.remove(key);
         // P141: this phone's slots without a lens of the config (hidden ones) lose their old profiles: shown again later they
         // start from the config's baseline, not from the settings before the import
         java.util.Set<String> mapped = new java.util.HashSet<>();
