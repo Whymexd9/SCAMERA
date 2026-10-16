@@ -162,6 +162,13 @@ public class BottomBarStyleTest {
             assertEquals(at + "gallery: large corners", BottomChrome.SIDE_RADIUS_DP * density * s, galleryBg.getCornerRadius(), .5f);
             assertTrue(at + "flip: a ripple on its tonal fill", row.flipCameraButton.getBackground() instanceof RippleDrawable);
             assertNotEquals(at + "the strip is not the grey card", card, stripBg.getColor().getDefaultColor());
+            // P161: the strip's corners concentric with its tiles (not a pill), the tiles of one height, wider than tall
+            assertEquals(at + "strip: card corners", BottomChrome.STRIP_RADIUS_DP * density * s, stripBg.getCornerRadius(), .5f);
+            for (int i = 0; i < strip.getChildCount(); i++) {
+                View lens = strip.getChildAt(i);
+                assertEquals(at + "lens tile height", Math.round(38 * density * s), lens.getHeight(), 1);
+                assertTrue(at + "lens tile wider than tall", lens.getWidth() > lens.getHeight());
+            }
             assertEquals(at + "the processing ring is shown", View.VISIBLE, ring.getVisibility());
             assertEquals(at + "the ring at 60 %", .6f, ring.shown(), 1e-4f);
             assertEquals(at + "the ring covers the gallery card", row.galeryButtonContainer.getWidth(), ring.getWidth());

@@ -294,8 +294,8 @@ public class ViewfinderScaleLayoutTest {
             for (int i = 0; i < strip.getChildCount(); i++) {
                 View lens = strip.getChildAt(i);
                 if (!(lens instanceof TextView)) continue;
-                // P157: the active lens a 44dp capsule, the others 36dp discs (times the scale)
-                assertEquals(at + "lens size", dp((lens.isSelected() ? LensButton.SELECTED_DP : LensButton.DISC_DP) * s), lens.getHeight(), 1);
+                // P161: every lens a 38dp tile (times the scale), the active one too
+                assertEquals(at + "lens size", dp(LensButton.HEIGHT_DP * s), lens.getHeight(), 1);
                 TextView label = (TextView) lens;
                 assertTrue(at + "lens label over the cap", label.getTextSize() <= 14f * UiTokens.FONT_SCALE_CAP * density * s + .5f);
                 assertTrue(at + "lens label cut", label.getLayout() == null || label.getLayout().getLineCount() == 1);

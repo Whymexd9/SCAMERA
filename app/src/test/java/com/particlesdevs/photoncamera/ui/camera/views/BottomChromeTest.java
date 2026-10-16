@@ -242,12 +242,10 @@ public class BottomChromeTest {
             settle();
             int clearance = dp(context, BottomChrome.CLEARANCE_DP);
             assertEquals(BAR_169, bar.getHeight());
-            // About 150dp of controls (P157: the strip its tallest lens - the 44dp capsule of the active one, else the 36dp
-            // discs - and 2 x 4dp): the bar leaves them less than the 66 px tenth.
-            boolean active = false;
-            for (int i = 0; i < strip.getChildCount(); i++) active |= strip.getChildAt(i).isSelected();
+            // About 150dp of controls (P161: the strip its 38dp lens tiles and 2 x 4dp): the bar leaves them less than the
+            // 66 px tenth.
             int controls = dp(context, 18) + row.getHeight() + dp(context, 14) + strip.getHeight();
-            assertEquals(dp(context, 18 + 72 + 14 + (active ? LensButton.SELECTED_DP : LensButton.DISC_DP) + 8), controls, 2);
+            assertEquals(dp(context, 18 + 72 + 14 + LensButton.HEIGHT_DP + 8), controls, 2);
             assertTrue(BAR_169 - controls < Math.round(BAR_169 * BottomChrome.RAISE_FRACTION));
             assertEquals(y(bar), y(strip));
             assertEquals(y(bar) + BAR_169 - dp(context, 18) - (BAR_169 - controls), y(row) + row.getHeight());

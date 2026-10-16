@@ -74,6 +74,8 @@ public final class BottomChrome {
 
     /** Corner radius of the gallery card and the front / back switch (dp before the scale): a large Material shape. */
     public static final float SIDE_RADIUS_DP = 20f;
+    /** P161: corner radius of the lens strip (dp before the scale): the lens tiles' 14 plus its 4dp padding. */
+    public static final float STRIP_RADIUS_DP = 18f;
 
     /**
      * P157 (owner, 2026-10-16: «переделай их полностью под наш стиль», then «Сделай эти иконки ближе к monet стилю, но чтобы
@@ -96,7 +98,8 @@ public final class BottomChrome {
                     (accent & 0x00FFFFFF) | 0x33000000), tonalShape(tone(card, accent, .20f), tone(card, accent, .30f),
                     SIDE_RADIUS_DP * d * f, d), mask));
         }
-        if (strip != null) strip.setBackground(tonalShape(tone(card, accent, .08f), tone(card, accent, .18f), 100 * d * f, d));
+        // P161: the strip's corners concentric with its tiles' (their corner plus the strip's 4dp padding), not a pill
+        if (strip != null) strip.setBackground(tonalShape(tone(card, accent, .08f), tone(card, accent, .18f), STRIP_RADIUS_DP * d * f, d));
         View thumb = bar.findViewById(R.id.gallery_image_button);
         if (thumb instanceof com.google.android.material.imageview.ShapeableImageView)
             ((com.google.android.material.imageview.ShapeableImageView) thumb).setShapeAppearanceModel(

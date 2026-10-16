@@ -127,7 +127,7 @@ public class ViewfinderUiTest {
         for(int orientation:new int[]{90,180,-90,0}){
             lenses.rotateLabels(orientation,0);screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(880,exact));screen.layout(0,0,400,880);
             for(int i=0;i<lenses.getChildCount();i++){var lens=(com.particlesdevs.photoncamera.ui.camera.views.LensButton)lenses.getChildAt(i);
-                assertEquals(0f,lens.getRotation(),0f);assertEquals((orientation+360)%360,(lens.getLabelRotation()+360)%360,0f);assertEquals(widths[i],lens.getWidth());assertEquals("the active capsule 44dp, a disc 36dp, x the screen scale (P157)",Math.round((lens.isSelected()?44:36)*com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.scale(400f)),lens.getHeight());}
+                assertEquals(0f,lens.getRotation(),0f);assertEquals((orientation+360)%360,(lens.getLabelRotation()+360)%360,0f);assertEquals(widths[i],lens.getWidth());assertEquals("every lens tile 38dp, the active one too, x the screen scale (P161)",Math.round(38*com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.scale(400f)),lens.getHeight());}
             if(orientation==90){screen.draw(new Canvas(image));try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,"concept-controls-landscape"+png+".png"))){image.compress(Bitmap.CompressFormat.PNG,100,out);}}
         }
         scale.setListener(new LinearScaleView.OnValueChangedListener(){

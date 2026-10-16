@@ -78,9 +78,12 @@ public class LensButtonTest {
         assertEquals(1f, LensButton.labelScale(90, 0, 0, 0, 0), 0f);
     }
 
-    /** P157: a lens not in use is a 36dp disc with its short number; chosen, a 44dp capsule with the full label in bold. */
+    /**
+     * P161: a lens not in use is a 38dp rounded tile, wider than tall, with its short number; chosen, a tile of the same
+     * height, at least 56dp wide, with the full label in bold. Not a circle (P157's discs were Google Camera's).
+     */
     @Test
-    public void aDiscShowsTheShortNumberAndTheCapsuleTheFullLabel() {
+    public void aTileShowsTheShortNumberAndTheActiveTileTheFullLabel() {
         assertEquals("2,8", LensButton.shortLabel("2,8×").toString());
         assertEquals("1", LensButton.shortLabel("1x").toString());
         assertEquals("0.6", LensButton.shortLabel("0.6×").toString());
@@ -92,12 +95,14 @@ public class LensButtonTest {
         measure(button);
         assertEquals("2,8", button.getText().toString());
         assertEquals("2,8×", button.fullLabel().toString());
-        assertEquals(dp(LensButton.DISC_DP), button.getHeight());
-        assertEquals("a round disc", button.getHeight(), button.getWidth());
+        assertEquals(dp(LensButton.HEIGHT_DP), button.getHeight());
+        assertEquals("a tile wider than tall", dp(LensButton.WIDTH_DP), button.getWidth());
+        assertTrue("corners well under half the height: not a disc", dp(LensButton.CORNER_DP) < button.getHeight() * .4f);
         button.setSelected(true);
         measure(button);
         assertEquals("2,8×", button.getText().toString());
-        assertEquals(dp(LensButton.SELECTED_DP), button.getHeight());
+        assertEquals("the active tile keeps the height", dp(LensButton.HEIGHT_DP), button.getHeight());
+        assertTrue("the active tile at least 56dp wide", button.getWidth() >= dp(LensButton.SELECTED_WIDTH_DP));
         assertTrue(button.getTypeface() != null && button.getTypeface().isBold());
         button.setSelected(false);
         assertEquals("2,8", button.getText().toString());
@@ -112,8 +117,8 @@ public class LensButtonTest {
         int accent = AccentPalette.camera(context);
         measure(button);
         int width = button.getWidth(), height = button.getHeight();
-        assertEquals("the active capsule 44dp (P157)", dp(LensButton.SELECTED_DP), height);
-        assertTrue("a pill wider than tall", width > height);
+        assertEquals("the active tile 38dp (P161)", dp(LensButton.HEIGHT_DP), height);
+        assertTrue("a tile wider than tall", width > height);
         for (int o : ORIENTATIONS) {
             button.turnLabel(o, 0);
             measure(button);

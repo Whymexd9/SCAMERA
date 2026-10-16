@@ -3839,6 +3839,20 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   BottomBarStyleTest puts a thumbnail in the card and checks the same 3dp x scale margin on all four sides (failed on the
   old code: 18 px on the left against 9.7 at 434dp).
 
+### P161 - the lens strip in our style, not Google Camera's (owner, 2026-10-16: «у нас получился стиль один в один гугл
+камера, такое нам не подходит, сделай стиль более подходящий нашему интерфейсу», then «Сделай стиль что-то между material you
+и нашим»)
+- The P157 strip (tonal discs with the short number, the active lens a larger accent capsule «1×», a pill strip) was Google
+  Camera's look.
+- DONE 2026-10-16: Material You's tonal colours of the camera accent on our card shapes. Every lens a rounded tile 38dp
+  high (42dp least width, wider than tall), corners 14dp - the gallery card's 20 of 52dp in proportion - with a tonal fill
+  (accent 12 % over CARD) and a faint tonal outline (26 %): our CARD + LINE. The active lens a tile of the SAME height (at
+  least 56dp wide) filled with the accent, its full label in bold INK, as an active shade tile: no size jump, no circles.
+  The strip a tonal card with 18dp corners, concentric with the tiles (14 + its 4dp padding), not a pill. A press ripples
+  in the accent. LensButton HEIGHT_DP / WIDTH_DP / SELECTED_WIDTH_DP / CORNER_DP, BottomChrome.STRIP_RADIUS_DP; tests:
+  LensButtonTest.aTileShowsTheShortNumberAndTheActiveTileTheFullLabel, BottomBarStyleTest (strip corners, tiles of one
+  height, wider than tall), sizes in ViewfinderScaleLayoutTest / ViewfinderUiTest / BottomChromeTest.
+
 ## P109l - Snapdragon client attribution and VCF RAW boundary
 
 Typed AttributionSourceState spoof is implemented and observed on PD2454. An ordinary open followed by

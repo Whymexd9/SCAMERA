@@ -82,7 +82,7 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
 
         // P157: the strip in proportion to the screen's width (BottomChrome.scale)
         float density = context.getResources().getDisplayMetrics().density * BottomChrome.scale(context);
-        // P157: discs and the active capsule, 6dp apart, centred on one line (the capsule is taller than a disc)
+        // P161: the lens tiles 6dp apart, centred on one line (all of one height)
         buttonParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         buttonParams.gravity = android.view.Gravity.CENTER_VERTICAL;
         int gap = Math.round(3 * density);

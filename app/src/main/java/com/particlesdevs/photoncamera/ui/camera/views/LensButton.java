@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.text.Layout;
 import android.view.Gravity;
@@ -16,10 +17,13 @@ import com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette;
 import com.particlesdevs.photoncamera.ui.settings.SettingsStyle;
 
 /**
- * One lens of the strip ({@link AuxButtonsLayout}). P157 (owner, 2026-10-16: «Мне не нравится стиль кнопок переключения
- * модулей камер, переделай»; Material You's manner on the camera's colours): every lens a small tonal disc with its short
- * number («0,6», «2», «2,8»), the active lens a larger capsule in the camera accent with its full label in bold INK («1×»,
- * the live zoom «2,3×»). Sizes in proportion to the screen's width ({@link BottomChrome#scale}).
+ * One lens of the strip ({@link AuxButtonsLayout}). P161 (owner, 2026-10-16: the P157 discs and capsule were «один в один
+ * гугл камера», «Сделай стиль что-то между material you и нашим»): Material You's tonal colours of the camera accent on our
+ * card shapes - every lens a rounded tile, wider than tall, with the corners of the gallery card in proportion, a tonal
+ * fill and a faint tonal outline (our CARD + LINE), its short number («0,6», «2», «2,8»); the active lens a tile of the
+ * same height filled with the accent, its full label in bold INK («1×», the live zoom «2,3×»), as an active tile of the
+ * shade. No size jump, no circles. A press ripples in the accent. Sizes in proportion to the screen's width
+ * ({@link BottomChrome#scale}).
  * <p>
  * P32 (owner, 2026-10-07): the button itself never rotates, so its background and the selected pill keep their portrait
  * shape inside the strip in every orientation. Only the label turns upright with the phone (0 / 90 / 180 / 270 degrees,
@@ -46,29 +50,38 @@ public class LensButton extends Button {
         setMaxLines(1);
         setHorizontallyScrolling(false);
         int accent = AccentPalette.camera(context);
-        // P157: the other lenses in the accent's tone of the muted text (Material You's on-surface-variant)
+        // the other lenses in the accent's tone of the muted text (Material You's on-surface-variant)
         setTextColor(new ColorStateList(new int[][]{{android.R.attr.state_selected}, {}},
                 new int[]{SettingsStyle.INK, BottomChrome.tone(SettingsStyle.MUTED, accent, .22f)}));
+        float radius = CORNER_DP * unit;
         GradientDrawable selected = new GradientDrawable();
         selected.setColor(accent);
-        selected.setCornerRadius(100 * unit);
-        GradientDrawable disc = new GradientDrawable();
-        disc.setColor(BottomChrome.tone(SettingsStyle.CARD, accent, .20f));
-        disc.setCornerRadius(100 * unit);
+        selected.setCornerRadius(radius);
+        GradientDrawable tile = new GradientDrawable();
+        tile.setColor(BottomChrome.tone(SettingsStyle.CARD, accent, .12f));
+        tile.setStroke(Math.max(1, Math.round(getResources().getDisplayMetrics().density)),
+                BottomChrome.tone(SettingsStyle.CARD, accent, .26f));
+        tile.setCornerRadius(radius);
         StateListDrawable states = new StateListDrawable();
         states.addState(new int[]{android.R.attr.state_selected}, selected);
-        states.addState(new int[]{}, disc);
-        setBackground(states);
+        states.addState(new int[]{}, tile);
+        GradientDrawable mask = new GradientDrawable();
+        mask.setColor(0xFFFFFFFF);
+        mask.setCornerRadius(radius);
+        setBackground(new RippleDrawable(ColorStateList.valueOf((accent & 0x00FFFFFF) | 0x33000000), states, mask));
         setStateListAnimator(null);
         setBackgroundTintList(null);
         setTransformationMethod(null);
         applyState();
     }
 
-    /** P157: the active capsule's height and least width, and the discs' size (dp before the scale). */
-    static final float SELECTED_DP = 44f, DISC_DP = 36f;
+    /**
+     * P161: every tile's height, the least width of a tile and of the active one, and the corner radius (dp before the
+     * scale; the corner is the gallery card's 20 of 52dp in proportion).
+     */
+    static final float HEIGHT_DP = 38f, WIDTH_DP = 42f, SELECTED_WIDTH_DP = 56f, CORNER_DP = 14f;
     private final float unit;
-    /** The label as the strip set it; a disc shows its short form ({@link #shortLabel}). */
+    /** The label as the strip set it; a tile not in use shows its short form ({@link #shortLabel}). */
     private CharSequence fullLabel;
 
     /** «2,8×» -> «2,8», «1x» -> «1»; anything else (a custom name, «1× (2)») stays as it is. */
@@ -78,7 +91,7 @@ public class LensButton extends Button {
         return m.matches() ? m.group(1) : label;
     }
 
-    /** The label as the strip set it (the full one, also on a disc). */
+    /** The label as the strip set it (the full one, also on a tile not in use). */
     public CharSequence fullLabel() {
         return fullLabel != null ? fullLabel : getText();
     }
@@ -99,24 +112,23 @@ public class LensButton extends Button {
         requestLayout();
     }
 
-    /** The active capsule: 14sp bold, 44dp high; a disc: 12sp, 36dp (both times the scale, the font growth capped). */
+    /** The active tile: 14sp bold, at least 56dp wide; the others 13sp, 42dp; all 38dp high (times the scale). */
     private void applyState() {
         if (unit == 0f) return;   // the TextView constructor sets the text before this one runs
         boolean on = isSelected();
-        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.setTextSp(this, on ? 14 : 12);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.setTextSp(this, on ? 14 : 13);
         setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, getTextSize() * BottomChrome.scale(getContext()));
         setTypeface(null, on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-        int size = Math.round((on ? SELECTED_DP : DISC_DP) * unit);
-        setMinWidth(size);
-        setMinimumWidth(size);
-        int padding = Math.round((on ? 10f : 3f) * unit);
+        int width = Math.round((on ? SELECTED_WIDTH_DP : WIDTH_DP) * unit);
+        setMinWidth(width);
+        setMinimumWidth(width);
+        int padding = Math.round((on ? 10f : 6f) * unit);
         setPadding(padding, 0, padding, 0);
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        int size = Math.round((isSelected() ? SELECTED_DP : DISC_DP) * unit);
-        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(size, MeasureSpec.EXACTLY));
+        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(Math.round(HEIGHT_DP * unit), MeasureSpec.EXACTLY));
     }
 
     /** Sets the label's angle at once (a new button takes the current orientation). */
