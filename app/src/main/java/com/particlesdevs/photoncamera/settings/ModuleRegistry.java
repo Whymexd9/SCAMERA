@@ -214,13 +214,14 @@ public final class ModuleRegistry {
      */
     public static void syncProfile(){
         if(ScameraApp.restarting)return;
-        try{PreferenceKeys.profiles().activate(active());}catch(RuntimeException ignored){}
+        // P181: the module's FULLRES profile while FULLRES is on for it
+        try{PreferenceKeys.profiles().activate(FullResProfiles.profileFor(active()));}catch(RuntimeException ignored){}
     }
     private static volatile String pendingSlot="";
     private static volatile long pendingAt;
     public static void select(String slot){
         com.particlesdevs.photoncamera.capture.SensorModeSwitches.onModuleSelected(slot);
-        PreferenceKeys.profiles().activate(slot);
+        PreferenceKeys.profiles().activate(FullResProfiles.profileFor(slot));
         SharedPreferences.Editor e=prefs().edit().putString("module_active",slot);
         // The module of each side is remembered, so flipping back to that side returns to it (and not to the side's 1x).
         String last=ModuleChoice.lastKey(slot);if(last!=null)e.putString(last,slot);

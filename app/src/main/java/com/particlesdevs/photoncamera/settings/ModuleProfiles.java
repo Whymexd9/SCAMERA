@@ -90,6 +90,7 @@ public final class ModuleProfiles {
             if(key.equals(PreferenceKeys.Key.CAMERA_ID.mValue)){
                 String next=ModuleRegistry.active();
                 if(!ModuleRegistry.camera(next).equals(PreferenceKeys.getCameraID())) next=PreferenceKeys.getCameraID();
+                else next=FullResProfiles.profileFor(next); // P181: the module's FULLRES profile while FULLRES is on for it
                 if(!next.equals(active)){save(active);active=next;restore(snapshotStored(next));save(next);}
             }else if(isLocal(key))save(active);
         }
@@ -97,6 +98,8 @@ public final class ModuleProfiles {
     }
     private Map<String,?> snapshotStored(String id){
         if(meta.getBoolean("exists_"+id,false))return file(id).getAll();
+        // P181: a module's FULLRES profile starts as a copy of the module's own
+        if(FullResProfiles.isVariant(id))return snapshotStored(FullResProfiles.slotOf(id));
         Map<String,Object> values=new HashMap<>(file("common").getAll());
         String legacy=manager.getString(PreferenceKeys.Key.PER_LENS_FILE_NAME.mValue,"settings_for_camera_"+ModuleRegistry.camera(id),"");
         if(!legacy.isEmpty())try{
@@ -107,7 +110,10 @@ public final class ModuleProfiles {
     }
     public synchronized void activate(String id){if(!PreferenceKeys.isPerLensSettingsOn()||id.equals(active))return;save(active);active=id;restore(snapshotStored(id));save(id);meta.edit().putString("active",id).apply();}
     public synchronized void copy(String source, Collection<String> targets, Set<String> keys){
-        ModuleSensorSettings.copy(source,targets,keys);
+        // P181: the sensor settings are the module's (a FULLRES profile shares its module's): copied between modules only
+        Set<String> sensorTargets=new LinkedHashSet<>();
+        for(String target:targets)if(!FullResProfiles.slotOf(target).equals(FullResProfiles.slotOf(source)))sensorTargets.add(FullResProfiles.slotOf(target));
+        ModuleSensorSettings.copy(FullResProfiles.slotOf(source),sensorTargets,keys);
         Map<String,?> src=snapshot(source);
         for(String target:targets){if(target.equals(source))continue;Map<String,Object> dst=new HashMap<>(snapshot(target));
             for(String key:keys)if(isLocal(key)){if(src.containsKey(key))dst.put(key,src.get(key));else dst.remove(key);}

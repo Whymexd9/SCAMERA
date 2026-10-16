@@ -331,8 +331,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 // P156 (owner: «Сделай так чтобы эта кнопка была интерактивна и мы могли менять модули тут для настройки»):
                 // the module whose profile is edited here; with more than one shown module the chip picks another one
                 String slot = editedModule();
-                chip = Lang.t(getContext(),"Настраивается: ","Editing: ") + com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)
-                        + " · ID " + com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot);
+                chip = Lang.t(getContext(),"Настраивается: ","Editing: ") + com.particlesdevs.photoncamera.settings.FullResProfiles.label(slot)
+                        + " · ID " + com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(com.particlesdevs.photoncamera.settings.FullResProfiles.slotOf(slot));
                 modulePicker = editableModules().size() > 1;
                 if (modulePicker) chip += "  ▾";
             }
@@ -349,22 +349,32 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
         }
 
-        /** P156: the module whose profile the main settings hold (the camera's module unless the chip chose another). */
+        /**
+         * P156: the module whose profile the main settings hold (the camera's module unless the chip chose another); P181: a
+         * module's FULLRES profile («back2@full200») while FULLRES is on for it.
+         */
         static String editedModule() {
             String slot = null;
             try { slot = PreferenceKeys.profiles().editing(); } catch (RuntimeException ignored) { }
-            return slot == null || slot.isEmpty() ? com.particlesdevs.photoncamera.settings.ModuleRegistry.active() : slot;
+            return slot == null || slot.isEmpty() ? com.particlesdevs.photoncamera.settings.FullResProfiles.profileFor(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()) : slot;
         }
 
-        /** P156: the shown modules, the back ones by zoom, then the front ones. */
+        /**
+         * P156: the shown modules, the back ones by zoom, then the front ones; P181 (owner: «отдельные настройки для 50мп/200мп
+         * как для отдельных модулей»): each module with FULLRES followed by its FULLRES profiles (50 MP, 200 MP).
+         */
         static java.util.List<String> editableModules() {
-            java.util.List<String> out = new java.util.ArrayList<>();
+            java.util.List<String> slots = new java.util.ArrayList<>(), out = new java.util.ArrayList<>();
             try {
                 for (String slot : com.particlesdevs.photoncamera.settings.ModuleRegistry.slots())
-                    if (com.particlesdevs.photoncamera.settings.ModuleRegistry.visible(slot)) out.add(slot);
+                    if (com.particlesdevs.photoncamera.settings.ModuleRegistry.visible(slot)) slots.add(slot);
             } catch (RuntimeException ignored) { }
-            out.sort(java.util.Comparator.comparing((String s) -> s.startsWith("front"))
+            slots.sort(java.util.Comparator.comparing((String s) -> s.startsWith("front"))
                     .thenComparingDouble(com.particlesdevs.photoncamera.settings.ModuleRegistry::zoom));
+            for (String slot : slots) {
+                out.add(slot);
+                out.addAll(com.particlesdevs.photoncamera.settings.FullResProfiles.variants(slot));
+            }
             return out;
         }
 
@@ -375,12 +385,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
          */
         private void pickEditedModule() {
             java.util.List<String> slots = editableModules();
-            String editing = editedModule(), camera = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+            String editing = editedModule(), camera = com.particlesdevs.photoncamera.settings.FullResProfiles.profileFor(com.particlesdevs.photoncamera.settings.ModuleRegistry.active());
             CharSequence[] labels = new CharSequence[slots.size()], tags = new CharSequence[slots.size()];
             for (int i = 0; i < slots.size(); i++) {
                 String slot = slots.get(i);
-                labels[i] = com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot) + " · ID "
-                        + com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot)
+                labels[i] = com.particlesdevs.photoncamera.settings.FullResProfiles.label(slot) + " · ID "
+                        + com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(com.particlesdevs.photoncamera.settings.FullResProfiles.slotOf(slot))
                         + (slot.equals(camera) ? Lang.t(getContext(), " — сейчас в камере", " — in the camera now") : "");
                 tags[i] = slot;
             }

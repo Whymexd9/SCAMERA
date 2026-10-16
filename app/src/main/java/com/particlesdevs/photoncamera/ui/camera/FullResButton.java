@@ -70,6 +70,8 @@ final class FullResButton {
             }
         }
         button.setTag(R.id.full_res_button, here);
+        // P181: the FULLRES profiles of this camera's modules (the Pixel's FULLRES is known from its characteristics only)
+        com.particlesdevs.photoncamera.settings.FullResProfiles.remember(com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID, here);
         if (!overDcg) button.setVisibility(here ? View.VISIBLE : View.GONE);
         boolean two = here && com.particlesdevs.photoncamera.capture.VivoSdkFullRes.teleSizes(
                 com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID);
@@ -196,6 +198,8 @@ final class FullResButton {
                 "Полное разрешение: 50 Мп", "Full resolution: 50 MP"));
         else fragment.showSnackBar(fragment.getString(on ? R.string.full_res_on_toast : R.string.full_res_off_toast));
         Log.i(TAG, "full resolution " + (on ? "on" : "off") + (two ? (tele200 ? " 200 MP" : " 50 MP") : ""));
+        // P181: FULLRES 50 / 200 MP and the module itself keep their own settings: the camera restarts with the right profile
+        com.particlesdevs.photoncamera.settings.ModuleRegistry.syncProfile();
         if (fragment.captureController != null) fragment.captureController.restartCamera();
     }
 

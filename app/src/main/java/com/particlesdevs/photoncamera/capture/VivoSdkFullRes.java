@@ -34,6 +34,12 @@ public final class VivoSdkFullRes {
         return null;
     }
 
+    /** P181: the camera's profile at the telephoto's given size (the X200 Ultra's native telephoto; others have one size). */
+    public static Profile profile(String cameraId, boolean tele200) {
+        if (teleSizes(cameraId)) return tele200 ? TELE_200 : TELE_50;
+        return profile(cameraId);
+    }
+
     /** The native FULLRES build on the X200 Ultra (its own package; the default package takes the SDK profiles). */
     static boolean nativeRaw() {
         android.content.Context context = ScameraApp.getAppContext();

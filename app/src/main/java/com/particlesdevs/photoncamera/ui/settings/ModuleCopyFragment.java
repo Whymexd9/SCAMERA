@@ -44,8 +44,9 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
             }
             CheckBoxPreference tags=new CheckBoxPreference(requireContext());tags.setPersistent(false);tags.setKey(ModuleSensorSettings.COPY_PREFIX+"tunablekeys");tags.setTitle(Lang.t(getContext(),"Пользовательские vendor tags","Custom vendor tags"));sensors.addPreference(tags);
         }
-        source=ModuleRegistry.active();
-        for(String id:ModuleRegistry.slots())if(ModuleRegistry.visible(id))ids.add(id);
+        // P181: a module's FULLRES profiles (50 MP, 200 MP) are sources and targets of their own
+        source=com.particlesdevs.photoncamera.settings.FullResProfiles.profileFor(ModuleRegistry.active());
+        for(String id:ModuleRegistry.slots())if(ModuleRegistry.visible(id)){ids.add(id);ids.addAll(com.particlesdevs.photoncamera.settings.FullResProfiles.variants(id));}
         if(!ids.contains(source))ids.add(source);
         if(state!=null){source=state.getString("source",source);restore(selected,state.getStringArrayList("selected"));restore(targets,state.getStringArrayList("targets"));if(state.getStringArrayList("path")!=null)path.addAll(state.getStringArrayList("path"));}
         else{collect(tree,selected);for(String id:ids)if(!id.equals(source))targets.add(id);}
@@ -63,7 +64,7 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
         else if("pref_dcp_profile_key".equals(p.getKey()) || p instanceof TwoStatePreference||p instanceof DialogPreference||p.getClass().getSimpleName().contains("SeekBar")){if((ModuleProfiles.isLocal(p.getKey()) || (p.getKey()!=null && p.getKey().startsWith(ModuleSensorSettings.COPY_PREFIX))))keys.add(p.getKey());}
     }
     private PreferenceGroup current(){Preference p=tree;for(String key:path)p=((PreferenceGroup)p).getPreference(Integer.parseInt(key));return (PreferenceGroup)p;}
-    private String label(String id){return ModuleRegistry.label(id)+" · ID "+ModuleRegistry.camera(id);}
+    private String label(String id){return com.particlesdevs.photoncamera.settings.FullResProfiles.label(id)+" · ID "+ModuleRegistry.camera(com.particlesdevs.photoncamera.settings.FullResProfiles.slotOf(id));}
     private void toggle(Set<String> keys){if(selected.containsAll(keys))selected.removeAll(keys);else selected.addAll(keys);render();}
     @Override protected void render(){
         PreferenceGroup group=current();boolean home=path.isEmpty();page(home?Lang.t(getContext(),"Копирование настроек","Copy settings"):String.valueOf(group.getTitle()),home?null:Lang.t(getContext(),"Выбор параметров для копирования","Choose the parameters to copy"));
