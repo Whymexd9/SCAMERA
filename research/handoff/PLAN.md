@@ -3620,6 +3620,21 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   shows no magenta rim either way. tools/check_hybrid_still.cpp (CI; run on the X200 via NDK clang + adb: PASS).
 - Open: the owner's phone's log of such a shot (DCIM/SCAMERA/Log) to confirm «HYBRID STILL» there; Mali was not checked.
 
+### P154 - highlights: a smooth roll-off, white stays white, colour recovered in blown areas (owner, 2026-10-16, Desktop/т/7u/300.zip: X300 Ultra SCA_20261016_085018 (DCG 14 bit, ISO 3200, 23 N + 3 L, no short frame) and _085037 (10 bit, ISO 270, Bento), a backlit window with a curtain: «Посмотри на засветы на данных примерах, я хочу чтобы засветы были с более плавным переходом и не такие резкие»; «Одно фото снято с DCG, второе без»; «Также нам нужно чтобы белый цвет никогда не уходил в серый»; «И также нам нужно восстановление цвета в областях засветов»)
+- Found (diagnostic stages, 1020x766): the DCG shot is clipped in every channel over the window (ScamRgb plateau 2.41 in R, G and B,
+  «highlight recovery per channel ... plateau, nearClip»): no colour there, it must end white. The output plateau is 0.92
+  (235/255): the AgX shoulder does not reach 1 at the data's clip (clip 3.16 / 3.72 after ae), so white renders grey. The
+  output rises with the signal up to the clip and is flat from there: the slope stops at once (a Mach band at the plateau's
+  edge) - the «резкий» look. hlWhite (0.15, path to white) mixes saturated bright light towards its luminance Y, i.e. down
+  towards grey, not up towards white.
+- Do: (1) a highlight finish after the tone: the pixel's clip ratio (signal / data ceiling, from the colour source) lands the
+  display value smoothly (zero slope) on the white point, starting well below the clip, so the gradient fades into the
+  plateau; the clipped plateau = 255. (2) Colour where the data has it: channels below the clip keep the ratio (per-channel
+  recovery of ScamRgb / the worker's rim pass), the landing goes to the colour at full brightness (max channel 1), the
+  path to white goes up to white, not down to grey. (3) Fully clipped (no channel left) = white. Check on host (the combine
+  shader on ramps and a clipped plateau: white = 1.0, C1 at the landing, hue kept below the clip) and on the owner's
+  shots: no grey whites, no new halos, mid-tones unchanged.
+
 ### P141 - config files: saving, applying, moving between phones (owner, 2026-10-15: «Ещё добавь в план работы перепроверка работы с конфиг файлами. Проверь чтобы всё правильно сохранялось и применялось. Так же проверь чтобы на разных смартфонах с разными айди модулей конфиг применялся нормально и автоматически подставлялся/адаптировался под другое количество модулей, при этом сделай так чтобы модули не дублировались и не появлялись лишние»)
 - Audit «Сохранить / Восстановить» (BackupPreferences, RestorePreference, ModuleProfiles, module_profile_v2_* files, the
   sensor-config keys pref_sensorconfig_<id>_*, vendor tags, shade tiles, the colour settings): everything saved is restored
