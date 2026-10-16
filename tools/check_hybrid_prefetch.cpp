@@ -3,6 +3,7 @@
 //   1. StockMotion::tableGuide (per-frame tables + one block pass) against sampleGuide (the per-sample guide before P31): every
 //      byte, over CFA phases, canonical / sensor order, odd sizes, black levels, white levels (integer, fractional, 16-bit),
 //      exposures and ceilings, with samples above white.
+//      P152: binnedGuide (frames above 16 MP, scale 2 / 4) against binnedGuideSample (the per-sample code before) the same way.
 //   2. bentoBase (the stamped dilation) against the search dilation it replaced, and bentoMask with a shared base against
 //      bentoMask building its own: every float of the mask, every count.
 //   3. ScamPool / ScamTasks / mergeRowBands inside pool tasks: every row exactly once, nested rows from many tasks at once (no
@@ -117,6 +118,29 @@ int main() {
         }
     }
     std::printf("guides: %d tabulated guides byte-identical to the per-sample guide\n",guides);
+    // ---- 1b. P152: the binned guide of a frame above 16 MP (scale 2 / 4) against the per-sample binned guide
+    int binned=0;
+    for(int size=0;size<3;++size)for(int scale:{2,4}){
+        const int w=size==0?136:size==1?138:262,h=size==0?104:size==1?106:198; // the guide input needs >= 4 x 4 after the scale
+        for(int cfa=0;cfa<4;++cfa)for(int canonical=0;canonical<2;++canonical)
+        for(float white:{1023.f,4095.f,1023.5f,65535.f}){
+            std::vector<uint16_t> raw(size_t(w)*h);
+            const int top=int(std::min(65535.f,white*1.1f+8));
+            std::uniform_int_distribution<int> any(0,top),dark(0,64);
+            for(size_t i=0;i<raw.size();++i)raw[i]=uint16_t((i%5==0)?any(rng):std::min(top,int(white*0.3f)+dark(rng)*int(white/256.f+1)));
+            Burst b;b.w=w;b.h=h;b.cfa=cfa;b.canonicalRggb=canonical!=0;b.white=white;
+            for(int p=0;p<4;++p)b.black[p]=float(dark(rng));
+            b.raw[2]=raw.data();
+            for(float exposure:{1.f,0.125f,4.7f})for(float ceiling:{1.f,0.5f,1.f/4.7f}){
+                b.exposure[2]=exposure;
+                const auto expected=StockMotion::binnedGuideSample(b,2,ceiling,scale);
+                assert(StockMotion::binnedGuide(b,2,ceiling,scale,false)==expected);
+                assert(StockMotion::binnedGuide(b,2,ceiling,scale,true)==expected);
+                ++binned;
+            }
+        }
+    }
+    std::printf("binned guides: %d tabulated binned guides byte-identical to the per-sample one\n",binned);
 
     // ---- 2. Bento base
     int masks=0;

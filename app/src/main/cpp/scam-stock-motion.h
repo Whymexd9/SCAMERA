@@ -159,7 +159,10 @@ public:
         return stockMotionGuide4(raw.data(),b.w,b.h,b.w,14,1.f/b.exposure[frame],.6f);
     }
 private:
-    static std::vector<uint8_t> binnedGuide(const Burst& b,int frame,float ceiling,int s) {
+public:
+    // The per-sample binned guide binnedGuide replaces (the code before P152): the reference of the host check and the path for a
+    // white level the tables cannot bound.
+    static std::vector<uint8_t> binnedGuideSample(const Burst& b,int frame,float ceiling,int s) {
         const int gw=b.w/s,gh=b.h/s;
         std::vector<uint16_t> raw(size_t(gw)*gh);
         const float inv=1.f/float(s*s);
@@ -170,7 +173,49 @@ private:
         }
         return stockMotionGuide4(raw.data(),gw,gh,gw,14,1.f/b.exposure[frame],.6f);
     }
-public:
+    // P152: the guide input of a frame above 16 MP (2x2 means at 50 MP, 4x4 at 200 MP) without a sampleRaw call per site: 50 M / 200 M
+    // calls a frame on one thread, most of the 0.8-1.4 s alignment of a 50 MP burst on the X200 Ultra. min(sampleRaw, ceiling)
+    // depends only on the CFA phase of the site and its 16-bit value: tabulated per frame from the same expressions (same
+    // translation unit: the same floats), summed in the same order (rows j, then columns i) for every binned site, in row bands on
+    // the shared pool (parallel). Byte-identical to binnedGuideSample (tools/check_hybrid_prefetch.cpp).
+    static std::vector<uint8_t> binnedGuide(const Burst& b,int frame,float ceiling,int s,bool parallel=true) {
+        if(!(b.white>0.f&&b.white<=65535.f))return binnedGuideSample(b,frame,ceiling,s); // outside the tables' range
+        const int width=b.w,height=b.h,gw=width/s,gh=height/s;
+        // Every sample at or above `cap` (>= white) is clamped to 1 by sampleRaw: the tables end there.
+        const int cap=int(std::min(65535.f,std::ceil(b.white)));
+        const size_t entries=size_t(cap)+1;
+        std::vector<float> table(4*entries);
+        for(int p=0;p<4;++p) {
+            const float bl=b.black[p];
+            float* t=table.data()+size_t(p)*entries;
+            for(int v=0;v<=cap;++v)t[v]=std::min(std::clamp((float(v)-bl)/(b.white-bl),0.0f,1.0f),ceiling); // min(sampleRaw, ceiling)
+        }
+        const int dx=b.canonicalRggb?(b.cfa&1):0,dy=b.canonicalRggb?(b.cfa>>1):0;
+        const uint16_t* data=b.raw[frame];
+        const float inv=1.f/float(s*s);
+        std::vector<uint16_t> raw(size_t(gw)*gh);
+        auto band=[&](int y0,int y1){
+            std::vector<const uint16_t*> rows(static_cast<size_t>(s));std::vector<const float*> phase(static_cast<size_t>(2*s));
+            for(int y=y0;y<y1;++y) {
+                for(int j=0;j<s;++j){
+                    int Y=y*s+j+dy;if(Y>=height)Y=reflectCfa(Y,height);
+                    rows[size_t(j)]=data+size_t(Y)*width;
+                    for(int q=0;q<2;++q)phase[size_t(2*j+q)]=table.data()+size_t(((Y&1)<<1)|q)*entries;
+                }
+                uint16_t* o=raw.data()+size_t(y)*gw;
+                for(int x=0;x<gw;++x) {
+                    float sum=0;
+                    for(int j=0;j<s;++j)for(int i=0;i<s;++i){
+                        int X=x*s+i+dx;if(X>=width)X=reflectCfa(X,width);
+                        sum+=phase[size_t(2*j+(X&1))][std::min<unsigned>(rows[size_t(j)][X],unsigned(cap))];
+                    }
+                    o[x]=uint16_t(std::floor(1024.f+sum*inv*15359.f+.5f));
+                }
+            }
+        };
+        if(parallel)ScamPool::get().rows(gh,std::max(4,gh/64),band); else band(0,gh);
+        return stockMotionGuide4(raw.data(),gw,gh,gw,14,1.f/b.exposure[frame],.6f);
+    }
     // Scale of the guide input: stockMotionGuide4 takes at most 16 MP (a 1 MP guide, the size the CRE corner detector and LK were
     // built for) and 32760 px a side. A larger frame is reduced by the smallest power of two that fits; 1 up to 16 MP (unchanged).
     static int guideScale(int w,int h) {
