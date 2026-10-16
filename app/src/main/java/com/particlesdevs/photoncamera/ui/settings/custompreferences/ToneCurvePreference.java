@@ -117,7 +117,7 @@ public class ToneCurvePreference extends Preference {
         int middle = curve.size() / 2;
         selected = middle;
         if (shown != null) {
-            shown.setCurve(curve); // its change callback copies the graph's old selection back: select after it
+            shown.edit(curve); // its change callback copies the graph's old selection back: select after it
             shown.select(middle);
         }
         store(curve);
@@ -137,6 +137,7 @@ public class ToneCurvePreference extends Preference {
     }
 
     void store(ToneCurve curve) {
+        if (shown != null) shown.record();   // P178: every stored edit is a step
         String text = curve.serialize();
         if (text.equals(points()) || !callChangeListener(text)) return;
         // no notifyChanged: the row on screen already shows it, and a rebind would drop the finger's point
@@ -157,6 +158,7 @@ public class ToneCurvePreference extends Preference {
             host.addView(view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
         final ToneCurveView graph = view;
+        ToneCurveView.addHistory(host, graph);   // P178: undo / redo over the graph
         shown = graph;
         graph.setOnChange(null);
         graph.setCurve(ToneCurve.parse(points()));
@@ -165,13 +167,13 @@ public class ToneCurvePreference extends Preference {
         LinearLayout actions = (LinearLayout) holder.findViewById(R.id.tone_curve_actions);
         actions.removeAllViews();
         actions.addView(chip(c, Lang.t(c, "S-кривая", "S-curve"), "tone_curve_default", () -> {
-            graph.setCurve(ToneCurve.defaults());
+            graph.edit(ToneCurve.defaults());
             store(graph.curve());
         }), weight());
         LinearLayout.LayoutParams second = weight();
         second.setMarginStart(SettingsStyle.dp(c, 8));
         actions.addView(chip(c, Lang.t(c, "Прямая", "Straight"), "tone_curve_identity", () -> {
-            graph.setCurve(ToneCurve.identity());
+            graph.edit(ToneCurve.identity());
             store(graph.curve());
         }), second);
         // P177: «Сравнить:» AgX / ACES / Uchimura drawn on the graph (once, below the shortcuts)

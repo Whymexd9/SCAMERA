@@ -2,19 +2,28 @@ package com.particlesdevs.photoncamera.ui.settings.custompreferences;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.drawable.RippleDrawable;
+import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.view.ViewGroup;
 import android.view.ViewParent;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 
 import androidx.annotation.Nullable;
 
+import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.processing.color.ToneCurve;
 import com.particlesdevs.photoncamera.ui.settings.SettingsStyle;
 import com.particlesdevs.photoncamera.util.Lang;
@@ -27,9 +36,16 @@ import java.util.function.Consumer;
  * only up and down), a hold on a point deletes it (not the ends). The line is the curve the shader gets (the monotone cubic
  * through the points); the dashed diagonal is the straight line. The touched point stays selected (a filled dot in a halo):
  * the preference's sliders and typed values move it (moveSelected).
+ * <p>
+ * P178 (owner, 2026-10-16: «Добавь возможность делать шаг действий назад и вперед при редактировании кривой»): every finished
+ * edit is a step ({@link #record}: a gesture here, and whatever the editor stores - a slider let go, a typed value, a
+ * shortcut, a template); {@link #undo} / {@link #redo} walk the steps and hand the curve to onCommit (stored as any edit),
+ * from the buttons of {@link #historyButtons} on the graph's top left corner.
  */
 public final class ToneCurveView extends View {
     private static final float ASPECT = 0.78f;
+    /** The plot's inset from the view's edges (dp; 22 at the bottom for the EV labels). */
+    private static final float PLOT_PAD = 14f;
     private ToneCurve curve = ToneCurve.defaults();
     @Nullable private Consumer<ToneCurve> onCommit;
     @Nullable private Runnable onChange;
@@ -50,6 +66,11 @@ public final class ToneCurveView extends View {
     @Nullable private int[] refColours;
     private final Paint refLine = new Paint(Paint.ANTI_ALIAS_FLAG), refLabel = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path refPath = new Path();
+    /** P178: the steps (serialized curves), the one shown, and who shows whether a step back / forth exists. */
+    static final int MAX_STEPS = 100;
+    private final java.util.ArrayList<String> history = new java.util.ArrayList<>();
+    private int step = -1;
+    @Nullable private Runnable onHistory;
 
     public ToneCurveView(Context c) {
         super(c);
@@ -83,6 +104,7 @@ public final class ToneCurveView extends View {
         refLine.setPathEffect(new DashPathEffect(new float[]{dp(6), dp(4)}, 0));
         refLabel.setTextSize(dp(10.5f));
         refLabel.setFakeBoldText(true);
+        record();   // P178: the steps start at the curve shown first
     }
 
     /**
@@ -101,7 +123,26 @@ public final class ToneCurveView extends View {
         return refSamples == null ? 0 : refSamples.length;
     }
 
+    /**
+     * Shows a curve (the stored one, or one changed elsewhere). P178: while nothing has been edited here it is where the
+     * steps start; an edit made by the editor's own controls goes through {@link #edit}.
+     */
     public void setCurve(ToneCurve curve) {
+        if (history.size() <= 1) {
+            history.clear();
+            step = -1;
+        }
+        show(curve);
+        if (history.isEmpty()) record();
+    }
+
+    /** P178: an edit from the editor's controls (a shortcut, a template, a loaded file): shown and made a step. */
+    public void edit(ToneCurve curve) {
+        show(curve);
+        record();
+    }
+
+    private void show(ToneCurve curve) {
         this.curve = curve;
         active = -1;
         if (selected >= curve.size()) selected = curve.size() / 2;
@@ -160,7 +201,7 @@ public final class ToneCurveView extends View {
 
     @Override
     protected void onSizeChanged(int w, int h, int ow, int oh) {
-        float pad = dp(14), bottom = dp(22);
+        float pad = dp(PLOT_PAD), bottom = dp(22);
         frame.set(0, 0, w, h);
         plot.set(pad, pad, w - pad, h - bottom);
     }
@@ -315,7 +356,136 @@ public final class ToneCurveView extends View {
     }
 
     private void commit() {
+        record();
+        deliver();
+    }
+
+    private void deliver() {
         if (onCommit != null) onCommit.accept(curve);
+    }
+
+    // ───── P178: the steps
+
+    /** The curve shown becomes a step (nothing when it is the step already); the steps after the shown one go. */
+    public void record() {
+        String now = curve.serialize();
+        if (step >= 0 && step < history.size() && history.get(step).equals(now)) return;
+        while (history.size() > step + 1) history.remove(history.size() - 1);
+        history.add(now);
+        if (history.size() > MAX_STEPS) history.remove(0);
+        step = history.size() - 1;
+        historyChanged();
+    }
+
+    public boolean canUndo() {
+        return step > 0;
+    }
+
+    public boolean canRedo() {
+        return step >= 0 && step < history.size() - 1;
+    }
+
+    /** One step back: the curve before the last edit, stored through onCommit. False when there is none. */
+    public boolean undo() {
+        return go(step - 1);
+    }
+
+    /** One step forth again after {@link #undo}. False when there is none. */
+    public boolean redo() {
+        return go(step + 1);
+    }
+
+    private boolean go(int to) {
+        if (to < 0 || to >= history.size() || to == step) return false;
+        step = to;
+        int keep = selected;
+        curve = ToneCurve.parse(history.get(to));
+        active = -1;
+        selected = keep >= 0 && keep < curve.size() ? keep : curve.size() / 2;
+        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+        invalidate();
+        changed();
+        deliver();
+        historyChanged();
+        return true;
+    }
+
+    /** Called when a step back or forth appears or goes (the buttons follow). */
+    public void setOnHistory(@Nullable Runnable onHistory) {
+        this.onHistory = onHistory;
+        historyChanged();
+    }
+
+    private void historyChanged() {
+        if (onHistory != null) onHistory.run();
+    }
+
+    @Override
+    public void setEnabled(boolean enabled) {
+        super.setEnabled(enabled);
+        historyChanged();
+    }
+
+    /**
+     * «Отменить» / «Повторить» as two round buttons in a pill, laid over the graph's top left corner (the corner a tone
+     * curve never reaches: dark in, bright out); dimmed while there is no step that way.
+     */
+    public static LinearLayout historyButtons(Context c, ToneCurveView graph) {
+        LinearLayout pill = new LinearLayout(c);
+        pill.setOrientation(LinearLayout.HORIZONTAL);
+        pill.setTag("tone_curve_history");
+        int pad = Math.round(graph.dp(3));
+        pill.setPadding(pad, pad, pad, pad);
+        pill.setBackground(SettingsStyle.shape(c, (SettingsStyle.CARD & 0x00FFFFFF) | 0xE6000000, SettingsStyle.LINE, 100));
+        ImageButton undo = historyButton(c, R.drawable.ic_curve_undo, "tone_curve_undo", Lang.t(c, "Отменить", "Undo"));
+        ImageButton redo = historyButton(c, R.drawable.ic_curve_redo, "tone_curve_redo", Lang.t(c, "Повторить", "Redo"));
+        undo.setOnClickListener(v -> graph.undo());
+        redo.setOnClickListener(v -> graph.redo());
+        int size = Math.round(graph.dp(34));
+        pill.addView(undo, new LinearLayout.LayoutParams(size, size));
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(size, size);
+        rp.setMarginStart(Math.round(graph.dp(2)));
+        pill.addView(redo, rp);
+        graph.setOnHistory(() -> {
+            boolean on = graph.isEnabled();
+            undo.setEnabled(on && graph.canUndo());
+            redo.setEnabled(on && graph.canRedo());
+            undo.setAlpha(undo.isEnabled() ? 1f : 0.35f);
+            redo.setAlpha(redo.isEnabled() ? 1f : 0.35f);
+        });
+        return pill;
+    }
+
+    private static ImageButton historyButton(Context c, int icon, String tag, String name) {
+        ImageButton b = new ImageButton(c);
+        int accent = SettingsStyle.accent(c);
+        b.setImageResource(icon);
+        b.setImageTintList(ColorStateList.valueOf(accent));
+        b.setScaleType(ImageView.ScaleType.CENTER);
+        b.setPadding(0, 0, 0, 0);
+        b.setBackground(new RippleDrawable(ColorStateList.valueOf((accent & 0x00FFFFFF) | 0x33000000), null,
+                SettingsStyle.shape(c, 0xFFFFFFFF, 0, 100)));
+        b.setTag(tag);
+        b.setContentDescription(name);
+        return b;
+    }
+
+    /** The graph with its step buttons over its top left corner: the view to add where the graph alone went. */
+    public static FrameLayout withHistory(Context c, ToneCurveView graph) {
+        FrameLayout frame = new FrameLayout(c);
+        frame.addView(graph, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        addHistory(frame, graph);
+        return frame;
+    }
+
+    /** Adds the step buttons to the frame the graph is in (once): inside the plot, clear of its frame and labels. */
+    public static void addHistory(FrameLayout frame, ToneCurveView graph) {
+        if (frame.findViewWithTag("tone_curve_history") != null) return;
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
+        int inset = Math.round(graph.dp(PLOT_PAD + 6));
+        lp.setMargins(inset, inset, 0, 0);
+        frame.addView(historyButtons(frame.getContext(), graph), lp);
     }
 
     private void changed() {

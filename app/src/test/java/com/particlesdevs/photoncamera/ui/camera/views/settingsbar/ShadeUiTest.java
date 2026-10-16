@@ -573,6 +573,11 @@ public class ShadeUiTest {
         assertNotNull("«Сравнить» in the card", sheet.findViewWithTag("tone_curve_compare"));
         sheet.findViewWithTag("shade_curve_identity").performClick();
         assertEquals(com.particlesdevs.photoncamera.processing.color.ToneCurve.identity().serialize(), prefs.getString(key, ""));
+        // P178: a step back stores the S again, a step forth the straight line
+        sheet.findViewWithTag("tone_curve_undo").performClick();
+        assertEquals(com.particlesdevs.photoncamera.processing.color.ToneCurve.defaults().serialize(), prefs.getString(key, ""));
+        sheet.findViewWithTag("tone_curve_redo").performClick();
+        assertEquals(com.particlesdevs.photoncamera.processing.color.ToneCurve.identity().serialize(), prefs.getString(key, ""));
         sheet.findViewWithTag("tone_curve_compare_AgX").performClick();
         layoutFull();
         // the list scrolled to the card, as the owner sees it after a tap

@@ -943,6 +943,15 @@ public class SettingsMenuTest {
             assertEquals("0.0000:0.0000,1.0000:1.0000",pref.points());
             row.findViewWithTag("tone_curve_default").performClick();
             assertEquals(com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS,pref.points());
+            // P178: ↶ walks back through the shortcuts and the deletion, ↷ forth again, each step stored
+            row.findViewWithTag("tone_curve_undo").performClick();
+            assertEquals("0.0000:0.0000,1.0000:1.0000",pref.points());
+            row.findViewWithTag("tone_curve_undo").performClick();
+            assertEquals("the curve before the straight line",5,pref.points().split(",").length);
+            row.findViewWithTag("tone_curve_redo").performClick();
+            row.findViewWithTag("tone_curve_redo").performClick();
+            assertEquals(com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS,pref.points());
+            assertFalse("nothing further",row.findViewWithTag("tone_curve_redo").isEnabled());
         }
     }
 

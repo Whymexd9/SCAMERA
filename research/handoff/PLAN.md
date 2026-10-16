@@ -4048,6 +4048,14 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
 - Each finished edit of the own curve (a drag let go, a point added or deleted, a typed value, a template, S-curve /
   straight) is a step; «Отменить» / «Повторить» buttons next to the graph walk the steps back and forth, both on the
   settings page and in the shade; the curve shown is stored as any edit.
+- DONE 2026-10-16: ToneCurveView keeps the steps (at most 100 serialized curves): a gesture, the editor's stored edits
+  (a slider let go, a typed value, a point deleted), the shortcuts / templates / a loaded file (edit) and a change made
+  elsewhere (the shade's sync) each add one; a step back then a new edit drops the steps after it; the curve the editor
+  first shows (the stored one) is where they start. ↶ / ↷ (Material undo / redo icons) in a small pill over the graph's top
+  left corner (the corner a tone curve never reaches), dimmed while there is no step that way or the curve is off; a step
+  is stored through onCommit like any edit, with a light tick. Settings page, the shade's card and its full-list row.
+  ToneCurveHistoryTest (new, in the CI list), SettingsMenuTest (↶ ↶ ↷ ↷ on the page), ShadeUiTest (↶ ↷ in the card);
+  renders deliverables/p157/p178-*.png.
 
 ### P179 - finish the ISZ / FULLRES integration on the X200 Ultra (owner, 2026-10-16, a task brief; DCG postponed)
 - Read first: AGENTS.md, the scamera skill, HANDOFF.md, this plan, then research/handoff/FULLRES-NATIVE-READY-20261016.md

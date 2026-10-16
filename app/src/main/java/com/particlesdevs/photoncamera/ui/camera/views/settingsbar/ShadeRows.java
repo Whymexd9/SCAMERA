@@ -308,7 +308,8 @@ final class ShadeRows {
             LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             gp.topMargin = dp(12);
             gp.setMarginEnd(dp(6));
-            card.addView(graph, gp);
+            // P178: undo / redo over the graph
+            card.addView(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView.withHistory(context, graph), gp);
             LinearLayout chips = new LinearLayout(context);
             chips.setOrientation(LinearLayout.HORIZONTAL);
             chips.addView(chip(com.particlesdevs.photoncamera.util.Lang.t(context, "S-кривая", "S-curve"),
@@ -321,7 +322,7 @@ final class ShadeRows {
             TextView more = chip(com.particlesdevs.photoncamera.util.Lang.t(context, "Ещё…", "More…"), null);
             more.setOnClickListener(v -> com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveCompare.pickTemplate(
                     context, accent, next -> {
-                        graph.setCurve(next);
+                        graph.edit(next);   // P178: a step
                         graph.select(next.size() / 2);
                         actions.pick(entry, next.serialize());
                     }));
@@ -347,7 +348,7 @@ final class ShadeRows {
             chip.setBackground(ShadeStyle.pressable(context, ShadeStyle.tint(accent, .14f), 0, 100));
             if (curve == null) return chip;   // the caller sets its own action
             chip.setOnClickListener(v -> {
-                graph.setCurve(curve);
+                graph.edit(curve);   // P178: a step
                 graph.select(curve.size() / 2);
                 actions.pick(entry, curve.serialize());
             });
@@ -362,6 +363,7 @@ final class ShadeRows {
             int selected = graph.selected();
             graph.setCurve(stored);
             graph.select(selected >= 0 && selected < stored.size() ? selected : stored.size() / 2);
+            graph.record();   // P178: a change made elsewhere is a step too
         }
     }
 

@@ -815,7 +815,8 @@ public class SettingsBarLayout extends LinearLayout {
         });
         LayoutParams gp = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         gp.topMargin = dp(10);
-        curveBox.addView(curveView, gp);
+        // P178: undo / redo over the graph
+        curveBox.addView(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView.withHistory(c, curveView), gp);
         LinearLayout chips = new LinearLayout(c);
         chips.setOrientation(HORIZONTAL);
         chips.addView(curveChip(Lang.t(c, "S-кривая", "S-curve"), "shade_curve_default",
@@ -830,7 +831,7 @@ public class SettingsBarLayout extends LinearLayout {
                 ShadeStyle.accent(c), next -> {
                     ShadeCatalog.Entry e = openSliderEntry();
                     if (e == null || e.kind != ShadeCatalog.CURVE || curveView == null) return;
-                    curveView.setCurve(next);
+                    curveView.edit(next);   // P178: a step
                     curveView.select(next.size() / 2);
                     apply(e, next.serialize());
                 }));
@@ -864,7 +865,7 @@ public class SettingsBarLayout extends LinearLayout {
             ShadeCatalog.Entry e = openSliderEntry();
             if (e == null || e.kind != ShadeCatalog.CURVE || curveView == null) return;
             com.particlesdevs.photoncamera.processing.color.ToneCurve next = curve.get();
-            curveView.setCurve(next);
+            curveView.edit(next);   // P178: a step
             curveView.select(next.size() / 2);
             apply(e, next.serialize());
         });
@@ -891,6 +892,7 @@ public class SettingsBarLayout extends LinearLayout {
                 int selected = curveView.selected();
                 curveView.setCurve(stored);
                 curveView.select(selected >= 0 && selected < stored.size() ? selected : stored.size() / 2);
+                curveView.record();   // P178: a change made elsewhere is a step too
             }
             return;
         }
