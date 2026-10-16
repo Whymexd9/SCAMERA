@@ -49,6 +49,9 @@ struct DngMetadata {
     bool has_camera_calibration2 = false;
     bool has_as_shot_neutral = false;
     bool has_as_shot_white_xy = false;
+    /** P165: BaselineExposure (EV) of a merged DNG written over its headroom. */
+    double baseline_exposure = 0;
+    bool has_baseline_exposure = false;
     bool has_analog_balance = false;
     size_t strip_offset = 0;
     unsigned short* delinearizationTable = nullptr;

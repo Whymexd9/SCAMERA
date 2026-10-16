@@ -67,6 +67,8 @@ public class Parameters {
      */
     public com.particlesdevs.photoncamera.processing.RawCrop.Area rawCrop;
     public Point rawCropFull;
+    /** P165: BaselineExposure of the DNG (EV; 0 = none): set for the merged DNG written over its headroom. */
+    public float dngBaselineExposure;
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];
     public float[] whitePoint = new float[3];

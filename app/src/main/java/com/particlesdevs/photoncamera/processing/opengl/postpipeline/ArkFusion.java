@@ -61,9 +61,9 @@ public final class ArkFusion extends Node {
         return v;
     }
 
-    /** The ARK tone's own denoise (bracket_denoise, chroma_denoise): on SCAM HDR always, on the hybrid with its denoise switch. */
+    /** The ARK tone's own denoise (bracket_denoise, chroma_denoise): only with the master switch «Шумоподавление» on. */
     static boolean arkDenoise() {
-        return !PreferenceKeys.isHybridShot() || PreferenceKeys.isHybridDenoiseEnabled();
+        return PreferenceKeys.isHybridDenoiseEnabled();   // P165: the master switch on every shot
     }
 
     @Override

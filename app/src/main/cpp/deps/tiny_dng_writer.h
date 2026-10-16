@@ -89,6 +89,7 @@ typedef enum {
   TIFFTAG_CAMERA_CALIBRATION2 = 50724,
   TIFFTAG_ANALOG_BALANCE = 50727,
   TIFFTAG_AS_SHOT_NEUTRAL = 50728,
+  TIFFTAG_BASELINE_EXPOSURE = 50730,
   TIFFTAG_AS_SHOT_WHITE_XY = 50729,
   TIFFTAG_CALIBRATION_ILLUMINANT1 = 50778,
   TIFFTAG_CALIBRATION_ILLUMINANT2 = 50779,
@@ -308,6 +309,9 @@ class DNGImage {
 
   /// Specify analog white balance from camera for raw values.
   bool SetAnalogBalance(const unsigned int plane_count, const double *matrix_values);
+
+  /// SCAMERA P165: the merged DNG's headroom, in EV (SRATIONAL).
+  bool SetBaselineExposure(const double ev);
 
   /// Specify CFA repeating pattern dimensions.
   bool SetCFARepeatPatternDim(const unsigned short width, const unsigned short height);
@@ -2236,6 +2240,23 @@ bool DNGImage::SetDNGVersion(const unsigned char a,
     return false;
   }
 
+  num_fields_++;
+  return true;
+}
+
+bool DNGImage::SetBaselineExposure(const double ev) {
+  double numerator, denominator;
+  if (DoubleToRational(ev, &numerator, &denominator) != 0) {
+    return false;
+  }
+  const int vs[2] = {static_cast<int>(numerator), static_cast<int>(denominator)};
+  bool ret = WriteTIFFTag(static_cast<unsigned short>(TIFFTAG_BASELINE_EXPOSURE),
+                          TIFF_SRATIONAL, 1,
+                          reinterpret_cast<const unsigned char *>(vs),
+                          &ifd_tags_, &data_os_);
+  if (!ret) {
+    return false;
+  }
   num_fields_++;
   return true;
 }

@@ -400,6 +400,44 @@ struct HybridTuning {
 };
 
 // restoreSensorOrigin() of scam-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
+/**
+ * P165 (owner, 2026-10-16: «чтобы ультракороткие и длинные кадры были частью склейки у рав файлов», «Шумодава в раве просто не
+ * должно быть»): the merged Bayer RAW of the DNG, 16 bit. The merge's level of every sensor Bayer site ({@code sample(x, y, c)},
+ * 1 = the N frames' white) is written over the headroom: the merge's highest level, 1 when nothing is above the N clip (as
+ * before), at most 16. The highlights Bento took from the ultrashort frames (the merged RGB reaches 3-10x N's white there) were
+ * clipped at 1 in the former 14-bit DNG; the app writes BaselineExposure log2(headroom) so a raw converter shows the DNG as
+ * bright as before. Nothing but the merge is in it: no denoise.
+ */
+template<class Sample>
+inline float hybridWriteMergedDng(std::vector<uint16_t>& dng,int w,int h,const HybridInput& input,const Sample& sample) {
+    const auto colour=[&input](int x,int y){
+        int cx=x-(input.cfa&1),cy=y-(input.cfa>>1);if(cx<0)cx+=2;if(cy<0)cy+=2;
+        const int phase=((cy&1)<<1)|(cx&1);return phase==0?0:phase==3?2:1;
+    };
+    std::mutex peakLock;float peak=1.f;
+    mergeRowBands(h,[&](int y0,int y1){
+        float local=1.f;
+        for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){const float v=sample(x,y,colour(x,y));if(v>local&&std::isfinite(v))local=v;}
+        std::lock_guard<std::mutex> hold(peakLock);peak=std::max(peak,local);
+    });
+    const float headroom=std::min(peak,16.f),k=65535.f/input.white;
+    dng.assign(size_t(w)*h,0);
+    mergeRowBands(h,[&](int y0,int y1){
+        for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){
+            const float v=sample(x,y,colour(x,y)),m=std::isfinite(v)?std::clamp(v/headroom,0.f,1.f):0.f;
+            const float black=input.black[((y&1)<<1)|(x&1)];
+            dng[size_t(y)*w+x]=uint16_t(std::clamp(std::lround((black+m*(input.white-black))*k),0L,65535L));
+        }
+    });
+    return headroom;
+}
+
+inline std::string hybridDngReport(float headroom,int w,int h){
+    char line[160];
+    std::snprintf(line,sizeof(line),"HYBRID DNG: merged Bayer %dx%d, 16-bit, headroom=%.4f (N white at 1/%.3f), no denoise",w,h,headroom,headroom);
+    return line;
+}
+
 inline void shiftOrigin(std::vector<float>& v,int w,int h,int channels,int dx,int dy) {
     if(dx==0&&dy==0)return;
     // P30: bands of rows on all cores, each bottom-up as before; the dy rows above a band (another band writes them) are read
@@ -6337,21 +6375,15 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         for(size_t i=1;i<share.size();++i){char v[48];std::snprintf(v,sizeof(v)," %d:%.2f",index[i],share[i]);line+=v;avg+=share[i];++cnt;}
         report(line+(cnt?"  average="+std::to_string(avg/cnt):""));
     }
-    // ---- merged Bayer RAW for the DNG (sensor layout, 14-bit scale like the SCAM path), from the RGB
+    // ---- merged Bayer RAW for the DNG (sensor layout, 16 bit over the headroom: P165), from the RGB
     if(mergedDng&&input.mergedDng){
-        const float k=16383.f/input.white;
+        const std::vector<float>& srcRgb=grid==2?sensorRgb:out;
         const int dx=input.cfa&1,dy=input.cfa>>1;
-        mergedDng->assign(size_t(w)*h,0);
-        mergeRowBands(h,[&](int y0,int y1){
-            for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){
-                int cx=x-dx,cy=y-dy;if(cx<0)cx+=2;if(cy<0)cy+=2;
-                const int phase=((cy&1)<<1)|(cx&1);const int c=phase==0?0:phase==3?2:1;
-                const std::vector<float>& srcRgb=grid==2?sensorRgb:out;
-                const float m=std::clamp(srcRgb[(size_t(cy)*w+cx)*3+c],0.f,1.f);
-                const float black=input.black[((y&1)<<1)|(x&1)];
-                (*mergedDng)[size_t(y)*w+x]=uint16_t(std::clamp(std::lround((black+m*(input.white-black))*k),0L,16383L));
-            }
+        const float headroom=hybridWriteMergedDng(*mergedDng,w,h,input,[&](int x,int y,int c){
+            int cx=x-dx,cy=y-dy;if(cx<0)cx+=2;if(cy<0)cy+=2;
+            return srcRgb[(size_t(cy)*w+cx)*3+c];
         });
+        report(hybridDngReport(headroom,w,h));
     }
     std::vector<float>().swap(sensorRgb); // the output stage holds no more than it needs (any RAW size: ~16 B per output pixel)
     // CFA phase shift to the canonical RGGB origin, in output-grid pixels.
@@ -6920,19 +6952,12 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     }
     if(effMap)effMap->swap(eOut);
     if(clipFlags)clipFlags->swap(cOut);
-    // ---- merged Bayer RAW for the DNG (sensor layout, 14-bit scale): the colour of every sensor Bayer phase from the RGB
+    // ---- merged Bayer RAW for the DNG (sensor layout, 16 bit over the headroom: P165): every sensor Bayer site from the RGB
     if(mergedDng&&input.mergedDng){
-        const float k=16383.f/input.white;
-        const int red=input.cfa;
-        mergedDng->assign(size_t(W)*Ht,0);
-        mergeRowBands(Ht,[&](int y0,int y1){
-            for(int y=y0;y<y1;++y)for(int x=0;x<W;++x){
-                const int p=((y&1)<<1)|(x&1),c=p==red?0:p==(red^3)?2:1;
-                const size_t src=(size_t(y*gridOut)*tw+size_t(x*gridOut))*3+c;
-                const float v=std::clamp(out[src],0.f,1.f),black=input.black[p];
-                (*mergedDng)[size_t(y)*W+x]=uint16_t(std::clamp(std::lround((black+v*(input.white-black))*k),0L,16383L));
-            }
+        const float headroom=hybridWriteMergedDng(*mergedDng,W,Ht,input,[&](int x,int y,int c){
+            return out[(size_t(y*gridOut)*tw+size_t(x*gridOut))*3+c];
         });
+        report(hybridDngReport(headroom,W,Ht));
     }
     report("HYBRID MOSAIC: total "+std::to_string(int(millis(Clock::now()-started)))+" ms");
     if(statsOut)*statsOut=st;
@@ -7193,19 +7218,12 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     }
     if(effMap)effMap->swap(eOut);
     if(clipFlags)clipFlags->swap(cOut);
-    // ---- merged Bayer RAW for the DNG (sensor layout, 14-bit scale): the colour of every sensor Bayer phase from the RGB
+    // ---- merged Bayer RAW for the DNG (sensor layout, 16 bit over the headroom: P165): every sensor Bayer site from the RGB
     if(mergedDng&&input.mergedDng){
-        const float k=16383.f/input.white;
-        const int red=input.cfa;
-        mergedDng->assign(size_t(W)*Ht,0);
-        mergeRowBands(Ht,[&](int y0,int y1){
-            for(int y=y0;y<y1;++y)for(int x=0;x<W;++x){
-                const int p=((y&1)<<1)|(x&1),c=p==red?0:p==(red^3)?2:1;
-                const size_t src=(size_t(y*gridOut)*tw+size_t(x*gridOut))*3+c;
-                const float v=std::clamp(out[src],0.f,1.f),black=input.black[p];
-                (*mergedDng)[size_t(y)*W+x]=uint16_t(std::clamp(std::lround((black+v*(input.white-black))*k),0L,16383L));
-            }
+        const float headroom=hybridWriteMergedDng(*mergedDng,W,Ht,input,[&](int x,int y,int c){
+            return out[(size_t(y*gridOut)*tw+size_t(x*gridOut))*3+c];
         });
+        report(hybridDngReport(headroom,W,Ht));
     }
     report("HYBRID MOSAIC NATIVE: total "+std::to_string(int(millis(Clock::now()-started)))+" ms (before the merge "
         +std::to_string(int(millis(prepDone-started)))+": pick "+std::to_string(int(millis(gainStart-started)))+" response "

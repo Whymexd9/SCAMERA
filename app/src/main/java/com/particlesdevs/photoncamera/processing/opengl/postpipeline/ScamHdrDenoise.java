@@ -156,8 +156,9 @@ public final class ScamHdrDenoise extends Node {
     @Override
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
-        if (PreferenceKeys.isHybridShot() && !PreferenceKeys.isHybridDenoiseEnabled()) {
-            // The hybrid's master switch «Шумоподавление» is off: the merge goes on untouched.
+        if (!PreferenceKeys.isHybridDenoiseEnabled()) {
+            // The master switch «Шумоподавление» is off: the merge goes on untouched (P165: on every shot, not only one
+            // processed under the hybrid's profile).
             WorkingTexture = previousNode.WorkingTexture;
             glProg.closed = true;
             Log.i("SCAM_PIPELINE", "denoise off (pref_scam_hybrid_denoise)");

@@ -349,6 +349,11 @@ public:
         metadata.has_as_shot_neutral = true;
     }
 
+    void setBaselineExposure(double ev) {
+        metadata.baseline_exposure = ev;
+        metadata.has_baseline_exposure = ev != 0.0;
+    }
+
     void setAsShotWhiteXY(double x, double y) {
         metadata.as_shot_white_xy[0] = x;
         metadata.as_shot_white_xy[1] = y;
@@ -697,6 +702,9 @@ public:
         if (metadata.has_analog_balance) {
             dng_image0->SetAnalogBalance(3, metadata.analog_balance);
         }
+        if (metadata.has_baseline_exposure) {
+            dng_image0->SetBaselineExposure(metadata.baseline_exposure);
+        }
 
         // Set illuminants
         dng_image0->SetCalibrationIlluminant1(metadata.calibration_illuminant1);
@@ -952,6 +960,13 @@ public:
                 creator->setAsShotNeutral(values);
                 env->ReleaseDoubleArrayElements(neutral, values, 0);
             }
+        }
+    }
+
+    JNIEXPORT void JNICALL Java_com_particlesdevs_photoncamera_processing_DngCreator_setBaselineExposure(JNIEnv *env, jobject obj, jlong creatorPtr, jdouble ev) {
+        DngCreator* creator = reinterpret_cast<DngCreator*>(creatorPtr);
+        if (creator) {
+            creator->setBaselineExposure(ev);
         }
     }
 

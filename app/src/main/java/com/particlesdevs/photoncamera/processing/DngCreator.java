@@ -28,6 +28,7 @@ public class DngCreator {
     private native ByteBuffer createDNG(long nativePtr, int width, int height, ByteBuffer rawImageData);
     private native void setOrientation(long nativePtr, int orientation);
     private native void setWhiteLevel(long nativePtr, double whiteLevel);
+    private native void setBaselineExposure(long nativePtr, double ev);
     private native void setBlackLevel(long nativePtr, short[] blackLevel);
     private native void setColorMatrix1(long nativePtr, double[] matrix);
     private native void setColorMatrix2(long nativePtr, double[] matrix);
@@ -103,6 +104,14 @@ public class DngCreator {
      */
     public void setWhiteLevel(double whiteLevel) {
         setWhiteLevel(nativePtr, whiteLevel);
+    }
+
+    /**
+     * P165: BaselineExposure (EV): a merged DNG written over its headroom (white = H x the N frames' white) says +log2(H), so a
+     * raw converter shows it as bright as the photo. 0 writes no tag.
+     */
+    public void setBaselineExposure(double ev) {
+        setBaselineExposure(nativePtr, ev);
     }
 
     /**
@@ -487,6 +496,7 @@ public class DngCreator {
         setAperture(parameters.aperture);
         setBlackLevel(blackLevel);
         setWhiteLevel(parameters.whiteLevel);
+        if (parameters.dngBaselineExposure != 0f) setBaselineExposure(parameters.dngBaselineExposure);
         setCalibrationIlluminant1((short) parameters.calibrationIlluminant1);
         setCalibrationIlluminant2((short) parameters.calibrationIlluminant2);
         setColorMatrix1(toDouble(parameters.ColorMatrix1));

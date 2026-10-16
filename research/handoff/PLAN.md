@@ -3909,6 +3909,35 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
 - Still open in P163: the LED-screen letters (first input); in DCG the LONG frames come x4 instead of x2 (ISO 1600 -> 3200;
   merged by their measured ratio, harmless); ExposureLimits is keyed by camera and RAW size only, so DCG and plain share it.
 
+
+
+### P165 - the denoise switch and the RAW: no denoise in the DNG, the ultrashort and bracketed frames in it (owner, 2026-10-16:
+«Перепроверь точно ли этот переключатель отключает все шумоподавление», «перепроверь чтобы у нас в Рав файлах не было никакого
+шумодава кроме склейки и также чтобы ультракороткие и длинные кадры были частью склейки у рав файлов», «Шумодава в раве просто
+не должно быть, вне зависимости от того что выставлено в этом переключателе»)
+- Checked: «Шумоподавление» (pref_scam_hybrid_denoise) gated every denoise of the photo - ScamHdrDenoise (the GCam-style finish
+  and its despeckle, the NLM route) and the ARK tone's bracket_denoise / chroma_denoise (ArkFusion, ArkCombine) - but only on a
+  shot processed under the hybrid's profile (isHybridShot); every shot is one since P129, the gate now does not ask.
+  ArkLumaSharpen only sharpens (its USM noise threshold limits the boost, smooths nothing); ScamRgb's highlight recovery and
+  the ARK colour from the half-size ArkLow are no denoise. Inside the merge (the worker) there is no denoise pass: the Sabre
+  kernel's widening at low SNR, the chroma difference where few frames are accepted and the Bento chroma sigma are the merge.
+- The DNG is the worker's merged Bayer (when saved: saveRAW >= 1), written straight from the merged RGB after the merge and
+  the RAW CA shift: no denoise at all, whatever the switch. The N, the bracketed (Shasta) and the ultrashort (Bento) frames are
+  all in that merge, but the 14-bit DNG clamped it at the N frames' white: what Bento took from the ultrashort frames (merged
+  RGB up to 3-10x N's white, the owner's 13:27 shots) was cut off.
+- DONE 2026-10-16: the merged DNG is 16 bit over its headroom H (the merge's highest level, 1 when nothing is above the N clip,
+  at most 16): hybridWriteMergedDng in all three merge paths, «HYBRID DNG: ... headroom=H ..., no denoise»; ScamProcessor
+  writes white 65535 and BaselineExposure log2(H) (DngCreator.setBaselineExposure -> dngCreator -> tinydngwriter tag 50730,
+  SRATIONAL), so a raw converter shows the DNG as bright as before with the highlights kept. Without Bento the DNG is as
+  before, at 16 bit. ScamHdrDenoise / ArkFusion: the master switch alone. ScamNoiseFactorReportTest.mergedDngHeadroomIsRead;
+  the worker builds (NDK), dngCreator compiles. Not seen on a phone: a Bento shot's DNG should open in a raw converter with
+  the window's highlights, the log says «DNG: merged burst RAW (N, bracketed and ultrashort frames), 16-bit, headroom x...».
+### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
+указывай»; not started)
+- Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach
+  the user, the diagnostics README) removed or renamed to our own names (as P55 did for LMC / NICE); code names and keys only
+  where they are user-visible or where renaming is safe (a stored key keeps its value through SettingsMigration).
+- Not in any changelog (owner).
 ## P109l - Snapdragon client attribution and VCF RAW boundary
 
 Typed AttributionSourceState spoof is implemented and observed on PD2454. An ordinary open followed by

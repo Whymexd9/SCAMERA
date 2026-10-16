@@ -605,6 +605,11 @@ public final class ScamHybridBurst implements ScamTransport {
     public static volatile boolean lastBentoApplied;
     /** Bento factor k of the last shot (the ultrashort content saturates at k in base-frame units) and the share of the mask where the ultrashort itself was clipped. */
     public static volatile float lastBentoFactor = 1f, lastBentoUsClipped = 0f;
+    /**
+     * P165: the merged DNG's headroom (the worker's «HYBRID DNG: ... headroom=»): its 16-bit white is this many times the N
+     * frames' white (the highlights Bento took from the ultrashort frames); 1 when nothing is above the N clip.
+     */
+    public static volatile float lastMergedDngHeadroom = 1f;
     /** P77: noise model factor the worker measured and merged with (HYBRID NOISE CHECK "-> model xK"), 1 = HAL model kept. */
     public static volatile float lastNoiseFactor = 1f;
     /** P80: the last hybrid RGB is IEEE half floats (6 B a pixel, the worker's rgb-half output), not float32. */

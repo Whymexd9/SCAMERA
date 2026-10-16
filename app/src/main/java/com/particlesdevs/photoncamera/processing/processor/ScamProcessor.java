@@ -532,18 +532,23 @@ public class ScamProcessor extends ProcessorBase {
             boolean imageSaved = false;
             try {
             if (scamMergedDng != null) {
-                // Whole-burst merge (like the merged DNG of GCam/SCAM), 14-bit levels.
+                // The whole burst's merge (the N frames, the bracketed and the ultrashort ones; nothing else, no denoise),
+                // P165: 16 bit over its headroom, BaselineExposure log2(headroom) keeps its brightness.
                 float[] black = processingParameters.blackLevel.clone();
                 int white = processingParameters.whiteLevel;
-                float k = 16383f / white;
+                float k = 65535f / white;
+                final float headroom = Math.max(1f, com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDngHeadroom);
                 for (int i = 0; i < 4; i++) processingParameters.blackLevel[i] = Math.round(black[i] * k);
-                processingParameters.whiteLevel = 16383;
+                processingParameters.whiteLevel = 65535;
+                processingParameters.dngBaselineExposure = headroom > 1.0001f ? (float) (Math.log(headroom) / Math.log(2)) : 0f;
                 try {
                     imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, scamMergedDng, processingParameters);
-                    Log.i("SCAM_HDR", "DNG: merged burst RAW (all N frames), 14-bit");
+                    Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "DNG: merged burst RAW (N, bracketed and ultrashort frames), "
+                            + "16-bit, headroom x%.3f, BaselineExposure %+.2f EV", headroom, processingParameters.dngBaselineExposure));
                 } finally {
                     System.arraycopy(black, 0, processingParameters.blackLevel, 0, 4);
                     processingParameters.whiteLevel = white;
+                    processingParameters.dngBaselineExposure = 0f;
                     Allocator.free(scamMergedDng);
                 }
             } else imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output,

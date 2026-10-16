@@ -16,6 +16,18 @@ public class ScamNoiseFactorReportTest {
         assertEquals(0.0625f, ScamNeuralClient.reportNumber(report, LINE, KEY, 1f), 1e-6f);
     }
 
+    /**
+     * P165: the merged DNG's headroom reaches the DNG writer (BaselineExposure log2 of it) through the worker's line, the
+     * number exactly as the worker prints it (hybridDngReport); without the line the DNG keeps the N frames' white.
+     */
+    @Test
+    public void mergedDngHeadroomIsRead() {
+        String report = "HYBRID BENTO: applied (success) factor=8.000009 frames=3\nHYBRID DNG: merged Bayer 4080x3064, 16-bit,"
+                + " headroom=10.1445 (N white at 1/10.145), no denoise\nHYBRID STAGES ms: total=1\n";
+        assertEquals(10.1445f, ScamNeuralClient.reportNumber(report, "HYBRID DNG:", "headroom=", 1f), 1e-4f);
+        assertEquals(1f, ScamNeuralClient.reportNumber("HYBRID STAGES ms: total=1\n", "HYBRID DNG:", "headroom=", 1f), 0f);
+    }
+
     @Test
     public void keptModelIsOne() {
         String report = "HYBRID NOISE CHECK: base vs frame 1, 1223 flat of 3072 blocks, measured / model 0.948544 -> model kept\n";
