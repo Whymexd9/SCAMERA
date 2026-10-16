@@ -1597,8 +1597,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
-    /** P179: a shot above this many pixels (200 MP) is merged with the camera closed. */
+    /** P179: a shot above this many pixels (200 MP) is merged with the camera in its plain session. */
     static final long HUGE_SHOT_PIXELS = 100_000_000L;
+    /** P179 (owner): frames of a 200 MP series, the last one ultrashort; the shortest ultrashort exposure asked for. */
+    static final int HUGE_SERIES = 4;
+    static final long ULTRASHORT_MIN_NS = 50_000L;
     /** P179: the camera was closed for a 200 MP merge; it opens again after it while the screen is up. */
     private volatile boolean mClosedForProcessing;
     /** P179: counted down once the camera closed for a 200 MP merge (the merge's memory budget is read after it). */
@@ -4892,15 +4895,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         android.app.ActivityManager manager = (android.app.ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE);
         android.app.ActivityManager.MemoryInfo memory = new android.app.ActivityManager.MemoryInfo();
         if (manager != null) manager.getMemoryInfo(memory);
-        int frames = VivoSdkFullRes.frameCount(requested, frameBytes, manager == null ? -1 : memory.availMem);
         final int rawWidth = mImageReaderRaw.getWidth(), rawHeight = mImageReaderRaw.getHeight();
-        if ((long) rawWidth * rawHeight > HUGE_SHOT_PIXELS && manager != null) {
-            // P179: a 200 MP series takes only the frames its merge can hold - the merge's budget with the memory the camera's
-            // RAW buffers give back when it closes for the merge (more frames only cost capture time: ~0.4 s each)
-            VivoSdkFullRes.Profile fullProfile = VivoSdkFullRes.profile(mVivoSdkCameraId);
-            int mergeable = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.captureFrames(rawWidth, rawHeight,
-                    fullProfile != null ? fullProfile.nativeBlock : 0, memory.availMem + 4L * frameBytes);
-            if (mergeable < frames) frames = mergeable;
+        final boolean hugeSeries = (long) rawWidth * rawHeight > HUGE_SHOT_PIXELS && nativeVivoFullRes();
+        // P179 (owner, 2026-10-16: «в склейке участвовало хотя бы 3 кадра и один из них был ультракороткий», «Сделай 4 кадра»):
+        // a 200 MP series is HUGE_SERIES frames whatever the frame setting - the normal ones, then one ultrashort - as far as
+        // the RAW memory guard allows (at least three)
+        final int frames = VivoSdkFullRes.frameCount(hugeSeries ? HUGE_SERIES : requested, frameBytes, manager == null ? -1 : memory.availMem);
+        if (hugeSeries) {
+            if (frames < 3) {
+                failPendingShutter(new IllegalStateException(Lang.t("Недостаточно памяти для серии 200 Мп", "Not enough memory for a 200 MP series")));
+                return;
+            }
         }
         final int count = frames;
         if (count < 1 || (manager != null && memory.lowMemory)) {
@@ -5039,6 +5044,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 VivoSdkFullRes.profile(mVivoSdkCameraId), mPreviewCaptureResult.getRequest(),
                 characteristics.getAvailableSessionKeys(), listener,
                 image -> mLiveMetadata.image(image.getTimestamp(), image));
+        if (hugeSeries) {
+            // P179: the last still of a 200 MP series is the ultrashort (Bento) one: the preview's exposure over the ultrashort
+            // factor at its sensitivity
+            CaptureResult latest = mPreviewCaptureResult;
+            Long exposure = latest == null ? null : latest.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+            Integer iso = latest == null ? null : latest.get(CaptureResult.SENSOR_SENSITIVITY);
+            if (exposure != null && iso != null && exposure > 0 && iso > 0) {
+                long es = Math.max(ULTRASHORT_MIN_NS, Math.round(exposure / HybridPlan.ultrashortFactor()));
+                capture.ultrashortLast(es, iso);
+                Log.i("SCAM_CAPTURE", "200 MP: " + (count - 1) + " N + 1 ultrashort " + es + " ns ISO " + iso
+                        + " (N " + exposure + " ns)");
+            }
+        }
         mVivoSdkCapture = capture;
         mInFlightRescue = () -> listener.failed(Lang.t("Серия SDK RAW прервана", "SDK RAW series interrupted"));
         cameraEventsListener.onCaptureStillPictureStarted("CaptureStarted!");

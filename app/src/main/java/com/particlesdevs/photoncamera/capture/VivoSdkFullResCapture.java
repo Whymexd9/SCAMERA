@@ -43,6 +43,7 @@ final class VivoSdkFullResCapture {
     private final CaptureRequest preview;
     private final List<CaptureRequest.Key<?>> sessionKeys;
     private final long generation, cutoff;
+    private final int count;
     private final List<CaptureRequest> requests = new ArrayList<>();
     private final List<TotalCaptureResult> results = new ArrayList<>();
     private final SerialRawCapture serial;
@@ -82,6 +83,7 @@ final class VivoSdkFullResCapture {
         this.rotation = rotation;
         this.generation = generation;
         this.cutoff = cutoff;
+        this.count = count;
         this.listener = listener;
         // P179: the native RAW-only series keeps up to NATIVE_IN_FLIGHT stills queued, so they follow each other at the
         // sensor's pace instead of each waiting behind the repeating preview requests (200 MP: ~5 s per frame one by one)
@@ -150,6 +152,19 @@ final class VivoSdkFullResCapture {
     void jpegDrained(long timestamp) { if (!stopped) serial.jpeg(timestamp); }
     void previewStarted(long timestamp) { if (!stopped && profile.nativeBlock > 1) router.request(timestamp, false); }
 
+    /** P179: the ultrashort still of a 200 MP series (its index, exposure and sensitivity), -1: none. */
+    private int ultrashortIndex = -1;
+    private long ultrashortExposureNs;
+    private int ultrashortIso;
+
+    /** P179: the last still of a native series is an ultrashort one (manual exposure); before {@link #start}. */
+    void ultrashortLast(long exposureNs, int iso) {
+        if (exposureNs <= 0 || iso <= 0 || count < 2 || profile.nativeBlock < 2) return;
+        ultrashortIndex = count - 1;
+        ultrashortExposureNs = exposureNs;
+        ultrashortIso = iso;
+    }
+
     /** P179: stills of the native RAW-only series in flight at once (the RAW reader holds 4 images). */
     static final int NATIVE_IN_FLIGHT = 3;
 
@@ -181,7 +196,15 @@ final class VivoSdkFullResCapture {
                         preview.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION));
                 builder.set(CaptureRequest.CONTROL_AE_REGIONS, preview.get(CaptureRequest.CONTROL_AE_REGIONS));
             }
-            builder.setTag(new ImageFrame.ScamCaptureTag(generation, index, ImageFrame.CaptureRole.NORMAL));
+            final boolean ultrashort = index == ultrashortIndex;
+            if (ultrashort) {
+                // P179: the Bento frame: manual exposure (the preview's over the ultrashort factor), the same sensitivity
+                builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
+                builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, ultrashortExposureNs);
+                builder.set(CaptureRequest.SENSOR_SENSITIVITY, ultrashortIso);
+            }
+            builder.setTag(new ImageFrame.ScamCaptureTag(generation, index,
+                    ultrashort ? ImageFrame.CaptureRole.EXTRA_SHORT : ImageFrame.CaptureRole.NORMAL));
             CaptureRequest request = builder.build();
             requests.add(request);
             session.capture(request, new CameraCaptureSession.CaptureCallback() {

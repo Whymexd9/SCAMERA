@@ -86,6 +86,12 @@ public final class ScamHybridBurst implements ScamTransport {
     static final double MEMORY_SHARE = 0.6;
     /** N frames kept whatever the memory budget says: the base and one more (a failed merge still falls back, never fails). */
     static final int MIN_NORMALS = 2;
+    /**
+     * P179 (owner, 2026-10-16: «хотя бы 3 кадра и один из них был ультракороткий», «Сделай 4 кадра»): above HUGE_INPUT_PIXELS
+     * the capture sized the series itself (three N, then one ultrashort; the camera in its plain session for the merge), so
+     * the merge keeps three N whatever its estimate says, and the ultrashort.
+     */
+    static final int HUGE_MIN_NORMALS = 3;
 
     private final int width, height, cfa;
     /** RGB size the worker returns: the sensor grid or the Sabre 2x grid (pref_scam_hybrid_output). */
@@ -244,7 +250,7 @@ public final class ScamHybridBurst implements ScamTransport {
             throw new IOException(Lang.t("SHDR: недостаточно свободной памяти для склейки 2× ",
                     "SHDR: not enough available memory for the requested Sabre 2x grid ") + outWidth + "x" + outHeight);
         if (budget != Integer.MAX_VALUE) {
-            final int byMemory = Math.max(MIN_NORMALS, budget - Math.min(reservedExtras, bracketed.size() + shorts.size()));
+            final int byMemory = Math.max(minNormals(width, height), budget - Math.min(reservedExtras, bracketed.size() + shorts.size()));
             Log.i("SCAM_HDR", "hybrid memory budget " + width + "x" + height + ": " + budget + " frames (available " + (available >> 20)
                     + " MB, fixed " + (long) (((long) width * height > HUGE_INPUT_PIXELS ? HUGE_FIXED_BYTES_PER_PIXEL : FIXED_BYTES_PER_PIXEL)
                     * outWidth * outHeight) / (1 << 20) + " MB, "
@@ -475,13 +481,9 @@ public final class ScamHybridBurst implements ScamTransport {
      * memory {@code availableBytes} available before the merge, minus the N-independent cost ({@link #FIXED_BYTES_PER_PIXEL}),
      * over {@link #perFrameBytes}. Integer.MAX_VALUE (no cap) at 16 MP or less or when the available memory is unknown.
      */
-    /**
-     * P179: the N frames a merge of a w x h stream can take with {@code availableBytes} free then (at least MIN_NORMALS), for a
-     * capture to take no more than that; Integer.MAX_VALUE at 16 MP or less or when the memory is unknown.
-     */
-    public static int captureFrames(int w, int h, int mosaicBlock, long availableBytes) {
-        final int budget = memoryFrameBudget(w, h, mosaicBlock, 1, availableBytes);
-        return budget == Integer.MAX_VALUE ? budget : Math.max(MIN_NORMALS, budget);
+    /** P179: the N frames a merge of a w x h stream keeps whatever its memory budget says. */
+    static int minNormals(int w, int h) {
+        return (long) w * h > HUGE_INPUT_PIXELS ? HUGE_MIN_NORMALS : MIN_NORMALS;
     }
 
     static int memoryFrameBudget(int w, int h, int mosaicBlock, long availableBytes) {

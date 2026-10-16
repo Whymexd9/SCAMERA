@@ -36,6 +36,11 @@ public class VivoSdkFullResCaptureTest {
         verifyProfile("3", new VivoSdkFullRes.Profile(512, 512, 4, 2), 4, 2);
     }
 
+    /** P179 (owner: «хотя бы 3 кадра и один из них был ультракороткий», «Сделай 4 кадра»): 3 N, then the ultrashort. */
+    @Test public void theLastStillOfA200MpSeriesIsTheUltrashortOne() throws Exception {
+        verifyProfile("3", new VivoSdkFullRes.Profile(512, 512, 4, 2), 4, 2, true);
+    }
+
     @Test public void nativeRawOnlyRejectsBayerPixelsInsteadOfCallingThemQuad() throws Exception {
         verifyProfile("3", new VivoSdkFullRes.Profile(512, 512, 4, 2), 1, 1);
     }
@@ -105,6 +110,13 @@ public class VivoSdkFullResCaptureTest {
     }
 
     private void verifyProfile(String cameraId, VivoSdkFullRes.Profile profile, int count, int inputBlock) throws Exception {
+        verifyProfile(cameraId, profile, count, inputBlock, false);
+    }
+
+    private static final long ULTRASHORT_NS = 125_000L;
+    private static final int ULTRASHORT_ISO = 100;
+
+    private void verifyProfile(String cameraId, VivoSdkFullRes.Profile profile, int count, int inputBlock, boolean ultrashort) throws Exception {
         int width = profile.size.getWidth(), height = profile.size.getHeight(), sensorMode = profile.sensorMode;
         boolean nativeRaw = profile.nativeBlock > 1;
         Class<?> nativeMetadata = Class.forName("android.hardware.camera2.impl.CameraMetadataNative");
@@ -170,6 +182,7 @@ public class VivoSdkFullResCaptureTest {
                     }
                     public void failed(String reason) { failures.add(reason); failed[0]++; }
                 });
+        if (ultrashort) capture.ultrashortLast(ULTRASHORT_NS, ULTRASHORT_ISO);
         capture.start();
         ByteBuffer pixels = RAW_PIXELS.duplicate();
         pixels.limit(width * height * 2);
@@ -232,6 +245,16 @@ public class VivoSdkFullResCaptureTest {
             java.util.Collection<?> targets = (java.util.Collection<?>) CaptureRequest.class.getMethod("getTargets").invoke(request);
             assertEquals(nativeRaw ? 1 : 2, targets.size());
             assertTrue(targets.contains(raw));
+            final boolean es = ultrashort && i == count - 1;
+            assertEquals(es ? ImageFrame.CaptureRole.EXTRA_SHORT : ImageFrame.CaptureRole.NORMAL,
+                    ((ImageFrame.ScamCaptureTag) request.getTag()).role);
+            if (es) {
+                assertEquals(Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF), request.get(CaptureRequest.CONTROL_AE_MODE));
+                assertEquals(Long.valueOf(ULTRASHORT_NS), request.get(CaptureRequest.SENSOR_EXPOSURE_TIME));
+                assertEquals(Integer.valueOf(ULTRASHORT_ISO), request.get(CaptureRequest.SENSOR_SENSITIVITY));
+            } else if (nativeRaw) {
+                assertEquals(Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_ON), request.get(CaptureRequest.CONTROL_AE_MODE));
+            }
             if (nativeRaw) {
                 assertEquals(Integer.valueOf(3), request.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION));
                 assertFalse(targets.contains(jpeg));

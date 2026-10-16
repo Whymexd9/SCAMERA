@@ -84,6 +84,10 @@ constexpr int kHybridGpuFrames=128;
 // strips, dispatches, the output grid and the memory held follow the real limits (storage block size, readback size, available
 // memory), each reported.
 constexpr int64_t kHybridClassicPixels=16000000;
+// P179 (owner, 2026-10-16: «хотя бы 3 кадра и один из них был ультракороткий», «Сделай 4 кадра»): above this a burst comes sized
+// by the app (three N and one ultrashort, the frames it leaves out freed, the camera in its plain session) and merges whole
+constexpr int64_t kHybridHugePixels=100000000;
+constexpr int kHybridHugeFrames=4;
 // MemAvailable of /proc/meminfo in bytes (0: unknown).
 inline uint64_t hybridMemAvailable(){
     std::ifstream f("/proc/meminfo");
@@ -7041,6 +7045,13 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
             }
         }
     }
+    const bool huge=int64_t(W)*Ht>kHybridHugePixels;
+    if(huge&&budget<std::min(n,kHybridHugeFrames)){
+        budget=std::min(n,kHybridHugeFrames);
+        report("HYBRID MOSAIC NATIVE: "+std::to_string(budget)+" frames (a "+std::to_string(int64_t(W)*Ht/1000000)+" MP burst merges whole, its ultrashort too)");
+    }
+    // the ultrashort takes a slot from 4 frames on (from 3 for a huge burst: two N and the ultrashort)
+    const int usFrom=huge?3:4;
     std::vector<int> normals;int us=-1,br=-1;
     for(int f=1;f<n;++f){
         const auto& fr=input.frames[f];
@@ -7050,10 +7061,10 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     }
     const float t0=input.frames[0].orderMs;
     std::stable_sort(normals.begin(),normals.end(),[&](int a,int c){return std::abs(input.frames[a].orderMs-t0)<std::abs(input.frames[c].orderMs-t0);});
-    const int extras=(us>=0&&budget>=4?1:0)+(br>=0&&budget>=6?1:0);
+    const int extras=(us>=0&&budget>=usFrom?1:0)+(br>=0&&budget>=6?1:0);
     std::vector<int> pick{0};
     for(int f:normals)if(int(pick.size())<budget-extras)pick.push_back(f);
-    if(us>=0&&budget>=4&&int(pick.size())<budget)pick.push_back(us);
+    if(us>=0&&budget>=usFrom&&int(pick.size())<budget)pick.push_back(us);
     if(br>=0&&budget>=6&&int(pick.size())<budget)pick.push_back(br);
     // P35: the window follows the colour block: mosaicWindow is in Quad sites (2x2 blocks), a Tetra T1 window is twice as wide in
     // sensor px (the same 1.5 binned px for the default 3), at most 8 (17x17 sites, 81 cells of kHybMergeMosaicFast); T2 runs the
