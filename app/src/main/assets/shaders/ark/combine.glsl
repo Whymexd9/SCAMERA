@@ -85,6 +85,7 @@ uniform int headroomU;              // 1: real headroom above 1 (clipped RAW rec
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
 #if HL_LANDING == 1
 uniform float hlSoftU;              // P154 highlight landing: where it starts below the data ceiling (fraction, 0 = off)
+uniform sampler2D ArkHl;            // P154: the blurred share of the ceiling (ark/hlmask.glsl), arkLow size, linear filter
 #endif
 #if COLOUR_LOOK == 1
 uniform vec3 skinU;                 // skin: protection of positive gains 0..1, hue shift -1..1 (x 12 deg), evenness 0..1
@@ -659,14 +660,19 @@ void main() {
     }
 #endif
     // P154 highlight landing (owner, X300 Ultra backlit window: the blown light rendered as a flat 0.92 grey whose gradient
-    // stopped at once at the plateau). Only with clipped data in the frame (headroomU: clipped RAW recovered / Bento): as the
-    // colour source approaches the data ceiling the display value lands on the white point - a smoothstep of
-    // max3(orig) / ceiling from 1 - hlSoftU to 1, zero slope at both ends, so the gradient fades into the plateau instead
-    // of stopping at it. It lands on the pixel's own colour at full brightness (max channel 1: a coloured light keeps its
-    // hue, the colour recovered below the clip stays), and a near-neutral one (saturation below ~0.1) on pure white.
+    // stopped at once at the plateau; a first per-pixel landing on white made the curtain folds between the white blobs
+    // read as grey stripes: «очень резкие переходы с уходом в серый»). Only with clipped data in the frame (headroomU):
+    // the landing follows the BLURRED share of the ceiling (ArkHl, a gaussian of ~1.2 % of the frame width), so a blown
+    // light lifts its bright surroundings gradually and fades into white; a shoulder 1 - (1 - t)^2 from 1 - hlSoftU of
+    // the ceiling (steepest at its start, zero slope at white); pixels that are not bright themselves (below ~0.15 - 0.45
+    // of the ceiling) are left alone, so dark objects in front of a light get no glow. It lands on the pixel's own colour
+    // at full brightness (max channel 1: a coloured light keeps its hue), a near-neutral one (saturation below ~0.1) on
+    // pure white.
 #if HL_LANDING == 1
     if (headroomU != 0 && hlSoftU > 0.0) {
-        float landing = smoothstep(1.0 - hlSoftU, 1.0, max3(orig) / clipCeiling);
+        float rBlur = texture(ArkHl, (vec2(xy) + 0.5) / vec2(size)).r;
+        float t = clamp((rBlur - (1.0 - hlSoftU)) / hlSoftU, 0.0, 1.0);
+        float landing = (1.0 - (1.0 - t) * (1.0 - t)) * smoothstep(0.15, 0.45, max3(orig) / clipCeiling);
         if (landing > 0.0) {
             float peak = max(max3(outRgb), 0.000001);
             float satOut = (peak - min(outRgb.r, min(outRgb.g, outRgb.b))) / peak;

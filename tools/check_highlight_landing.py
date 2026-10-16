@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-"""P154 «Мягкость засветов»: the highlight landing of ark/combine.glsl on the GPU (moderngl).
+"""P154 «Мягкость засветов»: the highlight landing of ark/combine.glsl and its mask ark/hlmask.glsl on the GPU (moderngl).
 
-Ramps up to the data ceiling (a grey, an orange light, a slightly blue white) go through the shader with clipped data in
-the frame (headroomU 1) without the landing (hlSoftU 0) and with it (0.5):
+ark/hlmask.glsl: the max channel over the ceiling, then a gaussian along x and along y, equals numpy's separable gaussian.
+
+Ramps up to the data ceiling (a grey, an orange light, a slightly blue white) go through ark/combine.glsl with clipped
+data in the frame (headroomU 1) without the landing (HL_LANDING 0) and with it (hlSoftU 0.7, ArkHl = the pixel's own share
+of the ceiling, i.e. a large blown area):
 - the blown grey ends on pure white (1.0 in every channel; without the landing it stays a grey below 0.99);
-- below the start of the landing (half the ceiling) nothing changes;
+- below the start of the landing (0.3 of the ceiling) nothing changes;
 - the output rises with the input and the last steps before the ceiling get smaller (the slope fades into the plateau);
 - the orange light keeps its hue on the way up (channel ratios as without the landing) and peaks at 1.0 in its max channel;
 - a slightly blue near-white ends on pure white;
+- a dark pixel inside a blown neighbourhood (ArkHl 1, own share below 0.15) is left alone (no glow on dark objects);
 - without clipped data (headroomU 0) the landing does nothing.
+A blown disc with a soft edge on a mid grey, with the real mask: the disc lands on white, and the steepest step across its
+edge is not steeper than without the landing (owner: «очень резкие переходы с уходом в серый» of the per-pixel landing).
 """
 import sys
 from pathlib import Path
@@ -37,10 +43,11 @@ def main():
         ctx = moderngl.create_standalone_context(backend='egl', require=430)
     except Exception:
         ctx = moderngl.create_standalone_context(require=430)
-    src = expand_imports((SH / 'ark/combine.glsl').read_text(encoding='utf-8'))
-    src_off = src
-    src = set_define(src, 'HL_LANDING', '1')
+    src_off = expand_imports((SH / 'ark/combine.glsl').read_text(encoding='utf-8'))
+    src = set_define(src_off, 'HL_LANDING', '1')
+    mask_src = expand_imports((SH / 'ark/hlmask.glsl').read_text(encoding='utf-8'))
     clip = 2.5
+    soft = 0.7
     k = np.geomspace(0.02, 1.0, 96)                      # fraction of the ceiling
     tints = {'grey': np.array([1.0, 1.0, 1.0]), 'orange': np.array([1.0, 0.55, 0.2]), 'cool white': np.array([0.95, 0.97, 1.0])}
     rows = [np.outer(k * clip, t) for t in tints.values()]
@@ -64,17 +71,66 @@ def main():
         t.filter = (moderngl.NEAREST, moderngl.NEAREST)
         return t
     ones = tex(np.ones((1, 1, 4), np.float32))
-    t_img, t_fused = tex(img), tex(fused)
     vs = '#version 300 es\nvoid main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));gl_Position=vec4(p*2.-1.,0,1);}'
-    prog = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + src)
+    prog_on = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + src)
+    prog_off = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + src_off)
+    prog_mask = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + mask_src)
 
-    def render(soft, headroom=1):
-        out = ctx.texture((W, H), 4, dtype='f4')
+    def run_mask(a, sigma):
+        """ark/hlmask.glsl: the share, then the gaussian along x and along y (ArkCombine's three passes)."""
+        h, w = a.shape[:2]
+        t_in = tex(a)
+        outs = [ctx.texture((w, h), 4, dtype='f4') for _ in range(3)]
+        src_t = t_in
+        for d, o in zip([(0, 0), (1, 0), (0, 1)], outs):
+            fb = ctx.framebuffer([o])
+            fb.use()
+            ctx.viewport = (0, 0, w, h)
+            src_t.use(0)
+            prog_mask['InputBuffer'].value = 0
+            prog_mask['dirU'].value = d
+            if 'invClipU' in prog_mask:
+                prog_mask['invClipU'].value = 1 / clip
+            if 'sigmaU' in prog_mask:
+                prog_mask['sigmaU'].value = sigma
+            ctx.vertex_array(prog_mask, []).render(vertices=3)
+            fb.release()
+            o.filter = (moderngl.NEAREST, moderngl.NEAREST)
+            src_t = o
+        res = np.frombuffer(outs[2].read(), np.float32).reshape(h, w, 4)[:, :, 0].copy()
+        for o in outs:
+            o.release()
+        t_in.release()
+        return res
+
+    def gauss_np(m, sigma):
+        r = int(np.ceil(3 * sigma))
+        g = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+        g /= g.sum()
+        pad = np.pad(m, ((0, 0), (r, r)), mode='edge')
+        m = np.stack([np.convolve(row, g, 'valid') for row in pad])
+        pad = np.pad(m, ((r, r), (0, 0)), mode='edge')
+        return np.stack([np.convolve(col, g, 'valid') for col in pad.T]).T
+
+    rng = np.random.default_rng(3)
+    probe = np.zeros((40, 56, 4), np.float32)
+    probe[..., :3] = rng.uniform(0, 1.2 * clip, (40, 56, 3)) * (rng.uniform(size=(40, 56, 1)) > 0.6)
+    got = run_mask(probe, 3.0)
+    want = gauss_np(np.clip(probe[..., :3].max(2) / clip, 0, 4), 3.0)
+    err = np.abs(got - want).max()
+    print('  hlmask: max |GPU - numpy gaussian| %.2e' % err)
+    check(err < 1e-4, 'ark/hlmask.glsl differs from the gaussian of the share (%.2e)' % err)
+
+    def render(image, fz, share, hl, headroom=1):
+        h, w = image.shape[:2]
+        prog = prog_on if hl > 0 else prog_off
+        t_img, t_fused, t_hl = tex(image), tex(fz), tex(np.repeat(share[..., None], 4, 2))
+        out = ctx.texture((w, h), 4, dtype='f4')
         fb = ctx.framebuffer([out])
         fb.use()
-        ctx.viewport = (0, 0, W, H)
+        ctx.viewport = (0, 0, w, h)
         units = {'InputBuffer': t_img, 'GainMap': ones, 'ArkLow': t_img, 'ArkColour': t_img, 'ArkFused': t_fused,
-                 'ArkDetailRef': t_img, 'ArkLumaS': t_img}
+                 'ArkDetailRef': t_img, 'ArkLumaS': t_img, 'ArkHl': t_hl}
         for i, (key, t) in enumerate(units.items()):
             if key in prog:
                 t.use(i)
@@ -84,19 +140,25 @@ def main():
                 'fU': 1, 'colourFU': 1, 'aeU': 1.0, 'clipU': clip, 'toeU': 0.05, 'gammaInvU': 1 / 2.2, 'macroU': 1.0,
                 'vibU': (0.0, 0.0, 0.0), 'detailGainU': 0.0, 'deltaChromaU': 1.0, 'filmToeU': 0.1, 'ditherU': 0,
                 'agxAU': (2.7, 1.35, 1.6, 1.0), 'agxBU': (-8.5, 3.5, 0.3, 4.0), 'headroomU': headroom, 'hlWhiteU': 0.0,
-                'hlSoftU': soft}
+                'hlSoftU': hl}
         for key, v in vals.items():
             if key in prog:
                 prog[key].value = v
         ctx.vertex_array(prog, []).render(vertices=3)
-        res = np.frombuffer(out.read(), np.float32).reshape(H, W, 4)[:, :, :3].reshape(-1, 3)[:n]
-        fb.release()
-        out.release()
-        return res.reshape(len(tints), len(k), 3)
+        res = np.frombuffer(out.read(), np.float32).reshape(h, w, 4)[:, :, :3].copy()
+        for t in (fb, out, t_img, t_fused, t_hl):
+            t.release()
+        return res
 
-    base, land = render(0.0), render(0.5)
+    own = np.zeros((H, W), np.float32)
+    own.reshape(-1)[:n] = cols.max(1) / clip
+
+    def ramps(hl, share=own, headroom=1):
+        return render(img, fused, share, hl, headroom).reshape(-1, 3)[:n].reshape(len(tints), len(k), 3)
+
+    base, land = ramps(0.0), ramps(soft)
     check(np.all(np.isfinite(land)), 'not finite')
-    below = k < 0.5
+    below = k < 1 - soft
     for i, name in enumerate(tints):
         b0, l0 = base[i], land[i]
         print('  %-10s ceiling: without %s  with %s' % (name, np.round(b0[-1], 4), np.round(l0[-1], 4)))
@@ -117,9 +179,38 @@ def main():
     hue = np.abs(rb - rl).max()
     print('  orange: max change of the channel ratios %.4f' % hue)
     check(hue < 0.01, 'the orange light changed its hue (%.4f)' % hue)
-    same = np.abs(render(0.5, headroom=0) - render(0.0, headroom=0)).max()
+    same = np.abs(ramps(soft, headroom=0) - ramps(0.0, headroom=0)).max()
     print('  without clipped data: max |with - without| %.2e' % same)
     check(same < 1e-6, 'the landing acts without clipped data')
+    # a dark pixel in a blown neighbourhood (ArkHl 1) is left alone
+    dark = np.abs(ramps(soft, share=np.ones_like(own))[:, k < 0.15] - base[:, k < 0.15]).max()
+    print('  dark pixels inside a blown neighbourhood: max |with - without| %.2e' % dark)
+    check(dark < 1e-6, 'the landing lifts dark pixels next to a light (%.2e)' % dark)
+
+    # a blown disc with a soft edge on a mid grey, the real mask on the same grid
+    S = 160
+    yy, xx = np.mgrid[0:S, 0:S].astype(np.float32)
+    rad = np.hypot(xx - S / 2, yy - S / 2)
+    lin = 0.18 * clip + (1.3 * clip - 0.18 * clip) * np.clip((44 - rad) / 18, 0, 1) ** 1.5
+    scene = np.zeros((S, S, 4), np.float32)
+    scene[..., :3] = np.minimum(lin, clip)[..., None]
+    lum_s = scene[..., :3] @ np.array([0.2126, 0.7152, 0.0722])
+    fz = np.zeros((S, S, 4), np.float32)
+    fz[..., 0] = np.interp(np.minimum(lum_s, table.max()), table, grid) ** (1 / 2.2)
+    mask = run_mask(scene, max(1.0, 0.012 * S))
+    d0 = render(scene, fz, mask, 0.0)
+    d1 = render(scene, fz, mask, soft)
+    centre = d1[S // 2, S // 2]
+    print('  blown disc: centre without %s  with %s' % (np.round(d0[S // 2, S // 2], 4), np.round(centre, 4)))
+    check(np.all(centre > 0.999), 'the blown disc is not pure white: %s' % centre)
+    # the edge rises further (to 1 instead of the grey plateau), so its steepest step is measured against its whole rise:
+    # the shape of the transition must not get sharper
+    row0, row1 = d0[S // 2, :, 1], d1[S // 2, :, 1]
+    s0 = np.abs(np.diff(row0)).max() / (row0.max() - row0.min())
+    s1 = np.abs(np.diff(row1)).max() / (row1.max() - row1.min())
+    print('  blown disc edge: steepest step / rise without %.4f  with %.4f' % (s0, s1))
+    check(s1 <= s0 * 1.05, 'the landing makes the edge of the blown disc sharper (%.4f > %.4f)' % (s1, s0))
+    check(np.all(np.diff(row1[:S // 2]) >= -1e-5), 'the edge of the blown disc does not rise monotonically')
     if FAILURES:
         print('highlight landing check FAILED (%d)' % len(FAILURES))
         return 1

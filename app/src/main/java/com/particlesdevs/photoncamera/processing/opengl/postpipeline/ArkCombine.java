@@ -58,6 +58,7 @@ public final class ArkCombine extends Node {
         final com.particlesdevs.photoncamera.processing.color.FilmLut lut = lutStrength > 0f && !lutName.isEmpty()
                 ? com.particlesdevs.photoncamera.processing.color.FilmLut.chosen(com.particlesdevs.photoncamera.app.ScameraApp.getAppContext(), lutName) : null;
         int lutTexture = 0;
+        GLTexture hlA = null, hlB = null;
         try {
             GLTexture colour = st.lowDn != null ? st.lowDn : st.low;
             int colourFactor = st.factor;
@@ -87,15 +88,39 @@ public final class ArkCombine extends Node {
                 glProg.setVar("detailClipU", sharp ? st.sharpMul : r.ae);
                 glProg.drawBlocks(st.detailRef);
             }
+            // P154: the highlight landing and the upward path to white (HL_LANDING 0 = the shader before P154)
+            final float hlSoft = Math.max(0f, Math.min(0.9f, ArkTone.value("hl_soft", 0.7f)));
+            final boolean realClip = ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f;
+            if (hlSoft > 0f && realClip) {
+                // the blurred share of the ceiling on the arkLow grid (ark/hlmask.glsl): max channel / ceiling, then a gaussian of
+                // 1.2 % of the width along x and y
+                final Point hlSize = st.low.mSize;
+                hlA = new GLTexture(hlSize, new GLFormat(GLFormat.DataType.FLOAT_16, 1), null, GL_LINEAR, GL_CLAMP_TO_EDGE);
+                hlB = new GLTexture(hlSize, new GLFormat(GLFormat.DataType.FLOAT_16, 1), null, GL_LINEAR, GL_CLAMP_TO_EDGE);
+                final float sigma = Math.max(1f, 0.012f * hlSize.x);
+                glProg.useAssetProgram("ark/hlmask", false);
+                glProg.setTexture("InputBuffer", st.low);
+                glProg.setVar("invClipU", 1f / Math.max(r.clip, 1e-6f));
+                glProg.setVar("dirU", 0, 0);
+                glProg.drawBlocks(hlB);
+                glProg.useAssetProgram("ark/hlmask", false);
+                glProg.setTexture("InputBuffer", hlB);
+                glProg.setVar("dirU", 1, 0);
+                glProg.setVar("sigmaU", sigma);
+                glProg.drawBlocks(hlA);
+                glProg.useAssetProgram("ark/hlmask", false);
+                glProg.setTexture("InputBuffer", hlA);
+                glProg.setVar("dirU", 0, 1);
+                glProg.setVar("sigmaU", sigma);
+                glProg.drawBlocks(hlB);
+            }
+            if (hlB != null) glProg.setDefine("HL_LANDING", 1);
             // P46 Display P3: the same shader with P3_OUT 1 (colour source, OKLab and gamut in P3); sRGB sets no define.
             if (pipeline.p3Output) glProg.setDefine("P3_OUT", 1);
             if (colourOn) glProg.setDefine("COLOUR_LOOK", 1);
             // P144: ACES / Uchimura / the own curve instead of AgX (TONE_OP 0, the AgX shader, otherwise)
             if (toneOp != com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX) glProg.setDefine("TONE_OP", 1);
             if (lut != null) glProg.setDefine("FILM_LUT", 1);
-            // P154: the highlight landing and the upward path to white (HL_LANDING 0 = the shader before P154)
-            final float hlSoft = Math.max(0f, Math.min(0.9f, ArkTone.value("hl_soft", 0.5f)));
-            if (hlSoft > 0f) glProg.setDefine("HL_LANDING", 1);
             glProg.useAssetProgram("ark/combine", false);
             if (lut != null) {
                 lutTexture = lut.upload();
@@ -113,6 +138,7 @@ public final class ArkCombine extends Node {
             glProg.setTexture("ArkDetailRef", st.detailRef != null ? st.detailRef : st.low);
             glProg.setVar("detailRefU", st.detailRef != null ? 1 : 0);
             glProg.setTexture("ArkLumaS", sharp ? st.lumaS : st.low);
+            if (hlB != null) glProg.setTexture("ArkHl", hlB);
             glProg.setVar("sharpU", sharp ? 1 : 0);
             glProg.setVar("sharpToneU", sharp ? r.ae / Math.max(st.sharpMul, 1e-6f) : 1f);
             glProg.setVar("fU", st.factor);
@@ -124,7 +150,7 @@ public final class ArkCombine extends Node {
             glProg.setVar("headroomU", ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f ? 1 : 0);
             glProg.setVar("hlWhiteU", Math.max(0f, Math.min(1f, ArkTone.value("hl_white", 0.15f))));
             // P154 «Мягкость засветов»: the landing of blown light on the white point starts this far below the ceiling
-            if (hlSoft > 0f) glProg.setVar("hlSoftU", hlSoft);
+            if (hlB != null) glProg.setVar("hlSoftU", hlSoft);
             glProg.setVar("toeU", ArkTone.value("aces_toe", 0.05f));
             glProg.setVar("gammaInvU", 1f / ArkTone.gamma());
             glProg.setVar("macroU", ArkTone.value("macro_contrast", 1.1f));
@@ -166,9 +192,11 @@ public final class ArkCombine extends Node {
             st.closeTextures();
             if (fallback != null) fallback.close();
             if (lutTexture != 0) android.opengl.GLES30.glDeleteTextures(1, new int[]{lutTexture}, 0);
+            if (hlA != null) hlA.close();
+            if (hlB != null) hlB.close();
         }
         Log.i("SCAM_PIPELINE", "ARK combine ae=" + r.ae + " clip=" + r.clip + " headroom=" + (ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f)
-                + " hlWhite=" + ArkTone.value("hl_white", 0.15f) + " hlSoft=" + ArkTone.value("hl_soft", 0.5f) + " grid=" + input.mSize.x + "x" + input.mSize.y
+                + " hlWhite=" + ArkTone.value("hl_white", 0.15f) + " hlSoft=" + ArkTone.value("hl_soft", 0.7f) + " grid=" + input.mSize.x + "x" + input.mSize.y
                 + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=arkMid" : " colour=arkLow") + " detail=" + detail
                 + (sharp ? " (ArkLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")
                 + (pipeline.p3Output ? " output=DisplayP3" : "") + (colourOn ? " colourLook" : "")

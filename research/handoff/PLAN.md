@@ -3651,6 +3651,17 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   start, monotonic, the last steps shrink, an orange light keeps its channel ratios, nothing without clipped data; in CI);
   check_colour_output still pins HL_LANDING 0 to the pre-P46 render. Not seen on a phone yet; the AgX desaturation of very
   saturated light below the clip is as before.
+- v2 2026-10-16 after the owner's look at the v1 preview («Тут очень резкие переходы с уходом в серый»): the per-pixel
+  smoothstep doubled the edge gradient of the curtain folds between the white blobs (p95 of |grad| 0.0066 -> 0.0122 on the
+  DCG window), the folds read as grey stripes. Now the landing follows the BLURRED share of the ceiling: ark/hlmask.glsl on
+  the arkLow grid (max channel / ceiling, then a gaussian of 1.2 % of the width along x and y; three passes into R16F
+  textures, only with a real clip and hl_soft > 0), sampled bilinearly by combine.glsl (ArkHl); the curve is a shoulder
+  1 - (1 - t)^2 from 1 - hl_soft of the ceiling (steepest at its start, zero slope at white), gated by the pixel's own
+  brightness (smoothstep 0.15 - 0.45 of the ceiling: dark objects in front of a light get no glow). Default 0.7. On the DCG
+  window (numpy of the same chain): p95 0.0071, the folds at 0.93 instead of grey stripes, the blown area 1.0.
+  check_highlight_landing: hlmask = numpy gaussian (1e-7), the ramps as before with the shoulder from 0.3, dark pixels inside
+  a blown neighbourhood untouched, a blown disc with a soft edge ends white and its steepest step relative to the whole rise
+  of the edge is lower (0.175 -> 0.128); glslc of all 32 combine variants + hlmask. Not seen on a phone yet.
 
 ### P141 - config files: saving, applying, moving between phones (owner, 2026-10-15: «Ещё добавь в план работы перепроверка работы с конфиг файлами. Проверь чтобы всё правильно сохранялось и применялось. Так же проверь чтобы на разных смартфонах с разными айди модулей конфиг применялся нормально и автоматически подставлялся/адаптировался под другое количество модулей, при этом сделай так чтобы модули не дублировались и не появлялись лишние»)
 - Audit «Сохранить / Восстановить» (BackupPreferences, RestorePreference, ModuleProfiles, module_profile_v2_* files, the
