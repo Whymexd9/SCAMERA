@@ -16,6 +16,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <unistd.h>
+#include <sys/mman.h>
 #include <signal.h>
 #include <sys/resource.h>
 
@@ -279,11 +280,21 @@ int main(int argc,char** argv) {
             // the reservation, SCAM_NO_MAP_WRITE) is written as before.
             bool mappedWrite=false;
             const double writeStarted=sinceStart();double filledAt=0;
+            // P179 (200 MP: the app was killed for LOW_MEMORY around here): an output above 1 GiB is not reserved at once - the
+            // file is sized (sparse) and its pages come as they are filled, while the source pages already written go back
+            // (madvise DONTNEED, page-aligned inside the source): the FP32 RGB slice by slice, each trailer after its copy. The
+            // same bytes in the same order; the peak drops from the whole output plus every source to about the sources alone.
+            auto release=[](const void* data,size_t bytes){
+                const uintptr_t page=uintptr_t(sysconf(_SC_PAGESIZE));
+                const uintptr_t a=(uintptr_t(data)+page-1)&~(page-1),e=(uintptr_t(data)+bytes)&~(page-1);
+                if(e>a)madvise(reinterpret_cast<void*>(a),e-a,MADV_DONTNEED);
+            };
             if(!std::getenv("SCAM_NO_MAP_WRITE")){
                 size_t total=0;for(const auto& part:parts)total+=part.second;
+                const bool sparse=total>(size_t(1)<<30);
                 struct stat st{};
                 if(total>0&&fstat(out,&st)==0&&S_ISREG(st.st_mode)&&st.st_size==0&&lseek(out,0,SEEK_CUR)==0
-                        &&fallocate(out,0,0,off_t(total))==0){
+                        &&(sparse?ftruncate(out,off_t(total)):fallocate(out,0,0,off_t(total)))==0){
                     void* map=mmap(nullptr,total,PROT_READ|PROT_WRITE,MAP_SHARED,out,0);
                     if(map!=MAP_FAILED){
                         char* dst=static_cast<char*>(map);
@@ -292,9 +303,15 @@ int main(int argc,char** argv) {
                             if(!src){ // P153: the RGB as halves, converted into the mapping on all cores
                                 uint16_t* h=reinterpret_cast<uint16_t*>(dst);const size_t n=result.size();
                                 constexpr size_t kElems=size_t(1)<<20;
-                                scam::mergeRowBands(int((n+kElems-1)/kElems),[&](int c0,int c1){
-                                    toHalf(h,size_t(c0)*kElems,std::min(n,size_t(c1)*kElems));
-                                });
+                                // P179: a sparse output in slices of 64 M values, each slice's FP32 pages released once halved
+                                const size_t slice=sparse?(size_t(64)<<20):n;
+                                for(size_t s0=0;s0<n;s0+=slice){
+                                    const size_t s1=std::min(n,s0+slice);
+                                    scam::mergeRowBands(int((s1-s0+kElems-1)/kElems),[&](int c0,int c1){
+                                        toHalf(h,s0+size_t(c0)*kElems,std::min(s1,s0+size_t(c1)*kElems));
+                                    });
+                                    if(sparse)release(result.data()+s0,(s1-s0)*sizeof(float));
+                                }
                                 dst+=bytes;continue;
                             }
                             constexpr size_t kChunk=size_t(4)<<20;
@@ -302,6 +319,7 @@ int main(int argc,char** argv) {
                                 const size_t a=size_t(c0)*kChunk,e=std::min(bytes,size_t(c1)*kChunk);
                                 if(e>a)std::memcpy(dst+a,src+a,e-a);
                             });
+                            if(sparse)release(src,bytes);
                             dst+=bytes;
                         }
                         filledAt=sinceStart();

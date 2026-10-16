@@ -64,6 +64,11 @@ public final class ScamHybridBurst implements ScamTransport {
     private static final String CONSERVATIVE_TUNING = "localAlign 0\nsabre61 0\nrimRatio 0\nchromaDiff 0\n";
     /** Threshold for the larger-stream memory planner and transport; not a resolution limit. */
     static final long CLASSIC_INPUT_PIXELS = 16_000_000L;
+    /**
+     * P179: above this a burst's frames the merge leaves out are freed before the worker runs, not after it (200 MP: 401 MB each,
+     * the app was killed for LOW_MEMORY); the first frame stays (the reference RAW of the DNG).
+     */
+    static final long HUGE_INPUT_PIXELS = 100_000_000L;
     /** P27 any resolution: worker memory that does not grow with N (output stage, RGB result transport), bytes per sensor pixel. */
     static final double FIXED_BYTES_PER_PIXEL = 40;
     /**
@@ -717,6 +722,7 @@ public final class ScamHybridBurst implements ScamTransport {
      */
     public static ByteBuffer process(Context context, List<ImageFrame> frames, Parameters p, boolean mergedDng) throws Exception {
         ScamHybridBurst burst = new ScamHybridBurst(frames, p, false);
+        if ((long) burst.width * burst.height > HUGE_INPUT_PIXELS) releaseLeftOut(frames, burst.frames);
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("ctor_done");
         burst.mergedDng = mergedDng;
         lastOutputSize = new android.graphics.Point(burst.outWidth, burst.outHeight);
@@ -777,6 +783,19 @@ public final class ScamHybridBurst implements ScamTransport {
             }
             return cpuSingle(burst);
         }
+    }
+
+    /** P179: the frames of {@code all} but the first that are not in {@code merged} are freed (a retry skips them). */
+    static int releaseLeftOut(List<ImageFrame> all, List<ImageFrame> merged) {
+        int freed = 0;
+        for (int i = 1; i < all.size(); i++) {
+            ImageFrame f = all.get(i);
+            if (f == null || f.buffer == null || merged.contains(f)) continue;
+            f.close();
+            freed++;
+        }
+        if (freed > 0) Log.i("SCAM_HDR", "hybrid: " + freed + " frames left out of the merge freed before it");
+        return freed;
     }
 
     private static String lastLine(String report, String prefix) {

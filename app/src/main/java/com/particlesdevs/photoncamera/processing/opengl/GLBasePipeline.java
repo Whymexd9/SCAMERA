@@ -24,6 +24,11 @@ public class GLBasePipeline implements AutoCloseable {
     private static final String TAG = "BasePipeline";
     private final int[] bind = new int[1];
     public GLTexture main1,main2,main3,main4, main5;
+    /**
+     * P179: main2 made on its first use (getMain) instead of up front: at 200 MP its 1.6 GB RGBA16F need not sit next to the
+     * input texture of the first stage. Null: main2 is made by whoever set it.
+     */
+    public java.util.function.Supplier<GLTexture> lazyMain2;
     public Settings mSettings;
     /**
      * Set once the remosaic has rearranged the mosaic into plain bayer. The
@@ -47,6 +52,11 @@ public class GLBasePipeline implements AutoCloseable {
     public GLTexture getMain(){
         if(texnum == 1) {
             texnum = 2;
+            if (main2 == null && lazyMain2 != null) {
+                java.util.function.Supplier<GLTexture> make = lazyMain2;
+                lazyMain2 = null;
+                main2 = make.get();
+            }
             return main2;
         } else {
             texnum = 1;
@@ -245,6 +255,7 @@ public class GLBasePipeline implements AutoCloseable {
             if (main2 != null) main2.close();
         }
         if (main3 != null) main3.close();
+        lazyMain2 = null;
         glint.glProgram.close();
         dumpTimings("runAll");
         Nodes.clear();
@@ -287,6 +298,7 @@ public class GLBasePipeline implements AutoCloseable {
             if (main2 != null) main2.close();
         }
         if (main3 != null) main3.close();
+        lazyMain2 = null;
         glint.glProgram.close();
         dumpTimings("runAllRaw");
         Nodes.clear();

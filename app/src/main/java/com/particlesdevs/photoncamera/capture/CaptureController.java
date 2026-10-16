@@ -1597,6 +1597,42 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
+    /** P179: a shot above this many pixels (200 MP) is merged with the camera closed. */
+    static final long HUGE_SHOT_PIXELS = 100_000_000L;
+    /** P179: the camera was closed for a 200 MP merge; it opens again after it while the screen is up. */
+    private volatile boolean mClosedForProcessing;
+
+    /**
+     * P179 (200 MP: the app was killed for LOW_MEMORY in the merge): the camera's 200 MP RAW buffers (4 x 401 MB) and the HAL's
+     * own stay allocated while the preview runs; for a 200 MP shot the camera closes once its frames are copied (the SDK lease
+     * goes back as the device closes) and opens again after the merge.
+     */
+    private void closeCameraForProcessing() {
+        mClosedForProcessing = true;
+        // posted (never run inside the capture's completion, which still clears the shot's state after this call)
+        new Handler(android.os.Looper.getMainLooper()).post(() -> {
+            if (!mClosedForProcessing) return;
+            Log.i("SCAM_CAPTURE", "200 MP: the camera closes for the merge (its RAW buffers and the HAL's go back)");
+            closeCamera();
+            ImageReader raw = mImageReaderRaw;
+            mImageReaderRaw = null;
+            if (raw != null) raw.close();
+        });
+    }
+
+    private void reopenCameraAfterProcessing() {
+        new Handler(android.os.Looper.getMainLooper()).post(() -> {
+            if (!mClosedForProcessing) return;
+            mClosedForProcessing = false;
+            boolean resumed = activity instanceof androidx.lifecycle.LifecycleOwner
+                    && ((androidx.lifecycle.LifecycleOwner) activity).getLifecycle().getCurrentState()
+                    .isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED);
+            if (!resumed || isCameraResumed) return; // left meanwhile (onResume opens it) or opened again already
+            Log.i("SCAM_CAPTURE", "200 MP: the merge is done, the camera opens again");
+            restartCamera();
+        });
+    }
+
     public void closeCamera() {
         boolean wasOpening = mCameraOpening.get();
         VivoSdkFullResCapture sdkCapture = mVivoSdkCapture;
@@ -4856,6 +4892,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final int rotation = ScameraApp.getGravity().getCameraRotation(mSensorOrientation);
         final com.particlesdevs.photoncamera.util.ShotArena arena = ScameraApp.getSettings().binning
                 ? null : shotArena(count, (long) mImageReaderRaw.getWidth() * mImageReaderRaw.getHeight() * 2);
+        // P179: a 200 MP shot is merged with the camera closed (its own RAW buffers and the HAL's are free for the merge)
+        final boolean hugeShot = (long) mImageReaderRaw.getWidth() * mImageReaderRaw.getHeight() > HUGE_SHOT_PIXELS;
         saver.shotArena = arena;
         mShotArena = arena;
         final java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean();
@@ -4895,6 +4933,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     final com.particlesdevs.photoncamera.processing.ShotTimeline timeline =
                             com.particlesdevs.photoncamera.processing.ShotTimeline.detach();
                     sScamPending.incrementAndGet();
+                    if (hugeShot) closeCameraForProcessing();
                     SCAM_PROCESSING.execute(() -> {
                         com.particlesdevs.photoncamera.processing.ShotTimeline.attach(timeline);
                         try {
@@ -4907,6 +4946,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             if (arena != null) arena.release();
                             sScamPending.decrementAndGet();
                             com.particlesdevs.photoncamera.processing.ShotTimeline.print();
+                            if (hugeShot) reopenCameraAfterProcessing();
                         }
                     });
                     done.set(true);

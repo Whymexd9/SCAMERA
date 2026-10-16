@@ -566,9 +566,16 @@ public final class ScamRgb extends Node {
             p.GainMap=new GLTexture(p.mParameters.mapSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),
                     BufferUtils.getFrom(p.mParameters.gainMap),GL_LINEAR,GL_CLAMP_TO_EDGE);
             p.main1=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
-            p.main2=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
-            p.main3=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
-            if(largeTwoX){requireTextureStorage(p.main1);requireTextureStorage(p.main2);requireTextureStorage(p.main3);}
+            // P179: no main3 (nothing swaps it in any more: swap3 has no caller; 1.6 GB at 200 MP), and above 100 MP main2 is made
+            // on its first use, after the input texture is gone, instead of next to it
+            p.main3=null;
+            if((long)size.x*size.y>100_000_000L&&!largeTwoX){
+                final Point mainSize=new Point(size);
+                p.lazyMain2=()->new GLTexture(mainSize,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
+            } else {
+                p.main2=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
+            }
+            if(largeTwoX){requireTextureStorage(p.main1);requireTextureStorage(p.main2);}
             int ox=0,oy=0; // «16:9»: the frames arrive cropped (Wide169, P118)
             // Sabre 2x grid: the local chroma blocks keep their SENSOR size (8 x 8), sampled one sensor pixel apart.
             final int s=Math.max(1,Math.round(p.mParameters.outputScale));

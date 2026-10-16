@@ -587,6 +587,13 @@ public class ScamProcessor extends ProcessorBase {
         }
 
         processingStage = "RAW post-processing";
+        // P179 (200 MP: LOW_MEMORY): the hybrid's pipeline takes the merged RGB (scamRgbOwned), not the reference RAW, which is
+        // only held for the post_ab comparison now: above 16 MP it goes before the pipeline (401 MB at 200 MP).
+        if (hybridShot && processingParameters.scamRgbOwned && (long) width * height > 16_000_000L
+                && !com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostAb.wanted(processingParameters)) {
+            Allocator.free(output);
+            output = null;
+        }
         ByteBuffer jpegInput = output;
         // SCAM HDR hybrid on the Sabre 2x grid: the RGB is larger than the sensor grid (the DNG above stayed sensor
         // size). Like mosaic SR, the pipeline size follows the RGB; the LSC map is sampled in normalised coordinates.

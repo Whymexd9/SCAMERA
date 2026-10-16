@@ -18,6 +18,7 @@
 #include <mutex>
 #include <sys/mman.h>
 #include <fcntl.h>
+#include <linux/falloc.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 std::atomic<long> memoryCount{0};
@@ -43,9 +44,22 @@ struct Arena { int id; int fd; uint8_t* base; size_t size; long refs; bool relea
 std::mutex arenaLock;
 std::vector<Arena> arenas;
 int nextArenaId = 1;
-void slotUnrefLocked(size_t index, size_t offset) {
+// True when the last view of the slot went.
+bool slotUnrefLocked(size_t index, size_t offset) {
     auto it = arenas[index].slots.find(offset);
-    if (it != arenas[index].slots.end() && --it->second <= 0) arenas[index].slots.erase(it);
+    if (it != arenas[index].slots.end() && --it->second <= 0) {
+        arenas[index].slots.erase(it);
+        return true;
+    }
+    return false;
+}
+// P179: the pages of a large slot whose last view went go back to the system at once (a hole punched into the memfd), not
+// only when the whole arena is unmapped: a 200 MP burst's frames the merge leaves out are 401 MB each. The slot reads as
+// zeros afterwards and is written again before any new view of it (the ZSL ring); small slots are left as they were.
+constexpr size_t kPunchBytes = size_t(64) << 20;
+void punchLocked(size_t index, size_t offset, size_t bytes) {
+    if (bytes < kPunchBytes || offset + bytes > arenas[index].size) return;
+    fallocate(arenas[index].fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off_t(offset), off_t(bytes));
 }
 void unmapLocked(size_t index) {
     munmap(arenas[index].base, arenas[index].size);
@@ -675,7 +689,8 @@ Java_com_particlesdevs_photoncamera_util_Allocator_free(JNIEnv *env, jclass claz
         std::lock_guard<std::mutex> lock(arenaLock);
         const long i = containingLocked(ptr);
         if (i >= 0) {
-            slotUnrefLocked(size_t(i), size_t(static_cast<uint8_t*>(ptr) - arenas[size_t(i)].base));
+            const size_t offset = size_t(static_cast<uint8_t*>(ptr) - arenas[size_t(i)].base);
+            if (slotUnrefLocked(size_t(i), offset) && capacity > 0) punchLocked(size_t(i), offset, size_t(capacity));
             if (--arenas[size_t(i)].refs <= 0 && arenas[size_t(i)].released) unmapLocked(size_t(i));
             return;
         }

@@ -91,8 +91,41 @@ public final class ScamNeuralClient {
                 catch (android.system.ErrnoException e) { throw new IOException(e); }
             }, dst, position, READ_PART);
         }
+        /** P179: the memfd cut to {@code size} bytes (the pages behind it go back). */
+        void truncate(long size) throws IOException {
+            try { android.system.Os.ftruncate(fd.getFileDescriptor(), size); }
+            catch (android.system.ErrnoException e) { throw new IOException(e); }
+        }
         @Override public void close() { try { fd.close(); } catch (IOException ignored) {} }
         static SharedMemory wrap(android.os.ParcelFileDescriptor fd) { return new SharedMemory(fd); }
+    }
+    /** P179: the slice of a shrinking read (a large result read from its end, the memfd cut behind each slice). */
+    static final int SHRINK_SLICE = 256 << 20;
+    interface Truncatable { void truncate(long size) throws IOException; }
+    /**
+     * P179: dst.remaining() bytes from {@code position} into dst read from the end in slices of {@code slice} bytes, the source cut
+     * to each slice's start once it is read (so the source and dst are never both whole); dst's position ends at its limit. The
+     * same bytes as {@link #readParallel}.
+     */
+    static void readShrinking(PositionalReader reader, Truncatable source, ByteBuffer dst, long position, int slice) throws IOException {
+        final int start = dst.position(), total = dst.remaining();
+        for (int end = total; end > 0; ) {
+            final int a = Math.max(0, end - slice);
+            final ByteBuffer d = dst.duplicate();
+            d.limit(start + end);
+            d.position(start + a);
+            readParallel(reader, d, position + a, READ_PART);
+            source.truncate(position + a);
+            end = a;
+        }
+        dst.position(start + total);
+    }
+    private static void readShrinking(SharedMemory m, ByteBuffer dst, long position, int slice) throws IOException {
+        final java.io.FileDescriptor raw = m.fd.getFileDescriptor();
+        readShrinking((d, at) -> {
+            try { return android.system.Os.pread(raw, d, at); }
+            catch (android.system.ErrnoException e) { throw new IOException(e); }
+        }, m::truncate, dst, position, slice);
     }
     /** A positional read (pread): bytes from {@code position} into dst from its position, the count read (0 / -1 = end). */
     interface PositionalReader { int read(ByteBuffer dst, long position) throws IOException; }
@@ -504,32 +537,38 @@ public final class ScamNeuralClient {
                 ScamHybridBurst.lastNoiseFactor=noiseK>=1f/16&&noiseK<=4f?noiseK:1f;
                 ScamHybridBurst.lastRgbHalf=rgbHalf;}
             final long readStart=android.os.SystemClock.elapsedRealtime();
+            // P179 (200 MP: the app was killed for LOW_MEMORY): an output above 1 GiB is read from its end and the memfd shortened
+            // behind each read, so the result and the memfd are never both whole at once (the same bytes; trailers first, then
+            // the RGB in slices from its end).
+            final boolean shrink=scamOut!=null&&outputBytes>(1L<<30);
             ByteBuffer result=(burst!=null||scamBurst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
             if(result==null)throw new IOException(Lang.t("Недостаточно памяти для результата","Not enough memory for the result"));
             result.order(ByteOrder.nativeOrder());
-            try{
-                if(scamOut!=null)scamOut.readFully(result,0); // P48: parallel pread of the memfd
-                else try(FileChannel channel=new FileInputStream(output).getChannel()){
-                    long position=0;
-                    while(result.hasRemaining()){int n=channel.read(result,position);if(n<0)throw new EOFException(Lang.t("Неполный результат","Incomplete result"));position+=n;}
+            if(!shrink){
+                try{
+                    if(scamOut!=null)scamOut.readFully(result,0); // P48: parallel pread of the memfd
+                    else try(FileChannel channel=new FileInputStream(output).getChannel()){
+                        long position=0;
+                        while(result.hasRemaining()){int n=channel.read(result,position);if(n<0)throw new EOFException(Lang.t("Неполный результат","Incomplete result"));position+=n;}
+                    }
                 }
+                catch(Exception e){if(burst!=null||scamBurst!=null)com.particlesdevs.photoncamera.util.Allocator.free(result);throw e;}
+                result.flip();
             }
-            catch(Exception e){if(burst!=null||scamBurst!=null)com.particlesdevs.photoncamera.util.Allocator.free(result);throw e;}
-            result.flip();
-            if(dngBytes>0){
-                ByteBuffer dng=com.particlesdevs.photoncamera.util.Allocator.allocate((int)dngBytes);
-                if(dng!=null){
-                    dng.order(ByteOrder.nativeOrder());
-                    try{
-                        if(scamOut!=null)scamOut.readFully(dng,expected);
-                        else try(FileChannel channel=new FileInputStream(output).getChannel()){
-                            long position=expected;
-                            while(dng.hasRemaining()){int n=channel.read(dng,position);if(n<0)throw new EOFException(Lang.t("Неполный RAW","Incomplete RAW"));position+=n;}
-                        }
-                        dng.flip();ScamHybridBurst.lastMergedDng=dng;
-                    }catch(Exception e){com.particlesdevs.photoncamera.util.Allocator.free(dng);log.accept("CLIENT: merged DNG not read: "+e);}
-                }
-            }
+            // the trailers from the last one back (a shrinking read drops each from the memfd once it is read)
+            ByteBuffer clip=null;
+            if(clipBytes>0)try{clip=ByteBuffer.allocateDirect((int)clipBytes);}catch(OutOfMemoryError oom){log.accept("CLIENT: clip flags skipped: "+oom);}
+            if(clip!=null){
+                try{
+                    if(scamOut!=null)scamOut.readFully(clip,expected+dngBytes+effBytes);
+                    else try(FileChannel channel=new FileInputStream(output).getChannel()){
+                        long position=expected+dngBytes+effBytes;
+                        while(clip.hasRemaining()){int n=channel.read(clip,position);if(n<0)throw new EOFException(Lang.t("Неполные флаги клипа","Incomplete clip flags"));position+=n;}
+                    }
+                    clip.flip();ScamRgb.lastClipFlags=clip;
+                }catch(Exception e){log.accept("CLIENT: clip flags not read: "+e);}
+            }else if(scamBurst!=null&&scamBurst.clipFlags())log.accept("CLIENT: clip flags asked for but not returned");
+            if(shrink)scamOut.truncate(expected+dngBytes+effBytes);
             // P27 any resolution: the two optional trailers live on the Java heap (1 B per output pixel each); a failed allocation
             // (OutOfMemoryError, not an Exception) skips the trailer instead of the shot.
             ByteBuffer eff=null;
@@ -544,18 +583,30 @@ public final class ScamNeuralClient {
                     eff.flip();ScamHybridBurst.lastEffectiveFrames=eff;
                 }catch(Exception e){log.accept("CLIENT: effective-frame map not read: "+e);}
             }
-            ByteBuffer clip=null;
-            if(clipBytes>0)try{clip=ByteBuffer.allocateDirect((int)clipBytes);}catch(OutOfMemoryError oom){log.accept("CLIENT: clip flags skipped: "+oom);}
-            if(clip!=null){
+            if(shrink)scamOut.truncate(expected+dngBytes);
+            if(dngBytes>0){
+                ByteBuffer dng=com.particlesdevs.photoncamera.util.Allocator.allocate((int)dngBytes);
+                if(dng!=null){
+                    dng.order(ByteOrder.nativeOrder());
+                    try{
+                        if(scamOut!=null)scamOut.readFully(dng,expected);
+                        else try(FileChannel channel=new FileInputStream(output).getChannel()){
+                            long position=expected;
+                            while(dng.hasRemaining()){int n=channel.read(dng,position);if(n<0)throw new EOFException(Lang.t("Неполный RAW","Incomplete RAW"));position+=n;}
+                        }
+                        dng.flip();ScamHybridBurst.lastMergedDng=dng;
+                    }catch(Exception e){com.particlesdevs.photoncamera.util.Allocator.free(dng);log.accept("CLIENT: merged DNG not read: "+e);}
+                }
+            }
+            if(shrink){
                 try{
-                    if(scamOut!=null)scamOut.readFully(clip,expected+dngBytes+effBytes);
-                    else try(FileChannel channel=new FileInputStream(output).getChannel()){
-                        long position=expected+dngBytes+effBytes;
-                        while(clip.hasRemaining()){int n=channel.read(clip,position);if(n<0)throw new EOFException(Lang.t("Неполные флаги клипа","Incomplete clip flags"));position+=n;}
-                    }
-                    clip.flip();ScamRgb.lastClipFlags=clip;
-                }catch(Exception e){log.accept("CLIENT: clip flags not read: "+e);}
-            }else if(scamBurst!=null&&scamBurst.clipFlags())log.accept("CLIENT: clip flags asked for but not returned");
+                    scamOut.truncate(expected);
+                    readShrinking(scamOut,result,0,SHRINK_SLICE);
+                }
+                catch(Exception e){com.particlesdevs.photoncamera.util.Allocator.free(result);throw e;}
+                result.flip();
+                log.accept("CLIENT: "+(outputBytes>>20)+" MB read from the end, the memfd shortened behind each read");
+            }
             if(scamBurst!=null)ScamDiagnostics.buffer("02-after-ivst",result,ow,oh,3,true,rgbHalf);
             if(burst!=null){if(validatedHexProfiles.size()>=32)validatedHexProfiles.clear();validatedHexProfiles.add(profileKey);saveHexProfiles(context);}
             log.accept("HEX CLIENT OUTPUT ms="+(android.os.SystemClock.elapsedRealtime()-readStart));

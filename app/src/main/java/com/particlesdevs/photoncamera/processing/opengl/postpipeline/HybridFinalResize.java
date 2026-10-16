@@ -62,6 +62,7 @@ public class HybridFinalResize extends Node {
         final long started = System.nanoTime();
         // The two idle ping-pong textures (and the scratch one) are not needed any more: free them before the
         // allocation so the GPU peak drops instead of growing (runAll would only close them after the readback).
+        basePipeline.lazyMain2 = null; // P179: never made now
         GLTexture[] mains = {basePipeline.main1, basePipeline.main2, basePipeline.main3};
         for (int i = 0; i < mains.length; i++) {
             if (mains[i] != null && mains[i] != in) {
