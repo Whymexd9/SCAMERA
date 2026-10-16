@@ -166,6 +166,7 @@ int main(int argc,char** argv) {
             const double mappedMs=sinceStart();
             std::vector<uint16_t> mergedDng;
             std::vector<uint8_t> effMap,clipFlags;
+            bool noEffMap=false; // P187: header flag 16 (or SCAM_NO_EFFMAP in an offline replay): no effective-frame map
             std::vector<float> result;
             // SCAM Hybrid merge (Sabre 6.1 kernel + SCAM 9.6 front end, Bento, Shasta; any GPU, no model):
             // requested by the app with the job marker, or SCAM_HYBRID=1 for an offline replay.
@@ -196,8 +197,11 @@ int main(int argc,char** argv) {
                 // (external files dir, /data/local/tmp) must not add a trailer it did not ask for.
                 const bool wantClipFlags=hin.clipFlags||(tuning.clipFlags&&std::getenv("SCAM_HYBRID"))
                         ||access((std::string(argv[2])+"/clip-flags").c_str(),F_OK)==0;
+                if(std::getenv("SCAM_NO_EFFMAP"))hin.noEffMap=true;
+                noEffMap=hin.noEffMap;
+                if(noEffMap)report("HYBRID EFFECTIVE MAP: not made (header flag 16: the app reads none at this size)");
                 worker_crash::mark("hybrid merge");
-                result=scam::hybridReconstruct(hin,tuning,alignment,report,&mergedDng,&effMap,nullptr,wantClipFlags?&clipFlags:nullptr);
+                result=scam::hybridReconstruct(hin,tuning,alignment,report,&mergedDng,noEffMap?nullptr:&effMap,nullptr,wantClipFlags?&clipFlags:nullptr);
             } else {
             const auto& input=mapped->burst;
             scam::ScamExecute forward;
@@ -268,7 +272,9 @@ int main(int argc,char** argv) {
             if(!effMap.empty()&&effMap.size()*3==result.size())parts.emplace_back(effMap.data(),effMap.size());
             // Optional third trailer (only on request, after the effective map): clip flags, uint8 per output pixel (bits: 0/1/2 R/G/B
             // from the clipped mean, 3 clip border, 4 Bento mask, 5 ultrashort clipped mean).
-            if(!clipFlags.empty()&&clipFlags.size()==effMap.size())parts.emplace_back(clipFlags.data(),clipFlags.size());
+            // P187: without the map (header flag 16) they follow the RGB / the merged RAW directly
+            if(!clipFlags.empty()&&(noEffMap?clipFlags.size()*3==result.size():clipFlags.size()==effMap.size()))
+                parts.emplace_back(clipFlags.data(),clipFlags.size());
             // P48 (research/speed/PLAIN_SHOT_SPEED.md): the output (the app's memfd, or a replay's file) reserved with fallocate,
             // mapped and filled on all cores: write() moved the 600 MB of the 2x grid on one core (~300 ms on the vivo X200 Ultra).
             // The same bytes in the same order; anything the mapping cannot take (a pipe, a sealed or non-empty file, no memory for

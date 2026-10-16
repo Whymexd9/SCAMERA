@@ -373,6 +373,9 @@ class DNGImage {
   /// Write aux IFD data and strip image data to stream.
   bool WriteDataToStream(std::ostream *ofs) const;
 
+  /// P187: the bytes WriteDataToStream writes, into `dst` (GetDataSize() bytes) instead of a stream.
+  bool WriteDataTo(unsigned char *dst) const;
+
   ///
   /// Write IFD to stream.
   ///
@@ -2885,6 +2888,59 @@ bool DNGImage::WriteDataToStream(std::ostream *ofs) const {
   return true;
 }
 
+bool DNGImage::WriteDataTo(unsigned char *dst) const {
+  // P187: the checks and the endian swap of WriteDataToStream, without its vector copy of the data
+  const std::string data = data_os_.str();
+  if ((data.length() == 0)) {
+    err_ += "Empty IFD data and image data.\n";
+    return false;
+  }
+
+  if (bits_per_samples_.empty()) {
+    err_ += "BitsPerSample is not set\n";
+    return false;
+  }
+
+  for (size_t i = 0; i < bits_per_samples_.size(); i++) {
+    if (bits_per_samples_[i] == 0) {
+      err_ += std::to_string(i) + "'th BitsPerSample is zero";
+      return false;
+    }
+  }
+
+  if (samples_per_pixels_ == 0) {
+    err_ += "SamplesPerPixels is not set or zero.";
+    return false;
+  }
+
+  memcpy(dst, data.data(), data.size());
+
+  if (data_strip_bytes_ != 0 && swap_endian_) {
+    // FIXME(syoyo): Assume all channels use sample bps
+    uint32_t bps = bits_per_samples_[0];
+    if (bps == 16) {
+      size_t n = data_strip_bytes_ / sizeof(uint16_t);
+      uint16_t *ptr = reinterpret_cast<uint16_t *>(dst + data_strip_offset_);
+      for (size_t i = 0; i < n; i++) {
+        swap2(&ptr[i]);
+      }
+    } else if (bps == 32) {
+      size_t n = data_strip_bytes_ / sizeof(uint32_t);
+      uint32_t *ptr = reinterpret_cast<uint32_t *>(dst + data_strip_offset_);
+      for (size_t i = 0; i < n; i++) {
+        swap4(&ptr[i]);
+      }
+    } else if (bps == 64) {
+      size_t n = data_strip_bytes_ / sizeof(uint64_t);
+      uint64_t *ptr = reinterpret_cast<uint64_t *>(dst + data_strip_offset_);
+      for (size_t i = 0; i < n; i++) {
+        swap8(&ptr[i]);
+      }
+    }
+  }
+  return true;
+}
+
 bool DNGImage::WriteIFDToStream(const unsigned int data_base_offset,
                                 const unsigned int strip_offset,
                                 std::ostream *ofs) const {
@@ -3123,29 +3179,15 @@ void* DNGWriter::WriteToMemory(size_t *size, std::string *err, size_t* strip_off
 
   assert(header.str().length() == 8);
 
-  // 3. Write header
-  std::ostringstream oss;
-  oss.write(header.str().c_str(), static_cast<std::streamsize>(header.str().length()));
-
-  // 4. Write image and meta data
-  // TODO(syoyo): Write IFD first, then image/meta data
-  for (size_t i = 0; i < images_.size(); i++) {
-    bool ok = images_[i]->WriteDataToStream(&oss);
-    if (!ok) {
-      if (err) {
-        std::stringstream ss;
-        ss << "Failed to write data at image[" << i << "]. err = " << images_[i]->Error() << "\n";
-        (*err) += ss.str();
-      }
-      return nullptr;
-    }
-  }
-
-  // 5. Write IFD entries;
+  // 3.-6. P187: the file goes straight into one buffer of its final size - the header, every image's data, then the IFD
+  // entries - instead of a stream that copied the image data three more times (a vector, the stream, its str(); at 200 MP
+  // up to 2.4 GB next to the image). The same bytes in the same order: the IFDs come after all the data, as before, and the
+  // next-IFD offsets count the header and the data in front of them.
+  std::ostringstream ifds;
   for (size_t i = 0; i < images_.size(); i++) {
     bool ok = images_[i]->WriteIFDToStream(
         static_cast<unsigned int>(data_offset_table[i]),
-        static_cast<unsigned int>(strip_offset_table[i]), &oss);
+        static_cast<unsigned int>(strip_offset_table[i]), &ifds);
     if (!ok) {
       if (err) {
         std::stringstream ss;
@@ -3155,8 +3197,8 @@ void* DNGWriter::WriteToMemory(size_t *size, std::string *err, size_t* strip_off
       return nullptr;
     }
 
-    unsigned int next_ifd_offset =
-        static_cast<unsigned int>(oss.tellp()) + sizeof(unsigned int);
+    unsigned int next_ifd_offset = static_cast<unsigned int>(
+        static_cast<size_t>(kHeaderSize) + data_len + static_cast<size_t>(ifds.tellp())) + sizeof(unsigned int);
 
     if (i == (images_.size() - 1)) {
       // Write zero as IFD offset(= end of data)
@@ -3167,14 +3209,14 @@ void* DNGWriter::WriteToMemory(size_t *size, std::string *err, size_t* strip_off
       swap4(&next_ifd_offset);
     }
 
-    oss.write(reinterpret_cast<const char *>(&next_ifd_offset), 4);
+    ifds.write(reinterpret_cast<const char *>(&next_ifd_offset), 4);
   }
 
-  // 6. Allocate memory and copy data
-  std::string buffer = oss.str();
-  *size = buffer.size();
+  const std::string head = header.str();
+  const std::string ifd = ifds.str();
+  *size = head.size() + data_len + ifd.size();
 
-  void* memory = malloc(*size);
+  unsigned char* memory = static_cast<unsigned char *>(malloc(*size));
   if (memory == nullptr) {
     if (err) {
       (*err) = "Failed to allocate memory.\n";
@@ -3182,7 +3224,21 @@ void* DNGWriter::WriteToMemory(size_t *size, std::string *err, size_t* strip_off
     return nullptr;
   }
 
-  memcpy(memory, buffer.data(), *size);
+  memcpy(memory, head.data(), head.size());
+  // TODO(syoyo): Write IFD first, then image/meta data
+  for (size_t i = 0; i < images_.size(); i++) {
+    bool ok = images_[i]->WriteDataTo(memory + head.size() + data_offset_table[i]);
+    if (!ok) {
+      free(memory);
+      if (err) {
+        std::stringstream ss;
+        ss << "Failed to write data at image[" << i << "]. err = " << images_[i]->Error() << "\n";
+        (*err) += ss.str();
+      }
+      return nullptr;
+    }
+  }
+  memcpy(memory + head.size() + data_len, ifd.data(), ifd.size());
   return memory;
 }
 

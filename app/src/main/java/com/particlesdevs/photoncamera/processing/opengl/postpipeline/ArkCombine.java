@@ -28,6 +28,26 @@ public final class ArkCombine extends Node {
 
     @Override public void Compile() {}
 
+    /**
+     * Bounded reference of the detail delta (review_arktone F1): box mean of min(m * Y, 1) on the arkLow grid (m = ae, or the
+     * domain of ArkLumaSharpen). The unbounded delta of a light edge reached -0.7 in OKLab L and drew black rings around lamps.
+     * P187: drawn here, or by ArkLumaSharpen right after its own read of the image when the image goes back early.
+     */
+    static GLTexture detailRef(com.particlesdevs.photoncamera.processing.opengl.GLProg glProg, PostPipeline pipeline, GLTexture input,
+                               GLTexture gainMap, float detailClip) {
+        ArkTone.State st = pipeline.ark;
+        GLTexture ref = new GLTexture(st.low.mSize, new GLFormat(GLFormat.DataType.FLOAT_32, 1), null,
+                GL_NEAREST, GL_CLAMP_TO_EDGE);
+        glProg.setDefine("DETAIL_REF", 1);
+        glProg.useAssetProgram("ark/low", false);
+        glProg.setTexture("InputBuffer", input);
+        ArkTone.setColour(glProg, pipeline, gainMap, st.inScale);
+        glProg.setVar("factorU", st.factor);
+        glProg.setVar("detailClipU", detailClip);
+        glProg.drawBlocks(ref);
+        return ref;
+    }
+
     @Override
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
@@ -74,20 +94,9 @@ public final class ArkCombine extends Node {
                 colour = st.mid;
                 colourFactor = 2;
             }
-            if (detail != 0f) {
-                // Bounded reference of the detail delta (review_arktone F1): box mean of min(m * Y, 1) on the arkLow
-                // grid (m = ae, or the domain of ArkLumaSharpen). The unbounded delta of a light edge reached -0.7 in
-                // OKLab L and drew black rings around lamps.
-                st.detailRef = new GLTexture(st.low.mSize, new GLFormat(GLFormat.DataType.FLOAT_32, 1), null,
-                        GL_NEAREST, GL_CLAMP_TO_EDGE);
-                glProg.setDefine("DETAIL_REF", 1);
-                glProg.useAssetProgram("ark/low", false);
-                glProg.setTexture("InputBuffer", input);
-                ArkTone.setColour(glProg, pipeline, gainMap, st.inScale);
-                glProg.setVar("factorU", st.factor);
-                glProg.setVar("detailClipU", sharp ? st.sharpMul : r.ae);
-                glProg.drawBlocks(st.detailRef);
-            }
+            if (detail == 0f && st.detailRef != null) { st.detailRef.close(); st.detailRef = null; }
+            // P187: ArkLumaSharpen drew it already when it gave the full-size image back (above 100 MP)
+            if (detail != 0f && st.detailRef == null) st.detailRef = detailRef(glProg, pipeline, input, gainMap, sharp ? st.sharpMul : r.ae);
             // P154: the highlight landing and the upward path to white (HL_LANDING 0 = the shader before P154)
             final float hlSoft = Math.max(0f, Math.min(0.9f, ArkTone.value("hl_soft", 0.7f)));
             final boolean realClip = ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f;
@@ -113,6 +122,9 @@ public final class ArkCombine extends Node {
                 glProg.setVar("dirU", 0, 1);
                 glProg.setVar("sigmaU", sigma);
                 glProg.drawBlocks(hlB);
+                // P187: hlA is only the middle step of the blur
+                hlA.close();
+                hlA = null;
             }
             if (hlB != null) glProg.setDefine("HL_LANDING", 1);
             // P46 Display P3: the same shader with P3_OUT 1 (colour source, OKLab and gamut in P3); sRGB sets no define.
@@ -130,7 +142,10 @@ public final class ArkCombine extends Node {
                 glProg.setVar("lutScaleU", 1f / (lut.domainMax[0] - lut.domainMin[0]), 1f / (lut.domainMax[1] - lut.domainMin[1]),
                         1f / (lut.domainMax[2] - lut.domainMin[2]));
             }
-            glProg.setTexture("InputBuffer", input);
+            // P187: with ArkCam's sharpened luma (sharpU 1) the shader reads nothing of InputBuffer but its size; once the
+            // image is given back, the same-size lumaS stands in (the image's texture name may be another texture's now)
+            if (st.inputReleased && !sharp) throw new IllegalStateException("ARK combine: the full-size image was released without a sharpened luma");
+            glProg.setTexture("InputBuffer", st.inputReleased ? st.lumaS : input);
             ArkTone.setColour(glProg, pipeline, gainMap, st.inScale);
             glProg.setTexture("ArkLow", st.low);
             glProg.setTexture("ArkColour", colour);
@@ -185,6 +200,9 @@ public final class ArkCombine extends Node {
                 glProg.setVar("gradeAU", grade[0]);
                 glProg.setVar("gradeBU", grade[1]);
             }
+            // P187: above 100 MP the 1.6 GB output is made only after the GPU has finished with the fusion's and the mask's
+            // temporaries (their storage is freed when the GPU is done with them)
+            if (st.inputReleased) android.opengl.GLES30.glFinish();
             WorkingTexture = pipeline.getMain();
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;

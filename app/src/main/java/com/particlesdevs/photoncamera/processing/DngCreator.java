@@ -26,6 +26,8 @@ public class DngCreator {
     // Native methods
     private native long create();
     private native ByteBuffer createDNG(long nativePtr, int width, int height, ByteBuffer rawImageData);
+    /** P187: frees a file of createDNG (native memory); the buffer must not be touched afterwards. */
+    private native void freeDNG(ByteBuffer dngData);
     private native void setOrientation(long nativePtr, int orientation);
     private native void setWhiteLevel(long nativePtr, double whiteLevel);
     private native void setBaselineExposure(long nativePtr, double ev);
@@ -443,6 +445,9 @@ public class DngCreator {
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to write DNG data to output stream", e);
+        } finally {
+            // P187: the whole file in native memory (401 MB at 200 MP) was never freed - every DNG shot leaked it
+            freeDNG(dngData);
         }
     }
 

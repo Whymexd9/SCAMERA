@@ -50,6 +50,8 @@ public class ScamProcessor extends ProcessorBase {
     private String processingStage = "initialization";
     private ByteBuffer scamOwnedOutput;
     private Parameters scamOutputParameters;
+    /** P187: the clip flags and the frame map this shot's merge returned (dropped at its end, not by the next shot's merge). */
+    private ByteBuffer shotClipFlags, shotEffectiveFrames;
     private boolean scamCapture;
     /** This shot is merged by the SCAM Hybrid (its own settings profile), not by SCAM HDR (SCAM). */
     private boolean hybridShot;
@@ -162,6 +164,12 @@ public class ScamProcessor extends ProcessorBase {
             }
             if (mImageFramesToProcess != null)
                 for (ImageFrame frame : mImageFramesToProcess) if (frame.buffer != null) frame.close();
+            // P187: nothing reads this shot's clip flags or frame map any more; until now they stayed until the next shot's
+            // worker had finished (through its capture and merge)
+            com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamRgb.dropClipFlags(shotClipFlags);
+            if (com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastEffectiveFrames == shotEffectiveFrames)
+                com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastEffectiveFrames = null;
+            shotClipFlags = shotEffectiveFrames = null;
         }
     }
 
@@ -509,6 +517,8 @@ public class ScamProcessor extends ProcessorBase {
                             ScameraApp.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
                 }
                 scamOutputParameters=processingParameters;
+                shotClipFlags=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamRgb.lastClipFlags;
+                shotEffectiveFrames=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastEffectiveFrames;
                 stage(0.55f); // P158: merged
                 processingParameters.scamRgb=scamOwnedOutput;
                 processingParameters.scamRgbOwned=true;

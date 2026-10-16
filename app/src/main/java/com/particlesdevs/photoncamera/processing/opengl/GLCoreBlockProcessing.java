@@ -229,6 +229,9 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
      * for 4-channel 8-bit output formats.
      */
     public Bitmap drawBlocksToBitmap() {
+        // P187: above 100 MP the textures the last nodes gave back are freed only once the GPU is done with them; the readback
+        // waits for that GPU work anyway, so the 0.8 GB bitmap is made after their storage is back, not on top of it
+        if ((long) mOutWidth * mOutHeight > 100_000_000L) GLES30.glFinish();
         if (tenBit) return drawBlocksToBitmap1010102();
         if (mglFormat.mChannels != 4 || mglFormat.mFormat.mSize != 1)
             throw new IllegalStateException("bitmap readback needs an RGBA8 output, not " + mglFormat.mFormat + "x" + mglFormat.mChannels);

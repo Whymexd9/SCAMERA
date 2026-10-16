@@ -21,6 +21,11 @@ interface ScamTransport {
      */
     default boolean clipFlags() { return false; }
     /**
+     * P187: whether the worker makes the effective-frame map (the trailer after the merged RAW). False (header flag 16): the
+     * clip flags follow the RGB / the merged RAW directly.
+     */
+    default boolean effectiveMap() { return true; }
+    /**
      * P30: the burst already lies in shared memory (the shot's arena): the transport header is written into it and a
      * descriptor of that memfd is returned (the caller owns it); null: write() the burst as before.
      */

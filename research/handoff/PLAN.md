@@ -4226,6 +4226,53 @@ the other agent's notes, «Изучи и реализуй, учитывай чт
 - The strip: one capsule (24dp radius), lenses 40dp high with their whole labels («0,4×») and no tiles, the active one an
   accent pill (54dp+), three dots between lenses. Renders: build/reports/viewfinder/shade-169.png (Shade169Test).
 
+### P186 - X300 Ultra FULLRES: a mode the camera cannot run is passed, not looped (owner, 2026-10-17: «На основном объективе -
+50/200мп не работают, видоискатель зависает, переключает на ширик. Телевик - 50мп работают, 200мп нет / ширик работает»; done
+in code, waits for the phone)
+- From the owner's log: UW row 0 and tele 50 MP row 1 work; tele 200 MP row 0 gives no frames, main 50 MP row 1 gives no frames,
+  main 200 MP row 0 crashes the HAL (error 4) and the provider restarts - the app then fell back to another camera (the UW).
+- 199f5201: every size tries the rows of the phone's own sensor-mode table in turn (VivoNativeFullRes.candidates; X300 main
+  {0} / {1,2,3}, UW {0,4}, tele {0} / {1,14,27}; X100 main {0,11,31}, UW {0,9}, tele {0} / {1,14,18,20}); a failed row is
+  counted in prefs (module_fullres_rowfail_<cam>_<200|50>, generation ROW_TRIALS) and the next start takes the next row; a
+  native FULLRES session without a preview frame turns FULLRES off for that start; after a device error the camera waits for
+  the provider (up to 12 x 700 ms) instead of opening another camera. Tests: VivoNativeFullResTest, CameraResumeTest.
+- Open: which row (if any) gives the X300 Ultra's main 200 / 50 MP and tele 200 MP - the owner can record the HAL log
+  (instructions given 2026-10-17).
+
+### P187 - less memory at full resolution, the same picture (owner, 2026-10-17: «придумай пока как мы можем уменьшить
+потребление памяти для полного разрешения при этом никак не потеряв в качестве, найди решение и приступай к реализации. Все
+решения принимай сам без моего участия»; done in code)
+- Map first (5 areas, each checked by a second reader; research notes in the session, numbers from shot 30840 on the X200
+  Ultra: worker peakRss 5286 MB, MemAvailable 3.3 GB in the GPU merge and 1.8 GB in the pipeline). The kgsl column of
+  reports/pd2454-30840-memory-timeline-20261016.txt is 32-bit wrapped: about 5.7 GB of GPU memory at the pipeline's minimum,
+  as the textures add up.
+- Only changes that keep every output byte: what nothing reads any more is freed earlier, what nothing reads is not made.
+- Pipeline (above 100 MP; scam_dev early_release 1 does it at any size for a post_ab A/B; never in post_ab's old GL model):
+  ScamRgb's input texture becomes main2 for the clip-band pass (no new 1.6 GB main2), then the unbanded output, the flags
+  and the chroma blocks go back (glFinish first); ArkLumaSharpen draws ArkCombine's detail reference right after its own
+  read of the image and gives the image back (ArkCombine binds the same-size lumaS to the InputBuffer it never reads with
+  sharpU 1); hlA closes after the blur; glFinish before ArkCombine's output and before the 0.8 GB bitmap. GPU set: about
+  5.2 GB -> 3.4 GB at the worst node.
+- App: clip flags in native memory, freed right after their upload (they waited for a GC); the 40 MB decimated copy is one
+  sample above 100 MP (only null-checked); the shot's clip flags and frame map are dropped at its end (they stayed until the
+  next shot's merge); the plain session under a 200 MP merge fills no ZSL ring (125 MB); the viewfinder's binning buffers
+  and the mosaic check's unpacked frame go with their use (401 MB on a packed 200 MP stream).
+- DNG: the native file of every DNG was never freed (401 MB leaked per 200 MP DNG); DngCreator is closed after the write;
+  WriteToMemory builds the file in one buffer of its final size (the stream path copied the image three more times: up
+  to 2.4 GB). tools/check_dng_memory.cpp (CI): WriteToMemory = WriteToFile byte for byte; old vs new on the OPPO: 5/5 md5.
+- Worker: header flag 16 (ScamHybridBurst.effectiveMap() = the denoisers' own predicate, ScamHdrDenoise.noDenoise) - no
+  effective-frame map above 100 MP: no 765 MB coverage plane, no median sample, no map, no trailer; the clip flags follow
+  the RGB / the merged RAW (ScamNeuralClient.trailers, FullResMemoryTest). No chroma GPU context above 67 MP (never used).
+- Checks: FullResMemoryTest (trailer layouts, the early-release sizes), ScamHybridBurstAnyResolutionTest (flag 16 at 201 MP
+  only), the CI list; OPPO replay of the 8 reference bursts with the P187 worker = the 199f5201 worker byte for byte; with
+  flag 16 (SCAM_NO_EFFMAP) on 5 bursts the RGB and the clip trailer are the same bytes, only the map is gone (v10_1 12.5 MP:
+  peakRss 1300 -> 1250 MB; at 200 MP about 1 GB less at the merge's peak by the map). Not on a phone yet: the pipeline part
+  (post_ab 1 + early_release 1 in scam_dev.txt on a <= 16 MP shot gives EQUAL / DIFFERENT for it), a 200 MP shot's memory.
+- Not done (checked, not worth it or not exact): ArkCombine straight to RGBA8 (1 LSB on 1-3 % of values), R16F planes,
+  progressive punching of the arena during the merge (loses the conservative retry), streaming the merge into the output
+  memfd (days of work, worker phase only), the RAW-less plain session under a merge (sensor mode / framing risk, untested
+  on the vivo).
+
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach

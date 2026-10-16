@@ -856,6 +856,13 @@ public:
         return byteBuffer;
     }
 
+    /** P187: the file createDNG returned (WriteToMemory's malloc), once it is written out; nothing freed it before. */
+    JNIEXPORT void JNICALL Java_com_particlesdevs_photoncamera_processing_DngCreator_freeDNG(JNIEnv *env, jobject obj, jobject dngData) {
+        if (dngData == nullptr) return;
+        void* data = env->GetDirectBufferAddress(dngData);
+        if (data) free(data);
+    }
+
     JNIEXPORT void JNICALL Java_com_particlesdevs_photoncamera_processing_DngCreator_setOrientation(
         JNIEnv *env, jobject obj, jlong creatorPtr, jint orientation) {
         DngCreator* creator = reinterpret_cast<DngCreator*>(creatorPtr);

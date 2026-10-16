@@ -183,6 +183,8 @@ public final class DevKeys {
         k.add(s(diag, "post_sync", false, Lang.t("Синхронные узлы обработки (замер времени)", "Synchronous processing nodes (timing)")));
         k.add(s(diag, "post_ab", false, Lang.t("A/B обработки: старый и новый конвейер на одном снимке", "Processing A/B: old and new pipeline on one shot")));
         k.add(s(diag, "post_ab_clamp", false, Lang.t("A/B: прежнее ограничение входа", "A/B: the former input clamp")));
+        k.add(s(diag, "early_release", false, Lang.t("Ранний возврат текстур обработки при любом размере (как выше 100 Мп; для A/B)",
+                "Early release of the processing textures at any size (as above 100 MP; for the A/B)")));
         k.add(s(diag, "post_ab_upload", false, Lang.t("A/B: меняется только загрузка RGB", "A/B: only the RGB upload changes")));
         k.add(s(diag, "post_ab_dump", false, Lang.t("A/B: сохранить оба результата в PNG", "A/B: save both results as PNG")));
         all = Collections.unmodifiableList(k);

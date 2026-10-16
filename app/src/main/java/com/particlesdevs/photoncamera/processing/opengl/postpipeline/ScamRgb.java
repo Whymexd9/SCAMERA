@@ -28,6 +28,72 @@ public final class ScamRgb extends Node {
      */
     public static volatile java.nio.ByteBuffer lastClipFlags;
     /**
+     * P187: the clip flags as the client reads them, native memory (Allocator) instead of the Java heap - at 200 MP 200 MB
+     * that a GC returned whenever it ran, through the whole pipeline. Freed right after their upload (glTexSubImage2D has
+     * copied them on return); {@link #lastClipFlags} is this buffer until ScamRgb takes it.
+     */
+    private static java.nio.ByteBuffer nativeClipFlags;
+
+    /**
+     * P187 (owner, 2026-10-17: less memory at full resolution, the same picture): above 100 MP each big texture of the
+     * pipeline goes back right after its last reader instead of at the end of its node or of the shot. scam_dev
+     * "early_release 1" does the same at any size, for a post_ab A/B of the same pixels; the old GL model (post_ab's
+     * reference run) keeps everything.
+     */
+    static boolean earlyRelease(Point size){
+        return size!=null&&!com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()
+                &&((long)size.x*size.y>100_000_000L||PreferenceKeys.scamDevSwitch("early_release",false));
+    }
+
+    /** P187: the clip flags the client read into native memory (any earlier ones are dropped first). */
+    static synchronized void keepNativeClipFlags(java.nio.ByteBuffer flags){
+        dropClipFlags();
+        nativeClipFlags=flags;
+        lastClipFlags=flags;
+    }
+
+    /**
+     * P187: the end of the shot whose merge returned {@code flags}: dropped (and freed when native) unless ScamRgb took them
+     * already or they are another shot's by now.
+     */
+    public static synchronized void dropClipFlags(java.nio.ByteBuffer flags){
+        if(flags==null)return;
+        if(lastClipFlags==flags)lastClipFlags=null;
+        freeClipFlags(flags);
+    }
+
+    /** P187: the clip flags of no shot any more (the next shot's read, a CPU fallback): freed when they are native. */
+    static synchronized void dropClipFlags(){
+        final java.nio.ByteBuffer flags=lastClipFlags;
+        lastClipFlags=null;
+        freeClipFlags(flags);
+    }
+
+    /** P187: gives back the native clip flags once they are uploaded or ignored; a Java buffer is left to the GC. */
+    static synchronized void freeClipFlags(java.nio.ByteBuffer flags){
+        if(flags==null||flags!=nativeClipFlags)return;
+        nativeClipFlags=null;
+        if(lastClipFlags==flags)lastClipFlags=null;
+        com.particlesdevs.photoncamera.util.Allocator.free(flags);
+    }
+
+    /**
+     * P187: PostAb hands one set of clip flags to two runs, and ScamRgb frees native ones after the first: a Java copy of
+     * them for both runs instead (PostAb runs only up to 16 MP).
+     */
+    static synchronized java.nio.ByteBuffer heapClipFlags(){
+        final java.nio.ByteBuffer flags=lastClipFlags;
+        if(flags==null||flags!=nativeClipFlags)return flags;
+        final java.nio.ByteBuffer copy=java.nio.ByteBuffer.allocateDirect(flags.capacity());
+        final java.nio.ByteBuffer all=flags.duplicate();
+        all.clear();
+        copy.put(all);
+        copy.flip();
+        freeClipFlags(flags);
+        lastClipFlags=copy;
+        return copy;
+    }
+    /**
      * White-balanced level (same units as this node's output) of the clipped white of the last hybrid shot: where every
      * channel clipped the recovery outputs a neutral white at about this level (Bento: k times the base white). 0 when
      * nothing could clip. For the tone stages that place the brightest data at white.
@@ -468,12 +534,16 @@ public final class ScamRgb extends Node {
     }
 
     @Override public void Run(){
+        final java.nio.ByteBuffer flags=lastClipFlags;lastClipFlags=null;
+        try{run(flags);}finally{freeClipFlags(flags);} // P187: uploaded, ignored, unused by this shot, or a failure
+    }
+
+    private void run(java.nio.ByteBuffer flags){
         PostPipeline p=(PostPipeline)basePipeline;
         // Bento is applied only by the hybrid merge (reset for every SCAM burst): a safety net for the shot profile.
         final boolean hybrid=PreferenceKeys.isHybridShot()||ScamHybridBurst.lastBentoApplied;
         final Point size=p.mParameters.rawSize;
         final boolean largeTwoX=p.mParameters.outputScale>1f&&(long)size.x*size.y>64_000_000L;
-        java.nio.ByteBuffer flags=lastClipFlags;lastClipFlags=null;
         if(flags!=null&&(!hybrid||flags.capacity()!=(long)size.x*size.y)){
             com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","highlight recovery: clip flags ignored (hybrid="+hybrid
                     +" bytes="+flags.capacity()+" expected="+(long)size.x*size.y+")");
@@ -496,7 +566,9 @@ public final class ScamRgb extends Node {
             final long t0=System.currentTimeMillis();
             if(hybrid)s.cc=channelClip(big,bento,bentoK,bentoUs,withFlags,ParallelWork.threads(),half); else s.clip=clipLevels(big);
             final long t1=System.currentTimeMillis();
-            if(owned)s.decimated=decimate(big,61,half);
+            // P187: the later nodes only ask whether the worker RGB is there (ScamDenoise.enabledFor; above 100 MP not even
+            // that): one sample stands for the 40 MB copy there
+            if(owned)s.decimated=decimate(big,(long)size.x*size.y>100_000_000L?size.x*size.y:61,half);
             s.statMs=t1-t0;s.decimateMs=System.currentTimeMillis()-t1;
             return s;
         });
@@ -565,11 +637,23 @@ public final class ScamRgb extends Node {
             }
             p.GainMap=new GLTexture(p.mParameters.mapSize,new GLFormat(GLFormat.DataType.FLOAT_16,4),
                     BufferUtils.getFrom(p.mParameters.gainMap),GL_LINEAR,GL_CLAMP_TO_EDGE);
+            if(perChannel&&flags!=null){
+                flags.rewind();
+                android.opengl.GLES30.glPixelStorei(android.opengl.GLES30.GL_UNPACK_ALIGNMENT,1);
+                // Normalised R8 (SIMPLE_8): the shaders read it through a float sampler2D (code = r * 255). UNSIGNED_8
+                // is R8UI, which GL_RED cannot upload and a sampler2D cannot sample (an unset usampler2D would also
+                // share unit 0 with the float samplers of the same program).
+                flagsTex=new GLTexture(size,new GLFormat(GLFormat.DataType.SIMPLE_8,1),flags,GL_NEAREST,GL_CLAMP_TO_EDGE);
+                // P187: uploaded (glTexSubImage2D copied them on return), and before main1 is made: the native copy is gone
+                // before the 1.6 GB of main1 come
+                freeClipFlags(flags);
+            }
             p.main1=new GLTexture(size,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
             // P179: no main3 (nothing swaps it in any more: swap3 has no caller; 1.6 GB at 200 MP), and above 100 MP main2 is made
             // on its first use, after the input texture is gone, instead of next to it
             p.main3=null;
-            if((long)size.x*size.y>100_000_000L&&!largeTwoX){
+            final boolean early=earlyRelease(size);
+            if(((long)size.x*size.y>100_000_000L||early)&&!largeTwoX){
                 final Point mainSize=new Point(size);
                 p.lazyMain2=()->new GLTexture(mainSize,new GLFormat(GLFormat.DataType.FLOAT_16,GLDrawParams.WorkDim),null,GL_LINEAR,GL_CLAMP_TO_EDGE);
             } else {
@@ -583,14 +667,6 @@ public final class ScamRgb extends Node {
             final float chromaLimit=PreferenceKeys.hybridValue("highlight_chroma",0.35f);
             final long gpuStart=System.currentTimeMillis();
             if(perChannel){
-                if(flags!=null){
-                    flags.rewind();
-                    android.opengl.GLES30.glPixelStorei(android.opengl.GLES30.GL_UNPACK_ALIGNMENT,1);
-                    // Normalised R8 (SIMPLE_8): the shaders read it through a float sampler2D (code = r * 255). UNSIGNED_8
-                    // is R8UI, which GL_RED cannot upload and a sampler2D cannot sample (an unset usampler2D would also
-                    // share unit 0 with the float samplers of the same program).
-                    flagsTex=new GLTexture(size,new GLFormat(GLFormat.DataType.SIMPLE_8,1),flags,GL_NEAREST,GL_CLAMP_TO_EDGE);
-                }
                 if(cc.nearClip){
                     GLFormat rgba=new GLFormat(GLFormat.DataType.FLOAT_16,4);
                     Point near=new Point((size.x+block-1)/block,(size.y+block-1)/block);
@@ -646,9 +722,20 @@ public final class ScamRgb extends Node {
             glProg.setVar("inverseSize",1f/size.x,1f/size.y);
             // Keep the ping-pong cursor in sync for every following postprocessing pass.
             WorkingTexture=p.getMain();glProg.drawBlocks(WorkingTexture);glProg.closed=true;
+            final String chromaLog=chromaNear!=null?chromaNear.mSize.x+"x"+chromaNear.mSize.y+" block "+block:"neutral";
             // Clip band: the dashed orange/blue line where a slanted clip edge alternates between clipped-mean and
             // unclipped-sample colours (assets/shaders/scamhdr/clipband.glsl). pref_scam_hybrid_highlight_band 0..1.
             final float band=perChannel&&flagsTex!=null?Math.max(0f,Math.min(1f,PreferenceKeys.hybridValue("highlight_band",1f))):0f;
+            // P187: the input (RGBA16F like a main, chanprep and scamrgb were its only readers) takes main2's place for the band
+            // pass: no 1.6 GB main2 is made next to it. Its sampler becomes a main's (GL_LINEAR); the band pass writes every
+            // pixel of it, as it would of a new main2.
+            boolean inputIsMain2=false;
+            if(early&&band>0f&&!largeTwoX&&p.main2==null&&p.lazyMain2!=null&&input.mainFormat()){
+                input.setFilter(GL_LINEAR);
+                p.main2=input;p.lazyMain2=null;input=null;
+                inputIsMain2=true;
+            }
+            GLTexture unbanded=null;
             if(band>0f){
                 GLTexture banded=p.getMain();
                 glProg.useAssetProgram("scamhdr/clipband",false);
@@ -657,12 +744,27 @@ public final class ScamRgb extends Node {
                 glProg.setVar("radiusU",3*s);glProg.setVar("zoneU",2*s);
                 glProg.setVar("strengthU",band);
                 glProg.drawBlocks(banded);glProg.closed=true;
+                unbanded=WorkingTexture;
                 WorkingTexture=banded;
+            }
+            if(early){
+                // P187: what nothing reads any more goes back now instead of through ArkStats .. ArkCombine: the input (when it
+                // did not become main2), the flags, the chroma blocks and the unbanded scamrgb output (the pipeline makes main1
+                // again for ArkCombine's output). glFinish first - storage is freed only when the GPU is done with it, and the
+                // next nodes' textures should not come on top of it. Nulled, as GL may hand the freed names to new textures.
+                android.opengl.GLES30.glFinish();
+                if(input!=null){input.close();input=null;}
+                if(flagsTex!=null){flagsTex.close();flagsTex=null;}
+                if(chromaNear!=null){chromaNear.close();chromaNear=null;}
+                if(chromaWide!=null){chromaWide.close();chromaWide=null;}
+                if(chromaHuge!=null){chromaHuge.close();chromaHuge=null;}
+                if(unbanded!=null&&!largeTwoX)p.releaseMain(unbanded);
             }
             if(hybrid)com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","scamrgb input "+(signed?"signed (clamped after the noise reduction or the ARK colour averages)":"clamped per pixel (post_ab_clamp)"));
             if(perChannel)com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","highlight recovery per channel: chroma="
-                    +(chromaNear!=null?chromaNear.mSize.x+"x"+chromaNear.mSize.y+" block "+block:"neutral")
-                    +" limit="+chromaLimit+" band="+band+" gpu ms="+(System.currentTimeMillis()-gpuStart));
+                    +chromaLog
+                    +" limit="+chromaLimit+" band="+band+(early?" early release"+(inputIsMain2?" (input as main2)":""):"")
+                    +" gpu ms="+(System.currentTimeMillis()-gpuStart));
         }catch(RuntimeException|Error failure){
             if(largeTwoX){
                 if(p.main1!=null){p.main1.close();p.main1=null;}
@@ -672,7 +774,7 @@ public final class ScamRgb extends Node {
             }
             throw failure;
         }finally{
-            input.close();
+            if(input!=null)input.close();
             if(flagsTex!=null)flagsTex.close();
             if(chromaNear!=null)chromaNear.close();
             if(chromaWide!=null)chromaWide.close();

@@ -65,6 +65,20 @@ public final class ScamNeuralClient {
     }
     /** P179: the slice of a shrinking read (a large result read from its end, the memfd cut behind each slice). */
     static final int SHRINK_SLICE = 256 << 20;
+
+    /**
+     * The trailers after the RGB ({@code expected} bytes), each optional, in this order: the merged Bayer RAW (sensor grid,
+     * {@code rawTrailer} bytes, if requested), the effective-frame map (OUTPUT grid, {@code outTrailer}), the clip flags (OUTPUT
+     * grid; SCAM Hybrid, only if requested and only after the map - P187: or with no map asked for, header flag 16). The fullest
+     * layout that matches the output's size wins: {dng, eff, clip} bytes, or null when none does.
+     */
+    static long[] trailers(long outputBytes,long expected,long rawTrailer,long outTrailer,boolean dng,boolean map,boolean clip){
+        for(long d:dng?new long[]{rawTrailer,0}:new long[]{0})
+            for(long e:map?new long[]{outTrailer,0}:new long[]{0})
+                for(long c:clip&&(e>0||!map)?new long[]{outTrailer,0}:new long[]{0})
+                    if(outputBytes==expected+d+e+c)return new long[]{d,e,c};
+        return null;
+    }
     interface Truncatable { void truncate(long size) throws IOException; }
     /**
      * P179: dst.remaining() bytes from {@code position} into dst read from the end in slices of {@code slice} bytes, the source cut
@@ -437,20 +451,13 @@ public final class ScamNeuralClient {
             long expected=(long)ow*oh*(rgbHalf?6:12);
             if(expected<=0||expected>Integer.MAX_VALUE)throw new IOException(Lang.t("Слишком большой нейрорезультат","Neural result too large"));
             final long outputBytes=scamOut!=null?scamOut.size():output.length();
-            // Trailers after the RGB, each optional, in this order: merged Bayer RAW (sensor grid, w*h*2, if requested), the
-            // effective-frame map (OUTPUT grid, ow*oh), the clip flags (OUTPUT grid, ow*oh; SCAM Hybrid, only if requested and only
-            // after the map). The fullest layout that matches the file size wins.
-            long dngBytes=0,effBytes=0,clipBytes=0;boolean sized=false;
-            {
-                final long rawTrailer=(long)w*h*2,outTrailer=(long)ow*oh;
-                search:
-                for(long d:scamBurst.mergedDng()?new long[]{rawTrailer,0}:new long[]{0})
-                    for(long e:new long[]{outTrailer,0})
-                        for(long c:scamBurst.clipFlags()&&e>0?new long[]{outTrailer,0}:new long[]{0})
-                            if(outputBytes==expected+d+e+c){dngBytes=d;effBytes=e;clipBytes=c;sized=true;break search;}
-            }
-            if(!sized)throw new IOException(Lang.t("Неверный размер нейрорезультата","Wrong neural result size"));
-            {ScamHybridBurst.lastMergedDng=null;ScamHybridBurst.lastEffectiveFrames=null;ScamRgb.lastClipFlags=null;
+            // The trailers after the RGB (merged RAW, effective-frame map, clip flags; see trailers)
+            final boolean map=scamBurst.effectiveMap();
+            if(!map)log.accept("CLIENT: no effective-frame map asked for ("+ow+"x"+oh+": no denoise reads it)");
+            final long[] layout=trailers(outputBytes,expected,(long)w*h*2,(long)ow*oh,scamBurst.mergedDng(),map,scamBurst.clipFlags());
+            if(layout==null)throw new IOException(Lang.t("Неверный размер нейрорезультата","Wrong neural result size"));
+            final long dngBytes=layout[0],effBytes=layout[1],clipBytes=layout[2];
+            {ScamHybridBurst.lastMergedDng=null;ScamHybridBurst.lastEffectiveFrames=null;ScamRgb.dropClipFlags();
                 ScamHybridBurst.lastBentoApplied=report.indexOf("HYBRID BENTO: applied")>=0;
                 ScamHybridBurst.lastBentoFactor=reportNumber(report,"HYBRID BENTO: applied","factor=",1f);
                 ScamHybridBurst.lastMergedDngHeadroom=Math.max(1f,reportNumber(report,"HYBRID DNG:","headroom=",1f));
@@ -478,8 +485,9 @@ public final class ScamNeuralClient {
                 result.flip();
             }
             // the trailers from the last one back (a shrinking read drops each from the memfd once it is read)
+            // P187: in native memory, which ScamRgb frees right after the upload (the Java heap kept them until a GC)
             ByteBuffer clip=null;
-            if(clipBytes>0)try{clip=ByteBuffer.allocateDirect((int)clipBytes);}catch(OutOfMemoryError oom){log.accept("CLIENT: clip flags skipped: "+oom);}
+            if(clipBytes>0){clip=com.particlesdevs.photoncamera.util.Allocator.allocate((int)clipBytes);if(clip==null)log.accept("CLIENT: clip flags skipped: no memory for "+clipBytes+" B");}
             if(clip!=null){
                 try{
                     if(scamOut!=null)scamOut.readFully(clip,expected+dngBytes+effBytes);
@@ -487,8 +495,8 @@ public final class ScamNeuralClient {
                         long position=expected+dngBytes+effBytes;
                         while(clip.hasRemaining()){int n=channel.read(clip,position);if(n<0)throw new EOFException(Lang.t("Неполные флаги клипа","Incomplete clip flags"));position+=n;}
                     }
-                    clip.flip();ScamRgb.lastClipFlags=clip;
-                }catch(Exception e){log.accept("CLIENT: clip flags not read: "+e);}
+                    clip.flip();ScamRgb.keepNativeClipFlags(clip);
+                }catch(Exception e){com.particlesdevs.photoncamera.util.Allocator.free(clip);log.accept("CLIENT: clip flags not read: "+e);}
             }else if(scamBurst.clipFlags())log.accept("CLIENT: clip flags asked for but not returned");
             if(shrink)scamOut.truncate(expected+dngBytes+effBytes);
             // P27 any resolution: the two optional trailers live on the Java heap (1 B per output pixel each); a failed allocation

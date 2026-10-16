@@ -498,6 +498,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 watchRawPayload(img);
                 observeRawLevel(img, null);
                 observeMosaic(img);
+                // P187: the plain session of a running 200 MP merge takes no shot (captureStillPicture refuses it), so its
+                // frames stay out of the ZSL ring: 125 MB of memfd less under the merge and the pipeline
+                if (mClosedForProcessing) { img.close(); return; }
                 synchronized (mZslBufferLock) {
                     if (!isCameraResumed || reader != mImageReaderRaw) { img.close(); return; }
                     mZslRingBuffer.addLast(ringFrameLocked(img));
@@ -4110,7 +4113,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             publishLiveRawFrame(img, result);
             if (mTextureView != null) mTextureView.requestRender();
             // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
-            if (isZslMode() && passModeBarrier(img, result)) synchronized (mZslBufferLock) {
+            // P187: not while a 200 MP merge runs (its plain session takes no shot)
+            if (isZslMode() && passModeBarrier(img, result) && !mClosedForProcessing) synchronized (mZslBufferLock) {
                 if (!isCameraResumed || !mLiveRawSession) return;
                 mZslRingBuffer.addLast(ringFrameLocked(img)); // P91: copied into the ring's memfd (img closed) or held as it is
                 retained = true;
@@ -4192,6 +4196,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 int block = com.particlesdevs.photoncamera.processing.MosaicStream.observe(
                         com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(samples, img.getWidth(), img.getHeight(),
                                 sampleStride, black, white, 32));
+                // P187: measured - the unpacked frame (2 B a pixel, 401 MB on a packed 200 MP stream) is not kept for the
+                // rest of the session
+                if (!com.particlesdevs.photoncamera.processing.MosaicStream.wantsFrame()) mMosaicUnpacked = null;
                 updateStreamCrop(true);
                 if (block > 1 && !mMosaicPreview && !mLiveRawSession && !XiaomiTeleZoom.ispPreview()) {
                     mMosaicPreview = true;

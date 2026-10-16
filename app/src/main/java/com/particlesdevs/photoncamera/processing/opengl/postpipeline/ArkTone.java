@@ -38,6 +38,11 @@ public final class ArkTone {
         public float sharpMul = 1f;
         /** P134: the colour chain's linear -> sRGB matrix of this shot (the white-balance rows of «Цвет» folded in). */
         float[] colourMatrix;
+        /**
+         * P187: above 100 MP ArkLumaSharpen gave the full-size image's storage back after its last reader (the image texture
+         * passed on from node to node is deleted; ArkCombine must not bind it).
+         */
+        boolean inputReleased;
 
         void closeTextures() {
             if (low != null) low.close();

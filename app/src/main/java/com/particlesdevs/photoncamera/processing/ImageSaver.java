@@ -323,6 +323,9 @@ public class ImageSaver {
             } catch (IOException | RuntimeException e) {
                 Log.e(TAG, "DNG save failed: " + Log.getStackTraceString(e));
                 return false;
+            } finally {
+                // P187: its image (the whole RAW again, 0.4-0.54 GB at 200 MP) now, not when a GC runs the finalizer
+                dngCreator.close();
             }
             return true;
         }

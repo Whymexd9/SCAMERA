@@ -61,6 +61,9 @@ struct HybridInput {
     bool diagnostics=false,mergedDng=false;
     bool clipFlags=false; // header flag 4: append the per-pixel clip flags (uint8 per output pixel) after the effective map
     bool strict2x=false; // header flag 8: native 2x samples; no coarse-grid resize or sensor-grid fallback
+    // header flag 16 (P187): no effective-frame map - the app reads none at this size (above 100 MP: no denoise); the clip-flags
+    // trailer then follows the RGB / the merged RAW directly
+    bool noEffMap=false;
     // Output grid (NCH v11): 1 = sensor grid (today), 2 = the Sabre 6.1 2x grid (four sub-positions +-0.25 px per
     // sensor pixel, RGB 2w x 2h). The app runs its whole pipeline on that grid and resizes at the end.
     int grid=1;
@@ -3244,12 +3247,14 @@ public:
     }
 
     // out: RGB (w*g)*(h*g)*3 (base units) on the output grid g (1 = sensor, 2 = Sabre 6.1 2x); effective: donor
-    // coverage per output pixel (frames); robustShare[f]: mean accepted weight of frame f after dilation, scalar
-    // weight and Bento mask; clipFlags (optional): per output pixel, bit 0/1/2 = R/G/B from the clipped mean, 3 = a clipped
-    // sample was excluded, 4 = inside the Bento mask, 5 = the clipped mean includes the ultrashort frame.
+    // coverage per output pixel (frames), left empty without wantEffective (P187: nothing makes the effective-frame map from
+    // it; the GPU still writes its slot, only the 4 B a pixel are not read back); robustShare[f]: mean accepted weight of frame
+    // f after dilation, scalar weight and Bento mask; clipFlags (optional): per output pixel, bit 0/1/2 = R/G/B from the
+    // clipped mean, 3 = a clipped sample was excluded, 4 = inside the Bento mask, 5 = the clipped mean includes the ultrashort
+    // frame.
     void merge(const Frames& in,const HybridTuning& tune,const SuperResTuning& kernel,bool bento,
                std::vector<float>& out,std::vector<float>& effective,std::vector<double>& robustShare,int grid=1,
-               std::vector<uint8_t>* clipFlags=nullptr){
+               std::vector<uint8_t>* clipFlags=nullptr,bool wantEffective=true){
         const int frames=int(in.frames.size()),w=in.w,h=in.h,w2=w/2,h2=h/2;
         if(frames<1||frames>kHybridGpuFrames||(w&1)||(h&1)||int(in.homography.size())!=frames)throw std::runtime_error("HYBRID GPU unsupported burst shape");
         // grid 8: only the native Tetra merge on the Sabre 2x grid (P56)
@@ -3258,7 +3263,8 @@ public:
         // The widest dispatch runs (ow + 7) / 8 work groups in x (the output passes; the site passes w).
         if(maxGroupsX>0&&(int64_t(std::max(ow,w))+7)/8>maxGroupsX)
             throw std::runtime_error("HYBRID GPU: output row "+std::to_string(std::max(ow,w))+" px > work-group limit "+std::to_string(maxGroupsX*8)+" px");
-        out.assign(size_t(ow)*h*g*3,0.f);effective.assign(size_t(ow)*h*g,1.f);robustShare.assign(frames,1.0);
+        out.assign(size_t(ow)*h*g*3,0.f);robustShare.assign(frames,1.0);
+        if(wantEffective)effective.assign(size_t(ow)*h*g,1.f); else std::vector<float>().swap(effective);
         if(clipFlags)clipFlags->assign(size_t(ow)*h*g,0);
         // Uniforms common to all programs.
         std::vector<float> a(size_t(frames)*4),b(size_t(frames)*4),up(frames,1.f);
@@ -3593,7 +3599,7 @@ public:
                 glDeleteSync(p.fence);p.fence=nullptr;
             }
             getBuffer(bankBuffer(3,p.bank),3,out.data()+size_t(p.oy0)*ow*3,size_t(p.rows2)*ow*3*4,waited);
-            getBuffer(bankBuffer(4,p.bank),4,effective.data()+size_t(p.oy0)*ow,size_t(p.rows2)*ow*4,waited);
+            if(wantEffective)getBuffer(bankBuffer(4,p.bank),4,effective.data()+size_t(p.oy0)*ow,size_t(p.rows2)*ow*4,waited);
             if(clipFlags){
                 flagStrip.resize(size_t(p.rows2)*ow);
                 getBuffer(bankBuffer(6,p.bank),6,flagStrip.data(),flagStrip.size()*4,waited);
@@ -6279,7 +6285,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 report(line);
             }
         }
-        gpu.merge(in,mergeTune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr);
+        gpu.merge(in,mergeTune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr,effMap!=nullptr);
         if(gpu.profile){
             const double* p=gpu.passMs;char pl[200];
             std::snprintf(pl,sizeof(pl),"HYBRID GPU ms: flags=%.0f mark=%.0f guide=%.0f cells=%.0f reject=%.0f dilate=%.0f merge=%.0f readback=%.0f",p[0],p[7],p[1],p[2],p[3],p[4],p[5],p[6]);
@@ -6589,6 +6595,10 @@ constexpr double kMosaicOscTau=0.05,kMosaicLumaTau=0.25;
 // colour block is not real in a mosaic.
 // osc (optional): per colour block of the base RAW, the oscillation of its own sites (see hybridReconstructMosaic), (w/b) x (h/b).
 // P80: gpu = try ChromaMedianGpu first (float rounding of its boxes and soft counts only); *how gets "gpu" or "cpu (reason)".
+// P187: the chroma median below takes the GPU only up to 16.8 MP, and it runs on at least a quarter of the sensor (Tetra T2: 2 sensor
+// px per merged px). Above 4 x that the GPU context of chromaPrewarm would never be used (200 MP: a context less during the merge).
+inline bool chromaGpuPossible(int sensorW,int sensorH){return uint64_t(sensorW)*sensorH<=uint64_t(4)*16800000;}
+
 inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,const std::vector<float>* osc=nullptr,bool gpu=false,
                                std::string* how=nullptr,int bandRows=0){
     if(bandRows>=0&&(bandRows>0||uint64_t(w)*h>64000000)){
@@ -6741,7 +6751,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
     const int b=block,W=input.w,Ht=input.h;
     if((W%(2*b))||(Ht%(2*b))||W/b<64||Ht/b<64)throw std::runtime_error("HYBRID MOSAIC: frame size not a multiple of the colour block");
-    if(tune.chromaGpu>0)chromaPrewarm(); // P80: the chroma median's GPU context builds during the merge
+    if(tune.chromaGpu>0&&chromaGpuPossible(W,Ht))chromaPrewarm(); // P80: the chroma median's GPU context builds during the merge
     const int vw=W/b,vh=Ht/b,per=b*b,n=int(input.frames.size());
     // ---- real frames within the GPU capacity (kHybridGpuFrames sub-frames): the base, the normals closest in time, one
     // ultrashort (Bento) and one bracketed (Shasta) frame when there is room
@@ -7021,7 +7031,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
     const int b=block,W=input.w,Ht=input.h,bb=b*b;
-    if(tune.chromaGpu>0)chromaPrewarm(); // P80: the chroma median's GPU context builds during the merge
+    if(tune.chromaGpu>0&&chromaGpuPossible(W,Ht))chromaPrewarm(); // P80: the chroma median's GPU context builds during the merge
     if((W%(2*b))||(Ht%(2*b))||W/b<64||Ht/b<64)throw std::runtime_error("HYBRID MOSAIC: frame size not a multiple of the colour block");
     const int vw=W/b,vh=Ht/b,n=int(input.frames.size());
     // The mosaic the merge reads: the sensor's (Quad; Tetra T1), or for Tetra T2 the Quad mosaic of its 2x2 sub-blocks.
@@ -7307,6 +7317,7 @@ struct MappedHybridBurst {
             const int n=int(h[5]);
             std::memcpy(&input.white,h+6,4);std::memcpy(input.black.data(),h+7,16);
             const uint32_t flags=h[11];input.diagnostics=flags&1;input.mergedDng=flags&2;input.clipFlags=flags&4;input.strict2x=flags&8;
+            input.noEffMap=flags&16;
             if(h[1]>=11){ // v11: h[12] = base index (0), h[13] = output grid 1|2, h[14] = colour block 0 (unknown) | 1 | 2 | 4
                 if(h[13]!=0&&h[13]!=1&&h[13]!=2)throw std::runtime_error("Unsupported hybrid output grid");
                 input.grid=h[13]==0?1:int(h[13]);

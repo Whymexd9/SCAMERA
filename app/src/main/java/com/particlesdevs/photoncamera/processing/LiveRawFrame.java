@@ -166,6 +166,16 @@ public final class LiveRawFrame {
                 version++;
             }
         }
+        if (!value) releaseBinBuffers();
+    }
+
+    /**
+     * P187: the binning buffers go with the RAW viewfinder (the next frame makes them again): 25 MB, and on a packed 200 MP
+     * stream another 401 MB of unpacked frame, were held for the rest of the process - under a 200 MP merge too. Nulled, not
+     * freed: a frame being published may still read them.
+     */
+    private static synchronized void releaseBinBuffers() {
+        quadFull = quadBinned = null;
     }
 
     /**

@@ -506,6 +506,12 @@ public final class ScamHybridBurst implements ScamTransport {
     @Override public boolean diagnostics() { return diagnostics; }
     @Override public boolean clipFlags() { return clipFlags; }
     /**
+     * P187 (owner, 2026-10-17: less memory at full resolution, the same picture): its readers are the denoisers, and above 100 MP
+     * the shot has none (ScamHdrDenoise.noDenoise, the same predicate on the same output size): the worker does not make it - its
+     * float coverage plane (4 B a pixel, 765 MB at 200 MP), the median sample and the map itself sat on the merge's peak.
+     */
+    @Override public boolean effectiveMap() { return !ScamHdrDenoise.noDenoise(outWidth, outHeight); }
+    /**
      * P27: extra hybrid_tuning.txt lines for this burst (the conservative retry), appended after the user's tuning; then the steps
      * a worker of this process died in (see {@link #avoidedSteps}).
      */
@@ -521,7 +527,7 @@ public final class ScamHybridBurst implements ScamTransport {
         ByteBuffer h = ByteBuffer.allocate(128 + 32 * frames.size()).order(ByteOrder.LITTLE_ENDIAN);
         h.putInt(0x3143484e).putInt(pages != null ? 12 : 11).putInt(width).putInt(height).putInt(cfa).putInt(frames.size()).putFloat(white);
         for (float b : black) h.putFloat(b);
-        h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0) | (clipFlags ? 4 : 0) | (strictTwoX ? 8 : 0)).putInt(0)
+        h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0) | (clipFlags ? 4 : 0) | (strictTwoX ? 8 : 0) | (effectiveMap() ? 0 : 16)).putInt(0)
          .putInt(outWidth == width && outHeight == height ? 1 : 2).putInt(mosaicBlock).putInt(0).putInt(0);
         h.position(128);
         for (int i = 0; i < frames.size(); i++) {
@@ -898,7 +904,7 @@ public final class ScamHybridBurst implements ScamTransport {
         // Nothing of an earlier shot may apply to this one: sensor-grid output, no Bento, no clip flags, no frame map.
         lastOutputSize = new android.graphics.Point(w, h);
         lastBentoApplied = false; lastBentoFactor = 1f; lastBentoUsClipped = 0f; lastNoiseFactor = 1f; lastRgbHalf = false;
-        ScamRgb.lastClipFlags = null;
+        ScamRgb.dropClipFlags();
         lastEffectiveFrames = null;
         lastMergedDng = null;
         lastMergeTier = "cpu-single";

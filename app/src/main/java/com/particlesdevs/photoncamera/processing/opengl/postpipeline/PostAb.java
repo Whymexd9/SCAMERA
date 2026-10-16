@@ -48,7 +48,7 @@ public final class PostAb {
     public static Bitmap run(PostPipeline pipeline, ByteBuffer input, Parameters p) {
         final ByteBuffer rgb = p.scamRgb;
         final boolean owned = p.scamRgbOwned;
-        final ByteBuffer clipFlags = ScamRgb.lastClipFlags;
+        final ByteBuffer clipFlags = ScamRgb.heapClipFlags(); // P187: both runs read them (the native ones go after one)
         final ByteBuffer copy = Allocator.allocateAndCopy(rgb.capacity(), rgb, 0);
         if (copy == null) {
             Log.w("SCAM_PIPELINE", "POST AB skipped: no memory for the copy of the worker RGB");

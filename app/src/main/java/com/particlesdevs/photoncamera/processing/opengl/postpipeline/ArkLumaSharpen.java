@@ -226,6 +226,9 @@ public final class ArkLumaSharpen extends Node {
             // Not expected (ArkFusion passes the image on): the passes run again on this node's own input.
             Log.w("SCAM_PIPELINE", "ARK luma sharpen: input changed after the early passes, sharpening again");
             if (st != null && st.lumaS != null) { st.lumaS.close(); st.lumaS = null; }
+            // P187: a detail reference drawn early came from the other image; ArkCombine (or the passes below) draws it again
+            if (st != null && st.detailRef != null) { st.detailRef.close(); st.detailRef = null; }
+            if (st != null) st.inputReleased = false;
         }
         if (st == null || st.ae == null) throw new IllegalStateException("ARK sharpen: no statistics (ArkStats did not run)");
         issue(pipeline, input, false);
@@ -282,6 +285,7 @@ public final class ArkLumaSharpen extends Node {
         ArkTone.setColour(glProg, pipeline, gainMap, st.inScale);
         glProg.setVar("mulU", mul);
         glProg.drawBlocks(ya);
+        final boolean released = releaseImage(pipeline, input, gainMap, mul);
         if (fallback != null) fallback.close();
 
         boolean gf = gfRadius >= 1 && Math.abs(gfLc) > 0.001f;
@@ -386,7 +390,26 @@ public final class ArkLumaSharpen extends Node {
         Log.i("SCAM_PIPELINE", "ARK luma sharpen grid=" + size.x + "x" + size.y + " scale=" + s + " domain=" + (gClean ? "G_CLEAN" : "ae")
                 + " mul=" + mul + " bil=" + (bil ? bilAmount * scaleComp(s, SCALE2_BIL) : 0f) + " gf=" + (gf ? gfLc + "@r" + gfBox + "/" + gfDown : "off")
                 + " usm=" + (usm ? usmAmount + "@" + usmRadius * s : "off") + stages + " ms=" + (System.currentTimeMillis() - started)
-                + (early ? " (issued before the AE)" : ""));
+                + (early ? " (issued before the AE)" : "") + (released ? " imageReleased" : ""));
+    }
+
+    /**
+     * P187 (owner, 2026-10-17: less memory at full resolution without losing quality): above 100 MP the full-size image
+     * (a ping-pong texture, 1.6 GB) has two readers left after ArkStats - this node's ya pass and ArkCombine's detail
+     * reference - since ArkCombine with the sharpened luma (sharpU 1) reads nothing else of it. The reference is drawn now
+     * (the same pass, the same uniforms: detailClipU is this node's mul, as ArkCombine would set it) and the image goes back
+     * before the sharpening's planes, the fusion and the combine output are made. The 2x grid (ArkCombine's arkMid reads the
+     * image) and the old GL model keep it.
+     */
+    private boolean releaseImage(PostPipeline pipeline, GLTexture input, GLTexture gainMap, float mul) {
+        ArkTone.State st = pipeline.ark;
+        if (!ScamRgb.earlyRelease(input.mSize) || st.factor > 2) return false;
+        if (input != pipeline.main1 && input != pipeline.main2) return false;
+        if (ArkTone.value("sharp_gain", 1.0f) != 0f && st.detailRef == null)
+            st.detailRef = ArkCombine.detailRef(glProg, pipeline, input, gainMap, mul);
+        android.opengl.GLES30.glFinish();
+        st.inputReleased = pipeline.releaseMain(input);
+        return st.inputReleased;
     }
 
     private static float clamp01(float v) { return Math.max(0f, Math.min(1f, v)); }

@@ -108,12 +108,20 @@ public class ScamHybridBurstAnyResolutionTest {
         ByteBuffer encoded = (ByteBuffer) header.invoke(b);
         assertEquals("native worker must not auto-resize a coarse merge", 8, encoded.getInt(44) & 8);
         assertEquals(2, encoded.getInt(52));
+        // P187: no denoise reads an effective-frame map of a 201 MP result: the worker is told not to make it (flag 16)
+        assertFalse(b.effectiveMap());
+        assertEquals(16, encoded.getInt(44) & 16);
     }
 
     @Test public void upTo16MegapixelsThe2xChoiceIsUnchanged() throws Exception {
         ScamHybridBurst b = burst(List.of(frame(64, 64, ByteBuffer.allocate(64 * 64 * 2))), parameters(64, 64));
         assertEquals(128, b.outputWidth());
         assertEquals(128, b.outputHeight());
+        // P187: the denoised sizes keep their effective-frame map (no flag 16)
+        assertTrue(b.effectiveMap());
+        java.lang.reflect.Method header = ScamHybridBurst.class.getDeclaredMethod("header");
+        header.setAccessible(true);
+        assertEquals(0, ((ByteBuffer) header.invoke(b)).getInt(44) & 16);
         outputMode = "sensor";
         assertEquals(64, burst(List.of(frame(64, 64, ByteBuffer.allocate(64 * 64 * 2))), parameters(64, 64)).outputWidth());
         for (GLLimits gpu : new GLLimits[]{ADRENO_750, GLLimits.UNKNOWN}) {

@@ -150,6 +150,22 @@ public class GLTexture implements AutoCloseable {
         checkEglError("Tex glTexParameter");
     }
 
+    /**
+     * P187: this texture's min/mag filter from now on, for a texture that takes over another's role (the pipeline input as
+     * main2: a main samples GL_LINEAR). Bound on its own unit, as the constructor does.
+     */
+    public void setFilter(int filter) {
+        mFormat.filter = filter;
+        glActiveTexture(GL_TEXTURE1 + mTextureID);
+        glBindTexture(GL_TEXTURE_2D, mTextureID);
+        reSetParameters();
+    }
+
+    /** P187: RGBA16F, the format of the pipeline's ping-pong textures (main1 / main2). */
+    public boolean mainFormat() {
+        return mFormat.mFormat == GLFormat.DataType.FLOAT_16 && mFormat.mChannels == GLDrawParams.WorkDim;
+    }
+
     public void loadData(Buffer pixels){
         glBindTexture(GL_TEXTURE_2D, mTextureID);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, mSize.x, mSize.y, mFormat.getGLFormatExternal(), mFormat.getGLType(), pixels);
