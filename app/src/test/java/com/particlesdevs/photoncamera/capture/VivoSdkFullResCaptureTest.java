@@ -172,8 +172,10 @@ public class VivoSdkFullResCaptureTest {
             for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
                 pixels.putShort((y * width + x) * 2, (short) (64 + levels[(y / inputBlock % 2) * 2 + x / inputBlock % 2]));
         }
+        // P179: the native RAW-only series keeps up to NATIVE_IN_FLIGHT stills queued; the SDK series one at a time
+        final int inFlight = nativeRaw ? VivoSdkFullResCapture.NATIVE_IN_FLIGHT : 1;
         for (int i = 0; i < count; i++) {
-            assertEquals(failures.toString(), i + 1, requests.size());
+            assertEquals(failures.toString(), Math.min(count, i + inFlight), requests.size());
             CaptureRequest request = requests.get(i);
             assertEquals(previewFps, request.get(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE));
             assertEquals(Integer.valueOf(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF),
@@ -192,7 +194,7 @@ public class VivoSdkFullResCaptureTest {
             callback.onCaptureCompleted(session, request, result);
             callback.onCaptureSequenceCompleted(session, i + 1, i);
             if (!nativeRaw) capture.jpegDrained(timestamp);
-            assertEquals(i + 1, requests.size());
+            assertEquals("no new still before this one's RAW", Math.min(count, i + inFlight), requests.size());
             Image image = mock(Image.class);
             when(image.getTimestamp()).thenReturn(timestamp);
             when(image.getFormat()).thenReturn(ImageFormat.RAW_SENSOR);

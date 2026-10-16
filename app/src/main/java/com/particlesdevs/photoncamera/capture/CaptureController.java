@@ -1601,6 +1601,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     static final long HUGE_SHOT_PIXELS = 100_000_000L;
     /** P179: the camera was closed for a 200 MP merge; it opens again after it while the screen is up. */
     private volatile boolean mClosedForProcessing;
+    /** P179: counted down once the camera closed for a 200 MP merge (the merge's memory budget is read after it). */
+    private volatile java.util.concurrent.CountDownLatch mClosedForProcessingDone = new java.util.concurrent.CountDownLatch(0);
 
     /**
      * P179 (200 MP: the app was killed for LOW_MEMORY in the merge): the camera's 200 MP RAW buffers (4 x 401 MB) and the HAL's
@@ -1609,15 +1611,31 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     private void closeCameraForProcessing() {
         mClosedForProcessing = true;
+        final java.util.concurrent.CountDownLatch closed = new java.util.concurrent.CountDownLatch(1);
+        mClosedForProcessingDone = closed;
         // posted (never run inside the capture's completion, which still clears the shot's state after this call)
         new Handler(android.os.Looper.getMainLooper()).post(() -> {
             if (!mClosedForProcessing) return;
             Log.i("SCAM_CAPTURE", "200 MP: the camera closes for the merge (its RAW buffers and the HAL's go back)");
-            closeCamera();
-            ImageReader raw = mImageReaderRaw;
-            mImageReaderRaw = null;
-            if (raw != null) raw.close();
+            try {
+                closeCamera();
+                ImageReader raw = mImageReaderRaw;
+                mImageReaderRaw = null;
+                if (raw != null) raw.close();
+            } finally {
+                closed.countDown();
+            }
         });
+    }
+
+    /** P179: the merge of a 200 MP shot starts once the camera's buffers are back (at most 3 s). */
+    private void awaitClosedForProcessing() {
+        try {
+            if (!mClosedForProcessingDone.await(3, TimeUnit.SECONDS)) Log.w("SCAM_CAPTURE", "200 MP: the camera did not close in 3 s");
+            else android.os.SystemClock.sleep(300); // the HAL hands its buffers back just after the device closes
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void reopenCameraAfterProcessing() {
@@ -4938,6 +4956,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         com.particlesdevs.photoncamera.processing.ShotTimeline.attach(timeline);
                         try {
                             com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey(mosaicKey, 1);
+                            if (hugeShot) awaitClosedForProcessing();
                             saver.runRaw(characteristics, base, base.getRequest(), shakiness, rotation, exposures);
                         } catch (Exception failure) {
                             Log.e(TAG, "SDK FULLRES50 processing: " + Log.getStackTraceString(failure));

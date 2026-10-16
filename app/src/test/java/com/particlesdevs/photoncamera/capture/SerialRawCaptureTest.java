@@ -22,6 +22,43 @@ public class SerialRawCaptureTest {
         assertEquals(1, events.completed);
         assertEquals(0, events.failed);
     }
+    /** P179: up to three stills queued at once; each still matched on its own, the series completes in order. */
+    @Test public void keepsUpToThreeStillsInFlightAndCompletesInOrder() {
+        Events events = new Events();
+        SerialRawCapture series = new SerialRawCapture(5, false, 3, events);
+        series.start();
+        assertEquals("three queued at once", Arrays.asList(0, 1, 2), events.submitted);
+        series.started(0, 100);
+        series.started(1, 110);
+        series.started(2, 120);
+        // the second finishes first: nothing new until the first one is done (the order of the series)
+        series.raw(110); series.result(1, 110); series.sequenceCompleted(1);
+        assertEquals(3, events.submitted.size());
+        assertEquals(0, series.index());
+        assertTrue(series.acceptsRaw(100));
+        assertFalse("a RAW of no still", series.acceptsRaw(105));
+        series.raw(100); series.result(0, 100); series.sequenceCompleted(0);
+        assertEquals("two done: two more queued", Arrays.asList(0, 1, 2, 3, 4), events.submitted);
+        assertEquals(2, series.index());
+        series.started(3, 130);
+        series.started(4, 140);
+        for (long t : new long[]{120, 130, 140}) {
+            int i = (int) ((t - 100) / 10);
+            series.raw(t); series.result(i, t); series.sequenceCompleted(i);
+        }
+        assertEquals(1, events.completed);
+        assertEquals(0, events.failed);
+        assertEquals(5, series.index());
+        // a result whose timestamp is not its own still's start fails the series
+        events = new Events();
+        series = new SerialRawCapture(3, false, 3, events);
+        series.start();
+        series.started(0, 100);
+        series.started(1, 110);
+        series.result(1, 100);
+        assertEquals(1, events.failed);
+    }
+
     private static final class Events implements SerialRawCapture.Listener {
         final List<Integer> submitted = new ArrayList<>();
         int completed, failed;

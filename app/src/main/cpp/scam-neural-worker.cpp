@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <signal.h>
 #include <sys/resource.h>
 
@@ -348,7 +349,10 @@ int main(int argc,char** argv) {
             }
             {
                 char line[200];
-                std::snprintf(line,sizeof(line),"SCAM WORKER TIMELINE ms: cre=%.0f mapped=%.0f merged=%.0f written=%.0f",creMs,mappedMs,mergedMs,sinceStart());
+                // P179: the worker's peak resident memory (MB) next to its timeline: the measured side of the app's frame budget
+                struct rusage usage{};getrusage(RUSAGE_SELF,&usage);
+                std::snprintf(line,sizeof(line),"SCAM WORKER TIMELINE ms: cre=%.0f mapped=%.0f merged=%.0f written=%.0f peakRssMB=%ld",creMs,mappedMs,mergedMs,sinceStart(),
+                    long(usage.ru_maxrss/1024));
                 report(line);
             }
             alarm(0);report("SCAM CAPTURE OK");return 0;

@@ -83,7 +83,9 @@ final class VivoSdkFullResCapture {
         this.generation = generation;
         this.cutoff = cutoff;
         this.listener = listener;
-        serial = new SerialRawCapture(count, profile.nativeBlock == 0, new SerialRawCapture.Listener() {
+        // P179: the native RAW-only series keeps up to NATIVE_IN_FLIGHT stills queued, so they follow each other at the
+        // sensor's pace instead of each waiting behind the repeating preview requests (200 MP: ~5 s per frame one by one)
+        serial = new SerialRawCapture(count, profile.nativeBlock == 0, profile.nativeBlock > 1 ? NATIVE_IN_FLIGHT : 1, new SerialRawCapture.Listener() {
             public void submit(int index) { submitFrame(index); }
             public void complete() { finish(); }
             public void failed(String reason) { fail(reason); }
@@ -130,6 +132,9 @@ final class VivoSdkFullResCapture {
     }
     void jpegDrained(long timestamp) { if (!stopped) serial.jpeg(timestamp); }
     void previewStarted(long timestamp) { if (!stopped && profile.nativeBlock > 1) router.request(timestamp, false); }
+
+    /** P179: stills of the native RAW-only series in flight at once (the RAW reader holds 4 images). */
+    static final int NATIVE_IN_FLIGHT = 3;
 
     void cancel() {
         stopped = true;

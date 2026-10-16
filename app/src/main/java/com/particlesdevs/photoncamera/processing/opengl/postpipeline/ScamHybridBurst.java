@@ -72,6 +72,12 @@ public final class ScamHybridBurst implements ScamTransport {
     /** P27 any resolution: worker memory that does not grow with N (output stage, RGB result transport), bytes per sensor pixel. */
     static final double FIXED_BYTES_PER_PIXEL = 40;
     /**
+     * P179: above HUGE_INPUT_PIXELS the frames are freed before the pipeline (ScamProcessor; the reference RAW too) and the
+     * camera is closed for the merge, so only the merge's own working set stands beside them: the FP32 RGB result, its
+     * effective-frame plane and maps, the half-float output (about 20 B per output pixel); the pipeline's textures come after.
+     */
+    static final double HUGE_FIXED_BYTES_PER_PIXEL = 20;
+    /**
      * Worker memory of one more frame: the GPU strip windows of every storage slot (~300 RAW rows of the frame held at a time,
      * 3.8 KB per pixel column) and the F6 local-alignment field (CPU and GPU, ~0.15 B per pixel).
      */
@@ -240,7 +246,8 @@ public final class ScamHybridBurst implements ScamTransport {
         if (budget != Integer.MAX_VALUE) {
             final int byMemory = Math.max(MIN_NORMALS, budget - Math.min(reservedExtras, bracketed.size() + shorts.size()));
             Log.i("SCAM_HDR", "hybrid memory budget " + width + "x" + height + ": " + budget + " frames (available " + (available >> 20)
-                    + " MB, fixed " + (long) (FIXED_BYTES_PER_PIXEL * outWidth * outHeight) / (1 << 20) + " MB, "
+                    + " MB, fixed " + (long) (((long) width * height > HUGE_INPUT_PIXELS ? HUGE_FIXED_BYTES_PER_PIXEL : FIXED_BYTES_PER_PIXEL)
+                    * outWidth * outHeight) / (1 << 20) + " MB, "
                     + (long) perFrameBytes(width, height, mosaicBlock) / (1 << 20) + " MB per frame) -> at most "
                     + Math.min(byMemory, normalLimit) + " N");
             if (byMemory < normalLimit) { normalLimit = byMemory; limitReason = "memory budget"; }
@@ -475,7 +482,8 @@ public final class ScamHybridBurst implements ScamTransport {
     static int memoryFrameBudget(int w, int h, int mosaicBlock, int grid, long availableBytes) {
         final long px = (long) w * h;
         if (px <= CLASSIC_INPUT_PIXELS || availableBytes <= 0) return Integer.MAX_VALUE;
-        final double free = MEMORY_SHARE * availableBytes - FIXED_BYTES_PER_PIXEL * px * grid * grid;
+        final double fixed = px > HUGE_INPUT_PIXELS ? HUGE_FIXED_BYTES_PER_PIXEL : FIXED_BYTES_PER_PIXEL;
+        final double free = MEMORY_SHARE * availableBytes - fixed * px * grid * grid;
         return (int) Math.max(0, Math.min(Integer.MAX_VALUE - 1, Math.floor(free / perFrameBytes(w, h, mosaicBlock))));
     }
 
