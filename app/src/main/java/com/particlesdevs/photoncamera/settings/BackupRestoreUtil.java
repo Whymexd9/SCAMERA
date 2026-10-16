@@ -97,7 +97,8 @@ public class BackupRestoreUtil {
         if (i < data.length && data[i] == '{') {
             TunableSettingsManager.ensureTunableClassesRegistered();
             try (InputStreamReader reader = new InputStreamReader(new ByteArrayInputStream(data), StandardCharsets.UTF_8)) {
-                applyRestoredJson(context, JsonParser.parseReader(reader).getAsJsonObject());
+                com.google.gson.JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
+                ModuleProfiles.quietly(() -> applyRestoredJson(context, json)); // P141: no profile reload mid-import
             }
             result = Lang.t(context, "Загружено (старый JSON): ", "Imported (old JSON): ") + label;
         } else {
@@ -175,10 +176,13 @@ public class BackupRestoreUtil {
             String camera = ModuleRegistry.camera(slot);
             float zoom = ModuleRegistry.zoom(slot);
             float base = Float.NaN;
+            // P141 / P148: the uncropped zoom of the lens is zoom / lens crop (a «1.3×» copy of 1x reads 1.3 x the lens's
+            // focal length, also with the 1x button hidden)
             for (String other : slots)
                 if (ModuleRegistry.visible(other) && !ModuleRegistry.sensorCrop(other) && ModuleRegistry.camera(other).equals(camera))
-                    base = Float.isNaN(base) ? ModuleRegistry.zoom(other) : Math.min(base, ModuleRegistry.zoom(other));
-            if (Float.isNaN(base)) base = zoom;
+                    base = Float.isNaN(base) ? ModuleRegistry.zoom(other) / ModuleRegistry.crop(other)
+                            : Math.min(base, ModuleRegistry.zoom(other) / ModuleRegistry.crop(other));
+            if (Float.isNaN(base)) base = zoom / ModuleRegistry.crop(slot);
             float equiv = equivFocal(context, camera);
             // Without characteristics (no camera service): the zoom labels are relative to the main lens (~26 mm).
             float focal = equiv > 0f ? equiv * zoom / Math.max(base, 1e-3f) : 26f * zoom;
@@ -307,6 +311,14 @@ public class BackupRestoreUtil {
             writeProfile(context, t.slot, portable(context, values));
             meta.putBoolean("exists_" + t.slot, true);
         }
+        // P141: this phone's slots without a lens of the config (hidden ones) lose their old profiles: shown again later they
+        // start from the config's baseline, not from the settings before the import
+        java.util.Set<String> mapped = new java.util.HashSet<>();
+        for (LensProfileMatcher.Lens t : targets) mapped.add(t.slot);
+        try {
+            for (String slot : ModuleRegistry.slots()) if (!mapped.contains(slot)) meta.remove("exists_" + slot);
+        } catch (RuntimeException ignored) {
+        }
         // The active slot's values live in the main settings.
         String active = ModuleRegistry.active();
         SharedPreferences main = PreferenceManager.getDefaultSharedPreferences(context);
@@ -357,13 +369,29 @@ public class BackupRestoreUtil {
      * ids stay, the main settings are the source's, and the module profiles are mapped onto this phone's lenses.
      */
     static String apply(Context context, ConfigXml.Config config) {
+        final String[] message = new String[1];
+        ModuleProfiles.quietly(() -> message[0] = applyQuietly(context, config));
+        return message[0];
+    }
+
+    private static String applyQuietly(Context context, ConfigXml.Config config) {
         Map<String, Object> main = config.files.get(ConfigXml.MAIN);
         if (main == null) throw new IllegalArgumentException("the config has no main settings");
         String from = config.attributes.get("device");
-        boolean sameDevice = from == null || from.equals(device());
+        // P141: a file without the phone's name (a plain prefs map) is this phone's only when every Camera ID of its module
+        // slots exists here; otherwise its slots, sensor configs and vendor keys (ISZ / sensor modes) stay out, as another
+        // phone's would
+        boolean sameDevice = from != null ? from.equals(device()) : slotsExistHere(context, main);
+        if (from == null && !sameDevice) from = Lang.t(context, "неизвестного телефона", "an unknown phone");
         SharedPreferences mainPrefs = PreferenceManager.getDefaultSharedPreferences(context);
         if (sameDevice) {
-            replace(mainPrefs, main);
+            // P141: the automatic module offers this phone already made stay made (a file saved before an offer would let it
+            // run again and add a second copy of the module)
+            Map<String, Object> withOffers = new LinkedHashMap<>(main);
+            for (Map.Entry<String, ?> e : mainPrefs.getAll().entrySet())
+                if (e.getKey().startsWith("module_") && e.getKey().contains("offered") && !withOffers.containsKey(e.getKey()))
+                    withOffers.put(e.getKey(), e.getValue());
+            replace(mainPrefs, withOffers);
             for (Map.Entry<String, Map<String, Object>> file : config.files.entrySet()) {
                 String name = file.getKey();
                 if (name.equals(ConfigXml.MAIN) || name.equals(LENSES)) continue;
@@ -527,6 +555,24 @@ public class BackupRestoreUtil {
         if (recorded[1] <= 0 || focal == null || focal.length == 0) return true;
         for (float f : focal) if (Math.abs(f - recorded[1]) <= 0.03f * Math.max(f, recorded[1])) return true;
         return false;
+    }
+
+    /** P141: the same for a config's main settings (a file without the phone's name). */
+    static boolean slotsExistHere(Context context, Map<String, ?> main) {
+        java.util.Set<String> here = new java.util.HashSet<>();
+        try {
+            android.hardware.camera2.CameraManager cm = context.getSystemService(android.hardware.camera2.CameraManager.class);
+            here.addAll(java.util.Arrays.asList(cm.getCameraIdList()));
+        } catch (Exception | LinkageError e) {
+            return false;
+        }
+        boolean any = false;
+        for (Map.Entry<String, ?> e : main.entrySet()) {
+            if (!e.getKey().startsWith("module_auto_")) continue;
+            any = true;
+            if (e.getValue() == null || !here.contains(String.valueOf(e.getValue()))) return false;
+        }
+        return any;
     }
 
     /** True when every Camera ID of the backup's module slots (module_auto_*) exists on this phone. */

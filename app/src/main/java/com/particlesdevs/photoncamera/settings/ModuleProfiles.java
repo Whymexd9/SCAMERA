@@ -15,7 +15,14 @@ public final class ModuleProfiles {
         active=meta.getString("active",ModuleRegistry.active());
         if(!meta.getBoolean("baseline",false)){write(file("common"),current());meta.edit().putBoolean("baseline",true).apply();}
     }
-    public boolean isApplying(){return applying;}
+    public boolean isApplying(){return applying||QUIET.get()>0;}
+    /**
+     * P141: a config being written into the prefs files: the profile listener stays quiet meanwhile (a CAMERA_ID or per-lens
+     * change in the new main settings loaded this phone's OLD profile of the module into them before the config's own
+     * profiles arrived, and kept it). The app restarts after an import, reading meta / profiles / main as written.
+     */
+    private static final java.util.concurrent.atomic.AtomicInteger QUIET=new java.util.concurrent.atomic.AtomicInteger();
+    public static void quietly(Runnable body){QUIET.incrementAndGet();try{body.run();}finally{QUIET.decrementAndGet();}}
     /**
      * Settings shared by every lens (owner, 8 October 2026): never part of a module profile, whatever per-lens settings say.
      * The one list behind {@link #isLocal} and PreferenceKeys' legacy per-lens JSON. Sounds, grid, the photo format with every
@@ -71,7 +78,7 @@ public final class ModuleProfiles {
         if(com.particlesdevs.photoncamera.app.ScameraApp.getSettings()!=null)com.particlesdevs.photoncamera.app.ScameraApp.getSettings().loadCache();
     }
     public synchronized void changed(String key){
-        if(applying)return;
+        if(applying||QUIET.get()>0)return;
         if(key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue)){
             if(PreferenceKeys.isPerLensSettingsOn()){
                 write(file("common"),current());meta.edit().putBoolean("baseline",true).apply();

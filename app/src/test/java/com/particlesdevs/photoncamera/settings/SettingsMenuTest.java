@@ -335,6 +335,99 @@ public class SettingsMenuTest {
             assertEquals(slot,"0.2",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+slot,0).getString("pref_scam_hybrid_cdm",""));
         assertEquals("0.2",main.getString("pref_scam_hybrid_cdm",""));
     }
+    /** P141: an import on the same phone that changes the active module keeps the config's values in the main settings. */
+    @Test public void sameDeviceImportIsNotOverwrittenByTheProfileListener() throws Exception {
+        android.content.Context app=org.robolectric.RuntimeEnvironment.getApplication();
+        android.content.SharedPreferences main=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
+        android.content.SharedPreferences meta=app.getSharedPreferences(BackupRestoreUtil.META,0);
+        main.edit().clear().putString("module_auto_back0","0").putBoolean("module_visible_back0",true)
+                .putString("module_auto_back1","2").putBoolean("module_visible_back1",true).putString("module_active","back0")
+                .putString(PreferenceKeys.Key.CAMERA_ID.mValue,"0").putBoolean("pref_save_per_lens_settings",true)
+                .putString("pref_scam_hybrid_cdm","0.9").commit();
+        meta.edit().clear().putBoolean("baseline",true).putBoolean("exists_back0",true).putBoolean("exists_back1",true).putString("active","back0").commit();
+        app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back1",0).edit().clear().putString("pref_scam_hybrid_cdm","0.5").commit();
+        // the config: saved with the 3x module (back1) active, its value 0.3
+        ConfigXml.Config config=new ConfigXml.Config();
+        config.attributes.put("device",BackupRestoreUtil.device());
+        java.util.Map<String,Object> srcMain=new java.util.HashMap<>(main.getAll());
+        srcMain.put("module_active","back1");srcMain.put(PreferenceKeys.Key.CAMERA_ID.mValue,"2");srcMain.put("pref_scam_hybrid_cdm","0.3");
+        config.files.put(ConfigXml.MAIN,srcMain);
+        java.util.Map<String,Object> srcMeta=new java.util.HashMap<>();srcMeta.put("baseline",true);srcMeta.put("exists_back0",true);
+        srcMeta.put("exists_back1",true);srcMeta.put("active","back1");
+        config.files.put(BackupRestoreUtil.META,srcMeta);
+        java.util.Map<String,Object> p0=new java.util.HashMap<>();p0.put("pref_scam_hybrid_cdm","0.7");
+        config.files.put(BackupRestoreUtil.PROFILE_PREFIX+"back0",p0);
+        java.util.Map<String,Object> p1=new java.util.HashMap<>();p1.put("pref_scam_hybrid_cdm","0.3");
+        config.files.put(BackupRestoreUtil.PROFILE_PREFIX+"back1",p1);
+        camera.when(ScameraApp::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
+        manager.addListener(PreferenceKeys.PROFILE_LISTENER); // as CameraActivity's setDefaults (this test's manager only)
+        assertEquals("Imported: ",BackupRestoreUtil.apply(app,config));
+        assertEquals("the config's value of its active module, not this phone's old profile of it","0.3",main.getString("pref_scam_hybrid_cdm",""));
+        assertEquals("0.7",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back0",0).getString("pref_scam_hybrid_cdm",""));
+        assertEquals("0.3",app.getSharedPreferences(BackupRestoreUtil.PROFILE_PREFIX+"back1",0).getString("pref_scam_hybrid_cdm",""));
+        assertEquals("back1",meta.getString("active",""));
+    }
+    /**
+     * P141: a file without the phone's name is this phone's only when every Camera ID of its module slots exists here;
+     * otherwise this phone keeps its own slots. On the same phone the automatic module offers already made stay made.
+     */
+    @Test public void aConfigWithoutTheDeviceNameIsThisPhonesOnlyWhenItsCamerasExistAndOffersStay() throws Exception {
+        android.content.Context app=org.robolectric.RuntimeEnvironment.getApplication();
+        android.content.SharedPreferences main=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
+        main.edit().clear().putString("module_auto_back0","0").putBoolean("module_visible_back0",true).putString("module_label_back0","1×")
+                .putBoolean("module_isz_offered_back0",true).putString("pref_scam_hybrid_cdm","0.9").commit();
+        ConfigXml.Config config=new ConfigXml.Config();
+        java.util.Map<String,Object> srcMain=new java.util.HashMap<>();
+        srcMain.put("module_auto_back0","9");srcMain.put("module_visible_back0",true);srcMain.put("pref_scam_hybrid_cdm","0.2");
+        config.files.put(ConfigXml.MAIN,srcMain);
+        // no camera 9 here: another phone's file, this phone's slot stays
+        String message=BackupRestoreUtil.apply(app,config);
+        assertTrue(message,message.contains("an unknown phone"));
+        assertEquals("0",main.getString("module_auto_back0",""));assertEquals("0.2",main.getString("pref_scam_hybrid_cdm",""));
+        // with camera 9 present it is this phone's file: everything as written, the offer already made kept
+        org.robolectric.Shadows.shadowOf(app.getSystemService(android.hardware.camera2.CameraManager.class))
+                .addCamera("9",org.robolectric.shadows.ShadowCameraCharacteristics.newCameraCharacteristics());
+        main.edit().putBoolean("module_isz_offered_back0",true).commit();
+        assertEquals("Imported: ",BackupRestoreUtil.apply(app,config));
+        assertEquals("9",main.getString("module_auto_back0",""));
+        assertTrue("the offer made on this phone stays made",main.getBoolean("module_isz_offered_back0",false));
+    }
+    /** P141: this phone's hidden modules lose their old profiles on an import from another phone (back to the baseline). */
+    @Test public void anImportFromAnotherPhoneResetsTheProfilesOfHiddenModules() throws Exception {
+        android.content.Context app=org.robolectric.RuntimeEnvironment.getApplication();
+        android.content.SharedPreferences main=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
+        main.edit().clear().putString("module_auto_back0","0").putBoolean("module_visible_back0",true).putString("module_label_back0","1×")
+                .putString("module_auto_back1","2").putBoolean("module_visible_back1",false).putString("module_label_back1","3×")
+                .putString("module_active","back0").commit();
+        android.content.SharedPreferences meta=app.getSharedPreferences(BackupRestoreUtil.META,0);
+        meta.edit().clear().putBoolean("exists_back0",true).putBoolean("exists_back1",true).commit();
+        ConfigXml.Config config=new ConfigXml.Config();
+        config.attributes.put("device","oppo/op627cl1");
+        java.util.Map<String,Object> srcMain=new java.util.HashMap<>();srcMain.put("pref_scam_hybrid_cdm","0.2");
+        config.files.put(ConfigXml.MAIN,srcMain);
+        java.util.Map<String,Object> lenses=new java.util.LinkedHashMap<>();
+        lenses.put("back0.facing","back");lenses.put("back0.focal",23f);lenses.put("back0.zoom",1f);lenses.put("back0.crop",false);lenses.put("back0.label","1×");
+        config.files.put(BackupRestoreUtil.LENSES,lenses);
+        BackupRestoreUtil.apply(app,config);
+        assertTrue(meta.getBoolean("exists_back0",false));
+        assertFalse("the hidden 3x keeps no profile from before the import",meta.contains("exists_back1"));
+    }
+    /** P141 / P148: the passport of a «1.3×» copy of 1x reads 1.3 x the lens's focal length, also with the 1x button hidden. */
+    @Test public void thePassportOfACroppedCopyUsesTheLensFocalLength() {
+        android.content.Context app=org.robolectric.RuntimeEnvironment.getApplication();
+        android.hardware.camera2.CameraCharacteristics c=org.robolectric.shadows.ShadowCameraCharacteristics.newCameraCharacteristics();
+        org.robolectric.shadows.ShadowCameraCharacteristics sc=org.robolectric.Shadows.shadowOf(c);
+        sc.set(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS,new float[]{7.1f});
+        sc.set(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE,new android.util.SizeF(9.8f,7.35f));
+        org.robolectric.Shadows.shadowOf(app.getSystemService(android.hardware.camera2.CameraManager.class)).addCamera("0",c);
+        android.content.SharedPreferences main=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
+        main.edit().clear().putString("module_auto_back0","0").putBoolean("module_visible_back0",false).putString("module_label_back0","1×")
+                .putString("module_auto_back1","0").putBoolean("module_visible_back1",true).putString("module_label_back1","1.3×")
+                .putString("module_zoom_back1","1.3").putString("module_crop_back1","1.3").commit();
+        java.util.Map<String,Object> passports=BackupRestoreUtil.lensPassports(app);
+        assertEquals(36f/9.8f*7.1f*1.3f,(Float)passports.get("back1.focal"),0.05f);
+        assertFalse(passports.containsKey("back0.focal"));
+    }
     @Test public void moduleCopyCatalogContainsDynamicProcessingAndSupportsDrilldown(){
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();

@@ -3674,6 +3674,19 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
 - No duplicates and no extra modules after a restore (ModuleDuplicates, ModuleRegistry capacity, the vivo QCOM / PD2454 ISZ
   offers must not run again for a restored module).
 - Tests with configs of the X200 Ultra, X300 Ultra, OPPO X7U and a Pixel restored onto each other.
+- DONE 2026-10-16 (the audit found five ways a restore went wrong; BackupRestoreUtil / ModuleProfiles):
+  (1) on the same phone the profile listener reacted to the new main settings while they were written (CAMERA_ID /
+  per-lens change) and loaded this phone's OLD profile of the module into them, which stayed: the whole apply now runs
+  under ModuleProfiles.quietly (the app restarts after an import and reads meta / profiles / main as written);
+  (2) a file without the phone's name (a plain prefs map) counted as this phone's and replaced its slots and sensor modes:
+  now only when every Camera ID of its module slots exists here, otherwise it goes as «an unknown phone»'s;
+  (3) the automatic module offers (module_isz_offered_*) this phone already made are kept on a same-phone import (an old
+  file let them run again and add a second copy of a module);
+  (4) this phone's hidden modules kept their profiles from before an import from another phone: their exists_ flag goes, so
+  shown again they start from the config's baseline;
+  (5) the lens passport of a «1.3×» copy read the lens as 1.3x longer only while the 1x button was shown: the uncropped zoom
+  is zoom / module crop. SettingsMenuTest (4 new, each fails on the old code) besides the existing same-phone / another-phone
+  / per-lens-off / legacy-map tests and BackupLensMatchTest. Not tried with real configs of the four phones.
 
 ### P142 - separate exposure and focus points (owner, 2026-10-15: «добавь раздельную экспозицию и фокусировку. Сделай это как опцию. Т.е. при тапе появляется кольцо фокусировки и вокруг него квадрат экспозиции, я должен иметь возможность переносить куда мне нужно раздельно квадрат экспозиции и круг фокусировки»)
 - An option (off by default): a tap shows the focus ring with the exposure square around it; each can be dragged on its own
