@@ -72,7 +72,7 @@ public final class VivoSdkFullRes {
 
     /**
      * The native FULLRES build (its own package; the default package takes the SDK profiles): the X200 Ultra, P180 the X100 /
-     * X300 Ultra once their test switch is on (VivoNativeFullRes).
+     * X300 Ultra unless their switch turns them off (VivoNativeFullRes).
      */
     static boolean nativeRaw() {
         android.content.Context context = ScameraApp.getAppContext();
@@ -112,7 +112,7 @@ public final class VivoSdkFullRes {
     }
 
     public static boolean offered(String cameraId) {
-        // P180: the X100 / X300 Ultra only by the native route (their test switch on, the CTS package)
+        // P180: the X100 / X300 Ultra only by the native route (the CTS package; their switch not off)
         return (VivoQcomModes.device() || nativeRaw()) && profile(cameraId) != null
                 && "off".equals(CameraPackageSpoof.signature(ScameraApp.getAppContext()))
                 && PreferenceKeys.scamDevSwitch("vivo_sdk_fullres", true);

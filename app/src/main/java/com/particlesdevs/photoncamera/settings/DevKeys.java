@@ -155,9 +155,9 @@ public final class DevKeys {
         k.add(s(xiaomi, "xiaomi_tele_fallback", false, Lang.t("Запасной путь теле при сбое", "Tele fallback route on failure")));
         // vivo
         k.add(s(vivo, "vivo_sdk_fullres", true, Lang.t("X200 Ultra, основная камера 3: SDK RAW 50 Мп, последовательная съёмка после нажатия, Hybrid", "X200 Ultra, main camera 3: SDK 50 MP RAW, serial post-shutter capture, Hybrid")));
-        // P180: FULLRES without hardware remosaic on the X100 / X300 Ultra - unverified, for a targeted test (CTS package)
-        k.add(s(vivo, "vivo_fullres_x100u", false, Lang.t("X100 Ultra: FULLRES без аппаратного ремозаика (не проверено, тест)", "X100 Ultra: FULLRES without hardware remosaic (unverified, test)")));
-        k.add(s(vivo, "vivo_fullres_x300u", false, Lang.t("X300 Ultra: FULLRES без аппаратного ремозаика (не проверено, тест)", "X300 Ultra: FULLRES without hardware remosaic (unverified, test)")));
+        // P180 / P184: FULLRES without hardware remosaic on the X100 / X300 Ultra - on (the owner tests it), off by these
+        k.add(s(vivo, "vivo_fullres_x100u", true, Lang.t("X100 Ultra: FULLRES без аппаратного ремозаика (проверяется)", "X100 Ultra: FULLRES without hardware remosaic (being tested)")));
+        k.add(s(vivo, "vivo_fullres_x300u", true, Lang.t("X300 Ultra: FULLRES без аппаратного ремозаика (проверяется)", "X300 Ultra: FULLRES without hardware remosaic (being tested)")));
         k.add(n(vivo, "vivo_fullres_mode_main", "-1", Lang.t("X100/X300 Ultra FULLRES: режим сенсора основной (-1: строка 0 таблицы)", "X100/X300 Ultra FULLRES: main sensor mode (-1: the table's row 0)")));
         k.add(n(vivo, "vivo_fullres_mode_main50", "-1", Lang.t("X300 Ultra FULLRES 50 Мп: режим сенсора основной (-1: строка 1)", "X300 Ultra FULLRES 50 MP: main sensor mode (-1: row 1)")));
         k.add(n(vivo, "vivo_fullres_mode_wide", "-1", Lang.t("X100/X300 Ultra FULLRES: режим сенсора сверхширика (-1: строка 0)", "X100/X300 Ultra FULLRES: ultra-wide sensor mode (-1: row 0)")));

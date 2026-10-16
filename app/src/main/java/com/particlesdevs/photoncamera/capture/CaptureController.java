@@ -2302,7 +2302,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private void prepareVivoSdkRawSession() throws Exception {
         if (mVivoSdkRestorePending) closeVivoSdkRawSession(null);
         // P179: a FULLRES lease left by a process of ours that died (LOW_MEMORY) is given back before a camera opens
-        // (any phone of the native route, its test switch on or off: a lease of a test that was killed must come back)
+        // (any phone of the native route, its switch on or off: a lease of a session that was killed must come back)
         if (mVivoSdkRawSession == null && VivoNativeFullRes.phone() != null) VivoSdkRawSession.recoverStale(ScameraApp.getAppContext());
         if (!mVivoSdkClosed.await(2000, TimeUnit.MILLISECONDS))
             throw new IllegalStateException("Previous Vivo SDK camera has not closed");

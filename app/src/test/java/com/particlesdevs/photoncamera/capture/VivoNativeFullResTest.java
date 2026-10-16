@@ -61,6 +61,7 @@ public class VivoNativeFullResTest {
     @Test
     public void theX100UltraTakesItsOwnCamerasAndTableRows() {
         profile(X100, "2", true, 8192, 6144, 0, 2);
+        profile(X100, "0", true, 8192, 6144, 0, 2); // the listed main: the same sensor's other profile
         profile(X100, "3", true, 8192, 6144, 0, 2);
         profile(X100, "4", true, 16320, 12288, 0, 4);
         profile(X100, "4", false, 8160, 6144, 1, 2);
@@ -99,7 +100,7 @@ public class VivoNativeFullResTest {
     @Test
     public void noModeIsCopiedFromTheX200Ultra() {
         for (VivoNativeFullRes.Phone phone : new VivoNativeFullRes.Phone[]{X100, X300})
-            for (String camera : new String[]{"2", "3", "4", "5"})
+            for (String camera : new String[]{"0", "2", "3", "4", "5"})
                 for (boolean large : new boolean[]{true, false}) {
                     VivoSdkFullRes.Profile p = VivoNativeFullRes.profile(phone, camera, large, false);
                     if (p != null && p.nativeBlock == 2 && p.size.getWidth() == 8192) assertNotEquals(phone + " " + camera, 4, p.sensorMode);

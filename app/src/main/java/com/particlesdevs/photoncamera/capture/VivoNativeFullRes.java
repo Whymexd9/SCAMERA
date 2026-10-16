@@ -21,10 +21,12 @@ import java.util.Locale;
  * tag 0x8038 / 0x8017: row 0 16320x12288 on both telephotos, 16320x12256 on the X300 main, 8192x6144 elsewhere; row 1 the
  * first 50 MP full-field row of a 200 MP sensor), but neither the reports nor the selectors say which row the sensor gives
  * without remosaic (DNGSATREMOSAIC names no index; the sensor-module descriptors are not in the reports), nor that the SDK
- * lease (keys 40 / 33) and the CTS package category work on their firmware. So they stay off until a targeted test turns
- * them on (scam_dev.txt vivo_fullres_x100u / vivo_fullres_x300u 1); vivo_fullres_mode_* picks another row of the table for
- * that test, never on the X200 Ultra. Whatever the row, every shot proves its mosaic from the pixels: a hardware-remosaiced
- * Bayer frame fails the shot (VivoSdkFullResCapture), it never passes as Quad / Tetra.
+ * lease (keys 40 / 33) and the CTS package category work on their firmware. P184 (owner, 2026-10-17: «На х100 ультра не
+ * появляются кнопки с переключением фулреза, исправь. на 300у они тоже должны быть»): they are on, the owner tests them;
+ * scam_dev.txt vivo_fullres_x100u / vivo_fullres_x300u 0 turns a phone off, vivo_fullres_mode_* picks another row of the
+ * table (never on the X200 Ultra). Whatever the row, every shot proves its mosaic from the pixels: a hardware-remosaiced
+ * Bayer frame fails the shot (VivoSdkFullResCapture), it never passes as Quad / Tetra; a lease the firmware refuses fails the
+ * session and FULLRES goes off.
  */
 public final class VivoNativeFullRes {
     enum Phone { X200_ULTRA, X100_ULTRA, X300_ULTRA }
@@ -49,11 +51,11 @@ public final class VivoNativeFullRes {
         return null;
     }
 
-    /** Native FULLRES may run on this phone: the X200 Ultra, the X100 / X300 Ultra once their test switch is on. */
+    /** Native FULLRES may run on this phone: the X200 Ultra, the X100 / X300 Ultra unless their switch turns them off. */
     public static boolean device() {
         Phone p = phone();
-        return p != null && allowed(p, p == Phone.X100_ULTRA ? PreferenceKeys.scamDevSwitch("vivo_fullres_x100u", false)
-                : p == Phone.X300_ULTRA && PreferenceKeys.scamDevSwitch("vivo_fullres_x300u", false));
+        return p != null && allowed(p, p == Phone.X100_ULTRA ? PreferenceKeys.scamDevSwitch("vivo_fullres_x100u", true)
+                : p == Phone.X300_ULTRA && PreferenceKeys.scamDevSwitch("vivo_fullres_x300u", true));
     }
 
     static boolean allowed(Phone phone, boolean testSwitch) {
@@ -87,9 +89,9 @@ public final class VivoNativeFullRes {
         if (cameraId == null) return null;
         switch (phone) {
             case X100_ULTRA:
-                // tag 0x8038: main (2) rows 0 / 11 / 31 8192x6144; ultra-wide (3) rows 0 / 9 8192x6144; tele (4) row 0
-                // 16320x12288, rows 1 / 14 / 18 / 20 8160x6144
-                if ("2".equals(cameraId)) return new VivoSdkFullRes.Profile(8192, 6144, row("main", 0, override), 2);
+                // tag 0x8038: main (2, and the listed 0: its other profile, the same table) rows 0 / 11 / 31 8192x6144;
+                // ultra-wide (3) rows 0 / 9 8192x6144; tele (4) row 0 16320x12288, rows 1 / 14 / 18 / 20 8160x6144
+                if ("0".equals(cameraId) || "2".equals(cameraId)) return new VivoSdkFullRes.Profile(8192, 6144, row("main", 0, override), 2);
                 if ("3".equals(cameraId)) return new VivoSdkFullRes.Profile(8192, 6144, row("wide", 0, override), 2);
                 if ("4".equals(cameraId)) return large ? new VivoSdkFullRes.Profile(16320, 12288, row("tele", 0, override), 4)
                         : new VivoSdkFullRes.Profile(8160, 6144, row("tele50", 1, override), 2);
