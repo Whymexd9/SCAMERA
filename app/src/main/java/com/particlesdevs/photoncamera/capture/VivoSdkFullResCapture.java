@@ -126,7 +126,24 @@ final class VivoSdkFullResCapture {
         }, Image::close);
     }
 
-    void start() { serial.start(); }
+    void start() {
+        // P179: a 200 MP series stops the repeating preview at the shutter, so its stills follow the requests the HAL already
+        // holds instead of a queue of ~13 preview frames (2.7 fps at 200 MP: ~5 s); the camera closes for the merge right after
+        if (stopsPreview(profile)) {
+            try {
+                session.stopRepeating();
+            } catch (Exception e) {
+                android.util.Log.w("SCAM_CAPTURE", "200 MP: the preview did not stop for the series: " + e);
+            }
+        }
+        serial.start();
+    }
+
+    /** P179: a native RAW-only series above 100 MP stops the preview while it runs. */
+    static boolean stopsPreview(VivoSdkFullRes.Profile profile) {
+        return profile != null && profile.nativeBlock > 1
+                && (long) profile.size.getWidth() * profile.size.getHeight() > CaptureController.HUGE_SHOT_PIXELS;
+    }
     void image(Image image) {
         if (stopped) image.close(); else router.image(image.getTimestamp(), image);
     }

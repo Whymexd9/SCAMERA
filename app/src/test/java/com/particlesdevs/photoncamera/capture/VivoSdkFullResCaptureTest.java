@@ -50,6 +50,14 @@ public class VivoSdkFullResCaptureTest {
         assertNull(VivoSdkFullRes.nativeProfile("1"));
     }
 
+    /** P179: only a native series above 100 MP stops the preview at the shutter (200 MP); 50 MP and the SDK series keep it. */
+    @Test public void only200MpStopsThePreviewForItsSeries() {
+        assertTrue(VivoSdkFullResCapture.stopsPreview(VivoSdkFullRes.TELE_200));
+        assertFalse(VivoSdkFullResCapture.stopsPreview(VivoSdkFullRes.TELE_50));
+        assertFalse(VivoSdkFullResCapture.stopsPreview(VivoSdkFullRes.nativeProfile("3")));
+        assertFalse(VivoSdkFullResCapture.stopsPreview(new VivoSdkFullRes.Profile(16320, 12288, 0, 0)));
+    }
+
     /** P179: the tele's 50 MP button takes mode 1 (Quad 8160x6144), the 200 MP one mode 0 (Tetra); 200 MP until chosen. */
     @Test public void theTeleTakesTheChosenNativeSize() {
         try (org.mockito.MockedStatic<com.particlesdevs.photoncamera.app.ScameraApp> app =

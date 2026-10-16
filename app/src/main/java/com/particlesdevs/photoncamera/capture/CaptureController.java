@@ -5011,6 +5011,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 cameraEventsListener.onCaptureSequenceCompleted(null);
                 cameraEventsListener.onProcessingError(reason);
                 Log.w("SCAM_CAPTURE", "SDK FULLRES50 failed: " + reason);
+                // P179: a 200 MP series stopped the preview at the shutter: the camera opens again for it
+                if (hugeShot) new Handler(android.os.Looper.getMainLooper()).post(CaptureController.this::restartCamera);
                 PixelPro10.setFullRes(false);
                 if (isCameraResumed && mCaptureSession == session)
                     new Handler(Looper.getMainLooper()).post(() -> {
