@@ -34,30 +34,35 @@ public final class VivoSdkFullRes {
         return null;
     }
 
-    /** P181: the camera's profile at the telephoto's given size (the X200 Ultra's native telephoto; others have one size). */
+    /** P181: the camera's profile at the given size of a camera with two (200 MP and 50 MP); others have one size. */
     public static Profile profile(String cameraId, boolean tele200) {
-        if (teleSizes(cameraId)) return tele200 ? TELE_200 : TELE_50;
+        if (teleSizes(cameraId)) return VivoNativeFullRes.profile(cameraId, tele200);
         return profile(cameraId);
     }
 
-    /** The native FULLRES build on the X200 Ultra (its own package; the default package takes the SDK profiles). */
+    /**
+     * The native FULLRES build (its own package; the default package takes the SDK profiles): the X200 Ultra, P180 the X100 /
+     * X300 Ultra once their test switch is on (VivoNativeFullRes).
+     */
     static boolean nativeRaw() {
         android.content.Context context = ScameraApp.getAppContext();
-        return context != null && VivoQcomModes.device() && VivoPd2454NativeRaw.PACKAGE.equals(context.getPackageName());
+        return context != null && VivoNativeFullRes.device() && VivoPd2454NativeRaw.PACKAGE.equals(context.getPackageName());
     }
 
+    /** The phone's native profile of a camera (P180: VivoNativeFullRes' table; the X200 Ultra's anywhere else). */
     static Profile nativeProfile(String cameraId) {
-        if ("3".equals(cameraId) || "4".equals(cameraId)) return new Profile(8192, 6144, 4, 2);
-        if ("5".equals(cameraId)) return PixelPro10.tele200() ? TELE_200 : TELE_50;
-        return null;
+        return VivoNativeFullRes.profile(cameraId, PixelPro10.tele200());
     }
 
     /** P179: the telephoto's two native sizes - 200 MP (mode 0, Tetra 16320x12288) and 50 MP (mode 1, Quad 8160x6144). */
     static final Profile TELE_200 = new Profile(16320, 12288, 0, 4), TELE_50 = new Profile(8160, 6144, 1, 2);
 
-    /** P179: the camera offers both sizes (the X200 Ultra's telephoto, native build): a FULLRES button for each. */
+    /**
+     * P179: the camera offers both sizes (the X200 Ultra's telephoto, native build): a FULLRES button for each; P180 the X100
+     * Ultra's telephoto, the X300 Ultra's main camera and telephoto too.
+     */
     public static boolean teleSizes(String cameraId) {
-        return "5".equals(cameraId) && nativeRaw();
+        return nativeRaw() && VivoNativeFullRes.twoSizes(cameraId);
     }
 
     static int frameCount(int requested, long frameBytes, long availableBytes) {
@@ -77,7 +82,8 @@ public final class VivoSdkFullRes {
     }
 
     public static boolean offered(String cameraId) {
-        return VivoQcomModes.device() && profile(cameraId) != null
+        // P180: the X100 / X300 Ultra only by the native route (their test switch on, the CTS package)
+        return (VivoQcomModes.device() || nativeRaw()) && profile(cameraId) != null
                 && "off".equals(CameraPackageSpoof.signature(ScameraApp.getAppContext()))
                 && PreferenceKeys.scamDevSwitch("vivo_sdk_fullres", true);
     }

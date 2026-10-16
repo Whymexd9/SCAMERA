@@ -67,7 +67,7 @@ public final class VivoQcomIsz {
     private static volatile String sMarket;
 
     @Nullable
-    private static String marketName() {
+    static String marketName() {
         String m = sMarket;
         if (m != null) return m;
         try {
