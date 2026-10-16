@@ -348,9 +348,13 @@ public final class ScamDenoise extends Node {
     static volatile boolean lastMainTaken;
 
     /** The whole noise reduction; returns the output texture (a pipeline main texture). */
+    /** P179: the input's storage went back during the last process (no NLM fallback can read it then). */
+    static boolean lastInputReleased;
+
     static GLTexture process(GLProg glProg, PostPipeline pipeline, GLTexture input) {
         final long started = System.nanoTime();
         lastMainTaken = false;
+        lastInputReleased = false;
         final Parameters par = pipeline.mParameters;
         final int s = Math.max(1, Math.min(2, Math.round(par.outputScale)));
         final Point full = input.mSize;
@@ -436,6 +440,12 @@ public final class ScamDenoise extends Node {
             glProg.drawBlocks(x0);
             if (clean != base) release(owned, clean);
             if (s == 1) base = null; // the 1x output is built from the denoised YUV alone
+            // P179 (200 MP: LOW_MEMORY in the pipeline): on the sensor grid nothing reads the input after x0 - above 100 MP its
+            // storage (a ping-pong texture, 1.6 GB) goes back now and the pipeline makes it again on its next use
+            if (s == 1 && (long) full.x * full.y > 100_000_000L && pipeline.releaseMain(input)) {
+                lastInputReleased = true;
+                log.append(" inputReleased");
+            }
 
             // ---- pyramids: luma kD8 Y1..Y4, chroma {1,3,3,1} XC1..XC3 of the noisy YUV (noise statistics)
             GLTexture[] Y = new GLTexture[ScamDenoiseTables.LEVELS + 1];

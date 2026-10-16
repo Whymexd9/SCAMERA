@@ -4886,7 +4886,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         android.app.ActivityManager manager = (android.app.ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE);
         android.app.ActivityManager.MemoryInfo memory = new android.app.ActivityManager.MemoryInfo();
         if (manager != null) manager.getMemoryInfo(memory);
-        final int count = VivoSdkFullRes.frameCount(requested, frameBytes, manager == null ? -1 : memory.availMem);
+        int frames = VivoSdkFullRes.frameCount(requested, frameBytes, manager == null ? -1 : memory.availMem);
+        final int rawWidth = mImageReaderRaw.getWidth(), rawHeight = mImageReaderRaw.getHeight();
+        if ((long) rawWidth * rawHeight > HUGE_SHOT_PIXELS && manager != null) {
+            // P179: a 200 MP series takes only the frames its merge can hold - the merge's budget with the memory the camera's
+            // RAW buffers give back when it closes for the merge (more frames only cost capture time: ~0.4 s each)
+            VivoSdkFullRes.Profile fullProfile = VivoSdkFullRes.profile(mVivoSdkCameraId);
+            int mergeable = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.captureFrames(rawWidth, rawHeight,
+                    fullProfile != null ? fullProfile.nativeBlock : 0, memory.availMem + 4L * frameBytes);
+            if (mergeable < frames) frames = mergeable;
+        }
+        final int count = frames;
         if (count < 1 || (manager != null && memory.lowMemory)) {
             failPendingShutter(new IllegalStateException(Lang.t("Недостаточно памяти для серии FULLRES", "Not enough memory for a FULLRES series")));
             return;

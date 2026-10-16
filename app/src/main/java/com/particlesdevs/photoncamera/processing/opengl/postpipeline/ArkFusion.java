@@ -61,9 +61,12 @@ public final class ArkFusion extends Node {
         return v;
     }
 
-    /** The ARK tone's own denoise (bracket_denoise, chroma_denoise): only with the master switch «Шумоподавление» on. */
-    static boolean arkDenoise() {
-        return PreferenceKeys.isHybridDenoiseEnabled();   // P165: the master switch on every shot
+    /**
+     * The ARK tone's own denoise (bracket_denoise, chroma_denoise): only with the master switch «Шумоподавление» on (P165: on
+     * every shot), never on a 200 MP shot (P179: the merge alone).
+     */
+    static boolean arkDenoise(com.particlesdevs.photoncamera.processing.render.Parameters p) {
+        return PreferenceKeys.isHybridDenoiseEnabled() && !ScamHdrDenoise.noDenoise(p);
     }
 
     @Override
@@ -76,7 +79,7 @@ public final class ArkFusion extends Node {
         long started = System.currentTimeMillis();
         ArkAe.Result r = st.ae;
         Point lowSize = st.low.mSize;
-        float strength = arkDenoise() ? ArkTone.value("bracket_denoise", 1f) : 0f;
+        float strength = arkDenoise(basePipeline.mParameters) ? ArkTone.value("bracket_denoise", 1f) : 0f;
         st.lowDn = st.low;
         if (r.clip > 1.05f && strength > 0.001f) {
             st.lowDn = new GLTexture(lowSize, new GLFormat(GLFormat.DataType.FLOAT_16, 4), null, GL_NEAREST, GL_CLAMP_TO_EDGE);

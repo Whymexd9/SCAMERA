@@ -164,6 +164,17 @@ public final class ScamHdrDenoise extends Node {
             Log.i("SCAM_PIPELINE", "denoise off (pref_scam_hybrid_denoise)");
             return;
         }
+        // P179 (owner, 2026-10-16: «Для 200мп мы можем полностью отключить шумодавы и использовать только склейку, я всё
+        // равно буду их использовать только днем»): a 200 MP shot is the merge alone - no finish denoise (and no ARK
+        // bracket / chroma denoise, ArkFusion.arkDenoise), as with «Шумоподавление» off; in daylight its top SNR tier was
+        // nearly transparent anyway, and it would take 3-4 GB of 200 MP textures and ~9 s
+        if (noDenoise(pipeline.mParameters)) {
+            WorkingTexture = previousNode.WorkingTexture;
+            glProg.closed = true;
+            Log.i("SCAM_PIPELINE", "denoise off: " + pipeline.mParameters.rawSize.x + "x" + pipeline.mParameters.rawSize.y
+                    + " (200 MP: the merge alone)");
+            return;
+        }
         // SCAM Hybrid shots: the SCAM finish denoise (pref_scam_hybrid_dn_engine = multiscale, default); this NLM route
         // stays the "nlm" engine and the SCAM HDR (SCAM) denoise. A failure there falls back to the NLM route.
         if (ScamDenoise.enabledFor(pipeline)) {
@@ -175,6 +186,7 @@ public final class ScamHdrDenoise extends Node {
                 dumpTexture(pipeline, WorkingTexture, "denoise-out");
                 return;
             } catch (RuntimeException error) {
+                if (ScamDenoise.lastInputReleased) throw error; // P179: the input is gone (200 MP): no NLM pass can read it
                 Log.e("SCAM_PIPELINE", "scam-denoise failed, NLM denoise instead: " + error);
                 if (ScamDenoise.lastMainTaken) {
                     // The failure came after the output texture was taken: the ping-pong cursor already points past
@@ -187,6 +199,17 @@ public final class ScamHdrDenoise extends Node {
             }
         }
         runNlm();
+    }
+
+    /** P179: above this many output pixels (200 MP) the shot is the merge alone, without any denoise of the pipeline. */
+    static final long HUGE_PIXELS = 100_000_000L;
+
+    static boolean noDenoise(com.particlesdevs.photoncamera.processing.render.Parameters p) {
+        return p != null && p.rawSize != null && noDenoise(p.rawSize.x, p.rawSize.y);
+    }
+
+    static boolean noDenoise(int width, int height) {
+        return (long) width * height > HUGE_PIXELS;
     }
 
     /** The NLM route (SCAM HDR shots, or the hybrid with dn_engine = nlm). */

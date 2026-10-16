@@ -475,6 +475,15 @@ public final class ScamHybridBurst implements ScamTransport {
      * memory {@code availableBytes} available before the merge, minus the N-independent cost ({@link #FIXED_BYTES_PER_PIXEL}),
      * over {@link #perFrameBytes}. Integer.MAX_VALUE (no cap) at 16 MP or less or when the available memory is unknown.
      */
+    /**
+     * P179: the N frames a merge of a w x h stream can take with {@code availableBytes} free then (at least MIN_NORMALS), for a
+     * capture to take no more than that; Integer.MAX_VALUE at 16 MP or less or when the memory is unknown.
+     */
+    public static int captureFrames(int w, int h, int mosaicBlock, long availableBytes) {
+        final int budget = memoryFrameBudget(w, h, mosaicBlock, 1, availableBytes);
+        return budget == Integer.MAX_VALUE ? budget : Math.max(MIN_NORMALS, budget);
+    }
+
     static int memoryFrameBudget(int w, int h, int mosaicBlock, long availableBytes) {
         return memoryFrameBudget(w, h, mosaicBlock, 1, availableBytes);
     }

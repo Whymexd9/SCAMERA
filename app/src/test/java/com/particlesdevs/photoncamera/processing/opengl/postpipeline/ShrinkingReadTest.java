@@ -50,6 +50,25 @@ public class ShrinkingReadTest {
         assertEquals("down to the result's start", head, (long) cuts.get(cuts.size() - 1));
     }
 
+    /** P179 (owner): a 200 MP shot is the merge alone - no denoise of the pipeline; 50 MP keeps it. */
+    @Test
+    public void a200MpShotIsTheMergeAlone() {
+        assertTrue(ScamHdrDenoise.noDenoise(16320, 12288));
+        assertTrue("the main camera's 200 MP too", ScamHdrDenoise.noDenoise(16320, 12256));
+        assertTrue("50 MP: denoised", !ScamHdrDenoise.noDenoise(8192, 6144));
+        assertTrue("12 MP: denoised", !ScamHdrDenoise.noDenoise(4096, 3072));
+    }
+
+    /** P179: a 200 MP capture takes the merge's frames (at least two); 16 MP or less is not capped here. */
+    @Test
+    public void a200MpCaptureTakesWhatItsMergeCanHold() {
+        final long gb = 1L << 30;
+        assertEquals("little memory: the two the merge always takes", 2, ScamHybridBurst.captureFrames(16320, 12288, 4, 3 * gb));
+        int roomy = ScamHybridBurst.captureFrames(16320, 12288, 4, 12 * gb);
+        assertTrue("more memory, more frames: " + roomy, roomy > 2 && roomy < 64);
+        assertEquals(Integer.MAX_VALUE, ScamHybridBurst.captureFrames(4096, 3072, 0, 3 * gb));
+    }
+
     @Test
     public void main2IsMadeOnItsFirstUseOnly() {
         GLBasePipeline p = new GLBasePipeline("test");
@@ -64,5 +83,12 @@ public class ShrinkingReadTest {
         assertSame(two, p.getMain());
         assertEquals("once", 1, made[0]);
         assertNull(p.lazyMain2);
+        // a ping-pong texture nothing reads any more gives its storage back and waits to be made again
+        assertTrue(p.releaseMain(one));
+        org.mockito.Mockito.verify(one).close();
+        assertNull(p.main1);
+        assertTrue("made again on its next use", p.lazyMain1 != null);
+        assertTrue("main2 untouched", p.main2 == two);
+        assertTrue("not a main: nothing", !p.releaseMain(mock(GLTexture.class)));
     }
 }

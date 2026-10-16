@@ -29,6 +29,23 @@ public class GLBasePipeline implements AutoCloseable {
      * input texture of the first stage. Null: main2 is made by whoever set it.
      */
     public java.util.function.Supplier<GLTexture> lazyMain2;
+    /** P179: main1 made again on its next use after {@link #releaseMain} gave its storage back. */
+    public java.util.function.Supplier<GLTexture> lazyMain1;
+
+    /**
+     * P179: a ping-pong texture whose content nothing reads any more gives its storage back now and is made again (same size
+     * and format) on its next use - at 200 MP an RGBA16F texture is 1.6 GB. False when {@code t} is not main1 / main2.
+     */
+    public boolean releaseMain(GLTexture t) {
+        if (t == null || (t != main1 && t != main2)) return false;
+        final Point size = new Point(t.mSize);
+        final GLFormat format = t.mFormat;
+        final java.util.function.Supplier<GLTexture> make = () -> new GLTexture(size, format, null,
+                android.opengl.GLES20.GL_LINEAR, android.opengl.GLES20.GL_CLAMP_TO_EDGE);
+        t.close();
+        if (t == main1) { main1 = null; lazyMain1 = make; } else { main2 = null; lazyMain2 = make; }
+        return true;
+    }
     public Settings mSettings;
     /**
      * Set once the remosaic has rearranged the mosaic into plain bayer. The
@@ -60,6 +77,11 @@ public class GLBasePipeline implements AutoCloseable {
             return main2;
         } else {
             texnum = 1;
+            if (main1 == null && lazyMain1 != null) {
+                java.util.function.Supplier<GLTexture> make = lazyMain1;
+                lazyMain1 = null;
+                main1 = make.get();
+            }
             return main1;
         }
     }
@@ -256,6 +278,7 @@ public class GLBasePipeline implements AutoCloseable {
         }
         if (main3 != null) main3.close();
         lazyMain2 = null;
+        lazyMain1 = null;
         glint.glProgram.close();
         dumpTimings("runAll");
         Nodes.clear();
@@ -299,6 +322,7 @@ public class GLBasePipeline implements AutoCloseable {
         }
         if (main3 != null) main3.close();
         lazyMain2 = null;
+        lazyMain1 = null;
         glint.glProgram.close();
         dumpTimings("runAllRaw");
         Nodes.clear();
