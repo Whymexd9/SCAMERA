@@ -11,7 +11,10 @@
 // write). Optional plain variable GITHUB_REPO (default Whymexd9/SCAMERA).
 // Once after deploying: open https://<worker>/setup?key=<WEBHOOK_SECRET> to register the webhook and the commands.
 
-const DEFAULTS = {auto: true, chat: null, topic: null, where: '', commits: true, sha: true, header: '', lang: 'ru'};
+// targets: [{chat: -100..., topic: id or null, where: 'Group › Topic'}], every build goes to each of them
+const DEFAULTS = {auto: true, targets: [], commits: true, sha: true, header: '', lang: 'ru'};
+const defaultSettings = () => JSON.parse(JSON.stringify(DEFAULTS));   // a deep copy: targets change in place
+const MAX_TARGETS = 5;
 const HEADER_LIMIT = 300;
 const TOGGLES = ['commits', 'sha'];
 const WORKFLOW = 'telegram-bot.yml';
@@ -62,23 +65,36 @@ function parseSettings(text) {
       return null;
     }
     if (!data || typeof data !== 'object' || data.scamera_bot !== 1) return null;
-    const out = {...DEFAULTS};
+    const out = defaultSettings();
     for (const key of Object.keys(DEFAULTS)) if (key in data) out[key] = data[key];
+    if (!('targets' in data) && data.chat) {   // one target, before the list (16 October 2026)
+      out.targets = [{chat: data.chat, topic: data.topic ?? null, where: data.where || ''}];
+    }
+    out.targets = (Array.isArray(out.targets) ? out.targets : []).filter((x) => x && x.chat).slice(0, MAX_TARGETS);
     return out;
   }
   return null;
+}
+
+const targetName = (target) => target.where || String(target.chat);
+
+function describeTargets(s) {
+  const lang = s.lang;
+  if (!s.targets.length) {
+    return t(lang, 'Куда: не задано — напиши /here в нужной теме группы',
+      'Where: not set: write /here in the topic of the group');
+  }
+  return [t(lang, 'Куда:', 'Where:'), ...s.targets.map((x, i) => `${i + 1}. ${esc(targetName(x))}`)].join('\n');
 }
 
 function describeSettings(s) {
   const lang = s.lang;
   const on = t(lang, 'вкл', 'on');
   const off = t(lang, 'выкл', 'off');
-  const where = esc(s.where || (s.chat ? String(s.chat) : '')) ||
-    t(lang, 'не задано — напиши /here в нужной теме группы', 'not set: write /here in the topic of the group');
   const parts = [['commits', t(lang, 'что нового', 'what is new')], ['sha', 'SHA-256']];
   return [
     t(lang, 'Автопостинг новых сборок: ', 'Auto-posting new builds: ') + `<b>${s.auto ? on : off}</b>`,
-    t(lang, 'Куда: ', 'Where: ') + where,
+    describeTargets(s),
     t(lang, 'Подпись: ', 'Caption: ') + parts.map(([key, name]) => `${name} ${s[key] ? on : off}`).join(', '),
     t(lang, 'Текст сверху: ', 'Header: ') + (esc(s.header) || '—'),
   ].join('\n');
@@ -96,7 +112,7 @@ async function loadSettings(env, user) {
   const chat = await bot(env, 'getChat', {chat_id: user.id});
   const pinned = chat.pinned_message || {};
   const found = (pinned.from || {}).is_bot ? parseSettings(pinned.text) : null;
-  const s = {chatId: user.id, values: found || {...DEFAULTS}, messageId: found ? pinned.message_id : null, dirty: false};
+  const s = {chatId: user.id, values: found || defaultSettings(), messageId: found ? pinned.message_id : null, dirty: false};
   const lang = String(user.language_code || '').startsWith('ru') ? 'ru' : 'en';
   if (s.values.lang !== lang) {
     s.values.lang = lang;
@@ -146,7 +162,8 @@ function helpText(lang) {
     '/status — текущие настройки',
     '/on, /off — автопостинг новых сборок',
     '/post — выложить последнюю сборку, /post 30830 — конкретную',
-    '/here — написать в нужной теме группы: сборки пойдут туда',
+    '/here — написать в теме группы: сборки пойдут и туда (до 5 мест)',
+    '/where — куда выкладываются сборки, /forget 2 — убрать место №2',
     '/commits on|off — «Что нового» (чейнжлог) в подписи',
     '/sha on|off — SHA-256 в подписи',
     '/header текст — свой текст в начале поста, /header - убрать',
@@ -157,7 +174,8 @@ function helpText(lang) {
     '/status — current settings',
     '/on, /off — auto-posting of new builds',
     '/post — post the latest build, /post 30830 — a given one',
-    '/here — write it in the topic of the group: builds go there',
+    '/here — write it in a topic of a group: builds go there too (up to 5 places)',
+    '/where — where builds go, /forget 2 removes place 2',
     '/commits on|off — the “What is new” changelog in the caption',
     '/sha on|off — SHA-256 in the caption',
     '/header text — your text at the top of the post, /header - removes it',
@@ -174,8 +192,10 @@ async function setCommands(env) {
       ['commits', t(lang, 'чейнжлог в подписи on|off', 'changelog in the caption on|off')],
       ['sha', t(lang, 'SHA-256 в подписи on|off', 'SHA-256 in the caption on|off')],
       ['header', t(lang, 'текст в начале поста', 'text at the top of the post')],
+      ['where', t(lang, 'куда выкладываются сборки', 'where builds go')],
+      ['forget', t(lang, 'убрать место: /forget 2', 'remove a place: /forget 2')],
       ['help', t(lang, 'все команды', 'all commands')]];
-    const groupCommands = [['here', t(lang, 'выкладывать сборки в эту тему', 'post builds to this topic')]];
+    const groupCommands = [['here', t(lang, 'выкладывать сборки и в эту тему', 'post builds to this topic too')]];
     for (const [scope, commands] of [['all_private_chats', privateCommands], ['all_group_chats', groupCommands]]) {
       await bot(env, 'setMyCommands', {scope: {type: scope}, language_code: code,
         commands: commands.map(([command, description]) => ({command, description}))});
@@ -255,6 +275,20 @@ async function handlePrivate(env, msg, cmd, arg, s) {
   } else if (cmd === 'here') {
     await say(env, chatId, t(lang, 'Напиши /here в нужной теме группы (бот должен быть в группе с правом писать).',
       'Write /here in the topic of the group (the bot must be a member allowed to post).'));
+  } else if (cmd === 'where') {
+    await say(env, chatId, describeTargets(v) +
+      (v.targets.length ? '\n\n' + t(lang, 'Убрать место: /forget номер', 'Remove one: /forget number') : ''));
+  } else if (cmd === 'forget') {
+    const n = /^\d+$/.test(arg) ? Number(arg) : 0;
+    if (n < 1 || n > v.targets.length) {
+      await say(env, chatId, describeTargets(v) + '\n\n' + t(lang, 'Напиши /forget и номер места из списка.',
+        'Write /forget and the number of a place in the list.'));
+      return;
+    }
+    const [gone] = v.targets.splice(n - 1, 1);
+    await saveSettings(env, s);
+    await say(env, chatId, t(lang, `Убрал «${esc(targetName(gone))}».`, `Removed “${esc(targetName(gone))}”.`) +
+      '\n' + describeTargets(v));
   } else if (cmd === 'post') {
     if (arg && !/^\d+$/.test(arg)) {
       await say(env, chatId, t(lang, 'Номер сборки — число: /post 30830.', 'The build number is a number: /post 30830.'));
@@ -276,7 +310,7 @@ async function notifyOwner(env, chatId, text) {
   }
 }
 
-// /here in a group or one of its topics: posts go there from now on.
+// /here in a group or one of its topics: posts go there too from now on (up to MAX_TARGETS places).
 async function handleHere(env, msg) {
   const chat = msg.chat;
   const user = msg.from;
@@ -298,6 +332,13 @@ async function handleHere(env, msg) {
     await say(env, chat.id, openFirst, topic);
     return;
   }
+  const targets = s.values.targets;
+  const known = targets.findIndex((x) => x.chat === chat.id && (x.topic ?? null) === topic);
+  if (known < 0 && targets.length >= MAX_TARGETS) {
+    await notifyOwner(env, user.id, t(lang, `Уже ${MAX_TARGETS} мест, больше нельзя. Убери лишнее: /forget номер.\n`,
+      `${MAX_TARGETS} places already, no more. Remove one: /forget number.\n`) + describeTargets(s.values));
+    return;
+  }
   try {
     await say(env, chat.id, t(lang, 'Сборки SCAMERA будут приходить сюда.', 'SCAMERA builds will be posted here.'), topic);
   } catch (e) {
@@ -307,7 +348,9 @@ async function handleHere(env, msg) {
       `Cannot post to “${esc(where)}”: ${esc(e.description)}. Allow the bot to send messages and repeat /here.`));
     return;
   }
-  Object.assign(s.values, {chat: chat.id, topic, where});
+  const entry = {chat: chat.id, topic, where};
+  if (known < 0) targets.push(entry);
+  else targets[known] = entry;   // the same place again: its name may have changed
   try {
     await saveSettings(env, s);
   } catch (e) {   // the owner blocked the bot or never pressed Start
@@ -315,7 +358,9 @@ async function handleHere(env, msg) {
     await say(env, chat.id, openFirst, topic);
     return;
   }
-  await notifyOwner(env, user.id, t(lang, `✅ Сборки будут приходить в «${esc(where)}».`, `✅ Builds will be posted to “${esc(where)}”.`));
+  await notifyOwner(env, user.id, (known < 0
+    ? t(lang, `✅ Добавил «${esc(where)}».`, `✅ Added “${esc(where)}”.`)
+    : t(lang, `«${esc(where)}» уже в списке.`, `“${esc(where)}” is already there.`)) + '\n' + describeTargets(s.values));
 }
 
 async function handleUpdate(env, update) {

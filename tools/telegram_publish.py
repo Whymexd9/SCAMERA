@@ -39,8 +39,13 @@ AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'   # Workers AI free plan: 
 AI_INPUT_LIMIT = 12000      # characters of commit messages sent to the model
 CHANGELOG_ITEMS = 6
 SECRETS = ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH')
-DEFAULTS = {'auto': True, 'chat': None, 'topic': None, 'where': '', 'commits': True, 'sha': True, 'header': '',
-            'lang': 'ru'}
+MAX_TARGETS = 5
+# targets: [{'chat': -100..., 'topic': id or None, 'where': 'Group › Topic'}], every build goes to each of them
+DEFAULTS = {'auto': True, 'targets': [], 'commits': True, 'sha': True, 'header': '', 'lang': 'ru'}
+
+
+def default_settings():
+    return json.loads(json.dumps(DEFAULTS))   # a deep copy: the targets list is changed in place
 
 
 def t(lang, ru, en):
@@ -65,22 +70,37 @@ def parse_settings(text):
                 data = json.loads(line)
             except ValueError:
                 return None
-            if isinstance(data, dict) and data.get('scamera_bot') == 1:
-                return {**DEFAULTS, **{k: v for k, v in data.items() if k in DEFAULTS}}
-            return None
+            if not isinstance(data, dict) or data.get('scamera_bot') != 1:
+                return None
+            s = {**default_settings(), **{k: v for k, v in data.items() if k in DEFAULTS}}
+            if 'targets' not in data and data.get('chat'):   # one target, before the list (16 October 2026)
+                s['targets'] = [{'chat': data['chat'], 'topic': data.get('topic'), 'where': data.get('where') or ''}]
+            s['targets'] = [x for x in s['targets'] if isinstance(x, dict) and x.get('chat')][:MAX_TARGETS]
+            return s
     return None
+
+
+def target_name(target):
+    return target.get('where') or str(target['chat'])
+
+
+def describe_targets(s):
+    lang = s['lang']
+    if not s['targets']:
+        return t(lang, 'Куда: не задано — напиши /here в нужной теме группы',
+                 'Where: not set: write /here in the topic of the group')
+    return '\n'.join([t(lang, 'Куда:', 'Where:')] + [f'{i}. {html.escape(target_name(x), quote=False)}'
+                                                     for i, x in enumerate(s['targets'], 1)])
 
 
 def describe_settings(s):
     """Readable summary (HTML), shared by /status and the pinned message."""
     lang = s['lang']
     on, off = t(lang, 'вкл', 'on'), t(lang, 'выкл', 'off')
-    where = html.escape(s['where'] or str(s['chat'] or ''), quote=False) or t(
-        lang, 'не задано — напиши /here в нужной теме группы', 'not set: write /here in the topic of the group')
     header = html.escape(s['header'], quote=False) or '—'
     return '\n'.join([
         t(lang, 'Автопостинг новых сборок: ', 'Auto-posting new builds: ') + f'<b>{on if s["auto"] else off}</b>',
-        t(lang, 'Куда: ', 'Where: ') + where,
+        describe_targets(s),
         t(lang, 'Подпись: ', 'Caption: ') + ', '.join(
             f'{name} {on if s[key] else off}' for key, name in
             (('commits', t(lang, 'что нового', 'what is new')), ('sha', 'SHA-256'))),
@@ -339,14 +359,14 @@ async def notify(client, owner, text):
 
 
 async def publish(args, digest):
-    """Message id of the post, or None when skipped."""
+    """Message ids of the posts (one per target posted to), or None when skipped; raises when posted nowhere."""
     from telethon import TelegramClient
     from telethon.sessions import StringSession
 
     client = TelegramClient(StringSession(), int(os.environ['TELEGRAM_API_ID']), os.environ['TELEGRAM_API_HASH'])
     await client.start(bot_token=os.environ['TELEGRAM_BOT_TOKEN'])
     try:
-        settings, owner = dict(DEFAULTS), None
+        settings, owner = default_settings(), None
         owner_ref = os.environ.get('TELEGRAM_OWNER', '').strip().lstrip('@')
         if owner_ref:
             try:
@@ -358,12 +378,11 @@ async def publish(args, digest):
         if not settings['auto'] and not args.force:
             print('::notice::Telegram post skipped: auto-posting is off (/on in the bot)')
             return None
-        if settings['chat']:
-            target, topic, where = settings['chat'], settings['topic'], settings['where'] or str(settings['chat'])
-        elif os.environ.get('TELEGRAM_CHAT', '').strip():
-            target, topic = parse_target(os.environ['TELEGRAM_CHAT'], os.environ.get('TELEGRAM_TOPIC', ''))
-            where = str(target) + (f' / {topic}' if topic else '')
-        else:
+        targets = [(x['chat'], x.get('topic'), target_name(x)) for x in settings['targets']]
+        if not targets and os.environ.get('TELEGRAM_CHAT', '').strip():
+            chat, topic = parse_target(os.environ['TELEGRAM_CHAT'], os.environ.get('TELEGRAM_TOPIC', ''))
+            targets = [(chat, topic, str(chat) + (f' / {topic}' if topic else ''))]
+        if not targets:
             await notify(client, owner, t(lang, f'Сборка {title} готова, но я не знаю, куда её выложить: '
                                                 'напиши /here в нужной теме группы.',
                                           f'Build {title} is ready, but there is nowhere to post it: '
@@ -372,30 +391,39 @@ async def publish(args, digest):
             return None
         changes, since = make_changes(args, lang) if settings['commits'] else ([], '')
         caption = build_caption(args.apk, digest, changes, settings, since)
-        try:
-            # A reply to a topic's first message (its id is the topic id) is posted inside that topic.
-            message = await client.send_file(target, str(args.apk), caption=caption, parse_mode='html',
-                                             force_document=True, reply_to=topic)
-        except Exception as e:
-            if args.notify in ('fail', 'all'):
-                detail = html.escape(redact(f'{type(e).__name__}: {e}'), quote=False)
-                await notify(client, owner, t(lang, f'❌ Не удалось выложить {title} в «{html.escape(where)}»: {detail}',
-                                              f'❌ Could not post {title} to “{html.escape(where)}”: {detail}'))
-            raise
-        try:   # the newest APK on top of its topic; silent, the post itself has notified
-            await client.pin_message(target, message, notify=False)
-        except Exception as e:
-            print(f'::warning::Post not pinned: {type(e).__name__}')
-            if args.notify in ('fail', 'all'):
-                detail = html.escape(redact(f'{type(e).__name__}: {e}'), quote=False)
-                await notify(client, owner, t(lang, f'⚠️ {title} выложена, но не закреплена: {detail}. '
-                                                    'Дай боту право закреплять сообщения.',
-                                              f'⚠️ {title} is posted but not pinned: {detail}. '
-                                              'Allow the bot to pin messages.'))
-        if args.notify == 'all':
-            await notify(client, owner, t(lang, f'✅ {title} выложена в «{html.escape(where)}».',
-                                          f'✅ {title} posted to “{html.escape(where)}”.'))
-        return message.id
+        posted, failed, unpinned, media = [], [], [], None
+        for chat, topic, where in targets:
+            name = f'«{html.escape(where, quote=False)}»'
+            try:
+                # A reply to a topic's first message (its id is the topic id) is posted inside that topic. After the
+                # first upload the other targets get the same file, not another 55 MB upload.
+                message = await client.send_file(chat, media or str(args.apk), caption=caption, parse_mode='html',
+                                                 force_document=True, reply_to=topic)
+            except Exception as e:
+                print(f'::warning::Not posted to target {len(posted) + len(failed) + 1}: {type(e).__name__}')
+                failed.append(f'{name}: {html.escape(redact(f"{type(e).__name__}: {e}"), quote=False)}')
+                continue
+            media = media or message.media
+            posted.append((name, message.id))
+            try:   # the newest APK on top of its topic; silent, the post itself has notified
+                await client.pin_message(chat, message, notify=False)
+            except Exception as e:
+                print(f'::warning::Post not pinned: {type(e).__name__}')
+                unpinned.append(name)
+        report = []
+        if posted and args.notify == 'all':
+            report.append(t(lang, f'✅ {title} выложена: ', f'✅ {title} posted: ') + ', '.join(n for n, _ in posted))
+        if args.notify in ('fail', 'all'):
+            if failed:
+                report.append(t(lang, f'❌ {title} не выложена в ', f'❌ {title} not posted to ') + '; '.join(failed))
+            if unpinned:
+                report.append(t(lang, '⚠️ Не закреплена в ', '⚠️ Not pinned in ') + ', '.join(unpinned) +
+                              t(lang, ': дай боту право закреплять сообщения.', ': allow the bot to pin messages.'))
+        if report:
+            await notify(client, owner, '\n'.join(report))
+        if not posted:
+            raise RuntimeError(f'posted to none of {len(targets)} target(s)')
+        return [message_id for _, message_id in posted]
     finally:
         await client.log_out()   # the session is throwaway; do not leave a live bot authorization behind
 
@@ -418,7 +446,7 @@ def main():
         return 1
     digest = sha256(args.apk)
     if args.dry_run:
-        settings = {**DEFAULTS, **(json.loads(args.settings_json) if args.settings_json else {})}
+        settings = {**default_settings(), **(json.loads(args.settings_json) if args.settings_json else {})}
         changes, since = make_changes(args, settings['lang'])
         caption = build_caption(args.apk, digest, changes, settings, since)
         print(caption)
@@ -431,17 +459,18 @@ def main():
         return 0
     size_mb = args.apk.stat().st_size / (1 << 20)
     try:
-        message_id = asyncio.run(publish(args, digest))
+        message_ids = asyncio.run(publish(args, digest))
     except Exception as e:
         print(f'::error::Telegram post failed: {redact(f"{type(e).__name__}: {e}")}')
         return 1
-    if message_id is None:
+    if message_ids is None:
         return 0
-    print(f'Posted {args.apk.name} ({size_mb:.1f} MB) to Telegram, message {message_id}')
+    done = f'{args.apk.name} ({size_mb:.1f} MB) to Telegram, {len(message_ids)} place(s), messages {message_ids}'
+    print('Posted ' + done)
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
     if summary:
         with open(summary, 'a', encoding='utf-8') as f:
-            f.write(f'\nPosted `{args.apk.name}` to Telegram (message {message_id}).\n')
+            f.write(f'\nPosted {done}.\n')
     return 0
 
 
