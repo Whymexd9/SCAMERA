@@ -116,6 +116,24 @@ public final class HybridPlan {
      * (ExposureLimits); with nothing learned the plan is the one of the declared ranges.
      */
     public static HybridPlan build(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics, ExposureLimits limits) {
+        boolean dcg;
+        try {
+            dcg = Dcg14Mode.active(characteristics);
+        } catch (RuntimeException e) {
+            dcg = false;
+        }
+        return build(nShutterNs, nIso, clipFraction, characteristics, limits, dcg);
+    }
+
+    /**
+     * {@code gainFloorAtN}: the HAL gives no gain below the N frames' (P163, the X300 Ultra's «DCG 14 бит» session, owner's log
+     * 2026-10-16 14:49: the main camera's DCG mode answered ISO 1336 to every request of ISO 167, the AE itself sat at 1339
+     * where the plain mode had ISO 179 a few seconds before; the three ultrashort frames came at x0.998 of N, merged as N, and
+     * Bento had nothing - the window stayed clipped). The ultrashort then keeps the N gain and takes its factor from the
+     * shutter, which the DCG mode honours to the nanosecond.
+     */
+    static HybridPlan build(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics, ExposureLimits limits,
+                            boolean gainFloorAtN) {
         Range<Long> times = capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE), limits == null ? Long.MAX_VALUE : limits.shutterCap());
         Range<Integer> isos = capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE), limits == null ? Integer.MAX_VALUE : limits.isoCap());
         if (times == null || isos == null || nShutterNs <= 0 || nIso <= 0)
@@ -131,11 +149,13 @@ public final class HybridPlan {
         final int bento = bentoMode() == 2 && (DeviceDefaults.pixel7() || DeviceDefaults.redmiNote11Pro()) ? 1 : bentoMode();
         if (bento == 2 || (bento == 1 && clipFraction > bentoTriggerClip())) {
             final double factor = ultrashortFactor(), target = n / factor;
-            int iso = (int) Math.max(isos.getLower(), Math.min(nIso, Math.round(target / nShutterNs)));
+            final int floor = gainFloorAtN ? Math.max(isos.getLower(), nIso) : isos.getLower();
+            int iso = (int) Math.max(floor, Math.min(nIso, Math.round(target / nShutterNs)));
             long ns = Math.max(times.getLower(), Math.min(nShutterNs, Math.round(target / iso)));
             double ratio = (double) ns * iso / n;
             if (ratio < 0.5) for (int i = bentoFrames(); i > 0; i--) out.add(new Request(ImageFrame.CaptureRole.EXTRA_SHORT, ns, iso, ratio));
             else why.append(" us skipped (sensor floor)");
+            if (gainFloorAtN) why.append(" DCG: ultrashort by the shutter");
         } else why.append(bento == 0 ? " bento off" : String.format(Locale.ROOT, " no clipping (%.4f)", clipFraction));
         // Bracketed (Shasta): gain first at the N shutter (no extra motion blur), the shutter lengthens only beyond the sensor's
         // gain range, within the handheld cap.

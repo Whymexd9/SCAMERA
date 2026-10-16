@@ -120,6 +120,24 @@ public class HybridPlanTest {
         assertEquals(20_000_000L, r.shutterNs);
     }
 
+    /**
+     * P163: the X300 Ultra's DCG session gives no gain below its floor (ISO 167 asked, 1336 given; the AE at 1339): the
+     * ultrashort keeps the N gain and is short by the shutter, x1/8 of N; outside DCG the gain goes first as before.
+     */
+    @Test public void aDcgSessionTakesTheUltrashortFromTheShutter() {
+        pinned.clear();
+        HybridPlan dcg = HybridPlan.build(10_000_000L, 1339, 0.1f, camera(12000), null, true);
+        HybridPlan.Request us = dcg.requests.get(0);
+        assertEquals(ImageFrame.CaptureRole.EXTRA_SHORT, us.role);
+        assertEquals(1339, us.iso);
+        assertEquals(1_250_000L, us.shutterNs, 1_000L);
+        assertEquals(0.125, us.ratio, 1e-3);
+        assertTrue(dcg.description.contains("DCG"));
+        HybridPlan plain = HybridPlan.build(10_000_000L, 1339, 0.1f, camera(12000), null, false);
+        assertEquals("outside DCG the gain goes first", 167, plain.requests.get(0).iso);
+        assertEquals(10_000_000L, plain.requests.get(0).shutterNs);
+    }
+
     @Test public void p68DefaultsTakeThreeUltrashortThenThreeShastaFrames() {
         // owner, 10 October 2026: Bento always with 3 frames, 3 Shasta frames; no clipping needed for Bento
         pinned.clear();

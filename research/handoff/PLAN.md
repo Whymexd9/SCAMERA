@@ -3881,7 +3881,7 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   deliverables/p157/p162-crop-screen.png). Not seen on a phone: a shot on the X200 Pro / Pro Mini should log «RAW crop
   4096x3072 -> 4000x3000 at 0,0» and give a photo without the stripes.
 
-### P163 - highlights on the LED screen still wrong after P159 (owner, 2026-10-16 15:06: «Изучи света, всё еще не исправил»; not started)
+### P163 - highlights on the LED screen still wrong after P159 (owner, 2026-10-16 15:06: «Изучи света, всё еще не исправил»; DCG part done)
 - Input: Telegram.zip (kept in SCAMERA-PC/evidence/p163/Telegram-2026-10-16-1506.zip): SCA_20261016_132656.jpg and
   SCA_20261016_132710.jpg with their Diagnostics ZIPs (SCAM-20261016-132656-989-6fd25a5e.zip, SCAM-20261016-132710-365-7f0060eb.zip),
   log-2026-10-16.txt, SCAMERA-debug.log.txt. X300 Ultra (PD2547), camera 5 (tele, CROPPED_RAW), a build with P159 (the log
@@ -3893,6 +3893,21 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
 - Next: the stages of the Diagnostics ZIPs across the screen (letters / background at merge, after recovery, ScamRgb, ArkLow,
   ArkCombine) as in P159; whether effH capped at 2 is still too weak for a screen 3-5x above the ceiling (the low layer
   x0.125), whether the halo is the detail delta or the hl mask, and the blue's chroma at each stage.
+- Second input (owner, 2026-10-16 15:20 «Вот ещё с 300у», then «Это фото с DCG, узнай почему с ним не работают ультракороткие»
+  and its Diagnostics ZIP; kept in SCAMERA-PC/evidence/p163/Desktop-2026-10-16-1520.zip and dcg-144900/): SCA_20261016_144900,
+  X300 Ultra main (camera 3) with «DCG 14 бит» (session vivo.control.forceSensorMode 17), a window: the sky clipped, the clouds
+  with pale blue patches.
+- Cause of the missing ultrashorts: the DCG mode gives no gain under ~ISO 1336. The AE sat at 10 ms x ISO 1339 (the plain mode
+  had 10 ms x ISO 179 for the same scene seconds before); the plan's ultrashorts «gain first» asked 10 ms x ISO 167 and came
+  back at ISO 1336 (x0.998 of N), so they were classified and merged as N (frames.txt: 16 NORMAL + 3 LONG), Bento got 0 frames,
+  1.24 M px of the window stayed clipped at the DCG clip (measured 8696 of 14 bit) and the per-channel recovery alone (R max
+  0.62 after WB) painted the clouds cyan. The metadata is true: the LONG frames (ISO 1600 asked, 3200 given) measured x4.03
+  against x4.009 by metadata. The shutter is honoured to the nanosecond.
+- DONE 2026-10-16 (HybridPlan.build): in a DCG session (Dcg14Mode.active) the ultrashort keeps the N gain and takes its x1/8
+  from the shutter (10 ms x ISO 1339 -> 1.25 ms x ISO 1339); the plan's description says «DCG: ultrashort by the shutter».
+  Outside DCG the gain still goes first. HybridPlanTest.aDcgSessionTakesTheUltrashortFromTheShutter. Not seen on the phone.
+- Still open in P163: the LED-screen letters (first input); in DCG the LONG frames come x4 instead of x2 (ISO 1600 -> 3200;
+  merged by their measured ratio, harmless); ExposureLimits is keyed by camera and RAW size only, so DCG and plain share it.
 
 ## P109l - Snapdragon client attribution and VCF RAW boundary
 
