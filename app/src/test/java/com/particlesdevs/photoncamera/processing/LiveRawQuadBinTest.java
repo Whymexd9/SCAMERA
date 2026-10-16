@@ -1,6 +1,8 @@
 package com.particlesdevs.photoncamera.processing;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
@@ -30,6 +32,29 @@ public class LiveRawQuadBinTest {
         assertEquals(offset, data.position());
         // the centre (5, 6, 9, 10) of each block; its outer row (+50 here) is not read
         for (int i = 0; i < 4; i++) assertEquals(108 + i * 100, result.getShort(i * 2) & 0xffff);
+    }
+
+    /** P181 (owner: «Для 50мп сделай тоже упрощенный видоискатель»): a 50 MP Quad viewfinder frame takes one site per cell. */
+    @Test public void sparseQuadCellsTakeOneSiteEach() {
+        int stride = 20, offset = 4;
+        ByteBuffer data = ByteBuffer.allocateDirect(offset + stride * 4).order(ByteOrder.nativeOrder());
+        data.position(offset);
+        int[][] cell = {{100, 200}, {300, 400}};
+        for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++)
+            data.putShort(offset + y * stride + x * 2, (short) (cell[y / 2][x / 2] + (x % 2) * 7 + (y % 2) * 13));
+        ByteBuffer result = LiveRawFrame.binMosaic(data, 4, 4, stride, 0x20, 2, true).order(ByteOrder.nativeOrder());
+        assertEquals(offset, data.position());
+        assertEquals(8, result.remaining());
+        for (int i = 0; i < 4; i++) assertEquals("the top left site of cell " + i, cell[i / 2][i % 2], result.getShort(i * 2) & 0xffff);
+    }
+
+    @Test public void onlyTheFullResolutionViewfindersAreSparse() {
+        assertTrue("200 MP Tetra", LiveRawFrame.sparseBin(16320, 12288, 4));
+        assertTrue("50 MP Quad (main, ultra-wide)", LiveRawFrame.sparseBin(8192, 6144, 2));
+        assertTrue("50 MP Quad (telephoto)", LiveRawFrame.sparseBin(8160, 6144, 2));
+        assertFalse("a 12 MP ISZ Quad", LiveRawFrame.sparseBin(4080, 3072, 2));
+        assertFalse("a 12 MP ISZ Tetra", LiveRawFrame.sparseBin(4080, 3072, 4));
+        assertFalse("a 4x4 test frame", LiveRawFrame.sparseBin(4, 4, 2));
     }
 
     @Test

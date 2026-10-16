@@ -64,7 +64,17 @@ public final class LiveRawFrame {
     }
 
     static synchronized ByteBuffer binMosaic(ByteBuffer plane, int w, int h, int stride, int format, int block) {
-        return binMosaic(plane, w, h, stride, format, block, block == 4 && (long) w * h > SPARSE_BIN_PIXELS);
+        return binMosaic(plane, w, h, stride, format, block, sparseBin(w, h, block));
+    }
+
+    /**
+     * The viewfinder frame takes a quarter of the sites: P179, a 200 MP Tetra frame the central 2 x 2 of each block; P181
+     * (owner, 2026-10-17: «Для 50мп сделай тоже упрощенный видоискатель как ты сделал для 200мп»), a 50 MP Quad frame one site
+     * of each 2 x 2 cell (the screen shows the frame downscaled again, the photo never takes it).
+     */
+    static boolean sparseBin(int w, int h, int block) {
+        final long pixels = (long) w * h;
+        return block == 4 ? pixels > SPARSE_BIN_PIXELS : block == 2 && pixels >= QUAD_BIN_PIXELS;
     }
 
     static synchronized ByteBuffer binMosaic(ByteBuffer plane, int w, int h, int stride, int format, int block, boolean sparse) {
@@ -98,6 +108,10 @@ public final class LiveRawFrame {
             for (int x = 0; x < bw; x++) {
                 final int c = block * x;
                 int s = 0;
+                if (sparse && block == 2) {
+                    out.put(o + x, src.get(r0 + c));
+                    continue;
+                }
                 if (sparse && block == 4) {
                     final int m = r0 + srcRow + c + 1;
                     s = (src.get(m) & 0xFFFF) + (src.get(m + 1) & 0xFFFF) + (src.get(m + srcRow) & 0xFFFF) + (src.get(m + srcRow + 1) & 0xFFFF);
@@ -110,8 +124,9 @@ public final class LiveRawFrame {
             }
         }
         });
-        if (sparse && block == 4 && ++sparseLogged % 20 == 1)
-            android.util.Log.i("LiveRawFrame", "200 MP viewfinder bin (centre 2x2 of each block) ms=" + (System.nanoTime() - binStart) / 1_000_000);
+        if (sparse && ++sparseLogged % 20 == 1)
+            android.util.Log.i("LiveRawFrame", (block == 4 ? "200 MP viewfinder bin (centre 2x2 of each block)" : "50 MP viewfinder bin (one site of each cell)")
+                    + " ms=" + (System.nanoTime() - binStart) / 1_000_000);
         ByteBuffer result = quadBinned.duplicate().order(ByteOrder.nativeOrder());
         result.clear();
         result.limit(bw * bh * 2);
