@@ -1,7 +1,7 @@
 precision highp float;
 precision highp int;
 precision highp sampler2D;
-// Luma pyramid of GCam's LumaDenoise (9.6): Y[L+1](q) = sum_ij kD8[i] kD8[j] Y[L](clamp(2q + (i-3, j-3))),
+// Luma pyramid of the reference LumaDenoise (9.6): Y[L+1](q) = sum_ij kD8[i] kD8[j] Y[L](clamp(2q + (i-3, j-3))),
 // kD8 = [-3,-7,17,57,57,17,-7,-3]/128, edge clamp. Each equal-sign pair of taps is one bilinear fetch of the
 // linearly filtered level (4 x 4 fetches); positions = integer index + constant fraction, scaled in highp.
 uniform sampler2D InputBuffer;   // Y of level L in .r (level 0: the YUV texture)

@@ -14,7 +14,7 @@ import static android.opengl.GLES20.GL_LINEAR;
 
 /**
  * Mid-frequency local contrast ("texture") of the SCAM HDR render, on the display-encoded image after
- * the tone curves and before sharpening. A GCam/SCAM render carries 20-45 % more contrast than ours in
+ * the tone curves and before sharpening. A SCAM render carries 20-45 % more contrast than ours in
  * the structures of 2-16 pixels (lettering, weave, wood grain, the body of an edge) while the finest
  * scale and the noise agree; fusion and USM cannot add that without raising the noise. The Laplacian
  * levels 1-3 of the luminance are scaled where their local amplitude is well above the band's own noise
@@ -60,7 +60,7 @@ public final class ScamLocalContrast extends Node {
     @Override public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
         WorkingTexture = previousNode.WorkingTexture;
-        // Texture on top of the ARK tone (hybrid switch ark_texture), at the strength matched to a GCam/SCAM render.
+        // Texture on top of the ARK tone (hybrid switch ark_texture), at the strength matched to a SCAM render.
         final float amount = 1f;
         long started = System.currentTimeMillis();
         GLFormat mono = new GLFormat(GLFormat.DataType.FLOAT_16, 1);

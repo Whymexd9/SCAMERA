@@ -1,7 +1,7 @@
 precision highp float;
 precision highp int;
 precision highp sampler2D;
-// SCAM luma noise reduction, one pass of one pyramid level (GCam 9.6 LumaDenoise F16 / v11 luma_denoise.cl).
+// SCAM luma noise reduction, one pass of one pyramid level (9.6 LumaDenoise F16 / v11 luma_denoise.cl).
 // BilateralFilter3x3 at stride s: every neighbour of the 3x3 (at s) is compared with the centre through the
 // weighted mean absolute difference of their 3x3 patches; it is taken with its 1-2-1 weight when that distance is
 // below sigma (strict) or below 2 sigma (soft); the strict mean is used when the strict weights (centre 4 included)
@@ -9,8 +9,8 @@ precision highp sampler2D;
 // sigma = sqrt(f * (noise.x * max(Y, 0) + noise.y)), noise = k * G * (rho_s s_Y, rho_r r_Y), k = strength^2 / s,
 // G = the measured difference variance of this level and stride over the single-frame model; Y = the input
 // luminance on level 0, else the filtered image's own centre; f = strength-map multiplier (effective frames).
-// Stage 1 (the stride-1 pass) also applies the revert: out = d1 + rf' (recon - d1), rf' = rf scaled by GCam's
-// kVarMultLUT {8: 1/sqrt8, 4: 1/2, 2: 1/sqrt2} of f; F16 GCam does not clamp rf (> 1 adds back the removed part
+// Stage 1 (the stride-1 pass) also applies the revert: out = d1 + rf' (recon - d1), rf' = rf scaled by the reference
+// kVarMultLUT {8: 1/sqrt8, 4: 1/2, 2: 1/sqrt2} of f; the reference F16 does not clamp rf (> 1 adds back the removed part
 // amplified), the host clamps it to dn_revert_max.
 uniform sampler2D InputBuffer;  // image to filter (.r): recon (stride-2 pass) or d0 (stride-1 pass)
 uniform sampler2D Recon;        // recon of this level (.r): revert reference (stage 1)

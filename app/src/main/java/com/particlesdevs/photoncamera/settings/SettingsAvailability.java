@@ -91,8 +91,8 @@ public final class SettingsAvailability {
         boolean neuralMosaic = on("pref_scam_hybrid_neural_remosaic", false);
         // The denoise and watermark switches sit on a parent page of these rows (P6), so the rule replaces android:dependency.
         if (key.startsWith("pref_scam_hybrid_dn_") && !on("pref_scam_hybrid_denoise", true)) return Lang.t("Включите «Шумоподавление».", "Turn on “Noise reduction”.");
-        // Denoise engine (pref_scam_hybrid_dn_engine): the GCam finish (ScamDenoise) reads the dn_ rows, NLM (ScamHdrDenoise) its two strengths.
-        boolean nlm = text("pref_scam_hybrid_dn_engine", "gcam").trim().equals("nlm");
+        // Denoise engine (pref_scam_hybrid_dn_engine): The reference finish (ScamDenoise) reads the dn_ rows, NLM (ScamHdrDenoise) its two strengths.
+        boolean nlm = text("pref_scam_hybrid_dn_engine", "multiscale").trim().equals("nlm");
         if (key.startsWith("pref_scam_hybrid_dn_") && !key.equals("pref_scam_hybrid_dn_engine") && nlm)
             return Lang.t("Только для многомасштабного шумодава в «Шумодав SHDR».", "Multiscale denoiser only (“SHDR denoiser”).");
         if (any(key, "pref_scam_hybrid_post_luma", "pref_scam_hybrid_post_chroma") && !nlm)

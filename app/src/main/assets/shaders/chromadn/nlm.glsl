@@ -4,7 +4,7 @@ precision highp usampler2D;
 // Post-network luma noise, pxStep 2: non-local means on u (3x3 patches, 5x5 candidates spaced
 // two pixels apart, all in SENSOR pixels: every offset is dilated by pxStep = outputScale).
 // u = sqrt(Y + c) is roughly perceptual, so one absolute strength h gives the same visible
-// result for every noise level (the target is the grain level of a GCam/stock render, not the
+// result for every noise level (the target is the grain level of a stock render, not the
 // removal of all noise).
 uniform sampler2D InputBuffer;
 uniform float h;        // filtering strength in u units (about 0.002)

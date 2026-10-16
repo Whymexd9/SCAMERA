@@ -195,7 +195,7 @@ void main(){
         //   it does not, and the core goes neutral gradually.
         // * One channel left: extrapolating the other two follows every tint of the prior (a cyan cast from the censored
         //   colours along a dark edge made a lamp core cyan, an orange glow left it pink next to a clipped blue): the
-        //   neutral white core of GCam / ArkCam wherever neutral is consistent with the lower bounds; the local light only
+        //   neutral white core of ArkCam wherever neutral is consistent with the lower bounds; the local light only
         //   where neutral is not (R and G of a warm lamp clipped, B left: neutral would put G at B's level, a dark ring).
         //   The weight follows the unclipped channels continuously.
         float trust = 0.0;

@@ -102,7 +102,7 @@ public final class ShadeCatalog {
 
     /**
      * The FULL level's groups (SHADE_TASK.md §3 with the owner's answers 6 and 8: «замер» is the ARK metering (a list since the settings audit),
-     * «тон ARK» and Exposure Fusion are gone, Luma / Chroma are the gcam engine's multipliers, «удлинение L» a 0-2 slider).
+     * «тон ARK» and Exposure Fusion are gone, Luma / Chroma are the multiscale engine's multipliers, «удлинение L» a 0-2 slider).
      */
     public static final List<Group> GROUPS = Collections.unmodifiableList(Arrays.asList(
             new Group(R.string.shade_group_shoot, FLASH, TIMER, "pref_scam_hybrid_ark_metering"),

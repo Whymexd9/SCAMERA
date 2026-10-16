@@ -416,6 +416,16 @@ public class HybridSettingsTest {
         prefs.edit().remove("pref_scam_hybrid_profile").commit();
     }
 
+    /** P164: the multiscale finish denoise has its own stored name; a former value becomes it, «nlm» stays. */
+    @Test public void theDenoiseEngineValueTakesItsOwnName() {
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putString("pref_scam_hybrid_dn_engine","former").commit();
+        assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("multiscale",prefs.getString("pref_scam_hybrid_dn_engine",""));
+        prefs.edit().putString("pref_scam_hybrid_dn_engine","nlm").commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertEquals("nlm",prefs.getString("pref_scam_hybrid_dn_engine",""));
+    }
+
     @Test public void p68FormerDefaultsMoveOnce() {
         // stored former XML defaults move once; a value chosen before or after stays
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)

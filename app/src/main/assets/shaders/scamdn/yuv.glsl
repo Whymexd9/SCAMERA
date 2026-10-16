@@ -1,7 +1,7 @@
 precision highp float;
 precision highp int;
 precision highp sampler2D;
-// SCAM noise reduction, level 0: the white-balanced linear camera RGB in the YUV of GCam's finish (common.cl):
+// SCAM noise reduction, level 0: the white-balanced linear camera RGB in the YUV of the reference finish (common.cl):
 // Y = Rec.709 luminance, U and V = BT.601-like colour differences divided by 0.615. Same pixel grid as the input.
 // A non-finite input sample is zeroed here: every pyramid level would spread it over its whole footprint (a NaN pixel
 // would blank a block of ~100 px instead of one pixel).

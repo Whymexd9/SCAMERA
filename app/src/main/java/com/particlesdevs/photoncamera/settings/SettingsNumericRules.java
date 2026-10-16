@@ -55,7 +55,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_post_chroma": return new double[]{0,2,0};
             case "pref_scam_hybrid_despeckle": return new double[]{0,1,1};
             case "pref_scam_hybrid_bento_denoise_max": return new double[]{1,12,0};
-            // SCAM Hybrid noise reduction (ScamDenoise, engine "gcam")
+            // SCAM Hybrid noise reduction (ScamDenoise, engine "multiscale")
             case "pref_scam_hybrid_dn_snr": return new double[]{0,200,0};
             case "pref_scam_hybrid_dn_snr_scale": return new double[]{0.25,8,0};
             case "pref_scam_hybrid_dn_model_shot": return new double[]{0.25,4,0};
@@ -187,7 +187,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_mosaic_tetra_night_kernel_scale": return new double[]{0.25,2,0};
             case "pref_scam_hybrid_mosaic_tetra_night_edge_scale": return new double[]{0.25,1,0};
             case "pref_scam_hybrid_mosaic_tetra_night_flat_scale": return new double[]{0.25,4,0};
-            // P62 Mochi (GCam 11 PhotometricMerge): 0 off / 1 auto (GCam rule) / 2 force
+            // P62 Mochi (v11 PhotometricMerge): 0 off / 1 auto (the reference rule) / 2 force
             case "pref_scam_hybrid_mochi": return new double[]{0,2,1};
             case "pref_scam_hybrid_ark_ccm_sat": return new double[]{0,1.5,0};
             case "pref_scam_hybrid_highlight_defringe": return new double[]{0,1,0};

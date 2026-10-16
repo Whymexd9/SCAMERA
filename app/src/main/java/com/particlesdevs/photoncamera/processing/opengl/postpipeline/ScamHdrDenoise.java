@@ -17,7 +17,7 @@ import static android.opengl.GLES20.GL_NEAREST;
  * merge-only route (it leaves more noise than the vivo original). White balance multiplies the red and blue
  * noise by about two and the colour matrix spreads it further, which shows as coloured
  * blotches in dark areas, and the luminance noise of dark flat surfaces is about twice the level
- * of a GCam/stock render.
+ * of a stock render.
  * <p>
  * Dots: isolated dark or bright dots in flat areas (defective pixel groups, which the merge keeps)
  * are scaled back to their surroundings.
@@ -26,10 +26,10 @@ import static android.opengl.GLES20.GL_NEAREST;
  * fade to neutral because their colour is a black-level error rather than a measurement.
  * Luma: non-local means on sqrt(Y + c) plus an edge-stopping correction of the blotch-scale residue,
  * then a share of the removed noise is put back so the remaining grain is fine and even (a flat
- * spectrum like a GCam render) instead of a denoiser's cloudy mid-frequency residue.
+ * spectrum like a reference render) instead of a denoiser's cloudy mid-frequency residue.
  * Runs on the white-balanced linear image after ScamRgb.
  * <p>
- * SCAM Hybrid shots go to {@link ScamDenoise} (GCam/SCAM 9.6 finish denoise, pref_scam_hybrid_dn_engine = gcam, default);
+ * SCAM Hybrid shots go to {@link ScamDenoise} (SCAM 9.6 finish denoise, pref_scam_hybrid_dn_engine = multiscale, default);
  * this NLM route stays the hybrid's "nlm" engine and the SCAM HDR (SCAM) denoise, unchanged.
  */
 public final class ScamHdrDenoise extends Node {
@@ -164,7 +164,7 @@ public final class ScamHdrDenoise extends Node {
             Log.i("SCAM_PIPELINE", "denoise off (pref_scam_hybrid_denoise)");
             return;
         }
-        // SCAM Hybrid shots: the GCam/SCAM finish denoise (pref_scam_hybrid_dn_engine = gcam, default); this NLM route
+        // SCAM Hybrid shots: the SCAM finish denoise (pref_scam_hybrid_dn_engine = multiscale, default); this NLM route
         // stays the "nlm" engine and the SCAM HDR (SCAM) denoise. A failure there falls back to the NLM route.
         if (ScamDenoise.enabledFor(pipeline)) {
             try {
@@ -312,7 +312,7 @@ public final class ScamHdrDenoise extends Node {
             // (about 0.0002 in u: the merge leaves about half the noise it did before its kernel followed the
             // SNR, and measured against an SCAM render of the same scene this level gives the same noise in
             // flat and in textured areas), so a noisier frame (dim scene, high ISO) is cleaned harder, as a
-            // GCam render does, instead of keeping a fixed fraction of its noise.
+            // The reference render does, instead of keeping a fixed fraction of its noise.
             glProg.setVar("grain", luma > 0f ? Math.max(PreferenceKeys.routeInternalValue("grain_min", 0.12f), Math.min(1f, PreferenceKeys.routeInternalValue("grain_level", 0.0002f) / (Math.max(noiseSigma, 1.0e-4f) * luma))) : 1f);
             glProg.setVar("offsetC", offsetC);
             glProg.setVar("lumaAmount", luma > 0f ? 1f : 0f);

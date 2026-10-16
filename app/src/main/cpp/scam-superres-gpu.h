@@ -53,7 +53,7 @@ struct SuperResTuning {
                            // and average back to the sensor grid (anti-aliased, supersampled)
     float subDetail=0.3f;  // detail measure above which the 2x grid is used
     // Kernel (Gaussian standard deviations in sensor pixels) from the structure tensor of the model
-    // luma, after Wronski et al. / GCam Sabre: narrow across a coherent edge, long along it, wide
+    // luma, after Wronski et al. / Sabre: narrow across a coherent edge, long along it, wide
     // and isotropic in flat areas.
     // Negative = follows the SNR of the reference frame (Sabre: every kernel parameter is a curve of the
     // SNR of mid grey, see snrKernel()); a value from scam_sr.txt overrides that parameter.
@@ -102,7 +102,7 @@ inline SuperResTuning loadSuperResTuning(const std::function<void(const std::str
     return t;
 }
 
-// Piecewise-linear curve (values outside the keys are clamped), as the GCam Sabre parameter curves.
+// Piecewise-linear curve (values outside the keys are clamped), as the Sabre parameter curves.
 template<size_t N> inline float sabreCurve(float x,const float (&k)[N],const float (&v)[N]){
     if(x<=k[0])return v[0];
     for(size_t i=1;i<N;++i)if(x<=k[i])return v[i-1]+(v[i]-v[i-1])*(x-k[i-1])/(k[i]-k[i-1]);
@@ -284,7 +284,7 @@ void main(){
             // Colour detail: the model's colour ratios carry the colour of the scene's fine
             // structure only as far as the network kept it; where the merge is clean enough
             // (signal well above the merged noise) the true per-colour residual is taken in
-            // full, as a GCam merge does, instead of a quarter of it.
+            // full, as a reference merge does, instead of a quarter of it.
             float snr=mc/sqrt(max(noise.x*max(mc,0.0)+noise.y,1e-9)/frames);
             float a=mix(chromaFloor,achromatic,1.0-smoothstep(10.0,50.0,snr));
             // Where rejection (motion) left only a frame or two, the residual is mostly single-frame
@@ -400,7 +400,7 @@ void main(){
 )";
 
 // ---------------------------------------------------------------------------------------------
-// Merge after Wronski et al. (2019) / the GCam 6.1 "Sabre" shaders.
+// Merge after Wronski et al. (2019) / the Sabre 6.1 shaders.
 //
 //  1. u-plane:  sqrt(model luma + eps), the variance-stabilised domain (noise variance of one raw
 //               site is slope/4 everywhere).
@@ -746,7 +746,7 @@ void main(){
             for(int c=0;c<3;c++){
                 float mc=m[c];
                 // Colour detail: where the merge is clean enough (signal well above the merged noise)
-                // the true per-colour residual is taken in full, as a GCam merge does.
+                // the true per-colour residual is taken in full, as a reference merge does.
                 float snr=mc/sqrt(max(noise.x*max(mc,0.0)+noise.y,1.0e-9)/frames);
                 float aa=mix(chromaFloor,achromatic,1.0-smoothstep(10.0,50.0,snr));
                 // Where rejection left only a frame or two, the residual is mostly single-frame noise:

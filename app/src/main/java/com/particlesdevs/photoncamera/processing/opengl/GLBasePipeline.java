@@ -89,7 +89,7 @@ public class GLBasePipeline implements AutoCloseable {
      *
      * <p>Per-node lines already go to the log as the pipeline runs, but scattered
      * through everything else they are near useless for answering "why did this
-     * shot take four seconds". GCam prints exactly such a table at the end of a
+     * shot take four seconds". The reference prints exactly such a table at the end of a
      * shot, which is what made its timings readable in the dumps we compared
      * against.
      */

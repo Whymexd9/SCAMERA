@@ -40,13 +40,13 @@ public class PreferenceKeys {
     /**
      * Derive the burst's shutter from the TET waypoint curve (see {@code TetModel})
      * instead of the per-frame heuristics, and hold that shutter constant across the
-     * bracket so the ends differ by gain alone. This is what a GCam shot dump shows:
+     * bracket so the ends differ by gain alone. This is what a reference shot dump shows:
      * one shutter for every frame in the burst, "Desired exposure time factor:
      * 1.000000", with the whole bracket spread carried by "Desired TET factor".
      * Off by default so the two behaviours can be compared on one build.
      */
     /**
-     * «Частота мерцания»: the lamp flicker (Hz) the long Shasta frames of the hybrid snap to (HybridPlan.snapAntibanding, GCam's
+     * «Частота мерцания»: the lamp flicker (Hz) the long Shasta frames of the hybrid snap to (HybridPlan.snapAntibanding, the reference
      * apply_antibanding). -1 «Авто» (default, P118): what the camera reports or its AE shows, else the region's mains
      * (MainsFlicker); 100 = 50 Hz mains, 120 = 60 Hz mains; 0 = no snap.
      */
@@ -844,7 +844,7 @@ public class PreferenceKeys {
             {"gainMeasured", "gain_measured"},
             // P71: the noise model checked against the burst (worker default 1; scam_dev.txt "hybrid_noise_measured 0" = off)
             {"noiseMeasured", "noise_measured"},
-            // P62 Mochi (GCam 11 PhotometricMerge): 0 off / 1 auto (GCam rule) / 2 force
+            // P62 Mochi (v11 PhotometricMerge): 0 off / 1 auto (the reference rule) / 2 force
             {"mochi", "mochi"},
             // Shot speed (W1.0): per-pass GPU times of the merge (a glFinish per pass) and the F6 threads, from scam_dev.txt
             // only ("hybrid_profile 1", "hybrid_la_threads 8"; no preference behind them). P33 W2.1: "hybrid_la_stream 0" merges with
@@ -876,7 +876,7 @@ public class PreferenceKeys {
         final int shasta = getHybridShastaMode();
         if (shasta == 0) out.append("shastaEnable 0\n");
         else if (shasta == 2) out.append("shastaForce 1\n");
-        // Rejection boost where the local motion varies (GCam 11 Z channel of the F6 field); a switch, not a number.
+        // Rejection boost where the local motion varies (v11 Z channel of the F6 field); a switch, not a number.
         Float boostDev = scamDevValue("hybrid_motion_boost");
         out.append("boostEnable ").append(boostDev != null ? boostDev : hybridSwitch("motion_boost", true) ? 1f : 0f).append('\n');
         // Switches of the worker's round-5 fixes (on by default there): written only when turned off.
@@ -890,7 +890,7 @@ public class PreferenceKeys {
     public static int getHybridZslFrames() {
         return Math.round(hybridValue("zsl_frames", 20f));
     }
-    /** P62 Mochi: GCam 11 photometric merge of bracketed frames on GPU (pref_scam_hybrid_mochi: 0 off, 1 auto, 2 force; default 2, P68). */
+    /** P62 Mochi: v11 photometric merge of bracketed frames on GPU (pref_scam_hybrid_mochi: 0 off, 1 auto, 2 force; default 2, P68). */
     public static int getHybridMochi() {
         return Math.round(hybridValue("mochi", 2f));
     }
@@ -910,7 +910,7 @@ public class PreferenceKeys {
      */
     /**
      * Master switch of every noise reduction of the hybrid (pref_scam_hybrid_denoise, on by default; scam_dev.txt
-     * "hybrid_denoise 0/1"): off skips the denoise after the merge (GCam/SCAM finish or NLM, despeckle), the Bento
+     * "hybrid_denoise 0/1"): off skips the denoise after the merge (SCAM finish or NLM, despeckle), the Bento
      * highlight denoise of the ARK fusion and the chroma denoise of lifted shadows. The merge itself is untouched.
      */
     public static boolean isHybridDenoiseEnabled() {
@@ -1024,7 +1024,7 @@ public class PreferenceKeys {
      */
     private static final Map<String, String[]> HYBRID_DEV_LISTS = new HashMap<>();
     static {
-        HYBRID_DEV_LISTS.put("dn_engine", new String[]{"gcam", "nlm"});
+        HYBRID_DEV_LISTS.put("dn_engine", new String[]{"multiscale", "nlm"});
         HYBRID_DEV_LISTS.put("dn_strength_map", new String[]{"auto", "frames", "uniform"});
     }
     /** SCAM Hybrid text value pref_scam_hybrid_&lt;key&gt; (a ListPreference entry value), {@code fallback} when unset. */
@@ -1147,7 +1147,7 @@ public class PreferenceKeys {
     /**
      * Signal-to-noise ratio the merged frame is aimed at. Denoise strength is
      * scaled by how far this shot falls short of it, so a clean frame is denoised
-     * less than a noisy one without touching the sliders. GCam's dumps show a
+     * less than a noisy one without touching the sliders. The reference dumps show a
      * merged estimate around 110 on a well-lit shot.
      */
 

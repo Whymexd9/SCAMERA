@@ -204,7 +204,7 @@
         <item>NLM (previous)</item>
     </string-array>
     <string-array name="scam_hybrid_dn_engine_values" translatable="false">
-        <item>gcam</item>
+        <item>multiscale</item>
         <item>nlm</item>
     </string-array>
     <string-array name="scam_hybrid_dn_map_entries">

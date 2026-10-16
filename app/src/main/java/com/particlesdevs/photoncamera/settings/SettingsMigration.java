@@ -115,7 +115,7 @@ public final class SettingsMigration {
             "pref_scamroute_chroma", "pref_scamroute_sharpen", "pref_ai_denoise_enabled_key",
             "pref_ai_denoise_strength_key", "pref_ai_denoise_luma_key", "pref_ai_denoise_chroma_key",
             "pref_ai_denoise_model_key", "pref_remosaic_dump_key", "pref_noise_dynamic_enabled_key",
-            // P5: the legacy post-processing (RT / ESD3D denoise, GCam finish, tone pipelines, ACES, Capture One,
+            // P5: the legacy post-processing (RT / ESD3D denoise, reference finish, tone pipelines, ACES, Capture One,
             // darktable, false colour / CA, the old tone sliders, noise-model ISO overrides)
             "pref_rt_denoise_backend", "pref_capture_one_enabled_key", "pref_false_color_enabled_key",
             "pref_saliency_protection_key", "pref_false_color_strength_key", "pref_defringe_purple_key",
@@ -127,9 +127,9 @@ public final class SettingsMigration {
             // P10: one tone (ARK) for both routes; the SCAMERA tone of SCAM HDR and the hybrid's «Тон SCAMERA» go
             "pref_expocompensation_seekbar_key", "pref_scamold_ae_mid", "pref_scamold_ae_high", "pref_scamold_ae_gain_max",
             "pref_scamhdr_soft_tone", "pref_scamhdr_tone_key", "pref_scamhdr_sharp_amount", "pref_scamhdr_texture",
-            "pref_scamhdr_warm_retention", "pref_scamhdr_gcam_tone", "pref_scam_hybrid_ae_mid", "pref_scam_hybrid_ae_high",
+            "pref_scamhdr_warm_retention", "pref_scam_hybrid_ae_mid", "pref_scam_hybrid_ae_high",
             "pref_scam_hybrid_ae_gain_max", "pref_scam_hybrid_bento_fusion", "pref_scam_hybrid_texture", "pref_scam_hybrid_ark_tone",
-            "pref_scam_hybrid_soft_tone", "pref_scam_hybrid_tone_key", "pref_scam_hybrid_warm_retention", "pref_scam_hybrid_gcam_tone",
+            "pref_scam_hybrid_soft_tone", "pref_scam_hybrid_tone_key", "pref_scam_hybrid_warm_retention",
             // P8: the retired VCF2 route selector and the unreachable RAW video mode
             "pref_scamhdr_route", "pref_rawvideo_downscale_4x_key", "pref_rawvideo_write_zip_key", "pref_rawvideo_crop_169_key",
             // P12b: the old texture boost switch never reached the worker; pref_scam_hybrid_motion_boost replaces it
@@ -163,7 +163,7 @@ public final class SettingsMigration {
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes
-            "rt512_", "pref_rt_nr_", "pref_gcam_", "pref_aces_", "pref_c1_", "scamera_darktable_",
+            "rt512_", "pref_rt_nr_", "pref_aces_", "pref_c1_", "scamera_darktable_",
             "pref_tunable_postpipeline_", "pref_tunable_esd3d2_", "pref_tunable_ablc_", "pref_tunable_initial_",
             "pref_tunable_autoexposurecurve_", "pref_tunable_opendrt_", "pref_tunable_locallaplacian_",
             "pref_tunable_linearexposure_", "pref_tunable_headroomrender_", "pref_tunable_bayer2float_",
@@ -337,7 +337,7 @@ public final class SettingsMigration {
     private static final String LEGACY_HYBRID = ScamHybridKeys.LEGACY_PREFIX;
     /** SCAM HDR knobs (pref_scamhdr_&lt;k&gt;) the hybrid route read until it got its own settings. */
     private static final java.util.Set<String> SHARED_SCAM_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
-            "zsl_frames", "gcam_tone", "highlight_recovery", "isp_ccm", "noise_photon", "noise_readout",
+            "zsl_frames", "highlight_recovery", "isp_ccm", "noise_photon", "noise_readout",
             "noise_source", "cre_source", "diagnostics"));
     private static final String[] SHARED_SCAM_PREFIXES = {"fusion_", "tone_", "look", "warm_", "texture", "grain_"};
     /** Autonomous HDR keys that are not on the hybrid route (scam HDR denoise, capture sharpening, the reset action). */
@@ -623,7 +623,7 @@ public final class SettingsMigration {
             markOnly = true;
         }
         // P135 (owner, 2026-10-15: strong grain in poor light): the stored former defaults of the night denoise tier (ArkCam's
-        // SabreLow {1, 3, 0, 0, 0} with revert {9, 9, ...}) and of the revert limit (9) move to the P135 tier (GCam's stock
+        // SabreLow {1, 3, 0, 0, 0} with revert {9, 9, ...}) and of the revert limit (9) move to the P135 tier (the stock
         // strengths, half the fine grain put back) and the limit 1; a value chosen by hand stays. Own marker.
         if (!values.containsKey(LOW_LIGHT_DN_REV)) {
             final String p = ScamHybridKeys.PREFIX;
@@ -643,6 +643,12 @@ public final class SettingsMigration {
             }
             e.putInt(LOW_LIGHT_DN_REV, 1);
             markOnly = true;
+        }
+        // P164: the multiscale finish denoise's stored engine value has its own name; any value but "nlm" is that engine
+        final Object engine = values.get(ScamHybridKeys.PREFIX + "dn_engine");
+        if (engine instanceof String && !"nlm".equals(engine) && !"multiscale".equals(engine)) {
+            e.putString(ScamHybridKeys.PREFIX + "dn_engine", "multiscale");
+            changed = true;
         }
         if (changed || markOnly) e.commit();
         return changed;

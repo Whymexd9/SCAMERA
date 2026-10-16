@@ -3933,11 +3933,18 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   the worker builds (NDK), dngCreator compiles. Not seen on a phone: a Bento shot's DNG should open in a raw converter with
   the window's highlights, the log says «DNG: merged burst RAW (N, bracketed and ultrashort frames), 16-bit, headroom x...».
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
-указывай»; not started)
+указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach
   the user, the diagnostics README) removed or renamed to our own names (as P55 did for LMC / NICE); code names and keys only
   where they are user-visible or where renaming is safe (a stored key keeps its value through SettingsMigration).
 - Not in any changelog (owner).
+- DONE 2026-10-16: app/src/main has no «GCam» left (CaptureController's one comment waits: ChatGPT's uncommitted file). The
+  multiscale finish denoise's stored value «gcam» is «multiscale» (arrays, XML default, ScamDenoise, the dev list,
+  availability); SettingsMigration.migrateScamHybrid turns any stored value but «nlm» into it (HybridSettingsTest
+  theDenoiseEngineValueTakesItsOwnName). GcamFinishMath -> FinishMath. The worker's report lines and every comment in Java,
+  C++ and the shaders say «the reference», «v11», «6.1», «9.6», «Sabre 6.1» instead (kHybMergeMain1 untouched; comment-only
+  changes inside kHybHelpers / kHybReject / kHybMergeMosaic / kHybMochiStats). Four obsolete key names of P5 / P10 left the
+  removal lists (cleaned on every device long ago). sound_timer.mp3 only matches by its ID3 «TAG» + «Camera timer».
 ## P109l - Snapdragon client attribution and VCF RAW boundary
 
 Typed AttributionSourceState spoof is implemented and observed on PD2454. An ordinary open followed by

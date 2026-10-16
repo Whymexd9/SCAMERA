@@ -1,6 +1,6 @@
 #pragma once
 // SCAM HDR "SCAM Hybrid" merge (no neural model, any GLES 3.1 GPU):
-//   kernel      GCam 6.1 Sabre: every output colour is a kernel-weighted average of the burst's own RAW
+//   kernel      Sabre 6.1: every output colour is a kernel-weighted average of the burst's own RAW
 //               sites of that colour (no demosaic), kernel = anisotropic covariance from the structure
 //               tensor of the base frame (narrow across an edge, long along it, wide where flat),
 //               base frame added last with a wider kernel where the donors left little weight.
@@ -99,7 +99,7 @@ struct HybridTuning {
                                  // accepted and their samples interleaved with the base (luma zipper, staircase edges); 0.2 on the
                                  // synthetic motion burst: moving edges +0.8 dB, moving texture +1.8 dB, static bursts -4..10 % frames
     float boost=6.0f;            // extra_motion_robustness_boost
-    float boostEnable=1.f;       // 1: boost where the F6 local motion varies (GCam 11 Z channel); 2: everywhere (SCAM without a
+    float boostEnable=1.f;       // 1: boost where the F6 local motion varies (v11 Z channel); 2: everywhere (SCAM without a
                                  // motion test, the old switch); 0: off. Without the local alignment 1 does nothing.
     float varianceThreshold=25.f;// motion_robustness_boost_variance_threshold
     float motionThreshold=1.5f;  // extra_motion_robustness_motion_threshold: min-max extent of the raw LK flow over the 3x3 tiles (RAW px)
@@ -111,7 +111,7 @@ struct HybridTuning {
     float fwe=1.f;               // frame_weight_exponent
     float weightCap=50.f;        // alt_noise_variance cap
     float lutLo=10.f,lutHi=30.f,lutHiSigma=1.414f;
-    // kernel (GCam 6.1 Sabre curves of the SNR of mid grey, see snrKernel())
+    // kernel (Sabre 6.1 curves of the SNR of mid grey, see snrKernel())
     float kernelScale=1.f;       // multiplies every kernel sigma
     float widenBelow=4.f;        // base-frame kernel widening below this accumulated donor weight (6.1: 4.0)
     float widenMul=1.826f;       // 6.1: covariance x0.3 = sigma x1.826
@@ -232,10 +232,10 @@ struct HybridTuning {
     int rimStride=4;             // donors used for the ratios: every rimStride-th (the base and the ultrashort always)
     // F6 local alignment (research/hybrid5/f6_local_align.md): a per-tile residual offset of every donor on top of its homography,
     // Lucas-Kanade on a two-level gray pyramid. 0 = off (output byte-identical to the merge without it), 1 = field interpolated
-    // bilinearly between tile centres, 2 = constant per tile (NEAREST, as GCam 6.1 / 11).
+    // bilinearly between tile centres, 2 = constant per tile (NEAREST, as 6.1 / v11).
     int localAlign=1;
-    int laWin=16;                // L0 window, gray px (2 RAW px each): 16 = 32x32 RAW windows (6.1 tile, GCam 11 window)
-    int laStride=8;              // L0 tile stride, gray px: 8 = 16x16 RAW output tiles (GCam 11 grid)
+    int laWin=16;                // L0 window, gray px (2 RAW px each): 16 = 32x32 RAW windows (6.1 tile, v11 window)
+    int laStride=8;              // L0 tile stride, gray px: 8 = 16x16 RAW output tiles (v11 grid)
     int laIters=3,laItersCoarse=3; // LK iterations on L0 / L1
     float laMu=0.1f;             // Levenberg-Marquardt damping (share of the mean tensor eigenvalue)
     float laKappa=2.f;           // noise damping (x window pixels x gray noise variance)
@@ -276,8 +276,8 @@ struct HybridTuning {
     // of a 2x cell below auto2xMinSnr: the base frame's noise model at 0.1 of white, sqrt(frames / 4) of the merge's averaging).
     // Off here (replays as before); the app writes it with the switch (on by default).
     int auto2x=0;float auto2xMaxGap=0.5f,auto2xMinSnr=20.f;
-    // P62 Mochi (GCam 11 PhotometricMerge): each bracketed frame gets a per-tile photometric correction against the base on the GPU
-    // (HybridGpu::mochi) before the merge. 0 = off (the merge exactly as before), 1 = GCam's rule (more than 3 non-bracketed frames),
+    // P62 Mochi (v11 PhotometricMerge): each bracketed frame gets a per-tile photometric correction against the base on the GPU
+    // (HybridGpu::mochi) before the merge. 0 = off (the merge exactly as before), 1 = the rule (more than 3 non-bracketed frames),
     // 2 = whenever a bracketed frame is merged.
     int mochi=0;
     int mosaicNative2x=1;        // P56: a Quad / Tetra T1 mosaic with the 2x output grid merges it natively (0: resample the sensor-grid result)
@@ -289,7 +289,7 @@ struct HybridTuning {
     // per frame) allows a narrower kernel across edges and in texture; the blurred kernel of flat areas (the noise there) stays.
     // Handheld X7 Ultra Quad burst, 0.6 with 24 frames: +14 % fine-band energy at the flat-area noise of 1.0 with 16 frames.
     float mosaicEdgeScale=0.6f;
-    int mosaicChroma=1;          // 1: chroma median of the mosaic result (GCam 11 remosaicked: chroma_median dual_5_point), 0: off
+    int mosaicChroma=1;          // 1: chroma median of the mosaic result (v11 remosaicked: chroma_median dual_5_point), 0: off
     int mosaicFrames=30;         // frames of a mosaic burst merged (b^2 sub-frames each, at most kHybridGpuFrames sub-frames): the
                                  // merge time grows with the sub-frames; 24 Quad frames (96 sub-frames) take about 8 s on the X7 Ultra,
                                  // 16 about 6.8 s (P22: the extra frames pay for the narrower edge kernel). 30 since 7 October 2026
@@ -366,7 +366,7 @@ struct HybridTuning {
     float mosaicKernelG=1.f,mosaicKernelRB=0.85f;
     // S5: per-frame R / B fill (M5b) before the frame weight: 0 off (parity), 1 ArkCam's colour difference of the 3x3 block means
     // (a colour whose kernel weight in the frame is below mosaicFillSupport x the green weight is topped up to it with G + (R - G)).
-    // Needed with narrow native kernels (ArkCam's point, mosaicKernelScale 1/b); 2 (GCam 11 directional) is step S7, not built.
+    // Needed with narrow native kernels (ArkCam's point, mosaicKernelScale 1/b); 2 (v11 directional) is step S7, not built.
     int mosaicChromaFill=0;
     float mosaicFillSupport=0.25f;
     // S8 / P35 Tetra route with mosaicPath 1: 1 (default since P35) = T1: the Tetra mosaic merged natively (block 4,
@@ -656,7 +656,7 @@ vec3 dcovAt(int f,int i,int j){
     uvec2 u=dcov[uint(fCells[f].z)+uint(j*w2+i)];
     return vec3(unpackHalf2x16(u.x),unpackHalf2x16(u.y).x);
 }
-// GCam 6.1 Sabre kernel covariance (guide shader @0xe49bed, GenerateGaussCovariance) of cell (i,j) of frame f, from that frame's
+// Sabre 6.1 kernel covariance (guide shader @0xe49bed, GenerateGaussCovariance) of cell (i,j) of frame f, from that frame's
 // own RAW: quad luma Y = (sqrt r + sqrt g1 + sqrt g2 + sqrt b)/4 of the 3x3 quads, four diagonal gradient pairs /8 rotated by
 // 45 degrees, Wiener-filtered strength (noise from the frame's own model in place of the 6.1 LUT), green-difference blur, 6.1
 // sigma mixing. Returns P for kernelW() (exp2(-0.72135 d'Pd) == exp2(-0.5 d'Cd)), divided by kernelScale^2.
@@ -666,7 +666,7 @@ vec3 dcovAt(int f,int i,int j){
 // (if-conversion), and an out-of-bounds SSBO read faults the GPU (a phone reboot with an earlier draft).
 #ifdef LOCAL_ALIGN
 layout(std430,binding=15) readonly buffer LaFlow{vec2 laFlow[];}; // [frame][tile row][tile column]
-layout(std430,binding=17) readonly buffer LaMotion{float laZ[];};  // GCam 11 Z channel: local motion extent per tile (RAW px)
+layout(std430,binding=17) readonly buffer LaMotion{float laZ[];};  // v11 Z channel: local motion extent per tile (RAW px)
 uniform ivec4 laU;   // x: 1 bilinear between tile centres, 2 constant per tile (NEAREST); y, z = tiles per row / column (>= 1)
 uniform vec4 laG;    // xy = RAW position of the centre of tile (0,0), z = tile stride (RAW px), w = 1 / stride
 // Local offset of frame f at the cell whose origin is (x, y) (0 for the base).
@@ -1095,7 +1095,7 @@ void main(){
         vec3 D2=max(d*d-nv,vec3(0.0));
         float varc=max(2.0*min(G.w,Vcur),nvMean);
         float dist=rj.x*(D2.x+D2.y+D2.z)*(1.0/3.0)/varc;
-        // SCAM / GCam 11 extra motion robustness: textured base and, with the local alignment, varying local motion
+        // SCAM / v11 extra motion robustness: textured base and, with the local alignment, varying local motion
         bool moving=rk.x>1.5;
 #ifdef LOCAL_ALIGN
         if(rk.x>0.5&&rk.x<1.5)moving=laMotionAt(f,2*cx,2*cy)>rk.y;
@@ -1971,8 +1971,8 @@ void main(){
 // binned position of the output pixel ((ox + 0.5) / b - 0.5, i.e. native ox), while this merge writes native ox - (b-1)/2, and they
 // correct with sums of the binned base that this merge never added (P29 review: chroma on, Quad, one frame: edges -1.2 dB, flat
 // noise +8 %). hybridReconstructMosaicNative turns them off; native variants of them are not built.
-// Accumulation: ArkCam v23 k_fs_gcam_sabre_merge_quad (SampleNeighborhoodQuadRBF, source given to the SCAMERA owner by the ArkCam
-// author, research/ark23/k_fs_gcam_sabre_merge_quad.glsl; its logic is ported here with the author's permission): every raw site of
+// Accumulation: ArkCam v23 Quad Sabre merge kernel (SampleNeighborhoodQuadRBF, source given to the SCAMERA owner by the ArkCam
+// author, research/ark23, its Quad Sabre merge kernel; its logic is ported here with the author's permission): every raw site of
 // the window around the frame's sample position, at its native position, colour from its block, anisotropic RBF in native px.
 // Ours around it: the binned guide's covariance scaled to native px (natK.x = 1 / (b mosaicKernelScale)^2), bilinear between the
 // cell centres at the sample position (S0's sample_cov; the donors' own 6.1 covariance the same way), the binned rejection per frame,
@@ -2008,7 +2008,7 @@ vec3 natDcov(int f,vec2 Ob){
     return mix(p0,p1,t.y);
 }
 // S5 (mosaicChromaFill 1): ArkCam v23's colour-difference regularisation of SampleNeighborhoodQuadRBF (ported with the author's
-// permission, research/ark23/k_fs_gcam_sabre_merge_quad.glsl): a colour whose kernel weight in this frame is below natK.w x the
+// permission, research/ark23, its Quad Sabre merge kernel): a colour whose kernel weight in this frame is below natK.w x the
 // green weight gets the missing weight at G + (mean R (B) - mean G) of the 3x3 colour blocks around the sample, G = this frame's
 // kernel-weighted green; before the frame's weight is applied. Block means of the unflagged, unclipped sites, each >= 0 (ArkCam's
 // clamp); a colour with clipped samples in this frame keeps its clipped mean (a lower bound), no fill.
@@ -2201,7 +2201,7 @@ void main(){
 }
 )";
 
-// P34: the native Quad merge restructured for speed after ArkCam v23's k_fs_gcam_sabre_merge_quad (research/ark23): whole colour
+// P34: the native Quad merge restructured for speed after ArkCam v23's Quad Sabre merge kernel (research/ark23): whole colour
 // blocks are loaded once per frame and output pixel (its q_cache of normalised 2x2 blocks), the loops have constant bounds, the
 // site normalisation runs once per site and strip instead of once per tap. kHybMergeMosaic read every site of the window with a
 // uniform-bound loop, one 16-bit load per tap behind the kernel test and the site-gain arithmetic per tap: ~4 ns per tap on
@@ -2546,14 +2546,14 @@ struct HybridMosaicNative {
     float siteSlope=0,siteOffset=0;      // noise model of one merged site of the base (outlier test of kHybNatFlags)
 };
 
-// P62 Mochi (GCam 11 PhotometricMerge, research/mochi/MOCHI_IMPL.md): photometric correction of a bracketed (longer) frame against
+// P62 Mochi (v11 PhotometricMerge, research/mochi/MOCHI_IMPL.md): photometric correction of a bracketed (longer) frame against
 // the base before the merge, on the GPU. Standalone programs with their own buffers (bindings 0..5; merge() binds its own again),
 // compiled only when the tuning key mochi is on, so a merge without it runs exactly the programs and buffers as before.
 // kHybMochiStats: one invocation per 16x16 RAW tile of the bracketed frame (its own geometry). Per 2x2 cell: the frame's sites and
 // the base sampled at the same scene point (bilinear on each phase's grid, the frame's homography inverted to first order), both
 // unclipped (< clipAt). A cell whose difference exceeds 3 sigma of the noise plus the largest correction kept is motion or
-// misalignment, not a photometric offset (GCam weights by its rejection map instead), and is left out. The mean difference
-// base - frame of the accepted cells, in the frame's own normalised units, becomes GCam's correction: in 10-bit DN zeroed when
+// misalignment, not a photometric offset (the reference weights by its rejection map instead), and is left out. The mean difference
+// base - frame of the accepted cells, in the frame's own normalised units, becomes the reference correction: in 10-bit DN zeroed when
 // |c_rggb|^2 > 500, otherwise clamped to +-20; with the base SNR weight min(1, snr / 5) (SNRWeight(snr, 5.0)).
 static const char* kHybMochiStats=R"(#version 310 es
 precision highp float;
@@ -2617,7 +2617,7 @@ void main(){
     }
     int ti=ty*tileCount.x+t.x;
     if(n<16.0){tiles[ti]=vec4(0.0);info[ti]=vec4(0.0,n,0.0,0.0);return;}
-    vec4 u=sd/n*expo.x*1023.0; // GCam's correction in 10-bit DN of the frame
+    vec4 u=sd/n*expo.x*1023.0; // the reference correction in 10-bit DN of the frame
     float zeroed=dot(u,u)>500.0?1.0:0.0;
     tiles[ti]=zeroed>0.0?vec4(0.0):clamp(u,-20.0,20.0)/1023.0;
     float g=clamp(sg/n,0.0,1.0);
@@ -2625,9 +2625,9 @@ void main(){
     info[ti]=vec4(min(1.0,max(snr,0.0)/5.0),n,zeroed,1.0);
 }
 )";
-// kHybMochiBlur: GCam's "GaussianBlur correction" and "GaussianBlur SNR map" on the tile grid ([1 2 1]^2), the SNR weight applied:
+// kHybMochiBlur: the reference "GaussianBlur correction" and "GaussianBlur SNR map" on the tile grid ([1 2 1]^2), the SNR weight applied:
 // Final = blur(correction) * blur(weight). Only measured tiles count (renormalised): a tile without accepted cells (motion,
-// clipping) takes its neighbours' correction instead of diluting theirs with a zero (GCam's rejection-weighted tile mean is 0
+// clipping) takes its neighbours' correction instead of diluting theirs with a zero (the reference rejection-weighted tile mean is 0
 // there and its blur pulls the neighbours toward it: around a moving object the background kept up to 2 DN of the offset).
 static const char* kHybMochiBlur=R"(#version 310 es
 precision highp float;
@@ -4266,8 +4266,8 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
 // F6: tile-local refinement of the per-frame homography (research/hybrid5/f6_local_align.md).
 // One homography per frame (CRE, 8-bit 1/4 guide) leaves 0.3-0.9 px RMS of local misregistration on handheld bursts (parallax of
 // near objects, rolling shutter, lens): narrow Sabre kernels then merge frames that disagree. Per tile, the residual offset of
-// every donor against the base is estimated on a two-level gray pyramid (GCam 11 spatial path: Lucas-Kanade, 16x16 RAW output
-// tiles from 32x32 RAW windows, median filtering; GCam 6.1: 32x32 RAW tiles) and added to the homography in every GPU pass.
+// every donor against the base is estimated on a two-level gray pyramid (v11 spatial path: Lucas-Kanade, 16x16 RAW output
+// tiles from 32x32 RAW windows, median filtering; 6.1: 32x32 RAW tiles) and added to the homography in every GPU pass.
 //   gray     2x2 quad mean (canonical cell), gain-normalised to base units, sqrt domain (noise variance ~ slope/16 everywhere);
 //            sites >= 0.95 of white in the frame's own units mark the quad clipped (excluded from the sums)
 //   L1       gray/2, windows 16 px (64 RAW) every 8 px (32 RAW), LK from the homography
@@ -4505,7 +4505,7 @@ inline void laFieldAt(const std::vector<float>& r,const LaGrid& g,float X,float 
 struct LaFrameStats { float median=0,p90=0,maxAbsY=0,accepted=0,fromCoarse=0,motionShare=0; double ms[7]{}; }; // ms: gray, down, L1, start, L0, accept, median
 // Base pyramid (built once) and the per-frame field on the L0 grid. One worker thread per frame (no nested parallelism).
 struct LaBase { LaImage l0,l1; LaGrid g0,g1; float v0=0; };
-// GCam 11 Z channel (rejection.cl motion prior): per tile the length of the min-max extent of the raw LK flow over its 3x3
+// v11 Z channel (rejection.cl motion prior): per tile the length of the min-max extent of the raw LK flow over its 3x3
 // tile neighbourhood, taken before the acceptance test (a moving hand is exactly where LK is rejected and the kept field
 // stays 0) and before any median. A tile whose LK diverged (non-finite or beyond maxShift) counts as maxShift.
 // W2.1: rows [j0, j1) of z (sized nx * ny; raw rows j0-1 .. j1 must be final).
@@ -5650,8 +5650,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     snrKernel(kernel,snr);
     kernel.base*=tune.kernelScale;kernel.shrunk*=tune.kernelScale;kernel.stretched*=tune.kernelScale;kernel.flat*=tune.kernelScale;
     if(tune.isoKernel){kernel.shrunk=kernel.stretched=kernel.base;if(tune.isoKernel>=2)kernel.flat=kernel.base;}
-    // Sabre 6.1 kernel (sabre2x_61.md F1): key = 0.18/sqrt(O + 0.18 S) of the base frame (no snrScale), GCam 6.1 curves f0..f3
-    // (research/gcam61/sabre_curves.json), f4 = 4, f5 = 2.2; uniforms exactly as libgcam 0x723f04-0x724008.
+    // Sabre 6.1 kernel (sabre2x_61.md F1): key = 0.18/sqrt(O + 0.18 S) of the base frame (no snrScale), 6.1 curves f0..f3
+    // (the Sabre 6.1 curves in research), f4 = 4, f5 = 2.2; uniforms exactly as the reference library 0x723f04-0x724008.
     std::array<float,4> k61a{},k61b{},k61c{};
     const float key61=tune.snrFixed>0?float(tune.snrFixed):native?sabreSnr(baseSlope*native->keyNoise,baseOffset*native->keyNoise,1.f)
                       :sabreSnr(baseSlope,baseOffset,1.f);
@@ -6233,7 +6233,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             for(size_t i=1;i<in.frames.size();++i)++(in.role[i]==kRoleBracketed?bracketed:others);
             if(native)report("HYBRID MOCHI: off (native mosaic merge)");
             else if(!bracketed)report("HYBRID MOCHI: no bracketed frame in the merge");
-            else if(tune.mochi==1&&others<=3)report("HYBRID MOCHI: off ("+std::to_string(others)+" non-bracketed frames, GCam's rule needs more than 3; mochi 2 forces it)");
+            else if(tune.mochi==1&&others<=3)report("HYBRID MOCHI: off ("+std::to_string(others)+" non-bracketed frames, the rule needs more than 3; mochi 2 forces it)");
             else {
                 mochiRaw.reserve(size_t(bracketed));
                 for(size_t i=1;i<in.frames.size();++i){
@@ -6469,7 +6469,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
 
 // ---------------------------------------------------------------------------------------------
 // P14 / P15: colour-block mosaics (Quad 2x2, Tetra 4x4: a sensor mode without remosaic) merged straight into RGB.
-// GCam 11 QuadBayerRgbMerge (research/gcam11/map/kernels_03/quad_bayer_rgb_merge.cl): align on the binned image, accumulate every
+// v11 QuadBayerRgbMerge (the v11 quad_bayer_rgb_merge.cl in research): align on the binned image, accumulate every
 // frame's own raw sites into RGB. Here without a new merge program (kHybMergeMain1 only got the general grid): a block-b mosaic frame is b^2
 // plain Bayer frames of (w/b) x (h/b), one per site position (a, c) inside the colour block. Sub-frame (a, c) holds site
 // (b I + a, b J + c) of every block (I, J), which carries the Bayer colour of the block. The sub-frames are one exposure at known
@@ -6579,7 +6579,7 @@ inline float mosaicSoftSignChange(double p0,double p1,double gate,double tau){
 // (mosaicChromaMedian) a wide one, which keeps a last-bit difference of the merge a last-bit difference of the colour.
 constexpr double kMosaicOscTau=0.05,kMosaicLumaTau=0.25;
 // Chroma moire of a mosaic result: a colour lattice b times coarser than the sites aliases fine luma detail (a zone plate, fabric,
-// distant foliage) into pink / green rings. GCam 11 turns on chroma_median_filter_type dual_5_point (plus its false-colour
+// distant foliage) into pink / green rings. v11 turns on chroma_median_filter_type dual_5_point (plus its false-colour
 // suppression) for remosaicked streams; here the separable 5-point median (horizontal, then vertical) of R/G and B/G, taps
 // max(1, b/2) px apart (Quad: 5 px, Tetra: 9 px). Green stays; R and B follow the median differences. Colour detail finer than the
 // colour block is not real in a mosaic.
@@ -6637,7 +6637,7 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
         });
     }
     std::vector<float>().swap(t); // any RAW size: every temporary goes once used (~40 B per pixel at the peak before)
-    // False-colour suppression (GCam 11 enable_false_color_suppression for remosaicked streams): where the luma oscillates faster
+    // False-colour suppression (v11 enable_false_color_suppression for remosaicked streams): where the luma oscillates faster
     // than the colour lattice can follow, the colour is aliased (zone-plate rings, fabric moire) and becomes the wide average
     // colour around. Oscillation: sign changes of the luma high-pass between neighbours, counted only where its swing exceeds 4 %
     // of the level (noise and smooth areas stay out; both tests are soft, mosaicSoftSignChange); a single edge changes sign along
@@ -7043,7 +7043,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     const float ksG=std::clamp(tune.mosaicKernelG,0.25f,4.f),ksRB=std::clamp(tune.mosaicKernelRB,0.25f,4.f);
     const float fill=tune.mosaicChromaFill==1?std::clamp(tune.mosaicFillSupport,0.f,1.f):0.f;
     const bool fullWindow=tune.mosaicWindowFull!=0;
-    if(tune.mosaicChromaFill>1)report("HYBRID MOSAIC NATIVE: chroma fill "+std::to_string(tune.mosaicChromaFill)+" (GCam directional, S7) is not built: fill off");
+    if(tune.mosaicChromaFill>1)report("HYBRID MOSAIC NATIVE: chroma fill "+std::to_string(tune.mosaicChromaFill)+" (directional, S7) is not built: fill off");
     {
         char head[400];
         std::snprintf(head,sizeof(head),"HYBRID MOSAIC NATIVE: block %d%s, %d of %d frames (one GPU slot each, binned %dx%d, merged mosaic %dx%d block %d), window %d px %s, kernel scale %.3f, edge scale %.3f, ks G %.3f R/B %.3f, R/B fill %.2f:",

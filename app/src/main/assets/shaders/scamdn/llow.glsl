@@ -1,7 +1,7 @@
 precision highp float;
 precision highp int;
 precision highp sampler2D;
-// SCAM luma noise reduction, level 1 -> level 0 hand-over (GCam luma_denoise): the low pass LF = [1 2 1]x[1 2 1]/16
+// SCAM luma noise reduction, level 1 -> level 0 hand-over (the reference luma_denoise): the low pass LF = [1 2 1]x[1 2 1]/16
 // of the denoised level 1 is kept aside; level 0 reconstructs from delta = Den1 - Y1 - LF and adds Up2(LF) back
 // after its own filtering. Output RG: (delta, LF).
 uniform sampler2D InputBuffer;  // Den of level 1 (.r)

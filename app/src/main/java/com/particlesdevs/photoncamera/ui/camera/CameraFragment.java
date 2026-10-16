@@ -1549,7 +1549,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             ui().setCaptureProgressMax(frameCount);
         }
 
-        /** ZSL shot: the frames are already buffered, the press must feel instant (SCAM/GCam): no capture ring in the
+        /** ZSL shot: the frames are already buffered, the press must feel instant (SCAM): no capture ring in the
          *  viewfinder, controls stay live, the gallery thumbnail shows the viewfinder frame at once. */
         private boolean instantShot;
 

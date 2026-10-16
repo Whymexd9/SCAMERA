@@ -1,7 +1,7 @@
 precision highp float;
 precision highp int;
 precision highp sampler2D;
-// SCAM chroma noise reduction, one pass of one pyramid level (GCam ChromaDenoise / v11 chroma_denoise.cl,
+// SCAM chroma noise reduction, one pass of one pyramid level (the reference ChromaDenoise / v11 chroma_denoise.cl,
 // BilateralFilterChroma3x3): the 3x3 neighbours at stride s, with 1-2-1 x 1-2-1 spatial weights (4 at the centre),
 // are compared with the centre through d^2 = dY^2 + (uvs.x dU)^2 + (uvs.y dV)^2 (U, V brought to the noise scale of
 // Y); strict: d^2 <= sigma^2, soft: d^2 / 4 <= sigma^2; U, V = strict mean when the strict weights exceed the
@@ -9,7 +9,7 @@ precision highp sampler2D;
 // sigma^2 = f * (noise.x * max(Y, 0) + noise.y): the noise of Y on this level and stride (measured), times k =
 // strength^2 / s, times the strength-map multiplier f.
 // With useDeltaU the level is reconstructed first: X + (0, Up2(DeltaUV)), DeltaUV = the denoised minus the noisy next
-// coarser level; Up2 = bilinear x2 at the coarse position p/2 - 0.25 (GCam Reconstruct) from four integer texel fetches
+// coarser level; Up2 = bilinear x2 at the coarse position p/2 - 0.25 (the reference Reconstruct) from four integer texel fetches
 // (a float coordinate (p + 0.5) / 2 is an fp16 value on Adreno above 2048 px). ScamDenoise runs the reconstruction as a
 // pass of its own (filterU 0) and filters its result, so every pixel is reconstructed once.
 uniform sampler2D InputBuffer;  // YUV of this level: X (stage 0) or the stride-2 result (stage 1)

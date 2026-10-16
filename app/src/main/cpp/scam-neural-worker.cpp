@@ -170,7 +170,7 @@ int main(int argc,char** argv) {
             std::vector<uint16_t> mergedDng;
             std::vector<uint8_t> effMap,clipFlags;
             std::vector<float> result;
-            // SCAM Hybrid merge (GCam 6.1 Sabre kernel + SCAM 9.6 front end, Bento, Shasta; any GPU, no model):
+            // SCAM Hybrid merge (Sabre 6.1 kernel + SCAM 9.6 front end, Bento, Shasta; any GPU, no model):
             // requested by the app with the job marker, or SCAM_HYBRID=1 for an offline replay.
             bool hybrid=hybridBurst.hybrid||access((std::string(argv[2])+"/hybrid-merge").c_str(),F_OK)==0||std::getenv("SCAM_HYBRID");
             std::unique_ptr<scam::Graph> graph;

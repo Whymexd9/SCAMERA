@@ -20,7 +20,7 @@ public final class ArkAe {
             {2.1f, 1.4f, 1.4f, -8.0f, 4.0f, 0.95f, 0.0f},
             {2.4f, 1.35f, 1.4f, -7.5f, 3.5f, 1.05f, 0.0f}};
 
-    /** Effective GCamSettings fields read by the AE (defaults: ArkCam 2.85 X8U, tone_port.md section 3). */
+    /** Effective settings fields read by the AE (defaults: ArkCam 2.85 X8U, tone_port.md section 3). */
     public static final class Settings {
         public float aeTarget = 0.15f, maxBoost = 5.0f, minLimit = 0.5f;
         public float hlOverflow = 2.0f, hlBlend = 0.33f;

@@ -61,7 +61,7 @@ struct Burst {
     std::array<const uint16_t*,4> mosaicSlots{};
     std::vector<const uint16_t*> mosaicExtras;
     // Also produce the whole-burst merged Bayer RAW for the DNG (like the merged
-    // DNG of GCam/SCAM), instead of the single reference frame.
+    // DNG of SCAM), instead of the single reference frame.
     bool mergedDng=false;
     // >0: no L was captured; the worker builds L from all N frames merged in
     // reference geometry, times this exposure ratio (slot 4 carries N).

@@ -92,7 +92,7 @@ public class NoiseModeler {
         computeStackingNoiseModel((double)Math.max(1,FrameCnt),1);
     }
     public void computeStackingNoiseModel(double effectiveSamples,double spatialSamples) {
-        double scale=com.particlesdevs.photoncamera.processing.parameters.GcamFinishMath.varianceScale(
+        double scale=com.particlesdevs.photoncamera.processing.parameters.FinishMath.varianceScale(
                 effectiveSamples,spatialSamples)*adaptiveMpy;
         for(int i=0;i<3;i++)computeModel[i]=new Pair<>(baseModel[i].first*scale,baseModel[i].second*scale);
         Log.d(TAG,"Noise rescale: effective="+effectiveSamples+" spatial="+spatialSamples+" scale="+scale);

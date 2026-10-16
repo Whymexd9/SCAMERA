@@ -1,9 +1,9 @@
 precision highp float;
 precision highp int;
 precision highp sampler2D;
-// SCAM luma noise reduction, reconstruction of level L (GCam luma_denoise): recon = Y[L] + Up2(delta), delta = the
+// SCAM luma noise reduction, reconstruction of level L (the reference luma_denoise): recon = Y[L] + Up2(delta), delta = the
 // denoised minus the noisy next coarser level (on level 0 also minus its 1-2-1 low pass, which is added back at
-// the end). Up2 = bilinear x2 at the coarse position p/2 - 0.25 (GCam UpsampleDelta), integer texel fetches.
+// the end). Up2 = bilinear x2 at the coarse position p/2 - 0.25 (the reference UpsampleDelta), integer texel fetches.
 uniform sampler2D Base;    // Y of this level (.r)
 uniform sampler2D Delta;   // delta of the next coarser level (.r)
 out float Output;

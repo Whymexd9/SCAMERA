@@ -25,7 +25,7 @@ precision highp sampler2D;
 // B-spline colour is
 // clamped at zero after the interpolation, not per tap - the colour source holds box means of the signed merge, and a
 // clamp per tap lifted the mean of a channel near zero (red mottling of a dark teal curtain under the shadow lift).
-// 0 (unset: SCAM HDR, the hybrid after the SCAM/GCam denoise): per tap as before. The taps can be negative there as well (a
+// 0 (unset: SCAM HDR, the hybrid after the SCAM denoise): per tap as before. The taps can be negative there as well (a
 // saturated colour outside sRGB after the colour matrix); clamping those after the interpolation would move colour edges.
 // P3_OUT 1 (P46 «Цветовое пространство» Display P3, ArkCombine sets it): the working colour stays linear sRGB / Rec.709
 // coordinates, but nothing clamps it at the sRGB gamut - the clamps at 0 act on the P3 coordinates (clampP3), AgX takes the

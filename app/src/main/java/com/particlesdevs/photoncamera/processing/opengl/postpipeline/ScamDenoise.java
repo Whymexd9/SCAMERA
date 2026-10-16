@@ -21,39 +21,39 @@ import static android.opengl.GLES20.GL_LINEAR;
 import static android.opengl.GLES20.GL_NEAREST;
 
 /**
- * "SCAM Noise Reduction" of the SCAM Hybrid: the finish denoise of SCAM 9.6 (GCam) as ArkCam 2.85 runs it, on the
- * white-balanced linear RGB after ScamRgb (the space where GCam denoises, before the colour matrix).
+ * "SCAM Noise Reduction" of the SCAM Hybrid: the finish denoise of SCAM 9.6 as ArkCam 2.85 runs it, on the
+ * white-balanced linear RGB after ScamRgb (the space where the reference denoises, before the colour matrix).
  * <ol>
- * <li>Despeckle (as the NLM route: isolated dots, also hot pixels the merge let through), then the YUV of GCam's
+ * <li>Despeckle (as the NLM route: isolated dots, also hot pixels the merge let through), then the YUV of the reference
  *     common.cl. On the Sabre 2x grid everything below runs at the SENSOR scale (luma through kD8, colour through
  *     {1,3,3,1}) and the change is put back with a Laplacian re-assembly: out = RGB_2x + RGB(Up2(Den0 - X0)).</li>
  * <li>Noise: the single-frame model of the base frame (Camera2 profile, white-balance gains) times the measured
- *     difference variance of every pyramid level and stride (GCam derives it from a white spectrum; our merge leaves
- *     correlated noise), rho = how much noisier the model ArkCam hands GCam is than the real one.</li>
+ *     difference variance of every pyramid level and stride (the reference derives it from a white spectrum; our merge leaves
+ *     correlated noise), rho = how much noisier the model ArkCam hands the reference is than the real one.</li>
  * <li>SNR of the finish input (EstimateSnr: mean 0.18 / display gain) selects and interpolates the tiers of
  *     {@link ScamDenoiseTables}.</li>
- * <li>Luma (GCam LumaDenoise F16): kD8 pyramid, 4 levels x {BilateralFilter3x3 stride 2, stride 1}, revert per band
+ * <li>Luma (the reference LumaDenoise F16): kD8 pyramid, 4 levels x {BilateralFilter3x3 stride 2, stride 1}, revert per band
  *     (not clamped in F16; here clamped to dn_revert_max), the 1-2-1 low pass of level 1 kept aside on level 0.</li>
- * <li>Chroma (GCam ChromaDenoise) on the luma-denoised YUV: {1,3,3,1} pyramid, 4 levels x 2 joint YUV bilateral 3x3
+ * <li>Chroma (the reference ChromaDenoise) on the luma-denoised YUV: {1,3,3,1} pyramid, 4 levels x 2 joint YUV bilateral 3x3
  *     passes, Y untouched; optional fade of the colour in the darkest pixels.</li>
  * </ol>
- * Runs for hybrid shots when pref_scam_hybrid_dn_engine = gcam (default); {@link ScamHdrDenoise} delegates here and stays
+ * Runs for hybrid shots when pref_scam_hybrid_dn_engine = multiscale (default); {@link ScamHdrDenoise} delegates here and stays
  * the "nlm" engine and the SCAM HDR (SCAM) denoise.
  */
 public final class ScamDenoise extends Node {
     public ScamDenoise() { super("", "ScamDenoise"); }
     @Override public void Compile() {}
 
-    /** Noise reduction engine of the hybrid: "gcam" (this node, default) or "nlm" ({@link ScamHdrDenoise}). */
+    /** Noise reduction engine of the hybrid: "multiscale" (this node, default) or "nlm" ({@link ScamHdrDenoise}). */
     static String engine() {
-        String v = PreferenceKeys.hybridString("dn_engine", "gcam");
-        return "nlm".equals(v) ? "nlm" : "gcam";
+        String v = PreferenceKeys.hybridString("dn_engine", "multiscale");
+        return "nlm".equals(v) ? "nlm" : "multiscale";
     }
 
-    /** True for a shot merged by the SCAM Hybrid whose noise reduction engine is "gcam". */
+    /** True for a shot merged by the SCAM Hybrid whose noise reduction engine is "multiscale". */
     public static boolean enabledFor(PostPipeline p) {
         return p != null && p.mParameters != null && p.mParameters.scamRgb != null
-                && PreferenceKeys.isHybridShot() && "gcam".equals(engine());
+                && PreferenceKeys.isHybridShot() && "multiscale".equals(engine());
     }
 
     @Override
@@ -113,7 +113,7 @@ public final class ScamDenoise extends Node {
 
     /**
      * Linear display gain the tone stage will apply, mirrored from {@link LinearExposure} on block means of the frame
-     * (p50/p90 of the white-balanced luminance): the denoise runs before it, GCam's EstimateSnr needs it for the mean
+     * (p50/p90 of the white-balanced luminance): the denoise runs before it, the reference EstimateSnr needs it for the mean
      * signal 0.18 / gain. The mid / high anchors and the cap are the former LinearExposure defaults (their settings went
      * with the SCAMERA tone).
      */
@@ -485,7 +485,7 @@ public final class ScamDenoise extends Node {
                 }
                 float[] src = gC[L] != null ? gC[L] : gC[0];
                 for (int k = 0; k < 4; k++) {
-                    // fallback: GCam's sqrt(r_Y / r_ch) from the model
+                    // fallback: the reference sqrt(r_Y / r_ch) from the model
                     UVS[L][k] = src != null ? src[6 + k] : 1f;
                 }
                 if (gL[L] != null) measured++;

@@ -48,9 +48,9 @@ public class PostPipeline extends GLBasePipeline {
     public float scamNoiseSigma = 0f;
     /**
      * The working RGB holds signed values: set by ScamRgb (scamrgb signedU, SCAM Hybrid), cleared by a noise reduction
-     * that writes its clamped output (the SCAM/GCam engine; the NLM engine keeps it: chromadn/apply clips once, downstream).
+     * that writes its clamped output (the SCAM engine; the NLM engine keeps it: chromadn/apply clips once, downstream).
      * ArkCombine then clamps its B-spline colour after the interpolation; otherwise (SCAM HDR, or the hybrid after the
-     * SCAM/GCam denoise) per tap as before, so negative taps of the colour matrix change nothing there.
+     * SCAM denoise) per tap as before, so negative taps of the colour matrix change nothing there.
      */
     public boolean signedRgb;
     /** ARK tone of the SCAM Hybrid: state handed from ArkStats to ArkCombine; null outside that route. */

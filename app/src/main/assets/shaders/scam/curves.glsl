@@ -15,7 +15,7 @@ float curve(float v) {
 void main() {
     vec3 rgb = texelFetch(InputBuffer, ivec2(gl_FragCoord.xy), 0).rgb;
     vec3 o = vec3(curve(rgb.r), curve(rgb.g), curve(rgb.b));
-    // GCam renders the mid tones with about 1.5-2x the colour of the fused SCAM tone and keeps its
+    // The reference renders the mid tones with about 1.5-2x the colour of the fused SCAM tone and keeps its
     // whites nearly neutral (the fused tone leaves a warm cast on lit white surfaces).
     float l = dot(o, vec3(0.2126, 0.7152, 0.0722));
     float bell = smoothstep(0.04, 0.22, l) * (1.0 - smoothstep(0.70, 0.92, l));

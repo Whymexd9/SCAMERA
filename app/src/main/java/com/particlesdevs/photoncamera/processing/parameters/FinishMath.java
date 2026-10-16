@@ -1,8 +1,8 @@
 package com.particlesdevs.photoncamera.processing.parameters;
 
 /** Recovered arithmetic, with explicit guards outside the donor's tested domain. */
-public final class GcamFinishMath {
-    private GcamFinishMath() {}
+public final class FinishMath {
+    private FinishMath() {}
     public static double[] splitGain(double gain) {
         if(!Double.isFinite(gain) || gain<=0) return new double[]{1,1};
         if(gain<=1) return new double[]{1,gain};
