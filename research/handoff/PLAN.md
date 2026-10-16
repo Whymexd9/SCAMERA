@@ -3207,6 +3207,13 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   title left in preferences.xml but «SHDR»).
 - Not done: the hidden scam_dev keys missing from DevKeys and the DevKeys group still titled «vivo X500 Pro Max: DCG»
   (DevKeys.java has ChatGPT's uncommitted work); the saturation rows (#12) go with P134 «Цвет».
+- DONE 2026-10-16 (DevKeys free again): 21 hybrid settings read by literal key with no row in preferences.xml (so only
+  reachable through scam_dev.txt "hybrid_<key>") are on «Для разработчика» now: the series planner (fast_capture,
+  planner_adaptive, planner_l/s/es_ev, long_boost_ev), the merge (clip_flags, mosaic_gain), the processing (isp_ccm,
+  dn_dark_chroma_hi/lo/noise, grain_level/min, texture_g0..g3, texture_core0/1, texture_bmax), with the code's defaults.
+  DevKeysCoverageTest now also scans hybridValue / hybridSwitch / hybridString / routeInternalValue / ArkTone.value literal
+  keys without a row (it failed with these 21 on the old list). The group is «vivo» (it holds X200 / X300 Ultra keys).
+  getScamLuma / getScamChroma / getScamMerge (SCAM HDR network strengths, no caller since P129) removed.
 
 ### P129 - one merge only: SCAM HDR removed, the Hybrid becomes SHDR, own names for the code names (owner, 2026-10-15: «SCAM HDR можешь вырезать из приложения, оставляем нейроремозаик. Все настройки что связаны с scamhdr, если они не связаны с гибридом вырезаем. У нас должен остаться только гибрид как единственный тип склейки. Его же мы переименовываем в SHDR. Так же убери из приложения упоминание LMC/AGC. Все кодовые названия по типу Bento, Shasta, mochi, Sabre и другие переделываем в наши собственные названия. Все названия придумай сам, главное чтобы звучало логично и нормально.»)
 - OPEN, after P128. Remove the SCAM HDR merge route (NPU 4N + L/S/ES graph, its settings and UI) but keep the neural remosaic
