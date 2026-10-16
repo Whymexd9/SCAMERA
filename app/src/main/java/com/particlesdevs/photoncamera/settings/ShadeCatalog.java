@@ -57,7 +57,8 @@ import java.util.Set;
  * CI host check (tools/check_settings_model.py) compiles that class on its own.
  */
 public final class ShadeCatalog {
-    public static final int TOGGLE = 0, LIST = 1, SLIDER = 2;
+    /** P169: CURVE - the own tone curve (its points as text), edited on the curve graph in the shade's card. */
+    public static final int TOGGLE = 0, LIST = 1, SLIDER = 2, CURVE = 3;
     /** How a value is stored: as the settings screen stores it. */
     static final int STORE_STRING = 0, STORE_BOOLEAN = 1, STORE_INT = 2, STORE_FLOAT = 3, STORE_VIRTUAL = 4;
     /** A list with more values than this opens the list sheet instead of cycling on a tap. */
@@ -444,7 +445,12 @@ public final class ShadeCatalog {
         e.title = p.getTitle() == null ? key : p.getTitle().toString();
         e.path.addAll(path);
         e.dependency = p.getDependency();
-        if (p instanceof UniversalSeekBarPreference) {
+        if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference) {
+            // P169 (owner, 2026-10-16: «дай возможность добавлять кастомную кривую в шторку чтобы там её регулировать»)
+            e.kind = CURVE;
+            e.defaultValue = com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS;
+            e.storage = STORE_STRING;
+        } else if (p instanceof UniversalSeekBarPreference) {
             UniversalSeekBarPreference s = (UniversalSeekBarPreference) p;
             slider(e, s.minimum(), s.maximum(), s.decimal(), s.stepPerUnit(), s.defaultNumber());
             e.storage = STORE_STRING;
@@ -620,6 +626,9 @@ public final class ShadeCatalog {
                 return on(e) != PreferenceNumber.bool(defaultOf(e), false);
             case SLIDER:
                 return Math.abs(number(e) - (float) PreferenceNumber.read(defaultOf(e), e.min)) > Math.max(1e-6f, e.step / 2f);
+            case CURVE:
+                return !curve(e).serialize().equals(com.particlesdevs.photoncamera.processing.color.ToneCurve
+                        .parse(String.valueOf(defaultOf(e))).serialize());
             default:
                 int current = index(e), def = indexOf(e, defaultOf(e));
                 return current != def;
@@ -633,11 +642,26 @@ public final class ShadeCatalog {
                 return res.getString(on(e) ? R.string.shade_on : R.string.shade_off);
             case SLIDER:
                 return formatNumber(e, number(e));
+            case CURVE:
+                return points(curve(e).size());
             default:
                 int i = index(e);
                 if (i < 0) { Object v = value(e); return v == null ? "" : v.toString(); }
                 return label(e, i, shortForm);
         }
+    }
+
+    /** P169: the stored tone curve of a CURVE entry (the default S when nothing valid is stored). */
+    public com.particlesdevs.photoncamera.processing.color.ToneCurve curve(Entry e) {
+        Object v = value(e);
+        return com.particlesdevs.photoncamera.processing.color.ToneCurve.parse(v == null ? null : v.toString());
+    }
+
+    /** «5 точек» / «5 points». */
+    static String points(int n) {
+        int d = n % 10, h = n % 100;
+        if (d == 1 && h != 11) return n + Lang.t(" точка", n == 1 ? " point" : " points");
+        return n + (d >= 2 && d <= 4 && (h < 12 || h > 14) ? Lang.t(" точки", " points") : Lang.t(" точек", " points"));
     }
 
     /** Labels of the list values for the list sheet and the segments (FORMAT: «RAW + HEIC» and the like). */

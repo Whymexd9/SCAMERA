@@ -44,6 +44,12 @@ public final class ToneCurveView extends View {
     private boolean moved, added;
     private float downX, downY;
     private final Runnable deleteOnHold = this::deleteActive;
+    /** P177: curves drawn under the own one for comparison (y at evenly spaced x), their names and colours; null: none. */
+    @Nullable private float[][] refSamples;
+    @Nullable private String[] refNames;
+    @Nullable private int[] refColours;
+    private final Paint refLine = new Paint(Paint.ANTI_ALIAS_FLAG), refLabel = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path refPath = new Path();
 
     public ToneCurveView(Context c) {
         super(c);
@@ -71,6 +77,28 @@ public final class ToneCurveView extends View {
         label.setTextSize(dp(10.5f));
         setContentDescription(Lang.t(c, "Тоновая кривая", "Tone curve"));
         setHapticFeedbackEnabled(true);
+        refLine.setStyle(Paint.Style.STROKE);
+        refLine.setStrokeWidth(dp(1.6f));
+        refLine.setStrokeCap(Paint.Cap.ROUND);
+        refLine.setPathEffect(new DashPathEffect(new float[]{dp(6), dp(4)}, 0));
+        refLabel.setTextSize(dp(10.5f));
+        refLabel.setFakeBoldText(true);
+    }
+
+    /**
+     * P177: the curves to compare with (each y sampled at evenly spaced x over 0..1), drawn dashed in their colours under the
+     * own curve with their names; null or empty: none.
+     */
+    public void setReferences(@Nullable float[][] samples, @Nullable String[] names, @Nullable int[] colours) {
+        refSamples = samples;
+        refNames = names;
+        refColours = colours;
+        invalidate();
+    }
+
+    /** The references shown (tests). */
+    public int references() {
+        return refSamples == null ? 0 : refSamples.length;
     }
 
     public void setCurve(ToneCurve curve) {
@@ -164,6 +192,7 @@ public final class ToneCurveView extends View {
             canvas.drawLine(plot.left, py(i / 4f), plot.right, py(i / 4f), grid);
         }
         canvas.drawLine(plot.left, plot.bottom, plot.right, plot.top, guide);
+        drawReferences(canvas);
         canvas.drawText(Lang.t(getContext(), "−5 EV", "−5 EV"), plot.left, frame.bottom - dp(7), label);
         String mid = Lang.t(getContext(), "0 (серый)", "0 (grey)");
         canvas.drawText(mid, px(0.5f) - label.measureText(mid) / 2f, frame.bottom - dp(7), label);
@@ -193,6 +222,31 @@ public final class ToneCurveView extends View {
                 canvas.drawCircle(x, y, dp(6.5f), back);
                 canvas.drawCircle(x, y, dp(6.5f), ring);
             }
+        }
+    }
+
+    /** P177: the comparison curves, dashed, each named near its upper end (labels kept apart). */
+    private void drawReferences(Canvas canvas) {
+        if (refSamples == null) return;
+        float lastLabelY = Float.NaN;
+        for (int k = 0; k < refSamples.length; k++) {
+            float[] s = refSamples[k];
+            if (s == null || s.length < 2) continue;
+            int colour = refColours != null && k < refColours.length ? refColours[k] : SettingsStyle.MUTED;
+            refLine.setColor((colour & 0x00FFFFFF) | 0xD9000000);
+            refPath.reset();
+            for (int i = 0; i < s.length; i++) {
+                float x = px(i / (float) (s.length - 1)), y = py(s[i]);
+                if (i == 0) refPath.moveTo(x, y); else refPath.lineTo(x, y);
+            }
+            canvas.drawPath(refPath, refLine);
+            if (refNames == null || k >= refNames.length || refNames[k] == null) continue;
+            int at = Math.round(0.18f * (s.length - 1));   // the dark end: the curves part there
+            float ly = py(s[at]) - dp(6);
+            if (!Float.isNaN(lastLabelY) && Math.abs(ly - lastLabelY) < dp(12)) ly = lastLabelY - dp(12);
+            lastLabelY = ly;
+            refLabel.setColor(colour);
+            canvas.drawText(refNames[k], px(at / (float) (s.length - 1)) - dp(4), Math.max(plot.top + dp(10), ly), refLabel);
         }
     }
 

@@ -174,6 +174,14 @@ public class ToneCurvePreference extends Preference {
             graph.setCurve(ToneCurve.identity());
             store(graph.curve());
         }), second);
+        // P177: «Сравнить:» AgX / ACES / Uchimura drawn on the graph (once, below the shortcuts)
+        ViewGroup card = (ViewGroup) actions.getParent();
+        View oldCompare = card.findViewWithTag("tone_curve_compare");
+        if (oldCompare != null) card.removeView(oldCompare);
+        LinearLayout compare = ToneCurveCompare.chips(c, graph);
+        LinearLayout.LayoutParams cmp = new LinearLayout.LayoutParams(-1, -2);
+        cmp.topMargin = SettingsStyle.dp(c, 8);
+        card.addView(compare, card.indexOfChild(actions) + 1, cmp);
         // the row dims as a whole when the curve is off (SettingsStyle.bind); the graph and its controls only stop reacting
         for (int i = 0; i < actions.getChildCount(); i++) actions.getChildAt(i).setEnabled(isEnabled());
         PointPanel panel = new PointPanel(c, graph, (LinearLayout) holder.findViewById(R.id.tone_curve_point), isEnabled());
@@ -268,6 +276,21 @@ public class ToneCurvePreference extends Preference {
         scroll.addView(rows);
         body.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         BottomSheetDialog d = SettingsStyle.sheet(c, body);
+        // P177: the operators as own curves to edit (AgX / ACES / Uchimura with today's settings, the S-curve, the straight line)
+        TextView templates = SettingsStyle.text(c, Lang.t(c, "Шаблоны: AgX, ACES, Uchimura, S-кривая, прямая",
+                "Templates: AgX, ACES, Uchimura, S-curve, straight"), 15, SettingsStyle.accent(c));
+        templates.setTag("curve_templates");
+        templates.setGravity(Gravity.CENTER);
+        int tp = SettingsStyle.dp(c, 12);
+        templates.setPadding(tp, tp, tp, tp);
+        templates.setBackground(SettingsStyle.shape(c, SettingsStyle.tint(SettingsStyle.accent(c), .12f), 0, 16));
+        templates.setOnClickListener(v -> {
+            d.dismiss();
+            ToneCurveCompare.pickTemplate(c, SettingsStyle.accent(c), this::load);
+        });
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(-1, -2);
+        tlp.bottomMargin = SettingsStyle.dp(c, 10);
+        body.addView(templates, body.indexOfChild(scroll), tlp);
         TextView empty = SettingsStyle.text(c, Lang.t(c, "Сохранённых кривых пока нет. Папка: ", "No saved curves yet. Folder: ")
                 + files().folder(), 14, SettingsStyle.MUTED);
         empty.setPadding(SettingsStyle.dp(c, 6), SettingsStyle.dp(c, 6), SettingsStyle.dp(c, 6), SettingsStyle.dp(c, 12));

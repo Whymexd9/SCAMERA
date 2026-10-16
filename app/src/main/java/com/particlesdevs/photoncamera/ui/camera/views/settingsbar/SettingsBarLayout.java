@@ -39,6 +39,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import com.particlesdevs.photoncamera.util.Lang;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.widget.NestedScrollView;
 import androidx.recyclerview.widget.DefaultItemAnimator;
@@ -66,8 +67,8 @@ import java.util.List;
  * sheet is hideable only in PEEK and HIDDEN, so a fling from FULL lands in PEEK. The sheet itself stays VISIBLE; the
  * behavior moves it below the edge when hidden.
  * <p>
- * Content, one scroll list: the handle, the header «Закреплено», the grid of pinned tiles (4 columns, at most 12, a
- * dashed «Добавить» tile while fewer), the inline slider card of an open slider tile, then (seen in FULL) the curated
+ * Content, one scroll list: the handle, the header «Закреплено», the grid of pinned tiles (4 columns, any number since
+ * P167, then a dashed «Добавить» tile), the inline slider card of an open slider tile, then (seen in FULL) the curated
  * groups with an inline control and a pin per row. PEEK shows the list down to the grid (or the slider card). The
  * content is built on the first need ({@link #prewarm}, or the first level above HIDDEN), because it inflates the
  * settings tree.
@@ -673,6 +674,7 @@ public class SettingsBarLayout extends LinearLayout {
                 toastValue(e);
                 break;
             case ShadeCatalog.SLIDER:
+            case ShadeCatalog.CURVE:   // P169: the curve graph in the same card
                 openSlider = key.equals(openSlider) ? null : key;
                 rebindValues();
                 break;
@@ -794,15 +796,103 @@ public class SettingsBarLayout extends LinearLayout {
         return openSlider == null || catalog == null ? null : catalog.entry(openSlider);
     }
 
+    /** P169: the curve editor inside the slider card (made on first use), shown instead of the bar for a CURVE tile. */
+    @Nullable private LinearLayout curveBox;
+    @Nullable private com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView curveView;
+
+    private LinearLayout curveBox() {
+        if (curveBox != null) return curveBox;
+        Context c = getContext();
+        curveBox = new LinearLayout(c);
+        curveBox.setOrientation(VERTICAL);
+        curveBox.setTag("shade_curve_box");
+        curveView = new com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView(c);
+        curveView.setTag("shade_curve_view");
+        curveView.setOnCommit(curve -> {
+            ShadeCatalog.Entry e = openSliderEntry();
+            if (e != null && e.kind == ShadeCatalog.CURVE) apply(e, curve.serialize());
+        });
+        LayoutParams gp = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        gp.topMargin = dp(10);
+        curveBox.addView(curveView, gp);
+        LinearLayout chips = new LinearLayout(c);
+        chips.setOrientation(HORIZONTAL);
+        chips.addView(curveChip(Lang.t(c, "S-кривая", "S-curve"), "shade_curve_default",
+                com.particlesdevs.photoncamera.processing.color.ToneCurve::defaults), new LayoutParams(0, dp(40), 1f));
+        LayoutParams second = new LayoutParams(0, dp(40), 1f);
+        second.setMarginStart(dp(8));
+        chips.addView(curveChip(Lang.t(c, "Прямая", "Straight"), "shade_curve_identity",
+                com.particlesdevs.photoncamera.processing.color.ToneCurve::identity), second);
+        // P177: «Ещё…» - AgX / ACES / Uchimura (and the two above) as own curves to edit
+        TextView more = curveChip(Lang.t(c, "Ещё…", "More…"), "shade_curve_templates", null);
+        more.setOnClickListener(v -> com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveCompare.pickTemplate(c,
+                ShadeStyle.accent(c), next -> {
+                    ShadeCatalog.Entry e = openSliderEntry();
+                    if (e == null || e.kind != ShadeCatalog.CURVE || curveView == null) return;
+                    curveView.setCurve(next);
+                    curveView.select(next.size() / 2);
+                    apply(e, next.serialize());
+                }));
+        LayoutParams third = new LayoutParams(0, dp(40), 1f);
+        third.setMarginStart(dp(8));
+        chips.addView(more, third);
+        LayoutParams cp = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cp.topMargin = dp(10);
+        curveBox.addView(chips, cp);
+        // P177: «Сравнить:» the other operators on the graph
+        LayoutParams cmp = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cmp.topMargin = dp(8);
+        cmp.bottomMargin = dp(4);
+        curveBox.addView(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveCompare.chips(c, curveView), cmp);
+        sliderCard.addView(curveBox, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return curveBox;
+    }
+
+    private TextView curveChip(String text, String tag,
+                               @Nullable java.util.function.Supplier<com.particlesdevs.photoncamera.processing.color.ToneCurve> curve) {
+        TextView chip = new TextView(getContext());
+        chip.setText(text);
+        chip.setTag(tag);
+        chip.setGravity(Gravity.CENTER);
+        chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        int accent = ShadeStyle.accent(getContext());
+        chip.setTextColor(accent);
+        chip.setBackground(ShadeStyle.pressable(getContext(), ShadeStyle.tint(accent, .14f), 0, 100));
+        if (curve == null) return chip;   // the caller sets its own action
+        chip.setOnClickListener(v -> {
+            ShadeCatalog.Entry e = openSliderEntry();
+            if (e == null || e.kind != ShadeCatalog.CURVE || curveView == null) return;
+            com.particlesdevs.photoncamera.processing.color.ToneCurve next = curve.get();
+            curveView.setCurve(next);
+            curveView.select(next.size() / 2);
+            apply(e, next.serialize());
+        });
+        return chip;
+    }
+
     private void bindSliderCard() {
         ShadeCatalog.Entry e = openSliderEntry();
-        if (e == null || e.kind != ShadeCatalog.SLIDER || !pinned.contains(e.key)) {
+        if (e == null || (e.kind != ShadeCatalog.SLIDER && e.kind != ShadeCatalog.CURVE) || !pinned.contains(e.key)) {
             openSlider = null;
             if (sliderCard.getVisibility() != GONE) sliderCard.setVisibility(GONE);
             return;
         }
         if (sliderCard.getVisibility() != VISIBLE) sliderCard.setVisibility(VISIBLE);
         sliderTitle.setText(e.shortTitle);
+        final boolean curve = e.kind == ShadeCatalog.CURVE;
+        sliderBar.setVisibility(curve ? GONE : VISIBLE);
+        if (curve || curveBox != null) curveBox().setVisibility(curve ? VISIBLE : GONE);
+        if (curve) {
+            sliderPill.setText(catalog().valueText(e, true));
+            sliderPill.setTextColor(ShadeStyle.accent(getContext()));
+            com.particlesdevs.photoncamera.processing.color.ToneCurve stored = catalog().curve(e);
+            if (curveView != null && !stored.serialize().equals(curveView.curve().serialize())) {
+                int selected = curveView.selected();
+                curveView.setCurve(stored);
+                curveView.select(selected >= 0 && selected < stored.size() ? selected : stored.size() / 2);
+            }
+            return;
+        }
         sliderBar.setContentDescription(e.title);
         int accent = ShadeStyle.accent(getContext());
         sliderPill.setTextColor(accent);
@@ -985,7 +1075,7 @@ public class SettingsBarLayout extends LinearLayout {
             return false;
         }
 
-        /** The grid never scrolls itself (all twelve tiles are laid out); no auto-scroll at its edges. */
+        /** The grid never scrolls itself (all its tiles are laid out); no auto-scroll at its edges. */
         @Override
         public int interpolateOutOfBoundsScroll(@NonNull RecyclerView recyclerView, int viewSize, int viewSizeOutOfBounds,
                                                 int totalSize, long msSinceStartScroll) {

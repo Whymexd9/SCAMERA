@@ -253,6 +253,65 @@ public final class ToneCurve {
         return t * w0 + lin * w1 + s * w2;
     }
 
+    // ───── P177: the operators in the own curve's domain (x = 0.5 + EV / 10 around the 0.18 grey, y = display value) ─────
+
+    /** The scene linear value of the own curve's x. */
+    static float sceneOf(float x) {
+        return 0.18f * (float) Math.pow(2.0, (x - 0.5f) * 10f);
+    }
+
+    /** AgX at x: its tonescale (ark/combine.glsl agxTonescale) over its log range, a display value as the own curve's y. */
+    public static float agxAt(float x, float slope, float sp, float tp, float minEv, float maxEv, float ev) {
+        float range = Math.max(maxEv + Math.max(ev, 0f) - minEv, 1f);
+        float px = Math.max(0.05f, Math.min(0.95f, -minEv / range));
+        float lg = clamp01(((x - 0.5f) * 10f + ev - minEv) / range);
+        return clamp01(agxTonescale(lg, slope, sp, tp, px));
+    }
+
+    /** ark/combine.glsl agxTonescale (the kernel's AgX sigmoid of slope, shoulder and toe powers around the pivot px). */
+    static float agxTonescale(float x, float slope, float sp, float tp, float px) {
+        final float py = 0.5f;
+        if (x >= px) {
+            float sBase = slope * (1f - px) / (1f - py);
+            float sDenom = (float) Math.pow(slope * (1f - px), -sp);
+            float ss = (float) Math.pow(Math.max((Math.pow(sBase, sp) - 1f) * sDenom, 0.00001f), -1f / sp);
+            float ms = slope * (x - px) / Math.max(ss, 0.00001f);
+            float fs = ms / (float) Math.pow(1f + Math.pow(Math.max(ms, 0f), sp), 1f / sp);
+            return ss * fs + py;
+        }
+        float tBase = slope * px / py;
+        float tDenom = (float) Math.pow(slope * px, -tp);
+        float ts = (float) Math.pow(Math.max((Math.pow(tBase, tp) - 1f) * tDenom, 0.00001f), -1f / tp);
+        float mr = slope * (px - x) / Math.max(ts, 0.00001f);
+        float ft = mr / (float) Math.pow(1f + Math.pow(Math.max(mr, 0f), tp), 1f / tp);
+        return py - ts * ft;
+    }
+
+    /** ACES at x ({pre-gain, a, d, toe} as ArkTone.acesUniform): its linear display value raised to 1 / 2.4 as the own curve's y. */
+    public static float acesAt(float x, float[] u) {
+        return (float) Math.pow(clamp01(aces(sceneOf(x), u[3], u[0], u[1], u[2])), 1.0 / 2.4);
+    }
+
+    /** Uchimura at x ({pre, post, P, a} and {m, l, c, b} as ArkTone.uchimuraUniforms), as the own curve's y. */
+    public static float uchimuraAt(float x, float[] a, float[] b) {
+        float v = uchimura(sceneOf(x) * a[0], a[2], a[3], b[0], b[1], b[2], b[3]) * a[1];
+        return (float) Math.pow(clamp01(v), 1.0 / 2.4);
+    }
+
+    /** An own curve following {@code f} through {@code n} evenly spaced points (never falling, the ends at x 0 and 1). */
+    public static ToneCurve following(java.util.function.DoubleUnaryOperator f, int n) {
+        StringBuilder sb = new StringBuilder();
+        float last = 0f;
+        for (int i = 0; i < n; i++) {
+            float x = i / (float) (n - 1);
+            float y = Math.max(last, clamp01((float) f.applyAsDouble(x)));
+            last = y;
+            if (i > 0) sb.append(',');
+            sb.append(String.format(Locale.ROOT, "%.4f:%.4f", x, y));
+        }
+        return parse(sb.toString());
+    }
+
     static float smoothstep(float e0, float e1, float x) {
         float t = clamp01((x - e0) / (e1 - e0));
         return t * t * (3f - 2f * t);

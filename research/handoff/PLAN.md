@@ -3968,9 +3968,14 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   their own; was green text).
 
 ### P169 - the own tone curve in the shade (owner, 2026-10-16: «дай возможность добавлять кастомную кривую в шторку чтобы там
-её регулировать»; not started)
+её регулировать»; done)
 - The curve (pref_scam_hybrid_ark_curve_points, ToneCurvePreference / ToneCurveView) as a pinnable shade entry whose tile
   opens the curve editor in the shade's card (as the slider card), the switch «Своя кривая вместо AgX» next to it.
+- DONE 2026-10-16: ShadeCatalog kind CURVE (the points as text, default the S); its tile says «5 точек», its row in the
+  full list and the tile's card hold the same graph (ToneCurveView: drag, add, hold to delete), the chips «S-кривая» /
+  «Прямая» / «Ещё…» (the templates of P177) and «Сравнить» (P177); a change is stored at once and reaches the settings page
+  and the viewfinder as any shade value. Tests: ShadeUiTest ownCurveTileOpensItsGraphInTheCard (render
+  deliverables/p157/p169-shade-curve.png), ShadeCatalogTest.
 
 ### P170 - imported LUTs in the shade, five own film LUTs (owner, 2026-10-16: «дай возможность выбора импортированных лутов из
 списка в шторке. Так же добавь 5 своих лутов. Сделай их сам в плёночном стиле»; not started)
@@ -4009,6 +4014,24 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   evening; owner: «Если файл используется ChatGPT, то мы это не делаем»). When that file is free: the «Нейроремозаик (NPU)»
   setting (isShdrNeuralRemosaic, its XML / strings / availability / numeric rules / migration P129), ScamMosaic.prepareForShdr
   and its call, the NPU remosaic graphs it loads (the QUAD_FILES group of the bundle, if nothing else uses them), the tests.
+
+### P176 - at 16:9 the shade comes out of the pill like a macOS app opening (owner, 2026-10-16: «Шторка пускай вылезает из
+пилюли с такой же анимацией как открытие приложений в MacOS»; «По поводу анимации шторки я написал только про 16:9»)
+- Part of P173: with the 16:9 preview the sheet grows out of its pill (the handle) - scale and corner radius from the pill's
+  bounds to the sheet's, a quick ease-out as the macOS genie / zoom - and goes back into it; the other aspect ratios keep
+  today's slide.
+
+### P177 - AgX / ACES / Uchimura on the own curve's graph, and loaded as own curves (owner, 2026-10-16: «для кастомных кривых
+добавь возможность визуализации кривых AGX/ACES и тд для сравнения чтобы можно было на графике по ним ориентироваться. Ну и
+дай возможность их подгружать чтобы потом редактировать»; done)
+- DONE 2026-10-16: the own curve's domain (x = 0.5 + EV / 10 around the 0.18 grey, y = display value) gets each operator
+  with today's settings (ArkTone.reference: AgX through ToneCurve.agxAt = combine.glsl agxTonescale over its log range,
+  ACES / Uchimura linear output to the power 1 / 2.4). ToneCurveCompare: the chips «Сравнить: AgX / ACES / Uchimura» draw
+  each one dashed in its colour with its name (remembered for both editors, a per-viewer UI file, not a setting); the
+  templates (S-кривая, Прямая, AgX, ACES, Uchimura) - «Шаблоны…» at the top of the settings page's load sheet and «Ещё…» in
+  the shade - load one as an own curve of nine points following it (never falling), to edit and save as any curve.
+  ToneCurveTest operatorsInTheOwnCurvesDomain, ToneCurveCompareTest (new, in the CI list; render
+  deliverables/p157/p177-curve-compare.png).
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach

@@ -122,6 +122,25 @@ public final class ArkTone {
                 {m, l, value("uchi_c", 1.33f), value("uchi_b", 0.0f)}};
     }
 
+    /**
+     * P177 (owner, 2026-10-16: «для кастомных кривых добавь возможность визуализации кривых AGX/ACES и тд для сравнения ...
+     * дай возможность их подгружать чтобы потом редактировать»): AgX, ACES or Uchimura with today's settings as a function of
+     * the own curve's x, a display value as its y (ToneCurve.agxAt / acesAt / uchimuraAt).
+     */
+    public static java.util.function.DoubleUnaryOperator reference(int op) {
+        if (op == com.particlesdevs.photoncamera.processing.color.ToneCurve.ACES) {
+            final float[] a = acesUniform();
+            return x -> com.particlesdevs.photoncamera.processing.color.ToneCurve.acesAt((float) x, a);
+        }
+        if (op == com.particlesdevs.photoncamera.processing.color.ToneCurve.UCHIMURA) {
+            final float[][] u = uchimuraUniforms();
+            return x -> com.particlesdevs.photoncamera.processing.color.ToneCurve.uchimuraAt((float) x, u[0], u[1]);
+        }
+        final float slope = value("agx_slope", 2.7f), sp = value("agx_sp", 1.35f), tp = value("agx_tp", 1.6f),
+                minEv = value("agx_min_ev", -8.5f), maxEv = value("agx_max_ev", 3.5f), ev = value("agx_ev", 0.30f);
+        return x -> com.particlesdevs.photoncamera.processing.color.ToneCurve.agxAt((float) x, slope, sp, tp, minEv, maxEv, ev);
+    }
+
     /** The own curve's 256 samples (pref_scam_hybrid_ark_curve_points, ArkCam's S when empty). */
     static float[] curveSamples() {
         return com.particlesdevs.photoncamera.processing.color.ToneCurve

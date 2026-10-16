@@ -116,7 +116,8 @@ public class ShadeCatalogTest {
         for (ShadeCatalog.Entry e : all) {
             assertNotNull("no icon: " + e.key, catalog.icon(e));
             assertNotNull("no icon: " + e.key, catalog.settingIcon(e));
-            assertTrue(e.key, e.kind == ShadeCatalog.TOGGLE || e.kind == ShadeCatalog.LIST || e.kind == ShadeCatalog.SLIDER);
+            assertTrue(e.key, e.kind == ShadeCatalog.TOGGLE || e.kind == ShadeCatalog.LIST || e.kind == ShadeCatalog.SLIDER
+                    || e.kind == ShadeCatalog.CURVE);   // P169: the own tone curve
             assertNotNull(e.key, e.defaultValue);
             assertNotNull(e.key, e.shortTitle);
             if (e.kind == ShadeCatalog.LIST) assertEquals(e.key, e.labels.length, e.values.length);

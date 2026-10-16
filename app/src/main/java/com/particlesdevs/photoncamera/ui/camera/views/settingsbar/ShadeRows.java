@@ -96,6 +96,7 @@ final class ShadeRows {
             if (e == null || rows.containsKey(key)) continue;
             Row row = e.kind == ShadeCatalog.TOGGLE ? new ToggleRow(e, showPath)
                     : e.kind == ShadeCatalog.SLIDER ? new SliderRow(e, showPath)
+                    : e.kind == ShadeCatalog.CURVE ? new CurveRow(e, showPath)
                     : e.isLongList() ? new LongListRow(e, showPath) : new ListRow(e, showPath);
             LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             rp.bottomMargin = dp(10);
@@ -284,6 +285,83 @@ final class ShadeRows {
             String v = catalog.valueText(entry, false);
             value.setText(v);
             card.setContentDescription(entry.title + ": " + v);
+        }
+    }
+
+    /** P169: the own tone curve, edited on its graph in the row; «S-кривая» / «Прямая» below it. */
+    private final class CurveRow extends Row {
+        final TextView value;
+        final com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView graph;
+
+        CurveRow(ShadeCatalog.Entry entry, boolean showPath) {
+            super(entry, showPath);
+            value = new TextView(context);
+            value.setTextColor(accent);
+            value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            vp.topMargin = dp(3);
+            texts.addView(value, vp);
+            addPin();
+            graph = new com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView(context);
+            graph.setTag("shade_row_curve_" + entry.key);
+            graph.setOnCommit(curve -> actions.pick(entry, curve.serialize()));
+            LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            gp.topMargin = dp(12);
+            gp.setMarginEnd(dp(6));
+            card.addView(graph, gp);
+            LinearLayout chips = new LinearLayout(context);
+            chips.setOrientation(LinearLayout.HORIZONTAL);
+            chips.addView(chip(com.particlesdevs.photoncamera.util.Lang.t(context, "S-кривая", "S-curve"),
+                    com.particlesdevs.photoncamera.processing.color.ToneCurve.defaults()), new LinearLayout.LayoutParams(0, dp(38), 1f));
+            LinearLayout.LayoutParams second = new LinearLayout.LayoutParams(0, dp(38), 1f);
+            second.setMarginStart(dp(8));
+            chips.addView(chip(com.particlesdevs.photoncamera.util.Lang.t(context, "Прямая", "Straight"),
+                    com.particlesdevs.photoncamera.processing.color.ToneCurve.identity()), second);
+            // P177: «Ещё…» - AgX / ACES / Uchimura as own curves; «Сравнить:» them on the graph
+            TextView more = chip(com.particlesdevs.photoncamera.util.Lang.t(context, "Ещё…", "More…"), null);
+            more.setOnClickListener(v -> com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveCompare.pickTemplate(
+                    context, accent, next -> {
+                        graph.setCurve(next);
+                        graph.select(next.size() / 2);
+                        actions.pick(entry, next.serialize());
+                    }));
+            LinearLayout.LayoutParams third = new LinearLayout.LayoutParams(0, dp(38), 1f);
+            third.setMarginStart(dp(8));
+            chips.addView(more, third);
+            LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cp.topMargin = dp(10);
+            cp.setMarginEnd(dp(6));
+            card.addView(chips, cp);
+            LinearLayout.LayoutParams cmp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cmp.topMargin = dp(8);
+            cmp.setMarginEnd(dp(6));
+            card.addView(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveCompare.chips(context, graph), cmp);
+        }
+
+        private TextView chip(String text, @Nullable com.particlesdevs.photoncamera.processing.color.ToneCurve curve) {
+            TextView chip = new TextView(context);
+            chip.setText(text);
+            chip.setGravity(Gravity.CENTER);
+            chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            chip.setTextColor(accent);
+            chip.setBackground(ShadeStyle.pressable(context, ShadeStyle.tint(accent, .14f), 0, 100));
+            if (curve == null) return chip;   // the caller sets its own action
+            chip.setOnClickListener(v -> {
+                graph.setCurve(curve);
+                graph.select(curve.size() / 2);
+                actions.pick(entry, curve.serialize());
+            });
+            return chip;
+        }
+
+        @Override
+        void bindValue() {
+            value.setText(catalog.valueText(entry, false));
+            com.particlesdevs.photoncamera.processing.color.ToneCurve stored = catalog.curve(entry);
+            if (stored.serialize().equals(graph.curve().serialize())) return;
+            int selected = graph.selected();
+            graph.setCurve(stored);
+            graph.select(selected >= 0 && selected < stored.size() ? selected : stored.size() / 2);
         }
     }
 

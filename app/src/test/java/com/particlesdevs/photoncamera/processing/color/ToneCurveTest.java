@@ -97,6 +97,39 @@ public class ToneCurveTest {
         }
     }
 
+    /**
+     * P177: AgX, ACES and Uchimura in the own curve's domain (x = 0.5 + EV / 10, y the display value before the 2.4 of the
+     * outset): AgX passes its pivot 0.5 where EV = -ev, ACES and Uchimura are their linear value ^ (1 / 2.4) at 0.18 x 2^EV;
+     * all rise within 0..1, and an operator loaded as an own curve goes through it at its nine points.
+     */
+    @Test public void operatorsInTheOwnCurvesDomain() {
+        float slope = 2.7f, sp = 1.35f, tp = 1.6f, minEv = -8.5f, maxEv = 3.5f, ev = 0.3f;
+        assertEquals("AgX at its pivot", 0.5f, ToneCurve.agxAt(0.5f - ev / 10f, slope, sp, tp, minEv, maxEv, ev), 1e-4f);
+        float[] aces = {1f, 2.61f, 0.59f, 0.05f};
+        float grey = (float) Math.pow(ToneCurve.aces(0.18f, 0.05f, 1f, 2.61f, 0.59f), 1 / 2.4);
+        assertEquals("ACES at the grey", grey, ToneCurve.acesAt(0.5f, aces), 1e-5f);
+        float[] ua = {1f, 0.9f, 1f, 1f}, ub = {0.22f, 0.4f, 1.33f, 0f};
+        float uGrey = (float) Math.pow(ToneCurve.uchimura(0.18f, 1f, 1f, 0.22f, 0.4f, 1.33f, 0f) * 0.9f, 1 / 2.4);
+        assertEquals("Uchimura at the grey", uGrey, ToneCurve.uchimuraAt(0.5f, ua, ub), 1e-5f);
+        float pa = -1, pc = -1, pu = -1;
+        for (int i = 0; i <= 100; i++) {
+            float x = i / 100f;
+            float a = ToneCurve.agxAt(x, slope, sp, tp, minEv, maxEv, ev), c = ToneCurve.acesAt(x, aces), u = ToneCurve.uchimuraAt(x, ua, ub);
+            for (float v : new float[]{a, c, u}) assertTrue("in 0..1 at " + x, v >= 0f && v <= 1f);
+            assertTrue("AgX rises at " + x, a >= pa - 1e-5f);
+            assertTrue("ACES rises at " + x, c >= pc - 1e-5f);
+            assertTrue("Uchimura rises at " + x, u >= pu - 1e-5f);
+            pa = a; pc = c; pu = u;
+        }
+        ToneCurve loaded = ToneCurve.following(x -> ToneCurve.acesAt((float) x, aces), 9);
+        assertEquals(9, loaded.size());
+        for (int i = 0; i < 9; i++) {
+            float x = i / 8f;
+            assertEquals(x, loaded.get(i).x, 1e-4f);
+            assertEquals("through ACES at " + x, ToneCurve.acesAt(x, aces), loaded.get(i).y, 1e-4f);
+        }
+    }
+
     /** P144: a saved curve file - the header line and the points; reading takes «x:y» pairs from any text. */
     @Test public void curveFiles() {
         ToneCurve c = ToneCurve.parse("0:0,0.2:0.1,0.5:0.55,1:1");

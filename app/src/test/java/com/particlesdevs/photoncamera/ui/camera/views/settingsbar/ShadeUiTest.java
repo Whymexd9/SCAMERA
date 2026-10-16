@@ -553,4 +553,33 @@ public class ShadeUiTest {
         assertEquals(12, sheet.pinnedKeys().size());
         assertNotNull(addTile());
     }
+
+    /** P169 / P177: the own tone curve pinned to the shade: its tile opens the curve graph in the card, a shortcut stores it. */
+    @Test
+    public void ownCurveTileOpensItsGraphInTheCard() throws Exception {
+        String key = com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.KEY;
+        prefs.edit().putBoolean("pref_scam_hybrid_ark_curve_on", true).commit();
+        layoutFull();
+        sheet.togglePin(key);
+        layoutFull();
+        ShadeTileView t = tile(key);
+        assertNotNull("the curve has a tile", t);
+        t.performClick();
+        layoutFull();
+        View card = sheet.findViewWithTag("shade_slider_card");
+        assertEquals(View.VISIBLE, card.getVisibility());
+        assertNotNull(sheet.findViewWithTag("shade_curve_view"));
+        assertEquals("no slider bar for the curve", View.GONE, sheet.findViewWithTag("shade_slider_card_bar").getVisibility());
+        assertNotNull("«Сравнить» in the card", sheet.findViewWithTag("tone_curve_compare"));
+        sheet.findViewWithTag("shade_curve_identity").performClick();
+        assertEquals(com.particlesdevs.photoncamera.processing.color.ToneCurve.identity().serialize(), prefs.getString(key, ""));
+        sheet.findViewWithTag("tone_curve_compare_AgX").performClick();
+        layoutFull();
+        // the list scrolled to the card, as the owner sees it after a tap
+        View scroll = sheet.findViewById(R.id.settings_bar_scroll_view);
+        int top = 0;
+        for (View v = card; v != scroll; v = (View) v.getParent()) top += v.getTop();
+        scroll.scrollTo(0, top - dp(12));
+        render("shade-curve.png");
+    }
 }
