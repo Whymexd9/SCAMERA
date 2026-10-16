@@ -91,8 +91,9 @@ public class AuxButtonsOverflowTest {
         strip.setGravity(android.view.Gravity.CENTER);
         strip.setAuxButtonsModel(model);
         strip.setActiveId("3");
-        // P157: the strip 200 px wide in the window too (the hold waits for a real layout pass): nine lens discs overflow it
-        activity.setContentView(strip, new android.view.ViewGroup.LayoutParams(200, 100));
+        // P157: the strip NARROW px wide in the window too (the hold waits for a real layout pass): nine lens tiles overflow it
+        // even shrunk to LensButton.MIN_FIT (P181: at 200 px they now shrink to fit)
+        activity.setContentView(strip, new android.view.ViewGroup.LayoutParams(NARROW, 100));
         activity.getWindow().getDecorView().dispatchWindowFocusChanged(true);
     }
 
@@ -104,6 +105,9 @@ public class AuxButtonsOverflowTest {
         app.close();
     }
 
+    /** P181: narrower than nine tiles at LensButton.MIN_FIT, so the module list of the long press is still needed. */
+    private static final int NARROW = 100;
+
     private void size(int width) {
         strip.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(100, View.MeasureSpec.EXACTLY));
@@ -111,7 +115,7 @@ public class AuxButtonsOverflowTest {
     }
 
     @Test public void overflowingLongPressListsEveryModuleAndSelectsTheClippedExistingButton() {
-        size(200);
+        size(NARROW);
         View clipped = strip.getChildAt(8);
         assertTrue(clipped.getRight() > strip.getWidth());
         PixelPro10.setFullRes(true);
@@ -133,7 +137,7 @@ public class AuxButtonsOverflowTest {
     }
 
     @Test public void aRealStationaryHoldReachesTheLongClickWithoutChangingZoom() {
-        size(200);
+        size(NARROW);
         View first = null;
         for (int i = 0; i < strip.getChildCount(); i++) {
             View child = strip.getChildAt(i);
@@ -157,9 +161,20 @@ public class AuxButtonsOverflowTest {
         size(3000);
         assertFalse(strip.getChildAt(0).performLongClick());
         assertNull(ShadowAlertDialog.getLatestAlertDialog());
-        size(200);
+        size(NARROW);
         model.setEnabled(false);
         assertFalse(strip.getChildAt(0).performLongClick());
+        assertNull(ShadowAlertDialog.getLatestAlertDialog());
+    }
+
+    /** P181 (owner: «у нас модули выходят за границы экрана»): nine modules that overflowed 200 px now shrink into it. */
+    @Test public void nineModulesShrinkIntoAStripTheyOverflowedBefore() {
+        size(200);
+        for (int i = 0; i < strip.getChildCount(); i++) {
+            View tile = strip.getChildAt(i);
+            assertTrue("tile " + i + " " + tile.getLeft() + ".." + tile.getRight(), tile.getLeft() >= 0 && tile.getRight() <= strip.getWidth());
+        }
+        assertFalse("nothing clipped: no module list", strip.getChildAt(0).performLongClick());
         assertNull(ShadowAlertDialog.getLatestAlertDialog());
     }
 

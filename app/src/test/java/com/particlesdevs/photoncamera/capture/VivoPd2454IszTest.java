@@ -153,6 +153,8 @@ public class VivoPd2454IszTest {
             offered.put(camera + ":" + mode, VivoPd2454NativeRaw.factor(camera, mode));
             assertTrue(ModuleRegistry.sensorCrop(slot));
             assertEquals(ModuleRegistry.zoom(slot), ModuleRegistry.nativeRatio(slot), .0001f);
+            // P181 (owner): «2×», not «2× ISZ»
+            assertEquals(VivoQcomIsz.label(ModuleRegistry.zoom(slot)), ModuleRegistry.label(slot));
             deleted = slot;
         }
         assertEquals(offered.toString(), Integer.valueOf(2), offered.get("3:3"));
@@ -160,6 +162,17 @@ public class VivoPd2454IszTest {
         assertEquals(Integer.valueOf(2), offered.get("5:5"));
         assertEquals(Integer.valueOf(4), offered.get("5:7"));
         assertEquals(4, offered.size());
+        // P181: a name «… ISZ» an earlier version gave goes back to the zoom alone; the owner's own name stays
+        String plain = ModuleRegistry.label(deleted);
+        prefs.edit().putString("module_name_" + deleted, plain + " ISZ").apply();
+        VivoPd2454NativeRaw.ensureModules(cts);
+        assertEquals(plain, ModuleRegistry.label(deleted));
+        prefs.edit().putString("module_name_" + deleted, "Tele ISZ mine").apply();
+        VivoPd2454NativeRaw.ensureModules(cts);
+        assertEquals("Tele ISZ mine", ModuleRegistry.label(deleted));
+        prefs.edit().putString("module_name_" + deleted, plain).apply();
+        assertEquals("2×", VivoPd2454NativeRaw.plainName("2× ISZ", "2×"));
+        assertEquals("0.8×", VivoPd2454NativeRaw.plainName("0.8×", "0.8×"));
         VivoPd2454Isz.ensureModules(cts);
         assertEquals(7, shown().size());
         assertNotNull(deleted);

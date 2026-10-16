@@ -69,6 +69,8 @@ public class AuxButtonsLayout extends LinearLayout {
     public void setPresetZoom(java.util.function.Consumer<Float> presetZoom) { this.presetZoom = presetZoom; }
 
     private final LinearLayout.LayoutParams buttonParams;
+    /** P181: the gap on each side of a tile at fit 1 (px). */
+    private final int baseGap;
     private AuxButtonListener auxButtonListener;
     private AuxButtonsModel auxButtonsModel;
     private long lastSwitch = -500;
@@ -85,8 +87,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         // P161: the lens tiles 6dp apart, centred on one line (all of one height)
         buttonParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         buttonParams.gravity = android.view.Gravity.CENTER_VERTICAL;
-        int gap = Math.round(3 * density);
-        buttonParams.setMargins(gap, 0, gap, 0);
+        baseGap = Math.round(3 * density);
+        buttonParams.setMargins(baseGap, 0, baseGap, 0);
 
         // The layout editor runs this constructor but not the data-binding adapters,
         // so populate a few sample buttons so the host preview shows the aux palette.
@@ -97,6 +99,50 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
             setListenerAndSelected("0");
             updateVisibility();
         }
+    }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        fitTiles(widthMeasureSpec);
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+    }
+
+    /**
+     * P181 (owner, 2026-10-16: «у нас модули выходят за границы экрана»): when the tiles at their own size (P161) and their
+     * gaps are wider than the strip may be, all of them shrink together - least width, padding, text and gaps - so every
+     * lens stays on the screen; they keep their own size whenever they fit. (The long press's module list stays for a strip
+     * that would need more than {@link LensButton#MIN_FIT}.)
+     */
+    private void fitTiles(int widthMeasureSpec) {
+        final int available = MeasureSpec.getSize(widthMeasureSpec) - getPaddingLeft() - getPaddingRight();
+        if (MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED || available <= 0) return;
+        float need = 0f;
+        int tiles = 0;
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (child.getVisibility() == View.GONE || !(child instanceof LensButton)) continue;
+            need += ((LensButton) child).naturalWidth() + 2 * baseGap;
+            tiles++;
+        }
+        if (tiles == 0) return;
+        final float f = fit(need, available);
+        final int gap = Math.round(baseGap * f);
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (!(child instanceof LensButton)) continue;
+            ((LensButton) child).setFit(f);
+            if (child.getLayoutParams() instanceof MarginLayoutParams) {
+                MarginLayoutParams margins = (MarginLayoutParams) child.getLayoutParams();
+                if (margins.leftMargin != gap || margins.rightMargin != gap) margins.setMargins(gap, 0, gap, 0);
+            }
+        }
+    }
+
+    /** P181: the share of their own size the tiles take: 1 when {@code need} fits {@code available}, at least MIN_FIT. */
+    static float fit(float need, float available) {
+        if (!(need > available) || available <= 0f) return 1f;
+        // a pixel of slack per tile edge: the rounded sizes must not add up to more than the strip
+        return Math.max(LensButton.MIN_FIT, (available - 2f) / need);
     }
 
     private static String getAuxButtonName(float zoomFactor) {
@@ -265,7 +311,7 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         }
     }
 
-    private int addNewButton(String cameraId, String buttonText) {
+    int addNewButton(String cameraId, String buttonText) {
         LensButton b = new LensButton(getContext());
         b.setLayoutParams(buttonParams);
         b.setText(display(buttonText));

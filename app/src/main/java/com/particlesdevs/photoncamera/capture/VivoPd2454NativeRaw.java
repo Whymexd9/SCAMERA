@@ -69,15 +69,24 @@ public final class VivoPd2454NativeRaw {
         builder.set(FORCE, new int[]{profile.sensorMode});
     }
 
+    /**
+     * P181 (owner, 2026-10-16: «у 0.8x/2x/4.8x/9.6x убери подпись "ISZ"»): the name an ISZ module of ours had, «2× ISZ», is
+     * its zoom alone; any other name (the owner's own) stays.
+     */
+    static String plainName(String name, String label) {
+        return name != null && name.equals(label + " ISZ") ? label : name;
+    }
+
     public static void ensureModules(Context context) {
         if (context == null || !VivoQcomModes.device() || !PACKAGE.equals(context.getPackageName())) return;
         SharedPreferences prefs = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
         for (String slot : ModuleRegistry.slots()) {
             String marker = OFFERED + ModuleRegistry.camera(slot) + "_" + ModuleRegistry.sensorMode(slot);
             String label = VivoQcomIsz.label(ModuleRegistry.zoom(slot));
-            if (ModuleRegistry.duplicateOf(slot) != null && prefs.getBoolean(marker, false)
-                    && label.equals(prefs.getString("module_name_" + slot, "")))
-                prefs.edit().putString("module_name_" + slot, label + " ISZ").apply();
+            String name = prefs.getString("module_name_" + slot, "");
+            String plain = plainName(name, label);
+            if (ModuleRegistry.duplicateOf(slot) != null && prefs.getBoolean(marker, false) && !plain.equals(name))
+                prefs.edit().putString("module_name_" + slot, plain).apply();
         }
         for (String source : new ArrayList<>(ModuleRegistry.slots())) {
             if (!source.startsWith("back") || !ModuleRegistry.visible(source)
@@ -101,7 +110,7 @@ public final class VivoPd2454NativeRaw {
                 keys.removeIf(key -> VivoQcomIsz.KEY.equals(key.name));
                 keys.add(VivoQcomIsz.sessionKey(mode));
                 TunableKeyManager.saveKeys(context, target, keys);
-                prefs.edit().putString("module_name_" + target, VivoQcomIsz.label(zoom) + " ISZ")
+                prefs.edit().putString("module_name_" + target, VivoQcomIsz.label(zoom))
                         .putString("module_zoom_" + target, String.format(Locale.US, "%.3f", zoom))
                         .putBoolean("module_sensorcrop_" + target, true)
                         .putBoolean(offered, true).apply();

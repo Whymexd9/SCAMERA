@@ -81,6 +81,35 @@ public class LensButton extends Button {
      */
     static final float HEIGHT_DP = 38f, WIDTH_DP = 42f, SELECTED_WIDTH_DP = 56f, CORNER_DP = 14f;
     private final float unit;
+    /**
+     * P181 (owner, 2026-10-16: «у нас модули выходят за границы экрана»): the strip's fit, MIN_FIT..1 - the tile's least
+     * width, padding and text shrink together when the lenses do not fit the screen's width ({@link AuxButtonsLayout}).
+     */
+    static final float MIN_FIT = 0.5f;
+    private float fit = 1f;
+    /** The text size, least width and side padding at fit 1 (px), as {@link #applyState} last set them. */
+    private float baseTextPx, baseMinWidth, basePadding;
+
+    /** Shrinks the tile to {@code f} of its own size (MIN_FIT..1). */
+    void setFit(float f) {
+        f = Math.max(MIN_FIT, Math.min(1f, f));
+        if (Math.abs(f - fit) < 0.005f) return;
+        fit = f;
+        applyState();
+    }
+
+    float fit() {
+        return fit;
+    }
+
+    /** The tile's width at fit 1: its label at the full text size between its padding, at least its least width. */
+    float naturalWidth() {
+        CharSequence text = getText();
+        android.text.TextPaint paint = new android.text.TextPaint(getPaint());
+        paint.setTextSize(baseTextPx);
+        float label = text == null ? 0f : paint.measureText(text, 0, text.length());
+        return Math.max(baseMinWidth, (float) Math.ceil(label) + 2 * basePadding);
+    }
     /** The label as the strip set it; a tile not in use shows its short form ({@link #shortLabel}). */
     private CharSequence fullLabel;
 
@@ -117,12 +146,15 @@ public class LensButton extends Button {
         if (unit == 0f) return;   // the TextView constructor sets the text before this one runs
         boolean on = isSelected();
         com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.setTextSp(this, on ? 14 : 13);
-        setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, getTextSize() * BottomChrome.scale(getContext()));
+        baseTextPx = getTextSize() * BottomChrome.scale(getContext());
+        setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, baseTextPx * fit);
         setTypeface(null, on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-        int width = Math.round((on ? SELECTED_WIDTH_DP : WIDTH_DP) * unit);
+        baseMinWidth = (on ? SELECTED_WIDTH_DP : WIDTH_DP) * unit;
+        int width = Math.round(baseMinWidth * fit);
         setMinWidth(width);
         setMinimumWidth(width);
-        int padding = Math.round((on ? 10f : 6f) * unit);
+        basePadding = (on ? 10f : 6f) * unit;
+        int padding = Math.round(basePadding * fit);
         setPadding(padding, 0, padding, 0);
     }
 
