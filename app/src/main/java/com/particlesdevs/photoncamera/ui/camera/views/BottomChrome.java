@@ -1,7 +1,10 @@
 package com.particlesdevs.photoncamera.ui.camera.views;
 
+import android.content.Context;
 import android.view.View;
 import android.view.ViewGroup;
+
+import com.particlesdevs.photoncamera.R;
 
 import androidx.annotation.Nullable;
 
@@ -33,6 +36,115 @@ public final class BottomChrome {
     static final long YIELD_MS = 120, RETURN_MS = 220;
 
     private BottomChrome() {
+    }
+
+    /** P157: the screen width at which the bottom bar's dp sizes hold as written (the shutter a fifth of the width). */
+    public static final float REFERENCE_WIDTH_DP = 360f;
+    static final float MIN_SCALE = 0.85f, MAX_SCALE = 1.4f;
+
+    /**
+     * P157 (owner, 2026-10-16: «Исправь масштабирование нижних кнопок в видоискателе, чтобы при разных масштабах было
+     * примерно одинаково»): the bottom bar under the 3:4 preview is a share of the screen's width at every display size,
+     * so its controls are too: their dp sizes times the width over {@link #REFERENCE_WIDTH_DP} (display size «small» on a
+     * 1440 px panel, 480dp: x1.33; the X300 Ultra's 434dp: x1.21; a 360dp screen: as written), within MIN..MAX.
+     */
+    public static float scale(float widthDp) {
+        if (!(widthDp > 0f)) return 1f;
+        return Math.max(MIN_SCALE, Math.min(MAX_SCALE, widthDp / REFERENCE_WIDTH_DP));
+    }
+
+    /** {@link #scale(float)} of this screen (its short side: the camera screen is portrait). */
+    public static float scale(Context context) {
+        android.util.DisplayMetrics m = context.getResources().getDisplayMetrics();
+        return scale(Math.min(m.widthPixels, m.heightPixels) / m.density);
+    }
+
+    /**
+     * P157: the bottom bar's own views: scaled once by {@code f} (sizes, margins, paddings, text sizes; the lens strip sizes
+     * its buttons itself by {@link #scale(Context)}, so only its own margins and padding change here), and styled
+     * ({@link #style}). Called before {@link #attach}, which reads the row's margin.
+     */
+    public static void scaleBar(View bar, float f) {
+        if (Math.abs(f - 1f) >= 1e-3f && !Boolean.TRUE.equals(bar.getTag(R.id.layout_bottombar))) {
+            bar.setTag(R.id.layout_bottombar, Boolean.TRUE);
+            scaleTree(bar, f, true);
+        }
+        style(bar, f);
+    }
+
+    /** Corner radius of the gallery card and the front / back switch (dp before the scale): a large Material shape. */
+    public static final float SIDE_RADIUS_DP = 20f;
+
+    /**
+     * P157 (owner, 2026-10-16: «переделай их полностью под наш стиль», then «Сделай эти иконки ближе к monet стилю, но чтобы
+     * узнавался всё ещё наш стиль»): the shutter row and the lens strip in Material You's tonal manner on the camera's
+     * colours - containers filled with the accent's tone over the card colour instead of grey cards with a line (only a faint
+     * tonal outline is left of the cards), large rounded shapes, the chosen lens a filled accent capsule, the front / back
+     * switch a tonal button with the accent glyph; the shutter's accent ring is set by CameraUIViewImpl.
+     */
+    static void style(View bar, float f) {
+        Context c = bar.getContext();
+        float d = c.getResources().getDisplayMetrics().density;
+        int accent = com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.accent(c);
+        int card = com.particlesdevs.photoncamera.ui.settings.SettingsStyle.CARD;
+        View gallery = bar.findViewById(R.id.galery_button_container), flip = bar.findViewById(R.id.flip_camera_button);
+        View strip = bar.findViewById(R.id.aux_buttons_container);
+        if (gallery != null) gallery.setBackground(tonalShape(tone(card, accent, .10f), tone(card, accent, .22f), SIDE_RADIUS_DP * d * f, d));
+        if (flip != null) {
+            android.graphics.drawable.GradientDrawable mask = tonalShape(0xFFFFFFFF, 0, SIDE_RADIUS_DP * d * f, d);
+            flip.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(
+                    (accent & 0x00FFFFFF) | 0x33000000), tonalShape(tone(card, accent, .20f), tone(card, accent, .30f),
+                    SIDE_RADIUS_DP * d * f, d), mask));
+        }
+        if (strip != null) strip.setBackground(tonalShape(tone(card, accent, .08f), tone(card, accent, .18f), 100 * d * f, d));
+        View thumb = bar.findViewById(R.id.gallery_image_button);
+        if (thumb instanceof com.google.android.material.imageview.ShapeableImageView)
+            ((com.google.android.material.imageview.ShapeableImageView) thumb).setShapeAppearanceModel(
+                    com.google.android.material.shape.ShapeAppearanceModel.builder().setAllCornerSizes((SIDE_RADIUS_DP - 3) * d * f).build());
+    }
+
+    /** {@code base} moved {@code amount} of the way to {@code accent} (opaque): a tonal colour of the accent. */
+    public static int tone(int base, int accent, float amount) {
+        float a = Math.max(0f, Math.min(1f, amount));
+        int r = Math.round(((base >> 16) & 0xFF) * (1 - a) + ((accent >> 16) & 0xFF) * a);
+        int g = Math.round(((base >> 8) & 0xFF) * (1 - a) + ((accent >> 8) & 0xFF) * a);
+        int b = Math.round((base & 0xFF) * (1 - a) + (accent & 0xFF) * a);
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+
+    private static android.graphics.drawable.GradientDrawable tonalShape(int fill, int outline, float radiusPx, float density) {
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setColor(fill);
+        if (outline != 0) g.setStroke(Math.max(1, Math.round(density)), outline);
+        g.setCornerRadius(radiusPx);
+        return g;
+    }
+
+    private static void scaleTree(View v, float f, boolean root) {
+        if (!root) {   // the bar's own size and margins belong to camera_fragment (its height is the room the preview leaves)
+            ViewGroup.LayoutParams lp = v.getLayoutParams();
+            if (lp != null) {
+                if (lp.width > 0) lp.width = Math.round(lp.width * f);
+                if (lp.height > 0) lp.height = Math.round(lp.height * f);
+                if (lp instanceof ViewGroup.MarginLayoutParams) {
+                    ViewGroup.MarginLayoutParams m = (ViewGroup.MarginLayoutParams) lp;
+                    m.setMargins(Math.round(m.leftMargin * f), Math.round(m.topMargin * f), Math.round(m.rightMargin * f),
+                            Math.round(m.bottomMargin * f));
+                    m.setMarginStart(Math.round(m.getMarginStart() * f));
+                    m.setMarginEnd(Math.round(m.getMarginEnd() * f));
+                }
+                v.setLayoutParams(lp);
+            }
+            v.setMinimumWidth(Math.round(v.getMinimumWidth() * f));
+            v.setMinimumHeight(Math.round(v.getMinimumHeight() * f));
+        }
+        v.setPaddingRelative(Math.round(v.getPaddingStart() * f), Math.round(v.getPaddingTop() * f),
+                Math.round(v.getPaddingEnd() * f), Math.round(v.getPaddingBottom() * f));
+        if (v instanceof android.widget.TextView)
+            ((android.widget.TextView) v).setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, ((android.widget.TextView) v).getTextSize() * f);
+        if (v instanceof AuxButtonsLayout || !(v instanceof ViewGroup)) return;
+        ViewGroup g = (ViewGroup) v;
+        for (int i = 0; i < g.getChildCount(); i++) scaleTree(g.getChildAt(i), f, false);
     }
 
     /**

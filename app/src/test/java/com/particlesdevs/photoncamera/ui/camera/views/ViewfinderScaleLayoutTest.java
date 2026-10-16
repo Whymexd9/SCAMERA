@@ -60,8 +60,9 @@ import static org.mockito.Mockito.*;
  * bottom edge); the ruler card 8dp above the strip;</li>
  * <li>the toggle 52dp wide and at least 58dp high, the strip one row of five equal chips, its height growing with the
  * font size only up to {@link UiTokens#FONT_SCALE_CAP} (on the vivo it was about 95dp);</li>
- * <li>nothing of the manual block over the handle, the lens strip or the shutter row; the top bar, the lens strip and
- * the shutter row (gallery, shutter, flip) at their dp places.</li>
+ * <li>nothing of the manual block over the handle, the lens strip or the shutter row; the top bar at its dp places;
+ * P157: the lens strip and the shutter row (gallery, shutter, flip) at their dp places times the screen's width over
+ * 360dp (BottomChrome.scale), so the shutter is a fifth of the width at every display size.</li>
  * </ul>
  */
 @RunWith(RobolectricTestRunner.class)
@@ -274,24 +275,29 @@ public class ViewfinderScaleLayoutTest {
             View gallery = row.findViewById(R.id.galery_button_container), shutter = row.findViewById(R.id.shutter_button_container),
                     flip = row.findViewById(R.id.camera_switch_container);
             Rect galleryBox = at(gallery), shutterBox = at(shutter), flipBox = at(flip);
-            assertEquals(at + "gallery 52dp", dp(52), galleryBox.width());
-            assertEquals(at + "flip 52dp", dp(52), flipBox.width());
-            assertEquals(at + "shutter 72dp", dp(72), shutterBox.width());
-            assertEquals(at + "gallery 20dp from the left", dp(20), galleryBox.left);
-            assertEquals(at + "flip 20dp from the right", dp(20), w - flipBox.right);
+            // P157: the bottom bar's dp sizes times the screen's width over 360dp (BottomChrome.scale)
+            float s = BottomChrome.scale(w / density);
+            assertEquals(at + "scale", Math.max(.85f, Math.min(1.4f, w / density / 360f)), s, 1e-4f);
+            assertEquals(at + "gallery 52dp x scale", dp(52 * s), galleryBox.width(), 2);
+            assertEquals(at + "flip 52dp x scale", dp(52 * s), flipBox.width(), 2);
+            assertEquals(at + "shutter 72dp x scale", dp(72 * s), shutterBox.width(), 2);
+            assertEquals(at + "shutter a fifth of the width", w / 5f, shutterBox.width(), w * .02f);
+            assertEquals(at + "gallery 20dp x scale from the left", dp(20 * s), galleryBox.left, 2);
+            assertEquals(at + "flip 20dp x scale from the right", dp(20 * s), w - flipBox.right, 2);
             assertEquals(at + "shutter centred", w / 2f, shutterBox.exactCenterX(), 1f);
             assertEquals(at + "gallery, shutter, flip on one line", shutterBox.centerY(), galleryBox.centerY(), 1);
             assertEquals(at + "gallery, shutter, flip on one line", shutterBox.centerY(), flipBox.centerY(), 1);
-            assertTrue(at + "shutter row 18dp or more over the bottom" + geometry, rowBox.bottom <= h - dp(18));
+            assertTrue(at + "shutter row 18dp x scale or more over the bottom" + geometry, rowBox.bottom <= h - dp(18 * s) + 1);
             assertEquals(at + "lens strip centred", w / 2f, stripBox.exactCenterX(), 1f);
             assertTrue(at + "lens strip inside the screen" + geometry, stripBox.left >= 0 && stripBox.right <= w);
-            assertEquals(at + "lens strip 14dp over the shutter row" + geometry, dp(14), rowBox.top - stripBox.bottom, 1);
+            assertEquals(at + "lens strip 14dp x scale over the shutter row" + geometry, dp(14 * s), rowBox.top - stripBox.bottom, 2);
             for (int i = 0; i < strip.getChildCount(); i++) {
                 View lens = strip.getChildAt(i);
                 if (!(lens instanceof TextView)) continue;
-                assertEquals(at + "lens pill 40dp", dp(40), lens.getHeight());
+                // P157: the active lens a 44dp capsule, the others 36dp discs (times the scale)
+                assertEquals(at + "lens size", dp((lens.isSelected() ? LensButton.SELECTED_DP : LensButton.DISC_DP) * s), lens.getHeight(), 1);
                 TextView label = (TextView) lens;
-                assertTrue(at + "lens label over the cap", label.getTextSize() <= 14f * UiTokens.FONT_SCALE_CAP * density + .5f);
+                assertTrue(at + "lens label over the cap", label.getTextSize() <= 14f * UiTokens.FONT_SCALE_CAP * density * s + .5f);
                 assertTrue(at + "lens label cut", label.getLayout() == null || label.getLayout().getLineCount() == 1);
             }
 

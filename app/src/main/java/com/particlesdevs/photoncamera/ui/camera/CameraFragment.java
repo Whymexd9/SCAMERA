@@ -353,6 +353,10 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     /** The bottom chrome's wiring on the camera screen's views (also used by the layout tests, P43). */
     public static void attachBottomChrome(CameraFragmentBinding binding,
                                           @Nullable com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial) {
+        // P157: the bottom bar's controls in proportion to the screen's width (before attach: it reads the row's margin)
+        View bar = binding.layoutBottombar.getRoot();
+        com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.scaleBar(bar,
+                com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.scale(bar.getContext()));
         com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.attach(binding.layoutBottombar.getRoot(),
                 binding.layoutBottombar.bottomButtons.getRoot(), binding.layoutBottombar.auxButtonsContainer,
                 binding.settingsSheetHandleSlot, binding.layoutViewfinder.texture, zoomDial, binding.manualMode);
@@ -1496,6 +1500,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onProcessingChanged(Object obj) {
+            // P158: a milestone of the pipeline for the ring round the gallery card
+            if (obj instanceof Float && !detached()) ui().setProcessingProgress((Float) obj);
         }
 
         @Override

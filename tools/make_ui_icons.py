@@ -572,6 +572,23 @@ frame(icon('topbar_ic_route_hybrid', 'SHDR: a monogram S in a rounded frame'), 3
 frame(icon('topbar_ic_route_scamhdr', 'old SCAM HDR shots (gallery): a monogram N in a rounded frame'), 3, 3, 18, 18, 4.6, 2.2) \
     .b(polyline([(8.6, 16.2), (8.6, 7.8), (15.4, 16.2), (15.4, 7.8)], 2.1))
 
+# --- viewfinder shutter row (P157): front / back, tinted with the accent like the top bar
+def _flip():
+    """Two bands round a lens, each ending in an arrow head (the front / back switch)."""
+    cx, cy, r, w = 12, 12, 7.4, 2.4
+    ic = icon('vf_flip_camera', 'front / back: two arrows round a lens').b(arc(cx, cy, r, w, 196, 300), arc(cx, cy, r, w, 16, 120))
+    for a1 in (316, 136):
+        a = math.radians(a1)
+        px, py = cx + r * math.cos(a), cy + r * math.sin(a)
+        tx, ty = -math.sin(a), math.cos(a)          # direction of travel (increasing angle)
+        nx, ny = math.cos(a), math.sin(a)
+        ic.b(poly((px + 3.4 * tx, py + 3.4 * ty), (px - 3.2 * nx - 1.6 * tx, py - 3.2 * ny - 1.6 * ty),
+                  (px + 3.2 * nx - 1.6 * tx, py + 3.2 * ny - 1.6 * ty)))
+    ic.b(ring(cx, cy, 2.7, 1.8))
+
+
+_flip()
+
 # --- manual controls (circularbarlib)
 frame(icon('manual_ic_ev', 'EV: a square split diagonally, plus and minus', LIB_RES), 3, 3, 18, 18, 3.2, 2.2) \
     .b(capsule(18.6, 5.4, 5.4, 18.6, 1.9), capsule(6.6, 8.6, 10.6, 8.6, 1.8), capsule(8.6, 6.6, 8.6, 10.6, 1.8), capsule(13.4, 15.6, 17.4, 15.6, 1.8))

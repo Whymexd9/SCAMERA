@@ -30,6 +30,9 @@ public interface CameraUIView {
      */
     void setProcessingProgressBarIndeterminate(boolean indeterminate);
 
+    /** P158: the pipeline's milestone (0..1) of the shot being processed. */
+    void setProcessingProgress(float fraction);
+
     /**
      * Capture ProgressBar methods
      * Control the Progress bar that displays image capture sequence

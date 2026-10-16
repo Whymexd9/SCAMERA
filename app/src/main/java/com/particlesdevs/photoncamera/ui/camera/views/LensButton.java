@@ -5,8 +5,6 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.text.Layout;
@@ -18,8 +16,10 @@ import com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette;
 import com.particlesdevs.photoncamera.ui.settings.SettingsStyle;
 
 /**
- * One lens of the strip ({@link AuxButtonsLayout}): MUTED text on nothing, the active lens INK on a pill of the camera
- * accent.
+ * One lens of the strip ({@link AuxButtonsLayout}). P157 (owner, 2026-10-16: «Мне не нравится стиль кнопок переключения
+ * модулей камер, переделай»; Material You's manner on the camera's colours): every lens a small tonal disc with its short
+ * number («0,6», «2», «2,8»), the active lens a larger capsule in the camera accent with its full label in bold INK («1×»,
+ * the live zoom «2,3×»). Sizes in proportion to the screen's width ({@link BottomChrome#scale}).
  * <p>
  * P32 (owner, 2026-10-07): the button itself never rotates, so its background and the selected pill keep their portrait
  * shape inside the strip in every orientation. Only the label turns upright with the phone (0 / 90 / 180 / 270 degrees,
@@ -38,31 +38,85 @@ public class LensButton extends Button {
 
     public LensButton(Context context) {
         super(context);
-        float density = getResources().getDisplayMetrics().density;
-        setMinimumWidth(Math.round(48 * density));
-        setMinWidth(Math.round(48 * density));
+        unit = getResources().getDisplayMetrics().density * BottomChrome.scale(context);
         setMinHeight(0);
         setMinimumHeight(0);
-        int padding = Math.round(density * 9f);
-        setPadding(padding, 0, padding, 0);
         setGravity(Gravity.CENTER);
         setIncludeFontPadding(false);
         setMaxLines(1);
         setHorizontallyScrolling(false);
-        // 14sp, grown with the font size only up to UiTokens.FONT_SCALE_CAP (P43): the pill is a fixed 40dp high.
-        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.setTextSp(this, 14);
+        int accent = AccentPalette.camera(context);
+        // P157: the other lenses in the accent's tone of the muted text (Material You's on-surface-variant)
         setTextColor(new ColorStateList(new int[][]{{android.R.attr.state_selected}, {}},
-                new int[]{SettingsStyle.INK, SettingsStyle.MUTED}));
+                new int[]{SettingsStyle.INK, BottomChrome.tone(SettingsStyle.MUTED, accent, .22f)}));
         GradientDrawable selected = new GradientDrawable();
-        selected.setColor(AccentPalette.camera(context));
-        selected.setCornerRadius(100 * density);
+        selected.setColor(accent);
+        selected.setCornerRadius(100 * unit);
+        GradientDrawable disc = new GradientDrawable();
+        disc.setColor(BottomChrome.tone(SettingsStyle.CARD, accent, .20f));
+        disc.setCornerRadius(100 * unit);
         StateListDrawable states = new StateListDrawable();
         states.addState(new int[]{android.R.attr.state_selected}, selected);
-        states.addState(new int[]{}, new ColorDrawable(Color.TRANSPARENT));
+        states.addState(new int[]{}, disc);
         setBackground(states);
         setStateListAnimator(null);
         setBackgroundTintList(null);
         setTransformationMethod(null);
+        applyState();
+    }
+
+    /** P157: the active capsule's height and least width, and the discs' size (dp before the scale). */
+    static final float SELECTED_DP = 44f, DISC_DP = 36f;
+    private final float unit;
+    /** The label as the strip set it; a disc shows its short form ({@link #shortLabel}). */
+    private CharSequence fullLabel;
+
+    /** «2,8×» -> «2,8», «1x» -> «1»; anything else (a custom name, «1× (2)») stays as it is. */
+    static CharSequence shortLabel(CharSequence label) {
+        if (label == null) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^\\s*(\\d+(?:[.,]\\d+)?)\\s*[×xX]\\s*$").matcher(label);
+        return m.matches() ? m.group(1) : label;
+    }
+
+    /** The label as the strip set it (the full one, also on a disc). */
+    public CharSequence fullLabel() {
+        return fullLabel != null ? fullLabel : getText();
+    }
+
+    @Override
+    public void setText(CharSequence text, BufferType type) {
+        fullLabel = text;
+        super.setText(isSelected() || text == null ? text : shortLabel(text), type);
+    }
+
+    @Override
+    public void setSelected(boolean selected) {
+        boolean changed = selected != isSelected();
+        super.setSelected(selected);
+        if (!changed) return;
+        if (fullLabel != null) super.setText(selected ? fullLabel : shortLabel(fullLabel), BufferType.NORMAL);
+        applyState();
+        requestLayout();
+    }
+
+    /** The active capsule: 14sp bold, 44dp high; a disc: 12sp, 36dp (both times the scale, the font growth capped). */
+    private void applyState() {
+        if (unit == 0f) return;   // the TextView constructor sets the text before this one runs
+        boolean on = isSelected();
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.setTextSp(this, on ? 14 : 12);
+        setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, getTextSize() * BottomChrome.scale(getContext()));
+        setTypeface(null, on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        int size = Math.round((on ? SELECTED_DP : DISC_DP) * unit);
+        setMinWidth(size);
+        setMinimumWidth(size);
+        int padding = Math.round((on ? 10f : 3f) * unit);
+        setPadding(padding, 0, padding, 0);
+    }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int size = Math.round((isSelected() ? SELECTED_DP : DISC_DP) * unit);
+        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(size, MeasureSpec.EXACTLY));
     }
 
     /** Sets the label's angle at once (a new button takes the current orientation). */
@@ -105,7 +159,7 @@ public class LensButton extends Button {
         }
         // The background (the pill) is drawn before onDraw, so only the text turns.
         float angle = normalize(labelRotation);
-        float inset = 2 * LABEL_INSET_DP * getResources().getDisplayMetrics().density;
+        float inset = 2 * LABEL_INSET_DP * getResources().getDisplayMetrics().density * BottomChrome.scale(getContext());
         float scale = labelScale(angle, labelWidth(layout), layout.getHeight(), getWidth() - inset, getHeight() - inset);
         if (angle == 0f && scale == 1f) {
             super.onDraw(canvas);

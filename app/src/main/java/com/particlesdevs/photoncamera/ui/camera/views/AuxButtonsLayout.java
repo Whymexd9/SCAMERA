@@ -80,10 +80,12 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
         setWillNotDraw(false);
 
-        float density = context.getResources().getDisplayMetrics().density;
-        // 8dp between two lenses: room for the three dots.
-        buttonParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, Math.round(40 * density));
-        int gap = Math.round(4 * density);
+        // P157: the strip in proportion to the screen's width (BottomChrome.scale)
+        float density = context.getResources().getDisplayMetrics().density * BottomChrome.scale(context);
+        // P157: discs and the active capsule, 6dp apart, centred on one line (the capsule is taller than a disc)
+        buttonParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        buttonParams.gravity = android.view.Gravity.CENTER_VERTICAL;
+        int gap = Math.round(3 * density);
         buttonParams.setMargins(gap, 0, gap, 0);
 
         // The layout editor runs this constructor but not the data-binding adapters,
@@ -214,11 +216,12 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         return Lang.ru() ? label.replaceAll("(\\d)\\.(\\d)", "$1,$2") : label;
     }
 
-    /** The active lens in bold; the colours follow the selected state. */
+    /** The active lens in bold; the colours follow the selected state (P157: LensButton styles its own state). */
     private void styleSelection() {
         for (int i = 0; i < getChildCount(); i++) {
             View v = getChildAt(i);
-            if (v instanceof Button) ((Button) v).setTypeface(null, v.isSelected() ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            if (v instanceof Button && !(v instanceof LensButton))
+                ((Button) v).setTypeface(null, v.isSelected() ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         }
     }
 
@@ -382,17 +385,6 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
             }
         }
         return true;
-    }
-    /** Three dots between two lenses (MUTED at 60 %). */
-    @Override protected void dispatchDraw(android.graphics.Canvas canvas) {
-        super.dispatchDraw(canvas);
-        android.graphics.Paint p=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        p.setColor((com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED&0x00FFFFFF)|0x99000000);
-        float d=getResources().getDisplayMetrics().density;
-        for(int i=1;i<getChildCount();i++) {
-            float x=(getChildAt(i-1).getRight()+getChildAt(i).getLeft())/2f;
-            for(int t=-1;t<=1;t++)canvas.drawCircle(x+t*2.5f*d,getHeight()/2f,.9f*d,p);
-        }
     }
     public interface AuxButtonListener {
         void onAuxButtonClicked(String cameraId);

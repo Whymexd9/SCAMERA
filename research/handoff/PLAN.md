@@ -3749,9 +3749,53 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   ReturnsToTheCameraModule / aFreshStartOpensOnTheBackOneX. Not seen on a phone.
 
 ### P157 - the bottom bar of the viewfinder: the same proportions at every display scale, restyled in the camera's style (owner, 2026-10-16, two screenshots - an empty band above the zoom strip on one phone, not on the other: «Исправь масштабирование нижних кнопок в видоискателе, чтобы при разных масштабах было примерно одинаково, так же переделай стиль всех кнопкок в нижней части видоискателя под стиль нашей камеры»)
-- OPEN.
+- Later the same day: «По поводу стиля всех кнопок на нижней части, переделай их полностью под наш стиль», «Сделай эти иконки
+  ближе к monet стилю, но чтобы узнавался всё ещё наш стиль» (a screenshot of the strip and the shutter row), «Мне не нравится
+  стиль кнопок переключения модулей камер, переделай».
+- Found: every size of the bar was fixed dp, the bar's height is what the 3:4 preview leaves (a share of the width): at a
+  small display size (more dp: the X300 Ultra at 434dp) the controls shrank and left an empty band; at 361dp (the X200
+  Ultra at a large display size) they filled it.
+- DONE 2026-10-16:
+  - Scale: BottomChrome.scale = screen width / 360dp (0.85..1.4): the shutter row, the lens strip and the zoom ruler card
+    take the same share of the screen at every display size (the shutter a fifth of the width; X300 Ultra x1.21).
+    BottomChrome.scaleBar scales the bar's views once (sizes, margins, paddings, text) before attach; LensButton,
+    AuxButtonsLayout, ZoomDialView and the shutter ring scale their own drawing.
+  - Style (Material You's tonal manner on the camera's colours): the strip, the gallery card and the front / back switch
+    filled with the accent's tone over the card colour (a faint tonal outline instead of the grey line), 20dp corners;
+    the lenses are tonal discs with the short number («0,6», «2», «2,8»), the active lens a larger accent capsule with its
+    full label in bold («1×», the live zoom), no dots between them; the shutter an accent ring round the light disc
+    (pressed: the disc in the accent); the front / back glyph regenerated in the P136 filled style (vf_flip_camera in
+    tools/make_ui_icons.py), fitted to its button.
+  - Tests: ViewfinderScaleLayoutTest (the bar's places x the scale), BottomBarStyleTest (the owner's two widths: the
+    shutter a fifth of the width, the tonal fills, the ring; renders build/reports/viewfinder/bottom-style-434 / -361.png),
+    LensButtonTest (discs and capsule), BottomChromeTest, ViewfinderUiTest and AuxButtonsOverflowTest follow the new sizes.
+    Not seen on a phone.
 
 ### P158 - processing progress around the gallery thumbnail, as in ArkCam (owner, 2026-10-16: «сделай процесс обработки фото как в ArkCam, прогресс постепенно должен идти вокруг иконки галереи»)
+- DONE 2026-10-16: ui/camera/views/ProcessingRing replaces the indeterminate spinner over the gallery card: a line in the
+  accent runs clockwise round the card's edge from the top centre over a faint track. It moves on by time (an ease-out over
+  the last shot's processing time, 3.5 s before the first; at most 0.94 of the ring) and never lags the pipeline's
+  milestones (ScamProcessor -> onProcessingChanged: merged 0.55, processed 0.85, saved 0.97), closes the ring when the shot
+  is done and fades; a shot queued behind starts it over. ProcessingRingTest (in CI). Not seen on a phone.
+
+### P159 - highlight artifacts on a bright LED screen (owner, 2026-10-16, screen.zip: SCA_20261016_121257.jpg + log, X300 Ultra, a concert hall with an LED screen at the top: «посмотри на артефакты светов на экране сверху и придумай как исправлять такое»)
+- Seen: on the screen the orange cones are hollow - a saturated orange outline around a pale / white inside; a light blue outline
+  around a white cone (bottom left), coloured fringes on white shirts; the whole screen washed towards white.
+- Log (12:12:57): X300 Ultra main, 10 bit (DCG off), N 10.4 ms x ISO 1422 + 3 L + 3 ES (x0.125); Bento applied, 5.8 % of the
+  cells clipped in N, the ES frames not clipped (usClipped 0); clip flags: Bento 1.06 M px, border 0.83 M px; highlight
+  recovery per channel max R 1.82 / G 4.55 / B 3.68, clipWhite 2.20, nearClip; ARK clip 4.0, gmax 10.8, headroom on,
+  hlWhite 0.15, hlSoft 0.7 (P154 v2 in this build).
+- Working hypothesis: the screen is far brighter than the scene, so its colours reach the tone's shoulder: the path to white
+  (hlWhite) and the AgX shoulder (and the P154 landing on its own colour / white) desaturate PER PIXEL by brightness - a cone's
+  bright inside goes pale, its darker blurred edge (mixed with the background) keeps the full chroma: an outline. Second
+  candidate: the Bento region (inside, from the ES frames) and the rim / normal frames (edge, per-channel recovery with the
+  rim's real-site ratios) disagree in colour. R max 1.82 against G 4.55 inside an orange-rich area also asks whether R is
+  limited somewhere (white balance gain x clip, the per-channel recovery's ceiling).
+- Next: get the shot's stages (Diagnostics ZIP or the merged DNG) or replay the burst; split by switches (hl_white 0, hl_soft 0,
+  Bento off, highlight recovery off) and measure the chroma across one cone (inside vs edge) at each stage: merge output,
+  after recovery, after ARK. Fix ideas, chosen by what the split shows: desaturation driven by a blurred brightness (as the
+  P154 mask) so an object's edge and inside go together; a hue- and chroma-keeping shoulder for saturated light (OKLab chroma
+  scaled with the luminance compression instead of mixing to white); the Bento / rim colour taken from the same ratio source.
 - OPEN.
 
 ## P109l - Snapdragon client attribution and VCF RAW boundary

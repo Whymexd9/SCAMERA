@@ -174,7 +174,8 @@ public class ZoomDialView extends View {
 
     @Override protected void onDraw(Canvas canvas) {
         final int w = getWidth(), h = getHeight();
-        final float d = getResources().getDisplayMetrics().density;
+        // P157: the ruler card in proportion to the screen's width, as the strip under it (BottomChrome.scale)
+        final float f = BottomChrome.scale(getContext()), d = getResources().getDisplayMetrics().density * f;
         final float cx = w / 2f, ppo = pxPerOctave(), radius = 16 * d;
         // The card.
         card.set(d / 2f, d / 2f, w - d / 2f, h - d / 2f);
@@ -187,7 +188,7 @@ public class ZoomDialView extends View {
         canvas.clipPath(clip);
         // The value, in the accent.
         // Text in sp, its growth with the font size capped (P43): the ruler is a fixed 48dp card.
-        text.setTextSize(com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.spPx(getResources(), 14));
+        text.setTextSize(com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.spPx(getResources(), 14) * f);
         text.setFakeBoldText(true);
         text.setColor(pointer.getColor());
         text.setAlpha(255);
@@ -207,7 +208,7 @@ public class ZoomDialView extends View {
             canvas.drawLine(x, baseline - len, x, baseline, tick);
         }
         // Module marks with labels.
-        text.setTextSize(com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.spPx(getResources(), 9));
+        text.setTextSize(com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.spPx(getResources(), 9) * f);
         for (int i = 0; i < marks.size(); i++) {
             float x = cx + (float) ((Math.log(marks.get(i)) / Math.log(2) - logZoom) * ppo);
             if (x < -d * 20 || x > w + d * 20) continue;

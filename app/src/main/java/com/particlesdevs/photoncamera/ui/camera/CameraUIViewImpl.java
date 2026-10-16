@@ -39,7 +39,7 @@ public class CameraUIViewImpl implements CameraUIView {
     private final CameraFragment cameraFragment;
     private final ProgressBar mCaptureProgressBar;
     private final ImageButton mShutterButton;
-    private final ProgressBar mProcessingProgressBar;
+    private final com.particlesdevs.photoncamera.ui.camera.views.ProcessingRing mProcessingProgressBar;
     private final TextView mVideoRecordingInfo;
     private LayoutMainTopbarBinding topbar;
     private LayoutBottombuttonsBinding bottombuttons;
@@ -109,28 +109,31 @@ public class CameraUIViewImpl implements CameraUIView {
     }
 
     /**
-     * The shutter (P25 concept): a ring in TEXT around a filled centre. Pressed: the centre in the accent; the self-timer
-     * counting (hovered): the ring in the accent; busy (not activated): the centre dimmed.
+     * The shutter (P25 concept, P157 in the camera's style): a ring in the accent around a filled centre in TEXT, like the
+     * accent glyphs of the top bar and the cards beside it. Pressed: the centre in the accent; the self-timer counting
+     * (hovered): the ring in TEXT; busy (not activated): the centre dimmed.
      */
     static Drawable shutter(Context context, int accent) {
         StateListDrawable states = new StateListDrawable();
-        states.addState(new int[]{android.R.attr.state_pressed}, ring(context, ShadeStyle.TEXT, accent));
-        states.addState(new int[]{android.R.attr.state_hovered}, ring(context, accent, ShadeStyle.TEXT));
-        states.addState(new int[]{android.R.attr.state_activated}, ring(context, ShadeStyle.TEXT, ShadeStyle.TEXT));
-        states.addState(new int[]{}, ring(context, ShadeStyle.TEXT, (ShadeStyle.TEXT & 0x00FFFFFF) | 0x73000000));
+        states.addState(new int[]{android.R.attr.state_pressed}, ring(context, accent, accent));
+        states.addState(new int[]{android.R.attr.state_hovered}, ring(context, ShadeStyle.TEXT, ShadeStyle.TEXT));
+        states.addState(new int[]{android.R.attr.state_activated}, ring(context, accent, ShadeStyle.TEXT));
+        states.addState(new int[]{}, ring(context, accent, (ShadeStyle.TEXT & 0x00FFFFFF) | 0x73000000));
         return states;
     }
 
     private static Drawable ring(Context context, int ringColor, int centreColor) {
+        // P157: in proportion to the screen's width, as the whole bottom bar (BottomChrome.scale)
+        float f = com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.scale(context);
         GradientDrawable ring = new GradientDrawable();
         ring.setShape(GradientDrawable.OVAL);
         ring.setColor(0);
-        ring.setStroke(ShadeStyle.dp(context, 3), ringColor);
+        ring.setStroke(ShadeStyle.dp(context, 3 * f), ringColor);
         GradientDrawable centre = new GradientDrawable();
         centre.setShape(GradientDrawable.OVAL);
         centre.setColor(centreColor);
         LayerDrawable layers = new LayerDrawable(new Drawable[]{ring, centre});
-        int inset = ShadeStyle.dp(context, 8);
+        int inset = ShadeStyle.dp(context, 8 * f);
         layers.setLayerInset(1, inset, inset, inset, inset);
         return layers;
     }
@@ -247,12 +250,19 @@ public class CameraUIViewImpl implements CameraUIView {
         }
     }
 
+    /** P158: true - a shot's processing starts (the ring round the gallery card runs), false - it is done (the ring closes). */
     @Override
     public void setProcessingProgressBarIndeterminate(boolean indeterminate) {
         this.mProcessingProgressBar.post(() -> {
-            this.mProcessingProgressBar.setIndeterminate(indeterminate);
-            this.mProcessingProgressBar.setVisibility(indeterminate ? View.VISIBLE : View.INVISIBLE);
+            if (indeterminate) this.mProcessingProgressBar.start();
+            else this.mProcessingProgressBar.finish();
         });
+    }
+
+    /** P158: the pipeline's milestone (0..1) for the ring round the gallery card. */
+    @Override
+    public void setProcessingProgress(float fraction) {
+        this.mProcessingProgressBar.post(() -> this.mProcessingProgressBar.setStage(fraction));
     }
 
     @Override

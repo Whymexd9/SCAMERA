@@ -91,7 +91,8 @@ public class AuxButtonsOverflowTest {
         strip.setGravity(android.view.Gravity.CENTER);
         strip.setAuxButtonsModel(model);
         strip.setActiveId("3");
-        activity.setContentView(strip);
+        // P157: the strip 200 px wide in the window too (the hold waits for a real layout pass): nine lens discs overflow it
+        activity.setContentView(strip, new android.view.ViewGroup.LayoutParams(200, 100));
         activity.getWindow().getDecorView().dispatchWindowFocusChanged(true);
     }
 

@@ -78,6 +78,31 @@ public class LensButtonTest {
         assertEquals(1f, LensButton.labelScale(90, 0, 0, 0, 0), 0f);
     }
 
+    /** P157: a lens not in use is a 36dp disc with its short number; chosen, a 44dp capsule with the full label in bold. */
+    @Test
+    public void aDiscShowsTheShortNumberAndTheCapsuleTheFullLabel() {
+        assertEquals("2,8", LensButton.shortLabel("2,8×").toString());
+        assertEquals("1", LensButton.shortLabel("1x").toString());
+        assertEquals("0.6", LensButton.shortLabel("0.6×").toString());
+        assertEquals("a custom name stays", "Tele", LensButton.shortLabel("Tele").toString());
+        assertEquals("a preset stays", "1× (2)", LensButton.shortLabel("1× (2)").toString());
+        LensButton button = new LensButton(context);
+        button.setLayoutParams(new android.view.ViewGroup.LayoutParams(-2, -2));   // as in the strip
+        button.setText("2,8×");
+        measure(button);
+        assertEquals("2,8", button.getText().toString());
+        assertEquals("2,8×", button.fullLabel().toString());
+        assertEquals(dp(LensButton.DISC_DP), button.getHeight());
+        assertEquals("a round disc", button.getHeight(), button.getWidth());
+        button.setSelected(true);
+        measure(button);
+        assertEquals("2,8×", button.getText().toString());
+        assertEquals(dp(LensButton.SELECTED_DP), button.getHeight());
+        assertTrue(button.getTypeface() != null && button.getTypeface().isBold());
+        button.setSelected(false);
+        assertEquals("2,8", button.getText().toString());
+    }
+
     @Test
     public void theSelectedPillKeepsItsPortraitShapeAndTheLabelStaysInside() throws Exception {
         LensButton button = new LensButton(context);
@@ -87,7 +112,7 @@ public class LensButtonTest {
         int accent = AccentPalette.camera(context);
         measure(button);
         int width = button.getWidth(), height = button.getHeight();
-        assertEquals(dp(40), height);
+        assertEquals("the active capsule 44dp (P157)", dp(LensButton.SELECTED_DP), height);
         assertTrue("a pill wider than tall", width > height);
         for (int o : ORIENTATIONS) {
             button.turnLabel(o, 0);

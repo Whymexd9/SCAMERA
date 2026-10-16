@@ -224,6 +224,15 @@ public class ScamProcessor extends ProcessorBase {
         return own;
     }
 
+    /** P158: a milestone of this shot (0..1) for the ring round the gallery card; never stops the processing. */
+    private void stage(float fraction) {
+        try {
+            processingEventsListener.onProcessingChanged(fraction);
+        } catch (RuntimeException e) {
+            Log.d(TAG, "onProcessingChanged: " + e);
+        }
+    }
+
     private void processBurst() {
         processingStage = "input validation";
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("prep");
@@ -476,6 +485,7 @@ public class ScamProcessor extends ProcessorBase {
                             ScameraApp.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
                 }
                 scamOutputParameters=processingParameters;
+                stage(0.55f); // P158: merged
                 processingParameters.scamRgb=scamOwnedOutput;
                 processingParameters.scamRgbOwned=true;
                 processingParameters.scamHdrRawScale=1f;
@@ -590,6 +600,7 @@ public class ScamProcessor extends ProcessorBase {
             restorePriority(priorityBefore);
         }
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_done");
+        stage(0.85f); // P158: processed
         // Ultra HDR (settings.ultraHdr is on only when the shot writes a JPEG) and the HDR HEIC / AVIF (P46, settings.hdrOutput)
         // take the same gain map (settings.gainMapPass). Ultra HDR: the gain-map pass runs on the bitmap exactly
         // as the pipeline produced it - the pass checks the base against the pipeline size. It used to run after the hybrid
@@ -713,6 +724,7 @@ public class ScamProcessor extends ProcessorBase {
                         ScameraApp.getSettings().ultraHdr ? gain : null, hdrOutput ? gain : null, colourSpace)
                 : com.particlesdevs.photoncamera.processing.PhotoOutput.save(imageFile, img, exifData, gain);
         if (gain != null) gain.gainMap.recycle();
+        stage(0.97f); // P158: saved
         final java.util.List<Path> savedFiles = saved.notifyOrder();
         if (savedFiles.isEmpty()) savedFiles.add(com.particlesdevs.photoncamera.processing.PhotoFormat.JPEG.fileFor(imageFile));
         for (Path file : savedFiles) {

@@ -62,22 +62,12 @@
                     app:shapeAppearanceOverlay="@style/ShapeAppearance.Scamera.Thumb"
                     />
 
-            <ProgressBar
+            <!-- P158: the shot's processing runs round the card's edge in the accent (as in ArkCam). -->
+            <com.particlesdevs.photoncamera.ui.camera.views.ProcessingRing
                     android:id="@+id/processing_progress_bar"
                     android:visibility="invisible"
-                    style="@style/Widget.AppCompat.ProgressBar.Horizontal"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:indeterminate="false"
-                    android:max="100"
-                    tools:progress="50"
-                    android:progressDrawable="@drawable/circular_progress_bar2"
-                    android:indeterminateBehavior="cycle"
-                    android:indeterminateDuration="2000"
-                    android:indeterminateDrawable="@drawable/circular_progress_bar2"
-                    android:interpolator="@android:anim/accelerate_decelerate_interpolator"
-                    android:scaleX="1"
-                    android:scaleY="1"
                     />
         </FrameLayout>
 
@@ -138,9 +128,9 @@
                     android:onClick="@{bottom_bar_click_listener}"
                     android:contentDescription="@string/shade_flip_camera"
                     android:tooltipText="@string/shade_flip_camera"
-                    android:scaleType="centerInside"
+                    android:scaleType="fitCenter"
                     android:src="@drawable/vf_flip_camera"
-                    android:padding="13dp"
+                    android:padding="11dp"
                     android:visibility="visible"
                     android:layout_height="match_parent"
                     android:layout_width="match_parent"/>
