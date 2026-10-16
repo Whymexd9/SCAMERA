@@ -48,6 +48,9 @@ public final class LiveRawFrame {
     private static final float[] colorTransform = new float[] {1, 0, 0, 0, 1, 0, 0, 0, 1};
     /** P108: frames this large with a 2x2 mosaic are binned for the viewfinder (a 50 MP Quad-Bayer full-resolution stream). */
     static final long QUAD_BIN_PIXELS = 30_000_000L;
+    /** P179: above this a Tetra viewfinder frame is binned from the central 2 x 2 of each block. */
+    static final long SPARSE_BIN_PIXELS = 100_000_000L;
+    private static int sparseLogged;
     private static final long QUAD_BIN_INTERVAL_NS = 150_000_000L;
     private static long quadAtNs;
     private static ByteBuffer quadFull, quadBinned;
@@ -61,6 +64,10 @@ public final class LiveRawFrame {
     }
 
     static synchronized ByteBuffer binMosaic(ByteBuffer plane, int w, int h, int stride, int format, int block) {
+        return binMosaic(plane, w, h, stride, format, block, block == 4 && (long) w * h > SPARSE_BIN_PIXELS);
+    }
+
+    static synchronized ByteBuffer binMosaic(ByteBuffer plane, int w, int h, int stride, int format, int block, boolean sparse) {
         if (plane == null || (block != 2 && block != 4) || w < block * 2 || h < block * 2
                 || w % (block * 2) != 0 || h % (block * 2) != 0 || (long) w * h * 2 > Integer.MAX_VALUE) return null;
         final java.nio.ShortBuffer src;
@@ -82,18 +89,29 @@ public final class LiveRawFrame {
         if (quadBinned == null || quadBinned.capacity() < bw * bh * 2) quadBinned = ByteBuffer.allocateDirect(bw * bh * 2).order(ByteOrder.nativeOrder());
         java.nio.ShortBuffer out = quadBinned.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
         final int chunks = Math.max(1, Math.min(bh, com.particlesdevs.photoncamera.util.ParallelWork.threads() * 4));
+        // P179 (200 MP: the preview ran at 2.7 fps, its development held the camera's buffers): above SPARSE_BIN_PIXELS a
+        // Tetra block is the mean of its central 2 x 2 pixels (a quarter of the reads) - the viewfinder only, never the photo
+        final long binStart = System.nanoTime();
         com.particlesdevs.photoncamera.util.ParallelWork.forEach(chunks, chunk -> {
         for (int y = bh * chunk / chunks; y < bh * (chunk + 1) / chunks; y++) {
             final int r0 = block * y * srcRow, o = y * bw;
             for (int x = 0; x < bw; x++) {
                 final int c = block * x;
                 int s = 0;
+                if (sparse && block == 4) {
+                    final int m = r0 + srcRow + c + 1;
+                    s = (src.get(m) & 0xFFFF) + (src.get(m + 1) & 0xFFFF) + (src.get(m + srcRow) & 0xFFFF) + (src.get(m + srcRow + 1) & 0xFFFF);
+                    out.put(o + x, (short) ((s + 2) / 4));
+                    continue;
+                }
                 for (int dy = 0; dy < block; dy++) for (int dx = 0; dx < block; dx++)
                     s += src.get(r0 + dy * srcRow + c + dx) & 0xFFFF;
                 out.put(o + x, (short) ((s + block * block / 2) / (block * block)));
             }
         }
         });
+        if (sparse && block == 4 && ++sparseLogged % 20 == 1)
+            android.util.Log.i("LiveRawFrame", "200 MP viewfinder bin (centre 2x2 of each block) ms=" + (System.nanoTime() - binStart) / 1_000_000);
         ByteBuffer result = quadBinned.duplicate().order(ByteOrder.nativeOrder());
         result.clear();
         result.limit(bw * bh * 2);

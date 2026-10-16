@@ -171,7 +171,11 @@ final class FullResButton {
     private static void toggle(CameraFragment fragment, ImageButton button, boolean tele200) {
         boolean two = com.particlesdevs.photoncamera.capture.VivoSdkFullRes.teleSizes(
                 com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID);
-        boolean active = PixelPro10.fullResOn() && (!two || PixelPro10.tele200() == tele200);
+        if (PixelPro10.fullResSuspended()) { // P179: a 200 MP merge runs: the switch waits for it
+            fragment.showSnackBar(com.particlesdevs.photoncamera.util.Lang.t("Снимок 200 Мп ещё обрабатывается", "A 200 MP shot is still being processed"));
+            return;
+        }
+        boolean active = PixelPro10.fullResChosen() && (!two || PixelPro10.tele200() == tele200);
         boolean on = !active;
         if (on && two) PixelPro10.setTele200(tele200);
         if (!com.particlesdevs.photoncamera.capture.SensorModeSwitches.setFullRes(on)) {
@@ -197,7 +201,7 @@ final class FullResButton {
 
     /** Both buttons from the state: on the tele with two sizes only the chosen one lights. */
     private static void restyle(ViewGroup root) {
-        boolean on = PixelPro10.fullResOn();
+        boolean on = PixelPro10.fullResChosen();
         ImageButton fifty = root.findViewById(R.id.full_res_button), twoHundred = root.findViewById(R.id.full_res_200_button);
         boolean two = twoHundred != null && twoHundred.getParent() != null;
         boolean is200 = two && PixelPro10.tele200();

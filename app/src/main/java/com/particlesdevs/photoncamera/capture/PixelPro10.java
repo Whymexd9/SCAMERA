@@ -199,8 +199,27 @@ public final class PixelPro10 {
     }
 
     public static boolean fullResOn() {
+        return !suspended && fullResChosen();
+    }
+
+    /** The FULLRES switch as the user left it (the buttons show it), whatever a running 200 MP merge suspends. */
+    public static boolean fullResChosen() {
         SharedPreferences p = prefs();
         return p != null && p.getBoolean(KEY_FULL, false);
+    }
+
+    /**
+     * P179 (owner: no black viewfinder while a 200 MP shot is merged): FULLRES is suspended (the camera runs its plain session,
+     * a live viewfinder at a fraction of the memory) until the merge is done; nothing stored changes.
+     */
+    private static volatile boolean suspended;
+
+    public static void suspendFullRes(boolean on) {
+        suspended = on;
+    }
+
+    public static boolean fullResSuspended() {
+        return suspended;
     }
 
     public static void setFullRes(boolean on) {

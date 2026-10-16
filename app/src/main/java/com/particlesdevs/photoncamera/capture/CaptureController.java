@@ -1606,22 +1606,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     /**
      * P179 (200 MP: the app was killed for LOW_MEMORY in the merge): the camera's 200 MP RAW buffers (4 x 401 MB) and the HAL's
-     * own stay allocated while the preview runs; for a 200 MP shot the camera closes once its frames are copied (the SDK lease
-     * goes back as the device closes) and opens again after the merge.
+     * own stay allocated while the 200 MP session runs. For a 200 MP shot, once its frames are copied, the camera goes over to
+     * its plain session (FULLRES suspended: a live viewfinder, owner: «чтобы не было ... черного видоискателя в конце», at a
+     * fraction of the memory; the SDK lease goes back as the device closes) and back to 200 MP after the merge.
      */
     private void closeCameraForProcessing() {
         mClosedForProcessing = true;
+        PixelPro10.suspendFullRes(true);
         final java.util.concurrent.CountDownLatch closed = new java.util.concurrent.CountDownLatch(1);
         mClosedForProcessingDone = closed;
         // posted (never run inside the capture's completion, which still clears the shot's state after this call)
         new Handler(android.os.Looper.getMainLooper()).post(() -> {
-            if (!mClosedForProcessing) return;
-            Log.i("SCAM_CAPTURE", "200 MP: the camera closes for the merge (its RAW buffers and the HAL's go back)");
+            if (!mClosedForProcessing) { closed.countDown(); return; }
+            Log.i("SCAM_CAPTURE", "200 MP: the camera goes to its plain session for the merge (the 200 MP buffers go back)");
             try {
-                closeCamera();
-                ImageReader raw = mImageReaderRaw;
-                mImageReaderRaw = null;
-                if (raw != null) raw.close();
+                if (isCameraResumed) restartCamera(); else closeCamera();
             } finally {
                 closed.countDown();
             }
@@ -1642,11 +1641,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         new Handler(android.os.Looper.getMainLooper()).post(() -> {
             if (!mClosedForProcessing) return;
             mClosedForProcessing = false;
+            PixelPro10.suspendFullRes(false);
             boolean resumed = activity instanceof androidx.lifecycle.LifecycleOwner
                     && ((androidx.lifecycle.LifecycleOwner) activity).getLifecycle().getCurrentState()
                     .isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED);
-            if (!resumed || isCameraResumed) return; // left meanwhile (onResume opens it) or opened again already
-            Log.i("SCAM_CAPTURE", "200 MP: the merge is done, the camera opens again");
+            if (!resumed) return; // left meanwhile: onResume opens it at 200 MP
+            Log.i("SCAM_CAPTURE", "200 MP: the merge is done, the camera goes back to 200 MP");
             restartCamera();
         });
     }
@@ -4353,8 +4353,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     public static int zslRingCapacity() {
         // One global, user-adjustable capacity. Capture counts never resize the ring.
+        // P179: the plain session that shows the viewfinder while a 200 MP shot is merged holds a small ring (no shot is taken
+        // then; the merge needs the memory)
+        if (PixelPro10.fullResSuspended()) return Math.min(SUSPENDED_RING, PreferenceKeys.getZslBufferCountValue());
         return PreferenceKeys.getZslBufferCountValue();
     }
+
+    /** P179: ring slots of the plain session during a 200 MP merge. */
+    static final int SUSPENDED_RING = 4;
 
     private long scamZslShutterTimestamp;
     private int mOpenRetries;
@@ -5056,6 +5062,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         com.particlesdevs.photoncamera.control.ZoomController.markShot();
         try {
+            if (mClosedForProcessing) { // P179: the plain session of a running 200 MP merge takes no shot
+                failPendingShutter(new IllegalStateException(Lang.t("Снимок 200 Мп ещё обрабатывается", "A 200 MP shot is still being processed")));
+                return;
+            }
             if (null == mCameraDevice) {
                 failPendingShutter(new IllegalStateException(Lang.t("Камера закрыта", "Camera closed")));
                 return;
