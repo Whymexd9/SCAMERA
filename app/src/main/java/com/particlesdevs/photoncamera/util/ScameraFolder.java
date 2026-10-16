@@ -37,6 +37,8 @@ import java.util.TreeSet;
 public final class ScameraFolder {
     public static final ScameraFolder CONFIGS = new ScameraFolder("XML", "text/xml", ".xml", ".json");
     public static final ScameraFolder CURVES = new ScameraFolder("ToneCurves", "text/plain", ".txt");
+    /** P134: film / look LUTs (.cube) for «Плёночный LUT». */
+    public static final ScameraFolder LUTS = new ScameraFolder("LUT", "application/octet-stream", ".cube");
     private static final String TAG = "ScameraFolder";
 
     /** Download/SCAMERA/&lt;sub&gt; as MediaStore's RELATIVE_PATH (and the path shown to the user). */

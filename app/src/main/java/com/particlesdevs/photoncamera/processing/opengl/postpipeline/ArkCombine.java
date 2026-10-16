@@ -52,6 +52,12 @@ public final class ArkCombine extends Node {
         final com.particlesdevs.photoncamera.processing.color.ColourLook look = ArkTone.colourLook();
         final boolean colourOn = !look.shaderNeutral();
         final int toneOp = ArkTone.toneOperator();
+        // P134 «Плёночный LUT»: the chosen .cube on the display-encoded output (FILM_LUT), only with a strength above 0
+        final float lutStrength = com.particlesdevs.photoncamera.settings.PreferenceKeys.filmLutStrength();
+        final String lutName = com.particlesdevs.photoncamera.settings.PreferenceKeys.filmLut();
+        final com.particlesdevs.photoncamera.processing.color.FilmLut lut = lutStrength > 0f && !lutName.isEmpty()
+                ? com.particlesdevs.photoncamera.processing.color.FilmLut.chosen(com.particlesdevs.photoncamera.app.ScameraApp.getAppContext(), lutName) : null;
+        int lutTexture = 0;
         try {
             GLTexture colour = st.lowDn != null ? st.lowDn : st.low;
             int colourFactor = st.factor;
@@ -86,7 +92,16 @@ public final class ArkCombine extends Node {
             if (colourOn) glProg.setDefine("COLOUR_LOOK", 1);
             // P144: ACES / Uchimura / the own curve instead of AgX (TONE_OP 0, the AgX shader, otherwise)
             if (toneOp != com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX) glProg.setDefine("TONE_OP", 1);
+            if (lut != null) glProg.setDefine("FILM_LUT", 1);
             glProg.useAssetProgram("ark/combine", false);
+            if (lut != null) {
+                lutTexture = lut.upload();
+                glProg.setTexture3D("FilmLut", lutTexture);
+                glProg.setVar("lutU", lutStrength, (float) lut.size);
+                glProg.setVar("lutMinU", lut.domainMin);
+                glProg.setVar("lutScaleU", 1f / (lut.domainMax[0] - lut.domainMin[0]), 1f / (lut.domainMax[1] - lut.domainMin[1]),
+                        1f / (lut.domainMax[2] - lut.domainMin[2]));
+            }
             glProg.setTexture("InputBuffer", input);
             ArkTone.setColour(glProg, pipeline, gainMap, st.inScale);
             glProg.setTexture("ArkLow", st.low);
@@ -145,11 +160,13 @@ public final class ArkCombine extends Node {
         } finally {
             st.closeTextures();
             if (fallback != null) fallback.close();
+            if (lutTexture != 0) android.opengl.GLES30.glDeleteTextures(1, new int[]{lutTexture}, 0);
         }
         Log.i("SCAM_PIPELINE", "ARK combine ae=" + r.ae + " clip=" + r.clip + " headroom=" + (ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f)
                 + " hlWhite=" + ArkTone.value("hl_white", 0.15f) + " grid=" + input.mSize.x + "x" + input.mSize.y
                 + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=arkMid" : " colour=arkLow") + " detail=" + detail
                 + (sharp ? " (ArkLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")
-                + (pipeline.p3Output ? " output=DisplayP3" : "") + (colourOn ? " colourLook" : "") + " ms=" + (System.currentTimeMillis() - started));
+                + (pipeline.p3Output ? " output=DisplayP3" : "") + (colourOn ? " colourLook" : "")
+                + (lut != null ? " filmLut=" + lutName + " " + lut.size + "^3 x" + lutStrength : lutStrength > 0f && !lutName.isEmpty() ? " filmLut=" + lutName + " unreadable" : "") + " ms=" + (System.currentTimeMillis() - started));
     }
 }

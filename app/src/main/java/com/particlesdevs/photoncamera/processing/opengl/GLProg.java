@@ -495,6 +495,20 @@ public class GLProg implements AutoCloseable {
         setVar(var, textureId);
         tex.bind(GL_TEXTURE0 + textureId);
     }
+    /** P134: a 3D texture (sampler3D) by its GL name, on a unit of its own like {@link #setTexture}. */
+    public void setTexture3D(String var,int textureName) {
+        int textureId;
+        if (mTextureBinds.containsKey(var)) {
+            textureId = mTextureBinds.get(var);
+        } else {
+            textureId = mNewTextureId;
+            mTextureBinds.put(var, textureId);
+            mNewTextureId += 2;
+        }
+        setVar(var, textureId);
+        android.opengl.GLES30.glActiveTexture(GL_TEXTURE0 + textureId);
+        android.opengl.GLES30.glBindTexture(android.opengl.GLES30.GL_TEXTURE_3D, textureName);
+    }
     public void setBufferCompute(String var,GLBuffer buff){
         setBufferCompute(var,buff,GL_SHADER_STORAGE_BUFFER);
     }

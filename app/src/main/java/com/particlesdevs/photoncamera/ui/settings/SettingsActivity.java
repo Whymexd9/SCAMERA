@@ -184,6 +184,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private ActivityResultLauncher<String[]> configImportLauncher;
         /** P144: «Загрузить» → «Из файла…» of the own tone curve (the picker starts in Download/SCAMERA/ToneCurves). */
         private ActivityResultLauncher<String[]> curveImportLauncher;
+        /** P134: «Плёночный LUT» → «Импортировать .cube…» (the picker starts in Download/SCAMERA/LUT). */
+        private ActivityResultLauncher<String[]> cubeLutImportLauncher;
         /** P144: the switches of «Кривая AgX и ACES» of which one at most is on. */
         static final java.util.List<String> TONE_OPERATORS = java.util.Arrays.asList(
                 "pref_scam_hybrid_ark_aces_on", "pref_scam_hybrid_ark_uchi_on", "pref_scam_hybrid_ark_curve_on");
@@ -502,6 +504,20 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         if (uri != null) importToneCurve(uri);
                     }
             );
+            cubeLutImportLauncher = registerForActivityResult(
+                    new ActivityResultContracts.OpenDocument() {
+                        @NonNull @Override
+                        public Intent createIntent(@NonNull android.content.Context context, @NonNull String[] input) {
+                            Intent intent = super.createIntent(context, input);
+                            intent.putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI,
+                                    com.particlesdevs.photoncamera.util.ScameraFolder.LUTS.initialPickerUri());
+                            return intent;
+                        }
+                    },
+                    uri -> {
+                        if (uri != null) importFilmLut(uri);
+                    }
+            );
             folderGrantLauncher = registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
                 if (uri != null) grantFolder(uri);
                 if (importFromCamera && getActivity() != null) getActivity().finish();
@@ -511,6 +527,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (curve != null) {
                 curve.setImporter(() -> curveImportLauncher.launch(new String[]{"*/*"}));
                 curve.setFolderOpener(() -> folderGrantLauncher.launch(com.particlesdevs.photoncamera.util.ScameraFolder.grantHint()));
+            }
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference filmLut =
+                    findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+            if (filmLut != null) {
+                filmLut.setImporter(() -> cubeLutImportLauncher.launch(new String[]{"*/*"}));
+                filmLut.setFolderOpener(() -> folderGrantLauncher.launch(com.particlesdevs.photoncamera.util.ScameraFolder.grantHint()));
             }
 
             // Check if we're opening the tunable submenu specifically
@@ -727,6 +749,63 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     : com.particlesdevs.photoncamera.util.Lang.t(mContext, "Эта папка не Download/SCAMERA: конфиги из неё в список не попадут",
                             "This folder is not Download/SCAMERA: its configs are not listed");
             android.widget.Toast.makeText(mContext, text, android.widget.Toast.LENGTH_LONG).show();
+        }
+
+        /**
+         * P134: a picked .cube: checked (FilmLut.parse), copied into Download/SCAMERA/LUT under its own name and chosen; a file
+         * that is no 3D LUT is refused with a message.
+         */
+        void importFilmLut(android.net.Uri uri) {
+            byte[] data = null;
+            String name = "LUT.cube";
+            try (android.database.Cursor c = mContext.getContentResolver().query(uri,
+                    new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                if (c != null && c.moveToFirst() && c.getString(0) != null) name = c.getString(0);
+            } catch (RuntimeException ignored) {
+            }
+            if (!name.toLowerCase(java.util.Locale.ROOT).endsWith(".cube")) name = name.replaceAll("\\.[^.]*$", "") + ".cube";
+            try (java.io.InputStream in = mContext.getContentResolver().openInputStream(uri)) {
+                if (in != null) {
+                    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) > 0) {
+                        out.write(buf, 0, n);
+                        if (out.size() > com.particlesdevs.photoncamera.processing.color.FilmLut.MAX_BYTES) { out = null; break; }
+                    }
+                    if (out != null) data = out.toByteArray();
+                }
+            } catch (java.io.IOException | RuntimeException e) {
+                Log.w("SettingsFragment", "LUT import failed: " + e);
+            }
+            com.particlesdevs.photoncamera.processing.color.FilmLut lut = null;
+            if (data != null) try {
+                lut = com.particlesdevs.photoncamera.processing.color.FilmLut.parse(new java.io.ByteArrayInputStream(data));
+            } catch (java.io.IOException ignored) {
+            }
+            if (lut == null) {
+                android.widget.Toast.makeText(mContext, com.particlesdevs.photoncamera.util.Lang.t(mContext,
+                        "Это не 3D LUT .cube (нужны LUT_3D_SIZE от 2 до 65 и все строки r g b)",
+                        "Not a 3D .cube LUT (it needs LUT_3D_SIZE 2 to 65 and every r g b row)"), android.widget.Toast.LENGTH_LONG).show();
+                return;
+            }
+            try {
+                String saved = com.particlesdevs.photoncamera.util.ScameraFolder.LUTS.save(mContext, name, data);
+                String kept = saved.substring(saved.lastIndexOf('/') + 1);
+                com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference pref =
+                        findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+                if (pref != null) pref.choose(kept);
+                else mSettingsManager.getDefaultPreferences().edit().putString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY, kept).apply();
+                com.particlesdevs.photoncamera.processing.color.FilmLut.forget();
+                android.widget.Toast.makeText(mContext, com.particlesdevs.photoncamera.util.Lang.t(mContext,
+                        "LUT загружен: " + kept + " (" + lut.size + "³)", "LUT loaded: " + kept + " (" + lut.size + "³)"),
+                        android.widget.Toast.LENGTH_SHORT).show();
+            } catch (java.io.IOException | RuntimeException e) {
+                Log.w("SettingsFragment", "LUT save failed: " + e);
+                android.widget.Toast.makeText(mContext, com.particlesdevs.photoncamera.util.Lang.t(mContext,
+                        "Не удалось сохранить LUT в Download/SCAMERA/LUT", "Could not save the LUT to Download/SCAMERA/LUT"),
+                        android.widget.Toast.LENGTH_LONG).show();
+            }
         }
 
         /** P144: a picked file's "x:y" points onto the own curve's graph (and into the store). */

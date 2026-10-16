@@ -3342,9 +3342,15 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   blue (pref_scam_hybrid_colour_cal_*), ColourLook.calibrationMatrix: each primary turned in OKLab hue (up to 0.5 rad) and
   its chroma scaled, columns rescaled so white stays white; folded into the same per-shot matrix before the white-balance
   rows (ColourLookTest.primariesCalibrationKeepsWhite).
-- Not done: the film LUT (.cube / Hald import, a sampler3D stage - needs a file import page and 3D textures in GLProg), the
-  skin protection of the AgX saturation above 1, and the live RAW viewfinder's preview of the look (it renders with its own
-  ArkCore defaults). Not seen on a phone.
+- DONE 2026-10-16: «Плёночный LUT» (Цвет › Стиль): a .cube (LUT_3D_SIZE 2..65, DOMAIN_MIN / MAX, LUT_3D_INPUT_RANGE;
+  FilmLut.parse refuses 1D, wrong row counts, non-numbers) from Download/SCAMERA/LUT (ScameraFolder.LUTS; «Импортировать
+  .cube…» copies a picked file there after checking it, «Открыть папку» grants the folder), applied by ArkCombine (FILM_LUT 1:
+  a 3D RGB16F texture, trilinear, on the display-encoded output before the dither) and mixed by «Сила LUT» (0..100, 100).
+  GLProg.setTexture3D. FilmLutTest (3), SettingsMenuTest.filmLutRowPicksAFileOrNone, tools/check_film_lut.py (GPU: identity
+  unchanged, a warm look = numpy trilinear, strength 0.5 = half, the input range; within the 8-bit sub-texel weights of the
+  filtering, < 4e-4) and glslc for FILM_LUT 0/1 x P3_OUT 0/1; in CI. Hald PNG not added (.cube covers the usual looks).
+- Still not done: the skin protection of the AgX saturation above 1, and the live RAW viewfinder's preview of the look (it
+  renders with its own ArkCore defaults). Not seen on a phone.
 
 ### P140b - fixes after the 30816/30817 builds (owner, 2026-10-15: screenshots + OPPO Find X7 Ultra log, «Исправь»)
 - OPPO Find X7 Ultra (PHY110), build 30817: black viewfinder, «Камера не отвечает» / «Сбой камеры (код 4)» on every module. The log:

@@ -576,6 +576,19 @@ public class PreferenceKeys {
     public static String getRawLscMode() {
         return preferenceKeys.settingsManager.getString("default_scope", "pref_raw_lsc_mode", "auto");
     }
+    /** P134 «Плёночный LUT»: the .cube file in Download/SCAMERA/LUT ("" = none). */
+    public static String filmLut() {
+        return preferenceKeys.settingsManager.getString("default_scope", com.particlesdevs.photoncamera.processing.color.FilmLut.KEY, "");
+    }
+    /** P134: the strength of the film LUT, 0..1 (default 1). */
+    public static float filmLutStrength() {
+        try {
+            Object v = PreferenceValue.get(preferenceKeys.settingsManager.getDefaultPreferences(), com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY);
+            return Math.max(0f, Math.min(1f, (float) PreferenceNumber.read(v, 100) / 100f));
+        } catch (RuntimeException e) {
+            return 1f;
+        }
+    }
     /** P142: «Раздельные фокус и экспозиция»: the tap's focus ring and exposure square are dragged on their own. */
     public static boolean isSplitAfAe() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_split_af_ae", false);

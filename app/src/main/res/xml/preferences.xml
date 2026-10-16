@@ -145,6 +145,8 @@
     </PreferenceScreen>
     <PreferenceCategory android:key="colour_style_category" android:title="@string/prefs_colour_style_category_title" app:iconSpaceReserved="false">
       <ListPreference android:key="pref_scam_hybrid_colour_mono" android:title="@string/prefs_colour_mono_title" android:summary="@string/prefs_colour_mono_summary" android:defaultValue="off" android:entries="@array/colour_mono_entries" android:entryValues="@array/colour_mono_values" android:icon="@drawable/settings_ic_eye" />
+      <com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference android:key="pref_film_lut" android:title="@string/prefs_film_lut_title" android:defaultValue="" android:icon="@drawable/settings_ic_palette" />
+      <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_film_lut_strength" android:title="@string/prefs_film_lut_strength_title" android:summary="@string/prefs_film_lut_strength_summary" android:defaultValue="100" app:minValue="0" app:maxValue="100" app:stepPerUnit="1" app:isFloat="false" android:icon="@drawable/settings_ic_sliders" />
     </PreferenceCategory>
     <PreferenceCategory android:key="colour_expert_category" android:title="@string/prefs_colour_expert_category_title" app:iconSpaceReserved="false">
       <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_scam_hybrid_colour_gamut" android:title="@string/prefs_colour_gamut_title" android:summary="@string/prefs_colour_gamut_summary" android:defaultValue="0" app:minValue="0" app:maxValue="100" app:stepPerUnit="1" app:isFloat="false" android:icon="@drawable/settings_ic_hdr" />

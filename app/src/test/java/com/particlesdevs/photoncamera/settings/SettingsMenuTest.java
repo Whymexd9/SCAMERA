@@ -1478,6 +1478,39 @@ public class SettingsMenuTest {
             assertEquals(2f,ModuleRegistry.nativeRatio("back2"),1e-4f);
         }
     }
+    /** P134 «Плёночный LUT»: the row in «Цвет › Стиль» lists the folder's .cube files, «Нет» and the import; a pick is stored. */
+    @Test public void filmLutRowPicksAFileOrNone(){
+        PreferenceScreen screen=inflate();
+        com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference lut=screen.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+        assertNotNull(lut);
+        assertNotNull("the strength row beside it",screen.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY));
+        lut.setFiles(c->new String[]{"Kodak 2383.cube","Teal.cube"});
+        boolean[] imported={false};
+        lut.setImporter(()->imported[0]=true);
+        assertEquals("",lut.chosen());
+        lut.performClick();
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertNotNull(sheet);
+        var content=sheet.findViewById(android.R.id.content);
+        assertNotNull(content.findViewWithTag("option_lut_none"));
+        assertNotNull(content.findViewWithTag("option_lut_import"));
+        content.findViewWithTag("option_lut_Kodak 2383.cube").performClick();
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        assertEquals("Kodak 2383.cube",lut.chosen());
+        assertEquals("Kodak 2383.cube",prefs.getString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY,""));
+        assertEquals("Kodak 2383.cube",String.valueOf(lut.getSummary()));
+        lut.performClick();
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        sheet.findViewById(android.R.id.content).findViewWithTag("option_lut_import").performClick();
+        assertTrue("«Импортировать .cube…» opens the picker",imported[0]);
+        lut.performClick();
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        sheet.findViewById(android.R.id.content).findViewWithTag("option_lut_none").performClick();
+        assertEquals("",lut.chosen());
+    }
     /** A TextView under {@code view} whose text contains {@code part}. */
     private static boolean shownText(android.view.View view,String part){
         if(view instanceof android.widget.TextView&&String.valueOf(((android.widget.TextView)view).getText()).contains(part))return true;

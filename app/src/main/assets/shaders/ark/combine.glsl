@@ -44,6 +44,8 @@ precision highp sampler2D;
 #define P3_OUT 0
 #define COLOUR_LOOK 0
 #define TONE_OP 0
+// P134 «Плёночный LUT»: a 3D LUT (.cube, FilmLut) on the display-encoded output, mixed by its strength; ArkCombine sets 1
+#define FILM_LUT 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -96,6 +98,13 @@ uniform vec4 acesU;                 // ACES: pre-gain, a, d, toe
 uniform vec4 uchiAU;                // Uchimura: pre-gain, post-gain, P (max brightness), a (contrast)
 uniform vec4 uchiBU;                // Uchimura: m (linear start), l (linear length), c (toe power), b (black offset)
 uniform vec4 curveU[64];            // own curve: 256 samples over x 0..1 (0.5 + EV / 10 around the 0.18 grey)
+#endif
+#if FILM_LUT == 1
+precision highp sampler3D;
+uniform highp sampler3D FilmLut;
+uniform vec2 lutU;                  // x strength 0..1, y LUT size N (texel centres: c (N - 1) / N + 0.5 / N)
+uniform vec3 lutMinU;               // the file's DOMAIN_MIN
+uniform vec3 lutScaleU;             // 1 / (DOMAIN_MAX - DOMAIN_MIN)
 #endif
 out vec4 Output;
 
@@ -636,6 +645,14 @@ void main() {
     if (filmToeU > 0.0) {
         float ls = max(dot(outRgb, LUMA), 0.0001);
         if (ls < 0.15) outRgb *= (pow(max(ls / 0.15, 0.000001), 1.0 + filmToeU) * 0.15) / ls;
+    }
+#endif
+#if FILM_LUT == 1
+    {
+        // trilinear lookup of the display value (the encoding a .cube look is made for), then the strength
+        vec3 c = clamp((clamp(outRgb, 0.0, 1.0) - lutMinU) * lutScaleU, 0.0, 1.0);
+        vec3 l = texture(FilmLut, c * ((lutU.y - 1.0) / lutU.y) + 0.5 / lutU.y).rgb;
+        outRgb = mix(outRgb, l, clamp(lutU.x, 0.0, 1.0));
     }
 #endif
     if (ditherU == 1) {
