@@ -9,12 +9,15 @@ of the ceiling, i.e. a large blown area):
 - the blown grey ends on pure white (1.0 in every channel; without the landing it stays a grey below 0.99);
 - below the start of the landing (0.3 of the ceiling) nothing changes;
 - the output rises with the input and the last steps before the ceiling get smaller (the slope fades into the plateau);
-- the orange light keeps its hue on the way up (channel ratios as without the landing) and peaks at 1.0 in its max channel;
+- P159: the orange light lands on ITS colour at full brightness (the scene's channel ratios, display-encoded), not on the
+  colour the tone's shoulder bleached; its chroma never drops below the toned one on the way up;
 - a slightly blue near-white ends on pure white;
 - a dark pixel inside a blown neighbourhood (ArkHl 1, own share below 0.15) is left alone (no glow on dark objects);
 - without clipped data (headroomU 0) the landing does nothing.
 A blown disc with a soft edge on a mid grey, with the real mask: the disc lands on white, and the steepest step across its
 edge is not steeper than without the landing (owner: «очень резкие переходы с уходом в серый» of the per-pixel landing).
+P159: a negative detail delta (the sharpening's undershoot) no longer darkens a pixel the tone took to near white when the
+frame has clipped data; without clipped data, or with the landing off, the same delta still darkens it.
 """
 import sys
 from pathlib import Path
@@ -22,7 +25,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_colour_output import SH, expand_imports, set_define  # noqa: E402
+from check_colour_output import SH, expand_imports, oklab, set_define  # noqa: E402
 
 FAILURES = []
 
@@ -121,15 +124,16 @@ def main():
     print('  hlmask: max |GPU - numpy gaussian| %.2e' % err)
     check(err < 1e-4, 'ark/hlmask.glsl differs from the gaussian of the share (%.2e)' % err)
 
-    def render(image, fz, share, hl, headroom=1):
+    def render(image, fz, share, hl, headroom=1, full=None, detail=0.0):
         h, w = image.shape[:2]
         prog = prog_on if hl > 0 else prog_off
         t_img, t_fused, t_hl = tex(image), tex(fz), tex(np.repeat(share[..., None], 4, 2))
+        t_full = tex(full) if full is not None else t_img   # the full-size merge (the detail delta's source)
         out = ctx.texture((w, h), 4, dtype='f4')
         fb = ctx.framebuffer([out])
         fb.use()
         ctx.viewport = (0, 0, w, h)
-        units = {'InputBuffer': t_img, 'GainMap': ones, 'ArkLow': t_img, 'ArkColour': t_img, 'ArkFused': t_fused,
+        units = {'InputBuffer': t_full, 'GainMap': ones, 'ArkLow': t_img, 'ArkColour': t_img, 'ArkFused': t_fused,
                  'ArkDetailRef': t_img, 'ArkLumaS': t_img, 'ArkHl': t_hl}
         for i, (key, t) in enumerate(units.items()):
             if key in prog:
@@ -138,7 +142,7 @@ def main():
         eye = tuple(np.eye(3).flatten())
         vals = {'sensorToIntermediate': eye, 'intermediateToSRGB': eye, 'neutralPointU': (1, 1, 1), 'inScaleU': 1.0,
                 'fU': 1, 'colourFU': 1, 'aeU': 1.0, 'clipU': clip, 'toeU': 0.05, 'gammaInvU': 1 / 2.2, 'macroU': 1.0,
-                'vibU': (0.0, 0.0, 0.0), 'detailGainU': 0.0, 'deltaChromaU': 1.0, 'filmToeU': 0.1, 'ditherU': 0,
+                'vibU': (0.0, 0.0, 0.0), 'detailGainU': detail, 'deltaChromaU': 1.0, 'filmToeU': 0.1, 'ditherU': 0,
                 'agxAU': (2.7, 1.35, 1.6, 1.0), 'agxBU': (-8.5, 3.5, 0.3, 4.0), 'headroomU': headroom, 'hlWhiteU': 0.0,
                 'hlSoftU': hl}
         for key, v in vals.items():
@@ -148,6 +152,8 @@ def main():
         res = np.frombuffer(out.read(), np.float32).reshape(h, w, 4)[:, :, :3].copy()
         for t in (fb, out, t_img, t_fused, t_hl):
             t.release()
+        if full is not None:
+            t_full.release()
         return res
 
     own = np.zeros((H, W), np.float32)
@@ -172,13 +178,21 @@ def main():
     check(base[0][-1].max() < 0.99, 'the test is moot: without the landing the blown grey is already white')
     check(np.all(land[0][-1] > 0.999), 'the blown grey is not pure white: %s' % land[0][-1])
     check(np.all(land[2][-1] > 0.999), 'the slightly blue near-white is not pure white: %s' % land[2][-1])
-    # the orange light keeps its hue (channel ratios as without the landing) where the landing acts
-    acting = k >= 0.6
-    rb = base[1][acting] / np.maximum(base[1][acting].max(1, keepdims=True), 1e-6)
-    rl = land[1][acting] / np.maximum(land[1][acting].max(1, keepdims=True), 1e-6)
-    hue = np.abs(rb - rl).max()
-    print('  orange: max change of the channel ratios %.4f' % hue)
-    check(hue < 0.01, 'the orange light changed its hue (%.4f)' % hue)
+    # P159: the orange light lands on its own (scene) colour at full brightness, never more bleached than the tone left it
+    orange = tints['orange']
+    want = (orange / orange.max()) ** (1 / 2.2)
+    want = want / want.max()
+    err = np.abs(land[1][-1] - want).max()
+    print('  orange at the ceiling: %s, its scene colour %s (max diff %.4f)' % (np.round(land[1][-1], 4), np.round(want, 4), err))
+    check(err < 0.01, 'the orange light does not land on its own colour (%.4f)' % err)
+
+    def chroma(c):
+        lab = oklab(np.maximum(c, 0) ** 2.2)
+        return np.hypot(lab[:, 1], lab[:, 2])
+    acting = k >= 1 - soft
+    loss = (chroma(base[1][acting]) - chroma(land[1][acting])).max()
+    print('  orange: most chroma lost against the tone %.4f' % loss)
+    check(loss < 0.005, 'the landing bleaches the orange light (%.4f)' % loss)
     same = np.abs(ramps(soft, headroom=0) - ramps(0.0, headroom=0)).max()
     print('  without clipped data: max |with - without| %.2e' % same)
     check(same < 1e-6, 'the landing acts without clipped data')
@@ -211,6 +225,38 @@ def main():
     print('  blown disc edge: steepest step / rise without %.4f  with %.4f' % (s0, s1))
     check(s1 <= s0 * 1.05, 'the landing makes the edge of the blown disc sharper (%.4f > %.4f)' % (s1, s0))
     check(np.all(np.diff(row1[:S // 2]) >= -1e-5), 'the edge of the blown disc does not rise monotonically')
+
+    # P159: the sharpening's undershoot on a near-white pixel (the full-size merge darker than the colour source: a negative
+    # detail delta)
+    lv = np.geomspace(0.3 * clip, clip, 48).astype(np.float32)
+    flat = np.zeros((1, len(lv), 4), np.float32)
+    flat[0, :, :3] = lv[:, None]
+    darker = flat.copy()
+    darker[0, :, :3] *= 0.6
+    lum_f = flat[0, :, :3] @ np.array([0.2126, 0.7152, 0.0722])
+    fz_f = np.zeros_like(flat)
+    fz_f[0, :, 0] = np.interp(np.minimum(lum_f, table.max()), table, grid) ** (1 / 2.2)
+    # no blown neighbourhood (ArkHl 0): no landing, only the undershoot rule acts (it follows the pixel's own lightness)
+    sh = np.zeros((1, len(lv)), np.float32)
+    plain = render(flat, fz_f, sh, soft)[0]
+    rimmed = render(flat, fz_f, sh, soft, full=darker, detail=1.0)[0]
+    rimmed_off = render(flat, fz_f, sh, 0.0, full=darker, detail=1.0)[0]
+    plain_off = render(flat, fz_f, sh, 0.0)[0]
+    L = lambda c: oklab(np.maximum(c, 0) ** 2.2)[:, 0]
+    white = L(plain) >= 0.9
+    dark_on = (L(plain) - L(rimmed))[white].max() if white.any() else 0.0
+    dark_off = (L(plain_off) - L(rimmed_off))[white].max() if white.any() else 0.0
+    print('  undershoot on near-white pixels (L >= 0.9): L lost %.4f with P159, %.4f without' % (dark_on, dark_off))
+    check(white.any(), 'the test is moot: no near-white pixel')
+    check(dark_off > 0.01, 'the test is moot: the delta does not darken without the landing')
+    check(dark_on < 0.35 * dark_off, 'a near-white pixel is still darkened by the undershoot (%.4f)' % dark_on)
+    same = np.abs(render(flat, fz_f, sh, soft, headroom=0, full=darker, detail=1.0)[0]
+                  - render(flat, fz_f, sh, 0.0, headroom=0, full=darker, detail=1.0)[0]).max()
+    check(same < 1e-6, 'the undershoot rule acts without clipped data (%.2e)' % same)
+    keep = L(plain) < 0.75
+    if keep.any():
+        kept = (L(plain) - L(rimmed))[keep].min()
+        check(kept > 0.005, 'the undershoot on a darker pixel was removed too (%.4f)' % kept)
     if FAILURES:
         print('highlight landing check FAILED (%d)' % len(FAILURES))
         return 1

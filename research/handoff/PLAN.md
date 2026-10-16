@@ -3796,7 +3796,20 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   after recovery, after ARK. Fix ideas, chosen by what the split shows: desaturation driven by a blurred brightness (as the
   P154 mask) so an object's edge and inside go together; a hue- and chroma-keeping shoulder for saturated light (OKLab chroma
   scaled with the luminance compression instead of mixing to white); the Bento / rim colour taken from the same ratio source.
-- OPEN.
+- Measured in the JPEG (a cone of the screen): outside 252 grey (OKLab L 0.99), the rim (253, 216, 217) L 0.93, the inside
+  (255, 243, 243) L 0.97: the rim is DARKER than both sides and more saturated (C/L 0.04 vs 0.016) - an undershoot ring, and
+  the shoulder bleaches the brighter inside more than the darker rim. On the host (ark/combine.glsl, a profile «screen ground
+  -> orange cone -> ground» above the clip, as with Bento) the tone alone bleaches the cone to (255, 230, 208) and the
+  P154 landing made it paler still (it landed on the toned, bleached colour).
+- DONE 2026-10-16 (ark/combine.glsl, both under HL_LANDING: only with real clipped data and «Мягкость засветов» on):
+  (1) the landing takes a coloured light to ITS scene colour at full brightness (the linear colour before the tone,
+  display-encoded; near-neutral below ~0.1 linear saturation still to pure white): the host cone comes out orange
+  (255, 197, 149) inside, its chroma highest inside, no outline; the P154 owner request «восстановление цвета в областях
+  засветов» now holds for blown colour as well; (2) a negative detail delta (the sharpening's undershoot) fades out on
+  pixels the tone took above ~0.8 L (none above 0.96): the rim ring inside a blown area; dark detail on darker pixels kept.
+  check_highlight_landing: the orange at the ceiling = its scene colour, never more bleached than the tone left it; the
+  undershoot on near-white pixels 0.024 -> 0.007 L; nothing without clipped data. Not checked on the owner's burst (no
+  stages / DNG of it): to confirm, the same scene with «Диагностика» on.
 
 ## P109l - Snapdragon client attribution and VCF RAW boundary
 

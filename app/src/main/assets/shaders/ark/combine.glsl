@@ -552,6 +552,10 @@ void main() {
     }
 
     // === AgX (Blender 4 / Kraken matrices of the kernel) [:1079-1094, :1687-1730] ===
+#if HL_LANDING == 1
+    // P159: the light's own colour (linear sRGB, before the tone's shoulder bleaches it) for the highlight landing
+    vec3 sceneTone = scene;
+#endif
 #if P3_OUT == 1
     float chromaBack;
     scene = intoSrgbPositive(scene, chromaBack);
@@ -639,6 +643,13 @@ void main() {
         delta *= compression * compression;
     }
     float lBefore = post.x;
+#if HL_LANDING == 1
+    // P159 (owner, X300 Ultra, an LED screen over a concert hall: orange cones drawn as a saturated outline round a pale
+    // inside): with clipped data in the frame the detail no longer darkens a pixel the tone already took to near white -
+    // the sharpening's undershoot along an edge inside a blown area was a darker rim, and a darker rim keeps the colour the
+    // shoulder bleaches out of the brighter inside. Dark detail on a darker pixel (text, an edge's dark side) keeps it all.
+    if (headroomU != 0 && hlSoftU > 0.0 && delta < 0.0) delta *= 1.0 - smoothstep(0.80, 0.96, lBefore);
+#endif
     post.x = clamp(post.x + delta * (1.0 - smoothstep(0.75, 1.0, post.x) * 0.5), 0.0001, 1.0);
     // The kernel keeps a, b while the delta moves L. At a strong edge the colour is the B-spline mix of both sides, and
     // on the dark side the delta pulls L far down: the same a, b at a low L read as a saturated purple/green line. Scaling
@@ -680,9 +691,18 @@ void main() {
         float t = clamp((rBlur - (1.0 - hlSoftU)) / hlSoftU, 0.0, 1.0);
         float landing = (1.0 - (1.0 - t) * (1.0 - t)) * smoothstep(0.15, 0.45, max3(orig) / clipCeiling);
         if (landing > 0.0) {
-            float peak = max(max3(outRgb), 0.000001);
-            float satOut = (peak - min(outRgb.r, min(outRgb.g, outRgb.b))) / peak;
-            vec3 top = mix(outRgb / peak, vec3(1.0), 1.0 - smoothstep(0.04, 0.15, satOut));
+            // P159: a coloured light lands on ITS colour at full brightness, taken from the scene before the tone (the
+            // shoulder had bleached a blown orange to pale pink: the inside of a cone on an LED screen); a near-neutral one
+            // (linear saturation below ~0.1) on pure white
+            vec3 sN = clamp(sceneTone / max(max3(sceneTone), 0.000001), 0.0, 1.0);
+            float satS = 1.0 - min(sN.r, min(sN.g, sN.b));
+#if P3_OUT == 1
+            vec3 sTop = pow(clamp(SRGB_TO_P3 * sN, 0.0, 1.0), vec3(gammaInv));
+#else
+            vec3 sTop = pow(sN, vec3(gammaInv));
+#endif
+            sTop /= max(max3(sTop), 0.000001);
+            vec3 top = mix(sTop, vec3(1.0), 1.0 - smoothstep(0.08, 0.30, satS));
             outRgb = mix(outRgb, top, landing);
         }
     }
