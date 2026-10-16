@@ -372,109 +372,12 @@ public class PreferenceKeys {
 
 
 
-    private static int sharpInt(Key key) {
-        return preferenceKeys.settingsManager.getInteger("default_scope", key).intValue();
-    }
-
-
-    /** Samples per colour block: 2 quad bayer, 4 tetra squared. */
-    public static int getRemosaicBlockSize() {
-        return sharpInt(Key.KEY_REMOSAIC_BLOCK) == 2 ? 2 : 4;
-    }
-
     /**
      * Colour-block side of the RAW stream for statistics and the raw viewfinder when MosaicStream has not measured one: 1
      * (P129: SCAM HDR's declared mosaic modes are gone).
      */
     public static int mosaicBlock() {
         return 1;
-    }
-
-    /** Interpolate green along edges instead of across them. */
-    public static boolean isRemosaicSteered() {
-        return getBool(Key.KEY_REMOSAIC_STEERED);
-    }
-
-    /** Bound interpolated colour differences by the measured ones nearby. */
-    public static boolean isRemosaicClampDiffs() {
-        return getBool(Key.KEY_REMOSAIC_CLAMP);
-    }
-
-
-    /** Divide out the per-site response profile inside a colour block. */
-    public static boolean isRemosaicFlatField() {
-        return getBool(Key.KEY_REMOSAIC_FLATFIELD);
-    }
-
-    /** 0 nearest, 1 sharp, 2 balanced, 3 smooth. */
-    public static boolean isTetraResponseCorrection() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_tetra_response_key", true);
-    }
-
-
-
-
-
-
-
-    /** Hybrid reconstruction weights; not exposed parameters of the closed neural model. */
-    public static float getHexQuadLuma() {
-        return RawTherapeeSettings.number("hexquad_luma",50,0,100);
-    }
-
-    public static float getHexQuadChroma() {
-        return RawTherapeeSettings.number("hexquad_chroma",100,0,100);
-    }
-
-    public static int getHexQuadModelScale() {
-        return "1".equals(preferenceKeys.settingsManager.getString("default_scope","hexquad_model","2"))?1:2;
-    }
-
-    public static boolean isHexQuadAutoIso() {
-        return preferenceKeys.settingsManager.getBoolean("default_scope","hexquad_auto_iso",false);
-    }
-
-    public static HexQuadOptions getHexQuadOptions(int iso) {
-        return new HexQuadOptions(iso,getHexQuadModelScale(),
-                false, // SCAM HDR keeps the network output at the input size
-                RawTherapeeSettings.number("hexquad_noise_overall",1,.5f,2),
-                RawTherapeeSettings.number("hexquad_noise_photon",1,.5f,2),
-                RawTherapeeSettings.number("hexquad_noise_readout",1,.5f,2),
-                getHexQuadLuma(),getHexQuadChroma(),isHexQuadAutoIso(),
-                RawTherapeeSettings.number("hexquad_iso_low_luma",35,0,100),
-                RawTherapeeSettings.number("hexquad_iso_low_chroma",85,0,100),
-                RawTherapeeSettings.number("hexquad_iso_high_luma",70,0,100),
-                RawTherapeeSettings.number("hexquad_iso_high_chroma",100,0,100),
-                RawTherapeeSettings.number("hexquad_texture",0,0,100),
-                true /* Unified hybrid; legacy hexquad_compute selection is no longer used. */);
-    }
-
-    /** Quad 2x2 (2x ISZ) denoise controls: same meaning as the HexQuad ones, own keys. */
-    public static HexQuadOptions getQuadOptions(int iso) {
-        return new HexQuadOptions(iso,1,false,
-                RawTherapeeSettings.number("quad2x2_noise_overall",1,.5f,2),
-                RawTherapeeSettings.number("quad2x2_noise_photon",1,.5f,2),
-                RawTherapeeSettings.number("quad2x2_noise_readout",1,.5f,2),
-                RawTherapeeSettings.number("quad2x2_luma",50,0,100),
-                RawTherapeeSettings.number("quad2x2_chroma",100,0,100),
-                preferenceKeys.settingsManager.getBoolean("default_scope","quad2x2_auto_iso",false),
-                RawTherapeeSettings.number("quad2x2_iso_low_luma",35,0,100),
-                RawTherapeeSettings.number("quad2x2_iso_low_chroma",85,0,100),
-                RawTherapeeSettings.number("quad2x2_iso_high_luma",70,0,100),
-                RawTherapeeSettings.number("quad2x2_iso_high_chroma",100,0,100),
-                0f,false);
-    }
-
-
-
-
-    public static int getRemosaicProfile() {
-        return Math.max(0, Math.min(3, sharpInt(Key.KEY_REMOSAIC_PROFILE)));
-    }
-
-    /** Mosaic phase; the block grid does not always start at pixel 0. */
-    public static int[] getRemosaicPhase() {
-        return new int[]{ sharpInt(Key.KEY_REMOSAIC_PHASE_X), sharpInt(Key.KEY_REMOSAIC_PHASE_Y) };
     }
 
     /** SCAM: flush the HAL request queue before the bracket (shutter lag ~0.4 s -> ~0.15 s). */
@@ -637,15 +540,6 @@ public class PreferenceKeys {
     /** The SoC the SCAM HDR network was built for (Hexagon v79): SCAM HDR (SCAM) runs there; the SCAM Hybrid runs anywhere. */
     public static boolean isScamNetSoc() {
         return ScamHybridKeys.scamNetSoc();
-    }
-
-    /**
-     * P129: SHDR on an ISZ Quad / Tetra stream merges the equal-exposure N frames with the NPU remosaic network first («Нейро-
-     * ремозаик», pref_scam_hybrid_neural_remosaic, off by default as SCAM HDR's mosaic mode was): Hexagon v79 contexts, so the
-     * Snapdragon 8 Elite (SM8750) only.
-     */
-    public static boolean isShdrNeuralRemosaic() {
-        return isScamNetSoc() && hybridSwitch("neural_remosaic", false);
     }
 
     // ---- SCAM Hybrid: a route of its own (section «SCAM-гибрид», scam_hybrid_screen), separate from SCAM HDR ----
@@ -1365,13 +1259,6 @@ public class PreferenceKeys {
         KEY_SHOW_GRID(R.string.pref_show_grid_key),
         KEY_CAMERA_SOUNDS(R.string.pref_camera_sounds_key),
         KEY_TIMER_SOUND(R.string.pref_timer_sound_key),
-        KEY_REMOSAIC_BLOCK(R.string.pref_remosaic_block_key),
-        KEY_REMOSAIC_PROFILE(R.string.pref_remosaic_profile_key),
-        KEY_REMOSAIC_STEERED(R.string.pref_remosaic_steered_key),
-        KEY_REMOSAIC_CLAMP(R.string.pref_remosaic_clamp_key),
-        KEY_REMOSAIC_FLATFIELD(R.string.pref_remosaic_flatfield_key),
-        KEY_REMOSAIC_PHASE_X(R.string.pref_remosaic_phase_x_key),
-        KEY_REMOSAIC_PHASE_Y(R.string.pref_remosaic_phase_y_key),
         KEY_LIVE_VIEWFINDER_RAW(R.string.pref_live_viewfinder_raw_key),
         KEY_WIDE169(R.string.pref_wide169_key),
         KEY_ZSL_BUFFER_COUNT(R.string.pref_zsl_buffer_count_key),

@@ -10,8 +10,73 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from inspect_vivo_hexquad import FlatBuffer
+import struct
 from inspect_vivo_neural import Metadata
+
+
+class FlatBuffer:
+    """Bounds-checked reads of the observed VDNN FlatBuffer fields (was in the HexQuad inspector, removed in P175)."""
+    def __init__(self, data):
+        self.data = data
+
+    def check(self, offset, length):
+        if offset < 0 or length < 0 or offset > len(self.data) - length:
+            raise ValueError('FlatBuffer range outside file')
+
+    def number(self, fmt, offset):
+        self.check(offset, struct.calcsize('<' + fmt))
+        return struct.unpack_from('<' + fmt, self.data, offset)[0]
+
+    def pointer(self, offset):
+        distance = self.number('I', offset)
+        if distance < 4:
+            raise ValueError('Invalid FlatBuffer relative pointer')
+        result = offset + distance
+        self.check(result, 4)
+        return result
+
+    def field(self, table, index):
+        vtable = table - self.number('i', table)
+        length = self.number('H', vtable)
+        object_size = self.number('H', vtable + 2)
+        if length < 4 or length % 2 or object_size < 4:
+            raise ValueError('Invalid FlatBuffer table')
+        self.check(vtable, length)
+        self.check(table, object_size)
+        if index < 0 or 4 + index * 2 >= length:
+            raise ValueError('Missing required VDNN field')
+        offset = self.number('H', vtable + 4 + index * 2)
+        if offset < 4 or offset + 4 > object_size:
+            raise ValueError('Invalid required VDNN field')
+        return table + offset
+
+    def vector(self, field, item_size=4):
+        offset = self.pointer(field)
+        count = self.number('I', offset)
+        start = offset + 4
+        self.check(start, count * item_size)
+        return start, count
+
+    def string(self, field):
+        start, count = self.vector(field, 1)
+        self.check(start + count, 1)
+        if self.data[start + count] != 0:
+            raise ValueError('Unterminated VDNN string')
+        return self.data[start:start + count].decode('utf-8')
+
+    def one(self, field):
+        offset, count = self.vector(field)
+        if count != 1:
+            raise ValueError('Expected exactly one tensor')
+        return offset
+
+    def shape(self, field):
+        table = self.pointer(self.one(field))
+        start, count = self.vector(self.field(table, 0))
+        if count != 4:
+            raise ValueError('Expected rank-4 VDNN shape')
+        return list(struct.unpack_from('<4I', self.data, start))
+
 
 FORWARD_SHA='7c4663c3c03394841b92cbcc207ad6bd610369c004d45d913aa950cc61511a16'
 CONTEXT_SHA='a551304d938af0cab76091557414f46a64cae05aaf68ef8030c1bcc42decac8c'

@@ -47,13 +47,6 @@ public class GLBasePipeline implements AutoCloseable {
         return true;
     }
     public Settings mSettings;
-    /**
-     * Set once the remosaic has rearranged the mosaic into plain bayer. The
-     * quad paths downstream key off the settings value, which still says quad
-     * because that is what the sensor delivers; after the node it no longer
-     * describes the frame in flight.
-     */
-    public boolean remosaicApplied = false;
     public Parameters mParameters;
     private final String Name;
     public Point workSize;

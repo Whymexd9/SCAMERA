@@ -173,11 +173,7 @@ public final class ScamHybridBurst implements ScamTransport {
         // grid and is always measured.
         final int knownBlock = p.rawBinning > 1 ? 0 : com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(
                 declaredSensorModeBlock());
-        if (p.remosaicDone) {
-            // P129: the NPU remosaic (or the GPU remosaic) rearranged the burst: plain Bayer, whatever the stream's stored block
-            mosaicBlock = 1;
-            Log.i("SCAM_HDR", "hybrid stream colour block: 1 (rearranged before the merge: neural remosaic)");
-        } else if (knownBlock > 0) {
+        if (knownBlock > 0) {
             mosaicBlock = knownBlock;
             Log.i("SCAM_HDR", "hybrid stream colour block: " + knownBlock + " (stored for "
                     + com.particlesdevs.photoncamera.processing.MosaicBlockStore.shotKey() + ", detector skipped)");
@@ -272,8 +268,6 @@ public final class ScamHybridBurst implements ScamTransport {
             double s = Float.isNaN(f.sharpness) ? 0 : f.sharpness;
             if (s > bestScore) { bestScore = s; best = f; }
         }
-        // P129: the NPU remosaic's frame (all the equal N frames in one) is the base
-        for (ImageFrame f : normal) if (f.neuralReference) { best = f; break; }
         base = best;
         if (moment) Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "motion: base = frame %d, %.1f ms before the moment's frame (%d after it skipped)",
                 base.number, (anchor - base.timestamp) / 1e6, start));

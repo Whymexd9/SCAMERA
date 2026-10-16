@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * {@link SettingsAvailability} with the facts of this phone: the 10-bit HEIC encoder, the vivo stock AE observer, the
- * colour matrix that replaces «Цветовой метод», SCAM HDR (the 8 Elite) and the Xiaomi 17 Ultra's smooth zoom. They need
+ * colour matrix that replaces «Цветовой метод» and the Xiaomi 17 Ultra's smooth zoom. They need
  * Android, and the host check (tools/check_settings_model.py) compiles SettingsAvailability on its own, so the settings
  * screen and the shade build it here.
  */
@@ -21,7 +21,6 @@ public final class DeviceAvailability {
                 .hdrUnavailable(com.particlesdevs.photoncamera.processing.color.HdrOutput.unavailableReason())
                 .stockAeDevice(com.particlesdevs.photoncamera.capture.ScamStockAe.supportedDevice())
                 .colorMethodOverride(colorMethodOverride())
-                .scamHdrSupported(PreferenceKeys.isScamHdrSupported())
                 .xiaomiSmoothZoom(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone())
                 .oppoTunedColor(com.particlesdevs.photoncamera.processing.render.OppoTunedColor.applies())
                 .mosaicStreams(com.particlesdevs.photoncamera.processing.MosaicBlockStore.anyMosaic());

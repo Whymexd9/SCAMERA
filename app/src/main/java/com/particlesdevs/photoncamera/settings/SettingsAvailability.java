@@ -18,8 +18,6 @@ public final class SettingsAvailability {
     private boolean stockAeDevice;
     /** Why «Цветовой метод» does not act here (a tuned / ISP matrix replaces it), null when it does. */
     private String colorMethodOverride;
-    /** SCAM HDR runs on this phone (PreferenceKeys.isScamHdrSupported: the Snapdragon 8 Elite); assumed unless told otherwise. */
-    private boolean scamHdrSupported = true;
     /** The tele's smooth optical zoom exists here (capture.XiaomiTeleZoom.phone: the Xiaomi 17 Ultra); assumed unless told otherwise. */
     private boolean xiaomiSmoothZoom = true;
     /** P128: the OPPO tuned ISP matrix renders this phone's photos (OppoTunedColor.applies); assumed unless told otherwise. */
@@ -35,8 +33,6 @@ public final class SettingsAvailability {
     public SettingsAvailability stockAeDevice(boolean supported) { stockAeDevice = supported; return this; }
     /** The device fact behind «Цветовой метод»: the matrix that replaces the choice on this phone, or null. */
     public SettingsAvailability colorMethodOverride(String reason) { colorMethodOverride = reason; return this; }
-    /** The device fact behind the SCAM HDR screen and its checks: they are hidden where SCAM HDR cannot run. */
-    public SettingsAvailability scamHdrSupported(boolean supported) { scamHdrSupported = supported; return this; }
     /** The device fact behind «Плавный оптический зум»: hidden on any other phone than the Xiaomi 17 Ultra. */
     public SettingsAvailability xiaomiSmoothZoom(boolean supported) { xiaomiSmoothZoom = supported; return this; }
     /** The device fact behind «Насыщенность матрицы OPPO»: hidden where the OPPO tuned matrix never renders a photo. */
@@ -64,13 +60,11 @@ public final class SettingsAvailability {
     /**
      * Rows that only belong to another choice and are hidden instead of explained: the settings of the photo formats that
      * are not chosen (HEIC quality / 10 bit, WebP quality / lossless, the AVIF rows, «HDR в HEIC / AVIF» outside HEIC / AVIF)
-     * and «Также сохранять JPEG» while the format is JPEG («Цветовое пространство» serves every format); and the rows of what this phone does not have (SCAM HDR and its checks without the 8 Elite, the Xiaomi
-     * smooth zoom).
+     * and «Также сохранять JPEG» while the format is JPEG («Цветовое пространство» serves every format); and the rows of what this phone does not have (the Xiaomi
+     * smooth zoom, the OPPO tuned matrix's saturation).
      */
     public boolean hidden(String key) {
         // Rows of what this phone does not have (the settings screen also hides them when it builds the tree, for the search).
-        // P129: the neural remosaic needs the 8 Elite NPU (its page and its check)
-        if (!scamHdrSupported && any(key, "shdr_neural_remosaic_screen", "scam_neural_probe")) return true;
         if (!xiaomiSmoothZoom && key.equals("pref_xiaomi_smooth_zoom")) return true;
         // P128: the AgX saturation of the OPPO tuned matrix acts only on the phones that matrix renders (ArkTone.ccmSatComp)
         if (!oppoTunedColor && key.equals("pref_scam_hybrid_ark_ccm_sat")) return true;
@@ -87,8 +81,6 @@ public final class SettingsAvailability {
     }
 
     public String reason(String key) {
-        // P129: SHDR is the only merge; the neural remosaic of ISZ streams has its own switch
-        boolean neuralMosaic = on("pref_scam_hybrid_neural_remosaic", false);
         // The denoise and watermark switches sit on a parent page of these rows (P6), so the rule replaces android:dependency.
         if (key.startsWith("pref_scam_hybrid_dn_") && !on("pref_scam_hybrid_denoise", true)) return Lang.t("Включите «Шумоподавление».", "Turn on “Noise reduction”.");
         // Denoise engine (pref_scam_hybrid_dn_engine): The reference finish (ScamDenoise) reads the dn_ rows, NLM (ScamHdrDenoise) its two strengths.
@@ -196,19 +188,6 @@ public final class SettingsAvailability {
                         "Lossless keeps the photo's own depth: 10 bit from Android 13, else 8.");
             if (key.equals("pref_avif_chroma")) return Lang.t("Без потерь — всегда 4:4:4.", "Lossless is always 4:4:4.");
         }
-        // P129: tuning of the Quad 2x2 and HexQuad networks of «Нейроремозаик (NPU)»
-        if ((key.startsWith("quad2x2_") || key.startsWith("hexquad_")) && !key.endsWith("screen")) {
-            if (!neuralMosaic) return Lang.t("Включите «Нейроремозаик (NPU)».", "Turn on “Neural remosaic (NPU)”.");
-            String p = key.startsWith("quad2x2_") ? "quad2x2_" : "hexquad_";
-            boolean auto = on(p + "auto_iso", false);
-            if (any(key, p + "luma", p + "chroma") && auto) return Lang.t("Сила задаётся ниже по ISO. Для ручной настройки выключите автоматику.", "The strength is set by ISO below. Turn off the auto mode to set it by hand.");
-            if (key.startsWith(p + "iso_") && !auto) return Lang.t("Включите «Люма и хрома по ISO».", "Turn on “Luma and chroma by ISO”.");
-        }
-        // P129: the GPU remosaic of the frames the network does not merge, and the Tetra response of its input
-        if (key.startsWith("pref_remosaic_") && !neuralMosaic)
-            return Lang.t("Ремозаик остальных кадров при «Нейроремозаик (NPU)».", "Remosaic of the other frames with “Neural remosaic (NPU)”.");
-        if (key.equals("pref_tetra_response_key") && !neuralMosaic)
-            return Lang.t("Коррекция Tetra для «Нейроремозаик (NPU)».", "Tetra correction for “Neural remosaic (NPU)”.");
         if (key.equals("pref_color_method_key") && colorMethodOverride != null) return colorMethodOverride;
         return null;
     }

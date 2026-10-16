@@ -78,18 +78,9 @@ jobs:
           /tmp/avif-check/bin/pip install pillow==12.3.0 numpy==2.3.5
           /tmp/avif-check/bin/python tools/check_avif.py
 
-      - name: Check Tetra response estimator
+      - name: Check the merge worker builds and starts on the host
         run: |
-          mkdir -p build/tetra-profile-check
-          javac -d build/tetra-profile-check app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/TetraResponseProfile.java tools/TetraResponseProfileCheck.java tools/TetraResponseMapCheck.java
-          java -cp build/tetra-profile-check TetraResponseProfileCheck
-          java -cp build/tetra-profile-check TetraResponseMapCheck
-
-      - name: Check neural packing and CFA gate
-        run: |
-          g++ -std=c++14 -O2 -Wall -Wextra -fsanitize=address,undefined tools/check_scam_neural_capture.cpp -ldl -o /tmp/check-scam-neural-capture
-          /tmp/check-scam-neural-capture
-          # The worker includes the EGL/GLES GPU helpers (hexquad / super-resolution).
+          # The worker includes the EGL/GLES GPU helpers (SHDR merge / super-resolution).
           sudo apt-get update -qq
           sudo apt-get install -y libegl-dev libgles-dev
           g++ -pthread -std=c++17 -O2 -Wall -Wextra app/src/main/cpp/scam-neural-worker.cpp -ldl -lEGL -lGLESv2 -o /tmp/scam-neural-worker
@@ -130,7 +121,6 @@ jobs:
           mkdir -p /tmp/zsl-quality-check
           javac -d /tmp/zsl-quality-check app/src/main/java/com/particlesdevs/photoncamera/capture/RawFrameQuality.java tools/java/RawFrameQualityCheck.java
           java -ea -cp /tmp/zsl-quality-check RawFrameQualityCheck
-          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_remosaic_shaders.py
           /usr/bin/python3 tools/check_lanczos_downscale.py
           cmake -S tools/jpeg-check -B /tmp/jpeg-check -DCMAKE_BUILD_TYPE=Release && cmake --build /tmp/jpeg-check -j 4
           /tmp/jpeg-check/scamera-jpeg-check 2592 1944 95 4 - /tmp && /tmp/jpeg-check/scamera-jpeg-check 1000 3000 100 3 - /tmp
@@ -208,6 +198,11 @@ jobs:
             echo "Removed legacy post-processing screens are back"
             exit 1
           fi
+          # P175: the neural remosaic (its page, its switch and its check) is gone
+          if grep -q 'shdr_neural_remosaic_screen\|pref_scam_hybrid_neural_remosaic\|scam_neural_probe' /tmp/apk-preferences.txt; then
+            echo "Neural remosaic settings are back"
+            exit 1
+          fi
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" | head -1
 
       # Private vendor binaries stay out of git. A secret bootstraps the
@@ -238,7 +233,6 @@ jobs:
           APK=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
           python3 tools/package_scam_neural.py \
             --template "$APK" \
-            --bundle-dir "$RUNNER_TEMP/neural-assets/bundle" \
             --hexquad-dir "$RUNNER_TEMP/neural-assets/hexquad" \
             --scam-dir "$RUNNER_TEMP/neural-assets/nice" \
             --apksigner "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" \

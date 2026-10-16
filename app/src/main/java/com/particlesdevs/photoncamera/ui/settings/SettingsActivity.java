@@ -220,17 +220,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             seedMissingListValues(fullPreferenceScreen);
             setupScalarInputs(getPreferenceScreen());
-            // P129: the neural remosaic (its page and its check) needs the 8 Elite NPU (Hexagon v79)
-            if (!PreferenceKeys.isScamNetSoc())
-                for (String key : new String[]{"shdr_neural_remosaic_screen", "scam_neural_probe"}) {
-                    Preference npu = findPreference(key);
-                    if (npu != null) npu.setVisible(false);
-                }
             // P17: the tele's smooth optical zoom exists on the Xiaomi 17 Ultra only
             Preference xiaomiZoom = findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
             if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
             setupPhotoFormat();
-            setupRemosaicBackend();
+            setupCaptureReport();
             SettingsStyle.apply(getPreferenceScreen());
         }
 
@@ -441,16 +435,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
 
 
-        private void setupRemosaicBackend() {
+        private void setupCaptureReport() {
             // P129: the last SHDR shot's worker report (it used to sit behind the SCAM HDR launch check)
             Preference report = findPreference("shdr_capture_report");
             if (report != null) report.setOnPreferenceClickListener(pref -> {
                 startActivity(new android.content.Intent(requireContext(), ScamActivity.class));
-                return true;
-            });
-            Preference neural = findPreference("scam_neural_probe");
-            if (neural != null) neural.setOnPreferenceClickListener(pref -> {
-                startActivity(new android.content.Intent(requireContext(), ScamNeuralActivity.class));
                 return true;
             });
         }

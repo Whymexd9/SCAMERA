@@ -25,7 +25,19 @@ LIMIT = 128 * 1024 * 1024
 # Entries of bundle v2 that are verified but no longer packaged (the vivo VSR upscale was removed in the settings cleanup;
 # the encrypted bundle and its secret stay unchanged).
 # P129: SCAM HDR's forward and tone networks went with SCAM HDR (SHDR is the only merge) in the same way.
-BUNDLE_ONLY = {'hexquad': {
+# P175: the neural remosaic too: the tele576 set (the whole bundle group), the HP9 HexQuad x1/x2 and the Quad 2x2 contexts.
+BUNDLE_ONLY = {'bundle': {
+    'tele576-v79.bin': '32983328ace406ffbfb165a09b1bfd69015e5da224a6d4b3e1f7f0cac74d1c9b',
+    'libQnnSystem.so': '4c221cdd15eedfda218ed3c020e71c6c4f373f4f7149753b5eded92ef3c127e6',
+    'libQnnHtpV79Stub.so': '77c35c65a6c6f3b059223575689d4294fb486ba8e062a9ad63a9ac15380076a5',
+    'libQnnHtp.so': '73683f1dabfafe1199ff922b43cf748198bbc793783d50585aeeb22e0e14caa2',
+    'libQnnHtpV79Skel.so': '3353856643575df6ff215ca430e0d9274e5c8ba62a172907b7bc5a5c716f6494'},
+    'hexquad': {
+    'hexquad-x1-v79.bin': 'e4519b2b8ee4ff1684c10d0e3006c6ab613972d107ed8f05c58543b833e17e22',
+    'hexquad-x2-v79.bin': '70e0a1c4e5c1316505a562badb85a8910cb6860106894b1d137077f2af357218',
+    'quad-x1-v79.bin': '7b42687974c53439fcb71ef3254b218eca26388c397138431f5a7a3daf6314aa',
+    'quad-hp9-x1-v79.bin': 'c135a5b54a0637bdaa5b116c76ce667d73f0a9d9b8adae059d178a80d66bdbc3',
+    'quad-hp9-highdrc-x1-v79.bin': '7c09eca4b1522fed690631cc86174bf9a75a14dde8e3279d935d3f253974d812',
     'vsr1x-v79.bin': 'db7eec6b89c9040e05be84bfacebb9d7dacb725817998047f7c51e199027b72c',
     'vsr2x-v79.bin': 'd392f3c23181bd792f766ab21b7635f966edbc188ff323d166ed6859a395d118',
     'vsr4x-v79.bin': 'cc6d236a3f6da5214c687d93e16f35715fbeffd36c52eef417ad68f2a0dcb83e'},
@@ -118,8 +130,8 @@ def restore():
 def unpack(data, output):
     if hashlib.sha256(data).hexdigest() != SHA256:
         raise ValueError('Private bundle SHA256 mismatch')
-    manifests = {'bundle': pinned_assets(),
-                 'hexquad': {**pinned_assets('HEX_FILES', 6), **pinned_assets('QUAD_FILES', 3), **BUNDLE_ONLY['hexquad']},
+    manifests = {'bundle': BUNDLE_ONLY['bundle'],
+                 'hexquad': {**pinned_assets('HEX_FILES', 4), **BUNDLE_ONLY['hexquad']},
                  'nice': {**pinned_assets('SCAM_FILES', 5), **BUNDLE_ONLY['nice']}}
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         expected = {group + '/' + name for group, manifest in manifests.items() for name in manifest}

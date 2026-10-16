@@ -62,11 +62,8 @@ target_link_libraries(
 )
 
 # P129: scamAe (SCAM HDR's stock AE observer) and the scamProbe launch check went with SCAM HDR; scam-probe.cpp stays
-# (the worker includes it).
-if(ANDROID_ABI STREQUAL "arm64-v8a")
-    add_library(scamNeuralProbe SHARED scam-neural-probe.cpp)
-    target_link_libraries(scamNeuralProbe PRIVATE dl)
-endif()
+# (the worker includes it). P175: scamNeuralProbe (the neural remosaic's model probe, loaded by nothing) went with the
+# neural remosaic.
 
 # P24: every saved JPEG through jpegli, 4:4:4 (third_party/README.md); Highway gives it NEON / SVE.
 set(HWY_DIR ${SRC_DIR}/third_party/highway)

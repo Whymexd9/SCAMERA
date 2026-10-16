@@ -109,11 +109,15 @@ public class SettingsAuditFixTest {
         assertEquals(android.graphics.ImageFormat.JPEG,com.particlesdevs.photoncamera.capture.CaptureController.mPreviewTargetFormat);
     }
 
-    /** The probe of the old vivo system remosaic path (removed in P4) and the SCAM HDR check (P129) are gone; the neural check stays. */
+    /**
+     * The probe of the old vivo system remosaic path (removed in P4), the SCAM HDR check (P129) and the neural remosaic's check
+     * (P175) are gone; the last SHDR capture report stays.
+     */
     @Test public void scamRemosaicProbeIsGone() {
         PreferenceScreen screen=inflate();
         assertNull(screen.findPreference("remosaic_scam_probe"));
-        assertNull(screen.findPreference("scam_probe"));assertNotNull(screen.findPreference("scam_neural_probe"));
+        assertNull(screen.findPreference("scam_probe"));assertNull(screen.findPreference("scam_neural_probe"));
+        assertNotNull(screen.findPreference("shdr_capture_report"));
     }
 
     /**
@@ -128,7 +132,6 @@ public class SettingsAuditFixTest {
         assertTrue(PreferenceKeys.isCameraSoundsOn());assertTrue(PreferenceKeys.isRoundEdgeOn());assertTrue(PreferenceKeys.isShowWatermarkOn());
         assertEquals(2,PreferenceKeys.getFocusPeakValue());assertEquals(1,PreferenceKeys.getColorMethodValue());
         assertEquals(-1,PreferenceKeys.getThemeValue());
-        assertTrue(PreferenceKeys.isRemosaicSteered());assertTrue(PreferenceKeys.isRemosaicClampDiffs());assertEquals(2,PreferenceKeys.getRemosaicProfile());
         // Every Key whose row declares a default reads that default (switches as "1" / "0").
         Map<String,String> xml=XmlDefaults.read(context);
         int checked=0;
@@ -138,7 +141,8 @@ public class SettingsAuditFixTest {
             assertEquals(k.name(),d,manager.getStringDefault(k));
             checked++;
         }
-        assertTrue(String.valueOf(checked),checked>20); // 24 since P118 removed the 37 RawTherapee sharpening keys
+        // 17: 24 since P118 removed the 37 RawTherapee sharpening keys, then P175 the 7 GPU remosaic keys of the neural remosaic
+        assertTrue(String.valueOf(checked),checked>=17);
         assertEquals("1",xml.get("pref_camera_sounds_key"));assertEquals("0",xml.get("pref_horizon"));
         // A stored value still wins.
         prefs.edit().putString("pref_af_mode_key","1").putBoolean("pref_camera_sounds_key",false).commit();
@@ -173,8 +177,10 @@ public class SettingsAuditFixTest {
                 "pref_theme_key","pref_antibanding_hz_key"};
         for(String key:global){assertTrue(key,ModuleProfiles.isGlobal(key));assertFalse(key,ModuleProfiles.isLocal(key));}
         for(String key:new String[]{"pref_scam_hybrid_cdm","pref_scam_hybrid_ark_sharp_gain","pref_cfa_key","pref_dng_lossless",
-                "pref_dcp_profile_key","pref_raw_stream_format","hexquad_luma"})
+                "pref_dcp_profile_key","pref_raw_stream_format","pref_film_lut_strength"})
             assertTrue(key,ModuleProfiles.isLocal(key));
+        // P175: the neural remosaic's network rows are no module setting any more
+        for(String key:new String[]{"hexquad_luma","quad2x2_luma"})assertFalse(key,ModuleProfiles.isLocal(key));
         // Every listed key is a real row (the RAW save mode is the virtual «Формат» of the top bar and the shade; the route is the
         // migrations' marker since P129: SHDR is the only merge, the row is gone).
         PreferenceScreen screen=inflate();
@@ -228,27 +234,41 @@ public class SettingsAuditFixTest {
         for(String key:new String[]{"pref_scamhdr_diagnostics","pref_scamhdr_planner","pref_scamhdr_luma_radius","pref_scamhdr_mosaic",
                 "pref_scamold_zsl_long","pref_scamold_fast_capture"})
             assertTrue(key,SettingsMigration.isObsolete(key));
-        assertFalse(SettingsMigration.isObsolete("pref_scam_hybrid_neural_remosaic"));
+        // P175: the neural remosaic is gone too: SCAM HDR's neural mosaic mode no longer becomes a switch, and its switch, the
+        // marker of that P129 migration, the GPU remosaic rows and the HexQuad / Quad 2x2 network rows are obsolete
+        for(String key:new String[]{"pref_scam_hybrid_neural_remosaic","pref_scam_hybrid_neural_remosaic_rev","pref_tetra_response_key",
+                "pref_remosaic_block_key","pref_remosaic_profile_key","pref_remosaic_steered_key","pref_remosaic_clamp_key",
+                "pref_remosaic_flatfield_key","pref_remosaic_phase_x_key","pref_remosaic_phase_y_key","hexquad_luma","hexquad_model",
+                "quad2x2_luma","quad2x2_auto_iso"})
+            assertTrue(key,SettingsMigration.isObsolete(key));
+        assertFalse("the remosaic switch api/Settings reads stays",SettingsMigration.isObsolete("pref_remosaic_key"));
         prefs.edit().clear().putString("pref_scamhdr_mosaic","neural").putString(PreferenceKeys.ROUTE_KEY,"scamhdr").commit();
         SettingsMigration.migrateScamHybrid(prefs,false);
-        assertTrue("SCAM HDR's neural mosaic mode becomes SHDR's switch",prefs.getBoolean("pref_scam_hybrid_neural_remosaic",false));
+        assertFalse("SCAM HDR's neural mosaic mode becomes no switch",prefs.contains("pref_scam_hybrid_neural_remosaic"));
+        prefs.edit().putBoolean("pref_scam_hybrid_neural_remosaic",true).putInt("pref_scam_hybrid_neural_remosaic_rev",1)
+                .putString("hexquad_luma","40").putString("pref_remosaic_block_key","2").commit();
         SettingsMigration.removeObsolete(prefs);
-        assertFalse(prefs.contains("pref_scamhdr_mosaic"));
-        prefs.edit().putBoolean("pref_scam_hybrid_neural_remosaic",false).commit();
-        SettingsMigration.migrateScamHybrid(prefs,false);
-        assertFalse("once",prefs.getBoolean("pref_scam_hybrid_neural_remosaic",true));
+        for(String key:new String[]{"pref_scamhdr_mosaic","pref_scam_hybrid_neural_remosaic","pref_scam_hybrid_neural_remosaic_rev",
+                "hexquad_luma","pref_remosaic_block_key"})
+            assertFalse(key,prefs.contains(key));
     }
 
-    /** P129: no route tile; without the 8 Elite the neural remosaic page and its check are hidden, the diagnostics page stays. */
-    @Test public void noRouteTileAndNoNpuRowsWithoutThe8Elite() {
+    /**
+     * P129: no route tile. P175: the neural remosaic page and its check are gone, even on the 8 Elite where they were shown;
+     * the diagnostics page stays.
+     */
+    @Test public void noRouteTileAndNoNeuralRemosaicRows() {
         assertFalse(ShadeCatalog.defaultTiles().contains(ShadeCatalog.ROUTE));
         org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8650");
         assertFalse(ShadeTiles.load(prefs,key->true).contains(ShadeCatalog.ROUTE));
+        org.robolectric.shadows.ShadowBuild.setSystemOnChipModel("SM8750");
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();
             PreferenceFragmentCompat page=(PreferenceFragmentCompat)controller.get().getSupportFragmentManager().findFragmentById(R.id.settings_container);
-            for(String key:new String[]{"scam_neural_probe","shdr_neural_remosaic_screen"})
-                assertFalse(key,page.findPreference(key).isVisible());
+            for(String key:new String[]{"scam_neural_probe","shdr_neural_remosaic_screen","pref_scam_hybrid_neural_remosaic",
+                    "hexquad_denoise_screen","quad2x2_denoise_screen","scam_remosaic_gpu_category","pref_tetra_response_key"})
+                assertNull(key,page.findPreference(key));
+            assertTrue(page.findPreference("shdr_capture_report").isVisible());
             assertTrue(page.findPreference("scam_diagnostics_screen").isVisible());
             assertTrue(page.findPreference("pref_root_enabled").isVisible());
         }

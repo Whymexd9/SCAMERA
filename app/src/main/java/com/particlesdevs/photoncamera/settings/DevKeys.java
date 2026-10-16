@@ -125,7 +125,6 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_la_stream", null, Lang.t("F6 полосами вместе со склейкой (0 — сначала всё поле)", "F6 in bands alongside the merge (0: the whole field first)")));
         k.add(n(merge, "hybrid_la_scam", null, Lang.t("Понижение приоритета потоков F6", "Lower priority of the F6 threads")));
         k.add(s(merge, "hybrid_clip_flags", true, Lang.t("Флаги клипа каналов от воркера для восстановления светов", "The worker's channel clip flags for the highlight recovery")));
-        k.add(n(merge, "hybrid_mosaic_gain", "1", Lang.t("Усиление результата склейки Quad / Tetra (HexQuad)", "Gain of the Quad / Tetra merge result (HexQuad)")));
         // processing
         k.add(n(post, "post_priority", null, Lang.t("Приоритет потока обработки (nice; пусто — не менять)", "Priority of the processing thread (nice; empty: unchanged)")));
         k.add(n(post, "gpu_low_priority", "1", Lang.t("Низкий приоритет GPU-контекста обработки (0 — обычный)", "Low priority of the processing GPU context (0: normal)")));

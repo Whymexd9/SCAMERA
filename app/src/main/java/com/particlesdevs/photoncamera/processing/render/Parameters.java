@@ -49,13 +49,6 @@ public class Parameters {
     public byte cfaPattern;
     /** Physical 2x2 CFA reported by Camera2 (cfaPattern after a remosaic is the order it wrote). */
     public byte baseCfaPattern;
-    /**
-     * Set once a mosaic frame has been rearranged into plain bayer - by the
-     * merge, which does it per frame as it loads them, or by the post-pipeline
-     * node for a single frame. Whoever gets there first claims it so the other
-     * does not run over an ordinary bayer frame.
-     */
-    public boolean remosaicDone;
     // Per-capture policy, not a live settings lookup during asynchronous processing.
     /** Per-shot display correction; never changes sensor exposure, VST or Bayer DNG. */
     public Point rawSize;
@@ -867,7 +860,6 @@ public class Parameters {
     protected Parameters Build() {
         Parameters params = new Parameters();
         params.multiFrameCount = multiFrameCount;
-        params.remosaicDone = remosaicDone;
         params.cfaPattern = cfaPattern;
         params.baseCfaPattern = baseCfaPattern;
         params.usedDynamic = usedDynamic;

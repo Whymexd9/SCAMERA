@@ -14,15 +14,14 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+# The worker executable for the su launcher (the app process spawns lib/arm64-v8a/libscamera_worker.so).
 PREFIX = 'assets/scam-neural/arm64-v8a/'
-HEX_PREFIX = 'assets/scam-hexquad/arm64-v8a/'
-SCAM_PREFIX = 'assets/scam/arm64-v8a/'
 # Worker without root: executable + QNN/CRE runtime installed into nativeLibraryDir.
 LIB_PREFIX = 'lib/arm64-v8a/'
 LIB_WORKER = 'libscamera_worker.so'
 
 
-def pinned_assets(manifest='FILES', expected=5):
+def pinned_assets(manifest, expected):
     """expected=None skips the entry-count check (manifests that grew after the private bundle)."""
     source = ROOT / 'app/src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/ScamNeuralWorker.java'
     block = re.search(r'\b' + re.escape(manifest) + r'\s*=\s*\{(.*?)\n    \};', source.read_text(), re.S)
@@ -59,27 +58,31 @@ def check_worker(data):
         raise ValueError('Worker is not a standalone Android executable')
 
 
-def verify_bundle(apk, assets, hex_assets, scam_assets):
+def native_libraries(*manifests):
+    """P175: every packaged runtime file is a native library (the neural remosaic's networks are no longer packaged)."""
+    result = {}
+    for manifest in manifests:
+        for name, sha in manifest.items():
+            if not name.endswith('.so'):
+                raise ValueError('Packaged runtime entry is not a native library: ' + name)
+            if name in result:
+                raise ValueError('Duplicate native library: ' + name)
+            result[name] = sha
+    return result
+
+
+def verify_bundle(apk, libraries):
     with zipfile.ZipFile(apk) as archive:
         names = archive.namelist()
         if len(names) != len(set(names)):
             raise ValueError('Duplicate APK entries')
         check_worker(archive.read(PREFIX + 'scam-neural-worker'))
-        for prefix, manifest in ((PREFIX, assets), (HEX_PREFIX, hex_assets), (SCAM_PREFIX, scam_assets)):
-            for name, sha in manifest.items():
-                if name.endswith('.so') and prefix != PREFIX:
-                    continue  # shipped as lib/arm64-v8a/<name>, verified below
-                with archive.open(prefix + name) as stream:
-                    if hashlib.file_digest(stream, 'sha256').hexdigest() != sha:
-                        raise ValueError('APK asset hash mismatch: ' + prefix + name)
         if archive.read(LIB_PREFIX + LIB_WORKER) != archive.read(PREFIX + 'scam-neural-worker'):
             raise ValueError('Native-library worker differs from the asset worker')
-        for directory_manifest in (hex_assets, scam_assets):
-            for name, sha in directory_manifest.items():
-                if name.endswith('.so'):
-                    with archive.open(LIB_PREFIX + name) as stream:
-                        if hashlib.file_digest(stream, 'sha256').hexdigest() != sha:
-                            raise ValueError('Native library hash mismatch: ' + name)
+        for name, sha in libraries.items():
+            with archive.open(LIB_PREFIX + name) as stream:
+                if hashlib.file_digest(stream, 'sha256').hexdigest() != sha:
+                    raise ValueError('Native library hash mismatch: ' + name)
         if archive.testzip() is not None:
             raise ValueError('Invalid APK CRC')
 
@@ -101,25 +104,25 @@ def signing_key():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--template', type=Path, required=True)
-    parser.add_argument('--bundle-dir', type=Path, required=True)
+    # P175: the tele576 set (the bundle group) is no longer packaged; the option stays accepted for older build scripts.
+    parser.add_argument('--bundle-dir', type=Path, help='ignored (the tele576 neural remosaic set is no longer packaged)')
     parser.add_argument('--hexquad-dir', type=Path, required=True)
     parser.add_argument('--scam-dir', type=Path, required=True)
     parser.add_argument('--apksigner', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    assets = pinned_assets()
-    hex_assets = pinned_assets('HEX_FILES', 6)
-    # 2x2 Quad (2x ISZ) models: main IMX06C and tele HP9 ROI; runs on the same QNN runtime as HexQuad.
-    hex_assets.update(pinned_assets('QUAD_FILES', 3))
-    # Every pinned file is required (bundle v2 carries the Quad/VSR contexts and the CRE runtime): an APK without
-    # them is not published (the v1 bundle lacked them and the Actions APK silently differed from local builds).
+    # The SHDR job's QNN runtime (the hexquad group of the private bundle keeps its name); P175: no HexQuad / Quad networks
+    hex_assets = pinned_assets('HEX_FILES', 4)
+    # Every pinned file is required (bundle v2 carries the CRE runtime): an APK without them is not published (the v1
+    # bundle lacked them and the Actions APK silently differed from local builds).
     # SHDR's bundled CRE motion (libvivo_nice_cre.so, libc++_shared.so, 3 compat stubs); P129: no SCAM HDR networks
     scam_assets = pinned_assets('SCAM_FILES', 5)
-    missing = sorted(str(d / n) for d, m in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets), (args.scam_dir, scam_assets))
-                     for n in m if not (d / n).is_file())
+    libraries = native_libraries(hex_assets, scam_assets)
+    sources = ((args.hexquad_dir, hex_assets), (args.scam_dir, scam_assets))
+    missing = sorted(str(d / n) for d, m in sources for n in m if not (d / n).is_file())
     if missing:
         raise ValueError('Required private assets missing (no incomplete APK is published): ' + ', '.join(missing))
-    for directory, manifest in ((args.bundle_dir, assets), (args.hexquad_dir, hex_assets), (args.scam_dir, scam_assets)):
+    for directory, manifest in sources:
         for name, sha in manifest.items():
             if digest_file(directory / name) != sha:
                 raise ValueError('Source asset hash mismatch: ' + str(directory / name))
@@ -132,21 +135,13 @@ def main():
         shutil.copyfile(args.template, unsigned)
         with zipfile.ZipFile(unsigned, 'a', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
             check_worker(archive.read(PREFIX + 'scam-neural-worker'))
-            for directory, prefix, manifest in ((args.bundle_dir, PREFIX, assets),
-                                                (args.hexquad_dir, HEX_PREFIX, hex_assets),
-                                                (args.scam_dir, SCAM_PREFIX, scam_assets)):
+            for directory, manifest in sources:
                 for name in manifest:
-                    # The hexquad / scam runtime libraries ship only as native libraries (mapped
-                    # executable in the app sandbox, also used by the su launcher); the tele576
-                    # set has a different QNN build and stays an asset.
-                    if name.endswith('.so') and prefix != PREFIX:
-                        if LIB_PREFIX + name in archive.namelist():
-                            raise ValueError('Template already contains ' + LIB_PREFIX + name)
-                        archive.write(directory / name, LIB_PREFIX + name)
-                        continue
-                    if prefix + name in archive.namelist():
-                        raise ValueError('Template already contains ' + prefix + name)
-                    archive.write(directory / name, prefix + name)
+                    # The QNN / CRE runtime ships only as native libraries (mapped executable in the app sandbox, also
+                    # used by the su launcher).
+                    if LIB_PREFIX + name in archive.namelist():
+                        raise ValueError('Template already contains ' + LIB_PREFIX + name)
+                    archive.write(directory / name, LIB_PREFIX + name)
             archive.writestr(LIB_PREFIX + LIB_WORKER, archive.read(PREFIX + 'scam-neural-worker'))
         keystore, alias, password = signing_key()
         # The password reaches apksigner through its environment, never the command line.
@@ -155,7 +150,7 @@ def main():
                         '--out', str(signed), str(unsigned)], check=True,
                        env=dict(os.environ, SCAMERA_APKSIGNER_PASS=password))
         subprocess.run(['java', '-jar', str(args.apksigner), 'verify', '--verbose', '--print-certs', str(signed)], check=True)
-        verify_bundle(signed, assets, hex_assets, scam_assets)
+        verify_bundle(signed, libraries)
         signed.rename(args.output)
     print('BUNDLED APK:', args.output)
     print('SHA256:', digest_file(args.output))

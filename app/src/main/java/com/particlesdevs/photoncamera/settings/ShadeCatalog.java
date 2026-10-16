@@ -418,12 +418,8 @@ public final class ShadeCatalog {
         walk(tree, new ArrayList<>(), null, true);
     }
 
-    /** The visibility rules of SettingsActivity: the neural remosaic only on the 8 Elite, the Xiaomi 17 Ultra zoom row only there. */
+    /** The visibility rules of SettingsActivity: the Xiaomi 17 Ultra zoom row only there. */
     private static void applyRuntimeRules(PreferenceScreen tree) {
-        for (String key : new String[]{"shdr_neural_remosaic_screen", "scam_neural_probe"}) {
-            Preference npu = tree.findPreference(key);
-            if (npu != null && !PreferenceKeys.isScamNetSoc()) npu.setVisible(false);
-        }
         Preference xiaomiZoom = tree.findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
         if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
     }

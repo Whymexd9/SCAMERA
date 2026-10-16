@@ -186,7 +186,7 @@ android {
 // app_process/System.load creates an ART namespace that excludes FastRPC deps.
 def neuralAssets = layout.buildDirectory.dir('generated/scamNeuralAssets')
 def buildScamNeuralWorker = tasks.register('buildScamNeuralWorker', Exec) {
-    inputs.files(fileTree('src/main/cpp') { include 'scam-neural-*', 'scam-hexquad-*', 'scam-*' })
+    inputs.files(fileTree('src/main/cpp') { include 'scam-neural-*', 'scam-*' })
     inputs.property('ndkVersion', '27.2.12479018')
     outputs.file(neuralAssets.map { it.file('scam-neural/arm64-v8a/scam-neural-worker') })
     doFirst {

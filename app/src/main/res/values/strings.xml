@@ -104,38 +104,6 @@
     <string name="zsl_buffer_count_summary">RAW frames kept before the press. Higher: more memory used; lower: the merge may run short of frames.</string>
     <string name="live_viewfinder_raw">Live viewfinder</string>
     <string name="live_viewfinder_raw_summary">The viewfinder develops the RAW itself. Off: the standard camera preview. The photo is not affected.</string>
-    <string name="pref_remosaic_phase_default" translatable="false">0</string>
-    <string name="remosaic_phase_x">X phase</string>
-    <string name="remosaic_phase_y">Y phase</string>
-    <string name="remosaic_phase_desc">Horizontal offset of the block grid. A wrong value gives a colour grid; the neural mode needs 0.</string>
-    <string name="pref_remosaic_profile_default" translatable="false">2</string>
-    <string name="remosaic_profile">Interpolation style</string>
-    <string name="remosaic_profile_desc">How much the remosaic smooths the image: softer gives less noise, sharper keeps more detail.</string>
-    <string-array name="remosaic_profile_entries">
-        <item>Nearest sample — no smoothing</item>
-        <item>Sharp — narrow kernel</item>
-        <item>Balanced</item>
-        <item>Soft — wide kernel and median</item>
-    </string-array>
-    <string-array name="remosaic_profile_values" translatable="false">
-        <item>0</item>
-        <item>1</item>
-        <item>2</item>
-        <item>3</item>
-    </string-array>
-    <bool name="pref_remosaic_steered_default">true</bool>
-    <bool name="pref_remosaic_clamp_default">true</bool>
-    <bool name="pref_remosaic_flatfield_default">false</bool>
-    <bool name="pref_remosaic_dump_default">false</bool>
-    <string name="remosaic_steered">Directional interpolation</string>
-    <string name="remosaic_steered_desc">Fills in green along edges, not across them: fewer colour fringes on letters and outlines.</string>
-    <string name="remosaic_clamp">Colour difference clamp</string>
-    <string name="remosaic_clamp_desc">Keeps colour on edges within the nearby values: removes the pink halo.</string>
-    <string name="remosaic_flatfield">Block flat field</string>
-    <string name="remosaic_flatfield_desc">Evens out the different pixel response inside a block: less colour cast. Experimental.</string>
-    <string name="tetra_response_summary">Removes the periodic grid on Tetra 4×4 shots by evening out the pixel response.</string>
-    <string-array name="hexquad_model_entries"><item>x2 — current model</item><item>x1 — experimental</item></string-array>
-    <string-array name="hexquad_model_values" translatable="false"><item>2</item><item>1</item></string-array>
     <!-- Settings sheet handles (TalkBack) -->
     <string name="sheet_handle_open">Open settings panel</string>
     <string name="sheet_handle_toggle">Expand or collapse settings panel</string>

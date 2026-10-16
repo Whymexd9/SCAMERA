@@ -16,50 +16,14 @@ import com.particlesdevs.photoncamera.util.Lang;
 /** Bounded one-job worker process (app sandbox, or su when enabled); vendor failures cannot crash the camera PID. */
 public final class ScamNeuralClient {
     private ScamNeuralClient() {}
-    // Profiles that passed the full chart suite. Persisted per app build (the gate
-    // is deterministic for one model/runtime/profile), so a restart does not redo
-    // the 54-execution suite (~4 s); a validated profile still runs the four
-    // smoke charts on every shot. Never reused between ISO/CFA pairs.
-    private static final java.util.Set<String> validatedHexProfiles = new java.util.HashSet<>();
-    private static boolean hexProfilesLoaded;
-    private static SharedPreferences hexProfileStore(Context context) {
-        return context.getSharedPreferences("scam_hex_validated_profiles", Context.MODE_PRIVATE);
-    }
-    // Version code plus install time: any reinstall (new model/runtime/worker) revalidates.
-    private static String hexProfileBuild(Context context) {
-        try {
-            android.content.pm.PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
-            return info.getLongVersionCode() + ":" + info.lastUpdateTime;
-        } catch (Exception e) { return ""; }
-    }
-    private static void loadHexProfiles(Context context) {
-        if (hexProfilesLoaded) return;
-        hexProfilesLoaded = true;
-        SharedPreferences store = hexProfileStore(context);
-        String build = hexProfileBuild(context);
-        if (!build.isEmpty() && build.equals(store.getString("build", "")))
-            validatedHexProfiles.addAll(store.getStringSet("profiles", java.util.Collections.emptySet()));
-    }
-    private static void saveHexProfiles(Context context) {
-        hexProfileStore(context).edit().putString("build", hexProfileBuild(context))
-                .putStringSet("profiles", new java.util.HashSet<>(validatedHexProfiles)).apply();
-    }
     /** The worker did not finish in time. ScamHybridBurst skips its conservative retry on this type (the text is localized). */
     public static final class WorkerTimeoutException extends IOException {
         WorkerTimeoutException(String message) { super(message); }
     }
     private static String quote(String s) { return "'"+s.replace("'","'\\''")+"'"; }
-    public static synchronized void selfTest(Context context,Consumer<String> log) throws Exception {
-        job(context,null,0,0,0,true,false,false,null,null,log);
-    }
-    public static synchronized ByteBuffer process(Context context,ByteBuffer raw,int w,int h,int redQuad) throws Exception {
-        return job(context,raw,w,h,redQuad,false,false,false,null,null,line->Log.d("ScamNeural",line));
-    }
-    static synchronized ByteBuffer processBurst(Context context,HexQuadBurst burst) throws Exception {
-        return job(context,null,burst.width,burst.height,burst.red,true,false,false,burst,null,line->Log.d("ScamNeural",line));
-    }
+    /** The SHDR merge job (P175: the only job; the neural remosaic's captures and checks are gone). */
     static synchronized ByteBuffer processScamBurst(Context context,ScamTransport burst) throws Exception {
-        return job(context,null,burst.width(),burst.height(),burst.cfa(),true,true,false,null,burst,line->Log.i("SCAM_HDR",line));
+        return job(context,burst,line->Log.i("SCAM_HDR",line));
     }
     /** memfd shared with the root worker through /proc/<pid>/fd/<n>. */
     private static final class SharedMemory implements java.io.Closeable {
@@ -273,9 +237,8 @@ public final class ScamNeuralClient {
         if(!tmp.renameTo(file))throw new IOException(Lang.t("Не удалось сохранить ","Could not save ")+name);
         return file;
     }
-    private static ByteBuffer job(Context context,ByteBuffer raw,int w,int h,int redQuad,boolean hex,boolean scam,boolean scamTone,HexQuadBurst burst,ScamTransport scamBurst,Consumer<String> observer) throws Exception {
-        if(raw!=null && (w<8||h<8||w%8!=0||h%8!=0||(long)w*h>16000000||raw.remaining()!=(long)w*h*4))
-            throw new IOException(Lang.t("Неподдерживаемый размер RAW","Unsupported RAW size"));
+    private static ByteBuffer job(Context context,ScamTransport scamBurst,Consumer<String> observer) throws Exception {
+        final int w=scamBurst.width(),h=scamBurst.height();
         File dir=new File(context.getCacheDir(),"scam-neural-job-"+UUID.randomUUID());
         if(!dir.mkdir())throw new IOException(Lang.t("Не удалось создать папку задания","Could not create the job folder"));
         com.particlesdevs.photoncamera.util.WorkerSpawn.Child process=null;
@@ -283,19 +246,14 @@ public final class ScamNeuralClient {
         // Without root: the worker and its QNN/CRE runtime are installed as native
         // libraries and run as the app's own child process (sandboxed, same NPU/GPU).
         // su remains the optional fallback for builds without them.
-        final boolean direct=(hex||scam) && com.particlesdevs.photoncamera.util.WorkerSpawn.available(context);
-        final String profileKey=burst==null?"":burst.options.profileKey(burst.iso,burst.red);
-        if(burst!=null)loadHexProfiles(context);
-        final boolean cachedProfile=burst!=null&&validatedHexProfiles.contains(profileKey);
+        final boolean direct=com.particlesdevs.photoncamera.util.WorkerSpawn.available(context);
         final long startMs=android.os.SystemClock.elapsedRealtime();
-        if(scamBurst!=null)com.particlesdevs.photoncamera.processing.ShotTimeline.mark("job");
-        // A self-test must never overwrite the failed photograph's report.
-        SharedPreferences prefs=context.getSharedPreferences(
-                scamBurst!=null?"scam_capture_report":scamTone?"scam_tone_report":scam?"scam_root_report":raw!=null||burst!=null?"scam_neural_capture_report":"scam_neural_report",Context.MODE_PRIVATE);
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("job");
+        SharedPreferences prefs=context.getSharedPreferences("scam_capture_report",Context.MODE_PRIVATE);
         StringBuilder report=new StringBuilder("SCAMERA: neural inference job\n");
         // P27: a retry after a failed merge keeps the first attempt in its report.
         final String carried=carryReport;
-        if(scamBurst!=null&&carried!=null)report.append("PREVIOUS ATTEMPT:\n").append(carried).append("\nRETRY:\n");
+        if(carried!=null)report.append("PREVIOUS ATTEMPT:\n").append(carried).append("\nRETRY:\n");
         // W1.5: apply (the in-memory report is current at once; the disk write leaves the shot's path).
         prefs.edit().putString("report",report.toString()).putBoolean("complete",false).apply();
         final long[] lastReportWriteMs={startMs};
@@ -309,48 +267,30 @@ public final class ScamNeuralClient {
                     prefs.edit().putString("report",report.toString()).commit();lastReportWriteMs[0]=now;
                 }
             }
-            if(scamBurst!=null)com.particlesdevs.photoncamera.processing.ShotTimeline.workerLine(line);
+            com.particlesdevs.photoncamera.processing.ShotTimeline.workerLine(line);
             observer.accept(line);
         };
         try {
-            if(burst!=null)log.accept("HEX SOURCE: "+(burst.zsl?"ZSL":"PSL")+" ISO="+burst.iso+
-                    " exposure_s="+burst.exposureSeconds+" black="+burst.black+" white="+burst.white+
-                    " neutral="+java.util.Arrays.toString(burst.neutral)+
-                    " profile_cache="+cachedProfile+" luma="+burst.lumaPercent+" chroma="+burst.chromaPercent+
-                    " model=x"+burst.options.modelScale+" auto_ISO="+burst.options.autoIso+
-                    (burst.quad?" quad_model="+(burst.quadModel==1?"HP9 ROI (tele)":"IMX06C (main)"):"")+
-                    " noise_variance_factors="+burst.options.noiseOverall+","+burst.options.noisePhoton+","+burst.options.noiseReadout+
-                    " texture="+(burst.options.texture*100)+" compute="+(burst.options.gpu?"HYBRID CPU + GPU + NPU":"CPU + NPU"));
             // Extract only the assets in this APK. Missing bundles fail before
             // requesting root; no fallback to Vivo firmware model files.
             if(!direct && !com.particlesdevs.photoncamera.settings.PreferenceKeys.isRootEnabled())
-                throw new IOException(hex||scam?Lang.t("Обработчик не установлен в этой сборке; включите «Root-доступ» в «Настройки → Система»","The processor is not installed in this build; turn on “Root access” in Settings → System")
-                        :Lang.t("Этот нейроремозаик работает только с root: включите «Root-доступ» в «Настройки → Система»","This neural remosaic works only with root: turn on “Root access” in Settings → System"));
+                throw new IOException(Lang.t("Обработчик не установлен в этой сборке; включите «Root-доступ» в «Настройки → Система»","The processor is not installed in this build; turn on “Root access” in Settings → System"));
             {
-                final ZipFile apk=apk(context);
-                java.util.ArrayList<String> names=new java.util.ArrayList<>();
-                java.util.HashSet<String> scamAssets=new java.util.HashSet<>();
-                names.add("scam-neural-worker");
-                if(scam)for(String[] item:ScamNeuralWorker.SCAM_FILES){names.add(item[0]);scamAssets.add(item[0]);}
-                final boolean quad=burst!=null&&burst.quad;
-                for(String[] item:hex?ScamNeuralWorker.HEX_FILES:ScamNeuralWorker.FILES)
-                    if(!scam && !quad || item[0].endsWith(".so"))names.add(item[0]);
-                if(quad)for(String[] item:ScamNeuralWorker.QUAD_FILES)names.add(item[0]);
-                for(String name:names){
-                    if(direct && name.equals("scam-neural-worker"))continue;
-                    String prefix=scamAssets.contains(name)?"assets/scam/arm64-v8a/":hex&&!name.equals("scam-neural-worker")?"assets/scam-hexquad/arm64-v8a/":"assets/scam-neural/arm64-v8a/";
-                    // The QNN/CRE runtime of the SCAM and HexQuad sets ships once, as native
-                    // libraries: the sandbox can map executable code only from nativeLibraryDir,
-                    // and the su launcher reads the same files. (The tele576 set has its own
-                    // QNN build and stays an asset.)
-                    final boolean shared=name.endsWith(".so") && !prefix.equals("assets/scam-neural/arm64-v8a/");
-                    File installed=shared?com.particlesdevs.photoncamera.util.WorkerSpawn.library(context,name):null;
-                    if(direct&&shared&&installed==null)throw new IOException(Lang.t("Неполная установка: нет ","Incomplete install: missing ")+name);
-                    if(installed!=null){
-                        try{android.system.Os.symlink(installed.getAbsolutePath(),new File(dir,name).getAbsolutePath());}
-                        catch(android.system.ErrnoException e){throw new IOException(Lang.t("Не удалось подготовить ","Could not prepare ")+name+": "+e.getMessage());}
-                        continue;
-                    }
+                // The QNN/CRE runtime (SCAM_FILES and HEX_FILES, all native libraries) ships once, as native libraries: the
+                // sandbox can map executable code only from nativeLibraryDir, and the su launcher reads the same files.
+                java.util.ArrayList<String> libraries=new java.util.ArrayList<>();
+                for(String[] item:ScamNeuralWorker.SCAM_FILES)libraries.add(item[0]);
+                for(String[] item:ScamNeuralWorker.HEX_FILES)libraries.add(item[0]);
+                for(String name:libraries){
+                    File installed=com.particlesdevs.photoncamera.util.WorkerSpawn.library(context,name);
+                    if(installed==null)throw new IOException(Lang.t("Неполная установка: нет ","Incomplete install: missing ")+name);
+                    try{android.system.Os.symlink(installed.getAbsolutePath(),new File(dir,name).getAbsolutePath());}
+                    catch(android.system.ErrnoException e){throw new IOException(Lang.t("Не удалось подготовить ","Could not prepare ")+name+": "+e.getMessage());}
+                }
+                // The su launcher runs the worker executable from the APK's assets (the app process spawns the installed one).
+                if(!direct){
+                    final ZipFile apk=apk(context);
+                    final String name="scam-neural-worker",prefix="assets/scam-neural/arm64-v8a/";
                     java.util.zip.ZipEntry entry=apk.getEntry(prefix+name);
                     if(entry==null)throw new IOException(Lang.t("Неполный APK: отсутствует ","Incomplete APK: missing ")+name+Lang.t(". Установите сборку Bundled.",". Install the Bundled build."));
                     // Extracted once per installed APK (was every shot, ~0.2 s); the job
@@ -363,7 +303,7 @@ public final class ScamNeuralClient {
             // "Bundled" CRE source: the worker skips /vendor and loads the APK copy with
             // compat stubs, the path non-scam devices take automatically.
             // "Vendor" never falls back to the APK copy.
-            if(scamBurst!=null){
+            {
                 String creSource=com.particlesdevs.photoncamera.settings.PreferenceKeys.getScamCreSource();
                 String marker="bundled".equals(creSource)?"cre-force-bundled":"vendor".equals(creSource)?"cre-vendor-only":null;
                 if(marker!=null && !new File(dir,marker).createNewFile())throw new IOException(Lang.t("Не удалось создать маркер CRE","Could not create the CRE marker"));
@@ -390,7 +330,7 @@ public final class ScamNeuralClient {
                 if(!tuning.isEmpty())try(java.io.FileWriter tw=new java.io.FileWriter(new File(dir,"hybrid_tuning.txt"))){tw.write(tuning);}
                 log.accept("CLIENT: SCAM Hybrid merge requested"+(tuning.isEmpty()?"":" tuning="+tuning.replace('\n',' ')));
             }
-            if(scamBurst!=null){
+            {
                 // Developer switch (created with adb): dump the network's input/output tiles.
                 File external=context.getExternalFilesDir(null);
                 if(external!=null && new File(external,"dump-forward").exists()){
@@ -399,7 +339,6 @@ public final class ScamNeuralClient {
             }
             final long assetsDone=android.os.SystemClock.elapsedRealtime();
             File input=new File(dir,"input.f32"),output=new File(dir,"output.f32");
-            if(burst!=null)burst.write(input);
             // SCAM: burst and result through shared memory (memfd) instead of ~0.6 GB
             // written to and read back from flash per shot; the root worker opens
             // them as /proc/<pid>/fd/<n>. Files remain the fallback.
@@ -407,14 +346,14 @@ public final class ScamNeuralClient {
             // starts (spawn, CRE and GPU driver), then a byte on a pipe (job file "wait-go") lets it map the burst.
             boolean deferredWrite=false;
             // P30: the frames already lie in the shot's arena (memfd): only the header is written, the worker maps it.
-            final android.os.ParcelFileDescriptor arena=scamBurst!=null&&android.os.Build.VERSION.SDK_INT>=30?scamBurst.sharedBurst():null;
+            final android.os.ParcelFileDescriptor arena=android.os.Build.VERSION.SDK_INT>=30?scamBurst.sharedBurst():null;
             if(arena!=null){
                 scamIn=SharedMemory.wrap(arena);
                 scamOut=SharedMemory.create("scamera-scam-out");
                 if(scamOut==null){scamIn.close();scamIn=null;}
                 else log.accept("CLIENT: burst in the shot arena (no copy)");
             }
-            if(scamBurst!=null&&scamIn==null){
+            if(scamIn==null){
                 scamIn=SharedMemory.create("scamera-scam-in");
                 scamOut=scamIn==null?null:SharedMemory.create("scamera-scam-out");
                 if(scamOut!=null){
@@ -430,8 +369,7 @@ public final class ScamNeuralClient {
                 goPipe=android.os.ParcelFileDescriptor.createPipe();
                 try(java.io.FileWriter marker=new java.io.FileWriter(new File(dir,"wait-go"))){marker.write("5");}
             }
-            if(raw!=null || burst!=null || (scamBurst!=null && scamOut==null)){
-                if(raw!=null)try(FileChannel channel=new FileOutputStream(input).getChannel()){ByteBuffer data=raw.duplicate();while(data.hasRemaining())channel.write(data);}
+            if(scamOut==null){
                 // Create as app UID before root truncates/writes it: no chmod,
                 // chown, shared-storage input, or globally readable temp files.
                 if(!output.createNewFile())throw new IOException(Lang.t("Не удалось создать файл результата","Could not create the result file"));
@@ -446,18 +384,11 @@ public final class ScamNeuralClient {
                 String dirPath=dir.getAbsolutePath();
                 java.util.ArrayList<String> args=new java.util.ArrayList<>();
                 android.os.ParcelFileDescriptor[] fds=new android.os.ParcelFileDescriptor[0];
-                if(burst!=null)java.util.Collections.addAll(args,burst.quad?"--quad-capture":cachedProfile?"--hexquad-capture-cached":"--hexquad-capture",
-                        dirPath,input.getAbsolutePath(),output.getAbsolutePath());
-                else if(scamBurst!=null){
-                    // memfd burst/result inherited as fd 3/4 (the sandbox cannot open /proc/<pid>/fd).
-                    if(scamOut!=null)fds=goPipe!=null?new android.os.ParcelFileDescriptor[]{scamIn.fd,scamOut.fd,goPipe[0]}
-                            :new android.os.ParcelFileDescriptor[]{scamIn.fd,scamOut.fd};
-                    java.util.Collections.addAll(args,"--scam-capture",dirPath,scamOut!=null?"fd:3":input.getAbsolutePath(),
-                            scamOut!=null?"fd:4":output.getAbsolutePath());
-                }
-                else if(scamTone)java.util.Collections.addAll(args,"--scam-tone-check",dirPath);
-                else if(scam)java.util.Collections.addAll(args,"--scam-check",dirPath);
-                else java.util.Collections.addAll(args,"--hexquad-check",dirPath);
+                // memfd burst/result inherited as fd 3/4 (the sandbox cannot open /proc/<pid>/fd).
+                if(scamOut!=null)fds=goPipe!=null?new android.os.ParcelFileDescriptor[]{scamIn.fd,scamOut.fd,goPipe[0]}
+                        :new android.os.ParcelFileDescriptor[]{scamIn.fd,scamOut.fd};
+                java.util.Collections.addAll(args,"--scam-capture",dirPath,scamOut!=null?"fd:3":input.getAbsolutePath(),
+                        scamOut!=null?"fd:4":output.getAbsolutePath());
                 log.accept(Lang.t("WORKER: отдельный процесс приложения (без root)","WORKER: separate app process (no root)"));
                 process=com.particlesdevs.photoncamera.util.WorkerSpawn.start(context,args,
                         com.particlesdevs.photoncamera.util.WorkerSpawn.environment(context,dir),fds);
@@ -475,26 +406,20 @@ public final class ScamNeuralClient {
                     "; export LD_LIBRARY_PATH="+quote("/system/lib64:/system_ext/lib64:"+dir.getAbsolutePath()+":/vendor/lib64")+
                     "; export ADSP_LIBRARY_PATH="+quote(dir.getAbsolutePath()+";/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp")+
                     "; exec /system/bin/app_process64 /system/bin "+ScamNeuralWorker.class.getName()+" "+quote(dir.getAbsolutePath());
-            if(raw!=null)command+=" "+quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath())+" "+w+" "+h+" "+redQuad;
-            if(burst!=null)command+=(burst.quad?" --quad-capture ":cachedProfile?" --hexquad-capture-cached ":" --hexquad-capture ")+quote(input.getAbsolutePath())+" "+quote(output.getAbsolutePath());
-            else if(scamBurst!=null)command+=" --scam-capture "+quote(scamIn!=null?scamIn.path():input.getAbsolutePath())
+            command+=" --scam-capture "+quote(scamIn!=null?scamIn.path():input.getAbsolutePath())
                     +" "+quote(scamOut!=null?scamOut.path():output.getAbsolutePath());
-            else if(scamTone)command+=" --scam-tone-check";
-            else if(scam)command+=" --scam";
-            else if(hex)command+=" --hexquad";
             log.accept(Lang.t("ROOT: запуск отдельного процесса; разрешите запрос root","ROOT: starting a separate process; allow the root request"));
             process=com.particlesdevs.photoncamera.util.WorkerSpawn.Child.of(new ProcessBuilder("su","-c",command).redirectErrorStream(true).start());
             }
             final com.particlesdevs.photoncamera.util.WorkerSpawn.Child child=process;
             final boolean[] completed={false};
             Thread reader=new Thread(()->{
-                try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.output))){String line;while((line=lines.readLine())!=null){if(scamBurst!=null?line.equals("SCAM CAPTURE OK"):scamTone?line.startsWith("SCAM TONE RUNTIME CHECK COMPLETE:"):scam?line.equals("SCAM RUNTIME CHECK COMPLETE"):burst!=null?line.equals("HEXQUAD CAPTURE OK"):hex?line.startsWith("HEXQUAD CHECK COMPLETE:"):line.equals("NEURAL JOB OK"))completed[0]=true;log.accept(line);}}
+                try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.output))){String line;while((line=lines.readLine())!=null){if(line.equals("SCAM CAPTURE OK"))completed[0]=true;log.accept(line);}}
                 catch(IOException e){log.accept("READ: "+e);}
             },"scam-neural-output");
             reader.setDaemon(true);reader.start();
             // P27 any resolution: a Hybrid merge above 16 MP gets a wait in proportion to its pixels (900 s up to 16 MP, unchanged).
-            final long timeoutS=scamBurst instanceof ScamHybridBurst?ScamHybridBurst.workerTimeoutSeconds(scamBurst.width(),scamBurst.height())
-                    :burst!=null||scamBurst!=null?900:scamTone?420:200;
+            final long timeoutS=scamBurst instanceof ScamHybridBurst?ScamHybridBurst.workerTimeoutSeconds(scamBurst.width(),scamBurst.height()):900;
             if(timeoutS>900)log.accept("CLIENT: worker timeout "+timeoutS+" s for "+scamBurst.width()+"x"+scamBurst.height());
             if(!process.waitFor(TimeUnit.SECONDS.toMillis(timeoutS))){process.destroy();throw new WorkerTimeoutException(Lang.t("Тайм-аут нейромодуля; снимок не обработан","Neural module timed out; the shot was not processed"));}
             reader.join(5000);
@@ -507,19 +432,16 @@ public final class ScamNeuralClient {
             }
             if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException(
                     scamBurst instanceof ScamHybridBurst?Lang.t("SHDR: склейка не завершена. Отчёт: Система → Диагностика → «Отчёт последней съёмки SHDR».","SHDR: merge not finished. Report: System → Diagnostics → “Last SHDR capture report”."):
-                    scamBurst!=null?Lang.t("SCAM HDR не завершён. Откройте SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.","SCAM HDR not finished. Open “SCAM HDR: launch check” → “Last SCAM HDR capture report”."):
-                    (scam?Lang.t("Проверка SCAM HDR не завершена. Скопируйте этот отчёт. ","SCAM HDR check not finished. Copy this report. "):Lang.t("Нейроремозаик не завершён. Откройте Система → Диагностика → «Нейроремозаик — проверка и отчёты» → ","Neural remosaic not finished. Open System → Diagnostics → “Neural remosaic: check and reports” → "))+
-                    (raw!=null||burst!=null?Lang.t("Отчёт последней съёмки","Last capture report"):Lang.t("Скопировать отчёт","Copy report"))+".");
-            if(raw==null&&burst==null&&scamBurst==null)return null;
-            final int ow=scamBurst!=null?scamBurst.outputWidth():w,oh=scamBurst!=null?scamBurst.outputHeight():h;
-            long expected=scamBurst!=null?(long)ow*oh*(rgbHalf?6:12):burst!=null?burst.options.outputBytes(w,h):(long)w*h*4;
+                    Lang.t("SCAM HDR не завершён. Откройте SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.","SCAM HDR not finished. Open “SCAM HDR: launch check” → “Last SCAM HDR capture report”."));
+            final int ow=scamBurst.outputWidth(),oh=scamBurst.outputHeight();
+            long expected=(long)ow*oh*(rgbHalf?6:12);
             if(expected<=0||expected>Integer.MAX_VALUE)throw new IOException(Lang.t("Слишком большой нейрорезультат","Neural result too large"));
             final long outputBytes=scamOut!=null?scamOut.size():output.length();
             // Trailers after the RGB, each optional, in this order: merged Bayer RAW (sensor grid, w*h*2, if requested), the
             // effective-frame map (OUTPUT grid, ow*oh), the clip flags (OUTPUT grid, ow*oh; SCAM Hybrid, only if requested and only
             // after the map). The fullest layout that matches the file size wins.
-            long dngBytes=0,effBytes=0,clipBytes=0;boolean sized=scamBurst==null&&outputBytes==expected;
-            if(scamBurst!=null){
+            long dngBytes=0,effBytes=0,clipBytes=0;boolean sized=false;
+            {
                 final long rawTrailer=(long)w*h*2,outTrailer=(long)ow*oh;
                 search:
                 for(long d:scamBurst.mergedDng()?new long[]{rawTrailer,0}:new long[]{0})
@@ -528,7 +450,7 @@ public final class ScamNeuralClient {
                             if(outputBytes==expected+d+e+c){dngBytes=d;effBytes=e;clipBytes=c;sized=true;break search;}
             }
             if(!sized)throw new IOException(Lang.t("Неверный размер нейрорезультата","Wrong neural result size"));
-            if(scamBurst!=null){ScamHybridBurst.lastMergedDng=null;ScamHybridBurst.lastEffectiveFrames=null;ScamRgb.lastClipFlags=null;
+            {ScamHybridBurst.lastMergedDng=null;ScamHybridBurst.lastEffectiveFrames=null;ScamRgb.lastClipFlags=null;
                 ScamHybridBurst.lastBentoApplied=report.indexOf("HYBRID BENTO: applied")>=0;
                 ScamHybridBurst.lastBentoFactor=reportNumber(report,"HYBRID BENTO: applied","factor=",1f);
                 ScamHybridBurst.lastMergedDngHeadroom=Math.max(1f,reportNumber(report,"HYBRID DNG:","headroom=",1f));
@@ -541,7 +463,7 @@ public final class ScamNeuralClient {
             // behind each read, so the result and the memfd are never both whole at once (the same bytes; trailers first, then
             // the RGB in slices from its end).
             final boolean shrink=scamOut!=null&&outputBytes>(1L<<30);
-            ByteBuffer result=(burst!=null||scamBurst!=null?com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected):ByteBuffer.allocateDirect((int)expected));
+            ByteBuffer result=com.particlesdevs.photoncamera.util.Allocator.allocate((int)expected);
             if(result==null)throw new IOException(Lang.t("Недостаточно памяти для результата","Not enough memory for the result"));
             result.order(ByteOrder.nativeOrder());
             if(!shrink){
@@ -552,7 +474,7 @@ public final class ScamNeuralClient {
                         while(result.hasRemaining()){int n=channel.read(result,position);if(n<0)throw new EOFException(Lang.t("Неполный результат","Incomplete result"));position+=n;}
                     }
                 }
-                catch(Exception e){if(burst!=null||scamBurst!=null)com.particlesdevs.photoncamera.util.Allocator.free(result);throw e;}
+                catch(Exception e){com.particlesdevs.photoncamera.util.Allocator.free(result);throw e;}
                 result.flip();
             }
             // the trailers from the last one back (a shrinking read drops each from the memfd once it is read)
@@ -567,7 +489,7 @@ public final class ScamNeuralClient {
                     }
                     clip.flip();ScamRgb.lastClipFlags=clip;
                 }catch(Exception e){log.accept("CLIENT: clip flags not read: "+e);}
-            }else if(scamBurst!=null&&scamBurst.clipFlags())log.accept("CLIENT: clip flags asked for but not returned");
+            }else if(scamBurst.clipFlags())log.accept("CLIENT: clip flags asked for but not returned");
             if(shrink)scamOut.truncate(expected+dngBytes+effBytes);
             // P27 any resolution: the two optional trailers live on the Java heap (1 B per output pixel each); a failed allocation
             // (OutOfMemoryError, not an Exception) skips the trailer instead of the shot.
@@ -607,13 +529,12 @@ public final class ScamNeuralClient {
                 result.flip();
                 log.accept("CLIENT: "+(outputBytes>>20)+" MB read from the end, the memfd shortened behind each read");
             }
-            if(scamBurst!=null)ScamDiagnostics.buffer("02-after-ivst",result,ow,oh,3,true,rgbHalf);
-            if(burst!=null){if(validatedHexProfiles.size()>=32)validatedHexProfiles.clear();validatedHexProfiles.add(profileKey);saveHexProfiles(context);}
+            ScamDiagnostics.buffer("02-after-ivst",result,ow,oh,3,true,rgbHalf);
             log.accept("HEX CLIENT OUTPUT ms="+(android.os.SystemClock.elapsedRealtime()-readStart));
             log.accept("HEX CLIENT TOTAL ms="+(android.os.SystemClock.elapsedRealtime()-startMs));
-            if(scamBurst!=null)com.particlesdevs.photoncamera.processing.ShotTimeline.mark("client_done");
+            com.particlesdevs.photoncamera.processing.ShotTimeline.mark("client_done");
             return result;
-        } catch(Exception e){if(validatedHexProfiles.remove(profileKey))saveHexProfiles(context);log.accept("CLIENT STOP: "+e.getMessage());throw e;}
+        } catch(Exception e){log.accept("CLIENT STOP: "+e.getMessage());throw e;}
         finally {
             if(process!=null && process.isAlive())process.destroy();
             if(scamIn!=null)scamIn.close();
@@ -621,9 +542,9 @@ public final class ScamNeuralClient {
             synchronized(report){
                 // W1.11: apply and the folder deleted on the cleanup thread (both were on the shot's path, 25 ms).
                 prefs.edit().putString("report",report.toString()).putBoolean("complete",true).apply();
-                if(scamBurst!=null)lastJobReport=report.toString();
+                lastJobReport=report.toString();
             }
-            if(scamBurst!=null)ScamDiagnostics.nativeFiles(dir,report.toString());
+            ScamDiagnostics.nativeFiles(dir,report.toString());
             deleteTreeLater(dir);
         }
     }

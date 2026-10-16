@@ -28,12 +28,10 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_scamhdr_noise_readout","NaN",1),1);
         eq(SettingsNumericRules.value("pref_scamhdr_noise_readout","8",1),4);
         Map<String,Object> p=new HashMap<>();
-        // P129: the HexQuad / Quad network rows and the GPU remosaic follow SHDR's «Нейроремозаик (NPU)» (ISZ modules).
-        inactive(p,"hexquad_luma");inactive(p,"pref_remosaic_block_key");
-        p.put("pref_merge_route","scamhdr");inactive(p,"hexquad_luma");
-        p.put("pref_scam_hybrid_neural_remosaic",true);active(p,"hexquad_luma");active(p,"quad2x2_luma");active(p,"pref_remosaic_block_key");
-        p.put("hexquad_auto_iso",true);inactive(p,"hexquad_luma");active(p,"hexquad_iso_low_luma");
-        p.put("pref_scam_hybrid_neural_remosaic",false);inactive(p,"hexquad_iso_low_luma");inactive(p,"pref_remosaic_block_key");
+        // P175: the neural remosaic is gone: its old switch gates nothing, its old rows get no rule (and no XML row)
+        p.put("pref_scam_hybrid_neural_remosaic",false);
+        for(String k:new String[]{"hexquad_luma","quad2x2_luma","hexquad_iso_low_luma","pref_remosaic_block_key","pref_tetra_response_key"})
+            active(p,k);
         // Retired route values from saved / imported configs (the SCAM HDR route included) never hide the sharpening.
         p.clear();
         p.put("pref_camera_mode_key", "3");
@@ -206,10 +204,8 @@ public class SettingsModelCheck {
         // «Цветовой метод»: inactive where a tuned / ISP matrix replaces it
         active(scam,"pref_color_method_key");
         if(!"matrix".equals(new SettingsAvailability(scam).colorMethodOverride("matrix").reason("pref_color_method_key")))throw new AssertionError("colour method reason");
-        // Without the 8 Elite the neural remosaic page and its check stay hidden (P129); the diagnostics page stays
-        for(String k:new String[]{"shdr_neural_remosaic_screen","scam_neural_probe"})
-            if(!new SettingsAvailability(scam).scamHdrSupported(false).hidden(k)||new SettingsAvailability(scam).hidden(k))throw new AssertionError("NPU row visibility "+k);
-        if(new SettingsAvailability(scam).scamHdrSupported(false).hidden("scam_diagnostics_screen"))throw new AssertionError("diagnostics hidden");
+        // The diagnostics page is never hidden (P175: the neural remosaic's 8 Elite rule went with its page and its check)
+        if(new SettingsAvailability(scam).hidden("scam_diagnostics_screen"))throw new AssertionError("diagnostics hidden");
         // P128: the «Движение» rows act only in that mode; the lamp flicker only with the long frames; the OPPO saturation only there
         Map<String,Object> m=new HashMap<>();
         inactive(m,"pref_scam_hybrid_mm_shutter");m.put("pref_motion_mode",true);active(m,"pref_scam_hybrid_mm_shutter");
@@ -217,6 +213,6 @@ public class SettingsModelCheck {
         if(!new SettingsAvailability(m).oppoTunedColor(false).hidden("pref_scam_hybrid_ark_ccm_sat"))throw new AssertionError("OPPO saturation shown");
         if(new SettingsAvailability(m).mosaicStreams(false).reason("pref_scam_hybrid_mosaic_path")==null)throw new AssertionError("mosaic rows without a mosaic");
         if(!new SettingsAvailability(scam).xiaomiSmoothZoom(false).hidden("pref_xiaomi_smooth_zoom"))throw new AssertionError("Xiaomi zoom shown");
-        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, SHDR bounds, native mosaic, neural remosaic, photo format, 10-bit HEIC, AVIF, sharpening / denoise / output / motion / colour method availability");
+        System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, SHDR bounds, native mosaic, no neural remosaic rules, photo format, 10-bit HEIC, AVIF, sharpening / denoise / output / motion / colour method availability");
     }
 }

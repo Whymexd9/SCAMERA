@@ -137,48 +137,48 @@ public class SettingsMenuTest {
         for(String page:pages){PreferenceScreen root=inflate();PreferenceScreen nested=root.findPreference(page);assertNotNull(page,nested);root.getPreferenceManager().setPreferences(nested);assertEquals(page,nested.getKey());}
     }
     @Test public void mixedTypeMigrationAndRebindPreservePreciseValues(){
-        prefs.edit().putInt("pref_remosaic_block_key",4).putBoolean("pref_tunable_parameters_usedynamicwhitelevel",false)
-                .putString("hexquad_luma","37.12345")
+        prefs.edit().putInt("pref_scam_hybrid_mosaic_native_clamp",1).putBoolean("pref_tunable_parameters_usedynamicwhitelevel",false)
+                .putString("pref_film_lut_strength","37.12345")
                 .putInt("pref_scam_hybrid_despeckle",1).putString("pref_scam_hybrid_cdm","0.18973").commit();
         PreferenceScreen screen=inflate();
-        assertEquals("4",prefs.getString("pref_remosaic_block_key",""));assertTrue(prefs.getBoolean("pref_scam_hybrid_despeckle",false));
+        assertEquals("1",prefs.getString("pref_scam_hybrid_mosaic_native_clamp",""));assertTrue(prefs.getBoolean("pref_scam_hybrid_despeckle",false));
         visit(screen,new HashSet<>(),new ArrayList<>());
-        assertEquals("0.18973",prefs.getString("pref_scam_hybrid_cdm",""));assertEquals("37.12345",prefs.getString("hexquad_luma",""));
+        assertEquals("0.18973",prefs.getString("pref_scam_hybrid_cdm",""));assertEquals("37.12345",prefs.getString("pref_film_lut_strength",""));
         assertFalse(PreferenceNumber.bool(prefs.getAll().get("pref_tunable_parameters_usedynamicwhitelevel"),true));
     }
     @Test public void perLensRestorePreservesBooleanTypesAndSharedSettings(){
         prefs.edit().putString(PreferenceKeys.Key.KEY_THEME.mValue,"keep").commit();
         manager.set(PreferenceKeys.Key.PER_LENS_FILE_NAME.mValue,"settings_for_camera_audit",
-                "{\"pref_scam_hybrid_despeckle\":true,\"pref_remosaic_block_key\":4,\"hexquad_luma\":37.125,\"ignored_null\":null,\""+PreferenceKeys.Key.KEY_THEME.mValue+"\":\"replace\"}");
+                "{\"pref_scam_hybrid_despeckle\":true,\"pref_scam_hybrid_mosaic_native_clamp\":1,\"pref_film_lut_strength\":37.125,\"ignored_null\":null,\""+PreferenceKeys.Key.KEY_THEME.mValue+"\":\"replace\"}");
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();
         PreferenceKeys.loadSettingsForCamera("audit");
         assertTrue(prefs.getBoolean("pref_scam_hybrid_despeckle",false));
-        assertEquals(4.0,PreferenceNumber.read(manager.getString("default_scope","pref_remosaic_block_key","2"),2),0.0);
-        assertEquals(37.125,PreferenceNumber.read(manager.getString("default_scope","hexquad_luma","0"),0),0.0);
+        assertEquals(1.0,PreferenceNumber.read(manager.getString("default_scope","pref_scam_hybrid_mosaic_native_clamp","2"),2),0.0);
+        assertEquals(37.125,PreferenceNumber.read(manager.getString("default_scope","pref_film_lut_strength","0"),0),0.0);
         assertFalse(prefs.contains("ignored_null"));assertEquals("keep",prefs.getString(PreferenceKeys.Key.KEY_THEME.mValue,""));
     }
 
     @Test public void moduleProfilesKeepTypedValuesAndCopyOnlySelection(){
-        prefs.edit().putFloat("hexquad_luma",37.125f).putBoolean("pref_scam_hybrid_despeckle",true)
+        prefs.edit().putFloat("pref_film_lut_strength",37.125f).putBoolean("pref_scam_hybrid_despeckle",true)
                 .putString("pref_tunable_test","1.234567").putString("pref_sensorconfig_test","hardware").commit();
         ModuleProfiles profiles=PreferenceKeys.profiles();
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();
         profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
         profiles.activate("back0");
-        prefs.edit().putFloat("hexquad_luma",12.25f).putBoolean("pref_scam_hybrid_despeckle",false).commit();
+        prefs.edit().putFloat("pref_film_lut_strength",12.25f).putBoolean("pref_scam_hybrid_despeckle",false).commit();
         profiles.activate("back1");
-        assertEquals(37.125f,prefs.getFloat("hexquad_luma",0),0);
+        assertEquals(37.125f,prefs.getFloat("pref_film_lut_strength",0),0);
         prefs.edit().putString("pref_tunable_test","destination").commit();
-        profiles.copy("back0",Arrays.asList("back1"),new HashSet<>(Arrays.asList("hexquad_luma","pref_sensorconfig_test")));
-        assertEquals(12.25f,prefs.getFloat("hexquad_luma",0),0);
+        profiles.copy("back0",Arrays.asList("back1"),new HashSet<>(Arrays.asList("pref_film_lut_strength","pref_sensorconfig_test")));
+        assertEquals(12.25f,prefs.getFloat("pref_film_lut_strength",0),0);
         assertEquals("destination",prefs.getString("pref_tunable_test",""));
         assertTrue(prefs.getBoolean("pref_scam_hybrid_despeckle",false));
         assertEquals("hardware",prefs.getString("pref_sensorconfig_test",""));
         profiles.activate("back0");assertFalse(prefs.getBoolean("pref_scam_hybrid_despeckle",true));
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,false).commit();profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
-        assertEquals(37.125f,prefs.getFloat("hexquad_luma",0),0);
+        assertEquals(37.125f,prefs.getFloat("pref_film_lut_strength",0),0);
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();profiles.changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
-        profiles.activate("back0");assertEquals(12.25f,prefs.getFloat("hexquad_luma",0),0);
+        profiles.activate("back0");assertEquals(12.25f,prefs.getFloat("pref_film_lut_strength",0),0);
     }
     @Test public void removedScamUpscaleSettingsAreGoneAndTheirStoredValuesCleared() {
         PreferenceScreen screen=inflate();
@@ -616,17 +616,17 @@ public class SettingsMenuTest {
             var search=fm.findFragmentById(R.id.settings_container);
             assertTrue(search instanceof com.particlesdevs.photoncamera.ui.settings.SettingsSearchFragment);
             android.widget.EditText input=descendant(search.requireView(),android.widget.EditText.class);
-            input.setText("hexquad_luma");
+            input.setText("pref_film_lut_strength");
             var list=descendant(search.requireView(),androidx.recyclerview.widget.RecyclerView.class);
             assertEquals(1,list.getAdapter().getItemCount());
             list.measure(android.view.View.MeasureSpec.makeMeasureSpec(400,1073741824),android.view.View.MeasureSpec.makeMeasureSpec(600,1073741824));list.layout(0,0,400,600);
             assertNotNull(list.findViewHolderForAdapterPosition(0));
             list.findViewHolderForAdapterPosition(0).itemView.performClick();fm.executePendingTransactions();
             var page=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            assertNotNull(page.findPreference("hexquad_luma"));
+            assertNotNull(page.findPreference("pref_film_lut_strength"));
             activity.getOnBackPressedDispatcher().onBackPressed();fm.executePendingTransactions();
             input=descendant(fm.findFragmentById(R.id.settings_container).requireView(),android.widget.EditText.class);
-            assertEquals("hexquad_luma",input.getText().toString());
+            assertEquals("pref_film_lut_strength",input.getText().toString());
             camera.verify(()->ScameraApp.restartApp(any(android.content.Context.class)),never());
         }
     }

@@ -12,8 +12,6 @@ import java.nio.ByteBuffer;
 
 public class ImageFrame {
     public ByteBuffer buffer;
-    /** P129: the plain-Bayer frame the NPU remosaic network made of the N frames (ScamMosaic.prepareForShdr): SHDR's base. */
-    public boolean neuralReference;
     public long timestamp;
     public boolean fromZsl = false;
     /** RawPayloadCheck verdict of the reader Image this frame was copied from; null = plain 16-bit. */

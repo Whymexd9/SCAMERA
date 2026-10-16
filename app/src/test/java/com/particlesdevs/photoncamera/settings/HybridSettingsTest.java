@@ -54,7 +54,7 @@ public class HybridSettingsTest {
         }
     }
 
-    /** P129: SHDR is the only merge; a stored SCAM HDR route is ignored; the NPU (neural remosaic) is the 8 Elite's only. */
+    /** P129: SHDR is the only merge; a stored SCAM HDR route is ignored; the NPU SoC check is the 8 Elite's only. */
     @Test public void shdrIsTheOnlyMergeAndTheNpuIsThe8Elites() {
         manager.set("default_scope", PreferenceKeys.ROUTE_KEY, ScamHybridKeys.ROUTE_SCAM_HDR);
         assertTrue(PreferenceKeys.isScamHdrSupported());
@@ -65,7 +65,6 @@ public class HybridSettingsTest {
         for (String other : new String[]{"SM8650", "SM8850", "MT6991", ""}) {
             org.robolectric.shadows.ShadowBuild.setSystemOnChipModel(other);
             assertFalse(other, PreferenceKeys.isScamHdrSupported());
-            assertFalse(other, PreferenceKeys.isShdrNeuralRemosaic());
             assertEquals(ScamHybridKeys.ROUTE_HYBRID, PreferenceKeys.mergeRoute());
         }
     }
@@ -81,8 +80,10 @@ public class HybridSettingsTest {
         assertNotNull(hybrid);assertEquals("SHDR",hybrid.getTitle().toString());
         for(String screen:new String[]{"scam_hybrid_photo_screen","scam_hybrid_ark_sharp_screen","scam_hybrid_ark_tone_screen",
                 "scam_hybrid_capture_screen","scam_hybrid_merge_screen","scam_hybrid_nr_snr_screen","scam_hybrid_nr_mult_screen",
-                "scam_hybrid_nr_safe_screen","scam_hybrid_rejection_screen","scam_hybrid_ark_rl_screen","shdr_neural_remosaic_screen"})
+                "scam_hybrid_nr_safe_screen","scam_hybrid_rejection_screen","scam_hybrid_ark_rl_screen"})
             assertTrue(screen,hybrid.findPreference(screen) instanceof PreferenceScreen);
+        // P175: the neural remosaic page is gone
+        assertNull(root.findPreference("shdr_neural_remosaic_screen"));
         // P134: «Цвет» holds the colour rows (the vibrance page dissolved into its «Насыщенность»)
         assertTrue(root.findPreference("colour_mixer_screen") instanceof PreferenceScreen);
         assertTrue(root.findPreference("colour_grading_screen") instanceof PreferenceScreen);

@@ -503,10 +503,6 @@ public class ScamProcessor extends ProcessorBase {
                         + " exposureSeconds=" + processingParameters.exposureTime);
                 // P129: SHDR is the only merge (the SCAM HDR neural graph and its mosaic modes are gone)
                 {
-                    // P129: «Нейроремозаик» on an ISZ Quad / Tetra stream (SM8750): the NPU merges the N frames first
-                    final java.util.List<ImageFrame> neural = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamMosaic
-                            .prepareForShdr(ScameraApp.getAppContext(), images, processingParameters);
-                    if (neural != null) images = new ArrayList<>(neural);
                     processingStage = "Hybrid merge";
                     com.particlesdevs.photoncamera.processing.ShotTimeline.mark("hybrid_call");
                     scamOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.process(

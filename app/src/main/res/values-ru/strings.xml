@@ -79,28 +79,6 @@
     </string-array>
     <string name="live_viewfinder_raw">Живой видоискатель</string>
     <string name="live_viewfinder_raw_summary">Видоискатель сам проявляет RAW. Выкл. — обычное превью камеры. На готовое фото не влияет.</string>
-    <string name="remosaic_phase_x">Фаза по X</string>
-    <string name="remosaic_phase_y">Фаза по Y</string>
-    <string name="remosaic_phase_desc">Сдвиг сетки блоков по горизонтали. Неверное значение даёт цветную сетку; нейросети нужен 0.</string>
-    <string name="remosaic_profile">Характер интерполяции</string>
-    <string name="remosaic_profile_desc">Сколько ремозаик сглаживает картинку: мягче — меньше шума, резче — больше деталей.</string>
-    <string-array name="remosaic_profile_entries">
-        <item>Ближайший отсчёт — без сглаживания</item>
-        <item>Резкий — узкое ядро</item>
-        <item>Сбалансированный</item>
-        <item>Мягкий — широкое ядро и медиана</item>
-    </string-array>
-    <string name="remosaic_steered">Интерполяция по направлению</string>
-    <string name="remosaic_steered_desc">Достраивает зелёный вдоль краёв, а не поперёк — меньше цветной каймы у букв и контуров.</string>
-    <string name="remosaic_clamp">Ограничение цветовых разностей</string>
-    <string name="remosaic_clamp_desc">Не даёт цвету на краях выходить за соседние значения — убирает розовый ореол.</string>
-    <string name="remosaic_flatfield">Плоское поле блока</string>
-    <string name="remosaic_flatfield_desc">Выравнивает разный отклик пикселей в блоке — меньше цветного налёта. Эксперимент.</string>
-    <string name="tetra_response_summary">Убирает периодическую сетку на снимках Tetra 4×4, выравнивая отклик пикселей.</string>
-    <string-array name="hexquad_model_entries">
-        <item>x2 — текущая модель</item>
-        <item>x1 — экспериментальная</item>
-    </string-array>
     <string name="motion_mode_on">Режим «Движение»: вкл</string>
     <string name="motion_mode_off">Режим «Движение»: выкл</string>
     <string name="motion_mode_on_toast">Движение: быстрый буфер, резкие движущиеся объекты</string>
