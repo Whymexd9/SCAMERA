@@ -3702,6 +3702,19 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   (TouchFocus only). TouchFocusSplitTest (5). Long press stays the tracking AF (P42), so it does not join them. Not seen on a
   phone yet.
 
+### P155 - tap-to-focus on the X300 Ultra without DCG (owner, 2026-10-16, Desktop/log-2026-10-16.txt and video_2026-10-16_10-00-09.mp4: «На 300 ультра также не работал нормально фокус по тапу, с DCG вкл же работает нормально»)
+- Found: the video taps on a near object several times without DCG: it stays blurred, the window behind it sharp; with DCG
+  the same tap makes it sharp. The log: with DCG 14 bit the HAL answers the new AF region with a passive scan (PASSIVE_SCAN
+  ~0.4 s after the cancel, ~0.6 s long), then the START locks the focused lens; without DCG no passive scan comes at all, the
+  START is sent after the 400 ms dwell on PASSIVE_FOCUSED and every tap ends FOCUSED_LOCKED after 12 frames without an
+  ACTIVE_SCAN. In CONTINUOUS_PICTURE a START on PASSIVE_FOCUSED only locks the lens where it is (the Camera2 AF state
+  machine), so the tap focused only when the HAL's passive AF had already swept the region.
+- DONE 2026-10-16 (TouchFocus only): without an observed passive scan in the dwell the START goes in AF_MODE_AUTO (the
+  one-shot and the repeating request after it): an active scan on the tap region, locked there until the next tap or the
+  reset to auto (as the AUTO fallback; the ZSL capture copies the preview's AF mode, no new trigger). With a passive scan,
+  without AF_MODE_AUTO on the camera or with the 2 s budget spent the bare START stays. TouchFocusActiveScanTest (4, in CI).
+  Not seen on the X300 Ultra yet: check that a tap without DCG now shows ACTIVE_SCAN in the log («sending AF START in
+  AF_MODE_AUTO») and the object comes sharp.
 
 ## P109l - Snapdragon client attribution and VCF RAW boundary
 

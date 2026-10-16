@@ -42,7 +42,8 @@ import com.particlesdevs.photoncamera.util.Log;
  *       cancel <em>acknowledgment</em> (AF_STATE in a per-mode membership set) →
  *       [continuous modes only, divergence: wait for a complete passive scan cycle
  *       — PASSIVE_SCAN observed, then settled — with a {@link #PASSIVE_DWELL_MS}
- *       time fallback when no scan appears] → bare START one-shot, sent
+ *       time fallback when no scan appears; P155: without a scan the START goes in
+ *       AF_MODE_AUTO, see {@link #startsActiveScan}] → bare START one-shot, sent
  *       unconditionally after the passive phase (no skip path, no second CANCEL
  *       inside the sequence) → repeating update → wait for the trigger
  *       acknowledgment (AF_STATE in {ACTIVE_SCAN, FOCUSED_LOCKED}). Both waits are
@@ -568,17 +569,36 @@ public class TouchFocus {
     }
 
     /**
+     * P155 (owner, X300 Ultra, 2026-10-16: «не работал нормально фокус по тапу, с DCG вкл же работает нормально»; video: a tap
+     * on a near object left the lens on the window behind it): in a continuous mode a START on PASSIVE_FOCUSED only locks
+     * the lens where it is (the Camera2 AF state machine), so the tap focuses only when the HAL's passive AF has already
+     * swept the new region. The X300 Ultra with DCG 14 bit did (PASSIVE_SCAN ~0.4 s after the cancel, ~0.6 s long); in its
+     * default sensor mode no scan came, and every tap ended FOCUSED_LOCKED after 12 frames with the lens unmoved. Without
+     * an observed passive scan the START therefore goes in AF_MODE_AUTO: an active scan on the tap region, locked there
+     * until the next tap or the reset to auto (as the AUTO fallback). The shared budget running out keeps the bare START.
+     */
+    static boolean startsActiveScan(boolean scanSeen, boolean budgetOver, boolean autoModeSupported) {
+        return !scanSeen && !budgetOver && autoModeSupported;
+    }
+
+    /**
      * Steps 4-5 of the sequence: a bare START, sent unconditionally after the
      * pre-START wait resolves by ack or deadline — no skip path, and no second
      * CANCEL inside the sequence (spec rev2). Callers must hold {@link #seqLock}.
+     * With {@code activeScan} (P155) the START and the repeating request after it
+     * switch to AF_MODE_AUTO.
      */
-    private void sendAfStartLocked() {
+    private void sendAfStartLocked(boolean activeScan) {
         CaptureRequest.Builder builder = captureController.mPreviewRequestBuilder;
         if (builder == null || CaptureController.burst) {
             abortSequenceLocked();
             return;
         }
-        Log.d(TAG, "sending AF START");
+        Log.d(TAG, "sending AF START" + (activeScan ? " in AF_MODE_AUTO (no passive scan on the region: an active scan)" : ""));
+        if (activeScan) {
+            activeAfMode = CameraMetadata.CONTROL_AF_MODE_AUTO;
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_AUTO);
+        }
         // 4. The trigger rides its own one-shot frame. The repeating request already
         //    carries regions + TRIGGER_IDLE from step 2 and is deliberately NOT
         //    resubmitted here: a back-to-back content-identical repeating replacement
@@ -588,6 +608,9 @@ public class TouchFocus {
         // Builder hygiene only (no submission attached): later rebuilds by other
         // components must not fold a stale trigger into their repeating updates.
         builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
+        // P155: the repeating request takes the mode switch too (not content-identical): a continuous-mode frame after the
+        // trigger would end the scan it started
+        if (activeScan) captureController.rebuildPreviewBuilder();
         // Acknowledgment only: the lens entered its active scan (or locked immediately).
         // Success/failure is read from the live per-frame AF_STATE afterward.
         seqState = SEQ_WAIT_START_ACK;
@@ -658,7 +681,7 @@ public class TouchFocus {
                             Log.d(TAG, "cancel acked, waiting for a passive scan cycle before START (fallback "
                                     + PASSIVE_DWELL_MS + "ms)");
                         } else {
-                            sendAfStartLocked();
+                            sendAfStartLocked(false);
                         }
                     }
                     break;
@@ -669,7 +692,7 @@ public class TouchFocus {
                     if (passivePhaseComplete(afState, passiveScanSeen,
                             now >= dwellDeadlineElapsed, now >= seqDeadlineElapsed)) {
                         Log.d(TAG, "passive phase complete (scanCycle=" + passiveScanSeen + "), sending AF START");
-                        sendAfStartLocked();
+                        sendAfStartLocked(startsActiveScan(passiveScanSeen, now >= seqDeadlineElapsed, isAutoModeSupported()));
                     }
                     break;
                 case SEQ_WAIT_START_ACK:
