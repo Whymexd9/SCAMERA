@@ -8,6 +8,9 @@ public final class SettingsNumericRules {
     private SettingsNumericRules() {}
     public static double[] bounds(String key) {
         switch (key) {
+            // P162 «Обрезка кадра»: margins of the upright photo, sensor pixels (RawCrop.MAX_MARGIN)
+            case "pref_raw_crop_left": case "pref_raw_crop_top": case "pref_raw_crop_right":
+            case "pref_raw_crop_bottom": return new double[]{0,512,1};
             case "pref_scamhdr_norm": return new double[]{0.55,2.2,0};
             case "pref_scamhdr_noise_photon": case "pref_scamhdr_noise_readout":
             case "pref_scamhdr_noise_scale": return new double[]{0.25,4,0};

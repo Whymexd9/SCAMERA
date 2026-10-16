@@ -268,6 +268,12 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         return value == null ? fallback : value.toString();
     }
 
+    /** P162: a value set from elsewhere (a dragged edge of the crop picture): stored exactly and shown, as typed. */
+    public void setNumber(float value) {
+        setDirectValue(value);
+        notifyChanged();
+    }
+
     /** Reset through the Preference store, preserving module/profile scoping. */
     public void resetToDefault() {
         persistString(formatExactValue(clamp(defaultNumber())));

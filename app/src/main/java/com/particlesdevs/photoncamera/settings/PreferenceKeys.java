@@ -597,6 +597,38 @@ public class PreferenceKeys {
     public static boolean isRawBlackFromData() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_raw_black_from_data", true);
     }
+    /** P162 «Обрезка кадра»: the RAW's zero padding (black stripes) cut off automatically (per module). */
+    public static final String RAW_CROP_AUTO = "pref_raw_crop_auto";
+    /** P162: the manual margins of the upright photo in sensor pixels: left, top, right, bottom. */
+    public static final String[] RAW_CROP_SIDES = {"pref_raw_crop_left", "pref_raw_crop_top", "pref_raw_crop_right", "pref_raw_crop_bottom"};
+    /** P162: the last shot's detection for the settings' picture (RawCrop.describe; written by the processing). */
+    public static final String RAW_CROP_DETECTED = "pref_raw_crop_detected";
+
+    public static boolean isRawCropAuto() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", RAW_CROP_AUTO, true);
+    }
+
+    /** P162: the manual margins {left, top, right, bottom} of the upright photo (0..RawCrop.MAX_MARGIN sensor px). */
+    public static int[] rawCropMargins() {
+        final int[] sides = new int[4];
+        for (int i = 0; i < 4; i++) {
+            try {
+                sides[i] = (int) Math.round(Double.parseDouble(getAcesString(RAW_CROP_SIDES[i], "0")));
+            } catch (NumberFormatException e) {
+                sides[i] = 0;
+            }
+            sides[i] = Math.max(0, Math.min(com.particlesdevs.photoncamera.processing.RawCrop.MAX_MARGIN, sides[i]));
+        }
+        return sides;
+    }
+
+    public static void setRawCropDetected(String text) {
+        preferenceKeys.settingsManager.set("default_scope", RAW_CROP_DETECTED, text);
+    }
+
+    public static String getRawCropDetected() {
+        return preferenceKeys.settingsManager.getString("default_scope", RAW_CROP_DETECTED, "");
+    }
     /** SCAM motion (CRE) source: auto (vendor, else APK copy) | bundled (always APK copy). */
     public static String getScamCreSource() {
         if (isHybridShot()) return hybridString("cre_source", "auto");

@@ -3853,6 +3853,47 @@ EXIF rewrite after it 56-654 ms (ExifInterface reads and writes the whole file a
   LensButtonTest.aTileShowsTheShortNumberAndTheActiveTileTheFullLabel, BottomBarStyleTest (strip corners, tiles of one
   height, wider than tall), sizes in ViewfinderScaleLayoutTest / ViewfinderUiTest / BottomChromeTest.
 
+### P162 - automatic crop of the RAW's black stripes, own margins, the crop picture (owner, 2026-10-16: a photo of the X200
+Pro Mini with black stripes on its left and bottom: «сделай автоматическую обрезку для него и для X200 Pro. Также добавь
+соответвующие настройки», then «Сделай эту группу настроек с наглядной красивой визуализацией как кадр будет обрезан, с
+красивыми анимациями и видом»)
+- Measured on the owner's JPEG (1500x2000): 35 px on the left, 46 at the bottom = 72 / 96 of the 3072x4096 frame: the known
+  X200 Pro RAW (4096x3072, the image in 4000x3000, exact zeros on the sensor's right 96 columns and bottom 72 rows; P114 only
+  kept those zeros out of the black floor). The diagnostics line «arrays: pixel= active=» (CaptureController) has not been read
+  from a phone yet; the crop does not need it.
+- DONE 2026-10-16: processing/RawCrop: before anything reads the frames (ScamProcessor.cropFrames, ahead of RawBin) the shot's
+  frames are cut to the kept area: the zero padding (whole rows / columns of exact zeros at the edges, at most 1/8 of a side,
+  only with a black pedestal of 16 DN or more) when «Убирать чёрные полосы» is on (default), and the own margins of the upright
+  photo (pref_raw_crop_left/top/right/bottom, 0..512 sensor px) turned to the sensor's sides by SENSOR_ORIENTATION; each side
+  the larger. The origin rounds inwards to 8 px (Bayer / Quad / Tetra keep their colour order), the sides are even, less than
+  half of a side never stays. The kept rows go into one new shot arena (the merge reads it without a copy; the ring slots are
+  given back), else plain buffers. Parameters.rawCrop / rawCropFull: the lens shading map is resampled over the kept area (after
+  the 16:9 rows of P118) and the hot pixels move with it. The shot's detection is stored per module (pref_raw_crop_detected).
+- Settings: Камера -> Съёмка -> «Обрезка кадра» (raw_crop_screen): RawCropPreference / RawCropView on top - the upright frame as
+  a small picture, the black stripes hatched (at least 10dp thick so 72 of 3072 px shows), the own margins in the accent's tint,
+  the kept frame with its corners, each side's px, «3072 x 4096 -> 3000 x 4000 · -4,6 %» and what the automatic crop found;
+  every change glides (420 ms, emphasized deceleration, an intro from the whole frame), the kept frame's edges drag with a
+  finger and store that side's margin through its slider (UniversalSeekBarPreference.setNumber). Then the switch and the four
+  sliders.
+- Tests: RawCropTest (the X200 Pro padding, no pedestal / all zeros / too wide, the turns, the rounding, a shot's frames cut with
+  their samples, the shading map and hot pixels, the detection text), RawCropSettingsTest (the page, the X200 Pro state, a margin,
+  a dragged edge stored, the switch; renders build/reports/module-concept/page-raw_crop_screen*.png, sent to the owner as
+  deliverables/p157/p162-crop-screen.png). Not seen on a phone: a shot on the X200 Pro / Pro Mini should log «RAW crop
+  4096x3072 -> 4000x3000 at 0,0» and give a photo without the stripes.
+
+### P163 - highlights on the LED screen still wrong after P159 (owner, 2026-10-16 15:06: «Изучи света, всё еще не исправил»; not started)
+- Input: Telegram.zip (kept in SCAMERA-PC/evidence/p163/Telegram-2026-10-16-1506.zip): SCA_20261016_132656.jpg and
+  SCA_20261016_132710.jpg with their Diagnostics ZIPs (SCAM-20261016-132656-989-6fd25a5e.zip, SCAM-20261016-132710-365-7f0060eb.zip),
+  log-2026-10-16.txt, SCAMERA-debug.log.txt. X300 Ultra (PD2547), camera 5 (tele, CROPPED_RAW), a build with P159 (the log
+  shows p98x).
+- Seen: the same concert hall, the blue LED screen with white text: the letters come out bleached white with a blue halo
+  round them, the screen's blue washed, the white curtain blown. Log: ARK clip 4, gmax 11.8 / 16.9 / 21.0, p98x 7.1 / 10.1 /
+  6.0, p995x 9.0 / 12.7 / 13.5, effH 2.0 (the P159 tail works, at the setting's cap), hlWhite 0.15, hlSoft 0.7, Bento k ~8,
+  highlight recovery max R 4.2-5.5 / G 5.3-8.0 / B 6.0-8.0, clipWhite 15.7-17.5.
+- Next: the stages of the Diagnostics ZIPs across the screen (letters / background at merge, after recovery, ScamRgb, ArkLow,
+  ArkCombine) as in P159; whether effH capped at 2 is still too weak for a screen 3-5x above the ceiling (the low layer
+  x0.125), whether the halo is the detail delta or the hl mask, and the blue's chroma at each stage.
+
 ## P109l - Snapdragon client attribution and VCF RAW boundary
 
 Typed AttributionSourceState spoof is implemented and observed on PD2454. An ordinary open followed by

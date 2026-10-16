@@ -514,6 +514,17 @@
     <string name="prefs_raw_lsc_mode_summary">%s. Evens out the brightness of the frame corners. Do not apply: if the camera already fixed the RAW.</string>
     <string name="prefs_raw_black_from_data_title">Black level from the frame</string>
     <string name="prefs_raw_black_from_data_summary">If the camera reports black too high, black is taken from the frame itself. Removes green shadows.</string>
+    <string name="prefs_raw_crop_screen_title">Frame crop</string>
+    <string name="prefs_raw_crop_screen_summary">Black stripes at the edges of the RAW and your own margins</string>
+    <string name="prefs_raw_crop_preview_title">How the frame is cut</string>
+    <string name="prefs_raw_crop_preview_summary">As on an upright photo. Drag an edge of the frame to set its margin.</string>
+    <string name="prefs_raw_crop_auto_title">Remove black stripes</string>
+    <string name="prefs_raw_crop_auto_summary">Edges of the RAW that hold only zeros are cut off on every shot (vivo X200 Pro and X200 Pro mini).</string>
+    <string name="prefs_raw_crop_left_title">Left</string>
+    <string name="prefs_raw_crop_top_title">Top</string>
+    <string name="prefs_raw_crop_right_title">Right</string>
+    <string name="prefs_raw_crop_bottom_title">Bottom</string>
+    <string name="prefs_raw_crop_side_summary">Sensor pixels cut off this side of an upright photo, on top of the stripes.</string>
     <string name="prefs_raw_stream_format_title">RAW stream format</string>
     <string name="prefs_raw_stream_format_summary">%s. How the camera delivers RAW. Auto: 16-bit if offered, otherwise RAW10 or RAW12.</string>
     <string name="prefs_expert_sensor_screen_title">RAW metadata</string>

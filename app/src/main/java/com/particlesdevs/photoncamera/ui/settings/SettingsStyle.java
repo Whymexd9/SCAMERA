@@ -173,8 +173,9 @@ public final class SettingsStyle {
                 continue;
             }
             p.setSingleLineTitle(false);
-            // P144: the own tone curve draws its own card (graph and shortcuts)
-            if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference) {
+            // P144: the own tone curve draws its own card (graph and shortcuts); P162: so does the crop picture
+            if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference
+                    || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RawCropPreference) {
                 p.setIconSpaceReserved(false);
                 continue;
             }

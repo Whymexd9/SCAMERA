@@ -16,6 +16,7 @@ import com.particlesdevs.photoncamera.capture.CaptureController;
 import com.particlesdevs.photoncamera.control.GyroBurst;
 import com.particlesdevs.photoncamera.processing.ImageFrame;
 import com.particlesdevs.photoncamera.processing.RawBin;
+import com.particlesdevs.photoncamera.processing.RawCrop;
 import com.particlesdevs.photoncamera.processing.opengl.GLLimits;
 import com.particlesdevs.photoncamera.processing.ImageSaver;
 import com.particlesdevs.photoncamera.processing.ProcessingEventsListener;
@@ -225,6 +226,25 @@ public class ScamProcessor extends ProcessorBase {
     }
 
     /** P158: a milestone of this shot (0..1) for the ring round the gallery card; never stops the processing. */
+    /** P162: cuts the shot's frames (RawCrop) and keeps what it found for the settings' picture; a failure keeps them whole. */
+    private RawCrop.Shot cropFrames() {
+        final boolean auto = PreferenceKeys.isRawCropAuto();
+        final int[] manual = PreferenceKeys.rawCropMargins();
+        final ImageFrame first = mImageFramesToProcess.get(0);
+        final int w = first.width, h = first.height;
+        final Integer mounted = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+        final int orientation = mounted == null ? 90 : mounted;
+        try {
+            final float black = com.particlesdevs.photoncamera.processing.RawLevels.current(characteristics, captureResult).meanBlack();
+            final RawCrop.Shot shot = RawCrop.cutShot(mImageFramesToProcess, black, auto, manual, orientation);
+            if (auto) PreferenceKeys.setRawCropDetected(RawCrop.describe(w, h, shot.padding, orientation));
+            return shot;
+        } catch (java.io.IOException | RuntimeException e) {
+            Log.w(TAG, "RAW crop skipped: " + e.getMessage());
+            return null;
+        }
+    }
+
     private void stage(float fraction) {
         try {
             processingEventsListener.onProcessingChanged(fraction);
@@ -254,6 +274,9 @@ public class ScamProcessor extends ProcessorBase {
             it.remove();
         }
         if (mImageFramesToProcess.isEmpty()) throw new IllegalStateException("no RAW frame with data received");
+        // P162 «Обрезка кадра»: the RAW's zero padding (vivo X200 Pro / Pro Mini: 4000x3000 of image in 4096x3072) and the
+        // manual margins are cut off every frame before anything reads them
+        final RawCrop.Shot rawCrop = cropFrames();
         // P27 any resolution: the Hybrid merges any RAW stream at its own resolution. Only a stream beyond the hard limits (the
         // sensor-grid RGB float result above 2 GB, i.e. above ~178 MP, or a side above the GPU's texture / render-target limit) is
         // binned 2x2 (same colours averaged) as the last resort instead of failing.
@@ -276,6 +299,10 @@ public class ScamProcessor extends ProcessorBase {
         Log.d(TAG, "Api BlackLevel:" + characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN));
         Parameters processingParameters = new Parameters();
         processingParameters.rawBinning = rawBinning;
+        if (rawCrop != null && rawCrop.area != null) {
+            processingParameters.rawCrop = rawCrop.area;
+            processingParameters.rawCropFull = new Point(rawCrop.fullWidth, rawCrop.fullHeight);
+        }
         processingParameters.scamHdrMode = PreferenceKeys.isScamHdrEnabled();
         processingParameters.FillConstParameters(characteristics, new Point(width, height));
         // Every shot is merged by the SCAM Hybrid or SCAM HDR (the legacy merge routes are gone).

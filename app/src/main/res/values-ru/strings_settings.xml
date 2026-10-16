@@ -514,6 +514,17 @@
     <string name="prefs_raw_lsc_mode_summary">%s. Выравнивание яркости углов кадра. «Не применять» — если камера уже исправила RAW.</string>
     <string name="prefs_raw_black_from_data_title">Уровень чёрного по кадру</string>
     <string name="prefs_raw_black_from_data_summary">Если камера завышает уровень чёрного, он берётся по самому кадру. Убирает зелёные тени.</string>
+    <string name="prefs_raw_crop_screen_title">Обрезка кадра</string>
+    <string name="prefs_raw_crop_screen_summary">Чёрные полосы по краям RAW и свои поля</string>
+    <string name="prefs_raw_crop_preview_title">Как обрежется кадр</string>
+    <string name="prefs_raw_crop_preview_summary">Как на вертикальном снимке. Край рамки можно тянуть пальцем.</string>
+    <string name="prefs_raw_crop_auto_title">Убирать чёрные полосы</string>
+    <string name="prefs_raw_crop_auto_summary">Края RAW, где одни нули, обрезаются на каждом снимке (vivo X200 Pro и X200 Pro mini).</string>
+    <string name="prefs_raw_crop_left_title">Слева</string>
+    <string name="prefs_raw_crop_top_title">Сверху</string>
+    <string name="prefs_raw_crop_right_title">Справа</string>
+    <string name="prefs_raw_crop_bottom_title">Снизу</string>
+    <string name="prefs_raw_crop_side_summary">Пиксели сенсора, которые срезаются с этой стороны вертикального снимка, сверх полос.</string>
     <string name="prefs_raw_stream_format_title">Формат RAW-потока</string>
     <string name="prefs_raw_stream_format_summary">%s. В каком виде камера отдаёт RAW. Авто — 16 бит, если есть, иначе RAW10 или RAW12.</string>
     <string name="prefs_expert_sensor_screen_title">RAW-метаданные</string>

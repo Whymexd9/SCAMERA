@@ -61,6 +61,12 @@ public class Parameters {
     public Point rawSize;
     /** P27: linear factor the RAW frames were binned by (RawBin) before the merge; 1 = as captured. Set before FillConstParameters. */
     public int rawBinning = 1;
+    /**
+     * P162: the part of the frames RawCrop kept (in the frame as captured, {@link #rawCropFull} in size), null when they are
+     * whole: the lens shading map and the hot pixels follow it. Set before FillDynamicParameters.
+     */
+    public com.particlesdevs.photoncamera.processing.RawCrop.Area rawCrop;
+    public Point rawCropFull;
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];
     public float[] whitePoint = new float[3];
@@ -332,17 +338,24 @@ public class Parameters {
                 hasGainMap = false;
             }
             // P118 «16:9»: the frames are a centred crop (Wide169) and the map covers the whole frame: its rows of the crop only
+            // (P162: of the frame as captured, before RawCrop)
             final com.particlesdevs.photoncamera.api.Settings s = ScameraApp.getSettings();
-            if (hasGainMap && mapSize.y > 1 && s != null && s.aspect169 && rawSize != null && sensorPix != null
-                    && rawSize.x > rawSize.y && sensorPix.width() > 0) {
-                final int full = (int) Math.round((double) rawSize.x * sensorPix.height() / sensorPix.width());
-                if (com.particlesdevs.photoncamera.processing.Wide169.rows(rawSize.x, full) == rawSize.y)
+            final Point captured = rawCrop != null && rawCropFull != null ? rawCropFull : rawSize;
+            if (hasGainMap && mapSize.y > 1 && s != null && s.aspect169 && captured != null && sensorPix != null
+                    && captured.x > captured.y && sensorPix.width() > 0) {
+                final int full = (int) Math.round((double) captured.x * sensorPix.height() / sensorPix.width());
+                if (com.particlesdevs.photoncamera.processing.Wide169.rows(captured.x, full) == captured.y)
                     gainMap = com.particlesdevs.photoncamera.processing.Wide169.cropGainMap(gainMap, mapSize.x, mapSize.y, full,
-                            com.particlesdevs.photoncamera.processing.Wide169.firstRow(rawSize.x, full), rawSize.y);
-                else Log.w(TAG, "16:9 frame " + rawSize + " is not the crop of " + rawSize.x + "x" + full + ": lens shading map kept");
+                            com.particlesdevs.photoncamera.processing.Wide169.firstRow(captured.x, full), captured.y);
+                else Log.w(TAG, "16:9 frame " + captured + " is not the crop of " + captured.x + "x" + full + ": lens shading map kept");
             }
+            // P162: the map over the kept part of the frame only
+            if (hasGainMap && rawCrop != null && rawCropFull != null)
+                gainMap = com.particlesdevs.photoncamera.processing.RawCrop.cropGainMap(gainMap, mapSize.x, mapSize.y,
+                        rawCropFull.x, rawCropFull.y, rawCrop);
             hotPixels = result.get(CaptureResult.STATISTICS_HOT_PIXEL_MAP);
             if (rawBinning > 1) hotPixels = new Point[0]; // sensor coordinates; a binned site averages it away
+            else if (hotPixels != null && rawCrop != null) hotPixels = keptHotPixels(hotPixels, rawCrop);
             ReCalcColor(false, result);
         }
         // P127: black and white at the bit depth of the stream (RawLevels: declared levels, the frame's dynamic ones in their own
@@ -838,6 +851,17 @@ public class Parameters {
         Log.d(TAG, "matrix:\n" + outp);
     }
 
+    /** P162: the hot pixels inside {@code area}, in its own coordinates. */
+    public static Point[] keptHotPixels(Point[] hot, com.particlesdevs.photoncamera.processing.RawCrop.Area area) {
+        java.util.ArrayList<Point> kept = new java.util.ArrayList<>();
+        for (Point p : hot) {
+            if (p == null) continue;
+            final int x = p.x - area.x, y = p.y - area.y;
+            if (x >= 0 && y >= 0 && x < area.width && y < area.height) kept.add(new Point(x, y));
+        }
+        return kept.toArray(new Point[0]);
+    }
+
     protected Parameters Build() {
         Parameters params = new Parameters();
         params.multiFrameCount = multiFrameCount;
@@ -857,6 +881,8 @@ public class Parameters {
         params.mapSize = new Point(mapSize);
         params.sensorPix = new Rect(sensorPix);
         params.rawBinning = rawBinning;
+        params.rawCrop = rawCrop;
+        params.rawCropFull = rawCropFull == null ? null : new Point(rawCropFull);
         params.gainMap = gainMap.clone();
         params.proPhotoToSRGB = proPhotoToSRGB.clone();
         params.sensorToProPhoto = sensorToProPhoto.clone();
