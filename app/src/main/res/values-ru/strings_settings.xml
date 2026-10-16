@@ -689,7 +689,7 @@
     <string name="prefs_colour_vib_highlights_title">Сочность светов</string>
     <string name="prefs_colour_vib_highlights_summary">Блёклые цвета в светлых участках сочнее или спокойнее. Больше — сочнее, меньше — спокойнее; 0 — выкл.</string>
     <string name="prefs_colour_skin_protect_title">Защита кожи, %</string>
-    <string name="prefs_colour_skin_protect_summary">Лица сохраняют свой цвет, когда сочность, цветовой микшер или цветокоррекция добавляют цвета. Больше — сильнее защита; 0 — выкл.</string>
+    <string name="prefs_colour_skin_protect_summary">Лица сохраняют свой цвет, когда сочность, насыщенность AgX, цветовой микшер или цветокоррекция добавляют цвета. Больше — сильнее защита; 0 — выкл.</string>
     <string name="prefs_colour_skin_hue_title">Тон кожи</string>
     <string name="prefs_colour_skin_hue_summary">Кожа краснее или золотистее, остальные цвета не меняются. Больше — золотистее, меньше — краснее; 0 — как есть.</string>
     <string name="prefs_colour_skin_even_title">Ровность тона кожи, %</string>

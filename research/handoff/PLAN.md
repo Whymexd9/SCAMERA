@@ -3351,6 +3351,19 @@ Newest report per phone (15 phones). Already known items (P93-P102) are not repe
   filtering, < 4e-4) and glslc for FILM_LUT 0/1 x P3_OUT 0/1; in CI. Hald PNG not added (.cube covers the usual looks).
 - Still not done: the skin protection of the AgX saturation above 1, and the live RAW viewfinder's preview of the look (it
   renders with its own ArkCore defaults). Not seen on a phone.
+- DONE 2026-10-16, both:
+  (1) «Защита кожи» also holds back the AgX saturation above 1 («Custom» look): on skin it acts with (1 - protection), as
+  vibrance does; below 1 untouched; under COLOUR_LOOK 1 only (the default shader token for token, check_colour_output's pin).
+  check_colour_look: skin under saturation 1.5 x1.525 -> x1.036 with full protection, colours far from skin unchanged.
+  The row's text names it.
+  (2) The live RAW viewfinder shows the look: LiveRawRenderer reads ArkTone.colourLook() twice a second and folds the white
+  matrix (warmth / tint / primaries calibration; no scene light, the viewfinder has no scene CCT) after the camera transform,
+  and rawdevelop_fs.glsl runs the same stages as COLOUR_LOOK 1 behind u_look_on (monochrome before OKLab, skin protection /
+  vibrance by brightness / mixer / skin hue after its vibrance, the grading on the display value before the gamma) and the
+  film LUT in its existing LUT slot with the file's domain (parsed off the GL thread, uploaded once per file). The tone and
+  hue lock stay the viewfinder's own (ArkCore). tools/check_viewfinder_look.py (GPU: look off = the shader before P134 bit
+  for bit, a neutral look = off, mono grey, shadow grading only in the shadows, skin protection of the mixer, identity LUT
+  and its domain; in CI), LiveRawLookTest (matrix order; in CI). Not seen on a phone.
 
 ### P140b - fixes after the 30816/30817 builds (owner, 2026-10-15: screenshots + OPPO Find X7 Ultra log, «Исправь»)
 - OPPO Find X7 Ultra (PHY110), build 30817: black viewfinder, «Камера не отвечает» / «Сбой камеры (код 4)» on every module. The log:

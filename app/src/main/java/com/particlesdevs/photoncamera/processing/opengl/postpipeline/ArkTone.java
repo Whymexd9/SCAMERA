@@ -154,7 +154,8 @@ public final class ArkTone {
      * P134 «Цвет»: the colour settings of the shot (pref_scam_hybrid_colour_*; scam_dev.txt "hybrid_colour_<key>" overrides).
      * Every default is «no change».
      */
-    static ColourLook colourLook() {
+    /** The «Цвет» rows of the current module (also the RAW viewfinder's look, P134). */
+    public static ColourLook colourLook() {
         ColourLook c = new ColourLook();
         c.warmth = PreferenceKeys.hybridValue("colour_warmth", 0f);
         c.tint = PreferenceKeys.hybridValue("colour_tint", 0f);

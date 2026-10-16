@@ -689,7 +689,7 @@
     <string name="prefs_colour_vib_highlights_title">Highlight vibrance</string>
     <string name="prefs_colour_vib_highlights_summary">Dull colours in the bright areas richer or calmer. Higher: richer; lower: calmer; 0: off.</string>
     <string name="prefs_colour_skin_protect_title">Skin protection, %</string>
-    <string name="prefs_colour_skin_protect_summary">Faces keep their colour when vibrance, the colour mixer or the grading add colour. Higher: stronger protection; 0: off.</string>
+    <string name="prefs_colour_skin_protect_summary">Faces keep their colour when vibrance, the AgX saturation, the colour mixer or the grading add colour. Higher: stronger protection; 0: off.</string>
     <string name="prefs_colour_skin_hue_title">Skin tone</string>
     <string name="prefs_colour_skin_hue_summary">Skin redder or more golden; other colours stay as they are. Higher: more golden; lower: redder; 0: as is.</string>
     <string name="prefs_colour_skin_even_title">Even skin tone, %</string>

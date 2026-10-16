@@ -4,7 +4,8 @@
     python3 tools/check_colour_look.py
 
 - every colour setting at its default (COLOUR_LOOK 1, neutral uniforms) renders bit for bit what COLOUR_LOOK 0 renders;
-- each block does what its row says: monochrome (neutral / filters), skin protection of vibrance, the mixer (hue,
+- each block does what its row says: monochrome (neutral / filters), skin protection of vibrance and of the AgX saturation
+  above 1, the mixer (hue,
   saturation, lightness of one band only), the grading zones, the hue-lock modes, the gamut compression, the skin hue.
 The white-balance rows are a CPU matrix (processing.color.ColourLook, ColourLookTest)."""
 import sys
@@ -80,7 +81,7 @@ def main():
     neutral = {'skinU': (0.0, 0.0, 0.0), 'vibLU': (0.0, 0.0), 'mixOnU': 0, 'monoU': (0.0, 0.0, 0.0), 'gamutU': 0.0,
                'hueLockU': 0, 'gradeAU': (0.0, 0.0, 0.0, 0.0), 'gradeBU': (0.0, 0.0, 0.0, 0.5)}
 
-    def render(look=None, mix=None, vib=(0.0, 0.4, 0.2), p3='0'):
+    def render(look=None, mix=None, vib=(0.0, 0.4, 0.2), p3='0', agx_sat=1.0):
         shader = set_define(set_define(src, 'P3_OUT', p3), 'COLOUR_LOOK', '1' if look is not None else '0')
         prog = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + shader)
         out = ctx.texture((W, H), 4, dtype='f4')
@@ -97,7 +98,7 @@ def main():
         vals = {'sensorToIntermediate': eye, 'intermediateToSRGB': eye, 'neutralPointU': (1, 1, 1), 'inScaleU': 1.0,
                 'fU': 1, 'colourFU': 1, 'aeU': 1.0, 'clipU': 1.0, 'toeU': 0.05, 'gammaInvU': 1 / 2.2, 'macroU': 1.1,
                 'vibU': vib, 'detailGainU': 0.0, 'deltaChromaU': 1.0, 'filmToeU': 0.1, 'ditherU': 0,
-                'agxAU': (2.7, 1.35, 1.6, 1.0), 'agxBU': (-8.5, 3.5, 0.3, 4.0), 'headroomU': 0, 'hlWhiteU': 0.15}
+                'agxAU': (2.7, 1.35, 1.6, agx_sat), 'agxBU': (-8.5, 3.5, 0.3, 4.0), 'headroomU': 0, 'hlWhiteU': 0.15}
         if look is not None:
             vals.update(neutral)
             vals.update(look)
@@ -143,6 +144,25 @@ def main():
     gain_off, gain_on = (cs_off / cs_base).mean(), (cs_on / cs_base).mean()
     print('skin under vibrance 1: chroma x%.3f unprotected, x%.3f protected' % (gain_off, gain_on))
     check(gain_on < 1 + (gain_off - 1) * 0.5, 'skin protection does not hold back the vibrance on skin')
+    # skin protection of the AgX saturation above 1 (the «Custom» AgX look): skin held back, the hue circle untouched
+    sat_off = render({}, vib=(0.0, 0.0, 0.0), agx_sat=1.5)
+    sat_prot = render({'skinU': (1.0, 0.0, 0.0)}, vib=(0.0, 0.0, 0.0), agx_sat=1.5)
+    _, ca_off, _ = hue(sat_off[s0])
+    _, ca_on, _ = hue(sat_prot[s0])
+    g_off, g_on = (ca_off / cs_base).mean(), (ca_on / cs_base).mean()
+    print('skin under AgX saturation 1.5: chroma x%.3f unprotected, x%.3f protected' % (g_off, g_on))
+    check(g_off > 1.1, 'the test is moot: the AgX saturation does not raise the skin chroma')
+    check(g_on < 1 + (g_off - 1) * 0.5, 'skin protection does not hold back the AgX saturation on skin')
+    _, cb_off, _ = hue(sat_off[:k_circle])
+    _, cb_on, _ = hue(sat_prot[:k_circle])
+    far = np.abs(((h0[:k_circle] - 52 + 180) % 360) - 180) > 60
+    keep = np.abs(cb_on[far] / np.maximum(cb_off[far], 1e-6) - 1).max()
+    print('  colours far from skin: max chroma change by the protection %.4f' % keep)
+    check(keep < 0.01, 'the skin protection of the AgX saturation reaches colours far from skin (%.4f)' % keep)
+    lower = np.abs(render({'skinU': (1.0, 0.0, 0.0)}, vib=(0.0, 0.0, 0.0), agx_sat=0.7)
+                   - render({}, vib=(0.0, 0.0, 0.0), agx_sat=0.7)).max()
+    print('  AgX saturation 0.7: max |protected - unprotected| %.2e' % lower)
+    check(lower < 1e-6, 'the skin protection changes a lowered AgX saturation (%.2e)' % lower)
     # mixer: blue saturation -100 -> blues lose chroma, reds keep theirs
     mix = [0.0] * 24
     mix[5 * 3 + 1] = -1.0

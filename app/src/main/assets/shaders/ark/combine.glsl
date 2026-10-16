@@ -595,7 +595,13 @@ void main() {
                        -0.05297163539640 * dispLin.r - 0.09804337634422 * dispLin.g + 1.15107253721836 * dispLin.b);
     if (abs(agxA.w - 1.0) > 0.001) {
         float ol = dot(graded, LUMA);
+#if COLOUR_LOOK == 1
+        // P134 «Защита кожи»: the AgX saturation above 1 reaches skin only with (1 - protection), as vibrance does
+        float agxSat = agxA.w > 1.0 ? 1.0 + (agxA.w - 1.0) * (1.0 - skinU.x * skinW) : agxA.w;
+        graded = vec3(ol) + (graded - vec3(ol)) * agxSat;
+#else
         graded = vec3(ol) + (graded - vec3(ol)) * agxA.w;
+#endif
     }
 #endif
     // In gamut by chroma, not per channel: a channel of a saturated light over 1 would otherwise stop its brightening.

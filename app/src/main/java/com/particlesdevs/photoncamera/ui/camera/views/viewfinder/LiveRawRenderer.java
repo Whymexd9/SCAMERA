@@ -5,6 +5,10 @@ import android.opengl.GLES30;
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.LiveRawFrame;
 import com.particlesdevs.photoncamera.processing.LiveRawMeter;
+import com.particlesdevs.photoncamera.processing.color.ColourLook;
+import com.particlesdevs.photoncamera.processing.color.FilmLut;
+import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ArkTone;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -17,8 +21,78 @@ final class LiveRawRenderer {
     private int program, rawTex, shadingTex, lutTex, width, height;
     private void deleteResources(){
         if(program!=0)GLES20.glDeleteProgram(program);
-        GLES20.glDeleteTextures(3,new int[]{rawTex,shadingTex,lutTex},0);
-        program=rawTex=shadingTex=lutTex=width=height=0;uploadedVersion=-1;uniforms.clear();
+        GLES20.glDeleteTextures(4,new int[]{rawTex,shadingTex,lutTex,filmLutTex},0);
+        program=rawTex=shadingTex=lutTex=filmLutTex=width=height=0;uploadedVersion=-1;uniforms.clear();lutShown=null;
+    }
+    // P134: the photo's «Цвет» look (ColourLook: the white-balance matrix, monochrome, skin, vibrance by brightness, the
+    // mixer, the grading) and the film LUT in the RAW viewfinder, read from the settings twice a second; the LUT file is
+    // parsed off the GL thread. The tone stays the viewfinder's own (ArkCore), so the look shows on its rendering.
+    private static final java.util.concurrent.ExecutorService LUT_LOADER=java.util.concurrent.Executors.newSingleThreadExecutor(r->{
+        Thread t=new Thread(r,"vf-film-lut");t.setDaemon(true);return t;});
+    private long lookAt=Long.MIN_VALUE;
+    private float[] lookWhite,lookSkin,lookVib,lookMix,lookMono,lookGradeA,lookGradeB;
+    private boolean lookOn,lookMixOn;
+    private float lutStrength;
+    private volatile String lutWanted="";
+    private volatile FilmLut lutReady;
+    private FilmLut lutShown;
+    private int filmLutTex;
+    private void refreshLook(){
+        long now=android.os.SystemClock.elapsedRealtime();
+        if(now-lookAt<500)return;
+        lookAt=now;
+        try{
+            ColourLook c=ArkTone.colourLook();
+            lookWhite=c.whiteMatrix(0f);
+            lookOn=!c.shaderNeutral();
+            lookSkin=c.skinUniform();lookVib=c.vibUniform();lookMix=c.mixUniform();lookMixOn=c.mixerOn();lookMono=c.monoUniform();
+            float[][] grade=c.gradeUniforms();lookGradeA=grade[0];lookGradeB=grade[1];
+            lutStrength=PreferenceKeys.filmLutStrength();
+            String name=lutStrength>0f?PreferenceKeys.filmLut():"";
+            if(!name.equals(lutWanted)){
+                lutWanted=name;lutReady=null;
+                if(!name.isEmpty())LUT_LOADER.execute(()->{
+                    FilmLut lut=FilmLut.chosen(ScameraApp.getAppContext(),name);
+                    if(name.equals(lutWanted))lutReady=lut;
+                });
+            }
+        }catch(RuntimeException e){
+            lookWhite=null;lookOn=false;lutStrength=0f;
+        }
+    }
+    /** The camera's colour transform (column-major, as uploaded) with the look's white matrix (row-major, linear sRGB) after it. */
+    static float[] lookTransform(float[] white,float[] ccm){
+        float[] out=new float[9];
+        for(int r=0;r<3;r++)for(int c=0;c<3;c++){
+            float s=0f;for(int k=0;k<3;k++)s+=white[r*3+k]*ccm[c*3+k];
+            out[c*3+r]=s;
+        }
+        return out;
+    }
+    private void setLook(){
+        FilmLut lut=lutReady;
+        if(lut!=lutShown){
+            if(filmLutTex!=0)GLES20.glDeleteTextures(1,new int[]{filmLutTex},0);
+            filmLutTex=lut!=null?lut.upload():0;lutShown=lut;
+        }
+        boolean lutOn=filmLutTex!=0&&lutStrength>0f;
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE4);GLES30.glBindTexture(GLES30.GL_TEXTURE_3D,lutOn?filmLutTex:lutTex);
+        integer("u_lut_enabled",lutOn?1:0);
+        if(lutOn){
+            number("u_lut_strength",lutStrength);number("u_lut_size",lut.size);
+            GLES20.glUniform3f(loc("u_lut_min"),lut.domainMin[0],lut.domainMin[1],lut.domainMin[2]);
+            GLES20.glUniform3f(loc("u_lut_scale"),1f/(lut.domainMax[0]-lut.domainMin[0]),1f/(lut.domainMax[1]-lut.domainMin[1]),
+                    1f/(lut.domainMax[2]-lut.domainMin[2]));
+        }
+        integer("u_look_on",lookOn?1:0);
+        if(!lookOn)return;
+        GLES20.glUniform3f(loc("u_look_skin"),lookSkin[0],lookSkin[1],lookSkin[2]);
+        GLES20.glUniform2f(loc("u_look_vib"),lookVib[0],lookVib[1]);
+        integer("u_look_mix_on",lookMixOn?1:0);
+        GLES20.glUniform1fv(loc("u_look_mix"),24,lookMix,0);
+        GLES20.glUniform3f(loc("u_look_mono"),lookMono[0],lookMono[1],lookMono[2]);
+        GLES20.glUniform4f(loc("u_look_grade_a"),lookGradeA[0],lookGradeA[1],lookGradeA[2],lookGradeA[3]);
+        GLES20.glUniform4f(loc("u_look_grade_b"),lookGradeB[0],lookGradeB[1],lookGradeB[2],lookGradeB[3]);
     }
     private int uploadedVersion=-1, frameSession=-1, draws;
     private boolean failed;
@@ -27,7 +101,7 @@ final class LiveRawRenderer {
     private final HashMap<String,Integer> uniforms=new HashMap<>();
     private final LiveRawMeter meter=new LiveRawMeter();
     void onContextCreated() {
-        program=rawTex=shadingTex=lutTex=width=height=0;
+        program=rawTex=shadingTex=lutTex=filmLutTex=width=height=0;lutShown=null;
         uploadedVersion=frameSession=-1; failed=false; uniforms.clear(); meter.reset();
     }
     private int loc(String name) {return uniforms.computeIfAbsent(name,n->GLES20.glGetUniformLocation(program,n));}
@@ -40,6 +114,7 @@ final class LiveRawRenderer {
         if(failed)return false;
         try {
             if(program==0 && !init())return false;
+            refreshLook();
             GLES20.glUseProgram(program);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE2);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,rawTex);
             if(uploadedVersion!=f.version) {
@@ -61,7 +136,7 @@ final class LiveRawRenderer {
                 uploadedVersion=f.version;
             }
             GLES20.glActiveTexture(GLES20.GL_TEXTURE3);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,shadingTex);
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE4);GLES30.glBindTexture(GLES30.GL_TEXTURE_3D,lutTex);
+            setLook();
             integer("sTexture16",2);integer("u_lsc_map",3);integer("u_lut_tex",4);
             integer("width",f.width);integer("height",f.height);integer("bayer_pattern",f.cfaPattern);
             integer("cfa_mode",f.cfaBlock==1?1:0);integer("cfa_block_size",f.cfaBlock);
@@ -88,7 +163,8 @@ final class LiveRawRenderer {
             int[] o=orders[f.cfaPattern];
             GLES20.glUniform4f(loc("u_black_level"),f.blackLevel[o[0]],f.blackLevel[o[1]],f.blackLevel[o[2]],f.blackLevel[o[3]]);
             number("u_white_level",f.whiteLevel);number("r_gain",f.wbGains[0]);number("g_gain",f.wbGains[1]);number("b_gain",f.wbGains[2]);
-            GLES20.glUniformMatrix3fv(loc("color_transform"),1,false,f.colorTransform,0);
+            float[] white=lookWhite;
+            GLES20.glUniformMatrix3fv(loc("color_transform"),1,false,white!=null?lookTransform(white,f.colorTransform):f.colorTransform,0);
             number("u_lsc_intensity",f.shadingWidth>1?1:0);
             number("u_auto_exposure",meter.exposure);number("u_contrast_boost",meter.contrast);
             GLES20.glUniform4fv(loc("u_exp_mults"),1,meter.multipliers,0);

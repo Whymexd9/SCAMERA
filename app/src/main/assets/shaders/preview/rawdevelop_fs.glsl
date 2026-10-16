@@ -72,6 +72,18 @@ uniform highp sampler3D u_lut_tex;
 uniform int u_lut_enabled;
 uniform float u_lut_strength;
 uniform float u_lut_size;
+// P134: the photo's «Цвет» look in the RAW viewfinder (processing.color.ColourLook, the same stages as ark/combine.glsl's
+// COLOUR_LOOK 1; u_look_on 0 = the viewfinder before P134) and the film LUT's domain
+uniform int u_look_on;
+uniform vec3 u_look_mono;            // monochrome filter transmission, 0 = colour
+uniform vec3 u_look_skin;            // skin: protection of positive gains 0..1, hue shift -1..1 (x 12 deg), evenness 0..1
+uniform vec2 u_look_vib;             // vibrance of shadows / highlights
+uniform int u_look_mix_on;
+uniform float u_look_mix[24];        // 8 bands x hue / saturation / lightness, -1..1
+uniform vec4 u_look_grade_a;         // OKLab offsets: shadows a, b, mid-tones a, b
+uniform vec4 u_look_grade_b;         // highlights a, b, balance -1..1, blending 0..1
+uniform vec3 u_lut_min;
+uniform vec3 u_lut_scale;
 uniform int u_ldc_enabled;
 uniform float u_ldc_aspect;
 uniform float u_ldc_inv_aspect;
@@ -83,6 +95,78 @@ uniform float u_ldc_cx;
 uniform float u_ldc_cy;
 out vec4 FragColor;
 
+const vec3 LOOK_LUMA = vec3(0.2126, 0.7152, 0.0722);
+const float LOOK_BAND_HUE[8] = float[8](29.0, 53.0, 110.0, 143.0, 195.0, 264.0, 294.0, 344.0);
+vec3 lookToOklab(vec3 c) {
+    vec3 lms = vec3(0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b,
+                    0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b,
+                    0.0883024619 * c.r + 0.2817188376 * c.g + 0.6299787005 * c.b);
+    lms = pow(max(lms, vec3(0.0)), vec3(1.0 / 3.0));
+    return vec3(0.2104542553 * lms.x + 0.7936177850 * lms.y - 0.0040720468 * lms.z,
+                1.9779984951 * lms.x - 2.4285922050 * lms.y + 0.4505937099 * lms.z,
+                0.0259040371 * lms.x + 0.7827717662 * lms.y - 0.8086757660 * lms.z);
+}
+vec3 lookFromOklab(vec3 lab) {
+    vec3 lms = vec3(lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z,
+                    lab.x - 0.1055613458 * lab.y - 0.0638541728 * lab.z,
+                    lab.x - 0.0894841775 * lab.y - 1.2914855480 * lab.z);
+    lms = lms * lms * lms;
+    return vec3(4.0767416621 * lms.x - 3.3077115913 * lms.y + 0.2309699292 * lms.z,
+                -1.2684380046 * lms.x + 2.6097574011 * lms.y - 0.3413193965 * lms.z,
+                -0.0041960863 * lms.x - 0.7034186147 * lms.y + 1.7076147010 * lms.z);
+}
+// the skin mask of ark/combine.glsl: OKLab hue ~50 deg, chroma / L 0.03..0.32
+float lookSkinWeight(vec3 lab) {
+    float c = length(lab.yz);
+    if (c < 0.000001) return 0.0;
+    float r = c / max(lab.x, 0.0001);
+    float d = mod(degrees(atan(lab.z, lab.y)) - 50.0 + 180.0, 360.0) - 180.0;
+    return exp(-(d * d) / 400.0) * smoothstep(0.03, 0.06, r) * (1.0 - smoothstep(0.22, 0.32, r));
+}
+// the scene stage of ark/combine.glsl's COLOUR_LOOK 1 after the vibrance (satMult): skin protection of positive gains,
+// vibrance by brightness, the 8-band mixer, skin hue / evenness; returns the skin weight for the grading
+float lookScene(inout vec3 lab, float satMult) {
+    if (length(lab.yz) <= 0.000001) return 0.0;
+    float skinW = lookSkinWeight(lab);
+    float keep = 1.0 - u_look_skin.x * skinW;
+    if (satMult > 1.0 && keep < 1.0) lab.yz *= (1.0 + (satMult - 1.0) * keep) / satMult;
+    if (u_look_vib != vec2(0.0)) {
+        float mSh = (1.0 - smoothstep(0.25, 0.45, lab.x)) * smoothstep(0.05, 0.12, lab.x);
+        float mHl = smoothstep(0.6, 0.8, lab.x) * (1.0 - smoothstep(0.88, 0.98, lab.x));
+        float g = (u_look_vib.x * mSh + u_look_vib.y * mHl) * max(1.0 - length(lab.yz) * 2.0, 0.0);
+        if (g > 0.0) g *= keep;
+        lab.yz *= max(1.0 + g, 0.0);
+    }
+    if (u_look_mix_on == 1) {
+        float c = length(lab.yz);
+        float h = mod(degrees(atan(lab.z, lab.y)), 360.0);
+        int i = 7;
+        for (int k = 0; k < 8; k++) if (h >= LOOK_BAND_HUE[k]) i = k;
+        int j = i == 7 ? 0 : i + 1;
+        float c0 = LOOK_BAND_HUE[i];
+        float c1 = j == 0 ? LOOK_BAND_HUE[0] + 360.0 : LOOK_BAND_HUE[j];
+        float hh = h < c0 ? h + 360.0 : h;
+        float wi = 0.5 + 0.5 * cos(3.14159265 * clamp((hh - c0) / (c1 - c0), 0.0, 1.0));
+        float wj = 1.0 - wi;
+        float cw = min(c / 0.12, 1.0);
+        float ang = radians(23.0) * (wi * u_look_mix[i * 3] + wj * u_look_mix[j * 3]) * cw;
+        lab.yz = mat2(cos(ang), sin(ang), -sin(ang), cos(ang)) * lab.yz;
+        float sg = wi * u_look_mix[i * 3 + 1] + wj * u_look_mix[j * 3 + 1];
+        if (sg > 0.0) sg *= keep;
+        lab.yz *= max(1.0 + sg, 0.0);
+        lab.x = max(lab.x + (wi * u_look_mix[i * 3 + 2] + wj * u_look_mix[j * 3 + 2]) * 0.15 * cw * sqrt(max(lab.x, 0.0)), 0.0001);
+    }
+    if (u_look_skin.y != 0.0 || u_look_skin.z != 0.0) {
+        float w = lookSkinWeight(lab);
+        if (w > 0.0) {
+            float c = length(lab.yz);
+            float d = mod(atan(lab.z, lab.y) - radians(52.0) + 3.14159265, 6.28318531) - 3.14159265;
+            float hn = radians(52.0) + d * (1.0 - u_look_skin.z * w) + radians(12.0) * u_look_skin.y * w;
+            lab.yz = c * vec2(cos(hn), sin(hn));
+        }
+    }
+    return skinW;
+}
 // Adapted from the user-supplied libvf_demosaic.so (SHA-256 78a014...4285).
 // Camera2 supplies RAW_SENSOR here; packed inputs are not guessed from bit depth.
 float getUnpackedPixel(int x, int y) {
@@ -292,6 +376,9 @@ vec3 processPipeline(vec3 color, float corner_gain) {
         base_multiplier = compute_ef_multiplier(Y_raw, u_exp_mults, u_layer_weights, u_aces_toe, u_weight_center, u_blend_smoothness);
         color *= base_multiplier;
     }
+    // P134: monochrome through a colour filter (the luminance of the filtered light)
+    if (u_look_on == 1 && u_look_mono != vec3(0.0))
+        color = vec3(max(dot(color, LOOK_LUMA * u_look_mono) / dot(LOOK_LUMA, u_look_mono), 0.0));
 
     float L_in = max(0.0, 0.4122214708 * color.r + 0.5363325363 * color.g + 0.0514459929 * color.b);
     float M_in = max(0.0, 0.2119034982 * color.r + 0.6806995451 * color.g + 0.1073969566 * color.b);
@@ -334,6 +421,14 @@ vec3 processPipeline(vec3 color, float corner_gain) {
     }
     oklab_a *= sat_mult;
     oklab_b *= sat_mult;
+    float look_skin = 0.0;
+    if (u_look_on == 1) {
+        vec3 look_lab = vec3(oklab_L, oklab_a, oklab_b);
+        look_skin = lookScene(look_lab, sat_mult);
+        oklab_L = look_lab.x;
+        oklab_a = look_lab.y;
+        oklab_b = look_lab.z;
+    }
 
     // Viewfinder Balanced Shadow Chroma Suppression:
     // Retains natural colors and warmth in shadows (never B&W), while suppressing neon confetti
@@ -418,6 +513,17 @@ vec3 processPipeline(vec3 color, float corner_gain) {
     float base_tm_gain = mapped_norm / norm;
     vec3 graded = color * base_tm_gain;
     color = clamp(graded, 0.0, 1.0);
+    // P134: the grading of the display value in OKLab, zones around 0.5 - balance / 4 (ark/combine.glsl)
+    if (u_look_on == 1 && (u_look_grade_a != vec4(0.0) || u_look_grade_b.xy != vec2(0.0))) {
+        vec3 post = lookToOklab(color);
+        float m = 0.5 - 0.25 * u_look_grade_b.z;
+        float wd = 0.15 + 0.5 * u_look_grade_b.w;
+        float wSh = 1.0 - smoothstep(m - wd, m, post.x);
+        float wHl = smoothstep(m, m + wd, post.x);
+        float wMid = max(1.0 - wSh - wHl, 0.0);
+        post.yz += (u_look_grade_a.xy * wSh + u_look_grade_a.zw * wMid + u_look_grade_b.xy * wHl) * (1.0 - u_look_skin.x * look_skin);
+        color = clamp(lookFromOklab(post), 0.0, 1.0);
+    }
 
     float inv_gamma = 1.0 / max(0.1, u_gamma);
     color = pow(clamp(color, vec3(0.0), vec3(1.0)), vec3(inv_gamma));
@@ -494,7 +600,7 @@ void main() {
     }
     vec3 color = processPipeline(cC, corner_gain);
     if (u_lut_enabled == 1) {
-        vec3 lut_coord = (clamp(color, 0.0, 1.0) * (u_lut_size - 1.0) + 0.5) / u_lut_size;
+        vec3 lut_coord = (clamp((clamp(color, 0.0, 1.0) - u_lut_min) * u_lut_scale, 0.0, 1.0) * (u_lut_size - 1.0) + 0.5) / u_lut_size;
         vec3 lut_color = texture(u_lut_tex, lut_coord).rgb;
         color = mix(color, lut_color, u_lut_strength);
     }
