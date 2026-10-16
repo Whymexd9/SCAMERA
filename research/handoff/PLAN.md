@@ -4081,6 +4081,12 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
     line on a proxy native mosaic does not prove it). Tele 200 MP x2 exceeds the real GPU 16384 side - do not hide a
     smaller result.
   - P146 (FULLRES profiles / settings) by this plan; today's diagnostics are not the general integration for every vivo.
+  - Two FULLRES buttons on the telephoto (owner, 2026-10-16: «сделай отдельную кнопку на телевике для 50мп и для 200мп. По
+    иконке 200мп должно быть понятно что это выше разрешение»): «50» = Tele5 / mode 1 Quad 8160x6144, «200» = Tele5 /
+    mode 0 Tetra 16320x12288 (today VivoSdkFullRes.nativeProfile gives the tele only the 200 MP profile); one of them or
+    none on at a time, the choice read by the profile. The 200 MP icon must read as the higher resolution (a denser
+    pixel grid / a bigger «200» badge than the 50 MP one, in our button style next to FullResButton). Main / UW keep the
+    one 50 MP button.
   - Another agent may take the ready source / capture mechanisms: re-check all four ISZ, FULLRES on three cameras, 4:3
     output, AE and a correct lease return.
   - DCG not touched. No stock NICE / ZSL bracket / SCAM HDR.
