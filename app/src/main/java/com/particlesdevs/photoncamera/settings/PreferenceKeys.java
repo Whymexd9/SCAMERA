@@ -1080,6 +1080,11 @@ public class PreferenceKeys {
                 com.particlesdevs.photoncamera.control.subject.SubjectPolicy.TRACK_DEFAULT));
     }
 
+    /** P182: FULLRES 50 MP by the sensor's hardware remosaic instead of the own (VivoSdkFullRes.PREF_HW_REMOSAIC). */
+    public static boolean isFullResHwRemosaic() {
+        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_fullres_hw_remosaic", false);
+    }
+
     public static boolean isLiveViewfinderRawEnabled() {
         return preferenceKeys.settingsManager.getBoolean(
                 "default_scope", Key.KEY_LIVE_VIEWFINDER_RAW, false);

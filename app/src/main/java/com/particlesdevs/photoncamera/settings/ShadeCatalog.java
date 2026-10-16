@@ -422,6 +422,8 @@ public final class ShadeCatalog {
     private static void applyRuntimeRules(PreferenceScreen tree) {
         Preference xiaomiZoom = tree.findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
         if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
+        Preference hwRemosaic = tree.findPreference(com.particlesdevs.photoncamera.capture.VivoSdkFullRes.PREF_HW_REMOSAIC);
+        if (hwRemosaic != null && !com.particlesdevs.photoncamera.capture.VivoSdkFullRes.hardwareRemosaicOffered()) hwRemosaic.setVisible(false);
     }
 
     private void walk(Preference p, List<String> path, @Nullable Drawable.ConstantState inherited, boolean root) {

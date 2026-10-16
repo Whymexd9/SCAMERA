@@ -57,9 +57,11 @@ public final class VivoPd2454NativeRaw {
     /** The native FULLRES profile the camera runs now (P180: on any phone of VivoNativeFullRes), null otherwise. */
     public static VivoSdkFullRes.Profile fullResProfile(String camera) {
         Context context = ScameraApp.getAppContext();
-        return context != null && VivoNativeFullRes.device() && PACKAGE.equals(context.getPackageName())
+        VivoSdkFullRes.Profile profile = context != null && VivoNativeFullRes.device() && PACKAGE.equals(context.getPackageName())
                 && PixelPro10.fullResOn() && !Dcg14Mode.on()
-                ? VivoSdkFullRes.nativeProfile(camera) : null;
+                ? VivoSdkFullRes.profile(camera) : null;
+        // P182: a hardware-remosaic FULLRES shot runs the SDK route (no native forceSensorMode on its requests)
+        return profile != null && profile.nativeBlock > 1 ? profile : null;
     }
 
     static void applyFullRes(CaptureRequest.Builder builder, VivoSdkFullRes.Profile profile) {

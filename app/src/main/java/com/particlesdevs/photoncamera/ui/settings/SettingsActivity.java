@@ -223,6 +223,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             // P17: the tele's smooth optical zoom exists on the Xiaomi 17 Ultra only
             Preference xiaomiZoom = findPreference(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.PREF);
             if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
+            Preference hwRemosaic = findPreference(com.particlesdevs.photoncamera.capture.VivoSdkFullRes.PREF_HW_REMOSAIC);
+            if (hwRemosaic != null && !com.particlesdevs.photoncamera.capture.VivoSdkFullRes.hardwareRemosaicOffered()) hwRemosaic.setVisible(false);
             setupPhotoFormat();
             setupCaptureReport();
             SettingsStyle.apply(getPreferenceScreen());

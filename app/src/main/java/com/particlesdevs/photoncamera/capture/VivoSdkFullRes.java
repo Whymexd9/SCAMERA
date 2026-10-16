@@ -27,17 +27,47 @@ public final class VivoSdkFullRes {
     }
 
     public static Profile profile(String cameraId) {
-        if (nativeRaw()) return nativeProfile(cameraId);
+        return profile(cameraId, PixelPro10.tele200());
+    }
+
+    /** P181: the camera's profile at the given size of a camera with two (200 MP and 50 MP); others have one size. */
+    public static Profile profile(String cameraId, boolean tele200) {
+        final boolean nativeBuild = nativeRaw();
+        return choose(cameraId, nativeBuild, nativeBuild && hardwareRemosaicOn(), tele200);
+    }
+
+    /**
+     * The FULLRES profile of a camera: the default package's SDK route (the sensor's hardware remosaic, plain Bayer); the
+     * native build's own mosaic (Quad / Tetra, the own remosaic), or P182 (owner, 2026-10-17: «дай возможность для fullres
+     * включать аппаратный ремозаик») with «Аппаратный ремозаик» on its 50 MP shots by the SDK route's hardware-remosaic modes -
+     * there is no hardware-remosaic 200 MP mode, a 200 MP shot keeps the own remosaic.
+     */
+    static Profile choose(String cameraId, boolean nativeBuild, boolean hardwareRemosaic, boolean tele200) {
+        if (!nativeBuild) return sdkProfile(cameraId);
+        final boolean large = tele200 && VivoNativeFullRes.twoSizes(cameraId);
+        final Profile hardware = sdkProfile(cameraId);
+        if (hardwareRemosaic && !large && hardware != null) return hardware;
+        return VivoNativeFullRes.profile(cameraId, tele200);
+    }
+
+    /** The X200 Ultra's hardware-remosaic FULLRES modes (P109m / P109p, the SDK route): DNGHWREMOSAIC Bayer at 50 MP. */
+    static Profile sdkProfile(String cameraId) {
         if ("3".equals(cameraId)) return new Profile(8192, 6144, 13);
         if ("4".equals(cameraId)) return new Profile(8192, 6144, 11);
         if ("5".equals(cameraId)) return new Profile(8160, 6144, 18);
         return null;
     }
 
-    /** P181: the camera's profile at the given size of a camera with two (200 MP and 50 MP); others have one size. */
-    public static Profile profile(String cameraId, boolean tele200) {
-        if (teleSizes(cameraId)) return VivoNativeFullRes.profile(cameraId, tele200);
-        return profile(cameraId);
+    /** P182: the setting «Аппаратный ремозаик» (FULLRES 50 MP by the sensor's hardware remosaic). */
+    public static final String PREF_HW_REMOSAIC = "pref_fullres_hw_remosaic";
+
+    /** P182: the switch acts here: the native build on the X200 Ultra, whose hardware-remosaic modes are known. */
+    public static boolean hardwareRemosaicOffered() {
+        return VivoQcomModes.device() && nativeRaw();
+    }
+
+    static boolean hardwareRemosaicOn() {
+        return VivoQcomModes.device() && PreferenceKeys.isFullResHwRemosaic();
     }
 
     /**

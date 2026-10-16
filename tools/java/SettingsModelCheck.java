@@ -213,6 +213,8 @@ public class SettingsModelCheck {
         if(!new SettingsAvailability(m).oppoTunedColor(false).hidden("pref_scam_hybrid_ark_ccm_sat"))throw new AssertionError("OPPO saturation shown");
         if(new SettingsAvailability(m).mosaicStreams(false).reason("pref_scam_hybrid_mosaic_path")==null)throw new AssertionError("mosaic rows without a mosaic");
         if(!new SettingsAvailability(scam).xiaomiSmoothZoom(false).hidden("pref_xiaomi_smooth_zoom"))throw new AssertionError("Xiaomi zoom shown");
+        if(!new SettingsAvailability(scam).fullResHwRemosaic(false).hidden("pref_fullres_hw_remosaic"))throw new AssertionError("FULLRES hardware remosaic shown");
+        if(new SettingsAvailability(scam).hidden("pref_fullres_hw_remosaic"))throw new AssertionError("FULLRES hardware remosaic hidden where it acts");
         System.out.println("Settings model PASS: exact precision, legacy types, finite bounds, mode/algorithm availability, SHDR bounds, native mosaic, no neural remosaic rules, photo format, 10-bit HEIC, AVIF, sharpening / denoise / output / motion / colour method availability");
     }
 }

@@ -55,6 +55,30 @@ public class VivoSdkFullResCaptureTest {
         assertNull(VivoSdkFullRes.nativeProfile("1"));
     }
 
+    /**
+     * P182 (owner: «дай возможность для fullres включать аппаратный ремозаик»): «Аппаратный ремозаик» takes the SDK route's
+     * hardware-remosaic modes for the native build's 50 MP shots; 200 MP keeps the own remosaic; the default package as before.
+     */
+    @Test public void hardwareRemosaicTakesTheSensorsBayerModesAt50MpOnly() {
+        assertEquals("default package: SDK", 13, VivoSdkFullRes.choose("3", false, false, true).sensorMode);
+        assertEquals(0, VivoSdkFullRes.choose("3", false, false, true).nativeBlock);
+        VivoSdkFullRes.Profile own = VivoSdkFullRes.choose("3", true, false, true);
+        assertEquals("native build, switch off: the own mosaic", 2, own.nativeBlock);
+        assertEquals(4, own.sensorMode);
+        VivoSdkFullRes.Profile main = VivoSdkFullRes.choose("3", true, true, true);
+        assertEquals("main: DNGHWREMOSAIC", 13, main.sensorMode);
+        assertEquals(0, main.nativeBlock);
+        assertEquals(8192, main.size.getWidth());
+        assertEquals("ultra-wide", 11, VivoSdkFullRes.choose("4", true, true, true).sensorMode);
+        VivoSdkFullRes.Profile tele50 = VivoSdkFullRes.choose("5", true, true, false);
+        assertEquals("tele 50 MP", 18, tele50.sensorMode);
+        assertEquals(0, tele50.nativeBlock);
+        assertEquals(8160, tele50.size.getWidth());
+        assertSame("no hardware-remosaic 200 MP: the own remosaic", VivoSdkFullRes.TELE_200, VivoSdkFullRes.choose("5", true, true, true));
+        assertSame(VivoSdkFullRes.TELE_50, VivoSdkFullRes.choose("5", true, false, false));
+        assertNull(VivoSdkFullRes.choose("2", true, true, false));
+    }
+
     /** P179: only a native series above 100 MP stops the preview at the shutter (200 MP); 50 MP and the SDK series keep it. */
     @Test public void only200MpStopsThePreviewForItsSeries() {
         assertTrue(VivoSdkFullResCapture.stopsPreview(VivoSdkFullRes.TELE_200));

@@ -22,6 +22,7 @@ public final class DeviceAvailability {
                 .stockAeDevice(com.particlesdevs.photoncamera.capture.ScamStockAe.supportedDevice())
                 .colorMethodOverride(colorMethodOverride())
                 .xiaomiSmoothZoom(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone())
+                .fullResHwRemosaic(com.particlesdevs.photoncamera.capture.VivoSdkFullRes.hardwareRemosaicOffered())
                 .oppoTunedColor(com.particlesdevs.photoncamera.processing.render.OppoTunedColor.applies())
                 .mosaicStreams(com.particlesdevs.photoncamera.processing.MosaicBlockStore.anyMosaic());
     }

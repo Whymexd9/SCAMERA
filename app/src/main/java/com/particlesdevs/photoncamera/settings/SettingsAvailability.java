@@ -22,6 +22,8 @@ public final class SettingsAvailability {
     private boolean xiaomiSmoothZoom = true;
     /** P128: the OPPO tuned ISP matrix renders this phone's photos (OppoTunedColor.applies); assumed unless told otherwise. */
     private boolean oppoTunedColor = true;
+    /** P182: «Аппаратный ремозаик» of FULLRES acts here (VivoSdkFullRes.hardwareRemosaicOffered); assumed unless told otherwise. */
+    private boolean fullResHwRemosaic = true;
     /** P128: a module of this phone has streamed a Quad / Tetra mosaic (MosaicBlockStore); assumed unless told otherwise. */
     private boolean mosaicStreams = true;
     public SettingsAvailability(Map<String, ?> values) { this.values = values; }
@@ -37,6 +39,8 @@ public final class SettingsAvailability {
     public SettingsAvailability xiaomiSmoothZoom(boolean supported) { xiaomiSmoothZoom = supported; return this; }
     /** The device fact behind «Насыщенность матрицы OPPO»: hidden where the OPPO tuned matrix never renders a photo. */
     public SettingsAvailability oppoTunedColor(boolean applies) { oppoTunedColor = applies; return this; }
+    /** The device fact behind «Аппаратный ремозаик»: hidden where FULLRES has no choice of remosaic. */
+    public SettingsAvailability fullResHwRemosaic(boolean offered) { fullResHwRemosaic = offered; return this; }
     /** The device fact behind the mosaic merge rows: whether a module here has streamed a Quad / Tetra mosaic. */
     public SettingsAvailability mosaicStreams(boolean seen) { mosaicStreams = seen; return this; }
     private String text(String key, String fallback) {
@@ -66,6 +70,7 @@ public final class SettingsAvailability {
     public boolean hidden(String key) {
         // Rows of what this phone does not have (the settings screen also hides them when it builds the tree, for the search).
         if (!xiaomiSmoothZoom && key.equals("pref_xiaomi_smooth_zoom")) return true;
+        if (!fullResHwRemosaic && key.equals("pref_fullres_hw_remosaic")) return true;
         // P128: the AgX saturation of the OPPO tuned matrix acts only on the phones that matrix renders (ArkTone.ccmSatComp)
         if (!oppoTunedColor && key.equals("pref_scam_hybrid_ark_ccm_sat")) return true;
         String format = photoFormat();
