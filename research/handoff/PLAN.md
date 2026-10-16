@@ -3478,6 +3478,20 @@ Each step moves with a check that the GPU gives the CPU's result; the CPU path s
   race of ours; both give the same quality (syn_b1 against its truth: PSNR 20.33 / 20.32, MAE 0.0334 both). The app keeps
   the first binary (program cache + prewarm). Replays pin it: SCAM_GL_CACHE=<dir>, then md5 repeat (5/5). vivo references
   (cache glc_head, SCAM_NO_CRE=1): syn_b1 3079e529.
+- DONE on the vivo replay (2026-10-16; synthetic textured bursts, scratchpad vrp/gen_big.py: t12 12 MP x12, t50 50 MP x8,
+  t50 with grid 2 = the 200 MP output; md5 unchanged at every step: t12 3d734caa, t50 b4c5cfd3, t50 grid 2 65a51054 /
+  00f4fe18 with rgb-half):
+  - P151: the F6 field streams alongside the merge above 16 MP too (it ran whole before the merge, the GPU idle): 50 MP
+    5.1-5.7 s -> 2.7-2.9 s.
+  - P152: the alignment guide above 16 MP from per-phase tables on the pool (binnedGuide called sampleRaw for every site
+    on one thread): align 0.76-0.81 s -> 0.34-0.36 s; byte-identical (check_hybrid_prefetch 1b, run on the phone).
+  - P153: the half-float output converted straight into the app's memfd with FCVT (no 1.2 GB half copy): 200 MP output
+    1344 MB in ~0.93 s (memfd replay helper vrp/memfd_run.c); «SCAM OUTPUT» log line. A file output keeps write().
+  - Now: 50 MP 2.2-2.4 s merged; the 200 MP grid 5.6-7 s merged + ~0.9 s output (was 7.4 + 2.3 s); 12 MP unchanged
+    (F6 already hidden behind the merge, align 0.1 s).
+  - Left, and why: F6 LK on the GPU would now compete with the merge for the GPU (the CPU field is hidden behind it at every
+    size); the merge pass itself (kHybMergeMain1, 4.9 s of the 2x grid's GPU time) is not to be edited; RAW CA 0.1 s, Bento
+    only with ultrashort frames.
 - Remaining CPU work, why it stays: jpegli JPEG (entropy coding; ~1 s at 20 MP q100, 4-5 s at 50 MP - could run in strips on
   several threads with restart markers, a CPU change), ExifInterface rewrite (I/O), frame copies (camera buffers must be
   released), CRE global alignment (vendor library), ScamRgb's sampled clip statistics (every 17th pixel, overlapped with the
