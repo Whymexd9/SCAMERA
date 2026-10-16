@@ -237,7 +237,21 @@ public final class BottomChrome {
      */
     public static void attach(View panel, View row, View strip, View handle, View viewfinder, @Nullable ZoomDialView ruler,
                               @Nullable View manual) {
-        new Chrome(panel, row, strip, handle, viewfinder, ruler, manual);
+        attach(panel, row, strip, handle, viewfinder, ruler, manual, null);
+    }
+
+    /**
+     * As above; {@code floats} hears whether the HIDDEN handle floats over the preview (16:9: the preview runs on under the
+     * controls), each time that changes (P176: the shade's handle is a pill then).
+     */
+    public static void attach(View panel, View row, View strip, View handle, View viewfinder, @Nullable ZoomDialView ruler,
+                              @Nullable View manual, @Nullable java.util.function.Consumer<Boolean> floats) {
+        new Chrome(panel, row, strip, handle, viewfinder, ruler, manual).floats = floats;
+    }
+
+    /** P176: the handle floats over the preview when the preview goes on below the handle's top. */
+    public static boolean handleFloats(int viewfinderBottom, int handleTop) {
+        return viewfinderBottom > handleTop;
     }
 
     private static final class Chrome implements View.OnLayoutChangeListener {
@@ -246,6 +260,8 @@ public final class BottomChrome {
         private final ViewGroup.MarginLayoutParams rowParams, manualParams;
         private final int baseMargin, manualGap, clearance;
         private boolean rulerShown, rulerMeets, yielded;
+        @Nullable java.util.function.Consumer<Boolean> floats;
+        @Nullable private Boolean floating;
 
         Chrome(View panel, View row, View strip, View handle, View viewfinder, @Nullable ZoomDialView ruler,
                @Nullable View manual) {
@@ -295,6 +311,11 @@ public final class BottomChrome {
             int handleTop = handleTop(viewfinderBottom, stripTop, handleHeight, clearance);
             float offset = panelY + handleTop - (windowY(handle) - handle.getTranslationY());
             if (handle.getTranslationY() != offset) handle.setTranslationY(offset);
+            boolean over = handleFloats(viewfinderBottom, handleTop);
+            if (floats != null && !Boolean.valueOf(over).equals(floating)) {
+                floating = over;
+                floats.accept(over);
+            }
             if (manualParams != null) {
                 int margin = manualMargin(handleTop, manualGap);
                 if (manualParams.bottomMargin != margin) {

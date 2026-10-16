@@ -4005,9 +4005,11 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   10»: 63, 73); the part of a tick not yet passed only slides the scale, which settles on the tick when the finger lifts or
   the fling ends (and on a new touch). PrecisionRulerTest (new, in the CI list).
 
-### P173 - the shade at 16:9 (owner, 2026-10-16: «Исправь отображение шторки при 16:9»; not started)
+### P173 - the shade at 16:9 (owner, 2026-10-16: «Исправь отображение шторки при 16:9»; done with P176)
 - Look at the quick-settings shade with the 16:9 preview (its height / anchoring against the taller preview and the bottom
   bar) and fix what is off.
+- DONE 2026-10-16 (P176): at 16:9 the HIDDEN handle was the sheet's full-width dark top edge lying across the preview; it
+  is a pill in the middle above the lens strip now.
 
 ### P174 - the horizon level in our style, a colour and a light haptic at 0 degrees (owner, 2026-10-16: «поменяй стиль уровня
 горизонта на схожий с нашим общим стилем камеры. Сделай так чтобы при 0° он менял цвет и давай слабый виброотклик»)
@@ -4026,10 +4028,20 @@ Pro Mini with black stripes on its left and bottom: «сделай автома�
   and its call, the NPU remosaic graphs it loads (the QUAD_FILES group of the bundle, if nothing else uses them), the tests.
 
 ### P176 - at 16:9 the shade comes out of the pill like a macOS app opening (owner, 2026-10-16: «Шторка пускай вылезает из
-пилюли с такой же анимацией как открытие приложений в MacOS»; «По поводу анимации шторки я написал только про 16:9»)
+пилюли с такой же анимацией как открытие приложений в MacOS»; «По поводу анимации шторки я написал только про 16:9»; «Пилюля
+должна быть по центру»; done)
 - Part of P173: with the 16:9 preview the sheet grows out of its pill (the handle) - scale and corner radius from the pill's
   bounds to the sheet's, a quick ease-out as the macOS genie / zoom - and goes back into it; the other aspect ratios keep
   today's slide.
+- DONE 2026-10-16: BottomChrome tells the sheet when the HIDDEN handle floats over the preview (the preview goes on below
+  the handle's top: 16:9, video): the handle is then a 76dp pill (the sheet colour, a thin line, its grip), centred above the
+  lens strip. A request from HIDDEN puts the sheet in place at once (the behavior has nothing to slide; after a pending
+  layout, on the next pre-draw) and ShadeZoom grows it out of the pill: one uniform scale from the pill's width, its centre
+  from the pill's to its own, quickly visible, 420 ms PathInterpolator(0.16, 1, 0.3, 1); a request to HIDDEN shrinks it
+  back into the pill (300 ms, the FULL scrim fading with it) and then hides it; the container does not clip it meanwhile.
+  A finger still drags the sheet as before; 3:4 keeps the full-width edge and the slide. Tests: ShadeZoomTest (new, frames),
+  ShadeUiTest (pill, zoom both ways, the slide without it), BottomChromeTest handleFloats, Shade169Test (new: the real camera
+  screen at 16:9, the pill centred above the strip, render deliverables/p157/p176-shade-169-pill.png).
 
 ### P177 - AgX / ACES / Uchimura on the own curve's graph, and loaded as own curves (owner, 2026-10-16: «для кастомных кривых
 добавь возможность визуализации кривых AGX/ACES и тд для сравнения чтобы можно было на графике по ним ориентироваться. Ну и

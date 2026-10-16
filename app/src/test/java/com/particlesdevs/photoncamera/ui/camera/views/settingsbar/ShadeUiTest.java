@@ -587,4 +587,62 @@ public class ShadeUiTest {
         scroll.scrollTo(0, top - dp(12));
         render("shade-curve.png");
     }
+
+    /**
+     * P176: at 16:9 the HIDDEN handle is a pill; the sheet is in place at once and grows out of the pill, shrinks back into
+     * it when hidden; outside 16:9 the handle is the full-width edge and the sheet slides as before (the camera screen at
+     * 16:9: Shade169Test).
+     */
+    @Test
+    public void at169TheShadeGrowsOutOfThePillAndBack() throws Exception {
+        android.os.Looper main = android.os.Looper.getMainLooper();
+        CoordinatorLayout coordinator = (CoordinatorLayout) sheet.getParent();
+        FrameLayout slot = new FrameLayout(activity);
+        android.widget.ImageView handle = new android.widget.ImageView(activity);
+        handle.setImageResource(R.drawable.sheet_handle);
+        handle.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+        slot.addView(handle, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        CoordinatorLayout.LayoutParams sp = new CoordinatorLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(28));
+        sp.gravity = android.view.Gravity.BOTTOM;
+        sp.bottomMargin = dp(20);
+        coordinator.addView(slot, sp);
+        sheet.setHiddenHandle(handle, null);
+        sheet.setSheetLevel(SettingsBarLayout.LEVEL_HIDDEN);
+        Shadows.shadowOf(main).idleFor(java.time.Duration.ofSeconds(1));
+        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, handle.getLayoutParams().width);
+        sheet.setPillHandle(true);
+        Shadows.shadowOf(main).idleFor(java.time.Duration.ofMillis(100));
+        assertEquals("a pill", dp(SettingsBarLayout.PILL_WIDTH_DP), handle.getWidth());
+        assertEquals(View.VISIBLE, handle.getVisibility());
+        // open: in place at once, scaled down onto the pill, then grown to its size
+        sheet.setSheetLevel(SettingsBarLayout.LEVEL_PEEK);   // the first open builds the tiles: waits for that layout
+        BottomSheetBehavior<SettingsBarLayout> behavior = BottomSheetBehavior.from(sheet);
+        Shadows.shadowOf(main).idleFor(java.time.Duration.ofMillis(20));
+        assertEquals("in place, no slide", BottomSheetBehavior.STATE_COLLAPSED, behavior.getState());
+        assertEquals("one zoom", 1, sheet.zoomRuns);
+        // (the frames themselves: ShadeZoomTest; Robolectric runs an animator started in a pre-draw to its end at once)
+        assertEquals("from the pill's width", dp(SettingsBarLayout.PILL_WIDTH_DP) / (float) sheet.getWidth(), sheet.zoomStartScale, 0.02f);
+        Shadows.shadowOf(main).idleFor(java.time.Duration.ofMillis(600));
+        assertEquals(1f, sheet.getScaleX(), 0f);
+        assertEquals(0f, sheet.getTranslationY(), 0f);
+        assertEquals(1f, sheet.getAlpha(), 0f);
+        assertEquals(SettingsBarLayout.LEVEL_PEEK, sheet.getSheetLevel());
+        assertEquals(View.GONE, handle.getVisibility());
+        // close: shrinks into the pill, then hidden; the pill comes back
+        sheet.setSheetLevel(SettingsBarLayout.LEVEL_HIDDEN);
+        Shadows.shadowOf(main).idleFor(java.time.Duration.ofMillis(600));
+        assertEquals("a zoom back into the pill", 2, sheet.zoomRuns);
+        assertEquals(BottomSheetBehavior.STATE_HIDDEN, behavior.getState());
+        assertEquals(SettingsBarLayout.LEVEL_HIDDEN, sheet.getSheetLevel());
+        assertEquals(1f, sheet.getScaleX(), 0f);
+        assertEquals(View.VISIBLE, handle.getVisibility());
+        // outside 16:9: the edge again, and the usual slide (no scale)
+        sheet.setPillHandle(false);
+        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, handle.getLayoutParams().width);
+        sheet.setSheetLevel(SettingsBarLayout.LEVEL_PEEK);
+        Shadows.shadowOf(main).idleFor(java.time.Duration.ofSeconds(1));
+        assertEquals("slides as before", 2, sheet.zoomRuns);
+        assertEquals(1f, sheet.getScaleX(), 0f);
+        assertEquals(SettingsBarLayout.LEVEL_PEEK, sheet.getSheetLevel());
+    }
 }

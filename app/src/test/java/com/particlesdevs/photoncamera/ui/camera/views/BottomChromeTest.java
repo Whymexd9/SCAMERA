@@ -87,6 +87,16 @@ public class BottomChromeTest {
         assertEquals(-96, BottomChrome.handleTop(640, 48, 112, 32));
     }
 
+    /** P176: the handle floats over the preview (a pill then) only where the preview goes on below its top: 16:9. */
+    @Test
+    public void theHandleFloatsOnlyOverAPreviewRunningOnUnderIt() {
+        assertFalse("3:4", BottomChrome.handleFloats(0, BottomChrome.handleTop(0, 270, 112, 32)));
+        assertFalse("a shorter preview", BottomChrome.handleFloats(-40, BottomChrome.handleTop(-40, 270, 112, 32)));
+        assertFalse("2 px of rounding", BottomChrome.handleFloats(2, BottomChrome.handleTop(2, 270, 112, 32)));
+        assertTrue("16:9", BottomChrome.handleFloats(640, BottomChrome.handleTop(640, 270, 112, 32)));
+        assertTrue("OPPO 16:9", BottomChrome.handleFloats(320, BottomChrome.handleTop(320, 0, 112, 32)));
+    }
+
     @Test
     public void theManualPaletteHangs12dpAboveTheHandle() {
         // P43 (concept): 12dp (48 px) above the handle, which starts at the panel's top under the 3:4 viewfinder.

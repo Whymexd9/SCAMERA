@@ -359,7 +359,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.scale(bar.getContext()));
         com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.attach(binding.layoutBottombar.getRoot(),
                 binding.layoutBottombar.bottomButtons.getRoot(), binding.layoutBottombar.auxButtonsContainer,
-                binding.settingsSheetHandleSlot, binding.layoutViewfinder.texture, zoomDial, binding.manualMode);
+                binding.settingsSheetHandleSlot, binding.layoutViewfinder.texture, zoomDial, binding.manualMode,
+                // P176: at 16:9 the shade's HIDDEN handle is a pill the shade grows out of
+                floats -> binding.settingsBar.setPillHandle(floats));
     }
 
     private com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial;
@@ -418,9 +420,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         SettingsBarLayout sheet = cameraFragmentBinding.settingsBar;
         sheet.attach(shadeHost);
         // The HIDDEN handle is the sheet's top edge (the strip lives in the bottom bar now, so nothing passes through);
-        // since P32 it lies under the viewfinder, at the bottom bar's top (initBottomChrome).
-        cameraFragmentBinding.settingsSheetHandle.setBackground(
-                com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.sheet(requireContext()));
+        // since P32 it lies under the viewfinder, at the bottom bar's top (initBottomChrome); at 16:9 a pill (P176).
+        // The sheet styles it.
         sheet.setHiddenHandle(cameraFragmentBinding.settingsSheetHandle, null);
         // A level reached by a finger (or settled after a request) goes back to the model as is,
         // so a later rebind (invalidateAll on a camera restart or mode switch, notifyChange on

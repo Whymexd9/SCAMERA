@@ -153,6 +153,10 @@ public class SettingsBarLayout extends LinearLayout {
     private View hiddenHandle;
     /** View under the HIDDEN handle that keeps the touches starting on it. */
     private View hiddenHandlePassThrough;
+    /** P176: 16:9 - the HIDDEN handle is a pill over the preview, the sheet grows out of it and shrinks back (ShadeZoom). */
+    private boolean pillHandle;
+    @Nullable private android.animation.ValueAnimator zoom;
+    static final float PILL_WIDTH_DP = 76;
     /** Scrim pieces over the viewfinder and the top bar, shown in FULL. */
     private View[] scrims = new View[0];
 
@@ -1296,6 +1300,11 @@ public class SettingsBarLayout extends LinearLayout {
         if (state == BottomSheetBehavior.STATE_DRAGGING) return;
         if (repeat && state == BottomSheetBehavior.STATE_SETTLING) return;
         int target = stateForLevel(level);
+        if ((zoom != null || zoomPending) && (repeat || zoomTarget == target)) return;   // P176: a zoom on its way there
+        if (zoom != null) zoom.end();
+        zoomPending = false;
+        state = sheet.getState();
+        if (state != target && zoomFromPill(sheet, state, target)) return;
         if (state != target) {
             // A hideable=false behavior silently drops a STATE_HIDDEN request.
             if (level != LEVEL_FULL) sheet.setHideable(true);
@@ -1345,6 +1354,7 @@ public class SettingsBarLayout extends LinearLayout {
         }
         hiddenHandle = handle;
         hiddenHandlePassThrough = passThrough;
+        styleHiddenHandle();
         if (handle != null) {
             handle.setOnTouchListener(createHiddenHandleTouchListener());
             // The handle must stay non-clickable (a clickable view takes the DOWN of the lens
@@ -1502,6 +1512,198 @@ public class SettingsBarLayout extends LinearLayout {
         if (hiddenHandle == null) return;
         boolean hidden = behavior != null && behavior.getState() == BottomSheetBehavior.STATE_HIDDEN;
         hiddenHandle.setVisibility(hidden ? View.VISIBLE : View.GONE);
+    }
+
+    // ───────────────────────────────── P176: the pill at 16:9
+
+    /**
+     * True while the preview runs on under the controls (16:9: BottomChrome floats the HIDDEN handle over the preview): the
+     * handle is a pill instead of the sheet's full-width top edge, and the sheet opens out of it and closes into it.
+     */
+    public void setPillHandle(boolean pill) {
+        if (pill == pillHandle) return;
+        pillHandle = pill;
+        styleHiddenHandle();
+    }
+
+    public boolean isPillHandle() {
+        return pillHandle;
+    }
+
+    /** The handle as the sheet's top edge (full width) or as a pill (P176), its grip in the middle either way. */
+    private void styleHiddenHandle() {
+        if (hiddenHandle == null) return;
+        Context c = getContext();
+        ViewGroup.LayoutParams lp = hiddenHandle.getLayoutParams();
+        if (lp instanceof android.widget.FrameLayout.LayoutParams) {
+            android.widget.FrameLayout.LayoutParams fp = (android.widget.FrameLayout.LayoutParams) lp;
+            int width = pillHandle ? dp(PILL_WIDTH_DP) : ViewGroup.LayoutParams.MATCH_PARENT;
+            if (fp.width != width || fp.gravity != Gravity.CENTER) {
+                fp.width = width;
+                fp.gravity = Gravity.CENTER;
+                hiddenHandle.setLayoutParams(fp);
+            }
+        }
+        if (pillHandle) {
+            android.graphics.drawable.GradientDrawable pill = ShadeStyle.card(c, (ShadeStyle.BG & 0x00FFFFFF) | 0xEB000000,
+                    ShadeStyle.LINE, 100);
+            hiddenHandle.setBackground(pill);
+            hiddenHandle.setElevation(dp(3));
+        } else {
+            hiddenHandle.setBackground(ShadeStyle.sheet(c));
+            hiddenHandle.setElevation(0f);
+        }
+    }
+
+    private int zoomTarget = -1;
+    /** P176: an opening waits for the pending layout (the behavior would slide from where that layout puts the sheet). */
+    private boolean zoomPending;
+    /** Tests: zooms started and the scale each started at. */
+    int zoomRuns;
+    float zoomStartScale = 1f;
+
+    /**
+     * Opens out of the pill or closes into it (P176) instead of the behavior's slide: false when it does not apply (not at
+     * 16:9, not laid out, a move between PEEK and FULL), and the caller slides as usual.
+     */
+    private boolean zoomFromPill(BottomSheetBehavior<SettingsBarLayout> sheet, int state, int target) {
+        if (!pillHandle || hiddenHandle == null || !isLaidOut() || !(getParent() instanceof View)) return false;
+        boolean open = state == BottomSheetBehavior.STATE_HIDDEN && target != BottomSheetBehavior.STATE_HIDDEN;
+        boolean close = target == BottomSheetBehavior.STATE_HIDDEN
+                && (state == BottomSheetBehavior.STATE_COLLAPSED || state == BottomSheetBehavior.STATE_EXPANDED);
+        if (!open && !close) return false;
+        View parent = (View) getParent();
+        int parentHeight = parentHeight(parent);
+        if (parentHeight <= 0 || getHeight() <= 0) return false;
+        android.graphics.RectF pill = pillRect(parent);
+        if (pill == null) return false;
+        sheet.setHideable(true);
+        zoomTarget = target;
+        if (open && (parent.isLayoutRequested() || isLayoutRequested())) {
+            zoomPending = true;
+            getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+                private int tries;
+
+                @Override
+                public boolean onPreDraw() {
+                    if (!zoomPending) {
+                        getViewTreeObserver().removeOnPreDrawListener(this);
+                        return true;
+                    }
+                    if ((parent.isLayoutRequested() || isLayoutRequested()) && ++tries < 4) return true;
+                    getViewTreeObserver().removeOnPreDrawListener(this);
+                    zoomPending = false;
+                    zoomTarget = -1;
+                    if (sheet.getState() == BottomSheetBehavior.STATE_HIDDEN && !zoomFromPill(sheet, BottomSheetBehavior.STATE_HIDDEN, target))
+                        sheet.setState(target);
+                    return true;
+                }
+            });
+            return true;
+        }
+        if (open) {
+            // in place at once (the behavior then has nothing to slide), then grown out of the pill
+            int top = topFor(target, parentHeight);
+            offsetTopAndBottom(top - getTop());
+            sheet.setState(target);
+            android.graphics.RectF visible = new android.graphics.RectF(getLeft(), top, getRight(), Math.min(parentHeight, top + getHeight()));
+            runZoom(pill, visible, true, () -> {
+                if (target == BottomSheetBehavior.STATE_EXPANDED && sheet.getState() == BottomSheetBehavior.STATE_EXPANDED)
+                    sheet.setHideable(false);
+            });
+        } else {
+            final boolean fromFull = state == BottomSheetBehavior.STATE_EXPANDED;
+            android.graphics.RectF visible = new android.graphics.RectF(getLeft(), getTop(), getRight(), Math.min(parentHeight, getBottom()));
+            runZoom(pill, visible, false, () -> {
+                // below the edge at once, then HIDDEN with nothing to slide; the pill takes the sheet's place
+                offsetTopAndBottom(parentHeight(parent) - getTop());
+                sheet.setState(BottomSheetBehavior.STATE_HIDDEN);
+                if (fromFull) updateScrim(0f);
+            });
+            if (fromFull) zoom.addUpdateListener(a -> updateScrim(1f - a.getAnimatedFraction()));
+        }
+        return true;
+    }
+
+    private void runZoom(android.graphics.RectF pill, android.graphics.RectF visible, boolean open, Runnable done) {
+        setPivotX(0f);
+        setPivotY(0f);
+        apply(ShadeZoom.frame(pill, visible, open ? 0f : 1f));
+        zoomRuns++;
+        zoomStartScale = getScaleX();
+        unclip(true);
+        android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(open ? 0f : 1f, open ? 1f : 0f);
+        a.setDuration(open ? ShadeZoom.OPEN_MS : ShadeZoom.CLOSE_MS);
+        a.setInterpolator(open ? ShadeZoom.OPEN : ShadeZoom.CLOSE);
+        a.addUpdateListener(v -> apply(ShadeZoom.frame(pill, visible, (float) v.getAnimatedValue())));
+        a.addListener(new android.animation.AnimatorListenerAdapter() {
+            private boolean finished;
+
+            @Override
+            public void onAnimationEnd(android.animation.Animator animation) {
+                if (finished) return;
+                finished = true;
+                zoom = null;
+                zoomTarget = -1;
+                unclip(false);
+                done.run();
+                apply(new float[]{1f, 0f, 0f, 1f});
+                updateHiddenHandle();
+            }
+        });
+        zoom = a;
+        a.start();
+    }
+
+    private final boolean[] clipSaved = new boolean[2];
+
+    /**
+     * At 16:9 the pill lies below the sheet's container (over the preview, above the lens strip): while the sheet grows out
+     * of it or shrinks into it, the container and the screen's layout do not clip it.
+     */
+    private void unclip(boolean on) {
+        ViewParent p = getParent();
+        for (int i = 0; i < clipSaved.length && p instanceof ViewGroup; i++, p = p.getParent()) {
+            ViewGroup g = (ViewGroup) p;
+            if (on) {
+                clipSaved[i] = g.getClipChildren();
+                g.setClipChildren(false);
+            } else {
+                g.setClipChildren(clipSaved[i]);
+            }
+        }
+    }
+
+    private void apply(float[] f) {
+        setScaleX(f[0]);
+        setScaleY(f[0]);
+        setTranslationX(f[1]);
+        setTranslationY(f[2]);
+        setAlpha(f[3]);
+    }
+
+    /** The pill in the sheet parent's coordinates, null while it is not laid out. */
+    @Nullable
+    private android.graphics.RectF pillRect(View parent) {
+        if (hiddenHandle.getWidth() <= 0 || hiddenHandle.getHeight() <= 0) return null;
+        int[] h = new int[2], p = new int[2];
+        hiddenHandle.getLocationInWindow(h);
+        parent.getLocationInWindow(p);
+        float left = h[0] - p[0], top = h[1] - p[1];
+        return new android.graphics.RectF(left, top, left + hiddenHandle.getWidth(), top + hiddenHandle.getHeight());
+    }
+
+    private static int parentHeight(View parent) {
+        return parent.getHeight();
+    }
+
+    /** The behavior's top of the sheet in a state (fit to contents: FULL is the sheet's own height, PEEK its peek height). */
+    private int topFor(int state, int parentHeight) {
+        int expanded = Math.max(0, parentHeight - getHeight());
+        if (state == BottomSheetBehavior.STATE_EXPANDED) return expanded;
+        if (state == BottomSheetBehavior.STATE_COLLAPSED)
+            return Math.max(expanded, parentHeight - (behavior != null ? behavior.getPeekHeight() : getHeight()));
+        return parentHeight;
     }
 
     private static int stateForLevel(int level) {
