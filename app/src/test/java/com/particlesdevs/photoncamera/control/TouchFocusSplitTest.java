@@ -48,6 +48,7 @@ import static org.robolectric.Shadows.shadowOf;
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35, application = Application.class)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 public class TouchFocusSplitTest {
     private static final int VIEW_W = 1000, VIEW_H = 1333;
     private final Rect active = new Rect(0, 0, 4000, 3000);
@@ -56,6 +57,7 @@ public class TouchFocusSplitTest {
     private MockedStatic<PreferenceKeys> keys;
     private CameraCharacteristics previous;
     private FocusCircleView ring;
+    private FrameLayout parent;
     private TouchFocus touch;
     private boolean split = true;
     /** The AF trigger of every request the camera got (one-shots and repeating updates). */
@@ -93,7 +95,8 @@ public class TouchFocusSplitTest {
         keys.when(PreferenceKeys::getAeMode).thenReturn(CameraMetadata.CONTROL_AE_MODE_ON);
         android.app.Activity activity = org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
         Context context = activity;
-        FrameLayout parent = new FrameLayout(context);
+        parent = new FrameLayout(context);
+        parent.setBackgroundColor(0xFF3A4048);
         ring = new FocusCircleView(context, null);
         parent.addView(ring, new FrameLayout.LayoutParams(120, 120));
         activity.setContentView(parent, new android.view.ViewGroup.LayoutParams(VIEW_W, VIEW_H)); // attached: View.post runs
@@ -205,6 +208,22 @@ public class TouchFocusSplitTest {
         tap(square);
         assertTrue("a tap on the square brings the exposure back to the ring", same(af(), ae()));
         assertEquals(ring.getX() + ring.getLayoutParams().width / 2f, square.getX() + square.getLayoutParams().width / 2f, 1f);
+    }
+
+    /** The overlay as the viewfinder shows it: the ring where the focus is, the square where the exposure is metered. */
+    @Test
+    public void overlayRenderedForReview() throws Exception {
+        touch.processTouchToFocus(500, 600);
+        idle();
+        drag(touch.exposureSquare(), 260, -180);
+        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(VIEW_W, VIEW_H, android.graphics.Bitmap.Config.ARGB_8888);
+        parent.draw(new android.graphics.Canvas(bitmap));
+        java.io.File dir = new java.io.File("build/reports/touch-focus");
+        dir.mkdirs();
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(new java.io.File(dir, "split.png"))) {
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+        }
+        assertTrue(new java.io.File(dir, "split.png").length() > 0);
     }
 
     @Test
