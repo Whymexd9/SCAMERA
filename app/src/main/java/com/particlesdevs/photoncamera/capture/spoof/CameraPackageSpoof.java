@@ -23,7 +23,8 @@ public final class CameraPackageSpoof {
         try {
             if (!android.preference.PreferenceManager.getDefaultSharedPreferences(context)
                     .getBoolean(CameraPackageSpoofSettings.KEY_ENABLED, false)
-                    && com.particlesdevs.photoncamera.capture.VivoQcomModes.spoofPackage() == null) return "off";
+                    && com.particlesdevs.photoncamera.capture.VivoQcomModes.spoofPackage() == null
+                    && !CameraPackageSpoofSettings.oplusAuto(context)) return "off";
             return "on:" + CameraPackageSpoofSettings.getOplusPackage(context) + "|"
                     + CameraPackageSpoofSettings.getGenericPackage(context) + "|"
                     + CameraPackageSpoofSettings.getBinderPackage(context);
@@ -37,7 +38,8 @@ public final class CameraPackageSpoof {
         try {
             if (!android.preference.PreferenceManager.getDefaultSharedPreferences(context)
                     .getBoolean(CameraPackageSpoofSettings.KEY_ENABLED, false)
-                    && com.particlesdevs.photoncamera.capture.VivoQcomModes.spoofPackage() == null) return;
+                    && com.particlesdevs.photoncamera.capture.VivoQcomModes.spoofPackage() == null
+                    && !CameraPackageSpoofSettings.oplusAuto(context)) return;
             StringBuilder sb = new StringBuilder("spoof oplus=" + CameraPackageSpoofSettings.getOplusPackage(context)
                     + " generic=" + CameraPackageSpoofSettings.getGenericPackage(context)
                     + " binder=" + CameraPackageSpoofSettings.getBinderPackage(context) + " ids=");

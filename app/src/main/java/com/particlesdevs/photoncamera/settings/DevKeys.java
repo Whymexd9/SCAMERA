@@ -156,6 +156,10 @@ public final class DevKeys {
         // vivo
         k.add(s(vivo, "vivo_sdk_fullres", true, Lang.t("X200 Ultra, основная камера 3: SDK RAW 50 Мп, последовательная съёмка после нажатия, Hybrid", "X200 Ultra, main camera 3: SDK 50 MP RAW, serial post-shutter capture, Hybrid")));
         // P180 / P184: FULLRES without hardware remosaic on the X100 / X300 Ultra - on (the owner tests it), off by these
+        k.add(s(cap, "oppo_fullres", true, Lang.t("OPPO Find X7 Ultra: FULLRES 50 Мп без аппаратного ремозаика (свои AE и баланс белого)",
+                "OPPO Find X7 Ultra: FULLRES 50 MP without hardware remosaic (own AE and white balance)")));
+        k.add(s(cap, "oppo_tele_access", true, Lang.t("OPPO Find X7 Ultra: телевики 3× и 6× через пакет Oplus",
+                "OPPO Find X7 Ultra: the 3x and 6x telephotos through the Oplus package")));
         k.add(s(vivo, "vivo_fullres_x100u", true, Lang.t("X100 Ultra: FULLRES без аппаратного ремозаика (проверяется)", "X100 Ultra: FULLRES without hardware remosaic (being tested)")));
         k.add(s(vivo, "vivo_fullres_x300u", true, Lang.t("X300 Ultra: FULLRES без аппаратного ремозаика (проверяется)", "X300 Ultra: FULLRES without hardware remosaic (being tested)")));
         k.add(n(vivo, "vivo_fullres_mode_main", "-1", Lang.t("X100/X300 Ultra FULLRES: режим сенсора основной (-1: режимы таблицы по очереди)", "X100/X300 Ultra FULLRES: main sensor mode (-1: the table's rows in turn)")));

@@ -13,7 +13,16 @@ final class CameraPackageSpoofSettings {
     private CameraPackageSpoofSettings() {}
 
     static String getOplusPackage(Context context) {
+        // P192: the OPPO Find X7 Ultra lists its telephotos (cameras 4 and 5) only to the Oplus package of the probe; the
+        // owner's own spoof settings win
+        if (!enabled(context) && com.particlesdevs.photoncamera.capture.OppoNativeFullRes.teleAccess())
+            return com.particlesdevs.photoncamera.capture.OppoNativeFullRes.TELE_PACKAGE;
         return getPackage(context, KEY_OPLUS_PACKAGE);
+    }
+
+    /** P192: the Oplus package is set without the owner's switch (the OPPO Find X7 Ultra's telephotos). */
+    static boolean oplusAuto(Context context) {
+        return !enabled(context) && com.particlesdevs.photoncamera.capture.OppoNativeFullRes.teleAccess();
     }
 
     // The owner's spoof settings win (owner, 2026-10-13: «я разрешаю работу с любым пакетом»)

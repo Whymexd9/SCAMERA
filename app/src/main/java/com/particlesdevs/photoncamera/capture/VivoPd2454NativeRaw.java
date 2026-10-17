@@ -66,6 +66,10 @@ public final class VivoPd2454NativeRaw {
 
     static void applyFullRes(CaptureRequest.Builder builder, VivoSdkFullRes.Profile profile) {
         if (profile == null || profile.nativeBlock < 2) throw new IllegalArgumentException("Native FULLRES profile missing");
+        if (VivoSdkFullRes.oppo()) { // P192: the OPPO mode key, the own exposure
+            OppoNativeFullRes.apply(builder, profile);
+            return;
+        }
         builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
         builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
         builder.set(CaptureRequest.CONTROL_AE_LOCK, false);

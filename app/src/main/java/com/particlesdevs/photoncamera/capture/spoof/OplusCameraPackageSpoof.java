@@ -44,6 +44,15 @@ public final class OplusCameraPackageSpoof {
                     managerClass.getDeclaredMethod("saveOpPackageName", String.class);
             saveOpPackageName.setAccessible(true);
             saveOpPackageName.invoke(manager, targetPackage);
+            // P192 (OPPO Find X7 Ultra, the probe of 2026-10-17): the saved name reaches the camera service only through
+            // setPackageName - saveOpPackageName alone did not list the telephotos
+            try {
+                Method setPackageName = managerClass.getDeclaredMethod("setPackageName");
+                setPackageName.setAccessible(true);
+                setPackageName.invoke(manager);
+            } catch (NoSuchMethodException older) {
+                Log.d(TAG, "OplusCameraManager.setPackageName() is not present");
+            }
             applied = !context.getPackageName().equals(targetPackage);
 
             Log.i(TAG, "saveOpPackageName called: " + targetPackage);

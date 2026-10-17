@@ -1,0 +1,207 @@
+package com.particlesdevs.photoncamera.capture;
+
+import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.CaptureResult;
+import android.hardware.camera2.params.ColorSpaceTransform;
+import android.hardware.camera2.params.LensShadingMap;
+import android.hardware.camera2.params.RggbChannelVector;
+import android.util.Rational;
+
+import androidx.annotation.Nullable;
+
+import com.particlesdevs.photoncamera.api.CameraReflectionApi;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
+
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * P192 (owner, 2026-10-17: «Продолжи реализацию FULLRES без аппаратного ремозаика для OPPO Find X7 Ultra»): the OPPO Find X7 Ultra
+ * (PHY110, firmware PHY110_16.0.0.202(CN01), measured 2026-10-17 by the diagnostic probe, evidence/oppo_phy110_fullres_20261016)
+ * gives its sensors' own Quad mosaic at 8192x6144 with no hardware remosaic when the session parameter
+ * com.oplus.engineercamera.agingtest.mode.select (a byte) names the sensor's NoRemosaic mode: camera 2 (main, IMX06A) 35,
+ * 3 (ultra-wide, IMX882) 16, 4 (3x, IMX890) 19, 5 (6x, IMX858) 17 - a plain Camera2 session of type 0 with one RAW_SENSOR reader
+ * of usage 0 (usage 3 is refused for the full size by the camera service). It runs the native FULLRES route of the vivo phones
+ * (VivoNativeFullRes: one RAW stream, the own RAW viewfinder, matched serial stills, SHDR with the own remosaic); every shot still
+ * proves the mosaic from the pixels and the mode from the result. The numbers are this model's only, never another phone's.
+ * <p>
+ * In that mode the HAL has no statistics: its AE stays SEARCHING (54 results, the exposure never moved) and its neutral is NaN, so
+ * the route runs its own AE on the RAW frames ({@link NativeRawExposure}) and its own white balance (MosaicNeutral on the frames,
+ * put on the camera's illuminant curve learned in its plain sessions); the colour transform and the lens shading map of the
+ * camera's last plain session stand in for the ones the mode does not report. Its telephotos are listed only to the package
+ * OplusCameraManager is told ({@link #TELE_PACKAGE}, saveOpPackageName and setPackageName, OplusCameraPackageSpoof).
+ */
+public final class OppoNativeFullRes {
+    private OppoNativeFullRes() { }
+
+    static final String MODEL = "PHY110";
+    /** The package the telephotos are listed to (the probe: Meitu; the app keeps its own package and UID). */
+    public static final String TELE_PACKAGE = "com.meitu.meiyancamera";
+    static final String MODE_KEY = "com.oplus.engineercamera.agingtest.mode.select";
+    private static final CaptureRequest.Key<Byte> MODE = new CaptureRequest.Key<>(MODE_KEY, Byte.class);
+    private static final CaptureResult.Key<int[]> MODE_INDEX = new CaptureResult.Key<>("com.qti.sensorbps.mode_index", int[].class);
+
+    /** The OPPO Find X7 Ultra (PHY110): the phone of the measured modes. */
+    public static boolean model() {
+        return model(android.os.Build.MANUFACTURER, android.os.Build.MODEL);
+    }
+
+    static boolean model(@Nullable String manufacturer, @Nullable String model) {
+        return manufacturer != null && manufacturer.equalsIgnoreCase("OPPO") && MODEL.equals(model);
+    }
+
+    /** Native FULLRES may run (scam_dev.txt "oppo_fullres 0" turns it off). */
+    public static boolean device() {
+        return model() && PreferenceKeys.scamDevSwitch("oppo_fullres", true);
+    }
+
+    /** The telephotos are listed to {@link #TELE_PACKAGE} (scam_dev.txt "oppo_tele_access 0": not). */
+    public static boolean teleAccess() {
+        return model() && PreferenceKeys.scamDevSwitch("oppo_tele_access", true);
+    }
+
+    /** The NoRemosaic mode of an Android camera of this phone, -1 for another camera. */
+    static int mode(@Nullable String cameraId) {
+        if (cameraId == null) return -1;
+        switch (cameraId) {
+            case "2": return 35;
+            case "3": return 16;
+            case "4": return 19;
+            case "5": return 17;
+            default: return -1;
+        }
+    }
+
+    @Nullable
+    static VivoSdkFullRes.Profile profile(@Nullable String cameraId) {
+        final int mode = mode(cameraId);
+        return mode < 0 ? null : new VivoSdkFullRes.Profile(8192, 6144, mode, 2);
+    }
+
+    /** The camera of the running native session (null: none), for the requests and the results of its stills. */
+    private static volatile String camera;
+    private static volatile NativeRawExposure exposure;
+
+    static void begin(String cameraId, NativeRawExposure ae) {
+        camera = cameraId;
+        exposure = ae;
+    }
+
+    static void end() {
+        camera = null;
+        exposure = null;
+    }
+
+    /** A native session of this phone runs (its results carry the own neutral: not a point of the camera's curve). */
+    public static boolean running() {
+        return camera != null;
+    }
+
+    /** The mode on a request (the session parameters and every request), AE off at the own exposure, the HAL's AWB left on. */
+    static void apply(CaptureRequest.Builder builder, VivoSdkFullRes.Profile profile) {
+        builder.set(MODE, (byte) profile.sensorMode);
+        builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
+        builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
+        builder.set(CaptureRequest.CONTROL_AE_LOCK, false);
+        builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
+        builder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON);
+        NativeRawExposure ae = exposure;
+        if (ae != null) {
+            builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, ae.exposureNs());
+            builder.set(CaptureRequest.SENSOR_SENSITIVITY, ae.iso());
+            builder.set(CaptureRequest.SENSOR_FRAME_DURATION, ae.frameDurationNs());
+        }
+    }
+
+    /** The result reports the profile's mode (the sensor's own mode index), or does not say. */
+    static boolean modeMatches(CaptureResult result, VivoSdkFullRes.Profile profile) {
+        int[] mode = null;
+        try { mode = result.get(MODE_INDEX); } catch (IllegalArgumentException ignored) { }
+        return mode == null || mode.length == 0 || mode[0] == profile.sensorMode;
+    }
+
+    /** What the camera's last plain session reported (the ISP's colour transform, the shading map), per Android camera. */
+    private static final Map<String, ColorSpaceTransform> TRANSFORMS = new ConcurrentHashMap<>();
+    private static final Map<String, LensShadingMap> SHADING = new ConcurrentHashMap<>();
+    /** The own neutral (r / g, 1, b / g) of the running native session, from its frames. */
+    private static final Map<String, float[]> NEUTRALS = new ConcurrentHashMap<>();
+    /** The ISP's settled neutral of the camera's last plain session: the start of a native session's white balance. */
+    private static final Map<String, float[]> PLAIN_NEUTRALS = new ConcurrentHashMap<>();
+
+    /** A plain session's result of this phone (AWB settled): its colour transform and shading map are kept for the camera. */
+    static void rememberPlain(String cameraId, CaptureResult result) {
+        if (cameraId == null || result == null || camera != null) return;
+        final Integer awb = result.get(CaptureResult.CONTROL_AWB_STATE);
+        if (awb != null && awb != CaptureResult.CONTROL_AWB_STATE_CONVERGED && awb != CaptureResult.CONTROL_AWB_STATE_LOCKED) return;
+        final ColorSpaceTransform transform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
+        if (transform != null && !identity(transform)) TRANSFORMS.put(cameraId, transform);
+        final Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
+        if (n != null && n.length >= 3 && n[1].floatValue() > 0f && n[0].floatValue() > 0f && n[2].floatValue() > 0f)
+            PLAIN_NEUTRALS.put(cameraId, new float[]{n[0].floatValue() / n[1].floatValue(), 1f, n[2].floatValue() / n[1].floatValue()});
+        final LensShadingMap map = result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP);
+        if (map != null && map.getColumnCount() > 1 && map.getRowCount() > 1) SHADING.put(cameraId, map);
+    }
+
+    static boolean identity(ColorSpaceTransform t) {
+        for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++)
+            if (Math.abs(t.getElement(c, r).floatValue() - (r == c ? 1f : 0f)) > 1e-4f) return false;
+        return true;
+    }
+
+    /** The own neutral of the camera's frames, smoothed in the log domain (a new session starts from its first measurement). */
+    static void measuredNeutral(String cameraId, float r, float b) {
+        if (cameraId == null || !(r > 0.05f && r < 20f && b > 0.05f && b < 20f)) return;
+        final float[] last = NEUTRALS.get(cameraId);
+        if (last == null) { NEUTRALS.put(cameraId, new float[]{r, 1f, b}); return; }
+        final float k = 0.3f;
+        NEUTRALS.put(cameraId, new float[]{(float) Math.exp((1 - k) * Math.log(last[0]) + k * Math.log(r)), 1f,
+                (float) Math.exp((1 - k) * Math.log(last[2]) + k * Math.log(b))});
+    }
+
+    static void forgetNeutral(String cameraId) {
+        if (cameraId != null) NEUTRALS.remove(cameraId);
+    }
+
+    /** The own neutral of the camera's native frames, else its last plain session's (null: neither yet). */
+    @Nullable
+    static float[] neutral(String cameraId) {
+        if (cameraId == null) return null;
+        final float[] own = NEUTRALS.get(cameraId);
+        return own != null ? own : PLAIN_NEUTRALS.get(cameraId);
+    }
+
+    /**
+     * A native result gets what the mode does not report, before anything reads it: the own neutral (and the white-balance gains it
+     * gives) for its NaN neutral, the plain session's colour transform for the identity one, the plain session's shading map
+     * when it has none. Returns what was filled, for the log.
+     */
+    static String complete(String cameraId, CaptureResult result) {
+        if (cameraId == null || result == null) return "";
+        final StringBuilder filled = new StringBuilder();
+        final float[] own = neutral(cameraId);
+        final Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
+        final boolean missing = n == null || n.length < 3 || !(n[0].floatValue() > 0f && n[1].floatValue() > 0f && n[2].floatValue() > 0f);
+        if (missing && own != null) {
+            CameraReflectionApi.set(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT, new Rational[]{rational(own[0]), new Rational(1, 1), rational(own[2])}, result);
+            CameraReflectionApi.set(CaptureResult.COLOR_CORRECTION_GAINS, new RggbChannelVector(1f / own[0], 1f, 1f, 1f / own[2]), result);
+            filled.append(String.format(Locale.ROOT, " neutral %.3f / %.3f", own[0], own[2]));
+        }
+        final ColorSpaceTransform transform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
+        final ColorSpaceTransform plain = TRANSFORMS.get(cameraId);
+        if (plain != null && (transform == null || identity(transform))) {
+            CameraReflectionApi.set(CaptureResult.COLOR_CORRECTION_TRANSFORM, plain, result);
+            filled.append(" transform");
+        }
+        final LensShadingMap shading = SHADING.get(cameraId);
+        if (shading != null && result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP) == null) {
+            CameraReflectionApi.set(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP, shading, result);
+            filled.append(" shading ").append(shading.getColumnCount()).append('x').append(shading.getRowCount());
+        }
+        return filled.toString();
+    }
+
+    static Rational rational(float v) {
+        return new Rational(Math.round(v * 1_000_000f), 1_000_000);
+    }
+}

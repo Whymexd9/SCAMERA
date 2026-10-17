@@ -231,7 +231,8 @@ public class ParamController implements Observer {
      */
     private int neutralSkip;
     private void learnNeutral(CaptureResult result) {
-        if ((++neutralSkip & 15) != 0 || com.particlesdevs.photoncamera.processing.MosaicStream.block() != 1) return;
+        if ((++neutralSkip & 15) != 0 || com.particlesdevs.photoncamera.processing.MosaicStream.block() != 1
+                || com.particlesdevs.photoncamera.capture.OppoNativeFullRes.running()) return; // P192: the own neutral, not the ISP's
         try {
             final Integer awb = result.get(CaptureResult.CONTROL_AWB_MODE), state = result.get(CaptureResult.CONTROL_AWB_STATE);
             if (awb == null || awb != CaptureResult.CONTROL_AWB_MODE_AUTO) return;

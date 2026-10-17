@@ -733,6 +733,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                        @NonNull TotalCaptureResult result) {
             synchronized (mPreviewStateLock) {
                 if (!isCurrentPreviewSession(session)) return;
+                // P192: the OPPO Find X7 Ultra: a plain session keeps its colour for the native mode, a native result gets it
+                if (OppoNativeFullRes.model()) {
+                    if (mVivoSdkRawSession == null) OppoNativeFullRes.rememberPlain(physicalID, result);
+                    else if (VivoSdkFullRes.oppo()) OppoNativeFullRes.complete(mVivoSdkCameraId, result);
+                }
                 if (mLastPreviewResultMs == 0) markModuleGood();
                 mLastPreviewResultMs = android.os.SystemClock.elapsedRealtime();
                 // Restarts count as successful only after a second of frames: one result per new session reset the count and the
@@ -2338,7 +2343,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 || !PreferenceKeys.isScamEnabled()
                 || !VivoSdkFullRes.supportsMode(mode) || mIsRecordingVideo) return;
         synchronized (mVivoSdkLock) {
-            mVivoSdkRawSession = VivoSdkRawSession.open();
+            // P192: the OPPO Find X7 Ultra's native modes need no vivo SDK lease
+            mVivoSdkRawSession = VivoSdkFullRes.oppo() ? VivoSdkRawSession.inert() : VivoSdkRawSession.open();
             mVivoSdkCameraId = id;
             mVivoSdkRestorePending = false;
             mVivoSdkRestoreAttempts = 0;
@@ -2349,7 +2355,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mCameraCharacteristicsMap.remove(id);
         }
         Log.i("SCAM_CAPTURE", (nativeVivoFullRes() ? "NATIVE FULLRES" : "SDK FULLRES50") + " camera=" + id + " size=" + VivoSdkFullRes.profile(id).size
-                + ": automatic AE, serial PSL, SHDR processing");
+                + (VivoSdkFullRes.oppo() ? ": own RAW AE and white balance (the mode's HAL has no statistics), serial PSL, SHDR processing"
+                : ": automatic AE, serial PSL, SHDR processing"));
     }
 
     private boolean nativeVivoFullRes() {
@@ -2363,6 +2370,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             try {
                 mVivoSdkRawSession.close();
                 mVivoSdkRawSession = null;
+                mNativeAe = null;
+                OppoNativeFullRes.end();
                 mVivoSdkRawDevice = null;
                 mVivoSdkRestorePending = false;
                 mCameraCharacteristicsMap.remove(mVivoSdkCameraId);
@@ -2581,6 +2590,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // P108: the Pixel 10 Pro / Pro XL's full-resolution switch: the RAW stream of the max-resolution map (RAW10 8160x6144)
         mFullResSession = false;
         Size fullRes = sdkFullRes ? VivoSdkFullRes.profile(mVivoSdkCameraId).size : null;
+        if (sdkFullRes && VivoSdkFullRes.oppo()) {
+            // P192: the own AE of the OPPO native mode starts from the last preview exposure and meters the native RAW from there
+            mNativeAe = new NativeRawExposure(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE),
+                    characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE), NATIVE_FRAME_NS,
+                    (long) mPreviewExposureTime, mPreviewIso);
+            OppoNativeFullRes.begin(mVivoSdkCameraId, mNativeAe);
+            Log.i("SCAM_CAPTURE", "OPPO native FULLRES camera " + mVivoSdkCameraId + ": mode "
+                    + VivoSdkFullRes.profile(mVivoSdkCameraId).sensorMode + ", own AE from " + mNativeAe);
+        }
         if (!sdkFullRes && isRawFormat(mTargetFormat) && !sFullResRefused.contains(physicalID) && !mIsRecordingVideo) {
             PixelPro10.FullRes fr = PixelPro10.fullRes(characteristics);
             if (fr != null) {
@@ -4111,6 +4129,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             observeRawLevel(img, result);
             observeMosaic(img);
             publishLiveRawFrame(img, result);
+            nativeExposure(img, result);
             if (mTextureView != null) mTextureView.requestRender();
             // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
             // P187: not while a 200 MP merge runs (its plain session takes no shot)
@@ -4229,6 +4248,65 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
         } catch (RuntimeException e) {
             Log.w(TAG, "mosaic preview: " + e.getMessage());
+        }
+    }
+
+    /** P192: the own exposure of the OPPO native FULLRES session (null otherwise); its frame time (24 fps). */
+    private volatile NativeRawExposure mNativeAe;
+    static final long NATIVE_FRAME_NS = 41_666_666L;
+    private int mNativeFrames;
+    private long mNativeAeLogMs;
+
+    /**
+     * P192: the OPPO native mode's own AE and white balance from the frame just shown: the frame is metered and the exposure moved
+     * (the repeating request rebuilt) when it is off the setpoint; every 8th frame the neutral is measured (MosaicNeutral, on the
+     * camera's curve). Not while a series is taken: its frames keep the exposure of the shutter.
+     */
+    private void nativeExposure(Image img, TotalCaptureResult result) {
+        final NativeRawExposure ae = mNativeAe;
+        if (ae == null || img == null || result == null || mVivoSdkCapture != null || burst || !nativeVivoFullRes()) return;
+        try {
+            final Image.Plane plane = img.getPlanes()[0];
+            CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
+            if (c == null) c = mCameraCharacteristics;
+            final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
+                    com.particlesdevs.photoncamera.processing.RawLevels.current(c, result);
+            int cfa = mLiveCfaPattern;
+            if (cfa < 0) {
+                Integer arrangement = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
+                cfa = arrangement == null ? 0 : arrangement;
+            }
+            final int block = VivoSdkFullRes.profile(mVivoSdkCameraId).nativeBlock;
+            final java.nio.ByteBuffer buffer = plane.getBuffer();
+            final float[] m = NativeRawExposure.meter(buffer, img.getWidth(), img.getHeight(), plane.getRowStride(), cfa, block,
+                    levels.black, levels.white);
+            final Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+            final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+            float ev = 0f;
+            final CaptureRequest.Builder builder = mPreviewRequestBuilder;
+            final Integer index = builder == null ? null : builder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
+            final android.util.Rational step = c == null ? null : c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
+            if (index != null && step != null) ev = index * step.floatValue();
+            if (m != null && exposure != null && iso != null && ae.update(m[0], m[1], exposure, iso, ev)) {
+                final long now = android.os.SystemClock.elapsedRealtime();
+                if (now - mNativeAeLogMs >= 1000) {
+                    mNativeAeLogMs = now;
+                    Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT,
+                            "native AE camera %s: median %.3f p98 %.3f at %.3f ms ISO %d (ev %+.1f) -> %s",
+                            mVivoSdkCameraId, m[0], m[1], exposure / 1e6, iso, ev, ae));
+                }
+                rebuildPreviewBuilder();
+            }
+            if ((mNativeFrames++ & 7) == 0) {
+                com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(ScameraApp.getAppContext());
+                final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result own =
+                        com.particlesdevs.photoncamera.processing.color.MosaicNeutral.estimate(mVivoSdkCameraId, buffer,
+                                img.getWidth(), img.getHeight(), plane.getRowStride(), cfa, levels.black, levels.white, block);
+                if (own != null) OppoNativeFullRes.measuredNeutral(mVivoSdkCameraId, own.neutral[0], own.neutral[2]);
+                if ((mNativeFrames & 127) == 1 && own != null) Log.i("SCAM_CAPTURE", "native white balance camera " + mVivoSdkCameraId + ": " + own.how);
+            }
+        } catch (RuntimeException e) {
+            Log.w("SCAM_CAPTURE", "native AE: " + e);
         }
     }
 
@@ -5001,6 +5079,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
             public void result(int index, TotalCaptureResult result) {
                 if (done.get()) return;
+                // P192: the OPPO native still gets the own neutral, the plain session's colour transform and shading map
+                if (VivoSdkFullRes.oppo()) {
+                    final String filled = OppoNativeFullRes.complete(mVivoSdkCameraId, result);
+                    if (index == 0) Log.i("SCAM_CAPTURE", "OPPO native still " + mVivoSdkCameraId + " at "
+                            + result.get(CaptureResult.SENSOR_EXPOSURE_TIME) / 1e6 + " ms ISO " + result.get(CaptureResult.SENSOR_SENSITIVITY)
+                            + (filled.isEmpty() ? ", nothing filled" : ", filled:" + filled));
+                }
                 rememberRawMetadata(result);
                 mCaptureResult = result;
                 mCaptureRequest = result.getRequest();

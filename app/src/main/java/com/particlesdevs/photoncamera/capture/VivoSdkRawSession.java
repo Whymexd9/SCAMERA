@@ -62,6 +62,19 @@ public final class VivoSdkRawSession implements AutoCloseable {
         return open(systemProvider(), PrefsJournal.get(), android.os.Process.myPid());
     }
 
+    /**
+     * P192: the native FULLRES session of a phone without the vivo SDK lease (OPPO Find X7 Ultra): nothing is set or given back,
+     * the session only marks the route.
+     */
+    static VivoSdkRawSession inert() {
+        final int[] values = new int[64];
+        return new VivoSdkRawSession(new Provider() {
+            @Override public int get(int key) { return values[key & 63]; }
+            @Override public void set(int key, int value) { values[key & 63] = value; }
+            @Override public void settle() { }
+        }, null, 0, 0);
+    }
+
     static VivoSdkRawSession open(Provider provider) throws Exception {
         return Lease.open(provider, null, 0);
     }
