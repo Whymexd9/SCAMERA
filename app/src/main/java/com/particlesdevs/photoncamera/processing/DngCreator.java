@@ -492,8 +492,10 @@ public class DngCreator {
             setNoiseProfile(noiseProfile);
         }
         
-        setMake(Build.BRAND != null ? Build.BRAND : Build.MANUFACTURER);
-        setModel(Build.MODEL);
+        // P196: the same Make / Model as the JPEG / HEIC / WebP / AVIF of the shot (DeviceName); UniqueCameraModel (the colour
+        // profile identity) stays on Build.MODEL
+        setMake(com.particlesdevs.photoncamera.util.DeviceName.make());
+        setModel(com.particlesdevs.photoncamera.util.DeviceName.model());
         setUniqueCameraModel(Build.MODEL + "-" + Build.BRAND + "-" + Build.MANUFACTURER);
         setIso((short) parameters.iso);
         setExposureTime(parameters.exposureTime);

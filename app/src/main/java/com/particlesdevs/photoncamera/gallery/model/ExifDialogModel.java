@@ -147,5 +147,9 @@ public class ExifDialogModel extends BaseObservable {
     public int getHeight() { return height; }
     public void setHeight(int v) { height = v; }
     public long getSizeBytes() { return sizeBytes; }
+    // P196: «8192×6144 · 50 Мп» of the pixels the file stores (PhotoInfo.resolution), null without a size
+    private String resolutionValue;
+    public String getResolutionValue() { return resolutionValue; }
+    public void setResolutionValue(String v) { resolutionValue = v; }
     public void setSizeBytes(long v) { sizeBytes = v; }
 }

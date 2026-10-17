@@ -79,14 +79,14 @@ public class ExifDialogViewModel extends AndroidViewModel {
         String attr_fnum = exifInterface.getAttribute(ExifInterface.TAG_F_NUMBER);
         String attr_focal = exifInterface.getAttribute(ExifInterface.TAG_FOCAL_LENGTH);
         String attr_date = exifInterface.getAttribute(ExifInterface.TAG_DATETIME);
-        if (attr_width == null || attr_length == null || "0".equals(attr_width) || "0".equals(attr_length)) {
-            // A HEIC / WebP / AVIF file from another app may have no size tags (ExifInterface reads no WebP bitstream size):
-            // the header gives it.
-            int[] size = decodedSize(contentResolver, imageFile);
-            if (size != null) {
-                attr_width = String.valueOf(size[0]);
-                attr_length = String.valueOf(size[1]);
-            }
+        // P196: the pixels the file really stores (owner: «фактическое разрешение»): its own headers first (JPEG SOF, WebP
+        // bitstream, HEIC / AVIF primary item 'ispe'), then the decoder's bounds; the EXIF size tags only when neither
+        // reads (DNG: ExifInterface reads the raw image's own IFD). As shown: swapped for a 90 / 270 degree orientation.
+        int[] size = actualSize(contentResolver, imageFile);
+        if (size != null) {
+            int[] shown = com.particlesdevs.photoncamera.gallery.ui.PhotoInfo.oriented(size[0], size[1], exifInterface.getRotationDegrees());
+            attr_width = String.valueOf(shown[0]);
+            attr_length = String.valueOf(shown[1]);
         }
 //        String attr_35mmfocal = exifInterface.getAttribute(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM);
 //        Log.d("attr_35mmfocal", "fetched attr_35mmfocal = " + attr_35mmfocal);
@@ -126,11 +126,13 @@ public class ExifDialogViewModel extends AndroidViewModel {
                 + com.particlesdevs.photoncamera.util.Lang.t(" мм", " mm"));
         String attr_35 = exifInterface.getAttribute(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM);
         exifDialogModel.setFocal35Value(attr_35 == null || "0".equals(attr_35) ? null : attr_35 + com.particlesdevs.photoncamera.util.Lang.t(" мм", " mm"));
-        String makeModel = ((attr_make == null ? "" : attr_make) + " " + (attr_model == null ? "" : attr_model)).trim();
-        exifDialogModel.setMakeModel(makeModel.isEmpty() ? null : makeModel);
+        // P196: the phone as the file's EXIF names it («vivo X200 Ultra»), nothing when it has no Make / Model
+        exifDialogModel.setMakeModel(com.particlesdevs.photoncamera.gallery.ui.PhotoInfo.device(attr_make, attr_model));
         exifDialogModel.setDescription(exifInterface.getAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION));
-        exifDialogModel.setWidth((int) parseDouble(attr_width));
-        exifDialogModel.setHeight((int) parseDouble(attr_length));
+        int width = (int) parseDouble(attr_width), height = (int) parseDouble(attr_length);
+        exifDialogModel.setWidth(Math.max(0, width));
+        exifDialogModel.setHeight(Math.max(0, height));
+        exifDialogModel.setResolutionValue(com.particlesdevs.photoncamera.gallery.ui.PhotoInfo.resolution(width, height));
         exifDialogModel.setSizeBytes(imageFile.getSize());
         exifDialogModel.notifyChange(); //important
         try {
@@ -147,6 +149,22 @@ public class ExifDialogViewModel extends AndroidViewModel {
         } catch (NumberFormatException e) {
             return Double.NaN;
         }
+    }
+
+    /**
+     * P196: {width, height} the file stores, before any rotation: its headers (ImageHeaderSize), else the decoder's bounds
+     * (not for a DNG: the platform raw decoder would read the whole file), or null.
+     */
+    private static int[] actualSize(ContentResolver contentResolver, MediaFile imageFile) {
+        try (InputStream in = contentResolver.openInputStream(imageFile.getFileUri())) {
+            int[] size = com.particlesdevs.photoncamera.gallery.helper.ImageHeaderSize.read(in);
+            if (size != null) return size;
+        } catch (IOException | RuntimeException e) {
+            com.particlesdevs.photoncamera.util.Log.d(TAG, "no header size: " + e);
+        }
+        String name = imageFile.getDisplayName();
+        if (name != null && name.toLowerCase(Locale.ROOT).endsWith(".dng")) return null;
+        return decodedSize(contentResolver, imageFile);
     }
 
     /** {width, height} of the image from its header (BitmapFactory bounds), or null. */

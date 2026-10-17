@@ -79,7 +79,14 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
     private ViewerChrome chrome;
     private TextView zoomPill, miniExif, paneLabel, paneZoom;
     private LinearLayout overlays;
-    private boolean chromeVisible = true, paneFullExif;
+    private boolean chromeVisible = true;
+    /**
+     * P196: the compare panes' label shows the full info (time, ISO, shutter, aperture, focal length, format; resolution and
+     * phone; file name) by default, and a tap on either pane switches BOTH between that and «time · ISO». Before it was one
+     * flag per pane, off by default: after a tap on one pane the other still showed only «11:55 · ISO 50» (owner's
+     * screenshot, 2026-10-17), which read as a photo without shutter / aperture / focal length.
+     */
+    static boolean paneFullExif = true;
     private String mode;
     private int seek_position = 0;
     private int lastHdrPosition = -1;
@@ -160,7 +167,7 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         paneLabel.setBackground(GalleryUi.round(c, GalleryUi.PILL_BG, GalleryUi.LINE, 12));
         paneLabel.setPadding(GalleryUi.dp(c, 9), GalleryUi.dp(c, 5), GalleryUi.dp(c, 9), GalleryUi.dp(c, 5));
         paneLabel.setCompoundDrawablePadding(GalleryUi.dp(c, 6));
-        paneLabel.setMaxLines(2);
+        paneLabel.setMaxLines(4); // P196: EXIF line, resolution · phone, file name (one may wrap on a narrow pane)
         paneLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
         lp.leftMargin = lp.topMargin = lp.rightMargin = GalleryUi.dp(c, 10);
@@ -563,7 +570,8 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
     private void onImageViewClicked(View view) {
         if (isCompareMode()) {
             paneFullExif = !paneFullExif;
-            updateExif();
+            if (getParentFragment() instanceof ImageCompareFragment) ((ImageCompareFragment) getParentFragment()).refreshLabels();
+            else updateExif();
             return;
         }
         chromeVisible = !chromeVisible;
@@ -598,6 +606,11 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         if (paneZoom != null) paneZoom.setVisibility(View.GONE);
     }
 
+    /** P196: the compare pane's label again (a tap on the other pane switched the full info). */
+    void refreshPaneLabel() {
+        if (paneLabel != null) updateExif();
+    }
+
     private void updateExif() {
         if (viewPager == null || root == null || getContext() == null) return;
         int position = viewPager.getCurrentItem();
@@ -621,20 +634,33 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         String time = when.substring(Math.max(0, when.lastIndexOf(' ') + 1));
         String text = paneFullExif ? joinDot(time, m.getIsoValue(), m.getShutterValue(), m.getFnumValue(), m.getFocalValue(), format.label)
                 : joinDot(time, m.getIsoValue());
+        // P196: the file's real resolution and the phone on their own line («8192×6144 · 50 Мп · vivo X200 Ultra»)
+        String file = paneFullExif ? fileLine(m.getResolutionValue(), m.getMakeModel()) : null;
         // P65: the file name on a second, smaller and muted line (which two shots are compared)
         String name = item.getFile().getDisplayName();
-        paneLabel.setText(paneText(text, name));
+        paneLabel.setText(paneText(text, file, name));
         android.graphics.drawable.Drawable routeD = route != null ? c.getDrawable(GalleryFormat.routeIcon(route)) : null;
         android.graphics.drawable.Drawable fmt = c.getDrawable(format.icon);
         int s = GalleryUi.dp(c, 15), accent = GalleryUi.accent(c);
         android.graphics.drawable.Drawable icons = combine(c, routeD, fmt, s, accent);
         paneLabel.setCompoundDrawables(icons, null, null, null);
         paneLabel.setContentDescription((route != null ? route + ", " : "") + format.label + ", " + text
-                + (name == null || name.isEmpty() ? "" : ", " + name));
+                + (file == null || file.isEmpty() ? "" : ", " + file) + (name == null || name.isEmpty() ? "" : ", " + name));
+    }
+
+    /** P196: «8192×6144 · 50 Мп · vivo X200 Ultra»; empty without either. */
+    static String fileLine(@Nullable String resolution, @Nullable String device) {
+        return joinDot(resolution, device);
     }
 
     /** The label's text: the EXIF line, then the file name (85 %, muted) when there is one. */
     static CharSequence paneText(String text, @Nullable String name) {
+        return paneText(text, null, name);
+    }
+
+    /** P196: the EXIF line, the resolution · phone line, then the file name (85 %, muted); empty lines left out. */
+    static CharSequence paneText(String text, @Nullable String fileLine, @Nullable String name) {
+        if (fileLine != null && !fileLine.isEmpty()) text = text.isEmpty() ? fileLine : text + "\n" + fileLine;
         if (name == null || name.isEmpty()) return text;
         android.text.SpannableStringBuilder s = new android.text.SpannableStringBuilder(text);
         if (s.length() > 0) s.append('\n');

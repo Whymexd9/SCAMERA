@@ -50,7 +50,8 @@ import static com.particlesdevs.photoncamera.gallery.helper.Constants.*;
  * Created by Vibhor Srivastava on 09-Jan-2021
  *
  * <p>P59b: compare in the card style (GALLERY_TASK.md §5): header «Сравнение» with back and swap, two panes (stacked;
- * side by side in landscape) each with its label card (route + format icons, time, ISO; a tap shows the full EXIF) and zoom
+ * side by side in landscape) each with its label card (route + format icons, the EXIF line, P196 resolution · phone, file name; a tap on either
+ * pane switches both to «time · ISO» and back) and zoom
  * pill, the «Зум и сдвиг вместе» switch card (both panes follow each other through the photos: PaneLink) and the share card button (the screenshot of
  * both panes, as before). Back returns to where compare was opened from.
  */
@@ -161,6 +162,7 @@ public class ImageCompareFragment extends Fragment {
         Bundle b = getArguments();
         if (b != null) {
             toSync = true;
+            ImageViewerFragment.paneFullExif = true; // P196: a new comparison opens with the full info on both panes
             pos1 = b.getInt(IMAGE1_KEY);
             pos2 = b.getInt(IMAGE2_KEY);
             attach(pos1, pos2);
@@ -187,6 +189,12 @@ public class ImageCompareFragment extends Fragment {
         f.setArguments(b);
         f.setSsivListener(ssivListener);
         return f;
+    }
+
+    /** P196: both panes' labels again (a tap on either pane switches the full info of both). */
+    void refreshLabels() {
+        fragment1.refreshPaneLabel();
+        fragment2.refreshPaneLabel();
     }
 
     /** Swaps the two photos between the panes. */

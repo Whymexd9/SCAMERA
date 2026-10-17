@@ -2,7 +2,6 @@ package com.particlesdevs.photoncamera.api;
 
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
-import android.os.Build;
 import com.particlesdevs.photoncamera.util.Log;
 import androidx.exifinterface.media.ExifInterface;
 import com.particlesdevs.photoncamera.app.ScameraApp;
@@ -166,8 +165,10 @@ public class ParseExif {
     }
 
     public static class ExifData {
-        public final String MODEL = Build.MODEL;
-        public final String MAKE = Build.BRAND;
+        // P196: the phone's market name («vivo X200 Ultra») when the system has one, Build.MODEL otherwise (DeviceName);
+        // every format takes these through setAllAttributes (JPEG, Ultra HDR, HEIC 8 / 10-bit, WebP, AVIF)
+        public final String MODEL = com.particlesdevs.photoncamera.util.DeviceName.model();
+        public final String MAKE = com.particlesdevs.photoncamera.util.DeviceName.make();
         public final String COPYRIGHT = "SCAMERA";
         public String SENSITIVITY_TYPE;
         public String APERTURE_VALUE;

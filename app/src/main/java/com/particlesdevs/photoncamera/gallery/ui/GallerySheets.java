@@ -301,20 +301,15 @@ public final class GallerySheets {
         if (d.route != null)
             rows.addView(infoRow(c, GalleryFormat.routeIcon(d.route), Lang.t("Склейка", "Merge"), d.route, "route"));
         rows.addView(infoRow(c, d.formatIcon, Lang.t("Формат", "Format"), (d.format == null ? "" : d.format) + (d.ultraHdr ? " · Ultra HDR" : ""), "format"));
-        String lens = join(d.lens, d.device);
-        if (!lens.isEmpty()) rows.addView(infoRow(c, R.drawable.ic_gallery_lens, Lang.t("Объектив", "Lens"), lens, "lens"));
-        if (d.width > 0 && d.height > 0)
-            rows.addView(infoRow(c, R.drawable.ic_gallery_res, Lang.t("Разрешение", "Resolution"),
-                    d.width + " × " + d.height + " · " + Math.round(d.width * (double) d.height / 1e6) + Lang.t(" МП", " MP"), "res"));
+        if (!GalleryUi.empty(d.lens)) rows.addView(infoRow(c, R.drawable.ic_gallery_lens, Lang.t("Объектив", "Lens"), d.lens, "lens"));
+        // P196: the phone on its own row (EXIF Make / Model, PhotoInfo.device), the resolution of the pixels the file stores
+        if (!GalleryUi.empty(d.device)) rows.addView(infoRow(c, R.drawable.ic_gallery_phone, Lang.t("Смартфон", "Phone"), d.device, "device"));
+        String res = PhotoInfo.resolution(d.width, d.height);
+        if (res != null) rows.addView(infoRow(c, R.drawable.ic_gallery_res, Lang.t("Разрешение", "Resolution"), res, "res"));
         rows.addView(infoRow(c, R.drawable.ic_gallery_size, Lang.t("Размер", "Size"), GalleryUi.size(d.bytes), "size"));
         s.addView(rows);
         s.setContentDescription(d.fileName);
         return s;
-    }
-
-    static String join(@Nullable String a, @Nullable String b) {
-        boolean ea = GalleryUi.empty(a), eb = GalleryUi.empty(b);
-        return ea && eb ? "" : ea ? b : eb ? a : a + " · " + b;
     }
 
     static LinearLayout shotCard(Context c, @DrawableRes int icon, @Nullable String value, String name) {

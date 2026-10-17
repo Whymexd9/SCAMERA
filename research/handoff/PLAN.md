@@ -4566,3 +4566,40 @@ code, replayed on the OPPO, not shot on a phone)
 - Open: a real shot on the vivo X200 / X300 Ultra (ISZ Quad / Tetra, FULLRES 50 / 200 MP) and the OPPO with the switch off (photo
   size, DNG opening in a RAW editor at the binned size, white balance); the FULLRES series memory sizing (CaptureController /
   VivoSdkFullRes.seriesCount) still counts the remosaic's memory (conservative: fewer frames than the binned merge could hold).
+
+### P196
+
+Owner (2026-10-17): «нам нужно чтобы в информации о фото писало фактическое разрешение и модель смартфона» (gallery «Сравнение»: the
+first pane's pill «11:56 · ISO 50 · 1/852 · f/2,27 · 22,5 мм · JPEG», the second one only «11:55 · ISO 50»).
+- Why the second pane lacked shutter / aperture / focal length: not the file. The pane label had a per-pane flag, off by default:
+  «time · ISO» until that pane itself was tapped (the tap meant to show the full EXIF). After a tap on the first pane only the first
+  showed everything; a file whose EXIF had no shutter would still have shown the format («· JPEG»), which the second pill lacked.
+  All our writers already store the same tags (ParseExif.setAllAttributes: plain JPEG, ExifBlock for Ultra HDR / HEIC 8 and 10-bit /
+  AVIF, ExifInterface for WebP; DNG its own tags). Fix: ImageViewerFragment.paneFullExif is one static flag, on, reset on every new
+  comparison; a tap on either pane switches both (ImageCompareFragment.refreshLabels).
+- Compare pane label, three lines (max 4, one may wrap): «11:56 · ISO 50 · 1/852 · f/2,27 · 22,5 мм · JPEG» / «8192×6144 · 50 Мп ·
+  vivo X200 Ultra» / file name (muted). Compact mode (after a tap): «11:55 · ISO 50» + name, as before.
+- Details sheet («Сведения»): «Разрешение» 8192×6144 · 50 Мп (was «8192 × 6144 · 50 МП» from the EXIF size tags), the phone on its
+  own «Смартфон» row (ic_gallery_phone; it was appended to «Объектив»).
+- Actual resolution: gallery/helper/ImageHeaderSize reads the file's own headers (JPEG SOFn - an Ultra HDR JPEG's primary; WebP
+  VP8 / VP8L / VP8X canvas; HEIC / AVIF primary item 'ispe' via pitm / iprp / ipma, mdat before meta too), forward-only with skips;
+  else BitmapFactory bounds (not for DNG); else the EXIF tags (a DNG: ExifInterface reads the raw IFD itself). Swapped for an EXIF /
+  irot 90 / 270 orientation (as shown). Megapixels (PhotoInfo): whole from 20 MP («50 Мп», «200 Мп»), one decimal below («12,6 Мп»
+  for 4096x3072, «12 Мп» for 4000x3000), two below 1 MP.
+- Phone: PhotoInfo.device(EXIF Make, Model) - «vivo X200 Ultra» (the brand once when the model already starts with it), the make alone
+  without a model, nothing without either (nothing invented).
+- Writer: util/DeviceName - Make = Build.BRAND (MANUFACTURER without one), as before; Model = the market name when the system has one
+  (ro.vivo.market.name as VivoQcomIsz reads it, ro.vendor.oplus.market.name, ro.product.marketname / ro.product.vendor.marketname as
+  XiaomiTeleZoom reads it), ASCII start only («vivo X300 Ultra 卫星通信版» -> «vivo X300 Ultra»; no Latin start -> Build.MODEL), else
+  Build.MODEL. ParseExif.ExifData and our DngCreator (Make / Model; UniqueCameraModel stays Build.MODEL-based) use it.
+- Also: HybridSettingsTest (P195, HEAD b05885f7) did not compile - a closing brace of theFormerMosaicKernelDefaultMovesOnce was lost
+  when the P195 test was inserted; restored (no assertion changed).
+- Tests: PhotoInfoTest, gallery.helper.ImageHeaderSizeTest (incl. our HeifContainerWriter's 150x70 grid HEIC), gallery.ui.fragments.
+  ComparePaneLabelTest, util.DeviceNameTest, processing.PhotoMakeModelTest (Robolectric: JPEG, WebP lossy / lossless and the EXIF
+  block store Make «vivo» / Model «vivo X200 Ultra» with ro.vivo.market.name set, Build.MODEL without; real encoder files sized from
+  their headers); registered in build-test-apk.yml. GalleryUiTest, JpegExifStreamTest, PhotoOutput*, AvifOutputTest,
+  HeifContainerWriterTest, HybridSettingsTest pass; tools/check_ui_language.py PASS.
+- Open: on the phones - the compare / details of a JPEG, Ultra HDR, HEIC 8 / 10-bit, AVIF, WebP and DNG shot (resolution, «vivo X200
+  Ultra»; whether ro.vendor.oplus.market.name is set on the OPPO PHY110 / Find X8 Ultra - otherwise «OPPO PHY110»); AVIF EXIF is read
+  by ExifInterface only from Android 12 on (MediaMetadataRetriever), resolution comes from the header on any version; photos taken
+  before P196 keep the Build.MODEL they were written with («vivo V2446A»).
