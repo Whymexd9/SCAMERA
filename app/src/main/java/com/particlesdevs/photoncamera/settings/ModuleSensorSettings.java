@@ -25,7 +25,7 @@ public final class ModuleSensorSettings {
             case "Чёрный уровень RAW вручную, в единицах RAW этого модуля; Авто — от камеры, ручное значение выключает «Уровень чёрного по кадру». Больше — тени темнее и проваливаются; меньше — тени серые.":return Lang.t(text,"Manual RAW black level in this module's RAW units; Auto: from the camera, a manual value turns «Black level from the frame» off. Higher: darker, crushed shadows; lower: greyish shadows.");
             case "Белый уровень RAW вручную, в единицах RAW этого модуля; Авто — от камеры и по отсчётам кадра. Больше — снимок темнее; меньше — света выгорают раньше.":return Lang.t(text,"Manual RAW white level in this module's RAW units; Auto: from the camera and the frame's samples. Higher: darker shot; lower: highlights clip sooner.");
             case "Оптическая стабилизация. Авто выключает её на штативе и в Unlimited, чтобы кадр не плыл.":return Lang.t(text,"Optical stabilization. Auto turns it off on a tripod and in Unlimited so the frame does not drift.");
-            case "Режим сессии камеры, 0 — обычный. Другие числа — режимы производителя; неверное может не открыть камеру.":return Lang.t(text,"Camera session mode, 0 is normal. Other numbers are vendor modes; a wrong one may stop the camera opening.");
+            case "Режим сессии камеры: 0 — обычный, 32768–65535 — режимы производителя (неверный может не открыть камеру). В FULLRES всегда 0. Применяется при следующем открытии камеры.":return Lang.t(text,"Camera session mode: 0 is normal, 32768-65535 are vendor modes (a wrong one may stop the camera opening). FULLRES always runs 0. Applied the next time the camera opens.");
             default:return text;
         }
     }

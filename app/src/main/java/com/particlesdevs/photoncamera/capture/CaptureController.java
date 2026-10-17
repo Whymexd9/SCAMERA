@@ -233,8 +233,23 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     @SensorConfig(title = "Session Type",
             defaultValue = 0, min = 0, max = 65535, step = 0,
-            description = "Режим сессии камеры, 0 — обычный. Другие числа — режимы производителя; неверное может не открыть камеру.")
+            description = "Режим сессии камеры: 0 — обычный, 32768–65535 — режимы производителя (неверный может не открыть камеру). В FULLRES всегда 0. Применяется при следующем открытии камеры.")
     public int sessionType = 0;
+    /**
+     * P211 (owner's X7 Ultra, 2026-10-17/18: «Тип сессии камеры» 32777 with FULLRES on rebooted the phone - kernel panic «Unable to
+     * handle kernel paging request», reproduced on PHY110): the operation mode a session runs. The module's «Тип сессии камеры»
+     * only as Android takes it (0 normal; 0x8000..0xFFFF vendor modes; 1 = constrained high speed and 2..0x7FFF are refused for
+     * our streams) and never in a FULLRES session, whose sensor mode is set by its own keys (the vivo forceSensorMode, the OPPO
+     * agingtest mode); a vendor mode the camera refused falls back to 0 for this camera (this run).
+     */
+    static int sessionOperationMode(int setting, boolean fullRes) {
+        if (fullRes || setting < 0x8000 || setting > 0xFFFF) return 0;
+        return setting;
+    }
+    /** P211: the module's vendor operation mode the running session was configured with (0: none). */
+    private volatile int mVendorOperationMode;
+    /** P211: cameras whose session refused the module's vendor operation mode (this run): they run mode 0. */
+    private static final java.util.Set<String> sVendorModeRefused = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     @SensorConfig(
             title = "OIS Mode",
@@ -3174,6 +3189,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             return;
                         }
                         Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
+                        if (retryWithoutVendorMode(cameraCaptureSession)) return; // P211
                         if (retryWithoutVivoSdkFullRes(cameraCaptureSession, "session configuration failed")) return;
                         if (retryWithoutRequestedSensorMode(cameraCaptureSession, "session configuration failed")) return;
                         if (retryXiaomiRoute(cameraCaptureSession, "session configuration")) return;
@@ -3188,8 +3204,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
             };
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                // P211: the module's «Тип сессии камеры» as Android takes it, never in FULLRES, 0 after the camera refused it
+                final int vendorMode = sVendorModeRefused.contains(physicalID) ? 0 : sessionOperationMode(sessionType, sdkFullRes || mFullResSession);
+                mVendorOperationMode = xiaomiLogical ? 0 : vendorMode;
+                if (!xiaomiLogical && sessionType != 0)
+                    Log.i("SCAM_CAPTURE", "camera " + physicalID + ": session operation mode " + vendorMode + " (setting " + sessionType
+                            + (vendorMode == sessionType ? ")" : sdkFullRes || mFullResSession ? ": FULLRES runs 0)"
+                            : sVendorModeRefused.contains(physicalID) ? ": refused by this camera, 0)" : ": not a vendor mode 32768..65535, 0)"));
                 SessionConfiguration configuration = new SessionConfiguration(
-                        xiaomiLogical ? XiaomiTeleZoom.operationMode(xiaomiOperationModeSetting()) : sessionType,
+                        xiaomiLogical ? XiaomiTeleZoom.operationMode(xiaomiOperationModeSetting()) : vendorMode,
                         outputConfigurations,
                         processExecutor,
                         stateCallback
@@ -3260,6 +3283,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
+            if (retryWithoutVendorMode(null)) return; // P211
             if (retryWithoutVivoSdkFullRes(null, "session: " + e.getMessage())) return;
             if (retryWithoutRequestedSensorMode(null, "session: " + e.getMessage())) return;
             // P41b: a logical session the framework refuses outright (no onConfigureFailed follows) steps down as well
@@ -3348,6 +3372,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     /** P100: a session refused with the CROPPED_RAW RAW stream is configured again without it (this camera, this run). */
+    /** P211: a session the camera refused with the module's vendor operation mode runs again in mode 0 (this camera, this run). */
+    private boolean retryWithoutVendorMode(@Nullable CameraCaptureSession session) {
+        if (mVendorOperationMode == 0 || mCameraDevice == null || !sVendorModeRefused.add(physicalID)) return false;
+        Log.w("SCAM_CAPTURE", "camera " + physicalID + ": session refused with operation mode " + mVendorOperationMode + ", again in mode 0");
+        showToast(Lang.t("Камера " + physicalID + ": режим сессии " + mVendorOperationMode + " не принят, обычный режим",
+                "Camera " + physicalID + ": session mode " + mVendorOperationMode + " refused, normal mode"));
+        mVendorOperationMode = 0;
+        if (session != null) try { session.close(); } catch (RuntimeException ignored) { }
+        final Handler handler = mBackgroundHandler;
+        if (handler != null) handler.post(() -> { if (isCameraResumed && mCameraDevice != null) createCameraPreviewSession(false); });
+        return true;
+    }
+
     private boolean retryWithoutCroppedRaw(CameraCaptureSession session) {
         if (!mCroppedRawSession || mCameraDevice == null || !sCroppedRawRefused.add(physicalID)) return false;
         Log.w("SCAM_CAPTURE", "camera " + physicalID + ": session refused with CROPPED_RAW, again without it");
