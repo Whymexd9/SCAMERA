@@ -4455,3 +4455,31 @@ working there too, not only on the X200 Ultra; done in code, not verified on the
 - To check on the phones: X300 Ultra main 50 MP with the switch on - frames 8160x6128 block 1, the viewfinder at ~30 fps, a
   shot = SHDR of plain Bayer, 4:3; X100 Ultra main the same at 8192x6144; whether the SDK lease (keys 40 / 33) is right for a
   remosaicked row; AE / white balance of the HAL in that row.
+### P193 - settings changed with per-module settings off reach every module when they are turned on (owner, 2026-10-17:
+«Исправь, при изменении каких-либо настроек без включенного переключателя "Свои настройки для каждого модуля" все настройки
+должны копироваться по модулям при включении данного переключателя, а не сбрасываться на дефолтные»; done in code, not on a phone)
+- What was wrong (two causes): (1) a module without a profile of its own started from the common settings PLUS the old per-camera
+  JSON (settings_for_camera_<id> in <pkg>_per_lens), which PreferenceKeys.addIds wrote once at the first camera start (setInitial)
+  and nothing ever updated - so it held that start's defaults and put them over the owner's settings on the first turn-on;
+  (2) a module (or FULLRES 50 / 200 MP profile) with a profile from an earlier on-period, a config import or a duplicate got
+  that whole stored profile back, so everything changed while the switch was off was lost for it.
+- Now (ModuleProfiles.changed -> carry): turning the switch on compares the main settings with the common profile (what the main
+  settings took back when the switch went off) and writes every per-module value changed, added or reset since into every stored
+  profile (all exists_* ids: hidden modules and FULLRES profiles too); a FULLRES profile never opened reads its module's as
+  before. A module's other values stay its own: what the owner set for one module and did not change in the common settings
+  comes back with it (the choice: a stored profile cannot tell an own value from a copied one, so only what the owner actually
+  changed in the common settings wins). Modules without a profile start from the new common profile (the per-camera JSON is
+  no longer read, nor written by addIds). Shared settings (ModuleProfiles.isGlobal, module_* keys, the switch itself) are never
+  in a profile, as before. Modules added later while on start from the common profile; on again without changes: unchanged.
+- The turn-on dialog of «Настройки по модулям» says so: «Каждый модуль начнёт с текущих настроек; свои значения модуля вернутся
+  только там, где вы не меняли общие настройки».
+- Tests: ModuleProfilesCarryTest (new, in the CI list; 4 of its 5 fail on the old ModuleProfiles): a change made while off reaches
+  back0 / back1 / back2 / back5 / back1@full50 / back1@full200, a module's and a FULLRES profile's own values survive, off and on
+  again without changes keeps them, a reset while off is reset everywhere, the stale per-camera JSON never wins, shared
+  settings stay out of profiles. SettingsMenuTest's legacy-JSON test now checks that the JSON no longer overrides. Run: 181/182
+  of ModuleProfilesCarryTest, FullResProfilesTest, FullResFramesTest, SettingsMenuTest, ModuleProfilesPageTest, DeviceDefaultsTest,
+  ShadeTilesTest, HybridSettingsTest, ColourSettingsTest, SettingsAuditFixTest, CameraResumeTest, BackupLensMatchTest; the one
+  failure, FullResFramesTest.aDevOverrideIsClampedToTheHardLimits, fails the same on c3707991 (not P193).
+- On the phone: switch off, change a few processing settings (e.g. SHDR strength, sharpening), switch on, open «Настройки по
+  модулям» - every module and its 50 / 200 MP rows show the new values; a module given its own value earlier keeps it where the
+  common setting was not changed.

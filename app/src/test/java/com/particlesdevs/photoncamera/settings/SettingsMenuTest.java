@@ -146,16 +146,22 @@ public class SettingsMenuTest {
         assertEquals("0.18973",prefs.getString("pref_scam_hybrid_cdm",""));assertEquals("37.12345",prefs.getString("pref_film_lut_strength",""));
         assertFalse(PreferenceNumber.bool(prefs.getAll().get("pref_tunable_parameters_usedynamicwhitelevel"),true));
     }
-    @Test public void perLensRestorePreservesBooleanTypesAndSharedSettings(){
-        prefs.edit().putString(PreferenceKeys.Key.KEY_THEME.mValue,"keep").commit();
+    /** P193: the old per-camera JSON (written once, at the first camera start) no longer takes over a module without a profile. */
+    @Test public void perLensRestoreKeepsTheCurrentSettingsOverTheOldPerCameraJson(){
+        prefs.edit().putString(PreferenceKeys.Key.KEY_THEME.mValue,"keep").putBoolean("pref_scam_hybrid_despeckle",false)
+                .putFloat("pref_film_lut_strength",12.5f).commit();
         manager.set(PreferenceKeys.Key.PER_LENS_FILE_NAME.mValue,"settings_for_camera_audit",
                 "{\"pref_scam_hybrid_despeckle\":true,\"pref_scam_hybrid_mosaic_native_clamp\":1,\"pref_film_lut_strength\":37.125,\"ignored_null\":null,\""+PreferenceKeys.Key.KEY_THEME.mValue+"\":\"replace\"}");
+        PreferenceKeys.profiles();
         prefs.edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,true).commit();
+        PreferenceKeys.profiles().changed(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue);
         PreferenceKeys.loadSettingsForCamera("audit");
-        assertTrue(prefs.getBoolean("pref_scam_hybrid_despeckle",false));
-        assertEquals(1.0,PreferenceNumber.read(manager.getString("default_scope","pref_scam_hybrid_mosaic_native_clamp","2"),2),0.0);
-        assertEquals(37.125,PreferenceNumber.read(manager.getString("default_scope","pref_film_lut_strength","0"),0),0.0);
+        assertEquals("audit",PreferenceKeys.profiles().editing());
+        assertFalse(prefs.getBoolean("pref_scam_hybrid_despeckle",true));
+        assertFalse(prefs.contains("pref_scam_hybrid_mosaic_native_clamp"));
+        assertEquals(12.5f,prefs.getFloat("pref_film_lut_strength",0),0);
         assertFalse(prefs.contains("ignored_null"));assertEquals("keep",prefs.getString(PreferenceKeys.Key.KEY_THEME.mValue,""));
+        manager.openPreferences(PreferenceKeys.Key.PER_LENS_FILE_NAME.mValue).edit().clear().commit();
     }
 
     @Test public void moduleProfilesKeepTypedValuesAndCopyOnlySelection(){

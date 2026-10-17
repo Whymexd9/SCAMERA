@@ -4,8 +4,6 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.res.Resources;
 import androidx.exifinterface.media.ExifInterface;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.api.CameraMode;
 import com.particlesdevs.photoncamera.app.ScameraApp;
@@ -20,8 +18,6 @@ import java.util.Set;
 
 /* loaded from: classes8.dex */
 public class PreferenceKeys {
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final String PER_LENS_KEY_PREFIX = "settings_for_camera_";
     public static final String SCOPE_GLOBAL = "default_scope";
     private static final String TAG = "PreferenceKeys";
     private static PreferenceKeys preferenceKeys;
@@ -140,18 +136,10 @@ public class PreferenceKeys {
             SettingsManager settingsManager = preferenceKeys.settingsManager;
             Log.d(TAG, "Added IDS:" + Arrays.toString(ids));
             settingsManager.setDefaults(Key.CAMERA_ID, ids[0], ids);
-            Map<String, ?> map = settingsManager.getDefaultPreferences().getAll();
-            // Only the per-module settings (ModuleProfiles.isLocal: not the shared ones of ModuleProfiles.GLOBAL_KEYS).
-            map.keySet().removeIf(key -> !ModuleProfiles.isLocal(key) || lambda$addIds$1(key));
-            String json = GSON.toJson(map);
-            for (String cameraId : ids) {
-                settingsManager.setInitial(Key.PER_LENS_FILE_NAME.mValue, PER_LENS_KEY_PREFIX + cameraId, json);
-            }
+            // P193: no per-camera JSON of the settings any more (settings_for_camera_<id>, written once at the first camera
+            // start and never updated): ModuleProfiles took its defaults over the owner's settings when per-module settings
+            // were turned on. Module profiles are ModuleProfiles' own files.
         }
-    }
-
-    static /* synthetic */ boolean lambda$addIds$1(String key) {
-        return key != null && (key.startsWith("pref_tunable_") || key.startsWith("pref_sensorconfig_"));
     }
 
     public static void loadSettingsForCamera(String cameraID) {

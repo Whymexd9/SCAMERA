@@ -72,10 +72,11 @@ public class ModuleProfilesFragment extends ModuleConceptFragment {
         open(SettingsActivity.SettingsFragment.modulePage(id,null));
     }
 
+    /** P193: the settings changed in the common ones go to every module when they are turned on (ModuleProfiles.carry). */
     private void askPerLens(String id){
         new androidx.appcompat.app.AlertDialog.Builder(requireContext())
             .setTitle(Lang.t(getContext(),"Свои настройки для каждого модуля","Separate settings for each module"))
-            .setMessage(Lang.t(getContext(),"Сейчас все модули и снимки 50 / 200 Мп снимают с общими настройками. Включить свои настройки для каждого модуля? Модули без сохранённого профиля начнут с текущих настроек, сохранённые профили вернутся.","All modules and 50 / 200 MP shots use the common settings now. Turn on separate settings for each module? Modules without a saved profile start from the current settings; saved profiles come back."))
+            .setMessage(Lang.t(getContext(),"Сейчас все модули и снимки 50 / 200 Мп снимают с общими настройками. Включить свои настройки для каждого модуля? Каждый модуль начнёт с текущих настроек; свои значения модуля вернутся только там, где вы не меняли общие настройки.","All modules and 50 / 200 MP shots use the common settings now. Turn on separate settings for each module? Every module starts from the current settings; a module's own values come back only where you have not changed the common settings."))
             .setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null)
             .setPositiveButton(Lang.t(getContext(),"Включить","Turn on"),(d,w)->{
                 // commit: the profile listener (changed()) runs now, on this thread, before the page takes its profile

@@ -29,7 +29,7 @@ public final class ModuleProfiles {
     public static void quietly(Runnable body){QUIET.incrementAndGet();try{body.run();}finally{QUIET.decrementAndGet();}}
     /**
      * Settings shared by every lens (owner, 8 October 2026): never part of a module profile, whatever per-lens settings say.
-     * The one list behind {@link #isLocal} and PreferenceKeys' legacy per-lens JSON. Sounds, grid, the photo format with every
+     * The one list behind {@link #isLocal}. Sounds, grid, the photo format with every
      * format / quality option (JPEG, HEIC, HEIC 10 bit, WebP, AVIF, «Также сохранять JPEG», the RAW save mode, Ultra HDR), the
      * watermark and its caption, Root, the camera package spoof, face detection and tracking AF, the gallery icon and theme,
      * the flicker frequency and the merge route. Processing, tuning and sensor settings stay per module.
@@ -95,7 +95,9 @@ public final class ModuleProfiles {
         if(applying||QUIET.get()>0)return;
         if(key.equals(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue)){
             if(PreferenceKeys.isPerLensSettingsOn()){
-                write(file("common"),current());meta.edit().putBoolean("baseline",true).apply();
+                Map<String,Object> now=current();
+                carry(file("common").getAll(),now);
+                write(file("common"),now);meta.edit().putBoolean("baseline",true).apply();
                 active=ModuleRegistry.active();restore(snapshotStored(active));save(active);
             }else if(meta.getBoolean("baseline",false)){save(active);restore(file("common").getAll());}
         }else if(PreferenceKeys.isPerLensSettingsOn()){
@@ -108,17 +110,35 @@ public final class ModuleProfiles {
         }
         meta.edit().putString("active",active).apply();
     }
+    /**
+     * P193 (owner, 2026-10-17: «при изменении каких-либо настроек без включенного переключателя "Свои настройки для каждого
+     * модуля" все настройки должны копироваться по модулям при включении данного переключателя, а не сбрасываться на
+     * дефолтные»): turning per-module settings on, the per-module values changed in the common settings since they were last
+     * on ({@code before}: the common profile, which the main settings took back when they were turned off) go into every
+     * stored profile - hidden modules and FULLRES 50 / 200 MP profiles too. A profile's other values stay its own: what the
+     * owner set for a module and did not change in the common settings comes back with it. Modules without a profile start
+     * from the new common profile ({@link #snapshotStored}).
+     */
+    private void carry(Map<String,?> before,Map<String,Object> now){
+        Set<String> changed=new HashSet<>();
+        for(Map.Entry<String,Object> e:now.entrySet())if(!Objects.equals(e.getValue(),before.get(e.getKey())))changed.add(e.getKey());
+        for(String key:before.keySet())if(isLocal(key)&&!now.containsKey(key))changed.add(key);
+        if(changed.isEmpty())return;
+        for(Map.Entry<String,?> e:new ArrayList<>(meta.getAll().entrySet())){
+            if(!e.getKey().startsWith("exists_")||!Boolean.TRUE.equals(e.getValue()))continue;
+            SharedPreferences.Editor edit=file(e.getKey().substring("exists_".length())).edit();
+            for(String key:changed){if(now.containsKey(key))put(edit,key,now.get(key));else edit.remove(key);}
+            edit.apply();
+        }
+    }
     private Map<String,?> snapshotStored(String id){
         if(meta.getBoolean("exists_"+id,false))return file(id).getAll();
         // P181: a module's FULLRES profile starts as a copy of the module's own
         if(FullResProfiles.isVariant(id))return snapshotStored(FullResProfiles.slotOf(id));
-        Map<String,Object> values=new HashMap<>(file("common").getAll());
-        String legacy=manager.getString(PreferenceKeys.Key.PER_LENS_FILE_NAME.mValue,"settings_for_camera_"+ModuleRegistry.camera(id),"");
-        if(!legacy.isEmpty())try{
-            org.json.JSONObject json=new org.json.JSONObject(legacy);
-            for(java.util.Iterator<String> it=json.keys();it.hasNext();){String key=it.next();Object v=json.get(key);if(isLocal(key)&&v!=org.json.JSONObject.NULL)values.put(key,v instanceof Double?((Double)v).floatValue():v);}
-        }catch(org.json.JSONException ignored){}
-        return values;
+        // P193: a module without a profile starts from the common settings as they were when per-module settings were turned
+        // on. The per-camera JSON of the old per-lens storage (settings_for_camera_<id>) is not read any more: SCAMERA wrote it
+        // once, at the first camera start, so it held that start's defaults and turned the owner's settings back to them.
+        return new HashMap<>(file("common").getAll());
     }
     public synchronized void activate(String id){if(!PreferenceKeys.isPerLensSettingsOn()||id.equals(active))return;save(active);active=id;restore(snapshotStored(id));save(id);meta.edit().putString("active",id).apply();}
     public synchronized void copy(String source, Collection<String> targets, Set<String> keys){
