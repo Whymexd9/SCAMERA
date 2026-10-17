@@ -597,8 +597,20 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
             return;
         }
         float rel = view.getScale() / view.getMinScale();
+        if (isCompareMode()) {
+            // P196 (owner, 2026-10-17: «они должны начинаться не со 100%, а с 0%. т.е. без кропа 0%»): the compare panes count the
+            // zoom past the whole photo, shown at every scale
+            pill.setText(comparePercent(rel));
+            pill.setVisibility(View.VISIBLE);
+            return;
+        }
         pill.setText(String.format(Locale.ROOT, "%d %%", Math.round(rel * 100)));
         pill.setVisibility(rel > 1.02f ? View.VISIBLE : View.GONE);
+    }
+
+    /** P196: a compare pane's zoom past the fitted photo: «0 %» for the whole photo, «100 %» at twice its fit scale. */
+    static String comparePercent(float relativeScale) {
+        return String.format(Locale.ROOT, "%d %%", Math.max(0, Math.round((relativeScale - 1f) * 100f)));
     }
 
     public void resetScaleText() {

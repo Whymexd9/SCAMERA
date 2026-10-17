@@ -40,4 +40,12 @@ public class ComparePaneLabelTest {
         // one flag for both panes, on by default (it was per pane and off: the second pane showed «11:55 · ISO 50» only)
         assertTrue(ImageViewerFragment.paneFullExif);
     }
+
+    /** P196: the compare panes' zoom starts at 0 % (the whole photo), not 100 %. */
+    @Test public void theComparePercentStartsAtZero() {
+        assertEquals("0 %", ImageViewerFragment.comparePercent(1f));
+        assertEquals("0 %", ImageViewerFragment.comparePercent(0.999f));
+        assertEquals("100 %", ImageViewerFragment.comparePercent(2f));
+        assertEquals("432 %", ImageViewerFragment.comparePercent(5.32f));
+    }
 }
