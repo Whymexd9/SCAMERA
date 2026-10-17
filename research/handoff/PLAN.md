@@ -4483,3 +4483,43 @@ working there too, not only on the X200 Ultra; done in code, not verified on the
 - On the phone: switch off, change a few processing settings (e.g. SHDR strength, sharpening), switch on, open «Настройки по
   модулям» - every module and its 50 / 200 MP rows show the new values; a module given its own value earlier keeps it where the
   common setting was not changed.
+
+### P188 - mosaic grid, the shutter beep, the 50 MP viewfinder (owner, 2026-10-17: «На всех isz и фулрезах я получаю вот такие артефакты сетки, исправь все», «убери пик после нажатия на кнопку спуска затвора», «Нам нужен фулрез без ремозаика»)
+- Site-class response (mosaicGain 2, hybridMosaicGainsRobust): the 64 site classes' gains from the mean of all normal frames in
+  sensor coordinates (pattern coherent, noise down by the frame count), predicted from the group mean and the neighbour tiles'
+  gradient, ratio of sums, two rounds, error from even / odd tiles (logged). Works in the dark (the old one found no tile).
+- Smooth donor weights between the robust cells (mosaicRobustBilinear 1) instead of 4x4 steps (square halos, staircases).
+- The synthesized shutter tone is gone (CameraSounds). A native FULLRES row that delivers HAL-remosaicked Bayer is a failed row.
+- scam_dev keep_burst: the worker keeps the shot's burst (P191 moved it to Download/SCAMERA).
+- Replays on the OPPO: plain bursts byte-identical. The owner's JPEGs still showed lattice peaks (period 2 / 4); kernel width and
+  ArkCam's R/B fill do not change the lattice amplitude in replays (0.14-0.27 %), see P191 for the frame-count cause.
+
+### P191 - 50 MP viewfinder speed, the frame count of 50 MP merges, files out of Android/data (owner, 2026-10-17: «фпс всё ещё очень низкий», «Сетка не исчезла, посмотри на буквы на 50мп», «переноси всё туда чтобы в data ничего не хранилось», «Добавь настройку с сохранением рав серии в группу настроек "Диагностика"»)
+- Viewfinder: the camera gave 30 fps, the screen ~11 (the per-site ShortBuffer bin took 22-45 ms, the wait was twice that). Rows
+  in bulk short[] (5 ms at 50 MP on the OPPO, 8 threads), the wait is the bin's cost plus a quarter. Same output (test).
+- 50 MP merges: the owner's shot took 20 frames and merged 2 - the Java estimate counted each mosaic frame at full size (156 MB)
+  against a 1.9 GB fixed cost. A mosaic stream of 16-100 MP leaves the count to the worker's native budget, which now takes 80 %
+  of MemAvailable (was half: 1 GB of output alone took more than half at 1.7 GB available). OPPO: 20 of 20 merged.
+- Every file the app keeps for the user is in Download/SCAMERA (scam_dev.txt with a one-time move and the folder grant as
+  fallback, crash log, dumps, kept bursts one per shot scam_burst-<time>.bin, the worker's tuning / SR files).
+- Diagnostics «Сохранять RAW-серию» (pref_keep_raw_burst; scam_dev keep_burst still overrides).
+- Replays: 8/8 reference bursts byte-identical (worker 2a21ee9d vs 62da6c91).
+
+### P192 - FULLRES without hardware remosaic on OPPO phones (owner, 2026-10-17: «Продолжи реализацию FULLRES без аппаратного ремозаика для OPPO Find X7 Ultra», «Добавь все смартфоны оппо в список»)
+- The native FULLRES route (one RAW stream, RAW viewfinder, serial stills, SHDR with the own remosaic) with the session key
+  com.oplus.engineercamera.agingtest.mode.select (byte). Candidates from the camera's Qualcomm sensor-mode table (0x80390000): the
+  full-size rows after row 0, in order - on the PHY110 exactly the measured NoRemosaic modes (main 35/37, UW 16, 3x 19, 6x
+  17/20). Every session proves its mode (result) and mosaic (pixels); a failed mode is noted, the next is tried next time.
+  The table is taken from the characteristics the app read (an own CameraManager failed with the owner's spoof).
+- The mode's HAL has no statistics (AE SEARCHING, neutral NaN): own AE on the native RAW (NativeRawExposure: median to 0.12 of
+  white, p98 under 0.85 within two stops, shutter up to 1/30 s in 10 ms steps, then ISO), own white balance (MosaicNeutral on
+  the frames, on the camera's curve), the plain session's colour transform and shading map fill the results (setter looked up
+  once: per-result lookups filled the JNI global reference table and aborted the app after ~2 min). The series ends with an
+  ultrashort Bento frame (50 MP too): without it bright windows turned pink and lost the sky.
+- Telephotos through OplusCameraManager (saveOpPackageName + setPackageName) unless the owner's spoof settings say otherwise.
+- Checked on the PHY110 (owner's aweme spoof on): main mode 35 and 3x mode 19 measured Quad by pixels, viewfinder ~24 fps,
+  own AE 3.8 -> 4.2 ms ISO 100 (HAL in plain mode 3.79 ms), neutral 0.330 / 0.705 on the curve, 20 of 20 frames merged, photo
+  8192x6144 saved, FULLRES off returns mode 1 / ISP viewfinder, 4 min native viewfinder without the abort. Not checked: the
+  Bento-frame shot's result (the phone locked during its merge), 6x and UW shots, other OPPO models.
+
+### P195 - (queued) switch off the own 2x2 / 4x4 remosaic at the top of «Мозаика без ремозаика» (owner, 2026-10-17)
