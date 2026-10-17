@@ -337,9 +337,9 @@ public final class ScamNeuralClient {
                 // external files (the old scam_keep path named org.codeaurora.snapcam only: nothing was kept in the CTS package)
                 if(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("keep_burst",false)){
                     File ext=context.getExternalFilesDir(null);
-                    if(ext!=null)try(java.io.FileWriter w=new java.io.FileWriter(new File(dir,"keep-burst"))){
-                        w.write(new File(ext,"scam_burst.bin").getAbsolutePath());
-                    }catch(IOException e){log.accept("CLIENT: keep-burst marker not written: "+e.getMessage());}
+                    if(ext!=null)try(java.io.FileWriter kb=new java.io.FileWriter(new File(dir,"keep-burst"))){
+                        kb.write(new File(ext,"scam_burst.bin").getAbsolutePath());
+                    }catch(IOException kbe){log.accept("CLIENT: keep-burst marker not written: "+kbe.getMessage());}
                 }
                 // A worker of this process died inside the CRE: this one aligns with SCAMERA's own tile alignment.
                 if(((ScamHybridBurst)scamBurst).creOff()&&!new File(dir,"cre-off").createNewFile())
