@@ -6943,10 +6943,15 @@ inline int hybridMosaicNativeBudget(int n,int W,int Ht,int bb,bool t2,const Hybr
                                     const std::function<void(const std::string&)>& report){
     int budget=std::max(1,std::min(kHybridGpuFrames,std::max(2,tune.mosaicFrames)));
     if(avail>0){
+        // P191 (owner's 50 MP shots, 2026-10-17: 2 of 19 frames merged, «Сетка не исчезла»): 80 % of MemAvailable, not half -
+        // at 50 MP the output's ~20 B per pixel (1 GB) alone took more than half on the OPPO Find X7 Ultra (1.7 GB available), so
+        // every frame after the second was dropped although each one adds only its binned copy (24 MB); the burst itself is the
+        // app's shared memory, already counted outside MemAvailable
+        constexpr double kNativeShare=0.8;
         const double P=double(W)*Ht,perFrame=2.0*P/bb+(t2?0.5*P:0.0);
-        const int byMemory=std::max(2,int(std::max(0.0,0.5*double(avail)-20.0*P)/perFrame));
+        const int byMemory=std::max(2,int(std::max(0.0,kNativeShare*double(avail)-20.0*P)/perFrame));
         if(byMemory<budget){
-            report("HYBRID MOSAIC NATIVE: "+std::to_string(byMemory)+" frames (memory budget "+hybridMB(uint64_t(0.5*double(avail)))+" MB of MemAvailable "
+            report("HYBRID MOSAIC NATIVE: "+std::to_string(byMemory)+" frames (memory budget "+hybridMB(uint64_t(kNativeShare*double(avail)))+" MB of MemAvailable "
                 +hybridMB(avail)+" MB, "+hybridMB(uint64_t(perFrame))+" MB per frame)");
             budget=byMemory;
         }

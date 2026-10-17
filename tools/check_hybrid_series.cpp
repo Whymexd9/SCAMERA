@@ -10,12 +10,13 @@
 
 using namespace scam;
 
-// The budgets as they were before P190 (cc70eb27), with MemAvailable given
+// The budgets as they were before P190 (cc70eb27), with MemAvailable given; P191: the native merge's share of MemAvailable is
+// 0.8 (was 0.5)
 static int oldNative(int n,int W,int H,int bb,bool t2,int mosaicFrames,uint64_t avail){
     int budget=std::max(1,std::min(kHybridGpuFrames,std::max(2,mosaicFrames)));
     if(int64_t(W)*H>kHybridClassicPixels&&avail>0){
         const double P=double(W)*H,perFrame=2.0*P/bb+(t2?0.5*P:0.0);
-        const int byMemory=std::max(2,int(std::max(0.0,0.5*double(avail)-20.0*P)/perFrame));
+        const int byMemory=std::max(2,int(std::max(0.0,0.8*double(avail)-20.0*P)/perFrame));
         if(byMemory<budget)budget=byMemory;
     }
     if(int64_t(W)*H>kHybridHugePixels&&budget<std::min(n,kHybridHugeFrames))budget=std::min(n,kHybridHugeFrames);
@@ -59,6 +60,9 @@ int main() {
     tune.seriesFrames=8;lines.clear();
     assert(hybridMosaicNativeBudget(8,16320,12288,16,false,tune,6656*MB,report)==8);
     assert(lines.back()=="HYBRID SERIES: budget 4 -> 8 (the app sized the series)");
+    // P191: the OPPO Find X7 Ultra's 50 MP shot (MemAvailable 1733 MB at the merge): 17 frames, not the 2 of half the memory
+    tune.seriesFrames=0;
+    assert(hybridMosaicNativeBudget(19,8192,6144,4,false,tune,1733*MB,report)==17);
     // a 50 MP series of 44 frames above mosaicFrames (30) and its memory budget
     tune.seriesFrames=44;
     assert(hybridMosaicNativeBudget(44,8160,6144,4,false,tune,3060*MB,report)==44);
