@@ -16,15 +16,25 @@ public final class VivoSdkFullRes {
         public final Size size;
         public final int sensorMode;
         public final int nativeBlock;
+        /**
+         * P208 (X100 / X300 Ultra 200 MP, the stock camera's session of 2026-10-17): the viewfinder is the camera's own RAW stream in
+         * its normal mode (no forceSensorMode), the full-size RAW stream only takes the stills, the HAL switches the sensor for them.
+         */
+        public final boolean stillOnly;
 
         private Profile(int width, int height, int sensorMode) {
             this(width, height, sensorMode, 0);
         }
 
         Profile(int width, int height, int sensorMode, int nativeBlock) {
+            this(width, height, sensorMode, nativeBlock, false);
+        }
+
+        Profile(int width, int height, int sensorMode, int nativeBlock, boolean stillOnly) {
             size = new Size(width, height);
             this.sensorMode = sensorMode;
             this.nativeBlock = nativeBlock;
+            this.stillOnly = stillOnly && nativeBlock > 0;
         }
 
         /**

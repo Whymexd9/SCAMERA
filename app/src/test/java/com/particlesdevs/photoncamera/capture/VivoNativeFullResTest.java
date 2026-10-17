@@ -71,6 +71,23 @@ public class VivoNativeFullResTest {
         assertFalse(VivoNativeFullRes.twoSizes(X100, "2"));
     }
 
+    /**
+     * P208: the X100 / X300 Ultra's 200 MP sizes keep the viewfinder in the normal mode and take the full-size stream for the
+     * stills only (the stock camera's session); their 50 MP sizes and the X200 Ultra's stay held in their mode.
+     */
+    @Test
+    public void the200MpSizesOfTheX100AndX300UltraAreStillOnly() {
+        assertTrue(VivoNativeFullRes.profile(X100, "4", true, false).stillOnly);
+        assertTrue(VivoNativeFullRes.profile(X300, "3", true, false).stillOnly);
+        assertTrue(VivoNativeFullRes.profile(X300, "5", true, false).stillOnly);
+        assertFalse(VivoNativeFullRes.profile(X100, "4", false, false).stillOnly);
+        assertFalse(VivoNativeFullRes.profile(X100, "2", true, false).stillOnly);
+        assertFalse(VivoNativeFullRes.profile(X300, "3", false, false).stillOnly);
+        assertFalse(VivoNativeFullRes.profile(X300, "5", false, false).stillOnly);
+        assertFalse("the X200 Ultra's tele 200 MP runs in its mode", VivoNativeFullRes.profile(X200, "5", true, false).stillOnly);
+        assertFalse("a hardware-remosaic row", VivoNativeFullRes.hardwareProfile(X300, "3", false).stillOnly);
+    }
+
     @Test
     public void theX300UltraTakesItsOwnCamerasAndTableRows() {
         profile(X300, "3", true, 16320, 12256, 0, 4);

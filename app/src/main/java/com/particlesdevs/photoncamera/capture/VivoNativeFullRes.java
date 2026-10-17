@@ -151,7 +151,8 @@ public final class VivoNativeFullRes {
                 if (rows.length == 0 || size == null) return null;
                 final boolean big = twoSizes(phone, cameraId) && large;
                 final int row = live ? rowFor(rows, failures(cameraId, big), forced(role(phone, cameraId, large))) : rows[0];
-                return row < 0 ? null : new VivoSdkFullRes.Profile(size[0], size[1], row, size[2]);
+                return row < 0 ? null : new VivoSdkFullRes.Profile(size[0], size[1], row, size[2],
+                        stillOnly(size[0], size[1]) && (!live || stillOnlySwitch()));
             }
             default:
                 // the X200 Ultra (P179, measured on the phone): main / ultra-wide mode 4 Quad, tele mode 0 Tetra / 1 Quad
@@ -196,6 +197,26 @@ public final class VivoNativeFullRes {
             if ("5".equals(cameraId)) return large ? new int[]{16320, 12288, 4} : new int[]{8160, 6144, 2};
         }
         return null;
+    }
+
+    /**
+     * P208 (owner's X300 Ultra, 2026-10-17: «200мп не работают»; X100 Ultra the same): a session held in the 200 MP mode
+     * (forceSensorMode 0, the RAW stream at 16320 wide) gives no frame (telephotos) or kills the camera provider (X300 main, X100
+     * tele: nodeTimeout). The stock camera's 200 MP session (dumpsys) keeps its viewfinder at 30 fps in the normal mode and has
+     * the 16320 x 12288 RAW stream beside it for the stills only: so does this route for every 200 MP size of these phones.
+     */
+    static boolean stillOnly(int width, int height) {
+        return (long) width * height > 100_000_000L;
+    }
+
+    /** P208: scam_dev.txt "vivo_fullres200_stock 0" holds the sensor in the 200 MP mode again (the route before P208). */
+    static boolean stillOnlySwitch() {
+        return PreferenceKeys.scamDevSwitch("vivo_fullres200_stock", true);
+    }
+
+    /** P208: scam_dev.txt "vivo_fullres200_force 1" puts the 200 MP mode key on the stills of the still-only route. */
+    static boolean forceOnStills() {
+        return PreferenceKeys.scamDevSwitch("vivo_fullres200_force", false);
     }
 
     /** The dev key of a camera's size: main, main50, wide, tele, tele50. */

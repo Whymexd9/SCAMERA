@@ -283,6 +283,7 @@ final class VivoSdkFullResCapture {
             for (CaptureRequest.Key<?> key : sessionKeys) copySessionKey(builder, key);
             if (profile.nativeRoute()) {
                 VivoPd2454NativeRaw.applyFullRes(builder, profile);
+                if (profile.stillOnly && VivoNativeFullRes.forceOnStills()) VivoPd2454NativeRaw.forceMode(builder, profile);
                 builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
                         preview.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION));
                 builder.set(CaptureRequest.CONTROL_AE_REGIONS, preview.get(CaptureRequest.CONTROL_AE_REGIONS));

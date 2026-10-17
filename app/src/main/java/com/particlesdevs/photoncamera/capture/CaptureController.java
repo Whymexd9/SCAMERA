@@ -290,6 +290,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /*An {@link ImageReader} that handles still image capture.*/
     public ImageReader mImageReaderPreview;
     public volatile ImageReader mImageReaderRaw;
+    /**
+     * P208: the viewfinder's RAW stream of a still-only FULLRES session (the X100 / X300 Ultra's 200 MP): the camera's own RAW size
+     * in its normal mode; mImageReaderRaw then takes the 200 MP stills only.
+     */
+    private volatile ImageReader mImageReaderRawView;
     private ImageReader mVivoSdkJpeg;
     private volatile VivoSdkRawSession mVivoSdkRawSession;
     private volatile CameraDevice mVivoSdkRawDevice;
@@ -1740,6 +1745,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 ImageReader closingRaw = mImageReaderRaw;
                 mImageReaderRaw = null;
                 if (closingRaw != null) closingRaw.close();
+                ImageReader closingView = mImageReaderRawView;
+                mImageReaderRawView = null;
+                if (closingView != null) closingView.close();
             }
             if (null != mMediaRecorder) {
                 mMediaRecorder.release();
@@ -2399,6 +2407,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return profile != null && profile.nativeRoute();
     }
 
+    /** P208: the native FULLRES session keeps its viewfinder in the normal mode, the full-size stream takes the stills only. */
+    private boolean stillOnlyFullRes() {
+        VivoSdkFullRes.Profile profile = mVivoSdkRawSession == null ? null : VivoSdkFullRes.profile(mVivoSdkCameraId);
+        return profile != null && profile.nativeRoute() && profile.stillOnly;
+    }
+
     private void closeVivoSdkRawSession(@Nullable CameraDevice device) {
         synchronized (mVivoSdkLock) {
             if (mVivoSdkRawSession == null || device != mVivoSdkRawDevice) return;
@@ -2729,11 +2743,27 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         clearZslPreviewFrames();
         if(mImageReaderRaw != null)
             mImageReaderRaw.close();
+        if (mImageReaderRawView != null) { mImageReaderRawView.close(); mImageReaderRawView = null; }
         if (mVivoSdkJpeg != null) { mVivoSdkJpeg.close(); mVivoSdkJpeg = null; }
         if (sdkFullRes) {
             mTargetFormat = ImageFormat.RAW_SENSOR;
             mImageReaderRaw = ImageReader.newInstance(fullRes.getWidth(), fullRes.getHeight(), ImageFormat.RAW_SENSOR,
                     nativeVivoFullRes() ? 4 : 3, 0);
+            if (stillOnlyFullRes()) {
+                // P208: the viewfinder is the camera's own (largest listed) RAW stream; its frames go the live RAW way
+                final Size[] own = rawSizesLargestFirst(map, ImageFormat.RAW_SENSOR);
+                if (own.length == 0) throw new IllegalStateException("No RAW stream for the 200 MP viewfinder");
+                mImageReaderRawView = ImageReader.newInstance(own[0].getWidth(), own[0].getHeight(), ImageFormat.RAW_SENSOR, 4);
+                mImageReaderRawView.setOnImageAvailableListener(reader -> {
+                    Image image;
+                    try { image = reader.acquireNextImage(); } catch (IllegalStateException closed) { return; }
+                    if (image == null) return;
+                    if (!isCameraResumed || reader != mImageReaderRawView) { image.close(); return; }
+                    mLiveRawRouter.image(image.getTimestamp(), image);
+                }, mBackgroundHandler);
+                Log.i("SCAM_CAPTURE", "FULLRES 200 MP still-only: viewfinder RAW " + own[0] + " in the normal mode, "
+                        + fullRes + " for the stills (P208)");
+            }
             if (!nativeVivoFullRes()) {
             mVivoSdkJpeg = ImageReader.newInstance(fullRes.getWidth(), fullRes.getHeight(), ImageFormat.JPEG, 3);
             mVivoSdkJpeg.setOnImageAvailableListener(reader -> {
@@ -3350,6 +3380,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     @NotNull
     private List<Surface> configureSurfaces(boolean isBurstSession) {
+        if (stillOnlyFullRes() && mImageReaderRawView != null)
+            return Arrays.asList(mImageReaderRawView.getSurface(), mImageReaderRaw.getSurface());
         if (nativeVivoFullRes() || VivoPd2454NativeRaw.active(physicalID))
             return java.util.Collections.singletonList(mImageReaderRaw.getSurface());
         if (mVivoSdkRawSession != null)
@@ -3378,7 +3410,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         if (!nativeVivoFullRes() && !VivoPd2454NativeRaw.active(physicalID)) mPreviewRequestBuilder.addTarget(surface);
         if (mVivoSdkRawSession != null) {
-            if (nativeVivoFullRes()) mPreviewRequestBuilder.addTarget(mImageReaderRaw.getSurface());
+            if (nativeVivoFullRes()) mPreviewRequestBuilder.addTarget(stillOnlyFullRes() && mImageReaderRawView != null
+                    ? mImageReaderRawView.getSurface() : mImageReaderRaw.getSurface());
             clearZslPreviewFrames();
             mInitialMeteringAF = mPreviewRequestBuilder.get(CONTROL_AF_REGIONS);
             mPreviewMeteringAF = mInitialMeteringAF;
@@ -4335,7 +4368,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // tries the next row of the table, instead of shooting the HAL's remosaic
                 if (block == 1 && nativeVivoFullRes()) {
                     final VivoSdkFullRes.Profile full = VivoSdkFullRes.profile(mVivoSdkCameraId);
-                    if (full != null && full.nativeBlock > 1
+                    // P208: not the still-only route, whose viewfinder is the normal mode's Bayer
+                    if (full != null && full.nativeBlock > 1 && !full.stillOnly
                             && retryWithoutVivoSdkFullRes(mCaptureSession, "the frames are remosaicked by the HAL (plain Bayer, no mosaic)")) return;
                 }
                 // P194: the other way round, a hardware-remosaic row (plain Bayer expected) whose frames are a Quad / Tetra mosaic is
@@ -4531,7 +4565,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             LiveRawFrame.publish(plane.getBuffer(), img.getWidth(), img.getHeight(),
                     readStride(img), cfa, white, black, gains, ccm,shading,sw,sh,crop,
                     // P108: the Pixel's full-resolution RAW is Quad-Bayer (measured block 2), binned for the viewfinder
-                    nativeVivoFullRes() ? VivoSdkFullRes.profile(mVivoSdkCameraId).nativeBlock
+                    // P208: the still-only route's viewfinder is the normal mode's stream
+                    stillOnlyFullRes() ? Math.max(1, com.particlesdevs.photoncamera.processing.MosaicStream.block())
+                            : nativeVivoFullRes() ? VivoSdkFullRes.profile(mVivoSdkCameraId).nativeBlock
                             : mFullResSession ? 2 : com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1
                             ? com.particlesdevs.photoncamera.processing.MosaicStream.block() : PreferenceKeys.mosaicBlock(),
                     colorResult.get(CaptureResult.SENSOR_SENSITIVITY),

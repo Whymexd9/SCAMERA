@@ -74,6 +74,12 @@ public final class VivoPd2454NativeRaw {
         builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
         builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
         builder.set(CaptureRequest.CONTROL_AE_LOCK, false);
+        // P208: the still-only route's viewfinder and session stay in the camera's normal mode
+        if (!profile.stillOnly) builder.set(FORCE, new int[]{profile.sensorMode});
+    }
+
+    /** P208: the mode key on a still of the still-only route (scam_dev.txt "vivo_fullres200_force 1"). */
+    static void forceMode(CaptureRequest.Builder builder, VivoSdkFullRes.Profile profile) {
         builder.set(FORCE, new int[]{profile.sensorMode});
     }
 
