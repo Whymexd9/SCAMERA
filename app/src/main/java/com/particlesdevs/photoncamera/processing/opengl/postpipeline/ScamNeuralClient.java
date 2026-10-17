@@ -333,12 +333,15 @@ public final class ScamNeuralClient {
                 // SCAM Hybrid merge (scam-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.
                 if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException(Lang.t("Не удалось создать маркер склейки SHDR","Could not create the SHDR merge marker"));
-                // P188: scam_dev "keep_burst 1" - the worker keeps the shot's RAW burst for an offline replay, in this package's own
-                // external files (the old scam_keep path named org.codeaurora.snapcam only: nothing was kept in the CTS package)
+                // P188: scam_dev "keep_burst 1" - the worker keeps the shot's RAW burst for an offline replay. P191: one file per shot
+                // in Download/SCAMERA (scam_burst-<time>.bin, next to the debug log), not the package's external files: a file
+                // manager on Android 16 no longer opens Android/data (owner, 2026-10-17)
                 if(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("keep_burst",false)){
-                    File ext=context.getExternalFilesDir(null);
-                    if(ext!=null)try(java.io.FileWriter kb=new java.io.FileWriter(new File(dir,"keep-burst"))){
-                        kb.write(new File(ext,"scam_burst.bin").getAbsolutePath());
+                    File kept=new File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),"SCAMERA");
+                    if(!kept.isDirectory()&&!kept.mkdirs())log.accept("CLIENT: keep-burst folder not made: "+kept);
+                    String name="scam_burst-"+new java.text.SimpleDateFormat("yyyyMMdd-HHmmss",java.util.Locale.ROOT).format(new java.util.Date())+".bin";
+                    try(java.io.FileWriter kb=new java.io.FileWriter(new File(dir,"keep-burst"))){
+                        kb.write(new File(kept,name).getAbsolutePath());
                     }catch(IOException kbe){log.accept("CLIENT: keep-burst marker not written: "+kbe.getMessage());}
                 }
                 // A worker of this process died inside the CRE: this one aligns with SCAMERA's own tile alignment.
