@@ -604,6 +604,76 @@ public class ParamController implements Observer {
         if (builder != null && EV != 0) builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, effectiveEv());
     }
 
+    /** P201: the hand-set ISO (0 = automatic). */
+    public int manualIsoValue() {
+        return manualIso() ? (int) manualParamModel.getCurrentISOValue() : 0;
+    }
+
+    /** P201: the hand-set shutter on the viewfinder (at most PREVIEW_SHUTTER_MAX_NS; 0 = automatic). */
+    public long manualPreviewShutterNs() {
+        return manualShutter() ? previewShutter((long) manualParamModel.getCurrentExposureValue()) : 0;
+    }
+
+    /** P201: a hand-set white balance. */
+    public boolean manualWhiteBalance() {
+        return whiteBalanceKelvin != 0;
+    }
+
+    /** P201: the gains of the hand-set white balance, null without one. */
+    @androidx.annotation.Nullable
+    public android.hardware.camera2.params.RggbChannelVector manualWhiteBalanceGains() {
+        if (whiteBalanceKelvin == 0 || CaptureController.mCameraCharacteristics == null) return null;
+        try {
+            return com.particlesdevs.photoncamera.circularbarlib.camera.ManualWhiteBalance.gains(CaptureController.mCameraCharacteristics, whiteBalanceKelvin);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** P201: the hand-set focus distance (diopters), or -1 for the autofocus. */
+    public float manualFocusDistance() {
+        return FOCUS >= 0f && FOCUS != (float) ManualParamModel.FOCUS_AUTO ? FOCUS : -1f;
+    }
+
+    /**
+     * P201 (owner, 2026-10-17: «убедись чтобы при работе фулреза работал полностью ручной режим»): a FULLRES session writes its own
+     * exposure keys into every viewfinder request (the vivo native route AE on, the X200 Ultra's SDK route AE on at ISO 0). Put
+     * the hand-set exposure back on {@code builder} after them, as {@link #applyExposure} left it: both by hand AE off at those
+     * values, one by hand with the viewfinder loop AE off at the loop's values; the camera's priority AE (its own key or the
+     * Qualcomm tags) is untouched by the FULLRES keys and stays. Hand-set white balance and focus as well.
+     */
+    public void applyManualTo(CaptureRequest.Builder builder) {
+        // not synchronized: it runs inside the camera's request rebuilds (any thread), reading the last applied state
+        final ManualParamModel model = manualParamModel;
+        if (builder == null || model == null) return;
+        final boolean isoManual = model.getCurrentISOValue() != ManualParamModel.ISO_AUTO,
+                shutterManual = model.getCurrentExposureValue() != ManualParamModel.EXPOSURE_AUTO;
+        final ExposurePriority.Loop softLoop = loop;
+        if (isoManual || shutterManual) {
+            if (ExposurePriority.mode(isoManual, shutterManual) == ExposurePriority.NONE) {
+                builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
+                builder.set(CaptureRequest.SENSOR_SENSITIVITY, (int) model.getCurrentISOValue());
+                builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, previewShutter((long) model.getCurrentExposureValue()));
+            } else if (softLoop != null && !halPriority && !qcomPriority) {
+                builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
+                builder.set(CaptureRequest.SENSOR_SENSITIVITY, softLoop.iso());
+                builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, softLoop.shutterNs());
+            }
+        }
+        applyManualWbFocusTo(builder);
+    }
+
+    /** P201: the hand-set white balance and focus alone (the OPPO's own exposure runs the rest). */
+    public void applyManualWbFocusTo(CaptureRequest.Builder builder) {
+        if (builder == null) return;
+        if (whiteBalanceKelvin != 0) applyWhiteBalance(builder);
+        final float focus = manualFocusDistance();
+        if (focus >= 0f) {
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+            builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, focus);
+        }
+    }
+
     public boolean isManualMode() {
         if (manualParamModel != null)
             return manualParamModel.isManualMode();

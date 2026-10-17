@@ -3438,6 +3438,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (nativeVivoFullRes()) {
             VivoPd2454NativeRaw.applyFullRes(builder, VivoSdkFullRes.profile(mVivoSdkCameraId));
             builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, FpsRangeAuto);
+            // P201: the manual mode over the FULLRES keys of the viewfinder (not the session parameters; the OPPO's own exposure
+            // takes the hand-set ISO / shutter itself)
+            if (builder == mPreviewRequestBuilder) {
+                if (VivoSdkFullRes.oppo()) paramController.applyManualWbFocusTo(builder);
+                else paramController.applyManualTo(builder);
+            }
             return;
         }
         mVivoSdkRawSession.apply(builder, false, 0);
@@ -3445,6 +3451,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, FpsRangeAuto);
         VivoSdkRawSession.applyAutomaticExposure(builder);
         builder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF);
+        if (builder == mPreviewRequestBuilder) paramController.applyManualTo(builder); // P201
     }
 
     /**
@@ -4393,6 +4400,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     levels.black, levels.white);
             final Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
             final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+            // P201: a hand-set ISO / shutter holds (both: no metering, one: the other follows)
+            if (ae.setManual(paramController.manualIsoValue(), paramController.manualPreviewShutterNs())) {
+                Log.i("SCAM_CAPTURE", "native AE camera " + mVivoSdkCameraId + ": manual -> " + ae);
+                rebuildPreviewBuilder();
+            }
             float ev = 0f;
             final CaptureRequest.Builder builder = mPreviewRequestBuilder;
             final Integer index = builder == null ? null : builder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
@@ -4408,7 +4420,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 rebuildPreviewBuilder();
             }
-            if ((mNativeFrames++ & 7) == 0) {
+            final android.hardware.camera2.params.RggbChannelVector wb = paramController.manualWhiteBalanceGains();
+            if (wb != null) {
+                // P201: a hand-set white balance is the shot's neutral (the inverse of its gains), not the own estimate
+                final float g = 0.5f * (wb.getGreenEven() + wb.getGreenOdd());
+                if (wb.getRed() > 0f && wb.getBlue() > 0f) OppoNativeFullRes.measuredNeutral(mVivoSdkCameraId, g / wb.getRed(), g / wb.getBlue());
+            } else if ((mNativeFrames++ & 7) == 0) {
                 com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(ScameraApp.getAppContext());
                 final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result own =
                         com.particlesdevs.photoncamera.processing.color.MosaicNeutral.estimate(mVivoSdkCameraId, buffer,
@@ -5251,7 +5268,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // P198: a native 50 MP shot takes its N from the ZSL ring (the frames before the press) and only the 12 MP Hybrid plan's
         // frames after the shutter (3 ultrashort for Bento, the bracketed ones for Shasta); none usable in the ring (just opened,
         // every frame of another mode or mosaic): the serial PSL series as before, whose stills keep the failure bookkeeping
-        final NativeZslShot zsl = hugeSeries || !nativeZslSession() ? null : takeNativeZsl(VivoSdkFullRes.profile(mVivoSdkCameraId), requested);
+        // P201: a hand-set shutter longer than the viewfinder's (PSL_SHUTTER_NS) is never in the ring: the series after the shutter
+        final long manualPslNs = paramController.pslShutterNs();
+        final NativeZslShot zsl = hugeSeries || !nativeZslSession() || manualPslNs > 0 ? null
+                : takeNativeZsl(VivoSdkFullRes.profile(mVivoSdkCameraId), requested);
         final int count, shotN;
         boolean zslTrimmed = false;
         if (zsl != null) {
@@ -5475,6 +5495,27 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (zsl != null) {
                 capture.plan(zsl.plan);
                 capture.zsl(zsl.frames, zsl.verified);
+            } else {
+                // P201: the series' N at the hand-set exposure: a long shutter at its ISO (pslIso), else the hand-set ISO / shutter
+                // with the viewfinder's other value (the ZSL shot's N are its ring frames, the plan built from them)
+                final CaptureResult latest = mPreviewCaptureResult;
+                final Long previewNs = latest == null ? null : latest.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+                final Integer previewIso = latest == null ? null : latest.get(CaptureResult.SENSOR_SENSITIVITY);
+                final int manualIso = paramController.manualIsoValue();
+                final long manualNs = paramController.manualPreviewShutterNs();
+                long nNs = 0;
+                int nIso = 0;
+                if (manualPslNs > 0) {
+                    nNs = manualPslNs;
+                    nIso = paramController.pslIso(manualPslNs);
+                } else if (manualIso > 0 || manualNs > 0) {
+                    nNs = manualNs > 0 ? manualNs : previewNs == null ? 0 : previewNs;
+                    nIso = manualIso > 0 ? manualIso : previewIso == null ? 0 : previewIso;
+                }
+                if (nNs > 0 && nIso > 0) {
+                    capture.manualNormals(nNs, nIso);
+                    Log.i("SCAM_CAPTURE", "FULLRES manual exposure: N " + nNs + " ns ISO " + nIso);
+                }
             }
         } catch (RuntimeException failure) {
             listener.failed(failure.getMessage()); // the ring frames already in the saver's buffer go with it

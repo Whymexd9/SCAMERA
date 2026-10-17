@@ -110,4 +110,32 @@ public class NativeRawExposureTest {
         assertEquals(g, m[1], 1.5f / 1024);
         assertNull("no frame", NativeRawExposure.meter(null, w, h, stride, 3, 2, black, 1023f));
     }
+    /**
+     * P201 (owner: «при работе фулреза работал полностью ручной режим»): ISO and shutter by hand are the exposure, the frames move
+     * nothing; one by hand stays while the metering moves the other; back to automatic, the metering runs again.
+     */
+    @Test public void aHandSetIsoAndShutterHold() {
+        NativeRawExposure a = ae(10_000_000L, 100);
+        assertTrue(a.setManual(800, 20_000_000L));
+        assertEquals(20_000_000L, a.exposureNs());
+        assertEquals(800, a.iso());
+        assertFalse("the same values: nothing to rebuild", a.setManual(800, 20_000_000L));
+        assertFalse("no metering", a.update(NativeRawExposure.SETPOINT / 8, 0.1f, 20_000_000L, 800, 0f));
+        assertEquals(800, a.iso());
+
+        assertTrue(a.setManual(400, 0)); // ISO by hand: the shutter follows the metering
+        assertEquals(400, a.iso());
+        a.update(NativeRawExposure.SETPOINT / 4, 0.1f, a.exposureNs(), 400, 0f);
+        assertEquals("the hand-set ISO stays", 400, a.iso());
+
+        NativeRawExposure b = ae(10_000_000L, 100);
+        assertTrue(b.setManual(0, 5_000_000L)); // shutter by hand: the ISO follows
+        assertEquals(5_000_000L, b.exposureNs());
+        b.update(NativeRawExposure.SETPOINT / 4, 0.1f, 5_000_000L, b.iso(), 0f);
+        assertEquals("the hand-set shutter stays", 5_000_000L, b.exposureNs());
+        assertTrue("brighter by the ISO", b.iso() > 100);
+
+        b.setManual(0, 0);
+        assertFalse(b.manual());
+    }
 }

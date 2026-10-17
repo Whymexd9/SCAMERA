@@ -34,6 +34,9 @@ final class NativeRawExposure {
     private int iso;
     private int waited;
     private boolean pending;
+    /** P201: the hand-set sensitivity and shutter (0 = automatic). */
+    private int fixedIso;
+    private long fixedNs;
 
     /** Ranges of the camera; the frame time bounds the shutter (24 fps native: 41.7 ms); a first exposure to start from. */
     NativeRawExposure(@Nullable Range<Long> exposureRange, @Nullable Range<Integer> isoRange, long frameNs, long startExposureNs,
@@ -52,6 +55,27 @@ final class NativeRawExposure {
     /** The frame time of the requests: the native mode's own (24 fps), longer only for a longer shutter. */
     long frameDurationNs() { return Math.max(frameNs, exposureNs); }
 
+    /**
+     * P201: the hand-set sensitivity / shutter (0 = automatic). Both by hand: the exposure is exactly them, no metering; one by
+     * hand: the metering moves the other only. True when the exposure changed (the requests must be rebuilt).
+     */
+    boolean setManual(int manualIso, long manualNs) {
+        manualIso = manualIso > 0 ? Math.max(minIso, Math.min(maxIso, manualIso)) : 0;
+        manualNs = manualNs > 0 ? Math.max(minExposure, Math.min(maxExposure, manualNs)) : 0;
+        if (manualIso == fixedIso && manualNs == fixedNs) return false;
+        fixedIso = manualIso;
+        fixedNs = manualNs;
+        final long before = exposureNs;
+        final int beforeIso = iso;
+        split(total());
+        pending = false;
+        return exposureNs != before || iso != beforeIso;
+    }
+
+    boolean manual() {
+        return fixedIso > 0 && fixedNs > 0;
+    }
+
     /** Exposure as ISO-100 nanoseconds. */
     double total() { return (double) exposureNs * iso / 100.0; }
 
@@ -60,6 +84,7 @@ final class NativeRawExposure {
      * user's compensation {@code ev}: true when the exposure changed (the requests must be rebuilt).
      */
     boolean update(float p50, float p98, long shotExposureNs, int shotIso, float ev) {
+        if (manual()) return false; // P201: ISO and shutter by hand
         if (pending) {
             final boolean shown = shotIso > 0 && Math.abs(shotExposureNs - exposureNs) <= Math.max(20_000L, exposureNs / 30)
                     && Math.abs(shotIso - iso) <= Math.max(2, iso / 30);
@@ -88,6 +113,17 @@ final class NativeRawExposure {
 
     /** The exposure (ISO-100 ns) as shutter and sensitivity: the shutter up to HANDHELD_NS, the sensitivity, the frame time. */
     void split(double total) {
+        if (fixedIso > 0 || fixedNs > 0) { // P201: what is set by hand stays, the other follows the exposure
+            long t = fixedNs > 0 ? fixedNs : Math.round(total * 100.0 / fixedIso);
+            if (fixedNs <= 0) {
+                t = Math.max(minExposure, Math.min(Math.min(maxExposure, frameNs), t));
+                if (t >= FLICKER_NS) t = Math.max(FLICKER_NS, t / FLICKER_NS * FLICKER_NS);
+            }
+            final int s = fixedIso > 0 ? fixedIso : (int) Math.round(total * 100.0 / Math.max(1L, t));
+            exposureNs = Math.max(minExposure, Math.min(maxExposure, t));
+            iso = Math.max(minIso, Math.min(maxIso, s));
+            return;
+        }
         final double lowest = (double) minExposure * minIso / 100.0, highest = (double) Math.min(maxExposure, frameNs) * maxIso / 100.0;
         total = Math.max(lowest, Math.min(highest, total));
         long t = Math.round(total * 100.0 / minIso);

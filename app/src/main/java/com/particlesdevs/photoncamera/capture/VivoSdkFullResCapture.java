@@ -215,6 +215,19 @@ final class VivoSdkFullResCapture {
     }
 
     /**
+     * P201: the N stills of a series after the shutter at a hand-set exposure (the ultrashort / bracketed ones keep theirs).
+     * Before {@link #start}.
+     */
+    void manualNormals(long exposureNs, int iso) {
+        if (exposureNs <= 0 || iso <= 0) return;
+        for (int i = 0; i < count; i++) {
+            if (roles[i] != ImageFrame.CaptureRole.NORMAL || manualNs[i] > 0) continue;
+            manualNs[i] = exposureNs;
+            manualIso[i] = iso;
+        }
+    }
+
+    /**
      * P198: the stills are the 12 MP Hybrid's post-shutter frames of {@code plan} (ultrashort / Bento, bracketed / Shasta), one per
      * request, each with the plan's role and exposure; a still that comes back at another exposure keeps the role its measured
      * exposure gives (HybridPlan.classify) or leaves the merge. Before {@link #start}.
@@ -274,6 +287,7 @@ final class VivoSdkFullResCapture {
                         preview.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION));
                 builder.set(CaptureRequest.CONTROL_AE_REGIONS, preview.get(CaptureRequest.CONTROL_AE_REGIONS));
             }
+            copyManual(builder);
             if (manualNs[index] > 0 && manualIso[index] > 0) {
                 // P179: the Bento frame: manual exposure (the preview's over the ultrashort factor), the same sensitivity; P198 a frame
                 // of the Hybrid plan at its exposure (on the OPPO over the mode's own AE-off exposure, its frame time kept long enough)
@@ -334,6 +348,30 @@ final class VivoSdkFullResCapture {
         } catch (Exception failure) {
             serial.fail("SDK STILL submit failed: " + failure.getMessage());
         }
+    }
+
+    /**
+     * P201: a hand-set white balance (AWB off and its gains / transform) and focus (AF off and its distance) of the viewfinder
+     * request go onto every still: the still template carries the automatic ones.
+     */
+    private void copyManual(CaptureRequest.Builder builder) {
+        final Integer awb = preview.get(CaptureRequest.CONTROL_AWB_MODE);
+        if (awb != null && awb == CaptureRequest.CONTROL_AWB_MODE_OFF) {
+            builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF);
+            copyKey(builder, CaptureRequest.COLOR_CORRECTION_MODE);
+            copyKey(builder, CaptureRequest.COLOR_CORRECTION_GAINS);
+            copyKey(builder, CaptureRequest.COLOR_CORRECTION_TRANSFORM);
+        }
+        final Integer af = preview.get(CaptureRequest.CONTROL_AF_MODE);
+        if (af != null && af == CaptureRequest.CONTROL_AF_MODE_OFF) {
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+            copyKey(builder, CaptureRequest.LENS_FOCUS_DISTANCE);
+        }
+    }
+
+    private <T> void copyKey(CaptureRequest.Builder builder, CaptureRequest.Key<T> key) {
+        final T value = preview.get(key);
+        if (value != null) builder.set(key, value);
     }
 
     private <T> void copySessionKey(CaptureRequest.Builder builder, CaptureRequest.Key<T> key) {
