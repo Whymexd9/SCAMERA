@@ -290,4 +290,14 @@ public class ScamHybridBurstAnyResolutionTest {
         assertEquals("16 MP or less: the worker limit", workerLimit, ScamHybridBurst.normalLimit(0, workerLimit, Integer.MAX_VALUE, 2, 8, 0));
         assertEquals(10, ScamHybridBurst.normalLimit(0, workerLimit, 13, 2, 8, 3));
     }
+
+    /** P191: a 50 MP mosaic leaves the frame count to the worker's native budget; Bayer, 12 MP and 200 MP keep theirs. */
+    @Test public void theWorkerBudgetsA50MpMosaic() {
+        assertTrue(ScamHybridBurst.workerBudgetsMosaic(8192, 6144, 2));
+        assertTrue(ScamHybridBurst.workerBudgetsMosaic(8160, 6144, 2));
+        assertFalse("Bayer", ScamHybridBurst.workerBudgetsMosaic(8192, 6144, 1));
+        assertFalse("unknown block", ScamHybridBurst.workerBudgetsMosaic(8192, 6144, 0));
+        assertFalse("12 MP ISZ: never capped anyway", ScamHybridBurst.workerBudgetsMosaic(4080, 3072, 2));
+        assertFalse("200 MP: its series rules", ScamHybridBurst.workerBudgetsMosaic(16320, 12288, 4));
+    }
 }

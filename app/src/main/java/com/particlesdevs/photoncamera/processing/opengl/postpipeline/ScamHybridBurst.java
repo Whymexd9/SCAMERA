@@ -252,7 +252,13 @@ public final class ScamHybridBurst implements ScamTransport {
         final int workerLimit = conservative ? CONSERVATIVE_NORMALS : WORKER_MAX_FRAMES - reservedExtras;
         final long available = (long) width * height > CLASSIC_INPUT_PIXELS ? memoryAvailable() : -1;
         final int grid = twoX ? 2 : 1;
-        final int budget = memoryFrameBudget(width, height, mosaicBlock, grid, available);
+        // P191 (owner's 50 MP shots, 2026-10-17: 20 frames taken, 2 merged - «Сетка не исчезла»): a mosaic stream below 100 MP is
+        // budgeted by the worker itself - its native merge holds each frame binned (~24 MB at 50 MP) and picks the frames its
+        // MemAvailable allows - while this estimate counted each frame at full size (156 MB) and kept 2 of 20
+        final boolean workerBudget = workerBudgetsMosaic(width, height, mosaicBlock);
+        final int budget = workerBudget ? Integer.MAX_VALUE : memoryFrameBudget(width, height, mosaicBlock, grid, available);
+        if (workerBudget && available > 0) Log.i("SCAM_HDR", "hybrid memory " + width + "x" + height + " colour block " + mosaicBlock
+                + ": the worker's native mosaic budget picks the frames (available " + (available >> 20) + " MB)");
         // The input and three post-pipeline RGBA16F textures coexist. A smaller frame budget alone is only an estimate.
         if (strictTwoX && available > 0 && minimumPostBytes(outWidth, outHeight) > available)
             throw new IOException(Lang.t("SHDR: недостаточно свободной памяти для склейки 2× ",
@@ -502,6 +508,15 @@ public final class ScamHybridBurst implements ScamTransport {
         if (series > 0) return Integer.MAX_VALUE;
         if (budget == Integer.MAX_VALUE) return workerLimit;
         return Math.min(workerLimit, Math.max(minNormals, budget - Math.min(reservedExtras, extras)));
+    }
+
+    /**
+     * P191: a Quad / Tetra stream above 16 MP and at most 100 MP (FULLRES 50 MP) leaves the frame count to the worker's native
+     * mosaic budget (HYBRID MOSAIC NATIVE: N frames (memory budget ...)), which knows its binned working copies.
+     */
+    static boolean workerBudgetsMosaic(int w, int h, int mosaicBlock) {
+        final long px = (long) w * h;
+        return mosaicBlock >= 2 && px > CLASSIC_INPUT_PIXELS && px <= HUGE_INPUT_PIXELS;
     }
 
     /** P179: the N frames a merge of a w x h stream keeps whatever its memory budget says. */
