@@ -207,7 +207,7 @@ public class VivoSdkFullResModeTest {
         preferences.when(() -> PreferenceKeys.scamDevNumber(anyString(), anyFloat())).thenAnswer(call -> call.getArgument(1));
         final VivoNativeFullRes.Phone x300 = VivoNativeFullRes.Phone.X300_ULTRA, x100 = VivoNativeFullRes.Phone.X100_ULTRA;
         profile(VivoSdkFullRes.choose(x300, "3", true, true, false), "X300 main 50 MP, on", 8160, 6128, 2, 1);
-        profile(VivoSdkFullRes.choose(x300, "3", true, false, false), "X300 main 50 MP, off", 8160, 6128, 1, 2);
+        profile(VivoSdkFullRes.choose(x300, "3", true, false, false), "X300 main 50 MP, off (P200: row 3 first)", 8160, 6128, 3, 2);
         for (boolean on : new boolean[]{true, false}) {
             profile(VivoSdkFullRes.choose(x300, "3", true, on, true), "X300 main 200 MP " + on, 16320, 12256, 0, 4);
             profile(VivoSdkFullRes.choose(x300, "4", true, on, true), "X300 ultra-wide " + on, 8192, 6144, 0, 2);
@@ -235,7 +235,7 @@ public class VivoSdkFullResModeTest {
         // a hardware row that failed on the phone gives way to the camera's own mosaic
         ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putBoolean("module_fullres_rowfail_3_hw", true).commit();
         try {
-            profile(VivoSdkFullRes.choose(x300, "3", true, true, false), "X300 main 50 MP, row 2 failed", 8160, 6128, 1, 2);
+            profile(VivoSdkFullRes.choose(x300, "3", true, true, false), "X300 main 50 MP, row 2 failed", 8160, 6128, 3, 2);
             assertNull(VivoNativeFullRes.hardwareProfile(x300, "3", true));
             assertNotNull("the table itself keeps it", VivoNativeFullRes.hardwareProfile(x300, "3", false));
         } finally {
