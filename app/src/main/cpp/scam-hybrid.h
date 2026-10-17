@@ -3594,9 +3594,10 @@ public:
             stripCells=std::max(8,std::min(stripCells,int(kReadbackCap/(2*int64_t(g)*ow*12))&~7));
             // P200 (OPPO Find X7 Ultra, 50 MP, 18 native frames: ~400 MB available at the GPU merge after its frames and output):
             // a quarter shrank 191 of 192 strips to 8 cells, whose row margins outweigh them - the merge took 127 s (20 s with
-            // 32-cell strips, ~200 MB). Half of what is available, up to 256 MB, when that is more than a quarter.
+            // 32-cell strips, ~200 MB). Half of what is available, up to 512 MB, when that is more than a quarter (20 frames: a
+            // 32-cell strip binds 356 MB; at a 288 MB budget 189 of 190 strips were halved and the merge took 95 s).
             const uint64_t avail=hybridMemAvailable();
-            gpuBudget=std::max(avail/4,std::min(avail/2,uint64_t(256)<<20));
+            gpuBudget=std::max(avail/4,std::min(avail/2,uint64_t(512)<<20));
         }
         auto chunkOf=[&](int chunk){return large?std::min(chunk,std::max(8,int(int64_t(chunk)*4624/std::max(w,1))&~7)):chunk;};
         if(large&&trace)trace("HYBRID GPU: large frame "+std::to_string(w)+"x"+std::to_string(h)+" grid "+std::to_string(g)+": strips of "
