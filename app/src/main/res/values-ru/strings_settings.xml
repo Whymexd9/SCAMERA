@@ -99,6 +99,8 @@
     <string name="prefs_scam_hybrid_mosaic_screen_title">Мозаика без ремозаика</string>
     <string name="prefs_scam_hybrid_mosaic_screen_summary">Склейка для камер, которые отдают кадр мозаикой Quad или Tetra</string>
     <string name="prefs_scam_hybrid_mosaic_note_summary">Для камер, у которых кадр приходит мозаикой Quad 2×2 или Tetra 4×4. Ниже — способ склейки и его настройки.</string>
+    <string name="prefs_scam_hybrid_mosaic_remosaic_title">Наш ремозаик</string>
+    <string name="prefs_scam_hybrid_mosaic_remosaic_summary">Вкл — мозаика Quad 2×2 / Tetra 4×4 восстанавливается нашей склейкой в полное разрешение. Выкл — без ремозаика: каждый цветной блок усредняется в один пиксель Байера и склеивается как обычный Байер: без сетки и лабиринта, в 4 (Quad) или 16 (Tetra) раз меньше пикселей; разрешение 2× удваивает каждую сторону за счёт сдвигов кадров.</string>
     <string name="prefs_scam_hybrid_mosaic_frames_title">Кадров в склейке мозаики</string>
     <string name="prefs_scam_hybrid_mosaic_frames_summary">Сколько кадров мозаики склеивать. Больше — меньше шума, но дольше; меньше — быстрее, но шумнее.</string>
     <string name="prefs_scam_hybrid_mosaic_edge_scale_title">Резкость: ядро поперёк краёв</string>

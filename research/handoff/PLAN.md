@@ -4522,4 +4522,47 @@ working there too, not only on the X200 Ultra; done in code, not verified on the
   8192x6144 saved, FULLRES off returns mode 1 / ISP viewfinder, 4 min native viewfinder without the abort. Not checked: the
   Bento-frame shot's result (the phone locked during its merge), 6x and UW shots, other OPPO models.
 
-### P195 - (queued) switch off the own 2x2 / 4x4 remosaic at the top of «Мозаика без ремозаика» (owner, 2026-10-17)
+### P195 - «Наш ремозаик»: Quad / Tetra without our remosaic (owner, 2026-10-17: «добавь так же возможность отключать наш 2х2 и 4х4
+ремозаик чтобы получать фото без него. настройка должна находиться в группе настроек "Мозаика без ремозаика" В самом верху»; done in
+code, replayed on the OPPO, not shot on a phone)
+- What «without remosaic» is here: no reconstruction of the full-resolution mosaic at all (neither the native merge kHybMergeMosaic /
+  Fast nor the sub-frame split). Every b x b colour block becomes ONE plain Bayer site - the site-gained (mosaicGain), clip-aware
+  block mean the native path already builds for its alignment (white when a site clipped, black of the block's Bayer phase, noise
+  slope / offset / b^2) - and the binned burst W/b x H/b goes through the regular Bayer merge (hybridReconstruct as for a plain
+  stream: alignment, F6, rejection, Sabre 6.1 kernel, Bento, Shasta, chroma-difference / rim / Bento colour passes, RAW CA fit,
+  noise check, auto2x). No lattice or maze by construction; the quality is that of a plain Bayer burst at the binned size.
+- Switch: pref_scam_hybrid_mosaic_remosaic (SwitchPreferenceCompat, default on = today), the FIRST row of «Мозаика без ремозаика»
+  (scam_hybrid_mosaic_screen); per module like every pref_scam_hybrid_*; scam_dev.txt "hybrid_mosaic_remosaic 0/1". Off: the
+  hybrid tuning gets "mosaicRemosaic 0" (PreferenceKeys.hybridTuningText; on writes nothing), SettingsAvailability greys the rest
+  of the page except «Кадров в склейке мозаики» (mosaicFrames still caps the binned pick).
+- Worker (scam-hybrid.h): HybridTuning.mosaicRemosaic (1 default), hybridMosaicBinnable (Quad / Tetra, whole 2b x 2b periods, >= 64
+  binned px a side), hybridReconstructMosaicBinned (frame pick: base + nearest N within mosaicFrames / kHybridGpuFrames / 80 % of
+  MemAvailable above 16 MP, every ultrashort and bracketed frame; seriesFrames and the 200 MP kHybridHugeFrames floor it as in the
+  native pick). Routed in hybridReconstruct before the native / split routes only when the block is the header's (the app sized its
+  result for it) or forced by tuning (replays); a measured-only block or a partial frame keeps the remosaic ("HYBRID MOSAIC BINNED:
+  remosaic kept (...)"). hybridPrewarmGpu builds the plain set for such a module. kHybMergeMain1 untouched; the native / split code
+  untouched.
+- App: ScamHybridBurst.binnedBlock (same rule) -> gridWidth / gridHeight = W/b x H/b, outWidth = that or its Sabre 2x grid
+  (sabre2xFits on the binned size), header grid word against the binned grid, tuningOverride() appends mosaicRemosaic 0 for a binned
+  burst (mosaicRemosaic 1 when the switch is off but the burst keeps the remosaic), memory budget counted at the sensor grid.
+  ScamTransport.mergedRawPixels: the merged DNG trailer is W/b x H/b; ScamProcessor writes that DNG at its size (rawSize swapped
+  for the write, the same CFA order, black and white; ScamHybridBurst.lastMergedDngSize). The pipeline already follows a result
+  smaller than the sensor (ScamProcessor: rawSize / sensorPix / XPerMm / outputScale 0.5; post stages use max(1, round(scale))).
+  MosaicNeutral (P121) still applies: the stream and its misread ISP neutral are the same mosaic. Viewfinder not touched. The CPU
+  last tier stays at the sensor grid (block-aware demosaic of the base), as before.
+- Photo sizes (final size = the merged size unless 12 / 16 / 20 MP is smaller, as before):
+  12 MP ISZ Quad 4096x3072: «Разрешение» сенсор -> 2048x1536 (3.1 MP); 2x -> 4096x3072; 12 MP -> 4096x3072 (the 2x grid = the sensor
+  size class); 50 MP Quad 8192x6144: сенсор -> 4096x3072; 2x -> 8192x6144; 12 / 16 / 20 MP -> resized from 8192x6144; 200 MP Tetra
+  16320x12240: сенсор -> 4080x3060; 2x -> 8160x6120; 12 / 16 / 20 MP -> resized from 8160x6120. The 2x grid of the binned merge
+  restores resolution only from the frames' sub-pixel shifts (handheld); auto2x (on by default) merges it at 1x and resizes when the
+  frames do not sample finer.
+- OPPO PHY110 replay of isz2.nch (Quad 4096x3072, 27 frames; worker NDK build): default (no key) and "mosaicRemosaic 1" md5
+  e7015691 = the HEAD worker's (byte-identical); "mosaicRemosaic 0": 2048x1536, 27 of 27 frames, 2.4 s total (native: 22 frames,
+  30.1 s); with "grid 2": 4096x3072 Sabre 2x, 2.9 s. Colour, framing and brightness match the native result (means within 1-3 %;
+  crops in the session scratchpad).
+- Tests: ScamHybridBurstAnyResolutionTest.withoutTheRemosaicAMosaicIsMergedAsBinnedBayer (rule, sizes 1x / 2x, Quad / Tetra,
+  header, trailer, tuning), HybridSettingsTest.remosaicSwitchIsTheTopMosaicRowAndReachesTheWorker; tools/check_ui_language.py,
+  tools/check_settings_model.py.
+- Open: a real shot on the vivo X200 / X300 Ultra (ISZ Quad / Tetra, FULLRES 50 / 200 MP) and the OPPO with the switch off (photo
+  size, DNG opening in a RAW editor at the binned size, white balance); the FULLRES series memory sizing (CaptureController /
+  VivoSdkFullRes.seriesCount) still counts the remosaic's memory (conservative: fewer frames than the binned merge could hold).

@@ -14,6 +14,8 @@ interface ScamTransport {
     int cfa();
     /** Whether the worker should also return the merged Bayer RAW for the DNG. */
     boolean mergedDng();
+    /** P195: pixels of that merged Bayer RAW (uint16 each): the sensor's, or the binned Bayer of a SCAM Hybrid without remosaic. */
+    default long mergedRawPixels() { return (long) width() * height(); }
     boolean diagnostics();
     /**
      * Whether the worker should append the per-pixel clip flags (uint8 per output pixel, after the effective-frame map;

@@ -123,6 +123,11 @@ public final class SettingsAvailability {
         // P29 mosaic merge: the native rows follow the merge list, the split's edge kernel only acts on the split (P35: Tetra takes
         // the native merge too with "Tetra path" at its default, so the row is live only with the split for Quad or for Tetra).
         if (key.startsWith("pref_scam_hybrid_mosaic_")) {
+            // P195: without our remosaic the blocks are binned into Bayer and merged as such: only the frame count still acts
+            if (!on("pref_scam_hybrid_mosaic_remosaic", true)
+                    && !any(key, "pref_scam_hybrid_mosaic_remosaic", "pref_scam_hybrid_mosaic_frames", "pref_scam_hybrid_mosaic_note"))
+                return Lang.t("Только с «Наш ремозаик»: без него блоки усредняются в Байер и склеиваются как Байер.",
+                        "Only with “Our remosaic”: without it the blocks are binned into Bayer and merged as Bayer.");
             boolean nativeMosaic = text("pref_scam_hybrid_mosaic_path", "1").equals("1"); // P34: the native merge is the default
             if (key.equals("pref_scam_hybrid_mosaic_edge_scale") && nativeMosaic && !text("pref_scam_hybrid_mosaic_tetra", "1").equals("0")) // P35: T1 default
                 return Lang.t("Только для разбиения на подкадры: Quad и Tetra идут нативной склейкой со своим «Ядром поперёк краёв».", "Subframe split only: Quad and Tetra both take the native merge with its own “Kernel across edges”.");

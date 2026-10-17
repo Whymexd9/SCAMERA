@@ -470,7 +470,7 @@ public final class ScamNeuralClient {
             // The trailers after the RGB (merged RAW, effective-frame map, clip flags; see trailers)
             final boolean map=scamBurst.effectiveMap();
             if(!map)log.accept("CLIENT: no effective-frame map asked for ("+ow+"x"+oh+": no denoise reads it)");
-            final long[] layout=trailers(outputBytes,expected,(long)w*h*2,(long)ow*oh,scamBurst.mergedDng(),map,scamBurst.clipFlags());
+            final long[] layout=trailers(outputBytes,expected,scamBurst.mergedRawPixels()*2,(long)ow*oh,scamBurst.mergedDng(),map,scamBurst.clipFlags());
             if(layout==null)throw new IOException(Lang.t("Неверный размер нейрорезультата","Wrong neural result size"));
             final long dngBytes=layout[0],effBytes=layout[1],clipBytes=layout[2];
             {ScamHybridBurst.lastMergedDng=null;ScamHybridBurst.lastEffectiveFrames=null;ScamRgb.dropClipFlags();

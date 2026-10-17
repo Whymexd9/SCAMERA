@@ -329,6 +329,14 @@ struct HybridTuning {
     // binned base at the binned positions, half a native px (Quad) off the native merge's output, and correct it with sums of the
     // binned base the native merge never added (P29 review). They come back only as native variants of those passes.
     int mosaicPath=1;
+    // P195 (owner, 2026-10-17: «добавь так же возможность отключать наш 2х2 и 4х4 ремозаик чтобы получать фото без него»): 1 (default)
+    // = our remosaic, every route above unchanged; 0 = no remosaic: every Quad / Tetra colour block is binned into one plain Bayer
+    // site (the site-gained, clip-aware block mean the native path builds for its alignment) and the binned burst is merged by the
+    // regular Bayer merge (hybridReconstructMosaicBinned: Sabre, rejection, Bento, Shasta, the colour passes) at W/b x H/b, or on
+    // its Sabre 2x grid (2W/b x 2H/b) when the app asks for 2x. Only with the block of the request header (the app sized its result
+    // for it) or a block forced by tuning (replays), on a frame of whole 2b x 2b periods (hybridMosaicBinnable); otherwise the
+    // remosaic stays (reported).
+    int mosaicRemosaic=1;
     int mosaicWindow=3;          // half-width r of the native window (Quad: native px; 1..6). mosaicWindowFull 1: the (2r+1)^2 sites
                                  // around the nearest site (S0's full window, no Chebyshev clip); 0: as the split, |d| <= r with the
                                  // 6.1 window, d in (-4r/3, 4r/3] without it. Quad 3 with mosaicWindowFull 0 = parity with the split
@@ -528,7 +536,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
-            ||set("mosaicNative2x",nullptr,&t.mosaicNative2x)||set("mosaicTetraWindow2x",nullptr,&t.mosaicTetraWindow2x)||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
+            ||set("mosaicNative2x",nullptr,&t.mosaicNative2x)||set("mosaicTetraWindow2x",nullptr,&t.mosaicTetraWindow2x)||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicRemosaic",nullptr,&t.mosaicRemosaic)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
             ||set("mosaicWindowFull",nullptr,&t.mosaicWindowFull)||set("mosaicNativeEdgeScale",&t.mosaicNativeEdgeScale)
             ||set("mosaicNativeFlatScale",&t.mosaicNativeFlatScale)||set("mosaicNativeClamp",nullptr,&t.mosaicNativeClamp)
             ||set("mosaicNativeNightKernelScale",&t.mosaicNativeNightKernelScale)||set("mosaicNativeNightEdgeScale",&t.mosaicNativeNightEdgeScale)
@@ -4018,7 +4026,8 @@ public:
 // (hybridReconstructMosaicNativeMerge) and its merge program for the block's window. The split (mosaicPath 0) merges plain.
 inline void hybridPrewarmGpu(const HybridTuning& tune,int block,const std::function<void(const std::string&)>& report){
     const auto t0=std::chrono::steady_clock::now();
-    const bool native=block>1&&tune.mosaicPath==1&&(block==2||tune.mosaicTetra!=0);
+    // P195: with «Наш ремозаик» off (mosaicRemosaic 0) a Quad / Tetra module merges its binned Bayer burst on the plain set
+    const bool native=block>1&&tune.mosaicRemosaic!=0&&tune.mosaicPath==1&&(block==2||tune.mosaicTetra!=0);
     HybridTuning t=tune;
     if(native){t.chromaDiff=0.f;t.rimRatio=0;t.bentoChroma=0.f;}
     const bool rimPass=t.rimRatio!=0,la=t.localAlign>0,chromaPass=t.chromaDiff>0.f;
@@ -5317,6 +5326,14 @@ inline int hybridMosaicBlock(const HybridInput& input,const HybridTuning& tune,c
 inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input,int block,const HybridTuning& tune,const ScamAlignment& alignment,
                                                         const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
                                                         std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags);
+inline std::vector<float> hybridReconstructMosaicBinned(const HybridInput& input,int block,const HybridTuning& tune,const ScamAlignment& alignment,
+                                                        const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
+                                                        std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags);
+// P195: a w x h stream of colour block b bins into plain Bayer (whole 2b x 2b periods, at least 64 binned px a side). The app's
+// ScamHybridBurst.binnedBlock applies the same rule to size the result it reads.
+inline bool hybridMosaicBinnable(int w,int h,int b){
+    return (b==2||b==4)&&w%(2*b)==0&&h%(2*b)==0&&w/b>=64&&h/b>=64;
+}
 
 // native (P29): the raw mosaic behind a binned burst (hybridReconstructMosaicNative only); null for every other merge.
 // P71: noise of the burst against the frames' noise model (owner's Pixel 7, 2x = full-resolution crop of the main sensor: merge
@@ -5480,6 +5497,16 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // mosaicPath 1, natively (hybridReconstructMosaicNative)
     if(input.mosaic!=1&&!input.frames.empty()){
         const int block=hybridMosaicBlock(input,tune,report);
+        // P195 «Наш ремозаик» off (mosaicRemosaic 0): the colour blocks binned into plain Bayer and merged as such. The app reads a
+        // W/b x H/b result only when it sent the block itself (header word 14), so a block the worker measured, or a frame that
+        // does not bin whole, keeps the remosaic
+        if(block>1&&tune.mosaicRemosaic==0){
+            const bool known=input.mosaic==block||tune.mosaicBlock==block;
+            if(known&&hybridMosaicBinnable(input.w,input.h,block))
+                return hybridReconstructMosaicBinned(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
+            report(std::string("HYBRID MOSAIC BINNED: remosaic kept (")+(known?"the frame is not whole "+std::to_string(2*block)+"x"
+                +std::to_string(2*block)+" colour periods":"block "+std::to_string(block)+" not sent by the app: it reads the sensor grid")+")");
+        }
         // Tetra takes the native path with mosaicTetra 1 (T1, the default since P35) / 2 (T2); 0 keeps it on the split
         if(block>1&&tune.mosaicPath==1&&(block==2||tune.mosaicTetra!=0))
             return hybridReconstructMosaicNative(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
@@ -7494,6 +7521,121 @@ inline std::vector<float> hybridReconstructMosaicNative(const HybridInput& input
         report(std::string("HYBRID MOSAIC NATIVE: failed (")+error.what()+"); merging on the sub-frame split (mosaicPath 0) instead");
     }
     return hybridReconstructMosaic(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
+}
+
+// P195 «Наш ремозаик» off (owner, 2026-10-17: «добавь так же возможность отключать наш 2х2 и 4х4 ремозаик чтобы получать фото без
+// него»; tuning mosaicRemosaic 0). No remosaic at all: every b x b colour block of the mosaic becomes ONE site of a plain Bayer
+// frame at W/b x H/b - the block's colour is the CFA phase of its block, (I & 1, J & 1) - and the binned burst is merged as an
+// ordinary Bayer burst by hybridReconstruct: the alignment, F6, rejection, Sabre kernel, Bento, Shasta, the colour passes, the RAW
+// CA fit and the noise check all as for a plain stream, so the photo has no remosaic lattice or maze. The binned site is the one
+// the native path builds for its alignment (hybridReconstructMosaicNativeMerge, unchanged there): the sites gained by their class
+// response (mosaicGain), with the black of the block's Bayer phase, the block's mean, or white when one of its sites clipped. Its
+// noise is the b^2 average's (slope / offset / b^2) and stays so for the merge's keys: the binned frame IS the stream now.
+// Frames: the base, the normals closest in time within mosaicFrames (kHybridGpuFrames) and the memory (the binned copies, 2 / b^2 B
+// per stream pixel, and ~20 B per output pixel within 80 % of MemAvailable above kHybridClassicPixels), every ultrashort and
+// bracketed frame (the plain merge applies its own rules to them); a FULLRES series (seriesFrames) floors it as for the native
+// pick, a 200 MP burst keeps kHybridHugeFrames.
+// Output: W/b x H/b on the sensor-grid request, 2W/b x 2H/b on the Sabre 2x grid (the plain merge's own 2x grid, its auto2x rule
+// included); the merged DNG (flag 2) is the binned Bayer at W/b x H/b (the app writes it at that size); effective map and clip
+// flags on the output grid. Quad 4096x3072 (12 MP ISZ): 2048x1536, 2x 4096x3072; Quad 8192x6144 (50 MP): 4096x3072, 2x
+// 8192x6144; Tetra 16384x12288 (200 MP): 4096x3072, 2x 8192x6144.
+inline std::vector<float> hybridReconstructMosaicBinned(const HybridInput& input,int block,const HybridTuning& tune,const ScamAlignment& alignment,
+                                                        const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
+                                                        std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags){
+    using Clock=std::chrono::steady_clock;
+    const auto started=Clock::now();
+    auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
+    const int b=block,W=input.w,Ht=input.h,bb=b*b,n=int(input.frames.size());
+    if(!hybridMosaicBinnable(W,Ht,b))throw std::runtime_error("HYBRID MOSAIC BINNED: frame size not a multiple of the colour block");
+    const int vw=W/b,vh=Ht/b;
+    const int gridOut=input.strict2x?2:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    // ---- frames: the budget of the binned copies and the output
+    int budget=std::max(1,std::min(kHybridGpuFrames,std::max(2,tune.mosaicFrames)));
+    if(int64_t(W)*Ht>kHybridClassicPixels){
+        const uint64_t avail=hybridMemAvailable();
+        if(avail>0){
+            const double P=double(W)*Ht,perFrame=2.0*P/bb,out=20.0*P/bb*gridOut*gridOut;
+            const int byMemory=std::max(2,int(std::max(0.0,0.8*double(avail)-out)/perFrame));
+            if(byMemory<budget){
+                report("HYBRID MOSAIC BINNED: "+std::to_string(byMemory)+" frames (memory budget "+hybridMB(uint64_t(0.8*double(avail)))
+                    +" MB of MemAvailable "+hybridMB(avail)+" MB, "+hybridMB(uint64_t(perFrame))+" MB per frame)");
+                budget=byMemory;
+            }
+        }
+    }
+    if(int64_t(W)*Ht>kHybridHugePixels)budget=std::max(budget,std::min(n,kHybridHugeFrames));
+    if(tune.seriesFrames>0)budget=std::max(budget,std::min({n,tune.seriesFrames,kHybridGpuFrames}));
+    std::vector<int> normals,extras;
+    for(int f=1;f<n;++f){
+        const auto& fr=input.frames[f];
+        if(fr.role==kRoleNormal)normals.push_back(f);
+        else if((fr.role==kRoleUltrashort&&tune.bento>0)||(fr.role==kRoleBracketed&&tune.shastaEnable))extras.push_back(f);
+    }
+    const float t0=input.frames[0].orderMs;
+    std::stable_sort(normals.begin(),normals.end(),[&](int a,int c){return std::abs(input.frames[a].orderMs-t0)<std::abs(input.frames[c].orderMs-t0);});
+    std::vector<int> pick{0};
+    const int normalSlots=std::max(1,budget-int(extras.size()));
+    for(int f:normals)if(int(pick.size())<normalSlots)pick.push_back(f);
+    for(int f:extras)if(int(pick.size())<kHybridGpuFrames)pick.push_back(f);
+    std::sort(pick.begin()+1,pick.end());
+    hybridSeriesCut(tune,int(pick.size()),n,budget>=n?"frame rules":"memory",report);
+    {
+        std::string line="HYBRID MOSAIC BINNED: block "+std::to_string(b)+" without remosaic (mosaicRemosaic 0): "+std::to_string(pick.size())
+            +" of "+std::to_string(n)+" frames binned to plain Bayer "+std::to_string(vw)+"x"+std::to_string(vh)+", output "
+            +std::to_string(vw*gridOut)+"x"+std::to_string(vh*gridOut)+(gridOut==2?" (Sabre 2x grid)":"")+":";
+        for(int f:pick)line+=" "+std::to_string(f)+(input.frames[f].role==kRoleNormal?"N":input.frames[f].role==kRoleUltrashort?"U":"L");
+        report(line);
+    }
+    // ---- response of the site classes (the native path's: the normal frames picked, up to 4 / 16)
+    std::array<float,64> gain;gain.fill(1.f);
+    if(tune.mosaicGain){
+        std::vector<int> gf;for(int f:pick)if(input.frames[f].role==kRoleNormal&&gf.size()<(tune.mosaicGain>=2?16u:4u))gf.push_back(f);
+        float spread=0,gainErr=0;long used=0;gain=hybridMosaicGains(input,gf,b,spread,&used,tune.mosaicGain,&gainErr);
+        char line[260];std::snprintf(line,sizeof(line),"HYBRID MOSAIC BINNED: site-class response from %d frames, %ld smooth tiles, gain range %.4f..%.4f (spread %.2f %%), error %.3f %%",int(gf.size()),used,
+            *std::min_element(gain.begin(),gain.end()),*std::max_element(gain.begin(),gain.end()),100.0*spread,100.0*gainErr);
+        report(line);
+    }
+    // ---- the binned frames (the native path's binning without T2): vb + mean of (raw - black of the site) x gain of its class,
+    // white when any site of the block clipped
+    const auto binStart=Clock::now();
+    const size_t vpix=size_t(vw)*vh;
+    std::vector<uint16_t> binned(vpix*pick.size());
+    const float clipAt=input.white-1.f;
+    mergeRowBands(vh,[&](int j0,int j1){
+        for(size_t k=0;k<pick.size();++k){
+            const uint16_t* raw=input.frames[pick[k]].raw;
+            for(int J=j0;J<j1;++J)for(int I=0;I<vw;++I){
+                const float vb=input.black[((J&1)<<1)|(I&1)];
+                double acc=0;bool clipped=false;
+                for(int c=0;c<b;++c)for(int a=0;a<b;++a){
+                    const int x=b*I+a,y=b*J+c;
+                    const float v=float(raw[size_t(y)*W+x]);
+                    const float sb=input.black[((y&1)<<1)|(x&1)];
+                    const float lin=(v-sb)*gain[((y&7)<<3)|(x&7)];
+                    acc+=v>=clipAt?input.white:std::clamp(vb+lin,0.f,input.white);clipped|=v>=clipAt;
+                }
+                binned[k*vpix+size_t(J)*vw+I]=clipped?uint16_t(std::lround(input.white)):uint16_t(std::lround(acc/bb));
+            }
+        }
+    });
+    const double binMs=millis(Clock::now()-binStart);
+    // ---- the binned burst through the plain merge
+    HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
+    bin.mergedDng=input.mergedDng;bin.clipFlags=input.clipFlags;bin.noEffMap=input.noEffMap;bin.grid=gridOut;bin.mosaic=1;bin.subFrames=0;
+    bin.strict2x=input.strict2x;
+    for(size_t k=0;k<pick.size();++k){
+        HybridFrame v=input.frames[pick[k]];
+        v.raw=binned.data()+k*vpix;
+        v.slope/=float(bb);v.offset/=float(bb); // a binned pixel is the mean of b^2 sites
+        bin.frames.push_back(v);
+    }
+    HybridTuning vt=tune;vt.grid=gridOut;vt.mosaicBlock=1;vt.seriesFrames=0;
+    HybridStats st;
+    std::vector<float> rgb=hybridReconstruct(bin,vt,alignment,report,mergedDng,effMap,&st,clipFlags);
+    hybridSeriesMerged(tune,input,st.merged,st.mergedNormals,report);
+    report("HYBRID MOSAIC BINNED: total "+std::to_string(int(millis(Clock::now()-started)))+" ms (binning "+std::to_string(int(binMs))+")");
+    if(statsOut)*statsOut=st;
+    return rgb;
 }
 
 // NCH v10 — the hybrid transport written by ScamHybridBurst.java: header 128 B (magic, version 10, w, h, cfa,

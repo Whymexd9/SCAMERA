@@ -927,5 +927,33 @@ public class HybridSettingsTest {
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7).putString("pref_scam_hybrid_mosaic_kernel_scale","0.85").commit();
         SettingsMigration.migrateScamHybrid(prefs,false);
         assertEquals("0.85",prefs.getString("pref_scam_hybrid_mosaic_kernel_scale",""));
+    /**
+     * P195 (owner, 2026-10-17: «настройка должна находиться в группе настроек "Мозаика без ремозаика" В самом верху»): «Наш ремозаик»
+     * is the first row of the mosaic page, on by default (nothing written: the worker's mosaicRemosaic 1); off writes mosaicRemosaic 0
+     * and leaves only the frame count live on the page.
+     */
+    @Test public void remosaicSwitchIsTheTopMosaicRowAndReachesTheWorker() {
+        String tuning=PreferenceKeys.hybridTuningText();
+        assertFalse(tuning,tuning.contains("mosaicRemosaic"));
+        assertTrue(PreferenceKeys.isHybridMosaicRemosaic());
+        PreferenceScreen settings=inflate(),merge=settings.findPreference("scam_hybrid_merge_screen");
+        PreferenceScreen page=merge.findPreference("scam_hybrid_mosaic_screen");
+        assertEquals("pref_scam_hybrid_mosaic_remosaic",page.getPreference(0).getKey());
+        SwitchPreferenceCompat row=(SwitchPreferenceCompat)page.getPreference(0);
+        assertTrue(row.isChecked());
+        assertTrue(prefs.getBoolean("pref_scam_hybrid_mosaic_remosaic",false));
+        manager.set("default_scope","pref_scam_hybrid_mosaic_remosaic",false);
+        assertFalse(PreferenceKeys.isHybridMosaicRemosaic());
+        tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("mosaicRemosaic 0\n"));
+        Map<String,Object> values=new HashMap<>();
+        values.put("pref_scam_hybrid_mosaic_remosaic",false);
+        SettingsAvailability rules=new SettingsAvailability(values).mosaicStreams(true);
+        assertNull(rules.reason("pref_scam_hybrid_mosaic_remosaic"));
+        assertNull(rules.reason("pref_scam_hybrid_mosaic_frames"));
+        assertNotNull(rules.reason("pref_scam_hybrid_mosaic_path"));
+        assertNotNull(rules.reason("pref_scam_hybrid_mosaic_window"));
+        values.put("pref_scam_hybrid_mosaic_remosaic",true);
+        assertNull(new SettingsAvailability(values).mosaicStreams(true).reason("pref_scam_hybrid_mosaic_path"));
     }
 }

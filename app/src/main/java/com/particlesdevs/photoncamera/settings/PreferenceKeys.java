@@ -769,7 +769,19 @@ public class PreferenceKeys {
         if (!hybridSwitch("chroma_diff_clamp", true)) out.append("chromaDiffClamp 0\n");
         if (!hybridSwitch("bento_scam", true)) out.append("bentoScam 0\n");
         if (!hybridSwitch("mosaic_window_full", true)) out.append("mosaicWindowFull 0\n");
+        // P195 «Наш ремозаик» (on by default = the worker's mosaicRemosaic 1): off bins Quad / Tetra into plain Bayer
+        if (!isHybridMosaicRemosaic()) out.append("mosaicRemosaic 0\n");
         return out.toString();
+    }
+    /**
+     * P195 (owner, 2026-10-17: «добавь так же возможность отключать наш 2х2 и 4х4 ремозаик чтобы получать фото без него»):
+     * pref_scam_hybrid_mosaic_remosaic, the top row of «Мозаика без ремозаика»; on (default) = our remosaic of Quad / Tetra streams
+     * as before; off = no remosaic: every colour block binned into one plain Bayer site and merged as Bayer, the photo at the
+     * binned size (W/2 x H/2 Quad, W/4 x H/4 Tetra) or, with a 2x output, on that Bayer merge's Sabre 2x grid
+     * (ScamHybridBurst.binnedBlock). scam_dev.txt "hybrid_mosaic_remosaic 0/1".
+     */
+    public static boolean isHybridMosaicRemosaic() {
+        return hybridSwitch("mosaic_remosaic", true);
     }
     /** The hybrid's N frames from the ZSL ring (pref_scam_hybrid_zsl_frames, 4..44, default 20). */
     public static int getHybridZslFrames() {

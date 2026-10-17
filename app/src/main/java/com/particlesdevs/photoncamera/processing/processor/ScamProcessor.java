@@ -562,6 +562,13 @@ public class ScamProcessor extends ProcessorBase {
                 for (int i = 0; i < 4; i++) processingParameters.blackLevel[i] = Math.round(black[i] * k);
                 processingParameters.whiteLevel = 65535;
                 processingParameters.dngBaselineExposure = headroom > 1.0001f ? (float) (Math.log(headroom) / Math.log(2)) : 0f;
+                // P195: without the remosaic the merged RAW is the binned Bayer W/b x H/b (the same CFA order, black and white:
+                // each site the mean of one colour block); the DNG takes its size, the lens-shading map is normalised to it
+                final Point sensorSize = processingParameters.rawSize;
+                final Point dngSize = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDngSize;
+                if (dngSize != null && (long) dngSize.x * dngSize.y * 2 == scamMergedDng.capacity()) processingParameters.rawSize = new Point(dngSize);
+                if (!processingParameters.rawSize.equals(sensorSize))
+                    Log.i("SCAM_HDR", "DNG: merged binned Bayer " + processingParameters.rawSize.x + "x" + processingParameters.rawSize.y + " (no remosaic)");
                 try {
                     imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, scamMergedDng, processingParameters);
                     Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "DNG: merged burst RAW (N, bracketed and ultrashort frames), "
@@ -570,6 +577,7 @@ public class ScamProcessor extends ProcessorBase {
                     System.arraycopy(black, 0, processingParameters.blackLevel, 0, 4);
                     processingParameters.whiteLevel = white;
                     processingParameters.dngBaselineExposure = 0f;
+                    processingParameters.rawSize = sensorSize;
                     Allocator.free(scamMergedDng);
                 }
             } else imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output,
@@ -805,7 +813,8 @@ public class ScamProcessor extends ProcessorBase {
     /**
      * P121: a Quad / Tetra stream (an ISZ module without the sensor's remosaic): the camera's neutral is not the scene's (its ISP
      * reads the mosaic as Bayer), so the neutral of the reference frame is measured and put on the camera's curve learned in
-     * plain-Bayer sessions (MosaicNeutral). scam_dev.txt "mosaic_awb 0": the camera's neutral as before.
+     * plain-Bayer sessions (MosaicNeutral). scam_dev.txt "mosaic_awb 0": the camera's neutral as before. P195: also with «Наш
+     * ремозаик» off - the stream (and the ISP's misread neutral) is the same mosaic, only the worker bins it instead of remosaicking.
      */
     private static void applyMosaicNeutral(Parameters p, ImageFrame ref, CaptureResult meta) {
         if (!PreferenceKeys.scamDevSwitch("mosaic_awb", true) || p.rawBinning > 1 || ref == null || ref.buffer == null

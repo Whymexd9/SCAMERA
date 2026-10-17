@@ -449,6 +449,9 @@
         </PreferenceCategory>
       </PreferenceScreen>
       <PreferenceScreen android:key="scam_hybrid_mosaic_screen" android:title="@string/prefs_scam_hybrid_mosaic_screen_title" android:summary="@string/prefs_scam_hybrid_mosaic_screen_summary" android:icon="@drawable/settings_ic_mosaic">
+        <!-- P195 (owner, 2026-10-17: «настройка должна находиться в группе настроек "Мозаика без ремозаика" В самом верху»): our
+             Quad / Tetra remosaic on (default) or off (colour blocks binned into plain Bayer, ScamHybridBurst.binnedBlock) -->
+        <SwitchPreferenceCompat android:key="pref_scam_hybrid_mosaic_remosaic" android:title="@string/prefs_scam_hybrid_mosaic_remosaic_title" android:defaultValue="true" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_hybrid_mosaic_remosaic_summary" android:icon="@drawable/settings_ic_mosaic" />
         <Preference android:key="pref_scam_hybrid_mosaic_note" android:selectable="false" android:summary="@string/prefs_scam_hybrid_mosaic_note_summary" />
         <ListPreference android:key="pref_scam_hybrid_mosaic_path" android:title="@string/prefs_scam_hybrid_mosaic_path_title" android:defaultValue="1" android:entries="@array/scam_hybrid_mosaic_path_entries" android:entryValues="@array/scam_hybrid_mosaic_path_values" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_hybrid_mosaic_path_summary" android:icon="@drawable/settings_ic_mosaic" />
         <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_scam_hybrid_mosaic_frames" android:title="@string/prefs_scam_hybrid_mosaic_frames_title" android:summary="@string/prefs_scam_hybrid_mosaic_frames_summary" android:defaultValue="30" app:minValue="4" app:maxValue="32" app:stepPerUnit="1" app:isFloat="false" />

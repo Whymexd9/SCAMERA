@@ -96,7 +96,10 @@ public final class ScamHybridBurst implements ScamTransport {
     static final int HUGE_SERIES = 4;
 
     private final int width, height, cfa;
-    /** RGB size the worker returns: the sensor grid or the Sabre 2x grid (pref_scam_hybrid_output). */
+    /**
+     * RGB size the worker returns: the sensor grid or the Sabre 2x grid (pref_scam_hybrid_output); P195: without the remosaic the
+     * binned Bayer grid W/b x H/b or its 2x grid.
+     */
     private final int outWidth, outHeight;
     private final boolean strictTwoX, rgbHalf;
     /** Final JPEG size: the pipeline runs on the worker grid, the bitmap is resized at the very end (after sharpening). */
@@ -108,6 +111,16 @@ public final class ScamHybridBurst implements ScamTransport {
      * clear model (the worker measures it). A mosaic is merged from its own sites on the sensor grid (header word 14).
      */
     private final int mosaicBlock;
+    /**
+     * P195 «Наш ремозаик» off (pref_scam_hybrid_mosaic_remosaic; owner, 2026-10-17: «добавь так же возможность отключать наш 2х2 и
+     * 4х4 ремозаик чтобы получать фото без него»): the colour block the worker bins into plain Bayer sites (2 Quad, 4 Tetra; tuning
+     * mosaicRemosaic 0, hybridReconstructMosaicBinned), or 1 = no binning (the remosaic as before, and every plain stream).
+     */
+    private final int binned;
+    /** P195: the «Наш ремозаик» switch as this burst read it (on = the remosaic as before). */
+    private final boolean remosaic;
+    /** The merge's own 1x grid: the sensor grid, or the binned Bayer W/b x H/b without the remosaic (P195). */
+    private final int gridWidth, gridHeight;
     private final boolean diagnostics;
     /**
      * Ask the worker for the per-pixel clip flags (header flag 4): ScamRgb's per-channel highlight recovery picks the
@@ -202,6 +215,15 @@ public final class ScamHybridBurst implements ScamTransport {
         }
         // P56: a Quad (2x ISZ) or Tetra (4x ISZ, Realme GT8 Pro 2026-10-09) mosaic gets the Sabre 2x grid too, merged natively by the
         // worker (kHybMergeMosaic / Fast at g = 2b: the sites at +-0.25 px).
+        // P195: without our remosaic the worker bins a Quad / Tetra stream it was told about (header word 14) into plain Bayer and
+        // merges that: the result is W/b x H/b, or its Sabre 2x grid (the regular Bayer 2x merge, which restores resolution from the
+        // frames' shifts). The same rule as the worker's hybridMosaicBinnable; tuningOverride() tells the worker this decision.
+        remosaic = PreferenceKeys.hybridSwitch("mosaic_remosaic", true); // = PreferenceKeys.isHybridMosaicRemosaic()
+        binned = binnedBlock(remosaic, mosaicBlock, width, height);
+        gridWidth = width / binned; gridHeight = height / binned;
+        if (binned > 1) Log.i("SCAM_HDR", "hybrid without remosaic: colour block " + binned + " binned to plain Bayer " + gridWidth + "x" + gridHeight);
+        else if (!remosaic && mosaicBlock > 1) Log.i("SCAM_HDR", "hybrid without remosaic: " + width + "x" + height
+                + " is not whole " + 2 * mosaicBlock + "x" + 2 * mosaicBlock + " colour periods, remosaic kept");
         final String outputMode = PreferenceKeys.hybridOutputMode();
         strictTwoX = !conservative && "2x".equals(outputMode);
         final boolean outputMode2x = !conservative && !"sensor".equals(outputMode);
@@ -210,15 +232,15 @@ public final class ScamHybridBurst implements ScamTransport {
                 "SHDR: Sabre 2x is unavailable for colour block ") + mosaicBlock);
         if (outputMode2x && !wants2x) Log.i("SCAM_HDR", "hybrid output: sensor grid " + width + "x" + height + " (Sabre 2x grid off for a block "
                 + mosaicBlock + " mosaic stream: the native merge has no 2x grid for it)");
-        final boolean twoX = wants2x && sabre2xFits(width, height, gpuMaxSide);
-        if (strictTwoX && !twoX) throw new IOException(Lang.t("SHDR: склейка 2× ", "SHDR: Sabre 2x ") + 2L * width + "x" + 2L * height
+        final boolean twoX = wants2x && sabre2xFits(gridWidth, gridHeight, gpuMaxSide);
+        if (strictTwoX && !twoX) throw new IOException(Lang.t("SHDR: склейка 2× ", "SHDR: Sabre 2x ") + 2L * gridWidth + "x" + 2L * gridHeight
                 + Lang.t(" превышает предел стороны GPU ", " exceeds GPU side ") + gpuMaxSide
                 + Lang.t(" или размер буфера RGB FP16 (2 ГБ)", " or one FP16 RGB buffer (2 GB)"));
-        if (wants2x && !twoX) Log.i("SCAM_HDR", "hybrid output: sensor grid " + width + "x" + height + " (Sabre 2x grid "
-                + 2L * width + "x" + 2L * height + " exceeds GPU side " + gpuMaxSide + " or one FP16 RGB buffer)");
+        if (wants2x && !twoX) Log.i("SCAM_HDR", "hybrid output: sensor grid " + gridWidth + "x" + gridHeight + " (Sabre 2x grid "
+                + 2L * gridWidth + "x" + 2L * gridHeight + " exceeds GPU side " + gpuMaxSide + " or one FP16 RGB buffer)");
         Log.i("SCAM_HDR", "hybrid output mode=" + PreferenceKeys.hybridOutputMode() + " availMem=" + (availableMemory() >> 20) + " MB twoX=" + twoX
                 + (conservative ? " (conservative retry)" : ""));
-        outWidth = twoX ? 2 * width : width; outHeight = twoX ? 2 * height : height;
+        outWidth = twoX ? 2 * gridWidth : gridWidth; outHeight = twoX ? 2 * gridHeight : gridHeight;
         rgbHalf = transportHalf(outWidth, outHeight, halfTransport());
         finalWidth = fin.x; finalHeight = fin.y;
         if (twoX) Log.i("SCAM_HDR", "hybrid output: Sabre 2x grid " + outWidth + "x" + outHeight + ", final " + finalWidth + "x" + finalHeight
@@ -251,7 +273,8 @@ public final class ScamHybridBurst implements ScamTransport {
         final int reservedExtras = com.particlesdevs.photoncamera.capture.HybridPlan.bentoFrames() + 5;
         final int workerLimit = conservative ? CONSERVATIVE_NORMALS : WORKER_MAX_FRAMES - reservedExtras;
         final long available = (long) width * height > CLASSIC_INPUT_PIXELS ? memoryAvailable() : -1;
-        final int grid = twoX ? 2 : 1;
+        // P195: a binned result (W/b x H/b, its 2x grid at most the sensor's) is counted at the sensor grid
+        final int grid = twoX && binned == 1 ? 2 : 1;
         // P191 (owner's 50 MP shots, 2026-10-17: 20 frames taken, 2 merged - «Сетка не исчезла»): a mosaic stream below 100 MP is
         // budgeted by the worker itself - its native merge holds each frame binned (~24 MB at 50 MP) and picks the frames its
         // MemAvailable allows - while this estimate counted each frame at full size (156 MB) and kept 2 of 20
@@ -560,8 +583,30 @@ public final class ScamHybridBurst implements ScamTransport {
      * a worker of this process died in (see {@link #avoidedSteps}).
      */
     public String tuningOverride() {
-        return (conservative ? CONSERVATIVE_TUNING : "") + avoidedTuning() + (strictTwoX ? "grid 2\nauto2x 0\n" : "") + seriesTuning();
+        return (conservative ? CONSERVATIVE_TUNING : "") + avoidedTuning() + (strictTwoX ? "grid 2\nauto2x 0\n" : "") + seriesTuning()
+                + remosaicTuning(binned, remosaic, mosaicBlock);
     }
+    /**
+     * P195: the worker bins exactly when this burst sized its result for it - mosaicRemosaic 0 for a binned burst; mosaicRemosaic 1
+     * when the switch is off but this Quad / Tetra burst keeps the remosaic (a frame not of whole colour periods; the tuning file's
+     * line came from the switch); nothing with the switch on or for a stream the worker never bins (the tuning as before).
+     */
+    static String remosaicTuning(int binned, boolean remosaic, int block) {
+        return binned > 1 ? "mosaicRemosaic 0\n" : !remosaic && block > 1 ? "mosaicRemosaic 1\n" : "";
+    }
+    /**
+     * P195: the colour block a w x h stream of colour block {@code block} is binned by without the remosaic ({@code remosaic}
+     * false), or 1: Quad / Tetra of whole 2b x 2b colour periods with at least 64 binned px a side (the worker's
+     * hybridMosaicBinnable). An unknown block (0: the worker would measure it) keeps the remosaic, as the worker does.
+     */
+    static int binnedBlock(boolean remosaic, int block, int w, int h) {
+        if (remosaic || (block != 2 && block != 4)) return 1;
+        return w % (2 * block) == 0 && h % (2 * block) == 0 && w / block >= 64 && h / block >= 64 ? block : 1;
+    }
+    /** P195: the colour block binned into plain Bayer without the remosaic (1: none). */
+    public int binnedBlock() { return binned; }
+    /** P195: the merged Bayer RAW of the DNG trailer is the merge's 1x grid (the binned Bayer without the remosaic). */
+    @Override public long mergedRawPixels() { return (long) gridWidth * gridHeight; }
     /**
      * P190: the worker's frame pick keeps a FULLRES series whole (its memory budget and mosaicFrames only floor it); not for a
      * 200 MP series of up to HUGE_SERIES frames, which the worker merges whole on its own (kHybridHugeFrames): that shot stays
@@ -584,7 +629,7 @@ public final class ScamHybridBurst implements ScamTransport {
         h.putInt(0x3143484e).putInt(pages != null ? 12 : 11).putInt(width).putInt(height).putInt(cfa).putInt(frames.size()).putFloat(white);
         for (float b : black) h.putFloat(b);
         h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0) | (clipFlags ? 4 : 0) | (strictTwoX ? 8 : 0) | (effectiveMap() ? 0 : 16)).putInt(0)
-         .putInt(outWidth == width && outHeight == height ? 1 : 2).putInt(mosaicBlock).putInt(0).putInt(0);
+         .putInt(outWidth == gridWidth && outHeight == gridHeight ? 1 : 2).putInt(mosaicBlock).putInt(0).putInt(0);
         h.position(128);
         for (int i = 0; i < frames.size(); i++) {
             h.putInt(roles.get(i)).putFloat(exposures.get(i)).putInt(frames.get(i).measuredIso)
@@ -700,6 +745,11 @@ public final class ScamHybridBurst implements ScamTransport {
     public static volatile android.graphics.Point lastOutputSize;
     /** Final JPEG size of the last hybrid shot (the bitmap is resized to it after the whole pipeline). */
     public static volatile android.graphics.Point lastFinalSize;
+    /**
+     * P195: size of {@link #lastMergedDng} - the sensor size, or the binned Bayer W/b x H/b of a merge without the remosaic (the
+     * DNG is written at it, same CFA order, black and white).
+     */
+    public static volatile android.graphics.Point lastMergedDngSize;
     /** P27: the worker died at GPU init in this process (Mali, X200 Pro): further shots go straight to the CPU fallback. */
     private static volatile String gpuUnusable;
     /**
@@ -853,6 +903,7 @@ public final class ScamHybridBurst implements ScamTransport {
         burst.mergedDng = mergedDng;
         lastOutputSize = new android.graphics.Point(burst.outWidth, burst.outHeight);
         lastFinalSize = new android.graphics.Point(burst.finalWidth, burst.finalHeight);
+        lastMergedDngSize = new android.graphics.Point(burst.gridWidth, burst.gridHeight);
         lastMergeTier = "gpu";
         if (burst.diagnostics) {
             ScamDiagnostics.begin(context, p, burst.base, ScamScene.fromReference(burst.base));
@@ -891,6 +942,7 @@ public final class ScamHybridBurst implements ScamTransport {
                         ScamHybridBurst safe = new ScamHybridBurst(frames, p, true);
                         lastOutputSize = new android.graphics.Point(safe.outWidth, safe.outHeight);
                         lastFinalSize = new android.graphics.Point(safe.finalWidth, safe.finalHeight);
+                        lastMergedDngSize = new android.graphics.Point(safe.gridWidth, safe.gridHeight);
                         ScamNeuralClient.carryReport = "previous attempt: " + previousWhy + "\n" + (previous == null ? "" : tail(previous, 4000));
                         ByteBuffer out = ScamNeuralClient.processScamBurst(context, safe);
                         lastMergeTier = "gpu-conservative";
