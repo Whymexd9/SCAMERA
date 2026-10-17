@@ -4722,3 +4722,31 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
 - Measured on the owner's 50 MP burst (diagonal, % of the level): k0.7 + our sharpening 0.173 / 0.185, k1.0 + our sharpening
   0.084 / 0.093 (P191 default), k1.0 + sharpening on a 3x3-smoothed luma (R1) 0.045 / 0.049. R1 changes the sharpening: not done
   (owner: «Шарпинг не трогаем»), offered. Notes: scratchpad arklattice (table.md, crops).
+
+### P200 - FULLRES 50 MP on 8 Gen 3 finishes; ring copy; X300 main row order (owner, 2026-10-17: «На 100у и 7у обработка с
+### фулрезом не заканчивается», «на 300 ультре ... на основе не с первого раза ... видоискатель имеет низкий ФПС»)
+- Cause (X7U / X100U logs, then reproduced on the OPPO fb27034c): the app was killed 1-4 min into every 50 MP merge - first for
+  memory (after the shot the camera built a new 50 MP ZSL ring, up to 16 x 96 MB, and a 66-slot plain ring while the worker held
+  80 % of MemAvailable), then, with that fixed, by ColorOS for heat (ApplicationExitInfo «o-stop(22)», thermal level 14 at 53 C;
+  the 50 MP session kept streaming + binning at 24 fps through the long merge). The worker never hung: «HYBRID MOCHI: off» was
+  just the last line before the GPU merge.
+- Fixes: (1) a FULLRES 50 MP shot is merged with the camera in its plain session, as a 200 MP one (P179 closeCameraForProcessing;
+  dev key fullres_plain_merge); (2) while a FULLRES merge runs no 50 MP ring is kept (released at the shot, its free slots punched
+  at once) and the plain ring holds SUSPENDED_RING frames; (3) Allocator: a live ring's slots are not hole-punched when a view goes
+  (only a released arena's) - a punched 96 MB slot refaulted every page on its next copy: X200U bench 69 ms -> 6.7 ms, X7U ring
+  copy 63-75 ms -> 7-10 ms, the 50 MP viewfinder 23 fps; copies >= 32 MB on 4 threads; (4) the native merge's GPU strips may take
+  half of MemAvailable up to 512 MB (a quarter halved 189 of 190 strips to 8 cells); the shrink report names the first limit;
+  (5) X300U main 50 MP rows 3 / 1 (row 3 = the working native Quad; 2 is the hardware-remosaic row), tried count under a new key.
+- Phone (OPPO X7U, local 30935/30936): 50 MP shots now complete with the app alive (camera back to FULLRES after). Open: the merge
+  is slow when the phone is warm - 95-133 s for 17-20 native frames at 39-41 C battery (20 s in the cool morning test); not yet
+  separated GPU throttling vs the low-priority context; X100U main / UW have no own-mosaic row that gives frames (main 0/11/31,
+  UW 0/9) - its main 50 MP is the hardware-remosaic route only.
+
+### P201 - the manual mode with FULLRES (owner, 2026-10-17: «убедись чтобы при работе фулреза работал полностью ручной режим»)
+- Every FULLRES viewfinder request had its exposure rewritten (vivo native AE on, X200U SDK route AE on at ISO 0, the OPPO's own
+  AE) and the series' stills came from the still template (auto WB / AF). Now: ParamController.applyManualTo after the FULLRES
+  keys (both by hand AE off at them, one by hand the loop's values, the HAL / Qualcomm priority untouched), hand-set WB and focus;
+  the OPPO's NativeRawExposure.setManual (both: exact, one: meters the other), a hand-set WB is the OPPO shot's neutral; stills copy
+  AWB-off gains / transform and AF-off distance; PSL N at the hand-set exposure; a shutter > 1/10 s skips the ring.
+- Tests: NativeRawExposureTest.aHandSetIsoAndShutterHold. Not yet checked on a phone with the manual panel.
+
