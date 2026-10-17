@@ -534,7 +534,7 @@ public class HybridSettingsTest {
         assertEquals("30",prefs.getString("pref_scam_hybrid_mosaic_frames","?")); // = the worker default mosaicFrames (7 October 2026)
         tuning=PreferenceKeys.hybridTuningText();
         assertTrue(tuning,tuning.contains("mosaicFrames 30.0\n"));
-        for(String line:new String[]{"mosaicPath 1.0","mosaicWindow 3.0","mosaicKernelScale 0.7","mosaicNativeEdgeScale 0.6","mosaicKernelG 1.0",
+        for(String line:new String[]{"mosaicPath 1.0","mosaicWindow 3.0","mosaicKernelScale 1.0","mosaicNativeEdgeScale 0.6","mosaicKernelG 1.0",
                 "mosaicKernelRB 0.85","mosaicChromaFill 0.0","mosaicFillSupport 0.25","mosaicTetra 1.0","mosaicNativeFlatScale 2.4",
                 "mosaicNativeClamp 2.0"})
             assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
@@ -914,5 +914,18 @@ public class HybridSettingsTest {
         assertEquals("1.5",prefs.getString("pref_scam_hybrid_kernel",""));
         assertFalse(prefs.contains("pref_scamhdr_hybrid_kernel"));
         assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
+    }
+
+    /** P191: a stored 0.7 (the former XML default) moves to 1.0 once; any other value and a 0.7 chosen later stay. */
+    @Test public void theFormerMosaicKernelDefaultMovesOnce() {
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7).putString("pref_scam_hybrid_mosaic_kernel_scale","0.7").commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertEquals(1f,Float.parseFloat(prefs.getString("pref_scam_hybrid_mosaic_kernel_scale","")),1e-6f);
+        prefs.edit().putString("pref_scam_hybrid_mosaic_kernel_scale","0.7").commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertEquals("0.7",prefs.getString("pref_scam_hybrid_mosaic_kernel_scale",""));
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7).putString("pref_scam_hybrid_mosaic_kernel_scale","0.85").commit();
+        SettingsMigration.migrateScamHybrid(prefs,false);
+        assertEquals("0.85",prefs.getString("pref_scam_hybrid_mosaic_kernel_scale",""));
     }
 }

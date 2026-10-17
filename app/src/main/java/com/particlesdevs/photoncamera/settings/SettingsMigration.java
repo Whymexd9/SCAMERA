@@ -640,6 +640,19 @@ public final class SettingsMigration {
             e.putInt(LOW_LIGHT_DN_REV, 1);
             markOnly = true;
         }
+        // P191 (owner, 2026-10-17: «Сетка не исчезла»; «Займись исправлением сеточных/мозаичных артефактов»): the daylight native
+        // mosaic kernel 0.7 -> 1.0. On the owner's handheld bursts (X200 Ultra, 2x ISZ ultra-wide and FULLRES 50 MP) 1.0 halved the
+        // diagonal Quad lattice (0.055 -> 0.025 %, 0.104 -> 0.043 % of the level) at 6 % of the 2-4 px band amplitude, noise in it
+        // -28 %; the sharpening amplified that lattice. A stored 0.7 is the former XML default and moves; any other value stays.
+        if (!values.containsKey(MOSAIC_KERNEL_REV)) {
+            Object scale = values.get(ScamHybridKeys.PREFIX + "mosaic_kernel_scale");
+            if (scale != null && isNumber(scale, 0.7f)) {
+                ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "mosaic_kernel_scale", scale instanceof String ? PreferenceNumber.format(1f, true) : (Object) 1f);
+                changed = true;
+            }
+            e.putInt(MOSAIC_KERNEL_REV, 1);
+            markOnly = true;
+        }
         // P164: the multiscale finish denoise's stored engine value has its own name; any value but "nlm" is that engine
         final Object engine = values.get(ScamHybridKeys.PREFIX + "dn_engine");
         if (engine instanceof String && !"nlm".equals(engine) && !"multiscale".equals(engine)) {
@@ -661,6 +674,8 @@ public final class SettingsMigration {
 
     /** Marker of the one-time move of the former night denoise defaults (ArkCam SabreLow, revert limit 9), P135. */
     static final String LOW_LIGHT_DN_REV = "pref_scam_hybrid_low_light_dn_rev";
+    /** P191: the native mosaic kernel 0.7 -> 1.0 moved once. */
+    static final String MOSAIC_KERNEL_REV = "pref_scam_hybrid_mosaic_kernel_rev";
 
     private static final String DEFAULTS_REV = "pref_scam_hybrid_defaults_rev";
     /** Marker of the one-time move of a stored former default of pref_scam_hybrid_zsl_frames (20) to 30. */

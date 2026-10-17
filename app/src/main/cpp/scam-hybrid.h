@@ -336,10 +336,11 @@ struct HybridTuning {
                                  // 2 = ArkCam's 5x5. Tetra T1 (P35): 2r sensor px, at most 8 (3: 13x13; 3 with mosaicWindowFull 0 =
                                  // the split's sites)
     int mosaicWindowFull=1;      // S0: es 0.4 with the full 7x7 window had 10 % less flat noise than the clipped one at equal detail
-    float mosaicKernelScale=0.7f; // native kernel precision = binned precision / (b s)^2: 1 = the split's physical kernel (its sigmas
+    float mosaicKernelScale=1.0f; // native kernel precision = binned precision / (b s)^2: 1 = the split's physical kernel (its sigmas
                                  // were in sub-frame px = b native px); 1/b = ArkCam (Quad 0.5). P34: 0.7 with the flat scale 2.4 and
                                  // the eigenvalue clamp below (daylight; mosaicNativeNightKernelScale at night): isz2 detail +12 % at
-                                 // the split's noise, hh_1 / hh_2 / hh_4 +11 % (2-4 px band at matched noise)
+                                 // the split's noise, hh_1 / hh_2 / hh_4 +11 % (2-4 px band at matched noise). P191: 1.0 - on the
+                                 // owner's handheld bursts 0.7 left a diagonal lattice the sharpening amplified (1.0: half of it)
     // mosaicEdgeScale of the native path (across the edge and the base kernel; along the edge and flat areas stay). Its own key so that
     // the split keeps 0.6. S0 (synthetic Quad, 16 frames): 0.4 gave zone plate +1.0, bars +1.4 / +3.2, edges +1.2 dB at unchanged
     // flat noise; 0.3 more detail but +57 % colour error on neutral edges. Device (OPPO, real handheld Quad hand.nch): 0.6 gave
