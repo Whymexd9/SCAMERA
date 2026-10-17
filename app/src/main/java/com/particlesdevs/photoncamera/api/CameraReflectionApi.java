@@ -160,6 +160,39 @@ public class CameraReflectionApi {
         }
     }
 
+    /** P192: the result's metadata field and its setter, looked up once (NativeEngine adds a JNI global reference per lookup). */
+    private static volatile Field resultsField;
+    private static volatile Method resultsSet;
+
+    /**
+     * P192: {@link #set(CaptureResult.Key, Object, CaptureResult)} with the field and the method looked up once. Per-result calls
+     * of the other one (the OPPO native viewfinder's every result) filled the JNI global reference table in about two minutes and
+     * the runtime aborted the process (OPPO Find X7 Ultra, 2026-10-17). False when the value could not be set.
+     */
+    public static <T> boolean setCached(CaptureResult.Key<T> key, T value, CaptureResult res) {
+        try {
+            Field field = resultsField;
+            if (field == null) {
+                field = NativeEngine.getCameraField(CaptureResult.class, "mResults");
+                field.setAccessible(true);
+                resultsField = field;
+            }
+            Object metadata = field.get(res);
+            if (metadata == null) return false;
+            Method set = resultsSet;
+            if (set == null || set.getDeclaringClass() != metadata.getClass()) {
+                set = NativeEngine.getCameraMethod(metadata.getClass(), "set", CaptureResult.Key.class, Object.class);
+                set.setAccessible(true);
+                resultsSet = set;
+            }
+            set.invoke(metadata, key, value);
+            return true;
+        } catch (Exception e) {
+            Log.d("CameraAPI", "Failed to set CaptureResult key " + key.getName() + ": " + e);
+            return false;
+        }
+    }
+
     public static <T> void set(CaptureResult.Key<T> key, T value, CaptureResult res) {
         try {
             Field CameraMetadataNativeField = NativeEngine.getCameraField(CaptureResult.class, "mResults");

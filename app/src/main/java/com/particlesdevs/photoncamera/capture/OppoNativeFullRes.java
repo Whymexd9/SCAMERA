@@ -310,20 +310,22 @@ public final class OppoNativeFullRes {
         final Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
         final boolean missing = n == null || n.length < 3 || !(n[0].floatValue() > 0f && n[1].floatValue() > 0f && n[2].floatValue() > 0f);
         if (missing && own != null) {
-            CameraReflectionApi.set(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT, new Rational[]{rational(own[0]), new Rational(1, 1), rational(own[2])}, result);
-            CameraReflectionApi.set(CaptureResult.COLOR_CORRECTION_GAINS, new RggbChannelVector(1f / own[0], 1f, 1f, 1f / own[2]), result);
-            filled.append(String.format(Locale.ROOT, " neutral %.3f / %.3f", own[0], own[2]));
+            if (CameraReflectionApi.setCached(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT, new Rational[]{rational(own[0]), new Rational(1, 1), rational(own[2])}, result)
+                    & CameraReflectionApi.setCached(CaptureResult.COLOR_CORRECTION_GAINS, new RggbChannelVector(1f / own[0], 1f, 1f, 1f / own[2]), result))
+                filled.append(String.format(Locale.ROOT, " neutral %.3f / %.3f", own[0], own[2]));
         }
         final ColorSpaceTransform transform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
         final ColorSpaceTransform plain = TRANSFORMS.get(cameraId);
         if (plain != null && (transform == null || identity(transform))) {
-            CameraReflectionApi.set(CaptureResult.COLOR_CORRECTION_TRANSFORM, plain, result);
-            filled.append(" transform");
+            if (CameraReflectionApi.setCached(CaptureResult.COLOR_CORRECTION_TRANSFORM, plain, result)) filled.append(" transform");
         }
         final LensShadingMap shading = SHADING.get(cameraId);
         if (shading != null && result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP) == null) {
-            CameraReflectionApi.set(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP, shading, result);
-            filled.append(" shading ").append(shading.getColumnCount()).append('x').append(shading.getRowCount());
+            CameraReflectionApi.setCached(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP, shading, result);
+            // the map is a synthesized key: only a read-back shows whether it took
+            if (result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP) != null)
+                filled.append(" shading ").append(shading.getColumnCount()).append('x').append(shading.getRowCount());
+            else filled.append(" (shading map not settable)");
         }
         return filled.toString();
     }
