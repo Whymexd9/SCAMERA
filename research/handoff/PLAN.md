@@ -4750,3 +4750,30 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   AWB-off gains / transform and AF-off distance; PSL N at the hand-set exposure; a shutter > 1/10 s skips the ring.
 - Tests: NativeRawExposureTest.aHandSetIsoAndShutterHold. Not yet checked on a phone with the manual panel.
 
+### P202 - FULLRES 50 MP ZSL or PSL; bracketed frames in PSL (owner, 2026-10-17: «давай дадим выбор ZSL или PSL», «В PSL у нас
+### тоже должны быть брекет кадры»)
+- «50 Мп: ZSL» (pref_scam_hybrid_fullres50_zsl, default on, a row of the 50 MP profile; scam_dev fullres_zsl wins). A native 50 MP
+  PSL series is the asked N + the 12 MP Hybrid plan's ultrashort / bracketed frames (from the viewfinder's or the hand-set N
+  exposure; manualLong for a long hand-set shutter), within the memory's count. ZSL was not the cause of the slow merges (P204).
+- Not yet shot on a phone in PSL with the plan (the PSL check shot ran 30936: 19 N + 1 ultrashort, 179 s merge = P204's cause).
+
+### P203 - 12 normal frames by default for FULLRES 50 MP (owner: «сделай по дефолту 12 обычных кадров для 50мп»)
+- pref_scam_hybrid_fullres50_frames default 12 (was 0 = the merge's 20); a stored 0 moves to 12 once (FULLRES50_FRAMES_REV).
+
+### P204 - the marked native merge 35-50x slower on the Adreno 750 (owner: «выясни почему у нас раньше обработка была быстрее»)
+- Kept 19-frame X7U burst (Download/SCAMERA/scam_burst-20261017-185248.bin), replays on the OPPO: merge pass 216 / 190 / 128 s
+  with the outlier test on, 3.8 s with the merge program unmarked. Not the cause: the 11:10 worker (128 s too), ZSL vs PSL (PSL 179
+  s), the generic program (154 s), cellClip 0 (128 s), 0 fixed-pattern flags (130 s). The morning 20 s shot was bright (outlier
+  key 67 > hotMaxKey 30: no marked strips). The cause: natBaseFill inside the marked fast merge (Adreno 750 code generation; 12 s
+  with it removed). Fix: the marked merge writes NAT_FILL_MARK, a NAT_BASEFILL pass of the same program text fills it.
+- Checked: kept burst md5 fde0c549 identical, merge pass 128 s -> 12 s, total 141 -> 24 s; the 8 reference bursts identical
+  (syn_b1 5b988db1, x7u_1x 52bcce71, syn_b2 7c1a3756, syn_b4 5e586261, hand db8d449d, isz2 d5dceb41, v10_1 161b2e8e, v10_2
+  fe39aa5e); in the app (30937, X7U indoors ISO 1600, 12 N + 6): merge 19 s, photo 26 s after the press.
+- Open: the native fixed-pattern test flags 13-25k sites/MP on a still (table) burst - texture taken for fixed pattern; worth a
+  plausibility cap (quality, not speed now).
+
+### P205 - DNG band in Lightroom on X100U / X300U (owner, 2026-10-17, SCA_20261017_153558.dng)
+- OpcodeList2 GainMap area written Top, Left, Right, Bottom (file: (1,1)-(4079,3071) on 4080 x 3072): the columns past 3071 got no
+  lens-shading gain in editors that apply opcodes. Fixed order, exclusive Bottom / Right, spacing 1 / (n - 1). Checked with an
+  arm64 build of tiny_dng_writer on the OPPO. Not yet: a phone DNG opened in Lightroom.
+
