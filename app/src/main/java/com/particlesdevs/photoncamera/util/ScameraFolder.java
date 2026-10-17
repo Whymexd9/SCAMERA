@@ -39,6 +39,12 @@ public final class ScameraFolder {
     public static final ScameraFolder CURVES = new ScameraFolder("ToneCurves", "text/plain", ".txt");
     /** P134: film / look LUTs (.cube) for «Плёночный LUT». */
     public static final ScameraFolder LUTS = new ScameraFolder("LUT", "application/octet-stream", ".cube");
+    /**
+     * P191 (owner, 2026-10-17: «переноси всё туда чтобы в data ничего не хранилось»): Download/SCAMERA itself (scam_dev.txt,
+     * the adb markers), every name; its document id is "primary:Download/SCAMERA", no trailing slash. A file there that a
+     * PC or a file manager wrote is opened through the grant ({@link #grantedDocument}).
+     */
+    public static final ScameraFolder ROOT = new ScameraFolder("", "text/plain", "");
     private static final String TAG = "ScameraFolder";
 
     /** Download/SCAMERA/&lt;sub&gt; as MediaStore's RELATIVE_PATH (and the path shown to the user). */
@@ -50,7 +56,12 @@ public final class ScameraFolder {
         this.sub = sub;
         this.mime = mime;
         this.extensions = extensions;
-        this.relative = Environment.DIRECTORY_DOWNLOADS + "/SCAMERA/" + sub;
+        this.relative = relativeOf(sub);
+    }
+
+    /** Download/SCAMERA/&lt;sub&gt;; the folder itself for "" (P191: {@link #ROOT}). */
+    static String relativeOf(String sub) {
+        return Environment.DIRECTORY_DOWNLOADS + "/SCAMERA" + (sub.isEmpty() ? "" : "/" + sub);
     }
 
     private static final String EXTERNAL = "com.android.externalstorage.documents";
@@ -92,6 +103,12 @@ public final class ScameraFolder {
         return null;
     }
 
+    /** P191: a file directly in this folder through the lasting grant, null without the grant or the file. */
+    @androidx.annotation.Nullable
+    public Uri grantedDocument(Context context, String name) {
+        return name == null || context == null ? null : treeFiles(context).get(name);
+    }
+
     /** The folder's files (name -> document) through the grant; empty without one or when the folder is not there. */
     Map<String, Uri> treeFiles(Context context) {
         Map<String, Uri> out = new LinkedHashMap<>();
@@ -112,7 +129,7 @@ public final class ScameraFolder {
     }
 
     private File legacyDir() {
-        return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "SCAMERA/" + sub);
+        return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), sub.isEmpty() ? "SCAMERA" : "SCAMERA/" + sub);
     }
 
     private static boolean mediaStore() {

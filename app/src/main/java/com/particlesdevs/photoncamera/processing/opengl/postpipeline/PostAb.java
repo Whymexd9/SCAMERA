@@ -97,12 +97,11 @@ public final class PostAb {
         return b;
     }
 
-    /** scam_dev.txt "post_ab_dump 1": both bitmaps as lossless PNG in the app's external files dir, for a pixel diff. */
+    /** scam_dev.txt "post_ab_dump 1": both bitmaps as lossless PNG in Download/SCAMERA (P191, ScameraFiles), for a pixel diff. */
     private static void dump(Bitmap bitmap, String name) {
         if (!PreferenceKeys.scamDevSwitch("post_ab_dump", false)) return;
         try {
-            final java.io.File dir = ScameraApp.getAppContext().getExternalFilesDir(null);
-            if (dir == null) return;
+            final java.io.File dir = com.particlesdevs.photoncamera.util.ScameraFiles.dir();
             try (java.io.OutputStream out = new java.io.FileOutputStream(new java.io.File(dir, name))) {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
             }

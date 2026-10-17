@@ -77,7 +77,7 @@ struct SuperResTuning {
 inline SuperResTuning loadSuperResTuning(const std::function<void(const std::string&)>& report) {
     SuperResTuning t;
     g_superResReport=report;
-    for(const char* path:{"/sdcard/Android/data/org.codeaurora.snapcam/files/scam_sr.txt","/data/local/tmp/scam_sr.txt"}){
+    for(const char* path:{"/sdcard/Download/SCAMERA/scam_sr.txt","/data/local/tmp/scam_sr.txt"}){
         std::ifstream f(path);if(!f)continue;
         std::string key;float v;std::string applied;
         while(f>>key>>v){

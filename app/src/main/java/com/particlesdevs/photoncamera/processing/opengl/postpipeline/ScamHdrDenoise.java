@@ -36,12 +36,16 @@ public final class ScamHdrDenoise extends Node {
     public ScamHdrDenoise() { super("", "ScamHdrDenoise"); }
     @Override public void Compile() {}
 
-    /** Developer switch (adb: touch <external files>/dump-denoise): the full-resolution denoise input and its parameters. */
+    /**
+     * Developer switch (adb: touch /sdcard/Download/SCAMERA/dump-denoise): the full-resolution denoise input and its
+     * parameters, written there too (P191: Download/SCAMERA, not Android/data; ScameraFiles).
+     */
     private void dumpInput(PostPipeline pipeline) { dumpTexture(pipeline, previousNode.WorkingTexture, "denoise-in"); }
 
     private void dumpTexture(PostPipeline pipeline, GLTexture source, String name) {
-        java.io.File dir = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext().getExternalFilesDir(null);
-        if (dir == null || !new java.io.File(dir, "dump-denoise").exists()) return;
+        android.content.Context context = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext();
+        if (!com.particlesdevs.photoncamera.util.ScameraFiles.exists(context, "dump-denoise")) return;
+        java.io.File dir = com.particlesdevs.photoncamera.util.ScameraFiles.dir();
         int[] oldRead = new int[1], framebuffer = new int[1];
         android.opengl.GLES30.glGetIntegerv(android.opengl.GLES30.GL_READ_FRAMEBUFFER_BINDING, oldRead, 0);
         try (java.nio.channels.FileChannel out = new java.io.FileOutputStream(new java.io.File(dir, name + ".f32")).getChannel()) {
@@ -82,8 +86,8 @@ public final class ScamHdrDenoise extends Node {
      */
     private float effRef = 1f;
     private GLTexture loadEffectiveFrames(Point size) {
-        java.io.File debugDir = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext().getExternalFilesDir(null);
-        if (debugDir != null && new java.io.File(debugDir, "noeff").exists()) return null; // developer switch: uniform noise
+        // developer switch (adb: touch /sdcard/Download/SCAMERA/noeff; P191): uniform noise
+        if (com.particlesdevs.photoncamera.util.ScameraFiles.exists(com.particlesdevs.photoncamera.app.ScameraApp.getAppContext(), "noeff")) return null;
         java.nio.ByteBuffer eff = ScamHybridBurst.lastEffectiveFrames;
         if (eff == null || eff.capacity() != size.x * size.y) return null;
         eff.rewind();

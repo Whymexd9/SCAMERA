@@ -13,7 +13,6 @@ import com.particlesdevs.photoncamera.settings.DevKeys;
 import com.particlesdevs.photoncamera.settings.ScamDevFile;
 import com.particlesdevs.photoncamera.util.Lang;
 
-import java.io.File;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -32,15 +31,16 @@ final class DeveloperPreferences {
         if (screen == null || context == null) return;
         screen.removeAll();
         final Context app = context.getApplicationContext();
-        File f = ScamDevFile.file(app);
+        // P191: the file is Download/SCAMERA/scam_dev.txt (no longer Android/data); the short path the owner opens
+        String path = ScamDevFile.SHOWN;
         Preference note = new Preference(context);
         note.setKey("dev_note");
         note.setSelectable(false);
         note.setIconSpaceReserved(false);
         note.setSummary(Lang.t(context,
-                "Скрытые переключатели для опытов и отладки. Значения пишутся в файл " + (f == null ? "scam_dev.txt" : f.getAbsolutePath())
+                "Скрытые переключатели для опытов и отладки. Значения пишутся в файл " + path
                         + ". «по умолчанию» — строки в файле нет, работает значение из кода.",
-                "Hidden switches for experiments and debugging. Values are written to " + (f == null ? "scam_dev.txt" : f.getAbsolutePath())
+                "Hidden switches for experiments and debugging. Values are written to " + path
                         + ". «default»: no line in the file, the code's value applies."));
         screen.addPreference(note);
         Preference reset = new Preference(context);

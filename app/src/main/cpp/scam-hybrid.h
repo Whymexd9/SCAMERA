@@ -494,7 +494,7 @@ inline bool hybridAuto2x(const HybridInput& input,const HybridTuning& tune,bool 
 
 inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::function<void(const std::string&)>& report) {
     HybridTuning t;
-    const std::string paths[]={jobDir+"/hybrid_tuning.txt","/sdcard/Android/data/org.codeaurora.snapcam/files/hybrid_tuning.txt","/data/local/tmp/hybrid_tuning.txt"};
+    const std::string paths[]={jobDir+"/hybrid_tuning.txt","/sdcard/Download/SCAMERA/hybrid_tuning.txt","/data/local/tmp/hybrid_tuning.txt"};
     for(const std::string& path:paths){
         std::ifstream f(path);if(!f)continue;
         std::string key;float v;std::string applied;

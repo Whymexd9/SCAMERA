@@ -839,8 +839,8 @@ public class PreferenceKeys {
     private static long scamDevStamp = -1, scamDevChecked;
     private static java.util.Map<String, Float> scamDevValues = java.util.Collections.emptyMap();
     /**
-     * Developer overrides for the SCAM internal values: "key value" lines in scam_dev.txt of the app's external files
-     * dir (key without the pref_scamhdr_ prefix) replace the preference for the next shot. Re-read when the file
+     * Developer overrides for the SCAM internal values: "key value" lines in Download/SCAMERA/scam_dev.txt (P191;
+     * ScamDevFile) (key without the pref_scamhdr_ prefix) replace the preference for the next shot. Re-read when the file
      * changes, at most every 2 s.
      */
     /** Developer switch from scam_dev.txt ("key 0" = off); {@code fallback} without the line. */
@@ -867,13 +867,21 @@ public class PreferenceKeys {
             java.util.Map<String, Float> values = java.util.Collections.emptyMap();
             long stamp = 0;
             try {
-                java.io.File dir = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext().getExternalFilesDir(null);
-                java.io.File file = dir == null ? null : new java.io.File(dir, "scam_dev.txt");
+                // P191: Download/SCAMERA/scam_dev.txt (ScamDevFile); the stamp skips an unchanged file of the File API, a file
+                // only the folder grant reaches (the owner's copy from a PC or a file manager) is read again every 2 s
+                android.content.Context context = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext();
+                java.io.File file = context == null ? null : ScamDevFile.file(context);
+                String text = null;
                 if (file != null && file.isFile()) {
                     stamp = file.lastModified();
                     if (stamp == scamDevStamp) return scamDevValues.get(key);
+                    text = new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+                } else if (context != null) {
+                    text = ScamDevFile.readGranted(context);
+                }
+                if (text != null) {
                     values = new java.util.HashMap<>();
-                    for (String line : new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8).split("\r?\n")) {
+                    for (String line : text.split("\r?\n")) {
                         String[] parts = line.trim().split("\\s+");
                         if (parts.length == 2) try { values.put(parts[0], Float.parseFloat(parts[1])); } catch (NumberFormatException ignored) { }
                     }

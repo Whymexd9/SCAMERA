@@ -337,8 +337,8 @@ public final class ScamNeuralClient {
                 // in Download/SCAMERA (scam_burst-<time>.bin, next to the debug log), not the package's external files: a file
                 // manager on Android 16 no longer opens Android/data (owner, 2026-10-17)
                 if(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("keep_burst",false)){
-                    File kept=new File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),"SCAMERA");
-                    if(!kept.isDirectory()&&!kept.mkdirs())log.accept("CLIENT: keep-burst folder not made: "+kept);
+                    File kept=com.particlesdevs.photoncamera.util.ScameraFiles.dir();
+                    if(!kept.isDirectory())log.accept("CLIENT: keep-burst folder not made: "+kept);
                     String name="scam_burst-"+new java.text.SimpleDateFormat("yyyyMMdd-HHmmss",java.util.Locale.ROOT).format(new java.util.Date())+".bin";
                     try(java.io.FileWriter kb=new java.io.FileWriter(new File(dir,"keep-burst"))){
                         kb.write(new File(kept,name).getAbsolutePath());
@@ -356,10 +356,12 @@ public final class ScamNeuralClient {
                 log.accept("CLIENT: SCAM Hybrid merge requested"+(tuning.isEmpty()?"":" tuning="+tuning.replace('\n',' ')));
             }
             {
-                // Developer switch (created with adb): dump the network's input/output tiles.
-                File external=context.getExternalFilesDir(null);
-                if(external!=null && new File(external,"dump-forward").exists()){
-                    try(java.io.FileWriter marker=new java.io.FileWriter(new File(dir,"dump-forward"))){marker.write(external.getAbsolutePath());}
+                // Developer switch (adb: touch /sdcard/Download/SCAMERA/dump-forward): dump the network's input/output tiles. P191: the
+                // marker and the dumps are in Download/SCAMERA, not Android/data (owner, 2026-10-17: «переноси всё туда чтобы в
+                // data ничего не хранилось»)
+                if(com.particlesdevs.photoncamera.util.ScameraFiles.exists(context,"dump-forward")){
+                    File dumps=com.particlesdevs.photoncamera.util.ScameraFiles.dir();
+                    try(java.io.FileWriter marker=new java.io.FileWriter(new File(dir,"dump-forward"))){marker.write(dumps.getAbsolutePath());}
                 }
             }
             final long assetsDone=android.os.SystemClock.elapsedRealtime();

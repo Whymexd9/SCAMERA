@@ -2,7 +2,6 @@ package com.particlesdevs.photoncamera.util;
 
 import android.content.Context;
 import android.os.Build;
-import android.os.Environment;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -16,12 +15,10 @@ import java.util.Locale;
  * Installs a default uncaught exception handler before anything else runs, so that a crash
  * during {@code Application.onCreate()} still leaves a readable trace on disk.
  *
- * <p>The report is written to two places, because the more convenient one needs a runtime
- * permission that may not have been granted yet when the crash happens:
- * <ul>
- *     <li>{@code /Android/data/<pkg>/files/SCAMERA-crash.log} — always writable, no permission;</li>
- *     <li>{@code /Download/SCAMERA/SCAMERA-crash.log} — best effort, ignored on failure.</li>
- * </ul>
+ * <p>P191 (owner, 2026-10-17: «переноси всё туда чтобы в data ничего не хранилось»): the report goes to
+ * {@code /Download/SCAMERA/SCAMERA-crash.log} only (ScameraFiles; the app writes its own files there without a
+ * permission), next to SCAMERA-debug.log. {@code /Android/data/<pkg>/files/SCAMERA-crash.log} is written only when
+ * that write failed; ExitReasons reads the Download file first, then that fallback.
  *
  * <p>This is diagnostic scaffolding for the launch crash and is independent of the
  * "Full debug" switch, which only starts logging once settings are readable.
@@ -68,24 +65,23 @@ public final class ScameraCrashReporter {
                 + "thread    : " + thread.getName() + '\n'
                 + '\n' + trace + '\n';
 
+        if (writeTo(ScameraFiles.file(FILE_NAME), report)) {
+            return;
+        }
         File privateDir = context.getExternalFilesDir(null);
         if (privateDir != null) {
             writeTo(new File(privateDir, FILE_NAME), report);
         }
-
-        File download = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-        File scameraDir = new File(download, "SCAMERA");
-        if (scameraDir.isDirectory() || scameraDir.mkdirs()) {
-            writeTo(new File(scameraDir, FILE_NAME), report);
-        }
     }
 
-    private static void writeTo(File file, String report) {
+    /** Appends the report; false when it could not be written. */
+    private static boolean writeTo(File file, String report) {
         try (FileOutputStream out = new FileOutputStream(file, true)) {
             out.write(report.getBytes("UTF-8"));
             out.flush();
+            return true;
         } catch (Throwable ignored) {
-            // Best effort only.
+            return false;
         }
     }
 }

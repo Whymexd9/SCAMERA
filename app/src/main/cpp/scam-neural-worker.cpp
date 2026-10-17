@@ -123,16 +123,6 @@ int main(int argc,char** argv) {
             scam::MappedHybridBurst hybridBurst(argv[3],requestedHalf);
             std::unique_ptr<scam::MappedScamBurst> mapped;
             if(!hybridBurst.hybrid)mapped=std::make_unique<scam::MappedScamBurst>(argv[3]);
-            // Debug: keep the burst (touch <external files>/scam_keep) so the merge can be replayed
-            // offline with `--scam-capture <job dir> <external files>/scam_burst.bin <out>`. An offline replay
-            // (SCAM_HYBRID / SCAM_NO_KEEP in the environment) never overwrites the kept burst of the app.
-            if(std::string(argv[3])!="/sdcard/Android/data/org.codeaurora.snapcam/files/scam_burst.bin"
-                    &&!std::getenv("SCAM_HYBRID")&&!std::getenv("SCAM_NO_KEEP")
-                    &&access("/sdcard/Android/data/org.codeaurora.snapcam/files/scam_keep",F_OK)==0){
-                std::ofstream dst("/sdcard/Android/data/org.codeaurora.snapcam/files/scam_burst.bin",std::ios::binary|std::ios::trunc);
-                if(mapped)dst.write(static_cast<const char*>(mapped->address),std::streamsize(mapped->length));
-                else dst.write(static_cast<const char*>(hybridBurst.address),std::streamsize(hybridBurst.length));
-            }
             // P188: the app's keep-burst marker names where (its own external files): the burst of this shot, for a replay
             {
                 std::ifstream keep(std::string(argv[2])+"/keep-burst");std::string dest;

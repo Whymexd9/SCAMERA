@@ -60,11 +60,14 @@ public final class ExitReasons {
         }, "ExitReasons").start();
     }
 
-    /** The last report of SCAMERA-crash.log in the app's external files (at most 8 KB of it). */
+    /**
+     * The last report of SCAMERA-crash.log (at most 8 KB of it): P191 Download/SCAMERA first, then the package's external
+     * files, where ScameraCrashReporter writes only when the Download write failed.
+     */
     static String lastCrashReport(Context context) {
         try {
-            java.io.File dir = context.getExternalFilesDir(null);
-            java.io.File f = dir == null ? null : new java.io.File(dir, "SCAMERA-crash.log");
+            java.io.File f = ScameraFiles.file("SCAMERA-crash.log");
+            if (!f.isFile()) f = ScameraFiles.legacy(context, "SCAMERA-crash.log");
             if (f == null || !f.isFile()) return "";
             long len = f.length(), from = Math.max(0, len - 8192);
             byte[] buf = new byte[(int) (len - from)];

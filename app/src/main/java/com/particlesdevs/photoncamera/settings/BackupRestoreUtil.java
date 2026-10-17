@@ -695,12 +695,8 @@ public class BackupRestoreUtil {
         } catch (IOException e) {
             Log.e(TAG, "reset: shared_prefs not deleted (cleared already): " + e);
         }
-        File dev = ScamDevFile.file(context);
-        if (dev != null && dev.isFile()) {
-            File bak = new File(dev.getParentFile(), "scam_dev.txt.bak");
-            if (bak.isFile() && !bak.delete()) ok = false;
-            if (!dev.renameTo(bak)) ok = false;
-        }
+        // P191: Download/SCAMERA/scam_dev.txt -> scam_dev.txt.bak beside it (through the folder grant for the owner's own copy)
+        if (!ScamDevFile.setAside(context)) ok = false;
         return ok;
     }
 }

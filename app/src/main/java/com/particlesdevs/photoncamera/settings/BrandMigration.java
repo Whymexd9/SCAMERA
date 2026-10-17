@@ -185,10 +185,10 @@ public final class BrandMigration {
             // settings stay readable under their old names at worst
         }
         try {
-            File ext = context.getExternalFilesDir(null);
-            File oldDev = ext == null ? null : new File(ext, r("txt.ved_ecin"));
-            File newDev = ext == null ? null : new File(ext, "scam_dev.txt");
-            if (oldDev != null && oldDev.isFile() && !newDev.exists()) oldDev.renameTo(newDev);
+            // P191: the old dev file of the package's external files goes straight to Download/SCAMERA/scam_dev.txt (only when
+            // that is not there yet; the old file is deleted after a verified copy)
+            com.particlesdevs.photoncamera.util.ScameraFiles.migrate(context,
+                    com.particlesdevs.photoncamera.util.ScameraFiles.legacy(context, r("txt.ved_ecin")), ScamDevFile.NAME);
         } catch (RuntimeException ignored) {
             // the owner renames it by hand
         }
