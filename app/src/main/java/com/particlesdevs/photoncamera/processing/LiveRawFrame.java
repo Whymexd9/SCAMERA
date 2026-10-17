@@ -59,11 +59,13 @@ public final class LiveRawFrame {
     /**
      * P188 (owner, 2026-10-17: the 50 MP FULLRES viewfinder ran at ~7 fps «как при 200мп», it must run at 30): the camera thread
      * waits at least this long between two binned frames - QUAD_BIN_INTERVAL_NS above 100 MP (200 MP: the HAL gives ~7 fps anyway),
-     * below it twice what the last binning took, at most QUAD_BIN_INTERVAL_NS (50 MP sparse bin: a few ms, so every frame; a packed
-     * RAW10 / RAW12 frame that is slow to unpack keeps the camera thread free as before).
+     * below it what the last binning took and a quarter more, at most QUAD_BIN_INTERVAL_NS (50 MP sparse bin: a few ms, so every
+     * frame; a packed RAW10 / RAW12 frame that is slow to unpack keeps the camera thread free as before). P191: twice the last
+     * binning held a 45 ms bin at ~11 fps.
      */
     static long binIntervalNs(long pixels, long lastBin) {
-        return pixels > SPARSE_BIN_PIXELS ? QUAD_BIN_INTERVAL_NS : Math.min(QUAD_BIN_INTERVAL_NS, 2 * Math.max(0, lastBin));
+        final long bin = Math.max(0, lastBin);
+        return pixels > SPARSE_BIN_PIXELS ? QUAD_BIN_INTERVAL_NS : Math.min(QUAD_BIN_INTERVAL_NS, bin + bin / 4);
     }
     private static ByteBuffer quadFull, quadBinned;
 
@@ -115,27 +117,45 @@ public final class LiveRawFrame {
         // P179 (200 MP: the preview ran at 2.7 fps, its development held the camera's buffers): above SPARSE_BIN_PIXELS a
         // Tetra block is the mean of its central 2 x 2 pixels (a quarter of the reads) - the viewfinder only, never the photo
         final long binStart = System.nanoTime();
+        // P191 (owner, 2026-10-17: the 50 MP viewfinder still ran at ~11 fps): rows go through short[] in bulk - the per-site
+        // ShortBuffer get / put took ~45 ms a 50 MP frame, and the wait of twice that held the viewfinder at ~11 of the camera's 30 fps
+        final java.nio.ShortBuffer source = src, target = out;
+        final int rows = sparse ? (block == 4 ? 2 : 1) : block, first = sparse && block == 4 ? 1 : 0;
+        final int span = sparse && block == 4 ? w - 1 : sparse ? w - 1 : w;
         com.particlesdevs.photoncamera.util.ParallelWork.forEach(chunks, chunk -> {
-        for (int y = bh * chunk / chunks; y < bh * (chunk + 1) / chunks; y++) {
-            final int r0 = block * y * srcRow, o = y * bw;
-            for (int x = 0; x < bw; x++) {
-                final int c = block * x;
-                int s = 0;
+            final java.nio.ShortBuffer in = source.duplicate(), put = target.duplicate();
+            final short[][] line = new short[rows][span];
+            final short[] row = new short[bw];
+            for (int y = bh * chunk / chunks; y < bh * (chunk + 1) / chunks; y++) {
+                for (int r = 0; r < rows; r++) {
+                    in.position((block * y + first + r) * srcRow);
+                    in.get(line[r], 0, span);
+                }
                 if (sparse && block == 2) {
-                    out.put(o + x, src.get(r0 + c));
-                    continue;
+                    final short[] a = line[0];
+                    for (int x = 0; x < bw; x++) row[x] = a[2 * x];
+                } else if (sparse) {
+                    final short[] a = line[0], b = line[1];
+                    for (int x = 0; x < bw; x++) {
+                        final int m = 4 * x + 1;
+                        final int s = (a[m] & 0xFFFF) + (a[m + 1] & 0xFFFF) + (b[m] & 0xFFFF) + (b[m + 1] & 0xFFFF);
+                        row[x] = (short) ((s + 2) / 4);
+                    }
+                } else {
+                    final int half = block * block / 2, n = block * block;
+                    for (int x = 0; x < bw; x++) {
+                        final int c = block * x;
+                        int s = 0;
+                        for (int dy = 0; dy < block; dy++) {
+                            final short[] a = line[dy];
+                            for (int dx = 0; dx < block; dx++) s += a[c + dx] & 0xFFFF;
+                        }
+                        row[x] = (short) ((s + half) / n);
+                    }
                 }
-                if (sparse && block == 4) {
-                    final int m = r0 + srcRow + c + 1;
-                    s = (src.get(m) & 0xFFFF) + (src.get(m + 1) & 0xFFFF) + (src.get(m + srcRow) & 0xFFFF) + (src.get(m + srcRow + 1) & 0xFFFF);
-                    out.put(o + x, (short) ((s + 2) / 4));
-                    continue;
-                }
-                for (int dy = 0; dy < block; dy++) for (int dx = 0; dx < block; dx++)
-                    s += src.get(r0 + dy * srcRow + c + dx) & 0xFFFF;
-                out.put(o + x, (short) ((s + block * block / 2) / (block * block)));
+                put.position(y * bw);
+                put.put(row, 0, bw);
             }
-        }
         });
         lastBinNs = System.nanoTime() - callStart;
         if (sparse && ++sparseLogged % 20 == 1)

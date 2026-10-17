@@ -76,9 +76,41 @@ public class LiveRawQuadBinTest {
     /** P188: the 50 MP viewfinder bins every frame when binning is fast; 200 MP keeps its 150 ms; a slow bin throttles itself. */
     @Test public void binIntervalFollowsTheCostBelow100MpAndStays150msAbove() {
         assertEquals(150_000_000L, LiveRawFrame.binIntervalNs(16320L * 12288, 5_000_000L));
-        assertEquals(10_000_000L, LiveRawFrame.binIntervalNs(8192L * 6144, 5_000_000L));
+        assertEquals(6_250_000L, LiveRawFrame.binIntervalNs(8192L * 6144, 5_000_000L));
+        assertEquals("a 25 ms bin still keeps 30 fps", true, LiveRawFrame.binIntervalNs(8192L * 6144, 25_000_000L) < 33_000_000L);
         assertEquals("a fast bin: no wait at 30 fps", true, LiveRawFrame.binIntervalNs(8192L * 6144, 8_000_000L) < 33_000_000L);
         assertEquals(150_000_000L, LiveRawFrame.binIntervalNs(8192L * 6144, 120_000_000L));
         assertEquals(0L, LiveRawFrame.binIntervalNs(8192L * 6144, 0L));
+    }
+
+    /** P191: the bulk-row binning gives what the per-site one gave, for every block and mode, with row padding and many rows. */
+    @Test public void bulkRowsMatchThePerSiteBinning() {
+        java.util.Random random = new java.util.Random(191);
+        int w = 64, h = 48, stride = w * 2 + 10, offset = 6;
+        ByteBuffer data = ByteBuffer.allocateDirect(offset + stride * h).order(ByteOrder.nativeOrder());
+        for (int i = 0; i < data.capacity(); i++) data.put(i, (byte) random.nextInt(256));
+        data.position(offset);
+        for (int block : new int[] {2, 4}) for (boolean sparse : new boolean[] {false, true}) {
+            ByteBuffer result = LiveRawFrame.binMosaic(data, w, h, stride, 0x20, block, sparse).order(ByteOrder.nativeOrder());
+            int bw = w / block, bh = h / block;
+            assertEquals(bw * bh * 2, result.remaining());
+            for (int y = 0; y < bh; y++) for (int x = 0; x < bw; x++) {
+                int expected;
+                if (sparse && block == 2) expected = site(data, offset, stride, 2 * y, 2 * x);
+                else if (sparse) expected = (site(data, offset, stride, 4 * y + 1, 4 * x + 1) + site(data, offset, stride, 4 * y + 1, 4 * x + 2)
+                        + site(data, offset, stride, 4 * y + 2, 4 * x + 1) + site(data, offset, stride, 4 * y + 2, 4 * x + 2) + 2) / 4;
+                else {
+                    int s = 0;
+                    for (int dy = 0; dy < block; dy++) for (int dx = 0; dx < block; dx++) s += site(data, offset, stride, block * y + dy, block * x + dx);
+                    expected = (s + block * block / 2) / (block * block);
+                }
+                assertEquals("block " + block + " sparse " + sparse + " at " + x + "," + y, expected, result.getShort((y * bw + x) * 2) & 0xffff);
+            }
+            assertEquals(offset, data.position());
+        }
+    }
+
+    private static int site(ByteBuffer data, int offset, int stride, int y, int x) {
+        return data.getShort(offset + y * stride + x * 2) & 0xffff;
     }
 }
