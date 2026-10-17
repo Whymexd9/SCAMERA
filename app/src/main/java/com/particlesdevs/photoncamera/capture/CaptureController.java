@@ -2365,9 +2365,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 : ": automatic AE, serial PSL, SHDR processing"));
     }
 
+    /** The FULLRES session runs the native route: a Quad / Tetra row, or P194's hardware-remosaic Bayer row (X100 / X300 Ultra). */
     private boolean nativeVivoFullRes() {
         VivoSdkFullRes.Profile profile = mVivoSdkRawSession == null ? null : VivoSdkFullRes.profile(mVivoSdkCameraId);
-        return profile != null && profile.nativeBlock > 1;
+        return profile != null && profile.nativeRoute();
     }
 
     private void closeVivoSdkRawSession(@Nullable CameraDevice device) {
@@ -4235,6 +4236,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     if (full != null && full.nativeBlock > 1
                             && retryWithoutVivoSdkFullRes(mCaptureSession, "the frames are remosaicked by the HAL (plain Bayer, no mosaic)")) return;
                 }
+                // P194: the other way round, a hardware-remosaic row (plain Bayer expected) whose frames are a Quad / Tetra mosaic is
+                // no hardware remosaic: noted, its camera takes the own mosaic from the next start
+                if (block > 1 && nativeVivoFullRes()) {
+                    final VivoSdkFullRes.Profile full = VivoSdkFullRes.profile(mVivoSdkCameraId);
+                    if (full != null && full.nativeBayer()
+                            && retryWithoutVivoSdkFullRes(mCaptureSession, "the hardware-remosaic row gives a block " + block + " mosaic, not a Bayer")) return;
+                }
                 if (block > 1 && !mMosaicPreview && !mLiveRawSession && !XiaomiTeleZoom.ispPreview()) {
                     mMosaicPreview = true;
                     LiveRawFrame.setEnabled(true);
@@ -5034,7 +5042,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final int requested = hugeSeries ? PreferenceKeys.getFullRes200Frames() : fifty > 0 ? fifty : PreferenceKeys.getHybridZslFrames();
         final long availableBytes = manager == null ? -1 : memory.availMem;
         final int grid = !hugeSeries && !"sensor".equals(PreferenceKeys.hybridOutputMode()) ? 2 : 1;
-        final int block = hugeSeries ? 4 : nativeVivoFullRes() && !VivoSdkFullRes.hardwareRemosaicOn() ? 2 : 1;
+        // P194: the native route's own colour block (Quad 2, the X100 / X300 Ultra's hardware-remosaic Bayer 1); the SDK route 1
+        final int block = hugeSeries ? 4 : nativeVivoFullRes() ? Math.max(1, VivoSdkFullRes.profile(mVivoSdkCameraId).nativeBlock) : 1;
         final int guarded = VivoSdkFullRes.frameCount(requested, frameBytes, availableBytes);
         final int frames = seriesMode ? VivoSdkFullRes.seriesCount(requested, (long) rawWidth * rawHeight, rawWidth, frameBytes, block, grid,
                 hugeSeries, availableBytes) : guarded;

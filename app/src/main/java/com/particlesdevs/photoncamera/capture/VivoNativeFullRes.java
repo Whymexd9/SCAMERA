@@ -27,6 +27,11 @@ import java.util.Locale;
  * table (never on the X200 Ultra). Whatever the row, every shot proves its mosaic from the pixels: a hardware-remosaiced
  * Bayer frame fails the shot (VivoSdkFullResCapture), it never passes as Quad / Tetra; a lease the firmware refuses fails the
  * session and FULLRES goes off.
+ * <p>
+ * P194: «FULLRES: аппаратный ремозаик» acts here too - on the 50 MP size of a camera whose table has a row the HAL gives
+ * remosaicked ({@link #hardwareRow}: the X300 Ultra main 3 row 2, the X100 Ultra main 2 row 0, from the owner's P186 trials),
+ * taken by this native route as a plain Bayer profile (nativeBlock 1); a failed hardware row is remembered and the camera
+ * takes its own mosaic again. Not verified on the phones.
  */
 public final class VivoNativeFullRes {
     enum Phone { X200_ULTRA, X100_ULTRA, X300_ULTRA }
@@ -67,9 +72,17 @@ public final class VivoNativeFullRes {
      * sizes still have a row to try.
      */
     static boolean twoSizes(String cameraId) {
-        Phone p = phone();
+        return twoSizes(phone(), cameraId, true);
+    }
+
+    /**
+     * {@link #twoSizes(String)} on a given phone (null: as the X200 Ultra); {@code live}: only while both sizes have a row - P194
+     * the 50 MP size also by its hardware-remosaic row while the switch is on.
+     */
+    static boolean twoSizes(@Nullable Phone p, String cameraId, boolean live) {
         if (p == null || p == Phone.X200_ULTRA) return twoSizes(Phone.X200_ULTRA, cameraId);
-        return twoSizes(p, cameraId) && profile(p, cameraId, true, true) != null && profile(p, cameraId, false, true) != null;
+        return twoSizes(p, cameraId) && (!live || profile(p, cameraId, true, true) != null && (profile(p, cameraId, false, true) != null
+                || VivoSdkFullRes.hardwareRemosaicOn() && hardwareProfile(p, cameraId, true) != null));
     }
 
     static boolean twoSizes(Phone phone, String cameraId) {
@@ -86,10 +99,41 @@ public final class VivoNativeFullRes {
      */
     @Nullable
     static VivoSdkFullRes.Profile profile(String cameraId, boolean large) {
-        Phone p = phone();
+        return profile(phone(), cameraId, large);
+    }
+
+    /** {@link #profile(String, boolean)} on a given phone (null: as the X200 Ultra). */
+    @Nullable
+    static VivoSdkFullRes.Profile profile(@Nullable Phone p, String cameraId, boolean large) {
         if (p == null || p == Phone.X200_ULTRA) return profile(Phone.X200_ULTRA, cameraId, large, false);
         VivoSdkFullRes.Profile own = profile(p, cameraId, large, true);
         return own != null || !twoSizes(p, cameraId) ? own : profile(p, cameraId, !large, true);
+    }
+
+    /**
+     * P194 (owner, 2026-10-17: «FULLRES: аппаратный ремозаик» on the X100 / X300 Ultra too): the row of a camera's 50 MP size
+     * whose frames the HAL gives remosaicked - a plain Bayer at the size of that table row - measured in the owner's P186 row
+     * trials (MosaicBlockDetector block 1): the X300 Ultra main camera 3 row 2 (8160x6128), the X100 Ultra main camera 2 row 0
+     * (8192x6144; its listed main 0 is the same sensor's other profile). -1 for any other camera (the X300 ultra-wide and the
+     * telephotos of both gave their own Quad on the rows tried): there the switch changes nothing. Never the X200 Ultra (its
+     * hardware remosaic is the SDK route).
+     */
+    static int hardwareRow(@Nullable Phone phone, String cameraId) {
+        if (phone == Phone.X300_ULTRA && "3".equals(cameraId)) return 2;
+        if (phone == Phone.X100_ULTRA && ("2".equals(cameraId) || "0".equals(cameraId))) return 0;
+        return -1;
+    }
+
+    /**
+     * P194: the hardware-remosaic profile of a camera (the native route, nativeBlock 1: plain Bayer at the 50 MP size), null
+     * without a {@link #hardwareRow} or ({@code live}) once that row failed on this phone - the camera's own mosaic then.
+     */
+    @Nullable
+    static VivoSdkFullRes.Profile hardwareProfile(@Nullable Phone phone, String cameraId, boolean live) {
+        final int row = hardwareRow(phone, cameraId);
+        final int[] size = row < 0 ? null : size(phone, cameraId, false);
+        if (size == null || live && hardwareFailed(cameraId)) return null;
+        return new VivoSdkFullRes.Profile(size[0], size[1], row, 1);
     }
 
     /**
@@ -188,6 +232,17 @@ public final class VivoNativeFullRes {
      */
     static final int ROW_TRIALS = 1;
     private static final String FAILED = "module_fullres_rowfail_", FAILED_TRIALS = "module_fullres_rowfail_trials";
+    /** P194: a camera's hardware-remosaic row failed (no frame, the camera died, not a plain Bayer): suffix of FAILED + camera. */
+    private static final String HW_FAILED = "_hw";
+
+    static boolean hardwareFailed(String cameraId) {
+        try {
+            android.content.SharedPreferences p = com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
+            return p.getInt(FAILED_TRIALS, ROW_TRIALS) == ROW_TRIALS && p.getBoolean(FAILED + cameraId + HW_FAILED, false);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
 
     static int failures(String cameraId, boolean big) {
         try {
@@ -216,6 +271,19 @@ public final class VivoNativeFullRes {
         final boolean huge = (long) profile.size.getWidth() * profile.size.getHeight() > 100_000_000L;
         final boolean big = twoSizes(phone, cameraId) && huge;
         final int mp = huge ? 200 : 50;
+        if (profile.nativeBayer()) {
+            // P194: the hardware-remosaic row is noted on its own (the own rows' trials stay); its 50 MP shots take the own mosaic
+            try {
+                com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit()
+                        .putInt(FAILED_TRIALS, ROW_TRIALS).putBoolean(FAILED + cameraId + HW_FAILED, true).apply();
+            } catch (RuntimeException ignored) {
+            }
+            com.particlesdevs.photoncamera.util.Log.w("VivoNativeFullRes", "camera " + cameraId + " hardware-remosaic row "
+                    + profile.sensorMode + " failed (" + why + "); its own mosaic from now on");
+            return com.particlesdevs.photoncamera.util.Lang.t("FULLRES 50 Мп: аппаратный ремозаик (режим " + profile.sensorMode
+                            + ") не работает на этой камере; дальше без него",
+                    "FULLRES 50 MP: the hardware remosaic (mode " + profile.sensorMode + ") does not work on this camera; without it from now on");
+        }
         if (forced(role(phone, cameraId, huge)) >= 0) {
             com.particlesdevs.photoncamera.util.Log.w("VivoNativeFullRes", "camera " + cameraId + " test row " + profile.sensorMode + " failed: " + why);
             return com.particlesdevs.photoncamera.util.Lang.t("FULLRES " + mp + " Мп: режим " + profile.sensorMode + " (scam_dev) не работает",

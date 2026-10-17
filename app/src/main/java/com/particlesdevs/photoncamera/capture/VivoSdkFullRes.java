@@ -2,6 +2,8 @@ package com.particlesdevs.photoncamera.capture;
 
 import android.util.Size;
 
+import androidx.annotation.Nullable;
+
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.api.CameraMode;
 import com.particlesdevs.photoncamera.capture.spoof.CameraPackageSpoof;
@@ -24,6 +26,19 @@ public final class VivoSdkFullRes {
             this.sensorMode = sensorMode;
             this.nativeBlock = nativeBlock;
         }
+
+        /**
+         * The native route (RAW-only session, forceSensorMode / the OPPO mode, the own RAW viewfinder): a Quad / Tetra mosaic
+         * (nativeBlock 2 / 4) or P194's hardware-remosaicked plain Bayer (nativeBlock 1); 0 is the X200 Ultra's SDK route.
+         */
+        public boolean nativeRoute() {
+            return nativeBlock > 0;
+        }
+
+        /** P194: the native route's plain Bayer row of the X100 / X300 Ultra's hardware remosaic. */
+        public boolean nativeBayer() {
+            return nativeBlock == 1;
+        }
     }
 
     public static Profile profile(String cameraId) {
@@ -44,7 +59,23 @@ public final class VivoSdkFullRes {
      * there is no hardware-remosaic 200 MP mode, a 200 MP shot keeps the own remosaic.
      */
     static Profile choose(String cameraId, boolean nativeBuild, boolean hardwareRemosaic, boolean tele200) {
+        return choose(VivoNativeFullRes.phone(), cameraId, nativeBuild, hardwareRemosaic, tele200);
+    }
+
+    /**
+     * {@link #choose} on a given phone (null: not one of the native tables, as the X200 Ultra). P194 (owner, 2026-10-17: the
+     * hardware remosaic on the X100 / X300 Ultra too): they have no verified SDK mode, so their 50 MP hardware remosaic is the
+     * native route with the row their HAL gives remosaicked (VivoNativeFullRes.hardwareProfile, plain Bayer); a camera without
+     * such a row keeps its own mosaic whatever the switch.
+     */
+    static Profile choose(@Nullable VivoNativeFullRes.Phone phone, String cameraId, boolean nativeBuild, boolean hardwareRemosaic,
+                          boolean tele200) {
         if (!nativeBuild) return sdkProfile(cameraId);
+        if (phone == VivoNativeFullRes.Phone.X100_ULTRA || phone == VivoNativeFullRes.Phone.X300_ULTRA) {
+            final boolean large = tele200 && VivoNativeFullRes.twoSizes(phone, cameraId, true);
+            final Profile hardware = hardwareRemosaic && !large ? VivoNativeFullRes.hardwareProfile(phone, cameraId, true) : null;
+            return hardware != null ? hardware : VivoNativeFullRes.profile(phone, cameraId, tele200);
+        }
         final boolean large = tele200 && VivoNativeFullRes.twoSizes(cameraId);
         final Profile hardware = sdkProfile(cameraId);
         if (hardwareRemosaic && !large && hardware != null) return hardware;
@@ -62,13 +93,16 @@ public final class VivoSdkFullRes {
     /** P182: the setting «Аппаратный ремозаик» (FULLRES 50 MP by the sensor's hardware remosaic). */
     public static final String PREF_HW_REMOSAIC = "pref_fullres_hw_remosaic";
 
-    /** P182: the switch acts here: the native build on the X200 Ultra, whose hardware-remosaic modes are known. */
+    /**
+     * P182: the switch acts here: the native build on the X200 Ultra, whose hardware-remosaic modes are known; P194 the X100 /
+     * X300 Ultra's native build too (the main camera's 50 MP, VivoNativeFullRes.hardwareRow). Never the OPPO Find X7 Ultra.
+     */
     public static boolean hardwareRemosaicOffered() {
-        return VivoQcomModes.device() && nativeRaw();
+        return !OppoNativeFullRes.device() && nativeRaw();
     }
 
     static boolean hardwareRemosaicOn() {
-        return VivoQcomModes.device() && PreferenceKeys.isFullResHwRemosaic();
+        return !OppoNativeFullRes.device() && VivoNativeFullRes.phone() != null && PreferenceKeys.isFullResHwRemosaic();
     }
 
     /**

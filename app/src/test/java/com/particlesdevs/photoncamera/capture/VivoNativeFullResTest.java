@@ -137,6 +137,48 @@ public class VivoNativeFullResTest {
         assertArrayEquals(new int[]{8160, 6128, 2}, VivoNativeFullRes.size(X300, "3", false));
     }
 
+    /**
+     * P194 (owner, 2026-10-17: «FULLRES: аппаратный ремозаик» on the X100 / X300 Ultra): the rows their HAL gave remosaicked in
+     * the P186 trials (block 1) are the hardware-remosaic profiles, plain Bayer (nativeBlock 1) at the 50 MP size of that row;
+     * the cameras whose rows gave the own Quad have none; nothing on the X200 Ultra (its SDK route) or an unknown phone.
+     */
+    @Test
+    public void theHardwareRemosaicRowsAreTheMainCamerasBayerRows() {
+        assertEquals(2, VivoNativeFullRes.hardwareRow(X300, "3"));
+        assertEquals(0, VivoNativeFullRes.hardwareRow(X100, "2"));
+        assertEquals("the listed main: the same sensor", 0, VivoNativeFullRes.hardwareRow(X100, "0"));
+        for (String camera : new String[]{"4", "5", "6"}) assertEquals("X300 camera " + camera, -1, VivoNativeFullRes.hardwareRow(X300, camera));
+        for (String camera : new String[]{"3", "4", "5"}) assertEquals("X100 camera " + camera, -1, VivoNativeFullRes.hardwareRow(X100, camera));
+        for (String camera : new String[]{"2", "3", "4", "5"}) {
+            assertEquals("X200 camera " + camera, -1, VivoNativeFullRes.hardwareRow(X200, camera));
+            assertEquals("unknown phone", -1, VivoNativeFullRes.hardwareRow(null, camera));
+            assertNull(VivoNativeFullRes.hardwareProfile(X200, camera, false));
+            assertNull(VivoNativeFullRes.hardwareProfile(null, camera, true));
+        }
+        VivoSdkFullRes.Profile x300 = VivoNativeFullRes.hardwareProfile(X300, "3", false);
+        assertEquals(8160, x300.size.getWidth());
+        assertEquals(6128, x300.size.getHeight());
+        assertEquals(2, x300.sensorMode);
+        assertEquals("plain Bayer", 1, x300.nativeBlock);
+        assertTrue(x300.nativeRoute());
+        assertTrue(x300.nativeBayer());
+        VivoSdkFullRes.Profile x100 = VivoNativeFullRes.hardwareProfile(X100, "2", false);
+        assertEquals(8192, x100.size.getWidth());
+        assertEquals(6144, x100.size.getHeight());
+        assertEquals(0, x100.sensorMode);
+        assertEquals(1, x100.nativeBlock);
+        assertNull("the X300 telephoto: its own Quad", VivoNativeFullRes.hardwareProfile(X300, "5", false));
+        assertNull("the X100 telephoto", VivoNativeFullRes.hardwareProfile(X100, "4", false));
+        // the viewfinder's Bayer bin keeps one 2 x 2 quad of each 4 x 4: whole 4 x 4 cells
+        for (VivoSdkFullRes.Profile p : new VivoSdkFullRes.Profile[]{x300, x100}) {
+            assertEquals(0, p.size.getWidth() % 4);
+            assertEquals(0, p.size.getHeight() % 4);
+        }
+        assertFalse("a Quad row is no Bayer", VivoNativeFullRes.profile(X300, "3", false, false).nativeBayer());
+        assertTrue(VivoNativeFullRes.profile(X300, "3", false, false).nativeRoute());
+        assertFalse("the SDK route", new VivoSdkFullRes.Profile(8192, 6144, 13, 0).nativeRoute());
+    }
+
     @Test
     public void aTestRowReplacesTheTablesWhenItIsAValidRow() {
         assertEquals(0, VivoNativeFullRes.rowOf(-1f, 0));

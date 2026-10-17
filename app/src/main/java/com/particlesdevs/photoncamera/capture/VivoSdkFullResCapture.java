@@ -87,13 +87,13 @@ final class VivoSdkFullResCapture {
         this.listener = listener;
         // P179: the native RAW-only series keeps up to NATIVE_IN_FLIGHT stills queued, so they follow each other at the
         // sensor's pace instead of each waiting behind the repeating preview requests (200 MP: ~5 s per frame one by one)
-        serial = new SerialRawCapture(count, profile.nativeBlock == 0, profile.nativeBlock > 1 ? NATIVE_IN_FLIGHT : 1, new SerialRawCapture.Listener() {
+        serial = new SerialRawCapture(count, profile.nativeBlock == 0, profile.nativeRoute() ? NATIVE_IN_FLIGHT : 1, new SerialRawCapture.Listener() {
             public void submit(int index) { submitFrame(index); }
             public void complete() { finish(); }
             public void failed(String reason) { fail(reason); }
         });
         router = new TimestampFrameRouter<>((image, still) -> {
-            if (!still && profile.nativeBlock > 1 && !stopped) {
+            if (!still && profile.nativeRoute() && !stopped) {
                 if (this.previewConsumer == null) image.close(); else this.previewConsumer.accept(image);
                 return;
             }
@@ -109,7 +109,8 @@ final class VivoSdkFullResCapture {
                     serial.fail("SDK FULLRES50 delivered an empty or invalid RAW buffer");
                     return;
                 }
-                if (profile.nativeBlock > 1) {
+                // P194: a native Bayer row (the HAL's hardware remosaic) fails on a confident Quad / Tetra still the same way
+                if (profile.nativeRoute()) {
                     MosaicBlockDetector.Result mosaic = MosaicBlockDetector.detect(plane.getBuffer(),
                             image.getWidth(), image.getHeight(), plane.getRowStride(), 64, 1023, 64);
                     if (mosaic.confident && mosaic.block != profile.nativeBlock) {
@@ -150,7 +151,7 @@ final class VivoSdkFullResCapture {
         if (stopped) image.close(); else router.image(image.getTimestamp(), image);
     }
     void jpegDrained(long timestamp) { if (!stopped) serial.jpeg(timestamp); }
-    void previewStarted(long timestamp) { if (!stopped && profile.nativeBlock > 1) router.request(timestamp, false); }
+    void previewStarted(long timestamp) { if (!stopped && profile.nativeRoute()) router.request(timestamp, false); }
 
     /** P179: the ultrashort still of a 200 MP series (its index, exposure and sensitivity), -1: none. */
     private int ultrashortIndex = -1;
@@ -159,7 +160,7 @@ final class VivoSdkFullResCapture {
 
     /** P179: the last still of a native series is an ultrashort one (manual exposure); before {@link #start}. */
     void ultrashortLast(long exposureNs, int iso) {
-        if (exposureNs <= 0 || iso <= 0 || count < 2 || profile.nativeBlock < 2) return;
+        if (exposureNs <= 0 || iso <= 0 || count < 2 || !profile.nativeRoute()) return;
         ultrashortIndex = count - 1;
         ultrashortExposureNs = exposureNs;
         ultrashortIso = iso;
@@ -184,13 +185,13 @@ final class VivoSdkFullResCapture {
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
             builder.set(CaptureRequest.JPEG_ORIENTATION, rotation);
             builder.set(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE, CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON);
-            if (profile.nativeBlock > 1) VivoPd2454NativeRaw.applyFullRes(builder, profile);
+            if (profile.nativeRoute()) VivoPd2454NativeRaw.applyFullRes(builder, profile);
             else {
                 sdk.apply(builder, true, displayTimestamp);
                 VivoSdkRawSession.applyAutomaticExposure(builder);
             }
             for (CaptureRequest.Key<?> key : sessionKeys) copySessionKey(builder, key);
-            if (profile.nativeBlock > 1) {
+            if (profile.nativeRoute()) {
                 VivoPd2454NativeRaw.applyFullRes(builder, profile);
                 builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
                         preview.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION));
@@ -263,6 +264,7 @@ final class VivoSdkFullResCapture {
 
     private void finish() {
         try {
+            // P194: a Bayer still the detector cannot tell (a flat scene) is no mosaic either: only Quad / Tetra must be proven
             if (profile.nativeBlock > 1 && !nativeMosaicVerified)
                 throw new IllegalStateException("Native FULLRES mosaic has not been verified from RAW pixels");
             ScamCaptureSequence sequence = ScamCaptureSequence.hybridFuture(requests, cutoff);

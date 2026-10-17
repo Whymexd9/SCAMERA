@@ -504,7 +504,7 @@
     <string name="prefs_camera_settings_screen_title">Cameras and sensors</string>
     <string name="prefs_camera_settings_screen_summary">Camera modules, their profiles and zoom, sensor settings</string>
     <string name="prefs_fullres_hw_remosaic_title">FULLRES: hardware remosaic</string>
-    <string name="prefs_fullres_hw_remosaic_summary">50 MP full-resolution shots take the sensor\'s own remosaic (a plain Bayer frame, as the stock camera). Off: the raw Quad / Tetra mosaic and the SHDR remosaic. 200 MP always keeps the SHDR remosaic: the sensor has no hardware remosaic at 200 MP.</string>
+    <string name="prefs_fullres_hw_remosaic_summary">50 MP full-resolution shots take the sensor\'s own remosaic (a plain Bayer frame, as the stock camera). Off: the raw Quad / Tetra mosaic and the SHDR remosaic. 200 MP always keeps the SHDR remosaic: the sensor has no hardware remosaic at 200 MP. vivo X100 Ultra / X300 Ultra: the main camera only, the other cameras keep their raw mosaic.</string>
     <string name="prefs_xiaomi_smooth_zoom_title">Smooth optical zoom (Xiaomi 17 Ultra)</string>
     <string name="prefs_xiaomi_smooth_zoom_summary">Telephoto: 3.2–4.3x optical, then crop, from 6.45x in-sensor zoom. Off: zoom without these modes.</string>
     <string name="prefs_system_settings_screen_title">System</string>

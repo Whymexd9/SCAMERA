@@ -60,12 +60,13 @@ public final class VivoPd2454NativeRaw {
         VivoSdkFullRes.Profile profile = context != null && VivoNativeFullRes.device() && PACKAGE.equals(context.getPackageName())
                 && PixelPro10.fullResOn() && !Dcg14Mode.on()
                 ? VivoSdkFullRes.profile(camera) : null;
-        // P182: a hardware-remosaic FULLRES shot runs the SDK route (no native forceSensorMode on its requests)
-        return profile != null && profile.nativeBlock > 1 ? profile : null;
+        // P182: a hardware-remosaic FULLRES shot of the X200 Ultra runs the SDK route (no native forceSensorMode on its requests);
+        // P194: the X100 / X300 Ultra's runs the native route with its Bayer row
+        return profile != null && profile.nativeRoute() ? profile : null;
     }
 
     static void applyFullRes(CaptureRequest.Builder builder, VivoSdkFullRes.Profile profile) {
-        if (profile == null || profile.nativeBlock < 2) throw new IllegalArgumentException("Native FULLRES profile missing");
+        if (profile == null || !profile.nativeRoute()) throw new IllegalArgumentException("Native FULLRES profile missing");
         if (VivoSdkFullRes.oppo()) { // P192: the OPPO mode key, the own exposure
             OppoNativeFullRes.apply(builder, profile);
             return;

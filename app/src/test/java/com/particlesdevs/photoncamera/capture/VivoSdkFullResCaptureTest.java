@@ -79,11 +79,25 @@ public class VivoSdkFullResCaptureTest {
         assertNull(VivoSdkFullRes.choose("2", true, true, false));
     }
 
+    /**
+     * P194: the X100 / X300 Ultra's hardware remosaic is the native route with a Bayer row (nativeBlock 1): RAW-only stills with
+     * forceSensorMode, no JPEG, no SDK requests, queued as the native series; plain Bayer stills pass.
+     */
+    @Test public void aNativeBayerRowCapturesMatchedBayerStillsByTheNativeRoute() throws Exception {
+        verifyProfile("3", new VivoSdkFullRes.Profile(512, 512, 2, 1), 4, 1);
+    }
+
+    /** P194: a hardware-remosaic row whose stills are a Quad mosaic is no hardware remosaic: the series fails. */
+    @Test public void aNativeBayerRowRejectsQuadPixels() throws Exception {
+        verifyProfile("3", new VivoSdkFullRes.Profile(512, 512, 2, 1), 4, 2);
+    }
+
     /** P179: only a native series above 100 MP stops the preview at the shutter (200 MP); 50 MP and the SDK series keep it. */
     @Test public void only200MpStopsThePreviewForItsSeries() {
         assertTrue(VivoSdkFullResCapture.stopsPreview(VivoSdkFullRes.TELE_200));
         assertFalse(VivoSdkFullResCapture.stopsPreview(VivoSdkFullRes.TELE_50));
         assertFalse(VivoSdkFullResCapture.stopsPreview(VivoSdkFullRes.nativeProfile("3")));
+        assertFalse("P194: a 50 MP Bayer row", VivoSdkFullResCapture.stopsPreview(new VivoSdkFullRes.Profile(8160, 6128, 2, 1)));
         assertFalse(VivoSdkFullResCapture.stopsPreview(new VivoSdkFullRes.Profile(16320, 12288, 0, 0)));
     }
 
@@ -142,7 +156,7 @@ public class VivoSdkFullResCaptureTest {
 
     private void verifyProfile(String cameraId, VivoSdkFullRes.Profile profile, int count, int inputBlock, boolean ultrashort) throws Exception {
         int width = profile.size.getWidth(), height = profile.size.getHeight(), sensorMode = profile.sensorMode;
-        boolean nativeRaw = profile.nativeBlock > 1;
+        boolean nativeRaw = profile.nativeRoute();
         Class<?> nativeMetadata = Class.forName("android.hardware.camera2.impl.CameraMetadataNative");
         CaptureRequest.Builder previewBuilder = CaptureRequest.Builder.class
                 .getConstructor(nativeMetadata, boolean.class, int.class, String.class, java.util.Set.class)

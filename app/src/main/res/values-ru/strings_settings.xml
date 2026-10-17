@@ -504,7 +504,7 @@
     <string name="prefs_camera_settings_screen_title">Камеры и сенсоры</string>
     <string name="prefs_camera_settings_screen_summary">Модули камеры, их профили и зум, настройки сенсоров</string>
     <string name="prefs_fullres_hw_remosaic_title">FULLRES: аппаратный ремозаик</string>
-    <string name="prefs_fullres_hw_remosaic_summary">Полное разрешение 50 Мп снимается с ремозаиком самого сенсора (обычный Байер, как в стоковой камере). Выкл. — сырая мозаика Quad / Tetra и ремозаик SHDR. 200 Мп всегда с ремозаиком SHDR: аппаратного ремозаика на 200 Мп у сенсора нет.</string>
+    <string name="prefs_fullres_hw_remosaic_summary">Полное разрешение 50 Мп снимается с ремозаиком самого сенсора (обычный Байер, как в стоковой камере). Выкл. — сырая мозаика Quad / Tetra и ремозаик SHDR. 200 Мп всегда с ремозаиком SHDR: аппаратного ремозаика на 200 Мп у сенсора нет. vivo X100 Ultra / X300 Ultra: только основная камера, остальные остаются с сырой мозаикой.</string>
     <string name="prefs_xiaomi_smooth_zoom_title">Плавный оптический зум (Xiaomi 17 Ultra)</string>
     <string name="prefs_xiaomi_smooth_zoom_summary">Телевик: 3,2–4,3x — оптика, дальше кроп, с 6,45x — зум в сенсоре. Выкл. — зум без этих режимов.</string>
     <string name="prefs_system_settings_screen_title">Система</string>

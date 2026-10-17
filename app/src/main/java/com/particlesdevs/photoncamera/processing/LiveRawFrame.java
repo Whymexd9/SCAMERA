@@ -88,12 +88,18 @@ public final class LiveRawFrame {
      */
     static boolean sparseBin(int w, int h, int block) {
         final long pixels = (long) w * h;
-        return block == 4 ? pixels > SPARSE_BIN_PIXELS : block == 2 && pixels >= QUAD_BIN_PIXELS;
+        return block == 4 ? pixels > SPARSE_BIN_PIXELS : (block == 2 || block == 1) && pixels >= QUAD_BIN_PIXELS;
     }
 
+    /**
+     * P194 (the X100 / X300 Ultra's 50 MP FULLRES by the hardware remosaic: a plain Bayer RAW-only stream): {@code block} 1 is
+     * sparse only - one 2 x 2 Bayer quad of each 4 x 4 (the sites (4i + a, 4j + b), a, b in {0, 1}), a (w/2) x (h/2) plain Bayer
+     * of the same CFA phase, a quarter of the reads as the 50 MP Quad bin; the viewfinder only, never the photo.
+     */
     static synchronized ByteBuffer binMosaic(ByteBuffer plane, int w, int h, int stride, int format, int block, boolean sparse) {
-        if (plane == null || (block != 2 && block != 4) || w < block * 2 || h < block * 2
-                || w % (block * 2) != 0 || h % (block * 2) != 0 || (long) w * h * 2 > Integer.MAX_VALUE) return null;
+        final int cell = block == 1 ? 2 : block;
+        if (plane == null || (block != 1 && block != 2 && block != 4) || (block == 1 && !sparse) || w < cell * 2 || h < cell * 2
+                || w % (cell * 2) != 0 || h % (cell * 2) != 0 || (long) w * h * 2 > Integer.MAX_VALUE) return null;
         final long callStart = System.nanoTime(); // P188: the unpack of a packed frame counts too
         final java.nio.ShortBuffer src;
         final int srcRow;
@@ -110,7 +116,7 @@ public final class LiveRawFrame {
             src = b.slice().order(ByteOrder.nativeOrder()).asShortBuffer();
             srcRow = stride / 2;
         }
-        final int bw = w / block, bh = h / block;
+        final int bw = w / cell, bh = h / cell;
         if (quadBinned == null || quadBinned.capacity() < bw * bh * 2) quadBinned = ByteBuffer.allocateDirect(bw * bh * 2).order(ByteOrder.nativeOrder());
         java.nio.ShortBuffer out = quadBinned.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
         final int chunks = Math.max(1, Math.min(bh, com.particlesdevs.photoncamera.util.ParallelWork.threads() * 4));
@@ -121,17 +127,20 @@ public final class LiveRawFrame {
         // ShortBuffer get / put took ~45 ms a 50 MP frame, and the wait of twice that held the viewfinder at ~11 of the camera's 30 fps
         final java.nio.ShortBuffer source = src, target = out;
         final int rows = sparse ? (block == 4 ? 2 : 1) : block, first = sparse && block == 4 ? 1 : 0;
-        final int span = sparse && block == 4 ? w - 1 : sparse ? w - 1 : w;
+        final int span = block == 1 ? w - 2 : sparse ? w - 1 : w;
         com.particlesdevs.photoncamera.util.ParallelWork.forEach(chunks, chunk -> {
             final java.nio.ShortBuffer in = source.duplicate(), put = target.duplicate();
             final short[][] line = new short[rows][span];
             final short[] row = new short[bw];
             for (int y = bh * chunk / chunks; y < bh * (chunk + 1) / chunks; y++) {
                 for (int r = 0; r < rows; r++) {
-                    in.position((block * y + first + r) * srcRow);
+                    in.position((block == 1 ? 4 * (y >> 1) + (y & 1) : block * y + first + r) * srcRow);
                     in.get(line[r], 0, span);
                 }
-                if (sparse && block == 2) {
+                if (block == 1) {
+                    final short[] a = line[0];
+                    for (int x = 0; x < bw; x++) row[x] = a[4 * (x >> 1) + (x & 1)];
+                } else if (sparse && block == 2) {
                     final short[] a = line[0];
                     for (int x = 0; x < bw; x++) row[x] = a[2 * x];
                 } else if (sparse) {
@@ -159,7 +168,8 @@ public final class LiveRawFrame {
         });
         lastBinNs = System.nanoTime() - callStart;
         if (sparse && ++sparseLogged % 20 == 1)
-            android.util.Log.i("LiveRawFrame", (block == 4 ? "200 MP viewfinder bin (centre 2x2 of each block)" : "50 MP viewfinder bin (one site of each cell)")
+            android.util.Log.i("LiveRawFrame", (block == 4 ? "200 MP viewfinder bin (centre 2x2 of each block)" : block == 1
+                    ? "50 MP Bayer viewfinder bin (one 2x2 quad of each 4x4)" : "50 MP viewfinder bin (one site of each cell)")
                     + " ms=" + (System.nanoTime() - binStart) / 1_000_000);
         ByteBuffer result = quadBinned.duplicate().order(ByteOrder.nativeOrder());
         result.clear();
@@ -238,15 +248,16 @@ public final class LiveRawFrame {
     public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise,int format){
         if (!enabled || plane == null) return;
         // P108: a full-resolution Quad-Bayer frame (Pixel 10 Pro: 8160x6144 RAW10, the ISP's own viewfinder is green in that
-        // mode) is shown 2x2-binned as the plain Bayer 4080x3072, at most every QUAD_BIN_INTERVAL_NS (the camera thread)
-        if ((block == 2 || block == 4) && (long) w * h >= QUAD_BIN_PIXELS
-                && w % (block * 2) == 0 && h % (block * 2) == 0) {
+        // mode) is shown 2x2-binned as the plain Bayer 4080x3072, at most every QUAD_BIN_INTERVAL_NS (the camera thread); P194 a
+        // plain Bayer frame as large (the hardware-remosaic FULLRES) one 2x2 quad of each 4x4, the same (w/2) x (h/2)
+        final int bin = block == 2 || block == 4 ? block : 1, cell = bin == 1 ? 2 : bin;
+        if ((long) w * h >= QUAD_BIN_PIXELS && w % (cell * 2) == 0 && h % (cell * 2) == 0) {
             final long now = System.nanoTime();
             if (now - quadAtNs < binIntervalNs((long) w * h, lastBinNs)) return;
             quadAtNs = now;
-            ByteBuffer binned = binMosaic(plane, w, h, stride, format, block);
+            ByteBuffer binned = binMosaic(plane, w, h, stride, format, bin);
             if (binned == null) return;
-            publish(binned, w / block, h / block, w / block * 2, cfa, white, black, gains, ccm, lensShading, sw, sh, cropRect, 1, sensorIso, analogIso,
+            publish(binned, w / cell, h / cell, w / cell * 2, cfa, white, black, gains, ccm, lensShading, sw, sh, cropRect, 1, sensorIso, analogIso,
                     automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR);
             return;
         }

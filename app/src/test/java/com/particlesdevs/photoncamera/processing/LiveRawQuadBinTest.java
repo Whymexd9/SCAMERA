@@ -2,6 +2,7 @@ package com.particlesdevs.photoncamera.processing;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -48,6 +49,48 @@ public class LiveRawQuadBinTest {
         for (int i = 0; i < 4; i++) assertEquals("the top left site of cell " + i, cell[i / 2][i % 2], result.getShort(i * 2) & 0xffff);
     }
 
+    /**
+     * P194 (the X100 / X300 Ultra's hardware-remosaic FULLRES: a 50 MP plain Bayer): one 2 x 2 Bayer quad of each 4 x 4 is kept,
+     * a (w/2) x (h/2) plain Bayer of the same CFA phase; row padding and the other sites are never read.
+     */
+    @Test public void sparseBayerKeepsOneBayerQuadOfEachFourByFour() {
+        int w = 8, h = 8, stride = w * 2 + 6, offset = 4;
+        ByteBuffer data = ByteBuffer.allocateDirect(offset + stride * h).order(ByteOrder.nativeOrder());
+        for (int i = 0; i < data.capacity(); i++) data.put(i, (byte) 0x7f); // padding and the skipped sites: 0x7f7f
+        data.position(offset);
+        int[] colour = {100, 200, 300, 400}; // R Gr Gb B by CFA phase
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++)
+            if (y % 4 < 2 && x % 4 < 2)
+                data.putShort(offset + y * stride + x * 2, (short) (colour[(y % 2) * 2 + x % 2] + (y / 4) * 10 + (x / 4)));
+        ByteBuffer result = LiveRawFrame.binMosaic(data, w, h, stride, 0x20, 1, true).order(ByteOrder.nativeOrder());
+        assertEquals(offset, data.position());
+        assertEquals((w / 2) * (h / 2) * 2, result.remaining());
+        for (int y = 0; y < h / 2; y++) for (int x = 0; x < w / 2; x++)
+            assertEquals("site " + x + "," + y + ": the same CFA phase, its 4x4 cell's quad",
+                    colour[(y % 2) * 2 + x % 2] + (y / 2) * 10 + (x / 2), result.getShort((y * (w / 2) + x) * 2) & 0xffff);
+    }
+
+    /** P194: a Bayer frame is binned only sparse (a dense block 1 bin would be the frame itself) and on whole 4 x 4 cells. */
+    @Test public void aBayerFrameIsBinnedSparseOnWholeCellsOnly() {
+        ByteBuffer data = ByteBuffer.allocateDirect(12 * 12 * 2).order(ByteOrder.nativeOrder());
+        assertNull(LiveRawFrame.binMosaic(data, 8, 8, 16, 0x20, 1, false));
+        assertNull("6 is no whole 4 x 4 cell", LiveRawFrame.binMosaic(data, 6, 8, 12, 0x20, 1, true));
+        assertNull(LiveRawFrame.binMosaic(data, 8, 6, 16, 0x20, 1, true));
+        assertNull(LiveRawFrame.binMosaic(data, 8, 8, 16, 0x20, 3, true));
+    }
+
+    /** P194: random data, padded rows, many rows: every output site is the source site (4 (x/2) + x%2, 4 (y/2) + y%2). */
+    @Test public void sparseBayerMatchesThePerSiteSubsample() {
+        java.util.Random random = new java.util.Random(194);
+        int w = 64, h = 48, stride = w * 2 + 10, offset = 6;
+        ByteBuffer data = ByteBuffer.allocateDirect(offset + stride * h).order(ByteOrder.nativeOrder());
+        for (int i = 0; i < data.capacity(); i++) data.put(i, (byte) random.nextInt(256));
+        data.position(offset);
+        ByteBuffer result = LiveRawFrame.binMosaic(data, w, h, stride, 0x20, 1, true).order(ByteOrder.nativeOrder());
+        for (int y = 0; y < h / 2; y++) for (int x = 0; x < w / 2; x++)
+            assertEquals(site(data, offset, stride, 4 * (y / 2) + y % 2, 4 * (x / 2) + x % 2), result.getShort((y * (w / 2) + x) * 2) & 0xffff);
+    }
+
     @Test public void onlyTheFullResolutionViewfindersAreSparse() {
         assertTrue("200 MP Tetra", LiveRawFrame.sparseBin(16320, 12288, 4));
         assertTrue("50 MP Quad (main, ultra-wide)", LiveRawFrame.sparseBin(8192, 6144, 2));
@@ -55,6 +98,9 @@ public class LiveRawQuadBinTest {
         assertFalse("a 12 MP ISZ Quad", LiveRawFrame.sparseBin(4080, 3072, 2));
         assertFalse("a 12 MP ISZ Tetra", LiveRawFrame.sparseBin(4080, 3072, 4));
         assertFalse("a 4x4 test frame", LiveRawFrame.sparseBin(4, 4, 2));
+        assertTrue("P194: a 50 MP Bayer (X300 Ultra main, row 2)", LiveRawFrame.sparseBin(8160, 6128, 1));
+        assertTrue("P194: a 50 MP Bayer (X100 Ultra main, row 0)", LiveRawFrame.sparseBin(8192, 6144, 1));
+        assertFalse("a 12 MP Bayer", LiveRawFrame.sparseBin(4080, 3072, 1));
     }
 
     @Test

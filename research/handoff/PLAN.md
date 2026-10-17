@@ -4427,3 +4427,31 @@ Evidence, tests and continuation prompt: SNAPDRAGON-CLIENT-HANDOFF-20261013.md.
 - Primary continuation: CONTINUE-SNAPDRAGON-CLIENT.txt; raw proof/observer note:
   ../reports/pd2454-native-dcg14-video-afd-verification-20261015.txt from the repository root.
   Preserve all parallel P127-P140 work. Old30805 is historical, not a build of these new changes.
+
+### P194 - «FULLRES: аппаратный ремозаик» on the X100 Ultra and the X300 Ultra (owner, 2026-10-17: the switch shown and
+working there too, not only on the X200 Ultra; done in code, not verified on the phones)
+- The X100 / X300 Ultra have no verified SDK (DNGHWREMOSAIC) modes, so their hardware remosaic is the native route (the CTS
+  package, RAW-only session, vivo forceSensorMode row, own RAW viewfinder, matched serial stills, SHDR) with the row their HAL
+  gave remosaicked in the owner's P186 trials (MosaicBlockDetector block 1): X300 Ultra main camera 3 50 MP row 2 (8160x6128),
+  X100 Ultra main camera 2 (and its listed 0) row 0 (8192x6144). VivoNativeFullRes.hardwareRow / hardwareProfile: a profile
+  with nativeBlock 1 ("native Bayer"; Profile.nativeRoute() = nativeBlock > 0, nativeBayer() = 1).
+- Acts on: the main camera's 50 MP only. The X300 ultra-wide / telephoto and the X100 ultra-wide / telephoto gave their own
+  Quad on the rows tried: the switch changes nothing there (the summary says so in both languages); 200 MP never.
+- VivoSdkFullRes.choose(phone, ...): X100 / X300 with the switch on and a Bayer row -> that row; otherwise the P186 table; the
+  X200 Ultra (and any phone outside the tables) unchanged (SDK route). hardwareRemosaicOffered() = the native vivo build (never
+  the OPPO Find X7 Ultra); hardwareRemosaicOn() on any native-table phone.
+- Every place that meant "native route" by nativeBlock > 1 takes the Bayer profile too (CaptureController.nativeVivoFullRes,
+  VivoPd2454NativeRaw.fullResProfile / applyFullRes, VivoSdkFullResCapture's router, in-flight stills, requests); the stills
+  must not be a confident Quad / Tetra (a flat scene's unconfident Bayer passes; only a mosaic profile must be proven). P188 stays
+  for Quad / Tetra profiles; its mirror: a Bayer row whose stream measures block 2 / 4 is a failed hardware row. A failed hardware
+  row (no frame, the camera died, a mosaic) is remembered (module_fullres_rowfail_<cam>_hw, generation ROW_TRIALS) and the camera
+  takes its own mosaic from the next start; the own rows' trial counts are not touched. The series' memory block is the profile's.
+- Viewfinder: LiveRawFrame bins a plain Bayer frame of >= 30 MP (QUAD_BIN_PIXELS) sparse: one 2x2 Bayer quad of each 4x4,
+  (w/2) x (h/2) of the same CFA phase (a quarter of the reads, as the 50 MP Quad bin); any phone's live RAW Bayer stream that
+  large gets it too (viewfinder only).
+- Tests: VivoSdkFullResModeTest (choose per phone / camera / size with the switch on and off, the failed row, offered on the
+  native vivo builds only), VivoNativeFullResTest (the rows), VivoSdkFullResCaptureTest (a Bayer row's native series, a Quad still
+  rejected), LiveRawQuadBinTest / LiveRawFrameTest (the Bayer bin).
+- To check on the phones: X300 Ultra main 50 MP with the switch on - frames 8160x6128 block 1, the viewfinder at ~30 fps, a
+  shot = SHDR of plain Bayer, 4:3; X100 Ultra main the same at 8192x6144; whether the SDK lease (keys 40 / 33) is right for a
+  remosaicked row; AE / white balance of the HAL in that row.

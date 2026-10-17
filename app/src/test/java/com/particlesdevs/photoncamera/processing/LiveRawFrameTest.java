@@ -64,5 +64,26 @@ public class LiveRawFrameTest {
             assertEquals(version,LiveRawFrame.getVersion());
         } finally {LiveRawFrame.setEnabled(false);}
     }
+    /**
+     * P194: a plain Bayer frame of 30 MP or more (the X100 / X300 Ultra's hardware-remosaic FULLRES) is published as its sparse
+     * Bayer bin: (w/2) x (h/2), block 1, the same CFA phase; a smaller Bayer frame is published as it is.
+     */
+    @Test public void aLargeBayerFrameIsPublishedAsItsSparseBayerBin() {
+        int w = 6000, h = 5000;
+        ByteBuffer plane = ByteBuffer.allocate(w * h * 2).order(java.nio.ByteOrder.nativeOrder());
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++)
+            plane.putShort((y * w + x) * 2, (short) (100 * ((y % 2) * 2 + x % 2 + 1) + (y % 4 >= 2 || x % 4 >= 2 ? 7 : 0)));
+        LiveRawFrame.setEnabled(true);
+        try {
+            LiveRawFrame.publish(plane,w,h,w*2,2,1023,null,null,null,null,1,1,null,1,100,6400,true,0,0,android.graphics.ImageFormat.RAW_SENSOR);
+            LiveRawFrame.Frame f=LiveRawFrame.acquire();
+            assertNotNull(f);
+            assertEquals(w/2,f.width);assertEquals(h/2,f.height);assertEquals(w,f.rowStride);assertEquals(1,f.cfaBlock);assertEquals(2,f.cfaPattern);
+            java.nio.ShortBuffer v=f.buffer.order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
+            for(int y:new int[]{0,1,2,3,h/2-2,h/2-1})for(int x:new int[]{0,1,2,3,w/2-2,w/2-1})
+                assertEquals("CFA phase kept, only the kept quads", 100*((y%2)*2+x%2+1), v.get(y*(w/2)+x));
+            assertEquals(0,plane.position());
+        } finally {LiveRawFrame.setEnabled(false);}
+    }
     private void publish(int value){LiveRawFrame.publish(ByteBuffer.wrap(new byte[]{(byte)value,0,0,0,0,0,0,0}),2,2,4,0,1023,new float[4],new float[]{1,1,1},new float[]{1,0,0,0,1,0,0,0,1});}
 }

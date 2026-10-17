@@ -190,6 +190,89 @@ public class VivoSdkFullResModeTest {
         sdk.verify(VivoSdkRawSession::open, times(2));
     }
 
+    private static void profile(VivoSdkFullRes.Profile p, String what, int w, int h, int mode, int block) {
+        assertNotNull(what, p);
+        assertEquals(what, w, p.size.getWidth());
+        assertEquals(what, h, p.size.getHeight());
+        assertEquals(what, mode, p.sensorMode);
+        assertEquals(what, block, p.nativeBlock);
+    }
+
+    /**
+     * P194 (owner, 2026-10-17: «FULLRES: аппаратный ремозаик» on the X100 / X300 Ultra): with the switch on, the native build's
+     * 50 MP shot of a camera with a known Bayer row takes it by the native route (nativeBlock 1); a camera without one keeps its
+     * own mosaic; 200 MP never changes; the switch off is the P186 table as before; no SDK profile (an X200 Ultra mode) on them.
+     */
+    @Test public void theHardwareRemosaicTakesTheBayerRowsOfTheX100AndX300UltraAt50MpOnly() {
+        preferences.when(() -> PreferenceKeys.scamDevNumber(anyString(), anyFloat())).thenAnswer(call -> call.getArgument(1));
+        final VivoNativeFullRes.Phone x300 = VivoNativeFullRes.Phone.X300_ULTRA, x100 = VivoNativeFullRes.Phone.X100_ULTRA;
+        profile(VivoSdkFullRes.choose(x300, "3", true, true, false), "X300 main 50 MP, on", 8160, 6128, 2, 1);
+        profile(VivoSdkFullRes.choose(x300, "3", true, false, false), "X300 main 50 MP, off", 8160, 6128, 1, 2);
+        for (boolean on : new boolean[]{true, false}) {
+            profile(VivoSdkFullRes.choose(x300, "3", true, on, true), "X300 main 200 MP " + on, 16320, 12256, 0, 4);
+            profile(VivoSdkFullRes.choose(x300, "4", true, on, true), "X300 ultra-wide " + on, 8192, 6144, 0, 2);
+            profile(VivoSdkFullRes.choose(x300, "5", true, on, false), "X300 tele 50 MP " + on, 8160, 6144, 1, 2);
+            profile(VivoSdkFullRes.choose(x300, "5", true, on, true), "X300 tele 200 MP " + on, 16320, 12288, 0, 4);
+            profile(VivoSdkFullRes.choose(x100, "3", true, on, true), "X100 ultra-wide " + on, 8192, 6144, 0, 2);
+            profile(VivoSdkFullRes.choose(x100, "4", true, on, false), "X100 tele 50 MP " + on, 8160, 6144, 1, 2);
+            profile(VivoSdkFullRes.choose(x100, "4", true, on, true), "X100 tele 200 MP " + on, 16320, 12288, 0, 4);
+            for (VivoNativeFullRes.Phone phone : new VivoNativeFullRes.Phone[]{x100, x300})
+                for (String camera : new String[]{"0", "2", "3", "4", "5"})
+                    for (boolean large : new boolean[]{true, false}) {
+                        VivoSdkFullRes.Profile p = VivoSdkFullRes.choose(phone, camera, true, on, large);
+                        if (p != null) assertTrue(phone + " " + camera + ": never the SDK route", p.nativeRoute());
+                        if (p != null && p.size.getWidth() > 10000) assertEquals("200 MP: the own Tetra", 4, p.nativeBlock);
+                    }
+        }
+        for (String camera : new String[]{"2", "0"}) {
+            profile(VivoSdkFullRes.choose(x100, camera, true, true, true), "X100 main " + camera + ", on", 8192, 6144, 0, 1);
+            profile(VivoSdkFullRes.choose(x100, camera, true, false, true), "X100 main " + camera + ", off", 8192, 6144, 0, 2);
+        }
+        // the X200 Ultra (and any phone outside the tables) keeps the P182 SDK route
+        profile(VivoSdkFullRes.choose(null, "3", true, true, true), "X200 main, on", 8192, 6144, 13, 0);
+        profile(VivoSdkFullRes.choose(VivoNativeFullRes.Phone.X200_ULTRA, "5", true, true, false), "X200 tele 50, on", 8160, 6144, 18, 0);
+        assertSame(VivoSdkFullRes.TELE_200, VivoSdkFullRes.choose(VivoNativeFullRes.Phone.X200_ULTRA, "5", true, true, true));
+        // a hardware row that failed on the phone gives way to the camera's own mosaic
+        ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putBoolean("module_fullres_rowfail_3_hw", true).commit();
+        try {
+            profile(VivoSdkFullRes.choose(x300, "3", true, true, false), "X300 main 50 MP, row 2 failed", 8160, 6128, 1, 2);
+            assertNull(VivoNativeFullRes.hardwareProfile(x300, "3", true));
+            assertNotNull("the table itself keeps it", VivoNativeFullRes.hardwareProfile(x300, "3", false));
+        } finally {
+            ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().remove("module_fullres_rowfail_3_hw").commit();
+        }
+        // the X300 main camera's own 50 MP rows all failed (P186 / P188): its 50 MP button stays while the hardware row can run
+        ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putInt("module_fullres_rowfail_3_50", 3).commit();
+        try {
+            preferences.when(PreferenceKeys::isFullResHwRemosaic).thenReturn(false);
+            assertFalse("switch off: 200 MP only", VivoNativeFullRes.twoSizes(x300, "3", true));
+            profile(VivoSdkFullRes.choose(x300, "3", true, false, false), "X300 main, no own 50 MP row", 16320, 12256, 0, 4);
+            try (MockedStatic<VivoNativeFullRes> phone = mockStatic(VivoNativeFullRes.class, CALLS_REAL_METHODS)) {
+                phone.when(VivoNativeFullRes::phone).thenReturn(x300);
+                preferences.when(PreferenceKeys::isFullResHwRemosaic).thenReturn(true);
+                assertTrue("switch on: the hardware row is a 50 MP size", VivoNativeFullRes.twoSizes(x300, "3", true));
+                profile(VivoSdkFullRes.choose(x300, "3", true, true, false), "X300 main 50 MP by the hardware row", 8160, 6128, 2, 1);
+                profile(VivoSdkFullRes.choose(x300, "3", true, true, true), "X300 main 200 MP", 16320, 12256, 0, 4);
+            }
+        } finally {
+            ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().remove("module_fullres_rowfail_3_50").commit();
+        }
+    }
+
+    /** P194: the switch is offered in the native build of the X200 / X100 / X300 Ultra, never on the OPPO Find X7 Ultra. */
+    @Test public void theHardwareRemosaicIsOfferedOnTheNativeVivoBuildsOnly() {
+        fullRes.when(VivoSdkFullRes::nativeRaw).thenReturn(false);
+        assertFalse(VivoSdkFullRes.hardwareRemosaicOffered());
+        fullRes.when(VivoSdkFullRes::nativeRaw).thenReturn(true);
+        assertTrue(VivoSdkFullRes.hardwareRemosaicOffered());
+        try (MockedStatic<OppoNativeFullRes> oppo = mockStatic(OppoNativeFullRes.class)) {
+            oppo.when(OppoNativeFullRes::device).thenReturn(true);
+            assertFalse(VivoSdkFullRes.hardwareRemosaicOffered());
+            preferences.when(PreferenceKeys::isFullResHwRemosaic).thenReturn(true);
+            assertFalse(VivoSdkFullRes.hardwareRemosaicOn());
+        }
+    }
+
     @Test public void frameCountUsesTheSettingAndAvailableRawMemory() {
         long raw = 8192L * 6144 * 2;
         assertEquals(20, VivoSdkFullRes.frameCount(20, raw, raw * 50));
