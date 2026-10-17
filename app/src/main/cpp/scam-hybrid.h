@@ -3754,6 +3754,8 @@ public:
             }
         };
         int stripIndex=0,stripsShrunk=0,smallestStrip=stripCells;
+        // P200: why the first strip was halved (the slot over the storage block, or the bytes over the memory budget)
+        std::string shrinkWhy;
         for(int cy0=0,cy1=0;cy0<h2;cy0=cy1,++stripIndex){
             const int bank=stripIndex&1;
             cy1=std::min(h2,cy0+stripCells);
@@ -3773,6 +3775,10 @@ public:
                     sum+=normBytes;
                     const bool overBlock=slot[worst]>blockLimit||normBytes>blockLimit,overMemory=gpuBudget>0&&sum>gpuBudget;
                     if(!overBlock&&!overMemory)break;
+                    if(shrinkWhy.empty())shrinkWhy=std::string(overBlock?"storage slot "+std::to_string(slot[worst]>=normBytes?worst:18)+" "
+                        +hybridMB(std::max(slot[worst],normBytes))+" MB > block "+hybridMB(blockLimit)+" MB":"")
+                        +(overMemory?std::string(overBlock?", ":"")+"strip "+hybridMB(sum)+" MB > budget "+hybridMB(gpuBudget)+" MB":"")
+                        +" at "+std::to_string(cy1-cy0)+" cells";
                     if(cy1-cy0<=8){
                         if(overBlock)throw std::runtime_error("HYBRID GPU: strip needs "+hybridMB(std::max(slot[worst],normBytes))+" MB in storage slot "+std::to_string(slot[worst]>=normBytes?worst:18)
                             +", GPU block limit "+hybridMB(blockLimit)+" MB");
@@ -4053,7 +4059,7 @@ public:
          readStrip(pending);
          if(doneRows>0&&in.rowsDone)in.rowsDone(out,doneRows);}
         if(stripsShrunk&&trace)trace("HYBRID GPU: "+std::to_string(stripsShrunk)+" of "+std::to_string(stripIndex)+" strips shrunk to fit the storage block / memory budget (smallest "
-            +std::to_string(smallestStrip)+" cells)");
+            +std::to_string(smallestStrip)+" cells; first: "+shrinkWhy+")");
         std::vector<GLuint> sums(zeros.size());
         get(9,sums.data(),sums.size()*4);
         if(sumsCarry)for(int f=1;f<frames;++f)robustShare[f]=(double(sums[size_t(frames)+3+f])*4294967296.0+double(sums[f]))/(255.0*double(w2)*h2);
