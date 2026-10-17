@@ -73,4 +73,12 @@ public class LiveRawQuadBinTest {
         assertEquals(302, s.get(2));
         assertEquals(402, s.get(3));
     }
+    /** P188: the 50 MP viewfinder bins every frame when binning is fast; 200 MP keeps its 150 ms; a slow bin throttles itself. */
+    @Test public void binIntervalFollowsTheCostBelow100MpAndStays150msAbove() {
+        assertEquals(150_000_000L, LiveRawFrame.binIntervalNs(16320L * 12288, 5_000_000L));
+        assertEquals(10_000_000L, LiveRawFrame.binIntervalNs(8192L * 6144, 5_000_000L));
+        assertEquals("a fast bin: no wait at 30 fps", true, LiveRawFrame.binIntervalNs(8192L * 6144, 8_000_000L) < 33_000_000L);
+        assertEquals(150_000_000L, LiveRawFrame.binIntervalNs(8192L * 6144, 120_000_000L));
+        assertEquals(0L, LiveRawFrame.binIntervalNs(8192L * 6144, 0L));
+    }
 }

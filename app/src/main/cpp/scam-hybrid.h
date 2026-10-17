@@ -258,7 +258,12 @@ struct HybridTuning {
     // P14 / P15 colour-block mosaic: 0 = the header's block, measured from the base frame when the header has none or says
     // plain; 1 = always plain Bayer; 2 / 4 = force Quad / Tetra (replays).
     int mosaicBlock=0;
-    int mosaicGain=1;            // 1: divide out the response of every site class inside the colour block (64 classes, y&7, x&7)
+    // 1: divide out the response of every site class inside the colour block (64 classes, y&7, x&7), the mean ratio of the tiles
+    // within 5 % rms; 2 (P188, default): the median ratio in two rounds, the second against the frame's own noise (see
+    // hybridMosaicGains); 0: off
+    int mosaicGain=2;
+    // P188: 1 (default) = a donor's robustness bilinear between the cell centres in the native mosaic merge; 0 = the nearest cell
+    int mosaicRobustBilinear=1;
     // P19 lateral CA of R / B against G (research/RAW_CA_Correction_SABRE.md, librtprocess CA_correct idea): 0 off, 1 auto (a
     // radial model fitted on the base frame, applied to every frame's R / B sites on the GPU before any pass reads them, when it
     // moves R or B by at least caMinShift RAW px at the corner)
@@ -516,7 +521,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("laStream",nullptr,&t.laStream)||set("laScam",nullptr,&t.laScam)||set("isoKernel",nullptr,&t.isoKernel)
-            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
+            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
             ||set("mosaicNative2x",nullptr,&t.mosaicNative2x)||set("mosaicTetraWindow2x",nullptr,&t.mosaicTetraWindow2x)||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
@@ -1987,6 +1992,21 @@ void main(){
 // Geometry (the split's convention, which the app and tools/quad/eval_mosaic_burst.py expect): output pixel X sits at native
 // sensor position X - (b-1)/2; binned pixel B holds the block b B .. b B + b-1 (centre b B + (b-1)/2).
 static const char* kHybMergeMosaic=R"(
+// P188 (owner, 2026-10-17: grids, staircases and square halos on every ISZ / FULLRES shot): a donor's robustness bilinear between the 4
+// nearest cell centres (cell (cx, cy) holds binned px 2cx..2cx+1, centre 2cx + 0.5) instead of the nearest cell's: the nearest cell
+// switched every 4 output px (Quad; 8 Tetra), in phase with the colour lattice - square halos around small dark dots, staircases
+// along edges, blocky LCD text. natBilinU 0 = the nearest cell as before (mosaicRobustBilinear 0).
+uniform int natBilinU;
+float natRobust(int f,vec2 B0,int cx,int cy,int w2){
+    int base=(f-1)*(cy1-cy0)*w2;
+    if(natBilinU==0)return robust[base+(cy-cy0)*w2+cx];
+    vec2 c=(B0-0.5)*0.5,c0=floor(c),t=c-c0;
+    int x0=clamp(int(c0.x),0,w2-1),x1=clamp(int(c0.x)+1,0,w2-1);
+    int y0=clamp(int(c0.y),cy0,cy1-1),y1=clamp(int(c0.y)+1,cy0,cy1-1);
+    float r00=robust[base+(y0-cy0)*w2+x0],r10=robust[base+(y0-cy0)*w2+x1];
+    float r01=robust[base+(y1-cy0)*w2+x0],r11=robust[base+(y1-cy0)*w2+x1];
+    return mix(mix(r00,r10,t.x),mix(r01,r11,t.x),t.y);
+}
 uniform vec4 natK; // x = binned precision -> native precision, y / z = ks^2 of green / red-blue (ArkCam's distance multipliers per
                    // colour, mosaicKernelG / RB), w = minimum R / B support of the colour fill relative to green (0 = off)
 uniform int natRy1;    // end of the guide cell rows held in Cov (ry1: the strip's cells + 3, clamped to the frame)
@@ -2160,7 +2180,7 @@ void main(){
     Acc a;initAcc(a);
     float frames=0.0; // accepted donor frames
     for(int f=1;f<frameCount;f++){
-        float r=robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+        float r=natRobust(f,B0,cx,cy,w2);
         if(r<0.004)continue;
         if(kE.x>=0.0&&int(kE.x)!=f)continue;
         vec2 Ob=originM(f,2*cx,2*cy)+(B0-cell);    // binned position in frame f (homography and F6 offset of the cell)
@@ -2257,6 +2277,21 @@ void main(){
 // handling as kHybMergeMosaic (the sums in another order: last-bit differences). With NAT_B 2 the preprocessed text is the P34
 // Quad program's.
 static const char* kHybMergeMosaicFast=R"(
+// P188 (owner, 2026-10-17: grids, staircases and square halos on every ISZ / FULLRES shot): a donor's robustness bilinear between the 4
+// nearest cell centres (cell (cx, cy) holds binned px 2cx..2cx+1, centre 2cx + 0.5) instead of the nearest cell's: the nearest cell
+// switched every 4 output px (Quad; 8 Tetra), in phase with the colour lattice - square halos around small dark dots, staircases
+// along edges, blocky LCD text. natBilinU 0 = the nearest cell as before (mosaicRobustBilinear 0).
+uniform int natBilinU;
+float natRobust(int f,vec2 B0,int cx,int cy,int w2){
+    int base=(f-1)*(cy1-cy0)*w2;
+    if(natBilinU==0)return robust[base+(cy-cy0)*w2+cx];
+    vec2 c=(B0-0.5)*0.5,c0=floor(c),t=c-c0;
+    int x0=clamp(int(c0.x),0,w2-1),x1=clamp(int(c0.x)+1,0,w2-1);
+    int y0=clamp(int(c0.y),cy0,cy1-1),y1=clamp(int(c0.y)+1,cy0,cy1-1);
+    float r00=robust[base+(y0-cy0)*w2+x0],r10=robust[base+(y0-cy0)*w2+x1];
+    float r01=robust[base+(y1-cy0)*w2+x0],r11=robust[base+(y1-cy0)*w2+x1];
+    return mix(mix(r00,r10,t.x),mix(r01,r11,t.x),t.y);
+}
 layout(std430,binding=18) readonly buffer NNorm{uvec4 nnorm[];};
 uniform vec4 natK;     // as kHybMergeMosaic
 uniform int natRy1;
@@ -2462,7 +2497,7 @@ void main(){
     Acc a;initAcc(a);
     float frames=0.0;
     for(int f=1;f<frameCount;f++){
-        float r=robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+        float r=natRobust(f,B0,cx,cy,w2);
         if(r<0.004)continue;
         if(kE.x>=0.0&&int(kE.x)!=f)continue;
         vec2 Ob=originM(f,2*cx,2*cy)+(B0-cell);
@@ -3478,6 +3513,7 @@ public:
                 glUseProgram(mosaicProgram);
                 glUniform4i(loc(mosaicProgram,"natV"),ns,nat->rawGains?1:0,int(natSum0),nat->fullWindow?1:0); // w: the merge's window rule
                 glUniform1i(loc(mosaicProgram,"natWidenU"),nat->widenRule);
+                glUniform1i(loc(mosaicProgram,"natBilinU"),tune.mosaicRobustBilinear); // P188
                 glUniform2f(loc(mosaicProgram,"natWidenS"),nat->widenMul,nat->widenFrames);
                 glUniform1i(loc(mosaicProgram,"natClampU"),nat->clampCov); // P34
                 const float us=std::max(0.3f,tune.bentoUsSigma),rs=std::max(0.3f,tune.rimSigma);
@@ -6543,7 +6579,119 @@ inline int hybridMosaicBlock(const HybridInput& input,const HybridTuning& tune,c
 // the tile, averaged over the tiles. Class means over the whole frame (mosaicSiteGain of SCAM HDR) took periodic scene detail
 // (bars, a zone plate at a period dividing 8) for a response difference: a 4-8 % false lattice on a test chart. Returned as the
 // factor that brings a class to its colour's mean.
-inline std::array<float,64> hybridMosaicGains(const HybridInput& in,const std::vector<int>& frames,int block,float& spread,long* tilesUsed=nullptr){
+// P188 (owner, 2026-10-17: «На всех isz и фулрезах я получаю вот такие артефакты сетки»): the vivo X200 Ultra's sensors have a
+// fixed response pattern over the 64 classes (the HP9 Tetra telephoto 0.85..1.09, the same in every frame). The mean of the 5 % rms
+// tiles found no tile in a dark scene (ISO 800 10x: no correction, and the native merge, whose kernel reads each site of a colour
+// block, drew every site's own gain as a 2 / 4 / 8 px lattice: 600x the background at 2 px), and with a large spread it took the
+// tiles where the noise happened to hide the pattern (the gains came out too small). Mode 2: the MEDIAN of the per-tile ratios
+// (a histogram per class: robust to detail and noise, any number of tiles) in two rounds - every tile within the levels whose
+// colours vary by less than 25 % rms, then, with the first gains divided out, the tiles whose remaining spread is within twice the
+// frame's own noise (its noise model) plus 3 % rms. The ratios counted are always the raw ones; a frame above ~200k tiles is
+// sampled (every step-th tile).
+inline std::array<float,64> hybridMosaicGainsRobust(const HybridInput& in,const std::vector<int>& frames,int block,float& spread,long* tilesUsed,
+                                                   float* errOut=nullptr){
+    // P188c (ArkCam 1.56 study, 2026-10-17: no site correction there; a simulation of the HP9 pattern, 16 frames: residual 0.11 %
+    // against 0.50 % for the median of per-frame ratios): every picked tile is the MEAN of all the normal frames in SENSOR
+    // coordinates (the pattern sits on the sensor and adds up, the hand-held scene blurs, the noise falls by sqrt(N)); each site is
+    // predicted from its colour group's mean in the tile plus the gradient of that group between the neighbouring tiles (a tile
+    // holds every class once, so its mean carries no pattern; a plane fitted inside it would eat the pattern's left / right part);
+    // the gain of a class is the RATIO OF SUMS over the tiles (texture spreads it, it does not bias it), in two rounds: tiles
+    // within 25 % rms, then with the first gains divided out within twice the mean's noise plus 10 % rms. Groups: R, B and the
+    // two greens together (the merge pools them). errOut: half the rms difference of the estimates of even and odd tiles.
+    const double bl=0.25*(in.black[0]+in.black[1]+in.black[2]+in.black[3]),range=double(in.white)-bl;
+    const int greenParity=in.cfa==0||in.cfa==3?1:0;
+    int grpOf[64];
+    for(int k=0;k<64;++k){const int c=((((k>>3)/block)&1)<<1)|(((k&7)/block)&1);grpOf[k]=((c>>1)^(c&1))==greenParity?4:c;}
+    const long tilesX=in.w/8,tilesY=in.h/8;
+    const int n=int(frames.size());
+    std::array<float,64> gain;gain.fill(1.f);spread=0;
+    if(tilesUsed)*tilesUsed=0;
+    if(errOut)*errOut=0.f;
+    if(n<1||range<=0||tilesX<3||tilesY<3)return gain;
+    // ~60k tiles at most (every tile reads its 4 neighbours too)
+    const int step=std::max(1,int(std::ceil(std::sqrt(double(tilesX)*double(tilesY)/60000.0))));
+    double slope=0,offset=0;
+    for(int f:frames){slope+=std::max(0.0,double(in.frames[f].slope));offset+=std::max(0.0,double(in.frames[f].offset));}
+    slope/=n;offset/=n;
+    // mean of the frames over one tile; false when a site clipped in any frame
+    auto tileMean=[&](long tx,long ty,double* t)->bool{
+        for(int k=0;k<64;++k)t[k]=0;
+        for(int f:frames){
+            const uint16_t* data=in.frames[f].raw;
+            for(int y=0;y<8;++y){
+                const uint16_t* r=data+size_t(ty*8+y)*in.w+size_t(tx)*8;
+                for(int x=0;x<8;++x){const double v=(double(r[x])-bl)/range;if(v>0.8)return false;t[(y<<3)|x]+=v;}
+            }
+        }
+        for(int k=0;k<64;++k)t[k]/=n;
+        return true;
+    };
+    auto groupMeans=[&](const double* t,double* m){
+        int cnt[5]{};for(int g=0;g<5;++g)m[g]=0;
+        for(int k=0;k<64;++k){m[grpOf[k]]+=t[k];++cnt[grpOf[k]];}
+        for(int g=0;g<5;++g)if(cnt[g])m[g]/=cnt[g];
+    };
+    // the centre of each group's sites in the tile
+    double cxg[5]{},cyg[5]{};{int cnt[5]{};for(int k=0;k<64;++k){cxg[grpOf[k]]+=k&7;cyg[grpOf[k]]+=k>>3;++cnt[grpOf[k]];}
+        for(int g=0;g<5;++g)if(cnt[g]){cxg[g]/=cnt[g];cyg[g]/=cnt[g];}}
+    std::array<double,64> g1;g1.fill(1.0);
+    long used=0,used1=0;
+    std::array<double,64> sumT{},sumP{},sumTe{},sumPe{},sumTo{},sumPo{};
+    for(int round=0;round<2;++round){
+        sumT.fill(0);sumP.fill(0);sumTe.fill(0);sumPe.fill(0);sumTo.fill(0);sumPo.fill(0);used=0;
+        for(long ty=1;ty+1<tilesY;ty+=step)for(long tx=1;tx+1<tilesX;tx+=step){
+            double t[64],tl[64],tr[64],tu[64],td[64];
+            if(!tileMean(tx,ty,t)||!tileMean(tx-1,ty,tl)||!tileMean(tx+1,ty,tr)||!tileMean(tx,ty-1,tu)||!tileMean(tx,ty+1,td))continue;
+            double m[5],ml[5],mr[5],mu[5],md[5];
+            groupMeans(t,m);groupMeans(tl,ml);groupMeans(tr,mr);groupMeans(tu,mu);groupMeans(td,md);
+            // each colour's mean above four times the noise of a mean over its sites and the frames
+            bool dim=false;
+            for(int k=0;k<64&&!dim;++k){
+                const int g=grpOf[k],cnt=g==4?32:16;
+                dim=m[g]<std::max(0.002,4.0*std::sqrt(std::max(slope*m[g]+offset,0.0)/(double(n)*cnt)));
+            }
+            if(dim)continue;
+            double pred[64],e=0,l=0,nv=0;
+            for(int k=0;k<64;++k){
+                const int g=grpOf[k];
+                const double gx=(mr[g]-ml[g])/16.0,gy=(md[g]-mu[g])/16.0;
+                pred[k]=m[g]+gx*((k&7)-cxg[g])+gy*((k>>3)-cyg[g]);
+                const double d=t[k]/g1[k]-pred[k];
+                e+=d*d;l+=pred[k]*pred[k];nv+=(slope*std::max(t[k],0.0)+offset)/n;
+            }
+            if(round==0?e>0.25*0.25*l:e>2.0*nv+0.10*0.10*l)continue;
+            const bool even=((tx/step)+(ty/step))%2==0;
+            for(int k=0;k<64;++k){
+                sumT[k]+=t[k];sumP[k]+=pred[k];
+                if(even){sumTe[k]+=t[k];sumPe[k]+=pred[k];}else{sumTo[k]+=t[k];sumPo[k]+=pred[k];}
+            }
+            ++used;
+        }
+        if(used<200)break;
+        // per class sum T / sum pred, normalised to its group's mean (the colour means stay)
+        auto estimate=[&](const std::array<double,64>& T,const std::array<double,64>& Pr,std::array<double,64>& out){
+            double gm[5]{};int cnt[5]{};
+            for(int k=0;k<64;++k){out[k]=Pr[k]>1e-12?T[k]/Pr[k]:1.0;gm[grpOf[k]]+=out[k];++cnt[grpOf[k]];}
+            for(int k=0;k<64;++k){const int g=grpOf[k];if(cnt[g]&&gm[g]>0)out[k]/=gm[g]/cnt[g];}
+        };
+        estimate(sumT,sumP,g1);
+        if(round==0)used1=used;
+        else if(errOut){
+            std::array<double,64> ge{},go{};estimate(sumTe,sumPe,ge);estimate(sumTo,sumPo,go);
+            double s2=0;for(int k=0;k<64;++k)s2+=(ge[k]-go[k])*(ge[k]-go[k]);
+            *errOut=float(0.5*std::sqrt(s2/64.0));
+        }
+    }
+    if(used<200)used=used1;
+    if(tilesUsed)*tilesUsed=used;
+    if(used<200)return gain;
+    float lo=1.f,hi=1.f;
+    for(int k=0;k<64;++k){gain[k]=float(std::clamp(1.0/g1[k],0.75,1.33));lo=std::min(lo,gain[k]);hi=std::max(hi,gain[k]);}
+    spread=hi-lo;
+    return gain;
+}
+inline std::array<float,64> hybridMosaicGains(const HybridInput& in,const std::vector<int>& frames,int block,float& spread,long* tilesUsed=nullptr,int mode=1,float* err=nullptr){
+    if(mode>=2)return hybridMosaicGainsRobust(in,frames,block,spread,tilesUsed,err);
     std::array<double,64> sum{};long tiles=0;
     const double bl=0.25*(in.black[0]+in.black[1]+in.black[2]+in.black[3]),range=double(in.white)-bl;
     auto cls=[&](int k){return ((((k>>3)/block)&1)<<1)|(((k&7)/block)&1);};
@@ -6813,10 +6961,10 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     // ---- response of the site classes (the normal frames picked, up to 4)
     std::array<float,64> gain;gain.fill(1.f);
     if(tune.mosaicGain){
-        std::vector<int> gf;for(int f:pick)if(input.frames[f].role==kRoleNormal&&gf.size()<4)gf.push_back(f);
-        float spread=0;long used=0;gain=hybridMosaicGains(input,gf,b,spread,&used);
-        char line[200];std::snprintf(line,sizeof(line),"HYBRID MOSAIC: site-class response from %d frames, %ld smooth tiles, gain range %.4f..%.4f (spread %.2f %%)",int(gf.size()),used,
-            *std::min_element(gain.begin(),gain.end()),*std::max_element(gain.begin(),gain.end()),100.0*spread);
+        std::vector<int> gf;for(int f:pick)if(input.frames[f].role==kRoleNormal&&gf.size()<(tune.mosaicGain>=2?16u:4u))gf.push_back(f);
+        float spread=0,gainErr=0;long used=0;gain=hybridMosaicGains(input,gf,b,spread,&used,tune.mosaicGain,&gainErr);
+        char line[260];std::snprintf(line,sizeof(line),"HYBRID MOSAIC: site-class response from %d frames, %ld smooth tiles, gain range %.4f..%.4f (spread %.2f %%), error %.3f %%",int(gf.size()),used,
+            *std::min_element(gain.begin(),gain.end()),*std::max_element(gain.begin(),gain.end()),100.0*spread,100.0*gainErr);
         report(line);
     }
     // ---- sub-frames and binned frames (alignment). Canonical class of sensor site (x, y): the gain table is indexed in sensor
@@ -7104,10 +7252,10 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     const auto gainStart=Clock::now();
     std::array<float,64> gain;gain.fill(1.f);
     if(tune.mosaicGain){
-        std::vector<int> gf;for(int f:pick)if(input.frames[f].role==kRoleNormal&&gf.size()<4)gf.push_back(f);
-        float spread=0;long used=0;gain=hybridMosaicGains(input,gf,b,spread,&used);
-        char line[200];std::snprintf(line,sizeof(line),"HYBRID MOSAIC NATIVE: site-class response from %d frames, %ld smooth tiles, gain range %.4f..%.4f (spread %.2f %%)",int(gf.size()),used,
-            *std::min_element(gain.begin(),gain.end()),*std::max_element(gain.begin(),gain.end()),100.0*spread);
+        std::vector<int> gf;for(int f:pick)if(input.frames[f].role==kRoleNormal&&gf.size()<(tune.mosaicGain>=2?16u:4u))gf.push_back(f);
+        float spread=0,gainErr=0;long used=0;gain=hybridMosaicGains(input,gf,b,spread,&used,tune.mosaicGain,&gainErr);
+        char line[260];std::snprintf(line,sizeof(line),"HYBRID MOSAIC NATIVE: site-class response from %d frames, %ld smooth tiles, gain range %.4f..%.4f (spread %.2f %%), error %.3f %%",int(gf.size()),used,
+            *std::min_element(gain.begin(),gain.end()),*std::max_element(gain.begin(),gain.end()),100.0*spread,100.0*gainErr);
         report(line);
     }
     // ---- the binned frames. Every site as the split built it into its sub-frame: vb + (raw - black of the site) x gain of its class
@@ -7208,8 +7356,10 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
                     double m=0;
                     for(int c=0;c<bq;++c)for(int a=0;a<bq;++a){
                         const int x=bq*I+a,y=bq*J+c;
+                        // P188b: the site-class gains here too (the T2 Quad mosaic has them already), so the sensor's own
+                        // response pattern does not count as oscillation
                         d[size_t(c)*bq+a]=q0?double(q0[size_t(y)*MW+x])-input.black[((J&1)<<1)|(I&1)]
-                                            :double(raw[size_t(y)*W+x])-input.black[((y&1)<<1)|(x&1)];
+                                            :(double(raw[size_t(y)*W+x])-input.black[((y&1)<<1)|(x&1)])*gain[((y&7)<<3)|(x&7)];
                         m+=d[size_t(c)*bq+a];
                     }
                     m/=double(bq*bq);

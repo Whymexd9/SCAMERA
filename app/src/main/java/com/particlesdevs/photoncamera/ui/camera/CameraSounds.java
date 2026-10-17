@@ -132,10 +132,10 @@ public final class CameraSounds {
         if (!shutterAudible(PreferenceKeys.isCameraSoundsOn(), regionForces(), normalRinger())) return;
         SoundPool p;
         synchronized (this) {
-            if (synthesized()) {
-                if (tones != null) tones.startTone(ToneGenerator.TONE_PROP_ACK, 120);
-                return;
-            }
+            // P188 (owner, 2026-10-17: «убери пик после нажатия на кнопку спуска затвора»): the X200 Ultra's CTS package had a
+            // synthesized beep here (its MP3 path crashes natively); no sound there now - and no ToneGenerator call blocking the
+            // camera thread before the capture
+            if (synthesized()) return;
             p = pool;
         }
         if (p != null && shutterLoaded) p.play(shutterId, 1f, 1f, 1, 0, 1f);

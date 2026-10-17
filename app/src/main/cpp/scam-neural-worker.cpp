@@ -133,6 +133,16 @@ int main(int argc,char** argv) {
                 if(mapped)dst.write(static_cast<const char*>(mapped->address),std::streamsize(mapped->length));
                 else dst.write(static_cast<const char*>(hybridBurst.address),std::streamsize(hybridBurst.length));
             }
+            // P188: the app's keep-burst marker names where (its own external files): the burst of this shot, for a replay
+            {
+                std::ifstream keep(std::string(argv[2])+"/keep-burst");std::string dest;
+                if(keep&&std::getline(keep,dest)&&!dest.empty()&&dest!=argv[3]&&!std::getenv("SCAM_HYBRID")){
+                    std::ofstream dst(dest,std::ios::binary|std::ios::trunc);
+                    if(mapped)dst.write(static_cast<const char*>(mapped->address),std::streamsize(mapped->length));
+                    else dst.write(static_cast<const char*>(hybridBurst.address),std::streamsize(hybridBurst.length));
+                    report(std::string("SCAM KEEP: burst ")+(dst?"kept in ":"NOT kept in ")+dest);
+                }
+            }
             const char* outputPath=argv[4];
             report("SCAM CAPTURE: original forward weights and stock CPU motion; supplied per-frame calibration");
             report(hybridBurst.hybrid?"SCAM INPUT: hybrid v10 burst frames="+std::to_string(hybridBurst.input.frames.size()):"SCAM INPUT: mapped capture file");

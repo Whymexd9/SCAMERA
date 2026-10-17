@@ -4200,6 +4200,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // rest of the session
                 if (!com.particlesdevs.photoncamera.processing.MosaicStream.wantsFrame()) mMosaicUnpacked = null;
                 updateStreamCrop(true);
+                // P188 (owner, 2026-10-17: «Нам нужен фулрез без ремозаика»): a native FULLRES row whose frames are a plain Bayer
+                // was remosaicked by the HAL (X300 Ultra main camera, 50 MP row 2): that row counts as failed and the next start
+                // tries the next row of the table, instead of shooting the HAL's remosaic
+                if (block == 1 && nativeVivoFullRes()) {
+                    final VivoSdkFullRes.Profile full = VivoSdkFullRes.profile(mVivoSdkCameraId);
+                    if (full != null && full.nativeBlock > 1
+                            && retryWithoutVivoSdkFullRes(mCaptureSession, "the frames are remosaicked by the HAL (plain Bayer, no mosaic)")) return;
+                }
                 if (block > 1 && !mMosaicPreview && !mLiveRawSession && !XiaomiTeleZoom.ispPreview()) {
                     mMosaicPreview = true;
                     LiveRawFrame.setEnabled(true);

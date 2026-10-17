@@ -333,6 +333,14 @@ public final class ScamNeuralClient {
                 // SCAM Hybrid merge (scam-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.
                 if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException(Lang.t("Не удалось создать маркер склейки SHDR","Could not create the SHDR merge marker"));
+                // P188: scam_dev "keep_burst 1" - the worker keeps the shot's RAW burst for an offline replay, in this package's own
+                // external files (the old scam_keep path named org.codeaurora.snapcam only: nothing was kept in the CTS package)
+                if(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("keep_burst",false)){
+                    File ext=context.getExternalFilesDir(null);
+                    if(ext!=null)try(java.io.FileWriter w=new java.io.FileWriter(new File(dir,"keep-burst"))){
+                        w.write(new File(ext,"scam_burst.bin").getAbsolutePath());
+                    }catch(IOException e){log.accept("CLIENT: keep-burst marker not written: "+e.getMessage());}
+                }
                 // A worker of this process died inside the CRE: this one aligns with SCAMERA's own tile alignment.
                 if(((ScamHybridBurst)scamBurst).creOff()&&!new File(dir,"cre-off").createNewFile())
                     throw new IOException(Lang.t("Не удалось создать маркер CRE","Could not create the CRE marker"));

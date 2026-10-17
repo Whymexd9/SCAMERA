@@ -53,6 +53,18 @@ public final class LiveRawFrame {
     private static int sparseLogged;
     private static final long QUAD_BIN_INTERVAL_NS = 150_000_000L;
     private static long quadAtNs;
+    /** P188: how long the last binning took (ns). */
+    private static volatile long lastBinNs;
+
+    /**
+     * P188 (owner, 2026-10-17: the 50 MP FULLRES viewfinder ran at ~7 fps «как при 200мп», it must run at 30): the camera thread
+     * waits at least this long between two binned frames - QUAD_BIN_INTERVAL_NS above 100 MP (200 MP: the HAL gives ~7 fps anyway),
+     * below it twice what the last binning took, at most QUAD_BIN_INTERVAL_NS (50 MP sparse bin: a few ms, so every frame; a packed
+     * RAW10 / RAW12 frame that is slow to unpack keeps the camera thread free as before).
+     */
+    static long binIntervalNs(long pixels, long lastBin) {
+        return pixels > SPARSE_BIN_PIXELS ? QUAD_BIN_INTERVAL_NS : Math.min(QUAD_BIN_INTERVAL_NS, 2 * Math.max(0, lastBin));
+    }
     private static ByteBuffer quadFull, quadBinned;
 
     /**
@@ -80,6 +92,7 @@ public final class LiveRawFrame {
     static synchronized ByteBuffer binMosaic(ByteBuffer plane, int w, int h, int stride, int format, int block, boolean sparse) {
         if (plane == null || (block != 2 && block != 4) || w < block * 2 || h < block * 2
                 || w % (block * 2) != 0 || h % (block * 2) != 0 || (long) w * h * 2 > Integer.MAX_VALUE) return null;
+        final long callStart = System.nanoTime(); // P188: the unpack of a packed frame counts too
         final java.nio.ShortBuffer src;
         final int srcRow;
         if (com.particlesdevs.photoncamera.util.RawUnpack.isPacked(format)) {
@@ -124,6 +137,7 @@ public final class LiveRawFrame {
             }
         }
         });
+        lastBinNs = System.nanoTime() - callStart;
         if (sparse && ++sparseLogged % 20 == 1)
             android.util.Log.i("LiveRawFrame", (block == 4 ? "200 MP viewfinder bin (centre 2x2 of each block)" : "50 MP viewfinder bin (one site of each cell)")
                     + " ms=" + (System.nanoTime() - binStart) / 1_000_000);
@@ -208,7 +222,7 @@ public final class LiveRawFrame {
         if ((block == 2 || block == 4) && (long) w * h >= QUAD_BIN_PIXELS
                 && w % (block * 2) == 0 && h % (block * 2) == 0) {
             final long now = System.nanoTime();
-            if (now - quadAtNs < QUAD_BIN_INTERVAL_NS) return;
+            if (now - quadAtNs < binIntervalNs((long) w * h, lastBinNs)) return;
             quadAtNs = now;
             ByteBuffer binned = binMosaic(plane, w, h, stride, format, block);
             if (binned == null) return;
