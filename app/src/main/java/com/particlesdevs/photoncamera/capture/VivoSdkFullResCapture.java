@@ -240,6 +240,9 @@ final class VivoSdkFullResCapture {
         nativeMosaicVerified |= mosaicVerified;
     }
 
+    /** P198: the stills after the shutter of a 50 MP ZSL shot: the N its ring lacks and the plan's bracket (VivoSdkFullRes: 64 a series). */
+    static final int MAX_SERIES = 64;
+
     /** P179: stills of the native RAW-only series in flight at once (the RAW reader holds 4 images). */
     static final int NATIVE_IN_FLIGHT = 3;
 
@@ -345,7 +348,7 @@ final class VivoSdkFullResCapture {
             // P198: a 50 MP ZSL shot is the ring's N and these stills, tolerant as the 12 MP Hybrid (a still the plan's roles do not
             // fit leaves the merge); the series after the shutter alone stays strict
             final boolean zsl = !past.isEmpty();
-            ScamCaptureSequence sequence = zsl ? ScamCaptureSequence.hybridZsl(requests, past, cutoff)
+            ScamCaptureSequence sequence = zsl ? ScamCaptureSequence.hybridZsl(requests, past, cutoff, MAX_SERIES)
                     : ScamCaptureSequence.hybridFuture(requests, cutoff);
             HashMap<Long, Double> exposures = new HashMap<>();
             for (ImageFrame frame : past) exposures.put(frame.timestamp, frame.measuredExposure / 1e9 * frame.measuredIso);

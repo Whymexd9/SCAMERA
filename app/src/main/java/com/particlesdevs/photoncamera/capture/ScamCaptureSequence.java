@@ -63,8 +63,17 @@ public final class ScamCaptureSequence {
      * failed here with «requires 1..8 bracket requests» and no photo was saved).
      */
     public static ScamCaptureSequence hybridZsl(List<CaptureRequest> requests,List<ImageFrame> past,long shutterTimestamp) {
-        if(shutterTimestamp<=0 || past.size()<1 || past.size()>64 || requests.size()>8)
-            throw new IllegalArgumentException("SCAM hybrid ZSL requires 1..64 past N and 0..8 bracket requests");
+        return hybridZsl(requests,past,shutterTimestamp,8);
+    }
+
+    /**
+     * P198 (owner's X200 Ultra 2026-10-17: every 50 MP shot failed with «requires 1..64 past N and 0..8 bracket requests»): a 50 MP
+     * ZSL shot takes the N its ring lacks after the shutter as well as the plan's bracket, so its requests go up to
+     * {@code maxRequests} (64), not the 12 MP Hybrid's 8.
+     */
+    public static ScamCaptureSequence hybridZsl(List<CaptureRequest> requests,List<ImageFrame> past,long shutterTimestamp,int maxRequests) {
+        if(shutterTimestamp<=0 || past.size()<1 || past.size()>64 || requests.size()>maxRequests)
+            throw new IllegalArgumentException("SCAM hybrid ZSL requires 1..64 past N and 0.."+maxRequests+" bracket requests");
         for(CaptureRequest request:requests) {
             Object tag=request.getTag();
             if(!(tag instanceof ImageFrame.ScamCaptureTag))throw new IllegalArgumentException("SCAM hybrid request has no role");

@@ -143,6 +143,16 @@ public class FullResZslTest {
     }
 
     /** A still whose exposure fits no role of the plan leaves the merge; the ring's N keep the shot (tolerant as at 12 MP). */
+    /**
+     * P198: the owner's X200 Ultra (2026-10-17): a 50 MP ZSL shot with 10 N topped up after the shutter (16 stills) failed with
+     * «requires 1..64 past N and 0..8 bracket requests»; it is a whole shot now.
+     */
+    @Test public void aTopUpOfTenNAfterTheShutterIsOneShot() throws Exception {
+        Shot shot = shoot(-1, 10);
+        assertEquals(shot.failures.toString(), 1, shot.completed);
+        assertEquals(16, shot.sequence.boundFutureCount());
+    }
+
     @Test public void aStillOutsideEveryRoleLeavesTheMergeAndTheShotGoesOn() throws Exception {
         Shot shot = shoot(4);
         assertEquals(shot.failures.toString(), 1, shot.completed);
@@ -179,12 +189,17 @@ public class FullResZslTest {
 
     /** A 512 x 512 Quad profile: 4 ring frames before the shutter (cutoff 10), the plan's stills after it ({@code offRole}: x1.3). */
     private Shot shoot(int offRole) throws Exception {
+        return shoot(offRole, 0);
+    }
+
+    /** {@code topUp}: N frames the ring lacked, taken after the shutter ahead of the plan's stills (P198). */
+    private Shot shoot(int offRole, int topUp) throws Exception {
         final Shot shot = new Shot();
         final VivoSdkFullRes.Profile profile = new VivoSdkFullRes.Profile(512, 512, 4, 2);
         // ISO capped at the N gain: the bracketed frames lengthen the shutter (40 ms > the viewfinder's 33 ms frame time)
-        shot.plan = HybridPlan.build(20_000_000L, 200, 0f, camera(200));
+        shot.plan = HybridPlan.build(20_000_000L, 200, 0f, camera(200)).withLeadingNormals(topUp);
         final int count = shot.plan.requests.size();
-        assertEquals(6, count);
+        assertEquals(6 + topUp, count);
         CaptureRequest.Builder previewBuilder = builder();
         previewBuilder.set(HDR, 0);
         previewBuilder.set(CaptureRequest.SENSOR_FRAME_DURATION, PREVIEW_FRAME_NS);
