@@ -4803,3 +4803,13 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   viewfinder; the stills target the full-size reader (scam_dev "vivo_fullres200_force 1": with the mode key; "vivo_fullres200_stock
   0": the route before). The stills' checks stay (mode index 0, Tetra block) and say what the HAL gave.
 - Checked: capture unit tests 42 classes / 250 tests. Not on a phone: APK 30965 and deliverables/X300U-200MP-тест-30965.txt sent.
+
+### P209 - stripes in the OPPO FULLRES viewfinder and photo (owner's X7 Ultra video, 2026-10-17 23:00; «проблема с flicker»)
+- NativeRawExposure snapped every shutter of 10 ms or more to whole 10 ms (100 Hz flicker, 50 Hz mains). Under 60 Hz mains (the
+  camera reported 120 Hz: «mains flicker 120 Hz (camera)») 30 ms is 3.6 flicker periods: rolling-shutter bands in the viewfinder
+  and in every frame of the series.
+- Fix: the period from «Частота мерцания» (PreferenceKeys.getAntibandingHz: Auto = the camera's report, else the region; 0 = no
+  snap), set when the AE is made and checked on every metered frame (a change re-splits the exposure and rebuilds the requests).
+  120 Hz: 8.33 / 16.7 / 25 / 33.3 ms.
+- Also: the P208 dev keys vivo_fullres200_stock / vivo_fullres200_force on the developer page (DevKeysCoverageTest).
+- Checked: all 202 unit-test classes (1175 tests), check_ui_language, check_settings_model. Not on the phone yet.
