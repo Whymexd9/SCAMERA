@@ -927,6 +927,8 @@ public class HybridSettingsTest {
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7).putString("pref_scam_hybrid_mosaic_kernel_scale","0.85").commit();
         SettingsMigration.migrateScamHybrid(prefs,false);
         assertEquals("0.85",prefs.getString("pref_scam_hybrid_mosaic_kernel_scale",""));
+    }
+
     /**
      * P195 (owner, 2026-10-17: «настройка должна находиться в группе настроек "Мозаика без ремозаика" В самом верху»): «Наш ремозаик»
      * is the first row of the mosaic page, on by default (nothing written: the worker's mosaicRemosaic 1); off writes mosaicRemosaic 0
