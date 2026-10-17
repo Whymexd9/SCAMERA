@@ -4813,3 +4813,12 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   120 Hz: 8.33 / 16.7 / 25 / 33.3 ms.
 - Also: the P208 dev keys vivo_fullres200_stock / vivo_fullres200_force on the developer page (DevKeysCoverageTest).
 - Checked: all 202 unit-test classes (1175 tests), check_ui_language, check_settings_model. Not on the phone yet.
+
+### P210 - X100 Ultra: no FULLRES 50 MP button on 0.6x / 1x (owner, 2026-10-17, log-2026-10-17 on 30966)
+- Main (0 / 2): row 0 gives the HAL's remosaic (block 1), rows 11 and 31 give no frame (3 s stall), on every build today (11:58,
+  14:07, 19:18): all own rows fail, the size goes off, the button hides. Ultra-wide (3): row 0 the HAL's remosaic, row 9 no frame.
+  Telephoto (4) 50 MP: own Quad, works.
+- Fix: the ultra-wide's row 0 is its hardware-remosaic row (as the main's, P194): with «FULLRES: аппаратный ремозаик» both give
+  50 MP; their own mosaic tries the rows that are not the HAL's remosaic (main 11 / 31, ultra-wide 9; failure keys _r11 / _r9).
+- Open: an own Quad on the X100 main / ultra-wide needs a mode that streams; rows 11 / 31 / 9 never gave a frame in a RAW-only
+  session (maybe the still-only route of P208 with the mode key on the stills).
