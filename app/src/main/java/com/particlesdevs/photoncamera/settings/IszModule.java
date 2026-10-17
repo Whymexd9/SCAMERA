@@ -34,6 +34,13 @@ public final class IszModule {
         removeVivoMtk();
         // P126: the X300 Ultra's main has its own ISZ module (VivoQcomIsz, sensor mode 10): no second «2×» crop here
         if (com.particlesdevs.photoncamera.capture.VivoQcomIsz.enabled()) return;
+        // P199 (owner's X200 Ultra, 2026-10-17: «на x200u отображаются лишние модули» - «2×» twice): its main camera lists
+        // CROPPED_RAW but has its own 2x ISZ module (VivoPd2454NativeRaw, forceSensorMode 3): no crop module of this kind, and
+        // the one made already goes
+        if (com.particlesdevs.photoncamera.capture.VivoQcomModes.device()) {
+            removeDuplicateOfNativeIsz();
+            return;
+        }
         try {
             SharedPreferences p = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
             CameraManager manager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
@@ -93,6 +100,37 @@ public final class IszModule {
         } catch (RuntimeException e) {
             Log.w(TAG, "vivo MediaTek ISZ modules not removed: " + e);
         }
+    }
+
+    /**
+     * P199: the X200 Ultra's «2×» module this class made (a copy of a main module named «2×», zoom 2, no sensor mode, no sensor
+     * crop) is removed when the same camera has its own 2x ISZ module (a visible module with a sensor mode at zoom 2).
+     */
+    static void removeDuplicateOfNativeIsz() {
+        try {
+            for (String slot : new java.util.ArrayList<>(ModuleRegistry.slots())) {
+                if (!isOurCrop(slot)) continue;
+                final String camera = ModuleRegistry.camera(slot);
+                boolean nativeIsz = false;
+                for (String other : ModuleRegistry.slots())
+                    if (!other.equals(slot) && camera.equals(ModuleRegistry.camera(other)) && ModuleRegistry.visible(other)
+                            && ModuleRegistry.sensorMode(other) != 0 && Math.abs(ModuleRegistry.zoom(other) - 2f) < 0.05f) {
+                        nativeIsz = true;
+                        break;
+                    }
+                if (nativeIsz && ModuleRegistry.remove(slot))
+                    Log.i(TAG, "CROPPED_RAW «2×» module " + slot + " of camera " + camera + " removed: the camera's own 2x ISZ module stays");
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "duplicate «2×» module not removed: " + e);
+        }
+    }
+
+    /** P199: the module {@link #ensure} makes: a copy of a module, named «2×», zoom 2, no sensor mode and no sensor crop. */
+    static boolean isOurCrop(String slot) {
+        return ModuleRegistry.duplicateOf(slot) != null && LABEL.equals(ModuleRegistry.label(slot))
+                && Math.abs(ModuleRegistry.zoom(slot) - 2f) < 0.05f && ModuleRegistry.sensorMode(slot) == 0
+                && !ModuleRegistry.sensorCrop(slot);
     }
 
     static boolean vivoMediatek(String manufacturer, String hardware, String soc) {
