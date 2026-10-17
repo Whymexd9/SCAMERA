@@ -1655,7 +1655,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // posted (never run inside the capture's completion, which still clears the shot's state after this call)
         new Handler(android.os.Looper.getMainLooper()).post(() -> {
             if (!mClosedForProcessing) { closed.countDown(); return; }
-            Log.i("SCAM_CAPTURE", "200 MP: the camera goes to its plain session for the merge (the 200 MP buffers go back)");
+            Log.i("SCAM_CAPTURE", "FULLRES: the camera goes to its plain session for the merge (the FULLRES buffers go back)");
             try {
                 if (isCameraResumed) restartCamera(); else closeCamera();
             } finally {
@@ -1667,7 +1667,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** P179: the merge of a 200 MP shot starts once the camera's buffers are back (at most 3 s). */
     private void awaitClosedForProcessing() {
         try {
-            if (!mClosedForProcessingDone.await(3, TimeUnit.SECONDS)) Log.w("SCAM_CAPTURE", "200 MP: the camera did not close in 3 s");
+            if (!mClosedForProcessingDone.await(3, TimeUnit.SECONDS)) Log.w("SCAM_CAPTURE", "FULLRES: the camera did not close in 3 s");
             else android.os.SystemClock.sleep(300); // the HAL hands its buffers back just after the device closes
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -1683,7 +1683,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     && ((androidx.lifecycle.LifecycleOwner) activity).getLifecycle().getCurrentState()
                     .isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED);
             if (!resumed) return; // left meanwhile: onResume opens it at 200 MP
-            Log.i("SCAM_CAPTURE", "200 MP: the merge is done, the camera goes back to 200 MP");
+            Log.i("SCAM_CAPTURE", "FULLRES: the merge is done, the camera goes back to FULLRES");
             restartCamera();
         });
     }
@@ -5328,6 +5328,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 ? null : shotArena(count, (long) mImageReaderRaw.getWidth() * mImageReaderRaw.getHeight() * 2);
         // P179: a 200 MP shot is merged with the camera closed (its own RAW buffers and the HAL's are free for the merge)
         final boolean hugeShot = (long) mImageReaderRaw.getWidth() * mImageReaderRaw.getHeight() > HUGE_SHOT_PIXELS;
+        // P200 (OPPO Find X7 Ultra, 2026-10-17): ColorOS force-stopped the app mid-merge for heat («o-stop(22)», thermal level
+        // 14) - the 50 MP session kept streaming and binning 24 fps through a 1-4 min merge. A 50 MP shot is merged with the
+        // camera in its plain session as well (its shutter waits for the merge anyway); back to FULLRES after it.
+        final boolean plainForMerge = hugeShot || PreferenceKeys.scamDevSwitch("fullres_plain_merge", true);
         saver.shotArena = arena;
         mShotArena = arena;
         final java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean();
@@ -5380,7 +5384,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     final com.particlesdevs.photoncamera.processing.ShotTimeline timeline =
                             com.particlesdevs.photoncamera.processing.ShotTimeline.detach();
                     sScamPending.incrementAndGet();
-                    if (hugeShot) closeCameraForProcessing();
+                    if (plainForMerge) closeCameraForProcessing();
                     else {
                         sFullResMerges.incrementAndGet();
                         releaseFullResRing();
@@ -5389,7 +5393,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         com.particlesdevs.photoncamera.processing.ShotTimeline.attach(timeline);
                         try {
                             com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey(mosaicKey, 1);
-                            if (hugeShot) awaitClosedForProcessing();
+                            if (plainForMerge) awaitClosedForProcessing();
                             saver.runRaw(characteristics, base, base.getRequest(), shakiness, rotation, exposures);
                         } catch (Exception failure) {
                             Log.e(TAG, "SDK FULLRES50 processing: " + Log.getStackTraceString(failure));
@@ -5399,7 +5403,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             sScamPending.decrementAndGet();
                             if (!hugeShot) sFullResMerges.decrementAndGet();
                             com.particlesdevs.photoncamera.processing.ShotTimeline.print();
-                            if (hugeShot) reopenCameraAfterProcessing();
+                            if (plainForMerge) reopenCameraAfterProcessing();
                         }
                     });
                     done.set(true);
