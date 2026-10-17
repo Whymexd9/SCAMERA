@@ -63,6 +63,28 @@ public class NativeRawExposureTest {
         assertEquals(CaptureController.NATIVE_FRAME_NS, a.frameDurationNs());
     }
 
+    /**
+     * P209 (owner's X7 Ultra, 2026-10-17: FULLRES stripes under 60 Hz mains): the shutter in whole periods of the place's flicker -
+     * 120 Hz (8.33 ms), 100 Hz (10 ms) or none; the change itself re-splits the exposure.
+     */
+    @Test public void theShutterTakesWholePeriodsOfTheFlickerOfThePlace() {
+        NativeRawExposure a = ae(30_000_000L, 1600);
+        assertTrue("30 ms is no whole 120 Hz period", a.flicker(120));
+        assertEquals(0, a.exposureNs() % 8_333_333L, 4);
+        a.split(300_000_000.0); // dark: 1/30 s -> four 8.33 ms periods
+        assertEquals(33_333_332L, a.exposureNs());
+        assertEquals(900, a.iso());
+        a.split(25_000_000.0);
+        assertEquals(16_666_666L, a.exposureNs());
+        assertFalse("the same flicker changes nothing", a.flicker(120));
+        a.flicker(100);
+        a.split(25_000_000.0);
+        assertEquals(20_000_000L, a.exposureNs());
+        a.flicker(0); // no snap
+        a.split(25_000_000.0);
+        assertEquals(25_000_000L, a.exposureNs());
+    }
+
     /** A scene whose median is proportional to the exposure: the loop settles inside the dead band within a few steps. */
     @Test public void theLoopSettlesOnTheSetpointFromFarAway() {
         for (double scene : new double[]{2e-10, 5e-9, 1e-7}) { // median per ISO-100 ns

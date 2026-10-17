@@ -2644,6 +2644,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mNativeAe = new NativeRawExposure(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE),
                     characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE), OppoNativeFullRes.frameNs(mVivoSdkCameraId),
                     (long) mPreviewExposureTime, mPreviewIso);
+            mNativeAe.flicker(PreferenceKeys.getAntibandingHz()); // P209
             OppoNativeFullRes.begin(mVivoSdkCameraId, mNativeAe);
             Log.i("SCAM_CAPTURE", "OPPO native FULLRES camera " + mVivoSdkCameraId + ": mode "
                     + VivoSdkFullRes.profile(mVivoSdkCameraId).sensorMode + ", own AE from " + mNativeAe);
@@ -4437,6 +4438,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P201: a hand-set ISO / shutter holds (both: no metering, one: the other follows)
             if (ae.setManual(paramController.manualIsoValue(), paramController.manualPreviewShutterNs())) {
                 Log.i("SCAM_CAPTURE", "native AE camera " + mVivoSdkCameraId + ": manual -> " + ae);
+                rebuildPreviewBuilder();
+            }
+            // P209: whole periods of the place's lamp flicker («Частота мерцания»; Auto: latched from the camera's report)
+            final int flickerHz = PreferenceKeys.getAntibandingHz();
+            if (ae.flicker(flickerHz)) {
+                Log.i("SCAM_CAPTURE", "native AE camera " + mVivoSdkCameraId + ": flicker " + flickerHz + " Hz -> " + ae);
                 rebuildPreviewBuilder();
             }
             float ev = 0f;

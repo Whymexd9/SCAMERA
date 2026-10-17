@@ -34,6 +34,11 @@ final class NativeRawExposure {
     private int iso;
     private int waited;
     private boolean pending;
+    /**
+     * P209 (owner's X7 Ultra, 2026-10-17: stripes in the FULLRES viewfinder and photo under 60 Hz mains): the lamp flicker period
+     * a shutter of a period or longer is a whole number of (FLICKER_NS = 100 Hz until told; 0 = no snap).
+     */
+    private long flickerNs = FLICKER_NS;
     /** P201: the hand-set sensitivity and shutter (0 = automatic). */
     private int fixedIso;
     private long fixedNs;
@@ -48,6 +53,28 @@ final class NativeRawExposure {
         this.frameNs = frameNs > 0 ? frameNs : 41_666_666L;
         final double start = startExposureNs > 0 && startIso > 0 ? (double) startExposureNs * startIso / 100.0 : 10_000_000.0 * 4;
         split(start);
+    }
+
+    /** A shutter of a flicker period or longer as whole periods (rounded down). */
+    private long snap(long t) {
+        return flickerNs > 0 && t >= flickerNs ? Math.max(flickerNs, (long) Math.floor((double) t / flickerNs + 1e-6) * flickerNs) : t;
+    }
+
+    /**
+     * P209: the lamp flicker in Hz (100 = 50 Hz mains, 120 = 60 Hz mains, 0 = no snap: PreferenceKeys.getAntibandingHz, «Авто» the
+     * camera's report / the region). True when the exposure changed (the requests must be rebuilt).
+     */
+    boolean flicker(int hz) {
+        final long period = hz > 0 ? Math.round(1e9 / hz) : 0L;
+        if (period == flickerNs) return false;
+        flickerNs = period;
+        final long before = exposureNs;
+        final int beforeIso = iso;
+        if (fixedNs <= 0) split(total()); // a hand-set shutter stays as set
+        if (exposureNs == before && iso == beforeIso) return false;
+        pending = true;
+        waited = 0;
+        return true;
     }
 
     long exposureNs() { return exposureNs; }
@@ -117,7 +144,7 @@ final class NativeRawExposure {
             long t = fixedNs > 0 ? fixedNs : Math.round(total * 100.0 / fixedIso);
             if (fixedNs <= 0) {
                 t = Math.max(minExposure, Math.min(Math.min(maxExposure, frameNs), t));
-                if (t >= FLICKER_NS) t = Math.max(FLICKER_NS, t / FLICKER_NS * FLICKER_NS);
+                t = snap(t);
             }
             final int s = fixedIso > 0 ? fixedIso : (int) Math.round(total * 100.0 / Math.max(1L, t));
             exposureNs = Math.max(minExposure, Math.min(maxExposure, t));
@@ -137,8 +164,8 @@ final class NativeRawExposure {
                 t = Math.min(Math.min(frameNs, maxExposure), Math.round(total * 100.0 / s));
             }
         }
-        if (t >= FLICKER_NS) {
-            t = Math.max(FLICKER_NS, t / FLICKER_NS * FLICKER_NS);
+        if (flickerNs > 0 && t >= flickerNs) {
+            t = snap(t);
             s = (int) Math.max(minIso, Math.min(maxIso, Math.round(total * 100.0 / t)));
         }
         exposureNs = Math.max(minExposure, Math.min(maxExposure, t));
