@@ -74,8 +74,8 @@ public class NativeRawExposureTest {
         a.split(300_000_000.0); // dark: 1/30 s -> four 8.33 ms periods
         assertEquals(33_333_332L, a.exposureNs());
         assertEquals(900, a.iso());
-        a.split(25_000_000.0);
-        assertEquals(16_666_666L, a.exposureNs());
+        a.split(30_000_000.0); // 30 ms -> three periods, 25 ms
+        assertEquals(24_999_999L, a.exposureNs());
         assertFalse("the same flicker changes nothing", a.flicker(120));
         a.flicker(100);
         a.split(25_000_000.0);
