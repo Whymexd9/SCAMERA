@@ -5208,7 +5208,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 VivoSdkFullRes.profile(mVivoSdkCameraId), mPreviewCaptureResult.getRequest(),
                 characteristics.getAvailableSessionKeys(), listener,
                 image -> mLiveMetadata.image(image.getTimestamp(), image));
-        if (hugeSeries && HybridPlan.bentoMode() > 0) {
+        // P192 (OPPO Find X7 Ultra 50 MP, 2026-10-17: the windows came out pink and without sky, the plain shot of the same scene
+        // white with sky): a native 50 MP series ends with the ultrashort frame as well - the plain shots and ISZ have their
+        // Bento frame, the native merge takes it (ISZ: «23U», «BENTO: applied»); without it the clipped green turned pink
+        if ((hugeSeries || nativeVivoFullRes() && count >= 3) && HybridPlan.bentoMode() > 0) {
             // P179: the last still of a 200 MP series is the ultrashort (Bento) one: the preview's exposure over the ultrashort
             // factor at its sensitivity; with Bento off (the worker would leave it out) the series is all N
             CaptureResult latest = mPreviewCaptureResult;
@@ -5217,7 +5220,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (exposure != null && iso != null && exposure > 0 && iso > 0) {
                 long es = Math.max(ULTRASHORT_MIN_NS, Math.round(exposure / HybridPlan.ultrashortFactor()));
                 capture.ultrashortLast(es, iso);
-                Log.i("SCAM_CAPTURE", "200 MP: " + (count - 1) + " N + 1 ultrashort " + es + " ns ISO " + iso
+                Log.i("SCAM_CAPTURE", (hugeSeries ? "200 MP: " : "50 MP: ") + (count - 1) + " N + 1 ultrashort " + es + " ns ISO " + iso
                         + " (N " + exposure + " ns; " + count + " of " + requested + " frames asked)");
             }
         }
