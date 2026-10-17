@@ -203,8 +203,10 @@ struct GainMap {
         col_pitch = pattern;
         map_points_v = height;
         map_points_h = width;
-        map_spacing_v = 1.0 / height;
-        map_spacing_h = 1.0 / width;;
+        // P205: the points span the area edge to edge (Camera2 LENS_SHADING_MAP; AOSP DngCreator: 1 / (n - 1)); 1 / n stretched
+        // the map by a point
+        map_spacing_v = 1.0 / (height > 1 ? height - 1 : 1);
+        map_spacing_h = 1.0 / (width > 1 ? width - 1 : 1);
         map_origin_v = 0.0;
         map_origin_h = 0.0;
         map_planes = 1;
@@ -1262,10 +1264,13 @@ static void WriteOpCodeItem(const OpCodeItem &opcode_item, std::ostringstream *o
 }
 
 static void WriteGainMap(const GainMap &gain_map, std::ostringstream *out, bool swap_endian = false) {
+  // P205 (owner, X100 / X300 Ultra 2026-10-17: a bright band over a quarter of the RAW in Lightroom, not in every editor): the
+  // DNG GainMap area is Top, Left, Bottom, Right - Right and Bottom were swapped, so a 4080 x 3072 frame's columns past 3071 got
+  // no shading gain in the editors that apply OpcodeList2
   Write4(gain_map.top, out, swap_endian);
   Write4(gain_map.left, out, swap_endian);
-  Write4(gain_map.right, out, swap_endian);
   Write4(gain_map.bottom, out, swap_endian);
+  Write4(gain_map.right, out, swap_endian);
 
   Write4(gain_map.plane, out, swap_endian);
   Write4(gain_map.planes, out, swap_endian);

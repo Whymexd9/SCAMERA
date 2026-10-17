@@ -540,8 +540,9 @@ public:
                 gainMaps[3].left = 0;
                 break;
         }
-        int activeX = (xmax - xmin) - 1;
-        int activeY = (ymax - ymin) - 1;
+        // P205: Bottom / Right are exclusive (the area's rows top .. bottom - 1): size - 1 left the last row and column unshaded
+        int activeX = xmax - xmin;
+        int activeY = ymax - ymin;
         gainMaps[0].bottom = activeY;
         gainMaps[0].right = activeX;
         gainMaps[1].bottom = activeY;
