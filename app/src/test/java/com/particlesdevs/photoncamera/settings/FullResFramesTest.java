@@ -92,9 +92,9 @@ public class FullResFramesTest {
         }
         assertArrayEquals(new double[]{0, 64, 1}, SettingsNumericRules.bounds(F50), 0);
         assertArrayEquals(new double[]{3, 64, 1}, SettingsNumericRules.bounds(F200), 0);
-        // the XML rows: the same bounds, defaults 0 and 4 (64 is the visible hard limit)
+        // the XML rows: the same bounds, defaults 12 (P203) and 4 (64 is the visible hard limit)
         String xml = new String(Files.readAllBytes(src("src/main/res/xml/preferences.xml").toPath()), StandardCharsets.UTF_8);
-        for (String[] row : new String[][]{{F50, "0", "0"}, {F200, "4", "3"}}) {
+        for (String[] row : new String[][]{{F50, "12", "0"}, {F200, "4", "3"}}) {
             Matcher m = Pattern.compile("<[^<]*android:key=\"" + row[0] + "\"[^>]*/>").matcher(xml);
             assertTrue(row[0], m.find());
             String line = m.group();
@@ -102,13 +102,13 @@ public class FullResFramesTest {
             assertTrue(line, line.contains("app:minValue=\"" + row[2] + "\""));
             assertTrue(line, line.contains("app:maxValue=\"64\""));
         }
-        assertEquals(0, PreferenceKeys.getFullRes50Frames());
+        assertEquals("P203: 12 N by default", 12, PreferenceKeys.getFullRes50Frames());
         assertEquals(4, PreferenceKeys.getFullRes200Frames());
     }
 
     @Test
     public void autoFollowsTheMergesFramesAndAnExplicitCountIgnoresMotion() {
-        prefs.edit().putString("pref_scam_hybrid_zsl_frames", "30").commit();
+        prefs.edit().putString("pref_scam_hybrid_zsl_frames", "30").putString(F50, "0").commit();
         assertEquals("auto", 0, PreferenceKeys.getFullRes50Frames());
         assertEquals("auto: the merge's frames", 30, PreferenceKeys.getHybridZslFrames());
         PreferenceKeys.setMotionMode(true);

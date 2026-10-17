@@ -547,7 +547,8 @@ public class PreferenceKeys {
         // stored former default); SCAM HDR SCAM: 4.
         HYBRID_DEFAULTS.put("zsl_frames", 20f);
         // P190: frames of a FULLRES 50 MP shot (0 = auto: as zsl_frames) and of a 200 MP one (3 N + 1 ultrashort)
-        HYBRID_DEFAULTS.put("fullres50_frames", 0f);
+        // P203 (owner, 2026-10-17: «сделай по дефолту 12 обычных кадров для 50мп»): 12 N, the plan's bracketed frames besides
+        HYBRID_DEFAULTS.put("fullres50_frames", 12f);
         HYBRID_DEFAULTS.put("fullres200_frames", 4f);
         // P68 (owner, 10 October 2026), every phone: Sabre 6.1 kernel always, Mochi always, Bento always with 3 ultrashort frames,
         // Shasta always with 3 frames. The worker keeps its own defaults (replays unchanged); the app writes these keys when unset.
@@ -789,11 +790,11 @@ public class PreferenceKeys {
     }
     /**
      * P190 (owner, 2026-10-17: «дай возможность ставить столько кадров для 50/200мп сколько я хочу»): frames of a FULLRES 50 MP
-     * shot, pref_scam_hybrid_fullres50_frames 0..64; 0 = auto (as {@link #getHybridZslFrames}, «Движение» included). An explicit
-     * count applies in «Движение» too. Clamped here as well: a scam_dev.txt override is not.
+     * shot, pref_scam_hybrid_fullres50_frames 0..64 (P203: default 12 N); 0 = auto (as {@link #getHybridZslFrames}, «Движение»
+     * included). An explicit count applies in «Движение» too. Clamped here as well: a scam_dev.txt override is not.
      */
     public static int getFullRes50Frames() {
-        return Math.max(0, Math.min(64, Math.round(hybridValue("fullres50_frames", 0f))));
+        return Math.max(0, Math.min(64, Math.round(hybridValue("fullres50_frames", 12f))));
     }
     /**
      * P202 (owner, 2026-10-17: «давай дадим выбор ZSL или PSL»): a FULLRES 50 MP shot takes its N from the ZSL ring (on, P198) or

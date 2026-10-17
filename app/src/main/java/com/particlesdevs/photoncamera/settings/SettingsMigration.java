@@ -653,6 +653,16 @@ public final class SettingsMigration {
             e.putInt(MOSAIC_KERNEL_REV, 1);
             markOnly = true;
         }
+        // P203: «Кадров в снимке 50 Мп» 12 instead of 0 (auto): a stored former default moves once
+        if (!values.containsKey(FULLRES50_FRAMES_REV)) {
+            Object frames = values.get(ScamHybridKeys.PREFIX + "fullres50_frames");
+            if (frames != null && isNumber(frames, 0f)) {
+                ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "fullres50_frames", frames instanceof String ? PreferenceNumber.format(12f, false) : (Object) 12f);
+                changed = true;
+            }
+            e.putInt(FULLRES50_FRAMES_REV, 1);
+            markOnly = true;
+        }
         // P164: the multiscale finish denoise's stored engine value has its own name; any value but "nlm" is that engine
         final Object engine = values.get(ScamHybridKeys.PREFIX + "dn_engine");
         if (engine instanceof String && !"nlm".equals(engine) && !"multiscale".equals(engine)) {
@@ -676,6 +686,8 @@ public final class SettingsMigration {
     static final String LOW_LIGHT_DN_REV = "pref_scam_hybrid_low_light_dn_rev";
     /** P191: the native mosaic kernel 0.7 -> 1.0 moved once. */
     static final String MOSAIC_KERNEL_REV = "pref_scam_hybrid_mosaic_kernel_rev";
+    /** P203: marker of the one-time move of a stored «Кадров в снимке 50 Мп» 0 (the former default) to 12. */
+    static final String FULLRES50_FRAMES_REV = "pref_scam_hybrid_fullres50_frames_rev";
 
     private static final String DEFAULTS_REV = "pref_scam_hybrid_defaults_rev";
     /** Marker of the one-time move of a stored former default of pref_scam_hybrid_zsl_frames (20) to 30. */
