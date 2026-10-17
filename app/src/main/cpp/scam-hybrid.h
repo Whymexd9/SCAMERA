@@ -1217,6 +1217,7 @@ layout(std430,binding=6) buffer CFlags{uint cflags[];};
 #elif defined(NAT_BASEFILL) && NAT_BASEFILL
 layout(std430,binding=3) buffer Out{float outRgb[];};
 layout(std430,binding=4) writeonly buffer Eff{float eff[];};
+layout(std430,binding=6) writeonly buffer CFlags{uint cflags[];};
 #else
 layout(std430,binding=3) writeonly buffer Out{float outRgb[];};
 layout(std430,binding=4) writeonly buffer Eff{float eff[];};
