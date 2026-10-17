@@ -121,6 +121,8 @@ public final class VivoNativeFullRes {
     static int hardwareRow(@Nullable Phone phone, String cameraId) {
         if (phone == Phone.X300_ULTRA && "3".equals(cameraId)) return 2;
         if (phone == Phone.X100_ULTRA && ("2".equals(cameraId) || "0".equals(cameraId))) return 0;
+        // P210 (the X100 Ultra's log on 30966, 2026-10-17): its ultra-wide's row 0 gives the HAL's remosaic too (block 1)
+        if (phone == Phone.X100_ULTRA && "3".equals(cameraId)) return 0;
         return -1;
     }
 
@@ -175,7 +177,7 @@ public final class VivoNativeFullRes {
     static int[] candidates(Phone phone, String cameraId, boolean large) {
         if (phone == Phone.X100_ULTRA) {
             if ("0".equals(cameraId) || "2".equals(cameraId)) return new int[]{11, 31};
-            if ("3".equals(cameraId)) return new int[]{0, 9};
+            if ("3".equals(cameraId)) return new int[]{9}; // P210: row 0 is its hardware-remosaic row
             if ("4".equals(cameraId)) return large ? new int[]{0} : new int[]{1, 14, 18, 20};
         } else if (phone == Phone.X300_ULTRA) {
             if ("3".equals(cameraId)) return large ? new int[]{0} : new int[]{3, 1};
@@ -280,7 +282,8 @@ public final class VivoNativeFullRes {
     /** P207: likewise the X100 Ultra main's rows (11 / 31, were 0 / 11 / 31) count under a key of their own. */
     static String failureKey(@Nullable Phone phone, String cameraId, boolean big) {
         final String rows = big ? "" : phone == Phone.X300_ULTRA && "3".equals(cameraId) ? "_r3"
-                : phone == Phone.X100_ULTRA && ("0".equals(cameraId) || "2".equals(cameraId)) ? "_r11" : "";
+                : phone == Phone.X100_ULTRA && ("0".equals(cameraId) || "2".equals(cameraId)) ? "_r11"
+                : phone == Phone.X100_ULTRA && "3".equals(cameraId) ? "_r9" : "";
         return FAILED + cameraId + (big ? "_200" : "_50") + rows;
     }
 

@@ -213,7 +213,7 @@ public class VivoSdkFullResModeTest {
             profile(VivoSdkFullRes.choose(x300, "4", true, on, true), "X300 ultra-wide " + on, 8192, 6144, 0, 2);
             profile(VivoSdkFullRes.choose(x300, "5", true, on, false), "X300 tele 50 MP " + on, 8160, 6144, 1, 2);
             profile(VivoSdkFullRes.choose(x300, "5", true, on, true), "X300 tele 200 MP " + on, 16320, 12288, 0, 4);
-            profile(VivoSdkFullRes.choose(x100, "3", true, on, true), "X100 ultra-wide " + on, 8192, 6144, 0, 2);
+            profile(VivoSdkFullRes.choose(x100, "3", true, on, true), "X100 ultra-wide " + on, 8192, 6144, on ? 0 : 9, on ? 1 : 2);
             profile(VivoSdkFullRes.choose(x100, "4", true, on, false), "X100 tele 50 MP " + on, 8160, 6144, 1, 2);
             profile(VivoSdkFullRes.choose(x100, "4", true, on, true), "X100 tele 200 MP " + on, 16320, 12288, 0, 4);
             for (VivoNativeFullRes.Phone phone : new VivoNativeFullRes.Phone[]{x100, x300})

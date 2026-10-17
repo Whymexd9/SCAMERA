@@ -62,7 +62,7 @@ public class VivoNativeFullResTest {
     public void theX100UltraTakesItsOwnCamerasAndTableRows() {
         profile(X100, "2", true, 8192, 6144, 11, 2); // P207: row 0 is the hardware remosaic
         profile(X100, "0", true, 8192, 6144, 11, 2); // the listed main: the same sensor's other profile
-        profile(X100, "3", true, 8192, 6144, 0, 2);
+        profile(X100, "3", true, 8192, 6144, 9, 2); // P210: row 0 is the hardware remosaic
         profile(X100, "4", true, 16320, 12288, 0, 4);
         profile(X100, "4", false, 8160, 6144, 1, 2);
         assertNull("the X200 Ultra's tele ID is no camera of it", VivoNativeFullRes.profile(X100, "5", true, false));
@@ -166,7 +166,8 @@ public class VivoNativeFullResTest {
         assertEquals(0, VivoNativeFullRes.hardwareRow(X100, "2"));
         assertEquals("the listed main: the same sensor", 0, VivoNativeFullRes.hardwareRow(X100, "0"));
         for (String camera : new String[]{"4", "5", "6"}) assertEquals("X300 camera " + camera, -1, VivoNativeFullRes.hardwareRow(X300, camera));
-        for (String camera : new String[]{"3", "4", "5"}) assertEquals("X100 camera " + camera, -1, VivoNativeFullRes.hardwareRow(X100, camera));
+        assertEquals("P210: the X100 ultra-wide's Bayer row", 0, VivoNativeFullRes.hardwareRow(X100, "3"));
+        for (String camera : new String[]{"4", "5"}) assertEquals("X100 camera " + camera, -1, VivoNativeFullRes.hardwareRow(X100, camera));
         for (String camera : new String[]{"2", "3", "4", "5"}) {
             assertEquals("X200 camera " + camera, -1, VivoNativeFullRes.hardwareRow(X200, camera));
             assertEquals("unknown phone", -1, VivoNativeFullRes.hardwareRow(null, camera));
