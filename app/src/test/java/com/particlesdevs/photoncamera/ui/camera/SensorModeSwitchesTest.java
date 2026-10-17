@@ -193,7 +193,9 @@ public class SensorModeSwitchesTest {
     }
 
     @Test public void explicitDevFileZeroHidesSdkWithoutEnablingTheUserToggle() throws Exception {
-        java.io.File file = new java.io.File(context.getExternalFilesDir(null), "scam_dev.txt");
+        // P191: scam_dev.txt lives in Download/SCAMERA now (ScamDevFile)
+        java.io.File file = com.particlesdevs.photoncamera.settings.ScamDevFile.file(context);
+        if (file.getParentFile() != null) file.getParentFile().mkdirs();
         java.lang.reflect.Field stamp = PreferenceKeys.class.getDeclaredField("scamDevStamp");
         stamp.setAccessible(true);
         java.nio.file.Files.write(file.toPath(), "vivo_sdk_fullres 0\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));

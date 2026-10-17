@@ -68,7 +68,9 @@ public class FullResFramesTest {
 
     /** scam_dev.txt with these lines (empty: none), re-read at once. */
     private void devFile(String lines) throws Exception {
-        File file = new File(context.getExternalFilesDir(null), "scam_dev.txt");
+        // P191: scam_dev.txt lives in Download/SCAMERA now (ScamDevFile)
+        File file = ScamDevFile.file(context);
+        if (file.getParentFile() != null) file.getParentFile().mkdirs();
         if (lines.isEmpty()) Files.deleteIfExists(file.toPath());
         else Files.write(file.toPath(), lines.getBytes(StandardCharsets.UTF_8));
         java.lang.reflect.Field stamp = PreferenceKeys.class.getDeclaredField("scamDevStamp");
