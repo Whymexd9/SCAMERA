@@ -5509,10 +5509,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 burst = false;
                 mState = STATE_PREVIEW;
                 cameraEventsListener.onCaptureSequenceCompleted(null);
-                // P192: an OPPO still that proved another mode or mosaic: the camera's next candidate the next time
-                if (VivoSdkFullRes.oppo() && reason != null && (reason.contains("sensor mode is not active")
-                        || reason.contains("mosaic does not match") || reason.contains("not been verified")))
-                    showToast(OppoNativeFullRes.failed(mVivoSdkCameraId, VivoSdkFullRes.profile(mVivoSdkCameraId), reason));
+                // P192: an OPPO still that proved another mode or mosaic: the camera's next candidate the next time; P207 the X100 /
+                // X300 Ultra's too (the X100 Ultra's log: its main's row 0 refused twice as no Quad, never noted as failed)
+                if (reason != null && (reason.contains("sensor mode is not active")
+                        || reason.contains("mosaic does not match") || reason.contains("not been verified"))) {
+                    if (VivoSdkFullRes.oppo())
+                        showToast(OppoNativeFullRes.failed(mVivoSdkCameraId, VivoSdkFullRes.profile(mVivoSdkCameraId), reason));
+                    else if (nativeVivoFullRes()) {
+                        final String note = VivoNativeFullRes.failed(mVivoSdkCameraId, VivoSdkFullRes.profile(mVivoSdkCameraId), reason);
+                        if (note != null) showToast(note);
+                    }
+                }
                 cameraEventsListener.onProcessingError(reason);
                 Log.w("SCAM_CAPTURE", "SDK FULLRES50 failed: " + reason);
                 // P179: a 200 MP series stopped the preview at the shutter: the camera opens again for it

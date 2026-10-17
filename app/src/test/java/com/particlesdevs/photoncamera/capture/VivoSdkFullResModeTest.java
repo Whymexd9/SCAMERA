@@ -226,7 +226,7 @@ public class VivoSdkFullResModeTest {
         }
         for (String camera : new String[]{"2", "0"}) {
             profile(VivoSdkFullRes.choose(x100, camera, true, true, true), "X100 main " + camera + ", on", 8192, 6144, 0, 1);
-            profile(VivoSdkFullRes.choose(x100, camera, true, false, true), "X100 main " + camera + ", off", 8192, 6144, 0, 2);
+            profile(VivoSdkFullRes.choose(x100, camera, true, false, true), "X100 main " + camera + ", off", 8192, 6144, 11, 2);
         }
         // the X200 Ultra (and any phone outside the tables) keeps the P182 SDK route
         profile(VivoSdkFullRes.choose(null, "3", true, true, true), "X200 main, on", 8192, 6144, 13, 0);

@@ -60,8 +60,8 @@ public class VivoNativeFullResTest {
 
     @Test
     public void theX100UltraTakesItsOwnCamerasAndTableRows() {
-        profile(X100, "2", true, 8192, 6144, 0, 2);
-        profile(X100, "0", true, 8192, 6144, 0, 2); // the listed main: the same sensor's other profile
+        profile(X100, "2", true, 8192, 6144, 11, 2); // P207: row 0 is the hardware remosaic
+        profile(X100, "0", true, 8192, 6144, 11, 2); // the listed main: the same sensor's other profile
         profile(X100, "3", true, 8192, 6144, 0, 2);
         profile(X100, "4", true, 16320, 12288, 0, 4);
         profile(X100, "4", false, 8160, 6144, 1, 2);
@@ -118,7 +118,8 @@ public class VivoNativeFullResTest {
         assertArrayEquals(new int[]{0}, VivoNativeFullRes.candidates(X300, "3", true));
         assertArrayEquals(new int[]{0, 4}, VivoNativeFullRes.candidates(X300, "4", true));
         assertArrayEquals(new int[]{1, 14, 27}, VivoNativeFullRes.candidates(X300, "5", false));
-        assertArrayEquals(new int[]{0, 11, 31}, VivoNativeFullRes.candidates(X100, "0", false));
+        assertArrayEquals("P207: not the hardware-remosaic row 0", new int[]{11, 31}, VivoNativeFullRes.candidates(X100, "0", false));
+        assertArrayEquals(new int[]{11, 31}, VivoNativeFullRes.candidates(X100, "2", false));
         assertArrayEquals(new int[]{1, 14, 18, 20}, VivoNativeFullRes.candidates(X100, "4", false));
         assertEquals(0, VivoNativeFullRes.candidates(X200, "3", false).length);
         int[] rows = {1, 2, 3};

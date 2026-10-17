@@ -168,10 +168,12 @@ public final class VivoNativeFullRes {
      * 0 / 4 8192x6144, tele (5) 0 16320x12288 or 1 / 14 / 27 8160x6144.
      * P200 (owner, X300 Ultra 2026-10-17: «на основе не с первого раза»): its main's 50 MP row 3 first - the row its log shows
      * working (native Quad, merged); row 1 gave no frame, row 2 is the hardware-remosaic row (P194, {@link #hardwareRow}).
+     * P207 (owner, X100 Ultra 2026-10-17: «Нам нужен фулрез без ремозаика»): its main's row 0 is the hardware-remosaic row (a
+     * plain Bayer in its log, the still refused as no Quad), so its own mosaic tries the other 8192x6144 rows 11 / 31 only.
      */
     static int[] candidates(Phone phone, String cameraId, boolean large) {
         if (phone == Phone.X100_ULTRA) {
-            if ("0".equals(cameraId) || "2".equals(cameraId)) return new int[]{0, 11, 31};
+            if ("0".equals(cameraId) || "2".equals(cameraId)) return new int[]{11, 31};
             if ("3".equals(cameraId)) return new int[]{0, 9};
             if ("4".equals(cameraId)) return large ? new int[]{0} : new int[]{1, 14, 18, 20};
         } else if (phone == Phone.X300_ULTRA) {
@@ -251,7 +253,14 @@ public final class VivoNativeFullRes {
      * tried rows starts again under a key of its own (a count of the old order would pick the wrong row).
      */
     static String failureKey(String cameraId, boolean big) {
-        return FAILED + cameraId + (big ? "_200" : "_50") + (!big && "3".equals(cameraId) && phone() == Phone.X300_ULTRA ? "_r3" : "");
+        return failureKey(phone(), cameraId, big);
+    }
+
+    /** P207: likewise the X100 Ultra main's rows (11 / 31, were 0 / 11 / 31) count under a key of their own. */
+    static String failureKey(@Nullable Phone phone, String cameraId, boolean big) {
+        final String rows = big ? "" : phone == Phone.X300_ULTRA && "3".equals(cameraId) ? "_r3"
+                : phone == Phone.X100_ULTRA && ("0".equals(cameraId) || "2".equals(cameraId)) ? "_r11" : "";
+        return FAILED + cameraId + (big ? "_200" : "_50") + rows;
     }
 
     static int failures(String cameraId, boolean big) {
