@@ -5176,7 +5176,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         } finally {
             HybridPlan.setMotionCap(0);
         }
-        Log.i("SCAM_CAPTURE", "50 MP ZSL: " + frames.size() + " ring frames (asked " + requested + ", mosaic "
+        // P198: a ring smaller than the frames asked (96 MB a frame: 4-10 of them) takes the rest of the N right after the shutter -
+        // the merge keeps the frame count of the series before P198 (fewer frames left more lattice and noise), the first frames
+        // still come from before the press
+        final int topUp = Math.max(0, requested - frames.size());
+        plan = plan.withLeadingNormals(topUp);
+        Log.i("SCAM_CAPTURE", "50 MP ZSL: " + frames.size() + " ring frames + " + topUp + " N after the shutter (asked " + requested + ", mosaic "
                 + (verified ? "verified" : "not proven by the ring") + "); " + plan.description);
         return new NativeZslShot(frames, base, plan, verified);
     }

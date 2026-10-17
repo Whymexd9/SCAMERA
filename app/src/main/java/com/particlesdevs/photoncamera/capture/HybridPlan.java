@@ -294,6 +294,18 @@ public final class HybridPlan {
                         nShutterNs / 1e6, nIso));
     }
 
+    /**
+     * P198: this plan with {@code n} more N frames (its N exposure) ahead of its own requests: a 50 MP ZSL shot whose ring holds
+     * fewer N frames than asked takes the rest right after the shutter (the plan's roles keep their order after them).
+     */
+    public HybridPlan withLeadingNormals(int n) {
+        if (n <= 0 || nShutterNs <= 0 || nIso <= 0) return this;
+        List<Request> out = new ArrayList<>();
+        for (int i = 0; i < n; i++) out.add(new Request(ImageFrame.CaptureRole.NORMAL, nShutterNs, nIso, 1.0));
+        out.addAll(requests);
+        return new HybridPlan(out, nShutterNs, nIso, description + " + " + n + " N after the shutter");
+    }
+
     public static HybridPlan single(long nShutterNs, int nIso) {
         if (nShutterNs <= 0 || nIso <= 0) return autoExposure(1);
         List<Request> out = new ArrayList<>();

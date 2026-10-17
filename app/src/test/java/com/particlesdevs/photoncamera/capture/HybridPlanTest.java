@@ -262,4 +262,17 @@ public class HybridPlanTest {
         assertEquals(90, r.iso);
         assertEquals(ImageFrame.CaptureRole.LONG, r.role);
     }
+
+    /** P198: a 50 MP ZSL shot tops up its N after the shutter: N frames first, the plan's own roles after them in order. */
+    @Test public void leadingNormalsComeFirstAtTheNExposure() {
+        HybridPlan base = HybridPlan.single(10_000_000L, 200);
+        HybridPlan more = base.withLeadingNormals(3);
+        assertEquals(4, more.requests.size());
+        for (int i = 0; i < 4; i++) {
+            assertEquals(com.particlesdevs.photoncamera.processing.ImageFrame.CaptureRole.NORMAL, more.requests.get(i).role);
+            assertEquals(10_000_000L, more.requests.get(i).shutterNs);
+            assertEquals(200, more.requests.get(i).iso);
+        }
+        assertSame(base, base.withLeadingNormals(0));
+    }
 }
