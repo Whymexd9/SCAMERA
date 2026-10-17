@@ -421,6 +421,13 @@ struct HybridTuning {
     // P34 diagnostics: 1 = the generic native merge kHybMergeMosaic also for Quad with the full window (where kHybMergeMosaicFast,
     // the same merge on whole colour blocks, runs by default)
     int mosaicGeneric=0;
+    // P197 (owner, 2026-10-17: «Сделай для нативной мозаики ту же цветовую проверку Bento, что у 12 Мп»): the ultrashort frame of
+    // a mosaic burst (native, split, binned) against the base row band by row band and colour (rolling-shutter flicker), corrected
+    // when a band departs by mosaicUsRowsMin or more, refused when its ratios stay inconsistent (hybridUsRowsCheck). 0 = off.
+    int mosaicUsRows=1;
+    // 8 %: the static owner burst own_114335 (no flicker) shows a +-2..3 % band structure and 5.3 % in its last band (frame edge),
+    // the synthetic flicker +-25 % and the owner's flicker shot a gain MAD of 26.9 %
+    float mosaicUsRowsMin=0.08f;
 };
 
 // restoreSensorOrigin() of scam-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -547,6 +554,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicTetra",nullptr,&t.mosaicTetra)||set("mosaicNativeWiden",nullptr,&t.mosaicNativeWiden)||set("mosaicGeneric",nullptr,&t.mosaicGeneric)
             ||set("mosaicNativeWidenMul",&t.mosaicNativeWidenMul)||set("mosaicNativeWidenFrames",&t.mosaicNativeWidenFrames)
             ||set("mosaicTetraWidenMul",&t.mosaicTetraWidenMul)||set("mosaicTetraWidenFrames",&t.mosaicTetraWidenFrames)
+            ||set("mosaicUsRows",nullptr,&t.mosaicUsRows)||set("mosaicUsRowsMin",&t.mosaicUsRowsMin) // P197
             // P27
             ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)||set("chromaGpu",nullptr,&t.chromaGpu)
             ||set("auto2x",nullptr,&t.auto2x)||set("auto2xMaxGap",&t.auto2xMaxGap)||set("auto2xMinSnr",&t.auto2xMinSnr)
@@ -2598,6 +2606,27 @@ struct HybridMosaicNative {
     bool generic=false;                  // HybridTuning::mosaicGeneric: kHybMergeMosaic even where kHybMergeMosaicFast applies
     int clampCov=0;                      // HybridTuning::mosaicNativeClamp
     float siteSlope=0,siteOffset=0;      // noise model of one merged site of the base (outlier test of kHybNatFlags)
+    // P197: the row correction of an ultrashort frame (hybridUsRowsCheck), applied to its sites as they are uploaded (HybridGpu:
+    // the clip scan and slot 12), so no corrected copy of a 50 / 200 MP frame is held. Per frame (same index as frames): empty =
+    // as captured, else 3 factors (R, G, B) per row of the mosaic. Sensor layout: colour from the block parity and rowCfa, black of
+    // the 2x2 sensor phase.
+    std::vector<std::vector<float>> rowGain;
+    std::array<float,4> rowBlack{};int rowCfa=0;float rowWhite=0;
+    bool fixesRows(int k) const {return k>=0&&k<int(rowGain.size())&&!rowGain[k].empty();}
+    // rows [y0, y0 + rows) of frame k, corrected, into dst (rows x W): (v - black) x factor of the row and site colour; a clipped
+    // site (>= white - 1, the binning's clip) stays, a corrected value is at most white (then it reads as clipped, as in the binning)
+    void fixRows(int k,int y0,int rows,uint16_t* dst) const {
+        const uint16_t* src=frames[k];const float* g=rowGain[k].data();
+        for(int y=y0;y<y0+rows;++y){
+            const uint16_t* s=src+size_t(y)*W;uint16_t* d=dst+size_t(y-y0)*W;
+            const int py=((y/block)&1)<<1;
+            for(int x=0;x<W;++x){
+                const int p=py|((x/block)&1),c=p==rowCfa?0:p==(rowCfa^3)?2:1;
+                const float v=float(s[x]),bl=rowBlack[((y&1)<<1)|(x&1)];
+                d[x]=v>=rowWhite-1.f?s[x]:uint16_t(std::lround(std::clamp(bl+(v-bl)*g[3*y+c],0.f,rowWhite)));
+            }
+        }
+    }
 };
 
 // P62 Mochi (v11 PhotometricMerge, research/mochi/MOCHI_IMPL.md): photometric correction of a bracketed (longer) frame against
@@ -3052,6 +3081,7 @@ public:
         // P29: the raw mosaic behind these (binned) frames; null = every other merge. nativeFrames: its frames in merge order.
         const HybridMosaicNative* native=nullptr;
         std::vector<const uint16_t*> nativeFrames;
+        std::vector<int> nativeRowFix;                  // P197: per merge frame, its index in HybridMosaicNative (row correction), -1 = none
         // The stream is above kHybridClassicPixels (any RAW size): strips sized by the readback, the storage block and the
         // available memory, dispatch chunks scaled by the width. false: the merge exactly as before.
         bool large=false;
@@ -3602,6 +3632,7 @@ public:
         std::vector<uint8_t> natClipBlock;
         std::vector<GLuint> natOffsets,natNormOff;std::vector<GLint> natRow0,natRows;
         size_t natNormBlocks=0; // P34: blocks of the strip's normalised frames (kHybNatNorm)
+        std::vector<uint16_t> natFixed; // P197: the strip rows of a row-corrected frame (HybridMosaicNative::fixRows)
         if(nat){
             natOffsets.assign(frames,0);natNormOff.assign(frames,0);natRow0.assign(frames,0);natRows.assign(frames,1);
             natFlagMode=markable?((tune.cellClip?1:0)|(hot?2:0)):0;
@@ -3619,10 +3650,13 @@ public:
                 std::vector<uint16_t> blockMax(size_t(frames)*natBlocks,0);
                 const int NW=nat->W,NH=nat->H,nbl=natBlocks;
                 mergeRowBands(frames*nbl,[&](int i0,int i1){
+                    std::vector<uint16_t> fixed; // P197: the rows of a row-corrected frame as the upload will send them
                     for(int i=i0;i<i1;++i){
                         const int f=i/nbl,bk=i%nbl;
                         const uint16_t* row=in.nativeFrames[f]+size_t(bk)*kBlock*NW;
                         const size_t cnt=size_t(std::min(kBlock,NH-bk*kBlock))*NW;
+                        const int nk=f<int(in.nativeRowFix.size())?in.nativeRowFix[f]:-1;
+                        if(nat->fixesRows(nk)){fixed.resize(cnt);nat->fixRows(nk,bk*kBlock,int(cnt/NW),fixed.data());row=fixed.data();}
                         uint16_t m=0;for(size_t k=0;k<cnt;++k)m=std::max(m,row[k]);
                         blockMax[i]=m;natClipBlock[i]=(natFlagMode&1)&&m>=threshold;
                     }
@@ -3762,7 +3796,13 @@ public:
             if(nat){
                 const int NW=nat->W;
                 reserveBank(12,ntotal*2,bank);
-                for(int f=0;f<frames;++f)putBank(12,bank,size_t(natOffsets[f])*2,in.nativeFrames[f]+size_t(natRow0[f])*NW,size_t(natRows[f])*NW*2);
+                for(int f=0;f<frames;++f){
+                    const int nk=f<int(in.nativeRowFix.size())?in.nativeRowFix[f]:-1;
+                    if(nat->fixesRows(nk)){ // P197: the row-corrected ultrashort frame, through a strip-sized copy
+                        natFixed.resize(size_t(natRows[f])*NW);nat->fixRows(nk,natRow0[f],natRows[f],natFixed.data());
+                        putBank(12,bank,size_t(natOffsets[f])*2,natFixed.data(),size_t(natRows[f])*NW*2);
+                    } else putBank(12,bank,size_t(natOffsets[f])*2,in.nativeFrames[f]+size_t(natRow0[f])*NW,size_t(natRows[f])*NW*2);
+                }
                 std::vector<GLuint> ngeo(size_t(frames)*4,0);
                 for(int f=0;f<frames;++f){ngeo[f*4]=natOffsets[f];ngeo[f*4+1]=GLuint(natRow0[f]);ngeo[f*4+2]=GLuint(natRows[f]);ngeo[f*4+3]=natNormOff[f];}
                 glBindBuffer(GL_UNIFORM_BUFFER,natTable[bank]);
@@ -5316,6 +5356,179 @@ inline int hybridApplyMeasuredGains(HybridInput& in,const std::function<void(con
     return changed;
 }
 
+// P197 (owner, 2026-10-17: «Сделай для нативной мозаики ту же цветовую проверку Bento, что у 12 Мп»). vivo X200 Ultra, FULLRES
+// 50 MP native Quad under a 50 Hz ceiling lamp: the ultrashort frame (2.08 ms at 1/60 N) is read out row after row while the lamp
+// flickers at 100 Hz, so every sensor row saw another phase of it - another brightness and, with a white LED (the blue die follows
+// the current, the yellow phosphor glows on), another colour. Its GAIN CHECK said "inconsistent ratios" (+10.7 %, MAD 26.9 %),
+// Bento replaced the clipped diffuser with it anyway (bento 2, forced) and the lamp came out orange on one side, blue on the other.
+// The 12 MP shot of the same lamp was white because its three ultrashort frames were consistent (+2.5 %, MAD 5.1 %), not because
+// of a colour check the native path lacked: the plain path's Bento checks (bentoMask: the intensity error against the base, the
+// validation of every ultrashort frame, the motion share) run on the binned frames of the native path exactly as on a plain
+// burst, and none of them sees a colour inside a clipped base (GainUp(us) is min(., 1) there); the Bento colour pass (kHybBento)
+// takes R/G, B/G FROM the ultrashort frames and would paint the same bands. What the mosaic paths (native, split, binned) do now
+// with every ultrashort frame they merge, on its binned frame (the b^2 means) against the base's:
+//   1. row profile (hybridUltrashortRows): the rows in bands of 32 (h / 32, 4..64 bands: a 100 Hz flicker period spans ~10-20
+//      of them on a 12 / 50 MP binned frame), 16 x 16 tiles where neither frame clips and every colour carries signal in both
+//      (hybridMeasuredGain's tile rule, per colour; ratios within x0.25..4 of the metadata). Per tile the level ratio g = us / base
+//      of green and the colour ratios (us / base of R, B) / g; per band their medians. A band counts when it has >= 24 tiles and
+//      its tiles AGREE (relative MAD of g and of both colour ratios <= kUsRowsBandMad, 12 %): rolling-shutter flicker depends on
+//      the row alone, so inside a band every tile sees the same factor; a disagreement that is not a row profile (motion, a lamp
+//      lighting one side, a column ramp) scatters the tiles of a band and is not "corrected" (a first version with per-colour
+//      medians over different tile sets made up a +-30 % colour profile on a synthetic COLUMN ramp: the scene puts other columns
+//      into other bands). Factors: G = E / g_band (E = the exposure ratio the merge normalises the frame with: gainMeasured
+//      has decided it on the stream frames before the mosaic paths run, and a flickering frame is "inconsistent" there, so it is
+//      the metadata; a first version took the frame's median g and left a sinus-flickered frame 14 % bright in the highlights),
+//      R / B = G / colour ratio of the band (the colour from the same tiles as the level, so a neutral
+//      disagreement never becomes a colour one). Bands that do not count are interpolated; fewer than half count: no profile.
+//      The base's colour in the same rows (its exposure spans ~1.7 flicker periods) is what the replacement must match.
+//   2. a factor departing from 1 by mosaicUsRowsMin (8 %) or more: the frame is corrected, (v - black) x the factor of its row and
+//      colour, linear between band centres (binned frame, split sub-frames, native sites as they are uploaded); clipped sites stay.
+//   3. the GAIN CHECK of the (corrected) frame against the base (hybridMeasuredGain, the merge's own check): still inconsistent
+//      (MAD >= 15 % on >= 64 tiles) = the disagreement is not a row profile (lamps on other phases, motion): the frame is refused,
+//      no Bento from it - the base's clipped highlight stays (clip flags, highlight recovery: neutral white) - in every Bento mode,
+//      as the motion refusal (bentoMotionMax): "forced" must not paint with a frame the data contradicts.
+// A burst without an ultrashort frame, and one whose ultrashort frame is within 8 % in every band and consistent, merges byte for
+// byte as before (new report lines only). The plain Bayer merge (hybridReconstruct on a plain burst) is not touched.
+struct HybridUsRows {
+    int bands=0;float rows=0;long tiles=0;int measuredBands[3]{};bool measured=false,apply=false;float maxDev=0;
+    std::array<std::vector<float>,3> f; // per band: the factor of R, G, B (1 = as captured)
+    // factor of colour c at row u (px of the measured frame, centres at integers), linear between band centres, flat beyond
+    float at(int c,float u) const {
+        const float t=(u+0.5f)*float(bands)/rows-0.5f;
+        if(!(t>0.f))return f[c][0];
+        if(t>=float(bands-1))return f[c][bands-1];
+        const int k=int(t);const float a=t-float(k);
+        return f[c][k]*(1.f-a)+f[c][k+1]*a;
+    }
+};
+// base / us: plain Bayer frames w x h (sensor CFA `cfa`, black of the 2x2 phase), us at `expected` x the base's exposure.
+constexpr float kUsRowsBandMad=0.12f;
+inline HybridUsRows hybridUltrashortRows(const uint16_t* base,const uint16_t* us,int w,int h,int cfa,const std::array<float,4>& black,
+                                         float white,float expected,float minDev){
+    HybridUsRows r;
+    if(!base||!us||w<64||h<64||!(expected>0.f)||!(white>0.f))return r;
+    const int nb=std::clamp(h/32,4,64),tile=16;
+    r.bands=nb;r.rows=float(h);
+    const float clip=0.98f*white;
+    const double range=double(white)-black[0];
+    // per band: the tiles' level ratio g (green) and colour ratios (R / g, B / g)
+    std::vector<std::array<std::vector<float>,3>> ratios(nb);
+    mergeRowBands(nb,[&](int k0,int k1){
+        for(int k=k0;k<k1;++k){
+            const int yb0=int(int64_t(k)*h/nb)&~1,yb1=k+1==nb?h:int(int64_t(k+1)*h/nb)&~1;
+            for(int y0=yb0;y0+tile<=yb1;y0+=tile)for(int x0=0;x0+tile<=w;x0+=tile){
+                double sb[3]{},so[3]{};int cnt[3]{};bool clipped=false;
+                for(int y=y0;y<y0+tile&&!clipped;++y)for(int x=x0;x<x0+tile;++x){
+                    const size_t i=size_t(y)*w+x;
+                    if(base[i]>=clip||us[i]>=clip){clipped=true;break;}
+                    const int p=((y&1)<<1)|(x&1),c=p==cfa?0:p==(cfa^3)?2:1;
+                    sb[c]+=double(base[i])-black[p];so[c]+=double(us[i])-black[p];++cnt[c];
+                }
+                if(clipped)continue;
+                float q[3];bool ok=true;
+                for(int c=0;c<3&&ok;++c){
+                    if(!cnt[c]){ok=false;break;}
+                    const double mb=sb[c]/cnt[c],mo=so[c]/cnt[c],sig=0.5*(mb+mo/expected);
+                    if(mb<=0.0||mo<=0.0||sig*std::min(1.f,expected)<8.0||sig*std::max(1.f,expected)>0.8*range){ok=false;break;}
+                    q[c]=float(mo/mb);
+                    if(q[c]<0.25f*expected||q[c]>4.f*expected)ok=false;
+                }
+                if(!ok)continue;
+                ratios[k][1].push_back(q[1]);ratios[k][0].push_back(q[0]/q[1]);ratios[k][2].push_back(q[2]/q[1]);
+            }
+        }
+    });
+    auto median=[](std::vector<float> v){std::nth_element(v.begin(),v.begin()+v.size()/2,v.end());return v[v.size()/2];};
+    auto mad=[&](const std::vector<float>& v,float m){std::vector<float> d(v.size());for(size_t i=0;i<v.size();++i)d[i]=std::abs(v[i]-m);return median(d)/std::max(m,1e-6f);};
+    for(auto& band:ratios)r.tiles+=long(band[1].size());
+    if(r.tiles<64)return r;
+    const float M=expected; // the ratio the merge normalises with (gainMeasured decided it on the stream frames before this)
+    std::array<std::vector<float>,3> med;for(auto& m:med)m.assign(nb,0.f);
+    std::vector<int> have;
+    for(int k=0;k<nb;++k){
+        if(ratios[k][1].size()<24)continue;
+        bool agree=true;
+        for(int c=0;c<3;++c){med[c][k]=median(ratios[k][c]);agree=agree&&mad(ratios[k][c],med[c][k])<=kUsRowsBandMad;}
+        if(agree)have.push_back(k);
+    }
+    for(int c=0;c<3;++c)r.measuredBands[c]=int(have.size());
+    if(2*int(have.size())<nb)return r;
+    r.measured=true;
+    std::array<std::vector<float>,3> q;for(auto& v:q)v.assign(nb,1.f);
+    for(int c=0;c<3;++c)for(int k=0;k<nb;++k){
+        // bands that do not count: interpolated between the nearest that do, flat beyond them
+        auto hi=std::lower_bound(have.begin(),have.end(),k);
+        if(hi!=have.end()&&*hi==k)q[c][k]=med[c][k];
+        else if(hi==have.begin())q[c][k]=med[c][*hi];
+        else if(hi==have.end())q[c][k]=med[c][have.back()];
+        else {const int a=*(hi-1),b=*hi;q[c][k]=med[c][a]+(med[c][b]-med[c][a])*float(k-a)/float(b-a);}
+    }
+    for(auto& v:r.f)v.assign(nb,1.f);
+    for(int k=0;k<nb;++k){
+        r.f[1][k]=M/q[1][k];r.f[0][k]=r.f[1][k]/q[0][k];r.f[2][k]=r.f[1][k]/q[2][k];
+        for(int c=0;c<3;++c)r.maxDev=std::max(r.maxDev,std::abs(r.f[c][k]-1.f));
+    }
+    r.apply=r.maxDev>=minDev;
+    return r;
+}
+// The correction of one value of a binned frame or sub-frame (black bl of its colour block): a clipped value (>= white - 1, the
+// binning's clip) stays; a corrected one is at most white (it then reads as clipped, as a clipped site of the binning).
+inline uint16_t hybridUsRowFix(uint16_t v,float bl,float white,float f){
+    if(float(v)>=white-1.f)return v;
+    return uint16_t(std::lround(std::clamp(bl+(float(v)-bl)*f,0.f,white)));
+}
+// Frame w x h (plain Bayer of the binned grid, CFA `cfa`) in place; its row J sits at row J + shift of the profile's frame.
+inline void hybridUsRowsApply(const HybridUsRows& r,uint16_t* frame,int w,int h,int cfa,const std::array<float,4>& black,float white,float shift){
+    mergeRowBands(h,[&](int j0,int j1){
+        for(int J=j0;J<j1;++J){
+            float g[3];for(int c=0;c<3;++c)g[c]=r.at(c,float(J)+shift);
+            uint16_t* row=frame+size_t(J)*w;
+            for(int I=0;I<w;++I){
+                const int p=((J&1)<<1)|(I&1),c=p==cfa?0:p==(cfa^3)?2:1;
+                row[I]=hybridUsRowFix(row[I],black[p],white,g[c]);
+            }
+        }
+    });
+}
+struct HybridUsCheck { bool corrected=false,refused=false; HybridUsRows rows; };
+// Steps 1-3 above for ultrashort frame f of `input` (the mosaic burst), whose binned frame `us` (corrected in place) pairs with the
+// binned base `base` (w x h, the input's CFA, black and white). `tag` starts the report lines.
+inline HybridUsCheck hybridUsRowsCheck(const HybridInput& input,int f,const uint16_t* base,uint16_t* us,int w,int h,const HybridTuning& t,
+                                      const std::string& tag,const std::function<void(const std::string&)>& report){
+    HybridUsCheck res;
+    if(!t.mosaicUsRows||f<=0||f>=int(input.frames.size()))return res;
+    const float expected=input.frames[f].exposure;
+    res.rows=hybridUltrashortRows(base,us,w,h,input.cfa,input.black,input.white,expected,std::max(0.f,t.mosaicUsRowsMin));
+    const HybridUsRows& r=res.rows;
+    char line[400];
+    if(!r.measured)std::snprintf(line,sizeof(line),"%s: ultrashort frame %d rows against the base: no row profile (%ld tiles; %d of %d bands with agreeing tiles)",
+        tag.c_str(),f,r.tiles,r.measuredBands[1],r.bands);
+    else {
+        float lo[3],hi[3];
+        for(int c=0;c<3;++c){lo[c]=*std::min_element(r.f[c].begin(),r.f[c].end());hi[c]=*std::max_element(r.f[c].begin(),r.f[c].end());}
+        std::snprintf(line,sizeof(line),"%s: ultrashort frame %d rows against the base: %d bands (%d agreeing), %ld tiles, factors R x%.3f..%.3f G x%.3f..%.3f B x%.3f..%.3f (largest %.1f %%) -> %s",
+            tag.c_str(),f,r.bands,r.measuredBands[1],r.tiles,lo[0],hi[0],lo[1],hi[1],lo[2],hi[2],100.0*r.maxDev,r.apply?"corrected (rolling-shutter flicker)":"as captured (within the limit)");
+    }
+    if(report)report(line);
+    if(r.apply){hybridUsRowsApply(r,us,w,h,input.cfa,input.black,input.white,0.f);res.corrected=true;}
+    // the merge's own gain check on the pair as it will be merged
+    HybridInput pair;pair.w=w;pair.h=h;pair.cfa=input.cfa;pair.white=input.white;pair.black=input.black;
+    HybridFrame b0=input.frames[0];b0.raw=base;HybridFrame u=input.frames[f];u.raw=us;
+    pair.frames.push_back(b0);pair.frames.push_back(u);
+    const HybridGain g=hybridMeasuredGain(pair,1);
+    if(g.tiles>=kGainMinTiles&&!g.ok){
+        res.refused=true;
+        std::snprintf(line,sizeof(line),"%s: ultrashort frame %d refused: ratios to the base inconsistent%s (measured %.4f, mad %.1f %% on %d tiles): no Bento from it, the clipped base stays (highlight recovery)",
+            tag.c_str(),f,res.corrected?" after the row correction":"",g.measured,100.0*g.mad,g.tiles);
+        if(report)report(line);
+    } else if(res.corrected&&report){
+        if(g.tiles>=kGainMinTiles)std::snprintf(line,sizeof(line),"%s: ultrashort frame %d after the row correction: measured %.4f, mad %.1f %% on %d tiles -> consistent",tag.c_str(),f,g.measured,100.0*g.mad,g.tiles);
+        else std::snprintf(line,sizeof(line),"%s: ultrashort frame %d after the row correction: %d tiles (too few for the gain check)",tag.c_str(),f,g.tiles);
+        report(line);
+    }
+    return res;
+}
+
 // The merge. `alignment` returns one backward homography per slot of a 7-slot Burst (slot 0 = reference);
 // frames beyond six are aligned in groups like the extra ZSL frames of the SCAM path.
 struct HybridPresetAlignment { std::vector<BackwardHomography> h; std::vector<bool> aligned; };
@@ -6227,6 +6440,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(native){ // P29: the mosaic of every merged frame, in merge order
         in.native=native;
         for(int f:index)in.nativeFrames.push_back(f<int(native->frames.size())?native->frames[f]:nullptr);
+        for(int f:index)in.nativeRowFix.push_back(native->fixesRows(f)?f:-1); // P197
     }
     in.k61a=k61a;in.k61b=k61b;in.k61c=k61c;
     in.mergeMode=sabre61?(tune.s61Mode&7):0;
@@ -7087,6 +7301,17 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
             }
         }
     });
+    // P197: every ultrashort frame against the base, row band by row band and colour (hybridUsRowsCheck, on the binned frames):
+    // corrected in its binned frame (the alignment) and its sub-frames (sub-frame (a, c) row J = binned row J + (c - (b-1)/2) / b),
+    // or refused (not merged)
+    std::vector<bool> usRefused(pick.size(),false);
+    for(size_t k=1;k<pick.size();++k){
+        if(input.frames[pick[k]].role!=kRoleUltrashort)continue;
+        const HybridUsCheck uc=hybridUsRowsCheck(input,pick[k],binned.data(),binned.data()+k*vpix,vw,vh,tune,"HYBRID MOSAIC",report);
+        if(uc.refused){usRefused[k]=true;continue;}
+        if(uc.corrected)for(int c=0;c<b;++c)for(int a=0;a<b;++a)
+            hybridUsRowsApply(uc.rows,sub.data()+(k*per+size_t(c*b+a))*vpix,vw,vh,input.cfa,input.black,input.white,(float(c)-0.5f*float(b-1))/float(b));
+    }
     // ---- alignment of the binned frames against the binned base (groups of six, as hybridReconstruct)
     const auto alignStarted=Clock::now();
     const int m=int(pick.size());
@@ -7148,6 +7373,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
         r.upRatio=1;return r;
     };
     for(int k=0;k<m;++k){
+        if(usRefused[k])continue; // P197
         const HybridFrame& fr=input.frames[pick[k]];
         for(int c=0;c<b;++c)for(int a=0;a<b;++a){
             HybridFrame v=fr;v.raw=sub.data()+(size_t(k)*per+size_t(c*b+a))*vpix;
@@ -7370,6 +7596,30 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
             }
         }
     });
+    // ---- P197: the ultrashort frame against the base, row band by row band and colour (hybridUsRowsCheck): its binned frame
+    // corrected here, its native sites as the GPU uploads them (nat.rowGain; T2: its Quad mosaic here), or the frame refused
+    std::vector<std::vector<float>> usRowGain(pick.size());std::vector<bool> usRefused(pick.size(),false);
+    for(size_t k=1;k<pick.size();++k){
+        if(input.frames[pick[k]].role!=kRoleUltrashort)continue;
+        const HybridUsCheck uc=hybridUsRowsCheck(input,pick[k],binned.data(),binned.data()+k*vpix,vw,vh,tune,"HYBRID MOSAIC NATIVE",report);
+        if(uc.refused){usRefused[k]=true;continue;}
+        if(!uc.corrected)continue;
+        if(t2){ // the Quad site (qx, qy): the mean of sensor rows 2 qy, 2 qy + 1 (centre 2 qy + 0.5), colour and black of its Tetra block
+            uint16_t* q=quad.data()+k*qpix;
+            mergeRowBands(MH,[&](int y0,int y1){
+                for(int qy=y0;qy<y1;++qy){
+                    float g[3];for(int c=0;c<3;++c)g[c]=uc.rows.at(c,(float(sub*qy)+0.5f*float(sub-1)-0.5f*float(b-1))/float(b));
+                    for(int qx=0;qx<MW;++qx){
+                        const int p=(((qy>>1)&1)<<1)|((qx>>1)&1),c=p==input.cfa?0:p==(input.cfa^3)?2:1;
+                        uint16_t& v=q[size_t(qy)*MW+qx];v=hybridUsRowFix(v,input.black[p],input.white,g[c]);
+                    }
+                }
+            });
+        } else { // sensor row y: binned row (y - (b-1)/2) / b
+            usRowGain[k].assign(size_t(MH)*3,1.f);
+            for(int y=0;y<MH;++y)for(int c=0;c<3;++c)usRowGain[k][size_t(y)*3+c]=uc.rows.at(c,(float(y)-0.5f*float(b-1))/float(b));
+        }
+    }
     // ---- the binned burst through hybridReconstruct with the native merge pass
     // The requested output: sensor grid W x H, or the 2x grid. P56: a Quad or Tetra T1 mosaic merges
     // the 2x grid itself (kHybMergeMosaic / Fast at g = 2b: the Sabre sub-positions of the native sites); T2 resamples its
@@ -7394,17 +7644,22 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     // would raise them ~2x (a Tetra burst at sensor key 15..30 would lose the night kernel and the outlier test)
     nat.keyNoise=float(bb);
     nat.siteSlope=std::max(input.frames[0].slope,1e-9f)/float(sub*sub);nat.siteOffset=std::max(input.frames[0].offset,0.f)/float(sub*sub);
+    nat.rowBlack=input.black;nat.rowCfa=input.cfa;nat.rowWhite=input.white; // P197: the row correction's sensor layout
     for(size_t k=0;k<pick.size();++k){
+        if(usRefused[k])continue; // P197: an ultrashort frame whose ratios stay inconsistent is not merged
         HybridFrame v=input.frames[pick[k]];
         v.raw=binned.data()+k*vpix;
         v.slope/=float(bb);v.offset/=float(bb); // a binned pixel is the mean of b^2 sites
         bin.frames.push_back(v);
         nat.frames.push_back(t2?quad.data()+k*qpix:input.frames[pick[k]].raw);
+        nat.rowGain.push_back(std::move(usRowGain[k]));
     }
     HybridTuning vt=tune;vt.grid=mb*k2;vt.mosaicBlock=1;vt.caCorrect=0;
     vt.mosaicEdgeScale=tune.mosaicNativeEdgeScale; // the native path's own edge scale (hybridReconstruct applies it with `native`)
     if(vt.chromaDiff>0.f||vt.rimRatio!=0||vt.bentoChroma>0.f){
-        // the binned colour passes would correct the native output at the wrong positions with the binned base's sums (P29 review)
+        // the binned colour passes would correct the native output at the wrong positions with the binned base's sums (P29 review).
+        // P197: none of them checks the ultrashort frame's colour (kHybBento takes its ratios FROM it); that check is the row profile
+        // above (hybridUsRowsCheck), and the Bento mask / validation run on the binned frames here as on a plain burst
         report("HYBRID MOSAIC NATIVE: colour-difference, clip-border and Bento colour passes off (they work on the binned frames; native variants not built)");
         vt.chromaDiff=0.f;vt.rimRatio=0;vt.bentoChroma=0.f;
     }
@@ -7619,11 +7874,18 @@ inline std::vector<float> hybridReconstructMosaicBinned(const HybridInput& input
         }
     });
     const double binMs=millis(Clock::now()-binStart);
+    // P197: every ultrashort frame against the base, row band by row band and colour (hybridUsRowsCheck): corrected in place or
+    // refused (not merged)
+    std::vector<bool> usRefused(pick.size(),false);
+    for(size_t k=1;k<pick.size();++k)
+        if(input.frames[pick[k]].role==kRoleUltrashort)
+            usRefused[k]=hybridUsRowsCheck(input,pick[k],binned.data(),binned.data()+k*vpix,vw,vh,tune,"HYBRID MOSAIC BINNED",report).refused;
     // ---- the binned burst through the plain merge
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
     bin.mergedDng=input.mergedDng;bin.clipFlags=input.clipFlags;bin.noEffMap=input.noEffMap;bin.grid=gridOut;bin.mosaic=1;bin.subFrames=0;
     bin.strict2x=input.strict2x;
     for(size_t k=0;k<pick.size();++k){
+        if(usRefused[k])continue; // P197
         HybridFrame v=input.frames[pick[k]];
         v.raw=binned.data()+k*vpix;
         v.slope/=float(bb);v.offset/=float(bb); // a binned pixel is the mean of b^2 sites

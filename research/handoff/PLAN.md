@@ -4656,3 +4656,60 @@ Owner (2026-10-17): «Так же сделай так чтобы 50мп сним
   FULLRES ZSL: n ring RAWs + k of 6 after the shutter»), the merge of ring N + 3 ultrashort + 3 bracketed (Bento / Shasta result, the
   shutter lag); with 2.7 GB available the ring holds only 4 frames - more memory gives up to 10; a faster (multi-threaded) copy would
   let more frames into the ring.
+### P197
+
+Owner (2026-10-17): «Сделай для нативной мозаики ту же цветовую проверку Bento, что у 12 Мп». vivo X200 Ultra, flickering 50 Hz
+ceiling lamp: the FULLRES 50 MP native Quad shot painted the clipped diffuser orange on one side, blue on the other; the 12 MP shot
+of the same lamp was white. Logs: 50 MP «HYBRID GAIN CHECK frame=14 role=5 ... measured=0.1383 (+10.7 %) mad=26.9 % -> inconsistent
+ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: three ultrashort frames, +2.5 %, MAD 5.1 % -> ok.
+- Cause: rolling-shutter flicker. The 2 ms ultrashort is read row by row while the lamp runs at 100 Hz: every row another phase,
+  another level and (white LED: the blue die follows the current, the phosphor glows on) another colour. Not a check the native
+  path lacked: the plain path's Bento checks (bentoMask intensity error, per-frame validation, motion share) already run on the
+  native path's binned frames; none of them sees a colour inside a clipped base (GainUp(us) is min(., 1) there), and the Bento
+  colour pass (kHybBento) takes R/G, B/G FROM the ultrashort frames, so porting it (or kHybRim) would paint the same bands. The
+  12 MP shot was white because its data was consistent.
+- New (scam-hybrid.h, hybridUsRowsCheck; all three mosaic paths: native hybridReconstructMosaicNativeMerge, split
+  hybridReconstructMosaic, binned hybridReconstructMosaicBinned), on every ultrashort frame they merge, on its binned frame against
+  the binned base:
+  1. row profile (hybridUltrashortRows): bands of 32 binned rows (4..64), 16x16 tiles where neither frame clips and every colour
+     has signal; per tile the green ratio g and the colour ratios (R, B ratio) / g; a band counts with >= 24 tiles whose MADs are
+     all <= 12 % (a row profile means every tile of a band sees the same factor). Factors G = E / g_band (E = the exposure ratio
+     the merge uses; gainMeasured has decided it on the full-resolution frames before), R / B = G / colour ratio (colour from the
+     same tiles as the level). Other bands interpolated; fewer than half count: no profile.
+  2. a factor off 1 by mosaicUsRowsMin (8 %) or more: the frame is corrected, (v - black) x factor of its row and colour, linear
+     between band centres: binned frame in place, split sub-frames (row J + (c - (b-1)/2) / b), native sites at GPU upload
+     (HybridMosaicNative::rowGain / fixRows, a strip-sized copy; the native clip scan reads the corrected rows; no corrected copy of
+     the 50 / 200 MP frame is held), T2's Quad mosaic in place. Clipped sites stay; a corrected value is at most white.
+  3. decision for «forced Bento with an inconsistent frame»: the merge's gain check (hybridMeasuredGain) on the corrected pair; still
+     MAD >= 15 % (not a row profile: lamps on other phases, motion) = the frame is refused - not merged, no Bento from it, the base's
+     clipped highlight stays for the highlight recovery (neutral white) - in every Bento mode, as the motion refusal.
+  Tuning: mosaicUsRows (1; 0 = off), mosaicUsRowsMin (0.08). Plain Bayer bursts never reach it. Report lines «HYBRID MOSAIC
+  NATIVE: ultrashort frame N rows against the base: ... -> corrected / as captured», «... after the row correction: ... ->
+  consistent», «... refused: ...».
+- OPPO PHY110 replays (owner's tuning + clipFlags 1; tool ana: pixels with Bento + clipped base flags and G > 1 in the reference,
+  16 row bands, R/G, B/G, G of the test against the reference own_114335 old worker; synthetic variants of own_114335 made on the
+  phone, frame 19 = the ultrashort, DN above black):
+  - own_114335 (no flicker): profile 4.6 % max (54 of 64 bands agree) -> as captured; md5 0592b43a old = new (native), binned
+    fa79ef61 old = new.
+  - colour ramp down the rows (R x0.75..1.25, G x0.9..1.1, B x1.25..0.75; its gain check said ok, mad 2.9 %): old native R/G
+    x0.866..1.064, B/G x0.853..1.313 of the reference across the rows (the band); new: corrected (factors R 0.77..1.26, B 0.82..1.31),
+    gain mad 1.6 %, R/G x0.982..1.003, B/G x0.997..1.010, G x0.981..1.010. Binned path old R/G x0.866..1.064 / B/G x0.853..1.313 ->
+    new x0.982..1.004 / x0.997..1.010; split path old x0.864..1.064 / x0.852..1.313 -> new x0.982..1.004 / x0.996..1.010 (binned / split
+    measured with the build before the level normalisation moved from the median g to E; on the final build the binned run
+    reports the same profile and mad 1.6 %).
+  - owner-like flicker (3 sine periods down the frame, R +-60 %, G +-45 %, B +-30 %; gain check «inconsistent ratios», mad 29.1 %):
+    old R/G x0.741..1.100, B/G x0.901..1.257, G x0.56..1.42; new: corrected, mad 1.9 %, R/G x0.979..1.001, B/G x0.994..1.010,
+    G x0.979..1.016.
+  - own_114300 (2x ISZ Quad, 26 frames, ultrashort consistent): profile 6.6 % -> as captured, md5 ed15e42f old = new.
+  - reference bursts (rp181/ab2.sh, old and new worker): syn_b1 5b988db1, x7u_1x 52bcce71, syn_b2 7c1a3756, syn_b4 5e586261,
+    hand db8d449d, isz2 d5dceb41, v10_1 161b2e8e, v10_2 fe39aa5e - identical.
+  - tools/check_hybrid_us_rows.cpp (CI, and NDK build run on the phone: OK): consistent frame untouched bit for bit; row ramp
+    corrected to 0.6 % flat; sine flicker mad 29 % -> 2.5 % at the merge's ratio; COLUMN ramp: no row profile (0 of 24 bands
+    agree), refused; native fixRows vs binned correction within 1 DN; mosaicUsRows 0 changes nothing.
+- Open: the split path (mosaicPath 0) is not deterministic run to run (old worker: ab43f711 / cdcf9a62 on the same input), so it
+  was checked by the measurements only. A column-wise level ramp on the real burst (x0.5..1.5, gain mad 12.4 % = not
+  «inconsistent») still got a level profile (53 of 64 bands agree because each band's usable tiles sit in a narrow column range):
+  colours stayed right (R/G x0.978..0.999) but the highlight level spread x0.83..1.05 instead of the old x1.005..1.086 - a
+  physically unlikely case, a tighter band MAD would trade it against real flicker under mixed light. Not on a phone shot yet: the
+  owner's own flickering 50 MP burst (only its log was available); the plain 12 MP path is unchanged by design (an inconsistent
+  plain ultrashort would still paint).
