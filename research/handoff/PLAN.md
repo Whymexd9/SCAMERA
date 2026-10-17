@@ -4713,3 +4713,12 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   physically unlikely case, a tighter band MAD would trade it against real flicker under mixed light. Not on a phone shot yet: the
   owner's own flickering 50 MP burst (only its log was available); the plain 12 MP path is unchanged by design (an inconsistent
   plain ultrashort would still paint).
+
+### Research 2026-10-17 - what removes the lattice in ArkCam (owner: «выясни что на ark убирает решётку»)
+- No mechanism of its own: ArkCam 1.56 does not sharpen by default (JNI setUSMParams / setRLParams are empty stubs at 0x7fdbc;
+  native defaults of every sharpening radius / strength 0), while ArkLumaSharpen multiplies our diagonal Quad lattice x2.5-2.9
+  and the 2 px one x1.2-1.5. ArkCam's merge itself leaves as much lattice (its own linear DNG vs ours) - per-site merge_quad, no
+  texel-grid upscale (super-res off above 4200 px), quad speckle p066 off, its kernel ~0.5 in our units, no site gains.
+- Measured on the owner's 50 MP burst (diagonal, % of the level): k0.7 + our sharpening 0.173 / 0.185, k1.0 + our sharpening
+  0.084 / 0.093 (P191 default), k1.0 + sharpening on a 3x3-smoothed luma (R1) 0.045 / 0.049. R1 changes the sharpening: not done
+  (owner: «Шарпинг не трогаем»), offered. Notes: scratchpad arklattice (table.md, crops).
