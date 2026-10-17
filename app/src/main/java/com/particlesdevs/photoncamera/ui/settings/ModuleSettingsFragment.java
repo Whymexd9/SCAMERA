@@ -1,12 +1,9 @@
 package com.particlesdevs.photoncamera.ui.settings;
 
 import android.os.Bundle;
-import android.content.res.ColorStateList;
 import android.view.Gravity;
 import android.widget.*;
-import androidx.appcompat.widget.SwitchCompat;
 import androidx.preference.PreferenceFragmentCompat;
-import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.*;
 import com.particlesdevs.photoncamera.util.Lang;
 
@@ -36,16 +33,9 @@ public class ModuleSettingsFragment extends ModuleConceptFragment {
             +(free>0?Lang.t(getContext()," · свободных мест: "+free," · free places: "+free):""),()->addCopy(rear,front));
         if(!hidden.isEmpty()){caption(Lang.t(getContext(),"Скрытые модули","Hidden modules"));for(String slot:hidden)moduleRow(slot);}
         caption(Lang.t(getContext(),"Профили модулей","Module profiles"));
-        LinearLayout c=card(),r=row();r.setPadding(dp(12),dp(16),dp(10),dp(16));
-        ImageView gear=icon("gear");gear.setPadding(0,0,dp(12),0);r.addView(gear,new LinearLayout.LayoutParams(dp(40),dp(28)));
-        LinearLayout labels=column();TextView head=text(Lang.t(getContext(),"Свои настройки для каждого модуля","Separate settings for each module"),15,TEXT);
-        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(head);labels.addView(head);
-        TextView sub=text(Lang.t(getContext(),"При смене объектива применяется его профиль","Switching lenses applies the lens profile"),12,SettingsStyle.SUMMARY);sub.setLineSpacing(dp(4),1);labels.addView(sub,space(-1,-2,8));r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
-        SwitchCompat toggle=new SwitchCompat(requireContext());toggle.setContentDescription(Lang.t(getContext(),"Свои настройки для каждого модуля","Separate settings for each module"));toggle.setChecked(PreferenceKeys.isPerLensSettingsOn());toggle.setThumbTintList(ColorStateList.valueOf(0xFFFFFFFF));toggle.setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked},{}},new int[]{accent,0xFF606570}));
-        r.addView(toggle,new LinearLayout.LayoutParams(dp(56),dp(48)));c.addView(r);
-        toggle.setOnCheckedChangeListener((v,on)->{PreferenceKeys.profiles();ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,on).apply();render();});
-        TextView scope=text((PreferenceKeys.isPerLensSettingsOn()?Lang.t(getContext(),"Настраивается: ","Editing: "):Lang.t(getContext(),"Текущий модуль: ","Current module: "))+ModuleRegistry.label(ModuleRegistry.active())+" · ID "+ModuleRegistry.camera(ModuleRegistry.active()),12,accent);
-        scope.setPadding(dp(16),dp(10),dp(16),dp(10));scope.setBackground(shape(0x25000000|(accent&0x00FFFFFF),0,20));body.addView(scope,space(-2,-2,10));
+        perLensSwitch();
+        // P189: the module group (each module and its FULLRES 50 / 200 MP shots with their own settings) replaces the pill
+        navigation("≡",Lang.t(getContext(),"Настройки по модулям","Settings per module"),Lang.t(getContext(),"Настроить один модуль или его снимки 50 / 200 Мп","Set up one module or its 50 / 200 MP shots"),()->open(new ModuleProfilesFragment()));
         note(Lang.t(getContext(),"При первом включении используются текущие настройки. При отключении профили сохраняются.","When first turned on, the current settings are used. When turned off, the profiles are kept."));
         navigation("▢",Lang.t(getContext(),"Копировать настройки между модулями","Copy settings between modules"),Lang.t(getContext(),"Выбор модулей, групп и отдельных параметров","Choose modules, groups and single parameters"),()->open(new ModuleCopyFragment()));
         caption(Lang.t(getContext(),"Для опытных","Advanced"));

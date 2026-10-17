@@ -493,6 +493,8 @@
     <string name="prefs_watermark_opacity_summary">Плотность подписи. 100 — сплошная, меньше — прозрачнее.</string>
     <string name="prefs_category_backup_restore_title">Настройки</string>
     <string name="prefs_config_portable_note_summary">Конфиг можно перенести на другой телефон: профили объективов подберутся по фокусному расстоянию.</string>
+    <string name="prefs_module_profiles_screen_title">Настройки по модулям</string>
+    <string name="prefs_module_profiles_screen_summary">Каждый объектив и его снимки FULLRES 50 / 200 Мп со своими настройками</string>
     <string name="prefs_camera_settings_screen_title">Камеры и сенсоры</string>
     <string name="prefs_camera_settings_screen_summary">Модули камеры, их профили и зум, настройки сенсоров</string>
     <string name="prefs_fullres_hw_remosaic_title">FULLRES: аппаратный ремозаик</string>

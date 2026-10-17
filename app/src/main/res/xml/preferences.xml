@@ -476,6 +476,9 @@
       </PreferenceScreen>
     </PreferenceScreen>
   </PreferenceScreen>
+  <!-- P188 «Настройки по модулям»: an empty row; SettingsFragment opens ModuleProfilesFragment (each module and its FULLRES
+       50 / 200 MP profiles with their own settings) -->
+  <PreferenceScreen android:key="module_profiles_screen" android:icon="@drawable/settings_ic_sliders" android:title="@string/prefs_module_profiles_screen_title" android:summary="@string/prefs_module_profiles_screen_summary" app:iconSpaceReserved="false" />
   <PreferenceScreen android:key="camera_settings_screen" android:icon="@drawable/settings_ic_camera" android:title="@string/prefs_camera_settings_screen_title" app:iconSpaceReserved="false" android:summary="@string/prefs_camera_settings_screen_summary">
     <PreferenceScreen android:icon="@drawable/settings_ic_chip" android:title="@string/sensor_configurations" android:key="pref_sensor_config_submenu" android:summary="@string/sensor_configurations_summary" />
     <PreferenceScreen android:key="capture_settings_screen" android:icon="@drawable/settings_ic_aperture" android:title="@string/prefs_capture_settings_screen_title" app:iconSpaceReserved="false" android:summary="@string/prefs_capture_settings_screen_summary">

@@ -102,9 +102,21 @@ public final class FullResProfiles {
     /** The module's name, and for a FULLRES profile its size: «2,4× · 200 Мп». */
     public static String label(String id) {
         String base = ModuleRegistry.label(slotOf(id));
+        String size = size(id);
+        return size == null ? base : base + " · " + size;
+    }
+
+    /** P189: the size of a FULLRES profile («200 Мп», «полное разрешение»); null for a module's own profile. */
+    public static String size(String id) {
         String tag = tagOf(id);
-        if (tag == null) return base;
-        return base + " · " + (tag.isEmpty() ? Lang.t("полное разрешение", "full resolution") : tag + Lang.t(" Мп", " MP"));
+        if (tag == null) return null;
+        return tag.isEmpty() ? Lang.t("полное разрешение", "full resolution") : tag + Lang.t(" Мп", " MP");
+    }
+
+    /** P189: the hardware remosaic row acts in this profile: a FULLRES one but 200 MP (no hardware 200 MP mode, P182). */
+    public static boolean hardwareRemosaicApplies(String id) {
+        String tag = tagOf(id);
+        return tag != null && !"200".equals(tag);
     }
 
     private static SharedPreferences prefs() {

@@ -77,6 +77,22 @@ public class FullResProfilesTest {
         assertNull(FullResProfiles.tagOf("back0"));
     }
 
+    /** P189: the size of a FULLRES profile for the module group, and where the hardware remosaic row acts. */
+    @Test
+    public void sizeAndHardwareRemosaicOfAProfile() {
+        prefs.edit().putString("module_auto_back2", "4").putString("module_label_back2", "3×").commit();
+        assertEquals("200 MP", FullResProfiles.size("back2@full200"));
+        assertEquals("full resolution", FullResProfiles.size("back0@full"));
+        assertNull(FullResProfiles.size("back0"));
+        assertEquals("3× · 200 MP", FullResProfiles.label("back2@full200"));
+        assertEquals("3× · 50 MP", FullResProfiles.label("back2@full50"));
+        assertEquals("3×", FullResProfiles.label("back2"));
+        assertTrue(FullResProfiles.hardwareRemosaicApplies("back2@full50"));
+        assertTrue(FullResProfiles.hardwareRemosaicApplies("back0@full"));
+        assertFalse("no hardware 200 MP mode", FullResProfiles.hardwareRemosaicApplies("back2@full200"));
+        assertFalse(FullResProfiles.hardwareRemosaicApplies("back0"));
+    }
+
     /**
      * Review fixes: a FULLRES profile never opened reads as its module's (a copy into it keeps the module's other values),
      * a deleted module's FULLRES profiles go with it, and turning FULLRES off by any path switches the profile back.

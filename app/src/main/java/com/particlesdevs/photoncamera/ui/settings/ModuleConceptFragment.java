@@ -2,14 +2,18 @@ package com.particlesdevs.photoncamera.ui.settings;
 
 import android.content.Context;
 import android.graphics.*;
+import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.*;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.*;
+import androidx.appcompat.widget.SwitchCompat;
 import androidx.fragment.app.Fragment;
 import com.particlesdevs.photoncamera.R;
+import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Lang;
 
 /** Shared native layout for the approved module-settings mockup. */
@@ -61,12 +65,25 @@ public abstract class ModuleConceptFragment extends Fragment {
             case "●":resource=R.drawable.settings_ic_eye;break;
             case "○":resource=R.drawable.settings_ic_view;break;
             case "✕":resource=R.drawable.settings_ic_reset;break;
+            case "≡":resource=R.drawable.settings_ic_sliders;break; // P189: the module group
+            case "▦":resource=R.drawable.settings_ic_mosaic;break; // P189: a FULLRES profile
             default:resource=R.drawable.settings_ic_gear;
         }
         v.setImageResource(resource);v.clearColorFilter(); // P136: multi-tone glyphs, drawn as they are
         v.setScaleType(ImageView.ScaleType.FIT_CENTER);v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);return v;
     }
     protected void navigation(String icon,String title,String summary,Runnable action){LinearLayout c=card(),r=row();r.setPadding(dp(12),dp(14),dp(12),dp(14));r.setMinimumHeight(dp(56));ImageView ic=icon(icon);ic.setPadding(0,0,dp(12),0);r.addView(ic,new LinearLayout.LayoutParams(dp(38),dp(28)));LinearLayout labels=column();TextView head=text(title,15,TEXT);com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(head);labels.addView(head);if(summary!=null){TextView sub=text(summary,12,SettingsStyle.SUMMARY);sub.setLineSpacing(dp(3),1);labels.addView(sub,space(-1,-2,6));}r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));r.addView(text("›",25,MUTED));r.setOnClickListener(v->action.run());r.setTag(title);c.addView(r);}
+    /** P189: «Свои настройки для каждого модуля» (moved from ModuleSettingsFragment; the module group shows it too). */
+    protected void perLensSwitch(){
+        LinearLayout c=card(),r=row();r.setPadding(dp(12),dp(16),dp(10),dp(16));
+        ImageView gear=icon("gear");gear.setPadding(0,0,dp(12),0);r.addView(gear,new LinearLayout.LayoutParams(dp(40),dp(28)));
+        LinearLayout labels=column();TextView head=text(Lang.t(getContext(),"Свои настройки для каждого модуля","Separate settings for each module"),15,TEXT);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(head);labels.addView(head);
+        TextView sub=text(Lang.t(getContext(),"При смене объектива применяется его профиль","Switching lenses applies the lens profile"),12,SettingsStyle.SUMMARY);sub.setLineSpacing(dp(4),1);labels.addView(sub,space(-1,-2,8));r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+        SwitchCompat toggle=new SwitchCompat(requireContext());toggle.setContentDescription(Lang.t(getContext(),"Свои настройки для каждого модуля","Separate settings for each module"));toggle.setChecked(PreferenceKeys.isPerLensSettingsOn());toggle.setThumbTintList(ColorStateList.valueOf(0xFFFFFFFF));toggle.setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked},{}},new int[]{accent,0xFF606570}));
+        r.addView(toggle,new LinearLayout.LayoutParams(dp(56),dp(48)));c.addView(r);
+        toggle.setOnCheckedChangeListener((v,on)->{PreferenceKeys.profiles();ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putBoolean(PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue,on).apply();render();});
+    }
     protected View mark(int state,String label,Runnable action){View v=new View(requireContext()){
         final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         @Override protected void onDraw(Canvas canvas){float cx=getWidth()/2f,cy=getHeight()/2f,h=dp(10);RectF rect=new RectF(cx-h,cy-h,cx+h,cy+h);paint.setStyle(state==0?Paint.Style.STROKE:Paint.Style.FILL);paint.setStrokeWidth(dp(1.5f));paint.setColor(state==0?MUTED:accent);canvas.drawRoundRect(rect,dp(4),dp(4),paint);

@@ -466,19 +466,24 @@ public class SettingsMenuTest {
         try(var out=new java.io.FileOutputStream(new java.io.File(dir,name+".png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
     }
     @Test @Config(qualifiers="ru-w400dp-h880dp-mdpi") public void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch() throws Exception {
-        conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch("Копировать настройки между модулями","частично","");
+        conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch("Копировать настройки между модулями","Настройки по модулям","частично","");
     }
     /** The same on an English system: the row titles and the partial-selection hint are English. */
     @Test public void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitchInEnglish() throws Exception {
-        conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch("Copy settings between modules","partly selected","-en");
+        conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch("Copy settings between modules","Settings per module","partly selected","-en");
     }
-    private void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch(String copyRow,String partly,String png) throws Exception {
+    private void conceptSelectionCopiesOnlyChosenValuesAndAccentSurvivesModuleSwitch(String copyRow,String groupRow,String partly,String png) throws Exception {
         for(int i=0;i<3;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.4×","2.4×"}[i]).putBoolean("module_visible_back"+i,true).commit();
         prefs.edit().putString("module_active","back0").putBoolean("pref_dng_lossless",true).commit();
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules"+png);
             assertEquals(android.view.View.GONE,activity.findViewById(R.id.settings_toolbar).getVisibility());
+            // P189: the module group replaces the «Настраивается» pill
+            modules.requireView().findViewWithTag(groupRow).performClick();fm.executePendingTransactions();
+            assertTrue(fm.findFragmentById(R.id.settings_container) instanceof com.particlesdevs.photoncamera.ui.settings.ModuleProfilesFragment);
+            activity.getOnBackPressedDispatcher().onBackPressed();fm.executePendingTransactions();
+            modules=(com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment)fm.findFragmentById(R.id.settings_container);
             modules.requireView().findViewWithTag(copyRow).performClick();fm.executePendingTransactions();
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy"+png);
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
@@ -1364,9 +1369,11 @@ public class SettingsMenuTest {
     @Test public void rootGroupsForOrdinaryUsers(){
         PreferenceScreen screen=inflate();
         String[] order={"pref_motion_mode","output_settings_screen","shooting_settings_screen","viewfinder_settings_screen","photo_processing_screen",
-                "scam_hybrid_screen","camera_settings_screen","interface_settings_screen","system_settings_screen"};
+                "scam_hybrid_screen","module_profiles_screen","camera_settings_screen","interface_settings_screen","system_settings_screen"};
         assertEquals(order.length,screen.getPreferenceCount());
         for(int i=0;i<order.length;i++)assertEquals(order[i],screen.getPreference(i).getKey());
+        // P189: «Настройки по модулям» is a row that opens the module group (ModuleProfilesFragment), no page of its own
+        assertEquals(0,((PreferenceScreen)screen.findPreference("module_profiles_screen")).getPreferenceCount());
         assertNull(screen.findPreference(PreferenceKeys.ROUTE_KEY));
         PreferenceScreen shooting=screen.findPreference("shooting_settings_screen");
         for(String key:new String[]{"pref_scam_hybrid_zsl_frames","pref_zsl_buffer_count_key","pref_antibanding_hz_key","scam_hybrid_motion_screen"})

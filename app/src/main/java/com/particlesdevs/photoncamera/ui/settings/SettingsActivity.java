@@ -131,6 +131,20 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                                            PreferenceScreen preferenceScreen) {
         Log.d("SettingsActivity", "onPreferenceStartScreen called for key: " + preferenceScreen.getKey());
         
+        String key = preferenceScreen.getKey();
+        if (ModulePageFilter.HUB.equals(key)) { openModuleProfiles("module_profiles"); return true; }
+        // P189: inside a module's group every page stays the module's (the sensor page is its slot's)
+        String module = preferenceFragmentCompat instanceof SettingsFragment ? ((SettingsFragment) preferenceFragmentCompat).moduleProfile() : null;
+        if (module != null) {
+            SettingsFragment next = ModulePageFilter.SENSOR_PAGE.equals(key)
+                    ? SettingsFragment.sensorPage(com.particlesdevs.photoncamera.settings.FullResProfiles.slotOf(module))
+                    : SettingsFragment.modulePage(module, key);
+            getSupportFragmentManager().beginTransaction()
+                    .setCustomAnimations(R.anim.animate_slide_left_enter, R.anim.animate_slide_left_exit
+                            , R.anim.animate_card_enter, R.anim.animate_slide_right_exit)
+                    .replace(R.id.settings_container, next, key).addToBackStack(key).commit();
+            return true;
+        }
         if("camera_settings_screen".equals(preferenceScreen.getKey())){
             getSupportFragmentManager().beginTransaction().replace(R.id.settings_container,new ModuleSettingsFragment()).addToBackStack("modules").commit();return true;
         }
@@ -149,7 +163,14 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         return true;
     }
 
+    /** P189: «Настройки по модулям» (the root row, the search, «Камеры и сенсоры»). */
+    void openModuleProfiles(String name) {
+        getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleProfilesFragment())
+                .addToBackStack(name).commit();
+    }
+
     void openSearchResult(SettingsSearchFragment.Entry entry) {
+        if (ModulePageFilter.HUB.equals(entry.page)) { openModuleProfiles("search_result"); return; }
         SettingsFragment page = new SettingsFragment();
         Bundle args = new Bundle();
         if (!"prefscreen".equals(entry.page)) args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, entry.page);
@@ -166,7 +187,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
     public static class SettingsFragment extends PreferenceFragmentCompat implements SharedPreferences.OnSharedPreferenceChangeListener, PreferenceManager.OnPreferenceTreeClickListener {
         private static final String KEY_MAIN_PARENT_SCREEN = "prefscreen";
-        private static final String SENSOR_PAGE = "pref_sensor_config_submenu";
+        private static final String SENSOR_PAGE = ModulePageFilter.SENSOR_PAGE;
+        /** P189: argument of a page of a module's group: the module profile it shows and edits ("back2@full200"). */
+        static final String ARG_MODULE = "module_profile";
+        /** P189: the rows {@link ModulePageFilter} hid on this module page (applyAvailability keeps them hidden). */
+        private java.util.Set<String> moduleHidden = java.util.Collections.emptySet();
         /** Argument of the sensor page: the module it shows (a module page opens its own; the chip changes it). */
         static final String ARG_SENSOR_SLOT = "sensor_slot";
         private Activity activity;
@@ -180,6 +205,28 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             args.putString(ARG_SENSOR_SLOT, slot);
             page.setArguments(args);
             return page;
+        }
+
+        /** P189: a page of {@code profile}'s group: the settings root ({@code rootKey} null) or one of its pages. */
+        public static SettingsFragment modulePage(String profile, @Nullable String rootKey) {
+            SettingsFragment page = new SettingsFragment();
+            Bundle args = new Bundle();
+            if (rootKey != null) args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, rootKey);
+            args.putString(ARG_MODULE, profile);
+            page.setArguments(args);
+            return page;
+        }
+
+        /** P189: the module profile of this page of «Настройки по модулям»; null on the usual pages. */
+        @Nullable String moduleProfile() {
+            return getArguments() == null ? null : getArguments().getString(ARG_MODULE);
+        }
+
+        /** P189: a module page holds its profile in the main settings (the camera may have taken its own back meanwhile). */
+        private static boolean takeProfile(@Nullable String module) {
+            if (module == null || !PreferenceKeys.isPerLensSettingsOn() || module.equals(PreferenceKeys.profiles().editing())) return false;
+            PreferenceKeys.profiles().activate(module);
+            return true;
         }
         private SettingsManager mSettingsManager;
         private Context mContext;
@@ -204,6 +251,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
+            // P189: a module page binds its profile's values (before the rows are built; no listener of this page yet)
+            String module = moduleProfile();
+            takeProfile(module);
             mContext = requireContext();
             mSettingsManager = ScameraApp.getSettingsManagerStatic();
             com.particlesdevs.photoncamera.settings.SettingsMigration.prepare(requireContext(), mSettingsManager.getDefaultPreferences());
@@ -225,6 +275,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
             Preference hwRemosaic = findPreference(com.particlesdevs.photoncamera.capture.VivoSdkFullRes.PREF_HW_REMOSAIC);
             if (hwRemosaic != null && !com.particlesdevs.photoncamera.capture.VivoSdkFullRes.hardwareRemosaicOffered()) hwRemosaic.setVisible(false);
+            if (module != null) moduleHidden = ModulePageFilter.apply(getPreferenceScreen(), module, rootKey == null);
             setupPhotoFormat();
             setupCaptureReport();
             SettingsStyle.apply(getPreferenceScreen());
@@ -269,7 +320,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             page.setOrientation(android.widget.LinearLayout.VERTICAL);
             page.setBackgroundColor(SettingsStyle.BG);
             page.setPadding(SettingsStyle.dp(c, 16), SettingsStyle.dp(c, 12), SettingsStyle.dp(c, 16), 0);
-            header = SettingsStyle.header(c, () -> requireActivity().getOnBackPressedDispatcher().onBackPressed(), this::openSearch);
+            // P189: a module page has no search (a hit would open the usual page)
+            header = SettingsStyle.header(c, () -> requireActivity().getOnBackPressedDispatcher().onBackPressed(), moduleProfile() == null ? this::openSearch : null);
             page.addView(header.view, new android.widget.LinearLayout.LayoutParams(-1, -2));
             chipBox = new android.widget.LinearLayout(c);
             page.addView(chipBox, new android.widget.LinearLayout.LayoutParams(-1, -2));
@@ -322,7 +374,30 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             chipBox.removeAllViews();
             String chip = null;
             boolean picker = false, modulePicker = false;
-            if (screen != null && SENSOR_PAGE.equals(screen.getKey()) && sensorSelection != null) {
+            String module = moduleProfile();
+            if (module == null) {
+                // P189: the root row says whether the modules have their own settings now
+                Preference hub = findPreference(ModulePageFilter.HUB);
+                if (hub != null) hub.setSummary(PreferenceKeys.isPerLensSettingsOn() ? getString(R.string.prefs_module_profiles_screen_summary)
+                        : Lang.t(getContext(), "Сейчас у всех модулей общие настройки", "All modules share the settings now"));
+            }
+            if (module != null) {
+                // P189: a page of the module's group: the profile it edits, fixed (no picker)
+                String slot = com.particlesdevs.photoncamera.settings.FullResProfiles.slotOf(module);
+                if (getArguments() == null || getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) == null) {
+                    header.heading.setText(com.particlesdevs.photoncamera.settings.FullResProfiles.label(module));
+                    String size = com.particlesdevs.photoncamera.settings.FullResProfiles.size(module);
+                    header.subtitle.setText(size != null ? Lang.t(getContext(), "Действует, когда включён FULLRES " + size, "Applies while FULLRES " + size + " is on")
+                            : !com.particlesdevs.photoncamera.settings.FullResProfiles.variants(slot).isEmpty() ? Lang.t(getContext(), "Действует без FULLRES", "Applies without FULLRES")
+                            : Lang.t(getContext(), "Только настройки этого модуля", "This module's own settings"));
+                    header.subtitle.setVisibility(View.VISIBLE);
+                }
+                chip = PreferenceKeys.isPerLensSettingsOn()
+                        ? Lang.t(getContext(), "Настраивается: ", "Editing: ") + com.particlesdevs.photoncamera.settings.FullResProfiles.label(module)
+                                + " · ID " + com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot)
+                        : Lang.t(getContext(), "Общие настройки: свои настройки модулей выключены", "Common settings: separate module settings are off");
+            }
+            else if (screen != null && SENSOR_PAGE.equals(screen.getKey()) && sensorSelection != null) {
                 // Sensor settings always belong to one module, per-module profiles on or off. The chip names it and,
                 // with more than one module, is the module picker (the page has no picker row of its own).
                 chip = Lang.t(getContext(),"Настраивается: ","Editing: ") + sensorSelection.title(sensorSelection.selected());
@@ -759,6 +834,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         @Override
         public void onResume() {
             super.onResume();
+            // P189: back from the camera (it took its module's profile): the module page takes its own again
+            if (takeProfile(moduleProfile())) { requireActivity().recreate(); return; }
             // Update toolbar title when fragment resumes (e.g., after navigating back)
             setupToolbar();
             updateSettingsAvailability();
@@ -908,7 +985,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 String key = p.getKey();
                 if (key == null) continue;
                 // Rows of a photo format that is not chosen are hidden, not explained (SettingsAvailability.hidden).
-                boolean hidden = state.hidden(key);
+                boolean hidden = state.hidden(key) || moduleHidden.contains(key); // P189: shared rows stay off module pages
                 if (p.isVisible() == hidden) p.setVisible(!hidden);
                 String reason = state.reason(key);
                 if (p.getClass() != Preference.class) p.setEnabled(reason == null);
@@ -1142,6 +1219,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             if ("pref_dcp_profile_key".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new DcpSettingsFragment()).addToBackStack("dcp").commit();return true;
+            }
+            // P189: an empty PreferenceScreen does not navigate by itself (androidx returns at once without children)
+            if (ModulePageFilter.HUB.equals(preference.getKey()) && activity instanceof SettingsActivity) {
+                ((SettingsActivity) activity).openModuleProfiles("module_profiles");
+                return true;
             }
             if ("module_copy_settings".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleCopyFragment()).addToBackStack("module_copy").commit();

@@ -4273,6 +4273,27 @@ in code, waits for the phone)
   memfd (days of work, worker phase only), the RAW-less plain session under a merge (sensor mode / framing risk, untested
   on the vivo).
 
+### P189 — «Настройки по модулям»: одна группа для каждого модуля и его FULLRES 50 / 200 Мп (owner, 2026-10-17: «Я так и
+не увидел где я могу настраивать отдельно 50мп и 200мп, сделай отдельную группу настроек где все будет разделено по модулям»;
+done, not yet seen on the phone)
+- Root «Настройки камеры» → «Настройки по модулям» (between SHDR and «Камеры и сенсоры»; also found by the search and opened
+  from «Камеры и сенсоры», which loses its non-interactive «Настраивается» pill): the per-lens switch, then each visible
+  module (rear by zoom, front) with its FULLRES profiles under it (FullResProfiles.variants: «3× · 50 Мп», «3× · 200 Мп»,
+  «1× · полное разрешение»), «сейчас в камере» on the camera's profile, «пока как у «3×»» on a FULLRES profile never opened.
+- A row opens the usual XML pages filtered to that profile (SettingsFragment.modulePage + ModulePageFilter): Фото, Съёмка,
+  Видоискатель, Цвет, SHDR, «Сенсор и RAW» with only per-module values (ModuleProfiles.isLocal); the hardware remosaic row
+  only on a FULLRES profile but 200 MP; the sensor page is the module's slot (shared with its FULLRES shots). The page takes
+  the profile into the main settings (onCreatePreferences, again in onResume after the camera took its own back); the chip
+  names it («Настраивается: 3× · 200 Мп · ID 5»), no picker, no search. The camera keeps its module and FULLRES state.
+- Back from the group (its OnBackPressedCallback) or closing the settings gives the main settings back to the camera's
+  profile (ModuleRegistry.syncProfile). With per-lens settings off the rows are dimmed and a tap asks to turn them on first.
+- Tests: ModuleProfilesPageTest (root row / search, order and texts in both languages, editing a 200 MP profile and the
+  return, the filter, availability keeping shared rows hidden, navigation inside the group, per-lens off, recreate and the
+  camera taking its profile back, no hub group in the copy catalogue), SettingsMenuTest (root order, the «Камеры и сенсоры»
+  row), FullResProfilesTest (size, hardwareRemosaicApplies).
+- On the phone (X200 Ultra, CTS build): the tele shows 50 and 200 MP rows with separate values; a FULLRES 200 MP shot uses
+  the 200 MP profile; a long label («2,4× · полное разрешение · ID 4») fits the chip at 360 dp.
+
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach

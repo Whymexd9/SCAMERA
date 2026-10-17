@@ -18,6 +18,8 @@ public final class ModuleProfiles {
     public boolean isApplying(){return applying||QUIET.get()>0;}
     /** P156: the module whose profile the main settings hold now (the settings chip can edit another than the camera's). */
     public synchronized String editing(){return active;}
+    /** P189: {@code id} has a profile of its own (a FULLRES profile never opened reads as its module's). */
+    public synchronized boolean stored(String id){return meta.getBoolean("exists_"+id,false);}
     /**
      * P141: a config being written into the prefs files: the profile listener stays quiet meanwhile (a CAMERA_ID or per-lens
      * change in the new main settings loaded this phone's OLD profile of the module into them before the config's own

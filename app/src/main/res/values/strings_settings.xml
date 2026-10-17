@@ -493,6 +493,8 @@
     <string name="prefs_watermark_opacity_summary">Caption opacity. 100: solid; lower: more see-through.</string>
     <string name="prefs_category_backup_restore_title">Settings</string>
     <string name="prefs_config_portable_note_summary">The config moves to another phone: lens profiles are matched by focal length.</string>
+    <string name="prefs_module_profiles_screen_title">Settings per module</string>
+    <string name="prefs_module_profiles_screen_summary">Each lens and its FULLRES 50 / 200 MP shots with their own settings</string>
     <string name="prefs_camera_settings_screen_title">Cameras and sensors</string>
     <string name="prefs_camera_settings_screen_summary">Camera modules, their profiles and zoom, sensor settings</string>
     <string name="prefs_fullres_hw_remosaic_title">FULLRES: hardware remosaic</string>
