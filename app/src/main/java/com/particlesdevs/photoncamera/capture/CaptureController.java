@@ -2384,7 +2384,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * from there, as the 12 MP Hybrid. scam_dev.txt "fullres_zsl 0": the serial PSL series of every native size, as before.
      */
     private boolean nativeZslSession() {
-        if (mVivoSdkRawSession == null || !PreferenceKeys.isScamEnabled() || !PreferenceKeys.scamDevSwitch("fullres_zsl", true)) return false;
+        if (mVivoSdkRawSession == null || !PreferenceKeys.isScamEnabled() || !PreferenceKeys.isFullRes50Zsl()) return false;
         return VivoSdkFullResCapture.zslRoute(VivoSdkFullRes.profile(mVivoSdkCameraId));
     }
 
@@ -5230,6 +5230,47 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return new NativeZslShot(frames, base, plan, verified);
     }
 
+    /**
+     * P202: the plan of a native 50 MP series after the shutter (PSL): N, then the 12 MP Hybrid plan's frames (ultrashort for
+     * Bento, bracketed for Shasta) from the N exposure - the viewfinder's (the HAL's or the OPPO's own AE), the hand-set one
+     * (P201), or a hand-set long shutter's plan (HybridPlan.manualLong); {@code requested} N as a ZSL shot's, all of them within
+     * what {@code budget} (frames asked -> frames the memory holds) gives. Null when no plan can be made (all N, as before).
+     */
+    @Nullable
+    private HybridPlan pslPlan(int requested, java.util.function.IntUnaryOperator budget, long manualPslNs) {
+        final CaptureResult latest = mPreviewCaptureResult;
+        final Long previewNs = latest == null ? null : latest.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        final Integer previewIso = latest == null ? null : latest.get(CaptureResult.SENSOR_SENSITIVITY);
+        final int manualIso = paramController.manualIsoValue();
+        final long manualNs = paramController.manualPreviewShutterNs();
+        final float clip = zslClipFraction();
+        try {
+            HybridPlan plan;
+            if (manualPslNs > 0) {
+                plan = HybridPlan.manualLong(manualPslNs, paramController.pslIso(manualPslNs), clip, mCameraCharacteristics, mExposureLimits);
+            } else {
+                final long nNs = manualNs > 0 ? manualNs : previewNs == null ? 0 : previewNs;
+                final int nIso = manualIso > 0 ? manualIso : previewIso == null ? 0 : previewIso;
+                if (nNs <= 0 || nIso <= 0) return null;
+                HybridPlan.setMotionCap(HalMotion.motionCapNs(latest));
+                try {
+                    plan = HybridPlan.build(nNs, nIso, clip, mCameraCharacteristics, mExposureLimits);
+                } finally {
+                    HybridPlan.setMotionCap(0);
+                }
+            }
+            final int extras = plan.requests.size();
+            final int frames = budget.applyAsInt(Math.max(1, requested) + extras);
+            plan = plan.withLeadingNormals(Math.max(1, frames - extras));
+            Log.i("SCAM_CAPTURE", "50 MP PSL: " + plan.requests.size() + " frames after the shutter (" + requested + " N asked, "
+                    + frames + " by the memory); " + plan.description);
+            return plan;
+        } catch (RuntimeException noPlan) {
+            Log.w("SCAM_CAPTURE", "50 MP PSL: no hybrid plan (" + noPlan.getMessage() + "): N frames only");
+            return null;
+        }
+    }
+
     private void captureVivoSdkFullResChecked() {
         final VivoSdkRawSession sdk = mVivoSdkRawSession;
         final CameraCaptureSession session = mCaptureSession;
@@ -5274,6 +5315,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 : takeNativeZsl(VivoSdkFullRes.profile(mVivoSdkCameraId), requested);
         final int count, shotN;
         boolean zslTrimmed = false;
+        HybridPlan pslPlanBuilt = null;
         if (zsl != null) {
             final int post = zsl.plan.requests.size();
             // the ring frames are in memory already (the ring's memfd): the budget of the series counts their bytes as its own
@@ -5287,9 +5329,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             count = post;
             shotN = zsl.frames.size();
         } else {
-            count = frames;
+            // P202 (owner, 2026-10-17: «В PSL у нас тоже должны быть брекет кадры»): a native 50 MP series after the shutter is N
+            // and the 12 MP Hybrid plan's bracketed / ultrashort frames, as a ZSL shot's frames after the shutter
+            pslPlanBuilt = hugeSeries || !nativeVivoFullRes() ? null : pslPlan(requested, all -> seriesMode
+                    ? VivoSdkFullRes.seriesCount(all, (long) rawWidth * rawHeight, rawWidth, frameBytes, block, grid, false, availableBytes)
+                    : VivoSdkFullRes.frameCount(all, frameBytes, availableBytes), manualPslNs);
+            count = pslPlanBuilt != null ? pslPlanBuilt.requests.size() : frames;
             shotN = 0;
         }
+        final HybridPlan pslPlan = pslPlanBuilt;
         final int total = shotN + count;
         if (count < 1 || (manager != null && memory.lowMemory)) {
             if (zsl != null) for (ImageFrame f : zsl.frames) f.close();
@@ -5495,6 +5543,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (zsl != null) {
                 capture.plan(zsl.plan);
                 capture.zsl(zsl.frames, zsl.verified);
+            } else if (pslPlan != null) {
+                capture.plan(pslPlan);
             } else {
                 // P201: the series' N at the hand-set exposure: a long shutter at its ISO (pslIso), else the hand-set ISO / shutter
                 // with the viewfinder's other value (the ZSL shot's N are its ring frames, the plan built from them)
@@ -5524,7 +5574,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // P192 (OPPO Find X7 Ultra 50 MP, 2026-10-17: the windows came out pink and without sky, the plain shot of the same scene
         // white with sky): a native 50 MP series ends with the ultrashort frame as well - the plain shots and ISZ have their
         // Bento frame, the native merge takes it (ISZ: «23U», «BENTO: applied»); without it the clipped green turned pink
-        if (zsl == null && (hugeSeries || nativeVivoFullRes() && count >= 3) && HybridPlan.bentoMode() > 0) {
+        if (zsl == null && pslPlan == null && (hugeSeries || nativeVivoFullRes() && count >= 3) && HybridPlan.bentoMode() > 0) {
             // P179: the last still of a 200 MP series is the ultrashort (Bento) one: the preview's exposure over the ultrashort
             // factor at its sensitivity; with Bento off (the worker would leave it out) the series is all N
             CaptureResult latest = mPreviewCaptureResult;

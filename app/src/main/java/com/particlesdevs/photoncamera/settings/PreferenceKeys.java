@@ -795,6 +795,13 @@ public class PreferenceKeys {
     public static int getFullRes50Frames() {
         return Math.max(0, Math.min(64, Math.round(hybridValue("fullres50_frames", 0f))));
     }
+    /**
+     * P202 (owner, 2026-10-17: «давай дадим выбор ZSL или PSL»): a FULLRES 50 MP shot takes its N from the ZSL ring (on, P198) or
+     * the whole series after the shutter (off); pref_scam_hybrid_fullres50_zsl, default on. scam_dev.txt fullres_zsl still wins.
+     */
+    public static boolean isFullRes50Zsl() {
+        return scamDevSwitch("fullres_zsl", hybridSwitch("fullres50_zsl", true));
+    }
     /** P190: frames of a FULLRES 200 MP series (pref_scam_hybrid_fullres200_frames 3..64, default 4: 3 N + 1 ultrashort). */
     public static int getFullRes200Frames() {
         return Math.max(3, Math.min(64, Math.round(hybridValue("fullres200_frames", 4f))));

@@ -13,6 +13,8 @@
     <string name="prefs_scam_hybrid_zsl_frames_title">Frames in the merge</string>
     <string name="prefs_scam_hybrid_zsl_frames_summary">How many frames to merge. Higher: less noise and more detail, but slower; lower: faster but noisier. They come from the ZSL buffer: a smaller buffer merges as many as it holds (FULLRES 50/200 MP: rows of their own).</string>
     <string name="prefs_scam_hybrid_fullres50_frames_title">Frames per 50 MP shot</string>
+    <string name="prefs_scam_hybrid_fullres50_zsl_title">50 MP: ZSL</string>
+    <string name="prefs_scam_hybrid_fullres50_zsl_summary">On: the frames from before the press (ZSL ring) and the bracketed frames after it. Off: the whole series after the press (PSL), with the same bracketed frames.</string>
     <string name="prefs_scam_hybrid_fullres50_frames_summary">How many frames a FULLRES 50 MP shot takes and merges. 0: as “Frames in the merge”. At most 64; if memory is short the series is shorter and the camera says so.</string>
     <string name="prefs_scam_hybrid_fullres200_frames_title">Frames per 200 MP shot</string>
     <string name="prefs_scam_hybrid_fullres200_frames_summary">How many frames a FULLRES 200 MP shot takes and merges, the last one ultrashort (a highlight frame), the rest normal; default 4 (3 + 1). 3 to 64; if memory is short the series is shorter (at least 3) and the camera says so.</string>

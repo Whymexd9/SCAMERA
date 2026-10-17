@@ -121,10 +121,12 @@ public final class FullResProfiles {
 
     /** P190: the frame-count rows of FULLRES 50 / 200 MP shots (PreferenceKeys.getFullRes50Frames / getFullRes200Frames). */
     public static final String FRAMES_50 = "pref_scam_hybrid_fullres50_frames", FRAMES_200 = "pref_scam_hybrid_fullres200_frames";
+    /** P202: the ZSL / PSL switch of FULLRES 50 MP shots (a row of the 50 MP profile, as its frame count). */
+    public static final String ZSL_50 = "pref_scam_hybrid_fullres50_zsl";
 
     /** P190: the FULLRES size ("50", "200") a frame-count row is for; null for any other key. */
     public static String framesTag(String key) {
-        return FRAMES_50.equals(key) ? "50" : FRAMES_200.equals(key) ? "200" : null;
+        return FRAMES_50.equals(key) || ZSL_50.equals(key) ? "50" : FRAMES_200.equals(key) ? "200" : null;
     }
 
     /** P190: the row of {@code key} acts in {@code profile}: a frame-count row in the FULLRES profile of its own size only. */

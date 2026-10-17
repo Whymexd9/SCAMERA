@@ -75,7 +75,7 @@ public final class SettingsAvailability {
         // Rows of what this phone does not have (the settings screen also hides them when it builds the tree, for the search).
         if (!xiaomiSmoothZoom && key.equals("pref_xiaomi_smooth_zoom")) return true;
         if (!fullResHwRemosaic && key.equals("pref_fullres_hw_remosaic")) return true;
-        if (!fullRes50 && key.equals("pref_scam_hybrid_fullres50_frames")) return true;
+        if (!fullRes50 && (key.equals("pref_scam_hybrid_fullres50_frames") || key.equals("pref_scam_hybrid_fullres50_zsl"))) return true;
         if (!fullRes200 && key.equals("pref_scam_hybrid_fullres200_frames")) return true;
         // P128: the AgX saturation of the OPPO tuned matrix acts only on the phones that matrix renders (ArkTone.ccmSatComp)
         if (!oppoTunedColor && key.equals("pref_scam_hybrid_ark_ccm_sat")) return true;
