@@ -4822,3 +4822,20 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   50 MP; their own mosaic tries the rows that are not the HAL's remosaic (main 11 / 31, ultra-wide 9; failure keys _r11 / _r9).
 - Open: an own Quad on the X100 main / ultra-wide needs a mode that streams; rows 11 / 31 / 9 never gave a frame in a RAW-only
   session (maybe the still-only route of P208 with the mode key on the stills).
+
+### P211 - «Тип сессии камеры» (owner, 2026-10-18: «проверь работу этого параметра»)
+- How it works: @SensorConfig CaptureController.sessionType, per module (pref_sensorconfig_<slot>_sessiontype, read for the active
+  module of the camera: ModuleSensorSettings.runtimeScope), injected before each session, passed as SessionConfiguration's
+  operation mode. Checked on PHY110 (snapcam 30938, module 1x ID 2 = 32777): dumpsys media.camera «Operation mode: CUSTOM
+  (32777)», frames at 30 fps. The value only applies when the session is made again (camera reopen / module switch), not when
+  the settings page closes.
+- Danger: the same 32777 with FULLRES on (OPPO agingtest mode 35) - kernel panic and reboot of the phone («Unable to handle kernel
+  paging request at virtual address fffffffffffffffc», BootReceiver 00:10:50), reproduced once; the owner's own log of
+  2026-10-17 20:30:43 (32777 injected, «full resolution on», then 13 min of nothing) is the same.
+- Android takes 0, 1 (constrained high speed: refused with our RAW streams) and 0x8000..0xFFFF (vendor); 2..0x7FFF fail the
+  configuration. There was no fallback: a refused mode left the camera without a session.
+- Fix: sessionOperationMode(setting, fullRes): FULLRES (vivo native / SDK, OPPO, Pixel max-resolution) always 0; only
+  0x8000..0xFFFF pass; a session refused with the vendor mode runs again in mode 0 (this camera, this run) with a toast; the
+  mode used is logged. Description says so. SessionOperationModeTest (CI list).
+- The test phone still holds 32777 on its 1x module with FULLRES on (snapcam 30938, old code): opening it would panic again
+  until the setting is 0 or the build has P211.
