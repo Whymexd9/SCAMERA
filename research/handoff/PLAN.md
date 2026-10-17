@@ -4777,3 +4777,16 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   lens-shading gain in editors that apply opcodes. Fixed order, exclusive Bottom / Right, spacing 1 / (n - 1). Checked with an
   arm64 build of tiny_dng_writer on the OPPO. Not yet: a phone DNG opened in Lightroom.
 
+
+### P207 - X100 Ultra FULLRES without the HAL's remosaic (owner, 2026-10-17: «Нам нужен фулрез без ремозаика»; X100U log on 30912)
+- Log: main camera 0, 50 MP row 0 (8192x6144 @15) streams a plain Bayer (MosaicStream block 1, 101451 / 0 / 0 tile votes): the
+  HAL's hardware remosaic. Each still was refused («Native FULLRES mosaic does not match its sensor profile»), twice on row 0, because
+  a refused vivo still never noted its row (only OPPO did, P192).
+- Its sensor-mode table (0x8038, camera 0 = 2): 8192x6144 rows 0 @15, 11 @19, 31 @19. Fix: the own mosaic tries 11 / 31 (row 0
+  stays the «FULLRES: аппаратный ремозаик» row, P194), counted under the key _r11; a still refused for its mosaic / mode notes the
+  row on vivo too.
+- «Наш ремозаик» off works as built (binned Bayer merge, DNG W/2 x H/2) only on a stream that is a Quad / Tetra mosaic: a HAL
+  remosaic (block 1) is a plain Bayer the switch cannot undo.
+- Tele 200 MP (camera 4, row 0 16320x12288 @7, its only 200 MP row): the camera provider aborts «nodeTimeout ... node(RtNode),
+  SCENE_FULL_BYPASS» on the first request (no preview frame, camera 4 gone until the provider restarts). Open: a RAW-only session.
+- Checked: VivoNativeFullResTest, VivoSdkFullResModeTest, VivoSdkFullResCaptureTest, OppoNativeFullResTest (35/35). Not on the X100U.
