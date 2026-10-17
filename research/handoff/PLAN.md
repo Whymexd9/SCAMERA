@@ -4790,3 +4790,16 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
 - Tele 200 MP (camera 4, row 0 16320x12288 @7, its only 200 MP row): the camera provider aborts «nodeTimeout ... node(RtNode),
   SCENE_FULL_BYPASS» on the first request (no preview frame, camera 4 gone until the provider restarts). Open: a RAW-only session.
 - Checked: VivoNativeFullResTest, VivoSdkFullResModeTest, VivoSdkFullResCaptureTest, OppoNativeFullResTest (35/35). Not on the X100U.
+
+### P208 - X100 / X300 Ultra 200 MP the stock camera's way (owner's X300U logs and stock dumpsys, 2026-10-17)
+- Our 200 MP session held the sensor in its 200 MP row (forceSensorMode 0 on the session and every request, one RAW stream at
+  16320 wide): X300 main - onError 4 and the provider abort (Usecase::DumpSystemEvent from the recovery thread, 70 ms after the
+  session); X300 tele and X100 tele - no frame for 3 s (X100: nodeTimeout RtNode). The 50 MP rows work the same way, so not the size.
+- Stock camera (com.android.camera) in 200 MP, dumpsys: operation mode NORMAL, streams 1440x1080 viewfinder, RAW16 16320x12288,
+  YUV 16320x12288, RAW16 4080x3072; the repeating request targets the viewfinder only, at 30 fps (the normal mode), no vendor
+  key in it: the HAL switches the sensor for a still of the full-size stream.
+- Fix: Profile.stillOnly for every 200 MP size of the X100 / X300 Ultra: a viewfinder RAW reader at the camera's largest listed
+  RAW size (normal mode, live RAW viewfinder) beside the full-size RAW reader; no forceSensorMode on the session or the
+  viewfinder; the stills target the full-size reader (scam_dev "vivo_fullres200_force 1": with the mode key; "vivo_fullres200_stock
+  0": the route before). The stills' checks stay (mode index 0, Tetra block) and say what the HAL gave.
+- Checked: capture unit tests 42 classes / 250 tests. Not on a phone: APK 30965 and deliverables/X300U-200MP-тест-30965.txt sent.
