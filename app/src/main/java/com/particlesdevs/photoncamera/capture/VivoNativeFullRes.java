@@ -164,8 +164,10 @@ public final class VivoNativeFullRes {
     /**
      * P186: the rows of a camera's size in its own sensor-mode table (tag 0x8038 X100 / 0x8017 X300), tried in this order:
      * X100 main (2, and the listed 0: its other profile, the same table) 0 / 11 / 31 8192x6144, ultra-wide (3) 0 / 9 8192x6144,
-     * tele (4) 0 16320x12288 or 1 / 14 / 18 / 20 8160x6144; X300 main (3) 0 16320x12256 or 1 / 2 / 3 8160x6128, ultra-wide (4)
+     * tele (4) 0 16320x12288 or 1 / 14 / 18 / 20 8160x6144; X300 main (3) 0 16320x12256 or 3 / 1 8160x6128, ultra-wide (4)
      * 0 / 4 8192x6144, tele (5) 0 16320x12288 or 1 / 14 / 27 8160x6144.
+     * P200 (owner, X300 Ultra 2026-10-17: «на основе не с первого раза»): its main's 50 MP row 3 first - the row its log shows
+     * working (native Quad, merged); row 1 gave no frame, row 2 is the hardware-remosaic row (P194, {@link #hardwareRow}).
      */
     static int[] candidates(Phone phone, String cameraId, boolean large) {
         if (phone == Phone.X100_ULTRA) {
@@ -173,7 +175,7 @@ public final class VivoNativeFullRes {
             if ("3".equals(cameraId)) return new int[]{0, 9};
             if ("4".equals(cameraId)) return large ? new int[]{0} : new int[]{1, 14, 18, 20};
         } else if (phone == Phone.X300_ULTRA) {
-            if ("3".equals(cameraId)) return large ? new int[]{0} : new int[]{1, 2, 3};
+            if ("3".equals(cameraId)) return large ? new int[]{0} : new int[]{3, 1};
             if ("4".equals(cameraId)) return new int[]{0, 4};
             if ("5".equals(cameraId)) return large ? new int[]{0} : new int[]{1, 14, 27};
         }
@@ -244,11 +246,19 @@ public final class VivoNativeFullRes {
         }
     }
 
+    /**
+     * The failure key of a size. P200: the X300 Ultra main's 50 MP rows changed order (3 / 1, were 1 / 2 / 3), so its count of
+     * tried rows starts again under a key of its own (a count of the old order would pick the wrong row).
+     */
+    static String failureKey(String cameraId, boolean big) {
+        return FAILED + cameraId + (big ? "_200" : "_50") + (!big && "3".equals(cameraId) && phone() == Phone.X300_ULTRA ? "_r3" : "");
+    }
+
     static int failures(String cameraId, boolean big) {
         try {
             android.content.SharedPreferences p = com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
             if (p.getInt(FAILED_TRIALS, ROW_TRIALS) != ROW_TRIALS) return 0;
-            return p.getInt(FAILED + cameraId + (big ? "_200" : "_50"), 0);
+            return p.getInt(failureKey(cameraId, big), 0);
         } catch (RuntimeException e) {
             return 0;
         }
@@ -293,7 +303,7 @@ public final class VivoNativeFullRes {
         final int tried = next(rows, failures(cameraId, big), profile.sensorMode);
         try {
             com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit()
-                    .putInt(FAILED_TRIALS, ROW_TRIALS).putInt(FAILED + cameraId + (big ? "_200" : "_50"), tried).apply();
+                    .putInt(FAILED_TRIALS, ROW_TRIALS).putInt(failureKey(cameraId, big), tried).apply();
         } catch (RuntimeException ignored) {
         }
         final int nextRow = tried < rows.length ? rows[tried] : -1;

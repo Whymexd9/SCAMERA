@@ -356,6 +356,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return thread;
     });
     private static final java.util.concurrent.atomic.AtomicInteger sScamPending = new java.util.concurrent.atomic.AtomicInteger();
+    /**
+     * P200 (owner, X7 / X100 Ultra 2026-10-17: «обработка с фулрезом не заканчивается»): FULLRES 50 MP merges waiting or running.
+     * The app was killed for memory 1-3 min into each merge: the worker budgets 80 % of MemAvailable at its start, and the camera
+     * then built a new 50 MP ZSL ring (up to 16 x 96 MB) and a plain one (66 x 24 MB). While one runs, no 50 MP ring is kept and
+     * the plain ring holds SUSPENDED_RING frames (as during a 200 MP merge, P179).
+     */
+    private static final java.util.concurrent.atomic.AtomicInteger sFullResMerges = new java.util.concurrent.atomic.AtomicInteger();
+
+    static boolean fullResMergeRunning() {
+        return sFullResMerges.get() > 0;
+    }
     private long mShutterGeneration;
     private boolean mShutterIszAspect4x3;
     private volatile boolean mLiveRawSession;
@@ -4161,8 +4172,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P187: not while a 200 MP merge runs (its plain session takes no shot)
             // P198: the native 50 MP FULLRES session rings its frames as well (the viewfinder keeps running from them), not while a
             // shot takes its frames (from the press until its series is complete: the ring holds the moment of the press)
-            final boolean nativeRing = !isZslMode() && mVivoSdkCapture == null && !mShotInProgress && nativeZslSession()
-                    && nativeRingDue(android.os.SystemClock.elapsedRealtimeNanos());
+            // P200: none while a FULLRES merge runs (its memory)
+            final boolean nativeRing = !isZslMode() && mVivoSdkCapture == null && !mShotInProgress && !fullResMergeRunning()
+                    && nativeZslSession() && nativeRingDue(android.os.SystemClock.elapsedRealtimeNanos());
             if ((isZslMode() && passModeBarrier(img, result) || nativeRing && nativeRingFrame(result)) && !mClosedForProcessing)
                 synchronized (mZslBufferLock) {
                 if (!isCameraResumed || !mLiveRawSession) return;
@@ -4555,6 +4567,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return mZslRing != null ? Math.min(zslRingCapacity(), mZslRing.ringSlots()) : Math.min(zslRingCapacity(), MAX_READER_IMAGES - 3);
     }
 
+    /**
+     * P200: a FULLRES 50 MP shot's merge starts: the 50 MP ring goes (its frames, then the memfd: the slots no shot frame holds
+     * are given back at once, Allocator.arenaRelease); a new one is built after the merge.
+     */
+    private void releaseFullResRing() {
+        synchronized (mZslBufferLock) {
+            if (mZslRing == null || !mZslRing.fullRes()) return;
+            while (!mZslRingBuffer.isEmpty()) mZslRingBuffer.pollFirst().close();
+            mZslRing.close();
+            mZslRing = null;
+            mZslRingUnavailable = false;
+        }
+        Log.i("SCAM_CAPTURE", "50 MP ZSL ring released for the merge");
+    }
+
     /** P91: the ring's memfd goes (camera closed); frames a shot still holds keep it until they are freed. */
     private void releaseZslRing() {
         synchronized (mZslBufferLock) {
@@ -4580,7 +4607,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // One global, user-adjustable capacity. Capture counts never resize the ring.
         // P179: the plain session that shows the viewfinder while a 200 MP shot is merged holds a small ring (no shot is taken
         // then; the merge needs the memory)
-        if (PixelPro10.fullResSuspended()) return Math.min(SUSPENDED_RING, PreferenceKeys.getZslBufferCountValue());
+        if (PixelPro10.fullResSuspended() || fullResMergeRunning()) return Math.min(SUSPENDED_RING, PreferenceKeys.getZslBufferCountValue());
         return PreferenceKeys.getZslBufferCountValue();
     }
 
@@ -5354,6 +5381,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             com.particlesdevs.photoncamera.processing.ShotTimeline.detach();
                     sScamPending.incrementAndGet();
                     if (hugeShot) closeCameraForProcessing();
+                    else {
+                        sFullResMerges.incrementAndGet();
+                        releaseFullResRing();
+                    }
                     SCAM_PROCESSING.execute(() -> {
                         com.particlesdevs.photoncamera.processing.ShotTimeline.attach(timeline);
                         try {
@@ -5366,6 +5397,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         } finally {
                             if (arena != null) arena.release();
                             sScamPending.decrementAndGet();
+                            if (!hugeShot) sFullResMerges.decrementAndGet();
                             com.particlesdevs.photoncamera.processing.ShotTimeline.print();
                             if (hugeShot) reopenCameraAfterProcessing();
                         }

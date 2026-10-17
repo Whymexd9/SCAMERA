@@ -40,7 +40,9 @@ Java_com_particlesdevs_photoncamera_util_Allocator_setPackedShift(JNIEnv*, jclas
 namespace {
 // P91: slots, the views of each byte offset: the ZSL ring (one long-lived arena) reuses a slot only when no view of it is left
 // (a shot's frame stays pinned until the merge frees it).
-struct Arena { int id; int fd; uint8_t* base; size_t size; long refs; bool released; std::unordered_map<size_t, int> slots; };
+// P200: bytes, the length of the views of each offset (the slot's extent, for the holes punched when the arena is released).
+struct Arena { int id; int fd; uint8_t* base; size_t size; long refs; bool released; std::unordered_map<size_t, int> slots;
+               std::unordered_map<size_t, size_t> bytes; };
 std::mutex arenaLock;
 std::vector<Arena> arenas;
 int nextArenaId = 1;
@@ -49,6 +51,7 @@ bool slotUnrefLocked(size_t index, size_t offset) {
     auto it = arenas[index].slots.find(offset);
     if (it != arenas[index].slots.end() && --it->second <= 0) {
         arenas[index].slots.erase(it);
+        arenas[index].bytes.erase(offset);
         return true;
     }
     return false;
@@ -57,9 +60,53 @@ bool slotUnrefLocked(size_t index, size_t offset) {
 // only when the whole arena is unmapped: a 200 MP burst's frames the merge leaves out are 401 MB each. The slot reads as
 // zeros afterwards and is written again before any new view of it (the ZSL ring); small slots are left as they were.
 constexpr size_t kPunchBytes = size_t(64) << 20;
+// P200: only once the arena is released (the shot's frames, a ZSL ring that was closed): a live ring keeps its slots' pages, which
+// it writes again at once - a punched 96 MB slot of the 50 MP ring took every page fault again on its next copy (38-75 ms on the
+// camera thread per frame, the X300 / X7 Ultra viewfinder stuttered).
 void punchLocked(size_t index, size_t offset, size_t bytes) {
-    if (bytes < kPunchBytes || offset + bytes > arenas[index].size) return;
+    if (!arenas[index].released || bytes < kPunchBytes || offset + bytes > arenas[index].size) return;
     fallocate(arenas[index].fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off_t(offset), off_t(bytes));
+}
+// P200: a released arena gives back at once the pages of its large slots no view holds (a closed 50 MP ring: up to 1.5 GB that
+// stayed resident while a shot's frames pinned the memfd). The first 64 KB (the transport header) are kept; holes of at least
+// kPunchBytes, page aligned.
+void punchFreeLocked(size_t index) {
+    Arena& a = arenas[index];
+    std::vector<std::pair<size_t, size_t>> held;
+    for (const auto& s : a.slots) {
+        auto b = a.bytes.find(s.first);
+        held.emplace_back(s.first, b == a.bytes.end() ? size_t(0) : b->second);
+    }
+    std::sort(held.begin(), held.end());
+    constexpr size_t kKeep = size_t(64) << 10;
+    size_t from = kKeep;
+    auto punch = [&](size_t lo, size_t hi) {
+        lo = (lo + 4095) & ~size_t(4095);
+        hi &= ~size_t(4095);
+        if (hi > lo && hi - lo >= kPunchBytes) fallocate(a.fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off_t(lo), off_t(hi - lo));
+    };
+    for (const auto& h : held) {
+        if (h.first > from) punch(from, h.first);
+        from = std::max(from, h.first + (h.second ? h.second : size_t(4096)));
+    }
+    if (a.size > from) punch(from, a.size);
+}
+// P200: large copies on 4 threads (a 96 MB 50 MP RAW into the ring: one core's copy is bound by its own load / store rate).
+void copyBytes(uint8_t* dst, const uint8_t* src, size_t n) {
+    constexpr size_t kParallel = size_t(32) << 20;
+    if (n < kParallel) { memcpy(dst, src, n); return; }
+    constexpr int kThreads = 4;
+    const size_t part = ((n / kThreads) + 4095) & ~size_t(4095);
+    std::thread pool[kThreads - 1];
+    int started = 0;
+    for (int t = 1; t < kThreads; ++t) {
+        const size_t lo = std::min(n, part * t), hi = std::min(n, part * (t + 1));
+        if (hi <= lo) break;
+        try { pool[t - 1] = std::thread([=] { memcpy(dst + lo, src + lo, hi - lo); }); ++started; }
+        catch (...) { memcpy(dst + lo, src + lo, hi - lo); }
+    }
+    memcpy(dst, src, std::min(n, part));
+    for (int t = 0; t < started; ++t) pool[t].join();
 }
 void unmapLocked(size_t index) {
     munmap(arenas[index].base, arenas[index].size);
@@ -87,7 +134,7 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaCreate(JNIEnv*, jclass, 
     if (base == MAP_FAILED) { close(fd); return 0; }
     std::lock_guard<std::mutex> lock(arenaLock);
     const int id = nextArenaId++;
-    arenas.push_back({id, fd, static_cast<uint8_t*>(base), size_t(bytes), 0, false, {}});
+    arenas.push_back({id, fd, static_cast<uint8_t*>(base), size_t(bytes), 0, false, {}, {}});
     return id;
 }
 
@@ -105,8 +152,9 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaCopy(JNIEnv* env, jclass
         dst = arenas[size_t(i)].base + offset;
         arenas[size_t(i)].refs++;
         arenas[size_t(i)].slots[size_t(offset)]++;
+        arenas[size_t(i)].bytes[size_t(offset)] = size_t(bytes);
     }
-    memcpy(dst, static_cast<uint8_t*>(src) + originOffset, size_t(bytes));
+    copyBytes(dst, static_cast<uint8_t*>(src) + originOffset, size_t(bytes));
     jobject view = env->NewDirectByteBuffer(dst, bytes);
     if (!view) {
         std::lock_guard<std::mutex> lock(arenaLock);
@@ -167,6 +215,8 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaView(JNIEnv* env, jclass
         p = arenas[size_t(i)].base + offset;
         arenas[size_t(i)].refs++;
         arenas[size_t(i)].slots[size_t(offset)]++;
+        size_t& extent = arenas[size_t(i)].bytes[size_t(offset)];
+        extent = std::max(extent, size_t(bytes));
     }
     jobject view = env->NewDirectByteBuffer(p, bytes);
     if (!view) {
@@ -196,6 +246,7 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaRelease(JNIEnv*, jclass,
     if (i < 0) return;
     arenas[size_t(i)].released = true;
     if (arenas[size_t(i)].refs <= 0) unmapLocked(size_t(i));
+    else punchFreeLocked(size_t(i));
 }
 
 static float mosaicSrKernel(float x, int kernel) {
@@ -756,6 +807,7 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaCopyUnpack(JNIEnv* env, 
         dst = arenas[size_t(i)].base + offset;
         arenas[size_t(i)].refs++;
         arenas[size_t(i)].slots[size_t(offset)]++;
+        arenas[size_t(i)].bytes[size_t(offset)] = bytes;
     }
     auto* out = reinterpret_cast<uint16_t*>(dst);
     const uint8_t* in = src + originOffset;

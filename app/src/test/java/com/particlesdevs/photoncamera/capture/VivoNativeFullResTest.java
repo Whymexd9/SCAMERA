@@ -74,7 +74,7 @@ public class VivoNativeFullResTest {
     @Test
     public void theX300UltraTakesItsOwnCamerasAndTableRows() {
         profile(X300, "3", true, 16320, 12256, 0, 4);
-        profile(X300, "3", false, 8160, 6128, 1, 2);
+        profile(X300, "3", false, 8160, 6128, 3, 2);
         profile(X300, "4", true, 8192, 6144, 0, 2);
         profile(X300, "5", true, 16320, 12288, 0, 4);
         profile(X300, "5", false, 8160, 6144, 1, 2);
@@ -114,7 +114,7 @@ public class VivoNativeFullResTest {
      */
     @Test
     public void eachSizeTriesItsOwnRowsInTurn() {
-        assertArrayEquals(new int[]{1, 2, 3}, VivoNativeFullRes.candidates(X300, "3", false));
+        assertArrayEquals("P200: the working row 3 first", new int[]{3, 1}, VivoNativeFullRes.candidates(X300, "3", false));
         assertArrayEquals(new int[]{0}, VivoNativeFullRes.candidates(X300, "3", true));
         assertArrayEquals(new int[]{0, 4}, VivoNativeFullRes.candidates(X300, "4", true));
         assertArrayEquals(new int[]{1, 14, 27}, VivoNativeFullRes.candidates(X300, "5", false));
