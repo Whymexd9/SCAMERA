@@ -51,6 +51,9 @@ final class FullResButton {
             button = null;
         }
         if (button == null) button = create(fragment, c);
+        // P192: an OPPO camera's sensor-mode table, from the characteristics the app read
+        com.particlesdevs.photoncamera.capture.OppoNativeFullRes.learn(
+                com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID, characteristics);
         boolean here = PixelPro10.fullResAvailable(characteristics)
                 || com.particlesdevs.photoncamera.capture.VivoSdkFullRes.offered(
                         com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID);

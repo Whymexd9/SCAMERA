@@ -122,34 +122,36 @@ public final class OppoNativeFullRes {
     private static final Map<String, int[]> OFFER = new ConcurrentHashMap<>();
     private static final int[] NONE = new int[0];
 
+    /**
+     * The camera's characteristics as the app read them (the FULLRES button, the session setup): the table is taken from them.
+     * A CameraManager of its own failed on the PHY110 with the owner's package spoof (BadParcelableException), so nothing is read
+     * here but what the app hands over; a failure is not remembered.
+     */
+    public static void learn(@Nullable String cameraId, @Nullable android.hardware.camera2.CameraCharacteristics c) {
+        if (cameraId == null || c == null || OFFER.containsKey(cameraId) || !brand()) return;
+        try {
+            boolean key = false;
+            for (CaptureRequest.Key<?> k : c.getAvailableSessionKeys())
+                if (MODE_KEY.equals(k.getName())) { key = true; break; }
+            int[] table = null;
+            if (key) try { table = c.get(TABLE); } catch (IllegalArgumentException noTag) { table = null; }
+            int[] full = key ? fullModes(table) : null;
+            if (full == null && key && model() && mode(cameraId) >= 0) full = new int[]{8192, 6144, 24, mode(cameraId)};
+            OFFER.put(cameraId, full == null ? NONE : full);
+            com.particlesdevs.photoncamera.util.Log.i("OppoNativeFullRes", "camera " + cameraId + ": mode key " + key
+                    + ", table " + (table == null ? "none" : table.length + " values")
+                    + (full == null ? ", no full-size NoRemosaic candidate" : String.format(Locale.ROOT, ", %dx%d at %d fps, modes %s",
+                    full[0], full[1], full[2], java.util.Arrays.toString(java.util.Arrays.copyOfRange(full, 3, full.length)))));
+        } catch (RuntimeException e) {
+            com.particlesdevs.photoncamera.util.Log.w("OppoNativeFullRes", "camera " + cameraId + ": characteristics unreadable: " + e);
+        }
+    }
+
     @Nullable
     static int[] offer(@Nullable String cameraId) {
         if (cameraId == null) return null;
-        int[] known = OFFER.get(cameraId);
-        if (known == null) {
-            known = NONE;
-            try {
-                android.content.Context context = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext();
-                android.hardware.camera2.CameraManager manager = context == null ? null
-                        : (android.hardware.camera2.CameraManager) context.getSystemService(android.content.Context.CAMERA_SERVICE);
-                android.hardware.camera2.CameraCharacteristics c = manager == null ? null : manager.getCameraCharacteristics(cameraId);
-                boolean key = false;
-                if (c != null) for (CaptureRequest.Key<?> k : c.getAvailableSessionKeys())
-                    if (MODE_KEY.equals(k.getName())) { key = true; break; }
-                int[] table = null;
-                if (key) try { table = c.get(TABLE); } catch (IllegalArgumentException noTag) { table = null; }
-                int[] full = key ? fullModes(table) : null;
-                if (full == null && key && model() && mode(cameraId) >= 0) full = new int[]{8192, 6144, 24, mode(cameraId)};
-                if (full != null) known = full;
-                com.particlesdevs.photoncamera.util.Log.i("OppoNativeFullRes", "camera " + cameraId + ": mode key " + key
-                        + (full == null ? ", no full-size NoRemosaic candidate" : String.format(Locale.ROOT, ", %dx%d at %d fps, modes %s",
-                        full[0], full[1], full[2], java.util.Arrays.toString(java.util.Arrays.copyOfRange(full, 3, full.length)))));
-            } catch (Exception e) {
-                known = NONE;
-            }
-            OFFER.put(cameraId, known);
-        }
-        return known.length == 0 ? null : known;
+        final int[] known = OFFER.get(cameraId);
+        return known == null || known.length == 0 ? null : known;
     }
 
     /** The frame time of the camera's full-size mode (24 fps when unknown). */

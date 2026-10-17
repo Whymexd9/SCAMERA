@@ -2339,6 +2339,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             throw new IllegalStateException("Previous Vivo SDK camera has not closed");
         String id = ScameraApp.getSettings().mCameraID;
         CameraMode mode = ScameraApp.getSettings().selectedMode;
+        // P192: an OPPO camera's table from the characteristics the app reads (its own CameraManager is not used)
+        if (OppoNativeFullRes.brand()) {
+            CameraCharacteristics known = mCameraCharacteristicsMap.get(id);
+            if (known == null) try { known = mCameraManager.getCameraCharacteristics(id); } catch (Exception ignored) { known = null; }
+            OppoNativeFullRes.learn(id, known);
+        }
         if (!VivoSdkFullRes.available(id) || !PixelPro10.fullResOn()
                 || !PreferenceKeys.isScamEnabled()
                 || !VivoSdkFullRes.supportsMode(mode) || mIsRecordingVideo) return;
