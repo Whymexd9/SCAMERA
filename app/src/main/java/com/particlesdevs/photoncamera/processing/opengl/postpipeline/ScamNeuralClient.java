@@ -252,6 +252,9 @@ public final class ScamNeuralClient {
         return file;
     }
     private static ByteBuffer job(Context context,ScamTransport scamBurst,Consumer<String> observer) throws Exception {
+        // P206: the merge worker runs only in the original (SCAMERA-signed) APK
+        if(!com.particlesdevs.photoncamera.util.OriginalBuild.check(context))
+            throw new IOException(Lang.t("Изменённая копия SCAMERA: обработка недоступна","Modified copy of SCAMERA: processing unavailable"));
         final int w=scamBurst.width(),h=scamBurst.height();
         File dir=new File(context.getCacheDir(),"scam-neural-job-"+UUID.randomUUID());
         if(!dir.mkdir())throw new IOException(Lang.t("Не удалось создать папку задания","Could not create the job folder"));

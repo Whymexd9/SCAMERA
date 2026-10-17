@@ -59,6 +59,14 @@ public class CameraActivity extends BaseActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Log.d("CameraActivity", "Called onCreate()");
+        // P206: an edited copy re-signed with another key does not open the camera
+        if (!com.particlesdevs.photoncamera.util.OriginalBuild.check(this)) {
+            android.widget.Toast.makeText(this, com.particlesdevs.photoncamera.util.Lang.t(
+                    "Это изменённая копия SCAMERA. Установите оригинальную сборку.",
+                    "This is a modified copy of SCAMERA. Install the original build."), android.widget.Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
         // Hide system UI immediately to prevent flickering (like gallery view)
         hideSystemUI();
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
