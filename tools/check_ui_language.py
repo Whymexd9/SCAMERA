@@ -28,7 +28,7 @@ PLACEHOLDER = re.compile(r'%(?:(\d+)\$)?[-#+0,(]*\d*(?:\.\d+)?([sdfxXc])')
 # (d) Cyrillic Java literals that are not UI text: file (relative to the module's src/main/java) -> [(reason, literals)].
 # A literal is the exact source text between the quotes. Every listed literal must still exist (no stale entries).
 SENSOR_CONFIG = [
-    'Режим сессии камеры, 0 — обычный. Другие числа — режимы производителя; неверное может не открыть камеру.',
+    'Режим сессии камеры: 0 — обычный, 32768–65535 — режимы производителя (неверный может не открыть камеру). В FULLRES всегда 0. Применяется при следующем открытии камеры.',
     'Оптическая стабилизация. Авто выключает её на штативе и в Unlimited, чтобы кадр не плыл.',
 ]
 SENSOR_CONFIG_PARAMETERS = [
