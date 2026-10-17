@@ -48,18 +48,23 @@ int main() {
         assert(hybridMosaicSplitBudget(12,16320,12288,16,tune,a201,report)==oldSplit(16320,12288,16,tune.mosaicFrames,avail));
     }
     for(const auto& l:lines)assert(l.find("HYBRID SERIES")==std::string::npos);
-    // a default 200 MP shot (4 frames): merged whole, said so
+    // a default 200 MP shot (4 frames) where memory alone allows fewer (P191: MemAvailable 4 GB; at 6.5 GB the 0.8 share now
+    // covers the whole burst): merged whole, said so
     lines.clear();
-    assert(hybridMosaicNativeBudget(4,16320,12288,16,false,tune,6656*MB,report)==4);
+    assert(hybridMosaicNativeBudget(4,16320,12288,16,false,tune,4096*MB,report)==4);
     assert(lines.back().find("merges whole")!=std::string::npos);
     // P190: 8 frames without the key keep 4 - no longer called «whole»
     lines.clear();
-    assert(hybridMosaicNativeBudget(8,16320,12288,16,false,tune,6656*MB,report)==4);
+    assert(hybridMosaicNativeBudget(8,16320,12288,16,false,tune,4096*MB,report)==4);
     assert(lines.back().find("keeps at least 4 frames")!=std::string::npos&&lines.back().find("whole")==std::string::npos);
-    // seriesFrames 8 at MemAvailable 6.5 GB: all 8 (7 N + the ultrashort)
+    // seriesFrames 8 at MemAvailable 4 GB: all 8 (7 N + the ultrashort)
     tune.seriesFrames=8;lines.clear();
-    assert(hybridMosaicNativeBudget(8,16320,12288,16,false,tune,6656*MB,report)==8);
+    assert(hybridMosaicNativeBudget(8,16320,12288,16,false,tune,4096*MB,report)==8);
     assert(lines.back()=="HYBRID SERIES: budget 4 -> 8 (the app sized the series)");
+    // P191: at 6.5 GB the native share covers a 200 MP burst of 8 by memory alone (no floor, no series line needed)
+    tune.seriesFrames=0;lines.clear();
+    assert(hybridMosaicNativeBudget(8,16320,12288,16,false,tune,6656*MB,report)>=8);
+    tune.seriesFrames=8;
     // P191: the OPPO Find X7 Ultra's 50 MP shot (MemAvailable 1733 MB at the merge): 17 frames, not the 2 of half the memory
     tune.seriesFrames=0;
     assert(hybridMosaicNativeBudget(19,8192,6144,4,false,tune,1733*MB,report)==17);
