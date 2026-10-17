@@ -102,6 +102,29 @@ public final class VivoSdkFullRes {
         return availableBytes >= 0 ? (int) Math.min(count, availableBytes / 2 / frameBytes) : count;
     }
 
+    /**
+     * P190: frames of an explicit FULLRES series (pref_scam_hybrid_fullres50_frames / fullres200_frames) the merge can hold beside
+     * {@code availableBytes}: the worker's fixed part ({@code huge}: 20 B, else 40 B per output pixel, scam-hybrid.h), the copied-out
+     * reference RAW, then per frame its RAW, its binned copy (2 B / block^2 per pixel) and the GPU strip windows (3.8 KB per
+     * column). A 200 MP merge runs with the camera closed: the HAL's four RAW buffers count as free. 0 when nothing fits.
+     */
+    static int seriesFit(long pixels, int width, long frameBytes, int block, int grid, boolean huge, long availableBytes) {
+        if (availableBytes < 0) return 64;
+        final double halFree = huge ? 4.0 * frameBytes : 0, fixed = (huge ? 20.0 : 40.0) * pixels * grid * grid;
+        final double perFrame = frameBytes + 2.0 * pixels / ((double) block * block) + 3800.0 * width;
+        return (int) Math.max(0, Math.min(64, Math.floor((availableBytes + halFree - fixed - frameBytes) / perFrame)));
+    }
+
+    /**
+     * P190: frames of a FULLRES series: {@link #frameCount}'s RAW guard, at least the legacy count (200 MP: 4, as before P190; 50 MP:
+     * 2, the merge's minimum), beyond it as many as {@link #seriesFit} gives. Up to 4 frames at 200 MP exactly the P179 count.
+     */
+    static int seriesCount(int requested, long pixels, int width, long frameBytes, int block, int grid, boolean huge, long availableBytes) {
+        final int guard = frameCount(requested, frameBytes, availableBytes);
+        final int legacy = Math.min(huge ? 4 : 2, guard);
+        return Math.min(guard, Math.max(legacy, seriesFit(pixels, width, frameBytes, block, grid, huge, availableBytes)));
+    }
+
     public static boolean supportsMode(CameraMode mode) {
         return CameraMode.isStill(mode);
     }

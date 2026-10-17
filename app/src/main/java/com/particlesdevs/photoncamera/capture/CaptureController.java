@@ -4932,7 +4932,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             failPendingShutter(new IllegalStateException(Lang.t("Сессия SDK RAW закрыта", "SDK RAW session closed")));
             return;
         }
-        final int requested = PreferenceKeys.getHybridZslFrames();
         final long frameBytes = (long) mImageReaderRaw.getWidth() * mImageReaderRaw.getHeight() * 2;
         android.app.ActivityManager manager = (android.app.ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE);
         android.app.ActivityManager.MemoryInfo memory = new android.app.ActivityManager.MemoryInfo();
@@ -4940,9 +4939,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final int rawWidth = mImageReaderRaw.getWidth(), rawHeight = mImageReaderRaw.getHeight();
         final boolean hugeSeries = (long) rawWidth * rawHeight > HUGE_SHOT_PIXELS && nativeVivoFullRes();
         // P179 (owner, 2026-10-16: «в склейке участвовало хотя бы 3 кадра и один из них был ультракороткий», «Сделай 4 кадра»):
-        // a 200 MP series is HUGE_SERIES frames whatever the frame setting - the normal ones, then one ultrashort - as far as
-        // the RAW memory guard allows (at least three)
-        final int frames = VivoSdkFullRes.frameCount(hugeSeries ? HUGE_SERIES : requested, frameBytes, manager == null ? -1 : memory.availMem);
+        // a 200 MP series is its own count of frames whatever the merge's frame setting - the normal ones, then one ultrashort - as
+        // far as the RAW memory guard allows (at least three). P190 (owner, 2026-10-17: «дай возможность ставить столько кадров для
+        // 50/200мп сколько я хочу»): «Кадров в снимке 200 Мп» (default HUGE_SERIES) and «Кадров в снимке 50 Мп» (0 = as the merge's
+        // frame setting, the path before P190); an explicit count is a series the merge keeps whole, sized here by the memory.
+        final int fifty = hugeSeries ? 0 : PreferenceKeys.getFullRes50Frames();
+        final boolean seriesMode = hugeSeries || fifty > 0;
+        final int requested = hugeSeries ? PreferenceKeys.getFullRes200Frames() : fifty > 0 ? fifty : PreferenceKeys.getHybridZslFrames();
+        final long availableBytes = manager == null ? -1 : memory.availMem;
+        final int grid = !hugeSeries && !"sensor".equals(PreferenceKeys.hybridOutputMode()) ? 2 : 1;
+        final int block = hugeSeries ? 4 : nativeVivoFullRes() && !VivoSdkFullRes.hardwareRemosaicOn() ? 2 : 1;
+        final int guarded = VivoSdkFullRes.frameCount(requested, frameBytes, availableBytes);
+        final int frames = seriesMode ? VivoSdkFullRes.seriesCount(requested, (long) rawWidth * rawHeight, rawWidth, frameBytes, block, grid,
+                hugeSeries, availableBytes) : guarded;
         if (hugeSeries) {
             if (frames < 3) {
                 failPendingShutter(new IllegalStateException(Lang.t("Недостаточно памяти для серии 200 Мп", "Not enough memory for a 200 MP series")));
@@ -4955,11 +4964,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             return;
         }
         cameraEventsListener.onFrameCountSet(count);
+        // P190: a series shorter than asked is said aloud (the RAW guard, the merge's memory, or the 2x output at 50 MP)
+        final String cut = count >= requested ? "" : count < guarded && grid == 2 ? "2x" : "memory";
         Log.i("SCAM_CAPTURE", (nativeVivoFullRes() ? "NATIVE FULLRES" : "SDK FULLRES50") + " frames=" + count + " requested=" + requested
-                + " availableMB=" + (memory.availMem >> 20));
+                + " availableMB=" + (memory.availMem >> 20) + (seriesMode ? " series" : "") + (cut.isEmpty() ? "" : " cut=" + cut));
+        if (!cut.isEmpty()) showToast(Lang.t("Снято " + count + " из " + requested + " кадров: свободно " + (memory.availMem >> 20) + " МБ"
+                        + ("2x".equals(cut) ? ", вывод 2×" : ""),
+                "Took " + count + " of " + requested + " frames: " + (memory.availMem >> 20) + " MB free" + ("2x".equals(cut) ? ", 2× output" : "")));
         final ImageSaver saver = new ImageSaver(cameraEventsListener);
         saver.iszAspect4x3 = mShutterIszAspect4x3 || nativeVivoFullRes();
         saver.setFrameCount(count);
+        saver.fullResSeries = seriesMode ? count : 0; // P190: the merge keeps a series whole
+        saver.fullResRequested = requested;
         saver.setImageFormat(ImageFormat.RAW_SENSOR);
         mImageSaver = saver;
         clearZslPreviewFrames();
@@ -5096,7 +5112,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 long es = Math.max(ULTRASHORT_MIN_NS, Math.round(exposure / HybridPlan.ultrashortFactor()));
                 capture.ultrashortLast(es, iso);
                 Log.i("SCAM_CAPTURE", "200 MP: " + (count - 1) + " N + 1 ultrashort " + es + " ns ISO " + iso
-                        + " (N " + exposure + " ns)");
+                        + " (N " + exposure + " ns; " + count + " of " + requested + " frames asked)");
             }
         }
         mVivoSdkCapture = capture;

@@ -11,7 +11,11 @@
     <string name="prefs_scam_hybrid_capture_screen_title">Кадры светов и теней</string>
     <string name="prefs_scam_hybrid_capture_screen_summary">Короткие кадры для светов, длинные для теней: когда, сколько и как они смешиваются</string>
     <string name="prefs_scam_hybrid_zsl_frames_title">Кадров в склейке</string>
-    <string name="prefs_scam_hybrid_zsl_frames_summary">Сколько кадров склеивать. Больше — меньше шума и больше деталей, но дольше; меньше — быстрее, но шумнее. Кадры берутся из буфера ZSL: если он меньше, склеится столько, сколько в нём есть.</string>
+    <string name="prefs_scam_hybrid_zsl_frames_summary">Сколько кадров склеивать. Больше — меньше шума и больше деталей, но дольше; меньше — быстрее, но шумнее. Кадры берутся из буфера ZSL: если он меньше, склеится столько, сколько в нём есть (FULLRES 50/200 Мп: свои строки).</string>
+    <string name="prefs_scam_hybrid_fullres50_frames_title">Кадров в снимке 50 Мп</string>
+    <string name="prefs_scam_hybrid_fullres50_frames_summary">Сколько кадров снимать и склеивать в FULLRES 50 Мп. 0 — как «Кадров в склейке». Не больше 64. Если памяти не хватает, серия будет короче, и камера об этом скажет.</string>
+    <string name="prefs_scam_hybrid_fullres200_frames_title">Кадров в снимке 200 Мп</string>
+    <string name="prefs_scam_hybrid_fullres200_frames_summary">Сколько кадров снимать и склеивать в FULLRES 200 Мп. Последний кадр ультракороткий (кадр светов), остальные обычные; по умолчанию 4 (3 + 1). От 3 до 64. Если памяти не хватает, серия будет короче (не меньше 3), и камера об этом скажет.</string>
     <string name="prefs_scam_hybrid_capture_category_title">Кадры светов — ультракороткие</string>
     <string name="prefs_scam_hybrid_bento_summary">%s. Доп. очень тёмный кадр спасает пересвеченные места (лампы, небо). Авто — только когда есть пересвет.</string>
     <string name="prefs_scam_hybrid_bento_frames_title">Кадры светов: число</string>

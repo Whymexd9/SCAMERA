@@ -26,6 +26,8 @@ public final class SettingsAvailability {
     private boolean fullResHwRemosaic = true;
     /** P128: a module of this phone has streamed a Quad / Tetra mosaic (MosaicBlockStore); assumed unless told otherwise. */
     private boolean mosaicStreams = true;
+    /** P190: a module here has FULLRES 50 / 200 MP shots (FullResProfiles.sizeOffered); assumed unless told otherwise. */
+    private boolean fullRes50 = true, fullRes200 = true;
     public SettingsAvailability(Map<String, ?> values) { this.values = values; }
     /** The device fact behind «HEIC 10 бит»: the reason it is unavailable here (Android version, no Main10 / P010 encoder) or null. */
     public SettingsAvailability heic10Unavailable(String reason) { heic10Unavailable = reason; return this; }
@@ -41,6 +43,8 @@ public final class SettingsAvailability {
     public SettingsAvailability oppoTunedColor(boolean applies) { oppoTunedColor = applies; return this; }
     /** The device fact behind «Аппаратный ремозаик»: hidden where FULLRES has no choice of remosaic. */
     public SettingsAvailability fullResHwRemosaic(boolean offered) { fullResHwRemosaic = offered; return this; }
+    /** P190: the device facts behind «Кадров в снимке 50 / 200 Мп»: hidden where no module has FULLRES of that size. */
+    public SettingsAvailability fullResSizes(boolean fifty, boolean twoHundred) { fullRes50 = fifty; fullRes200 = twoHundred; return this; }
     /** The device fact behind the mosaic merge rows: whether a module here has streamed a Quad / Tetra mosaic. */
     public SettingsAvailability mosaicStreams(boolean seen) { mosaicStreams = seen; return this; }
     private String text(String key, String fallback) {
@@ -71,6 +75,8 @@ public final class SettingsAvailability {
         // Rows of what this phone does not have (the settings screen also hides them when it builds the tree, for the search).
         if (!xiaomiSmoothZoom && key.equals("pref_xiaomi_smooth_zoom")) return true;
         if (!fullResHwRemosaic && key.equals("pref_fullres_hw_remosaic")) return true;
+        if (!fullRes50 && key.equals("pref_scam_hybrid_fullres50_frames")) return true;
+        if (!fullRes200 && key.equals("pref_scam_hybrid_fullres200_frames")) return true;
         // P128: the AgX saturation of the OPPO tuned matrix acts only on the phones that matrix renders (ArkTone.ccmSatComp)
         if (!oppoTunedColor && key.equals("pref_scam_hybrid_ark_ccm_sat")) return true;
         String format = photoFormat();

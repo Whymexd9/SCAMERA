@@ -359,6 +359,10 @@ public class HybridSettingsTest {
         prefs.edit().clear().commit();
         inflate();
         assertEquals("20",prefs.getString("pref_scam_hybrid_zsl_frames","?"));
+        // P190: «Кадров в снимке 50 / 200 Мп»: auto and 3 N + 1 ultrashort
+        assertEquals("0",prefs.getString("pref_scam_hybrid_fullres50_frames","?"));
+        assertEquals("4",prefs.getString("pref_scam_hybrid_fullres200_frames","?"));
+        assertEquals(0,PreferenceKeys.getFullRes50Frames());assertEquals(4,PreferenceKeys.getFullRes200Frames());
         assertEquals("1",prefs.getString("pref_scam_hybrid_sabre61","?"));
         assertEquals("2",prefs.getString("pref_scam_hybrid_mochi","?"));
         assertEquals("2",prefs.getString("pref_scam_hybrid_bento","?"));

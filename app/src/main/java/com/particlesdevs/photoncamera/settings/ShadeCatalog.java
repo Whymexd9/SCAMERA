@@ -424,6 +424,11 @@ public final class ShadeCatalog {
         if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
         Preference hwRemosaic = tree.findPreference(com.particlesdevs.photoncamera.capture.VivoSdkFullRes.PREF_HW_REMOSAIC);
         if (hwRemosaic != null && !com.particlesdevs.photoncamera.capture.VivoSdkFullRes.hardwareRemosaicOffered()) hwRemosaic.setVisible(false);
+        // P190: «Кадров в снимке 50 / 200 Мп» only where a module has FULLRES of that size
+        for (String key : new String[]{FullResProfiles.FRAMES_50, FullResProfiles.FRAMES_200}) {
+            Preference frames = tree.findPreference(key);
+            if (frames != null && !FullResProfiles.sizeOffered(FullResProfiles.framesTag(key))) frames.setVisible(false);
+        }
     }
 
     private void walk(Preference p, List<String> path, @Nullable Drawable.ConstantState inherited, boolean root) {

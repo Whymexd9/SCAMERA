@@ -22,6 +22,8 @@ public class DefaultSaver extends SaverImplementation {
     /** P27: the merge route the shot was captured for (null: read the setting when processing starts). */
     Boolean ownedHybridRoute;
     Boolean ownedIszAspect4x3;
+    /** P190: the FULLRES series of the queued shot (ImageSaver.fullResSeries / fullResRequested). */
+    int ownedFullResSeries, ownedFullResRequested;
 
     public DefaultSaver(ProcessingEventsListener processingEventsListener) {
         super(processingEventsListener);
@@ -40,6 +42,9 @@ public class DefaultSaver extends SaverImplementation {
             scamProcessor.ownedPairs = ownedPairs;
             scamProcessor.ownedHybridRoute = ownedHybridRoute;
             ownedHybridRoute = null;
+            scamProcessor.ownedFullResSeries = ownedFullResSeries;
+            scamProcessor.ownedFullResRequested = ownedFullResRequested;
+            ownedFullResSeries = ownedFullResRequested = 0;
             scamProcessor.configure(ScameraApp.getSettings().alignAlgorithm,
                     ScameraApp.getSettings().rawSaver, ScameraApp.getSettings().selectedMode);
             scamProcessor.start(ownedDngFile, ownedImageFile,

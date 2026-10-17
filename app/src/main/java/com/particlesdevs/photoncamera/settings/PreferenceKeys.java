@@ -558,6 +558,9 @@ public class PreferenceKeys {
         // N frames from the ZSL ring: owner 2026-10-07 20 -> 30, owner 2026-10-10 back to 20 (P68; SettingsMigration moves a
         // stored former default); SCAM HDR SCAM: 4.
         HYBRID_DEFAULTS.put("zsl_frames", 20f);
+        // P190: frames of a FULLRES 50 MP shot (0 = auto: as zsl_frames) and of a 200 MP one (3 N + 1 ultrashort)
+        HYBRID_DEFAULTS.put("fullres50_frames", 0f);
+        HYBRID_DEFAULTS.put("fullres200_frames", 4f);
         // P68 (owner, 10 October 2026), every phone: Sabre 6.1 kernel always, Mochi always, Bento always with 3 ultrashort frames,
         // Shasta always with 3 frames. The worker keeps its own defaults (replays unchanged); the app writes these keys when unset.
         HYBRID_DEFAULTS.put("sabre61", 1f);
@@ -783,6 +786,18 @@ public class PreferenceKeys {
     /** The hybrid's N frames from the ZSL ring (pref_scam_hybrid_zsl_frames, 4..44, default 20). */
     public static int getHybridZslFrames() {
         return Math.round(hybridValue("zsl_frames", 20f));
+    }
+    /**
+     * P190 (owner, 2026-10-17: «дай возможность ставить столько кадров для 50/200мп сколько я хочу»): frames of a FULLRES 50 MP
+     * shot, pref_scam_hybrid_fullres50_frames 0..64; 0 = auto (as {@link #getHybridZslFrames}, «Движение» included). An explicit
+     * count applies in «Движение» too. Clamped here as well: a scam_dev.txt override is not.
+     */
+    public static int getFullRes50Frames() {
+        return Math.max(0, Math.min(64, Math.round(hybridValue("fullres50_frames", 0f))));
+    }
+    /** P190: frames of a FULLRES 200 MP series (pref_scam_hybrid_fullres200_frames 3..64, default 4: 3 N + 1 ultrashort). */
+    public static int getFullRes200Frames() {
+        return Math.max(3, Math.min(64, Math.round(hybridValue("fullres200_frames", 4f))));
     }
     /** P62 Mochi: v11 photometric merge of bracketed frames on GPU (pref_scam_hybrid_mochi: 0 off, 1 auto, 2 force; default 2, P68). */
     public static int getHybridMochi() {

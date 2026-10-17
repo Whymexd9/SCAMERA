@@ -119,6 +119,29 @@ public final class FullResProfiles {
         return tag != null && !"200".equals(tag);
     }
 
+    /** P190: the frame-count rows of FULLRES 50 / 200 MP shots (PreferenceKeys.getFullRes50Frames / getFullRes200Frames). */
+    public static final String FRAMES_50 = "pref_scam_hybrid_fullres50_frames", FRAMES_200 = "pref_scam_hybrid_fullres200_frames";
+
+    /** P190: the FULLRES size ("50", "200") a frame-count row is for; null for any other key. */
+    public static String framesTag(String key) {
+        return FRAMES_50.equals(key) ? "50" : FRAMES_200.equals(key) ? "200" : null;
+    }
+
+    /** P190: the row of {@code key} acts in {@code profile}: a frame-count row in the FULLRES profile of its own size only. */
+    public static boolean framesRowApplies(String key, String profile) {
+        String tag = framesTag(key);
+        return tag == null || tag.equals(tagOf(profile));
+    }
+
+    /** P190: a module of this phone has a FULLRES profile of this size ("50", "200"): its frame-count row is shown. */
+    public static boolean sizeOffered(String tag) {
+        try {
+            for (String slot : ModuleRegistry.slots())
+                for (String id : variants(slot)) if (tag.equals(tagOf(id))) return true;
+        } catch (RuntimeException ignored) { }
+        return false;
+    }
+
     private static SharedPreferences prefs() {
         try {
             return ScameraApp.getSettingsManagerStatic().getDefaultPreferences();

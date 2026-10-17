@@ -4294,6 +4294,32 @@ done, not yet seen on the phone)
 - On the phone (X200 Ultra, CTS build): the tele shows 50 and 200 MP rows with separate values; a FULLRES 200 MP shot uses
   the 200 MP profile; a long label («2,4× · полное разрешение · ID 4») fits the chip at 360 dp.
 
+### P190 - frames per FULLRES 50 / 200 MP shot (owner, 2026-10-17: «Также дай возможность ставить столько кадров для 50/200мп
+сколько я хочу»; his X100 Ultra tele 50 MP shot took 20 frames and the Java memory budget merged 2; done in code, not on a phone)
+- Two per-module rows in «Съёмка» (after «Кадров в склейке»): «Кадров в снимке 50 Мп» pref_scam_hybrid_fullres50_frames 0..64
+  (0 = auto: as «Кадров в склейке», «Движение» included, the path before P190) and «Кадров в снимке 200 Мп»
+  pref_scam_hybrid_fullres200_frames 3..64 (default 4 = 3 N + 1 ultrashort, the P179 series). PreferenceKeys.getFullRes50Frames /
+  getFullRes200Frames clamp a scam_dev override too; an explicit count applies in «Движение». Shown only where a module has
+  FULLRES of that size (FullResProfiles.sizeOffered, SettingsAvailability.fullResSizes); in the P189 module group the 50 row only
+  on a @full50 profile, the 200 row only on @full200 (ModulePageFilter.moduleRow -> FullResProfiles.framesRowApplies).
+- Series mode (every 200 MP shot; 50 MP with a count >= 1): CaptureController asks for the count, VivoSdkFullRes.seriesCount sizes
+  it (frameCount's RAW guard; at least the legacy 4 / 2; beyond it seriesFit: (avail + 4 RAW at 200 MP - fixed 20/40 B x px x
+  grid^2 - one reference RAW) / (RAW + 2 px / b^2 + 3800 x width)); a cut series toasts «Снято K из N кадров: свободно X МБ»
+  (and the 2x output when that was the reason). ImageSaver/DefaultSaver/ScamProcessor carry fullResSeries / fullResRequested to
+  Parameters; ScamHybridBurst keeps a series whole (normalLimit, no memory budget, no worker limit; <= 64) and writes
+  "seriesFrames N" except for a 200 MP series of <= 4 (default shot unchanged byte for byte).
+- Worker (scam-hybrid.h; kHybMergeMain1 untouched): tuning seriesFrames floors the native and split mosaic pick
+  (hybridMosaicNativeBudget / hybridMosaicSplitBudget, factored out unchanged without the key; split capped at 128 / b^2),
+  reports «HYBRID SERIES CUT: K of N (...)» and «HYBRID SERIES: merged K of N sent (N frames k of n)»; the P179 «merges whole»
+  line only when it is whole. ScamHybridBurst.notice -> ScamProcessor -> CameraFragment snackbar: N frames the worker left out,
+  a fallback tier (conservative retry / single frame), or (auto 50 MP) the N frames the memory budget left out.
+- Tests: FullResFramesTest (new), VivoSdkFullResModeTest (seriesFit / seriesCount), ScamHybridBurstAnyResolutionTest (50 MP series
+  of 20 kept whole, default cut as before, notices, 200 MP rules), ModuleProfilesPageTest, HybridSettingsTest, DevKeysCoverageTest;
+  tools/check_hybrid_series.cpp (CI: budgets without the key = the cc70eb27 formulas, the floors, the lines).
+- Not checked: seriesFit's constants on a phone (200 MP at 8 frames, 50 MP at 44, 50 MP 2x output: watch peakRss / MemAvailable
+  in shot.txt; if the app is killed raise seriesFit's reserve), the OPPO byte-identity replay with the new worker, timing of
+  long series (worker alarm 840 s). Also fixed: ScamNeuralClient's P188 keep-burst writer reused the name `w` (no compile).
+
 ### P164 - no «GCam» in the camera (owner, 2026-10-16: «Удали/измени/замени все упоминания Gcam в камере. В чейнжлоге не
 указывай»; done)
 - Every «GCam» / «Gcam» / «Google Camera» the app shows (settings titles and summaries, list entries, toasts, logs that reach

@@ -23,6 +23,7 @@ public final class DeviceAvailability {
                 .colorMethodOverride(colorMethodOverride())
                 .xiaomiSmoothZoom(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone())
                 .fullResHwRemosaic(com.particlesdevs.photoncamera.capture.VivoSdkFullRes.hardwareRemosaicOffered())
+                .fullResSizes(FullResProfiles.sizeOffered("50"), FullResProfiles.sizeOffered("200"))
                 .oppoTunedColor(com.particlesdevs.photoncamera.processing.render.OppoTunedColor.applies())
                 .mosaicStreams(com.particlesdevs.photoncamera.processing.MosaicBlockStore.anyMosaic());
     }

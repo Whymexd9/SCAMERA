@@ -100,6 +100,17 @@ public class DevKeysCoverageTest {
         assertEquals(DevKeys.all().size(), DevKeys.keys().size()); // no key twice
     }
 
+    /** P190: «Кадров в снимке 50 / 200 Мп» are read by literal key ("hybrid_fullres50_frames" overrides) and are menu rows. */
+    @Test
+    public void fullResFrameCountsAreMenuRowsWithDevOverrides() throws IOException {
+        String keys = new String(Files.readAllBytes(src("src/main/java/com/particlesdevs/photoncamera/settings/PreferenceKeys.java").toPath()), StandardCharsets.UTF_8);
+        Set<String> hidden = hiddenHybridKeys();
+        for (String k : new String[]{"fullres50_frames", "fullres200_frames"}) {
+            assertTrue(k, keys.contains("hybridValue(\"" + k + "\""));
+            assertTrue("a menu row, not a hidden key: " + k, !hidden.contains("hybrid_" + k) && !DevKeys.keys().contains("hybrid_" + k));
+        }
+    }
+
     @Test
     public void fileEditKeepsOtherLines() {
         List<String> lines = Arrays.asList("# comment", "dcg14 0", "zsl_reader 20");

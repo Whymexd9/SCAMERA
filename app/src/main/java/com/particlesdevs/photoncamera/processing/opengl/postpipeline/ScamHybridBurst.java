@@ -92,6 +92,8 @@ public final class ScamHybridBurst implements ScamTransport {
      * plain session for the merge), so the merge keeps all its N whatever its estimate says, and the ultrashort.
      */
     static final int HUGE_MIN_NORMALS = 4;
+    /** P190: a 200 MP series of up to this many frames is merged whole by the worker on its own (CaptureController.HUGE_SERIES). */
+    static final int HUGE_SERIES = 4;
 
     private final int width, height, cfa;
     /** RGB size the worker returns: the sensor grid or the Sabre 2x grid (pref_scam_hybrid_output). */
@@ -114,6 +116,15 @@ public final class ScamHybridBurst implements ScamTransport {
      */
     private final boolean clipFlags;
     private final boolean conservative;
+    /**
+     * P190: frames of a FULLRES series (Parameters.fullResSeries: an explicit «Кадров в снимке 50 / 200 Мп», every 200 MP shot) the
+     * capture sized against the memory itself: the merge keeps it whole (no memory budget, no worker limit; 64 at most, the
+     * transport's limit) and tells the worker (tuning seriesFrames). 0: any other shot, and the conservative retry.
+     */
+    private final int series;
+    /** P190: the frames a FULLRES shot asked for (0: not FULLRES); the N frames its memory budget left out. */
+    private final int requested;
+    private int budgetDropped;
     private boolean mergedDng;
     private final List<ImageFrame> frames = new ArrayList<>();
     private final List<Integer> roles = new ArrayList<>();
@@ -133,6 +144,8 @@ public final class ScamHybridBurst implements ScamTransport {
         width = p.rawSize.x; height = p.rawSize.y; white = p.whiteLevel; black = p.blackLevel.clone();
         cfa = p.cfaPattern;
         this.conservative = conservative;
+        series = conservative ? 0 : Math.max(0, p.fullResSeries);
+        requested = p.fullResRequested;
         diagnostics = PreferenceKeys.hybridSwitch("diagnostics", false);
         clipFlags = PreferenceKeys.hybridSwitch("clip_flags", true) && PreferenceKeys.hybridValue("highlight_recovery", 100f) > 0f;
         // The hybrid measures the colour block (Quad / Tetra) of the stream itself (header word 14).
@@ -236,8 +249,7 @@ public final class ScamHybridBurst implements ScamTransport {
         // P27 any resolution: above 16 MP the worker's working set grows with the frame, so N is capped by the memory available
         // now (DESIGN 5); the oldest N frames go first, as at the worker limit. At 16 MP or less nothing changes.
         final int reservedExtras = com.particlesdevs.photoncamera.capture.HybridPlan.bentoFrames() + 5;
-        int normalLimit = conservative ? CONSERVATIVE_NORMALS : WORKER_MAX_FRAMES - reservedExtras;
-        String limitReason = "worker limit";
+        final int workerLimit = conservative ? CONSERVATIVE_NORMALS : WORKER_MAX_FRAMES - reservedExtras;
         final long available = (long) width * height > CLASSIC_INPUT_PIXELS ? memoryAvailable() : -1;
         final int grid = twoX ? 2 : 1;
         final int budget = memoryFrameBudget(width, height, mosaicBlock, grid, available);
@@ -245,14 +257,16 @@ public final class ScamHybridBurst implements ScamTransport {
         if (strictTwoX && available > 0 && minimumPostBytes(outWidth, outHeight) > available)
             throw new IOException(Lang.t("SHDR: недостаточно свободной памяти для склейки 2× ",
                     "SHDR: not enough available memory for the requested Sabre 2x grid ") + outWidth + "x" + outHeight);
+        final int normalLimit = normalLimit(series, workerLimit, budget, minNormals(width, height), reservedExtras,
+                bracketed.size() + shorts.size());
+        final String limitReason = normalLimit < workerLimit ? "memory budget" : "worker limit";
         if (budget != Integer.MAX_VALUE) {
-            final int byMemory = Math.max(minNormals(width, height), budget - Math.min(reservedExtras, bracketed.size() + shorts.size()));
-            Log.i("SCAM_HDR", "hybrid memory budget " + width + "x" + height + ": " + budget + " frames (available " + (available >> 20)
+            Log.i("SCAM_HDR", "hybrid memory " + (series > 0 ? "estimate " : "budget ") + width + "x" + height + ": " + budget
+                    + " frames (available " + (available >> 20)
                     + " MB, fixed " + (long) (((long) width * height > HUGE_INPUT_PIXELS ? HUGE_FIXED_BYTES_PER_PIXEL : FIXED_BYTES_PER_PIXEL)
                     * outWidth * outHeight) / (1 << 20) + " MB, "
-                    + (long) perFrameBytes(width, height, mosaicBlock) / (1 << 20) + " MB per frame) -> at most "
-                    + Math.min(byMemory, normalLimit) + " N");
-            if (byMemory < normalLimit) { normalLimit = byMemory; limitReason = "memory budget"; }
+                    + (long) perFrameBytes(width, height, mosaicBlock) / (1 << 20) + " MB per frame) -> "
+                    + (series > 0 ? "series of " + series + " kept whole" : "at most " + normalLimit + " N"));
         }
         // Base frame: the sharpest of the newest candidates within the SCAM time window.
         long newest = normal.get(0).timestamp;
@@ -278,7 +292,11 @@ public final class ScamHybridBurst implements ScamTransport {
         int normals = 1;
         for (ImageFrame f : normal) {
             if (f == base) continue;
-            if (normals >= normalLimit) { Log.w("SCAM_HDR", "hybrid: " + (normal.size() - normals) + " oldest N frames dropped, " + limitReason + " " + normalLimit); break; }
+            if (normals >= normalLimit) {
+                Log.w("SCAM_HDR", "hybrid: " + (normal.size() - normals) + " oldest N frames dropped, " + limitReason + " " + normalLimit);
+                if ("memory budget".equals(limitReason)) budgetDropped = normal.size() - normals;
+                break;
+            }
             if (add(f, ROLE_NORMAL, ref, newest)) normals++;
         }
         // Bracketed frames: those really longer than the base; one that came back at the N exposure is an N frame (P27).
@@ -475,6 +493,17 @@ public final class ScamHybridBurst implements ScamTransport {
      * memory {@code availableBytes} available before the merge, minus the N-independent cost ({@link #FIXED_BYTES_PER_PIXEL}),
      * over {@link #perFrameBytes}. Integer.MAX_VALUE (no cap) at 16 MP or less or when the available memory is unknown.
      */
+    /**
+     * N frames a burst keeps: the worker limit ({@code workerLimit}), cut by the memory {@code budget} (Integer.MAX_VALUE: none) less
+     * the slots of its {@code extras} bracketed / ultrashort frames (at most {@code reservedExtras}), never below
+     * {@code minNormals}. P190: a FULLRES series ({@code series} &gt; 0) is kept whole: the capture sized it against the memory.
+     */
+    static int normalLimit(int series, int workerLimit, int budget, int minNormals, int reservedExtras, int extras) {
+        if (series > 0) return Integer.MAX_VALUE;
+        if (budget == Integer.MAX_VALUE) return workerLimit;
+        return Math.min(workerLimit, Math.max(minNormals, budget - Math.min(reservedExtras, extras)));
+    }
+
     /** P179: the N frames a merge of a w x h stream keeps whatever its memory budget says. */
     static int minNormals(int w, int h) {
         return (long) w * h > HUGE_INPUT_PIXELS ? HUGE_MIN_NORMALS : MIN_NORMALS;
@@ -516,7 +545,19 @@ public final class ScamHybridBurst implements ScamTransport {
      * a worker of this process died in (see {@link #avoidedSteps}).
      */
     public String tuningOverride() {
-        return (conservative ? CONSERVATIVE_TUNING : "") + avoidedTuning() + (strictTwoX ? "grid 2\nauto2x 0\n" : "");
+        return (conservative ? CONSERVATIVE_TUNING : "") + avoidedTuning() + (strictTwoX ? "grid 2\nauto2x 0\n" : "") + seriesTuning();
+    }
+    /**
+     * P190: the worker's frame pick keeps a FULLRES series whole (its memory budget and mosaicFrames only floor it); not for a
+     * 200 MP series of up to HUGE_SERIES frames, which the worker merges whole on its own (kHybridHugeFrames): that shot stays
+     * byte for byte as before.
+     */
+    String seriesTuning() {
+        return seriesTuning(series, width, height, frames.size());
+    }
+    static String seriesTuning(int series, int w, int h, int sent) {
+        final boolean huge = (long) w * h > HUGE_INPUT_PIXELS;
+        return series > 0 && (!huge || series > HUGE_SERIES) ? "seriesFrames " + sent + "\n" : "";
     }
     /** The worker leaves the CRE motion out (job marker cre-off) after a worker of this process died inside it. */
     public boolean creOff() { return avoidedSteps.contains(STEP_CRE); }
@@ -730,6 +771,8 @@ public final class ScamHybridBurst implements ScamTransport {
         Log.w("SCAM_HDR", "Hybrid: worker died in " + stage + "; " + step + " off for this session" + (added ? "" : " (already off)"));
         return added;
     }
+    /** P190: frames of the last conservative retry that returned. */
+    static volatile int lastFallbackFrames;
     /** P27: how the last hybrid shot was merged: "gpu", "gpu-conservative" or "cpu-single". */
     public static volatile String lastMergeTier = "gpu";
 
@@ -740,7 +783,56 @@ public final class ScamHybridBurst implements ScamTransport {
      * CPU (bilinear demosaic in the worker's units).
      */
     public static ByteBuffer process(Context context, List<ImageFrame> frames, Parameters p, boolean mergedDng) throws Exception {
+        seriesNotice = null;
+        final ScamHybridBurst[] made = new ScamHybridBurst[1];
+        final ByteBuffer out = merge(context, frames, p, mergedDng, made);
+        seriesNotice = notice(made[0], ScamNeuralClient.lastJobReport, lastMergeTier);
+        if (seriesNotice != null) Log.w("SCAM_HDR", "hybrid series notice: " + seriesNotice);
+        return out;
+    }
+
+    /** P190: the notice of the last merge (a FULLRES series it cut), taken once; null when there is none. */
+    private static volatile String seriesNotice;
+    public static String takeSeriesNotice() {
+        final String n = seriesNotice;
+        seriesNotice = null;
+        return n;
+    }
+
+    private static final java.util.regex.Pattern SERIES_LINE =
+            java.util.regex.Pattern.compile("HYBRID SERIES: merged (\\d+) of (\\d+) sent \\(N frames (\\d+) of (\\d+)\\)");
+
+    /**
+     * P190: what a FULLRES shot is told about its merge, or null: a fallback tier (the full merge failed: the conservative retry
+     * or the base frame alone), N frames of a series the worker left out (its «HYBRID SERIES» line; a dropped ultrashort is only
+     * logged), N frames the memory budget left out of an automatic 50 MP shot.
+     */
+    static String notice(ScamHybridBurst burst, String report, String tier) {
+        if (burst == null || burst.requested <= 0) return null;
+        if (!"gpu".equals(tier)) {
+            final int k = "cpu-single".equals(tier) ? 1 : lastFallbackFrames;
+            return Lang.t("Склейка не удалась целиком: сохранено с " + k + " кадрами (резервный режим)",
+                    "The full merge failed: saved with " + k + " frames (fallback)");
+        }
+        if (burst.series > 0 && report != null) {
+            java.util.regex.Matcher m = SERIES_LINE.matcher(report);
+            String kN = null, nN = null;
+            while (m.find()) { kN = m.group(3); nN = m.group(4); }
+            if (kN != null && Integer.parseInt(kN) < Integer.parseInt(nN))
+                return Lang.t("Склеено " + kN + " из " + nN + " обычных кадров: больше склейка не вместила",
+                        "Merged " + kN + " of " + nN + " normal frames: the merge held no more");
+        }
+        if (burst.budgetDropped > 0) {
+            final int kept = burst.frames.size();
+            return Lang.t("Склеено " + kept + " из " + (kept + burst.budgetDropped) + " кадров: не хватило памяти (задайте «Кадров в снимке»)",
+                    "Merged " + kept + " of " + (kept + burst.budgetDropped) + " frames: not enough memory (set “Frames per shot”)");
+        }
+        return null;
+    }
+
+    private static ByteBuffer merge(Context context, List<ImageFrame> frames, Parameters p, boolean mergedDng, ScamHybridBurst[] made) throws Exception {
         ScamHybridBurst burst = new ScamHybridBurst(frames, p, false);
+        made[0] = burst;
         if ((long) burst.width * burst.height > HUGE_INPUT_PIXELS) releaseLeftOut(frames, burst.frames);
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("ctor_done");
         burst.mergedDng = mergedDng;
@@ -787,6 +879,7 @@ public final class ScamHybridBurst implements ScamTransport {
                         ScamNeuralClient.carryReport = "previous attempt: " + previousWhy + "\n" + (previous == null ? "" : tail(previous, 4000));
                         ByteBuffer out = ScamNeuralClient.processScamBurst(context, safe);
                         lastMergeTier = "gpu-conservative";
+                        lastFallbackFrames = safe.frames.size();
                         Log.w("SCAM_HDR", "Hybrid fallback=gpu-conservative after: " + why
                                 + (avoidedSteps.isEmpty() ? "" : " (left out: " + avoidedSteps + ")"));
                         return out;

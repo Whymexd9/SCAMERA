@@ -236,4 +236,58 @@ public class ScamHybridBurstAnyResolutionTest {
         assertEquals(2810, ScamHybridBurst.workerTimeoutSeconds(8160, 6120));
         assertEquals(3600, ScamHybridBurst.workerTimeoutSeconds(15000, 11900));
     }
+
+    /**
+     * P190 (owner, 2026-10-17: a tele 50 MP shot took 20 frames, the memory budget merged 2): a FULLRES series keeps every frame
+     * whatever the merge's estimate says and tells the worker (seriesFrames); a default shot (no series) is cut as before and
+     * a FULLRES one says so.
+     */
+    @Test public void aFullResSeriesIsKeptWholeAndADefaultShotAsBefore() throws Exception {
+        final int w = 8192, h = 6144;
+        outputMode = "sensor";
+        memory(2L << 30);
+        assertEquals("the estimate alone takes none", 0, ScamHybridBurst.memoryFrameBudget(w, h, 0, 2L << 30));
+        ByteBuffer raw = ByteBuffer.allocate(w * h * 2);
+        List<ImageFrame> input = new ArrayList<>();
+        for (int i = 0; i < 20; i++) input.add(frame(w, h, raw));
+        Parameters auto = parameters(w, h);
+        auto.fullResRequested = 20;
+        ScamHybridBurst before = burst(input, auto);
+        assertEquals("no series: the memory budget's 2 N, as before", 2, frames(before).size());
+        assertFalse(before.tuningOverride().contains("seriesFrames"));
+        String notice = ScamHybridBurst.notice(before, null, "gpu");
+        assertNotNull("a FULLRES shot cut by the budget says so", notice);
+        assertTrue(notice, notice.contains("2") && notice.contains("20"));
+        assertNull("not FULLRES: no notice", ScamHybridBurst.notice(burst(input, parameters(w, h)), null, "gpu"));
+        Parameters series = parameters(w, h);
+        series.fullResSeries = 20; series.fullResRequested = 20;
+        ScamHybridBurst whole = burst(input, series);
+        assertEquals("the series of 20 N kept whole", 20, frames(whole).size());
+        assertTrue(whole.tuningOverride(), whole.tuningOverride().endsWith("seriesFrames 20\n"));
+        assertNull("merged whole: nothing to say", ScamHybridBurst.notice(whole,
+                "HYBRID SERIES: merged 20 of 20 sent (N frames 20 of 20)\n", "gpu"));
+        String cut = ScamHybridBurst.notice(whole, "x\nHYBRID SERIES: merged 8 of 20 sent (N frames 8 of 20)\ny", "gpu");
+        assertNotNull("the worker's cut is said", cut);
+        assertTrue(cut, cut.contains("8") && cut.contains("20"));
+        assertNull("a dropped ultrashort is only logged", ScamHybridBurst.notice(whole,
+                "HYBRID SERIES: merged 7 of 8 sent (N frames 7 of 7)", "gpu"));
+        ScamHybridBurst.lastFallbackFrames = 16;
+        assertTrue(ScamHybridBurst.notice(whole, null, "gpu-conservative").contains("16"));
+        assertTrue(ScamHybridBurst.notice(whole, null, "cpu-single").contains("1"));
+    }
+
+    /** P190: a 200 MP series (Tetra, 401 MB a frame: checked on the rules) - up to 4 frames as before P190, beyond that whole. */
+    @Test public void a200MpSeriesBeyondFourIsToldToTheWorker() {
+        final int w = 16320, h = 12288;
+        assertEquals("the default 4 (3 N + U): no tuning line", "", ScamHybridBurst.seriesTuning(4, w, h, 4));
+        assertEquals("3 frames: none either", "", ScamHybridBurst.seriesTuning(3, w, h, 3));
+        assertEquals("seriesFrames 8\n", ScamHybridBurst.seriesTuning(8, w, h, 8));
+        assertEquals("not a series", "", ScamHybridBurst.seriesTuning(0, 8192, 6144, 20));
+        assertEquals("seriesFrames 20\n", ScamHybridBurst.seriesTuning(20, 8192, 6144, 20));
+        final int workerLimit = 48 - 8;
+        assertEquals("200 MP, no memory: the P179 four", 4, ScamHybridBurst.normalLimit(0, workerLimit, 0, 4, 8, 1));
+        assertEquals("a series of 8 (7 N + U) keeps its 7 N", Integer.MAX_VALUE, ScamHybridBurst.normalLimit(8, workerLimit, 0, 4, 8, 1));
+        assertEquals("16 MP or less: the worker limit", workerLimit, ScamHybridBurst.normalLimit(0, workerLimit, Integer.MAX_VALUE, 2, 8, 0));
+        assertEquals(10, ScamHybridBurst.normalLimit(0, workerLimit, 13, 2, 8, 3));
+    }
 }

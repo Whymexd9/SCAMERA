@@ -64,6 +64,8 @@ final class ModulePageFilter {
     static boolean moduleRow(String key, String profile) {
         if (key == null) return true;
         if (VivoSdkFullRes.PREF_HW_REMOSAIC.equals(key)) return FullResProfiles.hardwareRemosaicApplies(profile);
+        // P190: «Кадров в снимке 50 / 200 Мп» only in the FULLRES profile of that size
+        if (FullResProfiles.framesTag(key) != null) return FullResProfiles.framesRowApplies(key, profile);
         if (key.startsWith("pref_") || key.startsWith("scamera_")) return ModuleProfiles.isLocal(key);
         return true;
     }

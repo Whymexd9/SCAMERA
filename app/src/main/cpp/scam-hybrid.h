@@ -309,6 +309,9 @@ struct HybridTuning {
                                  // slot per frame, strips within the storage block and a quarter of MemAvailable) takes them all, the
                                  // split up to kHybridGpuFrames / b^2 (Quad 30, Tetra 8); above 16 MP both stay within half of
                                  // MemAvailable
+    int seriesFrames=0;          // P190: a FULLRES series the app sized against the memory itself (an explicit frame count, a 200 MP
+                                 // series above 4 frames): the mosaic frame pick keeps up to this many frames whatever its memory
+                                 // budget and mosaicFrames say (the split: at most kHybridGpuFrames / b^2); 0 = the pick as before
     // P29 native mosaic path (research/ark23/quad_report.md section 8, plan P29). mosaicPath 0 = the b^2 sub-frame split above
     // (hybridReconstructMosaic, unchanged); 1 = hybridReconstructMosaicNative: one GPU slot per FRAME (mosaicFrames frames, up to
     // kHybridGpuFrames), the binned burst for alignment / guide / rejection / F6 (one field per frame), and the ArkCam-style RBF
@@ -521,7 +524,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("laStream",nullptr,&t.laStream)||set("laScam",nullptr,&t.laScam)||set("isoKernel",nullptr,&t.isoKernel)
-            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
+            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
             ||set("mosaicNative2x",nullptr,&t.mosaicNative2x)||set("mosaicTetraWindow2x",nullptr,&t.mosaicTetraWindow2x)||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
@@ -5000,7 +5003,20 @@ inline void laShareSubFrames(std::vector<std::vector<float>>& fields,int per,std
     }
 }
 
-struct HybridStats { double alignMs=0,maskMs=0,mergeMs=0,localAlignMs=0; int merged=0,droppedBracketed=0; bool bento=false; };
+struct HybridStats { double alignMs=0,maskMs=0,mergeMs=0,localAlignMs=0; int merged=0,droppedBracketed=0,mergedNormals=0; bool bento=false; };
+// P190: what became of a FULLRES series (tuning seriesFrames): the frames merged against those sent, the N frames apart (the app
+// tells the user about N frames left out; an ultrashort or bracketed frame dropped by its quality rules is only logged)
+inline void hybridSeriesMerged(const HybridTuning& tune,const HybridInput& input,int merged,int mergedNormals,
+                               const std::function<void(const std::string&)>& report){
+    if(tune.seriesFrames<=0)return;
+    int normals=0;for(const auto& f:input.frames)normals+=f.role==kRoleNormal?1:0;
+    report("HYBRID SERIES: merged "+std::to_string(merged)+" of "+std::to_string(input.frames.size())+" sent (N frames "
+        +std::to_string(mergedNormals)+" of "+std::to_string(normals)+")");
+}
+// P190: a FULLRES series the mosaic pick did not keep whole
+inline void hybridSeriesCut(const HybridTuning& tune,int kept,int n,const std::string& why,const std::function<void(const std::string&)>& report){
+    if(tune.seriesFrames>0&&kept<n)report("HYBRID SERIES CUT: "+std::to_string(kept)+" of "+std::to_string(n)+" ("+why+")");
+}
 
 // P19 lateral CA of one frame (tools/quad/measure_raw_ca.py is the reference): G interpolated at the R and B sites from their
 // four green neighbours; per 64 x 64-cell tile with gradient and nothing clipped, R (B) matched to G by gain / offset and the
@@ -6415,6 +6431,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(grid>1)report("HYBRID OUTPUT: Sabre "+std::to_string(grid)+"x grid "+std::to_string(outW)+"x"+std::to_string(outH)+" (kernel in sensor px)");
     stats.mergeMs=millis(Clock::now()-mergeStarted);
     stats.merged=int(in.frames.size());
+    stats.mergedNormals=0;for(auto r:in.role)stats.mergedNormals+=r==kRoleNormal?1:0;
+    if(!preset&&!native)hybridSeriesMerged(tune,input,stats.merged,stats.mergedNormals,report);
     {
         std::string line="HYBRID MERGE FACTORS:";
         double avg=0;int cnt=0;
@@ -6890,6 +6908,63 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
     std::vector<float>().swap(z);std::vector<float>().swap(ul);std::vector<float>().swap(vl);std::vector<float>().swap(boxTmp);
     rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){const float g=std::max(rgb[i*3+1],0.f)+e;rgb[i*3]=u[i]*g-e;rgb[i*3+2]=v[i]*g-e;}});
 }
+// Frames the sub-frame split picks of n: kHybridGpuFrames / b^2 (per = b^2 sub-frames each) and mosaicFrames. Any RAW size (avail =
+// MemAvailable above kHybridClassicPixels, else 0): the worker copies every picked frame (its b^2 sub-frames, 2 B per stream pixel,
+// and the binned frame of the alignment, 2/b^2 B); the sub-frame merge then adds ~20 B per stream pixel (RGB, coverage, flags,
+// Bento, F6). The frames stay within half of MemAvailable, at least two (the base and one donor). P190: a FULLRES series (tuning
+// seriesFrames) floors it, up to the split's kHybridGpuFrames / b^2.
+inline int hybridMosaicSplitBudget(int n,int W,int Ht,int per,const HybridTuning& tune,uint64_t avail,
+                                   const std::function<void(const std::string&)>& report){
+    int budget=std::max(1,std::min(kHybridGpuFrames/per,std::max(2,tune.mosaicFrames)));
+    if(avail>0){
+        const double P=double(W)*Ht,perFrame=2.0*P*(1.0+1.0/per);
+        const int byMemory=std::max(2,int(std::max(0.0,0.5*double(avail)-20.0*P)/perFrame));
+        if(byMemory<budget){
+            report("HYBRID MOSAIC: "+std::to_string(byMemory)+" frames (memory budget "+hybridMB(uint64_t(0.5*double(avail)))+" MB of MemAvailable "
+                +hybridMB(avail)+" MB, "+hybridMB(uint64_t(perFrame))+" MB per frame)");
+            budget=byMemory;
+        }
+    }
+    if(tune.seriesFrames>0){
+        const int want=std::min({n,tune.seriesFrames,kHybridGpuFrames/per});
+        if(budget<want){
+            report("HYBRID SERIES: budget "+std::to_string(budget)+" -> "+std::to_string(want)+" (the app sized the series)");
+            budget=want;
+        }
+    }
+    return budget;
+}
+// Frames the native mosaic merge picks of n (one GPU slot each, kHybridGpuFrames, and mosaicFrames). Any RAW size (avail as above),
+// as the split: every picked frame adds its binned copy (2 B per binned pixel, 2/b^2 B per stream pixel, bb = b^2) and for T2 its
+// Quad mosaic (2/4 B per stream pixel; Quad and T1 read the worker's RAW itself); the merge and the output then add ~20 B per
+// stream pixel (RGB, coverage, flags, chroma median). The frames stay within half of MemAvailable, at least two; a burst above
+// kHybridHugePixels keeps kHybridHugeFrames (P179); P190: a FULLRES series (tuning seriesFrames) floors it.
+inline int hybridMosaicNativeBudget(int n,int W,int Ht,int bb,bool t2,const HybridTuning& tune,uint64_t avail,
+                                    const std::function<void(const std::string&)>& report){
+    int budget=std::max(1,std::min(kHybridGpuFrames,std::max(2,tune.mosaicFrames)));
+    if(avail>0){
+        const double P=double(W)*Ht,perFrame=2.0*P/bb+(t2?0.5*P:0.0);
+        const int byMemory=std::max(2,int(std::max(0.0,0.5*double(avail)-20.0*P)/perFrame));
+        if(byMemory<budget){
+            report("HYBRID MOSAIC NATIVE: "+std::to_string(byMemory)+" frames (memory budget "+hybridMB(uint64_t(0.5*double(avail)))+" MB of MemAvailable "
+                +hybridMB(avail)+" MB, "+hybridMB(uint64_t(perFrame))+" MB per frame)");
+            budget=byMemory;
+        }
+    }
+    if(int64_t(W)*Ht>kHybridHugePixels&&budget<std::min(n,kHybridHugeFrames)){
+        budget=std::min(n,kHybridHugeFrames);
+        report("HYBRID MOSAIC NATIVE: "+std::to_string(budget)+" frames (a "+std::to_string(int64_t(W)*Ht/1000000)+" MP burst "
+            +(budget>=n?std::string("merges whole, its ultrashort too)"):"keeps at least "+std::to_string(budget)+" frames)"));
+    }
+    if(tune.seriesFrames>0){
+        const int want=std::min({n,tune.seriesFrames,kHybridGpuFrames});
+        if(budget<want){
+            report("HYBRID SERIES: budget "+std::to_string(budget)+" -> "+std::to_string(want)+" (the app sized the series)");
+            budget=want;
+        }
+    }
+    return budget;
+}
 inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int block,const HybridTuning& tune,const ScamAlignment& alignment,
                                                   const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
                                                   std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags){
@@ -6903,22 +6978,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     const int vw=W/b,vh=Ht/b,per=b*b,n=int(input.frames.size());
     // ---- real frames within the GPU capacity (kHybridGpuFrames sub-frames): the base, the normals closest in time, one
     // ultrashort (Bento) and one bracketed (Shasta) frame when there is room
-    int budget=std::max(1,std::min(kHybridGpuFrames/per,std::max(2,tune.mosaicFrames)));
-    if(int64_t(W)*Ht>kHybridClassicPixels){
-        // Any RAW size: the worker copies every picked frame (its b^2 sub-frames, 2 B per stream pixel, and the binned frame of
-        // the alignment, 2/b^2 B); the sub-frame merge then adds ~20 B per stream pixel (RGB, coverage, flags, Bento, F6). The
-        // frames stay within half of MemAvailable, at least two (the base and one donor).
-        const uint64_t avail=hybridMemAvailable();
-        if(avail>0){
-            const double P=double(W)*Ht,perFrame=2.0*P*(1.0+1.0/per);
-            const int byMemory=std::max(2,int(std::max(0.0,0.5*double(avail)-20.0*P)/perFrame));
-            if(byMemory<budget){
-                report("HYBRID MOSAIC: "+std::to_string(byMemory)+" frames (memory budget "+hybridMB(uint64_t(0.5*double(avail)))+" MB of MemAvailable "
-                    +hybridMB(avail)+" MB, "+hybridMB(uint64_t(perFrame))+" MB per frame)");
-                budget=byMemory;
-            }
-        }
-    }
+    const int budget=hybridMosaicSplitBudget(n,W,Ht,per,tune,int64_t(W)*Ht>kHybridClassicPixels?hybridMemAvailable():0,report);
     std::vector<int> normals;std::vector<int> usList,brList;
     for(int f=1;f<n;++f){
         const auto& fr=input.frames[f];
@@ -6958,6 +7018,8 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
         for(int f:pick)line+=" "+std::to_string(f)+(input.frames[f].role==kRoleNormal?"N":input.frames[f].role==kRoleUltrashort?"U":"L");
         report(line);
     }
+    hybridSeriesCut(tune,int(pick.size()),n,budget>=n?"frame rules":budget>=kHybridGpuFrames/per?"split holds "+std::to_string(kHybridGpuFrames/per)+" frames"
+        :"memory",report);
     // ---- response of the site classes (the normal frames picked, up to 4)
     std::array<float,64> gain;gain.fill(1.f);
     if(tune.mosaicGain){
@@ -7070,6 +7132,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     std::vector<uint8_t> vEff,vClip;
     HybridStats st;
     std::vector<float> rgb=hybridReconstruct(vin,vt,alignment,report,nullptr,effMap?&vEff:nullptr,&st,clipFlags?&vClip:nullptr,&preset);
+    hybridSeriesMerged(tune,input,st.merged/per,st.mergedNormals/per,report);
     std::vector<uint16_t>().swap(sub); // the sub-frames (vin) are merged: not held through the chroma median and the output
     st.alignMs+=alignMs;
     // ---- to the requested output: sensor grid w x h, or the 2x grid (bilinear: output X sits on sensor position X/2 - 0.25)
@@ -7187,27 +7250,8 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     const int mb=t2?2:b,MW=t2?W/2:W,MH=t2?Ht/2:Ht,sub=b/mb; // merge block, size, sensor sites per merge site and axis
     // ---- frames within the GPU capacity, one slot each: the base, the normals closest in time, one ultrashort (Bento) and one
     // bracketed (Shasta) frame when there is room (the split's rules)
-    int budget=std::max(1,std::min(kHybridGpuFrames,std::max(2,tune.mosaicFrames)));
-    if(int64_t(W)*Ht>kHybridClassicPixels){
-        // Any RAW size, as the split: every picked frame adds its binned copy (2 B per binned pixel, 2/b^2 B per stream pixel) and for
-        // T2 its Quad mosaic (2/4 B per stream pixel; Quad and T1 read the worker's RAW itself); the merge and the output then add
-        // ~20 B per stream pixel (RGB, coverage, flags, chroma median). The frames stay within half of MemAvailable, at least two.
-        const uint64_t avail=hybridMemAvailable();
-        if(avail>0){
-            const double P=double(W)*Ht,perFrame=2.0*P/bb+(t2?0.5*P:0.0);
-            const int byMemory=std::max(2,int(std::max(0.0,0.5*double(avail)-20.0*P)/perFrame));
-            if(byMemory<budget){
-                report("HYBRID MOSAIC NATIVE: "+std::to_string(byMemory)+" frames (memory budget "+hybridMB(uint64_t(0.5*double(avail)))+" MB of MemAvailable "
-                    +hybridMB(avail)+" MB, "+hybridMB(uint64_t(perFrame))+" MB per frame)");
-                budget=byMemory;
-            }
-        }
-    }
+    const int budget=hybridMosaicNativeBudget(n,W,Ht,bb,t2,tune,int64_t(W)*Ht>kHybridClassicPixels?hybridMemAvailable():0,report);
     const bool huge=int64_t(W)*Ht>kHybridHugePixels;
-    if(huge&&budget<std::min(n,kHybridHugeFrames)){
-        budget=std::min(n,kHybridHugeFrames);
-        report("HYBRID MOSAIC NATIVE: "+std::to_string(budget)+" frames (a "+std::to_string(int64_t(W)*Ht/1000000)+" MP burst merges whole, its ultrashort too)");
-    }
     // the ultrashort takes a slot from 4 frames on (from 3 for a huge burst: two N and the ultrashort)
     const int usFrom=huge?3:4;
     std::vector<int> normals;int us=-1,br=-1;
@@ -7224,6 +7268,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     for(int f:normals)if(int(pick.size())<budget-extras)pick.push_back(f);
     if(us>=0&&budget>=usFrom&&int(pick.size())<budget)pick.push_back(us);
     if(br>=0&&budget>=6&&int(pick.size())<budget)pick.push_back(br);
+    hybridSeriesCut(tune,int(pick.size()),n,budget>=n?"frame rules":"memory",report);
     // P35: the window follows the colour block: mosaicWindow is in Quad sites (2x2 blocks), a Tetra T1 window is twice as wide in
     // sensor px (the same 1.5 binned px for the default 3), at most 8 (17x17 sites, 81 cells of kHybMergeMosaicFast); T2 runs the
     // Quad pass on its Quad mosaic with mosaicWindow itself
@@ -7334,6 +7379,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     HybridStats st;
     const auto prepDone=Clock::now(); // P80: the CPU steps around the merge in the total report
     std::vector<float> rgb=hybridReconstruct(bin,vt,alignment,report,nullptr,effMap?&vEff:nullptr,&st,clipFlags?&vClip:nullptr,nullptr,&nat);
+    hybridSeriesMerged(tune,input,st.merged,st.mergedNormals,report);
     const auto mergeDone=Clock::now();
     std::vector<uint16_t>().swap(binned);
     // ---- chroma median and false-colour suppression (hybridReconstructMosaic's, unchanged code and defaults, on the merged mosaic's

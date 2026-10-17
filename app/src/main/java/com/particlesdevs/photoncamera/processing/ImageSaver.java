@@ -43,6 +43,8 @@ public class ImageSaver {
     private int desiredFrameCount = 0;
     public boolean newBurst = false;
     public boolean iszAspect4x3;
+    /** P190: frames of a FULLRES series the merge keeps whole (0: not a series) and the frames asked for (0: not FULLRES). */
+    public int fullResSeries, fullResRequested;
 
     public void setFrameCount(int desiredFrameCount){
         this.desiredFrameCount = desiredFrameCount;
@@ -80,6 +82,8 @@ public class ImageSaver {
         DefaultSaver saver = (DefaultSaver) implementation;
         saver.ownedHybridRoute = hybridRoute;
         saver.ownedIszAspect4x3 = iszAspect4x3;
+        saver.ownedFullResSeries = fullResSeries;
+        saver.ownedFullResRequested = fullResRequested;
         saver.ownedFrames = new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
         saver.ownedPairs = new ArrayList<>(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.fullpairs);
         SaverImplementation.IMAGE_BUFFER.clear();

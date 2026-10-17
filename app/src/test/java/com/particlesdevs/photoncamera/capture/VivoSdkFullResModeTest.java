@@ -197,4 +197,33 @@ public class VivoSdkFullResModeTest {
         assertEquals(8, VivoSdkFullRes.frameCount(20, raw, raw * 16));
         assertEquals(0, VivoSdkFullRes.frameCount(20, raw, raw));
     }
+
+    /**
+     * P190: an explicit FULLRES series is sized by the merge's memory beyond its legacy count (200 MP: 4, the camera closed for the
+     * merge; 50 MP: 2); up to 4 frames at 200 MP the count is exactly the P179 one.
+     */
+    @Test public void seriesFitSizesAnExplicitSeriesByTheMergesMemory() {
+        final long mib = 1L << 20, gib = 1L << 30;
+        final long px200 = 16320L * 12288, raw200 = px200 * 2;
+        assertEquals(0, VivoSdkFullRes.seriesFit(px200, 16320, raw200, 4, 1, true, 3060 * mib));
+        assertEquals(7, VivoSdkFullRes.seriesFit(px200, 16320, raw200, 4, 1, true, 6200 * mib));
+        assertEquals(11, VivoSdkFullRes.seriesFit(px200, 16320, raw200, 4, 1, true, 8000 * mib));
+        assertEquals("the legacy 4 whatever the fit", 4, VivoSdkFullRes.seriesCount(64, px200, 16320, raw200, 4, 1, true, 3060 * mib));
+        assertEquals(7, VivoSdkFullRes.seriesCount(64, px200, 16320, raw200, 4, 1, true, 6200 * mib));
+        assertEquals("the RAW guard still binds", 10, VivoSdkFullRes.seriesCount(64, px200, 16320, raw200, 4, 1, true, 8000 * mib));
+        assertEquals(8, VivoSdkFullRes.seriesCount(8, px200, 16320, raw200, 4, 1, true, 12000 * mib));
+        for (long avail : new long[]{-1, 1000 * mib, 3060 * mib, 6200 * mib, 8000 * mib, 16 * gib})
+            for (int requested = 1; requested <= 4; requested++)
+                assertEquals("200 MP up to 4 frames: as before P190", VivoSdkFullRes.frameCount(requested, raw200, avail),
+                        VivoSdkFullRes.seriesCount(requested, px200, 16320, raw200, 4, 1, true, avail));
+        final long px50 = 8160L * 6144, raw50 = px50 * 2;
+        assertEquals(14, VivoSdkFullRes.seriesCount(64, px50, 8160, raw50, 2, 1, false, 4 * gib));
+        assertEquals(27, VivoSdkFullRes.seriesCount(64, px50, 8160, raw50, 2, 1, false, 6 * gib));
+        assertEquals(41, VivoSdkFullRes.seriesCount(64, px50, 8160, raw50, 2, 1, false, 8 * gib));
+        assertEquals(20, VivoSdkFullRes.seriesCount(20, px50, 8160, raw50, 2, 1, false, 8 * gib));
+        assertEquals("the 2x output: the floor of 2", 2, VivoSdkFullRes.seriesCount(20, px50, 8160, raw50, 2, 2, false, 6 * gib));
+        assertEquals(1, VivoSdkFullRes.seriesCount(1, px50, 8160, raw50, 2, 1, false, 8 * gib));
+        assertEquals("unknown memory: as asked", 30, VivoSdkFullRes.seriesCount(30, px50, 8160, raw50, 2, 1, false, -1));
+        assertEquals("no RAW room: none", 0, VivoSdkFullRes.seriesCount(30, px50, 8160, raw50, 2, 1, false, raw50));
+    }
 }

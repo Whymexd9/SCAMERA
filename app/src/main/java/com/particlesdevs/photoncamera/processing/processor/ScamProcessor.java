@@ -76,6 +76,9 @@ public class ScamProcessor extends ProcessorBase {
     public java.util.List<IsoExpoSelector.ExpoPair> ownedPairs;
     public boolean ownedIszAspect4x3;
     private boolean iszAspect4x3;
+    /** P190: the FULLRES series of the queued shot (frames the merge keeps whole, 0: none; frames asked for, 0: not FULLRES). */
+    public int ownedFullResSeries, ownedFullResRequested;
+    private int fullResSeries, fullResRequested;
     private java.util.List<IsoExpoSelector.ExpoPair> fullpairs;
 
     public void start(Path dngFile, Path imageFile,
@@ -103,6 +106,9 @@ public class ScamProcessor extends ProcessorBase {
         this.captureRequest = captureRequest;
         this.iszAspect4x3 = ownedIszAspect4x3;
         ownedIszAspect4x3 = false;
+        this.fullResSeries = ownedFullResSeries;
+        this.fullResRequested = ownedFullResRequested;
+        ownedFullResSeries = ownedFullResRequested = 0;
         this.scamCapture = PreferenceKeys.isScamEnabled();
         // The route of the shot fixes the settings profile of its whole processing: pref_scam_hybrid_* for a hybrid shot,
         // the SCAM HDR keys otherwise (PreferenceKeys.isHybridShot), even if the route changes meanwhile.
@@ -308,6 +314,8 @@ public class ScamProcessor extends ProcessorBase {
         Log.d(TAG, "Api BlackLevel:" + characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN));
         Parameters processingParameters = new Parameters();
         processingParameters.rawBinning = rawBinning;
+        processingParameters.fullResSeries = fullResSeries;
+        processingParameters.fullResRequested = fullResRequested;
         if (rawCrop != null && rawCrop.area != null) {
             processingParameters.rawCrop = rawCrop.area;
             processingParameters.rawCropFull = new Point(rawCrop.fullWidth, rawCrop.fullHeight);
@@ -515,6 +523,12 @@ public class ScamProcessor extends ProcessorBase {
                     com.particlesdevs.photoncamera.processing.ShotTimeline.mark("hybrid_call");
                     scamOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.process(
                             ScameraApp.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
+                    // P190: a FULLRES series the merge cut (the worker, a fallback tier, the memory budget) is said aloud
+                    final String notice = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.takeSeriesNotice();
+                    if (notice != null) {
+                        try { processingEventsListener.onProcessingChanged(notice); }
+                        catch (RuntimeException e) { Log.d(TAG, "series notice: " + e); }
+                    }
                 }
                 scamOutputParameters=processingParameters;
                 shotClipFlags=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamRgb.lastClipFlags;

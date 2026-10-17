@@ -303,7 +303,8 @@ public class ModuleProfilesPageTest {
             if (key == null) continue;
             if (shown(p) && (key.startsWith("pref_") || key.startsWith("scamera_")))
                 assertTrue("a shared row on a module page: " + key, ModuleProfiles.isLocal(key));
-            if (ModuleProfiles.isLocal(key) && p.isSelectable() && !VivoSdkFullRes.PREF_HW_REMOSAIC.equals(key)) {
+            if (ModuleProfiles.isLocal(key) && p.isSelectable() && !VivoSdkFullRes.PREF_HW_REMOSAIC.equals(key)
+                    && com.particlesdevs.photoncamera.settings.FullResProfiles.framesTag(key) == null) {
                 assertTrue("a module value hidden: " + key, shown(p));
                 local++;
             }
@@ -316,6 +317,9 @@ public class ModuleProfilesPageTest {
             assertFalse("shared: " + key, shown(p));
         }
         assertFalse(shown(root.findPreference(VivoSdkFullRes.PREF_HW_REMOSAIC)));
+        // P190: the FULLRES frame counts are rows of the FULLRES profiles only
+        assertFalse(shown(root.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_50)));
+        assertFalse(shown(root.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_200)));
         assertNotNull(root.findPreference(ModulePageFilter.SENSOR_PAGE));
         assertTrue(shown(root.findPreference(ModulePageFilter.SENSOR_PAGE)));
         assertEquals("Sensor and RAW", String.valueOf(root.findPreference(ModulePageFilter.CAMERAS).getTitle()));
@@ -326,6 +330,11 @@ public class ModuleProfilesPageTest {
         PreferenceScreen twoHundred = inflate();
         ModulePageFilter.apply(twoHundred, "back0@full200", true);
         assertFalse("no hardware 200 MP mode", shown(twoHundred.findPreference(VivoSdkFullRes.PREF_HW_REMOSAIC)));
+        // P190: each FULLRES profile shows its own frame count only
+        assertTrue(shown(fifty.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_50)));
+        assertFalse(shown(fifty.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_200)));
+        assertTrue(shown(twoHundred.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_200)));
+        assertFalse(shown(twoHundred.findPreference(com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_50)));
     }
 
     @Test public void availabilityKeepsSharedRowsHidden() {

@@ -275,6 +275,13 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (xiaomiZoom != null && !com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone()) xiaomiZoom.setVisible(false);
             Preference hwRemosaic = findPreference(com.particlesdevs.photoncamera.capture.VivoSdkFullRes.PREF_HW_REMOSAIC);
             if (hwRemosaic != null && !com.particlesdevs.photoncamera.capture.VivoSdkFullRes.hardwareRemosaicOffered()) hwRemosaic.setVisible(false);
+            // P190: «Кадров в снимке 50 / 200 Мп» only where a module has FULLRES of that size
+            for (String key : new String[]{com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_50,
+                    com.particlesdevs.photoncamera.settings.FullResProfiles.FRAMES_200}) {
+                Preference frames = findPreference(key);
+                if (frames != null && !com.particlesdevs.photoncamera.settings.FullResProfiles.sizeOffered(
+                        com.particlesdevs.photoncamera.settings.FullResProfiles.framesTag(key))) frames.setVisible(false);
+            }
             if (module != null) moduleHidden = ModulePageFilter.apply(getPreferenceScreen(), module, rootKey == null);
             setupPhotoFormat();
             setupCaptureReport();

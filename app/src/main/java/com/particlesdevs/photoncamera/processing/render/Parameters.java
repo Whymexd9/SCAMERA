@@ -41,6 +41,11 @@ public class Parameters {
     public java.nio.ByteBuffer scamRgb;
     /** scamRgb is an Allocator buffer the pipeline may free as soon as it is uploaded (replaced by a decimated copy). */
     public boolean scamRgbOwned;
+    /**
+     * P190: frames of a FULLRES series the merge keeps whole (an explicit «Кадров в снимке 50 / 200 Мп», every 200 MP shot), 0 for
+     * any other shot; the frames the shot asked for (0: not FULLRES).
+     */
+    public int fullResSeries, fullResRequested;
     private static final String TAG = "Parameters";
     private int analogIso;
     public int iso;
