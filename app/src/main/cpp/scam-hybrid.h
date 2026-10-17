@@ -1214,6 +1214,9 @@ layout(std430,binding=8) readonly buffer Robust{float robust[];};
 #ifdef RIM_STATS
 layout(std430,binding=3) buffer Out{float outRgb[];};
 layout(std430,binding=6) buffer CFlags{uint cflags[];};
+#elif defined(NAT_BASEFILL) && NAT_BASEFILL
+layout(std430,binding=3) buffer Out{float outRgb[];};
+layout(std430,binding=4) writeonly buffer Eff{float eff[];};
 #else
 layout(std430,binding=3) writeonly buffer Out{float outRgb[];};
 layout(std430,binding=4) writeonly buffer Eff{float eff[];};
@@ -2476,6 +2479,10 @@ void natFrame(inout Acc a,int f,vec2 O,float r,float cover,vec3 P){
     if(role==5)a.usClip+=r*(cd.x+cd.y+cd.z);
 }
 #if NAT_MARKED
+// P204: a colour with no sample at all gets the base's unflagged sites around it - in its own pass (NAT_BASEFILL) over the
+// pixels the merge marked: inside the merge program this loop made the Adreno 750 run the marked merge 35-50x slower (OPPO X7
+// Ultra 50 MP, 19 frames: 216 s against 3.8 s unmarked; 12 s with the fill moved out), for the same sites and values.
+const float NAT_FILL_MARK=-1.0e30;
 float natBaseFill(int c,vec2 O){
     float Rn=float(natU.w)*(4.0/3.0);
     int s=natV.x,n=int(ceil(2.0*Rn));
@@ -2505,6 +2512,13 @@ void main(){
     vec2 S=(vec2(float(ox),float(2*cy0*g+row))+0.5)*(2.0/float(g))-1.0; // native position of the output pixel (X - (b-1)/2;
                                                   // P56: X = (X + 0.5) 2 / g - 0.5 on the 2x grid g = 4, exactly X when g = 2)
     vec2 B0=(S-0.5)*0.5;                          // the same in the binned base frame
+#endif
+#if defined(NAT_BASEFILL) && NAT_BASEFILL
+    {
+        int i=row*ow+ox;
+        for(int c=0;c<3;c++)if(outRgb[i*3+c]==NAT_FILL_MARK)outRgb[i*3+c]=natBaseFill(c,S);
+        return;
+    }
 #endif
     ivec2 bi=ivec2(floor(B0+0.5));
     int cx=clamp(bi.x>>1,0,w2-1),cy=clamp(bi.y>>1,cy0,cy1-1);
@@ -2557,7 +2571,7 @@ void main(){
         if(a.den[c]>1.0e-7)col[c]=a.num[c]/a.den[c];
         else if(a.clipDen[c]>0.0){col[c]=a.clipNum[c]/a.clipDen[c];cfl|=1u<<uint(c);}
 #if NAT_MARKED
-        else col[c]=wb>0.0?natBaseFill(c,S):0.0;
+        else col[c]=wb>0.0?NAT_FILL_MARK:0.0; // P204: natBaseFill in the NAT_BASEFILL pass
 #else
         else col[c]=0.0;
 #endif
@@ -2797,23 +2811,25 @@ class HybridGpu {
     // P34: the fast native merge (kHybNatNorm + kHybMergeMosaicFast [block Quad / Tetra][window r][marked][fill], compiled when
     // first used) and the normalised 2x2 cells of the strip (binding 18, outside the slots: written and read on the GPU only, one bank)
     GLuint natNormProgram=0,natFast[2][9][2][2]{},natNormBuf=0;
+    GLuint natFastFill[2][9][2]{}; // P204: the base-fill pass of a marked fast merge (block, half-width, R / B fill)
     // P62 Mochi (compiled on first use): programs and buffers (0 base rows, 1 frame rows, 2 tiles, 3 tile info, 4 final, 5 out)
     GLuint mochiStatsProgram=0,mochiBlurProgram=0,mochiApplyProgram=0,mochiBuf[6]{};
     size_t mochiCap[6]{};
     // P80: the base rows already in mochiBuf[0] (frame pointer and rows): the next bracketed frame of the shot reuses them
     const uint16_t* mochiBasePtr=nullptr;int mochiBaseR0=-1,mochiBaseR1=-1;
     size_t natNormCap=0;
-    GLuint natFastProgram(int block,int r,bool marked,bool fill){
+    GLuint natFastProgram(int block,int r,bool marked,bool fill,bool baseFill=false){
         const bool tetra=block==4;
         r=std::clamp(r,1,tetra?8:3);
-        GLuint& p=natFast[tetra?1:0][r][marked?1:0][fill?1:0];
+        marked=marked||baseFill;
+        GLuint& p=baseFill?natFastFill[tetra?1:0][r][fill?1:0]:natFast[tetra?1:0][r][marked?1:0][fill?1:0];
         if(!p){
             const auto t0=std::chrono::steady_clock::now();
             const std::string body=std::string("#define NAT_B ")+(tetra?"4":"2")+"\n#define NAT_R "+std::to_string(r)+"\n#define NAT_MARKED "+(marked?"1":"0")
-                +"\n#define NAT_FILL "+(fill?"1":"0")+"\n"+kHybMergeCommon+kHybNatAccess+kHybMergeMosaicFast;
-            compileName=tetra?"mosaicFastT":"mosaicFast"; // the crash report names the program being compiled (string literal)
+                +"\n#define NAT_FILL "+(fill?"1":"0")+"\n#define NAT_BASEFILL "+(baseFill?"1":"0")+"\n"+kHybMergeCommon+kHybNatAccess+kHybMergeMosaicFast;
+            compileName=baseFill?(tetra?"mosaicFillT":"mosaicFill"):tetra?"mosaicFastT":"mosaicFast"; // the crash report names the program
             p=compile(body.c_str());
-            compileMs+=std::string(" mosaicFast")+(tetra?"T":"")+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
+            compileMs+=std::string(baseFill?" mosaicFill":" mosaicFast")+(tetra?"T":"")+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
                 +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
         }
         return p;
@@ -2855,6 +2871,7 @@ class HybridGpu {
             for(GLuint program:{meanProgram,flagsProgram,markProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram,rimProgram,bentoProgram,chromaProgram})if(program)glDeleteProgram(program);
             for(GLuint program:{natMeanProgram,natFlagsProgram,natMarkProgram,mosaicProgram,natNormProgram})if(program)glDeleteProgram(program); // P29
             for(auto& byBlock:natFast)for(auto& byR:byBlock)for(auto& byMark:byR)for(GLuint program:byMark)if(program)glDeleteProgram(program); // P34
+            for(auto& byBlock:natFastFill)for(auto& byR:byBlock)for(GLuint program:byR)if(program)glDeleteProgram(program); // P204
             if(natTable[0]||natTable[1])glDeleteBuffers(2,natTable);
             if(natNormBuf)glDeleteBuffers(1,&natNormBuf);
             for(GLuint program:{mochiStatsProgram,mochiBlurProgram,mochiApplyProgram})if(program)glDeleteProgram(program); // P62
@@ -3378,7 +3395,7 @@ public:
         const HybridMosaicNative* nat=in.native;
         // P34: Quad (window 1..3) and Tetra (window 1..8) with the full window merge with kHybNatNorm + kHybMergeMosaicFast (plain /
         // marked strips), anything else with kHybMergeMosaic (natMerge = the merge programs either way)
-        bool natFastOn=false;GLuint natPlain=0,natMarked=0;std::vector<GLuint> natMerge;
+        bool natFastOn=false;GLuint natPlain=0,natMarked=0,natMarkedFill=0;std::vector<GLuint> natMerge;
         if(nat){
             if(!natMarkProgram||!natNormProgram)throw std::runtime_error("HYBRID GPU compiled without the native mosaic programs");
             // P56: the output grid is the native sites (g = b) or the Sabre 2x grid of the sensor (g = 2b: 4 Quad, 8 Tetra)
@@ -3391,7 +3408,10 @@ public:
             if(natFastOn){
                 const bool mayMark=in.white>0&&in.white<16384.f&&(tune.cellClip||(!in.hotList.empty()&&(tune.hotSigma>0||tune.hotBaseSigma>0)));
                 natPlain=natFastProgram(nat->block,nat->window,false,fill);natMerge.push_back(natPlain);
-                if(mayMark){natMarked=natFastProgram(nat->block,nat->window,true,fill);natMerge.push_back(natMarked);}
+                if(mayMark){
+                    natMarked=natFastProgram(nat->block,nat->window,true,fill);natMerge.push_back(natMarked);
+                    natMarkedFill=natFastProgram(nat->block,nat->window,true,fill,true);natMerge.push_back(natMarkedFill); // P204
+                }
                 programs.push_back(natNormProgram);
             } else {
                 if(!mosaicProgram){
@@ -4024,6 +4044,13 @@ public:
                 const int natChunk=natFastOn?std::clamp(int(32.0*4096.0*22.0/(double(std::max(ow,1))*std::max(frames,1)*std::max(natCells,1.0)))&~7,8,128)
                                             :std::clamp(int(16.0*4096.0*16.0/(double(std::max(ow,1))*std::max(frames,1)))&~7,8,16);
                 dispatchRows(mosaicProgram,ow,rows2,1,natChunk,5,true,true);
+                if(natFastOn&&natStripMode&&natMarkedFill){ // P204: the base fill of the colours the marked merge left without a sample
+                    glUseProgram(natMarkedFill);
+                    glUniform1i(loc(natMarkedFill,"cy0"),cy0);glUniform1i(loc(natMarkedFill,"cy1"),cy1);glUniform1i(loc(natMarkedFill,"ry0"),ry0);
+                    glUniform1i(loc(natMarkedFill,"natRy1"),ry1);
+                    glUniform1i(loc(natMarkedFill,"natMarkU"),1);
+                    dispatchRows(natMarkedFill,ow,rows2,1,std::clamp(natChunk*4,8,128),5,true,true);
+                }
             } else {
             glUseProgram(mergeProgram);
             glUniform1i(loc(mergeProgram,"cy0"),cy0);glUniform1i(loc(mergeProgram,"cy1"),cy1);glUniform1i(loc(mergeProgram,"ry0"),ry0);
