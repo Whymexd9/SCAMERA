@@ -24,7 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * 3 (ultra-wide, IMX882) 16, 4 (3x, IMX890) 19, 5 (6x, IMX858) 17 - a plain Camera2 session of type 0 with one RAW_SENSOR reader
  * of usage 0 (usage 3 is refused for the full size by the camera service). It runs the native FULLRES route of the vivo phones
  * (VivoNativeFullRes: one RAW stream, the own RAW viewfinder, matched serial stills, SHDR with the own remosaic); every shot still
- * proves the mosaic from the pixels and the mode from the result. The numbers are this model's only, never another phone's.
+ * proves the mosaic from the pixels and the mode from the result. Another OPPO phone takes the same route with the candidates
+ * of its own sensor-mode table ({@link #fullModes}), each tried and checked in turn.
  * <p>
  * In that mode the HAL has no statistics: its AE stays SEARCHING (54 results, the exposure never moved) and its neutral is NaN, so
  * the route runs its own AE on the RAW frames ({@link NativeRawExposure}) and its own white balance (MosaicNeutral on the frames,
@@ -48,20 +49,29 @@ public final class OppoNativeFullRes {
     }
 
     static boolean model(@Nullable String manufacturer, @Nullable String model) {
-        return manufacturer != null && manufacturer.equalsIgnoreCase("OPPO") && MODEL.equals(model);
+        return brand(manufacturer) && MODEL.equals(model);
     }
 
-    /** Native FULLRES may run (scam_dev.txt "oppo_fullres 0" turns it off). */
+    /** P192 (owner, 2026-10-17: «Добавь все смартфоны оппо в список»): any OPPO phone. */
+    public static boolean brand() {
+        return brand(android.os.Build.MANUFACTURER);
+    }
+
+    static boolean brand(@Nullable String manufacturer) {
+        return manufacturer != null && manufacturer.equalsIgnoreCase("OPPO");
+    }
+
+    /** Native FULLRES may run on an OPPO phone (scam_dev.txt "oppo_fullres 0" turns it off); a camera still needs {@link #profile}. */
     public static boolean device() {
-        return model() && PreferenceKeys.scamDevSwitch("oppo_fullres", true);
+        return brand() && PreferenceKeys.scamDevSwitch("oppo_fullres", true);
     }
 
     /** The telephotos are listed to {@link #TELE_PACKAGE} (scam_dev.txt "oppo_tele_access 0": not). */
     public static boolean teleAccess() {
-        return model() && PreferenceKeys.scamDevSwitch("oppo_tele_access", true);
+        return brand() && PreferenceKeys.scamDevSwitch("oppo_tele_access", true);
     }
 
-    /** The NoRemosaic mode of an Android camera of this phone, -1 for another camera. */
+    /** The NoRemosaic mode measured on the PHY110 for an Android camera, -1 for another camera. */
     static int mode(@Nullable String cameraId) {
         if (cameraId == null) return -1;
         switch (cameraId) {
@@ -73,10 +83,125 @@ public final class OppoNativeFullRes {
         }
     }
 
+    /**
+     * The Qualcomm sensor-mode table of a camera (characteristics 0x80390000: {count, values per mode, then width, height, fps
+     * of each mode}). On the PHY110 the measured NoRemosaic modes are exactly the full-size rows after row 0 (the hardware-remosaic
+     * one): main {0, 35, 37}, ultra-wide {0, 16}, 3x {0, 19}, 6x {0, 17, 20}. Another OPPO phone tries its own full-size rows after
+     * row 0 in this order; each one proves itself (the result's mode, the pixels' mosaic) or is noted as failed and the next is
+     * tried at the next FULLRES (as the X100 / X300 Ultra rows, P186).
+     */
+    static final String TABLE_KEY = "org.quic.camera2.sensormode.info.SensorModeTable";
+    private static final android.hardware.camera2.CameraCharacteristics.Key<int[]> TABLE =
+            new android.hardware.camera2.CameraCharacteristics.Key<>(TABLE_KEY, int[].class);
+
+    /** {width, height, fps, mode...}: the full size of the table and its full-size modes after row 0; null without one. */
+    @Nullable
+    static int[] fullModes(@Nullable int[] table) {
+        if (table == null || table.length < 2) return null;
+        final int count = table[0], stride = table[1];
+        if (count < 2 || stride < 3 || table.length < 2 + count * stride) return null;
+        long best = 0;
+        int w = 0, h = 0, fps = 0;
+        for (int i = 0; i < count; i++) {
+            final int mw = table[2 + i * stride], mh = table[3 + i * stride];
+            if ((long) mw * mh > best) { best = (long) mw * mh; w = mw; h = mh; fps = table[4 + i * stride]; }
+        }
+        final java.util.ArrayList<Integer> modes = new java.util.ArrayList<>();
+        for (int i = 1; i < count; i++)
+            if (table[2 + i * stride] == w && table[3 + i * stride] == h) modes.add(i);
+        if (modes.isEmpty() || w < 4000) return null;
+        final int[] out = new int[3 + modes.size()];
+        out[0] = w;
+        out[1] = h;
+        out[2] = fps;
+        for (int i = 0; i < modes.size(); i++) out[3 + i] = modes.get(i);
+        return out;
+    }
+
+    /** What the camera offers: {width, height, fps, candidate modes...}; none without the mode key or a table. */
+    private static final Map<String, int[]> OFFER = new ConcurrentHashMap<>();
+    private static final int[] NONE = new int[0];
+
+    @Nullable
+    static int[] offer(@Nullable String cameraId) {
+        if (cameraId == null) return null;
+        int[] known = OFFER.get(cameraId);
+        if (known == null) {
+            known = NONE;
+            try {
+                android.content.Context context = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext();
+                android.hardware.camera2.CameraManager manager = context == null ? null
+                        : (android.hardware.camera2.CameraManager) context.getSystemService(android.content.Context.CAMERA_SERVICE);
+                android.hardware.camera2.CameraCharacteristics c = manager == null ? null : manager.getCameraCharacteristics(cameraId);
+                boolean key = false;
+                if (c != null) for (CaptureRequest.Key<?> k : c.getAvailableSessionKeys())
+                    if (MODE_KEY.equals(k.getName())) { key = true; break; }
+                int[] table = null;
+                if (key) try { table = c.get(TABLE); } catch (IllegalArgumentException noTag) { table = null; }
+                int[] full = key ? fullModes(table) : null;
+                if (full == null && key && model() && mode(cameraId) >= 0) full = new int[]{8192, 6144, 24, mode(cameraId)};
+                if (full != null) known = full;
+                com.particlesdevs.photoncamera.util.Log.i("OppoNativeFullRes", "camera " + cameraId + ": mode key " + key
+                        + (full == null ? ", no full-size NoRemosaic candidate" : String.format(Locale.ROOT, ", %dx%d at %d fps, modes %s",
+                        full[0], full[1], full[2], java.util.Arrays.toString(java.util.Arrays.copyOfRange(full, 3, full.length)))));
+            } catch (Exception e) {
+                known = NONE;
+            }
+            OFFER.put(cameraId, known);
+        }
+        return known.length == 0 ? null : known;
+    }
+
+    /** The frame time of the camera's full-size mode (24 fps when unknown). */
+    static long frameNs(@Nullable String cameraId) {
+        final int[] o = offer(cameraId);
+        return o != null && o[2] > 0 ? 1_000_000_000L / o[2] : 41_666_666L;
+    }
+
+    /** The profile the camera tries now: the first candidate not yet failed; Tetra above 100 MP, else Quad; null: none left. */
     @Nullable
     static VivoSdkFullRes.Profile profile(@Nullable String cameraId) {
-        final int mode = mode(cameraId);
-        return mode < 0 ? null : new VivoSdkFullRes.Profile(8192, 6144, mode, 2);
+        final int[] o = offer(cameraId);
+        if (o == null) return null;
+        final int tried = failures(cameraId);
+        if (tried < 0 || 3 + tried >= o.length) return null;
+        final int block = (long) o[0] * o[1] > 100_000_000L ? 4 : 2;
+        return new VivoSdkFullRes.Profile(o[0], o[1], o[3 + tried], block);
+    }
+
+    private static final String FAILED = "module_oppo_fullres_fail_";
+
+    static int failures(String cameraId) {
+        try {
+            return com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getInt(FAILED + cameraId, 0);
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * A native session of this camera failed (no frame, the mode not reported, a Bayer or wrong-block frame): its mode is noted and
+     * the next candidate is tried at the next FULLRES. Returns the owner's message.
+     */
+    public static String failed(String cameraId, @Nullable VivoSdkFullRes.Profile profile, String why) {
+        final int[] o = offer(cameraId);
+        final int tried = failures(cameraId);
+        if (o != null && profile != null && 3 + tried < o.length && o[3 + tried] == profile.sensorMode) {
+            try {
+                com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit()
+                        .putInt(FAILED + cameraId, tried + 1).apply();
+            } catch (RuntimeException ignored) {
+            }
+        }
+        final VivoSdkFullRes.Profile next = profile(cameraId);
+        final int mode = profile == null ? -1 : profile.sensorMode;
+        com.particlesdevs.photoncamera.util.Log.w("OppoNativeFullRes", "camera " + cameraId + " mode " + mode + " failed (" + why
+                + "); next " + (next == null ? "none" : "mode " + next.sensorMode));
+        return next != null
+                ? com.particlesdevs.photoncamera.util.Lang.t("FULLRES: режим " + mode + " не работает на этой камере; в следующий раз попробую режим " + next.sensorMode,
+                        "FULLRES: mode " + mode + " does not work on this camera; the next time mode " + next.sensorMode + " is tried")
+                : com.particlesdevs.photoncamera.util.Lang.t("FULLRES без аппаратного ремозаика недоступен на этой камере",
+                        "FULLRES without hardware remosaic is not available on this camera");
     }
 
     /** The camera of the running native session (null: none), for the requests and the results of its stills. */

@@ -336,7 +336,10 @@ public final class ScamNeuralClient {
                 // P188: scam_dev "keep_burst 1" - the worker keeps the shot's RAW burst for an offline replay. P191: one file per shot
                 // in Download/SCAMERA (scam_burst-<time>.bin, next to the debug log), not the package's external files: a file
                 // manager on Android 16 no longer opens Android/data (owner, 2026-10-17)
-                if(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("keep_burst",false)){
+                // P191 (owner, 2026-10-17: «Добавь настройку с сохранением рав серии в группу настроек "Диагностика"»): the row
+                // «Сохранять RAW-серию» of Diagnostics; scam_dev.txt "keep_burst" still overrides it
+                if(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("keep_burst",
+                        com.particlesdevs.photoncamera.settings.PreferenceKeys.isKeepRawBurst())){
                     File kept=com.particlesdevs.photoncamera.util.ScameraFiles.dir();
                     if(!kept.isDirectory())log.accept("CLIENT: keep-burst folder not made: "+kept);
                     String name="scam_burst-"+new java.text.SimpleDateFormat("yyyyMMdd-HHmmss",java.util.Locale.ROOT).format(new java.util.Date())+".bin";

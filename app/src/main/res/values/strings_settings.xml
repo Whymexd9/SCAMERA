@@ -433,6 +433,8 @@
     <string name="prefs_scam_hybrid_ark_vibrance_green_title">Greenery vibrance</string>
     <string name="prefs_scam_hybrid_ark_vibrance_green_summary">Vibrance of greenery. Higher: richer greens; lower: paler.</string>
     <string name="prefs_scam_hybrid_diagnostics_title">Save processing stages</string>
+    <string name="prefs_keep_raw_burst_title">Save the RAW burst</string>
+    <string name="prefs_keep_raw_burst_summary">Each SHDR shot saves its RAW burst to Download/SCAMERA/scam_burst-&lt;time&gt;.bin for analysing the merge. The files are large (50 MP: up to a few GB a shot); delete them after sending.</string>
     <string name="prefs_jpeg_fast_encoder_title">Fast JPEG</string>
     <string name="prefs_jpeg_fast_encoder_summary">System encoder: about twice as fast, but the file is a bit larger and fine colour detail is coarser.</string>
     <string name="prefs_scam_hybrid_profile_title">Time every GPU pass</string>

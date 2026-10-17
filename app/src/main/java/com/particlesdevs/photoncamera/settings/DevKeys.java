@@ -42,7 +42,8 @@ public final class DevKeys {
 
     /** scam_dev keys whose value is a menu setting as well (the line only overrides it for an A/B). */
     public static final Set<String> MENU_BACKED = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "hybrid", "hybrid_output", "hybrid_downsampler", "hybrid_profile", "hybrid_motion_boost")));
+            "hybrid", "hybrid_output", "hybrid_downsampler", "hybrid_profile", "hybrid_motion_boost",
+            "keep_burst"))); // P191: «Сохранять RAW-серию» in Diagnostics
 
     private static List<Key> all;
 
@@ -187,8 +188,6 @@ public final class DevKeys {
         k.add(s(diag, "post_sync", false, Lang.t("Синхронные узлы обработки (замер времени)", "Synchronous processing nodes (timing)")));
         k.add(s(diag, "post_ab", false, Lang.t("A/B обработки: старый и новый конвейер на одном снимке", "Processing A/B: old and new pipeline on one shot")));
         k.add(s(diag, "post_ab_clamp", false, Lang.t("A/B: прежнее ограничение входа", "A/B: the former input clamp")));
-        k.add(s(diag, "keep_burst", false, Lang.t("Сохранять RAW-серию каждого снимка (Download/SCAMERA/scam_burst-<время>.bin) для разбора",
-                "Keep each shot's RAW burst (Download/SCAMERA/scam_burst-<time>.bin) for analysis")));
         k.add(s(diag, "early_release", false, Lang.t("Ранний возврат текстур обработки при любом размере (как выше 100 Мп; для A/B)",
                 "Early release of the processing textures at any size (as above 100 MP; for the A/B)")));
         k.add(s(diag, "post_ab_upload", false, Lang.t("A/B: меняется только загрузка RGB", "A/B: only the RGB upload changes")));

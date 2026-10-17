@@ -24,7 +24,7 @@ public final class SensorModeSwitches {
     }
 
     public static void onModuleSelected(String slot) {
-        if ((VivoQcomModes.device() || VivoNativeFullRes.device()) && PixelPro10.fullResOn()
+        if ((VivoQcomModes.device() || VivoNativeFullRes.device() || OppoNativeFullRes.device()) && PixelPro10.fullResOn()
                 && !VivoSdkFullRes.offered(ModuleRegistry.camera(slot)))
             PixelPro10.setFullRes(false);
         if (!sensorPreset(slot)) return;

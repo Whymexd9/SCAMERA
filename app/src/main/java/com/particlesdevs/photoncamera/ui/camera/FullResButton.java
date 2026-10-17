@@ -38,7 +38,8 @@ final class FullResButton {
         ImageButton button = slot.findViewById(R.id.full_res_button);
         if (button == null && rootView != null) button = rootView.findViewById(R.id.full_res_button);
         if (!(PixelPro10.device() || com.particlesdevs.photoncamera.capture.VivoQcomModes.device()
-                || com.particlesdevs.photoncamera.capture.VivoNativeFullRes.device()) || !(rootView instanceof ViewGroup)) {
+                || com.particlesdevs.photoncamera.capture.VivoNativeFullRes.device()
+                || com.particlesdevs.photoncamera.capture.OppoNativeFullRes.device()) || !(rootView instanceof ViewGroup)) { // P192
             detach(button);
             return;
         }

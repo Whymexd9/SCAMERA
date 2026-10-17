@@ -2593,7 +2593,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (sdkFullRes && VivoSdkFullRes.oppo()) {
             // P192: the own AE of the OPPO native mode starts from the last preview exposure and meters the native RAW from there
             mNativeAe = new NativeRawExposure(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE),
-                    characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE), NATIVE_FRAME_NS,
+                    characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE), OppoNativeFullRes.frameNs(mVivoSdkCameraId),
                     (long) mPreviewExposureTime, mPreviewIso);
             OppoNativeFullRes.begin(mVivoSdkCameraId, mNativeAe);
             Log.i("SCAM_CAPTURE", "OPPO native FULLRES camera " + mVivoSdkCameraId + ": mode "
@@ -3235,7 +3235,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         synchronized (mVivoSdkLock) {
             if (mVivoSdkRawSession == null || !PixelPro10.fullResOn()) return false;
             // P186: the X100 / X300 Ultra note the row that failed and try the next one of its size the next time
-            note = nativeVivoFullRes() ? VivoNativeFullRes.failed(mVivoSdkCameraId, VivoSdkFullRes.profile(mVivoSdkCameraId), why) : null;
+            note = !nativeVivoFullRes() ? null : VivoSdkFullRes.oppo() // P192: an OPPO camera tries its next mode the next time
+                    ? OppoNativeFullRes.failed(mVivoSdkCameraId, VivoSdkFullRes.profile(mVivoSdkCameraId), why)
+                    : VivoNativeFullRes.failed(mVivoSdkCameraId, VivoSdkFullRes.profile(mVivoSdkCameraId), why);
             PixelPro10.setFullRes(false);
         }
         if (session != null) try { session.close(); } catch (RuntimeException ignored) { }
@@ -4251,7 +4253,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
-    /** P192: the own exposure of the OPPO native FULLRES session (null otherwise); its frame time (24 fps). */
+    /** P192: the own exposure of the OPPO native FULLRES session (null otherwise); the PHY110's frame time (24 fps). */
     private volatile NativeRawExposure mNativeAe;
     static final long NATIVE_FRAME_NS = 41_666_666L;
     private int mNativeFrames;
@@ -5163,6 +5165,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 burst = false;
                 mState = STATE_PREVIEW;
                 cameraEventsListener.onCaptureSequenceCompleted(null);
+                // P192: an OPPO still that proved another mode or mosaic: the camera's next candidate the next time
+                if (VivoSdkFullRes.oppo() && reason != null && (reason.contains("sensor mode is not active")
+                        || reason.contains("mosaic does not match") || reason.contains("not been verified")))
+                    showToast(OppoNativeFullRes.failed(mVivoSdkCameraId, VivoSdkFullRes.profile(mVivoSdkCameraId), reason));
                 cameraEventsListener.onProcessingError(reason);
                 Log.w("SCAM_CAPTURE", "SDK FULLRES50 failed: " + reason);
                 // P179: a 200 MP series stopped the preview at the shutter: the camera opens again for it

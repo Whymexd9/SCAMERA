@@ -1179,6 +1179,16 @@ public class PreferenceKeys {
         return preferenceKeys.settingsManager.getInteger("default_scope", Key.KEY_THEME).intValue();
     }
 
+    /** P191: Diagnostics «Сохранять RAW-серию»: every SHDR shot keeps its RAW burst in Download/SCAMERA. */
+    public static boolean isKeepRawBurst() {
+        try {
+            return com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences()
+                    .getBoolean("pref_keep_raw_burst", false);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     public static boolean isEisPhotoOn() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", Key.KEY_EIS_PHOTO);
     }
