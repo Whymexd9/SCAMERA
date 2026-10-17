@@ -70,6 +70,24 @@ public class FullResMemoryTest {
         assertNull("no clip flags without a request", ScamNeuralClient.trailers(RGB + P, RGB, RAW, P, false, false, false));
     }
 
+    /**
+     * P198: a 50 MP ZSL shot holds its ring (ZslRing.fullResSlots) while it is merged: at most the 12 MP ring's bytes, and a quarter
+     * of the memory available, so the merge (P191: 80 % of MemAvailable) and the camera's own buffers keep the rest; its big textures
+     * stay as at 50 MP before (no early release below 100 MP).
+     */
+    @Test
+    public void a50MpZslRingLeavesTheMergeThreeQuartersOfTheMemory() {
+        final long slot = 8192L * 6144 * 2;
+        for (long availGb = 1; availGb <= 16; availGb++) {
+            final long avail = availGb << 30;
+            final int[] s = com.particlesdevs.photoncamera.capture.ZslRing.fullResSlots(avail, slot, 50, 20);
+            final long ring = (s[0] + s[1]) * slot;
+            assertTrue(availGb + " GB: " + ring, ring <= Math.max(avail / 4, com.particlesdevs.photoncamera.capture.ZslRing.FULLRES_SLOTS_MIN * slot));
+            assertTrue(ring <= com.particlesdevs.photoncamera.capture.ZslRing.FULLRES_SLOTS_MAX * slot);
+        }
+        assertFalse("50 MP: as before", ScamRgb.earlyRelease(new Point(8192, 6144)));
+    }
+
     @Test
     public void bigTexturesGoBackEarlyAbove100MpOrOnTheDevSwitch() {
         assertTrue("200 MP", ScamRgb.earlyRelease(new Point(16320, 12288)));

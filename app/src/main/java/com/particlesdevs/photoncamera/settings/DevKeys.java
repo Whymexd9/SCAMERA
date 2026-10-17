@@ -159,6 +159,9 @@ public final class DevKeys {
         // P180 / P184: FULLRES without hardware remosaic on the X100 / X300 Ultra - on (the owner tests it), off by these
         k.add(s(cap, "oppo_fullres", true, Lang.t("OPPO Find X7 Ultra: FULLRES 50 Мп без аппаратного ремозаика (свои AE и баланс белого)",
                 "OPPO Find X7 Ultra: FULLRES 50 MP without hardware remosaic (own AE and white balance)")));
+        // P198: a native 50 MP FULLRES shot from the ZSL ring (200 MP stays serial PSL)
+        k.add(s(cap, "fullres_zsl", true, Lang.t("FULLRES 50 Мп: кадры из ZSL-кольца до нажатия (200 Мп всегда после нажатия). Выкл — вся серия после нажатия",
+                "FULLRES 50 MP: frames from the ZSL ring before the press (200 MP always after it). Off: the whole series after the press")));
         k.add(s(cap, "oppo_tele_access", true, Lang.t("OPPO Find X7 Ultra: телевики 3× и 6× через пакет Oplus",
                 "OPPO Find X7 Ultra: the 3x and 6x telephotos through the Oplus package")));
         k.add(s(vivo, "vivo_fullres_x100u", true, Lang.t("X100 Ultra: FULLRES без аппаратного ремозаика (проверяется)", "X100 Ultra: FULLRES without hardware remosaic (being tested)")));

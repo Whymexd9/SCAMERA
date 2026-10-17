@@ -4603,3 +4603,56 @@ first pane's pill «11:56 · ISO 50 · 1/852 · f/2,27 · 22,5 мм · JPEG», t
   Ultra»; whether ro.vendor.oplus.market.name is set on the OPPO PHY110 / Find X8 Ultra - otherwise «OPPO PHY110»); AVIF EXIF is read
   by ExifInterface only from Android 12 on (MediaMetadataRetriever), resolution comes from the header on any version; photos taken
   before P196 keep the Build.MODEL they were written with («vivo V2446A»).
+
+### P198
+
+Owner (2026-10-17): «Так же сделай так чтобы 50мп снимались в zsl и только 200мп снимались в psl».
+- Before: a native FULLRES session (vivo X200 / X100 / X300 Ultra native build, OPPO phones: one RAW_SENSOR stream at full size, the
+  RAW viewfinder) took every still after the shutter (VivoSdkFullResCapture, serial PSL) at 50 and 200 MP alike; a 50 MP series ended
+  with one ultrashort (P192). The ring was never fed: isZslMode() is false whenever the FULLRES session runs.
+- Routing (VivoSdkFullResCapture.zslRoute): the native route (nativeBlock > 0: Quad, or P194's hardware-remosaic Bayer row) up to
+  HUGE_SHOT_PIXELS (100 MP) -> ZSL; 200 MP (Tetra) and the X200 Ultra's SDK route (nativeBlock 0, JPEG reader) -> serial PSL exactly as
+  before (stopped preview, P190 «Кадров в снимке 200 Мп», its own ultrashort). scam_dev.txt «fullres_zsl 0» (DevKeys, «Для
+  разработчика»): the PSL series for every native size, as before.
+- Ring feed (CaptureController.onMatchedLiveRaw): in a native 50 MP session each matched live frame (the viewfinder keeps running from
+  the same frame) goes to the ring when no shot is in progress (from the press until its series is complete) and its result reports no
+  other sensor mode (VivoSdkFullResCapture.modeMatches, the stills' rule; misses logged «50 MP ZSL: n frames of another sensor mode»);
+  an OPPO result is completed first (OppoNativeFullRes.complete: own neutral, plain transform, shading); the matched result goes to
+  mHexZslResults (the plain session fills it from the preview callback). Only a memfd copy enters: the camera's own Image is never held
+  (the native reader has 4; one held would stall the viewfinder). A copy out of the camera's buffer is slow (uncached reads: 53-56 ms
+  for 96 MB on the PHY110, the first 149 ms), longer than a 24 fps frame, on the thread that also draws the viewfinder and runs the own
+  AE: a frame is copied only when twice the last copy's time has passed since the last one began (CaptureController.ringCopyDue; on
+  the PHY110 every third frame, ~8 a second); logged «50 MP ZSL ring: copy n ms» on the first frame and every 150th.
+- Ring size (ZslRing.createFullRes / fullResSlots, 96 MB slots): total slots = a quarter of MemAvailable (the 12 MP rule takes 40 %),
+  4..16 (16 x 96 MB = 1.5 GB = the 12 MP default ring's 66 x 24 MB); shot slots = min(6, total / 2) (the plan's 3 ultrashort + 3
+  bracketed); ring = min(ring setting, N + 2, total - shot). N = «Кадров в снимке 50 Мп» when > 0, else the merge's frame setting
+  (VivoSdkFullResCapture.zslRequested). With the default N 20: >= 6 GB available -> ring 10 + shot 6; 4 GB -> 5 + 5; 2 GB -> 3 + 2;
+  less -> 2 + 2. Logged «50 MP ZSL ring in memfd: ... cap ... slots = min(16, a quarter of ... MB available)». A ring of the other kind
+  (12 MP <-> 50 MP) is replaced.
+- Shot (captureVivoSdkFullResChecked -> takeNativeZsl): the ring is drained as the 12 MP Hybrid's (drainZslNormalFrames: before the
+  cutoff, matched, the newest exposure tier, no stale gap, steadiest without OIS), each frame materialised (a view of its slot) and
+  checked with MosaicBlockDetector as the stills are: a confident other colour block leaves the merge. No frame left -> the PSL series as
+  before (its stills keep VivoNativeFullRes.failed / OppoNativeFullRes.failed bookkeeping). The post-shutter part is
+  HybridPlan.build (the 12 MP plan: bento 3 EXTRA_SHORT, shasta 3 LONG by default) from the newest ring frame's exposure (OPPO: its
+  own NativeRawExposure's, AE off; fallback mNativeAe), taken by VivoSdkFullResCapture.plan(): every still keeps the native keys
+  (VivoPd2454NativeRaw.applyFullRes / OppoNativeFullRes.apply, session keys copied, EV and AE regions), AE off at the plan's exposure /
+  ISO, its frame duration raised to a longer shutter; results checked for the mode, pixels for the mosaic (as before), OPPO results
+  completed. finish(): ScamCaptureSequence.hybridZsl (ring N + stills), tolerant as at 12 MP (HybridPlan.classify: a still no role fits
+  is dropped, the rest merged); the mosaic counts as verified by a ring frame or a still. Memory: the series budget (seriesCount /
+  frameCount) for N + post with the ring frames' bytes counted as available (they are resident already); the oldest N go when it is
+  short (zslNormals; toast only for that, the ring's own cap is in the log). Base metadata = the newest ring frame; instant-shot UI
+  («ScamZslCaptureStarted»); P192's single ultrashort only on the PSL path.
+- Tests: capture.FullResZslTest (routing 50 MP native -> ZSL, 200 MP / SDK -> PSL; frame-count rules; ring mode rule; Bento 3
+  ultrashort; the copy throttle; a ZSL shot = 4 ring N + 6 plan stills with the native keys, AE off, plan exposures, longer frame duration; an off-role still
+  dropped and the shot goes on), ZslRingBudgetTest (50 MP slots), FullResMemoryTest (the 50 MP ring within a quarter of the memory);
+  registered in build-test-apk.yml; DevKeys «fullres_zsl» (DevKeysCoverageTest). The whole CI list passes: 183 classes, 1105 tests
+  (FullResZslTest 7). tools/check_ui_language.py, check_settings_model.py PASS.
+- Phone (OPPO Find X7 Ultra PHY110, local snapcam APK 30930, SCAMERA key, worker built from this tree): the app opened straight into
+  its native 50 MP session (camera 2, mode 35, Quad confirmed by MosaicStream): «50 MP ZSL ring in memfd: 7 slots x 96 MB (ring 4 +
+  shot 3 ..., cap 7 slots = min(16, a quarter of 2732 MB available))», copies 53-56 ms, the RAW viewfinder kept 24 fps (STAB_TRACE
+  46-52 frames / 2 s, maxGap 41.7 ms) with the ring running, own AE and white balance as before. No shot was taken: a system dialog
+  (com.oplus.battery, low storage) was in focus, so the UI was not touched.
+- Open: a 50 MP shot on the OPPO and the vivo native build (the log lines «50 MP ZSL: n ring frames ...; hybrid plan ...», «NATIVE
+  FULLRES ZSL: n ring RAWs + k of 6 after the shutter»), the merge of ring N + 3 ultrashort + 3 bracketed (Bento / Shasta result, the
+  shutter lag); with 2.7 GB available the ring holds only 4 frames - more memory gives up to 10; a faster (multi-threaded) copy would
+  let more frames into the ring.

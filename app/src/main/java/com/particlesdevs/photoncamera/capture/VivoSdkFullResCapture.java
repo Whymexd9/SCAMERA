@@ -51,6 +51,14 @@ final class VivoSdkFullResCapture {
     private volatile boolean stopped;
     private final Consumer<Image> previewConsumer;
     private boolean nativeMosaicVerified;
+    /** Per still: its role and, when > 0, its manual exposure / sensitivity (P179 ultrashort, P198 the Hybrid plan's frames). */
+    private final ImageFrame.CaptureRole[] roles;
+    private final long[] manualNs;
+    private final int[] manualIso;
+    /** P198: the plan whose stills these are (null: the series of N frames); its measured roles decide each still's role. */
+    private HybridPlan plan;
+    /** P198: the N frames of a 50 MP ZSL shot, from the ring before the shutter (empty: a series after the shutter only). */
+    private List<ImageFrame> past = java.util.Collections.emptyList();
 
     VivoSdkFullResCapture(CameraDevice device, CameraCaptureSession session, VivoSdkRawSession sdk,
                          Surface raw, Surface jpeg, ImageSaver saver, Handler handler,
@@ -85,6 +93,10 @@ final class VivoSdkFullResCapture {
         this.cutoff = cutoff;
         this.count = count;
         this.listener = listener;
+        roles = new ImageFrame.CaptureRole[Math.max(0, count)];
+        java.util.Arrays.fill(roles, ImageFrame.CaptureRole.NORMAL);
+        manualNs = new long[roles.length];
+        manualIso = new int[roles.length];
         // P179: the native RAW-only series keeps up to NATIVE_IN_FLIGHT stills queued, so they follow each other at the
         // sensor's pace instead of each waiting behind the repeating preview requests (200 MP: ~5 s per frame one by one)
         serial = new SerialRawCapture(count, profile.nativeBlock == 0, profile.nativeRoute() ? NATIVE_IN_FLIGHT : 1, new SerialRawCapture.Listener() {
@@ -111,14 +123,13 @@ final class VivoSdkFullResCapture {
                 }
                 // P194: a native Bayer row (the HAL's hardware remosaic) fails on a confident Quad / Tetra still the same way
                 if (profile.nativeRoute()) {
-                    MosaicBlockDetector.Result mosaic = MosaicBlockDetector.detect(plane.getBuffer(),
-                            image.getWidth(), image.getHeight(), plane.getRowStride(), 64, 1023, 64);
-                    if (mosaic.confident && mosaic.block != profile.nativeBlock) {
+                    final boolean[] mosaic = mosaicCheck(profile, plane.getBuffer(), image.getWidth(), image.getHeight(), plane.getRowStride());
+                    if (mosaic[1]) {
                         image.close();
                         serial.fail("Native FULLRES mosaic does not match its sensor profile");
                         return;
                     }
-                    nativeMosaicVerified |= mosaic.confident && mosaic.block == profile.nativeBlock;
+                    nativeMosaicVerified |= mosaic[0];
                 }
                 saver.initProcess(image);
                 serial.raw(timestamp);
@@ -147,23 +158,86 @@ final class VivoSdkFullResCapture {
         return profile != null && profile.nativeBlock > 1
                 && (long) profile.size.getWidth() * profile.size.getHeight() > CaptureController.HUGE_SHOT_PIXELS;
     }
+
+    /**
+     * P198 (owner, 2026-10-17: «Так же сделай так чтобы 50мп снимались в zsl и только 200мп снимались в psl»): a native FULLRES
+     * session up to 100 MP (50 MP: Quad, or P194's hardware-remosaic Bayer row) keeps a ZSL ring of its frames and takes a shot's
+     * N from it, as the 12 MP Hybrid; 200 MP (Tetra) and the X200 Ultra's SDK route (nativeBlock 0, JPEG reader) stay serial PSL.
+     */
+    static boolean zslRoute(VivoSdkFullRes.Profile profile) {
+        return profile != null && profile.nativeRoute()
+                && (long) profile.size.getWidth() * profile.size.getHeight() <= CaptureController.HUGE_SHOT_PIXELS;
+    }
+
+    /**
+     * P198: the N frames a 50 MP ZSL shot asks of its ring, as the 12 MP Hybrid: P190's «Кадров в снимке 50 Мп» when set (N > 0),
+     * else (0) the merge's own frame setting.
+     */
+    static int zslRequested(int fullRes50Frames, int hybridFrames) {
+        return Math.max(1, fullRes50Frames > 0 ? fullRes50Frames : hybridFrames);
+    }
+
+    /**
+     * P198: the ring frames a 50 MP ZSL shot keeps beside its {@code post} stills after the shutter when the memory allows
+     * {@code budget} frames in all: the newest ones, at least one (0 without ring frames).
+     */
+    static int zslNormals(int ringFrames, int post, int budget) {
+        if (ringFrames <= 0) return 0;
+        return Math.max(1, Math.min(ringFrames, budget - Math.max(0, post)));
+    }
+
+    /**
+     * The result's sensor mode is the profile's: the SDK route needs it reported, the native route fails only on a reported other
+     * mode (P198: the 50 MP ZSL ring's frames are held to the same rule as the stills).
+     */
+    static boolean modeMatches(VivoSdkFullRes.Profile profile, int[] mode) {
+        if (profile.nativeBlock == 0 && mode == null) return false;
+        return mode == null || mode.length > 0 && mode[0] == profile.sensorMode;
+    }
+
+    /** P194 / P198: the pixels are no confident mosaic of another colour block than the profile's; {verified, mismatch}. */
+    static boolean[] mosaicCheck(VivoSdkFullRes.Profile profile, ByteBuffer pixels, int width, int height, int rowStride) {
+        MosaicBlockDetector.Result mosaic = MosaicBlockDetector.detect(pixels, width, height, rowStride, 64, 1023, 64);
+        return new boolean[]{mosaic.confident && mosaic.block == profile.nativeBlock, mosaic.confident && mosaic.block != profile.nativeBlock};
+    }
     void image(Image image) {
         if (stopped) image.close(); else router.image(image.getTimestamp(), image);
     }
     void jpegDrained(long timestamp) { if (!stopped) serial.jpeg(timestamp); }
     void previewStarted(long timestamp) { if (!stopped && profile.nativeRoute()) router.request(timestamp, false); }
 
-    /** P179: the ultrashort still of a 200 MP series (its index, exposure and sensitivity), -1: none. */
-    private int ultrashortIndex = -1;
-    private long ultrashortExposureNs;
-    private int ultrashortIso;
-
     /** P179: the last still of a native series is an ultrashort one (manual exposure); before {@link #start}. */
     void ultrashortLast(long exposureNs, int iso) {
         if (exposureNs <= 0 || iso <= 0 || count < 2 || !profile.nativeRoute()) return;
-        ultrashortIndex = count - 1;
-        ultrashortExposureNs = exposureNs;
-        ultrashortIso = iso;
+        roles[count - 1] = ImageFrame.CaptureRole.EXTRA_SHORT;
+        manualNs[count - 1] = exposureNs;
+        manualIso[count - 1] = iso;
+    }
+
+    /**
+     * P198: the stills are the 12 MP Hybrid's post-shutter frames of {@code plan} (ultrashort / Bento, bracketed / Shasta), one per
+     * request, each with the plan's role and exposure; a still that comes back at another exposure keeps the role its measured
+     * exposure gives (HybridPlan.classify) or leaves the merge. Before {@link #start}.
+     */
+    void plan(HybridPlan plan) {
+        if (plan == null || plan.requests.size() != count || !profile.nativeRoute())
+            throw new IllegalArgumentException("Native FULLRES plan does not match its series");
+        this.plan = plan;
+        for (int i = 0; i < count; i++) {
+            HybridPlan.Request r = plan.requests.get(i);
+            roles[i] = r.role;
+            manualNs[i] = r.autoExposure ? 0 : r.shutterNs;
+            manualIso[i] = r.autoExposure ? 0 : r.iso;
+        }
+    }
+
+    /**
+     * P198: the shot's N frames from the 50 MP ZSL ring (already in the saver's buffer, checked for the mode and the mosaic);
+     * {@code mosaicVerified}: one of them proved the profile's colour block. Before {@link #start}.
+     */
+    void zsl(List<ImageFrame> past, boolean mosaicVerified) {
+        this.past = past == null ? java.util.Collections.emptyList() : new ArrayList<>(past);
+        nativeMosaicVerified |= mosaicVerified;
     }
 
     /** P179: stills of the native RAW-only series in flight at once (the RAW reader holds 4 images). */
@@ -197,15 +271,17 @@ final class VivoSdkFullResCapture {
                         preview.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION));
                 builder.set(CaptureRequest.CONTROL_AE_REGIONS, preview.get(CaptureRequest.CONTROL_AE_REGIONS));
             }
-            final boolean ultrashort = index == ultrashortIndex;
-            if (ultrashort) {
-                // P179: the Bento frame: manual exposure (the preview's over the ultrashort factor), the same sensitivity
+            if (manualNs[index] > 0 && manualIso[index] > 0) {
+                // P179: the Bento frame: manual exposure (the preview's over the ultrashort factor), the same sensitivity; P198 a frame
+                // of the Hybrid plan at its exposure (on the OPPO over the mode's own AE-off exposure, its frame time kept long enough)
                 builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
-                builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, ultrashortExposureNs);
-                builder.set(CaptureRequest.SENSOR_SENSITIVITY, ultrashortIso);
+                builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, manualNs[index]);
+                builder.set(CaptureRequest.SENSOR_SENSITIVITY, manualIso[index]);
+                final Long frameNs = builder.get(CaptureRequest.SENSOR_FRAME_DURATION);
+                if (frameNs != null && frameNs > 0 && frameNs < manualNs[index])
+                    builder.set(CaptureRequest.SENSOR_FRAME_DURATION, manualNs[index]);
             }
-            builder.setTag(new ImageFrame.ScamCaptureTag(generation, index,
-                    ultrashort ? ImageFrame.CaptureRole.EXTRA_SHORT : ImageFrame.CaptureRole.NORMAL));
+            builder.setTag(new ImageFrame.ScamCaptureTag(generation, index, roles[index]));
             CaptureRequest request = builder.build();
             requests.add(request);
             session.capture(request, new CameraCaptureSession.CaptureCallback() {
@@ -222,8 +298,7 @@ final class VivoSdkFullResCapture {
                     Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                     Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
                     int[] mode = result.get(new CaptureResult.Key<>("com.qti.sensorbps.mode_index", int[].class));
-                    if ((profile.nativeBlock == 0 || mode != null)
-                            && (mode == null || mode.length == 0 || mode[0] != profile.sensorMode)) {
+                    if (!modeMatches(profile, mode)) {
                         serial.fail("SDK FULLRES50 sensor mode is not active");
                         return;
                     }
@@ -267,15 +342,27 @@ final class VivoSdkFullResCapture {
             // P194: a Bayer still the detector cannot tell (a flat scene) is no mosaic either: only Quad / Tetra must be proven
             if (profile.nativeBlock > 1 && !nativeMosaicVerified)
                 throw new IllegalStateException("Native FULLRES mosaic has not been verified from RAW pixels");
-            ScamCaptureSequence sequence = ScamCaptureSequence.hybridFuture(requests, cutoff);
+            // P198: a 50 MP ZSL shot is the ring's N and these stills, tolerant as the 12 MP Hybrid (a still the plan's roles do not
+            // fit leaves the merge); the series after the shutter alone stays strict
+            final boolean zsl = !past.isEmpty();
+            ScamCaptureSequence sequence = zsl ? ScamCaptureSequence.hybridZsl(requests, past, cutoff)
+                    : ScamCaptureSequence.hybridFuture(requests, cutoff);
             HashMap<Long, Double> exposures = new HashMap<>();
+            for (ImageFrame frame : past) exposures.put(frame.timestamp, frame.measuredExposure / 1e9 * frame.measuredIso);
             for (TotalCaptureResult result : results) {
+                if (plan != null) {
+                    ImageFrame.CaptureRole role = plan.classify(result.getRequest(), result);
+                    if (role == null) { sequence.lost(result.getRequest(), "exposure outside every hybrid role"); continue; }
+                    sequence.reclassify(result.getRequest(), role);
+                }
                 sequence.completed(result.getRequest(), result);
                 exposures.put(result.get(CaptureResult.SENSOR_TIMESTAMP),
                         result.get(CaptureResult.SENSOR_EXPOSURE_TIME) / 1e9 * result.get(CaptureResult.SENSOR_SENSITIVITY));
             }
             List<ImageFrame> unmatched = sequence.bindAndValidate(saver.snapshotFrames());
-            if (!unmatched.isEmpty() || sequence.boundFutureCount() != requests.size())
+            if (zsl) {
+                if (!unmatched.isEmpty()) saver.removeFrames(unmatched);
+            } else if (!unmatched.isEmpty() || sequence.boundFutureCount() != requests.size())
                 throw new IllegalStateException("Incomplete SDK RAW series");
             cancel();
             listener.complete(sequence, exposures);

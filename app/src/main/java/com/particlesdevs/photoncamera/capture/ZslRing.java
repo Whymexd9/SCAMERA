@@ -36,13 +36,19 @@ public final class ZslRing {
     private final int id;
     private final long slotBytes;
     private final int slots;
+    /** Slots beyond the ring part ({@link #SPARE}; a native FULLRES ring its own, {@link #fullResSlots}). */
+    private final int spare;
+    /** P198: the ring of a native 50 MP FULLRES session ({@link #createFullRes}). */
+    private final boolean fullRes;
     private final boolean[] ringOwned, reserved;
     private boolean closed;
 
-    private ZslRing(int id, long slotBytes, int slots) {
+    private ZslRing(int id, long slotBytes, int slots, int spare, boolean fullRes) {
         this.id = id;
         this.slotBytes = slotBytes;
         this.slots = slots;
+        this.spare = spare;
+        this.fullRes = fullRes;
         this.ringOwned = new boolean[slots];
         this.reserved = new boolean[slots];
     }
@@ -58,21 +64,78 @@ public final class ZslRing {
         final int wanted = ringFrames + SPARE;
         final int fit = budgetSlots(context, slot);
         final int count = Math.max(Math.min(8, ringFrames) + 4, Math.min(wanted, fit));
-        final int id;
-        try {
-            id = Allocator.arenaCreate(ShotArena.HEADER + slot * count);
-        } catch (Throwable t) {
-            Log.w(TAG, "ZSL ring: no memfd (" + t + "), the camera's buffers are kept");
-            return null;
-        }
+        final int id = memfd(slot, count);
         if (id <= 0) return null;
         Log.i(TAG, "ZSL ring in memfd: " + count + " slots x " + (slot >> 20) + " MB (ring " + Math.max(1, count - SPARE)
                 + " + shot " + Math.min(SPARE, count - 1) + ", asked " + ringFrames + ", budget " + fit + ")");
-        return new ZslRing(id, slot, count);
+        return new ZslRing(id, slot, count, SPARE, false);
+    }
+
+    private static int memfd(long slot, int count) {
+        try {
+            return Allocator.arenaCreate(ShotArena.HEADER + slot * count);
+        } catch (Throwable t) {
+            Log.w(TAG, "ZSL ring: no memfd (" + t + "), the camera's buffers are kept");
+            return 0;
+        }
+    }
+
+    /**
+     * P198 (owner, 2026-10-17: «сделай так чтобы 50мп снимались в zsl и только 200мп снимались в psl»): the ring of a native 50 MP
+     * FULLRES session. Its frames are 4x the 12 MP ones (8192 x 6144 x 2 B = 96 MB a slot), so it is sized by {@link #fullResSlots}
+     * instead of the 12 MP rule (40 % of the memory available, at least 12 slots, 16 of them spare: 2.4 GB with 6 GB available, for a
+     * ring of 9 frames); null without a memfd: such a session keeps
+     * no ring (its reader holds 4 images, a held one would stall the viewfinder) and its shots take the series after the shutter.
+     */
+    @Nullable
+    public static ZslRing createFullRes(@Nullable Context context, int ringSetting, int wanted, long frameBytes) {
+        if (frameBytes <= 0) return null;
+        final long slot = (frameBytes + 4095) & ~4095L;
+        final long avail = availableBytes(context);
+        final int[] split = fullResSlots(avail, slot, ringSetting, wanted);
+        final int count = split[0] + split[1];
+        final int id = memfd(slot, count);
+        if (id <= 0) return null;
+        Log.i(TAG, "50 MP ZSL ring in memfd: " + count + " slots x " + (slot >> 20) + " MB (ring " + split[0] + " + shot " + split[1]
+                + ", asked min(ring setting " + ringSetting + ", N " + wanted + " + " + FULLRES_RING_SLACK + "), cap "
+                + fullResCap(avail, slot) + " slots = min(" + FULLRES_SLOTS_MAX + ", a quarter of " + (avail >> 20) + " MB available))");
+        return new ZslRing(id, slot, count, split[1], true);
+    }
+
+    /** P198: at most this many 50 MP slots (16 x 96 MB = 1.5 GB, the bytes of the 12 MP ring's 66 x 24 MB). */
+    public static final int FULLRES_SLOTS_MAX = 16;
+    /** P198: at least this many (a ring of 2 frames and 2 slots for the shot) whatever the memory says. */
+    public static final int FULLRES_SLOTS_MIN = 4;
+    /** P198: slots for a 50 MP shot's own frames: the 12 MP Hybrid plan's 3 ultrashort and 3 bracketed frames. */
+    public static final int FULLRES_SHOT_SLOTS = 6;
+    /** P198: ring frames beyond the shot's N (the selection drops frames of another exposure or behind a gap). */
+    public static final int FULLRES_RING_SLACK = 2;
+
+    /**
+     * P198: {ring frames, shot slots} of a 50 MP ring. All of it within a quarter of the memory available (the camera's own four
+     * 96 MB buffers, the HAL's and the 50 MP merge, P191's 80 % of MemAvailable, need the rest; the 12 MP rule takes 40 %) and
+     * {@link #FULLRES_SLOTS_MAX}; the shot's slots up to half of that; the ring the shot's N plus {@link #FULLRES_RING_SLACK}, within
+     * the ring setting and what is left. A slot the ring never reaches is never written (no memory).
+     */
+    public static int[] fullResSlots(long availBytes, long slotBytes, int ringSetting, int wanted) {
+        final int total = fullResCap(availBytes, slotBytes);
+        final int shot = Math.min(FULLRES_SHOT_SLOTS, total / 2);
+        final int ring = Math.max(1, Math.min(Math.min(Math.max(1, ringSetting), Math.max(1, wanted) + FULLRES_RING_SLACK), total - shot));
+        return new int[]{ring, shot};
+    }
+
+    /** P198: the slots of a 50 MP ring the memory allows (unknown memory: the maximum). */
+    static int fullResCap(long availBytes, long slotBytes) {
+        if (availBytes <= 0 || slotBytes <= 0) return FULLRES_SLOTS_MAX;
+        return (int) Math.max(FULLRES_SLOTS_MIN, Math.min(FULLRES_SLOTS_MAX, availBytes / 4 / slotBytes));
     }
 
     /** MotionCam-style budget: at most 40 % of the memory available now (at least room for 12 slots). */
     static int budgetSlots(@Nullable Context context, long slotBytes) {
+        return budgetSlots(availableBytes(context), slotBytes);
+    }
+
+    private static long availableBytes(@Nullable Context context) {
         long avail = 0;
         try {
             ActivityManager am = context == null ? null : (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
@@ -83,7 +146,7 @@ public final class ZslRing {
             }
         } catch (RuntimeException ignored) {
         }
-        return budgetSlots(avail, slotBytes);
+        return avail;
     }
 
     static int budgetSlots(long availBytes, long slotBytes) {
@@ -93,7 +156,12 @@ public final class ZslRing {
 
     /** How many frames the ring part holds. */
     public int ringSlots() {
-        return Math.max(1, slots - SPARE);
+        return Math.max(1, slots - spare);
+    }
+
+    /** P198: a native 50 MP FULLRES session's ring. */
+    public boolean fullRes() {
+        return fullRes;
     }
 
     public long slotBytes() {

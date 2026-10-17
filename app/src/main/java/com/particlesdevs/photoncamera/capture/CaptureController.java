@@ -2360,9 +2360,26 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mVivoSdkCallbackHandler = new Handler(mVivoSdkCallbackThread.getLooper());
             mCameraCharacteristicsMap.remove(id);
         }
+        // P198: a native 50 MP session takes its shots' N from a ZSL ring of its frames; 200 MP and the SDK route stay serial PSL
+        final String route = nativeZslSession() ? "ZSL ring + the Hybrid plan's frames after the shutter" : "serial PSL";
         Log.i("SCAM_CAPTURE", (nativeVivoFullRes() ? "NATIVE FULLRES" : "SDK FULLRES50") + " camera=" + id + " size=" + VivoSdkFullRes.profile(id).size
-                + (VivoSdkFullRes.oppo() ? ": own RAW AE and white balance (the mode's HAL has no statistics), serial PSL, SHDR processing"
-                : ": automatic AE, serial PSL, SHDR processing"));
+                + (VivoSdkFullRes.oppo() ? ": own RAW AE and white balance (the mode's HAL has no statistics), " + route + ", SHDR processing"
+                : ": automatic AE, " + route + ", SHDR processing"));
+    }
+
+    /**
+     * P198 (owner, 2026-10-17: «Так же сделай так чтобы 50мп снимались в zsl и только 200мп снимались в psl»): the running session
+     * is a native FULLRES one of up to 100 MP (VivoSdkFullResCapture.zslRoute): its frames go to the ZSL ring and a shot takes its N
+     * from there, as the 12 MP Hybrid. scam_dev.txt "fullres_zsl 0": the serial PSL series of every native size, as before.
+     */
+    private boolean nativeZslSession() {
+        if (mVivoSdkRawSession == null || !PreferenceKeys.isScamEnabled() || !PreferenceKeys.scamDevSwitch("fullres_zsl", true)) return false;
+        return VivoSdkFullResCapture.zslRoute(VivoSdkFullRes.profile(mVivoSdkCameraId));
+    }
+
+    /** P198: the N frames a native 50 MP shot asks of the ring (P190's «Кадров в снимке 50 Мп», 0 = the merge's frame setting). */
+    private static int fullResZslWanted() {
+        return VivoSdkFullResCapture.zslRequested(PreferenceKeys.getFullRes50Frames(), PreferenceKeys.getHybridZslFrames());
     }
 
     /** The FULLRES session runs the native route: a Quad / Tetra row, or P194's hardware-remosaic Bayer row (X100 / X300 Ultra). */
@@ -4142,16 +4159,82 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (mTextureView != null) mTextureView.requestRender();
             // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
             // P187: not while a 200 MP merge runs (its plain session takes no shot)
-            if (isZslMode() && passModeBarrier(img, result) && !mClosedForProcessing) synchronized (mZslBufferLock) {
+            // P198: the native 50 MP FULLRES session rings its frames as well (the viewfinder keeps running from them), not while a
+            // shot takes its frames (from the press until its series is complete: the ring holds the moment of the press)
+            final boolean nativeRing = !isZslMode() && mVivoSdkCapture == null && !mShotInProgress && nativeZslSession()
+                    && nativeRingDue(android.os.SystemClock.elapsedRealtimeNanos());
+            if ((isZslMode() && passModeBarrier(img, result) || nativeRing && nativeRingFrame(result)) && !mClosedForProcessing)
+                synchronized (mZslBufferLock) {
                 if (!isCameraResumed || !mLiveRawSession) return;
-                mZslRingBuffer.addLast(ringFrameLocked(img)); // P91: copied into the ring's memfd (img closed) or held as it is
+                final long timestamp = img.getTimestamp(), copyStart = android.os.SystemClock.elapsedRealtimeNanos();
+                final RingFrame frame = ringFrameLocked(img); // P91: copied into the ring's memfd (img closed) or held as it is
                 retained = true;
+                if (nativeRing) nativeRingCopied(copyStart, android.os.SystemClock.elapsedRealtimeNanos() - copyStart);
+                if (nativeRing && frame.arenaSlot() == null) {
+                    // P198: never the camera's own image: the native reader holds 4, one held by the ring stalls the viewfinder
+                    frame.close();
+                    return;
+                }
+                mZslRingBuffer.addLast(frame);
+                if (nativeRing) {
+                    // the plain ZSL session keeps the results from the preview callback; the native one has them here, matched
+                    mHexZslResults.put(timestamp, result);
+                    while (mHexZslResults.size() > ringCapacityLocked() + 16)
+                        mHexZslResults.remove(mHexZslResults.keySet().iterator().next());
+                }
                 while (mZslRingBuffer.size() > ringCapacityLocked()) {
                     RingFrame old = mZslRingBuffer.pollFirst();
                     if (old != null) old.close();
                 }
             }
         } finally { if (!retained) img.close(); }
+    }
+
+    private int mNativeRingRejected;
+    /** P198: start and length of the last 50 MP ring copy, frames copied this session. */
+    private long mNativeRingLastNs, mNativeRingCopyNs;
+    private int mNativeRingCopies;
+
+    /**
+     * P198: a 96 MB copy out of the camera's buffer (uncached reads, ~2 GB/s a core, startZslCopy) can take longer than a frame of the
+     * 30 fps native viewfinder, on the thread that also draws the viewfinder and runs the own AE: a frame is copied into the ring only
+     * when at least twice the last copy's time has passed since the last one began (the copies take at most half of that thread).
+     */
+    static boolean ringCopyDue(long nowNs, long lastStartNs, long lastCopyNs) {
+        return lastStartNs <= 0 || nowNs - lastStartNs >= 2 * lastCopyNs;
+    }
+
+    private boolean nativeRingDue(long nowNs) {
+        return ringCopyDue(nowNs, mNativeRingLastNs, mNativeRingCopyNs);
+    }
+
+    private void nativeRingCopied(long startNs, long copyNs) {
+        mNativeRingLastNs = startNs;
+        mNativeRingCopyNs = copyNs;
+        if (++mNativeRingCopies == 1 || mNativeRingCopies % 150 == 0)
+            Log.i("SCAM_CAPTURE", "50 MP ZSL ring: copy " + copyNs / 1_000_000 + " ms (" + mNativeRingCopies + " frames this session, ring "
+                    + mZslRingBuffer.size() + ")");
+    }
+
+    /**
+     * P198: a native frame may enter the 50 MP ZSL ring: its result does not report another sensor mode than the profile's (the rule
+     * of the stills, VivoSdkFullResCapture.modeMatches); an OPPO result gets the own neutral, the plain session's colour transform
+     * and shading map first (OppoNativeFullRes.complete), as a still's does before anything reads it.
+     */
+    private boolean nativeRingFrame(TotalCaptureResult result) {
+        final VivoSdkFullRes.Profile profile = VivoSdkFullRes.profile(mVivoSdkCameraId);
+        if (profile == null || result == null) return false;
+        int[] mode = null;
+        try { mode = result.get(SENSOR_MODE_INDEX); } catch (IllegalArgumentException ignored) { }
+        if (!VivoSdkFullResCapture.modeMatches(profile, mode)) {
+            if (++mNativeRingRejected == 1 || mNativeRingRejected % 120 == 0)
+                Log.w("SCAM_CAPTURE", "50 MP ZSL: " + mNativeRingRejected + " frames of another sensor mode ("
+                        + (mode == null || mode.length == 0 ? "none" : String.valueOf(mode[0])) + ", profile " + profile.sensorMode
+                        + ") kept out of the ring");
+            return false;
+        }
+        if (VivoSdkFullRes.oppo()) OppoNativeFullRes.complete(mVivoSdkCameraId, result);
+        return true;
     }
 
     /**
@@ -4445,13 +4528,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // multi-plane frame is held as the camera's Image, as before P91.
         if (img.getPlanes().length != 1) return RingFrame.of(img);
         final long need = Math.max(img.getPlanes()[0].getBuffer().capacity(), (long) img.getWidth() * img.getHeight() * 2);
-        if (mZslRing == null || mZslRing.slotBytes() < need) {
+        // P198: the native 50 MP session's ring is sized for its 96 MB frames (ZslRing.createFullRes); a ring of the other kind goes
+        final boolean fullRes = nativeZslSession();
+        if (mZslRing == null || mZslRing.slotBytes() < need || mZslRing.fullRes() != fullRes) {
             if (mZslRing != null) {
                 // a larger stream (another lens / mode): the ring's frames go, then the ring
                 while (!mZslRingBuffer.isEmpty()) mZslRingBuffer.pollFirst().close();
                 mZslRing.close();
             }
-            mZslRing = ZslRing.create(ScameraApp.getAppContext(), zslRingCapacity(), need);
+            mZslRing = fullRes ? ZslRing.createFullRes(ScameraApp.getAppContext(), zslRingCapacity(), fullResZslWanted(), need)
+                    : ZslRing.create(ScameraApp.getAppContext(), zslRingCapacity(), need);
             if (mZslRing == null) { mZslRingUnavailable = true; return RingFrame.of(img); }
         }
         RingFrame f = mZslRing.store(img);
@@ -5018,6 +5104,83 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
+    /** P198: the ring part of a native 50 MP ZSL shot: its N frames (oldest first), their base, the plan after the shutter. */
+    private static final class NativeZslShot {
+        final List<ImageFrame> frames;
+        final CaptureResult base;
+        final HybridPlan plan;
+        final boolean verified;
+
+        NativeZslShot(List<ImageFrame> frames, CaptureResult base, HybridPlan plan, boolean verified) {
+            this.frames = frames;
+            this.base = base;
+            this.plan = plan;
+            this.verified = verified;
+        }
+    }
+
+    /**
+     * P198: the N frames of a native 50 MP shot from the ZSL ring, selected as the 12 MP Hybrid's (drainZslNormalFrames: before the
+     * press, matched results, the newest exposure tier, no stale gap) and checked as the series' stills are (VivoSdkFullResCapture):
+     * a frame whose pixels are a confident mosaic of another colour block leaves the merge (the sensor mode was checked as it entered
+     * the ring). The post-shutter plan is the 12 MP Hybrid's (HybridPlan.build) from the newest frame's exposure: the OPPO's frames
+     * carry its own AE's (NativeRawExposure, AE off), the vivo's the HAL's. Null when no frame is left: the shot is the PSL series.
+     */
+    @Nullable
+    private NativeZslShot takeNativeZsl(VivoSdkFullRes.Profile profile, int requested) {
+        if (profile == null) return null;
+        final float clip = zslClipFraction();
+        mLastZslClipFraction = clip;
+        mShutterIszAspect4x3 = true; // the native frames are never cropped to 16:9 (the series' saver: iszAspect4x3)
+        final List<ImageFrame> frames = drainZslNormalFrames(requested, null, true, true);
+        boolean verified = false;
+        int wrongMosaic = 0, notCopied = 0;
+        for (java.util.Iterator<ImageFrame> it = frames.iterator(); it.hasNext(); ) {
+            final ImageFrame f = it.next();
+            try {
+                f.materialize(); // a view of its ring slot (plain RAW16), else a copy
+            } catch (RuntimeException e) {
+                f.close();
+                it.remove();
+                notCopied++;
+                continue;
+            }
+            final boolean[] mosaic = VivoSdkFullResCapture.mosaicCheck(profile, f.buffer, f.width, f.height, f.width * 2);
+            if (mosaic[1]) {
+                f.close();
+                it.remove();
+                wrongMosaic++;
+                continue;
+            }
+            verified |= mosaic[0];
+        }
+        if (wrongMosaic + notCopied > 0) Log.w("SCAM_CAPTURE", "50 MP ZSL: " + wrongMosaic + " ring frames of another colour block than "
+                + profile.nativeBlock + ", " + notCopied + " not copied, left out of the merge");
+        if (frames.isEmpty()) {
+            Log.w("SCAM_CAPTURE", "50 MP ZSL: no usable ring frame, the series is taken after the shutter (PSL)");
+            return null;
+        }
+        final CaptureResult base = frames.get(frames.size() - 1).getMatchedCaptureMetadata();
+        final Long baseNs = base == null ? null : base.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        final Integer baseIso = base == null ? null : base.get(CaptureResult.SENSOR_SENSITIVITY);
+        final NativeRawExposure ae = mNativeAe;
+        final long nNs = baseNs != null && baseNs > 0 ? baseNs : ae != null ? ae.exposureNs() : (long) mPreviewExposureTime;
+        final int nIso = baseIso != null && baseIso > 0 ? baseIso : ae != null ? ae.iso() : mPreviewIso;
+        HybridPlan plan;
+        HybridPlan.setMotionCap(HalMotion.motionCapNs(base));
+        try {
+            plan = HybridPlan.build(nNs, nIso, clip, mCameraCharacteristics, mExposureLimits);
+        } catch (RuntimeException noPlan) {
+            Log.w("SCAM_CAPTURE", "50 MP ZSL: hybrid plan unavailable (" + noPlan.getMessage() + "): one more N frame after the shutter");
+            plan = HybridPlan.single(nNs, nIso);
+        } finally {
+            HybridPlan.setMotionCap(0);
+        }
+        Log.i("SCAM_CAPTURE", "50 MP ZSL: " + frames.size() + " ring frames (asked " + requested + ", mosaic "
+                + (verified ? "verified" : "not proven by the ring") + "); " + plan.description);
+        return new NativeZslShot(frames, base, plan, verified);
+    }
+
     private void captureVivoSdkFullResChecked() {
         final VivoSdkRawSession sdk = mVivoSdkRawSession;
         final CameraCaptureSession session = mCaptureSession;
@@ -5053,23 +5216,51 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 return;
             }
         }
-        final int count = frames;
+        // P198: a native 50 MP shot takes its N from the ZSL ring (the frames before the press) and only the 12 MP Hybrid plan's
+        // frames after the shutter (3 ultrashort for Bento, the bracketed ones for Shasta); none usable in the ring (just opened,
+        // every frame of another mode or mosaic): the serial PSL series as before, whose stills keep the failure bookkeeping
+        final NativeZslShot zsl = hugeSeries || !nativeZslSession() ? null : takeNativeZsl(VivoSdkFullRes.profile(mVivoSdkCameraId), requested);
+        final int count, shotN;
+        boolean zslTrimmed = false;
+        if (zsl != null) {
+            final int post = zsl.plan.requests.size();
+            // the ring frames are in memory already (the ring's memfd): the budget of the series counts their bytes as its own
+            final long withRing = availableBytes < 0 ? -1 : availableBytes + (long) zsl.frames.size() * frameBytes;
+            final int all = zsl.frames.size() + post;
+            final int budget = seriesMode ? VivoSdkFullRes.seriesCount(all, (long) rawWidth * rawHeight, rawWidth, frameBytes, block, grid,
+                    false, withRing) : VivoSdkFullRes.frameCount(all, frameBytes, withRing);
+            final int keep = VivoSdkFullResCapture.zslNormals(zsl.frames.size(), post, budget);
+            zslTrimmed = keep < zsl.frames.size();
+            while (zsl.frames.size() > keep) zsl.frames.remove(0).close(); // the oldest go, the moment of the press stays
+            count = post;
+            shotN = zsl.frames.size();
+        } else {
+            count = frames;
+            shotN = 0;
+        }
+        final int total = shotN + count;
         if (count < 1 || (manager != null && memory.lowMemory)) {
+            if (zsl != null) for (ImageFrame f : zsl.frames) f.close();
             failPendingShutter(new IllegalStateException(Lang.t("Недостаточно памяти для серии FULLRES", "Not enough memory for a FULLRES series")));
             return;
         }
-        cameraEventsListener.onFrameCountSet(count);
-        // P190: a series shorter than asked is said aloud (the RAW guard, the merge's memory, or the 2x output at 50 MP)
-        final String cut = count >= requested ? "" : count < guarded && grid == 2 ? "2x" : "memory";
-        Log.i("SCAM_CAPTURE", (nativeVivoFullRes() ? "NATIVE FULLRES" : "SDK FULLRES50") + " frames=" + count + " requested=" + requested
+        cameraEventsListener.onFrameCountSet(total);
+        // P190: a series shorter than asked is said aloud (the RAW guard, the merge's memory, or the 2x output at 50 MP); P198 a ZSL
+        // shot's N below the ask only when the memory cut it (the ring's own cap is in the log: ZslRing «50 MP ZSL ring in memfd»)
+        final String cut = zsl != null ? (shotN >= requested ? "" : zslTrimmed ? "memory" : "ring")
+                : count >= requested ? "" : count < guarded && grid == 2 ? "2x" : "memory";
+        final int taken = zsl != null ? shotN : count;
+        Log.i("SCAM_CAPTURE", (nativeVivoFullRes() ? "NATIVE FULLRES" : "SDK FULLRES50") + " frames=" + total
+                + (zsl != null ? " (ZSL: N " + shotN + " from the ring + " + count + " after the shutter)" : "") + " requested=" + requested
                 + " availableMB=" + (memory.availMem >> 20) + (seriesMode ? " series" : "") + (cut.isEmpty() ? "" : " cut=" + cut));
-        if (!cut.isEmpty()) showToast(Lang.t("Снято " + count + " из " + requested + " кадров: свободно " + (memory.availMem >> 20) + " МБ"
+        if (!cut.isEmpty() && !"ring".equals(cut))
+            showToast(Lang.t("Снято " + taken + " из " + requested + " кадров: свободно " + (memory.availMem >> 20) + " МБ"
                         + ("2x".equals(cut) ? ", вывод 2×" : ""),
-                "Took " + count + " of " + requested + " frames: " + (memory.availMem >> 20) + " MB free" + ("2x".equals(cut) ? ", 2× output" : "")));
+                "Took " + taken + " of " + requested + " frames: " + (memory.availMem >> 20) + " MB free" + ("2x".equals(cut) ? ", 2× output" : "")));
         final ImageSaver saver = new ImageSaver(cameraEventsListener);
         saver.iszAspect4x3 = mShutterIszAspect4x3 || nativeVivoFullRes();
         saver.setFrameCount(count);
-        saver.fullResSeries = seriesMode ? count : 0; // P190: the merge keeps a series whole
+        saver.fullResSeries = seriesMode ? total : 0; // P190: the merge keeps a series whole
         saver.fullResRequested = requested;
         saver.setImageFormat(ImageFormat.RAW_SENSOR);
         mImageSaver = saver;
@@ -5079,6 +5270,25 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         BurstShakiness = new ArrayList<>();
         final long[] times = new long[count];
         Arrays.fill(times, Math.max(1L, (long) mPreviewExposureTime));
+        if (zsl != null) {
+            // P198: the ring's N are the first frames of the shot (the saver's buffer, their exposure pairs and gyro windows), as the
+            // 12 MP Hybrid's; the stills after the shutter follow
+            SaverImplementation.IMAGE_BUFFER.addAll(zsl.frames);
+            final long[] zslTimestamps = new long[shotN];
+            for (int i = 0; i < shotN; i++) {
+                final ImageFrame f = zsl.frames.get(i);
+                zslTimestamps[i] = f.timestamp;
+                IsoExpoSelector.fullpairs.add(new IsoExpoSelector.ExpoPair(f.measuredExposure, f.measuredExposure, f.measuredExposure,
+                        f.measuredIso, f.measuredIso, f.measuredIso, f.measuredIso));
+            }
+            for (int i = 0; i < count; i++) {
+                final HybridPlan.Request r = zsl.plan.requests.get(i);
+                if (!r.autoExposure && r.shutterNs > 0) times[i] = r.shutterNs;
+            }
+            final Long baseExposure = zsl.base.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+            ScameraApp.getGyro().buildZslBurstShakiness(zslTimestamps, baseExposure != null ? baseExposure : 0L, BurstShakiness,
+                    isGyroClockComparable());
+        }
         ScameraApp.getGyro().PrepareGyroBurst(times, BurstShakiness, true);
         final CameraCharacteristics characteristics = mCameraCharacteristics;
         final int rotation = ScameraApp.getGravity().getCameraRotation(mSensorOrientation);
@@ -5108,10 +5318,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mCaptureRequest = result.getRequest();
                 long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
                 int iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
-                IsoExpoSelector.fullpairs.add(new IsoExpoSelector.ExpoPair(exposure, exposure, exposure, iso, iso, iso, iso));
+                IsoExpoSelector.ExpoPair pair = new IsoExpoSelector.ExpoPair(exposure, exposure, exposure, iso, iso, iso, iso);
+                final Object tag = result.getRequest() == null ? null : result.getRequest().getTag();
+                final ImageFrame.CaptureRole role = tag instanceof ImageFrame.ScamCaptureTag ? ((ImageFrame.ScamCaptureTag) tag).role : null;
+                pair.isLongFrame = role == ImageFrame.CaptureRole.LONG;
+                pair.isHighlightFrame = role == ImageFrame.CaptureRole.SHORT || role == ImageFrame.CaptureRole.EXTRA_SHORT;
+                IsoExpoSelector.fullpairs.add(pair);
                 ScamCaptureLog.result(result.getRequest(), result, scamZslShutterTimestamp, false);
                 ScameraApp.getGyro().CaptureGyroBurst();
-                cameraEventsListener.onFrameCaptureCompleted(new TimerFrameCountViewModel.FrameCntTime(index + 1, count, exposure / 1e9));
+                cameraEventsListener.onFrameCaptureCompleted(new TimerFrameCountViewModel.FrameCntTime(shotN + index + 1, total, exposure / 1e9));
             }
 
             public void complete(ScamCaptureSequence sequence, HashMap<Long, Double> exposures) {
@@ -5120,9 +5335,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     for (ImageFrame frame : saver.snapshotFrames())
                         if (frame == null || frame.rawPayloadError != null)
                             throw new IllegalStateException(frame == null ? "SDK RAW frame missing" : frame.rawPayloadError);
-                    CaptureResult base = sequence.firstBoundResult(ImageFrame.CaptureRole.NORMAL);
+                    // P198: a ZSL shot's base is the newest ring frame (the moment of the press), as the 12 MP Hybrid's
+                    CaptureResult base = zsl != null ? zsl.base : sequence.firstBoundResult(ImageFrame.CaptureRole.NORMAL);
                     if (base == null) throw new IllegalStateException("SDK RAW base metadata missing");
-                    saver.updateFrameCount(count);
+                    saver.updateFrameCount(zsl != null ? saver.bufferSize() : count);
                     saver.detachForQueue(true);
                     // Captured views pin the data; release the capture owner before processing.
                     if (arena != null) arena.release();
@@ -5150,7 +5366,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         }
                     });
                     done.set(true);
-                    mMeasuredFrameCnt = count;
+                    mMeasuredFrameCnt = zsl != null ? saver.bufferSize() : count;
                     mInFlightRescue = null;
                     mVivoSdkCapture = null;
                     mShotArena = null;
@@ -5159,7 +5375,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     burst = false;
                     mState = STATE_PREVIEW;
                     cameraEventsListener.onCaptureSequenceCompleted(null);
-                    Log.i("SCAM_CAPTURE", "SDK FULLRES50: " + count + " matched future RAWs; Hybrid PSL, stock ZSL=false");
+                    if (zsl != null) {
+                        final String dropped = sequence.droppedSummary();
+                        Log.i("SCAM_CAPTURE", "NATIVE FULLRES ZSL: " + shotN + " ring RAWs + " + sequence.boundFutureCount() + " of " + count
+                                + " after the shutter; Hybrid ZSL" + (dropped.isEmpty() ? "" : " (dropped: " + dropped + ")"));
+                    } else Log.i("SCAM_CAPTURE", "SDK FULLRES50: " + count + " matched future RAWs; Hybrid PSL, stock ZSL=false");
                 } catch (RuntimeException failure) {
                     failed(failure.getMessage());
                 }
@@ -5198,7 +5418,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mNativeRawPslCapture = true;
         burst = true;
         mState = STATE_PICTURE_TAKEN;
-        VivoSdkFullResCapture capture = new VivoSdkFullResCapture(mCameraDevice, session, sdk,
+        final VivoSdkFullResCapture capture;
+        try {
+            capture = new VivoSdkFullResCapture(mCameraDevice, session, sdk,
                 mImageReaderRaw.getSurface(), mVivoSdkJpeg == null ? null : mVivoSdkJpeg.getSurface(), saver, mBackgroundHandler,
                 () -> {
                     CaptureResult latest = mPreviewCaptureResult;
@@ -5208,10 +5430,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 VivoSdkFullRes.profile(mVivoSdkCameraId), mPreviewCaptureResult.getRequest(),
                 characteristics.getAvailableSessionKeys(), listener,
                 image -> mLiveMetadata.image(image.getTimestamp(), image));
+            // P198: the stills after the shutter are the Hybrid plan's (the native mode's keys on each, as every still of the series)
+            if (zsl != null) {
+                capture.plan(zsl.plan);
+                capture.zsl(zsl.frames, zsl.verified);
+            }
+        } catch (RuntimeException failure) {
+            listener.failed(failure.getMessage()); // the ring frames already in the saver's buffer go with it
+            return;
+        }
         // P192 (OPPO Find X7 Ultra 50 MP, 2026-10-17: the windows came out pink and without sky, the plain shot of the same scene
         // white with sky): a native 50 MP series ends with the ultrashort frame as well - the plain shots and ISZ have their
         // Bento frame, the native merge takes it (ISZ: «23U», «BENTO: applied»); without it the clipped green turned pink
-        if ((hugeSeries || nativeVivoFullRes() && count >= 3) && HybridPlan.bentoMode() > 0) {
+        if (zsl == null && (hugeSeries || nativeVivoFullRes() && count >= 3) && HybridPlan.bentoMode() > 0) {
             // P179: the last still of a 200 MP series is the ultrashort (Bento) one: the preview's exposure over the ultrashort
             // factor at its sensitivity; with Bento off (the worker would leave it out) the series is all N
             CaptureResult latest = mPreviewCaptureResult;
@@ -5226,7 +5457,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         mVivoSdkCapture = capture;
         mInFlightRescue = () -> listener.failed(Lang.t("Серия SDK RAW прервана", "SDK RAW series interrupted"));
-        cameraEventsListener.onCaptureStillPictureStarted("CaptureStarted!");
+        // P198: a ZSL shot's N are taken already: the press is an instant shot for the UI, as the 12 MP Hybrid's
+        cameraEventsListener.onCaptureStillPictureStarted(zsl != null ? "ScamZslCaptureStarted" : "CaptureStarted!");
         cameraEventsListener.onBurstPrepared(null);
         ScameraApp.getGyro().startBurstRegistration();
         capture.start();
