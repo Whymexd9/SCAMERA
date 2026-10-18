@@ -73,6 +73,8 @@ final class NativeRawExposure {
     private boolean smooth, moving;
     private double emaP50 = Double.NaN, emaP98 = Double.NaN;
     private int sinceRebuild = REBUILD_GAP;
+    /** P212c: the compensation of the last update (a change moves the exposure even when it is smaller than START_EV). */
+    private float lastEv = Float.NaN;
 
     /** Ranges of the camera; the frame time bounds the shutter (24 fps native: 41.7 ms); a first exposure to start from. */
     NativeRawExposure(@Nullable Range<Long> exposureRange, @Nullable Range<Integer> isoRange, long frameNs, long startExposureNs,
@@ -267,9 +269,12 @@ final class NativeRawExposure {
         final double m = multiplier((float) mp50, (float) mp98, ev);
         wanted = shot * m;
         final double off = Math.abs(Math.log(m) / LN2);
+        final boolean evChanged = !Float.isNaN(lastEv) && Math.abs(ev - lastEv) > 1e-3f;
+        lastEv = ev;
         if (smooth) {
-            // P212c hysteresis: a lamp at the highlight threshold (p98 0.75 <-> 0.95, ±0.16 EV) no longer moves the exposure
-            moving = moving ? off >= STOP_EV : off >= START_EV;
+            // P212c hysteresis: a lamp at the highlight threshold (p98 0.75 <-> 0.95, ±0.16 EV) no longer moves the exposure; the
+            // user's compensation does, in any step (a 1/6 EV press is under START_EV)
+            moving = moving || evChanged ? off >= STOP_EV : off >= START_EV;
             if (!moving) { quiet++; return false; }
             if (sinceRebuild < REBUILD_GAP) { quiet = 0; return false; }
         } else if (off < DEAD_BAND_EV) {
@@ -563,8 +568,19 @@ final class NativeRawExposure {
         return out[0] > 0f && out[1] > 0f && out[2] > 0f;
     }
 
+    /** The last map's median (the meter reads the same map frame after frame: the results carry one object). */
+    private static volatile Object[] lastMedian;
+
     /** The median green gain of a shading map over a 64 x 48 grid of the whole frame (1 when it gives none). */
     static float gainMedian(float[] g, int cols, int rows) {
+        final Object[] last = lastMedian;
+        if (last != null && last[0] == g && (Integer) last[1] == cols && (Integer) last[2] == rows) return (Float) last[3];
+        final float value = gainMedianOf(g, cols, rows);
+        lastMedian = new Object[]{g, cols, rows, value};
+        return value;
+    }
+
+    private static float gainMedianOf(float[] g, int cols, int rows) {
         final float[] at = new float[3], greens = new float[64 * 48];
         int n = 0;
         for (int y = 0; y < 48; y++)

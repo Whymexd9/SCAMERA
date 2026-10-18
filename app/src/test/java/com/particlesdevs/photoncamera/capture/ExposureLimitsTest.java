@@ -79,9 +79,24 @@ public class ExposureLimitsTest {
             assertTrue(l.observeManual(manual(40_000_000L, asked), result(40_000_000L, 1600)));
             assertEquals("asked " + asked, 1600, l.isoCap());
         }
+        assertEquals("a unit over it: rounding", 1600, observedCap(l, 1601));
         // the once-a-session probe answered above the cap (a firmware that gives more): the cap goes
         assertFalse(l.observeManual(manual(40_000_000L, 2400), result(40_000_000L, 2000)));
         assertEquals(Integer.MAX_VALUE, l.isoCap());
+        // the shutter cap the same way
+        ExposureLimits t = ExposureLimits.of("3", 4096, 3072, false);
+        t.observeManual(manual(125_000_000L, 1000), result(100_000_000L, 1000));
+        t.observeManual(manual(125_000_000L, 1000), result(100_000_000L, 1000));
+        assertEquals(100_000_000L, t.shutterCap());
+        assertTrue(t.observeManual(manual(101_000_000L, 1000), result(100_000_000L, 1000)));
+        assertEquals("asked 101 ms, given the cap within the rounding", 100_000_000L, t.shutterCap());
+        t.observeManual(manual(200_000_000L, 1000), result(150_000_000L, 1000));
+        assertEquals("delivered 150 ms", Long.MAX_VALUE, t.shutterCap());
+    }
+
+    private static int observedCap(ExposureLimits l, int delivered) {
+        l.observeManual(manual(40_000_000L, delivered), result(40_000_000L, delivered));
+        return l.isoCap();
     }
 
     private static android.content.SharedPreferences prefs() {

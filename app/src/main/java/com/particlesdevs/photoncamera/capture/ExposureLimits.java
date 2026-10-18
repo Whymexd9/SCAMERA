@@ -72,7 +72,8 @@ public final class ExposureLimits {
         // it again, the «Движение» shutter swung 25 <-> 33 ms with it), nor does one just above it answered at the cap within the
         // rounding (P212a, log28 23:00:45.162: a request of 1601-1624 answered with 1600 cleared the cap 1600, relearned 7 s
         // later; with the cap in the native AE every such clear would re-split upward and restart the rebuilds)
-        if (ri > isoCap) isoCap = Integer.MAX_VALUE;
+        // (beyond the rounding: a result that jitters a unit over the cap proves nothing either)
+        if (isoCap != Integer.MAX_VALUE && ri > isoCap + Math.max(2, isoCap * 0.015)) isoCap = Integer.MAX_VALUE;
         if (isoOk) {
             if (ri.equals(capCandidate)) capVotes = 0;
         } else if (ri < qi && timeOk) {
@@ -81,9 +82,10 @@ public final class ExposureLimits {
             capCandidate = ri;
             if (capVotes >= 2) isoCap = Math.min(isoCap, ri);
         }
-        if (timeOk) {
-            if (qt > shutterCap) shutterCap = Long.MAX_VALUE;
-        } else if (rt < qt) {
+        // P212a: the shutter cap the same way - a delivered shutter beyond the cap and the rounding clears it, a request above it
+        // answered at the cap within the 1.5 % does not
+        if (shutterCap != Long.MAX_VALUE && rt > shutterCap * 1.015) shutterCap = Long.MAX_VALUE;
+        if (!timeOk && rt < qt) {
             shutterVotes = Math.abs((double) rt / Math.max(1, shutterCandidate) - 1) <= 0.015 ? shutterVotes + 1 : 1;
             shutterCandidate = rt;
             if (shutterVotes >= 2) shutterCap = Math.min(shutterCap, rt);

@@ -374,6 +374,22 @@ public class NativeRawExposureTest {
         }
     }
 
+    /** P212c: the user's compensation moves the smoothed exposure in any step, also under START_EV (a 1/6 EV press). */
+    @Test public void aSmallCompensationStepStillMovesTheSmoothedExposure() {
+        for (boolean press : new boolean[]{false, true}) {
+            NativeRawExposure a = ae(10_000_000L, 100);
+            a.smoothing(true);
+            final double scene = NativeRawExposure.SETPOINT / a.total();
+            for (int i = 0; i < 10; i++) a.update((float) (scene * a.total()), 0.3f, a.exposureNs(), a.iso(), 0f);
+            final double before = a.total();
+            // pressed: +1/6 EV; not pressed: the scene itself 1/6 EV darker - inside the hysteresis, nothing moves
+            final double light = press ? scene : scene / Math.pow(2, 1 / 6.0);
+            for (int i = 0; i < 10; i++) a.update((float) (light * a.total()), 0.3f, a.exposureNs(), a.iso(), press ? 1 / 6f : 0f);
+            if (press) assertTrue("pressed: " + a.total() / before, a.total() > before * 1.05);
+            else assertEquals("drifted 1/6 EV: held", before, a.total(), before * 1e-6);
+        }
+    }
+
     private static ByteBuffer quad(int w, int h, java.util.function.IntBinaryOperator value) {
         ByteBuffer raw = ByteBuffer.allocateDirect(w * h * 2).order(ByteOrder.LITTLE_ENDIAN);
         for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) raw.putShort((y * w + x) * 2, (short) value.applyAsInt(x, y));
