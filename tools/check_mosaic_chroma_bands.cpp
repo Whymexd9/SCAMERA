@@ -2,6 +2,7 @@
 #include "../app/src/main/cpp/scam-hybrid.h"
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <random>
 
 int main(){
@@ -17,14 +18,16 @@ int main(){
         }
         for(size_t i=0;i<osc.size();++i)osc[i]=float(i%19)/24.f;
         auto reference=input,banded=input;
-        scam::mosaicChromaMedian(reference,w,h,block,withOsc?&osc:nullptr,false,nullptr,-1);
-        scam::mosaicChromaMedian(banded,w,h,block,withOsc?&osc:nullptr,false,nullptr,32);
+        scam::mosaicChromaMedian(reference,w,h,block,withOsc?&osc:nullptr,false,nullptr,0);
+        scam::mosaicChromaMedian(banded,w,h,block,withOsc?&osc:nullptr,false,nullptr,7);
+        // P213b: the stream in steps of 7 rows gives the floats of its default steps bit for bit (this compared the bounded-rows
+        // strips with the full-frame planes, <= 3e-5 relative; tools/check_chroma_band.cpp compares the stream with those planes)
+        assert(std::memcmp(reference.data(),banded.data(),reference.size()*sizeof(float))==0);
         for(size_t i=0;i<reference.size();++i){
             assert(std::isfinite(banded[i]));
-            const float error=std::abs(reference[i]-banded[i]);worst=std::max(worst,error);
-            assert(error<=3e-5f*std::max(1.f,std::abs(reference[i])));
+            worst=std::max(worst,std::abs(banded[i]-input[i]));
             if(i%3==1)assert(banded[i]==input[i]);
         }
     }
-    std::printf("PASS: bounded chroma vs full-plane, Quad/Tetra/2x blocks, borders, strip seams, oscillation; max abs %.9g\n",worst);
+    std::printf("PASS: chroma in steps of 7 rows == the default steps bit for bit, Quad/Tetra/2x blocks, borders, oscillation; largest change of R/B %.9g\n",worst);
 }
