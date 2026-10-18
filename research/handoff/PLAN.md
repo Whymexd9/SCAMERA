@@ -4929,3 +4929,17 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   включении используются текущие настройки…») moved under the switch in the group. The settings search still finds the group.
 - Checked: SettingsMenuTest (the cameras page shows neither row; copying is reached inside the group), ModuleProfilesPageTest,
   ModuleProfilesCarryTest, check_ui_language.
+
+### P223 - FULLRES and ISZ: switch off the ISP preview and our white-balance corrections (owner, 2026-10-18: «Для фулреза и ISZ
+дать возможность полностью отключить isp превью и отключить наши исправления баланса белого, настройку добавь в группу
+настроек "видоискатель"»)
+- Context (owner's question «Идет ли у нас превью поток паралельно нашего рав видоискателя?»): in the ordinary sessions the
+  repeating request targets both the ISP preview surface and the RAW reader (CaptureController setCaptureRequestBuilder: the
+  preview surface unless nativeVivoFullRes() / VivoPd2454NativeRaw.active, the RAW reader in ZSL / live-RAW sessions); vivo native
+  FULLRES and the PD2454 native ISZ RAW already run RAW only; the vivo SDK FULLRES, OPPO FULLRES and the other ISZ routes keep
+  the ISP preview beside the RAW viewfinder.
+- To do: in «Видоискатель» two switches for FULLRES and ISZ shots - «ISP-превью» (off: the repeating request carries only the RAW
+  stream, the viewfinder is drawn from RAW; AF / AE metering and stabilisation that need the preview stream checked per route,
+  with a fallback when a HAL refuses a session without it) and «Исправления баланса белого» (off: the photo and the viewfinder use
+  the camera's own white balance - no P121 / P212 mosaic locus, native-session AWB anchoring, learned anchors).
+- Not started.
