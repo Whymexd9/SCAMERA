@@ -185,7 +185,8 @@ final class ShadeRows {
             texts.setOrientation(LinearLayout.VERTICAL);
             header.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             title = new TextView(context);
-            title.setText(entry.title);
+            // P214g: «↻» - a change restarts the camera (the session reads it when it is built)
+            title.setText(entry.sessionTime ? com.particlesdevs.photoncamera.settings.SessionKeys.marked(entry.title) : entry.title);
             title.setTextColor(ShadeStyle.TEXT);
             title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
             com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(title); // P139

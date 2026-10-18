@@ -306,7 +306,7 @@ public class ShadeCatalogView extends LinearLayout {
             Holder h = (Holder) holder;
             h.icon.setImageDrawable(catalog.settingIcon(e));
             h.icon.setImageTintList(ColorStateList.valueOf(accent));
-            h.title.setText(e.title);
+            h.title.setText(e.sessionTime ? com.particlesdevs.photoncamera.settings.SessionKeys.marked(e.title) : e.title); // P214g
             String crumb = e.crumb();
             h.crumb.setText(crumb);
             h.crumb.setVisibility(crumb.isEmpty() ? GONE : VISIBLE);

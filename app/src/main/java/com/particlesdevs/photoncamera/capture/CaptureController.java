@@ -249,6 +249,48 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private volatile int mVendorOperationMode;
     /** P211: cameras whose session refused the module's vendor operation mode (this run): they run mode 0. */
     private static final java.util.Set<String> sVendorModeRefused = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /**
+     * P214g: the session settings (settings/SessionKeys: the @SensorConfig fields above, the module's vendor keys, the
+     * preferences the build reads) the last session was built with, and the module scope of its sensor keys; null before the
+     * first session. Kept over closeCamera, so the camera screen can say on the way back from the settings what the new
+     * session takes, and can tell whether a session still running beside the settings (multi-window) needs a restart.
+     */
+    private volatile Map<String, String> mSessionSettings;
+    private volatile String mSessionSettingsScope;
+
+    /** P214g: what this session is built with (createCameraPreviewSession, right after the @SensorConfig injection). */
+    private void recordSessionSettings() {
+        try {
+            String scope = com.particlesdevs.photoncamera.settings.ModuleSensorSettings.runtimeScope(physicalID);
+            mSessionSettings = com.particlesdevs.photoncamera.settings.SessionKeys.snapshot(
+                    ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getAll(), scope);
+            mSessionSettingsScope = scope;
+        } catch (RuntimeException e) {
+            mSessionSettings = null;
+            Log.w(TAG, "session settings not recorded: " + e);
+        }
+    }
+
+    /**
+     * P214g: the session settings whose value differs from the one the last session was built with (empty when none did or
+     * no session was built yet), sorted.
+     */
+    public List<String> sessionSettingsChanged() {
+        Map<String, String> built = mSessionSettings;
+        if (built == null) return Collections.emptyList();
+        try {
+            return com.particlesdevs.photoncamera.settings.SessionKeys.changed(built,
+                    com.particlesdevs.photoncamera.settings.SessionKeys.snapshot(
+                            ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getAll(), mSessionSettingsScope));
+        } catch (RuntimeException e) {
+            return Collections.emptyList();
+        }
+    }
+
+    /** P214g: a configured session runs now (not closed, not opening): a restart has a session to replace. */
+    public boolean sessionRunning() {
+        return isCameraResumed && mCaptureSession != null;
+    }
 
     @SensorConfig(
             title = "OIS Mode",
@@ -2925,6 +2967,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final boolean sdkFullRes = mVivoSdkRawSession != null;
         try {
             if (!sdkFullRes) SensorConfigInjector.applyToSensor(physicalID, this);
+            recordSessionSettings();
             SurfaceTexture texture = mTextureView.getSurfaceTexture();
             if (texture == null) {
                 Log.w(TAG, "createCameraPreviewSession(): SurfaceTexture not ready, waiting for surface");

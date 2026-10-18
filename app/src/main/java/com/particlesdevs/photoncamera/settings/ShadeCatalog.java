@@ -113,9 +113,11 @@ public final class ShadeCatalog {
             new Group(R.string.shade_group_view, "pref_show_grid_key", "pref_peak_method_key", "pref_live_viewfinder_raw_key",
                     "pref_show_afdata_key", "pref_face_detect_mode", "pref_tracking_af_mode")));
 
-    /** Read when the camera session is built: a change restarts the camera (owner's answer 7). */
-    static final Set<String> SESSION_KEYS = new HashSet<>(Arrays.asList("pref_live_viewfinder_raw_key", "pref_wide169_key",
-            "pref_raw_stream_format", "pref_zsl_buffer_count_key", "pref_af_mode_key"));
+    /**
+     * Read when the camera session is built: a change restarts the camera (owner's answer 7). P214g: the hand-written part of
+     * {@link SessionKeys} (the one list; {@link Entry#sessionTime} asks SessionKeys.needsNewSession).
+     */
+    static final Set<String> SESSION_KEYS = SessionKeys.PLAIN;
     /** Free-text rows that hold one number: a slider with the bounds of SettingsNumericRules and this step. */
     private static final Map<String, Float> NUMERIC_TEXT = new HashMap<>();
     static {
@@ -226,6 +228,7 @@ public final class ShadeCatalog {
         @Nullable public int[] valueIcons;
         /** The setting's own icon from the tree when the curated spec has none. */
         Drawable.ConstantState treeIcon;
+        /** P214g: the session reads it when it is built (SessionKeys): a write restarts the camera; the row has the «↻» mark. */
         public boolean sessionTime;
         /** Virtual entries: the CameraUIController path of the write; null for tree keys. */
         @Nullable public SettingType settingType;
@@ -375,7 +378,7 @@ public final class ShadeCatalog {
         if (e.shortTitle == null) e.shortTitle = e.title;
         if (e.icon == 0 && e.treeIcon == null)
             e.icon = e.kind == TOGGLE ? R.drawable.settings_ic_toggle : e.kind == LIST ? R.drawable.settings_ic_list : R.drawable.settings_ic_sliders;
-        e.sessionTime = SESSION_KEYS.contains(e.key);
+        e.sessionTime = SessionKeys.needsNewSession(e.key);
         StringBuilder text = new StringBuilder().append(e.title).append(' ').append(e.shortTitle);
         for (String p : e.path) text.append(' ').append(p);
         if (e.labels != null) for (CharSequence l : e.labels) text.append(' ').append(l);

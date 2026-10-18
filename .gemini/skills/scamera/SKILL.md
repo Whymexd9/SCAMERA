@@ -135,6 +135,10 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
   `pref_sensorconfig_<slot>_tunablekeys`; `vivo.control.forceSensorMode` 5 = 2× ISZ Quad, 7 = 4× ISZ Tetra
   (режим задан модулем, сами не переключаем). Применение: `SensorConfigInjector`, `TunableKeyManager`,
   `VendorTagUtils.applyTunableKeys`.
+- Настройки, которые читает сборка сессии (P214g, `settings/SessionKeys`): поля `@SensorConfig` класса `CaptureController`
+  (тип сессии, OIS), вендорные ключи модуля, `SessionKeys.PLAIN` (16:9, live RAW, формат RAW, ZSL-буфер, AF, «Движение»,
+  low-light boost, аппаратный ремозаик, EIS). Шторка перезапускает камеру, у строк знак «↻»; новый класс с `@SensorConfig` —
+  в `SESSION_CLASSES` или `PER_SHOT_CLASSES` (`SessionKeysTest`). Выход из настроек и так открывает новую сессию.
 - BIN — контекстные бинарники QNN HTP V79, закреплены SHA256 в `ScamNeuralWorker.java`:
   `SCAM_FILES` (CRE `libvivo_nice_cre.so` и зависимости — выравнивание SHDR), `HEX_FILES` (4 .so рантайма QNN).
   Не упаковываются (только сверяются в бандле, `BUNDLE_ONLY`): группа `bundle/` (`tele576` + его QNN), `hexquad-x1/x2`,
