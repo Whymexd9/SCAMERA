@@ -156,6 +156,8 @@
     <!-- Карточка группы в верхней панели: значки склейки и формата. -->
     <string name="bottom_pro">Про</string>
     <string name="bottom_more">Ещё</string>
+    <string name="ev_sun_description">Яркость: потяните вверх или вниз</string>
+    <string name="first_run_hint">Нажмите на кадр — фокус, солнце — яркость</string>
     <string name="topbar_group">Формат и размер фото</string>
     <string name="topbar_torch">Фонарик</string>
     <string name="topbar_motion">Движение</string>

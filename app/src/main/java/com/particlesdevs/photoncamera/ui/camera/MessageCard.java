@@ -54,6 +54,14 @@ public final class MessageCard implements UiMessages.Sink {
         if (!entry.error) view.postDelayed(timeout, MessageLog.durationMs(entry.text));
     }
 
+    /** A hint of its own length ({@code ms}), not kept in the history (SIMPLE_UI: the first-run hint, 4.5 s). */
+    public void showFor(CharSequence text, long ms) {
+        long now = System.currentTimeMillis();
+        display(new MessageLog.Entry(text.toString(), false, 1, now, now));
+        view.removeCallbacks(timeout);
+        view.postDelayed(timeout, ms);
+    }
+
     /** The entry on the card now (tests). */
     MessageLog.Entry showing() {
         return showing;

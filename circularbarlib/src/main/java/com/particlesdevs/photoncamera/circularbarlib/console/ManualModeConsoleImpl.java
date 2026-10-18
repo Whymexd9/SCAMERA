@@ -240,6 +240,38 @@ public class ManualModeConsoleImpl implements ManualModeConsole {
         message(string(R.string.manual_toast_all_auto));
     }
 
+    @Override
+    public float evCompensation() {
+        if (evModel == null || evModel.getCurrentInfo() == null) return 0f;
+        return (float) evModel.getCurrentInfo().value;
+    }
+
+    @Override
+    public float[] evRange() {
+        float lo = 0f, hi = 0f;
+        if (evModel != null) for (com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobItemInfo item : evModel.getKnobInfoList()) {
+            lo = Math.min(lo, (float) item.value);
+            hi = Math.max(hi, (float) item.value);
+        }
+        return new float[]{lo, hi};
+    }
+
+    @Override
+    public boolean evLocked() {
+        return evModel != null && state().evLocked();
+    }
+
+    @Override
+    public void setEvCompensation(float ev) {
+        if (evModel == null || evLocked()) return;
+        com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobItemInfo best = null;
+        for (com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobItemInfo item : evModel.getKnobInfoList())
+            if (best == null || Math.abs(item.value - ev) < Math.abs(best.value - ev)) best = item;
+        if (best == null || best == evModel.getCurrentInfo()) return;
+        evModel.onSelectedKnobItemChanged(null, evModel.getCurrentInfo(), best);
+        onStateChanged();
+    }
+
     /** The EV lock sets in while its ruler is open: the ruler closes. */
     void onStateChanged() {
         if (selectedModel != null && selectedModel == evModel && state().evLocked()) closeKnob();

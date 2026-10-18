@@ -489,7 +489,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         // The model setter is idempotent, so a level the model asked for is not sent again.
         sheet.setOnSheetLevelListener(level -> {
             cameraFragmentViewModel.setSheetLevel(level);
-            if (level != CameraFragmentModel.SHEET_HIDDEN) hideHint();
             // SIMPLE_UI §1: the LUT tray, like the Pro panel, only while the quick sheet is closed
             if (level != CameraFragmentModel.SHEET_HIDDEN && lutTray != null) lutTray.setOpen(false);
         });
@@ -572,44 +571,14 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         }
     };
 
-    /** First-run hint (once ever, owner's answer 11): how to open the shade and move a tile. */
-    private android.widget.TextView hint;
-    private static final String HINT_SHOWN = "ui_shade_hint_shown";
+    /** SIMPLE_UI §1: the first-run hint, once, in the message band for 4.5 s (no floating card over the controls). */
+    private static final String FIRST_RUN_HINT = "ui_first_run_hint_shown";
 
     private void showHintOnce() {
         android.content.SharedPreferences prefs = settingsManager.getDefaultPreferences();
-        if (prefs.getBoolean(HINT_SHOWN, false) || cameraFragmentBinding == null) return;
-        prefs.edit().putBoolean(HINT_SHOWN, true).apply();
-        hint = new android.widget.TextView(requireContext());
-        hint.setText(R.string.shade_hint);
-        hint.setBackgroundResource(R.drawable.shade_card);
-        hint.setTextColor(com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.MUTED);
-        hint.setTextSize(13);
-        hint.setGravity(android.view.Gravity.CENTER);
-        hint.setLineSpacing(0, 1.3f);
-        float density = getResources().getDisplayMetrics().density;
-        hint.setPadding(Math.round(16 * density), Math.round(12 * density), Math.round(16 * density), Math.round(12 * density));
-        hint.setElevation(25 * density);
-        hint.setTag("shade_hint");
-        ConstraintLayout.LayoutParams lp = new ConstraintLayout.LayoutParams(ConstraintLayout.LayoutParams.WRAP_CONTENT, ConstraintLayout.LayoutParams.WRAP_CONTENT);
-        lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
-        lp.bottomToTop = R.id.layout_bottombar;
-        lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
-        lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
-        lp.verticalBias = 0.62f;
-        cameraFragmentBinding.cameraContainer.addView(hint, lp);
-        hint.setAlpha(0f);
-        hint.animate().alpha(1f).setDuration(300).start();
-        hint.postDelayed(this::hideHint, 6000);
-    }
-
-    private void hideHint() {
-        android.widget.TextView view = hint;
-        if (view == null) return;
-        hint = null;
-        view.animate().alpha(0f).setDuration(300).withEndAction(() -> {
-            if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
-        }).start();
+        if (prefs.getBoolean(FIRST_RUN_HINT, false) || cameraFragmentBinding == null || messageCard == null) return;
+        prefs.edit().putBoolean(FIRST_RUN_HINT, true).apply();
+        messageCard.showFor(getString(R.string.first_run_hint), 4500);
     }
 
     private com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeCatalogView catalogView;
@@ -828,6 +797,43 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         manualModeConsole.onResume();
     }
 
+    /**
+     * SIMPLE_UI §1: the brightness sun beside the focus ring - shown with the ring (hidden while EV is locked), its value the
+     * Pro EV's in both directions.
+     */
+    private void attachExposureSun(TouchFocus touchFocus) {
+        if (cameraFragmentBinding == null) return;
+        com.particlesdevs.photoncamera.ui.camera.views.ExposureSunView sun = cameraFragmentBinding.layoutViewfinder.evSun;
+        sun.setListener(ev -> { if (manualModeConsole != null) manualModeConsole.setEvCompensation(ev); });
+        touchFocus.setRingListener(new TouchFocus.RingListener() {
+            @Override
+            public void shown(float cx, float cy, float radius) {
+                if (manualModeConsole == null || manualModeConsole.evLocked()) {
+                    sun.setVisibility(View.GONE);
+                    return;
+                }
+                float[] range = manualModeConsole.evRange();
+                if (!(range[1] > range[0])) {
+                    sun.setVisibility(View.GONE);
+                    return;
+                }
+                sun.setRange(range[0], range[1]);
+                sun.setEv(manualModeConsole.evCompensation());
+                View parent = (View) sun.getParent();
+                sun.placeBeside(cx, cy, radius, parent.getWidth(), parent.getHeight());
+                sun.animate().cancel();
+                sun.setAlpha(1f);
+                sun.setVisibility(View.VISIBLE);
+            }
+
+            @Override
+            public void hidden() {
+                if (sun.isDragging() || sun.getVisibility() != View.VISIBLE) return;
+                sun.animate().alpha(0f).setDuration(150).withEndAction(() -> sun.setVisibility(View.GONE)).start();
+            }
+        });
+    }
+
     private void initTouchFocus() {
         if (cameraFragmentBinding != null && captureController != null) {
             View focusCircle = cameraFragmentBinding.layoutViewfinder.touchFocus;
@@ -837,6 +843,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 if (captureController == null || mCameraUIView == null) return;
                 mTouchFocus = new TouchFocus(captureController,focusCircle,textureView);
                 captureController.mTouchFocus = mTouchFocus;
+                attachExposureSun(mTouchFocus);
                 if (mSubjectFocus != null) mSubjectFocus.release();
                 mSubjectFocus = null;
                 // Paused before this ran: the next resume creates it (it owns a worker thread and the frame sink).

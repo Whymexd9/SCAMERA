@@ -156,6 +156,8 @@
     <!-- Top bar group card (MANUAL_TASK.md §4): the route and format icons; the names are content descriptions and tooltips. -->
     <string name="bottom_pro">Pro</string>
     <string name="bottom_more">More</string>
+    <string name="ev_sun_description">Brightness: drag up or down</string>
+    <string name="first_run_hint">Tap the frame to focus, drag the sun for brightness</string>
     <string name="topbar_group">Format and photo size</string>
     <string name="topbar_torch">Torch</string>
     <string name="topbar_motion">Motion</string>

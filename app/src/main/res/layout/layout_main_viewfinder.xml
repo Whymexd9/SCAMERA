@@ -91,6 +91,15 @@
                 app:layout_constraintStart_toStartOf="@+id/texture"
                 app:layout_constraintEnd_toEndOf="@+id/texture" />
 
+            <!-- SIMPLE_UI §1: the brightness sun beside the focus ring (CameraFragment places it on every tap). -->
+            <com.particlesdevs.photoncamera.ui.camera.views.ExposureSunView
+                android:id="@+id/ev_sun"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="gone"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
             <!-- SIMPLE_UI §1: the LUT pill in the viewfinder's top-left corner (LutTray styles it and opens the tray). -->
             <TextView
                 android:id="@+id/lut_pill"
