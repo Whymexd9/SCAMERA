@@ -12,7 +12,22 @@ public final class LiveRawMeter {
     public float exposure=1, contrast;
     public final float[] multipliers={1,1,1,1};
     private boolean initialized;
-    public void reset() { p10=-1; exposure=1; contrast=0; initialized=false; Arrays.fill(multipliers,1); }
+    /** P212h (A6 = M11): the last frame's own median luminance before any gain (sensor-linear, black 0, white 1); -1 before one. */
+    private float frameP50=-1;
+    public void reset() { p10=-1; exposure=1; contrast=0; initialized=false; frameP50=-1; Arrays.fill(multipliers,1); }
+    /** P212h (A6): the display gain of an automatic frame held to its range (the OPPO own AE's deficit; any gain elsewhere). */
+    static float held(float ae,float lo,float hi) {
+        if(!(hi>=lo))return ae;
+        return Math.max(lo,Math.min(hi,ae));
+    }
+    /**
+     * P212h (A6 = M11): the last frame's median as SceneLuma's display-encoded luma (gamma 1/2.2, ExposurePriority.GAMMA: its
+     * linear() gives the sensor-linear median back, so the software priority loop moves the exposure by the RAW's own ratio);
+     * NaN before a frame.
+     */
+    public double sceneLuma() {
+        return frameP50<0?Double.NaN:Math.pow(Math.max(0,Math.min(1,frameP50)),1/2.2);
+    }
     private static float clamp(float v,float lo,float hi) { return Math.max(lo,Math.min(v,hi)); }
     private static float log2(float v) { return (float)(Math.log(Math.max(v,1e-6))/Math.log(2)); }
     private static float percentile(int[] hist,int total,float fraction) {
@@ -49,6 +64,7 @@ public final class LiveRawMeter {
         }
         if(count==0)return;
         float a=percentile(luminance,count,.1f),b=Math.max(.0001f,percentile(luminance,count,.5f)),c=Math.max(.001f,percentile(highlights,count,.98f));
+        frameP50=b;
         if(p10<0) {p10=a;p50=b;p98=c;} else {p10+=(a-p10)*.15f;p50+=(b-p50)*.15f;p98+=(c-p98)*.15f;}
         float q=1;
         if(f.iso>100) {float t=clamp(log2(f.iso/100f)/Math.max(.001f,log2(Math.max(101,f.maxAnalogIso)/100f)),0,1);q=1-t*t;}
@@ -57,6 +73,7 @@ public final class LiveRawMeter {
         // Protect highlights by default; metadata has already been matched to this RAW.
         if(ae>1 && p98*ae>.8f) {float safe=.8f/p98;ae=safe+(ae-safe)*.33f;}
         if(!f.autoExposure) ae=1; // Do not cancel the user's manual shutter/ISO changes.
+        else ae=held(ae,f.minDisplayGain,f.maxDisplayGain);
         if(!initialized || !f.autoExposure) exposure=ae;
         else if(Math.abs(ae-exposure)/Math.max(.01f,exposure)>.015f)exposure+=(ae-exposure)*.15f;
         float d=(float)(Math.sqrt(Math.max(Math.min(exposure,p98*exposure),0))-Math.sqrt(Math.max(p10*exposure,0)));

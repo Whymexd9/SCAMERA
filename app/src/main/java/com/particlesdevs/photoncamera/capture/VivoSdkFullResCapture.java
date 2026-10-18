@@ -59,6 +59,15 @@ final class VivoSdkFullResCapture {
     private HybridPlan plan;
     /** P198: the N frames of a 50 MP ZSL shot, from the ring before the shutter (empty: a series after the shutter only). */
     private List<ImageFrame> past = java.util.Collections.emptyList();
+    /** P212h (A7 = M14 phase 1a): CONTROL_AE_LOCK on the automatic N stills (scam_dev.txt "vivo_series_ae_lock"). */
+    private boolean lockNormals;
+    /**
+     * P212h (A7 = M14 phase 1b): the ultrashort's exposure from the first delivered N still: its factor (0: the viewfinder's, as set by
+     * {@link #ultrashortLast}), the shortest shutter and the lowest ISO.
+     */
+    private double usFactor;
+    private long usMinNs;
+    private int usMinIso;
 
     VivoSdkFullResCapture(CameraDevice device, CameraCaptureSession session, VivoSdkRawSession sdk,
                          Surface raw, Surface jpeg, ImageSaver saver, Handler handler,
@@ -215,6 +224,59 @@ final class VivoSdkFullResCapture {
     }
 
     /**
+     * P212h (A7 = M14 phase 1a, scam_dev.txt "vivo_series_ae_lock", default off): the automatic N stills of a native series carry
+     * CONTROL_AE_LOCK (the HAL holds the exposure it converged to across the series) instead of AE ON with the lock off; the caller sets
+     * it only when the viewfinder AE is CONVERGED at the press. Whether a vendor mode honours the lock across P208's switch to the
+     * 200 MP mode is unknown: the series' spread of exposure x ISO is logged at its end. Before {@link #start}.
+     */
+    void lockNormals(boolean on) {
+        lockNormals = on && profile.nativeRoute();
+    }
+
+    /**
+     * P212h (A7 = M14 phase 1b, scam_dev.txt "vivo_still_us_from_n", default off): on P208's still-only route the viewfinder is the
+     * normal mode, so {@link #ultrashortLast}'s exposure (the viewfinder's over {@code factor}) is not 1 / factor of the N the 200 MP
+     * mode delivers. With 4 stills or more the last one is built after the first has completed (NATIVE_IN_FLIGHT 3, SerialRawCapture
+     * submits lazily), so it takes the first delivered N's shutter over {@code factor} at that N's ISO (ultrashortFrom). Count, order
+     * and mode stay. Before {@link #start}.
+     */
+    void ultrashortFromFirstN(double factor, long minNs, int minIso) {
+        if (!(factor > 1) || !profile.nativeRoute()) return;
+        usFactor = factor;
+        usMinNs = Math.max(1L, minNs);
+        usMinIso = Math.max(1, minIso);
+    }
+
+    /**
+     * P212h (phase 1b): the ultrashort {shutter ns, ISO} from an N still at {@code nNs} / {@code nIso}: the N's shutter over
+     * {@code factor} at the N's ISO; below {@code minNs} the ISO takes the rest (not below {@code minIso}). Null for no N.
+     */
+    @androidx.annotation.Nullable
+    static long[] ultrashortFrom(long nNs, int nIso, double factor, long minNs, int minIso) {
+        if (nNs <= 0 || nIso <= 0 || !(factor > 1)) return null;
+        double ns = nNs / factor;
+        long iso = nIso;
+        if (ns < minNs) {
+            iso = Math.max(Math.max(1, minIso), Math.round(nIso * ns / minNs));
+            ns = minNs;
+        }
+        return new long[]{Math.round(ns), iso};
+    }
+
+    /** P212h (phase 1a): the spread (max / min - 1) of exposure x ISO over the N stills; NaN for fewer than 2. */
+    static double exposureSpread(double[] products, int n) {
+        double lo = Double.POSITIVE_INFINITY, hi = 0;
+        int k = 0;
+        for (int i = 0; i < n; i++) {
+            if (!(products[i] > 0)) continue;
+            lo = Math.min(lo, products[i]);
+            hi = Math.max(hi, products[i]);
+            k++;
+        }
+        return k < 2 ? Double.NaN : hi / lo - 1;
+    }
+
+    /**
      * P201: the N stills of a series after the shutter at a hand-set exposure (the ultrashort / bracketed ones keep theirs).
      * Before {@link #start}.
      */
@@ -289,6 +351,11 @@ final class VivoSdkFullResCapture {
                 builder.set(CaptureRequest.CONTROL_AE_REGIONS, preview.get(CaptureRequest.CONTROL_AE_REGIONS));
             }
             copyManual(builder);
+            // P212h (A7 phase 1a): the automatic N stills hold the exposure the viewfinder AE converged to
+            if (lockNormals && roles[index] == ImageFrame.CaptureRole.NORMAL && manualNs[index] <= 0)
+                builder.set(CaptureRequest.CONTROL_AE_LOCK, true);
+            // P212h (A7 phase 1b): the last still's ultrashort from the first N the mode delivered
+            if (index == count - 1) retargetUltrashort(index);
             if (manualNs[index] > 0 && manualIso[index] > 0) {
                 // P179: the Bento frame: manual exposure (the preview's over the ultrashort factor), the same sensitivity; P198 a frame
                 // of the Hybrid plan at its exposure (on the OPPO over the mode's own AE-off exposure, its frame time kept long enough)
@@ -351,6 +418,35 @@ final class VivoSdkFullResCapture {
         }
     }
 
+    /** P212h (A7 phase 1b): the first delivered N still's result (null: none yet). */
+    @androidx.annotation.Nullable
+    private TotalCaptureResult firstNormal() {
+        for (TotalCaptureResult r : results) {
+            final Object tag = r.getRequest() == null ? null : r.getRequest().getTag();
+            if (tag instanceof ImageFrame.ScamCaptureTag && ((ImageFrame.ScamCaptureTag) tag).role == ImageFrame.CaptureRole.NORMAL) return r;
+        }
+        return null;
+    }
+
+    /** P212h (A7 phase 1b): the ultrashort still {@code index} at 1 / factor of the first delivered N (ultrashortFromFirstN). */
+    private void retargetUltrashort(int index) {
+        if (!(usFactor > 1) || count < 4 || roles[index] != ImageFrame.CaptureRole.EXTRA_SHORT || manualNs[index] <= 0) return;
+        final TotalCaptureResult n = firstNormal();
+        final Long nNs = n == null ? null : n.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        final Integer nIso = n == null ? null : n.get(CaptureResult.SENSOR_SENSITIVITY);
+        final long[] us = nNs == null || nIso == null ? null : ultrashortFrom(nNs, nIso, usFactor, usMinNs, usMinIso);
+        if (us == null) {
+            com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", "200 MP still-only: no N result before the ultrashort still, the viewfinder's "
+                    + manualNs[index] + " ns ISO " + manualIso[index] + " kept");
+            return;
+        }
+        com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT,
+                "200 MP still-only: ultrashort from the first N (%.3f ms ISO %d) over %.1f: %.3f ms ISO %d (the viewfinder's %.3f ms ISO %d)",
+                nNs / 1e6, nIso, usFactor, us[0] / 1e6, us[1], manualNs[index] / 1e6, manualIso[index]));
+        manualNs[index] = us[0];
+        manualIso[index] = (int) us[1];
+    }
+
     /**
      * P201: a hand-set white balance (AWB off and its gains / transform) and focus (AF off and its distance) of the viewfinder
      * request go onto every still: the still template carries the automatic ones.
@@ -401,6 +497,7 @@ final class VivoSdkFullResCapture {
                 exposures.put(result.get(CaptureResult.SENSOR_TIMESTAMP),
                         result.get(CaptureResult.SENSOR_EXPOSURE_TIME) / 1e9 * result.get(CaptureResult.SENSOR_SENSITIVITY));
             }
+            if (profile.nativeRoute() && past.isEmpty() && plan == null) logNormalSpread(); // P212h: a PSL series of AE-on N
             List<ImageFrame> unmatched = sequence.bindAndValidate(saver.snapshotFrames());
             if (zsl) {
                 if (!unmatched.isEmpty()) saver.removeFrames(unmatched);
@@ -411,6 +508,23 @@ final class VivoSdkFullResCapture {
         } catch (RuntimeException failure) {
             fail(failure.getMessage());
         }
+    }
+
+    /** P212h (A7 phase 1a): the series' spread of exposure x ISO over its N stills after the shutter (log only). */
+    private void logNormalSpread() {
+        final double[] products = new double[results.size()];
+        int n = 0;
+        for (TotalCaptureResult r : results) {
+            final Object tag = r.getRequest() == null ? null : r.getRequest().getTag();
+            if (!(tag instanceof ImageFrame.ScamCaptureTag) || ((ImageFrame.ScamCaptureTag) tag).role != ImageFrame.CaptureRole.NORMAL) continue;
+            final Long ns = r.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+            final Integer iso = r.get(CaptureResult.SENSOR_SENSITIVITY);
+            if (ns != null && iso != null) products[n++] = (double) ns * iso;
+        }
+        final double spread = exposureSpread(products, n);
+        if (!Double.isNaN(spread))
+            com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT,
+                    "native series: %d N stills, exposure x ISO spread %.2f %% (AE lock %s)", n, spread * 100, lockNormals ? "on" : "off"));
     }
 
     private void fail(String reason) {

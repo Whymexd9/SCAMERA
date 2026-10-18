@@ -186,6 +186,11 @@ public final class ArkStats extends Node {
             ArkAe.Settings settings = ArkTone.settings();
             settings.noiseS = pipeline.noiseS;
             settings.noiseO = pipeline.noiseO;
+            // P212h (A5 = M5): the gain clamp sees the merged image's noise (N_eff of the merge's frame map), the denoisers keep theirs
+            final String clamp = ArkNoiseClamp.apply(settings, pipeline.mParameters.fullResRequested > 0, legacy,
+                    ScamHybridBurst.lastEffectiveFrames, WorkingTexture.mSize.x, WorkingTexture.mSize.y,
+                    ScamHybridBurst.lastEffectiveMedian, ScamHybridBurst.lastNormals);
+            if (clamp != null) Log.i("SCAM_PIPELINE", clamp);
             settings.sat *= ArkTone.ccmSatComp(pipeline.mParameters);
             ArkAe.Stats gpu = legacy || ScamDiagnostics.active() ? null : ArkAeGpu.stats(glProg, st.low, settings.metering);
             glProg.closed = true;

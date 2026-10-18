@@ -58,4 +58,50 @@ public class OppoTunedColorTest {
         }
         assertNull("no table: the HAL's matrix stays", OppoTunedColor.forwardAt(4.0f, 5000f));
     }
+
+    /**
+     * P212h (A6 = M11): the native viewfinder's matrix is the photo's. Parameters' OPPO tuned branch for a white point wp renders camera
+     * RGB with proPhotoToSRGB x sXYZtoProPhoto x calculateCameraToXYZD50Transform(FM, FM, I, I, wp) (FM the normalised tuned forward
+     * matrix at estimateCct(wp)); the viewfinder applies the gains 1 / wp, then previewMatrix: the same matrix up to the photo's
+     * scale max(wp). Golden numbers: the main camera's 6500 K neutral gives (almost) its tuning CCM, every row keeps white.
+     */
+    @Test
+    public void thePreviewMatrixIsThePhotosMatrixForTheSameNeutral() {
+        final float[] identity = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+        for (float f : FOCALS) {
+            for (float ln = -1.4f; ln <= 1.6f; ln += 0.2f) {
+                final float[] wp = neutral(ln);
+                final float[] preview = OppoTunedColor.previewMatrix(f, wp, null);
+                assertNotNull(preview);
+                final float cct = OppoTunedColor.estimateCct(f, wp);
+                final float[] fm = OppoTunedColor.forwardAt(f, cct);
+                Converter.normalizeFM(fm);
+                final float[] sensorToXyz = new float[9], sensorToProPhoto = new float[9], proPhotoToSrgb = new float[9], photo = new float[9];
+                Converter.calculateCameraToXYZD50Transform(fm, fm.clone(), identity, identity, wp, 0.5, sensorToXyz);
+                Converter.multiply(Converter.sXYZtoProPhoto, sensorToXyz, sensorToProPhoto);
+                Converter.multiply(Converter.sXYZtoSRGB, Converter.sProPhotoToXYZ, proPhotoToSrgb);
+                Converter.multiply(proPhotoToSrgb, sensorToProPhoto, photo);
+                final float scale = Math.max(wp[0], Math.max(wp[1], wp[2]));
+                for (int r = 0; r < 3; r++) {
+                    float sum = 0f;
+                    for (int c = 0; c < 3; c++) {
+                        // the viewfinder: preview x diag(1 / wp); the photo: x max(wp)
+                        assertEquals("focal " + f + " ln " + ln + " [" + r + "][" + c + "]",
+                                photo[r * 3 + c] / scale, preview[r * 3 + c] / wp[c], 2e-4f * Math.max(1f, Math.abs(photo[r * 3 + c] / scale)));
+                        sum += preview[r * 3 + c];
+                    }
+                    assertEquals("white row " + r, 1f, sum, 3e-3f);
+                }
+            }
+        }
+        // the main camera at its 6500 K neutral: the tuning's CCM between 6300 and 7500 K (sRGB -> XYZ D50 -> sRGB nearly cancels)
+        final float[] main = OppoTunedColor.previewMatrix(8.67f, neutral(-0.696f), null);
+        assertEquals(1.6437f, main[0], 0.01f);
+        assertEquals(-0.6348f, main[1], 0.01f);
+        assertEquals(1.3640f, main[4], 0.01f);
+        assertEquals(1.5495f, main[8], 0.01f);
+        assertNull("no table row", OppoTunedColor.previewMatrix(4.0f, neutral(0f), null));
+        assertNull("no white point", OppoTunedColor.previewMatrix(8.67f, new float[]{Float.NaN, 1f, 0.5f}, null));
+        assertNull(OppoTunedColor.previewMatrix(8.67f, new float[]{0f, 1f, 0.5f}, null));
+    }
 }

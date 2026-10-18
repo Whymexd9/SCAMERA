@@ -254,6 +254,36 @@ public final class OppoTunedColor {
         return out;
     }
 
+    /**
+     * P212h (A6 = M11): the photo's colour matrix for the X7 Ultra's native FULLRES viewfinder, whose result transform is the identity
+     * (the plain session's is too, so nothing fills it): white-balanced camera RGB -> linear sRGB, row-major, at the colour
+     * temperature of {@code neutral} [R/G, 1, B/G] - exactly Parameters' OPPO tuned branch for that white point (the forward matrix
+     * at estimateCct, normalised, then XYZ D50 -> ProPhoto -> XYZ -> sRGB; the photo's diagonal max(wp) / wp only scales it). Null
+     * for a sensor without a TABLE row or a neutral that is no white point.
+     */
+    @androidx.annotation.Nullable
+    public static float[] previewMatrix(CameraCharacteristics characteristics, float[] neutral, @androidx.annotation.Nullable String camera) {
+        if (characteristics == null) return null;
+        float[] focal = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+        return focal == null || focal.length == 0 ? null : previewMatrix(focal[0], neutral, camera);
+    }
+
+    @androidx.annotation.Nullable
+    static float[] previewMatrix(float focal, float[] neutral, @androidx.annotation.Nullable String camera) {
+        if (neutral == null || neutral.length < 3 || !(neutral[0] > 0f) || !(neutral[1] > 0f) || !(neutral[2] > 0f)
+                || Float.isInfinite(neutral[0]) || Float.isInfinite(neutral[2])) return null;
+        final float cct = estimateCct(neutral, anchor(focal, camera));
+        final float[] forward = forwardAt(focal, cct);
+        if (forward == null) return null;
+        Converter.normalizeFM(forward);
+        final float[] toProPhoto = new float[9], toXyz = new float[9], toSrgb = new float[9], out = new float[9];
+        Converter.multiply(Converter.sXYZtoProPhoto, forward, toProPhoto);
+        Converter.multiply(Converter.sProPhotoToXYZ, toProPhoto, toXyz);
+        Converter.multiply(Converter.sXYZtoSRGB, toXyz, out);
+        for (float v : out) if (!Float.isFinite(v)) return null;
+        return out;
+    }
+
     private static float[][] nodesOf(Object[] row) {
         return (float[][]) row[1];
     }

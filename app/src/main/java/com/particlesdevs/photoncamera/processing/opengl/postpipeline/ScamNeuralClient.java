@@ -276,10 +276,13 @@ public final class ScamNeuralClient {
         final long[] lastReportWriteMs={startMs};
         // P212d: the ultrashort frames' row profiles (the worker's P197 row check) for the flicker vote, whatever the report's length
         final java.util.List<String> rowProfiles=new java.util.ArrayList<>();
+        // P212h (A5 = M5): the frames the worker's effective-map code 64 stands for (its median coverage), whatever the report's length
+        final float[] effMedian={Float.NaN};
         Consumer<String> log=line->{
             synchronized(report){
                 if(report.length()<128000)report.append(line).append('\n');
                 if(line.indexOf(" row profile ")>0&&line.indexOf(" bands G ")>0&&rowProfiles.size()<16)rowProfiles.add(line);
+                if(line.indexOf(EFFECTIVE_MAP_LINE)>=0)effMedian[0]=reportNumber(line,EFFECTIVE_MAP_LINE,"median frames=",Float.NaN);
                 long now=android.os.SystemClock.elapsedRealtime();
                 // Keep every line in memory; batch disk commits so the reader
                 // cannot stall the native stdout pipe on frequent progress logs.
@@ -480,6 +483,7 @@ public final class ScamNeuralClient {
             if(layout==null)throw new IOException(Lang.t("Неверный размер нейрорезультата","Wrong neural result size"));
             final long dngBytes=layout[0],effBytes=layout[1],clipBytes=layout[2];
             {ScamHybridBurst.lastMergedDng=null;ScamHybridBurst.lastEffectiveFrames=null;ScamRgb.dropClipFlags();
+                synchronized(report){ScamHybridBurst.lastEffectiveMedian=effMedian[0];}
                 ScamHybridBurst.lastBentoApplied=report.indexOf("HYBRID BENTO: applied")>=0;
                 ScamHybridBurst.lastBentoFactor=reportNumber(report,"HYBRID BENTO: applied","factor=",1f);
                 ScamHybridBurst.lastMergedDngHeadroom=Math.max(1f,reportNumber(report,"HYBRID DNG:","headroom=",1f));
@@ -586,6 +590,8 @@ public final class ScamNeuralClient {
     public static volatile java.util.List<String> lastRowProfiles=java.util.Collections.emptyList();
     /** P27: text put at the top of the next merge job's report (the failed first attempt of a retry). */
     public static volatile String carryReport;
+    /** P212h (A5): the worker's report line of the effective-frame map ("... median frames=F code scale=K": code 64 = F frames). */
+    static final String EFFECTIVE_MAP_LINE="HYBRID EFFECTIVE MAP:";
 
     /** Number after `key=` on the first report line containing `line` (worker report), or `fallback`. */
     static float reportNumber(CharSequence rep,String line,String key,float fallback){

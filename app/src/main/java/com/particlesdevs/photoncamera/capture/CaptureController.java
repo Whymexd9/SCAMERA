@@ -4298,6 +4298,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final boolean probe = isNativeIsoProbe(result);
             if (!probe) publishLiveRawFrame(img, result);
             if (!probe) nativeExposure(img, result);
+            vivoAeAudit(img, result); // P212h: the vivo HAL AE against our RAW meter (log only)
             if (mTextureView != null) mTextureView.requestRender();
             // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
             // P187: not while a 200 MP merge runs (its plain session takes no shot)
@@ -4961,6 +4962,57 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
+    /** P212h (A7 = M14 phase 0): the vivo AE audit's frame count and its second's samples (camera thread). */
+    private final VivoAeAudit mVivoAeAudit = new VivoAeAudit();
+
+    /**
+     * P212h (A7 = M14 phase 0, log only): every 8th viewfinder RAW of a vivo session - the native FULLRES mosaic, an ISZ module's, P208's
+     * still-only viewfinder, the plain Bayer stream - metered as the OPPO own AE meters (meter2 at the stream's colour block) and logged
+     * once a second beside the HAL's exposure (VivoAeAudit). Only a plain 16-bit RAW, never under a shot.
+     */
+    private void vivoAeAudit(Image img, @Nullable TotalCaptureResult result) {
+        if (img == null || result == null || img.getFormat() != ImageFormat.RAW_SENSOR || mPayloadBad || !mPreviewLayouts.isEmpty()
+                || VivoSdkFullRes.oppo() || mVivoSdkCapture != null || burst || mShotInProgress || shotInFlight()
+                || !VivoAeAudit.wanted() || !mVivoAeAudit.due()) return;
+        try {
+            final Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+            final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+            if (exposure == null || iso == null || exposure <= 0 || iso <= 0) return;
+            CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
+            if (c == null) c = mCameraCharacteristics;
+            final String kind;
+            final int block;
+            if (nativeVivoFullRes() && !stillOnlyFullRes()) {
+                kind = "native";
+                block = Math.max(1, VivoSdkFullRes.profile(mVivoSdkCameraId).nativeBlock);
+            } else {
+                final int stream = com.particlesdevs.photoncamera.processing.MosaicStream.block();
+                block = Math.max(1, stream);
+                kind = stillOnlyFullRes() ? "still-only viewfinder" : stream > 1 ? "isz" : "plain";
+            }
+            int cfa = mLiveCfaPattern;
+            if (cfa < 0) {
+                Integer arrangement = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
+                cfa = arrangement == null ? 0 : arrangement;
+            }
+            if (cfa > 3) return;
+            final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
+                    com.particlesdevs.photoncamera.processing.RawLevels.current(c, result);
+            float[] neutral = null;
+            final android.util.Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
+            if (n != null && n.length >= 3) neutral = new float[]{n[0].floatValue(), n[1].floatValue(), n[2].floatValue()};
+            final Image.Plane plane = img.getPlanes()[0];
+            final NativeRawExposure.Metered m = NativeRawExposure.meter2(plane.getBuffer(), img.getWidth(), img.getHeight(),
+                    plane.getRowStride(), cfa, block, levels.black, levels.white, meterSetup(c, result, neutral));
+            if (m == null) return;
+            final String line = mVivoAeAudit.add(physicalID, kind, block, m.p50, m.p98, m.peak, m.clip, m.shaded, exposure, iso,
+                    result.get(CaptureResult.CONTROL_AE_STATE), nativeAeEv(c), android.os.SystemClock.elapsedRealtime());
+            if (line != null) Log.i("SCAM_AE", line);
+        } catch (RuntimeException e) {
+            Log.d("SCAM_AE", "vivo AE audit: " + e);
+        }
+    }
+
     /** P212a: the native AE's ISO probe frame (its request carries NATIVE_ISO_PROBE). */
     private static boolean isNativeIsoProbe(@Nullable TotalCaptureResult result) {
         final CaptureRequest request = result == null ? null : result.getRequest();
@@ -5053,6 +5105,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if(overrideBlack>=0&&overrideBlack<white)java.util.Arrays.fill(black,overrideBlack);
             float[] dcpMatrix = com.particlesdevs.photoncamera.processing.color.DcpProfiles.previewMatrix(gains);
             if (dcpMatrix != null) ccm = dcpMatrix;
+            // P212h (A6 = M11): a native FULLRES viewfinder whose result transform is the identity (the X7 Ultra's, a vivo mosaic
+            // result's) shows the photo's matrix at its neutral (NativeViewfinder; scam_dev.txt "vf_native_ccm 0": the identity)
+            else if (nativeVivoFullRes() && com.particlesdevs.photoncamera.processing.color.OplusCcm.identity(ccm)
+                    && PreferenceKeys.scamDevSwitch("vf_native_ccm", true)) {
+                final float[] photo = nativeViewfinderMatrix(c, colorResult, gains);
+                if (photo != null) ccm = photo;
+            }
             float[] shading=null;int sw=1,sh=1;
             android.hardware.camera2.params.LensShadingMap map=colorResult==null?null:colorResult.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP);
             final boolean lscSkipped=com.particlesdevs.photoncamera.processing.render.Parameters.rawShadingAlreadyApplied(c);
@@ -5092,6 +5151,25 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 int count=0;for(android.util.Pair<Double,Double> n:noiseProfile)if(n!=null&&n.first!=null&&n.second!=null){shotNoise+=n.first;readNoise+=n.second;count++;}
                 if(count>0){shotNoise/=count;readNoise/=count;}
             }
+            // P110: the «Движение» shutter ceiling runs AE off for the camera AE: still the automatic rendering
+            boolean automatic = !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE))
+                    || paramController.motionCeilingActive();
+            // P212h (A6 = M11): the OPPO native results say AE off (its own AE): the display gain covers the exposure the mode cannot
+            // deliver (the own AE's deficit), never a hand-set one (NativeViewfinder; scam_dev.txt "vf_native_gain")
+            float minGain = 0f, maxGain = Float.POSITIVE_INFINITY;
+            final NativeRawExposure nativeAe = mNativeAe;
+            final boolean ownAe = nativeAe != null && nativeVivoFullRes() && VivoSdkFullRes.oppo();
+            if (!automatic && ownAe) {
+                final float[] range = NativeViewfinder.displayGain((int) PreferenceKeys.scamDevNumber("vf_native_gain", 1f),
+                        nativeAe.manual(), nativeAe.deficitEv());
+                if (range != null) {
+                    automatic = true;
+                    minGain = range[0];
+                    maxGain = range[1];
+                }
+            }
+            // P212h: the frame's median is the shutter / ISO priority's SceneLuma, but not where the own AE meters the other value
+            final boolean sceneLuma = !ownAe && PreferenceKeys.scamDevSwitch("vf_raw_scene_luma", true);
             LiveRawFrame.publish(plane.getBuffer(), img.getWidth(), img.getHeight(),
                     readStride(img), cfa, white, black, gains, ccm,shading,sw,sh,crop,
                     // P108: the Pixel's full-resolution RAW is Quad-Bayer (measured block 2), binned for the viewfinder
@@ -5102,14 +5180,71 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             ? com.particlesdevs.photoncamera.processing.MosaicStream.block() : PreferenceKeys.mosaicBlock(),
                     colorResult.get(CaptureResult.SENSOR_SENSITIVITY),
                     c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY),
-                    // P110: the «Движение» shutter ceiling runs AE off for the camera AE: still the automatic rendering
-                    !Integer.valueOf(CaptureRequest.CONTROL_AE_MODE_OFF).equals(colorResult.get(CaptureResult.CONTROL_AE_MODE))
-                            || paramController.motionCeilingActive(),shotNoise,readNoise,
-                    readFormat(img));
+                    automatic,shotNoise,readNoise,
+                    readFormat(img), minGain, maxGain, sceneLuma);
             if (mTextureView != null) mTextureView.requestRender();
         } catch (Exception e) {
             Log.w(TAG, "publishLiveRawFrame: " + e.getMessage());
         }
+    }
+
+    /** P212h (A6): the camera, neutral (ln r, ln b), matrix (column-major, null: none) and source of the last native viewfinder matrix. */
+    private String mVfCcmCamera;
+    private float mVfCcmLnR = Float.NaN, mVfCcmLnB = Float.NaN;
+    @Nullable private float[] mVfCcm;
+    @Nullable private String mVfCcmHow;
+
+    /**
+     * P212h (A6 = M11): the photo's colour matrix for a native FULLRES viewfinder frame with an identity transform, column-major as the
+     * viewfinder takes it, at the frame's neutral (the inverse of its white-balance gains, which the OPPO session fills with its own):
+     * the X7 Ultra's tuned matrix (OppoTunedColor.previewMatrix, the photo's math), else the camera's plain-session matrix at that
+     * light (PlainColourMemory, as a mosaic photo without an ISP matrix), else on OPPO the frame's com.oplus.custom.ccm. Null: none
+     * (the identity stays). Recomputed when the neutral moves by more than 0.01 ln; a change of source is logged once.
+     */
+    @Nullable
+    private float[] nativeViewfinderMatrix(@Nullable CameraCharacteristics c, @Nullable CaptureResult result, float[] gains) {
+        if (c == null || gains == null || !(gains[0] > 0f) || !(gains[1] > 0f) || !(gains[2] > 0f)) return null;
+        final float[] neutral = {gains[1] / gains[0], 1f, gains[1] / gains[2]};
+        final float lnR = (float) Math.log(neutral[0]), lnB = (float) Math.log(neutral[2]);
+        final String camera = physicalID;
+        if (camera.equals(mVfCcmCamera) && !NativeViewfinder.moved(mVfCcmLnR, mVfCcmLnB, lnR, lnB)) return mVfCcm;
+        float[] rowMajor = null;
+        String how = null;
+        try {
+            if (VivoSdkFullRes.oppo() && com.particlesdevs.photoncamera.processing.render.OppoTunedColor.applies()) {
+                rowMajor = com.particlesdevs.photoncamera.processing.render.OppoTunedColor.previewMatrix(c, neutral, camera);
+                if (rowMajor != null) how = "the OPPO tuned matrix";
+            }
+            if (rowMajor == null) {
+                final com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup table =
+                        com.particlesdevs.photoncamera.processing.color.PlainColourMemory.lookup(camera, neutral);
+                if (table != null) {
+                    rowMajor = table.ccm;
+                    how = "the plain-session matrix";
+                }
+            }
+            if (rowMajor == null && VivoSdkFullRes.oppo() && result != null) {
+                final float[] oplus = com.particlesdevs.photoncamera.processing.color.OplusCcm.parse(result.get(new CaptureResult.Key<>(
+                        com.particlesdevs.photoncamera.processing.color.OplusCcm.TAG_NAME, byte[].class)));
+                if (oplus != null && !com.particlesdevs.photoncamera.processing.color.OplusCcm.identity(oplus)) {
+                    rowMajor = oplus;
+                    how = "the frame's OPPO ISP matrix";
+                }
+            }
+        } catch (RuntimeException e) {
+            rowMajor = null;
+            how = null;
+        }
+        mVfCcmCamera = camera;
+        mVfCcmLnR = lnR;
+        mVfCcmLnB = lnB;
+        mVfCcm = rowMajor == null ? null : NativeViewfinder.columnMajor(rowMajor);
+        if (!Objects.equals(how, mVfCcmHow)) {
+            mVfCcmHow = how;
+            Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT, "native viewfinder colour camera %s: %s (neutral %.3f / %.3f)", camera,
+                    how == null ? "the identity (no matrix for this light)" : how, neutral[0], neutral[2]));
+        }
+        return mVfCcm;
     }
 
     /**
@@ -6176,7 +6311,24 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 capture.ultrashortLast(es, iso);
                 Log.i("SCAM_CAPTURE", (hugeSeries ? "200 MP: " : "50 MP: ") + (count - 1) + " N + 1 ultrashort " + es + " ns ISO " + iso
                         + " (N " + exposure + " ns; " + count + " of " + requested + " frames asked)");
+                // P212h (A7 = M14 phase 1b, scam_dev.txt "vivo_still_us_from_n", default off): P208's still-only viewfinder is the
+                // normal mode; the ultrashort follows the first N the 200 MP mode delivers instead (from 4 stills)
+                if (stillOnlyFullRes() && !VivoSdkFullRes.oppo() && PreferenceKeys.scamDevSwitch("vivo_still_us_from_n", false)) {
+                    final android.util.Range<Integer> isoRange = characteristics == null ? null
+                            : characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+                    capture.ultrashortFromFirstN(HybridPlan.ultrashortFactor(), ULTRASHORT_MIN_NS, isoRange == null ? 1 : isoRange.getLower());
+                }
             }
+        }
+        // P212h (A7 = M14 phase 1a, scam_dev.txt "vivo_series_ae_lock", default off): a vivo 200 MP PSL series holds the exposure the
+        // viewfinder AE converged to on its automatic N stills (AE lock); not converged at the press: AE on as before
+        if (hugeSeries && zsl == null && !VivoSdkFullRes.oppo() && PreferenceKeys.scamDevSwitch("vivo_series_ae_lock", false)) {
+            final CaptureResult latest = mPreviewCaptureResult;
+            final Integer aeState = latest == null ? null : latest.get(CaptureResult.CONTROL_AE_STATE);
+            final boolean converged = aeState != null && aeState == CaptureResult.CONTROL_AE_STATE_CONVERGED;
+            capture.lockNormals(converged);
+            Log.i("SCAM_CAPTURE", "200 MP series: " + (converged ? "AE lock on the N stills (the viewfinder AE converged)"
+                    : "AE on, no lock (the viewfinder AE state " + aeState + " at the press)"));
         }
         mVivoSdkCapture = capture;
         mInFlightRescue = () -> listener.failed(Lang.t("Серия SDK RAW прервана", "SDK RAW series interrupted"));
