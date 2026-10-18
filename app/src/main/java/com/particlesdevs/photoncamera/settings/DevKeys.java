@@ -149,6 +149,9 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_la_stream", null, Lang.t("F6 полосами вместе со склейкой (0 — сначала всё поле)", "F6 in bands alongside the merge (0: the whole field first)")));
         k.add(n(merge, "hybrid_la_scam", null, Lang.t("Понижение приоритета потоков F6", "Lower priority of the F6 threads")));
         k.add(s(merge, "hybrid_clip_flags", true, Lang.t("Флаги клипа каналов от воркера для восстановления светов", "The worker's channel clip flags for the highlight recovery")));
+        // P220: WorkerWatchdog
+        k.add(n(merge, "worker_watchdog", "2", Lang.t("Сторож воркера склейки: нет хода дольше max(90 с, 4× самый долгий шаг) — 2: воркер останавливается (без повтора, если он ждал GPU), 1: только строка в логе, 0: выкл (ждать до 14 мин)",
+                "Merge worker watchdog: no progress for longer than max(90 s, 4x the slowest step) - 2: the worker is stopped (no retry when it waited for the GPU), 1: a log line only, 0: off (wait up to 14 min)")));
         // processing
         k.add(n(post, "post_priority", null, Lang.t("Приоритет потока обработки (nice; пусто — не менять)", "Priority of the processing thread (nice; empty: unchanged)")));
         k.add(n(post, "gpu_low_priority", "1", Lang.t("Низкий приоритет GPU-контекста обработки (0 — обычный)", "Low priority of the processing GPU context (0: normal)")));

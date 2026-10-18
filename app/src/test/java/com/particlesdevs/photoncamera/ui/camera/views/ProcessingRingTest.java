@@ -96,4 +96,99 @@ public class ProcessingRingTest {
         frames(ring, 80);
         assertFalse(ring.isRunning());
     }
+
+    @Test
+    public void theMeasuredShareMovesOnForOneHeartbeatAtMost() {
+        assertEquals(.3f, ProcessingRing.byMeasure(.3f, 1e-4f, 0), 1e-6f);
+        assertEquals(.5f, ProcessingRing.byMeasure(.3f, 1e-4f, 2000), 1e-6f);
+        assertEquals("one heartbeat ahead at most", .8f, ProcessingRing.byMeasure(.3f, 1e-4f, 60000), 1e-6f);
+        assertEquals("never past the merge's end", 1f, ProcessingRing.byMeasure(.9f, 1e-3f, 5000), 0f);
+        assertEquals("speed unknown: where it was measured", .4f, ProcessingRing.byMeasure(.4f, 0f, 4000), 0f);
+    }
+
+    /**
+     * P220: a large shot creeps only to the merge's start until its merge reports, the worker's measured progress then carries
+     * the ring to the merged milestone (moving on at the measured speed for one heartbeat, holding when the worker is slower
+     * than that, never back), the rest creeps on after the milestone, the end closes it; a late heartbeat changes nothing.
+     */
+    @Test
+    public void aLargeShotFollowsItsMeasuredMergeAndNeverGoesBack() {
+        ProcessingRing ring = ring();
+        ring.start();
+        ring.setLarge();
+        frames(ring, 190);                       // ~3 s of preparation
+        assertTrue("short of the merge's start: " + ring.shown(), ring.shown() > 0f && ring.shown() <= ProcessingRing.MERGE_FROM);
+        ring.setMeasured(0f);                    // the first heartbeat (5 s into the merge)
+        frames(ring, 60);
+        assertEquals(ProcessingRing.MERGE_FROM, ring.shown(), .01f);
+        frames(ring, 252);                       // 5 s later the next one: a fifth of the merge done
+        ring.setMeasured(.2f);
+        frames(ring, 60);
+        final float at = ProcessingRing.MERGE_FROM + (ProcessingRing.MERGED - ProcessingRing.MERGE_FROM) * .24f; // + 1 s at the speed
+        assertEquals(at, ring.shown(), .01f);
+        frames(ring, 625);                       // no heartbeat for 10 s: one heartbeat's lead, then it holds
+        final float held = ring.shown();
+        assertEquals(ProcessingRing.MERGE_FROM + (ProcessingRing.MERGED - ProcessingRing.MERGE_FROM) * .4f, held, .01f);
+        ring.setMeasured(.3f);                   // slower than the lead: the ring holds, never back
+        frames(ring, 120);
+        assertTrue("never back: " + ring.shown() + " < " + held, ring.shown() >= held - 1e-6f);
+        assertTrue(ring.shown() < held + .01f);
+        ring.setMeasured(1f);
+        frames(ring, 60);
+        assertEquals(ProcessingRing.MERGED, ring.shown(), .01f);
+        ring.setStage(ProcessingRing.MERGED);    // merged: the rest creeps on
+        frames(ring, 120);
+        final float post = ring.shown();
+        assertTrue("on after the merge: " + post, post > ProcessingRing.MERGED + .02f && post < ProcessingRing.TIME_CAP);
+        ring.setMeasured(.1f);                   // a heartbeat after the merge: nothing
+        frames(ring, 5);
+        assertTrue(ring.shown() >= post);
+        ring.setStage(.85f);
+        frames(ring, 60);
+        assertTrue(ring.shown() > .8f && ring.shown() < 1f);
+        ring.finish();
+        frames(ring, 80);
+        assertFalse(ring.isRunning());
+    }
+
+    @Test
+    public void aMeasuredMergeStartsFromWhereTheRingStands() {
+        ProcessingRing ring = ring();
+        ring.start();                            // a shot not marked large whose merge turns out slow enough to report
+        ring.setStage(.3f);
+        frames(ring, 5);
+        final float before = ring.shown();
+        assertTrue(before > 0f && before <= .3f);
+        ring.setMeasured(.5f);                   // the merge from the milestone (where the ring heads) to MERGED
+        frames(ring, 5);
+        assertTrue("from where it stood: " + ring.shown(), ring.shown() >= before);
+        ring.setMeasured(.5f);
+        frames(ring, 60);
+        assertEquals(.3f + (ProcessingRing.MERGED - .3f) * .5f, ring.shown(), .02f);
+        ring.finish();
+        frames(ring, 80);
+        assertFalse(ring.isRunning());
+    }
+
+    @Test
+    public void theLargeHintOfAQueuedShotWaitsForItsRing() {
+        ProcessingRing ring = ring();
+        ring.start();
+        ring.start();                            // the large shot queued behind
+        frames(ring, 20);
+        ring.finish();                           // the first is done; its ring closes
+        ring.setLarge();                         // the queued shot's hint arrives meanwhile
+        boolean restarted = false, closed = false;
+        for (int i = 0; i < 150 && !restarted; i++) {
+            frames(ring, 1);
+            if (ring.shown() >= .999f) closed = true;
+            if (closed && ring.isRunning() && ring.shown() < .05f) restarted = true;
+        }
+        assertTrue(restarted);
+        frames(ring, 190);
+        assertTrue("the queued large shot creeps to the merge's start only: " + ring.shown(), ring.shown() <= ProcessingRing.MERGE_FROM);
+        ring.finish();
+        frames(ring, 80);
+        assertFalse(ring.isRunning());
+    }
 }

@@ -265,6 +265,15 @@ public class CameraUIViewImpl implements CameraUIView {
         this.mProcessingProgressBar.post(() -> this.mProcessingProgressBar.setStage(fraction));
     }
 
+    /** P220: the large-shot hint or the merge worker's measured progress for the ring round the gallery card. */
+    @Override
+    public void setProcessingProgress(com.particlesdevs.photoncamera.processing.ProcessingProgress progress) {
+        this.mProcessingProgressBar.post(() -> {
+            if (progress.large) this.mProcessingProgressBar.setLarge();
+            else this.mProcessingProgressBar.setMeasured(progress.merge);
+        });
+    }
+
     @Override
     public void incrementCaptureProgressBar(int step) {
         this.mCaptureProgressBar.post(() -> this.mCaptureProgressBar.incrementProgressBy(step));

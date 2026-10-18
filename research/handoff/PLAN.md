@@ -4920,6 +4920,9 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   during the capture, no second mosaic detection). Open for the owner: a binned FULLRES gives the sensor's own 12 MP binning
   in software - whether FULLRES should then capture in the normal (sensor-binned) mode instead (same size, a fraction of
   the time).
+- P219 (2026-10-18): the one long frame applies to the FULLRES routes merged natively; this log's case, a binned FULLRES shot
+  («Наш ремозаик» off), keeps 3 + 3 on purpose (the binned P195 merge takes every frame) - open for the owner whether «для фулреза
+  1 длинный достаточно» covers it too (then HybridPlan.fullResLongFrames returns 1 for every FULLRES plan).
 
 ### P218 - «Настройки по модулям» only on the main settings page (owner, 2026-10-18: «группа настроек "Настройки по модулям"
 дублируется в нескольких местах, исправь чтобы было только на главной странице»)
@@ -4930,6 +4933,131 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
 - Checked: SettingsMenuTest (the cameras page shows neither row; copying is reached inside the group), ModuleProfilesPageTest,
   ModuleProfilesCarryTest, check_ui_language.
 
+### P219 - every frame into the native mosaic merge, one long frame for FULLRES, no second mosaic detection (owner, 2026-10-17:
+«сделай так чтобы брались все кадры, но для фулреза 1 длинный достаточно»)
+- Evidence: the native merge (FULLRES Quad / Tetra, ISZ mosaics) picked one ultrashort and one bracketed frame
+  (hybridReconstructMosaicNativeMerge), so every owner FULLRES shot logged «HYBRID SERIES CUT: 10 of 14 / 8 of 12 / 14 of 18
+  (frame rules)» and «HYBRID BENTO ... frames=1» although the plan captured 3 + 3 after the shutter (HybridPlan.build); the
+  split (mosaicPath 0) has merged up to bentoFrames ultrashort and every bracketed frame since P63. The worker's mosaic detector
+  ran on every mosaic burst only for its log line when the header already gave block 2 / 4 (roadmap speed-ux B1).
+- Worker: hybridMosaicPick, one pick for the split (its P63 rules, unchanged) and the native merge. Native (tuning
+  mosaicNativePick 1, default): every ultrashort frame Bento merges (bentoFrames, at most 3, within x1.3 of the shortest) and every
+  bracketed frame; the first of each keeps its slot ahead of the N frames as before, the others take what the N frames leave - an
+  ultrashort frame an N slot where that lowers the noise (review round below) - so the pick always holds the old ultrashort and
+  bracketed frames (mosaicNativePick 0 = the pick before P219). Nothing else had to change: the merge program, the Bento
+  validation and the Shasta gates work per frame role (the marked merge program untouched).
+  hybridMosaicBlock: header block 2 / 4 -> «HYBRID MOSAIC: header block 2, detection skipped (the app's block)», no detector.
+- Found on the way (pre-existing, exposed by the earlier merge start): a chroma context built ahead (chromaPrewarm) and never
+  taken - every 50 MP merge, its median runs on the CPU - was torn down in a static destructor at exit, and eglMakeCurrent
+  crashed there (SIGSEGV in libGLESv2_adreno after «SCAM CAPTURE OK»; the app counts a non-zero exit as a failed merge) whenever
+  the vendor CRE library had loaded after the context was built. The integrate worker crashes the same way with SCAM_NO_WARMUP=1
+  (the CRE loaded only at the alignment); the new worker crashed in 2 of 4 50 MP replays before the fix. Fix
+  (scam-chroma-gpu.h): an untaken context is left to the process exit.
+- App: HybridPlan.fullResLongFrames / withLongFrames - a FULLRES plan keeps all its ultrashort frames and the first long frame:
+  native 50 MP ZSL (takeNativeZsl) and PSL (pslPlan, manual long shutter too: vivo / OPPO native, block from the profile), the
+  Pixel / Snapdragon MAXIMUM_RESOLUTION session (block 0). 12 MP plans are untouched; «Наш ремозаик» off on a Quad / Tetra or
+  unknown block keeps 3 + 3 (the binned P195 merge uses them all); a Bayer FULLRES stream (block 1) takes one long frame. The
+  freed frames go to N where the memory budget sized the series. Not touched: the 200 MP series (N + one ultrashort, P179) and the
+  X200 Ultra's SDK route (N only), which have no bracketed frames.
+- Checked: tools/check_mosaic_pick.cpp (new, CI; built with the NDK and run on the OPPO): 200000 random bursts - the split pick
+  frame for frame as before, mosaicNativePick 0 = the old native pick, mosaicNativePick 1 holds it with the same N frames and
+  takes every frame with room; the owner's 12 N + 3 + 3 shot 14 -> 18 frames; the detector skipped / still run for block 0.
+  HybridPlanTest (+1) and FullResZslTest (+1: 3 ultrashort + 1 long through the native capture); the whole CI list 205 classes,
+  1278 tests, 0 failures; check_ui_language, check_settings_model PASS. OPPO replays against worker_int: syn_b1 5b988db1, x7u_1x
+  52bcce71, syn_b2 7c1a3756, syn_b4 5e586261, v10_1 3e84061b, v10_2 12389449 byte-identical (v10: 30 of 35 frames, the
+  mosaicFrames budget leaves no slot after the N frames); hand db8d449d -> fef2af11, isz2 d5dceb41 -> d72715ce (27 of 27 frames,
+  5 bracketed merged instead of 1; Bento not applied there): darkest 10 % tiles' fine band x0.61 / x0.76, textured bright tiles'
+  detail bands x1.00 (no blur), merge +0.4..1.1 s, peak RSS +150 MB. With mosaicNativePick 0 all 8 identical to worker_int.
+  Owner's kept 50 MP X7U bursts (app tuning): 185248 (17 N + 3 + 3) fde0c549 -> 8c0090ff, 23 of 23 frames, Bento frames=3 (same
+  mask, 296816 px), high-pass noise inside it R x0.59 G x0.59 B x0.59 (1/sqrt 3 = 0.58), R/G 0.577 -> 0.575, B/G 0.766 -> 0.764,
+  level x0.997; one more bracketed frame merged (the other two refused by the Shasta motion gate): darkest tiles x0.94, textured
+  detail x1.00, no NaN / Inf; merge 15.4 -> 16.1..16.8 s, peak RSS 3650 -> 4280 MB. 191825 (19 N + 1 ultrashort) d7b19079
+  identical. Mosaic detector 0.52..0.61 s in 7 runs of worker_int, 0.2 ms now.
+- Not checked: no shot with the app (camera app not run); vivo X200 / X300 Ultra, Pixel, the Tetra / 200 MP routes and the
+  split on the phone; the peak memory of a 16-frame FULLRES merge on 8-12 GB phones; capture time saved by the 2 long frames
+  (not measured, roadmap estimate 0.35-0.5 s, more at night).
+- Review round (2026-10-18). A budget short of the burst (v10_1 / v10_2: 30 of 35 by mosaicFrames; a memory budget at 50 MP):
+  the reviewer asked for every ultrashort frame ahead of the N frames, as the split and the plain Bayer app keep their extras.
+  Measured that way on 185248 in 14 frames (mosaicFrames 14 standing in for the memory budget): 10 N + 3 + 1 instead of 12 + 1 + 1,
+  inside Bento (0.6 % of the frame) high-pass noise x0.62, over the other 99.4 % x1.11 (darkest 10 % of the tiles x1.12, their
+  coarse band x1.19; the bracketed frame then refused by the motion gate); v10_2 (night: 0.004 % of the cells clipped, «BENTO: not
+  applied (not enough clipping)») lost an N frame for nothing (28 merged, not 29), and v10_1 would (its ultrashort frames are
+  not aligned: no Bento line, 29 of 30 merged). So hybridMosaicNativePick moves an ultrashort frame after the first into the slot
+  of the N frame farthest in time only where that lowers the noise of the picture: f (1 - sqrt(u / (u + 1))) > (1 - f)
+  (sqrt(m / (m - 1)) - 1), f = the share of Bento's cells the base clips (hybridMosaicBaseClipped: bentoBase's scan on the base
+  binned as the merge bins it, without the site-class gains - 16.48 % against Bento's 16.21 % with them on 185248 at
+  bentoHighlight 0.01), m = the base and the N frames kept, u = the ultrashort frames in: the second of 12 N from 13 % of the cells
+  clipped, the third from 21 %, the second of 28 N from 5.9 %; never below usFrom - 2 N frames (two, one for a huge burst). Log «HYBRID MOSAIC NATIVE: 14 of 23 frames: 1 ultrashort frames picked, the base clips
+  0.483 % of Bento's cells (...)». The scan runs only with a budget short of a burst with 2+ ultrashort frames: 17-31 ms at
+  12 MP, 83-110 ms at 50 MP. Bracketed frames after the first keep taking the slots left (the motion gate refused 2 of 3 on
+  185248).
+- Chroma context: chromaGpuPossible now takes the result's pixels against the median's own 16.8 MP (it took any sensor up to 4x
+  that); the native merge computes its result (Quad / Tetra T1 W x H, x4 on the natively merged 2x grid, T2 a quarter), the split
+  W x H, so a 50 MP Quad merge no longer builds a context its CPU median never takes; 12 MP results prewarm as before.
+- Memory (reviewer: RSS +160 MB per 50 MP frame): MemAvailable (/proc/meminfo, ~4 samples/s) dropped by 1517-1594 / 1883-1975 /
+  2105 / 2542-2565 MB on 185248 with 8 / 14 / 16 / 23 frames picked: 66 MB per frame and ~1.0 GB fixed (the model's 20 B/px).
+  RssAnon +32 MB per frame (the binned copy 25 + ~7), the rest the GPU strip windows (~31 MB: the 3.8 KB per column of
+  VivoSdkFullRes.seriesFit); RSS +137 MB per frame, 100 of them the burst's own pages (RssFile; in the app its memfd, no new
+  memory). hybridMosaicNativeBudget counts 25 MB a frame. Left as it is: the default 50 MP shot is a series (P203, 12 N), sized
+  by the app's seriesFit (RAW + binned + 3.8 KB per column = 156 MB a frame, 40 B/px fixed, against the measured 100 + 66 MB and
+  20 B/px) and floored in the worker; the worker's model sizes only a «Кадров в снимке 50 Мп» 0 (auto) shot, where the measured
+  cost would give 6 frames instead of 17 at the 1733 MB of P191's shot (merged 20 of 20 on the OPPO; check_hybrid_series pins
+  17) - an owner decision. 30 N + 3 + 1 extrapolates to ~3.3 GB of MemAvailable besides the 3.4 GB burst.
+- Not changed: a binned FULLRES shot keeps 3 + 3 (P217 line: open for the owner). The empty /data/local/tmp/scamera-pick-UjZbpz of
+  the first round's check is gone; the check now runs with TMPDIR in its own p219f_ directory.
+- Checked: tools/check_mosaic_pick.cpp (CI; the native picks against the old ones for a base without clipping and one clipped all
+  over: N frames give way only to ultrashort frames without a free slot, never below the floor; the 13 / 21 / 5.9 % thresholds;
+  short budgets; hybridMosaicBaseClipped = bentoBase's clippedFraction of the binned base on 300 random bases, any CFA; the
+  prewarm gate) PASS on the OPPO (NDK clang, also with UBSan traps), and the 10 other host checks with the worker headers PASS
+  there; CI's g++ ASan build not run (no host compiler). Final worker e51885ef against worker_int: syn_b1, x7u_1x, syn_b2,
+  syn_b4, v10_1, v10_2 byte-identical (v10: «the base clips 0.000 % / 0.004 %», one ultrashort frame), hand fef2af11, isz2 d72715ce
+  as the first round; 185248: default 8c0090ff (= the first round, 23 of 23), mosaicFrames 14 7ed5796e (= the first round's
+  worker: 0.483 %, 12 N + 1 + 1), bentoHighlight 0.01 (16.5 % clipped) 11 N + 2 + 1 with «BENTO: applied ... frames=2», no NaN /
+  Inf; SCAM_NO_WARMUP=1 rc 0 twice; every replay rc 0. Java untouched in this round (no unit-test rerun).
+
+### P220 - merge worker watchdog on progress; the merge's progress in the processing ring and the notification (roadmap
+stability 8, speed-ux C1; owner: a processing progress ring and a notification)
+- Evidence: the worker ends a hung merge only by its alarm(840) (scam-neural-worker.cpp), the app waits 900 - 3600 s
+  (ScamHybridBurst.workerTimeoutSeconds), and the SIGALRM exit is neither a timeout nor a named crash stage, so the conservative
+  retry ran for up to 840 s more: ~28 min with the FULLRES shutter held (P200). A pass can be silent for minutes (owner's log
+  2026-10-17 18:25:45 «HYBRID MOCHI: off» -> 18:29:51: the 245 s native merge before P204), so log gaps say nothing. The ring
+  ran on the last shot's time only (ProcessingRing: after a 12 MP shot a 50 MP ring sat at 94 % ~20 s); the keep-alive
+  notification was indeterminate.
+- Worker (scam-progress.h, new): pass() at each stage (cre, burst, map, keep-burst, prepare, mosaic-detect / mosaic / mosaic-bin /
+  mosaic-split / mosaic-binned, align, bento, local-align, gpu, mochi, merge, finish, write), step() / at() as units complete (CRE
+  groups, frames, binned rows, Mochi frames, GPU strips read back = output rows, 64 MB kept-burst writes), tick() per GPU program;
+  FenceWait round the strip readback (the 120 s glClientWaitSync and the maps behind it). A heartbeat thread prints every 5 s
+  «HYBRID PROGRESS pass=<name> done=<k>/<n> seq=<events> slowest=<ms>[ fence=<ms>]» (slowest = the longest gap between two
+  events, the open one excluded), stopped before «SCAM CAPTURE OK». The 840 s alarm stays. Replay-only hook SCAM_STALL_STRIP=
+  <strip>,<s>[,fence] (the app never sets it), SCAM_PROGRESS_MS for the period. No merge program text touched.
+- App: WorkerWatchdog (new) waits in 1 s slices; armed by the first heartbeat; seq unchanged for max(90 s, 4 x the slowest step:
+  the worker's or the gap the app saw) -> the worker is killed (StalledException); time the app itself did not run (a slice
+  back > 5 s late: frozen / asleep) is not counted. ScamHybridBurst.conservativeRetry: no retry after the outer timeout (as before)
+  or a stall with fence >= half the silence (hung GPU: the base frame alone at once); a CPU stall, a crash and SIGALRM keep it.
+  scam_dev worker_watchdog 0 off / 1 log only / 2 on (default), on «Для разработчика» (DevKeys). MergeProgress (new): pass table ->
+  share of the merge (the strips 26 - 95 %), never back in a job. Ring: ScamProcessor sends ProcessingProgress.large() above
+  16 MP (the creep goes only to 10 % in its first 7 s instead of running on the 12 MP time) and the heartbeat's share; measured
+  mode carries the ring from where it stands to 55 % (moving on at the measured speed for at most one heartbeat, holding when the
+  worker is slower, never back), after the merged milestone the rest creeps on the last measured shot's post-merge time. A merge
+  shorter than 5 s reports nothing: the ring as before (and a large shot no longer sets the 12 MP time estimate). ProcessingKeepAlive:
+  a merge running >= 10 s with the app not in front (process importance > FOREGROUND) shows «Склейка снимка: N %» (determinate,
+  silent, only-alert-once) in its notification, only if POST_NOTIFICATIONS is granted and notifications are on; never asks;
+  back to the plain one in front / after the merge.
+- Checked: WorkerWatchdogTest 9/9 (new: a fake worker on a fake clock silent after 30 s is killed at 120 s, one that reports for
+  600 s with 35 s steps survives, 40 s steps -> 160 s threshold (150 s silence survives, the stuck one dies at 360 s), fence stall
+  -> no retry, CPU stall -> retry, log-only / off never kill, no heartbeat -> only the timeout, a 120 s app freeze not counted;
+  the parse fixture is a real worker line), MergeProgressTest 4/4 (new), ProcessingRingTest 7/7 (+4), DevKeysCoverageTest; the
+  whole CI list 207 classes, 1295 tests, 0 failures; check_ui_language, check_settings_model PASS. tools/check_worker_progress.cpp
+  (new, CI) built with the NDK and run on the OPPO: PASS. OPPO replays, worker e51885ef (HEAD, = P219 final) vs 86b56fda: syn_b1
+  5b988db1, x7u_1x 52bcce71, syn_b2 7c1a3756, syn_b4 5e586261, hand fef2af11, isz2 d72715ce, v10_1 3e84061b, v10_2 12389449 -
+  whole outputs byte-identical (cmp), 0 - 2 heartbeats each; owner's 50 MP scam_burst-20261017-185248 2bd67597 identical (also
+  with a 1 s heartbeat: mosaic -> mosaic-bin 3072/3072 -> gpu -> merge 128 .. 5888/6144 -> finish, merge 17.2 vs 17.3 s). End to
+  end on the OPPO (real worker + WorkerWatchdog in an app_process harness, syn_b1): strip 3 held 200 s -> killed at 95 s,
+  gpuFence false; held in the fence wait -> killed at 95 s, «waiting for the GPU 93 s», gpuFence true; held 60 s -> finished,
+  5b988db1; log only with 120 s -> one line, finished; off with 100 s -> finished. Phone files p220_* / job_p220 removed.
+- Not checked: no shot with the app (camera app not run): the ring and the notification on screen, the kill / fallback inside
+  the app (WorkerSpawn SIGKILL path), a real GPU hang; CI's g++ ASan build of the new check (no host compiler); vivo / Mali.
+  Seen, not changed: CameraFragment still posts its old indeterminate «processing» notification (id 1) at every shot.
 ### P223 - FULLRES and ISZ: switch off the ISP preview and our white-balance corrections (owner, 2026-10-18: «Для фулреза и ISZ
 дать возможность полностью отключить isp превью и отключить наши исправления баланса белого, настройку добавь в группу
 настроек "видоискатель"»)

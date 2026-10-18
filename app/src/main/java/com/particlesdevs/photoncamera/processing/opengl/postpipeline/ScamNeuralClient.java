@@ -452,15 +452,31 @@ public final class ScamNeuralClient {
             }
             final com.particlesdevs.photoncamera.util.WorkerSpawn.Child child=process;
             final boolean[] completed={false};
+            // P220: the worker judged by its heartbeat (HYBRID PROGRESS every 5 s) instead of the 14-minute alarm: no progress for
+            // max(90 s, 4 x its slowest step) stops it (scam_dev worker_watchdog: 0 off, 1 log only, 2 on); the heartbeat also
+            // moves the processing ring and the keep-alive notification (MergeProgress)
+            final WorkerWatchdog watchdog=new WorkerWatchdog(Math.round(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevNumber("worker_watchdog",
+                    WorkerWatchdog.ACTIVE)),android.os.SystemClock::elapsedRealtime);
+            if(watchdog.mode()!=WorkerWatchdog.ACTIVE)log.accept("CLIENT: worker watchdog "+(watchdog.mode()==WorkerWatchdog.OFF?"off":"log only")
+                    +" (scam_dev worker_watchdog "+watchdog.mode()+")");
+            if(hybridMerge)com.particlesdevs.photoncamera.processing.MergeProgress.begin(android.os.SystemClock.elapsedRealtime());
             Thread reader=new Thread(()->{
-                try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.output))){String line;while((line=lines.readLine())!=null){if(line.equals("SCAM CAPTURE OK"))completed[0]=true;log.accept(line);}}
+                try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.output))){String line;while((line=lines.readLine())!=null){
+                    if(line.equals("SCAM CAPTURE OK"))completed[0]=true;
+                    final WorkerWatchdog.Beat beat=watchdog.onLine(line);
+                    if(beat!=null&&hybridMerge)com.particlesdevs.photoncamera.processing.MergeProgress.update(beat.pass,beat.share());
+                    log.accept(line);}}
                 catch(IOException e){log.accept("READ: "+e);}
             },"scam-neural-output");
             reader.setDaemon(true);reader.start();
             // P27 any resolution: a Hybrid merge above 16 MP gets a wait in proportion to its pixels (900 s up to 16 MP, unchanged).
             final long timeoutS=scamBurst instanceof ScamHybridBurst?ScamHybridBurst.workerTimeoutSeconds(scamBurst.width(),scamBurst.height()):900;
             if(timeoutS>900)log.accept("CLIENT: worker timeout "+timeoutS+" s for "+scamBurst.width()+"x"+scamBurst.height());
-            if(!process.waitFor(TimeUnit.SECONDS.toMillis(timeoutS))){process.destroy();throw new WorkerTimeoutException(Lang.t("Тайм-аут нейромодуля; снимок не обработан","Neural module timed out; the shot was not processed"));}
+            final WorkerWatchdog.Worker watched=new WorkerWatchdog.Worker(){
+                @Override public boolean waitFor(long ms) throws InterruptedException{return child.waitFor(ms);}
+                @Override public void destroy(){child.destroy();}
+            };
+            if(!watchdog.await(watched,TimeUnit.SECONDS.toMillis(timeoutS),log)){process.destroy();throw new WorkerTimeoutException(Lang.t("Тайм-аут нейромодуля; снимок не обработан","Neural module timed out; the shot was not processed"));}
             reader.join(5000);
             if(process.exitValue()!=0||!completed[0]){
                 // P26: the X200 Pro (Mali) worker vanished mid-merge with nothing in the log; say how it ended.
@@ -571,6 +587,7 @@ public final class ScamNeuralClient {
             return result;
         } catch(Exception e){log.accept("CLIENT STOP: "+e.getMessage());throw e;}
         finally {
+            com.particlesdevs.photoncamera.processing.MergeProgress.end(); // P220
             if(process!=null && process.isAlive())process.destroy();
             if(scamIn!=null)scamIn.close();
             if(scamOut!=null)scamOut.close();

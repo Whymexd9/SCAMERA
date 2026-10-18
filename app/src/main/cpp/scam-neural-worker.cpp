@@ -53,6 +53,10 @@ int main(int argc,char** argv) {
         }
         if(argc==5 && std::string(argv[1])=="--scam-capture") {
             signal(SIGALRM,SIG_DFL);alarm(840);
+            // P220: the heartbeat (HYBRID PROGRESS every 5 s, scam-progress.h) for the app's watchdog and processing ring; the 840 s
+            // alarm stays the cap. Stopped before the result lines (the stack unwinds it on a STOP).
+            scam_progress::Heartbeat heartbeat([](const std::string& line){scam_nn::log(line);},scam_progress::periodMs());
+            scam_progress::pass("cre");
             // Burst and result arrive as "fd:N" (memfd shared by the app) or as file paths.
             {
                 std::ifstream marker(std::string(argv[2])+"/dump-forward");
@@ -107,6 +111,7 @@ int main(int argc,char** argv) {
                     +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-warmStarted).count()))+" ms");
             };
             {
+                scam_progress::pass("burst"); // P220: the app writes the burst meanwhile
                 int goFd=-1;
                 {std::ifstream marker(std::string(argv[2])+"/wait-go");std::string text;if(marker&&std::getline(marker,text)&&!text.empty())goFd=std::atoi(text.c_str());}
                 if(goFd>=0){
@@ -119,6 +124,7 @@ int main(int argc,char** argv) {
             }
             // NCH v10 = the SCAM Hybrid transport (per-frame roles and noise); anything else is the SCAM 7-slot burst.
             worker_crash::mark("burst map");
+            scam_progress::pass("map");
             const bool requestedHalf=access((std::string(argv[2])+"/rgb-half").c_str(),F_OK)==0;
             scam::MappedHybridBurst hybridBurst(argv[3],requestedHalf);
             std::unique_ptr<scam::MappedScamBurst> mapped;
@@ -128,8 +134,12 @@ int main(int argc,char** argv) {
                 std::ifstream keep(std::string(argv[2])+"/keep-burst");std::string dest;
                 if(keep&&std::getline(keep,dest)&&!dest.empty()&&dest!=argv[3]&&!std::getenv("SCAM_HYBRID")){
                     std::ofstream dst(dest,std::ios::binary|std::ios::trunc);
-                    if(mapped)dst.write(static_cast<const char*>(mapped->address),std::streamsize(mapped->length));
-                    else dst.write(static_cast<const char*>(hybridBurst.address),std::streamsize(hybridBurst.length));
+                    // P220: in 64 MB writes, each one progress (a 3.4 GB 50 MP burst took ~7 s, longer on slow storage); the same bytes
+                    const char* src=mapped?static_cast<const char*>(mapped->address):static_cast<const char*>(hybridBurst.address);
+                    const size_t bytes=mapped?mapped->length:hybridBurst.length;
+                    constexpr size_t kChunk=size_t(64)<<20;
+                    scam_progress::pass("keep-burst",int64_t((bytes+kChunk-1)/kChunk));
+                    for(size_t at=0;at<bytes&&dst;at+=kChunk){dst.write(src+at,std::streamsize(std::min(kChunk,bytes-at)));scam_progress::step();}
                     report(std::string("SCAM KEEP: burst ")+(dst?"kept in ":"NOT kept in ")+dest);
                 }
             }
@@ -201,6 +211,7 @@ int main(int argc,char** argv) {
                 noEffMap=hin.noEffMap;
                 if(noEffMap)report("HYBRID EFFECTIVE MAP: not made (header flag 16: the app reads none at this size)");
                 worker_crash::mark("hybrid merge");
+                scam_progress::pass("prepare"); // P220: the merge's front end (gain / noise checks, mosaic) until its own stages
                 result=scam::hybridReconstruct(hin,tuning,alignment,report,&mergedDng,noEffMap?nullptr:&effMap,nullptr,wantClipFlags?&clipFlags:nullptr);
             } else {
             const auto& input=mapped->burst;
@@ -233,6 +244,7 @@ int main(int argc,char** argv) {
             }
             report("SCAM RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));
             worker_crash::mark("output write");
+            scam_progress::pass("write");
             // write-only: a file (root worker, replay) is written with write(), faster than a mapping on f2fs (P153, 50 MP: 1.5 s
             // mapped against 0.6 s written); the app's memfd (fd:N, read-write) takes the mapped fill below
             const int out=scam::openArgument(outputPath,O_WRONLY|O_CREAT|O_TRUNC);
@@ -355,6 +367,7 @@ int main(int argc,char** argv) {
                     long(usage.ru_maxrss/1024));
                 report(line);
             }
+            heartbeat.stop(); // P220: no heartbeat after the completion line
             alarm(0);report("SCAM CAPTURE OK");return 0;
         }
         if(argc==3 && std::string(argv[1])=="--scam-tone-check") {

@@ -1557,6 +1557,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         public void onProcessingChanged(Object obj) {
             // P158: a milestone of the pipeline for the ring round the gallery card
             if (obj instanceof Float && !detached()) ui().setProcessingProgress((Float) obj);
+            // P220: the large-shot hint and the merge worker's measured progress
+            else if (obj instanceof com.particlesdevs.photoncamera.processing.ProcessingProgress && !detached())
+                ui().setProcessingProgress((com.particlesdevs.photoncamera.processing.ProcessingProgress) obj);
             // P190: a notice of the merge (a FULLRES series it cut)
             else if (obj instanceof String) showSnackBar((String) obj);
         }

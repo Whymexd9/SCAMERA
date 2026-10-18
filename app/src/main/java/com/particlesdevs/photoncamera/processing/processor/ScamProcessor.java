@@ -277,6 +277,15 @@ public class ScamProcessor extends ProcessorBase {
         }
     }
 
+    /** P220: a progress event of this shot for the ring (the large-shot hint, the merge's measured share); never stops it. */
+    private void progress(com.particlesdevs.photoncamera.processing.ProcessingProgress event) {
+        try {
+            processingEventsListener.onProcessingChanged(event);
+        } catch (RuntimeException e) {
+            Log.d(TAG, "onProcessingChanged: " + e);
+        }
+    }
+
     private void processBurst() {
         processingStage = "input validation";
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("prep");
@@ -319,6 +328,8 @@ public class ScamProcessor extends ProcessorBase {
         }
         int width = mImageFramesToProcess.get(0).width;
         int height = mImageFramesToProcess.get(0).height;
+        // P220: a large shot's ring does not run ahead on the last 12 MP shot's time (its merge reports its own progress)
+        if ((long) width * height > 16_000_000L) progress(com.particlesdevs.photoncamera.processing.ProcessingProgress.large());
         Log.d(TAG, "processBurst: buffer:" + mImageFramesToProcess.get(0).buffer.asShortBuffer().remaining());
         Log.d(TAG, "Api WhiteLevel:" + characteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL));
         Log.d(TAG, "Api BlackLevel:" + characteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN));
@@ -535,8 +546,15 @@ public class ScamProcessor extends ProcessorBase {
                     com.particlesdevs.photoncamera.processing.ShotTimeline.mark("hybrid_call");
                     // P212d: only this shot's merge jobs give row profiles (a shot merged without the worker gives none)
                     com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamNeuralClient.lastRowProfiles = java.util.Collections.emptyList();
-                    scamOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.process(
-                            ScameraApp.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
+                    // P220: the merge worker's heartbeat moves the ring (MergeProgress, from ScamNeuralClient's reader thread)
+                    com.particlesdevs.photoncamera.processing.MergeProgress.listener =
+                            share -> progress(com.particlesdevs.photoncamera.processing.ProcessingProgress.merge(share));
+                    try {
+                        scamOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.process(
+                                ScameraApp.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
+                    } finally {
+                        com.particlesdevs.photoncamera.processing.MergeProgress.listener = null;
+                    }
                     // P190: a FULLRES series the merge cut (the worker, a fallback tier, the memory budget) is said aloud
                     final String notice = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.takeSeriesNotice();
                     if (notice != null) {

@@ -6064,6 +6064,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         } finally {
             HybridPlan.setMotionCap(0);
         }
+        // P219: every ultrashort frame of the plan, one long frame (HybridPlan.fullResLongFrames)
+        plan = plan.withLongFrames(HybridPlan.fullResLongFrames(true, Math.max(1, profile.nativeBlock), PreferenceKeys.isHybridMosaicRemosaic()));
         // P198: a ring smaller than the frames asked (96 MB a frame: 4-10 of them) takes the rest of the N right after the shutter -
         // the merge keeps the frame count of the series before P198 (fewer frames left more lattice and noise), the first frames
         // still come from before the press
@@ -6092,10 +6094,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * P202: the plan of a native 50 MP series after the shutter (PSL): N, then the 12 MP Hybrid plan's frames (ultrashort for
      * Bento, bracketed for Shasta) from the N exposure - the viewfinder's (the HAL's or the OPPO's own AE), the hand-set one
      * (P201), or a hand-set long shutter's plan (HybridPlan.manualLong); {@code requested} N as a ZSL shot's, all of them within
-     * what {@code budget} (frames asked -> frames the memory holds) gives. Null when no plan can be made (all N, as before).
+     * what {@code budget} (frames asked -> frames the memory holds) gives; P219: one long frame unless the route's colour
+     * {@code block} is binned (HybridPlan.fullResLongFrames). Null when no plan can be made (all N, as before).
      */
     @Nullable
-    private HybridPlan pslPlan(int requested, java.util.function.IntUnaryOperator budget, long manualPslNs) {
+    private HybridPlan pslPlan(int requested, java.util.function.IntUnaryOperator budget, long manualPslNs, int block) {
         final CaptureResult latest = mPreviewCaptureResult;
         final Long previewNs = latest == null ? null : latest.get(CaptureResult.SENSOR_EXPOSURE_TIME);
         final Integer previewIso = latest == null ? null : latest.get(CaptureResult.SENSOR_SENSITIVITY);
@@ -6118,6 +6121,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     HybridPlan.setMotionCap(0);
                 }
             }
+            // P219: every ultrashort frame of the plan, one long frame (HybridPlan.fullResLongFrames); the N take the slots freed
+            plan = plan.withLongFrames(HybridPlan.fullResLongFrames(true, block, PreferenceKeys.isHybridMosaicRemosaic()));
             final int extras = plan.requests.size();
             final int frames = budget.applyAsInt(Math.max(1, requested) + extras);
             plan = plan.withLeadingNormals(Math.max(1, frames - extras));
@@ -6192,7 +6197,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // and the 12 MP Hybrid plan's bracketed / ultrashort frames, as a ZSL shot's frames after the shutter
             pslPlanBuilt = hugeSeries || !nativeVivoFullRes() ? null : pslPlan(requested, all -> seriesMode
                     ? VivoSdkFullRes.seriesCount(all, (long) rawWidth * rawHeight, rawWidth, frameBytes, block, grid, false, availableBytes)
-                    : VivoSdkFullRes.frameCount(all, frameBytes, availableBytes), manualPslNs);
+                    : VivoSdkFullRes.frameCount(all, frameBytes, availableBytes), manualPslNs, block);
             count = pslPlanBuilt != null ? pslPlanBuilt.requests.size() : frames;
             shotN = 0;
         }
@@ -6808,6 +6813,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             : HybridPlan.autoExposure(4);
                 }
                 } finally { HybridPlan.setMotionCap(0); }
+                // P219: a full-resolution session (Pixel / Snapdragon MAXIMUM_RESOLUTION) asks for one long frame; its colour block
+                // is the stream's (0 here: «Наш ремозаик» off keeps every frame for the binned merge)
+                if(mFullResSession) plan=plan.withLongFrames(HybridPlan.fullResLongFrames(true,0,PreferenceKeys.isHybridMosaicRemosaic()));
                 hybridPlanHolder[0]=plan;
                 Log.i("SCAM_CAPTURE",plan.description);
                 for(ImageFrame normal:mPendingZslNormalFrames) {
