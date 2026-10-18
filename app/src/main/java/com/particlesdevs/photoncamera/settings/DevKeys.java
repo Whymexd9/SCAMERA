@@ -100,8 +100,8 @@ public final class DevKeys {
         // P212g: whose neutral a vivo mosaic photo takes (W6) and the plain-session colour matrices of mosaic photos (W7)
         k.add(s(cap, "mosaic_awb_resolver", true, Lang.t("vivo FULLRES: баланс белого камеры, если он установился и лежит на кривой камеры; 200 Мп без своего видоискателя — баланс видоискателя обычного режима за секунду до нажатия. Выкл — оценка по кадру (P121) на всех маршрутах",
                 "vivo FULLRES: the camera's white balance when it has converged and lies on the camera's curve; 200 MP without its own viewfinder: the normal-mode viewfinder's balance of the second before the press. Off: the frame estimate (P121) on every route")));
-        k.add(s(cap, "mosaic_ccm_table", true, Lang.t("Снимки мозаики (ISZ, FULLRES): цветовая матрица ISP из обычного режима этой камеры при том же свете вместо общих матриц DNG. Выкл — матрицы DNG",
-                "Mosaic shots (ISZ, FULLRES): the ISP's colour matrix of this camera's plain mode at the same light instead of the generic DNG matrices. Off: the DNG matrices")));
+        k.add(n(cap, "mosaic_ccm_table", "1", Lang.t("Снимки мозаики: цветовая матрица ISP из обычного режима этой камеры при том же свете вместо общих матриц DNG. 1: FULLRES, 2: также ISZ 12 Мп, 0: матрицы DNG",
+                "Mosaic shots: the ISP's colour matrix of this camera's plain mode at the same light instead of the generic DNG matrices. 1: FULLRES, 2: the 12 MP ISZ modules too, 0: the DNG matrices")));
         k.add(s(cap, "oppo_cct_anchor", true, Lang.t("OPPO X7 Ultra: точка 6500 K для 6× и фронтальной камеры по меткам AWB 6000–7000 K обычного режима. Выкл — −0.6, как раньше",
                 "OPPO X7 Ultra: the 6500 K point of the 6x and front cameras from the plain mode's 6000-7000 K AWB labels. Off: -0.6 as before")));
         k.add(s(cap, "oplus_ccm", true, Lang.t("OPPO: цветовая матрица com.oplus.custom.ccm вместо единичной", "OPPO: the com.oplus.custom.ccm colour matrix instead of an identity one")));
@@ -116,6 +116,13 @@ public final class DevKeys {
         k.add(s(vf, "mosaic_preview", true, Lang.t("Модуль, измеренный как мозаика, сразу показывает RAW-видоискатель", "A module measured as a mosaic starts on the RAW viewfinder")));
         k.add(n(vf, "vf_priority", "1", Lang.t("Высокий приоритет потока видоискателя (0 — обычный)", "High priority of the viewfinder thread (0: normal)")));
         k.add(n(vf, "vf_gpu_priority", "1", Lang.t("Высокий приоритет GPU-контекста видоискателя (0 — обычный)", "High priority of the viewfinder GPU context (0: normal)")));
+        // P212h (A6 = M11): the FULLRES viewfinder predicts the photo
+        k.add(n(vf, "vf_native_gain", "1", Lang.t("OPPO FULLRES: усиление видоискателя — 1: только на экспозицию, которую режим не даёт (нехватка AE больше 0.3 EV), 2: замер видоискателя, пока экспозиция не задана вручную, 0: без усиления",
+                "OPPO FULLRES viewfinder gain - 1: only for the exposure the mode cannot give (an AE deficit above 0.3 EV), 2: the viewfinder's meter unless the exposure is hand-set, 0: none")));
+        k.add(s(vf, "vf_native_ccm", true, Lang.t("FULLRES: цветовая матрица фото в видоискателе вместо единичной (OPPO X7 Ultra: тюнинг по цветовой температуре; другие OPPO и vivo: матрица обычного режима при этом свете или ISP). Выкл — единичная",
+                "FULLRES: the photo's colour matrix on the viewfinder instead of the identity (OPPO X7 Ultra: the tuning at the light's colour temperature; other OPPO and vivo: the plain mode's matrix at that light or the ISP's). Off: the identity")));
+        k.add(s(vf, "vf_raw_scene_luma", true, Lang.t("Приоритет выдержки / ISO: яркость сцены из RAW-видоискателя (без неё в FULLRES второй параметр не двигался). Выкл — только из видоискателя ISP",
+                "Shutter / ISO priority: the scene brightness from the RAW viewfinder (without it the other value never moved in FULLRES). Off: from the ISP viewfinder only")));
         // merge (worker)
         k.add(s(merge, "hybrid_rgb_half", true, Lang.t("RGB от воркера в half float (меньше данных). Выкл — float32", "Worker RGB as half floats (less data). Off: float32")));
         k.add(n(merge, "hybrid_s61_mode", null, Lang.t("Режим ковариации Sabre 6.1 (6 — от базового кадра, быстрее)", "Sabre 6.1 covariance mode (6: from the base frame, faster)")));
@@ -152,6 +159,9 @@ public final class DevKeys {
         // P214e: ArkLumaSharpen.smoothedSource (R1); P214z: not above 100 MP (r1Fits)
         k.add(s(post, "sharpen_r1", true, Lang.t("Резкость мозаичных снимков (ISZ Quad/Tetra, FULLRES до 100 Мп) по яркости, сглаженной 3×3: решётка мозаики почти не усиливается. Выкл — резкость как у снимков Bayer",
                 "Sharpening of mosaic shots (ISZ Quad / Tetra, FULLRES up to 100 MP) on the 3x3-smoothed luma: the mosaic lattice is hardly lifted. Off: the sharpening of Bayer shots")));
+        // P212h (A5 = M5): the gain clamp of the ARK exposure from the merged image's noise
+        k.add(n(post, "ae_clamp_stack", "1", Lang.t("Яркость фото: предел усиления по шуму — по числу склеенных кадров N (карта склейки, N^0.4). 1: FULLRES, 2: все снимки, 0: по одному кадру",
+                "Photo brightness: the noise gain clamp from the merged N frames (the merge's frame map, N^0.4). 1: FULLRES, 2: every shot, 0: one frame")));
         k.add(n(post, "jpeg_threads", null, Lang.t("Потоков кодирования JPEG (1 — один поток, прогрессивный; пусто — все ядра)", "Threads of the JPEG encode (1: one thread, progressive; empty: every core)")));
         k.add(sAuto(post, "rgba_upload", Lang.t("Загрузка RGB в GPU как RGBA (по умолчанию решает приложение)", "RGB uploaded to the GPU as RGBA (default: chosen by the app)")));
         k.add(n(post, "hybrid_isp_ccm", "1", Lang.t("vivo: цветовая матрица ISP по кадру (0 — матрицы DNG)", "vivo: the ISP colour matrix of the frame (0: the DNG matrices)")));
@@ -230,6 +240,13 @@ public final class DevKeys {
                 "X100/X300 Ultra FULLRES 200 MP the stock way: the viewfinder in the normal mode, 200 MP for the stills only. Off - the camera held in the 200 MP mode")));
         k.add(s(vivo, "vivo_fullres200_force", false, Lang.t("X100/X300 Ultra FULLRES 200 Мп (как в стоке): ключ режима 200 Мп на кадрах снимка",
                 "X100/X300 Ultra FULLRES 200 MP (the stock way): the 200 MP mode key on the stills")));
+        // P212h (A7 = M14): the vivo FULLRES AE audit (log only) and the 200 MP series' exposure
+        k.add(s(vivo, "vivo_ae_audit", true, Lang.t("vivo: замер RAW-видоискателя (медиана, свет, BV) рядом с экспозицией HAL в логе SCAM_AE раз в секунду; только лог",
+                "vivo: the RAW viewfinder's meter (median, highlights, BV) beside the HAL's exposure in the SCAM_AE log once a second; log only")));
+        k.add(s(vivo, "vivo_series_ae_lock", false, Lang.t("vivo 200 Мп: AE lock на кадрах N серии, если AE видоискателя сошлась к нажатию (проверяется)",
+                "vivo 200 MP: AE lock on the series' N stills when the viewfinder AE has converged at the press (being tested)")));
+        k.add(s(vivo, "vivo_still_us_from_n", false, Lang.t("vivo 200 Мп без своего видоискателя: ультракороткий кадр от экспозиции первого кадра N, а не видоискателя обычного режима (от 4 кадров)",
+                "vivo 200 MP without its own viewfinder: the ultrashort still from the first N still's exposure, not the normal-mode viewfinder's (from 4 frames)")));
         k.add(n(vivo, "vivo_fullres_mode_tele50", "-1", Lang.t("X100/X300 Ultra FULLRES 50 Мп: режим сенсора теле (-1: режимы таблицы по очереди)", "X100/X300 Ultra FULLRES 50 MP: telephoto sensor mode (-1: the table's rows in turn)")));
         k.add(s(vivo, "vivo_qcom_modes", true, Lang.t("X200 Ultra: экспериментальные модули Qualcomm", "X200 Ultra: experimental Qualcomm modules")));
         k.add(s(vivo, "vivo_qcom_raw_psl", false, Lang.t("X200 Ultra: диагностический RAW без ZSL", "X200 Ultra: diagnostic RAW without ZSL")));

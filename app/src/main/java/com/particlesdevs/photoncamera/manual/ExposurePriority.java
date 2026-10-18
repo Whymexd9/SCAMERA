@@ -102,6 +102,14 @@ public final class ExposurePriority {
         public long shutterNs() { return shutterNs; }
         public double targetLuma() { return targetLuma; }
 
+        /**
+         * P212h (A6 = M11): the brightness comes from another meter now (the RAW viewfinder's median instead of the ISP texture's
+         * mean, SceneLuma.source): the next measurement learns the target again at the exposure in force, as the first one did.
+         */
+        public void relearn() {
+            targetLuma = Double.NaN;
+        }
+
         /** The hand-set value changed: the exposure stays, the free parameter takes the difference. */
         public void setFixed(int newIso, long newShutterNs, int isoMin, int isoMax, long minNs, long maxNs) {
             final double product = iso * (shutterNs / 1e9);

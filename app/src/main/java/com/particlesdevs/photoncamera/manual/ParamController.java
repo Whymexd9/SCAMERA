@@ -186,11 +186,22 @@ public class ParamController implements Observer {
             return;
         }
         if (loop == null) return;
+        final int source = SceneLuma.source();
         final double luma = SceneLuma.mean();
         final long at = SceneLuma.atNs();
         // a measurement of a frame with the values in force: 0.2 s after the request (pipeline depth), each one once
         if (Double.isNaN(luma) || at == lumaUsedNs || at - appliedAtNs < 200_000_000L) return;
         lumaUsedNs = at;
+        // P212h (A6 = M11): the RAW viewfinder's median and the ISP texture's mean are on other scales: a change of meter learns the
+        // target again at the exposure in force (the RAW viewfinder of FULLRES publishes now, the ISP one when it takes over)
+        if (source != lumaSource) {
+            if (lumaSource >= 0) {
+                loop.relearn();
+                Log.i(TAG, "priority " + modeName(priority) + ": brightness from the " + (source == SceneLuma.RAW ? "RAW" : "ISP")
+                        + " viewfinder now, target learned again");
+            }
+            lumaSource = source;
+        }
         if (loop.measured(luma, evStops(), isoMin(), isoMax(), shutterMin(), shutterMax())) {
             builder.set(CaptureRequest.SENSOR_SENSITIVITY, loop.iso());
             builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, loop.shutterNs());
@@ -562,6 +573,8 @@ public class ParamController implements Observer {
     private int halMisses;
     private ExposurePriority.Loop loop;
     private long appliedAtNs, lumaUsedNs;
+    /** P212h: the SceneLuma source the loop's target was learned on (-1: none yet). */
+    private int lumaSource = -1;
 
     public void setFocus(float focusDist) {
         CaptureRequest.Builder builder = captureController.mPreviewRequestBuilder;

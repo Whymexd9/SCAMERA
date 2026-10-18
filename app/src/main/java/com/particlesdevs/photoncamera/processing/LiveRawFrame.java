@@ -41,6 +41,9 @@ public final class LiveRawFrame {
     private static float[] crop = {0,0,1,1};
     private static int cfaPattern, cfaBlock=1, iso=100, maxAnalogIso=6400;
     private static boolean autoExposure=true;
+    /** P212h (A6 = M11): the range the viewfinder's display gain is held to, and whether its meter gives SceneLuma. */
+    private static float minDisplayGain=0f, maxDisplayGain=Float.POSITIVE_INFINITY;
+    private static boolean sceneLuma=true;
     private static double noiseS,noiseO;
     private static float whiteLevel = 1023.0f;
     private static final float[] blackLevel = new float[] {0, 0, 0, 0};
@@ -246,6 +249,16 @@ public final class LiveRawFrame {
     }
     /** format: RAW_SENSOR (16-bit rows), or RAW10 / RAW12 (packed rows, unpacked into the frame buffer: the viewfinder is the same). */
     public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise,int format){
+        publish(plane,w,h,stride,cfa,white,black,gains,ccm,lensShading,sw,sh,cropRect,block,sensorIso,analogIso,automatic,shotNoise,readNoise,
+                format,0f,Float.POSITIVE_INFINITY,true);
+    }
+    /**
+     * P212h (A6 = M11): with the range LiveRawMeter holds an automatic display gain to ({@code minGain} .. {@code maxGain}: the OPPO
+     * own AE's deficit, P212a) and whether the frame's meter is the software shutter / ISO priority's SceneLuma ({@code sceneLuma}:
+     * not where the own AE meters the other value itself).
+     */
+    public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise,int format,
+                               float minGain,float maxGain,boolean sceneLuma){
         if (!enabled || plane == null) return;
         // P108: a full-resolution Quad-Bayer frame (Pixel 10 Pro: 8160x6144 RAW10, the ISP's own viewfinder is green in that
         // mode) is shown 2x2-binned as the plain Bayer 4080x3072, at most every QUAD_BIN_INTERVAL_NS (the camera thread); P194 a
@@ -258,7 +271,7 @@ public final class LiveRawFrame {
             ByteBuffer binned = binMosaic(plane, w, h, stride, format, bin);
             if (binned == null) return;
             publish(binned, w / cell, h / cell, w / cell * 2, cfa, white, black, gains, ccm, lensShading, sw, sh, cropRect, 1, sensorIso, analogIso,
-                    automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR);
+                    automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR, minGain, maxGain, sceneLuma);
             return;
         }
         final boolean packed = com.particlesdevs.photoncamera.util.RawUnpack.isPacked(format);
@@ -320,6 +333,9 @@ public final class LiveRawFrame {
             iso = sensorIso==null ? 100 : Math.max(1,sensorIso);
             maxAnalogIso = analogIso==null ? 6400 : Math.max(101,analogIso);
             autoExposure = automatic;
+            minDisplayGain = Float.isNaN(minGain) ? 0f : Math.max(0f, minGain);
+            maxDisplayGain = Float.isNaN(maxGain) ? Float.POSITIVE_INFINITY : Math.max(minDisplayGain, maxGain);
+            LiveRawFrame.sceneLuma = sceneLuma;
             noiseS=Double.isFinite(shotNoise)?Math.max(0,shotNoise):0;noiseO=Double.isFinite(readNoise)?Math.max(0,readNoise):0;
             cfaPattern = cfa;
             crop = cropRect == null ? new float[]{0,0,1,1} : cropRect.clone();
@@ -355,6 +371,7 @@ public final class LiveRawFrame {
             f.cfaPattern = cfaPattern;
             f.cfaBlock = cfaBlock;
             f.iso = iso; f.maxAnalogIso = maxAnalogIso; f.autoExposure = autoExposure;
+            f.minDisplayGain = minDisplayGain; f.maxDisplayGain = maxDisplayGain; f.sceneLuma = sceneLuma;
             f.noiseS=noiseS;f.noiseO=noiseO;
             f.whiteLevel = whiteLevel;
             f.blackLevel = blackLevel.clone();
@@ -396,6 +413,9 @@ public final class LiveRawFrame {
         public int width, height, rowStride, cfaPattern, version, session;
         public int cfaBlock=1, iso=100, maxAnalogIso=6400;
         public boolean autoExposure=true;
+        /** P212h (A6): the range of an automatic display gain (LiveRawMeter) and whether the meter is SceneLuma's. */
+        public float minDisplayGain=0f, maxDisplayGain=Float.POSITIVE_INFINITY;
+        public boolean sceneLuma=true;
         public double noiseS,noiseO;
         public long publishedNanos;
         public int shadingWidth,shadingHeight;

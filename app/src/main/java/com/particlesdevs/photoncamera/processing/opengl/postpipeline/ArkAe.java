@@ -277,6 +277,15 @@ public final class ArkAe {
         return (float) (1.0 / clip(gmax));
     }
 
+    /**
+     * AGC noise-based gain clamp: noiseMax over the noise sigma at mid grey (0.5) of the model (slope S, offset O), at least 1.
+     * P212h (A5 = M5): ArkStats hands it a model divided by N_eff^0.8 on a merged shot (ArkNoiseClamp).
+     */
+    static double gainClamp(double noiseS, double noiseO, double noiseMax) {
+        final double sigmaMid = Math.sqrt(Math.max(0.5 * noiseS + noiseO, 1e-10));
+        return Math.max(noiseMax / sigmaMid, 1.0);
+    }
+
     /** The exposure, ceiling, fusion strengths and AgX parameters from the statistics (the rest of smart_hdr). */
     public static Result finish(Stats st, Settings s, int iso, int maxIso) {
         final float gmax = st.gmax;
@@ -352,8 +361,7 @@ public final class ArkAe {
             ae = Math.max(Math.min(mxB, aeF), mnL);                                            // 0x72da8-0x72dc4
             // AGC Noise-based Gain Clamp: limit exposure multiplier by SNR of sensor noise model
             if (hasNoiseModel) {
-                double sigmaMid = Math.sqrt(Math.max(0.5 * s.noiseS + s.noiseO, 1e-10));
-                double maxGainByNoise = Math.max(s.noiseMax / sigmaMid, 1.0);
+                double maxGainByNoise = gainClamp(s.noiseS, s.noiseO, s.noiseMax);
                 r.maxGainByNoise = (float) maxGainByNoise;
                 if (ae > maxGainByNoise) {
                     ae = maxGainByNoise;

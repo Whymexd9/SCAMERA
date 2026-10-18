@@ -36,6 +36,13 @@ public final class ScamHybridBurst implements ScamTransport {
      * frame count; the frames of the merge are {@link #lastMergeFrames}.
      */
     public static volatile java.nio.ByteBuffer lastEffectiveFrames;
+    /** P212h (A5 = M5): the coverage (frames) code 64 of {@link #lastEffectiveFrames} stands for; NaN when the worker gave none. */
+    public static volatile float lastEffectiveMedian = Float.NaN;
+    /**
+     * P212h (A5): the N frames the last merge took (the burst's normals, fewer when the worker's «HYBRID SERIES» line says it left
+     * some of a series out; 1 for the base frame alone).
+     */
+    public static volatile int lastNormals = 1;
     static final int ROLE_NORMAL = 1, ROLE_BRACKETED = 3, ROLE_ULTRASHORT = 5;
     private static final long BASE_WINDOW_NS = 205_000_000L; // SCAM: base candidates within 205 ms of the newest frame
     private static final int BASE_CANDIDATES = 4;
@@ -861,6 +868,7 @@ public final class ScamHybridBurst implements ScamTransport {
         final ScamHybridBurst[] made = new ScamHybridBurst[1];
         final ByteBuffer out = merge(context, frames, p, mergedDng, made);
         seriesNotice = notice(made[0], ScamNeuralClient.lastJobReport, lastMergeTier);
+        lastNormals = seriesNormals(lastNormals, ScamNeuralClient.lastJobReport); // P212h: a series the worker cut
         if (seriesNotice != null) Log.w("SCAM_HDR", "hybrid series notice: " + seriesNotice);
         return out;
     }
@@ -929,7 +937,29 @@ public final class ScamHybridBurst implements ScamTransport {
         return block == 2 || block == 4 ? block : 1;
     }
 
+    /** P212h (A5): the N frames of this burst (the base and the frames merged as N). */
+    int normalCount() {
+        int n = 0;
+        for (int role : roles) if (role == ROLE_NORMAL) n++;
+        return Math.max(1, n);
+    }
+
+    /**
+     * P212h (A5): the N frames a merge took - {@code normals}, or fewer when the report's last «HYBRID SERIES» line says the worker
+     * left N frames of a series out (P190).
+     */
+    static int seriesNormals(int normals, String report) {
+        if (report == null) return Math.max(1, normals);
+        final java.util.regex.Matcher m = SERIES_LINE.matcher(report);
+        int k = -1;
+        while (m.find()) {
+            try { k = Integer.parseInt(m.group(3)); } catch (NumberFormatException e) { k = -1; }
+        }
+        return Math.max(1, k > 0 ? Math.min(normals, k) : normals);
+    }
+
     private static ByteBuffer merge(Context context, List<ImageFrame> frames, Parameters p, boolean mergedDng, ScamHybridBurst[] made) throws Exception {
+        lastNormals = 1;
         ScamHybridBurst burst = new ScamHybridBurst(frames, p, false);
         made[0] = burst;
         // P214e: the block of the CPU tier; a worker merge sets it again from its report
@@ -954,6 +984,7 @@ public final class ScamHybridBurst implements ScamTransport {
         try {
             final ByteBuffer merged = ScamNeuralClient.processScamBurst(context, burst);
             p.mosaicBlock = mergedBlock(burst.mosaicBlock, burst.binned, ScamNeuralClient.lastJobReport);
+            lastNormals = burst.normalCount();
             return merged;
         } catch (Exception first) {
             if (burst.strictTwoX) throw new IOException(Lang.t("SHDR: склейка 2× не завершена; замена на 1× или увеличение отключена",
@@ -984,6 +1015,7 @@ public final class ScamHybridBurst implements ScamTransport {
                         ScamNeuralClient.carryReport = "previous attempt: " + previousWhy + "\n" + (previous == null ? "" : tail(previous, 4000));
                         ByteBuffer out = ScamNeuralClient.processScamBurst(context, safe);
                         p.mosaicBlock = mergedBlock(safe.mosaicBlock, safe.binned, ScamNeuralClient.lastJobReport);
+                        lastNormals = safe.normalCount();
                         lastMergeTier = "gpu-conservative";
                         lastFallbackFrames = safe.frames.size();
                         Log.w("SCAM_HDR", "Hybrid fallback=gpu-conservative after: " + why
@@ -1106,6 +1138,8 @@ public final class ScamHybridBurst implements ScamTransport {
         lastMergeFrames = Double.NaN;
         ScamRgb.dropClipFlags();
         lastEffectiveFrames = null;
+        lastEffectiveMedian = Float.NaN;
+        lastNormals = 1;
         lastMergedDng = null;
         lastMergeTier = "cpu-single";
         Log.w("SCAM_HDR", "Hybrid fallback=cpu-single: base frame " + burst.base.number + " " + w + "x" + h + " block " + block

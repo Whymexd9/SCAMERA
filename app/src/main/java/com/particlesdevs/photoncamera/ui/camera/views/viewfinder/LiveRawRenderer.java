@@ -100,6 +100,19 @@ final class LiveRawRenderer {
     private FloatBuffer shadingBuffer;
     private final HashMap<String,Integer> uniforms=new HashMap<>();
     private final LiveRawMeter meter=new LiveRawMeter();
+    private int sceneFrames;
+    /**
+     * P212h (A6 = M11): MainRenderer returns before its LiveSceneMeter while the developed RAW is drawn, so in a RAW-viewfinder session
+     * (FULLRES) the software shutter / ISO priority never had a brightness and its other value never moved. While the priority wants
+     * it, every 8th developed frame gives its median (before any display gain) as SceneLuma, marked as the RAW source (ParamController
+     * learns the target again when the source changes). Not where the frame's own AE meters the other value (the OPPO native
+     * session: NativeRawExposure.setManual); scam_dev.txt "vf_raw_scene_luma 0": as before.
+     */
+    private void sceneLuma(LiveRawFrame.Frame f) {
+        if(!f.sceneLuma || !com.particlesdevs.photoncamera.manual.SceneLuma.wanted() || (++sceneFrames&7)!=0)return;
+        final double luma=meter.sceneLuma();
+        if(Double.isFinite(luma))com.particlesdevs.photoncamera.manual.SceneLuma.publishRaw(luma);
+    }
     void onContextCreated() {
         program=rawTex=shadingTex=lutTex=filmLutTex=width=height=0;lutShown=null;
         uploadedVersion=frameSession=-1; failed=false; uniforms.clear(); meter.reset();
@@ -133,6 +146,7 @@ final class LiveRawRenderer {
                 GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES30.GL_RGB16F,f.shadingWidth,f.shadingHeight,0,GLES20.GL_RGB,GLES20.GL_FLOAT,shadingBuffer);
                 if(!check("upload"))return false;
                 meter.update(f);
+                sceneLuma(f);
                 uploadedVersion=f.version;
             }
             GLES20.glActiveTexture(GLES20.GL_TEXTURE3);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,shadingTex);

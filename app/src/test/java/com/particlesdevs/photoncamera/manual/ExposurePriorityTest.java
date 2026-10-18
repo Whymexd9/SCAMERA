@@ -124,4 +124,32 @@ public class ExposurePriorityTest {
         assertEquals(0.4, iso.targetLuma(), 0);
         assertEquals(200, iso.iso());
     }
+
+    /**
+     * P212h (A6 = M11): the RAW viewfinder's SceneLuma (its median, gamma 1/2.2) moves the loop by the RAW's own ratio, and a change of
+     * meter (the ISP texture's mean on another scale) learns the target again at the exposure in force instead of jumping.
+     */
+    @Test
+    public void theRawViewfinderMovesTheLoopAndAChangeOfMeterLearnsAgain() {
+        ExposurePriority.Loop loop = new ExposurePriority.Loop(ExposurePriority.SHUTTER, 800, 20_000_000L);
+        // the first RAW measurement learns: the FULLRES frame's median 0.01 (luma 0.123)
+        final double night = Math.pow(0.01, 1 / 2.2);
+        assertFalse(loop.measured(night, 0, ISO_MIN, ISO_MAX, T_MIN, T_MAX));
+        // the scene darkens 2 EV: the median falls 4x, the ISO rises by 2/3 of the 2 stops
+        assertTrue(loop.measured(Math.pow(0.0025, 1 / 2.2), 0, ISO_MIN, ISO_MAX, T_MIN, T_MAX));
+        assertEquals(800 * Math.pow(2, 2.0 * 2 / 3), loop.iso(), 3);
+        final int moved = loop.iso();
+        // the ISP viewfinder takes over: its mean is on the ISP's tone curve - learned again, nothing moves
+        loop.relearn();
+        assertTrue(Double.isNaN(loop.targetLuma()));
+        assertFalse(loop.measured(0.46, 0, ISO_MIN, ISO_MAX, T_MIN, T_MAX));
+        assertEquals(moved, loop.iso());
+        assertEquals(0.46, loop.targetLuma(), 0);
+
+        SceneLuma.publishRaw(0.2);
+        assertEquals(SceneLuma.RAW, SceneLuma.source());
+        assertEquals(0.2, SceneLuma.mean(), 0);
+        SceneLuma.publish(0.3);
+        assertEquals(SceneLuma.ISP, SceneLuma.source());
+    }
 }
