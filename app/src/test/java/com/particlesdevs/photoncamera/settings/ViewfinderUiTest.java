@@ -83,9 +83,9 @@ public class ViewfinderUiTest {
         lensModel.setBackCameras(cameraData);lensModel.setFrontCameras(new ArrayList<>());lenses.setAuxButtonsModel(lensModel);lenses.setActiveId("1");
         bottom.findViewById(R.id.processing_progress_bar).setVisibility(View.INVISIBLE);
         int exact=View.MeasureSpec.EXACTLY;screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(880,exact));screen.layout(0,0,400,880);
-        // §3: the compact ruler card is about 88-90dp; §2: the toggle card and the chips card share the strip's height.
+        // SIMPLE_UI §3: the ruler card is one row - the 54dp scale in 5dp padding (no header, no hint line).
         View chipsCard=manual.findViewById(R.id.buttons_container),toggleCard=manual.findViewById(R.id.manual_toggle);
-        assertTrue("ruler card "+container.getHeight(),container.getHeight()>=86&&container.getHeight()<=92);
+        assertEquals("ruler card",64,container.getHeight());
         assertEquals(View.GONE,toggleCard.getVisibility());assertTrue(chipsCard.getHeight()>=58);   // SIMPLE_UI: «Про» in the bottom bar, no toggle card
         assertEquals(container.getHeight()+8+chipsCard.getHeight(),manual.getHeight());
         // SIMPLE_UI §1 top bar: torch, timer, Motion (44dp icon buttons), the pill card [format | size], the 44dp gear at the end,

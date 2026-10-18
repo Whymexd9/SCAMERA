@@ -68,8 +68,8 @@ public class ManualRulerTest {
             @Override public void onDragStateChanged(boolean dragging) {}
             @Override public void onAutoRequested() { autoRequests++; ruler.setSelectedItem(auto); }
         });
-        ruler.measure(View.MeasureSpec.makeMeasureSpec(336, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(49, View.MeasureSpec.EXACTLY));
-        ruler.layout(0, 0, 336, 49);
+        ruler.measure(View.MeasureSpec.makeMeasureSpec(336, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(54, View.MeasureSpec.EXACTLY));
+        ruler.layout(0, 0, 336, 54);
     }
 
     private KnobItemInfo iso(long value) {
@@ -188,8 +188,8 @@ public class ManualRulerTest {
         ruler.setItems(items, iso(800), auto);
         Parent parent = new Parent(ruler.getContext());
         parent.addView(ruler, new FrameLayout.LayoutParams(336, 49));
-        parent.measure(View.MeasureSpec.makeMeasureSpec(336, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(49, View.MeasureSpec.EXACTLY));
-        parent.layout(0, 0, 336, 49);
+        parent.measure(View.MeasureSpec.makeMeasureSpec(336, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(54, View.MeasureSpec.EXACTLY));
+        parent.layout(0, 0, 336, 54);
         long t = 0;
         assertTrue(parent.dispatchTouchEvent(ev(MotionEvent.ACTION_DOWN, t, 250)));
         int afterDown = parent.intercepts;
@@ -203,15 +203,14 @@ public class ManualRulerTest {
     @Test
     public void markerIsFixedInTheCentreInTheAccent() {
         ruler.setItems(items, iso(800), auto);
-        Bitmap bitmap = Bitmap.createBitmap(336, 49, Bitmap.Config.ARGB_8888);
+        Bitmap bitmap = Bitmap.createBitmap(336, 54, Bitmap.Config.ARGB_8888);
         ruler.draw(new Canvas(bitmap));
         float left = ruler.autoWidth() + 8, centre = (left + 336) / 2f;
-        // the 2dp marker line between h-23 and h-4, in the accent (not the old amber)
-        int pixel = bitmap.getPixel(Math.round(centre), 49 - 10);
+        // SIMPLE_UI §3: the 2dp marker line between h-25 and h-5, in the accent (no triangle)
+        int pixel = bitmap.getPixel((int) centre, 54 - 10);
         assertEquals(Integer.toHexString(pixel), ACCENT & 0xFFFFFF, pixel & 0xFFFFFF);
-        // the triangle on top of it
-        int tip = bitmap.getPixel(Math.round(centre), 49 - 26);
-        assertEquals(Integer.toHexString(tip), ACCENT & 0xFFFFFF, tip & 0xFFFFFF);
+        int top = bitmap.getPixel((int) centre, 54 - 24);
+        assertEquals(Integer.toHexString(top), ACCENT & 0xFFFFFF, top & 0xFFFFFF);
         try (java.io.FileOutputStream out = new java.io.FileOutputStream(new java.io.File(dir(), "manual-ruler.png"))) {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
         } catch (java.io.IOException e) {
@@ -223,7 +222,7 @@ public class ManualRulerTest {
         ruler.onTouchEvent(ev(MotionEvent.ACTION_MOVE, t += 200, 245));
         bitmap.eraseColor(0);
         ruler.draw(new Canvas(bitmap));
-        assertEquals(ACCENT & 0xFFFFFF, bitmap.getPixel(Math.round(centre), 49 - 10) & 0xFFFFFF);
+        assertEquals(ACCENT & 0xFFFFFF, bitmap.getPixel((int) centre, 54 - 10) & 0xFFFFFF);
         ruler.onTouchEvent(ev(MotionEvent.ACTION_UP, t += 200, 245));
     }
 

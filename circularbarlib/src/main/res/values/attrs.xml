@@ -3,5 +3,6 @@
     <!-- A chip of the manual strip: its parameter icon. -->
     <declare-styleable name="ManualChipView">
         <attr name="manualChipIcon" format="reference"/>
+        <attr name="manualChipName" format="string"/>
     </declare-styleable>
 </resources>

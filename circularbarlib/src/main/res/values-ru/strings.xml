@@ -23,8 +23,8 @@
     <string name="manual_value_auto">Авто</string>
     <string name="manual_all_auto">Всё на авто</string>
     <string name="manual_toast_auto">%1$s: авто</string>
-    <string name="manual_toast_all_auto">Все параметры на авто</string>
-    <string name="manual_ev_locked">Экспокоррекция недоступна: ISO и выдержка заданы вручную</string>
+    <string name="manual_toast_all_auto">Всё на авто</string>
+    <string name="manual_ev_locked">Яркость авто: ISO и выдержка ручные</string>
     <string name="manual_a11y_manual">%1$s: %2$s</string>
     <string name="manual_a11y_auto">%1$s: авто, сейчас %2$s</string>
     <string name="manual_a11y_locked">%1$s: недоступна, ISO и выдержка заданы вручную</string>
@@ -35,4 +35,11 @@
     <string name="manual_unit_metres">м</string>
     <string name="manual_unit_centimetres">см</string>
     <string name="manual_decimal_separator">,</string>
+    <string name="manual_name_shutter">Выдержка</string>
+    <string name="manual_name_ev">Яркость</string>
+    <string name="manual_name_focus">Фокус</string>
+    <string name="manual_name_wb">Цвет</string>
+    <string name="manual_allauto_value">Всё</string>
+    <string name="manual_allauto_name">на авто</string>
+    <string name="manual_toast_already_auto">Уже всё на авто</string>
 </resources>

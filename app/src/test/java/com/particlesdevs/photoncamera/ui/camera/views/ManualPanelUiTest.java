@@ -96,15 +96,17 @@ public class ManualPanelUiTest {
     public void stripRendersFiveChipsWithTheirStates() throws Exception {
         ((ExpandingManualPanel) h.panel).setExpanded(true, false);
         View chips = h.find(R.id.buttons_container);
-        assertEquals(5, ((android.view.ViewGroup) chips).getChildCount());
+        // SIMPLE_UI §3: six chips - the five parameters and «Всё на авто»; each with its short name under the value
+        assertEquals(6, ((android.view.ViewGroup) chips).getChildCount());
         String[] names = {"ISO", "Выдержка", "Экспокоррекция", "Фокус", "Баланс белого"};
+        String[] shortNames = {"ISO", "Выдержка", "Яркость", "Фокус", "Цвет"};
         for (int p = 0; p < 5; p++) {
             assertEquals(ManualChipView.AUTO, chip(p).getChipState());
-            assertEquals("авто", chip(p).getStateView().getText().toString());
+            assertEquals(shortNames[p], chip(p).getNameView().getText().toString());
             assertTrue(chip(p).getContentDescription().toString().startsWith(names[p] + ": авто"));
             assertNotNull(chip(p).getIcon().getDrawable());
-            // icons only: no name on the chip itself
-            assertFalse(chip(p).getValueView().getText().toString().contains(names[p]));
+            // the value line is the value, the name its own line
+            assertFalse(chip(p).getValueView().getText().toString().contains(shortNames[p]));
         }
         // in auto the chips show the camera's metered values, in MUTED
         h.console.setMeteredValues(640, 1_000_000_000L / 125, 0.5f, 5200);
@@ -114,7 +116,7 @@ public class ManualPanelUiTest {
         assertEquals("0", chip(ManualPanelState.EV).getValueView().getText().toString());
         assertEquals("2 м", chip(ManualPanelState.FOCUS).getValueView().getText().toString());
         assertEquals("5200K", chip(ManualPanelState.WB).getValueView().getText().toString());
-        assertEquals(0xFFB2BAC9, chip(ManualPanelState.ISO).getValueView().getCurrentTextColor());
+        assertEquals("auto: the value in the text colour", 0xFFF4F3F7, chip(ManualPanelState.ISO).getValueView().getCurrentTextColor());
         assertEquals("ISO: авто, сейчас 640", chip(ManualPanelState.ISO).getContentDescription().toString());
         ExpandingManualPanel panel = (ExpandingManualPanel) h.panel;
         assertFalse(panel.isManualDotShown());
@@ -128,7 +130,7 @@ public class ManualPanelUiTest {
         set(ManualPanelState.ISO, 1);
         assertEquals(ManualChipView.MANUAL, chip(ManualPanelState.ISO).getChipState());
         assertEquals("800", chip(ManualPanelState.ISO).getValueView().getText().toString());
-        assertEquals("ручн.", chip(ManualPanelState.ISO).getStateView().getText().toString());
+        assertEquals("the state by colour, the name stays", "ISO", chip(ManualPanelState.ISO).getNameView().getText().toString());
         assertEquals(800, params().getCurrentISOValue(), 0);
         assertTrue(panel.isManualDotShown());
         assertEquals(View.VISIBLE, h.find(R.id.manual_all_auto).getVisibility());
@@ -155,7 +157,7 @@ public class ManualPanelUiTest {
         assertTrue(chip(ManualPanelState.WB).performLongClick());
         assertEquals(ManualChipView.AUTO, chip(ManualPanelState.WB).getChipState());
         assertEquals(0, params().getWhiteBalanceKelvin());
-        assertEquals("Баланс белого: авто", last());
+        assertEquals("Цвет: авто", last());
         ManualModel<?> wb = console.models()[ManualPanelState.WB];
         assertEquals(0, wb.getCurrentInfo().value, 0);
         // the ruler (still open) follows to auto
@@ -175,7 +177,7 @@ public class ManualPanelUiTest {
         assertEquals(ManualChipView.LOCKED, ev.getChipState());
         assertEquals(.4f, ev.getAlpha(), 1e-6f);
         assertEquals("—", ev.getValueView().getText().toString());
-        assertEquals("выкл.", ev.getStateView().getText().toString());
+        assertEquals("Яркость", ev.getNameView().getText().toString());
         AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
         ev.onInitializeAccessibilityNodeInfo(info);
         assertFalse(info.isEnabled());
@@ -183,10 +185,10 @@ public class ManualPanelUiTest {
         assertEquals(storedEv, params().getCurrentEvValue(), 0);
         // a tap or a long press explains, opens nothing and resets nothing
         ev.performClick();
-        assertEquals("Экспокоррекция недоступна: ISO и выдержка заданы вручную", last());
+        assertEquals("Яркость авто: ISO и выдержка ручные", last());
         assertNotEquals(ManualPanelState.EV, console.selectedParam());
         ev.performLongClick();
-        assertEquals("Экспокоррекция недоступна: ISO и выдержка заданы вручную", last());
+        assertEquals("Яркость авто: ISO и выдержка ручные", last());
         assertEquals(storedEv, params().getCurrentEvValue(), 0);
         // left out of the summary
         ManualSummaryView summary = h.find(R.id.manual_summary);
@@ -219,15 +221,27 @@ public class ManualPanelUiTest {
         set(ManualPanelState.WB, 5);
         set(ManualPanelState.EV, 2);
         View allAuto = h.find(R.id.manual_all_auto);
+        ManualChipView allChip = h.find(R.id.all_auto_option_tv);
         assertEquals(View.VISIBLE, allAuto.getVisibility());
-        allAuto.performClick();
+        // SIMPLE_UI §3: the sixth chip «Всё / на авто», bright while something is manual
+        assertEquals(ManualChipView.AUTO, allChip.getChipState());
+        assertEquals("Всё", allChip.getValueView().getText().toString());
+        assertEquals("на авто", allChip.getNameView().getText().toString());
+        assertEquals(1f, allChip.getAlpha(), 0f);
+        allChip.performClick();
         for (int p = 0; p < 5; p++) {
             assertEquals(ManualChipView.AUTO, chip(p).getChipState());
             assertFalse(com.particlesdevs.photoncamera.circularbarlib.ui.ViewObserver.isManual(console.models()[p], p));
         }
         assertFalse(params().isManualMode());
-        assertEquals("Все параметры на авто", last());
+        assertEquals("Всё на авто", last());
         assertEquals(View.GONE, allAuto.getVisibility());
+        // nothing manual: dimmed to 40 %, a tap only says so
+        assertEquals(ManualChipView.DIMMED, allChip.getChipState());
+        assertEquals(.4f, allChip.getAlpha(), 1e-6f);
+        assertEquals("Всё", allChip.getValueView().getText().toString());
+        allChip.performClick();
+        assertEquals("Уже всё на авто", last());
         assertFalse(((ExpandingManualPanel) h.panel).isManualDotShown());
         assertEquals(View.GONE, h.<View>find(R.id.manual_summary).getVisibility());
     }

@@ -56,7 +56,7 @@ import static org.mockito.Mockito.*;
  * set to (display size small / default / large = more or fewer dp on the same panel; font scale 0.85 / 1.0 / 1.3). Every
  * place and size is dp from the edges, the bottom bar and the shade's handle, as in the concept (CSS px = dp):
  * <ul>
- * <li>manual block 12dp from the left and right edges, its bottom 12dp above the HIDDEN handle (40dp above the handle's
+ * <li>manual block 6dp from the left and right edges (SIMPLE_UI: the concept's .pro), its bottom 12dp above the HIDDEN handle (40dp above the handle's
  * bottom edge); the ruler card 8dp above the strip;</li>
  * <li>no toggle card (SIMPLE_UI: «Про» in the bottom bar), the strip one row of five equal chips, its height growing with the
  * font size only up to {@link UiTokens#FONT_SCALE_CAP} (on the vivo it was about 95dp);</li>
@@ -191,7 +191,8 @@ public class ViewfinderScaleLayoutTest {
 
             ExpandingManualPanel panel = (ExpandingManualPanel) binding.manualMode;
             panel.setExpanded(true, false);
-            int[] chipIds = {R.id.iso_option_tv, R.id.exposure_option_tv, R.id.ev_option_tv, R.id.focus_option_tv, R.id.wb_option_tv};
+            int[] chipIds = {R.id.iso_option_tv, R.id.exposure_option_tv, R.id.ev_option_tv, R.id.focus_option_tv, R.id.wb_option_tv,
+                    R.id.all_auto_option_tv};
             String[] values = {"12800", "1/8000", "+1 1/3", "1,2 м", "10000K"};
             int[] states = {ManualChipView.MANUAL, ManualChipView.MANUAL, ManualChipView.LOCKED, ManualChipView.AUTO, ManualChipView.MANUAL};
             for (int i = 0; i < 5; i++) ((ManualChipView) panel.findViewById(chipIds[i])).bind(values[i], states[i]);
@@ -215,9 +216,9 @@ public class ViewfinderScaleLayoutTest {
             String geometry = " manual=" + manual + " handle=" + handleBox + " bar=" + barBox + " toggle=" + toggleBox
                     + " chips=" + chipsBox + " strip=" + stripBox + " row=" + rowBox;
 
-            // The manual block: 12dp from the sides, 12dp above the handle (40dp above its bottom), the ruler 8dp above.
-            assertEquals(at + "left margin" + geometry, dp(12), manual.left);
-            assertEquals(at + "right margin" + geometry, dp(12), w - manual.right);
+            // The manual block: 6dp from the sides, 12dp above the handle (40dp above its bottom), the ruler 8dp above.
+            assertEquals(at + "left margin" + geometry, dp(6), manual.left);
+            assertEquals(at + "right margin" + geometry, dp(6), w - manual.right);
             assertEquals(at + "handle at the bar's top" + geometry, barBox.top, handleBox.top, 1);
             assertEquals(at + "12dp above the handle" + geometry, handleBox.top - dp(12), manual.bottom, 1);
             assertEquals(at + "40dp above the handle's bottom" + geometry, handleBox.bottom - dp(40), manual.bottom, 1);
@@ -230,14 +231,14 @@ public class ViewfinderScaleLayoutTest {
             assertTrue(at + "strip at least 58dp: " + chipsBox.height() / density, chipsBox.height() >= dp(58));
             assertTrue(at + "strip " + chipsBox.height() / density + "dp, at most " + STRIP_MAX_DP,
                     chipsBox.height() <= dp(STRIP_MAX_DP));
-            // The concept's strip: 4 + (7 + 22 + 3 + value line + 3 + state line + 6) + 4 dp, lines 1.2 x the text size
-            // (16.8 + 10.8 = 27.6dp at font scale 1, 76.6dp in all), whatever the font's own metrics.
-            float lines = 1.2f * (UiTokens.spPx(context, 14f) + UiTokens.spPx(context, 9f));
-            assertEquals(at + "strip height", dp(49) + lines, chipsBox.height(), 2f);
-            if (fontScale == 1f) assertEquals(at + "strip as in the concept", 76.6f, chipsBox.height() / density, 1f);
+            // The concept's chips card: 4 + (6 + 20 + 1 + value line + 1 + name line + 5) + 4 dp, lines 1.2 x the text size
+            // (15.6 + 12 = 27.6dp at font scale 1, 68.6dp in all), whatever the font's own metrics.
+            float lines = 1.2f * (UiTokens.spPx(context, 13f) + UiTokens.spPx(context, 10f));
+            assertEquals(at + "strip height", dp(41) + lines, chipsBox.height(), 2f);
+            if (fontScale == 1f) assertEquals(at + "strip as in the concept", 68.6f, chipsBox.height() / density, 1f);
             assertEquals(at + "chips card to the right margin", manual.right, chipsBox.right);
             Rect first = at(panel.findViewById(chipIds[0]));
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < chipIds.length; i++) {   // SIMPLE_UI §3: six equal chips, «Всё на авто» the sixth
                 ManualChipView chip = panel.findViewById(chipIds[i]);
                 Rect box = at(chip);
                 assertEquals(at + "chip " + i + " in the row", first.top, box.top);
@@ -245,14 +246,14 @@ public class ViewfinderScaleLayoutTest {
                 assertEquals(at + "equal chips", first.width(), box.width(), 1);
                 assertTrue(at + "chip " + i + " inside the card", box.left >= chipsBox.left + dp(4) - 1
                         && box.right <= chipsBox.right - dp(4) + 1 && box.bottom <= chipsBox.bottom - dp(4) + 1);
-                if (i > 0) assertEquals(at + "4dp gap", dp(4), box.left - at(panel.findViewById(chipIds[i - 1])).right, 1);
-                assertTrue(at + "chip " + i + " text cut: " + values[i], chip.textFits());
+                if (i > 0) assertEquals(at + "2dp gap", dp(2), box.left - at(panel.findViewById(chipIds[i - 1])).right, 1);
+                assertTrue(at + "chip " + i + " text cut", chip.textFits());
                 assertEquals(at + "one line", 1, chip.getValueView().getLineCount());
                 float valuePx = chip.getValueView().getTextSize();
                 assertTrue(at + "value " + valuePx / density + "dp over the cap",
-                        valuePx <= 14f * UiTokens.FONT_SCALE_CAP * density + .5f);
-                assertTrue(at + "state line over the cap",
-                        chip.getStateView().getTextSize() <= 9f * UiTokens.FONT_SCALE_CAP * density + .5f);
+                        valuePx <= 13f * UiTokens.FONT_SCALE_CAP * density + .5f);
+                assertTrue(at + "name line over the cap",
+                        chip.getNameView().getTextSize() <= 10f * UiTokens.FONT_SCALE_CAP * density + .5f);
             }
 
             // Nothing of the manual block over the handle, the lens strip or the shutter row.

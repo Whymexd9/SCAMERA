@@ -227,6 +227,11 @@ public class ManualModeConsoleImpl implements ManualModeConsole {
 
     @Override
     public void resetAllToAuto() {
+        // SIMPLE_UI §3: the «Всё на авто» chip with nothing manual only says so
+        if (!state().anyManual()) {
+            message(string(R.string.manual_toast_already_auto));
+            return;
+        }
         for (int param = 0; param < ManualPanelState.COUNT; param++) {
             ManualModel<?> m = model(param);
             if (m != null && ViewObserver.isManual(m, param)) m.resetModel();

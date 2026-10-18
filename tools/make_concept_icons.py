@@ -2,7 +2,8 @@
 
 The glyphs are the concept's own SVG (SIMPLE_UI_TASK, the interactive concept's ICONS table); circles and rounded
 rectangles become path data. The stroke is white: every view tints it (the text colour, or the accent while on).
-Run: python tools/make_concept_icons.py  (writes app/src/main/res/drawable/ui_ic_*.xml)
+Run: python tools/make_concept_icons.py  (writes app/src/main/res/drawable/ui_ic_*.xml and, for the Pro panel in the
+circularbar library, circularbarlib/src/main/res/drawable/pro_ic_*.xml)
 """
 import os
 import re
@@ -97,12 +98,21 @@ def vector(name, svg):
     return '\n'.join(out) + '\n'
 
 
+# the Pro panel's chips (the library cannot see the app's drawables): pro_ic_<chip> from the concept's glyph
+PRO = {'iso': 'iso', 'shutter': 'shutter', 'ev': 'sun', 'focus': 'focus', 'wb': 'wb', 'auto': 'auto'}
+
+
 def main():
-    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'app', 'src', 'main', 'res', 'drawable')
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+    root = os.path.join(here, 'app', 'src', 'main', 'res', 'drawable')
     for name, svg in ICONS.items():
         with open(os.path.join(root, 'ui_ic_%s.xml' % name), 'w', encoding='utf-8', newline='\n') as f:
             f.write(vector(name, svg))
-    print('%d icons' % len(ICONS))
+    lib = os.path.join(here, 'circularbarlib', 'src', 'main', 'res', 'drawable')
+    for chip, name in PRO.items():
+        with open(os.path.join(lib, 'pro_ic_%s.xml' % chip), 'w', encoding='utf-8', newline='\n') as f:
+            f.write(vector(name, ICONS[name]))
+    print('%d icons, %d Pro chips' % (len(ICONS), len(PRO)))
 
 
 if __name__ == '__main__':

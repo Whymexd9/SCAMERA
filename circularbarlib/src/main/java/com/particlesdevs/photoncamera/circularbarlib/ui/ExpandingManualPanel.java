@@ -50,8 +50,9 @@ public class ExpandingManualPanel extends LinearLayout {
         dot = findViewById(R.id.manual_toggle_dot);
         toggleIcon = findViewById(R.id.manual_toggle_icon);
         Context c = getContext();
-        tabs.setBackground(UiTokens.shape(c, UiTokens.CARD, UiTokens.LINE, 20));
-        scale.setBackground(UiTokens.shape(c, UiTokens.CARD, UiTokens.LINE, 18));
+        // SIMPLE_UI §3: the concept's cards - the sheet colour at 94 % (chips) and 96 % (ruler) with a line
+        tabs.setBackground(UiTokens.shape(c, CHIPS_FILL, UiTokens.LINE, 20));
+        scale.setBackground(UiTokens.shape(c, RULER_FILL, UiTokens.LINE, 18));
         toggle.setBackground(UiTokens.shape(c, UiTokens.CARD, UiTokens.LINE, 20));
         GradientDrawable round = new GradientDrawable();
         round.setShape(GradientDrawable.OVAL);
@@ -118,6 +119,9 @@ public class ExpandingManualPanel extends LinearLayout {
     public void refreshEndSlot() {
         updateFrame();
     }
+
+    /** The concept's .chips and .ruler fills: rgba(21,25,28,.94) and rgba(21,25,28,.96). */
+    public static final int CHIPS_FILL = 0xF015191C, RULER_FILL = 0xF515191C;
 
     public boolean isExpanded() {
         return expanded;
