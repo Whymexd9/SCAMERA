@@ -92,11 +92,16 @@ public final class Dcg14Mode {
 
     /**
      * P230: a route whose mode keys go on every request as well (Xiaomi 15 Ultra: current_mode and the 60 fps range on the
-     * viewfinder's and the shot's requests); "" when there is none.
+     * viewfinder's and the shot's requests; X200 Ultra Telegram route: 60 fps); "" when there is none.
      */
     public static String applyRequest(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c) {
-        if (builder == null || !XiaomiDcg.device() || !active(c)) return "";
-        return XiaomiDcg.applyRequest(builder, c);
+        if (builder == null || !requestKeys(c)) return "";
+        return XiaomiDcg.device() ? XiaomiDcg.applyRequest(builder, c) : VivoQcomModes.applyDcgRequest(builder);
+    }
+
+    /** P230: the active DCG route sets keys on every request (Xiaomi 15 Ultra; the X200 Ultra's guarded Telegram route). */
+    public static boolean requestKeys(@Nullable CameraCharacteristics c) {
+        return active(c) && (XiaomiDcg.device() || VivoQcomModes.telegramDcg());
     }
 
     /** P230: the depth the DCG mode's samples have when the route says so up front (Xiaomi 15 Ultra: 14), 0 to learn it. */

@@ -11,9 +11,6 @@ import androidx.annotation.Nullable;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.ShortBuffer;
 import java.util.Locale;
 
 /**
@@ -25,7 +22,7 @@ import java.util.Locale;
  * <li>org.codeaurora.qcamera3.sensor_meta_data.current_mode (int32) = 24, the DCG mode itself;</li>
  * <li>60 fps only (the AE target range of the viewfinder, and so of the shot's frames, which take the viewfinder's range);</li>
  * <li>the 4096 x 3072 RAW_SENSOR buffer holds the 2560 rows of the mode: the 512 rows at the bottom are empty and are cut off
- * the shot's frames ({@link #padding}, called by ScamProcessor's RAW crop);</li>
+ * the shot's frames ({@link SensorModeBand}, ScamProcessor's RAW crop);</li>
  * <li>14-bit samples under the declared white 1023: the session's levels are 14 bit (RawLevels.noteKnownBits: white 16383,
  * black the frame's dynamic one in its units, else the static 64 x 16), confirmed or taken back by the mode the results report
  * ({@link #onResult}).</li>
@@ -39,8 +36,7 @@ import java.util.Locale;
  * request too (as the 17 Ultra's HAL takes its ISZ mode 9, P41).
  * <p>
  * scam_dev: {@code xiaomi_dcg 0} hides the switch, {@code xiaomi_dcg_opmode N} / {@code xiaomi_dcg_mode N} / {@code xiaomi_dcg_fps N}
- * try other values (0 = leave out), {@code xiaomi_dcg_crop} 0 = no crop, 1 = cut the band when it is empty (default), 2 = always cut
- * the bottom band.
+ * try other values (0 = leave out); the band crop: {@code dcg_band_crop} ({@link SensorModeBand}).
  */
 public final class XiaomiDcg {
     static final String TAG = "XiaomiDcg";
@@ -52,16 +48,9 @@ public final class XiaomiDcg {
     public static final int FPS = 60;
     /** Depth of the mode's samples. */
     public static final int BITS = 14;
-    static final String KEY_MODE = "org.codeaurora.qcamera3.sensor_meta_data.current_mode";
-    static final String KEY_MODE_INDEX = "com.qti.sensorbps.mode_index";
-    static final String KEY_TABLE = "org.quic.camera2.sensormode.info.SensorModeTable";
-    /** Crop settings ({@code xiaomi_dcg_crop}). */
-    static final int CROP_OFF = 0, CROP_EMPTY = 1, CROP_ALWAYS = 2;
+    static final String KEY_MODE = SensorModeBand.KEY_MODE;
 
     private static final CaptureRequest.Key<Integer> MODE = new CaptureRequest.Key<>(KEY_MODE, Integer.class);
-    private static final CaptureResult.Key<int[]> RESULT_MODE = new CaptureResult.Key<>(KEY_MODE, int[].class);
-    private static final CaptureResult.Key<int[]> RESULT_MODE_INDEX = new CaptureResult.Key<>(KEY_MODE_INDEX, int[].class);
-    private static final CameraCharacteristics.Key<int[]> TABLE = new CameraCharacteristics.Key<>(KEY_TABLE, int[].class);
 
     private XiaomiDcg() {}
 
@@ -86,34 +75,9 @@ public final class XiaomiDcg {
         return device() && PreferenceKeys.scamDevSwitch("xiaomi_dcg", true);
     }
 
-    /**
-     * One mode of a Qualcomm SensorModeTable ({count, values per mode, then count x (width, height, fps, ...)}): {width, height,
-     * fps}, null when the table has no such mode.
-     */
-    @Nullable
-    static int[] modeEntry(@Nullable int[] table, int mode) {
-        if (table == null || table.length < 2 || mode < 0) return null;
-        final int count = table[0], stride = table[1];
-        if (stride < 3 || mode >= count) return null;
-        final int at = 2 + mode * stride;
-        if (at + 2 >= table.length) return null;
-        return new int[]{table[at], table[at + 1], table[at + 2]};
-    }
-
-    /** The camera's sensor mode table, null when it has none. */
-    @Nullable
-    static int[] table(@Nullable CameraCharacteristics c) {
-        if (c == null) return null;
-        try {
-            return c.get(TABLE);
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
     /** The main sensor of the 15U: its table has the DCG mode, a 4096-wide one (the ultra-wide, the teles and the front have none). */
     static boolean mainTable(@Nullable int[] table, int mode) {
-        final int[] e = modeEntry(table, mode);
+        final int[] e = SensorModeBand.modeEntry(table, mode);
         return e != null && e[0] >= 4000 && e[1] >= 2000 && e[1] <= e[0];
     }
 
@@ -122,7 +86,7 @@ public final class XiaomiDcg {
         if (c == null || !enabled()) return false;
         final Integer facing = c.get(CameraCharacteristics.LENS_FACING);
         if (facing == null || facing != CameraCharacteristics.LENS_FACING_BACK) return false;
-        return mainTable(table(c), dcgMode());
+        return mainTable(SensorModeBand.table(c), dcgMode());
     }
 
     // ---------------------------------------------------------------- the values (scam_dev overrides for the owner's tests)
@@ -140,10 +104,6 @@ public final class XiaomiDcg {
     /** The frame rate: 60 (scam_dev xiaomi_dcg_fps; 0 = the viewfinder's own range). */
     public static int fps() {
         return Math.round(PreferenceKeys.scamDevNumber("xiaomi_dcg_fps", FPS));
-    }
-
-    static int cropSetting() {
-        return Math.round(PreferenceKeys.scamDevNumber("xiaomi_dcg_crop", CROP_EMPTY));
     }
 
     /**
@@ -183,7 +143,7 @@ public final class XiaomiDcg {
         final StringBuilder out = new StringBuilder("operation mode 0x" + Integer.toHexString(operationMode()));
         out.append(", ").append(applyRequest(session, c));
         final int mode = dcgMode();
-        final int[] e = modeEntry(table(c), mode);
+        final int[] e = SensorModeBand.modeEntry(SensorModeBand.table(c), mode);
         if (e != null) out.append(" (table: mode ").append(mode).append(" = ").append(e[0]).append('x').append(e[1]).append(" at ").append(e[2]).append(" fps)");
         return out.toString();
     }
@@ -211,24 +171,6 @@ public final class XiaomiDcg {
 
     // ---------------------------------------------------------------- results: the mode the HAL runs
 
-    /** The sensor mode a result reports: current_mode, else com.qti.sensorbps.mode_index; null when neither is there. */
-    @Nullable
-    public static Integer reportedMode(@Nullable CaptureResult result) {
-        if (result == null) return null;
-        Integer v = first(result, RESULT_MODE);
-        return v != null ? v : first(result, RESULT_MODE_INDEX);
-    }
-
-    @Nullable
-    private static Integer first(CaptureResult result, CaptureResult.Key<int[]> key) {
-        try {
-            final int[] v = result.get(key);
-            return v == null || v.length == 0 ? null : v[0];
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
     /** A 14-bit mode of this route: the DCG mode asked for, or 23, which the operation mode gives by itself. */
     static boolean fourteenBit(int reported, int asked) {
         return reported == asked || reported == OP_MODE_ALONE;
@@ -248,7 +190,7 @@ public final class XiaomiDcg {
     /** A viewfinder result of a DCG session: the mode the HAL runs, logged on change, and the session's depth follows it. */
     public static void onResult(@Nullable CaptureResult result, @Nullable CameraCharacteristics c, String cameraId) {
         if (result == null) return;
-        final Integer current = first(result, RESULT_MODE), index = first(result, RESULT_MODE_INDEX);
+        final Integer current = SensorModeBand.currentMode(result), index = SensorModeBand.modeIndex(result);
         final Integer reported = current != null ? current : index;
         final int asked = dcgMode();
         final int bits = bitsOfReport(reported, asked);
@@ -267,95 +209,5 @@ public final class XiaomiDcg {
     /** A new session: the next report is logged again. */
     public static void newSession() {
         sLastReport = null;
-    }
-
-    // ---------------------------------------------------------------- the shot's frames: the mode's rows in a taller buffer
-
-    /**
-     * The rows a {@code w} x {@code h} frame holds beyond the {@code modeWidth} x {@code modeHeight} sensor mode, on the side where
-     * they are empty: {left, top, right, bottom} (sensor px) to cut. With {@link #CROP_EMPTY} a band counts only when every one of
-     * its rows is one value (zeros or a constant fill: a row of the image is never one value over thousands of samples); the
-     * bottom is tried first (the 15U's place), then the top. {@link #CROP_ALWAYS} cuts the bottom band unchecked. Nothing when
-     * the mode fills the frame, is wider or narrower than it, or the setting is off.
-     */
-    public static int[] padding(@Nullable ByteBuffer raw, int w, int h, int modeWidth, int modeHeight, int setting) {
-        final int[] none = new int[4];
-        if (setting == CROP_OFF || modeWidth != w || modeHeight <= 0 || modeHeight >= h || modeHeight < h / 2) return none;
-        final int band = h - modeHeight;
-        if (setting == CROP_ALWAYS) return new int[]{0, 0, 0, band};
-        if (raw == null || raw.capacity() < (long) w * h * 2) return none;
-        final ShortBuffer s = raw.duplicate().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer();
-        if (constantRows(s, w, modeHeight, band)) return new int[]{0, 0, 0, band};
-        if (constantRows(s, w, 0, band)) return new int[]{0, band, 0, 0};
-        return none;
-    }
-
-    /** Every row of {@code count} rows from {@code from} holds a single value. */
-    static boolean constantRows(ShortBuffer s, int w, int from, int count) {
-        for (int y = from; y < from + count; y++) {
-            final int base = y * w;
-            final short v = s.get(base);
-            for (int x = 1; x < w; x++) if (s.get(base + x) != v) return false;
-        }
-        return true;
-    }
-
-    /**
-     * The shot's cut for the DCG mode (ScamProcessor's RAW crop): the mode its result reports (or the one asked for while this
-     * route runs, when the result reports none) against the frame; {left, top, right, bottom} sensor px, zeros for none. Only
-     * on the 15U; CROP_ALWAYS only cuts while the DCG route runs (a forced cut of a normal shot would lose image rows).
-     */
-    public static int[] shotPadding(@Nullable CameraCharacteristics c, @Nullable CaptureResult result, @Nullable ByteBuffer raw, int w, int h) {
-        if (!device() || c == null) return new int[4];
-        final int[] table = table(c);
-        final Integer reported = reportedMode(result);
-        final int mode = reported != null ? reported : sSessionActive ? dcgMode() : -1;
-        // any mode shorter than the buffer leaves its band empty: cut whatever the HAL runs (checked empty unless forced)
-        final int[] e = modeEntry(table, mode);
-        if (e == null) return new int[4];
-        int setting = cropSetting();
-        if (setting == CROP_ALWAYS && !sSessionActive) setting = CROP_EMPTY;
-        final int[] sides = padding(raw, w, h, e[0], e[1], setting);
-        if (e[1] < h && e[0] == w)
-            Log.i("SCAM_HDR", "Xiaomi DCG: mode " + mode + " is " + e[0] + "x" + e[1] + " in a " + w + "x" + h + " frame: "
-                    + (sides[1] + sides[3] > 0 ? "cut " + (sides[3] > 0 ? sides[3] + " rows at the bottom" : sides[1] + " rows at the top")
-                    : setting == CROP_OFF ? "crop off (scam_dev xiaomi_dcg_crop 0)" : "no empty band found, frame kept whole"));
-        return sides;
-    }
-
-    private static volatile boolean sSessionActive;
-    /** The size of the mode the running DCG session asked for (0: none / not in the table). */
-    private static volatile int sModeWidth, sModeHeight;
-
-    /** The running session is (true) or is not a DCG session of this route, on the camera of {@code c}. */
-    public static void sessionActive(boolean active, @Nullable CameraCharacteristics c) {
-        final int[] e = active ? modeEntry(table(c), dcgMode()) : null;
-        sModeWidth = e == null ? 0 : e[0];
-        sModeHeight = e == null ? 0 : e[1];
-        sSessionActive = active;
-    }
-
-    /** As above, keeping the mode's size (a refusal ends the session's route). */
-    public static void sessionActive(boolean active) {
-        if (!active) sModeWidth = sModeHeight = 0;
-        sSessionActive = active;
-    }
-
-    /**
-     * The rows of a {@code width} x {@code height} frame of the running DCG session that hold the image: the mode's height when the
-     * buffer is taller (the 15U: 2560 of 3072, at the top), else all of them. The «16:9» crop (Wide169) takes its centred rows
-     * out of these, not out of the empty band.
-     */
-    public static int imageRows(int width, int height) {
-        return imageRows(width, height, sSessionActive ? sModeWidth : 0, sModeHeight, cropSetting());
-    }
-
-    static int imageRows(int width, int height, int modeWidth, int modeHeight, int setting) {
-        if (setting == CROP_OFF || modeWidth != width || modeHeight <= 0 || modeHeight >= height || modeHeight < height / 2) return height;
-        return modeHeight;
-    }
-
-    public static boolean sessionActive() {
-        return sSessionActive;
     }
 }

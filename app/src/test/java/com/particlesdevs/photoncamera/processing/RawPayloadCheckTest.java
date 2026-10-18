@@ -283,4 +283,24 @@ public class RawPayloadCheckTest {
         RawLevels.newSession(true);
         assertFalse(RawPayloadCheck.check(b, W, H, STRIDE, WHITE).plain());
     }
+
+    /**
+     * P230: the same frame without a known depth (the X200 Ultra route: the depth is the samples'), with the DCG mode's rows
+     * named (SensorModeBand.noteResult): the band is no zero tail, two frames prove 14 bits and the payload is plain.
+     */
+    @Test
+    public void theModesRowsOnlyProveTheWiderStream() {
+        final ByteBuffer b = zeroed();
+        Random r = new Random(31);
+        for (int y = 0; y < H - H / 6; y++)
+            for (int x = 0; x < W; x++) b.putShort(y * STRIDE + 2 * x, (short) (1024 + 3000 + r.nextInt(6000)));
+        RawLevels.newSession(true);
+        RawLevels.noteCamera(new float[]{64, 64, 64, 64}, WHITE);
+        RawPayloadCheck.setImageRows(H - H / 6);
+        assertTrue(RawPayloadCheck.check(b, W, H, STRIDE, WHITE).plain());
+        assertTrue(RawPayloadCheck.check(b, W, H, STRIDE, WHITE).plain());
+        assertEquals(14, RawLevels.sampledBits());
+        RawPayloadCheck.setWideEnabled(true);
+        assertFalse("a new session forgets the rows", RawPayloadCheck.check(b, W, H, STRIDE, WHITE).plain());
+    }
 }

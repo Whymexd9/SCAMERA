@@ -184,7 +184,7 @@ public final class DevKeys {
         k.add(n(xiaomi15, "xiaomi_dcg_opmode", String.valueOf(com.particlesdevs.photoncamera.capture.XiaomiDcg.OPERATION_MODE), Lang.t("DCG: режим работы сессии (37379 = 0x9203, 0 — без него)", "DCG: session operation mode (37379 = 0x9203, 0 none)")));
         k.add(n(xiaomi15, "xiaomi_dcg_mode", String.valueOf(com.particlesdevs.photoncamera.capture.XiaomiDcg.DCG_MODE), Lang.t("DCG: current_mode сенсора (24; -1 — не задавать)", "DCG: sensor current_mode (24; -1 not set)")));
         k.add(n(xiaomi15, "xiaomi_dcg_fps", String.valueOf(com.particlesdevs.photoncamera.capture.XiaomiDcg.FPS), Lang.t("DCG: кадров в секунду (0 — как в видоискателе)", "DCG: frames per second (0 as the viewfinder)")));
-        k.add(n(xiaomi15, "xiaomi_dcg_crop", "1", Lang.t("DCG: пустые строки кадра (0 — не резать, 1 — если пустые, 2 — всегда снизу)", "DCG: empty rows of the frame (0 keep, 1 cut when empty, 2 always the bottom)")));
+        k.add(n(xiaomi15, "dcg_band_crop", "1", Lang.t("DCG (15 Ultra, X200 Ultra): пустые строки под режимом (0 — не резать, 1 — если пустые, 2 — всегда снизу)", "DCG (15 Ultra, X200 Ultra): empty rows under the mode (0 keep, 1 cut when empty, 2 always the bottom)")));
         // vivo
         k.add(s(vivo, "vivo_sdk_fullres", true, Lang.t("X200 Ultra, основная камера 3: SDK RAW 50 Мп, последовательная съёмка после нажатия, Hybrid", "X200 Ultra, main camera 3: SDK 50 MP RAW, serial post-shutter capture, Hybrid")));
         // P180 / P184: FULLRES without hardware remosaic on the X100 / X300 Ultra - on (the owner tests it), off by these
@@ -244,6 +244,7 @@ public final class DevKeys {
         k.add(s(vivo, "vivo_qcom_logical", false, Lang.t("X200 Ultra: экспериментальная логическая камера 2", "X200 Ultra: experimental logical camera 2")));
         k.add(s(vivo, "vivo_qcom_vcf_bypass", false, Lang.t("X200 Ultra: диагностический VCFAppType 2 (RAW не исправляет)", "X200 Ultra: diagnostic VCFAppType 2 (does not fix RAW)")));
         k.add(s(vivo, "vivo_qcom_reprocess", false, Lang.t("X200 Ultra: диагностический reprocessMode 1 (ошибка камеры 4)", "X200 Ultra: diagnostic reprocessMode 1 (camera error 4)")));
+        k.add(s(vivo, "vivo_dcg_telegram", false, Lang.t("X200 Ultra, опыт P230: DCG как клиент Telegram (60 к/с, режим DCGHDR60_1_4)", "X200 Ultra, P230 test: DCG as the Telegram client (60 fps, mode DCGHDR60_1_4)")));
         k.add(s(vivo, "dcg14", true, Lang.t("Кнопка DCG 14 бит (X300 Ultra)", "The DCG 14-bit button (X300 Ultra)")));
         k.add(s(vivo, "vivo_teleconverter", false, Lang.t("Показывать камеры-профили телеконвертера vivo (Tele…External) — только с надетой насадкой", "Show the vivo teleconverter camera profiles (Tele…External): only with the extender attached")));
         // Pixel 10 Pro / Pro XL

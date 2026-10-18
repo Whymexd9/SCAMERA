@@ -25,6 +25,17 @@ public final class VivoQcomModes {
     private static final String K_UI = "com.vivo.current_ui_module";
     private static final String K_SHDR = "org.codeaurora.qcamera3.sessionParameters.EnableSHDR";
     private static final String K_STREAM_USAGE = "vivo.control.streamsUsage";
+    /**
+     * P230: the client as Telegram. PD2454's sensor-mode selector (vendor/etc/camera/sensormode-selector/PD2454.json) gives
+     * AppType TELEGRAM (CameraService's package table: org.telegram.messenger = 307) DCGHDR60_1_4 at 50 / 60 fps on every
+     * camera - {DCG1_4, 60 fps}: 4096 x 2632 on the main (modes 10 / 11) and the ultra-wide (8 / 9) - the only DCG branch a
+     * third-party AppType reaches on the 200 MP lenses (DEFAULT / WEIXIN ... get PHOTO_V2H2 there; the 14-bit DCG_SENSORFUSION
+     * LOG modes are AppType vivo only). There the selector's own geometry is the DCG mode's, unlike the forced-mode tries of
+     * P109-P200 (selector PHOTO 4096 x 3072 against CHI's forced 4096 x 2632: no RAW frame). Guarded (scam_dev
+     * vivo_dcg_telegram 1), not phone-checked: the RAW may be the ISP's 10-bit input, the frames may not come at all.
+     */
+    static final String TELEGRAM = "org.telegram.messenger";
+    static final int DCG_FPS = 60;
     private static volatile String lastResult, lastActive;
 
     public static void onCameraOpened() {
@@ -67,8 +78,32 @@ public final class VivoQcomModes {
         return device() && PreferenceKeys.scamDevSwitch("vivo_qcom_modes", true);
     }
 
+    /** P230: the DCG switch runs the Telegram-AppType route on this phone (scam_dev vivo_dcg_telegram 1). */
+    static boolean telegramRoute() {
+        return device() && PreferenceKeys.scamDevSwitch("vivo_dcg_telegram", false);
+    }
+
+    /** P230: the Telegram-AppType DCG route is on (the route and the DCG switch). */
+    public static boolean telegramDcg() {
+        return telegramRoute() && Dcg14Mode.on();
+    }
+
+    /**
+     * P230: a mode at least 4000 wide, shorter than 4:3 and 2400 rows or more, at 60 fps: the 16:10 DCG modes of the main and the
+     * ultra-wide (4096 x 2632). The tele has its 4080 x 2616 modes at 30 fps only, the front none.
+     */
+    static boolean dcg60Table(@Nullable int[] table) {
+        if (table == null || table.length < 2) return false;
+        for (int m = 0; m < table[0]; m++) {
+            final int[] e = SensorModeBand.modeEntry(table, m);
+            if (e != null && e[0] >= 4000 && e[1] >= 2400 && e[1] * 4 < e[0] * 3 && e[2] == DCG_FPS) return true;
+        }
+        return false;
+    }
+
     @Nullable
     public static String spoofPackage() {
+        if (telegramDcg()) return TELEGRAM;
         boolean qcom = Build.MANUFACTURER != null && Build.MANUFACTURER.equalsIgnoreCase("vivo")
                 && (device() || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                 && ("Qualcomm".equalsIgnoreCase(Build.SOC_MANUFACTURER)
@@ -77,7 +112,16 @@ public final class VivoQcomModes {
     }
 
     public static boolean dcgAvailable(@Nullable CameraCharacteristics c) {
-        return routesEnabled() && c != null && supported(c, K_SHDR);
+        if (c == null) return false;
+        if (telegramRoute()) return dcg60Table(SensorModeBand.table(c));
+        return routesEnabled() && supported(c, K_SHDR);
+    }
+
+    /** P230: the Telegram route's 60 fps on a request (the viewfinder's, a shot's, the session's); the log text, "" when off. */
+    public static String applyDcgRequest(CaptureRequest.Builder builder) {
+        if (builder == null || !telegramDcg()) return "";
+        builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new android.util.Range<>(DCG_FPS, DCG_FPS));
+        return "AE fps [" + DCG_FPS + ", " + DCG_FPS + "]";
     }
 
     private static boolean routesEnabled() {
@@ -175,6 +219,9 @@ public final class VivoQcomModes {
     public static String apply(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c, @Nullable String physicalId) {
         if (!device() || builder == null) return "";
         StringBuilder out = new StringBuilder();
+        if (telegramDcg() && dcgAvailable(c))
+            out.append("AppType TELEGRAM (").append(TELEGRAM).append("), ").append(applyDcgRequest(builder))
+                    .append(": the selector's DCGHDR60_1_4 ");
         if (wantsStreamUsage()) {
             set(builder, K_UI, new int[]{Dcg14Mode.on() ? 3 : 1}, out);
         }
@@ -196,7 +243,8 @@ public final class VivoQcomModes {
 
     public static void onResult(@Nullable CaptureResult result, @Nullable String physicalId) {
         if (!enabled() || result == null || activeFactor() == 0 && !Dcg14Mode.on()) return;
-        String state = "camera " + physicalId + " seamless=" + value(result, "vivo.feedback.seamlessMode")
+        String state = "camera " + physicalId + " mode=" + SensorModeBand.reportedMode(result)
+                + " seamless=" + value(result, "vivo.feedback.seamlessMode")
                 + " changed=" + value(result, "vivo.parameter.seamlessModeChanged")
                 + " white=" + result.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL);
         if (!state.equals(lastResult)) {

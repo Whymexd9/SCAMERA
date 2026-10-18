@@ -251,6 +251,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private static final java.util.Set<String> sVendorModeRefused = java.util.concurrent.ConcurrentHashMap.newKeySet();
     /** P230: the DCG route's operation mode the running session was configured with (Xiaomi 15 Ultra 0x9203; 0: none). */
     private volatile int mDcgOperationMode;
+    /** P230: the running session is a DCG route's that sets its keys on every request (Xiaomi 15 Ultra; X200 Ultra Telegram). */
+    private volatile boolean mDcgRequestKeys;
     /**
      * P214g: the session settings (settings/SessionKeys: the @SensorConfig fields above, the module's vendor keys, the
      * preferences the build reads) the last session was built with, and the module scope of its sensor keys; null before the
@@ -901,6 +903,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 logSensorModeIndex(result);
                 VivoQcomModes.onResult(result, physicalID);
                 if (mDcgOperationMode != 0) XiaomiDcg.onResult(result, mCameraCharacteristics, physicalID); // P230: the mode the HAL runs
+                if (mDcgRequestKeys && mImageReaderRaw != null) SensorModeBand.noteResult(mCameraCharacteristics, result,
+                        mImageReaderRaw.getWidth(), mImageReaderRaw.getHeight(), physicalID);
                 if (XiaomiTeleZoom.active() && isCurrentPreviewSession(session)
                         && XiaomiTeleZoom.onResult(result, xiaomiLensResult(result), PreferenceKeys.scamDevSwitch("xiaomi_lens_check", true)))
                     onZoomChanged();
@@ -2249,8 +2253,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             handler.removeCallbacks(mStallCheck);
             return;
         }
-        // P230: a DCG session (Xiaomi 15 Ultra op mode 0x9203) that never gave a frame: DCG off, a normal session
-        if (mLastPreviewResultMs == 0 && retryWithoutDcgOperationMode(mCaptureSession, "no preview frame for " + noFrame + " ms")) {
+        // P230: a DCG route's session (Xiaomi 15 Ultra op mode 0x9203, X200 Ultra Telegram) that never gave a frame: DCG off
+        if (mLastPreviewResultMs == 0 && retryWithoutDcgRoute(mCaptureSession, "no preview frame for " + noFrame + " ms")) {
             mPreviewSessionStartMs = 0;
             handler.removeCallbacks(mStallCheck);
             return;
@@ -2910,7 +2914,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         mImageReaderRaw.setOnImageAvailableListener(mOnRawImageAvailableListener, mBackgroundHandler);
         // P230: a DCG mode (60 fps only) has its own limits, not the normal mode's of the same RAW size
-        mExposureLimits = ExposureLimits.of(physicalID + (Dcg14Mode.operationMode(characteristics) != 0 ? "/dcg" : ""),
+        mExposureLimits = ExposureLimits.of(physicalID + (Dcg14Mode.requestKeys(characteristics) ? "/dcg" : ""),
                 mImageReaderRaw.getWidth(), mImageReaderRaw.getHeight(), useMaximumResolutionKey);
         // Find out if we need to swap dimension to get the preview size relative to sensor
         // coordinate.
@@ -3262,7 +3266,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 Log.i("SCAM_CAPTURE", "motion mode: camera " + physicalID + " AE range " + motionFps);
                             }
                             // P230: the DCG mode on every request and its 60 fps (the shot's frames take the viewfinder's range)
-                            if (mDcgOperationMode != 0) Log.i("SCAM_CAPTURE", "DCG viewfinder requests camera " + physicalID + ": "
+                            if (mDcgRequestKeys) Log.i("SCAM_CAPTURE", "DCG viewfinder requests camera " + physicalID + ": "
                                     + Dcg14Mode.applyRequest(mPreviewRequestBuilder, mCameraCharacteristics));
                             if (sdkFullRes) applyVivoSdkPreview(mPreviewRequestBuilder);
                             mPreviewInputRequest = mPreviewRequestBuilder.build();
@@ -3292,7 +3296,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             return;
                         }
                         Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
-                        if (retryWithoutDcgOperationMode(cameraCaptureSession, "session configuration failed")) return; // P230
+                        if (retryWithoutDcgRoute(cameraCaptureSession, "session configuration failed")) return; // P230
                         if (retryWithoutVendorMode(cameraCaptureSession)) return; // P211
                         if (retryWithoutVivoSdkFullRes(cameraCaptureSession, "session configuration failed")) return;
                         if (retryWithoutRequestedSensorMode(cameraCaptureSession, "session configuration failed")) return;
@@ -3311,10 +3315,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // P211: the module's «Тип сессии камеры» as Android takes it, never in FULLRES, 0 after the camera refused it
                 final int vendorMode = sVendorModeRefused.contains(physicalID) ? 0 : sessionOperationMode(sessionType, sdkFullRes || mFullResSession);
                 // P230: the DCG route's own operation mode (Xiaomi 15 Ultra: 0x9203) wins over the module's session type; a refusal
-                // turns DCG off (retryWithoutDcgOperationMode), not the module's mode
-                final int dcgOperationMode = xiaomiLogical || sdkFullRes || mFullResSession ? 0 : Dcg14Mode.operationMode(mCameraCharacteristics);
+                // turns DCG off (retryWithoutDcgRoute), not the module's mode
+                final boolean dcgRoute = !xiaomiLogical && !sdkFullRes && !mFullResSession && Dcg14Mode.requestKeys(mCameraCharacteristics);
+                final int dcgOperationMode = dcgRoute ? Dcg14Mode.operationMode(mCameraCharacteristics) : 0;
                 mDcgOperationMode = dcgOperationMode;
-                XiaomiDcg.sessionActive(dcgOperationMode != 0, mCameraCharacteristics);
+                mDcgRequestKeys = dcgRoute;
+                SensorModeBand.sessionStart(dcgRoute, mCameraCharacteristics, dcgOperationMode != 0 ? XiaomiDcg.dcgMode() : -1);
                 XiaomiDcg.newSession();
                 mVendorOperationMode = xiaomiLogical || dcgOperationMode != 0 ? 0 : vendorMode;
                 if (!xiaomiLogical && sessionType != 0)
@@ -3401,7 +3407,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
         } catch (Exception e) {
             Log.e(TAG, Log.getStackTraceString(e));
-            if (retryWithoutDcgOperationMode(null, "session: " + e.getMessage())) return; // P230
+            if (retryWithoutDcgRoute(null, "session: " + e.getMessage())) return; // P230
             if (retryWithoutVendorMode(null)) return; // P211
             if (retryWithoutVivoSdkFullRes(null, "session: " + e.getMessage())) return;
             if (retryWithoutRequestedSensorMode(null, "session: " + e.getMessage())) return;
@@ -3491,20 +3497,23 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     /**
-     * P230: a DCG session the camera refused with its operation mode (Xiaomi 15 Ultra 0x9203), or one that never gave a frame,
-     * runs again as a normal session: DCG goes off (the switch shows it), so the next session is mode 0 without the DCG keys and
-     * the same refusal cannot come back by itself (one camera restart, no loop); a tap on «DCG» tries again.
+     * P230: a DCG route's session the camera refused (Xiaomi 15 Ultra: its operation mode 0x9203; X200 Ultra: the Telegram route),
+     * or one that never gave a frame, runs again as a normal session: DCG goes off (the switch shows it), so the next session is
+     * mode 0 without the DCG keys and the same refusal cannot come back by itself (one camera restart, no loop); a tap on «DCG»
+     * tries again.
      */
-    private boolean retryWithoutDcgOperationMode(@Nullable CameraCaptureSession session, String why) {
+    private boolean retryWithoutDcgRoute(@Nullable CameraCaptureSession session, String why) {
         final int mode = mDcgOperationMode;
-        if (mode == 0 || mCameraDevice == null) return false;
+        if (!mDcgRequestKeys || mCameraDevice == null) return false;
         mDcgOperationMode = 0;
-        XiaomiDcg.sessionActive(false);
+        mDcgRequestKeys = false;
+        SensorModeBand.sessionEnd();
         Dcg14Mode.setMode(Dcg14Mode.OFF);
-        Log.w("SCAM_CAPTURE", "camera " + physicalID + ": DCG session with operation mode 0x" + Integer.toHexString(mode)
-                + " refused (" + why + "): DCG off, again in mode 0");
-        showError(Lang.t("DCG: камера " + physicalID + " не приняла режим сессии 0x" + Integer.toHexString(mode) + ", обычный режим",
-                "DCG: camera " + physicalID + " refused session mode 0x" + Integer.toHexString(mode) + ", normal mode"));
+        final String what = mode != 0 ? "session mode 0x" + Integer.toHexString(mode) : "DCG route";
+        Log.w("SCAM_CAPTURE", "camera " + physicalID + ": DCG session (" + what + ") refused (" + why + "): DCG off, a normal session");
+        showError(Lang.t("DCG: камера " + physicalID + " не приняла " + (mode != 0 ? "режим сессии 0x" + Integer.toHexString(mode)
+                        : "режим DCG") + ", обычный режим",
+                "DCG: camera " + physicalID + " refused " + what + ", normal mode"));
         if (session != null) try { session.close(); } catch (RuntimeException ignored) { }
         // one restart (the DCG button and the camera's state follow the switch); DCG is off, so it does not come back
         new Handler(Looper.getMainLooper()).post(this::restartCamera);
@@ -5602,7 +5611,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (!mShutterIszAspect4x3 && ScameraApp.getSettings().aspect169 && width > height) {
                 // P118: the one 16:9 crop of every frame of the shot (whole colour blocks, the post-shutter frames the same size);
                 // P230: of the DCG mode's rows, not of its empty band
-                final int full = XiaomiDcg.imageRows(width, img.getHeight());
+                final int full = SensorModeBand.imageRows(width, img.getHeight());
                 height = com.particlesdevs.photoncamera.processing.Wide169.rows(width, full);
                 offset = rowStride * com.particlesdevs.photoncamera.processing.Wide169.firstRow(width, full);
                 capacity = rowStride * height;
@@ -6457,7 +6466,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 applyAeMeteringRegions(captureBuilder);
             }
             VendorTagUtils.builderSessionApply(captureBuilder, true, useMaximumResolutionKey, physicalID);
-            if (mDcgOperationMode != 0) Dcg14Mode.applyRequest(captureBuilder, mCameraCharacteristics); // P230: the DCG mode
+            if (mDcgRequestKeys) Dcg14Mode.applyRequest(captureBuilder, mCameraCharacteristics); // P230: the DCG mode
             // P108: the full-resolution RAW stream takes MAXIMUM_RESOLUTION requests only
             if (mFullResSession && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
                 captureBuilder.set(CaptureRequest.SENSOR_PIXEL_MODE, CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION);
@@ -7357,7 +7366,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         ScameraApp.getSettings().fpsMode = PreferenceKeys.getFpsMode();
         Range<Integer> motionFps = motionFpsRange();
         mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, motionFps != null ? motionFps : getSelectedFpsRange());
-        if (mDcgOperationMode != 0) Dcg14Mode.applyRequest(mPreviewRequestBuilder, mCameraCharacteristics); // P230: DCG runs 60 fps only
+        if (mDcgRequestKeys) Dcg14Mode.applyRequest(mPreviewRequestBuilder, mCameraCharacteristics); // P230: DCG runs 60 fps only
         rebuildPreviewBuilder();
     }
 

@@ -5095,3 +5095,64 @@ pro mist, glimmer glass и других подобных фильтров у н�
   stack (libs on the phone, the stock app's session) for the op mode that unlocks DCG, then implement as above.
 - Verification needs the phones' logs (owner): RAW bit depth (max code > 4095), the mode in the result
   (com.qti.sensorbps.mode_index / current_mode), fps, no pink highlights.
+- DONE 2026-10-18 (worktree wt-dcg, branch dcg-8elite; commits 670140fc + the next one; not pushed, not run on a phone):
+  - Xiaomi 15 Ultra (capture/XiaomiDcg, wired through Dcg14Mode / the top bar «DCG» button): the switch is shown on a back
+    camera whose org.quic.camera2.sensormode.info.SensorModeTable has mode 24 at 4096 wide (dump 2026-10-11: cameras 0 / 2 /
+    6 / 7 = the main; the ultra-wide 3 has 15 modes, the tele 4 14, the front 9: never offered there; nothing opens the tele 4
+    alone). DCG on: the session runs operation mode 0x9203 (instead of the module's session type; never in FULLRES or on the
+    17U logical route); current_mode 24 (Integer) goes on the session parameters AND on every request (the dump lists it neither
+    as a session nor as a request key; the camera service drops unlisted session parameters, the 17U HAL takes current_mode per
+    request); AE range [60, 60] on the session, the viewfinder and the shot (the series takes the viewfinder's range). Note: the
+    15U's table says mode 24 = 4096 x 2560 at 30 and modes 28-32 = 4096 x 2560 at 60 - the post's «60 fps only» is followed as
+    written; scam_dev overrides below. Refusal (onConfigureFailed, an exception, or a DCG session without a preview frame): DCG
+    off, the error card, one camera restart in mode 0 (retryWithoutDcgRoute) - no loop; a device error already turns DCG off.
+  - Log lines: «camera N: DCG session operation mode 0x9203», «DCG 14 bit on camera N: operation mode 0x9203, current_mode 24,
+    AE fps [60, 60] (table: mode 24 = 4096x2560 at 30 fps)», «Xiaomi DCG camera N: current_mode X, mode_index Y (asked 24) =
+    14-bit DCG route / NOT the DCG mode, dynamic white W», «DCG camera N: HAL mode X = WxH at F fps in the 4096x3072 RAW
+    stream: rows 2560-3072 are its empty band», «RAW levels: sensor mode depth 14 bit», «DCG band: mode 24 ... cut 512 rows at
+    the bottom».
+  - Levels: RawLevels.noteKnownBits - the session's 14-bit depth up front (white 16383, black = the frame's dynamic black in
+    its units, else 64 x 16), back to the declared 10 bit as soon as a result reports a mode other than 24 / 23; RawPayloadCheck
+    checks against the known white (14-bit samples and the empty band are no «impossible payload»).
+  - Crop (capture/SensorModeBand, ScamProcessor's RAW crop before anything reads the frames): the mode the shot's result
+    reports (else the asked one) against the frame; a shorter mode's band is cut when every one of its rows is one value
+    (bottom first, then top); the lens shading map is read at the centred window (+256 rows; assumption: the 16:10 mode is
+    centred on the sensor); «16:9» takes its rows out of the mode's 2560; during a DCG session the payload check samples only
+    the mode's rows.
+  - scam_dev (all in DevKeys): xiaomi_dcg 0 (hide), xiaomi_dcg_opmode N (37379; 0 = none), xiaomi_dcg_mode N (24; -1 = not
+    sent), xiaomi_dcg_fps N (60; 0 = the viewfinder's range), dcg_band_crop 0 / 1 / 2 (keep / cut when empty / always bottom).
+  - Tests: XiaomiDcgTest and SensorModeBandTest (both added to the CI list), RawLevelsTest, RawPayloadCheckTest, RawCropTest;
+    with the related classes 263 / 263 passed locally; check_ui_language and check_settings_model PASS.
+  - Owner's test on the 15U (CI APK): main camera 1x, a plain module, tap «DCG» (the camera restarts). Send the log
+    (DCIM/SCAMERA/Log) with the lines above; the viewfinder must run (60 fps); take 2 shots (a bright window, a dark room) and
+    send the DNGs / photos. Proof: current_mode / mode_index 24 (or 23) in the result, «RAW levels: sensor mode depth 14 bit»,
+    DNG max value > 4095 (white 16383), no pink highlights, no black band at the bottom (the 512 rows cut), even vignetting top
+    and bottom. If the HAL reports another mode: try scam_dev xiaomi_dcg_mode 28 (4096 x 2560 at 60 in the table) or
+    xiaomi_dcg_fps 30. If the bottom rows are not one value the log says «no empty band found»: try scam_dev dcg_band_crop 2.
+    Risks: the 14-bit RAW may arrive packed (MIPI RAW14 behind RAW_SENSOR, like the 17U's mode 9) - then the log shows «RAW is
+    not plain 16-bit» and RawPayloadCheck dumps a sample; the mode caps exposures at 1/60 s.
+  - vivo X200 Ultra (PD2454): the phone was not on adb during this pass (only the OPPO, untouched); studied from the pulled HAL
+    and config files of 2026-10-13 and the P109-P200 reports. Found: no 0x9203 (no 0x92xx operation mode at all) in PD2454's
+    com.qti.chi.override.so / camera.qcom*.so / libvcf*.so (MOVZ scan: the only 0x92xx constants are the EXIF tags 0x9201 /
+    0x9204); its vendor operation modes are 0xF040 (fast shutter, org.quic.camera.SensorModeFS) and the EIS modes; the stock
+    camera's sessions all run NORMAL (0). DCG is chosen by vivo's selector (sensormode-selector/PD2454.json) from AppType, UI
+    mode, EnableSHDR / EnableAutoHDR and the frame rate: the 14-bit DCG_SENSORFUSION LOG modes (DCGHDR30/60_LOG; main mode 12
+    = 4096 x 2632 at 30) are AppType vivo only; a third-party AppType gets PHOTO_V2H2 on the main / ultra-wide, except AppType
+    TELEGRAM (org.telegram.messenger = 307 in CameraService's package table): 50 / 60 fps -> DCGHDR60_1_4 (DCG1_4, 4096 x 2632
+    at 60: main modes 10 / 11, ultra-wide 8 / 9). current_mode is a result key there; vivo.control.forceSensorMode exists (as a
+    session key), but forcing the DCG mode under the selector's PHOTO geometry gave no RAW frame (P109-P200: selector 4096 x 3072
+    against CHI's 4096 x 2632). PD2454's DCG modes are 4096 x 2632 (main, ultra-wide) / 4080 x 2616 (tele) windows, like the
+    15U's 4096 x 2560.
+  - Implemented for the X200U, guarded (scam_dev vivo_dcg_telegram 1, off by default): the «DCG» button on the main and the
+    ultra-wide (a 16:10 4096-wide mode at 60 fps in their table; not the tele: its 2616-row modes run 30 fps only). DCG on =
+    the client as org.telegram.messenger (the typed attribution spoof of VivoQcomModes.spoofPackage) + AE [60, 60] on the
+    session and every request, so the selector itself picks DCGHDR60_1_4 and its geometry is the mode's; the band crop and the
+    mode-rows payload sampling as on the 15U (the depth comes from the samples: no known depth on vivo); refusal / no frame ->
+    DCG off, one restart. Uncertain: DCG1_4 is a 2-exposure (HDRExposureType1) mode, the RAW may be the ISP's 10-bit input or
+    may not come at all; the selector's evaluation order is not known (its «!vivo» 60 fps node comes before TELEGRAM).
+  - Owner's test on the X200U (CI APK): scam_dev vivo_dcg_telegram 1, main camera 1x, a plain module, tap «DCG». Send the log
+    with: «provider AppType=...» (VivoQcomModes, expect 307), «SCAMERA_SPOOF ... org.telegram.messenger», «DCG 14 bit on
+    camera 3: AppType TELEGRAM ...», «sensor mode index A -> B» and «VivoQcomModes camera 3 mode=...» (expect 10 / 11, not 1),
+    «DCG camera 3: HAL mode ... 4096x2632 ...», «RAW samples prove N bit» if any, PREVIEW_STALL / «DCG session ... refused»
+    lines; one shot (DNG). Then the same on the ultra-wide (camera 4). Useful too: adb shell dumpsys media.camera during the
+    session (Client Package, session parameters, operation mode). No other X200U route looked like it should work.
