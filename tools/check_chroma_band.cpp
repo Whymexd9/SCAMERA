@@ -11,7 +11,7 @@
 // The bounded-rows strips the old path used above 64 MP are compared too (not equal: their column sums restarted at every
 // strip; the largest difference is printed, on a subset). The phone build (NDK clang -O2, aarch64: the same FMA contractions as the worker)
 // and the host build (g++, CI) must both pass; on the phone also with -DSCAM_CHROMA_SCALAR (the scalar loops of the NEON kernels,
-// what the x86 build runs). Argument "quick": fewer stream variants per case.
+// what the x86 build runs). Argument "quick" (CI): fewer stream variants per case, fewer kernel rows, no bounded-rows strips.
 // scam-hybrid.h is not self-contained: the worker includes scam-capture.h first.
 #include "../app/src/main/cpp/scam-capture.h"
 #include "../app/src/main/cpp/scam-hybrid.h"
@@ -120,7 +120,9 @@ int main(int argc, char** argv) {
     const Variant few[] = {{0, 8, false}, {7, 3, true}};
     long cases = 0, streams = 0, distinct = 0;
     float boundedWorst[2] = {0, 0}; // noise, gratings, edges / the extreme contents (finite values)
+    int combination = 0;
     for (const Size& sz : sizes) for (int block : {1, 2, 3, 4, 8}) for (int content = 0; content < 10; ++content) for (int oscMode = 0; oscMode < 3; ++oscMode) {
+        if (quick && combination++ % 3 != 0) continue; // quick: every third combination (all sizes, blocks, contents, maps)
         const int w = sz.w, h = sz.h, bw = w / block, bh = h / block;
         if (oscMode && bw * bh == 0) continue; // no block of the map inside the frame
         const std::vector<float> input = frame(w, h, content, rng);
@@ -163,7 +165,7 @@ int main(int argc, char** argv) {
             std::printf("FAIL %s: mosaicChromaMedian (%s) differs from the planes\n", where(w, h, block, content, oscMode).c_str(), how.c_str());
             ++failures;
         }
-        if (oscMode == 1 && (block == 2 || block == 4) && content != 8) { // a subset (the strips start threads of their own for every pass; 1e30 values cancel to anything)
+        if (!quick && oscMode == 1 && (block == 2 || block == 4) && content != 8) { // a subset (the strips start threads of their own for every pass; 1e30 values cancel to anything)
             mosaicChromaMedianRef(bounded, w, h, block, o, false, nullptr, 32);
             float& worst = boundedWorst[content <= 2 ? 0 : 1];
             for (size_t i = 0; i < bounded.size(); ++i)
@@ -191,7 +193,9 @@ int main(int argc, char** argv) {
 #endif
     if (failures) { std::printf("FAIL: %d failures in %ld cases (%ld streams)\n", failures, cases, streams); return 1; }
     std::printf("PASS: streamed chroma median == the full-frame planes byte for byte, %ld cases (%ld changed by the filter), %ld streams "
-                "(steps 1..64 rows, 1..8 threads, fed in portions)%s; the old bounded-rows strips were up to %.3g off (noise, gratings, "
-                "edges; %.3g on NaN, black, clipped, wide range, dots)\n", cases, distinct, streams, ring, boundedWorst[0], boundedWorst[1]);
+                "(steps 1..64 rows, 1..8 threads, fed in portions)%s", cases, distinct, streams, ring);
+    if (!quick) std::printf("; the old bounded-rows strips were up to %.3g off (noise, gratings, edges; %.3g on NaN, black, clipped, wide range, dots)",
+                            boundedWorst[0], boundedWorst[1]);
+    std::printf("\n");
     return 0;
 }
