@@ -110,7 +110,8 @@ public class ParametersStoredShadingTest {
         final float[] nan = {Float.NaN, Float.NaN, Float.NaN};
         final RggbChannelVector gains = new RggbChannelVector(2.449f, 1f, 1f, 1.6287f);
         assertArrayEquals(new float[]{1 / 2.449f, 1f, 1 / 1.6287f}, Parameters.unusableNeutralFallback(nan, gains, null), 1e-5f);
-        final RggbChannelVector nanGains = new RggbChannelVector(Float.NaN, 1f, 1f, Float.NaN);
+        // (RggbChannelVector itself refuses NaN: zero gains give an infinite inverse)
+        final RggbChannelVector nanGains = new RggbChannelVector(0f, 1f, 1f, 0f);
         assertArrayEquals(new float[]{0.408f, 1f, 0.614f},
                 Parameters.unusableNeutralFallback(nan, nanGains, new float[]{0.408f, 1f, 0.614f}), 1e-6f);
         assertArrayEquals(new float[]{1f, 1f, 1f}, Parameters.unusableNeutralFallback(null, null, null), 0f);
