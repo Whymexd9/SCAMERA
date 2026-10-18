@@ -360,6 +360,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             list.setClipToPadding(false);
             list.setPadding(0, 0, 0, SettingsStyle.dp(requireContext(), 28));
             list.setVerticalScrollBarEnabled(false);
+            // SIMPLE_UI §4: the rows of a group share one card (the concept's .card / .row)
+            list.addItemDecoration(new SettingsCardDecoration(requireContext(), SettingsStyle::standalone));
             return list;
         }
 

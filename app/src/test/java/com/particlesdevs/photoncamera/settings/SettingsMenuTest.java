@@ -462,11 +462,14 @@ public class SettingsMenuTest {
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
         int exact=android.view.View.MeasureSpec.EXACTLY;
         view.measure(android.view.View.MeasureSpec.makeMeasureSpec(400,exact),android.view.View.MeasureSpec.makeMeasureSpec(880,exact));view.layout(0,0,400,880);
+        // SIMPLE_UI §4: the concept's header - a 44dp back disc, the title column, (the search disc)
         android.view.ViewGroup header=(android.view.ViewGroup)((android.view.ViewGroup)view).getChildAt(0);
-        android.view.ViewGroup titles=(android.view.ViewGroup)header.getChildAt(0);
-        assertTrue("Header must reserve space for branding and title",header.getHeight()>=60);
-        assertEquals(android.view.View.VISIBLE,header.getChildAt(1).getVisibility());
-        assertTrue(titles.getChildAt(1).getTop()>=titles.getChildAt(0).getBottom());
+        android.view.ViewGroup row=(android.view.ViewGroup)header.getChildAt(0);
+        android.view.ViewGroup titles=(android.view.ViewGroup)row.getChildAt(1);
+        assertTrue("Header must hold the 44dp back disc",header.getHeight()>=44);
+        assertEquals(android.view.View.VISIBLE,row.getChildAt(0).getVisibility());
+        assertEquals(44,row.getChildAt(0).getWidth());
+        if(titles.getChildAt(1).getVisibility()==android.view.View.VISIBLE)assertTrue(titles.getChildAt(1).getTop()>=titles.getChildAt(0).getBottom());
         android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(400,880,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
         java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
         try(var out=new java.io.FileOutputStream(new java.io.File(dir,name+".png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
@@ -1349,7 +1352,7 @@ public class SettingsMenuTest {
         assertNotNull("pages end in a chevron",row(page).findViewById(R.id.settings_chevron));
         android.widget.TextView label=row(category).findViewById(android.R.id.title);assertEquals(accent,label.getCurrentTextColor());
         android.view.View lr=row(list);android.widget.TextView value=lr.findViewById(R.id.settings_value);
-        assertEquals("Второй",value.getText().toString());assertEquals(accent,value.getCurrentTextColor());
+        assertEquals("Второй",value.getText().toString());assertEquals("SIMPLE_UI §4: the value on the right, muted",com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED,value.getCurrentTextColor());
         assertEquals("the value is not repeated in the summary","Описание",((android.widget.TextView)lr.findViewById(android.R.id.summary)).getText().toString());
         assertEquals("42",((android.widget.TextView)row(edit).findViewById(R.id.settings_value)).getText().toString());
         android.view.View sr=row(seek);android.widget.SeekBar bar=sr.findViewById(R.id.seekbar);

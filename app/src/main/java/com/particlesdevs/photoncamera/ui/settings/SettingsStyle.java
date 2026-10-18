@@ -95,7 +95,7 @@ public final class SettingsStyle {
         return t;
     }
 
-    // ───── Header: accent back arrow, letter-spaced SCAMERA eyebrow, centred bold title ─────
+    // ───── Header (SIMPLE_UI §4, the concept's .shead): a 44dp back disc, the title on the left (20sp, 600), the search disc ─────
 
     public static final class Header {
         public FrameLayout view;
@@ -104,52 +104,58 @@ public final class SettingsStyle {
     }
 
     /**
-     * The header of the module screen. view = FrameLayout {titles column (eyebrow, heading, subtitle), back[, search]}.
+     * The header of a settings page. view = FrameLayout {row (back disc, titles column (heading, subtitle), search disc)}.
      * {@code onSearch} null: no search button.
      */
     public static Header header(Context c, Runnable onBack, Runnable onSearch) {
         Header h = new Header();
-        int accent = accent(c);
         h.view = new FrameLayout(c);
-        LinearLayout titles = new LinearLayout(c);
-        titles.setOrientation(LinearLayout.VERTICAL);
-        titles.setPadding(dp(c, 42), 0, dp(c, 42), dp(c, 16));
-        TextView brand = text(c, "SCAMERA", 10, MUTED);
-        brand.setLetterSpacing(.16f);
-        brand.setGravity(Gravity.CENTER);
-        titles.addView(brand);
-        h.heading = text(c, "", 20, TEXT);
-        h.heading.setTypeface(null, android.graphics.Typeface.BOLD);
-        h.heading.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.topMargin = dp(c, 8);
-        titles.addView(h.heading, lp);
-        h.subtitle = text(c, "", 13, MUTED);
-        h.subtitle.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
-        sp.topMargin = dp(c, 6);
-        titles.addView(h.subtitle, sp);
-        h.view.addView(titles, new FrameLayout.LayoutParams(-1, -2));
-        h.back = new ImageView(c);
-        h.back.setImageResource(R.drawable.settings_ic_back);
-        h.back.setColorFilter(accent, PorterDuff.Mode.SRC_IN);
-        h.back.setPadding(dp(c, 9), dp(c, 9), dp(c, 9), dp(c, 9));
+        LinearLayout row = new LinearLayout(c);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, 0, 0, dp(c, 10));
+        h.back = disc(c, R.drawable.ui_ic_back);
         h.back.setContentDescription(Lang.t(c,"Назад","Back"));
         h.back.setFocusable(true);
         h.back.setOnClickListener(v -> onBack.run());
-        h.view.addView(h.back, new FrameLayout.LayoutParams(dp(c, 40), dp(c, 44), Gravity.START | Gravity.TOP));
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(c, 44), dp(c, 44));
+        bp.setMarginEnd(dp(c, 6));
+        row.addView(h.back, bp);
+        LinearLayout titles = new LinearLayout(c);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        h.heading = text(c, "", 20, TEXT);
+        h.heading.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        h.heading.setMaxLines(2);
+        titles.addView(h.heading, new LinearLayout.LayoutParams(-1, -2));
+        h.subtitle = text(c, "", 12.5f, MUTED);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
+        sp.topMargin = dp(c, 2);
+        titles.addView(h.subtitle, sp);
+        row.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
         if (onSearch != null) {
-            h.search = new ImageView(c);
-            h.search.setImageResource(R.drawable.settings_ic_search);
-            h.search.setColorFilter(accent, PorterDuff.Mode.SRC_IN);
-            h.search.setPadding(dp(c, 9), dp(c, 9), dp(c, 9), dp(c, 9));
+            h.search = disc(c, R.drawable.ui_ic_search);
             h.search.setContentDescription(Lang.t(c,"Поиск настройки","Search settings"));
             h.search.setTag("settings_search");
             h.search.setFocusable(true);
             h.search.setOnClickListener(v -> onSearch.run());
-            h.view.addView(h.search, new FrameLayout.LayoutParams(dp(c, 40), dp(c, 44), Gravity.END | Gravity.TOP));
+            LinearLayout.LayoutParams qp = new LinearLayout.LayoutParams(dp(c, 44), dp(c, 44));
+            qp.setMarginStart(dp(c, 6));
+            row.addView(h.search, qp);
         }
+        h.view.addView(row, new FrameLayout.LayoutParams(-1, -2));
         return h;
+    }
+
+    /** The concept's .back: a 44dp card disc with a line icon in the text colour. */
+    static ImageView disc(Context c, int icon) {
+        ImageView v = new ImageView(c);
+        v.setImageResource(icon);
+        v.setImageTintList(ColorStateList.valueOf(TEXT));
+        v.setScaleType(ImageView.ScaleType.CENTER);
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.OVAL);
+        d.setColor(CARD);
+        v.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x1FFFFFFF), d, null));
+        return v;
     }
 
     /** The module screen's chip: «Настраивается: …», «Активна: …». */
@@ -218,6 +224,18 @@ public final class SettingsStyle {
         }
     }
 
+    /**
+     * SIMPLE_UI §4: rows that draw their own card or are no row (the tone curve, the crop picture, the «Конфиг» tiles, the
+     * info notes): they stand outside the group cards of SettingsCardDecoration.
+     */
+    public static boolean standalone(@androidx.annotation.Nullable Preference p) {
+        if (p == null) return true;
+        if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RawCropPreference) return true;
+        if (p.getKey() != null && TILES.contains(p.getKey())) return true;
+        return p.getLayoutResource() == R.layout.preference_info;
+    }
+
     private static void defaultIcon(Preference p, int icon) {
         if (p.getIcon() == null) p.setIcon(icon);
     }
@@ -263,7 +281,7 @@ public final class SettingsStyle {
             CharSequence shown = valueOf(p);
             value.setVisibility(TextUtils.isEmpty(shown) ? View.GONE : View.VISIBLE);
             value.setText(shown);
-            value.setTextColor(accent);
+            value.setTextColor(MUTED);   // SIMPLE_UI §4: the value on the right, muted (the concept's .rv)
             if (summary != null && !TextUtils.isEmpty(shown) && summary.getText() != null) {
                 // the value has its own line: do not repeat it at the start of the summary ("%s. …" summaries)
                 String s = summary.getText().toString(), v = shown.toString();
