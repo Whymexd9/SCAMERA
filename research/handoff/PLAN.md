@@ -5045,3 +5045,29 @@ pro mist, glimmer glass и других подобных фильтров у н�
 - Checks: off = byte-identical output (md5 of the reference replays), energy test on a synthetic point source, no banding at
   12 / 50 / 200 MP, time budget per size.
 - Not started.
+
+### P229 - X300 Ultra: study rawr and fix FULLRES; fix ISZ (owner, 2026-10-18: «https://github.com/adityawarmanfw/rawr/releases/tag/debug
+изучить и исправить фулрез на 300 Ultra. Так же исправь isz на нем», with the X300U mode table again)
+- rawr: an open-source (GPL-3.0) RAW camera (github.com/adityawarmanfw/rawr; debug pre-release of commit ce767e8, package
+  com.rawr.camera.debug; GPU processing in Vulkan, JPEG + DNG, native code in app/src/main/cpp and native/). Clone the source
+  (not the APK) and find how it opens the X300 Ultra's full-resolution RAW: session type / keys, stream sizes and formats,
+  reader usage, forceSensorMode or another vendor key, request vs session parameters, AE in that mode. Compare with ours
+  (VivoNativeFullRes, P180 / P184 / P186, VivoQcomIsz, CaptureController's session block) and fix what differs. GPL code is
+  read for the mechanism only, not copied.
+- ISZ on the X300 Ultra (owner's reminder): vivo.control.forceSensorMode works when it stays a SESSION key (not a request
+  key). The owner's mode table:
+  - 14mm: 5 16:9 60 fps 14-bit; 8 16:9 60 fps; 10 16:9 30 fps 14-bit; 11 open gate 30 fps 14-bit; 14 wide 120 fps;
+    19 open gate 60 fps; 21 2x ISZ (Quad Bayer); 23 open gate 60 fps 14-bit.
+  - 35mm: 10 2x ISZ (Quad Bayer); 15 16:9 30 fps 14-bit (auto exposure); 17 open gate 14-bit; 18 open gate 60 fps;
+    19 open gate 60 fps 14-bit; 20 16:9 60 fps; 21 16:9 60 fps 14-bit; 22 wide 120 fps.
+  - 85mm: 5 2x ISZ (Quad Bayer); 6 4x ISZ (remosaiced); 7 4x ISZ (Quad-Quad Bayer); 8 open gate 60 fps; 10 16:9 2x ISZ
+    (Quad); 12 wide 120 fps; 13 wide 2x ISZ 120 fps (Quad); 16 16:9 60 fps; 17 16:9 2x ISZ 60 fps; 19 open gate 60 fps
+    14-bit; 20 open gate 30 fps 14-bit; 21 16:9 30 fps 14-bit; 22 16:9 60 fps 14-bit; 31 2x ISZ (remosaiced); 32 16:9 120 fps.
+  - 14-bit modes on the tele are DCG and work. On 14 and 35 mm they turn highlights pink; 35mm mode 15 works only with
+    auto exposure (manual exposure turns the highlights pink at once).
+- To check: our P122 table and the ISZ modules on the X300U use these modes as a session key on every session of the
+  module (also after a restart / FULLRES toggle / format change); the ISZ modules (14mm 21, 35mm 10, 85mm 5 / 7 / 31 / 6)
+  give the expected mosaic (CFA / block) and crop; the pink 14-bit modes on 14 / 35 mm are not offered (or only 35mm 15 with
+  AE, manual exposure blocked there); P126 (doubled ISZ modules, dark DCG photos) stays fixed. Verify with the owner's log /
+  photos (no X300U here).
+- Not started.
