@@ -293,7 +293,8 @@ struct HybridTuning {
     // P80: 1 (default) = the chroma median of the mosaic results on the GPU (ChromaMedianGpu, float rounding only), 0 = CPU.
     int chromaGpu=1;
     // P213c: 1 (default) = the CPU chroma median of a native mosaic merge runs on the merged rows while the GPU merges the next
-    // strips (MosaicChromaOverlap, the same floats), 0 = after the merge.
+    // strips (MosaicChromaOverlap, the same floats), 0 = after the merge. OPPO X7U, 50 MP FULLRES (two bursts): the chroma after the
+    // merge 0.72 / 0.67 s -> 0.04 s, the merge no longer than before; 12 MP with chromaGpu 0: 0.19-0.26 s -> 0.01-0.03 s.
     int chromaOverlap=1;
     // P118 «Sabre 2× только когда есть смысл» (P74's JSR experiment jsrAuto2x; the other JSR experiments are gone): auto2x 1 = a
     // requested 2x grid (Sabre 2x, plain or native mosaic) is merged on the 1x grid and resized 2x when the frames do not sample
