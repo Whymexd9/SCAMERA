@@ -154,8 +154,7 @@ public class ArkAeTest {
         ArkAe.Result r = ArkAe.finish(st, on, 400, 6400);
         assertEquals("the real ceiling is the maximum", 23.5f, r.hr, 1e-4f);
         assertEquals("the native clip stays capped", 4f, r.clip, 0f);
-        assertEquals("the same exposure", before.ae, r.ae, 0f);
-        assertEquals("the same shadow strength", before.effS, r.effS, 0f);
+        assertTrue("never darker than the native exposure: " + before.ae + " -> " + r.ae, r.ae >= before.ae);
         assertTrue("a stronger highlight strength: " + before.effH + " -> " + r.effH, r.effH > before.effH + 0.1f);
         double cap = Math.log(r.hr * r.ae / on.brightThresh) / Math.log(2) / 1.5;
         assertTrue("within the ceiling's cap", r.effH <= cap + 1e-6);
@@ -165,7 +164,9 @@ public class ArkAeTest {
         assertTrue("hrMix 1 goes further: " + full.effH, full.effH > r.effH);
         on.hrMix = 0f;
         ArkAe.Result none = ArkAe.finish(st, on, 400, 6400);
-        assertEquals("hrMix 0: P159's peak", before.realPeak, none.realPeak, 1e-6f);
+        assertEquals("hrMix 0: no pull", 0f, none.hrPull, 0f);
+        assertTrue("hrMix 0 stays below the half pull: " + none.effH, none.effH < r.effH);
+        assertEquals("the pull leaves the exposure", r.ae, none.ae, 0f);
         // a stray maximum far above: the ceiling stops at 16 x the clip
         on.hrMix = 0.5f;
         assertEquals(64f, ArkAe.finish(ArkAe.stats(window(500f), 3, 200, 100, 0), on, 400, 6400).hr, 0f);
@@ -184,11 +185,19 @@ public class ArkAeTest {
             }
         };
         ArkAe.Stats ss = ArkAe.stats(sun, 3, 200, 100, 0);
-        ArkAe.Result sNative = ArkAe.finish(ss, off, 400, 6400), sHr = ArkAe.finish(ss, on, 400, 6400);
+        ArkAe.Result sHr = ArkAe.finish(ss, on, 400, 6400);
+        on.hrMix = 0f;
+        ArkAe.Result sNoPull = ArkAe.finish(ss, on, 400, 6400);
+        on.hrMix = 0.5f;
         assertEquals(15f, sHr.hr, 0f);
         assertEquals(0f, sHr.hrPull, 0f);
-        assertEquals("the same highlight strength", sNative.effH, sHr.effH, 0f);
+        assertEquals("no pull towards the light's glow", sNoPull.effH, sHr.effH, 0f);
         assertEquals("the bridge window pulls fully", 0.5f, r.hrPull, 1e-6f);
+        // a bright Bento scene with real headroom (a sunlit sky: geometric mean 0.5 against the target 0.15, the sun at 15) keeps
+        // its captured exposure instead of being pulled down to the target grey; without Bento the native AE darkens it to its limit
+        ArkAe.Stats bright = ArkAe.stats((y, row) -> { java.util.Arrays.fill(row, 0.5f); if (y == 0) for (int i = 0; i < 6; i++) row[i] = 15f; }, 3, 200, 100, 0);
+        assertEquals("native: down to the minimum", off.minLimit, ArkAe.finish(bright, off, 400, 6400).ae, 1e-6f);
+        assertEquals("Bento: the captured exposure", 1f, ArkAe.finish(bright, on, 400, 6400).ae, 1e-6f);
     }
 
     @Test

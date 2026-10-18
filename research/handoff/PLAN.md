@@ -4871,7 +4871,11 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   soft disc rising steadily into white. «Солнце должно быть мягким без каких-либо ореолов» / «внутри солнца есть ореол»:
   with room 0.3 the rim stood on a 251 plateau with the clipped core (recovered at the white bound, 2.4 x the rim) as a
   254 dot, and the highlight detail dug a 1 - 2 code trench beside it; now room 0.4 and no darker detail where the
-  neighbourhood is much brighter (ratio < 0.55 .. 0.85: the rim of a light, not texture). The window-up scene (101853, gmax 3.2 < 4) renders byte-identical.
+  neighbourhood is much brighter (ratio < 0.55 .. 0.85: the rim of a light, not texture).
+  «Небо тёмное у обоих вариантов ... не затемненное и мягкое»: the darkening came from ArkAe pulling the bright scene to the
+  target grey (ae 0.861: geo 0.174 > 0.15). With real headroom the meter no longer takes ae below 1 (the captured exposure;
+  the highlight-overflow limit may still lower it): ae 1.0, sky / sea / deck +5 .. +9 codes, 0.04 % of the pixels darker
+  (the rim of the sun's disc). Harness with the shot's vivo ISP matrix (170 -37 -5 / -19 179 -32 / 3 -90 215) / 128. The window-up scene (101853, gmax 3.2 < 4) renders byte-identical.
   Harness with a radial lens-shading model (log: corner 7.3 / edge 2.4 on the ultrawide, 3.0 / 1.65 on the main) matches
   the owner's JPEG of the window (p50 0.987 vs 0.984); new p50 0.954.
 - Not yet: a phone shot with the build; the crane's colour where two channels clipped in the ultrashort (recovered neutral at

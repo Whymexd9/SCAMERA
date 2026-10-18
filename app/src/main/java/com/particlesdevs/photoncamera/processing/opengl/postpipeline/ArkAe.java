@@ -336,6 +336,11 @@ public final class ArkAe {
             double nd = s.nightDim;
             if (nd > 0.01 && Math.abs(nd - 1) > 0.001) ae = Math.pow(ae, nd);                  // 0x72cb4-0x72cd8
             double aeC = Math.max(Math.min(ae, mxB), mnL);                                     // 0x72cdc-0x72d08
+            // P216 (owner, ultrawide over a sunlit deck: «В такой сцене небо не должно темнить», «Нам нужно чтобы оно было не
+            // затемненное»): with real Bento headroom the highlights are kept by the ultrashort frames and the shoulder, so a
+            // bright scene is not pulled down towards the target grey below its captured exposure (ae 0.86 there); the highlight
+            // overflow below may still lower it
+            if (r.hr > 0f && aeC < 1.0) aeC = Math.min(1.0, mxB);
             double aeF = aeC;
             if (p995 > 0.01 && p995 * aeC > s.hlOverflow) {                                    // 0x72d0c-0x72d48
                 double lim = s.hlOverflow / p995;
