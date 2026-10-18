@@ -122,6 +122,61 @@ public class ArkAeTest {
         assertEquals(dim.p995, dim.p995x, 0f);
     }
 
+    /** A room up to 0.9, a window (2 % of the frame) at 4.5 and a crane in it (0.3 %) at 15, one site at {@code peak}. */
+    private static ArkAe.Rows window(float peak) {
+        return (y, row) -> {
+            for (int x = 0; x < 200; x++) {
+                float v = 0.01f + 0.9f * x / 200f;
+                if (y < 4 && x < 100) v = 4.5f;                              // 400 of 20000
+                if (y == 4 && x < 60) v = 15f;                                // 60 of 20000
+                if (y == 50 && x == 50) v = peak;
+                row[3 * x] = v;
+                row[3 * x + 1] = v;
+                row[3 * x + 2] = v;
+            }
+        };
+    }
+
+    /**
+     * P216 (owner, X200 Ultra bridge window under the x8 ultrashort: white with an orange smear): with real Bento headroom
+     * above the native cap of 4 the result carries the real ceiling (the maximum, at most 16 x the clip) and the highlight
+     * peak moves hrMix of the way (in log) to p99.9, its strength capped by what brings the ceiling to bt; without Bento, or
+     * without data above 4, every field stays as before.
+     */
+    @Test
+    public void realBentoHeadroomRaisesTheHighlightStrength() {
+        ArkAe.Stats st = ArkAe.stats(window(23.5f), 3, 200, 100, 0);
+        ArkAe.Settings off = new ArkAe.Settings();
+        ArkAe.Result before = ArkAe.finish(st, off, 400, 6400);
+        assertEquals("no Bento: no real ceiling", 0f, before.hr, 0f);
+        ArkAe.Settings on = new ArkAe.Settings();
+        on.bentoHeadroom = true;
+        ArkAe.Result r = ArkAe.finish(st, on, 400, 6400);
+        assertEquals("the real ceiling is the maximum", 23.5f, r.hr, 1e-4f);
+        assertEquals("the native clip stays capped", 4f, r.clip, 0f);
+        assertEquals("the same exposure", before.ae, r.ae, 0f);
+        assertEquals("the same shadow strength", before.effS, r.effS, 0f);
+        assertTrue("a stronger highlight strength: " + before.effH + " -> " + r.effH, r.effH > before.effH + 0.1f);
+        double cap = Math.log(r.hr * r.ae / on.brightThresh) / Math.log(2) / 1.5;
+        assertTrue("within the ceiling's cap", r.effH <= cap + 1e-6);
+        // the peak lies between P159's and p99.9's (half way in log by default; all the way with hrMix 1)
+        on.hrMix = 1f;
+        ArkAe.Result full = ArkAe.finish(st, on, 400, 6400);
+        assertTrue("hrMix 1 goes further: " + full.effH, full.effH > r.effH);
+        on.hrMix = 0f;
+        ArkAe.Result none = ArkAe.finish(st, on, 400, 6400);
+        assertEquals("hrMix 0: P159's peak", before.realPeak, none.realPeak, 1e-6f);
+        // a stray maximum far above: the ceiling stops at 16 x the clip
+        on.hrMix = 0.5f;
+        assertEquals(64f, ArkAe.finish(ArkAe.stats(window(500f), 3, 200, 100, 0), on, 400, 6400).hr, 0f);
+        // Bento without data above the cap of 4: identical to the native result
+        ArkAe.Rows dim = (y, row) -> { for (int x = 0; x < 200; x++) { float v = 0.01f + 3.5f * x / 200f; row[3 * x] = v; row[3 * x + 1] = v; row[3 * x + 2] = v; } };
+        ArkAe.Stats ds = ArkAe.stats(dim, 3, 200, 100, 0);
+        ArkAe.Result a = ArkAe.finish(ds, off, 400, 6400), b = ArkAe.finish(ds, on, 400, 6400);
+        assertEquals(0f, b.hr, 0f);
+        assertEquals(a.describe(), b.describe());
+    }
+
     @Test
     public void gpuStatisticsGiveTheSameExposure() {
         for (int mode = 0; mode <= 2; mode++) {

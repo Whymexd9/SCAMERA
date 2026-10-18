@@ -4839,3 +4839,42 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   mode used is logged. Description says so. SessionOperationModeTest (CI list).
 - The test phone still holds 32777 on its 1x module with FULLRES on (snapcam 30938, old code): opening it would panic again
   until the setting is 0 or the build has P211.
+
+### P216 - Bento highlights above 4 x white: the window of the x8 ultrashort (owner, 2026-10-18, SCA_20261018_091910 on 30949)
+- Owner: the bridge window came out white with an orange smear where stock, ArkCam and ARK show the sea and a crane; «исправь
+  ... даже если я поставлю ультракороткий кадр 16х»; then «результат между ArkCam и стоком ... света более мягкие» and «чтобы не
+  было резких белых пятен».
+- Kept burst replayed on the OPPO (worker 6be17f97): the merge holds the window (sky 3.7, sea 2.4, crane 12-17 x white, the
+  crane's top lines clipped even in the ultrashort: G 8). Lost in the ARK tone (production shaders on the desktop GPU with the
+  log's AE): ArkAe.clip = min(gmax, 4) is the native histogram cap, yet (1) the P154 landing measured the window against 4 and
+  painted it white with the colour of its 12 px ring (the orange smear: the crane's warm rim), (2) the 1.23 kernel's shoulders
+  (everything above 1 into <= 1.35, then a roll-off from 0.5) put 1.5 .. 8 x white on one grey (crane 0.93, sky 0.91), (3) the
+  bounded detail reference min(ae Y, 1) gives no detail above white, (4) effH (P159: p98x / p995x) left the window in the
+  saturated part of the fusion.
+- Fix, only with real headroom (ArkAe.Result.hr: Bento merged and gmax above the cap; the maximum, at most 16 x the clip):
+  the landing on hr; ArkCam 1.58's max-channel Reinhard shoulder on the tonemapper top (libopenhdr_engine: knee 0.6, room
+  0.35 - here 0.5 / 0.3, whose limit stays just under white: no hard 255 spots); the highlight peak half way (log, ark_hr_mix
+  0.5) from P159's to p99.9, the strength capped by log2(hr ae / bt) / 1.5 instead of 2; a full-size highlight detail term
+  (ark_hr_detail 0.35 of the log contrast against the 2 x 2 grid, -0.03 .. +0.12 L, fading towards white). Without Bento or
+  without data above 4 every value and pixel is as before (hrU 0 render byte-identical on the whole shot).
+- Checked: harness (scratchpad tools/arkwin.py: ScamRgb recovery + ark/low, bracket_dn, gf, box, ab, hlmask, combine on the
+  replayed RGB): window glass p50 0.984 -> 0.939 (ArkCam 0.982, stock 0.872), no pixel at 254, crane / horizon / sea back,
+  rest of the frame unchanged; a x16-like stretch of the same data (gmax 34) gives the same look (p50 0.942). ArkAeTest 5/5
+  (new case), tools/check_ark_headroom.py (new, CI), check_ark_highlights, check_highlight_landing, tone_ops, colour_look,
+  film_lut, ark_ae_gpu, viewfinder_look, dark_fade PASS; glslc on the combine variants. check_ark_tone fails its two synthetic
+  cases identically on main (not in CI).
+- Not yet: a phone shot with the build; the crane's colour where two channels clipped in the ultrashort (recovered neutral at
+  R's level, 2 x its body) stays a hard line in the data.
+
+### P217 - FULLRES 50 / 200 MP come out at 12 MP, yet take as long as 50 / 200 MP (owner, 2026-10-18: «Изучить почему фото в 50
+и 200мп выходят в 12, при этом обработка долгая словно обрабатываются 50 и 200 соответсвенно»)
+- To study. First facts from SCAMERA-debug.log (2) / (3) (X200U, 09:57 - 10:00, SCA_20261018_095801 / 100012 = 3060 x 4080):
+  «HYBRID MOSAIC BINNED: block 2 without remosaic (mosaicRemosaic 0): 35 of 35 frames binned to plain Bayer 4080x3072»,
+  «hybrid output 4080x3072 (scale 0.5)» - «Наш ремозаик» off bins the Quad mosaic, so a 12 MP result is the documented
+  behaviour (P207); the time goes to 34 - 36 full-size frames (N 8 - 10 from the ring + 26 after the shutter, requested 30,
+  «series cut=memory»), the plain-session switch and the worker's reading / binning before the merge (spawn 5.1 s -> f6 18.4 s,
+  shot 23 s; the 10:00 shot 15 s).
+- Questions: should a binned FULLRES shot bin on the sensor (the 12 MP mode) instead of capturing 50 / 200 MP; why 26 frames
+  after the shutter for FULLRES (owner earlier: «для фулреза 1 длинный достаточно», part B); where the worker's 13 s go
+  (reading the memfd, mosaic detection - part B «skip the redundant worker mosaic detection» -, binning); what the UI should
+  say when the remosaic is off (the FULLRES icon promises 50 / 200 MP).

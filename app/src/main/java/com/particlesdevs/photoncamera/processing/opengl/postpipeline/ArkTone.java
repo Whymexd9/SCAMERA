@@ -89,6 +89,9 @@ public final class ArkTone {
         s.maxEv = value("agx_max_ev", 3.5f);
         s.sat = value("agx_sat", 1.0f);
         s.ev = value("agx_ev", 0.30f);
+        // P216: the Bento ultrashort frames merged - data above the native ceiling of 4 is the shot's real highlight range
+        s.bentoHeadroom = ScamHybridBurst.lastBentoApplied;
+        s.hrMix = Math.max(0f, Math.min(1f, value("hr_mix", 0.5f)));
         return s;
     }
 
