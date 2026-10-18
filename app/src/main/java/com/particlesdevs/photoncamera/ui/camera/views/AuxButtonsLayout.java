@@ -448,14 +448,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         if(zoomDrag!=null){
             if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN)lastDragX=e.getX();
             else if(e.getActionMasked()==android.view.MotionEvent.ACTION_MOVE){zoomDrag.onDrag(e.getX()-lastDragX);lastDragX=e.getX();}
-            return true;
         }
-        if(e.getActionMasked()==android.view.MotionEvent.ACTION_UP){
-            float dx=e.getX()-touchX;
-            if(Math.abs(dx)>getResources().getDisplayMetrics().density*24)for(int i=0;i<getChildCount();i++)if(getChildAt(i).isSelected()){
-                int next=i+(dx<0?1:-1);if(next>=0&&next<getChildCount())onAuxButtonClick(getChildAt(next));break;
-            }
-        }
+        // SIMPLE_UI §1: the old swipe-to-the-next-lens (unreachable with a drag zoom) is gone
         return true;
     }
     public interface AuxButtonListener {

@@ -185,6 +185,17 @@
                         app:sheetLevel="@{uimodel.sheetLevel}"
                         app:iconRotation="@{uimodel.orientation}" />
             </androidx.coordinatorlayout.widget.CoordinatorLayout>
+            <!--    SIMPLE_UI §1: the zoom readout in the message band (placed with it, above row 1) -->
+            <com.particlesdevs.photoncamera.ui.camera.views.ZoomReadoutView
+                    android:id="@+id/zoom_readout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:elevation="31dp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toTopOf="@id/layout_bottombar"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent" />
+
             <!--    Block 1.8-->
             <!--    SIMPLE_UI §1: the message band - one 22dp single-line pill (12sp) between the viewfinder and the bottom bar's
                     row 1 (CameraFragment places it just above row 1 on every layout) -->

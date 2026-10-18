@@ -195,13 +195,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         showZoomLabel();
     }
 
-    public void showZoomLabel() {
-        if (zoomDial != null) { refreshZoomDial(); zoomDial.poke(); }
-        View layout = findViewById(R.id.aux_buttons_container);
-        if (layout instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
-            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) layout)
-                    .setZoomLabel(com.particlesdevs.photoncamera.control.ZoomController.zoom());
-    }
 
     public ManualModeConsole getManualModeConsole() {
         return manualModeConsole;
@@ -399,10 +392,12 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 top = Math.min(top, at[1]);
             }
             if (top == Integer.MAX_VALUE) return;
-            band.getLocationInWindow(bandAt);
-            float naturalBottom = bandAt[1] - band.getTranslationY() + lp.height;
             float want = top - com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dpF(c, 3);
-            band.setTranslationY(want - naturalBottom);
+            for (View item : new View[]{band, binding.zoomReadout}) {
+                item.getLocationInWindow(bandAt);
+                float h = item.getLayoutParams().height > 0 ? item.getLayoutParams().height : item.getHeight();
+                item.setTranslationY(want - (bandAt[1] - item.getTranslationY() + h));
+            }
         };
         bar.addOnLayoutChangeListener(place);
         band.addOnLayoutChangeListener(place);
@@ -422,55 +417,116 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 floats -> binding.settingsBar.setPillHandle(floats));
     }
 
-    private com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial;
-
-    /**
-     * Zoom ruler above the lens strip, a small card in the bottom bar's ruler slot (P25: never over the shade's tiles);
-     * dragging the strip or the ruler zooms continuously.
-     */
-    private void initZoomDial(View root) {
-        View slot = root.findViewById(R.id.zoom_ruler_slot);
-        if (!(slot instanceof android.widget.FrameLayout)) return;
-        zoomDial = new com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView(requireContext());
-        float density = getResources().getDisplayMetrics().density;
-        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(Math.round(232 * density), Math.round(48 * density),
-                android.view.Gravity.CENTER);
-        ((android.widget.FrameLayout) slot).addView(zoomDial, lp);
-        zoomDial.setListener(this::zoomTo);
-        View strip = root.findViewById(R.id.aux_buttons_container);
-        if (strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
-            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip).setZoomDrag(dx -> {
-                if (zoomDial != null) { refreshZoomDial(); zoomDial.dragBy(dx); }
-            });
-        if (strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
-            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip).setDialRefresh(this::showZoomLabel);
-        if (strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
-            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip).setPresetZoom(this::zoomTo); // P72 17U presets
-        refreshZoomDial();
+    public void showZoomLabel() {
+        showZoomLabel(true);
     }
 
-    private void refreshZoomDial() {
-        if (zoomDial == null) return;
+    /**
+     * The active lens shows the live zoom; SIMPLE_UI §1: the zoom readout in the message band while the zoom changes (a
+     * drag on the strip, a pinch), not for a tap on a lens.
+     */
+    private void showZoomLabel(boolean readout) {
+        float zoom = com.particlesdevs.photoncamera.control.ZoomController.zoom();
+        if (readout && zoomReadout != null) {
+            refreshZoomReadout();
+            zoomReadout.show(zoom);
+            // the readout takes the band's place from any message meanwhile
+            if (cameraFragmentBinding != null) {
+                View band = cameraFragmentBinding.shadeToast;
+                band.setAlpha(0f);
+                band.removeCallbacks(bandBack);
+                band.postDelayed(bandBack, com.particlesdevs.photoncamera.ui.camera.views.ZoomReadoutView.HIDE_MS + 250);
+            }
+        }
+        View layout = findViewById(R.id.aux_buttons_container);
+        if (layout instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
+            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) layout).setZoomLabel(zoom);
+    }
+
+    private final Runnable bandBack = () -> {
+        if (cameraFragmentBinding != null) cameraFragmentBinding.shadeToast.setAlpha(1f);
+    };
+
+    /** SIMPLE_UI §1: the zoom readout (the old 232 x 48dp dial card over the viewfinder is gone). */
+    @Nullable private com.particlesdevs.photoncamera.ui.camera.views.ZoomReadoutView zoomReadout;
+    /** Kept null: BottomChrome's ruler hooks see no dial. */
+    @Nullable private com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial;
+    /** The strip drag's target zoom and the zoom shown (eased towards it every frame). */
+    private float zoomTarget = 1f, zoomShown = 1f;
+    private boolean zoomEasing;
+    private final android.view.Choreographer.FrameCallback zoomStep = frameTimeNanos -> stepZoom();
+    /** One stop (x2) of zoom per this many dp of drag (the concept's 70px). */
+    static final float ZOOM_STOP_DP = 70f;
+    /** The shown zoom moves this share of the way (in log) to the target per frame. */
+    static final float ZOOM_EASE = 0.22f;
+
+    /**
+     * SIMPLE_UI §1, the owner's requirement «свайп по полосе = плавный зум»: a horizontal drag on the lens strip sets a
+     * target zoom on a log scale (one stop per {@link #ZOOM_STOP_DP}); the zoom eases to it every frame
+     * ({@link #ZOOM_EASE}), so it never jumps; crossing a module mark switches the module (the existing path, a light
+     * haptic tick). Taps on lenses and the 17 Ultra presets work as before.
+     */
+    private void initZoomDial(View root) {
+        if (cameraFragmentBinding != null) zoomReadout = cameraFragmentBinding.zoomReadout;
+        View strip = root.findViewById(R.id.aux_buttons_container);
+        if (!(strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)) return;
+        com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout lenses = (com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip;
+        lenses.setZoomDrag(this::dragZoom);
+        lenses.setDialRefresh(() -> showZoomLabel(false));
+        lenses.setPresetZoom(this::zoomTo); // P72 17U presets
+        refreshZoomReadout();
+    }
+
+    /** A drag step on the strip ({@code dx} px since the last one; right zooms in). */
+    void dragZoom(float dx) {
+        float density = getResources().getDisplayMetrics().density;
+        if (!zoomEasing) {
+            com.particlesdevs.photoncamera.control.ZoomController.syncToActive();
+            zoomShown = zoomTarget = com.particlesdevs.photoncamera.control.ZoomController.zoom();
+        }
+        zoomTarget = nextZoomTarget(zoomTarget, dx, ZOOM_STOP_DP * density,
+                com.particlesdevs.photoncamera.control.ZoomController.minZoom(), com.particlesdevs.photoncamera.control.ZoomController.maxZoom());
+        if (!zoomEasing) {
+            zoomEasing = true;
+            android.view.Choreographer.getInstance().postFrameCallback(zoomStep);
+        }
+    }
+
+    /** The target after a drag of {@code dx} px: x2 per {@code stopPx}, within min..max. */
+    static float nextZoomTarget(float target, float dx, float stopPx, float min, float max) {
+        float next = (float) (target * Math.pow(2, dx / stopPx));
+        return Math.max(min, Math.min(max, next));
+    }
+
+    /** One frame of the ease (in log): returns the new shown zoom. */
+    static float easeZoom(float shown, float target) {
+        double a = Math.log(shown), b = Math.log(target);
+        double n = Math.abs(b - a) < .002 ? b : a + (b - a) * ZOOM_EASE;
+        return (float) Math.exp(n);
+    }
+
+    private void stepZoom() {
+        if (cameraFragmentBinding == null) {
+            zoomEasing = false;
+            return;
+        }
+        zoomShown = easeZoom(zoomShown, zoomTarget);
+        String before = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+        zoomTo(zoomShown);
+        if (before != null && !before.equals(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()))
+            cameraFragmentBinding.layoutBottombar.auxButtonsContainer.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);
+        if (Math.abs(Math.log(zoomShown) - Math.log(zoomTarget)) > .0005) android.view.Choreographer.getInstance().postFrameCallback(zoomStep);
+        else zoomEasing = false;
+    }
+
+    private void refreshZoomReadout() {
+        if (zoomReadout == null) return;
         com.particlesdevs.photoncamera.control.ZoomController.syncToActive();
-        java.util.List<String> slots = com.particlesdevs.photoncamera.control.ZoomController.lenses();
         java.util.List<Float> ratios = new java.util.ArrayList<>();
-        java.util.List<String> labels = new java.util.ArrayList<>();
-        for (String slot : slots) {
+        for (String slot : com.particlesdevs.photoncamera.control.ZoomController.lenses())
             ratios.add(com.particlesdevs.photoncamera.settings.ModuleRegistry.zoom(slot));
-            labels.add(com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot));
-        }
-        // P41: the stock dial's stops past the Xiaomi 17 Ultra tele (4.3×, 8.6×, 17.2×) as marks with a light detent
-        java.util.List<Float> stops = com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.stops(ratios);
-        java.util.List<Float> detents = new java.util.ArrayList<>(stops);
-        if (!stops.isEmpty()) detents.addAll(ratios);
-        for (float stop : stops) {
-            ratios.add(stop);
-            labels.add(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.stopLabel(stop));
-        }
-        zoomDial.setDetents(detents);
-        zoomDial.configure(com.particlesdevs.photoncamera.control.ZoomController.minZoom(),
-                com.particlesdevs.photoncamera.control.ZoomController.maxZoom(), ratios, labels);
-        zoomDial.setZoom(com.particlesdevs.photoncamera.control.ZoomController.zoom());
+        zoomReadout.configure(com.particlesdevs.photoncamera.control.ZoomController.minZoom(),
+                com.particlesdevs.photoncamera.control.ZoomController.maxZoom(), ratios);
     }
 
     private void initSettingsBar() {
