@@ -73,7 +73,11 @@ public class MosaicLocusTest {
         assertEquals(old[2], p121.distance, 0.01);
     }
 
-    /** M13 VERIFY: a warm lamp beyond the curve's warm end (X200U 30840: 1.073 / 0.280) is extrapolated, not clamped to 0.785 / 0.329. */
+    /**
+     * M13 VERIFY: a warm lamp beyond the curve's warm end (X200U 30840: 1.073 / 0.280) is extrapolated, not clamped to 0.785 /
+     * 0.329 - by half its excess along the locus, at most WARM_MAX (the ISP keeps warmth, M13 corr. 4); beyond the cool end the
+     * whole excess up to EXTRAPOLATE.
+     */
     @Test public void aWarmLightIsExtrapolatedNotClamped() {
         final ArrayList<float[]> pts = MosaicNeutral.curve("warm");
         for (int i = 0; i < 10; i++) {
@@ -84,13 +88,40 @@ public class MosaicLocusTest {
         final float[] old = MosaicNeutral.project(pts, (float) Math.log(1.073), (float) Math.log(0.280));
         assertEquals(0.785, Math.exp(old[0]), 0.005);
         final MosaicNeutral.Result r = MosaicNeutral.resolve("warm", 1.073f, 0.280f, 40_000, 0f, null, "measured");
-        assertTrue(r.how, r.neutral[0] > 0.9f);
+        assertTrue(r.how, r.neutral[0] > 0.83f && r.neutral[0] < 0.95f);
         assertTrue(r.how, r.extrapolated);
         assertTrue(r.how, r.how.contains("extrapolated"));
-        // never further than EXTRAPOLATE beyond the end: a sodium-like 3.0 / 0.1 stops there
+        // never further than WARM_MAX beyond the warm end: a sodium-like 3.0 / 0.1 stops there
         final MosaicNeutral.Result far = MosaicNeutral.resolve("warm", 3.0f, 0.10f, 40_000, 0f, null, "measured");
         final double beyond = Math.hypot(Math.log(far.neutral[0] / 0.785), Math.log(far.neutral[2] / 0.329));
-        assertTrue(far.how, beyond <= MosaicNeutral.EXTRAPOLATE + 0.01);
+        assertTrue(far.how, beyond <= MosaicNeutral.WARM_MAX + 0.01);
+        // the cool end: shade light 0.30 / 0.80 beyond 0.40 / 0.70 goes the whole way along
+        final MosaicNeutral.Result cool = MosaicNeutral.resolve("warm", 0.30f, 0.80f, 40_000, 0f, null, "measured");
+        assertTrue(cool.how, cool.extrapolated && cool.neutral[0] < 0.34f);
+    }
+
+    /**
+     * P212f: a light the ISP learned with its own tint (a cluster 0.05 ln off the locus, as the OPPO curve's 0.40 / 0.62 beside
+     * 0.40 / 0.54) keeps it for a measurement near it - the polyline snapped there, a bare locus would not.
+     */
+    @Test public void aLearnedLightKeepsItsTint() {
+        final ArrayList<float[]> pts = MosaicNeutral.curve("cloud");
+        for (int i = 0; i < 10; i++) {
+            final double t = i / 9.0;
+            pts.add(new float[]{(float) (Math.log(0.33) + t * (Math.log(0.75) - Math.log(0.33))),
+                    (float) (Math.log(0.70) + t * (Math.log(0.30) - Math.log(0.70))), 20f, 0f});
+        }
+        for (float[] c : new float[][]{{0.398f, 0.618f}, {0.402f, 0.622f}, {0.400f, 0.624f}, {0.401f, 0.616f}})
+            pts.add(pt(c[0], c[1], 30));
+        final MosaicNeutral.Result near = MosaicNeutral.resolve("cloud", 0.400f, 0.612f, 40_000, 0f, null, "measured");
+        assertEquals(near.how, 0.62, near.neutral[2], 0.01);
+        final MosaicNeutral.Locus bare = MosaicNeutral.fit(pts, null);
+        bare.pu = null; // the locus without its points
+        final MosaicNeutral.Projection q = bare.project(Math.log(0.400), Math.log(0.612), 0);
+        assertTrue("a bare locus loses it: " + Math.exp(q.lb), Math.exp(q.lb) < 0.60);
+        // far from the cluster the locus itself
+        final MosaicNeutral.Result away = MosaicNeutral.resolve("cloud", 0.55f, 0.45f, 40_000, 0f, null, "measured");
+        assertTrue(away.how, Math.abs(Math.log(away.neutral[2]) - bare.f(Math.log(away.neutral[0]))) < 0.01);
     }
 
     /** M13 VERIFY: a sweep of 0.005 ln steps moves the output by at most 0.01 ln a step (the polyline jumped by 0.02). */
@@ -237,6 +268,6 @@ public class MosaicLocusTest {
         assertEquals(0.03, snapped.distance, 0.002);
         assertEquals(r, kept.neutral[0], 1e-4f);
         assertEquals(b, kept.neutral[2], 1e-4f);
-        assertEquals(Math.log(r) + s / n * 0.03, Math.log(snapped.neutral[0]), 0.002);
+        assertEquals(Math.log(r) + s / n * 0.03, Math.log(snapped.neutral[0]), 0.006); // the points' own tints are ±0.004
     }
 }

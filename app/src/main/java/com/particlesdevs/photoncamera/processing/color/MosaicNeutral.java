@@ -34,12 +34,18 @@ import java.util.function.LongSupplier;
  * 0.329, magenta). Now every point carries a count (a sample within the spacing moves it by the count-weighted mean; above
  * {@link #MAX_POINTS} the two closest points merge, so a rare tungsten point survives any number of daylight samples), and a
  * smooth locus is fitted through them (ln b as a Huber-weighted quadratic of ln r with ≥ 4 points over ≥ 0.4 of colour
- * temperature, else a line; the weights ln(1 + count)); a measurement goes to its nearest point on it, extrapolated up to
- * {@link #EXTRAPOLATE} beyond the ends, keeping its own tint within {@link #TINT} times its confidence (0 for the P121 statistic:
- * the projection as before, only smooth). With fewer than 2 points the camera's DNG matrices give the locus ({@link #prior}: the
- * neutrals of its two reference illuminants, on vivo the shape only - anchored at a learned point or the PD2454 daylight
- * neutrals). Phase 1 removes the pinning, the jumps and the clamp; it does not remove the statistic's steady offset against the
- * ISP (0.330 against the plain 0.359 is mostly along the locus) - that is the teacher's (MosaicTeacher, log only).
+ * temperature, else a line; the weights ln(1 + count)); a measurement goes to its nearest point on it, and its tint (off the
+ * locus) is that of the learned points around it ({@link #TINT_KERNEL}: the ISP's own tint for a light it learned - the curve is a
+ * cloud, 0.40 / 0.54 and 0.40 / 0.62 are both ISP neutrals - which the polyline kept by snapping to the nearest point), plus its
+ * own within {@link #TINT} times its confidence (0 for the P121 statistic). Beyond the coolest learned light the locus is
+ * extrapolated up to {@link #EXTRAPOLATE}; beyond the warmest by {@link #WARM_KEEP} of the excess, at most {@link #WARM_MAX}
+ * (M13 corr. 4: under a sodium lamp the ISP kept 0.771 / 0.288 where the statistic read 0.876 / 0.274 - log-2026-10-17 L30883 -
+ * the clamp at the curve's 0.755 / 0.298 was close, a full extrapolation would neutralise the lamp). With fewer than 2 points the
+ * camera's DNG matrices give the locus ({@link #prior}: the neutrals of its two reference illuminants, on vivo the shape only -
+ * anchored at a learned point or the PD2454 daylight neutrals). Phase 1 removes the pinning (the replay of log-2026-10-17's 1,519
+ * camera-2 lines: 314 at 0.330 / 0.705 -> 0), the jumps (near-identical inputs jumping > 0.02 ln: 14 -> 0) and the clamp; it does
+ * not remove the statistic's steady offset against the ISP (0.330 against the plain 0.359 is mostly along the locus) - that is the
+ * teacher's (MosaicTeacher, log only).
  * <p>
  * P212f (W4 = M10): {@link #measure2}, the robust statistic with a confidence (per-site clipping, noise weights from the camera's
  * noise profile instead of the dark cut, the lens shading gains, the output crop, grey-cell selection, a split sigma), over up to
@@ -54,6 +60,10 @@ public final class MosaicNeutral {
     static final int MAX_COUNT = 64;
     /** P212f: the locus is extended this far (ln, along the curve) beyond its ends; a perpendicular tint kept up to TINT x confidence. */
     static final double EXTRAPOLATE = 0.4, TINT = 0.04;
+    /** P212f: beyond the warmest learned light, this share of the excess along the locus, at most WARM_MAX (the ISP keeps warmth). */
+    static final double WARM_KEEP = 0.5, WARM_MAX = 0.2;
+    /** P212f: the kernel (ln) of the learned points' local tint. */
+    static final double TINT_KERNEL = POINT_SPACING;
     /** P212f: a quadratic needs this many points over this span of colour temperature (ln b - ln r); the Huber scale (ln). */
     static final int QUAD_POINTS = 4;
     static final double QUAD_SPAN = 0.4, HUBER = 0.02;
@@ -455,6 +465,8 @@ public final class MosaicNeutral {
         final double u0, a0, a1, a2, lo, hi, elo, ehi;
         final String kind;
         final int points;
+        /** The learned points (ln r, ln b), their kernel weights ln(1 + count) and tints off the curve (along its normal); null: none. */
+        @Nullable double[] pu, pb, pw, pt;
 
         Locus(double u0, double a0, double a1, double a2, double lo, double hi, String kind, int points) {
             this.u0 = u0;
@@ -483,8 +495,69 @@ public final class MosaicNeutral {
             return (u - lr) * (u - lr) + e * e;
         }
 
-        /** The nearest point within [elo, ehi], the measurement's tint kept within {@code tint} along the normal there. */
+        /** P212f: the learned points the local tint comes from ({ln r, ln b, count, ...}); their tints off this curve. */
+        Locus withPoints(List<float[]> pts) {
+            final int n = pts.size();
+            pu = new double[n];
+            pb = new double[n];
+            pw = new double[n];
+            pt = new double[n];
+            for (int i = 0; i < n; i++) {
+                final float[] p = pts.get(i);
+                pu[i] = p[0];
+                pb[i] = p[1];
+                pw[i] = Math.log(1 + (p.length > 2 ? Math.max(1f, p[2]) : 1f));
+                final double u = footU(p[0], p[1]), s = df(u), norm = Math.sqrt(1 + s * s);
+                pt[i] = (p[0] - u) * (-s / norm) + (p[1] - f(u)) / norm;
+            }
+            return this;
+        }
+
+        /**
+         * The learned points' tint at (lr, lb): their tints weighted by ln(1 + count) and a Gaussian of TINT_KERNEL in their
+         * distance, shrunk towards the curve where fewer than one point's weight is near (0 without points).
+         */
+        double localTint(double lr, double lb) {
+            if (pu == null) return 0;
+            final double h2 = 2 * TINT_KERNEL * TINT_KERNEL;
+            double sw = 0, st = 0;
+            for (int i = 0; i < pu.length; i++) {
+                final double d2 = (pu[i] - lr) * (pu[i] - lr) + (pb[i] - lb) * (pb[i] - lb);
+                if (d2 > 4.5 * h2) continue;
+                final double w = pw[i] * Math.exp(-d2 / h2);
+                sw += w;
+                st += w * pt[i];
+            }
+            return st / Math.max(sw, Math.log(2));
+        }
+
+        /**
+         * The neutral for a measurement: its nearest point on the curve within [elo, ehi] - beyond the warmest learned light
+         * moved by WARM_KEEP of the excess (at most WARM_MAX) - offset along the normal there by the learned points' local tint,
+         * the measurement's own tint kept within {@code tint} of it.
+         */
         Projection project(double lr, double lb, double tint) {
+            double u = footU(lr, lb);
+            final double f0 = f(u), s0 = df(u), n0 = Math.sqrt(1 + s0 * s0);
+            final double along = (lr - u) * (-s0 / n0) + (lb - f0) / n0; // the measurement's own tint
+            final double distance = Math.hypot(lr - u, lb - f0);
+            double beyond = 0;
+            if (u > hi) {
+                final double excess = arc(hi, u), kept = Math.min(WARM_MAX, WARM_KEEP * excess);
+                if (excess > 0) u = hi + (u - hi) * kept / excess;
+                beyond = kept;
+            } else if (u < lo) {
+                beyond = arc(u, lo);
+            }
+            final double fu = f(u), s = df(u), norm = Math.sqrt(1 + s * s);
+            final double nx = -s / norm, ny = 1 / norm; // the normal towards larger ln b
+            final double local = localTint(lr, lb);
+            final double t = local + Math.max(-tint, Math.min(tint, along - local));
+            return new Projection(u + t * nx, fu + t * ny, distance, t, beyond, beyond > 1e-4);
+        }
+
+        /** u of the nearest point of the curve within [elo, ehi] to (lr, lb). */
+        double footU(double lr, double lb) {
             final int k = 96;
             double bu = elo, bd = Double.MAX_VALUE;
             for (int i = 0; i <= k; i++) {
@@ -502,15 +575,8 @@ public final class MosaicNeutral {
                 c = b - g * (b - a);
                 d = a + g * (b - a);
             }
-            double u = 0.5 * (a + b);
-            if (d2(u, lr, lb) > bd) u = bu;
-            final double fu = f(u), s = df(u), norm = Math.sqrt(1 + s * s);
-            final double nx = -s / norm, ny = 1 / norm; // the normal towards larger ln b
-            final double along = (lr - u) * nx + (lb - fu) * ny;
-            final double kept = Math.max(-tint, Math.min(tint, along));
-            final double distance = Math.hypot(lr - u, lb - fu);
-            final double beyond = u < lo ? arc(u, lo) : u > hi ? arc(hi, u) : 0;
-            return new Projection(u + kept * nx, fu + kept * ny, distance, kept, beyond, beyond > 1e-4);
+            final double u = 0.5 * (a + b);
+            return d2(u, lr, lb) > bd ? bu : u;
         }
 
         /** The curve's length between u1 < u2 (8 steps). */
@@ -590,20 +656,20 @@ public final class MosaicNeutral {
             final double[] a = huber(u, y, w, mu, 2);
             if (a != null) {
                 final Locus q = new Locus(mu, a[0], a[1], a[2], lo, hi, "quadratic", n);
-                if (falling(q)) return q;
+                if (falling(q)) return q.withPoints(pts);
             }
         }
         if (n >= 2 && hi - lo >= 0.05) {
             final double[] a = huber(u, y, w, mu, 1);
             if (a != null) {
                 final Locus line = new Locus(mu, a[0], a[1], 0, lo, hi, "line", n);
-                if (falling(line)) return line;
+                if (falling(line)) return line.withPoints(pts);
             }
         }
         if (n == 1 && prior == null) return null;
         final double s = prior != null ? prior.slope() : DEFAULT_SLOPE;
         return new Locus(mu, mb, s, 0, lo, hi, n == 1 ? "DNG shape through 1 point" : prior != null ? "DNG shape through the points"
-                : "default slope through the points", n);
+                : "default slope through the points", n).withPoints(pts);
     }
 
     /** P212f: a locus whose slope falls (warmer: r up, b down) within [-4, -0.2] over its whole extended domain. */
