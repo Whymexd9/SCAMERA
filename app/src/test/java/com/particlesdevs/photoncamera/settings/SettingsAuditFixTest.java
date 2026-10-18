@@ -224,9 +224,9 @@ public class SettingsAuditFixTest {
         for(String key:new String[]{"pref_about_key","pref_contributors_key","pref_telegram_channel_key","all_devices_names",
                 "pref_fetch_configurations_key"})
             assertNull(key,screen.findPreference(key));
-        PreferenceScreen system=screen.findPreference("system_settings_screen");
+        androidx.preference.PreferenceGroup about=screen.findPreference("root_about");
         for(String key:new String[]{"pref_app_key","pref_version_key","pref_this_device_key"})
-            assertNotNull("the app, version and device rows stay on «Система»: "+key,system.findPreference(key));
+            assertNotNull("SIMPLE_UI §4: the app, version and device rows are «О приложении»: "+key,about.findPreference(key));
     }
 
     /** P129: SCAM HDR is gone: its settings (and the L frame / stock planner keys) are obsolete everywhere, the route row too. */

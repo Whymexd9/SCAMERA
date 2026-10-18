@@ -221,16 +221,16 @@ public class SettingsMenuTest {
     }
     @Test public void configScreenKeepsOnlyOutputBackupAndReset() {
         PreferenceScreen screen=inflate();
-        PreferenceScreen config=screen.findPreference("output_settings_screen");assertNotNull(config);
+        androidx.preference.PreferenceGroup config=screen.findPreference("root_photo");assertNotNull(config);
         // RAW mode stays a quick bar setting; DNG crop and the tunable reset page are gone.
         for (String key:Arrays.asList("pref_save_raw_key","expert_output_screen","pref_tunable_submenu","pref_tunable_imagesaversettings_croptype"))
             assertNull(key,screen.findPreference(key));
-        // P132: «Фото» (formats, resolution, DNG, name, watermark); the backup is a page of «Система»
+        // SIMPLE_UI §4: «Фото» (Формат файла, Размер фото, HDR, 16:9, watermark, name); the backup is «Приложение → Профили»
         for (String key:Arrays.asList("pref_jpeg_quality","pref_ultrahdr_key","pref_wide169_key","pref_show_watermark_key","pref_watermark_line1",
                 "pref_scam_hybrid_output","pref_scam_hybrid_downsampler","pref_dng_lossless","pref_file_name_pattern"))
             assertNotNull(key,config.findPreference(key));
         PreferenceScreen backup=screen.findPreference("backup_settings_screen");assertNotNull(backup);
-        assertNotNull(((PreferenceScreen)screen.findPreference("system_settings_screen")).findPreference("backup_settings_screen"));
+        assertNotNull(((androidx.preference.PreferenceGroup)screen.findPreference("root_app")).findPreference("backup_settings_screen"));
         for (String key:Arrays.asList("pref_backup_preferences_key","pref_restore_preferences_key","pref_reset_preferences_key"))
             assertNotNull(key,backup.findPreference(key));
         // The remaining dynamic page is still filled without pref_tunable_submenu. «Кнопки видоискателя» held only the
@@ -439,15 +439,15 @@ public class SettingsMenuTest {
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var copy=new com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment();
             fm.beginTransaction().replace(R.id.settings_container,copy).commitNow();
-            // P6: the root pages are the groups (no categories at the root any more)
-            android.view.View processing=copy.requireView().findViewWithTag("group_photo_processing_screen");
+            // SIMPLE_UI §4: the root's groups are the copy catalog's groups («Цвет и стиль» holds the colour pages)
+            android.view.View processing=copy.requireView().findViewWithTag("group_root_colour");
             assertNotNull(tags(copy.requireView()),processing);assertTrue(processing.performClick());
 
             // «Цвет» (the RawTherapee sharpening left in the settings audit and is gone since P118, the curves are gone, P64):
             // the DCP profile
             assertNotNull(copy.requireView().findViewWithTag("parameter_pref_dcp_profile_key"));
             activity.getOnBackPressedDispatcher().onBackPressed();
-            assertNotNull(copy.requireView().findViewWithTag("group_photo_processing_screen"));
+            assertNotNull(copy.requireView().findViewWithTag("group_root_colour"));
         }
     }
 
@@ -495,11 +495,11 @@ public class SettingsMenuTest {
             group.requireView().findViewWithTag(copyRow).performClick();fm.executePendingTransactions();
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy"+png);
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
-            // one row of «Фото» (P132: the DNG compression is there)
-            copy.requireView().findViewWithTag("group_output_settings_screen").performClick();
+            // one row of «Фото» (SIMPLE_UI §4: the root's groups are the copy catalog's; the DNG compression is under «Фото»)
+            copy.requireView().findViewWithTag("group_root_photo").performClick();
             copy.requireView().findViewWithTag("parameter_pref_dng_lossless").performClick();renderPage(copy.requireView(),"noise"+png);
             copy.requireView().findViewWithTag("primary_action").performClick();
-            var check=copy.requireView().findViewWithTag("group_check_output_settings_screen");assertTrue(check.getContentDescription().toString(),check.getContentDescription().toString().contains(partly));
+            var check=copy.requireView().findViewWithTag("group_check_root_photo");assertTrue(check.getContentDescription().toString(),check.getContentDescription().toString().contains(partly));
             copy.requireView().findViewWithTag("target_back2").performClick();copy.requireView().findViewWithTag("primary_action").performClick();
             assertEquals(Boolean.TRUE,PreferenceKeys.profiles().snapshot("back1").get("pref_dng_lossless"));
             assertFalse(context.getSharedPreferences("module_profiles_meta",0).getBoolean("exists_back2",false));
@@ -1244,7 +1244,8 @@ public class SettingsMenuTest {
         String xml;
         try(java.io.InputStream in=new java.io.FileInputStream("src/main/res/xml/preferences.xml")){xml=new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);}
         java.util.Map<String,String> byIcon=new java.util.HashMap<>();
-        java.util.regex.Matcher m=java.util.regex.Pattern.compile("(?m)^  <PreferenceScreen [^>]*>").matcher(xml);
+        // SIMPLE_UI §4: the pages of the root's groups (one level under the root's categories)
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("(?m)^    <PreferenceScreen [^>]*>").matcher(xml);
         int pages=0;
         while(m.find()){
             String tag=m.group();
@@ -1373,20 +1374,32 @@ public class SettingsMenuTest {
         list.setEnabled(false);assertEquals(.45f,row(list).getAlpha(),1e-3);
     }
 
-    /** P129 / P132: the root holds the new groups in order, without a route row or chip; a page of each opens. */
+    /**
+     * SIMPLE_UI §4: the root holds the concept's seven groups in order - «Для опытных» first (owner's decision), then Фото,
+     * Съёмка, Экран камеры, Цвет и стиль, Приложение, О приложении - without a route row or chip.
+     */
     @Test public void rootGroupsForOrdinaryUsers(){
         PreferenceScreen screen=inflate();
-        String[] order={"pref_motion_mode","output_settings_screen","shooting_settings_screen","viewfinder_settings_screen","photo_processing_screen",
-                "scam_hybrid_screen","module_profiles_screen","camera_settings_screen","interface_settings_screen","system_settings_screen"};
+        String[] order={"root_expert","root_photo","root_shoot","root_view","root_colour","root_app","root_about"};
         assertEquals(order.length,screen.getPreferenceCount());
         for(int i=0;i<order.length;i++)assertEquals(order[i],screen.getPreference(i).getKey());
+        androidx.preference.PreferenceGroup expert=screen.findPreference("root_expert");
+        assertEquals(1,expert.getPreferenceCount());
+        PreferenceScreen advanced=screen.findPreference("advanced_screen");
+        for(String key:new String[]{"scam_hybrid_screen","module_profiles_screen","camera_settings_screen","pref_scam_hybrid_zsl_frames",
+                "pref_zsl_buffer_count_key","scam_diagnostics_screen","camera_package_spoof_screen","developer_settings_screen",
+                "pref_af_mode_key","pref_live_viewfinder_raw_key","pref_show_afdata_key"})
+            assertNotNull(key,advanced.findPreference(key));
+        androidx.preference.PreferenceGroup view=screen.findPreference("root_view");
+        for(String key:new String[]{"pref_show_grid_key","pref_horizon","pref_face_detect_mode","pref_tracking_af_mode","pref_peak_method_key",
+                "pref_split_af_ae","pref_low_light_boost","pref_show_roundedge_key"})assertNotNull(key,view.findPreference(key));
         // P189: «Настройки по модулям» is a row that opens the module group (ModuleProfilesFragment), no page of its own
         assertEquals(0,((PreferenceScreen)screen.findPreference("module_profiles_screen")).getPreferenceCount());
         assertNull(screen.findPreference(PreferenceKeys.ROUTE_KEY));
-        PreferenceScreen shooting=screen.findPreference("shooting_settings_screen");
-        for(String key:new String[]{"pref_scam_hybrid_zsl_frames","pref_zsl_buffer_count_key","pref_antibanding_hz_key","scam_hybrid_motion_screen"})
+        androidx.preference.PreferenceGroup shooting=screen.findPreference("root_shoot");
+        for(String key:new String[]{"pref_motion_mode","pref_camera_sounds_key","pref_antibanding_hz_key","scam_hybrid_motion_screen"})
             assertNotNull(key,shooting.findPreference(key));
-        PreferenceScreen colour=screen.findPreference("photo_processing_screen");
+        androidx.preference.PreferenceGroup colour=screen.findPreference("root_colour");
         // P134: every colour row in «Цвет» (white balance, saturation, mixer, grading, style, advanced)
         for(String key:new String[]{"pref_dcp_profile_key","pref_color_method_key","pref_scam_hybrid_colour_warmth","pref_scam_hybrid_colour_tint",
                 "pref_scam_hybrid_colour_keep_warm","pref_scam_hybrid_ark_agx_sat","pref_scam_hybrid_ark_vibrance","pref_scam_hybrid_ark_vibrance_sky",
@@ -1395,8 +1408,9 @@ public class SettingsMenuTest {
                 "pref_scam_hybrid_colour_hue_lock","pref_scam_hybrid_ark_ccm_sat","pref_scam_hybrid_ark_hl_white"})assertNotNull(key,colour.findPreference(key));
         PreferenceScreen cameras=screen.findPreference("camera_settings_screen");
         assertNotNull(cameras.findPreference("capture_settings_screen"));assertNotNull(cameras.findPreference("pref_sensor_config_submenu"));
-        PreferenceScreen ui=screen.findPreference("interface_settings_screen");
-        for(String key:new String[]{"pref_theme_key","pref_theme_accent_key","pref_hide_gallery_icon_key"})assertNotNull(key,ui.findPreference(key));
+        androidx.preference.PreferenceGroup ui=screen.findPreference("root_app");
+        for(String key:new String[]{"pref_theme_key","pref_theme_accent_key","pref_hide_gallery_icon_key","pref_shade_transparency",
+                "backup_settings_screen"})assertNotNull(key,ui.findPreference(key));
         PreferenceScreen noise=screen.findPreference("noise_model_screen");
         assertNotNull("the SHDR noise source next to the profile",noise.findPreference("pref_scam_hybrid_noise_source"));
     }
@@ -1405,7 +1419,15 @@ public class SettingsMenuTest {
     @Test public void innerPagesRenderAsCards() throws Exception {
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
-            for(String key:new String[]{"scam_hybrid_screen","scam_hybrid_capture_screen","output_settings_screen","scam_hybrid_ark_sharp_screen","shooting_settings_screen","interface_settings_screen"}){
+            {   // SIMPLE_UI §4: the root as the concept draws it (groups of card rows)
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+                android.view.View view=fm.findFragmentById(R.id.settings_container).requireView();int exact=android.view.View.MeasureSpec.EXACTLY;
+                view.measure(android.view.View.MeasureSpec.makeMeasureSpec(360,exact),android.view.View.MeasureSpec.makeMeasureSpec(2400,exact));view.layout(0,0,360,2400);
+                android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(360,2400,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
+                java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
+                try(var out=new java.io.FileOutputStream(new java.io.File(dir,"page-root.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+            }
+            for(String key:new String[]{"scam_hybrid_screen","scam_hybrid_capture_screen","output_settings_screen","scam_hybrid_ark_sharp_screen","advanced_screen","interface_settings_screen"}){
                 var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
                 PreferenceScreen target=root.findPreference(key);if(target==null){fm.popBackStackImmediate(null,androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
                     root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);target=root.findPreference(key);}

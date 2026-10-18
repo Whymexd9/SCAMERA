@@ -345,9 +345,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             page.setOrientation(android.widget.LinearLayout.VERTICAL);
             page.setBackgroundColor(SettingsStyle.BG);
             page.setPadding(SettingsStyle.dp(c, 16), SettingsStyle.dp(c, 12), SettingsStyle.dp(c, 16), 0);
-            // P189: a module page has no search (a hit would open the usual page)
-            header = SettingsStyle.header(c, () -> requireActivity().getOnBackPressedDispatcher().onBackPressed(), moduleProfile() == null ? this::openSearch : null);
+            // SIMPLE_UI §4: as the concept, the search is a pill under the root's header only; P189: a module page has none
+            // (a hit would open the usual page)
+            header = SettingsStyle.header(c, () -> requireActivity().getOnBackPressedDispatcher().onBackPressed(), null);
             page.addView(header.view, new android.widget.LinearLayout.LayoutParams(-1, -2));
+            boolean root = getArguments() == null || getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) == null;
+            if (root && moduleProfile() == null) {
+                android.widget.LinearLayout.LayoutParams sp = new android.widget.LinearLayout.LayoutParams(-1, -2);
+                sp.bottomMargin = SettingsStyle.dp(c, 8);
+                page.addView(SettingsStyle.searchPill(c, this::openSearch), sp);
+            }
             chipBox = new android.widget.LinearLayout(c);
             page.addView(chipBox, new android.widget.LinearLayout.LayoutParams(-1, -2));
             page.addView(list, new android.widget.LinearLayout.LayoutParams(-1, 0, 1));

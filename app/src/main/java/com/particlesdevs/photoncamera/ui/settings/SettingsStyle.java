@@ -71,7 +71,8 @@ public final class SettingsStyle {
     /** «Конфиг»: Сохранить / Восстановить / Сбросить всё share one row of three tiles. */
     static final Set<String> TILES = new HashSet<>(Arrays.asList("pref_backup_preferences_key", "pref_restore_preferences_key", "pref_reset_preferences_key"));
     /** Plain preferences that open a page (handled in SettingsFragment.onPreferenceTreeClick): a chevron, not an action. */
-    static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key"));
+    static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key",
+            "pref_file_name_pattern"));
 
     public static int dp(Context c, float v) { return UiTokens.dp(c, v); }
 
@@ -143,6 +144,31 @@ public final class SettingsStyle {
         }
         h.view.addView(row, new FrameLayout.LayoutParams(-1, -2));
         return h;
+    }
+
+    /**
+     * SIMPLE_UI §4: the concept's .search under the root's header - a 48dp card pill with a line border, the search icon and
+     * «Найти настройку» in the muted colour; a tap opens the search page.
+     */
+    public static LinearLayout searchPill(Context c, Runnable onSearch) {
+        LinearLayout pill = new LinearLayout(c);
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setMinimumHeight(dp(c, 48));
+        pill.setPadding(dp(c, 14), 0, dp(c, 14), 0);
+        pill.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x1FFFFFFF), shape(c, CARD, LINE, 999), null));
+        ImageView icon = new ImageView(c);
+        icon.setImageResource(R.drawable.ui_ic_search);
+        icon.setImageTintList(ColorStateList.valueOf(MUTED));
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(c, 22), dp(c, 22));
+        ip.setMarginEnd(dp(c, 10));
+        pill.addView(icon, ip);
+        pill.addView(text(c, Lang.t(c, "Найти настройку", "Find a setting"), 15, MUTED), new LinearLayout.LayoutParams(0, -2, 1f));
+        pill.setContentDescription(Lang.t(c, "Поиск настройки", "Search settings"));
+        pill.setTag("settings_search");
+        pill.setFocusable(true);
+        pill.setOnClickListener(v -> onSearch.run());
+        return pill;
     }
 
     /** The concept's .back: a 44dp card disc with a line icon in the text colour. */
@@ -272,8 +298,19 @@ public final class SettingsStyle {
         else if (title != null && action(p)) title.setTextColor(accent);
         // P214g: «↻» - the camera session reads it when it is built (SessionKeys: the module's session type, OIS, vendor keys,
         // 16:9, live RAW ...): a change takes a new session, the camera restarts with it
-        if (title != null && !TextUtils.isEmpty(p.getTitle())
-                && (p instanceof TunableKeyPreference || com.particlesdevs.photoncamera.settings.SessionKeys.needsNewSession(key)))
+        // SIMPLE_UI §4: as the concept, a row with its own restart pill says it in words («Камера перезапустится») under the
+        // description; the other rows keep the mark on the title
+        boolean restarts = p instanceof TunableKeyPreference || com.particlesdevs.photoncamera.settings.SessionKeys.needsNewSession(key);
+        TextView restart = (TextView) holder.findViewById(R.id.settings_restart);
+        if (restart != null) {
+            restart.setVisibility(restarts ? View.VISIBLE : View.GONE);
+            if (restarts) {
+                restart.setText(Lang.t(c, "Камера перезапустится", "The camera restarts"));
+                restart.setTextColor(accent);
+                restart.setBackground(shape(c, tint(accent, .12f), 0, 999));
+            }
+        }
+        if (title != null && !TextUtils.isEmpty(p.getTitle()) && restarts && restart == null)
             title.setText(com.particlesdevs.photoncamera.settings.SessionKeys.marked(p.getTitle()));
         TextView summary = (TextView) holder.findViewById(android.R.id.summary);
         TextView value = (TextView) holder.findViewById(R.id.settings_value);

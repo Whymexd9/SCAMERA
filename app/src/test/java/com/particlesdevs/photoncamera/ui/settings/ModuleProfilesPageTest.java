@@ -292,15 +292,17 @@ public class ModuleProfilesPageTest {
     @Test public void modulePagesShowOnlyModuleValues() {
         PreferenceScreen root = inflate();
         ModulePageFilter.apply(root, "back0", true);
-        List<String> visible = new ArrayList<>();
-        for (int i = 0; i < root.getPreferenceCount(); i++) if (root.getPreference(i).isVisible()) visible.add(root.getPreference(i).getKey());
-        assertEquals(ModulePageFilter.ROOT_PAGES, visible);
+        // SIMPLE_UI §4: the root is groups of rows; a module page never shows the app's, the about or the system rows
+        for (String key : ModulePageFilter.NOT_MODULE) assertFalse(key, shown(root.findPreference(key)));
         List<Preference> leaves = new ArrayList<>();
-        for (String key : ModulePageFilter.ROOT_PAGES) leaves((PreferenceGroup) root.findPreference(key), leaves);
+        leaves(root, leaves);
         int local = 0;
         for (Preference p : leaves) {
             String key = p.getKey();
             if (key == null) continue;
+            boolean shared = false;   // under a group a module page never shows (ModulePageFilter.NOT_MODULE)
+            for (Preference q = p; q != null; q = q.getParent()) if (ModulePageFilter.NOT_MODULE.contains(q.getKey())) shared = true;
+            if (shared) continue;
             if (shown(p) && (key.startsWith("pref_") || key.startsWith("scamera_")))
                 assertTrue("a shared row on a module page: " + key, ModuleProfiles.isLocal(key));
             if (ModuleProfiles.isLocal(key) && p.isSelectable() && !VivoSdkFullRes.PREF_HW_REMOSAIC.equals(key)
@@ -342,14 +344,14 @@ public class ModuleProfilesPageTest {
             controller.setup();
             SettingsActivity activity = controller.get();
             activity.getSupportFragmentManager().beginTransaction()
-                    .replace(R.id.settings_container, SettingsActivity.SettingsFragment.modulePage("back0", "shooting_settings_screen"))
+                    .replace(R.id.settings_container, SettingsActivity.SettingsFragment.modulePage("back0", "advanced_screen"))
                     .addToBackStack("module").commit();
             SettingsActivity.SettingsFragment page = (SettingsActivity.SettingsFragment) top(activity);
             assertTrue(page.isResumed());
             prefs.edit().putString("pref_scam_hybrid_zsl_frames", "12").commit();
             idle();
             assertFalse(page.findPreference("pref_zsl_buffer_count_key").isVisible());
-            assertFalse(page.findPreference("pref_antibanding_hz_key").isVisible());
+            assertNull("SIMPLE_UI §4: «Против мерцания» lives under «Съёмка», not on this page", page.findPreference("pref_antibanding_hz_key"));
             assertTrue(page.findPreference("pref_scam_hybrid_zsl_frames").isVisible());
         }
     }
@@ -458,7 +460,7 @@ public class ModuleProfilesPageTest {
             FragmentManager fm = controller.get().getSupportFragmentManager();
             ModuleCopyFragment copy = new ModuleCopyFragment();
             fm.beginTransaction().replace(R.id.settings_container, copy).commitNow();
-            assertNotNull(copy.requireView().findViewWithTag("group_output_settings_screen"));
+            assertNotNull(copy.requireView().findViewWithTag("group_root_photo"));
             assertNull(copy.requireView().findViewWithTag("group_" + ModulePageFilter.HUB));
         }
     }

@@ -483,12 +483,17 @@ public final class ShadeCatalog {
         }
     }
 
+    /** The settings root's wrapper page and groups of «Для опытных»: not in the section path. */
+    static final Set<String> PATH_SKIP = new HashSet<>(Arrays.asList("advanced_screen", "adv_processing", "adv_cameras", "adv_system"));
+
     private void walk(Preference p, List<String> path, @Nullable Drawable.ConstantState inherited, boolean root) {
         if (!p.isVisible()) return;
         if (p instanceof PreferenceGroup) {
             PreferenceGroup group = (PreferenceGroup) p;
             List<String> inner = new ArrayList<>(path);
-            if (!root && p.getTitle() != null && p.getTitle().length() > 0) inner.add(p.getTitle().toString());
+            // SIMPLE_UI §4: the «Для опытных» wrappers (its page and groups) say nothing a path needs: «Для опытных › SHDR › …»
+            if (!root && p.getTitle() != null && p.getTitle().length() > 0 && !PATH_SKIP.contains(p.getKey()))
+                inner.add(p.getTitle().toString());
             Drawable.ConstantState icon = inherited;
             Drawable own = p instanceof PreferenceScreen && !root ? p.getIcon() : null;
             if (own != null && own.getConstantState() != null) icon = own.getConstantState();

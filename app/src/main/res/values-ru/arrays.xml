@@ -204,4 +204,12 @@
         <item>Только синие</item>
         <item>Выкл</item>
     </string-array>
+    <string-array name="shade_transparency_entries">
+        <item>0 % · непрозрачная</item>
+        <item>20 %</item>
+        <item>30 %</item>
+        <item>40 % · по умолчанию</item>
+        <item>50 %</item>
+        <item>60 %</item>
+    </string-array>
 </resources>

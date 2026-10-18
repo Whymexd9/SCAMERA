@@ -281,13 +281,13 @@ public class ShadeCatalogTest {
     @Test
     @Config(qualifiers = "ru-w400dp-h880dp-mdpi")
     public void searchFindsTitlesSectionsAndTheOtherLanguage() {
-        searchFindsTitlesSectionsAndTheOtherLanguage("Кадры светов и теней");
+        searchFindsTitlesSectionsAndTheOtherLanguage("Для опытных", "SHDR › Кадры светов и теней");
     }
 
     /** The same on an English system: the Russian synonyms still find the rows, the crumb is English. */
     @Test
     public void searchFindsTitlesSectionsAndTheOtherLanguageInEnglish() {
-        searchFindsTitlesSectionsAndTheOtherLanguage("Highlight and shadow frames");
+        searchFindsTitlesSectionsAndTheOtherLanguage("For experts", "SHDR › Highlight and shadow frames");
     }
 
     /** The process-wide catalog follows a language change (the activity is recreated, the process is not). */
@@ -296,18 +296,18 @@ public class ShadeCatalogTest {
         ShadeCatalog.reset();
         try {
             ShadeCatalog english = ShadeCatalog.get(context);
-            assertTrue(english.entry("pref_scam_hybrid_bento").crumb().startsWith("Highlight and shadow frames"));
+            assertTrue(english.entry("pref_scam_hybrid_bento").crumb().startsWith("SHDR › Highlight and shadow frames"));
             assertSame(english, ShadeCatalog.get(context));
             org.robolectric.RuntimeEnvironment.setQualifiers("+ru");
             ShadeCatalog russian = ShadeCatalog.get(context);
             assertNotSame(english, russian);
-            assertTrue(russian.entry("pref_scam_hybrid_bento").crumb(), russian.entry("pref_scam_hybrid_bento").crumb().startsWith("Кадры светов и теней"));
+            assertTrue(russian.entry("pref_scam_hybrid_bento").crumb(), russian.entry("pref_scam_hybrid_bento").crumb().startsWith("SHDR › Кадры светов и теней"));
         } finally {
             ShadeCatalog.reset();
         }
     }
 
-    private void searchFindsTitlesSectionsAndTheOtherLanguage(String captureSection) {
+    private void searchFindsTitlesSectionsAndTheOtherLanguage(String section, String captureSection) {
         List<ShadeCatalog.Entry> luma = catalog.search("Luma");
         Set<String> keys = new HashSet<>();
         for (ShadeCatalog.Entry e : luma) keys.add(e.key);
@@ -320,9 +320,9 @@ public class ShadeCatalogTest {
         for (ShadeCatalog.Entry e : catalog.search("grid")) grid.add(e.key);
         assertTrue(grid.contains("pref_show_grid_key"));
         assertEquals(catalog.all().size(), catalog.search("  ").size());
-        // Sections come from the tree: the highlight-frame rows are under «SHDR › Кадры светов и теней» (P128).
+        // Sections come from the tree: SIMPLE_UI §4 - the highlight-frame rows are under «Для опытных › SHDR › Кадры светов и теней».
         ShadeCatalog.Entry bento = catalog.entry("pref_scam_hybrid_bento");
-        assertEquals("SHDR", bento.section(context));
+        assertEquals(section, bento.section(context));
         assertTrue(bento.crumb(), bento.crumb().startsWith(captureSection));
         assertNull(catalog.entry(ShadeCatalog.ROUTE));
     }

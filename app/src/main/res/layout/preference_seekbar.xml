@@ -71,6 +71,17 @@
             android:lineSpacingExtra="2dp"
             android:textColor="@color/settings_summary"
             android:textSize="12.5sp" />
+        <TextView
+            android:id="@+id/settings_restart"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:paddingStart="7dp"
+            android:paddingTop="1dp"
+            android:paddingEnd="7dp"
+            android:paddingBottom="1dp"
+            android:textSize="11sp"
+            android:visibility="gone" />
         <SeekBar
             android:id="@+id/seekbar"
             android:layout_width="match_parent"
