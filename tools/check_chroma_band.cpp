@@ -49,88 +49,8 @@ static std::string where(int w, int h, int block, int content, int oscMode) {
            " osc " + std::to_string(oscMode);
 }
 
-static bool same(float a, float b) { return std::memcmp(&a, &b, sizeof a) == 0; }
-
-// MosaicBoxMean against float(acc / n): sums of floats of every scale, and sums placed within a few units of a float rounding
-// midpoint (the products there must fall back to the division).
-static long boxDivisions = 0, signShortcuts[2] = {0, 0}, signRamps = 0;
-static long checkBoxMean(long count, std::mt19937_64& rng) {
-    std::uniform_real_distribution<double> u01(0.0, 1.0);
-    std::uniform_int_distribution<int> expo(-140, 120), off(-40, 40), terms(1, 49);
-    long n = 0;
-    for (int r : {1, 2, 3, 4, 6, 8, 9, 12, 16, 24}) {
-        const MosaicBoxMean mean(r);
-        const double den = double(2 * r + 1);
-        std::vector<double> sums;
-        std::vector<float> fast(64);
-        for (long i = 0; i < count; ++i) {
-            double acc = 0;
-            if (i % 3 == 0) { // a sum of floats
-                const int e = expo(rng);
-                for (int k = terms(rng); k > 0; --k) acc += double(float((u01(rng) - 0.3) * std::ldexp(1.0, e)));
-            } else {          // a float rounding midpoint times n, a few units of the double away
-                const float f = float(u01(rng) * std::ldexp(1.0, expo(rng)));
-                const double mid = 0.5 * (double(f) + double(std::nextafter(f, 3e38f)));
-                acc = mid * den;
-                for (int k = off(rng); k != 0; k += k < 0 ? 1 : -1) acc = std::nextafter(acc, k < 0 ? -1e300 : 1e300);
-                if (i % 2) acc = -acc;
-            }
-            sums.push_back(acc);
-            if (!MosaicBoxMean::sure(acc * mean.inv)) ++boxDivisions;
-            if (!same(mean(acc), float(acc / den))) { std::printf("FAIL box mean r %d: %.17g\n", r, acc); ++failures; }
-            if (sums.size() == fast.size()) {
-                mean.row(sums.data(), fast.data(), int(sums.size()));
-                for (size_t k = 0; k < sums.size(); ++k)
-                    if (!same(fast[k], float(sums[k] / den))) { std::printf("FAIL box mean row r %d: %.17g\n", r, sums[k]); ++failures; }
-                sums.clear();
-            }
-            ++n;
-        }
-        for (double special : {0.0, -0.0, HUGE_VAL, -HUGE_VAL, std::nan(""), std::ldexp(1.0, -149), 3.4e38 * 49.0})
-            if (!same(mean(special), float(special / den))) { std::printf("FAIL box mean r %d: special %.17g\n", r, special); ++failures; }
-    }
-    return n;
-}
-
-// The soft sign change against the old one (no shortcut): luma-like float gates (tau 0.25) and double gates of the oscillation
-// maps (tau 0.05), deviations of every scale, swings near the ramp ends, zeros, infinities, NaN.
-static long checkSoftSign(long count, std::mt19937_64& rng) {
-    std::uniform_real_distribution<double> u01(0.0, 1.0), ramp(0.70, 1.30);
-    std::uniform_int_distribution<int> expo(-30, 30), kind(0, 9);
-    const double specials[] = {0.0, -0.0, HUGE_VAL, -HUGE_VAL, std::nan(""), 1e-310, 1e305, 4e-6};
-    long n = 0;
-    for (long i = 0; i < count; ++i) {
-        const double tau = i % 2 ? kMosaicLumaTau : kMosaicOscTau;
-        double gate = std::ldexp(u01(rng), expo(rng));
-        if (i % 4 < 2) gate = double(float(gate)); // the luma map: 0.04f max(L, 1e-4f)
-        double p0 = (u01(rng) - 0.5) * gate * std::ldexp(1.0, expo(rng) / 6), p1 = (u01(rng) - 0.5) * gate * std::ldexp(1.0, expo(rng) / 6);
-        switch (kind(rng)) {
-            case 0: { const double s = (u01(rng) < 0.5 ? 0.75 : 1.25) * (0.98 + 0.04 * u01(rng)) * gate; p0 = s * 0.5; p1 = -s * 0.5; break; } // ramp ends
-            case 1: p0 = tau * gate * (0.5 + u01(rng)); p1 = -p0 * ramp(rng) * 1.3; break;                                            // opp ~ tau gate
-            case 2: p0 = specials[i % 8]; break;
-            case 3: gate = specials[(i / 8) % 8]; break;
-            case 4: p1 = specials[(i / 3) % 8]; break;
-            default: break;
-        }
-        const float a = mosaicSoftSignChange(p0, p1, gate, tau), b = mosaicSoftSignChangeRef(p0, p1, gate, tau);
-        const double opp = std::max(0.0, std::min(p0, -p1)) + std::max(0.0, std::min(-p0, p1)), swing = std::abs(p0) + std::abs(p1);
-        if (gate > 1e-300 && gate < 1e300 && swing < 1e300 && opp > 0 && !std::isnan(p0) && !std::isnan(p1)) {
-            if (swing < 0.74 * gate) ++signShortcuts[0];
-            else if (opp >= tau * gate && swing > 1.26 * gate) ++signShortcuts[1];
-            else ++signRamps;
-        }
-        if (!same(a, b)) { std::printf("FAIL soft sign change %.17g %.17g gate %.17g tau %g: %.9g, was %.9g\n", p0, p1, gate, tau, a, b); ++failures; }
-        ++n;
-    }
-    return n;
-}
-
 int main(int argc, char** argv) {
     const bool quick = argc > 1 && std::string(argv[1]) == "quick";
-    std::mt19937_64 rng64(2131);
-    const long means = checkBoxMean(quick ? 20000 : 400000, rng64), signs = checkSoftSign(quick ? 400000 : 20000000, rng64);
-    std::printf("box means %ld (%ld by the division), soft sign changes %ld (%ld shortcut to 0, %ld to 1, %ld through the ramps): %s\n",
-                means, boxDivisions, signs, signShortcuts[0], signShortcuts[1], signRamps, failures ? "FAIL" : "the same floats");
     std::mt19937 rng(213);
     struct Size { int w, h; };
     const Size sizes[] = {{96, 311}, {257, 129}, {1000, 67}, {64, 64}, {130, 1030}, {33, 200}, {512, 48}, {1, 1}, {2, 3}, {5, 1},

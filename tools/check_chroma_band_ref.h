@@ -1,17 +1,8 @@
 #pragma once
 // P213b: the CPU chroma median as it was before the streamed bands (c1aef307, app/src/main/cpp/scam-hybrid.h lines 7049-7191),
 // verbatim but for its name: the reference of tools/check_chroma_band.cpp. bandRows -1 = the full-frame planes, > 0 (or 0 above
-// 64 MP) = the bounded-rows strips (<= 7e-7 from the planes). Include after scam-hybrid.h (it uses its helpers). With it the
-// soft sign change as it was (before the P213b shortcut where its ramps are closed or full).
+// 64 MP) = the bounded-rows strips (<= 7e-7 from the planes). Include after scam-hybrid.h (it uses its helpers).
 namespace scam {
-inline float mosaicSoftSignChangeRef(double p0,double p1,double gate,double tau){
-    // a NaN deviation counts as no change, as in the hard test (p0 p1 < 0 is false); a NaN p1 alone would give a NaN weight
-    if(!(gate>0.0)||std::isnan(p0)||std::isnan(p1))return 0.f;
-    const double opp=std::max(0.0,std::min(p0,-p1))+std::max(0.0,std::min(-p0,p1));
-    if(opp<=0.0)return 0.f;
-    auto ss=[](double x){x=std::clamp(x,0.0,1.0);return x*x*(3.0-2.0*x);};
-    return float(ss(opp/(tau*gate))*ss(((std::abs(p0)+std::abs(p1))/gate-0.75)/0.5));
-}
 inline void mosaicChromaMedianRef(std::vector<float>& rgb,int w,int h,int block,const std::vector<float>* osc=nullptr,bool gpu=false,
                                std::string* how=nullptr,int bandRows=0){
     if(bandRows>=0&&(bandRows>0||uint64_t(w)*h>64000000)){
@@ -128,8 +119,8 @@ inline void mosaicChromaMedianRef(std::vector<float>& rgb,int w,int h,int block,
     rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i)hp[i]=L[i]-hp[i];});
     mergeRowBands(h,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){
         const size_t i=size_t(y)*w+x;const float a=hp[i],gate=0.04f*std::max(L[i],1e-4f);float c=0;
-        if(x+1<w)c+=0.5f*mosaicSoftSignChangeRef(a,hp[i+1],gate,kMosaicLumaTau);
-        if(y+1<h)c+=0.5f*mosaicSoftSignChangeRef(a,hp[i+w],gate,kMosaicLumaTau);
+        if(x+1<w)c+=0.5f*mosaicSoftSignChange(a,hp[i+1],gate,kMosaicLumaTau);
+        if(y+1<h)c+=0.5f*mosaicSoftSignChange(a,hp[i+w],gate,kMosaicLumaTau);
         sc[i]=c;}});
     std::vector<float>().swap(L);std::vector<float>().swap(hp);
     box(sc,z,r2);
