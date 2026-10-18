@@ -5022,6 +5022,26 @@ pro mist, glimmer glass и других подобных фильтров у н�
 - UI per SIMPLE_UI: a «Фильтр» group next to the LUT - in the LUT tray (a second row of filter cards: «Нет», Black Pro-Mist,
   Glimmerglass, ... with live thumbnails) and on the settings LUT page (a «Фильтр на объектив» section: the chosen filter, its
   strength 1/8 - 1, plain one-line descriptions); the «Стиль» tile shows LUT + filter; per-module value (module profiles).
+- Owner's list (2026-10-18, the filters to simulate, in this order): Black Pro-Mist, CineBloom, Glimmerglass, Pearlescent, Fog,
+  Double Fog, GND (Graduated ND), Light Pollution, Streak, Prism, Kaleidoscope, Infrared. Models to work out per filter:
+  - diffusion family (Black Pro-Mist, CineBloom, Glimmerglass, Pearlescent): highlight halation with different PSF widths /
+    tails, glow colour (Pearlescent: pastel, iridescent tint) and sparkle (Glimmerglass);
+  - Fog / Double Fog: a veil over the whole frame (lifted blacks, lower contrast) plus a wide glow; Double Fog keeps more
+    definition with the same glow;
+  - GND: a graduated neutral density (stops, transition hardness, angle, position - drag on the preview), applied in linear light
+    before the tone so the sky keeps its highlight detail;
+  - Light Pollution: cuts the sodium / mercury-vapour bands (a spectral notch emulated on the camera RGB: a CCM-space notch around
+    the orange-yellow hue), cooler night sky;
+  - Streak: anamorphic horizontal (or chosen angle) streaks from point lights, coloured (blue / gold / clear);
+  - Prism: a displaced, tinted, softened ghost copy of part of the frame (offset, angle, strength, edge);
+  - Kaleidoscope: mirrored / repeated segments (count, rotation), a creative geometry pass;
+  - Infrared: false-colour IR look (foliage white / pink, sky dark, channel swap presets) from the RGB data, with strength.
+  Each filter with its own few settings (strength first; the rest only where they change the look).
+- Live demonstration in the settings, the same way the new LUT page works (owner, 2026-10-18: «при выборе какого-либо из
+  фильтров нам нужна наглядная демонстрация прямо в настройках как у нас реализовано с LUT в новом интерфейсе»): a «Фильтры» page
+  next to the LUT page with the 4:3 sample (left original, right with the filter at the current settings; a sample with bright
+  point lights and sky so the glow / streak / GND show), a strip of filter cards with live thumbnails, the chosen filter's
+  one-line description, its sliders updating the sample immediately; the viewfinder LUT tray gets the same filter row.
 - Checks: off = byte-identical output (md5 of the reference replays), energy test on a synthetic point source, no banding at
   12 / 50 / 200 MP, time budget per size.
 - Not started.
