@@ -21,6 +21,13 @@ final class PlainPreviewCameras {
     private static final String KEY_FINGERPRINT = "fingerprint";
     private static final String KEY_CAMERAS = "cameras";
 
+    /**
+     * Phones whose cameras refuse the vivo EIS session key (endConfigure -38) and whose HAL restarts after the refusal (~5 s
+     * without a camera): the plain preview from the very first session. vivo X300 (V2515, owner's log 2026-10-18; PD2502 /
+     * V2502A, 2026-10-19), cameras 2, 3, 4.
+     */
+    static final String[] KNOWN_REFUSERS = {"PD2502", "V2502A", "V2515"};
+
     private static final Set<String> CAMERAS = ConcurrentHashMap.newKeySet();
     private static volatile boolean sLoaded;
 
@@ -28,8 +35,14 @@ final class PlainPreviewCameras {
     }
 
     static boolean contains(String cameraId) {
+        if (cameraId != null && knownRefuser(android.os.Build.DEVICE, android.os.Build.MODEL)) return true;
         load();
         return cameraId != null && CAMERAS.contains(cameraId);
+    }
+
+    static boolean knownRefuser(@Nullable String device, @Nullable String model) {
+        for (String d : KNOWN_REFUSERS) if (d.equalsIgnoreCase(device) || d.equalsIgnoreCase(model)) return true;
+        return false;
     }
 
     /** For this process only (a payload seen packed under the stock profile); true when it was not in the set yet. */

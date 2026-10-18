@@ -30,6 +30,9 @@ public class LangTest {
         // the app-wide form reads the app context
         try (MockedStatic<ScameraApp> camera = mockStatic(ScameraApp.class)) {
             camera.when(ScameraApp::getAppContext).thenReturn(context);
+            // the settings keys resolve their names through it: never null under the mock
+            camera.when(() -> ScameraApp.getStringStatic(org.mockito.ArgumentMatchers.anyInt()))
+                    .thenAnswer(i -> org.robolectric.RuntimeEnvironment.getApplication().getString(i.<Integer>getArgument(0)));
             assertEquals(russian, Lang.ru());
             assertEquals(russian ? "Кадры: %d" : "Frames: %d", Lang.t("Кадры: %d", "Frames: %d"));
         }

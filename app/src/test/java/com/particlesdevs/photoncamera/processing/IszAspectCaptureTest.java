@@ -65,6 +65,10 @@ public class IszAspectCaptureTest {
         Context context = RuntimeEnvironment.getApplication();
         SettingsManager manager = new SettingsManager(context);
         app = mockStatic(ScameraApp.class);
+        // the settings keys resolve their names through it: never null under the mock (a Key enum first loaded here kept
+        // null names for every later test of the JVM)
+        app.when(() -> ScameraApp.getStringStatic(org.mockito.ArgumentMatchers.anyInt()))
+                .thenAnswer(i -> org.robolectric.RuntimeEnvironment.getApplication().getString(i.<Integer>getArgument(0)));
         app.when(ScameraApp::getAppContext).thenReturn(context);
         app.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
         app.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());

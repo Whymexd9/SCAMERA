@@ -96,7 +96,14 @@ public final class Lanczos1010102 {
      */
     public static void resize(Supplier<Rows> source, int sw, int sh, Supplier<Sink> sink, int dw, int dh, int lobes, int threads)
             throws Exception {
-        if (sw < 1 || sh < 1 || dw < 1 || dh < 1 || dw > sw || dh > sh || (long) dw * 4 < sw || (long) dh * 4 < sh || lobes < 2 || lobes > 5)
+        resample(source, sw, sh, sink, dw, dh, lobes, threads, false);
+    }
+
+    /** P226: as {@link #resize}, also up to 1:4 per side ({@code up}): a crop brought back to the photo size. */
+    public static void resample(Supplier<Rows> source, int sw, int sh, Supplier<Sink> sink, int dw, int dh, int lobes, int threads,
+                                boolean up) throws Exception {
+        if (sw < 1 || sh < 1 || dw < 1 || dh < 1 || (!up && (dw > sw || dh > sh)) || (long) dw > 4L * sw || (long) dh > 4L * sh
+                || (long) dw * 4 < sw || (long) dh * 4 < sh || lobes < 2 || lobes > 5)
             throw new IllegalArgumentException("Invalid Lanczos downscale geometry " + sw + "x" + sh + " -> " + dw + "x" + dh + " a=" + lobes);
         final Tap[] horizontal = coefficients(sw, dw, lobes);
         final Tap[] vertical = coefficients(sh, dh, lobes);

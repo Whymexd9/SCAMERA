@@ -11,6 +11,32 @@ public final class ScamPostDownscale {
         static void load() {}
     }
     private static native boolean nativeResize(Bitmap source, Bitmap destination, int lobes);
+    private static native boolean nativeResample(Bitmap source, Bitmap destination, int lobes);
+
+    /**
+     * P226 «Увеличивать кадр с кропом»: a cropped photo brought back to {@code width} x {@code height}, up (at most 1:4 per side)
+     * or down, with the Lanczos-2 window (bicubic-like, little ringing on an upscale) in linear light; 10-bit stays 10-bit.
+     */
+    public static Bitmap scaleTo(Bitmap source, int width, int height) {
+        if (width == source.getWidth() && height == source.getHeight()) return source;
+        if (width <= source.getWidth() && height <= source.getHeight()) return resizeTo(source, width, height, "bicubic");
+        if (width > 4 * source.getWidth() || height > 4 * source.getHeight()) throw new IllegalArgumentException("Resize beyond 1:4");
+        final long started = System.nanoTime();
+        final Bitmap result;
+        if (com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.isTenBit(source)) {
+            result = lanczosTenBit(source, width, height, 2, true);
+        } else {
+            Native.load();
+            result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            if (!nativeResample(source, result, 2)) {
+                result.recycle();
+                throw new IllegalStateException("Lanczos upscale failed");
+            }
+        }
+        Log.i("ScamDownscale", "upscale (Lanczos-2): " + source.getWidth() + "x" + source.getHeight() + " -> " + width + "x" + height
+                + " ms=" + (System.nanoTime() - started) / 1000000);
+        return result;
+    }
 
     /**
      * Resize to an explicit size in linear light. kernel: "lanczos" (3 lobes), "bicubic" (Catmull-Rom, via the Lanczos
@@ -80,38 +106,41 @@ public final class ScamPostDownscale {
             case "bilinear":
                 result = com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.scaled(source, width, height, true);
                 break;
-            default: {
-                final int lobes = "bicubic".equals(kernel) ? 2 : 3;
-                final Bitmap out = com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.like(source, width, height);
-                boolean success = false;
-                try {
-                    final int threads = Math.max(1, Math.min(8, Runtime.getRuntime().availableProcessors()));
-                    Lanczos1010102.resize(() -> {
-                        final com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.RowReader r =
-                                new com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.RowReader(source, Lanczos1010102.READ_ROWS);
-                        return new Lanczos1010102.Rows() {
-                            @Override public void read(int y, int rows, int[] o, int offset) { r.read(y, rows, o, offset); }
-                            @Override public void close() { r.close(); }
-                        };
-                    }, source.getWidth(), source.getHeight(), () -> {
-                        final com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.RowWriter w =
-                                new com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.RowWriter(out, Lanczos1010102.WRITE_ROWS);
-                        return new Lanczos1010102.Sink() {
-                            @Override public void write(int y, int rows, int[] in, int offset) { w.write(y, rows, in, offset); }
-                            @Override public void close() { w.close(); }
-                        };
-                    }, width, height, lobes, threads);
-                    success = true;
-                } catch (Exception e) {
-                    throw new IllegalStateException("10-bit Lanczos resize failed", e);
-                } finally {
-                    if (!success) out.recycle();
-                }
-                result = out;
-            }
+            default:
+                result = lanczosTenBit(source, width, height, "bicubic".equals(kernel) ? 2 : 3, false);
         }
         Log.i("ScamDownscale", kernel + " (10-bit): " + source.getWidth() + "x" + source.getHeight() + " -> " + width + "x" + height
                 + " ms=" + (System.nanoTime() - started) / 1000000);
         return result;
+    }
+
+    /** The Java Lanczos on an RGBA_1010102 bitmap ({@code up}: also an upscale). */
+    private static Bitmap lanczosTenBit(Bitmap source, int width, int height, int lobes, boolean up) {
+        final Bitmap out = com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.like(source, width, height);
+        boolean success = false;
+        try {
+            final int threads = Math.max(1, Math.min(8, Runtime.getRuntime().availableProcessors()));
+            Lanczos1010102.resample(() -> {
+                final com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.RowReader r =
+                        new com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.RowReader(source, Lanczos1010102.READ_ROWS);
+                return new Lanczos1010102.Rows() {
+                    @Override public void read(int y, int rows, int[] o, int offset) { r.read(y, rows, o, offset); }
+                    @Override public void close() { r.close(); }
+                };
+            }, source.getWidth(), source.getHeight(), () -> {
+                final com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.RowWriter w =
+                        new com.particlesdevs.photoncamera.processing.heif.TenBitBitmaps.RowWriter(out, Lanczos1010102.WRITE_ROWS);
+                return new Lanczos1010102.Sink() {
+                    @Override public void write(int y, int rows, int[] in, int offset) { w.write(y, rows, in, offset); }
+                    @Override public void close() { w.close(); }
+                };
+            }, width, height, lobes, threads, up);
+            success = true;
+        } catch (Exception e) {
+            throw new IllegalStateException("10-bit Lanczos resize failed", e);
+        } finally {
+            if (!success) out.recycle();
+        }
+        return out;
     }
 }

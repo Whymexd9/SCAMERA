@@ -35,10 +35,19 @@ inline std::vector<Tap> coefficients(int input, int output, int lobes) {
     }
     return taps;
 }
+// Downscale only (resize) or up to 4:1 either way (resample: P226, a crop brought back to the photo size). The filter is the
+// same: scale-aware, so an upscale interpolates with the plain Lanczos window.
+inline void resample(const uint8_t* source, int sw, int sh, size_t srcStride,
+                     uint8_t* destination, int dw, int dh, size_t dstStride, int lobes, bool up);
 inline void resize(const uint8_t* source, int sw, int sh, size_t srcStride,
                    uint8_t* destination, int dw, int dh, size_t dstStride, int lobes) {
+    resample(source, sw, sh, srcStride, destination, dw, dh, dstStride, lobes, false);
+}
+inline void resample(const uint8_t* source, int sw, int sh, size_t srcStride,
+                     uint8_t* destination, int dw, int dh, size_t dstStride, int lobes, bool up) {
     if (!source || !destination || sw < 1 || sh < 1 || dw < 1 || dh < 1 ||
-        dw > sw || dh > sh || int64_t(dw)*4 < sw || int64_t(dh)*4 < sh ||
+        (!up && (dw > sw || dh > sh)) || int64_t(dw) > int64_t(sw)*4 || int64_t(dh) > int64_t(sh)*4 ||
+        int64_t(dw)*4 < sw || int64_t(dh)*4 < sh ||
         lobes < 2 || lobes > 5 || srcStride < size_t(sw)*4 || dstStride < size_t(dw)*4)
         throw std::invalid_argument("Invalid Lanczos downscale geometry");
     if (sw == dw && sh == dh) {

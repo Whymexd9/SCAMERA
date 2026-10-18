@@ -885,6 +885,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mColorSpaceTransform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
                 Integer state = result.get(CaptureResult.FLASH_STATE);
                 mFlashed = state != null && (state == CaptureResult.FLASH_STATE_PARTIAL || state == CaptureResult.FLASH_STATE_FIRED);
+                if (mTorchLogFrames > 0 && --mTorchLogFrames % 5 == 0) Log.i("SCAM_CAPTURE", "torch: camera " + physicalID
+                        + " result flash mode " + result.get(CaptureResult.FLASH_MODE) + " state " + state);
                 if (isZslMode()) {
                     Long timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP);
                     if (timestamp != null) synchronized (mZslBufferLock) {
@@ -1012,6 +1014,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (afterRetry) {
                 Log.w("SCAM_CAPTURE", "camera " + physicalID + " closed by the HAL (error " + error
                         + ") after a refused session configuration: reopened quietly with the retried configuration");
+                undoFallbackStep(physicalID);
+                mQuietUntilMs = android.os.SystemClock.elapsedRealtime() + QUIET_REOPEN_MS;
                 if (mRecoveryHandler == null) mRecoveryHandler = new android.os.Handler(android.os.Looper.getMainLooper());
                 mRecoveryHandler.postDelayed(() -> {
                     if (isCameraResumed && mCameraDevice == null && !mCameraOpening.get()) restartCamera();
@@ -1101,6 +1105,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final int safe = sSafeStreams.getOrDefault(id, 0);
             if (safe >= 2) return false;
             sSafeStreams.put(id, safe + 1);
+            mFallbackUndo = () -> sSafeStreams.put(id, safe);
             Log.w(TAG, "camera " + id + ": session configuration failed (preview " + mBufferSize + ", "
                     + (mImageReaderRaw == null ? "no reader" : "reader " + mImageReaderRaw.getWidth() + "x" + mImageReaderRaw.getHeight()
                     + " format " + mImageReaderRaw.getImageFormat()) + "); retry with "
@@ -1132,6 +1137,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         if (alt == null) next = 2; else sRawSizeAlt.put(id, alt);
         sRawFallback.put(id, next);
+        mFallbackUndo = () -> { if (stage == 0) sRawFallback.remove(id); else sRawFallback.put(id, stage); };
         Log.w(TAG, "camera " + id + ": session configuration failed (preview " + mBufferSize + ", "
                 + (mImageReaderRaw == null ? "no reader" : "reader " + mImageReaderRaw.getWidth() + "x" + mImageReaderRaw.getHeight()
                 + " format " + mImageReaderRaw.getImageFormat()) + "); retry " + (next == 1 ? "with RAW " + alt : "without the RAW stream (YUV)"));
@@ -1206,6 +1212,31 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             restartCamera();
         });
         return true;
+    }
+
+    /**
+     * Owner's X300 log 2026-10-19: after the refused EIS key the HAL restarted; the quiet reopen's session failed meanwhile
+     * (Broken pipe -32) and the configure fallback took camera 2 to a YUV session without RAW for the rest of the process. A
+     * configure failure whose device the HAL then closed says nothing about the streams: that step is undone (once per camera
+     * and process, so a configuration that really kills the HAL still steps down the next time).
+     */
+    private void undoFallbackStep(String id) {
+        final Runnable undo = mFallbackUndo;
+        mFallbackUndo = null;
+        if (undo == null || id == null || !sFallbackUndone.add(id)) return;
+        undo.run();
+        Log.w("SCAM_CAPTURE", "camera " + id + ": the HAL closed the device after the failed configuration: the stream fallback step is undone");
+    }
+
+    /** The undo of the last configure fallback step of the current session (retryConfigureFallback), null without one. */
+    private volatile Runnable mFallbackUndo;
+    private static final java.util.Set<String> sFallbackUndone = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** Until when the camera is being reopened quietly after a refused configuration (the HAL restarting: open retries). */
+    private volatile long mQuietUntilMs;
+    private static final long QUIET_REOPEN_MS = 12_000;
+
+    private boolean quietRecovery() {
+        return android.os.SystemClock.elapsedRealtime() < mQuietUntilMs;
     }
 
     private void scheduleRecovery(String reason) {
@@ -2708,7 +2739,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** Up to 8 retries 0.5, 1, 2, 4, 4 ... s apart (~27 s): the X100 Ultra provider needed ~4.5 s, the old 5 x 1 s ran out. */
     private void retryOpen(int width, int height, Exception e) {
         if (mOpenRetries < 8 && mBackgroundHandler != null && isCameraResumed) {
-            recovering(true, "open failed: " + e.getMessage()); // P240
+            // P240; not while a camera the HAL closed after a refused configuration is reopened quietly (the HAL restarts)
+            if (!quietRecovery()) recovering(true, "open failed: " + e.getMessage());
             long delay = Math.min(4000L, 500L << mOpenRetries++);
             Log.w(TAG, "openCamera(" + logicalID + ") failed (" + e.getMessage() + "), retry " + mOpenRetries + " in " + delay + " ms");
             mBackgroundHandler.postDelayed(() -> openCamera(width, height), delay);
@@ -3377,6 +3409,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         // a refused configuration the chain below retries: a HAL that closes the device after the refusal
                         // (onError 4, vivo X300 2026-10-19) has its camera reopened quietly (mRetryDevice)
                         mRetryDevice = sessionDevice;
+                        mFallbackUndo = null;
                         if (retryWithoutDcgRoute(cameraCaptureSession, "session configuration failed")) return; // P230
                         if (retryWithoutVendorMode(cameraCaptureSession)) return; // P211
                         if (retryWithoutVivoSdkFullRes(cameraCaptureSession, "session configuration failed")) return;
@@ -6998,7 +7031,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
             //captureBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
             //setCaptureAEMode(captureBuilder);
-            if (mFlashed) captureBuilder.set(FLASH_MODE, FLASH_MODE_TORCH);
+            // the torch stays on through the shot's frames (the still template carries FLASH_MODE OFF)
+            if (mFlashed || (mFlashSupported && PreferenceKeys.getAeMode() == 0)) captureBuilder.set(FLASH_MODE, FLASH_MODE_TORCH);
             Log.d(TAG, "Focus:" + focus);
             captureBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_CANCEL);
 
@@ -7924,7 +7958,38 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public void setPreviewAEModeRebuild(int aeMode) {
         setAEMode(mPreviewRequestBuilder, aeMode);
         rebuildPreviewBuilder();
+        mTorchLogFrames = aeMode == 0 && mFlashSupported ? 15 : 0;
+        if (aeMode == 0 && mFlashSupported && torchNeedsSession()) restartSessionForTorch(0);
     }
+
+    /**
+     * Owner, 2026-10-19 (X200 Ultra): the torch lit when the session started with it on, but switched on in the running
+     * repeating request it stayed dark (off worked). On vivo the session is created again with the torch in its first
+     * request - the path that lights it.
+     */
+    static boolean torchNeedsSession() {
+        return ScamPreview.supported();
+    }
+
+    private void restartSessionForTorch(int attempt) {
+        final Handler handler = mBackgroundHandler;
+        if (handler == null) return;
+        final int generation = mSessionGeneration.get();
+        handler.postDelayed(() -> {
+            if (!isCameraResumed || mCaptureSession == null || mCameraDevice == null || generation != mSessionGeneration.get()
+                    || PreferenceKeys.getAeMode() != 0) return;
+            if (shotInFlight()) { // never under a shot: after it
+                if (attempt < 20) restartSessionForTorch(attempt + 1);
+                return;
+            }
+            Log.i("SCAM_CAPTURE", "torch on: camera " + physicalID + " session created again (vivo lights the torch from the session's start)");
+            mCaptureSession.close();
+            createCameraPreviewSession(false);
+        }, attempt == 0 ? 0 : 500);
+    }
+
+    /** The preview results still to log after the torch was switched on (FLASH_MODE / FLASH_STATE as the HAL reports them). */
+    private volatile int mTorchLogFrames;
 
     public void applyFpsRange() {
         if (mPreviewRequestBuilder == null) return;

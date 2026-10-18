@@ -147,8 +147,11 @@ public class ConfigMenuTest {
     @Test
     public void theButtonShowsTheActiveConfigInsideItsFrame() {
         ConfigChip chip = sheet.configChip();
-        // SIMPLE_UI §2: the chip is removed from the sheet (its naming still works for the config menu's other entries)
-        assertEquals(View.GONE, chip.getVisibility());
+        // P255: the profile button is back in the shade's header, in the title's place
+        assertEquals(View.VISIBLE, chip.getVisibility());
+        View title = sheet.findViewWithTag("shade_title");
+        assertNotNull(title);
+        assertEquals(View.GONE, title.getVisibility());
         assertEquals("no config yet", "Default", chip.getName().toString());
         ConfigState.set(activity, "Download/SCAMERA/XML/Night_City.xml");
         sheet.refreshConfigName();
@@ -169,11 +172,13 @@ public class ConfigMenuTest {
         chip.measure(View.MeasureSpec.makeMeasureSpec(dp(150), View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
         assertTrue(chip.getMeasuredWidth() <= dp(150));
         assertNull("no ellipsis when shrinking is enough", name.getEllipsize());
-        // the edit mode does not bring it back either
+        // while the tiles are edited the title («Перетащите плитку») takes the button's place, then the button comes back
         sheet.setEditing(true);
         assertEquals(View.GONE, chip.getVisibility());
+        assertEquals(View.VISIBLE, title.getVisibility());
         sheet.setEditing(false);
-        assertEquals(View.GONE, chip.getVisibility());
+        assertEquals(View.VISIBLE, chip.getVisibility());
+        assertEquals(View.GONE, title.getVisibility());
     }
 
     @Test
@@ -244,13 +249,13 @@ public class ConfigMenuTest {
         idle();
         assertEquals(List.of("delete Night_City.xml"), calls);
         assertNull("no active config any more", ConfigState.active(activity));
-        assertEquals("No config", sheet.configChip().getName().toString());
+        assertEquals("No profile", sheet.configChip().getName().toString());
         assertTrue(messages.contains("Deleted «Night_City.xml»"));
         assertTrue("the menu stays for more", sheet.configMenu() != null && sheet.configMenu().isShowing());
         assertEquals(View.GONE, menuView("config_save").getVisibility());
         assertEquals(View.GONE, menuView("config_delete").getVisibility());
         assertNull("its row left the list", sheet.configMenu().content().findViewWithTag("config_item_Night_City"));
-        assertEquals("No config", ((TextView) menuView("config_menu_name")).getText().toString());
+        assertEquals("No profile", ((TextView) menuView("config_menu_name")).getText().toString());
         // a config imported from elsewhere has no file here: nothing to delete
         sheet.configMenu().dismissNow();
         ConfigState.set(activity, "From_another_phone.xml");
@@ -299,7 +304,7 @@ public class ConfigMenuTest {
 
     /**
      * The whole menu scrolls inside the room under the button (owner, 2026-10-16: it could not scroll and «Сбросить настройки»
-     * stayed under the screen's edge); the reset says the saved configs stay.
+     * stayed under the screen's edge); the reset says the saved profiles stay.
      */
     @Test
     public void menuScrollsWithinTheRoomBelowTheButton() {
@@ -321,7 +326,7 @@ public class ConfigMenuTest {
         assertTrue("reachable at the end: " + top, top >= 0 && top + reset.getHeight() <= scroll.getHeight());
         reset.performClick();
         String text = ((android.widget.TextView) ((ViewGroup) menuView("config_reset_panel")).getChildAt(0)).getText().toString();
-        assertTrue(text, text.contains("Saved configs and curves stay"));
+        assertTrue(text, text.contains("Saved profiles and curves stay"));
     }
 
     /**
@@ -442,7 +447,7 @@ public class ConfigMenuTest {
         ConfigState.set(activity, "Day.xml");
         ConfigState.detach(activity);
         assertNull(ConfigState.active(activity));
-        assertEquals("its file deleted: no config, not the defaults", "No config", ConfigState.label(activity));
+        assertEquals("its file deleted: no config, not the defaults", "No profile", ConfigState.label(activity));
         ConfigState.set(activity, "Night.xml");
         assertEquals("Night", ConfigState.label(activity));
         ConfigState.clear(activity);

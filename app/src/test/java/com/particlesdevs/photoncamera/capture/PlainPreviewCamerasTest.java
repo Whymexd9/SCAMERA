@@ -30,6 +30,22 @@ public class PlainPreviewCamerasTest {
         assertEquals(s, PlainPreviewCameras.stored("fw", "fw", PlainPreviewCameras.join(s)));
     }
 
+    @Test public void theX300NeverGetsTheKey() {
+        assertTrue(PlainPreviewCameras.knownRefuser("PD2502", "V2502A"));
+        assertTrue(PlainPreviewCameras.knownRefuser("V2515", "V2515"));
+        assertFalse(PlainPreviewCameras.knownRefuser("PD2454", "V2454A"));
+        assertFalse(PlainPreviewCameras.knownRefuser(null, null));
+    }
+
+    @Test public void theFallbackStepIsUndoneWhenTheHalDied() throws Exception {
+        String s = src();
+        int quiet = s.indexOf("if (afterRetry) {");
+        assertTrue("the configure fallback step of a device the HAL closed is undone", s.indexOf("undoFallbackStep(", quiet) > quiet);
+        int fallback = s.indexOf("private boolean retryConfigureFallback(");
+        assertTrue(s.indexOf("mFallbackUndo = ", fallback) > fallback);
+        assertTrue("an open failure right after a quiet reopen keeps the overlay off", s.contains("quietRecovery()"));
+    }
+
     @Test public void theSetWorksWithoutStorage() {
         PlainPreviewCameras.resetForTest();
         assertFalse(PlainPreviewCameras.contains("2"));

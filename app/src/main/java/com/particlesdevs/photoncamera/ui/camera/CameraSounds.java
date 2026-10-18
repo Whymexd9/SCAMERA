@@ -42,6 +42,7 @@ public final class CameraSounds {
     private volatile boolean shutterLoaded;
     private MediaPlayer timer;
     private Boolean forced;
+    private static volatile boolean sShutterLogged;
     /** The PCM sounds where MP3 cannot be decoded ({@link #synthesized}). */
     private AudioTrack pcmShutter, pcmTimer;
     static final int PCM_RATE = 24000;
@@ -167,7 +168,15 @@ public final class CameraSounds {
 
     /** One shutter sound for the shot that starts now. */
     public void shutter() {
-        if (!shutterAudible(PreferenceKeys.isCameraSoundsOn(), regionForces(), normalRinger())) return;
+        final boolean on = PreferenceKeys.isCameraSoundsOn(), region = regionForces(), ringer = normalRinger();
+        // owner, 2026-10-19 (Xiaomi 12X: «не выключается звук съёмки»): why it sounds, once per process (the switch, the
+        // phone's own must-play rule, the ringer)
+        if (!sShutterLogged) {
+            sShutterLogged = true;
+            Log.i(TAG, "shutter sound: switch " + (on ? "on" : "off") + ", the phone requires it " + region + ", normal ringer " + ringer
+                    + " -> " + (shutterAudible(on, region, ringer) ? "played" : "silent"));
+        }
+        if (!shutterAudible(on, region, ringer)) return;
         SoundPool p;
         synchronized (this) {
             // P188 (owner, 2026-10-17: «убери пик после нажатия на кнопку спуска затвора»): the X200 Ultra's CTS package had a

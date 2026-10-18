@@ -34,7 +34,7 @@ public final class ConfigState {
     public static String label(Context c) {
         String name = active(c);
         if (name != null) return name;
-        return prefs(c).getBoolean(KEY_DETACHED, false) ? Lang.t(c, "Без конфига", "No config") : Lang.t(c, "Стандартный", "Default");
+        return prefs(c).getBoolean(KEY_DETACHED, false) ? Lang.t(c, "Без профиля", "No profile") : Lang.t(c, "Стандартный", "Default");
     }
 
     /** A config was saved under / imported from {@code fileName} (a path, a document id or a bare name). */

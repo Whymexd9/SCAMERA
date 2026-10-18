@@ -55,6 +55,8 @@ final class VivoSdkFullResCapture {
     private volatile boolean stopped;
     private final Consumer<Image> previewConsumer;
     private boolean nativeMosaicVerified;
+    /** A result of this series reported the profile's sensor mode (com.qti.sensorbps.mode_index): the HAL ran the mosaic mode. */
+    private boolean nativeModeReported;
     /** Per still: its role and, when > 0, its manual exposure / sensitivity (P179 ultrashort, P198 the Hybrid plan's frames). */
     private final ImageFrame.CaptureRole[] roles;
     private final long[] manualNs;
@@ -237,6 +239,50 @@ final class VivoSdkFullResCapture {
     static boolean modeMatches(VivoSdkFullRes.Profile profile, int[] mode) {
         if (profile.nativeBlock == 0 && mode == null) return false;
         return mode == null || mode.length > 0 && mode[0] == profile.sensorMode;
+    }
+
+    /** The proof's key: the camera's profile (size, sensor mode, colour block). */
+    static String proofKey(VivoSdkFullRes.Profile profile) {
+        return profile.size.getWidth() + "x" + profile.size.getHeight() + "/" + profile.sensorMode + "/" + profile.nativeBlock;
+    }
+
+    /** Profiles whose colour block a confident still proved on this firmware (Build.FINGERPRINT): kept across runs. */
+    static final class MosaicProof {
+        private static final String PREFS = "scam_fullres_mosaic_proof";
+        private static final java.util.Set<String> PROVEN = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+        private MosaicProof() {
+        }
+
+        static boolean known(String key) {
+            if (PROVEN.contains(key)) return true;
+            final android.content.SharedPreferences p = prefs();
+            final boolean stored = p != null && android.os.Build.FINGERPRINT != null
+                    && android.os.Build.FINGERPRINT.equals(p.getString(key, null));
+            if (stored) PROVEN.add(key);
+            return stored;
+        }
+
+        static void remember(String key) {
+            if (!PROVEN.add(key)) return;
+            final android.content.SharedPreferences p = prefs();
+            if (p != null) p.edit().putString(key, android.os.Build.FINGERPRINT).apply();
+        }
+
+        /** Tests. */
+        static void clear() {
+            PROVEN.clear();
+        }
+
+        @androidx.annotation.Nullable
+        private static android.content.SharedPreferences prefs() {
+            try {
+                final android.content.Context c = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext();
+                return c == null ? null : c.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE);
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
     }
 
     /** P194 / P198: the pixels are no confident mosaic of another colour block than the profile's; {verified, mismatch}. */
@@ -441,6 +487,7 @@ final class VivoSdkFullResCapture {
                         serial.fail("SDK FULLRES50 sensor mode is not active");
                         return;
                     }
+                    if (mode != null) nativeModeReported = true;
                     if (result.getRequest() == null || result.getRequest().getTag() != request.getTag()
                             || timestamp == null || exposure == null || exposure <= 0 || iso == null || iso <= 0) {
                         serial.fail("Invalid SDK RAW metadata");
@@ -528,8 +575,19 @@ final class VivoSdkFullResCapture {
     private void finish() {
         try {
             // P194: a Bayer still the detector cannot tell (a flat scene) is no mosaic either: only Quad / Tetra must be proven
-            if (profile.nativeBlock > 1 && !nativeMosaicVerified)
-                throw new IllegalStateException("Native FULLRES mosaic has not been verified from RAW pixels");
+            if (profile.nativeBlock > 1) {
+                final String key = proofKey(profile);
+                if (nativeMosaicVerified) MosaicProof.remember(key);
+                // owner, 2026-10-19 (X200 Ultra 200 MP, a blurred flat sheet: «Native FULLRES mosaic has not been verified from RAW
+                // pixels», the shot lost): a scene the detector cannot read proves nothing either way. No still contradicted the
+                // profile (that fails at once above); the HAL's reported sensor mode or an earlier proof of this camera's mosaic on
+                // this firmware vouch for it. Never proven and not reported: the shot fails as before.
+                else if (nativeModeReported || MosaicProof.known(key))
+                    com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", "native FULLRES: the scene shows no confident colour block; "
+                            + (nativeModeReported ? "the HAL reported sensor mode " + profile.sensorMode : "this camera's mosaic was proven before")
+                            + ", block " + profile.nativeBlock + " kept");
+                else throw new IllegalStateException("Native FULLRES mosaic has not been verified from RAW pixels");
+            }
             // P198: a 50 MP ZSL shot is the ring's N and these stills, tolerant as the 12 MP Hybrid (a still the plan's roles do not
             // fit leaves the merge); the series after the shutter alone stays strict
             final boolean zsl = !past.isEmpty();

@@ -72,7 +72,9 @@ public final class BrandMigration {
 
     /**
      * Every old word of a key or a string value renamed. A word next to a '.' stays: vendor tags (vivo.control.*), vendor
-     * packages and library files keep their names.
+     * packages and library files keep their names. A word next to a '/' stays as well: a path, or the Build.FINGERPRINT stamp
+     * of the per-firmware notes ("vivo/PD2502/PD2502:16/..."; owner's X300 log 2026-10-19: rewritten on every launch, every
+     * note of a vivo phone - the cameras refusing the EIS key, the exposure caps, the FULLRES / ISZ trials - was forgotten).
      */
     public static String text(String s) {
         if (s == null || s.isEmpty()) return s;
@@ -80,7 +82,7 @@ public final class BrandMigration {
         StringBuilder out = null;
         int last = 0;
         while (m.find()) {
-            boolean dotted = (m.start() > 0 && s.charAt(m.start() - 1) == '.') || (m.end() < s.length() && s.charAt(m.end()) == '.');
+            boolean dotted = (m.start() > 0 && kept(s.charAt(m.start() - 1))) || (m.end() < s.length() && kept(s.charAt(m.end())));
             String n = dotted ? m.group() : word(m.group());
             if (n.equals(m.group())) continue;
             if (out == null) out = new StringBuilder(s.length());
@@ -89,6 +91,10 @@ public final class BrandMigration {
         }
         if (out == null) return s;
         return out.append(s, last, s.length()).toString();
+    }
+
+    private static boolean kept(char c) {
+        return c == '.' || c == '/';
     }
 
     @SuppressWarnings("unchecked")

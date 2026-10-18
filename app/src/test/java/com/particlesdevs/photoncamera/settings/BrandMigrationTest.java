@@ -38,6 +38,10 @@ public class BrandMigrationTest {
         assertEquals(tags, BrandMigration.text(tags));
         assertEquals("libvivo_nice_cre.so", BrandMigration.text("libvivo_nice_cre.so"));
         assertEquals("com.vivo.stats.aec.so", BrandMigration.text("com.vivo.stats.aec.so"));
+        // owner's X300 log 2026-10-19: the per-firmware notes' stamp was rewritten on every launch
+        String fingerprint = "vivo/PD2502/PD2502:16/BP2A.250605.031.A3/compiler251010191043:user/release-keys";
+        assertEquals(fingerprint, BrandMigration.text(fingerprint));
+        assertEquals(fingerprint + "|1", BrandMigration.text(fingerprint + "|1"));
     }
 
     @Test

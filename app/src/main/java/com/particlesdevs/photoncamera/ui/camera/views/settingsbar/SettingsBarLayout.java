@@ -239,7 +239,7 @@ public class SettingsBarLayout extends LinearLayout {
         LinearLayout head = new LinearLayout(context);
         head.setOrientation(HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        // SIMPLE_UI §2 header: «Быстрые настройки» (16.5sp, one line), «Изменить» / «Готово», the 40dp gear; no config chip
+        // SIMPLE_UI §2 header: the profile button (P255; «Перетащите плитку» while editing), «Изменить» / «Готово», the 40dp gear
         head.setPadding(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(context, 7), 0,
                 com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(context, 3),
                 com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(context, 6));
@@ -247,6 +247,7 @@ public class SettingsBarLayout extends LinearLayout {
         headTitle.setText(R.string.shade_quick_title);
         headTitle.setTextColor(ShadeStyle.TEXT);
         headTitle.setMaxLines(1);
+        headTitle.setTag("shade_title");
         headTitle.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.textFixed(headTitle, 16.5f);
         // P143: the config button takes the title's place; the slot limits it, a long name shrinks inside its frame
@@ -255,7 +256,9 @@ public class SettingsBarLayout extends LinearLayout {
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
         configChip = new ConfigChip(context);
         configChip.setOnClickListener(v -> toggleConfigMenu());
-        configChip.setVisibility(GONE);   // SIMPLE_UI §2: the config chip is removed from the sheet
+        // P255 (owner, 2026-10-19: «вернуть меню конфигов ... в шторке, но обнови его под нашу новую логику и стиль»): the
+        // active profile's button in the title's place again; the title only while the tiles are edited
+        headTitle.setVisibility(GONE);
         headSlot.addView(configChip, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL | Gravity.START));
         LayoutParams slotParams = new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -389,9 +392,9 @@ public class SettingsBarLayout extends LinearLayout {
         refreshConfigName();
     }
 
-    // ───────────────────────────────── P143: the config button and its menu
+    // ───────────────────────────────── P143 / P255: the profile button and its menu
 
-    /** The active config's name on the button (after a save, an import, the reset; when the shade shows). */
+    /** The active profile's name on the button (after a save, an import, the reset; when the shade shows). */
     public void refreshConfigName() {
         configChip.setName(com.particlesdevs.photoncamera.settings.ConfigState.label(getContext()));
     }
@@ -1033,6 +1036,8 @@ public class SettingsBarLayout extends LinearLayout {
         if (on) openSlider = null;
         // SIMPLE_UI §2: the title becomes «Перетащите плитку» while editing
         headTitle.setText(on ? R.string.shade_drag_title : R.string.shade_quick_title);
+        headTitle.setVisibility(on ? VISIBLE : GONE);
+        configChip.setVisibility(on ? GONE : VISIBLE);
         if (on) closeConfigMenu();
         styleEditButton(ShadeStyle.accent(getContext()));
         headGear.setVisibility(on ? GONE : VISIBLE);

@@ -24,6 +24,10 @@ public class LensLabelLocaleTest {
 
     @Before public void context() {
         camera = mockStatic(ScameraApp.class);
+        // the settings keys resolve their names through it: never null under the mock (a Key enum first loaded here kept
+        // null names for every later test of the JVM)
+        camera.when(() -> ScameraApp.getStringStatic(org.mockito.ArgumentMatchers.anyInt()))
+                .thenAnswer(i -> org.robolectric.RuntimeEnvironment.getApplication().getString(i.<Integer>getArgument(0)));
         camera.when(ScameraApp::getAppContext).thenReturn(RuntimeEnvironment.getApplication());
     }
     @After public void cleanup() { camera.close(); }

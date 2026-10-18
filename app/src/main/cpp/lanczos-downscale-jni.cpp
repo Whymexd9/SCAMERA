@@ -13,9 +13,18 @@ public:
     }
     ~BitmapPixels() { AndroidBitmap_unlockPixels(env,bitmap); }
 };
+static jboolean resampleBitmaps(JNIEnv* env,jobject source,jobject destination,jint lobes,bool up);
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_particlesdevs_photoncamera_processing_ml_ScamPostDownscale_nativeResize(
         JNIEnv* env,jclass,jobject source,jobject destination,jint lobes) {
+    return resampleBitmaps(env,source,destination,lobes,false);
+}
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_particlesdevs_photoncamera_processing_ml_ScamPostDownscale_nativeResample(
+        JNIEnv* env,jclass,jobject source,jobject destination,jint lobes) {
+    return resampleBitmaps(env,source,destination,lobes,true);
+}
+static jboolean resampleBitmaps(JNIEnv* env,jobject source,jobject destination,jint lobes,bool up) {
     AndroidBitmapInfo src{},dst{};
     if (AndroidBitmap_getInfo(env,source,&src)!=ANDROID_BITMAP_RESULT_SUCCESS ||
         AndroidBitmap_getInfo(env,destination,&dst)!=ANDROID_BITMAP_RESULT_SUCCESS ||
@@ -23,8 +32,8 @@ Java_com_particlesdevs_photoncamera_processing_ml_ScamPostDownscale_nativeResize
         return JNI_FALSE;
     try {
         BitmapPixels input(env,source),output(env,destination);
-        scamera_lanczos::resize(static_cast<const uint8_t*>(input.data),src.width,src.height,src.stride,
-                static_cast<uint8_t*>(output.data),dst.width,dst.height,dst.stride,lobes);
+        scamera_lanczos::resample(static_cast<const uint8_t*>(input.data),src.width,src.height,src.stride,
+                static_cast<uint8_t*>(output.data),dst.width,dst.height,dst.stride,lobes,up);
         return JNI_TRUE;
     } catch (const std::exception&) {
         return JNI_FALSE;

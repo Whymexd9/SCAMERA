@@ -49,6 +49,10 @@ public class FullResTrialsTest {
         prefs = manager.getDefaultPreferences();
         prefs.edit().clear().commit();
         app = mockStatic(ScameraApp.class);
+        // the settings keys resolve their names through it: never null under the mock (a Key enum first loaded here kept
+        // null names for every later test of the JVM)
+        app.when(() -> ScameraApp.getStringStatic(org.mockito.ArgumentMatchers.anyInt()))
+                .thenAnswer(i -> org.robolectric.RuntimeEnvironment.getApplication().getString(i.<Integer>getArgument(0)));
         app.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);
     }
 

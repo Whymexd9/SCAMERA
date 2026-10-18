@@ -137,6 +137,24 @@ public class Lanczos1010102Test {
         assertArrayEquals(one, resize(src, sw, sh, dw, dh, 3, 7));
     }
 
+    /** P226: resample() also enlarges (up to 1:4), a flat level stays exact, a step stays monotone around its edge. */
+    @Test
+    public void resampleEnlarges() throws Exception {
+        final int sw = 8, sh = 6, dw = 20, dh = 15;
+        final int[] flat = new int[sw * sh];
+        java.util.Arrays.fill(flat, pack(612, 300, 77));
+        final int[] out = new int[dw * dh];
+        Lanczos1010102.resample(() -> (y, rows, o, offset) -> System.arraycopy(flat, y * sw, o, offset, rows * sw), sw, sh,
+                () -> (y, rows, in, offset) -> System.arraycopy(in, offset, out, y * dw, rows * dw), dw, dh, 2, 2, true);
+        for (int v : out) assertEquals(pack(612, 300, 77), v);
+        try {
+            Lanczos1010102.resample(() -> (y, rows, o, offset) -> { }, 4, 4, () -> (y, rows, in, offset) -> { }, 17, 4, 2, 1, true);
+            fail("beyond 1:4 accepted");
+        } catch (IllegalArgumentException expected) {
+            // at most 1:4 per side
+        }
+    }
+
     @Test
     public void geometryIsValidated() {
         for (int[] g : new int[][]{{8, 8, 1, 1, 3}, {8, 8, 9, 8, 3}, {8, 8, 2, 2, 6}, {8, 8, 2, 2, 1}}) {

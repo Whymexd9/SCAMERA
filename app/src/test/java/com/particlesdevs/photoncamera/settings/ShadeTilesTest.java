@@ -44,6 +44,10 @@ public class ShadeTilesTest {
         prefs = manager.getDefaultPreferences();
         prefs.edit().clear().commit();
         camera = mockStatic(ScameraApp.class);
+        // the settings keys resolve their names through it: never null under the mock (a Key enum first loaded here kept
+        // null names for every later test of the JVM)
+        camera.when(() -> ScameraApp.getStringStatic(org.mockito.ArgumentMatchers.anyInt()))
+                .thenAnswer(i -> org.robolectric.RuntimeEnvironment.getApplication().getString(i.<Integer>getArgument(0)));
         camera.when(ScameraApp::getAppContext).thenReturn(context);
         camera.when(ScameraApp::getResourcesStatic).thenReturn(context.getResources());
         camera.when(ScameraApp::getSettingsManagerStatic).thenReturn(manager);

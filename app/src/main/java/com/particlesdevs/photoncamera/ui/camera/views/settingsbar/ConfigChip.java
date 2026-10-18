@@ -17,7 +17,8 @@ import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.util.Lang;
 
 /**
- * P143: the shade header's config button - the active config's name in an accent frame with the config icon and a chevron.
+ * P143 / P255: the shade header's profile button - the active profile's name in an accent frame with the profile icon and a
+ * chevron.
  * A long name stays inside the frame: it shrinks from 13sp to 9sp and only then ends in an ellipsis. A press dips the frame,
  * the chevron turns while the config menu is open.
  */
@@ -74,7 +75,7 @@ public final class ConfigChip extends LinearLayout {
     public void setName(CharSequence text) {
         if (TextUtils.equals(name.getText(), text)) return;
         name.setText(text);
-        setContentDescription(Lang.t(getContext(), "Конфиг: ", "Config: ") + text);
+        setContentDescription(Lang.t(getContext(), "Профиль: ", "Profile: ") + text);
         requestLayout();
     }
 

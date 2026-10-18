@@ -38,6 +38,9 @@ import java.util.Locale;
 import java.util.function.Consumer;
 
 /**
+ * P255 (owner, 2026-10-19): back in the shade, in the words and order of the settings' «Профили» page (SIMPLE_UI §4): the
+ * active profile, «Сохранить» over it, «Сохранить текущие как…», «Сохранённые» newest first (load / delete), «Открыть папку
+ * конфигов» until the folder is open, «Загрузить из файла», «Сбросить всё».
  * P143: the config menu under the shade's config button - save over the active config, save as a new one, load or delete a
  * saved one, delete the active one's file, import a file, reset to the defaults. A card in the shade's style that unfolds from the button (scale, fade, a short drop,
  * the rows following one after another) and folds back; «Сохранить как…», a saved config and the reset open their inline
@@ -243,7 +246,7 @@ final class ConfigMenu {
     private void build() {
         String active = ConfigState.active(c);
         TextView eyebrow = new TextView(c);
-        eyebrow.setText(Lang.t(c, "Конфиг", "Config"));
+        eyebrow.setText(Lang.t(c, "Активный профиль", "The active profile"));
         ShadeStyle.label(eyebrow, accent);
         eyebrow.setPadding(dp(10), 0, dp(10), dp(6));
         body.addView(eyebrow);
@@ -275,7 +278,7 @@ final class ConfigMenu {
         field.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         field.setTextColor(ShadeStyle.TEXT);
         field.setHintTextColor(ShadeStyle.MUTED);
-        field.setHint(Lang.t(c, "Имя конфига", "Config name"));
+        field.setHint(Lang.t(c, "Имя профиля", "Profile name"));
         field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         field.setImeOptions(EditorInfo.IME_ACTION_DONE);
         field.setBackground(ShadeStyle.card(c, ShadeStyle.FIELD, ShadeStyle.LINE, 14));
@@ -285,12 +288,13 @@ final class ConfigMenu {
         saveAs.addView(field, new LinearLayout.LayoutParams(-1, -2));
         Runnable saveNamed = () -> {
             String name = ConfigState.fileSafe(field.getText().toString());
-            if (name.isEmpty()) { message.accept(Lang.t(c, "Введите имя конфига", "Enter a config name")); return; }
+            if (name.isEmpty()) { message.accept(Lang.t(c, "Введите имя профиля", "Enter a profile name")); return; }
             done(actions.save(name));
         };
         field.setOnEditorActionListener((v, id, e) -> { if (id == EditorInfo.IME_ACTION_DONE) { saveNamed.run(); return true; } return false; });
         saveAs.addView(button(Lang.t(c, "Сохранить", "Save"), ShadeStyle.INK, accent, "config_save_confirm", saveNamed), buttonParams());
-        body.addView(row(R.drawable.settings_ic_plus, Lang.t(c, "Сохранить как…", "Save as…"), null, accent, "config_save_as",
+        body.addView(row(R.drawable.settings_ic_plus, Lang.t(c, "Сохранить текущие как…", "Save the current as…"),
+                Lang.t(c, "Все настройки в один файл", "Every setting in one file"), accent, "config_save_as",
                 () -> toggle(saveAs, field)));
         body.addView(saveAs);
         if (activeFile != null) {
@@ -300,7 +304,7 @@ final class ConfigMenu {
                     "«" + file + "» is deleted from Download/SCAMERA/XML. The settings stay as they are"), 13, ShadeStyle.MUTED));
             ask.addView(button(Lang.t(c, "Удалить «" + active + "»", "Delete «" + active + "»"), ShadeStyle.INK, SettingsStyle.WARN,
                     "config_delete_confirm", () -> deleteFile(file)), buttonParams());
-            View delete = row(R.drawable.settings_ic_delete, Lang.t(c, "Удалить конфиг", "Delete the config"),
+            View delete = row(R.drawable.settings_ic_delete, Lang.t(c, "Удалить профиль", "Delete the profile"),
                     Lang.t(c, "Файл «" + file + "»", "File «" + file + "»"), SettingsStyle.WARN, "config_delete", () -> toggle(ask, null));
             body.addView(delete);
             body.addView(ask);
@@ -375,15 +379,16 @@ final class ConfigMenu {
                             "Once: configs put into Download/SCAMERA/XML show up here"), accent,
                     "config_open_folder", () -> { actions.openFolder(); close(); }));
         }
-        body.addView(row(R.drawable.settings_ic_restore, Lang.t(c, "Импорт из файла…", "Import a file…"),
-                Lang.t(c, "Конфиг с другого телефона или из другой папки", "A config from another phone or folder"), accent,
+        body.addView(row(R.drawable.settings_ic_restore, Lang.t(c, "Загрузить из файла", "Load from a file"),
+                Lang.t(c, "Профиль с другого телефона или из другой папки", "A profile from another phone or folder"), accent,
                 "config_import", () -> { actions.importFile(); close(); }));
         LinearLayout reset = panel("config_reset_panel");
-        reset.addView(text(Lang.t(c, "Все настройки и модули вернутся к стандартным, камера перезапустится. Сохранённые конфиги и кривые не удаляются",
-                "Every setting and module goes back to the defaults, the camera restarts. Saved configs and curves stay"), 13, ShadeStyle.MUTED));
+        reset.addView(text(Lang.t(c, "Все настройки и модули вернутся к стандартным, камера перезапустится. Сохранённые профили и кривые не удаляются",
+                "Every setting and module goes back to the defaults, the camera restarts. Saved profiles and curves stay"), 13, ShadeStyle.MUTED));
         reset.addView(button(Lang.t(c, "Сбросить", "Reset"), ShadeStyle.INK, SettingsStyle.WARN, "config_reset_confirm",
                 () -> done(actions.reset())), buttonParams());
-        body.addView(row(R.drawable.settings_ic_reset, Lang.t(c, "Сбросить настройки", "Reset settings"), null,
+        body.addView(row(R.drawable.settings_ic_reset, Lang.t(c, "Сбросить всё", "Reset all"),
+                Lang.t(c, "Вернуть настройки как после установки", "Settings back as after installing"),
                 SettingsStyle.WARN, "config_reset", () -> toggle(reset, null)));
         body.addView(reset);
     }

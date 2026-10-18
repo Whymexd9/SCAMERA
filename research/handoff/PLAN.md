@@ -5804,3 +5804,68 @@ pro mist, glimmer glass и других подобных фильтров у н�
 - Checks: PlainPreviewCamerasTest (storage per firmware, the quiet path before the revert / message). Phone: X300 first start
   of each camera (log «closed by the HAL ... reopened quietly»), then an app restart (log «refused the vivo preview keys on this
   firmware»).
+- Round 2 (owner, 2026-10-19, build 31093 = ba778e96 on the X300 PD2502 / V2502A, screenshot «Camera is restarting…»: «исправь
+  полностью это»): the quiet reopen ran, but (1) the HAL restarted after the refusal (~5 s «unknown device»), the open
+  retries put the overlay up; (2) the quiet reopen's session failed meanwhile (Broken pipe -32) and retryConfigureFallback took
+  camera 2 to YUV without RAW for the process; (3) after an app restart the refusal was forgotten: BrandMigration rewrote
+  "vivo/" in the stored Build.FINGERPRINT on every launch - every per-firmware note of a vivo phone (ExposureLimits,
+  FullResTrials, VivoQcomIsz notes, PlainColourMemory, OppoPlainState stamp) was lost the same way.
+- DONE: BrandMigration keeps a word next to '/' (paths, fingerprints); PlainPreviewCameras.KNOWN_REFUSERS (PD2502, V2502A,
+  V2515) never send the vivo EIS session key; a configure fallback step of a device the HAL then closed is undone (once per
+  camera and process); open retries within 12 s of a quiet reopen keep the overlay off. Tests: PlainPreviewCamerasTest (5),
+  BrandMigrationTest (the fingerprint stays).
+
+### P255 - the configs menu back in the shade (owner, 2026-10-19: «вернуть меню конфигов из старого интерфейса в шторке, но обнови его под нашу новую логику и стиль»)
+- The old shade (P143, 9798403a: SettingsBarLayout + ConfigMenu - the active config in a frame, a menu to save, load, import,
+  reset; the code is still in SettingsBarLayout.configChip) is not reachable in the current shade. Bring it back in the current shade: the profiles of
+  «Профили» (ModuleProfiles / BackupRestoreUtil, the Download/SCAMERA/XML folder incl. configs put there by hand, P246), the
+  shade's tile style, Lang.t texts. Open: where it sits (a tile or the shade's header), what «reset» does under the new model.
+- DONE 2026-10-19 (local): the profile button (ConfigChip) is back in the shade's header in the title's place («Перетащите
+  плитку» shows while the tiles are edited); ConfigMenu speaks the «Профили» page's words - «Активный профиль», «Сохранить»
+  over it, «Сохранить текущие как…», «Удалить профиль», «Сохранённые» newest first (load / delete), «Открыть папку конфигов»
+  until the folder is open, «Загрузить из файла», «Сбросить всё»; ConfigState «Без профиля». Reset = BackupRestoreUtil
+  .resetPreferences + restart, as the page's «Сбросить всё». Tests: ConfigMenuTest (button visible, title while editing).
+
+### P256 - the X200 Ultra torch does not light when switched on (owner, 2026-10-19: «на X200 Ultra не работает вспышка»; «Фонарик не горит»; «если я оставляю кнопку с фонариком включенной и перезагружаю приложение, то фонарик включается, но если после этого я его выключу и опять включу то он не работает»)
+- The button is the torch (pref_ae_mode 0 = FLASH_MODE TORCH in the repeating request); camera 3 declares a flash (dumpsys:
+  flash.info.available TRUE, torch strength default 5 of 5). Started with the torch on, a session lights it; switched on in the
+  running repeating request (setPreviewAEModeRebuild) the vivo HAL keeps it dark.
+- DONE (local): on vivo (ScamPreview.supported) switching the torch on creates the session again (not under a shot); the shot's
+  still request keeps FLASH_MODE TORCH while the torch is on (before: only when the preview result said FIRED); the first 15
+  results after the switch log FLASH_MODE / FLASH_STATE. Test: TorchToggleTest. Phone: X200 Ultra torch off -> on.
+
+### P257 - «Увеличивать кадр с кропом» did nothing (owner, 2026-10-19, screenshot of «Размер фото»: «настройка со скриншота не работает»)
+- ScamProcessor cropped the digital zoom's residual after the resize to the photo size and never brought it back: on or off,
+  a crop shot came out at the cropped size (ScamHybridBurst's keepCrop only changed the final size when the output was not
+  the sensor size).
+- DONE (local): on, the crop is taken first (on the merge's full image, the 2x grid's detail kept) and the cropped image goes
+  to the photo size (ScamProcessor.photoSize), up if need be: ScamPostDownscale.scaleTo - Lanczos-2 in linear light, native
+  scamera_lanczos::resample / Lanczos1010102.resample with an upscale of at most 1:4 (resize stays downscale only; its tests
+  unchanged); the gain map follows. Off: as before (the crop keeps its pixels).
+
+### P258 - our RAW in Scam Remosaic: neural remosaic for shots taken without remosaic (owner, 2026-10-19: «Наш рав проявляется нормально в нашем приложение Scam Remosaic, нам нужно это исправить чтобы при съемке без ремозаика мы могли применить нейроремозаик в нём»)
+- Goal: a SCAMERA DNG shot without remosaic (the Quad / Tetra mosaic as captured) opens in Scam Remosaic and its neural
+  remosaic runs on it. To check first: what Scam Remosaic does with our DNG today (the owner's «нормально» may mean it is
+  developed as a plain Bayer, so no remosaic is offered), which DNG tags it reads for the mosaic (CFA repeat pattern / our
+  header, sensor id, black / white levels), and what our no-remosaic DNG writes there.
+
+### P259 - 200 MP: «Native FULLRES mosaic has not been verified from RAW pixels» on a flat scene (owner, 2026-10-19, X200 Ultra 2.4x, a blurred sheet)
+- Every 200 MP still is checked by MosaicBlockDetector; a scene with no confident colour block verified none, and finish()
+  threw - the shot lost although nothing contradicted the Tetra profile.
+- DONE (local): a contradicting still still fails at once; with no confident still the shot is kept when a result reported the
+  profile's sensor mode (com.qti.sensorbps.mode_index) or a confident still proved this profile before on this firmware
+  (VivoSdkFullResCapture.MosaicProof, SharedPreferences scam_fullres_mosaic_proof). Never proven and not reported: fails as
+  before. Test: FullResMosaicProofTest.
+
+### P260 - Xiaomi 12X: the shutter sound does not turn off (owner, 2026-10-19)
+- Our only sound is CameraSounds.shutter(): off with the switch unless the phone requires it (MediaActionSound
+  .mustPlayShutterSound) or the ringer is not normal. No Xiaomi 12X log yet. Added a log line at the first shot of a process
+  («shutter sound: switch ..., the phone requires it ..., normal ringer ... -> played / silent»). Open: the owner's log - if
+  «silent» while a sound plays, it is MIUI's own; if the phone requires it, that is the region's rule.
+
+### P261 - «ты не решил проблему с разрешением доступа к памяти» (owner, 2026-10-19)
+- Asked which one: the owner answered «Другое» without a description yet. Waiting for the description / screenshot.
+
+- Tests: six Robolectric tests mocked ScameraApp without getStringStatic; a PreferenceKeys.Key enum first loaded under such a
+  mock kept null names, and every later test of the JVM failed («scope is null») - ShadeTilesTest failed alone even at
+  d16a480c. They now stub getStringStatic with the real resources.

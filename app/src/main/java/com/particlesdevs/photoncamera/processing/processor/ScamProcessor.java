@@ -804,7 +804,12 @@ public class ScamProcessor extends ProcessorBase {
         // SCAM HDR hybrid on the Sabre 2x grid: the whole pipeline (including sharpening) ran on the 2x image; the
         // final size (12/16/20 MP, or the sensor size) is produced here, keeping the bitmap's aspect and rotation.
         final Point hybridFinal = hybridOut != null ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastFinalSize : null;
-        if (hybridFinal != null && (long) hybridFinal.x * hybridFinal.y < (long) img.getWidth() * img.getHeight()) {
+        // P226 «Увеличивать кадр с кропом» (owner, 2026-10-19: «настройка ... не работает»): the digital zoom's crop was taken
+        // after the resize to the photo size and never brought back - the switch changed nothing. On, the crop comes first
+        // (on the merge's full image, the 2x grid's detail kept) and the cropped image goes to the photo size, up if need be.
+        final float zoomCrop = com.particlesdevs.photoncamera.control.ZoomController.shotResidual();
+        final Point cropTarget = zoomCrop > 1.005f && PreferenceKeys.cropUpscale() ? photoSize(img, hybridFinal) : null;
+        if (cropTarget == null && hybridFinal != null && (long) hybridFinal.x * hybridFinal.y < (long) img.getWidth() * img.getHeight()) {
             final double s = Math.sqrt((double) hybridFinal.x * hybridFinal.y / ((double) img.getWidth() * img.getHeight()));
             final int tw = Math.max(2, (int) Math.round(img.getWidth() * s)) & ~1, th = Math.max(2, (int) Math.round(img.getHeight() * s)) & ~1;
             processingStage = "SCAM HDR: resize " + img.getWidth() + "x" + img.getHeight() + " -> " + tw + "x" + th;
@@ -824,11 +829,21 @@ public class ScamProcessor extends ProcessorBase {
                 }
             }
         }
-        final float zoomCrop = com.particlesdevs.photoncamera.control.ZoomController.shotResidual();
         if (zoomCrop > 1.005f) {
             processingStage = "digital zoom crop";
             img = com.particlesdevs.photoncamera.control.ZoomController.crop(img, zoomCrop);
             if (gm != null) gm = gm.croppedBy(zoomCrop);
+        }
+        if (cropTarget != null && (cropTarget.x != img.getWidth() || cropTarget.y != img.getHeight())) {
+            processingStage = "crop to the photo size " + img.getWidth() + "x" + img.getHeight() + " -> " + cropTarget.x + "x" + cropTarget.y;
+            try {
+                final Bitmap scaled = com.particlesdevs.photoncamera.processing.ml.ScamPostDownscale.scaleTo(img, cropTarget.x, cropTarget.y);
+                if (scaled != img) { img.recycle(); img = scaled; }
+                if (gm != null) gm = gm.resizedFor(img.getWidth(), img.getHeight());
+                Log.i("SCAM_HDR", "crop " + zoomCrop + "x brought to the photo size " + img.getWidth() + "x" + img.getHeight() + " (P226)");
+            } catch (Throwable scaleError) {
+                Log.e(TAG, "crop upscale failed; keeping the cropped image", scaleError);
+            }
         }
         if (iszAspect4x3) {
             processingStage = "ISZ 4:3 crop";
@@ -1031,6 +1046,20 @@ public class ScamProcessor extends ProcessorBase {
         p.customNeutral = neutral;
         p.ownNeutral = true;
         p.ReCalcColor(true, meta);
+    }
+
+    /**
+     * P226: the photo size of {@code img}: the hybrid's final size kept to the bitmap's aspect and rotation (as the resize above),
+     * or the image's own size when nothing reduces it.
+     */
+    static Point photoSize(Bitmap img, @androidx.annotation.Nullable Point hybridFinal) {
+        return photoSize(img.getWidth(), img.getHeight(), hybridFinal);
+    }
+
+    static Point photoSize(int w, int h, @androidx.annotation.Nullable Point hybridFinal) {
+        if (hybridFinal == null || (long) hybridFinal.x * hybridFinal.y >= (long) w * h) return new Point(w & ~1, h & ~1);
+        final double s = Math.sqrt((double) hybridFinal.x * hybridFinal.y / ((double) w * h));
+        return new Point(Math.max(2, (int) Math.round(w * s)) & ~1, Math.max(2, (int) Math.round(h * s)) & ~1);
     }
 
     /** P212f: the cameras whose curve this process has logged. */
