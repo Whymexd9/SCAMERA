@@ -29,23 +29,27 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * P59b: the viewer's controls (GALLERY_TASK.md §2): the top row (back, a two-line meta card, the [route | format] group
- * card), the «HDR вкл / выкл» pill, the filmstrip card (44dp thumbnails, the current one with an accent border, kept
- * centred) and the button card «Поделиться · Изменить · Сравнить · Сведения · Удалить». Built here so the fragment and the
- * 360dp layout test share them.
+ * SIMPLE_UI §5 (the concept's viewer): over a dark gradient at the top the back disc and two lines - when («Сегодня,
+ * 11:17») and with what («24 мм · 12 Мп · JPEG»); at the bottom one bar of five labelled buttons «Поделиться · Изменить ·
+ * Сравнить · Сведения · Ещё», where «Ещё» opens a small menu with «HDR: вкл. / выкл.» (Ultra HDR photos) and «Удалить».
+ * The filmstrip of P59b stays built for the swipe position but is not shown (the concept has none). Built here so the
+ * fragment and the 360dp layout test share them.
  */
 public final class ViewerChrome {
+    /** The concept's .vbar: the card colour at 92 %. */
+    static final int BAR_FILL = 0xEB1A1F22;
     public final LinearLayout top, bottom;
     public final View back;
     public final TextView metaTitle, metaSub;
-    public final LinearLayout group;
-    public final ImageView routeIcon, formatIcon;
-    public final View routeSep;
     public final TextView hdrPill;
     public final RecyclerView strip;
     public final Filmstrip filmstrip;
     public final LinearLayout buttons;
-    public final View share, edit, compare, info, delete;
+    public final View share, edit, compare, info, more;
+    /** «Ещё»'s menu: its HDR row (Ultra HDR photos only) and «Удалить». */
+    public final LinearLayout menu;
+    public final TextView menuHdr, delete;
+    @Nullable private android.widget.PopupWindow popup;
 
     public interface Actions {
         void back();
@@ -69,132 +73,164 @@ public final class ViewerChrome {
         int accent = GalleryUi.accent(c);
         top = new LinearLayout(c);
         top.setOrientation(LinearLayout.VERTICAL);
-        top.setPadding(GalleryUi.dp(c, 12), GalleryUi.dp(c, 12), GalleryUi.dp(c, 12), 0);
+        top.setPadding(GalleryUi.dp(c, 12), GalleryUi.dp(c, 14), GalleryUi.dp(c, 12), GalleryUi.dp(c, 24));
+        top.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xCC000000, 0x00000000}));
         LinearLayout row = new LinearLayout(c);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        back = GalleryUi.squareButton(c, R.drawable.ic_gallery_back, Lang.t("Назад к сетке", "Back to the grid"), v -> a.back());
-        row.addView(back);
+        back = disc(c, R.drawable.ui_ic_back, Lang.t("Назад к сетке", "Back to the grid"), v -> a.back());
+        row.addView(back, new LinearLayout.LayoutParams(GalleryUi.dp(c, 44), GalleryUi.dp(c, 44)));
         LinearLayout meta = new LinearLayout(c);
         meta.setOrientation(LinearLayout.VERTICAL);
         meta.setGravity(Gravity.CENTER_VERTICAL);
-        meta.setMinimumHeight(GalleryUi.dp(c, 44));
-        meta.setBackground(GalleryUi.card(c, GalleryUi.CARD, 16));
-        meta.setPadding(GalleryUi.dp(c, 12), GalleryUi.dp(c, 4), GalleryUi.dp(c, 12), GalleryUi.dp(c, 4));
-        metaTitle = GalleryUi.fitText(c, "", 13, GalleryUi.TEXT);
-        metaSub = GalleryUi.fitText(c, "", 11.5f, GalleryUi.MUTED);
+        metaTitle = GalleryUi.fitText(c, "", 15, GalleryUi.TEXT);
+        metaTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        metaSub = GalleryUi.fitText(c, "", 12.5f, GalleryUi.MUTED);
         meta.addView(metaTitle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        sp.topMargin = GalleryUi.dp(c, 2);
+        sp.topMargin = GalleryUi.dp(c, 3);
         meta.addView(metaSub, sp);
         LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        mp.leftMargin = mp.rightMargin = GalleryUi.dp(c, 8);
+        mp.leftMargin = GalleryUi.dp(c, 10);
         row.addView(meta, mp);
-        group = new LinearLayout(c);
-        group.setOrientation(LinearLayout.HORIZONTAL);
-        group.setGravity(Gravity.CENTER_VERTICAL);
-        group.setBackground(GalleryUi.card(c, GalleryUi.CARD, 16));
-        group.setPadding(GalleryUi.dp(c, 2), 0, GalleryUi.dp(c, 2), 0);
-        routeIcon = groupIcon(c, R.drawable.topbar_ic_route_hybrid, accent);
-        routeSep = new View(c);
-        routeSep.setBackgroundColor(GalleryUi.LINE);
-        formatIcon = groupIcon(c, R.drawable.ic_shade_jpeg, accent);
-        group.addView(routeIcon);
-        LinearLayout.LayoutParams sepLp = new LinearLayout.LayoutParams(Math.max(1, GalleryUi.dp(c, 1)), GalleryUi.dp(c, 26));
-        group.addView(routeSep, sepLp);
-        group.addView(formatIcon);
-        group.setContentDescription(Lang.t("Склейка и формат", "Merge and format"));
-        row.addView(group, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, GalleryUi.dp(c, 44)));
         top.addView(row);
+        // the P59b pill is kept for the fragment's state; the switch lives in «Ещё» now
         hdrPill = GalleryUi.text(c, "", 13, accent);
-        hdrPill.setTypeface(Typeface.DEFAULT_BOLD);
-        hdrPill.setGravity(Gravity.CENTER_VERTICAL);
-        hdrPill.setMinHeight(GalleryUi.dp(c, 40));
-        hdrPill.setPadding(GalleryUi.dp(c, 10), GalleryUi.dp(c, 8), GalleryUi.dp(c, 14), GalleryUi.dp(c, 8));
-        hdrPill.setCompoundDrawablePadding(GalleryUi.dp(c, 6));
-        hdrPill.setClickable(true);
-        hdrPill.setFocusable(true);
-        hdrPill.setOnClickListener(v -> a.hdr());
         hdrPill.setVisibility(View.GONE);
-        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hp.gravity = Gravity.END;
-        hp.topMargin = GalleryUi.dp(c, 8);
-        top.addView(hdrPill, hp);
 
         bottom = new LinearLayout(c);
         bottom.setOrientation(LinearLayout.VERTICAL);
-        bottom.setPadding(GalleryUi.dp(c, 12), 0, GalleryUi.dp(c, 12), GalleryUi.dp(c, 12));
+        bottom.setPadding(GalleryUi.dp(c, 6), 0, GalleryUi.dp(c, 6), GalleryUi.dp(c, 16));
         strip = new RecyclerView(c);
-        strip.setBackground(GalleryUi.card(c, GalleryUi.CARD, 18));
-        int p4 = GalleryUi.dp(c, 4);
-        strip.setPadding(p4, p4, p4, p4);
-        strip.setClipToPadding(false);
         strip.setLayoutManager(new LinearLayoutManager(c, LinearLayoutManager.HORIZONTAL, false));
         filmstrip = new Filmstrip(a::openPosition);
         strip.setAdapter(filmstrip);
-        strip.setContentDescription(Lang.t("Лента снимков", "Photo strip"));
+        strip.setVisibility(View.GONE);
         bottom.addView(strip, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         buttons = new LinearLayout(c);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
-        buttons.setBackground(GalleryUi.card(c, GalleryUi.CARD, 20));
-        buttons.setPadding(p4, p4, p4, p4);
-        share = GalleryUi.actionButton(c, R.drawable.ic_gallery_share, Lang.t("Поделиться", "Share"), false, v -> a.share());
-        edit = GalleryUi.actionButton(c, R.drawable.ic_gallery_edit, Lang.t("Изменить", "Edit"), false, v -> a.edit());
-        compare = GalleryUi.actionButton(c, R.drawable.ic_gallery_compare, Lang.t("Сравнить", "Compare"), false, v -> a.compare());
+        buttons.setBackground(GalleryUi.round(c, BAR_FILL, GalleryUi.LINE, 22));
+        buttons.setPadding(GalleryUi.dp(c, 3), GalleryUi.dp(c, 5), GalleryUi.dp(c, 3), GalleryUi.dp(c, 5));
+        share = barButton(c, R.drawable.ui_ic_share, Lang.t("Поделиться", "Share"), v -> a.share());
+        edit = barButton(c, R.drawable.ui_ic_edit, Lang.t("Изменить", "Edit"), v -> a.edit());
+        compare = barButton(c, R.drawable.ui_ic_compare, Lang.t("Сравнить", "Compare"), v -> a.compare());
         compare.setContentDescription(Lang.t("Сравнить с соседним", "Compare with the next photo"));
-        info = GalleryUi.actionButton(c, R.drawable.ic_gallery_info, Lang.t("Сведения", "Details"), false, v -> a.info());
-        delete = GalleryUi.actionButton(c, R.drawable.ic_gallery_delete, Lang.t("Удалить", "Delete"), true, v -> a.delete());
-        for (View b : new View[]{share, edit, compare, info, delete})
+        info = barButton(c, R.drawable.ui_ic_info, Lang.t("Сведения", "Details"), v -> a.info());
+        more = barButton(c, R.drawable.ui_ic_more, Lang.t("Ещё", "More"), v -> toggleMenu());
+        for (View b : new View[]{share, edit, compare, info, more})
             buttons.addView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bp.topMargin = GalleryUi.dp(c, 8);
-        bottom.addView(buttons, bp);
+        bottom.addView(buttons, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // «Ещё»: the concept's .menu card
+        menu = new LinearLayout(c);
+        menu.setOrientation(LinearLayout.VERTICAL);
+        menu.setBackground(GalleryUi.round(c, GalleryUi.CARD, GalleryUi.LINE, 18));
+        int p6 = GalleryUi.dp(c, 6);
+        menu.setPadding(p6, p6, p6, p6);
+        menu.setMinimumWidth(GalleryUi.dp(c, 210));
+        menu.setTag("viewer_menu");
+        menuHdr = menuRow(c, R.drawable.ui_ic_hdr, "", GalleryUi.TEXT, v -> { dismissMenu(); a.hdr(); });
+        menuHdr.setTag("viewer_menu_hdr");
+        menuHdr.setVisibility(View.GONE);
+        delete = menuRow(c, R.drawable.ui_ic_trash, Lang.t("Удалить", "Delete"), GalleryUi.WARN, v -> { dismissMenu(); a.delete(); });
+        delete.setTag("viewer_menu_delete");
+        menu.addView(menuHdr);
+        menu.addView(delete);
     }
 
-    private static ImageView groupIcon(Context c, int res, int accent) {
-        ImageView i = GalleryUi.icon(c, res, accent, 24);
-        i.setLayoutParams(new LinearLayout.LayoutParams(GalleryUi.dp(c, 40), GalleryUi.dp(c, 24)));
-        i.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        return i;
+    /** The concept's .back: a 44dp card disc with the line icon in the text colour. */
+    private static View disc(Context c, int icon, String description, View.OnClickListener click) {
+        FrameLayout b = new FrameLayout(c);
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        d.setColor(GalleryUi.CARD);
+        b.setBackground(GalleryUi.pressable(d));
+        b.setContentDescription(description);
+        b.setFocusable(true);
+        b.setClickable(true);
+        b.setOnClickListener(click);
+        ImageView i = GalleryUi.icon(c, icon, GalleryUi.TEXT, 22);
+        b.addView(i, new FrameLayout.LayoutParams(GalleryUi.dp(c, 22), GalleryUi.dp(c, 22), Gravity.CENTER));
+        return b;
     }
 
-    /** The meta card, the group card and its accessible names. */
+    /** A button of the concept's .vbar: the line icon over a 10sp label, both in the text colour. */
+    private static View barButton(Context c, int icon, String label, View.OnClickListener click) {
+        LinearLayout b = new LinearLayout(c);
+        b.setOrientation(LinearLayout.VERTICAL);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(0, GalleryUi.dp(c, 8), 0, GalleryUi.dp(c, 8));
+        b.setBackground(GalleryUi.pressable(GalleryUi.round(c, android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT, 16)));
+        b.setClickable(true);
+        b.setFocusable(true);
+        b.setOnClickListener(click);
+        b.setContentDescription(label);
+        b.addView(GalleryUi.icon(c, icon, GalleryUi.TEXT, 22));
+        TextView t = GalleryUi.fitText(c, label, 10, GalleryUi.TEXT);
+        t.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = GalleryUi.dp(c, 3);
+        b.addView(t, lp);
+        return b;
+    }
+
+    private static TextView menuRow(Context c, int icon, String label, int color, View.OnClickListener click) {
+        TextView t = GalleryUi.text(c, label, 14, color);
+        t.setGravity(Gravity.CENTER_VERTICAL);
+        t.setMinHeight(GalleryUi.dp(c, 44));
+        t.setPadding(GalleryUi.dp(c, 12), 0, GalleryUi.dp(c, 12), 0);
+        t.setCompoundDrawablePadding(GalleryUi.dp(c, 10));
+        android.graphics.drawable.Drawable d = c.getDrawable(icon);
+        if (d != null) {
+            d = d.mutate();
+            d.setTint(color);
+            int s = GalleryUi.dp(c, 20);
+            d.setBounds(0, 0, s, s);
+        }
+        t.setCompoundDrawables(d, null, null, null);
+        t.setBackground(GalleryUi.pressable(GalleryUi.round(c, android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT, 12)));
+        t.setClickable(true);
+        t.setFocusable(true);
+        t.setOnClickListener(click);
+        return t;
+    }
+
+    /** «Ещё»: the menu above the bar's right end, or closed again. */
+    public void toggleMenu() {
+        if (popup != null && popup.isShowing()) {
+            dismissMenu();
+            return;
+        }
+        Context c = more.getContext();
+        if (menu.getParent() instanceof ViewGroup) ((ViewGroup) menu.getParent()).removeView(menu);
+        popup = new android.widget.PopupWindow(menu, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true);
+        popup.setElevation(GalleryUi.dp(c, 12));
+        popup.setOutsideTouchable(true);
+        menu.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        popup.showAsDropDown(more, more.getWidth() - menu.getMeasuredWidth() - GalleryUi.dp(c, 8),
+                -(more.getHeight() + menu.getMeasuredHeight() + GalleryUi.dp(c, 24)));
+    }
+
+    public boolean menuShown() {
+        return popup != null && popup.isShowing();
+    }
+
+    public void dismissMenu() {
+        if (popup != null) popup.dismiss();
+        popup = null;
+    }
+
+    /** The two lines at the top; {@code route} and {@code format} stay for the callers (the format is in {@code sub}). */
     public void bindMeta(String title, String sub, @Nullable String route, GalleryFormat format, boolean ultraHdr) {
         metaTitle.setText(title);
         metaSub.setText(sub);
-        boolean hasRoute = route != null;
-        routeIcon.setVisibility(hasRoute ? View.VISIBLE : View.GONE);
-        routeSep.setVisibility(hasRoute ? View.VISIBLE : View.GONE);
-        if (hasRoute) {
-            routeIcon.setImageResource(GalleryFormat.routeIcon(route));
-            routeIcon.setContentDescription(Lang.t("Склейка: ", "Merge: ") + route);
-        }
-        formatIcon.setImageResource(format.icon);
-        formatIcon.setContentDescription(Lang.t("Формат: ", "Format: ") + format.label + (ultraHdr ? ", Ultra HDR" : ""));
     }
 
-    /** The «HDR вкл / выкл» pill for an Ultra HDR photo; hidden otherwise. */
+    /** «HDR: вкл. / выкл.» in «Ещё» for an Ultra HDR photo; hidden otherwise. */
     public void bindHdr(boolean ultraHdr, boolean on) {
-        Context c = hdrPill.getContext();
-        if (!ultraHdr) {
-            hdrPill.setVisibility(View.GONE);
-            return;
-        }
-        int accent = GalleryUi.accent(c);
-        hdrPill.setVisibility(View.VISIBLE);
-        hdrPill.setText(on ? Lang.t("HDR вкл", "HDR on") : Lang.t("HDR выкл", "HDR off"));
-        hdrPill.setTextColor(on ? GalleryUi.INK : accent);
-        hdrPill.setBackground(GalleryUi.pressable(GalleryUi.round(c, on ? accent : GalleryUi.CARD, accent, 999)));
-        android.graphics.drawable.Drawable sun = c.getDrawable(R.drawable.ic_gallery_uhdr);
-        if (sun != null) {
-            sun = sun.mutate();
-            sun.setTint(on ? GalleryUi.INK : accent);
-            int s = GalleryUi.dp(c, 18);
-            sun.setBounds(0, 0, s, s);
-        }
-        hdrPill.setCompoundDrawables(sun, null, null, null);
-        hdrPill.setContentDescription("Ultra HDR");
-        hdrPill.setStateDescription(on ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
+        menuHdr.setVisibility(ultraHdr ? View.VISIBLE : View.GONE);
+        menuHdr.setText(on ? Lang.t("HDR: вкл.", "HDR: on") : Lang.t("HDR: выкл.", "HDR: off"));
+        menuHdr.setStateDescription(on ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
     }
 
     /** Keeps the current thumbnail centred. */

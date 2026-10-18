@@ -558,6 +558,13 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         return d;
     }
 
+    /** «12 Мп» of a width x height, null without a size. */
+    @Nullable
+    static String megapixels(int w, int h) {
+        if (w <= 0 || h <= 0) return null;
+        return Math.max(1, Math.round(w * (float) h / 1e6f)) + Lang.t(" Мп", " MP");
+    }
+
     static String folderOf(@Nullable String path) {
         if (path == null) return "";
         int slash = path.lastIndexOf('/');
@@ -635,7 +642,8 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         String route = GalleryFormat.routeOf(m.getDescription());
         String when = GalleryUi.dayTime(item.getFile().getLastModified(), System.currentTimeMillis());
         String lens = m.getFocal35Value() != null ? m.getFocal35Value() : m.getFocalValue();
-        String sub = joinDot(lens, m.getIsoValue(), m.getShutterValue());
+        // SIMPLE_UI §5: with what, not how («24 мм · 12 Мп · JPEG»); ISO and shutter are in «Сведения»
+        String sub = joinDot(lens, megapixels(m.getWidth(), m.getHeight()), format.label.isEmpty() ? null : format.label);
         if (chrome != null) chrome.bindMeta(when, sub, route, format, uhdr);
         if (miniExif != null) miniExif.setText(joinDot(m.getShutterValue(), m.getIsoValue(), m.getFnumValue(), m.getFocalValue()));
         if (paneLabel != null) bindPaneLabel(item, m, format, route, when);

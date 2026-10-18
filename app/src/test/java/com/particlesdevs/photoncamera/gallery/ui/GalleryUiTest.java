@@ -233,7 +233,15 @@ public class GalleryUiTest {
         FrameLayout host = new FrameLayout(context);
         host.addView(chrome.top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         assertNoOverflow(host, 360);
-        assertNoOverflow(chrome.buttons, 360 - 24);
+        assertNoOverflow(chrome.buttons, 360 - 12);
+        // SIMPLE_UI §5: five labelled buttons, «Ещё» holds HDR (Ultra HDR photos) and «Удалить»
+        assertEquals(5, chrome.buttons.getChildCount());
+        assertEquals(View.VISIBLE, chrome.menuHdr.getVisibility());
+        assertEquals("HDR: выкл.", chrome.menuHdr.getText().toString());
+        assertNotNull(chrome.menu.findViewWithTag("viewer_menu_delete"));
+        chrome.bindHdr(false, false);
+        assertEquals(View.GONE, chrome.menuHdr.getVisibility());
+        assertEquals("the concept's viewer has no filmstrip", View.GONE, chrome.strip.getVisibility());
         assertNoOverflow(GallerySheets.details(context, details(), null), 360);
         assertNoOverflow(GallerySheets.delete(context, 21, 123_456_789L, () -> {}, () -> {}), 360);
     }
@@ -309,7 +317,7 @@ public class GalleryUiTest {
             @Override public void hdr() {}
             @Override public void openPosition(int position) {}
         });
-        chrome.bindMeta("Сегодня, 11:17", "24 мм · ISO 100 · 1/250", "SHDR", GalleryFormat.RAW_JPEG, true);
+        chrome.bindMeta("Сегодня, 11:17", "24 мм · 12 Мп · RAW + JPEG", "SHDR", GalleryFormat.RAW_JPEG, true);
         chrome.bindHdr(true, true);
         chrome.filmstrip.setItems(items);
         viewer.addView(chrome.top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP));
