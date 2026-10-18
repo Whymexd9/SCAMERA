@@ -342,6 +342,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         initSettingsBar();
         initZoomDial(view);
         initBottomChrome();
+        // P214g: on the window's decor view, which stays attached until the activity goes (this view is detached before onDestroy)
+        if (activity.getWindow() != null)
+            activity.getWindow().getDecorView().getViewTreeObserver().addOnWindowFocusChangeListener(sessionFocus);
     }
 
     /**
@@ -469,7 +472,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         @Override
         public void onSettingWritten(com.particlesdevs.photoncamera.settings.ShadeCatalog.Entry entry) {
             if ("pref_show_grid_key".equals(entry.key)) invalidateSurfaceView();
-            // Read when the session is built (live RAW, 16:9, ...): restart now (owner's answer 7).
+            // Read when the session is built (live RAW, 16:9, ... P214g: settings/SessionKeys): restart now (owner's answer 7).
             if (entry.sessionTime && captureController != null) captureController.restartCamera();
         }
 
@@ -496,6 +499,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         @Override
         public void importConfigFile() {
             // P143: the settings screen owns the picker; it opens it at once and imports (the app restarts)
+            watchSessionSettings();
             Intent intent = new Intent(activity, SettingsActivity.class);
             intent.setAction(SettingsActivity.ACTION_IMPORT_CONFIG);
             intent.putExtra("camera_mode", PreferenceKeys.getCameraModeOrdinal());
@@ -505,6 +509,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         @Override
         public void openConfigFolder() {
             // P143: the settings screen owns the folder picker; it opens it at once and comes back
+            watchSessionSettings();
             Intent intent = new Intent(activity, SettingsActivity.class);
             intent.setAction(SettingsActivity.ACTION_OPEN_FOLDER);
             intent.putExtra("camera_mode", PreferenceKeys.getCameraModeOrdinal());
@@ -747,6 +752,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         cameraFragmentBinding.settingsBar.setLive(true);
         captureController.startBackgroundThread();
         textureView.onResume();
+        settleSessionSettings(false); // P214g: before the new session reads them
         captureController.resumeCamera();
         initTouchFocus();
         manualModeConsole.onResume();
@@ -782,6 +788,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         ScameraApp.getGravity().unregister();
         ScameraApp.getGyro().unregister();
         ScameraApp.getSettings().saveID();
+        // P214g: the camera closes here, so the session after the settings is a new one
+        if (sessionWatch) sessionWatchPaused = true;
         // Stop camera outputs before GLSurfaceView destroys their SurfaceTexture.
         captureController.closeCamera();
         textureView.onPause();
@@ -833,6 +841,10 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             }
         }
         if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.setLive(false);
+        if (activity != null && activity.getWindow() != null) {
+            android.view.ViewTreeObserver observer = activity.getWindow().getDecorView().getViewTreeObserver();
+            if (observer.isAlive()) observer.removeOnWindowFocusChangeListener(sessionFocus); // P214g
+        }
         // P214f: the message channel falls back to system toasts until the next camera screen attaches its card
         if (messageCard != null) messageCard.release();
         messageCard = null;
@@ -1367,10 +1379,50 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     /** The settings screen; the three entry points (top-bar gear, shade header gear, «Все настройки») all come here. */
     public void launchSettings() {
         levelBeforeSettings = cameraFragmentViewModel.getSheetLevel();
+        watchSessionSettings();
         Intent settingsIntent = new Intent(activity, SettingsActivity.class);
         // Pass current camera mode to settings
         settingsIntent.putExtra("camera_mode", PreferenceKeys.getCameraModeOrdinal());
         startActivity(settingsIntent);
+    }
+
+    /**
+     * P214g (speed-ux C5): the settings screen was started from here; {@link #sessionWatchPaused}: this screen was paused since
+     * (the usual way: the settings cover the camera, onPause closes it).
+     */
+    private boolean sessionWatch, sessionWatchPaused;
+
+    private void watchSessionSettings() {
+        sessionWatch = true;
+        sessionWatchPaused = false;
+    }
+
+    /** P214g: back to the camera window (multi-window: the settings beside it lose the focus). */
+    private final android.view.ViewTreeObserver.OnWindowFocusChangeListener sessionFocus = hasFocus -> {
+        if (hasFocus) settleSessionSettings(true);
+    };
+
+    /**
+     * P214g: back from the settings screen, the settings a camera session reads when it is built (settings/SessionKeys:
+     * «Тип сессии камеры», «Оптическая стабилизация», the module's vendor keys, 16:9, live RAW ...) reach the camera at once.
+     * Paused meanwhile (the usual way), the camera was closed in onPause and onResume builds a new session, which reads them
+     * all again: the changed ones are only logged. Not paused (a settings screen in multi-window beside the camera: both stay
+     * resumed), the session built before the change still runs: it restarts when a setting it was built with changed.
+     */
+    private void settleSessionSettings(boolean focusBack) {
+        if (!sessionWatch || captureController == null) return;
+        if (focusBack && sessionWatchPaused) return; // onResume settles it
+        final boolean paused = sessionWatchPaused;
+        sessionWatch = false;
+        sessionWatchPaused = false;
+        java.util.List<String> changed = captureController.sessionSettingsChanged();
+        if (changed.isEmpty()) return;
+        if (paused) {
+            Log.i("SCAM_CAPTURE", "session settings changed in the settings " + changed + ": the camera opens a new session with them");
+        } else if (isResumed() && captureController.sessionRunning()) {
+            Log.i("SCAM_CAPTURE", "session settings changed in the settings beside the camera " + changed + ": the camera restarts");
+            captureController.restartCamera();
+        }
     }
 
     public <T extends View> T findViewById(@IdRes int id) {

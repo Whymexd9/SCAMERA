@@ -252,6 +252,11 @@ public final class SettingsStyle {
         TextView title = (TextView) holder.findViewById(android.R.id.title);
         if (title != null && warn) title.setTextColor(WARN);
         else if (title != null && action(p)) title.setTextColor(accent);
+        // P214g: «↻» - the camera session reads it when it is built (SessionKeys: the module's session type, OIS, vendor keys,
+        // 16:9, live RAW ...): a change takes a new session, the camera restarts with it
+        if (title != null && !TextUtils.isEmpty(p.getTitle())
+                && (p instanceof TunableKeyPreference || com.particlesdevs.photoncamera.settings.SessionKeys.needsNewSession(key)))
+            title.setText(com.particlesdevs.photoncamera.settings.SessionKeys.marked(p.getTitle()));
         TextView summary = (TextView) holder.findViewById(android.R.id.summary);
         TextView value = (TextView) holder.findViewById(R.id.settings_value);
         if (value != null) {
