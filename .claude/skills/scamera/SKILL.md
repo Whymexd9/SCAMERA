@@ -139,6 +139,11 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
   (тип сессии, OIS), вендорные ключи модуля, `SessionKeys.PLAIN` (16:9, live RAW, формат RAW, ZSL-буфер, AF, «Движение»,
   low-light boost, аппаратный ремозаик, EIS). Шторка перезапускает камеру, у строк знак «↻»; новый класс с `@SensorConfig` —
   в `SESSION_CLASSES` или `PER_SHOT_CLASSES` (`SessionKeysTest`). Выход из настроек и так открывает новую сессию.
+- Пробы строк FULLRES (P214h, `capture/FullResTrials`): провалы `module_fullres_rowfail_<cam>_*` (vivo X100/X300U) и
+  `module_oppo_fullres_fail_<cam>*` хранят причину строки и штамп `r<ROW_TRIALS> <Build.FINGERPRINT>` — новая прошивка или
+  ROW_TRIALS пробуют строки заново (ключи без штампа — до P214h — принимаются как текущие). Кнопка FULLRES не пропадает, а
+  тускнеет; нажатие (долгое — на любой) — причина и «Попробовать снова» (сброс ключей камеры); то же в «Настройки по модулям».
+  В логе при открытии камеры: `FullResButton: camera N FULLRES trials: …`.
 - BIN — контекстные бинарники QNN HTP V79, закреплены SHA256 в `ScamNeuralWorker.java`:
   `SCAM_FILES` (CRE `libvivo_nice_cre.so` и зависимости — выравнивание SHDR), `HEX_FILES` (4 .so рантайма QNN).
   Не упаковываются (только сверяются в бандле, `BUNDLE_ONLY`): группа `bundle/` (`tele576` + его QNN), `hexquad-x1/x2`,

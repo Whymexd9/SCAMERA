@@ -172,13 +172,88 @@ public final class OppoNativeFullRes {
     }
 
     private static final String FAILED = "module_oppo_fullres_fail_";
+    /**
+     * P214h: the route revision of the trials' stamp (FullResTrials, with Build.FINGERPRINT: a firmware update tries a camera's
+     * modes again); a build that changes the route bumps it to try every camera's modes again.
+     */
+    static final int ROW_TRIALS = 1;
+
+    /** P214h: the base of a camera's trial keys (the tried count itself, its reasons, its stamp). */
+    static String base(String cameraId) {
+        return FAILED + cameraId;
+    }
+
+    /** P214h: the stamp of this build's trials on this firmware. */
+    static String stamp() {
+        return FullResTrials.stamp(ROW_TRIALS);
+    }
+
+    @Nullable
+    private static android.content.SharedPreferences prefs() {
+        try {
+            return com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
 
     static int failures(String cameraId) {
+        return failures(prefs(), cameraId, stamp());
+    }
+
+    /** P214h: {@link #failures(String)} in {@code p} under the stamp {@code stamp} (another stamp's trials are passed over). */
+    static int failures(@Nullable android.content.SharedPreferences p, @Nullable String cameraId, String stamp) {
+        if (p == null || cameraId == null) return 0;
         try {
-            return com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getInt(FAILED + cameraId, 0);
+            final String key = base(cameraId);
+            return FullResTrials.counts(p, key, key, stamp) ? p.getInt(key, 0) : 0;
         } catch (RuntimeException e) {
             return 0;
         }
+    }
+
+    /** P214h: the reasons (mode:code,...) of the camera's failed modes; null for none or another stamp's. */
+    @Nullable
+    static String reasons(android.content.SharedPreferences p, String cameraId, String stamp) {
+        final String key = base(cameraId) + FullResTrials.WHY;
+        return FullResTrials.counts(p, base(cameraId), key, stamp) ? FullResTrials.string(p, key) : null;
+    }
+
+    /** P214h: the tried count after {@code mode} failed for {@code why}, and that mode's reason, under the stamp {@code stamp}. */
+    static void note(@Nullable android.content.SharedPreferences p, String cameraId, int tried, int mode, @Nullable String why,
+                     String stamp) {
+        if (p == null || cameraId == null) return;
+        try {
+            final String reasons = FullResTrials.withReason(reasons(p, cameraId, stamp), mode, FullResTrials.code(why));
+            FullResTrials.edit(p, base(cameraId), stamp).putInt(base(cameraId), tried)
+                    .putString(base(cameraId) + FullResTrials.WHY, reasons).apply();
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    /** P214h: «Попробовать снова» - the camera's trials are forgotten; its next FULLRES starts at its first mode. Keys removed. */
+    static int clearFailures(@Nullable android.content.SharedPreferences p, @Nullable String cameraId) {
+        if (p == null || cameraId == null) return 0;
+        return FullResTrials.clear(p, base(cameraId));
+    }
+
+    /** P214h: the camera offers full-size modes (its table, read this run) but every one failed: its button stays, dimmed. */
+    static boolean exhausted(@Nullable String cameraId) {
+        return offer(cameraId) != null && profile(cameraId) == null;
+    }
+
+    /**
+     * P214h: the camera's trials in words - «FULLRES 50 Мп выключен: режимы 35, 37 — не та мозаика.»; the modes the reasons
+     * name when its table is not known in this run; null without a failed mode.
+     */
+    @Nullable
+    static String status(@Nullable android.content.SharedPreferences p, @Nullable String cameraId, String stamp) {
+        if (p == null || cameraId == null) return null;
+        final int tried = failures(p, cameraId, stamp);
+        if (tried <= 0) return null;
+        final int[] o = offer(cameraId);
+        return FullResTrials.sizeLine(o == null ? 0 : com.particlesdevs.photoncamera.settings.FullResProfiles.megapixels(o[0], o[1]),
+                o == null ? null : java.util.Arrays.copyOfRange(o, 3, o.length), tried, FullResTrials.reasons(reasons(p, cameraId, stamp)));
     }
 
     /**
@@ -188,13 +263,8 @@ public final class OppoNativeFullRes {
     public static String failed(String cameraId, @Nullable VivoSdkFullRes.Profile profile, String why) {
         final int[] o = offer(cameraId);
         final int tried = failures(cameraId);
-        if (o != null && profile != null && 3 + tried < o.length && o[3 + tried] == profile.sensorMode) {
-            try {
-                com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit()
-                        .putInt(FAILED + cameraId, tried + 1).apply();
-            } catch (RuntimeException ignored) {
-            }
-        }
+        if (o != null && profile != null && 3 + tried < o.length && o[3 + tried] == profile.sensorMode)
+            note(prefs(), cameraId, tried + 1, profile.sensorMode, why, stamp()); // P214h: with the mode's reason, stamped
         final VivoSdkFullRes.Profile next = profile(cameraId);
         final int mode = profile == null ? -1 : profile.sensorMode;
         com.particlesdevs.photoncamera.util.Log.w("OppoNativeFullRes", "camera " + cameraId + " mode " + mode + " failed (" + why

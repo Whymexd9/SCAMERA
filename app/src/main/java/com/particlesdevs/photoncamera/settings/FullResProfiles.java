@@ -42,8 +42,8 @@ public final class FullResProfiles {
         return i < 0 ? null : id.substring(i + SEP.length());
     }
 
-    /** Megapixels of a FULLRES size, to the nearest ten (16320x12288 -> 200, 8192x6144 -> 50). */
-    static int megapixels(int width, int height) {
+    /** Megapixels of a FULLRES size, to the nearest ten (16320x12288 -> 200, 8192x6144 -> 50); P214h the trials' and merge texts too. */
+    public static int megapixels(int width, int height) {
         return (int) (Math.round((double) width * height / 1e7) * 10);
     }
 

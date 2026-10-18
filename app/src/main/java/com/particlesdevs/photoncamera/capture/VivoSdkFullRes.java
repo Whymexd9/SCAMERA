@@ -188,6 +188,33 @@ public final class VivoSdkFullRes {
                 && PreferenceKeys.scamDevSwitch("vivo_sdk_fullres", true);
     }
 
+    /**
+     * P214h (speed-ux C2; P210: «all own rows fail, the size goes off, the button hides»): the camera would offer FULLRES - the
+     * conditions of {@link #offered} but its profile - yet every row it tried failed (VivoNativeFullRes / OppoNativeFullRes
+     * trials). Its button stays, dimmed; a tap says why (FullResTrials.status) and offers «Попробовать снова».
+     */
+    public static boolean exhausted(String cameraId) {
+        if (cameraId == null || offered(cameraId)) return false;
+        if (OppoNativeFullRes.device()) return OppoNativeFullRes.exhausted(cameraId);
+        return nativeRaw() && VivoNativeFullRes.hasTable(VivoNativeFullRes.phone(), cameraId)
+                && "off".equals(CameraPackageSpoof.signature(ScameraApp.getAppContext()))
+                && PreferenceKeys.scamDevSwitch("vivo_sdk_fullres", true);
+    }
+
+    /**
+     * P214h: the camera's buttons are two (200 MP and 50 MP) whatever the trials say: a size whose rows all failed keeps its
+     * button, dimmed (it gave way to the other size's single button before, P186). The X200 Ultra's as {@link #teleSizes}.
+     */
+    public static boolean teleButtons(String cameraId) {
+        return nativeRaw() && VivoNativeFullRes.twoSizes(VivoNativeFullRes.phone(), cameraId, false);
+    }
+
+    /** P214h: that size ({@code large}: 200 MP) of a camera with two buttons has no row left (dimmed). */
+    public static boolean sizeExhausted(String cameraId, boolean large) {
+        return nativeRaw() && !OppoNativeFullRes.device()
+                && VivoNativeFullRes.sizeExhausted(VivoNativeFullRes.phone(), cameraId, large, hardwareRemosaicOn());
+    }
+
     /** P192: the running FULLRES is the OPPO Find X7 Ultra's (no SDK lease, the own AE and white balance). */
     static boolean oppo() {
         return OppoNativeFullRes.device();

@@ -1708,9 +1708,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * its plain session (FULLRES suspended: a live viewfinder, owner: «чтобы не было ... черного видоискателя в конце», at a
      * fraction of the memory; the SDK lease goes back as the device closes) and back to 200 MP after the merge.
      */
-    private void closeCameraForProcessing() {
+    private void closeCameraForProcessing(int megapixels) {
         mClosedForProcessing = true;
-        PixelPro10.suspendFullRes(true);
+        // P214h: the switch and the shutter name the shot being merged (50 MP since P200, not only 200 MP)
+        PixelPro10.suspendFullRes(true, megapixels);
         final java.util.concurrent.CountDownLatch closed = new java.util.concurrent.CountDownLatch(1);
         mClosedForProcessingDone = closed;
         // posted (never run inside the capture's completion, which still clears the shot's state after this call)
@@ -5533,6 +5534,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // 14) - the 50 MP session kept streaming and binning 24 fps through a 1-4 min merge. A 50 MP shot is merged with the
         // camera in its plain session as well (its shutter waits for the merge anyway); back to FULLRES after it.
         final boolean plainForMerge = hugeShot || PreferenceKeys.scamDevSwitch("fullres_plain_merge", true);
+        final int shotMegapixels = com.particlesdevs.photoncamera.settings.FullResProfiles.megapixels(
+                mImageReaderRaw.getWidth(), mImageReaderRaw.getHeight());
         saver.shotArena = arena;
         mShotArena = arena;
         final java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean();
@@ -5585,7 +5588,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     final com.particlesdevs.photoncamera.processing.ShotTimeline timeline =
                             com.particlesdevs.photoncamera.processing.ShotTimeline.detach();
                     sScamPending.incrementAndGet();
-                    if (plainForMerge) closeCameraForProcessing();
+                    if (plainForMerge) closeCameraForProcessing(shotMegapixels);
                     else {
                         sFullResMerges.incrementAndGet();
                         releaseFullResRing();
@@ -5751,8 +5754,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         com.particlesdevs.photoncamera.control.ZoomController.markShot();
         try {
-            if (mClosedForProcessing) { // P179: the plain session of a running 200 MP merge takes no shot
-                failPendingShutter(new IllegalStateException(Lang.t("Снимок 200 Мп ещё обрабатывается", "A 200 MP shot is still being processed")));
+            if (mClosedForProcessing) { // P179: the plain session of a running FULLRES merge (200 MP; P200 50 MP too) takes no shot
+                failPendingShutter(new IllegalStateException(PixelPro10.suspendedText())); // P214h: the size being merged
                 return;
             }
             if (null == mCameraDevice) {

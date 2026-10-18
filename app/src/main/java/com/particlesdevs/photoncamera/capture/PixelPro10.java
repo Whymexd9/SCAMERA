@@ -213,13 +213,37 @@ public final class PixelPro10 {
      * a live viewfinder at a fraction of the memory) until the merge is done; nothing stored changes.
      */
     private static volatile boolean suspended;
+    /** P214h: the megapixels (50 / 200, to the nearest ten) of the shot whose merge suspends FULLRES; 0 unknown. */
+    private static volatile int suspendedMegapixels;
 
     public static void suspendFullRes(boolean on) {
+        suspendFullRes(on, 0);
+    }
+
+    /**
+     * P214h: as {@link #suspendFullRes(boolean)}, naming the size of the shot being merged - P200 suspends FULLRES for a 50 MP
+     * merge too, and the switch and the shutter said «Снимок 200 Мп ещё обрабатывается» during it.
+     */
+    public static void suspendFullRes(boolean on, int megapixels) {
+        suspendedMegapixels = on ? Math.max(0, megapixels) : 0;
         suspended = on;
     }
 
     public static boolean fullResSuspended() {
         return suspended;
+    }
+
+    /** P214h: what the FULLRES switch and the shutter say while FULLRES is suspended: the shot being merged, by its size. */
+    public static String suspendedText() {
+        return processingText(suspendedMegapixels);
+    }
+
+    /** P214h: «Снимок 50 Мп ещё обрабатывается» for a 50 MP merge, «… 200 Мп …» for a 200 MP one; «Снимок FULLRES …» unknown. */
+    static String processingText(int megapixels) {
+        return megapixels > 0
+                ? com.particlesdevs.photoncamera.util.Lang.t("Снимок " + megapixels + " Мп ещё обрабатывается",
+                        "A " + megapixels + " MP shot is still being processed")
+                : com.particlesdevs.photoncamera.util.Lang.t("Снимок FULLRES ещё обрабатывается", "A FULLRES shot is still being processed");
     }
 
     public static void setFullRes(boolean on) {
