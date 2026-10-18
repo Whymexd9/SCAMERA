@@ -272,7 +272,9 @@ public final class SettingsStyle {
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.LutChangesPreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.PhotoStylePreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ShadeTransparencyPreference
-                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference;
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FormatPickerPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.SizePickerPreference;
     }
 
     private static void defaultIcon(Preference p, int icon) {
@@ -377,6 +379,13 @@ public final class SettingsStyle {
     static CharSequence valueOf(Preference p) {
         if (p instanceof RestorePreference) return null;
         // SIMPLE_UI §4: «Плёночный LUT» shows the chosen look on the right (the concept's .rv)
+        try {
+            if ("output_settings_screen".equals(p.getKey())) return com.particlesdevs.photoncamera.settings.FormatChoice.current().shortLabel();
+            if ("photo_size_screen".equals(p.getKey()))
+                return com.particlesdevs.photoncamera.ui.camera.PhotoSize.label(com.particlesdevs.photoncamera.ui.camera.PhotoSize.current());
+        } catch (RuntimeException e) {
+            return null;   // no camera state yet (tests)
+        }
         if ("backup_settings_screen".equals(p.getKey()))
             return com.particlesdevs.photoncamera.settings.ConfigState.label(p.getContext());
         if ("shade_transparency_screen".equals(p.getKey()))

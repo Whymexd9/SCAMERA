@@ -188,10 +188,18 @@ public final class CameraSheets {
     public static BottomSheetDialog format(Context c, List<FormatChoice> offered, FormatChoice current, PhotoFormat storedCodec,
                                          Consumer<FormatChoice> apply) {
         LinearLayout body = frame(c, Lang.t(c, "Формат файла", "File format"));
+        body.addView(formatContent(c, offered, current, storedCodec, apply));
+        BottomSheetDialog d = SettingsStyle.sheet(c, body);
+        d.show();
+        return d;
+    }
+
+    /** The choice itself («Фото», «RAW (DNG)», «Сохранится», the note): the camera's sheet and the settings' «Формат файла» page. */
+    public static LinearLayout formatContent(Context c, List<FormatChoice> offered, FormatChoice current, PhotoFormat storedCodec,
+                                             Consumer<FormatChoice> apply) {
         LinearLayout content = new LinearLayout(c);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setTag("format_sheet");
-        body.addView(content);
         FormatState state = new FormatState(current, storedCodec);
         List<PhotoFormat> photos = new ArrayList<>();
         for (PhotoFormat f : PHOTO) if (offered.contains(choice(f, RAW_NONE))) photos.add(f);
@@ -234,9 +242,7 @@ public final class CameraSheets {
                     "Not sure? JPEG without RAW. RAW is for editing in Lightroom or RawTherapee.")));
         };
         render[0].run();
-        BottomSheetDialog d = SettingsStyle.sheet(c, body);
-        d.show();
-        return d;
+        return content;
     }
 
     /** Stores the state's choice when this phone offers it (AVIF without its encoder, HEIC before Android 9: not offered). */
@@ -272,17 +278,28 @@ public final class CameraSheets {
     public static BottomSheetDialog size(Context c, int current, boolean full, boolean max, java.util.function.IntConsumer pick,
                                          @Nullable Consumer<CharSequence> refuse) {
         LinearLayout body = frame(c, Lang.t(c, "Размер фото", "Photo size"));
+        BottomSheetDialog[] dialog = new BottomSheetDialog[1];
+        body.addView(sizeCard(c, current, full, max, size -> {
+            pick.accept(size);
+            if (dialog[0] != null) body.postDelayed(dialog[0]::dismiss, 180);
+        }, refuse));
+        dialog[0] = SettingsStyle.sheet(c, body);
+        dialog[0].show();
+        return dialog[0];
+    }
+
+    /** The three sizes as radio rows (the camera's sheet and the settings' «Размер фото» page). */
+    public static LinearLayout sizeCard(Context c, int current, boolean full, boolean max, java.util.function.IntConsumer pick,
+                                        @Nullable Consumer<CharSequence> refuse) {
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackground(SettingsStyle.shape(c, ShadeStyle.CARD, ShadeStyle.LINE, UiScale.dpF(c, 20) / c.getResources().getDisplayMetrics().density));
         card.setTag("size_sheet");
-        body.addView(card);
         String[][] rows = {
                 {Lang.t(c, "Обычный · 12 Мп", "Normal · 12 MP"), Lang.t(c, "Быстро и немного места. Подходит почти всегда", "Fast and small. Fits nearly always")},
                 {Lang.t(c, "Подробный · 50 Мп", "Detailed · 50 MP"), Lang.t(c, "Больше деталей при хорошем свете. Снимок дольше", "More detail in good light. A slower shot")},
                 {Lang.t(c, "Максимум · 200 Мп", "Maximum · 200 MP"), Lang.t(c, "Для печати и кадрирования", "For prints and cropping")}};
         int[] sizes = {PhotoSize.NORMAL, PhotoSize.FULL, PhotoSize.MAX};
-        BottomSheetDialog[] dialog = new BottomSheetDialog[1];
         int accent = ShadeStyle.accent(c);
         for (int i = 0; i < 3; i++) {
             final int size = sizes[i];
@@ -312,7 +329,6 @@ public final class CameraSheets {
                     return;
                 }
                 pick.accept(size);
-                if (dialog[0] != null) v.postDelayed(dialog[0]::dismiss, 180);
             });
             if (i > 0) {
                 View divider = new View(c);
@@ -321,9 +337,7 @@ public final class CameraSheets {
             }
             card.addView(row);
         }
-        dialog[0] = SettingsStyle.sheet(c, body);
-        dialog[0].show();
-        return dialog[0];
+        return card;
     }
 
     /** The concept's .radio: a 22dp ring (2dp), the accent ring and a 10dp dot when on. */
