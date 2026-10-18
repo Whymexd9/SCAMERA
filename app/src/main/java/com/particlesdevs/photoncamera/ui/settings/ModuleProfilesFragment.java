@@ -5,6 +5,7 @@ import android.view.View;
 import android.widget.*;
 import androidx.activity.OnBackPressedCallback;
 import com.particlesdevs.photoncamera.app.ScameraApp;
+import com.particlesdevs.photoncamera.capture.FullResTrials;
 import com.particlesdevs.photoncamera.settings.*;
 import com.particlesdevs.photoncamera.util.Lang;
 
@@ -12,7 +13,8 @@ import com.particlesdevs.photoncamera.util.Lang;
  * P189 (owner, 2026-10-17: «Я так и не увидел где я могу настраивать отдельно 50мп и 200мп, сделай отдельную группу настроек где
  * все будет разделено по модулям»): «Настройки по модулям» lists each module and, under it, its FULLRES 50 / 200 MP profiles; a
  * row opens the settings pages with only that profile's values (SettingsFragment.modulePage). The camera keeps its module:
- * leaving the group gives the main settings back to the camera's profile.
+ * leaving the group gives the main settings back to the camera's profile. P214h: a camera whose FULLRES rows failed shows
+ * the trials (what was tried, why it failed) at the end of its module's card, with «Попробовать снова».
  */
 public class ModuleProfilesFragment extends ModuleConceptFragment {
     @Override public void onViewCreated(View view,Bundle state){
@@ -33,16 +35,22 @@ public class ModuleProfilesFragment extends ModuleConceptFragment {
         java.util.List<String> ids=SettingsActivity.SettingsFragment.editableModules();
         String inCamera=FullResProfiles.profileFor(ModuleRegistry.active());
         boolean rear=false,front=false,variants=false;LinearLayout card=null;
+        // P214h: a camera's FULLRES trials close the card of its first module (pending until its FULLRES profiles are listed)
+        java.util.Set<String> trialCameras=new java.util.HashSet<>();String pending=null;
         for(String id:ids){
             if(FullResProfiles.isVariant(id)){
                 variants=true;
                 if(card==null)card=card();else divider(card);
                 profileRow(card,id,on,inCamera);continue;
             }
+            trialsRow(card,pending);pending=null;
             if(!rear&&!id.startsWith("front")){rear=true;caption(Lang.t(getContext(),"Основные камеры","Rear cameras"));}
             if(!front&&id.startsWith("front")){front=true;caption(Lang.t(getContext(),"Фронтальная камера","Front camera"));}
             card=card();profileRow(card,id,on,inCamera);
+            String camera=ModuleRegistry.camera(id);
+            if(camera!=null&&trialCameras.add(camera))pending=camera;
         }
+        trialsRow(card,pending);
         if(ids.isEmpty())note(Lang.t(getContext(),"Откройте видоискатель, чтобы определить доступные модули камеры.","Open the viewfinder to detect the available camera modules."));
         else if(!variants)note(Lang.t(getContext(),"Снимки 50 / 200 Мп появятся здесь у модулей с кнопкой FULLRES. Если кнопка ещё не показывалась, откройте этот модуль в камере.","50 / 200 MP shots appear here for modules with the FULLRES button. If the button has not shown yet, open that module in the camera."));
         navigation("▢",Lang.t(getContext(),"Копировать настройки между модулями","Copy settings between modules"),Lang.t(getContext(),"Выбор модулей, групп и отдельных параметров","Choose modules, groups and single parameters"),()->open(new ModuleCopyFragment()));
@@ -66,6 +74,31 @@ public class ModuleProfilesFragment extends ModuleConceptFragment {
         r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));r.addView(text("›",25,MUTED));
         r.setAlpha(on?1:.55f);r.setTag("profile_"+id);r.setContentDescription(title+". "+summary);r.setFocusable(true);
         r.setOnClickListener(v->edit(id));card.addView(r);
+    }
+
+    /**
+     * P214h (speed-ux C2): the camera's FULLRES trials - the rows tried and why each failed, its own remosaic row
+     * (FullResTrials.status) - and «Попробовать снова», which forgets them: the camera's next FULLRES starts at its first row
+     * (a size whose rows all failed is back). Nothing for a camera without a failed row.
+     */
+    private void trialsRow(LinearLayout card,String camera){
+        if(card==null||camera==null)return;
+        String status=FullResTrials.status(camera);
+        if(status==null)return;
+        divider(card);
+        LinearLayout r=row();r.setPadding(dp(12),dp(14),dp(12),dp(14));r.setMinimumHeight(dp(56));
+        ImageView ic=icon("✕");ic.setPadding(0,0,dp(12),0);r.addView(ic,new LinearLayout.LayoutParams(dp(38),dp(28)));
+        LinearLayout labels=column();TextView head=text(Lang.t(getContext(),"FULLRES: пробы режимов · ID "+camera,"FULLRES: mode trials · ID "+camera),15,TEXT);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(head);labels.addView(head);
+        TextView sub=text(status,12,SettingsStyle.SUMMARY);sub.setLineSpacing(dp(3),1);labels.addView(sub,space(-1,-2,6));
+        TextView retry=button(Lang.t(getContext(),"Попробовать снова","Try again"),false,()->{
+            FullResTrials.retry(camera);
+            Toast.makeText(requireContext(),Lang.t(getContext(),"Пробы FULLRES камеры "+camera+" забыты: режимы проверяются заново с первого","FULLRES trials of camera "+camera+" forgotten: the modes are tried again from the first"),Toast.LENGTH_SHORT).show();
+            if(root!=null)render();
+        });
+        retry.setTag("fullres_trials_retry_"+camera);labels.addView(retry,space(-2,-2,10));
+        r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+        r.setTag("fullres_trials_"+camera);r.setContentDescription(head.getText()+". "+status);card.addView(r);
     }
 
     /** The profile's pages (the page takes the profile itself); with per-module settings off, they are turned on first. */

@@ -88,6 +88,7 @@ public final class DevKeys {
         k.add(s(cap, "isz_module", true, Lang.t("Модуль «2×» для камер с CROPPED_RAW", "The «2×» module for cameras with CROPPED_RAW")));
         k.add(s(cap, "raw_wide", true, Lang.t("RAW шире заявленного белого (14 бит DCG) берётся по своим значениям", "A RAW wider than the declared white (14-bit DCG) is taken at its own range")));
         k.add(s(cap, "vivo_qcom_roi", true, Lang.t("X300 Ultra: модули ISZ без ремозаика и кнопка DCG (forceSensorMode в сессии)", "X300 Ultra: ISZ modules without remosaic and the DCG button (session forceSensorMode)")));
+        k.add(sAuto(cap, "vivo_qcom_isz_cropped_raw", Lang.t("X300 Ultra: RAW-поток модуля ISZ: 1 — с CROPPED_RAW (как в сборке 30912), 0 — без; без строки приложение пробует без, затем с", "X300 Ultra: the ISZ module's RAW stream: 1 = with CROPPED_RAW (as in build 30912), 0 = without; no line: the app tries without, then with")));
         k.add(s(cap, "mosaic_awb", true, Lang.t("ISZ без ремозаика: баланс белого по кадру на кривой камеры, а не от камеры", "ISZ without remosaic: white balance from the frame on the camera curve, not the camera's")));
         // P212f: the mosaic white balance's locus (W5), robust statistic (W4) and ISP teacher (W5, log only)
         k.add(s(cap, "mosaic_awb_locus", true, Lang.t("Баланс белого мозаики: гладкая кривая камеры по точкам с весами, с продолжением за края и кривой из матриц DNG, пока точек мало. Выкл — ломаная P121 с обрезкой на краях",
@@ -125,6 +126,7 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_hot_frames", null, Lang.t("Горячие пиксели: кадров для поиска", "Hot pixels: frames to search")));
         k.add(n(merge, "hybrid_hot_cross", null, Lang.t("Горячие пиксели: порог креста", "Hot pixels: cross threshold")));
         k.add(n(merge, "hybrid_hot_max_level", null, Lang.t("Горячие пиксели: предел уровня", "Hot pixels: level limit")));
+        k.add(n(merge, "hybrid_hot_cap", null, Lang.t("Горячие пиксели: не больше мест на Мп полосы (0 — без предела)", "Hot pixels: at most this many sites per MP of a strip (0: no cap)")));
         k.add(n(merge, "hybrid_bento_invalid", null, Lang.t("Bento: порог негодных клеток", "Bento: invalid cell threshold")));
         k.add(n(merge, "hybrid_mosaic_block", null, Lang.t("Мозаика: блок цвета (1, 2, 4) вместо измеренного", "Mosaic: colour block (1, 2, 4) instead of the measured one")));
         k.add(n(merge, "hybrid_mosaic_share", null, Lang.t("Мозаика: доля голосов для решения", "Mosaic: vote share to decide")));
@@ -147,9 +149,9 @@ public final class DevKeys {
         // P214d: ScamDenoise.lscTerm
         k.add(s(post, "denoise_lsc", true, Lang.t("Шумоподавление сильнее к углам кадра по коррекции виньетирования (g² карты затенения объектива)", "Denoise harder towards the frame corners after the vignetting correction (g² of the lens-shading map)")));
         k.add(n(post, "denoise_lsc_max", "4", Lang.t("Шумоподавление к углам: предел множителя дисперсии (1–16; 4 — шум в углах считается вдвое сильнее)", "Corner denoise: cap of the variance multiplier (1-16; 4: the corner noise counts twice as strong)")));
-        // P214e: ArkLumaSharpen.smoothedSource (R1)
-        k.add(s(post, "sharpen_r1", true, Lang.t("Резкость мозаичных снимков (ISZ Quad/Tetra, FULLRES) по яркости, сглаженной 3×3: решётка мозаики почти не усиливается. Выкл — резкость как у снимков Bayer",
-                "Sharpening of mosaic shots (ISZ Quad / Tetra, FULLRES) on the 3x3-smoothed luma: the mosaic lattice is hardly lifted. Off: the sharpening of Bayer shots")));
+        // P214e: ArkLumaSharpen.smoothedSource (R1); P214z: not above 100 MP (r1Fits)
+        k.add(s(post, "sharpen_r1", true, Lang.t("Резкость мозаичных снимков (ISZ Quad/Tetra, FULLRES до 100 Мп) по яркости, сглаженной 3×3: решётка мозаики почти не усиливается. Выкл — резкость как у снимков Bayer",
+                "Sharpening of mosaic shots (ISZ Quad / Tetra, FULLRES up to 100 MP) on the 3x3-smoothed luma: the mosaic lattice is hardly lifted. Off: the sharpening of Bayer shots")));
         k.add(n(post, "jpeg_threads", null, Lang.t("Потоков кодирования JPEG (1 — один поток, прогрессивный; пусто — все ядра)", "Threads of the JPEG encode (1: one thread, progressive; empty: every core)")));
         k.add(sAuto(post, "rgba_upload", Lang.t("Загрузка RGB в GPU как RGBA (по умолчанию решает приложение)", "RGB uploaded to the GPU as RGBA (default: chosen by the app)")));
         k.add(n(post, "hybrid_isp_ccm", "1", Lang.t("vivo: цветовая матрица ISP по кадру (0 — матрицы DNG)", "vivo: the ISP colour matrix of the frame (0: the DNG matrices)")));
@@ -181,8 +183,9 @@ public final class DevKeys {
         // vivo
         k.add(s(vivo, "vivo_sdk_fullres", true, Lang.t("X200 Ultra, основная камера 3: SDK RAW 50 Мп, последовательная съёмка после нажатия, Hybrid", "X200 Ultra, main camera 3: SDK 50 MP RAW, serial post-shutter capture, Hybrid")));
         // P180 / P184: FULLRES without hardware remosaic on the X100 / X300 Ultra - on (the owner tests it), off by these
-        k.add(s(cap, "oppo_fullres", true, Lang.t("OPPO Find X7 Ultra: FULLRES 50 Мп без аппаратного ремозаика (свои AE и баланс белого)",
-                "OPPO Find X7 Ultra: FULLRES 50 MP without hardware remosaic (own AE and white balance)")));
+        // P214j: the route on OnePlus and realme too (their cameras' session key and sensor-mode table, OppoNativeFullRes.family)
+        k.add(s(cap, "oppo_fullres", true, Lang.t("OPPO, OnePlus, realme: FULLRES без аппаратного ремозаика (свои AE и баланс белого; режимы — из таблицы камеры)",
+                "OPPO, OnePlus, realme: FULLRES without hardware remosaic (own AE and white balance; the modes from the camera's table)")));
         // P212: the own AE of the OPPO native FULLRES session (NativeRawExposure)
         k.add(s(cap, "native_ae_cap", true, Lang.t("OPPO FULLRES, своя AE: ISO не выше того, что режим реально даёт (запомненный предел), один пробный кадр за сессию. Выкл — ISO по объявленному диапазону",
                 "OPPO FULLRES own AE: ISO no higher than the mode really gives (the stored cap), one probe frame a session. Off: ISO by the declared range")));

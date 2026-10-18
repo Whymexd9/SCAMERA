@@ -87,7 +87,10 @@ public final class ModuleRegistry {
     }
     public static boolean sensorCrop(String slot){
         if(prefs().contains("module_sensorcrop_"+slot))return prefs().getBoolean("module_sensorcrop_"+slot,false);
-        return sensorMode(slot)!=0;
+        // P214i: an X300 Ultra ISZ mode whose frames proved a plain Bayer on both RAW streams of this firmware crops to the button's
+        // zoom (digitally, or by the crop its CROPPED_RAW frames hold)
+        int mode=sensorMode(slot);
+        return mode!=0&&!com.particlesdevs.photoncamera.capture.VivoQcomIsz.bayerFallback(camera(slot),mode);
     }
     /** The module's forced vendor sensor mode (vivo.control.forceSensorMode): 7 = 4x ISZ Tetra, 5 = 2x ISZ Quad, 0 = none. */
     public static int sensorMode(String slot){

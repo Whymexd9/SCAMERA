@@ -818,12 +818,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                        @NonNull TotalCaptureResult result) {
             synchronized (mPreviewStateLock) {
                 if (!isCurrentPreviewSession(session)) return;
-                // P192: the OPPO Find X7 Ultra: a plain session keeps its colour for the native mode, a native result gets it
-                // P212e (W1): on every OPPO phone, as FULLRES itself (its ring frames and stills were completed on any OPPO already)
-                if (OppoNativeFullRes.brand()) {
-                    if (mVivoSdkRawSession == null) OppoNativeFullRes.rememberPlain(physicalID, result);
-                    else if (VivoSdkFullRes.oppo()) OppoNativeFullRes.complete(mVivoSdkCameraId, result);
-                }
+                // P192: a plain session keeps its colour for the native mode, a native result gets it; P214j: on every phone of
+                // the route (OPPO, OnePlus, realme) for a camera with full-size modes - was the PHY110 only (OppoNativeFullRes.keepsColour)
+                if (mVivoSdkRawSession == null) {
+                    if (OppoNativeFullRes.keepsColour(physicalID)) OppoNativeFullRes.rememberPlain(physicalID, result);
+                } else if (VivoSdkFullRes.oppo()) OppoNativeFullRes.complete(mVivoSdkCameraId, result);
                 // P212g (W6 = M6): P208's still-only viewfinder is the normal mode (its ISP AWB valid): its neutrals for the press
                 if (mVfNeutralFeed && mVivoSdkRawSession != null)
                     mVfNeutrals.offer(physicalID, android.os.SystemClock.elapsedRealtime(), result);
@@ -1730,9 +1729,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * its plain session (FULLRES suspended: a live viewfinder, owner: «чтобы не было ... черного видоискателя в конце», at a
      * fraction of the memory; the SDK lease goes back as the device closes) and back to 200 MP after the merge.
      */
-    private void closeCameraForProcessing() {
+    private void closeCameraForProcessing(int megapixels) {
         mClosedForProcessing = true;
-        PixelPro10.suspendFullRes(true);
+        // P214h: the switch and the shutter name the shot being merged (50 MP since P200, not only 200 MP)
+        PixelPro10.suspendFullRes(true, megapixels);
         final java.util.concurrent.CountDownLatch closed = new java.util.concurrent.CountDownLatch(1);
         mClosedForProcessingDone = closed;
         // posted (never run inside the capture's completion, which still clears the shot's state after this call)
@@ -2436,8 +2436,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             throw new IllegalStateException("Previous Vivo SDK camera has not closed");
         String id = ScameraApp.getSettings().mCameraID;
         CameraMode mode = ScameraApp.getSettings().selectedMode;
-        // P192: an OPPO camera's table from the characteristics the app reads (its own CameraManager is not used)
-        if (OppoNativeFullRes.brand()) {
+        // P192: an OPPO camera's table from the characteristics the app reads (its own CameraManager is not used); P214j: OnePlus
+        // and realme too
+        if (OppoNativeFullRes.family()) {
             CameraCharacteristics known = mCameraCharacteristicsMap.get(id);
             if (known == null) try { known = mCameraManager.getCameraCharacteristics(id); } catch (Exception ignored) { known = null; }
             OppoNativeFullRes.learn(id, known);
@@ -3055,6 +3056,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             VivoPd2454NativeRaw.ensureModules(ScameraApp.getAppContext());
             final boolean nativeIsz = VivoPd2454NativeRaw.active(physicalID);
             final boolean vivoQcomIsz = nativeIsz || VivoQcomModes.activeFactor() > 0 || VivoPd2454Isz.active(physicalID);
+            // P214i: the X300 Ultra camera's role (by its CameraType or focal length: the declared block of an ISZ module's merge)
+            // and the frame check of an ISZ module's session
+            CameraCharacteristics iszCamera = mCameraCharacteristicsMap.get(physicalID);
+            VivoQcomIsz.learn(physicalID, iszCamera != null ? iszCamera : mCameraCharacteristics);
+            mIszCheck = VivoQcomIsz.check(physicalID);
             // Vendor detector tags exist only on a vivo HAL and were recorded on the X200 Ultra, the one vivo phone SCAM HDR runs
             // on (P54: none on the X300 Ultra and other vivo phones); elsewhere SCAM HDR uses the plain preview.
             final boolean scamPreview = PreferenceKeys.isScamEnabled() && photoMode
@@ -3094,8 +3100,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamNeuralClient.prewarmHybridGpu(ScameraApp.getAppContext(),
                         com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForModule(
                                 com.particlesdevs.photoncamera.processing.MosaicStream.key(),
-                                com.particlesdevs.photoncamera.processing.MosaicBlockStore.declaredBlock(
-                                        com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()))));
+                                // P214i: the declared block by the X300 Ultra's list (elsewhere 5 -> 2, 7 -> 4 as before)
+                                VivoQcomIsz.declaredBlockOf(com.particlesdevs.photoncamera.settings.ModuleRegistry.active())));
             } catch (RuntimeException e) {
                 Log.w(TAG, "Hybrid GPU prewarm skipped: " + e);
             }
@@ -3132,9 +3138,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 // P100: in-sensor zoom (ISZ) through the RAW stream's CROPPED_RAW use case where the camera lists it; not on the
                 // Xiaomi tele (P41 / P41b crop the photo from the HAL's own zoom report: a second crop source would divide twice)
+                // P214i: not on an X300 Ultra module that forces a sensor mode (the mode is the sensor crop; the HAL's own ISZ by
+                // the zoom ratio may remosaic or override it): its RAW stream is of the default use case
                 if (surfacei == rawSurface && mTargetFormat == ImageFormat.RAW_SENSOR && Build.VERSION.SDK_INT >= 34
                         && !xiaomiLogical && !XiaomiTeleZoom.active() && !vivoQcomIsz
-                        && !sdkFullRes
+                        && !sdkFullRes && VivoQcomIsz.croppedRawAllowed(physicalID)
                         && !sCroppedRawRefused.contains(physicalID) && CroppedRaw.supported(mCameraCharacteristics)) {
                     try {
                         config.setStreamUseCase(CroppedRaw.USE_CASE);
@@ -3152,6 +3160,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mLastRawCrop = null;
             mLastRawCropZoom = -1f;
             if (croppedRaw) Log.i("SCAM_CAPTURE", "camera " + physicalID + ": RAW stream with CROPPED_RAW (in-sensor zoom from ~2x, P100)");
+            final VivoQcomIsz.StreamCheck iszCheck = mIszCheck;
+            if (iszCheck != null) Log.i("SCAM_CAPTURE", VivoQcomIsz.describe(iszCheck, croppedRaw));
             if (xiaomiLogical) Log.i(TAG, "P41b: session on logical camera " + logicalID + ": viewfinder logical, readers on camera "
                     + physicalID + ", operation mode 0x" + Integer.toHexString(XiaomiTeleZoom.operationMode(xiaomiOperationModeSetting())));
 
@@ -4469,6 +4479,38 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 + (nativeVivoFullRes() ? "|native-full-" + VivoSdkFullRes.profile(mVivoSdkCameraId).sensorMode : "");
     }
 
+    /** P214i: the frame check of this session's X300 Ultra ISZ module (VivoQcomIsz.check), null for any other session. */
+    private volatile VivoQcomIsz.StreamCheck mIszCheck;
+
+    /**
+     * P214i: one measurement of an X300 Ultra ISZ module's stream (VivoQcomIsz.Trial). Frames that prove a plain Bayer (the camera
+     * did not run the mode as its mosaic: build 30912's tele 5 / 7) on the default RAW stream restart the camera with the
+     * CROPPED_RAW stream, as a FULLRES row the HAL remosaicked makes the next start try the next row (P188); a plain Bayer there
+     * too falls back: said in the log and on the message card (once per firmware), the shots merge as Bayer
+     * (VivoQcomIsz.declaredBlock 0: the stored block 1) and the button's zoom becomes a crop (ModuleRegistry.sensorCrop false: the
+     * residual follows here). The session key stays, so a later session whose frames are the mosaic moves the trial on.
+     */
+    private void onIszFrames(VivoQcomIsz.StreamCheck check, com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result r) {
+        final VivoQcomIsz.StreamCheck.Verdict verdict = check.observe(r.confident, r.block, r.votes);
+        if (verdict == VivoQcomIsz.StreamCheck.Verdict.NONE) return;
+        final VivoQcomIsz.Outcome outcome = VivoQcomIsz.onVerdict(check, verdict, r.toString(), mCroppedRawSession);
+        if (outcome.restart) {
+            new Handler(Looper.getMainLooper()).post(this::restartCamera);
+            return;
+        }
+        if (outcome.zoom) {
+            com.particlesdevs.photoncamera.control.ZoomController.refreshResidual();
+            onZoomChanged();
+        }
+        if (verdict == VivoQcomIsz.StreamCheck.Verdict.PLAIN && PreferenceKeys.isScamHybridEnabled()) try {
+            // the merge of this session's shots is a Bayer one now: its programs built ahead (an optimisation only)
+            com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamNeuralClient.prewarmHybridGpu(ScameraApp.getAppContext(), 1);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Hybrid GPU prewarm skipped: " + e);
+        }
+        if (outcome.card != null) showError(outcome.card);
+    }
+
     /**
      * P13: colour block of the ZSL stream from its first frames (MosaicStream: three agreeing measurements). A mosaic stream
      * switches the viewfinder to the developed RAW; its frames are published with the latest matching result (the colour
@@ -4500,12 +4542,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     samples.position(0); samples.limit(bytes);
                     sampleStride = img.getWidth() * 2;
                 }
-                int block = com.particlesdevs.photoncamera.processing.MosaicStream.observe(
+                final com.particlesdevs.photoncamera.processing.MosaicBlockDetector.Result measured =
                         com.particlesdevs.photoncamera.processing.MosaicBlockDetector.detect(samples, img.getWidth(), img.getHeight(),
-                                sampleStride, black, white, 32));
+                                sampleStride, black, white, 32);
+                int block = com.particlesdevs.photoncamera.processing.MosaicStream.observe(measured);
                 // P187: measured - the unpacked frame (2 B a pixel, 401 MB on a packed 200 MP stream) is not kept for the
                 // rest of the session
                 if (!com.particlesdevs.photoncamera.processing.MosaicStream.wantsFrame()) mMosaicUnpacked = null;
+                // P214i: an X300 Ultra ISZ module's frames against the mosaic its mode declares (before the stream crop below,
+                // which reads the module's sensor crop)
+                final VivoQcomIsz.StreamCheck iszCheck = mIszCheck;
+                if (iszCheck != null && measured != null) onIszFrames(iszCheck, measured);
                 updateStreamCrop(true);
                 // P188 (owner, 2026-10-17: «Нам нужен фулрез без ремозаика»): a native FULLRES row whose frames are a plain Bayer
                 // was remosaicked by the HAL (X300 Ultra main camera, 50 MP row 2): that row counts as failed and the next start
@@ -6037,6 +6084,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // 14) - the 50 MP session kept streaming and binning 24 fps through a 1-4 min merge. A 50 MP shot is merged with the
         // camera in its plain session as well (its shutter waits for the merge anyway); back to FULLRES after it.
         final boolean plainForMerge = hugeShot || PreferenceKeys.scamDevSwitch("fullres_plain_merge", true);
+        final int shotMegapixels = com.particlesdevs.photoncamera.settings.FullResProfiles.megapixels(
+                mImageReaderRaw.getWidth(), mImageReaderRaw.getHeight());
         saver.shotArena = arena;
         mShotArena = arena;
         final java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean();
@@ -6089,7 +6138,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     final com.particlesdevs.photoncamera.processing.ShotTimeline timeline =
                             com.particlesdevs.photoncamera.processing.ShotTimeline.detach();
                     sScamPending.incrementAndGet();
-                    if (plainForMerge) closeCameraForProcessing();
+                    if (plainForMerge) closeCameraForProcessing(shotMegapixels);
                     else {
                         sFullResMerges.incrementAndGet();
                         releaseFullResRing();
@@ -6255,8 +6304,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         com.particlesdevs.photoncamera.control.ZoomController.markShot();
         try {
-            if (mClosedForProcessing) { // P179: the plain session of a running 200 MP merge takes no shot
-                failPendingShutter(new IllegalStateException(Lang.t("Снимок 200 Мп ещё обрабатывается", "A 200 MP shot is still being processed")));
+            if (mClosedForProcessing) { // P179: the plain session of a running FULLRES merge (200 MP; P200 50 MP too) takes no shot
+                failPendingShutter(new IllegalStateException(PixelPro10.suspendedText())); // P214h: the size being merged
                 return;
             }
             if (null == mCameraDevice) {
@@ -6704,8 +6753,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final boolean shotHybridRoute=scamHybridShot;
             // P35: the stream key of this shot (its stored colour block skips the detector in the processing).
             final String shotMosaicKey=com.particlesdevs.photoncamera.processing.MosaicStream.key();
-            final int shotDeclaredBlock=com.particlesdevs.photoncamera.processing.MosaicBlockStore.declaredBlock(
-                    com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()));
+            // P214i: by the X300 Ultra's list; 0 once the module's frames proved a plain Bayer (the stored 1 merges then)
+            final int shotDeclaredBlock=VivoQcomIsz.declaredBlockOf(com.particlesdevs.photoncamera.settings.ModuleRegistry.active());
             final int nativeBaseIndex=denoiseFrameCount/2;
             final TotalCaptureResult[] nativeBaseResult={hybridZsl?mNativeZslBase:null};
             // W1.9: the vendor-key scan of every bracket result (10-15 ms on the camera callback thread) only with diagnostics.

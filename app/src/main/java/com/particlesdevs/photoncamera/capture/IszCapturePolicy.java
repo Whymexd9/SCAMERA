@@ -3,7 +3,6 @@ package com.particlesdevs.photoncamera.capture;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CaptureResult;
 
-import com.particlesdevs.photoncamera.api.CameraManager2;
 import com.particlesdevs.photoncamera.api.VendorTagUtils;
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.control.ZoomController;
@@ -23,10 +22,8 @@ public final class IszCapturePolicy {
                 return "5".equals(physicalId) && (mode == 5 || mode == 7 || mode == 6 || mode == 17);
             }
             if (!VivoQcomIsz.enabled() || characteristics == null) return false;
-            String role = VivoQcomIsz.role(CameraManager2.vivoCameraType(characteristics));
-            return "main".equals(role) && mode == VivoQcomIsz.MAIN_2X
-                    || "wide".equals(role) && mode == VivoQcomIsz.WIDE_2X
-                    || "tele".equals(role) && (mode == VivoQcomIsz.TELE_2X || mode == VivoQcomIsz.TELE_4X);
+            // P214i: the role also without a vivo CameraType (by the focal length), the modes from the owner's list
+            return VivoQcomIsz.iszModule(VivoQcomIsz.role(physicalId, characteristics), mode);
         }
         if (ModuleRegistry.sensorMode(slot) != 0) return false;
         if (SensorModeSwitches.sensorPreset(slot)) return true;

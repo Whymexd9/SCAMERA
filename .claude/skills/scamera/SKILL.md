@@ -122,6 +122,15 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 - X100U: MONO id 6 в RAW-сессии роняет HAL; упакованный ZSL давал чёрные/розовые фото (P23, `RawPayloadCheck`).
 - OPPO X7U: CC14 тюнинга пустые → `OppoTunedColor`; без подмены пакета видно 3 камеры. Тестовая `hand.nch` — штатив.
 - OPPO X8U: плавающий уровень чёрного → зелёные тени.
+- OPPO X7U 50 МП: модель шума из заголовка занижена ~4× по дисперсии (f0−f1 серии 191825, на всех уровнях); проверка шума P71
+  для нативной мозаики не идёт. Тест горячих пикселей метил 11–25 тыс. мест/Мп (шум и текстура). P214k: не больше `hotCap` 2000
+  мест/Мп своей полосы (scam_dev `hybrid_hot_cap`, 0 — без предела), сверх — сильнейшие по рангу (избыток к шуму, измеренному по
+  кадрам вокруг места, и к разбросу 8 соседей; мигающие места — дефект); строка лога `HYBRID OUTLIER CAP`. Мигающие (RTS) блоки
+  Quad 2×2 у X7U есть (53–87 DN10 от кадра к кадру).
+- FULLRES OPPO-семьи (P214j, `OppoNativeFullRes.family`: OPPO, OnePlus, realme): камера с сессионным ключом
+  `agingtest.mode.select` и полноразмерными строками бининг-сенсора в `SensorModeTable` (рядом есть строка в 1/2 или 1/4
+  стороны); OnePlus 15: основная строка 6, теле 19 (8192×6144), сверхширик и фронт — нет. Режимы PHY110 без таблицы и
+  авто-пакет Meitu для теле — только PHY110 / OPPO. Ключ — byte, если HAL отказывает — int32 (GT8 Pro). На телефоне не проверено.
 - Xiaomi 17U: для камеры 4 HAL держит стекло на 75 мм (`isThirdParty=1`). P41b: теле через логическую камеру 0,
   op mode `0x9002`, ExtendedMaxZoom/EnableInsensorZoom = 1, видоискатель — логический поток, RAW — физ. камера 4,
   кроп снимка от `opticalZoomCurrentRatio`; отказ → op mode 0 → камера 4 одна. Ждёт проверки. Разбор:
@@ -139,6 +148,18 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
   (тип сессии, OIS), вендорные ключи модуля, `SessionKeys.PLAIN` (16:9, live RAW, формат RAW, ZSL-буфер, AF, «Движение»,
   low-light boost, аппаратный ремозаик, EIS). Шторка перезапускает камеру, у строк знак «↻»; новый класс с `@SensorConfig` —
   в `SESSION_CLASSES` или `PER_SHOT_CLASSES` (`SessionKeysTest`). Выход из настроек и так открывает новую сессию.
+- Пробы строк FULLRES (P214h, `capture/FullResTrials`): провалы `module_fullres_rowfail_<cam>_*` (vivo X100/X300U) и
+  `module_oppo_fullres_fail_<cam>*` хранят причину строки и штамп `r<ROW_TRIALS> <Build.FINGERPRINT>` — новая прошивка или
+  ROW_TRIALS пробуют строки заново (ключи без штампа — до P214h — принимаются как текущие). Кнопка FULLRES не пропадает, а
+  тускнеет; нажатие (долгое — на любой) — причина и «Попробовать снова» (сброс ключей камеры); то же в «Настройки по модулям».
+  В логе при открытии камеры: `FullResButton: camera N FULLRES trials: …`.
+- ISZ-модули X300 Ultra (P214i, `capture/VivoQcomIsz.MODES` — список владельца 2026-10-18): модули — Quad/Tetra 4:3
+  (UW 21, основная 10, теле 5 = 2×, теле 7 = 4×); видео-Quad теле 10/13/17 — мозаика, но не модуль; 6/31 (ремозаик) — нет.
+  Роль камеры — по `CameraType`, без него по ЭФР 14/35/85 мм (камеры 4/3/5). Ключ — только сессия (без копии в запросах).
+  Кадры проверяет `StreamCheck` (3 явных Bayer / мозаика) → `Trial` в `vivo_qcom_isz.xml` `isz_<cam>_<mode>` =
+  `<Build.FINGERPRINT>|NONE/PLAIN/CROPPED/BAYER`: сначала RAW без CROPPED_RAW, Bayer → перезапуск с CROPPED_RAW (как 30912),
+  снова Bayer → откат: склейка Bayer, зум кропом, карточка. `scam_dev vivo_qcom_isz_cropped_raw 1/0` фиксирует поток.
+  В логе: `X300 Ultra ISZ module …` и `VivoQcomIsz: ISZ module … trial A -> B`. DCG без `CameraType` — только теле.
 - BIN — контекстные бинарники QNN HTP V79, закреплены SHA256 в `ScamNeuralWorker.java`:
   `SCAM_FILES` (CRE `libvivo_nice_cre.so` и зависимости — выравнивание SHDR), `HEX_FILES` (4 .so рантайма QNN).
   Не упаковываются (только сверяются в бандле, `BUNDLE_ONLY`): группа `bundle/` (`tele576` + его QNN), `hexquad-x1/x2`,

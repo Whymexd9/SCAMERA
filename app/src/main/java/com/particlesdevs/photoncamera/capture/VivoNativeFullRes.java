@@ -1,9 +1,13 @@
 package com.particlesdevs.photoncamera.capture;
 
+import android.content.SharedPreferences;
+
 import androidx.annotation.Nullable;
 
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -255,17 +259,45 @@ public final class VivoNativeFullRes {
     /**
      * P186 (owner, X300 Ultra 2026-10-17: «На основном объективе - 50/200мп не работают, видоискатель зависает, переключает на
      * ширик. Телевик - 50мп работают, 200мп нет»): the rows a size has tried and failed (a session that gave no frame, a camera
-     * that died), kept per camera and size; bumping ROW_TRIALS starts them again in a later build.
+     * that died), kept per camera and size; bumping ROW_TRIALS starts them again in a later build. P214h: ROW_TRIALS is the
+     * route revision of the trials' stamp (FullResTrials: with Build.FINGERPRINT, so a firmware update tries the rows again),
+     * each failed row keeps its reason, and «Попробовать снова» forgets a camera's trials ({@link #clearFailures}).
      */
     static final int ROW_TRIALS = 1;
     private static final String FAILED = "module_fullres_rowfail_", FAILED_TRIALS = "module_fullres_rowfail_trials";
     /** P194: a camera's hardware-remosaic row failed (no frame, the camera died, not a plain Bayer): suffix of FAILED + camera. */
     private static final String HW_FAILED = "_hw";
 
-    static boolean hardwareFailed(String cameraId) {
+    /** P214h: the base of a camera's trial keys (its sizes' tried counts, the hardware row, the reasons, the stamp). */
+    static String base(String cameraId) {
+        return FAILED + cameraId;
+    }
+
+    /** P214h: the stamp of this build's trials on this firmware. */
+    static String stamp() {
+        return FullResTrials.stamp(ROW_TRIALS);
+    }
+
+    @Nullable
+    private static SharedPreferences prefs() {
         try {
-            android.content.SharedPreferences p = com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
-            return p.getInt(FAILED_TRIALS, ROW_TRIALS) == ROW_TRIALS && p.getBoolean(FAILED + cameraId + HW_FAILED, false);
+            return com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    static boolean hardwareFailed(String cameraId) {
+        return hardwareFailed(prefs(), cameraId, stamp());
+    }
+
+    /** P214h: {@link #hardwareFailed(String)} in {@code p} under the stamp {@code stamp} (another stamp's failure is passed over). */
+    static boolean hardwareFailed(@Nullable SharedPreferences p, String cameraId, String stamp) {
+        if (p == null || cameraId == null) return false;
+        try {
+            final String key = FAILED + cameraId + HW_FAILED;
+            return p.getInt(FAILED_TRIALS, ROW_TRIALS) == ROW_TRIALS && FullResTrials.counts(p, base(cameraId), key, stamp)
+                    && p.getBoolean(key, false);
         } catch (RuntimeException e) {
             return false;
         }
@@ -288,13 +320,105 @@ public final class VivoNativeFullRes {
     }
 
     static int failures(String cameraId, boolean big) {
+        return failures(prefs(), phone(), cameraId, big, stamp());
+    }
+
+    /** P214h: {@link #failures(String, boolean)} in {@code p} on {@code phone} under the stamp {@code stamp}. */
+    static int failures(@Nullable SharedPreferences p, @Nullable Phone phone, String cameraId, boolean big, String stamp) {
+        if (p == null || cameraId == null) return 0;
         try {
-            android.content.SharedPreferences p = com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
             if (p.getInt(FAILED_TRIALS, ROW_TRIALS) != ROW_TRIALS) return 0;
-            return p.getInt(failureKey(cameraId, big), 0);
+            final String key = failureKey(phone, cameraId, big);
+            return FullResTrials.counts(p, base(cameraId), key, stamp) ? p.getInt(key, 0) : 0;
         } catch (RuntimeException e) {
             return 0;
         }
+    }
+
+    /** P214h: the reasons (row:code,...) of a size's failed rows; null for none or another stamp's. */
+    @Nullable
+    static String reasons(SharedPreferences p, @Nullable Phone phone, String cameraId, boolean big, String stamp) {
+        final String key = failureKey(phone, cameraId, big) + FullResTrials.WHY;
+        return FullResTrials.counts(p, base(cameraId), key, stamp) ? FullResTrials.string(p, key) : null;
+    }
+
+    /** P214h: a size's tried count after {@code row} failed for {@code why}, and that row's reason, under the stamp {@code stamp}. */
+    static void noteRow(@Nullable SharedPreferences p, @Nullable Phone phone, String cameraId, boolean big, int tried, int row,
+                        @Nullable String why, String stamp) {
+        if (p == null || cameraId == null) return;
+        try {
+            final String key = failureKey(phone, cameraId, big);
+            final String reasons = FullResTrials.withReason(reasons(p, phone, cameraId, big, stamp), row, FullResTrials.code(why));
+            FullResTrials.edit(p, base(cameraId), stamp).putInt(FAILED_TRIALS, ROW_TRIALS).putInt(key, tried)
+                    .putString(key + FullResTrials.WHY, reasons).apply();
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    /** P214h: the camera's hardware-remosaic row failed for {@code why}, under the stamp {@code stamp}. */
+    static void noteHardware(@Nullable SharedPreferences p, String cameraId, @Nullable String why, String stamp) {
+        if (p == null || cameraId == null) return;
+        try {
+            FullResTrials.edit(p, base(cameraId), stamp).putInt(FAILED_TRIALS, ROW_TRIALS)
+                    .putBoolean(FAILED + cameraId + HW_FAILED, true)
+                    .putString(FAILED + cameraId + HW_FAILED + FullResTrials.WHY, FullResTrials.code(why)).apply();
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    /**
+     * P214h: «Попробовать снова» - the camera's trials are forgotten (every size, its hardware-remosaic row, the reasons, the
+     * stamp; the keys of the builds that renamed them, P200 / P207 / P210, too): its next FULLRES starts at its first row.
+     * Returns the number of keys removed.
+     */
+    static int clearFailures(@Nullable SharedPreferences p, @Nullable String cameraId) {
+        if (p == null || cameraId == null) return 0;
+        return FullResTrials.clear(p, base(cameraId));
+    }
+
+    /** P214h: the camera has a FULLRES table on this phone (a profile, whatever its trials say). */
+    static boolean hasTable(@Nullable Phone phone, @Nullable String cameraId) {
+        return (phone == Phone.X100_ULTRA || phone == Phone.X300_ULTRA) && profile(phone, cameraId, false, false) != null;
+    }
+
+    /**
+     * P214h: the size of a camera with two ({@code large}: 200 MP) has no row left - all failed (the 50 MP one also without a
+     * live hardware-remosaic row while {@code hardwareSwitch} is on): its button stays, dimmed.
+     */
+    static boolean sizeExhausted(@Nullable Phone phone, @Nullable String cameraId, boolean large, boolean hardwareSwitch) {
+        if (phone != Phone.X100_ULTRA && phone != Phone.X300_ULTRA || cameraId == null || !twoSizes(phone, cameraId)) return false;
+        if (!large && hardwareSwitch && hardwareProfile(phone, cameraId, true) != null) return false;
+        return profile(phone, cameraId, large, false) != null && profile(phone, cameraId, large, true) == null;
+    }
+
+    /**
+     * P214h (speed-ux C2: «rows 11/31 gave no frame; row 0 is the camera's own remosaic -> «FULLRES: аппаратный ремозаик»»):
+     * the camera's trials in words - per size the rows tried and why each failed (the size off, or the row tried next), then
+     * its hardware-remosaic row; null without a failed row (the X200 Ultra keeps none).
+     */
+    @Nullable
+    static String status(@Nullable SharedPreferences p, @Nullable Phone phone, @Nullable String cameraId, String stamp,
+                         boolean hardwareSwitch) {
+        if (p == null || cameraId == null || phone != Phone.X100_ULTRA && phone != Phone.X300_ULTRA) return null;
+        final List<String> lines = new ArrayList<>();
+        final boolean two = twoSizes(phone, cameraId);
+        boolean failed50 = false;
+        for (boolean large : two ? new boolean[]{false, true} : new boolean[]{false}) {
+            final int[] rows = candidates(phone, cameraId, large), size = size(phone, cameraId, large);
+            if (rows.length == 0 || size == null) continue;
+            final boolean big = two && large;
+            final String line = FullResTrials.sizeLine(
+                    com.particlesdevs.photoncamera.settings.FullResProfiles.megapixels(size[0], size[1]), rows,
+                    failures(p, phone, cameraId, big, stamp), FullResTrials.reasons(reasons(p, phone, cameraId, big, stamp)));
+            if (line == null) continue;
+            lines.add(line);
+            if (!large) failed50 = true;
+        }
+        final boolean hwFailed = hardwareFailed(p, cameraId, stamp);
+        final String hw = FullResTrials.hardwareLine(hardwareRow(phone, cameraId), hwFailed,
+                hwFailed ? FullResTrials.string(p, FAILED + cameraId + HW_FAILED + FullResTrials.WHY) : null, hardwareSwitch, failed50);
+        if (hw != null) lines.add(hw);
+        return lines.isEmpty() ? null : String.join("\n", lines);
     }
 
     /** The tried count after {@code failedRow} failed: one more when it is the row tried now, as it was otherwise. */
@@ -316,11 +440,7 @@ public final class VivoNativeFullRes {
         final int mp = huge ? 200 : 50;
         if (profile.nativeBayer()) {
             // P194: the hardware-remosaic row is noted on its own (the own rows' trials stay); its 50 MP shots take the own mosaic
-            try {
-                com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit()
-                        .putInt(FAILED_TRIALS, ROW_TRIALS).putBoolean(FAILED + cameraId + HW_FAILED, true).apply();
-            } catch (RuntimeException ignored) {
-            }
+            noteHardware(prefs(), cameraId, why, stamp()); // P214h: with its reason, under this build's stamp
             com.particlesdevs.photoncamera.util.Log.w("VivoNativeFullRes", "camera " + cameraId + " hardware-remosaic row "
                     + profile.sensorMode + " failed (" + why + "); its own mosaic from now on");
             return com.particlesdevs.photoncamera.util.Lang.t("FULLRES 50 Мп: аппаратный ремозаик (режим " + profile.sensorMode
@@ -334,11 +454,7 @@ public final class VivoNativeFullRes {
         }
         final int[] rows = candidates(phone, cameraId, huge);
         final int tried = next(rows, failures(cameraId, big), profile.sensorMode);
-        try {
-            com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit()
-                    .putInt(FAILED_TRIALS, ROW_TRIALS).putInt(failureKey(cameraId, big), tried).apply();
-        } catch (RuntimeException ignored) {
-        }
+        noteRow(prefs(), phone, cameraId, big, tried, profile.sensorMode, why, stamp()); // P214h: with the row's reason, stamped
         final int nextRow = tried < rows.length ? rows[tried] : -1;
         com.particlesdevs.photoncamera.util.Log.w("VivoNativeFullRes", "camera " + cameraId + " " + mp + " MP row " + profile.sensorMode
                 + " failed (" + why + "); next " + (nextRow >= 0 ? "row " + nextRow : "none: this size is off"));

@@ -131,8 +131,9 @@ public final class MosaicBlockStore {
             if (context == null) return true;
             for (Object v : context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getAll().values())
                 if (v instanceof Integer && ((Integer) v == 2 || (Integer) v == 4)) return true;
+            // P214i: the X300 Ultra's modules by its list (main 10 / UW 21 Quad too)
             for (String slot : com.particlesdevs.photoncamera.settings.ModuleRegistry.slots())
-                if (declaredBlock(com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(slot)) > 1) return true;
+                if (com.particlesdevs.photoncamera.capture.VivoQcomIsz.declaredBlockOf(slot) > 1) return true;
             return false;
         } catch (RuntimeException e) {
             return true;

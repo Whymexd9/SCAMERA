@@ -230,6 +230,21 @@ public final class ZoomController {
         lastSwitch = android.os.SystemClock.elapsedRealtime();
     }
 
+    /**
+     * P214i: the active module's native ratio changed in its session (an X300 Ultra ISZ module whose frames proved a plain Bayer
+     * crops digitally from now on, or its mode ran after all): the residual crop follows, the zoom stays.
+     */
+    public static void refreshResidual() {
+        ensureInitialized();
+        try {
+            String active = ModuleRegistry.active();
+            residual = Math.max(1f, zoom / ModuleRegistry.nativeRatio(active));
+            Log.i(TAG, "residual of " + active + " at zoom " + zoom + ": " + residual + " (native ratio " + ModuleRegistry.nativeRatio(active) + ")");
+        } catch (RuntimeException notReady) {
+            // Settings not available yet.
+        }
+    }
+
     /** P72: a zoom preset button of {@code slot} (17 Ultra tele: 4.3x / 6.45x / 8.6x): the module with that zoom. */
     public static void onPreset(String slot, float z) {
         initialized = true;

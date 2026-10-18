@@ -214,6 +214,14 @@ struct HybridTuning {
     float hotMaxLevel=0.03f;     // outliers are tested only where the local level is below this share of white (darks: the dots)
     float hotMaxKey=30.f;        // ... and only in shots whose 6.1 SNR key is at most this (night): at ISO 100 the test found 2000
                                  // "outliers" per MP in dark texture, where the dots are not a problem
+    // P214k: plausibility cap of the fixed-pattern test, sites per MP of a strip's own rows (plain and native sites alike); 0 = no
+    // cap. A sensor's defects are few and spread evenly: the 12 MP night shots flag 95-134/MP, the 8 reference bursts up to
+    // 1248/MP; the X7 Ultra's 50 MP bursts (a phone on a table, ISO 1600) 11-25k/MP - the mean of 8 frames of a still burst keeps
+    // the scene's texture, and the header noise model of those frames is ~4x low in variance (f0 - f1 of the 191825 burst), so
+    // texture and noise peaks pass 5 sigma of that model. Above the cap a strip keeps only its strongest, most isolated sites up
+    // to the cap: the rank is the site's excess over the model noise AND the spread of its 8 same-colour neighbours (texture or
+    // the real noise there; sd from the frames themselves), so a defect in a flat dark area ranks first and a site in texture last.
+    float hotCap=2000.f;
     int bentoScam=1;              // Bento fallback checks: 1 = SCAM 9.6 (intensity error -> inpainting holes, us-clip share), 0 = round 4
     float bentoInvalid=0.9f;     // SCAM min_normalized_intensity_error_threshold (|min(GainUp(us) - base, 0)| over RGB)
     float bentoInpaintMiddle=0.98f,bentoInpaintMin=0.502f; // SCAM max_rgb_clipping_threshold, min_rgb_threshold_for_inpainting
@@ -575,7 +583,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
             ||set("cellClip",nullptr,&t.cellClip)||set("staticShift",&t.staticShift)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
-            ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("bentoScam",nullptr,&t.bentoScam)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
+            ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("hotCap",&t.hotCap)||set("bentoScam",nullptr,&t.bentoScam)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
             ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)
             ||set("s61TensorNoise",&t.s61TensorNoise)||set("s61GdNoise",&t.s61GdNoise)||set("s61MinMotion",&t.s61MinMotion)
             ||set("s61DayTensorNoise",&t.s61DayTensorNoise)||set("s61DayGdNoise",&t.s61DayGdNoise)||set("s61Mode",nullptr,&t.s61Mode)||set("s61MaxKey",&t.s61MaxKey)||set("hotMaxKey",&t.hotMaxKey)||set("subset",nullptr,&t.subset)||set("profile",nullptr,&t.profile)
@@ -832,7 +840,7 @@ vec3 sabreCov61Q(int f,float Y[9],float gd,float lum){
 static const char* kHybMean=R"(
 layout(std430,binding=1) writeonly buffer MeanBuf{float meanv[];}; // sites of rows [2 ry0 - 2, 2 ry1 + 2), canonical
 uniform int hotList[16];     // normal frames of the fixed-pattern mean (all hold the strip rows +-2)
-uniform ivec4 hotU;          // x = frames in hotList
+uniform ivec4 hotU;          // x = frames in hotList, y = words of the mean: the sites' temporal variance follows (P214k; 0 = none)
 uniform int ry0;
 uniform int ry1;
 void main(){
@@ -842,14 +850,22 @@ void main(){
     float s=0.0;
     for(int l=0;l<hotU.x&&l<16;l++)s+=sampleRawM(hotList[l],x,y);
     meanv[uint(r*size.x+x)]=s/float(max(hotU.x,1));
+    if(hotU.y>0){ // P214k: the site's own variance over the hot frames, the real noise of the cap rank (the header model can be off)
+        float m=s/float(max(hotU.x,1)),q=0.0;
+        for(int l=0;l<hotU.x&&l<16;l++){float d=sampleRawM(hotList[l],x,y)-m;q+=d*d;}
+        meanv[uint(hotU.y+r*size.x+x)]=q/float(max(hotU.x-1,1));
+    }
 }
 )";
 static const char* kHybFlags=R"(
 layout(std430,binding=9) buffer Sums{uint sums[];};
 layout(std430,binding=1) readonly buffer MeanBuf{float meanv[];};
-// one word per site of the strip rows [2 ry0, 2 ry1) (canonical): bit 0 fixed-pattern outlier, bit 1 base transient outlier
+// one word per site of the strip rows [2 ry0, 2 ry1) (canonical): bit 0 fixed-pattern outlier, bit 1 base transient outlier,
+// bits 8..15 the rank of a fixed-pattern site for the plausibility cap (P214k, with hotU.z)
 layout(std430,binding=2) writeonly buffer SiteFlags{uint sflags[];};
-uniform ivec4 hotU;          // x = frames in the mean (0: no fixed-pattern test), y = bit 0 fixed-pattern test, bit 1 base transient test
+uniform ivec4 hotU;          // x = frames in the mean (0: no fixed-pattern test), y = bit 0 fixed-pattern test, bit 1 base transient test,
+                             // z = first word of the cap block in Sums (P214k; 0 = no cap), w = first word of the temporal variance in
+                             // MeanBuf (P214k; 0 = none: the rank takes the model noise)
 uniform vec4 hotSigU;        // x = fixed-pattern threshold (sigma of the mean), y = base threshold (sigma of one frame), z = cross share,
                              // w = highest local level (of white) tested
 uniform int ry0;
@@ -859,6 +875,10 @@ uniform int cy1;
 float mAt(int x,int y){ // mean frame, canonical site (rows within the buffer by construction)
     if(x<0||x>=size.x)x=reflectCfa(x,size.x);
     return meanv[uint((y-2*ry0+2)*size.x+x)];
+}
+float vAt(int x,int y){ // P214k: the temporal variance after the mean (hotU.w = its first word; 0 reads the mean: in the buffer)
+    if(x<0||x>=size.x)x=reflectCfa(x,size.x);
+    return meanv[uint(hotU.w+(y-2*ry0+2)*size.x+x)];
 }
 #define CX(p,q) { float lo_=min(p,q); q=max(p,q); p=lo_; }
 float median8(float a0,float a1,float a2,float a3,float a4,float a5,float a6,float a7){ // 19-comparator sorting network
@@ -914,6 +934,10 @@ void main(){
             float sd=sqrt(max((baseNoise.x*max(e.y,0.0)+baseNoise.y)/float(hotU.x),1.0e-14))*1.15;
             float ex=abs(e.x),cr=e.z*sign(e.x);
             if(ex>hotSigU.x*sd&&cr<hotSigU.z*ex&&e.y<0.9)bits|=1u; // a stuck (white) site counts too: its neighbours stay dark
+            if((bits&1u)!=0u&&hotU.z>0){ // P214k: its rank for the plausibility cap (bits 8..15), against the noise measured around it
+                vec2 m=hotU.w>0?capMeasured(capRing(x,y,green,1),vAt(x,y),float(hotU.x),sd):vec2(sd,0.0);
+                bits|=capRank(p,green,ex,m.x,m.y)<<8u;
+            }
         }
     }
     if(baseTest){
@@ -928,9 +952,102 @@ void main(){
     if(bits!=0u&&(y>>1)>=cy0&&(y>>1)<cy1){
         if((bits&1u)!=0u)atomicAdd(sums[frameCount],1u);
         if((bits&2u)!=0u)atomicAdd(sums[frameCount+1],1u);
+        if((bits&1u)!=0u&&hotU.z>0)atomicAdd(sums[uint(hotU.z)+((bits>>8)&255u)],1u); // P214k: the strip's rank histogram
     }
 }
 )";
+
+// P214k: the plausibility cap of the fixed-pattern test (HybridTuning::hotCap). kHybFlagRank goes before kHybFlags and kHybNatFlags
+// (their 5x5 same-colour lattice p): the rank of a flagged site is its excess over the noise of the mean together with the spread
+// of the 8 same-colour neighbours of its median (6th - 2nd of the 8 sorted, ~1.7 sigma of flat noise):
+// z = ex / sqrt(sd^2 + (0.59 spread)^2), in bins of 1/16 octave (0..255 = z 1/16 .. 4096). sd: the noise measured around the
+// site (capRing: the temporal variance of the 8 same-colour sites around it over the hot frames, which kHybMean / kHybNatMean write
+// after the mean when the cap is on), not the header model (~4x low in variance on the X7U's 50 MP frames: a noise peak with a
+// small spread then outranked a hot pixel); a site whose own temporal variance is far above its ring's blinks (RTS) and ranks
+// high (capRank). A defect in a flat dark area keeps z ~ ex / (1.4 sd); a site in texture has the texture's spread in the
+// denominator. The 185248 replay (50 MP, every strip over the cap): hot-pixel-like dots the cap let through, 31 ranked against
+// the model noise, 16 against the measured noise, 11 with the blink rule too - warm pixels of ~5 DN10 inside ~2 DN10 texture, which
+// rank as texture (z ~2 against the strips' cut ~2.6).
+// The flag programs add every flagged site of the strip's own rows to a 256-bin histogram (Sums, hotU.z = its first word; 0 = no
+// cap); kHybFlagCap (one invocation) turns it into the lowest rank kept within the strip's allowance and clears it for the next
+// strip; kHybFlagPrune clears bit 0 of the sites ranked below. A strip within its allowance keeps every flag (rank 0 kept).
+static const char* kHybFlagRank=R"(
+#define RX(p,q) { float lo_=min(p,q); q=max(p,q); p=lo_; }
+float rankSpread8(float a0,float a1,float a2,float a3,float a4,float a5,float a6,float a7){ // median8's network: all 8 sorted
+    RX(a0,a2)RX(a1,a3)RX(a4,a6)RX(a5,a7) RX(a0,a4)RX(a1,a5)RX(a2,a6)RX(a3,a7) RX(a0,a1)RX(a2,a3)RX(a4,a5)RX(a6,a7)
+    RX(a2,a4)RX(a3,a5) RX(a1,a4)RX(a3,a6) RX(a1,a2)RX(a3,a4)RX(a5,a6)
+    return a6-a1;
+}
+float vAt(int x,int y); // the temporal variance of a site of the mean (each flag program; hotU.w = its first word)
+// the summed temporal variances of the 8 same-colour sites of the median's ring (step b): the real noise around a flagged site,
+// 56 degrees of freedom at 8 frames (~10 % on sigma). Not the site's own: a blinking (RTS) defect varies several times the noise
+// from frame to frame (a Quad block of the 185248 burst: 53..87 DN10 over 17 frames, the ring 2 DN10).
+float capRing(int x,int y,bool green,int b){
+    return green?vAt(x-b,y-b)+vAt(x+b,y-b)+vAt(x-b,y+b)+vAt(x+b,y+b)+vAt(x-2*b,y)+vAt(x+2*b,y)+vAt(x,y-2*b)+vAt(x,y+2*b)
+                :vAt(x-2*b,y)+vAt(x+2*b,y)+vAt(x,y-2*b)+vAt(x,y+2*b)+vAt(x-2*b,y-2*b)+vAt(x+2*b,y-2*b)+vAt(x-2*b,y+2*b)+vAt(x+2*b,y+2*b);
+}
+#define R5(dx,dy) p[((dy)+2)*5+(dx)+2]
+// blink: the site's own temporal variance over its ring's mean (0 = not measured). From 4 (2x sigma; the noise of 8 frames reaches it
+// with p ~ 2e-4, independent of the mean that flagged the site) the site blinks: an RTS defect whatever its mean did in the hot
+// frames, ranked at least 2 x that sigma ratio. Blinking Quad blocks of the 185248 burst (all four sites 4..8 DN10 up on average,
+// 53..87 DN10 from frame to frame, the ring's sigma 2 DN10): one site had a mean excess of 3.4 DN10 in the 8 hot frames beside a 1.5
+// DN10 ring spread (z 1.9, below its strip's cut 2.6) and a variance 16x its ring's, another 3.0 DN10 and 5.3x: the cap let them
+// through as 6-7 DN10 dots. 104 sites/MP of that strip vary 2.5x their ring's sigma (pure noise: 0.2/MP).
+uint capRank(float p[25],bool green,float ex,float sd,float blink){ // the same-colour ring of siteExcess's median
+    float s=0.59*(green?rankSpread8(R5(-1,-1),R5(1,-1),R5(-1,1),R5(1,1),R5(-2,0),R5(2,0),R5(0,-2),R5(0,2))
+                       :rankSpread8(R5(-2,0),R5(2,0),R5(0,-2),R5(0,2),R5(-2,-2),R5(2,-2),R5(-2,2),R5(2,2)));
+    float z=ex/sqrt(max(sd*sd+s*s,1.0e-20));
+    if(blink>=4.0)z=max(z,2.0*sqrt(blink));
+    return uint(clamp(floor((log2(max(z,1.0e-6))+4.0)*16.0),0.0,255.0));
+}
+// sd and blink of a flagged site from the temporal variances (vr = capRing, v = the site's own, n frames; model = the test's sd: a
+// floor of a quarter of its variance under the ring, so that identical or quantised frames do not make every site blink)
+vec2 capMeasured(float vr,float v,float n,float model){
+    float ring=max(vr*0.125,0.25*n*(model*model)/(1.15*1.15));
+    return vec2(sqrt(max(ring/n,1.0e-14))*1.15,v/ring);
+}
+)";
+// Words of one cap block in Sums: 256 histogram bins, then the lowest rank kept, strips capped, sites cleared (kHybridCapWords).
+static const char* kHybFlagCap=R"(#version 310 es
+precision highp float;
+precision highp int;
+layout(local_size_x=1) in;
+layout(std430,binding=9) buffer Sums{uint sums[];};
+uniform ivec2 capU;          // x = first word of the cap block, y = flagged sites the strip's own rows may keep
+void main(){
+    uint h=uint(capU.x),allowed=uint(max(capU.y,0)),total=0u,t=0u;
+    for(uint q=0u;q<256u;q++)total+=sums[h+q];
+    if(total>allowed){
+        // the lowest rank whose sites and every stronger one fit the allowance; the top bin stays even when it alone is over
+        // (z >= 4096: a defect by any measure)
+        uint kept=0u;t=255u;
+        for(int q=255;q>=0;q--){kept+=sums[h+uint(q)];if(kept>allowed){t=min(uint(q)+1u,255u);break;}}
+        sums[h+257u]+=1u;
+    }
+    sums[h+256u]=t;
+    for(uint q=0u;q<256u;q++)sums[h+q]=0u;
+}
+)";
+static const char* kHybFlagPrune=R"(#version 310 es
+precision highp float;
+precision highp int;
+layout(local_size_x=8,local_size_y=8) in;
+layout(std430,binding=9) buffer Sums{uint sums[];};
+layout(std430,binding=2) buffer SiteFlags{uint sflags[];};
+uniform ivec4 pruneU;        // x = sites per flag row, y = flag rows of the strip, z / w = its own rows [z, w) (the cleared count)
+uniform int capBase;         // first word of the cap block (kHybFlagCap)
+uniform int chunkU;
+void main(){
+    uint t=sums[uint(capBase)+256u];
+    int x=int(gl_GlobalInvocationID.x),r=chunkU+int(gl_GlobalInvocationID.y);
+    if(t==0u||x>=pruneU.x||r>=pruneU.y)return;
+    uint i=uint(r*pruneU.x+x),s=sflags[i];
+    if((s&1u)==0u||((s>>8)&255u)>=t)return;
+    sflags[i]=s&~1u;
+    if(r>=pruneU.z&&r<pruneU.w)atomicAdd(sums[uint(capBase)+258u],1u);
+}
+)";
+constexpr size_t kHybridCapWords=260;
 
 // Marks the uploaded RAW words of every frame of the strip (one invocation per word = two sites of a row): bit 14 = outlier site
 // (fixed-pattern sites of the strip rows in every frame, transient ones in the base), bit 15 = the site's 2x2 cell (canonical) is
@@ -1888,7 +2005,7 @@ vec3 natClamp(vec3 P){
 static const char* kHybNatMean=R"(
 layout(std430,binding=1) writeonly buffer MeanBuf{float meanv[];}; // native canonical rows [natRows.x - 2b, natRows.y + 2b)
 uniform int hotList[16];
-uniform ivec4 hotU;          // x = frames in hotList
+uniform ivec4 hotU;          // x = frames in hotList, y = words of the mean: the sites' temporal variance follows (P214k; 0 = none)
 uniform ivec2 natRows;       // native canonical rows of the strip's site flags
 void main(){
     int b=natU.x;
@@ -1898,15 +2015,23 @@ void main(){
     float s=0.0;
     for(int l=0;l<hotU.x&&l<16;l++){uint fl;s+=natSite(hotList[l],x,y,fl);}
     meanv[uint(r*natU.y+x)]=s/float(max(hotU.x,1));
+    if(hotU.y>0){ // P214k: the site's own variance over the hot frames (kHybMean)
+        float m=s/float(max(hotU.x,1)),q=0.0;
+        for(int l=0;l<hotU.x&&l<16;l++){uint fl;float d=natSite(hotList[l],x,y,fl)-m;q+=d*d;}
+        meanv[uint(hotU.y+r*natU.y+x)]=q/float(max(hotU.x-1,1));
+    }
 }
 )";
 // kHybNatFlags: one word per native canonical site of the flag rows: bit 0 fixed-pattern outlier (mean of the hot frames), bit 1
-// transient outlier of the base. siteExcess / median8 as kHybFlags, the 5x5 lattice in steps of b px; noise of one native site.
+// transient outlier of the base, bits 8..15 the cap rank (P214k). siteExcess / median8 as kHybFlags, the 5x5 lattice in steps of
+// b px; noise of one native site.
 static const char* kHybNatFlags=R"(
 layout(std430,binding=9) buffer Sums{uint sums[];};
 layout(std430,binding=1) readonly buffer MeanBuf{float meanv[];};
 layout(std430,binding=2) writeonly buffer SiteFlags{uint sflags[];}; // native canonical rows [natRows.x, natRows.y)
-uniform ivec4 hotU;          // x = frames in the mean (0: no fixed-pattern test), y = bit 0 fixed-pattern test, bit 1 base transient test
+uniform ivec4 hotU;          // x = frames in the mean (0: no fixed-pattern test), y = bit 0 fixed-pattern test, bit 1 base transient test,
+                             // z = first word of the native cap block in Sums (P214k; 0 = no cap), w = first word of the temporal
+                             // variance in MeanBuf (P214k; 0 = none)
 uniform vec4 hotSigU;        // as kHybFlags
 uniform ivec2 natRows;
 uniform ivec2 natCount;      // native canonical rows counted for the report (the strip's own rows)
@@ -1914,6 +2039,10 @@ uniform vec2 natNoise;       // slope, offset of one native site of the base (no
 float mAt(int x,int y){
     if(x<0||x>=natU.y)x=natReflect(x,natU.y);
     return meanv[uint((y-natRows.x+2*natU.x)*natU.y+x)];
+}
+float vAt(int x,int y){ // P214k: the temporal variance after the mean (as kHybFlags)
+    if(x<0||x>=natU.y)x=natReflect(x,natU.y);
+    return meanv[uint(hotU.w+(y-natRows.x+2*natU.x)*natU.y+x)];
 }
 #define CX(p,q) { float lo_=min(p,q); q=max(p,q); p=lo_; }
 float median8(float a0,float a1,float a2,float a3,float a4,float a5,float a6,float a7){
@@ -1954,6 +2083,10 @@ void main(){
             float sd=sqrt(max((natNoise.x*max(e.y,0.0)+natNoise.y)/float(hotU.x),1.0e-14))*1.15;
             float ex=abs(e.x),cr=e.z*sign(e.x);
             if(ex>hotSigU.x*sd&&cr<hotSigU.z*ex&&e.y<0.9)bits|=1u;
+            if((bits&1u)!=0u&&hotU.z>0){ // P214k: the cap rank (kHybFlags)
+                vec2 m=hotU.w>0?capMeasured(capRing(x,y,green,b),vAt(x,y),float(hotU.x),sd):vec2(sd,0.0);
+                bits|=capRank(p,green,ex,m.x,m.y)<<8u;
+            }
         }
     }
     if((hotU.y&2)!=0){
@@ -1968,6 +2101,7 @@ void main(){
     if(bits!=0u&&y>=natCount.x&&y<natCount.y){
         if((bits&1u)!=0u)atomicAdd(sums[natV.z],1u);
         if((bits&2u)!=0u)atomicAdd(sums[natV.z+1],1u);
+        if((bits&1u)!=0u&&hotU.z>0)atomicAdd(sums[uint(hotU.z)+((bits>>8)&255u)],1u); // P214k: the strip's rank histogram
     }
 }
 )";
@@ -2852,6 +2986,8 @@ class HybridGpu {
     // P29 native mosaic (compiled only by HybridGpu(.., nativeMosaic = true)): outlier mean / flags / mark of the native sites and
     // the merge kHybMergeMosaic; the NatTable uniform buffers (binding 1) of the two strip banks
     GLuint natMeanProgram=0,natFlagsProgram=0,natMarkProgram=0,mosaicProgram=0,natTable[2]{};
+    // P214k: the plausibility cap of the fixed-pattern test (kHybFlagCap / kHybFlagPrune; compiled with the outlier programs)
+    GLuint capProgram=0,pruneProgram=0;
     // P34: the fast native merge (kHybNatNorm + kHybMergeMosaicFast [block Quad / Tetra][window r][marked][fill], compiled when
     // first used) and the normalised 2x2 cells of the strip (binding 18, outside the slots: written and read on the GPU only, one bank)
     GLuint natNormProgram=0,natFast[2][9][2][2]{},natNormBuf=0;
@@ -2914,6 +3050,7 @@ class HybridGpu {
         if(context!=EGL_NO_CONTEXT&&eglMakeCurrent(display,surface,surface,context)){
             for(GLuint program:{meanProgram,flagsProgram,markProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram,rimProgram,bentoProgram,chromaProgram})if(program)glDeleteProgram(program);
             for(GLuint program:{natMeanProgram,natFlagsProgram,natMarkProgram,mosaicProgram,natNormProgram})if(program)glDeleteProgram(program); // P29
+            for(GLuint program:{capProgram,pruneProgram})if(program)glDeleteProgram(program); // P214k
             for(auto& byBlock:natFast)for(auto& byR:byBlock)for(auto& byMark:byR)for(GLuint program:byMark)if(program)glDeleteProgram(program); // P34
             for(auto& byBlock:natFastFill)for(auto& byR:byBlock)for(GLuint program:byR)if(program)glDeleteProgram(program); // P204
             if(natTable[0]||natTable[1])glDeleteBuffers(2,natTable);
@@ -3148,6 +3285,9 @@ public:
         bool large=false;
     };
     long fixedOutliers=0,baseOutliers=0;                // sites flagged by the last merge
+    // P214k: the plausibility cap of the last merge (0 / 0 without it): fixed-pattern sites it cleared and strips over the cap
+    // (plain and native sites), the strips of the merge and the cap it ran with (sites per MP, 0 = off)
+    long fixedCapped=0,natFixedCapped=0;int capStrips=0,natCapStrips=0,stripCount=0;float capPerMP=0.f;
     long natFixedOutliers=0,natBaseOutliers=0;          // P29: native sites flagged by the last native mosaic merge
     long rimPixels=0;                                   // output pixels whose R/B the clip-border ratios rebuilt
     // rimPass: compile the clip-border colour pass (kHybRim, ~0.14 s on Adreno 750); without it merge() runs as before the pass.
@@ -3203,7 +3343,9 @@ public:
             };
             if(outlierPrograms){
                 meanProgram=timed("mean",kHybMean);
-                flagsProgram=timed("flags",kHybFlags);
+                flagsProgram=timed("flags",(std::string(kHybFlagRank)+kHybFlags).c_str()); // P214k: the cap rank before the body
+                capProgram=timed("cap",kHybFlagCap,true);
+                pruneProgram=timed("prune",kHybFlagPrune,true);
             } else if(early)early("HYBRID GPU: outlier tests off, mean / flags programs not compiled");
             markProgram=timed("mark",kHybMark,true);
             guideProgram=timed("guide",kHybGuide);
@@ -3231,7 +3373,7 @@ public:
             if(chromaPass){const std::string body=std::string("#define RIM_STATS 1\n#define CHROMA_PASS 1\n")+kHybMergeCommon+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
             if(nativeMosaic){ // P29: new programs only, the ones above are compiled from the same sources as without it
                 natMeanProgram=timed("natMean",(std::string(kHybNatAccess)+kHybNatMean).c_str());
-                natFlagsProgram=timed("natFlags",(std::string(kHybNatAccess)+kHybNatFlags).c_str());
+                natFlagsProgram=timed("natFlags",(std::string(kHybNatAccess)+kHybFlagRank+kHybNatFlags).c_str());
                 natMarkProgram=timed("natMark",kHybNatMark,true);
                 natNormProgram=timed("natNorm",(std::string(kHybNatAccess)+kHybNatNorm).c_str());
                 // the merge programs when merge() knows the window: kHybMergeMosaicFast (natFastProgram) or kHybMergeMosaic
@@ -3518,6 +3660,8 @@ public:
             else{std::vector<float> z(zn,0.f);reserve(17,zn*4);put(17,0,z.data(),zn*4);}
         } else if(in.laMode!=0)throw std::runtime_error("HYBRID GPU compiled without local alignment");
         const bool hot=!in.hotList.empty()&&(tune.hotSigma>0||tune.hotBaseSigma>0)&&flagsProgram;
+        // P214k: the plausibility cap of the fixed-pattern test (tune.hotCap sites per MP of a strip's own rows; kHybFlagRank)
+        const bool capOn=hot&&tune.hotSigma>0&&tune.hotCap>0.f&&capProgram&&pruneProgram;
         // Site flags ride in the two spare top bits of the uploaded words: needs white < 16384 (RAW10/12/14) and no word above
         // 16383 (checked below with the clip scan: a white level below the codes the sensor really sends would turn bits 14/15 of
         // those codes into flags).
@@ -3635,7 +3779,10 @@ public:
             glUseProgram(mergeProgram);
             check("native uniforms");
         }
-        std::vector<GLuint> zeros(natSum0+(nat?2:0),0);
+        // P214k: the two cap blocks (plain sites, native sites; kHybridCapWords each) after the native counters; without the cap
+        // Sums is as before
+        const size_t capSum0=natSum0+2;
+        std::vector<GLuint> zeros(capOn?capSum0+2*kHybridCapWords:natSum0+(nat?2:0),0);
         reserve(9,zeros.size()*4);put(9,0,zeros.data(),zeros.size()*4);
         reserve(12,16); // mosaic frames: unused
         int stripCells=128/(g*g); // 256 output rows per dispatch on the sensor grid; on the 2x grid the strip
@@ -3664,6 +3811,21 @@ public:
             gpuBudget=std::max(avail/4,std::min(avail/2,uint64_t(512)<<20));
         }
         auto chunkOf=[&](int chunk){return large?std::min(chunk,std::max(8,int(int64_t(chunk)*4624/std::max(w,1))&~7)):chunk;};
+        // P214k: the cap of one strip's fixed-pattern flags (slot 2, flagRows rows of `width` sites; the strip's own rows [own0, own1)
+        // are the ones counted): kHybFlagCap turns the strip's rank histogram into the lowest rank kept within hotCap sites per MP of
+        // its own rows, kHybFlagPrune clears bit 0 of the sites ranked below it (nothing when the strip is within the cap)
+        auto capStrip=[&](size_t block,int width,int flagRows,int own0,int own1,int chunk){
+            const double allowed=std::floor(double(tune.hotCap)*double(width)*double(std::max(own1-own0,0))/1e6);
+            glUseProgram(capProgram);
+            glUniform2i(loc(capProgram,"capU"),int(block),int(std::min(allowed,2.0e9)));
+            glDispatchCompute(1,1,1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            glUseProgram(pruneProgram);
+            glUniform4i(loc(pruneProgram,"pruneU"),width,flagRows,own0,own1);
+            glUniform1i(loc(pruneProgram,"capBase"),int(block));
+            dispatchRows(pruneProgram,width,flagRows,1,chunk,0);
+            check("outlier cap");
+        };
         if(large&&trace)trace("HYBRID GPU: large frame "+std::to_string(w)+"x"+std::to_string(h)+" grid "+std::to_string(g)+": strips of "
             +std::to_string(stripCells)+" cells (readback "+hybridMB(uint64_t(2)*stripCells*g*ow*12)+" MB), dispatch rows x"+std::to_string(chunkOf(64))
             +"/64, storage block "+hybridMB(blockLimit)+" MB, strip memory budget "+(gpuBudget?hybridMB(gpuBudget)+" MB":std::string("unknown")));
@@ -3798,6 +3960,8 @@ public:
             const int ry0=std::max(0,cy0-3),ry1=std::min(h2,cy1+3),rows2=2*(cy1-cy0)*g;
             s.fill(0);
             s[0]=total*2;
+            // P214k: with the outlier cap slot 1 holds the temporal variance too (twice this: a few MB a strip, far below any storage
+            // block); left out here so that a shot's strips stay exactly as before
             s[1]=(size_t(ry1-ry0)*2+4)*w*4;
             s[2]=size_t(ry1-ry0)*w*2*4;
             s[3]=size_t(rows2)*ow*3*4;
@@ -3902,7 +4066,7 @@ public:
             if(la)reserve(16,size_t(donors)*(cy1-cy0)*w2*4);
             reserve(9,zeros.size()*4);
             reserve(2,size_t(ry1-ry0)*w*2*4);           // site flags of the strip rows
-            reserve(1,(size_t(ry1-ry0)*2+4)*w*4);       // fixed-pattern mean (rows +-2)
+            reserve(1,(size_t(ry1-ry0)*2+4)*w*4*(capOn?2:1)); // fixed-pattern mean (rows +-2); P214k: then the sites' temporal variance
             // Bento mask rows of this strip (per cell).
             const size_t planeSize=size_t(cy1-cy0)*w2;
             maskStrip.assign(planeSize*(1+in.maskValid.size()),0.f);
@@ -3923,14 +4087,16 @@ public:
                     const int cfaY=in.cfa>>1;
                     for(int f:in.hotList)if(row0[f]<=std::max(0,2*ry0-2+cfaY)&&row0[f]+rows[f]>=std::min(h,2*ry1+2+cfaY))list.push_back(f);
                     const int nh=std::min<int>(16,int(list.size()));
+                    const int meanWords=(2*(ry1-ry0)+4)*w; // P214k: the temporal variance after the mean (cap rank)
                     glUseProgram(meanProgram);
                     if(nh>0)glUniform1iv(loc(meanProgram,"hotList"),nh,list.data());
-                    glUniform4i(loc(meanProgram,"hotU"),nh,0,0,0);
+                    glUniform4i(loc(meanProgram,"hotU"),nh,capOn?meanWords:0,0,0);
                     glUniform1i(loc(meanProgram,"ry0"),ry0);glUniform1i(loc(meanProgram,"ry1"),ry1);
                     dispatchRows(meanProgram,w,2*(ry1-ry0)+4,1,chunkOf(512),0);
                     glUseProgram(flagsProgram);
-                    glUniform4i(loc(flagsProgram,"hotU"),nh,(tune.hotSigma>0?1:0)|(tune.hotBaseSigma>0?2:0),0,0);
+                    glUniform4i(loc(flagsProgram,"hotU"),nh,(tune.hotSigma>0?1:0)|(tune.hotBaseSigma>0?2:0),capOn?int(capSum0):0,capOn?meanWords:0);
                     dispatchRows(flagsProgram,w,2*(ry1-ry0),1,chunkOf(128),0);
+                    if(capOn)capStrip(capSum0,w,2*(ry1-ry0),2*(cy0-ry0),2*(cy1-ry0),chunkOf(128)); // P214k
                 } // without outlier tests the mark pass does not read the site flags
                 check("flags");
                 // write the flags into the RAW words of every frame (after kHybFlags, which reads the plain values)
@@ -3992,21 +4158,23 @@ public:
                 auto natChunkOf=[&](int c){return std::min(c,std::max(8,int(int64_t(c)*4624/std::max(NW,1))&~7));};
                 reserve(2,std::max<size_t>(size_t(fr1-fr0)*NW,1)*4);
                 if(hot){
-                    reserve(1,(size_t(fr1-fr0)+size_t(4*nb))*NW*4);
+                    reserve(1,(size_t(fr1-fr0)+size_t(4*nb))*NW*4*(capOn?2:1)); // P214k: then the temporal variance
+                    const int meanWords=(fr1-fr0+4*nb)*NW;
                     std::vector<GLint> list;
                     const int cfaY=(in.cfa>>1)*nb;
                     for(int f:in.hotList)if(natRow0[f]<=std::max(0,fr0-2*nb+cfaY)&&natRow0[f]+natRows[f]>=std::min(NH,fr1+2*nb+cfaY))list.push_back(f);
                     const int nh=std::min<int>(16,int(list.size()));
                     glUseProgram(natMeanProgram);
                     if(nh>0)glUniform1iv(loc(natMeanProgram,"hotList"),nh,list.data());
-                    glUniform4i(loc(natMeanProgram,"hotU"),nh,0,0,0);
+                    glUniform4i(loc(natMeanProgram,"hotU"),nh,capOn?meanWords:0,0,0);
                     glUniform2i(loc(natMeanProgram,"natRows"),fr0,fr1);
                     dispatchRows(natMeanProgram,NW,fr1-fr0+4*nb,1,natChunkOf(512),0);
                     glUseProgram(natFlagsProgram);
-                    glUniform4i(loc(natFlagsProgram,"hotU"),nh,(tune.hotSigma>0?1:0)|(tune.hotBaseSigma>0?2:0),0,0);
+                    glUniform4i(loc(natFlagsProgram,"hotU"),nh,(tune.hotSigma>0?1:0)|(tune.hotBaseSigma>0?2:0),capOn?int(capSum0+kHybridCapWords):0,capOn?meanWords:0);
                     glUniform2i(loc(natFlagsProgram,"natRows"),fr0,fr1);
                     glUniform2i(loc(natFlagsProgram,"natCount"),2*cy0*nb,2*cy1*nb);
                     dispatchRows(natFlagsProgram,NW,fr1-fr0,1,natChunkOf(128),0);
+                    if(capOn)capStrip(capSum0+kHybridCapWords,NW,fr1-fr0,std::max(0,2*cy0*nb-fr0),std::max(0,std::min(fr1,2*cy1*nb)-fr0),natChunkOf(128)); // P214k
                 }
                 check("native flags");
                 glUseProgram(natMarkProgram);
@@ -4138,6 +4306,11 @@ public:
         else for(int f=1;f<frames;++f)robustShare[f]=double(sums[f])/(255.0*double(w2)*h2);
         fixedOutliers=long(sums[size_t(frames)]);baseOutliers=long(sums[size_t(frames)+1]);rimPixels=long(sums[size_t(frames)+2]);
         if(nat){natFixedOutliers=long(sums[natSum0]);natBaseOutliers=long(sums[natSum0+1]);}
+        fixedCapped=natFixedCapped=0;capStrips=natCapStrips=0;stripCount=stripIndex;capPerMP=capOn?tune.hotCap:0.f; // P214k
+        if(capOn){
+            fixedCapped=long(sums[capSum0+258]);capStrips=int(sums[capSum0+257]);
+            if(nat){natFixedCapped=long(sums[capSum0+kHybridCapWords+258]);natCapStrips=int(sums[capSum0+kHybridCapWords+257]);}
+        }
     }
 };
 
@@ -6691,6 +6864,18 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             std::snprintf(line,sizeof(line),"HYBRID MOSAIC NATIVE OUTLIERS: fixed-pattern sites=%ld (%.1f/MP) base transient=%ld (%.1f/MP)",
                 gpu.natFixedOutliers,gpu.natFixedOutliers/nmp,gpu.natBaseOutliers,gpu.natBaseOutliers/nmp);
             report(line);
+        }
+        if(outliers&&gpu.capPerMP>0.f){ // P214k: the counts above are before the cap; the merge skipped the sites left after it
+            char cl[320];
+            const long kept=gpu.fixedOutliers-gpu.fixedCapped;
+            int n=std::snprintf(cl,sizeof(cl),"HYBRID OUTLIER CAP: %.0f fixed-pattern sites/MP per strip: %d of %d strips over it, sites %ld -> %ld (%.1f/MP)",
+                gpu.capPerMP,gpu.capStrips,gpu.stripCount,gpu.fixedOutliers,kept,kept/mp);
+            if(native&&n>0&&n<int(sizeof(cl))){
+                const double nmp=double(native->W)*native->H/1e6;const long nk=gpu.natFixedOutliers-gpu.natFixedCapped;
+                std::snprintf(cl+n,sizeof(cl)-size_t(n),"; native %d of %d strips, sites %ld -> %ld (%.1f/MP)",gpu.natCapStrips,gpu.stripCount,
+                    gpu.natFixedOutliers,nk,nk/nmp);
+            }
+            report(cl);
         }
         if(tune.rimRatio)std::snprintf(line,sizeof(line),"HYBRID RIM: clip-border colour from real-site ratios, pixels=%ld (%.2f %% of the output) sigma=%.2f ramp=%.3f..%.3f stride=%d",
             gpu.rimPixels,100.0*double(gpu.rimPixels)/(double(outW)*outH),tune.rimSigma,tune.rimLo,tune.rimHi,tune.rimStride);

@@ -25,10 +25,18 @@ import com.particlesdevs.photoncamera.util.Log;
  * P179 (owner, 2026-10-16: «сделай отдельную кнопку на телевике для 50мп и для 200мп. По иконке 200мп должно быть понятно что
  * это выше разрешение»): on the X200 Ultra's telephoto (native build) the button is 50 MP and a second one floats above it,
  * 200 MP, its icon the same frame with twice as fine a grid; one of them or none is on.
+ * <p>
+ * P214h (speed-ux C2; P210: «all own rows fail, the size goes off, the button hides»): a camera (or a size of two) whose
+ * sensor-mode rows all failed keeps its button, dimmed; a tap on it - a long press on any - shows what the trials remember
+ * (FullResTrials.status: the rows, why each failed, the camera's own remosaic row) with «Попробовать снова», which forgets
+ * the camera's trials and turns that size on. While a FULLRES merge runs (200 MP; 50 MP since P200) the switch names the
+ * size being merged.
  */
 final class FullResButton {
     private static final String TAG = "FullResButton";
     private static final int GAP_DP = 8;
+    /** P214h: a button whose size has no row left (every one failed). */
+    private static final float DEAD_ALPHA = 0.4f;
 
     private FullResButton() {}
 
@@ -51,12 +59,17 @@ final class FullResButton {
             button = null;
         }
         if (button == null) button = create(fragment, c);
+        final String camera = camera();
         // P192: an OPPO camera's sensor-mode table, from the characteristics the app read
-        com.particlesdevs.photoncamera.capture.OppoNativeFullRes.learn(
-                com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID, characteristics);
-        boolean here = PixelPro10.fullResAvailable(characteristics)
-                || com.particlesdevs.photoncamera.capture.VivoSdkFullRes.offered(
-                        com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID);
+        com.particlesdevs.photoncamera.capture.OppoNativeFullRes.learn(camera, characteristics);
+        boolean offered = PixelPro10.fullResAvailable(characteristics)
+                || com.particlesdevs.photoncamera.capture.VivoSdkFullRes.offered(camera);
+        // P214h (P210: «all own rows fail, the size goes off, the button hides»): a camera whose rows all failed keeps its
+        // button, dimmed - a tap says why and offers «Попробовать снова» (FullResTrials)
+        boolean off = !offered && com.particlesdevs.photoncamera.capture.VivoSdkFullRes.exhausted(camera);
+        boolean here = offered || off;
+        String trials = com.particlesdevs.photoncamera.capture.FullResTrials.dump(camera);
+        if (!trials.isEmpty()) Log.i(TAG, "camera " + camera + " FULLRES " + (off ? "off by its trials: " : "trials: ") + trials);
         View dcg = slot.findViewById(R.id.dcg14_button);
         boolean overDcg = dcg != null && dcg.getVisibility() == View.VISIBLE;
         ViewGroup wanted = overDcg ? root : slot;
@@ -75,11 +88,12 @@ final class FullResButton {
             }
         }
         button.setTag(R.id.full_res_button, here);
-        // P181: the FULLRES profiles of this camera's modules (the Pixel's FULLRES is known from its characteristics only)
-        com.particlesdevs.photoncamera.settings.FullResProfiles.remember(com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID, here);
+        // P181: the FULLRES profiles of this camera's modules (the Pixel's FULLRES is known from its characteristics only);
+        // P214h: only a camera whose FULLRES runs (a dimmed button has no profile to keep)
+        com.particlesdevs.photoncamera.settings.FullResProfiles.remember(camera, offered);
         if (!overDcg) button.setVisibility(here ? View.VISIBLE : View.GONE);
-        boolean two = here && com.particlesdevs.photoncamera.capture.VivoSdkFullRes.teleSizes(
-                com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID);
+        // P214h: both sizes' buttons whatever their trials (a size whose rows all failed stays, dimmed)
+        boolean two = here && com.particlesdevs.photoncamera.capture.VivoSdkFullRes.teleButtons(camera);
         bind200(fragment, root, slot, c, size, two);
         restyle(root);
         panel.refreshEndSlot();
@@ -101,6 +115,7 @@ final class FullResButton {
             button.setScaleType(ImageButton.ScaleType.FIT_CENTER);
             button.setImageResource(R.drawable.manual_ic_fullres_200);
             button.setOnClickListener(v -> toggle(fragment, (ImageButton) v, true));
+            button.setOnLongClickListener(v -> explain(fragment, (ImageButton) v, true)); // P214h
             root.addView(button, new ViewGroup.LayoutParams(size, size));
             follow(button, slot, root, size, ShadeStyle.dp(c, GAP_DP), R.id.full_res_200_button, 1);
         }
@@ -152,7 +167,68 @@ final class FullResButton {
         button.setScaleType(ImageButton.ScaleType.FIT_CENTER);
         button.setImageResource(R.drawable.manual_ic_fullres);
         button.setOnClickListener(v -> toggle(fragment, (ImageButton) v));
+        // P214h: a long press says what the camera's trials remember (the tooltip when nothing)
+        button.setOnLongClickListener(v -> explain(fragment, (ImageButton) v, false));
         return button;
+    }
+
+    private static String camera() {
+        return com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID;
+    }
+
+    /** P214h: the size's button is dimmed - every row of that size ({@code tele200}: 200 MP of two buttons) or of the camera failed. */
+    private static boolean dead(String camera, boolean two, boolean tele200) {
+        return two ? com.particlesdevs.photoncamera.capture.VivoSdkFullRes.sizeExhausted(camera, tele200)
+                : com.particlesdevs.photoncamera.capture.VivoSdkFullRes.exhausted(camera);
+    }
+
+    /**
+     * P214h: the size that lights among two buttons while FULLRES is on - the chosen one, or the other when the chosen has no row
+     * left (VivoNativeFullRes.profile gives way to the camera's other size); none when both have none.
+     */
+    static boolean lights200(boolean chosen200, boolean dead50, boolean dead200) {
+        if (dead200) return false;
+        return dead50 || chosen200;
+    }
+
+    /**
+     * P214h (speed-ux C2): why the camera's FULLRES or this size is off - the rows tried and why each failed, the camera's own
+     * remosaic row and «FULLRES: аппаратный ремозаик» (FullResTrials.status) - with «Попробовать снова», which forgets the
+     * camera's trials and turns FULLRES on with that size (a size still running: the camera restarts at its first row). A tap
+     * on a dimmed button, or a long press on any; false (the tooltip) for a long press with nothing remembered.
+     */
+    private static boolean explain(CameraFragment fragment, ImageButton button, boolean tele200) {
+        final Context c = fragment.getContext();
+        if (c == null) return false;
+        final String camera = camera();
+        final boolean dead = dead(camera, com.particlesdevs.photoncamera.capture.VivoSdkFullRes.teleButtons(camera), tele200);
+        String status = com.particlesdevs.photoncamera.capture.FullResTrials.status(camera);
+        if (status == null && !dead) return false;
+        if (status == null) status = com.particlesdevs.photoncamera.util.Lang.t(c, "FULLRES недоступен на этой камере", "FULLRES is not available on this camera");
+        Log.i(TAG, "camera " + camera + " FULLRES trials shown" + (dead ? " (off)" : ""));
+        new androidx.appcompat.app.AlertDialog.Builder(c)
+                .setTitle(dead ? com.particlesdevs.photoncamera.util.Lang.t(c, "FULLRES выключен", "FULLRES is off")
+                        : com.particlesdevs.photoncamera.util.Lang.t(c, "FULLRES: пробы режимов", "FULLRES: mode trials"))
+                .setMessage(status + "\n\n" + com.particlesdevs.photoncamera.util.Lang.t(c,
+                        "«Попробовать снова» забывает эти пробы: режимы этой камеры проверяются заново с первого.",
+                        "“Try again” forgets these trials: this camera's modes are tried again from the first."))
+                .setNegativeButton(com.particlesdevs.photoncamera.util.Lang.t(c, "Закрыть", "Close"), null)
+                .setPositiveButton(com.particlesdevs.photoncamera.util.Lang.t(c, "Попробовать снова", "Try again"),
+                        (d, w) -> retry(fragment, button, tele200, dead))
+                .show();
+        return true;
+    }
+
+    /** P214h: «Попробовать снова»: the trials go; a dimmed size turns on (its first row), a running FULLRES restarts with it. */
+    private static void retry(CameraFragment fragment, ImageButton button, boolean tele200, boolean dead) {
+        com.particlesdevs.photoncamera.capture.FullResTrials.retry(camera());
+        if (dead) {
+            set(fragment, button, tele200, true);
+            return;
+        }
+        View root = fragment.getView();
+        if (root instanceof ViewGroup) restyle((ViewGroup) root);
+        if (PixelPro10.fullResChosen() && fragment.captureController != null) fragment.captureController.restartCamera();
     }
 
     /** Off its parent, past the parent's layout transition; a child the transition still holds loses the id (no longer found). */
@@ -176,14 +252,24 @@ final class FullResButton {
 
     /** A tap: FULLRES on or off; on the tele with two sizes, the tapped size on (the other off), or off when it was on. */
     private static void toggle(CameraFragment fragment, ImageButton button, boolean tele200) {
-        boolean two = com.particlesdevs.photoncamera.capture.VivoSdkFullRes.teleSizes(
-                com.particlesdevs.photoncamera.app.ScameraApp.getSettings().mCameraID);
-        if (PixelPro10.fullResSuspended()) { // P179: a 200 MP merge runs: the switch waits for it
-            fragment.showSnackBar(com.particlesdevs.photoncamera.util.Lang.t("Снимок 200 Мп ещё обрабатывается", "A 200 MP shot is still being processed"));
+        if (PixelPro10.fullResSuspended()) { // P179: a FULLRES merge runs (200 MP; P200 50 MP too): the switch waits for it
+            fragment.showSnackBar(PixelPro10.suspendedText()); // P214h: says which size is being merged
             return;
         }
-        boolean active = PixelPro10.fullResChosen() && (!two || PixelPro10.tele200() == tele200);
-        boolean on = !active;
+        final String camera = camera();
+        // P214h: both sizes' buttons whatever their trials; a dimmed one says why instead
+        final boolean two = com.particlesdevs.photoncamera.capture.VivoSdkFullRes.teleButtons(camera);
+        if (dead(camera, two, tele200)) {
+            explain(fragment, button, tele200);
+            return;
+        }
+        boolean lit200 = two && lights200(PixelPro10.tele200(), dead(camera, true, false), dead(camera, true, true));
+        set(fragment, button, tele200, !(PixelPro10.fullResChosen() && (!two || lit200 == tele200)));
+    }
+
+    /** FULLRES {@code on} or off (P214h: «Попробовать снова» turns it on); on the tele with two sizes, the tapped size on. */
+    private static void set(CameraFragment fragment, ImageButton button, boolean tele200, boolean on) {
+        final boolean two = com.particlesdevs.photoncamera.capture.VivoSdkFullRes.teleButtons(camera());
         if (on && two) PixelPro10.setTele200(tele200);
         if (!com.particlesdevs.photoncamera.capture.SensorModeSwitches.setFullRes(on)) {
             fragment.showSnackBar(com.particlesdevs.photoncamera.util.Lang.t(
@@ -192,7 +278,7 @@ final class FullResButton {
         }
         View root = fragment.getView();
         if (root instanceof ViewGroup) restyle((ViewGroup) root);
-        else style(button, on);
+        else style(button, on, null, false);
         button.animate().cancel();
         button.setScaleX(0.86f);
         button.setScaleY(0.86f);
@@ -208,31 +294,37 @@ final class FullResButton {
         if (fragment.captureController != null) fragment.captureController.restartCamera();
     }
 
-    /** Both buttons from the state: on the tele with two sizes only the chosen one lights. */
+    /**
+     * Both buttons from the state: on the tele with two sizes only the chosen one lights; P214h a size (or a camera) whose rows
+     * all failed is dimmed, and the size that runs instead lights.
+     */
     private static void restyle(ViewGroup root) {
         boolean on = PixelPro10.fullResChosen();
         ImageButton fifty = root.findViewById(R.id.full_res_button), twoHundred = root.findViewById(R.id.full_res_200_button);
         boolean two = twoHundred != null && twoHundred.getParent() != null;
-        boolean is200 = two && PixelPro10.tele200();
-        if (fifty != null) style(fifty, on && !is200, two ? "50" : null);
-        if (two) style(twoHundred, on && is200, "200");
+        String camera = camera();
+        boolean dead50 = dead(camera, two, false), dead200 = two && dead(camera, true, true);
+        boolean is200 = two && lights200(PixelPro10.tele200(), dead50, dead200);
+        if (fifty != null) style(fifty, on && !is200 && !dead50, two ? "50" : null, dead50);
+        if (two) style(twoHundred, on && is200, "200", dead200);
     }
 
-    private static void style(ImageButton button, boolean on) {
-        style(button, on, null);
-    }
-
-    /** {@code megapixels}: «50» / «200» on the tele with two sizes (in the name read out and the tooltip), else null. */
-    private static void style(ImageButton button, boolean on, @androidx.annotation.Nullable String megapixels) {
+    /**
+     * {@code megapixels}: «50» / «200» on the tele with two sizes (in the name read out and the tooltip), else null; P214h
+     * {@code dead}: every row of the size failed - dimmed, named so, a tap says why.
+     */
+    private static void style(ImageButton button, boolean on, @androidx.annotation.Nullable String megapixels, boolean dead) {
         Context c = button.getContext();
         int accent = ShadeStyle.accent(c);
         String name = c.getString(on ? R.string.full_res_on : R.string.full_res_off);
         if (megapixels != null) name = name + " · " + megapixels + com.particlesdevs.photoncamera.util.Lang.t(c, " Мп", " MP");
+        if (dead) name = name + com.particlesdevs.photoncamera.util.Lang.t(c, " · недоступно, нажмите — почему", " · unavailable, tap for why");
         button.setContentDescription(name);
         button.setTooltipText(name);
         button.setActivated(on);
         if (on) button.setBackground(ShadeStyle.pressable(c, ShadeStyle.tint(accent, 0.22f), accent, 14));
         else button.setBackgroundResource(R.drawable.shade_gear_card);
         button.setImageTintList(ColorStateList.valueOf(accent));
+        button.setAlpha(dead ? DEAD_ALPHA : 1f);
     }
 }
