@@ -7642,6 +7642,7 @@ class MosaicChromaOverlap final : public HybridRowsSink {
     int stripRows=0; // the largest step of ready (the merge's strip)
     bool stopping=false,exited=false,complete=false,touched=false,failed=false;
     Clock::time_point lastRows{},lastDone{};
+    std::atomic<int> doneRows{0}; // the stream's finished rows (the report: how many the merge's last readback found done)
     // the block rows [0, need) of the oscillation map made (f first: its rows up to need + 1), on n threads
     void makeOsc(int need,int n){
         need=std::min(need,src.bh);
@@ -7696,7 +7697,6 @@ class MosaicChromaOverlap final : public HybridRowsSink {
                     if(fed==0)stream->image(data);
                     touched=true;
                 }
-                if(r>=h)rowsBeforeLast=std::max(rowsBeforeLast,stream->done());
                 while(fed<r){
                     // all the threads for the rows of the last two strips: the merge reads them back together (its last strip is read
                     // right after the one before: on the OPPO 10 ms apart, not a strip's ~0.3 s), they are the time after the merge
@@ -7706,7 +7706,7 @@ class MosaicChromaOverlap final : public HybridRowsSink {
                     const auto t1=Clock::now();shiftMs+=millis(t1-t0);
                     makeOsc(to>=h?src.bh:(to-1)/b+1,n); // the block rows of the result rows this advance may finish
                     oscMs+=millis(Clock::now()-t1);
-                    stream->threads(n);stream->advance(to);
+                    stream->threads(n);stream->advance(to);doneRows.store(stream->done(),std::memory_order_relaxed);
                     // the block rows ahead as far as the ring keeps those the next advance reads (from its first unfinished row on):
                     // the rows after the merge's last readback find them made
                     if(to<h){const auto t2=Clock::now();makeOsc(stream->done()/b+oscCap,n);oscMs+=millis(Clock::now()-t2);}
@@ -7742,7 +7742,7 @@ public:
     void begin(int width,int height,int shiftX,int shiftY) override {
         stop();
         complete=touched=failed=exited=false;ready=stripRows=0;data=nullptr;why="the merge failed";
-        passes=MosaicChromaPasses();shiftMs=oscMs=waitMs=lastMs=0;feeds=rowsBeforeLast=0;bytes=0;
+        passes=MosaicChromaPasses();shiftMs=oscMs=waitMs=lastMs=0;feeds=rowsBeforeLast=0;bytes=0;doneRows.store(0);
         if(width!=w||height!=h||w<=0||h<=0){why="the merge's grid "+std::to_string(width)+"x"+std::to_string(height)+" is not the chroma's";return;}
         if(src.bw!=w/b||src.bh!=h/b||src.bw<=0||src.bh<=0||src.block<1||src.block>8||(!src.quad&&(!src.raw||!src.gain))){why="no oscillation map of this grid";return;}
         dx=std::max(0,shiftX);dy=std::max(0,shiftY);
@@ -7770,7 +7770,7 @@ public:
         {
             std::lock_guard<std::mutex> l(lock);
             if(!data)data=p;
-            if(n>=h&&ready<h)lastRows=Clock::now();
+            if(n>=h&&ready<h){lastRows=Clock::now();rowsBeforeLast=doneRows.load(std::memory_order_relaxed);}
             stripRows=std::max(stripRows,std::min(n,h)-ready);
             ready=std::max(ready,std::min(n,h));
         }
