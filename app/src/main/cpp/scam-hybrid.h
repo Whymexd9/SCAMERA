@@ -7038,8 +7038,18 @@ inline float mosaicSoftSignChange(double p0,double p1,double gate,double tau){
     if(!(gate>0.0)||std::isnan(p0)||std::isnan(p1))return 0.f;
     const double opp=std::max(0.0,std::min(p0,-p1))+std::max(0.0,std::min(-p0,p1));
     if(opp<=0.0)return 0.f;
+    const double tg=tau*gate,swing=std::abs(p0)+std::abs(p1);
+    // P213b: the two divisions only where a ramp is open (the luma map of the chroma median and the oscillation maps: most pairs
+    // are noise below the swing ramp or a full swing). The same floats: swing < 0.74 gate (both factors rounded: < 0.75 gate)
+    // gives swing / gate <= 0.75, a swing ramp of 0 and a product of +0; opp >= tau gate and swing > 1.26 gate give both ramps 1
+    // (RN of a quotient >= 1 is >= 1, swing / gate > 1.25 gives (q - 0.75) / 0.5 >= 1) and 1. Gates and swings far from under-
+    // and overflow only.
+    if(gate>1e-300&&gate<1e300&&swing<1e300){
+        if(swing<0.74*gate)return 0.f;
+        if(opp>=tg&&swing>1.26*gate)return 1.f;
+    }
     auto ss=[](double x){x=std::clamp(x,0.0,1.0);return x*x*(3.0-2.0*x);};
-    return float(ss(opp/(tau*gate))*ss(((std::abs(p0)+std::abs(p1))/gate-0.75)/0.5));
+    return float(ss(opp/tg)*ss((swing/gate-0.75)/0.5));
 }
 // The oscillation maps of the base RAW sites (hybridReconstructMosaic / hybridReconstructMosaicNative, input side: independent of
 // the merge) use a steep opposition ramp, so that they count almost as the hard test did; the luma count of the merged result
@@ -7138,12 +7148,33 @@ inline void mosaicMedianRow(const float* r,float* o,int w,int d){
     for(int x=in0;x<in1;++x)o[x]=mosaicMed5(r[x-2*d],r[x-d],r[x],r[x+d],r[x+2*d]);
     for(int x=in1;x<w;++x)edge(x);
 }
+// The mean of a box sum, float(acc / (2r + 1)), mostly without the double division (P213b: 12 per pixel, ~9 cycles each on the
+// OPPO's cores). q = acc RN(1 / n) is within 3 units in the last place of the quotient RN(acc / n) (two roundings of 2^-53 each),
+// so both round to the same float unless a float rounding midpoint lies within 16 units of q (the 29 low bits of its significand
+// within 16 of 2^28; one value in ~2^24) or q is not a normal float: there the division runs. q = 0 only for acc = 0 (then it is
+// acc's zero, as the quotient): a box sum is a sum of floats, a multiple of 2^-149, never a subnormal double.
+struct MosaicBoxMean {
+    double n,inv;
+    explicit MosaicBoxMean(int r):n(double(2*r+1)),inv(1.0/double(2*r+1)){}
+    static bool sure(double q){
+        uint64_t b;std::memcpy(&b,&q,sizeof b);
+        return (((b>>52)&0x7ffu)-897u<=253u&&(b&0x1fffffffu)-(0x10000000u-16u)>32u)||(b<<1)==0;
+    }
+    float operator()(double acc) const {const double q=acc*inv;return sure(q)?float(q):float(acc/n);}
+    // o[i] = float(a[i] / n), i < count: the products (vectorised), then the divisions of the products that were not sure
+    void row(const double* a,float* o,int count) const {
+        bool all=true;
+        for(int i=0;i<count;++i){const double q=a[i]*inv;o[i]=float(q);all&=sure(q);}
+        if(!all)for(int i=0;i<count;++i)if(!sure(a[i]*inv))o[i]=float(a[i]/n);
+    }
+};
 // The row pass of a box filter of radius r (borders clamped): a running double sum from column 0, the float difference of the
 // samples entering and leaving added to it.
 inline void mosaicBoxRow(const float* a,float* o,int w,int r){
+    const MosaicBoxMean mean(r);
     double acc=0;
     for(int x=-r;x<=r;++x)acc+=a[std::clamp(x,0,w-1)];
-    for(int x=0;x<w;++x){o[x]=float(acc/(2*r+1));acc+=a[std::min(x+r+1,w-1)]-a[std::max(x-r,0)];}
+    for(int x=0;x<w;++x){o[x]=mean(acc);acc+=a[std::min(x+r+1,w-1)]-a[std::max(x-r,0)];}
 }
 // The chroma median of rgb (w x h x 3, in place) streamed in steps (see above). advance(ready): rows [0, ready) of rgb are final
 // input, every step they allow runs (several calls may feed the rows as they come); rows [0, done()) then hold the result.
@@ -7296,7 +7327,8 @@ public:
                         for(int y=q.hp;y<n.hp;++y){
                             boxColumns(kBL,r1,y,x0,x1,a);
                             const float* L=get(kL,y);float* o=put(kHp,y);
-                            for(int x=x0;x<x1;++x){const float box=float(a[x]/(2*r1+1));o[x]=L[x]-box;}
+                            MosaicBoxMean(r1).row(a+x0,o+x0,x1-x0);
+                            for(int x=x0;x<x1;++x)o[x]=L[x]-o[x];
                         }
                     }
                 });
@@ -7326,7 +7358,7 @@ public:
                         const int in=kind==1?kBU1:kBV1,out=kind==1?kU1:kV1;double* a=sums.data()+size_t(kind==1?kSumU1:kSumV1)*ws;
                         for(int y=q.u1;y<n.u1;++y){
                             boxColumns(in,r3,y,x0,x1,a);
-                            float* o=put(out,y);for(int x=x0;x<x1;++x)o[x]=float(a[x]/(2*r3+1));
+                            MosaicBoxMean(r3).row(a+x0,put(out,y)+x0,x1-x0);
                         }
                     }
                 });
@@ -7347,13 +7379,13 @@ public:
                     double* az=sums.data()+size_t(kSumZ)*ws;
                     for(int y=q.z;y<n.z;++y){
                         boxColumns(kBsc,r2,y,x0,x1,az);
-                        float* o=put(kZ,y);for(int x=x0;x<x1;++x)o[x]=float(az[x]/(2*r2+1));
+                        MosaicBoxMean(r2).row(az+x0,put(kZ,y)+x0,x1-x0);
                     }
                     double* au=sums.data()+size_t(kSumUl)*ws;double* av=sums.data()+size_t(kSumVl)*ws;
                     for(int y=q.out;y<n.out;++y){
                         boxColumns(kBU2,r3,y,x0,x1,au);
                         boxColumns(kBV2,r3,y,x0,x1,av);
-                        for(int x=x0;x<x1;++x){ul[x-x0]=float(au[x]/(2*r3+1));vl[x-x0]=float(av[x]/(2*r3+1));}
+                        MosaicBoxMean(r3).row(au+x0,ul,x1-x0);MosaicBoxMean(r3).row(av+x0,vl,x1-x0);
                         const float* z=get(kZ,y);const float* mu=get(kMu,y);const float* mv=get(kMv,y);float* px=rgb+size_t(y)*w*3;
                         const float* oscRow=osc?osc+size_t(std::min(y/b,bh-1))*bw:nullptr;
                         for(int X=x0;X<x1;++X){
