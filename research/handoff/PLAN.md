@@ -4920,6 +4920,9 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   during the capture, no second mosaic detection). Open for the owner: a binned FULLRES gives the sensor's own 12 MP binning
   in software - whether FULLRES should then capture in the normal (sensor-binned) mode instead (same size, a fraction of
   the time).
+- P219 (2026-10-18): the one long frame applies to the FULLRES routes merged natively; this log's case, a binned FULLRES shot
+  («Наш ремозаик» off), keeps 3 + 3 on purpose (the binned P195 merge takes every frame) - open for the owner whether «для фулреза
+  1 длинный достаточно» covers it too (then HybridPlan.fullResLongFrames returns 1 for every FULLRES plan).
 
 ### P218 - «Настройки по модулям» only on the main settings page (owner, 2026-10-18: «группа настроек "Настройки по модулям"
 дублируется в нескольких местах, исправь чтобы было только на главной странице»)
@@ -4939,9 +4942,10 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   ran on every mosaic burst only for its log line when the header already gave block 2 / 4 (roadmap speed-ux B1).
 - Worker: hybridMosaicPick, one pick for the split (its P63 rules, unchanged) and the native merge. Native (tuning
   mosaicNativePick 1, default): every ultrashort frame Bento merges (bentoFrames, at most 3, within x1.3 of the shortest) and every
-  bracketed frame; the first of each keeps its slot ahead of the N frames as before, the others take only what the N frames leave,
-  so the pick always holds the old one and never fewer N frames (mosaicNativePick 0 = the pick before P219). Nothing else had to
-  change: the merge program, the Bento validation and the Shasta gates work per frame role (the marked merge program untouched).
+  bracketed frame; the first of each keeps its slot ahead of the N frames as before, the others take what the N frames leave - an
+  ultrashort frame an N slot where that lowers the noise (review round below) - so the pick always holds the old ultrashort and
+  bracketed frames (mosaicNativePick 0 = the pick before P219). Nothing else had to change: the merge program, the Bento
+  validation and the Shasta gates work per frame role (the marked merge program untouched).
   hybridMosaicBlock: header block 2 / 4 -> «HYBRID MOSAIC: header block 2, detection skipped (the app's block)», no detector.
 - Found on the way (pre-existing, exposed by the earlier merge start): a chroma context built ahead (chromaPrewarm) and never
   taken - every 50 MP merge, its median runs on the CPU - was torn down in a static destructor at exit, and eglMakeCurrent
@@ -4972,3 +4976,41 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
 - Not checked: no shot with the app (camera app not run); vivo X200 / X300 Ultra, Pixel, the Tetra / 200 MP routes and the
   split on the phone; the peak memory of a 16-frame FULLRES merge on 8-12 GB phones; capture time saved by the 2 long frames
   (not measured, roadmap estimate 0.35-0.5 s, more at night).
+- Review round (2026-10-18). A budget short of the burst (v10_1 / v10_2: 30 of 35 by mosaicFrames; a memory budget at 50 MP):
+  the reviewer asked for every ultrashort frame ahead of the N frames, as the split and the plain Bayer app keep their extras.
+  Measured that way on 185248 in 14 frames (mosaicFrames 14 standing in for the memory budget): 10 N + 3 + 1 instead of 12 + 1 + 1,
+  inside Bento (0.6 % of the frame) high-pass noise x0.62, over the other 99.4 % x1.11 (darkest 10 % of the tiles x1.12, their
+  coarse band x1.19; the bracketed frame then refused by the motion gate); v10_2 (night: 0.004 % of the cells clipped, «BENTO: not
+  applied (not enough clipping)») lost an N frame for nothing (28 merged, not 29), and v10_1 would (its ultrashort frames are
+  not aligned: no Bento line, 29 of 30 merged). So hybridMosaicNativePick moves an ultrashort frame after the first into the slot
+  of the N frame farthest in time only where that lowers the noise of the picture: f (1 - sqrt(u / (u + 1))) > (1 - f)
+  (sqrt(m / (m - 1)) - 1), f = the share of Bento's cells the base clips (hybridMosaicBaseClipped: bentoBase's scan on the base
+  binned as the merge bins it, without the site-class gains - 16.48 % against Bento's 16.21 % with them on 185248 at
+  bentoHighlight 0.01), m = the base and the N frames kept, u = the ultrashort frames in: the second of 12 N from 13 % of the cells
+  clipped, the third from 21 %, the second of 28 N from 5.9 %; never below usFrom - 2 N frames (two, one for a huge burst). Log «HYBRID MOSAIC NATIVE: 14 of 23 frames: 1 ultrashort frames picked, the base clips
+  0.483 % of Bento's cells (...)». The scan runs only with a budget short of a burst with 2+ ultrashort frames: 17-31 ms at
+  12 MP, 83-110 ms at 50 MP. Bracketed frames after the first keep taking the slots left (the motion gate refused 2 of 3 on
+  185248).
+- Chroma context: chromaGpuPossible now takes the result's pixels against the median's own 16.8 MP (it took any sensor up to 4x
+  that); the native merge computes its result (Quad / Tetra T1 W x H, x4 on the natively merged 2x grid, T2 a quarter), the split
+  W x H, so a 50 MP Quad merge no longer builds a context its CPU median never takes; 12 MP results prewarm as before.
+- Memory (reviewer: RSS +160 MB per 50 MP frame): MemAvailable (/proc/meminfo, ~4 samples/s) dropped by 1517-1594 / 1883-1975 /
+  2105 / 2542-2565 MB on 185248 with 8 / 14 / 16 / 23 frames picked: 66 MB per frame and ~1.0 GB fixed (the model's 20 B/px).
+  RssAnon +32 MB per frame (the binned copy 25 + ~7), the rest the GPU strip windows (~31 MB: the 3.8 KB per column of
+  VivoSdkFullRes.seriesFit); RSS +137 MB per frame, 100 of them the burst's own pages (RssFile; in the app its memfd, no new
+  memory). hybridMosaicNativeBudget counts 25 MB a frame. Left as it is: the default 50 MP shot is a series (P203, 12 N), sized
+  by the app's seriesFit (RAW + binned + 3.8 KB per column = 156 MB a frame, 40 B/px fixed, against the measured 100 + 66 MB and
+  20 B/px) and floored in the worker; the worker's model sizes only a «Кадров в снимке 50 Мп» 0 (auto) shot, where the measured
+  cost would give 6 frames instead of 17 at the 1733 MB of P191's shot (merged 20 of 20 on the OPPO; check_hybrid_series pins
+  17) - an owner decision. 30 N + 3 + 1 extrapolates to ~3.3 GB of MemAvailable besides the 3.4 GB burst.
+- Not changed: a binned FULLRES shot keeps 3 + 3 (P217 line: open for the owner). The empty /data/local/tmp/scamera-pick-UjZbpz of
+  the first round's check is gone; the check now runs with TMPDIR in its own p219f_ directory.
+- Checked: tools/check_mosaic_pick.cpp (CI; the native picks against the old ones for a base without clipping and one clipped all
+  over: N frames give way only to ultrashort frames without a free slot, never below the floor; the 13 / 21 / 5.9 % thresholds;
+  short budgets; hybridMosaicBaseClipped = bentoBase's clippedFraction of the binned base on 300 random bases, any CFA; the
+  prewarm gate) PASS on the OPPO (NDK clang, also with UBSan traps), and the 10 other host checks with the worker headers PASS
+  there; CI's g++ ASan build not run (no host compiler). Final worker e51885ef against worker_int: syn_b1, x7u_1x, syn_b2,
+  syn_b4, v10_1, v10_2 byte-identical (v10: «the base clips 0.000 % / 0.004 %», one ultrashort frame), hand fef2af11, isz2 d72715ce
+  as the first round; 185248: default 8c0090ff (= the first round, 23 of 23), mosaicFrames 14 7ed5796e (= the first round's
+  worker: 0.483 %, 12 N + 1 + 1), bentoHighlight 0.01 (16.5 % clipped) 11 N + 2 + 1 with «BENTO: applied ... frames=2», no NaN /
+  Inf; SCAM_NO_WARMUP=1 rc 0 twice; every replay rc 0. Java untouched in this round (no unit-test rerun).

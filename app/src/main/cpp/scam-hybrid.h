@@ -443,10 +443,11 @@ struct HybridTuning {
     // 8 %: the static owner burst own_114335 (no flicker) shows a +-2..3 % band structure and 5.3 % in its last band (frame edge),
     // the synthetic flicker +-25 % and the owner's flicker shot a gain MAD of 26.9 %
     float mosaicUsRowsMin=0.08f;
-    // P219 (owner, 2026-10-17: «сделай так чтобы брались все кадры»): the native merge's frame pick (hybridMosaicPick). 1 (default)
-    // = every ultrashort frame of the burst (up to bentoFrames, at most 3, within x1.3 of the shortest) and every bracketed frame
-    // within the budget: the first of each keeps its slot ahead of the N frames as before, the others take what the N frames leave,
-    // so the merge never keeps fewer N frames than before; 0 = one ultrashort and one bracketed frame (the pick before P219).
+    // P219 (owner, 2026-10-17: «сделай так чтобы брались все кадры»): the native merge's frame pick (hybridMosaicNativePick). 1
+    // (default) = every ultrashort frame of the burst (up to bentoFrames, at most 3, within x1.3 of the shortest) and every bracketed
+    // frame within the budget: the first ultrashort and the first bracketed frame ahead of the N frames, a further ultrashort frame
+    // where that lowers the noise (the base's clipped share), the others in what the N frames leave; 0 = one ultrashort and one
+    // bracketed frame (the pick before P219).
     int mosaicNativePick=1;
 };
 
@@ -7103,9 +7104,11 @@ inline float mosaicSoftSignChange(double p0,double p1,double gate,double tau){
 // the merge) use a steep opposition ramp, so that they count almost as the hard test did; the luma count of the merged result
 // (mosaicChromaMedian) a wide one, which keeps a last-bit difference of the merge a last-bit difference of the colour.
 constexpr double kMosaicOscTau=0.05,kMosaicLumaTau=0.25;
-// P187: the chroma median below takes the GPU only up to 16.8 MP, and it runs on at least a quarter of the sensor (Tetra T2: 2 sensor
-// px per merged px). Above 4 x that the GPU context of chromaPrewarm would never be used (200 MP: a context less during the merge).
-inline bool chromaGpuPossible(int sensorW,int sensorH){return uint64_t(sensorW)*sensorH<=uint64_t(4)*16800000;}
+// P187: the chroma median below takes the GPU only up to 16.8 MP of its result. P219: the mosaic merges build the context of
+// chromaPrewarm only for a result within it (it was any sensor up to 4 x that: every 50 MP Quad merge built a context its CPU
+// median never took, held to the process exit).
+constexpr int64_t kChromaGpuPixels=16800000;
+inline bool chromaGpuPossible(int64_t resultPixels){return resultPixels<=kChromaGpuPixels;}
 // P213b: the CPU chroma median streams down the frame in steps of B rows (kMosaicChromaBandRows): every pass reads and writes
 // rings of a few dozen rows instead of full-frame planes (P213a on the OPPO, 50 MP: 6 float planes besides rgb, 1.15 GB, and ~0.8 s
 // of its 1.65 s went to allocating, first-touching and freeing them; the box passes streamed 3 planes each through DRAM). The
@@ -7553,7 +7556,7 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
         // within the GPU storage of one call and a quarter of MemAvailable (any RAW size: 8192x6144 needs 2.4 GB, it stays here)
         const uint64_t avail=hybridMemAvailable();
         const size_t need=ChromaMedianGpu::bytesFor(w,h);
-        if(int64_t(w)*h<=int64_t(16800000)&&(avail==0||need<avail/4)){
+        if(chromaGpuPossible(int64_t(w)*h)&&(avail==0||need<avail/4)){
             try{auto g=chromaTake();g->process(rgb,w,h,block,osc);if(how)*how="gpu: "+g->times+" ms";chromaGiveBack(std::move(g));return;}
             catch(const std::exception& e){if(how)*how=std::string("cpu (")+e.what()+")";}
         } else if(how)*how="cpu (size)";
@@ -7629,12 +7632,12 @@ inline int hybridMosaicNativeBudget(int n,int W,int Ht,int bb,bool t2,const Hybr
 // within x1.3 of it (the replacement of hybridReconstruct takes no other), up to maxUs, from usFrom frames of budget on; the
 // bracketed frames (Shasta) closest in time, up to maxBr, from 6 frames of budget on. The first reserveUs ultrashort and the first
 // reserveBr bracketed frames take their slots ahead of the N frames (the N frames farthest in time give way to them), the others
-// take the slots the N frames leave. Order: the base, the N frames, the ultrashort frames, the bracketed frames.
-//   split: maxUs = bentoFrames (at most 3), every bracketed frame, all of them reserved (its pick of P63, unchanged);
-//   native, mosaicNativePick 1: the same frames, one of each reserved - its pick before P219 (one ultrashort, one bracketed:
-//   mosaicNativePick 0) is always inside, so a short budget still gives N slots away for those two only.
+// take the slots the N frames leave; an ultrashort frame after the first takes the slot of an N frame only while the base keeps
+// keepN N frames. Order: the base, the N frames, the ultrashort frames, the bracketed frames.
+//   split: maxUs = bentoFrames (at most 3), every bracketed frame, all of them reserved, keepN 0 (its pick of P63, unchanged);
+//   native: hybridMosaicNativePick.
 inline std::vector<int> hybridMosaicPick(const HybridInput& input,const HybridTuning& tune,int budget,int usFrom,int maxUs,int maxBr,
-                                         int reserveUs,int reserveBr){
+                                         int reserveUs,int reserveBr,int keepN=0){
     const int n=int(input.frames.size());
     std::vector<int> normals,usList,brList;
     for(int f=1;f<n;++f){
@@ -7654,17 +7657,89 @@ inline std::vector<int> hybridMosaicPick(const HybridInput& input,const HybridTu
     }
     if(int(brList.size())>maxBr)brList.resize(size_t(std::max(0,maxBr)));
     const bool usRoom=budget>=usFrom,brRoom=budget>=6;
-    const int usAhead=usRoom?std::min(int(us.size()),reserveUs):0,brAhead=brRoom?std::min(int(brList.size()),reserveBr):0;
-    const int extras=usAhead+(brAhead>0?std::min(brAhead,std::max(0,budget-usAhead-1)):0);
+    int usAhead=usRoom?std::min(int(us.size()),reserveUs):0;
+    const int brAhead=brRoom?std::min(int(brList.size()),reserveBr):0;
+    auto extrasFor=[&](int u){return u+(brAhead>0?std::min(brAhead,std::max(0,budget-u-1)):0);};
+    while(usAhead>1&&budget-1-extrasFor(usAhead)<keepN)--usAhead;
+    const int extras=extrasFor(usAhead);
     std::vector<int> pick{0},usPick,brPick;
     for(int f:normals)if(int(pick.size())<budget-extras)pick.push_back(f);
     auto room=[&]{return int(pick.size()+usPick.size()+brPick.size())<budget;};
-    for(size_t i=0;usRoom&&i<us.size()&&int(i)<reserveUs&&room();++i)usPick.push_back(us[i]);
-    for(size_t i=0;brRoom&&i<brList.size()&&int(i)<reserveBr&&room();++i)brPick.push_back(brList[i]);
+    for(size_t i=0;i<us.size()&&int(i)<usAhead&&room();++i)usPick.push_back(us[i]);
+    for(size_t i=0;i<brList.size()&&int(i)<brAhead&&room();++i)brPick.push_back(brList[i]);
     for(size_t i=usPick.size();usRoom&&i<us.size()&&room();++i)usPick.push_back(us[i]);
     for(size_t i=brPick.size();brRoom&&i<brList.size()&&room();++i)brPick.push_back(brList[i]);
     pick.insert(pick.end(),usPick.begin(),usPick.end());
     pick.insert(pick.end(),brPick.begin(),brPick.end());
+    return pick;
+}
+// P219: the share of Bento's 2x2 cells the base of a native mosaic merge (colour block b) clips: bentoBase's clip scan (a cell with a
+// binned site at bentoHighlight of white or above; Bento runs on the binned burst of hybridReconstruct) on the base binned as the
+// merge bins it (a block with a clipped site white, else the mean), without the site-class gains: they come from the pick (0.89 ..
+// 1.14 on the owner's bursts) and move only the cells of an unclipped block at the edge of bentoHighlight. It estimates the area
+// the ultrashort frames replace (the mask is these cells dilated; at most bentoMinClipped of them: Bento not applied).
+inline double hybridMosaicBaseClipped(const HybridInput& input,const HybridTuning& tune,int b){
+    if(input.frames.empty()||!input.frames[0].raw||b<1)return 0;
+    const int W=input.w,vw=input.w/b,vh=input.h/b;
+    if(vw<2||vh<2)return 0;
+    std::vector<uint16_t> binned(size_t(vw)*vh);
+    const uint16_t* raw=input.frames[0].raw;
+    const float clipAt=input.white-1.f;
+    mergeRowBands(vh,[&](int j0,int j1){
+        for(int J=j0;J<j1;++J)for(int I=0;I<vw;++I){
+            const float vb=input.black[((J&1)<<1)|(I&1)];
+            double acc=0;bool clipped=false;
+            for(int c=0;c<b;++c)for(int a=0;a<b;++a){
+                const int x=b*I+a,y=b*J+c;
+                const float v=float(raw[size_t(y)*W+x]),sb=input.black[((y&1)<<1)|(x&1)];
+                acc+=v>=clipAt?input.white:std::clamp(vb+(v-sb),0.f,input.white);clipped|=v>=clipAt;
+            }
+            binned[size_t(J)*vw+I]=clipped?uint16_t(std::lround(input.white)):uint16_t(std::lround(acc/(b*b)));
+        }
+    });
+    Burst bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.canonicalRggb=true;bin.raw[0]=binned.data();
+    const int w2=vw/2,h2=vh/2;
+    std::atomic<long> clipped{0};
+    mergeRowBands(h2,[&](int y0,int y1){ // bentoBase's clip scan
+        long lc=0;
+        for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
+            bool c=false;
+            for(int p=0;p<4;++p)c|=bin.sample(0,2*cx+(p&1),2*cy+(p>>1))>=tune.bentoHighlight;
+            lc+=c?1:0;
+        }
+        clipped+=lc;
+    });
+    return double(clipped)/(double(w2)*h2);
+}
+// P219 (owner, 2026-10-17: «сделай так чтобы брались все кадры»): the native merge's pick (hybridMosaicPick). mosaicNativePick 1:
+// every ultrashort frame Bento merges (bentoFrames, at most 3, within x1.3 of the shortest) and every bracketed frame. With a
+// budget short of the burst the first ultrashort and the first bracketed frame keep their slots ahead of the N frames (as before
+// P219); a further ultrashort frame takes the slot of an N frame only where that lowers the noise of the picture: inside the
+// clipped share f of the base (hybridMosaicBaseClipped) its noise falls by 1 - sqrt(u / (u + 1)), elsewhere by one N frame less
+// it rises by sqrt(m / (m - 1)) - 1 (m the base and the N frames kept), so it moves when f (1 - sqrt(u / (u + 1))) > (1 - f)
+// (sqrt(m / (m - 1)) - 1) - 13 % of the frame for the second of 12 N, 6 % for the second of 28 - and the base keeps the N frames
+// its first ultrashort frame needs (usFrom - 2: two, one for a huge burst); else it takes only what the N frames leave. Measured on
+// the owner's 185248 in 14 frames (f 0.5 %): 10 N + 3 ultrashort instead of 12 + 1 lowered the noise inside Bento x0.62 and raised
+// it x1.11 over the other 99.4 % of the frame (x1.12 in the darkest tiles). The other bracketed frames take what is left too (the
+// Shasta motion gate refuses many: 2 of 3 on 185248, so a reserved slot would trade a merged N frame for a refused one).
+// mosaicNativePick 0: one ultrashort and one bracketed frame (the pick before P219).
+inline std::vector<int> hybridMosaicNativePick(const HybridInput& input,const HybridTuning& tune,int budget,int usFrom,double clipped){
+    const bool every=tune.mosaicNativePick!=0;
+    const int maxUs=every?std::clamp(tune.bentoFrames,1,3):1,maxBr=every?std::numeric_limits<int>::max():1,keepN=std::max(0,usFrom-2);
+    const double f=std::clamp(clipped,0.0,1.0);
+    int reserve=1;
+    std::vector<int> pick=hybridMosaicPick(input,tune,budget,usFrom,maxUs,maxBr,reserve,1,keepN);
+    for(int k=2;k<=maxUs&&f>0.0;++k){
+        int m=0,u=0;for(int fr:pick){m+=input.frames[fr].role==kRoleNormal?1:0;u+=input.frames[fr].role==kRoleUltrashort?1:0;}
+        if(u>=k){reserve=k;continue;} // in already, in a slot the N frames left
+        if(u<k-1||m<2)break;
+        const double gain=1.0-std::sqrt(double(k-1)/double(k)),cost=std::sqrt(double(m)/double(m-1))-1.0;
+        if(!(f*gain>(1.0-f)*cost))break;
+        std::vector<int> next=hybridMosaicPick(input,tune,budget,usFrom,maxUs,maxBr,k,1,keepN);
+        int u2=0;for(int fr:next)u2+=input.frames[fr].role==kRoleUltrashort?1:0;
+        if(u2<k)break; // the N frames the first ultrashort frame needs (keepN) hold the slot
+        reserve=k;pick.swap(next);
+    }
     return pick;
 }
 inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int block,const HybridTuning& tune,const ScamAlignment& alignment,
@@ -7676,7 +7751,8 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
     const int b=block,W=input.w,Ht=input.h;
     if((W%(2*b))||(Ht%(2*b))||W/b<64||Ht/b<64)throw std::runtime_error("HYBRID MOSAIC: frame size not a multiple of the colour block");
-    if(tune.chromaGpu>0&&chromaGpuPossible(W,Ht))chromaPrewarm(); // P80: the chroma median's GPU context builds during the merge
+    // P80: the chroma median's GPU context builds during the merge (P219: for a result of W x H it can take)
+    if(tune.chromaGpu>0&&chromaGpuPossible(int64_t(W)*Ht))chromaPrewarm();
     const int vw=W/b,vh=Ht/b,per=b*b,n=int(input.frames.size());
     // ---- real frames within the GPU capacity (kHybridGpuFrames sub-frames): the base, the normals closest in time, the
     // ultrashort (Bento, up to bentoFrames) and the bracketed (Shasta) frames when there is room (hybridMosaicPick, P63's rules)
@@ -7928,26 +8004,34 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
     const int b=block,W=input.w,Ht=input.h,bb=b*b;
-    if(tune.chromaGpu>0&&chromaGpuPossible(W,Ht))chromaPrewarm(); // P80: the chroma median's GPU context builds during the merge
     if((W%(2*b))||(Ht%(2*b))||W/b<64||Ht/b<64)throw std::runtime_error("HYBRID MOSAIC: frame size not a multiple of the colour block");
     const int vw=W/b,vh=Ht/b,n=int(input.frames.size());
     // The mosaic the merge reads: the sensor's (Quad; Tetra T1), or for Tetra T2 the Quad mosaic of its 2x2 sub-blocks.
     const bool t2=b==4&&tune.mosaicTetra!=1;
     const int mb=t2?2:b,MW=t2?W/2:W,MH=t2?Ht/2:Ht,sub=b/mb; // merge block, size, sensor sites per merge site and axis
-    // ---- frames within the GPU capacity, one slot each (hybridMosaicPick): the base, the normals closest in time, the ultrashort
-    // (Bento) and bracketed (Shasta) frames. P219 (owner, 2026-10-17: «сделай так чтобы брались все кадры»): every ultrashort frame
-    // the Bento of hybridReconstruct merges (bentoFrames, as the plain Bayer burst) and every bracketed frame, each one judged
-    // there as in a plain burst (Bento validation per frame, the Shasta sharpness / motion gates); the merge program takes any
-    // number of both (per-frame roles). Before P219 one of each (mosaicNativePick 0): 2 of 3 ultrashort and 2 of 3 bracketed frames
-    // of every FULLRES shot were dropped («HYBRID SERIES CUT: 14 of 18 (frame rules)»). Their first ones keep the slots they had
-    // ahead of the N frames; the others take what the N frames leave.
+    // ---- frames within the GPU capacity, one slot each (hybridMosaicNativePick): the base, the normals closest in time, the
+    // ultrashort (Bento) and bracketed (Shasta) frames. P219 (owner, 2026-10-17: «сделай так чтобы брались все кадры»): every
+    // ultrashort frame the Bento of hybridReconstruct merges (bentoFrames, as the plain Bayer burst) and every bracketed frame, each
+    // one judged there as in a plain burst (Bento validation per frame, the Shasta sharpness / motion gates); the merge program takes
+    // any number of both (per-frame roles). Before P219 one of each (mosaicNativePick 0): 2 of 3 ultrashort and 2 of 3 bracketed
+    // frames of every FULLRES shot were dropped («HYBRID SERIES CUT: 14 of 18 (frame rules)»).
     const int budget=hybridMosaicNativeBudget(n,W,Ht,bb,t2,tune,int64_t(W)*Ht>kHybridClassicPixels?hybridMemAvailable():0,report);
     const bool huge=int64_t(W)*Ht>kHybridHugePixels;
     // the ultrashort takes a slot from 4 frames on (from 3 for a huge burst: two N and the ultrashort)
     const int usFrom=huge?3:4;
-    const bool every=tune.mosaicNativePick!=0;
-    const std::vector<int> pick=hybridMosaicPick(input,tune,budget,usFrom,every?std::clamp(tune.bentoFrames,1,3):1,
-                                                 every?std::numeric_limits<int>::max():1,1,1);
+    // a budget short of the burst: the ultrashort frames after the first take N slots only where that lowers the noise (the base
+    // scan only then: with room for the whole burst every frame is picked either way)
+    int usCount=0;for(const auto& fr:input.frames)usCount+=fr.role==kRoleUltrashort?1:0;
+    const bool usShort=tune.mosaicNativePick!=0&&tune.bento>0&&budget<n&&usCount>1;
+    const double clippedShare=usShort?hybridMosaicBaseClipped(input,tune,b):0.0;
+    const std::vector<int> pick=hybridMosaicNativePick(input,tune,budget,usFrom,clippedShare);
+    if(usShort){
+        int inPick=0;for(int f:pick)inPick+=input.frames[f].role==kRoleUltrashort?1:0;
+        char line[240];std::snprintf(line,sizeof(line),"HYBRID MOSAIC NATIVE: %d of %d frames: %d ultrashort frames picked, the base clips %.3f %% of"
+            " Bento's cells (an ultrashort frame after the first takes an N slot only when that lowers the noise of the picture)",
+            budget,n,inPick,100.0*clippedShare);
+        report(line);
+    }
     hybridSeriesCut(tune,int(pick.size()),n,budget>=n?"frame rules":"memory",report);
     // P35: the window follows the colour block: mosaicWindow is in Quad sites (2x2 blocks), a Tetra T1 window is twice as wide in
     // sensor px (the same 1.5 binned px for the default 3), at most 8 (17x17 sites, 81 cells of kHybMergeMosaicFast); T2 runs the
@@ -7956,6 +8040,10 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     // (mosaicTetraWindow2x sensor px, 0 = as the sensor grid)
     const int gridAsked=input.strict2x?2:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
     const bool tetra2x=b==4&&!t2&&gridAsked==2&&tune.mosaicNative2x!=0;
+    // P80: the chroma median's GPU context builds during the merge. P219: only for a result the median takes on the GPU (ow x oh
+    // below: Quad / T1 W x H, 4x that on the natively merged 2x grid, T2 a quarter), not for every 50 MP Quad merge
+    const int k2Out=gridAsked==2&&!t2&&tune.mosaicNative2x!=0?2:1;
+    if(tune.chromaGpu>0&&chromaGpuPossible(t2?int64_t(W)*Ht/4:int64_t(W)*Ht*k2Out*k2Out))chromaPrewarm();
     const int window=b==4&&!t2?std::clamp(tetra2x&&tune.mosaicTetraWindow2x>0?tune.mosaicTetraWindow2x:2*tune.mosaicWindow,1,8)
                               :std::clamp(tune.mosaicWindow,1,6);
     // P73: Tetra T1 by day has its own scale (the Quad kernel in sensor px)
