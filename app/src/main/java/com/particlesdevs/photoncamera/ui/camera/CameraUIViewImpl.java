@@ -108,7 +108,7 @@ public class CameraUIViewImpl implements CameraUIView {
     /** Accent icons on the gear, the gallery placeholder and the front / back switch. */
     private void styleControls(Context context) {
         ColorStateList accent = ColorStateList.valueOf(ShadeStyle.accent(context));
-        topbar.settingsButton.setImageTintList(accent);
+
         bottombuttons.galleryPlaceholder.setImageTintList(accent);
         bottombuttons.flipCameraButton.setImageTintList(accent);
         mShutterButton.setBackground(shutterRing);

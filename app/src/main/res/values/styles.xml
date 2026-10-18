@@ -103,6 +103,17 @@
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">15dp</item>
     </style>
+    <!-- SIMPLE_UI §1: the label of an active top-bar button (concept .tb .lbl: 13sp, 600, 6dp after the icon). -->
+    <style name="Scamera.TopBarLabel" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">6dp</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:visibility">gone</item>
+        <item name="android:importantForAccessibility">no</item>
+    </style>
     <!-- SIMPLE_UI §1: a button of the top bar's pill card (format, size, DCG), 13sp semibold, one line. -->
     <style name="Scamera.TopBarPillText" parent="">
         <item name="android:layout_width">wrap_content</item>
@@ -112,6 +123,7 @@
         <item name="android:gravity">center</item>
         <item name="android:textSize">13sp</item>
         <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0.01</item>
         <item name="android:maxLines">1</item>
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>

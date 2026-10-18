@@ -155,6 +155,8 @@
     <string name="shade_badge_route">Merge %1$s</string>
     <!-- Top bar group card (MANUAL_TASK.md §4): the route and format icons; the names are content descriptions and tooltips. -->
     <string name="topbar_group">Format and photo size</string>
+    <string name="topbar_torch">Torch</string>
+    <string name="topbar_motion">Motion</string>
     <string name="topbar_dcg" translatable="false">DCG</string>
     <string name="topbar_format">Format %1$s</string>
     <string name="shade_shutter">Take a photo</string>

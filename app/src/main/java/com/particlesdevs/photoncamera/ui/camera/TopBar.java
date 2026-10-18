@@ -23,12 +23,14 @@ import com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle;
 import com.particlesdevs.photoncamera.util.Lang;
 
 /**
- * SIMPLE_UI §1 The camera's top bar (concept, 392dp): torch, timer and Motion as 44dp round icon buttons, a card circle
- * with the accent icon while on (the timer with its seconds badge on the circle's edge; owner: «кружки при выборе должны быть
- * круглые как на концепте»), one pill card [format | photo size | DCG], the gear. Every size is the concept's dp times
- * {@link UiScale} (once per view tree), packed text sp times k with the capped font scale. When the bar does not fit at the
- * current width and font scale it steps down: (1) tighter gaps, (2) «RAW+HEIC» without spaces and tighter paddings,
- * (3) 12sp text, minimal paddings, 40dp circles; the gear always stays inside.
+ * SIMPLE_UI §1 The camera's top bar, as the concept draws it (392dp): torch, timer and Motion as 44dp icon buttons; while on,
+ * torch and Motion become a card pill with the accent icon and a label («Фонарик», «Движение»), the timer a card circle with
+ * its seconds badge (owner: «кружки при выборе должны быть круглые как на концепте»); one pill card [format | photo size |
+ * DCG]; the gear. Every size is the concept's dp times {@link UiScale} (once per view tree), packed text sp times k with the
+ * capped font scale. When the bar does not fit at the current width and font scale it steps down as the concept's
+ * tight / tighter / tightest classes do: (1) labels off, the active buttons 40dp circles, pill padding 8; (2) gaps 2, row
+ * padding 6, 36dp circles, pill padding 6, «RAW+HEIC» without spaces; (3) gaps 0, row padding 4, 33dp circles, pill padding 5
+ * and 12sp. The gear always stays inside.
  */
 public final class TopBar {
     private TopBar() {}
@@ -67,7 +69,7 @@ public final class TopBar {
         // torch (pref_ae_mode: 0 torch, 1 off)
         boolean torch = PreferenceKeys.getAeMode() == 0;
         String torchName = Lang.t(c, torch ? "Фонарик: вкл." : "Фонарик: выкл.", torch ? "Torch: on" : "Torch: off");
-        button(tb.torchButton, tb.torchIcon, torch, accent, torchName);
+        button(tb.torchButton, tb.torchIcon, tb.torchLabel, torch, accent, torchName);
         // timer (0, 3 or 10 s)
         int seconds = timerSeconds(c);
         boolean timer = seconds > 0;
@@ -80,11 +82,10 @@ public final class TopBar {
         badge.setStroke(Math.max(1, UiScale.dp(c, 2)), 0xFF000000);   // the dark ring round the badge
         tb.timerBadge.setBackground(badge);
         String timerName = timer ? Lang.t(c, "Таймер: " + seconds + " с", "Timer: " + seconds + " s") : Lang.t(c, "Таймер: выкл.", "Timer: off");
-        button(tb.timerButton, tb.timerIcon, timer, accent, timerName);
+        button(tb.timerButton, tb.timerIcon, null, timer, accent, timerName);
         // Motion
         boolean motion = MotionMode.on();
-        tb.motionIcon.setImageResource(R.drawable.topbar_ic_motion_on);   // one glyph, the tint tells on from off
-        button(tb.motionModeButton, tb.motionIcon, motion, accent,
+        button(tb.motionModeButton, tb.motionIcon, tb.motionLabel, motion, accent,
                 c.getString(motion ? R.string.motion_mode_on : R.string.motion_mode_off));
         // the pill card: format | size | DCG
         GradientDrawable card = new GradientDrawable();
@@ -140,18 +141,19 @@ public final class TopBar {
                 }).show();
     }
 
-    /** A round icon button: off, the bare icon; on, a card circle with the accent icon. */
-    private static void button(View box, ImageView icon, boolean on, int accent, String name) {
+    /** An icon button: off, the bare icon; on, a card pill (or circle) with the accent icon and, where it has one, the label. */
+    private static void button(View box, ImageView icon, @Nullable TextView label, boolean on, int accent, String name) {
         Context c = box.getContext();
         box.setActivated(on);
         box.setContentDescription(name);
         ViewCompat.setTooltipText(box, name);
         icon.setImageTintList(ColorStateList.valueOf(on ? accent : ShadeStyle.TEXT));
+        if (label != null) label.setTextColor(accent);
         if (on) {
-            GradientDrawable circle = new GradientDrawable();
-            circle.setShape(GradientDrawable.OVAL);
-            circle.setColor(ShadeStyle.CARD);
-            box.setBackground(circle);
+            GradientDrawable pill = new GradientDrawable();
+            pill.setColor(ShadeStyle.CARD);
+            pill.setCornerRadius(UiScale.dpF(c, 999));
+            box.setBackground(pill);
         } else {
             box.setBackground(ShadeStyle.ripple(c, 22));
         }
@@ -202,14 +204,25 @@ public final class TopBar {
 
     private static void apply(LayoutMainTopbarBinding tb, int level) {
         Context c = tb.getRoot().getContext();
-        // (1) tighter gaps; (2) «RAW+HEIC», tighter paddings; (3) 12sp text, minimal paddings, 40dp circles (the last resort)
-        float pad = level >= 3 ? 5 : level >= 2 ? 6 : 10, gap = level >= 3 ? 0 : level >= 1 ? 2 : 4;
-        int circle = UiScale.dp(c, level >= 3 ? 40 : 44);
+        // the concept's .topbar / .tight / .tighter / .tightest
+        float pad = level >= 3 ? 5 : level >= 2 ? 6 : level >= 1 ? 8 : 10, gap = level >= 3 ? 0 : level >= 2 ? 2 : 4;
+        int height = UiScale.dp(c, 44), circle = UiScale.dp(c, level >= 3 ? 33 : level >= 2 ? 36 : level >= 1 ? 40 : 44);
         for (View b : new View[]{tb.torchButton, tb.timerButton, tb.motionModeButton}) {
+            TextView label = b == tb.torchButton ? tb.torchLabel : b == tb.motionModeButton ? tb.motionLabel : null;
+            boolean pill = label != null && b.isActivated() && level < 1;
+            if (label != null) {
+                label.setVisibility(pill ? View.VISIBLE : View.GONE);
+                UiScale.textFixed(label, 13);
+            }
             ViewGroup.LayoutParams lp = b.getLayoutParams();
-            lp.width = circle;
-            lp.height = circle;
+            // a pill with its label, or a circle (round while on; off it has no background, only its width counts)
+            lp.width = pill ? ViewGroup.LayoutParams.WRAP_CONTENT : circle;
+            lp.height = pill ? height : circle;
             b.setLayoutParams(lp);
+            if (b != tb.timerButton) {
+                int p = pill ? UiScale.dp(c, 10) : 0;
+                b.setPaddingRelative(p, 0, p, 0);
+            }
         }
         for (View v : new View[]{tb.timerButton, tb.motionModeButton, tb.topbarBadges, tb.settingsButton}) {
             ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) v.getLayoutParams();

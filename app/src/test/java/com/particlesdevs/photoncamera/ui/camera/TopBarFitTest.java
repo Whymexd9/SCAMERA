@@ -87,10 +87,14 @@ public class TopBarFitTest {
 
     /** Lays the camera screen out at {@code widthDp}; returns the level the bar settled on. */
     private int check(int widthDp, float fontScale, boolean all, String name) throws Exception {
+        return check(widthDp, fontScale, all, all, all, all, name);
+    }
+
+    private int check(int widthDp, float fontScale, boolean torchOn, boolean timerOn, boolean motionOn, boolean all, String name) throws Exception {
         RuntimeEnvironment.setFontScale(fontScale);
-        PreferenceKeys.setAeMode(all ? 0 : 1);
-        PreferenceKeys.setCountdownTimerIndex(all ? 2 : 0);
-        MotionMode.set(all);
+        PreferenceKeys.setAeMode(torchOn ? 0 : 1);
+        PreferenceKeys.setCountdownTimerIndex(timerOn ? (all ? 2 : 1) : 0);
+        MotionMode.set(motionOn);
         TopBar.dcgAvailable(all);
         try (ActivityController<Activity> controller = Robolectric.buildActivity(Activity.class)) {
             controller.setup();
@@ -129,18 +133,22 @@ public class TopBarFitTest {
                 prev = r;
             }
             assertEquals(at + "gear pinned right", w - top.getPaddingRight(), inRoot(tb.settingsButton, root).right);
-            for (TextView t : new TextView[]{tb.formatBadge, tb.sizeBadge, tb.dcgBadge, tb.timerBadge}) {
+            for (TextView t : new TextView[]{tb.formatBadge, tb.sizeBadge, tb.dcgBadge, tb.torchLabel, tb.motionLabel, tb.timerBadge}) {
                 if (t.getVisibility() != View.VISIBLE) continue;
                 assertNotNull(at + "laid out", t.getLayout());
                 assertEquals(at + "ellipsis in " + t.getText(), 0, t.getLayout().getEllipsisCount(0));
                 assertEquals(at + "wrapped " + t.getText(), 1, t.getLayout().getLineCount());
                 assertTrue(at + "clipped " + t.getText(), t.getLayout().getLineWidth(0) <= t.getWidth() - t.getTotalPaddingLeft() - t.getTotalPaddingRight() + 1);
             }
-            for (View b : new View[]{tb.torchButton, tb.timerButton, tb.motionModeButton})
-                assertEquals(at + "a round button (owner: «кружки при выборе должны быть круглые»)", b.getWidth(), b.getHeight());
-            if (all) {
+            // the timer always, torch and Motion without their label: round (owner: «кружки при выборе должны быть круглые»)
+            assertEquals(at + "timer round", tb.timerButton.getWidth(), tb.timerButton.getHeight());
+            for (View b : new View[]{tb.torchButton, tb.motionModeButton}) {
+                boolean labelled = ((ViewGroup) b).getChildAt(1).getVisibility() == View.VISIBLE;
+                if (!labelled) assertEquals(at + "round", b.getWidth(), b.getHeight());
+                else assertTrue(at + "a pill with its label", b.getWidth() > b.getHeight());
+            }
+            if (timerOn) {
                 assertEquals(at + "the seconds badge", View.VISIBLE, tb.timerBadge.getVisibility());
-                assertEquals(at, View.VISIBLE, tb.dcgBadge.getVisibility());
                 Rect badge = inRoot(tb.timerBadge, root);
                 assertTrue(at + "the badge inside the bar", badge.top >= bar.top && badge.bottom <= bar.bottom);
             }
@@ -165,6 +173,9 @@ public class TopBarFitTest {
     @Config(qualifiers = "ru-w392dp-h871dp-xxhdpi")
     public void conceptWidthHoldsTheConcept() throws Exception {
         assertEquals("nothing on at 392dp: the concept as drawn", 0, check(392, 1f, false, "plain"));
+        assertEquals("the concept's screen (timer 3 s): level 0", 0, check(392, 1f, false, true, false, false, "concept"));
+        assertEquals("torch on keeps its label at 392dp", 0, check(392, 1f, true, false, false, false, "torch"));
+        check(392, 1f, true, true, true, false, "three");
         check(392, 1f, true, "all");
     }
 

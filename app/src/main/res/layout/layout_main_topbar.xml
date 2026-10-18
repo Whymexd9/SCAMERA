@@ -14,7 +14,7 @@
     </data>
 
     <!-- SIMPLE_UI §1 top bar (concept, 392dp; TopBar scales every size by UiScale): torch, timer (seconds badge), Motion as
-         44dp round icon buttons, a card circle with the accent icon while on; then one pill card [format | photo size | DCG];
+         44dp icon buttons: on, a card pill with the accent icon and a label (torch, Motion) or a card circle with the seconds badge (timer); then one pill card [format | photo size | DCG];
          the gear, the only settings entry of the camera screen. No route badge and no manual summary: the Pro strip shows
          the values, so the bar never grows. TopBar steps the bar down (tighter gaps, smaller circles, 12sp) when it does not fit. -->
     <LinearLayout
@@ -29,11 +29,15 @@
             android:clipChildren="false"
             tools:visibility="visible">
 
-        <FrameLayout
+        <LinearLayout
                 android:id="@+id/torch_button"
-                android:layout_width="44dp"
+                android:layout_width="wrap_content"
                 android:layout_height="44dp"
-                android:clipChildren="false"
+                android:minWidth="44dp"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:clickable="true"
                 android:focusable="true"
                 android:onClick="@{top_bar_click_listener}">
@@ -42,10 +46,15 @@
                     android:id="@+id/torch_icon"
                     android:layout_width="24dp"
                     android:layout_height="24dp"
-                    android:layout_gravity="center"
-                    android:src="@drawable/ic_torch"
+                    android:src="@drawable/ui_ic_flash"
                     android:importantForAccessibility="no"/>
-        </FrameLayout>
+
+            <!-- Shown while the button is on (concept: «topbar_torch»), at the first fit level only. -->
+            <TextView
+                    android:id="@+id/torch_label"
+                    style="@style/Scamera.TopBarLabel"
+                    android:text="@string/topbar_torch"/>
+        </LinearLayout>
 
         <FrameLayout
                 android:id="@+id/timer_button"
@@ -62,20 +71,20 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:layout_gravity="center"
-                    android:src="@drawable/ic_sheet_timer"
+                    android:src="@drawable/ui_ic_timer"
                     android:importantForAccessibility="no"/>
 
-            <!-- The seconds badge on the circle's lower right edge (concept: «3с», 10sp on the accent, a dark ring). -->
+            <!-- The seconds badge (concept: right 1, bottom 3, 18 x 16, 10sp bold ink on the accent, a 2dp black ring). -->
             <TextView
                     android:id="@+id/timer_badge"
                     android:layout_width="wrap_content"
-                    android:layout_height="18dp"
+                    android:layout_height="16dp"
                     android:minWidth="18dp"
                     android:layout_gravity="bottom|end"
-                    android:layout_marginEnd="-6dp"
-                    android:layout_marginBottom="-3dp"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
+                    android:layout_marginEnd="1dp"
+                    android:layout_marginBottom="3dp"
+                    android:paddingStart="3dp"
+                    android:paddingEnd="3dp"
                     android:gravity="center"
                     android:textSize="10sp"
                     android:textStyle="bold"
@@ -84,12 +93,16 @@
                     android:importantForAccessibility="no"/>
         </FrameLayout>
 
-        <FrameLayout
+        <LinearLayout
                 android:id="@+id/motion_mode_button"
-                android:layout_width="44dp"
+                android:layout_width="wrap_content"
                 android:layout_height="44dp"
+                android:minWidth="44dp"
                 android:layout_marginStart="4dp"
-                android:clipChildren="false"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:clickable="true"
                 android:focusable="true"
                 android:onClick="@{top_bar_click_listener}">
@@ -98,10 +111,15 @@
                     android:id="@+id/motion_icon"
                     android:layout_width="24dp"
                     android:layout_height="24dp"
-                    android:layout_gravity="center"
-                    android:src="@drawable/topbar_ic_motion_on"
+                    android:src="@drawable/ui_ic_motion"
                     android:importantForAccessibility="no"/>
-        </FrameLayout>
+
+            <!-- Shown while the button is on (concept: «topbar_motion»), at the first fit level only. -->
+            <TextView
+                    android:id="@+id/motion_label"
+                    style="@style/Scamera.TopBarLabel"
+                    android:text="@string/topbar_motion"/>
+        </LinearLayout>
 
         <Space
                 android:id="@+id/topbar_spacer"
@@ -162,7 +180,7 @@
                 android:minWidth="0dp" android:minHeight="0dp"
                 android:onClick="@{top_bar_click_listener}"
                 android:background="@null"
-                android:src="@drawable/settings_ic_gear"
+                android:src="@drawable/ui_ic_gear"
                 android:scaleType="fitCenter"
                 android:padding="10dp"
                 android:contentDescription="@string/sheet_all_settings"
