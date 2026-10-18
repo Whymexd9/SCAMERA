@@ -295,6 +295,36 @@ public final class HybridPlan {
     }
 
     /**
+     * P219 (owner, 2026-10-17: «сделай так чтобы брались все кадры, но для фулреза 1 длинный достаточно»): the bracketed (Shasta)
+     * frames a FULLRES plan keeps - one, while every ultrashort frame stays (the native mosaic merge takes all of them since P219:
+     * Bento's noise inside the mask). The owner's 50 MP shots captured 3 + 3 after the shutter (96 MB and up to 0.5 s of exposure
+     * a frame) and the merge kept one of each («HYBRID SERIES CUT: 14 of 18 (frame rules)»). No limit for a plain 12 MP shot
+     * ({@code fullRes} false) and for «Наш ремозаик» off on a Quad / Tetra stream or one of unknown block ({@code block} 0): that
+     * burst is binned into plain Bayer and merged as one (P195), all of its frames. {@code block} 1: a Bayer stream (the HAL's
+     * remosaic), merged as Bayer whatever the switch says.
+     */
+    public static int fullResLongFrames(boolean fullRes, int block, boolean remosaic) {
+        return fullRes && (remosaic || block == 1) ? 1 : Integer.MAX_VALUE;
+    }
+
+    /**
+     * P219: this plan with at most {@code max} (>= 1) bracketed requests - the first ones, the closest in time to the ultrashort
+     * frames and the base (the one the mosaic merge takes first); every other request and the order stay.
+     */
+    public HybridPlan withLongFrames(int max) {
+        int longs = 0;
+        for (Request r : requests) if (r.role == ImageFrame.CaptureRole.LONG) longs++;
+        if (longs <= max) return this;
+        List<Request> out = new ArrayList<>();
+        int kept = 0;
+        for (Request r : requests) {
+            if (r.role == ImageFrame.CaptureRole.LONG && kept++ >= max) continue;
+            out.add(r);
+        }
+        return new HybridPlan(out, nShutterNs, nIso, description + " | FULLRES: " + max + " of " + longs + " long frames");
+    }
+
+    /**
      * P198: this plan with {@code n} more N frames (its N exposure) ahead of its own requests: a 50 MP ZSL shot whose ring holds
      * fewer N frames than asked takes the rest right after the shutter (the plan's roles keep their order after them).
      */

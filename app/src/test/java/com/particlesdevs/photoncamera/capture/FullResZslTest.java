@@ -142,6 +142,29 @@ public class FullResZslTest {
         }
     }
 
+    /**
+     * P219 (owner, 2026-10-17: «для фулреза 1 длинный достаточно»): the FULLRES plan after the shutter is the 3 ultrashort frames
+     * and one bracketed frame (the first); the shot completes with the ring's N and those 4 stills, each with its planned role.
+     */
+    @Test public void aFullResShotTakesThreeUltrashortFramesAndOneLong() throws Exception {
+        Shot shot = shoot(-1, 0, HybridPlan.fullResLongFrames(true, 2, true));
+        assertEquals(shot.failures.toString(), 1, shot.completed);
+        assertEquals("3 ultrashort + 1 bracketed after the shutter", 4, shot.sequence.boundFutureCount());
+        assertEquals("the ring's 4 N and the 4 stills", 8, shot.sequence.presentCount());
+        int us = 0, longs = 0;
+        for (CaptureRequest request : shot.requests) {
+            final ImageFrame.CaptureRole role = ((ImageFrame.ScamCaptureTag) request.getTag()).role;
+            if (role == ImageFrame.CaptureRole.EXTRA_SHORT) us++;
+            if (role == ImageFrame.CaptureRole.LONG) longs++;
+        }
+        assertEquals(3, us);
+        assertEquals(1, longs);
+        // with a top-up the N come first, then the same 4 stills
+        Shot topped = shoot(-1, 2, 1);
+        assertEquals(topped.failures.toString(), 1, topped.completed);
+        assertEquals(6, topped.sequence.boundFutureCount());
+    }
+
     /** A still whose exposure fits no role of the plan leaves the merge; the ring's N keep the shot (tolerant as at 12 MP). */
     /**
      * P198: the owner's X200 Ultra (2026-10-17): a 50 MP ZSL shot with 10 N topped up after the shutter (16 stills) failed with
@@ -194,12 +217,17 @@ public class FullResZslTest {
 
     /** {@code topUp}: N frames the ring lacked, taken after the shutter ahead of the plan's stills (P198). */
     private Shot shoot(int offRole, int topUp) throws Exception {
+        return shoot(offRole, topUp, Integer.MAX_VALUE);
+    }
+
+    /** {@code longs}: the plan's bracketed frames kept (P219: 1 for FULLRES, CaptureController.takeNativeZsl). */
+    private Shot shoot(int offRole, int topUp, int longs) throws Exception {
         final Shot shot = new Shot();
         final VivoSdkFullRes.Profile profile = new VivoSdkFullRes.Profile(512, 512, 4, 2);
         // ISO capped at the N gain: the bracketed frames lengthen the shutter (40 ms > the viewfinder's 33 ms frame time)
-        shot.plan = HybridPlan.build(20_000_000L, 200, 0f, camera(200)).withLeadingNormals(topUp);
+        shot.plan = HybridPlan.build(20_000_000L, 200, 0f, camera(200)).withLongFrames(longs).withLeadingNormals(topUp);
         final int count = shot.plan.requests.size();
-        assertEquals(6 + topUp, count);
+        assertEquals(3 + Math.min(3, longs) + topUp, count);
         CaptureRequest.Builder previewBuilder = builder();
         previewBuilder.set(HDR, 0);
         previewBuilder.set(CaptureRequest.SENSOR_FRAME_DURATION, PREVIEW_FRAME_NS);

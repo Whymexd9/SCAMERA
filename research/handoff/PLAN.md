@@ -4929,3 +4929,46 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   включении используются текущие настройки…») moved under the switch in the group. The settings search still finds the group.
 - Checked: SettingsMenuTest (the cameras page shows neither row; copying is reached inside the group), ModuleProfilesPageTest,
   ModuleProfilesCarryTest, check_ui_language.
+
+### P219 - every frame into the native mosaic merge, one long frame for FULLRES, no second mosaic detection (owner, 2026-10-17:
+«сделай так чтобы брались все кадры, но для фулреза 1 длинный достаточно»)
+- Evidence: the native merge (FULLRES Quad / Tetra, ISZ mosaics) picked one ultrashort and one bracketed frame
+  (hybridReconstructMosaicNativeMerge), so every owner FULLRES shot logged «HYBRID SERIES CUT: 10 of 14 / 8 of 12 / 14 of 18
+  (frame rules)» and «HYBRID BENTO ... frames=1» although the plan captured 3 + 3 after the shutter (HybridPlan.build); the
+  split (mosaicPath 0) has merged up to bentoFrames ultrashort and every bracketed frame since P63. The worker's mosaic detector
+  ran on every mosaic burst only for its log line when the header already gave block 2 / 4 (roadmap speed-ux B1).
+- Worker: hybridMosaicPick, one pick for the split (its P63 rules, unchanged) and the native merge. Native (tuning
+  mosaicNativePick 1, default): every ultrashort frame Bento merges (bentoFrames, at most 3, within x1.3 of the shortest) and every
+  bracketed frame; the first of each keeps its slot ahead of the N frames as before, the others take only what the N frames leave,
+  so the pick always holds the old one and never fewer N frames (mosaicNativePick 0 = the pick before P219). Nothing else had to
+  change: the merge program, the Bento validation and the Shasta gates work per frame role (the marked merge program untouched).
+  hybridMosaicBlock: header block 2 / 4 -> «HYBRID MOSAIC: header block 2, detection skipped (the app's block)», no detector.
+- Found on the way (pre-existing, exposed by the earlier merge start): a chroma context built ahead (chromaPrewarm) and never
+  taken - every 50 MP merge, its median runs on the CPU - was torn down in a static destructor at exit, and eglMakeCurrent
+  crashed there (SIGSEGV in libGLESv2_adreno after «SCAM CAPTURE OK»; the app counts a non-zero exit as a failed merge) whenever
+  the vendor CRE library had loaded after the context was built. The integrate worker crashes the same way with SCAM_NO_WARMUP=1
+  (the CRE loaded only at the alignment); the new worker crashed in 2 of 4 50 MP replays before the fix. Fix
+  (scam-chroma-gpu.h): an untaken context is left to the process exit.
+- App: HybridPlan.fullResLongFrames / withLongFrames - a FULLRES plan keeps all its ultrashort frames and the first long frame:
+  native 50 MP ZSL (takeNativeZsl) and PSL (pslPlan, manual long shutter too: vivo / OPPO native, block from the profile), the
+  Pixel / Snapdragon MAXIMUM_RESOLUTION session (block 0). 12 MP plans are untouched; «Наш ремозаик» off on a Quad / Tetra or
+  unknown block keeps 3 + 3 (the binned P195 merge uses them all); a Bayer FULLRES stream (block 1) takes one long frame. The
+  freed frames go to N where the memory budget sized the series. Not touched: the 200 MP series (N + one ultrashort, P179) and the
+  X200 Ultra's SDK route (N only), which have no bracketed frames.
+- Checked: tools/check_mosaic_pick.cpp (new, CI; built with the NDK and run on the OPPO): 200000 random bursts - the split pick
+  frame for frame as before, mosaicNativePick 0 = the old native pick, mosaicNativePick 1 holds it with the same N frames and
+  takes every frame with room; the owner's 12 N + 3 + 3 shot 14 -> 18 frames; the detector skipped / still run for block 0.
+  HybridPlanTest (+1) and FullResZslTest (+1: 3 ultrashort + 1 long through the native capture); the whole CI list 205 classes,
+  1278 tests, 0 failures; check_ui_language, check_settings_model PASS. OPPO replays against worker_int: syn_b1 5b988db1, x7u_1x
+  52bcce71, syn_b2 7c1a3756, syn_b4 5e586261, v10_1 3e84061b, v10_2 12389449 byte-identical (v10: 30 of 35 frames, the
+  mosaicFrames budget leaves no slot after the N frames); hand db8d449d -> fef2af11, isz2 d5dceb41 -> d72715ce (27 of 27 frames,
+  5 bracketed merged instead of 1; Bento not applied there): darkest 10 % tiles' fine band x0.61 / x0.76, textured bright tiles'
+  detail bands x1.00 (no blur), merge +0.4..1.1 s, peak RSS +150 MB. With mosaicNativePick 0 all 8 identical to worker_int.
+  Owner's kept 50 MP X7U bursts (app tuning): 185248 (17 N + 3 + 3) fde0c549 -> 8c0090ff, 23 of 23 frames, Bento frames=3 (same
+  mask, 296816 px), high-pass noise inside it R x0.59 G x0.59 B x0.59 (1/sqrt 3 = 0.58), R/G 0.577 -> 0.575, B/G 0.766 -> 0.764,
+  level x0.997; one more bracketed frame merged (the other two refused by the Shasta motion gate): darkest tiles x0.94, textured
+  detail x1.00, no NaN / Inf; merge 15.4 -> 16.1..16.8 s, peak RSS 3650 -> 4280 MB. 191825 (19 N + 1 ultrashort) d7b19079
+  identical. Mosaic detector 0.52..0.61 s in 7 runs of worker_int, 0.2 ms now.
+- Not checked: no shot with the app (camera app not run); vivo X200 / X300 Ultra, Pixel, the Tetra / 200 MP routes and the
+  split on the phone; the peak memory of a 16-frame FULLRES merge on 8-12 GB phones; capture time saved by the 2 long frames
+  (not measured, roadmap estimate 0.35-0.5 s, more at night).

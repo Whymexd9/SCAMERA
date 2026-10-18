@@ -275,4 +275,65 @@ public class HybridPlanTest {
         }
         assertSame(base, base.withLeadingNormals(0));
     }
+
+    /**
+     * P219 (owner, 2026-10-17: «сделай так чтобы брались все кадры, но для фулреза 1 длинный достаточно»): FULLRES asks for every
+     * ultrashort frame and one long frame; 12 MP and a binned FULLRES burst («Наш ремозаик» off on a mosaic) keep 3 + 3.
+     */
+    @Test public void fullResTakesEveryUltrashortFrameAndOneLongFrame() {
+        assertEquals("FULLRES Quad / Tetra with our remosaic", 1, HybridPlan.fullResLongFrames(true, 2, true));
+        assertEquals(1, HybridPlan.fullResLongFrames(true, 4, true));
+        assertEquals("a Bayer FULLRES stream (the HAL's remosaic) whatever the switch", 1, HybridPlan.fullResLongFrames(true, 1, false));
+        assertEquals(1, HybridPlan.fullResLongFrames(true, 1, true));
+        assertEquals("unknown block, remosaic on (the Pixel's max-resolution session)", 1, HybridPlan.fullResLongFrames(true, 0, true));
+        assertEquals("binned FULLRES: all", Integer.MAX_VALUE, HybridPlan.fullResLongFrames(true, 2, false));
+        assertEquals(Integer.MAX_VALUE, HybridPlan.fullResLongFrames(true, 4, false));
+        assertEquals("unknown block, remosaic off: may be binned", Integer.MAX_VALUE, HybridPlan.fullResLongFrames(true, 0, false));
+        assertEquals("12 MP", Integer.MAX_VALUE, HybridPlan.fullResLongFrames(false, 1, true));
+        assertEquals(Integer.MAX_VALUE, HybridPlan.fullResLongFrames(false, 2, false));
+        // the app defaults (P68): 3 ultrashort + 3 bracketed -> 3 + 1, the first bracketed request kept, the order unchanged
+        pinned.clear();
+        HybridPlan plain = HybridPlan.build(10_000_000L, 659, 0f, camera(12000));
+        assertEquals(6, plain.requests.size());
+        HybridPlan full = plain.withLongFrames(HybridPlan.fullResLongFrames(true, 2, true));
+        assertEquals(4, full.requests.size());
+        for (int i = 0; i < 3; i++) assertSame(plain.requests.get(i), full.requests.get(i));
+        assertSame(plain.requests.get(3), full.requests.get(3));
+        assertEquals(ImageFrame.CaptureRole.LONG, full.requests.get(3).role);
+        assertTrue(full.description, full.description.startsWith(plain.description) && full.description.endsWith("FULLRES: 1 of 3 long frames"));
+        assertEquals(plain.nShutterNs, full.nShutterNs);
+        assertEquals(plain.nIso, full.nIso);
+        // a still of the cut plan keeps its role by its own index
+        assertEquals(ImageFrame.CaptureRole.LONG, full.classify(request(3, ImageFrame.CaptureRole.LONG), result(10_000_000L, 1318)));
+        assertNull("the dropped bracketed requests are outside the plan", full.classify(request(4, ImageFrame.CaptureRole.LONG), result(10_000_000L, 1318)));
+        assertEquals(ImageFrame.CaptureRole.EXTRA_SHORT, full.classify(request(0, ImageFrame.CaptureRole.EXTRA_SHORT),
+                result(full.requests.get(0).shutterNs, full.requests.get(0).iso)));
+        // nothing to cut: the same plan
+        assertSame(plain, plain.withLongFrames(Integer.MAX_VALUE));
+        assertSame(plain, plain.withLongFrames(3));
+        HybridPlan single = HybridPlan.single(10_000_000L, 200);
+        assertSame(single, single.withLongFrames(1));
+        // the N topped up after the shutter (P198) come after the cut, the N exposure as before
+        HybridPlan topped = full.withLeadingNormals(2);
+        assertEquals(6, topped.requests.size());
+        assertEquals(ImageFrame.CaptureRole.NORMAL, topped.requests.get(1).role);
+        assertEquals(ImageFrame.CaptureRole.LONG, topped.requests.get(5).role);
+        // a normal-back plan (FULLRES session without ring frames): its N and ultrashort frames stay
+        HybridPlan back = HybridPlan.buildNormalBack(10_000_000L, 659, 0f, camera(12000), 4);
+        HybridPlan backFull = back.withLongFrames(1);
+        int n = 0, us = 0, longs = 0;
+        for (HybridPlan.Request r : backFull.requests) {
+            if (r.role == ImageFrame.CaptureRole.NORMAL) n++;
+            if (r.role == ImageFrame.CaptureRole.EXTRA_SHORT) us++;
+            if (r.role == ImageFrame.CaptureRole.LONG) longs++;
+        }
+        assertEquals(4, n);
+        assertEquals(3, us);
+        assertEquals(1, longs);
+        // five Shasta frames (the pinned logs' setting), Bento auto with a clipping ring frame: 3 + 1
+        pinned.put("shasta_frames", 5f);
+        HybridPlan five = HybridPlan.build(10_000_000L, 659, 0.01f, camera(12000)).withLongFrames(1);
+        assertEquals(4, five.requests.size());
+        assertTrue(five.description, five.description.endsWith("FULLRES: 1 of 5 long frames"));
+    }
 }
