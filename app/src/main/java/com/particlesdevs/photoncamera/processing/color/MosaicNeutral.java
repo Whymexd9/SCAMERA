@@ -42,10 +42,13 @@ import java.util.function.LongSupplier;
  * (M13 corr. 4: under a sodium lamp the ISP kept 0.771 / 0.288 where the statistic read 0.876 / 0.274 - log-2026-10-17 L30883 -
  * the clamp at the curve's 0.755 / 0.298 was close, a full extrapolation would neutralise the lamp). With fewer than 2 points the
  * camera's DNG matrices give the locus ({@link #prior}: the neutrals of its two reference illuminants, on vivo the shape only -
- * anchored at a learned point or the PD2454 daylight neutrals). Phase 1 removes the pinning (the replay of log-2026-10-17's 1,519
- * camera-2 lines: 314 at 0.330 / 0.705 -> 0), the jumps (near-identical inputs jumping > 0.02 ln: 14 -> 0) and the clamp; it does
- * not remove the statistic's steady offset against the ISP (0.330 against the plain 0.359 is mostly along the locus) - that is the
- * teacher's (MosaicTeacher, log only).
+ * anchored at a learned point or the PD2454 daylight neutrals). P212z (review): one learned point spans the prior's colour
+ * temperature range on either side of it (it was a locus of zero width, so every light warmer than the point was held within
+ * 0.2 ln of it - a tungsten 0.62 / 0.37 against one daylight point 0.359 / 0.671 became 0.410 / 0.577, where P121 used the
+ * measurement as it is), and a locus without two learned points has no warmest learned light: no WARM_KEEP there. Phase 1
+ * removes the pinning (the replay of log-2026-10-17's 1,519 camera-2 lines: 314 at 0.330 / 0.705 -> 0), the jumps
+ * (near-identical inputs jumping > 0.02 ln: 14 -> 0) and the clamp; it does not remove the statistic's steady offset against the
+ * ISP (0.330 against the plain 0.359 is mostly along the locus) - that is the teacher's (MosaicTeacher, log only).
  * <p>
  * P212f (W4 = M10): {@link #measure2}, the robust statistic with a confidence (per-site clipping, noise weights from the camera's
  * noise profile instead of the dark cut, the lens shading gains, the output crop, grey-cell selection, a split sigma), over up to
@@ -459,16 +462,22 @@ public final class MosaicNeutral {
 
     /**
      * P212f: a smooth illuminant locus ln b = a0 + a1 (u - u0) + a2 (u - u0)^2 over u = ln r: {@code [lo, hi]} is what its points
-     * (or prior) cover, extended to {@code [elo, ehi]} by EXTRAPOLATE along the curve.
+     * (or prior) cover, extended to {@code [elo, ehi]} by EXTRAPOLATE along the curve. P212z: {@code warmKeep} - its warm end is
+     * the warmest learned light (2 points or more), so beyond it only WARM_KEEP of the excess is followed.
      */
     static final class Locus {
         final double u0, a0, a1, a2, lo, hi, elo, ehi;
         final String kind;
         final int points;
+        final boolean warmKeep;
         /** The learned points (ln r, ln b), their kernel weights ln(1 + count) and tints off the curve (along its normal); null: none. */
         @Nullable double[] pu, pb, pw, pt;
 
         Locus(double u0, double a0, double a1, double a2, double lo, double hi, String kind, int points) {
+            this(u0, a0, a1, a2, lo, hi, kind, points, points >= 2);
+        }
+
+        Locus(double u0, double a0, double a1, double a2, double lo, double hi, String kind, int points, boolean warmKeep) {
             this.u0 = u0;
             this.a0 = a0;
             this.a1 = a1;
@@ -477,6 +486,7 @@ public final class MosaicNeutral {
             this.hi = hi;
             this.kind = kind;
             this.points = points;
+            this.warmKeep = warmKeep;
             this.elo = lo - EXTRAPOLATE / Math.sqrt(1 + df(lo) * df(lo));
             this.ehi = hi + EXTRAPOLATE / Math.sqrt(1 + df(hi) * df(hi));
         }
@@ -533,8 +543,9 @@ public final class MosaicNeutral {
 
         /**
          * The neutral for a measurement: its nearest point on the curve within [elo, ehi] - beyond the warmest learned light
-         * moved by WARM_KEEP of the excess (at most WARM_MAX) - offset along the normal there by the learned points' local tint,
-         * the measurement's own tint kept within {@code tint} of it.
+         * moved by WARM_KEEP of the excess (at most WARM_MAX; P212z: only when {@link #warmKeep}, else the whole excess up to
+         * EXTRAPOLATE as beyond the cool end) - offset along the normal there by the learned points' local tint, the measurement's
+         * own tint kept within {@code tint} of it.
          */
         Projection project(double lr, double lb, double tint) {
             double u = footU(lr, lb);
@@ -543,7 +554,7 @@ public final class MosaicNeutral {
             final double distance = Math.hypot(lr - u, lb - f0);
             double beyond = 0;
             if (u > hi) {
-                final double excess = arc(hi, u), kept = Math.min(WARM_MAX, WARM_KEEP * excess);
+                final double excess = arc(hi, u), kept = warmKeep ? Math.min(WARM_MAX, WARM_KEEP * excess) : excess;
                 if (excess > 0) u = hi + (u - hi) * kept / excess;
                 beyond = kept;
             } else if (u < lo) {
@@ -625,7 +636,9 @@ public final class MosaicNeutral {
     /**
      * P212f: the locus through points {ln r, ln b, count, ...}: a Huber quadratic (≥ QUAD_POINTS over ≥ QUAD_SPAN of ln b - ln r),
      * else a Huber line (≥ 2 points over ≥ 0.05 of ln r, a falling slope), else the prior's slope (or DEFAULT_SLOPE) through the
-     * points' weighted mean; one point: the prior's shape through it; none: the prior itself (unless shape only). Null: nothing.
+     * points' weighted mean; one point: the prior's shape through it, P212z over the prior's span of ln r on either side of the
+     * point (a vivo prior is the shape only, so where the point lies on it is unknown: it may be the daylight end or the tungsten
+     * one); none: the prior itself (unless shape only). Null: nothing.
      */
     @Nullable
     static Locus fit(List<float[]> pts, @Nullable Prior prior) {
@@ -633,7 +646,7 @@ public final class MosaicNeutral {
         if (n == 0) {
             if (prior == null || prior.shapeOnly) return null;
             final double s = prior.slope();
-            return new Locus(prior.r2, prior.b2, s, 0, Math.min(prior.r1, prior.r2), Math.max(prior.r1, prior.r2), "DNG prior", 0);
+            return new Locus(prior.r2, prior.b2, s, 0, Math.min(prior.r1, prior.r2), Math.max(prior.r1, prior.r2), "DNG prior", 0, false);
         }
         double wsum = 0, mu = 0, mb = 0, lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE, clo = Double.MAX_VALUE, chi = -Double.MAX_VALUE;
         final double[] u = new double[n], y = new double[n], w = new double[n];
@@ -668,8 +681,13 @@ public final class MosaicNeutral {
         }
         if (n == 1 && prior == null) return null;
         final double s = prior != null ? prior.slope() : DEFAULT_SLOPE;
-        return new Locus(mu, mb, s, 0, lo, hi, n == 1 ? "DNG shape through 1 point" : prior != null ? "DNG shape through the points"
-                : "default slope through the points", n).withPoints(pts);
+        if (n == 1) {
+            // P212z (review): not a locus of zero width at the point (every warmer light was held within WARM_MAX of it)
+            final double span = Math.abs(prior.r1 - prior.r2);
+            return new Locus(mu, mb, s, 0, lo - span, hi + span, "DNG shape through 1 point", 1, false).withPoints(pts);
+        }
+        return new Locus(mu, mb, s, 0, lo, hi, prior != null ? "DNG shape through the points" : "default slope through the points", n)
+                .withPoints(pts);
     }
 
     /** P212f: a locus whose slope falls (warmer: r up, b down) within [-4, -0.2] over its whole extended domain. */

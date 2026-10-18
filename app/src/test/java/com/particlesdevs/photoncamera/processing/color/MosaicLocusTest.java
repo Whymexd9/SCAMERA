@@ -256,6 +256,55 @@ public class MosaicLocusTest {
         assertEquals(0, MosaicNeutral.fit(new ArrayList<>(), day).project(Math.log(0.3945), Math.log(0.6396), 0).distance, 1e-6);
     }
 
+    /**
+     * P212z (review): one learned point with the DNG prior - OPPO camera 2's daylight 0.359 / 0.671 (common: points within 0.03
+     * merge) - is the prior's shape through it over the prior's range of ln r on either side, not a locus of zero width: a tungsten
+     * 0.62 / 0.37 and a 4000 K 0.50 / 0.48 keep their place on it (the zero-width locus held both at 0.410 / 0.577, P121 used them
+     * as they are), the point itself stays; a vivo shape-only prior through a tungsten point reaches daylight the same way.
+     */
+    @Test public void oneLearnedPointSpansThePriorsRange() {
+        final MosaicNeutral.Prior prior = MosaicNeutral.prior(CM1, CT1, 21, CM2, CT2, 17);
+        MosaicNeutral.curve("one").add(pt(0.359, 0.671, 5));
+        final MosaicNeutral.Result tungsten = MosaicNeutral.resolve("one", 0.62f, 0.37f, 40_000, 0f, prior, "measured");
+        assertTrue(tungsten.how, tungsten.how.contains("DNG shape through 1 point"));
+        assertEquals(tungsten.how, Math.log(0.62), Math.log(tungsten.neutral[0]), 0.03);
+        assertEquals(tungsten.how, Math.log(0.37), Math.log(tungsten.neutral[2]), 0.04);
+        assertFalse(tungsten.how, tungsten.extrapolated);
+        final MosaicNeutral.Result mid = MosaicNeutral.resolve("one", 0.50f, 0.48f, 40_000, 0f, prior, "measured");
+        assertEquals(mid.how, Math.log(0.50), Math.log(mid.neutral[0]), 0.03);
+        assertEquals(mid.how, Math.log(0.48), Math.log(mid.neutral[2]), 0.05);
+        final MosaicNeutral.Result day = MosaicNeutral.resolve("one", 0.359f, 0.671f, 40_000, 0f, prior, "measured");
+        assertEquals(day.how, 0.359, day.neutral[0], 0.002);
+        assertEquals(day.how, 0.671, day.neutral[2], 0.002);
+        final ArrayList<float[]> one = new ArrayList<>();
+        one.add(pt(0.359, 0.671, 5));
+        final MosaicNeutral.Locus l = MosaicNeutral.fit(one, prior);
+        assertFalse("one point is no warmest learned light", l.warmKeep);
+        assertTrue(l.toString(), l.hi - l.lo >= 2 * Math.abs(prior.r1 - prior.r2) - 1e-9);
+        // vivo: the shape only, its one point a tungsten one - a daylight measurement is not held 0.26 ln warmer at elo
+        final ArrayList<float[]> warm = new ArrayList<>();
+        warm.add(pt(0.62, 0.37, 5));
+        final MosaicNeutral.Locus shaped = MosaicNeutral.fit(warm, MosaicNeutral.anchored(prior, null));
+        final MosaicNeutral.Projection q = shaped.project(Math.log(0.36), Math.log(0.67), 0);
+        assertEquals(Math.log(0.36), q.lr, 0.03);
+        assertFalse(q.extrapolated);
+    }
+
+    /**
+     * P212z (review): a locus without two learned points has no warmest learned light, so beyond its warm end (the prior's StdA) a
+     * lamp follows the curve the whole way up to EXTRAPOLATE, as beyond the cool end - not WARM_KEEP of it (0.80 / 0.30: about
+     * 0.78, not 0.72); with learned points the warm end keeps WARM_KEEP (aWarmLightIsExtrapolatedNotClamped).
+     */
+    @Test public void aPriorOnlyLocusFollowsAWarmLamp() {
+        final MosaicNeutral.Prior prior = MosaicNeutral.prior(CM1, CT1, 21, CM2, CT2, 17);
+        final MosaicNeutral.Locus l = MosaicNeutral.fit(new ArrayList<>(), prior);
+        assertFalse(l.warmKeep);
+        final MosaicNeutral.Projection q = l.project(Math.log(0.80), Math.log(0.30), 0);
+        assertTrue("beyond StdA", q.extrapolated);
+        assertEquals(Math.log(0.78), q.lr, 0.02);
+        assertTrue(MosaicNeutral.fit(daylight(), prior).warmKeep);
+    }
+
     /** A confident measurement keeps its tint up to TINT off the locus; a not confident one goes onto it. */
     @Test public void theTintFollowsTheConfidence() {
         MosaicNeutral.curve("tint").addAll(daylight());
