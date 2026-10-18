@@ -106,7 +106,7 @@ public class ShadeCatalogTest {
         for (String gone : new String[]{"pref_scam_hybrid_ark_tone", "pref_scamhdr_fusion_enabled", "pref_scam_tone_curve"})
             assertFalse(gone, ShadeCatalog.isCurated(gone));
         for (String key : ShadeCatalog.DEFAULT_TILES) assertTrue(key, catalog.isKnown(key));
-        assertEquals(7, ShadeCatalog.DEFAULT_TILES.size());
+        assertEquals("SIMPLE_UI §2: the 16 default tiles that have a setting", 16, ShadeCatalog.DEFAULT_TILES.size());
     }
 
     @Test
@@ -267,7 +267,8 @@ public class ShadeCatalogTest {
 
     @Test
     public void onlyPortablePinnableSettingsAreInTheCatalog() {
-        for (String key : new String[]{"pref_dcp_profile_key", "pref_camera_package_spoof_enabled", "pref_antibanding_hz_key",
+        // SIMPLE_UI §2: «Мерцание» (pref_antibanding_hz_key) is a default tile now
+        for (String key : new String[]{"pref_dcp_profile_key", "pref_camera_package_spoof_enabled",
                 "pref_watermark_line1", "pref_theme_key", "pref_tunable_camerauiviewimpl_enablequadres",
                 "pref_restore_preferences_key", "pref_backup_preferences_key", "settings_favorites", "scam_hybrid_screen"})
             assertFalse(key, catalog.isKnown(key));

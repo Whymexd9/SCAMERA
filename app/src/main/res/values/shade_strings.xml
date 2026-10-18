@@ -32,17 +32,17 @@
     </string-array>
 
     <!-- Tile names -->
-    <string name="shade_t_flash">Flash</string>
+    <string name="shade_t_flash">Torch</string>
     <string name="shade_t_timer">Timer</string>
     <string name="shade_t_format">Format</string>
     <string name="shade_t_metering_std">Camera metering</string>
     <string name="shade_t_metering">Tone metering</string>
     <string name="shade_t_output">Resolution</string>
     <string name="shade_t_downsampler">Downsampler</string>
-    <string name="shade_t_ultrahdr">Ultra HDR</string>
-    <string name="shade_t_wide169">16:9</string>
+    <string name="shade_t_ultrahdr">HDR photo</string>
+    <string name="shade_t_wide169">Frame</string>
     <string name="shade_t_watermark">Watermark</string>
-    <string name="shade_t_bento">Highlight frames</string>
+    <string name="shade_t_bento">Highlights</string>
     <string name="shade_t_bento_frames">Highlight frame count</string>
     <string name="shade_t_shasta">Shadow frames</string>
     <string name="shade_t_hybrid_frames">SHDR frames</string>
@@ -50,9 +50,9 @@
     <string name="shade_t_chroma">Chroma</string>
     <string name="shade_t_rejection">Rejection</string>
     <string name="shade_t_grid">Grid</string>
-    <string name="shade_t_peak">Focus peak</string>
-    <string name="shade_t_live_raw">Live RAW</string>
-    <string name="shade_t_debug">Debug</string>
+    <string name="shade_t_peak">Peaking</string>
+    <string name="shade_t_live_raw">RAW view</string>
+    <string name="shade_t_debug">Info</string>
 
     <!-- Short values on tiles and segments -->
     <string-array name="shade_s_flash">
@@ -161,6 +161,17 @@
     <string name="shade_quick_title">Quick settings</string>
     <string name="shade_advanced">For experts</string>
     <string name="shade_advanced_summary">Highlight frames, focus peaking, faces, RAW viewfinder</string>
+    <string name="shade_t_size">Size</string>
+    <string name="shade_t_horizon">Horizon</string>
+    <string name="shade_t_motion">Motion</string>
+    <string name="shade_t_sound">Sound</string>
+    <string name="shade_t_flicker">Flicker</string>
+    <string name="shade_title_size">Photo size</string>
+    <string-array name="shade_l_size">
+        <item>12 MP</item>
+        <item>50 MP</item>
+        <item>200 MP</item>
+    </string-array>
     <string name="topbar_group">Format and photo size</string>
     <string name="topbar_torch">Torch</string>
     <string name="topbar_motion">Motion</string>

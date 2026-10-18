@@ -107,6 +107,7 @@ public class SettingsManager {
         SettingsMigration.migrateScamHybrid(mContext, mDefaultPreferences);
         // The old quick buttons and favourites become the shade's tiles before their keys become obsolete.
         SettingsMigration.migrateShadeTiles(mDefaultPreferences);
+        SettingsMigration.migrateSimpleUiTiles(mDefaultPreferences);
         // After the route migration, which reads the former route switches before they become obsolete.
         SettingsMigration.removeObsolete(mContext, mDefaultPreferences);
     }

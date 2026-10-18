@@ -608,6 +608,12 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         }
 
         @Override
+        public boolean openSizeSheet() {
+            TopBar.openSizeSheet(CameraFragment.this);
+            return true;
+        }
+
+        @Override
         public void onValuesChanged() {
             if (mCameraUIView != null) mCameraUIView.updateBadges();
         }

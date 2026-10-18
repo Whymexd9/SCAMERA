@@ -75,12 +75,24 @@ public final class ShadeCatalog {
     /** «Формат фото» (JPEG / HEIC / WebP / AVIF): the codec half of the FORMAT choice; no tile of its own (FORMAT covers it). */
     public static final String PHOTO_FORMAT = com.particlesdevs.photoncamera.processing.PhotoFormat.KEY;
     public static final String ROUTE = ScamHybridKeys.ROUTE;
+    /** SIMPLE_UI §2: «Размер» - the photo size (12 / 50 / 200 Мп, PhotoSize: the FULLRES switch); virtual, its tile opens the sheet. */
+    public static final String SIZE = "ui_photo_size";
+    public static final String HORIZON = "pref_horizon", MOTION = "pref_motion_mode", SOUND = "pref_camera_sounds_key",
+            FLICKER = "pref_antibanding_hz_key";
     private static final String OUTPUT = "pref_scam_hybrid_output", DOWNSAMPLER = "pref_scam_hybrid_downsampler";
     /** Virtual entries, in catalog order. */
-    public static final List<String> VIRTUAL = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, METERING_STD));
+    public static final List<String> VIRTUAL = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, METERING_STD, SIZE));
 
-    /** First value of ui_shade_tiles (owner's answer 10: after the user's old pins); see {@link #defaultTiles()}. */
-    public static final List<String> DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT,
+    /**
+     * SIMPLE_UI §2, the default pins (18 + «Добавить»): Фонарик, Таймер, Сетка, Формат / Размер, HDR-фото, Горизонт, Движение /
+     * Звук, Лица, Мерцание / Кадр, Слежение, Фокус-пик / Света, Инфо (the concept's Стиль and Селфи have no setting of their
+     * own yet). The first value of ui_shade_tiles; see {@link #defaultTiles()}.
+     */
+    public static final List<String> DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, "pref_show_grid_key",
+            FORMAT, SIZE, "pref_ultrahdr_key", HORIZON, MOTION, SOUND, "pref_face_detect_mode", FLICKER, "pref_wide169_key",
+            "pref_tracking_af_mode", "pref_peak_method_key", "pref_scam_hybrid_bento", "pref_show_afdata_key"));
+    /** The default pins before SIMPLE_UI: a stored list equal to it moves to the new defaults (a custom list stays). */
+    public static final List<String> OLD_DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT,
             OUTPUT, "pref_show_grid_key", "pref_ultrahdr_key", "pref_scam_hybrid_bento"));
 
     /** The default tiles of this phone (P129: SHDR is the only merge, no route tile). */
@@ -124,7 +136,7 @@ public final class ShadeCatalog {
     }
     /** Never pinnable: belongs to one phone only, is part of the FORMAT choice (the codec), or is set once for the place (the lamp flicker). */
     private static final Set<String> NOT_PINNABLE = new HashSet<>(Arrays.asList(
-            PHOTO_FORMAT, "pref_antibanding_hz_key",
+            PHOTO_FORMAT,
             PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue, PreferenceKeys.Key.CAMERA_MODE.mValue));
 
     /**
@@ -154,6 +166,8 @@ public final class ShadeCatalog {
         CONCEPT_ICONS.put("pref_live_viewfinder_raw_key", R.drawable.ui_ic_raw);
         CONCEPT_ICONS.put("pref_show_watermark_key", R.drawable.ui_ic_text);
         CONCEPT_ICONS.put(METERING_STD, R.drawable.ui_ic_target);
+        CONCEPT_ICONS.put(SIZE, R.drawable.ui_ic_size);
+        CONCEPT_ICONS.put(FLICKER, R.drawable.ui_ic_lamp);
     }
 
     /** Curated look of a key: short tile name, short value labels, icon of the setting and of each value. */
@@ -182,6 +196,11 @@ public final class ShadeCatalog {
         spec(TIMER, R.string.shade_t_timer, R.array.shade_s_timer, R.drawable.ic_sheet_timer,
                 R.drawable.ic_timeroff, R.drawable.ic_timer3s, R.drawable.ic_timer10s);
         spec(FORMAT, R.string.shade_t_format, 0, R.drawable.ic_shade_jpeg); // value icons: FormatChoice
+        spec(SIZE, R.string.shade_t_size, R.array.shade_l_size, R.drawable.ui_ic_size);
+        spec(HORIZON, R.string.shade_t_horizon, 0, R.drawable.ui_ic_level);
+        spec(MOTION, R.string.shade_t_motion, 0, R.drawable.ui_ic_motion);
+        spec(SOUND, R.string.shade_t_sound, 0, R.drawable.ui_ic_sound);
+        spec(FLICKER, R.string.shade_t_flicker, 0, R.drawable.ui_ic_lamp);
         spec(METERING_STD, R.string.shade_t_metering_std, R.array.shade_s_metering_std, R.drawable.ic_sheet_metering);
         spec("pref_scam_hybrid_ark_metering", R.string.shade_t_metering, R.array.shade_s_ark_metering, R.drawable.ic_shade_meter);
         spec(OUTPUT, R.string.shade_t_output, R.array.shade_s_output, R.drawable.settings_ic_zoom);
@@ -343,6 +362,7 @@ public final class ShadeCatalog {
         addFormat();
         addVirtual(METERING_STD, R.string.shade_title_metering_std, R.array.shade_l_metering_std,
                 new String[]{"-1", "0", "1", "2"}, "-1", SettingType.AE_METERING_STD);
+        addVirtual(SIZE, R.string.shade_title_size, R.array.shade_l_size, new String[]{"12", "50", "200"}, "12", null);
     }
 
     /** The FORMAT choice: the options this Android version offers, each with its label and icon (FormatChoice). */
@@ -624,6 +644,7 @@ public final class ShadeCatalog {
                 case FLASH: return String.valueOf(PreferenceKeys.getAeMode());
                 case TIMER: return String.valueOf(PreferenceKeys.getCountdownTimerIndex());
                 case FORMAT: return String.valueOf(FormatChoice.current().ordinal());
+                case SIZE: return String.valueOf(com.particlesdevs.photoncamera.ui.camera.PhotoSize.current());
                 default: return String.valueOf(PreferenceKeys.getAeMeteringStd());
             }
         }

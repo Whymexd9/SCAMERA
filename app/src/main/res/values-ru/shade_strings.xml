@@ -32,17 +32,17 @@
     </string-array>
 
     <!-- Tile names -->
-    <string name="shade_t_flash">Вспышка</string>
+    <string name="shade_t_flash">Фонарик</string>
     <string name="shade_t_timer">Таймер</string>
     <string name="shade_t_format">Формат</string>
     <string name="shade_t_metering_std">Замер камеры</string>
     <string name="shade_t_metering">Замер для тона</string>
     <string name="shade_t_output">Разрешение</string>
     <string name="shade_t_downsampler">Даунсемплер</string>
-    <string name="shade_t_ultrahdr">Ultra HDR</string>
-    <string name="shade_t_wide169">16:9</string>
+    <string name="shade_t_ultrahdr">HDR-фото</string>
+    <string name="shade_t_wide169">Кадр</string>
     <string name="shade_t_watermark">Водяной знак</string>
-    <string name="shade_t_bento">Кадры светов</string>
+    <string name="shade_t_bento">Света</string>
     <string name="shade_t_bento_frames">Кадры светов: число</string>
     <string name="shade_t_shasta">Кадры теней</string>
     <string name="shade_t_hybrid_frames">Кадров SHDR</string>
@@ -50,9 +50,9 @@
     <string name="shade_t_chroma">Chroma</string>
     <string name="shade_t_rejection">Отбраковка</string>
     <string name="shade_t_grid">Сетка</string>
-    <string name="shade_t_peak">Пик фокуса</string>
-    <string name="shade_t_live_raw">Живой RAW</string>
-    <string name="shade_t_debug">Отладка</string>
+    <string name="shade_t_peak">Фокус-пик</string>
+    <string name="shade_t_live_raw">RAW-экран</string>
+    <string name="shade_t_debug">Инфо</string>
 
     <!-- Short values on tiles and segments -->
     <string-array name="shade_s_flash">
@@ -161,6 +161,17 @@
     <string name="shade_quick_title">Быстрые настройки</string>
     <string name="shade_advanced">Для опытных</string>
     <string name="shade_advanced_summary">Кадры светов, пик фокуса, лица, RAW-видоискатель</string>
+    <string name="shade_t_size">Размер</string>
+    <string name="shade_t_horizon">Горизонт</string>
+    <string name="shade_t_motion">Движение</string>
+    <string name="shade_t_sound">Звук</string>
+    <string name="shade_t_flicker">Мерцание</string>
+    <string name="shade_title_size">Размер фото</string>
+    <string-array name="shade_l_size">
+        <item>12 Мп</item>
+        <item>50 Мп</item>
+        <item>200 Мп</item>
+    </string-array>
     <string name="topbar_group">Формат и размер фото</string>
     <string name="topbar_torch">Фонарик</string>
     <string name="topbar_motion">Движение</string>
@@ -177,7 +188,7 @@
     <string name="shade_reason_dependency">Включите «%1$s».</string>
     <!-- P42 -->
     <string name="shade_t_faces">Лица</string>
-    <string name="shade_t_tracking">Трекинг</string>
+    <string name="shade_t_tracking">Слежение</string>
     <string-array name="shade_s_faces">
         <item>Выкл.</item>
         <item>Авто</item>

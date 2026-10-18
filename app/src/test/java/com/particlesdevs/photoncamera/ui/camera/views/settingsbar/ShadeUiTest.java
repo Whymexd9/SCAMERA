@@ -84,6 +84,8 @@ public class ShadeUiTest {
         PreferenceKeys.initialise(manager);
         PreferenceKeys.setDefaults(context);
         ShadeCatalog.setFlashAvailable(true);
+        // the mechanics below were written for the old seven tiles: keep them as a user's custom list
+        ShadeTiles.save(prefs, ShadeCatalog.OLD_DEFAULT_TILES);
         catalog = new ShadeCatalog(context, prefs);
         sheet = new SettingsBarLayout(context, null);
         sheet.setCatalog(catalog);
@@ -189,10 +191,11 @@ public class ShadeUiTest {
 
     @Test
     public void defaultTilesRenderSquareWithoutEllipsis() throws Exception {
+        prefs.edit().remove(ShadeTiles.KEY).commit();   // SIMPLE_UI §2: the new defaults
         layoutFull();
         assertEquals(ShadeCatalog.DEFAULT_TILES, sheet.pinnedKeys());
         RecyclerView grid = grid();
-        assertEquals(8, grid.getChildCount()); // 7 tiles and «Добавить»
+        assertEquals(ShadeCatalog.DEFAULT_TILES.size() + 1, grid.getChildCount()); // the tiles and «Добавить»
         assertNotNull(addTile());
         for (int i = 0; i < grid.getChildCount(); i++) {
             ShadeTileView t = (ShadeTileView) grid.getChildAt(i);
@@ -259,7 +262,7 @@ public class ShadeUiTest {
         int[] closed = {0};
         ShadeCatalogView view = new ShadeCatalogView(activity, catalog, sheet.pins(), () -> closed[0]++);
         assertTrue(String.valueOf(view.shownKeys().size()), view.shownKeys().size() > 240); // 260 since P129
-        assertEquals(ShadeCatalog.VIRTUAL, view.shownKeys().subList(0, 4));
+        assertEquals(ShadeCatalog.VIRTUAL, view.shownKeys().subList(0, ShadeCatalog.VIRTUAL.size()));
         android.widget.EditText search = view.findViewWithTag("shade_catalog_search");
         search.setText("Luma");
         assertTrue(view.shownKeys().contains("pref_scam_hybrid_post_luma"));

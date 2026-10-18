@@ -526,6 +526,8 @@ public class SettingsBarLayout extends LinearLayout {
         fullList.removeAllViews();
         List<String> advanced = new ArrayList<>();
         for (String key : ShadeCatalog.ADVANCED) if (!pinned.contains(key) && catalog().isKnown(key)) advanced.add(key);
+        advancedShown.clear();
+        for (String key : ShadeCatalog.ADVANCED) if (!pinned.contains(key)) advancedShown.add(key);
         LinearLayout advancedBody = new LinearLayout(getContext());
         advancedBody.setOrientation(VERTICAL);
         advancedBody.setTag("shade_advanced_body");
@@ -724,11 +726,7 @@ public class SettingsBarLayout extends LinearLayout {
         // SIMPLE_UI §2: the «Для опытных» card lists the advanced settings not pinned: rebuilt when that set changes
         List<String> advanced = new ArrayList<>();
         for (String key : ShadeCatalog.ADVANCED) if (!pinned.contains(key)) advanced.add(key);
-        if (!advanced.equals(advancedShown)) {
-            advancedShown.clear();
-            advancedShown.addAll(advanced);
-            buildRows();
-        }
+        if (!advanced.equals(advancedShown)) buildRows();
         if (openSlider != null && !pinned.contains(openSlider)) openSlider = null;
         rebindValues();
     }
@@ -757,6 +755,10 @@ public class SettingsBarLayout extends LinearLayout {
         if (vibration != null) vibration.Click();
         // SIMPLE_UI §2: «Формат» opens its sheet (the two choices) instead of cycling nine values
         if (ShadeCatalog.FORMAT.equals(key) && host != null && host.openFormatSheet()) return;
+        if (ShadeCatalog.SIZE.equals(key)) {
+            if (host != null) host.openSizeSheet();
+            return;
+        }
         switch (e.kind) {
             case ShadeCatalog.TOGGLE:
                 apply(e, !catalog().on(e));
