@@ -13,6 +13,11 @@ Checks:
 - chromadn/nlm and chromadn/apply (the NLM engine): a map of codes at or above the median gives the output of the cleared
   map bit for bit; codes below the median on the first columns (the frame edge) filter those columns harder (less
   noise), and pixels away from them stay bit-identical.
+- P214d, the lens-shading term of scamdn/strmap: with lscU unset the map is the frame map above bit for bit; with it, the
+  frame factor times min(g^2, cap), g = the bilinear luminance gain of an RGBA16F shading map at the block's mean pixel
+  over the reference gain, as numpy; exactly the frame factor where g <= 1 (the optical centre), never below it, never above
+  it times the cap; noEffU 1 = the lens-shading factor alone. The GainMap sampler sits on a unit of its own (as the app
+  binds it): a float and an unsigned sampler on one unit is GL_INVALID_OPERATION.
 Usage: check_effmap_onesided.py [--shaders DIR] [--report]
 """
 from pathlib import Path
@@ -97,10 +102,12 @@ def check_strmap(rng, fails):
     codes = rng.integers(0, 256, (H, W)).astype(np.uint8)
     codes[:, :EDGE] = rng.integers(1, REF, (H, EDGE))
     t = texture(codes, 'u1')
+    # P214d: GainMap on a unit of its own, as ScamDenoise binds it (lscU unset: never read)
+    unit_gain = texture(np.ones((1, 1, 4), np.float16), 'f2', linear=True)
     worst = 0.0
     for F in (2, 4):
         size = (W // F, H // F)
-        got = draw(p, size, {'EffMap': t}, {'factorU': F, 'effRefU': float(REF), 'effMaxU': 3.0})[..., 0]
+        got = draw(p, size, {'EffMap': t, 'GainMap': unit_gain}, {'factorU': F, 'effRefU': float(REF), 'effMaxU': 3.0})[..., 0]
         c = codes[:size[1] * F, :size[0] * F].astype(np.float64)
         r = np.where(c > 0, np.clip(np.sqrt(REF / np.maximum(c, 1)), 1.0, 3.0), 1.0)
         want = (r * r).reshape(size[1], F, size[0], F).mean(axis=(1, 3))
@@ -119,6 +126,81 @@ def check_strmap(rng, fails):
     if REPORT:
         print('scamdn/strmap: max rel error %.1e vs numpy' % worst)
     t.release()
+    unit_gain.release()
+    p.release()
+
+
+LSC_MARGIN = 1.0 + 1.0 / 512.0   # ScamDenoise.LSC_MARGIN
+
+
+def bilinear(img, u, v):
+    """GL_LINEAR + GL_CLAMP_TO_EDGE sampling of img (h, w, c) at normalised (u, v) arrays."""
+    h, w = img.shape[:2]
+    x = np.clip(u * w - 0.5, 0.0, w - 1.0)
+    y = np.clip(v * h - 0.5, 0.0, h - 1.0)
+    x0 = np.floor(x).astype(int)
+    y0 = np.floor(y).astype(int)
+    x1 = np.minimum(x0 + 1, w - 1)
+    y1 = np.minimum(y0 + 1, h - 1)
+    fx = (x - x0)[..., None]
+    fy = (y - y0)[..., None]
+    top = img[y0, x0] * (1 - fx) + img[y0, x1] * fx
+    bottom = img[y1, x0] * (1 - fx) + img[y1, x1] * fx
+    return top * (1 - fy) + bottom * fy
+
+
+def check_strmap_lsc(rng, fails):
+    """P214d: the lens-shading term of scamdn/strmap (ScamDenoise.lscTerm): f x min(g^2, cap) of the shading gain."""
+    p = program('scamdn/strmap.glsl')
+    codes = rng.integers(0, 256, (H, W)).astype(np.uint8)
+    codes[:, :EDGE] = rng.integers(1, REF, (H, EDGE))
+    t = texture(codes, 'u1')
+    # a phone-like map (17 x 13 sites of r, g_even, g_odd, b): radial luminance shading 1 -> 3.8 at the corners with a
+    # colour tilt and a flat centre (so whole blocks read the smallest gain), stored as RGBA16F like ScamRgb's GainMap
+    mw, mh = 17, 13
+    yy, xx = np.mgrid[0:mh, 0:mw]
+    r2 = (((xx - (mw - 1) / 2) / ((mw - 1) / 2)) ** 2 + ((yy - (mh - 1) / 2) / ((mh - 1) / 2)) ** 2) / 2
+    lum = 1.0 + 2.8 * np.maximum(r2 - 0.1, 0.0) / 0.9
+    sites = np.stack([lum * 1.08, lum, lum * 0.98, lum * 0.94], axis=-1).astype(np.float16)
+    gain = texture(sites, 'f2', linear=True)
+    unit_gain = texture(np.ones((1, 1, 4), np.float16), 'f2', linear=True)
+    s64 = sites.astype(np.float64)
+    site_lum = (s64[..., 0] + 0.5 * (s64[..., 1] + s64[..., 2]) + s64[..., 3]) / 3   # ScamDenoise.lscGain
+    inv = 1.0 / (site_lum.min() * LSC_MARGIN)
+    cap = 4.0
+    worst = 0.0
+    for F in (2, 4):
+        size = (W // F, H // F)
+        # every uniform set on every draw: a program keeps the values of the previous one
+        base = {'factorU': F, 'effRefU': float(REF), 'effMaxU': 3.0, 'noEffU': 0, 'lscU': (0.0, 0.0),
+                'fullInvU': (1.0 / W, 1.0 / H)}
+        frames = draw(p, size, {'EffMap': t, 'GainMap': unit_gain}, base)[..., 0]
+        off = draw(p, size, {'EffMap': t, 'GainMap': gain}, dict(base, lscU=(0.0, cap)))[..., 0]
+        if not np.array_equal(off, frames):
+            fails.append('scamdn/strmap F=%d: lscU.x = 0 does not give the frame map bit for bit' % F)
+        on = draw(p, size, {'EffMap': t, 'GainMap': gain}, dict(base, lscU=(inv, cap)))[..., 0]
+        alone = draw(p, size, {'EffMap': t, 'GainMap': gain}, dict(base, noEffU=1, lscU=(inv, cap)))[..., 0]
+        oy, ox = np.mgrid[0:size[1], 0:size[0]] * F
+        g4 = bilinear(s64, (ox + 0.5 * (F - 1)) / W, (oy + 0.5 * (F - 1)) / H)
+        g = (g4[..., 0] + 0.5 * (g4[..., 1] + g4[..., 2]) + g4[..., 3]) / 3 * inv
+        want_lsc = np.where(g > 1.0, np.minimum(g * g, cap), 1.0)
+        err = max(np.abs(alone - want_lsc).max() / cap, np.abs(on - frames * want_lsc).max() / (frames * cap).max())
+        worst = max(worst, err)
+        # GPUs filter with 8 bits of sub-texel weight (a desktop GPU: 1.3e-3 here; llvmpipe filters exactly): a looser bound
+        # than the exact frame-map comparison above
+        if err > 3e-3:
+            fails.append('scamdn/strmap F=%d: lens-shading term not f x min(g^2, cap) (rel error %.2e)' % (F, err))
+        centre = g < 0.999
+        if not centre.any() or not np.array_equal(on[centre], frames[centre]) or not np.all(alone[centre] == 1.0):
+            fails.append('scamdn/strmap F=%d: the optical centre (g <= 1) is not the frame factor exactly' % F)
+        if np.any(on < frames) or np.any(on > frames * cap * (1 + 1e-6)) or np.any(alone < 1.0):
+            fails.append('scamdn/strmap F=%d: the lens-shading term weakens the map or exceeds the cap' % F)
+        if not np.any(alone >= cap * (1 - 1e-6)):
+            fails.append('scamdn/strmap F=%d: the corners (g^2 above the cap) do not reach the cap' % F)
+    if REPORT:
+        print('scamdn/strmap lens shading: max rel error %.1e vs numpy' % worst)
+    for x in (t, gain, unit_gain):
+        x.release()
     p.release()
 
 
@@ -199,12 +281,14 @@ def main():
     fails = []
     check_guard(fails)
     check_strmap(rng, fails)
+    check_strmap_lsc(rng, fails)
     check_nlm_apply(rng, fails)
     if fails:
         for f in fails:
             print('FAIL:', f)
         sys.exit(1)
-    print('effective-frame map one-sided PASS: strmap / nlm / apply strengthen only below the median, bit-identical at or above')
+    print('effective-frame map one-sided PASS: strmap / nlm / apply strengthen only below the median, bit-identical at or above;'
+          ' strmap lens-shading term one-sided and capped')
 
 
 if __name__ == '__main__':
