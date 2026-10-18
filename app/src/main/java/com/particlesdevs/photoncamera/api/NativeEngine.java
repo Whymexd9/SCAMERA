@@ -11,6 +11,8 @@ import java.lang.reflect.Method;
 public class NativeEngine {
     private static final String TAG = "NativeEngine";
     private static boolean initialized = false;
+    /** P214a: resolved methods and fields (see {@link ReflectionCache}). */
+    private static final ReflectionCache LOOKUPS = new ReflectionCache();
     
     static {
         System.loadLibrary("camera2native");
@@ -43,7 +45,11 @@ public class NativeEngine {
             Log.e(TAG, "getCameraMethod: class or method name is null");
             return null;
         }
-        
+        // P214a: one lookup per (class, name, parameter types) for the process; a failed one is tried again next time.
+        return LOOKUPS.method(clazz, methodName, parameterTypes, NativeEngine::lookUpMethod);
+    }
+
+    private static Method lookUpMethod(Class<?> clazz, String methodName, Class<?>[] parameterTypes) {
         try {
             // First try using native camera method resolver
             Method method = nativeGetCameraMethod(clazz, methodName, parameterTypes);
@@ -77,7 +83,11 @@ public class NativeEngine {
             Log.e(TAG, "getCameraField: class or field name is null");
             return null;
         }
-        
+        // P214a: one lookup per (class, name) for the process, as for methods.
+        return LOOKUPS.field(clazz, fieldName, NativeEngine::lookUpField);
+    }
+
+    private static Field lookUpField(Class<?> clazz, String fieldName) {
         try {
             // First try using native camera field resolver
             Field field = nativeGetCameraField(clazz, fieldName);

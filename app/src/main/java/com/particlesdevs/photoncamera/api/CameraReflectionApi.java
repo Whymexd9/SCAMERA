@@ -160,7 +160,11 @@ public class CameraReflectionApi {
         }
     }
 
-    /** P192: the result's metadata field and its setter, looked up once (NativeEngine adds a JNI global reference per lookup). */
+    /**
+     * P192: the result's metadata field and its setter, looked up once (NativeEngine added JNI global references per lookup).
+     * P214a: NativeEngine now keeps every lookup itself (ReflectionCache) and its native side leaves no global reference,
+     * so the set(...) overloads below no longer leak either; this per-class check of the setter stays as it was.
+     */
     private static volatile Field resultsField;
     private static volatile Method resultsSet;
 

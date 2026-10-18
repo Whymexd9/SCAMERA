@@ -1,6 +1,9 @@
 #include <jni.h>
 #include <string>
+#ifndef SCAM_HOST_TEST
+// P214a: tools/check_native_engine_refs.cpp builds this file on the host with its own log stub and a counting JNIEnv.
 #include <android/log.h>
+#endif
 #include <dlfcn.h>
 #include <thread>
 #include <future>
@@ -208,6 +211,17 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
 }
 
 /**
+ * P214a: the lookup thread hands its result over as a global reference (a local one dies with that thread). The caller
+ * turns it into a local reference of its own frame and deletes the global one, so nothing stays in the global table.
+ */
+static jobject toLocalRef(JNIEnv* env, jobject global) {
+    if (global == nullptr) return nullptr;
+    jobject local = env->NewLocalRef(global);
+    env->DeleteGlobalRef(global);
+    return local;
+}
+
+/**
  * Internal function for camera method resolution
  * Runs on separate thread for enhanced camera API access
  */
@@ -264,34 +278,32 @@ Java_com_particlesdevs_photoncamera_api_NativeEngine_nativeGetCameraMethod(
         return nullptr;
     }
     
-    // Prepare camera method query parameters
+    // Prepare camera method query parameters. P214a: only the class, the name and the array get a global reference (the
+    // lookup thread needs them); the array keeps its elements reachable. The old code also took a global reference for
+    // every element and stored it back into the array, never deleted - with the three below and the result that was about
+    // 9 entries per lookup, and the runtime aborts at 51200 ("global reference table overflow", OPPO Find X7 Ultra,
+    // 2026-10-17 11:09 and 11:17).
     jobject globalClass = env->NewGlobalRef(targetClass);
     jstring globalMethodName = (jstring)env->NewGlobalRef(methodName);
-    
-    jobjectArray globalParams = nullptr;
-    if (parameterTypes != nullptr) {
-        int argLength = env->GetArrayLength(parameterTypes);
-        for (int i = 0; i < argLength; i++) {
-            jobject element = env->GetObjectArrayElement(parameterTypes, i);
-            if (element != nullptr) {
-                jobject globalElement = env->NewGlobalRef(element);
-                env->SetObjectArrayElement(parameterTypes, i, globalElement);
-            }
-        }
-        globalParams = (jobjectArray)env->NewGlobalRef(parameterTypes);
-    }
-    
+    jobjectArray globalParams = parameterTypes != nullptr ? (jobjectArray)env->NewGlobalRef(parameterTypes) : nullptr;
+
     // Execute camera method resolution asynchronously
-    auto future = std::async(std::launch::async, &getCameraMethod_internal, 
+    auto future = std::async(std::launch::async, &getCameraMethod_internal,
                             globalClass, globalMethodName, globalParams);
     auto result = future.get();
-    
+
+    // P214a: the lookup is finished, so its inputs are released, and the result goes back as a local reference (freed by
+    // the runtime when this native call returns) instead of a global one nobody deletes.
+    env->DeleteGlobalRef(globalClass);
+    env->DeleteGlobalRef(globalMethodName);
+    if (globalParams != nullptr) env->DeleteGlobalRef(globalParams);
+
     if (env->ExceptionCheck()) {
         env->ExceptionDescribe();
         env->ExceptionClear();
     }
-    
-    return result;
+
+    return toLocalRef(env, result);
 }
 
 /**
@@ -354,14 +366,18 @@ Java_com_particlesdevs_photoncamera_api_NativeEngine_nativeGetCameraField(
     jstring globalFieldName = (jstring)env->NewGlobalRef(fieldName);
     
     // Execute camera field resolution asynchronously
-    auto future = std::async(std::launch::async, &getCameraField_internal, 
+    auto future = std::async(std::launch::async, &getCameraField_internal,
                             globalObject, globalFieldName);
     auto result = future.get();
-    
+
+    // P214a: release the inputs and return the field as a local reference (see nativeGetCameraMethod).
+    env->DeleteGlobalRef(globalObject);
+    env->DeleteGlobalRef(globalFieldName);
+
     if (env->ExceptionCheck()) {
         env->ExceptionDescribe();
         env->ExceptionClear();
     }
-    
-    return result;
+
+    return toLocalRef(env, result);
 }
