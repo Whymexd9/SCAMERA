@@ -175,6 +175,20 @@ public class ArkAeTest {
         ArkAe.Result a = ArkAe.finish(ds, off, 400, 6400), b = ArkAe.finish(ds, on, 400, 6400);
         assertEquals(0f, b.hr, 0f);
         assertEquals(a.describe(), b.describe());
+        // a light source (the sun over a deck: 0.1 % of the frame beyond the ceiling) keeps P159's peak - the sky does not
+        // darken (owner, 2026-10-18); its ceiling still drives the shoulder and the landing
+        ArkAe.Rows sun = (y, row) -> {
+            for (int x = 0; x < 200; x++) {
+                float v = y < 2 && x < 10 ? 15f : 0.01f + 0.9f * x / 200f;
+                row[3 * x] = v; row[3 * x + 1] = v; row[3 * x + 2] = v;
+            }
+        };
+        ArkAe.Stats ss = ArkAe.stats(sun, 3, 200, 100, 0);
+        ArkAe.Result sNative = ArkAe.finish(ss, off, 400, 6400), sHr = ArkAe.finish(ss, on, 400, 6400);
+        assertEquals(15f, sHr.hr, 0f);
+        assertEquals(0f, sHr.hrPull, 0f);
+        assertEquals("the same highlight strength", sNative.effH, sHr.effH, 0f);
+        assertEquals("the bridge window pulls fully", 0.5f, r.hrPull, 1e-6f);
     }
 
     @Test

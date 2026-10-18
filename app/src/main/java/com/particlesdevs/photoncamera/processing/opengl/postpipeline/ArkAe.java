@@ -52,6 +52,8 @@ public final class ArkAe {
         public float maxGainByNoise = 0f;
         /** P216: the real data ceiling above the capped clip (Bento headroom beyond 4: the maximum, at most 16 x the clip), else 0. */
         public float hr;
+        /** P216: how far the highlight peak went towards p99.9 (hrMix times the area gate; 0 = P159's peak). */
+        public float hrPull;
         public boolean bento;
         public float slope, sp, tp, minEv, maxEv, sat, ev;
         public int look;
@@ -64,7 +66,7 @@ public final class ArkAe {
                             + " effS=%.4f effH=%.4f flat=%.3f spread=%.4f ov=%.4f bento=%d agx(slope=%.3f sp=%.2f tp=%.2f ev=[%.2f,%.2f]+%.2f sat=%.2f look=%d)",
                     clip, gmax, ae, geo, mean, p10, p50, p98, p995, p98x, p995x, nf, deficit, effS, effH, flat, spread, ovArea, bento ? 1 : 0,
                     slope, sp, tp, minEv, maxEv, ev, sat, look)
-                    + (hr > 0f ? String.format(Locale.ROOT, " hr=%.2f realPeak=%.3f", hr, realPeak) : "");
+                    + (hr > 0f ? String.format(Locale.ROOT, " hr=%.2f hrPull=%.2f realPeak=%.3f", hr, hrPull, realPeak) : "");
         }
     }
 
@@ -256,6 +258,15 @@ public final class ArkAe {
         return clip * Math.pow(2.0, tail.length / (double) TAIL_PER_OCTAVE);
     }
 
+    /** P216: the share of the frame beyond the ceiling over which the highlight peak moves towards p99.9 (none below). */
+    static final double HR_AREA_FROM = 0.003, HR_AREA_TO = 0.008;
+
+    /** Hermite smoothstep of v between e0 and e1. */
+    static double smooth(double e0, double e1, double v) {
+        double t = Math.max(0.0, Math.min(1.0, (v - e0) / (e1 - e0)));
+        return t * t * (3 - 2 * t);
+    }
+
     /** The data ceiling of smart_hdr: the maximum when above 1.05, at most 4, else 1. */
     static double clip(float gmax) {
         return gmax > 1.05f ? Math.min(gmax, 4.0) : 1.0;                                     // 0x72608-0x72634
@@ -379,9 +390,16 @@ public final class ArkAe {
             if (r.hr > 0f) {
                 // P216: a small bright area (a window: 2 % of the frame) holds its brightest structure above p99.5; the peak
                 // goes hrMix of the way (in log) to the p99.9 level, and the strength may reach what brings the real ceiling
-                // to bt in the darkest exposure (the native limit 2 left the x8 range above white)
+                // to bt in the darkest exposure (the native limit 2 left the x8 range above white). Only for an AREA beyond
+                // the ceiling (0.3 .. 0.8 % of the frame: the bridge window 1.4 %): a light source's glow (the sun over a deck,
+                // 0.12 %) is p99.9 too, and pulling towards it darkened the whole sky (owner: «небо не должно темнить»).
+                double beyondShare = 0;
+                for (double v : st.tail) beyondShare += v;
+                beyondShare /= tot;
+                final double gate = smooth(HR_AREA_FROM, HR_AREA_TO, beyondShare);
                 final double p999x = beyond(0.999, p999, clip, tot, st.tail);
-                final double top = a * p999x, mix = Math.max(0.0, Math.min(1.0, s.hrMix));
+                final double top = a * p999x, mix = Math.max(0.0, Math.min(1.0, s.hrMix)) * gate;
+                r.hrPull = (float) mix;
                 if (top > realPeak && realPeak > 1e-6) realPeak *= Math.pow(top / realPeak, mix);
                 hlCap = Math.max(hlCap, log2(r.hr * a / Math.max(bt, 1e-3)) / 1.5);
             }
