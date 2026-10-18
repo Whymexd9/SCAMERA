@@ -4968,3 +4968,12 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   sessions. Check on the OPPO (Oplus CamX) and the vivo phones: reader usage flags (dumpsys media.camera), stream acceptance of
   non-public sizes with 0L vs the default, CPU reads, 3A convergence, faces and fps with and without the preview surface.
 - Not started.
+
+### P226 - a switch for the upscale of crop shots (owner, 2026-10-18: «Добавить пункт отключающий и включающий апскейл при съемке с
+кропом. расположить его в соответствии с новой логикой простого интерфейса»)
+- To do: one switch «Увеличивать кадр с кропом» / "Upscale cropped shots" (on: today's behaviour - a crop module / digital zoom shot is
+  resized up to the output size; off: the photo keeps the cropped pixel size, no upscale). Find every upscale of a crop (module
+  crop P148, sensor crop, ISZ / zoom crops, HybridFinalResize, the final resize nodes) and gate only the crop's upscale. Place it
+  per SIMPLE_UI: «Фото → Размер фото» (and in the «Размер фото» sheet's «Для опытных» group next to the output resolution),
+  plain subtitle («Выкл. — снимок с кропом остаётся в своём размере, без увеличения»); a per-module value (module profiles).
+- Not started.
