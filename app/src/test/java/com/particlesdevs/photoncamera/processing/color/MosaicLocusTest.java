@@ -36,32 +36,41 @@ public class MosaicLocusTest {
     }
 
     /**
-     * 48 daylight points of OPPO camera 2 as the log shows them (the curve's cool end 0.330 / 0.705): along a locus of slope -1.14
-     * warmer from the end by 0.25 ln r, with ±0.006 of scatter and counts 1-64.
+     * 48 daylight points of OPPO camera 2 as the log suggests them: ISP neutrals from the curve's cool end 0.330 / 0.705 to the
+     * plain photo's 0.3594 / 0.6709 (log13 L1725) and on to 0.45 / 0.58, ±0.004 of scatter, counts 1-64.
      */
     private static ArrayList<float[]> daylight() {
         final ArrayList<float[]> pts = new ArrayList<>();
         final Random rnd = new Random(5);
-        final double lr0 = Math.log(0.330), lb0 = Math.log(0.705);
+        final double[][] knots = {{0.330, 0.705}, {0.3594, 0.6709}, {0.45, 0.58}};
         for (int i = 0; i < 48; i++) {
-            final double lr = lr0 + 0.25 * i / 47.0;
-            final double lb = lb0 - 1.14 * (lr - lr0) + 0.006 * (rnd.nextDouble() * 2 - 1);
+            final int seg = i < 24 ? 0 : 1;
+            final double t = seg == 0 ? i / 24.0 : (i - 24) / 23.0;
+            final double lr = Math.log(knots[seg][0]) + t * (Math.log(knots[seg + 1][0]) - Math.log(knots[seg][0]));
+            final double lb = Math.log(knots[seg][1]) + t * (Math.log(knots[seg + 1][1]) - Math.log(knots[seg][1]))
+                    + 0.004 * (rnd.nextDouble() * 2 - 1);
             pts.add(new float[]{(float) lr, (float) lb, 1 + rnd.nextInt(64), 0f});
         }
         return pts;
     }
 
-    /** M13 VERIFY: 0.327 / 0.682 against the 48 daylight points keeps its B/G within 0.012 (the polyline pinned it at 0.705). */
+    /**
+     * M13 VERIFY: 0.327 / 0.682 (log-2026-10-17 11:07:58, 0.035 off the curve) against the 48 daylight points: the P121 polyline
+     * gave B/G 0.705 / 0.70; a confident statistic keeps its B/G within 0.012, and without confidence it goes onto the locus
+     * near the polyline's point (phase 1 does not remove the statistic's offset against the ISP: the teacher's job, M13 corr. 1).
+     */
     @Test public void aDaylightMeasurementIsNotPinnedAtTheEnd() {
         MosaicNeutral.curve("pin").addAll(daylight());
         final float[] old = MosaicNeutral.project(MosaicNeutral.curve("pin"), (float) Math.log(0.327), (float) Math.log(0.682));
-        assertTrue("P121: the end point " + Math.exp(old[1]), Math.exp(old[1]) >= 0.70);
-        for (float conf : new float[]{0f, 1f}) {
-            final MosaicNeutral.Result r = MosaicNeutral.resolve("pin", 0.327f, 0.682f, 40_000, conf, null, "measured");
-            assertEquals(r.how, 0.682, r.neutral[2], 0.012);
-            assertEquals(r.how, 0.327, r.neutral[0], 0.012);
-            assertTrue(r.how, r.how.contains("quadratic") || r.how.contains("line"));
-        }
+        assertTrue("P121: at the end " + Math.exp(old[1]), Math.exp(old[1]) >= 0.695);
+        final MosaicNeutral.Result confident = MosaicNeutral.resolve("pin", 0.327f, 0.682f, 40_000, 1f, null, "statistic");
+        assertEquals(confident.how, 0.682, confident.neutral[2], 0.012);
+        assertEquals(confident.how, 0.327, confident.neutral[0], 0.012);
+        assertTrue(confident.how, confident.how.contains("quadratic") || confident.how.contains("line"));
+        final MosaicNeutral.Result p121 = MosaicNeutral.resolve("pin", 0.327f, 0.682f, 40_000, 0f, null, "measured");
+        assertEquals(p121.how, Math.log(Math.exp(old[0])), Math.log(p121.neutral[0]), 0.01);
+        assertEquals(p121.how, Math.log(Math.exp(old[1])), Math.log(p121.neutral[2]), 0.01);
+        assertEquals(old[2], p121.distance, 0.01);
     }
 
     /** M13 VERIFY: a warm lamp beyond the curve's warm end (X200U 30840: 1.073 / 0.280) is extrapolated, not clamped to 0.785 / 0.329. */

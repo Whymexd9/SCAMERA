@@ -137,6 +137,7 @@ public class MosaicNeutralTest {
         final ByteBuffer hit = clean.duplicate().order(ByteOrder.LITTLE_ENDIAN);
         final ByteBuffer copy = ByteBuffer.allocate(w * h * 2).order(ByteOrder.LITTLE_ENDIAN);
         copy.put(hit);
+        copy.rewind(); // the statistic reads the buffer from its position, as the frames come
         final Random rnd = new Random(3);
         int clipped = 0;
         final int cells = (w / 4) * (h / 4);
