@@ -83,37 +83,34 @@ public class ViewfinderUiTest {
         lensModel.setBackCameras(cameraData);lensModel.setFrontCameras(new ArrayList<>());lenses.setAuxButtonsModel(lensModel);lenses.setActiveId("1");
         bottom.findViewById(R.id.processing_progress_bar).setVisibility(View.INVISIBLE);
         int exact=View.MeasureSpec.EXACTLY;screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(880,exact));screen.layout(0,0,400,880);
-        // §3: the compact ruler card is about 88-90dp; §2: the toggle card and the chips card share the strip's height.
+        // SIMPLE_UI §3: the ruler card is one row - the 54dp scale in 5dp padding (no header, no hint line).
         View chipsCard=manual.findViewById(R.id.buttons_container),toggleCard=manual.findViewById(R.id.manual_toggle);
-        assertTrue("ruler card "+container.getHeight(),container.getHeight()>=86&&container.getHeight()<=92);
-        assertEquals(chipsCard.getHeight(),toggleCard.getHeight());assertTrue(toggleCard.getHeight()>=58);assertEquals(52,toggleCard.getWidth());
+        assertEquals("ruler card",64,container.getHeight());
+        assertEquals(View.GONE,toggleCard.getVisibility());assertTrue(chipsCard.getHeight()>=58);   // SIMPLE_UI: «Про» in the bottom bar, no toggle card
         assertEquals(container.getHeight()+8+chipsCard.getHeight(),manual.getHeight());
-        // Top bar: the settings gear is a 44dp square card at the end, the group card stays clear of it.
+        // SIMPLE_UI §1 top bar: torch, timer, Motion (44dp icon buttons), the pill card [format | size], the 44dp gear at the end,
+        // every size x UiScale; nothing overlaps and the gear stays inside.
+        float k=com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.k(context);
         View gear=top.findViewById(R.id.settings_button),badges=top.findViewById(R.id.topbar_badges);
-        assertEquals(44,gear.getWidth());assertEquals(gear.getWidth(),gear.getHeight());
+        assertEquals(Math.round(44*k),gear.getWidth());assertEquals(gear.getWidth(),gear.getHeight());
         assertEquals("the gear is pinned to the right edge",top.getWidth()-top.getPaddingRight(),gear.getRight());
         assertTrue("badges must not run under the gear",badges.getRight()<=gear.getLeft());
-        // P86: the «Движение» switch is a 44dp card left of the gear, the badges clear of it
-        View motion=top.findViewById(R.id.motion_mode_button);
-        assertEquals(44,motion.getWidth());assertEquals(44,motion.getHeight());
-        assertEquals(gear.getLeft()-8,motion.getRight());assertTrue(badges.getRight()<=motion.getLeft());
-        assertNotNull(((ImageButton)motion).getDrawable());
-        // §4: route and format are 24dp accent icons in one 44dp card, 40dp buttons with a 1dp divider; names are descriptions.
-        ImageButton route=top.findViewById(R.id.route_badge),format=top.findViewById(R.id.format_badge);
-        assertEquals(44,badges.getHeight());assertEquals(40,route.getWidth());assertEquals(40,format.getWidth());
-        assertEquals(1,top.findViewById(R.id.topbar_divider).getWidth());
-        assertTrue(route.getContentDescription().toString().endsWith("SHDR"));assertTrue(format.getContentDescription().toString().endsWith("JPEG"));
-        assertEquals(route.getContentDescription(),route.getTooltipText());assertEquals(format.getContentDescription(),format.getTooltipText());
-        assertNotNull(route.getDrawable());assertNotNull(format.getDrawable());
-        for(ImageButton b:new ImageButton[]{route,format}){assertEquals(24,b.getDrawable().getIntrinsicWidth());assertEquals(24,b.getWidth()-b.getPaddingLeft()-b.getPaddingRight());}
-        assertEquals(72,bottom.findViewById(R.id.shutter_button).getWidth());
+        View torch=top.findViewById(R.id.torch_button),timer=top.findViewById(R.id.timer_button),motion=top.findViewById(R.id.motion_mode_button);
+        assertTrue(torch.getRight()<=timer.getLeft());assertTrue(timer.getRight()<=motion.getLeft());assertTrue(motion.getRight()<=badges.getLeft());
+        for(View b:new View[]{torch,timer,motion}){assertEquals(Math.round(44*k),b.getHeight());assertEquals("round",b.getHeight(),b.getWidth());}
+        assertEquals(Math.round(40*k),badges.getHeight());
+        TextView format=top.findViewById(R.id.format_badge),size=top.findViewById(R.id.size_badge);
+        assertTrue(format.getContentDescription().toString().endsWith("JPEG"));assertEquals(png.isEmpty()?"12 Мп":"12 MP",size.getText().toString());
+        assertEquals(View.GONE,top.findViewById(R.id.dcg_badge).getVisibility());assertEquals(View.GONE,top.findViewById(R.id.timer_badge).getVisibility());
+        assertTrue(top.findViewById(R.id.topbar_divider).getWidth()>=1);
+        assertEquals(78,bottom.findViewById(R.id.shutter_button).getWidth());   // SIMPLE_UI: the concept's 78dp
         assertEquals(R.id.galery_button_container,((View)bottom.findViewById(R.id.processing_progress_bar).getParent()).getId());
         // Shutter row: gallery card | shutter exactly in the centre | front / back switch, none overlapping.
         View shutterBox=bottom.findViewById(R.id.shutter_button_container),gallery=bottom.findViewById(R.id.galery_button_container),
                 flipBox=bottom.findViewById(R.id.camera_switch_container),row=(View)shutterBox.getParent();
         assertEquals(row.getWidth()/2f,(shutterBox.getLeft()+shutterBox.getRight())/2f,1f);
         assertTrue(gallery.getRight()<=shutterBox.getLeft());assertTrue(flipBox.getLeft()>=shutterBox.getRight());
-        assertEquals(52,gallery.getWidth());assertEquals(52,flipBox.getWidth());
+        assertEquals(54,gallery.getWidth());assertEquals(54,flipBox.getWidth());   // SIMPLE_UI: 54dp
         // The strip: a centred pill above the shutter row, the ruler's place above it, all inside the bottom bar.
         View slot=bottom.findViewById(R.id.zoom_ruler_slot),rowRoot=bottom.findViewById(R.id.bottom_buttons);
         assertEquals(bottom.getWidth()/2f,(lenses.getLeft()+lenses.getRight())/2f,1f);
@@ -127,7 +124,7 @@ public class ViewfinderUiTest {
         for(int orientation:new int[]{90,180,-90,0}){
             lenses.rotateLabels(orientation,0);screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(880,exact));screen.layout(0,0,400,880);
             for(int i=0;i<lenses.getChildCount();i++){var lens=(com.particlesdevs.photoncamera.ui.camera.views.LensButton)lenses.getChildAt(i);
-                assertEquals(0f,lens.getRotation(),0f);assertEquals((orientation+360)%360,(lens.getLabelRotation()+360)%360,0f);assertEquals(widths[i],lens.getWidth());assertEquals("every lens 40dp high, the active one too, x the screen scale (P185)",Math.round(40*com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.scale(400f)),lens.getHeight());}
+                assertEquals(0f,lens.getRotation(),0f);assertEquals((orientation+360)%360,(lens.getLabelRotation()+360)%360,0f);assertEquals(widths[i],lens.getWidth());assertEquals("every lens 38dp high, the active one too, x the screen scale (P185, SIMPLE_UI)",Math.round(38*com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.scale(400f)),lens.getHeight());}
             if(orientation==90){screen.draw(new Canvas(image));try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,"concept-controls-landscape"+png+".png"))){image.compress(Bitmap.CompressFormat.PNG,100,out);}}
         }
         scale.setListener(new LinearScaleView.OnValueChangedListener(){

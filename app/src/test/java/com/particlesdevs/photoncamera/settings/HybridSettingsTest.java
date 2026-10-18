@@ -386,8 +386,8 @@ public class HybridSettingsTest {
         prefs.edit().clear().commit();
         PreferenceScreen settings=inflate();
         assertNull(settings.findPreference("scam_hybrid_jsr_screen"));
-        PreferenceScreen photo=settings.findPreference("output_settings_screen");
-        assertNotNull("P132: with the resolution in «Фото»",photo.findPreference("pref_scam_hybrid_auto2x"));
+        PreferenceScreen photo=settings.findPreference("photo_size_screen");
+        assertNotNull("SIMPLE_UI §4: with the resolution in «Фото → Размер фото»",photo.findPreference("pref_scam_hybrid_auto2x"));
         assertTrue(prefs.getBoolean("pref_scam_hybrid_auto2x",false));
         String tuning=PreferenceKeys.hybridTuningText();
         assertTrue(tuning,tuning.contains("auto2x 1\n"));

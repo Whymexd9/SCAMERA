@@ -254,11 +254,15 @@ public class BottomChromeTest {
             assertEquals(BAR_169, bar.getHeight());
             // About 150dp of controls (P161: the strip its 38dp lens tiles and 2 x 4dp): the bar leaves them less than the
             // 66 px tenth.
-            int controls = dp(context, 18) + row.getHeight() + dp(context, 14) + strip.getHeight();
-            assertEquals(dp(context, 18 + 72 + 14 + LensButton.HEIGHT_DP + 8), controls, 2);
+            int controls = dp(context, 22) + row.getHeight() + dp(context, 14) + strip.getHeight();
+            // SIMPLE_UI: concept sizes - the 78dp shutter row (this bar is not run through scaleBar) and the strip of 38dp x k lens
+            // tiles (they scale themselves) in its 2 x 4dp padding
+            float k = BottomChrome.scale(context);
+            assertEquals(dp(context, 78), row.getHeight(), 2);
+            assertEquals(dp(context, 8) + dp(context, LensButton.HEIGHT_DP * k), strip.getHeight(), 3);
             assertTrue(BAR_169 - controls < Math.round(BAR_169 * BottomChrome.RAISE_FRACTION));
             assertEquals(y(bar), y(strip));
-            assertEquals(y(bar) + BAR_169 - dp(context, 18) - (BAR_169 - controls), y(row) + row.getHeight());
+            assertEquals(y(bar) + BAR_169 - dp(context, 22) - (BAR_169 - controls), y(row) + row.getHeight());
             assertEquals(y(strip) - clearance, y(slot) + slot.getHeight());
             assertEquals(y(slot) - dp(context, BottomChrome.MANUAL_GAP_DP), y(manual) + manual.getHeight());
             // The ruler has no room inside the bar and is clipped away: the handle stays.

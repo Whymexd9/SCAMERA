@@ -81,8 +81,14 @@ public class ViewObserver implements Observer {
     private float meteredFocus = Float.NaN;
     private int meteredKelvin;
 
-    public static final int[] ICONS = {R.drawable.manual_ic_iso, R.drawable.manual_ic_shutter, R.drawable.manual_ic_ev,
-            R.drawable.manual_ic_focus, R.drawable.manual_ic_wb};
+    /** SIMPLE_UI §3: the concept's line icons of the five parameters (tools/make_concept_icons.py). */
+    public static final int[] ICONS = {R.drawable.pro_ic_iso, R.drawable.pro_ic_shutter, R.drawable.pro_ic_ev,
+            R.drawable.pro_ic_focus, R.drawable.pro_ic_wb};
+    /** The short names under the chips and in the messages («ISO», «Выдержка», «Яркость», «Фокус», «Цвет»). */
+    private static final int[] SHORT_NAMES = {R.string.manual_name_iso, R.string.manual_name_shutter, R.string.manual_name_ev,
+            R.string.manual_name_focus, R.string.manual_name_wb};
+    /** SIMPLE_UI §3: the sixth chip, «Всё на авто». */
+    private final ManualChipView allAutoChip;
     private static final int[] CHIP_IDS = {R.id.iso_option_tv, R.id.exposure_option_tv, R.id.ev_option_tv, R.id.focus_option_tv,
             R.id.wb_option_tv};
 
@@ -95,6 +101,7 @@ public class ViewObserver implements Observer {
         rulerIcon = findViewById(R.id.manual_ruler_icon);
         rulerValue = findViewById(R.id.manual_ruler_value);
         allAuto = findViewById(R.id.manual_all_auto);
+        allAutoChip = findViewById(R.id.all_auto_option_tv);
         summary = findViewById(R.id.manual_summary);
         units = ManualFormat.Units.of(activity);
         accent = UiTokens.cameraAccent(activity);
@@ -110,6 +117,7 @@ public class ViewObserver implements Observer {
             chips[i] = findViewById(CHIP_IDS[i]);
             if (chips[i] == null) continue;
             chips[i].setIcon(ICONS[i]);
+            chips[i].setName(activity.getString(SHORT_NAMES[i]));
             chips[i].setAccent(accent);
             chips[i].setTag(names[i]);
             chips[i].setContentDescription(names[i]);
@@ -122,6 +130,14 @@ public class ViewObserver implements Observer {
         if (allAuto != null) {
             allAuto.setTextColor(accent);
             allAuto.setOnClickListener(v -> { if (actions != null) actions.onResetAll(); });
+        }
+        if (allAutoChip != null) {
+            allAutoChip.setAccent(accent);
+            allAutoChip.setIconAccent(true);
+            allAutoChip.setName(activity.getString(R.string.manual_allauto_name));
+            allAutoChip.setContentDescription(activity.getString(R.string.manual_all_auto));
+            // a tap returns all five to auto; while nothing is manual it only says so (the console's message)
+            allAutoChip.setOnClickListener(v -> { if (actions != null) actions.onResetAll(); });
         }
         if (summary != null) summary.setAccent(accent);
         if (linearScaleView != null) {
@@ -352,6 +368,8 @@ public class ViewObserver implements Observer {
         }
         if (manualMode != null) manualMode.setManualDot(state.anyApplied());
         if (allAuto != null) allAuto.setVisibility(state.anyManual() ? View.VISIBLE : View.GONE);
+        if (allAutoChip != null) allAutoChip.bind(activity.getString(R.string.manual_allauto_value),
+                state.anyManual() ? ManualChipView.AUTO : ManualChipView.DIMMED);
         bindHeader(state);
         if (summary != null) bindSummary(state);
         if (linearScaleView != null && currentModel != null) {
@@ -405,8 +423,9 @@ public class ViewObserver implements Observer {
         return chips[param];
     }
 
+    /** The parameter's short name (the chip's name line; the messages: «Яркость: авто»). */
     public String name(int param) {
-        return names[param];
+        return activity.getString(SHORT_NAMES[param]);
     }
 
     @Override

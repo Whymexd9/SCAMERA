@@ -379,6 +379,19 @@ public class TouchFocus {
         }
     }
 
+    /** SIMPLE_UI §1: told where the focus ring shows (centre, radius in its parent) and when it goes (the viewfinder's sun). */
+    public interface RingListener {
+        void shown(float cx, float cy, float radius);
+
+        void hidden();
+    }
+
+    @androidx.annotation.Nullable private RingListener ringListener;
+
+    public void setRingListener(@androidx.annotation.Nullable RingListener listener) {
+        ringListener = listener;
+    }
+
     private void showFocusCircle(float fx, float fy) {
         // the layout's size: a split resize has not been measured yet
         ViewGroup.LayoutParams lp = focusCircleView.getLayoutParams();
@@ -387,6 +400,7 @@ public class TouchFocus {
         focusCircleView.setX(fx - w / 2.0f);
         focusCircleView.setY(fy - h / 2.0f);
         focusCircleView.setVisibility(View.VISIBLE);
+        if (ringListener != null) ringListener.shown(fx, fy, Math.max(w, h) / 2f);
         focusCircleView.animate().scaleY(1.2f).scaleX(1.2f).setDuration(250)
                 .withEndAction(() -> focusCircleView.animate().scaleY(1f).scaleX(1f).setDuration(250).start())
                 .start();
@@ -1010,6 +1024,7 @@ public class TouchFocus {
 
     //Must be run on UI Thread
     private void hideFocusCircleView() {
+        if (ringListener != null) ringListener.hidden();
         if (focusCircleView.getVisibility() == View.VISIBLE) {
             focusCircleView.animate().alpha(0f).scaleY(1.8f).scaleX(1.8f).setDuration(100)
                     .withEndAction(() -> {

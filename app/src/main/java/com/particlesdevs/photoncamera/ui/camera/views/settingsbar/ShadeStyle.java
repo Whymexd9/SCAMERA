@@ -52,14 +52,44 @@ public final class ShadeStyle {
         return new RippleDrawable(ColorStateList.valueOf(RIPPLE), card(c, fill, stroke, radiusDp), mask);
     }
 
+    /** SIMPLE_UI: a transparent button with a ripple bounded by a rounded shape of {@code radiusDp} (times the camera's k). */
+    public static Drawable ripple(Context c, float radiusDp) {
+        GradientDrawable mask = new GradientDrawable();
+        mask.setColor(0xFFFFFFFF);
+        mask.setCornerRadius(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dpF(c, radiusDp));
+        return new RippleDrawable(ColorStateList.valueOf(RIPPLE), null, mask);
+    }
+
     /** The sheet: BG with a LINE stroke and 26dp top corners; the stroke has no bottom edge. */
+    /**
+     * SIMPLE_UI §2: the quick sheet, see-through (the concept's 40 % transparency: its colour at {@link #sheetAlpha} of
+     * «Прозрачность шторки»), 28dp top corners x the screen's scale.
+     */
     public static Drawable sheet(Context c) {
         GradientDrawable d = new GradientDrawable();
-        d.setColor(BG);
-        float r = dp(c, 26);
+        d.setColor((SHEET_FILL & 0x00FFFFFF) | (Math.round(255 * sheetAlpha(c)) << 24));
+        float r = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dpF(c, 28);
         d.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
-        d.setStroke(dp(c, 1), LINE);
         return new InsetDrawable(d, 0, 0, 0, -dp(c, 2));
+    }
+
+    /** The concept's sheet colour (--sheet). */
+    public static final int SHEET_FILL = 0xFF15191C;
+    /** «Прозрачность шторки» (0..80 %, default 40 %): the key of the setting. */
+    public static final String TRANSPARENCY_KEY = "pref_shade_transparency";
+    public static final int TRANSPARENCY_DEFAULT = 40;
+
+    /** The sheet's and its cards' alpha: 1 - the transparency. */
+    public static float sheetAlpha(Context c) {
+        int t = TRANSPARENCY_DEFAULT;
+        try {
+            Object v = android.preference.PreferenceManager.getDefaultSharedPreferences(c.getApplicationContext()).getAll().get(TRANSPARENCY_KEY);
+            if (v instanceof Number) t = ((Number) v).intValue();
+            else if (v != null) t = Math.round(Float.parseFloat(v.toString()));
+        } catch (RuntimeException ignored) {
+        }
+        t = Math.max(0, Math.min(80, t));
+        return 1f - t / 100f;
     }
 
     /** Small uppercase accent label of a section («ЗАКРЕПЛЕНО», «HYBRID»). */

@@ -313,6 +313,28 @@ public final class SettingsMigration {
      *
      * @return whether anything changed
      */
+    /** SIMPLE_UI §2: set once the old default pin list moved to the new defaults. */
+    static final String SIMPLE_UI_TILES = "ui_shade_tiles_simple_ui";
+
+    /**
+     * SIMPLE_UI §2: a user who still has the old default pin list (7 tiles) gets the new defaults (18 + «Добавить»); a custom
+     * list stays as it is. Once.
+     */
+    public static boolean migrateSimpleUiTiles(SharedPreferences prefs) {
+        if (prefs.getBoolean(SIMPLE_UI_TILES, false)) return false;
+        SharedPreferences.Editor e = prefs.edit().putBoolean(SIMPLE_UI_TILES, true);
+        // plain strings here: SettingsManager runs this while the settings classes initialise (no ShadeCatalog yet)
+        boolean moved = OLD_DEFAULT_TILES.equals(prefs.getString(ShadeTiles.KEY, null));
+        // the stored list goes: the tiles then come from ShadeCatalog.defaultTiles() (the new defaults)
+        if (moved) e.remove(ShadeTiles.KEY);
+        e.commit();
+        return moved;
+    }
+
+    /** ShadeCatalog.OLD_DEFAULT_TILES as ShadeTiles stores it. */
+    static final String OLD_DEFAULT_TILES = "pref_ae_mode_key,pref_countdown_timer_key,pref_save_raw_key,pref_scam_hybrid_output,"
+            + "pref_show_grid_key,pref_ultrahdr_key,pref_scam_hybrid_bento";
+
     public static boolean migrateShadeTiles(SharedPreferences prefs) {
         Map<String, ?> values = prefs.getAll();
         if (!values.containsKey(LEGACY_QUICK) && !values.containsKey(LEGACY_FAVOURITES)) return false;

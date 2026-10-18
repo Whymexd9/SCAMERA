@@ -99,18 +99,25 @@ public final class GallerySheets {
     public static LinearLayout delete(Context c, int n, long bytes, Runnable onDelete, Runnable onCancel) {
         LinearLayout s = frame(c);
         s.addView(title(c, deleteTitle(n)));
-        s.addView(sub(c, GalleryUi.shots(n) + " · " + GalleryUi.size(bytes) + ". "
-                + Lang.t("Файлы удалятся с телефона без корзины.", "The files are removed from the phone, not moved to a bin.")));
-        TextView yes = bigButton(c, Lang.t("Удалить", "Delete"), true);
-        yes.setOnClickListener(v -> onDelete.run());
+        // SIMPLE_UI §5 (the concept): what happens in words, then «Отмена» | «Удалить» side by side
+        s.addView(sub(c, n == 1 ? Lang.t("Файл удалится с телефона. Вернуть его будет нельзя.", "The file is removed from the phone. It cannot be brought back.")
+                : GalleryUi.shots(n) + " · " + GalleryUi.size(bytes) + ". "
+                + Lang.t("Файлы удалятся с телефона, вернуть их будет нельзя.", "The files are removed from the phone and cannot be brought back.")));
         TextView no = bigButton(c, Lang.t("Отмена", "Cancel"), false);
         no.setOnClickListener(v -> onCancel.run());
+        no.setTag("delete_cancel");
+        TextView yes = bigButton(c, Lang.t("Удалить", "Delete"), true);
+        yes.setOnClickListener(v -> onDelete.run());
+        yes.setTag("delete_confirm");
+        LinearLayout buttons = new LinearLayout(c);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.addView(no, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayout.LayoutParams yp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        yp.leftMargin = GalleryUi.dp(c, 8);
+        buttons.addView(yes, yp);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = GalleryUi.dp(c, 10);
-        s.addView(yes, lp);
-        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp2.topMargin = GalleryUi.dp(c, 10);
-        s.addView(no, lp2);
+        lp.topMargin = GalleryUi.dp(c, 14);
+        s.addView(buttons, lp);
         return s;
     }
 
@@ -129,8 +136,9 @@ public final class GallerySheets {
         TextView b = GalleryUi.text(c, label, 16, warn ? 0xFF2A1210 : GalleryUi.TEXT);
         b.setGravity(Gravity.CENTER);
         b.setPadding(GalleryUi.dp(c, 14), GalleryUi.dp(c, 14), GalleryUi.dp(c, 14), GalleryUi.dp(c, 14));
-        b.setTypeface(warn ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
-        b.setBackground(GalleryUi.pressable(warn ? GalleryUi.round(c, GalleryUi.WARN, GalleryUi.WARN, 16) : GalleryUi.card(c, GalleryUi.CARD, 16)));
+        b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        b.setMinHeight(GalleryUi.dp(c, 50));
+        b.setBackground(GalleryUi.pressable(warn ? GalleryUi.round(c, GalleryUi.WARN, GalleryUi.WARN, 16) : GalleryUi.round(c, 0xFF232A2E, 0xFF232A2E, 16)));
         b.setClickable(true);
         b.setFocusable(true);
         return b;
@@ -270,82 +278,117 @@ public final class GallerySheets {
         public long bytes;
     }
 
-    /** The details sheet: name and «день, время · папка», Съёмка (4 cards), Гистограмма, Файл (rows). */
+    /** SIMPLE_UI §5 (the concept's «Сведения»): when / with what / how big in one card, «Как снято», the merge in words. */
     public static LinearLayout details(Context c, Details d, @Nullable View histogram) {
         LinearLayout s = frame(c);
-        TextView name = title(c, d.fileName == null ? "" : d.fileName);
-        s.addView(name);
-        s.addView(sub(c, (d.when == null ? "" : d.when) + (GalleryUi.empty(d.folder) ? "" : " · " + d.folder)));
-        s.addView(GalleryUi.sectionLabel(c, Lang.t("Съёмка", "Capture")));
-        LinearLayout cards = new LinearLayout(c);
-        cards.setOrientation(LinearLayout.HORIZONTAL);
-        cards.addView(shotCard(c, com.particlesdevs.photoncamera.circularbarlib.R.drawable.manual_ic_iso, d.iso, Lang.t("Чувствительность", "Sensitivity")));
-        cards.addView(shotCard(c, com.particlesdevs.photoncamera.circularbarlib.R.drawable.manual_ic_shutter, d.shutter, Lang.t("Выдержка", "Shutter speed")));
-        cards.addView(shotCard(c, R.drawable.settings_ic_aperture, d.fnum, Lang.t("Диафрагма", "Aperture")));
-        cards.addView(shotCard(c, R.drawable.ic_gallery_focal, d.focal, Lang.t("Фокусное расстояние", "Focal length")));
-        s.addView(cards);
-        s.addView(GalleryUi.sectionLabel(c, Lang.t("Гистограмма", "Histogram")));
-        FrameLayout histo = new FrameLayout(c);
-        histo.setBackground(GalleryUi.card(c, GalleryUi.CARD, 16));
-        int pad = GalleryUi.dp(c, 10);
-        histo.setPadding(pad, pad, pad, pad);
+        s.addView(title(c, Lang.t("Сведения", "Details")));
+        if (!GalleryUi.empty(d.fileName)) s.addView(sub(c, d.fileName));
+        LinearLayout card = new LinearLayout(c);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(GalleryUi.card(c, GalleryUi.CARD, 18));
+        card.setTag("details_rows");
+        card.addView(detailRow(c, R.drawable.ui_ic_clock, d.when == null ? "—" : d.when,
+                GalleryUi.empty(d.folder) ? null : Lang.t("Папка ", "Folder ") + d.folder, "when"));
+        card.addView(divider(c));
+        card.addView(detailRow(c, R.drawable.ui_ic_lens, GalleryUi.empty(d.lens) ? Lang.t("Объектив не записан", "No lens in the file") : d.lens,
+                d.device, "lens"));
+        card.addView(divider(c));
+        String mp = d.width > 0 && d.height > 0 ? Math.max(1, Math.round(d.width * (float) d.height / 1e6f)) + Lang.t(" Мп", " MP") : null;
+        String big = mp == null ? GalleryUi.size(d.bytes) : mp + " · " + GalleryUi.size(d.bytes);
+        String what = (d.width > 0 && d.height > 0 ? d.width + " × " + d.height + " · " : "") + (d.format == null ? "" : d.format)
+                + (d.ultraHdr ? " · Ultra HDR" : "");
+        card.addView(detailRow(c, R.drawable.ui_ic_size, big, what, "format"));
+        s.addView(card);
+        s.addView(GalleryUi.sectionLabel(c, Lang.t("Как снято", "How it was shot")));
+        LinearLayout grid = new LinearLayout(c);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        String[][] kv = {{Lang.t("Чувствительность", "Sensitivity"), d.iso}, {Lang.t("Выдержка", "Shutter speed"), d.shutter},
+                {Lang.t("Диафрагма", "Aperture"), d.fnum}, {Lang.t("Фокусное расстояние", "Focal length"), d.focal}};
+        for (int r = 0; r < 2; r++) {
+            LinearLayout line = new LinearLayout(c);
+            line.setOrientation(LinearLayout.HORIZONTAL);
+            for (int k = 0; k < 2; k++) {
+                String[] p = kv[r * 2 + k];
+                LinearLayout cell = new LinearLayout(c);
+                cell.setOrientation(LinearLayout.VERTICAL);
+                cell.setBackground(GalleryUi.card(c, GalleryUi.CARD, 16));
+                cell.setPadding(GalleryUi.dp(c, 12), GalleryUi.dp(c, 10), GalleryUi.dp(c, 12), GalleryUi.dp(c, 10));
+                cell.addView(GalleryUi.fitText(c, p[0], 12, GalleryUi.MUTED));
+                TextView v = GalleryUi.fitText(c, p[1] == null ? "—" : p[1], 15, GalleryUi.TEXT);
+                v.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                v.setFontFeatureSettings("tnum");
+                LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                vp.topMargin = GalleryUi.dp(c, 3);
+                cell.addView(v, vp);
+                cell.setContentDescription(p[0] + " " + (p[1] == null ? "—" : p[1]));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+                if (k > 0) lp.leftMargin = GalleryUi.dp(c, 8);
+                line.addView(cell, lp);
+            }
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (r > 0) lp.topMargin = GalleryUi.dp(c, 8);
+            grid.addView(line, lp);
+        }
+        s.addView(grid);
+        if (d.route != null) {
+            View note = com.particlesdevs.photoncamera.ui.settings.custompreferences.LutChangesPreference.noteView(c, Lang.t(
+                    "Снимок склеен из нескольких кадров (" + d.route + "): меньше шума, светлые и тёмные места сохранены.",
+                    "The photo is merged from several frames (" + d.route + "): less noise, bright and dark areas kept."));
+            note.setTag("route");
+            LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            np.topMargin = GalleryUi.dp(c, 12);
+            s.addView(note, np);
+        }
         if (histogram != null) {
+            s.addView(GalleryUi.sectionLabel(c, Lang.t("Гистограмма", "Histogram")));
+            FrameLayout histo = new FrameLayout(c);
+            histo.setBackground(GalleryUi.card(c, GalleryUi.CARD, 16));
+            int pad = GalleryUi.dp(c, 10);
+            histo.setPadding(pad, pad, pad, pad);
             if (histogram.getParent() instanceof ViewGroup) ((ViewGroup) histogram.getParent()).removeView(histogram);
             histogram.setContentDescription(Lang.t("Гистограмма RGB", "RGB histogram"));
             histo.addView(histogram, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            s.addView(histo, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, GalleryUi.dp(c, 120)));
         }
-        s.addView(histo, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, GalleryUi.dp(c, 120)));
-        s.addView(GalleryUi.sectionLabel(c, Lang.t("Файл", "File")));
-        LinearLayout rows = column(c);
-        rows.setTag("details_rows");
-        if (d.route != null)
-            rows.addView(infoRow(c, GalleryFormat.routeIcon(d.route), Lang.t("Склейка", "Merge"), d.route, "route"));
-        rows.addView(infoRow(c, d.formatIcon, Lang.t("Формат", "Format"), (d.format == null ? "" : d.format) + (d.ultraHdr ? " · Ultra HDR" : ""), "format"));
-        if (!GalleryUi.empty(d.lens)) rows.addView(infoRow(c, R.drawable.ic_gallery_lens, Lang.t("Объектив", "Lens"), d.lens, "lens"));
-        // P196: the phone on its own row (EXIF Make / Model, PhotoInfo.device), the resolution of the pixels the file stores
-        if (!GalleryUi.empty(d.device)) rows.addView(infoRow(c, R.drawable.ic_gallery_phone, Lang.t("Смартфон", "Phone"), d.device, "device"));
-        String res = PhotoInfo.resolution(d.width, d.height);
-        if (res != null) rows.addView(infoRow(c, R.drawable.ic_gallery_res, Lang.t("Разрешение", "Resolution"), res, "res"));
-        rows.addView(infoRow(c, R.drawable.ic_gallery_size, Lang.t("Размер", "Size"), GalleryUi.size(d.bytes), "size"));
-        s.addView(rows);
         s.setContentDescription(d.fileName);
         return s;
     }
 
-    static LinearLayout shotCard(Context c, @DrawableRes int icon, @Nullable String value, String name) {
-        LinearLayout card = new LinearLayout(c);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setGravity(Gravity.CENTER_HORIZONTAL);
-        card.setBackground(GalleryUi.card(c, GalleryUi.CARD, 16));
-        card.setPadding(GalleryUi.dp(c, 4), GalleryUi.dp(c, 10), GalleryUi.dp(c, 4), GalleryUi.dp(c, 10));
-        card.addView(GalleryUi.icon(c, icon, GalleryUi.accent(c), 22));
-        TextView v = GalleryUi.fitText(c, value == null ? "—" : value, 14, GalleryUi.TEXT);
-        v.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        vp.topMargin = GalleryUi.dp(c, 5);
-        card.addView(v, vp);
-        card.setContentDescription(name + " " + (value == null ? "—" : value));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        lp.leftMargin = lp.rightMargin = GalleryUi.dp(c, 3);
-        card.setLayoutParams(lp);
-        return card;
+    /** A row of the concept's details card: the 36dp icon tile, the bold line and the muted one under it. */
+    static LinearLayout detailRow(Context c, @DrawableRes int icon, String main, @Nullable String under, String tag) {
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(GalleryUi.dp(c, 14), GalleryUi.dp(c, 10), GalleryUi.dp(c, 14), GalleryUi.dp(c, 10));
+        row.setMinimumHeight(GalleryUi.dp(c, 58));
+        FrameLayout tile = new FrameLayout(c);
+        tile.setBackground(GalleryUi.round(c, 0xFF232A2E, 0xFF232A2E, 12));
+        tile.addView(GalleryUi.icon(c, icon, GalleryUi.TEXT, 22), new FrameLayout.LayoutParams(GalleryUi.dp(c, 22), GalleryUi.dp(c, 22), Gravity.CENTER));
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(GalleryUi.dp(c, 36), GalleryUi.dp(c, 36));
+        tp.rightMargin = GalleryUi.dp(c, 12);
+        row.addView(tile, tp);
+        LinearLayout texts = new LinearLayout(c);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        TextView m = GalleryUi.text(c, main, 14.5f, GalleryUi.TEXT);
+        m.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        texts.addView(m);
+        if (!GalleryUi.empty(under)) {
+            TextView u = GalleryUi.text(c, under, 12.5f, GalleryUi.MUTED);
+            u.setPadding(0, GalleryUi.dp(c, 2), 0, 0);
+            texts.addView(u);
+        }
+        row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        row.setTag(tag);
+        row.setContentDescription(main + (GalleryUi.empty(under) ? "" : ", " + under));
+        return row;
     }
 
-    static LinearLayout infoRow(Context c, @DrawableRes int icon, String key, String value, String tag) {
-        LinearLayout row = cardRow(c);
-        row.setTag(tag);
-        ImageView i = GalleryUi.icon(c, icon, GalleryUi.accent(c), 22);
-        row.addView(i);
-        TextView k = GalleryUi.text(c, key, 14, GalleryUi.MUTED);
-        LinearLayout.LayoutParams kp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        kp.leftMargin = GalleryUi.dp(c, 12);
-        row.addView(k, kp);
-        TextView v = GalleryUi.text(c, value, 14, GalleryUi.TEXT);
-        v.setGravity(Gravity.END);
-        LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        vp.leftMargin = GalleryUi.dp(c, 12);
-        row.addView(v, vp);
-        row.setContentDescription(key + ": " + value);
-        return row;
+    static View divider(Context c) {
+        View v = new View(c);
+        v.setBackgroundColor(GalleryUi.LINE);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, GalleryUi.dp(c, .5f)));
+        lp.leftMargin = GalleryUi.dp(c, 62);
+        v.setLayoutParams(lp);
+        return v;
     }
 }

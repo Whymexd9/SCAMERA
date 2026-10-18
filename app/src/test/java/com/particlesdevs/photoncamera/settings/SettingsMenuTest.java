@@ -221,16 +221,16 @@ public class SettingsMenuTest {
     }
     @Test public void configScreenKeepsOnlyOutputBackupAndReset() {
         PreferenceScreen screen=inflate();
-        PreferenceScreen config=screen.findPreference("output_settings_screen");assertNotNull(config);
+        androidx.preference.PreferenceGroup config=screen.findPreference("root_photo");assertNotNull(config);
         // RAW mode stays a quick bar setting; DNG crop and the tunable reset page are gone.
         for (String key:Arrays.asList("pref_save_raw_key","expert_output_screen","pref_tunable_submenu","pref_tunable_imagesaversettings_croptype"))
             assertNull(key,screen.findPreference(key));
-        // P132: «Фото» (formats, resolution, DNG, name, watermark); the backup is a page of «Система»
+        // SIMPLE_UI §4: «Фото» (Формат файла, Размер фото, HDR, 16:9, watermark, name); the backup is «Приложение → Профили»
         for (String key:Arrays.asList("pref_jpeg_quality","pref_ultrahdr_key","pref_wide169_key","pref_show_watermark_key","pref_watermark_line1",
                 "pref_scam_hybrid_output","pref_scam_hybrid_downsampler","pref_dng_lossless","pref_file_name_pattern"))
             assertNotNull(key,config.findPreference(key));
         PreferenceScreen backup=screen.findPreference("backup_settings_screen");assertNotNull(backup);
-        assertNotNull(((PreferenceScreen)screen.findPreference("system_settings_screen")).findPreference("backup_settings_screen"));
+        assertNotNull(((androidx.preference.PreferenceGroup)screen.findPreference("root_app")).findPreference("backup_settings_screen"));
         for (String key:Arrays.asList("pref_backup_preferences_key","pref_restore_preferences_key","pref_reset_preferences_key"))
             assertNotNull(key,backup.findPreference(key));
         // The remaining dynamic page is still filled without pref_tunable_submenu. «Кнопки видоискателя» held only the
@@ -439,15 +439,15 @@ public class SettingsMenuTest {
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var copy=new com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment();
             fm.beginTransaction().replace(R.id.settings_container,copy).commitNow();
-            // P6: the root pages are the groups (no categories at the root any more)
-            android.view.View processing=copy.requireView().findViewWithTag("group_photo_processing_screen");
+            // SIMPLE_UI §4: the root's groups are the copy catalog's groups («Цвет и стиль» holds the colour pages)
+            android.view.View processing=copy.requireView().findViewWithTag("group_root_colour");
             assertNotNull(tags(copy.requireView()),processing);assertTrue(processing.performClick());
 
             // «Цвет» (the RawTherapee sharpening left in the settings audit and is gone since P118, the curves are gone, P64):
             // the DCP profile
             assertNotNull(copy.requireView().findViewWithTag("parameter_pref_dcp_profile_key"));
             activity.getOnBackPressedDispatcher().onBackPressed();
-            assertNotNull(copy.requireView().findViewWithTag("group_photo_processing_screen"));
+            assertNotNull(copy.requireView().findViewWithTag("group_root_colour"));
         }
     }
 
@@ -462,11 +462,14 @@ public class SettingsMenuTest {
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
         int exact=android.view.View.MeasureSpec.EXACTLY;
         view.measure(android.view.View.MeasureSpec.makeMeasureSpec(400,exact),android.view.View.MeasureSpec.makeMeasureSpec(880,exact));view.layout(0,0,400,880);
+        // SIMPLE_UI §4: the concept's header - a 44dp back disc, the title column, (the search disc)
         android.view.ViewGroup header=(android.view.ViewGroup)((android.view.ViewGroup)view).getChildAt(0);
-        android.view.ViewGroup titles=(android.view.ViewGroup)header.getChildAt(0);
-        assertTrue("Header must reserve space for branding and title",header.getHeight()>=60);
-        assertEquals(android.view.View.VISIBLE,header.getChildAt(1).getVisibility());
-        assertTrue(titles.getChildAt(1).getTop()>=titles.getChildAt(0).getBottom());
+        android.view.ViewGroup row=(android.view.ViewGroup)header.getChildAt(0);
+        android.view.ViewGroup titles=(android.view.ViewGroup)row.getChildAt(1);
+        assertTrue("Header must hold the 44dp back disc",header.getHeight()>=44);
+        assertEquals(android.view.View.VISIBLE,row.getChildAt(0).getVisibility());
+        assertEquals(44,row.getChildAt(0).getWidth());
+        if(titles.getChildAt(1).getVisibility()==android.view.View.VISIBLE)assertTrue(titles.getChildAt(1).getTop()>=titles.getChildAt(0).getBottom());
         android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(400,880,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
         java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
         try(var out=new java.io.FileOutputStream(new java.io.File(dir,name+".png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
@@ -492,11 +495,11 @@ public class SettingsMenuTest {
             group.requireView().findViewWithTag(copyRow).performClick();fm.executePendingTransactions();
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy"+png);
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
-            // one row of «Фото» (P132: the DNG compression is there)
-            copy.requireView().findViewWithTag("group_output_settings_screen").performClick();
+            // one row of «Фото» (SIMPLE_UI §4: the root's groups are the copy catalog's; the DNG compression is under «Фото»)
+            copy.requireView().findViewWithTag("group_root_photo").performClick();
             copy.requireView().findViewWithTag("parameter_pref_dng_lossless").performClick();renderPage(copy.requireView(),"noise"+png);
             copy.requireView().findViewWithTag("primary_action").performClick();
-            var check=copy.requireView().findViewWithTag("group_check_output_settings_screen");assertTrue(check.getContentDescription().toString(),check.getContentDescription().toString().contains(partly));
+            var check=copy.requireView().findViewWithTag("group_check_root_photo");assertTrue(check.getContentDescription().toString(),check.getContentDescription().toString().contains(partly));
             copy.requireView().findViewWithTag("target_back2").performClick();copy.requireView().findViewWithTag("primary_action").performClick();
             assertEquals(Boolean.TRUE,PreferenceKeys.profiles().snapshot("back1").get("pref_dng_lossless"));
             assertFalse(context.getSharedPreferences("module_profiles_meta",0).getBoolean("exists_back2",false));
@@ -1241,7 +1244,8 @@ public class SettingsMenuTest {
         String xml;
         try(java.io.InputStream in=new java.io.FileInputStream("src/main/res/xml/preferences.xml")){xml=new String(in.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);}
         java.util.Map<String,String> byIcon=new java.util.HashMap<>();
-        java.util.regex.Matcher m=java.util.regex.Pattern.compile("(?m)^  <PreferenceScreen [^>]*>").matcher(xml);
+        // SIMPLE_UI §4: the pages of the root's groups (one level under the root's categories)
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("(?m)^    <PreferenceScreen [^>]*>").matcher(xml);
         int pages=0;
         while(m.find()){
             String tag=m.group();
@@ -1349,7 +1353,7 @@ public class SettingsMenuTest {
         assertNotNull("pages end in a chevron",row(page).findViewById(R.id.settings_chevron));
         android.widget.TextView label=row(category).findViewById(android.R.id.title);assertEquals(accent,label.getCurrentTextColor());
         android.view.View lr=row(list);android.widget.TextView value=lr.findViewById(R.id.settings_value);
-        assertEquals("Второй",value.getText().toString());assertEquals(accent,value.getCurrentTextColor());
+        assertEquals("Второй",value.getText().toString());assertEquals("SIMPLE_UI §4: the value on the right, muted",com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED,value.getCurrentTextColor());
         assertEquals("the value is not repeated in the summary","Описание",((android.widget.TextView)lr.findViewById(android.R.id.summary)).getText().toString());
         assertEquals("42",((android.widget.TextView)row(edit).findViewById(R.id.settings_value)).getText().toString());
         android.view.View sr=row(seek);android.widget.SeekBar bar=sr.findViewById(R.id.seekbar);
@@ -1364,26 +1368,38 @@ public class SettingsMenuTest {
         assertEquals(accent,toggle.getTrackTintList().getColorForState(new int[]{android.R.attr.state_checked},0));
         assertNotNull("info rows are notes",row(info).findViewById(R.id.settings_info_icon));
         assertNull("notes are not cards",row(info).getBackground());
-        assertEquals(R.layout.preference_tile,tile.getLayoutResource());
+        assertEquals("SIMPLE_UI §4: the profile actions are rows, as the concept",R.layout.preference_card,tile.getLayoutResource());
         assertEquals(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.WARN,((android.widget.TextView)row(tile).findViewById(android.R.id.title)).getCurrentTextColor());
         assertEquals("actions are written in the accent",accent,((android.widget.TextView)row(action).findViewById(android.R.id.title)).getCurrentTextColor());
         list.setEnabled(false);assertEquals(.45f,row(list).getAlpha(),1e-3);
     }
 
-    /** P129 / P132: the root holds the new groups in order, without a route row or chip; a page of each opens. */
+    /**
+     * SIMPLE_UI §4: the root holds the concept's seven groups in order - «Для опытных» first (owner's decision), then Фото,
+     * Съёмка, Экран камеры, Цвет и стиль, Приложение, О приложении - without a route row or chip.
+     */
     @Test public void rootGroupsForOrdinaryUsers(){
         PreferenceScreen screen=inflate();
-        String[] order={"pref_motion_mode","output_settings_screen","shooting_settings_screen","viewfinder_settings_screen","photo_processing_screen",
-                "scam_hybrid_screen","module_profiles_screen","camera_settings_screen","interface_settings_screen","system_settings_screen"};
+        String[] order={"root_expert","root_photo","root_shoot","root_view","root_colour","root_app","root_about"};
         assertEquals(order.length,screen.getPreferenceCount());
         for(int i=0;i<order.length;i++)assertEquals(order[i],screen.getPreference(i).getKey());
+        androidx.preference.PreferenceGroup expert=screen.findPreference("root_expert");
+        assertEquals(1,expert.getPreferenceCount());
+        PreferenceScreen advanced=screen.findPreference("advanced_screen");
+        for(String key:new String[]{"scam_hybrid_screen","module_profiles_screen","camera_settings_screen","pref_scam_hybrid_zsl_frames",
+                "pref_zsl_buffer_count_key","scam_diagnostics_screen","camera_package_spoof_screen","developer_settings_screen",
+                "pref_af_mode_key","pref_live_viewfinder_raw_key","pref_show_afdata_key"})
+            assertNotNull(key,advanced.findPreference(key));
+        androidx.preference.PreferenceGroup view=screen.findPreference("root_view");
+        for(String key:new String[]{"pref_show_grid_key","pref_horizon","pref_face_detect_mode","pref_tracking_af_mode","pref_peak_method_key",
+                "pref_split_af_ae","pref_low_light_boost","pref_show_roundedge_key"})assertNotNull(key,view.findPreference(key));
         // P189: «Настройки по модулям» is a row that opens the module group (ModuleProfilesFragment), no page of its own
         assertEquals(0,((PreferenceScreen)screen.findPreference("module_profiles_screen")).getPreferenceCount());
         assertNull(screen.findPreference(PreferenceKeys.ROUTE_KEY));
-        PreferenceScreen shooting=screen.findPreference("shooting_settings_screen");
-        for(String key:new String[]{"pref_scam_hybrid_zsl_frames","pref_zsl_buffer_count_key","pref_antibanding_hz_key","scam_hybrid_motion_screen"})
+        androidx.preference.PreferenceGroup shooting=screen.findPreference("root_shoot");
+        for(String key:new String[]{"pref_motion_mode","pref_camera_sounds_key","pref_antibanding_hz_key","scam_hybrid_motion_screen"})
             assertNotNull(key,shooting.findPreference(key));
-        PreferenceScreen colour=screen.findPreference("photo_processing_screen");
+        androidx.preference.PreferenceGroup colour=screen.findPreference("root_colour");
         // P134: every colour row in «Цвет» (white balance, saturation, mixer, grading, style, advanced)
         for(String key:new String[]{"pref_dcp_profile_key","pref_color_method_key","pref_scam_hybrid_colour_warmth","pref_scam_hybrid_colour_tint",
                 "pref_scam_hybrid_colour_keep_warm","pref_scam_hybrid_ark_agx_sat","pref_scam_hybrid_ark_vibrance","pref_scam_hybrid_ark_vibrance_sky",
@@ -1392,8 +1408,9 @@ public class SettingsMenuTest {
                 "pref_scam_hybrid_colour_hue_lock","pref_scam_hybrid_ark_ccm_sat","pref_scam_hybrid_ark_hl_white"})assertNotNull(key,colour.findPreference(key));
         PreferenceScreen cameras=screen.findPreference("camera_settings_screen");
         assertNotNull(cameras.findPreference("capture_settings_screen"));assertNotNull(cameras.findPreference("pref_sensor_config_submenu"));
-        PreferenceScreen ui=screen.findPreference("interface_settings_screen");
-        for(String key:new String[]{"pref_theme_key","pref_theme_accent_key","pref_hide_gallery_icon_key"})assertNotNull(key,ui.findPreference(key));
+        androidx.preference.PreferenceGroup ui=screen.findPreference("root_app");
+        for(String key:new String[]{"pref_theme_key","pref_theme_accent_key","pref_hide_gallery_icon_key","pref_shade_transparency",
+                "backup_settings_screen"})assertNotNull(key,ui.findPreference(key));
         PreferenceScreen noise=screen.findPreference("noise_model_screen");
         assertNotNull("the SHDR noise source next to the profile",noise.findPreference("pref_scam_hybrid_noise_source"));
     }
@@ -1402,7 +1419,15 @@ public class SettingsMenuTest {
     @Test public void innerPagesRenderAsCards() throws Exception {
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
-            for(String key:new String[]{"scam_hybrid_screen","scam_hybrid_capture_screen","output_settings_screen","scam_hybrid_ark_sharp_screen","shooting_settings_screen","interface_settings_screen"}){
+            {   // SIMPLE_UI §4: the root as the concept draws it (groups of card rows)
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+                android.view.View view=fm.findFragmentById(R.id.settings_container).requireView();int exact=android.view.View.MeasureSpec.EXACTLY;
+                view.measure(android.view.View.MeasureSpec.makeMeasureSpec(360,exact),android.view.View.MeasureSpec.makeMeasureSpec(2400,exact));view.layout(0,0,360,2400);
+                android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(360,2400,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
+                java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
+                try(var out=new java.io.FileOutputStream(new java.io.File(dir,"page-root.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+            }
+            for(String key:new String[]{"scam_hybrid_screen","scam_hybrid_capture_screen","output_settings_screen","scam_hybrid_ark_sharp_screen","advanced_screen","interface_settings_screen","photo_style_screen","shade_transparency_screen","backup_settings_screen","photo_size_screen"}){
                 var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
                 PreferenceScreen target=root.findPreference(key);if(target==null){fm.popBackStackImmediate(null,androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
                     root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);target=root.findPreference(key);}
@@ -1648,40 +1673,108 @@ public class SettingsMenuTest {
             assertEquals(2f,ModuleRegistry.nativeRatio("back2"),1e-4f);
         }
     }
-    /** P134 «Плёночный LUT»: the row in «Цвет › Стиль» lists the folder's .cube files, «Нет» and the import; a pick is stored. */
-    @Test public void filmLutRowPicksAFileOrNone(){
+    /**
+     * P134 / SIMPLE_UI §4c «Плёночный LUT» is its own page, as the concept: the before / after preview, three samples, the strip
+     * («Нет», our film looks, the folder's .cube files, «Импорт .cube»), the strength and «Что меняется»; a card is the choice.
+     */
+    @Test public void filmLutPageShowsTheStripPreviewAndChanges() throws Exception {
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
+            var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            PreferenceScreen page=root.findPreference("film_lut_screen");
+            assertNotNull(page);
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference lut=page.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+            assertNotNull(lut);
+            assertNotNull("the strength on the page",page.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY));
+            assertNotNull("«Что меняется» on the page",page.findPreference("film_lut_changes"));
+            activity.onPreferenceStartScreen(root,page);fm.executePendingTransactions();
+            var shown=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            lut=shown.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+            lut.setFiles(c->new String[]{"Kodak 2383.cube"});
+            boolean[] imported={false};
+            lut.setImporter(()->imported[0]=true);
+            lut.choose("");
+            android.view.View view=layout(shown.requireView(),360,2000);
+            for(String tag:new String[]{"lut_compare","lut_sample_0","lut_sample_1","lut_sample_2","lut_card_","lut_card_scam:warm400",
+                    "lut_card_scam:mono400","lut_card_Kodak 2383.cube","lut_import","lut_changes"})
+                assertNotNull(tag,view.findViewWithTag(tag));
+            assertTrue("no LUT: the photo stays as it is",shownText(view.findViewWithTag("lut_changes"),com.particlesdevs.photoncamera.util.Lang.t(activity,"Плёночный образ выключен","The film look is off")));
+            view.findViewWithTag("lut_import").performClick();
+            assertTrue("«Импорт .cube» opens the picker",imported[0]);
+            view.findViewWithTag("lut_card_scam:slide100").performClick();
+            assertEquals("scam:slide100",lut.chosen());
+            assertEquals("scam:slide100",prefs.getString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY,""));
+            // the analysis runs off the main thread
+            android.view.View chips=null;
+            for(int i=0;i<100&&chips==null;i++){
+                Thread.sleep(30);org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+                view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
+                chips=view.findViewWithTag("lut_chips");
+            }
+            assertNotNull("«Что меняется» shows the chips",chips);
+            assertTrue("a slide film is contrastier",shownText(chips,com.particlesdevs.photoncamera.util.Lang.t(activity,"Контраст","Contrast")));
+            assertNotNull(view.findViewWithTag("lut_curve"));
+            assertNotNull(view.findViewWithTag("lut_swatches"));
+            assertTrue(shownText(view,com.particlesdevs.photoncamera.util.Lang.t(activity,"Обращаемая плёнка","Slide film")));
+            prefs.edit().putString(com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY,"0").commit();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertTrue("strength 0: nothing changes",shownText(layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000),com.particlesdevs.photoncamera.util.Lang.t(activity,"Сила 0 %","Strength 0 %")));
+            prefs.edit().putString(com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY,"100").commit();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            Thread.sleep(300);org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
+            android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(360,2000,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
+            java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
+            try(var out=new java.io.FileOutputStream(new java.io.File(dir,"page-film_lut_screen.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+            view.findViewWithTag("lut_card_").performClick();
+            assertEquals("",lut.chosen());
+        }
+    }
+    /** SIMPLE_UI §4 «Прозрачность шторки»: its own page - a preview and radio rows; the choice is the sheet's alpha. */
+    @Test public void shadeTransparencyPageStoresThePercentage(){
         PreferenceScreen screen=inflate();
-        com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference lut=screen.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
-        assertNotNull(lut);
-        assertNotNull("the strength row beside it",screen.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY));
-        lut.setFiles(c->new String[]{"Kodak 2383.cube","Teal.cube"});
-        boolean[] imported={false};
-        lut.setImporter(()->imported[0]=true);
-        assertEquals("",lut.chosen());
-        lut.performClick();
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-        var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
-        assertNotNull(sheet);
-        var content=sheet.findViewById(android.R.id.content);
-        assertNotNull(content.findViewWithTag("option_lut_none"));
-        assertNotNull(content.findViewWithTag("option_lut_import"));
-        assertNotNull("P170: our film looks before the files",content.findViewWithTag("option_lut_scam:warm400"));
-        assertNotNull(content.findViewWithTag("option_lut_scam:mono400"));
-        content.findViewWithTag("option_lut_Kodak 2383.cube").performClick();
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-        assertEquals("Kodak 2383.cube",lut.chosen());
-        assertEquals("Kodak 2383.cube",prefs.getString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY,""));
-        assertEquals("Kodak 2383.cube",String.valueOf(lut.getSummary()));
-        lut.performClick();
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-        sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
-        sheet.findViewById(android.R.id.content).findViewWithTag("option_lut_import").performClick();
-        assertTrue("«Импортировать .cube…» opens the picker",imported[0]);
-        lut.performClick();
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-        sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
-        sheet.findViewById(android.R.id.content).findViewWithTag("option_lut_none").performClick();
-        assertEquals("",lut.chosen());
+        com.particlesdevs.photoncamera.ui.settings.custompreferences.ShadeTransparencyPreference t=screen.findPreference("pref_shade_transparency");
+        assertNotNull(t);
+        assertEquals(40,t.value());
+        android.view.View row=LayoutInflater.from(context).inflate(t.getLayoutResource(),null,false);
+        t.onBindViewHolder(PreferenceViewHolder.createInstanceForTests(row));
+        assertNotNull(row.findViewWithTag("shade_transparency_preview"));
+        for(int v:new int[]{0,20,30,40,50,60})assertNotNull("option "+v,row.findViewWithTag("shade_transparency_"+v));
+        row.findViewWithTag("shade_transparency_20").performClick();
+        assertEquals("20",prefs.getString("pref_shade_transparency",""));
+        assertEquals(.8f,com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.sheetAlpha(context),1e-6f);
+        assertTrue(row.findViewWithTag("shade_transparency_20").isSelected());
+    }
+    /** SIMPLE_UI §4 «Профили и резервная копия»: the active profile, the saved ones (newest first) with load / delete in place. */
+    @Test public void profilesPageListsAndLoadsConfigs(){
+        PreferenceScreen screen=inflate();
+        com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference profiles=screen.findPreference("profiles_page");
+        assertNotNull(profiles);
+        java.util.List<String> files=new ArrayList<>(Arrays.asList("Night.xml","Portrait.xml"));
+        String[] loaded={null};
+        android.view.View row=LayoutInflater.from(context).inflate(profiles.getLayoutResource(),null,false);
+        profiles.onBindViewHolder(PreferenceViewHolder.createInstanceForTests(row));
+        profiles.setActions(new com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference.Actions(){
+            @Override public String[] saved(){return files.toArray(new String[0]);}
+            @Override public String load(String f){loaded[0]=f;return "ok";}
+            @Override public boolean delete(String f){return files.remove(f);}
+        });
+        assertNotNull(row.findViewWithTag("profile_active"));
+        android.view.ViewGroup saved=row.findViewWithTag("profiles_saved");
+        assertEquals("newest first","profile_Portrait",String.valueOf(saved.getChildAt(0).getTag()));
+        row.findViewWithTag("profile_Night").performClick();
+        android.view.View panel=row.findViewWithTag("profile_panel_Night");
+        assertEquals(android.view.View.VISIBLE,panel.getVisibility());
+        panel.findViewWithTag("profile_load").performClick();
+        assertEquals("Night.xml",loaded[0]);
+        panel.findViewWithTag("profile_delete").performClick();
+        assertEquals(Arrays.asList("Portrait.xml"),files);
+        assertNull(row.findViewWithTag("profile_Night"));
+    }
+    private static android.view.View layout(android.view.View view,int w,int h){
+        int exact=android.view.View.MeasureSpec.EXACTLY;
+        view.measure(android.view.View.MeasureSpec.makeMeasureSpec(w,exact),android.view.View.MeasureSpec.makeMeasureSpec(h,exact));view.layout(0,0,w,h);
+        return view;
     }
     /** A TextView under {@code view} whose text contains {@code part}. */
     private static boolean shownText(android.view.View view,String part){

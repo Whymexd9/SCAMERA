@@ -47,9 +47,9 @@ import java.util.Locale;
 /**
  * Container for multi-camera buttons.
  * <p>
- * P25 look: one pill-shaped CARD with a LINE stroke (aux_container_background) under the bottom bar's zoom ruler, the
- * active lens filled with the camera accent (INK text), the others MUTED, three dots between them, decimal commas
- * («0,6×», «2,5×»). The gestures are unchanged (owner's answer 2): tap selects a lens, a horizontal drag zooms.
+ * SIMPLE_UI look (the concept's .lenses): one capsule in the card colour with a LINE stroke between «Про» and «Ещё», the
+ * active lens filled with the camera accent (INK text, «1×», the live zoom «2,3×»), the others MUTED without the sign
+ * («0,4», «2,4», «5»), 2dp apart, decimal commas. The gestures are unchanged (owner's answer 2): tap selects a lens, a horizontal drag zooms.
  * The buttons are {@link LensButton}s: in landscape only their labels turn (P32).
  * <p>
  * This layout's functionality is dependent on {@link AuxButtonsModel} which is provided
@@ -71,29 +71,7 @@ public class AuxButtonsLayout extends LinearLayout {
     private final LinearLayout.LayoutParams buttonParams;
     /** P181: the gap on each side of a tile at fit 1 (px). */
     private final int baseGap;
-    /** P185: the three dots between two lenses («0,4× ··· 1×»): their radius and spacing at fit 1 (px), their paint. */
-    private final float dotRadius, dotStep;
-    private final android.graphics.Paint dots = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
 
-    @Override
-    protected void dispatchDraw(android.graphics.Canvas canvas) {
-        super.dispatchDraw(canvas);
-        View previous = null;
-        for (int i = 0; i < getChildCount(); i++) {
-            View child = getChildAt(i);
-            if (child.getVisibility() != View.VISIBLE || !(child instanceof LensButton)) continue;
-            if (previous != null) {
-                float fit = ((LensButton) child).fit(), step = dotStep * fit, r = dotRadius * Math.max(.75f, fit);
-                float gap = child.getLeft() + child.getTranslationX() - (previous.getRight() + previous.getTranslationX());
-                if (gap >= 2 * step + 2 * r + 2) {
-                    float x = (previous.getRight() + previous.getTranslationX() + child.getLeft() + child.getTranslationX()) / 2f;
-                    float y = (child.getTop() + child.getBottom()) / 2f;
-                    for (int d = -1; d <= 1; d++) canvas.drawCircle(x + d * step, y, r, dots);
-                }
-            }
-            previous = child;
-        }
-    }
     private AuxButtonListener auxButtonListener;
     private AuxButtonsModel auxButtonsModel;
     private long lastSwitch = -500;
@@ -103,19 +81,13 @@ public class AuxButtonsLayout extends LinearLayout {
 
 public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
-        setWillNotDraw(false);
 
         // P157: the strip in proportion to the screen's width (BottomChrome.scale)
         float density = context.getResources().getDisplayMetrics().density * BottomChrome.scale(context);
-        // P185: the lenses 14dp apart, the dots between them, centred on one line (all of one height)
+        // SIMPLE_UI: the concept's strip - the lenses 2dp apart, no dots, centred on one line (all of one height)
         buttonParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         buttonParams.gravity = android.view.Gravity.CENTER_VERTICAL;
-        baseGap = Math.round(7 * density);
-        dotRadius = 1.4f * density;
-        dotStep = 4.2f * density;
-        dots.setColor(BottomChrome.tone(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.MUTED,
-                com.particlesdevs.photoncamera.circularbarlib.ui.AccentPalette.camera(context), .22f));
-        dots.setAlpha(170);
+        baseGap = Math.round(1 * density);
         buttonParams.setMargins(baseGap, 0, baseGap, 0);
 
         // The layout editor runs this constructor but not the data-binding adapters,
@@ -476,14 +448,8 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         if(zoomDrag!=null){
             if(e.getActionMasked()==android.view.MotionEvent.ACTION_DOWN)lastDragX=e.getX();
             else if(e.getActionMasked()==android.view.MotionEvent.ACTION_MOVE){zoomDrag.onDrag(e.getX()-lastDragX);lastDragX=e.getX();}
-            return true;
         }
-        if(e.getActionMasked()==android.view.MotionEvent.ACTION_UP){
-            float dx=e.getX()-touchX;
-            if(Math.abs(dx)>getResources().getDisplayMetrics().density*24)for(int i=0;i<getChildCount();i++)if(getChildAt(i).isSelected()){
-                int next=i+(dx<0?1:-1);if(next>=0&&next<getChildCount())onAuxButtonClick(getChildAt(next));break;
-            }
-        }
+        // SIMPLE_UI §1: the old swipe-to-the-next-lens (unreachable with a drag zoom) is gone
         return true;
     }
     public interface AuxButtonListener {

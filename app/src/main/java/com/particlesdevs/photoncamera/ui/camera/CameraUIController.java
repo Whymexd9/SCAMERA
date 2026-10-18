@@ -78,11 +78,46 @@ final class CameraUIController implements CameraUIEventsListener,
                 // P86: the «Движение» mode; its AE frame rate is a session parameter, so the session starts again
                 final boolean on = !com.particlesdevs.photoncamera.settings.MotionMode.on();
                 com.particlesdevs.photoncamera.settings.MotionMode.set(on);
-                if (view instanceof android.widget.ImageButton)
-                    CameraUIViewImpl.bindMotionMode((android.widget.ImageButton) view, on, true);
-                cameraFragment.showSnackBar(cameraFragment.getString(on ? R.string.motion_mode_on_toast : R.string.motion_mode_off_toast));
+                cameraFragment.refreshTopBar();
+                cameraFragment.showSnackBar(Lang.t(view.getContext(), on ? "Движение: вкл." : "Движение: выкл.", on ? "Motion: on" : "Motion: off"));
                 Log.i(TAG, "motion mode " + (on ? "on" : "off"));
                 this.restartCamera();
+                break;
+            }
+            case R.id.torch_button: {
+                // SIMPLE_UI §1: the torch (pref_ae_mode 0 torch, 1 off), as the quick-sheet tile
+                int mode = PreferenceKeys.getAeMode() == 0 ? 1 : 0;
+                PreferenceKeys.setAeMode(mode);
+                cameraFragment.captureController.setPreviewAEModeRebuild(PreferenceKeys.getAeMode());
+                cameraFragment.refreshTopBar();
+                cameraFragment.showSnackBar(Lang.t(view.getContext(), mode == 0 ? "Фонарик: вкл." : "Фонарик: выкл.", mode == 0 ? "Torch: on" : "Torch: off"));
+                break;
+            }
+            case R.id.timer_button: {
+                // SIMPLE_UI §1: off -> 3 s -> 10 s -> off
+                int[] values = view.getResources().getIntArray(R.array.countdowntimer_entryvalues);
+                int index = (PreferenceKeys.getCountdownTimerIndex() + 1) % values.length;
+                PreferenceKeys.setCountdownTimerIndex(index);
+                cameraFragment.refreshTopBar();
+                cameraFragment.showSnackBar(values[index] > 0 ? Lang.t(view.getContext(), "Таймер: " + values[index] + " с", "Timer: " + values[index] + " s")
+                        : Lang.t(view.getContext(), "Таймер: выкл.", "Timer: off"));
+                break;
+            }
+            case R.id.size_badge: {
+                // SIMPLE_UI §1: the next photo size this module has (12 -> 50 -> 200 -> 12), the FULLRES switch
+                int next = PhotoSize.next(PhotoSize.current(), PhotoSize.fullAvailable(), PhotoSize.maxAvailable());
+                if (next == PhotoSize.current() && !PhotoSize.fullAvailable()) {
+                    cameraFragment.showSnackBar(Lang.t(view.getContext(), "50 Мп — нет на этом объективе", "50 MP: not on this lens"));
+                    break;
+                }
+                cameraFragment.showSnackBar(PhotoSize.set(cameraFragment, next));
+                cameraFragment.refreshTopBar();
+                break;
+            }
+            case R.id.dcg_badge: {
+                // SIMPLE_UI §1: DCG 14 bit, the same switch as «Для опытных → 14 бит (DCG)» (Dcg14Mode)
+                cameraFragment.showSnackBar(Dcg14Button.toggleMode(cameraFragment));
+                cameraFragment.refreshTopBar();
                 break;
             }
             case R.id.format_badge:

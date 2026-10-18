@@ -28,8 +28,8 @@
     <string name="manual_value_auto">Auto</string>
     <string name="manual_all_auto">All auto</string>
     <string name="manual_toast_auto">%1$s: auto</string>
-    <string name="manual_toast_all_auto">All parameters on auto</string>
-    <string name="manual_ev_locked">Exposure compensation unavailable: ISO and shutter are set manually</string>
+    <string name="manual_toast_all_auto">All on auto</string>
+    <string name="manual_ev_locked">Brightness auto: ISO and shutter manual</string>
     <string name="manual_a11y_manual">%1$s: %2$s</string>
     <string name="manual_a11y_auto">%1$s: auto, now %2$s</string>
     <string name="manual_a11y_locked">%1$s: unavailable, ISO and shutter are set manually</string>
@@ -40,4 +40,12 @@
     <string name="manual_unit_metres">m</string>
     <string name="manual_unit_centimetres">cm</string>
     <string name="manual_decimal_separator">.</string>
+    <string name="manual_name_iso" translatable="false">ISO</string>
+    <string name="manual_name_shutter">Shutter</string>
+    <string name="manual_name_ev">Brightness</string>
+    <string name="manual_name_focus">Focus</string>
+    <string name="manual_name_wb">Colour</string>
+    <string name="manual_allauto_value">All</string>
+    <string name="manual_allauto_name">to auto</string>
+    <string name="manual_toast_already_auto">Already all on auto</string>
 </resources>

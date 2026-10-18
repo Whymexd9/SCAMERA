@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- P6b category: no card, a small upper-case label in the accent (colour set at bind time). -->
+<!-- SIMPLE_UI §4: the concept's .gt (11.5sp, 600, caps, the accent). P6b category: no card, a small upper-case label in the accent (colour set at bind time). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -17,10 +17,10 @@
         android:id="@android:id/title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:alpha="0.85"
-        android:letterSpacing="0.14"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.09"
         android:textAllCaps="true"
-        android:textSize="12sp" />
+        android:textSize="11.5sp" />
     <TextView
         android:id="@android:id/summary"
         android:layout_width="match_parent"

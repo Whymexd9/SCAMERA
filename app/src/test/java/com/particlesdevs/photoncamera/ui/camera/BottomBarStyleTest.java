@@ -153,28 +153,29 @@ public class BottomBarStyleTest {
             Rect shutter = box(row.shutterButtonContainer, binding.getRoot());
             assertEquals(at + "the shutter a fifth of the width", w / 5f, shutter.width(), w * .02f);
             float s = BottomChrome.scale(w / density);
-            // the tonal containers: the accent's tone over the card colour, no grey card
+            // SIMPLE_UI: the concept's containers - the card colour (the strip at 85 %), the gallery card 16dp corners
             int card = SettingsStyle.CARD;
             GradientDrawable stripBg = (GradientDrawable) strip.getBackground();
-            assertEquals(at + "strip: tonal", BottomChrome.tone(card, accent, .08f), stripBg.getColor().getDefaultColor());
+            assertEquals(at + "strip: the card colour at 85 %", BottomChrome.STRIP_FILL, stripBg.getColor().getDefaultColor());
             GradientDrawable galleryBg = (GradientDrawable) row.galeryButtonContainer.getBackground();
-            assertEquals(at + "gallery: tonal", BottomChrome.tone(card, accent, .10f), galleryBg.getColor().getDefaultColor());
-            assertEquals(at + "gallery: large corners", BottomChrome.SIDE_RADIUS_DP * density * s, galleryBg.getCornerRadius(), .5f);
+            assertEquals(at + "gallery: the card", card, galleryBg.getColor().getDefaultColor());
+            assertEquals(at + "gallery: 16dp corners", BottomChrome.SIDE_RADIUS_DP * density * s, galleryBg.getCornerRadius(), .5f);
             assertTrue(at + "flip: a ripple on its tonal fill", row.flipCameraButton.getBackground() instanceof RippleDrawable);
-            assertNotEquals(at + "the strip is not the grey card", card, stripBg.getColor().getDefaultColor());
+            assertEquals(at + "flip: a circle", android.graphics.drawable.GradientDrawable.OVAL,
+                    ((android.graphics.drawable.GradientDrawable) ((RippleDrawable) row.flipCameraButton.getBackground()).getDrawable(0)).getShape());
             // P185: the strip a capsule round its lenses of one height, the active one a pill at least 54dp wide
             assertEquals(at + "strip: capsule corners", BottomChrome.STRIP_RADIUS_DP * density * s, stripBg.getCornerRadius(), .5f);
             for (int i = 0; i < strip.getChildCount(); i++) {
                 View lens = strip.getChildAt(i);
-                assertEquals(at + "lens height", Math.round(40 * density * s), lens.getHeight(), 1);
+                assertEquals(at + "lens height", Math.round(38 * density * s), lens.getHeight(), 1);
                 if (lens.isSelected()) assertTrue(at + "the active lens a pill wider than tall", lens.getWidth() > lens.getHeight());
             }
             assertEquals(at + "the processing ring is shown", View.VISIBLE, ring.getVisibility());
             assertEquals(at + "the ring at 60 %", .6f, ring.shown(), 1e-4f);
             assertEquals(at + "the ring covers the gallery card", row.galeryButtonContainer.getWidth(), ring.getWidth());
-            // the thumbnail: inside the card, the same margin (3dp times the scale) on every side
+            // the thumbnail fills the card (the concept's 54dp thumbnail)
             Rect cardBox = box(row.galeryButtonContainer, binding.getRoot()), thumb = box(row.galleryImageButton, binding.getRoot());
-            float margin = 3 * density * s;
+            float margin = 0f;
             assertEquals(at + "thumbnail: left margin", margin, thumb.left - cardBox.left, 1f);
             assertEquals(at + "thumbnail: right margin", margin, cardBox.right - thumb.right, 1f);
             assertEquals(at + "thumbnail: top margin", margin, thumb.top - cardBox.top, 1f);

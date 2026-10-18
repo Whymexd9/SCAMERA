@@ -106,7 +106,18 @@ public class ShadeCatalogTest {
         for (String gone : new String[]{"pref_scam_hybrid_ark_tone", "pref_scamhdr_fusion_enabled", "pref_scam_tone_curve"})
             assertFalse(gone, ShadeCatalog.isCurated(gone));
         for (String key : ShadeCatalog.DEFAULT_TILES) assertTrue(key, catalog.isKnown(key));
-        assertEquals(7, ShadeCatalog.DEFAULT_TILES.size());
+        assertEquals("SIMPLE_UI §2: the concept's 18 default tiles (with Стиль and Селфи)", 18, ShadeCatalog.DEFAULT_TILES.size());
+        // «Стиль» cycles Обычный -> Ч/б -> Плёнка over the mono filter and the LUT; «Селфи» reads «Зеркало» / «Как есть»
+        ShadeCatalog.Entry style = catalog.entry(ShadeCatalog.STYLE);
+        assertEquals(context.getResources().getTextArray(R.array.shade_l_style)[0].toString(), catalog.valueText(style, true));
+        catalog.cycleStyle();
+        assertEquals(PhotoStyle.MONO, PhotoStyle.current(prefs));
+        catalog.cycleStyle();
+        assertEquals(PhotoStyle.FILM, PhotoStyle.current(prefs));
+        assertEquals(context.getResources().getTextArray(R.array.shade_l_style)[2].toString(), catalog.valueText(style, true));
+        ShadeCatalog.Entry mirror = catalog.entry(ShadeCatalog.MIRROR);
+        assertEquals(ShadeCatalog.TOGGLE, mirror.kind);
+        assertEquals(context.getResources().getTextArray(R.array.shade_l_mirror)[0].toString(), catalog.valueText(mirror, true));
     }
 
     @Test
@@ -267,7 +278,8 @@ public class ShadeCatalogTest {
 
     @Test
     public void onlyPortablePinnableSettingsAreInTheCatalog() {
-        for (String key : new String[]{"pref_dcp_profile_key", "pref_camera_package_spoof_enabled", "pref_antibanding_hz_key",
+        // SIMPLE_UI §2: «Мерцание» (pref_antibanding_hz_key) is a default tile now
+        for (String key : new String[]{"pref_dcp_profile_key", "pref_camera_package_spoof_enabled",
                 "pref_watermark_line1", "pref_theme_key", "pref_tunable_camerauiviewimpl_enablequadres",
                 "pref_restore_preferences_key", "pref_backup_preferences_key", "settings_favorites", "scam_hybrid_screen"})
             assertFalse(key, catalog.isKnown(key));
@@ -280,13 +292,13 @@ public class ShadeCatalogTest {
     @Test
     @Config(qualifiers = "ru-w400dp-h880dp-mdpi")
     public void searchFindsTitlesSectionsAndTheOtherLanguage() {
-        searchFindsTitlesSectionsAndTheOtherLanguage("Кадры светов и теней");
+        searchFindsTitlesSectionsAndTheOtherLanguage("Для опытных", "SHDR › Кадры светов и теней");
     }
 
     /** The same on an English system: the Russian synonyms still find the rows, the crumb is English. */
     @Test
     public void searchFindsTitlesSectionsAndTheOtherLanguageInEnglish() {
-        searchFindsTitlesSectionsAndTheOtherLanguage("Highlight and shadow frames");
+        searchFindsTitlesSectionsAndTheOtherLanguage("For experts", "SHDR › Highlight and shadow frames");
     }
 
     /** The process-wide catalog follows a language change (the activity is recreated, the process is not). */
@@ -295,18 +307,18 @@ public class ShadeCatalogTest {
         ShadeCatalog.reset();
         try {
             ShadeCatalog english = ShadeCatalog.get(context);
-            assertTrue(english.entry("pref_scam_hybrid_bento").crumb().startsWith("Highlight and shadow frames"));
+            assertTrue(english.entry("pref_scam_hybrid_bento").crumb().startsWith("SHDR › Highlight and shadow frames"));
             assertSame(english, ShadeCatalog.get(context));
             org.robolectric.RuntimeEnvironment.setQualifiers("+ru");
             ShadeCatalog russian = ShadeCatalog.get(context);
             assertNotSame(english, russian);
-            assertTrue(russian.entry("pref_scam_hybrid_bento").crumb(), russian.entry("pref_scam_hybrid_bento").crumb().startsWith("Кадры светов и теней"));
+            assertTrue(russian.entry("pref_scam_hybrid_bento").crumb(), russian.entry("pref_scam_hybrid_bento").crumb().startsWith("SHDR › Кадры светов и теней"));
         } finally {
             ShadeCatalog.reset();
         }
     }
 
-    private void searchFindsTitlesSectionsAndTheOtherLanguage(String captureSection) {
+    private void searchFindsTitlesSectionsAndTheOtherLanguage(String section, String captureSection) {
         List<ShadeCatalog.Entry> luma = catalog.search("Luma");
         Set<String> keys = new HashSet<>();
         for (ShadeCatalog.Entry e : luma) keys.add(e.key);
@@ -319,9 +331,9 @@ public class ShadeCatalogTest {
         for (ShadeCatalog.Entry e : catalog.search("grid")) grid.add(e.key);
         assertTrue(grid.contains("pref_show_grid_key"));
         assertEquals(catalog.all().size(), catalog.search("  ").size());
-        // Sections come from the tree: the highlight-frame rows are under «SHDR › Кадры светов и теней» (P128).
+        // Sections come from the tree: SIMPLE_UI §4 - the highlight-frame rows are under «Для опытных › SHDR › Кадры светов и теней».
         ShadeCatalog.Entry bento = catalog.entry("pref_scam_hybrid_bento");
-        assertEquals("SHDR", bento.section(context));
+        assertEquals(section, bento.section(context));
         assertTrue(bento.crumb(), bento.crumb().startsWith(captureSection));
         assertNull(catalog.entry(ShadeCatalog.ROUTE));
     }

@@ -103,23 +103,23 @@ public class MessageCardTest {
     }
 
     @Test public void anInformationMessageShowsForItsLength() {
-        UiMessages.info("HDR: on"); // 7 characters: 1.85 s (the card was 1.5 s for any text)
+        UiMessages.info("HDR: on"); // 7 characters: 1.545 s (SIMPLE_UI: 1.3 s + 35 ms per character)
         idle(10);
         assertEquals(View.VISIBLE, view.getVisibility());
         assertEquals("HDR: on", view.getText().toString());
-        idle(1700);
+        idle(1400);
         assertEquals(View.VISIBLE, view.getVisibility());
-        idle(500);
+        idle(300);
         assertNull(card.showing());
         idle(400);
         assertEquals(View.GONE, view.getVisibility());
 
-        String longText = chars(120); // the FULLRES row failure's length: 7 s, not ~2 s
+        String longText = chars(120); // a long text: 5.5 s
         UiMessages.info(longText);
-        idle(6800);
+        idle(5300);
         assertEquals(View.VISIBLE, view.getVisibility());
         assertEquals(longText, card.showing().text);
-        idle(700);
+        idle(400);
         assertNull(card.showing());
     }
 
@@ -129,7 +129,9 @@ public class MessageCardTest {
         assertEquals(View.VISIBLE, view.getVisibility());
         assertTrue(card.showing().error);
         assertTrue(view.getText().toString().contains("FULLRES: mode 11"));
-        assertTrue(view.getText().toString().contains("\n")); // the «tap to close» line
+        assertFalse("SIMPLE_UI: one line", view.getText().toString().contains("\n"));
+        assertTrue("the «tap to close» hint for TalkBack", view.getContentDescription().toString().contains("закрыть")
+                || view.getContentDescription().toString().contains("close"));
         assertEquals(ContextCompat.getColor(activity, R.color.settings_warn), view.getCurrentTextColor());
         assertNotNull(UiMessages.unreadError());
 

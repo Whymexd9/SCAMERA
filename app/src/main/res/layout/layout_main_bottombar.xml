@@ -14,7 +14,8 @@
                 type="com.particlesdevs.photoncamera.ui.camera.model.AuxButtonsModel"/>
     </data>
 
-    <!-- P25 bottom bar (same height as before: whatever the 3:4 preview leaves), anchored at the bottom: the zoom
+    <!-- SIMPLE_UI §1: row 1 is «Про» · the lens strip · «Ещё» (the concept's .row1), row 2 the shutter row.
+         P25 bottom bar (same height as before: whatever the 3:4 preview leaves), anchored at the bottom: the zoom
          ruler's place, the lens strip, then the shutter row. The quick-settings shade and its scrim end above this bar,
          so the strip works at every shade level and the ruler never covers the tiles. P32: the shade's HIDDEN handle lies
          over this bar's top edge, and BottomChrome raises the shutter row (with the strip and the ruler's place chained
@@ -37,6 +38,90 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintBottom_toTopOf="@id/aux_buttons_container" />
 
+        <!-- SIMPLE_UI §1 row 1: a 44dp disc with its label under it (concept .side: 48dp wide, 11sp), centred on the strip. -->
+        <LinearLayout
+                android:id="@+id/pro_button"
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/bottom_pro"
+                app:layout_constraintStart_toStartOf="parent"
+                android:layout_marginStart="8dp"
+                app:layout_constraintTop_toTopOf="@id/aux_buttons_container"
+                app:layout_constraintBottom_toBottomOf="@id/aux_buttons_container">
+
+            <FrameLayout
+                    android:id="@+id/pro_disc"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:duplicateParentState="true">
+
+                <ImageView
+                        android:id="@+id/pro_icon"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ui_ic_sliders"
+                        android:importantForAccessibility="no"/>
+            </FrameLayout>
+
+            <TextView
+                    android:id="@+id/pro_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/bottom_pro"
+                    android:textSize="11sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:importantForAccessibility="no"/>
+        </LinearLayout>
+
+        <!-- SIMPLE_UI §1 row 1: a 44dp disc with its label under it (concept .side: 48dp wide, 11sp), centred on the strip. -->
+        <LinearLayout
+                android:id="@+id/more_button"
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="@string/bottom_more"
+                app:layout_constraintEnd_toEndOf="parent"
+                android:layout_marginEnd="8dp"
+                app:layout_constraintTop_toTopOf="@id/aux_buttons_container"
+                app:layout_constraintBottom_toBottomOf="@id/aux_buttons_container">
+
+            <FrameLayout
+                    android:id="@+id/more_disc"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:duplicateParentState="true">
+
+                <ImageView
+                        android:id="@+id/more_icon"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ui_ic_apps"
+                        android:importantForAccessibility="no"/>
+            </FrameLayout>
+
+            <TextView
+                    android:id="@+id/more_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/bottom_more"
+                    android:textSize="11sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:importantForAccessibility="no"/>
+        </LinearLayout>
+
         <com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout
                 android:id="@+id/aux_buttons_container"
                 android:orientation="horizontal"
@@ -45,9 +130,11 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="14dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
                 app:layout_constrainedWidth="true"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/pro_button"
+                app:layout_constraintEnd_toStartOf="@id/more_button"
                 app:layout_constraintBottom_toTopOf="@id/bottom_buttons"
                 setAuxButtonModel="@{auxmodel}"
                 setActiveId="@{auxmodel.currentCameraId}"
@@ -58,7 +145,7 @@
                 layout="@layout/layout_bottombuttons"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="18dp"
+                android:layout_marginBottom="22dp"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent" />

@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Manual controls in the shade's card style (MANUAL_TASK.md). Icons only: every name lives in a content description.
-     Top: the ruler card (header: parameter icon, value pill, «Всё на авто»; body: the «Авто» button and the scale),
-     8dp above the strip. Strip: the 52dp toggle card (at least 58dp high), then one card with the five equal chips ISO,
-     shutter, EV, focus, WB in one row (4dp padding and gaps). Sizes in dp, text in sp; the chips' text grows with the
-     font size only up to UiTokens.FONT_SCALE_CAP (P43), so the strip stays about the concept's height.
-     Card colours, radii and the accent are applied by ExpandingManualPanel (UiTokens, AccentPalette). -->
+<!-- SIMPLE_UI §3 Pro panel, as the concept draws it (.pro): the ruler card 8dp above the chips card; both float above the bottom
+     bar's row 1 and open with its «Про» button.
+     Ruler card (.ruler): 5dp padding, one row - the «Авто» button and the 54dp scale (LinearScaleView draws both, the
+     current value as a small label at the scale's top centre). No header and no hint line.
+     Chips card (.chips): 4dp padding, six equal chips 2dp apart - ISO, Выдержка, Яркость, Фокус, Цвет and «Всё на авто»;
+     each an icon (20dp), the value (13sp) and its name (10sp). Text in sp grows with the font size only up to
+     UiTokens.FONT_SCALE_CAP (P43). Card colours, radii and the accent are applied by ExpandingManualPanel. -->
 <com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/manual_mode" android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -12,11 +13,12 @@
 
     <LinearLayout android:id="@+id/knobViewContainer" android:layout_width="match_parent"
         android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone"
-        android:layout_marginBottom="8dp" android:paddingStart="8dp" android:paddingEnd="8dp"
-        android:paddingTop="7dp" android:paddingBottom="7dp" android:clickable="true">
+        android:layout_marginBottom="8dp" android:padding="5dp" android:clickable="true">
 
+        <!-- The old header (icon, value pill, «Всё на авто»): gone in SIMPLE_UI. -->
         <LinearLayout android:id="@+id/manual_ruler_header" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+            android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical"
+            android:visibility="gone">
             <ImageView android:id="@+id/manual_ruler_icon" android:layout_width="18dp" android:layout_height="18dp"
                 android:importantForAccessibility="no" />
             <TextView android:id="@+id/manual_ruler_value" android:layout_width="wrap_content"
@@ -32,11 +34,11 @@
         </LinearLayout>
 
         <FrameLayout android:id="@+id/manual_ruler_body" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:layout_marginTop="5dp">
+            android:layout_height="wrap_content">
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.knobview.KnobView
                 android:id="@+id/knobView" android:layout_width="match_parent" android:layout_height="67.2dp" android:visibility="gone" />
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.scaleview.LinearScaleView
-                android:id="@+id/linearScaleView" android:layout_width="match_parent" android:layout_height="49dp"
+                android:id="@+id/linearScaleView" android:layout_width="match_parent" android:layout_height="54dp"
                 android:visibility="gone" android:focusable="true" />
         </FrameLayout>
     </LinearLayout>
@@ -44,8 +46,9 @@
     <LinearLayout android:id="@+id/manual_strip" android:layout_width="match_parent"
         android:layout_height="wrap_content" android:orientation="horizontal">
 
+        <!-- The old toggle card: gone (the bottom bar's «Про» opens the panel). -->
         <FrameLayout android:id="@+id/manual_toggle" android:layout_width="52dp" android:layout_height="match_parent"
-            android:minHeight="58dp" android:clickable="true" android:focusable="true"
+            android:minHeight="58dp" android:clickable="true" android:focusable="true" android:visibility="gone"
             android:contentDescription="@string/manual_panel_open">
             <ImageView android:id="@+id/manual_toggle_icon" android:layout_width="24dp" android:layout_height="24dp"
                 android:layout_gravity="center" android:src="@drawable/manual_ic_sliders" android:importantForAccessibility="no" />
@@ -55,30 +58,35 @@
         </FrameLayout>
 
         <LinearLayout android:id="@+id/buttons_container" android:layout_width="0dp" android:layout_weight="1"
-            android:layout_height="wrap_content" android:layout_marginStart="8dp" android:padding="4dp"
+            android:layout_height="wrap_content" android:padding="4dp"
             android:orientation="horizontal">
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/iso_option_tv"
                 android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
-                android:contentDescription="@string/manual_tab_iso" app:manualChipIcon="@drawable/manual_ic_iso" />
+                android:contentDescription="@string/manual_tab_iso" app:manualChipIcon="@drawable/pro_ic_iso"
+                app:manualChipName="@string/manual_name_iso" />
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/exposure_option_tv"
-                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
-                android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_shutter"
-                app:manualChipIcon="@drawable/manual_ic_shutter" />
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginStart="2dp"
+                android:contentDescription="@string/manual_tab_shutter" app:manualChipIcon="@drawable/pro_ic_shutter"
+                app:manualChipName="@string/manual_name_shutter" />
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/ev_option_tv"
-                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
-                android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_ev"
-                app:manualChipIcon="@drawable/manual_ic_ev" />
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginStart="2dp"
+                android:contentDescription="@string/manual_tab_ev" app:manualChipIcon="@drawable/pro_ic_ev"
+                app:manualChipName="@string/manual_name_ev" />
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/focus_option_tv"
-                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
-                android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_focus"
-                app:manualChipIcon="@drawable/manual_ic_focus" />
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginStart="2dp"
+                android:contentDescription="@string/manual_tab_focus" app:manualChipIcon="@drawable/pro_ic_focus"
+                app:manualChipName="@string/manual_name_focus" />
             <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/wb_option_tv"
-                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
-                android:layout_marginStart="4dp" android:contentDescription="@string/manual_tab_wb"
-                app:manualChipIcon="@drawable/manual_ic_wb" />
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginStart="2dp"
+                android:contentDescription="@string/manual_tab_wb" app:manualChipIcon="@drawable/pro_ic_wb"
+                app:manualChipName="@string/manual_name_wb" />
+            <!-- «Всё на авто»: every parameter back to auto; dimmed while nothing is manual. -->
+            <com.particlesdevs.photoncamera.circularbarlib.ui.views.ManualChipView android:id="@+id/all_auto_option_tv"
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginStart="2dp"
+                android:contentDescription="@string/manual_all_auto" app:manualChipIcon="@drawable/pro_ic_auto"
+                app:manualChipName="@string/manual_allauto_name" />
         </LinearLayout>
-        <!-- The app's own square button at the strip's right end, opposite the toggle (vivo X500 Pro Max: DCG 14-bit); shown only
-             while the strip is collapsed and the app put a view in it. -->
+        <!-- The app's own square button at the strip's right end (gone in SIMPLE_UI: DCG lives in «Для опытных»). -->
         <FrameLayout android:id="@+id/manual_end_slot" android:layout_width="wrap_content"
             android:layout_height="wrap_content" android:layout_gravity="center_vertical" android:layout_marginStart="8dp"
             android:visibility="gone" />

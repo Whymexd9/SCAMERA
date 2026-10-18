@@ -184,7 +184,7 @@ public class AuxButtonsOverflowTest {
         }
         assertFalse("nothing clipped: no module list", strip.getChildAt(0).performLongClick());
         assertNull(ShadowAlertDialog.getLatestAlertDialog());
-        size(200);
+        size(90);   // SIMPLE_UI: the concept's 34dp lenses still fit 150 px shrunk
         assertTrue("too narrow even shrunk: the module list", strip.getChildAt(0).performLongClick());
         assertNotNull(ShadowAlertDialog.getLatestAlertDialog());
     }

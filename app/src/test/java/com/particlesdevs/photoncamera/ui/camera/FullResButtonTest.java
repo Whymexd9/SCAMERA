@@ -12,11 +12,11 @@ import org.junit.Test;
 public class FullResButtonTest {
     @Test
     public void theSizeThatRunsLights() {
-        assertTrue("200 MP chosen", FullResButton.lights200(true, false, false));
-        assertFalse("50 MP chosen", FullResButton.lights200(false, false, false));
-        assertFalse("200 MP chosen but off: the 50 MP runs", FullResButton.lights200(true, false, true));
-        assertTrue("50 MP chosen but off: the 200 MP runs", FullResButton.lights200(false, true, false));
-        assertFalse("both off", FullResButton.lights200(true, true, true));
-        assertFalse("both off", FullResButton.lights200(false, true, true));
+        assertTrue("200 MP chosen", PhotoSize.lights200(true, false, false));
+        assertFalse("50 MP chosen", PhotoSize.lights200(false, false, false));
+        assertFalse("200 MP chosen but off: the 50 MP runs", PhotoSize.lights200(true, false, true));
+        assertTrue("50 MP chosen but off: the 200 MP runs", PhotoSize.lights200(false, true, false));
+        assertFalse("both off", PhotoSize.lights200(true, true, true));
+        assertFalse("both off", PhotoSize.lights200(false, true, true));
     }
 }

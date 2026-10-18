@@ -168,33 +168,42 @@ public final class GalleryUi {
 
     /** The header of the gallery screens: «SCAMERA» eyebrow, the title, a 44dp card button on each side. */
     public static FrameLayout header(Context c, String title, View left, @Nullable View right) {
+        // SIMPLE_UI §5 (the concept's .ghead): the left disc, the title on the left (22sp, 600), the right disc
         FrameLayout h = new FrameLayout(c);
-        h.setPadding(dp(c, 16), dp(c, 16), dp(c, 16), dp(c, 10));
-        LinearLayout titles = new LinearLayout(c);
-        titles.setOrientation(LinearLayout.VERTICAL);
-        titles.setGravity(Gravity.CENTER_HORIZONTAL);
-        TextView eyebrow = text(c, "SCAMERA", 12, MUTED);
-        eyebrow.setLetterSpacing(.32f);
-        titles.addView(eyebrow);
-        TextView t = fitText(c, title, 26, TEXT);
-        t.setTypeface(Typeface.DEFAULT_BOLD);
-        t.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tp.topMargin = dp(c, 6);
-        titles.addView(t, tp);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
-        lp.leftMargin = lp.rightMargin = dp(c, 52);
-        h.addView(titles, lp);
-        h.addView(left, new FrameLayout.LayoutParams(dp(c, 44), dp(c, 44), Gravity.START | Gravity.CENTER_VERTICAL));
-        if (right != null) h.addView(right, new FrameLayout.LayoutParams(dp(c, 44), dp(c, 44), Gravity.END | Gravity.CENTER_VERTICAL));
+        h.setPadding(dp(c, 12), dp(c, 14), dp(c, 12), dp(c, 10));
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        disc(left);
+        row.addView(left, new LinearLayout.LayoutParams(dp(c, 44), dp(c, 44)));
+        TextView t = fitText(c, title, 22, TEXT);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        tp.leftMargin = tp.rightMargin = dp(c, 10);
+        row.addView(t, tp);
+        if (right != null) {
+            disc(right);
+            row.addView(right, new LinearLayout.LayoutParams(dp(c, 44), dp(c, 44)));
+        }
+        h.addView(row, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return h;
+    }
+
+    /** The concept's .back: a header button is a card disc, its icon in the text colour. */
+    static void disc(View b) {
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.OVAL);
+        d.setColor(CARD);
+        b.setBackground(pressable(d));
+        if (b instanceof ViewGroup && ((ViewGroup) b).getChildCount() > 0 && ((ViewGroup) b).getChildAt(0) instanceof ImageView)
+            ((ImageView) ((ViewGroup) b).getChildAt(0)).setImageTintList(ColorStateList.valueOf(TEXT));
     }
 
     /** The section label of the sheets («СЪЁМКА»): small, uppercase, letter-spaced accent. */
     public static TextView sectionLabel(Context c, String value) {
-        TextView t = text(c, value.toUpperCase(Lang.ru() ? new Locale("ru") : Locale.ROOT), 12, accent(c));
-        t.setLetterSpacing(.14f);
-        t.setAlpha(.85f);
+        TextView t = text(c, value.toUpperCase(Lang.ru() ? new Locale("ru") : Locale.ROOT), 11.5f, accent(c));
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));   // SIMPLE_UI: the concept's .gt
+        t.setLetterSpacing(.09f);
         t.setPadding(dp(c, 4), dp(c, 12), dp(c, 4), dp(c, 8));
         return t;
     }

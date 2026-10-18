@@ -217,7 +217,9 @@ public class SettingsBarLayout extends LinearLayout {
         handle.setScaleType(ImageView.ScaleType.CENTER);
         handle.setContentDescription(context.getString(R.string.sheet_handle_toggle));
         handle.setOnClickListener(v -> requestSheetLevel(nextHandleLevel(sheetLevel)));
-        addView(handle, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(28)));
+        // SIMPLE_UI §2: the concept's grab (10dp over a 40 x 4dp bar, 4dp under it), x the screen's scale
+        addView(handle, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(context, 18)));
 
         // The BottomSheetBehavior leaves a list alone only if it is a nested scrolling child, so
         // FULL scrolls the list, and a drag down at its top lowers the sheet to PEEK.
@@ -237,42 +239,59 @@ public class SettingsBarLayout extends LinearLayout {
         LinearLayout head = new LinearLayout(context);
         head.setOrientation(HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
-        head.setPadding(dp(9), dp(2), dp(5), dp(7));
+        // SIMPLE_UI §2 header: «Быстрые настройки» (16.5sp, one line), «Изменить» / «Готово», the 40dp gear; no config chip
+        head.setPadding(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(context, 7), 0,
+                com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(context, 3),
+                com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(context, 6));
         headTitle = new TextView(context);
-        headTitle.setText(R.string.shade_pinned);
-        headTitle.setVisibility(GONE);
+        headTitle.setText(R.string.shade_quick_title);
+        headTitle.setTextColor(ShadeStyle.TEXT);
+        headTitle.setMaxLines(1);
+        headTitle.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.textFixed(headTitle, 16.5f);
         // P143: the config button takes the title's place; the slot limits it, a long name shrinks inside its frame
         android.widget.FrameLayout headSlot = new android.widget.FrameLayout(context);
         headSlot.addView(headTitle, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
         configChip = new ConfigChip(context);
         configChip.setOnClickListener(v -> toggleConfigMenu());
+        configChip.setVisibility(GONE);   // SIMPLE_UI §2: the config chip is removed from the sheet
         headSlot.addView(configChip, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL | Gravity.START));
         LayoutParams slotParams = new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         slotParams.setMarginEnd(dp(10));
         head.addView(headSlot, slotParams);
         editButton = new TextView(context);
-        editButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        editButton.setPadding(dp(14), dp(7), dp(14), dp(7));
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.textFixed(editButton, 13.5f);
+        editButton.setGravity(Gravity.CENTER);
+        editButton.setMinHeight(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(context, 40));
+        editButton.setPadding(dp(4), 0, dp(4), 0);
         editButton.setTag("shade_edit");
         editButton.setOnClickListener(v -> setEditing(!editing));
         head.addView(editButton);
         headGear = new ImageView(context);
-        headGear.setImageResource(R.drawable.settings_ic_gear);
+        headGear.setImageResource(R.drawable.ui_ic_gear);
         headGear.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        headGear.setPadding(dp(8), dp(8), dp(8), dp(8));
-        headGear.setBackground(ShadeStyle.pressable(context, ShadeStyle.CARD, ShadeStyle.LINE, 12));
+        int gearPad = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(context, 10);
+        headGear.setPadding(gearPad, gearPad, gearPad, gearPad);
+        // the concept's .hgear: a 40dp disc, the card at 70 % with a line
+        android.graphics.drawable.GradientDrawable gearDisc = new android.graphics.drawable.GradientDrawable();
+        gearDisc.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        gearDisc.setColor(0xB31A1F22);
+        gearDisc.setStroke(Math.max(1, dp(1)), ShadeStyle.LINE);
+        headGear.setBackground(gearDisc);
         headGear.setContentDescription(context.getString(R.string.sheet_all_settings));
         headGear.setTooltipText(context.getString(R.string.sheet_all_settings));
         headGear.setTag("shade_settings");
         headGear.setOnClickListener(v -> {
             if (host != null) host.openSettings();
         });
-        LayoutParams gearParams = new LayoutParams(dp(36), dp(36));
-        gearParams.setMarginStart(dp(10));
+        int gearSize = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(context, 40);
+        LayoutParams gearParams = new LayoutParams(gearSize, gearSize);
+        gearParams.setMarginStart(dp(6));
         head.addView(headGear, gearParams);
-        content.addView(head, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
+        content.addView(head, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(context, 46)));
 
         tiles = new RecyclerView(context);
         tiles.setLayoutManager(new GridLayoutManager(context, 4));
@@ -364,9 +383,8 @@ public class SettingsBarLayout extends LinearLayout {
         fullList.setPadding(dp(5), 0, dp(5), 0);
         content.addView(fullList, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        ShadeStyle.label(headTitle, accent);
         styleEditButton(accent);
-        headGear.setImageTintList(ColorStateList.valueOf(accent));
+        headGear.setImageTintList(ColorStateList.valueOf(ShadeStyle.TEXT));
         configChip.setAccent(accent);
         refreshConfigName();
     }
@@ -449,11 +467,12 @@ public class SettingsBarLayout extends LinearLayout {
         };
     }
 
+    /** SIMPLE_UI §2: «Изменить» / «Готово» as the concept's link - the accent, weight 600, no fill. */
     private void styleEditButton(int accent) {
         editButton.setText(editing ? R.string.shade_done : R.string.shade_edit);
-        editButton.setTextColor(editing ? ShadeStyle.INK : accent);
-        editButton.setTypeface(null, editing ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
-        editButton.setBackground(ShadeStyle.pressable(getContext(), editing ? accent : ShadeStyle.tint(accent, .16f), 0, 100));
+        editButton.setTextColor(accent);
+        editButton.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        editButton.setBackground(ShadeStyle.ripple(getContext(), 12));
     }
 
     private int dp(float f) {
@@ -487,7 +506,6 @@ public class SettingsBarLayout extends LinearLayout {
         if (contentBuilt) return true;
         if (host == null) return false;
         contentBuilt = true;
-        ShadeStyle.label(headTitle, ShadeStyle.accent(getContext()));
         configChip.setAccent(ShadeStyle.accent(getContext()));
         refreshConfigName();
         pinned.clear();
@@ -499,51 +517,107 @@ public class SettingsBarLayout extends LinearLayout {
         return true;
     }
 
+    /**
+     * SIMPLE_UI §2, below the tiles (reached by scrolling): one collapsible «Для опытных» card with the advanced settings
+     * that are not pinned as tiles (hidden when there are none), then a full-width «Все настройки» button.
+     */
     private void buildRows() {
         extraRows.clear();
-        for (String key : pinned) if (!ShadeCatalog.isCurated(key)) extraRows.add(key);
-        rows.build(fullList, catalog().visibleGroups(), extraRows);
-        fullList.addView(moreRow(), moreRowParams());
+        fullList.removeAllViews();
+        List<String> advanced = new ArrayList<>();
+        for (String key : ShadeCatalog.ADVANCED) if (!pinned.contains(key) && catalog().isKnown(key)) advanced.add(key);
+        advancedShown.clear();
+        for (String key : ShadeCatalog.ADVANCED) if (!pinned.contains(key)) advancedShown.add(key);
+        LinearLayout advancedBody = new LinearLayout(getContext());
+        advancedBody.setOrientation(VERTICAL);
+        advancedBody.setTag("shade_advanced_body");
+        if (!advanced.isEmpty()) {
+            fullList.addView(advancedHeader(advancedBody), moreRowParams());
+            rows.build(advancedBody, java.util.Collections.singletonList(ShadeCatalog.group(R.string.shade_advanced, advanced)),
+                    java.util.Collections.emptyList());
+            advancedBody.setVisibility(advancedOpen ? VISIBLE : GONE);
+            fullList.addView(advancedBody, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        } else {
+            rows.build(advancedBody, java.util.Collections.emptyList(), java.util.Collections.emptyList());
+        }
         fullList.addView(allSettingsCard(), moreRowParams());
     }
 
-    /** «Все настройки» at the very end of FULL: the settings screen, as the gears do. */
-    private View allSettingsCard() {
+    /** The advanced keys the card was last built with. */
+    private final List<String> advancedShown = new ArrayList<>();
+
+    /** The «Для опытных» card is open (kept across rebuilds). */
+    private boolean advancedOpen;
+
+    /** The concept's .disc-h: «Для опытных» with its one-line contents and a chevron that turns when open. */
+    private View advancedHeader(View body) {
         Context c = getContext();
-        int accent = ShadeStyle.accent(c);
         LinearLayout row = new LinearLayout(c);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(16), dp(14), dp(14), dp(14));
-        row.setMinimumHeight(dp(66));
-        row.setBackground(ShadeStyle.pressable(c, ShadeStyle.CARD, ShadeStyle.LINE, 20));
-        row.setTag("shade_all_settings");
-        ImageView icon = new ImageView(c);
-        icon.setImageResource(R.drawable.settings_ic_gear);
-        icon.setImageTintList(ColorStateList.valueOf(accent));
-        icon.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        LayoutParams ip = new LayoutParams(dp(26), dp(26));
-        ip.setMarginEnd(dp(14));
-        row.addView(icon, ip);
+        int ph = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 14), pv = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 12);
+        row.setPadding(ph, pv, ph, pv);
+        row.setBackground(ShadeStyle.pressable(c, sheetCard(c), ShadeStyle.LINE, 18));
+        row.setTag("shade_advanced");
         LinearLayout texts = new LinearLayout(c);
         texts.setOrientation(VERTICAL);
         TextView title = new TextView(c);
-        title.setText(R.string.sheet_all_settings);
+        title.setText(R.string.shade_advanced);
         title.setTextColor(ShadeStyle.TEXT);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(title); // P139
+        title.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.textFixed(title, 14);
         texts.addView(title);
         TextView summary = new TextView(c);
-        summary.setText(R.string.shade_all_settings_summary);
-        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.summary(summary);
-        summary.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        summary.setText(R.string.shade_advanced_summary);
+        summary.setTextColor(ShadeStyle.MUTED);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.textFixed(summary, 12);
         texts.addView(summary);
         row.addView(texts, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView chevron = new TextView(c);
-        chevron.setText("\u203a");
-        chevron.setTextColor(ShadeStyle.MUTED);
-        chevron.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        chevron.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        row.addView(chevron);
+        ImageView chevron = new ImageView(c);
+        chevron.setImageResource(R.drawable.ui_ic_chev);
+        chevron.setImageTintList(ColorStateList.valueOf(ShadeStyle.MUTED));
+        chevron.setRotation(advancedOpen ? 90f : 0f);
+        int cs = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 20);
+        row.addView(chevron, new LayoutParams(cs, cs));
+        row.setContentDescription(c.getString(R.string.shade_advanced));
+        row.setOnClickListener(v -> {
+            advancedOpen = !advancedOpen;
+            body.setVisibility(advancedOpen ? VISIBLE : GONE);
+            chevron.animate().rotation(advancedOpen ? 90f : 0f).setDuration(200).start();
+            // expanded: the card scrolled to the top of the sheet
+            if (advancedOpen) listScroll.post(() -> listScroll.smoothScrollTo(0, fullList.getTop() + row.getTop()));
+        });
+        return row;
+    }
+
+    /** The sheet's cards at its see-through alpha (the concept's --sa on .card / .disc-h). */
+    private static int sheetCard(Context c) {
+        return (ShadeStyle.CARD & 0x00FFFFFF) | (Math.round(255 * ShadeStyle.sheetAlpha(c)) << 24);
+    }
+
+    /** SIMPLE_UI §2: the full-width «Все настройки» button at the end (the concept's .big), as the header's gear. */
+    private View allSettingsCard() {
+        Context c = getContext();
+        LinearLayout row = new LinearLayout(c);
+        row.setGravity(Gravity.CENTER);
+        int p = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 14);
+        row.setPadding(p, p, p, p);
+        row.setMinimumHeight(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 52));
+        row.setBackground(ShadeStyle.pressable(c, (0x232A2E) | (Math.round(255 * ShadeStyle.sheetAlpha(c)) << 24), 0, 18));
+        row.setTag("shade_all_settings");
+        ImageView icon = new ImageView(c);
+        icon.setImageResource(R.drawable.ui_ic_gear);
+        icon.setImageTintList(ColorStateList.valueOf(ShadeStyle.TEXT));
+        icon.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        int is = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 24);
+        LayoutParams ip = new LayoutParams(is, is);
+        ip.setMarginEnd(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 10));
+        row.addView(icon, ip);
+        TextView title = new TextView(c);
+        title.setText(R.string.sheet_all_settings);
+        title.setTextColor(ShadeStyle.TEXT);
+        title.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.textFixed(title, 14);
+        row.addView(title);
         row.setOnClickListener(v -> {
             if (host != null) host.openSettings();
         });
@@ -649,9 +723,10 @@ public class SettingsBarLayout extends LinearLayout {
 
     private void onPinnedChanged() {
         adapter.submit(pinned, true);
-        List<String> extra = new ArrayList<>();
-        for (String key : pinned) if (!ShadeCatalog.isCurated(key)) extra.add(key);
-        if (!extra.equals(extraRows)) buildRows();
+        // SIMPLE_UI §2: the «Для опытных» card lists the advanced settings not pinned: rebuilt when that set changes
+        List<String> advanced = new ArrayList<>();
+        for (String key : ShadeCatalog.ADVANCED) if (!pinned.contains(key)) advanced.add(key);
+        if (!advanced.equals(advancedShown)) buildRows();
         if (openSlider != null && !pinned.contains(openSlider)) openSlider = null;
         rebindValues();
     }
@@ -678,6 +753,19 @@ public class SettingsBarLayout extends LinearLayout {
             return;
         }
         if (vibration != null) vibration.Click();
+        // SIMPLE_UI §2: «Формат» opens its sheet (the two choices) instead of cycling nine values
+        if (ShadeCatalog.FORMAT.equals(key) && host != null && host.openFormatSheet()) return;
+        if (ShadeCatalog.SIZE.equals(key)) {
+            if (host != null) host.openSizeSheet();
+            return;
+        }
+        if (ShadeCatalog.STYLE.equals(key)) {
+            catalog().cycleStyle();
+            rebindValues();
+            if (host != null) host.onValuesChanged();
+            toastValue(e);
+            return;
+        }
         switch (e.kind) {
             case ShadeCatalog.TOGGLE:
                 apply(e, !catalog().on(e));
@@ -943,10 +1031,8 @@ public class SettingsBarLayout extends LinearLayout {
         if (on) ensureContent();
         editing = on;
         if (on) openSlider = null;
-        headTitle.setText(on ? R.string.shade_drag_title : R.string.shade_pinned);
-        // P143: the edit mode's header is the drag hint; the config button comes back after it
-        headTitle.setVisibility(on ? VISIBLE : GONE);
-        configChip.setVisibility(on ? GONE : VISIBLE);
+        // SIMPLE_UI §2: the title becomes «Перетащите плитку» while editing
+        headTitle.setText(on ? R.string.shade_drag_title : R.string.shade_quick_title);
         if (on) closeConfigMenu();
         styleEditButton(ShadeStyle.accent(getContext()));
         headGear.setVisibility(on ? GONE : VISIBLE);
@@ -1251,11 +1337,13 @@ public class SettingsBarLayout extends LinearLayout {
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         // FULL always has the same height, the 86% limit: opening the slider card never moves the
         // top of the FULL sheet. The behavior measures the sheet AT_MOST that limit.
+        // SIMPLE_UI §2: one open height - the grab, the header and the tiles (+14dp), at most 86 % of the viewfinder; what
+        // lies below («Для опытных», «Все настройки») is reached by scrolling the content, the sheet does not grow.
         int mode = MeasureSpec.getMode(heightMeasureSpec);
-        if (maxSheetHeight > 0 && mode != MeasureSpec.EXACTLY) {
-            int size = mode == MeasureSpec.UNSPECIFIED
-                    ? maxSheetHeight
-                    : Math.min(MeasureSpec.getSize(heightMeasureSpec), maxSheetHeight);
+        int cap = maxSheetHeight;
+        if (contentBuilt && sheetPeekHeight > 0) cap = cap > 0 ? Math.min(cap, sheetPeekHeight) : sheetPeekHeight;
+        if (cap > 0 && mode != MeasureSpec.EXACTLY) {
+            int size = mode == MeasureSpec.UNSPECIFIED ? cap : Math.min(MeasureSpec.getSize(heightMeasureSpec), cap);
             heightMeasureSpec = MeasureSpec.makeMeasureSpec(size, MeasureSpec.EXACTLY);
         }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
@@ -1265,9 +1353,10 @@ public class SettingsBarLayout extends LinearLayout {
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         super.onLayout(changed, l, t, r, b);
         updateShape();
-        // PEEK: the handle, the header and the grid, or down to the slider card when it is open.
+        // OPEN: the handle, the header and the grid, or down to the slider card when it is open; +14dp (the concept).
         View last = sliderCard.getVisibility() == VISIBLE ? sliderCard : tiles;
-        int peek = listScroll.getTop() + content.getTop() + last.getBottom() + dp(14);
+        int peek = listScroll.getTop() + content.getTop() + last.getBottom()
+                + com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(getContext(), 14);
         if (contentBuilt && peek > 0 && peek != sheetPeekHeight) {
             sheetPeekHeight = peek;
             // This runs inside the behavior's onLayoutChild; set the peek after the pass.
@@ -1418,9 +1507,9 @@ public class SettingsBarLayout extends LinearLayout {
         };
     }
 
-    /** The handle's cycle: HIDDEN -> PEEK -> FULL -> HIDDEN. */
+    /** The handle's cycle (SIMPLE_UI §2: two states): HIDDEN -> OPEN -> HIDDEN. */
     static int nextHandleLevel(int level) {
-        return level == LEVEL_FULL ? LEVEL_HIDDEN : Math.max(LEVEL_HIDDEN, level) + 1;
+        return level == LEVEL_HIDDEN ? LEVEL_PEEK : LEVEL_HIDDEN;
     }
 
     /**

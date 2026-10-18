@@ -25,9 +25,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The ruler of the manual controls (MANUAL_TASK.md §3): on the left the «Авто» button (a 14dp-radius outline card, filled
- * with the accent while the parameter is in auto), on the right the scale on a darker inset. The marker is fixed in the
- * centre in the accent with a small triangle on top; the scale moves under it.
+ * The ruler of the Pro panel (SIMPLE_UI §3, the concept's one-row ruler): on the left the «Авто» button (a 13dp-radius
+ * outline card, filled with the accent while the parameter is in auto), on the right the scale on a darker inset. The
+ * marker is fixed in the centre in the accent, the current value labelled above it; the scale moves under it.
  * <ul>
  * <li>a drag moves the scale; each crossed stop is committed at once (live preview), the model gives the light haptic
  * tick;</li>
@@ -35,9 +35,9 @@ import java.util.List;
  * <li>the first touch on a parameter in auto starts from its metered value;</li>
  * <li>the arrow keys step by one stop.</li>
  * </ul>
- * Geometry (dp, from the scale's bottom h): baseline h-5, major ticks 13 (MUTED at 75 %), minor 7 (35 %), labels of the
- * major stops on a 12dp baseline (10.5sp, 80 %), marker triangle h-28..h-22 and a 2dp line h-23..h-4, stops 16dp apart,
- * the edges fade out over 12 % of the width.
+ * Geometry (dp, from the scale's bottom h): baseline h-8, major ticks 14 (MUTED), minor 8 (faint), labels of the major
+ * stops 23dp over the bottom (10sp), the marker a 2dp line h-25..h-5, the value label 3dp from the top (12sp bold), stops
+ * 16dp apart, the ends fade out over 40dp.
  */
 public class LinearScaleView extends View {
     /** What the stops are: decides the major stops and their labels. */
@@ -56,7 +56,6 @@ public class LinearScaleView extends View {
     private final Paint autoTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint insetPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint fadePaint = new Paint();
-    private final Path triangle = new Path();
     private final RectF rect = new RectF();
 
     /** Every item, sorted by value. */
@@ -113,9 +112,13 @@ public class LinearScaleView extends View {
         tickPaint.setStrokeWidth(d);
         markerPaint.setStrokeWidth(2 * d);
         markerPaint.setStrokeCap(Paint.Cap.ROUND);
-        labelPaint.setColor(UiTokens.alpha(UiTokens.MUTED, .8f));
-        // Text in sp, its growth with the font size capped (P43): the scale is a fixed 49dp box.
-        labelPaint.setTextSize(UiTokens.spPx(context, 10.5f));
+        labelPaint.setColor(UiTokens.MUTED);
+        // Text in sp, its growth with the font size capped (P43): the scale is a fixed 54dp box.
+        labelPaint.setTextSize(UiTokens.spPx(context, 10f));
+        valuePaint.setTextSize(UiTokens.spPx(context, 12f));
+        valuePaint.setTextAlign(Paint.Align.CENTER);
+        valuePaint.setTypeface(Typeface.DEFAULT_BOLD);
+        valuePaint.setFontFeatureSettings("tnum");
         labelPaint.setTextAlign(Paint.Align.CENTER);
         labelPaint.setFontFeatureSettings("tnum");
         autoTextPaint.setTextSize(UiTokens.spPx(context, 13f));
@@ -281,13 +284,24 @@ public class LinearScaleView extends View {
 
     // ───── drawing
 
+    /** The concept's faint minor tick (--faint). */
+    static final int FAINT = 0xFF6C757C;
+    /** Width of the fades at the scale's ends (the concept's 40px). */
+    static final float FADE_DP = 40f;
+
+    /**
+     * SIMPLE_UI §3, the concept's ruler row: the «Авто» button (an outline card with the text, the accent with INK while the
+     * parameter is in auto) and the scale on its inset (14dp corners): 16dp stops, minor ticks 1.5 x 8dp faint, major ones
+     * 14dp muted with a 10sp label above, all on a line 8dp over the bottom; the accent marker 2 x 22dp from 4dp over the
+     * bottom; the current value as a small label at the top centre (12sp bold, the accent; the text colour in auto); 40dp
+     * fades at both ends.
+     */
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         float w = getWidth(), h = getHeight();
         float autoW = autoWidth();
         boolean auto = isAuto();
-        // «Авто»: outline card, filled with the accent while the parameter is in auto.
         rect.set(dp(.5f), dp(.5f), autoW - dp(.5f), h - dp(.5f));
         if (auto) {
             autoPaint.setStyle(Paint.Style.FILL);
@@ -297,9 +311,9 @@ public class LinearScaleView extends View {
             autoPaint.setStrokeWidth(dp(1));
             autoPaint.setColor(UiTokens.LINE);
         }
-        canvas.drawRoundRect(rect, dp(14), dp(14), autoPaint);
-        autoTextPaint.setColor(auto ? UiTokens.ACCENT_INK : UiTokens.MUTED);
-        autoTextPaint.setTypeface(auto ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+        canvas.drawRoundRect(rect, dp(13), dp(13), autoPaint);
+        autoTextPaint.setColor(auto ? UiTokens.ACCENT_INK : UiTokens.TEXT);
+        autoTextPaint.setTypeface(MEDIUM);
         Paint.FontMetrics fm = autoTextPaint.getFontMetrics();
         canvas.drawText(autoLabel, autoW / 2, h / 2 - (fm.ascent + fm.descent) / 2, autoTextPaint);
 
@@ -307,53 +321,74 @@ public class LinearScaleView extends View {
         float left = autoW + dp(8), right = w;
         if (right - left < dp(24)) return;
         rect.set(left, 0, right, h);
-        canvas.drawRoundRect(rect, dp(12), dp(12), insetPaint);
+        canvas.drawRoundRect(rect, dp(14), dp(14), insetPaint);
         if (stops.isEmpty()) return;
         canvas.save();
         canvas.clipRect(left, 0, right, h);
-        float cx = (left + right) / 2, step = dp(STOP_DP), base = h - dp(5);
+        float cx = (left + right) / 2, step = dp(STOP_DP), base = h - dp(8);
+        float labelBase = h - dp(23) - labelPaint.getFontMetrics().descent;
         float lastLabelEnd = -Float.MAX_VALUE;
         int from = Math.max(0, idx - (int) Math.ceil((cx - left) / step) - 2);
         int to = Math.min(stops.size() - 1, idx + (int) Math.ceil((right - cx) / step) + 2);
+        tickPaint.setStrokeWidth(dp(1.5f));
         for (int j = from; j <= to; j++) {
             float x = cx + (j - idx) * step - offset;
             KnobItemInfo item = items.get(stops.get(j));
             boolean major = isMajor(item, j);
-            tickPaint.setAlpha(Math.round(255 * (major ? .75f : .35f)));
-            canvas.drawLine(x, base, x, base - dp(major ? 13 : 7), tickPaint);
+            tickPaint.setColor(major ? UiTokens.MUTED : FAINT);
+            canvas.drawLine(x, base, x, base - dp(major ? 14 : 8), tickPaint);
             if (major) {
                 String label = label(item);
                 float half = labelPaint.measureText(label) / 2;
                 if (x - half >= left + dp(2) && x + half <= right - dp(2) && x - half > lastLabelEnd + dp(6)) {
-                    canvas.drawText(label, x, dp(12), labelPaint);
+                    canvas.drawText(label, x, labelBase, labelPaint);
                     lastLabelEnd = x + half;
                 }
             }
         }
         // Edges fade into the inset.
-        float fade = (right - left) * .12f;
+        float fade = Math.min(dp(FADE_DP), (right - left) / 3);
         fadePaint.setShader(new LinearGradient(left, 0, left + fade, 0, UiTokens.SCALE_INSET, UiTokens.SCALE_INSET & 0x00FFFFFF, Shader.TileMode.CLAMP));
         canvas.drawRect(left, 0, left + fade, h, fadePaint);
         fadePaint.setShader(new LinearGradient(right - fade, 0, right, 0, UiTokens.SCALE_INSET & 0x00FFFFFF, UiTokens.SCALE_INSET, Shader.TileMode.CLAMP));
         canvas.drawRect(right - fade, 0, right, h, fadePaint);
         canvas.restore();
-        // The fixed marker in the accent: a small triangle on top of a 2dp line.
+        // The fixed marker in the accent: a 2dp line, 22dp high, 4dp over the bottom.
         markerPaint.setColor(accent);
-        markerPaint.setStyle(Paint.Style.FILL);
-        triangle.reset();
-        triangle.moveTo(cx - dp(5), h - dp(28));
-        triangle.lineTo(cx + dp(5), h - dp(28));
-        triangle.lineTo(cx, h - dp(22));
-        triangle.close();
-        canvas.drawPath(triangle, markerPaint);
-        canvas.drawLine(cx, h - dp(23), cx, h - dp(4), markerPaint);
+        canvas.drawLine(cx, h - dp(5), cx, h - dp(25), markerPaint);
+        // The current value at the top centre, on the inset's colour.
+        KnobItemInfo current = currentItem();
+        if (current != null) {
+            String value = label(current);
+            valuePaint.setColor(auto ? UiTokens.TEXT : accent);
+            float vw = valuePaint.measureText(value);
+            Paint.FontMetrics vm = valuePaint.getFontMetrics();
+            float top = dp(3), textH = vm.descent - vm.ascent;
+            rect.set(cx - vw / 2 - dp(5), top, cx + vw / 2 + dp(5), top + textH);
+            canvas.drawRoundRect(rect, dp(6), dp(6), insetPaint);
+            canvas.drawText(value, cx, top - vm.ascent, valuePaint);
+        }
     }
 
-    /** Major stops: ISO octaves and whole shutter stops (the models mark them), whole EV, every 5th focus stop, 1000 K. */
+    private static final Typeface MEDIUM = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+    private final Paint valuePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** The item the value label shows: the selected one, or the metered stop while in auto. */
+    private KnobItemInfo currentItem() {
+        if (stops.isEmpty()) return null;
+        int i = Math.max(0, Math.min(stops.size() - 1, idx));
+        return items.get(stops.get(i));
+    }
+
+    /**
+     * Major (labelled) stops, SIMPLE_UI §3 «no two labels may touch at 360dp»: ISO octaves and whole shutter stops with the
+     * module's own end stops (the models mark them; 48dp apart, and the drawing skips a label that would touch its
+     * neighbour), whole EV and every 3rd focus stop, every 1000 K for white balance.
+     */
     boolean isMajor(KnobItemInfo item, int stop) {
         switch (mode) {
             case MODE_EV: return Math.abs(item.value - Math.rint(item.value)) < 1e-3;
-            case MODE_FOCUS: return stop % 5 == 0;
+            case MODE_FOCUS: return stop % 3 == 0;
             case MODE_WB: return Math.round(item.value) % 1000 == 0;
             default: return item.majorTick;
         }

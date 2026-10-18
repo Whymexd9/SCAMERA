@@ -63,6 +63,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
     public static final String ACTION_IMPORT_CONFIG = "org.codeaurora.snapcam.action.IMPORT_CONFIG";
     /** P143: the camera's config menu asks for the lasting access to Download/SCAMERA (the system folder picker). */
     public static final String ACTION_OPEN_FOLDER = "org.codeaurora.snapcam.action.OPEN_FOLDER";
+    /** SIMPLE_UI: the camera opens a settings page at a row (the LUT tray's «Все LUT ›»): EXTRA_PAGE, EXTRA_KEY. */
+    public static final String ACTION_OPEN_PAGE = "org.codeaurora.snapcam.action.OPEN_PAGE";
+    public static final String EXTRA_PAGE = "open_page", EXTRA_KEY = "open_key";
     private static int sCameraMode = -1;
     
     @Override
@@ -88,6 +91,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 .beginTransaction()
                 .replace(R.id.settings_container, new SettingsFragment())
                 .commit();
+        if (savedInstanceState == null && ACTION_OPEN_PAGE.equals(getIntent().getAction())) {
+            String page = getIntent().getStringExtra(EXTRA_PAGE), key = getIntent().getStringExtra(EXTRA_KEY);
+            if (page != null && key != null) openPageAt(page, key);
+        }
         getSupportFragmentManager().registerFragmentLifecycleCallbacks(new FragmentLifeCycleMonitor(), true);
 
     }
@@ -167,6 +174,17 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
     void openModuleProfiles(String name) {
         getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleProfilesFragment())
                 .addToBackStack(name).commit();
+    }
+
+    /** A page with one row marked and scrolled to (the camera's links into the settings). */
+    void openPageAt(String page, String key) {
+        SettingsFragment fragment = new SettingsFragment();
+        Bundle args = new Bundle();
+        args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, page);
+        args.putString("search_target", key);
+        fragment.setArguments(args);
+        getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, fragment)
+                .addToBackStack("open_page").commit();
     }
 
     void openSearchResult(SettingsSearchFragment.Entry entry) {
@@ -327,9 +345,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             page.setOrientation(android.widget.LinearLayout.VERTICAL);
             page.setBackgroundColor(SettingsStyle.BG);
             page.setPadding(SettingsStyle.dp(c, 16), SettingsStyle.dp(c, 12), SettingsStyle.dp(c, 16), 0);
-            // P189: a module page has no search (a hit would open the usual page)
-            header = SettingsStyle.header(c, () -> requireActivity().getOnBackPressedDispatcher().onBackPressed(), moduleProfile() == null ? this::openSearch : null);
+            // SIMPLE_UI §4: as the concept, the search is a pill under the root's header only; P189: a module page has none
+            // (a hit would open the usual page)
+            header = SettingsStyle.header(c, () -> requireActivity().getOnBackPressedDispatcher().onBackPressed(), null);
             page.addView(header.view, new android.widget.LinearLayout.LayoutParams(-1, -2));
+            boolean root = getArguments() == null || getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) == null;
+            if (root && moduleProfile() == null) {
+                android.widget.LinearLayout.LayoutParams sp = new android.widget.LinearLayout.LayoutParams(-1, -2);
+                sp.bottomMargin = SettingsStyle.dp(c, 8);
+                page.addView(SettingsStyle.searchPill(c, this::openSearch), sp);
+            }
             chipBox = new android.widget.LinearLayout(c);
             page.addView(chipBox, new android.widget.LinearLayout.LayoutParams(-1, -2));
             page.addView(list, new android.widget.LinearLayout.LayoutParams(-1, 0, 1));
@@ -342,6 +367,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             list.setClipToPadding(false);
             list.setPadding(0, 0, 0, SettingsStyle.dp(requireContext(), 28));
             list.setVerticalScrollBarEnabled(false);
+            // SIMPLE_UI §4: the rows of a group share one card (the concept's .card / .row)
+            list.addItemDecoration(new SettingsCardDecoration(requireContext(), SettingsStyle::standalone));
             return list;
         }
 
@@ -941,6 +968,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 String kept = saved.substring(saved.lastIndexOf('/') + 1);
                 com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference pref =
                         findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+                com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference.forgetFile(kept);
                 if (pref != null) pref.choose(kept);
                 else mSettingsManager.getDefaultPreferences().edit().putString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY, kept).apply();
                 com.particlesdevs.photoncamera.processing.color.FilmLut.forget();
@@ -1026,7 +1054,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 activity.runOnUiThread(()-> {
             Preference restorePref = findPreference(mContext.getString(R.string.pref_restore_preferences_key));
             if (restorePref != null) {
-                restorePref.setSummary(mContext.getString(R.string.restore_summary_json));
                 restorePref.setOnPreferenceChangeListener((preference, newValue) -> {
                     if (com.particlesdevs.photoncamera.ui.settings.custompreferences.RestorePreference.PICK.equals(newValue.toString())) {
                         if (configImportLauncher != null) configImportLauncher.launch(new String[]{"*/*"});
@@ -1044,7 +1071,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             activity.runOnUiThread(()-> {
                 Preference backupPref = findPreference(mContext.getString(R.string.pref_backup_preferences_key));
                 if (backupPref != null) {
-                    backupPref.setSummary(mContext.getString(R.string.backup_summary_json));
                     backupPref.setOnPreferenceChangeListener((preference, newValue) -> {
                         String backupResult = BackupRestoreUtil.backupSettings(mContext, newValue.toString());
                         Snackbar.make(mRootView, backupResult, Snackbar.LENGTH_LONG).show();
@@ -1229,6 +1255,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             Log.d("SettingsFragment", "onPreferenceTreeClick: " + preference.getKey());
             if (PreferenceKeys.Key.KEY_THEME_ACCENT.mValue.equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new AccentSettingsFragment()).addToBackStack("accent").commit();return true;
+            }
+            // SIMPLE_UI §4: «Стиль снимка → Плёночный LUT» opens the LUT page
+            if ("photo_style_lut".equals(preference.getKey()) && activity instanceof SettingsActivity) {
+                ((SettingsActivity) activity).openPageAt("film_lut_screen", com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+                return true;
             }
             if ("pref_dcp_profile_key".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new DcpSettingsFragment()).addToBackStack("dcp").commit();return true;

@@ -195,13 +195,6 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         showZoomLabel();
     }
 
-    public void showZoomLabel() {
-        if (zoomDial != null) { refreshZoomDial(); zoomDial.poke(); }
-        View layout = findViewById(R.id.aux_buttons_container);
-        if (layout instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
-            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) layout)
-                    .setZoomLabel(com.particlesdevs.photoncamera.control.ZoomController.zoom());
-    }
 
     public ManualModeConsole getManualModeConsole() {
         return manualModeConsole;
@@ -354,6 +347,60 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
      */
     private void initBottomChrome() {
         attachBottomChrome(cameraFragmentBinding, zoomDial);
+        // SIMPLE_UI §1 row 1: «Про» opens / closes the Pro panel (it replaces the panel's own toggle card), «Ещё» opens the
+        // quick sheet (it replaces the sheet's handle)
+        View bar = cameraFragmentBinding.layoutBottombar.getRoot();
+        View panelView = cameraFragmentBinding.manualMode;
+        if (panelView instanceof com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel) {
+            com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel panel =
+                    (com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel) panelView;
+            // SIMPLE_UI §1: the LUT pill and tray; Pro and the tray close each other
+            lutTray = new LutTray(cameraFragmentBinding.layoutViewfinder.lutPill, cameraFragmentBinding.lutTray,
+                    cameraFragmentBinding.layoutViewfinder.texture, this::openLutSettings);
+            lutTray.setOnOpen(() -> { if (panel.isExpanded()) panel.setExpanded(false, true); });
+            panel.setOnExpandedListener(open -> {
+                com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.setSideOn(bar, R.id.pro_button, open);
+                if (open && lutTray != null) lutTray.setOpen(false);
+            });
+            bar.findViewById(R.id.pro_button).setOnClickListener(v -> panel.setExpanded(!panel.isExpanded(), true));
+            com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.setSideOn(bar, R.id.pro_button, panel.isExpanded());
+        }
+        bar.findViewById(R.id.more_button).setOnClickListener(v -> cameraFragmentViewModel.setSheetLevel(CameraFragmentModel.SHEET_PEEK));
+        placeMessageBand(cameraFragmentBinding);
+    }
+
+    /**
+     * SIMPLE_UI §1: the message band sits in the free band just above the bottom bar's row 1 (Про · lenses · Ещё), 3dp over
+     * it (the concept's .toast), 22dp x k high with 12sp x k text; measured again on every layout of the bar.
+     */
+    public static void placeMessageBand(CameraFragmentBinding binding) {
+        android.widget.TextView band = binding.shadeToast;
+        View bar = binding.layoutBottombar.getRoot();
+        android.content.Context c = band.getContext();
+        ViewGroup.LayoutParams lp = band.getLayoutParams();
+        lp.height = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 22);
+        band.setLayoutParams(lp);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.textFixed(band, 12);
+        View.OnLayoutChangeListener place = (v, l, t, r, b, ol, ot, or, ob) -> {
+            View strip = bar.findViewById(R.id.aux_buttons_container), pro = bar.findViewById(R.id.pro_button);
+            if (strip == null || band.getHeight() == 0 && band.getVisibility() == View.VISIBLE) return;
+            int[] at = new int[2], bandAt = new int[2];
+            int top = Integer.MAX_VALUE;
+            for (View row : new View[]{strip, pro}) {
+                if (row == null || row.getVisibility() != View.VISIBLE) continue;
+                row.getLocationInWindow(at);
+                top = Math.min(top, at[1]);
+            }
+            if (top == Integer.MAX_VALUE) return;
+            float want = top - com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dpF(c, 3);
+            for (View item : new View[]{band, binding.zoomReadout}) {
+                item.getLocationInWindow(bandAt);
+                float h = item.getLayoutParams().height > 0 ? item.getLayoutParams().height : item.getHeight();
+                item.setTranslationY(want - (bandAt[1] - item.getTranslationY() + h));
+            }
+        };
+        bar.addOnLayoutChangeListener(place);
+        band.addOnLayoutChangeListener(place);
     }
 
     /** The bottom chrome's wiring on the camera screen's views (also used by the layout tests, P43). */
@@ -370,55 +417,116 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 floats -> binding.settingsBar.setPillHandle(floats));
     }
 
-    private com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial;
-
-    /**
-     * Zoom ruler above the lens strip, a small card in the bottom bar's ruler slot (P25: never over the shade's tiles);
-     * dragging the strip or the ruler zooms continuously.
-     */
-    private void initZoomDial(View root) {
-        View slot = root.findViewById(R.id.zoom_ruler_slot);
-        if (!(slot instanceof android.widget.FrameLayout)) return;
-        zoomDial = new com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView(requireContext());
-        float density = getResources().getDisplayMetrics().density;
-        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(Math.round(232 * density), Math.round(48 * density),
-                android.view.Gravity.CENTER);
-        ((android.widget.FrameLayout) slot).addView(zoomDial, lp);
-        zoomDial.setListener(this::zoomTo);
-        View strip = root.findViewById(R.id.aux_buttons_container);
-        if (strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
-            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip).setZoomDrag(dx -> {
-                if (zoomDial != null) { refreshZoomDial(); zoomDial.dragBy(dx); }
-            });
-        if (strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
-            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip).setDialRefresh(this::showZoomLabel);
-        if (strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
-            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip).setPresetZoom(this::zoomTo); // P72 17U presets
-        refreshZoomDial();
+    public void showZoomLabel() {
+        showZoomLabel(true);
     }
 
-    private void refreshZoomDial() {
-        if (zoomDial == null) return;
+    /**
+     * The active lens shows the live zoom; SIMPLE_UI §1: the zoom readout in the message band while the zoom changes (a
+     * drag on the strip, a pinch), not for a tap on a lens.
+     */
+    private void showZoomLabel(boolean readout) {
+        float zoom = com.particlesdevs.photoncamera.control.ZoomController.zoom();
+        if (readout && zoomReadout != null) {
+            refreshZoomReadout();
+            zoomReadout.show(zoom);
+            // the readout takes the band's place from any message meanwhile
+            if (cameraFragmentBinding != null) {
+                View band = cameraFragmentBinding.shadeToast;
+                band.setAlpha(0f);
+                band.removeCallbacks(bandBack);
+                band.postDelayed(bandBack, com.particlesdevs.photoncamera.ui.camera.views.ZoomReadoutView.HIDE_MS + 250);
+            }
+        }
+        View layout = findViewById(R.id.aux_buttons_container);
+        if (layout instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)
+            ((com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) layout).setZoomLabel(zoom);
+    }
+
+    private final Runnable bandBack = () -> {
+        if (cameraFragmentBinding != null) cameraFragmentBinding.shadeToast.setAlpha(1f);
+    };
+
+    /** SIMPLE_UI §1: the zoom readout (the old 232 x 48dp dial card over the viewfinder is gone). */
+    @Nullable private com.particlesdevs.photoncamera.ui.camera.views.ZoomReadoutView zoomReadout;
+    /** Kept null: BottomChrome's ruler hooks see no dial. */
+    @Nullable private com.particlesdevs.photoncamera.ui.camera.views.ZoomDialView zoomDial;
+    /** The strip drag's target zoom and the zoom shown (eased towards it every frame). */
+    private float zoomTarget = 1f, zoomShown = 1f;
+    private boolean zoomEasing;
+    private final android.view.Choreographer.FrameCallback zoomStep = frameTimeNanos -> stepZoom();
+    /** One stop (x2) of zoom per this many dp of drag (the concept's 70px). */
+    static final float ZOOM_STOP_DP = 70f;
+    /** The shown zoom moves this share of the way (in log) to the target per frame. */
+    static final float ZOOM_EASE = 0.22f;
+
+    /**
+     * SIMPLE_UI §1, the owner's requirement «свайп по полосе = плавный зум»: a horizontal drag on the lens strip sets a
+     * target zoom on a log scale (one stop per {@link #ZOOM_STOP_DP}); the zoom eases to it every frame
+     * ({@link #ZOOM_EASE}), so it never jumps; crossing a module mark switches the module (the existing path, a light
+     * haptic tick). Taps on lenses and the 17 Ultra presets work as before.
+     */
+    private void initZoomDial(View root) {
+        if (cameraFragmentBinding != null) zoomReadout = cameraFragmentBinding.zoomReadout;
+        View strip = root.findViewById(R.id.aux_buttons_container);
+        if (!(strip instanceof com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout)) return;
+        com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout lenses = (com.particlesdevs.photoncamera.ui.camera.views.AuxButtonsLayout) strip;
+        lenses.setZoomDrag(this::dragZoom);
+        lenses.setDialRefresh(() -> showZoomLabel(false));
+        lenses.setPresetZoom(this::zoomTo); // P72 17U presets
+        refreshZoomReadout();
+    }
+
+    /** A drag step on the strip ({@code dx} px since the last one; right zooms in). */
+    void dragZoom(float dx) {
+        float density = getResources().getDisplayMetrics().density;
+        if (!zoomEasing) {
+            com.particlesdevs.photoncamera.control.ZoomController.syncToActive();
+            zoomShown = zoomTarget = com.particlesdevs.photoncamera.control.ZoomController.zoom();
+        }
+        zoomTarget = nextZoomTarget(zoomTarget, dx, ZOOM_STOP_DP * density,
+                com.particlesdevs.photoncamera.control.ZoomController.minZoom(), com.particlesdevs.photoncamera.control.ZoomController.maxZoom());
+        if (!zoomEasing) {
+            zoomEasing = true;
+            android.view.Choreographer.getInstance().postFrameCallback(zoomStep);
+        }
+    }
+
+    /** The target after a drag of {@code dx} px: x2 per {@code stopPx}, within min..max. */
+    static float nextZoomTarget(float target, float dx, float stopPx, float min, float max) {
+        float next = (float) (target * Math.pow(2, dx / stopPx));
+        return Math.max(min, Math.min(max, next));
+    }
+
+    /** One frame of the ease (in log): returns the new shown zoom. */
+    static float easeZoom(float shown, float target) {
+        double a = Math.log(shown), b = Math.log(target);
+        double n = Math.abs(b - a) < .002 ? b : a + (b - a) * ZOOM_EASE;
+        return (float) Math.exp(n);
+    }
+
+    private void stepZoom() {
+        if (cameraFragmentBinding == null) {
+            zoomEasing = false;
+            return;
+        }
+        zoomShown = easeZoom(zoomShown, zoomTarget);
+        String before = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+        zoomTo(zoomShown);
+        if (before != null && !before.equals(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()))
+            cameraFragmentBinding.layoutBottombar.auxButtonsContainer.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);
+        if (Math.abs(Math.log(zoomShown) - Math.log(zoomTarget)) > .0005) android.view.Choreographer.getInstance().postFrameCallback(zoomStep);
+        else zoomEasing = false;
+    }
+
+    private void refreshZoomReadout() {
+        if (zoomReadout == null) return;
         com.particlesdevs.photoncamera.control.ZoomController.syncToActive();
-        java.util.List<String> slots = com.particlesdevs.photoncamera.control.ZoomController.lenses();
         java.util.List<Float> ratios = new java.util.ArrayList<>();
-        java.util.List<String> labels = new java.util.ArrayList<>();
-        for (String slot : slots) {
+        for (String slot : com.particlesdevs.photoncamera.control.ZoomController.lenses())
             ratios.add(com.particlesdevs.photoncamera.settings.ModuleRegistry.zoom(slot));
-            labels.add(com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot));
-        }
-        // P41: the stock dial's stops past the Xiaomi 17 Ultra tele (4.3×, 8.6×, 17.2×) as marks with a light detent
-        java.util.List<Float> stops = com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.stops(ratios);
-        java.util.List<Float> detents = new java.util.ArrayList<>(stops);
-        if (!stops.isEmpty()) detents.addAll(ratios);
-        for (float stop : stops) {
-            ratios.add(stop);
-            labels.add(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.stopLabel(stop));
-        }
-        zoomDial.setDetents(detents);
-        zoomDial.configure(com.particlesdevs.photoncamera.control.ZoomController.minZoom(),
-                com.particlesdevs.photoncamera.control.ZoomController.maxZoom(), ratios, labels);
-        zoomDial.setZoom(com.particlesdevs.photoncamera.control.ZoomController.zoom());
+        zoomReadout.configure(com.particlesdevs.photoncamera.control.ZoomController.minZoom(),
+                com.particlesdevs.photoncamera.control.ZoomController.maxZoom(), ratios);
     }
 
     private void initSettingsBar() {
@@ -428,7 +536,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         // The HIDDEN handle is the sheet's top edge (the strip lives in the bottom bar now, so nothing passes through);
         // since P32 it lies under the viewfinder, at the bottom bar's top (initBottomChrome); at 16:9 a pill (P176).
         // The sheet styles it.
-        sheet.setHiddenHandle(cameraFragmentBinding.settingsSheetHandle, null);
+        // SIMPLE_UI §1: no handle on the camera screen any more - «Ещё» and a swipe up open the quick sheet
+        sheet.setHiddenHandle(null, null);
         // A level reached by a finger (or settled after a request) goes back to the model as is,
         // so a later rebind (invalidateAll on a camera restart or mode switch, notifyChange on
         // rotation or a new thumbnail) keeps the sheet there. Handle taps and flings ask for
@@ -436,7 +545,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         // The model setter is idempotent, so a level the model asked for is not sent again.
         sheet.setOnSheetLevelListener(level -> {
             cameraFragmentViewModel.setSheetLevel(level);
-            if (level != CameraFragmentModel.SHEET_HIDDEN) hideHint();
+            // SIMPLE_UI §1: the LUT tray, like the Pro panel, only while the quick sheet is closed
+            if (level != CameraFragmentModel.SHEET_HIDDEN && lutTray != null) lutTray.setOpen(false);
         });
         // FULL: a scrim over the viewfinder and the top bar; the viewfinder piece starts under the top bar.
         View scrim = cameraFragmentBinding.shadeScrim, scrimTop = cameraFragmentBinding.shadeScrimTop;
@@ -492,6 +602,18 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         }
 
         @Override
+        public boolean openFormatSheet() {
+            openFormatChooser();
+            return true;
+        }
+
+        @Override
+        public boolean openSizeSheet() {
+            TopBar.openSizeSheet(CameraFragment.this);
+            return true;
+        }
+
+        @Override
         public void onValuesChanged() {
             if (mCameraUIView != null) mCameraUIView.updateBadges();
         }
@@ -517,44 +639,14 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         }
     };
 
-    /** First-run hint (once ever, owner's answer 11): how to open the shade and move a tile. */
-    private android.widget.TextView hint;
-    private static final String HINT_SHOWN = "ui_shade_hint_shown";
+    /** SIMPLE_UI §1: the first-run hint, once, in the message band for 4.5 s (no floating card over the controls). */
+    private static final String FIRST_RUN_HINT = "ui_first_run_hint_shown";
 
     private void showHintOnce() {
         android.content.SharedPreferences prefs = settingsManager.getDefaultPreferences();
-        if (prefs.getBoolean(HINT_SHOWN, false) || cameraFragmentBinding == null) return;
-        prefs.edit().putBoolean(HINT_SHOWN, true).apply();
-        hint = new android.widget.TextView(requireContext());
-        hint.setText(R.string.shade_hint);
-        hint.setBackgroundResource(R.drawable.shade_card);
-        hint.setTextColor(com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.MUTED);
-        hint.setTextSize(13);
-        hint.setGravity(android.view.Gravity.CENTER);
-        hint.setLineSpacing(0, 1.3f);
-        float density = getResources().getDisplayMetrics().density;
-        hint.setPadding(Math.round(16 * density), Math.round(12 * density), Math.round(16 * density), Math.round(12 * density));
-        hint.setElevation(25 * density);
-        hint.setTag("shade_hint");
-        ConstraintLayout.LayoutParams lp = new ConstraintLayout.LayoutParams(ConstraintLayout.LayoutParams.WRAP_CONTENT, ConstraintLayout.LayoutParams.WRAP_CONTENT);
-        lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
-        lp.bottomToTop = R.id.layout_bottombar;
-        lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
-        lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
-        lp.verticalBias = 0.62f;
-        cameraFragmentBinding.cameraContainer.addView(hint, lp);
-        hint.setAlpha(0f);
-        hint.animate().alpha(1f).setDuration(300).start();
-        hint.postDelayed(this::hideHint, 6000);
-    }
-
-    private void hideHint() {
-        android.widget.TextView view = hint;
-        if (view == null) return;
-        hint = null;
-        view.animate().alpha(0f).setDuration(300).withEndAction(() -> {
-            if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
-        }).start();
+        if (prefs.getBoolean(FIRST_RUN_HINT, false) || cameraFragmentBinding == null || messageCard == null) return;
+        prefs.edit().putBoolean(FIRST_RUN_HINT, true).apply();
+        messageCard.showFor(getString(R.string.first_run_hint), 4500);
     }
 
     private com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeCatalogView catalogView;
@@ -610,6 +702,20 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
     /** P214f: the message card of this screen (the one message channel's sink; null after onDestroy). */
     private MessageCard messageCard;
+    /** SIMPLE_UI §1: the LUT pill and tray of the viewfinder. */
+    @Nullable public LutTray lutTray;
+
+    /** «Все LUT ›»: the settings at the film LUT row. */
+    private void openLutSettings() {
+        levelBeforeSettings = cameraFragmentViewModel.getSheetLevel();
+        watchSessionSettings();
+        Intent intent = new Intent(activity, SettingsActivity.class);
+        intent.setAction(SettingsActivity.ACTION_OPEN_PAGE);
+        intent.putExtra(SettingsActivity.EXTRA_PAGE, "film_lut_screen");
+        intent.putExtra(SettingsActivity.EXTRA_KEY, com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+        intent.putExtra("camera_mode", PreferenceKeys.getCameraModeOrdinal());
+        startActivity(intent);
+    }
 
     /** P214f: «Последние сообщения», the last 20 messages of the card (a long press on it). */
     private void openMessageHistory() {
@@ -624,24 +730,16 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     public void openFormatChooser() {
         android.content.Context c = getContext();
         if (c == null || mCameraUIEventsListener == null) return;
+        // SIMPLE_UI §2: «Формат файла» - «Фото» and «RAW (DNG)» as two segmented choices (CameraSheets)
         java.util.List<com.particlesdevs.photoncamera.settings.FormatChoice> offered =
                 com.particlesdevs.photoncamera.settings.FormatChoice.offered(android.os.Build.VERSION.SDK_INT);
-        CharSequence[] labels = new CharSequence[offered.size()], tags = new CharSequence[offered.size()];
-        int[] icons = new int[offered.size()];
-        for (int i = 0; i < labels.length; i++) {
-            labels[i] = offered.get(i).longLabel();
-            tags[i] = offered.get(i).name();
-            icons[i] = offered.get(i).icon;
-        }
-        int selected = offered.indexOf(com.particlesdevs.photoncamera.settings.FormatChoice.current());
-        com.particlesdevs.photoncamera.ui.settings.SettingsStyle.optionSheet(c, getString(R.string.shade_title_format), labels, tags,
-                selected, com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.accent(c), icons, i -> {
-                    if (mCameraUIEventsListener == null) return;
-                    mCameraUIEventsListener.onChanged(new com.particlesdevs.photoncamera.ui.camera.model.TopBarSettingsData<>(
-                            com.particlesdevs.photoncamera.settings.SettingType.FORMAT_CHOICE, offered.get(i).ordinal()));
-                    if (mCameraUIView != null) mCameraUIView.updateBadges();
-                    if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.refresh();
-                });
+        CameraSheets.format(c, offered, com.particlesdevs.photoncamera.settings.FormatChoice.current(), PreferenceKeys.getPhotoFormat(), choice -> {
+            if (mCameraUIEventsListener == null) return;
+            mCameraUIEventsListener.onChanged(new com.particlesdevs.photoncamera.ui.camera.model.TopBarSettingsData<>(
+                    com.particlesdevs.photoncamera.settings.SettingType.FORMAT_CHOICE, choice.ordinal()));
+            if (mCameraUIView != null) mCameraUIView.updateBadges();
+            if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.refresh();
+        });
     }
 
     /** The AWB colour temperature for the white-balance chip in auto. */
@@ -728,6 +826,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
     @Override
     public void onResume() {
+        if (lutTray != null) lutTray.bindPill();
         super.onResume();
         updateSettingsBar();
         mSwipe.init();
@@ -758,6 +857,43 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         manualModeConsole.onResume();
     }
 
+    /**
+     * SIMPLE_UI §1: the brightness sun beside the focus ring - shown with the ring (hidden while EV is locked), its value the
+     * Pro EV's in both directions.
+     */
+    private void attachExposureSun(TouchFocus touchFocus) {
+        if (cameraFragmentBinding == null) return;
+        com.particlesdevs.photoncamera.ui.camera.views.ExposureSunView sun = cameraFragmentBinding.layoutViewfinder.evSun;
+        sun.setListener(ev -> { if (manualModeConsole != null) manualModeConsole.setEvCompensation(ev); });
+        touchFocus.setRingListener(new TouchFocus.RingListener() {
+            @Override
+            public void shown(float cx, float cy, float radius) {
+                if (manualModeConsole == null || manualModeConsole.evLocked()) {
+                    sun.setVisibility(View.GONE);
+                    return;
+                }
+                float[] range = manualModeConsole.evRange();
+                if (!(range[1] > range[0])) {
+                    sun.setVisibility(View.GONE);
+                    return;
+                }
+                sun.setRange(range[0], range[1]);
+                sun.setEv(manualModeConsole.evCompensation());
+                View parent = (View) sun.getParent();
+                sun.placeBeside(cx, cy, radius, parent.getWidth(), parent.getHeight());
+                sun.animate().cancel();
+                sun.setAlpha(1f);
+                sun.setVisibility(View.VISIBLE);
+            }
+
+            @Override
+            public void hidden() {
+                if (sun.isDragging() || sun.getVisibility() != View.VISIBLE) return;
+                sun.animate().alpha(0f).setDuration(150).withEndAction(() -> sun.setVisibility(View.GONE)).start();
+            }
+        });
+    }
+
     private void initTouchFocus() {
         if (cameraFragmentBinding != null && captureController != null) {
             View focusCircle = cameraFragmentBinding.layoutViewfinder.touchFocus;
@@ -767,6 +903,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 if (captureController == null || mCameraUIView == null) return;
                 mTouchFocus = new TouchFocus(captureController,focusCircle,textureView);
                 captureController.mTouchFocus = mTouchFocus;
+                attachExposureSun(mTouchFocus);
                 if (mSubjectFocus != null) mSubjectFocus.release();
                 mSubjectFocus = null;
                 // Paused before this ran: the next resume creates it (it owns a worker thread and the frame sink).
@@ -1277,6 +1414,11 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     }
 
     /** P214f: the button notices (FULLRES, DCG, motion mode...) were short snackbars; now the same card as the rest. */
+    /** SIMPLE_UI §1: the top bar again from the settings (after a top-bar control changed one). */
+    public void refreshTopBar() {
+        if (mCameraUIView != null) mCameraUIView.updateBadges();
+    }
+
     public void showSnackBar(final String text) {
         com.particlesdevs.photoncamera.util.UiMessages.info(text);
     }
@@ -1715,9 +1857,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             awbKelvin.setCharacteristics(characteristics);
             manualModeConsole.init(activity, characteristics);
             manualModeConsole.onResume();
-            // P104: the X500 Pro Max's DCG 14 bit switch at the manual strip's right end
-            if (cameraFragmentBinding != null)
-                Dcg14Button.bind(CameraFragment.this, cameraFragmentBinding.manualMode, characteristics);
+            // SIMPLE_UI §1: DCG and the photo sizes are buttons of the top bar now (no overlays over the manual strip)
+            TopBar.bindCamera(characteristics);
+            if (mCameraUIView != null) mCameraUIView.updateBadges();
         }
 
         @Override

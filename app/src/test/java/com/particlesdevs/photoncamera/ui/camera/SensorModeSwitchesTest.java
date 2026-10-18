@@ -3,7 +3,6 @@ package com.particlesdevs.photoncamera.ui.camera;
 import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.widget.ImageButton;
 
 import com.particlesdevs.photoncamera.api.CameraMode;
 import com.particlesdevs.photoncamera.api.Settings;
@@ -29,7 +28,6 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
-import java.lang.reflect.Method;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -106,10 +104,15 @@ public class SensorModeSwitchesTest {
         return json;
     }
 
-    private void toggle(Class<?> button) throws Exception {
-        Method toggle = button.getDeclaredMethod("toggle", CameraFragment.class, ImageButton.class);
-        toggle.setAccessible(true);
-        toggle.invoke(null, fragment, new ImageButton(context));
+    /** SIMPLE_UI: the top bar's size button (12 <-> 50 Мп) and its DCG button, the old overlay buttons' successors. */
+    private void toggleFullRes() {
+        PhotoSize.availableForTest(true, settings.mCameraID);
+        int now = PhotoSize.current();
+        fragment.showSnackBar(PhotoSize.set(fragment, now == PhotoSize.NORMAL ? PhotoSize.FULL : PhotoSize.NORMAL));
+    }
+
+    private void toggleDcg() {
+        fragment.showSnackBar(Dcg14Button.toggleMode(fragment));
     }
 
     @Test public void fullResUiFromRemosaicIszSelectsBaseAndActuallyEnablesSdkInMotion() throws Exception {
@@ -117,7 +120,7 @@ public class SensorModeSwitchesTest {
         Dcg14Mode.setMode(Dcg14Mode.DCG);
         assertTrue(VivoSdkFullRes.offered("3"));
         assertFalse(VivoSdkFullRes.available("3"));
-        toggle(FullResButton.class);
+        toggleFullRes();
         assertEquals(CameraMode.MOTION, settings.selectedMode);
         assertEquals("back0", ModuleRegistry.active());
         assertEquals("3", PreferenceKeys.getCameraID());
@@ -132,7 +135,7 @@ public class SensorModeSwitchesTest {
     @Test public void dcgUiFromSdkCropSelectsBaseAndDisablesFullResBeforeOneRestart() throws Exception {
         modules.edit().putInt("module_vivo_qcom_isz_back1", 2).apply();
         PixelPro10.setFullRes(true);
-        toggle(Dcg14Button.class);
+        toggleDcg();
         assertEquals("back0", ModuleRegistry.active());
         assertTrue(Dcg14Mode.on());
         assertFalse(PixelPro10.fullResOn());
@@ -226,7 +229,7 @@ public class SensorModeSwitchesTest {
         String json = force(6);
         modules.edit().putBoolean("module_visible_back0", false).apply();
         Dcg14Mode.setMode(Dcg14Mode.DCG);
-        toggle(FullResButton.class);
+        toggleFullRes();
         assertEquals("back1", ModuleRegistry.active());
         assertFalse(PixelPro10.fullResOn());
         assertTrue(Dcg14Mode.on());
@@ -239,7 +242,7 @@ public class SensorModeSwitchesTest {
         force(6);
         PixelPro10.setFullRes(true);
         Dcg14Mode.setMode(Dcg14Mode.DCG);
-        toggle(FullResButton.class);
+        toggleFullRes();
         assertEquals("back1", ModuleRegistry.active());
         assertFalse(PixelPro10.fullResOn());
         assertTrue(Dcg14Mode.on());
@@ -255,7 +258,7 @@ public class SensorModeSwitchesTest {
             PixelPro10.setFullRes(true);
             ModuleRegistry.select("back1");
             assertFalse(PixelPro10.fullResOn());
-            toggle(FullResButton.class);
+            toggleFullRes();
             assertEquals("back0", ModuleRegistry.active());
             assertEquals(pair[1], settings.mCameraID);
             assertTrue(PixelPro10.fullResOn());

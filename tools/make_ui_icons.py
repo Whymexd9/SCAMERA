@@ -349,6 +349,16 @@ icon('settings_ic_noise', 'noise: a waveform with an accent peak') \
 icon('settings_ic_palette', 'palette: a palette with a thumb hole and paint dots') \
     .b(circle(12, 12, 9.6)).h(circle(15.6, 15.8, 2.2), circle(7.8, 10, 2.2), circle(11.6, 6.6, 2.2), circle(16, 9.2, 2.2), circle(7.8, 15, 2.0)) \
     .a(circle(7.8, 10, 1.3), circle(16, 9.2, 1.3)).s(circle(11.6, 6.6, 1.3), circle(7.8, 15, 1.2))
+_film = icon('settings_ic_film', 'film LUT (SIMPLE_UI): a film frame with the picture window in the accent')
+_film.b(rrect(5.0, 2.4, 14.0, 19.2, 2.4)).h(rrect(8.2, 4.9, 7.6, 14.2, 1.0))
+for _i in range(4):
+    _y = 2.4 + 19.2 * (0.12 + 0.76 * _i / 3)
+    _film.h(rrect(5.0 + 3.22 * 0.32, _y - 0.86, 1.16, 1.73, 0.3), rrect(19.0 - 3.22 * 0.68, _y - 0.86, 1.16, 1.73, 0.3))
+_film.a(rrect(5.0 + 14.0 * 0.23 + 0.9, 2.4 + 19.2 * 0.13 + 0.9, 14.0 - 2 * 14.0 * 0.23 - 1.8, 19.2 * 0.74 - 1.8, 0.6))
+icon('settings_ic_panel', 'panel transparency (SIMPLE_UI): a screen with the quick panel over its lower part, accent tiles') \
+    .b(rrect(3.4, 2.4, 17.2, 19.2, 3.2)).h(rrect(5.4, 4.4, 13.2, 6.0, 1.4)) \
+    .a(rrect(6.0, 13.2, 3.4, 3.0, 0.8), rrect(10.3, 13.2, 3.4, 3.0, 0.8), rrect(14.6, 13.2, 3.4, 3.0, 0.8)) \
+    .s(rrect(6.0, 17.0, 3.4, 2.6, 0.8), rrect(10.3, 17.0, 3.4, 2.6, 0.8))
 icon('settings_ic_ui', 'interface: a window with title-bar dots, an accent switch and rows') \
     .b(rrect(2.4, 3.4, 19.2, 17.2, 3.4)).h(rrect(4.6, 8.4, 14.8, 10.0, 1.6)) \
     .a(circle(5.9, 5.9, 0.95)).h(circle(8.7, 5.9, 0.95), circle(11.5, 5.9, 0.95)) \
@@ -562,7 +572,6 @@ pair('ic_shade_rawwebp', 'RAW + WebP: a film frame behind a globe', _front_webp)
 
 # --- top bar
 SUBJECT_X = 16.0  # the AVDs (topbar_avd_motion_*) move the subject between x 16 (on) and 12 (off)
-icon('topbar_ic_motion_off', '«Движение» off: the subject stands').b(circle(12, 12, 5.0)).h(circle(12, 12, 2.6)).a(circle(12, 12, 1.5))
 icon('topbar_ic_motion_on', '«Движение» on: the subject moves, speed lines behind it').b(circle(SUBJECT_X, 12, 5.0),
                                                                                           capsule(3.2, 8.2, 8.4, 8.2, 2.0), capsule(1.6, 12, 7.8, 12, 2.0),
                                                                                           capsule(4.6, 15.8, 8.4, 15.8, 2.0)) \

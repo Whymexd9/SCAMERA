@@ -17,23 +17,27 @@ import com.particlesdevs.photoncamera.circularbarlib.R;
 import com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens;
 
 /**
- * One parameter of the manual strip: three centred lines, no name (the owner's rule: icons only, the name is the content
- * description). The parameter icon (22dp), the value (14sp tabular figures, shrunk rather than ever ellipsized) and a
- * state line («авто», «ручн.», «выкл.»).
+ * One chip of the Pro panel, as the concept draws it (SIMPLE_UI §3, .chip): three centred lines - the parameter icon (20dp),
+ * the value (13sp, weight 600, tabular figures, shrunk rather than ever ellipsized) and the parameter's short name (10sp,
+ * muted: «ISO», «Выдержка», «Яркость», «Фокус», «Цвет»; for beginners the name is needed). The state is shown by colour
+ * only (no «авто / ручн.» line).
  * <ul>
- * <li>{@link #AUTO}: icon and value in MUTED (the camera's metered value);</li>
+ * <li>{@link #AUTO}: icon muted, value in the text colour (the camera's metered value);</li>
  * <li>{@link #MANUAL}: a chip fill (the accent over the card), icon and value in the accent;</li>
- * <li>{@link #LOCKED}: EV while ISO and shutter are manual: dimmed to 40 %, value «—», state «выкл.», disabled for
- * accessibility (it still takes taps, which explain why);</li>
+ * <li>{@link #LOCKED}: EV while ISO and shutter are manual: dimmed to 40 %, value «—», disabled for accessibility (it still
+ * takes taps, which explain why);</li>
  * <li>{@link #UNAVAILABLE}: the camera has no such control (fixed focus, no manual white balance): dimmed, «—».</li>
  * </ul>
- * The selected chip (its ruler is open) gets a 1.5dp accent outline.
+ * The selected chip (its ruler is open) gets a 1.5dp accent outline. The sixth chip, «Всё на авто», is one of these too:
+ * its icon in the accent ({@link #setIconAccent}), dimmed while nothing is manual.
  */
 public class ManualChipView extends LinearLayout {
-    public static final int AUTO = 0, MANUAL = 1, LOCKED = 2, UNAVAILABLE = 3;
+    /** DIMMED: «Всё на авто» with nothing manual - its value shown, the chip at 40 %, the icon muted. */
+    public static final int AUTO = 0, MANUAL = 1, LOCKED = 2, UNAVAILABLE = 3, DIMMED = 4;
     /** Value text size: at most this, shrunk to fit the chip down to {@link #VALUE_MIN_SP}. */
-    public static final float VALUE_MAX_SP = 14f, VALUE_MIN_SP = 9f;
-    public static final float STATE_SP = 9f, STATE_MIN_SP = 7f;
+    public static final float VALUE_MAX_SP = 13f, VALUE_MIN_SP = 9f;
+    /** The name line (the concept's .n: 10sp, letter spacing -0.025). */
+    public static final float STATE_SP = 10f, STATE_MIN_SP = 7f;
     /** Alpha of a locked or unavailable chip. */
     public static final float LOCKED_ALPHA = .4f;
 
@@ -52,7 +56,7 @@ public class ManualChipView extends LinearLayout {
         super(context, attrs);
         setOrientation(VERTICAL);
         setGravity(Gravity.CENTER_HORIZONTAL);
-        setPadding(UiTokens.dp(context, 2), UiTokens.dp(context, 7), UiTokens.dp(context, 2), UiTokens.dp(context, 6));
+        setPadding(0, UiTokens.dp(context, 6), 0, UiTokens.dp(context, 5));
         setClickable(true);
         setLongClickable(true);
         setFocusable(true);
@@ -60,28 +64,30 @@ public class ManualChipView extends LinearLayout {
         accent = UiTokens.cameraAccent(context);
         icon = new ImageView(context);
         icon.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        int size = UiTokens.dp(context, 22);
+        int size = UiTokens.dp(context, 20);
         addView(icon, new LayoutParams(size, size));
         value = line(context, VALUE_MAX_SP);
         value.setFontFeatureSettings("tnum");
+        value.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        value.setLetterSpacing(-.01f);
         // Each line takes LINE_HEIGHT x its nominal size, whatever the system font's own metrics (P43): the chip is
-        // 7 + 22 + 3 + 16.8 + 3 + 10.8 + 6 dp as in the concept, the same for every chip (a shrunk value keeps the
-        // line), and grows with the font size only up to UiTokens.FONT_SCALE_CAP.
-        addView(value, lineParams(value, VALUE_MAX_SP, UiTokens.dp(context, 3)));
+        // 6 + 20 + 1 + 15.6 + 1 + 12 + 5 dp as in the concept, the same for every chip (a shrunk value keeps the line),
+        // and grows with the font size only up to UiTokens.FONT_SCALE_CAP.
+        addView(value, lineParams(value, VALUE_MAX_SP, UiTokens.dp(context, 1)));
         state = line(context, STATE_SP);
-        state.setAllCaps(true);
-        state.setLetterSpacing(.06f);
+        state.setLetterSpacing(-.025f);
         state.setTextColor(UiTokens.MUTED);
-        addView(state, lineParams(state, STATE_SP, UiTokens.dp(context, 3)));
-        background.setCornerRadius(UiTokens.dp(context, 16));
+        addView(state, lineParams(state, STATE_SP, UiTokens.dp(context, 1)));
+        background.setCornerRadius(UiTokens.dp(context, 14));
         setBackground(background);
         if (attrs != null) {
             TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.ManualChipView);
             int res = a.getResourceId(R.styleable.ManualChipView_manualChipIcon, 0);
+            CharSequence name = a.getText(R.styleable.ManualChipView_manualChipName);
             a.recycle();
             if (res != 0) icon.setImageResource(res);
+            if (name != null) state.setText(name);
         }
-        state.setText(R.string.manual_state_auto);
         apply();
     }
 
@@ -137,8 +143,21 @@ public class ManualChipView extends LinearLayout {
         return value;
     }
 
-    public TextView getStateView() {
+    /** The name line (the parameter's short name). */
+    public TextView getNameView() {
         return state;
+    }
+
+    public void setName(CharSequence name) {
+        state.setText(name);
+    }
+
+    private boolean iconAccent;
+
+    /** The «Всё на авто» chip: its icon in the accent (muted while dimmed). */
+    public void setIconAccent(boolean on) {
+        iconAccent = on;
+        apply();
     }
 
     public void setAccent(int accent) {
@@ -151,7 +170,6 @@ public class ManualChipView extends LinearLayout {
         chipState = newState;
         boolean off = newState == LOCKED || newState == UNAVAILABLE;
         value.setText(off ? "—" : valueText);
-        state.setText(newState == MANUAL ? R.string.manual_state_manual : off ? R.string.manual_state_off : R.string.manual_state_auto);
         apply();
         requestLayout();
     }
@@ -173,13 +191,14 @@ public class ManualChipView extends LinearLayout {
 
     private void apply() {
         boolean manual = chipState == MANUAL;
-        int color = manual ? accent : UiTokens.MUTED;
+        boolean dim = chipState == LOCKED || chipState == UNAVAILABLE || chipState == DIMMED;
+        int color = manual || iconAccent && !dim ? accent : UiTokens.MUTED;
         icon.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN);
-        value.setTextColor(manual ? accent : UiTokens.MUTED);
+        value.setTextColor(manual ? accent : UiTokens.TEXT);
         background.setColor(manual ? UiTokens.chipBg(accent) : 0);
         if (chosen) background.setStroke(Math.round(1.5f * getResources().getDisplayMetrics().density), accent);
         else background.setStroke(0, 0);
-        setAlpha(chipState == LOCKED || chipState == UNAVAILABLE ? LOCKED_ALPHA : 1f);
+        setAlpha(dim ? LOCKED_ALPHA : 1f);
         invalidate();
     }
 

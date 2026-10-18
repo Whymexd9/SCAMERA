@@ -24,22 +24,18 @@ final class ModulePageFilter {
     /** The root row that opens the group (ModuleProfilesFragment). */
     static final String HUB = "module_profiles_screen";
     static final String CAMERAS = "camera_settings_screen", SENSOR_PAGE = "pref_sensor_config_submenu";
-    /** The root pages a module page shows (an explicit list: «Система» has per-module rows by name only). */
-    static final List<String> ROOT_PAGES = Collections.unmodifiableList(Arrays.asList("output_settings_screen",
-            "shooting_settings_screen", "viewfinder_settings_screen", "photo_processing_screen", "scam_hybrid_screen", CAMERAS));
+    /**
+     * SIMPLE_UI §4: the groups a module page never shows (the root is now groups of rows): «Система» has per-module rows by
+     * name only; the app's and the about rows are shared.
+     */
+    static final List<String> NOT_MODULE = Collections.unmodifiableList(Arrays.asList("adv_system", "root_app", "root_about"));
 
     private ModulePageFilter() { }
 
     /** Hides what is not {@code profile}'s on {@code page} (the settings root when {@code root}); returns the hidden keys. */
     static Set<String> apply(PreferenceGroup page, String profile, boolean root) {
         Set<String> hidden = new HashSet<>();
-        if (root) {
-            for (int i = 0; i < page.getPreferenceCount(); i++) {
-                Preference p = page.getPreference(i);
-                if (!ROOT_PAGES.contains(p.getKey())) hide(p, hidden);
-                else if (p instanceof PreferenceGroup && visit((PreferenceGroup) p, profile, hidden) == 0) hide(p, hidden);
-            }
-        } else visit(page, profile, hidden);
+        visit(page, profile, hidden);
         retitle(page, profile);
         return hidden;
     }
@@ -50,6 +46,7 @@ final class ModulePageFilter {
         for (int i = 0; i < group.getPreferenceCount(); i++) {
             Preference p = group.getPreference(i);
             if (SENSOR_PAGE.equals(p.getKey())) { values++; continue; } // the module's sensor page: generated on its own page
+            if (NOT_MODULE.contains(p.getKey())) { hide(p, hidden); continue; }
             if (p instanceof PreferenceGroup) {
                 int n = visit((PreferenceGroup) p, profile, hidden);
                 if (n == 0) hide(p, hidden);

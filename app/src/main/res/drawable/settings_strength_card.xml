@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SIMPLE_UI §4c: the concept's .strength card (card colour, 1dp line, 16dp corners). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FF1B2023" />
+    <stroke android:width="1dp" android:color="#FF30363C" />
+    <corners android:radius="16dp" />
+</shape>

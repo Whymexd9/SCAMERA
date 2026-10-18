@@ -68,10 +68,11 @@ public final class SettingsStyle {
     /** P139: a row's description (dimmer than MUTED); titles take UiTokens.title (medium weight). */
     public static final int SUMMARY = UiTokens.SUMMARY;
 
-    /** «Конфиг»: Сохранить / Восстановить / Сбросить всё share one row of three tiles. */
-    static final Set<String> TILES = new HashSet<>(Arrays.asList("pref_backup_preferences_key", "pref_restore_preferences_key", "pref_reset_preferences_key"));
+    /** Rows drawn as tiles three to a line (SIMPLE_UI §4: the profile actions are rows now, as the concept; none left). */
+    static final Set<String> TILES = new HashSet<>();
     /** Plain preferences that open a page (handled in SettingsFragment.onPreferenceTreeClick): a chevron, not an action. */
-    static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key"));
+    static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key",
+            "pref_file_name_pattern", "photo_style_lut"));
 
     public static int dp(Context c, float v) { return UiTokens.dp(c, v); }
 
@@ -95,7 +96,7 @@ public final class SettingsStyle {
         return t;
     }
 
-    // ───── Header: accent back arrow, letter-spaced SCAMERA eyebrow, centred bold title ─────
+    // ───── Header (SIMPLE_UI §4, the concept's .shead): a 44dp back disc, the title on the left (20sp, 600), the search disc ─────
 
     public static final class Header {
         public FrameLayout view;
@@ -104,52 +105,83 @@ public final class SettingsStyle {
     }
 
     /**
-     * The header of the module screen. view = FrameLayout {titles column (eyebrow, heading, subtitle), back[, search]}.
+     * The header of a settings page. view = FrameLayout {row (back disc, titles column (heading, subtitle), search disc)}.
      * {@code onSearch} null: no search button.
      */
     public static Header header(Context c, Runnable onBack, Runnable onSearch) {
         Header h = new Header();
-        int accent = accent(c);
         h.view = new FrameLayout(c);
-        LinearLayout titles = new LinearLayout(c);
-        titles.setOrientation(LinearLayout.VERTICAL);
-        titles.setPadding(dp(c, 42), 0, dp(c, 42), dp(c, 16));
-        TextView brand = text(c, "SCAMERA", 10, MUTED);
-        brand.setLetterSpacing(.16f);
-        brand.setGravity(Gravity.CENTER);
-        titles.addView(brand);
-        h.heading = text(c, "", 20, TEXT);
-        h.heading.setTypeface(null, android.graphics.Typeface.BOLD);
-        h.heading.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.topMargin = dp(c, 8);
-        titles.addView(h.heading, lp);
-        h.subtitle = text(c, "", 13, MUTED);
-        h.subtitle.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
-        sp.topMargin = dp(c, 6);
-        titles.addView(h.subtitle, sp);
-        h.view.addView(titles, new FrameLayout.LayoutParams(-1, -2));
-        h.back = new ImageView(c);
-        h.back.setImageResource(R.drawable.settings_ic_back);
-        h.back.setColorFilter(accent, PorterDuff.Mode.SRC_IN);
-        h.back.setPadding(dp(c, 9), dp(c, 9), dp(c, 9), dp(c, 9));
+        LinearLayout row = new LinearLayout(c);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, 0, 0, dp(c, 10));
+        h.back = disc(c, R.drawable.ui_ic_back);
         h.back.setContentDescription(Lang.t(c,"Назад","Back"));
         h.back.setFocusable(true);
         h.back.setOnClickListener(v -> onBack.run());
-        h.view.addView(h.back, new FrameLayout.LayoutParams(dp(c, 40), dp(c, 44), Gravity.START | Gravity.TOP));
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(c, 44), dp(c, 44));
+        bp.setMarginEnd(dp(c, 6));
+        row.addView(h.back, bp);
+        LinearLayout titles = new LinearLayout(c);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        h.heading = text(c, "", 20, TEXT);
+        h.heading.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        h.heading.setMaxLines(2);
+        titles.addView(h.heading, new LinearLayout.LayoutParams(-1, -2));
+        h.subtitle = text(c, "", 12.5f, MUTED);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
+        sp.topMargin = dp(c, 2);
+        titles.addView(h.subtitle, sp);
+        row.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
         if (onSearch != null) {
-            h.search = new ImageView(c);
-            h.search.setImageResource(R.drawable.settings_ic_search);
-            h.search.setColorFilter(accent, PorterDuff.Mode.SRC_IN);
-            h.search.setPadding(dp(c, 9), dp(c, 9), dp(c, 9), dp(c, 9));
+            h.search = disc(c, R.drawable.ui_ic_search);
             h.search.setContentDescription(Lang.t(c,"Поиск настройки","Search settings"));
             h.search.setTag("settings_search");
             h.search.setFocusable(true);
             h.search.setOnClickListener(v -> onSearch.run());
-            h.view.addView(h.search, new FrameLayout.LayoutParams(dp(c, 40), dp(c, 44), Gravity.END | Gravity.TOP));
+            LinearLayout.LayoutParams qp = new LinearLayout.LayoutParams(dp(c, 44), dp(c, 44));
+            qp.setMarginStart(dp(c, 6));
+            row.addView(h.search, qp);
         }
+        h.view.addView(row, new FrameLayout.LayoutParams(-1, -2));
         return h;
+    }
+
+    /**
+     * SIMPLE_UI §4: the concept's .search under the root's header - a 48dp card pill with a line border, the search icon and
+     * «Найти настройку» in the muted colour; a tap opens the search page.
+     */
+    public static LinearLayout searchPill(Context c, Runnable onSearch) {
+        LinearLayout pill = new LinearLayout(c);
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setMinimumHeight(dp(c, 48));
+        pill.setPadding(dp(c, 14), 0, dp(c, 14), 0);
+        pill.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x1FFFFFFF), shape(c, CARD, LINE, 999), null));
+        ImageView icon = new ImageView(c);
+        icon.setImageResource(R.drawable.ui_ic_search);
+        icon.setImageTintList(ColorStateList.valueOf(MUTED));
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(c, 22), dp(c, 22));
+        ip.setMarginEnd(dp(c, 10));
+        pill.addView(icon, ip);
+        pill.addView(text(c, Lang.t(c, "Найти настройку", "Find a setting"), 15, MUTED), new LinearLayout.LayoutParams(0, -2, 1f));
+        pill.setContentDescription(Lang.t(c, "Поиск настройки", "Search settings"));
+        pill.setTag("settings_search");
+        pill.setFocusable(true);
+        pill.setOnClickListener(v -> onSearch.run());
+        return pill;
+    }
+
+    /** The concept's .back: a 44dp card disc with a line icon in the text colour. */
+    static ImageView disc(Context c, int icon) {
+        ImageView v = new ImageView(c);
+        v.setImageResource(icon);
+        v.setImageTintList(ColorStateList.valueOf(TEXT));
+        v.setScaleType(ImageView.ScaleType.CENTER);
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.OVAL);
+        d.setColor(CARD);
+        v.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x1FFFFFFF), d, null));
+        return v;
     }
 
     /** The module screen's chip: «Настраивается: …», «Активна: …». */
@@ -175,7 +207,8 @@ public final class SettingsStyle {
             p.setSingleLineTitle(false);
             // P144: the own tone curve draws its own card (graph and shortcuts); P162: so does the crop picture
             if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference
-                    || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RawCropPreference) {
+                    || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RawCropPreference
+                    || page(p)) {
                 p.setIconSpaceReserved(false);
                 continue;
             }
@@ -190,7 +223,9 @@ public final class SettingsStyle {
                 defaultIcon(p, R.drawable.settings_ic_gear);
                 continue;
             }
-            if (p instanceof UniversalSeekBarPreference || p instanceof TunableSeekBarPreference) {
+            if (com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY.equals(p.getKey())) {
+                p.setLayoutResource(R.layout.preference_seekbar_inline);   // SIMPLE_UI §4c: «Сила» on the LUT page
+            } else if (p instanceof UniversalSeekBarPreference || p instanceof TunableSeekBarPreference) {
                 p.setLayoutResource(R.layout.preference_seekbar);
                 defaultIcon(p, R.drawable.settings_ic_sliders);
             } else if (p instanceof TwoStatePreference) {
@@ -218,6 +253,30 @@ public final class SettingsStyle {
         }
     }
 
+    /**
+     * SIMPLE_UI §4: rows that draw their own card or are no row (the tone curve, the crop picture, the «Конфиг» tiles, the
+     * info notes): they stand outside the group cards of SettingsCardDecoration.
+     */
+    public static boolean standalone(@androidx.annotation.Nullable Preference p) {
+        if (p == null) return true;
+        if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RawCropPreference) return true;
+        if (p.getKey() != null && TILES.contains(p.getKey())) return true;
+        if (page(p) || p.getLayoutResource() == R.layout.preference_seekbar_inline) return true;
+        return p.getLayoutResource() == R.layout.preference_info;
+    }
+
+    /** SIMPLE_UI §4c: the parts of the «Плёночный LUT» page draw themselves (preview, strip, «Что меняется»). */
+    static boolean page(Preference p) {
+        return p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.LutChangesPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.PhotoStylePreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ShadeTransparencyPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FormatPickerPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.SizePickerPreference;
+    }
+
     private static void defaultIcon(Preference p, int icon) {
         if (p.getIcon() == null) p.setIcon(icon);
     }
@@ -238,6 +297,8 @@ public final class SettingsStyle {
         String key = p.getKey();
         row.setAlpha(alpha);
         if (p instanceof PreferenceCategory) {
+            // a category is never "enabled" (PreferenceCategory.isEnabled is false): its label is not a dimmed row
+            row.setAlpha(1f);
             TextView title = (TextView) holder.findViewById(android.R.id.title);
             if (title != null) title.setTextColor(accent);
             return;
@@ -254,8 +315,19 @@ public final class SettingsStyle {
         else if (title != null && action(p)) title.setTextColor(accent);
         // P214g: «↻» - the camera session reads it when it is built (SessionKeys: the module's session type, OIS, vendor keys,
         // 16:9, live RAW ...): a change takes a new session, the camera restarts with it
-        if (title != null && !TextUtils.isEmpty(p.getTitle())
-                && (p instanceof TunableKeyPreference || com.particlesdevs.photoncamera.settings.SessionKeys.needsNewSession(key)))
+        // SIMPLE_UI §4: as the concept, a row with its own restart pill says it in words («Камера перезапустится») under the
+        // description; the other rows keep the mark on the title
+        boolean restarts = p instanceof TunableKeyPreference || com.particlesdevs.photoncamera.settings.SessionKeys.needsNewSession(key);
+        TextView restart = (TextView) holder.findViewById(R.id.settings_restart);
+        if (restart != null) {
+            restart.setVisibility(restarts ? View.VISIBLE : View.GONE);
+            if (restarts) {
+                restart.setText(Lang.t(c, "Камера перезапустится", "The camera restarts"));
+                restart.setTextColor(accent);
+                restart.setBackground(shape(c, tint(accent, .12f), 0, 999));
+            }
+        }
+        if (title != null && !TextUtils.isEmpty(p.getTitle()) && restarts && restart == null)
             title.setText(com.particlesdevs.photoncamera.settings.SessionKeys.marked(p.getTitle()));
         TextView summary = (TextView) holder.findViewById(android.R.id.summary);
         TextView value = (TextView) holder.findViewById(R.id.settings_value);
@@ -263,7 +335,7 @@ public final class SettingsStyle {
             CharSequence shown = valueOf(p);
             value.setVisibility(TextUtils.isEmpty(shown) ? View.GONE : View.VISIBLE);
             value.setText(shown);
-            value.setTextColor(accent);
+            value.setTextColor(MUTED);   // SIMPLE_UI §4: the value on the right, muted (the concept's .rv)
             if (summary != null && !TextUtils.isEmpty(shown) && summary.getText() != null) {
                 // the value has its own line: do not repeat it at the start of the summary ("%s. …" summaries)
                 String s = summary.getText().toString(), v = shown.toString();
@@ -306,6 +378,25 @@ public final class SettingsStyle {
 
     static CharSequence valueOf(Preference p) {
         if (p instanceof RestorePreference) return null;
+        // SIMPLE_UI §4: «Плёночный LUT» shows the chosen look on the right (the concept's .rv)
+        try {
+            if ("output_settings_screen".equals(p.getKey())) return com.particlesdevs.photoncamera.settings.FormatChoice.current().shortLabel();
+            if ("photo_size_screen".equals(p.getKey()))
+                return com.particlesdevs.photoncamera.ui.camera.PhotoSize.label(com.particlesdevs.photoncamera.ui.camera.PhotoSize.current());
+        } catch (RuntimeException e) {
+            return null;   // no camera state yet (tests)
+        }
+        if ("backup_settings_screen".equals(p.getKey()))
+            return com.particlesdevs.photoncamera.settings.ConfigState.label(p.getContext());
+        if ("shade_transparency_screen".equals(p.getKey()))
+            return com.particlesdevs.photoncamera.ui.settings.custompreferences.ShadeTransparencyPreference.label(p.getContext(),
+                    Math.round((1f - com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.sheetAlpha(p.getContext())) * 100f));
+        if ("photo_style_screen".equals(p.getKey()) && p.getSharedPreferences() != null)
+            return com.particlesdevs.photoncamera.settings.PhotoStyle.name(p.getContext(),
+                    com.particlesdevs.photoncamera.settings.PhotoStyle.current(p.getSharedPreferences()));
+        if (("film_lut_screen".equals(p.getKey()) || "photo_style_lut".equals(p.getKey())) && p.getSharedPreferences() != null)
+            return com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference.displayName(p.getContext(),
+                    p.getSharedPreferences().getString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY, ""));
         if (p instanceof ListPreference) return ((ListPreference) p).getEntry();
         if (p instanceof EditTextPreference && !(p instanceof BackupPreferences)) {
             String t = ((EditTextPreference) p).getText();
@@ -422,7 +513,7 @@ public final class SettingsStyle {
     }
 
     /** A radio dot: an accent ring with a dot when selected, a muted ring otherwise. */
-    static View radio(Context c, boolean on, int accent) {
+    public static View radio(Context c, boolean on, int accent) {
         return new View(c) {
             final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             @Override protected void onDraw(Canvas canvas) {

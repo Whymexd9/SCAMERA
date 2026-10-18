@@ -24,8 +24,10 @@
     <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:paddingStart="22dp"
+            android:paddingEnd="22dp"
             >
 
         <FrameLayout
@@ -53,7 +55,7 @@
                     android:layout_gravity="center"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:layout_margin="3dp"
+                    android:layout_margin="0dp"
                     android:scaleType="centerCrop"
                     android:contentDescription="@string/shade_gallery"
                     android:onClick="@{bottom_bar_click_listener}"
@@ -106,9 +108,25 @@
                     android:textSize="22sp"
                     android:textAlignment="center"
                     android:typeface="normal"
-                    android:visibility="visible"
+                    android:visibility="gone"
                     android:layout_gravity="center"/>
         </FrameLayout>
+
+        <!-- SIMPLE_UI §1: a long burst's remaining time, a small line under the shutter (no frame count in the shutter). -->
+        <TextView
+                android:id="@+id/burst_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@{timermodel.timerCount}"
+                android:textColor="@color/settings_muted"
+                android:textSize="11sp"
+                android:fontFeatureSettings="tnum"
+                android:translationY="16dp"
+                android:visibility="@{timermodel.timerCount == null || timermodel.timerCount.isEmpty() ? android.view.View.GONE : android.view.View.VISIBLE}"
+                app:layout_constraintBottom_toBottomOf="@id/shutter_button_container"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                android:importantForAccessibility="no" />
 
         <FrameLayout
                 android:id="@+id/camera_switch_container"
@@ -129,8 +147,8 @@
                     android:contentDescription="@string/shade_flip_camera"
                     android:tooltipText="@string/shade_flip_camera"
                     android:scaleType="fitCenter"
-                    android:src="@drawable/vf_flip_camera"
-                    android:padding="11dp"
+                    android:src="@drawable/ui_ic_flip"
+                    android:padding="15dp"
                     android:visibility="visible"
                     android:layout_height="match_parent"
                     android:layout_width="match_parent"/>

@@ -147,7 +147,8 @@ public class ConfigMenuTest {
     @Test
     public void theButtonShowsTheActiveConfigInsideItsFrame() {
         ConfigChip chip = sheet.configChip();
-        assertEquals(View.VISIBLE, chip.getVisibility());
+        // SIMPLE_UI §2: the chip is removed from the sheet (its naming still works for the config menu's other entries)
+        assertEquals(View.GONE, chip.getVisibility());
         assertEquals("no config yet", "Default", chip.getName().toString());
         ConfigState.set(activity, "Download/SCAMERA/XML/Night_City.xml");
         sheet.refreshConfigName();
@@ -168,11 +169,11 @@ public class ConfigMenuTest {
         chip.measure(View.MeasureSpec.makeMeasureSpec(dp(150), View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
         assertTrue(chip.getMeasuredWidth() <= dp(150));
         assertNull("no ellipsis when shrinking is enough", name.getEllipsize());
-        // the edit mode shows the drag hint in its place
+        // the edit mode does not bring it back either
         sheet.setEditing(true);
         assertEquals(View.GONE, chip.getVisibility());
         sheet.setEditing(false);
-        assertEquals(View.VISIBLE, chip.getVisibility());
+        assertEquals(View.GONE, chip.getVisibility());
     }
 
     @Test

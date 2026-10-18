@@ -126,7 +126,7 @@ public class ShadeTilesTest {
                 ShadeCatalog.METERING_STD, "pref_scam_hybrid_cdm", "pref_scam_hybrid_shasta"));
         for (String key : ShadeCatalog.DEFAULT_TILES) if (!expected.contains(key)) expected.add(key);
         assertEquals(expected, ShadeTiles.stored(prefs));
-        assertEquals(10, expected.size());
+        assertEquals(5 + ShadeCatalog.DEFAULT_TILES.size() - 1, expected.size());   // the grid is in both
         assertEquals(expected, load());
         // Once only.
         assertFalse(SettingsMigration.migrateShadeTiles(prefs));
@@ -139,6 +139,21 @@ public class ShadeTilesTest {
         // Both old keys are obsolete afterwards, wherever they are left.
         assertTrue(SettingsMigration.isObsolete(SettingsMigration.LEGACY_QUICK));
         assertTrue(SettingsMigration.isObsolete(SettingsMigration.LEGACY_FAVOURITES));
+    }
+
+    /** SIMPLE_UI §2: the old default pin list moves to the new defaults once; a custom list stays. */
+    @Test
+    public void theOldDefaultPinsMoveToTheNewDefaultsOnce() {
+        assertEquals(ShadeTiles.join(ShadeCatalog.OLD_DEFAULT_TILES), SettingsMigration.OLD_DEFAULT_TILES);
+        prefs.edit().remove(SettingsMigration.SIMPLE_UI_TILES).commit();
+        ShadeTiles.save(prefs, ShadeCatalog.OLD_DEFAULT_TILES);
+        assertTrue(SettingsMigration.migrateSimpleUiTiles(prefs));
+        assertEquals(ShadeCatalog.DEFAULT_TILES, load());
+        assertFalse("once", SettingsMigration.migrateSimpleUiTiles(prefs));
+        prefs.edit().remove(SettingsMigration.SIMPLE_UI_TILES).commit();
+        ShadeTiles.save(prefs, Arrays.asList(ShadeCatalog.TIMER, ShadeCatalog.FLASH));
+        assertFalse(SettingsMigration.migrateSimpleUiTiles(prefs));
+        assertEquals(Arrays.asList(ShadeCatalog.TIMER, ShadeCatalog.FLASH), ShadeTiles.stored(prefs));
     }
 
     @Test

@@ -49,4 +49,23 @@ public interface ManualModeConsole {
 
     /** «Всё на авто»: every parameter back to auto. */
     void resetAllToAuto();
+
+    /** SIMPLE_UI §1, the viewfinder's sun: the Pro EV's compensation (0 in auto). */
+    default float evCompensation() {
+        return 0f;
+    }
+
+    /** The EV compensation's range {min, max} (0, 0 without one). */
+    default float[] evRange() {
+        return new float[]{0f, 0f};
+    }
+
+    /** EV is locked: ISO and shutter are both manual (the sun hides). */
+    default boolean evLocked() {
+        return false;
+    }
+
+    /** Sets the Pro EV to the nearest of its steps (0: auto); the chips follow. */
+    default void setEvCompensation(float ev) {
+    }
 }
