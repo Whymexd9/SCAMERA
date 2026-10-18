@@ -34,6 +34,13 @@ public final class ArkAe {
         public boolean efEnabled = true;
         public int look = 4;
         public float slope = 2.7f, sp = 1.35f, tp = 1.6f, minEv = -8.5f, maxEv = 3.5f, sat = 1.0f, ev = 0.30f;
+        /**
+         * P216: the data above the ceiling is real (the Bento ultrashort frames were merged): a maximum above the native cap of
+         * 4 is the shot's own highlight range, not a recovered clip.
+         */
+        public boolean bentoHeadroom;
+        /** P216: where the highlight peak of a shot with real headroom lies between P159's (0) and the p99.9 level (1), in log. */
+        public float hrMix = 0.5f;
     }
 
     /** Exposure, ceiling, fusion strengths and the effective AgX parameters of one shot (+ the logged statistics). */
@@ -43,6 +50,10 @@ public final class ArkAe {
         /** P159: p98 / p995 of the max channel beyond the ceiling ({@link Stats#tail}); = p98 / p995 below it. */
         public float p98x, p995x;
         public float maxGainByNoise = 0f;
+        /** P216: the real data ceiling above the capped clip (Bento headroom beyond 4: the maximum, at most 16 x the clip), else 0. */
+        public float hr;
+        /** P216: how far the highlight peak went towards p99.9 (hrMix times the area gate; 0 = P159's peak). */
+        public float hrPull;
         public boolean bento;
         public float slope, sp, tp, minEv, maxEv, sat, ev;
         public int look;
@@ -54,7 +65,8 @@ public final class ArkAe {
                             + (maxGainByNoise > 0f ? String.format(Locale.ROOT, " gainClamp=%.3f", maxGainByNoise) : "")
                             + " effS=%.4f effH=%.4f flat=%.3f spread=%.4f ov=%.4f bento=%d agx(slope=%.3f sp=%.2f tp=%.2f ev=[%.2f,%.2f]+%.2f sat=%.2f look=%d)",
                     clip, gmax, ae, geo, mean, p10, p50, p98, p995, p98x, p995x, nf, deficit, effS, effH, flat, spread, ovArea, bento ? 1 : 0,
-                    slope, sp, tp, minEv, maxEv, ev, sat, look);
+                    slope, sp, tp, minEv, maxEv, ev, sat, look)
+                    + (hr > 0f ? String.format(Locale.ROOT, " hr=%.2f hrPull=%.2f realPeak=%.3f", hr, hrPull, realPeak) : "");
         }
     }
 
@@ -246,6 +258,15 @@ public final class ArkAe {
         return clip * Math.pow(2.0, tail.length / (double) TAIL_PER_OCTAVE);
     }
 
+    /** P216: the share of the frame beyond the ceiling over which the highlight peak moves towards p99.9 (none below). */
+    static final double HR_AREA_FROM = 0.003, HR_AREA_TO = 0.008;
+
+    /** Hermite smoothstep of v between e0 and e1. */
+    static double smooth(double e0, double e1, double v) {
+        double t = Math.max(0.0, Math.min(1.0, (v - e0) / (e1 - e0)));
+        return t * t * (3 - 2 * t);
+    }
+
     /** The data ceiling of smart_hdr: the maximum when above 1.05, at most 4, else 1. */
     static double clip(float gmax) {
         return gmax > 1.05f ? Math.min(gmax, 4.0) : 1.0;                                     // 0x72608-0x72634
@@ -266,10 +287,14 @@ public final class ArkAe {
         r.gmax = gmax;
         r.clip = (float) clip;
         r.bento = gmax > 1.05f;
+        // P216 (owner, X200 Ultra bridge window 2026-10-18: the window under the x8 ultrashort came out white with an orange
+        // smear while the merge held the sea and a crane up to 8 x white): the clip caps the native histograms at 4, the
+        // real ceiling of the Bento data is its maximum (16 x the clip at most: the tail's range)
+        r.hr = s.bentoHeadroom && gmax > clip && Float.isFinite(gmax) ? (float) Math.min(gmax, clip * 16.0) : 0f;
         r.mean = (float) (sumY / tot);
         r.geo = (float) Math.exp(sumLog / tot);                                              // 0x72b3c
         final double step = clip / 4096.0;
-        double p10 = 0, p50 = 0, p98 = -1, p995 = -1;
+        double p10 = 0, p50 = 0, p98 = -1, p995 = -1, p999 = -1;
         boolean f10 = false, f50 = false;
         double cy = 0, cm = 0;
         for (int i = 0; i < 4096; i++) {                                                     // 0x72a4c-0x72b30
@@ -279,9 +304,11 @@ public final class ArkAe {
             if (!f50 && cy / tot >= 0.5) { p50 = i * step; f50 = true; }
             if (p98 < 0 && cm / tot >= 0.98) p98 = i * step;
             if (p995 < 0 && cm / tot >= 0.995) p995 = i * step;
+            if (p999 < 0 && cm / tot >= 0.999) p999 = i * step;
         }
         if (p98 < 0) p98 = clip * 0.99975586;
         if (p995 < 0) p995 = p98;
+        if (p999 < 0) p999 = p995;
         if (p98 == clip) p98 = clip * 0.99975586;
         r.p10 = (float) p10; r.p50 = (float) p50; r.p98 = (float) p98; r.p995 = (float) p995;
         // P159: the bright area's own level beyond the ceiling, for the highlight strength only
@@ -309,6 +336,11 @@ public final class ArkAe {
             double nd = s.nightDim;
             if (nd > 0.01 && Math.abs(nd - 1) > 0.001) ae = Math.pow(ae, nd);                  // 0x72cb4-0x72cd8
             double aeC = Math.max(Math.min(ae, mxB), mnL);                                     // 0x72cdc-0x72d08
+            // P216 (owner, ultrawide over a sunlit deck: «В такой сцене небо не должно темнить», «Нам нужно чтобы оно было не
+            // затемненное»): with real Bento headroom the highlights are kept by the ultrashort frames and the shoulder, so a
+            // bright scene is not pulled down towards the target grey below its captured exposure (ae 0.86 there); the highlight
+            // overflow below may still lower it
+            if (r.hr > 0f && aeC < 1.0) aeC = Math.min(1.0, mxB);
             double aeF = aeC;
             if (p995 > 0.01 && p995 * aeC > s.hlOverflow) {                                    // 0x72d0c-0x72d48
                 double lim = s.hlOverflow / p995;
@@ -359,8 +391,25 @@ public final class ArkAe {
             double effS = Math.max(nf * (s.shadowStr * shadowF + 0.5 * log2(Math.max(deficit, 1))), 0);   // 0x72f7c-0x72fd4
             double e = Math.min(Math.max(p995x * a - bt, 0) / Math.max(bt, 0.5), 0.5);          // 0x72f98-0x72fb8
             double realPeak = a * (p98x * (1 - e) + p995x * e);                                 // 0x72fc0-0x72fd8 (P159: x)
+            double hlCap = s.highlightStr;
+            if (r.hr > 0f) {
+                // P216: a small bright area (a window: 2 % of the frame) holds its brightest structure above p99.5; the peak
+                // goes hrMix of the way (in log) to the p99.9 level, and the strength may reach what brings the real ceiling
+                // to bt in the darkest exposure (the native limit 2 left the x8 range above white). Only for an AREA beyond
+                // the ceiling (0.3 .. 0.8 % of the frame: the bridge window 1.4 %): a light source's glow (the sun over a deck,
+                // 0.12 %) is p99.9 too, and pulling towards it darkened the whole sky (owner: «небо не должно темнить»).
+                double beyondShare = 0;
+                for (double v : st.tail) beyondShare += v;
+                beyondShare /= tot;
+                final double gate = smooth(HR_AREA_FROM, HR_AREA_TO, beyondShare);
+                final double p999x = beyond(0.999, p999, clip, tot, st.tail);
+                final double top = a * p999x, mix = Math.max(0.0, Math.min(1.0, s.hrMix)) * gate;
+                r.hrPull = (float) mix;
+                if (top > realPeak && realPeak > 1e-6) realPeak *= Math.pow(top / realPeak, mix);
+                hlCap = Math.max(hlCap, log2(r.hr * a / Math.max(bt, 1e-3)) / 1.5);
+            }
             double need = realPeak > bt ? log2(realPeak / bt) / 1.5 : 0.0;                      // 0x72fdc-0x72ffc
-            double effH = Math.min(need * Math.max(s.hlBoost, 0), s.highlightStr);              // 0x73038-0x7305c
+            double effH = Math.min(need * Math.max(s.hlBoost, 0), hlCap);                       // 0x73038-0x7305c
             double q = Math.max(1 - spread / Math.max(s.darkPixelThresh * 0.05, 0.001), 0);      // 0x73000-0x73058
             double flat = q * q * (3 - 2 * q);                                                  // 0x73060-0x73068
             if (s.look >= 0 && s.look <= 3) {                                                  // 0x7306c-0x730e0

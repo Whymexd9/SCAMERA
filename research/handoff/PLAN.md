@@ -4857,3 +4857,66 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   RGB output untouched: 6 reference bursts byte-identical, v10_1 / v10_2 differ only after byte 150405120 (= the RGB size, the
   DNG trailer). tools/check_dng_ceiling.cpp (CI). Demo: the owner's two DNGs rewritten with the rule (deliverables/dng-fix/).
 - Open: AsShotNeutral / ForwardMatrix root cause (next X200U log); a 16-bit float DNG option if the shadows still band.
+
+### P216 - Bento highlights above 4 x white: the window of the x8 ultrashort (owner, 2026-10-18, SCA_20261018_091910 on 30949)
+- Owner: the bridge window came out white with an orange smear where stock, ArkCam and ARK show the sea and a crane; «исправь
+  ... даже если я поставлю ультракороткий кадр 16х»; then «результат между ArkCam и стоком ... света более мягкие» and «чтобы не
+  было резких белых пятен».
+- Kept burst replayed on the OPPO (worker 6be17f97): the merge holds the window (sky 3.7, sea 2.4, crane 12-17 x white, the
+  crane's top lines clipped even in the ultrashort: G 8). Lost in the ARK tone (production shaders on the desktop GPU with the
+  log's AE): ArkAe.clip = min(gmax, 4) is the native histogram cap, yet (1) the P154 landing measured the window against 4 and
+  painted it white with the colour of its 12 px ring (the orange smear: the crane's warm rim), (2) the 1.23 kernel's shoulders
+  (everything above 1 into <= 1.35, then a roll-off from 0.5) put 1.5 .. 8 x white on one grey (crane 0.93, sky 0.91), (3) the
+  bounded detail reference min(ae Y, 1) gives no detail above white, (4) effH (P159: p98x / p995x) left the window in the
+  saturated part of the fusion.
+- Fix, only with real headroom (ArkAe.Result.hr: Bento merged and gmax above the cap; the maximum, at most 16 x the clip):
+  the landing on hr; ArkCam 1.58's max-channel Reinhard shoulder on the tonemapper top (libopenhdr_engine: knee 0.6, room
+  0.35 - here 0.5 / 0.4: the knee keeps a crane's clipped lines off 255, the limit a little above white lets a sun climb
+  steadily into its white core); the highlight peak half way (log, ark_hr_mix
+  0.5) from P159's to p99.9 when an AREA lies beyond the ceiling (0.3 .. 0.8 % of the frame; the window 1.4 %), the strength
+  capped by log2(hr ae / bt) / 1.5 instead of 2; a full-size highlight detail term
+  (ark_hr_detail 0.35 of the log contrast against the 2 x 2 grid, -0.03 .. +0.12 L, fading towards white). Without Bento or
+  without data above 4 every value and pixel is as before (hrU 0 render byte-identical on the whole shot).
+- Checked: harness (scratchpad tools/arkwin.py: ScamRgb recovery + ark/low, bracket_dn, gf, box, ab, hlmask, combine on the
+  replayed RGB): window glass p50 0.984 -> 0.939 (ArkCam 0.982, stock 0.872), no pixel at 254, crane / horizon / sea back,
+  rest of the frame unchanged; a x16-like stretch of the same data (gmax 34) gives the same look (p50 0.942). ArkAeTest 5/5
+  (new case), tools/check_ark_headroom.py (new, CI), check_ark_highlights, check_highlight_landing, tone_ops, colour_look,
+  film_lut, ark_ae_gpu, viewfinder_look, dark_fade PASS; glslc on the combine variants. check_ark_tone fails its two synthetic
+  cases identically on main (not in CI).
+- Owner's sun scene (scam_burst-20261018-101655, ultrawide, x4.3 Bento: the ultrashort is at the 0.036 ms minimum, the sun
+  clipped in it, 0.12 % of the frame beyond 4): «В такой сцене небо не должно темнить» - the p99.9 pull (the sun's glow)
+  had darkened the sky by 5 - 12 codes, hence the area gate; now effH as before, sky / sea / deck unchanged, the sun a
+  soft disc rising steadily into white. «Солнце должно быть мягким без каких-либо ореолов» / «внутри солнца есть ореол»:
+  with room 0.3 the rim stood on a 251 plateau with the clipped core (recovered at the white bound, 2.4 x the rim) as a
+  254 dot, and the highlight detail dug a 1 - 2 code trench beside it; now room 0.4 and no darker detail where the
+  neighbourhood is much brighter (ratio < 0.55 .. 0.85: the rim of a light, not texture).
+  «Небо тёмное у обоих вариантов ... не затемненное и мягкое»: the darkening came from ArkAe pulling the bright scene to the
+  target grey (ae 0.861: geo 0.174 > 0.15). With real headroom the meter no longer takes ae below 1 (the captured exposure;
+  the highlight-overflow limit may still lower it): ae 1.0, sky / sea / deck +5 .. +9 codes, 0.04 % of the pixels darker
+  (the rim of the sun's disc). Harness with the shot's vivo ISP matrix (170 -37 -5 / -19 179 -32 / 3 -90 215) / 128. The window-up scene (101853, gmax 3.2 < 4) renders byte-identical.
+  Harness with a radial lens-shading model (log: corner 7.3 / edge 2.4 on the ultrawide, 3.0 / 1.65 on the main) matches
+  the owner's JPEG of the window (p50 0.987 vs 0.984); new p50 0.954.
+- Not yet: a phone shot with the build; the crane's colour where two channels clipped in the ultrashort (recovered neutral at
+  R's level, 2 x its body) stays a hard line in the data.
+
+### P217 - FULLRES 50 / 200 MP come out at 12 MP, yet take as long as 50 / 200 MP (owner, 2026-10-18: «Изучить почему фото в 50
+и 200мп выходят в 12, при этом обработка долгая словно обрабатываются 50 и 200 соответсвенно»)
+- To study. First facts from SCAMERA-debug.log (2) / (3) (X200U, 09:57 - 10:00, SCA_20261018_095801 / 100012 = 3060 x 4080):
+  «HYBRID MOSAIC BINNED: block 2 without remosaic (mosaicRemosaic 0): 35 of 35 frames binned to plain Bayer 4080x3072»,
+  «hybrid output 4080x3072 (scale 0.5)» - «Наш ремозаик» off bins the Quad mosaic, so a 12 MP result is the documented
+  behaviour (P207); the time goes to 34 - 36 full-size frames (N 8 - 10 from the ring + 26 after the shutter, requested 30,
+  «series cut=memory»), the plain-session switch and the worker's reading / binning before the merge (spawn 5.1 s -> f6 18.4 s,
+  shot 23 s; the 10:00 shot 15 s).
+- Questions: should a binned FULLRES shot bin on the sensor (the 12 MP mode) instead of capturing 50 / 200 MP; why 26 frames
+  after the shutter for FULLRES (owner earlier: «для фулреза 1 длинный достаточно», part B); where the worker's 13 s go
+  (reading the memfd, mosaic detection - part B «skip the redundant worker mosaic detection» -, binning); what the UI should
+  say when the remosaic is off (the FULLRES icon promises 50 / 200 MP).
+- Studied (2026-10-18, log (2) 09:58 tele 8160 x 6144, 36 frames of 95 MB, total 22.9 s): the 12 MP is P195 as the owner
+  asked it («отключать наш 2х2 и 4х4 ремозаик чтобы получать фото без него»: every colour block binned, the photo at W/2 x H/2,
+  W/4 x H/4 for Tetra). Where the time goes: 26 frames after the shutter 2.8 s; the burst moved into the shot arena 1.3 s;
+  the worker's kept burst (scam_dev / the owner's «keep burst», scam_burst-*.bin in Download: 3.4 GB) ~7.2 s before it starts;
+  the worker's mosaic detector 0.7 s (the header already says block 2); binning 36 frames 3.2 s; the merge and the tone the rest.
+  Without the kept burst the shot is ~16 s. Part B takes the capture-side costs (one long frame for FULLRES, the arena copy
+  during the capture, no second mosaic detection). Open for the owner: a binned FULLRES gives the sensor's own 12 MP binning
+  in software - whether FULLRES should then capture in the normal (sensor-binned) mode instead (same size, a fraction of
+  the time).

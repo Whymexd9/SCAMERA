@@ -143,6 +143,10 @@ public final class DevKeys {
         k.add(n(post, "hybrid_dn_dark_chroma_hi", "4", Lang.t("Шумодав: цвет в тенях, верхний порог (x1e-4)", "Denoise: colour in the shadows, upper threshold (x1e-4)")));
         k.add(n(post, "hybrid_dn_dark_chroma_lo", "1.5", Lang.t("Шумодав: цвет в тенях, нижний порог (x1e-4)", "Denoise: colour in the shadows, lower threshold (x1e-4)")));
         k.add(n(post, "hybrid_dn_dark_chroma_noise", "0.35", Lang.t("Шумодав: цвет в тенях, доля шума", "Denoise: colour in the shadows, noise share")));
+        k.add(n(post, "hybrid_ark_hr_mix", "0.5", Lang.t("Тон, света Bento выше 4x: пик к p99.9 (доля)", "Tone, Bento highlights above 4x: peak towards p99.9 (share)")));
+        k.add(n(post, "hybrid_ark_hr_knee", "0.5", Lang.t("Тон, света Bento выше 4x: колено плеча (x верх)", "Tone, Bento highlights above 4x: shoulder knee (x top)")));
+        k.add(n(post, "hybrid_ark_hr_room", "0.4", Lang.t("Тон, света Bento выше 4x: запас плеча (x верх)", "Tone, Bento highlights above 4x: shoulder room (x top)")));
+        k.add(n(post, "hybrid_ark_hr_detail", "0.35", Lang.t("Тон, света Bento выше 4x: деталь светов", "Tone, Bento highlights above 4x: highlight detail")));
         k.add(n(post, "hybrid_grain_level", "0.0002", Lang.t("Шумодав: уровень оставляемого зерна", "Denoise: level of the grain left")));
         k.add(n(post, "hybrid_grain_min", "0.12", Lang.t("Шумодав: наименьшая доля возвращаемого зерна", "Denoise: least share of the grain put back")));
         k.add(n(post, "hybrid_texture_g0", null, Lang.t("Текстура: усиление полосы 0 (по умолчанию 1.5, на 8 Elite 1.35)", "Texture: gain of band 0 (default 1.5, 1.35 on the 8 Elite)")));

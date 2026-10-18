@@ -109,7 +109,8 @@ public final class ArkCombine extends Node {
                 final float sigma = Math.max(1f, 0.012f * hlSize.x);
                 glProg.useAssetProgram("ark/hlmask", false);
                 glProg.setTexture("InputBuffer", st.low);
-                glProg.setVar("invClipU", 1f / Math.max(r.clip, 1e-6f));
+                // P216: the share of the REAL ceiling (Bento data above the capped clip): a window at 4-8 x white is not blown
+                glProg.setVar("invClipU", 1f / Math.max(Math.max(r.clip, r.hr), 1e-6f));
                 glProg.setVar("dirU", 0, 0);
                 glProg.drawBlocks(hlB);
                 glProg.useAssetProgram("ark/hlmask", false);
@@ -161,6 +162,13 @@ public final class ArkCombine extends Node {
             glProg.setVar("signedColourU", pipeline.signedRgb ? 1 : 0);
             glProg.setVar("aeU", r.ae);
             glProg.setVar("clipU", r.clip);
+            // P216: real Bento headroom above the capped clip - ArkCam 1.58's shoulder, the landing on the real ceiling and the
+            // highlight detail (not when the full-size image is gone: InputBuffer is then the sharpened luma)
+            final float[] hrTone = ArkTone.headroomTone();
+            glProg.setVar("hrU", r.hr);
+            glProg.setVar("hrKneeU", hrTone[0]);
+            glProg.setVar("hrRoomU", hrTone[1]);
+            glProg.setVar("hrDetailU", st.inputReleased ? 0f : hrTone[2]);
             // P11: the Bento ceiling / roll-off only with real headroom; saturated light fades towards white in the shoulder.
             glProg.setVar("headroomU", ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f ? 1 : 0);
             glProg.setVar("hlWhiteU", Math.max(0f, Math.min(1f, ArkTone.value("hl_white", 0.15f))));
@@ -213,7 +221,7 @@ public final class ArkCombine extends Node {
             if (hlA != null) hlA.close();
             if (hlB != null) hlB.close();
         }
-        Log.i("SCAM_PIPELINE", "ARK combine ae=" + r.ae + " clip=" + r.clip + " headroom=" + (ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f)
+        Log.i("SCAM_PIPELINE", "ARK combine ae=" + r.ae + " clip=" + r.clip + (r.hr > 0f ? " hr=" + r.hr : "") + " headroom=" + (ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f)
                 + " hlWhite=" + ArkTone.value("hl_white", 0.15f) + " hlSoft=" + ArkTone.value("hl_soft", 0.7f) + " grid=" + input.mSize.x + "x" + input.mSize.y
                 + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=arkMid" : " colour=arkLow") + " detail=" + detail
                 + (sharp ? " (ArkLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")

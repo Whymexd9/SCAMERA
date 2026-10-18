@@ -89,7 +89,18 @@ public final class ArkTone {
         s.maxEv = value("agx_max_ev", 3.5f);
         s.sat = value("agx_sat", 1.0f);
         s.ev = value("agx_ev", 0.30f);
+        // P216: the Bento ultrashort frames merged - data above the native ceiling of 4 is the shot's real highlight range
+        s.bentoHeadroom = ScamHybridBurst.lastBentoApplied;
+        s.hrMix = Math.max(0f, Math.min(1f, value("hr_mix", 0.5f)));
         return s;
+    }
+
+    /**
+     * P216: ArkCombine's handling of real Bento headroom - the shoulder knee and room (x the tonemapper top) and the share of the
+     * full-size highlight contrast kept (scam_dev hybrid_ark_hr_knee / _room / _detail).
+     */
+    static float[] headroomTone() {
+        return new float[]{value("hr_knee", 0.5f), value("hr_room", 0.4f), Math.max(0f, value("hr_detail", 0.35f))};
     }
 
     /**

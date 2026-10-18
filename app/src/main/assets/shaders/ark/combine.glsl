@@ -82,6 +82,14 @@ uniform vec4 agxAU;                 // slope, shoulder power, toe power, saturat
 uniform vec4 agxBU;                 // min EV, max EV, EV, look; all 0 (unset) -> -8.5, 3.5, 0.3, 4
 uniform int ditherU;                // 1 = interleaved-gradient dither +-0.5 LSB (as the kernel); unset -> none
 uniform int headroomU;              // 1: real headroom above 1 (clipped RAW recovered / Bento); 0: the excess is WB headroom
+// P216: the real ceiling of Bento data above the capped clip (ArkAe hr; 0 = none: the kernel's ceiling and roll-off below).
+// With it the highlights go through ArkCam 1.58's shoulder on the tonemapper top instead of the 1.23 kernel's two shoulders
+// (all above 1 into <= 1.35, then a roll-off from 0.5), which put everything from 1.5 to 8 x white on one grey; the landing
+// on white follows this ceiling; hrDetailU > 0 adds the full-size highlight detail the bounded detail reference drops.
+uniform float hrU;
+uniform float hrKneeU;              // shoulder knee x the tonemapper top; <= 0 -> 0.5 (ArkCam 1.58 hdr_shoulder_knee: 0.6)
+uniform float hrRoomU;              // shoulder headroom x the top; <= 0 -> 0.4 (hdr_shoulder_headroom: 0.35)
+uniform float hrDetailU;            // highlight detail: share of the full-size log contrast kept in OKLab L (0 = off)
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
 #if HL_LANDING == 1
 uniform float hlSoftU;              // P154 highlight landing: where it starts below the data ceiling (fraction, 0 = off)
@@ -438,9 +446,11 @@ void main() {
     float satLight = (max3(lin) - min(lin.r, min(lin.g, lin.b))) / max(max3(lin), 0.000001);
     float satW = smoothstep(0.50, 0.85, satLight);
     bool headroom = clipCeiling > 1.05 && headroomU != 0;
+    bool wide = hrU > clipCeiling;
+    float landCeil = wide ? hrU : clipCeiling;
     // Bento headroom ceiling: everything above 1 softly into <= 1.35 [:1515-1526]; only with real headroom (clipped data
     // or Bento), not for the WB headroom of unclipped saturated colour.
-    if (headroom) {
+    if (headroom && !wide) {
         float mf = mix(max3(lin), dot(lin, LUMA), satW);
         if (mf > 1.0) {
             float ex = mf - 1.0;
@@ -553,7 +563,26 @@ void main() {
     }
 #endif
     // Bento roll-off of the linear maximum above 0.5 [:1673-1681] (same shoulder measure as the ceiling)
-    if (headroom) {
+    if (wide) {
+        // P216: ArkCam 1.58 (libopenhdr_engine, «RAWBracket's max-channel Reinhard shoulder»): above knee x the top of the
+        // tonemapper softly into <= (knee + room) x top, the same measure as the kernel's shoulders (P11). Knee 0.5 (ArkCam
+        // 0.6): the bright end starts rising towards white earlier, so a crane's clipped lines do not jump to 255 (owner: «нужно
+        // чтобы не было резких белых пятен»); room 0.4: the limit lies a little above the AgX white, so the sun's disc climbs
+        // steadily into a white core - with 0.3 its rim stood on a 251 plateau and the clipped core sat in it as a ring
+        // (owner: «Солнце должно быть мягким без каких-либо ореолов»).
+#if TONE_OP == 1
+        float top = 4.0;
+#else
+        float top = 0.18 * exp2(agxB.y + max(agxB.z, 0.0));
+#endif
+        float knee = top * (hrKneeU > 0.0 ? hrKneeU : 0.5), room = top * (hrRoomU > 0.0 ? hrRoomU : 0.4);
+        float ml = mix(max3(scene), dot(scene, LUMA), satW);
+        if (ml > knee) {
+            float ex = ml - knee;
+            scene *= (knee + ex * room / (ex + room)) / ml;
+        }
+    }
+    if (headroom && !wide) {
         float ml = mix(max3(scene), dot(scene, LUMA), satW);
         if (ml > 0.5) {
             float ex = ml - 0.5;
@@ -664,7 +693,27 @@ void main() {
         delta *= compression * compression;
     }
     float lBefore = post.x;
-    post.x = clamp(post.x + delta * (1.0 - smoothstep(0.75, 1.0, post.x) * 0.5), 0.0001, 1.0);
+    // P216: the bounded reference (min(ae Y, 1)) gives no detail above white, and the colour / fusion grid is the 2 x 2 box:
+    // with real headroom a bright pixel keeps hrDetailU of its log contrast against that grid (L ~ Y^(1/3)), only where it
+    // and its neighbourhood are both above white (no trench along a dark edge next to a light), limited to -0.03 .. +0.12 L
+    // (asymmetric like the kernel's full-resolution delta: a darker side of 0.12 drew 1 px trenches beside the clipped
+    // highlight lines of a crane, the owner wants the highlights soft).
+    float dHL = 0.0;
+    if (wide && hrDetailU > 0.0) {
+        float yF = dot(sceneLinear(xy, size), LUMA) * ae;
+        float yL = yLow * ae;
+        float gate = smoothstep(0.8, 1.6, min(yF, yL));
+        if (gate > 0.0) {
+            float ratio = max(yF, 0.000001) / max(yL, 0.000001);
+            float dl = hrDetailU / 3.0 * log(ratio);
+            // a pixel much darker than its neighbourhood is the rim of a light (the sun's disc beside its clipped core, the
+            // sky beside a crane's clipped line), not texture: no trench there - it drew a ring inside the sun
+            if (dl < 0.0) dl *= smoothstep(0.55, 0.85, ratio);
+            dHL = gate * clamp(dl, -0.03, 0.12);
+        }
+    }
+    if (dHL > 0.0) dHL *= 1.0 - smoothstep(0.85, 1.0, post.x);   // never pushes a highlight onto white
+    post.x = clamp(post.x + delta * (1.0 - smoothstep(0.75, 1.0, post.x) * 0.5) + dHL * post.x, 0.0001, 1.0);
     // The kernel keeps a, b while the delta moves L. At a strong edge the colour is the B-spline mix of both sides, and
     // on the dark side the delta pulls L far down: the same a, b at a low L read as a saturated purple/green line. Scaling
     // a, b with L there (a uniform linear scale of the colour) keeps the hue and the relative chroma instead.
@@ -703,12 +752,12 @@ void main() {
     if (headroomU != 0 && hlSoftU > 0.0) {
         float rBlur = texture(ArkHl, (vec2(xy) + 0.5) / vec2(size)).r;
         float t = clamp((rBlur - (1.0 - hlSoftU)) / hlSoftU, 0.0, 1.0);
-        float landing = (1.0 - (1.0 - t) * (1.0 - t)) * smoothstep(0.15, 0.45, max3(orig) / clipCeiling);
+        float landing = (1.0 - (1.0 - t) * (1.0 - t)) * smoothstep(0.15, 0.45, max3(orig) / landCeil);
         if (landing > 0.0) {
             // P159: a coloured light lands on ITS colour at full brightness, taken from the colour source before the tone
             // (the shoulder had bleached a blown orange to pale pink: the inside of a cone on an LED screen); a near-neutral
             // one (linear saturation below ~0.1) on pure white. P163: the light's colour from its neighbourhood.
-            vec3 sceneTone = landingColour(xy, fc, clipCeiling, max(orig, vec3(0.0)));
+            vec3 sceneTone = landingColour(xy, fc, landCeil, max(orig, vec3(0.0)));
             vec3 sN = clamp(sceneTone / max(max3(sceneTone), 0.000001), 0.0, 1.0);
             float satS = 1.0 - min(sN.r, min(sN.g, sN.b));
 #if P3_OUT == 1
