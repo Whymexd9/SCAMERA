@@ -7,7 +7,10 @@
 //   - a strong row-wise flicker (sinus, G +-45 %) that the gain check calls inconsistent: corrected, then consistent, not refused;
 //   - a column-wise ramp (no row profile can explain it): no correction (no made-up colour profile), refused;
 //   - the native sites corrected at upload (HybridMosaicNative::fixRows, Quad sensor layout) agree with the binned correction;
-//   - mosaicUsRows 0: nothing measured, nothing changed.
+//   - mosaicUsRows 0: nothing measured, nothing changed;
+//   - P212d: the green row-profile line the app fits the lamp flicker to (RowFlicker): a 5 % flicker at 100 / 120 Hz over a
+//     40.11 ms skew (4.0 / 4.8 cycles a frame) in every counting band, with and without a 1 px shift of the scene; a flat profile
+//     without flicker; the frames as before (the line is a report only).
 // scam-hybrid.h is not self-contained: the worker includes scam-capture.h first.
 #include "../app/src/main/cpp/scam-capture.h"
 #include "../app/src/main/cpp/scam-hybrid.h"
@@ -25,10 +28,23 @@ static std::mt19937 rng(11);
 
 static int colourOf(int x, int y) { const int p = ((y & 1) << 1) | (x & 1); return p == cfa ? 0 : p == (cfa ^ 3) ? 2 : 1; }
 // scene above black at gain 1 (base): 120..760 DN, colour R 0.5 / G 1 / B 0.7 of it
+static float level(int x, int y) { return 120.f + 640.f * (0.5f + 0.5f * std::sin(x * 0.031f) * std::cos(y * 0.027f)); }
+static float colourScale(int c) { return c == 0 ? 0.5f : c == 2 ? 0.7f : 1.f; }
 static float scene(int x, int y) {
-    const float s = 120.f + 640.f * (0.5f + 0.5f * std::sin(x * 0.031f) * std::cos(y * 0.027f));
+    const float s = level(x, y);
     const int c = colourOf(x, y);
-    return s * (c == 0 ? 0.5f : c == 2 ? 0.7f : 1.f);
+    return s * colourScale(c);
+}
+// P212d: W x H, the scene moved dx px to the left (each site keeps its own colour)
+template <class F> static std::vector<uint16_t> frameOf(int W, int H, float gain, F factor, int dx) {
+    std::normal_distribution<float> noise(0.f, 0.8f);
+    std::vector<uint16_t> v(size_t(W) * H);
+    for (int y = 0; y < H; ++y)
+        for (int x = 0; x < W; ++x) {
+            const int c = colourOf(x, y);
+            v[size_t(y) * W + x] = uint16_t(std::lround(std::clamp(black + level(x + dx, y) * colourScale(c) * gain * factor(c, x, y) + noise(rng), 0.f, white)));
+        }
+    return v;
 }
 template <class F> static std::vector<uint16_t> frame(float gain, F factor) {
     std::normal_distribution<float> noise(0.f, 0.8f);
@@ -123,6 +139,36 @@ int main() {
         lines.clear();
         const HybridUsCheck c = hybridUsRowsCheck(in, 1, base.data(), us.data(), w, h, off, "CHECK", report);
         assert(!c.corrected && !c.refused && !c.rows.measured && lines.empty() && us == before);
+    }
+    std::printf("row profile line for the flicker vote (P212d; 64 bands as a native binned frame):\n");
+    {
+        const int W = 512, H = 2048;
+        const float skew = 0.04011f; // the PHY110's native modes
+        const auto base2 = frameOf(W, H, 1.f, [](int, int, int) { return 1.f; }, 0);
+        struct Case { int hz, dx; };
+        for (const Case k : {Case{0, 0}, Case{100, 0}, Case{120, 0}, Case{100, 1}, Case{120, 1}}) {
+            auto flick = [k, skew](int, int, int y) {
+                return k.hz == 0 ? 1.f : 1.f + 0.05f * std::cos(6.2831853f * float(k.hz) * skew * (float(y) + 0.5f) / float(H) + 0.7f);
+            };
+            auto us = frameOf(W, H, expected, flick, k.dx);
+            const auto before = us;
+            lines.clear();
+            std::printf(" %d Hz, shift %d px:\n", k.hz, k.dx);
+            const HybridUsCheck c = hybridUsRowsCheck(in, 1, base2.data(), us.data(), W, H, t, "CHECK", report);
+            assert(c.rows.measured && c.rows.bands == 64 && int(c.rows.g.size()) == 64 && !c.rows.apply && us == before);
+            std::string line;
+            for (const auto& l : lines) if (l.find(" row profile 64 bands G ") != std::string::npos) line = l;
+            assert(!line.empty() && line.find("CHECK: ultrashort frame 1 row profile 64 bands G") == 0);
+            int counted = 0;
+            float worst = 0.f;
+            for (int b = 0; b < 64; ++b) {
+                if (!std::isfinite(c.rows.g[b])) continue;
+                ++counted;
+                worst = std::max(worst, std::abs(c.rows.g[b] - flick(1, 0, int((b + 0.5f) * H / 64))));
+            }
+            std::printf("  %d bands counted, largest departure from the flicker %.2f %%\n", counted, 100.0 * worst);
+            assert(counted >= 48 && worst < 0.015f);
+        }
     }
     std::printf("check_hybrid_us_rows: OK\n");
     return 0;

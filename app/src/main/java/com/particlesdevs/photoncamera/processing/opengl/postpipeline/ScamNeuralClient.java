@@ -274,9 +274,12 @@ public final class ScamNeuralClient {
         // W1.5: apply (the in-memory report is current at once; the disk write leaves the shot's path).
         prefs.edit().putString("report",report.toString()).putBoolean("complete",false).apply();
         final long[] lastReportWriteMs={startMs};
+        // P212d: the ultrashort frames' row profiles (the worker's P197 row check) for the flicker vote, whatever the report's length
+        final java.util.List<String> rowProfiles=new java.util.ArrayList<>();
         Consumer<String> log=line->{
             synchronized(report){
                 if(report.length()<128000)report.append(line).append('\n');
+                if(line.indexOf(" row profile ")>0&&line.indexOf(" bands G ")>0&&rowProfiles.size()<16)rowProfiles.add(line);
                 long now=android.os.SystemClock.elapsedRealtime();
                 // Keep every line in memory; batch disk commits so the reader
                 // cannot stall the native stdout pipe on frequent progress logs.
@@ -570,6 +573,7 @@ public final class ScamNeuralClient {
                 // W1.11: apply and the folder deleted on the cleanup thread (both were on the shot's path, 25 ms).
                 prefs.edit().putString("report",report.toString()).putBoolean("complete",true).apply();
                 lastJobReport=report.toString();
+                lastRowProfiles=java.util.Collections.unmodifiableList(new java.util.ArrayList<>(rowProfiles));
             }
             ScamDiagnostics.nativeFiles(dir,report.toString());
             deleteTreeLater(dir);
@@ -578,6 +582,8 @@ public final class ScamNeuralClient {
 
     /** P27: the report of the last merge job (ScamHybridBurst reads how the worker ended to pick its fallback tier). */
     public static volatile String lastJobReport;
+    /** P212d: the row-profile lines of the last merge job (capture.RowFlicker votes on the lamp flicker from them). */
+    public static volatile java.util.List<String> lastRowProfiles=java.util.Collections.emptyList();
     /** P27: text put at the top of the next merge job's report (the failed first attempt of a retry). */
     public static volatile String carryReport;
 

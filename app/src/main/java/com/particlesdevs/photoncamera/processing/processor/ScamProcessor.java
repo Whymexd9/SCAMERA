@@ -521,6 +521,8 @@ public class ScamProcessor extends ProcessorBase {
                 {
                     processingStage = "Hybrid merge";
                     com.particlesdevs.photoncamera.processing.ShotTimeline.mark("hybrid_call");
+                    // P212d: only this shot's merge jobs give row profiles (a shot merged without the worker gives none)
+                    com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamNeuralClient.lastRowProfiles = java.util.Collections.emptyList();
                     scamOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.process(
                             ScameraApp.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
                     // P190: a FULLRES series the merge cut (the worker, a fallback tier, the memory budget) is said aloud
@@ -529,6 +531,11 @@ public class ScamProcessor extends ProcessorBase {
                         try { processingEventsListener.onProcessingChanged(notice); }
                         catch (RuntimeException e) { Log.d(TAG, "series notice: " + e); }
                     }
+                    // P212d: the ultrashort frames' row profiles vote on the lamp flicker (MainsFlicker «Авто»), at the reference
+                    // frame's rolling shutter skew; nothing happens when the burst had none (no ultrashort frame, no profile)
+                    com.particlesdevs.photoncamera.capture.RowFlicker.afterMerge(
+                            com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamNeuralClient.lastRowProfiles,
+                            rollingSkew(referenceMetadata));
                 }
                 scamOutputParameters=processingParameters;
                 shotClipFlags=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamRgb.lastClipFlags;
@@ -841,6 +848,12 @@ public class ScamProcessor extends ProcessorBase {
         p.customNeutral = own.neutral;
         p.ownNeutral = true;
         p.ReCalcColor(true, meta);
+    }
+
+    /** P212d: the rolling shutter skew of a result (ns), null when the HAL gives none. */
+    private static Long rollingSkew(CaptureResult r) {
+        try { return r == null ? null : r.get(CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW); }
+        catch (RuntimeException e) { return null; }
     }
 
     /** The shortest exposure has the most pixels at the dark floor, so it bounds black best. */

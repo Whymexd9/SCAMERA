@@ -173,6 +173,8 @@ public final class DevKeys {
         // P212d: the lamp flicker from evidence (MainsFlicker, RowFlicker)
         k.add(s(cap, "native_ae_flicker_both", true, Lang.t("OPPO FULLRES, своя AE: пока частота мерцания неизвестна, выдержка от 30 мс — та из 30 / 33.3 / 40 / 41.7 мс, что меньше всего полосит и при 100, и при 120 Гц. Выкл — по частоте региона",
                 "OPPO FULLRES own AE: while the flicker is unknown, a shutter from 30 ms is the one of 30 / 33.3 / 40 / 41.7 ms that bands least at both 100 and 120 Hz. Off: by the region's mains")));
+        k.add(s(cap, "flicker_rows", true, Lang.t("Частота мерцания «Авто»: два снимка подряд с одинаковым голосом профиля строк ультракороткого кадра задают частоту. Выкл — голос только в логе",
+                "Flicker frequency Auto: two shots in a row whose ultrashort row profile votes alike set the frequency. Off: the vote is only logged")));
         // P198: a native 50 MP FULLRES shot from the ZSL ring (200 MP stays serial PSL)
         k.add(s(cap, "fullres_zsl", true, Lang.t("FULLRES 50 Мп: кадры из ZSL-кольца до нажатия (200 Мп всегда после нажатия). Выкл — вся серия после нажатия",
                 "FULLRES 50 MP: frames from the ZSL ring before the press (200 MP always after it). Off: the whole series after the press")));

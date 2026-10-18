@@ -5431,6 +5431,9 @@ inline int hybridApplyMeasuredGains(HybridInput& in,const std::function<void(con
 struct HybridUsRows {
     int bands=0;float rows=0;long tiles=0;int measuredBands[3]{};bool measured=false,apply=false;float maxDev=0;
     std::array<std::vector<float>,3> f; // per band: the factor of R, G, B (1 = as captured)
+    // P212d (report only, no pixel depends on it): per band the median green level ratio us / base over the exposure ratio - the
+    // rolling-shutter flicker profile the app fits 100 / 120 Hz to (RowFlicker, MainsFlicker); NaN where the band does not count
+    std::vector<float> g;
     // factor of colour c at row u (px of the measured frame, centres at integers), linear between band centres, flat beyond
     float at(int c,float u) const {
         const float t=(u+0.5f)*float(bands)/rows-0.5f;
@@ -5491,6 +5494,8 @@ inline HybridUsRows hybridUltrashortRows(const uint16_t* base,const uint16_t* us
         if(agree)have.push_back(k);
     }
     for(int c=0;c<3;++c)r.measuredBands[c]=int(have.size());
+    r.g.assign(nb,std::numeric_limits<float>::quiet_NaN()); // P212d: the profile line (hybridUsRowsCheck)
+    for(int k:have)r.g[k]=med[1][k]/M;
     if(2*int(have.size())<nb)return r;
     r.measured=true;
     std::array<std::vector<float>,3> q;for(auto& v:q)v.assign(nb,1.f);
@@ -5549,6 +5554,14 @@ inline HybridUsCheck hybridUsRowsCheck(const HybridInput& input,int f,const uint
             tag.c_str(),f,r.bands,r.measuredBands[1],r.tiles,lo[0],hi[0],lo[1],hi[1],lo[2],hi[2],100.0*r.maxDev,r.apply?"corrected (rolling-shutter flicker)":"as captured (within the limit)");
     }
     if(report)report(line);
+    // P212d: the green profile of a measured frame for the app's flicker vote (RowFlicker: 100 / 120 Hz at the rolling shutter
+    // skew), "-" for a band that does not count; a report line only
+    if(report&&r.measured&&int(r.g.size())==r.bands){
+        std::string p=tag+": ultrashort frame "+std::to_string(f)+" row profile "+std::to_string(r.bands)+" bands G";
+        char v[24];
+        for(float g:r.g){if(std::isfinite(g)){std::snprintf(v,sizeof(v)," %.4f",g);p+=v;}else p+=" -";}
+        report(p);
+    }
     if(r.apply){hybridUsRowsApply(r,us,w,h,input.cfa,input.black,input.white,0.f);res.corrected=true;}
     // the merge's own gain check on the pair as it will be merged
     HybridInput pair;pair.w=w;pair.h=h;pair.cfa=input.cfa;pair.white=input.white;pair.black=input.black;
