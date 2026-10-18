@@ -373,8 +373,9 @@ public class CameraUIViewImpl implements CameraUIView {
     public class PhotoMotionModeState implements CameraModeState {
         @Override
         public void reConfigureModeViews(CameraMode mode) {
-            cameraFragment.cameraFragmentBinding.layoutViewfinder.frameTimer.setVisibility(View.VISIBLE);
-            cameraFragment.cameraFragmentBinding.layoutViewfinder.captureProgressBar.setVisibility(View.VISIBLE);
+            // SIMPLE_UI §1: one progress indicator (the thumbnail's ring); the burst time is a line under the shutter
+            cameraFragment.cameraFragmentBinding.layoutViewfinder.frameTimer.setVisibility(View.GONE);
+            cameraFragment.cameraFragmentBinding.layoutViewfinder.captureProgressBar.setVisibility(View.GONE);
             setVideoRecordingInfoVisible(false);
             mShutterButton.setBackground(shutterRing);
 

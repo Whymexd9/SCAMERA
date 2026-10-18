@@ -16,7 +16,8 @@ import com.particlesdevs.photoncamera.util.Log;
  * SIMPLE_UI §1 (owner: «размер фото — переключатель FULLRES, всегда виден в видоискателе»): the photo size of the current module,
  * 12 Мп (the usual output), 50 Мп (FULLRES) and 200 Мп (the X200 Ultra's tele 200 MP), as the top bar's size button and the
  * «Размер фото» sheet show and step them. The switch itself is the one FullResButton had (P108 / P179 / P181): the same
- * SensorModeSwitches call, the same module-profile sync and the same session restart; only its place changed.
+ * SensorModeSwitches call, the same module-profile sync and the same session restart; only its place changed (the
+ * FullResButton overlay above the manual strip is gone).
  */
 public final class PhotoSize {
     private PhotoSize() {}
@@ -38,6 +39,12 @@ public final class PhotoSize {
         boundCamera = id == null ? "" : id;
         // P181: the FULLRES profiles of this camera's modules
         com.particlesdevs.photoncamera.settings.FullResProfiles.remember(id, fullHere);
+    }
+
+    /** Tests: the sizes of the bound module without its characteristics. */
+    static void availableForTest(boolean full, String camera) {
+        fullHere = full;
+        boundCamera = camera == null ? "" : camera;
     }
 
     /** 50 Мп exists on this module. */
