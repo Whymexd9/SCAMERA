@@ -170,6 +170,33 @@ int main() {
             assert(counted >= 48 && worst < 0.015f);
         }
     }
+    std::printf("plain Bayer burst (owner, 2026-10-19: the 12 MP lamp painted blue - the check in every mode):\n");
+    {
+        auto flick = [](int c, int, int y) { const float s = float(y) / float(h - 1), a = c == 0 ? 0.6f : c == 1 ? 0.45f : 0.3f; return 1.f + a * std::sin(6.2831853f * 2.f * s); };
+        const auto usF = frame(expected, flick), usC = frame(expected, [](int, int, int) { return 1.f; });
+        const auto usX = frame(expected, [](int, int x, int) { return 0.4f + 1.2f * float(x) / float(w - 1); });
+        const auto keepF = usF, keepC = usC;
+        HybridInput plain; plain.w = w; plain.h = h; plain.cfa = cfa; plain.white = white; plain.black = in.black;
+        HybridFrame b0; b0.role = kRoleNormal; b0.exposure = 1.f; b0.raw = base.data(); plain.frames.push_back(b0);
+        for (const auto* raw : {&usF, &usC, &usX}) { HybridFrame u; u.role = kRoleUltrashort; u.exposure = expected; u.raw = raw->data(); plain.frames.push_back(u); }
+        std::vector<std::vector<uint16_t>> own;
+        lines.clear();
+        const HybridInput out = hybridPlainUsRows(plain, t, own, report);
+        assert(out.usRowsChecked);
+        assert(out.frames.size() == 3); // the column ramp: refused (no row profile explains it)
+        assert(own.size() == 1 && out.frames[1].raw == own[0].data()); // the flickering frame: a corrected copy
+        assert(out.frames[2].raw == usC.data()); // the consistent frame: untouched, no copy
+        assert(usF == keepF && usC == keepC); // the mapped frames are never written
+        HybridInput pair; pair.w = w; pair.h = h; pair.cfa = cfa; pair.white = white; pair.black = in.black;
+        pair.frames = {out.frames[0], out.frames[1]};
+        const HybridGain g = hybridMeasuredGain(pair, 1);
+        std::printf("  corrected copy: mad %.1f %% on %d tiles\n", 100.0 * g.mad, g.tiles);
+        assert(g.ok && g.mad < 0.05f);
+        HybridTuning off; off.mosaicUsRows = 0;
+        std::vector<std::vector<uint16_t>> none;
+        const HybridInput same = hybridPlainUsRows(plain, off, none, report);
+        assert(same.frames.size() == 4 && none.empty() && same.frames[1].raw == usF.data());
+    }
     std::printf("check_hybrid_us_rows: OK\n");
     return 0;
 }

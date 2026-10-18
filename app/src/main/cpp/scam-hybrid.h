@@ -74,6 +74,9 @@ struct HybridInput {
     // Sub-frames of a colour-block mosaic (P22): frames[k*subFrames + s] are the b² plain-Bayer sub-frames of real frame k
     // (hybridReconstructMosaic); 0 = ordinary frames.
     int subFrames=0;
+    // The ultrashort frames went through the row check already (hybridUsRowsCheck: the mosaic paths on their binned frames, the
+    // plain path once in hybridReconstruct): no second check.
+    bool usRowsChecked=false;
 };
 
 // Tuning (SCAM-like; a "key value" text file in the job dir or the external files dir overrides it).
@@ -5679,7 +5682,9 @@ inline int hybridApplyMeasuredGains(HybridInput& in,const std::function<void(con
 //      no Bento from it - the base's clipped highlight stays (clip flags, highlight recovery: neutral white) - in every Bento mode,
 //      as the motion refusal (bentoMotionMax): "forced" must not paint with a frame the data contradicts.
 // A burst without an ultrashort frame, and one whose ultrashort frame is within 8 % in every band and consistent, merges byte for
-// byte as before (new report lines only). The plain Bayer merge (hybridReconstruct on a plain burst) is not touched.
+// byte as before (new report lines only).
+// Owner, 2026-10-19 (X200 Ultra, 12 MP, a 50 Hz ceiling lamp painted light blue; «исправь это во всех режимах»): the plain Bayer
+// merge now runs the same check on its ultrashort frames (hybridPlainUsRows, from hybridReconstruct), so every mode does.
 struct HybridUsRows {
     int bands=0;float rows=0;long tiles=0;int measuredBands[3]{};bool measured=false,apply=false;float maxDev=0;
     std::array<std::vector<float>,3> f; // per band: the factor of R, G, B (1 = as captured)
@@ -5831,6 +5836,61 @@ inline HybridUsCheck hybridUsRowsCheck(const HybridInput& input,int f,const uint
         report(line);
     }
     return res;
+}
+
+// The plain Bayer burst's ultrashort frames through steps 1-3 above (owner, 2026-10-19: «исправь это во всех режимах»), on the
+// full-resolution frames against the base: measured first in place (the frames are read-only, mapped); a frame copied only when
+// its rows need the correction, and above kPlainUsCopyPixels (a 200 MP frame) such a frame is refused instead of copied. The
+// returned input points the corrected frames at `own` (kept alive by the caller) and leaves the refused ones out; frames whose
+// rows agree are untouched (the merge as before).
+constexpr int64_t kPlainUsCopyPixels=int64_t(64)<<20;
+inline HybridInput hybridPlainUsRows(const HybridInput& input,const HybridTuning& t,std::vector<std::vector<uint16_t>>& own,
+                                     const std::function<void(const std::string&)>& report){
+    HybridInput out=input;out.usRowsChecked=true;
+    if(!t.mosaicUsRows||input.frames.size()<2)return out;
+    const int w=input.w,h=input.h;
+    const size_t pix=size_t(w)*size_t(h);
+    const uint16_t* base=input.frames[0].raw;
+    std::vector<bool> drop(input.frames.size(),false);
+    char line[400];
+    for(size_t f=1;f<input.frames.size();++f){
+        if(input.frames[f].role!=kRoleUltrashort||!input.frames[f].raw)continue;
+        const HybridUsRows r=hybridUltrashortRows(base,input.frames[f].raw,w,h,input.cfa,input.black,input.white,
+                                                  input.frames[f].exposure,std::max(0.f,t.mosaicUsRowsMin));
+        if(!r.apply){
+            // within the limit (or no profile): the merge's own gain check as the mosaic paths do on the frame as captured
+            HybridInput pair;pair.w=w;pair.h=h;pair.cfa=input.cfa;pair.white=input.white;pair.black=input.black;
+            pair.frames.push_back(input.frames[0]);pair.frames.push_back(input.frames[f]);
+            const HybridGain g=hybridMeasuredGain(pair,1);
+            if(r.measured){
+                std::snprintf(line,sizeof(line),"HYBRID PLAIN: ultrashort frame %d rows against the base: %d bands (%d agreeing), largest %.1f %% -> as captured",
+                    int(f),r.bands,r.measuredBands[1],100.0*r.maxDev);
+                if(report)report(line);
+            }
+            if(g.tiles>=kGainMinTiles&&!g.ok){
+                drop[f]=true;
+                std::snprintf(line,sizeof(line),"HYBRID PLAIN: ultrashort frame %d refused: ratios to the base inconsistent (measured %.4f, mad %.1f %% on %d tiles): no Bento from it, the clipped base stays (highlight recovery)",
+                    int(f),g.measured,100.0*g.mad,g.tiles);
+                if(report)report(line);
+            }
+            continue;
+        }
+        if(int64_t(pix)>kPlainUsCopyPixels){
+            drop[f]=true;
+            std::snprintf(line,sizeof(line),"HYBRID PLAIN: ultrashort frame %d rows against the base: largest %.1f %% (rolling-shutter flicker) on a %lld MP frame: refused, the clipped base stays",
+                int(f),100.0*r.maxDev,(long long)(pix>>20));
+            if(report)report(line);
+            continue;
+        }
+        own.emplace_back(input.frames[f].raw,input.frames[f].raw+pix);
+        const HybridUsCheck c=hybridUsRowsCheck(input,int(f),base,own.back().data(),w,h,t,"HYBRID PLAIN",report);
+        if(c.refused)drop[f]=true;
+        else out.frames[f].raw=own.back().data();
+    }
+    std::vector<HybridFrame> kept;
+    for(size_t f=0;f<out.frames.size();++f)if(!drop[f])kept.push_back(out.frames[f]);
+    out.frames=std::move(kept);
+    return out;
 }
 
 // The merge. `alignment` returns one backward homography per slot of a 7-slot Burst (slot 0 = reference);
@@ -6029,6 +6089,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             return hybridReconstructMosaicNative(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
         if(block>1&&tune.mosaicPath==1)report("HYBRID MOSAIC NATIVE: Tetra stays on the sub-frame split (mosaicTetra 0)");
         if(block>1)return hybridReconstructMosaic(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
+    }
+    // Owner, 2026-10-19 («исправь это во всех режимах»): a plain Bayer burst's ultrashort frames through the row check as the mosaic
+    // paths' (their binned / native / split merges arrive here checked or with their own preset / native data)
+    if(!input.usRowsChecked&&!native&&!preset&&input.subFrames<=1&&tune.mosaicUsRows){
+        bool anyUs=false;
+        for(size_t f=1;f<input.frames.size();++f)anyUs|=input.frames[f].role==kRoleUltrashort;
+        if(anyUs){
+            std::vector<std::vector<uint16_t>> own;
+            const HybridInput checked=hybridPlainUsRows(input,tune,own,report);
+            return hybridReconstruct(checked,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
+        }
     }
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
@@ -8905,7 +8976,7 @@ inline std::vector<float> hybridReconstructMosaicBinned(const HybridInput& input
     // ---- the binned burst through the plain merge
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
     bin.mergedDng=input.mergedDng;bin.clipFlags=input.clipFlags;bin.noEffMap=input.noEffMap;bin.grid=gridOut;bin.mosaic=1;bin.subFrames=0;
-    bin.strict2x=input.strict2x;
+    bin.strict2x=input.strict2x;bin.usRowsChecked=true;
     for(size_t k=0;k<pick.size();++k){
         if(usRefused[k])continue; // P197
         HybridFrame v=input.frames[pick[k]];

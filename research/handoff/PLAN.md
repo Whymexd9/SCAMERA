@@ -5779,3 +5779,15 @@ pro mist, glimmer glass и других подобных фильтров у н�
 - Next: the physical camera opened alone vs the stock's logical camera 6 (AF of the logical SAT use case), OIS on the physical
   request, the session parameters; a fallback if the HAL stays parked at the near limit in the dark (our contrast sweep on the
   preview, or the hyperfocal distance).
+
+### P253 - a flickering lamp painted light blue in a 12 MP photo (owner, 2026-10-19, X200 Ultra build 31113: «исправь работу этой настройки» (Мерцание ламп), «ты смотри на лампу справа сверху», «исправь это во всех режимах»)
+- The shot: ISO 245, 10 ms base (whole 100 Hz periods: no bands in the frame), Route SHDR, plain 12 MP. The clipped ceiling lamp
+  came from the ultrashort frame (Bento), read row by row through the lamp's 100 Hz flicker (P197's cause): its colour wrong.
+  P197 had added the row check to the mosaic paths only («the plain 12 MP path is unchanged by design»).
+- DONE 2026-10-19 (fc7ef964): hybridReconstruct runs the same check (hybridPlainUsRows) on a plain burst's ultrashort frames -
+  measured in place, a corrected copy only when a band departs by 8 % or more (above 64 MP refused instead of copied), refused
+  when the gain check stays inconsistent; HybridInput.usRowsChecked keeps the binned path from checking twice. Every mode now.
+- Checks: tools/check_hybrid_us_rows.cpp plain case (row flicker corrected to MAD 2.6 %, consistent frame untouched without a
+  copy, column ramp refused, mosaicUsRows 0 unchanged) - NDK build run on the OPPO: OK. OPPO replays old (fa9941fc) vs new: the
+  8 references and q1x / uw / hh_1 / arena11 / syn_b2m bit for bit; uw (plain, 2 ultrashort): «HYBRID PLAIN ... 2.5 % -> as
+  captured». Phone: a 12 MP shot of a flickering lamp on the X200 Ultra (log line «HYBRID PLAIN»).
