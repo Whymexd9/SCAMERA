@@ -4839,3 +4839,21 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   mode used is logged. Description says so. SessionOperationModeTest (CI list).
 - The test phone still holds 32777 on its 1x module with FULLRES on (snapcam 30938, old code): opening it would panic again
   until the setting is 0 or the build has P211.
+
+### P215 - merged DNG: purple pulled highlights, banded pushed shadows (owner, X200 Ultra, 2026-10-18; raw.zip / dng.zip)
+- Measured on SCA_20261018_085452.dng / SCA_20261018_091130.dng (30949, 12 MP, merged 16-bit, BlackLevel 4100, WhiteLevel 65535):
+  BaselineExposure 3.996 / 4.000 = headroom 16 (the cap), set by a few stray sites (99-167 G at >= 16 x N white, overshoot next to
+  lamps); every highlight clipped even in the 1/8 ultrashort sat at 8 x N white = code 34896 / 34817 in all three channels, half
+  of WhiteLevel. A raw converter took them for unclipped grey; after its white balance (R x2.5, B x1.6) they turned purple.
+  The N range had ~3840 codes: dark areas 5-40 codes above black with 0.7-1.5 codes of noise and ~5 distinct values per 16x16
+  block -> bands when the shadows are pushed. Stock SRAW (14 bit, black 0) clips each channel at 16383 x AsShotNeutral (R 6213 /
+  6621, B 11060 / 10519): neutral after the white balance.
+- Also found: our DNGs carry no AsShotNeutral and no ForwardMatrix (X200U and X100U files). The native writer and the APK's own
+  libdngCreator.so write both tags from finite values (checked on the phone through a fake JNIEnv), so the app passes non-finite
+  values on those shots; cause not seen yet (no X200U log) - DngCreator now logs non-finite tags with their values.
+- Fix: hybridDngCeiling = 1 / the shortest ultrashort TET (x8; the measured ratio), 1 without one, <= 16; no site above it; the
+  headroom is the highest site up to it; a site within 1e-4 of the ceiling is written at 65535 = WhiteLevel (clipped for the
+  converter too, one bit more for the N range); tuning dngDither 1: deterministic triangular +-1 code dither of the 16-bit codes.
+  RGB output untouched: 6 reference bursts byte-identical, v10_1 / v10_2 differ only after byte 150405120 (= the RGB size, the
+  DNG trailer). tools/check_dng_ceiling.cpp (CI). Demo: the owner's two DNGs rewritten with the rule (deliverables/dng-fix/).
+- Open: AsShotNeutral / ForwardMatrix root cause (next X200U log); a 16-bit float DNG option if the shadows still band.

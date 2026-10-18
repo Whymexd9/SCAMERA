@@ -149,6 +149,8 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-series
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_us_rows.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-us-rows
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-us-rows
+          g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_dng_ceiling.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-dng-ceiling
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-dng-ceiling
           g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_scam_probe.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-scam-probe
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-scam-probe /tmp/scam-probe-fixture
           python3 tools/check_scam_reference_metadata.py
