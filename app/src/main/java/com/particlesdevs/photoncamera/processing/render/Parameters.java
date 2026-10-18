@@ -624,6 +624,53 @@ public class Parameters {
     public float[] customNeutral;
     /** P121: the neutral is SCAMERA's own (a mosaic stream): the ISP's colour transform picked at the camera's neutral does not fit. */
     public boolean ownNeutral;
+    /**
+     * P212f (W2 = M3): the hand-set white balance's gains at the press (P201, ManualWhiteBalance.gains on the camera's
+     * characteristics, as the requests got them; null: automatic then), so a switch back to Auto during the series does not leak
+     * into the shot. Set before the merge.
+     */
+    @androidx.annotation.Nullable
+    public android.hardware.camera2.params.RggbChannelVector manualWbAtPress;
+    /** P212f: where the kept hand-set white balance came from (log), empty when none. */
+    public String handSetSource = "";
+
+    /** P212f (W2): the white point {G / R, 1, G / B} of hand-set gains (the formula of ReCalcColor's AWB-off branch); null: none. */
+    @androidx.annotation.Nullable
+    static float[] handSetNeutral(@androidx.annotation.Nullable android.hardware.camera2.params.RggbChannelVector gains) {
+        if (gains == null) return null;
+        final float green = (gains.getGreenEven() + gains.getGreenOdd()) * .5f;
+        if (!(green > 0) || !(gains.getRed() > 0) || !(gains.getBlue() > 0)) return null;
+        final float[] wp = {green / gains.getRed(), 1, green / gains.getBlue()};
+        return usableNeutral(wp) ? wp : null;
+    }
+
+    /**
+     * P212f (W2 = M3): a mosaic shot (ISZ / FULLRES) keeps a hand-set white balance (P201) instead of its own estimate - the
+     * mosaic white balance replaced it on every such photo and its DNG (ReCalcColor(true) skips the AWB-off branch): the gains at
+     * the press ({@link #manualWbAtPress}) first, else those of a result that says AWB OFF (an OPPO native result carries the
+     * inverse of the neutral complete() filled - exactly the hand-set one, OppoNativeFullRes.setNeutral / OppoNativeWb.hand),
+     * else, AWB OFF without gains, the white point already read. Sets {@link #customNeutral} (ownNeutral false: the ISP's colour
+     * transform stays usable as on a 12 MP shot); the caller runs ReCalcColor(true). False: automatic white balance.
+     */
+    public boolean keepHandSetWhiteBalance(@androidx.annotation.Nullable CaptureResult meta) {
+        float[] hand = handSetNeutral(manualWbAtPress);
+        String how = "the press";
+        if (hand == null) {
+            final Integer awb = meta == null ? null : meta.get(CaptureResult.CONTROL_AWB_MODE);
+            if (awb == null || awb != CaptureRequest.CONTROL_AWB_MODE_OFF) return false;
+            hand = handSetNeutral(meta.get(CaptureResult.COLOR_CORRECTION_GAINS));
+            how = "the result's gains (AWB off)";
+            if (hand == null) {
+                if (!usableNeutral(whitePoint)) return false;
+                hand = whitePoint.clone();
+                how = "the result's neutral (AWB off)";
+            }
+        }
+        customNeutral = hand;
+        ownNeutral = false;
+        handSetSource = how;
+        return true;
+    }
 
     public void ReCalcColor(boolean customNeutr, CaptureResult result) {
         CameraCharacteristics characteristics = CaptureController.mCameraCharacteristics;

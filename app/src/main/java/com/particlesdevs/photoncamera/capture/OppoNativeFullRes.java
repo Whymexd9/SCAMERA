@@ -345,6 +345,16 @@ public final class OppoNativeFullRes {
                 (float) Math.exp((1 - k) * Math.log(last[2]) + k * Math.log(b))});
     }
 
+    /**
+     * P212f (W2 = M3): a hand-set white balance (P201) is the own neutral as it is, not through the k 0.3 average (about 10 frames
+     * to arrive after a Kelvin change, the ring frames inside them carried the blend): complete() fills exactly the inverse of its
+     * gains from the next frame on. Only the P192 law ("oppo_wb_filter 0") reads it; the filter holds the hand-set one itself.
+     */
+    static void setNeutral(String cameraId, float r, float b) {
+        if (cameraId == null || !(r > 0.05f && r < 20f && b > 0.05f && b < 20f)) return;
+        NEUTRALS.put(cameraId, new float[]{r, 1f, b});
+    }
+
     static void forgetNeutral(String cameraId) {
         if (cameraId != null) NEUTRALS.remove(cameraId);
     }

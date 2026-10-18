@@ -182,6 +182,36 @@ public class OppoNativeFullResTest {
     }
 
     /**
+     * P212f (W2 = M3 VERIFY): a hand-set white balance is the own neutral as it is (setNeutral, not the k 0.3 average of
+     * measuredNeutral), and complete() writes exactly its inverse gains into the next result - what the photo's AWB-off branch reads.
+     */
+    @Test public void aHandSetNeutralIsFilledExactly() {
+        OppoNativeFullRes.resetForTest();
+        OppoNativeWb.resetForTest();
+        try (MockedStatic<CameraReflectionApi> api = mockStatic(CameraReflectionApi.class)) {
+            api.when(() -> CameraReflectionApi.setCached(any(), any(), any())).thenReturn(true);
+            OppoNativeFullRes.measuredNeutral("2", 0.33f, 0.70f); // the session's own estimate so far
+            OppoNativeFullRes.setNeutral("2", 0.50f, 0.6667f);    // 3200 K by hand
+            assertArrayEquals(new float[]{0.50f, 1f, 0.6667f}, OppoNativeFullRes.neutral("2"), 0f);
+            final CaptureResult r = mock(CaptureResult.class);
+            when(r.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT)).thenReturn(new Rational[]{Rational.NaN, Rational.NaN, Rational.NaN});
+            final String filled = OppoNativeFullRes.complete("2", r);
+            assertTrue(filled, filled.contains("neutral 0.500 / 0.667"));
+            final ArgumentCaptor<android.hardware.camera2.params.RggbChannelVector> gains =
+                    ArgumentCaptor.forClass(android.hardware.camera2.params.RggbChannelVector.class);
+            api.verify(() -> CameraReflectionApi.setCached(eq(CaptureResult.COLOR_CORRECTION_GAINS), gains.capture(), eq(r)));
+            assertEquals(2.0f, gains.getValue().getRed(), 1e-6f);
+            assertEquals(1f / 0.6667f, gains.getValue().getBlue(), 1e-5f);
+            // not a white point: ignored
+            OppoNativeFullRes.setNeutral("2", Float.NaN, 0.6f);
+            assertEquals(0.50f, OppoNativeFullRes.neutral("2")[0], 0f);
+        } finally {
+            OppoNativeFullRes.resetForTest();
+            OppoNativeWb.resetForTest();
+        }
+    }
+
+    /**
      * P212e: a map goes into a result through the raw keys and must read back in its own orientation (the synthesized key's
      * setter gave 13 x 17 for the 17 x 13 map); the size is tried both ways, and a map that never reads back right is taken out.
      */

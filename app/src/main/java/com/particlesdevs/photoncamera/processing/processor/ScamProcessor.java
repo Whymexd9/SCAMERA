@@ -79,6 +79,9 @@ public class ScamProcessor extends ProcessorBase {
     /** P190: the FULLRES series of the queued shot (frames the merge keeps whole, 0: none; frames asked for, 0: not FULLRES). */
     public int ownedFullResSeries, ownedFullResRequested;
     private int fullResSeries, fullResRequested;
+    /** P212f (W2 = M3): the hand-set white balance's gains at the press of the queued shot (null: automatic). */
+    public android.hardware.camera2.params.RggbChannelVector ownedManualWb;
+    private android.hardware.camera2.params.RggbChannelVector manualWb;
     private java.util.List<IsoExpoSelector.ExpoPair> fullpairs;
 
     public void start(Path dngFile, Path imageFile,
@@ -109,6 +112,8 @@ public class ScamProcessor extends ProcessorBase {
         this.fullResSeries = ownedFullResSeries;
         this.fullResRequested = ownedFullResRequested;
         ownedFullResSeries = ownedFullResRequested = 0;
+        this.manualWb = ownedManualWb;
+        ownedManualWb = null;
         this.scamCapture = PreferenceKeys.isScamEnabled();
         // The route of the shot fixes the settings profile of its whole processing: pref_scam_hybrid_* for a hybrid shot,
         // the SCAM HDR keys otherwise (PreferenceKeys.isHybridShot), even if the route changes meanwhile.
@@ -316,6 +321,7 @@ public class ScamProcessor extends ProcessorBase {
         processingParameters.rawBinning = rawBinning;
         processingParameters.fullResSeries = fullResSeries;
         processingParameters.fullResRequested = fullResRequested;
+        processingParameters.manualWbAtPress = manualWb;
         if (rawCrop != null && rawCrop.area != null) {
             processingParameters.rawCrop = rawCrop.area;
             processingParameters.rawCropFull = new Point(rawCrop.fullWidth, rawCrop.fullHeight);
@@ -512,7 +518,7 @@ public class ScamProcessor extends ProcessorBase {
                 processingParameters.FillDynamicParameters(referenceMetadata, captureRequest,
                         scamReference.measuredIso);
                 refineBlackFromDarkestFrame(processingParameters, images);
-                applyMosaicNeutral(processingParameters, scamReference, referenceMetadata);
+                applyMosaicNeutral(processingParameters, scamReference, referenceMetadata, images, characteristics, iszAspect4x3);
                 ParseExif.syncWithParameters(exifData, processingParameters);
                 Log.i("SCAM_HDR", "Reference calibration timestamp=" + scamReference.timestamp
                         + " ISO=" + processingParameters.iso
@@ -822,8 +828,12 @@ public class ScamProcessor extends ProcessorBase {
      * reads the mosaic as Bayer), so the neutral of the reference frame is measured and put on the camera's curve learned in
      * plain-Bayer sessions (MosaicNeutral). scam_dev.txt "mosaic_awb 0": the camera's neutral as before. P195: also with «Наш
      * ремозаик» off - the stream (and the ISP's misread neutral) is the same mosaic, only the worker bins it instead of remosaicking.
+     * P212f: a hand-set white balance (P201) holds (W2 = M3); the curve is the smooth counted locus with the camera's DNG prior
+     * (W5 = M13 phase 1); the robust statistic of up to 3 N frames (W4 = M10) is logged beside the P121 one and taken with
+     * scam_dev.txt "mosaic_awb_v2 1"; the ISP teacher's prediction is logged only (W5 phase 2).
      */
-    private static void applyMosaicNeutral(Parameters p, ImageFrame ref, CaptureResult meta) {
+    private static void applyMosaicNeutral(Parameters p, ImageFrame ref, CaptureResult meta, java.util.List<ImageFrame> frames,
+                                           CameraCharacteristics characteristics, boolean aspect4x3) {
         if (!PreferenceKeys.scamDevSwitch("mosaic_awb", true) || p.rawBinning > 1 || ref == null || ref.buffer == null
                 || ref.buffer.capacity() < (long) ref.width * ref.height * 2) return;
         int block = com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(0);
@@ -835,11 +845,44 @@ public class ScamProcessor extends ProcessorBase {
             block = r.confident ? r.block : 1;
         }
         if (block <= 1) return;
+        // P212f (W2 = M3): a hand-set white balance is the shot's white point (the photo and the DNG's AsShotNeutral), as on a
+        // 12 MP shot - the gains at the press, else a result that says AWB off; ownNeutral stays false
+        if (p.keepHandSetWhiteBalance(meta)) {
+            p.ReCalcColor(true, meta);
+            Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "mosaic white balance: colour block %d, hand-set white balance kept %.3f / %.3f (%s)",
+                    block, p.whitePoint[0] / p.whitePoint[1], p.whitePoint[2] / p.whitePoint[1], p.handSetSource));
+            return;
+        }
         com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(ScameraApp.getAppContext());
-        final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result own =
-                com.particlesdevs.photoncamera.processing.color.MosaicNeutral.estimate(String.valueOf(p.physicalID), ref.buffer,
-                        ref.width, ref.height, ref.width * 2, p.baseCfaPattern, p.blackLevel, p.whiteLevel, block);
+        final String id = String.valueOf(p.physicalID);
+        // P212f (W5): the camera's DNG locus for a curve of fewer than 2 points; the curve itself once a process (offline replay)
+        final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Prior prior =
+                com.particlesdevs.photoncamera.processing.color.MosaicNeutral.prior(characteristics, id);
+        if (CURVE_LOGGED.add(id))
+            Log.i("SCAM_HDR", "mosaic white balance curve of camera " + id + ": "
+                    + com.particlesdevs.photoncamera.processing.color.MosaicNeutral.describe(id, prior));
+        // P212f (W4 = M10): the robust statistic of up to 3 N frames (logged beside the P121 one; "mosaic_awb_v2 1": the photo's)
+        com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Stat stat = null;
+        try {
+            stat = mosaicStatistic(p, ref, frames, block, aspect4x3);
+        } catch (RuntimeException e) {
+            Log.w("SCAM_HDR", "mosaic white balance statistic: " + e);
+        }
+        final boolean v2 = stat != null && PreferenceKeys.scamDevSwitch("mosaic_awb_v2", false);
+        final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result own = v2
+                ? com.particlesdevs.photoncamera.processing.color.MosaicNeutral.resolve(id, stat, prior)
+                : com.particlesdevs.photoncamera.processing.color.MosaicNeutral.estimate(id, ref.buffer,
+                        ref.width, ref.height, ref.width * 2, p.baseCfaPattern, p.blackLevel, p.whiteLevel, block, prior);
         final String camera = String.format(java.util.Locale.ROOT, "%.3f / %.3f", p.whitePoint[0] / p.whitePoint[1], p.whitePoint[2] / p.whitePoint[1]);
+        if (stat != null) Log.i("SCAM_HDR", "mosaic white balance statistic" + (v2 ? "" : " (log only)") + ": " + stat);
+        // P212f (W5 phase 2): what the ISP would choose for this statistic (log only)
+        if (stat != null && com.particlesdevs.photoncamera.processing.color.MosaicTeacher.on()) {
+            com.particlesdevs.photoncamera.processing.color.MosaicTeacher.init(ScameraApp.getAppContext());
+            final com.particlesdevs.photoncamera.processing.color.MosaicTeacher.Prediction t =
+                    com.particlesdevs.photoncamera.processing.color.MosaicTeacher.predict(id, stat.r, stat.b);
+            Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "WB TEACHER camera %s (log only): m %.3f / %.3f -> %s", id, stat.r, stat.b,
+                    t == null ? "nothing learned near it (" + com.particlesdevs.photoncamera.processing.color.MosaicTeacher.cells(id) + " cells)" : t.toString()));
+        }
         if (own == null) {
             Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", too few usable cells; the camera's neutral " + camera + " kept");
             return;
@@ -860,6 +903,50 @@ public class ScamProcessor extends ProcessorBase {
         p.customNeutral = neutral;
         p.ownNeutral = true;
         p.ReCalcColor(true, meta);
+    }
+
+    /** P212f: the cameras whose curve this process has logged. */
+    private static final java.util.Set<String> CURVE_LOGGED = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    /** P212f (W4): the N frames the mosaic statistic reads (the reference first). */
+    static final int STAT_FRAMES = 3;
+
+    /**
+     * P212f (W4 = M10): MosaicNeutral.measure2 of the reference and up to 2 more N frames of its exposure (the refined black, the
+     * lens shading map the photo uses, the reference's noise profile, the photo's crop: the digital zoom's residual, then 4:3 for
+     * ISZ / native FULLRES), combined; null when none gives one.
+     */
+    @androidx.annotation.Nullable
+    private static com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Stat mosaicStatistic(Parameters p, ImageFrame ref,
+            java.util.List<ImageFrame> frames, int block, boolean aspect4x3) {
+        final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Setup setup =
+                new com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Setup()
+                        .crop(ref.width, ref.height, com.particlesdevs.photoncamera.control.ZoomController.shotResidual(), aspect4x3);
+        if (p.hasGainMap && p.gainMap != null && p.mapSize != null && p.mapSize.x > 1 && p.mapSize.y > 1) {
+            setup.gains = p.gainMap;
+            setup.gainCols = p.mapSize.x;
+            setup.gainRows = p.mapSize.y;
+        }
+        setup.iso = p.iso > 0 ? p.iso : 100;
+        if (p.noiseModeler != null && p.noiseModeler.baseModel != null && p.noiseModeler.baseModel.length > 1 && p.noiseModeler.baseModel[1] != null) {
+            setup.noiseS = p.noiseModeler.baseModel[1].first;
+            setup.noiseO = p.noiseModeler.baseModel[1].second;
+        }
+        final java.util.ArrayList<com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Stat> stats = new java.util.ArrayList<>();
+        final double refExposure = (double) ref.measuredExposure * Math.max(1, ref.measuredIso);
+        for (ImageFrame f : frames) {
+            if (stats.size() >= STAT_FRAMES) break;
+            if (f != ref && (f == null || f.pair == null || f.pair.isHighlightFrame || f.pair.isLongFrame
+                    || f.getCaptureRole() != ImageFrame.CaptureRole.NORMAL || f.width != ref.width || f.height != ref.height
+                    || f.rawPayloadError != null
+                    || Math.abs((double) f.measuredExposure * Math.max(1, f.measuredIso) / Math.max(1.0, refExposure) - 1) > 0.05))
+                continue;
+            if (f.buffer == null || f.buffer.capacity() < (long) f.width * f.height * 2) continue;
+            final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Stat s =
+                    com.particlesdevs.photoncamera.processing.color.MosaicNeutral.measure2(f.buffer, f.width, f.height, f.width * 2,
+                            p.baseCfaPattern, p.blackLevel, p.whiteLevel, block, setup);
+            if (s != null) stats.add(s);
+        }
+        return com.particlesdevs.photoncamera.processing.color.MosaicNeutral.combine(stats);
     }
 
     /** P212d: the rolling shutter skew of a result (ns), null when the HAL gives none. */

@@ -89,6 +89,13 @@ public final class DevKeys {
         k.add(s(cap, "raw_wide", true, Lang.t("RAW шире заявленного белого (14 бит DCG) берётся по своим значениям", "A RAW wider than the declared white (14-bit DCG) is taken at its own range")));
         k.add(s(cap, "vivo_qcom_roi", true, Lang.t("X300 Ultra: модули ISZ без ремозаика и кнопка DCG (forceSensorMode в сессии)", "X300 Ultra: ISZ modules without remosaic and the DCG button (session forceSensorMode)")));
         k.add(s(cap, "mosaic_awb", true, Lang.t("ISZ без ремозаика: баланс белого по кадру на кривой камеры, а не от камеры", "ISZ without remosaic: white balance from the frame on the camera curve, not the camera's")));
+        // P212f: the mosaic white balance's locus (W5), robust statistic (W4) and ISP teacher (W5, log only)
+        k.add(s(cap, "mosaic_awb_locus", true, Lang.t("Баланс белого мозаики: гладкая кривая камеры по точкам с весами, с продолжением за края и кривой из матриц DNG, пока точек мало. Выкл — ломаная P121 с обрезкой на краях",
+                "Mosaic white balance: a smooth weighted curve of the camera, extended beyond its ends, from the DNG matrices while it has few points. Off: the P121 polyline clamped at its ends")));
+        k.add(s(cap, "mosaic_awb_v2", false, Lang.t("Баланс белого мозаики: устойчивая оценка (клип по пикселям, веса по шуму, виньетирование, кроп снимка, до 3 кадров, своя точность) вместо P121. Выкл — только в лог рядом с P121",
+                "Mosaic white balance: the robust estimate (per-site clipping, noise weights, shading, the photo's crop, up to 3 frames, its own confidence) instead of P121. Off: only logged beside P121")));
+        k.add(s(cap, "mosaic_awb_teacher", true, Lang.t("Баланс белого мозаики: «учитель» — в обычном режиме запоминает, какую нейтраль ISP выбирает для нашей оценки кадра; только сбор и лог, на фото не влияет",
+                "Mosaic white balance teacher: in the plain mode it learns which neutral the ISP picks for our estimate of the frame; collected and logged only, never applied to a photo")));
         k.add(s(cap, "oplus_ccm", true, Lang.t("OPPO: цветовая матрица com.oplus.custom.ccm вместо единичной", "OPPO: the com.oplus.custom.ccm colour matrix instead of an identity one")));
         k.add(s(cap, "fov_check", true, Lang.t("Замер реального поля зрения вендорных модулей", "Measure the real field of view of vendor modules")));
         k.add(s(cap, "hybrid_fast_capture", true, Lang.t("Сброс очереди HAL перед серией (задержка затвора ~0.4 → ~0.15 с)", "Flush the HAL request queue before the series (shutter lag ~0.4 -> ~0.15 s)")));

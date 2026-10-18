@@ -389,6 +389,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
     private long mShutterGeneration;
     private boolean mShutterIszAspect4x3;
+    /** P212f (W2 = M3): the hand-set white balance's gains at the press (null: automatic), the shot's white point on a mosaic photo. */
+    private android.hardware.camera2.params.RggbChannelVector mShutterManualWb;
     private volatile boolean mLiveRawSession;
     /**
      * P13: the stream of this session is a colour-block mosaic (a sensor mode without remosaic, MosaicStream): its ISP preview
@@ -530,6 +532,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 observeRawLevel(img, null);
                 observeMosaic(img);
                 plainMeter(img, null); // P212b: the native AE's start, sampled in the plain session (also while a merge runs)
+                plainTeacher(img, null); // P212f: the mosaic white balance's teacher (log only)
                 // P187: the plain session of a running 200 MP merge takes no shot (captureStillPicture refuses it), so its
                 // frames stay out of the ZSL ring: 125 MB of memfd less under the merge and the pipeline
                 if (mClosedForProcessing) { img.close(); return; }
@@ -3640,6 +3643,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mShutterIszAspect4x3 = IszCapturePolicy.isIsz(
                     com.particlesdevs.photoncamera.settings.ModuleRegistry.active(), mCameraCharacteristics,
                     mPreviewCaptureResult, physicalID, logicalID, mCroppedRawSession);
+            mShutterManualWb = paramController.manualWhiteBalanceGains(); // P212f: a later switch to Auto stays out of the shot
             if (mVivoSdkRawSession != null) {
                 mBackgroundHandler.post(this::captureVivoSdkFullRes);
                 return true;
@@ -4271,6 +4275,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             observeRawLevel(img, result);
             observeMosaic(img);
             plainMeter(img, result); // P212b: a plain session's sample for the native AE's start
+            plainTeacher(img, result); // P212f: the mosaic white balance's teacher (log only)
             // P212a: the native AE's ISO probe is no viewfinder frame, no AE frame and no ring frame (the plan never sees it)
             final boolean probe = isNativeIsoProbe(result);
             if (!probe) publishLiveRawFrame(img, result);
@@ -4595,7 +4600,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 final float g = 0.5f * (wb.getGreenEven() + wb.getGreenOdd());
                 if (wb.getRed() > 0f && wb.getBlue() > 0f) {
                     if (wbFilter) OppoNativeWb.hand(mVivoSdkCameraId, new float[]{g / wb.getRed(), 1f, g / wb.getBlue()});
-                    else OppoNativeFullRes.measuredNeutral(mVivoSdkCameraId, g / wb.getRed(), g / wb.getBlue());
+                    else OppoNativeFullRes.setNeutral(mVivoSdkCameraId, g / wb.getRed(), g / wb.getBlue()); // P212f: not averaged
                 }
             } else if (wbFilter) {
                 // P212e (W3 = M7): the session's gated filter - measured every 8th frame while the AE holds (nothing pending, no
@@ -4604,25 +4609,120 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 final boolean settled = ae.settled();
                 if (OppoNativeWb.wants(mVivoSdkCameraId, ae.pending(), ae.sinceRebuild(), settled, m == null ? -1f : m[0],
                         m == null ? -1f : m[1], metered == null ? -1f : metered.clip)) {
-                    com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(ScameraApp.getAppContext());
                     final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result own =
-                            com.particlesdevs.photoncamera.processing.color.MosaicNeutral.estimate(mVivoSdkCameraId, buffer,
-                                    img.getWidth(), img.getHeight(), plane.getRowStride(), cfa, levels.black, levels.white, block);
+                            nativeOwnNeutral(buffer, img, plane, cfa, levels, block, c, result);
                     final String how = OppoNativeWb.measure(mVivoSdkCameraId, own == null ? null : own.neutral, own == null ? 0 : own.cells,
                             settled, now);
                     if (how != null) Log.i("SCAM_CAPTURE", "native white balance camera " + mVivoSdkCameraId + ": "
                             + (own == null ? "too few usable cells" : own.how + ", " + own.cells + " cells") + how);
                 }
             } else if ((mNativeFrames++ & 7) == 0) {
-                com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(ScameraApp.getAppContext());
                 final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result own =
-                        com.particlesdevs.photoncamera.processing.color.MosaicNeutral.estimate(mVivoSdkCameraId, buffer,
-                                img.getWidth(), img.getHeight(), plane.getRowStride(), cfa, levels.black, levels.white, block);
+                        nativeOwnNeutral(buffer, img, plane, cfa, levels, block, c, result);
                 if (own != null) OppoNativeFullRes.measuredNeutral(mVivoSdkCameraId, own.neutral[0], own.neutral[2]);
                 if ((mNativeFrames & 127) == 1 && own != null) Log.i("SCAM_CAPTURE", "native white balance camera " + mVivoSdkCameraId + ": " + own.how);
             }
         } catch (RuntimeException e) {
             Log.w("SCAM_CAPTURE", "native AE: " + e);
+        }
+    }
+
+    /**
+     * P212f: the own neutral of a native frame: the P121 statistic on the camera's locus (MosaicNeutral, the DNG prior for a curve
+     * of fewer than 2 points); with scam_dev.txt "mosaic_awb_v2 1" the robust statistic (W4 = M10: the viewfinder's crop, the
+     * result's shading map - else the stored plain one - and noise profile, the RawLevels black). Null: too few usable cells.
+     */
+    @Nullable
+    private com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result nativeOwnNeutral(java.nio.ByteBuffer buffer, Image img,
+            Image.Plane plane, int cfa, com.particlesdevs.photoncamera.processing.RawLevels.Levels levels, int block,
+            @Nullable CameraCharacteristics c, TotalCaptureResult result) {
+        com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(ScameraApp.getAppContext());
+        final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Prior prior =
+                com.particlesdevs.photoncamera.processing.color.MosaicNeutral.prior(c, mVivoSdkCameraId);
+        if (!PreferenceKeys.scamDevSwitch("mosaic_awb_v2", false))
+            return com.particlesdevs.photoncamera.processing.color.MosaicNeutral.estimate(mVivoSdkCameraId, buffer,
+                    img.getWidth(), img.getHeight(), plane.getRowStride(), cfa, levels.black, levels.white, block, prior);
+        final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Stat stat =
+                com.particlesdevs.photoncamera.processing.color.MosaicNeutral.measure2(buffer, img.getWidth(), img.getHeight(),
+                        plane.getRowStride(), cfa, levels.black, levels.white, block, mosaicSetup(c, result));
+        return stat == null ? null : com.particlesdevs.photoncamera.processing.color.MosaicNeutral.resolve(mVivoSdkCameraId, stat, prior);
+    }
+
+    /** P212f (W4): what MosaicNeutral.measure2 reads of a viewfinder frame: the meter's crop and shading map, the noise profile. */
+    private com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Setup mosaicSetup(@Nullable CameraCharacteristics c,
+                                                                                           @Nullable CaptureResult result) {
+        final NativeRawExposure.MeterSetup m = meterSetup(c, result, null);
+        final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Setup s =
+                new com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Setup();
+        s.left = m.left;
+        s.top = m.top;
+        s.right = m.right;
+        s.bottom = m.bottom;
+        s.gains = m.gains;
+        s.gainCols = m.gainCols;
+        s.gainRows = m.gainRows;
+        final Integer iso = result == null ? null : result.get(CaptureResult.SENSOR_SENSITIVITY);
+        return s.noise(result == null ? null : result.get(CaptureResult.SENSOR_NOISE_PROFILE), iso == null ? 100 : iso);
+    }
+
+    /** P212f (W5 = M13 phase 2): the last plain teacher sample (elapsedRealtime ms). */
+    private long mPlainTeacherMs;
+    static final long PLAIN_TEACHER_MS = 1000L;
+
+    /**
+     * P212f (W5 = M13 phase 2, log only): a plain-Bayer session's RAW frame about once a second teaches the mosaic white balance
+     * (MosaicTeacher): our statistic of the frame (MosaicNeutral.measure2, block 1: the result's shading map and noise profile,
+     * the viewfinder's crop) beside the ISP's neutral of the same result - the gates of ParamController.learnNeutral (block 1, AWB
+     * AUTO converged / locked, no native session). Any brand; nothing a photo uses (scam_dev.txt "mosaic_awb_teacher 0": none).
+     */
+    private void plainTeacher(Image img, @Nullable TotalCaptureResult result) {
+        if (mVivoSdkRawSession != null || img == null || img.getFormat() != ImageFormat.RAW_SENSOR || mPayloadBad || !mPreviewLayouts.isEmpty())
+            return;
+        final long now = android.os.SystemClock.elapsedRealtime();
+        if (now - mPlainTeacherMs < PLAIN_TEACHER_MS) return;
+        try {
+            if (com.particlesdevs.photoncamera.processing.MosaicStream.block() != 1 || OppoNativeFullRes.running()
+                    || !com.particlesdevs.photoncamera.processing.color.MosaicTeacher.on()) return;
+            if (result == null) synchronized (mZslBufferLock) { result = mHexZslResults.get(img.getTimestamp()); }
+            if (result == null) return;
+            mPlainTeacherMs = now;
+            final Integer awb = result.get(CaptureResult.CONTROL_AWB_MODE), state = result.get(CaptureResult.CONTROL_AWB_STATE);
+            if (awb == null || awb != CaptureResult.CONTROL_AWB_MODE_AUTO) return;
+            if (state != null && state != CaptureResult.CONTROL_AWB_STATE_CONVERGED && state != CaptureResult.CONTROL_AWB_STATE_LOCKED) return;
+            final android.util.Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
+            if (n == null || n.length < 3 || !(n[1].floatValue() > 0f)) return;
+            final float nr = n[0].floatValue() / n[1].floatValue(), nb = n[2].floatValue() / n[1].floatValue();
+            CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
+            if (c == null) c = mCameraCharacteristics;
+            int cfa = mLiveCfaPattern;
+            if (cfa < 0) {
+                Integer arrangement = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
+                cfa = arrangement == null ? 0 : arrangement;
+            }
+            if (cfa > 3) return;
+            final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
+                    com.particlesdevs.photoncamera.processing.RawLevels.current(c, result);
+            final Image.Plane plane = img.getPlanes()[0];
+            final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Stat m =
+                    com.particlesdevs.photoncamera.processing.color.MosaicNeutral.measure2(plane.getBuffer(), img.getWidth(), img.getHeight(),
+                            plane.getRowStride(), cfa, levels.black, levels.white, 1, mosaicSetup(c, result));
+            if (m == null) return;
+            String id = physicalID;
+            if (id == null) return;
+            id = id.substring(id.lastIndexOf('/') + 1);
+            com.particlesdevs.photoncamera.processing.color.MosaicTeacher.init(ScameraApp.getAppContext());
+            final com.particlesdevs.photoncamera.processing.color.MosaicTeacher.Prediction before =
+                    com.particlesdevs.photoncamera.processing.color.MosaicTeacher.observe(id, m.r, m.b, nr, nb);
+            final int seen = com.particlesdevs.photoncamera.processing.color.MosaicTeacher.seen(id);
+            if (seen <= 3 || seen % 30 == 0)
+                Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT,
+                        "WB TEACHER camera %s: m %.3f / %.3f (sd %.4f, %d cells) -> ISP %.3f / %.3f, predicted before %s%s [%d pairs, %d cells]",
+                        id, m.r, m.b, m.sigma(), m.cells, nr, nb, before == null ? "-" : before.toString(),
+                        before == null ? "" : String.format(java.util.Locale.ROOT, " (%.3f ln off)",
+                                Math.hypot(Math.log(before.r / nr), Math.log(before.b / nb))),
+                        seen, com.particlesdevs.photoncamera.processing.color.MosaicTeacher.cells(id)));
+        } catch (RuntimeException e) {
+            mPlainTeacherMs = now;
         }
     }
 
@@ -5762,6 +5862,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 "Took " + taken + " of " + requested + " frames: " + (memory.availMem >> 20) + " MB free" + ("2x".equals(cut) ? ", 2× output" : "")));
         final ImageSaver saver = new ImageSaver(cameraEventsListener);
         saver.iszAspect4x3 = mShutterIszAspect4x3 || nativeVivoFullRes();
+        saver.manualWbAtPress = mShutterManualWb;
         saver.setFrameCount(count);
         saver.fullResSeries = seriesMode ? total : 0; // P190: the merge keeps a series whole
         saver.fullResRequested = requested;
@@ -6413,6 +6514,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.d(TAG, "FrameCount:" + frameCount);
             mImageSaver = new ImageSaver(cameraEventsListener);
             mImageSaver.iszAspect4x3 = mShutterIszAspect4x3;
+            mImageSaver.manualWbAtPress = mShutterManualWb;
             final ScamCaptureSequence scamSequence = hybridPlanHolder[0]!=null
                         ? (hybridZsl ? ScamCaptureSequence.hybridZsl(captures,mPendingZslNormalFrames,scamZslShutterTimestamp)
                                      : ScamCaptureSequence.hybridFuture(captures,scamZslShutterTimestamp))

@@ -24,6 +24,8 @@ public class DefaultSaver extends SaverImplementation {
     Boolean ownedIszAspect4x3;
     /** P190: the FULLRES series of the queued shot (ImageSaver.fullResSeries / fullResRequested). */
     int ownedFullResSeries, ownedFullResRequested;
+    /** P212f (W2 = M3): the hand-set white balance's gains at the press of the queued shot (null: automatic). */
+    android.hardware.camera2.params.RggbChannelVector ownedManualWb;
 
     public DefaultSaver(ProcessingEventsListener processingEventsListener) {
         super(processingEventsListener);
@@ -45,6 +47,8 @@ public class DefaultSaver extends SaverImplementation {
             scamProcessor.ownedFullResSeries = ownedFullResSeries;
             scamProcessor.ownedFullResRequested = ownedFullResRequested;
             ownedFullResSeries = ownedFullResRequested = 0;
+            scamProcessor.ownedManualWb = ownedManualWb;
+            ownedManualWb = null;
             scamProcessor.configure(ScameraApp.getSettings().alignAlgorithm,
                     ScameraApp.getSettings().rawSaver, ScameraApp.getSettings().selectedMode);
             scamProcessor.start(ownedDngFile, ownedImageFile,
