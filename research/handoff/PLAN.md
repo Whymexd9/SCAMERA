@@ -4853,7 +4853,8 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   saturated part of the fusion.
 - Fix, only with real headroom (ArkAe.Result.hr: Bento merged and gmax above the cap; the maximum, at most 16 x the clip):
   the landing on hr; ArkCam 1.58's max-channel Reinhard shoulder on the tonemapper top (libopenhdr_engine: knee 0.6, room
-  0.35 - here 0.5 / 0.3, whose limit stays just under white: no hard 255 spots); the highlight peak half way (log, ark_hr_mix
+  0.35 - here 0.5 / 0.4: the knee keeps a crane's clipped lines off 255, the limit a little above white lets a sun climb
+  steadily into its white core); the highlight peak half way (log, ark_hr_mix
   0.5) from P159's to p99.9 when an AREA lies beyond the ceiling (0.3 .. 0.8 % of the frame; the window 1.4 %), the strength
   capped by log2(hr ae / bt) / 1.5 instead of 2; a full-size highlight detail term
   (ark_hr_detail 0.35 of the log contrast against the 2 x 2 grid, -0.03 .. +0.12 L, fading towards white). Without Bento or
@@ -4867,7 +4868,10 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
 - Owner's sun scene (scam_burst-20261018-101655, ultrawide, x4.3 Bento: the ultrashort is at the 0.036 ms minimum, the sun
   clipped in it, 0.12 % of the frame beyond 4): «В такой сцене небо не должно темнить» - the p99.9 pull (the sun's glow)
   had darkened the sky by 5 - 12 codes, hence the area gate; now effH as before, sky / sea / deck unchanged, the sun a
-  near-white disc (251 - 254) instead of a 255 disc. The window-up scene (101853, gmax 3.2 < 4) renders byte-identical.
+  soft disc rising steadily into white. «Солнце должно быть мягким без каких-либо ореолов» / «внутри солнца есть ореол»:
+  with room 0.3 the rim stood on a 251 plateau with the clipped core (recovered at the white bound, 2.4 x the rim) as a
+  254 dot, and the highlight detail dug a 1 - 2 code trench beside it; now room 0.4 and no darker detail where the
+  neighbourhood is much brighter (ratio < 0.55 .. 0.85: the rim of a light, not texture). The window-up scene (101853, gmax 3.2 < 4) renders byte-identical.
   Harness with a radial lens-shading model (log: corner 7.3 / edge 2.4 on the ultrawide, 3.0 / 1.65 on the main) matches
   the owner's JPEG of the window (p50 0.987 vs 0.984); new p50 0.954.
 - Not yet: a phone shot with the build; the crane's colour where two channels clipped in the ultrashort (recovered neutral at

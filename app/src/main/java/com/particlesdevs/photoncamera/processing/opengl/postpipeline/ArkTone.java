@@ -96,6 +96,14 @@ public final class ArkTone {
     }
 
     /**
+     * P216: ArkCombine's handling of real Bento headroom - the shoulder knee and room (x the tonemapper top) and the share of the
+     * full-size highlight contrast kept (scam_dev hybrid_ark_hr_knee / _room / _detail).
+     */
+    static float[] headroomTone() {
+        return new float[]{value("hr_knee", 0.5f), value("hr_room", 0.4f), Math.max(0f, value("hr_detail", 0.35f))};
+    }
+
+    /**
      * AgX saturation factor for shots rendered with the OPPO tuned ISP matrix (Find X7 Ultra). 0.6 matched ArkCam 2.85 with
      * the X8U config at night (research/hybrid5); against ArkCam SCAM 9.6 with its X7U config (owner's pair 2026-10-08, main and
      * 3x tele, indoor ~3800 K) 0.6 left half of ArkCam's chroma (C*ab x0.48, lightness-normalised), and the numpy reference of

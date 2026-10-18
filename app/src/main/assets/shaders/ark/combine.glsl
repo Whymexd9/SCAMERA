@@ -88,7 +88,7 @@ uniform int headroomU;              // 1: real headroom above 1 (clipped RAW rec
 // on white follows this ceiling; hrDetailU > 0 adds the full-size highlight detail the bounded detail reference drops.
 uniform float hrU;
 uniform float hrKneeU;              // shoulder knee x the tonemapper top; <= 0 -> 0.5 (ArkCam 1.58 hdr_shoulder_knee: 0.6)
-uniform float hrRoomU;              // shoulder headroom x the top; <= 0 -> 0.3 (hdr_shoulder_headroom: 0.35)
+uniform float hrRoomU;              // shoulder headroom x the top; <= 0 -> 0.4 (hdr_shoulder_headroom: 0.35)
 uniform float hrDetailU;            // highlight detail: share of the full-size log contrast kept in OKLab L (0 = off)
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
 #if HL_LANDING == 1
@@ -565,15 +565,17 @@ void main() {
     // Bento roll-off of the linear maximum above 0.5 [:1673-1681] (same shoulder measure as the ceiling)
     if (wide) {
         // P216: ArkCam 1.58 (libopenhdr_engine, «RAWBracket's max-channel Reinhard shoulder»): above knee x the top of the
-        // tonemapper softly into <= (knee + room) x top, the same measure as the kernel's shoulders (P11). 0.5 / 0.3 instead of
-        // ArkCam's 0.6 / 0.35: their limit (0.95 x top) lies above the AgX white and the brightest lines of a crane in a window
-        // came out as hard 255 spots (owner: «нужно чтобы не было резких белых пятен»); 0.8 x top stays just under white.
+        // tonemapper softly into <= (knee + room) x top, the same measure as the kernel's shoulders (P11). Knee 0.5 (ArkCam
+        // 0.6): the bright end starts rising towards white earlier, so a crane's clipped lines do not jump to 255 (owner: «нужно
+        // чтобы не было резких белых пятен»); room 0.4: the limit lies a little above the AgX white, so the sun's disc climbs
+        // steadily into a white core - with 0.3 its rim stood on a 251 plateau and the clipped core sat in it as a ring
+        // (owner: «Солнце должно быть мягким без каких-либо ореолов»).
 #if TONE_OP == 1
         float top = 4.0;
 #else
         float top = 0.18 * exp2(agxB.y + max(agxB.z, 0.0));
 #endif
-        float knee = top * (hrKneeU > 0.0 ? hrKneeU : 0.5), room = top * (hrRoomU > 0.0 ? hrRoomU : 0.3);
+        float knee = top * (hrKneeU > 0.0 ? hrKneeU : 0.5), room = top * (hrRoomU > 0.0 ? hrRoomU : 0.4);
         float ml = mix(max3(scene), dot(scene, LUMA), satW);
         if (ml > knee) {
             float ex = ml - knee;
@@ -701,7 +703,14 @@ void main() {
         float yF = dot(sceneLinear(xy, size), LUMA) * ae;
         float yL = yLow * ae;
         float gate = smoothstep(0.8, 1.6, min(yF, yL));
-        if (gate > 0.0) dHL = gate * clamp(hrDetailU / 3.0 * log(max(yF, 0.000001) / max(yL, 0.000001)), -0.03, 0.12);
+        if (gate > 0.0) {
+            float ratio = max(yF, 0.000001) / max(yL, 0.000001);
+            float dl = hrDetailU / 3.0 * log(ratio);
+            // a pixel much darker than its neighbourhood is the rim of a light (the sun's disc beside its clipped core, the
+            // sky beside a crane's clipped line), not texture: no trench there - it drew a ring inside the sun
+            if (dl < 0.0) dl *= smoothstep(0.55, 0.85, ratio);
+            dHL = gate * clamp(dl, -0.03, 0.12);
+        }
     }
     if (dHL > 0.0) dHL *= 1.0 - smoothstep(0.85, 1.0, post.x);   // never pushes a highlight onto white
     post.x = clamp(post.x + delta * (1.0 - smoothstep(0.75, 1.0, post.x) * 0.5) + dHL * post.x, 0.0001, 1.0);
