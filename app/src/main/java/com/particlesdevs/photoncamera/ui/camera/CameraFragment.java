@@ -361,7 +361,14 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         if (panelView instanceof com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel) {
             com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel panel =
                     (com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel) panelView;
-            panel.setOnExpandedListener(open -> com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.setSideOn(bar, R.id.pro_button, open));
+            // SIMPLE_UI §1: the LUT pill and tray; Pro and the tray close each other
+            lutTray = new LutTray(cameraFragmentBinding.layoutViewfinder.lutPill, cameraFragmentBinding.lutTray,
+                    cameraFragmentBinding.layoutViewfinder.texture, this::openLutSettings);
+            lutTray.setOnOpen(() -> { if (panel.isExpanded()) panel.setExpanded(false, true); });
+            panel.setOnExpandedListener(open -> {
+                com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.setSideOn(bar, R.id.pro_button, open);
+                if (open && lutTray != null) lutTray.setOpen(false);
+            });
             bar.findViewById(R.id.pro_button).setOnClickListener(v -> panel.setExpanded(!panel.isExpanded(), true));
             com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.setSideOn(bar, R.id.pro_button, panel.isExpanded());
         }
@@ -483,6 +490,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         sheet.setOnSheetLevelListener(level -> {
             cameraFragmentViewModel.setSheetLevel(level);
             if (level != CameraFragmentModel.SHEET_HIDDEN) hideHint();
+            // SIMPLE_UI §1: the LUT tray, like the Pro panel, only while the quick sheet is closed
+            if (level != CameraFragmentModel.SHEET_HIDDEN && lutTray != null) lutTray.setOpen(false);
         });
         // FULL: a scrim over the viewfinder and the top bar; the viewfinder piece starts under the top bar.
         View scrim = cameraFragmentBinding.shadeScrim, scrimTop = cameraFragmentBinding.shadeScrimTop;
@@ -656,6 +665,20 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
     /** P214f: the message card of this screen (the one message channel's sink; null after onDestroy). */
     private MessageCard messageCard;
+    /** SIMPLE_UI §1: the LUT pill and tray of the viewfinder. */
+    @Nullable public LutTray lutTray;
+
+    /** «Все LUT ›»: the settings at the film LUT row. */
+    private void openLutSettings() {
+        levelBeforeSettings = cameraFragmentViewModel.getSheetLevel();
+        watchSessionSettings();
+        Intent intent = new Intent(activity, SettingsActivity.class);
+        intent.setAction(SettingsActivity.ACTION_OPEN_PAGE);
+        intent.putExtra(SettingsActivity.EXTRA_PAGE, "colour_grading_screen");
+        intent.putExtra(SettingsActivity.EXTRA_KEY, com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+        intent.putExtra("camera_mode", PreferenceKeys.getCameraModeOrdinal());
+        startActivity(intent);
+    }
 
     /** P214f: «Последние сообщения», the last 20 messages of the card (a long press on it). */
     private void openMessageHistory() {
@@ -774,6 +797,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
     @Override
     public void onResume() {
+        if (lutTray != null) lutTray.bindPill();
         super.onResume();
         updateSettingsBar();
         mSwipe.init();

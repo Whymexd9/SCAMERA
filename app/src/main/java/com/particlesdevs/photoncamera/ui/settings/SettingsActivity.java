@@ -63,6 +63,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
     public static final String ACTION_IMPORT_CONFIG = "org.codeaurora.snapcam.action.IMPORT_CONFIG";
     /** P143: the camera's config menu asks for the lasting access to Download/SCAMERA (the system folder picker). */
     public static final String ACTION_OPEN_FOLDER = "org.codeaurora.snapcam.action.OPEN_FOLDER";
+    /** SIMPLE_UI: the camera opens a settings page at a row (the LUT tray's «Все LUT ›»): EXTRA_PAGE, EXTRA_KEY. */
+    public static final String ACTION_OPEN_PAGE = "org.codeaurora.snapcam.action.OPEN_PAGE";
+    public static final String EXTRA_PAGE = "open_page", EXTRA_KEY = "open_key";
     private static int sCameraMode = -1;
     
     @Override
@@ -88,6 +91,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 .beginTransaction()
                 .replace(R.id.settings_container, new SettingsFragment())
                 .commit();
+        if (savedInstanceState == null && ACTION_OPEN_PAGE.equals(getIntent().getAction())) {
+            String page = getIntent().getStringExtra(EXTRA_PAGE), key = getIntent().getStringExtra(EXTRA_KEY);
+            if (page != null && key != null) openPageAt(page, key);
+        }
         getSupportFragmentManager().registerFragmentLifecycleCallbacks(new FragmentLifeCycleMonitor(), true);
 
     }
@@ -167,6 +174,17 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
     void openModuleProfiles(String name) {
         getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleProfilesFragment())
                 .addToBackStack(name).commit();
+    }
+
+    /** A page with one row marked and scrolled to (the camera's links into the settings). */
+    void openPageAt(String page, String key) {
+        SettingsFragment fragment = new SettingsFragment();
+        Bundle args = new Bundle();
+        args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, page);
+        args.putString("search_target", key);
+        fragment.setArguments(args);
+        getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, fragment)
+                .addToBackStack("open_page").commit();
     }
 
     void openSearchResult(SettingsSearchFragment.Entry entry) {

@@ -91,6 +91,25 @@
                 app:layout_constraintStart_toStartOf="@+id/texture"
                 app:layout_constraintEnd_toEndOf="@+id/texture" />
 
+            <!-- SIMPLE_UI §1: the LUT pill in the viewfinder's top-left corner (LutTray styles it and opens the tray). -->
+            <TextView
+                android:id="@+id/lut_pill"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:maxWidth="180dp"
+                android:gravity="center_vertical"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:text="LUT"
+                android:textSize="12sp"
+                android:clickable="true"
+                android:focusable="true"
+                app:layout_constraintTop_toTopOf="@+id/texture"
+                app:layout_constraintStart_toStartOf="@+id/texture"
+                tools:ignore="HardcodedText" />
+
             <com.particlesdevs.photoncamera.ui.camera.views.viewfinder.HorizonIndicatorView
                 android:id="@+id/horizon_indicator_view"
                 android:layout_width="420dp"

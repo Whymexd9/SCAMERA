@@ -65,10 +65,13 @@ public class Swipe {
 
             @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+                if (e1 == null) return false;
                 float diffY = e2.getY() - e1.getY();
                 float diffX = e2.getX() - e1.getX();
-                if (Math.abs(diffX) > Math.abs(diffY)) {
-                    if (Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
+                // SIMPLE_UI §1: a horizontal swipe (|dx| > 60dp and > 1.5 |dy|) steps the LUT
+                float horizontal = 60 * cameraFragment.getResources().getDisplayMetrics().density;
+                if (Math.abs(diffX) > 1.5f * Math.abs(diffY)) {
+                    if (Math.abs(diffX) > horizontal && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
                         if (diffX > 0) {
                             Log.d(TAG, "Right");
                             SwipeRight();
@@ -78,7 +81,7 @@ public class Swipe {
                         }
                         return true;
                     }
-                } else if (Math.abs(diffY) > SWIPE_THRESHOLD && Math.abs(velocityY) > SWIPE_VELOCITY_THRESHOLD) {
+                } else if (Math.abs(diffY) > Math.abs(diffX) && Math.abs(diffY) > SWIPE_THRESHOLD && Math.abs(velocityY) > SWIPE_VELOCITY_THRESHOLD) {
                     if (diffY > 0) {
                         Log.d(TAG, "Bottom");//it swipes from top to bottom
                         SwipeDown();
@@ -153,17 +156,12 @@ public class Swipe {
         }
     }
 
-    /** Raises the settings sheet one level: HIDDEN -> PEEK -> FULL. */
+    /**
+     * Raises the settings sheet one level: HIDDEN -> PEEK -> FULL. SIMPLE_UI §1: it no longer resets the focus or the
+     * tracking (opening the quick sheet must not lose the subject).
+     */
     public void SwipeUp() {
-        boolean wasHidden = cameraFragmentViewModel.getSheetLevel() == CameraFragmentModel.SHEET_HIDDEN;
         cameraFragmentViewModel.sheetLevelUp();
-        // With the settings closed, a swipe up has always reset touch focus to auto. Keep that.
-        if (wasHidden) {
-            com.particlesdevs.photoncamera.control.subject.SubjectFocus subject = cameraFragment.getSubjectFocus();
-            if (subject != null) subject.stopTracking(false); // the reset below restores the default regions
-            TouchFocus touchFocus = cameraFragment.getTouchFocus();
-            if (touchFocus != null) touchFocus.resetFocusCircle();
-        }
     }
 
     /** Lowers the settings sheet one level: FULL -> PEEK -> HIDDEN. */
@@ -172,12 +170,21 @@ public class Swipe {
     }
 
 
+    /** SIMPLE_UI §1: the previous LUT, its name in the message band (only while the quick sheet is closed). */
     public void SwipeRight() {
-
+        stepLut(-1);
     }
 
+    /** SIMPLE_UI §1: the next LUT. */
     public void SwipeLeft() {
+        stepLut(1);
+    }
 
+    private void stepLut(int direction) {
+        if (cameraFragmentViewModel.getSheetLevel() != CameraFragmentModel.SHEET_HIDDEN) return;
+        com.particlesdevs.photoncamera.ui.camera.LutTray tray = cameraFragment.lutTray;
+        if (tray == null) return;
+        cameraFragment.showCardToast(tray.step(direction));
     }
 
 }

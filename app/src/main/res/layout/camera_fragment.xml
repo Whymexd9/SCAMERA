@@ -89,6 +89,20 @@
                     app:layout_constraintHorizontal_bias="0.0"
                     app:layout_constraintVertical_bias="1.0" />
 
+            <!--    SIMPLE_UI §1: the LUT tray (LutTray) in the Pro panel's place, its bottom on the panel's; Pro and the tray close
+                    each other. -->
+            <LinearLayout
+                    android:id="@+id/lut_tray"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginEnd="6dp"
+                    android:orientation="vertical"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toBottomOf="@+id/manual_mode"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent" />
+
             <!--    Block 1.5-->
             <!--    scrim of the FULL settings sheet over the viewfinder (shade_scrim_top covers the top bar);
                     above the viewfinder controls, below the sheet. Its top margin follows the top bar
