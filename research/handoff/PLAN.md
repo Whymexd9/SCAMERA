@@ -4893,3 +4893,12 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   after the shutter for FULLRES (owner earlier: «для фулреза 1 длинный достаточно», part B); where the worker's 13 s go
   (reading the memfd, mosaic detection - part B «skip the redundant worker mosaic detection» -, binning); what the UI should
   say when the remosaic is off (the FULLRES icon promises 50 / 200 MP).
+- Studied (2026-10-18, log (2) 09:58 tele 8160 x 6144, 36 frames of 95 MB, total 22.9 s): the 12 MP is P195 as the owner
+  asked it («отключать наш 2х2 и 4х4 ремозаик чтобы получать фото без него»: every colour block binned, the photo at W/2 x H/2,
+  W/4 x H/4 for Tetra). Where the time goes: 26 frames after the shutter 2.8 s; the burst moved into the shot arena 1.3 s;
+  the worker's kept burst (scam_dev / the owner's «keep burst», scam_burst-*.bin in Download: 3.4 GB) ~7.2 s before it starts;
+  the worker's mosaic detector 0.7 s (the header already says block 2); binning 36 frames 3.2 s; the merge and the tone the rest.
+  Without the kept burst the shot is ~16 s. Part B takes the capture-side costs (one long frame for FULLRES, the arena copy
+  during the capture, no second mosaic detection). Open for the owner: a binned FULLRES gives the sensor's own 12 MP binning
+  in software - whether FULLRES should then capture in the normal (sensor-binned) mode instead (same size, a fraction of
+  the time).
