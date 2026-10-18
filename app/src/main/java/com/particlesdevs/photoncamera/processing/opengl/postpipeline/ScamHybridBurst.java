@@ -960,7 +960,7 @@ public final class ScamHybridBurst implements ScamTransport {
                     "SHDR: Sabre 2x merge failed; no sensor-grid or upscale fallback"), first);
             final String report = ScamNeuralClient.lastJobReport;
             final String why = String.valueOf(first.getMessage());
-            final boolean timeout = first instanceof ScamNeuralClient.WorkerTimeoutException;
+            final boolean retry = conservativeRetry(first);
             // Only a stream of 16 MP or less marks the GPU unusable for the session: a larger one runs memory-heavy CPU stages
             // before the GPU context, where the low-memory killer can stop the worker; it takes the conservative retry instead.
             final boolean gpuInitDeath = (long) burst.width * burst.height <= CLASSIC_INPUT_PIXELS
@@ -972,7 +972,9 @@ public final class ScamHybridBurst implements ScamTransport {
             }
             learnFromCrash(report);
             if (gpuUnusable != null) return cpuSingle(burst);
-            if (!timeout) {
+            if (!retry) Log.w("SCAM_HDR", "Hybrid conservative retry skipped (" + (first instanceof WorkerWatchdog.StalledException
+                    ? "the worker hung waiting for the GPU" : "the worker timed out") + ")");
+            if (retry) {
                 // The conservative retry, once more while each crash names a further optional step to leave out (at most 3 retries).
                 String previous = report, previousWhy = why;
                 for (int attempt = 0; attempt < 3; attempt++) {
@@ -993,7 +995,7 @@ public final class ScamHybridBurst implements ScamTransport {
                         Log.e("SCAM_HDR", "Hybrid conservative merge failed too: " + second.getMessage());
                         previous = ScamNeuralClient.lastJobReport;
                         previousWhy = String.valueOf(second.getMessage());
-                        if (second instanceof ScamNeuralClient.WorkerTimeoutException || !learnFromCrash(previous) || gpuUnusable != null) break;
+                        if (!conservativeRetry(second) || !learnFromCrash(previous) || gpuUnusable != null) break;
                     } finally {
                         ScamNeuralClient.carryReport = null;
                     }
@@ -1001,6 +1003,16 @@ public final class ScamHybridBurst implements ScamTransport {
             }
             return cpuSingle(burst);
         }
+    }
+
+    /**
+     * Whether a failed merge takes the conservative retry: not after the outer timeout (it would wait as long again), and P220 not
+     * after the watchdog stopped a worker that was waiting for the GPU (a hung GPU hangs the retry too: the base frame alone at once);
+     * a worker stopped elsewhere, a crash and the worker's 840 s alarm still do.
+     */
+    static boolean conservativeRetry(Exception failure) {
+        if (failure instanceof ScamNeuralClient.WorkerTimeoutException) return false;
+        return !(failure instanceof WorkerWatchdog.StalledException && ((WorkerWatchdog.StalledException) failure).gpuFence);
     }
 
     /** P179: the frames of {@code all} but the first that are not in {@code merged} are freed (a retry skips them). */

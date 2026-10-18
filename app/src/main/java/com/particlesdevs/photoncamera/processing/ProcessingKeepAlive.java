@@ -1,11 +1,14 @@
 package com.particlesdevs.photoncamera.processing;
 
+import android.Manifest;
+import android.app.ActivityManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Handler;
@@ -15,6 +18,7 @@ import android.os.PowerManager;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.util.Lang;
@@ -29,6 +33,11 @@ import java.util.function.BooleanSupplier;
  * foreground service (type specialUse, a low-priority "processing" notification, a partial wake lock for the screen-off
  * case) is started at the shutter, while the app is in front (a start from the background is refused on Android 12+), and
  * stops itself once nothing is captured, queued or merged for 3 s ({@link #busy}).
+ * <p>
+ * P220 (owner: a notification of the processing progress): while a merge has run for 10 s or more with the app behind the
+ * screen, the notification shows the merge's measured progress (MergeProgress, the worker's heartbeat) - only when the
+ * notification permission is already granted (the app never asks for it); back in front or once the merge is done it is the
+ * plain one again.
  */
 public final class ProcessingKeepAlive extends Service {
     private static final String TAG = "ProcessingKeepAlive";
@@ -42,6 +51,8 @@ public final class ProcessingKeepAlive extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private PowerManager.WakeLock wakeLock;
     private long idleSince;
+    /** P220: the notification shows the merge's progress (the percent shown, -1: the plain notification). */
+    private int progressShown = -1;
 
     /** At the shutter (the app is in front): keeps the process running until the shot is saved. */
     public static void hold(Context context) {
@@ -60,6 +71,7 @@ public final class ProcessingKeepAlive extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         try {
+            progressShown = -1; // P220: the plain notification again
             Notification n = notification();
             if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             else startForeground(NOTIFICATION_ID, n);
@@ -99,11 +111,17 @@ public final class ProcessingKeepAlive extends Service {
                 stopSelf();
                 return;
             }
+            updateProgress();
             handler.postDelayed(this, POLL_MS);
         }
     };
 
     private Notification notification() {
+        return notification(-1);
+    }
+
+    /** The service's notification: {@code percent} of the merge done, or -1 for the plain «processing» one. */
+    private Notification notification(int percent) {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(CHANNEL) == null)
             nm.createNotificationChannel(new NotificationChannel(CHANNEL, Lang.t("Обработка фото", "Photo processing"),
@@ -111,12 +129,53 @@ public final class ProcessingKeepAlive extends Service {
         return new NotificationCompat.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_round_photo_camera_24)
                 .setContentTitle(getString(R.string.app_name))
-                .setContentText(Lang.t("Обработка фото…", "Processing the photo…"))
+                .setContentText(percent < 0 ? Lang.t("Обработка фото…", "Processing the photo…")
+                        : Lang.t("Склейка снимка: " + percent + " %", "Merging the shot: " + percent + " %"))
                 .setOngoing(true)
                 .setSilent(true)
+                .setOnlyAlertOnce(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setProgress(0, 0, true)
+                .setProgress(percent < 0 ? 0 : 100, Math.max(0, percent), percent < 0)
                 .build();
+    }
+
+    /** P220: the merge's progress in the notification behind the screen (see the class comment), or the plain one back. */
+    private void updateProgress() {
+        try {
+            final boolean allowed = notificationsAllowed(this);
+            final boolean show = MergeProgress.showNotification(MergeProgress.running(),
+                    MergeProgress.runningMs(android.os.SystemClock.elapsedRealtime()), appInForeground(), allowed);
+            final int percent = show ? Math.round(100f * MergeProgress.done()) : -1;
+            if (percent == progressShown || (!show && progressShown < 0)) return;
+            progressShown = percent;
+            if (!allowed) return; // the permission went away meanwhile: nothing is posted
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(NOTIFICATION_ID, notification(percent));
+        } catch (RuntimeException e) {
+            Log.w(TAG, "progress notification: " + e);
+        }
+    }
+
+    /** P220: the notification permission is granted already (Android 13+) and notifications are on; never asked for. */
+    static boolean notificationsAllowed(Context context) {
+        try {
+            if (Build.VERSION.SDK_INT >= 33
+                    && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false;
+            return NotificationManagerCompat.from(context).areNotificationsEnabled();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** P220: an activity of the app is on the screen (the process is foreground; behind it the service keeps it at 125). */
+    static boolean appInForeground() {
+        try {
+            ActivityManager.RunningAppProcessInfo info = new ActivityManager.RunningAppProcessInfo();
+            ActivityManager.getMyMemoryState(info);
+            return info.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
+        } catch (RuntimeException e) {
+            return true; // unknown: no progress notification
+        }
     }
 
     @Override

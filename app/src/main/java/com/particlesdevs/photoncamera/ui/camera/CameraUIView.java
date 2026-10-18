@@ -33,6 +33,9 @@ public interface CameraUIView {
     /** P158: the pipeline's milestone (0..1) of the shot being processed. */
     void setProcessingProgress(float fraction);
 
+    /** P220: a progress event of the shot being processed (the large-shot hint, the merge's measured share). */
+    void setProcessingProgress(com.particlesdevs.photoncamera.processing.ProcessingProgress progress);
+
     /**
      * Capture ProgressBar methods
      * Control the Progress bar that displays image capture sequence

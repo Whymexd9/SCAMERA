@@ -5014,3 +5014,47 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   as the first round; 185248: default 8c0090ff (= the first round, 23 of 23), mosaicFrames 14 7ed5796e (= the first round's
   worker: 0.483 %, 12 N + 1 + 1), bentoHighlight 0.01 (16.5 % clipped) 11 N + 2 + 1 with «BENTO: applied ... frames=2», no NaN /
   Inf; SCAM_NO_WARMUP=1 rc 0 twice; every replay rc 0. Java untouched in this round (no unit-test rerun).
+
+### P220 - merge worker watchdog on progress; the merge's progress in the processing ring and the notification (roadmap
+stability 8, speed-ux C1; owner: a processing progress ring and a notification)
+- Evidence: the worker ends a hung merge only by its alarm(840) (scam-neural-worker.cpp), the app waits 900 - 3600 s
+  (ScamHybridBurst.workerTimeoutSeconds), and the SIGALRM exit is neither a timeout nor a named crash stage, so the conservative
+  retry ran for up to 840 s more: ~28 min with the FULLRES shutter held (P200). A pass can be silent for minutes (owner's log
+  2026-10-17 18:25:45 «HYBRID MOCHI: off» -> 18:29:51: the 245 s native merge before P204), so log gaps say nothing. The ring
+  ran on the last shot's time only (ProcessingRing: after a 12 MP shot a 50 MP ring sat at 94 % ~20 s); the keep-alive
+  notification was indeterminate.
+- Worker (scam-progress.h, new): pass() at each stage (cre, burst, map, keep-burst, prepare, mosaic-detect / mosaic / mosaic-bin /
+  mosaic-split / mosaic-binned, align, bento, local-align, gpu, mochi, merge, finish, write), step() / at() as units complete (CRE
+  groups, frames, binned rows, Mochi frames, GPU strips read back = output rows, 64 MB kept-burst writes), tick() per GPU program;
+  FenceWait round the strip readback (the 120 s glClientWaitSync and the maps behind it). A heartbeat thread prints every 5 s
+  «HYBRID PROGRESS pass=<name> done=<k>/<n> seq=<events> slowest=<ms>[ fence=<ms>]» (slowest = the longest gap between two
+  events, the open one excluded), stopped before «SCAM CAPTURE OK». The 840 s alarm stays. Replay-only hook SCAM_STALL_STRIP=
+  <strip>,<s>[,fence] (the app never sets it), SCAM_PROGRESS_MS for the period. No merge program text touched.
+- App: WorkerWatchdog (new) waits in 1 s slices; armed by the first heartbeat; seq unchanged for max(90 s, 4 x the slowest step:
+  the worker's or the gap the app saw) -> the worker is killed (StalledException); time the app itself did not run (a slice
+  back > 5 s late: frozen / asleep) is not counted. ScamHybridBurst.conservativeRetry: no retry after the outer timeout (as before)
+  or a stall with fence >= half the silence (hung GPU: the base frame alone at once); a CPU stall, a crash and SIGALRM keep it.
+  scam_dev worker_watchdog 0 off / 1 log only / 2 on (default), on «Для разработчика» (DevKeys). MergeProgress (new): pass table ->
+  share of the merge (the strips 26 - 95 %), never back in a job. Ring: ScamProcessor sends ProcessingProgress.large() above
+  16 MP (the creep goes only to 10 % in its first 7 s instead of running on the 12 MP time) and the heartbeat's share; measured
+  mode carries the ring from where it stands to 55 % (moving on at the measured speed for at most one heartbeat, holding when the
+  worker is slower, never back), after the merged milestone the rest creeps on the last measured shot's post-merge time. A merge
+  shorter than 5 s reports nothing: the ring as before (and a large shot no longer sets the 12 MP time estimate). ProcessingKeepAlive:
+  a merge running >= 10 s with the app not in front (process importance > FOREGROUND) shows «Склейка снимка: N %» (determinate,
+  silent, only-alert-once) in its notification, only if POST_NOTIFICATIONS is granted and notifications are on; never asks;
+  back to the plain one in front / after the merge.
+- Checked: WorkerWatchdogTest 9/9 (new: a fake worker on a fake clock silent after 30 s is killed at 120 s, one that reports for
+  600 s with 35 s steps survives, 40 s steps -> 160 s threshold (150 s silence survives, the stuck one dies at 360 s), fence stall
+  -> no retry, CPU stall -> retry, log-only / off never kill, no heartbeat -> only the timeout, a 120 s app freeze not counted;
+  the parse fixture is a real worker line), MergeProgressTest 4/4 (new), ProcessingRingTest 7/7 (+4), DevKeysCoverageTest; the
+  whole CI list 207 classes, 1295 tests, 0 failures; check_ui_language, check_settings_model PASS. tools/check_worker_progress.cpp
+  (new, CI) built with the NDK and run on the OPPO: PASS. OPPO replays, worker e51885ef (HEAD, = P219 final) vs 86b56fda: syn_b1
+  5b988db1, x7u_1x 52bcce71, syn_b2 7c1a3756, syn_b4 5e586261, hand fef2af11, isz2 d72715ce, v10_1 3e84061b, v10_2 12389449 -
+  whole outputs byte-identical (cmp), 0 - 2 heartbeats each; owner's 50 MP scam_burst-20261017-185248 2bd67597 identical (also
+  with a 1 s heartbeat: mosaic -> mosaic-bin 3072/3072 -> gpu -> merge 128 .. 5888/6144 -> finish, merge 17.2 vs 17.3 s). End to
+  end on the OPPO (real worker + WorkerWatchdog in an app_process harness, syn_b1): strip 3 held 200 s -> killed at 95 s,
+  gpuFence false; held in the fence wait -> killed at 95 s, «waiting for the GPU 93 s», gpuFence true; held 60 s -> finished,
+  5b988db1; log only with 120 s -> one line, finished; off with 100 s -> finished. Phone files p220_* / job_p220 removed.
+- Not checked: no shot with the app (camera app not run): the ring and the notification on screen, the kill / fallback inside
+  the app (WorkerSpawn SIGKILL path), a real GPU hang; CI's g++ ASan build of the new check (no host compiler); vivo / Mali.
+  Seen, not changed: CameraFragment still posts its old indeterminate «processing» notification (id 1) at every shot.
