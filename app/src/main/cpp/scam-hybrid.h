@@ -99,6 +99,16 @@ inline uint64_t hybridMemAvailable(){
     return 0;
 }
 inline std::string hybridMB(uint64_t bytes){return std::to_string((bytes+(1u<<19))>>20);}
+// P213a: the worker's resident memory now and its peak so far (VmRSS, VmHWM of /proc/self/status) in MB, 0 = unknown
+inline std::array<long,2> hybridRssMB(){
+    std::array<long,2> mb{0,0};
+    std::ifstream f("/proc/self/status");std::string line;
+    while(std::getline(f,line)){
+        const int k=line.rfind("VmRSS:",0)==0?0:line.rfind("VmHWM:",0)==0?1:-1;
+        if(k>=0)mb[size_t(k)]=std::atol(line.c_str()+6)/1024;
+    }
+    return mb;
+}
 
 struct HybridTuning {
     // rejection (SCAM 9.6 rejection.cl constants)
@@ -7055,20 +7065,21 @@ struct MosaicChromaPasses {
     double boxRows=0,boxCols=0,boxAlloc=0; // inside the kBox* times
     bool cpu=false;int calls=0;            // the CPU path ran (calls: 1, or the strips of the bounded-rows path)
     size_t peakBytes=0;double peakPlanes=0;int peakW=0,peakH=0; // the most the CPU path held at once (planes of peakW x peakH)
+    std::array<long,2> rssBefore{},rssAfter{}; // the callers: hybridRssMB() before and after the call (VmHWM after > before: a new peak)
     void hold(std::initializer_list<const std::vector<float>*> planes,int w,int h){
         size_t bytes=0;for(const std::vector<float>* p:planes)bytes+=p->capacity()*sizeof(float);
         if(bytes>peakBytes){peakBytes=bytes;peakPlanes=double(bytes)/(4.0*double(w)*double(h));peakW=w;peakH=h;}
     }
     std::string text() const {
         double sum=0;for(double v:ms)sum+=v;
-        char line[700];
+        char line[1000];
         std::snprintf(line,sizeof(line),"%.0f ms of passes%s: alloc %.0f, ratios %.0f, median u %.0f+%.0f v %.0f+%.0f (rows+columns), luma %.0f, "
             "box hp %.0f, hp %.0f, sign map %.0f, box sc %.0f, box u %.0f+%.0f v %.0f+%.0f (all 6 boxes: rows %.0f columns %.0f planes %.0f), "
-            "blend %.0f, rgb %.0f, free %.0f%s; peak %.2f float planes of %dx%d besides rgb (%.0f MB)",
+            "blend %.0f, rgb %.0f, free %.0f%s; peak %.2f float planes of %dx%d besides rgb (%.0f MB); worker RSS %ld MB (peak %ld) before, %ld MB (peak %ld) after",
             sum,calls>1?(" in "+std::to_string(calls)+" strips").c_str():"",ms[kAlloc],ms[kRatios],ms[kMedUH],ms[kMedUV],ms[kMedVH],ms[kMedVV],ms[kLuma],
             ms[kBoxHp],ms[kHp],ms[kSign],ms[kBoxSc],ms[kBoxU1],ms[kBoxU2],ms[kBoxV1],ms[kBoxV2],boxRows,boxCols,boxAlloc,
             ms[kBlend],ms[kRecon],ms[kFree],calls>1?(", strip copies "+std::to_string(int(ms[kStrips]+0.5))).c_str():"",
-            peakPlanes,peakW,peakH,double(peakBytes)/1048576.0);
+            peakPlanes,peakW,peakH,double(peakBytes)/1048576.0,rssBefore[0],rssBefore[1],rssAfter[0],rssAfter[1]);
         return line;
     }
 };
@@ -7535,8 +7546,9 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
                 osc[size_t(J)*bw+I]=float(s/std::max(n,1));}});
         }
         std::string how;MosaicChromaPasses passes;
-        const auto oscDone=Clock::now();
+        const auto oscDone=Clock::now();passes.rssBefore=hybridRssMB();
         mosaicChromaMedian(rgb,ow,oh,b,osc.empty()?nullptr:&osc,tune.chromaGpu>0,&how,0,&passes);
+        passes.rssAfter=hybridRssMB();
         report("HYBRID MOSAIC: chroma median (dual 5-point, taps "+std::to_string(std::max(1,b/2))+" px, "+how+") "+std::to_string(int(millis(Clock::now()-t0)))+" ms");
         if(passes.cpu)report("HYBRID MOSAIC: chroma median CPU: oscillation map "+std::to_string(int(millis(oscDone-t0)))+" ms, "+passes.text()); // P213a
     }
@@ -7819,8 +7831,9 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
                 osc[size_t(J)*bw+I]=float(s/std::max(cnt,1));}});
         }
         std::string how;MosaicChromaPasses passes;
-        const auto oscDone=Clock::now();
+        const auto oscDone=Clock::now();passes.rssBefore=hybridRssMB();
         mosaicChromaMedian(rgb,ow,oh,mb*k2,&osc,tune.chromaGpu>0,&how,0,&passes); // P56: the block (and its taps) in output px
+        passes.rssAfter=hybridRssMB();
         report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,mb*k2/2))+" px of the "+std::to_string(ow)+"x"+std::to_string(oh)+" result, "+how+") "
             +std::to_string(int(millis(Clock::now()-c0)))+" ms");
         if(passes.cpu)report("HYBRID MOSAIC NATIVE: chroma median CPU: oscillation map "+std::to_string(int(millis(oscDone-c0)))+" ms, "+passes.text()); // P213a
