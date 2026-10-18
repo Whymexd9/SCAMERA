@@ -144,6 +144,13 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
   ROW_TRIALS пробуют строки заново (ключи без штампа — до P214h — принимаются как текущие). Кнопка FULLRES не пропадает, а
   тускнеет; нажатие (долгое — на любой) — причина и «Попробовать снова» (сброс ключей камеры); то же в «Настройки по модулям».
   В логе при открытии камеры: `FullResButton: camera N FULLRES trials: …`.
+- ISZ-модули X300 Ultra (P214i, `capture/VivoQcomIsz.MODES` — список владельца 2026-10-18): модули — Quad/Tetra 4:3
+  (UW 21, основная 10, теле 5 = 2×, теле 7 = 4×); видео-Quad теле 10/13/17 — мозаика, но не модуль; 6/31 (ремозаик) — нет.
+  Роль камеры — по `CameraType`, без него по ЭФР 14/35/85 мм (камеры 4/3/5). Ключ — только сессия (без копии в запросах).
+  Кадры проверяет `StreamCheck` (3 явных Bayer / мозаика) → `Trial` в `vivo_qcom_isz.xml` `isz_<cam>_<mode>` =
+  `<Build.FINGERPRINT>|NONE/PLAIN/CROPPED/BAYER`: сначала RAW без CROPPED_RAW, Bayer → перезапуск с CROPPED_RAW (как 30912),
+  снова Bayer → откат: склейка Bayer, зум кропом, карточка. `scam_dev vivo_qcom_isz_cropped_raw 1/0` фиксирует поток.
+  В логе: `X300 Ultra ISZ module …` и `VivoQcomIsz: ISZ module … trial A -> B`. DCG без `CameraType` — только теле.
 - BIN — контекстные бинарники QNN HTP V79, закреплены SHA256 в `ScamNeuralWorker.java`:
   `SCAM_FILES` (CRE `libvivo_nice_cre.so` и зависимости — выравнивание SHDR), `HEX_FILES` (4 .so рантайма QNN).
   Не упаковываются (только сверяются в бандле, `BUNDLE_ONLY`): группа `bundle/` (`tele576` + его QNN), `hexquad-x1/x2`,

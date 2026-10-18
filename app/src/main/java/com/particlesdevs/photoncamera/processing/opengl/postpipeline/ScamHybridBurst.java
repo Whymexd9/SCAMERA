@@ -505,8 +505,8 @@ public final class ScamHybridBurst implements ScamTransport {
      */
     private static int declaredSensorModeBlock() {
         try {
-            return com.particlesdevs.photoncamera.processing.MosaicBlockStore.declaredBlock(
-                    com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()));
+            // P214i: the X300 Ultra's list of the module's camera (elsewhere 5 -> 2, 7 -> 4 as before)
+            return com.particlesdevs.photoncamera.capture.VivoQcomIsz.declaredBlockOf(com.particlesdevs.photoncamera.settings.ModuleRegistry.active());
         } catch (RuntimeException e) {
             return 0;
         }
