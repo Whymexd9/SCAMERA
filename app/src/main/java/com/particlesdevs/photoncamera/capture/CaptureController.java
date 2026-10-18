@@ -390,6 +390,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private boolean mShutterIszAspect4x3;
     /** P212f (W2 = M3): the hand-set white balance's gains at the press (null: automatic), the shot's white point on a mosaic photo. */
     private android.hardware.camera2.params.RggbChannelVector mShutterManualWb;
+    /** P212g (W6 = M6): the mosaic white balance's route at the press (the vivo native route, P208's still-only one; null: none). */
+    private com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mShutterMosaicWb;
+    /** P212g (W6): the still-only session's viewfinder neutrals (its normal mode), and whether this session feeds them. */
+    private final com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Ring mVfNeutrals =
+            new com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Ring();
+    private volatile boolean mVfNeutralFeed;
+    /** P212g (W7 = M12): the AWB colour temperature label of a plain result (Qualcomm; vivo and OPPO report it). */
+    private static final CaptureResult.Key<int[]> AWB_CCT_LABEL =
+            new CaptureResult.Key<>("org.quic.camera2.statsconfigs.AWBFrameControlCCT", int[].class);
     private volatile boolean mLiveRawSession;
     /**
      * P13: the stream of this session is a colour-block mosaic (a sensor mode without remosaic, MosaicStream): its ISP preview
@@ -773,6 +782,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     if (mVivoSdkRawSession == null) OppoNativeFullRes.rememberPlain(physicalID, result);
                     else if (VivoSdkFullRes.oppo()) OppoNativeFullRes.complete(mVivoSdkCameraId, result);
                 }
+                // P212g (W6 = M6): P208's still-only viewfinder is the normal mode (its ISP AWB valid): its neutrals for the press
+                if (mVfNeutralFeed && mVivoSdkRawSession != null)
+                    mVfNeutrals.offer(physicalID, android.os.SystemClock.elapsedRealtime(), result);
+                // P212g (W7 = M12): a converged plain result teaches the camera's colour table (about once a second)
+                if (mVivoSdkRawSession == null) plainColour(result);
                 if (mLastPreviewResultMs == 0) markModuleGood();
                 mLastPreviewResultMs = android.os.SystemClock.elapsedRealtime();
                 // Restarts count as successful only after a second of frames: one result per new session reset the count and the
@@ -3128,6 +3142,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         // P212d: the scene-flicker report of a session counts after its first results, never in a native route
                         // with its own RAW viewfinder (no HAL statistics there; the still-only route keeps the normal viewfinder)
                         MainsFlicker.newSession(nativeVivoFullRes() && !stillOnlyFullRes());
+                        // P212g (W6): a still-only vivo session's viewfinder neutrals, this session's only
+                        mVfNeutrals.clear();
+                        mVfNeutralFeed = stillOnlyFullRes() && !VivoSdkFullRes.oppo();
                         if (mBackgroundHandler != null) {
                             mBackgroundHandler.removeCallbacks(mStallCheck);
                             mBackgroundHandler.postDelayed(mStallCheck, 1000);
@@ -3654,6 +3671,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     com.particlesdevs.photoncamera.settings.ModuleRegistry.active(), mCameraCharacteristics,
                     mPreviewCaptureResult, physicalID, logicalID, mCroppedRawSession);
             mShutterManualWb = paramController.manualWhiteBalanceGains(); // P212f: a later switch to Auto stays out of the shot
+            mShutterMosaicWb = mosaicWbAtPress(); // P212g (W6 = M6)
             if (mVivoSdkRawSession != null) {
                 mBackgroundHandler.post(this::captureVivoSdkFullRes);
                 return true;
@@ -4673,6 +4691,67 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         s.gainRows = m.gainRows;
         final Integer iso = result == null ? null : result.get(CaptureResult.SENSOR_SENSITIVITY);
         return s.noise(result == null ? null : result.get(CaptureResult.SENSOR_NOISE_PROFILE), iso == null ? 100 : iso);
+    }
+
+    /**
+     * P212g (W6 = M6): the press's route for the mosaic white balance (MosaicNeutralResolver): a vivo native FULLRES session (its
+     * HAL 3A runs), on P208's still-only route with the median of the normal-mode viewfinder's converged neutrals of the last second;
+     * null for any other shot (the OPPO native route and the 12 MP ISZ modules keep P121).
+     */
+    @Nullable
+    private com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mosaicWbAtPress() {
+        try {
+            if (mVivoSdkRawSession == null || VivoSdkFullRes.oppo() || !nativeVivoFullRes()) return null;
+            if (stillOnlyFullRes()) {
+                final com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press p =
+                        mVfNeutrals.stillOnly(physicalID, android.os.SystemClock.elapsedRealtime());
+                Log.i("SCAM_CAPTURE", "mosaic white balance at the press: " + p);
+                return p;
+            }
+            return com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press.vivoNative();
+        } catch (RuntimeException e) {
+            Log.w("SCAM_CAPTURE", "mosaic white balance at the press: " + e);
+            return null;
+        }
+    }
+
+    /**
+     * P212g (W7 = M12): a plain-Bayer session's converged result (AWB AUTO and CONVERGED, block 1, no native session; at most once a
+     * second a camera) teaches PlainColourMemory its neutral, the ISP's matrix - COLOR_CORRECTION_TRANSFORM when the ISP branch of
+     * Parameters takes it, else the identity's OPPO ISP matrix com.oplus.custom.ccm (Parameters.oplusCcmInstead's rule) - and the
+     * AWB label AWBFrameControlCCT (not the 3745 K init signature). Any brand; a mosaic photo of the camera reads it.
+     */
+    private void plainColour(TotalCaptureResult result) {
+        final long now = android.os.SystemClock.elapsedRealtime();
+        if (!com.particlesdevs.photoncamera.processing.color.PlainColourMemory.due(physicalID, now)) return;
+        try {
+            if (com.particlesdevs.photoncamera.processing.MosaicStream.block() != 1 || OppoNativeFullRes.running()) return;
+            final Integer awb = result.get(CaptureResult.CONTROL_AWB_MODE), state = result.get(CaptureResult.CONTROL_AWB_STATE);
+            if (awb == null || awb != CaptureResult.CONTROL_AWB_MODE_AUTO || state == null || state != CaptureResult.CONTROL_AWB_STATE_CONVERGED)
+                return;
+            final Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
+            if (n == null || n.length < 3 || !(n[1].floatValue() > 0f)) return;
+            final android.hardware.camera2.params.ColorSpaceTransform cst = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
+            if (cst == null) return;
+            final float[] m = new float[9];
+            for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) m[r * 3 + c] = cst.getElement(c, r).floatValue();
+            float[] ccm = null;
+            if (com.particlesdevs.photoncamera.processing.render.Parameters.ispCcmUsable(cst)) ccm = m;
+            else if (PreferenceKeys.scamDevSwitch("oplus_ccm", true) && com.particlesdevs.photoncamera.processing.color.OplusCcm.identity(m)) {
+                try {
+                    ccm = com.particlesdevs.photoncamera.processing.color.OplusCcm.parse(result.get(new CaptureResult.Key<>(
+                            com.particlesdevs.photoncamera.processing.color.OplusCcm.TAG_NAME, byte[].class)));
+                } catch (RuntimeException noTag) {
+                    ccm = null;
+                }
+            }
+            if (ccm == null) return;
+            int[] label;
+            try { label = result.get(AWB_CCT_LABEL); } catch (RuntimeException noTag) { label = null; }
+            com.particlesdevs.photoncamera.processing.color.PlainColourMemory.offer(physicalID, n[0].floatValue() / n[1].floatValue(),
+                    n[2].floatValue() / n[1].floatValue(), ccm, com.particlesdevs.photoncamera.processing.color.PlainColourMemory.label(label), now);
+        } catch (RuntimeException ignored) {
+        }
     }
 
     /** P212f (W5 = M13 phase 2): the last plain teacher sample (elapsedRealtime ms). */
@@ -5873,6 +5952,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final ImageSaver saver = new ImageSaver(cameraEventsListener);
         saver.iszAspect4x3 = mShutterIszAspect4x3 || nativeVivoFullRes();
         saver.manualWbAtPress = mShutterManualWb;
+        saver.mosaicWbAtPress = mShutterMosaicWb;
         saver.setFrameCount(count);
         saver.fullResSeries = seriesMode ? total : 0; // P190: the merge keeps a series whole
         saver.fullResRequested = requested;

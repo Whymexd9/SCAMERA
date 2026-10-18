@@ -645,6 +645,29 @@ public class Parameters {
     public android.hardware.camera2.params.RggbChannelVector manualWbAtPress;
     /** P212f: where the kept hand-set white balance came from (log), empty when none. */
     public String handSetSource = "";
+    /**
+     * P212g (W7 = M12): a mosaic shot (ScamProcessor.applyMosaicNeutral found a colour block above 1): without a usable ISP matrix
+     * for its neutral it is rendered with the camera's plain-session matrix at that neutral (PlainColourMemory) instead of the DNG
+     * matrices.
+     */
+    public boolean mosaicShot;
+    /** P212g (W7): where the mosaic shot's colour matrix came from (log), empty for any other shot. */
+    public String mosaicMatrixSource = "";
+    /**
+     * P212g (W6 = M6): what the press knew about the mosaic white balance - the vivo native route, or P208's still-only route with
+     * its viewfinder's neutral (MosaicNeutralResolver); null: neither. Set before the merge.
+     */
+    @androidx.annotation.Nullable
+    public com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mosaicWbAtPress;
+
+    /**
+     * P212g (W7 = M12): a mosaic shot takes the plain-session table's matrix when no tuned one renders it and the result's transform
+     * does not fit its neutral - our own neutral (the ISP's matrix was picked at the camera's), or none the ISP branch accepts (the
+     * vivo mosaic results' identity).
+     */
+    static boolean plainTableApplies(boolean mosaicShot, boolean oppoTuned, boolean ownNeutral, boolean ispUsable) {
+        return mosaicShot && !oppoTuned && (ownNeutral || !ispUsable);
+    }
 
     /** P212f (W2): the white point {G / R, 1, G / B} of hand-set gains (the formula of ReCalcColor's AWB-off branch); null: none. */
     @androidx.annotation.Nullable
@@ -796,12 +819,15 @@ public class Parameters {
         }
         boolean oppoTuned = false;
         if (OppoTunedColor.applies()) {
-            float cctK = OppoTunedColor.estimateCct(characteristics, whitePoint);
+            // P212g (W7 = M12 item 4): a sensor without a measured 6500 K anchor (22.36 mm, 3.23 mm) takes the one its plain table learned
+            final String camera = String.valueOf(physicalID);
+            float cctK = OppoTunedColor.estimateCct(characteristics, whitePoint, camera);
             {
                 float[] fl = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
                 float f0 = fl != null && fl.length > 0 ? fl[0] : 0f;
-                Log.i(TAG, String.format(java.util.Locale.ROOT, "OPPO CCT: focal %.2f mm neutral R/G %.4f B/G %.4f ln(R/B) %.4f anchor %.3f -> %.0f K",
-                        f0, whitePoint[0] / whitePoint[1], whitePoint[2] / whitePoint[1], Math.log(whitePoint[0] / whitePoint[2]), OppoTunedColor.anchor(f0), cctK));
+                Log.i(TAG, String.format(java.util.Locale.ROOT, "OPPO CCT: focal %.2f mm neutral R/G %.4f B/G %.4f ln(R/B) %.4f anchor %s -> %.0f K",
+                        f0, whitePoint[0] / whitePoint[1], whitePoint[2] / whitePoint[1], Math.log(whitePoint[0] / whitePoint[2]),
+                        OppoTunedColor.describeAnchor(f0, camera), cctK));
             }
             sceneCct = cctK;
             float[] tunedForward = OppoTunedColor.forwardAt(characteristics, cctK);
@@ -825,6 +851,18 @@ public class Parameters {
         ColorSpaceTransform CST = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
         CST = oplusCcmInstead(CST, result);
         Log.d(TAG, "result colorCorrection transform=" + CST + " gains=" + result.get(CaptureResult.COLOR_CORRECTION_GAINS));
+        // P212g (W7 = M12): a mosaic shot without a usable ISP matrix for its neutral takes the camera's plain-session matrix at that
+        // neutral (PlainColourMemory) - the colour the ISP renders that light with in the normal mode - instead of the generic DNG
+        // matrices (scam_dev.txt "mosaic_ccm_table 0": as before)
+        final boolean ispUsable = ispCcmUsable(CST);
+        com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup plainTable = null;
+        boolean plainTableAsked = false;
+        if (plainTableApplies(mosaicShot, oppoTuned, ownNeutral, ispUsable)
+                && com.particlesdevs.photoncamera.processing.color.PlainColourMemory.on()) {
+            plainTableAsked = true;
+            plainTable = com.particlesdevs.photoncamera.processing.color.PlainColourMemory.lookup(String.valueOf(physicalID), whitePoint);
+            if (plainTable != null) CST = plainTable.transform();
+        }
         assert calibration2 != null;
         assert forwardt1 != null;
         assert forwardt2 != null;
@@ -853,9 +891,10 @@ public class Parameters {
         // vivo X200 Ultra: the DNG matrices in the characteristics are generic (the interpolation always lands near D65), but the
         // HAL reports the colour transform its ISP tuning uses at the scene's colour temperature, together with the
         // matching white balance gains. SCAM HDR renders with that matrix (the same idea as the OPPO tuned CCM per CCT).
-        if (!oppoTuned && !ownNeutral && ispCcmUsable(CST)) {
+        if (!oppoTuned && (plainTable != null || !ownNeutral && ispUsable)) {
             wrongCalibration = true;
-            Log.d(TAG, "Using the ISP colour transform of the capture result (vivo)");
+            Log.d(TAG, plainTable != null ? "Using the camera's plain-session colour matrix (mosaic shot)"
+                    : "Using the ISP colour transform of the capture result (vivo)");
         }
         if (wrongCalibration) {
             sensorToProPhoto[0] = 1.0f / whitePoint[0];
@@ -896,13 +935,37 @@ public class Parameters {
         // vivo: the DNG estimate above lands on a reference illuminant for every scene; the white balance of the shot
         // against the camera's daylight white gives the real colour temperature (the warm cast kept in the render,
         // the warm-light hue look).
+        // P212g (W7): a mosaic shot on the plain-session matrix takes the colour temperature of its AWB labels at that light
         if (!oppoTuned && dcpXyz == null && wrongCalibration) {
-            float wbCct = com.particlesdevs.photoncamera.processing.color.SceneIlluminant.cct(cameraID, whitePoint, CCT.matrix);
-            if (wbCct > 0f) {
-                Log.d(TAG, "Scene light from the white balance: " + wbCct + " K (DNG estimate " + sceneCct + " K, camera " + cameraID + ")");
-                sceneCct = wbCct;
+            if (plainTable != null && plainTable.cct > 0f) {
+                Log.d(TAG, "Scene light from the plain-session AWB labels: " + plainTable.cct + " K (DNG estimate " + sceneCct + " K, camera " + cameraID + ")");
+                sceneCct = plainTable.cct;
+            } else {
+                float wbCct = com.particlesdevs.photoncamera.processing.color.SceneIlluminant.cct(cameraID, whitePoint, CCT.matrix);
+                if (wbCct > 0f) {
+                    Log.d(TAG, "Scene light from the white balance: " + wbCct + " K (DNG estimate " + sceneCct + " K, camera " + cameraID + ")");
+                    sceneCct = wbCct;
+                }
             }
         }
+        if (mosaicShot) {
+            mosaicMatrixSource = mosaicMatrixSource(dcpXyz != null, oppoTuned, plainTable, wrongCalibration && !ownNeutral && ispUsable,
+                    plainTableAsked, String.valueOf(physicalID), whitePoint);
+            Log.i(TAG, "mosaic colour matrix: " + mosaicMatrixSource + String.format(java.util.Locale.ROOT, ", scene %.0f K", sceneCct));
+        }
+    }
+
+    /** P212g (W7): the log text of where a mosaic shot's colour matrix came from. */
+    static String mosaicMatrixSource(boolean dcp, boolean oppoTuned,
+                                     @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup table,
+                                     boolean isp, boolean asked, String camera, float[] neutral) {
+        if (dcp) return "the active DCP profile";
+        if (oppoTuned) return "the OPPO tuned matrix";
+        if (table != null) return table.how;
+        if (isp) return "the ISP transform of the result (it fits the camera's own neutral)";
+        if (!com.particlesdevs.photoncamera.processing.color.PlainColourMemory.on()) return "the DNG matrices (mosaic_ccm_table 0)";
+        return asked ? String.format(java.util.Locale.ROOT, "the DNG matrices (camera %s's plain table has no bin near ln(r/b) %.3f)", camera,
+                Math.log(neutral[0] / neutral[2])) : "the DNG matrices";
     }
 
     /**
@@ -930,8 +993,11 @@ public class Parameters {
         return new ColorSpaceTransform(q);
     }
 
-    /** The reported transform of a vivo SCAM HDR capture: a full matrix whose rows sum to about 1 (white stays white). */
-    private static boolean ispCcmUsable(ColorSpaceTransform cst) {
+    /**
+     * The reported transform of a vivo SCAM HDR capture: a full matrix whose rows sum to about 1 (white stays white). P212g: public
+     * (the plain-session colour table takes what this branch would).
+     */
+    public static boolean ispCcmUsable(ColorSpaceTransform cst) {
         if (cst == null || !PreferenceKeys.isScamEnabled() || PreferenceKeys.routeInternalValue("isp_ccm", 1f) <= 0f) return false;
         Rational[] r = new Rational[9];
         cst.copyElements(r, 0);

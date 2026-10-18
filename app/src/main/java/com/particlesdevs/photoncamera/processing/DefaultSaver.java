@@ -26,6 +26,8 @@ public class DefaultSaver extends SaverImplementation {
     int ownedFullResSeries, ownedFullResRequested;
     /** P212f (W2 = M3): the hand-set white balance's gains at the press of the queued shot (null: automatic). */
     android.hardware.camera2.params.RggbChannelVector ownedManualWb;
+    /** P212g (W6 = M6): the mosaic white balance's route at the press of the queued shot (null: none). */
+    com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press ownedMosaicWb;
 
     public DefaultSaver(ProcessingEventsListener processingEventsListener) {
         super(processingEventsListener);
@@ -49,6 +51,8 @@ public class DefaultSaver extends SaverImplementation {
             ownedFullResSeries = ownedFullResRequested = 0;
             scamProcessor.ownedManualWb = ownedManualWb;
             ownedManualWb = null;
+            scamProcessor.ownedMosaicWb = ownedMosaicWb;
+            ownedMosaicWb = null;
             scamProcessor.configure(ScameraApp.getSettings().alignAlgorithm,
                     ScameraApp.getSettings().rawSaver, ScameraApp.getSettings().selectedMode);
             scamProcessor.start(ownedDngFile, ownedImageFile,
