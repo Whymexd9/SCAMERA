@@ -3143,6 +3143,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         // P212d: the scene-flicker report of a session counts after its first results, never in a native route
                         // with its own RAW viewfinder (no HAL statistics there; the still-only route keeps the normal viewfinder)
                         MainsFlicker.newSession(nativeVivoFullRes() && !stillOnlyFullRes());
+                        mVfCcmSession++; // P212z: the native viewfinder's colour matrix is looked up again in this session
                         // P212g (W6): a still-only vivo session's viewfinder neutrals, this session's only
                         mVfNeutrals.clear();
                         mVfNeutralFeed = stillOnlyFullRes() && !VivoSdkFullRes.oppo();
@@ -4506,15 +4507,23 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** P212c: the unthrottled trace of the native AE (scam_dev.txt "native_ae_trace 1"), one line a frame, flushed once a second. */
     private final StringBuilder mNativeAeTrace = new StringBuilder();
     private long mNativeAeTraceMs;
-    /** P212c: the shading map the meter last read and its gains (copyGainFactors order), reused while the results carry the same. */
-    private android.hardware.camera2.params.LensShadingMap mMeterMap;
+    /**
+     * P212c: the gains (copyGainFactors order) of the shading map the meter last read, reused while the results carry the same. P212z:
+     * the same factors and size (meterGains), not the same map object (a result builds a new one on every get); the map's size and
+     * the copy buffer a frame's factors are read into.
+     */
     private float[] mMeterGains;
+    private int mMeterCols, mMeterRows;
+    private final float[][] mMeterScratch = new float[1][];
     /** P212b: the last plain-session sample for the native AE's start (elapsedRealtime ms). */
     private long mPlainMeterMs;
-    /** P212a: the tag of the native AE's ISO probe: its frame stays out of the viewfinder, the AE and the 50 MP ring. */
-    private static final Object NATIVE_ISO_PROBE = new Object() {
-        @Override public String toString() { return "native ISO probe"; }
-    };
+    /**
+     * P212a: the native AE's ISO probe request: its frame stays out of the viewfinder, the AE and the 50 MP ring. P212z (review): the
+     * request object itself (a result's getRequest() is the request submitted), no longer a tag set on the shared preview builder for
+     * the build - a rebuild from another thread in between (a WB dial, a tap, a zoom step) took the tag into the repeating request,
+     * and every frame after it was a "probe": no RAW viewfinder, no AE, an empty native ring until the next UI rebuild.
+     */
+    private volatile CaptureRequest mNativeIsoProbeRequest;
 
     /**
      * P212d: the native AE's flicker is known - set by hand, or «Авто» latched from evidence (MainsFlicker.known) - or scam_dev.txt
@@ -4606,7 +4615,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
             } else mNativeAeSettledMs = 0;
             // P212a: once a session, a request above the cap shows whether the firmware gives more gain after all (never while a
-            // shot is pending: its frame would be in the ring; NATIVE_ISO_PROBE keeps it out of the ring and the AE anyway)
+            // shot is pending: its frame would be in the ring; isNativeIsoProbe keeps it out of the ring and the AE anyway)
             if (capOn && !mShotInProgress && !shotInFlight() && !fullResMergeRunning()) {
                 final int probe = ae.probeIso(now - mNativeAeStartMs);
                 if (probe > 0) sendNativeIsoProbe(ae, probe);
@@ -4834,6 +4843,22 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     /**
+     * P212z (review): the gains of {@code map} (copyGainFactors order): {@code last} itself when they are its factors at its size
+     * ({@code lastCols} x {@code lastRows}) - the array NativeRawExposure.gainMedian caches its median by - else a new array. The
+     * factors are read into {@code scratch[0]} (reused frame after frame); a copy that becomes the gains leaves it (never written again).
+     */
+    static float[] meterGains(android.hardware.camera2.params.LensShadingMap map, @Nullable float[] last, int lastCols, int lastRows,
+                              float[][] scratch) {
+        final int n = map.getGainFactorCount();
+        float[] buffer = scratch[0];
+        if (buffer == null || buffer.length != n) buffer = scratch[0] = new float[n];
+        map.copyGainFactors(buffer, 0);
+        if (last != null && lastCols == map.getColumnCount() && lastRows == map.getRowCount() && Arrays.equals(buffer, last)) return last;
+        scratch[0] = null;
+        return buffer;
+    }
+
+    /**
      * P212c: what the native AE's meter weights: the output crop (the result's crop region, inside it the zoom ratio around its
      * centre - CONTROL_ZOOM_RATIO leaves the crop region whole), the AE regions a tap or a subject set (they differ from the
      * metering mode's own), the result's shading map unless the RAW is shaded already, and the white point.
@@ -4882,12 +4907,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 : result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP);
         if (map != null && map.getColumnCount() > 1 && map.getRowCount() > 1
                 && !com.particlesdevs.photoncamera.processing.render.Parameters.rawShadingAlreadyApplied(c)) {
-            if (map != mMeterMap || mMeterGains == null) {
-                final float[] gains = new float[map.getGainFactorCount()];
-                map.copyGainFactors(gains, 0);
-                mMeterGains = gains;
-                mMeterMap = map;
-            }
+            // P212z (review): the key is synthesized, every get() builds a new LensShadingMap - the cache keyed on the map's
+            // identity never hit, so every metered frame allocated new gains and NativeRawExposure.gainMedian (keyed on the gains
+            // array's identity) re-ran its 64 x 48 grid and sort. The factors are compared instead: the same map keeps its array.
+            mMeterGains = meterGains(map, mMeterGains, mMeterCols, mMeterRows, mMeterScratch);
+            mMeterCols = map.getColumnCount();
+            mMeterRows = map.getRowCount();
             s.gains = mMeterGains;
             s.gainCols = map.getColumnCount();
             s.gainRows = map.getRowCount();
@@ -5013,10 +5038,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
-    /** P212a: the native AE's ISO probe frame (its request carries NATIVE_ISO_PROBE). */
-    private static boolean isNativeIsoProbe(@Nullable TotalCaptureResult result) {
-        final CaptureRequest request = result == null ? null : result.getRequest();
-        return request != null && request.getTag() == NATIVE_ISO_PROBE;
+    /** P212a: the native AE's ISO probe frame (P212z: its request is the probe request sent). */
+    private boolean isNativeIsoProbe(@Nullable TotalCaptureResult result) {
+        return isProbe(result == null ? null : result.getRequest(), mNativeIsoProbeRequest);
+    }
+
+    /** P212z: a result's request is the probe request (by identity: a repeating request built meanwhile is never one). */
+    static boolean isProbe(@Nullable CaptureRequest request, @Nullable CaptureRequest probe) {
+        return request != null && request == probe;
     }
 
     /**
@@ -5029,16 +5058,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (builder == null || session == null || burst) return;
         try {
             final Integer before = builder.get(CaptureRequest.SENSOR_SENSITIVITY);
-            final CaptureRequest repeating = mPreviewInputRequest;
             final CaptureRequest probe;
+            // P212z: the builder's tag stays (the probe is known by its request object); its ISO is restored right after the build
             builder.set(CaptureRequest.SENSOR_SENSITIVITY, probeIso);
-            builder.setTag(NATIVE_ISO_PROBE);
             try {
                 probe = builder.build();
             } finally {
                 builder.set(CaptureRequest.SENSOR_SENSITIVITY, before != null ? before : ae.iso());
-                builder.setTag(repeating == null ? null : repeating.getTag());
             }
+            mNativeIsoProbeRequest = probe;
             session.capture(probe, mCaptureCallback, mBackgroundHandler);
             Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT, "native AE camera %s: ISO probe %d at %.3f ms (cap %d, %.2f EV short)",
                     mVivoSdkCameraId, probeIso, ae.exposureNs() / 1e6, ae.isoCap(), ae.deficitEv()));
@@ -5193,6 +5221,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private float mVfCcmLnR = Float.NaN, mVfCcmLnB = Float.NaN;
     @Nullable private float[] mVfCcm;
     @Nullable private String mVfCcmHow;
+    /**
+     * P212z (review): counted up by every configured session (onConfigured), so a session never reuses the last one's cached matrix
+     * - a cached null too: a cold start into FULLRES had no plain table, a plain session in between taught it this light (or the
+     * X7 Ultra's 6x / front anchor), and the identity stayed while the neutral held within 0.01 ln. The session the cache is of.
+     */
+    private volatile int mVfCcmSession;
+    private int mVfCcmSessionSeen = -1;
 
     /**
      * P212h (A6 = M11): the photo's colour matrix for a native FULLRES viewfinder frame with an identity transform, column-major as the
@@ -5207,6 +5242,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final float[] neutral = {gains[1] / gains[0], 1f, gains[1] / gains[2]};
         final float lnR = (float) Math.log(neutral[0]), lnB = (float) Math.log(neutral[2]);
         final String camera = physicalID;
+        final int session = mVfCcmSession;
+        if (session != mVfCcmSessionSeen) {
+            // P212z (review): a new session looks again (and logs its source once)
+            mVfCcmSessionSeen = session;
+            mVfCcmCamera = null;
+            mVfCcmHow = "";
+        }
         if (camera.equals(mVfCcmCamera) && !NativeViewfinder.moved(mVfCcmLnR, mVfCcmLnB, lnR, lnB)) return mVfCcm;
         float[] rowMajor = null;
         String how = null;

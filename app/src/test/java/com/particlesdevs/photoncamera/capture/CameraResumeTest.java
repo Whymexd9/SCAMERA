@@ -439,4 +439,103 @@ public class CameraResumeTest {
         assertEquals("back3",ModuleRegistry.active());
     }
 
+    /**
+     * P212z (review): the native AE's ISO probe is known by its request object, not by a tag set on the shared preview builder - a
+     * repeating request built from the builder afterwards (a UI rebuild) carries the viewfinder's own tag and ISO and is no probe,
+     * so its frames still reach the RAW viewfinder, the AE and the native ring.
+     */
+    @Test public void theNativeIsoProbeLeavesThePreviewBuilderAlone() throws Exception {
+        CaptureRequest.Builder builder=newRequestBuilder();
+        Object viewfinderTag=new Object();
+        builder.setTag(viewfinderTag);
+        builder.set(CaptureRequest.SENSOR_SENSITIVITY,1600);
+        controller.mPreviewRequestBuilder=builder;
+        CameraCaptureSession session=mock(CameraCaptureSession.class);
+        put(controller,"mCaptureSession",session);
+        boolean wasBurst=CaptureController.burst;CaptureController.burst=false;
+        try {
+            NativeRawExposure ae=new NativeRawExposure(new android.util.Range<>(10_000L,1_000_000_000L),new android.util.Range<>(100,6400),
+                    CaptureController.NATIVE_FRAME_NS,40_000_000L,1600);
+            var send=CaptureController.class.getDeclaredMethod("sendNativeIsoProbe",NativeRawExposure.class,int.class);send.setAccessible(true);
+            send.invoke(controller,ae,3200);
+            var sent=org.mockito.ArgumentCaptor.forClass(CaptureRequest.class);
+            verify(session).capture(sent.capture(),any(),any());
+            CaptureRequest probe=sent.getValue();
+            assertEquals(Integer.valueOf(3200),probe.get(CaptureRequest.SENSOR_SENSITIVITY));
+            assertSame("the builder keeps the viewfinder's tag",viewfinderTag,builder.build().getTag());
+            assertEquals("and its ISO",Integer.valueOf(1600),builder.get(CaptureRequest.SENSOR_SENSITIVITY));
+            var isProbe=CaptureController.class.getDeclaredMethod("isNativeIsoProbe",TotalCaptureResult.class);isProbe.setAccessible(true);
+            TotalCaptureResult probed=mock(TotalCaptureResult.class);when(probed.getRequest()).thenReturn(probe);
+            TotalCaptureResult rebuilt=mock(TotalCaptureResult.class);when(rebuilt.getRequest()).thenReturn(builder.build());
+            assertTrue((Boolean)isProbe.invoke(controller,probed));
+            assertFalse("a request built after the probe is the viewfinder's",(Boolean)isProbe.invoke(controller,rebuilt));
+            assertFalse((Boolean)isProbe.invoke(controller,(Object)null));
+        } finally {
+            CaptureController.burst=wasBurst;
+        }
+    }
+
+    /**
+     * P212z (review): the native viewfinder's cached matrix (a null one too) is its session's: a cold start into FULLRES has no
+     * plain table (the identity), a plain session in between teaches the table this light, and the next native session at the same
+     * neutral takes it (it kept the identity while the neutral held within 0.01 ln).
+     */
+    @Test public void theNativeViewfinderMatrixIsLookedUpAgainInANewSession() throws Exception {
+        android.content.SharedPreferences prefs=RuntimeEnvironment.getApplication().getSharedPreferences("vf_ccm_session_test",0);
+        prefs.edit().clear().commit();
+        com.particlesdevs.photoncamera.processing.color.PlainColourMemoryAccess.useStore(prefs,"vivo/V2562/V2562:16/1");
+        try {
+            put(controller,"physicalID","3");
+            var matrix=CaptureController.class.getDeclaredMethod("nativeViewfinderMatrix",CameraCharacteristics.class,CaptureResult.class,float[].class);
+            matrix.setAccessible(true);
+            CameraCharacteristics c=mock(CameraCharacteristics.class);
+            float[] gains={1f/0.48f,1f,1f/0.60f}; // the neutral 0.48 / 0.60
+            assertNull("no plain table yet: the identity",matrix.invoke(controller,c,null,gains));
+            float[] plain={1.30f,-0.29f,-0.01f,-0.15f,1.21f,-0.06f,0.02f,-0.46f,1.44f};
+            for(int i=0;i<4;i++)com.particlesdevs.photoncamera.processing.color.PlainColourMemory.offer("3",0.48f,0.60f,plain,6200,10_000L+1_000L*i);
+            assertNull("the same session keeps its lookup",matrix.invoke(controller,c,null,gains));
+            var session=CaptureController.class.getDeclaredField("mVfCcmSession");session.setAccessible(true);
+            session.setInt(controller,session.getInt(controller)+1); // onConfigured of the next session
+            float[] next=(float[])matrix.invoke(controller,c,null,gains);
+            assertNotNull("the next session takes the table",next);
+            assertEquals("column-major",plain[3],next[1],2e-3f);
+        } finally {
+            com.particlesdevs.photoncamera.processing.color.PlainColourMemoryAccess.reset();
+        }
+    }
+
+    /** The framework's shading map (its constructor is hidden in the SDK stubs: rows, then columns). */
+    private static android.hardware.camera2.params.LensShadingMap lsm(float[] gains,int cols,int rows) throws Exception {
+        var c=android.hardware.camera2.params.LensShadingMap.class.getDeclaredConstructor(float[].class,int.class,int.class);
+        c.setAccessible(true);
+        return c.newInstance(gains,rows,cols);
+    }
+
+    /**
+     * P212z (review): the meter's shading gains stay the same array while a result's map has the same factors (a result builds a new
+     * LensShadingMap on every get, so the map object never repeats) - NativeRawExposure.gainMedian's cache key - and the copy buffer
+     * is reused; a changed map or size gives a new array and leaves the earlier one as it was.
+     */
+    @Test public void theMeterKeepsItsShadingGainsWhileTheMapIsTheSame() throws Exception {
+        float[] g=new float[3*2*4];
+        for(int i=0;i<g.length;i++)g[i]=1f+0.01f*i;
+        float[][] scratch=new float[1][];
+        float[] first=CaptureController.meterGains(lsm(g,3,2),null,0,0,scratch);
+        assertArrayEquals(g,first,0f);
+        float[] again=CaptureController.meterGains(lsm(g.clone(),3,2),first,3,2,scratch);
+        assertSame("a new map of the same factors keeps the array",first,again);
+        float[] buffer=scratch[0];
+        assertNotNull(buffer);
+        assertNotSame(first,buffer);
+        assertSame(first,CaptureController.meterGains(lsm(g.clone(),3,2),again,3,2,scratch));
+        assertSame("the copy buffer is reused",buffer,scratch[0]);
+        float[] g2=g.clone();g2[5]+=0.1f;
+        float[] changed=CaptureController.meterGains(lsm(g2,3,2),first,3,2,scratch);
+        assertNotSame(first,changed);
+        assertArrayEquals(g2,changed,0f);
+        assertArrayEquals("the earlier gains as they were",g,first,0f);
+        assertNotSame("another size",changed,CaptureController.meterGains(lsm(g2.clone(),2,3),changed,3,2,scratch));
+        assertEquals(NativeRawExposure.gainMedian(first,3,2),NativeRawExposure.gainMedian(again,3,2),0f);
+    }
+
 }
