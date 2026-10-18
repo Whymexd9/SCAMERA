@@ -34,7 +34,7 @@ int main() {
     const HybridInput in = input(0.125f);
     const int w = in.w, h = in.h;
     auto level = [&](int x, int y, int c) -> float {
-        if (x >= 200 && y < 40) return 8.f;                       // clipped even in the ultrashort frame
+        if (x >= 200 && y < 40) return (x & 1) ? 8.f : 7.9996f;     // clipped even in the ultrashort frame (the merged plateau)
         if (x == 10 && y == 10) return 20.f;                       // overshoot
         if (x >= 100 && x < 140 && y >= 60 && y < 100) return 0.0021f; // flat dark patch
         return 0.001f + 0.9f * float(x) / float(w) * (c == 1 ? 1.f : 0.6f);

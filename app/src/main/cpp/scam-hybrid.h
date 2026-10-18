@@ -482,7 +482,10 @@ inline float hybridWriteMergedDng(std::vector<uint16_t>& dng,int w,int h,const H
     dng.assign(size_t(w)*h,0);
     mergeRowBands(h,[&](int y0,int y1){
         for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){
-            const float v=sample(x,y,colour(x,y)),m=std::isfinite(v)?std::clamp(v/headroom,0.f,1.f):0.f;
+            // P215: a site within 1e-4 of the ceiling is the clip itself (the merged plateau of a highlight clipped in every frame
+            // comes out at 7.9996..8 of 8 after the weights): written at WhiteLevel, not one code under it
+            const float v=sample(x,y,colour(x,y));
+            const float m=!std::isfinite(v)?0.f:headroom>=ceiling&&v>=ceiling*0.9999f?1.f:std::clamp(v/headroom,0.f,1.f);
             const float black=input.black[((y&1)<<1)|(x&1)];
             // P215: the dither stays off a clipped site (exactly WhiteLevel) and keeps every code inside 0..65535
             const float code=(black+m*(input.white-black))*k+(dither&&m<1.f?hybridDngDither(x,y):0.f);
