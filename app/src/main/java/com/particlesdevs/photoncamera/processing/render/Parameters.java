@@ -83,6 +83,13 @@ public class Parameters {
     public String levelSource = "";
     /** P135: SNR of the finish input the denoise measured (ScamDenoise), NaN until it ran: the sharpening backs off by it. */
     public float finishSnr = Float.NaN;
+    /**
+     * P214e: colour block of the image the merge returned (ScamHybridBurst.mergedBlock): 2 Quad / 4 Tetra when the worker
+     * merged a mosaic stream on its mosaic (the ISZ modules, FULLRES native mosaic), 1 otherwise (a Bayer stream, a mosaic
+     * binned into plain Bayer, a block nobody measured, every shot that is not a hybrid merge). Above 1 ArkLumaSharpen
+     * sharpens the 3x3-smoothed luma (R1).
+     */
+    public int mosaicBlock = 1;
     public static int mergeWhiteLevel = 65535;
     public int realWL = -1;
     public boolean hasGainMap;
@@ -880,6 +887,7 @@ public class Parameters {
         params.levelBits = levelBits;
         params.levelSource = levelSource;
         params.finishSnr = finishSnr;
+        params.mosaicBlock = mosaicBlock;
         params.realWL = realWL;
         params.hasGainMap = hasGainMap;
         params.mapSize = new Point(mapSize);

@@ -904,9 +904,36 @@ public final class ScamHybridBurst implements ScamTransport {
         return null;
     }
 
+    private static final java.util.regex.Pattern MOSAIC_BINNED_LINE =
+            java.util.regex.Pattern.compile("HYBRID MOSAIC BINNED: block [24] without remosaic");
+    /** The heads of the worker's two mosaic merges: native (hybridReconstructMosaicNative) and the sub-frame split. */
+    private static final java.util.regex.Pattern MOSAIC_MERGE_LINE =
+            java.util.regex.Pattern.compile("HYBRID MOSAIC NATIVE: block ([24])[ ,]|HYBRID MOSAIC: block ([24]), \\d+ plain-Bayer sub-frames");
+
+    /**
+     * P214e: colour block of the image a merge returned (Parameters.mosaicBlock; above 1 ArkLumaSharpen sharpens the
+     * 3x3-smoothed luma, R1). 1 when the burst was binned into plain Bayer ({@code binned} > 1) or the worker says it was
+     * («HYBRID MOSAIC BINNED»); else the block of the worker's mosaic merge head (native or the sub-frame split), which also
+     * covers a block only the worker measured (the app sent 0); without a report (the CPU single-frame tier, which averages
+     * each colour over its blocks) or without such a line the block the app sent (2 or 4), otherwise 1.
+     */
+    static int mergedBlock(int block, int binned, String report) {
+        if (binned > 1) return 1;
+        if (report != null) {
+            if (MOSAIC_BINNED_LINE.matcher(report).find()) return 1;
+            java.util.regex.Matcher m = MOSAIC_MERGE_LINE.matcher(report);
+            int found = 0;
+            while (m.find()) found = Integer.parseInt(m.group(1) != null ? m.group(1) : m.group(2));
+            if (found > 0) return found;
+        }
+        return block == 2 || block == 4 ? block : 1;
+    }
+
     private static ByteBuffer merge(Context context, List<ImageFrame> frames, Parameters p, boolean mergedDng, ScamHybridBurst[] made) throws Exception {
         ScamHybridBurst burst = new ScamHybridBurst(frames, p, false);
         made[0] = burst;
+        // P214e: the block of the CPU tier; a worker merge sets it again from its report
+        p.mosaicBlock = mergedBlock(burst.mosaicBlock, burst.binned, null);
         if ((long) burst.width * burst.height > HUGE_INPUT_PIXELS) releaseLeftOut(frames, burst.frames);
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("ctor_done");
         burst.mergedDng = mergedDng;
@@ -925,7 +952,9 @@ public final class ScamHybridBurst implements ScamTransport {
             return cpuSingle(burst);
         }
         try {
-            return ScamNeuralClient.processScamBurst(context, burst);
+            final ByteBuffer merged = ScamNeuralClient.processScamBurst(context, burst);
+            p.mosaicBlock = mergedBlock(burst.mosaicBlock, burst.binned, ScamNeuralClient.lastJobReport);
+            return merged;
         } catch (Exception first) {
             if (burst.strictTwoX) throw new IOException(Lang.t("SHDR: склейка 2× не завершена; замена на 1× или увеличение отключена",
                     "SHDR: Sabre 2x merge failed; no sensor-grid or upscale fallback"), first);
@@ -954,6 +983,7 @@ public final class ScamHybridBurst implements ScamTransport {
                         lastMergedDngSize = new android.graphics.Point(safe.gridWidth, safe.gridHeight);
                         ScamNeuralClient.carryReport = "previous attempt: " + previousWhy + "\n" + (previous == null ? "" : tail(previous, 4000));
                         ByteBuffer out = ScamNeuralClient.processScamBurst(context, safe);
+                        p.mosaicBlock = mergedBlock(safe.mosaicBlock, safe.binned, ScamNeuralClient.lastJobReport);
                         lastMergeTier = "gpu-conservative";
                         lastFallbackFrames = safe.frames.size();
                         Log.w("SCAM_HDR", "Hybrid fallback=gpu-conservative after: " + why

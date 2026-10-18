@@ -5,6 +5,7 @@ import android.graphics.Point;
 import com.particlesdevs.photoncamera.processing.opengl.GLFormat;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.BufferUtils;
 import com.particlesdevs.photoncamera.util.Log;
 
@@ -26,6 +27,8 @@ import static android.opengl.GLES20.GL_NEAREST;
  * <p>On the Sabre 2x grid the spatial constants are multiplied by the grid scale (the mod sharpens the 12 MP output) and
  * the bilateral and Gaussian RL amounts are trimmed (SCALE2_*), so a 50 MP image downscaled to 12 MP gets ArkCam's
  * response within 5 % up to 0.4 cycles / px (tools/check_ark_sharpen.py).
+ * <p>P214e R1: on a mosaic shot (Parameters.mosaicBlock 2 / 4) the passes read the 3x3 binomial B(Ya) and the result is
+ * Ya + S(B(Ya)) - B(Ya) (ark/sharp_r1.glsl, {@link #smoothedSource}); a plain Bayer shot runs the passes of before.
  */
 public final class ArkLumaSharpen extends Node {
     /** 2x grid: the scaled kernels are finer sampled and sharpen up to 19 % more than the 1x ones (check_ark_sharpen). */
@@ -56,6 +59,25 @@ public final class ArkLumaSharpen extends Node {
         if (snr >= LOW_LIGHT_FULL) return 1f;
         final double t = Math.log(snr / LOW_LIGHT_START) / Math.log(LOW_LIGHT_FULL / LOW_LIGHT_START);
         return (float) (LOW_LIGHT_MIN + (1 - LOW_LIGHT_MIN) * t);
+    }
+
+    /**
+     * P214e R1 (owner, 2026-10-18: yes to quality.md 15; PLAN "Research 2026-10-17"): a mosaic shot - a Quad / Tetra stream the
+     * worker merged on its mosaic (the ISZ modules, FULLRES native mosaic: Parameters.mosaicBlock 2 or 4) - is sharpened on the
+     * 3x3 binomial of Ya (ark/sharp_r1.glsl): every pass reads B(Ya) and Ya + S(B(Ya)) - B(Ya) goes to the combine. The merge's
+     * site lattice then reaches the sharpening at a quarter (diagonal, 4 px) or nothing (2 px) of its amplitude instead of being
+     * lifted x2.5-2.9: on the owner's 50 MP burst the diagonal lattice fell from 0.084 / 0.093 % to 0.045 / 0.049 %; the 2-4 px
+     * detail band is lifted x1.34 instead of x2.14 there (4-8 px x1.40 instead of x1.49), the flat-area grain at 2-4 px x1.44
+     * instead of x2.5. A plain Bayer shot (block 1, also a mosaic binned into plain Bayer, or a block nobody measured) keeps the
+     * passes of before exactly; scam_dev "sharpen_r1 0" gives a mosaic shot those too (the A/B).
+     */
+    static boolean smoothedSource(int mosaicBlock, boolean enabled) {
+        return (mosaicBlock == 2 || mosaicBlock == 4) && enabled;
+    }
+
+    /** {@link #smoothedSource} of the shot: the scam_dev line is read only for a mosaic shot. */
+    static boolean smoothedSource(int mosaicBlock) {
+        return smoothedSource(mosaicBlock, mosaicBlock > 1 && PreferenceKeys.scamDevSwitch("sharpen_r1", true));
     }
 
     /** Amount factor at grid scale s: 1 at s <= 1, k at s >= 2, linear in between. */
@@ -288,6 +310,26 @@ public final class ArkLumaSharpen extends Node {
         final boolean released = releaseImage(pipeline, input, gainMap, mul);
         if (fallback != null) fallback.close();
 
+        // P214e R1: on a mosaic shot every pass below reads B(Ya), the 3x3 binomial of Ya, and the residual Ya - B takes Ya's
+        // plane until the last pass (S(B) + Ya - B). Otherwise src is ya, as before.
+        final int block = pipeline.mParameters.mosaicBlock;
+        final boolean r1 = smoothedSource(block);
+        GLTexture src = ya, residual = null;
+        if (r1) {
+            src = plane(size, GLFormat.DataType.FLOAT_16, 1);
+            glProg.useAssetProgram("ark/sharp_r1", false);
+            glProg.setTexture("InputBuffer", ya);
+            glProg.setVar("modeU", 0);
+            glProg.drawBlocks(src);
+            residual = plane(size, GLFormat.DataType.FLOAT_16, 1);
+            glProg.useAssetProgram("ark/sharp_r1", false);
+            glProg.setTexture("InputBuffer", ya);
+            glProg.setTexture("Smoothed", src);
+            glProg.setVar("modeU", 1);
+            glProg.drawBlocks(residual);
+            ya.close();
+        }
+
         boolean gf = gfRadius >= 1 && Math.abs(gfLc) > 0.001f;
         GLTexture ab = null;
         int gfBox = 0;
@@ -297,7 +339,7 @@ public final class ArkLumaSharpen extends Node {
             Point reduced = ArkTone.reduced(size, gfDown);
             GLTexture h = plane(reduced, GLFormat.DataType.FLOAT_32, 2);
             glProg.useAssetProgram("ark/sharp_box", false);
-            glProg.setTexture("InputBuffer", ya);
+            glProg.setTexture("InputBuffer", src);
             glProg.setVar("modeU", 0);
             glProg.setVar("radiusU", gfBox);
             glProg.setVar("downU", gfDown);
@@ -321,8 +363,8 @@ public final class ArkLumaSharpen extends Node {
         List<GLTexture> pool = new ArrayList<>();
         GLTexture obs = spare(pool, size);
         glProg.useAssetProgram("ark/sharp_compose", false);
-        glProg.setTexture("InputBuffer", ya);
-        glProg.setTexture("GfAB", ab != null ? ab : ya);
+        glProg.setTexture("InputBuffer", src);
+        glProg.setTexture("GfAB", ab != null ? ab : src);
         glProg.setVar("downU", gfDown);
         glProg.setVar("gfLcU", gf ? gfLc : 0f);
         glProg.setVar("usmSigmaU", usm ? usmRadius * s : 0f);
@@ -338,7 +380,7 @@ public final class ArkLumaSharpen extends Node {
         glProg.setVar("protectHighlightsU", protectHighlights);
         glProg.setVar("grainU", grain);
         glProg.drawBlocks(obs);
-        ya.close();
+        src.close(); // ya itself without R1
         if (ab != null) ab.close();
 
         StringBuilder stages = new StringBuilder();
@@ -382,6 +424,19 @@ public final class ArkLumaSharpen extends Node {
             stages.append(" rl").append(i + 1).append("=").append(kernel == 2 ? "airy" : kernel == 1 ? "disk" : "gauss")
                     .append(rad * s).append("x").append(iters).append("@").append(amount);
         }
+        if (r1) {
+            // P214e R1: S(B) + (Ya - B); the RL ratio goes first, the output takes a free plane of the pool
+            if (ratio != null) { ratio.close(); ratio = null; }
+            GLTexture out = spare(pool, size, obs);
+            glProg.useAssetProgram("ark/sharp_r1", false);
+            glProg.setTexture("Sharpened", obs);
+            glProg.setTexture("Residual", residual);
+            glProg.setVar("modeU", 2);
+            glProg.drawBlocks(out);
+            residual.close();
+            obs = out;
+            stages.append(" r1=B3(block ").append(block).append(")");
+        } else if (block > 1) stages.append(" r1=off(block ").append(block).append(")");
         glProg.closed = true;
         if (ratio != null) ratio.close();
         for (GLTexture t : pool) if (t != obs) t.close();

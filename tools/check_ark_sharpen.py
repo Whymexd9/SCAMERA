@@ -7,7 +7,10 @@ numpy reference of ArkCam's process_luma_fp16 (tools/ark_sharpen_ref.py = resear
   1. PSF tables: Airy r 1 against the emulated kernel (ark_sharpen.md 3.2);
   2. scale 1 (1x grid): the whole X8U chain, GPU vs reference, on synthetic texture + edges, per stage and in total;
   3. scale 2 (Sabre 2x grid): the response at f / 2 of a 2x grid equals the 1x response at f (MTF table of
-     ark_sharpen.md 0.3), i.e. the 50 MP image downscaled looks like the 12 MP one.
+     ark_sharpen.md 0.3), i.e. the 50 MP image downscaled looks like the 12 MP one;
+  4. P214e R1 (a mosaic shot, ark/sharp_r1.glsl): B(Ya) = the 3x3 binomial as numpy computes it, S + (Ya - B) with S = B
+     gives Ya back, the whole R1 chain = Ya + process_luma(B) - B, and the Quad / Tetra site lattice (diagonal 4 px,
+     2 px) is lifted far less than by the plain sharpening while the image detail below ~0.1 cycles / px keeps its gain.
 Usage: python tools/check_ark_sharpen.py
 """
 import sys, math
@@ -166,6 +169,39 @@ def synth(h=192, w=256, seed=3):
     return np.clip(img, 0, 1).astype(np.float32)
 
 
+def gpu_r1(ya, P=R.X8U, scale=1.0, sharpen=None):
+    """P214e: ArkLumaSharpen on a mosaic shot - sharp_r1 mode 0 (B), mode 1 (D = Ya - B), the chain on B, mode 2 (S + D).
+    Returns the output, B and D."""
+    H, W = ya.shape
+    L = tex(ya)
+    B = run('ark/sharp_r1', empty(W, H, 1), {'InputBuffer': L}, modeU=0)
+    D = run('ark/sharp_r1', empty(W, H, 1), {'InputBuffer': L, 'Smoothed': B}, modeU=1)
+    b = read(B)[..., 0]
+    # b and the chain's output are fp16 values: uploading them again is exact
+    s_out = gpu_sharpen(b, P, scale)[0] if sharpen is None else sharpen(b)
+    out = run('ark/sharp_r1', empty(W, H, 1), {'Sharpened': tex(s_out), 'Residual': D}, modeU=2)
+    return read(out)[..., 0], b, read(D)[..., 0]
+
+
+def binomial3(a):
+    """numpy B: [1 2 1]^T [1 2 1] / 16 with the edge pixels repeated (as sharp_r1 clamps), rounded to fp16."""
+    p = np.pad(a.astype(np.float64), 1, mode='edge')
+    h = p[:, :-2] + 2 * p[:, 1:-1] + p[:, 2:]
+    v = h[:-2] + 2 * h[1:-1] + h[2:]
+    return R.H16((v / 16).astype(np.float32)).astype(np.float64)
+
+
+def pattern_gain(fn, fy, fx, amp=0.005, mean=0.18, n=128):
+    """Amplitude gain of a 2D cosine (fy, fx cycles / px) at small amplitude on a flat field, central crop."""
+    yy, xx = np.mgrid[0:n, 0:n]
+    ref = amp * np.cos(2 * np.pi * (fy * yy + fx * xx))
+    o = fn((mean + ref).astype(np.float32))
+    c = slice(16, n - 16)
+    d = o[c, c] - o[c, c].mean()
+    r = ref[c, c] - ref[c, c].mean()
+    return float(np.sum(d * r) / np.sum(r * r))
+
+
 def mtf_gain(fn, f, amp=0.005, mean=0.18, n=256, scale=1.0):
     """Amplitude gain of a horizontal cosine of frequency f (cycles / px) at small amplitude, central rows."""
     x = np.arange(n)
@@ -220,6 +256,44 @@ def main():
     g2 = [mtf_gain(lambda a: gpu_sharpen(a, scale=2.0)[0], f / 2, n=512) for f in (0.05, 0.1, 0.2, 0.3, 0.4, 0.5)]
     print('     scale 2 GPU at f/2              ' + '  '.join(f'{g:5.2f}' for g in g2))
     check(all(abs(a - b) / b < 0.08 for a, b in zip(g2[:5], g1[:5])), 'scale 2 at f/2 follows scale 1 at f (within 8 %, f <= 0.4)')
+
+    # ---- 4. P214e R1
+    ya16 = R.H16(img).astype(np.float64)
+    r1_out, b, dres = gpu_r1(img)
+    # the store of the fp16 plane may round to nearest or toward zero (this host's driver truncates): 1 ulp of B
+    ulp = lambda v: np.spacing(np.abs(v).astype(np.float16)).astype(np.float64)
+    db = np.abs(b - binomial3(ya16))
+    check(np.all(db <= ulp(b)), f'R1 source B(Ya) = numpy 3x3 binomial within one fp16 ulp (max diff {db.max():.2e})')
+    dd = np.abs(dres - (ya16 - b))
+    check(np.all(dd <= ulp(dres)), f'R1 residual D = Ya - B of the stored B (max diff {dd.max():.2e}, {int(np.count_nonzero(dd))} px rounded)')
+    ident = gpu_r1(img, sharpen=lambda a: a)[0]
+    di = np.abs(ident - ya16)
+    check(np.count_nonzero(di) <= 0.01 * di.size and np.all(di <= ulp(ya16)),
+          f'R1 with S = identity gives Ya back ({int(np.count_nonzero(di))} of {di.size} px off, by at most one ulp)')
+    ref_r1 = np.maximum(ya16 + (R.process_luma(b.astype(np.float32)).astype(np.float64) - b), 0.0)
+    dr = np.abs(r1_out - ref_r1)[m:-m, m:-m]
+    print(f'     R1 chain |gpu-ref| max {dr.max():.2e} mean {dr.mean():.2e} p99.9 {np.percentile(dr, 99.9):.2e}')
+    check(np.percentile(dr, 99.9) < 5e-3 and dr.mean() < 8e-4, 'R1 chain (Ya + process_luma(B) - B) matches the reference within fp16 drift')
+    check(np.abs(r1_out - gpu)[m:-m, m:-m].mean() > 1e-3, 'R1 changes the result of a mosaic shot (the plain chain is the Bayer one)')
+
+    plain = lambda a: gpu_sharpen(a)[0]
+    r1 = lambda a: gpu_r1(a)[0]
+    lat = [('diag 4 px (0.25, +0.25)', 0.25, 0.25), ('diag 4 px (0.25, -0.25)', 0.25, -0.25), ('2 px rows (0.5, 0)', 0.5, 0.0),
+           ('2 px cols (0, 0.5)', 0.0, 0.5), ('4 px cols (0, 0.25)', 0.0, 0.25)]
+    print('     lattice gain (amp 0.005 on 0.18)     plain    R1')
+    gp, gr = [], []
+    for name, fy, fx in lat:
+        gp.append(pattern_gain(plain, fy, fx)); gr.append(pattern_gain(r1, fy, fx))
+        print(f'       {name:30s} {gp[-1]:6.2f} {gr[-1]:6.2f}')
+    check(all(r - 1 <= 0.5 * (p - 1) + 0.02 for p, r in zip(gp[:2], gr[:2])), 'R1: the diagonal lattice is lifted at most half as much as by the plain sharpening')
+    check(all(abs(r - 1) <= 0.05 for r in gr[2:4]), 'R1: the 2 px lattice passes at its own level (within 5 %)')
+    fs = (0.05, 0.1, 0.2, 0.3)
+    m1 = [mtf_gain(r1, f) for f in fs]
+    print('     MTF R1 (scale 1)              f:  ' + '  '.join(f'{f:5.2f}' for f in fs))
+    print('     plain                             ' + '  '.join(f'{g:5.2f}' for g in g1[:4]))
+    print('     R1                                ' + '  '.join(f'{g:5.2f}' for g in m1))
+    check(all(abs(a - b) / b < 0.06 for a, b in zip(m1[:2], g1[:2])), 'R1: detail up to 0.1 cycles / px keeps the plain gain (within 6 %)')
+    check(all(1.0 < a < b for a, b in zip(m1[2:], g1[2:4])), 'R1: finer detail is still sharpened, less than by the plain chain')
     print('ALL OK' if ok else 'FAILED')
     return 0 if ok else 1
 
