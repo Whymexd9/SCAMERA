@@ -170,4 +170,29 @@ public class RawCropTest {
         assertNotNull(RawCrop.parse("4096,3072,0,0,0,0,270"));
         assertEquals(270, RawCrop.parse("4096,3072,0,0,0,0,270")[6]);
     }
+
+    /**
+     * P230 Xiaomi 15 Ultra DCG: the mode's 2560 rows in the 4096 x 3072 buffer (here 320 of 384), the band below cut with the
+     * automatic crop off too; the shot's detection carries it for the settings' picture.
+     */
+    @Test public void aSensorModesEmptyBandIsCut() throws Exception {
+        final int w = 512, h = 384;
+        List<ImageFrame> frames = new ArrayList<>();
+        ImageFrame f = ImageFrame.deferred((RingFrame) null, 0x20, w, w * 2, 0, w * h * 2);
+        f.buffer = padded(w, h, 0, 64, 31);
+        f.width = w;
+        f.height = h;
+        frames.add(f);
+        RawCrop.Shot shot = RawCrop.cutShot(frames, 64f, false, new int[4], 90, new int[]{0, 0, 0, 64});
+        assertEquals(new RawCrop.Area(0, 0, w, h - 64), shot.area);
+        assertArrayEquals(new int[]{0, 0, 0, 64}, shot.padding);
+        assertEquals("the mode's window is centred on the sensor: the buffer's rows sit half the band lower", 32, shot.sensorShiftY);
+        assertEquals(-32, RawCrop.modeShiftY(new int[]{0, 64, 0, 0}));
+        assertEquals(0, RawCrop.modeShiftY(new int[4]));
+        assertEquals(0, RawCrop.modeShiftY(null));
+        assertEquals(h - 64, f.height);
+        assertEquals((long) w * (h - 64) * 2, f.buffer.capacity());
+        RawCrop.Shot none = RawCrop.cutShot(frames, 64f, false, new int[4], 90, null);
+        assertNull("no band: nothing more cut", none.area);
+    }
 }

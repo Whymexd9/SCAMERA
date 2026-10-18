@@ -128,6 +128,17 @@ public final class RawLevels {
     /** As above, with {@code saturation}: the clip plateau the session's samples showed (0: none), the white of a wider stream. */
     public static Levels resolve(float[] staticBlack, int staticWhite, float[] dynamicBlack, int dynamicWhite, int sampledBits,
                                  float sampledFloor, int saturation, boolean wide, boolean useDynamicBlack, boolean useDynamicWhite) {
+        return resolve(staticBlack, staticWhite, dynamicBlack, dynamicWhite, sampledBits, sampledFloor, saturation, 0, wide,
+                useDynamicBlack, useDynamicWhite);
+    }
+
+    /**
+     * As above, with {@code knownBits}: the depth of the sensor mode the session asked for and the results confirm (P230 Xiaomi 15
+     * Ultra DCG: 14 bit under the declared white 1023; 0: none). Not a guess of the samples: it holds with raw_wide 0 too.
+     */
+    public static Levels resolve(float[] staticBlack, int staticWhite, float[] dynamicBlack, int dynamicWhite, int sampledBits,
+                                 float sampledFloor, int saturation, int knownBits, boolean wide, boolean useDynamicBlack,
+                                 boolean useDynamicWhite) {
         int declared = bitsOfWhite(staticWhite);
         if (declared == 0) {
             declared = 10;
@@ -145,6 +156,10 @@ public final class RawLevels {
 
         int bits = declared;
         String why = "declared";
+        if (knownBits > bits && knownBits <= MAX_BITS) {
+            bits = knownBits;
+            why = "sensor mode";
+        }
         if (wide) {
             if (sampledBits > bits && sampledBits <= MAX_BITS) {
                 bits = sampledBits;
@@ -228,6 +243,8 @@ public final class RawLevels {
     private static int sSaturation;
     /** Frames of this session whose samples proved at least 10 / 12 / 14 bits (index (bits - 8) / 2). */
     private static final int[] sVotes = new int[5];
+    /** P230: the depth of the session's sensor mode (0: none), see {@link #noteKnownBits}. */
+    private static int sKnownBits;
 
     /** A new camera session: the stream is learnt again. {@code wide}: dev switch raw_wide (a stream may be wider than declared). */
     public static void newSession(boolean wide) {
@@ -251,6 +268,7 @@ public final class RawLevels {
         sSampledBits = 0;
         sSampledFloor = -1;
         sSaturation = 0;
+        sKnownBits = 0;
         Arrays.fill(sVotes, 0);
     }
 
@@ -317,6 +335,35 @@ public final class RawLevels {
         }
     }
 
+    /**
+     * P230: the session runs a sensor mode of {@code bits} (Xiaomi 15 Ultra DCG: 14) on the camera of {@code staticBlack} /
+     * {@code staticWhite}; 0 takes it back (the results report another mode). Its frames resolve at that depth at once, and
+     * RawPayloadCheck takes its white ({@link #knownWhite}): a 14-bit sample is no impossible value. Logged on change.
+     */
+    public static void noteKnownBits(float[] staticBlack, int staticWhite, int bits, String why) {
+        synchronized (LOCK) {
+            follow(staticBlack == null || staticBlack.length < 4 ? -1 : min(staticBlack), staticWhite);
+            final int b = bits >= MIN_BITS && bits <= MAX_BITS && bits % 2 == 0 ? bits : 0;
+            if (b == sKnownBits) return;
+            com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", "RAW levels: sensor mode depth " + (b == 0 ? "none" : b + " bit")
+                    + " (" + why + ", was " + (sKnownBits == 0 ? "none" : sKnownBits + " bit") + ")");
+            sKnownBits = b;
+        }
+    }
+
+    public static int knownBits() {
+        synchronized (LOCK) {
+            return sKnownBits;
+        }
+    }
+
+    /** The white of the session's known depth, 0 without one. */
+    public static int knownWhite() {
+        synchronized (LOCK) {
+            return sKnownBits > 0 ? white(sKnownBits) : 0;
+        }
+    }
+
     public static int sampledSaturation() {
         synchronized (LOCK) {
             return sSaturation;
@@ -354,7 +401,8 @@ public final class RawLevels {
     }
 
     private static Levels resolveLocked(float[] staticBlack, int staticWhite) {
-        return resolve(staticBlack, staticWhite, sDynamicBlack, sDynamicWhite, sSampledBits, sSampledFloor, sSaturation, sWide, true, true);
+        return resolve(staticBlack, staticWhite, sDynamicBlack, sDynamicWhite, sSampledBits, sSampledFloor, sSaturation, sKnownBits, sWide,
+                true, true);
     }
 
     /**
@@ -366,7 +414,8 @@ public final class RawLevels {
         synchronized (LOCK) {
             final boolean session = sessionCamera(staticBlack, staticWhite);
             return resolve(staticBlack, staticWhite, dynamicBlack, dynamicWhite, session ? sSampledBits : 0,
-                    session ? sSampledFloor : -1f, session ? sSaturation : 0, sWide, useDynamicBlack, useDynamicWhite);
+                    session ? sSampledFloor : -1f, session ? sSaturation : 0, session ? sKnownBits : 0, sWide, useDynamicBlack,
+                    useDynamicWhite);
         }
     }
 

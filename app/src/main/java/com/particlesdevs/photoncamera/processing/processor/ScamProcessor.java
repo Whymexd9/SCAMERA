@@ -260,7 +260,9 @@ public class ScamProcessor extends ProcessorBase {
         final int orientation = mounted == null ? 90 : mounted;
         try {
             final float black = com.particlesdevs.photoncamera.processing.RawLevels.current(characteristics, captureResult).meanBlack();
-            final RawCrop.Shot shot = RawCrop.cutShot(mImageFramesToProcess, black, auto, manual, orientation);
+            // P230: a DCG mode shorter than the buffer (Xiaomi 15 Ultra: 2560 rows of 4096 x 3072): its empty band goes as well
+            final int[] mode = com.particlesdevs.photoncamera.capture.SensorModeBand.shotPadding(characteristics, captureResult, first.buffer, w, h);
+            final RawCrop.Shot shot = RawCrop.cutShot(mImageFramesToProcess, black, auto, manual, orientation, mode);
             if (auto) PreferenceKeys.setRawCropDetected(RawCrop.describe(w, h, shot.padding, orientation));
             return shot;
         } catch (java.io.IOException | RuntimeException e) {
@@ -342,6 +344,7 @@ public class ScamProcessor extends ProcessorBase {
         if (rawCrop != null && rawCrop.area != null) {
             processingParameters.rawCrop = rawCrop.area;
             processingParameters.rawCropFull = new Point(rawCrop.fullWidth, rawCrop.fullHeight);
+            processingParameters.rawCropSensorShiftY = rawCrop.sensorShiftY;
         }
         processingParameters.scamHdrMode = PreferenceKeys.isScamHdrEnabled();
         processingParameters.FillConstParameters(characteristics, new Point(width, height));

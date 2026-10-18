@@ -265,4 +265,42 @@ public class RawPayloadCheckTest {
         assertEquals(1403f, RawPayloadCheck.floor(v, 1000), 0f);
         assertEquals("too few samples", -1f, RawPayloadCheck.floor(new int[]{5, 6}, 2), 0f);
     }
+
+    /**
+     * P230 Xiaomi 15 Ultra DCG: 14-bit samples under the declared white 1023 and the mode's empty bottom rows (here a sixth of the
+     * frame, as 512 of 3072) look like an impossible payload with a zero tail; with the session's known 14-bit depth they pass.
+     */
+    @Test
+    public void aKnownFourteenBitModeIsPlain() {
+        final ByteBuffer b = zeroed();
+        Random r = new Random(30);
+        for (int y = 0; y < H - H / 6; y++)
+            for (int x = 0; x < W; x++) b.putShort(y * STRIDE + 2 * x, (short) (1024 + 3000 + r.nextInt(6000)));
+        RawLevels.newSession(true);
+        assertFalse("unknown depth: refused", RawPayloadCheck.check(b, W, H, STRIDE, WHITE).plain());
+        RawLevels.noteKnownBits(new float[]{64, 64, 64, 64}, WHITE, 14, "test");
+        assertTrue(RawPayloadCheck.check(b, W, H, STRIDE, WHITE).plain());
+        RawLevels.newSession(true);
+        assertFalse(RawPayloadCheck.check(b, W, H, STRIDE, WHITE).plain());
+    }
+
+    /**
+     * P230: the same frame without a known depth (the X200 Ultra route: the depth is the samples'), with the DCG mode's rows
+     * named (SensorModeBand.noteResult): the band is no zero tail, two frames prove 14 bits and the payload is plain.
+     */
+    @Test
+    public void theModesRowsOnlyProveTheWiderStream() {
+        final ByteBuffer b = zeroed();
+        Random r = new Random(31);
+        for (int y = 0; y < H - H / 6; y++)
+            for (int x = 0; x < W; x++) b.putShort(y * STRIDE + 2 * x, (short) (1024 + 3000 + r.nextInt(6000)));
+        RawLevels.newSession(true);
+        RawLevels.noteCamera(new float[]{64, 64, 64, 64}, WHITE);
+        RawPayloadCheck.setImageRows(H - H / 6);
+        assertTrue(RawPayloadCheck.check(b, W, H, STRIDE, WHITE).plain());
+        assertTrue(RawPayloadCheck.check(b, W, H, STRIDE, WHITE).plain());
+        assertEquals(14, RawLevels.sampledBits());
+        RawPayloadCheck.setWideEnabled(true);
+        assertFalse("a new session forgets the rows", RawPayloadCheck.check(b, W, H, STRIDE, WHITE).plain());
+    }
 }

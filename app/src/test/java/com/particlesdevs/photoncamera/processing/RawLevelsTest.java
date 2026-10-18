@@ -256,4 +256,37 @@ public class RawLevelsTest {
         RawLevels.noteMetadata(B64, 1023, all(1030.75f), 1023);
         assertFalse("raw_wide 0", RawLevels.metadataWider());
     }
+
+    /**
+     * P230 Xiaomi 15 Ultra DCG (op mode 0x9203 + current_mode 24): 14-bit samples under the declared white 1023 / black 64. The
+     * session's sensor mode names the depth at once: white 16383, the black the frame's dynamic one in the stream's units, else
+     * the static black x 16; the results take it back when the HAL runs its normal mode; a new session forgets it.
+     */
+    @Test public void theSensorModesDepthIsKnownUpFront() {
+        RawLevels.Levels known = RawLevels.resolve(B64, 1023, null, 0, 0, -1f, 0, 14, true, false, true);
+        assertEquals(14, known.bits);
+        assertEquals(16383, known.white);
+        assertArrayEquals(all(1024f), known.black, 0f);
+        assertTrue(known.source, known.source.startsWith("sensor mode"));
+        RawLevels.Levels dyn = RawLevels.resolve(B64, 1023, all(1021.5f), 0, 0, -1f, 0, 14, true, false, true);
+        assertArrayEquals("the frame's own black in 14-bit units", all(1021.5f), dyn.black, 0f);
+        assertEquals("the dynamic white of the mode", 16383, RawLevels.resolve(B64, 1023, all(64), 16383, 0, -1f, 0, 14, true, false, true).white);
+        assertEquals("not a guess of the samples: raw_wide 0 keeps it", 14,
+                RawLevels.resolve(B64, 1023, null, 0, 0, -1f, 0, 14, false, false, true).bits);
+        assertEquals("no known depth: the declared one", 10, RawLevels.resolve(B64, 1023, null, 0, 0, -1f, 0, 0, true, false, true).bits);
+        // the session
+        RawLevels.noteKnownBits(B64, 1023, 14, "test");
+        assertEquals(14, RawLevels.knownBits());
+        assertEquals(16383, RawLevels.knownWhite());
+        assertEquals(16383, RawLevels.forFrame(B64, 1023, null, 0, false, true).white);
+        assertEquals("another camera's frame does not get it", 12, RawLevels.forFrame(all(256), 4095, null, 0, false, true).bits);
+        RawLevels.noteKnownBits(B64, 1023, 0, "the HAL runs mode 1");
+        assertEquals(0, RawLevels.knownWhite());
+        assertEquals(1023, RawLevels.forFrame(B64, 1023, null, 0, false, true).white);
+        RawLevels.noteKnownBits(B64, 1023, 13, "odd depths are no depth");
+        assertEquals(0, RawLevels.knownBits());
+        RawLevels.noteKnownBits(B64, 1023, 14, "test");
+        RawLevels.newSession(true);
+        assertEquals("a new session starts over", 0, RawLevels.knownBits());
+    }
 }

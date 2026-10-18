@@ -65,6 +65,9 @@ public final class RawPayloadCheck {
 
     /** The check on a little-endian RAW16 buffer as the reader delivers it (rows {@code rowStride} bytes apart). */
     public static Result check(ByteBuffer buffer, int width, int height, int rowStride, int whiteLevel) {
+        // P230: a session whose sensor mode has a known depth (Xiaomi 15 Ultra DCG: 14 bit under the declared 1023) checks
+        // against that depth's white: its samples are no impossible values, its empty bottom rows no packed tail
+        whiteLevel = Math.max(whiteLevel, RawLevels.knownWhite());
         if (buffer == null || width <= 0 || height <= 0 || whiteLevel <= 0 || whiteLevel > 4095) return UNCHECKED;
         String geometry = String.format(Locale.ROOT, "%dx%d, rowStride %d, %d bytes", width, height, rowStride, buffer.capacity());
         if (rowStride < 2 * width || (rowStride & 1) != 0)
@@ -74,12 +77,14 @@ public final class RawPayloadCheck {
         ByteBuffer view = buffer.duplicate();
         view.position(0);
         ShortBuffer data = view.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer();
-        final int limit = 4 * (whiteLevel + 1), rows = Math.min(ROWS, height), step = Math.max(1, width / SAMPLES);
+        // P230: a DCG mode shorter than the buffer (SensorModeBand.noteResult): its rows only, not its empty band
+        final int image = sImageRows > 0 && sImageRows < height && sImageRows >= height / 2 ? sImageRows : height;
+        final int limit = 4 * (whiteLevel + 1), rows = Math.min(ROWS, image), step = Math.max(1, width / SAMPLES);
         long impossible = 0, total = 0;
         int zeroRows = 0, max = 0, max2 = 0, n = 0;
         final int[] samples = new int[ROWS * SAMPLES];
         for (int r = 0; r < rows; r++) {
-            int y = rows == 1 ? 0 : (int) ((long) r * (height - 1) / (rows - 1));
+            int y = rows == 1 ? 0 : (int) ((long) r * (image - 1) / (rows - 1));
             int base = (int) ((long) y * rowStride / 2);
             boolean zero = true;
             for (int i = 0, x = step / 2; i < SAMPLES && x < width; i++, x += step) {
@@ -152,7 +157,16 @@ public final class RawPayloadCheck {
     }
 
     /** P104 dev switch raw_wide; CaptureController calls it for every camera session, which starts the stream's levels over. */
+    /** P230: rows of the running DCG mode in a taller buffer (0: the whole frame), see SensorModeBand.noteResult. */
+    private static volatile int sImageRows;
+
+    /** P230: the check samples the first {@code rows} rows only (a DCG mode's window; 0 = all rows). */
+    public static void setImageRows(int rows) {
+        sImageRows = Math.max(0, rows);
+    }
+
     public static void setWideEnabled(boolean enabled) {
+        sImageRows = 0;
         RawLevels.newSession(enabled);
     }
 

@@ -65,6 +65,11 @@ public class Parameters {
      */
     public com.particlesdevs.photoncamera.processing.RawCrop.Area rawCrop;
     public Point rawCropFull;
+    /**
+     * P230: rows the kept part sits lower on the sensor than in the buffer (RawCrop.Shot.sensorShiftY: a sensor mode's centred
+     * window written to the buffer's top, Xiaomi 15 Ultra DCG +256): the lens shading map over the active array is read there.
+     */
+    public int rawCropSensorShiftY;
     /** P165: BaselineExposure of the DNG (EV; 0 = none): set for the merged DNG written over its headroom. */
     public float dngBaselineExposure;
     /**
@@ -364,7 +369,9 @@ public class Parameters {
             // P162: the map over the kept part of the frame only
             if (hasGainMap && rawCrop != null && rawCropFull != null)
                 gainMap = com.particlesdevs.photoncamera.processing.RawCrop.cropGainMap(gainMap, mapSize.x, mapSize.y,
-                        rawCropFull.x, rawCropFull.y, rawCrop);
+                        rawCropFull.x, rawCropFull.y, rawCropSensorShiftY == 0 ? rawCrop
+                                : new com.particlesdevs.photoncamera.processing.RawCrop.Area(rawCrop.x, rawCrop.y + rawCropSensorShiftY,
+                                rawCrop.width, rawCrop.height));
             hotPixels = result.get(CaptureResult.STATISTICS_HOT_PIXEL_MAP);
             if (rawBinning > 1) hotPixels = new Point[0]; // sensor coordinates; a binned site averages it away
             else if (hotPixels != null && rawCrop != null) hotPixels = keptHotPixels(hotPixels, rawCrop);
@@ -1070,6 +1077,7 @@ public class Parameters {
         params.rawBinning = rawBinning;
         params.rawCrop = rawCrop;
         params.rawCropFull = rawCropFull == null ? null : new Point(rawCropFull);
+        params.rawCropSensorShiftY = rawCropSensorShiftY;
         params.gainMap = gainMap.clone();
         params.proPhotoToSRGB = proPhotoToSRGB.clone();
         params.sensorToProPhoto = sensorToProPhoto.clone();
