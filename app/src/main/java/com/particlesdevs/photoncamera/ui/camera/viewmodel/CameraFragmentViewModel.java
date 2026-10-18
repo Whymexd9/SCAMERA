@@ -128,12 +128,13 @@ public class CameraFragmentViewModel extends AndroidViewModel {
 
     /** One level up: HIDDEN -> PEEK -> FULL; stays at FULL. */
     public void sheetLevelUp() {
-        setSheetLevel(Math.min(CameraFragmentModel.SHEET_FULL, getSheetLevel() + 1));
+        // SIMPLE_UI §2: two states, HIDDEN and OPEN (PEEK): the open sheet never grows, its content scrolls
+        setSheetLevel(Math.min(CameraFragmentModel.SHEET_PEEK, getSheetLevel() + 1));
     }
 
     /** One level down: FULL -> PEEK -> HIDDEN; stays at HIDDEN. */
     public void sheetLevelDown() {
-        setSheetLevel(Math.max(CameraFragmentModel.SHEET_HIDDEN, getSheetLevel() - 1));
+        setSheetLevel(CameraFragmentModel.SHEET_HIDDEN);
     }
 
     @Override

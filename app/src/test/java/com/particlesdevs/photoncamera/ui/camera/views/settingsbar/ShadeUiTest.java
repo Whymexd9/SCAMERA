@@ -196,31 +196,41 @@ public class ShadeUiTest {
         assertNotNull(addTile());
         for (int i = 0; i < grid.getChildCount(); i++) {
             ShadeTileView t = (ShadeTileView) grid.getChildAt(i);
-            assertTrue("square at least", t.getHeight() >= t.getWidth());
+            // SIMPLE_UI §2: compact tiles, wider than tall, the concept's 50dp card at least
+            assertTrue("wider than tall", t.getWidth() > t.getHeight());
+            assertTrue("the 50dp card", t.card.getHeight() >= com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(activity, 50) - 1);
             for (android.widget.TextView text : new android.widget.TextView[]{t.value, t.name}) {
                 if (text.getVisibility() != View.VISIBLE || text.getText().length() == 0) continue;
                 assertNull(text.getEllipsize());
                 android.text.Layout layout = text.getLayout();
                 assertNotNull(layout);
-                assertTrue(text.getText() + " fits", layout.getLineCount() <= 2);
+                assertEquals(text.getText() + " one line", 1, layout.getLineCount());
                 for (int l = 0; l < layout.getLineCount(); l++) assertEquals(text.getText() + " not cut", 0, layout.getEllipsisCount(l));
             }
         }
-        // Four columns, 10dp apart: cards 5dp inside each tile.
+        // Four columns, 5dp x k apart (the concept's gap): half of it inside each tile.
         ShadeTileView first = (ShadeTileView) grid.getChildAt(0), second = (ShadeTileView) grid.getChildAt(1);
-        assertEquals(dp(10), second.getLeft() + second.card.getLeft() - (first.getLeft() + first.card.getRight()));
+        assertEquals(2 * Math.round(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dpF(activity, 2.5f)),
+                second.getLeft() + second.card.getLeft() - (first.getLeft() + first.card.getRight()));
         render("shade-full-default.png");
     }
 
     @Test
-    public void fullLevelHasARowWithAPinPerCuratedSetting() throws Exception {
+    public void theAdvancedCardListsTheUnpinnedAdvancedSettings() throws Exception {
+        // SIMPLE_UI §2: below the tiles one «Для опытных» card with the advanced settings not pinned, then «Все настройки»
         layoutFull();
-        for (ShadeCatalog.Group group : catalog.visibleGroups())
-            for (String key : group.keys) {
-                assertNotNull(key, sheet.findViewWithTag("shade_row_" + key));
-                assertNotNull(key, sheet.findViewWithTag("shade_pin_" + key));
-            }
-        // The whole scroll list, as FULL shows it while scrolling.
+        View header = sheet.findViewWithTag("shade_advanced");
+        assertNotNull(header);
+        View body = sheet.findViewWithTag("shade_advanced_body");
+        assertEquals("closed at first", View.GONE, body.getVisibility());
+        header.performClick();
+        assertEquals(View.VISIBLE, body.getVisibility());
+        for (String key : ShadeCatalog.ADVANCED) {
+            boolean pinnedHere = sheet.pinnedKeys().contains(key);
+            if (!catalog.isKnown(key)) continue;
+            assertEquals(key, !pinnedHere, sheet.findViewWithTag("shade_row_" + key) != null);
+        }
+        assertNull("no «Другие настройки» row: the catalog opens from «Добавить»", sheet.findViewWithTag("shade_more"));
         View list = ((ViewGroup) sheet.findViewById(R.id.settings_bar_scroll_view)).getChildAt(0);
         list.measure(View.MeasureSpec.makeMeasureSpec(dp(360), View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
         list.layout(0, 0, list.getMeasuredWidth(), list.getMeasuredHeight());
@@ -232,12 +242,13 @@ public class ShadeUiTest {
         try (FileOutputStream out = new FileOutputStream(new File(dir, "shade-full-list.png"))) {
             image.compress(Bitmap.CompressFormat.PNG, 100, out);
         }
-        // Pinning from a row adds the tile; the row's pin turns on.
-        View pin = sheet.findViewWithTag("shade_pin_pref_scam_hybrid_cdm");
-        assertFalse(pin.isSelected());
-        pin.performClick();
-        assertTrue(sheet.pinnedKeys().contains("pref_scam_hybrid_cdm"));
-        assertTrue(sheet.findViewWithTag("shade_pin_pref_scam_hybrid_cdm").isSelected());
+        // pinning an advanced setting as a tile takes it out of the card
+        String first = null;
+        for (String key : ShadeCatalog.ADVANCED) if (!sheet.pinnedKeys().contains(key) && catalog.isKnown(key)) { first = key; break; }
+        assertNotNull(first);
+        sheet.togglePin(first);
+        layoutFull();
+        assertNull(sheet.findViewWithTag("shade_row_" + first));
     }
 
     @Test
@@ -245,8 +256,6 @@ public class ShadeUiTest {
         layoutFull();
         addTile().performClick();
         assertEquals(1, catalogOpened);
-        sheet.findViewWithTag("shade_more").performClick();
-        assertEquals(2, catalogOpened);
         int[] closed = {0};
         ShadeCatalogView view = new ShadeCatalogView(activity, catalog, sheet.pins(), () -> closed[0]++);
         assertTrue(String.valueOf(view.shownKeys().size()), view.shownKeys().size() > 240); // 260 since P129
@@ -277,9 +286,9 @@ public class ShadeUiTest {
         try (FileOutputStream out = new FileOutputStream(new File(dir, "shade-catalog-luma.png"))) {
             image.compress(Bitmap.CompressFormat.PNG, 100, out);
         }
-        // The pinned setting outside the curated groups gets a row in FULL under «Добавлено из настроек».
+        // SIMPLE_UI §2: the pinned setting is a tile (no rows of pinned settings under the tiles any more)
         layoutFull();
-        assertNotNull(sheet.findViewWithTag("shade_row_pref_scam_hybrid_post_luma"));
+        assertTrue(sheet.pinnedKeys().contains("pref_scam_hybrid_post_luma"));
         ((View) view.findViewWithTag("shade_catalog_close")).performClick();
         assertEquals(1, closed[0]);
     }
@@ -387,14 +396,13 @@ public class ShadeUiTest {
         layoutFull();
         View gear = sheet.findViewWithTag("shade_settings");
         assertEquals(View.VISIBLE, gear.getVisibility());
-        assertEquals(dp(36), gear.getWidth());
+        assertEquals(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(activity, 40), gear.getWidth());   // the concept's 40dp disc
         gear.performClick();
         assertEquals(1, settingsOpened);
         View all = sheet.findViewWithTag("shade_all_settings");
-        assertNotNull("«Все настройки» ends FULL", all);
+        assertNotNull("«Все настройки» ends the sheet", all);
         ViewGroup list = (ViewGroup) all.getParent();
         assertEquals(list.getChildCount() - 1, list.indexOfChild(all));
-        assertEquals(list.getChildCount() - 2, list.indexOfChild(sheet.findViewWithTag("shade_more")));
         all.performClick();
         assertEquals(2, settingsOpened);
         // The header gear steps aside in the edit mode.
@@ -443,11 +451,15 @@ public class ShadeUiTest {
         RecyclerView grid = grid();
         assertEquals("twelve tiles and «Добавить» (P167: no limit)", 13, grid.getChildCount());
         for (int i = 0; i < grid.getChildCount(); i++) assertTileTextFits((ShadeTileView) grid.getChildAt(i));
+
         render("shade-ru-360dp.png");
-        // The rows' segments too: one or two lines, never an ellipsis.
-        for (ShadeCatalog.Group group : catalog.visibleGroups())
-            for (String key : group.keys) {
+        // The «Для опытных» rows' segments too: one or two lines, never an ellipsis.
+        View advanced = sheet.findViewWithTag("shade_advanced");
+        if (advanced != null) advanced.performClick();
+        layoutFull();
+        for (String key : ShadeCatalog.ADVANCED) {
                 View row = sheet.findViewWithTag("shade_row_" + key);
+                if (row == null) continue;
                 List<View> segments = new ArrayList<>();
                 for (int s = 0; s < 8; s++) {
                     View seg = row.findViewWithTag("segment_" + s);

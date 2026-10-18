@@ -144,7 +144,7 @@
     <!-- Edit mode, reorder -->
     <string name="shade_edit">Изменить</string>
     <string name="shade_done">Готово</string>
-    <string name="shade_drag_title">Перетащи плитки</string>
+    <string name="shade_drag_title">Перетащите плитку</string>
     <string name="shade_place">%1$s: место %2$d из %3$d</string>
     <string name="shade_action_earlier">Раньше</string>
     <string name="shade_action_later">Позже</string>
@@ -158,6 +158,9 @@
     <string name="bottom_more">Ещё</string>
     <string name="ev_sun_description">Яркость: потяните вверх или вниз</string>
     <string name="first_run_hint">Нажмите на кадр — фокус, солнце — яркость</string>
+    <string name="shade_quick_title">Быстрые настройки</string>
+    <string name="shade_advanced">Для опытных</string>
+    <string name="shade_advanced_summary">Кадры светов, пик фокуса, лица, RAW-видоискатель</string>
     <string name="topbar_group">Формат и размер фото</string>
     <string name="topbar_torch">Фонарик</string>
     <string name="topbar_motion">Движение</string>
