@@ -300,6 +300,10 @@ struct HybridTuning {
     int noiseMeasured=1;
     // P80: 1 (default) = the chroma median of the mosaic results on the GPU (ChromaMedianGpu, float rounding only), 0 = CPU.
     int chromaGpu=1;
+    // P213c: 1 (default) = the CPU chroma median of a native mosaic merge runs on the merged rows while the GPU merges the next
+    // strips (MosaicChromaOverlap, the same floats), 0 = after the merge. OPPO X7U, 50 MP FULLRES (two bursts): the chroma after the
+    // merge 0.72 / 0.67 s -> 0.04 s, the merge no longer than before; 12 MP with chromaGpu 0: 0.19-0.26 s -> 0.01-0.03 s.
+    int chromaOverlap=1;
     // P118 «Sabre 2× только когда есть смысл» (P74's JSR experiment jsrAuto2x; the other JSR experiments are gone): auto2x 1 = a
     // requested 2x grid (Sabre 2x, plain or native mosaic) is merged on the 1x grid and resized 2x when the frames do not sample
     // finer than the sensor (green fill distance above auto2xMaxGap sensor px) or when the light is too low for detail at 2x (SNR
@@ -608,6 +612,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicUsRows",nullptr,&t.mosaicUsRows)||set("mosaicUsRowsMin",&t.mosaicUsRowsMin) // P197
             // P27
             ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)||set("chromaGpu",nullptr,&t.chromaGpu)||set("dngDither",nullptr,&t.dngDither)
+            ||set("chromaOverlap",nullptr,&t.chromaOverlap) // P213c
             ||set("auto2x",nullptr,&t.auto2x)||set("auto2xMaxGap",&t.auto2xMaxGap)||set("auto2xMinSnr",&t.auto2xMinSnr)
             ||set("mochi",nullptr,&t.mochi);
         }
@@ -2777,6 +2782,20 @@ void main(){
 // its own driver binary runs the identical code.
 inline std::string& hybridProgramCacheDir(){static std::string dir;return dir;}
 
+// P213c: a consumer of the merged rows while the GPU merges the next strips (the CPU chroma median of the native mosaic merge,
+// MosaicChromaOverlap). hybridReconstruct calls begin() before every merge attempt (output width x height, the shift to the RGGB
+// origin the rows get before the consumer reads them; a retry starts over), rows() on the merge thread after every strip's
+// readback (rows [0, n) of data final, the merge never writes them again), finish() after the merge (true: data holds the shifted
+// and consumed result, false: untouched, as merged) and stop() on every way out (an error, a retry, the end): when it returns no
+// thread of the sink touches the rows any more.
+struct HybridRowsSink {
+    virtual ~HybridRowsSink()=default;
+    virtual void begin(int width,int height,int dx,int dy)=0;
+    virtual void rows(float* data,int n)=0;
+    virtual bool finish(float* data)=0;
+    virtual void stop()=0;
+};
+
 // P29: the raw mosaic behind a binned burst (hybridReconstructMosaicNative -> hybridReconstruct -> HybridGpu::merge). Absent (null)
 // everywhere else: the plain-Bayer and the sub-frame paths never see it.
 struct HybridMosaicNative {
@@ -2804,6 +2823,7 @@ struct HybridMosaicNative {
     // the 2x2 sensor phase.
     std::vector<std::vector<float>> rowGain;
     std::array<float,4> rowBlack{};int rowCfa=0;float rowWhite=0;
+    HybridRowsSink* rowsSink=nullptr;    // P213c: the merged rows to this consumer while the merge runs (null: none)
     bool fixesRows(int k) const {return k>=0&&k<int(rowGain.size())&&!rowGain[k].empty();}
     // rows [y0, y0 + rows) of frame k, corrected, into dst (rows x W): (v - black) x factor of the row and site colour; a clipped
     // site (>= white - 1, the binning's clip) stays, a corrected value is at most white (then it reads as clipped, as in the binning)
@@ -6758,6 +6778,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(up2x==2)grid/=2;
     const int outW=w*grid,outH=h*grid;
     in.large=large;
+    // P213c: the native merge's rows to its consumer (native->rowsSink: the CPU chroma median) as they are read back, where nothing
+    // between the merge and the shift to the RGGB origin below changes them: no R / B resample (P19), no merged DNG from these rows,
+    // no 2x resize of a coarse grid (P118). The consumer shifts the rows itself (the same copies as shiftOrigin), so the output leaves
+    // here shifted and consumed. The guard (after out: it goes first) stops the consumer on every way out, before out goes.
+    HybridRowsSink* const sink=native&&native->rowsSink&&!caModel.ok&&!(mergedDng&&input.mergedDng)&&up2x==1?native->rowsSink:nullptr;
+    struct SinkStop {HybridRowsSink* sink;~SinkStop(){if(sink)sink->stop();}} sinkStop{sink};
+    bool sunk=false;
     // P31 (W1.7): the context goes to a helper thread after the merge (its buffers and programs take 19-57 ms to destroy), joined
     // before this function returns; the CPU tail below runs meanwhile.
     struct GpuTeardown {
@@ -6783,6 +6810,10 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         if(caModel.ok){
             caBands=std::make_unique<HybridCaBands>(w*grid,h*grid,grid,caModel);caBandsMs=0;
             in.rowsDone=[&](std::vector<float>& rgb,int rows){const auto t0=Clock::now();caBands->advance(rgb,rows);caBandsMs+=millis(Clock::now()-t0);};
+        }
+        if(sink){ // P213c: a new consumer for every attempt (begin stops the one of a failed attempt before the merge writes out again)
+            sink->begin(outW,outH,(input.cfa&1)*grid,(input.cfa>>1)*grid);
+            in.rowsDone=[sink](std::vector<float>& rgb,int rows){sink->rows(rgb.data(),rows);};
         }
         const bool bentoPass=bento.active&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
         std::unique_ptr<HybridGpu> held;std::string built;
@@ -6933,6 +6964,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             gpuMerge(false);
         }
     } else gpuMerge(false);
+    if(sink){sunk=sink->finish(out.data());in.rowsDone=nullptr;} // P213c: the last rows (the consumer reports its wait itself)
     if(caModel.ok){ // P19: R and B of the merged RGB moved onto G (the frames all carry the lens's CA, the merge keeps it)
         const auto caStarted=Clock::now();
         const int during=caBands?caBands->done():0;
@@ -6972,8 +7004,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         report(hybridDngReport(headroom,w,h,hybridDngCeiling(input),tune.dngDither!=0));
     }
     std::vector<float>().swap(sensorRgb); // the output stage holds no more than it needs (any RAW size: ~16 B per output pixel)
-    // CFA phase shift to the canonical RGGB origin, in output-grid pixels.
-    shiftOrigin(out,outW,outH,3,(input.cfa&1)*grid,(input.cfa>>1)*grid);
+    // CFA phase shift to the canonical RGGB origin, in output-grid pixels (P213c: done by the consumer of the rows when it took them)
+    if(!sunk)shiftOrigin(out,outW,outH,3,(input.cfa&1)*grid,(input.cfa>>1)*grid);
     if(effMap){
         std::vector<float> sample;sample.reserve(effective.size()/7+1);
         for(size_t i=0;i<effective.size();i+=7)sample.push_back(effective[i]);
@@ -7483,8 +7515,10 @@ class MosaicChromaStream {
         int in=0,m=0,hp=0,sc=0,z=0,u1=0,out=0;
         bool operator==(const Progress& o) const {return in==o.in&&m==o.m&&hp==o.hp&&sc==o.sc&&z==o.z&&u1==o.u1&&out==o.out;}
     };
-    float* rgb;int w,h,b,d,r1,r2,r3,B,cap,ws,nt;
-    const float* osc=nullptr;int bw=0,bh=0;float z0=0,z1=0;
+    float* rgb;int w,h,b,d,r1,r2,r3,B,cap,ws,nt,ntMax;
+    // the oscillation map: block row J at osc + (J % oscCap) bw (the whole map: oscCap = bh; P213c: a ring of rows, oscTags = the
+    // row every slot holds, checked with SCAM_CHROMA_RING_CHECK)
+    const float* osc=nullptr;int bw=0,bh=0,oscCap=1;const int* oscTags=nullptr;float z0=0,z1=0;
     std::vector<float> store,scratch;float* rings=nullptr;size_t scratchPer=0;
     std::vector<double> sums;
     Progress p;
@@ -7543,9 +7577,10 @@ public:
         cap=B+2*d+2*r3+2;
         ws=(w+15)&~15; // rows of whole cache lines: the column bands of two threads never share one
         nt=threads>0?threads:(ScamPool::inWorker()||h<64)?1:mosaicChromaThreads();
+        ntMax=nt;
         z0=0.51f/(2*b);z1=1.02f/(2*b);
         bw=w/b;bh=h/b;
-        if(oscillation&&bw>0&&bh>0&&oscillation->size()==size_t(bw)*bh)osc=oscillation->data();
+        if(oscillation&&bw>0&&bh>0&&oscillation->size()==size_t(bw)*bh){osc=oscillation->data();oscCap=bh;}
         store.assign(size_t(kRings)*cap*ws+16,0.f);
         rings=store.data()+((64-(reinterpret_cast<uintptr_t>(store.data())&63))&63)/sizeof(float);
         sums.assign(size_t(kSums)*ws,0.0);
@@ -7561,6 +7596,18 @@ public:
         }
     }
     int done() const {return p.out;}
+    // P213c: the oscillation map as a ring of cap block rows (row J at ring + (J % cap) bw; the caller keeps the rows the next
+    // advance() reads in it: block rows min(y / b, h / b - 1) of the result rows y it may finish); tags as oscTags above
+    void oscRing(const float* ring,int rows,const int* tags=nullptr){
+        if(ring&&bw>0&&bh>0&&rows>0){osc=ring;oscCap=rows;oscTags=tags;} else {osc=nullptr;oscTags=nullptr;}
+    }
+    // P213c: the threads of the next advance() calls, at most those of the constructor (every count gives the same floats)
+    void threads(int n){nt=std::clamp(n,1,ntMax);}
+    int threads() const {return nt;}
+    // P213c: the image is set when its rows come (before the first advance()); rows a result row needs below itself (the stream
+    // stops that far behind the rows it is given, until it is given the last one)
+    void image(float* p){rgb=p;}
+    int lagRows() const {return std::max(2*d+2*r3,r1+1+r2);}
     void advance(int ready){
         ready=std::clamp(ready,0,h);
         const Progress start=p;
@@ -7678,7 +7725,10 @@ public:
                         for(int x=x0;x<x1;++x){ul[x-x0]=float(au[x]/(2*r3+1));vl[x-x0]=float(av[x]/(2*r3+1));}
                         if(osc&&std::min(y/b,bh-1)!=oscRowNow){
                             oscRowNow=std::min(y/b,bh-1);
-                            const float* oscRow=osc+size_t(oscRowNow)*bw;
+#ifdef SCAM_CHROMA_RING_CHECK
+                            if(oscTags&&oscTags[oscRowNow%oscCap]!=oscRowNow){std::fprintf(stderr,"chroma oscillation ring: block row %d read, the slot holds %d\n",oscRowNow,oscTags[oscRowNow%oscCap]);std::abort();}
+#endif
+                            const float* oscRow=osc+size_t(oscRowNow%oscCap)*bw;
                             for(int X=x0;X<x1;++X){
                                 const float o=oscRow[std::min(X/b,bw-1)];
                                 const float t2=std::clamp((o-0.2375f)/0.2375f,0.f,1.f);kosc[X-x0]=t2*t2*(3.f-2.f*t2);
@@ -7735,6 +7785,261 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
     MosaicChromaStream stream(rgb.data(),w,h,block,osc,bandRows,0,passes);
     stream.advance(h);
 }
+// P213c: the oscillation of the base RAW sites per colour block of a native mosaic merge (hybridReconstructMosaicNativeMerge's
+// map, the statements it ran inline before): f = the soft sign changes of a block's sites around their mean (pairs to the right
+// and below, the gate 4 % of the mean plus 3 sigma of the site noise), the map = the 5x5 mean of f (clipped at the borders). Every
+// block row of f depends on the RAW only and every row of the map on five rows of f: the map in any bands of rows, on any thread,
+// gives the same floats (the merge's chroma consumer makes it a few rows at a time, MosaicChromaOverlap).
+struct MosaicOscSource {
+    const uint16_t* raw=nullptr;           // the base frame's sensor RAW (W wide), its sites gained by their class...
+    const std::array<float,64>* gain=nullptr;
+    const uint16_t* quad=nullptr;          // ...or (Tetra T2) the base's Quad mosaic (MW wide, gained already)
+    std::array<float,4> black{};
+    int W=0,MW=0,block=2,bw=0,bh=0;        // block = sites per colour block and axis (<= 8); bw x bh blocks
+    double range=1;float slope=0,offset=0; // white - mean black; the site noise model (normalised units)
+    // f of block row J into f[0, bw)
+    void signRow(int J,float* f) const {
+        const int bq=block;
+        double d[64];
+        for(int I=0;I<bw;++I){
+            double m=0;
+            for(int c=0;c<bq;++c)for(int a=0;a<bq;++a){
+                const int x=bq*I+a,y=bq*J+c;
+                // P188b: the site-class gains here too (the T2 Quad mosaic has them already), so the sensor's own response
+                // pattern does not count as oscillation
+                d[size_t(c)*bq+a]=quad?double(quad[size_t(y)*MW+x])-black[((J&1)<<1)|(I&1)]
+                                      :(double(raw[size_t(y)*W+x])-black[((y&1)<<1)|(x&1)])*(*gain)[((y&7)<<3)|(x&7)];
+                m+=d[size_t(c)*bq+a];
+            }
+            m/=double(bq*bq);
+            const double sigma=std::sqrt(std::max(slope*std::max(m,0.0)/range+offset,0.0))*range;
+            const double gate=0.04*std::max(m,0.0)+3.0*sigma;
+            double changes=0;int pairs=0; // soft counts (mosaicSoftSignChange)
+            for(int c=0;c<bq;++c)for(int a=0;a<bq;++a){
+                const double p0=d[size_t(c)*bq+a]-m;
+                if(a+1<bq){++pairs;changes+=mosaicSoftSignChange(p0,d[size_t(c)*bq+a+1]-m,gate,kMosaicOscTau);}
+                if(c+1<bq){++pairs;changes+=mosaicSoftSignChange(p0,d[size_t(c+1)*bq+a]-m,gate,kMosaicOscTau);}
+            }
+            f[I]=pairs?float(changes/pairs):0.f;
+        }
+    }
+    // block row J of the map into o[0, bw) from the rows of f around it (row(j): f row j, 0 <= j < bh; rows J - 2 .. J + 2 read)
+    template<class Row> void boxRow(int J,const Row& row,float* o) const {
+        for(int I=0;I<bw;++I){
+            double s=0;int cnt=0;
+            for(int dj=-2;dj<=2;++dj)for(int di=-2;di<=2;++di){const int y=J+dj,x=I+di;if(x<0||y<0||x>=bw||y>=bh)continue;s+=row(y)[x];++cnt;}
+            o[I]=float(s/std::max(cnt,1));
+        }
+    }
+};
+// P213c: the CPU chroma median of a native mosaic merge on its rows while the GPU merges the next strips (a HybridRowsSink:
+// hybridReconstruct feeds it, hybridReconstructMosaicNativeMerge reads the result). On 50 MP the merge reads back a strip of 128
+// rows every ~0.4 s and the chroma of a strip takes ~10 ms of the big cores (P213b), so all but the last strip's leaves the shot's
+// time (P213b: 0.65 s after the merge, 0.24 s of it the oscillation map). The floats are those of shiftOrigin and then
+// mosaicChromaMedian on the whole result, bit for bit:
+//  - rows reach the consumer only when final: rows(n) comes after the readback of the strip that ends at row n, and the merge never
+//    writes rows [0, n) again (later strips land below; the counter under the mutex orders the readback's writes before the
+//    consumer's reads; the consumer writes only rows [0, n));
+//  - the shift to the RGGB origin (shiftOrigin: row y <- row max(0, y - dy), column x <- column max(0, x - dx), the same float
+//    copies) runs top-down in place through a ring of dy + 1 unshifted rows: shifted row y needs unshifted rows <= y only;
+//  - MosaicChromaStream takes the shifted rows as they come (its floats depend neither on how the rows are fed nor on its threads);
+//  - the oscillation map (MosaicOscSource, the statements of the whole map) is made in block rows ahead of the blend that reads
+//    it, in a ring (the whole map is 50 MB at 50 MP, 200 MB at 200 MP; the rings ~3 MB): a feed is at most kFeed rows, so the
+//    block rows one advance() reads (from its first unfinished row to the rows it was given) fit the ring, and after every feed
+//    the rows of two feeds more are made (the rows the ring can take without losing one the next advance reads).
+// The stream runs on half the big cores while the merge goes on (the merge thread uploads the next strips meanwhile; a strip's
+// chroma has ~0.3 s), on all of them for the last two strips: the merge reads them back together (its last readback follows the
+// one before by ~10 ms on the OPPO), they are what is left after the merge (50 MP: ~40 ms of the 0.65 s the chroma median took
+// after it, the oscillation rows of the last strips made already). Memory: the stream's rings (~25 MB at 50 MP),
+// the oscillation rings and dy + 1 rows, nothing per frame, all of it allocated in begin(): once the consumer changed a row nothing
+// can fail any more, so finish() returns either the whole result or (begin failed: memory, no thread) the rows untouched, and the
+// caller runs the chroma median after the merge as before.
+class MosaicChromaOverlap final : public HybridRowsSink {
+    using Clock=std::chrono::steady_clock;
+    static double millis(Clock::duration t){return std::chrono::duration<double,std::milli>(t).count();}
+    static constexpr int kFeed=128;
+    const int w,h,b;
+    const MosaicOscSource src;
+    int all=1,during=1;
+    // one attempt (begin .. stop)
+    std::unique_ptr<MosaicChromaStream> stream;
+    std::vector<float> shiftRing,oscRows,fRows;std::vector<int> oscTags,fTags; // fTags: SCAM_CHROMA_RING_CHECK
+    int dx=0,dy=0,oscCap=0,fCap=0,oscMade=0,fMade=0;
+    bool active=false;
+    std::thread consumer;
+    std::mutex lock;std::condition_variable wake;
+    // under the lock: the merge's output and its rows [0, ready) final; the consumer's state
+    float* data=nullptr;
+    int ready=0;
+    int stripRows=0; // the largest step of ready (the merge's strip)
+    bool stopping=false,exited=false,complete=false,touched=false,failed=false;
+    Clock::time_point lastRows{},lastDone{};
+    std::atomic<int> doneRows{0}; // the stream's finished rows (the report: how many the merge's last readback found done)
+    // the block rows [0, need) of the oscillation map made (f first: its rows up to need + 1), on n threads
+    void makeOsc(int need,int n){
+        need=std::min(need,src.bh);
+        if(need<=oscMade)return;
+        const int fNeed=std::min(src.bh,need+2),fFrom=fMade,oFrom=oscMade;
+        auto fRow=[this](int j){
+#ifdef SCAM_CHROMA_RING_CHECK
+            if(fTags[size_t(j%fCap)]!=j){std::fprintf(stderr,"chroma f ring: block row %d read, the slot holds %d\n",j,fTags[size_t(j%fCap)]);std::abort();}
+#endif
+            return static_cast<const float*>(fRows.data()+size_t(j%fCap)*src.bw);
+        };
+        MosaicChromaTeam team;
+        team.run(n,[&](int){
+            int sense=0;
+            for(int k=team.take();fFrom+k<fNeed;k=team.take()){
+                const int j=fFrom+k;src.signRow(j,fRows.data()+size_t(j%fCap)*src.bw);
+#ifdef SCAM_CHROMA_RING_CHECK
+                fTags[size_t(j%fCap)]=j;
+#endif
+            }
+            team.sync(sense);
+            for(int k=team.take();oFrom+k<need;k=team.take()){
+                const int J=oFrom+k;
+                src.boxRow(J,fRow,oscRows.data()+size_t(J%oscCap)*src.bw);oscTags[size_t(J%oscCap)]=J;
+            }
+            team.sync(sense);
+        });
+        fMade=fNeed;oscMade=need;
+    }
+    // rows [y0, y1) of data shifted to the RGGB origin in place (the rows above y0 shifted already, those from y0 on as merged)
+    void shift(int y0,int y1){
+        const size_t row=size_t(w)*3;
+        for(int y=y0;y<y1;++y){
+            float* r=data+size_t(y)*row;
+            std::memcpy(shiftRing.data()+size_t(y%(dy+1))*row,r,row*sizeof(float));
+            const float* s=shiftRing.data()+size_t(std::max(0,y-dy)%(dy+1))*row;
+            const int lead=std::min(dx,w);
+            for(int x=0;x<lead;++x)for(int c=0;c<3;++c)r[size_t(x)*3+c]=s[c];
+            if(w>dx)std::memcpy(r+size_t(dx)*3,s,size_t(w-dx)*3*sizeof(float));
+        }
+    }
+    void run(){
+        try{
+            int fed=0;
+            for(bool more=true;more;){
+                int r=0,strip=0;
+                {
+                    std::unique_lock<std::mutex> l(lock);
+                    wake.wait(l,[&]{return stopping||ready>fed;});
+                    if(stopping)break;
+                    r=ready;strip=stripRows;
+                    if(fed==0)stream->image(data);
+                    touched=true;
+                }
+                while(fed<r){
+                    // all the threads for the rows of the last two strips: the merge reads them back together (its last strip is read
+                    // right after the one before: on the OPPO 10 ms apart, not a strip's ~0.3 s), they are the time after the merge
+                    const int to=std::min(r,fed+kFeed),n=h-to<=strip?all:during;
+                    const auto t0=Clock::now();
+                    if(dx||dy)shift(fed,to);
+                    const auto t1=Clock::now();shiftMs+=millis(t1-t0);
+                    makeOsc(to>=h?src.bh:(to-1)/b+1,n); // the block rows of the result rows this advance may finish
+                    oscMs+=millis(Clock::now()-t1);
+                    stream->threads(n);stream->advance(to);doneRows.store(stream->done(),std::memory_order_relaxed);
+                    // the block rows ahead as far as the ring keeps those the next advance reads (from its first unfinished row on):
+                    // the rows after the merge's last readback find them made
+                    if(to<h){const auto t2=Clock::now();makeOsc(stream->done()/b+oscCap,n);oscMs+=millis(Clock::now()-t2);}
+                    fed=to;++feeds;
+                    std::lock_guard<std::mutex> l(lock);
+                    if(stopping){more=false;break;}
+                }
+                if(more&&fed>=h){ // every row given: the stream finished them all (else a fault: finish() must not wait for rows)
+                    std::lock_guard<std::mutex> l(lock);
+                    if(stream->done()>=h){complete=true;lastDone=Clock::now();} else failed=true;
+                    more=false;
+                }
+            }
+        }catch(...){std::lock_guard<std::mutex> l(lock);failed=true;}
+        {std::lock_guard<std::mutex> l(lock);exited=true;}
+        wake.notify_all();
+    }
+public:
+    MosaicChromaPasses passes;
+    double shiftMs=0,oscMs=0,waitMs=0,lastMs=0;int feeds=0,rowsBeforeLast=0;size_t bytes=0;
+    std::string why="the merge did not feed it (an R / B resample, a merged DNG or a 2x resize before the shift)"; // why no result
+    MosaicChromaOverlap(int width,int height,int block,const MosaicOscSource& oscillation)
+        :w(std::max(0,width)),h(std::max(0,height)),b(std::max(1,block)),src(oscillation){
+        all=std::max(1,mosaicChromaThreads());during=std::max(1,(all+1)/2);
+    }
+    ~MosaicChromaOverlap() override {stop();}
+    MosaicChromaOverlap(const MosaicChromaOverlap&)=delete;
+    MosaicChromaOverlap& operator=(const MosaicChromaOverlap&)=delete;
+    // the threads of the stream: during the merge, and for the rows after its last readback (tests: any counts, the same floats)
+    void threads(int whileMerging,int last){during=std::max(1,whileMerging);all=std::max(1,last);}
+    // true after a finish() that returned the result
+    bool done() const {return complete&&!active;}
+    void begin(int width,int height,int shiftX,int shiftY) override {
+        stop();
+        complete=touched=failed=exited=false;ready=stripRows=0;data=nullptr;why="the merge failed";
+        passes=MosaicChromaPasses();shiftMs=oscMs=waitMs=lastMs=0;feeds=rowsBeforeLast=0;bytes=0;doneRows.store(0);
+        if(width!=w||height!=h||w<=0||h<=0){why="the merge's grid "+std::to_string(width)+"x"+std::to_string(height)+" is not the chroma's";return;}
+        if(src.bw!=w/b||src.bh!=h/b||src.bw<=0||src.bh<=0||src.block<1||src.block>8||(!src.quad&&(!src.raw||!src.gain))){why="no oscillation map of this grid";return;}
+        dx=std::max(0,shiftX);dy=std::max(0,shiftY);
+        try{
+            passes.rssBefore=hybridRssMB();
+            stream=std::make_unique<MosaicChromaStream>(nullptr,w,h,b,nullptr,0,std::max(all,during),&passes);
+            // the block rows one advance() reads: from its first unfinished row (at most kFeed + lag rows above the rows given), and
+            // two feeds more made ahead (the last two strips, which come together, find their rows made); f: the rows of a jump
+            oscCap=(3*kFeed+stream->lagRows())/b+8;fCap=oscCap+8;oscMade=fMade=0;
+            oscRows.assign(size_t(oscCap)*src.bw,0.f);fRows.assign(size_t(fCap)*src.bw,0.f);oscTags.assign(size_t(oscCap),-1);
+#ifdef SCAM_CHROMA_RING_CHECK
+            fTags.assign(size_t(fCap),-1);
+#endif
+            stream->oscRing(oscRows.data(),oscCap,oscTags.data());
+            if(dx||dy)shiftRing.assign(size_t(dy+1)*w*3,0.f); else std::vector<float>().swap(shiftRing);
+            bytes=passes.bytes+(oscRows.size()+fRows.size()+shiftRing.size())*sizeof(float);
+            consumer=std::thread([this]{run();});
+            active=true;why.clear();
+        }catch(const std::exception& e){
+            stream.reset();why=std::string("no consumer (")+e.what()+")";active=false;
+        }
+    }
+    void rows(float* p,int n) override {
+        if(!active)return;
+        {
+            std::lock_guard<std::mutex> l(lock);
+            if(!data)data=p;
+            if(n>=h&&ready<h){lastRows=Clock::now();rowsBeforeLast=doneRows.load(std::memory_order_relaxed);}
+            stripRows=std::max(stripRows,std::min(n,h)-ready);
+            ready=std::max(ready,std::min(n,h));
+        }
+        wake.notify_all();
+    }
+    bool finish(float* p) override {
+        if(!active)return false;
+        const auto t0=Clock::now();
+        rows(p,h);
+        {std::unique_lock<std::mutex> l(lock);wake.wait(l,[&]{return exited;});}
+        consumer.join();
+        active=false;
+        waitMs=millis(Clock::now()-t0);
+        passes.rssAfter=hybridRssMB();
+        if(complete&&!failed){lastMs=millis(lastDone-lastRows);return true;}
+        complete=false;
+        if(touched)throw std::runtime_error("HYBRID MOSAIC NATIVE: the chroma median during the merge stopped half way");
+        why="the consumer failed before the first row";
+        return false;
+    }
+    void stop() override {
+        {std::lock_guard<std::mutex> l(lock);stopping=true;}
+        wake.notify_all();
+        if(consumer.joinable())consumer.join();
+        std::lock_guard<std::mutex> l(lock);
+        stopping=false;active=false;
+    }
+    // the report of a finished overlap (the line "chroma median CPU")
+    std::string text() const {
+        char line[480];
+        std::snprintf(line,sizeof(line),"during the merge (%d of %d rows done before its last readback), %d feeds of up to %d rows on %d threads "
+            "(the last rows on %d): shift to the RGGB origin %.0f ms (%d, %d px), oscillation rows %.0f ms, the last rows %.0f ms after the "
+            "last readback, waited %.0f ms after the merge; %.1f MB besides rgb; passes ",
+            rowsBeforeLast,h,feeds,kFeed,during,all,shiftMs,dx,dy,oscMs,lastMs,waitMs,double(bytes)/1048576.0);
+        return line+passes.text();
+    }
+};
 // Frames the sub-frame split picks of n: kHybridGpuFrames / b^2 (per = b^2 sub-frames each) and mosaicFrames. Any RAW size (avail =
 // MemAvailable above kHybridClassicPixels, else 0): the worker copies every picked frame (its b^2 sub-frames, 2 B per stream pixel,
 // and the binned frame of the alignment, 2/b^2 B); the sub-frame merge then adds ~20 B per stream pixel (RGB, coverage, flags,
@@ -8251,56 +8556,50 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
         report("HYBRID MOSAIC NATIVE: colour-difference, clip-border and Bento colour passes off (they work on the binned frames; native variants not built)");
         vt.chromaDiff=0.f;vt.rimRatio=0;vt.bentoChroma=0.f;
     }
-    std::vector<uint8_t> vEff,vClip;
-    HybridStats st;
-    const auto prepDone=Clock::now(); // P80: the CPU steps around the merge in the total report
-    std::vector<float> rgb=hybridReconstruct(bin,vt,alignment,report,nullptr,effMap?&vEff:nullptr,&st,clipFlags?&vClip:nullptr,nullptr,&nat);
-    hybridSeriesMerged(tune,input,st.merged,st.mergedNormals,report);
-    const auto mergeDone=Clock::now();
-    std::vector<uint16_t>().swap(binned);
     // ---- chroma median and false-colour suppression (hybridReconstructMosaic's, unchanged code and defaults, on the merged mosaic's
     // grid and block; kept apart from it so that mosaicPath 0 stays untouched). T2: the oscillation of the Quad sites (the merge's);
     // the sensor sites of the Tetra blocks (the split's map, S0's) tripled T2's zone-plate false colour on syn_b4 (0.0135 -> 0.039).
     const int ow=mb*k2*vw,oh=mb*k2*vh;
-    if(tune.mosaicChroma){
+    MosaicOscSource oscSource; // P213c: the oscillation map of the base sites (the statements of the map made here before)
+    oscSource.raw=input.frames[0].raw;oscSource.gain=&gain;oscSource.quad=t2?quad.data():nullptr;oscSource.black=input.black;
+    oscSource.W=W;oscSource.MW=MW;oscSource.block=mb;oscSource.bw=MW/mb;oscSource.bh=MH/mb;
+    oscSource.range=double(input.white)-0.25*(input.black[0]+input.black[1]+input.black[2]+input.black[3]);
+    oscSource.slope=std::max(input.frames[0].slope,1e-9f)/float(sub*sub);oscSource.offset=std::max(input.frames[0].offset,0.f)/float(sub*sub);
+    // P213c (chromaOverlap 1): the CPU chroma median on the merged rows while the GPU merges the next strips (MosaicChromaOverlap,
+    // the same floats), where the result takes the CPU path for sure (chromaGpu 0, or above the GPU's 16.8 MP: mosaicChromaMedian's
+    // own test; the GPU path and a GPU refused for memory stay after the merge). hybridReconstruct feeds it only where nothing
+    // between its merge and its shift to the RGGB origin changes the rows (else it is left unused and the chroma runs below).
+    std::unique_ptr<MosaicChromaOverlap> overlap;
+    if(tune.mosaicChroma&&tune.chromaOverlap>0&&!(tune.chromaGpu>0&&int64_t(ow)*oh<=int64_t(16800000))){
+        overlap=std::make_unique<MosaicChromaOverlap>(ow,oh,mb*k2,oscSource);
+        nat.rowsSink=overlap.get();
+    }
+    std::vector<uint8_t> vEff,vClip;
+    HybridStats st;
+    const auto prepDone=Clock::now(); // P80: the CPU steps around the merge in the total report
+    std::vector<float> rgb=hybridReconstruct(bin,vt,alignment,report,nullptr,effMap?&vEff:nullptr,&st,clipFlags?&vClip:nullptr,nullptr,&nat);
+    nat.rowsSink=nullptr;
+    hybridSeriesMerged(tune,input,st.merged,st.mergedNormals,report);
+    const auto mergeDone=Clock::now();
+    std::vector<uint16_t>().swap(binned);
+    if(tune.mosaicChroma&&overlap&&overlap->done()){
+        const std::string how=tune.chromaGpu>0?"cpu (size)":"cpu";
+        report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,mb*k2/2))+" px of the "+std::to_string(ow)+"x"+std::to_string(oh)+" result, "+how
+            +", during the merge) "+std::to_string(int(overlap->waitMs))+" ms after it");
+        report("HYBRID MOSAIC NATIVE: chroma median CPU: "+overlap->text());
+    } else if(tune.mosaicChroma){
+        if(overlap&&!overlap->why.empty())report("HYBRID MOSAIC NATIVE: chroma median not during the merge: "+overlap->why);
+        overlap.reset();
         const auto c0=Clock::now();
         std::vector<float> osc;
         {
-            const int bw=MW/mb,bh=MH/mb,bq=mb;
+            const int bw=oscSource.bw,bh=oscSource.bh;
             std::vector<float> f(size_t(bw)*bh,0.f);
-            const uint16_t* raw=input.frames[0].raw;
-            const uint16_t* q0=t2?quad.data():nullptr;
-            const double range=double(input.white)-0.25*(input.black[0]+input.black[1]+input.black[2]+input.black[3]);
-            const float slope=std::max(input.frames[0].slope,1e-9f)/float(sub*sub),offset=std::max(input.frames[0].offset,0.f)/float(sub*sub);
-            mergeRowBands(bh,[&](int j0,int j1){
-                std::vector<double> d(size_t(bq)*bq);
-                for(int J=j0;J<j1;++J)for(int I=0;I<bw;++I){
-                    double m=0;
-                    for(int c=0;c<bq;++c)for(int a=0;a<bq;++a){
-                        const int x=bq*I+a,y=bq*J+c;
-                        // P188b: the site-class gains here too (the T2 Quad mosaic has them already), so the sensor's own
-                        // response pattern does not count as oscillation
-                        d[size_t(c)*bq+a]=q0?double(q0[size_t(y)*MW+x])-input.black[((J&1)<<1)|(I&1)]
-                                            :(double(raw[size_t(y)*W+x])-input.black[((y&1)<<1)|(x&1)])*gain[((y&7)<<3)|(x&7)];
-                        m+=d[size_t(c)*bq+a];
-                    }
-                    m/=double(bq*bq);
-                    const double sigma=std::sqrt(std::max(slope*std::max(m,0.0)/range+offset,0.0))*range;
-                    const double gate=0.04*std::max(m,0.0)+3.0*sigma;
-                    double changes=0;int pairs=0; // soft counts (mosaicSoftSignChange)
-                    for(int c=0;c<bq;++c)for(int a=0;a<bq;++a){
-                        const double p0=d[size_t(c)*bq+a]-m;
-                        if(a+1<bq){++pairs;changes+=mosaicSoftSignChange(p0,d[size_t(c)*bq+a+1]-m,gate,kMosaicOscTau);}
-                        if(c+1<bq){++pairs;changes+=mosaicSoftSignChange(p0,d[size_t(c+1)*bq+a]-m,gate,kMosaicOscTau);}
-                    }
-                    f[size_t(J)*bw+I]=pairs?float(changes/pairs):0.f;
-                }
-            });
+            mergeRowBands(bh,[&](int j0,int j1){for(int J=j0;J<j1;++J)oscSource.signRow(J,f.data()+size_t(J)*bw);});
             osc.assign(f.size(),0.f);
-            mergeRowBands(bh,[&](int j0,int j1){for(int J=j0;J<j1;++J)for(int I=0;I<bw;++I){
-                double s=0;int cnt=0;
-                for(int dj=-2;dj<=2;++dj)for(int di=-2;di<=2;++di){const int y=J+dj,x=I+di;if(x<0||y<0||x>=bw||y>=bh)continue;s+=f[size_t(y)*bw+x];++cnt;}
-                osc[size_t(J)*bw+I]=float(s/std::max(cnt,1));}});
+            mergeRowBands(bh,[&](int j0,int j1){
+                for(int J=j0;J<j1;++J)oscSource.boxRow(J,[&](int j){return static_cast<const float*>(f.data()+size_t(j)*bw);},osc.data()+size_t(J)*bw);
+            });
         }
         std::string how;MosaicChromaPasses passes;
         const auto oscDone=Clock::now();passes.rssBefore=hybridRssMB();
@@ -8310,6 +8609,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
             +std::to_string(int(millis(Clock::now()-c0)))+" ms");
         if(passes.cpu)report("HYBRID MOSAIC NATIVE: chroma median CPU: oscillation map "+std::to_string(int(millis(oscDone-c0)))+" ms, "+passes.text()); // P213a
     }
+    overlap.reset();
     std::vector<uint16_t>().swap(quad);
     // ---- to the requested output: sensor grid W x H, or the 2x grid. Target pixel X is the W-grid position fx = (X + 0.5) W / tw - 0.5
     // (the split's resize), at sensor fx - (b-1)/2; merged pixel i sits at sensor alpha (i - (mb-1)/2) + (alpha-1)/2 (alpha = sensor px
