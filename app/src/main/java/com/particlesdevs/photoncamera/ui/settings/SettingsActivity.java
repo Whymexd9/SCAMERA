@@ -1082,8 +1082,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 com.particlesdevs.photoncamera.util.ScameraDebugLog.attach(mContext);
                 com.particlesdevs.photoncamera.util.ScameraDebugLog.setEnabled(on);
                 if (on) {
-                    ScameraApp.showToast(
-                            com.particlesdevs.photoncamera.util.ScameraDebugLog.getPath());
+                    // P214b: after the session header, so the toast names the file really written
+                    com.particlesdevs.photoncamera.util.ScameraDebugLog.whenOpen(ScameraApp::showToast);
                 }
             }
             

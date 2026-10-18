@@ -60,7 +60,9 @@ public final class ScamDiagnostics {
     public static void begin(Context context,Parameters p,ImageFrame ref,ScamScene scene) {
         try {
             Job j=new Job(context);active.set(j);
-            String info="SCAM diagnostic capture\nCamera="+p.physicalID+" CFA="+p.cfaPattern+" size="+p.rawSize
+            // P214b: the build the capture came from (BuildIdentity), second line of README.txt and the ZIP comment
+            String info="SCAM diagnostic capture\nbuild: "+com.particlesdevs.photoncamera.util.BuildIdentity.line()
+                    +"\nCamera="+p.physicalID+" CFA="+p.cfaPattern+" size="+p.rawSize
                     +"\nISO="+ref.measuredIso+" exposureNs="+ref.measuredExposure+" timestamp="+ref.timestamp
                     +"\nCamera2 noise slope="+ref.noiseSlope+" offset="+ref.noiseOffset
                     +"\n"+scene.describe()
@@ -191,6 +193,7 @@ public final class ScamDiagnostics {
             }
             if(stream==null)throw new IOException("Cannot open diagnostic ZIP");
             try(ZipOutputStream zip=new ZipOutputStream(stream)) {
+                zip.setComment(com.particlesdevs.photoncamera.util.BuildIdentity.line()); // P214b: readable without unpacking
                 File[] files=j.dir.listFiles();if(files!=null)for(File f:files){zip.putNextEntry(new ZipEntry(f.getName()));Files.copy(f.toPath(),zip);zip.closeEntry();}
             }
             if(uri!=null){ContentValues v=new ContentValues();v.put(MediaStore.Downloads.IS_PENDING,0);j.context.getContentResolver().update(uri,v,null,null);}

@@ -11,7 +11,8 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-import de.hdodenhof.circleimageview.BuildConfig;
+// P214b: the app's BuildConfig; circleimageview's (imported here before) made the DNG Software tag "SCAMERA  (-1)"
+import com.particlesdevs.photoncamera.BuildConfig;
 
 public class DngCreator {
     private long nativePtr;

@@ -195,6 +195,11 @@ public class ScameraApp extends Application {
 
     @Override
     public void onCreate() {
+        // First thing of all: a crash during initModules() leaves no logcat for the user,
+        // so make sure it always lands in a file we can ask for. P214b: in the :scam process too - the reporter only
+        // sets the default handler and, on a crash, appends to Download/SCAMERA/SCAMERA-crash.log (no camera, no GPU,
+        // no settings), and its report names the process.
+        ScameraCrashReporter.install(this);
         // The firmware test has its own process. Do not open cameras, initialize
         // GPU pipelines or start background modules inside that process.
         if (android.os.Build.VERSION.SDK_INT >= 28 &&
@@ -202,11 +207,10 @@ public class ScameraApp extends Application {
             super.onCreate();
             return;
         }
-        // First thing of all: a crash during initModules() leaves no logcat for the user,
-        // so make sure it always lands in a file we can ask for.
-        ScameraCrashReporter.install(this);
         registerActivityLifecycleCallbacks(new ActivityLifecycleMonitor());
         sApp = this;
+        // P214b: the build in logcat at every process start (the daily file gets it when the camera screen attaches it)
+        android.util.Log.i("ScameraBuild", com.particlesdevs.photoncamera.util.BuildIdentity.line());
         Log.d("ScameraApp", "Initializing modules");
         initModules();
         super.onCreate();

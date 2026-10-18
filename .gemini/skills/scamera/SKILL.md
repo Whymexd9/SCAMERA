@@ -173,8 +173,8 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 adb / логи:
 - Свободен ли телефон: `adb -s <serial> shell "dumpsys window | grep mCurrentFocus; dumpsys power | grep lastUserActivityTime; dumpsys media.camera | grep 'Client Package'"`.
 - `adb logcat -s SCAM_CAPTURE SCAM_HDR SCAM_PIPELINE SCAM_AE SCAM_DIAG SCAM_TIMELINE VF_DRAW STAB_TRACE XiaomiTeleZoom CaptureController`.
-- На телефоне: `DCIM/SCAMERA/Log/log-YYYY-MM-DD.txt` (RAW: `DCIM/SCAMERA/Raw`), `Download/SCAMERA/SCAMERA-debug.log`,
-  `SCAMERA-crash.log` (Download/SCAMERA и files приложения), диагностика `Download/SCAMERA/SCAM-*.zip`
+- На телефоне: `DCIM/SCAMERA/Log/log-YYYY-MM-DD.txt` (RAW: `DCIM/SCAMERA/Raw`), `Download/SCAMERA/SCAMERA-debug.txt` (P214b: один файл на телефон, 8 МБ ×3: `.1.txt`, `.2.txt`; старые `SCAMERA-debug.log (N).txt` — до P214b), `SCAMERA-timings.txt`,
+  `SCAMERA-crash.log` (Download/SCAMERA и files приложения; до 1 МБ, затем `.1.log`). Строка сборки `SCAMERA <версия> (<код>) <пакет> <sha>[+dirty] <CI|local>` — в начале каждой сессии дневного лога (`I/ScameraBuild`), в шапке debug-лога, в отчёте о падении, в `README.txt` и комментарии ZIP; диагностика `Download/SCAMERA/SCAM-*.zip`
   (замедляет съёмку). Отчёты воркера (`WORKER EXIT/CRASH`, `HYBRID …`) — в SharedPreferences `scam_*_report`.
 - Dev-переключатели: `/sdcard/Android/data/org.codeaurora.snapcam/files/scam_dev.txt`, строки `key value`
   (`hybrid`, `hybrid_<key>`, `post_ab`, `stab_trace`, `force_stab`, `scam_preview_eis`, `gpu_low_priority`,

@@ -240,7 +240,7 @@ public class CameraActivity extends BaseActivity {
         }
         FileManager.CreateFolders();
         Log.setLogFolder(getApplicationContext());
-        // Reads the "Full debug" switch and, when on, opens Download/SCAMERA/SCAMERA-debug.log
+        // Reads the "Full debug" switch and, when on, opens Download/SCAMERA/SCAMERA-debug.txt
         // and writes the build/device/camera header for this session.
         com.particlesdevs.photoncamera.util.ScameraDebugLog.init(getApplicationContext());
         if (getSupportFragmentManager().findFragmentById(R.id.container) == null) {

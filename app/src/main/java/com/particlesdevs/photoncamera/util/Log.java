@@ -24,6 +24,12 @@ public class Log {
     private static Context logContext = null; // Application context for SimpleStorage
     private static final int LOG_RETENTION_DAYS = 10;
     private static String currentLogFileName = null;
+    /**
+     * P214b (engineering.md A4): the daily file that got the build line since the last {@link #setLogFolder} (each start
+     * of the camera screen, i.e. every session of the log) or the last day change. Before, a day's file had no version
+     * line at any of its session starts.
+     */
+    private static String identityLogFileName = null;
     private static volatile boolean logEnabled = true;
 
     // Thread-safe date formatters
@@ -74,6 +80,7 @@ public class Log {
             logContext = app;
             logDir = null;
             currentDate = null;
+            identityLogFileName = null; // P214b: this session's first line is the build line
             retryAfterMs = 0;
             if (app != null) cleanupOldLogs();
         });
@@ -193,7 +200,7 @@ public class Log {
     }
 
     private static void writeToFile(String level, String tag, String message) {
-        // Full debug mirrors every line into Download/SCAMERA/SCAMERA-debug.log. This runs
+        // Full debug mirrors every line into Download/SCAMERA/SCAMERA-debug.txt. This runs
         // before the early returns below so the mirror still works when the regular log
         // folder is unavailable. ScameraDebugLog is a no-op while the switch is off.
         ScameraDebugLog.mirror(level, tag, message);
@@ -229,9 +236,14 @@ public class Log {
                     }
                     retryAfterMs = 0;
                 }
+                String time = timeFormatter.get().format(new java.util.Date(timestamp));
+                // P214b: "SCAMERA 0.98 (30966) android.camera.cts <sha> CI" at every session start and day change
+                if (currentLogFileName != null && !currentLogFileName.equals(identityLogFileName)) {
+                    identityLogFileName = currentLogFileName;
+                    bufferedWriter.write(time + " I/ScameraBuild: " + BuildIdentity.line() + "\n");
+                }
                 int dropped = droppedLines.getAndSet(0);
                 if (dropped > 0) bufferedWriter.write("W/Log: dropped " + dropped + " queued lines (slow storage)\n");
-                String time = timeFormatter.get().format(new java.util.Date(timestamp));
                 bufferedWriter.write(time + " " + level + "/" + tag + ": " + message + "\n");
             } catch (Exception e) {
                 closeWriter();
