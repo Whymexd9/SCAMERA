@@ -18,6 +18,9 @@ import com.particlesdevs.photoncamera.settings.PreferenceKeys;
  * ({@link VivoQcomIsz}, session key vivo.control.forceSensorMode). P123 (owner, 2026-10-13: «На виво на мтк не работает ISZ и
  * DCG»): the X500 Pro Max's MediaTek route (P104-P112: HDR / seamless keys, the DCG / LOFIC search, the vivo-camera package
  * spoof, the 16:9 video route) never gave a 14-bit RAW and is gone.
+ * <p>
+ * P230: the Xiaomi 15 Ultra's main camera ({@link XiaomiDcg}: vendor operation mode 0x9203 on the session, current_mode 24,
+ * 60 fps, the 512 empty rows cut, 14-bit levels).
  */
 public final class Dcg14Mode {
     private static final String PREFS = "scam_dcg14";
@@ -26,14 +29,15 @@ public final class Dcg14Mode {
 
     private Dcg14Mode() {}
 
-    /** A phone with the switch: the vivo X300 Ultra. */
+    /** A phone with the switch: the vivo X300 Ultra, the X200 Ultra (its guarded routes), the Xiaomi 15 Ultra. */
     public static boolean device() {
-        return VivoQcomIsz.enabled() || VivoQcomModes.device();
+        return VivoQcomIsz.enabled() || VivoQcomModes.device() || XiaomiDcg.enabled();
     }
 
-    /** Whether this camera has a DCG mode (X300 Ultra: main, ultra-wide, tele). */
+    /** Whether this camera has a DCG mode (X300 Ultra: main, ultra-wide, tele; 15 Ultra: the main). */
     public static boolean available(@Nullable CameraCharacteristics c) {
         if (c == null || !device() || !PreferenceKeys.scamDevSwitch("dcg14", true)) return false;
+        if (XiaomiDcg.device()) return XiaomiDcg.available(c);
         if (VivoQcomModes.device()) return VivoQcomModes.dcgAvailable(c);
         return VivoQcomIsz.dcgAvailable(c);
     }
@@ -76,7 +80,27 @@ public final class Dcg14Mode {
     /** Sets the mode on the session parameters; returns what was set ("" when inactive). */
     public static String apply(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c, @Nullable String physicalId) {
         if (builder == null || !active(c)) return "";
+        if (XiaomiDcg.device()) return XiaomiDcg.applySession(builder, c);
         if (VivoQcomModes.device()) return VivoQcomModes.apply(builder, c, physicalId);
         return VivoQcomIsz.applyDcg(builder, c);
+    }
+
+    /** P230: the vendor operation mode the DCG session runs (Xiaomi 15 Ultra: 0x9203), 0 when it needs none or is inactive. */
+    public static int operationMode(@Nullable CameraCharacteristics c) {
+        return XiaomiDcg.device() && active(c) ? XiaomiDcg.operationMode() : 0;
+    }
+
+    /**
+     * P230: a route whose mode keys go on every request as well (Xiaomi 15 Ultra: current_mode and the 60 fps range on the
+     * viewfinder's and the shot's requests); "" when there is none.
+     */
+    public static String applyRequest(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c) {
+        if (builder == null || !XiaomiDcg.device() || !active(c)) return "";
+        return XiaomiDcg.applyRequest(builder, c);
+    }
+
+    /** P230: the depth the DCG mode's samples have when the route says so up front (Xiaomi 15 Ultra: 14), 0 to learn it. */
+    public static int knownBits(@Nullable CameraCharacteristics c) {
+        return XiaomiDcg.device() && active(c) ? XiaomiDcg.BITS : 0;
     }
 }

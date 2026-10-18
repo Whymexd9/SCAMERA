@@ -65,6 +65,9 @@ public final class RawPayloadCheck {
 
     /** The check on a little-endian RAW16 buffer as the reader delivers it (rows {@code rowStride} bytes apart). */
     public static Result check(ByteBuffer buffer, int width, int height, int rowStride, int whiteLevel) {
+        // P230: a session whose sensor mode has a known depth (Xiaomi 15 Ultra DCG: 14 bit under the declared 1023) checks
+        // against that depth's white: its samples are no impossible values, its empty bottom rows no packed tail
+        whiteLevel = Math.max(whiteLevel, RawLevels.knownWhite());
         if (buffer == null || width <= 0 || height <= 0 || whiteLevel <= 0 || whiteLevel > 4095) return UNCHECKED;
         String geometry = String.format(Locale.ROOT, "%dx%d, rowStride %d, %d bytes", width, height, rowStride, buffer.capacity());
         if (rowStride < 2 * width || (rowStride & 1) != 0)

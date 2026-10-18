@@ -73,8 +73,9 @@ public class SaverImplementation {
             RawPayloadCheck.dumpOnce(image, payload, ScameraApp.getSettings().mCameraID);
         }
         if(!iszAspect4x3 && ScameraApp.getSettings().aspect169 && width > height){
-            // P118: the crop of the ZSL ring's frames (Wide169); this one kept an odd row count the merge dropped
-            final int full = image.getHeight();
+            // P118: the crop of the ZSL ring's frames (Wide169); this one kept an odd row count the merge dropped. P230: of the DCG
+            // mode's rows (Xiaomi 15 Ultra: 2560 of 3072), not of its empty band
+            final int full = com.particlesdevs.photoncamera.capture.XiaomiDcg.imageRows(width, image.getHeight());
             height = Wide169.rows(width, full);
             offset = rowStride * Wide169.firstRow(width, full);
             capacity = rowStride * height;

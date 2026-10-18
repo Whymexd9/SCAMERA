@@ -60,6 +60,7 @@ public final class DevKeys {
         final String merge = Lang.t("Склейка Hybrid (воркер)", "Hybrid merge (worker)");
         final String post = Lang.t("Обработка", "Processing");
         final String xiaomi = Lang.t("Xiaomi 17 Ultra (теле)", "Xiaomi 17 Ultra (tele)");
+        final String xiaomi15 = Lang.t("Xiaomi 15 Ultra (DCG)", "Xiaomi 15 Ultra (DCG)");
         final String vivo = Lang.t("vivo", "vivo");
         final String pixel = Lang.t("Pixel 10 Pro / Pro XL", "Pixel 10 Pro / Pro XL");
         final String diag = Lang.t("Диагностика и A/B", "Diagnostics and A/B");
@@ -178,6 +179,12 @@ public final class DevKeys {
         k.add(s(xiaomi, "xiaomi_crop_mode", false, Lang.t("Режим кропа теле (опыт)", "Tele crop mode (experiment)")));
         k.add(s(xiaomi, "xiaomi_isz", false, Lang.t("ISZ теле (опыт)", "Tele ISZ (experiment)")));
         k.add(s(xiaomi, "xiaomi_tele_fallback", false, Lang.t("Запасной путь теле при сбое", "Tele fallback route on failure")));
+        // Xiaomi 15 Ultra (P230)
+        k.add(s(xiaomi15, "xiaomi_dcg", true, Lang.t("Кнопка DCG 14 бит на основной камере", "The DCG 14-bit button on the main camera")));
+        k.add(n(xiaomi15, "xiaomi_dcg_opmode", String.valueOf(com.particlesdevs.photoncamera.capture.XiaomiDcg.OPERATION_MODE), Lang.t("DCG: режим работы сессии (37379 = 0x9203, 0 — без него)", "DCG: session operation mode (37379 = 0x9203, 0 none)")));
+        k.add(n(xiaomi15, "xiaomi_dcg_mode", String.valueOf(com.particlesdevs.photoncamera.capture.XiaomiDcg.DCG_MODE), Lang.t("DCG: current_mode сенсора (24; -1 — не задавать)", "DCG: sensor current_mode (24; -1 not set)")));
+        k.add(n(xiaomi15, "xiaomi_dcg_fps", String.valueOf(com.particlesdevs.photoncamera.capture.XiaomiDcg.FPS), Lang.t("DCG: кадров в секунду (0 — как в видоискателе)", "DCG: frames per second (0 as the viewfinder)")));
+        k.add(n(xiaomi15, "xiaomi_dcg_crop", "1", Lang.t("DCG: пустые строки кадра (0 — не резать, 1 — если пустые, 2 — всегда снизу)", "DCG: empty rows of the frame (0 keep, 1 cut when empty, 2 always the bottom)")));
         // vivo
         k.add(s(vivo, "vivo_sdk_fullres", true, Lang.t("X200 Ultra, основная камера 3: SDK RAW 50 Мп, последовательная съёмка после нажатия, Hybrid", "X200 Ultra, main camera 3: SDK 50 MP RAW, serial post-shutter capture, Hybrid")));
         // P180 / P184: FULLRES without hardware remosaic on the X100 / X300 Ultra - on (the owner tests it), off by these

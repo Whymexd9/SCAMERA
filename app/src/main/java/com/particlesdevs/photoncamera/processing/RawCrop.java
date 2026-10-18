@@ -237,6 +237,17 @@ public final class RawCrop {
         return v;
     }
 
+    /**
+     * P230: a sensor mode's band at the bottom ({@code mode[3]}) leaves its window, centred on the sensor, at the buffer's top:
+     * the buffer's rows are half the band lower on the sensor; a band at the top the other way round.
+     */
+    static int modeShiftY(int[] mode) {
+        if (mode == null || mode.length < 4) return 0;
+        if (mode[3] > 0 && mode[1] == 0) return mode[3] / 2;
+        if (mode[1] > 0 && mode[3] == 0) return -mode[1] / 2;
+        return 0;
+    }
+
     /** What a shot's crop found and kept. */
     public static final class Shot {
         /** The zero padding found ({left, top, right, bottom}, sensor px; zeros with the automatic crop off). */
@@ -245,12 +256,23 @@ public final class RawCrop {
         public final Area area;
         /** The frames' size as captured. */
         public final int fullWidth, fullHeight;
+        /**
+         * P230: rows the kept part sits lower on the sensor than in the buffer: a sensor mode's window (centred on the sensor)
+         * written to the top of a taller buffer is half its empty band lower (Xiaomi 15 Ultra DCG: 2560 rows of 3072, +256); 0
+         * without a mode band.
+         */
+        public final int sensorShiftY;
 
         Shot(int[] padding, Area area, int fullWidth, int fullHeight) {
+            this(padding, area, fullWidth, fullHeight, 0);
+        }
+
+        Shot(int[] padding, Area area, int fullWidth, int fullHeight, int sensorShiftY) {
             this.padding = padding;
             this.area = area;
             this.fullWidth = fullWidth;
             this.fullHeight = fullHeight;
+            this.sensorShiftY = sensorShiftY;
         }
     }
 
@@ -259,19 +281,31 @@ public final class RawCrop {
      * {@code manualPhoto} margins ({left, top, right, bottom}) turned by the sensor's {@code orientation}; each side the larger.
      */
     public static Shot cutShot(List<ImageFrame> frames, float black, boolean auto, int[] manualPhoto, int orientation) throws IOException {
+        return cutShot(frames, black, auto, manualPhoto, orientation, null);
+    }
+
+    /**
+     * As above, with {@code modeSensor}: the band a sensor mode leaves empty in a taller buffer ({left, top, right, bottom} sensor
+     * px, null / zeros: none; P230 Xiaomi 15 Ultra DCG: 512 rows at the bottom of 4096 x 3072), cut whether or not the automatic
+     * crop is on (those rows are no image), each side the larger of the three.
+     */
+    public static Shot cutShot(List<ImageFrame> frames, float black, boolean auto, int[] manualPhoto, int orientation,
+                               int[] modeSensor) throws IOException {
         final ImageFrame first = frames.isEmpty() ? null : frames.get(0);
         if (first == null || first.buffer == null) return new Shot(new int[4], null, 0, 0);
         final long started = System.nanoTime();
         final int w = first.width, h = first.height;
         final int[] padding = auto ? detectPadding(first.buffer, w, h, black) : new int[4];
         final int[] manual = photoToSensor(manualPhoto, orientation);
-        final Area area = keep(w, h, larger(padding, manual));
+        final int[] mode = modeSensor != null && modeSensor.length == 4 ? modeSensor : new int[4];
+        final Area area = keep(w, h, larger(larger(padding, manual), mode));
         if (area != null) {
             apply(frames, w, h, area);
             Log.i("SCAM_HDR", "RAW crop " + w + "x" + h + " -> " + area + ": zero padding L/T/R/B " + padding[0] + "/" + padding[1]
                     + "/" + padding[2] + "/" + padding[3] + ", manual " + manual[0] + "/" + manual[1] + "/" + manual[2] + "/" + manual[3]
+                    + ", sensor mode " + mode[0] + "/" + mode[1] + "/" + mode[2] + "/" + mode[3]
                     + " (sensor sides, orientation " + orientation + ") in " + (System.nanoTime() - started) / 1_000_000 + " ms");
         }
-        return new Shot(padding, area, w, h);
+        return new Shot(larger(padding, mode), area, w, h, area == null ? 0 : modeShiftY(mode));
     }
 }
