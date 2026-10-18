@@ -20,6 +20,7 @@
 #include "scam-superres-gpu.h"
 #include "scam-chroma-gpu.h" // P80 mosaicChromaMedian on the GPU
 #include "scam-crash.h"
+#include "scam-progress.h" // P220 the heartbeat counters (the app's watchdog and processing ring)
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -3004,6 +3005,7 @@ class HybridGpu {
         std::string source=standalone?std::string(body):std::string(kHybCommon)+helpersPrefix+kHybHelpers+body;
         const std::string cacheFile=programCacheFile(source);
         markCompile("glProgramBinary (cache)");
+        scam_progress::tick(); // P220: each program is progress (built ahead on a helper thread during the alignment, too)
         if(!cacheFile.empty())if(GLuint cached=loadProgramBinary(cacheFile))return cached;
         markCompile("glCompileShader");
         GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kHybCommon,helpersPrefix,kHybHelpers,body};
@@ -3437,6 +3439,7 @@ public:
             check("frame table");
         }
         worker_crash::mark("GPU merge");
+        scam_progress::pass("merge",int64_t(h)*g); // P220: the output rows read back (each strip's, below)
         std::vector<GLuint> programs={meanProgram,flagsProgram,guideProgram,cellsProgram,rejectProgram,dilateProgram,mergeProgram};
         if(!flagsProgram)programs.erase(programs.begin(),programs.begin()+2); // outlierPrograms false: not compiled
         if(rimProgram)programs.push_back(rimProgram);
@@ -3745,12 +3748,15 @@ public:
             }
         }
         // P30: the readback of strip k runs after strip k+1 is submitted (fence), from the other bank.
-        struct PendingStrip{bool active=false;int bank=0,oy0=0,rows2=0;GLsync fence=nullptr;};
+        struct PendingStrip{bool active=false;int bank=0,oy0=0,rows2=0,index=0;GLsync fence=nullptr;};
         PendingStrip pending;
         auto readStrip=[&](PendingStrip& p){
             if(!p.active)return;
             const auto readStarted=std::chrono::steady_clock::now();
             bool waited=false;
+            scam_progress::stallAt(p.index); // P220: SCAM_STALL_STRIP (replay test of the app's watchdog) only
+            { // P220: the fence and the maps behind it are the GPU's time (a hung GPU stops here: the app's watchdog sees fence=)
+            scam_progress::FenceWait gpuWait;
             if(p.fence){
                 const GLenum r=glClientWaitSync(p.fence,GL_SYNC_FLUSH_COMMANDS_BIT,GLuint64(120)*1000000000ULL);
                 waited=r==GL_ALREADY_SIGNALED||r==GL_CONDITION_SATISFIED;
@@ -3763,6 +3769,7 @@ public:
                 getBuffer(bankBuffer(6,p.bank),6,flagStrip.data(),flagStrip.size()*4,waited);
                 uint8_t* dst=clipFlags->data()+size_t(p.oy0)*ow;
                 for(size_t i=0;i<flagStrip.size();++i)dst[i]=uint8_t(flagStrip[i]);
+            }
             }
             check("readback");
             passMs[6]+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-readStarted).count();
@@ -4131,11 +4138,13 @@ public:
             glFlush();
             {const int doneRows=pending.active?pending.oy0+pending.rows2:0;
              readStrip(pending);                     // the previous strip, while the GPU runs this one
+             if(doneRows>0)scam_progress::at(doneRows);
              if(doneRows>0&&in.rowsDone)in.rowsDone(out,doneRows);}
-            pending.active=true;pending.bank=bank;pending.oy0=oy0;pending.rows2=rows2;pending.fence=fence;
+            pending.active=true;pending.bank=bank;pending.oy0=oy0;pending.rows2=rows2;pending.index=stripIndex;pending.fence=fence;
         }
         {const int doneRows=pending.active?pending.oy0+pending.rows2:0;
          readStrip(pending);
+         if(doneRows>0)scam_progress::at(doneRows);
          if(doneRows>0&&in.rowsDone)in.rowsDone(out,doneRows);}
         if(stripsShrunk&&trace)trace("HYBRID GPU: "+std::to_string(stripsShrunk)+" of "+std::to_string(stripIndex)+" strips shrunk to fit the storage block / memory budget (smallest "
             +std::to_string(smallestStrip)+" cells; first: "+shrinkWhy+")");
@@ -5983,6 +5992,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         laStream->add(job);
     };
     const auto alignStarted=Clock::now();
+    scam_progress::pass("align",n-1); // P220: the frames aligned (a CRE group of up to 6 at a time)
     if(presetAlignment){
         H=preset->h;aligned=preset->aligned; // the mosaic sub-frames: binned alignment plus the known site offsets
     } else if(alignment){
@@ -5990,6 +6000,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         for(int first=1;first<n;first+=6){
             Burst group=b;
             const int count=std::min(6,n-first);
+            struct Done{int k;~Done(){scam_progress::step(k);}} done{count}; // P220: the group, aligned or by the fallback
             for(int j=0;j<count;++j){group.raw[1+j]=input.frames[first+j].raw;group.exposure[1+j]=input.frames[first+j].exposure;group.iso[1+j]=input.frames[first+j].iso;}
             std::array<BackwardHomography,7> hs;
             try{hs=alignment(group);}
@@ -6027,6 +6038,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 const auto donor=guides(one,1);
                 const Shift s=globalShift(ref,donor,input.frames[f].exposure);
                 BackwardHomography t;t.h={1,0,s.x,0,1,s.y,0,0};H[f]=t;
+                scam_progress::step(); // P220
             }
         };
         std::vector<std::thread> pool;
@@ -6209,6 +6221,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     BentoResult bento;std::vector<std::vector<float>> bentoValids;
     const auto maskStarted=Clock::now();
+    scam_progress::pass("bento"); // P220
     if(us>=0&&tune.bento>0){
         // P30: the masks of the other ultrashort frames (validation) are built alongside the first one. Any RAW size: above 16 MP
         // one after the other (each mask holds ~5.5 B per pixel while it is built; otherMask() below computes it on demand).
@@ -6342,6 +6355,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             if(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort)continue;
             jobs.push_back(f);
         }
+        if(!laStream)scam_progress::pass("local-align",int64_t(jobs.size())); // P220: the whole-field F6 before the merge, per frame
         if(laStream&&jobs.empty())laStream.reset();
         if(laStream){ // P33 W2.1: the bands of the refined frames (phase 1 ran during the alignment), alongside the merge
             laStream->commit(jobs);
@@ -6389,6 +6403,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                         laGray(b,input.frames[f].raw,1.f/input.frames[f].exposure,eps,D0,false);
                         fstats[f].ms[0]=millis(Clock::now()-g0);
                         laFrameField(laBase,D0,H[f],tune,laFields[f],fstats[f],&laMotions[f]);
+                        scam_progress::step(); // P220
                     }
                 }catch(const std::exception& error){
                     std::lock_guard<std::mutex> lock(laFailureMutex);if(!laFailed.exchange(true))laFailure=error.what();
@@ -6614,6 +6629,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     std::vector<std::vector<uint16_t>> mochiRaw;bool mochiPending=tune.mochi>0;
     auto gpuMerge=[&](bool withLocalAlign){
         const auto gpuStarted=Clock::now();
+        scam_progress::pass("gpu"); // P220: the context and its programs (each program a tick), then Mochi and the strips
         if(caModel.ok){
             caBands=std::make_unique<HybridCaBands>(w*grid,h*grid,grid,caModel);caBandsMs=0;
             in.rowsDone=[&](std::vector<float>& rgb,int rows){const auto t0=Clock::now();caBands->advance(rgb,rows);caBandsMs+=millis(Clock::now()-t0);};
@@ -6642,8 +6658,10 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             else if(tune.mochi==1&&others<=3)report("HYBRID MOCHI: off ("+std::to_string(others)+" non-bracketed frames, the rule needs more than 3; mochi 2 forces it)");
             else {
                 mochiRaw.reserve(size_t(bracketed));
+                scam_progress::pass("mochi",bracketed); // P220
                 for(size_t i=1;i<in.frames.size();++i){
                     if(in.role[i]!=kRoleBracketed)continue;
+                    struct Done{~Done(){scam_progress::step();}} done; // P220: each bracketed frame, corrected or not
                     HybridGpu::MochiStats st;mochiRaw.emplace_back();
                     try{
                         if(!gpu.mochi(in,int(i),tune.clipLevel,mochiRaw.back(),st)){
@@ -6755,6 +6773,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             gpuMerge(false);
         }
     } else gpuMerge(false);
+    scam_progress::pass("finish"); // P220: CA, the DNG RAW, the maps and flags of the merged result
     if(caModel.ok){ // P19: R and B of the merged RGB moved onto G (the frames all carry the lens's CA, the merge keeps it)
         const auto caStarted=Clock::now();
         const int during=caBands?caBands->done():0;
@@ -6924,6 +6943,7 @@ inline MosaicDetect detectMosaicBlock(const uint16_t* raw,int w,int h,const std:
     return d;
 }
 inline int hybridMosaicBlock(const HybridInput& input,const HybridTuning& tune,const std::function<void(const std::string&)>& report){
+    scam_progress::pass("mosaic-detect"); // P220
     if(tune.mosaicBlock==1||tune.mosaicBlock==2||tune.mosaicBlock==4){
         if(tune.mosaicBlock>1)report("HYBRID MOSAIC: block "+std::to_string(tune.mosaicBlock)+" forced by tuning");
         return tune.mosaicBlock;
@@ -7746,6 +7766,7 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
                                                   const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
                                                   std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags){
     if(input.strict2x)throw std::runtime_error("HYBRID: strict Sabre 2x needs the native mosaic merge, not sub-frame resampling");
+    scam_progress::pass("mosaic-split"); // P220: the sub-frames (their merge reports its own stages)
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
@@ -8000,6 +8021,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
                                                              std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags){
     if(input.strict2x&&((block==4&&tune.mosaicTetra!=1)||tune.mosaicNative2x==0))
         throw std::runtime_error("HYBRID: strict Sabre 2x needs native mosaic sites; resampling is disabled");
+    scam_progress::pass("mosaic"); // P220: the frame pick and the site-class response (the binning below has its rows)
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
@@ -8083,7 +8105,9 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     const size_t vpix=size_t(vw)*vh,qpix=size_t(MW)*MH;
     std::vector<uint16_t> binned(vpix*pick.size()),quad(t2?qpix*pick.size():0);
     const float clipAt=input.white-1.f;
+    scam_progress::pass("mosaic-bin",vh); // P220: the binned rows (every picked frame)
     mergeRowBands(vh,[&](int j0,int j1){
+        struct Done{int k;~Done(){scam_progress::step(k);}} done{j1-j0};
         for(size_t k=0;k<pick.size();++k){
             const uint16_t* raw=input.frames[pick[k]].raw;
             for(int J=j0;J<j1;++J)for(int I=0;I<vw;++I){
@@ -8314,6 +8338,7 @@ inline std::vector<float> hybridReconstructMosaicBinned(const HybridInput& input
     auto millis=[](auto d){return std::chrono::duration<double,std::milli>(d).count();};
     const int b=block,W=input.w,Ht=input.h,bb=b*b,n=int(input.frames.size());
     if(!hybridMosaicBinnable(W,Ht,b))throw std::runtime_error("HYBRID MOSAIC BINNED: frame size not a multiple of the colour block");
+    scam_progress::pass("mosaic-binned"); // P220: the frame pick, the response and the binning (the plain merge then reports its own)
     const int vw=W/b,vh=Ht/b;
     const int gridOut=input.strict2x?2:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
     // ---- frames: the budget of the binned copies and the output
