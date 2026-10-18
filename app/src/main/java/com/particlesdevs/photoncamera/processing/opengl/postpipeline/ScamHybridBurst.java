@@ -30,7 +30,11 @@ import com.particlesdevs.photoncamera.util.Lang;
 public final class ScamHybridBurst implements ScamTransport {
     /** Merged Bayer RAW of the last SHDR shot (uint16, sensor layout, white 16383), or null (ScamNeuralClient fills it). */
     public static volatile java.nio.ByteBuffer lastMergedDng;
-    /** Effective merged frames per pixel of the last SHDR result (uint8, 1/8 frame), or null (the denoisers' frame map). */
+    /**
+     * Effective merged frames per pixel of the last SHDR result, or null (the denoisers' frame map). uint8 and relative only
+     * (P214c): the worker scales the codes so their median is 64 (scam-hybrid.h codeScale = 64 / median), so a code / 8 is no
+     * frame count; the frames of the merge are {@link #lastMergeFrames}.
+     */
     public static volatile java.nio.ByteBuffer lastEffectiveFrames;
     static final int ROLE_NORMAL = 1, ROLE_BRACKETED = 3, ROLE_ULTRASHORT = 5;
     private static final long BASE_WINDOW_NS = 205_000_000L; // SCAM: base candidates within 205 ms of the newest frame
@@ -735,6 +739,11 @@ public final class ScamHybridBurst implements ScamTransport {
      * frames' white (the highlights Bento took from the ultrashort frames); 1 when nothing is above the N clip.
      */
     public static volatile float lastMergedDngHeadroom = 1f;
+    /**
+     * P214c: frames the last merge averaged (the worker's «HYBRID MERGE FACTORS»: the base plus every donor's mean accepted
+     * weight, DngMetadata.mergeFrames), for the merged DNG's NoiseProfile; NaN when the report has none.
+     */
+    public static volatile double lastMergeFrames = Double.NaN;
     /** P77: noise model factor the worker measured and merged with (HYBRID NOISE CHECK "-> model xK"), 1 = HAL model kept. */
     public static volatile float lastNoiseFactor = 1f;
     /** P80: the last hybrid RGB is IEEE half floats (6 B a pixel, the worker's rgb-half output), not float32. */
@@ -1064,6 +1073,7 @@ public final class ScamHybridBurst implements ScamTransport {
         // Nothing of an earlier shot may apply to this one: sensor-grid output, no Bento, no clip flags, no frame map.
         lastOutputSize = new android.graphics.Point(w, h);
         lastBentoApplied = false; lastBentoFactor = 1f; lastBentoUsClipped = 0f; lastNoiseFactor = 1f; lastRgbHalf = false;
+        lastMergeFrames = Double.NaN;
         ScamRgb.dropClipFlags();
         lastEffectiveFrames = null;
         lastMergedDng = null;

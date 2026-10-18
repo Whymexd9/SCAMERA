@@ -67,6 +67,11 @@ public class Parameters {
     public Point rawCropFull;
     /** P165: BaselineExposure of the DNG (EV; 0 = none): set for the merged DNG written over its headroom. */
     public float dngBaselineExposure;
+    /**
+     * P214c: NoiseProfile of the DNG being written ({S_R, O_R, S_G, O_G, S_B, O_B}, DngMetadata.noiseProfile), set by
+     * ScamProcessor around its DNG; null = the noise modeler's computeModel as before.
+     */
+    public double[] dngNoiseProfile;
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];
     public float[] whitePoint = new float[3];

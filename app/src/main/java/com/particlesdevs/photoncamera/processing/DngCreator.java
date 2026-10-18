@@ -11,9 +11,8 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-// P214b: the app's BuildConfig; circleimageview's (imported here before) made the DNG Software tag "SCAMERA  (-1)"
-import com.particlesdevs.photoncamera.BuildConfig;
-
+// P214b / P214c: the Software tag comes from the app's BuildConfig through DngMetadata (circleimageview's BuildConfig,
+// imported here before, wrote "SCAMERA  (-1)")
 public class DngCreator {
     private long nativePtr;
     private static final String TAG = "DngCreator";
@@ -470,14 +469,19 @@ public class DngCreator {
             blackLevel[i] = (short) parameters.blackLevel[i];
         }
         setDescription(parameters.toString());
-        setSoftware("SCAMERA " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")");
-        
+        // P214c: version, versionCode and commit of this APK (DngMetadata.software)
+        setSoftware(DngMetadata.software());
+
         // Set current date and time
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
         setDateTime(dateFormat.format(new Date()));
-        
-        // Set noise profile from noise modeler
-        if (parameters.noiseModeler != null && parameters.noiseModeler.baseModel != null) {
+
+        // P214c: the profile of what this DNG holds when its writer worked it out (the merged DNG: over its headroom, averaged
+        // over the frames merged; the reference RAW: one frame), see DngMetadata.noiseProfile
+        if (parameters.dngNoiseProfile != null && parameters.dngNoiseProfile.length == 6) {
+            setNoiseProfile(parameters.dngNoiseProfile);
+        } else if (parameters.noiseModeler != null && parameters.noiseModeler.baseModel != null) {
+            // Set noise profile from noise modeler
             double[] noiseProfile = new double[6]; // RGB: scale, offset pairs
             // R channel
             noiseProfile[0] = parameters.noiseModeler.computeModel[0].first;  // R scale

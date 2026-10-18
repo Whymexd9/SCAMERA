@@ -36,8 +36,8 @@ public final class BuildIdentity {
                 + (dirty ? "+dirty" : "") + " " + (ci ? "CI" : "local");
     }
 
-    /** The first 8 hex digits of a commit; "unknown" for none (a build without git). */
-    static String shortSha(String sha) {
+    /** The first 8 hex digits of a commit; "unknown" for none (a build without git). P214c: also the DNG Software tag's. */
+    public static String shortSha(String sha) {
         if (sha == null) return "unknown";
         String s = sha.trim();
         if (s.isEmpty()) return "unknown";
