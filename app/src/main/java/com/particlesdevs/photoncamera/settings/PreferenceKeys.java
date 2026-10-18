@@ -701,6 +701,8 @@ public class PreferenceKeys {
             {"s61TensorNoise", "s61_tensor_noise"}, {"s61GdNoise", "s61_gd_noise"},
             {"hotSigma", "hot_sigma"}, {"hotBaseSigma", "hot_base_sigma"}, {"hotFrames", "hot_frames"},
             {"hotCross", "hot_cross"}, {"hotMaxLevel", "hot_max_level"}, {"hotMaxKey", "hot_max_key"},
+            // P214k: plausibility cap of the fixed-pattern test, sites per MP of a strip (worker default 2000; 0 = no cap; dev key)
+            {"hotCap", "hot_cap"},
             {"bentoInvalid", "bento_invalid"},
             // P14 / P22: frames of a Quad / Tetra burst merged (4 / 16 sub-frames each; worker default 30 since 7 October 2026, was 24;
             // SettingsMigration moves a stored 24 once), the kernel across
