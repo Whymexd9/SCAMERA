@@ -4951,3 +4951,20 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   in every route (normal, ZSL ring, FULLRES / ISZ native sessions, Motion); stills keep their own exposures (PSL long frames are
   not the preview). Check the dark-scene preview fps and the ZSL ring exposure on the phones.
 - Not started.
+
+### P225 - study: RAW-only sessions (usage 0L readers, 3A and faces without a preview stream) (owner, 2026-10-18: «изучить то что
+написано выше», a note the owner pasted)
+- Claims to check (the owner's note, not yet verified):
+  1. ImageReader.newInstance(w, h, format, maxImages, usage) (API 29+) with usage 0L: no client usage bits; cameraserver sets only
+     the camera write usage; on Oplus CamX a stream of a SensorModeTable size missing from the public StreamConfigurationMap
+     (8192 x 6144) then passes the gralloc validation, while image.getPlanes()[0].getBuffer() still reads the data on the CPU
+     (the 4-argument overload forces USAGE_CPU_READ_OFTEN).
+  2. On Qualcomm Spectra (CamX) AE / AWB / AF / LSC statistics come from the IFE on the Bayer data (BG stats, Bayer histogram,
+     BF / PDAF, the 17 x 13 LSC grid), independent of a YUV preview stream; the hardware face detector runs on an internal IFE
+     downscale whenever STATISTICS_FACE_DETECT_MODE != OFF and writes STATISTICS_FACES into each RAW frame's TotalCaptureResult.
+  3. So a session can run on the RAW stream alone (the viewfinder drawn from the RAW ring, as ArkCam's ViewfinderBridge does),
+     the RAW repeating request driving the pipeline at 24 - 30 fps with 3A and faces in the results.
+- Where it matters: P223 (switch off the ISP preview for FULLRES / ISZ), the OPPO native FULLRES readers (P192), vivo native
+  sessions. Check on the OPPO (Oplus CamX) and the vivo phones: reader usage flags (dumpsys media.camera), stream acceptance of
+  non-public sizes with 0L vs the default, CPU reads, 3A convergence, faces and fps with and without the preview surface.
+- Not started.
