@@ -13,7 +13,7 @@ ultrashort), every step as a +5 % / -5 % texture pair; the colour source is fed 
   measured) - white is approached, never jumped to (this ramp has no fusion darkening: a scene's bright area lands lower);
 - the highlights keep a range: from 2 to 16 x white the channel sum rises >= 8 codes (the kernel's shoulders: ~3);
 - texture survives in the highlights: the +-5 % pair differs by >= 0.6 code (luma) from 2 to 16 x white;
-- hrU 0 (no Bento headroom) renders exactly as a program without it (the kernel's shoulders, as before P216).
+- HEADROOM_WIDE 1 with hrU 0 renders exactly as the default program (HEADROOM_WIDE 0: the shader before P216).
 Usage: check_ark_headroom.py [--report]
 """
 from pathlib import Path
@@ -51,8 +51,11 @@ def fused_for(target):
     return lo ** (1 / 2.2)
 
 
-def source():
+def source(wide=False):
     s = (SH / 'ark/combine.glsl').read_text(encoding='utf-8')
+    if wide:
+        assert '#define HEADROOM_WIDE 0' in s
+        s = s.replace('#define HEADROOM_WIDE 0', '#define HEADROOM_WIDE 1')
     for imp in ['interpolation', 'coords']:
         p = SH / ('utils/import_' + imp + '.glsl')
         if p.exists(): s = s.replace('#import ' + imp, p.read_text(encoding='utf-8'))
@@ -84,7 +87,7 @@ def render(hr, detail):
     ones = tex(np.ones((1, 1, 4), np.float32))
     t_full, t_orig, t_fused = tex(full), tex(orig), tex(fused)
     vs = '#version 300 es\nvoid main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));gl_Position=vec4(p*2.-1.,0,1);}'
-    prog = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + source())
+    prog = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + source(hr is not None))
     out = ctx.texture((W, H), 4, dtype='f4'); fb = ctx.framebuffer([out]); fb.use(); ctx.viewport = (0, 0, W, H)
     units = {'InputBuffer': t_full, 'GainMap': ones, 'ArkLow': t_orig, 'ArkColour': t_orig, 'ArkFused': t_fused,
              'ArkDetailRef': t_orig, 'ArkLumaS': t_orig}

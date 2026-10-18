@@ -134,6 +134,8 @@ public final class ArkCombine extends Node {
             // P144: ACES / Uchimura / the own curve instead of AgX (TONE_OP 0, the AgX shader, otherwise)
             if (toneOp != com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX) glProg.setDefine("TONE_OP", 1);
             if (lut != null) glProg.setDefine("FILM_LUT", 1);
+            // P216: real Bento headroom above the capped clip (without it the shader is the one before P216, token for token)
+            if (r.hr > 0f) glProg.setDefine("HEADROOM_WIDE", 1);
             glProg.useAssetProgram("ark/combine", false);
             if (lut != null) {
                 lutTexture = lut.upload();
@@ -164,11 +166,13 @@ public final class ArkCombine extends Node {
             glProg.setVar("clipU", r.clip);
             // P216: real Bento headroom above the capped clip - ArkCam 1.58's shoulder, the landing on the real ceiling and the
             // highlight detail (not when the full-size image is gone: InputBuffer is then the sharpened luma)
-            final float[] hrTone = ArkTone.headroomTone();
-            glProg.setVar("hrU", r.hr);
-            glProg.setVar("hrKneeU", hrTone[0]);
-            glProg.setVar("hrRoomU", hrTone[1]);
-            glProg.setVar("hrDetailU", st.inputReleased ? 0f : hrTone[2]);
+            if (r.hr > 0f) {
+                final float[] hrTone = ArkTone.headroomTone();
+                glProg.setVar("hrU", r.hr);
+                glProg.setVar("hrKneeU", hrTone[0]);
+                glProg.setVar("hrRoomU", hrTone[1]);
+                glProg.setVar("hrDetailU", st.inputReleased ? 0f : hrTone[2]);
+            }
             // P11: the Bento ceiling / roll-off only with real headroom; saturated light fades towards white in the shoulder.
             glProg.setVar("headroomU", ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f ? 1 : 0);
             glProg.setVar("hlWhiteU", Math.max(0f, Math.min(1f, ArkTone.value("hl_white", 0.15f))));
