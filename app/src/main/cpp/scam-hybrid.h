@@ -337,6 +337,11 @@ struct HybridTuning {
     // for it) or a block forced by tuning (replays), on a frame of whole 2b x 2b periods (hybridMosaicBinnable); otherwise the
     // remosaic stays (reported).
     int mosaicRemosaic=1;
+    // P215 (owner, X200 Ultra DNGs of 2026-10-18: «при вытягивании теней есть пастеризация»): 1 (default) = the merged DNG's 16-bit
+    // codes get a deterministic triangular dither of +-1 code before rounding (hybridWriteMergedDng): its merged shadows are cleaner
+    // than one code step, so a raw converter's shadow push showed the steps as bands; 0 = plain rounding as before. The RGB the
+    // merge returns is not touched.
+    int dngDither=1;
     int mosaicWindow=3;          // half-width r of the native window (Quad: native px; 1..6). mosaicWindowFull 1: the (2r+1)^2 sites
                                  // around the nearest site (S0's full window, no Chebyshev clip); 0: as the split, |d| <= r with the
                                  // 6.1 window, d in (-4r/3, 4r/3] without it. Quad 3 with mosaicWindowFull 0 = parity with the split
@@ -439,33 +444,58 @@ struct HybridTuning {
  * clipped at 1 in the former 14-bit DNG; the app writes BaselineExposure log2(headroom) so a raw converter shows the DNG as
  * bright as before. Nothing but the merge is in it: no denoise.
  */
+/** P215: the highest level a merged site may legitimately reach, in N-white units: 1 / the TET ratio of the shortest ultrashort
+ * frame (Bento: x8 at 1/8 TET; the measured ratio after hybridApplyMeasuredGains), 1 without one; at most 16. */
+inline float hybridDngCeiling(const HybridInput& input){
+    float ceiling=1.f;
+    for(const HybridFrame& f:input.frames)
+        if(f.role==kRoleUltrashort&&f.exposure>0.f&&std::isfinite(f.exposure))ceiling=std::max(ceiling,1.f/f.exposure);
+    return std::min(ceiling,16.f);
+}
+/** P215: triangular dither in (-1, 1) code, a fixed function of the site (the same DNG for the same merge). */
+inline float hybridDngDither(int x,int y){
+    auto mix=[](uint32_t v){v^=v>>16;v*=0x7feb352dU;v^=v>>15;v*=0x846ca68bU;v^=v>>16;return v;};
+    const uint32_t a=mix(uint32_t(x)*0x9E3779B1U^mix(uint32_t(y)+0x632BE5ABU)),b=mix(a^0x85EBCA77U);
+    return float(a>>8)*(1.f/16777216.f)+float(b>>8)*(1.f/16777216.f)-1.f;
+}
 template<class Sample>
-inline float hybridWriteMergedDng(std::vector<uint16_t>& dng,int w,int h,const HybridInput& input,const Sample& sample) {
+inline float hybridWriteMergedDng(std::vector<uint16_t>& dng,int w,int h,const HybridInput& input,const Sample& sample,bool dither=false) {
     const auto colour=[&input](int x,int y){
         int cx=x-(input.cfa&1),cy=y-(input.cfa>>1);if(cx<0)cx+=2;if(cy<0)cy+=2;
         const int phase=((cy&1)<<1)|(cx&1);return phase==0?0:phase==3?2:1;
     };
+    // P215 (owner's X200 Ultra DNGs of 2026-10-18: purple highlights and banded shadows when pushed): the headroom was the highest
+    // site of the whole frame (at most 16). A few sites above the merge's real ceiling (G overshoot next to clipped lamps: 99-167
+    // sites at >= 16 x N white on 12.6 MP) set it to 16, while every highlight that clipped even in the ultrashort frame sat at its
+    // ceiling, 8 x: code 34896 of 65535 in all three channels, far under WhiteLevel 65535. A raw converter took those areas for
+    // unclipped grey, its white balance (R x 2.5, B x 1.6) made them purple, and the N range kept one bit less (shadow bands).
+    // Now no site exceeds the ceiling of hybridDngCeiling, the headroom is the highest site up to it, and a site at the ceiling is
+    // written at 65535 = WhiteLevel: the clipped highlights are clipped for the raw converter too.
+    const float ceiling=hybridDngCeiling(input);
     std::mutex peakLock;float peak=1.f;
     mergeRowBands(h,[&](int y0,int y1){
         float local=1.f;
-        for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){const float v=sample(x,y,colour(x,y));if(v>local&&std::isfinite(v))local=v;}
+        for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){const float v=std::min(sample(x,y,colour(x,y)),ceiling);if(v>local&&std::isfinite(v))local=v;}
         std::lock_guard<std::mutex> hold(peakLock);peak=std::max(peak,local);
     });
-    const float headroom=std::min(peak,16.f),k=65535.f/input.white;
+    const float headroom=std::min(peak,ceiling),k=65535.f/input.white;
     dng.assign(size_t(w)*h,0);
     mergeRowBands(h,[&](int y0,int y1){
         for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){
             const float v=sample(x,y,colour(x,y)),m=std::isfinite(v)?std::clamp(v/headroom,0.f,1.f):0.f;
             const float black=input.black[((y&1)<<1)|(x&1)];
-            dng[size_t(y)*w+x]=uint16_t(std::clamp(std::lround((black+m*(input.white-black))*k),0L,65535L));
+            // P215: the dither stays off a clipped site (exactly WhiteLevel) and keeps every code inside 0..65535
+            const float code=(black+m*(input.white-black))*k+(dither&&m<1.f?hybridDngDither(x,y):0.f);
+            dng[size_t(y)*w+x]=uint16_t(std::clamp(std::lround(code),0L,m<1.f?65534L:65535L));
         }
     });
     return headroom;
 }
 
-inline std::string hybridDngReport(float headroom,int w,int h){
-    char line[160];
-    std::snprintf(line,sizeof(line),"HYBRID DNG: merged Bayer %dx%d, 16-bit, headroom=%.4f (N white at 1/%.3f), no denoise",w,h,headroom,headroom);
+inline std::string hybridDngReport(float headroom,int w,int h,float ceiling=0.f,bool dither=false){
+    char line[220];
+    std::snprintf(line,sizeof(line),"HYBRID DNG: merged Bayer %dx%d, 16-bit, headroom=%.4f (N white at 1/%.3f), ceiling=%.3f%s, no denoise",
+                  w,h,headroom,headroom,ceiling,dither?", dithered":"");
     return line;
 }
 
@@ -556,7 +586,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicTetraWidenMul",&t.mosaicTetraWidenMul)||set("mosaicTetraWidenFrames",&t.mosaicTetraWidenFrames)
             ||set("mosaicUsRows",nullptr,&t.mosaicUsRows)||set("mosaicUsRowsMin",&t.mosaicUsRowsMin) // P197
             // P27
-            ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)||set("chromaGpu",nullptr,&t.chromaGpu)
+            ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)||set("chromaGpu",nullptr,&t.chromaGpu)||set("dngDither",nullptr,&t.dngDither)
             ||set("auto2x",nullptr,&t.auto2x)||set("auto2xMaxGap",&t.auto2xMaxGap)||set("auto2xMinSnr",&t.auto2xMinSnr)
             ||set("mochi",nullptr,&t.mochi);
         }
@@ -6727,8 +6757,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const float headroom=hybridWriteMergedDng(*mergedDng,w,h,input,[&](int x,int y,int c){
             int cx=x-dx,cy=y-dy;if(cx<0)cx+=2;if(cy<0)cy+=2;
             return srcRgb[(size_t(cy)*w+cx)*3+c];
-        });
-        report(hybridDngReport(headroom,w,h));
+        },tune.dngDither!=0);
+        report(hybridDngReport(headroom,w,h,hybridDngCeiling(input),tune.dngDither!=0));
     }
     std::vector<float>().swap(sensorRgb); // the output stage holds no more than it needs (any RAW size: ~16 B per output pixel)
     // CFA phase shift to the canonical RGGB origin, in output-grid pixels.
@@ -7505,8 +7535,8 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     if(mergedDng&&input.mergedDng){
         const float headroom=hybridWriteMergedDng(*mergedDng,W,Ht,input,[&](int x,int y,int c){
             return out[(size_t(y*gridOut)*tw+size_t(x*gridOut))*3+c];
-        });
-        report(hybridDngReport(headroom,W,Ht));
+        },tune.dngDither!=0);
+        report(hybridDngReport(headroom,W,Ht,hybridDngCeiling(input),tune.dngDither!=0));
     }
     report("HYBRID MOSAIC: total "+std::to_string(int(millis(Clock::now()-started)))+" ms");
     if(statsOut)*statsOut=st;
@@ -7792,8 +7822,8 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     if(mergedDng&&input.mergedDng){
         const float headroom=hybridWriteMergedDng(*mergedDng,W,Ht,input,[&](int x,int y,int c){
             return out[(size_t(y*gridOut)*tw+size_t(x*gridOut))*3+c];
-        });
-        report(hybridDngReport(headroom,W,Ht));
+        },tune.dngDither!=0);
+        report(hybridDngReport(headroom,W,Ht,hybridDngCeiling(input),tune.dngDither!=0));
     }
     report("HYBRID MOSAIC NATIVE: total "+std::to_string(int(millis(Clock::now()-started)))+" ms (before the merge "
         +std::to_string(int(millis(prepDone-started)))+": pick "+std::to_string(int(millis(gainStart-started)))+" response "

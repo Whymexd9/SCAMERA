@@ -455,6 +455,27 @@ public class DngCreator {
         writeFile(nativePtr, dngBuffer, raw, path, offset);
     }
 
+    /** P215: every value finite (the native writer drops a tag with a NaN / infinity silently); logs the tag otherwise. */
+    static boolean finite(String tag, float[] values) {
+        if (values == null) {
+            com.particlesdevs.photoncamera.util.Log.e(TAG, "DNG: " + tag + " missing");
+            return false;
+        }
+        for (float v : values) {
+            if (!Float.isFinite(v)) {
+                com.particlesdevs.photoncamera.util.Log.e(TAG, "DNG: " + tag + " not finite: " + java.util.Arrays.toString(values));
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** P215: a neutral with a zero or negative channel is no white balance (a raw converter would divide by it). */
+    static boolean positive(float[] values) {
+        for (float v : values) if (!(v > 0f)) return false;
+        return true;
+    }
+
     double[] toDouble(float[] array) {
         double[] result = new double[array.length];
         for (int i = 0; i < array.length; i++) {
@@ -506,13 +527,20 @@ public class DngCreator {
         if (parameters.dngBaselineExposure != 0f) setBaselineExposure(parameters.dngBaselineExposure);
         setCalibrationIlluminant1((short) parameters.calibrationIlluminant1);
         setCalibrationIlluminant2((short) parameters.calibrationIlluminant2);
-        setColorMatrix1(toDouble(parameters.ColorMatrix1));
-        setColorMatrix2(toDouble(parameters.ColorMatrix2));
-        setForwardMatrix1(toDouble(parameters.ForwardTransform1));
-        setForwardMatrix2(toDouble(parameters.ForwardTransform2));
-        setCameraCalibration1(toDouble(parameters.calibrationTransform1));
-        setCameraCalibration2(toDouble(parameters.calibrationTransform2));
-        setAsShotNeutral(toDouble(parameters.whitePoint));
+        // P215 (owner's X200 Ultra / X100 Ultra DNGs of 2026-10-17/18 carry no AsShotNeutral and no ForwardMatrix): the native
+        // writer drops a rational tag with a non-finite value without a word (tiny_dng_writer DoubleToRational), and the same
+        // library writes both tags from finite values (checked on the phone). Every matrix and the neutral are checked here: a
+        // non-finite one is logged with its values instead of vanishing, so the next log names the source.
+        if (finite("ColorMatrix1", parameters.ColorMatrix1)) setColorMatrix1(toDouble(parameters.ColorMatrix1));
+        if (finite("ColorMatrix2", parameters.ColorMatrix2)) setColorMatrix2(toDouble(parameters.ColorMatrix2));
+        if (finite("ForwardMatrix1", parameters.ForwardTransform1)) setForwardMatrix1(toDouble(parameters.ForwardTransform1));
+        if (finite("ForwardMatrix2", parameters.ForwardTransform2)) setForwardMatrix2(toDouble(parameters.ForwardTransform2));
+        if (finite("CameraCalibration1", parameters.calibrationTransform1)) setCameraCalibration1(toDouble(parameters.calibrationTransform1));
+        if (finite("CameraCalibration2", parameters.calibrationTransform2)) setCameraCalibration2(toDouble(parameters.calibrationTransform2));
+        if (finite("AsShotNeutral", parameters.whitePoint) && positive(parameters.whitePoint)) setAsShotNeutral(toDouble(parameters.whitePoint));
+        else com.particlesdevs.photoncamera.util.Log.e(TAG, "DNG: AsShotNeutral not written: " + java.util.Arrays.toString(parameters.whitePoint));
+        com.particlesdevs.photoncamera.util.Log.i(TAG, "DNG: AsShotNeutral " + java.util.Arrays.toString(parameters.whitePoint)
+                + " ForwardMatrix1 " + java.util.Arrays.toString(parameters.ForwardTransform1));
         setCFAPattern(parameters.baseCfaPattern);
         setOrientation(parameters.cameraRotation/90);
         // the stored image as (xmin, ymin, xmax, ymax): the active array's (top, left, bottom, right) went in here before (P118)
