@@ -602,6 +602,12 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         }
 
         @Override
+        public boolean openFormatSheet() {
+            openFormatChooser();
+            return true;
+        }
+
+        @Override
         public void onValuesChanged() {
             if (mCameraUIView != null) mCameraUIView.updateBadges();
         }
@@ -718,24 +724,16 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     public void openFormatChooser() {
         android.content.Context c = getContext();
         if (c == null || mCameraUIEventsListener == null) return;
+        // SIMPLE_UI §2: «Формат файла» - «Фото» and «RAW (DNG)» as two segmented choices (CameraSheets)
         java.util.List<com.particlesdevs.photoncamera.settings.FormatChoice> offered =
                 com.particlesdevs.photoncamera.settings.FormatChoice.offered(android.os.Build.VERSION.SDK_INT);
-        CharSequence[] labels = new CharSequence[offered.size()], tags = new CharSequence[offered.size()];
-        int[] icons = new int[offered.size()];
-        for (int i = 0; i < labels.length; i++) {
-            labels[i] = offered.get(i).longLabel();
-            tags[i] = offered.get(i).name();
-            icons[i] = offered.get(i).icon;
-        }
-        int selected = offered.indexOf(com.particlesdevs.photoncamera.settings.FormatChoice.current());
-        com.particlesdevs.photoncamera.ui.settings.SettingsStyle.optionSheet(c, getString(R.string.shade_title_format), labels, tags,
-                selected, com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.accent(c), icons, i -> {
-                    if (mCameraUIEventsListener == null) return;
-                    mCameraUIEventsListener.onChanged(new com.particlesdevs.photoncamera.ui.camera.model.TopBarSettingsData<>(
-                            com.particlesdevs.photoncamera.settings.SettingType.FORMAT_CHOICE, offered.get(i).ordinal()));
-                    if (mCameraUIView != null) mCameraUIView.updateBadges();
-                    if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.refresh();
-                });
+        CameraSheets.format(c, offered, com.particlesdevs.photoncamera.settings.FormatChoice.current(), PreferenceKeys.getPhotoFormat(), choice -> {
+            if (mCameraUIEventsListener == null) return;
+            mCameraUIEventsListener.onChanged(new com.particlesdevs.photoncamera.ui.camera.model.TopBarSettingsData<>(
+                    com.particlesdevs.photoncamera.settings.SettingType.FORMAT_CHOICE, choice.ordinal()));
+            if (mCameraUIView != null) mCameraUIView.updateBadges();
+            if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.refresh();
+        });
     }
 
     /** The AWB colour temperature for the white-balance chip in auto. */

@@ -755,6 +755,8 @@ public class SettingsBarLayout extends LinearLayout {
             return;
         }
         if (vibration != null) vibration.Click();
+        // SIMPLE_UI §2: «Формат» opens its sheet (the two choices) instead of cycling nine values
+        if (ShadeCatalog.FORMAT.equals(key) && host != null && host.openFormatSheet()) return;
         switch (e.kind) {
             case ShadeCatalog.TOGGLE:
                 apply(e, !catalog().on(e));

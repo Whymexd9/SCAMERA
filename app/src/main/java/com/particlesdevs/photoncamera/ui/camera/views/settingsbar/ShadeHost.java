@@ -28,4 +28,7 @@ public interface ShadeHost {
 
     /** P143: «Открыть папку конфигов» - the lasting access to Download/SCAMERA (SettingsActivity.ACTION_OPEN_FOLDER). */
     default void openConfigFolder() { }
+
+    /** SIMPLE_UI §2: the «Формат файла» sheet (the «Формат» tile); false: none here, the tile cycles as before. */
+    default boolean openFormatSheet() { return false; }
 }

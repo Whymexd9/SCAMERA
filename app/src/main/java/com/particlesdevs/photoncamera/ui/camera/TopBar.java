@@ -123,22 +123,10 @@ public final class TopBar {
     public static void openSizeSheet(CameraFragment fragment) {
         Context c = fragment.getContext();
         if (c == null) return;
-        boolean full = PhotoSize.fullAvailable(), max = PhotoSize.maxAvailable();
-        CharSequence[] labels = {
-                Lang.t(c, "Обычный · 12 Мп — быстро, меньше шума", "Normal · 12 MP: fast, less noise"),
-                full ? Lang.t(c, "Подробный · 50 Мп — больше деталей, дольше обработка", "Detailed · 50 MP: more detail, longer processing")
-                        : Lang.t(c, "Подробный · 50 Мп — нет на этом объективе", "Detailed · 50 MP: not on this lens"),
-                max ? Lang.t(c, "Максимум · 200 Мп — самый подробный, самый долгий", "Maximum · 200 MP: most detail, slowest")
-                        : Lang.t(c, "Максимум · 200 Мп — нет на этом объективе", "Maximum · 200 MP: not on this lens")};
-        CharSequence[] tags = {"12", "50", "200"};
-        int[] sizes = {PhotoSize.NORMAL, PhotoSize.FULL, PhotoSize.MAX};
-        int cur = PhotoSize.current();
-        int selected = cur == PhotoSize.MAX ? 2 : cur == PhotoSize.FULL ? 1 : 0;
-        com.particlesdevs.photoncamera.ui.settings.SettingsStyle.optionSheet(c, Lang.t(c, "Размер фото", "Photo size"), labels, tags,
-                selected, ShadeStyle.accent(c), i -> {
-                    fragment.showSnackBar(PhotoSize.set(fragment, sizes[i]));
-                    fragment.refreshTopBar();
-                }).show();
+        CameraSheets.size(c, PhotoSize.current(), PhotoSize.fullAvailable(), PhotoSize.maxAvailable(), size -> {
+            fragment.showSnackBar(PhotoSize.set(fragment, size));
+            fragment.refreshTopBar();
+        }, text -> fragment.showSnackBar(text.toString()));
     }
 
     /** An icon button: off, the bare icon; on, a card pill (or circle) with the accent icon and, where it has one, the label. */
