@@ -5095,3 +5095,24 @@ pro mist, glimmer glass и других подобных фильтров у н�
   stack (libs on the phone, the stock app's session) for the op mode that unlocks DCG, then implement as above.
 - Verification needs the phones' logs (owner): RAW bit depth (max code > 4095), the mode in the result
   (com.qti.sensorbps.mode_index / current_mode), fps, no pink highlights.
+
+### P231 - import of JSON tone curves ({"name", "points": [{"x", "y"}]}) (owner, 2026-10-18: a file ark_art_drama_faces.json, «добавь в план: добавить поддержку импорта такого формата кривых»)
+- The sample (945 bytes): `{"name": "ark_art_drama_faces", "points": [{"x": 0.0, "y": 0.0}, {"x": 0.0961, "y": 0.011}, ...
+  {"x": 1.0, "y": 1.0}]}` - 19 points in the unit square, x ascending, both ends pinned; a strong S (deep shadows, bright
+  highlights), the name says ArkCam's «art / drama / faces» looks.
+- Today «Кривая AgX и ACES» → own curve → «Загрузить» → «Из файла…» (ToneCurvePreference.readCurve →
+  ToneCurve.fromFileText) reads only "x:y" pairs; in this JSON the numbers follow `"x":` / `"y":` keys, so the file gives
+  no pairs and is refused («нет кривой»).
+- Do:
+  - ToneCurve.fromFileText: when the text parses as JSON with a `points` array (objects with numeric x / y, or [x, y]
+    arrays), take those points (the same 0..1 / 0..255 scaling, clamping, sorting, MIN_GAP and the pinned ends as the
+    "x:y" route); otherwise the old pair scan, so our .txt files and ArkCam's "x:y,..." string keep working.
+  - The `name` field: the suggested name when the imported curve is saved into Download/SCAMERA/ToneCurves (sanitised as
+    the other file names); the in-folder list of ToneCurvePreference shows .json files next to .txt (ScameraFolder.CURVES
+    lists one extension today).
+  - Check the meaning of x against ArkCam (ToneCurveHelper / u_tex_custom_curve in ArkCam 1.42, research/hybrid5): our x
+    is the normalised log exposure (0.5 + EV / 10) and y the display value. If ArkCam's exported JSON uses another domain
+    (e.g. display-in → display-out), convert on import so the curve looks the same as in ArkCam; note the finding here.
+  - Export: «Сохранить» may also write this JSON (the same shape) so the curves go back to ArkCam - only if ArkCam reads it.
+- Tests: ToneCurveTest - this sample file (19 points, ends 0:0 and 1:1, monotone), [x, y] arrays, a broken JSON falls back
+  to the pair scan / refusal, the 0..255 scale; ToneCurvePreference listing with a .json file.
