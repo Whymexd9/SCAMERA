@@ -56,6 +56,19 @@ public class ArkSharpenR1Test {
         assertFalse("scam_dev sharpen_r1 0", ArkLumaSharpen.smoothedSource(4, false));
     }
 
+    @Test public void aGridAbove100MpKeepsThePassesOfBefore() {
+        // P214z: D = Ya - B is one full R16F plane more through the RL stages; 200 MP (16320x12288) keeps the old peak.
+        // Above the limit the answer is false before the scam_dev file is read (no app context here).
+        assertTrue("50 MP", ArkLumaSharpen.r1Fits(8160, 6144));
+        assertTrue("100 MP exactly", ArkLumaSharpen.r1Fits(10000, 10000));
+        assertFalse("100 MP + 1 row", ArkLumaSharpen.r1Fits(10000, 10001));
+        assertFalse("200 MP", ArkLumaSharpen.r1Fits(16320, 12288));
+        assertFalse("int overflow", ArkLumaSharpen.r1Fits(65536, 65536));
+        for (int block : new int[]{1, 2, 4}) assertFalse("200 MP block " + block, ArkLumaSharpen.smoothedSource(block, 16320, 12288));
+        assertFalse("a Bayer shot of 50 MP", ArkLumaSharpen.smoothedSource(1, 8160, 6144));
+        assertTrue(ArkLumaSharpen.HUGE_GF_PIXELS == 100_000_000L);
+    }
+
     // the worker's lines as scam-hybrid.h prints them (hybridReconstructMosaicNative, hybridReconstructMosaic,
     // hybridReconstructMosaicBinned, hybridMosaicBlock)
     private static final String NATIVE_QUAD = "HYBRID MOSAIC NATIVE: block 2, 8 of 10 frames (one GPU slot each, binned 2048x1536, merged mosaic"
@@ -119,7 +132,7 @@ public class ArkSharpenR1Test {
         assertEquals("B, D = Ya - B, S + D", 3, uses);
         // without R1 the passes read ya itself (the source is ya), and it is closed after the compose as before
         assertTrue(java.contains("GLTexture src = ya, residual = null;"));
-        assertTrue(java.contains("final boolean r1 = smoothedSource(block);"));
+        assertTrue(java.contains("final boolean r1 = smoothedSource(block, size.x, size.y);"));
         assertTrue(java.contains("src.close();"));
         // ya is closed by src.close() without R1, by the R1 branch (once its residual is drawn) otherwise
         Matcher close = Pattern.compile("\\bya\\.close\\(\\)").matcher(java);

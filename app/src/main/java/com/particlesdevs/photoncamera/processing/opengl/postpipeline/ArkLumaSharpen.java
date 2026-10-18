@@ -80,6 +80,22 @@ public final class ArkLumaSharpen extends Node {
         return smoothedSource(mosaicBlock, mosaicBlock > 1 && PreferenceKeys.scamDevSwitch("sharpen_r1", true));
     }
 
+    /**
+     * P214z: R1 costs one full-grid R16F plane more at the sharpening's peak: the residual D = Ya - B lives through every RL
+     * stage, which ran on 4 full planes (obs, est, next, ratio; ya went after the compose) and now runs on 5. On a 200 MP
+     * grid (16320x12288) that is 400 MB more at the point P187 cut to its tightest budget, unmeasured on a phone; above
+     * {@link #HUGE_GF_PIXELS} the shot keeps the passes of before (the log says " r1=off(>100MP, block N)"). A 50 MP grid
+     * pays 100 MB.
+     */
+    static boolean r1Fits(int w, int h) {
+        return (long) w * h <= HUGE_GF_PIXELS;
+    }
+
+    /** {@link #smoothedSource} of a w x h grid: false above {@link #r1Fits}, and then the scam_dev line is not read. */
+    static boolean smoothedSource(int mosaicBlock, int w, int h) {
+        return r1Fits(w, h) && smoothedSource(mosaicBlock);
+    }
+
     /** Amount factor at grid scale s: 1 at s <= 1, k at s >= 2, linear in between. */
     static float scaleComp(float s, float k) {
         return 1f + (k - 1f) * Math.min(Math.max(s - 1f, 0f), 1f);
@@ -310,10 +326,11 @@ public final class ArkLumaSharpen extends Node {
         final boolean released = releaseImage(pipeline, input, gainMap, mul);
         if (fallback != null) fallback.close();
 
-        // P214e R1: on a mosaic shot every pass below reads B(Ya), the 3x3 binomial of Ya, and the residual Ya - B takes Ya's
-        // plane until the last pass (S(B) + Ya - B). Otherwise src is ya, as before.
+        // P214e R1: on a mosaic shot every pass below reads B(Ya), the 3x3 binomial of Ya, and the residual Ya - B lives until
+        // the last pass (S(B) + Ya - B): one full plane more through the RL stages (P214z: so not above 100 MP, r1Fits).
+        // Otherwise src is ya, as before.
         final int block = pipeline.mParameters.mosaicBlock;
-        final boolean r1 = smoothedSource(block);
+        final boolean r1 = smoothedSource(block, size.x, size.y);
         GLTexture src = ya, residual = null;
         if (r1) {
             src = plane(size, GLFormat.DataType.FLOAT_16, 1);
@@ -436,7 +453,7 @@ public final class ArkLumaSharpen extends Node {
             residual.close();
             obs = out;
             stages.append(" r1=B3(block ").append(block).append(")");
-        } else if (block > 1) stages.append(" r1=off(block ").append(block).append(")");
+        } else if (block > 1) stages.append(r1Fits(size.x, size.y) ? " r1=off(block " : " r1=off(>100MP, block ").append(block).append(")");
         glProg.closed = true;
         if (ratio != null) ratio.close();
         for (GLTexture t : pool) if (t != obs) t.close();
