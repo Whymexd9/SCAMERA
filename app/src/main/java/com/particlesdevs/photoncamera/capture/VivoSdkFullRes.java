@@ -180,7 +180,8 @@ public final class VivoSdkFullRes {
     }
 
     public static boolean offered(String cameraId) {
-        // P192: the OPPO Find X7 Ultra's native modes, its telephotos listed through the Oplus package (OppoNativeFullRes)
+        // P192: the OPPO Find X7 Ultra's native modes, its telephotos listed through the Oplus package (OppoNativeFullRes); P214j:
+        // OnePlus and realme by what their cameras list (OppoNativeFullRes.candidates)
         if (OppoNativeFullRes.device()) return profile(cameraId) != null;
         // P180: the X100 / X300 Ultra only by the native route (the CTS package; their switch not off)
         return (VivoQcomModes.device() || nativeRaw()) && profile(cameraId) != null
@@ -215,7 +216,10 @@ public final class VivoSdkFullRes {
                 && VivoNativeFullRes.sizeExhausted(VivoNativeFullRes.phone(), cameraId, large, hardwareRemosaicOn());
     }
 
-    /** P192: the running FULLRES is the OPPO Find X7 Ultra's (no SDK lease, the own AE and white balance). */
+    /**
+     * P192: the running FULLRES is the OPPO route's (no SDK lease, the own AE and white balance); P214j: on any phone of its family
+     * (OPPO, OnePlus, realme - OppoNativeFullRes.family).
+     */
     static boolean oppo() {
         return OppoNativeFullRes.device();
     }

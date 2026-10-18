@@ -248,7 +248,7 @@ public final class FullResTrials {
         final SharedPreferences p = prefs();
         if (p == null || cameraId == null) return null;
         try {
-            if (OppoNativeFullRes.brand()) return OppoNativeFullRes.status(p, cameraId, OppoNativeFullRes.stamp());
+            if (OppoNativeFullRes.family()) return OppoNativeFullRes.status(p, cameraId, OppoNativeFullRes.stamp()); // P214j
             return VivoNativeFullRes.status(p, VivoNativeFullRes.phone(), cameraId, VivoNativeFullRes.stamp(),
                     VivoSdkFullRes.hardwareRemosaicOn());
         } catch (RuntimeException e) {

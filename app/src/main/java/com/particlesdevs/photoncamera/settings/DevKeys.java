@@ -164,8 +164,9 @@ public final class DevKeys {
         // vivo
         k.add(s(vivo, "vivo_sdk_fullres", true, Lang.t("X200 Ultra, основная камера 3: SDK RAW 50 Мп, последовательная съёмка после нажатия, Hybrid", "X200 Ultra, main camera 3: SDK 50 MP RAW, serial post-shutter capture, Hybrid")));
         // P180 / P184: FULLRES without hardware remosaic on the X100 / X300 Ultra - on (the owner tests it), off by these
-        k.add(s(cap, "oppo_fullres", true, Lang.t("OPPO Find X7 Ultra: FULLRES 50 Мп без аппаратного ремозаика (свои AE и баланс белого)",
-                "OPPO Find X7 Ultra: FULLRES 50 MP without hardware remosaic (own AE and white balance)")));
+        // P214j: the route on OnePlus and realme too (their cameras' session key and sensor-mode table, OppoNativeFullRes.family)
+        k.add(s(cap, "oppo_fullres", true, Lang.t("OPPO, OnePlus, realme: FULLRES без аппаратного ремозаика (свои AE и баланс белого; режимы — из таблицы камеры)",
+                "OPPO, OnePlus, realme: FULLRES without hardware remosaic (own AE and white balance; the modes from the camera's table)")));
         // P198: a native 50 MP FULLRES shot from the ZSL ring (200 MP stays serial PSL)
         k.add(s(cap, "fullres_zsl", true, Lang.t("FULLRES 50 Мп: кадры из ZSL-кольца до нажатия (200 Мп всегда после нажатия). Выкл — вся серия после нажатия",
                 "FULLRES 50 MP: frames from the ZSL ring before the press (200 MP always after it). Off: the whole series after the press")));

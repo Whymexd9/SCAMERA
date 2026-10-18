@@ -122,6 +122,10 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 - X100U: MONO id 6 в RAW-сессии роняет HAL; упакованный ZSL давал чёрные/розовые фото (P23, `RawPayloadCheck`).
 - OPPO X7U: CC14 тюнинга пустые → `OppoTunedColor`; без подмены пакета видно 3 камеры. Тестовая `hand.nch` — штатив.
 - OPPO X8U: плавающий уровень чёрного → зелёные тени.
+- FULLRES OPPO-семьи (P214j, `OppoNativeFullRes.family`: OPPO, OnePlus, realme): камера с сессионным ключом
+  `agingtest.mode.select` и полноразмерными строками бининг-сенсора в `SensorModeTable` (рядом есть строка в 1/2 или 1/4
+  стороны); OnePlus 15: основная строка 6, теле 19 (8192×6144), сверхширик и фронт — нет. Режимы PHY110 без таблицы и
+  авто-пакет Meitu для теле — только PHY110 / OPPO. Ключ — byte, если HAL отказывает — int32 (GT8 Pro). На телефоне не проверено.
 - Xiaomi 17U: для камеры 4 HAL держит стекло на 75 мм (`isThirdParty=1`). P41b: теле через логическую камеру 0,
   op mode `0x9002`, ExtendedMaxZoom/EnableInsensorZoom = 1, видоискатель — логический поток, RAW — физ. камера 4,
   кроп снимка от `opticalZoomCurrentRatio`; отказ → op mode 0 → камера 4 одна. Ждёт проверки. Разбор:

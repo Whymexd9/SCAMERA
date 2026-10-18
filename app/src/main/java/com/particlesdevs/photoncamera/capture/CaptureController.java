@@ -805,11 +805,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                        @NonNull TotalCaptureResult result) {
             synchronized (mPreviewStateLock) {
                 if (!isCurrentPreviewSession(session)) return;
-                // P192: the OPPO Find X7 Ultra: a plain session keeps its colour for the native mode, a native result gets it
-                if (OppoNativeFullRes.model()) {
-                    if (mVivoSdkRawSession == null) OppoNativeFullRes.rememberPlain(physicalID, result);
-                    else if (VivoSdkFullRes.oppo()) OppoNativeFullRes.complete(mVivoSdkCameraId, result);
-                }
+                // P192: a plain session keeps its colour for the native mode, a native result gets it; P214j: on every phone of
+                // the route (OPPO, OnePlus, realme) for a camera with full-size modes - was the PHY110 only (OppoNativeFullRes.keepsColour)
+                if (mVivoSdkRawSession == null) {
+                    if (OppoNativeFullRes.keepsColour(physicalID)) OppoNativeFullRes.rememberPlain(physicalID, result);
+                } else if (VivoSdkFullRes.oppo()) OppoNativeFullRes.complete(mVivoSdkCameraId, result);
                 if (mLastPreviewResultMs == 0) markModuleGood();
                 mLastPreviewResultMs = android.os.SystemClock.elapsedRealtime();
                 // Restarts count as successful only after a second of frames: one result per new session reset the count and the
@@ -2415,8 +2415,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             throw new IllegalStateException("Previous Vivo SDK camera has not closed");
         String id = ScameraApp.getSettings().mCameraID;
         CameraMode mode = ScameraApp.getSettings().selectedMode;
-        // P192: an OPPO camera's table from the characteristics the app reads (its own CameraManager is not used)
-        if (OppoNativeFullRes.brand()) {
+        // P192: an OPPO camera's table from the characteristics the app reads (its own CameraManager is not used); P214j: OnePlus
+        // and realme too
+        if (OppoNativeFullRes.family()) {
             CameraCharacteristics known = mCameraCharacteristicsMap.get(id);
             if (known == null) try { known = mCameraManager.getCameraCharacteristics(id); } catch (Exception ignored) { known = null; }
             OppoNativeFullRes.learn(id, known);
