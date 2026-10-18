@@ -759,6 +759,13 @@ public class SettingsBarLayout extends LinearLayout {
             if (host != null) host.openSizeSheet();
             return;
         }
+        if (ShadeCatalog.STYLE.equals(key)) {
+            catalog().cycleStyle();
+            rebindValues();
+            if (host != null) host.onValuesChanged();
+            toastValue(e);
+            return;
+        }
         switch (e.kind) {
             case ShadeCatalog.TOGGLE:
                 apply(e, !catalog().on(e));

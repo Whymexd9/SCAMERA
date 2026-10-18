@@ -77,20 +77,24 @@ public final class ShadeCatalog {
     public static final String ROUTE = ScamHybridKeys.ROUTE;
     /** SIMPLE_UI §2: «Размер» - the photo size (12 / 50 / 200 Мп, PhotoSize: the FULLRES switch); virtual, its tile opens the sheet. */
     public static final String SIZE = "ui_photo_size";
+    /** SIMPLE_UI §2 «Стиль»: Обычный / Ч/б / Плёнка over the mono filter and the film LUT (PhotoStyle). */
+    public static final String STYLE = "ui_photo_style";
+    /** SIMPLE_UI §2 «Селфи»: the front camera's photos mirrored or as the camera sees them (Parameters.disableMirror). */
+    public static final String MIRROR = "pref_tunable_parameters_disablemirror";
     public static final String HORIZON = "pref_horizon", MOTION = "pref_motion_mode", SOUND = "pref_camera_sounds_key",
             FLICKER = "pref_antibanding_hz_key";
     private static final String OUTPUT = "pref_scam_hybrid_output", DOWNSAMPLER = "pref_scam_hybrid_downsampler";
     /** Virtual entries, in catalog order. */
-    public static final List<String> VIRTUAL = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, METERING_STD, SIZE));
+    public static final List<String> VIRTUAL = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, METERING_STD, SIZE, STYLE));
 
     /**
-     * SIMPLE_UI §2, the default pins (18 + «Добавить»): Фонарик, Таймер, Сетка, Формат / Размер, HDR-фото, Горизонт, Движение /
-     * Звук, Лица, Мерцание / Кадр, Слежение, Фокус-пик / Света, Инфо (the concept's Стиль and Селфи have no setting of their
-     * own yet). The first value of ui_shade_tiles; see {@link #defaultTiles()}.
+     * SIMPLE_UI §2, the concept's default pins (18 + «Добавить»), in its order: Фонарик, Таймер, Сетка, Формат, Размер, HDR-фото,
+     * Горизонт, Движение, Звук, Стиль, Лица, Мерцание, Селфи, Кадр, Слежение, Фокус-пик, Света, Инфо. The first value of
+     * ui_shade_tiles; see {@link #defaultTiles()}.
      */
     public static final List<String> DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, "pref_show_grid_key",
-            FORMAT, SIZE, "pref_ultrahdr_key", HORIZON, MOTION, SOUND, "pref_face_detect_mode", FLICKER, "pref_wide169_key",
-            "pref_tracking_af_mode", "pref_peak_method_key", "pref_scam_hybrid_bento", "pref_show_afdata_key"));
+            FORMAT, SIZE, "pref_ultrahdr_key", HORIZON, MOTION, SOUND, STYLE, "pref_face_detect_mode", FLICKER, MIRROR,
+            "pref_wide169_key", "pref_tracking_af_mode", "pref_peak_method_key", "pref_scam_hybrid_bento", "pref_show_afdata_key"));
     /** The default pins before SIMPLE_UI: a stored list equal to it moves to the new defaults (a custom list stays). */
     public static final List<String> OLD_DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT,
             OUTPUT, "pref_show_grid_key", "pref_ultrahdr_key", "pref_scam_hybrid_bento"));
@@ -167,6 +171,8 @@ public final class ShadeCatalog {
         CONCEPT_ICONS.put("pref_show_watermark_key", R.drawable.ui_ic_text);
         CONCEPT_ICONS.put(METERING_STD, R.drawable.ui_ic_target);
         CONCEPT_ICONS.put(SIZE, R.drawable.ui_ic_size);
+        CONCEPT_ICONS.put(STYLE, R.drawable.ui_ic_palette);
+        CONCEPT_ICONS.put(MIRROR, R.drawable.ui_ic_mirror);
         CONCEPT_ICONS.put(FLICKER, R.drawable.ui_ic_lamp);
     }
 
@@ -197,6 +203,8 @@ public final class ShadeCatalog {
                 R.drawable.ic_timeroff, R.drawable.ic_timer3s, R.drawable.ic_timer10s);
         spec(FORMAT, R.string.shade_t_format, 0, R.drawable.ic_shade_jpeg); // value icons: FormatChoice
         spec(SIZE, R.string.shade_t_size, R.array.shade_l_size, R.drawable.ui_ic_size);
+        spec(STYLE, R.string.shade_t_style, R.array.shade_l_style, R.drawable.ui_ic_palette);
+        spec(MIRROR, R.string.shade_t_mirror, R.array.shade_l_mirror, R.drawable.ui_ic_mirror);
         spec(HORIZON, R.string.shade_t_horizon, 0, R.drawable.ui_ic_level);
         spec(MOTION, R.string.shade_t_motion, 0, R.drawable.ui_ic_motion);
         spec(SOUND, R.string.shade_t_sound, 0, R.drawable.ui_ic_sound);
@@ -291,7 +299,7 @@ public final class ShadeCatalog {
         }
 
         public boolean isVirtual() {
-            return settingType != null;
+            return settingType != null || storage == STORE_VIRTUAL;   // SIZE and STYLE have no camera control of their own
         }
 
         public boolean isCurated() {
@@ -363,6 +371,12 @@ public final class ShadeCatalog {
         addVirtual(METERING_STD, R.string.shade_title_metering_std, R.array.shade_l_metering_std,
                 new String[]{"-1", "0", "1", "2"}, "-1", SettingType.AE_METERING_STD);
         addVirtual(SIZE, R.string.shade_title_size, R.array.shade_l_size, new String[]{"12", "50", "200"}, "12", null);
+        addVirtual(STYLE, R.string.shade_title_style, R.array.shade_l_style, new String[]{"0", "1", "2"}, "0", null);
+    }
+
+    /** «Стиль»: the next of Обычный / Ч/б / Плёнка (the mono filter and the LUT follow, PhotoStyle). */
+    public void cycleStyle() {
+        PhotoStyle.apply(prefs, PhotoStyle.next(PhotoStyle.current(prefs)));
     }
 
     /** The FORMAT choice: the options this Android version offers, each with its label and icon (FormatChoice). */
@@ -650,6 +664,7 @@ public final class ShadeCatalog {
                 case TIMER: return String.valueOf(PreferenceKeys.getCountdownTimerIndex());
                 case FORMAT: return String.valueOf(FormatChoice.current().ordinal());
                 case SIZE: return String.valueOf(com.particlesdevs.photoncamera.ui.camera.PhotoSize.current());
+                case STYLE: return String.valueOf(PhotoStyle.current(prefs));
                 default: return String.valueOf(PreferenceKeys.getAeMeteringStd());
             }
         }
@@ -720,6 +735,8 @@ public final class ShadeCatalog {
     public String valueText(Entry e, boolean shortForm) {
         switch (e.kind) {
             case TOGGLE:
+                // «Селфи»: «Зеркало» / «Как есть» instead of on / off (its spec's two labels)
+                if (e.shortLabels != null && e.shortLabels.length == 2) return e.shortLabels[on(e) ? 1 : 0].toString();
                 return res.getString(on(e) ? R.string.shade_on : R.string.shade_off);
             case SLIDER:
                 return formatNumber(e, number(e));

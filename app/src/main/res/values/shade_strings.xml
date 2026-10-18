@@ -208,4 +208,16 @@
         <item>Centre</item>
         <item>Spot</item>
     </string-array>
+    <string name="shade_t_style">Style</string>
+    <string name="shade_title_style">Photo style</string>
+    <string name="shade_t_mirror">Selfie</string>
+    <string-array name="shade_l_style">
+        <item>Normal</item>
+        <item>B&amp;W</item>
+        <item>Film</item>
+    </string-array>
+    <string-array name="shade_l_mirror">
+        <item>Mirror</item>
+        <item>As is</item>
+    </string-array>
 </resources>

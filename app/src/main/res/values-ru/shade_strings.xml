@@ -207,4 +207,16 @@
         <item>Центр</item>
         <item>Точка</item>
     </string-array>
+    <string name="shade_t_style">Стиль</string>
+    <string name="shade_title_style">Стиль снимка</string>
+    <string name="shade_t_mirror">Селфи</string>
+    <string-array name="shade_l_style">
+        <item>Обычный</item>
+        <item>Ч/б</item>
+        <item>Плёнка</item>
+    </string-array>
+    <string-array name="shade_l_mirror">
+        <item>Зеркало</item>
+        <item>Как есть</item>
+    </string-array>
 </resources>

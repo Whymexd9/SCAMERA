@@ -106,7 +106,18 @@ public class ShadeCatalogTest {
         for (String gone : new String[]{"pref_scam_hybrid_ark_tone", "pref_scamhdr_fusion_enabled", "pref_scam_tone_curve"})
             assertFalse(gone, ShadeCatalog.isCurated(gone));
         for (String key : ShadeCatalog.DEFAULT_TILES) assertTrue(key, catalog.isKnown(key));
-        assertEquals("SIMPLE_UI §2: the 16 default tiles that have a setting", 16, ShadeCatalog.DEFAULT_TILES.size());
+        assertEquals("SIMPLE_UI §2: the concept's 18 default tiles (with Стиль and Селфи)", 18, ShadeCatalog.DEFAULT_TILES.size());
+        // «Стиль» cycles Обычный -> Ч/б -> Плёнка over the mono filter and the LUT; «Селфи» reads «Зеркало» / «Как есть»
+        ShadeCatalog.Entry style = catalog.entry(ShadeCatalog.STYLE);
+        assertEquals(context.getResources().getTextArray(R.array.shade_l_style)[0].toString(), catalog.valueText(style, true));
+        catalog.cycleStyle();
+        assertEquals(PhotoStyle.MONO, PhotoStyle.current(prefs));
+        catalog.cycleStyle();
+        assertEquals(PhotoStyle.FILM, PhotoStyle.current(prefs));
+        assertEquals(context.getResources().getTextArray(R.array.shade_l_style)[2].toString(), catalog.valueText(style, true));
+        ShadeCatalog.Entry mirror = catalog.entry(ShadeCatalog.MIRROR);
+        assertEquals(ShadeCatalog.TOGGLE, mirror.kind);
+        assertEquals(context.getResources().getTextArray(R.array.shade_l_mirror)[0].toString(), catalog.valueText(mirror, true));
     }
 
     @Test
