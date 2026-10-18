@@ -4943,3 +4943,11 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   with a fallback when a HAL refuses a session without it) and «Исправления баланса белого» (off: the photo and the viewfinder use
   the camera's own white balance - no P121 / P212 mosaic locus, native-session AWB anchoring, learned anchors).
 - Not started.
+
+### P224 - the viewfinder never below 20 fps (owner, 2026-10-18: «Минимальный фпс для видоискателя ограничить на 20фпс чтобы при
+плохом освещении не было слишком медленного видоискателя»)
+- To do: the preview's AE target FPS range floor 20 (CONTROL_AE_TARGET_FPS_RANGE lower bound >= 20 where the camera offers such a
+  range, else the closest one; our own native AE / RAW viewfinder exposure capped at 1/20 s per frame with the rest from gain),
+  in every route (normal, ZSL ring, FULLRES / ISZ native sessions, Motion); stills keep their own exposures (PSL long frames are
+  not the preview). Check the dark-scene preview fps and the ZSL ring exposure on the phones.
+- Not started.
