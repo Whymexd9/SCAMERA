@@ -374,6 +374,20 @@ public class NativeRawExposureTest {
         }
     }
 
+    /**
+     * P212b / c: a seed a little off (0.18 EV: the plain / native ratio of the seed, the scene since) is no converged exposure - the
+     * smoothed AE moves it under STOP_EV, although it is inside START_EV.
+     */
+    @Test public void aSeedALittleOffStillConverges() {
+        NativeRawExposure a = ae(0L, 0);
+        a.smoothing(true);
+        a.seed(10_000_000.0);
+        final double scene = NativeRawExposure.SETPOINT / Math.pow(2, 0.18) / a.total();
+        for (int i = 0; i < 20; i++) a.update((float) (scene * a.total()), 0.3f, a.exposureNs(), a.iso(), 0f);
+        assertEquals(0.0, Math.log(scene * a.total() / NativeRawExposure.SETPOINT) / Math.log(2), NativeRawExposure.STOP_EV);
+        assertTrue(a.settled());
+    }
+
     /** P212c: the user's compensation moves the smoothed exposure in any step, also under START_EV (a 1/6 EV press). */
     @Test public void aSmallCompensationStepStillMovesTheSmoothedExposure() {
         for (boolean press : new boolean[]{false, true}) {

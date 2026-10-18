@@ -199,7 +199,7 @@ final class NativeRawExposure {
         waited = 0;
         quiet = 0;
         wanted = 0;
-        moving = false;
+        moving = true; // a start is not converged: it moves until under STOP_EV (a seed off by less than START_EV stayed off)
         resetSmoothing();
     }
 
@@ -207,7 +207,7 @@ final class NativeRawExposure {
     void smoothing(boolean on) {
         if (on == smooth) return;
         smooth = on;
-        moving = false;
+        moving = true;
         resetSmoothing();
     }
 
