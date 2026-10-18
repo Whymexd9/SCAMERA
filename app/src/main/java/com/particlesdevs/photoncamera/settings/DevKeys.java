@@ -99,8 +99,8 @@ public final class DevKeys {
         // P212g: whose neutral a vivo mosaic photo takes (W6) and the plain-session colour matrices of mosaic photos (W7)
         k.add(s(cap, "mosaic_awb_resolver", true, Lang.t("vivo FULLRES: баланс белого камеры, если он установился и лежит на кривой камеры; 200 Мп без своего видоискателя — баланс видоискателя обычного режима за секунду до нажатия. Выкл — оценка по кадру (P121) на всех маршрутах",
                 "vivo FULLRES: the camera's white balance when it has converged and lies on the camera's curve; 200 MP without its own viewfinder: the normal-mode viewfinder's balance of the second before the press. Off: the frame estimate (P121) on every route")));
-        k.add(s(cap, "mosaic_ccm_table", true, Lang.t("Снимки мозаики (ISZ, FULLRES): цветовая матрица ISP из обычного режима этой камеры при том же свете вместо общих матриц DNG. Выкл — матрицы DNG",
-                "Mosaic shots (ISZ, FULLRES): the ISP's colour matrix of this camera's plain mode at the same light instead of the generic DNG matrices. Off: the DNG matrices")));
+        k.add(n(cap, "mosaic_ccm_table", "1", Lang.t("Снимки мозаики: цветовая матрица ISP из обычного режима этой камеры при том же свете вместо общих матриц DNG. 1: FULLRES, 2: также ISZ 12 Мп, 0: матрицы DNG",
+                "Mosaic shots: the ISP's colour matrix of this camera's plain mode at the same light instead of the generic DNG matrices. 1: FULLRES, 2: the 12 MP ISZ modules too, 0: the DNG matrices")));
         k.add(s(cap, "oppo_cct_anchor", true, Lang.t("OPPO X7 Ultra: точка 6500 K для 6× и фронтальной камеры по меткам AWB 6000–7000 K обычного режима. Выкл — −0.6, как раньше",
                 "OPPO X7 Ultra: the 6500 K point of the 6x and front cameras from the plain mode's 6000-7000 K AWB labels. Off: -0.6 as before")));
         k.add(s(cap, "oplus_ccm", true, Lang.t("OPPO: цветовая матрица com.oplus.custom.ccm вместо единичной", "OPPO: the com.oplus.custom.ccm colour matrix instead of an identity one")));

@@ -651,7 +651,8 @@ public class Parameters {
     /**
      * P212g (W7 = M12): a mosaic shot takes the plain-session table's matrix when no tuned one renders it and the result's transform
      * does not fit its neutral - our own neutral (the ISP's matrix was picked at the camera's), or none the ISP branch accepts (the
-     * vivo mosaic results' identity).
+     * vivo mosaic results' identity). P212z: ReCalcColor asks the table only when PlainColourMemory.wanted - a FULLRES shot by
+     * default, the 12 MP ISZ modules with "mosaic_ccm_table 2".
      */
     static boolean plainTableApplies(boolean mosaicShot, boolean oppoTuned, boolean ownNeutral, boolean ispUsable) {
         return mosaicShot && !oppoTuned && (ownNeutral || !ispUsable);
@@ -845,8 +846,9 @@ public class Parameters {
         final boolean ispUsable = ispCcmUsable(CST);
         com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup plainTable = null;
         boolean plainTableAsked = false;
-        if (plainTableApplies(mosaicShot, oppoTuned, ownNeutral, ispUsable)
-                && com.particlesdevs.photoncamera.processing.color.PlainColourMemory.on()) {
+        // P212z (review): FULLRES photos only by default ("mosaic_ccm_table 2": the 12 MP ISZ modules' mosaic photos as well)
+        final boolean plainTableWanted = com.particlesdevs.photoncamera.processing.color.PlainColourMemory.wanted(fullResRequested > 0);
+        if (plainTableApplies(mosaicShot, oppoTuned, ownNeutral, ispUsable) && plainTableWanted) {
             plainTableAsked = true;
             plainTable = com.particlesdevs.photoncamera.processing.color.PlainColourMemory.lookup(String.valueOf(physicalID), whitePoint);
             if (plainTable != null) CST = plainTable.transform();
@@ -938,7 +940,7 @@ public class Parameters {
         }
         if (mosaicShot) {
             mosaicMatrixSource = mosaicMatrixSource(dcpXyz != null, oppoTuned, plainTable, wrongCalibration && !ownNeutral && ispUsable,
-                    plainTableAsked, String.valueOf(physicalID), whitePoint);
+                    plainTableAsked, plainTableWanted, String.valueOf(physicalID), whitePoint);
             Log.i(TAG, "mosaic colour matrix: " + mosaicMatrixSource + String.format(java.util.Locale.ROOT, ", scene %.0f K", sceneCct));
         }
     }
@@ -946,12 +948,13 @@ public class Parameters {
     /** P212g (W7): the log text of where a mosaic shot's colour matrix came from. */
     static String mosaicMatrixSource(boolean dcp, boolean oppoTuned,
                                      @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup table,
-                                     boolean isp, boolean asked, String camera, float[] neutral) {
+                                     boolean isp, boolean asked, boolean wanted, String camera, float[] neutral) {
         if (dcp) return "the active DCP profile";
         if (oppoTuned) return "the OPPO tuned matrix";
         if (table != null) return table.how;
         if (isp) return "the ISP transform of the result (it fits the camera's own neutral)";
         if (!com.particlesdevs.photoncamera.processing.color.PlainColourMemory.on()) return "the DNG matrices (mosaic_ccm_table 0)";
+        if (!wanted) return "the DNG matrices (not a FULLRES shot: the plain-session table with mosaic_ccm_table 2)";
         return asked ? String.format(java.util.Locale.ROOT, "the DNG matrices (camera %s's plain table has no bin near ln(r/b) %.3f)", camera,
                 Math.log(neutral[0] / neutral[2])) : "the DNG matrices";
     }
