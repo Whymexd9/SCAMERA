@@ -365,11 +365,19 @@ inline uint16_t floatToHalf(float f) {
 
 // P80: one context built ahead (during the merge) and one teardown behind (after the median): both off the shot's path. The
 // teardown thread is joined before the next one starts and at the process exit (a static destructor), never left running.
+// P219: a context built ahead and never taken (a 50 MP merge: its median runs on the CPU, the size is above the GPU path's) is left
+// to the process exit, not torn down from this static destructor: on the OPPO Find X7 Ultra eglMakeCurrent crashed there (SIGSEGV
+// in libGLESv2_adreno after «SCAM CAPTURE OK», which the app takes for a failed merge) whenever the vendor CRE library had loaded
+// after the context was built (its exit handlers ran first): 2 of 4 50 MP replays once the merge no longer waited for the
+// worker's mosaic detector. The process exit frees it with the rest.
 struct ChromaGpuSlot {
     std::future<std::unique_ptr<ChromaMedianGpu>> ahead;
     std::thread teardown;
     void join() { if (teardown.joinable()) teardown.join(); }
-    ~ChromaGpuSlot() { join(); }
+    ~ChromaGpuSlot() {
+        join();
+        if (ahead.valid()) try { ChromaMedianGpu* left = ahead.get().release(); (void)left; } catch (...) {}
+    }
 };
 inline ChromaGpuSlot& chromaGpuSlot() { static ChromaGpuSlot slot; return slot; }
 inline void chromaPrewarm() {

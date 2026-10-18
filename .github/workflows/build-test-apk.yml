@@ -152,6 +152,9 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-series
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_us_rows.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-us-rows
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-us-rows
+          # P219: the mosaic merges' frame pick (the split unchanged, the native merge takes every frame) and the skipped detector
+          g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_mosaic_pick.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-mosaic-pick
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-mosaic-pick
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_dng_ceiling.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-dng-ceiling
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-dng-ceiling
           g++ -std=c++17 -O1 -fsanitize=address,undefined tools/check_scam_probe.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-scam-probe
