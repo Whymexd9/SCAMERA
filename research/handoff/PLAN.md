@@ -4977,3 +4977,30 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   per SIMPLE_UI: «Фото → Размер фото» (and in the «Размер фото» sheet's «Для опытных» group next to the output resolution),
   plain subtitle («Выкл. — снимок с кропом остаётся в своём размере, без увеличения»); a per-module value (module profiles).
 - Not started.
+
+### P227 - study and fix: the OPPO sensor-mode route against the ArkCam implementation note (owner, 2026-10-18: «добавь в план
+изучть и исправить у нас», the note oppo_sensor_mode_implementation.md)
+- The note (ArkCam, not yet verified on our phones):
+  1. Table: org.quic.camera2.sensormode.info.SensorModeTable (count, then rows of stride 10: width, height, fps, ...) per camera id;
+     the mode in effect comes back as org.quic.camera.sensorbps.SensorModeIndex (we read com.qti.sensorbps.mode_index).
+  2. Select: com.oplus.engineercamera.agingtest.mode.select = (byte) mode, set on the request builder that goes BOTH into
+     SessionConfiguration.setSessionParameters and into setRepeatingRequest.
+  3. Spoof: OplusCameraManager.saveOpPackageName(pkg), then setPackageName() with no arguments.
+  4. Reader: ImageReader.newInstance(w, h, RAW10 / RAW_SENSOR, n, 0L) at the table size (8192 x 6144 is not in the public
+     StreamConfigurationMap; CPU usage bits are refused by the Oplus CamX stream validator).
+  5. Session: RAW-only (no preview, no YUV analysis surface - otherwise "Camera HAL struggled to configure streams"), opMode 0
+     (SESSION_REGULAR), the own GL RAW viewfinder forced on while a mode is active.
+  6. UI: a per-lens «Sensor Mode» list (Auto = -1, "Mode #N: W x H @ fps") on Oplus devices only; picking a mode fills the
+     lens's RAW size from the table row.
+  7. Find X8 (PKJ110) NoRemosaic 8192 x 6144 indices: main (LYT-808, 39 modes) 32 @30 / 37 @24, ultra-wide 0.6x (JN5, 24) 17 @15,
+     tele 3x (LYT-600, 22) 18 @30, tele 6x (IMX858, 19) 18 @15. Ours (P192, PHY110 measured): 2 -> 35, 3 -> 16, 4 -> 19, 5 -> 17.
+- Ours to compare: OppoNativeFullRes (TABLE_KEY, fullModes candidates, MODE_KEY, the mode-table rule), the CaptureController
+  reader block (usage 0 / 0x00100000 branches near the RAW reader), OplusCameraPackageSpoof (setPackageName signature),
+  VivoNativeFullRes (the RAW-only route the OPPO reuses), CaptureController's vendor-mode fallback (a refused mode -> 0).
+- To check and fix where we differ: the result key name (read both); the mode in the session parameters AND every repeating /
+  still request; the stride-10 table parse and the per-camera candidates on phones other than PHY110 (X8 / X8 Ultra indices above,
+  pick NoRemosaic rows by size and fps, not by a fixed list); RAW10 as well as RAW_SENSOR; no stray YUV / preview surface in the
+  mode session; whether a per-module «Режим сенсора» choice (Auto + table rows, OPPO only) belongs in the module editor under the
+  SIMPLE_UI rules. Ties to P223 / P225 (RAW-only sessions) and P192.
+- Test only on the OPPO with adb replays and the probe; never start SCAMERA on fb27034c with a saved type 32777 + FULLRES session.
+- Not started.
