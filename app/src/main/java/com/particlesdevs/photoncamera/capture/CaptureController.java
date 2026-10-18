@@ -992,7 +992,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         @Override
         public void onError(@NonNull CameraDevice cameraDevice, int error) {
             mDeviceErrorMs = android.os.SystemClock.elapsedRealtime();
-            if (isCameraResumed) recovering(true, "camera error " + error); // P240: every path below opens the camera again
+            // the session's own callback runs on another thread: a refusal the HAL answers with this error at the same moment
+            // (vivo X300 log: both within 1 ms) is let to choose its retry first (at most 0.5 s)
+            for (int i = 0; i < 50 && mConfiguringDevice == cameraDevice; i++) android.os.SystemClock.sleep(10);
+            // owner, 2026-10-19 (vivo X300, «убедись что нигде не будет такой ошибки»): the HAL closes the device after refusing
+            // a session (the vivo EIS session key there); the retry with the next configuration is under way, so the error is
+            // expected: no overlay, no message, no module revert - the camera reopens with what the retry chose
+            final boolean afterRetry = cameraDevice == mRetryDevice;
+            mRetryDevice = null;
+            if (isCameraResumed && !afterRetry) recovering(true, "camera error " + error); // P240: every path below opens the camera again
             if (mVivoSdkRawSession != null && mVivoSdkRawDevice == null) mVivoSdkRawDevice = cameraDevice;
             rescueInFlightShot("camera error " + error);
             stopStallWatch();
@@ -1001,6 +1009,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             cameraDevice.close();
             mCameraDevice = null;
             Log.w(TAG, "onError() : cameraDevice = [" + cameraDevice + "], error = [" + error + "]");
+            if (afterRetry) {
+                Log.w("SCAM_CAPTURE", "camera " + physicalID + " closed by the HAL (error " + error
+                        + ") after a refused session configuration: reopened quietly with the retried configuration");
+                if (mRecoveryHandler == null) mRecoveryHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+                mRecoveryHandler.postDelayed(() -> {
+                    if (isCameraResumed && mCameraDevice == null && !mCameraOpening.get()) restartCamera();
+                }, 300);
+                return;
+            }
             if (retryWithoutVivoSdkFullRes(null, "camera error " + error)) return;
             if (retryWithoutRequestedSensorMode(null, "camera error " + error)) return;
             if (mXiaomiRouted) {
@@ -3111,11 +3128,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // on (P54: none on the X300 Ultra and other vivo phones); elsewhere SCAM HDR uses the plain preview.
             final boolean scamPreview = PreferenceKeys.isScamEnabled() && photoMode
                     && ScamPreview.vendorKeys() && !isBurstSession && !mIsRecordingVideo && !vivoQcomIsz && !sdkFullRes
-                    && !sPlainPreviewCameras.contains(physicalID);
+                    && !PlainPreviewCameras.contains(physicalID);
             mScamPreviewActive = scamPreview;
             // P54b: X300 Ultra - stabilisation held on for the whole session (OIS + vivo EIS key in every request, no flush)
             mForcedStab = photoMode && !isBurstSession && !mIsRecordingVideo && !sdkFullRes && ForcedStabilization.active();
-            mForcedStabEis = mForcedStab && ForcedStabilization.eisKey() && !sPlainPreviewCameras.contains(physicalID);
+            mForcedStabEis = mForcedStab && ForcedStabilization.eisKey() && !PlainPreviewCameras.contains(physicalID);
             mPayloadFrames = 0;
             mPayloadBad = false;
             mPreviewLayouts.clear();
@@ -3219,6 +3236,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
+                    if (mConfiguringDevice == sessionDevice) mConfiguringDevice = null;
                     synchronized (mPreviewStateLock) {
                         Log.d(TAG, "CameraCaptureSession onConfigured():" + cameraCaptureSession);
                         // The camera is already closed
@@ -3255,6 +3273,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         }
                         scheduleProgramWarmUp(); // P237
                         recovering(false, "session configured"); // P240
+                        mRetryDevice = null;
                         experimentalRouteNotice(); // P240
                         com.particlesdevs.photoncamera.util.ThermalPolicy.watch(ScameraApp.getAppContext()); // P238
                         mPreviewCaptureResult = null;
@@ -3290,7 +3309,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             // Apply dynamic OIS for preview stream
                             applyOisMode(mPreviewRequestBuilder, false);
                             applyVideoStabilization(mPreviewRequestBuilder);
-                            if (!sdkFullRes && ScamPreview.supported() && PreferenceKeys.isEisPhotoOn() && !ForcedStabilization.active() && !sPlainPreviewCameras.contains(physicalID)) {
+                            if (!sdkFullRes && ScamPreview.supported() && PreferenceKeys.isEisPhotoOn() && !ForcedStabilization.active() && !PlainPreviewCameras.contains(physicalID)) {
                                 ScamPreview.applyPreviewEis(mPreviewRequestBuilder);
                             }
                             if (mForcedStab) Log.i("SCAM_CAPTURE", "forced stabilisation (P54b) camera " + physicalID + ": preview "
@@ -3340,6 +3359,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 @Override
                 public void onConfigureFailed(
                         @NonNull CameraCaptureSession cameraCaptureSession) {
+                    try {
+                        configureFailed(cameraCaptureSession);
+                    } finally {
+                        if (mConfiguringDevice == sessionDevice) mConfiguringDevice = null; // onError waits for this
+                    }
+                }
+
+                private void configureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
                     synchronized (mPreviewStateLock) {
                         if (!isCameraResumed || sessionDevice != mCameraDevice ||
                                 generation != mSessionGeneration.get()) {
@@ -3347,6 +3374,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             return;
                         }
                         Log.d(TAG, "CameraCaptureSession onConfigureFailed()");
+                        // a refused configuration the chain below retries: a HAL that closes the device after the refusal
+                        // (onError 4, vivo X300 2026-10-19) has its camera reopened quietly (mRetryDevice)
+                        mRetryDevice = sessionDevice;
                         if (retryWithoutDcgRoute(cameraCaptureSession, "session configuration failed")) return; // P230
                         if (retryWithoutVendorMode(cameraCaptureSession)) return; // P211
                         if (retryWithoutVivoSdkFullRes(cameraCaptureSession, "session configuration failed")) return;
@@ -3357,6 +3387,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         if (retryWithoutLiveRaw(cameraCaptureSession)) return;
                         if (retryWithoutScamSession(cameraCaptureSession)) return;
                         if (retryConfigureFallback(cameraCaptureSession)) return;
+                        mRetryDevice = null; // nothing left to retry: a following error is a real one
                         if (revertToLastGoodCamera("session configuration")) return;
                         showError(activity.getString(R.string.session_on_configure_failed));
                     }
@@ -3387,7 +3418,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         processExecutor,
                         stateCallback
                 );
-                boolean vivoEis = !sdkFullRes && ScamPreview.supported() && PreferenceKeys.isEisPhotoOn() && !ForcedStabilization.active() && !vivoQcomIsz && !sPlainPreviewCameras.contains(physicalID);
+                boolean vivoEis = !sdkFullRes && ScamPreview.supported() && PreferenceKeys.isEisPhotoOn() && !ForcedStabilization.active() && !vivoQcomIsz && !PlainPreviewCameras.contains(physicalID);
                 mVivoEisSession = vivoEis;
                 // P54d's stabilisation mode as a session parameter on vivo only: on the Xiaomi 13 Ultra and the OPPO Find X9 Ultra
                 // (2026-10-10 logs) every session with session parameters / PREVIEW_STABILIZATION next to the RAW stream stopped
@@ -3452,6 +3483,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         Log.w("SCAM_CAPTURE", "SCAM session control unavailable", unsupported);
                     }
                 }
+                mConfiguringDevice = mCameraDevice;
                 mCameraDevice.createCaptureSession(configuration);
             } else {
                 mCameraDevice.createCaptureSession(surfaces, stateCallback, mBackgroundHandler);
@@ -3476,12 +3508,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /**
      * A camera that refuses the session with the vivo stock preview profile in its session parameters (vivo X200 Pro front
      * camera, owner's log 2026-10-08: every stream size failed, the back cameras of the same session code ran) retries once
-     * with the plain Camera2 preview, before smaller streams; the camera keeps the plain preview for this process.
+     * with the plain Camera2 preview, before smaller streams; the camera keeps the plain preview on this firmware (owner,
+     * 2026-10-19, vivo X300: every camera refused the EIS session key once per app run). The HAL may close the device after
+     * the refusal (onError 4): that error reopens the camera quietly ({@link #mRetryDevice}).
      */
     private boolean retryWithoutScamSession(CameraCaptureSession session) {
         final CameraDevice device = mCameraDevice;
         final Handler handler = mBackgroundHandler;
-        if ((!mScamPreviewActive && !mForcedStabEis && !mVivoEisSession) || device == null || handler == null || !sPlainPreviewCameras.add(physicalID)) return false;
+        if ((!mScamPreviewActive && !mForcedStabEis && !mVivoEisSession) || device == null || handler == null || !PlainPreviewCameras.addRefused(physicalID)) return false;
         Log.w("SCAM_CAPTURE", "camera " + physicalID + ": session configuration failed with the vivo "
                 + (mScamPreviewActive ? "stock preview profile" : "EIS session key") + "; retry with the plain Camera2 preview");
         try { session.close(); } catch (Exception ignored) {}
@@ -4405,16 +4439,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return l != null ? l.stride : img.getPlanes()[0].getRowStride();
     }
     private boolean mScamPreviewActive;
+    /** The device whose session configuration was refused and is being retried (onConfigureFailed's chain) until one configures. */
+    private volatile CameraDevice mRetryDevice;
+    /** The device whose session (SessionConfiguration) is being configured: no onConfigured / onConfigureFailed yet. */
+    private volatile CameraDevice mConfiguringDevice;
     /** P54b: this session holds the stabilisation on (ForcedStabilization: X300 Ultra); with the vivo EIS key. */
     private boolean mForcedStab;
     private boolean mForcedStabEis;
     private boolean mVivoEisSession;
-    /**
+    /*
      * Cameras whose preview RAW was not plain 16-bit while ScamPreview's stock profile ran (vivo X100 Ultra main: packed
-     * 10-bit ZSL frames under the PD2454 stagger / HDR preview tags). Their sessions run the plain Camera2 preview from then on
-     * (this process); the ring check still guards the shot when the plain preview is packed too.
+     * 10-bit ZSL frames under the PD2454 stagger / HDR preview tags) run the plain Camera2 preview from then on (this process;
+     * PlainPreviewCameras); the ring check still guards the shot when the plain preview is packed too.
      */
-    private static final java.util.Set<String> sPlainPreviewCameras = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
      * P110: the RAW level of a ring frame for the «Движение» shutter ceiling (RawLevel), only while the mode is on and the
@@ -4467,7 +4504,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             com.particlesdevs.photoncamera.processing.RawPayloadCheck.dumpOnce(img, payload, physicalID);
         }
         mPayloadBad = true;
-        if (mScamPreviewActive && sPlainPreviewCameras.add(physicalID) && mBackgroundHandler != null) {
+        if (mScamPreviewActive && PlainPreviewCameras.add(physicalID) && mBackgroundHandler != null) {
             final int generation = mSessionGeneration.get();
             Log.w("SCAM_CAPTURE", "camera " + physicalID + ": vivo stock preview profile off, session restarted with the plain Camera2 preview");
             mBackgroundHandler.post(() -> {

@@ -5791,3 +5791,16 @@ pro mist, glimmer glass и других подобных фильтров у н�
   copy, column ramp refused, mosaicUsRows 0 unchanged) - NDK build run on the OPPO: OK. OPPO replays old (fa9941fc) vs new: the
   8 references and q1x / uw / hh_1 / arena11 / syn_b2m bit for bit; uw (plain, 2 ultrashort): «HYBRID PLAIN ... 2.5 % -> as
   captured». Phone: a 12 MP shot of a flickering lamp on the X200 Ultra (log line «HYBRID PLAIN»).
+
+### P254 - vivo X300: «Камера не запускается, error 4, перезапуск» on every camera's first start (owner, 2026-10-19: «при первом запуске каждая из них сопровождается надписью ... убедись что нигде не будет такой ошибки»)
+- Log (V2515, 2026-10-18): each camera's first session of an app run - endConfigure -38 with the vivo EIS session key ->
+  onConfigureFailed -> retryWithoutScamSession (plain preview) -> the HAL closes the device (onError 4) -> «Сбой камеры (код 4),
+  перезапуск» + the recovery overlay, or for a module without a frame yet «Модуль 3× не запускается ... возврат к предыдущему»
+  (revertToLastGoodModule). The plain-preview set was per process, so every app start repeated it.
+- DONE 2026-10-19: PlainPreviewCameras keeps a refused camera per Build.FINGERPRINT (SharedPreferences scam_plain_preview): the
+  next runs start with the plain preview. onConfigureFailed marks the device (mRetryDevice) while its retry chain runs; an onError
+  on that device reopens the camera quietly (no overlay, message or module revert). onError waits up to 0.5 s for the session's
+  own callback (mConfiguringDevice), since on the X300 both came within 1 ms on different threads.
+- Checks: PlainPreviewCamerasTest (storage per firmware, the quiet path before the revert / message). Phone: X300 first start
+  of each camera (log «closed by the HAL ... reopened quietly»), then an app restart (log «refused the vivo preview keys on this
+  firmware»).
