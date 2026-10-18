@@ -29,6 +29,10 @@ import java.util.Locale;
  * P212c: {@link #meter2} meters what the photo shows (the output crop, centre and tap weighted, shading- and white-balance-corrected
  * at today's scale) with log bins and per-site clipping, and {@link #smoothing(boolean)} adds an EMA and a hysteresis against the
  * limit cycle of a lamp at the highlight threshold (log21 L1295-1406: 12 direction flips in 23 lines).
+ * <p>
+ * P212d: while the flicker is a guess (MainsFlicker.known false: the PHY110's scene-flicker report is a placeholder, so «Авто» is
+ * the region's mains), a shutter from 30 ms is the one of 30 / 33.3 / 40 / 41.67 ms that bands least at both 100 and 120 Hz and
+ * that the exposure fits ({@link #leastBanding}); a wrong guess no longer stripes the viewfinder and the series.
  */
 final class NativeRawExposure {
     /** Median luminance of the frame (linear, a fraction of white over black) the exposure aims at. */
@@ -47,6 +51,12 @@ final class NativeRawExposure {
     static final float PROBE_DEFICIT_EV = 0.5f;
     /** P212c: the clip budget of the log-only law ({@link #clipBudget}); a tap region counts this much more in the meter. */
     static final float CLIP_BUDGET = 0.002f, REGION_WEIGHT = 4f;
+    /**
+     * P212d: the shutters of an unknown flicker - whole periods of one frequency each: 3 x 10 ms, 4 x 8.33 ms, 4 x 10 ms, 5 x 8.33 ms
+     * (|sinc| of the other frequency 8.4 %, 8.3 %, 3.9 %, 3.8 % of the flicker depth) - from BOTH_BANDS_MIN_NS on.
+     */
+    static final long[] BOTH_BANDS_NS = {30_000_000L, 33_333_332L, 40_000_000L, 41_666_665L};
+    static final long BOTH_BANDS_MIN_NS = 30_000_000L;
     private static final double LN2 = Math.log(2);
 
     private final long minExposure, maxExposure, frameNs;
@@ -60,6 +70,12 @@ final class NativeRawExposure {
      * a shutter of a period or longer is a whole number of (FLICKER_NS = 100 Hz until told; 0 = no snap).
      */
     private long flickerNs = FLICKER_NS;
+    /**
+     * P212d (M4): the flicker is a guess (MainsFlicker.known false under «Авто»: the region's mains; the PHY110's scene-flicker
+     * report is a placeholder): a shutter of {@link #BOTH_BANDS_MIN_NS} or longer is the one of {@link #BOTH_BANDS_NS} that bands
+     * least at both frequencies ({@link #leastBanding}); shorter ones snap to the guess as before.
+     */
+    private boolean bothBands;
     /** P201: the hand-set sensitivity and shutter (0 = automatic). */
     private int fixedIso;
     private long fixedNs;
@@ -93,14 +109,64 @@ final class NativeRawExposure {
         return flickerNs > 0 && t >= flickerNs ? Math.max(flickerNs, (long) Math.floor((double) t / flickerNs + 1e-6) * flickerNs) : t;
     }
 
+    /** P212d: true while the flicker is a guess and long shutters band least at both frequencies. */
+    boolean bothBands() { return bothBands; }
+
+    /**
+     * P212d: for a shutter {@code t} of BOTH_BANDS_MIN_NS or longer while the flicker is not known, the one of BOTH_BANDS_NS within
+     * the frame time that leaves the least of either flicker ({@link #residual}: 41.67 / 40 ms under 4 % of its depth) among those
+     * the scene's exposure fits: auto, the sensitivity {@code total} takes there lies in the delivered range (a longer shutter takes
+     * less ISO, never under the lowest; a shorter one more, never over the cap); a hand-set ISO ({@code isoFixed} > 0), a shutter
+     * no longer than {@code t} (no brighter than asked) and no shorter than today's snap (no darker). 0 when none fits: the snap
+     * to the guess as before. Ties go to the shorter shutter.
+     */
+    long leastBanding(double total, int isoFixed, long t, int topIso) {
+        if (t < BOTH_BANDS_MIN_NS) return 0L;
+        final long limit = Math.min(frameNs, maxExposure);
+        final long floor = isoFixed > 0 ? snap(t) : 0L;
+        long best = 0L;
+        double least = Double.MAX_VALUE;
+        for (long c : BOTH_BANDS_NS) {
+            if (c > limit) continue;
+            if (isoFixed > 0) {
+                if (c > t || c < floor) continue;
+            } else {
+                final double s = total * 100.0 / c;
+                if (s < minIso - 0.5 || s > topIso + 0.5) continue;
+            }
+            final double r = residual(c);
+            if (r < least - 1e-9) { least = r; best = c; }
+        }
+        return best;
+    }
+
+    /** P212d: the flicker a shutter of {@code ns} leaves (a fraction of its depth): the larger of |sinc| at 100 and at 120 Hz. */
+    static double residual(long ns) {
+        return Math.max(Math.abs(sinc(ns * 1e-9 * 100.0)), Math.abs(sinc(ns * 1e-9 * 120.0)));
+    }
+
+    static double sinc(double x) {
+        return Math.abs(x) < 1e-12 ? 1.0 : Math.sin(Math.PI * x) / (Math.PI * x);
+    }
+
     /**
      * P209: the lamp flicker in Hz (100 = 50 Hz mains, 120 = 60 Hz mains, 0 = no snap: PreferenceKeys.getAntibandingHz, «Авто» the
      * camera's report / the region). True when the exposure changed (the requests must be rebuilt).
      */
     boolean flicker(int hz) {
+        return flicker(hz, true);
+    }
+
+    /**
+     * P212d: the lamp flicker and whether it is known (false: «Авто» without evidence, {@code hz} the region's guess - long shutters
+     * band least at both frequencies, {@link #leastBanding}). A change of either re-splits; true when the exposure changed.
+     */
+    boolean flicker(int hz, boolean known) {
         final long period = hz > 0 ? Math.round(1e9 / hz) : 0L;
-        if (period == flickerNs) return false;
+        final boolean both = !known && period > 0;
+        if (period == flickerNs && both == bothBands) return false;
         flickerNs = period;
+        bothBands = both;
         resetSmoothing(); // P212c: another banding, another level
         final long before = exposureNs;
         final int beforeIso = iso;
@@ -328,7 +394,8 @@ final class NativeRawExposure {
             long t = fixedNs > 0 ? fixedNs : Math.round(total * 100.0 / fixedIso);
             if (fixedNs <= 0) {
                 t = Math.max(minExposure, Math.min(Math.min(maxExposure, frameNs), t));
-                t = snap(t);
+                final long both = bothBands ? leastBanding(total, fixedIso, t, topIso) : 0L; // P212d
+                t = both > 0 ? both : snap(t);
             }
             final int s = fixedIso > 0 ? fixedIso : (int) Math.round(total * 100.0 / Math.max(1L, t));
             exposureNs = Math.max(minExposure, Math.min(maxExposure, t));
@@ -349,7 +416,9 @@ final class NativeRawExposure {
             }
         }
         if (flickerNs > 0 && t >= flickerNs) {
-            t = snap(t);
+            // P212d: the flicker not known, a long shutter takes the one that bands least at both frequencies (when it fits)
+            final long both = bothBands ? leastBanding(total, 0, t, topIso) : 0L;
+            t = both > 0 ? both : snap(t);
             s = (int) Math.max(minIso, Math.min(topIso, Math.round(total * 100.0 / t)));
         }
         exposureNs = Math.max(minExposure, Math.min(maxExposure, t));

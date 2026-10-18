@@ -2669,7 +2669,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final int cap = PreferenceKeys.scamDevSwitch("native_ae_cap", true)
                     ? ExposureLimits.of(String.valueOf(physicalID), fullRes.getWidth(), fullRes.getHeight(), false).isoCap() : Integer.MAX_VALUE;
             ae.isoCap(cap);
-            ae.flicker(PreferenceKeys.getAntibandingHz()); // P209
+            ae.flicker(PreferenceKeys.getAntibandingHz(), nativeFlickerKnown()); // P209; P212d: a guess bands least at both
             ae.smoothing(PreferenceKeys.scamDevSwitch("native_ae_smooth", true)); // P212c
             final NativeAeSeed.Seed seed = PreferenceKeys.scamDevSwitch("native_ae_seed", true)
                     ? NativeAeSeed.pick(mVivoSdkCameraId, nativeAeEv(characteristics), android.os.SystemClock.elapsedRealtime(),
@@ -3122,6 +3122,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         mConfiguredSessionGeneration = generation;
                         mLastPreviewResultMs = 0;
                         mPreviewSessionStartMs = android.os.SystemClock.elapsedRealtime();
+                        // P212d: the scene-flicker report of a session counts after its first results, never in a native route
+                        // with its own RAW viewfinder (no HAL statistics there; the still-only route keeps the normal viewfinder)
+                        MainsFlicker.newSession(nativeVivoFullRes() && !stillOnlyFullRes());
                         if (mBackgroundHandler != null) {
                             mBackgroundHandler.removeCallbacks(mStallCheck);
                             mBackgroundHandler.postDelayed(mStallCheck, 1000);
@@ -4489,6 +4492,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     };
 
     /**
+     * P212d: the native AE's flicker is known - set by hand, or «Авто» latched from evidence (MainsFlicker.known) - or scam_dev.txt
+     * "native_ae_flicker_both 0" snaps to the region's guess as before; false: long shutters band least at both frequencies.
+     */
+    private static boolean nativeFlickerKnown() {
+        return PreferenceKeys.antibandingKnown() || !PreferenceKeys.scamDevSwitch("native_ae_flicker_both", true);
+    }
+
+    /**
      * P192: the OPPO native mode's own AE and white balance from the frame just shown: the frame is metered and the exposure moved
      * (the repeating request rebuilt) when it is off the setpoint; every 8th frame the neutral is measured (MosaicNeutral, on the
      * camera's curve). Not while a series is taken: its frames keep the exposure of the shutter.
@@ -4533,9 +4544,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 rebuildPreviewBuilder();
             }
             // P209: whole periods of the place's lamp flicker («Частота мерцания»; Auto: latched from the camera's report)
+            // P212d: «Авто» without evidence (the PHY110's report is a placeholder: MainsFlicker.known false) is the region's guess, and
+            // a shutter from 30 ms takes the one of 30 / 33.3 / 40 / 41.7 ms that bands least at both 100 and 120 Hz
             final int flickerHz = PreferenceKeys.getAntibandingHz();
-            if (ae.flicker(flickerHz)) {
-                Log.i("SCAM_CAPTURE", "native AE camera " + mVivoSdkCameraId + ": flicker " + flickerHz + " Hz -> " + ae);
+            final boolean flickerKnown = nativeFlickerKnown();
+            if (ae.flicker(flickerHz, flickerKnown)) {
+                Log.i("SCAM_CAPTURE", "native AE camera " + mVivoSdkCameraId + ": flicker " + flickerHz + " Hz ("
+                        + (flickerKnown ? "known" : MainsFlicker.source() + ", both bands from 30 ms") + ") -> " + ae);
                 rebuildPreviewBuilder();
             }
             final float ev = nativeAeEv(c);

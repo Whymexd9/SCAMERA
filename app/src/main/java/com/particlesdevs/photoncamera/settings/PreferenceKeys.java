@@ -51,6 +51,15 @@ public class PreferenceKeys {
         return hz < 0 ? com.particlesdevs.photoncamera.capture.MainsFlicker.hz() : hz;
     }
 
+    /**
+     * P212d: true when {@link #getAntibandingHz()} is known - set by hand (the override: 100, 120 or 0), or «Авто» latched from
+     * evidence (MainsFlicker.known: agreeing reports, AE shutters, the merge's row profile); false while «Авто» guesses the region.
+     */
+    public static boolean antibandingKnown() {
+        final int hz = Integer.parseInt(getAcesString("pref_antibanding_hz_key", "-1"));
+        return hz >= 0 || com.particlesdevs.photoncamera.capture.MainsFlicker.known();
+    }
+
 
 
 

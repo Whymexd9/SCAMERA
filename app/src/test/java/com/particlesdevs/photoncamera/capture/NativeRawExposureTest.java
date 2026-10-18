@@ -545,4 +545,78 @@ public class NativeRawExposureTest {
         assertTrue("floor: k " + k, k >= 0.25 - 1e-6);
         assertEquals("the P192 law does not see 1 % of clipped cells", 1.0, NativeRawExposure.multiplier(m.p50, m.p98, 0f), 0.03);
     }
+
+    /**
+     * P212d (M4): the flicker a shutter leaves at the frequency it is not a whole number of periods of: 30 / 33.3 ms over 8 % of the
+     * depth, 40 / 41.67 ms under 4 % - the candidates of an unknown flicker.
+     */
+    @Test public void theBothBandShuttersLeaveUnderFourPercentAtFortyMs() {
+        assertEquals(0.084, NativeRawExposure.residual(30_000_000L), 0.001);
+        assertEquals(0.083, NativeRawExposure.residual(33_333_332L), 0.001);
+        assertEquals(0.039, NativeRawExposure.residual(40_000_000L), 0.001);
+        assertEquals(0.038, NativeRawExposure.residual(41_666_665L), 0.001);
+        assertTrue("10 ms under 120 Hz: 16 %", NativeRawExposure.residual(10_000_000L) > 0.15);
+        for (long c : NativeRawExposure.BOTH_BANDS_NS) assertTrue(NativeRawExposure.residual(c) < 0.085);
+    }
+
+    /**
+     * P212d: while the flicker is a guess, a shutter from 30 ms takes the candidate that bands least at both frequencies - 41.67 ms
+     * when the scene's exposure fits there (less ISO; at the ISO cap the frame time) - shorter ones still snap to the guess.
+     */
+    @Test public void anUnknownFlickerTakesTheShutterThatBandsLeastAtBoth() {
+        NativeRawExposure a = ae(10_000_000L, 100);
+        assertFalse("known 100 Hz: as before", a.flicker(100));
+        a.split(33_333_333.0 * 4); // 1/30 s at ISO 400
+        assertEquals(30_000_000L, a.exposureNs());
+        assertEquals(444, a.iso());
+        assertTrue("unknown: the exposure is re-split", a.flicker(100, false));
+        assertTrue(a.bothBands());
+        a.split(33_333_333.0 * 4);
+        assertEquals("41.67 ms: 3.8 % at 100 Hz, none at 120 Hz", 41_666_665L, a.exposureNs());
+        assertEquals(320, a.iso());
+        // at the lowest ISO a longer shutter does not fit (it would take ISO 72): the longest that fits under 33 ms
+        a.split(31_000_000.0);
+        assertEquals(30_000_000L, a.exposureNs());
+        assertEquals(103, a.iso());
+        // under 30 ms: the guess's whole periods as before
+        a.split(25_000_000.0);
+        assertEquals(20_000_000L, a.exposureNs());
+        assertEquals(125, a.iso());
+        // at the ISO cap: the frame time in 120 Hz periods (40 ms at a known 100 Hz)
+        a.isoCap(1600);
+        a.split(1e12);
+        assertEquals(41_666_665L, a.exposureNs());
+        assertEquals(1600, a.iso());
+        assertTrue("known again: the snap of the frequency", a.flicker(100, true));
+        assertFalse(a.bothBands());
+        assertEquals(40_000_000L, a.exposureNs());
+        assertFalse("the same state changes nothing", a.flicker(100, true));
+        // a guess of 0 Hz (no snap) is no guess
+        a.flicker(0, false);
+        assertFalse(a.bothBands());
+    }
+
+    /** P212d: a 30 fps frame time leaves 30 / 33.3 ms; 33.3 ms (4 periods of 120 Hz) bands a little less at both. */
+    @Test public void theCandidatesStayWithinTheFrameTime() {
+        NativeRawExposure a = new NativeRawExposure(new Range<>(10_000L, 1_000_000_000L), new Range<>(100, 6400), 33_333_333L, 10_000_000L, 100);
+        a.flicker(100, false);
+        a.split(33_333_333.0 * 8);
+        assertEquals(33_333_332L, a.exposureNs());
+        assertEquals(800, a.iso());
+        assertEquals(0L, a.leastBanding(1e6, 0, 20_000_000L, 6400)); // under 30 ms: none
+    }
+
+    /** P212d: a hand-set ISO keeps its exposure: a candidate no longer than asked and no shorter than the guess's snap. */
+    @Test public void aHandSetIsoTakesACandidateBetweenTheSnapAndTheShutter() {
+        NativeRawExposure a = ae(10_000_000L, 100);
+        a.flicker(100, false);
+        a.setManual(400, 0);
+        a.split(35_000_000.0 * 4); // 35 ms at ISO 400: 33.3 ms (30 ms by the snap)
+        assertEquals(33_333_332L, a.exposureNs());
+        assertEquals(400, a.iso());
+        a.split(41_000_000.0 * 4); // 41 ms: 40 ms (41.67 ms would be brighter than asked)
+        assertEquals(40_000_000L, a.exposureNs());
+        a.split(31_000_000.0 * 4); // 31 ms: 30 ms only
+        assertEquals(30_000_000L, a.exposureNs());
+    }
 }
