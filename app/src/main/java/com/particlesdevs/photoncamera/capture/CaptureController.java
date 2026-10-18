@@ -62,7 +62,6 @@ import android.util.SparseIntArray;
 import android.view.Display;
 import android.view.Surface;
 import android.view.TextureView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -936,10 +935,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (revertToLastGoodModule("error " + error)) return;
             if (revertToLastGoodCamera("error " + error)) return;
             if (error == ERROR_CAMERA_DEVICE || error == ERROR_CAMERA_SERVICE) {
-                showToast(Lang.t("Сбой камеры (код ", "Camera failure (code ") + error + Lang.t("), перезапуск", "), restarting"));
+                showError(Lang.t("Сбой камеры (код ", "Camera failure (code ") + error + Lang.t("), перезапуск", "), restarting"));
                 scheduleRecovery("onError " + error);
             } else {
-                showToast(Lang.t("Камера недоступна (код ", "Camera unavailable (code ") + error + ")");
+                showError(Lang.t("Камера недоступна (код ", "Camera unavailable (code ") + error + ")");
             }
         }
     };
@@ -1075,7 +1074,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mReverting = true;
         final String label = com.particlesdevs.photoncamera.settings.ModuleRegistry.label(current);
         Log.e(TAG, "module " + current + " (" + label + ") failed (" + reason + ") before its first frame: back to module " + good);
-        showToast(Lang.t("Модуль " + label + " не запускается на этом телефоне (" + reason + "), возврат к предыдущему",
+        showError(Lang.t("Модуль " + label + " не запускается на этом телефоне (" + reason + "), возврат к предыдущему",
                 "Module " + label + " does not start on this phone (" + reason + "), back to the previous one"));
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             mReverting = false;
@@ -1092,7 +1091,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (good == null || good.equals(current) || sGoodCameras.contains(current) || mReverting || !isCameraResumed) return false;
         mReverting = true;
         Log.e(TAG, "camera " + current + " failed (" + reason + ") and never ran in this session: back to camera " + good);
-        showToast(Lang.t("Камера " + current + " не запускается (" + reason + "), возврат к камере " + good,
+        showError(Lang.t("Камера " + current + " не запускается (" + reason + "), возврат к камере " + good,
                 "Camera " + current + " does not start (" + reason + "), back to camera " + good));
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             mReverting = false;
@@ -1108,7 +1107,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             while (!mRecoveries.isEmpty() && now - mRecoveries.peekFirst() > 60_000) mRecoveries.pollFirst();
             if (mRecoveries.size() >= 3) {
                 Log.e(TAG, "camera recovery stopped after three restarts within a minute (" + reason + ")");
-                showToast(Lang.t("Камера не отвечает. Выберите другой модуль или перезапустите приложение", "The camera is not responding. Choose another module or restart the app"));
+                showError(Lang.t("Камера не отвечает. Выберите другой модуль или перезапустите приложение", "The camera is not responding. Choose another module or restart the app"));
                 return;
             }
             mRecoveries.addLast(now);
@@ -1194,7 +1193,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         PreferenceKeys.setCameraID(fallback);
         ScameraApp.getSettings().mCameraID = fallback;
         awaitRequestedCamera(curID, requestedSlot, fallback, module);
-        showToast(Lang.t("Камера " + logicalID + " недоступна, открыта основная камера " + fallback,
+        showError(Lang.t("Камера " + logicalID + " недоступна, открыта основная камера " + fallback,
                 "Camera " + logicalID + " is not available, the main camera " + fallback + " is open"));
         logicalID = fallback;
         physicalID = fallback;
@@ -1365,7 +1364,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 openCamera(optimal.getWidth(), optimal.getHeight());
             } catch (Exception e){
                 Log.e(TAG,Log.getStackTraceString(e));
-                showToast("Error onSurfaceTextureAvailable:"+e.getLocalizedMessage());
+                showError("Error onSurfaceTextureAvailable:"+e.getLocalizedMessage());
             }
         }
 
@@ -1630,7 +1629,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // Currently an NPE is thrown when the Camera2API is used but not supported on the
             // device this code runs.
             Log.e(TAG, Log.getStackTraceString(e));
-            showToast(activity.getString(R.string.camera_error));
+            showError(activity.getString(R.string.camera_error));
             if (mVivoSdkRawSession != null) throw new IllegalStateException("SDK camera output setup failed", e);
             //cameraEventsListener.onError(R.string.camera_error);
         }
@@ -2450,7 +2449,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Log.e(TAG, "SDK provider properties not restored: " + failure);
                 if (++mVivoSdkRestoreAttempts <= 3 && mVivoSdkCallbackHandler != null)
                     mVivoSdkCallbackHandler.postDelayed(() -> closeVivoSdkRawSession(null), 500);
-                else showToast(Lang.t("Не удалось восстановить параметры SDK камеры", "Camera SDK properties could not be restored"));
+                else showError(Lang.t("Не удалось восстановить параметры SDK камеры", "Camera SDK properties could not be restored"));
             }
         }
     }
@@ -3199,7 +3198,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         if (retryWithoutScamSession(cameraCaptureSession)) return;
                         if (retryConfigureFallback(cameraCaptureSession)) return;
                         if (revertToLastGoodCamera("session configuration")) return;
-                        showToast(activity.getString(R.string.session_on_configure_failed));
+                        showError(activity.getString(R.string.session_on_configure_failed));
                     }
                 }
             };
@@ -3332,7 +3331,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         if (session != null) try { session.close(); } catch (RuntimeException ignored) { }
         Log.w("SCAM_CAPTURE", "SDK FULLRES50 refused: " + why);
-        showToast(note != null ? note : Lang.t("SDK 50 Мп: камера отказала, обычный RAW", "SDK 50 MP: camera refused, normal RAW"));
+        showError(note != null ? note : Lang.t("SDK 50 Мп: камера отказала, обычный RAW", "SDK 50 MP: camera refused, normal RAW"));
         new Handler(Looper.getMainLooper()).post(this::restartCamera);
         return true;
     }
@@ -3344,7 +3343,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (!dcg && !SensorModeSwitches.sensorPreset(slot)) return false;
             if (!SensorModeSwitches.selectPlain()) {
                 Dcg14Mode.setMode(Dcg14Mode.OFF);
-                showToast(Lang.t("Режим сенсора отклонён; выберите обычный модуль", "Sensor mode refused; choose a plain module"));
+                showError(Lang.t("Режим сенсора отклонён; выберите обычный модуль", "Sensor mode refused; choose a plain module"));
                 return false;
             }
         } catch (RuntimeException unavailable) {
@@ -3354,7 +3353,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         PixelPro10.setFullRes(false);
         if (session != null) try { session.close(); } catch (RuntimeException ignored) { }
         Log.w("SCAM_CAPTURE", "requested " + (dcg ? "DCG" : "sensor preset") + " refused: " + why);
-        showToast(Lang.t("Режим сенсора отклонён; обычный модуль", "Sensor mode refused; using a plain module"));
+        showError(Lang.t("Режим сенсора отклонён; обычный модуль", "Sensor mode refused; using a plain module"));
         new Handler(Looper.getMainLooper()).post(this::restartCamera);
         return true;
     }
@@ -3365,7 +3364,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mFullResSession = false;
         PixelPro10.setFullRes(false);
         if (session != null) try { session.close(); } catch (Exception ignored) {}
-        showToast(Lang.t("Полное разрешение: камера отказала, обычный режим", "Full resolution: refused by the camera, normal mode"));
+        showError(Lang.t("Полное разрешение: камера отказала, обычный режим", "Full resolution: refused by the camera, normal mode"));
         final Handler main = new Handler(android.os.Looper.getMainLooper());
         main.post(this::restartCamera);
         return true;
@@ -3376,7 +3375,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private boolean retryWithoutVendorMode(@Nullable CameraCaptureSession session) {
         if (mVendorOperationMode == 0 || mCameraDevice == null || !sVendorModeRefused.add(physicalID)) return false;
         Log.w("SCAM_CAPTURE", "camera " + physicalID + ": session refused with operation mode " + mVendorOperationMode + ", again in mode 0");
-        showToast(Lang.t("Камера " + physicalID + ": режим сессии " + mVendorOperationMode + " не принят, обычный режим",
+        showError(Lang.t("Камера " + physicalID + ": режим сессии " + mVendorOperationMode + " не принят, обычный режим",
                 "Camera " + physicalID + ": session mode " + mVendorOperationMode + " refused, normal mode"));
         mVendorOperationMode = 0;
         if (session != null) try { session.close(); } catch (RuntimeException ignored) { }
@@ -3411,7 +3410,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mLiveRawRouter.clear();
         mLiveMetadata.clear();
         session.close();
-        showToast(Lang.t("RAW-превью недоступно с текущими потоками. Переключаемся на обычный видоискатель.", "RAW preview is not available with the current streams. Switching to the normal viewfinder."));
+        showError(Lang.t("RAW-превью недоступно с текущими потоками. Переключаемся на обычный видоискатель.", "RAW preview is not available with the current streams. Switching to the normal viewfinder."));
         createCameraPreviewSession(false);
         return true;
     }
@@ -3499,10 +3498,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         com.particlesdevs.photoncamera.control.subject.SubjectFocus.applyFaceDetectMode(mPreviewRequestBuilder, mCameraCharacteristics);
     }
 
+    /**
+     * P214f (speed-ux.md C3): the camera screen's message card (UiMessages, MessageCard) instead of a ~2 s system toast: it
+     * shows 1.5 s + 50 ms per character (at most 7 s), merges repeats into one message with a counter and keeps the last 20
+     * (Система → Диагностика → «Последние сообщения», or a long press on the card). Any thread.
+     */
     private void showToast(String msg) {
-        if (activity != null) {
-            new Handler(Looper.getMainLooper()).post(() -> Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show());
-        }
+        com.particlesdevs.photoncamera.util.UiMessages.info(msg);
+    }
+
+    /**
+     * P214f: a failure the owner has to see (the camera failed or refused what was asked, a fallback was taken): the card keeps
+     * it, in the warning colour, until it is tapped; also in the history.
+     */
+    private void showError(String msg) {
+        com.particlesdevs.photoncamera.util.UiMessages.error(msg);
     }
 
     private void applyVivoSdkPreview(CaptureRequest.Builder builder) {
@@ -5594,10 +5604,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if (reason != null && (reason.contains("sensor mode is not active")
                         || reason.contains("mosaic does not match") || reason.contains("not been verified"))) {
                     if (VivoSdkFullRes.oppo())
-                        showToast(OppoNativeFullRes.failed(mVivoSdkCameraId, VivoSdkFullRes.profile(mVivoSdkCameraId), reason));
+                        showError(OppoNativeFullRes.failed(mVivoSdkCameraId, VivoSdkFullRes.profile(mVivoSdkCameraId), reason));
                     else if (nativeVivoFullRes()) {
                         final String note = VivoNativeFullRes.failed(mVivoSdkCameraId, VivoSdkFullRes.profile(mVivoSdkCameraId), reason);
-                        if (note != null) showToast(note);
+                        if (note != null) showError(note);
                     }
                 }
                 cameraEventsListener.onProcessingError(reason);
@@ -6966,10 +6976,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mMediaRecorder.stop();
         } catch (Exception stopFailure) {
             Log.d(TAG, "Failed to stop recording " + Log.getStackTraceString(stopFailure));
-            Toast.makeText(activity.getApplicationContext(), "Failed to stop recording", Toast.LENGTH_SHORT).show();
-            if (vid.delete()) {
-                Toast.makeText(activity.getApplicationContext(), "Video file has been removed", Toast.LENGTH_SHORT).show();
-            }
+            // P214f: one message on the camera screen's card (two English-only system toasts before)
+            final boolean removed = vid.delete();
+            showError(Lang.t("Запись видео не остановилась" + (removed ? "; файл удалён" : ""),
+                    "The recording did not stop" + (removed ? "; the video file was removed" : "")));
         }
         mMediaRecorder.reset();
         cameraEventsListener.onRequestTriggerMediaScanner(Uri.fromFile(vid));

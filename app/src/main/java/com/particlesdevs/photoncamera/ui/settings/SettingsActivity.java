@@ -536,6 +536,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 startActivity(new android.content.Intent(requireContext(), ScamActivity.class));
                 return true;
             });
+            // P214f: the last 20 messages of the camera screen's message card (UiMessages), newest first
+            Preference messages = findPreference("scam_recent_messages");
+            if (messages != null) messages.setOnPreferenceClickListener(pref -> {
+                MessageHistorySheet.show(requireContext());
+                return true;
+            });
         }
 
 
