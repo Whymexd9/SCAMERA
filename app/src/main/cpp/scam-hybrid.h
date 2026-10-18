@@ -7611,11 +7611,14 @@ struct MosaicOscSource {
 //  - the shift to the RGGB origin (shiftOrigin: row y <- row max(0, y - dy), column x <- column max(0, x - dx), the same float
 //    copies) runs top-down in place through a ring of dy + 1 unshifted rows: shifted row y needs unshifted rows <= y only;
 //  - MosaicChromaStream takes the shifted rows as they come (its floats depend neither on how the rows are fed nor on its threads);
-//  - the oscillation map (MosaicOscSource, the statements of the whole map) is made in block rows just ahead of the blend that
-//    reads it, in a ring (the whole map is 50 MB at 50 MP, 200 MB at 200 MP; the rings ~1 MB). A feed is at most kFeed rows, so
-//    the block rows one advance() reads (from its first unfinished row to the rows it was given) fit the ring.
+//  - the oscillation map (MosaicOscSource, the statements of the whole map) is made in block rows ahead of the blend that reads
+//    it, in a ring (the whole map is 50 MB at 50 MP, 200 MB at 200 MP; the rings ~3 MB): a feed is at most kFeed rows, so the
+//    block rows one advance() reads (from its first unfinished row to the rows it was given) fit the ring, and after every feed
+//    the rows of two feeds more are made (the rows the ring can take without losing one the next advance reads).
 // The stream runs on half the big cores while the merge goes on (the merge thread uploads the next strips meanwhile; a strip's
-// chroma has ~0.4 s), the last rows (after the merge's last readback) on all of them. Memory: the stream's rings (~25 MB at 50 MP),
+// chroma has ~0.3 s), on all of them for the last two strips: the merge reads them back together (its last readback follows the
+// one before by ~10 ms on the OPPO), they are what is left after the merge (50 MP: ~40 ms of the 0.65 s the chroma median took
+// after it, the oscillation rows of the last strips made already). Memory: the stream's rings (~25 MB at 50 MP),
 // the oscillation rings and dy + 1 rows, nothing per frame, all of it allocated in begin(): once the consumer changed a row nothing
 // can fail any more, so finish() returns either the whole result or (begin failed: memory, no thread) the rows untouched, and the
 // caller runs the chroma median after the merge as before.
@@ -7636,6 +7639,7 @@ class MosaicChromaOverlap final : public HybridRowsSink {
     // under the lock: the merge's output and its rows [0, ready) final; the consumer's state
     float* data=nullptr;
     int ready=0;
+    int stripRows=0; // the largest step of ready (the merge's strip)
     bool stopping=false,exited=false,complete=false,touched=false,failed=false;
     Clock::time_point lastRows{},lastDone{};
     // the block rows [0, need) of the oscillation map made (f first: its rows up to need + 1), on n threads
@@ -7683,24 +7687,29 @@ class MosaicChromaOverlap final : public HybridRowsSink {
         try{
             int fed=0;
             for(bool more=true;more;){
-                int r=0;
+                int r=0,strip=0;
                 {
                     std::unique_lock<std::mutex> l(lock);
                     wake.wait(l,[&]{return stopping||ready>fed;});
                     if(stopping)break;
-                    r=ready;
+                    r=ready;strip=stripRows;
                     if(fed==0)stream->image(data);
                     touched=true;
                 }
                 if(r>=h)rowsBeforeLast=std::max(rowsBeforeLast,stream->done());
                 while(fed<r){
-                    const int to=std::min(r,fed+kFeed),n=to>=h?all:during;
+                    // all the threads for the rows of the last two strips: the merge reads them back together (its last strip is read
+                    // right after the one before: on the OPPO 10 ms apart, not a strip's ~0.3 s), they are the time after the merge
+                    const int to=std::min(r,fed+kFeed),n=h-to<=strip?all:during;
                     const auto t0=Clock::now();
                     if(dx||dy)shift(fed,to);
                     const auto t1=Clock::now();shiftMs+=millis(t1-t0);
                     makeOsc(to>=h?src.bh:(to-1)/b+1,n); // the block rows of the result rows this advance may finish
                     oscMs+=millis(Clock::now()-t1);
                     stream->threads(n);stream->advance(to);
+                    // the block rows ahead as far as the ring keeps those the next advance reads (from its first unfinished row on):
+                    // the rows after the merge's last readback find them made
+                    if(to<h){const auto t2=Clock::now();makeOsc(stream->done()/b+oscCap,n);oscMs+=millis(Clock::now()-t2);}
                     fed=to;++feeds;
                     std::lock_guard<std::mutex> l(lock);
                     if(stopping){more=false;break;}
@@ -7732,7 +7741,7 @@ public:
     bool done() const {return complete&&!active;}
     void begin(int width,int height,int shiftX,int shiftY) override {
         stop();
-        complete=touched=failed=exited=false;ready=0;data=nullptr;why="the merge failed";
+        complete=touched=failed=exited=false;ready=stripRows=0;data=nullptr;why="the merge failed";
         passes=MosaicChromaPasses();shiftMs=oscMs=waitMs=lastMs=0;feeds=rowsBeforeLast=0;bytes=0;
         if(width!=w||height!=h||w<=0||h<=0){why="the merge's grid "+std::to_string(width)+"x"+std::to_string(height)+" is not the chroma's";return;}
         if(src.bw!=w/b||src.bh!=h/b||src.bw<=0||src.bh<=0||src.block<1||src.block>8||(!src.quad&&(!src.raw||!src.gain))){why="no oscillation map of this grid";return;}
@@ -7740,8 +7749,9 @@ public:
         try{
             passes.rssBefore=hybridRssMB();
             stream=std::make_unique<MosaicChromaStream>(nullptr,w,h,b,nullptr,0,std::max(all,during),&passes);
-            // the block rows one advance() reads: from its first unfinished row (at most kFeed + lag rows above the rows given)
-            oscCap=(kFeed+stream->lagRows())/b+8;fCap=oscCap+8;oscMade=fMade=0;
+            // the block rows one advance() reads: from its first unfinished row (at most kFeed + lag rows above the rows given), and
+            // two feeds more made ahead (the last two strips, which come together, find their rows made); f: the rows of a jump
+            oscCap=(3*kFeed+stream->lagRows())/b+8;fCap=oscCap+8;oscMade=fMade=0;
             oscRows.assign(size_t(oscCap)*src.bw,0.f);fRows.assign(size_t(fCap)*src.bw,0.f);oscTags.assign(size_t(oscCap),-1);
 #ifdef SCAM_CHROMA_RING_CHECK
             fTags.assign(size_t(fCap),-1);
@@ -7761,6 +7771,7 @@ public:
             std::lock_guard<std::mutex> l(lock);
             if(!data)data=p;
             if(n>=h&&ready<h)lastRows=Clock::now();
+            stripRows=std::max(stripRows,std::min(n,h)-ready);
             ready=std::max(ready,std::min(n,h));
         }
         wake.notify_all();
