@@ -366,6 +366,39 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.setSideOn(bar, R.id.pro_button, panel.isExpanded());
         }
         bar.findViewById(R.id.more_button).setOnClickListener(v -> cameraFragmentViewModel.setSheetLevel(CameraFragmentModel.SHEET_PEEK));
+        placeMessageBand(cameraFragmentBinding);
+    }
+
+    /**
+     * SIMPLE_UI §1: the message band sits in the free band just above the bottom bar's row 1 (Про · lenses · Ещё), 3dp over
+     * it (the concept's .toast), 22dp x k high with 12sp x k text; measured again on every layout of the bar.
+     */
+    public static void placeMessageBand(CameraFragmentBinding binding) {
+        android.widget.TextView band = binding.shadeToast;
+        View bar = binding.layoutBottombar.getRoot();
+        android.content.Context c = band.getContext();
+        ViewGroup.LayoutParams lp = band.getLayoutParams();
+        lp.height = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 22);
+        band.setLayoutParams(lp);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.textFixed(band, 12);
+        View.OnLayoutChangeListener place = (v, l, t, r, b, ol, ot, or, ob) -> {
+            View strip = bar.findViewById(R.id.aux_buttons_container), pro = bar.findViewById(R.id.pro_button);
+            if (strip == null || band.getHeight() == 0 && band.getVisibility() == View.VISIBLE) return;
+            int[] at = new int[2], bandAt = new int[2];
+            int top = Integer.MAX_VALUE;
+            for (View row : new View[]{strip, pro}) {
+                if (row == null || row.getVisibility() != View.VISIBLE) continue;
+                row.getLocationInWindow(at);
+                top = Math.min(top, at[1]);
+            }
+            if (top == Integer.MAX_VALUE) return;
+            band.getLocationInWindow(bandAt);
+            float naturalBottom = bandAt[1] - band.getTranslationY() + lp.height;
+            float want = top - com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dpF(c, 3);
+            band.setTranslationY(want - naturalBottom);
+        };
+        bar.addOnLayoutChangeListener(place);
+        band.addOnLayoutChangeListener(place);
     }
 
     /** The bottom chrome's wiring on the camera screen's views (also used by the layout tests, P43). */

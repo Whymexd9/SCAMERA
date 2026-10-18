@@ -17,7 +17,7 @@
             android:id="@+id/textureHolder"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="@color/settings_bg"
+            android:background="#FF000000"
             android:animateLayoutChanges="true">
 
         <!--    Block 1-->
@@ -172,23 +172,24 @@
                         app:iconRotation="@{uimodel.orientation}" />
             </androidx.coordinatorlayout.widget.CoordinatorLayout>
             <!--    Block 1.8-->
-            <!--    card toast of the shade and the camera screen, over the sheet, above the bottom bar -->
+            <!--    SIMPLE_UI §1: the message band - one 22dp single-line pill (12sp) between the viewfinder and the bottom bar's
+                    row 1 (CameraFragment places it just above row 1 on every layout) -->
             <TextView
                     android:id="@+id/shade_toast"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="16dp"
-                    android:layout_marginEnd="16dp"
-                    android:layout_marginBottom="16dp"
-                    android:background="@drawable/shade_card"
+                    android:layout_height="22dp"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="12dp"
+                    android:background="@drawable/message_band"
                     android:elevation="30dp"
                     android:gravity="center"
-                    android:paddingStart="16dp"
-                    android:paddingEnd="16dp"
-                    android:paddingTop="10dp"
-                    android:paddingBottom="10dp"
-                    android:textColor="@color/settings_muted"
-                    android:textSize="14sp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:singleLine="true"
+                    android:ellipsize="end"
+                    android:includeFontPadding="false"
+                    android:textColor="@color/settings_text"
+                    android:textSize="12sp"
                     android:accessibilityLiveRegion="polite"
                     android:visibility="gone"
                     app:layout_constrainedWidth="true"

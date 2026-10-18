@@ -30,15 +30,16 @@ public class MessageLogTest {
         return s.toString();
     }
 
-    @Test public void durationIsOnePointFiveSecondsPlusFiftyMsPerCharacterAtMostSeven() {
-        assertEquals(1500, MessageLog.durationMs(""));
-        assertEquals(1500, MessageLog.durationMs(null));
-        assertEquals(1550, MessageLog.durationMs("a"));
-        assertEquals(3500, MessageLog.durationMs(chars(40)));
-        assertEquals(6950, MessageLog.durationMs(chars(109)));
-        assertEquals(7000, MessageLog.durationMs(chars(110)));
-        // the FULLRES row failure (~120 characters) gets the whole 7 s instead of ~2 s
-        assertEquals(7000, MessageLog.durationMs(chars(120)));
+    /** SIMPLE_UI: 1.3 s + 35 ms per character, at most 7 s (the band's short texts). */
+    @Test public void durationIsOnePointThreeSecondsPlusThirtyFiveMsPerCharacterAtMostSeven() {
+        assertEquals(1300, MessageLog.durationMs(""));
+        assertEquals(1300, MessageLog.durationMs(null));
+        assertEquals(1335, MessageLog.durationMs("a"));
+        assertEquals(2700, MessageLog.durationMs(chars(40)));
+        assertEquals(6970, MessageLog.durationMs(chars(162)));
+        assertEquals(7000, MessageLog.durationMs(chars(163)));
+        // a long text (~120 characters) still gets 5.5 s
+        assertEquals(5500, MessageLog.durationMs(chars(120)));
         assertEquals(7000, MessageLog.durationMs(chars(5000)));
     }
 

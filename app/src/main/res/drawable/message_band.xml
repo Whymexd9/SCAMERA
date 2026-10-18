@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SIMPLE_UI §1: the message band's pill (the concept's .toast: the card at 92 %, a 1dp line, 11dp corners). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#EB1A1F22"/>
+    <stroke android:width="1dp" android:color="@color/settings_line"/>
+    <corners android:radius="11dp"/>
+</shape>

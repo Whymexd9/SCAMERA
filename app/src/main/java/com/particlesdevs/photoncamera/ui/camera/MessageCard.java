@@ -16,7 +16,9 @@ import com.particlesdevs.photoncamera.util.MessageLog;
 import com.particlesdevs.photoncamera.util.UiMessages;
 
 /**
- * P214f (speed-ux.md C3): the camera screen's message card (the card toast of P25, {@code shade_toast} above the bottom bar)
+ * SIMPLE_UI §1 (owner's rule: pop-ups never cover controls and are compact): the camera screen's message band - one
+ * 22dp single-line pill (12sp) in the free band between the viewfinder and the bottom bar's row 1 ({@code shade_toast},
+ * placed by CameraFragment). P214f (speed-ux.md C3): the message card
  * as the {@link UiMessages.Sink} of the one message channel. An information message shows for
  * {@link MessageLog#durationMs} of its text (1.5 s + 50 ms per character, at most 7 s; the card was 1.5 s for any text, the
  * system toasts ~2 s); an error stays, in the warning colour with a «tap to close» line, until it is tapped; a repeat updates
@@ -81,17 +83,13 @@ public final class MessageCard implements UiMessages.Sink {
         else hide();
     }
 
-    /** The card's text: the message, «×N» for a repeat; an error in the warning colour with the «tap to close» line. */
+    /**
+     * The band's text (SIMPLE_UI: one line, never more): the message and «×N» for a repeat; an error in the warning colour
+     * (it stays until tapped - the description says so for TalkBack, the band has no second line).
+     */
     static CharSequence text(android.content.Context c, MessageLog.Entry e, int hintColor) {
         SpannableStringBuilder out = new SpannableStringBuilder(e.text);
         if (e.count > 1) out.append("  ×").append(String.valueOf(e.count));
-        if (e.error) {
-            int start = out.length();
-            out.append('\n').append(Lang.t(c, "Нажмите, чтобы закрыть · удерживайте — последние сообщения",
-                    "Tap to close · hold for the recent messages"));
-            out.setSpan(new ForegroundColorSpan(hintColor), start, out.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            out.setSpan(new AbsoluteSizeSpan(12, true), start, out.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        }
         return out;
     }
 
@@ -99,6 +97,8 @@ public final class MessageCard implements UiMessages.Sink {
         showing = e;
         view.animate().cancel();
         view.setText(text(view.getContext(), e, hintColor));
+        view.setContentDescription(e.error ? e.text + ". " + Lang.t(view.getContext(), "Нажмите, чтобы закрыть · удерживайте — последние сообщения",
+                "Tap to close · hold for the recent messages") : null);
         if (e.error) view.setTextColor(errorColor);
         else view.setTextColor(infoColor);
         view.setAccessibilityLiveRegion(e.error ? View.ACCESSIBILITY_LIVE_REGION_ASSERTIVE : View.ACCESSIBILITY_LIVE_REGION_POLITE);

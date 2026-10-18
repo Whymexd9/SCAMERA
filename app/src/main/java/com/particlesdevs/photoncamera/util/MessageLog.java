@@ -15,8 +15,8 @@ import java.util.List;
  * tested on the JVM. Before, a message was a 2 s system toast (CaptureController), a 1.5 s card (CameraFragment) or a short
  * snackbar, and a FULLRES row failure of ~120 characters was gone before it could be read; nothing was kept.
  * <ul>
- *   <li>{@link #durationMs}: how long the card shows an information message, 1.5 s + 50 ms per character, at most 7 s
- *       (an error stays until it is tapped, the card decides that);</li>
+ *   <li>{@link #durationMs}: how long the band shows an information message, 1.3 s + 35 ms per character (SIMPLE_UI: the
+ *       short one-line texts), at most 7 s (an error stays until it is tapped, the card decides that);</li>
  *   <li>{@link #add}: a repeat (the same text and kind within {@link #MERGE_WINDOW_MS} of its last time) is merged into one
  *       entry with a counter and moves to the newest place, so a restart loop is one line "x7", not seven;</li>
  *   <li>the last {@link #KEEP} entries are kept, written to a small private file ({@link #save} / {@link #loadOlder}) so the
@@ -26,7 +26,7 @@ import java.util.List;
  */
 public final class MessageLog {
     public static final int KEEP = 20;
-    public static final long MIN_MS = 1500, PER_CHAR_MS = 50, MAX_MS = 7000;
+    public static final long MIN_MS = 1300, PER_CHAR_MS = 35, MAX_MS = 7000;
     /** A repeat later than this is a new entry: a counter that grew over a whole day would say nothing on the card. */
     public static final long MERGE_WINDOW_MS = 10 * 60_000L;
     private static final String HEADER = "scam-messages 1";
