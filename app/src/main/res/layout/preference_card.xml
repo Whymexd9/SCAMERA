@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- SIMPLE_UI §4 row (the concept's .row): a 36dp icon tile, the title (14.5sp) and its description (12.5sp, muted), the value
      on the right (muted) and the trailing widget (chevron / switch). The rows of a group share one card
-     (SettingsCardDecoration), divided by lines. -->
+     (SettingsCardDecoration), divided by lines. P248: a value too long for the right (SettingsStyle.valueBelow) is shown under
+     the title instead (settings_value_below), so the title and the description keep the row's width. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -39,6 +40,14 @@
             android:layout_height="wrap_content"
             android:textColor="@color/settings_text"
             android:textSize="14.5sp" />
+        <TextView
+            android:id="@+id/settings_value_below"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:textColor="@color/settings_text"
+            android:textSize="13sp"
+            android:visibility="gone" />
         <TextView
             android:id="@android:id/summary"
             android:layout_width="match_parent"

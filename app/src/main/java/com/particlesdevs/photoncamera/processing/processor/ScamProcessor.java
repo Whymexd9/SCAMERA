@@ -249,6 +249,41 @@ public class ScamProcessor extends ProcessorBase {
         return own;
     }
 
+    /**
+     * P236 (speed-ux B4): the shot's frames are closed off the critical path. The owner's X7U shot (2026-10-17 20:20:51.832 «reference
+     * RAW copied out» -> 52.219 «Alignment elapsed») spent ~390 ms here before the post pipeline: the last views of a 50 MP shot
+     * arena give its 1.3 GB back (a punched hole per 96 MB slot, the munmap and close of the memfd). Nothing reads the frames after
+     * the merge (the reference RAW was taken out above); one thread closes them in order, the post pipeline starts meanwhile.
+     * A burst of 16 MP or less (tens of ms) and a 200 MP one are closed here as before; scam_dev release_async 0: always here.
+     */
+    private void releaseFrames(java.util.List<ImageFrame> images) {
+        final java.util.List<ImageFrame> frames = new java.util.ArrayList<>(images);
+        long bytes = 0;
+        for (ImageFrame f : frames) if (f != null && f.buffer != null) bytes += f.buffer.capacity();
+        // a 200 MP shot keeps the release here: its post pipeline runs at the memory's edge (P179), the frames' 1.6 GB go first
+        final long framePixels = frames.isEmpty() || frames.get(0) == null ? 0 : (long) frames.get(0).width * frames.get(0).height;
+        if (bytes <= 16_000_000L * 2 * 2 || framePixels > 100_000_000L || !PreferenceKeys.scamDevSwitch("release_async", true)) {
+            for (ImageFrame frame : frames) frame.close();
+            return;
+        }
+        final long total = bytes;
+        RELEASE.execute(() -> {
+            final long t0 = android.os.SystemClock.elapsedRealtime();
+            for (ImageFrame frame : frames) {
+                try { frame.close(); } catch (RuntimeException e) { Log.w(TAG, "frame release: " + e); }
+            }
+            Log.i(TAG, "shot frames released off the critical path: " + frames.size() + " frames, " + (total >> 20) + " MB in "
+                    + (android.os.SystemClock.elapsedRealtime() - t0) + " ms");
+        });
+    }
+
+    /** P236: one thread for the frames' release (in order, never two shots' at once). */
+    private static final java.util.concurrent.ExecutorService RELEASE = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        final Thread t = new Thread(r, "scam-frame-release");
+        t.setPriority(Thread.MIN_PRIORITY + 1);
+        return t;
+    });
+
     /** P158: a milestone of this shot (0..1) for the ring round the gallery card; never stops the processing. */
     /** P162: cuts the shot's frames (RawCrop) and keeps what it found for the settings' picture; a failure keeps them whole. */
     private RawCrop.Shot cropFrames() {
@@ -585,12 +620,22 @@ public class ScamProcessor extends ProcessorBase {
         ImageFrame ref=images.get(0);
         ByteBuffer output=ref.buffer;ref.buffer=null;
         if ((long) width * height > 16_000_000L) output = outOfArena(output);
-        for(ImageFrame frame:images)frame.close();
+        com.particlesdevs.photoncamera.processing.ShotTimeline.mark("ref_copy"); // P236
+        releaseFrames(images);
         ByteBuffer scamMergedDng=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDng;
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDng=null;
         Log.d(TAG, "Alignment elapsed:" + (System.currentTimeMillis() - startTime) + " ms");
         if ((saveRAW >= 1) && alignAlgorithm != 2) {
             boolean imageSaved = false;
+            // P243: the DNG carries the JPEG's white balance and colour matrix (DngColour); scam_dev dng_colour_jpeg 0: the camera's
+            // dual-illuminant profile as before
+            if (PreferenceKeys.scamDevSwitch("dng_colour_jpeg", true) && processingParameters.CCT != null) {
+                processingParameters.dngColour = com.particlesdevs.photoncamera.processing.color.DngColour.jpegProfile(
+                        processingParameters.sensorToProPhoto, processingParameters.CCT.matrix, processingParameters.whitePoint,
+                        processingParameters.sceneCct);
+                if (processingParameters.dngColour == null)
+                    Log.w(TAG, "DNG colour: the JPEG's matrices are not usable, the camera's profile is written");
+            }
             try {
             if (scamMergedDng != null) {
                 // The whole burst's merge (the N frames, the bracketed and the ultrashort ones; nothing else, no denoise),
@@ -653,6 +698,8 @@ public class ScamProcessor extends ProcessorBase {
             } catch (RuntimeException | OutOfMemoryError dngError) {
                 // P27: the DNG is optional, the JPEG is not.
                 Log.e(TAG, "DNG not saved: " + stackTrace(dngError));
+            } finally {
+                processingParameters.dngColour = null; // P243: only these DNG writes
             }
             processingEventsListener.notifyImageSavedStatus(imageSaved, dngFile);
             if (saveRAW == 2) {
@@ -889,7 +936,8 @@ public class ScamProcessor extends ProcessorBase {
      */
     private static void applyMosaicNeutral(Parameters p, ImageFrame ref, CaptureResult meta, java.util.List<ImageFrame> frames,
                                            CameraCharacteristics characteristics, boolean aspect4x3) {
-        if (!PreferenceKeys.scamDevSwitch("mosaic_awb", true) || p.rawBinning > 1 || ref == null || ref.buffer == null
+        if (!PreferenceKeys.scamDevSwitch("mosaic_awb", true) || !PreferenceKeys.mosaicWbCorrections() // P223
+                || p.rawBinning > 1 || ref == null || ref.buffer == null
                 || ref.buffer.capacity() < (long) ref.width * ref.height * 2) return;
         int block = com.particlesdevs.photoncamera.processing.MosaicBlockStore.blockForShot(0);
         if (block <= 0) {

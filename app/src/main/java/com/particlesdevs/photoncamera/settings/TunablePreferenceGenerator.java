@@ -95,6 +95,9 @@ public class TunablePreferenceGenerator {
                 }
             }
             
+            // SIMPLE_UI §4 «Съёмка»: «Не зеркалить селфи» moved up from the RAW-metadata rows
+            moveTo(preferenceScreen, ShadeCatalog.MIRROR, "root_shoot");
+
             Log.d(TAG, "=== generatePreferences COMPLETE - Generated preferences for " + TUNABLE_CLASSES.size() + " classes ===");
         } catch (Exception e) {
             Log.e(TAG, "ERROR in generatePreferences: " + e.getMessage(), e);
@@ -102,6 +105,20 @@ public class TunablePreferenceGenerator {
         }
     }
     
+    /** A generated row moved to another group (its category left behind goes when it is empty). */
+    static void moveTo(PreferenceScreen screen, String key, String groupKey) {
+        androidx.preference.Preference p = screen.findPreference(key);
+        androidx.preference.PreferenceGroup target = screen.findPreference(groupKey);
+        if (p == null || target == null) return;
+        androidx.preference.PreferenceGroup from = p.getParent();
+        if (from == target) return;
+        if (from != null) from.removePreference(p);
+        p.setOrder(androidx.preference.Preference.DEFAULT_ORDER);
+        target.addPreference(p);
+        if (from instanceof PreferenceCategory && from.getPreferenceCount() == 0 && from.getParent() != null)
+            from.getParent().removePreference(from);
+    }
+
     private static String destination(String className) {
         switch (className) {
             case "Parameters": return "expert_sensor_screen";
@@ -384,7 +401,7 @@ public class TunablePreferenceGenerator {
             case "Parameters": return Lang.t("Параметры", "Parameters");
             case "Use Dynamic Black Level": return Lang.t("Динамический уровень чёрного", "Dynamic black level");
             case "Use Dynamic White Level": return Lang.t("Динамический уровень белого", "Dynamic white level");
-            case "Disable front mirror": return Lang.t("Не зеркалить фронтальную камеру", "Don’t mirror the front camera");
+            case "Disable front mirror": return Lang.t("Не зеркалить селфи", "Don’t mirror selfies");
             default: return text;
         }
     }

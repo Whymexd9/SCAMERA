@@ -108,6 +108,7 @@ public class SettingsManager {
         // The old quick buttons and favourites become the shade's tiles before their keys become obsolete.
         SettingsMigration.migrateShadeTiles(mDefaultPreferences);
         SettingsMigration.migrateSimpleUiTiles(mDefaultPreferences);
+        SettingsMigration.migrateOutputTile(mDefaultPreferences);
         // After the route migration, which reads the former route switches before they become obsolete.
         SettingsMigration.removeObsolete(mContext, mDefaultPreferences);
     }

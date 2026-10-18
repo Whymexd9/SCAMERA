@@ -48,6 +48,9 @@ public interface CameraUIView {
 
     void setCaptureProgressMax(int max);
 
+    /** P234: the capture ring at {@code progress} frames (a long ZSL series: the ring's frames are taken already). */
+    void setCaptureProgress(int progress);
+
     /**
      * Setter for CameraUIEventsListener
      *

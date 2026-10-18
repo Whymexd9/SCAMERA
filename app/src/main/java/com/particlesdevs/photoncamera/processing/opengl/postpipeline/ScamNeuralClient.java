@@ -429,6 +429,10 @@ public final class ScamNeuralClient {
                 java.util.Collections.addAll(args,"--scam-capture",dirPath,scamOut!=null?"fd:3":input.getAbsolutePath(),
                         scamOut!=null?"fd:4":output.getAbsolutePath());
                 log.accept(Lang.t("WORKER: отдельный процесс приложения (без root)","WORKER: separate app process (no root)"));
+                // P242 (speed-ux B6): the merge's GPU priority of this job, for the A/B (with the thermal state, P238)
+                final boolean normalGpu=com.particlesdevs.photoncamera.util.WorkerEnv.gpuNormalPriority();
+                log.accept("WORKER GPU priority: "+(normalGpu?"normal (scam_dev worker_gpu_normal_priority 1)":"low (EGL_IMG_context_priority, P57 default)"));
+                com.particlesdevs.photoncamera.processing.ShotTimeline.note("w_gpu_priority",normalGpu?"normal":"low");
                 process=com.particlesdevs.photoncamera.util.WorkerSpawn.start(context,args,
                         com.particlesdevs.photoncamera.util.WorkerSpawn.environment(context,dir),fds);
                 if(goPipe!=null){

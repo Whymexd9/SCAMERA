@@ -286,9 +286,10 @@ public class HybridPlanTest {
         assertEquals("a Bayer FULLRES stream (the HAL's remosaic) whatever the switch", 1, HybridPlan.fullResLongFrames(true, 1, false));
         assertEquals(1, HybridPlan.fullResLongFrames(true, 1, true));
         assertEquals("unknown block, remosaic on (the Pixel's max-resolution session)", 1, HybridPlan.fullResLongFrames(true, 0, true));
-        assertEquals("binned FULLRES: all", Integer.MAX_VALUE, HybridPlan.fullResLongFrames(true, 2, false));
-        assertEquals(Integer.MAX_VALUE, HybridPlan.fullResLongFrames(true, 4, false));
-        assertEquals("unknown block, remosaic off: may be binned", Integer.MAX_VALUE, HybridPlan.fullResLongFrames(true, 0, false));
+        // P217: a binned FULLRES burst («Наш ремозаик» off) takes one long frame too (the owner's «для фулреза 1 длинный достаточно»)
+        assertEquals("binned FULLRES: one long frame", 1, HybridPlan.fullResLongFrames(true, 2, false));
+        assertEquals(1, HybridPlan.fullResLongFrames(true, 4, false));
+        assertEquals("unknown block, remosaic off (P217: one long frame as well)", 1, HybridPlan.fullResLongFrames(true, 0, false));
         assertEquals("12 MP", Integer.MAX_VALUE, HybridPlan.fullResLongFrames(false, 1, true));
         assertEquals(Integer.MAX_VALUE, HybridPlan.fullResLongFrames(false, 2, false));
         // the app defaults (P68): 3 ultrashort + 3 bracketed -> 3 + 1, the first bracketed request kept, the order unchanged

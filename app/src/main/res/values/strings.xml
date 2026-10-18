@@ -1,7 +1,7 @@
 <resources>
     <!-- UI language marker read by util/Lang.java: "ru" only in values-ru. -->
     <string name="ui_language">en</string>
-    <string name="version_summary" translatable="false">v%1$s\n%2$s</string>
+    <string name="version_summary" translatable="false">v%1$s · %3$s\n%2$s</string>
     <string name="backup_file_name" translatable="false">SCAMERA_%1$s</string>
     <string name="app_name" translatable="false">SCAMERA</string>
     <string name="gallery_name" translatable="false">SGallery</string>
@@ -144,5 +144,9 @@
     <string name="full_res_off_toast">Full resolution off</string>
     <string name="prefs_developer_settings_screen_title">For developers</string>
     <string name="prefs_developer_settings_screen_summary">Hidden scam_dev.txt switches for experiments and debugging</string>
+    <!-- P240: the overlay while the camera is brought back after an error -->
+    <string name="camera_restarting">Camera is restarting…</string>
+    <!-- P241: the viewfinder badge while diagnostics dumps are on -->
+    <string name="diag_badge" translatable="false">DIAG</string>
 </resources>
 

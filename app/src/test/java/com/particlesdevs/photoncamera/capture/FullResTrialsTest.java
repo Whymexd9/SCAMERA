@@ -207,7 +207,9 @@ public class FullResTrialsTest {
         assertEquals("FULLRES 50 MP is off: modes 0, 4 — do not work.", VivoNativeFullRes.status(prefs, X300, "4", A, false));
         // the telephoto has no hardware-remosaic row: no hint
         VivoNativeFullRes.noteRow(prefs, X300, "5", false, 1, 1, NO_FRAME, A);
-        assertEquals("FULLRES 50 MP: mode 1 — no frame; next mode 14.", VivoNativeFullRes.status(prefs, X300, "5", A, false));
+        // P229: the tele's own mosaic tries 1 / 27; row 14 is its hardware-remosaic row (rawr)
+        assertEquals("FULLRES 50 MP: mode 1 — no frame; next mode 27.\nMode 14 is the camera's own hardware remosaic: with “FULLRES: hardware remosaic”"
+                + " (Shooting) 50 MP shots are taken by it.", VivoNativeFullRes.status(prefs, X300, "5", A, false));
         // the X200 Ultra's rows are measured: no trials, no status
         prefs.edit().putInt("module_fullres_rowfail_5_200", 1).commit();
         assertNull(VivoNativeFullRes.status(prefs, X200, "5", A, false));
@@ -291,6 +293,7 @@ public class FullResTrialsTest {
                         + "Режим 0 — аппаратный ремозаик самой камеры: с «FULLRES: аппаратный ремозаик» (Съёмка) 50 Мп снимаются через него.",
                 VivoNativeFullRes.status(prefs, X100, "2", A, false));
         VivoNativeFullRes.noteRow(prefs, X300, "5", false, 1, 1, "camera error 4", A);
-        assertEquals("FULLRES 50 Мп: режим 1 — камера упала; дальше режим 14.", VivoNativeFullRes.status(prefs, X300, "5", A, false));
+        assertEquals("FULLRES 50 Мп: режим 1 — камера упала; дальше режим 27.\nРежим 14 — аппаратный ремозаик самой камеры: с «FULLRES: аппаратный ремозаик»"
+                + " (Съёмка) 50 Мп снимаются через него.", VivoNativeFullRes.status(prefs, X300, "5", A, false));
     }
 }

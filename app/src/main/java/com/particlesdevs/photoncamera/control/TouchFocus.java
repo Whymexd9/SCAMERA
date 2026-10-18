@@ -201,7 +201,72 @@ public class TouchFocus {
         resetFocusCircle();
     }
 
+    /**
+     * SIMPLE_UI §1: a long press locks the focus and the exposure at a point (the focus sequence there, then AE lock once the
+     * metering settled) until a tap elsewhere, a reset or a new session; the camera screen shows the «Закреплено» pill.
+     */
+    static final long LOCK_AE_SETTLE_MS = 600;
+
+    public interface LockListener {
+        void locked(boolean on);
+    }
+
+    @Nullable private LockListener lockListener;
+    private volatile boolean aeAfLocked;
+    private final Runnable lockExposure = this::lockExposure;
+
+    public void setLockListener(@Nullable LockListener listener) {
+        lockListener = listener;
+    }
+
+    public boolean isLocked() {
+        return aeAfLocked;
+    }
+
+    /** Focus and exposure locked at view point (fx, fy). */
+    public void lockAt(float fx, float fy) {
+        processTouchToFocus(fx, fy);
+        if (computeTapRegion(fx, fy) == null) return;
+        aeAfLocked = true;
+        // the ring stays (dimmed) while the lock holds
+        focusCircleView.removeCallbacks(hideFocusCircleRunnable);
+        focusCircleView.removeCallbacks(dimSplitRunnable);
+        focusCircleView.postDelayed(dimSplitRunnable, AUTO_HIDE_DELAY_MS);
+        focusCircleView.removeCallbacks(lockExposure);
+        focusCircleView.postDelayed(lockExposure, LOCK_AE_SETTLE_MS);
+        notifyLock(true);
+        Log.d(TAG, "focus and exposure locked at " + fx + "," + fy);
+    }
+
+    private void lockExposure() {
+        if (!aeAfLocked) return;
+        synchronized (seqLock) {
+            if (CaptureController.burst) return;
+            CaptureRequest.Builder builder = captureController.mPreviewRequestBuilder;
+            if (builder == null) return;
+            builder.set(CaptureRequest.CONTROL_AE_LOCK, true);
+            captureController.rebuildPreviewBuilder();
+        }
+    }
+
+    /** The lock goes (a tap elsewhere, a reset): AE unlocked in the builder; the caller's sequence / reset rebuilds it. */
+    private void dropLock() {
+        if (!aeAfLocked) return;
+        aeAfLocked = false;
+        focusCircleView.removeCallbacks(lockExposure);
+        CaptureRequest.Builder builder = captureController.mPreviewRequestBuilder;
+        if (builder != null) builder.set(CaptureRequest.CONTROL_AE_LOCK, false);
+        notifyLock(false);
+        Log.d(TAG, "focus and exposure lock released");
+    }
+
+    private void notifyLock(boolean on) {
+        LockListener l = lockListener;
+        if (l != null) focusCircleView.post(() -> l.locked(on));
+    }
+
     public void processTouchToFocus(float fx, float fy) {
+        dropLock();
         final boolean split = split();
         MeteringRectangle region = computeTapRegion(fx, fy, split ? SPLIT_RING_SCALE : 1f);
         MeteringRectangle aeRegion = split ? computeTapRegion(fx, fy, SPLIT_SQUARE_SCALE) : region;
@@ -1019,6 +1084,7 @@ public class TouchFocus {
         focusCircleView.post(hideFocusCircleRunnable);
         focusCircleView.post(this::hideExposureSquare);
         lastAeRegion = null;
+        dropLock();
         resetAutoFocus();
     }
 

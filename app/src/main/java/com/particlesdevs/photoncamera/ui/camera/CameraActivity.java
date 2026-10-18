@@ -41,6 +41,13 @@ import static android.os.Build.VERSION.SDK_INT;
 
 
 public class CameraActivity extends BaseActivity {
+    /** P239 (speed-ux D1): a touch-down or key on the camera screen wakes the resting FULLRES ring (FullResRingPolicy). */
+    @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        com.particlesdevs.photoncamera.capture.FullResRingPolicy.touched(android.os.SystemClock.elapsedRealtime());
+    }
+
 
     private static final String STATE_PERMISSION_PLAN = "permission_plan";
     private static final String STATE_PERMISSION_PENDING = "permission_pending";

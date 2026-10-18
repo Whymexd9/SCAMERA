@@ -70,4 +70,27 @@ public class CameraSoundsTest {
         assertFalse(new File("src/main/res/raw/sound_end.wav").exists());
         assertEquals(1, s.split("pref_timer_sound_key", -1).length - 1);
     }
+
+    /**
+     * P247: where MP3 cannot be decoded (the X200 Ultra's CTS package) the same two sounds play from PCM - 16-bit mono at
+     * PCM_RATE, the shutter's 0.13 s and the timer's 10.7 s countdown - so both switches work there too.
+     */
+    @Test public void thePcmCopiesOfBothSounds() throws Exception {
+        byte[] shutter = Files.readAllBytes(new File("src/main/res/raw/sound_shutter_pcm.raw").toPath());
+        byte[] timer = Files.readAllBytes(new File("src/main/res/raw/sound_timer_pcm.raw").toPath());
+        assertEquals(0, shutter.length % 2);
+        assertEquals(0, timer.length % 2);
+        float shutterS = shutter.length / 2f / CameraSounds.PCM_RATE, timerS = timer.length / 2f / CameraSounds.PCM_RATE;
+        assertTrue("shutter " + shutterS + " s", shutterS > 0.1f && shutterS < 0.2f);
+        assertTrue("timer " + timerS + " s", timerS > 10.5f && timerS < 11f);
+        short[] s = CameraSounds.samples(shutter);
+        int peak = 0;
+        for (short v : s) peak = Math.max(peak, Math.abs(v));
+        assertTrue("an audible shutter: peak " + peak, peak > 10000);
+        assertEquals("little endian", (short) 0x8001, CameraSounds.samples(new byte[]{1, (byte) 0x80})[0]);
+        // no synthesized beeps any more
+        String code = new String(Files.readAllBytes(new File("src/main/java/com/particlesdevs/photoncamera/ui/camera/CameraSounds.java").toPath()), StandardCharsets.UTF_8);
+        assertFalse(code.contains("ToneGenerator"));
+        assertTrue(code.contains("R.raw.sound_shutter_pcm") && code.contains("R.raw.sound_timer_pcm"));
+    }
 }

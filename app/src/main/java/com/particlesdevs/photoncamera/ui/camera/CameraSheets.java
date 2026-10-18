@@ -333,7 +333,10 @@ public final class CameraSheets {
             texts.setOrientation(LinearLayout.VERTICAL);
             TextView t = line(c, rows[i][0], 14.5f, ShadeStyle.TEXT);
             texts.addView(t);
+            // P217: without our remosaic a FULLRES burst is binned - the photo comes out at the sensor's 12 MP
+            final boolean binned = i > 0 && available && !off && !ourRemosaic();
             texts.addView(line(c, off ? Lang.t(c, "Режимы не сработали · подробнее", "Its modes failed · details")
+                    : binned ? Lang.t(c, "«Наш ремозаик» выключен: снимок выйдет 12 Мп", "«Our remosaic» is off: the photo comes out at 12 MP")
                     : available ? rows[i][1] : Lang.t(c, "Нет на этом объективе", "Not on this lens"), 12.5f, ShadeStyle.MUTED));
             row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             row.setOnClickListener(v -> {
@@ -351,6 +354,15 @@ public final class CameraSheets {
             card.addView(row);
         }
         return card;
+    }
+
+    /** P217: «Наш ремозаик» (the hybrid's mosaic remosaic) is on; true when the settings cannot be read. */
+    static boolean ourRemosaic() {
+        try {
+            return com.particlesdevs.photoncamera.settings.PreferenceKeys.isHybridMosaicRemosaic();
+        } catch (RuntimeException e) {
+            return true;
+        }
     }
 
     /** The concept's .radio: a 22dp ring (2dp), the accent ring and a 10dp dot when on. */

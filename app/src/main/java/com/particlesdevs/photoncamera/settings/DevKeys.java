@@ -67,6 +67,9 @@ public final class DevKeys {
         List<Key> k = new ArrayList<>();
         // capture and session
         k.add(s(cap, "zsl_memfd_ring", true, Lang.t("ZSL-кольцо в общей памяти (memfd): кадры копируются сразу, камере возвращаются буферы. Выкл — старое кольцо из буферов камеры", "ZSL ring in shared memory (memfd): frames copied on arrival, buffers go back to the camera. Off: the old ring of camera buffers")));
+        k.add(n(cap, "vf_min_fps", String.valueOf(com.particlesdevs.photoncamera.capture.ViewfinderFps.DEFAULT_FLOOR),
+                Lang.t("Видоискатель не медленнее N к/с (автоматический диапазон AE; 0 — как разрешает камера)",
+                        "Viewfinder not slower than N fps (the automatic AE range; 0: as low as the camera allows)")));
         k.add(n(cap, "zsl_reader", "20", Lang.t("Буферов RAW-ридера при memfd-кольце (не меньше 16)", "RAW reader buffers with the memfd ring (at least 16)")));
         k.add(s(cap, "zsl_steadiest", true, Lang.t("Без OIS: из кольца берутся самые устойчивые по гироскопу кадры. Выкл — самые новые", "Without OIS: the steadiest ring frames by the gyro. Off: the newest")));
         k.add(n(cap, "ae_restore", "1", Lang.t("Кадр после серии, возвращающий экспозицию превью: 0 — нет, 1 — ручной кадр, 2 — AE ON + lock", "Frame after the series restoring the preview exposure: 0 none, 1 manual frame, 2 AE on + lock")));
@@ -241,6 +244,29 @@ public final class DevKeys {
         // P222: the stills a native FULLRES series keeps in flight (FullResInFlight)
         k.add(n(cap, "fullres_in_flight", null, Lang.t("FULLRES: сколько кадров серии отправлено камере одновременно (1–8). По умолчанию 6 до 100 Мп, 3 выше 100 Мп и после сбоя серии на этой камере и размере; 3 — как до P222. SDK-путь X200 Ultra всегда по одному",
                 "FULLRES: the stills of a series sent to the camera at once (1-8). Default 6 up to 100 MP, 3 above 100 MP and after a failed series on this camera and size; 3 = as before P222. The X200 Ultra's SDK route always one at a time")));
+        // P239: the native 50 MP ring's rate and rest (FullResRingPolicy)
+        k.add(n(cap, "fullres_ring_fps", "12", Lang.t("FULLRES 50 Мп: сколько кадров в секунду копируется в ZSL-кольцо (1–30). 0 — каждый кадр, как до P239",
+                "FULLRES 50 MP: frames a second copied into the ZSL ring (1-30). 0: every frame, as before P239")));
+        k.add(n(cap, "fullres_ring_idle_s", "10", Lang.t("FULLRES 50 Мп: кольцо отдыхает, если столько секунд нет касаний и телефон неподвижен (касание будит). 0 — не отдыхает",
+                "FULLRES 50 MP: the ring rests after this many seconds without a touch and with the phone still (a touch wakes it). 0: never rests")));
+        // P238: the hot-phone policy (ThermalPolicy)
+        k.add(s(cap, "thermal_policy", true, Lang.t("Телефон горячий (статус SEVERE): RAW-видоискатель не чаще 15 кадров/с, кольцо FULLRES на паузе, предупреждение при снимке. Выкл — только запись в лог",
+                "Hot phone (status SEVERE): the RAW viewfinder at most 15 fps, the FULLRES ring paused, a notice at the shot. Off: only logged")));
+        // P237: the idle compile of the post-pipeline programs missing from the disk cache (GLProg.warmUp)
+        k.add(s(post, "gl_warm_up", true, Lang.t("Шейдеры обработки, которых нет в кэше на диске (после обновления драйвера, вытеснения), компилируются в фоне через 4 с после открытия камеры, пока она не снимает. Выкл — только при снимке, как до P237",
+                "Processing shaders missing from the disk cache (after a driver update, eviction) are compiled in the background 4 s after the camera opens, while it is idle. Off: only at a shot, as before P237")));
+        // P242: the merge worker's GPU priority (A/B, WorkerSpawn.environment)
+        k.add(s(merge, "worker_gpu_normal_priority", false, Lang.t("Склейка в воркере с обычным приоритетом GPU (сравнение A/B: может склеивать быстрее, видоискатель может подтормаживать). Выкл — низкий приоритет, как с P57",
+                "The merge worker at the normal GPU priority (A/B: the merge may run faster, the viewfinder may stutter). Off: the low priority, as since P57")));
+        // P243: the DNG's colour tags from the JPEG's render (DngColour)
+        k.add(s(post, "dng_colour_jpeg", true, Lang.t("DNG открывается в Lightroom/ACR в цвете JPEG: в DNG записаны баланс белого и цветовая матрица, с которыми сделан JPEG. Выкл — общий профиль камеры (два иллюминанта), как до P243",
+                "The DNG opens in Lightroom / ACR in the JPEG's colour: it carries the white balance and colour matrix the JPEG was made with. Off: the camera's generic two-illuminant profile, as before P243")));
+        // P236: the shot's frames closed off the critical path after the merge (ScamProcessor.releaseFrames)
+        k.add(s(post, "release_async", true, Lang.t("После склейки кадры снимка освобождаются в фоне, обработка начинается сразу (не для 200 Мп). Выкл — сначала освобождение (~0.4 с на 50 Мп), как до P236",
+                "After the merge the shot's frames are freed in the background and the processing starts at once (not for 200 MP). Off: freed first (~0.4 s at 50 MP), as before P236")));
+        // P235: the shot arena of a FULLRES burst made at the press (RingArenaMove)
+        k.add(s(cap, "fullres_press_arena", true, Lang.t("FULLRES 50 Мп: общий буфер снимка создаётся при нажатии — кадры серии пишутся сразу в него, кадры кольца переносятся, пока идёт серия. Выкл — перенос всей серии перед склейкой (как до P235)",
+                "FULLRES 50 MP: the shot's shared buffer is made at the press - the stills go straight into it, the ring frames move in while the series runs. Off: the whole burst moved before the merge (as before P235)")));
         k.add(s(cap, "oppo_tele_access", true, Lang.t("OPPO Find X7 Ultra: телевики 3× и 6× через пакет Oplus",
                 "OPPO Find X7 Ultra: the 3x and 6x telephotos through the Oplus package")));
         k.add(s(vivo, "vivo_fullres_x100u", true, Lang.t("X100 Ultra: FULLRES без аппаратного ремозаика (проверяется)", "X100 Ultra: FULLRES without hardware remosaic (being tested)")));

@@ -30,8 +30,9 @@ import java.util.List;
 
 /**
  * SIMPLE_UI §5 (the concept's viewer): over a dark gradient at the top the back disc and two lines - when («Сегодня,
- * 11:17») and with what («24 мм · 12 Мп · JPEG»); at the bottom one bar of five labelled buttons «Поделиться · Изменить ·
- * Сравнить · Сведения · Ещё», where «Ещё» opens a small menu with «HDR: вкл. / выкл.» (Ultra HDR photos) and «Удалить».
+ * 11:17») and with what («24 мм · 12 Мп · JPEG»), an Ultra HDR photo's «HDR: вкл. / выкл.» pill at the right; at the bottom one
+ * bar of five labelled buttons «Поделиться · Изменить · Сравнить · Удалить · Сведения» (owner, 2026-10-18: «вместо сведения
+ * поставь кнопку удалить, а вместо ещё сведения» - no «Ещё» menu any more).
  * The filmstrip of P59b stays built for the swipe position but is not shown (the concept has none). Built here so the
  * fragment and the 360dp layout test share them.
  */
@@ -45,11 +46,7 @@ public final class ViewerChrome {
     public final RecyclerView strip;
     public final Filmstrip filmstrip;
     public final LinearLayout buttons;
-    public final View share, edit, compare, info, more;
-    /** «Ещё»'s menu: its HDR row (Ultra HDR photos only) and «Удалить». */
-    public final LinearLayout menu;
-    public final TextView menuHdr, delete;
-    @Nullable private android.widget.PopupWindow popup;
+    public final View share, edit, compare, delete, info;
 
     public interface Actions {
         void back();
@@ -94,10 +91,22 @@ public final class ViewerChrome {
         LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         mp.leftMargin = GalleryUi.dp(c, 10);
         row.addView(meta, mp);
-        top.addView(row);
-        // the P59b pill is kept for the fragment's state; the switch lives in «Ещё» now
-        hdrPill = GalleryUi.text(c, "", 13, accent);
+        // the Ultra HDR switch: a pill at the right of the top row (Ultra HDR photos only)
+        hdrPill = GalleryUi.text(c, "", 12.5f, accent);
+        hdrPill.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        hdrPill.setGravity(Gravity.CENTER);
+        hdrPill.setMinHeight(GalleryUi.dp(c, 32));
+        hdrPill.setPadding(GalleryUi.dp(c, 12), 0, GalleryUi.dp(c, 12), 0);
+        hdrPill.setBackground(GalleryUi.pressable(GalleryUi.round(c, GalleryUi.CARD, GalleryUi.LINE, 16)));
+        hdrPill.setClickable(true);
+        hdrPill.setFocusable(true);
+        hdrPill.setOnClickListener(v -> a.hdr());
+        hdrPill.setTag("viewer_hdr");
         hdrPill.setVisibility(View.GONE);
+        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hp.leftMargin = GalleryUi.dp(c, 8);
+        row.addView(hdrPill, hp);
+        top.addView(row);
 
         bottom = new LinearLayout(c);
         bottom.setOrientation(LinearLayout.VERTICAL);
@@ -116,26 +125,12 @@ public final class ViewerChrome {
         edit = barButton(c, R.drawable.ui_ic_edit, Lang.t("Изменить", "Edit"), v -> a.edit());
         compare = barButton(c, R.drawable.ui_ic_compare, Lang.t("Сравнить", "Compare"), v -> a.compare());
         compare.setContentDescription(Lang.t("Сравнить с соседним", "Compare with the next photo"));
+        delete = barButton(c, R.drawable.ui_ic_trash, Lang.t("Удалить", "Delete"), GalleryUi.WARN, v -> a.delete());
+        delete.setTag("viewer_delete");
         info = barButton(c, R.drawable.ui_ic_info, Lang.t("Сведения", "Details"), v -> a.info());
-        more = barButton(c, R.drawable.ui_ic_more, Lang.t("Ещё", "More"), v -> toggleMenu());
-        for (View b : new View[]{share, edit, compare, info, more})
+        for (View b : new View[]{share, edit, compare, delete, info})
             buttons.addView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         bottom.addView(buttons, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        // «Ещё»: the concept's .menu card
-        menu = new LinearLayout(c);
-        menu.setOrientation(LinearLayout.VERTICAL);
-        menu.setBackground(GalleryUi.round(c, GalleryUi.CARD, GalleryUi.LINE, 18));
-        int p6 = GalleryUi.dp(c, 6);
-        menu.setPadding(p6, p6, p6, p6);
-        menu.setMinimumWidth(GalleryUi.dp(c, 210));
-        menu.setTag("viewer_menu");
-        menuHdr = menuRow(c, R.drawable.ui_ic_hdr, "", GalleryUi.TEXT, v -> { dismissMenu(); a.hdr(); });
-        menuHdr.setTag("viewer_menu_hdr");
-        menuHdr.setVisibility(View.GONE);
-        delete = menuRow(c, R.drawable.ui_ic_trash, Lang.t("Удалить", "Delete"), GalleryUi.WARN, v -> { dismissMenu(); a.delete(); });
-        delete.setTag("viewer_menu_delete");
-        menu.addView(menuHdr);
-        menu.addView(delete);
     }
 
     /** The concept's .back: a 44dp card disc with the line icon in the text colour. */
@@ -156,6 +151,11 @@ public final class ViewerChrome {
 
     /** A button of the concept's .vbar: the line icon over a 10sp label, both in the text colour. */
     private static View barButton(Context c, int icon, String label, View.OnClickListener click) {
+        return barButton(c, icon, label, GalleryUi.TEXT, click);
+    }
+
+    /** {@link #barButton(Context, int, String, View.OnClickListener)} in {@code color} («Удалить»: the warning colour). */
+    private static View barButton(Context c, int icon, String label, int color, View.OnClickListener click) {
         LinearLayout b = new LinearLayout(c);
         b.setOrientation(LinearLayout.VERTICAL);
         b.setGravity(Gravity.CENTER);
@@ -165,59 +165,13 @@ public final class ViewerChrome {
         b.setFocusable(true);
         b.setOnClickListener(click);
         b.setContentDescription(label);
-        b.addView(GalleryUi.icon(c, icon, GalleryUi.TEXT, 22));
-        TextView t = GalleryUi.fitText(c, label, 10, GalleryUi.TEXT);
+        b.addView(GalleryUi.icon(c, icon, color, 22));
+        TextView t = GalleryUi.fitText(c, label, 10, color);
         t.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.topMargin = GalleryUi.dp(c, 3);
         b.addView(t, lp);
         return b;
-    }
-
-    private static TextView menuRow(Context c, int icon, String label, int color, View.OnClickListener click) {
-        TextView t = GalleryUi.text(c, label, 14, color);
-        t.setGravity(Gravity.CENTER_VERTICAL);
-        t.setMinHeight(GalleryUi.dp(c, 44));
-        t.setPadding(GalleryUi.dp(c, 12), 0, GalleryUi.dp(c, 12), 0);
-        t.setCompoundDrawablePadding(GalleryUi.dp(c, 10));
-        android.graphics.drawable.Drawable d = c.getDrawable(icon);
-        if (d != null) {
-            d = d.mutate();
-            d.setTint(color);
-            int s = GalleryUi.dp(c, 20);
-            d.setBounds(0, 0, s, s);
-        }
-        t.setCompoundDrawables(d, null, null, null);
-        t.setBackground(GalleryUi.pressable(GalleryUi.round(c, android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT, 12)));
-        t.setClickable(true);
-        t.setFocusable(true);
-        t.setOnClickListener(click);
-        return t;
-    }
-
-    /** «Ещё»: the menu above the bar's right end, or closed again. */
-    public void toggleMenu() {
-        if (popup != null && popup.isShowing()) {
-            dismissMenu();
-            return;
-        }
-        Context c = more.getContext();
-        if (menu.getParent() instanceof ViewGroup) ((ViewGroup) menu.getParent()).removeView(menu);
-        popup = new android.widget.PopupWindow(menu, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true);
-        popup.setElevation(GalleryUi.dp(c, 12));
-        popup.setOutsideTouchable(true);
-        menu.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
-        popup.showAsDropDown(more, more.getWidth() - menu.getMeasuredWidth() - GalleryUi.dp(c, 8),
-                -(more.getHeight() + menu.getMeasuredHeight() + GalleryUi.dp(c, 24)));
-    }
-
-    public boolean menuShown() {
-        return popup != null && popup.isShowing();
-    }
-
-    public void dismissMenu() {
-        if (popup != null) popup.dismiss();
-        popup = null;
     }
 
     /** The two lines at the top; {@code route} and {@code format} stay for the callers (the format is in {@code sub}). */
@@ -226,11 +180,13 @@ public final class ViewerChrome {
         metaSub.setText(sub);
     }
 
-    /** «HDR: вкл. / выкл.» in «Ещё» for an Ultra HDR photo; hidden otherwise. */
+    /** «HDR: вкл. / выкл.» pill at the top right for an Ultra HDR photo; hidden otherwise. */
     public void bindHdr(boolean ultraHdr, boolean on) {
-        menuHdr.setVisibility(ultraHdr ? View.VISIBLE : View.GONE);
-        menuHdr.setText(on ? Lang.t("HDR: вкл.", "HDR: on") : Lang.t("HDR: выкл.", "HDR: off"));
-        menuHdr.setStateDescription(on ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
+        hdrPill.setVisibility(ultraHdr ? View.VISIBLE : View.GONE);
+        hdrPill.setText(on ? Lang.t("HDR: вкл.", "HDR: on") : Lang.t("HDR: выкл.", "HDR: off"));
+        hdrPill.setTextColor(on ? GalleryUi.accent(hdrPill.getContext()) : GalleryUi.MUTED);
+        hdrPill.setContentDescription("Ultra HDR");
+        hdrPill.setStateDescription(on ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
     }
 
     /** Keeps the current thumbnail centred. */

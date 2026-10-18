@@ -145,15 +145,36 @@ public class Swipe {
         }
     }
 
-    /** P42: long press on the viewfinder -> tracking autofocus (auto focus only, as the tap focus). */
+    /**
+     * P42: long press on the viewfinder -> tracking autofocus when «Следить за объектом» is on long press; otherwise
+     * (SIMPLE_UI §1) it locks the focus and the exposure there («Закреплено»), a tap elsewhere releases them. Auto focus only,
+     * as the tap focus.
+     */
     private void startTracking(MotionEvent event) {
-        com.particlesdevs.photoncamera.control.subject.SubjectFocus subject = cameraFragment.getSubjectFocus();
-        if (subject == null) return;
         if (manualModeConsole.getManualParamModel().getCurrentFocusValue() != ManualParamModel.FOCUS_AUTO) return;
-        if (subject.onLongPress(event.getRawX(), event.getRawY())) {
+        com.particlesdevs.photoncamera.control.subject.SubjectFocus subject = cameraFragment.getSubjectFocus();
+        boolean done = subject != null && subject.onLongPress(event.getRawX(), event.getRawY());
+        if (!done) done = lockFocusAndExposure(event);
+        if (done) {
             android.view.View holder = cameraFragment.findViewById(R.id.textureHolder);
             if (holder != null) holder.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
         }
+    }
+
+    /** SIMPLE_UI §1: the long press's lock, at the same point mapping as a tap. */
+    private boolean lockFocusAndExposure(MotionEvent event) {
+        TouchFocus touchFocus = cameraFragment.getTouchFocus();
+        if (touchFocus == null) return false;
+        ConstraintLayout camera_container = cameraFragment.findViewById(R.id.camera_container);
+        FrameLayout layout_viewfinder = cameraFragment.findViewById(R.id.layout_viewfinder);
+        if (camera_container == null || layout_viewfinder == null) return false;
+        RectF viewfinderRect = new RectF(layout_viewfinder.getLeft(), camera_container.getY(), layout_viewfinder.getRight(),
+                layout_viewfinder.getBottom() + camera_container.getY());
+        if (!viewfinderRect.contains(event.getX(), event.getY())) return false;
+        com.particlesdevs.photoncamera.control.subject.SubjectFocus subject = cameraFragment.getSubjectFocus();
+        if (subject != null) subject.stopTracking(false);
+        touchFocus.lockAt(event.getX() - camera_container.getLeft(), event.getY() - camera_container.getTop());
+        return true;
     }
 
     /**

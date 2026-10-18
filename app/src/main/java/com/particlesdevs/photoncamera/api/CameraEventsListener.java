@@ -27,6 +27,12 @@ public abstract class CameraEventsListener implements CaptureEventsListener, Pro
 
     public abstract void onCameraRestarted();
 
+    /**
+     * P240 (speed-ux C4): the camera is being brought back after an error ({@code on}), or that recovery ended (a session runs
+     * again, or it gave up and said so). The camera screen shows «Камера перезапускается…» meanwhile. Any thread.
+     */
+    public void onCameraRecovery(boolean on, String why) {}
+
     public abstract void onCharacteristicsUpdated(CameraCharacteristics characteristics);
 
     public abstract void onError(Object o);

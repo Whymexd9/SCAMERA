@@ -225,8 +225,10 @@ public class SettingsAuditFixTest {
                 "pref_fetch_configurations_key"})
             assertNull(key,screen.findPreference(key));
         androidx.preference.PreferenceGroup about=screen.findPreference("root_about");
-        for(String key:new String[]{"pref_app_key","pref_version_key","pref_this_device_key"})
-            assertNotNull("SIMPLE_UI §4: the app, version and device rows are «О приложении»: "+key,about.findPreference(key));
+        for(String key:new String[]{"pref_app_key","pref_version_key","scam_recent_messages"})
+            assertNotNull("SIMPLE_UI §4: the app, version (with the device) and messages rows are «О приложении»: "+key,about.findPreference(key));
+        assertNull("the device is on the version row",screen.findPreference("pref_this_device_key"));
+        assertEquals("app, version, messages",3,about.getPreferenceCount());
     }
 
     /** P129: SCAM HDR is gone: its settings (and the L frame / stock planner keys) are obsolete everywhere, the route row too. */
@@ -292,7 +294,8 @@ public class SettingsAuditFixTest {
         for(Class<?> type:TunableRegistry.TUNABLE_CLASSES)TunablePreferenceGenerator.registerTunableClass(type);
         TunablePreferenceGenerator.generatePreferences(context,screen);
         assertEquals("Динамический уровень чёрного",String.valueOf(screen.findPreference("pref_tunable_parameters_usedynamicblacklevel").getTitle()));
-        assertEquals("Не зеркалить фронтальную камеру",String.valueOf(screen.findPreference("pref_tunable_parameters_disablemirror").getTitle()));
+        assertEquals("Не зеркалить селфи",String.valueOf(screen.findPreference("pref_tunable_parameters_disablemirror").getTitle()));
+        assertEquals("SIMPLE_UI §4: a «Съёмка» row","root_shoot",screen.findPreference("pref_tunable_parameters_disablemirror").getParent().getKey());
         assertEquals("Параметры",String.valueOf(screen.findPreference("pref_category_tunable_parameters").getTitle()));
         Set<String> titles=new HashSet<>();
         for(String key:new String[]{"pref_scam_hybrid_post_luma","pref_scam_hybrid_post_chroma","pref_scam_hybrid_dn_luma_mult","pref_scam_hybrid_dn_chroma_mult"})

@@ -97,7 +97,13 @@ public final class BottomChrome {
         View strip = bar.findViewById(R.id.aux_buttons_container);
         if (gallery != null) gallery.setBackground(tonalShape(card, 0, SIDE_RADIUS_DP * d * f, d));
         if (flip != null) flip.setBackground(disc(card, line, accent, d));
-        if (strip != null) strip.setBackground(tonalShape(STRIP_FILL, line, STRIP_RADIUS_DP * d * f, d));
+        if (strip != null) {
+            // the concept's 4px padding came with the XML background: a new background without padding would drop it
+            // (unless scaleTree had set it as the view's own), so the strip lost it at k = 1 only
+            int ps = strip.getPaddingStart(), pt = strip.getPaddingTop(), pe = strip.getPaddingEnd(), pb = strip.getPaddingBottom();
+            strip.setBackground(tonalShape(STRIP_FILL, line, STRIP_RADIUS_DP * d * f, d));
+            strip.setPaddingRelative(ps, pt, pe, pb);
+        }
         View thumb = bar.findViewById(R.id.gallery_image_button);
         if (thumb instanceof com.google.android.material.imageview.ShapeableImageView)
             ((com.google.android.material.imageview.ShapeableImageView) thumb).setShapeAppearanceModel(

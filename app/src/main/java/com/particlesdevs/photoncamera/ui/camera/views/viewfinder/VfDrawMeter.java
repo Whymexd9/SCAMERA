@@ -29,8 +29,33 @@ public final class VfDrawMeter {
         shotAtMs = SystemClock.elapsedRealtime();
     }
 
+    /** P236: the draw times of the last {@link #RECENT} frames (any time, not only after a shot), for {@link #fpsLast2s}. */
+    static final int RECENT = 256;
+    private static final long[] recentMs = new long[RECENT];
+    private static int recentNext;
+
+    /**
+     * P236 (speed-ux F): the frames the viewfinder drew in the last 2 s, per second (the shot summary at the press and at the
+     * end); 0 when nothing was drawn. Any thread.
+     */
+    public static double fpsLast2s() {
+        return fpsSince(SystemClock.elapsedRealtime(), PERIOD_MS);
+    }
+
+    static synchronized double fpsSince(long nowMs, long windowMs) {
+        int n = 0;
+        for (long t : recentMs) if (t > 0 && nowMs - t <= windowMs && t <= nowMs) n++;
+        return windowMs > 0 ? n * 1000.0 / windowMs : 0;
+    }
+
+    static synchronized void recent(long nowMs) {
+        recentMs[recentNext] = nowMs;
+        recentNext = (recentNext + 1) % RECENT;
+    }
+
     /** One drawn frame ({@code drawNs}: time spent in onDrawFrame). */
     static void frame(long drawNs) {
+        recent(SystemClock.elapsedRealtime());
         final long shot = shotAtMs;
         if (shot < 0) return;
         final long now = SystemClock.elapsedRealtime();

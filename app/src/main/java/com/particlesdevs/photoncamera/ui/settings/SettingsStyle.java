@@ -270,6 +270,7 @@ public final class SettingsStyle {
     static boolean page(Preference p) {
         return p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.LutChangesPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.LensFilterPreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.PhotoStylePreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ShadeTransparencyPreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference
@@ -288,6 +289,24 @@ public final class SettingsStyle {
     }
 
     // ───── Bind: accent, value line, state ─────
+
+    /** P248: the right-hand value's share of a row's text width at most (the title and the description keep the rest). */
+    static final float VALUE_SHARE = 0.38f;
+
+    /**
+     * The widest the value on the right may be, in pixels: its share of what a settings row leaves for text on this screen (the
+     * screen less the card's margins, the row's padding, the icon tile and the chevron).
+     */
+    public static int valueShare(Context c) {
+        float density = c.getResources().getDisplayMetrics().density;
+        float text = c.getResources().getDisplayMetrics().widthPixels - (16 * 2 + 14 * 2 + 36 + 12 + 24) * density;
+        return Math.max(Math.round(48 * density), Math.round(VALUE_SHARE * text));
+    }
+
+    /** A value whose one line is wider than {@code share} pixels goes under the title (on the right it squeezed the text). */
+    static boolean valueBelow(float valueWidth, int share) {
+        return valueWidth > share;
+    }
 
     public static void bind(PreferenceViewHolder holder, Preference p) {
         View row = holder.itemView;
@@ -333,9 +352,19 @@ public final class SettingsStyle {
         TextView value = (TextView) holder.findViewById(R.id.settings_value);
         if (value != null) {
             CharSequence shown = valueOf(p);
-            value.setVisibility(TextUtils.isEmpty(shown) ? View.GONE : View.VISIBLE);
             value.setText(shown);
             value.setTextColor(MUTED);   // SIMPLE_UI §4: the value on the right, muted (the concept's .rv)
+            // P248 (owner, 2026-10-18: «Режим автофокуса», «Кадры светов», «Разрешение» - the title and the description one
+            // word a line beside a long value): a value wider than its share of the row goes under the title
+            TextView below = (TextView) holder.findViewById(R.id.settings_value_below);
+            int share = valueShare(c);
+            boolean under = below != null && !TextUtils.isEmpty(shown) && valueBelow(value.getPaint().measureText(shown.toString()), share);
+            value.setMaxWidth(share);
+            value.setVisibility(TextUtils.isEmpty(shown) || under ? View.GONE : View.VISIBLE);
+            if (below != null) {
+                below.setText(under ? shown : null);
+                below.setVisibility(under ? View.VISIBLE : View.GONE);
+            }
             if (summary != null && !TextUtils.isEmpty(shown) && summary.getText() != null) {
                 // the value has its own line: do not repeat it at the start of the summary ("%s. …" summaries)
                 String s = summary.getText().toString(), v = shown.toString();
@@ -397,6 +426,9 @@ public final class SettingsStyle {
         if (("film_lut_screen".equals(p.getKey()) || "photo_style_lut".equals(p.getKey())) && p.getSharedPreferences() != null)
             return com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference.displayName(p.getContext(),
                     p.getSharedPreferences().getString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY, ""));
+        if ("lens_filter_screen".equals(p.getKey()) && p.getSharedPreferences() != null)
+            return com.particlesdevs.photoncamera.processing.color.LensFilters.name(p.getContext(),
+                    p.getSharedPreferences().getString(com.particlesdevs.photoncamera.processing.color.LensFilters.KEY, ""));
         if (p instanceof ListPreference) return ((ListPreference) p).getEntry();
         if (p instanceof EditTextPreference && !(p instanceof BackupPreferences)) {
             String t = ((EditTextPreference) p).getText();

@@ -68,6 +68,9 @@ public class TimerFrameCountViewModel extends ViewModel {
         int maxframe;
         double time;
 
+        /** P234: the frame number (1-based) of the shot, the ring's frames counted first. */
+        public int frame() { return frame; }
+
         public FrameCntTime(int frame, int maxframe, double time) {
             this.frame = frame;
             this.maxframe = maxframe;

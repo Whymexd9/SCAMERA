@@ -105,6 +105,11 @@ public class Parameters {
     public float[] gainMap;
     public float[] proPhotoToSRGB = new float[9];
     public float[] sensorToProPhoto = new float[9];
+    /**
+     * P243: the colour tags of the DNG being written when they carry the JPEG's own colour (DngColour.jpegProfile: ColorMatrix1,
+     * ForwardMatrix1, one illuminant), set by ScamProcessor around its DNG writes; null: the camera's dual profile (DngCreator).
+     */
+    public com.particlesdevs.photoncamera.processing.color.DngColour.Profile dngColour;
     /** 0..1 user control for retaining short-frame highlight headroom in SDR tone mapping. */
     public float highlightSuppressionStrength = 1.0f;
     public Point[] hotPixels;

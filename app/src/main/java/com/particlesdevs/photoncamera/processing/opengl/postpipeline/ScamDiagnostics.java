@@ -21,10 +21,16 @@ import static android.opengl.GLES30.*;
 /** Per-capture diagnostics: sampled previews plus the exact bounded native input. */
 public final class ScamDiagnostics {
     private static final ThreadLocal<Job> active=new ThreadLocal<>();
+    /**
+     * P241 (speed-ux C6): one writer thread for the dumps' files (PFM, PNG, stages.txt) and the ZIP export, in order - the
+     * processing thread only samples the stage (the copy it must make before the next pass) and goes on. With diagnostics the
+     * X300U's 12 MP shot took 5.6 s against 3.0-3.6 s, ~1.5 s of it the five dumps' PNG / PFM writing. A full queue (32: about
+     * six shots' dumps) writes on the calling thread, as before.
+     */
     private static final java.util.concurrent.ThreadPoolExecutor exports =
             new java.util.concurrent.ThreadPoolExecutor(1, 1, 30, java.util.concurrent.TimeUnit.SECONDS,
-                    new java.util.concurrent.ArrayBlockingQueue<>(2), r -> {
-                        Thread t=new Thread(r,"SCAM-diagnostic-export");t.setDaemon(true);return t;
+                    new java.util.concurrent.ArrayBlockingQueue<>(32), r -> {
+                        Thread t=new Thread(r,"SCAM-diagnostic-export");t.setDaemon(true);t.setPriority(Thread.MIN_PRIORITY+1);return t;
                     });
     static { exports.allowCoreThreadTimeOut(true); }
     private static final class Job {
@@ -119,13 +125,20 @@ public final class ScamDiagnostics {
                 }
                 pixels[y*w+x]=pixel;
             }
-            try(OutputStream f=new FileOutputStream(new File(j.dir,stage+".pfm"))){
-                f.write(("PF\n"+w+" "+h+"\n-1.0\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));f.write(out.array());
-            }
-            Bitmap bitmap=Bitmap.createBitmap(pixels,w,h,Bitmap.Config.ARGB_8888);
-            try(OutputStream f=new FileOutputStream(new File(j.dir,stage+".png"))){bitmap.compress(Bitmap.CompressFormat.PNG,100,f);}finally{bitmap.recycle();}
-            String line=stage+": "+w+"x"+h+" min="+min+" max="+max+" nonfinite="+invalid+"\n";
-            try(FileWriter f=new FileWriter(new File(j.dir,"stages.txt"),true)){f.write(line);}
+            final String line=stage+": "+w+"x"+h+" min="+min+" max="+max+" nonfinite="+invalid+"\n";
+            final int fw=w,fh=h;
+            // P241: the files on the writer thread (the samples are this method's own copies)
+            final Runnable write=()->{
+                try {
+                    try(OutputStream f=new FileOutputStream(new File(j.dir,stage+".pfm"))){
+                        f.write(("PF\n"+fw+" "+fh+"\n-1.0\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));f.write(out.array());
+                    }
+                    Bitmap bitmap=Bitmap.createBitmap(pixels,fw,fh,Bitmap.Config.ARGB_8888);
+                    try(OutputStream f=new FileOutputStream(new File(j.dir,stage+".png"))){bitmap.compress(Bitmap.CompressFormat.PNG,100,f);}finally{bitmap.recycle();}
+                    try(FileWriter f=new FileWriter(new File(j.dir,"stages.txt"),true)){f.write(line);}
+                } catch(Exception e){Log.e("SCAM_DIAG","Save stage failed: "+stage,e);}
+            };
+            try { exports.execute(write); } catch(java.util.concurrent.RejectedExecutionException full) { write.run(); }
             Log.i("SCAM_DIAG",line.trim());
         } catch(Exception e){Log.e("SCAM_DIAG","Save stage failed: "+stage,e);}
     }
@@ -158,18 +171,58 @@ public final class ScamDiagnostics {
                 throw new IOException("Diagnostic framebuffer incomplete");
             int step=Math.max(1,(Math.max(source.mSize.x,source.mSize.y)+1023)/1024);
             int w=source.mSize.x/step,h=source.mSize.y/step;
-            ByteBuffer row=ByteBuffer.allocateDirect(source.mSize.x*16).order(ByteOrder.nativeOrder());
             ByteBuffer sampled=ByteBuffer.allocate(w*h*12).order(ByteOrder.nativeOrder());
-            for(int y=0;y<h;y++) {
-                row.clear();glReadPixels(0,y*step,source.mSize.x,1,GL_RGBA,GL_FLOAT,row);
-                if(glGetError()!=GL_NO_ERROR)throw new IOException("Diagnostic float readback unavailable");
-                for(int x=0;x<w;x++)for(int c=0;c<3;c++)sampled.putFloat(row.getFloat((x*step*4+c)*4));
+            // P241: the sampled rows through a pixel pack buffer, CHUNK rows a time - one wait for the GPU per chunk instead of
+            // one per row (682 rows of a 50 MP stage); the same rows and pixels, so the same samples. Any GL error: row by row.
+            if(!readRowsPacked(source.mSize.x,w,h,step,sampled)) {
+                sampled.clear();
+                ByteBuffer row=ByteBuffer.allocateDirect(source.mSize.x*16).order(ByteOrder.nativeOrder());
+                for(int y=0;y<h;y++) {
+                    row.clear();glReadPixels(0,y*step,source.mSize.x,1,GL_RGBA,GL_FLOAT,row);
+                    if(glGetError()!=GL_NO_ERROR)throw new IOException("Diagnostic float readback unavailable");
+                    for(int x=0;x<w;x++)for(int c=0;c<3;c++)sampled.putFloat(row.getFloat((x*step*4+c)*4));
+                }
             }
             sampled.flip();
             buffer("03-"+name,sampled,w,h,3,
                     !Arrays.asList("ArkCombine","Sharpening").contains(name));
         }catch(Exception e){Log.e("SCAM_DIAG","GPU stage failed: "+name,e);}
         finally{glBindFramebuffer(GL_READ_FRAMEBUFFER,oldRead[0]);if(framebuffer[0]!=0)glDeleteFramebuffers(1,framebuffer,0);}
+    }
+
+    /** P241: sampled rows per pixel pack buffer fill (64 rows of an 8192-px float RGBA stage: 8 MB). */
+    static final int CHUNK=64;
+
+    /** P241: rows y * step (h of them) of the read framebuffer, w samples each (every step-th pixel) into {@code out}; false on any GL error. */
+    private static boolean readRowsPacked(int width,int w,int h,int step,ByteBuffer out) {
+        final long rowBytes=(long)width*16;
+        if(rowBytes*CHUNK>Integer.MAX_VALUE)return false;
+        final int[] pbo=new int[1];
+        glGetError();
+        try {
+            glGenBuffers(1,pbo,0);
+            glBindBuffer(GL_PIXEL_PACK_BUFFER,pbo[0]);
+            glBufferData(GL_PIXEL_PACK_BUFFER,(int)(rowBytes*CHUNK),null,GL_STREAM_READ);
+            if(glGetError()!=GL_NO_ERROR)return false;
+            for(int y0=0;y0<h;y0+=CHUNK) {
+                final int n=Math.min(CHUNK,h-y0);
+                for(int k=0;k<n;k++)glReadPixels(0,(y0+k)*step,width,1,GL_RGBA,GL_FLOAT,(int)(k*rowBytes));
+                if(glGetError()!=GL_NO_ERROR)return false;
+                final Buffer mapped=glMapBufferRange(GL_PIXEL_PACK_BUFFER,0,(int)(n*rowBytes),GL_MAP_READ_BIT);
+                if(!(mapped instanceof ByteBuffer)){glGetError();return false;}
+                final ByteBuffer rows=((ByteBuffer)mapped).order(ByteOrder.nativeOrder());
+                for(int k=0;k<n;k++)for(int x=0;x<w;x++)for(int c=0;c<3;c++)out.putFloat(rows.getFloat((int)(k*rowBytes)+(x*step*4+c)*4));
+                glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+                if(glGetError()!=GL_NO_ERROR)return false;
+            }
+            return true;
+        } catch(RuntimeException e) {
+            return false;
+        } finally {
+            glBindBuffer(GL_PIXEL_PACK_BUFFER,0);
+            if(pbo[0]!=0)glDeleteBuffers(1,pbo,0);
+            glGetError();
+        }
     }
 
     public static void finish() {

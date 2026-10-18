@@ -4,7 +4,6 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.util.AttributeSet;
-import android.view.HapticFeedbackConstants;
 import android.view.View;
 
 import androidx.annotation.Nullable;
@@ -20,7 +19,8 @@ import java.util.Locale;
  * ends and a gap in its middle that turns with the phone, two short fixed marks at its ends, a small ring in the centre and the
  * tilt in degrees above it, white with a soft shadow; level (within half a degree of the frame's horizontal, in every
  * orientation) everything turns the camera accent, the line closes, and a light haptic tick marks the moment (leaving takes
- * one degree, so it does not flicker).
+ * one degree, so it does not flicker). P245 (owner, 2026-10-18: «когда он стоит ровно добавь мягкую легкую вибрацию»): the tick
+ * is the app's soft vibrator pulse (Vibration.Soft) - the View's CLOCK_TICK was not felt on the OPPO / vivo phones.
  */
 public class HorizonIndicatorView extends View {
     /** Tilt (degrees) that counts as level, and the one that leaves it. */
@@ -131,11 +131,19 @@ public class HorizonIndicatorView extends View {
         return t;
     }
 
-    /** Level now (with the hysteresis): a haptic tick on the way in. */
+    /** Level after {@code wasLevel} at tilt {@code t} degrees (the hysteresis: in at LEVEL_IN, out beyond LEVEL_OUT). */
+    static boolean levelNow(boolean wasLevel, float t) {
+        t = Math.abs(t);
+        return wasLevel ? t <= LEVEL_OUT : t <= LEVEL_IN;
+    }
+
+    /** Level now (with the hysteresis): one soft pulse on the way in, none while it stays level. */
     private void updateLevel() {
-        final float t = Math.abs(tilt(rollAngle, currentDisplayRotation));
-        final boolean now = level ? t <= LEVEL_OUT : t <= LEVEL_IN;
-        if (now && !level && isVisible) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
+        final boolean now = levelNow(level, tilt(rollAngle, currentDisplayRotation));
+        if (now && !level && isVisible) {
+            com.particlesdevs.photoncamera.control.Vibration v = com.particlesdevs.photoncamera.app.ScameraApp.getVibration();
+            if (v != null) v.Soft();
+        }
         level = now;
     }
 

@@ -54,6 +54,8 @@ public final class OppoNativeFullRes {
     /** P214j: the same key where the HAL declares it an int32 (the byte is refused: no marshaler for Byte on an int32 tag). */
     private static final CaptureRequest.Key<Integer> MODE_INT = new CaptureRequest.Key<>(MODE_KEY, Integer.class);
     private static final CaptureResult.Key<int[]> MODE_INDEX = new CaptureResult.Key<>("com.qti.sensorbps.mode_index", int[].class);
+    /** P227: the same report under the name ArkCam reads (CamX lists both on the Oplus phones). */
+    private static final CaptureResult.Key<int[]> MODE_INDEX_QUIC = new CaptureResult.Key<>("org.quic.camera.sensorbps.SensorModeIndex", int[].class);
 
     /** The OPPO Find X7 Ultra (PHY110): the phone of the measured modes. */
     public static boolean model() {
@@ -434,11 +436,26 @@ public final class OppoNativeFullRes {
         }
     }
 
-    /** The result reports the profile's mode (the sensor's own mode index), or does not say. */
+    /**
+     * The result reports the profile's mode (the sensor's own mode index), or does not say. P227: read under both names
+     * (com.qti.sensorbps.mode_index, org.quic.camera.sensorbps.SensorModeIndex); either one naming another mode is a mismatch.
+     */
     static boolean modeMatches(CaptureResult result, VivoSdkFullRes.Profile profile) {
-        int[] mode = null;
-        try { mode = result.get(MODE_INDEX); } catch (IllegalArgumentException ignored) { }
-        return mode == null || mode.length == 0 || mode[0] == profile.sensorMode;
+        return modeMatches(reported(result, MODE_INDEX), reported(result, MODE_INDEX_QUIC), profile.sensorMode);
+    }
+
+    static boolean modeMatches(@Nullable int[] qti, @Nullable int[] quic, int mode) {
+        if (qti != null && qti.length > 0 && qti[0] != mode) return false;
+        return quic == null || quic.length == 0 || quic[0] == mode;
+    }
+
+    @Nullable
+    private static int[] reported(CaptureResult result, CaptureResult.Key<int[]> key) {
+        try {
+            return result.get(key);
+        } catch (IllegalArgumentException noTag) {
+            return null;
+        }
     }
 
     /** What the camera's last plain session reported (the ISP's colour transform, the shading map), per Android camera. */
@@ -558,6 +575,11 @@ public final class OppoNativeFullRes {
     @Nullable
     static float[] neutral(String cameraId) {
         if (cameraId == null) return null;
+        // P223: our corrections off - the camera's own white balance, i.e. its plain mode's neutral (the native mode has no AWB)
+        if (!com.particlesdevs.photoncamera.settings.PreferenceKeys.mosaicWbCorrections()) {
+            final float[] plain = PLAIN_NEUTRALS.get(cameraId);
+            return plain != null ? plain : storedNeutral(cameraId);
+        }
         float[] own = OppoNativeWb.on() ? OppoNativeWb.neutral(cameraId) : null;
         if (own == null) own = NEUTRALS.get(cameraId); // with the filter on, begin() cleared it (only the P192 law writes it)
         if (own != null) return own;

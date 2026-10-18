@@ -323,6 +323,19 @@ public final class RawLevels {
     }
 
     /**
+     * P229: a clip known before any frame shows it (the X300 Ultra's 14 / 35 mm DCG modes clip at 8694 - our 2026-10-15 log -,
+     * rawr's profile says 8712): the white of the wider stream from the session's first frame, so a blown area never reads as
+     * unclipped (the pink highlights the owner saw on those lenses). A plateau the samples show later may raise it.
+     */
+    public static void priorClip(int value, String why) {
+        synchronized (LOCK) {
+            if (value <= 0 || sSaturation > 0) return;
+            com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", "RAW clip " + value + " known for this mode (" + why + ")");
+            sSaturation = value;
+        }
+    }
+
+    /**
      * RawPayloadCheck: a frame of a stream wider than declared clipped on {@code value} (a plateau of its samples). The highest
      * plateau of the session is kept: a clip does not move, a lower one would be a flat content level.
      */

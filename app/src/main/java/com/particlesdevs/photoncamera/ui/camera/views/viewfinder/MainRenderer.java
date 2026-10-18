@@ -41,6 +41,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private final LiveSceneMeter mSceneMeter = new LiveSceneMeter();
     /** Develops the preview RAW stream; replaces the ISP image when it has a frame. */
     private final LiveRawRenderer mRawRenderer = new LiveRawRenderer();
+    private final LiveLensFilter mLensFilter = new LiveLensFilter();
     /** P42: downscaled copies of the drawn frame for the tracking autofocus (only while it asks for them). */
     private final SubjectFrameGrabber mSubjectGrabber = new SubjectFrameGrabber();
     private ManualModeConsole mManualModeConsole;
@@ -114,6 +115,8 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
             return;
         }
 
+        // P228: the live lens filter's blur pyramid of this frame (its own program and framebuffer), before the main pass
+        mLensFilter.prepass(pVertex, pTexCoord, mTexRotateMatrix, hTex[0], mMirrorPreview, mFrameGain);
         // Every pass owns its GL state: RAW and histogram passes use other programs/attributes.
         GLES20.glUseProgram(hProgramHandle);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
@@ -128,6 +131,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         GLES20.glUniform1i(mirror, mMirrorPreview ? 1 : 0);
 
         GLES20.glUniform1f(uGain, mFrameGain);
+        mLensFilter.apply();
 
         GLES20.glVertexAttribPointer(vPosition, 2, GLES20.GL_FLOAT, false, 4 * 2, pVertex);
         GLES20.glVertexAttribPointer(vTexCoord, 2, GLES20.GL_FLOAT, false, 4 * 2, pTexCoord);
@@ -178,7 +182,8 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         mSTexture.setOnFrameAvailableListener(this, frameHandler());
 
         String vss_default = ScameraApp.getAssetLoader().getString("shaders/preview/main_vs.glsl");
-        String fss_default = ScameraApp.getAssetLoader().getString("shaders/preview/main_fs.glsl");
+        String fss_default = LiveLensFilter.splice(ScameraApp.getAssetLoader().getString("shaders/preview/main_fs.glsl"),
+                ScameraApp.getAssetLoader().getString("shaders/preview/lensfilter_live.glsl"));
         int hProgram = loadShader(vss_default, fss_default);
         hProgramHandle = hProgram;
         GLES20.glUseProgram(hProgram);
@@ -189,6 +194,9 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         enablePeak = GLES20.glGetUniformLocation(hProgram, "enablePeak");
         uGain = GLES20.glGetUniformLocation(hProgram, "uGain");
         mirror = GLES20.glGetUniformLocation(hProgram, "mirror");
+        mLensFilter.locate(hProgram);
+        mLensFilter.locatePrep(loadShader(vss_default, ScameraApp.getAssetLoader().getString("shaders/preview/lensfilter_prep.glsl")));
+        GLES20.glUseProgram(hProgram);
         GLES20.glVertexAttribPointer(vPosition, 2, GLES20.GL_FLOAT, false, 4 * 2, pVertex);
         GLES20.glVertexAttribPointer(vTexCoord, 2, GLES20.GL_FLOAT, false, 4 * 2, pTexCoord);
         GLES20.glEnableVertexAttribArray(vPosition);

@@ -86,6 +86,59 @@ public class FullResZslTest {
         assertEquals("no ring frame: none (the PSL series)", 0, VivoSdkFullResCapture.zslNormals(0, 6, 64));
     }
 
+    /**
+     * P232 (speed-ux A2): the memory budget is computed before the N after the shutter, so it shrinks those and keeps the ring's
+     * zero-lag frames (owner's X7U 20:20:35: 5 ring + 7 N asked, a 14-frame budget with 6 extras kept 1 ring frame + 7 N + 6).
+     */
+    @Test public void theBudgetShrinksTheFramesAfterThePressNotTheRing() {
+        int[] s = VivoSdkFullResCapture.zslSplit(5, 6, 12, all -> 14);
+        assertEquals("all 5 ring frames stay", 5, s[0]);
+        assertEquals("3 N after the press fill the budget", 3, s[1]);
+        assertEquals(14, s[0] + s[1] + 6);
+        assertEquals("the budget was asked for the whole shot", 14, s[2]);
+        // with A1's 1 ultrashort + 1 long and the same budget the ring stays and 7 N follow
+        s = VivoSdkFullResCapture.zslSplit(5, 2, 12, all -> 14);
+        assertArrayEquals(new int[]{5, 7, 14}, s);
+        // enough memory: the shot asked whole
+        final int[] asked = new int[1];
+        s = VivoSdkFullResCapture.zslSplit(5, 2, 12, all -> { asked[0] = all; return all; });
+        assertEquals("12 N + 2 extras asked", 14, asked[0]);
+        assertArrayEquals(new int[]{5, 7, 14}, s);
+        // the ring holds every N asked: nothing after the press
+        assertArrayEquals(new int[]{12, 0, 14}, VivoSdkFullResCapture.zslSplit(12, 2, 12, all -> all));
+        // a tight budget: the ring frames go only after every N after the press is gone, one ring frame always stays
+        assertArrayEquals(new int[]{4, 0, 6}, VivoSdkFullResCapture.zslSplit(5, 2, 12, all -> 6));
+        assertArrayEquals(new int[]{1, 0, 2}, VivoSdkFullResCapture.zslSplit(5, 2, 12, all -> 2));
+        // a budget above the ask is never used beyond it
+        assertArrayEquals(new int[]{5, 7, 14}, VivoSdkFullResCapture.zslSplit(5, 2, 12, all -> 64));
+    }
+
+    /** P233 (speed-ux A5): «Снято K из N кадров» counts the N of the ring and those after the shutter (owner's shot 1: 1 + 7 = 8). */
+    @Test public void theToastCountsTheRingAndTheNAfterTheShutter() {
+        assertEquals(8, VivoSdkFullResCapture.zslTaken(1, 7));
+        int[] s = VivoSdkFullResCapture.zslSplit(5, 6, 12, all -> 14);
+        assertEquals("5 ring + 3 after the press, the 6 ultrashort / long stills not N", 8, VivoSdkFullResCapture.zslTaken(s[0], s[1]));
+        assertEquals(12, VivoSdkFullResCapture.zslTaken(12, 0));
+    }
+
+    /** P234 (speed-ux A4): the instant-shot UI only while the stills after the press fit the 12 MP plan (6 or fewer). */
+    @Test public void aLongZslSeriesShowsTheCaptureRing() {
+        assertEquals("ScamZslCaptureStarted", CaptureController.zslStartTag(2));
+        assertEquals("A1's 1 ultrashort + 1 long + 4 N", "ScamZslCaptureStarted", CaptureController.zslStartTag(6));
+        assertEquals("owner's shot 1: 13 stills after the press", CaptureController.ZSL_SERIES_STARTED, CaptureController.zslStartTag(13));
+        assertEquals(CaptureController.ZSL_SERIES_STARTED, CaptureController.zslStartTag(7));
+    }
+
+    /** P235 (speed-ux B3): the press arena only for a burst above 16 MP not already in one memfd (moveIntoArena's case). */
+    @Test public void thePressArenaIsMadeOnlyWhenTheMergeWouldMoveTheBurst() {
+        assertTrue("50 MP, stills beyond the ring's free slots", CaptureController.pressArenaWanted(false, 8192L * 6144, 14));
+        assertFalse("all of it in the ring's memfd already", CaptureController.pressArenaWanted(true, 8192L * 6144, 14));
+        assertFalse("12 MP: the merge never moves it", CaptureController.pressArenaWanted(false, 4096L * 3072, 14));
+        assertFalse("beyond an arena's 64 frames", CaptureController.pressArenaWanted(false, 8192L * 6144, 65));
+        prefs.when(() -> PreferenceKeys.scamDevSwitch(eq("fullres_press_arena"), anyBoolean())).thenReturn(false);
+        assertFalse("scam_dev fullres_press_arena 0: as before P235", CaptureController.pressArenaWanted(false, 8192L * 6144, 14));
+    }
+
     /** The ring copies take at most half of the viewfinder's thread: the next one waits twice the last copy's time. */
     @Test public void aRingCopyWaitsTwiceTheLastCopysTime() {
         assertTrue("the first frame", CaptureController.ringCopyDue(1_000_000_000L, 0, 0));

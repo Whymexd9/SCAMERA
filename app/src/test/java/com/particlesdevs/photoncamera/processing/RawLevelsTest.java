@@ -289,4 +289,15 @@ public class RawLevelsTest {
         RawLevels.newSession(true);
         assertEquals("a new session starts over", 0, RawLevels.knownBits());
     }
+
+    /** P229: a mode's known clip (X300 Ultra 14 / 35 mm DCG: 8694) holds from the session's first frame; a later plateau may raise it. */
+    @Test public void aKnownClipHoldsFromTheFirstFrame() {
+        RawLevels.newSession(true);
+        RawLevels.priorClip(8694, "test");
+        assertEquals(8694, RawLevels.sampledSaturation());
+        RawLevels.priorClip(9000, "test");
+        assertEquals("only the first prior", 8694, RawLevels.sampledSaturation());
+        RawLevels.newSession(true);
+        assertEquals("a new session forgets it", 0, RawLevels.sampledSaturation());
+    }
 }

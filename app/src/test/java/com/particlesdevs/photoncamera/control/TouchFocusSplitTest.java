@@ -273,4 +273,34 @@ public class TouchFocusSplitTest {
         tap(ring);
         assertEquals(0, af().getWidth());
     }
+
+    /** SIMPLE_UI §1: a long press locks focus and exposure («Закреплено»); a tap elsewhere or a reset releases them. */
+    @Test
+    public void aLongPressLocksFocusAndExposureUntilATap() {
+        split = false;
+        List<Boolean> pill = new ArrayList<>();
+        touch.setLockListener(pill::add);
+        touch.lockAt(300, 400);
+        idle();
+        assertTrue(touch.isLocked());
+        assertEquals("the pill shows", List.of(true), pill);
+        assertEquals("the regions at the point", region(300, 400), af());
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(TouchFocus.LOCK_AE_SETTLE_MS + 50));
+        assertEquals("exposure locked once the metering settled", Boolean.TRUE, builder.get(CaptureRequest.CONTROL_AE_LOCK));
+        assertEquals("the ring stays", View.VISIBLE, ring.getVisibility());
+        // a tap elsewhere releases the lock and focuses there
+        touch.processTouchToFocus(700, 900);
+        idle();
+        assertTrue(!touch.isLocked());
+        assertEquals(Boolean.FALSE, builder.get(CaptureRequest.CONTROL_AE_LOCK));
+        assertEquals(List.of(true, false), pill);
+        assertEquals(region(700, 900), af());
+        // a reset releases it too, and an AE lock never comes after the release
+        touch.lockAt(300, 400);
+        touch.resetFocusCircle();
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(TouchFocus.LOCK_AE_SETTLE_MS + 50));
+        assertTrue(!touch.isLocked());
+        assertEquals(Boolean.FALSE, builder.get(CaptureRequest.CONTROL_AE_LOCK));
+        assertEquals(List.of(true, false, true, false), pill);
+    }
 }

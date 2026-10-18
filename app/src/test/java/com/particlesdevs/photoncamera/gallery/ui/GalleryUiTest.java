@@ -234,13 +234,18 @@ public class GalleryUiTest {
         host.addView(chrome.top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         assertNoOverflow(host, 360);
         assertNoOverflow(chrome.buttons, 360 - 12);
-        // SIMPLE_UI §5: five labelled buttons, «Ещё» holds HDR (Ultra HDR photos) and «Удалить»
+        // owner, 2026-10-18: five labelled buttons «Поделиться · Изменить · Сравнить · Удалить · Сведения», no «Ещё»; the Ultra
+        // HDR switch a pill in the top row
         assertEquals(5, chrome.buttons.getChildCount());
-        assertEquals(View.VISIBLE, chrome.menuHdr.getVisibility());
-        assertEquals("HDR: выкл.", chrome.menuHdr.getText().toString());
-        assertNotNull(chrome.menu.findViewWithTag("viewer_menu_delete"));
+        View[] order = {chrome.share, chrome.edit, chrome.compare, chrome.delete, chrome.info};
+        for (int i = 0; i < order.length; i++) assertEquals("button " + i, order[i], chrome.buttons.getChildAt(i));
+        assertEquals("Удалить", chrome.delete.getContentDescription().toString());
+        assertEquals("Сведения", chrome.info.getContentDescription().toString());
+        assertEquals(View.VISIBLE, chrome.hdrPill.getVisibility());
+        assertEquals("HDR: выкл.", chrome.hdrPill.getText().toString());
+        assertNotNull(chrome.top.findViewWithTag("viewer_hdr"));
         chrome.bindHdr(false, false);
-        assertEquals(View.GONE, chrome.menuHdr.getVisibility());
+        assertEquals(View.GONE, chrome.hdrPill.getVisibility());
         assertEquals("the concept's viewer has no filmstrip", View.GONE, chrome.strip.getVisibility());
         assertNoOverflow(GallerySheets.details(context, details(), null), 360);
         assertNoOverflow(GallerySheets.delete(context, 21, 123_456_789L, () -> {}, () -> {}), 360);

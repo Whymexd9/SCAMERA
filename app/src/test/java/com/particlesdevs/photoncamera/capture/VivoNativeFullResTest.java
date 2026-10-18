@@ -134,7 +134,7 @@ public class VivoNativeFullResTest {
         assertArrayEquals("P200: the working row 3 first", new int[]{3, 1}, VivoNativeFullRes.candidates(X300, "3", false));
         assertArrayEquals(new int[]{0}, VivoNativeFullRes.candidates(X300, "3", true));
         assertArrayEquals(new int[]{0, 4}, VivoNativeFullRes.candidates(X300, "4", true));
-        assertArrayEquals(new int[]{1, 14, 27}, VivoNativeFullRes.candidates(X300, "5", false));
+        assertArrayEquals("P229: row 14 is the tele's hardware-remosaic row (rawr)", new int[]{1, 27}, VivoNativeFullRes.candidates(X300, "5", false));
         assertArrayEquals("P207: not the hardware-remosaic row 0", new int[]{11, 31}, VivoNativeFullRes.candidates(X100, "0", false));
         assertArrayEquals(new int[]{11, 31}, VivoNativeFullRes.candidates(X100, "2", false));
         assertArrayEquals(new int[]{1, 14, 18, 20}, VivoNativeFullRes.candidates(X100, "4", false));
@@ -165,7 +165,8 @@ public class VivoNativeFullResTest {
         assertEquals(2, VivoNativeFullRes.hardwareRow(X300, "3"));
         assertEquals(0, VivoNativeFullRes.hardwareRow(X100, "2"));
         assertEquals("the listed main: the same sensor", 0, VivoNativeFullRes.hardwareRow(X100, "0"));
-        for (String camera : new String[]{"4", "5", "6"}) assertEquals("X300 camera " + camera, -1, VivoNativeFullRes.hardwareRow(X300, camera));
+        assertEquals("P229: the tele's Bayer row (rawr)", 14, VivoNativeFullRes.hardwareRow(X300, "5"));
+        for (String camera : new String[]{"4", "6"}) assertEquals("X300 camera " + camera, -1, VivoNativeFullRes.hardwareRow(X300, camera));
         assertEquals("P210: the X100 ultra-wide's Bayer row", 0, VivoNativeFullRes.hardwareRow(X100, "3"));
         for (String camera : new String[]{"4", "5"}) assertEquals("X100 camera " + camera, -1, VivoNativeFullRes.hardwareRow(X100, camera));
         for (String camera : new String[]{"2", "3", "4", "5"}) {
@@ -186,7 +187,10 @@ public class VivoNativeFullResTest {
         assertEquals(6144, x100.size.getHeight());
         assertEquals(0, x100.sensorMode);
         assertEquals(1, x100.nativeBlock);
-        assertNull("the X300 telephoto: its own Quad", VivoNativeFullRes.hardwareProfile(X300, "5", false));
+        // P229: the X300 telephoto's row 14 gives the HAL's remosaic (rawr's colour-block test)
+        VivoSdkFullRes.Profile x300tele = VivoNativeFullRes.hardwareProfile(X300, "5", false);
+        assertEquals(14, x300tele.sensorMode);
+        assertEquals(1, x300tele.nativeBlock);
         assertNull("the X100 telephoto", VivoNativeFullRes.hardwareProfile(X100, "4", false));
         // the viewfinder's Bayer bin keeps one 2 x 2 quad of each 4 x 4: whole 4 x 4 cells
         for (VivoSdkFullRes.Profile p : new VivoSdkFullRes.Profile[]{x300, x100}) {

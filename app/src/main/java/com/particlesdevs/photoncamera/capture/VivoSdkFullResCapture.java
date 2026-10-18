@@ -207,6 +207,30 @@ final class VivoSdkFullResCapture {
     }
 
     /**
+     * P232 (speed-ux A2): the frames of a 50 MP ZSL shot once the memory budget is known - {ring frames kept, N after the shutter,
+     * budget}. The budget is asked for the whole shot ({@code requested} N, at least the ring's, and the plan's {@code extras}
+     * ultrashort / bracketed stills); the ring frames stay as far as the budget holds them beside the extras (zslNormals), and
+     * the N after the shutter fill what is left up to {@code requested}. Before P232 the N after the shutter were fixed first and
+     * the budget then dropped the oldest ring frames: the zero-lag ones went, the frames after the press stayed.
+     */
+    static int[] zslSplit(int ringFrames, int extras, int requested, java.util.function.IntUnaryOperator budget) {
+        final int ring = Math.max(0, ringFrames), post = Math.max(0, extras);
+        final int asked = Math.max(ring, Math.max(1, requested)) + post;
+        final int allowed = Math.min(asked, budget.applyAsInt(asked));
+        final int keep = zslNormals(ring, post, allowed);
+        final int topUp = Math.max(0, Math.min(Math.max(1, requested) - keep, allowed - post - keep));
+        return new int[]{keep, topUp, allowed};
+    }
+
+    /**
+     * P233 (speed-ux A5): the N frames a 50 MP ZSL shot gives the merge, the figure of «Снято K из N кадров» - the ring's and those
+     * after the shutter (the plan's ultrashort / bracketed stills are not N). Before P233 the toast counted the ring's alone.
+     */
+    static int zslTaken(int ringKept, int topUp) {
+        return Math.max(0, ringKept) + Math.max(0, topUp);
+    }
+
+    /**
      * The result's sensor mode is the profile's: the SDK route needs it reported, the native route fails only on a reported other
      * mode (P198: the 50 MP ZSL ring's frames are held to the same rule as the stills).
      */

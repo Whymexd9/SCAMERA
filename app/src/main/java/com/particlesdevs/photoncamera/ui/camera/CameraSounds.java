@@ -2,13 +2,15 @@ package com.particlesdevs.photoncamera.ui.camera;
 
 import android.content.Context;
 import android.media.AudioAttributes;
+import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioTrack;
 import android.media.MediaPlayer;
 import android.media.SoundPool;
-import android.media.ToneGenerator;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
@@ -25,6 +27,11 @@ import com.particlesdevs.photoncamera.util.Log;
  * <li>Switches «Звук затвора» ({@code pref_camera_sounds_key}) and «Звук таймера» ({@code pref_timer_sound_key}), each on its
  *     own. Both play only in the normal ringer mode, except where the region requires the shutter sound
  *     ({@code mustPlayShutterSound}): there the shutter always sounds.</li>
+ * <li>P247 (owner, 2026-10-18: «Проверить отключение и включение звука затвора и таймера»): the X200 Ultra's CTS package cannot
+ *     decode MP3 (it crashes natively), so it had no shutter sound at all and a synthesized beep for the timer, whatever the
+ *     switches said. There the same two sounds play from 16-bit PCM ({@code sound_shutter_pcm.raw} / {@code sound_timer_pcm.raw},
+ *     mono 24 kHz, decoded from the MP3s) through a static {@link AudioTrack} - no extractor, no decoder - under the same
+ *     switches.</li>
  * </ul>
  */
 public final class CameraSounds {
@@ -35,18 +42,9 @@ public final class CameraSounds {
     private volatile boolean shutterLoaded;
     private MediaPlayer timer;
     private Boolean forced;
-    private ToneGenerator tones;
-    private final Handler toneHandler = new Handler(Looper.getMainLooper());
-    private int timerTicks;
-    private final Runnable timerTick = new Runnable() {
-        @Override public void run() {
-            synchronized (CameraSounds.this) {
-                if (tones == null || timerTicks <= 0) return;
-                tones.startTone(ToneGenerator.TONE_PROP_BEEP, 80);
-                if (--timerTicks > 0) toneHandler.postDelayed(this, 1000);
-            }
-        }
-    };
+    /** The PCM sounds where MP3 cannot be decoded ({@link #synthesized}). */
+    private AudioTrack pcmShutter, pcmTimer;
+    static final int PCM_RATE = 24000;
 
     public CameraSounds(Context context) {
         this.context = context.getApplicationContext();
@@ -70,13 +68,54 @@ public final class CameraSounds {
         return synthesizedFor(com.particlesdevs.photoncamera.capture.VivoQcomModes.device(), context.getPackageName());
     }
 
+    /** 16-bit little-endian mono PCM as samples. */
+    static short[] samples(byte[] pcm) {
+        short[] out = new short[pcm.length / 2];
+        for (int i = 0; i < out.length; i++) out[i] = (short) ((pcm[2 * i] & 0xFF) | (pcm[2 * i + 1] << 8));
+        return out;
+    }
+
+    /** A static AudioTrack holding raw resource {@code id} (16-bit mono PCM at PCM_RATE), or null. */
+    private AudioTrack pcmTrack(int id) {
+        try (InputStream in = context.getResources().openRawResource(id)) {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            byte[] buf = new byte[16384];
+            for (int n; (n = in.read(buf)) > 0; ) bytes.write(buf, 0, n);
+            short[] pcm = samples(bytes.toByteArray());
+            if (pcm.length == 0) return null;
+            AudioTrack track = new AudioTrack.Builder()
+                    .setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                    .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(PCM_RATE).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                    .setTransferMode(AudioTrack.MODE_STATIC)
+                    .setBufferSizeInBytes(pcm.length * 2)
+                    .build();
+            track.write(pcm, 0, pcm.length);
+            return track;
+        } catch (Exception | LinkageError e) {
+            Log.w(TAG, "PCM sound " + id + ": " + e);
+            return null;
+        }
+    }
+
+    /** A static track from its start (stopped first when it still plays). */
+    private static void restart(AudioTrack t) {
+        try {
+            if (t.getPlayState() != AudioTrack.PLAYSTATE_STOPPED) t.stop();
+            t.reloadStaticData();
+            t.play();
+        } catch (IllegalStateException e) {
+            Log.w(TAG, "PCM sound: " + e.getMessage());
+        }
+    }
+
     public synchronized void load() {
-        // PD2454's CTS media path crashes natively in MP3 extraction, including an explicit AOSP decoder.
+        // PD2454's CTS media path crashes natively in MP3 extraction, including an explicit AOSP decoder: PCM there (P247)
         if (synthesized()) {
-            if (tones == null) {
-                try { tones = new ToneGenerator(AudioManager.STREAM_SYSTEM, 100); }
-                catch (RuntimeException error) { Log.w(TAG, "CTS tone unavailable: " + error.getMessage()); }
-            }
+            if (pcmShutter == null) pcmShutter = pcmTrack(R.raw.sound_shutter_pcm);
+            if (pcmTimer == null) pcmTimer = pcmTrack(R.raw.sound_timer_pcm);
             return;
         }
         if (pool == null) {
@@ -97,9 +136,8 @@ public final class CameraSounds {
     }
 
     public synchronized void release() {
-        toneHandler.removeCallbacks(timerTick);
-        timerTicks = 0;
-        if (tones != null) { tones.release(); tones = null; }
+        if (pcmShutter != null) { pcmShutter.release(); pcmShutter = null; }
+        if (pcmTimer != null) { pcmTimer.release(); pcmTimer = null; }
         if (pool != null) { pool.release(); pool = null; shutterLoaded = false; }
         if (timer != null) { timer.release(); timer = null; }
     }
@@ -133,9 +171,12 @@ public final class CameraSounds {
         SoundPool p;
         synchronized (this) {
             // P188 (owner, 2026-10-17: «убери пик после нажатия на кнопку спуска затвора»): the X200 Ultra's CTS package had a
-            // synthesized beep here (its MP3 path crashes natively); no sound there now - and no ToneGenerator call blocking the
-            // camera thread before the capture
-            if (synthesized()) return;
+            // synthesized beep here (its MP3 path crashes natively); P247: the real shutter sound there, from PCM (no beep, and
+            // nothing blocking: a static track only starts)
+            if (synthesized()) {
+                if (pcmShutter != null) restart(pcmShutter);
+                return;
+            }
             p = pool;
         }
         if (p != null && shutterLoaded) p.play(shutterId, 1f, 1f, 1, 0, 1f);
@@ -144,10 +185,7 @@ public final class CameraSounds {
     /** The countdown sound, from its start. */
     public synchronized void timerStart() {
         if (synthesized()) {
-            if (tones == null || !timerAudible(PreferenceKeys.isTimerSoundOn(), normalRinger())) return;
-            toneHandler.removeCallbacks(timerTick);
-            timerTicks = 11;
-            toneHandler.post(timerTick);
+            if (pcmTimer != null && timerAudible(PreferenceKeys.isTimerSoundOn(), normalRinger())) restart(pcmTimer);
             return;
         }
         if (timer == null || !timerAudible(PreferenceKeys.isTimerSoundOn(), normalRinger())) return;
@@ -161,9 +199,13 @@ public final class CameraSounds {
 
     /** Cut the countdown sound (timer finished or cancelled). */
     public synchronized void timerStop() {
-        toneHandler.removeCallbacks(timerTick);
-        timerTicks = 0;
-        if (tones != null) tones.stopTone();
+        if (pcmTimer != null) {
+            try {
+                if (pcmTimer.getPlayState() != AudioTrack.PLAYSTATE_STOPPED) pcmTimer.stop();
+            } catch (IllegalStateException e) {
+                Log.w(TAG, "PCM timer: " + e.getMessage());
+            }
+        }
         if (timer == null) return;
         try {
             if (timer.isPlaying()) timer.pause();

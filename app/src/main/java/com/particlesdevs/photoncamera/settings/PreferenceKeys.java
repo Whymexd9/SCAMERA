@@ -97,6 +97,11 @@ public class PreferenceKeys {
         this.settingsManager = settingsManager;
     }
 
+    /** P241: the settings store (null before {@link #initialise}), for helpers of this package. */
+    static SettingsManager settingsStore() {
+        return preferenceKeys == null ? null : preferenceKeys.settingsManager;
+    }
+
     public static void initialise(SettingsManager settingsManager) {
         preferenceKeys = new PreferenceKeys(settingsManager);
         moduleProfiles = null;
@@ -666,6 +671,97 @@ public class PreferenceKeys {
         switch (hybridDownsampler()) { case "bicubic": return "Bicubic"; case "area": return "Area"; case "bilinear": return "Bilinear"; default: return "Lanczos-3"; }
     }
     /** Final JPEG size for the sensor size w x h: sensor, 12/16/20 MP (4:3 of the sensor) or the native 2x grid. */
+    /**
+     * P226 «Увеличивать кадр с кропом» (pref_crop_upscale, per module, on by default): off, a shot with a crop - a lens crop
+     * (P148 copies), a sensor-crop / ISZ module or a digital zoom - keeps the cropped pixels: no Sabre 2x grid and no resize up
+     * to the output resolution.
+     */
+    public static boolean cropUpscale() {
+        try {
+            return preferenceKeys.settingsManager.getBoolean("default_scope", CROP_UPSCALE_KEY, true);
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+    public static final String CROP_UPSCALE_KEY = "pref_crop_upscale";
+
+    /** P228: the lens filter's id (LensFilters, "" = none). */
+    public static String lensFilter() {
+        try {
+            String v = preferenceKeys.settingsManager.getString("default_scope", com.particlesdevs.photoncamera.processing.color.LensFilters.KEY, "");
+            return com.particlesdevs.photoncamera.processing.color.LensFilters.known(v) ? v : "";
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
+    /** P228: the lens filter's strength 0..1 (stored 0..100, default 50). */
+    public static float lensFilterStrength() {
+        return lensFilterNumber(com.particlesdevs.photoncamera.processing.color.LensFilters.STRENGTH_KEY, 50f);
+    }
+
+    /** P228: the filter's own parameter 0..1 (its Tune; default per filter). */
+    public static float lensFilterParam(String id) {
+        return lensFilterTune(id).param;
+    }
+
+    /** P228: the filter's parameter and fine controls, stored per filter (LensFilters.tuneKey). */
+    public static com.particlesdevs.photoncamera.processing.color.LensFilters.Tune lensFilterTune(String id) {
+        try {
+            Object v = PreferenceValue.get(preferenceKeys.settingsManager.getDefaultPreferences(),
+                    com.particlesdevs.photoncamera.processing.color.LensFilters.tuneKey(id));
+            return com.particlesdevs.photoncamera.processing.color.LensFilters.Tune.parse(id, v == null ? null : String.valueOf(v));
+        } catch (RuntimeException e) {
+            return com.particlesdevs.photoncamera.processing.color.LensFilters.Tune.defaults(id);
+        }
+    }
+
+    private static float lensFilterNumber(String key, float fallback) {
+        try {
+            Object v = PreferenceValue.get(preferenceKeys.settingsManager.getDefaultPreferences(), key);
+            return Math.max(0f, Math.min(1f, (float) PreferenceNumber.read(v, fallback) / 100f));
+        } catch (RuntimeException e) {
+            return fallback / 100f;
+        }
+    }
+
+    /** P223 «ISP-превью в FULLRES и ISZ» (on by default): off, those sessions repeat the RAW stream only (the RAW viewfinder). */
+    public static final String MOSAIC_ISP_PREVIEW_KEY = "pref_mosaic_isp_preview";
+    /** P223 «Поправки баланса белого в FULLRES и ISZ» (on by default): off, the camera's own white balance. */
+    public static final String MOSAIC_WB_KEY = "pref_mosaic_wb_corrections";
+
+    public static boolean mosaicIspPreview() {
+        try {
+            return preferenceKeys.settingsManager.getBoolean("default_scope", MOSAIC_ISP_PREVIEW_KEY, true);
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
+    /**
+     * P223: our white-balance corrections of mosaic shots (ISZ without remosaic, FULLRES) - the frame estimate on the camera's
+     * curve (P121 / P212f), the FULLRES neutral resolver (P212g), the OPPO native session's own estimate (P212e). Off: the
+     * camera's white balance (on the OPPO native mode, which has no AWB of its own, the camera's plain-mode neutral).
+     */
+    public static boolean mosaicWbCorrections() {
+        try {
+            return preferenceKeys.settingsManager.getBoolean("default_scope", MOSAIC_WB_KEY, true);
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
+    /** P226: the shot being merged is a crop (the active module's lens / sensor crop or the digital zoom's residual). */
+    public static boolean cropShot() {
+        try {
+            final String slot = ModuleRegistry.active();
+            return com.particlesdevs.photoncamera.control.ZoomController.shotResidual() > 1.005f
+                    || ModuleRegistry.crop(slot) > 1.0001f || ModuleRegistry.sensorCrop(slot);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     public static android.graphics.Point hybridFinalSize(int w, int h) {
         String mode = hybridOutputMode();
         if ("2x".equals(mode)) return new android.graphics.Point(2 * w, 2 * h);

@@ -126,7 +126,7 @@ public class ShadeTilesTest {
                 ShadeCatalog.METERING_STD, "pref_scam_hybrid_cdm", "pref_scam_hybrid_shasta"));
         for (String key : ShadeCatalog.DEFAULT_TILES) if (!expected.contains(key)) expected.add(key);
         assertEquals(expected, ShadeTiles.stored(prefs));
-        assertEquals(5 + ShadeCatalog.DEFAULT_TILES.size() - 1, expected.size());   // the grid is in both
+        assertEquals(5 + ShadeCatalog.DEFAULT_TILES.size() - 2, expected.size());   // the grid and «Разрешение» (P249) are in both
         assertEquals(expected, load());
         // Once only.
         assertFalse(SettingsMigration.migrateShadeTiles(prefs));
@@ -154,6 +154,28 @@ public class ShadeTilesTest {
         ShadeTiles.save(prefs, Arrays.asList(ShadeCatalog.TIMER, ShadeCatalog.FLASH));
         assertFalse(SettingsMigration.migrateSimpleUiTiles(prefs));
         assertEquals(Arrays.asList(ShadeCatalog.TIMER, ShadeCatalog.FLASH), ShadeTiles.stored(prefs));
+    }
+
+    /** P249: «Разрешение» (Sabre 1× / 12 / 16 / 20 / 2×) is a default tile in «Размер»'s place; a stored list swaps once. */
+    @Test
+    public void theResolutionTileTakesThePhotoSizeTilesPlace() {
+        assertEquals(4, ShadeCatalog.DEFAULT_TILES.indexOf(ShadeCatalog.OUTPUT));
+        assertFalse(ShadeCatalog.DEFAULT_TILES.contains(ShadeCatalog.SIZE));
+        java.util.List<String> before = new java.util.ArrayList<>(ShadeCatalog.DEFAULT_TILES);
+        before.set(4, ShadeCatalog.SIZE);
+        prefs.edit().remove(SettingsMigration.OUTPUT_TILE).commit();
+        ShadeTiles.save(prefs, before);
+        assertTrue(SettingsMigration.migrateOutputTile(prefs));
+        assertEquals(ShadeCatalog.DEFAULT_TILES, ShadeTiles.stored(prefs));
+        assertFalse("once", SettingsMigration.migrateOutputTile(prefs));
+        // a list that has both, or neither, stays
+        prefs.edit().remove(SettingsMigration.OUTPUT_TILE).commit();
+        ShadeTiles.save(prefs, Arrays.asList(ShadeCatalog.SIZE, ShadeCatalog.OUTPUT));
+        assertFalse(SettingsMigration.migrateOutputTile(prefs));
+        assertEquals(Arrays.asList(ShadeCatalog.SIZE, ShadeCatalog.OUTPUT), ShadeTiles.stored(prefs));
+        prefs.edit().remove(SettingsMigration.OUTPUT_TILE).commit();
+        ShadeTiles.save(prefs, Arrays.asList(ShadeCatalog.TIMER, ShadeCatalog.FLASH));
+        assertFalse(SettingsMigration.migrateOutputTile(prefs));
     }
 
     @Test

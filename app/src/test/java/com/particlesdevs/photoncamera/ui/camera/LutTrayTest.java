@@ -123,6 +123,28 @@ public class LutTrayTest {
         assertEquals(1f, PreferenceKeys.filmLutStrength(), 1e-6f);
     }
 
+    /** P228: the lens filters' row under the strength; a card is the settings' filter, the pill names it after the LUT. */
+    @Test
+    public void theFilterRowChoosesTheLensFilter() {
+        TextView pill = new TextView(context);
+        LinearLayout box = new LinearLayout(context);
+        LutTray tray = tray(pill, box);
+        tray.setOpen(true);
+        ViewGroup filters = box.findViewWithTag("lut_tray_filters");
+        assertNotNull(filters);
+        assertEquals("«Нет» and 12 filters", 13, filters.getChildCount());
+        box.findViewWithTag("lut_tray_filter_bpm").performClick();
+        assertEquals("bpm", PreferenceKeys.lensFilter());
+        assertEquals(.5f, PreferenceKeys.lensFilterStrength(), 1e-6f);
+        assertEquals("LUT · Pro-Mist", pill.getText().toString());
+        tray.setOpen(false);
+        assertEquals("a filter alone lights the pill", ShadeStyle.accent(context), pill.getCurrentTextColor());
+        tray.setOpen(true);
+        box.findViewWithTag("lut_tray_filter_").performClick();
+        assertEquals("", PreferenceKeys.lensFilter());
+        assertEquals("LUT", pill.getText().toString());
+    }
+
     private static org.robolectric.shadows.ShadowSeekBar shadowOf(android.widget.SeekBar seek) {
         return org.robolectric.Shadows.shadowOf(seek);
     }

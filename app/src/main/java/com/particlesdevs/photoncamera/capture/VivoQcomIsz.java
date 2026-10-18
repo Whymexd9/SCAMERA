@@ -139,6 +139,8 @@ public final class VivoQcomIsz {
     }
     /** DCG 14 bit «Open Gate» (the full 4:3 field) of each camera (owner: «ISZ и DCG доступен у 300 ультра на всех трех модулях»). */
     static final int MAIN_DCG = 17, WIDE_DCG = 11, TELE_DCG = 20;
+    /** P229: where the 14 / 35 mm DCG modes clip (our 2026-10-15 log; rawr's X300 Ultra profile: white 8712, black 1024). */
+    static final int DCG_CLIP = 8694;
 
     private VivoQcomIsz() {}
 
@@ -722,6 +724,10 @@ public final class VivoQcomIsz {
         if (session == null || mode <= 0) return "off";
         try {
             session.set(new android.hardware.camera2.CaptureRequest.Key<>(KEY, Integer.class), mode);
+            // P229: the 14 / 35 mm DCG modes clip at 8694 of 16383 (rawr: 8712, black 1024); the tele's reach 16383
+            final String role = role(null, c);
+            if ("main".equals(role) || "wide".equals(role))
+                com.particlesdevs.photoncamera.processing.RawLevels.priorClip(DCG_CLIP, "X300 Ultra " + role + " DCG mode " + mode);
             return KEY + " " + mode + " (DCG 14 bit)";
         } catch (RuntimeException e) {
             return "refused: " + e.getMessage();

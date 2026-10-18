@@ -299,12 +299,12 @@ public final class HybridPlan {
      * frames a FULLRES plan keeps - one, while every ultrashort frame stays (the native mosaic merge takes all of them since P219:
      * Bento's noise inside the mask). The owner's 50 MP shots captured 3 + 3 after the shutter (96 MB and up to 0.5 s of exposure
      * a frame) and the merge kept one of each («HYBRID SERIES CUT: 14 of 18 (frame rules)»). No limit for a plain 12 MP shot
-     * ({@code fullRes} false) and for «Наш ремозаик» off on a Quad / Tetra stream or one of unknown block ({@code block} 0): that
-     * burst is binned into plain Bayer and merged as one (P195), all of its frames. {@code block} 1: a Bayer stream (the HAL's
-     * remosaic), merged as Bayer whatever the switch says.
+     * ({@code fullRes} false). P217 (decided 2026-10-18 by the owner's rule «для фулреза 1 длинный достаточно»): a FULLRES burst
+     * binned into plain Bayer («Наш ремозаик» off, P195) takes one long frame too - its 3 + 3 cost 0.3-0.5 s of capture and 192 MB
+     * for a 12 MP result; {@code block} and {@code remosaic} are kept for the callers.
      */
     public static int fullResLongFrames(boolean fullRes, int block, boolean remosaic) {
-        return fullRes && (remosaic || block == 1) ? 1 : Integer.MAX_VALUE;
+        return fullRes ? 1 : Integer.MAX_VALUE;
     }
 
     /**

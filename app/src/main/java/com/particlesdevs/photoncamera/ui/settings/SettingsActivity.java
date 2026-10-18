@@ -700,6 +700,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 curve.setImporter(() -> curveImportLauncher.launch(new String[]{"*/*"}));
                 curve.setFolderOpener(() -> folderGrantLauncher.launch(com.particlesdevs.photoncamera.util.ScameraFolder.grantHint()));
             }
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference profiles = findPreference("profiles_page");
+            if (profiles != null)
+                profiles.setFolderOpener(() -> folderGrantLauncher.launch(com.particlesdevs.photoncamera.util.ScameraFolder.grantHint()));
             com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference filmLut =
                     findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
             if (filmLut != null) {
@@ -738,7 +741,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             setVersionDetails();
             setBackupPref();
             setRestorePref();
-            setThisDevice();
             updateSettingsAvailability();
         }
         
@@ -880,6 +882,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             setupToolbar();
             updateSettingsAvailability();
             showFileNamePreview();
+            refreshProfiles();   // P246: a config put into the folder meanwhile shows up
             mSettingsManager.getDefaultPreferences().registerOnSharedPreferenceChangeListener(this);
         }
 
@@ -923,6 +926,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     : com.particlesdevs.photoncamera.util.Lang.t(mContext, "Эта папка не Download/SCAMERA: конфиги из неё в список не попадут",
                             "This folder is not Download/SCAMERA: its configs are not listed");
             android.widget.Toast.makeText(mContext, text, android.widget.Toast.LENGTH_LONG).show();
+            refreshProfiles();
+        }
+
+        private void refreshProfiles() {
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference profiles = findPreference("profiles_page");
+            if (profiles != null) profiles.refresh();
         }
 
         /**
@@ -986,16 +995,30 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         /** P144: a picked file's "x:y" points onto the own curve's graph (and into the store). */
         void importToneCurve(android.net.Uri uri) {
             com.particlesdevs.photoncamera.processing.color.ToneCurve curve = null;
+            String text = null;
             try (java.io.InputStream in = mContext.getContentResolver().openInputStream(uri)) {
-                if (in != null) curve = com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.readCurve(in);
+                if (in != null) text = com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.readText(in);
+                if (text != null) curve = com.particlesdevs.photoncamera.processing.color.ToneCurve.fromFileText(text);
             } catch (java.io.IOException | RuntimeException e) {
                 Log.w("SettingsFragment", "tone curve import failed: " + e);
             }
             if (curve == null) {
                 android.widget.Toast.makeText(mContext, com.particlesdevs.photoncamera.util.Lang.t(mContext,
-                        "В файле нет кривой: нужны точки «x:y» от 0 до 1", "No curve in the file: it needs «x:y» points from 0 to 1"),
+                        "В файле нет кривой: нужны точки «x:y» от 0 до 1 или файл кривой ArkCam (.json)",
+                        "No curve in the file: it needs «x:y» points from 0 to 1 or an ArkCam curve file (.json)"),
                         android.widget.Toast.LENGTH_LONG).show();
                 return;
+            }
+            // P231: an ArkCam curve file keeps its name - the curve goes into Download/SCAMERA/ToneCurves under it (our .txt)
+            String name = com.particlesdevs.photoncamera.processing.color.ToneCurve.jsonName(text);
+            if (name != null) {
+                try {
+                    String file = com.particlesdevs.photoncamera.util.ScameraFolder.CURVES.baseName(name);
+                    if (!file.isEmpty()) com.particlesdevs.photoncamera.util.ScameraFolder.CURVES.save(mContext, file + ".txt",
+                            curve.toFileText().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                } catch (java.io.IOException | RuntimeException e) {
+                    Log.w("SettingsFragment", "tone curve copy failed: " + e);
+                }
             }
             com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference pref =
                     findPreference(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.KEY);
@@ -1079,12 +1102,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 }
            });
         }
-        private void setThisDevice() {
-            Preference preference = findPreference(mContext.getString(R.string.pref_this_device_key));
-            if (preference != null) {
-                preference.setSummary(mContext.getString(R.string.this_device,
-                        android.os.Build.BRAND.toLowerCase(java.util.Locale.ROOT) + ":" + android.os.Build.DEVICE.toLowerCase(java.util.Locale.ROOT)));
-            }
+        /** The phone as brand:device («vivo:pd2454»), on the version row. */
+        static String thisDevice() {
+            return android.os.Build.BRAND.toLowerCase(java.util.Locale.ROOT) + ":" + android.os.Build.DEVICE.toLowerCase(java.util.Locale.ROOT);
         }
 
         @Override
@@ -1192,7 +1212,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         SimpleDateFormat sdf = new SimpleDateFormat("dd MMM yyyy HH:mm:ss z", Locale.US);
                         sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
 
-                        about.setSummary(mContext.getString(R.string.version_summary, versionName + "." + versionCode, sdf.format(date)));
+                        // SIMPLE_UI §4 «О приложении»: the version and the device on one row
+                        about.setSummary(mContext.getString(R.string.version_summary, versionName + "." + versionCode, sdf.format(date), thisDevice()));
 
                     } catch (PackageManager.NameNotFoundException e) {
                         e.printStackTrace();

@@ -473,7 +473,7 @@
     <string name="prefs_raw_stream_format_title">RAW stream format</string>
     <string name="prefs_raw_stream_format_summary">%s. How the camera delivers RAW. Auto: 16-bit if offered, otherwise RAW10 or RAW12.</string>
     <string name="prefs_expert_sensor_screen_title">RAW metadata</string>
-    <string name="prefs_expert_sensor_screen_summary">Dynamic black and white levels, front camera mirroring</string>
+    <string name="prefs_expert_sensor_screen_summary">Dynamic black and white levels</string>
     <string name="prefs_noise_model_screen_title">Sensor noise model</string>
     <string name="prefs_noise_model_screen_summary">Sensor noise profile, import and export</string>
     <string name="prefs_noise_model_note_summary">The chosen profile replaces the camera noise in the SHDR denoise, the DNG and merges set to From settings.</string>
@@ -782,6 +782,8 @@
     <string name="prefs_watermark_page_summary">A watermark with the phone model</string>
     <string name="prefs_adv_view_title">Camera screen</string>
     <string name="prefs_film_lut_screen_summary">A ready film look: see what it changes</string>
+    <string name="prefs_lens_filter_title">Lens filter</string>
+    <string name="prefs_lens_filter_screen_summary">Pro-Mist, fog, streaks, IR: the glass in front of the lens</string>
     <string name="prefs_film_lut_changes_title">What changes</string>
     <string name="prefs_photo_style_title">Photo style</string>
     <string name="prefs_photo_style_summary">Normal, black and white or film</string>
@@ -795,4 +797,10 @@
     <string name="prefs_profiles_load_title">Load from a file</string>
     <string name="prefs_profiles_load_summary">An .xml file from the SCAMERA folder</string>
     <string name="prefs_profiles_reset_summary">Settings back as after installing</string>
+    <string name="prefs_crop_upscale_title">Upscale cropped shots</string>
+    <string name="prefs_crop_upscale_summary">A shot of a crop module or with digital zoom is brought up to the photo size. Off: a cropped shot keeps its own size, no upscale</string>
+    <string name="prefs_mosaic_isp_preview_title">ISP preview in FULLRES and ISZ</string>
+    <string name="prefs_mosaic_isp_preview_summary">Off: in the FULLRES and ISZ modes the camera sends only the RAW stream and the viewfinder is drawn from RAW. Less load, but on some cameras focus and metering may work worse</string>
+    <string name="prefs_mosaic_wb_title">White-balance corrections in FULLRES and ISZ</string>
+    <string name="prefs_mosaic_wb_summary">Our white-balance estimate for shots without the camera\'s remosaic. Off: the camera\'s own white balance (on OPPO in FULLRES: from the normal mode)</string>
 </resources>

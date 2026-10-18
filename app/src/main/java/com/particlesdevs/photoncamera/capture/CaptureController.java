@@ -123,6 +123,8 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import com.particlesdevs.photoncamera.processing.ImageFrame;
+import com.particlesdevs.photoncamera.processing.RingArenaMove;
+import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst;
 import com.particlesdevs.photoncamera.processing.ImageSaverSelector;
 import com.particlesdevs.photoncamera.processing.SaverImplementation;
 import com.particlesdevs.photoncamera.util.Lang;
@@ -627,6 +629,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     };
     private Range<Integer> FpsRangeAuto;
+    /** P224: the fastest rate of this session's RAW stream (0: not known); a slower mode keeps its range (ViewfinderFps). */
+    private double mRawMaxFps;
     private int[] mCameraAfModes;
     private int mPreviewWidth;
     private int mPreviewHeight;
@@ -937,6 +941,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     if (builder != null && isCurrentPreviewSession(session)) {
                         builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
                         rebuildPreviewBuilderOneShot();
+                        builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
                     }
                 }
             }
@@ -987,6 +992,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         @Override
         public void onError(@NonNull CameraDevice cameraDevice, int error) {
             mDeviceErrorMs = android.os.SystemClock.elapsedRealtime();
+            if (isCameraResumed) recovering(true, "camera error " + error); // P240: every path below opens the camera again
             if (mVivoSdkRawSession != null && mVivoSdkRawDevice == null) mVivoSdkRawDevice = cameraDevice;
             rescueInFlightShot("camera error " + error);
             stopStallWatch();
@@ -1010,10 +1016,22 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 showError(Lang.t("Сбой камеры (код ", "Camera failure (code ") + error + Lang.t("), перезапуск", "), restarting"));
                 scheduleRecovery("onError " + error);
             } else {
+                recovering(false, "camera error " + error + ": no recovery");
                 showError(Lang.t("Камера недоступна (код ", "Camera unavailable (code ") + error + ")");
             }
         }
     };
+
+    /** P240: the camera screen's «Камера перезапускается…» overlay is up (an error is being recovered from). */
+    private volatile boolean mRecovering;
+
+    /** P240 (speed-ux C4): the recovery overlay on / off, once per change, with the reason in the log. */
+    private void recovering(boolean on, String why) {
+        if (mRecovering == on) return;
+        mRecovering = on;
+        Log.i(TAG, "camera recovery " + (on ? "started" : "ended") + " (" + why + ")");
+        try { cameraEventsListener.onCameraRecovery(on, why); } catch (RuntimeException e) { Log.w(TAG, "recovery overlay: " + e); }
+    }
 
     // Recovery after the camera HAL or service died: the vivo X100 Ultra (owner's log 2026-10-05) answered
     // ERROR_CAMERA_DEVICE, every id was 'unknown device' for ~4.5 s while the provider restarted, and nothing reopened the
@@ -1179,6 +1197,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             while (!mRecoveries.isEmpty() && now - mRecoveries.peekFirst() > 60_000) mRecoveries.pollFirst();
             if (mRecoveries.size() >= 3) {
                 Log.e(TAG, "camera recovery stopped after three restarts within a minute (" + reason + ")");
+                recovering(false, "gave up: " + reason);
                 showError(Lang.t("Камера не отвечает. Выберите другой модуль или перезапустите приложение", "The camera is not responding. Choose another module or restart the app"));
                 return;
             }
@@ -2394,12 +2413,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             return;
         }
         startTimerLocked();
-        // This is how to tell the camera to lock focus.
+        // This is how to tell the camera to lock focus: the trigger once (owner, 2026-10-18 «оппо не фокусируется»: a
+        // trigger left in the repeating request re-sends itself on every frame), the repeating request back to IDLE.
         mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
                 CameraMetadata.CONTROL_AF_TRIGGER_START);
         // Tell #mCaptureCallback to wait for the lock.
         mState = STATE_WAITING_LOCK;
         try {
+            mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
+            mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
             mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(), mCaptureCallback,
                     mBackgroundHandler);
         } catch (CameraAccessException | RuntimeException e) {
@@ -2496,6 +2518,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     /** The FULLRES session runs the native route: a Quad / Tetra row, or P194's hardware-remosaic Bayer row (X100 / X300 Ultra). */
+    /** P223: this session runs without the ISP preview stream (set with mLiveRawSession). */
+    private boolean mIspPreviewOff;
+
     private boolean nativeVivoFullRes() {
         VivoSdkFullRes.Profile profile = mVivoSdkRawSession == null ? null : VivoSdkFullRes.profile(mVivoSdkCameraId);
         return profile != null && profile.nativeRoute();
@@ -2666,11 +2691,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** Up to 8 retries 0.5, 1, 2, 4, 4 ... s apart (~27 s): the X100 Ultra provider needed ~4.5 s, the old 5 x 1 s ran out. */
     private void retryOpen(int width, int height, Exception e) {
         if (mOpenRetries < 8 && mBackgroundHandler != null && isCameraResumed) {
+            recovering(true, "open failed: " + e.getMessage()); // P240
             long delay = Math.min(4000L, 500L << mOpenRetries++);
             Log.w(TAG, "openCamera(" + logicalID + ") failed (" + e.getMessage() + "), retry " + mOpenRetries + " in " + delay + " ms");
             mBackgroundHandler.postDelayed(() -> openCamera(width, height), delay);
         } else {
             Log.e(TAG, "openCamera(" + logicalID + ") failed after retries: " + Log.getStackTraceString(e));
+            recovering(false, "open failed after retries");
         }
     }
 
@@ -2916,6 +2943,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mImageReaderRaw = ImageReader.newInstance(target.getWidth(), target.getHeight(), mTargetFormat, maxjpg);
         }
         mImageReaderRaw.setOnImageAvailableListener(mOnRawImageAvailableListener, mBackgroundHandler);
+        mRawMaxFps = ViewfinderFps.maxFps(characteristics, mTargetFormat, mImageReaderRaw.getWidth(), mImageReaderRaw.getHeight(),
+                useMaximumResolutionKey);
         // P230: a DCG mode (60 fps only) has its own limits, not the normal mode's of the same RAW size
         mExposureLimits = ExposureLimits.of(physicalID + (Dcg14Mode.requestKeys(characteristics) ? "/dcg" : ""),
                 mImageReaderRaw.getWidth(), mImageReaderRaw.getHeight(), useMaximumResolutionKey);
@@ -3095,8 +3124,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     + " route=" + (PreferenceKeys.isScamHybridEnabled() ? "SCAM_HYBRID" : PreferenceKeys.isScamEnabled() ? "SCAM_RAW" : "SCAMERA"));
             // RAW_SENSOR, RAW10 and RAW12: packed rows are unpacked for the viewfinder (RawUnpack).
             // P108: the full-resolution session always shows the RAW viewfinder (the Pixel ISP's own one is green in that mode)
+            // P223: «ISP-превью в FULLRES и ISZ» off - such a session shows the RAW viewfinder, the only stream it repeats
+            mIspPreviewOff = photoMode && !PreferenceKeys.mosaicIspPreview() && (mFullResSession || IszCapturePolicy.mosaicModule(
+                    com.particlesdevs.photoncamera.settings.ModuleRegistry.active()));
             mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected && (!sdkFullRes || nativeVivoFullRes())
-                    && isRawFormat(mTargetFormat) && (nativeIsz || nativeVivoFullRes() || PreferenceKeys.isLiveViewfinderRawEnabled() || mFullResSession);
+                    && isRawFormat(mTargetFormat) && (nativeIsz || nativeVivoFullRes() || PreferenceKeys.isLiveViewfinderRawEnabled() || mFullResSession
+                    || mIspPreviewOff);
             LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
             LiveRawFrame.setEnabled(mLiveRawSession);
             // P13: a module whose stream was measured as a mosaic before starts on the RAW viewfinder at once
@@ -3220,6 +3253,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             mBackgroundHandler.removeCallbacks(mStallCheck);
                             mBackgroundHandler.postDelayed(mStallCheck, 1000);
                         }
+                        scheduleProgramWarmUp(); // P237
+                        recovering(false, "session configured"); // P240
+                        experimentalRouteNotice(); // P240
+                        com.particlesdevs.photoncamera.util.ThermalPolicy.watch(ScameraApp.getAppContext()); // P238
                         mPreviewCaptureResult = null;
                         mPreviewCaptureRequest = null;
                         try {
@@ -3270,8 +3307,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 mPreviewRequestBuilder.set(CaptureRequest.STATISTICS_OIS_DATA_MODE, CaptureRequest.STATISTICS_OIS_DATA_MODE_ON);
 
                             // Finally, we start displaying the camera preview.
+                            // P224: the viewfinder never below 20 fps (the automatic ranges' floor, ViewfinderFps)
                             mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                                    scamPreview ? ScamPreview.STOCK_FPS : getSelectedFpsRange());
+                                    ViewfinderFps.raise(scamPreview ? ScamPreview.STOCK_FPS : getSelectedFpsRange(), mRawMaxFps));
                             // P86 «Движение»: the fastest fixed rate the RAW stream allows (exposure <= 1/f, ring refreshed most often)
                             Range<Integer> motionFps = motionFpsRange();
                             if (motionFps != null) {
@@ -3470,7 +3508,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         if (session != null) try { session.close(); } catch (RuntimeException ignored) { }
         Log.w("SCAM_CAPTURE", "SDK FULLRES50 refused: " + why);
-        showError(note != null ? note : Lang.t("SDK 50 Мп: камера отказала, обычный RAW", "SDK 50 MP: camera refused, normal RAW"));
+        // P229 (rawr's X300 Ultra notes): vivo's own camera open in the background makes full-size sessions fail (error 3 / 4)
+        final String vivoHint = VivoSdkFullRes.oppo() ? "" : Lang.t(" Если в фоне открыта камера vivo — закройте её и попробуйте снова.",
+                " If vivo's camera is open in the background, close it and try again.");
+        showError((note != null ? note : Lang.t("SDK 50 Мп: камера отказала, обычный RAW", "SDK 50 MP: camera refused, normal RAW")) + vivoHint);
         new Handler(Looper.getMainLooper()).post(this::restartCamera);
         return true;
     }
@@ -3608,7 +3649,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
         }
 
-        if (!nativeVivoFullRes() && !VivoPd2454NativeRaw.active(physicalID)) mPreviewRequestBuilder.addTarget(surface);
+        // P223: without the ISP preview (FULLRES / ISZ, the RAW viewfinder on) the repeating request carries the RAW stream only
+        final boolean ispOff = mIspPreviewOff && mLiveRawSession && mVivoSdkRawSession == null && !mIsRecordingVideo;
+        if (!nativeVivoFullRes() && !VivoPd2454NativeRaw.active(physicalID) && !ispOff) mPreviewRequestBuilder.addTarget(surface);
+        if (ispOff) Log.i("SCAM_CAPTURE", "camera " + physicalID + ": ISP preview off (P223), the repeating request has the RAW stream only");
         if (mVivoSdkRawSession != null) {
             if (nativeVivoFullRes()) mPreviewRequestBuilder.addTarget(stillOnlyFullRes() && mImageReaderRawView != null
                     ? mImageReaderRawView.getSurface() : mImageReaderRaw.getSurface());
@@ -3681,7 +3725,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private void applyVivoSdkPreview(CaptureRequest.Builder builder) {
         if (nativeVivoFullRes()) {
             VivoPd2454NativeRaw.applyFullRes(builder, VivoSdkFullRes.profile(mVivoSdkCameraId));
-            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, FpsRangeAuto);
+            // P224: the viewfinder not below 20 fps; a still keeps the camera's whole range
+            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, builder == mPreviewRequestBuilder ? ViewfinderFps.raise(FpsRangeAuto, mRawMaxFps) : FpsRangeAuto);
             // P201: the manual mode over the FULLRES keys of the viewfinder (not the session parameters; the OPPO's own exposure
             // takes the hand-set ISO / shutter itself)
             if (builder == mPreviewRequestBuilder) {
@@ -3692,7 +3737,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         mVivoSdkRawSession.apply(builder, false, 0);
         // Fixed 30 fps returns empty FULLRES RAW on PD2454 ultra-wide; this graph captures serial stills, not a RAW ring.
-        builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, FpsRangeAuto);
+        // P224: a range, never fixed - its floor 20 fps on the viewfinder only
+        builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, builder == mPreviewRequestBuilder ? ViewfinderFps.raise(FpsRangeAuto, mRawMaxFps) : FpsRangeAuto);
         VivoSdkRawSession.applyAutomaticExposure(builder);
         builder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF);
         if (builder == mPreviewRequestBuilder) paramController.applyManualTo(builder); // P201
@@ -3782,6 +3828,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + " (" + android.os.Build.DEVICE + ") camera " + physicalID
                     + " route " + PreferenceKeys.mergeRoute());
             com.particlesdevs.photoncamera.processing.ShotTimeline.begin("shutter");
+            // P238 (speed-ux D2): the thermal state at the press (status / headroom), also the policy's current status
+            final com.particlesdevs.photoncamera.util.ThermalState.Sample thermal = com.particlesdevs.photoncamera.util.ThermalState.now();
+            com.particlesdevs.photoncamera.util.ThermalPolicy.observed(thermal);
+            Log.i("SCAM_CAPTURE", "THERMAL at the press: " + thermal + (com.particlesdevs.photoncamera.util.ThermalPolicy.severe()
+                    ? " (severe: viewfinder at most " + com.particlesdevs.photoncamera.util.ThermalPolicy.SEVERE_VF_FPS + " fps, FULLRES ring paused)" : ""));
             final long shotGeneration = ++mShutterGeneration;
             mShutterIszAspect4x3 = IszCapturePolicy.isIsz(
                     com.particlesdevs.photoncamera.settings.ModuleRegistry.active(), mCameraCharacteristics,
@@ -4217,6 +4268,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * Unlock the focus. This method should be called when still image capture sequence is
      * finished.
      */
+    /** After a SCAM-routed shot: the AF lock of lockFocus released (CANCEL once, the repeating request IDLE). */
+    void releaseShotAfLock() {
+        if (burst || mPreviewRequestBuilder == null || mCaptureSession == null) return;
+        Integer mode = mPreviewRequestBuilder.get(CaptureRequest.CONTROL_AF_MODE);
+        if (mode == null || mode == CaptureRequest.CONTROL_AF_MODE_OFF) return;
+        if (mTouchFocus != null && (mTouchFocus.isTouchFocus || mTouchFocus.isLocked())) return;   // the user's point stays
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL);
+        rebuildPreviewBuilderOneShot();
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
+        rebuildPreviewBuilder();
+    }
+
     public void unlockFocus() {
         // The burst is done with the reader by here, so the raw viewfinder may
         // take frames again.
@@ -4243,6 +4306,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
                     CameraMetadata.CONTROL_AF_TRIGGER_CANCEL);
             rebuildPreviewBuilderOneShot();
+            // Owner, 2026-10-18 («оппо не фокусируется», «на всех» camera switches): the CANCEL stayed in the builder, and the
+            // repeating request below sent it on every frame (this runs at every session start): continuous AF never
+            // finished a scan. The triggers above are one-shots; the repeating request carries IDLE.
+            mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
+                    CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
             paramController.setupPreview();
             /*mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
                     CameraMetadata.CONTROL_AF_TRIGGER_CANCEL);
@@ -4423,17 +4491,22 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             plainTeacher(img, result); // P212f: the mosaic white balance's teacher (log only)
             // P212a: the native AE's ISO probe is no viewfinder frame, no AE frame and no ring frame (the plan never sees it)
             final boolean probe = isNativeIsoProbe(result);
-            if (!probe) publishLiveRawFrame(img, result);
+            // P238: at SEVERE the developed RAW viewfinder shows at most ThermalPolicy.SEVERE_VF_FPS frames a second (the AE, the
+            // ring and the stream see every frame)
+            final boolean shown = !probe && com.particlesdevs.photoncamera.util.ThermalPolicy.viewfinderFrameDue(img.getTimestamp());
+            if (shown) publishLiveRawFrame(img, result);
             if (!probe) nativeExposure(img, result);
             vivoAeAudit(img, result); // P212h: the vivo HAL AE against our RAW meter (log only)
-            if (mTextureView != null) mTextureView.requestRender();
+            if (mTextureView != null && (shown || probe)) mTextureView.requestRender();
             // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
             // P187: not while a 200 MP merge runs (its plain session takes no shot)
             // P198: the native 50 MP FULLRES session rings its frames as well (the viewfinder keeps running from them), not while a
             // shot takes its frames (from the press until its series is complete: the ring holds the moment of the press)
             // P200: none while a FULLRES merge runs (its memory)
+            // P238: none at SEVERE (ThermalPolicy): the ring's frames go, a press takes the series after the shutter
+            final boolean ringIdle = nativeZslSession() && nativeRingPaused();
             final boolean nativeRing = !isZslMode() && mVivoSdkCapture == null && !mShotInProgress && !fullResMergeRunning() && !probe
-                    && nativeZslSession() && nativeRingDue(android.os.SystemClock.elapsedRealtimeNanos());
+                    && !ringIdle && nativeZslSession() && nativeRingDue(android.os.SystemClock.elapsedRealtimeNanos());
             if ((isZslMode() && passModeBarrier(img, result) || nativeRing && nativeRingFrame(result)) && !mClosedForProcessing)
                 synchronized (mZslBufferLock) {
                 if (!isCameraResumed || !mLiveRawSession) return;
@@ -4461,6 +4534,40 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         } finally { if (!retained) img.close(); }
     }
 
+    /** P238: why the native ring rests now (null: it runs); its frames were dropped when it began. */
+    private String mNativeRingPause;
+    /** P239: the native ring's rate and rest (FullResRingPolicy). */
+    private final FullResRingPolicy mRingPolicy = new FullResRingPolicy();
+
+    /**
+     * P238: the native 50 MP ring rests - at SEVERE (ThermalPolicy); P239 (speed-ux D1): also with no touch for
+     * FullResRingPolicy.idleSeconds() and a still gyro. On the change its frames go (stale frames would make a later press's ZSL
+     * frames older than the press by the pause), and the log says why; it runs again on the next frame after.
+     */
+    private boolean nativeRingPaused() {
+        final long nowMs = android.os.SystemClock.elapsedRealtime();
+        final int idleS = FullResRingPolicy.idleSeconds();
+        int shake = -1;
+        try { shake = ScameraApp.getGyro().getFilteredShakiness(); } catch (RuntimeException ignored) { }
+        final boolean idle = mRingPolicy.idle(nowMs, shake, FullResRingPolicy.lastTouchMs(), idleS);
+        final String why = com.particlesdevs.photoncamera.util.ThermalPolicy.severe() ? "the phone is hot (thermal status SEVERE)"
+                : idle ? "no touch for " + idleS + " s and the phone still" : null;
+        if (java.util.Objects.equals(why, mNativeRingPause)) return why != null;
+        final String before = mNativeRingPause;
+        mNativeRingPause = why;
+        if (why != null && !mShotInProgress && mVivoSdkCapture == null) {
+            synchronized (mZslBufferLock) {
+                if (mZslRing != null && mZslRing.fullRes()) {
+                    while (!mZslRingBuffer.isEmpty()) mZslRingBuffer.pollFirst().close();
+                    mHexZslResults.clear();
+                }
+            }
+        }
+        Log.i("SCAM_CAPTURE", why != null ? "50 MP ZSL ring paused: " + why + " (a press takes its frames after the shutter)"
+                : "50 MP ZSL ring runs again (" + before + " is over)");
+        return why != null;
+    }
+
     private int mNativeRingRejected;
     /** P198: start and length of the last 50 MP ring copy, frames copied this session. */
     private long mNativeRingLastNs, mNativeRingCopyNs;
@@ -4476,7 +4583,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     private boolean nativeRingDue(long nowNs) {
-        return ringCopyDue(nowNs, mNativeRingLastNs, mNativeRingCopyNs);
+        // P239: and at most FullResRingPolicy.fps() copies a second (12: every second frame of 24 fps)
+        return ringCopyDue(nowNs, mNativeRingLastNs, mNativeRingCopyNs)
+                && FullResRingPolicy.rateDue(nowNs, mNativeRingLastNs, FullResRingPolicy.fps());
     }
 
     private void nativeRingCopied(long startNs, long copyNs) {
@@ -4484,7 +4593,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mNativeRingCopyNs = copyNs;
         if (++mNativeRingCopies == 1 || mNativeRingCopies % 150 == 0)
             Log.i("SCAM_CAPTURE", "50 MP ZSL ring: copy " + copyNs / 1_000_000 + " ms (" + mNativeRingCopies + " frames this session, ring "
-                    + mZslRingBuffer.size() + ")");
+                    + mZslRingBuffer.size() + ", at most " + FullResRingPolicy.fps() + " a second)");
     }
 
     /**
@@ -5526,6 +5635,79 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return a != null ? a : com.particlesdevs.photoncamera.util.ShotArena.create(frames, frameBytes);
     }
 
+    /**
+     * P235 (speed-ux B3): the shot's own arena for {@code ring} frames (views of the ring's memfd, null for a PSL series) and
+     * {@code stills}, made at the press when the burst would otherwise not be one memfd for the worker - the ring's free slots
+     * ({@code reserved}) do not take every still, or a ring frame is not in the ring's memfd. Null: keep {@code reserved} (all of
+     * it in one memfd already, a burst of 16 MP or less that the merge never moves, no memfd, or scam_dev "fullres_press_arena" 0).
+     */
+    @Nullable
+    private static com.particlesdevs.photoncamera.util.ShotArena pressArena(@Nullable com.particlesdevs.photoncamera.util.ShotArena reserved,
+            @Nullable List<ImageFrame> ring, int stills, long frameBytes, long pixels) {
+        final int ringFrames = ring == null ? 0 : ring.size();
+        boolean together = reserved != null && reserved.slots() >= stills;
+        if (together && ring != null)
+            for (ImageFrame f : ring) {
+                final long[] where = f.buffer == null ? null : com.particlesdevs.photoncamera.util.Allocator.arenaOf(f.buffer);
+                if (where == null || where[0] != reserved.id()) { together = false; break; }
+            }
+        if (!pressArenaWanted(together, pixels, ringFrames + stills)) return null;
+        return com.particlesdevs.photoncamera.util.ShotArena.create(ringFrames + stills, frameBytes);
+    }
+
+    /** P235: a press arena is made for a burst above 16 MP (the merge's moveIntoArena) not in one memfd, of at most 64 frames. */
+    static boolean pressArenaWanted(boolean oneMemfd, long pixels, int frames) {
+        return !oneMemfd && pixels > ScamHybridBurst.CLASSIC_INPUT_PIXELS && frames > 0 && frames <= 64
+                && PreferenceKeys.scamDevSwitch("fullres_press_arena", true);
+    }
+
+    /**
+     * P237 (speed-ux B5): once per process, {@link #WARM_UP_DELAY_MS} after a session opened, the post-pipeline programs whose
+     * driver binary is missing from the disk cache are compiled on a background thread (GLProg.warmUp) while the camera is idle -
+     * no shot in flight, nothing processing, the camera open; a shot meanwhile stops it between two programs. scam_dev gl_warm_up 0
+     * off (DevKeys).
+     */
+    private void scheduleProgramWarmUp() {
+        if (sWarmUpScheduled || !PreferenceKeys.scamDevSwitch("gl_warm_up", true)) return;
+        sWarmUpScheduled = true;
+        final Thread t = new Thread(() -> {
+            try {
+                Thread.sleep(WARM_UP_DELAY_MS);
+            } catch (InterruptedException e) {
+                return;
+            }
+            if (!cameraIdle()) {
+                sWarmUpScheduled = false; // the next session tries again
+                return;
+            }
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+            com.particlesdevs.photoncamera.processing.opengl.GLProg.warmUp(this::cameraIdle);
+        }, "scam-gl-warm-up");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private static volatile boolean sWarmUpScheduled;
+    static final long WARM_UP_DELAY_MS = 4000;
+
+    /**
+     * P240 (speed-ux C4): routes built but never run on a phone say so on their first use (once per install, the message card):
+     * the X100 / X300 Ultra 200 MP the stock way (P208: the viewfinder in the normal mode, 200 MP for the stills only).
+     */
+    private void experimentalRouteNotice() {
+        if (!stillOnlyFullRes() || VivoSdkFullRes.oppo()) return;
+        final String text = ExperimentalRoutes.firstUse(ScameraApp.getAppContext(), "p208_stock_200mp",
+                Lang.t("Экспериментально: 200 Мп как в стоковой камере (видоискатель в обычном режиме) ещё не проверено на телефоне. Если снимок не выйдет — выключите «vivo_fullres200_stock» в «Для разработчика»",
+                        "Experimental: 200 MP the stock camera's way (the viewfinder in the normal mode) is not tested on a phone yet. If the shot fails, switch off “vivo_fullres200_stock” in “For developers”"));
+        if (text != null) showToast(text);
+    }
+
+    /** P237: no shot in flight and nothing processing, the camera open (the idle warm-up's condition). */
+    private boolean cameraIdle() {
+        return isCameraResumed && !mShotInProgress && mVivoSdkCapture == null && !isProcessing && sScamPending.get() == 0
+                && !fullResMergeRunning() && !mClosedForProcessing;
+    }
+
     public static int zslRingCapacity() {
         // One global, user-adjustable capacity. Capture counts never resize the ring.
         // P179: the plain session that shows the viewfinder while a 200 MP shot is merged holds a small ring (no shot is taken
@@ -6043,6 +6225,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return ns == null || iso == null ? 0 : (double) ns * iso;
     }
 
+    /**
+     * P234 (speed-ux A4): the stills after the press a ZSL shot may take behind the instant-shot UI - the 12 MP plan's (about
+     * 400 ms); above it the press shows the capture ring with the frame count and a haptic tick at its end.
+     */
+    static final int INSTANT_ZSL_STILLS = 6;
+    public static final String ZSL_SERIES_STARTED = "ScamZslSeriesStarted";
+
+    /** P234: the UI tag of a ZSL press with {@code stillsAfterPress} stills still to come. */
+    static String zslStartTag(int stillsAfterPress) {
+        return stillsAfterPress <= INSTANT_ZSL_STILLS ? "ScamZslCaptureStarted" : ZSL_SERIES_STARTED;
+    }
+
     private void captureVivoSdkFullRes() {
         try {
             captureVivoSdkFullResChecked();
@@ -6059,7 +6253,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private static final class NativeZslShot {
         final List<ImageFrame> frames;
         final CaptureResult base;
-        final HybridPlan plan;
+        HybridPlan plan; // P232: the N after the shutter join it once the memory budget is known (withTopUp)
         final boolean verified;
 
         NativeZslShot(List<ImageFrame> frames, CaptureResult base, HybridPlan plan, boolean verified) {
@@ -6132,10 +6326,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         plan = plan.withLongFrames(HybridPlan.fullResLongFrames(true, Math.max(1, profile.nativeBlock), PreferenceKeys.isHybridMosaicRemosaic()));
         // P198: a ring smaller than the frames asked (96 MB a frame: 4-10 of them) takes the rest of the N right after the shutter -
         // the merge keeps the frame count of the series before P198 (fewer frames left more lattice and noise), the first frames
-        // still come from before the press
-        final int topUp = Math.max(0, requested - frames.size());
-        plan = plan.withLeadingNormals(topUp);
-        Log.i("SCAM_CAPTURE", "50 MP ZSL: " + frames.size() + " ring frames + " + topUp + " N after the shutter (asked " + requested + ", mosaic "
+        // still come from before the press. P232 (speed-ux A2): that top-up is sized by the caller after the memory budget
+        // (VivoSdkFullResCapture.zslSplit), so the budget shrinks the frames after the press, not the ring's zero-lag ones
+        Log.i("SCAM_CAPTURE", "50 MP ZSL: " + frames.size() + " ring frames (asked " + requested + ", mosaic "
                 + (verified ? "verified" : "not proven by the ring") + "); " + plan.description);
         return new NativeZslShot(frames, base, plan, verified);
     }
@@ -6202,6 +6395,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private void captureVivoSdkFullResChecked() {
         final VivoSdkRawSession sdk = mVivoSdkRawSession;
         final CameraCaptureSession session = mCaptureSession;
+        // P238 (speed-ux D2): a FULLRES press on a hot phone is told why it will take longer (at most every 5 min)
+        if (mImageReaderRaw != null) {
+            final String hot = com.particlesdevs.photoncamera.util.ThermalPolicy.pressNotice(android.os.SystemClock.elapsedRealtime(),
+                    com.particlesdevs.photoncamera.settings.FullResProfiles.megapixels(mImageReaderRaw.getWidth(), mImageReaderRaw.getHeight()));
+            if (hot != null) showToast(hot);
+        }
         if (sdk == null || !isCurrentPreviewSession(session) || mCameraDevice == null
                 || !nativeVivoFullRes() && mVivoSdkJpeg == null) {
             failPendingShutter(new IllegalStateException(Lang.t("Сессия SDK RAW закрыта", "SDK RAW session closed")));
@@ -6243,18 +6442,27 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 : takeNativeZsl(VivoSdkFullRes.profile(mVivoSdkCameraId), requested);
         final int count, shotN;
         boolean zslTrimmed = false;
+        int zslTopUp = 0;
         HybridPlan pslPlanBuilt = null;
         if (zsl != null) {
-            final int post = zsl.plan.requests.size();
+            final int extras = zsl.plan.requests.size(); // the plan's ultrashort / bracketed stills (no N yet)
+            final int ring = zsl.frames.size();
             // the ring frames are in memory already (the ring's memfd): the budget of the series counts their bytes as its own
-            final long withRing = availableBytes < 0 ? -1 : availableBytes + (long) zsl.frames.size() * frameBytes;
-            final int all = zsl.frames.size() + post;
-            final int budget = seriesMode ? VivoSdkFullRes.seriesCount(all, (long) rawWidth * rawHeight, rawWidth, frameBytes, block, grid,
-                    false, withRing) : VivoSdkFullRes.frameCount(all, frameBytes, withRing);
-            final int keep = VivoSdkFullResCapture.zslNormals(zsl.frames.size(), post, budget);
-            zslTrimmed = keep < zsl.frames.size();
+            final long withRing = availableBytes < 0 ? -1 : availableBytes + (long) ring * frameBytes;
+            // P232 (speed-ux A2): the budget first, then the split - the ring frames stay (the zero-lag ones, P198's point), the N
+            // taken after the press shrink; before P232 the top-up was fixed first and the budget removed the oldest ring frames
+            // (owner's X7U 20:20:35: «5 ring frames + 7 N after the shutter» -> «N 1 from the ring + 13 after the shutter»)
+            final int[] split = VivoSdkFullResCapture.zslSplit(ring, extras, requested, all -> seriesMode
+                    ? VivoSdkFullRes.seriesCount(all, (long) rawWidth * rawHeight, rawWidth, frameBytes, block, grid, false, withRing)
+                    : VivoSdkFullRes.frameCount(all, frameBytes, withRing));
+            final int keep = split[0];
+            zslTopUp = split[1];
+            zslTrimmed = split[2] < Math.max(ring, requested) + extras; // the memory, not the ring, held the N back
             while (zsl.frames.size() > keep) zsl.frames.remove(0).close(); // the oldest go, the moment of the press stays
-            count = post;
+            zsl.plan = zsl.plan.withLeadingNormals(zslTopUp);
+            Log.i("SCAM_CAPTURE", "50 MP ZSL: " + keep + " of " + ring + " ring frames + " + zslTopUp + " N after the shutter (asked "
+                    + requested + ", budget " + split[2] + " frames); " + zsl.plan.description);
+            count = zsl.plan.requests.size();
             shotN = zsl.frames.size();
         } else {
             // P202 (owner, 2026-10-17: «В PSL у нас тоже должны быть брекет кадры»): a native 50 MP series after the shutter is N
@@ -6275,11 +6483,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         cameraEventsListener.onFrameCountSet(total);
         // P190: a series shorter than asked is said aloud (the RAW guard, the merge's memory, or the 2x output at 50 MP); P198 a ZSL
         // shot's N below the ask only when the memory cut it (the ring's own cap is in the log: ZslRing «50 MP ZSL ring in memfd»)
-        final String cut = zsl != null ? (shotN >= requested ? "" : zslTrimmed ? "memory" : "ring")
+        // P233 (speed-ux A5): a ZSL shot's N are the ring's and those after the shutter (before P233 the ring's alone: «Снято 1 из
+        // 12 кадров» while the worker merged 8 N); the worker's own count follows after the merge (ScamHybridBurst.notice)
+        final int taken = zsl != null ? VivoSdkFullResCapture.zslTaken(shotN, zslTopUp) : count;
+        final String cut = zsl != null ? (taken >= requested ? "" : zslTrimmed ? "memory" : "ring")
                 : count >= requested ? "" : count < guarded && grid == 2 ? "2x" : "memory";
-        final int taken = zsl != null ? shotN : count;
         Log.i("SCAM_CAPTURE", (nativeVivoFullRes() ? "NATIVE FULLRES" : "SDK FULLRES50") + " frames=" + total
-                + (zsl != null ? " (ZSL: N " + shotN + " from the ring + " + count + " after the shutter)" : "") + " requested=" + requested
+                + (zsl != null ? " (ZSL: N " + shotN + " from the ring + " + count + " after the shutter, N " + zslTopUp + " of them)" : "")
+                + " requested=" + requested
                 + " availableMB=" + (memory.availMem >> 20) + (seriesMode ? " series" : "") + (cut.isEmpty() ? "" : " cut=" + cut));
         if (!cut.isEmpty() && !"ring".equals(cut))
             showToast(Lang.t("Снято " + taken + " из " + requested + " кадров: свободно " + (memory.availMem >> 20) + " МБ"
@@ -6322,8 +6533,28 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         ScameraApp.getGyro().PrepareGyroBurst(times, BurstShakiness, true);
         final CameraCharacteristics characteristics = mCameraCharacteristics;
         final int rotation = ScameraApp.getGravity().getCameraRotation(mSensorOrientation);
-        final com.particlesdevs.photoncamera.util.ShotArena arena = ScameraApp.getSettings().binning
-                ? null : shotArena(count, (long) mImageReaderRaw.getWidth() * mImageReaderRaw.getHeight() * 2);
+        // P235 (speed-ux B3): a burst that would not be one memfd (stills beyond the ring's free slots) gets its own arena at the
+        // press - the stills straight into it, the ring frames moved in meanwhile (RingArenaMove) - instead of the whole burst moved
+        // after the series (ScamHybridBurst.moveIntoArena, raw_write=606 / 903 ms on the critical path)
+        final com.particlesdevs.photoncamera.util.ShotArena arena;
+        RingArenaMove ringMove = null;
+        if (ScameraApp.getSettings().binning) arena = null;
+        else {
+            final com.particlesdevs.photoncamera.util.ShotArena reserved = shotArena(count, frameBytes);
+            final com.particlesdevs.photoncamera.util.ShotArena own = pressArena(reserved, zsl == null ? null : zsl.frames, count,
+                    frameBytes, (long) rawWidth * rawHeight);
+            if (own != null) {
+                arena = own;
+                // the ring takes no frame until the series is done and is released for the merge then (P200): it goes now, so
+                // each ring frame's pages go back as it is moved, and the slots no frame holds at once
+                releaseFullResRing();
+                if (zsl != null) ringMove = RingArenaMove.start(zsl.frames, own, frameBytes);
+                Log.i("SCAM_CAPTURE", "FULLRES shot arena at the press: " + own + " for " + shotN + " ring frames + " + count
+                        + " stills (the ring's free slots held " + (reserved == null ? 0 : reserved.slots()) + ")");
+                if (reserved != null) reserved.release();
+            } else arena = reserved;
+        }
+        final RingArenaMove pressMove = ringMove;
         // P179: a 200 MP shot is merged with the camera closed (its own RAW buffers and the HAL's are free for the merge)
         final boolean hugeShot = (long) mImageReaderRaw.getWidth() * mImageReaderRaw.getHeight() > HUGE_SHOT_PIXELS;
         // P200 (OPPO Find X7 Ultra, 2026-10-17): ColorOS force-stopped the app mid-merge for heat («o-stop(22)», thermal level
@@ -6387,6 +6618,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     if (base == null) throw new IllegalStateException("SDK RAW base metadata missing");
                     saver.updateFrameCount(zsl != null ? saver.bufferSize() : count);
                     saver.detachForQueue(true);
+                    com.particlesdevs.photoncamera.processing.ShotTimeline.capture("series_done"); // P236: the last still is in
+                    // P235: the ring frames' move into the press arena ends before the arena takes no more frames
+                    if (pressMove != null) {
+                        pressMove.await();
+                        com.particlesdevs.photoncamera.processing.ShotTimeline.capture("arena_moved");
+                        Log.i("SCAM_CAPTURE", "FULLRES shot arena: " + pressMove);
+                    }
                     // Captured views pin the data; release the capture owner before processing.
                     if (arena != null) arena.release();
                     ScameraApp.getGyro().CompleteSequence();
@@ -6404,7 +6642,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         com.particlesdevs.photoncamera.processing.ShotTimeline.attach(timeline);
                         try {
                             com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey(mosaicKey, 1);
-                            if (plainForMerge) awaitClosedForProcessing();
+                            if (plainForMerge) {
+                                awaitClosedForProcessing();
+                                com.particlesdevs.photoncamera.processing.ShotTimeline.mark("plain_ready"); // P236
+                            }
                             saver.runRaw(characteristics, base, base.getRequest(), shakiness, rotation, exposures);
                         } catch (Exception failure) {
                             Log.e(TAG, "SDK FULLRES50 processing: " + Log.getStackTraceString(failure));
@@ -6453,6 +6694,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 mVivoSdkCapture = null;
                 if (capture != null) capture.cancel();
                 mInFlightRescue = null;
+                if (pressMove != null) pressMove.cancel(); // P235: before its frames are discarded
                 saver.discardFrames();
                 if (arena != null) arena.release();
                 if (mShotArena == arena) mShotArena = null;
@@ -6569,8 +6811,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             rescueCause.set(mInFlightRescueReason);
             listener.failed(Lang.t("Серия SDK RAW прервана", "SDK RAW series interrupted"));
         };
-        // P198: a ZSL shot's N are taken already: the press is an instant shot for the UI, as the 12 MP Hybrid's
-        cameraEventsListener.onCaptureStillPictureStarted(zsl != null ? "ScamZslCaptureStarted" : "CaptureStarted!");
+        // P198: a ZSL shot's N are taken already: the press is an instant shot for the UI, as the 12 MP Hybrid's; P234: only while
+        // the stills after the press fit the 12 MP plan, a longer series shows the capture ring
+        cameraEventsListener.onCaptureStillPictureStarted(zsl != null ? zslStartTag(count) : "CaptureStarted!");
+        if (zsl != null) Log.i("SCAM_CAPTURE", "50 MP ZSL UI: " + (count <= INSTANT_ZSL_STILLS ? "instant shot" : "capture ring")
+                + " (" + count + " stills after the press)");
         cameraEventsListener.onBurstPrepared(null);
         ScameraApp.getGyro().startBurstRegistration();
         sent.set(true);
@@ -7054,7 +7299,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
             // ZSL SCAM HDR: the N frames are already buffered and only the short tail is exposed, so the UI
             // treats the press as an instant shot (no capture ring, no locked controls, provisional thumbnail).
-            cameraEventsListener.onCaptureStillPictureStarted(hybridZsl ? "ScamZslCaptureStarted" : "CaptureStarted!");
+            cameraEventsListener.onCaptureStillPictureStarted(hybridZsl ? zslStartTag(captures.size()) : "CaptureStarted!"); // P234
             mMeasuredFrameCnt = 0;
 
             cameraEventsListener.onBurstPrepared(null);
@@ -7271,6 +7516,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             if (!routedScam && unlockHandler != null) unlockHandler.post(() -> {
                                 unlockFocus();
                             });
+                            // the SCAM route keeps its preview running (no unlockFocus): the shot's AF lock (lockFocus) is
+                            // released here, so continuous AF scans again after the shot
+                            if (routedScam && unlockHandler != null) unlockHandler.post(CaptureController.this::releaseShotAfLock);
                             try{
                             if (scamSequence != null) {
                                 java.util.List<ImageFrame> unmatched = scamSequence.bindAndValidate(shotSaver.snapshotFrames());
@@ -7280,6 +7528,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                     Log.w("SCAM_CAPTURE", (shotHybridRoute ? "hybrid" : "SCAM HDR") + ": " + scamSequence.droppedCount() + " of "
                                             + scamSequence.futureCount + " post-shutter frames dropped, merging the rest: " + summary);
                                 com.particlesdevs.photoncamera.processing.ShotTimeline.capture("complete");
+                                com.particlesdevs.photoncamera.processing.ShotTimeline.capture("series_done"); // P236: as FULLRES
                                 Log.i("SCAM_CAPTURE", "complete matched RAWs=" + shotSaver.bufferSize()
                                         + " futureRequests=" + scamSequence.futureCount + " bound=" + scamSequence.boundFutureCount()
                                         + " stockAePlan=" + (stockPlan!=null));
@@ -7644,7 +7893,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (mPreviewRequestBuilder == null) return;
         ScameraApp.getSettings().fpsMode = PreferenceKeys.getFpsMode();
         Range<Integer> motionFps = motionFpsRange();
-        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, motionFps != null ? motionFps : getSelectedFpsRange());
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                motionFps != null ? motionFps : ViewfinderFps.raise(getSelectedFpsRange(), mRawMaxFps)); // P224: not below 20 fps
         if (mDcgRequestKeys) Dcg14Mode.applyRequest(mPreviewRequestBuilder, mCameraCharacteristics); // P230: DCG runs 60 fps only
         rebuildPreviewBuilder();
     }

@@ -74,7 +74,7 @@ public final class ScamHybridBurst implements ScamTransport {
 
     private static final String CONSERVATIVE_TUNING = "localAlign 0\nsabre61 0\nrimRatio 0\nchromaDiff 0\n";
     /** Threshold for the larger-stream memory planner and transport; not a resolution limit. */
-    static final long CLASSIC_INPUT_PIXELS = 16_000_000L;
+    public static final long CLASSIC_INPUT_PIXELS = 16_000_000L;
     /**
      * P179: above this a burst's frames the merge leaves out are freed before the worker runs, not after it (200 MP: 401 MB each,
      * the app was killed for LOW_MEMORY); the first frame stays (the reference RAW of the DNG).
@@ -186,7 +186,10 @@ public final class ScamHybridBurst implements ScamTransport {
         if (beyond != null) throw new IOException("Hybrid: RAW " + width + "x" + height
                 + Lang.t(" за пределами склейки (", " is beyond the merge limits (") + beyond + ")");
         if (source.isEmpty() || source.size() > 64) throw new IOException(Lang.t("SHDR: нужны 1–64 кадра", "SHDR: needs 1–64 frames"));
-        android.graphics.Point fin = PreferenceKeys.hybridFinalSize(width, height);
+        // P226: «Увеличивать кадр с кропом» off - a crop shot keeps its pixels (no 2x grid, no resize up to the output size)
+        final boolean keepCrop = !PreferenceKeys.cropUpscale() && PreferenceKeys.cropShot();
+        android.graphics.Point fin = keepCrop ? new android.graphics.Point(width, height) : PreferenceKeys.hybridFinalSize(width, height);
+        if (keepCrop) Log.i("SCAM_HDR", "hybrid output: a crop shot without upscale (P226): sensor grid, no output resize");
         List<ImageFrame> usable = new ArrayList<>();
         Set<Long> stamps = new HashSet<>();
         for (ImageFrame f : source) {
@@ -236,8 +239,8 @@ public final class ScamHybridBurst implements ScamTransport {
         else if (!remosaic && mosaicBlock > 1) Log.i("SCAM_HDR", "hybrid without remosaic: " + width + "x" + height
                 + " is not whole " + 2 * mosaicBlock + "x" + 2 * mosaicBlock + " colour periods, remosaic kept");
         final String outputMode = PreferenceKeys.hybridOutputMode();
-        strictTwoX = !conservative && "2x".equals(outputMode);
-        final boolean outputMode2x = !conservative && !"sensor".equals(outputMode);
+        strictTwoX = !conservative && !keepCrop && "2x".equals(outputMode);
+        final boolean outputMode2x = !conservative && !keepCrop && !"sensor".equals(outputMode);
         final boolean wants2x = outputMode2x && mosaicBlock <= 4;
         if (strictTwoX && !wants2x) throw new IOException(Lang.t("SHDR: склейка 2× недоступна для цветового блока ",
                 "SHDR: Sabre 2x is unavailable for colour block ") + mosaicBlock);
@@ -687,7 +690,10 @@ public final class ScamHybridBurst implements ScamTransport {
 
     /** P30: every frame of the burst is a view of one shot arena: header into its first page, its memfd to the worker. */
     @Override public android.os.ParcelFileDescriptor sharedBurst() {
-        if ((long) width * height > CLASSIC_INPUT_PIXELS) moveIntoArena();
+        if ((long) width * height > CLASSIC_INPUT_PIXELS) {
+            moveIntoArena();
+            com.particlesdevs.photoncamera.processing.ShotTimeline.mark("arena_moved"); // P236 (P235: at the press when it was made)
+        }
         int arena = -1;
         final long[] pages = new long[frames.size()];
         for (int i = 0; i < frames.size(); i++) {
@@ -868,6 +874,11 @@ public final class ScamHybridBurst implements ScamTransport {
         final ScamHybridBurst[] made = new ScamHybridBurst[1];
         final ByteBuffer out = merge(context, frames, p, mergedDng, made);
         seriesNotice = notice(made[0], ScamNeuralClient.lastJobReport, lastMergeTier);
+        // P238 (speed-ux D2): the thermal state at the merge's end (with the press's: GPU throttling or the merge itself, P200)
+        final com.particlesdevs.photoncamera.util.ThermalState.Sample thermal = com.particlesdevs.photoncamera.util.ThermalState.now();
+        com.particlesdevs.photoncamera.util.ThermalPolicy.observed(thermal);
+        Log.i("SCAM_HDR", "THERMAL at the merge end: " + thermal);
+        com.particlesdevs.photoncamera.processing.ShotTimeline.note("thermal_merge_end", thermal.toString());
         lastNormals = seriesNormals(lastNormals, ScamNeuralClient.lastJobReport); // P212h: a series the worker cut
         if (seriesNotice != null) Log.w("SCAM_HDR", "hybrid series notice: " + seriesNotice);
         return out;

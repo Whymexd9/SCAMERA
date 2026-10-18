@@ -729,6 +729,9 @@ public class PostPipeline extends GLBasePipeline {
         add(new ScamRgb());
         // P129: HighlightRecovery is gone (SCAM HDR's; SHDR recovers the highlights per channel in ScamRgb)
         add(new ScamHdrDenoise());
+        // P228: the lens filter on the linear RGB (highlights with their headroom), before the tone; none: no node at all
+        final LensFilter lensFilter = LensFilter.fromSettings();
+        if (lensFilter != null) add(lensFilter);
         // The ArkCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX. LinearExposure only keeps the
         // Ultra HDR linear snapshot.
         if (captureDemosaic) add(new LinearExposure());

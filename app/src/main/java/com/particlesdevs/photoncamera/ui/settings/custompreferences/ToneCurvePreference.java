@@ -127,13 +127,20 @@ public class ToneCurvePreference extends Preference {
     /** A picked file's text (at most 256 KB) as a curve; null when it holds none. */
     @Nullable
     public static ToneCurve readCurve(InputStream in) throws IOException {
+        String text = readText(in);
+        return text == null ? null : ToneCurve.fromFileText(text);
+    }
+
+    /** A picked file's text, null above 256 KB (P231: the import also reads an ArkCam file's «name»). */
+    @Nullable
+    public static String readText(InputStream in) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buf = new byte[8192];
         for (int n; (n = in.read(buf)) > 0; ) {
             out.write(buf, 0, n);
             if (out.size() > MAX_FILE) return null;
         }
-        return ToneCurve.fromFileText(new String(out.toByteArray(), StandardCharsets.UTF_8));
+        return new String(out.toByteArray(), StandardCharsets.UTF_8);
     }
 
     void store(ToneCurve curve) {

@@ -473,7 +473,7 @@
     <string name="prefs_raw_stream_format_title">Формат RAW-потока</string>
     <string name="prefs_raw_stream_format_summary">%s. В каком виде камера отдаёт RAW. Авто — 16 бит, если есть, иначе RAW10 или RAW12.</string>
     <string name="prefs_expert_sensor_screen_title">RAW-метаданные</string>
-    <string name="prefs_expert_sensor_screen_summary">Динамический чёрный и белый, зеркало фронтальной камеры</string>
+    <string name="prefs_expert_sensor_screen_summary">Динамический уровень чёрного и белого</string>
     <string name="prefs_noise_model_screen_title">Модель шума сенсора</string>
     <string name="prefs_noise_model_screen_summary">Профиль шума сенсора, импорт и экспорт</string>
     <string name="prefs_noise_model_note_summary">Выбранный профиль заменяет шум камеры в шумодаве SHDR, в DNG и в склейках с источником «Из настроек».</string>
@@ -782,6 +782,8 @@
     <string name="prefs_watermark_page_summary">Водяной знак с моделью телефона</string>
     <string name="prefs_adv_view_title">Экран камеры</string>
     <string name="prefs_film_lut_screen_summary">Готовый «образ» плёнки: видно, что он меняет</string>
+    <string name="prefs_lens_filter_title">Фильтр на объектив</string>
+    <string name="prefs_lens_filter_screen_summary">Pro-Mist, туман, лучи, ИК: стекло перед объективом</string>
     <string name="prefs_film_lut_changes_title">Что меняется</string>
     <string name="prefs_photo_style_title">Стиль снимка</string>
     <string name="prefs_photo_style_summary">Обычный, чёрно-белый или плёнка</string>
@@ -795,4 +797,10 @@
     <string name="prefs_profiles_load_title">Загрузить из файла</string>
     <string name="prefs_profiles_load_summary">Файл .xml из папки SCAMERA</string>
     <string name="prefs_profiles_reset_summary">Вернуть настройки как после установки</string>
+    <string name="prefs_crop_upscale_title">Увеличивать кадр с кропом</string>
+    <string name="prefs_crop_upscale_summary">Снимок модуля с кропом или с цифровым зумом доводится до размера фото. Выкл. — снимок с кропом остаётся в своём размере, без увеличения</string>
+    <string name="prefs_mosaic_isp_preview_title">ISP-превью в FULLRES и ISZ</string>
+    <string name="prefs_mosaic_isp_preview_summary">Выкл. — в режимах FULLRES и ISZ камера отдаёт только RAW-поток, видоискатель рисуется из RAW. Меньше нагрузки, но на некоторых камерах фокус и замер могут работать хуже</string>
+    <string name="prefs_mosaic_wb_title">Поправки баланса белого в FULLRES и ISZ</string>
+    <string name="prefs_mosaic_wb_summary">Наша оценка баланса белого для снимков без ремозаика камеры. Выкл. — баланс белого самой камеры (на OPPO в FULLRES — из обычного режима)</string>
 </resources>

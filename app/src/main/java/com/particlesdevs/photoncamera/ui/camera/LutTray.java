@@ -27,6 +27,7 @@ import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.circularbarlib.ui.UiScale;
 import com.particlesdevs.photoncamera.processing.color.FilmLooks;
 import com.particlesdevs.photoncamera.processing.color.FilmLut;
+import com.particlesdevs.photoncamera.processing.color.LensFilters;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle;
@@ -47,14 +48,33 @@ import java.util.concurrent.Executors;
  * (28dp, translucent dark, the film icon and the LUT's name - «LUT» with none; the name in the accent while a LUT is on,
  * the pill in the accent while the tray is open) and the LUT tray in the Pro panel's place above row 1 (Pro and the tray
  * close each other): a snap row of every LUT («Нет», the five film looks, every .cube of Download/SCAMERA/LUT), each a
- * 54 x 40dp thumbnail of the current viewfinder frame through that LUT (at most 2 per second, off the main thread) with
+ * 54 x 40dp thumbnail of the current viewfinder frame through that LUT (up to 30 times a second, off the main thread) with
  * its name; the strength slider; «Все LUT ›» to the settings' LUT row. The choice is the same state as the settings'
  * (pref_film_lut / pref_film_lut_strength): the live viewfinder (LiveRawRenderer) and the photo (ArkCombine) follow it.
+ * P228: under the strength a second row of the lens filters («Нет», Black Pro-Mist ... Infrared), each a thumbnail of the same
+ * frame through that filter at its own fine tune; a card is the settings' pref_lens_filter. The pill names the filter after the
+ * LUT («Кино 500 · Pro-Mist»).
  */
 public final class LutTray {
     /** The concept's tray: the sheet colour at 94 %. */
     static final int TRAY_FILL = 0xF015191C, PILL_FILL = 0x9E0D0F12;
-    static final long THUMB_PERIOD_MS = 500;
+    /**
+     * Owner, 2026-10-18 («сделай у этих превью фпс повыше», twice): the thumbnails follow the frame up to 30 times a second (they
+     * were redrawn twice a second): the next frame is taken when the last one is drawn, at most every THUMB_PERIOD_MS; only the
+     * cards on screen are computed (each card once more when it has never been drawn), on several cores at once (background
+     * priority, the viewfinder keeps its own), into two bitmaps a card that take turns (no new bitmaps a frame).
+     */
+    static final long THUMB_PERIOD_MS = 33;
+    private static final ExecutorService POOL = Executors.newFixedThreadPool(
+            Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 2)), r -> {
+                Thread t = new Thread(() -> {
+                    android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                    r.run();
+                }, "lut-tray-thumb");
+                t.setDaemon(true);
+                return t;
+            });
+    private boolean rendering;
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "lut-tray");
         t.setDaemon(true);
@@ -71,7 +91,12 @@ public final class LutTray {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<String> values = new ArrayList<>();
     private final List<ImageView> thumbs = new ArrayList<>();
+    private final LinearLayout filterRow;
+    private final List<ImageView> filterThumbs = new ArrayList<>();
     private final Map<String, FilmLut> luts = new HashMap<>();
+    /** A card's two bitmaps: the one shown and the one the next frame is drawn into. */
+    private final Map<ImageView, Bitmap[]> buffers = new java.util.WeakHashMap<>();
+    private final android.graphics.Rect visible = new android.graphics.Rect();
     @Nullable private Runnable onOpen;
     private boolean open;
     private final Runnable refreshThumbs = this::grabFrame;
@@ -134,6 +159,17 @@ public final class LutTray {
         LinearLayout.LayoutParams lrp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lrp.topMargin = UiScale.dp(c, 6);
         tray.addView(lr, lrp);
+        // P228: the lens filters' row
+        HorizontalScrollView fscroll = new HorizontalScrollView(c);
+        fscroll.setHorizontalScrollBarEnabled(false);
+        fscroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        filterRow = new LinearLayout(c);
+        filterRow.setOrientation(LinearLayout.HORIZONTAL);
+        filterRow.setTag("lut_tray_filters");
+        fscroll.addView(filterRow, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        fp.topMargin = UiScale.dp(c, 6);
+        tray.addView(fscroll, fp);
         strength.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int p, boolean user) {
                 strengthValue.setText(p + " %");
@@ -191,13 +227,21 @@ public final class LutTray {
         return value.toLowerCase(java.util.Locale.ROOT).endsWith(".cube") ? value.substring(0, value.length() - 5) : value;
     }
 
+    /** The filter's short name for the pill («Pro-Mist», «Туман»). */
+    static String filterShort(Context c, String id) {
+        return LensFilters.BLACK_PRO_MIST.equals(id) ? "Pro-Mist" : LensFilters.name(c, id);
+    }
+
     /** The pill's label and colours from the settings (also after the settings screen changed them). */
     public void bindPill() {
         Context c = pill.getContext();
         String value = PreferenceKeys.filmLut();
-        boolean on = !value.isEmpty() && PreferenceKeys.filmLutStrength() > 0f;
+        String filter = PreferenceKeys.lensFilter();
+        boolean filterOn = !filter.isEmpty() && PreferenceKeys.lensFilterStrength() > 0f;
+        boolean on = !value.isEmpty() && PreferenceKeys.filmLutStrength() > 0f || filterOn;
         int accent = ShadeStyle.accent(c);
-        pill.setText(value.isEmpty() ? "LUT" : name(c, value));
+        String label = value.isEmpty() ? "LUT" : name(c, value);
+        pill.setText(filterOn ? label + " · " + filterShort(c, filter) : label);
         pill.setEllipsize(TextUtils.TruncateAt.END);
         int fg = open ? ShadeStyle.INK : on ? accent : 0xFFFFFFFF;
         pill.setTextColor(fg);
@@ -213,7 +257,8 @@ public final class LutTray {
         bg.setColor(open ? accent : PILL_FILL);
         bg.setCornerRadius(UiScale.dpF(c, 14));
         pill.setBackground(bg);
-        pill.setContentDescription(Lang.t(c, "Плёнка (LUT): ", "Film (LUT): ") + name(c, value));
+        pill.setContentDescription(Lang.t(c, "Плёнка (LUT): ", "Film (LUT): ") + name(c, value)
+                + (filterOn ? Lang.t(c, ", фильтр: ", ", filter: ") + LensFilters.name(c, filter) : ""));
         pill.setActivated(open);
     }
 
@@ -271,6 +316,7 @@ public final class LutTray {
             row.addView(card, lp);
             if (on) selected = card;
         }
+        rebuildFilters();
         int s = Math.round(PreferenceKeys.filmLutStrength() * 100);
         strength.setProgress(s);
         strengthValue.setText(s + " %");
@@ -281,6 +327,72 @@ public final class LutTray {
             if (scroll instanceof HorizontalScrollView)
                 ((HorizontalScrollView) scroll).smoothScrollTo(Math.max(0, target.getLeft() + target.getWidth() / 2 - scroll.getWidth() / 2), 0);
         });
+    }
+
+    /** P228: «Нет» and the 12 lens filters as cards, the chosen one in the accent. */
+    private void rebuildFilters() {
+        Context c = tray.getContext();
+        filterRow.removeAllViews();
+        filterThumbs.clear();
+        String chosen = PreferenceKeys.lensFilter();
+        int accent = ShadeStyle.accent(c);
+        for (String id : filterIds()) {
+            boolean on = id.equals(chosen);
+            LinearLayout card = new LinearLayout(c);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setGravity(Gravity.CENTER_HORIZONTAL);
+            int p = UiScale.dp(c, 3);
+            card.setPadding(p, p, p, p);
+            GradientDrawable cbg = new GradientDrawable();
+            cbg.setCornerRadius(UiScale.dpF(c, 12));
+            cbg.setColor(on ? (accent & 0x00FFFFFF) | 0x1F000000 : 0);
+            cbg.setStroke(Math.max(1, UiScale.dp(c, 1)), on ? accent : 0);
+            card.setBackground(cbg);
+            ImageView thumb = new ImageView(c);
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumb.setBackgroundColor(0xFF000000);
+            float r = UiScale.dpF(c, 9);
+            thumb.setOutlineProvider(new ViewOutlineProvider() {
+                @Override public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), r);
+                }
+            });
+            thumb.setClipToOutline(true);
+            card.addView(thumb, new LinearLayout.LayoutParams(UiScale.dp(c, 54), UiScale.dp(c, 40)));
+            filterThumbs.add(thumb);
+            TextView name = text(c, id.isEmpty() ? Lang.t(c, "Без фильтра", "No filter") : LensFilters.name(c, id), 10,
+                    on ? accent : ShadeStyle.MUTED);
+            name.setMaxLines(2);
+            name.setGravity(Gravity.CENTER);
+            name.setMinHeight(UiScale.dp(c, 23));
+            LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            nlp.topMargin = UiScale.dp(c, 3);
+            card.addView(name, nlp);
+            card.setContentDescription(Lang.t(c, "Фильтр: ", "Filter: ") + LensFilters.name(c, id));
+            card.setTag("lut_tray_filter_" + id);
+            card.setOnClickListener(v -> chooseFilter(id));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(UiScale.dp(c, 62), ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (filterRow.getChildCount() > 0) lp.setMarginStart(UiScale.dp(c, 6));
+            filterRow.addView(card, lp);
+        }
+    }
+
+    static String[] filterIds() {
+        String[] all = new String[LensFilters.IDS.length + 1];
+        all[0] = "";
+        System.arraycopy(LensFilters.IDS, 0, all, 1, LensFilters.IDS.length);
+        return all;
+    }
+
+    /** A filter card tapped: that filter becomes the camera's (the settings' state). */
+    void chooseFilter(String id) {
+        settings().set(SettingsManager.SCOPE_GLOBAL, LensFilters.KEY, id);
+        if (!id.isEmpty() && PreferenceKeys.lensFilterStrength() <= 0f)
+            settings().set(SettingsManager.SCOPE_GLOBAL, LensFilters.STRENGTH_KEY, "50");
+        rebuildFilters();
+        bindPill();
+        main.removeCallbacks(refreshThumbs);
+        main.post(refreshThumbs);
     }
 
     /** A card tapped: that LUT becomes the camera's (the settings' state), the tray shows it chosen. */
@@ -317,6 +429,10 @@ public final class LutTray {
 
     private void grabFrame() {
         if (!open) return;
+        if (rendering) {   // the last frame is still being drawn: no queue of frames behind it
+            main.postDelayed(refreshThumbs, THUMB_PERIOD_MS / 3);
+            return;
+        }
         if (preview == null || preview.getHolder().getSurface() == null || !preview.getHolder().getSurface().isValid()
                 || preview.getWidth() == 0) {
             main.postDelayed(refreshThumbs, THUMB_PERIOD_MS);
@@ -329,43 +445,117 @@ public final class LutTray {
         int bw = Math.max(w, Math.round(h * aspect)), bh = Math.max(h, Math.round(w / aspect));
         Bitmap frame = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
         try {
+            final long asked = android.os.SystemClock.uptimeMillis();
             PixelCopy.request(preview, frame, result -> {
-                if (result == PixelCopy.SUCCESS) render(frame);
-                main.postDelayed(refreshThumbs, THUMB_PERIOD_MS);
+                if (result == PixelCopy.SUCCESS) render(frame, asked);
+                else main.postDelayed(refreshThumbs, THUMB_PERIOD_MS);
             }, main);
         } catch (RuntimeException e) {
             main.postDelayed(refreshThumbs, THUMB_PERIOD_MS);
         }
     }
 
-    private void render(Bitmap frame) {
-        List<String> order = new ArrayList<>(values);
+    /** One card's thumbnail of a frame: a LUT's (filter null) or a filter's (lut null), drawn into {@code into}. */
+    private static final class Thumb {
+        final ImageView view;
+        final Bitmap into;
+        @Nullable final String lut, filter;
+
+        Thumb(ImageView view, Bitmap into, @Nullable String lut, @Nullable String filter) {
+            this.view = view;
+            this.into = into;
+            this.lut = lut;
+            this.filter = filter;
+        }
+    }
+
+    /** A card is drawn when it is on screen, or when it has never been drawn (the first frame draws every card). */
+    private boolean wanted(ImageView v) {
+        return !buffers.containsKey(v) || v.isShown() && v.getGlobalVisibleRect(visible);
+    }
+
+    /** The card's bitmap that is not shown, w x h (both made again when the frame's size changed). */
+    private Bitmap spare(ImageView v, int w, int h) {
+        Bitmap[] b = buffers.get(v);
+        if (b == null || b[0].getWidth() != w || b[0].getHeight() != h) {
+            b = new Bitmap[]{Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888), Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)};
+            buffers.put(v, b);
+            return b[0];
+        }
+        return v.getDrawable() instanceof android.graphics.drawable.BitmapDrawable
+                && ((android.graphics.drawable.BitmapDrawable) v.getDrawable()).getBitmap() == b[0] ? b[1] : b[0];
+    }
+
+    private void render(Bitmap frame, long asked) {
+        if (rendering) return;   // a second frame asked meanwhile (a card tapped): the chain of the first one goes on
+        final int w = frame.getWidth(), h = frame.getHeight();
         Context app = tray.getContext().getApplicationContext();
+        String[] ids = filterIds();
+        List<Thumb> todo = new ArrayList<>();
+        for (int i = 0; i < Math.min(values.size(), thumbs.size()); i++) {
+            ImageView v = thumbs.get(i);
+            if (wanted(v)) todo.add(new Thumb(v, spare(v, w, h), values.get(i), null));
+        }
+        for (int i = 0; i < Math.min(ids.length, filterThumbs.size()); i++) {
+            ImageView v = filterThumbs.get(i);
+            if (wanted(v)) todo.add(new Thumb(v, spare(v, w, h), null, ids[i]));
+        }
+        rendering = true;
         WORKER.execute(() -> {
-            int w = frame.getWidth(), h = frame.getHeight();
             int[] src = new int[w * h];
             frame.getPixels(src, 0, w, 0, 0, w, h);
-            List<Bitmap> out = new ArrayList<>();
-            for (String value : order) out.add(through(app, value, src, w, h));
+            float[] lin = null;
+            for (Thumb t : todo)
+                if (t.filter != null && !t.filter.isEmpty()) {
+                    lin = com.particlesdevs.photoncamera.ui.settings.custompreferences.LensFilterPreference.linear(src);
+                    break;
+                }
+            final float[] linear = lin;
+            List<java.util.concurrent.Callable<Thumb>> jobs = new ArrayList<>();
+            for (Thumb t : todo)
+                jobs.add(() -> {
+                    int[] px = t.lut != null ? through(app, t.lut, src)
+                            : t.filter.isEmpty() ? src
+                            : com.particlesdevs.photoncamera.ui.settings.custompreferences.LensFilterPreference.filterLinear(
+                                    linear, w, h, t.filter, 0.8f, PreferenceKeys.lensFilterTune(t.filter));
+                    t.into.setPixels(px, 0, w, 0, 0, w, h);
+                    return t;
+                });
+            List<Thumb> done = new ArrayList<>();
+            try {
+                for (java.util.concurrent.Future<Thumb> f : POOL.invokeAll(jobs)) {
+                    try {
+                        done.add(f.get());
+                    } catch (java.util.concurrent.ExecutionException e) {
+                        Log.w("LutTray", "thumbnail: " + e.getCause());
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             main.post(() -> {
+                rendering = false;
                 if (!open) return;
-                for (int i = 0; i < Math.min(out.size(), thumbs.size()); i++) thumbs.get(i).setImageBitmap(out.get(i));
+                for (Thumb t : done) if (buffers.containsKey(t.view)) t.view.setImageBitmap(t.into);
+                long spent = android.os.SystemClock.uptimeMillis() - asked;
+                main.removeCallbacks(refreshThumbs);
+                main.postDelayed(refreshThumbs, Math.max(0L, THUMB_PERIOD_MS - spent));
             });
         });
     }
 
     /** {@code src} through the LUT of {@code value} at full strength (the original for «Нет» or an unreadable file). */
-    private Bitmap through(Context c, String value, int[] src, int w, int h) {
+    private int[] through(Context c, String value, int[] src) {
         FilmLut lut = value.isEmpty() ? null : lut(c, value);
-        int[] px = src.clone();
-        if (lut != null) {
-            for (int i = 0; i < px.length; i++) {
-                int p = px[i];
-                float[] o = lut.sample(((p >> 16) & 0xFF) / 255f, ((p >> 8) & 0xFF) / 255f, (p & 0xFF) / 255f);
-                px[i] = 0xFF000000 | (clamp(o[0]) << 16) | (clamp(o[1]) << 8) | clamp(o[2]);
-            }
+        if (lut == null) return src;
+        int[] px = new int[src.length];
+        float[] o = new float[3];
+        for (int i = 0; i < px.length; i++) {
+            int p = src[i];
+            lut.sampleInto(((p >> 16) & 0xFF) / 255f, ((p >> 8) & 0xFF) / 255f, (p & 0xFF) / 255f, o);
+            px[i] = 0xFF000000 | (clamp(o[0]) << 16) | (clamp(o[1]) << 8) | clamp(o[2]);
         }
-        return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888);
+        return px;
     }
 
     private static int clamp(float v) {

@@ -42,7 +42,8 @@ public final class MosaicNeutralResolver {
 
     /** scam_dev.txt "mosaic_awb_resolver" (default on). */
     public static boolean on() {
-        return com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("mosaic_awb_resolver", true);
+        return com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("mosaic_awb_resolver", true)
+                && com.particlesdevs.photoncamera.settings.PreferenceKeys.mosaicWbCorrections(); // P223
     }
 
     /** What the press knew: the shot's route and, on the still-only route, the viewfinder's neutral (r, 1, b; null: none). */

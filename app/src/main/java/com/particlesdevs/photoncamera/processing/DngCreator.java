@@ -530,18 +530,27 @@ public class DngCreator {
         setBlackLevel(blackLevel);
         setWhiteLevel(parameters.whiteLevel);
         if (parameters.dngBaselineExposure != 0f) setBaselineExposure(parameters.dngBaselineExposure);
-        setCalibrationIlluminant1((short) parameters.calibrationIlluminant1);
-        setCalibrationIlluminant2((short) parameters.calibrationIlluminant2);
+        // P243: the JPEG's colour (DngColour): one ColorMatrix / ForwardMatrix of the render's own matrix and white balance, no
+        // second illuminant and no CameraCalibration (nothing for a raw converter to interpolate); the label twice, as one
+        final com.particlesdevs.photoncamera.processing.color.DngColour.Profile jpegColour = parameters.dngColour;
+        setCalibrationIlluminant1((short) (jpegColour != null ? jpegColour.illuminant : parameters.calibrationIlluminant1));
+        setCalibrationIlluminant2((short) (jpegColour != null ? jpegColour.illuminant : parameters.calibrationIlluminant2));
         // P215 (owner's X200 Ultra / X100 Ultra DNGs of 2026-10-17/18 carry no AsShotNeutral and no ForwardMatrix): the native
         // writer drops a rational tag with a non-finite value without a word (tiny_dng_writer DoubleToRational), and the same
         // library writes both tags from finite values (checked on the phone). Every matrix and the neutral are checked here: a
         // non-finite one is logged with its values instead of vanishing, so the next log names the source.
-        if (finite("ColorMatrix1", parameters.ColorMatrix1)) setColorMatrix1(toDouble(parameters.ColorMatrix1));
-        if (finite("ColorMatrix2", parameters.ColorMatrix2)) setColorMatrix2(toDouble(parameters.ColorMatrix2));
-        if (finite("ForwardMatrix1", parameters.ForwardTransform1)) setForwardMatrix1(toDouble(parameters.ForwardTransform1));
-        if (finite("ForwardMatrix2", parameters.ForwardTransform2)) setForwardMatrix2(toDouble(parameters.ForwardTransform2));
-        if (finite("CameraCalibration1", parameters.calibrationTransform1)) setCameraCalibration1(toDouble(parameters.calibrationTransform1));
-        if (finite("CameraCalibration2", parameters.calibrationTransform2)) setCameraCalibration2(toDouble(parameters.calibrationTransform2));
+        if (jpegColour != null) {
+            setColorMatrix1(toDouble(jpegColour.colorMatrix1));
+            setForwardMatrix1(toDouble(jpegColour.forwardMatrix1));
+            com.particlesdevs.photoncamera.util.Log.i(TAG, "DNG: the JPEG's colour: " + jpegColour);
+        } else {
+            if (finite("ColorMatrix1", parameters.ColorMatrix1)) setColorMatrix1(toDouble(parameters.ColorMatrix1));
+            if (finite("ColorMatrix2", parameters.ColorMatrix2)) setColorMatrix2(toDouble(parameters.ColorMatrix2));
+            if (finite("ForwardMatrix1", parameters.ForwardTransform1)) setForwardMatrix1(toDouble(parameters.ForwardTransform1));
+            if (finite("ForwardMatrix2", parameters.ForwardTransform2)) setForwardMatrix2(toDouble(parameters.ForwardTransform2));
+            if (finite("CameraCalibration1", parameters.calibrationTransform1)) setCameraCalibration1(toDouble(parameters.calibrationTransform1));
+            if (finite("CameraCalibration2", parameters.calibrationTransform2)) setCameraCalibration2(toDouble(parameters.calibrationTransform2));
+        }
         if (finite("AsShotNeutral", parameters.whitePoint) && positive(parameters.whitePoint)) setAsShotNeutral(toDouble(parameters.whitePoint));
         else com.particlesdevs.photoncamera.util.Log.e(TAG, "DNG: AsShotNeutral not written: " + java.util.Arrays.toString(parameters.whitePoint));
         com.particlesdevs.photoncamera.util.Log.i(TAG, "DNG: AsShotNeutral " + java.util.Arrays.toString(parameters.whitePoint)

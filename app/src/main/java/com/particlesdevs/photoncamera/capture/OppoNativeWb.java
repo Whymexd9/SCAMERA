@@ -170,7 +170,7 @@ public final class OppoNativeWb {
 
     /** scam_dev.txt "oppo_wb_filter" (default on; off: the P192 EMA, OppoNativeFullRes.measuredNeutral). */
     public static boolean on() {
-        return PreferenceKeys.scamDevSwitch("oppo_wb_filter", true);
+        return PreferenceKeys.scamDevSwitch("oppo_wb_filter", true) && PreferenceKeys.mosaicWbCorrections(); // P223
     }
 
     static boolean anchorOn() {

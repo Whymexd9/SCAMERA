@@ -47,6 +47,17 @@ public final class ScameraTimingLog {
         handler.post(() -> write(line));
     }
 
+    /**
+     * P236 (speed-ux F): the shot's one «SHOT SUMMARY» line, written whatever the profiling switch says (one line per shot; the
+     * file is the same rotating one). Nothing before the first shot gave a context.
+     */
+    public static void summary(String line) {
+        if (line == null || appContext == null) return;
+        start();
+        final String text = TS.get().format(new Date()) + " " + line + '\n';
+        handler.post(() -> write(text));
+    }
+
     /** A line is a timing line: it names milliseconds or a timeline. */
     static boolean isTiming(String message) {
         if (message == null) return false;

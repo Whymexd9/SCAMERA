@@ -112,4 +112,6 @@
     <string name="full_res_off_toast">Полное разрешение выкл</string>
     <string name="prefs_developer_settings_screen_title">Для разработчика</string>
     <string name="prefs_developer_settings_screen_summary">Скрытые параметры scam_dev.txt для опытов и отладки</string>
+    <!-- P240: the overlay while the camera is brought back after an error -->
+    <string name="camera_restarting">Камера перезапускается…</string>
 </resources>

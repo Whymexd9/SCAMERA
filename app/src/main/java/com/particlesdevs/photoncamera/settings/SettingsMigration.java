@@ -331,6 +331,33 @@ public final class SettingsMigration {
         return moved;
     }
 
+    /** P249: set once a stored tile list had «Размер» swapped for «Разрешение». */
+    static final String OUTPUT_TILE = "ui_shade_tiles_output_p249";
+
+    /**
+     * P249 (owner, 2026-10-18: «по дефолту у нас есть эта настройка в шторке, замени её на плитку с настройкой Sabre
+     * 1x/16/20/2x»): a stored tile list with «Размер» (ui_photo_size) and without «Разрешение» (pref_scam_hybrid_output) gets
+     * «Разрешение» in the same place; nothing stored: the new defaults have it already. Once.
+     */
+    public static boolean migrateOutputTile(SharedPreferences prefs) {
+        if (prefs.getBoolean(OUTPUT_TILE, false)) return false;
+        SharedPreferences.Editor e = prefs.edit().putBoolean(OUTPUT_TILE, true);
+        String stored = prefs.getString(ShadeTiles.KEY, null);
+        boolean moved = false;
+        if (stored != null && !stored.isEmpty()) {
+            // plain strings: this runs while the settings classes initialise
+            java.util.List<String> keys = new java.util.ArrayList<>(java.util.Arrays.asList(stored.split(",")));
+            int at = keys.indexOf("ui_photo_size");
+            if (at >= 0 && !keys.contains("pref_scam_hybrid_output")) {
+                keys.set(at, "pref_scam_hybrid_output");
+                e.putString(ShadeTiles.KEY, String.join(",", keys));
+                moved = true;
+            }
+        }
+        e.commit();
+        return moved;
+    }
+
     /** ShadeCatalog.OLD_DEFAULT_TILES as ShadeTiles stores it. */
     static final String OLD_DEFAULT_TILES = "pref_ae_mode_key,pref_countdown_timer_key,pref_save_raw_key,pref_scam_hybrid_output,"
             + "pref_show_grid_key,pref_ultrahdr_key,pref_scam_hybrid_bento";

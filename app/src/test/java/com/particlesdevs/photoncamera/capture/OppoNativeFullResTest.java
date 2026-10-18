@@ -415,4 +415,15 @@ public class OppoNativeFullResTest {
             OppoNativeFullRes.resetModeType();
         }
     }
+
+    /** P227: the mode in effect is read under both CamX names; either one naming another mode is a mismatch, none says nothing. */
+    @Test public void theModeReportIsReadUnderBothNames() {
+        assertTrue(OppoNativeFullRes.modeMatches(null, null, 35));
+        assertTrue(OppoNativeFullRes.modeMatches(new int[]{35}, null, 35));
+        assertTrue(OppoNativeFullRes.modeMatches(null, new int[]{35}, 35));
+        assertFalse(OppoNativeFullRes.modeMatches(new int[]{1}, null, 35));
+        assertFalse(OppoNativeFullRes.modeMatches(null, new int[]{1}, 35));
+        assertFalse(OppoNativeFullRes.modeMatches(new int[]{35}, new int[]{1}, 35));
+        assertTrue(OppoNativeFullRes.modeMatches(new int[0], new int[0], 35));
+    }
 }

@@ -1005,6 +1005,14 @@ public class SettingsMenuTest {
         assertFalse(com.particlesdevs.photoncamera.util.ScameraFolder.covers("primary:Download/SCAM","primary:Download/SCAMERA/XML"));
         assertFalse(com.particlesdevs.photoncamera.util.ScameraFolder.covers("primary:DCIM","primary:Download/SCAMERA/XML"));
         assertEquals("primary:Download/SCAMERA/XML",com.particlesdevs.photoncamera.util.ScameraFolder.CONFIGS.documentId());
+        // P246: any case, and a folder picked under the system's «Загрузки» root (its ids are paths)
+        assertTrue(com.particlesdevs.photoncamera.util.ScameraFolder.covers("primary:download/Scamera","primary:Download/SCAMERA/XML"));
+        assertTrue(com.particlesdevs.photoncamera.util.ScameraFolder.covers(com.particlesdevs.photoncamera.util.ScameraFolderAccess.primaryId(
+                "com.android.providers.downloads.documents","raw:/storage/emulated/0/Download/SCAMERA"),"primary:Download/SCAMERA/XML"));
+        assertNull(com.particlesdevs.photoncamera.util.ScameraFolderAccess.primaryId("com.android.providers.downloads.documents","msf:123"));
+        assertNull(com.particlesdevs.photoncamera.util.ScameraFolderAccess.primaryId("com.example.cloud","primary:Download/SCAMERA"));
+        assertEquals("raw:/storage/emulated/0/Download/SCAMERA/XML",com.particlesdevs.photoncamera.util.ScameraFolderAccess.idUnder(
+                com.particlesdevs.photoncamera.util.ScameraFolder.CONFIGS,"com.android.providers.downloads.documents"));
     }
 
     /** An in-memory Download/SCAMERA/ToneCurves for the curve tests. */
@@ -1321,6 +1329,35 @@ public class SettingsMenuTest {
         PreferenceViewHolder holder=PreferenceViewHolder.createInstanceForTests(row);
         p.onBindViewHolder(holder);com.particlesdevs.photoncamera.ui.settings.SettingsStyle.bind(holder,p);
         return row;
+    }
+
+    /**
+     * P248 (owner, 2026-10-18: «Режим автофокуса», «Кадры светов: число», «Разрешение» - the title and the description one word
+     * a line beside a long value): a long value goes under the title, a short one stays on the right.
+     */
+    @Test public void aLongValueGoesUnderTheTitle(){
+        PreferenceManager pm=new PreferenceManager(context);PreferenceScreen screen=pm.createPreferenceScreen(context);
+        ListPreference list=new ListPreference(context);list.setKey("t_af");list.setTitle("Режим автофокуса");
+        list.setSummary("Как держится фокус: непрерывно (фото — быстрее, видео — плавнее) или один раз (Авто).");
+        list.setEntries(new CharSequence[]{"Непрерывный (фото)","Авто"});list.setEntryValues(new CharSequence[]{"c","a"});
+        screen.addPreference(list);list.setValue("c");
+        com.particlesdevs.photoncamera.ui.settings.SettingsStyle.apply(screen);
+        android.view.View row=row(list);
+        android.widget.TextView right=row.findViewById(R.id.settings_value),below=row.findViewById(R.id.settings_value_below);
+        assertEquals(android.view.View.GONE,right.getVisibility());
+        assertEquals(android.view.View.VISIBLE,below.getVisibility());
+        assertEquals("Непрерывный (фото)",below.getText().toString());
+        list.setValue("a");
+        row=row(list);
+        right=row.findViewById(R.id.settings_value);below=row.findViewById(R.id.settings_value_below);
+        assertEquals(android.view.View.VISIBLE,right.getVisibility());
+        assertEquals("Авто",right.getText().toString());
+        assertEquals(android.view.View.GONE,below.getVisibility());
+        // the right-hand value never takes more than its share of the row's text
+        int share=com.particlesdevs.photoncamera.ui.settings.SettingsStyle.valueShare(context);
+        assertEquals(share,right.getMaxWidth());
+        float text=400-(16*2+14*2+36+12+24);
+        assertEquals(Math.round(0.38f*text),share);
     }
 
     /** P6b: one row of each preference type renders as a card in the user's accent, with the expected widgets. */
@@ -1730,6 +1767,117 @@ public class SettingsMenuTest {
             assertEquals("",lut.chosen());
         }
     }
+    /**
+     * P228 «Фильтр на объектив»: its own page next to the LUT's - the before / after preview, three samples, the strip of 13
+     * cards («Нет» + 12 filters), «Сила» and the filter's own parameter; a card is the choice. Also draws the page and every
+     * filter on every sample (build/reports/module-concept/lens-filters-*.png).
+     */
+    @Test public void lensFilterPageShowsTheStripPreviewAndSliders() throws Exception {
+        String[] ids=com.particlesdevs.photoncamera.processing.color.LensFilters.IDS;
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
+            var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            PreferenceScreen page=root.findPreference("lens_filter_screen");
+            assertNotNull(page);
+            assertEquals("next to the film LUT",root.findPreference("film_lut_screen").getParent(),page.getParent());
+            activity.onPreferenceStartScreen(root,page);fm.executePendingTransactions();
+            var shown=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.LensFilterPreference lf=shown.findPreference(com.particlesdevs.photoncamera.processing.color.LensFilters.KEY);
+            assertNotNull(lf);
+            assertEquals("no filter by default","",lf.chosen());
+            android.view.View view=layout(shown.requireView(),360,2000);
+            for(String tag:new String[]{"lens_filter_compare","lens_filter_sample_0","lens_filter_sample_1","lens_filter_sample_2","lens_filter_"})
+                assertNotNull(tag,view.findViewWithTag(tag));
+            for(String id:ids)assertNotNull(id,view.findViewWithTag("lens_filter_"+id));
+            assertNull("no filter: no sliders",view.findViewWithTag("lens_filter_strength"));
+            view.findViewWithTag("lens_filter_streak").performClick();
+            assertEquals("streak",lf.chosen());
+            assertEquals("streak",prefs.getString(com.particlesdevs.photoncamera.processing.color.LensFilters.KEY,""));
+            assertEquals("the photo uses it","streak",PreferenceKeys.lensFilter());
+            assertEquals(0.5f,PreferenceKeys.lensFilterStrength(),1e-4f);
+            view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
+            assertNotNull("«Сила»",view.findViewWithTag("lens_filter_strength"));
+            assertNotNull("«Длина лучей»",view.findViewWithTag("lens_filter_param"));
+            assertTrue(shownText(view,com.particlesdevs.photoncamera.processing.color.LensFilters.description(activity,"streak")));
+            view.findViewWithTag("lens_filter_bpm").performClick();
+            view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
+            assertNotNull(view.findViewWithTag("lens_filter_strength"));
+            assertNull("Black Pro-Mist has no parameter of its own",view.findViewWithTag("lens_filter_param"));
+            // the fine controls: all four for Black Pro-Mist, stored per filter, «Сбросить» brings the design back
+            for(int control:com.particlesdevs.photoncamera.processing.color.LensFilters.CONTROLS)
+                assertNotNull("fine control "+control,view.findViewWithTag("lens_filter_tune_"+control));
+            android.view.View reset=view.findViewWithTag("lens_filter_reset");
+            assertNotNull(reset);
+            assertFalse("nothing to reset yet",reset.isEnabled());
+            prefs.edit().putString(com.particlesdevs.photoncamera.processing.color.LensFilters.tuneKey("bpm"),"0,20,80,50,70").commit();
+            com.particlesdevs.photoncamera.processing.color.LensFilters.Tune tune=PreferenceKeys.lensFilterTune("bpm");
+            assertEquals("the photo uses the filter's own tune",0.8f,tune.radius,1e-4f);
+            assertEquals(0.2f,tune.knee,1e-4f);
+            assertEquals("another filter keeps its own",0.5f,PreferenceKeys.lensFilterTune("fog").radius,0f);
+            view.findViewWithTag("lens_filter_streak").performClick();
+            view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
+            assertNull("Streak has no radius",view.findViewWithTag("lens_filter_tune_"+com.particlesdevs.photoncamera.processing.color.LensFilters.T_RADIUS));
+            assertNotNull(view.findViewWithTag("lens_filter_tune_"+com.particlesdevs.photoncamera.processing.color.LensFilters.T_KNEE));
+            view.findViewWithTag("lens_filter_gnd").performClick();
+            view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
+            assertNull("GND: its own parameter only",view.findViewWithTag("lens_filter_reset"));
+            assertNotNull(view.findViewWithTag("lens_filter_param"));
+            view.findViewWithTag("lens_filter_bpm").performClick();
+            view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
+            assertTrue("the tune is still there",view.findViewWithTag("lens_filter_reset").isEnabled());
+            assertEquals(80,((android.widget.SeekBar)view.findViewWithTag("lens_filter_tune_"+com.particlesdevs.photoncamera.processing.color.LensFilters.T_RADIUS)).getProgress());
+            view.findViewWithTag("lens_filter_reset").performClick();
+            assertTrue(PreferenceKeys.lensFilterTune("bpm").fineDefault());
+            prefs.edit().putString(com.particlesdevs.photoncamera.processing.color.LensFilters.tuneKey("bpm"),"0,35,70,50,60").commit();
+            prefs.edit().putString(com.particlesdevs.photoncamera.processing.color.LensFilters.STRENGTH_KEY,"80").commit();
+            assertEquals(0.8f,PreferenceKeys.lensFilterStrength(),1e-4f);
+            view.findViewWithTag("lens_filter_cinebloom").performClick();
+            view.findViewWithTag("lens_filter_bpm").performClick();
+            view.findViewWithTag("lens_filter_sample_0").performClick();
+            for(int i=0;i<20;i++){Thread.sleep(100);org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();}
+            view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
+            java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
+            android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(360,2000,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
+            try(var out=new java.io.FileOutputStream(new java.io.File(dir,"page-lens_filter_screen.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+            view.findViewWithTag("lens_filter_").performClick();
+            assertEquals("",lf.chosen());
+            assertEquals("",PreferenceKeys.lensFilter());
+        }
+        // every filter on every sample, as a grid of 4 x 4 tiles («Нет» first)
+        int tw=320,th=240,cols=4,label=22;
+        for(int s=0;s<com.particlesdevs.photoncamera.ui.settings.custompreferences.LensFilterPreference.SAMPLES;s++){
+            android.graphics.Bitmap grid=android.graphics.Bitmap.createBitmap(cols*tw,4*(th+label),android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c=new android.graphics.Canvas(grid);c.drawColor(0xFF101416);
+            android.graphics.Paint text=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);text.setColor(0xFFF4F3F7);text.setTextSize(16);
+            for(int k=0;k<=ids.length;k++){
+                String id=k==0?"":ids[k-1];
+                android.graphics.Bitmap tile=com.particlesdevs.photoncamera.ui.settings.custompreferences.LensFilterPreference.render(s,tw,th,id,id.isEmpty()?0f:0.8f,
+                        com.particlesdevs.photoncamera.processing.color.LensFilters.defaultParam(id));
+                int x=(k%cols)*tw,y=(k/cols)*(th+label);
+                c.drawBitmap(tile,x,y+label,null);
+                c.drawText(com.particlesdevs.photoncamera.processing.color.LensFilters.name(context,id),x+6,y+16,text);
+            }
+            java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
+            try(var out=new java.io.FileOutputStream(new java.io.File(dir,"lens-filters-"+s+".png"))){grid.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+        }
+        // the fine controls of Black Pro-Mist on the night sample: each row one control at 0 / 50 / 100
+        {
+            String[] rows={"Порог","Радиус","Дымка","Тон"};
+            android.graphics.Bitmap grid=android.graphics.Bitmap.createBitmap(3*tw,4*(th+label),android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c=new android.graphics.Canvas(grid);c.drawColor(0xFF101416);
+            android.graphics.Paint text=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);text.setColor(0xFFF4F3F7);text.setTextSize(16);
+            for(int r=0;r<4;r++)for(int k=0;k<3;k++){
+                com.particlesdevs.photoncamera.processing.color.LensFilters.Tune t=com.particlesdevs.photoncamera.processing.color.LensFilters.Tune.defaults("bpm");
+                t.set(com.particlesdevs.photoncamera.processing.color.LensFilters.CONTROLS[r],k*0.5f);
+                android.graphics.Bitmap tile=com.particlesdevs.photoncamera.ui.settings.custompreferences.LensFilterPreference.render(0,tw,th,"bpm",1f,t);
+                int x=k*tw,y=r*(th+label);
+                c.drawBitmap(tile,x,y+label,null);
+                c.drawText("Black Pro-Mist · "+rows[r]+" "+(k*50)+" %",x+6,y+16,text);
+            }
+            java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
+            try(var out=new java.io.FileOutputStream(new java.io.File(dir,"lens-filters-tune.png"))){grid.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+        }
+    }
     /** SIMPLE_UI §4 «Прозрачность шторки»: its own page - a preview and radio rows; the choice is the sheet's alpha. */
     @Test public void shadeTransparencyPageStoresThePercentage(){
         PreferenceScreen screen=inflate();
@@ -1770,6 +1918,46 @@ public class SettingsMenuTest {
         panel.findViewWithTag("profile_delete").performClick();
         assertEquals(Arrays.asList("Portrait.xml"),files);
         assertNull(row.findViewWithTag("profile_Night"));
+        assertNull("the folder is open: no row for it",row.findViewWithTag("profiles_open_folder"));
+        // P246: without the folder grant the page offers to open it, and lists what is there once it is open
+        boolean[] open={false};int[] asked={0};
+        profiles.setActions(new com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference.Actions(){
+            @Override public String[] saved(){return open[0]?new String[]{"Portrait.xml","FromPc.xml"}:files.toArray(new String[0]);}
+            @Override public String load(String f){return "ok";}
+            @Override public boolean delete(String f){return files.remove(f);}
+            @Override public boolean folderOpen(){return open[0];}
+        });
+        profiles.setFolderOpener(()->{asked[0]++;open[0]=true;profiles.refresh();});
+        row.findViewWithTag("profiles_open_folder").performClick();
+        assertEquals(1,asked[0]);
+        assertNotNull("the hand-copied config is listed",row.findViewWithTag("profile_FromPc"));
+        assertNull(row.findViewWithTag("profiles_open_folder"));
+    }
+    /** P226: «Увеличивать кадр с кропом» on «Размер фото» under «Для опытных», on by default, a per-module value. */
+    @Test public void cropUpscaleSwitchSitsOnThePhotoSizePage(){
+        PreferenceScreen screen=inflate();
+        PreferenceScreen size=screen.findPreference("photo_size_screen");
+        androidx.preference.TwoStatePreference sw=size.findPreference(PreferenceKeys.CROP_UPSCALE_KEY);
+        assertNotNull(sw);
+        assertTrue(sw.isChecked());
+        assertTrue(ModuleProfiles.isLocal(PreferenceKeys.CROP_UPSCALE_KEY));
+        assertTrue(PreferenceKeys.cropUpscale());
+    }
+    /** P223: «ISP-превью» and «Поправки баланса белого» for FULLRES / ISZ in «Экран камеры», both on by default. */
+    @Test public void mosaicPreviewAndWhiteBalanceSwitchesSitOnTheCameraScreenGroup(){
+        PreferenceScreen screen=inflate();
+        androidx.preference.PreferenceGroup view=screen.findPreference("root_view");
+        for(String key:new String[]{PreferenceKeys.MOSAIC_ISP_PREVIEW_KEY,PreferenceKeys.MOSAIC_WB_KEY}){
+            androidx.preference.TwoStatePreference sw=view.findPreference(key);
+            assertNotNull(key,sw);assertTrue(key,sw.isChecked());
+        }
+        assertTrue(PreferenceKeys.mosaicIspPreview());
+        assertTrue(PreferenceKeys.mosaicWbCorrections());
+        prefs.edit().putBoolean(PreferenceKeys.MOSAIC_WB_KEY,false).commit();
+        assertFalse(PreferenceKeys.mosaicWbCorrections());
+        assertFalse("the OPPO native session's own estimate off with it",com.particlesdevs.photoncamera.capture.OppoNativeWb.on());
+        assertFalse(com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.on());
+        prefs.edit().remove(PreferenceKeys.MOSAIC_WB_KEY).commit();
     }
     private static android.view.View layout(android.view.View view,int w,int h){
         int exact=android.view.View.MeasureSpec.EXACTLY;

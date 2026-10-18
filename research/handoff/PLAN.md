@@ -4923,6 +4923,11 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
 - P219 (2026-10-18): the one long frame applies to the FULLRES routes merged natively; this log's case, a binned FULLRES shot
   («Наш ремозаик» off), keeps 3 + 3 on purpose (the binned P195 merge takes every frame) - open for the owner whether «для фулреза
   1 длинный достаточно» covers it too (then HybridPlan.fullResLongFrames returns 1 for every FULLRES plan).
+- DECIDED 2026-10-18 (the owner: «Все решения принимай сам»): (1) a binned FULLRES shot keeps capturing in the full-size mode -
+  P195 was asked to compare the binned mosaic with our remosaic, so the route stays; (2) the owner's «для фулреза 1 длинный
+  достаточно» covers it too: HybridPlan.fullResLongFrames returns 1 for every FULLRES plan (3 + 1 instead of 3 + 3: -0.3-0.5 s,
+  -192 MB at 50 MP); (3) the «Размер фото» sheet says it on the 50 / 200 MP rows while «Наш ремозаик» is off: «снимок выйдет 12
+  Мп». The kept-burst cost (scam_dev keep burst, ~7 s) stays a diagnostics choice; the capture-side costs are part B.
 
 ### P218 - «Настройки по модулям» only on the main settings page (owner, 2026-10-18: «группа настроек "Настройки по модулям"
 дублируется в нескольких местах, исправь чтобы было только на главной странице»)
@@ -5116,7 +5121,17 @@ on a phone)
   stream, the viewfinder is drawn from RAW; AF / AE metering and stabilisation that need the preview stream checked per route,
   with a fallback when a HAL refuses a session without it) and «Исправления баланса белого» (off: the photo and the viewfinder use
   the camera's own white balance - no P121 / P212 mosaic locus, native-session AWB anchoring, learned anchors).
-- Not started.
+- DONE 2026-10-18: two switches in «Экран камеры» (per module, both on = as before).
+  - «ISP-превью в FULLRES и ISZ» (pref_mosaic_isp_preview): off, a FULLRES session (mFullResSession) or a mosaic module
+    (IszCapturePolicy.mosaicModule: an ISZ / vendor session mode, a sensor-mode preset, a module sensor mode) shows the RAW
+    viewfinder (forced on) and its repeating request targets the RAW stream only (setCaptureRequestBuilder, log «ISP preview off
+    (P223)»); the surface stays configured. The vivo SDK FULLRES graph and the native routes (vivo / OPPO native FULLRES, PD2454
+    native ISZ) were RAW-only already. AE / AF / faces come from the results of the RAW requests (P225 is the study of how far that
+    holds per HAL); a HAL that refuses frames without the preview is not detected yet - to check on the phones.
+  - «Поправки баланса белого в FULLRES и ISZ» (pref_mosaic_wb_corrections): off, no frame estimate on the camera's curve (P121 /
+    P212f, ScamProcessor.applyMosaicNeutral), no FULLRES neutral resolver (P212g), no OPPO native own estimate (OppoNativeWb.on):
+    the camera's white balance; the OPPO native mode has no AWB of its own, so it takes the camera's plain-mode neutral
+    (OppoNativeFullRes.neutral). Test: SettingsMenuTest.mosaicPreviewAndWhiteBalanceSwitchesSitOnTheCameraScreenGroup.
 
 ### P224 - the viewfinder never below 20 fps (owner, 2026-10-18: «Минимальный фпс для видоискателя ограничить на 20фпс чтобы при
 плохом освещении не было слишком медленного видоискателя»)
@@ -5124,7 +5139,14 @@ on a phone)
   range, else the closest one; our own native AE / RAW viewfinder exposure capped at 1/20 s per frame with the rest from gain),
   in every route (normal, ZSL ring, FULLRES / ISZ native sessions, Motion); stills keep their own exposures (PSL long frames are
   not the preview). Check the dark-scene preview fps and the ZSL ring exposure on the phones.
-- Not started.
+- DONE 2026-10-18 (capture/ViewfinderFps): the viewfinder's automatic AE ranges get the floor 20 fps - the normal route's
+  getSelectedFpsRange() (auto [minLower, 30] -> [20, 30]), vivo's stock-profile STOCK_FPS [5, 30] -> [20, 30], the FULLRES / ISZ
+  viewfinder (applyVivoSdkPreview, the preview builder only; a still keeps the camera's whole range), applyFpsRange. Fixed 24 /
+  30 / 60, «Движение» and DCG keep theirs. The own native AE (NativeRawExposure) already caps a frame at the mode's frame time
+  (<= 1/24 s). scam_dev «vf_min_fps N» (0: the old range). Note: the ZSL ring frames are viewfinder frames, so in the dark they
+  are now at most 1/20 s with more gain; the merge takes more of them. To check on the phones: a dark room, the viewfinder at
+  20+ fps (VF_DRAW), the PD2454 ultra-wide SDK FULLRES still delivering frames with [20, 30] (only a fixed 30 failed there).
+  Test: ViewfinderFpsTest.
 
 ### P225 - study: RAW-only sessions (usage 0L readers, 3A and faces without a preview stream) (owner, 2026-10-18: «изучить то что
 написано выше», a note the owner pasted)
@@ -5141,7 +5163,17 @@ on a phone)
 - Where it matters: P223 (switch off the ISP preview for FULLRES / ISZ), the OPPO native FULLRES readers (P192), vivo native
   sessions. Check on the OPPO (Oplus CamX) and the vivo phones: reader usage flags (dumpsys media.camera), stream acceptance of
   non-public sizes with 0L vs the default, CPU reads, 3A convergence, faces and fps with and without the preview surface.
-- Not started.
+- STUDIED 2026-10-18 from our code and its logs (phones not available for new runs in this round):
+  1. Usage 0L readers: our native FULLRES readers already use usage 0 (CaptureController: sdkFullRes ImageReader.newInstance(...,
+     0)); the PHY110's 8192x6144 stream (not in the public map) is accepted that way and the CPU reads the planes (P192 logs) -
+     claim 1 holds on the PHY110. The 4-argument overload (USAGE_CPU_READ_OFTEN) is kept for the ordinary sessions, which only ask
+     for listed sizes.
+  2. / 3. 3A and faces without a preview stream: the vivo native routes (P180 / P194 / P207: native FULLRES, PD2454 native ISZ)
+     and the OPPO native route run RAW-only sessions; their results carry AE / AF states (vivo: AE ON converges; OPPO: own AE by
+     design, AF works) - claims 2 and 3 hold for these routes; faces in RAW-only results were not logged yet.
+  - Used by P223: «ISP-превью в FULLRES и ISZ» off makes the other FULLRES / ISZ sessions RAW-only the same way.
+  - To verify on the phones (log lines): with P223 off on an ISZ module - «ISP preview off (P223)», VF_DRAW fps, AF/AE states in
+    SCAM_CAPTURE, and STATISTICS_FACES present (the face frames on the viewfinder) on the vivo X200 Ultra and the OPPO X7 Ultra.
 
 ### P226 - a switch for the upscale of crop shots (owner, 2026-10-18: «Добавить пункт отключающий и включающий апскейл при съемке с
 кропом. расположить его в соответствии с новой логикой простого интерфейса»)
@@ -5150,7 +5182,12 @@ on a phone)
   crop P148, sensor crop, ISZ / zoom crops, HybridFinalResize, the final resize nodes) and gate only the crop's upscale. Place it
   per SIMPLE_UI: «Фото → Размер фото» (and in the «Размер фото» sheet's «Для опытных» group next to the output resolution),
   plain subtitle («Выкл. — снимок с кропом остаётся в своём размере, без увеличения»); a per-module value (module profiles).
-- Not started.
+- DONE 2026-10-18: «Увеличивать кадр с кропом» (pref_crop_upscale, per module, on = as before) on «Фото → Размер фото» under «Для
+  опытных». The only place a crop shot is enlarged is the merge's output: the Sabre 2x grid (output mode 2x / 16 / 20 MP or
+  auto 2x) and the resize up to the output resolution (hybridFinalSize); the digital zoom itself only crops (ZoomController.crop).
+  Off, a crop shot (PreferenceKeys.cropShot: the digital zoom's residual > 1, a P148 lens crop, a sensor-crop / ISZ module) merges
+  on the sensor grid and keeps its pixels («hybrid output: a crop shot without upscale (P226)» in the log). Test:
+  SettingsMenuTest.cropUpscaleSwitchSitsOnThePhotoSizePage.
 
 ### P227 - study and fix: the OPPO sensor-mode route against the ArkCam implementation note (owner, 2026-10-18: «добавь в план
 изучть и исправить у нас», the note oppo_sensor_mode_implementation.md)
@@ -5177,7 +5214,23 @@ on a phone)
   mode session; whether a per-module «Режим сенсора» choice (Auto + table rows, OPPO only) belongs in the module editor under the
   SIMPLE_UI rules. Ties to P223 / P225 (RAW-only sessions) and P192.
 - Test only on the OPPO with adb replays and the probe; never start SCAMERA on fb27034c with a saved type 32777 + FULLRES session.
-- Not started.
+- DONE 2026-10-18 (compared with the note item by item):
+  1. Table: ours reads org.quic.camera2.sensormode.info.SensorModeTable with the stride from table[1] (fullModes), as the note.
+     Result key: we read com.qti.sensorbps.mode_index only - now also org.quic.camera.sensorbps.SensorModeIndex
+     (OppoNativeFullRes.modeMatches; either one naming another mode is a mismatch). Test theModeReportIsReadUnderBothNames.
+  2. Select: the byte key (int fallback when the HAL refuses the byte, P214j) goes on the session parameters
+     (VivoPd2454NativeRaw.apply on the session-parameter builder), on the repeating request (applyVivoSdkPreview) and on every still
+     (VivoSdkFullResCapture) - as the note.
+  3. Spoof: OplusCameraPackageSpoof already calls saveOpPackageName(pkg), then setPackageName() with no arguments - same.
+  4. Reader: the full-size RAW_SENSOR reader is created with usage 0 (CaptureController, sdkFullRes) - same. RAW10 is not used:
+     RAW_SENSOR is proven on the PHY110 (P192) and the ring / merge take 16-bit samples; RAW10 would need a packed ring copy -
+     not done (no phone needs it so far).
+  5. Session: the native route is RAW-only (no preview surface, no YUV), opMode 0, the own GL RAW viewfinder forced on - same.
+  6. UI: no per-lens mode list - the candidates come from the table by size (fullModes: the largest rows that also have a binned
+     row) and a failed one is remembered (P214h trials); the module editor's sensor mode (module_sensormode_<slot>) still takes a
+     number by hand under «Для опытных».
+  7. Find X8 (PKJ110) indices from the note are the table rows fullModes picks (main 32 / 37, UW 17, tele 18 / 18): no list
+     needed. Candidate order stays the table order (the PHY110 rows were measured in it).
 
 ### P228 - diffusion filters: Black Pro-Mist, Glimmerglass and the like, adjustable (owner, 2026-10-18: «Реализовать симуляцию Black
 pro mist, glimmer glass и других подобных фильтров у нас в камере с возможностью настройки, расположи настройки в соответствии с
@@ -5218,7 +5271,27 @@ pro mist, glimmer glass и других подобных фильтров у н�
   one-line description, its sliders updating the sample immediately; the viewfinder LUT tray gets the same filter row.
 - Checks: off = byte-identical output (md5 of the reference replays), energy test on a synthetic point source, no banding at
   12 / 50 / 200 MP, time budget per size.
-- Not started.
+- DONE (2026-10-18, wt-int):
+  - Model: processing/color/LensFilters - the 12 filters on the linear RGB after ScamHdrDenoise, before the ARK tone (the
+    highlights keep their headroom). Diffusion family: the light above a knee, a 6-level Gaussian pyramid PSF (weights sum to
+    1, the spread light taken from the source - energy kept, LensFiltersTest), glow colour, veil from the image's levels 4-6,
+    lift; Glimmerglass a short X star, Streak a horizontal streak (length = its parameter); GND (transition = parameter),
+    Light Pollution (the orange-yellow band loses chroma), Prism (shifted tinted soft ghost, offset = parameter), Kaleidoscope
+    (3-12 segments), Infrared (mono / false colour / R-B swap).
+  - Settings (owner: «дай возможность настраивать эти фильтры»): strength, the filter's own parameter and, per filter, fine
+    controls «Порог свечения» (knee x0.25..x4), «Радиус» (PSF tilt; Glimmerglass star length), «Дымка» (veil / lift x0..x4;
+    Prism: the ghost), «Тон свечения» (cooler / warmer glow), 50 % = as designed, «Сбросить». Stored: pref_lens_filter,
+    pref_lens_filter_strength (0..100, default 50), pref_lens_filter_tune_<id> ("param,knee,radius,haze,warmth").
+  - GPU: postpipeline/LensFilter node (shaders/lensfilter extract / streak / apply, FILTER define per filter; glslc OK for all
+    12 variants); no filter = no node, the output is the one without P228.
+  - UI: «Фильтр на объектив» page next to «Плёночный LUT» (LensFilterPreference: before / after preview on Огни / Пейзаж /
+    Закат, the strip of 13 cards with thumbnails at the filter's own tune, sliders redraw at once, description); the LUT tray
+    on the viewfinder has a second row of filter cards (thumbnails of the current frame), the pill reads «LUT · Pro-Mist»;
+    the shade lists the filter (LIST). Global like the film LUT (not per module).
+  - Tests: LensFiltersTest, SettingsMenuTest.lensFilterPageShowsTheStripPreviewAndSliders (also draws
+    build/reports/module-concept/lens-filters-*.png and page-lens_filter_screen.png), LutTrayTest.theFilterRowChoosesTheLensFilter.
+  - Not done: the live viewfinder pass (the RAW live renderer is one pass; the tray thumbnails and the settings preview show
+    the look); phone check of the GPU node (log line «lens filter <id> ... ms=»), time at 50 / 200 MP.
 
 ### P229 - X300 Ultra: study rawr and fix FULLRES; fix ISZ (owner, 2026-10-18: «https://github.com/adityawarmanfw/rawr/releases/tag/debug
 изучить и исправить фулрез на 300 Ultra. Так же исправь isz на нем», with the X300U mode table again)
@@ -5244,7 +5317,33 @@ pro mist, glimmer glass и других подобных фильтров у н�
   give the expected mosaic (CFA / block) and crop; the pink 14-bit modes on 14 / 35 mm are not offered (or only 35mm 15 with
   AE, manual exposure blocked there); P126 (doubled ISZ modules, dark DCG photos) stays fixed. Verify with the owner's log /
   photos (no X300U here).
-- Not started.
+- DONE 2026-10-18. rawr studied from its source (ce767e8 «vivo 50mp fixes», docs/vivo-fullres.md and its X300 Ultra profile,
+  measured on a V2562 with Android 16; GPL code read only):
+  - Gate: VivoCameraManager key 40 = 1 («useVivoCamera») makes cameraserver classify the client as vivo's camera; the HAL's
+    sensor-mode selector (PD2547.json) keeps the full-size modes for that AppType only. cameraserver reads it while it configures
+    streams; key 33 is rewritten at open. Ours (VivoSdkRawSession lease) sets 40 = 1 (and 33) for the whole session - the same
+    gate, held longer; kept.
+  - 50 MP: forceSensorMode on the session parameters AND every request (session-only leaves the sensor binned, a 12 MP image in a
+    corner of the 50 MP buffer) - ours does both (VivoPd2454NativeRaw.apply on the session builder, applyFullRes on requests).
+    Reader usage none or GPU_DATA_BUFFER only - ours 0. RAW-only session - ours. Main 3 mode 2 (8160x6128) and tele 5 mode 14
+    (8160x6144) are Bayer by rawr's colour-block test: main row 2 was our hardware-remosaic row already (P194); the tele's row 14
+    is now its hardware-remosaic row too (hardwareRow) and its own-mosaic candidates are 1 / 27 (were 1 / 14 / 27: row 14 was a
+    wasted «wrong mosaic» trial).
+  - 200 MP: rawr copies the stock still session (YUV 1440x1080 + RAW and YUV 16320x12288 + RAW 4080x3072, streamsUsage
+    [4 1 0 5], ultra_highresolution / is_pro_mode / is_ProRaw_on 2 / current_ui_module 74 ... on session and requests, a
+    STILL_CAPTURE with onlyDng 1, isUpscale 1, sensorMode 0): that gives the HAL's remosaicked 200 MP Bayer, not the Tetra our
+    merge wants; forcing mode 0 streams the raw Tetra and stops the preview (as our P208 saw). Not ported: our 200 MP stays the
+    P208 still-only route; the stock-session copy is the way to a hardware-remosaic 200 MP if the owner wants one.
+  - Pitfall: vivo's own camera open in the background fails full-size sessions (error 3 / 4): the refusal message now says to
+    close it.
+- ISZ: the owner's table is P214i's (VivoQcomIsz.MODES: 14 mm 21, 35 mm 10, 85 mm 5 / 7 / 10 / 13 / 17, remosaiced 6 / 31 not
+  offered as modules) and forceSensorMode stays a session key there (TunableKeyManager.applySessionKeys). DCG: rawr's levels for
+  the 14 / 35 mm DCG modes are black 1024 / white 8712 (the tele's 16383): our 2026-10-15 log measured the same clip (8694) - the
+  pink highlights were a blown area read against 16383. RawLevels.priorClip now sets that clip from the session's first frame on
+  the main / ultra-wide DCG modes (VivoQcomIsz.applyDcg), not only after a plateau showed; DCG stays on all three by the vivo
+  CameraType (by focal length the tele only, as P214i). Tests: VivoNativeFullResTest, FullResTrialsTest, RawLevelsTest.
+- To verify on the owner's X300 Ultra: the tele 50 MP (rows 1 / 27; «FULLRES: аппаратный ремозаик» -> row 14), the main / UW DCG
+  in a bright scene (log «RAW clip 8694 known for this mode», no pink highlights).
 
 ### P230 - DCG without root on Snapdragon 8 Elite: vendor op mode + sensor mode; Xiaomi 15 Ultra first, then the vivo X200 Ultra (owner, 2026-10-18: a Discord post from MotionCam, «Изучи внимательно и реализуй на 15 Ultra. затем займись реализацией на X200 Ultra» - corrected from «17 Ultra»)
 - The post (Xiaomi 15 Ultra, SM8750, no root, @JohnTheFarm3r): DCG works with
@@ -5351,3 +5450,332 @@ pro mist, glimmer glass и других подобных фильтров у н�
   - Export: «Сохранить» may also write this JSON (the same shape) so the curves go back to ArkCam - only if ArkCam reads it.
 - Tests: ToneCurveTest - this sample file (19 points, ends 0:0 and 1:1, monotone), [x, y] arrays, a broken JSON falls back
   to the pair scan / refusal, the 0..255 scale; ToneCurvePreference listing with a .json file.
+- DONE 2026-10-18: ArkCam 1.58 (com.arkcam.ui.ToneCurveFileManager, decompiled) writes exactly this file - {"name", "points":
+  [{"x", "y"}]} at 4 decimals into Documents/ArkCam/Curves - from the same points as its pref_custom_tone_curve_points "x:y"
+  string, which P144 ported (x the normalised log exposure, y the display value): no domain conversion. Its reader also takes a
+  bare array and [x, y] pairs and clamps to 0..1. ToneCurve.jsonPoints / jsonName / fromFileText do the same (no 8-bit scaling in
+  JSON); the import (SettingsActivity.importToneCurve) also saves an ArkCam file into Download/SCAMERA/ToneCurves under its
+  «name» (our .txt); the folder lists .txt, .json and .curve files (ScameraFolder.CURVES). Export stays our .txt: ArkCam's reader
+  falls back to its "x:y" parser for other text. Test: ToneCurveTest.arkCamJsonCurveFiles (the owner's 19-point sample).
+
+### P232 - FULLRES 50 MP ZSL: the memory budget before the N after the shutter, the ring frames kept (roadmap speed-ux A2)
+- Evidence: owner's X7U log 2026-10-17 20:20:35.714 «50 MP ZSL: 5 ring frames + 7 N after the shutter» then «frames=14 (ZSL: N 1
+  from the ring + 13 after the shutter) ... cut=memory»; ring frames kept per ZSL shot 1, 1, 1, 3, 1, 1, 2, 1, 6, 5 (test phone)
+  and 1, 1, 5, 10 (owner), median 1. Cause: takeNativeZsl fixed the top-up (requested - ring) first, the budget
+  (VivoSdkFullResCapture.zslNormals) then removed the oldest ring frames - the zero-lag ones.
+- Now: takeNativeZsl returns the plan without N; captureVivoSdkFullResChecked asks the budget for the whole shot (max(ring,
+  requested) N + the plan's ultrashort / long stills) and splits it with VivoSdkFullResCapture.zslSplit: the ring frames stay
+  (only when even the extras do not fit do they go, the newest one always stays), the N after the shutter fill the rest up to the
+  N asked. Log «50 MP ZSL: K of R ring frames + T N after the shutter (asked A, budget B frames); <plan>».
+- Checked: FullResZslTest 11/11 (+1: the owner's case 5 ring / 6 extras / 14 budget -> 5 + 3; with A1's 2 extras 5 + 7; a tight
+  budget drops after-press N first), VivoSdkFullResCaptureTest 17/17.
+- Phone (not tested): «ZSL: N k from the ring» with k close to the ring size; fewer frames after the press, shorter hold.
+
+### P233 - «Снято K из N кадров» counts the N the merge takes (roadmap speed-ux A5)
+- Evidence: owner's shot 1 (X7U 2026-10-17 20:20:35) showed «Снято 1 из 12 кадров» while the worker merged 8 N («N frames 8 of
+  8»): the toast's K was shotN, the ring's frames alone.
+- Now: K = the ring's N + the N after the shutter (VivoSdkFullResCapture.zslTaken; the plan's ultrashort / bracketed stills are
+  not N); the cut («memory» / «ring») compares that K with the N asked. The log line «NATIVE FULLRES frames=… (ZSL: N r from the
+  ring + s after the shutter, N t of them)». After the merge the worker's «HYBRID SERIES: merged … (N frames k of n)» still gives
+  ScamHybridBurst.notice «Склеено k из n обычных кадров» when the worker merged fewer N than were sent (unchanged).
+- Checked: FullResZslTest 12/12 (+1), ScamHybridBurstAnyResolutionTest 13/13.
+- Phone (not tested): a memory-cut ZSL shot's toast K = the «N r from the ring» + «N t of them» of that line.
+
+### P234 - no instant-shot UI while a long ZSL series is still capturing (roadmap speed-ux A4)
+- Evidence: every ZSL shot sent «ScamZslCaptureStarted» (the instant UI: no capture ring, controls live) while the owner's 5
+  FULLRES 50 MP shots took 8-15 stills over 1.2-2.3 s after the press; moving then costs rejected / misaligned frames.
+- Now: CaptureController.zslStartTag(stills after the press): up to INSTANT_ZSL_STILLS = 6 (the 12 MP plan, ~400 ms) the instant
+  UI as before; above it «ScamZslSeriesStarted» (CaptureController.ZSL_SERIES_STARTED): CameraFragment shows the capture ring
+  (max = the shot's frames, set to the frame number of each still - the ring's frames count as taken - via the new
+  CameraUIView.setCaptureProgress), locks the controls as a PSL burst, and gives a haptic tick (CONFIRM, API < 30 CLOCK_TICK) at
+  onCaptureSequenceCompleted. Both ZSL routes use it (FULLRES 50 MP and the 12 MP Hybrid, whose plan stays <= 6: unchanged).
+  Log «50 MP ZSL UI: instant shot | capture ring (N stills after the press)».
+- Checked: FullResZslTest 13/13 (+1).
+- Phone (not tested): a 50 MP ZSL shot with > 6 stills after the press shows the ring and ticks at its end; with P232 + A1 most
+  shots should now stay instant (2-6 stills).
+
+### P235 - FULLRES: the shot arena made at the press, the ring frames moved in while the stills arrive (roadmap speed-ux B3)
+- Evidence: «HEX CLIENT PREP raw_write=606» (owner's X7U) / 903 ms (test phone): a 50 MP burst whose stills did not all fit the
+  ring memfd's free slots (ZslRing.reserve gives what is free) had ring views and stills in two places, and
+  ScamHybridBurst.moveIntoArena copied the whole burst into a new arena after the series, between the camera and the worker.
+- Now (CaptureController.pressArena / pressArenaWanted, processing/RingArenaMove): when the reserved ring slots do not take every
+  still (or a ring frame is not in the ring memfd) and the frames are above 16 MP, the shot gets its own ShotArena of ring + stills
+  frames at the press; the stills are written straight into it (the saver's shotArena, as before), the FULLRES ring is released
+  at the press (it takes no frame during the series and was released for the merge anyway, P200) and RingArenaMove copies the
+  ring frames in on its own thread, one at a time under the frame's lock, each ring view freed after its copy (the released
+  ring's slot pages are punched at once: the peak stays one frame above the burst, as moveIntoArena's). complete() waits for the
+  move before the arena is released; failed() cancels it before the frames are discarded. A frame not moved (arena full /
+  released, closed, another size) keeps its view and moveIntoArena moves the burst as before. Burst in one memfd already (the
+  usual 12 MP and the PSL series that fit), 200 MP (own arena already), binning: unchanged. scam_dev fullres_press_arena 0 = as
+  before (DevKeys). Log «FULLRES shot arena at the press: arena … for R ring frames + S stills (the ring's free slots held F)»,
+  «FULLRES shot arena: R/R ring frames moved in T ms»; the merge's «hybrid burst moved into a shot arena» should be gone.
+- Byte identity: the worker reads every frame at its own page of the memfd (NCH v12 header, pages from Allocator.arenaOf), the
+  frames keep their bytes and order; only their slots differ. RingArenaMoveTest (new, CI) builds the burst both ways (the move
+  after the series vs the press arena with the stills written concurrently from another thread) and compares the merge input
+  byte for byte, plus each ring view freed once, a full / released arena leaving the rest in place, closed / odd frames skipped,
+  cancel. FullResZslTest +1 (pressArenaWanted), DevKeysCoverageTest, ScamHybridBurstAnyResolutionTest, CameraResumeTest pass.
+- Phone (not tested): raw_write in «HEX CLIENT PREP» drops by the move (~0.6 s on the X7U); no memory warnings during the series.
+
+### P236 - shot timeline marks, one summary line per shot, the frames' release off the critical path (roadmap speed-ux B4 + F)
+- Evidence (owner's X7U 2026-10-17 20:20:51): «reference RAW copied out of the shot arena» 51.832, «D/ImageFrame: Buffer is
+  already null» 51.832, then nothing until «Alignment elapsed» 52.219: ScamProcessor closed the shot's frames there (the last
+  views of a 50 MP arena: a punched hole per 96 MB slot, then the memfd's munmap / close giving back ~1.3 GB) before the post
+  pipeline. The other part of the 0.4-0.6 s after «SCAM CAPTURE OK» is the client's output map (114 ms) and the reference copy.
+- Now: ScamProcessor.releaseFrames closes the frames on one low-priority thread («shot frames released off the critical path: N
+  frames, M MB in T ms») once the reference RAW is out; bursts of 16 MP or less and 200 MP shots (memory edge, P179) close in
+  place as before; scam_dev release_async 0 = as before (DevKeys). Nothing reads the frames after the merge.
+- ShotTimeline: marks series_done (FULLRES complete and the 12 MP path), arena_moved (P235's press arena or the merge's
+  moveIntoArena), plain_ready (the plain session for the merge), w_detect («HYBRID MOSAIC: header block»), w_response /
+  w_binning / w_merge (back from the native merge's «total … (before the merge P: pick a response b binning c, merge d, after it
+  e)» line, the stage ends computed from the worker's own times), w_chroma (the chroma median line's end), ref_copy,
+  post_compile (GLProg.takeProgramStats, with a note «post_compile_ms=compiled/ms+binaries bin/ms»); notes thermal_press /
+  thermal_end (util/ThermalState: PowerManager thermal status name / headroom) and vf_fps_press / vf_fps_end (VfDrawMeter.fpsLast2s:
+  the frames drawn in the last 2 s, recorded at every draw). The timeline line is printed in time order. Fix on the way: worker
+  lines starting with 'S' were filtered out, so «SCAM STOCK MOTION» (w_align) and «SCAM CAPTURE OK» (w_ok) never marked.
+  One line per shot «SHOT SUMMARY ms: hold= to_worker= merge= gap= post= save= total= <notes>» (-1: a stage the route does not
+  have) in the log and, whatever the profiling switch, in Download/SCAMERA/SCAMERA-timings.txt (ScameraTimingLog.summary).
+- Checked: ShotTimelineTest 4/4 (new, CI: the owner's total line parsed, the marks in order, the summary's fields, no timeline
+  opened by a GL pass outside a shot), VfDrawMeterTest 2/2 (+1), ScameraTimingLogTest, DevKeysCoverageTest, FullResZslTest,
+  GLProgramDiskCacheTest, ShotSpeedBitExactTest.
+- Phone (not tested): «SHOT SUMMARY» per shot with gap close to the client's output map (~0.1 s) instead of 0.4-0.6 s; the
+  release line after the post pipeline has started.
+
+### P237 - the shader disk cache: counts, fsync, idle compile of missing programs (roadmap speed-ux B5)
+- Evidence: the X7U compiled all 36 post-pipeline programs on its first shot (790 ms, owner's log 20:20:54) and again after the
+  P211 reboot (746 ms, 20:44:41) although GLProgramDiskCache (P69) keeps their driver binaries; the X300U 493 ms. The P211 reboot
+  was a kernel panic: binaries written by the writer thread were still in the page cache. The cache said nothing about hits.
+- Now: each binary (and source) file is fsync'ed before its rename; the cache counts hits / misses / damaged / written / evicted,
+  and «runAll programs: N compiled in X ms, M from driver binaries in Y ms (disk H hit / M miss / D damaged / W written / E
+  evicted)» says it per shot (GLProg.takeProgramStats). Every compiled program's cache key (its source) is kept driver-independent
+  as gls-<sha>.src (LRU, 160 files / 16 MB, touched on every hit); GLProg.warmUp compiles, in its own 1x1 context on a
+  background thread, the kept sources whose binary this driver lacks (a driver update, an evicted or lost binary), at most 64,
+  stopping between programs when a shot starts. CaptureController.scheduleProgramWarmUp runs it once per process 4 s after a
+  session opened when the camera is idle (no shot, nothing processing, no FULLRES merge); scam_dev gl_warm_up 0 = off (DevKeys).
+  Log «program warm-up: K of N missing binaries compiled in idle time in T ms». A first install has no kept sources: its first
+  shot still compiles (the defines of the post pipeline come from the shot).
+- Checked: GLProgramDiskCacheTest 5/5 (+2: counts, the missing sources of a new driver, a damaged source deleted), DevKeysCoverageTest,
+  CameraResumeTest, ShotTimelineTest.
+- Phone (not tested): after an app update / reboot the first shot's line shows «0 compiled ... 36 from driver binaries», the
+  warm-up line once per start when something was missing.
+
+### P238 - thermal awareness: the state at the press and the merge end, a policy at SEVERE (roadmap speed-ux D2)
+- Evidence: the app never read the thermal state; ColorOS force-stopped it for heat mid-merge (P200, «o-stop(22)», 53 °C) while
+  the FULLRES session developed and ringed 96 MB frames at 24 fps; P200's open question (GPU throttling or the low priority) had
+  no data.
+- Now: util/ThermalState (PowerManager.getCurrentThermalStatus, getThermalHeadroom(0) at most once a second) is logged
+  «THERMAL at the press: <status>/<headroom>» (SCAM_CAPTURE) and «THERMAL at the merge end: …» (SCAM_HDR, also the timeline note
+  thermal_merge_end; P236's thermal_press / thermal_end are in the SHOT SUMMARY). util/ThermalPolicy follows the platform's
+  thermal listener (registered once per process at the first session; «THERMAL status a -> b» lines) and every press's sample.
+  At SEVERE or worse: the developed RAW viewfinder publishes at most 15 frames a second (ThermalPolicy.viewfinderFrameDue: every
+  second frame of a 30 fps stream; the AE, the ring and the stream still see every frame; the ISP preview's texture draw is
+  left alone - its buffers must flow back to the camera); the FULLRES ring pauses («50 MP ZSL ring paused: the phone is hot
+  (thermal status SEVERE)», its frames dropped so no stale frame becomes a ZSL frame; a press takes the series after the
+  shutter; «… runs again» after); a FULLRES press shows «Телефон горячий — 50 Мп будет дольше» (the shot's megapixels; at most once
+  in 5 min). scam_dev thermal_policy 0 = log only (DevKeys).
+- Checked: ThermalPolicyTest 4/4 (new, CI: no cap below SEVERE, 15 of 30 fps at SEVERE, the notice once in 5 min, the status
+  names), DevKeysCoverageTest, CameraResumeTest, FullResZslTest, NativeViewfinderTest, ScamHybridBurstAnyResolutionTest;
+  check_ui_language PASS.
+- Phone (not tested): the THERMAL lines per shot; a hot phone (or `adb shell cmd thermalservice override-status 3`, a system
+  setting change the owner does himself) shows the viewfinder at ~15 fps in VF_DRAW, the ring pause line and the notice.
+
+### P239 - the FULLRES ring copies 8-12 frames a second and rests on a still, untouched phone (roadmap speed-ux D1)
+- Evidence: ringCopyDue only waits twice the last copy's time; with 7-10 ms copies every frame went into the 50 MP ring (150
+  copies in 6.35 s, ~23.6 a second x 96 MB = 2.3 GB/s) for a ring of 3-10 slots; ColorOS already killed the app for heat (P200).
+- Now (capture/FullResRingPolicy): at most 12 copies a second (rateDue: every 2nd frame of 24 / 20 fps, every 3rd of 30), and the
+  ring rests after 10 s with no touch-down / key on the camera screen (CameraActivity.onUserInteraction) and the gyro still for
+  as long (Gyro.getFilteredShakiness below the tripod threshold 25): its frames go (P238's pause path: «50 MP ZSL ring paused: no
+  touch for 10 s and the phone still»), a touch or a moving gyro starts it again («… runs again»). scam_dev fullres_ring_fps
+  (1-30, 0 = every frame as before) and fullres_ring_idle_s (0 = never rests), DevKeys. The ring copy line says «at most 12 a
+  second».
+- Default on, decided from the merge's frame selection (selectHybridRing / drainZslNormalFrames): frames 83-100 ms apart stay far
+  inside its stale gap (ZSL_RING_MAX_GAP_NS 500 ms), the exposure-tier and crop rules do not depend on the rate, the ring keeps
+  its slots (the same candidates once it ran slots / 12 s: <= 1 s for the 50 MP ring's <= 10 frames), and a press while the ring is
+  short (just after an AE change, a resume) takes the missing N after the shutter (P232's split): the merge's N count is
+  unchanged. What changes: the ring's N span about twice the time (10 frames: ~0.8 s instead of ~0.4 s) - more hand motion
+  between them for the alignment / rejection; a press right after a rest is a PSL series. Both to check on the phone.
+- Checked: FullResRingPolicyTest 2/2 (new, CI: 12 of 24, 10 of 30, 10 of 20 fps, 0 = every frame; rest / wake by touch and
+  motion, 0 = never), DevKeysCoverageTest, CameraResumeTest, FullResZslTest, ZslRingBudgetTest.
+- Phone (not tested): «50 MP ZSL ring: copy … (N frames this session …)» grows ~12 a second (was ~24); the battery current_now
+  and the temperature against the old build; HYBRID rejection counts and photos of handheld 50 MP ZSL shots with
+  fullres_ring_fps 0 vs default (A/B); the pause / resume lines on a phone lying on a table.
+
+### P240 - «Камера перезапускается…» during a camera recovery; an untested route says «experimental» on its first use (roadmap speed-ux C4)
+- Evidence: the X300U 200 MP attempt (older build): error 4, then 7 retries of 700 ms, the viewfinder frozen 7.4 s (21:41:34 ->
+  21:41:41.6) with nothing on screen but the error card.
+- Now: CaptureController.recovering(on, why) («camera recovery started / ended (why)» in the log) -> CameraEventsListener.onCameraRecovery
+  (new, default no-op) -> CameraFragment lays «Камера перезапускается…» / «Camera is restarting…» (res camera_restarting) over the
+  viewfinder (a dimmed full-size text, not clickable; hidden after 30 s at the latest). On: every CameraDevice.onError while
+  resumed (all its paths open the camera again: the FULLRES / sensor-mode fallbacks, the module / camera revert, scheduleRecovery),
+  every retryOpen. Off: the next session configured, the recovery given up (three in a minute), the retries exhausted, an error
+  without a recovery («Камера недоступна»).
+- Experimental routes (capture/ExperimentalRoutes, prefs file scam_experimental, once per install): the P208 200 MP stock route
+  (X100 / X300 Ultra, stillOnlyFullRes, not OPPO) says on its first session «Экспериментально: 200 Мп как в стоковой камере …
+  ещё не проверено на телефоне. Если снимок не выйдет — выключите «vivo_fullres200_stock» в «Для разработчика»» on the message
+  card; log «experimental route p208_stock_200mp: first use».
+- Checked: ExperimentalRoutesTest 1/1 (new, CI), CameraResumeTest 24/24, LangTest, MessageCardTest; check_ui_language,
+  check_settings_model PASS.
+- Phone (not tested): a HAL error (or a camera switch into a failing module) shows the overlay until the viewfinder runs again;
+  the P208 notice once on the X100U / X300U 200 MP.
+
+### P241 - diagnostics: a «DIAG» badge, off by itself after 24 h, the dumps written off the processing thread (roadmap speed-ux C6)
+- Evidence: with diagnostics each shot writes 5 SCAM_DIAG dumps; on the X300U debug log (08:56:53-57) a 12 MP shot took 5.6 s
+  against 3.0-3.6 s without (x300u_log.txt 21:41); timing complaints may come from diagnostics sessions nobody remembered.
+- Now: ScamDiagnostics.buffer samples the stage on the calling thread (its own copy) and writes the PFM, the PNG (compress 100)
+  and stages.txt on the single «SCAM-diagnostic-export» thread, in order with the ZIP export (queue 32; full: written in place as
+  before). ScamDiagnostics.gpu reads the sampled rows through a pixel pack buffer, 64 rows per fill and one map each (11 waits for
+  a 50 MP stage instead of 682 per-row readbacks); the same rows and pixels, any GL error falls back to the row-by-row read. The
+  photo is not touched (the dumps only read).
+- settings/DiagnosticsAutoOff: the stored switch (pref_scam_hybrid_diagnostics, legacy pref_scamhdr_diagnostics) goes off 24 h
+  after the camera first saw it on (the time in prefs file scam_diag; a clock set back starts the 24 h again), said on the card
+  «Диагностика выключена: прошло 24 часа (она замедляет каждый снимок)», log «diagnostics switched off: on for 24 h». A scam_dev
+  hybrid_diagnostics line is left alone. CameraFragment shows «DIAG» (res diag_badge, amber on a dark plate, top left of the
+  viewfinder) while the stored switch or the scam_dev line is on; checked at every camera start (onCharacteristicsUpdated).
+- Checked: DiagnosticsAutoOffTest 2/2 (new, CI), SettingsMenuTest, HybridSettingsTest, SettingsAuditFixTest; check_ui_language,
+  check_settings_model PASS.
+- Phone (not tested): the badge with «Диагностика» on; the 12 MP shot time with diagnostics against without (SHOT SUMMARY); the
+  ZIP still complete (stages.txt, the PNG / PFM of each stage).
+
+### P242 - scam_dev worker_gpu_normal_priority: the merge worker's GPU priority for an A/B (roadmap speed-ux B6)
+- Evidence: the app's merge took 0.86-1.15 s a frame, the P204 replay ~0.63 s; during a FULLRES merge the viewfinder is the cheap
+  ISP one (displaying=ISP), so P57's low-priority worker contexts (scam-superres-gpu.h scamProcessingContext,
+  EGL_IMG_context_priority LOW unless SCAM_GPU_NORMAL_PRIORITY is set) may only slow the merge down.
+- Now: util/WorkerEnv builds the worker's environment (WorkerSpawn.environment, the merge and the GPU prewarm) and adds
+  SCAM_GPU_NORMAL_PRIORITY=1 with scam_dev worker_gpu_normal_priority 1 (DevKeys, «Склейка Hybrid (воркер)»; default 0 = low, as
+  since P57). Each job logs «WORKER GPU priority: low (EGL_IMG_context_priority, P57 default) | normal (scam_dev
+  worker_gpu_normal_priority 1)» into the worker report, and the SHOT SUMMARY note w_gpu_priority=low|normal sits beside the
+  thermal state (P238) and the merge time. The worker source is unchanged (it read the variable already); results are
+  unchanged (a scheduling hint).
+- Checked: WorkerEnvTest 1/1 (new, CI: the environment as before P242, one variable more with the key), DevKeysCoverageTest,
+  WorkerWatchdogTest, ScamHybridBurstCrashTest.
+- Phone (A/B, not run): the same scene 3x with the key 0 and 3x with 1 - «HYBRID STAGES ms: merge=», «SHOT SUMMARY … merge=»,
+  thermal_merge_end and VF_DRAW during the merge; keep the default unless the merge is clearly faster without a stutter.
+
+### P243 - «DNG colour = JPEG»: the DNG carries the JPEG's white balance and colour matrix (the P221 follow-ups, defined from the code)
+- What was planned: nothing - no P221 entry in PLAN.md, no «P221» / «DNG colour» / «native colour pass» in the code or the
+  research notes of this tree. Defined here from the code:
+  - «DNG colour = JPEG»: DngCreator wrote the camera's static dual-illuminant profile (SENSOR_COLOR_TRANSFORM1/2, FORWARD_MATRIX1/2,
+    CALIBRATION_TRANSFORM1/2) with AsShotNeutral = Parameters.whitePoint, while the JPEG renders with whatever Parameters chose:
+    the ISP's colour transform of the result (vivo: the DNG matrices are generic, «Using the ISP colour transform»), the OPPO tuned
+    forward matrix per CCT (OppoTunedColor), the plain-session matrix of a mosaic shot (PlainColourMemory), a DCP (DcpProfiles), or
+    the DNG interpolation itself - only the last matched Lightroom / ACR. Implemented below.
+  - «native colour passes»: the worker's native mosaic merge switches the colour-difference, clip-border (rim) and Bento colour
+    passes off («HYBRID MOSAIC NATIVE: colour-difference, clip-border and Bento colour passes off (they work on the binned frames;
+    native variants not built)», scam-hybrid.h). Native variants of them change every FULLRES / ISZ photo and can only be judged on
+    the owner's photos with replays and new reference md5s; not implemented here (left as a plan item: build them behind a default-off
+    tuning key, replay the syn_b* / x7u / hand / isz2 series, compare photos, then decide the default).
+- Now (processing/color/DngColour): the JPEG's linear render of a camera value c is intermediateToSRGB · sensorToProPhoto · c
+  (ark/low.glsl, combine.glsl); with the render's own XYZ -> sRGB (Converter.sXYZtoSRGB, D50-adapted) the DNG's tags are
+  ForwardMatrix1 = sRGB->XYZ · intermediateToSRGB · sensorToProPhoto · diag(n), scaled to Y(FM · 1) = 1, and ColorMatrix1 =
+  diag(n) · FM^-1 · Bradford(scene light (Parameters.sceneCct, CIE daylight / Planckian locus) -> FM · 1), one illuminant (label 21
+  written for both CalibrationIlluminant tags), no ColorMatrix2 / ForwardMatrix2 / CameraCalibration: a raw converter has nothing to
+  interpolate and renders FM · diag(1/AsShotNeutral) - the JPEG's colour; the temperature readout follows the scene light. The «Цвет»
+  look's white matrix (warmth / tint) and the tone are not camera colour and stay out. ScamProcessor sets Parameters.dngColour
+  for its DNG writes (the merged DNG and the reference RAW), DngCreator writes it and logs «DNG: the JPEG's colour: CM1 … FM1 …
+  (FM white xy …), illuminant 21, single»; not usable matrices -> the camera's profile with a warning. scam_dev dng_colour_jpeg 0 =
+  the camera's profile as before (DevKeys). The gallery's DngPreview (FM1 · diag(AsShotNeutral^-1)) shows the same colour.
+- Checked: DngColourTest 4/4 (new, CI: the ISP-matrix case renders the JPEG's colour through the DNG model for four camera
+  values, white stays D50; the DNG-interpolation case gives back its normalised forward matrix; CM1 · XYZ(scene) = the neutral
+  at 2856 / 4300 / 6504 K; the D65 / A locus points; the guards), DngMetadataTest, DngPreviewTest, ParametersHandSetWbTest,
+  OutputColourTest, DevKeysCoverageTest.
+- Phone (not tested): open a vivo / OPPO FULLRES and a 12 MP DNG in Lightroom / ACR with the «Embedded» profile, «As Shot» white
+  balance, beside the JPEG (no tone: compare the colour of neutrals and skin, not the contrast); the log line per DNG.
+
+### P244 - import of a camera's linear tone curve (owner, 2026-10-18: ToneCurve_imx06A.txt, «Добавь поддержку такого формата кривых нам»)
+- The file: 128 pairs x0, y0, x1, y1 ... as a bare comma list, x 0..1 in steps of 1/127 - vivo's DNG ProfileToneCurve for the
+  IMX06A (the tag is in vivo's camera, evidence/vivo_camera_2026-10-13/dexstrings.txt), which the DNG specification gives «in
+  linear gamma»: linear in, linear out.
+- DONE 2026-10-18: ToneCurve.linearPairs recognises such a list (even count >= 4, all 0..1, x rising from 0 to 1, no "x:y", no
+  words); fromLinearCurve turns it into our curve (x = 0.5 + EV / 10 around linear 0.18, y = sRGB display): sampled every 0.03 of
+  x up to the curve's white (linear 1 = +2.47 EV), flat above. ToneCurve_imx06A puts middle grey at y 0.571. Import and the
+  ToneCurves folder listing take it through fromFileText. Test: ToneCurveTest.aCamerasLinearToneCurveFile (the owner's file in
+  test resources).
+- Phone (not tested): the look of the imported curve against vivo's own JPEG.
+
+### P245 - the horizon level: a soft, light vibration when it becomes level (owner, 2026-10-18: «Для уровня горизонта когда он стоит ровно добавь мягкую легкую вибрацию»)
+- One short light tick (HapticFeedbackConstants / a light VibrationEffect) when the level indicator enters «level», none while
+  it stays there; again only after it has left level by a margin (hysteresis, no buzzing at the edge). Respect the system's
+  touch-feedback setting.
+- Found: P174 already ticked on the way in, through the View's HapticFeedbackConstants.CLOCK_TICK - which the OPPO / vivo
+  phones play as nothing.
+- DONE 2026-10-18: Vibration.Soft - an 18 ms pulse at amplitude 70 where the vibrator has amplitude control, the system's
+  EFFECT_TICK otherwise, USAGE_TOUCH, skipped when the system's touch feedback is off; HorizonIndicatorView plays it once on
+  the way in (level within 0.5°, out beyond 1°). Tests: HorizonIndicatorViewTest. Phone: not felt yet.
+
+### P246 - configs put into Download/SCAMERA/XML by hand are not listed (owner, 2026-10-18: «если я в папку добавляю новый конфиг вручную не через наше приложение, то у нас его не видно»)
+- ScameraFolder.list: MediaStore lists only the app's own files (Android 11+); other files only through the folder grant
+  (grantedTree, the P2xx fix of 2026-10-16). To check: is the grant asked for / kept on the config screen, does the listing
+  merge the grant's files, does the list refresh when the screen is shown again.
+- Found: the listing does merge the grant's files, but the only way to give the grant was the shade's config menu
+  («Открыть папку конфигов») - the settings page «Профили» that replaced it had no such row; a folder picked under the picker's
+  «Загрузки» root (ids "raw:/storage/emulated/0/...") was not recognised; the page did not read the folder again on return.
+- DONE 2026-10-18: ProfilesPreference shows «Открыть папку конфигов» while the folder is not open (the settings' folder picker,
+  once); the list is read again on every return to the settings and after the grant; ScameraFolder accepts a «Загрузки» tree
+  (primaryId / documentIdFor) and compares ids without case. Tests: SettingsMenuTest.profilesPageListsAndLoadsConfigs (the row,
+  a hand-copied config listed after the grant), the covers / primaryId asserts.
+
+### P247 - check the shutter sound and the timer sound switching off and on (owner, 2026-10-18: «Проверить отключение и включение звука затвора и таймера»)
+- Both settings, both ways: off -> no shutter / timer-tick sound (where the system lets an app stay silent), on -> the sound
+  back; after a restart of the app; the timer's countdown ticks and the shutter of a timed shot follow their own settings.
+- Checked in code: both switches are read per shot / per countdown (global keys, not per module; CameraSoundsTest,
+  SettingsAuditFixTest), silent / vibrate mute both, the region rule forces the shutter.
+- Found: the X200 Ultra's CTS package (MP3 crashes natively there) had no shutter sound at all since P188 and a synthesized
+  beep for the timer - the shutter switch did nothing there.
+- DONE 2026-10-18: there the real two sounds play from 16-bit mono 24 kHz PCM (res/raw/sound_shutter_pcm.raw 0.13 s,
+  sound_timer_pcm.raw 10.7 s, decoded from the MP3s) through static AudioTracks, under the same switches; ToneGenerator gone.
+  Test: CameraSoundsTest.thePcmCopiesOfBothSounds. Phone: to hear on the X200 Ultra (switch off / on, the timer 3 s / 10 s).
+
+### P248 - a settings row with a long value squeezes its title and description into a narrow column (owner, 2026-10-18, screenshot of «Режим автофокуса» on «Экран камеры»: «исправить описание параметра, оно не должно так криво отображаться»)
+- The value «Непрерывный (фото)» on the right takes most of the row: the title wraps by word, the description runs one or two
+  words a line, the «Камера перезапустится» chip breaks mid-word («пере / запустится»).
+- Fix: the value gets at most about 40 % of the row and ellipsizes (or moves under the title when it is long), the title /
+  description column takes the rest; the chip never breaks inside a word (one line, or wraps as a whole). Check every
+  list-type row on the narrow screens of ScalingMatrixTest.
+- Owner, 2026-10-18 (two more screenshots: «Кадры светов: число / проверка», «Разрешение»): «исправь все вот такие описания».
+- DONE 2026-10-18: every preference_card row - SettingsStyle.bind measures the value's line: wider than VALUE_SHARE (38 %) of
+  the row's text width (screen less card margins, padding, icon, chevron) it shows under the title (settings_value_below,
+  13sp, the title's colour) and the right-hand value is hidden; a short value stays on the right, at most that share wide.
+  Test: SettingsMenuTest.aLongValueGoesUnderTheTitle. Phone: OPPO screenshot of «Экран камеры» after the change.
+
+### P249 - the shade's default «Размер · 12 Мп» tile becomes the Sabre output tile 1x / 16 / 20 / 2x (owner, 2026-10-18, screenshot of the tile: «по дефолту у нас есть эта настройка в шторке, замени её на плитку с настройкой Sabre 1x/16/20/2x которая у нас есть»)
+- The tile is the settings' «Разрешение» (pref_scam_hybrid_output, PreferenceKeys.HYBRID_OUTPUT_VALUES: «Сенсор (1×, по
+  умолчанию)», «12 МП (2× → 12)», «16 МП (2× → 16)», «20 МП (2× → 20)», «2× (≈50 МП, без уменьшения)» - the owner's second
+  screenshot: this list, the one with «В шторку»), all five values, labelled as there; it takes the «Размер» tile's place in
+  the default shade layout (a user's own layout is kept). The output size stays reachable from the top bar's «12 Мп» pill.
+- SettingsAvailability rules apply (where the hybrid merge does not run, the tile is shown as off, with the reason).
+- DONE 2026-10-18: ShadeCatalog.DEFAULT_TILES has «Разрешение» (OUTPUT, its catalog entry: 1× / 12 / 16 / 20 / 2×) at «Размер»'s
+  place; SettingsMigration.migrateOutputTile swaps them once in a stored list that has «Размер» and not «Разрешение». The
+  «12 Мп» pill of the top bar still opens «Размер». Test: ShadeTilesTest.theResolutionTileTakesThePhotoSizeTilesPlace.
+
+### P250 - the diffusion filters as a physical model (owner, 2026-10-18: «Посмотри как симуляция сделана ... и исправь у нас»)
+- Before: the light above a knee spread by a fixed six-level Gaussian PSF, plus a separate lift and veil - a threshold edge,
+  a look that changed with the frame's level, and no colour structure in the halo.
+- DONE 2026-10-18: DiffusionModel - a share p of all the light (from the filter grade: our strength 0.5 = grade 1/2) spread by
+  the filter's PSF, energy kept: out = (1 - p) E + p (K * E). K = core + halo + bloom, each a geometric range of 2D
+  exponentials (the bloom with a power-law tail); sizes in micrometres of a 36 mm frame (the same share of the frame at any
+  resolution); the halo tinted by moving warm light to its rim and cool light to its core without adding energy. Families:
+  Glimmerglass, Black Pro-Mist, Pearlescent, CineBloom, Fog, Double Fog. Fine controls: «Ореол» the halo's share, «Радиус» the
+  size, «Дымка» the bloom's share, «Тон свечения» the warmth. On the GPU / CPU the PSF is a sum of the image's own pyramid
+  levels (to ~2 px) with per-channel non-negative weights fitted to its encircled energy (photo: gaussdown + B-spline widths;
+  viewfinder: the mip pyramid's); Glimmerglass keeps its short star, Pearlescent its pastel; no exposure dependence left.
+- Tests: DiffusionModelTest (grade table, warm halo energy, fit within 1 % encircled energy, size invariance), LensFiltersTest
+  (energy kept exactly, the glow falls off, the controls), LiveLensFilterTest. Phone: OPPO viewfinder / photo, see below.
+
+### P251 - pink highlights on an X300 Ultra photo (owner, 2026-10-18, Desktop.rar: SCA_20261014_110119.jpg)
+- The photo is build 30798 (2026-10-14, Route=Hybrid, ISO 1089, 1/100 s): the white church and the sky through the bus window
+  pink - a clipped channel shifted by the white balance. The highlight work after it (P215 merged clip at the real ceiling, P216
+  shoulder room, P212 white balance) may already cover it; ISO 58 of the same scene is clean.
+- Open: a shot of the same kind of scene on the current build (with its log / DNG) to see whether it is still there.
+
+### P252 - the OPPO Find X7 Ultra does not focus at night (owner, 2026-10-18/19: «Оппо почему-то не фокусируется», «на всех», «На виво фокус работает нормально»)
+- Found and fixed (3b414aa7): unlockFocus - run at every session start - left AF_TRIGGER_CANCEL in the repeating preview request
+  (every frame cancelled the AF); lockFocus sent START repeating; a SCAM-routed shot never released its AF lock. Test:
+  AfTriggerRepeatTest.
+- Still open: in a dark, far scene (a ship's deck at night) the HAL's continuous AF reports PASSIVE_FOCUSED with the lens at its
+  near limit (7.14 dpt) on cameras 2 / 4 / 5; a tap (AUTO + trigger) locks there too. Manual focus at ∞ (0.077 dpt) is sharp, the
+  stock camera (logical camera 6) is sharp; indoors near (a laptop) our AF was sharp.
+- Ruled out by test builds on the phone: the 20 fps floor, face detection / FACE_PRIORITY, the metering regions (stock's
+  zero rectangles), the RAW stream in the repeating request, the package spoof, the stock's mode tags (com.oplus.camera.mode
+  "photo_mode", is.from.main.menu, light.sensor.lux, ai.scene, salient object).
+- Next: the physical camera opened alone vs the stock's logical camera 6 (AF of the logical SAT use case), OIS on the physical
+  request, the session parameters; a fallback if the HAL stays parked at the near limit in the dark (our contrast sweep on the
+  preview, or the hyperfocal distance).

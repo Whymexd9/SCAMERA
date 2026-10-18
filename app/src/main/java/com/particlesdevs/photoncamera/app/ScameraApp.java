@@ -99,7 +99,7 @@ public class ScameraApp extends Application {
     }
 
     public static Vibration getVibration() {
-        return sApp.mVibration;
+        return sApp == null ? null : sApp.mVibration;
     }
 
     /*public static Parameters getParameters() {

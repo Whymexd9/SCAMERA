@@ -248,6 +248,11 @@ public class CameraUIViewImpl implements CameraUIView {
         this.mCaptureProgressBar.post(() -> this.mCaptureProgressBar.setMax(max));
     }
 
+    @Override
+    public void setCaptureProgress(int progress) {
+        this.mCaptureProgressBar.post(() -> this.mCaptureProgressBar.setProgress(progress));
+    }
+
     /** No flash on this lens: the flash tile of the shade is dimmed and says why (owner's answer 5). */
     @Override
     public void showFlashButton(boolean flashAvailable) {

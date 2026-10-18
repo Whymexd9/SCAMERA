@@ -46,4 +46,48 @@ public class GLProgramDiskCacheTest {
         assertNotNull(files);
         assertEquals(GLProgramDiskCache.MAX_FILES, files.length);
     }
+
+    /** P237: hits, misses, damaged files, writes and evictions are counted for the per-shot log line. */
+    @Test public void theCacheCountsHitsMissesDamagedWritesAndEvictions() throws Exception {
+        File dir = tmp.newFolder("glprog");
+        GLProgramDiskCache cache = new GLProgramDiskCache(dir);
+        assertNull(cache.load("d", "k"));
+        cache.store("d", "k", 1, new byte[]{1});
+        cache.flush();
+        assertNotNull(cache.load("d", "k"));
+        File bad = new File(dir, GLProgramDiskCache.name("d", "bad"));
+        try (FileOutputStream out = new FileOutputStream(bad)) { out.write(new byte[]{1, 2, 3}); }
+        assertNull(cache.load("d", "bad"));
+        assertEquals("disk 1 hit / 2 miss / 1 damaged / 1 written / 0 evicted", cache.takeStats());
+        assertEquals("taken: back to zero", "disk 0 hit / 0 miss / 0 damaged / 0 written / 0 evicted", cache.takeStats());
+        for (int i = 0; i < GLProgramDiskCache.MAX_FILES + 3; i++) cache.store("d", "e" + i, 1, new byte[]{(byte) i});
+        cache.flush();
+        final String stats = cache.takeStats();
+        assertTrue(stats, stats.endsWith(" 163 written / 4 evicted")); // k and 163 more: 4 beyond the 160
+    }
+
+    /** P237: the sources are kept apart from the driver, so a new driver's missing binaries can be compiled in idle time. */
+    @Test public void theSourcesOfMissingBinariesAreListedForTheWarmUp() throws Exception {
+        File dir = tmp.newFolder("glprog");
+        GLProgramDiskCache cache = new GLProgramDiskCache(dir);
+        cache.store("old-driver", "C\ncompute source", 1, new byte[]{1});
+        cache.store("old-driver", "F\nvertex\nfragment source", 1, new byte[]{2});
+        cache.flush();
+        assertTrue(new File(dir, GLProgramDiskCache.sourceName("C\ncompute source")).isFile());
+        assertTrue("every binary of this driver is there", cache.missingSources("old-driver", 64).isEmpty());
+        java.util.List<String> missing = cache.missingSources("new-driver", 64);
+        assertEquals(2, missing.size());
+        assertTrue(missing.contains("C\ncompute source") && missing.contains("F\nvertex\nfragment source"));
+        assertEquals("the limit", 1, cache.missingSources("new-driver", 1).size());
+        // the new driver's binary of one of them: only the other is left
+        cache.store("new-driver", "C\ncompute source", 1, new byte[]{3});
+        cache.flush();
+        assertEquals(java.util.Collections.singletonList("F\nvertex\nfragment source"), cache.missingSources("new-driver", 64));
+        // a source file whose name does not match its text is damaged: deleted, not compiled
+        File odd = new File(dir, GLProgramDiskCache.sourceName("other"));
+        try (FileOutputStream out = new FileOutputStream(odd)) { out.write("changed".getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+        assertFalse(cache.missingSources("new-driver", 64).contains("changed"));
+        assertFalse(odd.exists());
+        assertTrue("no driver yet (no GL context): nothing", cache.missingSources(null, 64).isEmpty());
+    }
 }

@@ -36,7 +36,8 @@ import java.util.TreeSet;
  */
 public final class ScameraFolder {
     public static final ScameraFolder CONFIGS = new ScameraFolder("XML", "text/xml", ".xml", ".json");
-    public static final ScameraFolder CURVES = new ScameraFolder("ToneCurves", "text/plain", ".txt");
+    /** P231: our .txt curves and ArkCam's .json / .curve files (saved as .txt). */
+    public static final ScameraFolder CURVES = new ScameraFolder("ToneCurves", "text/plain", ".txt", ".json", ".curve");
     /** P134: film / look LUTs (.cube) for «Плёночный LUT». */
     public static final ScameraFolder LUTS = new ScameraFolder("LUT", "application/octet-stream", ".cube");
     /**
@@ -65,6 +66,9 @@ public final class ScameraFolder {
     }
 
     private static final String EXTERNAL = "com.android.externalstorage.documents";
+    /** The system's «Загрузки» root: a folder picked there has the id "raw:/storage/emulated/0/Download/..." (P246). */
+    private static final String DOWNLOADS = "com.android.providers.downloads.documents";
+    private static final String PRIMARY_PATH = "/storage/emulated/0";
 
     /** The folder's document id on the primary storage ("primary:Download/SCAMERA/XML"). */
     public String documentId() {
@@ -76,12 +80,36 @@ public final class ScameraFolder {
         return DocumentsContract.buildDocumentUri(EXTERNAL, "primary:" + Environment.DIRECTORY_DOWNLOADS + "/SCAMERA");
     }
 
-    /** Whether a tree granted at {@code treeId} reaches the document {@code docId} (the same folder or one inside it). */
+    /**
+     * Whether a tree granted at {@code treeId} reaches the document {@code docId} (the same folder or one inside it). Case does
+     * not matter (owner, 2026-10-18, P246: shared storage ignores it, a picker may report «download/Scamera»).
+     */
     public static boolean covers(String treeId, String docId) {
         if (treeId == null || docId == null) return false;
-        if (docId.equals(treeId)) return true;
-        String prefix = treeId.endsWith(":") || treeId.endsWith("/") ? treeId : treeId + "/";
-        return docId.startsWith(prefix);
+        String tree = treeId.toLowerCase(Locale.ROOT), doc = docId.toLowerCase(Locale.ROOT);
+        if (doc.equals(tree)) return true;
+        String prefix = tree.endsWith(":") || tree.endsWith("/") ? tree : tree + "/";
+        return doc.startsWith(prefix);
+    }
+
+    /**
+     * A granted tree's document id as the external storage's ("primary:Download/SCAMERA"): as it is for that provider, mapped from
+     * the «Загрузки» root's "raw:/storage/emulated/0/..." path (P246: a folder picked there was ignored), null otherwise.
+     */
+    static String primaryId(String authority, String treeId) {
+        if (treeId == null) return null;
+        if (EXTERNAL.equals(authority)) return treeId;
+        if (DOWNLOADS.equals(authority) && treeId.startsWith("raw:")) {
+            String path = treeId.substring(4);
+            if (path.equals(PRIMARY_PATH)) return "primary:";
+            if (path.startsWith(PRIMARY_PATH + "/")) return "primary:" + path.substring(PRIMARY_PATH.length() + 1);
+        }
+        return null;
+    }
+
+    /** This folder's document id under a tree of {@code authority} (the «Загрузки» root names it by its path). */
+    String documentIdFor(String authority) {
+        return DOWNLOADS.equals(authority) ? "raw:" + PRIMARY_PATH + "/" + relative : documentId();
     }
 
     /** A lasting folder grant that reaches this folder, null without one. */
@@ -90,9 +118,9 @@ public final class ScameraFolder {
         try {
             for (UriPermission p : context.getContentResolver().getPersistedUriPermissions()) {
                 Uri u = p.getUri();
-                if (!p.isReadPermission() || u == null || !EXTERNAL.equals(u.getAuthority())) continue;
+                if (!p.isReadPermission() || u == null) continue;
                 try {
-                    if (covers(DocumentsContract.getTreeDocumentId(u), documentId())) return u;
+                    if (covers(primaryId(u.getAuthority(), DocumentsContract.getTreeDocumentId(u)), documentId())) return u;
                 } catch (IllegalArgumentException notATree) {
                     // a single document, not a folder
                 }
@@ -114,7 +142,7 @@ public final class ScameraFolder {
         Map<String, Uri> out = new LinkedHashMap<>();
         Uri tree = grantedTree(context);
         if (tree == null) return out;
-        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, documentId());
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, documentIdFor(tree.getAuthority()));
         try (Cursor c = context.getContentResolver().query(children, new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID,
                 DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
             while (c != null && c.moveToNext()) {

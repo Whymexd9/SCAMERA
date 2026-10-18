@@ -34,6 +34,9 @@ public class ProfilesPreference extends Preference {
         String[] saved();
         String load(String fileName);
         boolean delete(String fileName);
+
+        /** Whether Download/SCAMERA is open to the app (every file there listed); false shows «Открыть папку конфигов». */
+        default boolean folderOpen() { return true; }
     }
 
     private Actions actions = new Actions() {
@@ -48,7 +51,12 @@ public class ProfilesPreference extends Preference {
         @Override public boolean delete(String fileName) {
             return com.particlesdevs.photoncamera.util.ConfigFolder.delete(getContext(), fileName);
         }
+
+        @Override public boolean folderOpen() {
+            return com.particlesdevs.photoncamera.util.ScameraFolder.CONFIGS.grantedTree(getContext()) != null;
+        }
     };
+    @Nullable private Runnable folderOpener;
     @Nullable private LinearLayout page;
     @Nullable private View openPanel;
 
@@ -66,6 +74,17 @@ public class ProfilesPreference extends Preference {
     /** Tests. */
     public void setActions(Actions actions) {
         this.actions = actions;
+        fill();
+    }
+
+    /** P246: what «Открыть папку конфигов» runs (the settings' system folder picker for Download/SCAMERA). */
+    public void setFolderOpener(@Nullable Runnable opener) {
+        folderOpener = opener;
+        fill();
+    }
+
+    /** The list read again (the settings came back to the front, the folder was opened). */
+    public void refresh() {
         fill();
     }
 
@@ -128,6 +147,26 @@ public class ProfilesPreference extends Preference {
             }
         }
         p.addView(saved);
+        // P246 (owner, 2026-10-18: «если я в папку добавляю новый конфиг вручную не через наше приложение, то у нас его не
+        // видно»): Android shows the app only its own files there until the folder is opened to it once (the shade's config
+        // menu had this row; the page that replaced it had not)
+        boolean open;
+        try {
+            open = actions.folderOpen();
+        } catch (RuntimeException e) {
+            open = true;
+        }
+        if (!open && folderOpener != null) {
+            LinearLayout folder = card(c);
+            TextView go = SettingsStyle.text(c, Lang.t(c, "Открыть", "Open"), 13, accent);
+            folder.addView(row(c, Lang.t(c, "Открыть папку конфигов", "Open the config folder"),
+                    Lang.t(c, "Один раз: конфиги, закинутые в Download/SCAMERA/XML вручную, появятся в списке",
+                            "Once: configs put into Download/SCAMERA/XML by hand show up in the list"), go, "profiles_open_folder",
+                    folderOpener));
+            LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            fp.topMargin = UiTokens.dp(c, 10);
+            p.addView(folder, fp);
+        }
     }
 
     private LinearLayout panel(Context c, String file, int accent) {

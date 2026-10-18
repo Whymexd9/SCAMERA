@@ -83,17 +83,19 @@ public final class ShadeCatalog {
     public static final String MIRROR = "pref_tunable_parameters_disablemirror";
     public static final String HORIZON = "pref_horizon", MOTION = "pref_motion_mode", SOUND = "pref_camera_sounds_key",
             FLICKER = "pref_antibanding_hz_key";
-    private static final String OUTPUT = "pref_scam_hybrid_output", DOWNSAMPLER = "pref_scam_hybrid_downsampler";
+    public static final String OUTPUT = "pref_scam_hybrid_output";
+    private static final String DOWNSAMPLER = "pref_scam_hybrid_downsampler";
     /** Virtual entries, in catalog order. */
     public static final List<String> VIRTUAL = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT, METERING_STD, SIZE, STYLE));
 
     /**
      * SIMPLE_UI §2, the concept's default pins (18 + «Добавить»), in its order: Фонарик, Таймер, Сетка, Формат, Размер, HDR-фото,
      * Горизонт, Движение, Звук, Стиль, Лица, Мерцание, Селфи, Кадр, Слежение, Фокус-пик, Света, Инфо. The first value of
-     * ui_shade_tiles; see {@link #defaultTiles()}.
+     * ui_shade_tiles; see {@link #defaultTiles()}. P249 (owner, 2026-10-18: «замени её на плитку с настройкой Sabre
+     * 1x/16/20/2x»): «Разрешение» (pref_scam_hybrid_output: 1× / 12 / 16 / 20 / 2×) in «Размер»'s place.
      */
     public static final List<String> DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, "pref_show_grid_key",
-            FORMAT, SIZE, "pref_ultrahdr_key", HORIZON, MOTION, SOUND, STYLE, "pref_face_detect_mode", FLICKER, MIRROR,
+            FORMAT, OUTPUT, "pref_ultrahdr_key", HORIZON, MOTION, SOUND, STYLE, "pref_face_detect_mode", FLICKER, MIRROR,
             "pref_wide169_key", "pref_tracking_af_mode", "pref_peak_method_key", "pref_scam_hybrid_bento", "pref_show_afdata_key"));
     /** The default pins before SIMPLE_UI: a stored list equal to it moves to the new defaults (a custom list stays). */
     public static final List<String> OLD_DEFAULT_TILES = Collections.unmodifiableList(Arrays.asList(FLASH, TIMER, FORMAT,
@@ -161,6 +163,7 @@ public final class ShadeCatalog {
         CONCEPT_ICONS.put("pref_camera_sounds_key", R.drawable.ui_ic_sound);
         CONCEPT_ICONS.put("pref_scam_hybrid_colour_mono", R.drawable.ui_ic_palette);
         CONCEPT_ICONS.put("pref_film_lut", R.drawable.ui_ic_film);
+        CONCEPT_ICONS.put("pref_lens_filter", R.drawable.ui_ic_lens);
         CONCEPT_ICONS.put("pref_face_detect_mode", R.drawable.ui_ic_face);
         CONCEPT_ICONS.put("pref_wide169_key", R.drawable.ui_ic_aspect);
         CONCEPT_ICONS.put("pref_tracking_af_mode", R.drawable.ui_ic_target);
@@ -531,6 +534,21 @@ public final class ShadeCatalog {
             e.defaultValue = "";
             e.storage = STORE_STRING;
             refreshChoices(e);
+        } else if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.LensFilterPreference) {
+            // P228: the lens filter as a list in the shade («Нет», Black Pro-Mist ... Infrared)
+            e.kind = LIST;
+            e.defaultValue = "";
+            e.storage = STORE_STRING;
+            String[] ids = com.particlesdevs.photoncamera.processing.color.LensFilters.IDS;
+            CharSequence[] values = new CharSequence[ids.length + 1], labels = new CharSequence[ids.length + 1];
+            values[0] = "";
+            labels[0] = com.particlesdevs.photoncamera.processing.color.LensFilters.name(context, "");
+            for (int i = 0; i < ids.length; i++) {
+                values[1 + i] = ids[i];
+                labels[1 + i] = com.particlesdevs.photoncamera.processing.color.LensFilters.name(context, ids[i]);
+            }
+            e.values = values;
+            e.labels = labels;
         } else if (p instanceof UniversalSeekBarPreference) {
             UniversalSeekBarPreference s = (UniversalSeekBarPreference) p;
             slider(e, s.minimum(), s.maximum(), s.decimal(), s.stepPerUnit(), s.defaultNumber());

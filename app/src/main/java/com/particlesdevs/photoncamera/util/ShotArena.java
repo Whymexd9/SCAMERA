@@ -39,6 +39,9 @@ public final class ShotArena {
         return new ShotArena(id, slotBytes, frameBytes, offsets.length, offsets, onRelease);
     }
 
+    /** P235: the frames this arena holds at most. */
+    public int slots() { return slots; }
+
     /** The arena's memfd id (the ring's for a ring arena). */
     public int id() { return id; }
 

@@ -558,6 +558,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 params.topMargin = overlap;
                 scrim.post(() -> scrim.setLayoutParams(params));
             }
+            if (cameraFragmentBinding != null) placeViewfinderPills(cameraFragmentBinding);
         });
         // FULL is 86% of the viewfinder height.
         cameraFragmentBinding.layoutViewfinder.getRoot().addOnLayoutChangeListener(
@@ -582,6 +583,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         @Override
         public void onSettingWritten(com.particlesdevs.photoncamera.settings.ShadeCatalog.Entry entry) {
             if ("pref_show_grid_key".equals(entry.key)) invalidateSurfaceView();
+            // P245: the «Горизонт» tile shows / hides the level at once (it was read on resume only)
+            if (com.particlesdevs.photoncamera.settings.ShadeCatalog.HORIZON.equals(entry.key) && mHorizonIndicatorView != null)
+                mHorizonIndicatorView.setVisible(PreferenceKeys.isHorizonOn());
             // Read when the session is built (live RAW, 16:9, ... P214g: settings/SessionKeys): restart now (owner's answer 7).
             if (entry.sessionTime && captureController != null) captureController.restartCamera();
         }
@@ -894,6 +898,60 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         });
     }
 
+    /**
+     * SIMPLE_UI §6: the LUT and lock pills sit 8 / 12dp under the viewfinder's top, or under the top bar where it lies over the
+     * viewfinder (a window too short for the 3:4 preview and both bars, e.g. 600 x 960dp), so it never hides them.
+     */
+    public static void placeViewfinderPills(com.particlesdevs.photoncamera.databinding.CameraFragmentBinding b) {
+        int[] bar = new int[2], vf = new int[2];
+        b.layoutTopbar.getRoot().getLocationInWindow(bar);
+        b.layoutViewfinder.texture.getLocationInWindow(vf);
+        int overlap = Math.max(0, bar[1] + b.layoutTopbar.getRoot().getHeight() - vf[1]);
+        float d = b.getRoot().getResources().getDisplayMetrics().density;
+        setTopMargin(b.layoutViewfinder.lutPill, Math.round(8 * d) + overlap);
+        setTopMargin(b.layoutViewfinder.lockPill, Math.round(12 * d) + overlap);
+    }
+
+    private static void setTopMargin(View v, int margin) {
+        ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
+        if (lp == null || lp.topMargin == margin) return;
+        lp.topMargin = margin;
+        v.post(() -> v.setLayoutParams(lp));
+    }
+
+    /** SIMPLE_UI §1: the compact «Закреплено» pill (accent, 13dp lock icon) while a long press holds focus and exposure. */
+    private void attachLockPill(TouchFocus touchFocus) {
+        if (cameraFragmentBinding == null) return;
+        android.widget.TextView pill = cameraFragmentBinding.layoutViewfinder.lockPill;
+        styleLockPill(pill);
+        pill.setVisibility(View.GONE);
+        touchFocus.setLockListener(on -> pill.setVisibility(on ? View.VISIBLE : View.GONE));
+    }
+
+    public static void styleLockPill(android.widget.TextView pill) {
+        android.content.Context c = pill.getContext();
+        int accent = com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.accent(c);
+        int ink = com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.INK;
+        pill.setText(com.particlesdevs.photoncamera.util.Lang.t(c, "Закреплено", "Locked"));
+        pill.setContentDescription(com.particlesdevs.photoncamera.util.Lang.t(c, "Фокус и яркость закреплены", "Focus and exposure locked"));
+        pill.setTextColor(ink);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(accent);
+        bg.setCornerRadius(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dpF(c, 10));
+        pill.setBackground(bg);
+        int pad = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 8);
+        pill.setPaddingRelative(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 6), 0, pad, 0);
+        android.graphics.drawable.Drawable icon = c.getDrawable(R.drawable.ui_ic_lock);
+        if (icon != null) {
+            icon = icon.mutate();
+            int s = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 13);
+            icon.setBounds(0, 0, s, s);
+            icon.setTint(ink);
+        }
+        pill.setCompoundDrawablesRelative(icon, null, null, null);
+        pill.setCompoundDrawablePadding(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(c, 4));
+    }
+
     private void initTouchFocus() {
         if (cameraFragmentBinding != null && captureController != null) {
             View focusCircle = cameraFragmentBinding.layoutViewfinder.touchFocus;
@@ -904,6 +962,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 mTouchFocus = new TouchFocus(captureController,focusCircle,textureView);
                 captureController.mTouchFocus = mTouchFocus;
                 attachExposureSun(mTouchFocus);
+                attachLockPill(mTouchFocus);
                 if (mSubjectFocus != null) mSubjectFocus.release();
                 mSubjectFocus = null;
                 // Paused before this ran: the next resume creates it (it owns a worker thread and the frame sink).
@@ -1754,10 +1813,17 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         /** ZSL shot: the frames are already buffered, the press must feel instant (SCAM): no capture ring in the
          *  viewfinder, controls stay live, the gallery thumbnail shows the viewfinder frame at once. */
         private boolean instantShot;
+        /**
+         * P234 (speed-ux A4): a ZSL shot whose stills after the press exceed the 12 MP plan (CaptureController.zslStartTag): the
+         * capture ring with the frame count (the ring's frames counted taken), controls locked, a haptic tick when the last still
+         * is in - the owner held still for 1.2-2.3 s behind an instant-shot UI before.
+         */
+        private boolean zslSeries;
 
         @Override
         public void onCaptureStillPictureStarted(Object o) {
             instantShot = "ScamZslCaptureStarted".equals(o) || "ZSLCaptureStarted!".equals(o);
+            zslSeries = com.particlesdevs.photoncamera.capture.CaptureController.ZSL_SERIES_STARTED.equals(o);
             if (ScameraApp.getSettings().selectedMode != CameraMode.RAWVIDEO) {
                 sounds().shutter(); // one shutter sound per shot, at the press (P16)
                 if (instantShot) {
@@ -1802,7 +1868,10 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         public void onFrameCaptureCompleted(Object o) {
             if (instantShot) return; // one shutter sound at the press, no per-frame ring
             if (ScameraApp.getSettings().selectedMode != CameraMode.RAWVIDEO) {
-                ui().incrementCaptureProgressBar(1);
+                // P234: a long ZSL series' ring shows the shot's frame number (its ring frames are in already)
+                if (zslSeries && o instanceof TimerFrameCountViewModel.FrameCntTime)
+                    ui().setCaptureProgress(((TimerFrameCountViewModel.FrameCntTime) o).frame());
+                else ui().incrementCaptureProgressBar(1);
                 if (o instanceof TimerFrameCountViewModel.FrameCntTime) {
                     timerFrameCountViewModel.setFrameTimeCnt((TimerFrameCountViewModel.FrameCntTime) o);
                 }
@@ -1811,6 +1880,13 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
         @Override
         public void onCaptureSequenceCompleted(Object o) {
+            // P234: the end of a long ZSL series is felt: the phone may move now
+            if (zslSeries) {
+                zslSeries = false;
+                final View tick = textureView;
+                if (tick != null) tick.post(() -> tick.performHapticFeedback(android.os.Build.VERSION.SDK_INT >= 30
+                        ? android.view.HapticFeedbackConstants.CONFIRM : android.view.HapticFeedbackConstants.CLOCK_TICK));
+            }
             timerFrameCountViewModel.clearFrameTimeCnt();
             ui().resetCaptureProgressBar();
             ui().lockUIForBurst(false);
@@ -1838,6 +1914,80 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             auxButtonsViewModel.initCameraLists(mCameraLensDataMap);
         }
 
+        /** P240 (speed-ux C4): «Камера перезапускается…» over the viewfinder while the camera is brought back after an error. */
+        @Override
+        public void onCameraRecovery(boolean on, String why) {
+            final View root = cameraFragmentBinding == null ? null : cameraFragmentBinding.layoutViewfinder.getRoot();
+            if (root == null) return;
+            root.post(() -> {
+                if (detached() || !(root instanceof android.widget.FrameLayout)) return;
+                final android.widget.FrameLayout frame = (android.widget.FrameLayout) root;
+                if (on) {
+                    if (recoveryOverlay == null) {
+                        final android.widget.TextView t = new android.widget.TextView(frame.getContext());
+                        t.setText(R.string.camera_restarting);
+                        t.setTextColor(0xFFFFFFFF);
+                        t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16);
+                        t.setGravity(android.view.Gravity.CENTER);
+                        t.setBackgroundColor(0x99000000);
+                        t.setClickable(false);
+                        recoveryOverlay = t;
+                    }
+                    if (recoveryOverlay.getParent() == null)
+                        frame.addView(recoveryOverlay, new android.widget.FrameLayout.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+                    recoveryOverlay.setVisibility(View.VISIBLE);
+                    // never left up: a recovery the controller did not end (the activity paused meanwhile) hides after 30 s
+                    recoveryOverlay.removeCallbacks(hideRecovery);
+                    recoveryOverlay.postDelayed(hideRecovery, 30_000);
+                } else if (recoveryOverlay != null) {
+                    recoveryOverlay.removeCallbacks(hideRecovery);
+                    recoveryOverlay.setVisibility(View.GONE);
+                }
+            });
+        }
+
+        private android.widget.TextView recoveryOverlay;
+        private android.widget.TextView diagBadge;
+
+        /**
+         * P241 (speed-ux C6): «DIAG» in the viewfinder's corner while diagnostics dumps are on (they slow every shot); the stored
+         * switch goes off by itself after 24 h (DiagnosticsAutoOff), said on the message card.
+         */
+        private void updateDiagBadge() {
+            final String off = com.particlesdevs.photoncamera.settings.DiagnosticsAutoOff.check(activity, System.currentTimeMillis());
+            if (off != null) com.particlesdevs.photoncamera.util.UiMessages.info(off);
+            final boolean on = com.particlesdevs.photoncamera.settings.DiagnosticsAutoOff.dumpsOn();
+            final View root = cameraFragmentBinding == null ? null : cameraFragmentBinding.layoutViewfinder.getRoot();
+            if (root == null) return;
+            root.post(() -> {
+                if (detached() || !(root instanceof android.widget.FrameLayout)) return;
+                final android.widget.FrameLayout frame = (android.widget.FrameLayout) root;
+                if (!on) { if (diagBadge != null) diagBadge.setVisibility(View.GONE); return; }
+                if (diagBadge == null) {
+                    final android.widget.TextView t = new android.widget.TextView(frame.getContext());
+                    t.setText(R.string.diag_badge);
+                    t.setTextColor(0xFFFFD54F);
+                    t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11);
+                    t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                    final int pad = Math.round(4 * frame.getResources().getDisplayMetrics().density);
+                    t.setPadding(2 * pad, pad, 2 * pad, pad);
+                    t.setBackgroundColor(0x99000000);
+                    diagBadge = t;
+                }
+                if (diagBadge.getParent() == null) {
+                    final android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                            android.view.Gravity.TOP | android.view.Gravity.START);
+                    final int m = Math.round(12 * frame.getResources().getDisplayMetrics().density);
+                    lp.setMargins(m, m, m, m);
+                    frame.addView(diagBadge, lp);
+                }
+                diagBadge.setVisibility(View.VISIBLE);
+            });
+        }
+        private final Runnable hideRecovery = () -> { if (recoveryOverlay != null) recoveryOverlay.setVisibility(View.GONE); };
+
         @Override
         public void onCameraRestarted() {
             if (detached()) return;
@@ -1860,6 +2010,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             // SIMPLE_UI §1: DCG and the photo sizes are buttons of the top bar now (no overlays over the manual strip)
             TopBar.bindCamera(characteristics);
             if (mCameraUIView != null) mCameraUIView.updateBadges();
+            updateDiagBadge(); // P241
         }
 
         @Override

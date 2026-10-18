@@ -3,6 +3,7 @@ package com.particlesdevs.photoncamera.processing.color;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -150,5 +151,63 @@ public class ToneCurveTest {
         assertNull("one point", ToneCurve.fromFileText("0.5:0.5"));
         assertNull("values past 8 bit", ToneCurve.fromFileText("0:0,1000:1000"));
         assertNull("only comments", ToneCurve.fromFileText("# 0:0,1:1"));
+    }
+
+    /** P231: ArkCam's curve file (ToneCurveFileManager): {"name", "points": [{"x", "y"}]}, or [x, y] pairs, or a bare array. */
+    /**
+     * Owner, 2026-10-18 (ToneCurve_imx06A.txt): a camera's DNG ProfileToneCurve - a bare list x0, y0, x1, y1 ... in linear gamma,
+     * 128 points - comes in as our curve (x the exposure around middle grey, y the display value): middle grey through the curve
+     * and sRGB, white at +2.47 EV, monotone.
+     */
+    @Test public void aCamerasLinearToneCurveFile() throws Exception {
+        String text;
+        try (java.io.InputStream in = getClass().getResourceAsStream("/tonecurve/ToneCurve_imx06A.txt")) {
+            text = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        float[] pairs = ToneCurve.linearPairs(text);
+        assertEquals("128 points", 256, pairs.length);
+        ToneCurve c = ToneCurve.fromFileText(text);
+        assertTrue(c.size() > 20);
+        // middle grey: linear 0.18 -> 0.2856 on the camera's curve -> sRGB 0.571
+        assertEquals(0.571f, c.eval(0.5f), 0.01f);
+        assertEquals(ToneCurve.display(ToneCurve.linearAt(pairs, 0.18f)), c.eval(0.5f), 0.01f);
+        assertEquals("white from +2.47 EV", 1f, c.eval(ToneCurve.xOfLinear(1f) + 0.01f), 1e-3f);
+        assertEquals(1f, c.eval(1f), 1e-4f);
+        for (int i = 1; i < c.size(); i++) assertTrue("monotone", c.get(i).y >= c.get(i - 1).y - 1e-6f);
+        // the same numbers with spaces / new lines only; anything else is not such a curve
+        assertNotNull(ToneCurve.fromFileText("0 0\n0.5 0.7\n1 1"));
+        assertNull("x not rising", ToneCurve.linearPairs("0, 0, 0.5, 0.7, 0.4, 0.8, 1, 1"));
+        assertNull("odd count", ToneCurve.linearPairs("0, 0, 0.5, 0.7, 1"));
+        assertNull("above 1", ToneCurve.linearPairs("0, 0, 128, 200, 255, 255"));
+        assertNull("words", ToneCurve.linearPairs("curve 0, 0, 1, 1"));
+        assertNull("our x:y pairs keep their own reading", ToneCurve.linearPairs("0:0, 1:1"));
+    }
+
+    @Test public void arkCamJsonCurveFiles() {
+        String file = "{\n  \"name\": \"ark_art_drama_faces\",\n  \"points\": [\n"
+                + "    {\"x\": 0.0, \"y\": 0.0}, {\"x\": 0.0961, \"y\": 0.011}, {\"x\": 0.15, \"y\": 0.0245}, {\"x\": 0.2, \"y\": 0.0493},\n"
+                + "    {\"x\": 0.26, \"y\": 0.0956}, {\"x\": 0.3, \"y\": 0.1365}, {\"x\": 0.34, \"y\": 0.1814}, {\"x\": 0.38, \"y\": 0.2345},\n"
+                + "    {\"x\": 0.42, \"y\": 0.2998}, {\"x\": 0.47, \"y\": 0.4048}, {\"x\": 0.54, \"y\": 0.562}, {\"x\": 0.6, \"y\": 0.6961},\n"
+                + "    {\"x\": 0.66, \"y\": 0.81}, {\"x\": 0.72, \"y\": 0.89}, {\"x\": 0.78, \"y\": 0.938}, {\"x\": 0.84, \"y\": 0.966},\n"
+                + "    {\"x\": 0.9, \"y\": 0.984}, {\"x\": 0.95, \"y\": 0.992}, {\"x\": 1.0, \"y\": 1.0}\n  ]\n}";
+        ToneCurve c = ToneCurve.fromFileText(file);
+        assertEquals(19, c.size());
+        assertEquals(0f, c.get(0).x, 0f);
+        assertEquals(0f, c.get(0).y, 0f);
+        assertEquals(1f, c.get(18).x, 0f);
+        assertEquals(1f, c.get(18).y, 0f);
+        assertEquals(0.0961f, c.get(1).x, 1e-6f);
+        assertEquals(0.011f, c.get(1).y, 1e-6f);
+        for (int i = 1; i < c.size(); i++) assertTrue("monotone", c.get(i).y >= c.get(i - 1).y);
+        assertEquals("ark_art_drama_faces", ToneCurve.jsonName(file));
+        // «y» before «x», [x, y] pairs, a bare array; values are clamped to 0..1 (no 8-bit scaling in JSON, as ArkCam)
+        assertEquals(0.3f, ToneCurve.fromFileText("{\"points\":[{\"y\":0,\"x\":0},{\"y\":0.2,\"x\":0.3},{\"y\":1,\"x\":1}]}").get(1).x, 1e-6f);
+        assertEquals(3, ToneCurve.fromFileText("{\"points\": [[0, 0], [0.5, 0.6], [1, 1]]}").size());
+        assertEquals(0.6f, ToneCurve.fromFileText("[[0, 0], [0.5, 0.6], [1, 1]]").get(1).y, 1e-6f);
+        assertEquals(1f, ToneCurve.fromFileText("{\"points\": [[0, 0], [0.5, 7], [1, 1]]}").get(1).y, 0f);
+        assertNull("one point", ToneCurve.fromFileText("{\"points\": [{\"x\": 0.5, \"y\": 0.5}]}"));
+        assertNull(ToneCurve.jsonName("0:0,1:1"));
+        // a JSON text without points falls back to the "x:y" scan, which finds none in it
+        assertNull(ToneCurve.fromFileText("{\"name\": \"empty\"}"));
     }
 }

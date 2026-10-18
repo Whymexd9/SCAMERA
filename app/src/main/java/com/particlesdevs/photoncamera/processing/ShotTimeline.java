@@ -20,6 +20,8 @@ public final class ShotTimeline {
     private static ShotTimeline capturing, processing;
 
     private final Map<String, Long> marks = new LinkedHashMap<>();
+    /** P236: values of the shot beside its marks (thermal state, viewfinder fps, shader compile ms), for the summary line. */
+    private final Map<String, String> notes = new LinkedHashMap<>();
 
     private ShotTimeline() {}
 
@@ -32,6 +34,34 @@ public final class ShotTimeline {
         com.particlesdevs.photoncamera.ui.camera.views.viewfinder.VfDrawMeter.shot(); // P57: drawn viewfinder frames from here
         capturing = new ShotTimeline();
         capturing.put(name, android.os.SystemClock.elapsedRealtimeNanos());
+        // P236 (speed-ux F): the phone's thermal state and the viewfinder's fps over the last 2 s at the press
+        capturing.notes.put("thermal_press", com.particlesdevs.photoncamera.util.ThermalState.now().toString());
+        capturing.notes.put("vf_fps_press", fps(com.particlesdevs.photoncamera.ui.camera.views.viewfinder.VfDrawMeter.fpsLast2s()));
+    }
+
+    private static String fps(double v) {
+        return String.format(java.util.Locale.ROOT, "%.1f", v);
+    }
+
+    /** P236: a value of the shot being captured (the first of a name counts). */
+    public static synchronized void captureNote(String name, String value) {
+        if (capturing != null && !capturing.notes.containsKey(name)) capturing.notes.put(name, value);
+    }
+
+    /** P236: a value of the shot being processed; nothing without one (a pass outside a shot never opens a timeline). */
+    public static synchronized void note(String name, String value) {
+        if (processing != null && !processing.notes.containsKey(name)) processing.notes.put(name, value);
+    }
+
+    /** P236: a stage of the shot being processed that ended at {@code nanos} (elapsedRealtimeNanos), from a worker's own times. */
+    public static synchronized void markAt(String name, long nanos) {
+        if (processing == null) processing = new ShotTimeline();
+        processing.put(name, nanos);
+    }
+
+    /** P236: a stage of the shot being processed only while one is (a GL pass outside a shot is not a shot's). */
+    public static synchronized void markIfShot(String name) {
+        if (processing != null) processing.put(name, android.os.SystemClock.elapsedRealtimeNanos());
     }
 
     /** A stage of the shot being captured (nothing without {@link #begin}). */
@@ -71,9 +101,26 @@ public final class ShotTimeline {
     public static void workerLine(String line) {
         if (line == null || line.length() < 8) return;
         final char c = line.charAt(0);
-        if (c != 'H' && c != 'N') return;
+        if (c != 'H' && c != 'N' && c != 'S') return; // P236: 'S' too - «SCAM STOCK MOTION» / «SCAM CAPTURE OK» never matched before
+        // P236 (speed-ux F): the native mosaic merge's own stage times, back from its total line (the line comes at its end)
+        if (line.startsWith("HYBRID MOSAIC NATIVE: total ")) {
+            final long[] stages = nativeStages(line);
+            if (stages != null) {
+                final long end = android.os.SystemClock.elapsedRealtimeNanos(), start = end - stages[0] * 1_000_000L;
+                markAt("w_response", start + (stages[2] + stages[3]) * 1_000_000L);
+                markAt("w_binning", start + stages[1] * 1_000_000L);
+                markAt("w_merge", start + (stages[1] + stages[5]) * 1_000_000L);
+                note("w_native_ms", "pick" + stages[2] + "/response" + stages[3] + "/binning" + stages[4] + "/merge" + stages[5]
+                        + "/after" + stages[6]);
+            }
+            return;
+        }
         final String name;
         if (line.startsWith("SCAM STOCK MOTION")) name = "w_align";
+        else if (line.startsWith("HYBRID MOSAIC: header block")) name = "w_detect"; // P236: after the detection (or its skip)
+        else if (line.contains("site-class response")) name = "w_response";
+        else if (line.startsWith("HYBRID MOSAIC BINNED") || line.startsWith("HYBRID MOSAIC: binned alignment")) name = "w_binning";
+        else if (line.startsWith("HYBRID MOSAIC") && line.contains("chroma median (")) name = "w_chroma"; // its end
         else if (line.startsWith("HYBRID SHASTA")) name = "w_shasta";
         else if (line.startsWith("HYBRID BENTO")) name = "w_bento";
         else if (line.startsWith("HYBRID LOCAL ALIGN")) name = "w_f6";
@@ -85,26 +132,87 @@ public final class ShotTimeline {
         mark(name);
     }
 
-    /** Prints the timeline of the shot being processed as one line and closes it. */
+    private static final java.util.regex.Pattern NATIVE_TOTAL = java.util.regex.Pattern.compile(
+            "HYBRID MOSAIC NATIVE: total (\\d+) ms \\(before the merge (\\d+): pick (\\d+) response (\\d+) binning (\\d+), merge (\\d+), after it (\\d+)\\)");
+
+    /** P236: {total, before the merge, pick, response, binning, merge, after it} ms of the native merge's total line, or null. */
+    static long[] nativeStages(String line) {
+        final java.util.regex.Matcher m = NATIVE_TOTAL.matcher(line);
+        if (!m.find()) return null;
+        final long[] v = new long[7];
+        for (int i = 0; i < 7; i++) v[i] = Long.parseLong(m.group(i + 1));
+        return v;
+    }
+
+    /**
+     * Prints the timeline of the shot being processed as one line and closes it; P236: with the thermal state and the
+     * viewfinder's fps at the end, and one «SHOT SUMMARY» line (also into SCAMERA-timings.txt, whatever the profiling switch).
+     */
     public static void print() {
-        final String line;
+        final String line, summary;
         synchronized (ShotTimeline.class) {
             final ShotTimeline t = processing;
             processing = null;
             if (t == null || t.marks.isEmpty()) return;
+            t.notes.put("thermal_end", com.particlesdevs.photoncamera.util.ThermalState.now().toString());
+            t.notes.put("vf_fps_end", fps(com.particlesdevs.photoncamera.ui.camera.views.viewfinder.VfDrawMeter.fpsLast2s()));
             line = t.describe();
+            summary = t.summary();
         }
         Log.i(TAG, line);
+        Log.i(TAG, summary);
+        com.particlesdevs.photoncamera.util.ScameraTimingLog.summary(summary);
     }
 
-    /** "SHOT TIMELINE ms: name=ms ..." in the order of the marks, relative to the first one, with the total. */
+    /**
+     * "SHOT TIMELINE ms: name=ms ..." in time order (P236: the marks from a worker's own times arrive late), relative to the
+     * first one, with the total.
+     */
     String describe() {
         final StringBuilder sb = new StringBuilder("SHOT TIMELINE ms:");
         long first = Long.MAX_VALUE, last = Long.MIN_VALUE;
         for (long v : marks.values()) { first = Math.min(first, v); last = Math.max(last, v); }
-        for (Map.Entry<String, Long> e : marks.entrySet())
+        final java.util.List<Map.Entry<String, Long>> sorted = new java.util.ArrayList<>(marks.entrySet());
+        sorted.sort(Map.Entry.comparingByValue()); // stable: equal times keep their order
+        for (Map.Entry<String, Long> e : sorted)
             sb.append(' ').append(e.getKey()).append('=').append((e.getValue() - first) / 1_000_000);
         sb.append(" total=").append((last - first) / 1_000_000);
+        return sb.toString();
+    }
+
+    /** Milliseconds from mark a to mark b of this timeline, -1 when either is missing. */
+    private long span(String a, String b) {
+        final Long ta = a == null ? null : marks.get(a), tb = b == null ? null : marks.get(b);
+        return ta == null || tb == null ? -1 : (tb - ta) / 1_000_000;
+    }
+
+    /** The first of {@code names} this timeline has, or null. */
+    private String first(String... names) {
+        for (String n : names) if (marks.containsKey(n)) return n;
+        return null;
+    }
+
+    /**
+     * P236 (speed-ux F): one line per shot - hold (the press to the last still: the time to keep still), to_worker (the last
+     * still to the job sent), merge (the job to the worker's end), gap (the worker's end to the post pipeline: P236's 0.4-0.6 s),
+     * post, save, total, then the notes (thermal state and viewfinder fps at the press and the end, shader compiling, the
+     * worker's stages). -1: a mark missing (a route without that stage).
+     */
+    String summary() {
+        final StringBuilder sb = new StringBuilder("SHOT SUMMARY ms:");
+        final String captured = first("series_done", "complete", "queued");
+        final String sent = first("job", "spawn");
+        final String merged = first("w_ok", "client_done");
+        sb.append(" hold=").append(span("shutter", captured));
+        sb.append(" to_worker=").append(span(captured, sent));
+        sb.append(" merge=").append(span(sent, merged));
+        sb.append(" gap=").append(span(merged, "post_start"));
+        sb.append(" post=").append(span("post_start", "post_done"));
+        sb.append(" save=").append(span("post_done", "saved"));
+        long first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        for (long v : marks.values()) { first = Math.min(first, v); last = Math.max(last, v); }
+        sb.append(" total=").append((last - first) / 1_000_000);
+        for (Map.Entry<String, String> e : notes.entrySet()) sb.append(' ').append(e.getKey()).append('=').append(e.getValue());
         return sb.toString();
     }
 }

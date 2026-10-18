@@ -124,6 +124,8 @@ public final class VivoNativeFullRes {
      */
     static int hardwareRow(@Nullable Phone phone, String cameraId) {
         if (phone == Phone.X300_ULTRA && "3".equals(cameraId)) return 2;
+        // P229: the X300 Ultra tele's row 14 (8160x6144), Bayer by rawr's colour-block test - as the main's row 2 (rawr: mode 2)
+        if (phone == Phone.X300_ULTRA && "5".equals(cameraId)) return 14;
         if (phone == Phone.X100_ULTRA && ("2".equals(cameraId) || "0".equals(cameraId))) return 0;
         // P210 (the X100 Ultra's log on 30966, 2026-10-17): its ultra-wide's row 0 gives the HAL's remosaic too (block 1)
         if (phone == Phone.X100_ULTRA && "3".equals(cameraId)) return 0;
@@ -186,7 +188,9 @@ public final class VivoNativeFullRes {
         } else if (phone == Phone.X300_ULTRA) {
             if ("3".equals(cameraId)) return large ? new int[]{0} : new int[]{3, 1};
             if ("4".equals(cameraId)) return new int[]{0, 4};
-            if ("5".equals(cameraId)) return large ? new int[]{0} : new int[]{1, 14, 27};
+            // P229: rawr's X300 Ultra profile (V2562, 2026-10-18) measured row 14 a plain Bayer (the HAL's remosaic, colour-block test):
+            // it is the tele's hardware-remosaic row (hardwareRow), its own mosaic tries 1 / 27
+            if ("5".equals(cameraId)) return large ? new int[]{0} : new int[]{1, 27};
         }
         return new int[0];
     }

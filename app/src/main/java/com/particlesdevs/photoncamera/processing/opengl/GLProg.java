@@ -91,10 +91,82 @@ public class GLProg implements AutoCloseable {
     }
     /** "programs: N compiled in X ms, M from driver binaries in Y ms" since the last call (logged per shot). */
     public static synchronized String takeProgramStats() {
-        String text = "programs: " + compiled + " compiled in " + compileMs + " ms, " + fromBinary + " from driver binaries in " + binaryMs + " ms";
+        GLProgramDiskCache cache = disk;
+        String text = "programs: " + compiled + " compiled in " + compileMs + " ms, " + fromBinary + " from driver binaries in " + binaryMs + " ms"
+                + (cache == null ? "" : " (" + cache.takeStats() + ")"); // P237
+        // P236 (speed-ux F): the shot's shader compiling (the first shot after an install or a driver update: 0.5-0.8 s)
+        com.particlesdevs.photoncamera.processing.ShotTimeline.markIfShot("post_compile");
+        com.particlesdevs.photoncamera.processing.ShotTimeline.note("post_compile_ms", compiled + "/" + compileMs + "+" + fromBinary + "bin/" + binaryMs);
         compileMs = binaryMs = 0; compiled = fromBinary = 0;
         return text;
     }
+    /** P237: idle warm-ups run once per process; the programs compiled by the last one. */
+    private static final java.util.concurrent.atomic.AtomicBoolean WARMED = new java.util.concurrent.atomic.AtomicBoolean();
+    static final int WARM_UP_LIMIT = 64;
+
+    /**
+     * P237 (speed-ux B5): compiles, in a context of its own on the calling (background) thread, the post-pipeline programs whose
+     * driver binary is missing from the disk cache although their source was kept (a driver update, an evicted or lost binary),
+     * so the next shot loads them instead of compiling (0.5-0.8 s on the first shot). Once per process; nothing when every binary
+     * is there or nothing was kept yet. {@code idle}: asked before each program - false stops (a shot started). Never throws.
+     */
+    public static void warmUp(java.util.function.BooleanSupplier idle) {
+        if (!WARMED.compareAndSet(false, true)) return;
+        final GLProgramDiskCache cache = disk();
+        if (cache == null) return;
+        GLContext context = null;
+        int done = 0, failed = 0, wanted = 0;
+        final long t0 = android.os.SystemClock.elapsedRealtime();
+        try {
+            context = new GLContext(1, 1);
+            final String id = driver();
+            final java.util.List<String> missing = cache.missingSources(id, WARM_UP_LIMIT);
+            wanted = missing.size();
+            for (String key : missing) {
+                if (idle != null && !idle.getAsBoolean()) break;
+                try {
+                    if (context.mProgram.precompile(key)) done++; else failed++;
+                } catch (RuntimeException e) {
+                    failed++;
+                }
+            }
+        } catch (RuntimeException | LinkageError e) {
+            Log.w(TAG, "program warm-up: " + e);
+        } finally {
+            if (context != null) try { context.close(); } catch (RuntimeException ignored) { }
+        }
+        Log.i(TAG, "program warm-up: " + done + " of " + wanted + " missing binaries compiled in idle time in "
+                + (android.os.SystemClock.elapsedRealtime() - t0) + " ms" + (failed > 0 ? ", " + failed + " failed" : ""));
+    }
+
+    /**
+     * P237: compiles and links one program from its cache key ("C\n" + compute source, or "F\n" + the vertex shader + "\n" +
+     * fragment source) so its binary is kept (keepBinary); true when it linked.
+     */
+    boolean precompile(String key) {
+        final boolean compute = key.startsWith("C\n");
+        final String fragmentHead = "F\n" + vertexShaderSource + "\n";
+        if (!compute && !key.startsWith(fragmentHead)) return false;
+        final String shader = compute ? key.substring(2) : key.substring(fragmentHead.length());
+        final int stored = programFromBinary(key);
+        if (stored != 0) { glDeleteProgram(stored); return true; }
+        final int shaderHandle = compileShader(compute ? GL_COMPUTE_SHADER : GL_FRAGMENT_SHADER, shader);
+        final int program;
+        if (compute) {
+            program = glCreateProgram();
+            glAttachShader(program, shaderHandle);
+            glProgramParameteri(program, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+            glLinkProgram(program);
+        } else program = createProgram(vertexShader, shaderHandle);
+        final int[] linked = new int[1];
+        glGetProgramiv(program, GL_LINK_STATUS, linked, 0);
+        if (linked[0] != 0) keepBinary(key, program);
+        if (compute) glDeleteProgram(program); // a fragment program is the GLProg's (createProgram), deleted with it
+        glDeleteShader(shaderHandle);
+        glGetError();
+        return linked[0] != 0;
+    }
+
     private int programFromBinary(String key) {
         Binary b = loadBinary(key);
         if (b == null) return 0;

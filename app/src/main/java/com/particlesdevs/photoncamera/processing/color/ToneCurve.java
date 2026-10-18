@@ -88,16 +88,75 @@ public final class ToneCurve {
         return FILE_HEADER + "\n" + serialize() + "\n";
     }
 
+    /** P231: a number of a JSON text. */
+    private static final String NUM = "([-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?)";
+    /** P231: a point of a JSON points array: {"x": n, "y": n} (either order) or [x, y]. */
+    private static final Pattern JSON_XY = Pattern.compile("\\{\\s*\"x\"\\s*:\\s*" + NUM + "\\s*,\\s*\"y\"\\s*:\\s*" + NUM + "[^}]*\\}"),
+            JSON_YX = Pattern.compile("\\{\\s*\"y\"\\s*:\\s*" + NUM + "\\s*,\\s*\"x\"\\s*:\\s*" + NUM + "[^}]*\\}"),
+            JSON_PAIR = Pattern.compile("\\[\\s*" + NUM + "\\s*,\\s*" + NUM + "\\s*\\]"),
+            JSON_NAME = Pattern.compile("\"name\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+
     /**
-     * A curve from a file's text, or null when it holds fewer than two points: every "x:y" pair outside the lines starting
-     * with '#' (commas, spaces, new lines or semicolons between them - our files, ArkCam's "x:y,..." string, a list typed by
-     * hand); values up to 255 (an 8-bit curve) are scaled to 0..1, larger ones refuse the file.
+     * P231: the points of ArkCam's curve file (ToneCurveFileManager, 1.5x: {"name": ..., "points": [{"x": .., "y": ..}, ...]},
+     * or a bare array, points also as [x, y]) - the same points as its "x:y" preference string and as ours (x the normalised log
+     * exposure, y the display value), clamped to 0..1 as ArkCam does; null when the text is no such JSON.
+     */
+    @Nullable
+    static List<Point> jsonPoints(String text) {
+        String t = text.trim();
+        if (!t.startsWith("{") && !t.startsWith("[")) return null;
+        int at = t.indexOf("\"points\"");
+        String body = at >= 0 ? t.substring(at) : t;
+        List<float[]> raw = new ArrayList<>();
+        for (Pattern p : new Pattern[]{JSON_XY, JSON_YX, JSON_PAIR}) {
+            Matcher m = p.matcher(body);
+            while (m.find()) {
+                try {
+                    float a = Float.parseFloat(m.group(1)), b = Float.parseFloat(m.group(2));
+                    if (p == JSON_YX) raw.add(new float[]{m.start(), b, a});
+                    else raw.add(new float[]{m.start(), a, b});
+                } catch (NumberFormatException ignored) {
+                    // not a number after all
+                }
+            }
+        }
+        if (raw.isEmpty()) return null;
+        raw.sort((p, q) -> Float.compare(p[0], q[0]));   // the file's order (the curve sorts by x later)
+        List<Point> out = new ArrayList<>();
+        for (float[] p : raw) if (Float.isFinite(p[1]) && Float.isFinite(p[2]) && p[1] >= 0 && p[2] >= 0) out.add(new Point(clamp01(p[1]), clamp01(p[2])));
+        return out;
+    }
+
+    /** P231: the curve's own name in an ArkCam JSON file ("name"), null without one. */
+    @Nullable
+    public static String jsonName(@Nullable String text) {
+        if (text == null || !text.trim().startsWith("{")) return null;
+        Matcher m = JSON_NAME.matcher(text);
+        if (!m.find()) return null;
+        String name = m.group(1).replace("\\\"", "\"").replace("\\\\", "\\").trim();
+        return name.isEmpty() ? null : name;
+    }
+
+    /**
+     * A curve from a file's text, or null when it holds fewer than two points: P231 ArkCam's JSON curve file (jsonPoints), else
+     * every "x:y" pair outside the lines starting with '#' (commas, spaces, new lines or semicolons between them - our files,
+     * ArkCam's "x:y,..." string, a list typed by hand); values up to 255 (an 8-bit curve) are scaled to 0..1, larger ones refuse
+     * the file.
      */
     @Nullable
     public static ToneCurve fromFileText(@Nullable String text) {
         if (text == null) return null;
+        List<Point> json = jsonPoints(text);
+        if (json != null) {
+            if (json.size() < 2) return null;
+            ToneCurve c = new ToneCurve(json);
+            c.normalise();
+            return c.size() >= 2 ? c : null;
+        }
         StringBuilder body = new StringBuilder();
         for (String line : text.split("\\r?\\n")) if (!line.trim().startsWith("#")) body.append(line).append('\n');
+        float[] linear = linearPairs(body.toString());
+        if (linear != null) return fromLinearCurve(linear);
         List<float[]> raw = new ArrayList<>();
         float max = 0f;
         Matcher m = PAIR.matcher(body);
@@ -118,6 +177,82 @@ public final class ToneCurve {
         ToneCurve c = new ToneCurve(out);
         c.normalise();
         return c.size() >= 2 ? c : null;
+    }
+
+    /** A plain number of a list. */
+    private static final Pattern NUMBER = Pattern.compile("[-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?");
+
+    /**
+     * A camera's own tone curve (owner, 2026-10-18, ToneCurve_imx06A.txt: vivo's DNG ProfileToneCurve) - a bare list of numbers,
+     * x0, y0, x1, y1, ... (commas or spaces), without any "x:y": the pairs as {x, y, x, y, ...} when the list is such a curve
+     * (an even count of at least 4, all in 0..1, x rising from 0 to 1), else null.
+     */
+    @Nullable
+    static float[] linearPairs(String text) {
+        if (text.indexOf(':') >= 0) return null;
+        if (!text.replaceAll("[-+0-9.eE,;\\s]", "").isEmpty()) return null;   // words: some other file
+        List<Float> v = new ArrayList<>();
+        Matcher m = NUMBER.matcher(text);
+        while (m.find()) {
+            try {
+                v.add(Float.parseFloat(m.group()));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        if (v.size() < 4 || v.size() % 2 != 0) return null;
+        float[] out = new float[v.size()];
+        for (int i = 0; i < out.length; i++) {
+            float f = v.get(i);
+            if (!Float.isFinite(f) || f < -1e-4f || f > 1.0001f) return null;
+            out[i] = clamp01(f);
+            if (i % 2 == 0 && i > 0 && out[i] <= out[i - 2]) return null;
+        }
+        if (out[0] > 1e-3f || out[out.length - 2] < 0.999f) return null;
+        return out;
+    }
+
+    /** Middle grey in linear light: our curve's x 0.5. */
+    static final float MIDDLE_GREY = 0.18f;
+    /** Our x of a linear value: 0.5 + EV / 10 around middle grey. */
+    static float xOfLinear(float linear) {
+        return 0.5f + (float) (Math.log(linear / MIDDLE_GREY) / Math.log(2.0)) / 10f;
+    }
+
+    /**
+     * A DNG ProfileToneCurve-style curve (linear in, linear out, «in linear gamma» as the DNG specification puts it) in our terms:
+     * x the exposure around middle grey (0.5 + EV / 10), y the display value (sRGB) - sampled every 0.03 of x up to the curve's
+     * white (linear 1, +2.47 EV), then flat at white. The camera's curve keeps its look: middle grey of ToneCurve_imx06A lands at
+     * y 0.57.
+     */
+    static ToneCurve fromLinearCurve(float[] pairs) {
+        List<Point> out = new ArrayList<>();
+        final float white = xOfLinear(1f);
+        for (float x = 0f; x < white - 0.015f; x += 0.03f) out.add(new Point(x, display(linearAt(pairs, MIDDLE_GREY * (float) Math.pow(2.0, 10.0 * (x - 0.5))))));
+        out.add(new Point(white, display(linearAt(pairs, 1f))));
+        out.add(new Point(1f, display(linearAt(pairs, 1f))));
+        ToneCurve c = new ToneCurve(out);
+        c.normalise();
+        return c;
+    }
+
+    /** The linear curve at {@code v} (straight lines between its points). */
+    static float linearAt(float[] pairs, float v) {
+        v = clamp01(v);
+        for (int i = 2; i < pairs.length; i += 2) {
+            if (v <= pairs[i]) {
+                float x0 = pairs[i - 2], x1 = pairs[i];
+                float t = x1 > x0 ? (v - x0) / (x1 - x0) : 0f;
+                return pairs[i - 1] + t * (pairs[i + 1] - pairs[i - 1]);
+            }
+        }
+        return pairs[pairs.length - 1];
+    }
+
+    /** Linear -> sRGB display value. */
+    static float display(float linear) {
+        linear = clamp01(linear);
+        return linear <= 0.0031308f ? 12.92f * linear : 1.055f * (float) Math.pow(linear, 1 / 2.4) - 0.055f;
     }
 
     public String serialize() {

@@ -54,7 +54,8 @@ public class HorizonIndicatorViewTest {
         assertFalse(v.isLevel());
         v.updateAngles(0.3f, 0, 0);
         assertTrue(v.isLevel());
-        assertEquals(HapticFeedbackConstants.CLOCK_TICK, Shadows.shadowOf(v).lastHapticFeedbackPerformed());
+        // P245: the soft vibrator pulse, not the View's CLOCK_TICK (not felt on the OPPO / vivo phones)
+        assertNotEquals(HapticFeedbackConstants.CLOCK_TICK, Shadows.shadowOf(v).lastHapticFeedbackPerformed());
         v.updateAngles(0.8f, 0, 0);
         assertTrue("within a degree it stays level", v.isLevel());
         v.updateAngles(1.4f, 0, 0);
@@ -86,5 +87,18 @@ public class HorizonIndicatorViewTest {
             b.compress(Bitmap.CompressFormat.PNG, 100, out);
         }
         return b;
+    }
+
+    /** P245: one pulse on the way in (half a degree), none while it stays level, again only after it left beyond a degree. */
+    @Test
+    public void theHysteresisAndTheSoftPulse() {
+        assertTrue(HorizonIndicatorView.levelNow(false, 0.4f));
+        assertFalse(HorizonIndicatorView.levelNow(false, 0.7f));
+        assertTrue(HorizonIndicatorView.levelNow(true, -0.9f));
+        assertFalse(HorizonIndicatorView.levelNow(true, 1.2f));
+        assertEquals(android.os.VibrationEffect.createOneShot(18, 70),
+                com.particlesdevs.photoncamera.control.VibrationTestAccess.soft(true));
+        assertEquals(android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_TICK),
+                com.particlesdevs.photoncamera.control.VibrationTestAccess.soft(false));
     }
 }

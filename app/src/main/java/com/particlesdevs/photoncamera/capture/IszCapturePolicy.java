@@ -33,6 +33,18 @@ public final class IszCapturePolicy {
                 || ZoomController.residual() >= 1.8f;
     }
 
+    /**
+     * P223: the module runs a mosaic sensor mode - an ISZ / vendor session mode, a sensor-mode preset or a module sensor mode
+     * (FULLRES sessions are known to the controller itself).
+     */
+    public static boolean mosaicModule(String slot) {
+        try {
+            return sessionForceMode(slot) != 0 || ModuleRegistry.sensorMode(slot) != 0 || SensorModeSwitches.sensorPreset(slot);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     private static int sessionForceMode(String slot) {
         int mode = 0;
         for (VendorTagUtils.TunableKey key : TunableKeyManager.loadKeys(

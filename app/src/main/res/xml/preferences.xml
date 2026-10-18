@@ -407,6 +407,7 @@
     <PreferenceScreen android:key="photo_size_screen" android:title="@string/prefs_photo_size_screen_title" android:summary="@string/prefs_photo_size_screen_summary" android:icon="@drawable/settings_ic_zoom" app:iconSpaceReserved="false">
       <com.particlesdevs.photoncamera.ui.settings.custompreferences.SizePickerPreference android:key="photo_size_choice" android:title="@string/prefs_photo_size_screen_title" />
       <PreferenceCategory android:key="photo_size_expert" android:title="@string/prefs_root_expert_title" app:iconSpaceReserved="false">
+        <SwitchPreferenceCompat android:key="pref_crop_upscale" android:title="@string/prefs_crop_upscale_title" android:summary="@string/prefs_crop_upscale_summary" android:defaultValue="true" android:icon="@drawable/settings_ic_zoom" />
         <ListPreference android:key="pref_scam_hybrid_output" android:title="@string/prefs_scam_hybrid_output_title" android:defaultValue="sensor" android:entries="@array/scam_hybrid_output_entries" android:entryValues="@array/scam_hybrid_output_values" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_hybrid_output_summary" android:icon="@drawable/settings_ic_zoom" />
         <SwitchPreferenceCompat android:key="pref_scam_hybrid_auto2x" android:title="@string/prefs_scam_hybrid_auto2x_title" android:summary="@string/prefs_scam_hybrid_auto2x_summary" android:defaultValue="true" app:iconSpaceReserved="false" android:icon="@drawable/settings_ic_zoom" />
         <ListPreference android:key="pref_scam_hybrid_downsampler" android:title="@string/prefs_scam_hybrid_downsampler_title" android:defaultValue="lanczos" android:entries="@array/scam_hybrid_downsampler_entries" android:entryValues="@array/scam_hybrid_downsampler_values" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_hybrid_downsampler_summary" android:icon="@drawable/settings_ic_grid" />
@@ -450,6 +451,8 @@
     <SwitchPreferenceCompat android:key="pref_split_af_ae" android:title="@string/prefs_split_af_ae_title" android:summary="@string/prefs_split_af_ae_summary" android:defaultValue="false" android:icon="@drawable/settings_ic_focus" />
     <SwitchPreferenceCompat android:key="pref_low_light_boost" android:title="@string/prefs_low_light_boost_title" android:summary="@string/prefs_low_light_boost_summary" android:defaultValue="false" android:icon="@drawable/settings_ic_eye" />
     <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference android:icon="@drawable/settings_ic_corner" android:title="@string/turn_on_round_edges" android:key="@string/pref_show_roundedge_key" android:summary="@string/show_roundedge_desc" android:defaultValue="@bool/pref_show_roundedge_default" />
+    <SwitchPreferenceCompat android:key="pref_mosaic_isp_preview" android:title="@string/prefs_mosaic_isp_preview_title" android:summary="@string/prefs_mosaic_isp_preview_summary" android:defaultValue="true" android:icon="@drawable/settings_ic_view" />
+    <SwitchPreferenceCompat android:key="pref_mosaic_wb_corrections" android:title="@string/prefs_mosaic_wb_title" android:summary="@string/prefs_mosaic_wb_summary" android:defaultValue="true" android:icon="@drawable/settings_ic_sun" />
   </PreferenceCategory>
   <PreferenceCategory android:key="root_colour" android:title="@string/prefs_root_colour_title" app:iconSpaceReserved="false">
     <PreferenceScreen android:key="photo_style_screen" android:title="@string/prefs_photo_style_title" android:summary="@string/prefs_photo_style_summary" android:icon="@drawable/settings_ic_palette" app:iconSpaceReserved="false">
@@ -467,6 +470,9 @@
       <com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference android:key="pref_film_lut" android:title="@string/prefs_film_lut_title" android:defaultValue="" android:icon="@drawable/settings_ic_palette" />
       <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_film_lut_strength" android:title="@string/prefs_film_lut_strength_title" android:summary="@string/prefs_film_lut_strength_summary" android:defaultValue="100" app:minValue="0" app:maxValue="100" app:stepPerUnit="1" app:isFloat="false" android:icon="@drawable/settings_ic_sliders" />
       <com.particlesdevs.photoncamera.ui.settings.custompreferences.LutChangesPreference android:key="film_lut_changes" android:title="@string/prefs_film_lut_changes_title" />
+    </PreferenceScreen>
+    <PreferenceScreen android:key="lens_filter_screen" android:title="@string/prefs_lens_filter_title" android:summary="@string/prefs_lens_filter_screen_summary" android:icon="@drawable/settings_ic_aperture" app:iconSpaceReserved="false">
+      <com.particlesdevs.photoncamera.ui.settings.custompreferences.LensFilterPreference android:key="pref_lens_filter" android:title="@string/prefs_lens_filter_title" android:defaultValue="" android:icon="@drawable/settings_ic_aperture" />
     </PreferenceScreen>
     <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_scam_hybrid_colour_warmth" android:title="@string/prefs_colour_warmth_title" android:summary="@string/prefs_colour_warmth_summary" android:defaultValue="0" app:minValue="-100" app:maxValue="100" app:stepPerUnit="1" app:isFloat="false" android:icon="@drawable/settings_ic_sun" />
     <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_scam_hybrid_ark_agx_sat" android:title="@string/prefs_scam_hybrid_ark_agx_sat_title" android:summary="@string/prefs_desc_pref_scam_hybrid_ark_agx_sat" android:defaultValue="1" app:minValue="0" app:maxValue="2" app:stepPerUnit="100" app:isFloat="true" />
@@ -585,7 +591,6 @@
   <PreferenceCategory android:key="root_about" android:title="@string/prefs_root_about_title" app:iconSpaceReserved="false">
     <Preference android:icon="@drawable/settings_ic_info" android:title="@string/app_name" android:key="@string/pref_app_key" android:summary="@string/app_summary" android:selectable="false" />
     <Preference android:title="@string/version_title" android:key="@string/pref_version_key" android:summary="@string/version_summary" android:icon="@drawable/settings_ic_info" android:selectable="false" />
-    <Preference android:persistent="false" android:key="@string/pref_this_device_key" app:singleLineTitle="true" android:icon="@drawable/settings_ic_camera" android:selectable="false" />
     <Preference android:key="scam_recent_messages" android:persistent="false" android:title="@string/prefs_scam_recent_messages_title" android:summary="@string/prefs_scam_recent_messages_summary" android:icon="@drawable/settings_ic_list" />
   </PreferenceCategory>
 </PreferenceScreen>

@@ -36,11 +36,7 @@ public final class WorkerSpawn {
     /** Library search paths for the worker: its runtime first, then the job directory. */
     public static String[] environment(Context context, File jobDir) {
         String libs = nativeDir(context).getAbsolutePath(), job = jobDir.getAbsolutePath();
-        return new String[]{
-                "LD_LIBRARY_PATH=/system/lib64:/system_ext/lib64:" + libs + ":" + job + ":/vendor/lib64",
-                "ADSP_LIBRARY_PATH=" + libs + ";" + job + ";/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/vendor/dsp;/system/lib/rfsa/adsp",
-                "PATH=/system/bin",
-                "TMPDIR=" + jobDir.getAbsolutePath()};
+        return WorkerEnv.build(libs, job, WorkerEnv.gpuNormalPriority()); // P242: the GPU priority A/B
     }
 
     /** A running worker: spawned directly, or a root (su) process. */

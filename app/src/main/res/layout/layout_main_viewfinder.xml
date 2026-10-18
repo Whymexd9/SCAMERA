@@ -119,6 +119,21 @@
                 app:layout_constraintStart_toStartOf="@+id/texture"
                 tools:ignore="HardcodedText" />
 
+            <!-- SIMPLE_UI §1: the focus / exposure lock pill (a long press), 20dp, top-right so it never meets the LUT pill. -->
+            <TextView
+                android:id="@+id/lock_pill"
+                android:layout_width="wrap_content"
+                android:layout_height="20dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginTop="12dp"
+                android:gravity="center_vertical"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:textSize="11sp"
+                android:visibility="gone"
+                app:layout_constraintTop_toTopOf="@+id/texture"
+                app:layout_constraintEnd_toEndOf="@+id/texture" />
+
             <com.particlesdevs.photoncamera.ui.camera.views.viewfinder.HorizonIndicatorView
                 android:id="@+id/horizon_indicator_view"
                 android:layout_width="420dp"

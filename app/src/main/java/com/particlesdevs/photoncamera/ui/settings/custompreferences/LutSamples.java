@@ -141,6 +141,49 @@ public final class LutSamples {
         ctx.drawRect(m, h * .8f, w - m, h - m, paint);
     }
 
+    /**
+     * P228: a night street for the lens filters - a dark sky, roof lines, warm (sodium) and white point lights and a lit window
+     * row, so glow, streaks and the light-pollution cut show.
+     */
+    public static Bitmap lights(int w, int h) {
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setShader(new LinearGradient(0, 0, 0, h, new int[]{0xFF0B1426, 0xFF1D2A44, 0xFF3A3340}, new float[]{0f, .6f, 1f},
+                Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, paint);
+        paint.setShader(null);
+        paint.setColor(0xFF0A0C10);
+        Path roofs = new Path();
+        roofs.moveTo(0, h);
+        float[] xs = {0, .12f, .12f, .3f, .3f, .42f, .42f, .63f, .63f, .78f, .78f, 1f, 1f};
+        float[] ys = {.55f, .55f, .42f, .42f, .6f, .6f, .35f, .35f, .5f, .5f, .45f, .45f, 1f};
+        for (int i = 0; i < xs.length; i++) roofs.lineTo(xs[i] * w, ys[i] * h);
+        roofs.close();
+        c.drawPath(roofs, paint);
+        paint.setColor(0xFF2A2E36);
+        c.drawRect(0, h * .82f, w, h, paint);
+        // lit windows
+        paint.setColor(0xFFFFD27A);
+        for (int i = 0; i < 6; i++) c.drawRect(w * (.45f + i * .025f), h * .42f, w * (.46f + i * .025f), h * .45f, paint);
+        // street lights: sodium (orange) and white LED, drawn at full white in their cores
+        float[][] lamps = {{.08f, .62f, 0}, {.26f, .66f, 1}, {.5f, .6f, 0}, {.7f, .64f, 1}, {.9f, .62f, 0}};
+        for (float[] l : lamps) {
+            int glowCol = l[2] == 0 ? 0xFFFF9A2E : 0xFFDDE8FF;
+            float r = w * .012f;
+            paint.setShader(new RadialGradient(l[0] * w, l[1] * h, r * 4, alpha(glowCol, 0xC0), alpha(glowCol, 0), Shader.TileMode.CLAMP));
+            c.drawCircle(l[0] * w, l[1] * h, r * 4, paint);
+            paint.setShader(null);
+            paint.setColor(0xFFFFFFFF);
+            c.drawCircle(l[0] * w, l[1] * h, r, paint);
+        }
+        // a car's lights on the road
+        paint.setColor(0xFFFFFFFF);
+        c.drawCircle(w * .36f, h * .88f, w * .007f, paint);
+        c.drawCircle(w * .41f, h * .88f, w * .007f, paint);
+        return b;
+    }
+
     /** {@code src} through {@code lut} at full strength (null: a copy). */
     public static int[] apply(int[] src, FilmLut lut) {
         int[] out = new int[src.length];
