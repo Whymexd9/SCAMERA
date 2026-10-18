@@ -10,7 +10,8 @@
 //   - with -DSCAM_CHROMA_RING_CHECK every ring row read is checked to be the row asked for (an overwritten slot aborts).
 // The bounded-rows strips the old path used above 64 MP are compared too (not equal: their column sums restarted at every
 // strip; the largest difference is printed, on a subset). The phone build (NDK clang -O2, aarch64: the same FMA contractions as the worker)
-// and the host build (g++, CI) must both pass. Argument "quick": fewer stream variants per case.
+// and the host build (g++, CI) must both pass; on the phone also with -DSCAM_CHROMA_SCALAR (the scalar loops of the NEON kernels,
+// what the x86 build runs). Argument "quick": fewer stream variants per case.
 // scam-hybrid.h is not self-contained: the worker includes scam-capture.h first.
 #include "../app/src/main/cpp/scam-capture.h"
 #include "../app/src/main/cpp/scam-hybrid.h"

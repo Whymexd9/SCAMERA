@@ -7169,7 +7169,7 @@ inline void mosaicBoxRow(const float* a,float* o,int w,int r){
 // last row: below = nullptr), the gate 4 % of the luma.
 inline void mosaicSignRow(const float* hp,const float* below,const float* L,float* o,int x0,int x1,int w){
     int x=x0;
-#if defined(__aarch64__)
+#if defined(__aarch64__)&&!defined(SCAM_CHROMA_SCALAR) // (the check builds the scalar loops on the phone too: what CI on x86 runs)
     // P213b: four pixels at a time, branch-free (the scalar loop below: ~50 cycles per soft sign change, most of them mispredicted
     // branches on noise). Every lane the operations of the scalar code in the same order: mosaicSoftSignChange on two double
     // lanes (std::min / std::max / std::clamp as compare and select: the same values for NaN and signed zeros; its early
@@ -7215,7 +7215,7 @@ inline void mosaicSignRow(const float* hp,const float* below,const float* L,floa
 inline void mosaicBlendRow(const float* z,const float* mu,const float* mv,const float* ul,const float* vl,const float* kosc,float* px,
                            int x0,int x1,float z0,float z1,float e){
     int X=x0;
-#if defined(__aarch64__)
+#if defined(__aarch64__)&&!defined(SCAM_CHROMA_SCALAR)
     // P213b: four pixels at a time, the operations of the scalar loop below in the same order (clamp and max as compare and
     // select; 3 - 2t, u + k (ul - u) and u g - e fused as the compiler contracts them); green is stored back as it was read
     const float32x4_t zero=vdupq_n_f32(0.f),one=vdupq_n_f32(1.f),three=vdupq_n_f32(3.f),two=vdupq_n_f32(2.f);
