@@ -154,6 +154,8 @@
     <!-- Viewfinder chrome -->
     <string name="shade_badge_route">Склейка %1$s</string>
     <!-- Карточка группы в верхней панели: значки склейки и формата. -->
+    <string name="bottom_pro">Про</string>
+    <string name="bottom_more">Ещё</string>
     <string name="topbar_group">Формат и размер фото</string>
     <string name="topbar_torch">Фонарик</string>
     <string name="topbar_motion">Движение</string>

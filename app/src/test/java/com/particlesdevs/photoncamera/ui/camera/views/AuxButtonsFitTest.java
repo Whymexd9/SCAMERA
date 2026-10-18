@@ -42,7 +42,9 @@ public class AuxButtonsFitTest {
 
     @Test
     public void tenLensesStayOnTheScreen() {
-        int width = RuntimeEnvironment.getApplication().getResources().getDisplayMetrics().widthPixels;
+        // SIMPLE_UI: the strip lies between «Про» and «Ещё» (2 x (8 + 48 + 6)dp x k)
+        android.util.DisplayMetrics m = RuntimeEnvironment.getApplication().getResources().getDisplayMetrics();
+        int width = m.widthPixels - Math.round(124 * m.density * BottomChrome.scale(m.widthPixels / m.density));
         AuxButtonsLayout strip = strip(10, 2);
         layout(strip, width);
         assertTrue("strip " + strip.getMeasuredWidth() + " of " + width, strip.getMeasuredWidth() <= width);

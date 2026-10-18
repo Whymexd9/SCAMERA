@@ -354,6 +354,18 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
      */
     private void initBottomChrome() {
         attachBottomChrome(cameraFragmentBinding, zoomDial);
+        // SIMPLE_UI §1 row 1: «Про» opens / closes the Pro panel (it replaces the panel's own toggle card), «Ещё» opens the
+        // quick sheet (it replaces the sheet's handle)
+        View bar = cameraFragmentBinding.layoutBottombar.getRoot();
+        View panelView = cameraFragmentBinding.manualMode;
+        if (panelView instanceof com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel) {
+            com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel panel =
+                    (com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel) panelView;
+            panel.setOnExpandedListener(open -> com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.setSideOn(bar, R.id.pro_button, open));
+            bar.findViewById(R.id.pro_button).setOnClickListener(v -> panel.setExpanded(!panel.isExpanded(), true));
+            com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.setSideOn(bar, R.id.pro_button, panel.isExpanded());
+        }
+        bar.findViewById(R.id.more_button).setOnClickListener(v -> cameraFragmentViewModel.setSheetLevel(CameraFragmentModel.SHEET_PEEK));
     }
 
     /** The bottom chrome's wiring on the camera screen's views (also used by the layout tests, P43). */
@@ -428,7 +440,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         // The HIDDEN handle is the sheet's top edge (the strip lives in the bottom bar now, so nothing passes through);
         // since P32 it lies under the viewfinder, at the bottom bar's top (initBottomChrome); at 16:9 a pill (P176).
         // The sheet styles it.
-        sheet.setHiddenHandle(cameraFragmentBinding.settingsSheetHandle, null);
+        // SIMPLE_UI §1: no handle on the camera screen any more - «Ещё» and a swipe up open the quick sheet
+        sheet.setHiddenHandle(null, null);
         // A level reached by a finger (or settled after a request) goes back to the model as is,
         // so a later rebind (invalidateAll on a camera restart or mode switch, notifyChange on
         // rotation or a new thumbnail) keeps the sheet there. Handle taps and flings ask for

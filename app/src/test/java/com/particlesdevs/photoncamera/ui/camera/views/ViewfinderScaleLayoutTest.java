@@ -58,7 +58,7 @@ import static org.mockito.Mockito.*;
  * <ul>
  * <li>manual block 12dp from the left and right edges, its bottom 12dp above the HIDDEN handle (40dp above the handle's
  * bottom edge); the ruler card 8dp above the strip;</li>
- * <li>the toggle 52dp wide and at least 58dp high, the strip one row of five equal chips, its height growing with the
+ * <li>no toggle card (SIMPLE_UI: «Про» in the bottom bar), the strip one row of five equal chips, its height growing with the
  * font size only up to {@link UiTokens#FONT_SCALE_CAP} (on the vivo it was about 95dp);</li>
  * <li>nothing of the manual block over the handle, the lens strip or the shutter row; the top bar at its dp places;
  * P157: the lens strip and the shutter row (gallery, shutter, flip) at their dp places times the screen's width over
@@ -224,19 +224,17 @@ public class ViewfinderScaleLayoutTest {
             assertEquals(at + "ruler card 8dp above the strip" + geometry, chipsBox.top - dp(8), rulerBox.bottom);
             assertTrue(at + "the open ruler stays under the top bar" + geometry, rulerBox.top >= topBar.bottom);
 
-            // Toggle and chips: one row, the toggle 52dp wide, 58dp..cap high.
-            assertEquals(at + "toggle width" + geometry, dp(52), toggleBox.width(), 1);
-            assertTrue(at + "toggle at least 58dp: " + toggleBox.height() / density, toggleBox.height() >= dp(58));
-            assertTrue(at + "strip " + toggleBox.height() / density + "dp, at most " + STRIP_MAX_DP,
-                    toggleBox.height() <= dp(STRIP_MAX_DP));
+            // SIMPLE_UI §3: no toggle card (the bottom bar's «Про» opens the panel); the chips card spans the panel, 58dp..cap high.
+            assertEquals(at + "no toggle card", View.GONE, toggle.getVisibility());
+            assertEquals(at + "chips card from the left margin" + geometry, manual.left, chipsBox.left);
+            assertTrue(at + "strip at least 58dp: " + chipsBox.height() / density, chipsBox.height() >= dp(58));
+            assertTrue(at + "strip " + chipsBox.height() / density + "dp, at most " + STRIP_MAX_DP,
+                    chipsBox.height() <= dp(STRIP_MAX_DP));
             // The concept's strip: 4 + (7 + 22 + 3 + value line + 3 + state line + 6) + 4 dp, lines 1.2 x the text size
             // (16.8 + 10.8 = 27.6dp at font scale 1, 76.6dp in all), whatever the font's own metrics.
             float lines = 1.2f * (UiTokens.spPx(context, 14f) + UiTokens.spPx(context, 9f));
-            assertEquals(at + "strip height", dp(49) + lines, toggleBox.height(), 2f);
-            if (fontScale == 1f) assertEquals(at + "strip as in the concept", 76.6f, toggleBox.height() / density, 1f);
-            assertEquals(at + "toggle and chips share the row", toggleBox.top, chipsBox.top);
-            assertEquals(at + "toggle and chips share the row", toggleBox.bottom, chipsBox.bottom);
-            assertEquals(at + "8dp between toggle and chips", dp(8), chipsBox.left - toggleBox.right, 1);
+            assertEquals(at + "strip height", dp(49) + lines, chipsBox.height(), 2f);
+            if (fontScale == 1f) assertEquals(at + "strip as in the concept", 76.6f, chipsBox.height() / density, 1f);
             assertEquals(at + "chips card to the right margin", manual.right, chipsBox.right);
             Rect first = at(panel.findViewById(chipIds[0]));
             for (int i = 0; i < 5; i++) {
@@ -308,7 +306,7 @@ public class ViewfinderScaleLayoutTest {
             }
 
             System.out.println(String.format(Locale.US, "%sstrip %.1fdp, manual bottom %.1fdp above the handle, %.1fdp above "
-                            + "the bar's bottom; top bar %.1fdp; bar %.1fdp", at, toggleBox.height() / density,
+                            + "the bar's bottom; top bar %.1fdp; bar %.1fdp", at, chipsBox.height() / density,
                     (handleBox.top - manual.bottom) / density, (handleBox.bottom - manual.bottom) / density,
                     topBar.height() / density, barBox.height() / density));
             render(root, w, h, "scale-" + name + "-" + fontScale + ".png");

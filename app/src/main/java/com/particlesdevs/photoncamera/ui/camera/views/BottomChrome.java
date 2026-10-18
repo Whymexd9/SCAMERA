@@ -75,44 +75,75 @@ public final class BottomChrome {
         style(bar, f);
     }
 
-    /** Corner radius of the gallery card and the front / back switch (dp before the scale): a large Material shape. */
-    public static final float SIDE_RADIUS_DP = 20f;
-    /**
-     * Corner radius of the lens strip (dp before the scale). P171 (owner, 2026-10-16: «Сделай обводку вокруг модулей камер более
-     * закругленную»): 22 of its 46dp height; P185: a capsule - 24 of its 48dp (40dp lenses and the padding), round ends.
-     */
+    /** Corner radius of the gallery card (dp before the scale): the concept's 54dp thumbnail with 16dp corners. */
+    public static final float SIDE_RADIUS_DP = 16f;
+    /** Corner radius of the lens strip (dp before the scale): a capsule (the concept's 999px), round ends. */
     public static final float STRIP_RADIUS_DP = 24f;
+    /** The concept's strip fill: the card colour at 85 % (rgba(26,31,34,.85)). */
+    public static final int STRIP_FILL = 0xD91A1F22;
 
     /**
-     * P157 (owner, 2026-10-16: «переделай их полностью под наш стиль», then «Сделай эти иконки ближе к monet стилю, но чтобы
-     * узнавался всё ещё наш стиль»): the shutter row and the lens strip in Material You's tonal manner on the camera's
-     * colours - containers filled with the accent's tone over the card colour instead of grey cards with a line (only a faint
-     * tonal outline is left of the cards), large rounded shapes, the chosen lens a filled accent capsule, the front / back
-     * switch a tonal button with the accent glyph; the shutter's accent ring is set by CameraUIViewImpl.
+     * SIMPLE_UI (owner, 2026-10-18: «изучи концепт внимательно и сделай так же как у него»): the bottom rows as the concept
+     * draws them - the gallery a card with 16dp corners; the front / back switch a card circle with a line and the glyph in
+     * the text colour; the lens strip a capsule in the card colour (85 %) with a line; «Про» and «Ещё» 44dp card discs with a
+     * line and their 11sp labels, «Про» an accent disc while the Pro panel is open. The shutter is set by CameraUIViewImpl.
      */
     static void style(View bar, float f) {
         Context c = bar.getContext();
         float d = c.getResources().getDisplayMetrics().density;
         int accent = com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.accent(c);
-        int card = com.particlesdevs.photoncamera.ui.settings.SettingsStyle.CARD;
+        int card = com.particlesdevs.photoncamera.ui.settings.SettingsStyle.CARD, line = com.particlesdevs.photoncamera.ui.settings.SettingsStyle.LINE;
         View gallery = bar.findViewById(R.id.galery_button_container), flip = bar.findViewById(R.id.flip_camera_button);
         View strip = bar.findViewById(R.id.aux_buttons_container);
-        if (gallery != null) gallery.setBackground(tonalShape(tone(card, accent, .10f), tone(card, accent, .22f), SIDE_RADIUS_DP * d * f, d));
-        if (flip != null) {
-            // SIMPLE_UI (owner: «кружки ... должны быть круглые как на концепте»): the front / back switch is a circle
-            android.graphics.drawable.GradientDrawable mask = tonalShape(0xFFFFFFFF, 0, 0f, d), fill = tonalShape(tone(card, accent, .20f),
-                    tone(card, accent, .30f), 0f, d);
-            mask.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-            fill.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-            flip.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(
-                    (accent & 0x00FFFFFF) | 0x33000000), fill, mask));
-        }
-        // P161 / P171: the strip's rounded outline (STRIP_RADIUS_DP)
-        if (strip != null) strip.setBackground(tonalShape(tone(card, accent, .08f), tone(card, accent, .18f), STRIP_RADIUS_DP * d * f, d));
+        if (gallery != null) gallery.setBackground(tonalShape(card, 0, SIDE_RADIUS_DP * d * f, d));
+        if (flip != null) flip.setBackground(disc(card, line, accent, d));
+        if (strip != null) strip.setBackground(tonalShape(STRIP_FILL, line, STRIP_RADIUS_DP * d * f, d));
         View thumb = bar.findViewById(R.id.gallery_image_button);
         if (thumb instanceof com.google.android.material.imageview.ShapeableImageView)
             ((com.google.android.material.imageview.ShapeableImageView) thumb).setShapeAppearanceModel(
-                    com.google.android.material.shape.ShapeAppearanceModel.builder().setAllCornerSizes((SIDE_RADIUS_DP - 3) * d * f).build());
+                    com.google.android.material.shape.ShapeAppearanceModel.builder().setAllCornerSizes(SIDE_RADIUS_DP * d * f).build());
+        for (int id : new int[]{R.id.pro_button, R.id.more_button}) {
+            View side = bar.findViewById(id);
+            if (side == null) continue;
+            side.findViewById(id == R.id.pro_button ? R.id.pro_disc : R.id.more_disc).setBackground(disc(card, line, accent, d));
+        }
+        setSideOn(bar, R.id.pro_button, false);
+        setSideOn(bar, R.id.more_button, false);
+    }
+
+    /** A card disc with a line (the concept's .side .disc / .round), rippling in the accent. */
+    private static android.graphics.drawable.Drawable disc(int fill, int line, int accent, float d) {
+        android.graphics.drawable.GradientDrawable shape = tonalShape(fill, line, 0f, d), mask = tonalShape(0xFFFFFFFF, 0, 0f, d);
+        shape.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        mask.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf((accent & 0x00FFFFFF) | 0x33000000),
+                shape, mask);
+    }
+
+    /** «Про» / «Ещё» on (the concept's .side.on: an accent disc, the glyph in INK, the label in the accent) or off. */
+    public static void setSideOn(View bar, int id, boolean on) {
+        View side = bar.findViewById(id);
+        if (side == null) return;
+        Context c = side.getContext();
+        int accent = com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.accent(c);
+        int text = com.particlesdevs.photoncamera.ui.settings.SettingsStyle.TEXT, ink = com.particlesdevs.photoncamera.ui.settings.SettingsStyle.INK;
+        boolean pro = id == R.id.pro_button;
+        View disc = side.findViewById(pro ? R.id.pro_disc : R.id.more_disc);
+        android.widget.ImageView icon = side.findViewById(pro ? R.id.pro_icon : R.id.more_icon);
+        android.widget.TextView label = side.findViewById(pro ? R.id.pro_label : R.id.more_label);
+        android.graphics.drawable.Drawable bg = disc.getBackground();
+        if (bg instanceof android.graphics.drawable.RippleDrawable
+                && ((android.graphics.drawable.RippleDrawable) bg).getDrawable(0) instanceof android.graphics.drawable.GradientDrawable) {
+            android.graphics.drawable.GradientDrawable shape = (android.graphics.drawable.GradientDrawable) ((android.graphics.drawable.RippleDrawable) bg).getDrawable(0);
+            float d = c.getResources().getDisplayMetrics().density;
+            shape.setColor(on ? accent : com.particlesdevs.photoncamera.ui.settings.SettingsStyle.CARD);
+            shape.setStroke(Math.max(1, Math.round(d)), on ? accent : com.particlesdevs.photoncamera.ui.settings.SettingsStyle.LINE);
+        }
+        icon.setImageTintList(android.content.res.ColorStateList.valueOf(on ? ink : text));
+        label.setTextColor(on ? accent : text);
+        side.setActivated(on);
+        androidx.core.view.ViewCompat.setStateDescription(side, pro ? com.particlesdevs.photoncamera.util.Lang.t(c, on ? "открыто" : "закрыто",
+                on ? "open" : "closed") : null);
     }
 
     /** {@code base} moved {@code amount} of the way to {@code accent} (opaque): a tonal colour of the accent. */

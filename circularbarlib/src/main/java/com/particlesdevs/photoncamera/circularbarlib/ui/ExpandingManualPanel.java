@@ -6,6 +6,7 @@ import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
 import android.util.AttributeSet;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -63,6 +64,11 @@ public class ExpandingManualPanel extends LinearLayout {
         tabs.setVisibility(INVISIBLE);
         tabs.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         toggle.setOnClickListener(v -> setExpanded(!expanded, true));
+        // SIMPLE_UI §3: the bottom bar's «Про» opens the panel; the old toggle card is gone, the chips take the whole width
+        toggle.setVisibility(GONE);
+        ViewGroup.MarginLayoutParams chipsLp = (ViewGroup.MarginLayoutParams) tabs.getLayoutParams();
+        chipsLp.setMarginStart(0);
+        tabs.setLayoutParams(chipsLp);
         progress = 0;
         updateFrame();
     }
@@ -77,6 +83,13 @@ public class ExpandingManualPanel extends LinearLayout {
         this.accent = accent;
         if (toggleIcon != null) toggleIcon.setImageTintList(ColorStateList.valueOf(accent));
         if (dot != null && dot.getBackground() instanceof GradientDrawable) ((GradientDrawable) dot.getBackground()).setColor(accent);
+    }
+
+    private java.util.function.Consumer<Boolean> onExpanded;
+
+    /** SIMPLE_UI: told every open / close (the bottom bar's «Про» disc shows the state). */
+    public void setOnExpandedListener(java.util.function.Consumer<Boolean> listener) {
+        onExpanded = listener;
     }
 
     /** Called when the strip collapses: the console closes the ruler and forgets the selected parameter. */
@@ -112,6 +125,7 @@ public class ExpandingManualPanel extends LinearLayout {
 
     public void setExpanded(boolean value, boolean animate) {
         expanded = value;
+        if (onExpanded != null) onExpanded.accept(value);
         if (animator != null) animator.cancel();
         if (!value) {
             // Collapsing closes the ruler (the owner's rule), it does not just hide it.

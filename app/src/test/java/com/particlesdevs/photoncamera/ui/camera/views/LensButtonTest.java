@@ -89,7 +89,7 @@ public class LensButtonTest {
         button.setLayoutParams(new android.view.ViewGroup.LayoutParams(-2, -2));   // as in the strip
         button.setText("2,8×");
         measure(button);
-        assertEquals("the whole label", "2,8×", button.getText().toString());
+        assertEquals("a lens not in use without the sign (the concept's strip)", "2,8", button.getText().toString());
         assertEquals("2,8×", button.fullLabel().toString());
         assertEquals(dp(LensButton.HEIGHT_DP * BottomChrome.scale(context)), button.getHeight());
         assertTrue("no tile of its own", Color.alpha(drawn(button).getPixel(dp(2), button.getHeight() / 2)) == 0);
@@ -97,11 +97,11 @@ public class LensButtonTest {
         measure(button);
         assertEquals("2,8×", button.getText().toString());
         assertEquals("the active pill keeps the height", dp(LensButton.HEIGHT_DP * BottomChrome.scale(context)), button.getHeight());
-        assertTrue("the active pill at least 54dp wide", button.getWidth() >= dp(LensButton.SELECTED_WIDTH_DP * BottomChrome.scale(context)));
+        assertTrue("the active pill at least 46dp wide", button.getWidth() >= dp(LensButton.SELECTED_WIDTH_DP * BottomChrome.scale(context)));
         assertEquals("a pill: corners half its height", button.getHeight() / 2f, dp(LensButton.CORNER_DP * BottomChrome.scale(context)), 1f);
-        assertTrue(button.getTypeface() != null && button.getTypeface().isBold());
         button.setSelected(false);
-        assertEquals("2,8×", button.getText().toString());
+        assertEquals("2,8", button.getText().toString());
+        assertEquals("2,8×", button.fullLabel().toString());
     }
 
     /** The button drawn on its own (transparent around it). */

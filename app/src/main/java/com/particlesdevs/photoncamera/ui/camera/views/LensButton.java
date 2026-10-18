@@ -51,7 +51,7 @@ public class LensButton extends Button {
         int accent = AccentPalette.camera(context);
         // the other lenses in the accent's tone of the muted text (Material You's on-surface-variant)
         setTextColor(new ColorStateList(new int[][]{{android.R.attr.state_selected}, {}},
-                new int[]{SettingsStyle.INK, BottomChrome.tone(SettingsStyle.MUTED, accent, .22f)}));
+                new int[]{SettingsStyle.INK, SettingsStyle.MUTED}));
         float radius = CORNER_DP * unit;
         GradientDrawable selected = new GradientDrawable();
         selected.setColor(accent);
@@ -74,7 +74,7 @@ public class LensButton extends Button {
      * P185: every lens's height, the least width of a lens and of the active one, and the active pill's corner radius (half
      * its height: a pill) - dp before the scale.
      */
-    static final float HEIGHT_DP = 38f, WIDTH_DP = 36f, SELECTED_WIDTH_DP = 54f, CORNER_DP = 19f;   // SIMPLE_UI: the concept 38dp lens
+    static final float HEIGHT_DP = 38f, WIDTH_DP = 34f, SELECTED_WIDTH_DP = 46f, CORNER_DP = 19f;   // SIMPLE_UI: the concept's .lens
     private final float unit;
     /**
      * P181 (owner, 2026-10-16: «у нас модули выходят за границы экрана»): the strip's fit, MIN_FIT..1 - the tile's least
@@ -130,7 +130,13 @@ public class LensButton extends Button {
     @Override
     public void setText(CharSequence text, BufferType type) {
         fullLabel = text;
-        super.setText(text, type);
+        super.setText(shown(text), type);
+    }
+
+    /** SIMPLE_UI (the concept's strip): the sign only on the active lens - «0,4», «1×», «2,4», «5». */
+    private CharSequence shown(CharSequence text) {
+        if (text == null || isSelected()) return text;
+        return text.toString().replaceAll("(\\d)[×x]$", "$1");
     }
 
     @Override
@@ -138,23 +144,24 @@ public class LensButton extends Button {
         boolean changed = selected != isSelected();
         super.setSelected(selected);
         if (!changed) return;
+        if (fullLabel != null) super.setText(shown(fullLabel), BufferType.NORMAL);
         applyState();
         requestLayout();
     }
 
-    /** The active lens: 15sp bold, at least 54dp wide; the others 14sp, 36dp; all 40dp high (times the scale). */
+    /** The concept's .lens: 13sp, weight 600, at least 34dp wide (the active one 46dp), 6dp side padding, 38dp high (times the scale). */
     private void applyState() {
         if (unit == 0f) return;   // the TextView constructor sets the text before this one runs
         boolean on = isSelected();
-        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.setTextSp(this, on ? 15 : 14);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.setTextSp(this, 13);
         baseTextPx = getTextSize() * BottomChrome.scale(getContext());
         setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, baseTextPx * fit);
-        setTypeface(null, on ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         baseMinWidth = (on ? SELECTED_WIDTH_DP : WIDTH_DP) * unit;
         int width = Math.round(baseMinWidth * fit);
         setMinWidth(width);
         setMinimumWidth(width);
-        basePadding = (on ? 14f : 6f) * unit;
+        basePadding = 6f * unit;
         int padding = Math.round(basePadding * fit);
         setPadding(padding, 0, padding, 0);
     }

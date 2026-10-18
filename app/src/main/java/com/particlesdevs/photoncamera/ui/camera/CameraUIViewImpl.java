@@ -105,41 +105,45 @@ public class CameraUIViewImpl implements CameraUIView {
         this.bottombuttons.setBottomBarClickListener(v -> this.uiEventsListener.onClick(v));
     }
 
-    /** Accent icons on the gear, the gallery placeholder and the front / back switch. */
+    /** SIMPLE_UI: the concept's glyphs in the text colour (the gear, the front / back switch), the empty gallery card's icon muted. */
     private void styleControls(Context context) {
-        ColorStateList accent = ColorStateList.valueOf(ShadeStyle.accent(context));
 
-        bottombuttons.galleryPlaceholder.setImageTintList(accent);
-        bottombuttons.flipCameraButton.setImageTintList(accent);
+        bottombuttons.galleryPlaceholder.setImageTintList(ColorStateList.valueOf(ShadeStyle.MUTED));
+        bottombuttons.flipCameraButton.setImageTintList(ColorStateList.valueOf(ShadeStyle.TEXT));
         mShutterButton.setBackground(shutterRing);
     }
 
     /**
-     * The shutter (P25 concept, P157 in the camera's style): a ring in the accent around a filled centre in TEXT, like the
-     * accent glyphs of the top bar and the cards beside it. Pressed: the centre in the accent; the self-timer counting
-     * (hovered): the ring in TEXT; busy (not activated): the centre dimmed.
+     * The shutter as the concept draws it (SIMPLE_UI: 78dp, a 4dp white ring, 5dp of space, a white centre): ready (activated)
+     * white; pressed the centre shrinks to 88 %; the self-timer counting (hovered) the ring in the accent; busy (not
+     * activated) the centre in the accent.
      */
     static Drawable shutter(Context context, int accent) {
         StateListDrawable states = new StateListDrawable();
-        states.addState(new int[]{android.R.attr.state_pressed}, ring(context, accent, accent));
-        states.addState(new int[]{android.R.attr.state_hovered}, ring(context, ShadeStyle.TEXT, ShadeStyle.TEXT));
-        states.addState(new int[]{android.R.attr.state_activated}, ring(context, accent, ShadeStyle.TEXT));
-        states.addState(new int[]{}, ring(context, accent, (ShadeStyle.TEXT & 0x00FFFFFF) | 0x73000000));
+        states.addState(new int[]{android.R.attr.state_pressed}, ring(context, SHUTTER_WHITE, SHUTTER_WHITE, true));
+        states.addState(new int[]{android.R.attr.state_hovered}, ring(context, accent, SHUTTER_WHITE, false));
+        states.addState(new int[]{android.R.attr.state_activated}, ring(context, SHUTTER_WHITE, SHUTTER_WHITE, false));
+        states.addState(new int[]{}, ring(context, SHUTTER_WHITE, accent, false));
         return states;
     }
 
-    private static Drawable ring(Context context, int ringColor, int centreColor) {
-        // P157: in proportion to the screen's width, as the whole bottom bar (BottomChrome.scale)
+    static final int SHUTTER_WHITE = 0xFFFFFFFF;
+
+    private static Drawable ring(Context context, int ringColor, int centreColor, boolean pressed) {
+        // the concept's 78dp shutter times the screen's scale (BottomChrome.scale / UiScale)
         float f = com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.scale(context);
         GradientDrawable ring = new GradientDrawable();
         ring.setShape(GradientDrawable.OVAL);
         ring.setColor(0);
-        ring.setStroke(ShadeStyle.dp(context, 3 * f), ringColor);
+        int stroke = ShadeStyle.dp(context, 4 * f);
+        ring.setStroke(stroke, ringColor);
         GradientDrawable centre = new GradientDrawable();
         centre.setShape(GradientDrawable.OVAL);
         centre.setColor(centreColor);
         LayerDrawable layers = new LayerDrawable(new Drawable[]{ring, centre});
-        int inset = ShadeStyle.dp(context, 8 * f);
+        // 4dp ring + 5dp space; pressed: the centre (78 - 18 = 60dp) at 88 %
+        float inner = 9 * f + (pressed ? (78 - 18) * f * .06f : 0f);
+        int inset = ShadeStyle.dp(context, inner);
         layers.setLayerInset(1, inset, inset, inset, inset);
         return layers;
     }
