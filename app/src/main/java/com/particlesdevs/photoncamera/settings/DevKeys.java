@@ -159,6 +159,17 @@ public final class DevKeys {
         // P180 / P184: FULLRES without hardware remosaic on the X100 / X300 Ultra - on (the owner tests it), off by these
         k.add(s(cap, "oppo_fullres", true, Lang.t("OPPO Find X7 Ultra: FULLRES 50 Мп без аппаратного ремозаика (свои AE и баланс белого)",
                 "OPPO Find X7 Ultra: FULLRES 50 MP without hardware remosaic (own AE and white balance)")));
+        // P212: the own AE of the OPPO native FULLRES session (NativeRawExposure)
+        k.add(s(cap, "native_ae_cap", true, Lang.t("OPPO FULLRES, своя AE: ISO не выше того, что режим реально даёт (запомненный предел), один пробный кадр за сессию. Выкл — ISO по объявленному диапазону",
+                "OPPO FULLRES own AE: ISO no higher than the mode really gives (the stored cap), one probe frame a session. Off: ISO by the declared range")));
+        k.add(s(cap, "native_ae_seed", true, Lang.t("OPPO FULLRES, своя AE: старт с последней установившейся экспозиции камеры или замера обычного режима. Выкл — с последней экспозиции превью",
+                "OPPO FULLRES own AE: start from the camera's last settled exposure or a plain-mode sample. Off: from the last preview exposure")));
+        k.add(s(cap, "native_ae_smooth", true, Lang.t("OPPO FULLRES, своя AE: сглаживание и гистерезис (без качания у ламп). Выкл — закон P192",
+                "OPPO FULLRES own AE: smoothing and hysteresis (no hunting at lamps). Off: the P192 law")));
+        k.add(s(cap, "native_ae_meter", true, Lang.t("OPPO FULLRES, своя AE: замер по кадру снимка (кроп, центр, касание, виньетирование, клип по пикселям). Выкл — замер P192 по всему кадру",
+                "OPPO FULLRES own AE: metering of the photo's frame (crop, centre, tap, shading, per-site clipping). Off: the P192 whole-frame meter")));
+        k.add(s(cap, "native_ae_trace", false, Lang.t("OPPO FULLRES, своя AE: строка лога на каждый кадр (SCAM_AE, раз в секунду)",
+                "OPPO FULLRES own AE: a log line for every frame (SCAM_AE, once a second)")));
         // P198: a native 50 MP FULLRES shot from the ZSL ring (200 MP stays serial PSL)
         k.add(s(cap, "fullres_zsl", true, Lang.t("FULLRES 50 Мп: кадры из ZSL-кольца до нажатия (200 Мп всегда после нажатия). Выкл — вся серия после нажатия",
                 "FULLRES 50 MP: frames from the ZSL ring before the press (200 MP always after it). Off: the whole series after the press")));

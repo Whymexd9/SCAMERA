@@ -529,6 +529,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 watchRawPayload(img);
                 observeRawLevel(img, null);
                 observeMosaic(img);
+                plainMeter(img, null); // P212b: the native AE's start, sampled in the plain session (also while a merge runs)
                 // P187: the plain session of a running 200 MP merge takes no shot (captureStillPicture refuses it), so its
                 // frames stay out of the ZSL ring: 125 MB of memfd less under the merge and the pipeline
                 if (mClosedForProcessing) { img.close(); return; }
@@ -782,6 +783,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Rational[] mTemp = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
                 if (exposure != null) mPreviewExposureTime = (long) exposure;
                 if (iso != null) mPreviewIso = (int) iso;
+                // P212b: the camera's own plain HAL exposure, the native AE's last fallback start (never another camera's value)
+                if (mVivoSdkRawSession == null && exposure != null && iso != null && OppoNativeFullRes.brand())
+                    NativeAeSeed.plainHal(physicalID, (long) exposure, (int) iso, mLastPreviewResultMs);
                 if (mVivoSdkRawSession != null && mLastPreviewResultMs - mVivoSdkPreviewLogMs >= 2000) {
                     mVivoSdkPreviewLogMs = mLastPreviewResultMs;
                     Log.d("SCAM_CAPTURE", "SDK preview camera=" + physicalID + " exposureNs=" + exposure + " iso=" + iso
@@ -2655,14 +2659,32 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mFullResSession = false;
         Size fullRes = sdkFullRes ? VivoSdkFullRes.profile(mVivoSdkCameraId).size : null;
         if (sdkFullRes && VivoSdkFullRes.oppo()) {
-            // P192: the own AE of the OPPO native mode starts from the last preview exposure and meters the native RAW from there
-            mNativeAe = new NativeRawExposure(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE),
-                    characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE), OppoNativeFullRes.frameNs(mVivoSdkCameraId),
-                    (long) mPreviewExposureTime, mPreviewIso);
-            mNativeAe.flicker(PreferenceKeys.getAntibandingHz()); // P209
-            OppoNativeFullRes.begin(mVivoSdkCameraId, mNativeAe);
+            // P192: the own AE of the OPPO native mode meters the native RAW. P212b: it starts from this camera's own history
+            // (NativeAeSeed: its last settled native exposure or a fresh plain RAW sample, else its plain HAL exposure), never
+            // from the global mPreviewExposureTime that any camera's result overwrites
+            final NativeRawExposure ae = new NativeRawExposure(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE),
+                    characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE), OppoNativeFullRes.frameNs(mVivoSdkCameraId), 0L, 0);
+            // P212a: the ISO the mode delivers, stored by earlier sessions (the key CC uses for mExposureLimits below: the physical
+            // camera and the RAW reader's size, which is the profile's size in the native session), so the first split is capped
+            final int cap = PreferenceKeys.scamDevSwitch("native_ae_cap", true)
+                    ? ExposureLimits.of(String.valueOf(physicalID), fullRes.getWidth(), fullRes.getHeight(), false).isoCap() : Integer.MAX_VALUE;
+            ae.isoCap(cap);
+            ae.flicker(PreferenceKeys.getAntibandingHz()); // P209
+            ae.smoothing(PreferenceKeys.scamDevSwitch("native_ae_smooth", true)); // P212c
+            final NativeAeSeed.Seed seed = PreferenceKeys.scamDevSwitch("native_ae_seed", true)
+                    ? NativeAeSeed.pick(mVivoSdkCameraId, nativeAeEv(characteristics), android.os.SystemClock.elapsedRealtime(),
+                    System.currentTimeMillis())
+                    : new NativeAeSeed.Seed(mPreviewExposureTime > 0 && mPreviewIso > 0 ? (double) mPreviewExposureTime * mPreviewIso / 100.0 : 0,
+                    "the last preview exposure (native_ae_seed 0)");
+            ae.seed(seed.total);
+            mNativeAeStartMs = android.os.SystemClock.elapsedRealtime();
+            mNativeAeSettledMs = 0;
+            mNativeAeStoredMs = 0;
+            mNativeAe = ae;
+            OppoNativeFullRes.begin(mVivoSdkCameraId, ae);
             Log.i("SCAM_CAPTURE", "OPPO native FULLRES camera " + mVivoSdkCameraId + ": mode "
-                    + VivoSdkFullRes.profile(mVivoSdkCameraId).sensorMode + ", own AE from " + mNativeAe);
+                    + VivoSdkFullRes.profile(mVivoSdkCameraId).sensorMode + ", own AE from " + ae + " (" + seed.source
+                    + (cap == Integer.MAX_VALUE ? "" : ", ISO cap " + cap) + ")");
         }
         if (!sdkFullRes && isRawFormat(mTargetFormat) && !sFullResRefused.contains(physicalID) && !mIsRecordingVideo) {
             PixelPro10.FullRes fr = PixelPro10.fullRes(characteristics);
@@ -4243,15 +4265,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             watchRawPayload(img);
             observeRawLevel(img, result);
             observeMosaic(img);
-            publishLiveRawFrame(img, result);
-            nativeExposure(img, result);
+            plainMeter(img, result); // P212b: a plain session's sample for the native AE's start
+            // P212a: the native AE's ISO probe is no viewfinder frame, no AE frame and no ring frame (the plan never sees it)
+            final boolean probe = isNativeIsoProbe(result);
+            if (!probe) publishLiveRawFrame(img, result);
+            if (!probe) nativeExposure(img, result);
             if (mTextureView != null) mTextureView.requestRender();
             // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
             // P187: not while a 200 MP merge runs (its plain session takes no shot)
             // P198: the native 50 MP FULLRES session rings its frames as well (the viewfinder keeps running from them), not while a
             // shot takes its frames (from the press until its series is complete: the ring holds the moment of the press)
             // P200: none while a FULLRES merge runs (its memory)
-            final boolean nativeRing = !isZslMode() && mVivoSdkCapture == null && !mShotInProgress && !fullResMergeRunning()
+            final boolean nativeRing = !isZslMode() && mVivoSdkCapture == null && !mShotInProgress && !fullResMergeRunning() && !probe
                     && nativeZslSession() && nativeRingDue(android.os.SystemClock.elapsedRealtimeNanos());
             if ((isZslMode() && passModeBarrier(img, result) || nativeRing && nativeRingFrame(result)) && !mClosedForProcessing)
                 synchronized (mZslBufferLock) {
@@ -4446,11 +4471,27 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     static final long NATIVE_FRAME_NS = 41_666_666L;
     private int mNativeFrames;
     private long mNativeAeLogMs;
+    /** P212a / b: the native session's start, since when its AE holds, when it was last stored (elapsedRealtime ms; 0: not). */
+    private long mNativeAeStartMs, mNativeAeSettledMs, mNativeAeStoredMs;
+    /** P212c: the unthrottled trace of the native AE (scam_dev.txt "native_ae_trace 1"), one line a frame, flushed once a second. */
+    private final StringBuilder mNativeAeTrace = new StringBuilder();
+    private long mNativeAeTraceMs;
+    /** P212c: the shading map the meter last read and its gains (copyGainFactors order), reused while the results carry the same. */
+    private android.hardware.camera2.params.LensShadingMap mMeterMap;
+    private float[] mMeterGains;
+    /** P212b: the last plain-session sample for the native AE's start (elapsedRealtime ms). */
+    private long mPlainMeterMs;
+    /** P212a: the tag of the native AE's ISO probe: its frame stays out of the viewfinder, the AE and the 50 MP ring. */
+    private static final Object NATIVE_ISO_PROBE = new Object() {
+        @Override public String toString() { return "native ISO probe"; }
+    };
 
     /**
      * P192: the OPPO native mode's own AE and white balance from the frame just shown: the frame is metered and the exposure moved
      * (the repeating request rebuilt) when it is off the setpoint; every 8th frame the neutral is measured (MosaicNeutral, on the
      * camera's curve). Not while a series is taken: its frames keep the exposure of the shutter.
+     * P212: the ISO cap the mode delivers before the update (A1), the settled exposure stored for the next start (A2), the meter of
+     * NativeRawExposure.meter2 (A4: crop, centre / tap weights, the result's shading map, per-site clipping), the trace.
      */
     private void nativeExposure(Image img, TotalCaptureResult result) {
         final NativeRawExposure ae = mNativeAe;
@@ -4468,10 +4509,22 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             final int block = VivoSdkFullRes.profile(mVivoSdkCameraId).nativeBlock;
             final java.nio.ByteBuffer buffer = plane.getBuffer();
-            final float[] m = NativeRawExposure.meter(buffer, img.getWidth(), img.getHeight(), plane.getRowStride(), cfa, block,
-                    levels.black, levels.white);
+            // P212c (scam_dev.txt "native_ae_meter 0": the P192 meter of the whole frame)
+            final NativeRawExposure.Metered metered = PreferenceKeys.scamDevSwitch("native_ae_meter", true)
+                    ? NativeRawExposure.meter2(buffer, img.getWidth(), img.getHeight(), plane.getRowStride(), cfa, block, levels.black,
+                    levels.white, meterSetup(c, result, OppoNativeFullRes.neutral(mVivoSdkCameraId))) : null;
+            final float[] m = metered != null ? new float[]{metered.p50, metered.p98}
+                    : NativeRawExposure.meter(buffer, img.getWidth(), img.getHeight(), plane.getRowStride(), cfa, block, levels.black, levels.white);
             final Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
             final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+            // P212a: the ISO the mode really delivers (ExposureLimits, learned from these frames and stored): no request above it
+            // (they came back at ISO 1600, 2 EV short, and were rebuilt every 6 frames); first, so a hand-set ISO stops there too
+            final boolean capOn = PreferenceKeys.scamDevSwitch("native_ae_cap", true);
+            if (ae.isoCap(capOn ? honouredIsoCap() : Integer.MAX_VALUE)) {
+                Log.i("SCAM_CAPTURE", "native AE camera " + mVivoSdkCameraId + ": ISO cap "
+                        + (ae.isoCap() == Integer.MAX_VALUE ? "-" : String.valueOf(ae.isoCap())) + " -> " + ae);
+                rebuildPreviewBuilder();
+            }
             // P201: a hand-set ISO / shutter holds (both: no metering, one: the other follows)
             if (ae.setManual(paramController.manualIsoValue(), paramController.manualPreviewShutterNs())) {
                 Log.i("SCAM_CAPTURE", "native AE camera " + mVivoSdkCameraId + ": manual -> " + ae);
@@ -4483,21 +4536,36 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 Log.i("SCAM_CAPTURE", "native AE camera " + mVivoSdkCameraId + ": flicker " + flickerHz + " Hz -> " + ae);
                 rebuildPreviewBuilder();
             }
-            float ev = 0f;
-            final CaptureRequest.Builder builder = mPreviewRequestBuilder;
-            final Integer index = builder == null ? null : builder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
-            final android.util.Rational step = c == null ? null : c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
-            if (index != null && step != null) ev = index * step.floatValue();
-            if (m != null && exposure != null && iso != null && ae.update(m[0], m[1], exposure, iso, ev)) {
-                final long now = android.os.SystemClock.elapsedRealtime();
+            final float ev = nativeAeEv(c);
+            final boolean changed = m != null && exposure != null && iso != null && ae.update(m[0], m[1], exposure, iso, ev);
+            final long now = android.os.SystemClock.elapsedRealtime();
+            if (changed) {
                 if (now - mNativeAeLogMs >= 1000) {
                     mNativeAeLogMs = now;
                     Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT,
-                            "native AE camera %s: median %.3f p98 %.3f at %.3f ms ISO %d (ev %+.1f) -> %s",
-                            mVivoSdkCameraId, m[0], m[1], exposure / 1e6, iso, ev, ae));
+                            "native AE camera %s: median %.4f p98 %.3f%s at %.3f ms ISO %d (ev %+.1f) -> %s%s",
+                            mVivoSdkCameraId, m[0], m[1], metered == null ? "" : String.format(java.util.Locale.ROOT, " clip %.4f", metered.clip),
+                            exposure / 1e6, iso, ev, ae, ae.deficitEv() > 0.05 ? String.format(java.util.Locale.ROOT,
+                                    ", %.2f EV short of the meter (cap %s)", ae.deficitEv(),
+                                    ae.isoCap() == Integer.MAX_VALUE ? "-" : String.valueOf(ae.isoCap())) : ""));
                 }
                 rebuildPreviewBuilder();
             }
+            // P212b: a settled exposure (a second inside the band or at the deliverable limit) is the next session's start
+            if (exposure != null && iso != null && ae.settled() && !ae.handSet()) {
+                if (mNativeAeSettledMs == 0) mNativeAeSettledMs = now;
+                else if (now - mNativeAeSettledMs >= NativeAeSeed.SETTLED_HOLD_MS && now - mNativeAeStoredMs >= NativeAeSeed.STORE_EVERY_MS) {
+                    mNativeAeStoredMs = now;
+                    NativeAeSeed.storeSettled(mVivoSdkCameraId, (double) exposure * iso / 100.0, ev, System.currentTimeMillis());
+                }
+            } else mNativeAeSettledMs = 0;
+            // P212a: once a session, a request above the cap shows whether the firmware gives more gain after all (never while a
+            // shot is pending: its frame would be in the ring; NATIVE_ISO_PROBE keeps it out of the ring and the AE anyway)
+            if (capOn && !mShotInProgress && !shotInFlight() && !fullResMergeRunning()) {
+                final int probe = ae.probeIso(now - mNativeAeStartMs);
+                if (probe > 0) sendNativeIsoProbe(ae, probe);
+            }
+            if (PreferenceKeys.scamDevSwitch("native_ae_trace", false)) traceNativeAe(ae, metered, m, exposure, iso, ev, changed, now);
             final android.hardware.camera2.params.RggbChannelVector wb = paramController.manualWhiteBalanceGains();
             if (wb != null) {
                 // P201: a hand-set white balance is the shot's neutral (the inverse of its gains), not the own estimate
@@ -4513,6 +4581,177 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
         } catch (RuntimeException e) {
             Log.w("SCAM_CAPTURE", "native AE: " + e);
+        }
+    }
+
+    /** P212c: one trace line a metered frame, written once a second (one log entry). */
+    private void traceNativeAe(NativeRawExposure ae, @Nullable NativeRawExposure.Metered metered, @Nullable float[] m, Long exposure,
+                               Integer iso, float ev, boolean changed, long now) {
+        if (m != null) {
+            mNativeAeTrace.append('\n').append(String.format(java.util.Locale.ROOT,
+                    "%d p50 %.5f p98 %.3f%s | ev %+.1f del %s ms ISO %s | %s%s", now - mNativeAeStartMs, m[0], m[1],
+                    metered == null ? "" : String.format(java.util.Locale.ROOT, " P %.3f C %.4f lm %.5f%s law2 x%.3f now x%.3f",
+                            metered.peak, metered.clip, metered.logMean, metered.shaded ? " lsc" : "",
+                            NativeRawExposure.clipBudget(metered, ev), NativeRawExposure.multiplier(metered.p50, metered.p98, ev)),
+                    ev, exposure == null ? "-" : String.format(java.util.Locale.ROOT, "%.3f", exposure / 1e6), iso, ae.state(),
+                    changed ? " REBUILD" : ""));
+        }
+        if (now - mNativeAeTraceMs >= 1000 && mNativeAeTrace.length() > 0) {
+            mNativeAeTraceMs = now;
+            Log.i("SCAM_AE", "native AE trace camera " + mVivoSdkCameraId + ":" + mNativeAeTrace);
+            mNativeAeTrace.setLength(0);
+        }
+    }
+
+    /** P212c: the user's exposure compensation of the viewfinder request (EV). */
+    private float nativeAeEv(@Nullable CameraCharacteristics c) {
+        final CaptureRequest.Builder builder = mPreviewRequestBuilder;
+        final Integer index = builder == null ? null : builder.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
+        final android.util.Rational step = c == null ? null : c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
+        return index != null && step != null ? index * step.floatValue() : 0f;
+    }
+
+    /**
+     * P212c: what the native AE's meter weights: the output crop (the result's crop region, inside it the zoom ratio around its
+     * centre - CONTROL_ZOOM_RATIO leaves the crop region whole), the AE regions a tap or a subject set (they differ from the
+     * metering mode's own), the result's shading map unless the RAW is shaded already, and the white point.
+     */
+    private NativeRawExposure.MeterSetup meterSetup(@Nullable CameraCharacteristics c, @Nullable CaptureResult result, @Nullable float[] neutral) {
+        final NativeRawExposure.MeterSetup s = new NativeRawExposure.MeterSetup();
+        final Rect active = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+        if (active != null && active.width() > 0 && active.height() > 0) {
+            final Rect region = result == null || XiaomiTeleZoom.routed() ? null : result.get(CaptureResult.SCALER_CROP_REGION);
+            if (region != null) {
+                final Rect clipped = new Rect(region);
+                if (clipped.intersect(active)) {
+                    s.left = (clipped.left - active.left) / (float) active.width();
+                    s.top = (clipped.top - active.top) / (float) active.height();
+                    s.right = (clipped.right - active.left) / (float) active.width();
+                    s.bottom = (clipped.bottom - active.top) / (float) active.height();
+                }
+            }
+            Float ratio = null;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && result != null) {
+                try { ratio = result.get(CaptureResult.CONTROL_ZOOM_RATIO); } catch (IllegalArgumentException ignored) { ratio = null; }
+            }
+            if (ratio != null && ratio > 1.001f) {
+                final float cx = 0.5f * (s.left + s.right), cy = 0.5f * (s.top + s.bottom);
+                final float hw = 0.5f * (s.right - s.left) / ratio, hh = 0.5f * (s.bottom - s.top) / ratio;
+                s.left = cx - hw;
+                s.right = cx + hw;
+                s.top = cy - hh;
+                s.bottom = cy + hh;
+            }
+            final CaptureRequest.Builder builder = mPreviewRequestBuilder;
+            final MeteringRectangle[] regions = builder == null ? null : builder.get(CaptureRequest.CONTROL_AE_REGIONS);
+            if (regions != null && regions.length > 0 && !Arrays.equals(regions, mPreviewMeteringAE)) {
+                final java.util.ArrayList<float[]> taps = new java.util.ArrayList<>();
+                for (MeteringRectangle q : regions) {
+                    if (q == null || q.getMeteringWeight() <= 0 || q.getWidth() <= 0 || q.getHeight() <= 0) continue;
+                    taps.add(new float[]{(q.getX() - active.left) / (float) active.width(), (q.getY() - active.top) / (float) active.height(),
+                            (q.getX() + q.getWidth() - active.left) / (float) active.width(), (q.getY() + q.getHeight() - active.top) / (float) active.height()});
+                }
+                if (!taps.isEmpty()) s.regions = taps.toArray(new float[0][]);
+            }
+        }
+        // the result's shading map (an OPPO native result has the plain session's, OppoNativeFullRes.complete); P212c hook for W1:
+        // a stored plain map goes into s.gains when the result has none
+        final android.hardware.camera2.params.LensShadingMap map = result == null ? null
+                : result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP);
+        if (map != null && map.getColumnCount() > 1 && map.getRowCount() > 1
+                && !com.particlesdevs.photoncamera.processing.render.Parameters.rawShadingAlreadyApplied(c)) {
+            if (map != mMeterMap || mMeterGains == null) {
+                final float[] gains = new float[map.getGainFactorCount()];
+                map.copyGainFactors(gains, 0);
+                mMeterGains = gains;
+                mMeterMap = map;
+            }
+            s.gains = mMeterGains;
+            s.gainCols = map.getColumnCount();
+            s.gainRows = map.getRowCount();
+        }
+        if (neutral != null && neutral.length >= 3 && neutral[1] > 0f) {
+            s.neutralR = neutral[0] / neutral[1];
+            s.neutralB = neutral[2] / neutral[1];
+        }
+        return s;
+    }
+
+    /**
+     * P212b: a plain-session frame of an OPPO camera that has a native FULLRES mode, metered as the native AE meters (block 1) for
+     * that AE's next start (NativeAeSeed), about 3 times a second, only while the HAL AE is converged / locked and the frame is a
+     * plain 16-bit Bayer RAW (no colour-block mosaic, no packed layout). {@code result}: the matched one, else the ZSL results'.
+     */
+    private void plainMeter(Image img, @Nullable TotalCaptureResult result) {
+        if (mVivoSdkRawSession != null || img == null || img.getFormat() != ImageFormat.RAW_SENSOR || mPayloadBad || !mPreviewLayouts.isEmpty())
+            return;
+        final long now = android.os.SystemClock.elapsedRealtime();
+        if (now - mPlainMeterMs < 300) return;
+        try {
+            if (!OppoNativeFullRes.device() || OppoNativeFullRes.offer(physicalID) == null
+                    || com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1) return;
+            if (result == null) synchronized (mZslBufferLock) { result = mHexZslResults.get(img.getTimestamp()); }
+            if (result == null) return;
+            final Integer state = result.get(CaptureResult.CONTROL_AE_STATE);
+            if (state == null || state != CaptureResult.CONTROL_AE_STATE_CONVERGED && state != CaptureResult.CONTROL_AE_STATE_LOCKED) return;
+            final Long exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+            final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+            if (exposure == null || iso == null || exposure <= 0 || iso <= 0) return;
+            CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
+            if (c == null) c = mCameraCharacteristics;
+            int cfa = mLiveCfaPattern;
+            if (cfa < 0) {
+                Integer arrangement = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
+                cfa = arrangement == null ? 0 : arrangement;
+            }
+            if (cfa > 3) return;
+            final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
+                    com.particlesdevs.photoncamera.processing.RawLevels.current(c, result);
+            float[] neutral = null;
+            final android.util.Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
+            if (n != null && n.length >= 3) neutral = new float[]{n[0].floatValue(), n[1].floatValue(), n[2].floatValue()};
+            final Image.Plane plane = img.getPlanes()[0];
+            final NativeRawExposure.Metered metered = NativeRawExposure.meter2(plane.getBuffer(), img.getWidth(), img.getHeight(),
+                    plane.getRowStride(), cfa, 1, levels.black, levels.white, meterSetup(c, result, neutral));
+            mPlainMeterMs = now;
+            if (metered != null)
+                NativeAeSeed.plainSample(physicalID, metered.p50, metered.p98, (double) exposure * iso / 100.0, now);
+        } catch (RuntimeException e) {
+            mPlainMeterMs = now;
+        }
+    }
+
+    /** P212a: the native AE's ISO probe frame (its request carries NATIVE_ISO_PROBE). */
+    private static boolean isNativeIsoProbe(@Nullable TotalCaptureResult result) {
+        final CaptureRequest request = result == null ? null : result.getRequest();
+        return request != null && request.getTag() == NATIVE_ISO_PROBE;
+    }
+
+    /**
+     * P212a: one request of the viewfinder at {@code probeIso} (the AE's shutter, everything else as the repeating request): its
+     * result goes through ExposureLimits.observeManual as every result does, so a delivered ISO above the cap clears the cap.
+     */
+    private void sendNativeIsoProbe(NativeRawExposure ae, int probeIso) {
+        final CaptureRequest.Builder builder = mPreviewRequestBuilder;
+        final CameraCaptureSession session = mCaptureSession;
+        if (builder == null || session == null || burst) return;
+        try {
+            final Integer before = builder.get(CaptureRequest.SENSOR_SENSITIVITY);
+            final CaptureRequest repeating = mPreviewInputRequest;
+            final CaptureRequest probe;
+            builder.set(CaptureRequest.SENSOR_SENSITIVITY, probeIso);
+            builder.setTag(NATIVE_ISO_PROBE);
+            try {
+                probe = builder.build();
+            } finally {
+                builder.set(CaptureRequest.SENSOR_SENSITIVITY, before != null ? before : ae.iso());
+                builder.setTag(repeating == null ? null : repeating.getTag());
+            }
+            session.capture(probe, mCaptureCallback, mBackgroundHandler);
+            Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT, "native AE camera %s: ISO probe %d at %.3f ms (cap %d, %.2f EV short)",
+                    mVivoSdkCameraId, probeIso, ae.exposureNs() / 1e6, ae.isoCap(), ae.deficitEv()));
+        } catch (CameraAccessException | IllegalStateException | IllegalArgumentException e) {
+            Log.w("SCAM_CAPTURE", "native AE ISO probe: " + e);
         }
     }
 
@@ -5290,6 +5529,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final NativeRawExposure ae = mNativeAe;
         final long nNs = baseNs != null && baseNs > 0 ? baseNs : ae != null ? ae.exposureNs() : (long) mPreviewExposureTime;
         final int nIso = baseIso != null && baseIso > 0 ? baseIso : ae != null ? ae.iso() : mPreviewIso;
+        logUnsettledPress(ae, "50 MP ZSL", nNs, nIso);
         HybridPlan plan;
         HybridPlan.setMotionCap(HalMotion.motionCapNs(base));
         try {
@@ -5308,6 +5548,20 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         Log.i("SCAM_CAPTURE", "50 MP ZSL: " + frames.size() + " ring frames + " + topUp + " N after the shutter (asked " + requested + ", mosaic "
                 + (verified ? "verified" : "not proven by the ring") + "); " + plan.description);
         return new NativeZslShot(frames, base, plan, verified);
+    }
+
+    /**
+     * P212b (M8 step 5, the log-only variant): a press while the own AE is still moving. The shot keeps today's frames - the ring's
+     * newest exposure tier (selectHybridRing) and the plan from the newest frame, so its N stay one exposure - instead of dropping
+     * the ring frames off the AE's target and topping up after the shutter: that trades frames from before the press for later ones
+     * (shutter lag, motion between them, fewer N when the memory guard trims the top-up) on every press of a hunting AE, and the
+     * seeds (NativeAeSeed) and the EMA / hysteresis already make such presses rare. The line says how often and how far it happens.
+     */
+    private static void logUnsettledPress(@Nullable NativeRawExposure ae, String route, long nNs, int nIso) {
+        if (ae == null || ae.settled()) return;
+        Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT, "%s: press while AE unsettled: N %.3f ms ISO %d, the AE asks %s "
+                        + "(%+.2f EV)%s", route, nNs / 1e6, nIso, ae, Math.log(ae.total() / Math.max(1.0, (double) nNs * nIso / 100.0)) / Math.log(2),
+                ae.pending() ? ", its last change not shown yet" : ""));
     }
 
     /**
@@ -5332,6 +5586,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 final long nNs = manualNs > 0 ? manualNs : previewNs == null ? 0 : previewNs;
                 final int nIso = manualIso > 0 ? manualIso : previewIso == null ? 0 : previewIso;
                 if (nNs <= 0 || nIso <= 0) return null;
+                logUnsettledPress(mNativeAe, "50 MP PSL", nNs, nIso);
                 HybridPlan.setMotionCap(HalMotion.motionCapNs(latest));
                 try {
                     plan = HybridPlan.build(nNs, nIso, clip, mCameraCharacteristics, mExposureLimits);
