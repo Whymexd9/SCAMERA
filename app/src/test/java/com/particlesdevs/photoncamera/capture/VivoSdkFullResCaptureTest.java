@@ -121,6 +121,135 @@ public class VivoSdkFullResCaptureTest {
             assertFalse("the default package has no native sizes", VivoSdkFullRes.teleSizes("5"));
         }
     }
+    /**
+     * P222 (roadmap speed-ux A3: 50 MP stills came in groups of 3 with preview frames between them): a native series up to
+     * 100 MP keeps min(series, 6) stills in flight by default, each still matched on its own and completed in order.
+     */
+    @Test public void aLongNativeSeriesKeepsSixStillsInFlightByDefault() throws Exception {
+        verifyProfile("3", new VivoSdkFullRes.Profile(512, 512, 4, 2), 12, 2);
+    }
+
+    /** P222: the count the caller passes (scam_dev fullres_in_flight, P179's 3 after a failure); the SDK route stays one at a time. */
+    @Test public void theNativeSeriesTakesTheCountItIsGivenAndTheSdkRouteStaysOneAtATime() throws Exception {
+        verifyProfile("3", new VivoSdkFullRes.Profile(512, 512, 4, 2), 9, 2, false, 3);
+        verifyProfile("3", new VivoSdkFullRes.Profile(512, 512, 4, 2), 10, 2, true, 8);
+        verifyProfile("3", new VivoSdkFullRes.Profile(512, 512, 2, 1), 7, 1, false, 4);
+        verifyProfile("3", VivoSdkFullRes.profile("3"), 3, 0, false, 6);
+    }
+
+    /**
+     * P222: a still queued behind others times out 8 s after it became the oldest one in flight, not 8 s after its submit (six
+     * queued at a long shutter wait for the ones ahead of them first).
+     */
+    @Test public void aQueuedStillTimesOutFromWhenItBecameTheOldest() throws Exception {
+        Rig rig = new Rig(8, 6);
+        assertEquals(6, rig.requests.size());
+        idle(7000);
+        for (int i = 0; i < 5; i++) rig.still(i);
+        assertEquals("two more sent as the first ones completed", 8, rig.requests.size());
+        idle(2000);
+        assertEquals("9 s after its submit, 2 s as the oldest", "[]", rig.failures.toString());
+        idle(6100);
+        assertEquals(1, rig.failures.size());
+        assertTrue(rig.failures.get(0), rig.failures.get(0).contains("timeout at frame 5"));
+        assertEquals(0, rig.completed);
+    }
+
+    /** P222: one in flight: a still times out 8 s after its submit, as before; a series done in time never does. */
+    @Test public void oneInFlightTimesOutEightSecondsAfterItsSubmit() throws Exception {
+        Rig rig = new Rig(2, 1);
+        assertEquals(1, rig.requests.size());
+        idle(7900);
+        assertEquals("[]", rig.failures.toString());
+        idle(200);
+        assertEquals(1, rig.failures.size());
+        assertTrue(rig.failures.get(0), rig.failures.get(0).contains("timeout at frame 0"));
+        rig = new Rig(3, 6);
+        for (int i = 0; i < 3; i++) rig.still(i);
+        idle(20_000);
+        assertEquals(rig.failures.toString(), 1, rig.completed);
+        assertEquals(0, rig.failures.size());
+    }
+
+    private static void idle(long ms) {
+        org.robolectric.Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(ms));
+    }
+
+    private static CaptureRequest.Builder stillBuilder(String cameraId) throws Exception {
+        Class<?> metadata = Class.forName("android.hardware.camera2.impl.CameraMetadataNative");
+        return CaptureRequest.Builder.class.getConstructor(metadata, boolean.class, int.class, String.class, java.util.Set.class)
+                .newInstance(metadata.getConstructor().newInstance(), false, -1, cameraId, null);
+    }
+
+    /** P222: a native 512 x 512 Quad series whose stills the test completes one by one. */
+    private static final class Rig {
+        final List<CaptureRequest> requests = new ArrayList<>();
+        final List<CameraCaptureSession.CaptureCallback> callbacks = new ArrayList<>();
+        final List<String> failures = new ArrayList<>();
+        final CameraCaptureSession session = mock(CameraCaptureSession.class);
+        final VivoSdkFullResCapture capture;
+        final ByteBuffer pixels = ByteBuffer.allocateDirect(512 * 512 * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        int completed;
+
+        Rig(int count, int inFlight) throws Exception {
+            CameraDevice device = mock(CameraDevice.class);
+            ImageSaver saver = mock(ImageSaver.class);
+            ArrayList<ImageFrame> frames = new ArrayList<>();
+            when(device.createCaptureRequest(anyInt())).thenAnswer(call -> stillBuilder("3"));
+            when(session.capture(any(), any(), any())).thenAnswer(call -> {
+                requests.add(call.getArgument(0));
+                callbacks.add(call.getArgument(1));
+                return requests.size();
+            });
+            doAnswer(call -> {
+                Image image = call.getArgument(0);
+                ImageFrame frame = mock(ImageFrame.class);
+                frame.timestamp = image.getTimestamp();
+                frames.add(frame);
+                image.close();
+                return null;
+            }).when(saver).initProcess(any(Image.class));
+            when(saver.snapshotFrames()).thenAnswer(call -> new ArrayList<>(frames));
+            int[] levels = {130, 280, 280, 70};
+            for (int y = 0; y < 512; y++) for (int x = 0; x < 512; x++)
+                pixels.putShort((y * 512 + x) * 2, (short) (64 + levels[(y / 2 % 2) * 2 + x / 2 % 2]));
+            capture = new VivoSdkFullResCapture(device, session, mock(VivoSdkRawSession.class), mock(Surface.class), null, saver,
+                    new Handler(Looper.getMainLooper()), () -> 10L, 90, 1, 10, count, new VivoSdkFullRes.Profile(512, 512, 4, 2),
+                    stillBuilder("3").build(), java.util.Collections.emptyList(), new VivoSdkFullResCapture.Listener() {
+                        public void started() { }
+                        public void result(int index, TotalCaptureResult result) { }
+                        public void complete(ScamCaptureSequence sequence, HashMap<Long, Double> exposures) { completed++; }
+                        public void failed(String reason) { failures.add(reason); }
+                    }, null, inFlight);
+            capture.start();
+        }
+
+        /** Still {@code i}: started, its result and sequence, its RAW. */
+        void still(int i) {
+            CaptureRequest request = requests.get(i);
+            long timestamp = 100L + i;
+            callbacks.get(i).onCaptureStarted(session, request, timestamp, i);
+            TotalCaptureResult result = mock(TotalCaptureResult.class);
+            when(result.getRequest()).thenReturn(request);
+            when(result.get(CaptureResult.SENSOR_TIMESTAMP)).thenReturn(timestamp);
+            when(result.get(CaptureResult.SENSOR_EXPOSURE_TIME)).thenReturn(1_000_000_000L);
+            when(result.get(CaptureResult.SENSOR_SENSITIVITY)).thenReturn(100);
+            callbacks.get(i).onCaptureCompleted(session, request, result);
+            callbacks.get(i).onCaptureSequenceCompleted(session, i + 1, i);
+            Image image = mock(Image.class);
+            when(image.getTimestamp()).thenReturn(timestamp);
+            when(image.getFormat()).thenReturn(ImageFormat.RAW_SENSOR);
+            when(image.getWidth()).thenReturn(512);
+            when(image.getHeight()).thenReturn(512);
+            Image.Plane plane = mock(Image.Plane.class);
+            when(plane.getBuffer()).thenReturn(pixels.duplicate().order(java.nio.ByteOrder.LITTLE_ENDIAN));
+            when(plane.getRowStride()).thenReturn(1024);
+            when(plane.getPixelStride()).thenReturn(2);
+            when(image.getPlanes()).thenReturn(new Image.Plane[]{plane});
+            capture.image(image);
+        }
+    }
+
     private static final ByteBuffer RAW_PIXELS = ByteBuffer.allocateDirect(8192 * 6144 * 2);
     @Test public void usesFreshStillRequestsRawJpegOnlyAndOneMatchedFrameAtATime() throws Exception {
         verifyCamera("3", 8192, 6144, 13);
@@ -155,6 +284,12 @@ public class VivoSdkFullResCaptureTest {
     private static final int ULTRASHORT_ISO = 100;
 
     private void verifyProfile(String cameraId, VivoSdkFullRes.Profile profile, int count, int inputBlock, boolean ultrashort) throws Exception {
+        verifyProfile(cameraId, profile, count, inputBlock, ultrashort, 0);
+    }
+
+    /** {@code askInFlight}: the stills in flight the caller passes (P222; 0: the route's default). */
+    private void verifyProfile(String cameraId, VivoSdkFullRes.Profile profile, int count, int inputBlock, boolean ultrashort,
+                               int askInFlight) throws Exception {
         int width = profile.size.getWidth(), height = profile.size.getHeight(), sensorMode = profile.sensorMode;
         boolean nativeRaw = profile.nativeRoute();
         Class<?> nativeMetadata = Class.forName("android.hardware.camera2.impl.CameraMetadataNative");
@@ -219,7 +354,7 @@ public class VivoSdkFullResCaptureTest {
                         completed[0]++;
                     }
                     public void failed(String reason) { failures.add(reason); failed[0]++; }
-                });
+                }, null, askInFlight);
         if (ultrashort) capture.ultrashortLast(ULTRASHORT_NS, ULTRASHORT_ISO);
         capture.start();
         ByteBuffer pixels = RAW_PIXELS.duplicate();
@@ -231,8 +366,10 @@ public class VivoSdkFullResCaptureTest {
             for (int y = 0; y < height; y++) for (int x = 0; x < width; x++)
                 pixels.putShort((y * width + x) * 2, (short) (64 + levels[(y / inputBlock % 2) * 2 + x / inputBlock % 2]));
         }
-        // P179: the native RAW-only series keeps up to NATIVE_IN_FLIGHT stills queued; the SDK series one at a time
-        final int inFlight = nativeRaw ? VivoSdkFullResCapture.NATIVE_IN_FLIGHT : 1;
+        // P179: the native RAW-only series keeps several stills queued (P222: min(series, 6) by default up to 100 MP, else as
+        // asked); the SDK series one at a time whatever is asked
+        final int inFlight = !nativeRaw ? 1 : askInFlight > 0 ? askInFlight : Math.min(count, FullResInFlight.DEFAULT);
+        assertEquals(inFlight, capture.inFlight());
         for (int i = 0; i < count; i++) {
             assertEquals(failures.toString(), Math.min(count, i + inFlight), requests.size());
             CaptureRequest request = requests.get(i);

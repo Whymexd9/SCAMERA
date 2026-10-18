@@ -59,12 +59,55 @@ public class SerialRawCaptureTest {
         assertEquals(1, events.failed);
     }
 
+    /**
+     * P222: the listener hears when a still becomes the oldest one in flight (its timeout starts then): one in flight right
+     * after its submit, as the timer before P222; several in flight only when the ones ahead of it are done.
+     */
+    @Test public void tellsWhenEachStillBecomesTheOldestInFlight() {
+        Events events = new Events();
+        SerialRawCapture series = new SerialRawCapture(3, false, 1, events);
+        series.start();
+        assertEquals(Arrays.asList(0), events.heads);
+        for (int i = 0; i < 3; i++) {
+            long t = 100 + 10 * i;
+            series.started(i, t); series.raw(t); series.result(i, t);
+            assertEquals("not before the still is done", i + 1, events.heads.size());
+            series.sequenceCompleted(i);
+            assertEquals("each one the oldest right after its submit", events.submitted, events.heads);
+        }
+        assertEquals(Arrays.asList(0, 1, 2), events.heads);
+        assertEquals(1, events.completed);
+
+        events = new Events();
+        series = new SerialRawCapture(5, false, 3, events);
+        series.start();
+        assertEquals(Arrays.asList(0, 1, 2), events.submitted);
+        assertEquals("the queued ones are not the oldest yet", Arrays.asList(0), events.heads);
+        series.started(0, 100); series.started(1, 110); series.started(2, 120);
+        series.raw(110); series.result(1, 110); series.sequenceCompleted(1);
+        assertEquals("the second done before the first: still the first", Arrays.asList(0), events.heads);
+        series.raw(100); series.result(0, 100); series.sequenceCompleted(0);
+        assertEquals("both done: the third is the oldest", Arrays.asList(0, 2), events.heads);
+        assertEquals(Arrays.asList(0, 1, 2, 3, 4), events.submitted);
+        series.started(3, 130); series.started(4, 140);
+        series.raw(120); series.result(2, 120); series.sequenceCompleted(2);
+        assertEquals(Arrays.asList(0, 2, 3), events.heads);
+        series.raw(130); series.result(3, 130); series.sequenceCompleted(3);
+        assertEquals("the last one, nothing left to submit", Arrays.asList(0, 2, 3, 4), events.heads);
+        series.fail("timeout at frame 4");
+        series.raw(140); series.result(4, 140); series.sequenceCompleted(4);
+        assertEquals("nothing after a failure", Arrays.asList(0, 2, 3, 4), events.heads);
+        assertEquals(0, events.completed);
+        assertEquals(1, events.failed);
+    }
+
     private static final class Events implements SerialRawCapture.Listener {
-        final List<Integer> submitted = new ArrayList<>();
+        final List<Integer> submitted = new ArrayList<>(), heads = new ArrayList<>();
         int completed, failed;
         public void submit(int index) { submitted.add(index); }
         public void complete() { completed++; }
         public void failed(String reason) { failed++; }
+        @Override public void head(int index) { heads.add(index); }
     }
 
     @Test public void requiresMatchedRawResultJpegAndSequenceBeforeAdvancing() {

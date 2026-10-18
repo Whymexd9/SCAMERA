@@ -9,12 +9,16 @@ import java.util.HashSet;
  * {@code maxInFlight} requests queued, so they reach the sensor back to back instead of each one waiting behind the repeating
  * preview requests the HAL already holds (200 MP: about 13 preview frames, 5 s, per frame one at a time). Every frame is still
  * matched on its own (started, RAW, result, JPEG when asked for, sequence), and the frames complete in their order.
+ * P222: the listener hears when a frame becomes the oldest one in flight ({@link Listener#head}), the moment its own timeout
+ * starts (one in flight: right after its submit, as before).
  */
 public final class SerialRawCapture {
     public interface Listener {
         void submit(int index);
         void complete();
         void failed(String reason);
+        /** P222: frame {@code index} is now the oldest one not complete (once per frame, after its submit). */
+        default void head(int index) { }
     }
 
     private static final class Frame {
@@ -36,7 +40,7 @@ public final class SerialRawCapture {
     private final ArrayDeque<Frame> pending = new ArrayDeque<>();
     /** JPEG timestamps that came before their frame's start. */
     private final HashSet<Long> earlyJpeg = new HashSet<>();
-    private int next, done;
+    private int next, done, head = -1;
     private boolean started, finished;
 
     public SerialRawCapture(int count, Listener listener) {
@@ -163,6 +167,11 @@ public final class SerialRawCapture {
             Frame f = new Frame(next++);
             pending.addLast(f);
             listener.submit(f.index);
+        }
+        final Frame oldest = pending.peekFirst();
+        if (!finished && oldest != null && oldest.index != head) {
+            head = oldest.index;
+            listener.head(head);
         }
     }
 }

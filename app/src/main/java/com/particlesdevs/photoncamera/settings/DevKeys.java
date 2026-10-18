@@ -208,6 +208,9 @@ public final class DevKeys {
                 "FULLRES 50 MP: frames from the ZSL ring before the press (200 MP always after it). Off: the whole series after the press")));
         k.add(s(cap, "fullres_plain_merge", true, Lang.t("FULLRES 50 Мп: на время склейки камера в обычном режиме (меньше нагрев и памяти). Выкл — 50 Мп поток идёт и во время склейки",
                 "FULLRES 50 MP: the camera runs its plain session while the shot merges (less heat and memory). Off: the 50 MP stream keeps running")));
+        // P222: the stills a native FULLRES series keeps in flight (FullResInFlight)
+        k.add(n(cap, "fullres_in_flight", null, Lang.t("FULLRES: сколько кадров серии отправлено камере одновременно (1–8). По умолчанию 6 до 100 Мп, 3 выше 100 Мп и после сбоя серии на этой камере и размере; 3 — как до P222. SDK-путь X200 Ultra всегда по одному",
+                "FULLRES: the stills of a series sent to the camera at once (1-8). Default 6 up to 100 MP, 3 above 100 MP and after a failed series on this camera and size; 3 = as before P222. The X200 Ultra's SDK route always one at a time")));
         k.add(s(cap, "oppo_tele_access", true, Lang.t("OPPO Find X7 Ultra: телевики 3× и 6× через пакет Oplus",
                 "OPPO Find X7 Ultra: the 3x and 6x telephotos through the Oplus package")));
         k.add(s(vivo, "vivo_fullres_x100u", true, Lang.t("X100 Ultra: FULLRES без аппаратного ремозаика (проверяется)", "X100 Ultra: FULLRES without hardware remosaic (being tested)")));
