@@ -14,8 +14,12 @@ Checks:
 - with the cap a strip over it keeps at most its allowance (hotCap sites per MP of its own rows), every isolated hot pixel of 6 DN10
   or more stays flagged (weaker ones inside the texture or under the 4x noise may go: 1-2 sigma of one frame), and the flags on
   texture / noise drop to the allowance (texture survives: >= 10x fewer of its sites lose their sample);
-- strong texture patches beside weak texture: the rank (excess over the model noise and the neighbours' spread) keeps the hot
-  pixels outside the patches;
+- strong texture patches beside weak texture: the rank (excess over the noise and the neighbours' spread) keeps the hot pixels
+  outside the patches;
+- the model 4x low: ranked against the noise measured around the site (temporal variance of the hot frames) more weak hot
+  pixels (4..8 DN10) stay than against the model noise;
+- blinking (RTS) defects, whose mean excess in the hot frames can be as low as a noise peak's: every one the test flags stays
+  flagged (their own temporal variance far above their ring's);
 - a strip within the cap (flat, true model) keeps exactly the flags it had without the cap (bits 0 and 1, every site; the rank
   bits 8..15 are written only with the cap and no program reads them but kHybFlagPrune);
 - the native flags program carries the same rank and histogram; the C++ defaults (hotCap 2000, its tuning key) and the cap
@@ -91,8 +95,9 @@ def frame_table():
     return geo.tobytes() + rest.tobytes()
 
 
-def run(frames, cap):
-    """frames: N x H x W uint16 RAW codes. Returns (flags H x W uint32 of every strip's own rows, sums, per-strip info)."""
+def run(frames, cap, variance=True):
+    """frames: N x H x W uint16 RAW codes. Returns (flags H x W uint32 of every strip's own rows, sums, per-strip info).
+    variance False: the rank takes the model noise (the flag programs' hotU.w = 0), for the comparison of scenario 4."""
     fb = ctx.buffer(np.ascontiguousarray(frames, '<u2').tobytes())
     ft = ctx.buffer(frame_table())
     sums = ctx.buffer(np.zeros(CAP0 + 2 * CAP_WORDS, np.uint32).tobytes())
@@ -104,14 +109,15 @@ def run(frames, cap):
         setu(p, 'black', (BLACK,) * 4); setu(p, 'inv', (1.0 / RANGE,) * 4); setu(p, 'phaseColor', (0, 1, 1, 2))
         setu(p, 'baseNoise', (SLOPE, OFFSET)); setu(p, 'clipLevel', 0.98); setu(p, 'markU', 0); setu(p, 'chunkU', 0)
     MEAN['hotList'].value = tuple(range(N)) + (0,) * (16 - N)
-    setu(MEAN, 'hotU', (N, 0, 0, 0))
-    setu(FLAGS, 'hotU', (N, 3, CAP0 if cap else 0, 0))
     setu(FLAGS, 'hotSigU', (HOT_SIGMA, BASE_SIGMA, CROSS, MAX_LEVEL))
     out = np.zeros((H, W), np.uint32)
     info = []
     for cy0, cy1 in STRIPS:
         ry0, ry1 = max(0, cy0 - 3), min(H2, cy1 + 3)
-        mean = ctx.buffer(reserve=(2 * (ry1 - ry0) + 4) * W * 4)
+        words = (2 * (ry1 - ry0) + 4) * W  # the mean; with the cap the sites' temporal variance follows (HybridGpu::merge)
+        mean = ctx.buffer(reserve=words * 4 * (2 if cap else 1))
+        setu(MEAN, 'hotU', (N, words if cap else 0, 0, 0))
+        setu(FLAGS, 'hotU', (N, 3, CAP0 if cap else 0, words if cap and variance else 0))
         flags = ctx.buffer(reserve=2 * (ry1 - ry0) * W * 4)
         mean.bind_to_storage_buffer(1)
         flags.bind_to_storage_buffer(2)
@@ -144,8 +150,9 @@ def run(frames, cap):
     return out, s, info
 
 
-def make(scene, k_noise, hot, seed):
-    """scene H x W normalised; hot: list of (y, x, excess); the frames' noise k_noise x the model variance."""
+def make(scene, k_noise, hot, seed, blink=()):
+    """scene H x W normalised; hot: list of (y, x, excess); the frames' noise k_noise x the model variance. blink: (y, x, p, high)
+    sites that are `high` over the scene in a frame with probability p, else at the scene (RTS)."""
     rng = np.random.default_rng(seed)
     clean = scene.copy()
     for y, x, e in hot:
@@ -154,17 +161,19 @@ def make(scene, k_noise, hot, seed):
     frames = []
     for _ in range(N):
         v = clean + rng.standard_normal((H, W)) * np.sqrt(var)
+        for y, x, p, hi in blink:
+            v[y, x] += hi if rng.random() < p else 0.0
         frames.append(np.clip(np.floor(BLACK + v * RANGE + 0.5), 0, 1023).astype(np.uint16))
     return np.stack(frames)
 
 
-def hot_sites(rng, count, rows, margin=8):
-    """isolated hot pixels: not within 6 px of each other, away from the borders, excess 0.004..0.08 (4..77 DN10)."""
+def hot_sites(rng, count, rows, margin=8, lo=0.004, hi=0.08):
+    """isolated hot pixels: not within 6 px of each other, away from the borders, excess lo..hi (default 4..77 DN10)."""
     out = []
     while len(out) < count:
         y, x = int(rng.integers(rows[0] + margin, rows[1] - margin)), int(rng.integers(margin, W - margin))
         if all(abs(y - a) > 6 or abs(x - b) > 6 for a, b, _ in out):
-            out.append((y, x, float(np.exp(rng.uniform(np.log(0.004), np.log(0.08))))))
+            out.append((y, x, float(np.exp(rng.uniform(np.log(lo), np.log(hi))))))
     return out
 
 
@@ -172,7 +181,7 @@ def texture(rng, patches=0.0):
     """a dark colour texture: per-site lognormal detail around 0.012 of white, ~1.4 sigma of one frame (chromatic, so the other
     colours do not follow): the mean of 8 still frames flags ~27k sites/MP of it, as the X7U table bursts. patches > 0: twelve
     80 x 120 px patches of that log amplitude (strong texture beside weak: ranked by the plain excess / sigma, scenario 3 kept 27 of
-    40 hot pixels and lost some outside the patches; the shipped rank keeps 31, all 23 outside). Returns the scene and the mask."""
+    40 hot pixels and lost some outside the patches; the shipped rank keeps 32, all 23 outside). Returns the scene and the mask."""
     t = rng.standard_normal((H, W))
     t = 0.5 * t + 0.25 * (np.roll(t, 1, 0) + np.roll(t, 1, 1))  # a little correlation between neighbours
     amp = np.full((H, W), 0.12 if patches <= 0 else 0.08)
@@ -256,10 +265,44 @@ check(not [h for h in lost3 if h[2] >= 0.006 and not h[3]] and len(lost3) * 10 <
 before3, after3 = int(bit0(off3, TOP).sum()), int(bit0(on3, TOP).sum())
 check(after3 <= info3[0]['allowed'] and after3 * 10 <= before3, f'strong texture patches: sites {before3} -> {after3} (allowance {info3[0]["allowed"]})')
 
-# 4. the native flags carry the same rank and histogram; the C++ side matches the programs
+# 4. the rank against the noise measured at the site (the temporal variance kHybMean writes after the mean) and against the model
+# noise, the model 4x low: weak hot pixels (4..8 DN10) kept
+kept_measured = kept_model = 0
+for seed in (11, 12):
+    r4 = np.random.default_rng(seed)
+    scene4 = np.full((H, W), 0.010); scene4[:, W // 2:] = 0.020
+    hot4 = hot_sites(r4, 40, TOP, lo=0.004, hi=0.008) + hot_sites(r4, 40, BOTTOM, lo=0.004, hi=0.008)
+    burst4 = make(scene4, 4.0, hot4, seed)
+    m4, _, _ = run(burst4, True)
+    o4, _, _ = run(burst4, True, variance=False)
+    kept_measured += sum(1 for y, x, _ in hot4 if m4[y, x] & 1)
+    kept_model += sum(1 for y, x, _ in hot4 if o4[y, x] & 1)
+check(kept_measured > kept_model and kept_measured >= 0.9 * 160,
+      f'model 4x low, hot pixels of 4..8 DN10: {kept_measured} of 160 kept ranked against the measured noise, {kept_model} against the model')
+
+# 5. blinking (RTS) defects: +16 DN10 over the scene in a quarter of the frames at random (the X7U's blinking Quad blocks: 53..87
+# DN10 from frame to frame), the model 4x low, texture in the top strip: a mean excess in the hot frames near the noise peaks' or
+# the texture's, a variance far above its ring's. Ranked without the variance ratio, 35 of these 47 stayed (12 dots).
+r5 = np.random.default_rng(15)
+blinks = [(y, x, 0.25, 0.0167) for y, x, _ in hot_sites(r5, 30, TOP) + hot_sites(r5, 30, BOTTOM)]
+scene5 = np.full((H, W), 0.010); scene5[:, W // 2:] = 0.020
+scene5[TOP[0]:TOP[1]] = texture(r5)[0][TOP[0]:TOP[1]]
+burst5 = make(scene5, 4.0, [], 5, blinks)
+on5, _, _ = run(burst5, True)
+off5, _, _ = run(burst5, False)
+flagged5 = sum(1 for y, x, _, _ in blinks if off5[y, x] & 1)
+kept5 = sum(1 for y, x, _, _ in blinks if on5[y, x] & 1 and off5[y, x] & 1)
+check(kept5 == flagged5 and flagged5 >= 40, f'blinking defects: {kept5} of the {flagged5} the test flags (of {len(blinks)}) stay flagged with the cap')
+
+# 6. the native flags carry the same rank and histogram; the C++ side matches the programs
 nat = body('kHybNatFlags')
-check(nat.count('bits|=capRank(p,green,ex,sd)<<8u;') == 1 and body('kHybFlags').count('bits|=capRank(p,green,ex,sd)<<8u;') == 1,
-      'both flag programs rank their fixed-pattern sites (capRank, bits 8..15)')
+check(nat.count('vec2 m=hotU.w>0?capMeasured(capRing(x,y,green,b),vAt(x,y),float(hotU.x),sd):vec2(sd,0.0);') == 1
+      and body('kHybFlags').count('vec2 m=hotU.w>0?capMeasured(capRing(x,y,green,1),vAt(x,y),float(hotU.x),sd):vec2(sd,0.0);') == 1
+      and nat.count('bits|=capRank(p,green,ex,m.x,m.y)<<8u;') == 1 and body('kHybFlags').count('bits|=capRank(p,green,ex,m.x,m.y)<<8u;') == 1,
+      'both flag programs rank their fixed-pattern sites (capRank, bits 8..15) against the noise measured around them')
+check(body('kHybMean').count('meanv[uint(hotU.y+r*size.x+x)]=q/float(max(hotU.x-1,1));') == 1
+      and body('kHybNatMean').count('meanv[uint(hotU.y+r*natU.y+x)]=q/float(max(hotU.x-1,1));') == 1,
+      'both mean programs write the temporal variance after the mean')
 check(nat.count('atomicAdd(sums[uint(hotU.z)+((bits>>8)&255u)],1u);') == 1, 'the native flags fill the strip histogram')
 check('(std::string(kHybNatAccess)+kHybFlagRank+kHybNatFlags)' in SRC and '(std::string(kHybFlagRank)+kHybFlags)' in SRC,
       'HybridGpu compiles the rank before both flag programs')
