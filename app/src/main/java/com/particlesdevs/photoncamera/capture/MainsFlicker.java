@@ -47,7 +47,8 @@ public final class MainsFlicker {
     private static boolean twoMultiples;
     /** P212d: the report run (Hz, length); results of the current session; a native session; the session's report note logged. */
     private static int reportHz, reports, sessionResults;
-    private static boolean nativeSession, noted;
+    private static volatile boolean nativeSession; // read unlocked by observe(CaptureResult)
+    private static boolean noted;
     /** P212d: the shot votes of the row profile (Hz, run length); the latch came from them. */
     private static int shotHz, shotVotes;
     private static boolean evidence;
@@ -234,7 +235,8 @@ public final class MainsFlicker {
         firstMultiple = 0;
         twoMultiples = false;
         reportHz = reports = sessionResults = 0;
-        nativeSession = noted = false;
+        nativeSession = false;
+        noted = false;
         shotHz = shotVotes = 0;
         evidence = false;
         afdKey = null;
