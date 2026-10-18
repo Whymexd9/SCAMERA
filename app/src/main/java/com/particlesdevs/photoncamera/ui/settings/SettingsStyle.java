@@ -72,7 +72,7 @@ public final class SettingsStyle {
     static final Set<String> TILES = new HashSet<>(Arrays.asList("pref_backup_preferences_key", "pref_restore_preferences_key", "pref_reset_preferences_key"));
     /** Plain preferences that open a page (handled in SettingsFragment.onPreferenceTreeClick): a chevron, not an action. */
     static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key",
-            "pref_file_name_pattern"));
+            "pref_file_name_pattern", "photo_style_lut"));
 
     public static int dp(Context c, float v) { return UiTokens.dp(c, v); }
 
@@ -207,7 +207,8 @@ public final class SettingsStyle {
             p.setSingleLineTitle(false);
             // P144: the own tone curve draws its own card (graph and shortcuts); P162: so does the crop picture
             if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference
-                    || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RawCropPreference) {
+                    || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RawCropPreference
+                    || page(p)) {
                 p.setIconSpaceReserved(false);
                 continue;
             }
@@ -222,7 +223,9 @@ public final class SettingsStyle {
                 defaultIcon(p, R.drawable.settings_ic_gear);
                 continue;
             }
-            if (p instanceof UniversalSeekBarPreference || p instanceof TunableSeekBarPreference) {
+            if (com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY.equals(p.getKey())) {
+                p.setLayoutResource(R.layout.preference_seekbar_inline);   // SIMPLE_UI §4c: «Сила» on the LUT page
+            } else if (p instanceof UniversalSeekBarPreference || p instanceof TunableSeekBarPreference) {
                 p.setLayoutResource(R.layout.preference_seekbar);
                 defaultIcon(p, R.drawable.settings_ic_sliders);
             } else if (p instanceof TwoStatePreference) {
@@ -259,7 +262,15 @@ public final class SettingsStyle {
         if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.RawCropPreference) return true;
         if (p.getKey() != null && TILES.contains(p.getKey())) return true;
+        if (page(p) || p.getLayoutResource() == R.layout.preference_seekbar_inline) return true;
         return p.getLayoutResource() == R.layout.preference_info;
+    }
+
+    /** SIMPLE_UI §4c: the parts of the «Плёночный LUT» page draw themselves (preview, strip, «Что меняется»). */
+    static boolean page(Preference p) {
+        return p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.LutChangesPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.PhotoStylePreference;
     }
 
     private static void defaultIcon(Preference p, int icon) {
@@ -361,6 +372,13 @@ public final class SettingsStyle {
 
     static CharSequence valueOf(Preference p) {
         if (p instanceof RestorePreference) return null;
+        // SIMPLE_UI §4: «Плёночный LUT» shows the chosen look on the right (the concept's .rv)
+        if ("photo_style_screen".equals(p.getKey()) && p.getSharedPreferences() != null)
+            return com.particlesdevs.photoncamera.settings.PhotoStyle.name(p.getContext(),
+                    com.particlesdevs.photoncamera.settings.PhotoStyle.current(p.getSharedPreferences()));
+        if (("film_lut_screen".equals(p.getKey()) || "photo_style_lut".equals(p.getKey())) && p.getSharedPreferences() != null)
+            return com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference.displayName(p.getContext(),
+                    p.getSharedPreferences().getString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY, ""));
         if (p instanceof ListPreference) return ((ListPreference) p).getEntry();
         if (p instanceof EditTextPreference && !(p instanceof BackupPreferences)) {
             String t = ((EditTextPreference) p).getText();
@@ -477,7 +495,7 @@ public final class SettingsStyle {
     }
 
     /** A radio dot: an accent ring with a dot when selected, a muted ring otherwise. */
-    static View radio(Context c, boolean on, int accent) {
+    public static View radio(Context c, boolean on, int accent) {
         return new View(c) {
             final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             @Override protected void onDraw(Canvas canvas) {

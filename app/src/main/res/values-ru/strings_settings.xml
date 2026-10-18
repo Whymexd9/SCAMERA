@@ -781,4 +781,12 @@
     <string name="prefs_watermark_page_title">Подпись на фото</string>
     <string name="prefs_watermark_page_summary">Водяной знак с моделью телефона</string>
     <string name="prefs_adv_view_title">Экран камеры</string>
+    <string name="prefs_film_lut_screen_summary">Готовый «образ» плёнки: видно, что он меняет</string>
+    <string name="prefs_film_lut_changes_title">Что меняется</string>
+    <string name="prefs_photo_style_title">Стиль снимка</string>
+    <string name="prefs_photo_style_summary">Обычный, чёрно-белый или плёнка</string>
+    <string name="prefs_photo_style_category">Стиль</string>
+    <string name="prefs_photo_style_mono_category">Чёрно-белый</string>
+    <string name="prefs_photo_style_film_category">Плёнка</string>
+    <string name="prefs_photo_style_lut_summary">Какую плёнку изображает снимок</string>
 </resources>

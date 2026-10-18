@@ -449,9 +449,22 @@
     <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference android:icon="@drawable/settings_ic_corner" android:title="@string/turn_on_round_edges" android:key="@string/pref_show_roundedge_key" android:summary="@string/show_roundedge_desc" android:defaultValue="@bool/pref_show_roundedge_default" />
   </PreferenceCategory>
   <PreferenceCategory android:key="root_colour" android:title="@string/prefs_root_colour_title" app:iconSpaceReserved="false">
-    <ListPreference android:key="pref_scam_hybrid_colour_mono" android:title="@string/prefs_colour_mono_title" android:summary="@string/prefs_colour_mono_summary" android:defaultValue="off" android:entries="@array/colour_mono_entries" android:entryValues="@array/colour_mono_values" android:icon="@drawable/settings_ic_eye" />
-    <com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference android:key="pref_film_lut" android:title="@string/prefs_film_lut_title" android:defaultValue="" android:icon="@drawable/settings_ic_palette" />
-    <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_film_lut_strength" android:title="@string/prefs_film_lut_strength_title" android:summary="@string/prefs_film_lut_strength_summary" android:defaultValue="100" app:minValue="0" app:maxValue="100" app:stepPerUnit="1" app:isFloat="false" android:icon="@drawable/settings_ic_sliders" />
+    <PreferenceScreen android:key="photo_style_screen" android:title="@string/prefs_photo_style_title" android:summary="@string/prefs_photo_style_summary" android:icon="@drawable/ui_ic_palette" app:iconSpaceReserved="false">
+      <PreferenceCategory android:key="photo_style_category" android:title="@string/prefs_photo_style_category" app:iconSpaceReserved="false">
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.PhotoStylePreference android:key="photo_style" android:title="@string/prefs_photo_style_title" />
+      </PreferenceCategory>
+      <PreferenceCategory android:key="photo_style_mono_category" android:title="@string/prefs_photo_style_mono_category" app:iconSpaceReserved="false">
+        <ListPreference android:key="pref_scam_hybrid_colour_mono" android:title="@string/prefs_colour_mono_title" android:summary="@string/prefs_colour_mono_summary" android:defaultValue="off" android:entries="@array/colour_mono_entries" android:entryValues="@array/colour_mono_values" android:icon="@drawable/settings_ic_eye" />
+      </PreferenceCategory>
+      <PreferenceCategory android:key="photo_style_film_category" android:title="@string/prefs_photo_style_film_category" app:iconSpaceReserved="false">
+        <Preference android:key="photo_style_lut" android:title="@string/prefs_film_lut_title" android:summary="@string/prefs_photo_style_lut_summary" android:icon="@drawable/ui_ic_film" />
+      </PreferenceCategory>
+    </PreferenceScreen>
+    <PreferenceScreen android:key="film_lut_screen" android:title="@string/prefs_film_lut_title" android:summary="@string/prefs_film_lut_screen_summary" android:icon="@drawable/ui_ic_film" app:iconSpaceReserved="false">
+      <com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference android:key="pref_film_lut" android:title="@string/prefs_film_lut_title" android:defaultValue="" android:icon="@drawable/settings_ic_palette" />
+      <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_film_lut_strength" android:title="@string/prefs_film_lut_strength_title" android:summary="@string/prefs_film_lut_strength_summary" android:defaultValue="100" app:minValue="0" app:maxValue="100" app:stepPerUnit="1" app:isFloat="false" android:icon="@drawable/settings_ic_sliders" />
+      <com.particlesdevs.photoncamera.ui.settings.custompreferences.LutChangesPreference android:key="film_lut_changes" android:title="@string/prefs_film_lut_changes_title" />
+    </PreferenceScreen>
     <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_scam_hybrid_colour_warmth" android:title="@string/prefs_colour_warmth_title" android:summary="@string/prefs_colour_warmth_summary" android:defaultValue="0" app:minValue="-100" app:maxValue="100" app:stepPerUnit="1" app:isFloat="false" android:icon="@drawable/settings_ic_sun" />
     <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_scam_hybrid_ark_agx_sat" android:title="@string/prefs_scam_hybrid_ark_agx_sat_title" android:summary="@string/prefs_desc_pref_scam_hybrid_ark_agx_sat" android:defaultValue="1" app:minValue="0" app:maxValue="2" app:stepPerUnit="100" app:isFloat="true" />
     <PreferenceScreen android:key="photo_processing_screen" android:title="@string/prefs_colour_fine_title" android:icon="@drawable/settings_ic_palette" app:iconSpaceReserved="false" android:summary="@string/prefs_colour_fine_summary">

@@ -152,6 +152,43 @@ public final class FilmLut {
         return out;
     }
 
+    /** {@link #sample} without allocations (the settings' previews run it per pixel). */
+    public void sampleInto(float r, float g, float b, float[] out) {
+        float pr, pg, pb;
+        int ir, ig, ib;
+        float x = Math.max(0f, Math.min(1f, (Math.max(0f, Math.min(1f, r)) - domainMin[0]) / (domainMax[0] - domainMin[0]))) * (size - 1);
+        ir = Math.min(size - 2, (int) x);
+        pr = x - ir;
+        x = Math.max(0f, Math.min(1f, (Math.max(0f, Math.min(1f, g)) - domainMin[1]) / (domainMax[1] - domainMin[1]))) * (size - 1);
+        ig = Math.min(size - 2, (int) x);
+        pg = x - ig;
+        x = Math.max(0f, Math.min(1f, (Math.max(0f, Math.min(1f, b)) - domainMin[2]) / (domainMax[2] - domainMin[2]))) * (size - 1);
+        ib = Math.min(size - 2, (int) x);
+        pb = x - ib;
+        out[0] = out[1] = out[2] = 0f;
+        for (int corner = 0; corner < 8; corner++) {
+            int dr = corner & 1, dg = (corner >> 1) & 1, db = corner >> 2;
+            float w = (dr == 1 ? pr : 1 - pr) * (dg == 1 ? pg : 1 - pg) * (db == 1 ? pb : 1 - pb);
+            int idx = (((ib + db) * size + (ig + dg)) * size + (ir + dr)) * 3;
+            out[0] += w * rgb[idx];
+            out[1] += w * rgb[idx + 1];
+            out[2] += w * rgb[idx + 2];
+        }
+    }
+
+    /** A LUT by its stored value (one of our looks or a file of Download/SCAMERA/LUT), outside the pipeline's cache; null: none. */
+    @Nullable
+    public static FilmLut load(android.content.Context context, String name) {
+        if (name == null || name.isEmpty()) return null;
+        if (FilmLooks.isBuiltIn(name)) return FilmLooks.lut(name);
+        try (InputStream in = com.particlesdevs.photoncamera.util.ScameraFolder.LUTS.open(context, name)) {
+            return in != null ? parse(in) : null;
+        } catch (IOException | RuntimeException e) {
+            com.particlesdevs.photoncamera.util.Log.w("FilmLut", "cannot read " + name + ": " + e);
+            return null;
+        }
+    }
+
     // ---- the chosen LUT, parsed once per file (the pipeline asks for it per shot)
     private static String cachedName;
     private static FilmLut cached;

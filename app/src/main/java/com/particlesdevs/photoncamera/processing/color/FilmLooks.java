@@ -59,6 +59,37 @@ public final class FilmLooks {
         }
     }
 
+    /** SIMPLE_UI §4c: the look's short hint under its card (the concept's LUTS[].h); null for anything else. */
+    @Nullable
+    public static String hint(@Nullable android.content.Context context, @Nullable String value) {
+        switch (index(value)) {
+            case 0: return Lang.t(context, "теплее, мягче", "warmer, softer");
+            case 1: return Lang.t(context, "холоднее, пастель", "cooler, pastel");
+            case 2: return Lang.t(context, "ярко, контрастно", "vivid, contrasty");
+            case 3: return Lang.t(context, "бирюза + тепло", "teal + warmth");
+            case 4: return Lang.t(context, "чёрно-белое", "black and white");
+            default: return null;
+        }
+    }
+
+    /** SIMPLE_UI §4c: what the look imitates (the concept's LUTS[].d); null for anything else. */
+    @Nullable
+    public static String description(@Nullable android.content.Context context, @Nullable String value) {
+        switch (index(value)) {
+            case 0: return Lang.t(context, "Портретный негатив: тёплые чёрные, кремовые света, оливковая зелень, мягкие края тонов",
+                    "Portrait negative: warm blacks, creamy highlights, olive greens, soft tonal ends");
+            case 1: return Lang.t(context, "Мелкозернистый негатив: низкий контраст, пастель, бирюзовые тени, розоватые белые",
+                    "Fine-grain negative: low contrast, pastels, teal shadows, pinkish whites");
+            case 2: return Lang.t(context, "Обращаемая плёнка: глубокий чёрный, сильный контраст, плотное синее небо, сочные цвета",
+                    "Slide film: deep black, strong contrast, dense blue sky, rich colours");
+            case 3: return Lang.t(context, "Кинокопия: контрастная середина, бирюзовые тени, тёплые света, мягкие белые",
+                    "Print film: contrasty middle, teal shadows, warm highlights, soft whites");
+            case 4: return Lang.t(context, "Панхроматическая ч/б плёнка: плотная S-кривая, мягкий подъём теней",
+                    "Panchromatic black-and-white film: a firm S-curve, a soft shadow lift");
+            default: return null;
+        }
+    }
+
     /** The LUT of a look, or null for anything else. */
     @Nullable
     public static FilmLut lut(@Nullable String value) {

@@ -1427,7 +1427,7 @@ public class SettingsMenuTest {
                 java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
                 try(var out=new java.io.FileOutputStream(new java.io.File(dir,"page-root.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
             }
-            for(String key:new String[]{"scam_hybrid_screen","scam_hybrid_capture_screen","output_settings_screen","scam_hybrid_ark_sharp_screen","advanced_screen","interface_settings_screen"}){
+            for(String key:new String[]{"scam_hybrid_screen","scam_hybrid_capture_screen","output_settings_screen","scam_hybrid_ark_sharp_screen","advanced_screen","interface_settings_screen","photo_style_screen"}){
                 var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
                 PreferenceScreen target=root.findPreference(key);if(target==null){fm.popBackStackImmediate(null,androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
                     root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);target=root.findPreference(key);}
@@ -1673,40 +1673,67 @@ public class SettingsMenuTest {
             assertEquals(2f,ModuleRegistry.nativeRatio("back2"),1e-4f);
         }
     }
-    /** P134 «Плёночный LUT»: the row in «Цвет › Стиль» lists the folder's .cube files, «Нет» and the import; a pick is stored. */
-    @Test public void filmLutRowPicksAFileOrNone(){
-        PreferenceScreen screen=inflate();
-        com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference lut=screen.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
-        assertNotNull(lut);
-        assertNotNull("the strength row beside it",screen.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY));
-        lut.setFiles(c->new String[]{"Kodak 2383.cube","Teal.cube"});
-        boolean[] imported={false};
-        lut.setImporter(()->imported[0]=true);
-        assertEquals("",lut.chosen());
-        lut.performClick();
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-        var sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
-        assertNotNull(sheet);
-        var content=sheet.findViewById(android.R.id.content);
-        assertNotNull(content.findViewWithTag("option_lut_none"));
-        assertNotNull(content.findViewWithTag("option_lut_import"));
-        assertNotNull("P170: our film looks before the files",content.findViewWithTag("option_lut_scam:warm400"));
-        assertNotNull(content.findViewWithTag("option_lut_scam:mono400"));
-        content.findViewWithTag("option_lut_Kodak 2383.cube").performClick();
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-        assertEquals("Kodak 2383.cube",lut.chosen());
-        assertEquals("Kodak 2383.cube",prefs.getString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY,""));
-        assertEquals("Kodak 2383.cube",String.valueOf(lut.getSummary()));
-        lut.performClick();
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-        sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
-        sheet.findViewById(android.R.id.content).findViewWithTag("option_lut_import").performClick();
-        assertTrue("«Импортировать .cube…» opens the picker",imported[0]);
-        lut.performClick();
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-        sheet=(com.google.android.material.bottomsheet.BottomSheetDialog)org.robolectric.shadows.ShadowDialog.getLatestDialog();
-        sheet.findViewById(android.R.id.content).findViewWithTag("option_lut_none").performClick();
-        assertEquals("",lut.chosen());
+    /**
+     * P134 / SIMPLE_UI §4c «Плёночный LUT» is its own page, as the concept: the before / after preview, three samples, the strip
+     * («Нет», our film looks, the folder's .cube files, «Импорт .cube»), the strength and «Что меняется»; a card is the choice.
+     */
+    @Test public void filmLutPageShowsTheStripPreviewAndChanges() throws Exception {
+        try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
+            controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
+            var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            PreferenceScreen page=root.findPreference("film_lut_screen");
+            assertNotNull(page);
+            com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference lut=page.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+            assertNotNull(lut);
+            assertNotNull("the strength on the page",page.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY));
+            assertNotNull("«Что меняется» on the page",page.findPreference("film_lut_changes"));
+            activity.onPreferenceStartScreen(root,page);fm.executePendingTransactions();
+            var shown=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            lut=shown.findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+            lut.setFiles(c->new String[]{"Kodak 2383.cube"});
+            boolean[] imported={false};
+            lut.setImporter(()->imported[0]=true);
+            lut.choose("");
+            android.view.View view=layout(shown.requireView(),360,2000);
+            for(String tag:new String[]{"lut_compare","lut_sample_0","lut_sample_1","lut_sample_2","lut_card_","lut_card_scam:warm400",
+                    "lut_card_scam:mono400","lut_card_Kodak 2383.cube","lut_import","lut_changes"})
+                assertNotNull(tag,view.findViewWithTag(tag));
+            assertTrue("no LUT: the photo stays as it is",shownText(view.findViewWithTag("lut_changes"),com.particlesdevs.photoncamera.util.Lang.t(activity,"Плёночный образ выключен","The film look is off")));
+            view.findViewWithTag("lut_import").performClick();
+            assertTrue("«Импорт .cube» opens the picker",imported[0]);
+            view.findViewWithTag("lut_card_scam:slide100").performClick();
+            assertEquals("scam:slide100",lut.chosen());
+            assertEquals("scam:slide100",prefs.getString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY,""));
+            // the analysis runs off the main thread
+            android.view.View chips=null;
+            for(int i=0;i<100&&chips==null;i++){
+                Thread.sleep(30);org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+                view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
+                chips=view.findViewWithTag("lut_chips");
+            }
+            assertNotNull("«Что меняется» shows the chips",chips);
+            assertTrue("a slide film is contrastier",shownText(chips,com.particlesdevs.photoncamera.util.Lang.t(activity,"Контраст","Contrast")));
+            assertNotNull(view.findViewWithTag("lut_curve"));
+            assertNotNull(view.findViewWithTag("lut_swatches"));
+            assertTrue(shownText(view,com.particlesdevs.photoncamera.util.Lang.t(activity,"Обращаемая плёнка","Slide film")));
+            prefs.edit().putString(com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY,"0").commit();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertTrue("strength 0: nothing changes",shownText(layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000),com.particlesdevs.photoncamera.util.Lang.t(activity,"Сила 0 %","Strength 0 %")));
+            prefs.edit().putString(com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY,"100").commit();
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            Thread.sleep(300);org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
+            android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(360,2000,android.graphics.Bitmap.Config.ARGB_8888);view.draw(new android.graphics.Canvas(bitmap));
+            java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
+            try(var out=new java.io.FileOutputStream(new java.io.File(dir,"page-film_lut_screen.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
+            view.findViewWithTag("lut_card_").performClick();
+            assertEquals("",lut.chosen());
+        }
+    }
+    private static android.view.View layout(android.view.View view,int w,int h){
+        int exact=android.view.View.MeasureSpec.EXACTLY;
+        view.measure(android.view.View.MeasureSpec.makeMeasureSpec(w,exact),android.view.View.MeasureSpec.makeMeasureSpec(h,exact));view.layout(0,0,w,h);
+        return view;
     }
     /** A TextView under {@code view} whose text contains {@code part}. */
     private static boolean shownText(android.view.View view,String part){

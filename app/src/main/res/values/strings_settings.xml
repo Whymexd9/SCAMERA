@@ -563,7 +563,7 @@
     <string name="prefs_tracking_af_summary">How to start tracking: focus and exposure follow the chosen subject across the frame.</string>
     <string name="prefs_split_af_ae_title">Separate focus and exposure</string>
     <string name="prefs_film_lut_title">Film LUT</string>
-    <string name="prefs_film_lut_strength_title">Film LUT strength</string>
+    <string name="prefs_film_lut_strength_title">LUT strength</string>
     <string name="prefs_film_lut_strength_summary">How much of the look of the LUT goes into the photo: 0 — none, 100 — all of it.</string>
     <string name="prefs_split_af_ae_summary">A tap puts the focus ring and the exposure square around it; drag each where you need it. Tap the ring to return to auto, tap the square to bring it back to the ring.</string>
     <string name="prefs_scam_hybrid_auto2x_title">2× super-resolution only when it helps</string>
@@ -781,4 +781,12 @@
     <string name="prefs_watermark_page_title">Caption on photos</string>
     <string name="prefs_watermark_page_summary">A watermark with the phone model</string>
     <string name="prefs_adv_view_title">Camera screen</string>
+    <string name="prefs_film_lut_screen_summary">A ready film look: see what it changes</string>
+    <string name="prefs_film_lut_changes_title">What changes</string>
+    <string name="prefs_photo_style_title">Photo style</string>
+    <string name="prefs_photo_style_summary">Normal, black and white or film</string>
+    <string name="prefs_photo_style_category">Style</string>
+    <string name="prefs_photo_style_mono_category">Black and white</string>
+    <string name="prefs_photo_style_film_category">Film</string>
+    <string name="prefs_photo_style_lut_summary">Which film the photo imitates</string>
 </resources>

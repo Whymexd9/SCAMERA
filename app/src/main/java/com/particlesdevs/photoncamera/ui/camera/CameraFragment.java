@@ -711,7 +711,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         watchSessionSettings();
         Intent intent = new Intent(activity, SettingsActivity.class);
         intent.setAction(SettingsActivity.ACTION_OPEN_PAGE);
-        intent.putExtra(SettingsActivity.EXTRA_PAGE, "colour_grading_screen");
+        intent.putExtra(SettingsActivity.EXTRA_PAGE, "film_lut_screen");
         intent.putExtra(SettingsActivity.EXTRA_KEY, com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
         intent.putExtra("camera_mode", PreferenceKeys.getCameraModeOrdinal());
         startActivity(intent);

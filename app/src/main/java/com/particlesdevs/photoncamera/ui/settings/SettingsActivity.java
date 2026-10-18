@@ -968,6 +968,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 String kept = saved.substring(saved.lastIndexOf('/') + 1);
                 com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference pref =
                         findPreference(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+                com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference.forgetFile(kept);
                 if (pref != null) pref.choose(kept);
                 else mSettingsManager.getDefaultPreferences().edit().putString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY, kept).apply();
                 com.particlesdevs.photoncamera.processing.color.FilmLut.forget();
@@ -1256,6 +1257,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             Log.d("SettingsFragment", "onPreferenceTreeClick: " + preference.getKey());
             if (PreferenceKeys.Key.KEY_THEME_ACCENT.mValue.equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new AccentSettingsFragment()).addToBackStack("accent").commit();return true;
+            }
+            // SIMPLE_UI §4: «Стиль снимка → Плёночный LUT» opens the LUT page
+            if ("photo_style_lut".equals(preference.getKey()) && activity instanceof SettingsActivity) {
+                ((SettingsActivity) activity).openPageAt("film_lut_screen", com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+                return true;
             }
             if ("pref_dcp_profile_key".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new DcpSettingsFragment()).addToBackStack("dcp").commit();return true;
