@@ -170,6 +170,17 @@ public final class DevKeys {
                 "OPPO FULLRES own AE: metering of the photo's frame (crop, centre, tap, shading, per-site clipping). Off: the P192 whole-frame meter")));
         k.add(s(cap, "native_ae_trace", false, Lang.t("OPPO FULLRES, своя AE: строка лога на каждый кадр (SCAM_AE, раз в секунду)",
                 "OPPO FULLRES own AE: a log line for every frame (SCAM_AE, once a second)")));
+        // P212e: the OPPO native session's colour at a cold start (OppoPlainState) and its white balance (OppoNativeWb)
+        k.add(s(cap, "oppo_plain_store", true, Lang.t("OPPO FULLRES: карта виньетирования, нейтраль и матрица обычного режима запоминаются по камере и берутся при холодном старте сразу в FULLRES. Выкл — только из обычного режима этого запуска",
+                "OPPO FULLRES: the plain mode's shading map, neutral and colour matrix are stored per camera and used at a cold start straight into FULLRES. Off: only from this run's plain mode")));
+        k.add(s(cap, "oppo_shading_keys", true, Lang.t("OPPO FULLRES: карта виньетирования обычного режима кладётся в кадр в своей ориентации 17×13 (раньше фото читали её как 13×17). Выкл — как в P192",
+                "OPPO FULLRES: the plain mode's shading map goes into the frame in its own 17x13 orientation (the photos read it as 13x17 before). Off: as in P192")));
+        k.add(s(cap, "oppo_wb_filter", true, Lang.t("OPPO FULLRES, свой баланс белого: каждая сессия с нейтрали обычного режима, замер только при установившейся AE на не тёмном и не пересвеченном кадре, фильтр с отбраковкой выбросов. Выкл — сглаживание P192",
+                "OPPO FULLRES own white balance: each session starts at the plain mode's neutral, measured only at settled AE on frames neither dark nor clipped, a filter with outlier rejection. Off: the P192 smoothing")));
+        k.add(s(cap, "oppo_wb_anchor", true, Lang.t("OPPO FULLRES, свой баланс белого: привязка к нейтрали обычного режима, пока сцена та же (снимает постоянный сдвиг оценки). Выкл — без привязки",
+                "OPPO FULLRES own white balance: tied to the plain mode's neutral while the scene stays (removes the estimate's steady offset). Off: no tie")));
+        k.add(s(cap, "oppo_wb_fuse", true, Lang.t("OPPO FULLRES: баланс белого фото — своя оценка кадра вместе с балансом видоискателя в момент кадра. Выкл — только своя оценка кадра",
+                "OPPO FULLRES: the photo's white balance is its frame's own estimate fused with the viewfinder's at that frame. Off: the frame's own estimate only")));
         // P212d: the lamp flicker from evidence (MainsFlicker, RowFlicker)
         k.add(s(cap, "native_ae_flicker_both", true, Lang.t("OPPO FULLRES, своя AE: пока частота мерцания неизвестна, выдержка от 30 мс — та из 30 / 33.3 / 40 / 41.7 мс, что меньше всего полосит и при 100, и при 120 Гц. Выкл — по частоте региона",
                 "OPPO FULLRES own AE: while the flicker is unknown, a shutter from 30 ms is the one of 30 / 33.3 / 40 / 41.7 ms that bands least at both 100 and 120 Hz. Off: by the region's mains")));

@@ -325,7 +325,7 @@ public class Parameters {
                             mapSize = Const.mapSize;
                         }
                     }
-                }
+                } else applyStoredShading(result);
             } catch (Exception e){
                 Log.d(TAG, "Error retrieving lens shading map, disabling gain map: " + Log.getStackTraceString(e));
             }
@@ -574,6 +574,53 @@ public class Parameters {
         return "skip".equals(PreferenceKeys.getRawLscMode());
     }
 
+    /**
+     * P212e (W1 = M2): a frame without a lens shading map that is an OPPO camera's native FULLRES frame (its native size is the
+     * key of a stored plain state, OppoPlainState) takes the camera's stored plain map - the bin of the light nearest to the
+     * result's neutral - so a cold start straight into FULLRES no longer develops with 'lens shading map 1x1' (10 of 22 OPPO
+     * FULLRES photos: corners 1.2-2.2 EV dark, colour-shaded). The floats are LensShadingMap.copyGainFactors' order, so the
+     * crops below and the DNG gain map take them as they take a reported map. True when it did.
+     */
+    boolean applyStoredShading(@androidx.annotation.Nullable CaptureResult result) {
+        if (rawSize == null || !com.particlesdevs.photoncamera.capture.OppoNativeFullRes.brand()) return false;
+        float[] neutral = null;
+        final Rational[] n = result == null ? null : result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
+        if (n != null && n.length >= 3) neutral = new float[]{n[0].floatValue(), n[1].floatValue(), n[2].floatValue()};
+        final com.particlesdevs.photoncamera.capture.OppoPlainState.Shading stored =
+                com.particlesdevs.photoncamera.capture.OppoPlainState.shading(String.valueOf(physicalID), rawSize.x, rawSize.y, neutral);
+        if (stored == null) return false;
+        gainMap = stored.gains.clone();
+        mapSize = new Point(stored.cols, stored.rows);
+        hasGainMap = true;
+        Log.i(TAG, "lens shading map " + stored + " (stored, the camera's plain session)");
+        return true;
+    }
+
+    /**
+     * P212e (W1): a usable white point for {@code wp} (the result's neutral as read) when it is none - NaN, Inf, zero or negative
+     * (the OPPO native mode reports NaN; complete() leaves it when it has nothing to fill): the inverse of the result's
+     * white-balance gains, else the camera's stored plain neutral, else equal gains. Null when {@code wp} is usable.
+     */
+    @androidx.annotation.Nullable
+    static float[] unusableNeutralFallback(@androidx.annotation.Nullable float[] wp,
+                                           @androidx.annotation.Nullable android.hardware.camera2.params.RggbChannelVector gains,
+                                           @androidx.annotation.Nullable float[] stored) {
+        if (usableNeutral(wp)) return null;
+        if (gains != null) {
+            final float g = 0.5f * (gains.getGreenEven() + gains.getGreenOdd());
+            final float[] inv = {g / gains.getRed(), 1f, g / gains.getBlue()};
+            if (g > 0f && usableNeutral(inv)) return inv;
+        }
+        if (usableNeutral(stored)) return new float[]{stored[0] / stored[1], 1f, stored[2] / stored[1]};
+        return new float[]{1f, 1f, 1f};
+    }
+
+    private static boolean usableNeutral(@androidx.annotation.Nullable float[] wp) {
+        if (wp == null || wp.length < 3) return false;
+        for (int i = 0; i < 3; i++) if (!(wp[i] > 0f) || Float.isInfinite(wp[i])) return false;
+        return true;
+    }
+
     public float[] customNeutral;
     /** P121: the neutral is SCAMERA's own (a mosaic stream): the ISP's colour transform picked at the camera's neutral does not fit. */
     public boolean ownNeutral;
@@ -581,15 +628,27 @@ public class Parameters {
     public void ReCalcColor(boolean customNeutr, CaptureResult result) {
         CameraCharacteristics characteristics = CaptureController.mCameraCharacteristics;
         Rational[] neutralR = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
-        if (!customNeutr)
-            for (int i = 0; i < neutralR.length; i++) {
-                whitePoint[i] = neutralR[i].floatValue();
+        Integer awb = result.get(CaptureResult.CONTROL_AWB_MODE);
+        android.hardware.camera2.params.RggbChannelVector manualGains = result.get(CaptureResult.COLOR_CORRECTION_GAINS);
+        if (!customNeutr) {
+            if (neutralR != null)
+                for (int i = 0; i < neutralR.length && i < whitePoint.length; i++) {
+                    whitePoint[i] = neutralR[i].floatValue();
+                }
+            // P212e (W1): a NaN / missing neutral never reaches the photo (the OPPO native mode's, with nothing to fill it)
+            final float[] read = neutralR == null ? null : whitePoint;
+            final float[] fixed = usableNeutral(read) ? null : unusableNeutralFallback(read, manualGains,
+                    com.particlesdevs.photoncamera.capture.OppoNativeFullRes.brand() && rawSize != null
+                            ? com.particlesdevs.photoncamera.capture.OppoPlainState.neutral(String.valueOf(physicalID), rawSize.x, rawSize.y) : null);
+            if (fixed != null) {
+                Log.w(TAG, "the result's neutral " + java.util.Arrays.toString(whitePoint) + " is no white point: "
+                        + java.util.Arrays.toString(fixed) + " used");
+                whitePoint = fixed;
             }
+        }
         else {
             whitePoint = customNeutral;
         }
-        Integer awb = result.get(CaptureResult.CONTROL_AWB_MODE);
-        android.hardware.camera2.params.RggbChannelVector manualGains = result.get(CaptureResult.COLOR_CORRECTION_GAINS);
         if (!customNeutr && awb != null && awb == CaptureRequest.CONTROL_AWB_MODE_OFF && manualGains != null) {
             float green=(manualGains.getGreenEven()+manualGains.getGreenOdd())*.5f;
             if(green>0 && manualGains.getRed()>0 && manualGains.getBlue()>0)

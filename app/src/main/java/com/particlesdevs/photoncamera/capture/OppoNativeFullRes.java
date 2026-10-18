@@ -213,6 +213,17 @@ public final class OppoNativeFullRes {
     static void begin(String cameraId, NativeRawExposure ae) {
         camera = cameraId;
         exposure = ae;
+        // P212e (W3): the session's white balance starts afresh, from the plain neutral just before it when there is one
+        if (cameraId != null && OppoNativeWb.on()) {
+            NEUTRALS.remove(cameraId); // P192's average never carries over into a session again
+            final long now = android.os.SystemClock.elapsedRealtime();
+            final float[] plain = PLAIN_NEUTRALS.get(cameraId);
+            final Long at = PLAIN_AT.get(cameraId);
+            com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(com.particlesdevs.photoncamera.app.ScameraApp.getAppContext());
+            com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", "native white balance camera " + cameraId + ": "
+                    + OppoNativeWb.begin(cameraId, now, plain, plain == null || at == null ? -1L : now - at, storedNeutral(cameraId),
+                    com.particlesdevs.photoncamera.processing.color.MosaicNeutral.middle(cameraId)));
+        }
     }
 
     static void end() {
@@ -255,19 +266,64 @@ public final class OppoNativeFullRes {
     private static final Map<String, float[]> NEUTRALS = new ConcurrentHashMap<>();
     /** The ISP's settled neutral of the camera's last plain session: the start of a native session's white balance. */
     private static final Map<String, float[]> PLAIN_NEUTRALS = new ConcurrentHashMap<>();
+    /** P212e: when it was reported (elapsedRealtime ms): fresh, it seeds and anchors the native session's white balance. */
+    private static final Map<String, Long> PLAIN_AT = new ConcurrentHashMap<>();
 
-    /** A plain session's result of this phone (AWB settled): its colour transform and shading map are kept for the camera. */
+    /**
+     * A plain session's result of this phone (AWB settled): its colour transform and shading map are kept for the camera.
+     * P212e (W1): on any OPPO phone (the caller's guard was the PHY110 only, while FULLRES runs on every OPPO phone), and stored for
+     * the camera's native size (OppoPlainState) at most every 5 s, so a cold start straight into FULLRES has them too.
+     */
     static void rememberPlain(String cameraId, CaptureResult result) {
         if (cameraId == null || result == null || camera != null) return;
         final Integer awb = result.get(CaptureResult.CONTROL_AWB_STATE);
         if (awb != null && awb != CaptureResult.CONTROL_AWB_STATE_CONVERGED && awb != CaptureResult.CONTROL_AWB_STATE_LOCKED) return;
         final ColorSpaceTransform transform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
-        if (transform != null && !identity(transform)) TRANSFORMS.put(cameraId, transform);
+        final boolean ispTransform = transform != null && !identity(transform);
+        if (ispTransform) TRANSFORMS.put(cameraId, transform);
         final Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
-        if (n != null && n.length >= 3 && n[1].floatValue() > 0f && n[0].floatValue() > 0f && n[2].floatValue() > 0f)
-            PLAIN_NEUTRALS.put(cameraId, new float[]{n[0].floatValue() / n[1].floatValue(), 1f, n[2].floatValue() / n[1].floatValue()});
+        float[] neutral = null;
+        if (n != null && n.length >= 3 && n[1].floatValue() > 0f && n[0].floatValue() > 0f && n[2].floatValue() > 0f) {
+            neutral = new float[]{n[0].floatValue() / n[1].floatValue(), 1f, n[2].floatValue() / n[1].floatValue()};
+            if (!OppoNativeWb.valid(neutral)) neutral = null; // P212e: a NaN / Inf ratio is no neutral (NaN > 0 is false, Inf is not)
+        }
+        final long now = android.os.SystemClock.elapsedRealtime();
+        if (neutral != null) {
+            PLAIN_NEUTRALS.put(cameraId, neutral);
+            PLAIN_AT.put(cameraId, now);
+        }
         final LensShadingMap map = result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP);
-        if (map != null && map.getColumnCount() > 1 && map.getRowCount() > 1) SHADING.put(cameraId, map);
+        final boolean hasMap = map != null && map.getColumnCount() > 1 && map.getRowCount() > 1;
+        if (hasMap) SHADING.put(cameraId, map);
+        // P212e: the store (a map under the light of its own neutral only)
+        final int[] o = offer(cameraId);
+        if (neutral == null || o == null || !OppoPlainState.due(cameraId, o[0], o[1], now)) return;
+        float[] gains = null;
+        if (hasMap) {
+            gains = new float[map.getGainFactorCount()];
+            map.copyGainFactors(gains, 0);
+        }
+        float[] t = null;
+        if (ispTransform) {
+            t = new float[9];
+            for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) t[r * 3 + c] = transform.getElement(c, r).floatValue();
+        }
+        OppoPlainState.remember(cameraId, o[0], o[1], neutral[0], neutral[2], t, gains, hasMap ? map.getColumnCount() : 0,
+                hasMap ? map.getRowCount() : 0, now);
+    }
+
+    /** P212e (W1): the stored plain neutral of the camera's native size (null: none, or the store is off). */
+    @Nullable
+    static float[] storedNeutral(@Nullable String cameraId) {
+        final int[] o = offer(cameraId);
+        return o == null ? null : OppoPlainState.neutral(cameraId, o[0], o[1]);
+    }
+
+    /** P212e (W1): the stored plain map of the camera's native size nearest to the light of {@code neutral} (null: none). */
+    @Nullable
+    static OppoPlainState.Shading storedShading(@Nullable String cameraId, @Nullable float[] neutral) {
+        final int[] o = offer(cameraId);
+        return o == null ? null : OppoPlainState.shading(cameraId, o[0], o[1], neutral);
     }
 
     static boolean identity(ColorSpaceTransform t) {
@@ -276,7 +332,10 @@ public final class OppoNativeFullRes {
         return true;
     }
 
-    /** The own neutral of the camera's frames, smoothed in the log domain (a new session starts from its first measurement). */
+    /**
+     * The own neutral of the camera's frames, smoothed in the log domain (a new session starts from its first measurement). P212e:
+     * the P192 law, used only with scam_dev.txt "oppo_wb_filter 0" (else OppoNativeWb).
+     */
     static void measuredNeutral(String cameraId, float r, float b) {
         if (cameraId == null || !(r > 0.05f && r < 20f && b > 0.05f && b < 20f)) return;
         final float[] last = NEUTRALS.get(cameraId);
@@ -290,47 +349,189 @@ public final class OppoNativeFullRes {
         if (cameraId != null) NEUTRALS.remove(cameraId);
     }
 
-    /** The own neutral of the camera's native frames, else its last plain session's (null: neither yet). */
+    /**
+     * The own neutral of the camera's native frames, else its last plain session's, else (P212e, W1) its stored plain one (null:
+     * none yet). P212e (W3): the own neutral is OppoNativeWb's state (reset and seeded at begin), the P192 EMA only with
+     * "oppo_wb_filter 0".
+     */
     @Nullable
     static float[] neutral(String cameraId) {
         if (cameraId == null) return null;
-        final float[] own = NEUTRALS.get(cameraId);
-        return own != null ? own : PLAIN_NEUTRALS.get(cameraId);
+        float[] own = OppoNativeWb.on() ? OppoNativeWb.neutral(cameraId) : null;
+        if (own == null) own = NEUTRALS.get(cameraId); // with the filter on, begin() cleared it (only the P192 law writes it)
+        if (own != null) return own;
+        final float[] plain = PLAIN_NEUTRALS.get(cameraId);
+        return plain != null ? plain : storedNeutral(cameraId);
+    }
+
+    /** P212e: the held AWB gains of a native result (the HAL keeps the plain session's last ones, or its init values). */
+    private static final CaptureResult.Key<float[]> AWB_R = new CaptureResult.Key<>("org.quic.camera2.statsconfigs.AWBFrameControlRGain", float[].class);
+    private static final CaptureResult.Key<float[]> AWB_G = new CaptureResult.Key<>("org.quic.camera2.statsconfigs.AWBFrameControlGGain", float[].class);
+    private static final CaptureResult.Key<float[]> AWB_B = new CaptureResult.Key<>("org.quic.camera2.statsconfigs.AWBFrameControlBGain", float[].class);
+    private static final CaptureResult.Key<int[]> AWB_CCT = new CaptureResult.Key<>("org.quic.camera2.statsconfigs.AWBFrameControlCCT", int[].class);
+    /** P212e: the raw keys behind the synthesized lens shading map (the gains, the map size the result carries). */
+    private static final CaptureResult.Key<float[]> LSM_GAINS = new CaptureResult.Key<>("android.statistics.lensShadingMap", float[].class);
+    private static final CaptureResult.Key<android.util.Size> LSM_SIZE = new CaptureResult.Key<>("android.lens.info.shadingMapSize", android.util.Size.class);
+
+    @Nullable
+    private static <T> T vendor(CaptureResult result, CaptureResult.Key<T> key) {
+        try {
+            return result.get(key);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** {R, G, B} of the result's held AWB gains, then its CCT (0: none); null without them. */
+    @Nullable
+    static float[] heldAwb(CaptureResult result) {
+        final float[] r = vendor(result, AWB_R), g = vendor(result, AWB_G), b = vendor(result, AWB_B);
+        final int[] cct = vendor(result, AWB_CCT);
+        if (r == null || b == null || r.length == 0 || b.length == 0) return null;
+        return new float[]{r[0], g == null || g.length == 0 ? 1f : g[0], b[0], cct == null || cct.length == 0 ? 0f : cct[0]};
     }
 
     /**
      * A native result gets what the mode does not report, before anything reads it: the own neutral (and the white-balance gains it
      * gives) for its NaN neutral, the plain session's colour transform for the identity one, the plain session's shading map
      * when it has none. Returns what was filled, for the log.
+     * P212e (W1): with nothing in memory (a cold start straight into FULLRES) the stored plain transform and map (OppoPlainState;
+     * the map through the raw keys behind the synthesized one - no hidden constructor; Parameters, the viewfinder and the meter
+     * read the stored floats themselves when even that does not take); the first result of a session without any neutral seeds
+     * the white balance from the held AWB gains (not the 3745 K init signature) or the curve middle; a neutral is written only
+     * when it is a finite white point (never NaN), else the HAL's stays and the photo keeps its own estimate.
      */
     static String complete(String cameraId, CaptureResult result) {
         if (cameraId == null || result == null) return "";
         final StringBuilder filled = new StringBuilder();
-        final float[] own = neutral(cameraId);
+        float[] own = neutral(cameraId);
+        if (own == null) {
+            final float[] held = heldAwb(result);
+            if (OppoNativeWb.on()) {
+                final String how = OppoNativeWb.lateSeed(cameraId, held, held == null ? 0 : (int) held[3],
+                        android.os.SystemClock.elapsedRealtime());
+                if (how != null) {
+                    com.particlesdevs.photoncamera.util.Log.i("SCAM_CAPTURE", "native white balance camera " + cameraId + ": " + how);
+                    own = OppoNativeWb.neutral(cameraId);
+                }
+            } else if (held != null) {
+                own = OppoNativeWb.heldNeutral(held, (int) held[3]);
+                if (own != null) filled.append(" (held AWB ").append((int) held[3]).append(" K)");
+            }
+        }
         final Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
-        final boolean missing = n == null || n.length < 3 || !(n[0].floatValue() > 0f && n[1].floatValue() > 0f && n[2].floatValue() > 0f);
-        if (missing && own != null) {
-            if (CameraReflectionApi.setCached(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT, new Rational[]{rational(own[0]), new Rational(1, 1), rational(own[2])}, result)
-                    & CameraReflectionApi.setCached(CaptureResult.COLOR_CORRECTION_GAINS, new RggbChannelVector(1f / own[0], 1f, 1f, 1f / own[2]), result))
-                filled.append(String.format(Locale.ROOT, " neutral %.3f / %.3f", own[0], own[2]));
+        final boolean missing = n == null || n.length < 3 || !(n[0].floatValue() > 0f && n[1].floatValue() > 0f && n[2].floatValue() > 0f)
+                || !OppoNativeWb.valid(new float[]{n[0].floatValue(), n[1].floatValue(), n[2].floatValue()});
+        if (missing && OppoNativeWb.valid(own)) {
+            final float r = own[0] / own[1], b = own[2] / own[1];
+            if (CameraReflectionApi.setCached(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT, new Rational[]{rational(r), new Rational(1, 1), rational(b)}, result)
+                    & CameraReflectionApi.setCached(CaptureResult.COLOR_CORRECTION_GAINS, new RggbChannelVector(1f / r, 1f, 1f, 1f / b), result))
+                filled.append(String.format(Locale.ROOT, " neutral %.3f / %.3f", r, b));
         }
         final ColorSpaceTransform transform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
-        final ColorSpaceTransform plain = TRANSFORMS.get(cameraId);
+        ColorSpaceTransform plain = TRANSFORMS.get(cameraId);
+        boolean storedTransform = false;
+        if (plain == null && (transform == null || identity(transform))) {
+            final int[] o = offer(cameraId);
+            final float[] t = o == null ? null : OppoPlainState.transform(cameraId, o[0], o[1]);
+            if (t != null) {
+                final Rational[] e = new Rational[9];
+                for (int i = 0; i < 9; i++) e[i] = new Rational(Math.round(t[i] * 10_000f), 10_000);
+                plain = new ColorSpaceTransform(e);
+                storedTransform = true;
+            }
+        }
         if (plain != null && (transform == null || identity(transform))) {
-            if (CameraReflectionApi.setCached(CaptureResult.COLOR_CORRECTION_TRANSFORM, plain, result)) filled.append(" transform");
+            if (CameraReflectionApi.setCached(CaptureResult.COLOR_CORRECTION_TRANSFORM, plain, result))
+                filled.append(storedTransform ? " transform (stored)" : " transform");
         }
         final LensShadingMap shading = SHADING.get(cameraId);
-        if (shading != null && result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP) == null) {
-            CameraReflectionApi.setCached(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP, shading, result);
-            // the map is a synthesized key: only a read-back shows whether it took
-            if (result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP) != null)
-                filled.append(" shading ").append(shading.getColumnCount()).append('x').append(shading.getRowCount());
-            else filled.append(" (shading map not settable)");
+        if (result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP) == null) {
+            if (shading != null && !PreferenceKeys.scamDevSwitch("oppo_shading_keys", true)) {
+                // P192 (scam_dev.txt "oppo_shading_keys 0"): the synthesized key's setter - it stores the size as rows x columns,
+                // so the photos read the 17 x 13 map back as 13 x 17 (log31 23:10:54 / 23:12:58 / 23:14:42, log17, log-2026-10-17)
+                CameraReflectionApi.setCached(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP, shading, result);
+                // the map is a synthesized key: only a read-back shows whether it took
+                if (result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP) != null)
+                    filled.append(" shading ").append(shading.getColumnCount()).append('x').append(shading.getRowCount());
+                else filled.append(" (shading map not settable)");
+            } else if (shading != null) {
+                // P212e: through the raw keys, read back in the plain map's own orientation
+                final float[] gains = gainsOf(shading);
+                filled.append(putShading(result, gains, shading.getColumnCount(), shading.getRowCount())
+                        ? " shading " + shading.getColumnCount() + "x" + shading.getRowCount() : " (shading map not settable)");
+            } else {
+                final OppoPlainState.Shading stored = storedShading(cameraId, own);
+                if (stored != null) filled.append(" shading ").append(stored)
+                        .append(putShading(result, stored.gains, stored.cols, stored.rows) ? " (stored)" : " (stored, read from the store)");
+            }
         }
         return filled.toString();
     }
 
+    /** P212e: the last in-memory plain map and its gains (copyGainFactors order), copied once per map. */
+    private static volatile Object[] lastGains;
+
+    private static float[] gainsOf(LensShadingMap map) {
+        final Object[] last = lastGains;
+        if (last != null && last[0] == map) return (float[]) last[1];
+        final float[] g = new float[map.getGainFactorCount()];
+        map.copyGainFactors(g, 0);
+        lastGains = new Object[]{map, g};
+        return g;
+    }
+
+    /**
+     * P212e (W1): a shading map ({@code cols} x {@code rows} points, copyGainFactors order) into a result through the raw keys behind
+     * the synthesized one - the gains and the map size - and read back: true only when it reads back as {@code cols} x
+     * {@code rows}. The size is tried as (columns, rows), then the other way round; one that reads back wrong is taken out again
+     * (nothing then reads a transposed map: Parameters, the viewfinder and the meter fall back to the stored floats). The
+     * synthesized key's own setter writes the size as rows x columns: every OPPO native photo filled by it was developed with
+     * the plain 17 x 13 map read as 13 x 17 ('lens shading map 13x17' in the pipeline, a plain photo's is '17x13').
+     */
+    static boolean putShading(CaptureResult result, float[] gains, int cols, int rows) {
+        if (result == null || gains == null || cols < 2 || rows < 2 || gains.length < 4 * cols * rows) return false;
+        final float[] copy = java.util.Arrays.copyOf(gains, 4 * cols * rows);
+        boolean set = false;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            final android.util.Size size = attempt == 0 ? new android.util.Size(cols, rows) : new android.util.Size(rows, cols);
+            if (!CameraReflectionApi.setCached(LSM_SIZE, size, result) || !CameraReflectionApi.setCached(LSM_GAINS, copy, result)) break;
+            set = true;
+            LensShadingMap back;
+            try { back = result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP); } catch (RuntimeException e) { back = null; }
+            if (back != null && back.getColumnCount() == cols && back.getRowCount() == rows) return true;
+        }
+        if (set) CameraReflectionApi.setCached(LSM_GAINS, null, result);
+        return false;
+    }
+
+    /** P212e (W3): {@link #complete} for a ring frame or a still - its white balance is recorded for the photo (OppoNativeWb.fuse). */
+    static String completeFrame(String cameraId, CaptureResult result) {
+        final String filled = complete(cameraId, result);
+        if (cameraId != null && result != null && OppoNativeWb.on())
+            OppoNativeWb.record(cameraId, result.get(CaptureResult.SENSOR_TIMESTAMP), android.os.SystemClock.elapsedRealtime());
+        return filled;
+    }
+
     static Rational rational(float v) {
         return new Rational(Math.round(v * 1_000_000f), 1_000_000);
+    }
+
+    /** Tests: a new process (nothing remembered, no session, no offers). */
+    static void resetForTest() {
+        OFFER.clear();
+        TRANSFORMS.clear();
+        SHADING.clear();
+        NEUTRALS.clear();
+        PLAIN_NEUTRALS.clear();
+        PLAIN_AT.clear();
+        lastGains = null;
+        camera = null;
+        exposure = null;
+    }
+
+    /** Tests: what a camera offers ({width, height, fps, modes...}), as learn() would find it. */
+    static void offerForTest(String cameraId, int[] offer) {
+        OFFER.put(cameraId, offer);
     }
 }

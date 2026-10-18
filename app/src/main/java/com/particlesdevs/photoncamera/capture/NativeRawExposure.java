@@ -217,6 +217,8 @@ final class NativeRawExposure {
     int iso() { return iso; }
     boolean pending() { return pending; }
     int waited() { return waited; }
+    /** P212e (W3): metered frames since the last rebuild (REBUILD_GAP at most): the white balance skips the first ones. */
+    int sinceRebuild() { return sinceRebuild; }
     /** The frame time of the requests: the native mode's own (24 fps), longer only for a longer shutter. */
     long frameDurationNs() { return Math.max(frameNs, exposureNs); }
 

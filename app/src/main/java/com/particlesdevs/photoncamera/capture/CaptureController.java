@@ -766,7 +766,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             synchronized (mPreviewStateLock) {
                 if (!isCurrentPreviewSession(session)) return;
                 // P192: the OPPO Find X7 Ultra: a plain session keeps its colour for the native mode, a native result gets it
-                if (OppoNativeFullRes.model()) {
+                // P212e (W1): on every OPPO phone, as FULLRES itself (its ring frames and stills were completed on any OPPO already)
+                if (OppoNativeFullRes.brand()) {
                     if (mVivoSdkRawSession == null) OppoNativeFullRes.rememberPlain(physicalID, result);
                     else if (VivoSdkFullRes.oppo()) OppoNativeFullRes.complete(mVivoSdkCameraId, result);
                 }
@@ -4352,7 +4353,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         + ") kept out of the ring");
             return false;
         }
-        if (VivoSdkFullRes.oppo()) OppoNativeFullRes.complete(mVivoSdkCameraId, result);
+        if (VivoSdkFullRes.oppo()) OppoNativeFullRes.completeFrame(mVivoSdkCameraId, result); // P212e: its white balance recorded
         return true;
     }
 
@@ -4588,10 +4589,30 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             if (PreferenceKeys.scamDevSwitch("native_ae_trace", false)) traceNativeAe(ae, metered, m, exposure, iso, ev, changed, now);
             final android.hardware.camera2.params.RggbChannelVector wb = paramController.manualWhiteBalanceGains();
+            final boolean wbFilter = OppoNativeWb.on();
             if (wb != null) {
                 // P201: a hand-set white balance is the shot's neutral (the inverse of its gains), not the own estimate
                 final float g = 0.5f * (wb.getGreenEven() + wb.getGreenOdd());
-                if (wb.getRed() > 0f && wb.getBlue() > 0f) OppoNativeFullRes.measuredNeutral(mVivoSdkCameraId, g / wb.getRed(), g / wb.getBlue());
+                if (wb.getRed() > 0f && wb.getBlue() > 0f) {
+                    if (wbFilter) OppoNativeWb.hand(mVivoSdkCameraId, new float[]{g / wb.getRed(), 1f, g / wb.getBlue()});
+                    else OppoNativeFullRes.measuredNeutral(mVivoSdkCameraId, g / wb.getRed(), g / wb.getBlue());
+                }
+            } else if (wbFilter) {
+                // P212e (W3 = M7): the session's gated filter - measured every 8th frame while the AE holds (nothing pending, no
+                // rebuild in its last 3 frames) and the frame is neither dark nor clipped; a gated frame waits for the next one
+                OppoNativeWb.hand(mVivoSdkCameraId, null);
+                final boolean settled = ae.settled();
+                if (OppoNativeWb.wants(mVivoSdkCameraId, ae.pending(), ae.sinceRebuild(), settled, m == null ? -1f : m[0],
+                        m == null ? -1f : m[1], metered == null ? -1f : metered.clip)) {
+                    com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(ScameraApp.getAppContext());
+                    final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result own =
+                            com.particlesdevs.photoncamera.processing.color.MosaicNeutral.estimate(mVivoSdkCameraId, buffer,
+                                    img.getWidth(), img.getHeight(), plane.getRowStride(), cfa, levels.black, levels.white, block);
+                    final String how = OppoNativeWb.measure(mVivoSdkCameraId, own == null ? null : own.neutral, own == null ? 0 : own.cells,
+                            settled, now);
+                    if (how != null) Log.i("SCAM_CAPTURE", "native white balance camera " + mVivoSdkCameraId + ": "
+                            + (own == null ? "too few usable cells" : own.how + ", " + own.cells + " cells") + how);
+                }
             } else if ((mNativeFrames++ & 7) == 0) {
                 com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(ScameraApp.getAppContext());
                 final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result own =
@@ -4675,8 +4696,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if (!taps.isEmpty()) s.regions = taps.toArray(new float[0][]);
             }
         }
-        // the result's shading map (an OPPO native result has the plain session's, OppoNativeFullRes.complete); P212c hook for W1:
-        // a stored plain map goes into s.gains when the result has none
+        // the result's shading map (an OPPO native result has the plain session's, OppoNativeFullRes.complete); P212e (W1): a
+        // stored plain map goes into s.gains when the result has none
         final android.hardware.camera2.params.LensShadingMap map = result == null ? null
                 : result.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP);
         if (map != null && map.getColumnCount() > 1 && map.getRowCount() > 1
@@ -4690,12 +4711,31 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             s.gains = mMeterGains;
             s.gainCols = map.getColumnCount();
             s.gainRows = map.getRowCount();
+        } else if (map == null && !com.particlesdevs.photoncamera.processing.render.Parameters.rawShadingAlreadyApplied(c)) {
+            // P212e (W1): a cold start's native result without a map: the camera's stored plain one (one array: the median caches)
+            final OppoPlainState.Shading stored = nativeStoredShading(neutral);
+            if (stored != null) {
+                s.gains = stored.gains;
+                s.gainCols = stored.cols;
+                s.gainRows = stored.rows;
+            }
         }
         if (neutral != null && neutral.length >= 3 && neutral[1] > 0f) {
             s.neutralR = neutral[0] / neutral[1];
             s.neutralB = neutral[2] / neutral[1];
         }
         return s;
+    }
+
+    /**
+     * P212e (W1 = M2): the stored plain lens shading map of the running OPPO native session's camera (OppoPlainState, the bin of the
+     * light nearest to {@code neutral}), for a frame whose result has none - a cold start straight into FULLRES, whose results
+     * the stored map could not be put into (OppoNativeFullRes.complete). Null outside an OPPO native session or without one.
+     */
+    @Nullable
+    private OppoPlainState.Shading nativeStoredShading(@Nullable float[] neutral) {
+        if (mVivoSdkRawSession == null || !VivoSdkFullRes.oppo() || !nativeVivoFullRes()) return null;
+        return OppoNativeFullRes.storedShading(mVivoSdkCameraId, neutral);
     }
 
     /**
@@ -4836,9 +4876,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (dcpMatrix != null) ccm = dcpMatrix;
             float[] shading=null;int sw=1,sh=1;
             android.hardware.camera2.params.LensShadingMap map=colorResult==null?null:colorResult.get(CaptureResult.STATISTICS_LENS_SHADING_CORRECTION_MAP);
-            if(map!=null&&com.particlesdevs.photoncamera.processing.render.Parameters.rawShadingAlreadyApplied(c))map=null;
+            final boolean lscSkipped=com.particlesdevs.photoncamera.processing.render.Parameters.rawShadingAlreadyApplied(c);
+            if(map!=null&&lscSkipped)map=null;
             if(map!=null){sw=map.getColumnCount();sh=map.getRowCount();shading=new float[sw*sh*3];
                 for(int y=0;y<sh;y++)for(int x=0;x<sw;x++){int i=(y*sw+x)*3;shading[i]=map.getGainFactor(0,x,y);shading[i+1]=(map.getGainFactor(1,x,y)+map.getGainFactor(2,x,y))*.5f;shading[i+2]=map.getGainFactor(3,x,y);}}
+            else if(!lscSkipped){
+                // P212e (W1): an OPPO native frame of a cold start (no plain session in this process): the stored plain map
+                final OppoPlainState.Shading stored=nativeStoredShading(gains[0]>0f&&gains[2]>0f?new float[]{gains[1]/gains[0],1f,gains[1]/gains[2]}:null);
+                if(stored!=null){sw=stored.cols;sh=stored.rows;shading=new float[sw*sh*3];final float[] g=stored.gains;
+                    for(int i=0;i<sw*sh;i++){shading[3*i]=g[4*i];shading[3*i+1]=(g[4*i+1]+g[4*i+2])*.5f;shading[3*i+2]=g[4*i+3];}}
+            }
             Rect imageCrop = img.getCropRect();
             float[] crop = {imageCrop.left/(float)img.getWidth(), imageCrop.top/(float)img.getHeight(),
                     imageCrop.width()/(float)img.getWidth(), imageCrop.height()/(float)img.getHeight()};
@@ -5768,7 +5815,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if (done.get()) return;
                 // P192: the OPPO native still gets the own neutral, the plain session's colour transform and shading map
                 if (VivoSdkFullRes.oppo()) {
-                    final String filled = OppoNativeFullRes.complete(mVivoSdkCameraId, result);
+                    final String filled = OppoNativeFullRes.completeFrame(mVivoSdkCameraId, result); // P212e: the photo's prior
                     if (index == 0) Log.i("SCAM_CAPTURE", "OPPO native still " + mVivoSdkCameraId + " at "
                             + result.get(CaptureResult.SENSOR_EXPOSURE_TIME) / 1e6 + " ms ISO " + result.get(CaptureResult.SENSOR_SENSITIVITY)
                             + (filled.isEmpty() ? ", nothing filled" : ", filled:" + filled));

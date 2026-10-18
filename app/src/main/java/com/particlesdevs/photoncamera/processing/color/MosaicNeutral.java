@@ -68,11 +68,26 @@ public final class MosaicNeutral {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(id, b.toString()).apply();
     }
 
-    /** The result: the neutral (r, 1, b) and how it was found (log line). */
+    /** The result: the neutral (r, 1, b), how it was found (log line) and (P212e) the cells it was measured on. */
     public static final class Result {
         public final float[] neutral;
         public final String how;
-        Result(float[] neutral, String how) { this.neutral = neutral; this.how = how; }
+        public final int cells;
+        Result(float[] neutral, String how, int cells) { this.neutral = neutral; this.how = how; this.cells = cells; }
+    }
+
+    /**
+     * P212e (W3): the middle of camera {@code id}'s learned curve {r, 1, b} (its points ordered by colour temperature, ln b - ln r):
+     * the OPPO native white balance's last prior; null with fewer than 2 points (or before {@link #init}: the curve is not read
+     * then, so an empty one is never cached for the process).
+     */
+    public static synchronized float[] middle(String id) {
+        if (id == null || id.isEmpty() || context == null && !CURVES.containsKey(id)) return null;
+        final ArrayList<float[]> s = new ArrayList<>(curve(id));
+        if (s.size() < 2) return null;
+        s.sort((a, c) -> Float.compare(a[1] - a[0], c[1] - c[0]));
+        final float[] m = s.get(s.size() / 2);
+        return new float[]{(float) Math.exp(m[0]), 1f, (float) Math.exp(m[1])};
     }
 
     /**
@@ -88,12 +103,13 @@ public final class MosaicNeutral {
         synchronized (MosaicNeutral.class) { pts = new ArrayList<>(curve(id)); }
         if (pts.size() < 2) {
             final float r = clamp(m[0]), b = clamp(m[1]);
-            return new Result(new float[]{r, 1f, b}, String.format(Locale.ROOT, "measured %.3f / %.3f (no curve of camera %s yet)", r, b, id));
+            return new Result(new float[]{r, 1f, b}, String.format(Locale.ROOT, "measured %.3f / %.3f (no curve of camera %s yet)", r, b, id),
+                    (int) m[2]);
         }
         final float[] q = project(pts, lr, lb);
         return new Result(new float[]{(float) Math.exp(q[0]), 1f, (float) Math.exp(q[1])},
                 String.format(Locale.ROOT, "measured %.3f / %.3f, on the curve of camera %s (%d points, %.3f away) %.3f / %.3f",
-                        m[0], m[1], id, pts.size(), q[2], Math.exp(q[0]), Math.exp(q[1])));
+                        m[0], m[1], id, pts.size(), q[2], Math.exp(q[0]), Math.exp(q[1])), (int) m[2]);
     }
 
     private static float clamp(float v) { return Math.max(0.15f, Math.min(6f, v)); }
@@ -118,7 +134,7 @@ public final class MosaicNeutral {
         return new float[]{br, bb, bestD};
     }
 
-    /** Shades of grey (p = 4) over the colour cells of the frame: {R / G, B / G}, null with fewer than 64 cells. */
+    /** Shades of grey (p = 4) over the colour cells of the frame: {R / G, B / G, cells} (P212e: the cells too), null with fewer than 64. */
     static float[] measure(ByteBuffer raw, int width, int height, int stride, int cfa, float[] black, float white, int block) {
         if (raw == null || block < 1 || width < 4 * block || height < 4 * block || cfa < 0 || cfa > 3) return null;
         final ShortBuffer px = raw.duplicate().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer();
@@ -158,6 +174,6 @@ public final class MosaicNeutral {
         }
         if (n < 64 || sg <= 0) return null;
         final double g = Math.pow(sg / n, 0.25);
-        return new float[]{(float) (Math.pow(sr / n, 0.25) / g), (float) (Math.pow(sb / n, 0.25) / g)};
+        return new float[]{(float) (Math.pow(sr / n, 0.25) / g), (float) (Math.pow(sb / n, 0.25) / g), n};
     }
 }

@@ -845,7 +845,19 @@ public class ScamProcessor extends ProcessorBase {
             return;
         }
         Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", camera " + camera + " -> " + own.how);
-        p.customNeutral = own.neutral;
+        float[] neutral = own.neutral;
+        // P212e (W3 = M7): an OPPO native shot's reference frame has the viewfinder's white balance recorded at its timestamp (the
+        // session's gated filter): its own estimate is fused with it (one that joins the outliers the viewfinder had begun to see -
+        // a new scene - keeps its own; scam_dev.txt "oppo_wb_fuse 0": as before)
+        if (com.particlesdevs.photoncamera.capture.OppoNativeWb.fuseOn()) {
+            final com.particlesdevs.photoncamera.capture.OppoNativeWb.Fused fused = com.particlesdevs.photoncamera.capture.OppoNativeWb.fuse(
+                    com.particlesdevs.photoncamera.capture.OppoNativeWb.prior(ref.timestamp), own.neutral, own.cells);
+            if (fused != null) {
+                Log.i("SCAM_HDR", "mosaic white balance, OPPO native: " + fused.how);
+                neutral = fused.neutral;
+            }
+        }
+        p.customNeutral = neutral;
         p.ownNeutral = true;
         p.ReCalcColor(true, meta);
     }
