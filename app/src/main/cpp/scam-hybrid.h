@@ -99,6 +99,16 @@ inline uint64_t hybridMemAvailable(){
     return 0;
 }
 inline std::string hybridMB(uint64_t bytes){return std::to_string((bytes+(1u<<19))>>20);}
+// P213a: the worker's resident memory now and its peak so far (VmRSS, VmHWM of /proc/self/status) in MB, 0 = unknown
+inline std::array<long,2> hybridRssMB(){
+    std::array<long,2> mb{0,0};
+    std::ifstream f("/proc/self/status");std::string line;
+    while(std::getline(f,line)){
+        const int k=line.rfind("VmRSS:",0)==0?0:line.rfind("VmHWM:",0)==0?1:-1;
+        if(k>=0)mb[size_t(k)]=std::atol(line.c_str()+6)/1024;
+    }
+    return mb;
+}
 
 struct HybridTuning {
     // rejection (SCAM 9.6 rejection.cl constants)
@@ -7081,45 +7091,452 @@ inline float mosaicSoftSignChange(double p0,double p1,double gate,double tau){
 // the merge) use a steep opposition ramp, so that they count almost as the hard test did; the luma count of the merged result
 // (mosaicChromaMedian) a wide one, which keeps a last-bit difference of the merge a last-bit difference of the colour.
 constexpr double kMosaicOscTau=0.05,kMosaicLumaTau=0.25;
-// Chroma moire of a mosaic result: a colour lattice b times coarser than the sites aliases fine luma detail (a zone plate, fabric,
-// distant foliage) into pink / green rings. v11 turns on chroma_median_filter_type dual_5_point (plus its false-colour
-// suppression) for remosaicked streams; here the separable 5-point median (horizontal, then vertical) of R/G and B/G, taps
-// max(1, b/2) px apart (Quad: 5 px, Tetra: 9 px). Green stays; R and B follow the median differences. Colour detail finer than the
-// colour block is not real in a mosaic.
-// osc (optional): per colour block of the base RAW, the oscillation of its own sites (see hybridReconstructMosaic), (w/b) x (h/b).
-// P80: gpu = try ChromaMedianGpu first (float rounding of its boxes and soft counts only); *how gets "gpu" or "cpu (reason)".
 // P187: the chroma median below takes the GPU only up to 16.8 MP, and it runs on at least a quarter of the sensor (Tetra T2: 2 sensor
 // px per merged px). Above 4 x that the GPU context of chromaPrewarm would never be used (200 MP: a context less during the merge).
 inline bool chromaGpuPossible(int sensorW,int sensorH){return uint64_t(sensorW)*sensorH<=uint64_t(4)*16800000;}
-
-inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,const std::vector<float>* osc=nullptr,bool gpu=false,
-                               std::string* how=nullptr,int bandRows=0){
-    if(bandRows>=0&&(bandRows>0||uint64_t(w)*h>64000000)){
-        const int halo=8*block,core=std::max(block,((bandRows>0?bandRows:256)/block)*block);
-        const size_t row=size_t(w)*3;
-        const int bw=w/block;
-        const bool rawOsc=osc&&osc->size()==size_t(bw)*(h/block);
-        std::vector<float> originalHalo;
-        for(int y0=0;y0<h;y0+=core){
-            const int y1=std::min(y0+core,h),first=std::max(0,y0-halo),last=std::min(h,y1+halo);
-            std::vector<float> tile(size_t(last-first)*row);
-            for(int y=first;y<last;++y){
-                const float* source=y<y0?originalHalo.data()+size_t(y-first)*row:rgb.data()+size_t(y)*row;
-                std::copy_n(source,row,tile.data()+size_t(y-first)*row);
-            }
-            // Later strips must read the original overlap, not the already filtered R/B sites.
-            const int keep=std::max(0,y1-halo);
-            std::vector<float> nextHalo(tile.begin()+size_t(keep-first)*row,tile.begin()+size_t(y1-first)*row);
-            std::vector<float> tileOsc;
-            if(rawOsc)tileOsc.assign(osc->begin()+size_t(first/block)*bw,
-                                    osc->begin()+size_t(first/block+(last-first)/block)*bw);
-            mosaicChromaMedian(tile,w,last-first,block,rawOsc?&tileOsc:nullptr,false,nullptr,-1);
-            std::copy_n(tile.data()+size_t(y0-first)*row,size_t(y1-y0)*row,rgb.data()+size_t(y0)*row);
-            originalHalo.swap(nextHalo);
-        }
-        if(how)*how="cpu (bounded rows "+std::to_string(core)+")";
-        return;
+// P213b: the CPU chroma median streams down the frame in steps of B rows (kMosaicChromaBandRows): every pass reads and writes
+// rings of a few dozen rows instead of full-frame planes (P213a on the OPPO, 50 MP: 6 float planes besides rgb, 1.15 GB, and ~0.8 s
+// of its 1.65 s went to allocating, first-touching and freeing them; the box passes streamed 3 planes each through DRAM). The
+// values are the full-frame path's, bit for bit: every pass is the same per-value operations in the same order (the same float
+// expressions, so the same FMA contractions of the compiler; the same median selections; the box sums in double with the same
+// additions in the same order: a column sum runs from row 0 down the whole frame, carried from step to step, a row sum from
+// column 0 along the whole row). The rows of the input a result row needs below itself: ratios, horizontal median, luma and its
+// box rows 0; vertical median 2d; luma box columns and high-pass r1; sign map r1 + 1 (and one pixel to the right); its box
+// r1 + 1 + r2; the ratio boxes 2d + r3 and 2d + 2 r3 = blend and rgb (Quad 14 rows, Tetra 28). A step advances every pass by at
+// most B rows as far as its input allows; a ring holds B + 2d + 2 r3 + 2 rows (the most a pass reads back from the newest row a
+// step wrote; tools/check_chroma_band.cpp checks every ring row read with SCAM_CHROMA_RING_CHECK). The bounded-rows strips above
+// 64 MP (their column sums restarted at every strip: <= 7e-7 from the planes) are gone: every size gets the full-frame values.
+// A step is six phases (rows: whole rows of one ring each; columns: bands of kMosaicChromaCols columns of one ring each) on a team
+// of threads (the big cores, mosaicChromaThreads), items handed out one at a time, a spinning barrier between phases; every value
+// is computed by one thread, in the same order whatever the thread count or B. The median, ratio, luma, column-sum and median-
+// column loops vectorise as written (the compiler keeps the selects and the float operations); the sign map and the blend, scalar
+// with data-dependent branches, run on NEON lanes as compare-and-select (mosaicSignRow, mosaicBlendRow).
+constexpr int kMosaicChromaBandRows=32,kMosaicChromaCols=128;
+// P213a / P213b: wall time of the phases of the streamed CPU chroma median (summed over the steps, on the calling thread: a phase
+// ends when its slowest thread does), for one report line of the callers. start = rings, sums and threads; end = threads joined.
+struct MosaicChromaPasses {
+    enum Phase{kStart,kRows1,kCols1,kRows2,kCols2,kRows3,kCols3,kEnd,kCount};
+    double ms[kCount]{};
+    bool cpu=false;int steps=0,bandRows=0,threads=0,rings=0,ringRows=0,ringWidth=0;
+    size_t bytes=0;                            // rings, column sums and the threads' scratch rows
+    std::array<long,2> rssBefore{},rssAfter{}; // the callers: hybridRssMB() before and after the call (VmHWM after > before: a new peak)
+    std::string text() const {
+        double sum=0;for(double v:ms)sum+=v;
+        char line[1000];
+        std::snprintf(line,sizeof(line),"%.0f ms in %d steps of %d rows on %d threads: start %.0f, rows 1 (ratios, median rows, luma, its box rows) %.0f, "
+            "columns 1 (median columns, luma box columns, high-pass) %.0f, rows 2 (box rows u v) %.0f, columns 2 (sign map, box columns u v) %.0f, "
+            "rows 3 (box rows sign map, u v) %.0f, columns 3 (box columns sign map, u v, blend, rgb) %.0f, end %.0f; %d rings of %d rows x %d "
+            "+ sums %.1f MB besides rgb; worker RSS %ld MB (peak %ld) before, %ld MB (peak %ld) after",
+            sum,steps,bandRows,threads,ms[kStart],ms[kRows1],ms[kCols1],ms[kRows2],ms[kCols2],ms[kRows3],ms[kCols3],ms[kEnd],
+            rings,ringRows,ringWidth,double(bytes)/1048576.0,rssBefore[0],rssBefore[1],rssAfter[0],rssAfter[1]);
+        return line;
     }
+};
+// P213b: the threads of the streamed chroma median: the CPUs of at least half the largest capacity (sysfs cpu_capacity), at most
+// 8. The phases end at a barrier, so a little core holding the last item holds every thread: on the OPPO X7U (8 Gen 3: two
+// A520 of capacity 379 beside 867..1024) 6 threads took 390 ms where 8 took 460. Without capacities: the hardware threads.
+inline int mosaicChromaThreads(){
+    static const int threads=[]{
+        const int n=int(std::clamp(std::thread::hardware_concurrency(),1u,64u));
+        std::vector<long> capacity;
+        for(int c=0;c<n;++c){
+            std::ifstream f("/sys/devices/system/cpu/cpu"+std::to_string(c)+"/cpu_capacity");long v=0;
+            if(!(f>>v)||v<=0)return std::min(n,8);
+            capacity.push_back(v);
+        }
+        const long top=*std::max_element(capacity.begin(),capacity.end());
+        return int(std::clamp<long>(std::count_if(capacity.begin(),capacity.end(),[&](long v){return 2*v>=top;}),1,8));
+    }();
+    return threads;
+}
+// P213b: the threads of one MosaicChromaStream::advance. body(id) runs on `want` threads (id 0 = the caller; fewer when a thread
+// cannot be started), take() hands out the items of a phase, sync() ends the phase (a spinning barrier: the phases last ~0.1 ms;
+// the last thread to arrive resets the items for the next one). body must not throw (it allocates nothing).
+class MosaicChromaTeam {
+    int n=1;
+    std::atomic<int> arrived{0},sense{0},items{0};
+public:
+    int size() const {return n;}
+    int take(){return items.fetch_add(1,std::memory_order_relaxed);}
+    void sync(int& mine){
+        mine^=1;
+        if(n==1){items.store(0,std::memory_order_relaxed);return;}
+        if(arrived.fetch_add(1,std::memory_order_acq_rel)==n-1){
+            arrived.store(0,std::memory_order_relaxed);items.store(0,std::memory_order_relaxed);
+            sense.store(mine,std::memory_order_release);
+        } else {
+            for(int spin=0;sense.load(std::memory_order_acquire)!=mine;++spin){
+                if(spin>=4096)std::this_thread::yield();
+#if defined(__aarch64__)
+                else __asm__ __volatile__("yield");
+#endif
+            }
+        }
+    }
+    template<class F> void run(int want,const F& body){
+        std::vector<std::thread> helpers;
+        std::atomic<bool> go{false};
+        try{helpers.reserve(size_t(std::max(0,want-1)));}catch(const std::exception&){want=1;}
+        for(int i=1;i<want;++i){
+            try{helpers.emplace_back([&body,&go,i]{while(!go.load(std::memory_order_acquire))std::this_thread::yield();body(i);});}
+            catch(const std::exception&){break;}
+        }
+        n=int(helpers.size())+1;
+        go.store(true,std::memory_order_release);
+        body(0);
+        for(std::thread& t:helpers)t.join();
+    }
+};
+// Median of five by selection only (no arithmetic: the same value nth_element picked, ~10x faster): x, y = the 2nd and 3rd of
+// a..d, the median is e clamped to [x, y].
+inline float mosaicMed5(float a,float b,float c,float d,float e){
+    const float t1=std::min(a,b),t2=std::max(a,b),t3=std::min(c,d),t4=std::max(c,d);
+    const float lo=std::max(t1,t3),hi=std::min(t2,t4);
+    const float x=std::min(lo,hi),y=std::max(lo,hi);
+    return std::max(x,std::min(y,e));
+}
+// The horizontal 5-point median of one row, taps d px apart (P76: the clamps only at the borders).
+inline void mosaicMedianRow(const float* r,float* o,int w,int d){
+    const int in0=std::min(2*d,w),in1=std::max(in0,w-2*d);
+    auto edge=[&](int x){auto at=[&](int k){return r[std::clamp(x+k*d,0,w-1)];};o[x]=mosaicMed5(at(-2),at(-1),at(0),at(1),at(2));};
+    for(int x=0;x<in0;++x)edge(x);
+    for(int x=in0;x<in1;++x)o[x]=mosaicMed5(r[x-2*d],r[x-d],r[x],r[x+d],r[x+2*d]);
+    for(int x=in1;x<w;++x)edge(x);
+}
+// The row pass of a box filter of radius r (borders clamped): a running double sum from column 0, the float difference of the
+// samples entering and leaving added to it.
+inline void mosaicBoxRow(const float* a,float* o,int w,int r){
+    double acc=0;
+    for(int x=-r;x<=r;++x)acc+=a[std::clamp(x,0,w-1)];
+    for(int x=0;x<w;++x){o[x]=float(acc/(2*r+1));acc+=a[std::min(x+r+1,w-1)]-a[std::max(x-r,0)];}
+}
+// The sign-change map of one row of the luma high-pass, columns [x0, x1) (the false-colour suppression of mosaicChromaMedian):
+// half the soft sign change towards the right neighbour (none in the last column) plus half towards the one below (none in the
+// last row: below = nullptr), the gate 4 % of the luma.
+inline void mosaicSignRow(const float* hp,const float* below,const float* L,float* o,int x0,int x1,int w){
+    int x=x0;
+#if defined(__aarch64__)&&!defined(SCAM_CHROMA_SCALAR) // (the check builds the scalar loops on the phone too: what CI on x86 runs)
+    // P213b: four pixels at a time, branch-free (the scalar loop below: ~50 cycles per soft sign change, most of them mispredicted
+    // branches on noise). Every lane the operations of the scalar code in the same order: mosaicSoftSignChange on two double
+    // lanes (std::min / std::max / std::clamp as compare and select: the same values for NaN and signed zeros; its early
+    // returns as a select of +0; 3 - 2x fused as the compiler contracts it), c += 0.5f s fused as well.
+    const float32x4_t half=vdupq_n_f32(0.5f),floor=vdupq_n_f32(1e-4f),share=vdupq_n_f32(0.04f);
+    auto soft=[](float64x2_t p0,float64x2_t p1,float64x2_t gate){
+        const float64x2_t zero=vdupq_n_f64(0.0),one=vdupq_n_f64(1.0);
+        auto lo=[](float64x2_t a,float64x2_t b){return vbslq_f64(vcltq_f64(b,a),b,a);}; // std::min(a, b)
+        auto hi=[](float64x2_t a,float64x2_t b){return vbslq_f64(vcltq_f64(a,b),b,a);}; // std::max(a, b)
+        auto ss=[&](float64x2_t v){
+            v=vbslq_f64(vcltq_f64(v,zero),zero,vbslq_f64(vcltq_f64(one,v),one,v)); // std::clamp(v, 0, 1)
+            return vmulq_f64(vmulq_f64(v,v),vfmsq_f64(vdupq_n_f64(3.0),vdupq_n_f64(2.0),v));
+        };
+        const uint64x2_t live=vandq_u64(vcgtq_f64(gate,zero),vandq_u64(vceqq_f64(p0,p0),vceqq_f64(p1,p1)));
+        const float64x2_t opp=vaddq_f64(hi(zero,lo(p0,vnegq_f64(p1))),hi(zero,lo(vnegq_f64(p0),p1)));
+        const uint64x2_t open=vandq_u64(live,vcgtq_f64(opp,zero));
+        const float64x2_t a=ss(vdivq_f64(opp,vmulq_f64(vdupq_n_f64(kMosaicLumaTau),gate)));
+        const float64x2_t b=ss(vmulq_f64(vsubq_f64(vdivq_f64(vaddq_f64(vabsq_f64(p0),vabsq_f64(p1)),gate),vdupq_n_f64(0.75)),vdupq_n_f64(2.0)));
+        return vbsl_f32(vmovn_u64(open),vcvt_f32_f64(vmulq_f64(a,b)),vdup_n_f32(0.f));
+    };
+    auto both=[&](float32x4_t p0,float32x4_t p1,float32x4_t gate){
+        return vcombine_f32(soft(vcvt_f64_f32(vget_low_f32(p0)),vcvt_f64_f32(vget_low_f32(p1)),vcvt_f64_f32(vget_low_f32(gate))),
+                            soft(vcvt_high_f64_f32(p0),vcvt_high_f64_f32(p1),vcvt_high_f64_f32(gate)));
+    };
+    for(;x+4<=x1&&x+4<w;x+=4){
+        const float32x4_t a=vld1q_f32(hp+x),l=vld1q_f32(L+x);
+        const float32x4_t gate=vmulq_f32(share,vbslq_f32(vcltq_f32(l,floor),floor,l)); // 0.04f std::max(L, 1e-4f)
+        float32x4_t c=vfmaq_f32(vdupq_n_f32(0.f),half,both(a,vld1q_f32(hp+x+1),gate));
+        if(below)c=vfmaq_f32(c,half,both(a,vld1q_f32(below+x),gate));
+        vst1q_f32(o+x,c);
+    }
+#endif
+    for(;x<x1;++x){
+        const float a=hp[x],gate=0.04f*std::max(L[x],1e-4f);float c=0;
+        if(x+1<w)c+=0.5f*mosaicSoftSignChange(a,hp[x+1],gate,kMosaicLumaTau);
+        if(below)c+=0.5f*mosaicSoftSignChange(a,below[x],gate,kMosaicLumaTau);
+        o[x]=c;
+    }
+}
+// Blend and rgb of one row, columns [x0, x1): the median ratios mu, mv go to their wide averages ul, vl (indexed from x0) by
+// the ramp of the boxed sign-change map z (and at least by the oscillation weight kosc of the base sites, indexed from x0;
+// nullptr: none), then R and B from the ratios and green (px: the row of rgb). e as in MosaicChromaStream.
+inline void mosaicBlendRow(const float* z,const float* mu,const float* mv,const float* ul,const float* vl,const float* kosc,float* px,
+                           int x0,int x1,float z0,float z1,float e){
+    int X=x0;
+#if defined(__aarch64__)&&!defined(SCAM_CHROMA_SCALAR)
+    // P213b: four pixels at a time, the operations of the scalar loop below in the same order (clamp and max as compare and
+    // select; 3 - 2t, u + k (ul - u) and u g - e fused as the compiler contracts them); green is stored back as it was read
+    const float32x4_t zero=vdupq_n_f32(0.f),one=vdupq_n_f32(1.f),three=vdupq_n_f32(3.f),two=vdupq_n_f32(2.f);
+    const float32x4_t vz0=vdupq_n_f32(z0),span=vdupq_n_f32(z1-z0),ve=vdupq_n_f32(e),vme=vdupq_n_f32(-e);
+    for(;X+4<=x1;X+=4){
+        const int j=X-x0;
+        float32x4_t t=vdivq_f32(vsubq_f32(vld1q_f32(z+X),vz0),span);
+        t=vbslq_f32(vcltq_f32(t,zero),zero,vbslq_f32(vcltq_f32(one,t),one,t));    // std::clamp(t, 0, 1)
+        float32x4_t k=vmulq_f32(vmulq_f32(t,t),vfmsq_f32(three,two,t));
+        if(kosc){const float32x4_t k2=vld1q_f32(kosc+j);k=vbslq_f32(vcltq_f32(k,k2),k2,k);} // std::max(k, k2)
+        float32x4_t u=vld1q_f32(mu+X);u=vfmaq_f32(u,k,vsubq_f32(vld1q_f32(ul+j),u));
+        float32x4_t v=vld1q_f32(mv+X);v=vfmaq_f32(v,k,vsubq_f32(vld1q_f32(vl+j),v));
+        float32x4x3_t p=vld3q_f32(px+size_t(X)*3);
+        const float32x4_t g=vaddq_f32(vbslq_f32(vcltq_f32(p.val[1],zero),zero,p.val[1]),ve); // std::max(G, 0) + e
+        p.val[0]=vfmaq_f32(vme,u,g);p.val[2]=vfmaq_f32(vme,v,g);
+        vst3q_f32(px+size_t(X)*3,p);
+    }
+#endif
+    for(;X<x1;++X){
+        const float t=std::clamp((z[X]-z0)/(z1-z0),0.f,1.f);float k=t*t*(3.f-2.f*t);
+        if(kosc)k=std::max(k,kosc[X-x0]); // detail the merge already smoothed in the luma but the sites still show
+        float u=mu[X];u+=k*(ul[X-x0]-u);float v=mv[X];v+=k*(vl[X-x0]-v);
+        const float g=std::max(px[X*3+1],0.f)+e;px[X*3]=u*g-e;px[X*3+2]=v*g-e;
+    }
+}
+// The chroma median of rgb (w x h x 3, in place) streamed in steps (see above). advance(ready): rows [0, ready) of rgb are final
+// input, every step they allow runs (several calls may feed the rows as they come); rows [0, done()) then hold the result.
+class MosaicChromaStream {
+    enum Ring{kHu,kHv,kL,kBL,kHp,kMu,kMv,kBU1,kBV1,kSc,kU1,kV1,kBsc,kBU2,kBV2,kZ,kRings};
+    enum Sum{kSumHp,kSumU1,kSumV1,kSumZ,kSumUl,kSumVl,kSums};
+    // rows [0, x) done of: input read (ratios, horizontal medians, luma, its box rows), vertical medians, high-pass, sign map and
+    // its box rows, its box columns (z), the first ratio boxes (u1), blend and rgb (out)
+    struct Progress {
+        int in=0,m=0,hp=0,sc=0,z=0,u1=0,out=0;
+        bool operator==(const Progress& o) const {return in==o.in&&m==o.m&&hp==o.hp&&sc==o.sc&&z==o.z&&u1==o.u1&&out==o.out;}
+    };
+    float* rgb;int w,h,b,d,r1,r2,r3,B,cap,ws,nt;
+    const float* osc=nullptr;int bw=0,bh=0;float z0=0,z1=0;
+    std::vector<float> store,scratch;float* rings=nullptr;size_t scratchPer=0;
+    std::vector<double> sums;
+    Progress p;
+    MosaicChromaPasses* passes;
+    // Chroma as ratios to green (camera RGB before WB: differences R-G of a bright neighbour put on a dark line drove R and B
+    // below zero, a green rim on every thin dark line). e keeps the ratio of black pixels finite. The green term is max(G, 0) + e
+    // (it was G + e: a pole at G = -e, where a last-bit change of a dark pixel swung its ratio from +inf to -inf); the
+    // reconstruction uses the same term, so a ratio the passes leave unchanged gives back R and B exactly.
+    static constexpr float e=0.002f;
+#ifdef SCAM_CHROMA_RING_CHECK
+    std::vector<int> tags; // the row every ring slot holds: a read of any other row aborts the check
+    void mark(int k,int y0,int y1){for(int y=y0;y<y1;++y)tags[size_t(k)*cap+size_t(y%cap)]=y;}
+    void expect(int k,int y) const {
+        const int held=tags[size_t(k)*cap+size_t(y%cap)];
+        if(held!=y){std::fprintf(stderr,"chroma ring %d: row %d read, the slot holds row %d\n",k,y,held);std::abort();}
+    }
+#endif
+    float* put(int k,int y){return rings+(size_t(k)*cap+size_t(y%cap))*ws;}
+    const float* get(int k,int y) const {
+#ifdef SCAM_CHROMA_RING_CHECK
+        expect(k,y);
+#endif
+        return rings+(size_t(k)*cap+size_t(y%cap))*ws;
+    }
+    // one row of the column pass of a box filter (radius r) of ring `in`, columns [x0, x1): the sums a[] are those of row y
+    // afterwards (row 0: the clamped rows -r..r added; then the float difference of the row entering and the one leaving)
+    void boxColumns(int in,int r,int y,int x0,int x1,double* a) const {
+        if(y==0){
+            for(int x=x0;x<x1;++x)a[x]=0;
+            for(int k=-r;k<=r;++k){const float* s=get(in,std::clamp(k,0,h-1));for(int x=x0;x<x1;++x)a[x]+=s[x];}
+        } else {
+            const float* add=get(in,std::min(y+r,h-1));const float* sub=get(in,std::max(y-1-r,0));
+            for(int x=x0;x<x1;++x)a[x]+=add[x]-sub[x];
+        }
+    }
+    Progress next(const Progress& q,int ready) const {
+        auto avail=[this](int made,int lag){return made>=h?h:std::max(0,made-lag);};
+        auto step=[this](int from,int to){return std::max(from,std::min(to,from+B));};
+        Progress n;
+        n.in=step(q.in,ready);
+        n.m=step(q.m,avail(n.in,2*d));
+        n.hp=step(q.hp,avail(n.in,r1));
+        n.sc=step(q.sc,avail(n.hp,1));
+        n.z=step(q.z,avail(n.sc,r2));
+        n.u1=step(q.u1,avail(n.m,r3));
+        n.out=step(q.out,std::min(avail(n.u1,r3),n.z));
+        return n;
+    }
+public:
+    MosaicChromaStream(float* image,int width,int height,int block,const std::vector<float>* oscillation=nullptr,int bandRows=0,
+                       int threads=0,MosaicChromaPasses* pass=nullptr)
+        :rgb(image),w(std::max(0,width)),h(std::max(0,height)),b(std::max(1,block)),passes(pass){
+        const auto t0=std::chrono::steady_clock::now();
+        d=std::max(1,b/2);r1=b;r2=2*b;r3=3*b;
+        B=bandRows>0?bandRows:kMosaicChromaBandRows;
+        cap=B+2*d+2*r3+2;
+        ws=(w+15)&~15; // rows of whole cache lines: the column bands of two threads never share one
+        nt=threads>0?threads:(ScamPool::inWorker()||h<64)?1:mosaicChromaThreads();
+        z0=0.51f/(2*b);z1=1.02f/(2*b);
+        bw=w/b;bh=h/b;
+        if(oscillation&&bw>0&&bh>0&&oscillation->size()==size_t(bw)*bh)osc=oscillation->data();
+        store.assign(size_t(kRings)*cap*ws+16,0.f);
+        rings=store.data()+((64-(reinterpret_cast<uintptr_t>(store.data())&63))&63)/sizeof(float);
+        sums.assign(size_t(kSums)*ws,0.0);
+        scratchPer=size_t(ws)+3*size_t(kMosaicChromaCols)+16;
+        scratch.assign(scratchPer*size_t(nt),0.f);
+#ifdef SCAM_CHROMA_RING_CHECK
+        tags.assign(size_t(kRings)*cap,-1);
+#endif
+        if(passes){
+            passes->cpu=true;passes->bandRows=B;passes->rings=kRings;passes->ringRows=cap;passes->ringWidth=ws;
+            passes->bytes=(store.size()+scratch.size())*sizeof(float)+sums.size()*sizeof(double);
+            passes->ms[MosaicChromaPasses::kStart]+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count();
+        }
+    }
+    int done() const {return p.out;}
+    void advance(int ready){
+        ready=std::clamp(ready,0,h);
+        const Progress start=p;
+        if(next(start,ready)==start)return;
+        using Clock=std::chrono::steady_clock;
+        constexpr int kCols=kMosaicChromaCols;
+        const int nc=(w+kCols-1)/kCols;
+        Progress end=start;
+        MosaicChromaTeam team;
+        Clock::time_point lapped=Clock::now();
+        team.run(nt,[&](int id){
+            using P=MosaicChromaPasses;
+            auto lap=[&](int k){if(id==0&&passes){const auto now=Clock::now();passes->ms[k]+=std::chrono::duration<double,std::milli>(now-lapped).count();lapped=now;}};
+            lap(P::kStart);
+            int sense=0;
+            float* ratio=scratch.data()+scratchPer*size_t(id);float* ul=ratio+ws;float* vl=ul+kCols;float* kosc=vl+kCols;
+            // the items [0, count) of one phase over the team, then the barrier
+            auto phase=[&](int count,const auto& item){for(int k=team.take();k<count;k=team.take())item(k);team.sync(sense);};
+#ifdef SCAM_CHROMA_RING_CHECK
+            // the slots a phase writes are tagged before it starts (no phase reads a ring it writes, but z within one band)
+            auto tag=[&](std::initializer_list<std::array<int,3>> list){if(id==0)for(const auto& t:list)mark(t[0],t[1],t[2]);team.sync(sense);};
+#else
+            auto tag=[](std::initializer_list<std::array<int,3>>){};
+#endif
+            Progress q=start;
+            for(;;){
+                const Progress n=next(q,ready);
+                if(n==q)break;
+                // rows 1: ratios u, v of a row and their horizontal medians; its luma and the luma's box rows (r1)
+                tag({{kHu,q.in,n.in},{kHv,q.in,n.in},{kL,q.in,n.in},{kBL,q.in,n.in}});
+                phase(3*(n.in-q.in),[&](int k){
+                    const int y=q.in+k/3;const float* px=rgb+size_t(y)*w*3;
+                    if(k%3==0){
+                        for(int x=0;x<w;++x){const float g=std::max(px[x*3+1],0.f)+e;ratio[x]=(px[x*3]+e)/g;}
+                        mosaicMedianRow(ratio,put(kHu,y),w,d);
+                    } else if(k%3==1){
+                        for(int x=0;x<w;++x){const float g=std::max(px[x*3+1],0.f)+e;ratio[x]=(px[x*3+2]+e)/g;}
+                        mosaicMedianRow(ratio,put(kHv,y),w,d);
+                    } else {
+                        float* L=put(kL,y);
+                        for(int x=0;x<w;++x)L[x]=0.25f*px[x*3]+0.5f*px[x*3+1]+0.25f*px[x*3+2];
+                        mosaicBoxRow(L,put(kBL,y),w,r1);
+                    }
+                });
+                lap(P::kRows1);
+                // columns 1: vertical medians (the five rows clamped at the borders); luma box columns, high-pass = luma - box
+                tag({{kMu,q.m,n.m},{kMv,q.m,n.m},{kHp,q.hp,n.hp}});
+                phase(3*nc,[&](int k){
+                    const int kind=k/nc,x0=(k%nc)*kCols,x1=std::min(w,x0+kCols);
+                    if(kind<2){
+                        const int in=kind?kHv:kHu,out=kind?kMv:kMu;
+                        for(int y=q.m;y<n.m;++y){
+                            const float* a0=get(in,std::clamp(y-2*d,0,h-1));const float* a1=get(in,std::clamp(y-d,0,h-1));
+                            const float* a2=get(in,y);const float* a3=get(in,std::clamp(y+d,0,h-1));
+                            const float* a4=get(in,std::clamp(y+2*d,0,h-1));float* o=put(out,y);
+                            for(int x=x0;x<x1;++x)o[x]=mosaicMed5(a0[x],a1[x],a2[x],a3[x],a4[x]);
+                        }
+                    } else {
+                        double* a=sums.data()+size_t(kSumHp)*ws;
+                        for(int y=q.hp;y<n.hp;++y){
+                            boxColumns(kBL,r1,y,x0,x1,a);
+                            const float* L=get(kL,y);float* o=put(kHp,y);
+                            for(int x=x0;x<x1;++x){const float box=float(a[x]/(2*r1+1));o[x]=L[x]-box;}
+                        }
+                    }
+                });
+                lap(P::kCols1);
+                // rows 2: box rows (r3) of the medians u, v
+                tag({{kBU1,q.m,n.m},{kBV1,q.m,n.m}});
+                phase(2*(n.m-q.m),[&](int k){
+                    const int y=q.m+k/2;
+                    if(k%2==0)mosaicBoxRow(get(kMu,y),put(kBU1,y),w,r3); else mosaicBoxRow(get(kMv,y),put(kBV1,y),w,r3);
+                });
+                lap(P::kRows2);
+                // columns 2: the sign map (False-colour suppression, see mosaicChromaMedian); box columns (r3) of u, v
+                tag({{kSc,q.sc,n.sc},{kU1,q.u1,n.u1},{kV1,q.u1,n.u1}});
+                phase(3*nc,[&](int k){
+                    const int kind=k/nc,x0=(k%nc)*kCols,x1=std::min(w,x0+kCols);
+                    if(kind==0){
+                        for(int y=q.sc;y<n.sc;++y){
+                            mosaicSignRow(get(kHp,y),y+1<h?get(kHp,y+1):nullptr,get(kL,y),put(kSc,y),x0,x1,w);
+                        }
+                    } else {
+                        const int in=kind==1?kBU1:kBV1,out=kind==1?kU1:kV1;double* a=sums.data()+size_t(kind==1?kSumU1:kSumV1)*ws;
+                        for(int y=q.u1;y<n.u1;++y){
+                            boxColumns(in,r3,y,x0,x1,a);
+                            float* o=put(out,y);for(int x=x0;x<x1;++x)o[x]=float(a[x]/(2*r3+1));
+                        }
+                    }
+                });
+                lap(P::kCols2);
+                // rows 3: box rows of the sign map (r2) and of the boxed u, v (r3, the second box)
+                tag({{kBsc,q.sc,n.sc},{kBU2,q.u1,n.u1},{kBV2,q.u1,n.u1}});
+                const int signRows=n.sc-q.sc;
+                phase(signRows+2*(n.u1-q.u1),[&](int k){
+                    if(k<signRows){const int y=q.sc+k;mosaicBoxRow(get(kSc,y),put(kBsc,y),w,r2);return;}
+                    const int y=q.u1+(k-signRows)/2;
+                    if((k-signRows)%2==0)mosaicBoxRow(get(kU1,y),put(kBU2,y),w,r3); else mosaicBoxRow(get(kV1,y),put(kBV2,y),w,r3);
+                });
+                lap(P::kRows3);
+                // columns 3: box columns of the sign map (z, r2) and of u, v (the second box, r3), then blend and rgb
+                tag({{kZ,q.z,n.z}});
+                phase(nc,[&](int c){
+                    const int x0=c*kCols,x1=std::min(w,x0+kCols);
+                    double* az=sums.data()+size_t(kSumZ)*ws;
+                    for(int y=q.z;y<n.z;++y){
+                        boxColumns(kBsc,r2,y,x0,x1,az);
+                        float* o=put(kZ,y);for(int x=x0;x<x1;++x)o[x]=float(az[x]/(2*r2+1));
+                    }
+                    double* au=sums.data()+size_t(kSumUl)*ws;double* av=sums.data()+size_t(kSumVl)*ws;
+                    int oscRowNow=-1; // the oscillation weights of the band's pixels (kosc) are those of this block row
+                    for(int y=q.out;y<n.out;++y){
+                        boxColumns(kBU2,r3,y,x0,x1,au);
+                        boxColumns(kBV2,r3,y,x0,x1,av);
+                        for(int x=x0;x<x1;++x){ul[x-x0]=float(au[x]/(2*r3+1));vl[x-x0]=float(av[x]/(2*r3+1));}
+                        if(osc&&std::min(y/b,bh-1)!=oscRowNow){
+                            oscRowNow=std::min(y/b,bh-1);
+                            const float* oscRow=osc+size_t(oscRowNow)*bw;
+                            for(int X=x0;X<x1;++X){
+                                const float o=oscRow[std::min(X/b,bw-1)];
+                                const float t2=std::clamp((o-0.2375f)/0.2375f,0.f,1.f);kosc[X-x0]=t2*t2*(3.f-2.f*t2);
+                            }
+                        }
+                        mosaicBlendRow(get(kZ,y),get(kMu,y),get(kMv,y),ul,vl,osc?kosc:nullptr,rgb+size_t(y)*w*3,x0,x1,z0,z1,e);
+                    }
+                });
+                lap(P::kCols3);
+                q=n;
+                if(id==0&&passes)++passes->steps;
+            }
+            if(id==0)end=q;
+        });
+        p=end;
+        if(passes){
+            passes->threads=std::max(passes->threads,team.size());
+            passes->ms[MosaicChromaPasses::kEnd]+=std::chrono::duration<double,std::milli>(Clock::now()-lapped).count();
+        }
+    }
+};
+
+// Chroma moire of a mosaic result: a colour lattice b times coarser than the sites aliases fine luma detail (a zone plate, fabric,
+// distant foliage) into pink / green rings. v11 turns on chroma_median_filter_type dual_5_point (plus its false-colour
+// suppression) for remosaicked streams; here the separable 5-point median (horizontal, then vertical) of R/G and B/G, taps
+// d = max(1, b/2) px apart (Quad: 5 px, Tetra: 9 px). Green stays; R and B follow the median differences. Colour detail finer
+// than the colour block is not real in a mosaic.
+// False-colour suppression (v11 enable_false_color_suppression for remosaicked streams): where the luma oscillates faster
+// than the colour lattice can follow, the colour is aliased (zone-plate rings, fabric moire) and becomes the wide average
+// colour around (the ratios boxed twice, radius 3b). Oscillation: sign changes of the luma high-pass (luma - its box, radius b)
+// between neighbours, counted only where its swing exceeds 4 % of the level (noise and smooth areas stay out; both tests are
+// soft, mosaicSoftSignChange); a single edge changes sign along one line only (a few % of the window), a grating of period p in
+// 1/p of the pixels. The count is boxed (radius 2b); the weight ramps over 0.51..1.02 / (2b), the colour Nyquist period of the
+// mosaic (soft counts are a little lower than the former hard ones on a grating: the ramp starts at 0.51 / (2b), was 0.6, the
+// raw-site oscillation at 0.2375, was 0.25, which kept the false colour of syn_b2 / syn_b4 and the real bursts). Every decision
+// of this pass is continuous (median, ratios, soft counts, smoothstep ramps, max), so a tiny change of the merge gives a tiny
+// change of the colour.
+// osc (optional): per colour block of the base RAW, the oscillation of its own sites (see hybridReconstructMosaic), (w/b) x (h/b).
+// P80: gpu = try ChromaMedianGpu first (float rounding of its boxes and soft counts only); *how gets "gpu" or "cpu (reason)".
+// P213b: the CPU path is MosaicChromaStream (any size; bandRows = its step, 0: kMosaicChromaBandRows; every step gives the same
+// floats).
+inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,const std::vector<float>* osc=nullptr,bool gpu=false,
+                               std::string* how=nullptr,int bandRows=0,MosaicChromaPasses* passes=nullptr){
     if(gpu){
         // within the GPU storage of one call and a quarter of MemAvailable (any RAW size: 8192x6144 needs 2.4 GB, it stays here)
         const uint64_t avail=hybridMemAvailable();
@@ -7129,111 +7546,9 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
             catch(const std::exception& e){if(how)*how=std::string("cpu (")+e.what()+")";}
         } else if(how)*how="cpu (size)";
     } else if(how)*how="cpu";
-    const int d=std::max(1,block/2);
-    std::vector<float> u(size_t(w)*h),v(size_t(w)*h),t(size_t(w)*h);
-    // Chroma as ratios to green (camera RGB before WB: differences R-G of a bright neighbour put on a dark line drove R and B
-    // below zero, a green rim on every thin dark line). e keeps the ratio of black pixels finite.
-    const float e=0.002f;
-    // P30: the element-wise loops run on all cores (1.6 s for 12.6 MP on one core, the same values).
-    auto rows=[&](const std::function<void(size_t,size_t)>& body){
-        mergeRowBands(h,[&](int y0,int y1){body(size_t(y0)*w,size_t(y1)*w);});
-    };
-    // The green term is max(G, 0) + e (it was G + e: a pole at G = -e, where a last-bit change of a dark pixel swung its ratio from
-    // +inf to -inf); the reconstruction below uses the same term, so a ratio the passes leave unchanged gives back R and B exactly.
-    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){const float g=std::max(rgb[i*3+1],0.f)+e;u[i]=(rgb[i*3]+e)/g;v[i]=(rgb[i*3+2]+e)/g;}});
-    // Median of five by selection only (no arithmetic: the same value nth_element picked, ~10x faster): x, y = the 2nd and 3rd
-    // of a..d, the median is e clamped to [x, y].
-    auto med5=[](float a,float b,float c,float d,float e){
-        const float t1=std::min(a,b),t2=std::max(a,b),t3=std::min(c,d),t4=std::max(c,d);
-        const float lo=std::max(t1,t3),hi=std::min(t2,t4);
-        const float x=std::min(lo,hi),y=std::max(lo,hi);
-        return std::max(x,std::min(y,e));
-    };
-    for(std::vector<float>* ch:{&u,&v}){
-        std::vector<float>& c=*ch;
-        // P76: the same taps and selections; the clamps only at the borders, the five rows of the vertical pass taken once per row
-        mergeRowBands(h,[&](int y0,int y1){
-            for(int y=y0;y<y1;++y){const float* r=c.data()+size_t(y)*w;float* o=t.data()+size_t(y)*w;
-                const int in0=std::min(2*d,w),in1=std::max(in0,w-2*d);
-                auto edge=[&](int x){auto at=[&](int k){return r[std::clamp(x+k*d,0,w-1)];};o[x]=med5(at(-2),at(-1),at(0),at(1),at(2));};
-                for(int x=0;x<in0;++x)edge(x);
-                for(int x=in0;x<in1;++x)o[x]=med5(r[x-2*d],r[x-d],r[x],r[x+d],r[x+2*d]);
-                for(int x=in1;x<w;++x)edge(x);}
-        });
-        mergeRowBands(h,[&](int y0,int y1){
-            for(int y=y0;y<y1;++y){
-                const float* a0=t.data()+size_t(std::clamp(y-2*d,0,h-1))*w;const float* a1=t.data()+size_t(std::clamp(y-d,0,h-1))*w;
-                const float* a2=t.data()+size_t(y)*w;const float* a3=t.data()+size_t(std::clamp(y+d,0,h-1))*w;
-                const float* a4=t.data()+size_t(std::clamp(y+2*d,0,h-1))*w;float* o=c.data()+size_t(y)*w;
-                for(int x=0;x<w;++x)o[x]=med5(a0[x],a1[x],a2[x],a3[x],a4[x]);
-            }
-        });
-    }
-    std::vector<float>().swap(t); // any RAW size: every temporary goes once used (~40 B per pixel at the peak before)
-    // False-colour suppression (v11 enable_false_color_suppression for remosaicked streams): where the luma oscillates faster
-    // than the colour lattice can follow, the colour is aliased (zone-plate rings, fabric moire) and becomes the wide average
-    // colour around. Oscillation: sign changes of the luma high-pass between neighbours, counted only where its swing exceeds 4 %
-    // of the level (noise and smooth areas stay out; both tests are soft, mosaicSoftSignChange); a single edge changes sign along
-    // one line only (a few % of the window), a grating of period p in 1/p of the pixels. Weight ramps over 0.51..1.02 / (2b), the
-    // colour Nyquist period of the mosaic. Every decision of this pass is continuous (median, ratios, soft counts, smoothstep
-    // ramps, max), so a tiny change of the merge gives a tiny change of the colour.
-    const int r1=block,r2=2*block,r3=3*block;
-    // P76: one scratch plane for every box (each allocated and zeroed its own: ~80 ms of 750 at 12 MP) and the column pass in
-    // bands of 64 columns handed out 4 at a time (the band of ~31 columns read half a cache line per row); every column's
-    // additions are the same, in the same order: the same floats.
-    std::vector<float> boxTmp;
-    auto box=[&](const std::vector<float>& in,std::vector<float>& out,int r){
-        std::vector<float>& tmp=boxTmp;tmp.resize(in.size());
-        mergeRowBands(h,[&](int y0,int y1){for(int y=y0;y<y1;++y){const float* a=in.data()+size_t(y)*w;float* o=tmp.data()+size_t(y)*w;double acc=0;
-            for(int x=-r;x<=r;++x)acc+=a[std::clamp(x,0,w-1)];
-            for(int x=0;x<w;++x){o[x]=float(acc/(2*r+1));acc+=a[std::min(x+r+1,w-1)]-a[std::max(x-r,0)];}}});
-        out.resize(in.size());
-        // P30: the column sums run down the rows for a band of columns at once (the same per-column additions in the same
-        // order; one column at a time read a new cache line for every sample).
-        constexpr int kCols=64;
-        mergeRowBands((w+kCols-1)/kCols,[&](int b0,int b1){
-            const int x0=b0*kCols,x1=std::min(w,b1*kCols);
-            std::vector<double> acc(size_t(x1-x0),0.0);
-            for(int x=x0;x<x1;++x){double a=0;for(int y=-r;y<=r;++y)a+=tmp[size_t(std::clamp(y,0,h-1))*w+x];acc[size_t(x-x0)]=a;}
-            for(int y=0;y<h;++y){
-                const float* add=tmp.data()+size_t(std::min(y+r+1,h-1))*w;const float* sub=tmp.data()+size_t(std::max(y-r,0))*w;
-                float* o=out.data()+size_t(y)*w;
-                for(int x=x0;x<x1;++x){double& a=acc[size_t(x-x0)];o[x]=float(a/(2*r+1));a+=add[x]-sub[x];}
-            }
-        });
-    };
-    std::vector<float> L(size_t(w)*h),hp,sc(size_t(w)*h,0.f),z;
-    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i)L[i]=0.25f*rgb[i*3]+0.5f*rgb[i*3+1]+0.25f*rgb[i*3+2];});
-    box(L,hp,r1);
-    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i)hp[i]=L[i]-hp[i];});
-    mergeRowBands(h,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<w;++x){
-        const size_t i=size_t(y)*w+x;const float a=hp[i],gate=0.04f*std::max(L[i],1e-4f);float c=0;
-        if(x+1<w)c+=0.5f*mosaicSoftSignChange(a,hp[i+1],gate,kMosaicLumaTau);
-        if(y+1<h)c+=0.5f*mosaicSoftSignChange(a,hp[i+w],gate,kMosaicLumaTau);
-        sc[i]=c;}});
-    std::vector<float>().swap(L);std::vector<float>().swap(hp);
-    box(sc,z,r2);
-    std::vector<float>().swap(sc);
-    std::vector<float> ul,vl;box(u,ul,r3);box(ul,ul,r3);box(v,vl,r3);box(vl,vl,r3);
-    // soft counts (mosaicSoftSignChange) are a little lower than the former hard ones on a grating: the ramp starts at 0.51 / (2b)
-    // (was 0.6), the raw-site oscillation at 0.2375 (was 0.25), which kept the false colour of syn_b2 / syn_b4 and the real bursts
-    const float z0=0.51f/(2*block),z1=1.02f/(2*block);
-    const int bw=w/block,bh=h/block;
-    const bool rawOsc=osc&&int(osc->size())==bw*bh;
-    mergeRowBands(h,[&](int y0,int y1){for(int Y=y0;Y<y1;++Y){ // P76: by rows (no division per pixel), the same values
-        const float* oscRow=rawOsc?osc->data()+size_t(std::min(Y/block,bh-1))*bw:nullptr;
-        for(int X=0;X<w;++X){
-            const size_t i=size_t(Y)*w+X;
-            const float t=std::clamp((z[i]-z0)/(z1-z0),0.f,1.f);float k=t*t*(3.f-2.f*t);
-            if(oscRow){ // detail the merge already smoothed in the luma but the sites still show
-                const float o=oscRow[std::min(X/block,bw-1)];
-                const float t2=std::clamp((o-0.2375f)/0.2375f,0.f,1.f);k=std::max(k,t2*t2*(3.f-2.f*t2));
-            }
-            u[i]+=k*(ul[i]-u[i]);v[i]+=k*(vl[i]-v[i]);
-        }
-    }});
-    std::vector<float>().swap(z);std::vector<float>().swap(ul);std::vector<float>().swap(vl);std::vector<float>().swap(boxTmp);
-    rows([&](size_t i0,size_t i1){for(size_t i=i0;i<i1;++i){const float g=std::max(rgb[i*3+1],0.f)+e;rgb[i*3]=u[i]*g-e;rgb[i*3+2]=v[i]*g-e;}});
+    if(w<=0||h<=0||block<1||rgb.size()<size_t(w)*h*3)return;
+    MosaicChromaStream stream(rgb.data(),w,h,block,osc,bandRows,0,passes);
+    stream.advance(h);
 }
 // Frames the sub-frame split picks of n: kHybridGpuFrames / b^2 (per = b^2 sub-frames each) and mosaicFrames. Any RAW size (avail =
 // MemAvailable above kHybridClassicPixels, else 0): the worker copies every picked frame (its b^2 sub-frames, 2 B per stream pixel,
@@ -7517,9 +7832,12 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
                 for(int dj=-2;dj<=2;++dj)for(int di=-2;di<=2;++di){const int y=J+dj,x=I+di;if(x<0||y<0||x>=bw||y>=bh)continue;s+=f[size_t(y)*bw+x];++n;}
                 osc[size_t(J)*bw+I]=float(s/std::max(n,1));}});
         }
-        std::string how;
-        mosaicChromaMedian(rgb,ow,oh,b,osc.empty()?nullptr:&osc,tune.chromaGpu>0,&how);
+        std::string how;MosaicChromaPasses passes;
+        const auto oscDone=Clock::now();passes.rssBefore=hybridRssMB();
+        mosaicChromaMedian(rgb,ow,oh,b,osc.empty()?nullptr:&osc,tune.chromaGpu>0,&how,0,&passes);
+        passes.rssAfter=hybridRssMB();
         report("HYBRID MOSAIC: chroma median (dual 5-point, taps "+std::to_string(std::max(1,b/2))+" px, "+how+") "+std::to_string(int(millis(Clock::now()-t0)))+" ms");
+        if(passes.cpu)report("HYBRID MOSAIC: chroma median CPU: oscillation map "+std::to_string(int(millis(oscDone-t0)))+" ms, "+passes.text()); // P213a
     }
     int gridOut=tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2)); // replays: the tuning grid
     const int tw=W*gridOut,th=Ht*gridOut;
@@ -7799,10 +8117,13 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
                 for(int dj=-2;dj<=2;++dj)for(int di=-2;di<=2;++di){const int y=J+dj,x=I+di;if(x<0||y<0||x>=bw||y>=bh)continue;s+=f[size_t(y)*bw+x];++cnt;}
                 osc[size_t(J)*bw+I]=float(s/std::max(cnt,1));}});
         }
-        std::string how;
-        mosaicChromaMedian(rgb,ow,oh,mb*k2,&osc,tune.chromaGpu>0,&how); // P56: the block (and its taps) in output px
+        std::string how;MosaicChromaPasses passes;
+        const auto oscDone=Clock::now();passes.rssBefore=hybridRssMB();
+        mosaicChromaMedian(rgb,ow,oh,mb*k2,&osc,tune.chromaGpu>0,&how,0,&passes); // P56: the block (and its taps) in output px
+        passes.rssAfter=hybridRssMB();
         report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,mb*k2/2))+" px of the "+std::to_string(ow)+"x"+std::to_string(oh)+" result, "+how+") "
             +std::to_string(int(millis(Clock::now()-c0)))+" ms");
+        if(passes.cpu)report("HYBRID MOSAIC NATIVE: chroma median CPU: oscillation map "+std::to_string(int(millis(oscDone-c0)))+" ms, "+passes.text()); // P213a
     }
     std::vector<uint16_t>().swap(quad);
     // ---- to the requested output: sensor grid W x H, or the 2x grid. Target pixel X is the W-grid position fx = (X + 0.5) W / tw - 0.5
