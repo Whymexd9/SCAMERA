@@ -106,8 +106,14 @@ public class LutChangesPreference extends Preference implements SharedPreference
         refresh();
     }
 
-    /** The concept's .note: the info icon in the accent, the text muted, on the second card colour. */
     static View note(Context c) {
+        return noteView(c, Lang.t(c,
+                "Импортируйте свой .cube плиткой «Импорт .cube» — он сразу появится в ленте с превью до/после, кривой и разбором, что меняется. Файлы лежат в Download/SCAMERA/LUT.",
+                "Import your own .cube with the «Import .cube» tile: it appears in the strip at once, with the before / after preview, the curve and what it changes. The files live in Download/SCAMERA/LUT."));
+    }
+
+    /** The concept's .note: the info icon in the accent, the text muted, on the second card colour. */
+    public static View noteView(Context c, CharSequence text) {
         LinearLayout n = new LinearLayout(c);
         n.setOrientation(LinearLayout.HORIZONTAL);
         n.setBackground(UiTokens.shape(c, 0xFF232A2E, 0, 18));
@@ -119,10 +125,7 @@ public class LutChangesPreference extends Preference implements SharedPreference
         ip.setMarginEnd(UiTokens.dp(c, 10));
         ip.topMargin = UiTokens.dp(c, 1);
         n.addView(i, ip);
-        TextView t = SettingsStyle.text(c, Lang.t(c,
-                "Импортируйте свой .cube плиткой «Импорт .cube» — он сразу появится в ленте с превью до/после, кривой и разбором, что меняется. Файлы лежат в Download/SCAMERA/LUT.",
-                "Import your own .cube with the «Import .cube» tile: it appears in the strip at once, with the before / after preview, the curve and what it changes. The files live in Download/SCAMERA/LUT."),
-                13, UiTokens.MUTED);
+        TextView t = SettingsStyle.text(c, text, 13, UiTokens.MUTED);
         t.setLineSpacing(UiTokens.dp(c, 2), 1f);
         n.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         return n;

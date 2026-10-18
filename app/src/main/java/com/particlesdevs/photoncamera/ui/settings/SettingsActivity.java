@@ -1054,7 +1054,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 activity.runOnUiThread(()-> {
             Preference restorePref = findPreference(mContext.getString(R.string.pref_restore_preferences_key));
             if (restorePref != null) {
-                restorePref.setSummary(mContext.getString(R.string.restore_summary_json));
                 restorePref.setOnPreferenceChangeListener((preference, newValue) -> {
                     if (com.particlesdevs.photoncamera.ui.settings.custompreferences.RestorePreference.PICK.equals(newValue.toString())) {
                         if (configImportLauncher != null) configImportLauncher.launch(new String[]{"*/*"});
@@ -1072,7 +1071,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             activity.runOnUiThread(()-> {
                 Preference backupPref = findPreference(mContext.getString(R.string.pref_backup_preferences_key));
                 if (backupPref != null) {
-                    backupPref.setSummary(mContext.getString(R.string.backup_summary_json));
                     backupPref.setOnPreferenceChangeListener((preference, newValue) -> {
                         String backupResult = BackupRestoreUtil.backupSettings(mContext, newValue.toString());
                         Snackbar.make(mRootView, backupResult, Snackbar.LENGTH_LONG).show();

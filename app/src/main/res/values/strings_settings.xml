@@ -789,4 +789,10 @@
     <string name="prefs_photo_style_mono_category">Black and white</string>
     <string name="prefs_photo_style_film_category">Film</string>
     <string name="prefs_photo_style_lut_summary">Which film the photo imitates</string>
+    <string name="prefs_profiles_actions_title">Actions</string>
+    <string name="prefs_profiles_save_title">Save the current as…</string>
+    <string name="prefs_profiles_save_summary">Every setting in one file</string>
+    <string name="prefs_profiles_load_title">Load from a file</string>
+    <string name="prefs_profiles_load_summary">An .xml file from the SCAMERA folder</string>
+    <string name="prefs_profiles_reset_summary">Settings back as after installing</string>
 </resources>

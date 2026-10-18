@@ -789,4 +789,10 @@
     <string name="prefs_photo_style_mono_category">Чёрно-белый</string>
     <string name="prefs_photo_style_film_category">Плёнка</string>
     <string name="prefs_photo_style_lut_summary">Какую плёнку изображает снимок</string>
+    <string name="prefs_profiles_actions_title">Действия</string>
+    <string name="prefs_profiles_save_title">Сохранить текущие как…</string>
+    <string name="prefs_profiles_save_summary">Все настройки в один файл</string>
+    <string name="prefs_profiles_load_title">Загрузить из файла</string>
+    <string name="prefs_profiles_load_summary">Файл .xml из папки SCAMERA</string>
+    <string name="prefs_profiles_reset_summary">Вернуть настройки как после установки</string>
 </resources>

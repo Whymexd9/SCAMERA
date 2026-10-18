@@ -17,10 +17,10 @@
         android:id="@android:id/title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:alpha="0.85"
-        android:letterSpacing="0.14"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.09"
         android:textAllCaps="true"
-        android:textSize="12sp" />
+        android:textSize="11.5sp" />
     <TextView
         android:id="@android:id/summary"
         android:layout_width="match_parent"

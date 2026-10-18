@@ -46,6 +46,13 @@ public final class LutSamples {
         return b;
     }
 
+    /** The concept's drawScene(seed, zoom) alone (the transparency page's preview). */
+    public static Bitmap scene(int w, int h, int seed, float zoom) {
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        scene(new Canvas(b), w, h, seed, zoom);
+        return b;
+    }
+
     /** The concept's rnd(seed): a small LCG, so the scenes match it. */
     private static final class Rnd {
         long s;

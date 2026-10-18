@@ -20,7 +20,7 @@ public class BackupPreferences extends EditTextPreference {
     public BackupPreferences(Context context, AttributeSet attributeSet) {
         super(context, attributeSet);
         setPersistent(false);
-        setSummary(ConfigFolder.RELATIVE);
+        if (getSummary() == null) setSummary(ConfigFolder.RELATIVE);   // SIMPLE_UI §4: the XML gives «Все настройки в один файл»
         setDialogMessage(Lang.t(context,"Все настройки и профили модулей сохраняются в XML-файл в папке ","All settings and module profiles are saved to an XML file in the folder ") + ConfigFolder.RELATIVE);
 
         setOnBindEditTextListener(editText -> {

@@ -1368,7 +1368,7 @@ public class SettingsMenuTest {
         assertEquals(accent,toggle.getTrackTintList().getColorForState(new int[]{android.R.attr.state_checked},0));
         assertNotNull("info rows are notes",row(info).findViewById(R.id.settings_info_icon));
         assertNull("notes are not cards",row(info).getBackground());
-        assertEquals(R.layout.preference_tile,tile.getLayoutResource());
+        assertEquals("SIMPLE_UI §4: the profile actions are rows, as the concept",R.layout.preference_card,tile.getLayoutResource());
         assertEquals(com.particlesdevs.photoncamera.ui.settings.SettingsStyle.WARN,((android.widget.TextView)row(tile).findViewById(android.R.id.title)).getCurrentTextColor());
         assertEquals("actions are written in the accent",accent,((android.widget.TextView)row(action).findViewById(android.R.id.title)).getCurrentTextColor());
         list.setEnabled(false);assertEquals(.45f,row(list).getAlpha(),1e-3);
@@ -1427,7 +1427,7 @@ public class SettingsMenuTest {
                 java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
                 try(var out=new java.io.FileOutputStream(new java.io.File(dir,"page-root.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
             }
-            for(String key:new String[]{"scam_hybrid_screen","scam_hybrid_capture_screen","output_settings_screen","scam_hybrid_ark_sharp_screen","advanced_screen","interface_settings_screen","photo_style_screen"}){
+            for(String key:new String[]{"scam_hybrid_screen","scam_hybrid_capture_screen","output_settings_screen","scam_hybrid_ark_sharp_screen","advanced_screen","interface_settings_screen","photo_style_screen","shade_transparency_screen","backup_settings_screen"}){
                 var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
                 PreferenceScreen target=root.findPreference(key);if(target==null){fm.popBackStackImmediate(null,androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
                     root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);target=root.findPreference(key);}
@@ -1729,6 +1729,47 @@ public class SettingsMenuTest {
             view.findViewWithTag("lut_card_").performClick();
             assertEquals("",lut.chosen());
         }
+    }
+    /** SIMPLE_UI §4 «Прозрачность шторки»: its own page - a preview and radio rows; the choice is the sheet's alpha. */
+    @Test public void shadeTransparencyPageStoresThePercentage(){
+        PreferenceScreen screen=inflate();
+        com.particlesdevs.photoncamera.ui.settings.custompreferences.ShadeTransparencyPreference t=screen.findPreference("pref_shade_transparency");
+        assertNotNull(t);
+        assertEquals(40,t.value());
+        android.view.View row=LayoutInflater.from(context).inflate(t.getLayoutResource(),null,false);
+        t.onBindViewHolder(PreferenceViewHolder.createInstanceForTests(row));
+        assertNotNull(row.findViewWithTag("shade_transparency_preview"));
+        for(int v:new int[]{0,20,30,40,50,60})assertNotNull("option "+v,row.findViewWithTag("shade_transparency_"+v));
+        row.findViewWithTag("shade_transparency_20").performClick();
+        assertEquals("20",prefs.getString("pref_shade_transparency",""));
+        assertEquals(.8f,com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.sheetAlpha(context),1e-6f);
+        assertTrue(row.findViewWithTag("shade_transparency_20").isSelected());
+    }
+    /** SIMPLE_UI §4 «Профили и резервная копия»: the active profile, the saved ones (newest first) with load / delete in place. */
+    @Test public void profilesPageListsAndLoadsConfigs(){
+        PreferenceScreen screen=inflate();
+        com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference profiles=screen.findPreference("profiles_page");
+        assertNotNull(profiles);
+        java.util.List<String> files=new ArrayList<>(Arrays.asList("Night.xml","Portrait.xml"));
+        String[] loaded={null};
+        android.view.View row=LayoutInflater.from(context).inflate(profiles.getLayoutResource(),null,false);
+        profiles.onBindViewHolder(PreferenceViewHolder.createInstanceForTests(row));
+        profiles.setActions(new com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference.Actions(){
+            @Override public String[] saved(){return files.toArray(new String[0]);}
+            @Override public String load(String f){loaded[0]=f;return "ok";}
+            @Override public boolean delete(String f){return files.remove(f);}
+        });
+        assertNotNull(row.findViewWithTag("profile_active"));
+        android.view.ViewGroup saved=row.findViewWithTag("profiles_saved");
+        assertEquals("newest first","profile_Portrait",String.valueOf(saved.getChildAt(0).getTag()));
+        row.findViewWithTag("profile_Night").performClick();
+        android.view.View panel=row.findViewWithTag("profile_panel_Night");
+        assertEquals(android.view.View.VISIBLE,panel.getVisibility());
+        panel.findViewWithTag("profile_load").performClick();
+        assertEquals("Night.xml",loaded[0]);
+        panel.findViewWithTag("profile_delete").performClick();
+        assertEquals(Arrays.asList("Portrait.xml"),files);
+        assertNull(row.findViewWithTag("profile_Night"));
     }
     private static android.view.View layout(android.view.View view,int w,int h){
         int exact=android.view.View.MeasureSpec.EXACTLY;

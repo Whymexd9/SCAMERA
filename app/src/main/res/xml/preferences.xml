@@ -562,16 +562,19 @@
   </PreferenceCategory>
   <PreferenceCategory android:key="root_app" android:title="@string/prefs_root_app_title" app:iconSpaceReserved="false">
     <Preference android:icon="@drawable/settings_ic_palette" android:title="@string/prefs_theme_accent_title" android:key="@string/pref_theme_accent_key" android:summary="@string/prefs_theme_accent_summary" />
-    <ListPreference android:key="pref_shade_transparency" android:title="@string/prefs_shade_transparency_title" android:summary="@string/prefs_shade_transparency_summary" android:defaultValue="40" android:entries="@array/shade_transparency_entries" android:entryValues="@array/shade_transparency_values" android:icon="@drawable/settings_ic_layers" />
+    <PreferenceScreen android:key="shade_transparency_screen" android:title="@string/prefs_shade_transparency_title" android:summary="@string/prefs_shade_transparency_summary" android:icon="@drawable/ui_ic_apps" app:iconSpaceReserved="false">
+      <com.particlesdevs.photoncamera.ui.settings.custompreferences.ShadeTransparencyPreference android:key="pref_shade_transparency" android:title="@string/prefs_shade_transparency_title" android:defaultValue="40" />
+    </PreferenceScreen>
     <PreferenceScreen android:key="interface_settings_screen" android:title="@string/prefs_gallery_screen_title" android:summary="@string/prefs_gallery_screen_summary" android:icon="@drawable/settings_ic_ui" app:iconSpaceReserved="false">
       <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference android:icon="@drawable/settings_ic_camera" android:title="@string/hide_gallery_icon" android:key="@string/pref_hide_gallery_icon_key" android:summary="@string/hide_gallery_icon_desc" android:defaultValue="@bool/pref_hide_gallery_icon_default" />
       <ListPreference android:icon="@drawable/settings_ic_palette" android:entries="@array/theme_entries" android:title="@string/prefs_theme_gallery_title" android:key="@string/pref_theme_key" android:summary="@string/theme_desc" android:defaultValue="@string/pref_theme_default_value" android:entryValues="@array/theme_entryValues" />
     </PreferenceScreen>
     <PreferenceScreen android:key="backup_settings_screen" android:title="@string/prefs_profiles_screen_title" android:summary="@string/prefs_profiles_screen_summary" android:icon="@drawable/settings_ic_save" app:iconSpaceReserved="false">
-      <PreferenceCategory android:title="@string/prefs_category_backup_restore_title" android:key="@string/pref_category_backup_restore">
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.BackupPreferences android:icon="@drawable/settings_ic_save" android:title="@string/backup" android:key="@string/pref_backup_preferences_key" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.RestorePreference android:icon="@drawable/settings_ic_restore" android:title="@string/restore" android:key="@string/pref_restore_preferences_key" android:summary="@string/prefs_desc_pref_restore_preferences_key" />
-        <com.particlesdevs.photoncamera.ui.settings.custompreferences.ResetPreferences android:icon="@drawable/settings_ic_reset" android:title="@string/reset" android:key="@string/pref_reset_preferences_key" android:summary="@string/prefs_desc_pref_reset_preferences_key" />
+      <com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference android:key="profiles_page" android:title="@string/prefs_profiles_screen_title" />
+      <PreferenceCategory android:title="@string/prefs_profiles_actions_title" android:key="@string/pref_category_backup_restore">
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.BackupPreferences android:icon="@drawable/settings_ic_plus" android:title="@string/prefs_profiles_save_title" android:summary="@string/prefs_profiles_save_summary" android:key="@string/pref_backup_preferences_key" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.RestorePreference android:icon="@drawable/settings_ic_restore" android:title="@string/prefs_profiles_load_title" android:key="@string/pref_restore_preferences_key" android:summary="@string/prefs_profiles_load_summary" />
+        <com.particlesdevs.photoncamera.ui.settings.custompreferences.ResetPreferences android:icon="@drawable/settings_ic_reset" android:title="@string/reset" android:key="@string/pref_reset_preferences_key" android:summary="@string/prefs_profiles_reset_summary" />
       </PreferenceCategory>
       <Preference android:key="config_portable_note" android:summary="@string/prefs_config_portable_note_summary" android:selectable="false" />
     </PreferenceScreen>

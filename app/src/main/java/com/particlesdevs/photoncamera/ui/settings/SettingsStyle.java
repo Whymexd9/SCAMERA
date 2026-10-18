@@ -68,8 +68,8 @@ public final class SettingsStyle {
     /** P139: a row's description (dimmer than MUTED); titles take UiTokens.title (medium weight). */
     public static final int SUMMARY = UiTokens.SUMMARY;
 
-    /** «Конфиг»: Сохранить / Восстановить / Сбросить всё share one row of three tiles. */
-    static final Set<String> TILES = new HashSet<>(Arrays.asList("pref_backup_preferences_key", "pref_restore_preferences_key", "pref_reset_preferences_key"));
+    /** Rows drawn as tiles three to a line (SIMPLE_UI §4: the profile actions are rows now, as the concept; none left). */
+    static final Set<String> TILES = new HashSet<>();
     /** Plain preferences that open a page (handled in SettingsFragment.onPreferenceTreeClick): a chevron, not an action. */
     static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key",
             "pref_file_name_pattern", "photo_style_lut"));
@@ -270,7 +270,9 @@ public final class SettingsStyle {
     static boolean page(Preference p) {
         return p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.LutChangesPreference
-                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.PhotoStylePreference;
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.PhotoStylePreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ShadeTransparencyPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ProfilesPreference;
     }
 
     private static void defaultIcon(Preference p, int icon) {
@@ -293,6 +295,8 @@ public final class SettingsStyle {
         String key = p.getKey();
         row.setAlpha(alpha);
         if (p instanceof PreferenceCategory) {
+            // a category is never "enabled" (PreferenceCategory.isEnabled is false): its label is not a dimmed row
+            row.setAlpha(1f);
             TextView title = (TextView) holder.findViewById(android.R.id.title);
             if (title != null) title.setTextColor(accent);
             return;
@@ -373,6 +377,11 @@ public final class SettingsStyle {
     static CharSequence valueOf(Preference p) {
         if (p instanceof RestorePreference) return null;
         // SIMPLE_UI §4: «Плёночный LUT» shows the chosen look on the right (the concept's .rv)
+        if ("backup_settings_screen".equals(p.getKey()))
+            return com.particlesdevs.photoncamera.settings.ConfigState.label(p.getContext());
+        if ("shade_transparency_screen".equals(p.getKey()))
+            return com.particlesdevs.photoncamera.ui.settings.custompreferences.ShadeTransparencyPreference.label(p.getContext(),
+                    Math.round((1f - com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle.sheetAlpha(p.getContext())) * 100f));
         if ("photo_style_screen".equals(p.getKey()) && p.getSharedPreferences() != null)
             return com.particlesdevs.photoncamera.settings.PhotoStyle.name(p.getContext(),
                     com.particlesdevs.photoncamera.settings.PhotoStyle.current(p.getSharedPreferences()));
