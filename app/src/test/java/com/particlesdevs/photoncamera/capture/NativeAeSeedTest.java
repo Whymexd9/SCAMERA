@@ -76,6 +76,15 @@ public class NativeAeSeedTest {
         assertEquals(1e8, NativeAeSeed.pick("2", 0f, 3_000L, WALL + 60_000L).total, 1e3);
     }
 
+    /** A settled exposure is written when it moved by more than STORE_EV or a minute passed, never more than every 5 s. */
+    @Test public void aSettledExposureIsStoredOnAChangeOrOnceAMinute() {
+        assertTrue("never stored", NativeAeSeed.storeDue(10_000L, 0L, 1e8, 0));
+        assertTrue("too soon", !NativeAeSeed.storeDue(12_000L, 10_000L, 2e8, 1e8));
+        assertTrue("moved 1 EV", NativeAeSeed.storeDue(16_000L, 10_000L, 2e8, 1e8));
+        assertTrue("held: not yet", !NativeAeSeed.storeDue(40_000L, 10_000L, 1.02e8, 1e8));
+        assertTrue("held a minute: refreshed", NativeAeSeed.storeDue(70_000L, 10_000L, 1.02e8, 1e8));
+    }
+
     /** Neither: the camera's own plain HAL exposure, else the constructor's default (0). */
     @Test public void withoutSamplesTheCamerasOwnHalExposureThenTheDefault() {
         NativeAeSeed.Seed none = NativeAeSeed.pick("2", 0f, 1_000L, WALL);

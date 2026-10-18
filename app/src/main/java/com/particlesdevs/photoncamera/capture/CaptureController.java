@@ -2680,6 +2680,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mNativeAeStartMs = android.os.SystemClock.elapsedRealtime();
             mNativeAeSettledMs = 0;
             mNativeAeStoredMs = 0;
+            mNativeAeStoredTotal = 0;
             mNativeAe = ae;
             OppoNativeFullRes.begin(mVivoSdkCameraId, ae);
             Log.i("SCAM_CAPTURE", "OPPO native FULLRES camera " + mVivoSdkCameraId + ": mode "
@@ -4473,6 +4474,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private long mNativeAeLogMs;
     /** P212a / b: the native session's start, since when its AE holds, when it was last stored (elapsedRealtime ms; 0: not). */
     private long mNativeAeStartMs, mNativeAeSettledMs, mNativeAeStoredMs;
+    private double mNativeAeStoredTotal;
     /** P212c: the unthrottled trace of the native AE (scam_dev.txt "native_ae_trace 1"), one line a frame, flushed once a second. */
     private final StringBuilder mNativeAeTrace = new StringBuilder();
     private long mNativeAeTraceMs;
@@ -4554,9 +4556,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P212b: a settled exposure (a second inside the band or at the deliverable limit) is the next session's start
             if (exposure != null && iso != null && ae.settled() && !ae.handSet()) {
                 if (mNativeAeSettledMs == 0) mNativeAeSettledMs = now;
-                else if (now - mNativeAeSettledMs >= NativeAeSeed.SETTLED_HOLD_MS && now - mNativeAeStoredMs >= NativeAeSeed.STORE_EVERY_MS) {
-                    mNativeAeStoredMs = now;
-                    NativeAeSeed.storeSettled(mVivoSdkCameraId, (double) exposure * iso / 100.0, ev, System.currentTimeMillis());
+                else if (now - mNativeAeSettledMs >= NativeAeSeed.SETTLED_HOLD_MS) {
+                    final double delivered = (double) exposure * iso / 100.0;
+                    if (NativeAeSeed.storeDue(now, mNativeAeStoredMs, delivered, mNativeAeStoredTotal)) {
+                        mNativeAeStoredMs = now;
+                        mNativeAeStoredTotal = delivered;
+                        NativeAeSeed.storeSettled(mVivoSdkCameraId, delivered, ev, System.currentTimeMillis());
+                    }
                 }
             } else mNativeAeSettledMs = 0;
             // P212a: once a session, a request above the cap shows whether the firmware gives more gain after all (never while a

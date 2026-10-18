@@ -31,8 +31,12 @@ final class NativeAeSeed {
     private NativeAeSeed() {}
 
     static final long PLAIN_MAX_AGE_MS = 5_000L, SETTLED_MAX_AGE_MS = 10 * 60_000L;
-    /** A settled exposure is stored after this long settled, at most this often. */
-    static final long SETTLED_HOLD_MS = 1_000L, STORE_EVERY_MS = 5_000L;
+    /**
+     * A settled exposure is stored after this long settled, at most every STORE_EVERY_MS, then when it moved by more than STORE_EV
+     * or STORE_REFRESH_MS passed (the stored age is what the 10 minutes count).
+     */
+    static final long SETTLED_HOLD_MS = 1_000L, STORE_EVERY_MS = 5_000L, STORE_REFRESH_MS = 60_000L;
+    static final double STORE_EV = 0.1;
     /**
      * The native / plain ratio of the frames' level per exposure: about 1 on the PHY110 (probe RAWs, plain bin12 p50 0.0310 at
      * 1.090 ms ISO 101 vs native p50 0.0366 at 1.093 ms ISO 100, 0.98 normalised by the lux tag). Not learned (M8 made it
@@ -74,6 +78,14 @@ final class NativeAeSeed {
         final SharedPreferences s = store();
         if (camera == null || s == null || !(total > 0)) return;
         s.edit().putString(camera, String.format(Locale.ROOT, "%.1f;%.3f;%d", total, ev, wallMs)).apply();
+    }
+
+    /** A settled exposure {@code total} is due for the store (last stored {@code lastTotal} at {@code lastMs}; 0: never). */
+    static boolean storeDue(long nowMs, long lastMs, double total, double lastTotal) {
+        if (lastMs <= 0 || !(lastTotal > 0)) return true;
+        final long since = nowMs - lastMs;
+        if (since < STORE_EVERY_MS) return false;
+        return since >= STORE_REFRESH_MS || Math.abs(Math.log(total / lastTotal) / Math.log(2)) > STORE_EV;
     }
 
     /** The start of the camera's native AE at compensation {@code ev}: elapsedRealtime {@code nowMs}, wall clock {@code wallMs}. */
