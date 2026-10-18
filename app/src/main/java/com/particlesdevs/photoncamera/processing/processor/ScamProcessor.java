@@ -82,6 +82,9 @@ public class ScamProcessor extends ProcessorBase {
     /** P212f (W2 = M3): the hand-set white balance's gains at the press of the queued shot (null: automatic). */
     public android.hardware.camera2.params.RggbChannelVector ownedManualWb;
     private android.hardware.camera2.params.RggbChannelVector manualWb;
+    /** P212g (W6 = M6): the mosaic white balance's route at the press of the queued shot (null: none). */
+    public com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press ownedMosaicWb;
+    private com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mosaicWb;
     private java.util.List<IsoExpoSelector.ExpoPair> fullpairs;
 
     public void start(Path dngFile, Path imageFile,
@@ -114,6 +117,8 @@ public class ScamProcessor extends ProcessorBase {
         ownedFullResSeries = ownedFullResRequested = 0;
         this.manualWb = ownedManualWb;
         ownedManualWb = null;
+        this.mosaicWb = ownedMosaicWb;
+        ownedMosaicWb = null;
         this.scamCapture = PreferenceKeys.isScamEnabled();
         // The route of the shot fixes the settings profile of its whole processing: pref_scam_hybrid_* for a hybrid shot,
         // the SCAM HDR keys otherwise (PreferenceKeys.isHybridShot), even if the route changes meanwhile.
@@ -322,6 +327,7 @@ public class ScamProcessor extends ProcessorBase {
         processingParameters.fullResSeries = fullResSeries;
         processingParameters.fullResRequested = fullResRequested;
         processingParameters.manualWbAtPress = manualWb;
+        processingParameters.mosaicWbAtPress = mosaicWb;
         if (rawCrop != null && rawCrop.area != null) {
             processingParameters.rawCrop = rawCrop.area;
             processingParameters.rawCropFull = new Point(rawCrop.fullWidth, rawCrop.fullHeight);
@@ -845,6 +851,8 @@ public class ScamProcessor extends ProcessorBase {
             block = r.confident ? r.block : 1;
         }
         if (block <= 1) return;
+        // P212g (W7 = M12): every colour computation of the shot from here on may take the camera's plain-session matrix
+        p.mosaicShot = true;
         // P212f (W2 = M3): a hand-set white balance is the shot's white point (the photo and the DNG's AsShotNeutral), as on a
         // 12 MP shot - the gains at the press, else a result that says AWB off; ownNeutral stays false
         if (p.keepHandSetWhiteBalance(meta)) {
@@ -883,8 +891,31 @@ public class ScamProcessor extends ProcessorBase {
             Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "WB TEACHER camera %s (log only): m %.3f / %.3f -> %s", id, stat.r, stat.b,
                     t == null ? "nothing learned near it (" + com.particlesdevs.photoncamera.processing.color.MosaicTeacher.cells(id) + " cells)" : t.toString()));
         }
+        // P212g (W6 = M6): the vivo native routes, whose HAL 3A runs, keep the HAL's neutral when it is converged and on the camera's
+        // curve, and P208's still-only route takes its normal-mode viewfinder's neutral at the press (MosaicNeutralResolver); ownNeutral
+        // stays false, so the ISP's matrix (or the plain-session table) renders it. Our estimate above is logged only then.
+        final com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press press = p.mosaicWbAtPress;
+        if (press != null && press.route != com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.ROUTE_NONE) {
+            final Integer awbState = meta == null ? null : meta.get(CaptureResult.CONTROL_AWB_STATE);
+            final float[] hal = p.whitePoint.clone();
+            final float distance = press.viewfinder != null ? Float.NaN
+                    : com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.curveDistance(id, hal, prior);
+            final com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Decision d =
+                    com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.decide(press, hal, awbState, distance);
+            if (d != null) {
+                p.customNeutral = d.neutral;
+                p.ownNeutral = false;
+                p.ReCalcColor(true, meta);
+                Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", " + d.how + "; own estimate "
+                        + (own == null ? "none (too few usable cells)" : own.how) + " (log only)");
+                return;
+            }
+            Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", " + press + ": P121 ("
+                    + com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.whyNot(press, hal, awbState, distance) + ")");
+        }
         if (own == null) {
             Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", too few usable cells; the camera's neutral " + camera + " kept");
+            p.ReCalcColor(false, meta); // P212g (W7): the camera's neutral, the colour matrix of a mosaic shot
             return;
         }
         Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", camera " + camera + " -> " + own.how);

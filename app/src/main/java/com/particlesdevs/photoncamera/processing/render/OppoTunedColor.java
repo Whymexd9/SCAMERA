@@ -79,12 +79,111 @@ public final class OppoTunedColor {
 
     /** ln(R/B) of the neutral of a 6500 K light for the sensor of this focal length (-0.6 for one not measured). */
     static float anchor(float focal) {
+        final float measured = measuredAnchor(focal);
+        return Float.isNaN(measured) ? DEFAULT_ANCHOR : measured;
+    }
+
+    /** The anchor of a sensor not measured. */
+    static final float DEFAULT_ANCHOR = -0.6f;
+
+    /** The measured 6500 K anchor of the sensor of this focal length, NaN for one not measured. */
+    static float measuredAnchor(float focal) {
         for (float[] row : NEUTRAL_AT_6500) if (Math.abs(row[0] - focal) < 0.05f) return row[1];
-        return -0.6f;
+        return Float.NaN;
+    }
+
+    /**
+     * P212g (W7 = M12 item 4): the labels (K) of the plain-session neutrals a sensor without a measured anchor (the 22.36 mm 6x tele
+     * and the 3.23 mm front, whose TABLE rows exist) learns its anchor from, and the labelled samples it needs.
+     */
+    static final float LEARN_MIN_K = 6000f, LEARN_MAX_K = 7000f;
+    static final int LEARN_MIN_SAMPLES = 5;
+
+    /** scam_dev.txt "oppo_cct_anchor" (default on): the learned anchor of a sensor not measured; off: -0.6 as before. */
+    static boolean learnedAnchorOn() {
+        return com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("oppo_cct_anchor", true);
+    }
+
+    /**
+     * The ln(R/B) shift from the 6500 K neutral of a light of {@code mired} (SHIFT_MIRED read the other way, clamped at its ends).
+     */
+    static float shiftAt(double mired) {
+        final float[][] t = SHIFT_MIRED;
+        if (mired <= t[0][1]) return t[0][0];
+        if (mired >= t[t.length - 1][1]) return t[t.length - 1][0];
+        int i = 0;
+        while (mired > t[i + 1][1]) i++;
+        return (float) (t[i][0] + (t[i + 1][0] - t[i][0]) * (mired - t[i][1]) / (t[i + 1][1] - t[i][1]));
+    }
+
+    /**
+     * P212g (W7 = M12 item 4): the 6500 K anchor from plain-session bins {ln(R/B), mired, labelled samples} labelled 6000-7000 K
+     * (PlainColourMemory.labelled): the count-weighted median of each bin's ln(R/B) moved to 6500 K by the SHIFT_MIRED rule (a bin
+     * labelled 6000 K sits 0.14 warmer than the anchor; a plain median of the window would lean to whichever end the scenes fill);
+     * NaN with fewer than LEARN_MIN_SAMPLES labelled samples. The offline cross-check of the rule on the PHY110 probes' held AWB
+     * states (the gains and label of a sensor's last plain frame, evidence/oppo_phy110_fullres_20261016): the main 8.67 mm at 5546 K
+     * gives -0.685 against its measured -0.696, but the wide 2.59 mm at 7928 K and the tele 15.38 mm at 5464 K - outside the window -
+     * give -0.32 and -0.43 against -0.613 and -0.551, so the rule is taken inside the window only, never over a measured anchor
+     * (the log line cross-checks those on the phone), and no constant was derived from the 6x's one held state (5963 K: -0.43).
+     */
+    static float learnedAnchor(@androidx.annotation.Nullable java.util.List<double[]> bins) {
+        if (bins == null || bins.isEmpty()) return Float.NaN;
+        final java.util.ArrayList<double[]> a = new java.util.ArrayList<>();
+        double total = 0;
+        for (double[] b : bins) {
+            if (b == null || b.length < 3 || !(b[1] > 0) || !(b[2] > 0)) continue;
+            a.add(new double[]{b[0] - shiftAt(b[1]), b[2]});
+            total += b[2];
+        }
+        if (total < LEARN_MIN_SAMPLES) return Float.NaN;
+        a.sort((x, y) -> Double.compare(x[0], y[0]));
+        double run = 0;
+        for (double[] x : a) {
+            run += x[1];
+            if (run >= total / 2) return (float) x[0];
+        }
+        return (float) a.get(a.size() - 1)[0];
+    }
+
+    /**
+     * P212g: the anchor of camera {@code camera}'s sensor: measured, else the one its plain-session table learned (scam_dev.txt
+     * "oppo_cct_anchor 0": not), else -0.6.
+     */
+    static float anchor(float focal, @androidx.annotation.Nullable String camera) {
+        final float measured = measuredAnchor(focal);
+        if (!Float.isNaN(measured)) return measured;
+        final float learned = camera == null || !learnedAnchorOn() ? Float.NaN : learnedAnchor(
+                com.particlesdevs.photoncamera.processing.color.PlainColourMemory.labelled(camera, LEARN_MIN_K, LEARN_MAX_K));
+        return Float.isNaN(learned) ? DEFAULT_ANCHOR : learned;
+    }
+
+    /** P212g: the anchor and where it came from (log); a measured one is cross-checked against what the camera's table learned. */
+    static String describeAnchor(float focal, @androidx.annotation.Nullable String camera) {
+        final float measured = measuredAnchor(focal);
+        final float learned = camera == null ? Float.NaN : learnedAnchor(
+                com.particlesdevs.photoncamera.processing.color.PlainColourMemory.labelled(camera, LEARN_MIN_K, LEARN_MAX_K));
+        if (!Float.isNaN(measured))
+            return String.format(java.util.Locale.ROOT, "%.3f (measured%s)", measured,
+                    Float.isNaN(learned) ? "" : String.format(java.util.Locale.ROOT, "; the plain table's 6000-7000 K labels give %.3f", learned));
+        if (!Float.isNaN(learned) && learnedAnchorOn())
+            return String.format(java.util.Locale.ROOT, "%.3f (learned from the plain table's 6000-7000 K labels)", learned);
+        return String.format(java.util.Locale.ROOT, "%.3f (not measured%s)", DEFAULT_ANCHOR,
+                Float.isNaN(learned) ? "" : String.format(java.util.Locale.ROOT, "; oppo_cct_anchor 0, learned %.3f", learned));
+    }
+
+    /** P212g: {@link #estimateCct(CameraCharacteristics, float[])} with camera {@code camera}'s anchor ({@link #anchor(float, String)}). */
+    static float estimateCct(CameraCharacteristics characteristics, float[] neutral, @androidx.annotation.Nullable String camera) {
+        float[] focal = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+        final float f = focal != null && focal.length > 0 ? focal[0] : 0f;
+        return estimateCct(neutral, anchor(f, camera));
     }
 
     static float estimateCct(float focal, float[] neutral) {
-        float anchor = anchor(focal);
+        return estimateCct(neutral, anchor(focal));
+    }
+
+    /** The colour temperature of the light of {@code neutral} for a sensor whose 6500 K neutral has ln(R/B) {@code anchor}. */
+    static float estimateCct(float[] neutral, float anchor) {
         float shift = (float) Math.log(neutral[0] / neutral[2]) - anchor;
         float[][] t = SHIFT_MIRED;
         float mired;

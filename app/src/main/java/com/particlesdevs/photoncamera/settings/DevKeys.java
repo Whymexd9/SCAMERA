@@ -96,6 +96,13 @@ public final class DevKeys {
                 "Mosaic white balance: the robust estimate (per-site clipping, noise weights, shading, the photo's crop, up to 3 frames, its own confidence) instead of P121. Off: only logged beside P121")));
         k.add(s(cap, "mosaic_awb_teacher", true, Lang.t("Баланс белого мозаики: «учитель» — в обычном режиме запоминает, какую нейтраль ISP выбирает для нашей оценки кадра; только сбор и лог, на фото не влияет",
                 "Mosaic white balance teacher: in the plain mode it learns which neutral the ISP picks for our estimate of the frame; collected and logged only, never applied to a photo")));
+        // P212g: whose neutral a vivo mosaic photo takes (W6) and the plain-session colour matrices of mosaic photos (W7)
+        k.add(s(cap, "mosaic_awb_resolver", true, Lang.t("vivo FULLRES: баланс белого камеры, если он установился и лежит на кривой камеры; 200 Мп без своего видоискателя — баланс видоискателя обычного режима за секунду до нажатия. Выкл — оценка по кадру (P121) на всех маршрутах",
+                "vivo FULLRES: the camera's white balance when it has converged and lies on the camera's curve; 200 MP without its own viewfinder: the normal-mode viewfinder's balance of the second before the press. Off: the frame estimate (P121) on every route")));
+        k.add(s(cap, "mosaic_ccm_table", true, Lang.t("Снимки мозаики (ISZ, FULLRES): цветовая матрица ISP из обычного режима этой камеры при том же свете вместо общих матриц DNG. Выкл — матрицы DNG",
+                "Mosaic shots (ISZ, FULLRES): the ISP's colour matrix of this camera's plain mode at the same light instead of the generic DNG matrices. Off: the DNG matrices")));
+        k.add(s(cap, "oppo_cct_anchor", true, Lang.t("OPPO X7 Ultra: точка 6500 K для 6× и фронтальной камеры по меткам AWB 6000–7000 K обычного режима. Выкл — −0.6, как раньше",
+                "OPPO X7 Ultra: the 6500 K point of the 6x and front cameras from the plain mode's 6000-7000 K AWB labels. Off: -0.6 as before")));
         k.add(s(cap, "oplus_ccm", true, Lang.t("OPPO: цветовая матрица com.oplus.custom.ccm вместо единичной", "OPPO: the com.oplus.custom.ccm colour matrix instead of an identity one")));
         k.add(s(cap, "fov_check", true, Lang.t("Замер реального поля зрения вендорных модулей", "Measure the real field of view of vendor modules")));
         k.add(s(cap, "hybrid_fast_capture", true, Lang.t("Сброс очереди HAL перед серией (задержка затвора ~0.4 → ~0.15 с)", "Flush the HAL request queue before the series (shutter lag ~0.4 -> ~0.15 s)")));

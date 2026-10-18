@@ -47,6 +47,8 @@ public class ImageSaver {
     public int fullResSeries, fullResRequested;
     /** P212f (W2 = M3): the hand-set white balance's gains at the press (null: automatic). */
     public android.hardware.camera2.params.RggbChannelVector manualWbAtPress;
+    /** P212g (W6 = M6): the mosaic white balance's route at the press (MosaicNeutralResolver; null: none). */
+    public com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mosaicWbAtPress;
 
     public void setFrameCount(int desiredFrameCount){
         this.desiredFrameCount = desiredFrameCount;
@@ -87,6 +89,7 @@ public class ImageSaver {
         saver.ownedFullResSeries = fullResSeries;
         saver.ownedFullResRequested = fullResRequested;
         saver.ownedManualWb = manualWbAtPress;
+        saver.ownedMosaicWb = mosaicWbAtPress;
         saver.ownedFrames = new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
         saver.ownedPairs = new ArrayList<>(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.fullpairs);
         SaverImplementation.IMAGE_BUFFER.clear();
