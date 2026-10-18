@@ -124,6 +124,7 @@ public class FullResZslTest {
         Shot shot = shoot(-1);
         assertEquals(shot.failures.toString(), 1, shot.completed);
         assertEquals("all six stills after the shutter", 6, shot.sequence.boundFutureCount());
+        assertEquals("P222: nothing missing", Arrays.asList(), shot.degraded);
         assertEquals("the ring's 4 N and the 6 stills", 10, shot.sequence.presentCount());
         assertEquals(10, shot.exposures.size());
         for (int i = 0; i < shot.requests.size(); i++) {
@@ -183,6 +184,19 @@ public class FullResZslTest {
         assertEquals(9, shot.sequence.presentCount());
         assertEquals(1, shot.sequence.droppedCount());
         assertEquals(9, shot.exposures.size());
+        assertEquals("P222: an exposure outside every role is no missing still", Arrays.asList(), shot.degraded);
+    }
+
+    /**
+     * P222: a still that came back whole yet whose RAW the shot lost leaves the tolerant ZSL shot as before, and is reported as a
+     * missing frame of the series (the in-flight count's failure memory hears it) before the shot completes.
+     */
+    @Test public void aStillWhoseRawTheShotLostIsReportedMissing() throws Exception {
+        Shot shot = shoot(-1, 0, Integer.MAX_VALUE, 2);
+        assertEquals(shot.failures.toString(), 1, shot.completed);
+        assertEquals(5, shot.sequence.boundFutureCount());
+        assertEquals(Arrays.asList("1 of 6 stills after the shutter missing"), shot.degraded);
+        assertEquals("before the completion", 1, shot.degradedBeforeComplete);
     }
 
     private static final CaptureRequest.Key<Integer> HDR = new CaptureRequest.Key<>("org.codeaurora.qcamera3.sessionParameters.EnableSHDR", Integer.class);
@@ -204,8 +218,8 @@ public class FullResZslTest {
     private static final class Shot {
         HybridPlan plan;
         final List<CaptureRequest> requests = new ArrayList<>();
-        final List<String> failures = new ArrayList<>();
-        int completed;
+        final List<String> failures = new ArrayList<>(), degraded = new ArrayList<>();
+        int completed, degradedBeforeComplete;
         ScamCaptureSequence sequence;
         HashMap<Long, Double> exposures;
     }
@@ -222,6 +236,11 @@ public class FullResZslTest {
 
     /** {@code longs}: the plan's bracketed frames kept (P219: 1 for FULLRES, CaptureController.takeNativeZsl). */
     private Shot shoot(int offRole, int topUp, int longs) throws Exception {
+        return shoot(offRole, topUp, longs, -1);
+    }
+
+    /** {@code lostRaw}: the still whose RAW the saver loses (P222; -1: none). */
+    private Shot shoot(int offRole, int topUp, int longs, int lostRaw) throws Exception {
         final Shot shot = new Shot();
         final VivoSdkFullRes.Profile profile = new VivoSdkFullRes.Profile(512, 512, 4, 2);
         // ISO capped at the N gain: the bracketed frames lengthen the shutter (40 ms > the viewfinder's 33 ms frame time)
@@ -262,7 +281,7 @@ public class FullResZslTest {
             Image image = call.getArgument(0);
             ImageFrame frame = mock(ImageFrame.class);
             frame.timestamp = image.getTimestamp();
-            frames.add(frame);
+            if (frame.timestamp != 100L + lostRaw) frames.add(frame);
             image.close();
             return null;
         }).when(saver).initProcess(any(Image.class));
@@ -279,6 +298,10 @@ public class FullResZslTest {
                         shot.completed++;
                     }
                     public void failed(String reason) { shot.failures.add(reason); }
+                    @Override public void degraded(String reason) {
+                        shot.degraded.add(reason);
+                        if (shot.completed == 0) shot.degradedBeforeComplete++;
+                    }
                 });
         capture.plan(shot.plan);
         capture.zsl(past, true);

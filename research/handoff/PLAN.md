@@ -5058,6 +5058,52 @@ stability 8, speed-ux C1; owner: a processing progress ring and a notification)
 - Not checked: no shot with the app (camera app not run): the ring and the notification on screen, the kill / fallback inside
   the app (WorkerSpawn SIGKILL path), a real GPU hang; CI's g++ ASan build of the new check (no host compiler); vivo / Mali.
   Seen, not changed: CameraFragment still posts its old indeterminate «processing» notification (id 1) at every shot.
+### P222 - FULLRES stills back to back (roadmap speed-ux A3; the owner's X7 Ultra log 2026-10-17; done in code, NOT tested
+on a phone)
+- Evidence: the stills of a FULLRES 50 MP series arrived in groups of 3 with 4-5 preview frames between them - shot 1 resultFrame
+  116-118, 123-125, 130-132, 138-140, 145 (13 stills in 30 frame slots, 1.66 s); the 250 ms PSL shot 173-175, 180-182, 187-189,
+  194-196 (12 in 24 slots, 5.5 s). Cause: NATIVE_IN_FLIGHT = 3 (P179): the next still was sent only when the oldest had its RAW,
+  result and sequence, ~5 slots later, and the repeating preview took the slots meanwhile; only shots above 100 MP stop the
+  preview. The RAWs are copied and closed on arrival (RAW16Saver.addImage), so more requests in flight hold no more of the
+  RAW reader's 4 buffers.
+- Now (capture/FullResInFlight): a native FULLRES series (vivo native rows of the X200 / X100 / X300 Ultra, P194's Bayer rows,
+  the OPPO native modes - all VivoSdkFullResCapture) keeps min(series, 6) stills in flight up to 100 MP; above 100 MP P179's 3
+  (measured on the X200 Ultra with the preview stopped and the memory at its edge; the preview stop is unchanged); the X200
+  Ultra's SDK route stays one at a time (each still carries the SDK's capture id and display timestamp; nothing measured
+  queued). scam_dev.txt "fullres_in_flight N" (1..8, on «Для разработчика») sets N on every native route, 3 = before P222;
+  other values are ignored (logged). No other FULLRES route has such a count (the Pixel 10 Pro FULLRES takes the regular shot
+  path, whose burst goes out at once).
+- Fallback: a series sent with more than 3 in flight that fails - a capture failure, buffer lost, aborted sequence, timeout,
+  empty / invalid RAW, RAW copy error, invalid / mismatched metadata or timestamps, an incomplete PSL series, a missing RAW
+  frame, a camera error under the series, or a 50 MP ZSL shot that completes with stills after the shutter missing - is
+  noted per camera and size (module_fullres_inflight_fail_<cam>_<w>x<h> = generation TRIALS 1, the reason beside it), and
+  the default is 3 from the next series on (an explicit scam_dev value still wins). Not counted: a wrong sensor mode / mosaic
+  (the row memory of VivoNativeFullRes / OppoNativeFullRes), the camera closed or disconnected under the series (the app left,
+  a camera switch), a failure before the series was sent. Bumping FullResInFlight.TRIALS tries 6 again in a later build.
+- The still timeout (8 s) now runs from the moment a still becomes the oldest one in flight (SerialRawCapture.Listener.head),
+  not from its submit: with 6 queued at a long hand-set shutter (1 s+) the last ones would have timed out while waiting for
+  the ones ahead. One in flight (the SDK route): from its submit, as before.
+- Log per series: «FULLRES in flight: 6 (default) for 12 stills after the shutter, camera 2 8192x6144» (or «3 (above 100 MP,
+  as P179)», «3 (after a failure with more than 3: <reason>)», «8 (scam_dev fullres_in_flight 8)», «1 (the SDK route: one at
+  a time)»), «FULLRES in flight: series done with N in flight», and on a noted failure «FULLRES in flight: camera C WxH failed
+  with N stills in flight (<reason>); 3 from the next series on».
+- Expected on the phone (from the roadmap's model, not measured): the X7U shot 1 from 1.66 s to ~0.75 s of capture after the
+  press, the 250 ms PSL shot from 5.5 s to ~3.9 s; resultFrame numbers mostly consecutive (6 in flight covers ~6 of the ~7
+  slots a still takes to complete; scam_dev 8 for fully back to back). The viewfinder of the native route (the RAW stream
+  itself) gets fewer frames during the series - the series is shorter.
+- Photos: no worker, shader or merge change; reference replays are unaffected by construction (cmp8 not run: the worker
+  source is untouched). On a phone the captured frames change only in timing.
+- Checked: FullResInFlightTest 7/7 (new, in the CI list: counts per route / size, scam_dev values, the failure classes, the
+  memory per camera and size, its generation), VivoSdkFullResCaptureTest 17/17 (+4: 6 in flight on a 12-still series, 3 / 4 / 8
+  as given, the SDK route 1 whatever is asked, the timeout from the head - a mutation back to the timer from the submit fails
+  it - and one in flight at 8 s from the submit), SerialRawCaptureTest 8/8 (+1: head notifications for 1 and 3 in flight),
+  FullResZslTest 9/9 (+1: a lost RAW of a ZSL shot is reported missing, an exposure outside every role is not),
+  DevKeysCoverageTest; the whole CI list 206 classes / 1289 tests, 0 failures; check_ui_language, check_settings_model,
+  check_scam_capture_sequence, check_scam_legacy_isolation, check_scam_ae_context PASS.
+- Not checked: anything on a phone - how the HALs of the X7U / X200U / X100U / X300U take 6 queued FULLRES stills (buffer
+  waits, dropped frames, heat), the real capture times, whether the fallback ever fires; the 200 MP route with more than 3
+  (only reachable through scam_dev).
+
 ### P223 - FULLRES and ISZ: switch off the ISP preview and our white-balance corrections (owner, 2026-10-18: «Для фулреза и ISZ
 дать возможность полностью отключить isp превью и отключить наши исправления баланса белого, настройку добавь в группу
 настроек "видоискатель"»)

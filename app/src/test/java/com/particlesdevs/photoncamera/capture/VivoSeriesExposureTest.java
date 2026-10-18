@@ -146,7 +146,7 @@ public class VivoSeriesExposureTest {
         for (int y = 0; y < 512; y++) for (int x = 0; x < 512; x++)
             pixels.putShort((y * 512 + x) * 2, (short) (64 + levels[(y / 2 % 2) * 2 + x / 2 % 2]));
         for (int i = 0; i < count; i++) {
-            assertEquals(failures.toString(), Math.min(count, i + VivoSdkFullResCapture.NATIVE_IN_FLIGHT), requests.size());
+            assertEquals(failures.toString(), Math.min(count, i + capture.inFlight()), requests.size());
             CaptureRequest request = requests.get(i);
             long timestamp = 100L + i;
             callbacks.get(i).onCaptureStarted(session, request, timestamp, i);

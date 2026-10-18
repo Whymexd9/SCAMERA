@@ -28,6 +28,8 @@ final class VivoSdkFullResCapture {
         void result(int index, TotalCaptureResult result);
         void complete(ScamCaptureSequence sequence, HashMap<Long, Double> exposures);
         void failed(String reason);
+        /** P222: the series completes, yet stills after the shutter are missing from it (a tolerant 50 MP ZSL shot); before complete. */
+        default void degraded(String reason) { }
     }
 
     private final CameraDevice device;
@@ -47,6 +49,8 @@ final class VivoSdkFullResCapture {
     private final List<CaptureRequest> requests = new ArrayList<>();
     private final List<TotalCaptureResult> results = new ArrayList<>();
     private final SerialRawCapture serial;
+    /** P222: the stills this series keeps in flight. */
+    private int inFlight;
     private final TimestampFrameRouter<Image> router;
     private volatile boolean stopped;
     private final Consumer<Image> previewConsumer;
@@ -75,14 +79,18 @@ final class VivoSdkFullResCapture {
                          int count, VivoSdkFullRes.Profile profile, CaptureRequest preview,
                          List<CaptureRequest.Key<?>> sessionKeys, Listener listener) {
         this(device, session, sdk, raw, jpeg, saver, handler, previewTimestamp, rotation, generation,
-                cutoff, count, profile, preview, sessionKeys, listener, null);
+                cutoff, count, profile, preview, sessionKeys, listener, null, 0);
     }
 
+    /**
+     * {@code inFlight}: the stills kept in flight (P222, FullResInFlight; 0: the route's default without scam_dev.txt and the
+     * failure memory); the SDK route always one at a time.
+     */
     VivoSdkFullResCapture(CameraDevice device, CameraCaptureSession session, VivoSdkRawSession sdk,
                          Surface raw, Surface jpeg, ImageSaver saver, Handler handler,
                          LongSupplier previewTimestamp, int rotation, long generation, long cutoff,
                          int count, VivoSdkFullRes.Profile profile, CaptureRequest preview,
-                         List<CaptureRequest.Key<?>> sessionKeys, Listener listener, Consumer<Image> previewConsumer) {
+                         List<CaptureRequest.Key<?>> sessionKeys, Listener listener, Consumer<Image> previewConsumer, int inFlight) {
         if (profile == null) throw new IllegalArgumentException("SDK FULLRES profile is missing");
         if (preview == null) throw new IllegalArgumentException("SDK FULLRES preview request is missing");
         this.profile = profile;
@@ -106,12 +114,15 @@ final class VivoSdkFullResCapture {
         java.util.Arrays.fill(roles, ImageFrame.CaptureRole.NORMAL);
         manualNs = new long[roles.length];
         manualIso = new int[roles.length];
-        // P179: the native RAW-only series keeps up to NATIVE_IN_FLIGHT stills queued, so they follow each other at the
-        // sensor's pace instead of each waiting behind the repeating preview requests (200 MP: ~5 s per frame one by one)
-        serial = new SerialRawCapture(count, profile.nativeBlock == 0, profile.nativeRoute() ? NATIVE_IN_FLIGHT : 1, new SerialRawCapture.Listener() {
+        // P179: the native RAW-only series keeps several stills queued, so they follow each other at the sensor's pace instead
+        // of each waiting behind the repeating preview requests (200 MP: ~5 s per frame one by one); P222 how many (FullResInFlight)
+        this.inFlight = !profile.nativeRoute() ? 1 : inFlight > 0 ? Math.min(FullResInFlight.MAX, inFlight)
+                : FullResInFlight.choose(count, true, FullResInFlight.huge(profile), 0, null).count;
+        serial = new SerialRawCapture(count, profile.nativeBlock == 0, this.inFlight, new SerialRawCapture.Listener() {
             public void submit(int index) { submitFrame(index); }
             public void complete() { finish(); }
             public void failed(String reason) { fail(reason); }
+            public void head(int index) { armTimeout(index); }
         });
         router = new TimestampFrameRouter<>((image, still) -> {
             if (!still && profile.nativeRoute() && !stopped) {
@@ -236,7 +247,7 @@ final class VivoSdkFullResCapture {
     /**
      * P212h (A7 = M14 phase 1b, scam_dev.txt "vivo_still_us_from_n", default off): on P208's still-only route the viewfinder is the
      * normal mode, so {@link #ultrashortLast}'s exposure (the viewfinder's over {@code factor}) is not 1 / factor of the N the 200 MP
-     * mode delivers. With 4 stills or more the last one is built after the first has completed (NATIVE_IN_FLIGHT 3, SerialRawCapture
+     * mode delivers. With 4 stills or more the last one is built after the first has completed (at most count - 1 in flight, SerialRawCapture
      * submits lazily), so it takes the first delivered N's shutter over {@code factor} at that N's ISO (ultrashortFrom). Count, order
      * and mode stay. Before {@link #start}.
      */
@@ -245,6 +256,11 @@ final class VivoSdkFullResCapture {
         usFactor = factor;
         usMinNs = Math.max(1L, minNs);
         usMinIso = Math.max(1, minIso);
+        // P222 keeps up to 6 in flight: the last still must still be built after the first N has completed
+        if (count >= 4 && inFlight > count - 1) {
+            inFlight = count - 1;
+            serial.limitInFlight(inFlight);
+        }
     }
 
     /**
@@ -318,8 +334,22 @@ final class VivoSdkFullResCapture {
     /** P198: the stills after the shutter of a 50 MP ZSL shot: the N its ring lacks and the plan's bracket (VivoSdkFullRes: 64 a series). */
     static final int MAX_SERIES = 64;
 
-    /** P179: stills of the native RAW-only series in flight at once (the RAW reader holds 4 images). */
-    static final int NATIVE_IN_FLIGHT = 3;
+    /** P222: the stills this series keeps in flight (FullResInFlight; the SDK route 1). */
+    int inFlight() { return inFlight; }
+
+    /**
+     * A still that has been the oldest one in flight this long without its RAW, result (and JPEG) fails the series. P222: from
+     * the moment it became the oldest (SerialRawCapture.Listener.head), not from its submit: a still queued behind others (6 of
+     * them at a 1 s hand-set shutter) waits for them first. One in flight: from its submit, as before.
+     */
+    static final long STILL_TIMEOUT_MS = 8000;
+
+    private void armTimeout(int index) {
+        handler.postDelayed(() -> {
+            if (!stopped && !serial.finished() && serial.index() == index)
+                serial.fail("SDK RAW/result/JPEG timeout at frame " + index);
+        }, STILL_TIMEOUT_MS);
+    }
 
     void cancel() {
         stopped = true;
@@ -409,10 +439,6 @@ final class VivoSdkFullResCapture {
                     if (!stopped) serial.fail("SDK STILL aborted");
                 }
             }, handler);
-            handler.postDelayed(() -> {
-                if (!stopped && !serial.finished() && serial.index() == index)
-                    serial.fail("SDK RAW/result/JPEG timeout at frame " + index);
-            }, 8000);
         } catch (Exception failure) {
             serial.fail("SDK STILL submit failed: " + failure.getMessage());
         }
@@ -487,10 +513,11 @@ final class VivoSdkFullResCapture {
                     : ScamCaptureSequence.hybridFuture(requests, cutoff);
             HashMap<Long, Double> exposures = new HashMap<>();
             for (ImageFrame frame : past) exposures.put(frame.timestamp, frame.measuredExposure / 1e9 * frame.measuredIso);
+            int offRole = 0;
             for (TotalCaptureResult result : results) {
                 if (plan != null) {
                     ImageFrame.CaptureRole role = plan.classify(result.getRequest(), result);
-                    if (role == null) { sequence.lost(result.getRequest(), "exposure outside every hybrid role"); continue; }
+                    if (role == null) { sequence.lost(result.getRequest(), "exposure outside every hybrid role"); offRole++; continue; }
                     sequence.reclassify(result.getRequest(), role);
                 }
                 sequence.completed(result.getRequest(), result);
@@ -501,6 +528,10 @@ final class VivoSdkFullResCapture {
             List<ImageFrame> unmatched = sequence.bindAndValidate(saver.snapshotFrames());
             if (zsl) {
                 if (!unmatched.isEmpty()) saver.removeFrames(unmatched);
+                // P222: a still that came back whole yet is not in the shot (its RAW or metadata lost; the exposures outside
+                // every role aside) is a missing frame of the series
+                final int missing = requests.size() - offRole - sequence.boundFutureCount();
+                if (missing > 0) listener.degraded(missing + " of " + requests.size() + " stills after the shutter missing");
             } else if (!unmatched.isEmpty() || sequence.boundFutureCount() != requests.size())
                 throw new IllegalStateException("Incomplete SDK RAW series");
             cancel();

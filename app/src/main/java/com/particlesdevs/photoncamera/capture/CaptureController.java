@@ -633,6 +633,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * shot is in flight. A camera close, error, disconnect or a stalled HAL then still gives a photo and frees the shutter.
      */
     private volatile Runnable mInFlightRescue;
+    /** P222: the reason of the last rescueInFlightShot, read by the rescue it runs. */
+    private volatile String mInFlightRescueReason;
     /** P27: manual ISO / shutter this camera's HAL honours (learned from shots; null before the first session). */
     private volatile ExposureLimits mExposureLimits;
     /** Unpacked copy of a RAW10 / RAW12 preview frame for the mosaic measurement (reused). */
@@ -3987,6 +3989,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             return;
         }
         Log.w("SCAM_CAPTURE", "shot in flight completed with the frames that arrived: " + reason);
+        mInFlightRescueReason = reason; // P222: a FULLRES series tells a camera error from the camera closed under it
         try {
             rescue.run();
         } catch (RuntimeException e) {
@@ -6271,6 +6274,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         saver.shotArena = arena;
         mShotArena = arena;
         final java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean();
+        // P222: the stills the series keeps in flight (FullResInFlight: 6 up to 100 MP, P179's 3 above it or after a failure
+        // with more, the SDK route one at a time); a failure of a series with more than 3 is noted for this camera and size
+        final String seriesCamera = mVivoSdkCameraId;
+        final VivoSdkFullRes.Profile seriesProfile = VivoSdkFullRes.profile(seriesCamera);
+        final FullResInFlight.Choice inFlight = seriesProfile == null ? new FullResInFlight.Choice(1, "no profile")
+                : FullResInFlight.forSeries(seriesCamera, seriesProfile, count);
+        Log.i("SCAM_CAPTURE", "FULLRES in flight: " + inFlight + " for " + count + " stills after the shutter, camera "
+                + seriesCamera + (seriesProfile == null ? "" : " " + seriesProfile.size));
+        final java.util.concurrent.atomic.AtomicBoolean sent = new java.util.concurrent.atomic.AtomicBoolean();
+        // the camera closed or failed under the series (rescueInFlightShot): its reason, which decides whether the count is noted
+        final java.util.concurrent.atomic.AtomicReference<String> rescueCause = new java.util.concurrent.atomic.AtomicReference<>();
         final VivoSdkFullResCapture.Listener listener = new VivoSdkFullResCapture.Listener() {
             public void started() {
                 cameraEventsListener.onFrameCaptureStarted(null);
@@ -6357,13 +6371,23 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         Log.i("SCAM_CAPTURE", "NATIVE FULLRES ZSL: " + shotN + " ring RAWs + " + sequence.boundFutureCount() + " of " + count
                                 + " after the shutter; Hybrid ZSL" + (dropped.isEmpty() ? "" : " (dropped: " + dropped + ")"));
                     } else Log.i("SCAM_CAPTURE", "SDK FULLRES50: " + count + " matched future RAWs; Hybrid PSL, stock ZSL=false");
+                    Log.i("SCAM_CAPTURE", "FULLRES in flight: series done with " + inFlight.count + " in flight");
                 } catch (RuntimeException failure) {
                     failed(failure.getMessage());
                 }
             }
 
+            public void degraded(String reason) {
+                if (!done.get()) FullResInFlight.failed(seriesCamera, seriesProfile, inFlight.count, reason);
+            }
+
             public void failed(String reason) {
                 if (!done.compareAndSet(false, true)) return;
+                // P222: a series sent with more than 3 in flight that failed for a reason the count may cause: 3 from the next one
+                if (sent.get()) {
+                    final String cause = rescueCause.get();
+                    FullResInFlight.failed(seriesCamera, seriesProfile, inFlight.count, cause != null ? cause : reason);
+                }
                 VivoSdkFullResCapture capture = mVivoSdkCapture;
                 mVivoSdkCapture = null;
                 if (capture != null) capture.cancel();
@@ -6413,7 +6437,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }, rotation, mShutterGeneration, scamZslShutterTimestamp, count,
                 VivoSdkFullRes.profile(mVivoSdkCameraId), mPreviewCaptureResult.getRequest(),
                 characteristics.getAvailableSessionKeys(), listener,
-                image -> mLiveMetadata.image(image.getTimestamp(), image));
+                image -> mLiveMetadata.image(image.getTimestamp(), image), inFlight.count);
             // P198: the stills after the shutter are the Hybrid plan's (the native mode's keys on each, as every still of the series)
             if (zsl != null) {
                 capture.plan(zsl.plan);
@@ -6480,11 +6504,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     : "AE on, no lock (the viewfinder AE state " + aeState + " at the press)"));
         }
         mVivoSdkCapture = capture;
-        mInFlightRescue = () -> listener.failed(Lang.t("Серия SDK RAW прервана", "SDK RAW series interrupted"));
+        mInFlightRescue = () -> {
+            rescueCause.set(mInFlightRescueReason);
+            listener.failed(Lang.t("Серия SDK RAW прервана", "SDK RAW series interrupted"));
+        };
         // P198: a ZSL shot's N are taken already: the press is an instant shot for the UI, as the 12 MP Hybrid's
         cameraEventsListener.onCaptureStillPictureStarted(zsl != null ? "ScamZslCaptureStarted" : "CaptureStarted!");
         cameraEventsListener.onBurstPrepared(null);
         ScameraApp.getGyro().startBurstRegistration();
+        sent.set(true);
         capture.start();
     }
 
