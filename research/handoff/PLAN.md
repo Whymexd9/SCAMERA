@@ -5004,3 +5004,24 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   SIMPLE_UI rules. Ties to P223 / P225 (RAW-only sessions) and P192.
 - Test only on the OPPO with adb replays and the probe; never start SCAMERA on fb27034c with a saved type 32777 + FULLRES session.
 - Not started.
+
+### P228 - diffusion filters: Black Pro-Mist, Glimmerglass and the like, adjustable (owner, 2026-10-18: «Реализовать симуляцию Black
+pro mist, glimmer glass и других подобных фильтров у нас в камере с возможностью настройки, расположи настройки в соответствии с
+нашей новой логикой простого интерфейса, я думаю можно расположить группу этих настроек рядом с LUT»)
+- Filters (each a physical model on the linear scene-referred RGB before the tone curve, where the highlights still hold their
+  real headroom - P216 hr - so a bright source blooms by its true energy, not by its clipped code):
+  - Black Pro-Mist: a wide low-level halation of the highlights (energy-preserving: the spread light is taken from the source),
+    slight contrast drop in the mids, blacks kept (the "black" variant) - strength 1/8, 1/4, 1/2, 1 as presets + a slider;
+  - Glimmerglass: a sparkle / short star-like glow on point lights and specular highlights, little haze;
+  - White Pro-Mist / Glow (lifted blacks, softer), Soft FX / softening (fine detail diffusion on skin, highlights barely glow),
+    Cinebloom / halation (red-orange film halation fringe) - as further presets if the model covers them.
+- Model to build and check: highlight extraction above a knee in linear light, a multi-scale PSF (Gaussian pyramid sum with a
+  long tail; streak kernel for Glimmerglass), energy conservation, colour of the glow (neutral vs warm halation), depending on the
+  focal length / crop so the look matches between lenses; GPU pass in PostPipeline (after the merge, before ARK tone), the same
+  pass on the viewfinder (GL preview, downscaled) so the effect is visible live.
+- UI per SIMPLE_UI: a «Фильтр» group next to the LUT - in the LUT tray (a second row of filter cards: «Нет», Black Pro-Mist,
+  Glimmerglass, ... with live thumbnails) and on the settings LUT page (a «Фильтр на объектив» section: the chosen filter, its
+  strength 1/8 - 1, plain one-line descriptions); the «Стиль» tile shows LUT + filter; per-module value (module profiles).
+- Checks: off = byte-identical output (md5 of the reference replays), energy test on a synthetic point source, no banding at
+  12 / 50 / 200 MP, time budget per size.
+- Not started.
