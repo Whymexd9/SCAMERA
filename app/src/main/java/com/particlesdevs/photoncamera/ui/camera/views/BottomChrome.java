@@ -38,9 +38,14 @@ public final class BottomChrome {
     private BottomChrome() {
     }
 
-    /** P157: the screen width at which the bottom bar's dp sizes hold as written (the shutter a fifth of the width). */
-    public static final float REFERENCE_WIDTH_DP = 360f;
-    static final float MIN_SCALE = 0.85f, MAX_SCALE = 1.4f;
+    /**
+     * P157: the screen width at which the bottom bar's dp sizes hold as written (the shutter a fifth of the width). SIMPLE_UI
+     * step 0: one formula for the whole camera chrome, {@link com.particlesdevs.photoncamera.circularbarlib.ui.UiScale} (the
+     * concept's 392dp phone); the bar's dp values are the concept's.
+     */
+    public static final float REFERENCE_WIDTH_DP = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.REFERENCE_DP;
+    static final float MIN_SCALE = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.MIN,
+            MAX_SCALE = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.MAX;
 
     /**
      * P157 (owner, 2026-10-16: «Исправь масштабирование нижних кнопок в видоискателе, чтобы при разных масштабах было
@@ -49,14 +54,12 @@ public final class BottomChrome {
      * 1440 px panel, 480dp: x1.33; the X300 Ultra's 434dp: x1.21; a 360dp screen: as written), within MIN..MAX.
      */
     public static float scale(float widthDp) {
-        if (!(widthDp > 0f)) return 1f;
-        return Math.max(MIN_SCALE, Math.min(MAX_SCALE, widthDp / REFERENCE_WIDTH_DP));
+        return com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.k(widthDp);
     }
 
-    /** {@link #scale(float)} of this screen (its short side: the camera screen is portrait). */
+    /** {@link #scale(float)} of this window (its short side in the current configuration: the camera screen is portrait). */
     public static float scale(Context context) {
-        android.util.DisplayMetrics m = context.getResources().getDisplayMetrics();
-        return scale(Math.min(m.widthPixels, m.heightPixels) / m.density);
+        return com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.k(context);
     }
 
     /**

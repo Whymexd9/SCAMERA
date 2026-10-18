@@ -166,7 +166,7 @@ public class BottomBarStyleTest {
             assertEquals(at + "strip: capsule corners", BottomChrome.STRIP_RADIUS_DP * density * s, stripBg.getCornerRadius(), .5f);
             for (int i = 0; i < strip.getChildCount(); i++) {
                 View lens = strip.getChildAt(i);
-                assertEquals(at + "lens height", Math.round(40 * density * s), lens.getHeight(), 1);
+                assertEquals(at + "lens height", Math.round(38 * density * s), lens.getHeight(), 1);
                 if (lens.isSelected()) assertTrue(at + "the active lens a pill wider than tall", lens.getWidth() > lens.getHeight());
             }
             assertEquals(at + "the processing ring is shown", View.VISIBLE, ring.getVisibility());

@@ -106,14 +106,14 @@ public class ViewfinderUiTest {
         assertEquals(route.getContentDescription(),route.getTooltipText());assertEquals(format.getContentDescription(),format.getTooltipText());
         assertNotNull(route.getDrawable());assertNotNull(format.getDrawable());
         for(ImageButton b:new ImageButton[]{route,format}){assertEquals(24,b.getDrawable().getIntrinsicWidth());assertEquals(24,b.getWidth()-b.getPaddingLeft()-b.getPaddingRight());}
-        assertEquals(72,bottom.findViewById(R.id.shutter_button).getWidth());
+        assertEquals(78,bottom.findViewById(R.id.shutter_button).getWidth());   // SIMPLE_UI: the concept's 78dp
         assertEquals(R.id.galery_button_container,((View)bottom.findViewById(R.id.processing_progress_bar).getParent()).getId());
         // Shutter row: gallery card | shutter exactly in the centre | front / back switch, none overlapping.
         View shutterBox=bottom.findViewById(R.id.shutter_button_container),gallery=bottom.findViewById(R.id.galery_button_container),
                 flipBox=bottom.findViewById(R.id.camera_switch_container),row=(View)shutterBox.getParent();
         assertEquals(row.getWidth()/2f,(shutterBox.getLeft()+shutterBox.getRight())/2f,1f);
         assertTrue(gallery.getRight()<=shutterBox.getLeft());assertTrue(flipBox.getLeft()>=shutterBox.getRight());
-        assertEquals(52,gallery.getWidth());assertEquals(52,flipBox.getWidth());
+        assertEquals(54,gallery.getWidth());assertEquals(54,flipBox.getWidth());   // SIMPLE_UI: 54dp
         // The strip: a centred pill above the shutter row, the ruler's place above it, all inside the bottom bar.
         View slot=bottom.findViewById(R.id.zoom_ruler_slot),rowRoot=bottom.findViewById(R.id.bottom_buttons);
         assertEquals(bottom.getWidth()/2f,(lenses.getLeft()+lenses.getRight())/2f,1f);
@@ -127,7 +127,7 @@ public class ViewfinderUiTest {
         for(int orientation:new int[]{90,180,-90,0}){
             lenses.rotateLabels(orientation,0);screen.measure(View.MeasureSpec.makeMeasureSpec(400,exact),View.MeasureSpec.makeMeasureSpec(880,exact));screen.layout(0,0,400,880);
             for(int i=0;i<lenses.getChildCount();i++){var lens=(com.particlesdevs.photoncamera.ui.camera.views.LensButton)lenses.getChildAt(i);
-                assertEquals(0f,lens.getRotation(),0f);assertEquals((orientation+360)%360,(lens.getLabelRotation()+360)%360,0f);assertEquals(widths[i],lens.getWidth());assertEquals("every lens 40dp high, the active one too, x the screen scale (P185)",Math.round(40*com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.scale(400f)),lens.getHeight());}
+                assertEquals(0f,lens.getRotation(),0f);assertEquals((orientation+360)%360,(lens.getLabelRotation()+360)%360,0f);assertEquals(widths[i],lens.getWidth());assertEquals("every lens 38dp high, the active one too, x the screen scale (P185, SIMPLE_UI)",Math.round(38*com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.scale(400f)),lens.getHeight());}
             if(orientation==90){screen.draw(new Canvas(image));try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(dir,"concept-controls-landscape"+png+".png"))){image.compress(Bitmap.CompressFormat.PNG,100,out);}}
         }
         scale.setListener(new LinearScaleView.OnValueChangedListener(){

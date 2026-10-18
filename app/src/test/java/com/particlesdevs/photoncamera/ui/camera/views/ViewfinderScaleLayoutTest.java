@@ -275,26 +275,26 @@ public class ViewfinderScaleLayoutTest {
             View gallery = row.findViewById(R.id.galery_button_container), shutter = row.findViewById(R.id.shutter_button_container),
                     flip = row.findViewById(R.id.camera_switch_container);
             Rect galleryBox = at(gallery), shutterBox = at(shutter), flipBox = at(flip);
-            // P157: the bottom bar's dp sizes times the screen's width over 360dp (BottomChrome.scale)
+            // P157 / SIMPLE_UI step 0: the bottom bar's concept dp sizes times k = width / 392dp (UiScale, BottomChrome.scale)
             float s = BottomChrome.scale(w / density);
-            assertEquals(at + "scale", Math.max(.85f, Math.min(1.4f, w / density / 360f)), s, 1e-4f);
-            assertEquals(at + "gallery 52dp x scale", dp(52 * s), galleryBox.width(), 2);
-            assertEquals(at + "flip 52dp x scale", dp(52 * s), flipBox.width(), 2);
-            assertEquals(at + "shutter 72dp x scale", dp(72 * s), shutterBox.width(), 2);
+            assertEquals(at + "scale", Math.max(.85f, Math.min(1.35f, w / density / 392f)), s, 1e-4f);
+            assertEquals(at + "gallery 54dp x scale", dp(54 * s), galleryBox.width(), 2);
+            assertEquals(at + "flip 54dp x scale", dp(54 * s), flipBox.width(), 2);
+            assertEquals(at + "shutter 78dp x scale", dp(78 * s), shutterBox.width(), 2);
             assertEquals(at + "shutter a fifth of the width", w / 5f, shutterBox.width(), w * .02f);
-            assertEquals(at + "gallery 20dp x scale from the left", dp(20 * s), galleryBox.left, 2);
-            assertEquals(at + "flip 20dp x scale from the right", dp(20 * s), w - flipBox.right, 2);
+            assertEquals(at + "gallery 22dp x scale from the left", dp(22 * s), galleryBox.left, 2);
+            assertEquals(at + "flip 22dp x scale from the right", dp(22 * s), w - flipBox.right, 2);
             assertEquals(at + "shutter centred", w / 2f, shutterBox.exactCenterX(), 1f);
             assertEquals(at + "gallery, shutter, flip on one line", shutterBox.centerY(), galleryBox.centerY(), 1);
             assertEquals(at + "gallery, shutter, flip on one line", shutterBox.centerY(), flipBox.centerY(), 1);
-            assertTrue(at + "shutter row 18dp x scale or more over the bottom" + geometry, rowBox.bottom <= h - dp(18 * s) + 1);
+            assertTrue(at + "shutter row 22dp x scale or more over the bottom" + geometry, rowBox.bottom <= h - dp(22 * s) + 1);
             assertEquals(at + "lens strip centred", w / 2f, stripBox.exactCenterX(), 1f);
             assertTrue(at + "lens strip inside the screen" + geometry, stripBox.left >= 0 && stripBox.right <= w);
             assertEquals(at + "lens strip 14dp x scale over the shutter row" + geometry, dp(14 * s), rowBox.top - stripBox.bottom, 2);
             for (int i = 0; i < strip.getChildCount(); i++) {
                 View lens = strip.getChildAt(i);
                 if (!(lens instanceof TextView)) continue;
-                // P185: every lens 40dp high (times the scale), the active one too; its label 14sp (the active 15sp) at most
+                // P185 / SIMPLE_UI: every lens 38dp high (times the scale), the active one too; its label 14sp (the active 15sp) at most
                 // the font scale's cap
                 assertEquals(at + "lens size", dp(LensButton.HEIGHT_DP * s), lens.getHeight(), 1);
                 TextView label = (TextView) lens;
