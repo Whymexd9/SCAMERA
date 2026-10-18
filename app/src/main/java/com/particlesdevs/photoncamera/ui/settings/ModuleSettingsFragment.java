@@ -32,12 +32,9 @@ public class ModuleSettingsFragment extends ModuleConceptFragment {
         else navigation("⧉",Lang.t(getContext(),"Добавить модуль с кропом","Add a module with a crop"),Lang.t(getContext(),"Копия объектива со своим кропом и настройками — например, 1.3× от 1×","A copy of a lens with its own crop and settings — e.g. 1.3× of 1×")
             +(free>0?Lang.t(getContext()," · свободных мест: "+free," · free places: "+free):""),()->addCopy(rear,front));
         if(!hidden.isEmpty()){caption(Lang.t(getContext(),"Скрытые модули","Hidden modules"));for(String slot:hidden)moduleRow(slot);}
-        caption(Lang.t(getContext(),"Профили модулей","Module profiles"));
-        perLensSwitch();
-        // P189: the module group (each module and its FULLRES 50 / 200 MP shots with their own settings) replaces the pill
-        navigation("≡",Lang.t(getContext(),"Настройки по модулям","Settings per module"),Lang.t(getContext(),"Настроить один модуль или его снимки 50 / 200 Мп","Set up one module or its 50 / 200 MP shots"),()->open(new ModuleProfilesFragment()));
-        note(Lang.t(getContext(),"При первом включении используются текущие настройки. При отключении профили сохраняются.","When first turned on, the current settings are used. When turned off, the profiles are kept."));
-        navigation("▢",Lang.t(getContext(),"Копировать настройки между модулями","Copy settings between modules"),Lang.t(getContext(),"Выбор модулей, групп и отдельных параметров","Choose modules, groups and single parameters"),()->open(new ModuleCopyFragment()));
+        // P218 (owner, 2026-10-18: «группа настроек "Настройки по модулям" дублируется в нескольких местах, исправь чтобы было
+        // только на главной странице»): the module profiles (per-module switch, the group, copying between modules) live only in
+        // «Настройки по модулям», opened from the main settings page
         caption(Lang.t(getContext(),"Для опытных","Advanced"));
         navigation("⚙︎",Lang.t(getContext(),"RAW и сенсор","RAW and sensor"),Lang.t(getContext(),"Уровни RAW, формат потока, фильтр Байера, модель шума","RAW levels, stream format, Bayer filter, noise model"),()->{
             SettingsActivity.SettingsFragment extra=new SettingsActivity.SettingsFragment();Bundle args=new Bundle();args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT,"capture_settings_screen");extra.setArguments(args);open(extra);

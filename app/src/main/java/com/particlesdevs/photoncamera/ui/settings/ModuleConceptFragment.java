@@ -73,7 +73,7 @@ public abstract class ModuleConceptFragment extends Fragment {
         v.setScaleType(ImageView.ScaleType.FIT_CENTER);v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);return v;
     }
     protected void navigation(String icon,String title,String summary,Runnable action){LinearLayout c=card(),r=row();r.setPadding(dp(12),dp(14),dp(12),dp(14));r.setMinimumHeight(dp(56));ImageView ic=icon(icon);ic.setPadding(0,0,dp(12),0);r.addView(ic,new LinearLayout.LayoutParams(dp(38),dp(28)));LinearLayout labels=column();TextView head=text(title,15,TEXT);com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(head);labels.addView(head);if(summary!=null){TextView sub=text(summary,12,SettingsStyle.SUMMARY);sub.setLineSpacing(dp(3),1);labels.addView(sub,space(-1,-2,6));}r.addView(labels,new LinearLayout.LayoutParams(0,-2,1));r.addView(text("›",25,MUTED));r.setOnClickListener(v->action.run());r.setTag(title);c.addView(r);}
-    /** P189: «Свои настройки для каждого модуля» (moved from ModuleSettingsFragment; the module group shows it too). */
+    /** P189: «Свои настройки для каждого модуля» (P218: only in the module group, «Настройки по модулям»). */
     protected void perLensSwitch(){
         LinearLayout c=card(),r=row();r.setPadding(dp(12),dp(16),dp(10),dp(16));
         ImageView gear=icon("gear");gear.setPadding(0,0,dp(12),0);r.addView(gear,new LinearLayout.LayoutParams(dp(40),dp(28)));

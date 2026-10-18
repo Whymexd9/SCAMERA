@@ -163,7 +163,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         return true;
     }
 
-    /** P189: «Настройки по модулям» (the root row, the search, «Камеры и сенсоры»). */
+    /** P189: «Настройки по модулям» (the root row and the search; P218: no longer from «Камеры и сенсоры»). */
     void openModuleProfiles(String name) {
         getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleProfilesFragment())
                 .addToBackStack(name).commit();

@@ -4920,3 +4920,12 @@ ratios», Bento forced with that one ultrashort (2.08 ms at 1/60 N); 12 MP: thre
   during the capture, no second mosaic detection). Open for the owner: a binned FULLRES gives the sensor's own 12 MP binning
   in software - whether FULLRES should then capture in the normal (sensor-binned) mode instead (same size, a fraction of
   the time).
+
+### P218 - «Настройки по модулям» only on the main settings page (owner, 2026-10-18: «группа настроек "Настройки по модулям"
+дублируется в нескольких местах, исправь чтобы было только на главной странице»)
+- The group (P189: each module and its FULLRES 50 / 200 MP profiles) was reachable from the main settings page and repeated on
+  «Камеры и сенсоры» as the block «Профили модулей»: the per-module switch, a row opening the group and «Копировать настройки
+  между модулями» - all three are inside the group itself. The block is gone from «Камеры и сенсоры»; its note («При первом
+  включении используются текущие настройки…») moved under the switch in the group. The settings search still finds the group.
+- Checked: SettingsMenuTest (the cameras page shows neither row; copying is reached inside the group), ModuleProfilesPageTest,
+  ModuleProfilesCarryTest, check_ui_language.

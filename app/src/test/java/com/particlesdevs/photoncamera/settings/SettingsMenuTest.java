@@ -485,12 +485,11 @@ public class SettingsMenuTest {
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules"+png);
             assertEquals(android.view.View.GONE,activity.findViewById(R.id.settings_toolbar).getVisibility());
-            // P189: the module group replaces the «Настраивается» pill
-            modules.requireView().findViewWithTag(groupRow).performClick();fm.executePendingTransactions();
-            assertTrue(fm.findFragmentById(R.id.settings_container) instanceof com.particlesdevs.photoncamera.ui.settings.ModuleProfilesFragment);
-            activity.getOnBackPressedDispatcher().onBackPressed();fm.executePendingTransactions();
-            modules=(com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment)fm.findFragmentById(R.id.settings_container);
-            modules.requireView().findViewWithTag(copyRow).performClick();fm.executePendingTransactions();
+            // P218: «Камеры и сенсоры» no longer repeats the module group (it is opened from the main settings page only)
+            assertNull("no «"+groupRow+"» on «Камеры и сенсоры»",modules.requireView().findViewWithTag(groupRow));
+            assertNull("no «"+copyRow+"» on «Камеры и сенсоры»",modules.requireView().findViewWithTag(copyRow));
+            var group=new com.particlesdevs.photoncamera.ui.settings.ModuleProfilesFragment();fm.beginTransaction().replace(R.id.settings_container,group).commitNow();
+            group.requireView().findViewWithTag(copyRow).performClick();fm.executePendingTransactions();
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy"+png);
             copy.requireView().findViewWithTag("clear_selection").performClick();assertFalse(copy.requireView().findViewWithTag("primary_action").isEnabled());
             // one row of «Фото» (P132: the DNG compression is there)
