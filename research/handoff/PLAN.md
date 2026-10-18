@@ -5071,3 +5071,27 @@ pro mist, glimmer glass и других подобных фильтров у н�
   AE, manual exposure blocked there); P126 (doubled ISZ modules, dark DCG photos) stays fixed. Verify with the owner's log /
   photos (no X300U here).
 - Not started.
+
+### P230 - DCG without root on Snapdragon 8 Elite: vendor op mode + sensor mode; Xiaomi 15 Ultra first, then the vivo X200 Ultra (owner, 2026-10-18: a Discord post from MotionCam, «Изучи внимательно и реализуй на 15 Ultra. затем займись реализацией на X200 Ultra» - corrected from «17 Ultra»)
+- The post (Xiaomi 15 Ultra, SM8750, no root, @JohnTheFarm3r): DCG works with
+  - Vendor op mode 37379 (0x9203) for the capture session (SessionConfiguration operating mode), found in Xiaomi's
+    com.qti.chi.override.so where CheckVideoNightModeHint tests for it; alone it selects sensor mode 23 (14-bit, 4096 x 2560,
+    the DCG format);
+  - org.codeaurora.qcamera3.sensor_meta_data.current_mode (i32) = 24, the actual DCG mode;
+  - 60 fps only; confirmed by the logs and the RAW data (14-bit);
+  - normal 4096 x 3072 frames of that sensor have 512 empty rows at the bottom: crop them.
+  Claim: the 8 Elite platform itself does not block DCG without root; the missing piece is the right op mode / sensor mode
+  / stream configuration, per phone.
+- Xiaomi 15 Ultra (25010PN30G, SM8750; SCAM TEST: logical 0/1 + hidden 2-7, the tele 4 alone kills the provider): the post's
+  values are for this phone - op mode 37379 (0x9203) on the session, current_mode = 24 (i32) as a session key, 60 fps.
+  Add DCG 14-bit for the 15U's main camera the way Dcg14Mode works on the X300 Ultra (the top bar's «DCG» button /
+  «14 бит (DCG)»): session op mode + current_mode, RAW 14-bit read right (white 16383, black from the frame), the 512 empty
+  rows of the normal 4096 x 3072 frames cropped, the preview at the mode's 60 fps, a refused configuration falls back
+  (0x9203 -> 0) without a restart loop; the mode checked in the result (com.qti.sensorbps.mode_index / current_mode).
+  Find the mode numbers of the other 15U cameras (ultra-wide, tele) from their sensor mode tables before offering DCG there.
+- Xiaomi 17 Ultra (SM8850): only after the 15U works - check whether 0x9203 / a DCG current_mode exist there too.
+- vivo X200 Ultra (PD2454, SM8750): the same idea - vivo's own op modes / vivo.control.forceSensorMode (P122: works as a
+  session key on the X300U) for a 14-bit DCG mode of the IMX06C (main / ultra-wide) and the HP9 tele; study the vivo camera
+  stack (libs on the phone, the stock app's session) for the op mode that unlocks DCG, then implement as above.
+- Verification needs the phones' logs (owner): RAW bit depth (max code > 4095), the mode in the result
+  (com.qti.sensorbps.mode_index / current_mode), fps, no pink highlights.
