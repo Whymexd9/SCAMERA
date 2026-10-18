@@ -99,10 +99,13 @@ public final class BottomChrome {
         View strip = bar.findViewById(R.id.aux_buttons_container);
         if (gallery != null) gallery.setBackground(tonalShape(tone(card, accent, .10f), tone(card, accent, .22f), SIDE_RADIUS_DP * d * f, d));
         if (flip != null) {
-            android.graphics.drawable.GradientDrawable mask = tonalShape(0xFFFFFFFF, 0, SIDE_RADIUS_DP * d * f, d);
+            // SIMPLE_UI (owner: «кружки ... должны быть круглые как на концепте»): the front / back switch is a circle
+            android.graphics.drawable.GradientDrawable mask = tonalShape(0xFFFFFFFF, 0, 0f, d), fill = tonalShape(tone(card, accent, .20f),
+                    tone(card, accent, .30f), 0f, d);
+            mask.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+            fill.setShape(android.graphics.drawable.GradientDrawable.OVAL);
             flip.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(
-                    (accent & 0x00FFFFFF) | 0x33000000), tonalShape(tone(card, accent, .20f), tone(card, accent, .30f),
-                    SIDE_RADIUS_DP * d * f, d), mask));
+                    (accent & 0x00FFFFFF) | 0x33000000), fill, mask));
         }
         // P161 / P171: the strip's rounded outline (STRIP_RADIUS_DP)
         if (strip != null) strip.setBackground(tonalShape(tone(card, accent, .08f), tone(card, accent, .18f), STRIP_RADIUS_DP * d * f, d));

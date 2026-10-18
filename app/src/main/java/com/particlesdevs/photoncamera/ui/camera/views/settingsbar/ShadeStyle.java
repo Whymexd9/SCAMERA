@@ -52,6 +52,14 @@ public final class ShadeStyle {
         return new RippleDrawable(ColorStateList.valueOf(RIPPLE), card(c, fill, stroke, radiusDp), mask);
     }
 
+    /** SIMPLE_UI: a transparent button with a ripple bounded by a rounded shape of {@code radiusDp} (times the camera's k). */
+    public static Drawable ripple(Context c, float radiusDp) {
+        GradientDrawable mask = new GradientDrawable();
+        mask.setColor(0xFFFFFFFF);
+        mask.setCornerRadius(com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dpF(c, radiusDp));
+        return new RippleDrawable(ColorStateList.valueOf(RIPPLE), null, mask);
+    }
+
     /** The sheet: BG with a LINE stroke and 26dp top corners; the stroke has no bottom edge. */
     public static Drawable sheet(Context c) {
         GradientDrawable d = new GradientDrawable();

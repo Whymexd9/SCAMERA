@@ -154,7 +154,7 @@
     <!-- Viewfinder chrome -->
     <string name="shade_badge_route">Склейка %1$s</string>
     <!-- Карточка группы в верхней панели: значки склейки и формата. -->
-    <string name="topbar_group">Склейка и формат</string>
+    <string name="topbar_group">Формат и размер фото</string>
     <string name="topbar_format">Формат %1$s</string>
     <string name="shade_shutter">Снимок</string>
     <string name="shade_flip_camera">Фронтальная / основная камера</string>

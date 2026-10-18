@@ -61,6 +61,20 @@ final class Dcg14Button {
         FullResButton.bind(fragment, panel, slot, characteristics);
     }
 
+    /**
+     * SIMPLE_UI §1: the top bar's DCG button (and «Для опытных → 14 бит (DCG)»): the same switch as this button's, with its
+     * session restart; returns the band's message.
+     */
+    static String toggleMode(CameraFragment fragment) {
+        int mode = Dcg14Mode.next(Dcg14Mode.mode());
+        if (!com.particlesdevs.photoncamera.capture.SensorModeSwitches.setDcg(mode != Dcg14Mode.OFF))
+            return com.particlesdevs.photoncamera.util.Lang.t("Нет обычного модуля этой камеры для DCG", "No plain module of this camera for DCG");
+        Log.i(TAG, "DCG 14 bit mode " + Dcg14Mode.name(mode));
+        if (fragment.captureController != null) fragment.captureController.restartCamera();
+        return mode != Dcg14Mode.OFF ? com.particlesdevs.photoncamera.util.Lang.t("14 бит (DCG): вкл. · перезапуск", "14-bit (DCG): on · restart")
+                : com.particlesdevs.photoncamera.util.Lang.t("14 бит (DCG): выкл. · перезапуск", "14-bit (DCG): off · restart");
+    }
+
     private static void toggle(CameraFragment fragment, ImageButton button) {
         int mode = Dcg14Mode.next(Dcg14Mode.mode());
         if (!com.particlesdevs.photoncamera.capture.SensorModeSwitches.setDcg(mode != Dcg14Mode.OFF)) {

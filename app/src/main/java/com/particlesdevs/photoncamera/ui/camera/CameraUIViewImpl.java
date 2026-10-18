@@ -67,6 +67,12 @@ public class CameraUIViewImpl implements CameraUIView {
         this.initListeners();
         migrateMode();
         styleControls(context);
+        // SIMPLE_UI §1: a long press on the photo size opens the «Размер фото» sheet (500 ms, haptic)
+        topbar.sizeBadge.setOnLongClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            TopBar.openSizeSheet(cameraFragment);
+            return true;
+        });
         this.currentState = new PhotoMotionModeState(); //init mode
         initModeState(CameraMode.valueOf(PreferenceKeys.getCameraModeOrdinal()));
         updateBadges();
@@ -143,66 +149,9 @@ public class CameraUIViewImpl implements CameraUIView {
         if (topbar != null) bindBadges(topbar);
     }
 
-    /**
-     * The top bar's group card (MANUAL_TASK.md §4): the route in effect (Hybrid: monogram H, SCAM HDR: monogram S) and the
-     * format choice (FormatChoice: JPEG, HEIC, WebP, AVIF, RAW, RAW + JPEG / HEIC / WebP / AVIF) as 24dp accent icons.
-     * Their names («Склейка Hybrid», «Формат RAW + HEIC») are the content descriptions and the long-press tooltips; a tap
-     * on the format opens the chooser (CameraFragment.openFormatChooser).
-     */
+    /** SIMPLE_UI §1: the top bar from the settings (TopBar: torch, timer, Motion, format | size | DCG, the gear). */
     public static void bindBadges(LayoutMainTopbarBinding topbar) {
-        Context context = topbar.getRoot().getContext();
-        int accent = ShadeStyle.accent(context);
-        // P129: SHDR is the only merge; the badge names it
-        icon(topbar.routeBadge, R.drawable.topbar_ic_route_hybrid, accent, context.getString(R.string.shade_badge_route, "SHDR"));
-        com.particlesdevs.photoncamera.settings.FormatChoice format = com.particlesdevs.photoncamera.settings.FormatChoice.current();
-        icon(topbar.formatBadge, format.icon, accent, context.getString(R.string.topbar_format, format.longLabel()));
-        topbar.formatBadge.setTag(format.name());
-        bindMotionMode(topbar.motionModeButton, com.particlesdevs.photoncamera.settings.MotionMode.on(), false);
-    }
-
-    /**
-     * P86 The «Движение» switch beside the gear: off, the gear's card with the subject standing in the accent; on, the card
-     * filled with the accent (as the shade's active tiles) and the subject moving with its speed lines. {@code animate}: the
-     * icon plays its transition (speed lines drawn one after another, the subject overshooting forward; or wiped away) and
-     * the card springs (scale 0.86 -> 1 with an overshoot).
-     */
-    public static void bindMotionMode(ImageButton button, boolean on, boolean animate) {
-        if (button == null) return;
-        Context context = button.getContext();
-        int accent = ShadeStyle.accent(context);
-        Object shown = button.getTag(R.id.motion_mode_button);
-        if (!animate && Boolean.valueOf(on).equals(shown)) return;
-        button.setTag(R.id.motion_mode_button, on);
-        String name = context.getString(on ? R.string.motion_mode_on : R.string.motion_mode_off);
-        button.setContentDescription(name);
-        button.setTooltipText(name);
-        button.setActivated(on);
-        if (on) button.setBackground(ShadeStyle.pressable(context, ShadeStyle.tint(accent, 0.22f), accent, 16));
-        else button.setBackgroundResource(R.drawable.shade_gear_card);
-        button.setImageTintList(ColorStateList.valueOf(accent));
-        if (!animate) {
-            button.setImageResource(on ? R.drawable.topbar_ic_motion_on : R.drawable.topbar_ic_motion_off);
-            return;
-        }
-        Drawable d = androidx.core.content.ContextCompat.getDrawable(context, on ? R.drawable.topbar_avd_motion_on : R.drawable.topbar_avd_motion_off);
-        button.setImageDrawable(d);
-        if (d instanceof android.graphics.drawable.Animatable) ((android.graphics.drawable.Animatable) d).start();
-        button.animate().cancel();
-        button.setScaleX(0.86f);
-        button.setScaleY(0.86f);
-        button.animate().scaleX(1f).scaleY(1f).setDuration(280)
-                .setInterpolator(new android.view.animation.OvershootInterpolator(2.2f)).start();
-    }
-
-    private static void icon(ImageButton button, int icon, int accent, String name) {
-        button.setImageResource(icon);
-        button.setImageTintList(ColorStateList.valueOf(accent));
-        button.setContentDescription(name);
-        button.setTooltipText(name);
-        if (button.getBackground() == null) {
-            android.graphics.drawable.GradientDrawable mask = ShadeStyle.card(button.getContext(), 0xFFFFFFFF, 0, 14);
-            button.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(0x29FFFFFF), null, mask));
-        }
+        TopBar.bind(topbar);
     }
 
     @Override

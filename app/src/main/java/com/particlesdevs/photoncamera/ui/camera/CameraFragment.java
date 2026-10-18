@@ -1277,6 +1277,11 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     }
 
     /** P214f: the button notices (FULLRES, DCG, motion mode...) were short snackbars; now the same card as the rest. */
+    /** SIMPLE_UI §1: the top bar again from the settings (after a top-bar control changed one). */
+    public void refreshTopBar() {
+        if (mCameraUIView != null) mCameraUIView.updateBadges();
+    }
+
     public void showSnackBar(final String text) {
         com.particlesdevs.photoncamera.util.UiMessages.info(text);
     }
@@ -1712,9 +1717,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             awbKelvin.setCharacteristics(characteristics);
             manualModeConsole.init(activity, characteristics);
             manualModeConsole.onResume();
-            // P104: the X500 Pro Max's DCG 14 bit switch at the manual strip's right end
-            if (cameraFragmentBinding != null)
-                Dcg14Button.bind(CameraFragment.this, cameraFragmentBinding.manualMode, characteristics);
+            // SIMPLE_UI §1: DCG and the photo sizes are buttons of the top bar now (no overlays over the manual strip)
+            TopBar.bindCamera(characteristics);
+            if (mCameraUIView != null) mCameraUIView.updateBadges();
         }
 
         @Override

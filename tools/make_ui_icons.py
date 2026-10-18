@@ -562,7 +562,6 @@ pair('ic_shade_rawwebp', 'RAW + WebP: a film frame behind a globe', _front_webp)
 
 # --- top bar
 SUBJECT_X = 16.0  # the AVDs (topbar_avd_motion_*) move the subject between x 16 (on) and 12 (off)
-icon('topbar_ic_motion_off', '«Движение» off: the subject stands').b(circle(12, 12, 5.0)).h(circle(12, 12, 2.6)).a(circle(12, 12, 1.5))
 icon('topbar_ic_motion_on', '«Движение» on: the subject moves, speed lines behind it').b(circle(SUBJECT_X, 12, 5.0),
                                                                                           capsule(3.2, 8.2, 8.4, 8.2, 2.0), capsule(1.6, 12, 7.8, 12, 2.0),
                                                                                           capsule(4.6, 15.8, 8.4, 15.8, 2.0)) \

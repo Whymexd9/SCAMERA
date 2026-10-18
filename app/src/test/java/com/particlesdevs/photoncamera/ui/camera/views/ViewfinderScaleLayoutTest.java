@@ -266,11 +266,16 @@ public class ViewfinderScaleLayoutTest {
             // The other controls at their dp places.
             View gear = binding.layoutTopbar.settingsButton, badges = binding.layoutTopbar.topbarBadges;
             Rect gearBox = at(gear), badgeBox = at(badges);
-            assertEquals(at + "gear 44dp", dp(44), gearBox.width());
-            assertEquals(at + "gear 44dp", dp(44), gearBox.height());
-            assertEquals(at + "gear 12dp from the right", dp(12), w - gearBox.right);
-            assertEquals(at + "group card 12dp from the left", dp(12), badgeBox.left);
-            assertEquals(at + "group card 44dp", dp(44), badgeBox.height());
+            // SIMPLE_UI §1: the top bar's concept dp times k (UiScale), the gear pinned inside the row's padding, the pill card
+            // clear of it, the bar the concept's 64dp.
+            float tk = com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.k(binding.getRoot().getContext());
+            View tbRow = binding.layoutTopbar.getRoot();
+            assertEquals(at + "gear 44dp x k", 44 * tk * density, gearBox.width(), 1.5f);
+            assertEquals(at + "gear square", gearBox.width(), gearBox.height());
+            assertEquals(at + "gear at the row's end", w - tbRow.getPaddingRight(), gearBox.right);
+            assertTrue(at + "pill card clear of the gear", badgeBox.right <= gearBox.left);
+            assertEquals(at + "pill card 40dp x k", 40 * tk * density, badgeBox.height(), 1.5f);
+            assertEquals(at + "top bar 64dp x k", 64 * tk * density, topBar.height(), 1.5f);
             assertTrue(at + "preview under the top bar", at(binding.cameraContainer).top >= topBar.bottom);
             View gallery = row.findViewById(R.id.galery_button_container), shutter = row.findViewById(R.id.shutter_button_container),
                     flip = row.findViewById(R.id.camera_switch_container);

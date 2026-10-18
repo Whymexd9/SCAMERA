@@ -161,6 +161,8 @@ public class BottomBarStyleTest {
             assertEquals(at + "gallery: tonal", BottomChrome.tone(card, accent, .10f), galleryBg.getColor().getDefaultColor());
             assertEquals(at + "gallery: large corners", BottomChrome.SIDE_RADIUS_DP * density * s, galleryBg.getCornerRadius(), .5f);
             assertTrue(at + "flip: a ripple on its tonal fill", row.flipCameraButton.getBackground() instanceof RippleDrawable);
+            assertEquals(at + "flip: a circle", android.graphics.drawable.GradientDrawable.OVAL,
+                    ((android.graphics.drawable.GradientDrawable) ((RippleDrawable) row.flipCameraButton.getBackground()).getDrawable(0)).getShape());
             assertNotEquals(at + "the strip is not the grey card", card, stripBg.getColor().getDefaultColor());
             // P185: the strip a capsule round its lenses of one height, the active one a pill at least 54dp wide
             assertEquals(at + "strip: capsule corners", BottomChrome.STRIP_RADIUS_DP * density * s, stripBg.getCornerRadius(), .5f);

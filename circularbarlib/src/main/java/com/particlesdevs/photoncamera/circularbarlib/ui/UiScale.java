@@ -72,4 +72,13 @@ public final class UiScale {
                     Math.round(min), Math.round(px), 1, android.util.TypedValue.COMPLEX_UNIT_PX);
         }
     }
+
+    /**
+     * Sets a label's size ({@link #spPx}) with no autosize: for wrap_content labels (autosize there shrinks unpredictably),
+     * whose container steps down by itself when it does not fit (the top bar's levels).
+     */
+    public static void textFixed(android.widget.TextView view, float sp) {
+        androidx.core.widget.TextViewCompat.setAutoSizeTextTypeWithDefaults(view, androidx.core.widget.TextViewCompat.AUTO_SIZE_TEXT_TYPE_NONE);
+        view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, spPx(view.getContext(), sp));
+    }
 }
