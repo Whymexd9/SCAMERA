@@ -30,7 +30,11 @@ import com.particlesdevs.photoncamera.util.Lang;
 public final class ScamHybridBurst implements ScamTransport {
     /** Merged Bayer RAW of the last SHDR shot (uint16, sensor layout, white 16383), or null (ScamNeuralClient fills it). */
     public static volatile java.nio.ByteBuffer lastMergedDng;
-    /** Effective merged frames per pixel of the last SHDR result (uint8, 1/8 frame), or null (the denoisers' frame map). */
+    /**
+     * Effective merged frames per pixel of the last SHDR result, or null (the denoisers' frame map). uint8 and relative only
+     * (P214c): the worker scales the codes so their median is 64 (scam-hybrid.h codeScale = 64 / median), so a code / 8 is no
+     * frame count; the frames of the merge are {@link #lastMergeFrames}.
+     */
     public static volatile java.nio.ByteBuffer lastEffectiveFrames;
     static final int ROLE_NORMAL = 1, ROLE_BRACKETED = 3, ROLE_ULTRASHORT = 5;
     private static final long BASE_WINDOW_NS = 205_000_000L; // SCAM: base candidates within 205 ms of the newest frame
@@ -735,6 +739,11 @@ public final class ScamHybridBurst implements ScamTransport {
      * frames' white (the highlights Bento took from the ultrashort frames); 1 when nothing is above the N clip.
      */
     public static volatile float lastMergedDngHeadroom = 1f;
+    /**
+     * P214c: frames the last merge averaged (the worker's «HYBRID MERGE FACTORS»: the base plus every donor's mean accepted
+     * weight, DngMetadata.mergeFrames), for the merged DNG's NoiseProfile; NaN when the report has none.
+     */
+    public static volatile double lastMergeFrames = Double.NaN;
     /** P77: noise model factor the worker measured and merged with (HYBRID NOISE CHECK "-> model xK"), 1 = HAL model kept. */
     public static volatile float lastNoiseFactor = 1f;
     /** P80: the last hybrid RGB is IEEE half floats (6 B a pixel, the worker's rgb-half output), not float32. */
@@ -895,9 +904,36 @@ public final class ScamHybridBurst implements ScamTransport {
         return null;
     }
 
+    private static final java.util.regex.Pattern MOSAIC_BINNED_LINE =
+            java.util.regex.Pattern.compile("HYBRID MOSAIC BINNED: block [24] without remosaic");
+    /** The heads of the worker's two mosaic merges: native (hybridReconstructMosaicNative) and the sub-frame split. */
+    private static final java.util.regex.Pattern MOSAIC_MERGE_LINE =
+            java.util.regex.Pattern.compile("HYBRID MOSAIC NATIVE: block ([24])[ ,]|HYBRID MOSAIC: block ([24]), \\d+ plain-Bayer sub-frames");
+
+    /**
+     * P214e: colour block of the image a merge returned (Parameters.mosaicBlock; above 1 ArkLumaSharpen sharpens the
+     * 3x3-smoothed luma, R1). 1 when the burst was binned into plain Bayer ({@code binned} > 1) or the worker says it was
+     * («HYBRID MOSAIC BINNED»); else the block of the worker's mosaic merge head (native or the sub-frame split), which also
+     * covers a block only the worker measured (the app sent 0); without a report (the CPU single-frame tier, which averages
+     * each colour over its blocks) or without such a line the block the app sent (2 or 4), otherwise 1.
+     */
+    static int mergedBlock(int block, int binned, String report) {
+        if (binned > 1) return 1;
+        if (report != null) {
+            if (MOSAIC_BINNED_LINE.matcher(report).find()) return 1;
+            java.util.regex.Matcher m = MOSAIC_MERGE_LINE.matcher(report);
+            int found = 0;
+            while (m.find()) found = Integer.parseInt(m.group(1) != null ? m.group(1) : m.group(2));
+            if (found > 0) return found;
+        }
+        return block == 2 || block == 4 ? block : 1;
+    }
+
     private static ByteBuffer merge(Context context, List<ImageFrame> frames, Parameters p, boolean mergedDng, ScamHybridBurst[] made) throws Exception {
         ScamHybridBurst burst = new ScamHybridBurst(frames, p, false);
         made[0] = burst;
+        // P214e: the block of the CPU tier; a worker merge sets it again from its report
+        p.mosaicBlock = mergedBlock(burst.mosaicBlock, burst.binned, null);
         if ((long) burst.width * burst.height > HUGE_INPUT_PIXELS) releaseLeftOut(frames, burst.frames);
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("ctor_done");
         burst.mergedDng = mergedDng;
@@ -916,7 +952,9 @@ public final class ScamHybridBurst implements ScamTransport {
             return cpuSingle(burst);
         }
         try {
-            return ScamNeuralClient.processScamBurst(context, burst);
+            final ByteBuffer merged = ScamNeuralClient.processScamBurst(context, burst);
+            p.mosaicBlock = mergedBlock(burst.mosaicBlock, burst.binned, ScamNeuralClient.lastJobReport);
+            return merged;
         } catch (Exception first) {
             if (burst.strictTwoX) throw new IOException(Lang.t("SHDR: склейка 2× не завершена; замена на 1× или увеличение отключена",
                     "SHDR: Sabre 2x merge failed; no sensor-grid or upscale fallback"), first);
@@ -945,6 +983,7 @@ public final class ScamHybridBurst implements ScamTransport {
                         lastMergedDngSize = new android.graphics.Point(safe.gridWidth, safe.gridHeight);
                         ScamNeuralClient.carryReport = "previous attempt: " + previousWhy + "\n" + (previous == null ? "" : tail(previous, 4000));
                         ByteBuffer out = ScamNeuralClient.processScamBurst(context, safe);
+                        p.mosaicBlock = mergedBlock(safe.mosaicBlock, safe.binned, ScamNeuralClient.lastJobReport);
                         lastMergeTier = "gpu-conservative";
                         lastFallbackFrames = safe.frames.size();
                         Log.w("SCAM_HDR", "Hybrid fallback=gpu-conservative after: " + why
@@ -1064,6 +1103,7 @@ public final class ScamHybridBurst implements ScamTransport {
         // Nothing of an earlier shot may apply to this one: sensor-grid output, no Bento, no clip flags, no frame map.
         lastOutputSize = new android.graphics.Point(w, h);
         lastBentoApplied = false; lastBentoFactor = 1f; lastBentoUsClipped = 0f; lastNoiseFactor = 1f; lastRgbHalf = false;
+        lastMergeFrames = Double.NaN;
         ScamRgb.dropClipFlags();
         lastEffectiveFrames = null;
         lastMergedDng = null;

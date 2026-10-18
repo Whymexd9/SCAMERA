@@ -17,15 +17,23 @@ import java.util.Locale;
  *
  * <p>P191 (owner, 2026-10-17: «переноси всё туда чтобы в data ничего не хранилось»): the report goes to
  * {@code /Download/SCAMERA/SCAMERA-crash.log} only (ScameraFiles; the app writes its own files there without a
- * permission), next to SCAMERA-debug.log. {@code /Android/data/<pkg>/files/SCAMERA-crash.log} is written only when
+ * permission), next to SCAMERA-debug.txt. {@code /Android/data/<pkg>/files/SCAMERA-crash.log} is written only when
  * that write failed; ExitReasons reads the Download file first, then that fallback.
+ *
+ * <p>P214b (engineering.md B4): every report names its build ({@link BuildIdentity}: version, package, commit, CI/local)
+ * and its process; the :scam process (the last capture report screen) installs it too; the file is capped: at 1 MB it
+ * becomes SCAMERA-crash.1.log before the next report (the older .1 goes), so at most 2 MB stay and the newest report is
+ * always at the end of SCAMERA-crash.log, where ExitReasons reads it.
  *
  * <p>This is diagnostic scaffolding for the launch crash and is independent of the
  * "Full debug" switch, which only starts logging once settings are readable.
  */
 public final class ScameraCrashReporter {
 
-    private static final String FILE_NAME = "SCAMERA-crash.log";
+    static final String STEM = "SCAMERA-crash";
+    static final String EXTENSION = ".log";
+    private static final String FILE_NAME = STEM + EXTENSION;
+    static final long CAP_BYTES = 1L << 20;
     private static boolean installed;
 
     private ScameraCrashReporter() {
@@ -53,32 +61,56 @@ public final class ScameraCrashReporter {
     }
 
     private static void write(Context context, Thread thread, Throwable throwable) {
-        StringWriter trace = new StringWriter();
-        throwable.printStackTrace(new PrintWriter(trace));
+        String report = report(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date()),
+                BuildIdentity.line(), processName(), context.getPackageName(), thread.getName(), throwable);
 
-        String report = "SCAMERA crash report\n"
-                + "time      : " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date()) + '\n'
-                + "package   : " + context.getPackageName() + '\n'
-                + "device    : " + Build.MANUFACTURER + ' ' + Build.MODEL + '\n'
-                + "android   : " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")\n"
-                + "abis      : " + String.join(", ", Build.SUPPORTED_ABIS) + '\n'
-                + "thread    : " + thread.getName() + '\n'
-                + '\n' + trace + '\n';
-
-        if (writeTo(ScameraFiles.file(FILE_NAME), report)) {
+        if (append(ScameraFiles.file(FILE_NAME), report)) {
             return;
         }
         File privateDir = context.getExternalFilesDir(null);
         if (privateDir != null) {
-            writeTo(new File(privateDir, FILE_NAME), report);
+            append(new File(privateDir, FILE_NAME), report);
         }
     }
 
-    /** Appends the report; false when it could not be written. */
-    private static boolean writeTo(File file, String report) {
-        try (FileOutputStream out = new FileOutputStream(file, true)) {
-            out.write(report.getBytes("UTF-8"));
-            out.flush();
+    /** The report text; its first line is what ExitReasons looks for. */
+    static String report(String time, String build, String process, String packageName, String threadName,
+                         Throwable throwable) {
+        StringWriter trace = new StringWriter();
+        throwable.printStackTrace(new PrintWriter(trace));
+        return "SCAMERA crash report\n"
+                + "time      : " + time + '\n'
+                + "build     : " + build + '\n'
+                + "process   : " + process + '\n'
+                + "package   : " + packageName + '\n'
+                + "device    : " + Build.MANUFACTURER + ' ' + Build.MODEL + '\n'
+                + "android   : " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")\n"
+                + "abis      : " + (Build.SUPPORTED_ABIS == null ? "n/a" : String.join(", ", Build.SUPPORTED_ABIS)) + '\n'
+                + "thread    : " + threadName + '\n'
+                + '\n' + trace + '\n';
+    }
+
+    private static String processName() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return android.app.Application.getProcessName();
+        } catch (Throwable ignored) {
+            // the pid below
+        }
+        return "pid " + android.os.Process.myPid();
+    }
+
+    /**
+     * Appends the report; a file at {@link #CAP_BYTES} first becomes SCAMERA-crash.1.log (one that can be neither moved
+     * nor deleted is started again). False when it could not be written.
+     */
+    static boolean append(File file, String report) {
+        try {
+            boolean full = file.length() >= CAP_BYTES;
+            if (full) RotatingLogFile.rotate(file.getParentFile(), STEM, EXTENSION, 2);
+            try (FileOutputStream out = new FileOutputStream(file, !(full && file.exists()))) {
+                out.write(report.getBytes("UTF-8"));
+                out.flush();
+            }
             return true;
         } catch (Throwable ignored) {
             return false;

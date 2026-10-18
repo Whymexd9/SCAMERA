@@ -1,6 +1,8 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply from: rootProject.file('gradle/verify-apk.gradle')
+// P214b: scameraBuildIdentity (git SHA, dirty, CI/local) for the BuildConfig fields below
+apply from: rootProject.file('gradle/build-identity.gradle')
 //apply plugin: "io.github.wurensen.android-aspectjx"
 Properties versionProps = new Properties()
 // The SCAMERA release key is never in the repository (it is public): CI passes it in the environment, a local build
@@ -34,6 +36,9 @@ android {
     buildFeatures {
         dataBinding true
         mlModelBinding true
+        // P214b: the app's own BuildConfig (version, package, git identity). AGP 8 no longer makes it by default; the
+        // DNG Software tag used to read circleimageview's BuildConfig instead (VERSION_NAME "", VERSION_CODE -1).
+        buildConfig true
     }
 
     // NCNN weights are memory-mapped at runtime. Keeping them uncompressed also
@@ -95,6 +100,10 @@ android {
         }
         versionName '0.98'
         versionProps['VERSION_NAME'] = versionName
+        // P214b: util/BuildIdentity.line() - "SCAMERA <versionName> (<versionCode>) <package> <sha>[+dirty] <CI|local>"
+        buildConfigField 'String', 'GIT_SHA', "\"${scameraBuildIdentity.sha}\""
+        buildConfigField 'boolean', 'GIT_DIRTY', "${scameraBuildIdentity.dirty}"
+        buildConfigField 'boolean', 'CI_BUILD', "${scameraBuildIdentity.ci}"
         proguardFiles
         if (System.getenv('SCAMERA_LOCAL_CMAKE_VERSION')) {
             // Only when substituting a newer local CMake (CI uses the SDK's

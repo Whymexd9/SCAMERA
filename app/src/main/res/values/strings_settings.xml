@@ -602,6 +602,9 @@
     <string name="shortcut_settings_long">Open settings</string>
     <string name="prefs_shdr_capture_report_title">Last SHDR capture report</string>
     <string name="prefs_shdr_capture_report_summary">What the merge wrote for the last shot: for looking into a failed or odd photo</string>
+    <!-- P214f: the history of the camera screen's message card -->
+    <string name="prefs_scam_recent_messages_title">Recent messages</string>
+    <string name="prefs_scam_recent_messages_summary">The last 20 messages of the camera screen with their time and repeats; also a long press on the message card</string>
     <!-- P129: titles that were literal in preferences.xml -->
     <string name="prefs_shdr_highlight_frames_title">Highlight frames</string>
     <string name="prefs_shdr_shadow_frames_title">Shadow frames</string>

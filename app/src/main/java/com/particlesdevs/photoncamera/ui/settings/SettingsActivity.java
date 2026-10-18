@@ -536,6 +536,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 startActivity(new android.content.Intent(requireContext(), ScamActivity.class));
                 return true;
             });
+            // P214f: the last 20 messages of the camera screen's message card (UiMessages), newest first
+            Preference messages = findPreference("scam_recent_messages");
+            if (messages != null) messages.setOnPreferenceClickListener(pref -> {
+                MessageHistorySheet.show(requireContext());
+                return true;
+            });
         }
 
 
@@ -1082,8 +1088,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 com.particlesdevs.photoncamera.util.ScameraDebugLog.attach(mContext);
                 com.particlesdevs.photoncamera.util.ScameraDebugLog.setEnabled(on);
                 if (on) {
-                    ScameraApp.showToast(
-                            com.particlesdevs.photoncamera.util.ScameraDebugLog.getPath());
+                    // P214b: after the session header, so the toast names the file really written
+                    com.particlesdevs.photoncamera.util.ScameraDebugLog.whenOpen(ScameraApp::showToast);
                 }
             }
             

@@ -32,7 +32,10 @@ public final class ArkTone {
         public int factor = 2;
         /** Multiplier of the input to the G_CLEAN scale (ark_input_ev). */
         public float inScale = 1f;
-        /** ArkLumaSharpen: ArkCam's sharpened luminance S(Ya) (.r) on the output grid, null without ARK sharpening. */
+        /**
+         * ArkLumaSharpen: ArkCam's sharpened luminance S(Ya) (.r) on the output grid, null without ARK sharpening. P214e: on a
+         * mosaic shot (R1) Ya + S(B(Ya)) - B(Ya), B the 3x3 binomial.
+         */
         public GLTexture lumaS;
         /** Domain multiplier of lumaS: Ya = min(sharpMul * Y709, 1) (1 = G_CLEAN scale, ae = the delta's domain). */
         public float sharpMul = 1f;

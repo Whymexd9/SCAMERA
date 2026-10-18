@@ -602,6 +602,9 @@
     <string name="shortcut_settings_long">Открыть настройки</string>
     <string name="prefs_shdr_capture_report_title">Отчёт последней съёмки SHDR</string>
     <string name="prefs_shdr_capture_report_summary">Что записала склейка для последнего снимка — чтобы разобраться со сбоем или странным фото</string>
+    <!-- P214f: the history of the camera screen's message card -->
+    <string name="prefs_scam_recent_messages_title">Последние сообщения</string>
+    <string name="prefs_scam_recent_messages_summary">Последние 20 сообщений экрана камеры со временем и повторами; также долгое нажатие на карточку сообщения</string>
     <!-- P129: titles that were literal in preferences.xml -->
     <string name="prefs_shdr_highlight_frames_title">Кадры светов</string>
     <string name="prefs_shdr_shadow_frames_title">Кадры теней</string>

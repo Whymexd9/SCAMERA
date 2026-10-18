@@ -1,0 +1,35 @@
+// P214b (engineering.md A4): the tree an APK was built from, as BuildConfig.GIT_SHA / GIT_DIRTY / CI_BUILD, for the one
+// identity line every session of the daily log, the full debug log, crash reports and diagnostics ZIPs print
+// (util/BuildIdentity): "SCAMERA <versionName> (<versionCode>) <package> <sha>[+dirty] <CI|local>". Before, nothing said
+// which commit a log or a crash came from (P210 had to infer "on 30966"), and local and CI APKs share one versionCode scheme.
+//  - CI: GitHub Actions' GITHUB_SHA, the commit the job checked out, so never dirty (what the build itself generates in
+//    the tree is not a source change).
+//  - Local: git rev-parse HEAD; dirty = a tracked file differs from HEAD (git describe --dirty: untracked files do not
+//    count; app/version.properties does not either, every local assemble rewrites it). --no-optional-locks: the status
+//    never writes .git/index, so a build cannot collide with a git command of another session in the same tree.
+//  - No git, not a repository, a failing git: sha "unknown", local; never a failed build.
+def scameraGitOutput = { List<String> args ->
+    try {
+        def out = providers.exec {
+            workingDir rootDir
+            commandLine(['git'] + args)
+            ignoreExitValue true
+        }
+        if (out.result.get().exitValue != 0) return null
+        return out.standardOutput.asText.get().trim()
+    } catch (Exception ignored) {
+        return null
+    }
+}
+
+def scameraCiSha = System.getenv('GITHUB_SHA')?.trim()?.toLowerCase()
+if (scameraCiSha && scameraCiSha ==~ /[0-9a-f]{7,64}/) {
+    ext.scameraBuildIdentity = [sha: scameraCiSha, dirty: false, ci: true]
+} else {
+    def sha = scameraGitOutput(['rev-parse', 'HEAD'])?.toLowerCase()
+    boolean known = sha && sha ==~ /[0-9a-f]{7,64}/
+    def status = known ? scameraGitOutput(['--no-optional-locks', 'status', '--porcelain', '--untracked-files=no',
+                                           '--', '.', ':(exclude)app/version.properties']) : null
+    ext.scameraBuildIdentity = [sha: known ? sha : 'unknown', dirty: status != null && !status.isEmpty(), ci: false]
+}
+logger.info("SCAMERA build identity: ${scameraBuildIdentity}")

@@ -306,6 +306,94 @@ public final class ScamDenoise extends Node {
     private static volatile boolean effUploadLogged;
 
     /**
+     * P214d: the reference gain of {@link #lscTerm} sits this much above the map's smallest luminance gain: the GainMap
+     * texture holds fp16 (2^-11 relative) and is sampled bilinearly, so the texels next to the minimum read g <= 1 and keep
+     * f = 1 exactly instead of 1 + a rounding error.
+     */
+    static final float LSC_MARGIN = 1f + 1f / 512f;
+
+    /** P214d: default cap of the lens-shading variance multiplier (sigma at most x2): scam_dev "denoise_lsc_max". */
+    static final float LSC_CAP = 4f;
+
+    /**
+     * P214d: the luminance gain of one lens-shading site (r, g_even, g_odd, b): the mean of r, (g_even + g_odd) / 2 and b,
+     * the factor ark/low, ark/combine and ark/sharp_in multiply the denoised image by (scamrgb applies only the colour part,
+     * normalised to mean 1).
+     */
+    static float lscGain(float r, float gEven, float gOdd, float b) {
+        return (r + 0.5f * (gEven + gOdd) + b) / 3f;
+    }
+
+    /**
+     * P214d: the lens-shading factor of scamdn/strmap for one (interpolated) site gain: min(g^2, cap) with g = gain / the
+     * reference gain, 1 where g <= 1 or the gain is not a number (the Java mirror of the shader, for the tests and the log).
+     */
+    static float lscFactor(float gain, float invReference, float cap) {
+        final float g = gain * invReference;
+        return g > 1f ? Math.min(g * g, Math.max(cap, 1f)) : 1f;
+    }
+
+    /**
+     * P214d: the lens-shading term of the strength map, from the map ScamRgb uploaded as the pipeline's GainMap
+     * (Parameters.gainMap, {@code mw} x {@code mh} sites of (r, g_even, g_odd, b)).
+     * <p>
+     * Why: the denoise works before the ARK tone, which multiplies every pixel by the luminance gain of the map (corner
+     * gains 2.0-3.8 in the phone logs, quality survey section 7): the noise the denoise leaves in a corner comes out
+     * up to 3.8 x larger in amplitude than the same residue in the centre, on a signal that collected fewer photons. GCam 11
+     * multiplies its strength map by (1, g, g^2) of the shading gain (GCAM11_PIPELINE.md in SCAMERA-PC/research/gcam11,
+     * section 9 item 10a: "the corners with the amplified vignetting correction are denoised harder"). Here the
+     * variance multiplier of scamdn/strmap is multiplied by min(g^2, cap), g = the site's luminance gain over the smallest
+     * one of the map (times
+     * {@link #LSC_MARGIN}): one-sided like the effective-frame factor, so the optical centre keeps f = 1 exactly and only the
+     * shaded part of the frame is filtered harder (cap 4 = sigma at most x2: a corner is filtered as for twice its noise).
+     * <p>
+     * Not a noise-model correction: GCam denoises AFTER its gain map, and its (1, g, g^2) on the (shot, read) terms only
+     * carries the model through that gain. Here only the colour part of the shading comes before the denoise, and the
+     * model already reads the local, still unshaded signal (lbf / cbf: sigma^2 = f (noise.x Y + noise.y)): at f = 1 a
+     * corner is filtered for the noise it has (GCam's behaviour). The g^2 on top is the deliberate part: a corner keeps
+     * less of its noise, so after the ARK gain its grain comes closer to the centre's - at the cost of fine corner texture
+     * near the noise level (the lbf revert also drops to 0.71 x where f > 2). Phone check: sigma of a flat wall / sky in
+     * the centre and the corners, and the detail of a textured scene's corners, against "denoise_lsc 0".
+     * <p>
+     * Null (no term, the map as before) without a real map: no data, a 1 x 1 map (the identity of a HAL without one, or of
+     * a RAW whose shading the HAL applied), a flat map, no valid site, or cap <= 1. Sites that are not a positive finite
+     * number are skipped (the shader reads them as factor 1).
+     *
+     * @return {1 / reference gain, cap, the largest factor of the map (for the log)} or null
+     */
+    static float[] lscTerm(float[] gainMap, int mw, int mh, float cap) {
+        if (gainMap == null || mw < 1 || mh < 1 || (long) mw * mh < 2 || gainMap.length < 4L * mw * mh) return null;
+        if (!(cap > 1f) || Float.isInfinite(cap)) return null;
+        float lo = Float.POSITIVE_INFINITY, hi = 0f;
+        for (int i = 0, n = mw * mh; i < n; i++) {
+            final float g = lscGain(gainMap[4 * i], gainMap[4 * i + 1], gainMap[4 * i + 2], gainMap[4 * i + 3]);
+            if (!(g > 0f) || Float.isInfinite(g)) continue;
+            lo = Math.min(lo, g);
+            hi = Math.max(hi, g);
+        }
+        if (lo == Float.POSITIVE_INFINITY) return null;
+        final float reference = lo * LSC_MARGIN;
+        if (!(hi > reference)) return null; // flat: no shading to follow
+        final float inv = 1f / reference;
+        return new float[]{inv, cap, lscFactor(hi, inv, cap)};
+    }
+
+    /**
+     * P214d: {@link #lscTerm} of this shot: scam_dev "denoise_lsc" (default 1) and "denoise_lsc_max" (the cap, default
+     * {@link #LSC_CAP}, 1..16); off in the old run of post_ab (the A/B shows this change on one worker result) and without
+     * the pipeline's GainMap texture.
+     */
+    static float[] lscTerm(PostPipeline pipeline) {
+        if (com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) return null;
+        if (!PreferenceKeys.scamDevSwitch("denoise_lsc", true)) return null;
+        if (pipeline == null || pipeline.GainMap == null || pipeline.mParameters == null) return null;
+        final Parameters par = pipeline.mParameters;
+        if (par.mapSize == null) return null;
+        final float cap = clamp(PreferenceKeys.scamDevNumber("denoise_lsc_max", LSC_CAP), 1f, 16f);
+        return lscTerm(par.gainMap, par.mapSize.x, par.mapSize.y, cap);
+    }
+
+    /**
      * Dark fade of the denoise (scamdn/cbf, scamdn/final2x, chromadn/apply): the colour of pixels darker than mean RGB
      * 0.0008..0.003 fades to neutral, which hid the black-level tint, mostly the per-pixel clip bias of the clamped merge
      * RGB. On signed hybrid input that bias is gone and the fade greyed dark saturated colours (the teal curtain of the
@@ -538,16 +626,32 @@ public final class ScamDenoise extends Node {
             String mapState = "uniform";
             if (wantMap) {
                 GLTexture eff = loadEffectiveFrames(owned, full, effRef);
-                if (eff != null) {
+                // P214d: times min(g^2, cap) of the lens-shading gain the ARK tone applies after this denoise (lscTerm);
+                // a map is made for it also when the worker sent no effective-frame map
+                final float[] lsc = lscTerm(pipeline);
+                if (eff != null || lsc != null) {
                     strMap = tex(owned, half(size0), GLFormat.DataType.FLOAT_16, 1, GL_LINEAR);
+                    // Both samplers are always bound, each on a unit of its own: an unset one reads unit 0, where the
+                    // other sampler type would sit (GL_INVALID_OPERATION at the draw). The 1 x 1 placeholders are never
+                    // read (noEffU 1 / lscU.x 0).
+                    final GLTexture effTex = eff != null ? eff
+                            : tex(owned, new Point(1, 1), GLFormat.DataType.UNSIGNED_8, 1, GL_NEAREST);
+                    final GLTexture gainTex = lsc != null ? pipeline.GainMap
+                            : tex(owned, new Point(1, 1), GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
                     glProg.useAssetProgram("scamdn/strmap", false);
-                    glProg.setTexture("EffMap", eff);
+                    glProg.setTexture("EffMap", effTex);
+                    glProg.setTexture("GainMap", gainTex);
                     glProg.setVar("factorU", 2 * s);
                     glProg.setVar("effRefU", effRef[0]);
                     glProg.setVar("effMaxU", effMax);
+                    glProg.setVar("noEffU", eff != null ? 0 : 1);
+                    glProg.setVar("lscU", lsc != null ? lsc[0] : 0f, lsc != null ? lsc[1] : 0f);
+                    glProg.setVar("fullInvU", 1f / full.x, 1f / full.y);
                     glProg.drawBlocks(strMap);
-                    release(owned, eff);
-                    mapState = "frames(ref=" + (int) effRef[0] + ",max=" + effMax + ")";
+                    release(owned, effTex);
+                    if (gainTex != pipeline.GainMap) release(owned, gainTex);
+                    mapState = (eff != null ? "frames(ref=" + (int) effRef[0] + ",max=" + effMax + ")" : "uniform")
+                            + (lsc != null ? "+lsc(cap=" + lsc[1] + ",peak=" + round(lsc[2]) + ")" : "");
                 } else if ("frames".equals(mapMode)) mapState = "uniform(no map)";
             }
             tStats = System.nanoTime();

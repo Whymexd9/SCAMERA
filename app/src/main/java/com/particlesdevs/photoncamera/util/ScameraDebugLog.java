@@ -1,8 +1,6 @@
 package com.particlesdevs.photoncamera.util;
 
 import android.app.ActivityManager;
-import android.content.ContentResolver;
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Rect;
@@ -11,21 +9,15 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.provider.MediaStore;
 import android.util.Size;
 
 import androidx.preference.PreferenceManager;
 
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.text.SimpleDateFormat;
@@ -37,9 +29,11 @@ import java.util.Locale;
 /**
  * "Full debug" diagnostics sink for SCAMERA.
  *
- * <p>Writes one plain-text file to {@code /storage/emulated/0/Download/SCAMERA/SCAMERA-debug.log}.
- * Everything happens on a dedicated {@link HandlerThread}: callers never touch the file system, so
- * this is safe to call from the capture and processing paths.
+ * <p>Writes one plain-text file per phone, {@code /storage/emulated/0/Download/SCAMERA/SCAMERA-debug.txt}, that every
+ * process appends to under its own session header (start time, build line, the real path); at 8 MB it becomes
+ * SCAMERA-debug.1.txt, then .2 (P214b, {@link RotatingLogFile}: before, every process made a new
+ * "SCAMERA-debug.log (N).txt"). Everything happens on a dedicated {@link HandlerThread}: callers never touch the file
+ * system, so this is safe to call from the capture and processing paths.
  *
  * <p>The whole class is inert unless the {@link #PREF_KEY} switch is on. When it is off,
  * {@link #isEnabled()} short-circuits before any string is built, so there is no cost on the
@@ -49,8 +43,8 @@ public final class ScameraDebugLog {
     public static final String PREF_KEY = "scamera_full_debug";
 
     private static final String DIR_NAME = "SCAMERA";
-    private static final String FILE_NAME = "SCAMERA-debug.log";
-    private static final String MIME = "text/plain";
+    /** P214b: Download/SCAMERA/SCAMERA-debug.txt, rotated to .1.txt / .2.txt (RotatingLogFile). */
+    static final String STEM = "SCAMERA-debug";
     private static final int FLUSH_INTERVAL_MS = 1000;
 
     private static final ThreadLocal<SimpleDateFormat> TS =
@@ -62,8 +56,14 @@ public final class ScameraDebugLog {
     private static Context appContext;
     private static HandlerThread thread;
     private static Handler handler;
-    private static BufferedWriter writer;
-    private static Uri mediaStoreUri;
+    /** P214b: one file per phone for every process; a file that reached the cap continues under a line with the build. */
+    private static final RotatingLogFile FILE = new RotatingLogFile(STEM, ".txt", RotatingLogFile.CAP_BYTES,
+            RotatingLogFile.GENERATIONS, ScameraFiles::dir, () -> RotatingLogFile.installStem(appContext, STEM),
+            (file, rotated) -> {
+                ScameraFiles.index(appContext, file);
+                return rotated ? "--- " + TS.get().format(new Date()) + " continued from the previous file (rotated at "
+                        + (RotatingLogFile.CAP_BYTES >> 20) + " MB): " + BuildIdentity.line() + " ---\n" : null;
+            });
     private static long sessionStartNs;
     private static final java.util.Set<String> remosaicCameras = new java.util.HashSet<>();
 
@@ -224,29 +224,40 @@ public final class ScameraDebugLog {
         if (handler == null) return;
         handler.post(() -> {
             synchronized (LOCK) {
-                if (writer != null) {
-                    try {
-                        writer.flush();
-                    } catch (Exception ignored) {
-                        closeWriter();
-                    }
-                }
+                FILE.flush();
             }
         });
     }
 
-    /** Absolute path of the log, for showing in the UI. */
+    /**
+     * Absolute path of the log, for showing in the UI: the file being (or last) written, else where it will be opened.
+     * P214b: the real one; the header used to print .../SCAMERA-debug.log, which MediaStore had stored as .log.txt.
+     */
     public static String getPath() {
-        return Environment.getExternalStorageDirectory()
-                + "/" + Environment.DIRECTORY_DOWNLOADS + "/" + DIR_NAME + "/" + FILE_NAME;
+        File open = FILE.file();
+        if (open != null) return open.getAbsolutePath();
+        return Environment.getExternalStorageDirectory() + "/" + Environment.DIRECTORY_DOWNLOADS + "/" + DIR_NAME + "/"
+                + RotatingLogFile.name(STEM, ".txt", 0);
+    }
+
+    /** P214b: runs {@code action} with {@link #getPath()} once the queued session header is written (so its real file). */
+    public static void whenOpen(java.util.function.Consumer<String> action) {
+        Handler h = handler;
+        if (h == null || !h.post(() -> action.accept(getPath()))) action.accept(getPath());
     }
 
     // ---------------------------------------------------------------- sections
 
     private static void writeSessionHeader() {
-        rawWrite("\n================ SCAMERA full debug session ================\n");
-        rawWrite("started: " + TS.get().format(new Date()) + "\n");
-        rawWrite("log path: " + getPath() + "\n");
+        // P214b: the file is opened first, so the header names the file it is in; the build line ties it to a commit
+        synchronized (LOCK) {
+            if (appContext == null || !FILE.ensureOpen()) return;
+        }
+        rawWrite("\n================ SCAMERA full debug session ================\n"
+                + "started: " + TS.get().format(new Date()) + "\n"
+                + "build: " + BuildIdentity.line() + "\n"
+                + "log path: " + getPath() + " (one file for every session; at " + (RotatingLogFile.CAP_BYTES >> 20)
+                + " MB it moves to .1.txt, up to ." + (RotatingLogFile.GENERATIONS - 1) + ".txt)\n");
     }
 
     private static void writeDeviceSection() {
@@ -443,7 +454,7 @@ public final class ScameraDebugLog {
                 // Synchronous: the process is about to die, a posted task would never run.
                 rawWrite(TS.get().format(new Date()) + " FATAL on thread " + t.getName() + "\n" + sw + "\n");
                 synchronized (LOCK) {
-                    if (writer != null) writer.flush();
+                    FILE.flush();
                 }
             } catch (Throwable ignored) {
                 // Never mask the original crash.
@@ -464,84 +475,14 @@ public final class ScameraDebugLog {
     /** Must run on the log thread, except from the crash handler where the process is dying. */
     private static void rawWrite(String text) {
         synchronized (LOCK) {
-            try {
-                if (writer == null && !openWriter()) return;
-                writer.write(text);
-            } catch (Exception e) {
-                closeWriter();
-            }
+            if (appContext == null) return;
+            FILE.write(text);
         }
-    }
-
-    /**
-     * Opens the log for appending. Below API 29 a plain file works; from API 29 the public
-     * Download tree is managed by MediaStore, so the entry is created (or reused) there and
-     * opened in append mode.
-     */
-    private static boolean openWriter() {
-        if (appContext == null) return false;
-        try {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                File dir = new File(
-                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                        DIR_NAME);
-                if (!dir.exists() && !dir.mkdirs()) return false;
-                writer = new BufferedWriter(new FileWriter(new File(dir, FILE_NAME), true), 8192);
-                return true;
-            }
-
-            ContentResolver resolver = appContext.getContentResolver();
-            if (mediaStoreUri == null) mediaStoreUri = findExisting(resolver);
-            if (mediaStoreUri == null) {
-                ContentValues values = new ContentValues();
-                values.put(MediaStore.Downloads.DISPLAY_NAME, FILE_NAME);
-                values.put(MediaStore.Downloads.MIME_TYPE, MIME);
-                values.put(MediaStore.Downloads.RELATIVE_PATH,
-                        Environment.DIRECTORY_DOWNLOADS + "/" + DIR_NAME);
-                mediaStoreUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-            }
-            if (mediaStoreUri == null) return false;
-            OutputStream os = resolver.openOutputStream(mediaStoreUri, "wa");
-            if (os == null) return false;
-            writer = new BufferedWriter(new OutputStreamWriter(os), 8192);
-            android.util.Log.i("ScameraDebugLog", "opened " + getPath());
-            return true;
-        } catch (Exception e) {
-            android.util.Log.e("ScameraDebugLog", "cannot open " + getPath(), e);
-            writer = null;
-            return false;
-        }
-    }
-
-    private static Uri findExisting(ContentResolver resolver) {
-        String selection = MediaStore.Downloads.RELATIVE_PATH + "=? AND "
-                + MediaStore.Downloads.DISPLAY_NAME + "=?";
-        String[] args = {Environment.DIRECTORY_DOWNLOADS + "/" + DIR_NAME + "/", FILE_NAME};
-        try (android.database.Cursor cursor = resolver.query(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                new String[]{MediaStore.Downloads._ID}, selection, args, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                long id = cursor.getLong(0);
-                return android.content.ContentUris.withAppendedId(
-                        MediaStore.Downloads.EXTERNAL_CONTENT_URI, id);
-            }
-        } catch (Exception ignored) {
-            // Fall through and create a new entry.
-        }
-        return null;
     }
 
     private static void closeWriter() {
         synchronized (LOCK) {
-            if (writer != null) {
-                try {
-                    writer.flush();
-                    writer.close();
-                } catch (Exception ignored) {
-                    // Nothing useful to do.
-                }
-                writer = null;
-            }
+            FILE.close();
         }
     }
 }

@@ -49,7 +49,6 @@ import android.util.SizeF;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Toast;
 
 import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
@@ -63,7 +62,6 @@ import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
-import com.google.android.material.snackbar.Snackbar;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.api.CameraEventsListener;
 import com.particlesdevs.photoncamera.api.CameraManager2;
@@ -324,6 +322,11 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         this.manualModeConsole.addParamObserver(captureController.getParamController());
         // The manual panel's toasts («ISO: авто», the EV lock) use the camera screen's card toast.
         this.manualModeConsole.setMessageSink(this::showCardToast);
+        // P214f: the card above the bottom bar shows the one message channel (UiMessages): CaptureController, the shade,
+        // the manual panel, the processing notices; a long press opens the last 20 messages.
+        if (this.messageCard != null) this.messageCard.release();
+        this.messageCard = new MessageCard(cameraFragmentBinding.shadeToast, this::openMessageHistory);
+        com.particlesdevs.photoncamera.util.UiMessages.attach(messageCard, requireContext());
         this.textureView.setManualModeConsole(manualModeConsole);
         ScameraApp.setCaptureController(captureController);
         mHorizonIndicatorView = cameraFragmentBinding.layoutViewfinder.horizonIndicatorView;
@@ -600,10 +603,14 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.refresh();
     }
 
-    private final Runnable hideCardToast = () -> {
-        View toast = cameraFragmentBinding == null ? null : cameraFragmentBinding.shadeToast;
-        if (toast != null) toast.animate().alpha(0f).setDuration(250).withEndAction(() -> toast.setVisibility(View.GONE)).start();
-    };
+    /** P214f: the message card of this screen (the one message channel's sink; null after onDestroy). */
+    private MessageCard messageCard;
+
+    /** P214f: «Последние сообщения», the last 20 messages of the card (a long press on it). */
+    private void openMessageHistory() {
+        android.content.Context c = getContext();
+        if (c != null) com.particlesdevs.photoncamera.ui.settings.MessageHistorySheet.show(c);
+    }
 
     /**
      * The top bar's format chooser: the card-style list sheet of the format choice (FormatChoice) with each option's icon
@@ -660,19 +667,13 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         });
     }
 
-    /** A short message in the card style (CARD, LINE, MUTED text) above the bottom bar. */
+    /**
+     * A short message in the card style (CARD, LINE, MUTED text) above the bottom bar. P214f: through the one message channel
+     * (UiMessages -> MessageCard): shown 1.5 s + 50 ms per character (at most 7 s; it was 1.5 s for any text), a repeat
+     * merged with a counter, kept in the history.
+     */
     public void showCardToast(CharSequence text) {
-        if (cameraFragmentBinding == null) return;
-        android.widget.TextView toast = cameraFragmentBinding.shadeToast;
-        toast.removeCallbacks(hideCardToast);
-        toast.animate().cancel();
-        toast.setText(text);
-        if (toast.getVisibility() != View.VISIBLE) {
-            toast.setAlpha(0f);
-            toast.setVisibility(View.VISIBLE);
-        }
-        toast.animate().alpha(1f).setDuration(200).start();
-        toast.postDelayed(hideCardToast, 1500);
+        com.particlesdevs.photoncamera.util.UiMessages.info(text);
     }
 
     /** A lens or camera switch: the shade closes its slider card. */
@@ -832,6 +833,9 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             }
         }
         if (cameraFragmentBinding != null) cameraFragmentBinding.settingsBar.setLive(false);
+        // P214f: the message channel falls back to system toasts until the next camera screen attaches its card
+        if (messageCard != null) messageCard.release();
+        messageCard = null;
         cameraFragmentBinding = null;
         mCameraUIView.destroy();
         mCameraUIView = null;
@@ -1246,25 +1250,23 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     }
 
     /**
-     * Shows a {@link Toast} on the UI thread.
+     * An information message on the camera screen's card (P25 card style; any thread). P214f: through the one message
+     * channel (UiMessages); a system toast only when the camera screen is gone.
      *
      * @param text The message to show
      */
     public void showToast(final String text) {
-        if (activity != null) {
-            // The card style of the camera screen (P25); a plain toast once the views are gone.
-            activity.runOnUiThread(() -> {
-                if (cameraFragmentBinding != null) showCardToast(text);
-                else Toast.makeText(activity, text, Toast.LENGTH_SHORT).show();
-            });
-        }
+        com.particlesdevs.photoncamera.util.UiMessages.info(text);
     }
 
+    /** P214f: an error on the card: it stays, in the warning colour, until it is tapped (any thread). */
+    public void showError(final String text) {
+        com.particlesdevs.photoncamera.util.UiMessages.error(text);
+    }
+
+    /** P214f: the button notices (FULLRES, DCG, motion mode...) were short snackbars; now the same card as the rest. */
     public void showSnackBar(final String text) {
-        final View v = getView();
-        if (v != null) {
-            v.post(() -> Snackbar.make(v, text, Snackbar.LENGTH_SHORT).show());
-        }
+        com.particlesdevs.photoncamera.util.UiMessages.info(text);
     }
 
     /**
@@ -1529,7 +1531,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 cameraFragmentViewModel.updateGalleryThumb(imageUri);
             } else {
                 logE("ImageSavingError");
-                showSnackBar("ImageSavingError");
+                showError(com.particlesdevs.photoncamera.util.Lang.t("Не удалось сохранить снимок", "The photo could not be saved"));
             }
         }
 
@@ -1537,7 +1539,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         public void onProcessingError(Object obj) {
             ui().resetCaptureProgressBar();
             if (obj instanceof String)
-                showToast((String) obj);
+                showError((String) obj); // P214f: a failed shot stays on the card until it is tapped
             ui().lockUIForBurst(false);
             onProcessingFinished("Processing Finished Unexpectedly!!");
         }

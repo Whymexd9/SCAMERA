@@ -583,18 +583,46 @@ public class ScamProcessor extends ProcessorBase {
                 if (!processingParameters.rawSize.equals(sensorSize))
                     Log.i("SCAM_HDR", "DNG: merged binned Bayer " + processingParameters.rawSize.x + "x" + processingParameters.rawSize.y + " (no remosaic)");
                 try {
+                    // P214c: NoiseProfile of what the file holds - the merge's level over the headroom, averaged over the frames
+                    // the worker merged (DngMetadata.noiseProfile); without the worker's frames the legacy computeModel stands
+                    // for them (base / FrameNumberSelector.frameCount, which nothing sets: the one-frame model)
+                    final double mergeFrames = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergeFrames;
+                    final boolean framesKnown = Double.isFinite(mergeFrames) && mergeFrames >= 1;
+                    final com.particlesdevs.photoncamera.processing.render.NoiseModeler nm = processingParameters.noiseModeler;
+                    final double[] single = nm == null ? null : com.particlesdevs.photoncamera.processing.DngMetadata.planes(framesKnown ? nm.baseModel : nm.computeModel);
+                    final double averagedSites = (double) sensorSize.x * sensorSize.y / ((double) processingParameters.rawSize.x * processingParameters.rawSize.y);
+                    final float noiseFactor = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastNoiseFactor;
+                    if (single != null) processingParameters.dngNoiseProfile = com.particlesdevs.photoncamera.processing.DngMetadata.noiseProfile(
+                            single, noiseFactor, headroom, framesKnown ? mergeFrames : 1, averagedSites);
                     imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, scamMergedDng, processingParameters);
                     Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "DNG: merged burst RAW (N, bracketed and ultrashort frames), "
                             + "16-bit, headroom x%.3f, BaselineExposure %+.2f EV", headroom, processingParameters.dngBaselineExposure));
+                    final double[] np = processingParameters.dngNoiseProfile;
+                    if (np != null && single != null) Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "DNG: NoiseProfile G %.4g / %.4g (frames %s, "
+                            + "headroom x%.3f, noise x%.3f, sites %.0f; one frame %.4g / %.4g)", np[2], np[3],
+                            framesKnown ? String.format(java.util.Locale.ROOT, "%.2f", mergeFrames) : "unknown: legacy model", headroom,
+                            noiseFactor, Math.max(1, averagedSites), single[2], single[3]));
                 } finally {
                     System.arraycopy(black, 0, processingParameters.blackLevel, 0, 4);
                     processingParameters.whiteLevel = white;
                     processingParameters.dngBaselineExposure = 0f;
+                    processingParameters.dngNoiseProfile = null;
                     processingParameters.rawSize = sensorSize;
                     Allocator.free(scamMergedDng);
                 }
-            } else imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output,
-                    processingParameters);
+            } else {
+                // P214c: the reference RAW is one frame as the sensor gave it: the one-frame model (H, N, sites = 1), with the
+                // worker's measured correction of it when it made one (1 after the CPU fallback)
+                final com.particlesdevs.photoncamera.processing.render.NoiseModeler nm = processingParameters.noiseModeler;
+                final double[] single = nm == null ? null : com.particlesdevs.photoncamera.processing.DngMetadata.planes(nm.baseModel);
+                if (single != null) processingParameters.dngNoiseProfile = com.particlesdevs.photoncamera.processing.DngMetadata.noiseProfile(
+                        single, com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastNoiseFactor, 1, 1, 1);
+                try {
+                    imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output, processingParameters);
+                } finally {
+                    processingParameters.dngNoiseProfile = null;
+                }
+            }
             } catch (RuntimeException | OutOfMemoryError dngError) {
                 // P27: the DNG is optional, the JPEG is not.
                 Log.e(TAG, "DNG not saved: " + stackTrace(dngError));

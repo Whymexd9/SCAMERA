@@ -17,7 +17,7 @@ import java.util.Arrays;
 /**
  * P191 (owner, 2026-10-17: «переноси всё туда чтобы в data ничего не хранилось»): the one folder of the app's own files for
  * the user - scam_dev.txt, the crash report, the adb markers (dump-forward, dump-denoise, noeff), the debug dumps, the kept
- * bursts - is Download/SCAMERA, next to SCAMERA-debug.log. Android/data/&lt;package&gt;/files is no longer used: a file
+ * bursts - is Download/SCAMERA, next to SCAMERA-debug.txt. Android/data/&lt;package&gt;/files is no longer used: a file
  * manager on Android 16 cannot open it. The File API writes there without a permission (the files are the app's own);
  * files a PC, adb or a file manager put there are reached through the folder grant ({@link ScameraFolder#ROOT}).
  */
@@ -38,6 +38,21 @@ public final class ScameraFiles {
 
     public static File file(String name) {
         return new File(dir(), name);
+    }
+
+    /**
+     * P214b: below Android 11 a file made through the File API is not in MediaStore until the scanner sees it, so it is
+     * missing over USB (MTP); the logs that used to be MediaStore entries there (SCAMERA-debug, SCAMERA-timings) ask for
+     * that scan when they open a file. From Android 11 on the storage daemon indexes it itself: nothing to do.
+     */
+    public static void index(@Nullable Context context, File file) {
+        if (context == null || file == null || android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) return;
+        try {
+            android.media.MediaScannerConnection.scanFile(context, new String[]{file.getAbsolutePath()},
+                    new String[]{"text/plain"}, null);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "scan of " + file + " failed: " + e);
+        }
     }
 
     /**

@@ -67,6 +67,11 @@ public class Parameters {
     public Point rawCropFull;
     /** P165: BaselineExposure of the DNG (EV; 0 = none): set for the merged DNG written over its headroom. */
     public float dngBaselineExposure;
+    /**
+     * P214c: NoiseProfile of the DNG being written ({S_R, O_R, S_G, O_G, S_B, O_B}, DngMetadata.noiseProfile), set by
+     * ScamProcessor around its DNG; null = the noise modeler's computeModel as before.
+     */
+    public double[] dngNoiseProfile;
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];
     public float[] whitePoint = new float[3];
@@ -78,6 +83,13 @@ public class Parameters {
     public String levelSource = "";
     /** P135: SNR of the finish input the denoise measured (ScamDenoise), NaN until it ran: the sharpening backs off by it. */
     public float finishSnr = Float.NaN;
+    /**
+     * P214e: colour block of the image the merge returned (ScamHybridBurst.mergedBlock): 2 Quad / 4 Tetra when the worker
+     * merged a mosaic stream on its mosaic (the ISZ modules, FULLRES native mosaic), 1 otherwise (a Bayer stream, a mosaic
+     * binned into plain Bayer, a block nobody measured, every shot that is not a hybrid merge). Above 1 ArkLumaSharpen
+     * sharpens the 3x3-smoothed luma (R1).
+     */
+    public int mosaicBlock = 1;
     public static int mergeWhiteLevel = 65535;
     public int realWL = -1;
     public boolean hasGainMap;
@@ -981,6 +993,7 @@ public class Parameters {
         params.levelBits = levelBits;
         params.levelSource = levelSource;
         params.finishSnr = finishSnr;
+        params.mosaicBlock = mosaicBlock;
         params.realWL = realWL;
         params.hasGainMap = hasGainMap;
         params.mapSize = new Point(mapSize);

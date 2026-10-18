@@ -483,6 +483,7 @@ public final class ScamNeuralClient {
                 ScamHybridBurst.lastBentoApplied=report.indexOf("HYBRID BENTO: applied")>=0;
                 ScamHybridBurst.lastBentoFactor=reportNumber(report,"HYBRID BENTO: applied","factor=",1f);
                 ScamHybridBurst.lastMergedDngHeadroom=Math.max(1f,reportNumber(report,"HYBRID DNG:","headroom=",1f));
+                ScamHybridBurst.lastMergeFrames=com.particlesdevs.photoncamera.processing.DngMetadata.mergeFrames(report); // P214c
                 ScamHybridBurst.lastBentoUsClipped=reportNumber(report,"HYBRID BENTO: applied","usClippedRatio=",0f);
                 final float noiseK=reportNumber(report,"HYBRID NOISE CHECK:","-> model x",1f);
                 ScamHybridBurst.lastNoiseFactor=noiseK>=1f/16&&noiseK<=4f?noiseK:1f;
