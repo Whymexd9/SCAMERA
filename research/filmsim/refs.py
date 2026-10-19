@@ -35,6 +35,7 @@ for film, prnt, o in CASES:
     p.debug.deactivate_stochastic_effects = True
     p.film_render.halation.boost_ev = 0.0
     p.camera.exposure_compensation_ev = o.get('ev', 0.0)
+    p.enlarger.print_exposure_compensation = False
     p.enlarger.print_exposure = o.get('print_exposure', 1.0)
     p.enlarger.m_filter_shift = o.get('m_shift', 0.0)
     p.enlarger.y_filter_shift = o.get('y_shift', 0.0)

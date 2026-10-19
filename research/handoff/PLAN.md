@@ -6307,3 +6307,20 @@ instead of a point sample (a point sample left no glow). The photo: LensFilter o
 Stockham passes, the same index math as the Java -, mul, store, down, carry); the settings' preview the same plan on the CPU;
 the live viewfinder keeps the pyramid fit (LiveLensFilter). Not on a phone yet: correctness of the GPU passes, the time
 (12 MP: about 70 FFT planes of 1024^2 at level 0).
+
+### P289 - film settings' sliders and lens filters on the photo (owner, 2026-10-20: «фото сохранилось без фильтра. все эти ползунки не работают нормально, исправь», «посмотри как это реализовано в [приложении-образце] и исправь у нас»): done, not device-tested.
+Causes: the GPU FFT passes left the photo without its filter (no glow in the owner's shot); the film's exposure was
+compensated by the print (the EV slider changed nothing); grain, halation and softness were only in the photo's spatial
+passes, never in the settings' preview. As the reference: each exponential of the filter's PSF is three Gaussians
+(DiffusionGauss.FIT, amplitudes .1633 / .6496 / .1870 at sigma / decay .536 / 1.5236 / 2.7684), each blurred separably on the
+box-pyramid level where its sigma is 3..6 px (mirror edges), the levels summed from the coarsest with bilinear enlargement;
+on the GPU lensgauss/down, blur (x, then y accumulating), up; the settings' preview the same plan on the CPU. Error against the
+exact convolution (DiffusionFft, now a test reference) under 0.1 of the peak, CineBloom 0.25, energy within 5 %
+(DiffusionGaussTest). Film exposure uncompensated (the print normalised on the mid grey at EV 0). The settings' preview shows
+scatter, halation (FilmEffects.light) and grain (FilmEffects.grain) as a 1:1 crop of a 4000 px photo. Grain: the reference's
+defaults (particle area 0.1 um2, colour scale 1.2 / 1.0 / 2.5, sub-layers 6 / 1 / 0.4, dmin .04 / .05 / .06, uniformity
+.99 / .97 / .98) and its final blur of 11.8 um; on the GPU film/noise -> film/blur x / y -> film/grain_sf. Slider ranges as the
+reference: grain 0..200 %, halation 0..400 %. Viewfinder tray (owner: «сделай красивый интерфейс для списка, который
+вызывается в видоискателе, и дай возможность закрывать это подменю нажатием на пустой видоискатель»): three titled sections
+(LUT with «Все LUT ›» and the strength, lens filter, film) with the current choice after each title, rounded chips with the
+chosen one filled in the accent; a tap on the empty viewfinder closes the tray without focusing (Swipe.onSingleTapUp).

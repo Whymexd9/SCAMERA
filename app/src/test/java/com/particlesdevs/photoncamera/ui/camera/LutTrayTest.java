@@ -82,7 +82,7 @@ public class LutTrayTest {
         pill.performClick();
         assertTrue(tray.isOpen());
         assertEquals(View.VISIBLE, box.getVisibility());
-        ViewGroup row = (ViewGroup) ((ViewGroup) box.getChildAt(0)).getChildAt(0);
+        ViewGroup row = box.findViewWithTag("lut_tray_luts");
         assertTrue(row.getChildCount() >= 6);
         assertEquals("Нет", row.getChildAt(0).getContentDescription().toString());
         assertEquals(FilmLooks.label(context, FilmLooks.values()[3]), row.getChildAt(4).getContentDescription().toString());
@@ -114,7 +114,7 @@ public class LutTrayTest {
         tray.setOnOpen(() -> proClosed[0] = true);
         tray.setOpen(true);
         assertTrue("opening the tray closes Pro", proClosed[0]);
-        ViewGroup strengthRow = (ViewGroup) box.getChildAt(1);
+        ViewGroup strengthRow = box.findViewWithTag("lut_tray_strength");
         android.widget.SeekBar seek = (android.widget.SeekBar) strengthRow.getChildAt(1);
         assertEquals(100, seek.getProgress());
         assertEquals("100 %", ((TextView) strengthRow.getChildAt(2)).getText().toString());

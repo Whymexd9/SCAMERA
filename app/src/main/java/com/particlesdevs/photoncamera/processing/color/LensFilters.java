@@ -456,9 +456,9 @@ public final class LensFilters {
      * summed from the coarse end with B-spline steps, plus the image itself times its own weight.
      */
     static void diffuse(float[] rgb, int w, int h, String id, float s, Tune tune) {
-        // P288: the photo's FFT convolution (DiffusionFft), the frame as long as this image
-        final DiffusionFft.Plan plan = DiffusionFft.plan(id, s, tune, w, h, Math.max(w, h));
-        if (plan != null) DiffusionFft.apply(rgb, w, h, plan);
+        // P289: the photo's Gaussian-cluster diffusion (DiffusionGauss), the frame as long as this image
+        final DiffusionGauss.Plan plan = DiffusionGauss.plan(id, s, tune, w, h, Math.max(w, h));
+        if (plan != null) DiffusionGauss.apply(rgb, w, h, plan);
     }
 
     /**

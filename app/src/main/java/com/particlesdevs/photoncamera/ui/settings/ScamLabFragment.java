@@ -545,9 +545,9 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 return s;
             }
             case com.particlesdevs.photoncamera.processing.color.FilmSim.GRAIN_KEY:
-                return slider(key, Lang.t(c, "Зерно плёнки", "Film grain"), 0, 300, 1, "100");
+                return slider(key, Lang.t(c, "Зерно плёнки", "Film grain"), 0, 200, 1, "100");
             case com.particlesdevs.photoncamera.processing.color.FilmSim.HALATION_KEY:
-                return slider(key, Lang.t(c, "Ореол плёнки", "Film halation"), 0, 300, 1, "100");
+                return slider(key, Lang.t(c, "Ореол плёнки", "Film halation"), 0, 400, 1, "100");
             case com.particlesdevs.photoncamera.processing.color.FilmSim.SOFTNESS_KEY:
                 return slider(key, Lang.t(c, "Мягкость плёнки", "Film softness"), 0, 300, 1, "100");
             case com.particlesdevs.photoncamera.processing.color.FilmSim.EXPOSURE_KEY:

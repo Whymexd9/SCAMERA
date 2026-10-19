@@ -379,8 +379,8 @@ public final class FilmSim {
             final float strength = clamp(number(m.getString(scope, STRENGTH_KEY, "100"), 100f) / 100f, 0f, 1f);
             if (strength <= 0f) return null;
             return new Settings(stock, print(m.getString(scope, PRINT_KEY, ""), stock), format(m.getString(scope, FORMAT_KEY, "135")),
-                    clamp(number(m.getString(scope, GRAIN_KEY, "100"), 100f) / 100f, 0f, 3f),
-                    clamp(number(m.getString(scope, HALATION_KEY, "100"), 100f) / 100f, 0f, 3f),
+                    clamp(number(m.getString(scope, GRAIN_KEY, "100"), 100f) / 100f, 0f, 2f),
+                    clamp(number(m.getString(scope, HALATION_KEY, "100"), 100f) / 100f, 0f, 4f),
                     clamp(number(m.getString(scope, SOFTNESS_KEY, "100"), 100f) / 100f, 0f, 3f),
                     clamp(number(m.getString(scope, EXPOSURE_KEY, "0"), 0f), -3f, 3f),
                     clamp(number(m.getString(scope, PRINT_EV_KEY, "0"), 0f), -2f, 2f),

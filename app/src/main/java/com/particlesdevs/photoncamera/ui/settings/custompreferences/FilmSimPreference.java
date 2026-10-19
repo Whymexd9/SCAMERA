@@ -239,8 +239,8 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
                 break;
             }
             default: {
-                slider(c, FilmSim.GRAIN_KEY, Lang.t(c, "Зерно", "Grain"), 0, 300, 1, 100, "%");
-                slider(c, FilmSim.HALATION_KEY, Lang.t(c, "Ореол", "Halation"), 0, 300, 1, 100, "%");
+                slider(c, FilmSim.GRAIN_KEY, Lang.t(c, "Зерно", "Grain"), 0, 200, 1, 100, "%");
+                slider(c, FilmSim.HALATION_KEY, Lang.t(c, "Ореол", "Halation"), 0, 400, 1, 100, "%");
                 slider(c, FilmSim.SOFTNESS_KEY, Lang.t(c, "Мягкость плёнки", "Film softness"), 0, 300, 1, 100, "%");
                 slider(c, FilmSim.EXPOSURE_KEY, Lang.t(c, "Экспозиция плёнки", "Film exposure"), -2, 2, .1f, 0, " EV");
                 slider(c, FilmSim.PRINT_EV_KEY, Lang.t(c, "Экспозиция печати", "Print exposure"), -1, 1, .05f, 0, " EV");
@@ -250,8 +250,8 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
                 slider(c, FilmSim.PRINT_Y_KEY, Lang.t(c, "Фильтр Y увеличителя (желтее … синее)", "Enlarger Y filter (more yellow … bluer)"),
                         -30, 30, 1, 0, " CC");
                 slider(c, FilmSim.STRENGTH_KEY, Lang.t(c, "Сила симуляции", "Simulation strength"), 0, 100, 1, 100, "%");
-                note(c, Lang.t(c, "Зерно, ореол и мягкость видны на фото (в видоискателе — только цвет и тон плёнки).",
-                        "Grain, halation and softness are in the photo (the viewfinder shows the film's colour and tone)."));
+                note(c, Lang.t(c, "Превью показывает зерно, ореол и мягкость как на фото в полном размере (кусок кадра 1:1). В видоискателе — только цвет и тон плёнки.",
+                        "The preview shows the grain, halation and softness as on the full-size photo (a 1:1 crop). The viewfinder shows the film's colour and tone only."));
             }
         }
     }
@@ -369,9 +369,14 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
             final com.particlesdevs.photoncamera.processing.color.FilmChain.State st = com.particlesdevs.photoncamera.processing.color.FilmChain.current();
             final FilmLut lut = st.key.isEmpty() || st.strength <= 0f ? null
                     : com.particlesdevs.photoncamera.processing.color.FilmChain.lut(c.getApplicationContext(), st.key);
-            final int[] full = lut == null ? base : LutSamples.apply(base, lut);
+            // P289: the film's softness, halation (the light) and grain (the finished picture) as on the photo at full size
+            final FilmSim.Settings set = FilmSim.current();
+            final int[] lit = set == null ? base : com.particlesdevs.photoncamera.processing.color.FilmEffects.light(base, w, h, set);
+            int[] full = lut == null ? lit : LutSamples.apply(lit, lut);
+            if (lut != null && st.strength < 1f) full = LutSamples.mix(lit, full, st.strength);
+            if (set != null) full = com.particlesdevs.photoncamera.processing.color.FilmEffects.grain(full, w, h, set);
             final Bitmap before = FilmLutPreference.bitmap(base, w, h);
-            final Bitmap after = FilmLutPreference.bitmap(lut == null || st.strength >= 1f ? full : LutSamples.mix(base, full, st.strength), w, h);
+            final Bitmap after = FilmLutPreference.bitmap(full, w, h);
             main.post(() -> { if (gen == generation) view.setImages(before, after); });
         });
     }

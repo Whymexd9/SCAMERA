@@ -52,6 +52,12 @@ public class Swipe {
                     cameraFragmentViewModel.setSheetLevel(CameraFragmentModel.SHEET_PEEK);
                     return true;
                 }
+                // owner, 2026-10-20: a tap on the empty viewfinder closes the LUT tray, without focus
+                com.particlesdevs.photoncamera.ui.camera.LutTray tray = cameraFragment.lutTray;
+                if (tray != null && tray.isOpen()) {
+                    tray.setOpen(false);
+                    return true;
+                }
                 startTouchToFocus(e);
                 return false;
             }

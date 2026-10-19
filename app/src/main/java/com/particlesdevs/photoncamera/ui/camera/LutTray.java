@@ -48,6 +48,8 @@ import java.util.List;
 public final class LutTray {
     /** The concept's tray: the sheet colour at 94 %. */
     static final int TRAY_FILL = 0xF015191C, PILL_FILL = 0x9E0D0F12;
+    /** An unchosen chip: a faint glass fill with a faint edge. */
+    static final int CHIP_FILL = 0x1AFFFFFF, CHIP_LINE = 0x14FFFFFF;
     private final TextView pill;
     private final LinearLayout tray;
     private final LinearLayout row;
@@ -60,6 +62,8 @@ public final class LutTray {
     private final LinearLayout filterRow;
     /** P281: the film simulation's stocks (FilmSim), the tray's first row. */
     private final LinearLayout filmRow;
+    /** The sections' current choices, after their titles. */
+    private final TextView lutNow, filterNow, filmNow;
     @Nullable private Runnable onOpen;
     private boolean open;
 
@@ -78,72 +82,54 @@ public final class LutTray {
         plp.height = UiScale.dp(c, 28);
         pill.setLayoutParams(plp);
         UiScale.textFixed(pill, 12);
-        // the tray
+        // the tray (owner, 2026-10-20: «сделай красивый интерфейс»): three titled sections - LUT with its strength, the lens
+        // filter, the film - each a title with the current choice and a row of chips, the chosen chip in the accent
         tray.setOrientation(LinearLayout.VERTICAL);
-        int pad = UiScale.dp(c, 8);
-        tray.setPadding(pad, pad, pad, pad);
+        tray.setPadding(UiScale.dp(c, 12), UiScale.dp(c, 10), UiScale.dp(c, 12), UiScale.dp(c, 12));
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(TRAY_FILL);
         bg.setStroke(Math.max(1, Math.round(c.getResources().getDisplayMetrics().density)), ShadeStyle.LINE);
-        bg.setCornerRadius(UiScale.dpF(c, 18));
+        bg.setCornerRadius(UiScale.dpF(c, 22));
         tray.setBackground(bg);
         tray.setClickable(true);
         tray.removeAllViews();
-        // P281: the film stocks' row (the film simulation), built here, added after the filters
-        HorizontalScrollView filmScroll = new HorizontalScrollView(c);
-        filmScroll.setHorizontalScrollBarEnabled(false);
-        filmScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        filmRow = new LinearLayout(c);
-        filmRow.setOrientation(LinearLayout.HORIZONTAL);
-        filmRow.setTag("lut_tray_films");
-        filmScroll.addView(filmRow, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        HorizontalScrollView scroll = new HorizontalScrollView(c);
-        scroll.setHorizontalScrollBarEnabled(false);
-        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        row = new LinearLayout(c);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        scroll.addView(row, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        tray.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        // the strength row: «Сила» · slider · value · «Все LUT ›»
+        // LUT: the title with «Все LUT ›», the chips, the strength
+        TextView all = text(c, Lang.t(c, "Все LUT ›", "All LUTs ›"), 12, accent);
+        all.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        all.setPaddingRelative(UiScale.dp(c, 10), UiScale.dp(c, 4), UiScale.dp(c, 2), UiScale.dp(c, 4));
+        all.setBackground(ShadeStyle.ripple(c, 10));
+        all.setOnClickListener(v -> { setOpen(false); openAll.run(); });
+        lutNow = section(c, "LUT", all, 0);
+        row = chipRow(c, "lut_tray_luts");
+        // the strength row: «Сила» · slider · value
         LinearLayout lr = new LinearLayout(c);
         lr.setOrientation(LinearLayout.HORIZONTAL);
         lr.setGravity(Gravity.CENTER_VERTICAL);
+        lr.setTag("lut_tray_strength");
         TextView label = text(c, Lang.t(c, "Сила", "Strength"), 12, ShadeStyle.MUTED);
         lr.addView(label);
         strength = new SeekBar(c);
         strength.setMax(100);
         strength.setProgressTintList(ColorStateList.valueOf(accent));
         strength.setThumbTintList(ColorStateList.valueOf(accent));
+        strength.setProgressBackgroundTintList(ColorStateList.valueOf(0x40FFFFFF));
         strength.setContentDescription(Lang.t(c, "Сила LUT", "LUT strength"));
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         lr.addView(strength, slp);
         strengthValue = text(c, "", 12, ShadeStyle.TEXT);
-        strengthValue.setMinWidth(UiScale.dp(c, 38));
+        strengthValue.setMinWidth(UiScale.dp(c, 40));
+        strengthValue.setGravity(Gravity.END);
         strengthValue.setFontFeatureSettings("tnum");
         lr.addView(strengthValue);
-        TextView all = text(c, Lang.t(c, "Все LUT ›", "All LUTs ›"), 12, accent);
-        all.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-        all.setPaddingRelative(UiScale.dp(c, 8), UiScale.dp(c, 6), UiScale.dp(c, 2), UiScale.dp(c, 6));
-        all.setOnClickListener(v -> { setOpen(false); openAll.run(); });
-        lr.addView(all);
         LinearLayout.LayoutParams lrp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lrp.topMargin = UiScale.dp(c, 6);
+        lrp.topMargin = UiScale.dp(c, 2);
         tray.addView(lr, lrp);
-        // P228: the lens filters' row
-        HorizontalScrollView fscroll = new HorizontalScrollView(c);
-        fscroll.setHorizontalScrollBarEnabled(false);
-        fscroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        filterRow = new LinearLayout(c);
-        filterRow.setOrientation(LinearLayout.HORIZONTAL);
-        filterRow.setTag("lut_tray_filters");
-        fscroll.addView(filterRow, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        fp.topMargin = UiScale.dp(c, 6);
-        tray.addView(fscroll, fp);
-        // P281: the film stocks' row (the film simulation), after the filters
-        LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        flp.topMargin = UiScale.dp(c, 6);
-        tray.addView(filmScroll, flp);
+        // P228: the lens filters
+        filterNow = section(c, Lang.t(c, "Фильтр объектива", "Lens filter"), null, 6);
+        filterRow = chipRow(c, "lut_tray_filters");
+        // P281: the film simulation's stocks
+        filmNow = section(c, Lang.t(c, "Плёнка", "Film"), null, 10);
+        filmRow = chipRow(c, "lut_tray_films");
         strength.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int p, boolean user) {
                 strengthValue.setText(p + " %");
@@ -167,6 +153,85 @@ public final class LutTray {
         t.setMaxLines(1);
         UiScale.textFixed(t, sp);
         return t;
+    }
+
+    /**
+     * A section's title row: the title in small capitals, then the current choice in the accent (returned), {@code end}
+     * at the row's end.
+     */
+    private TextView section(Context c, String title, @Nullable View end, int topDp) {
+        LinearLayout r = new LinearLayout(c);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setMinimumHeight(UiScale.dp(c, 24));
+        TextView t = text(c, title.toUpperCase(java.util.Locale.getDefault()), 10.5f, ShadeStyle.MUTED);
+        t.setLetterSpacing(.08f);
+        t.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        r.addView(t);
+        TextView now = text(c, "", 12, ShadeStyle.accent(c));
+        now.setEllipsize(TextUtils.TruncateAt.END);
+        now.setPaddingRelative(UiScale.dp(c, 8), 0, UiScale.dp(c, 4), 0);
+        r.addView(now, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        if (end != null) r.addView(end);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = UiScale.dp(c, topDp);
+        tray.addView(r, lp);
+        return now;
+    }
+
+    /** A section's horizontal row of chips in its scroll, added to the tray. */
+    private LinearLayout chipRow(Context c, String tag) {
+        HorizontalScrollView scroll = new HorizontalScrollView(c);
+        scroll.setHorizontalScrollBarEnabled(false);
+        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        LinearLayout r = new LinearLayout(c);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setTag(tag);
+        scroll.addView(r, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = UiScale.dp(c, 4);
+        tray.addView(scroll, lp);
+        return r;
+    }
+
+    /** A chip's look: the accent fill when chosen, the glass fill and edge otherwise; a ripple bounded by its shape. */
+    static android.graphics.drawable.Drawable chipBackground(Context c, boolean on, int accent, float radiusDp) {
+        GradientDrawable fill = new GradientDrawable();
+        fill.setCornerRadius(UiScale.dpF(c, radiusDp));
+        fill.setColor(on ? accent : CHIP_FILL);
+        if (!on) fill.setStroke(Math.max(1, UiScale.dp(c, 1)), CHIP_LINE);
+        GradientDrawable mask = new GradientDrawable();
+        mask.setCornerRadius(UiScale.dpF(c, radiusDp));
+        mask.setColor(0xFFFFFFFF);
+        return new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(on ? 0x33000000 : 0x29FFFFFF), fill, mask);
+    }
+
+    /** A one-line text chip (LUTs, filters), fully rounded; the chosen one in the accent with INK. */
+    private static TextView textChip(Context c, String label, boolean on, int accent) {
+        TextView t = text(c, label, 12.5f, on ? ShadeStyle.INK : ShadeStyle.TEXT);
+        t.setGravity(Gravity.CENTER);
+        t.setEllipsize(TextUtils.TruncateAt.END);
+        t.setMaxWidth(UiScale.dp(c, 150));
+        t.setPadding(UiScale.dp(c, 14), 0, UiScale.dp(c, 14), 0);
+        if (on) t.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        t.setBackground(chipBackground(c, on, accent, 17));
+        return t;
+    }
+
+    /** A chip's place in its row: {@code heightDp} high, 6dp after the previous. */
+    private static LinearLayout.LayoutParams chipParams(Context c, ViewGroup row, int heightDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, UiScale.dp(c, heightDp));
+        if (row.getChildCount() > 0) lp.setMarginStart(UiScale.dp(c, 6));
+        return lp;
+    }
+
+    /** Scrolls a row so the chosen chip sits in its middle. */
+    private static void centre(LinearLayout row, @Nullable View target) {
+        if (target != null) row.post(() -> {
+            View scroll = (View) row.getParent();
+            if (scroll instanceof HorizontalScrollView)
+                ((HorizontalScrollView) scroll).smoothScrollTo(Math.max(0, target.getLeft() + target.getWidth() / 2 - scroll.getWidth() / 2), 0);
+        });
     }
 
     /** Pro opens: the tray closes (they are mutually exclusive). */
@@ -247,23 +312,8 @@ public final class LutTray {
         View selected = null;
         for (String value : values) {
             boolean on = value.equals(chosen);
-            LinearLayout card = new LinearLayout(c);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setGravity(Gravity.CENTER_HORIZONTAL);
-            int p = UiScale.dp(c, 3);
-            card.setPadding(p, p, p, p);
-            GradientDrawable cbg = new GradientDrawable();
-            cbg.setCornerRadius(UiScale.dpF(c, 12));
-            cbg.setColor(on ? (accent & 0x00FFFFFF) | 0x1F000000 : 0);
-            cbg.setStroke(Math.max(1, UiScale.dp(c, 1)), on ? accent : 0);
-            card.setBackground(cbg);
-            // owner, 2026-10-19 («Убираем маленькие живые превью в видоискателе»): the cards are the names
-            TextView name = text(c, name(c, value), 10, on ? accent : ShadeStyle.MUTED);
-            name.setMaxLines(2);
-            name.setGravity(Gravity.CENTER);
-            name.setMinHeight(UiScale.dp(c, 23));
-            LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            card.addView(name, nlp);
+            // owner, 2026-10-19 («Убираем маленькие живые превью в видоискателе»): the chips are the names
+            TextView card = textChip(c, name(c, value), on, accent);
             card.setContentDescription(name(c, value));
             card.setOnClickListener(v -> choose(value));
             // P279: hold and drag a card to move it; the settings' strip shows the same order
@@ -271,9 +321,7 @@ public final class LutTray {
                 com.particlesdevs.photoncamera.settings.ItemOrder.store(com.particlesdevs.photoncamera.settings.ItemOrder.LUT_KEY, new ArrayList<>(values), from, to);
                 rebuild();
             });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(UiScale.dp(c, 62), ViewGroup.LayoutParams.WRAP_CONTENT);
-            if (row.getChildCount() > 0) lp.setMarginStart(UiScale.dp(c, 6));
-            row.addView(card, lp);
+            row.addView(card, chipParams(c, row, 34));
             if (on) selected = card;
         }
         rebuildFilters();
@@ -281,13 +329,11 @@ public final class LutTray {
         int s = Math.round(PreferenceKeys.filmLutStrength() * 100);
         strength.setProgress(s);
         strengthValue.setText(s + " %");
-        // the chosen card scrolled to the centre
-        View target = selected;
-        if (target != null) row.post(() -> {
-            View scroll = (View) row.getParent();
-            if (scroll instanceof HorizontalScrollView)
-                ((HorizontalScrollView) scroll).smoothScrollTo(Math.max(0, target.getLeft() + target.getWidth() / 2 - scroll.getWidth() / 2), 0);
-        });
+        // without a LUT the strength has nothing to act on: dimmed
+        ((View) strength.getParent()).setAlpha(chosen.isEmpty() ? .4f : 1f);
+        lutNow.setText(chosen.isEmpty() ? "" : name(c, chosen));
+        // the chosen chip scrolled to the centre
+        centre(row, selected);
     }
 
     /** P228: «Нет» and the 12 lens filters as cards, the chosen one in the accent. */
@@ -296,26 +342,11 @@ public final class LutTray {
         filterRow.removeAllViews();
         String chosen = PreferenceKeys.lensFilter();
         int accent = ShadeStyle.accent(c);
+        View selected = null;
         for (String id : filterIds()) {
             boolean on = id.equals(chosen);
-            LinearLayout card = new LinearLayout(c);
-            card.setOrientation(LinearLayout.VERTICAL);
-            card.setGravity(Gravity.CENTER_HORIZONTAL);
-            int p = UiScale.dp(c, 3);
-            card.setPadding(p, p, p, p);
-            GradientDrawable cbg = new GradientDrawable();
-            cbg.setCornerRadius(UiScale.dpF(c, 12));
-            cbg.setColor(on ? (accent & 0x00FFFFFF) | 0x1F000000 : 0);
-            cbg.setStroke(Math.max(1, UiScale.dp(c, 1)), on ? accent : 0);
-            card.setBackground(cbg);
-            // owner, 2026-10-19: no live previews of the lens filters - the cards are their names
-            TextView name = text(c, id.isEmpty() ? Lang.t(c, "Без фильтра", "No filter") : LensFilters.name(c, id), 10,
-                    on ? accent : ShadeStyle.MUTED);
-            name.setMaxLines(2);
-            name.setGravity(Gravity.CENTER);
-            name.setMinHeight(UiScale.dp(c, 23));
-            LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            card.addView(name, nlp);
+            // owner, 2026-10-19: no live previews of the lens filters - the chips are their names
+            TextView card = textChip(c, id.isEmpty() ? Lang.t(c, "Без фильтра", "No filter") : LensFilters.name(c, id), on, accent);
             card.setContentDescription(Lang.t(c, "Фильтр: ", "Filter: ") + LensFilters.name(c, id));
             card.setTag("lut_tray_filter_" + id);
             card.setOnClickListener(v -> chooseFilter(id));
@@ -324,10 +355,11 @@ public final class LutTray {
                 com.particlesdevs.photoncamera.settings.ItemOrder.store(com.particlesdevs.photoncamera.settings.ItemOrder.FILTER_KEY, java.util.Arrays.asList(filterIds()), from, to);
                 rebuildFilters();
             });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(UiScale.dp(c, 62), ViewGroup.LayoutParams.WRAP_CONTENT);
-            if (filterRow.getChildCount() > 0) lp.setMarginStart(UiScale.dp(c, 6));
-            filterRow.addView(card, lp);
+            filterRow.addView(card, chipParams(c, filterRow, 34));
+            if (on) selected = card;
         }
+        filterNow.setText(chosen.isEmpty() ? "" : LensFilters.name(c, chosen));
+        centre(filterRow, selected);
     }
 
     /** «Без фильтра» and every filter, in the user's order (P279). */
@@ -350,16 +382,14 @@ public final class LutTray {
             LinearLayout card = new LinearLayout(c);
             card.setOrientation(LinearLayout.VERTICAL);
             card.setGravity(Gravity.CENTER_VERTICAL);
-            card.setPadding(UiScale.dp(c, 8), UiScale.dp(c, 5), UiScale.dp(c, 8), UiScale.dp(c, 5));
-            GradientDrawable cbg = new GradientDrawable();
-            cbg.setCornerRadius(UiScale.dpF(c, 12));
-            cbg.setColor(on ? (accent & 0x00FFFFFF) | 0x1F000000 : 0x14FFFFFF);
-            cbg.setStroke(Math.max(1, UiScale.dp(c, 1)), on ? accent : 0);
-            card.setBackground(cbg);
-            TextView brand = text(c, st == null ? Lang.t(c, "Плёнка", "Film") : st.brand.toUpperCase(java.util.Locale.ROOT), 8.5f, on ? accent : ShadeStyle.MUTED);
+            card.setPadding(UiScale.dp(c, 12), 0, UiScale.dp(c, 12), 0);
+            card.setBackground(chipBackground(c, on, accent, 14));
+            TextView brand = text(c, st == null ? Lang.t(c, "Плёнка", "Film") : st.brand.toUpperCase(java.util.Locale.ROOT), 8.5f,
+                    on ? (ShadeStyle.INK & 0x00FFFFFF) | 0xB3000000 : ShadeStyle.MUTED);
+            brand.setLetterSpacing(.06f);
             card.addView(brand);
-            TextView name = text(c, st == null ? Lang.t(c, "Нет", "None") : st.name, 11, on ? accent : ShadeStyle.TEXT);
-            name.setMaxLines(1);
+            TextView name = text(c, st == null ? Lang.t(c, "Нет", "None") : st.name, 12, on ? ShadeStyle.INK : ShadeStyle.TEXT);
+            if (on) name.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
             card.addView(name);
             card.setContentDescription(st == null ? Lang.t(c, "Без плёнки", "No film") : st.brand + " " + st.name);
             card.setTag("lut_tray_film_" + id);
@@ -368,17 +398,12 @@ public final class LutTray {
                 rebuildFilms();
                 bindPill();
             });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, UiScale.dp(c, 40));
-            if (filmRow.getChildCount() > 0) lp.setMarginStart(UiScale.dp(c, 6));
-            filmRow.addView(card, lp);
+            filmRow.addView(card, chipParams(c, filmRow, 40));
             if (on) selected = card;
         }
-        final View target = selected;
-        if (target != null) filmRow.post(() -> {
-            View sc = (View) filmRow.getParent();
-            if (sc instanceof HorizontalScrollView)
-                ((HorizontalScrollView) sc).smoothScrollTo(Math.max(0, target.getLeft() + target.getWidth() / 2 - sc.getWidth() / 2), 0);
-        });
+        com.particlesdevs.photoncamera.processing.color.FilmSim.Stock now = com.particlesdevs.photoncamera.processing.color.FilmSim.stock(chosen);
+        filmNow.setText(chosen.isEmpty() || now == null ? "" : now.name);
+        centre(filmRow, selected);
     }
 
     /** A filter card tapped: that filter becomes the camera's (the settings' state). */

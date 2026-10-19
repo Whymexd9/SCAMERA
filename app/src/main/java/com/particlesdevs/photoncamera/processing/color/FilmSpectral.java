@@ -231,12 +231,15 @@ public final class FilmSpectral {
         }
     }
 
-    /** The reference's grain defaults (GrainParams): particle area (um2), per colour and per sub-layer scale, minimum density. */
-    static final double GRAIN_AREA = 0.2;
-    static final double[] GRAIN_SCALE = {1.6, 1.6, 3.2}, GRAIN_LAYER_SCALE = {2.0, 1.0, 0.5}, GRAIN_DMIN = {.03, .03, .03},
-            GRAIN_UNIFORMITY = {.97, .99, .97};
-    /** The grain's blur (pixels; GrainParams.blur) applied to the density noise. */
-    public static final float GRAIN_BLUR_PX = 0.65f;
+    /**
+     * P289: the grain parameters of the reference app (its defaults: particle area 0.1 um2, per colour 1.2 / 1.0 / 2.5 and per
+     * sub-layer 6 / 1 / 0.4 scales, minimum density 0.04 / 0.05 / 0.06, uniformity 0.99 / 0.97 / 0.98).
+     */
+    static final double GRAIN_AREA = 0.1;
+    static final double[] GRAIN_SCALE = {1.2, 1.0, 2.5}, GRAIN_LAYER_SCALE = {6.0, 1.0, 0.4}, GRAIN_DMIN = {.04, .05, .06},
+            GRAIN_UNIFORMITY = {.99, .97, .98};
+    /** The grain's final blur (um of film, the reference app's grainFinalBlurUm) applied to the density noise. */
+    public static final float GRAIN_BLUR_UM = 11.8f;
 
     /** interp of x over column {@code xc} of a stride-3 table to column {@code yc} of a stride-9 table (the density curve). */
     static double interp(double x, double[] xp3, int xc, double[] fp9, int yc) {
@@ -360,8 +363,9 @@ public final class FilmSpectral {
                 for (int c = 0; c < 3; c++) total *= 1 - (1 - dich[w * 3 + c]) * (1 - Math.pow(10, -cc[c] / 100.0));
                 light[w] = lamp[w] * total;
             }
-            // normalize_print_exposure with print_exposure_compensation: the mid grey of this film exposure prints as mid grey
-            final double[] mid = expose(film.midSpectral(ev, gamma));
+            // P289: normalize_print_exposure without print_exposure_compensation - the print is timed for the film's mid grey at
+            // its normal exposure, so «Экспозиция плёнки» shows (a denser negative prints lighter), as the enlarger's time fixed
+            final double[] mid = expose(film.midSpectral(0, gamma));
             double lg = 0;
             for (int c = 0; c < 3; c++) lg += Math.log(Math.max(mid[c], 1e-10));
             factor = 1 / Math.exp(lg / 3);

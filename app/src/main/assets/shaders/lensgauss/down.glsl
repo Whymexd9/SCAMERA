@@ -1,6 +1,6 @@
 precision highp float;
 precision highp sampler2D;
-// P288: the next level of the box pyramid (DiffusionFft.down): the mean of the 2 x 2 pixels under each one, the edge clamped.
+// P289: the next level of the box pyramid (DiffusionGauss.down): the mean of the 2 x 2 pixels under each one, the edge clamped.
 uniform sampler2D InputBuffer;
 out vec4 Output;
 
