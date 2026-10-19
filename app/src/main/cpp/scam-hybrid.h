@@ -305,7 +305,8 @@ struct HybridTuning {
     // baseDemosaicAniso: how much the luma kernel follows the local edge direction (0 = round).
     float baseDemosaic=1.0f;
     float baseDemosaicAniso=0.6f;
-    float baseDemosaicDetailLo=0.f,baseDemosaicDetailHi=0.01f; // off: flat areas measured ~2, structure 20-50 (the base noise model reads low)
+    float baseDemosaicDetailLo=0.f,baseDemosaicDetailHi=0.01f;
+    float baseDemosaicBayerLo=1.3f,baseDemosaicBayerHi=2.5f; // Bayer: the base noise model holds there (flat sky ~1) // off: flat areas measured ~2, structure 20-50 (the base noise model reads low)
     // P269 (owner, 2026-10-19: «Посмотри как работает маска бенто в арк кам и посмотри как можно улучшить нашу»): the
     // ultrashort frame's check of the mask reads it at the aligned position (bilinear between the 2x2 cells, as LMC 9.6 renders
     // the ultrashort aligned before its error test) instead of the nearest cell, whose half-cell misregistration along thin
@@ -638,7 +639,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("laStream",nullptr,&t.laStream)||set("laScam",nullptr,&t.laScam)||set("isoKernel",nullptr,&t.isoKernel)
-            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicGainField",nullptr,&t.mosaicGainField)||set("mosaicGainZones",nullptr,&t.mosaicGainZones)||set("mosaicUsSmooth",nullptr,&t.mosaicUsSmooth)||set("plainChromaMedian",nullptr,&t.plainChromaMedian)||set("baseDemosaic",&t.baseDemosaic)||set("baseDemosaicAniso",&t.baseDemosaicAniso)||set("baseDemosaicDetailLo",&t.baseDemosaicDetailLo)||set("baseDemosaicDetailHi",&t.baseDemosaicDetailHi)||set("bentoSubpixel",nullptr,&t.bentoSubpixel)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
+            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicGainField",nullptr,&t.mosaicGainField)||set("mosaicGainZones",nullptr,&t.mosaicGainZones)||set("mosaicUsSmooth",nullptr,&t.mosaicUsSmooth)||set("plainChromaMedian",nullptr,&t.plainChromaMedian)||set("baseDemosaic",&t.baseDemosaic)||set("baseDemosaicAniso",&t.baseDemosaicAniso)||set("baseDemosaicBayerLo",&t.baseDemosaicBayerLo)||set("baseDemosaicBayerHi",&t.baseDemosaicBayerHi)||set("baseDemosaicDetailLo",&t.baseDemosaicDetailLo)||set("baseDemosaicDetailHi",&t.baseDemosaicDetailHi)||set("bentoSubpixel",nullptr,&t.bentoSubpixel)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
             ||set("mosaicNative2x",nullptr,&t.mosaicNative2x)||set("mosaicTetraWindow2x",nullptr,&t.mosaicTetraWindow2x)||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicRemosaic",nullptr,&t.mosaicRemosaic)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
@@ -1592,6 +1593,69 @@ void baseChromaDiff(inout vec2 cdNum,inout vec2 cdDen,inout vec2 cdLo,inout vec2
         }
     }
 }
+// P282 (Bayer): the base frame's own demosaic at O where the donors were rejected. A 9x9 site neighbourhood around the nearest
+// site; the local direction from the 3x3 sites' gradients (green differences at distance 1 plus same-colour Laplacians); green
+// at every red / blue site of the 5x5 core interpolated along that direction with the Laplacian correction (Hamilton-Adams);
+// green at O bilinear from the four sites around it; R - G and B - G from the 5x5 core's red / blue sites, weighted by distance
+// (narrowed across the edge) and by how close their green is to the green at O (a red / green edge flips R - G: the side O
+// belongs to). Returns false (the merge's value stays) at a clipped or flagged site of the neighbourhood.
+uniform vec4 bdU; // x = share at no donor (HybridTuning::baseDemosaic), y = anisotropy, z / w = structure / noise ratio from
+                  // which to which the demosaic takes over (flat areas keep the merge's wider, less noisy kernel)
+bool bayerDemosaic(vec2 O,out vec3 rgb,out float detail){
+    ivec2 N=ivec2(floor(O+0.5));
+    float A[81];
+    for(int j=0;j<9;j++)for(int i=0;i<9;i++){
+        uint fl;
+        float v=rawSite(0,N.x+i-4,N.y+j-4,fl);
+        if((fl&3u)!=0u||v>=clipLevel)return false;
+        A[j*9+i]=v;
+    }
+    float dh=0.0,dv=0.0;
+    for(int j=3;j<=5;j++)for(int i=3;i<=5;i++){
+        int k=j*9+i;
+        dh+=abs(A[k+1]-A[k-1])+0.5*abs(2.0*A[k]-A[k-2]-A[k+2]);
+        dv+=abs(A[k+9]-A[k-9])+0.5*abs(2.0*A[k]-A[k-18]-A[k+18]);
+    }
+    float own=A[40];
+    float sig=sqrt(max(baseNoise.x*max(own,0.0)+baseNoise.y,1.0e-10));
+    detail=(dh+dv)/(54.0*sig); // ~1 on pure noise (each site's two terms average ~3 sigma per axis)
+    float e=3.0*sig+1.0e-5;
+    float h2=(dh+e)*(dh+e),v2=(dv+e)*(dv+e);
+    float wH=v2/(h2+v2),wV=1.0-wH,aniso=abs(wH-wV);
+    // green at the 5x5 core's sites (Gs) and their colours
+    float Gs[25];int Cs[25];
+    for(int j=0;j<5;j++)for(int i=0;i<5;i++){
+        int k=(j+2)*9+i+2;
+        int c=phaseColor[(((N.y+j-2)&1)<<1)|((N.x+i-2)&1)];
+        Cs[j*5+i]=c;
+        if(c==1){Gs[j*5+i]=A[k];continue;}
+        float gh=0.5*(A[k-1]+A[k+1])+0.125*(2.0*A[k]-A[k-2]-A[k+2]);
+        float gv=0.5*(A[k-9]+A[k+9])+0.125*(2.0*A[k]-A[k-18]-A[k+18]);
+        float lo=min(min(A[k-1],A[k+1]),min(A[k-9],A[k+9])),hi=max(max(A[k-1],A[k+1]),max(A[k-9],A[k+9]));
+        float r=hi-lo;
+        Gs[j*5+i]=clamp(wH*gh+wV*gv,lo-0.5*r,hi+0.5*r); // the Laplacian's overshoot bounded at an edge
+    }
+    vec2 P=O-vec2(N)+2.0; // O in core coordinates (the core's site (2, 2) is N)
+    ivec2 p0=ivec2(floor(P));vec2 f=P-vec2(p0);
+    p0=clamp(p0,ivec2(0),ivec2(3));
+    float G=mix(mix(Gs[p0.y*5+p0.x],Gs[p0.y*5+p0.x+1],f.x),mix(Gs[(p0.y+1)*5+p0.x],Gs[(p0.y+1)*5+p0.x+1],f.x),f.y);
+    float tauG=3.0*sig+0.08*max(G,0.0)+1.0e-4;
+    float sa=4.0*bdU.y*aniso;
+    vec2 fa=vec2(1.0+sa*wV,1.0+sa*wH); // across a vertical structure (horizontal variation, wV large) narrower in x
+    float sR=0.0,nR=0.0,sB=0.0,nB=0.0;
+    for(int k=0;k<25;k++){
+        int c=Cs[k];
+        if(c==1)continue;
+        vec2 d=vec2(float(k%5),float(k/5))-P;
+        float q=(Gs[k]-G)/tauG;
+        float w=exp2(-0.72*(fa.x*d.x*d.x+fa.y*d.y*d.y))/(1.0+q*q);
+        float df=A[((k/5)+2)*9+(k%5)+2]-Gs[k];
+        if(c==0){sR+=w*df;nR+=w;}else{sB+=w*df;nB+=w;}
+    }
+    if(nR<=1.0e-6||nB<=1.0e-6)return false;
+    rgb=max(vec3(G+sR/nR,G,G+sB/nB),vec3(0.0))*fParam[0].x;
+    return true;
+}
 #endif
 #ifdef BENTO_PASS
 // Bento colour pass (kHybBento; kE.z = 1/sigma^2 of the wide kernel): the colour sums of an ultrashort frame on a wider isotropic kernel (lattice
@@ -1751,24 +1815,32 @@ void main(){
         frameSamples(a,f,O,r,rw,Pf,(mode&2)!=0&&!us);
     }
     vec3 num0=a.num,den0=a.den;
-    vec3 Pb;float tLow;
-    if((mode&4)!=0){Pb=frames<kD.x?P/(kD.y*kD.y):P;tLow=frames<kD.x?1.0:0.0;}
-    else {float s=smoothstep(0.5*kD.x,kD.x,a.cover);float widen=mix(kD.y,1.0,s);Pb=P/(widen*widen);tLow=1.0-s;}
+    vec3 Pb;float tLow,tDem;
+    if((mode&4)!=0){Pb=frames<kD.x?P/(kD.y*kD.y):P;tLow=frames<kD.x?1.0:0.0;tDem=1.0-smoothstep(0.0,kD.x,frames);}
+    else {float s=smoothstep(0.5*kD.x,kD.x,a.cover);float widen=mix(kD.y,1.0,s);Pb=P/(widen*widen);tLow=1.0-s;tDem=tLow;}
     tLow*=cdU.x;
-    if(tLow<=0.0)return;
+    tDem*=bdU.x;
+    if(tLow<=0.0&&tDem<=1.0e-3)return;
     bool win=(mode&2)!=0&&m<=0.0;
     frameSamples(a,0,pos,wb,wb,Pb,win);
-    if(a.den.y<=1.0e-7)return;
-    vec2 cdNum=vec2(0.0),cdDen=vec2(0.0),cdLo=vec2(1.0e9),cdHi=vec2(-1.0e9);
-    baseChromaDiff(cdNum,cdDen,cdLo,cdHi,pos,Pb,win);
-    float g0=fParam[0].x,G=outRgb[i*3+1];
-    for(int k=0;k<2;k++){
-        int c=2*k;
-        float Db=a.den[c]-den0[c];
-        if(cdDen[k]<=1.0e-7||Db<=1.0e-7||a.den[c]<=1.0e-7)continue;
-        float rec=G+cdNum[k]/cdDen[k];
-        rec=cdU.y>0.0?clamp(rec,cdLo[k],cdHi[k]):clamp(rec,-0.25*g0,g0);
-        outRgb[i*3+c]+=tLow*(Db/a.den[c])*(rec-(a.num[c]-num0[c])/Db);
+    if(tLow>0.0&&a.den.y>1.0e-7){
+        vec2 cdNum=vec2(0.0),cdDen=vec2(0.0),cdLo=vec2(1.0e9),cdHi=vec2(-1.0e9);
+        baseChromaDiff(cdNum,cdDen,cdLo,cdHi,pos,Pb,win);
+        float g0=fParam[0].x,G=outRgb[i*3+1];
+        for(int k=0;k<2;k++){
+            int c=2*k;
+            float Db=a.den[c]-den0[c];
+            if(cdDen[k]<=1.0e-7||Db<=1.0e-7||a.den[c]<=1.0e-7)continue;
+            float rec=G+cdNum[k]/cdDen[k];
+            rec=cdU.y>0.0?clamp(rec,cdLo[k],cdHi[k]):clamp(rec,-0.25*g0,g0);
+            outRgb[i*3+c]+=tLow*(Db/a.den[c])*(rec-(a.num[c]-num0[c])/Db);
+        }
+    }
+    // P282: the base's own demosaic by the donors' share (after the colour difference: it replaces that share's value)
+    vec3 d;float detail;
+    if(tDem>1.0e-3&&m<=0.0&&bayerDemosaic(pos,d,detail)){
+        tDem*=smoothstep(bdU.z,bdU.w,detail);
+        for(int c=0;c<3;c++)outRgb[i*3+c]=mix(outRgb[i*3+c],d[c],tDem);
     }
 }
 )";
@@ -4033,6 +4105,8 @@ public:
             glUniform4i(loc(chromaProgram,"kG"),g,ow,0,0);
             glUniform4i(loc(chromaProgram,"mergeModeU"),in.mergeMode,in.noBase?1:0,0,0);
             glUniform2f(loc(chromaProgram,"cdU"),std::clamp(tune.chromaDiff,0.f,1.f),tune.chromaDiffClamp?1.f:0.f);
+            glUniform4f(loc(chromaProgram,"bdU"),std::clamp(tune.baseDemosaic,0.f,1.f),std::clamp(tune.baseDemosaicAniso,0.f,2.f),
+                        tune.baseDemosaicBayerLo,std::max(tune.baseDemosaicBayerHi,tune.baseDemosaicBayerLo+0.01f)); // P282
             glUseProgram(mergeProgram);
         }
         {const float s=std::max(0.3f,tune.rimSigma);

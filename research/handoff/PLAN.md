@@ -6194,7 +6194,7 @@ pill names the stock; the lab compares every film setting. Tests FilmSimTest (ev
 mid grey, hues kept, B&W grey, LUT time, the chain, grain vs format). Not on the phone yet: the look, the grain size, the
 halation; the viewfinder shows the colour and tone only.
 
-### P282 - single-frame remosaic where the donors were rejected (owner, 2026-10-19: «улучшить ремозаик для однокадра sabre чтобы улучшить движение в случае реджекта для quad и quad quad, заодно и для bayer»; ArkCam 1.70 / 1.71 shown as the example): Quad and Tetra done, Bayer open.
+### P282 - single-frame remosaic where the donors were rejected (owner, 2026-10-19: «улучшить ремозаик для однокадра sabre чтобы улучшить движение в случае реджекта для quad и quad quad, заодно и для bayer»; ArkCam 1.70 / 1.71 shown as the example): Quad and Tetra pushed in 52adf573; Bayer done locally.
 A pass after the native fast merge (NAT_DEMOSAIC program of kHybMergeMosaicFast; kHybMergeMain1 untouched): where the donors'
 accepted frames F are below the widening's K the output takes t = baseDemosaic (1 - smoothstep(0, K, F)) of the base frame's
 own demosaic at the site position (skipped inside the Bento mask, at clipped or flagged sites, with the ultrashort frame).
@@ -6213,16 +6213,27 @@ remaining loss: red / green edges); Tetra zone plate +3.2 / +5.3, bars +5.6, fal
 lattice 3612 -> 133, edges -0.1 / +4.3. Moving bursts (syn_b2m / b4m): moving zone plate +1.0 dB both, static regions
 unchanged. Real bursts hand / isz2 / t100546: 0.6-1.9 % of the pixels change, no artefact seen, merge time within run noise.
 Cost (Adreno 750, programs cached): Quad +0.24 s with motion, +0.85 s with no donor at all; Tetra +0.9 s / +2.5 s. A shared-
-memory tile of the sites was tried and was slower (9 s): dropped. Open: Bayer (kHybChroma's base share: the same directional
-green and colour differences on the 3x3 Bayer neighbourhood), the red / green edges of Quad, the Tetra cost, phone shots of
-moving subjects.
+memory tile of the sites was tried and was slower (9 s): dropped. Open: the red / green edges of Quad, the Tetra cost, phone shots
+of moving subjects.
+Bayer (local, after 52adf573): kHybChroma (the plain merge's colour-difference pass, on by default) blends the base's own
+demosaic by the same share (1 - smoothstep(0, K, F); by the cover without the 6.1 mode): a 9x9 site neighbourhood (false at a
+clipped / flagged site, outside the Bento mask), direction from the 3x3 sites' green differences and same-colour Laplacians,
+green at red / blue sites along it with half the Laplacian correction (bounded to the four greens' range +-50 %), green at the
+position bilinear, R - G / B - G from the 5x5 core weighted by distance (narrowed across the edge) and green similarity. A noise
+gate (structure / noise of the 3x3 gradients, ~1 on noise; baseDemosaicBayerLo / Hi 1.3 / 2.5) keeps flat areas on the merge's
+wider kernel (the sky's noise doubled without it). zip.nch with no donor (eval_zipper): edge PSNR 34.8 -> 40.4 dB, zipper
+1.64 -> 0.82 %, edge false colour 0.028 -> 0.022, sky noise 0.289 % unchanged. syn_b1 (GT = gt_shift_b2 shifted by half a
+site, cubic: its high frequencies are soft) with no donor: edges +3.5 dB, zone plate +1.8 / +15 low-passed, coloured zone plate
+-2.5 (beyond Nyquist), bars +-0.5; with donors unchanged. Cost: +1.45 s with no donor at all on 12 MP, real bursts within run
+noise (x7u_1x, o12; Quad main511 / uw452 0.001-0.1 % of the pixels change by more than 1 %).
 
-### P283 - lab: «как снято» next to the wrong value (owner, 2026-10-19 screenshot, Macro Contrast: «Снимал с 1.05, а как снято на 1.22 написано. Перепроверь»): label fixed, not device-tested.
+### P283 - lab: «как снято» next to the wrong value (owner, 2026-10-19 screenshot, Macro Contrast: «Снимал с 1.05, а как снято на 1.22 написано. Перепроверь»): done (label), not device-tested.
 Code check (ScamLabFragment.control): A opens at the shot's value (1.05), B at suggested() = a quarter of the slider's range
 away (0.80..1.50: 1.05 + 0.175 = 1.22). The «как снято» on B's row is the reset link (shown only while the side differs from
 the shot), not a label of B's value - it reads as «B = as shot». To do: the link names its target («↺ 1.05» / «вернуть 1.05»),
 the side that equals the shot gets a small «как снято» tag instead (done: the link reads «↺ снято: 1.05», the side at the
-shot's value shows a muted «как снято»). Still to check that shotValue() reads the shot's own value for every kind
+shot's value shows a muted «как снято»). Checked in code: the shot's value comes from the shot's saved prefs, a key
+missing there from the setting's default (a switch / list: its value, which is the default when it was never written). Was to check that shotValue() reads the shot's own value for every kind
 (a slider stored as a string / int, a key never set -> spec.def must equal the settings' default) with a burst shot at a
 non-default value.
 
