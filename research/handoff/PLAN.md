@@ -6160,3 +6160,76 @@ Done: settings/ItemOrder (stored order per strip, one item per line; first item 
 dropped) and ui/settings/StripReorder (long press = Android drag and drop of the card, drop on a card takes its place, the strip
 scrolls near its ends) on FilmLutPreference's and LensFilterPreference's strips and on LutTray's LUT and filter rows (and its
 LUT swipe step); the lab's LUT / filter lists follow the same order. Test ItemOrderTest.
+
+### P280 - our DNGs do not open in Lightroom (owner, 2026-10-19 screenshot: «Похоже, что файл имеет недопустимый или поврежденный формат», 0 x 0, no EXIF): done, not device-tested in Lightroom.
+A DNG of build 31127 (OPPO, SCA_20261019_102218) checked with a strict TIFF / DNG walker: ColorMatrix2, ForwardMatrix2 and
+CameraCalibration1 / 2 all zero (a single-illuminant profile written as two, CalibrationIlluminant2 = 1's), AsShotWhiteXY (0, 0)
+beside AsShotNeutral, WhiteLevel a RATIONAL (the spec: SHORT or LONG), and every value outside the IFD, the strip and the IFD at
+odd offsets (TIFF word-aligns them). The gain-map opcodes parse fine. Fixed in dngCreator.cpp (only usable matrices; the second
+illuminant only with its own valid matrix; calibration only when non-zero; AsShotWhiteXY only without AsShotNeutral) and in
+tiny_dng_writer.h (WhiteLevel LONG; a pad byte before an odd position and after an odd length of any value, of the strip).
+tools/check_dng_memory.cpp now also walks the file (IFDs, values, strip at even offsets, tags ascending, WhiteLevel's type) with
+an odd-length value and an odd strip; built with the NDK and run on the OPPO: six files valid.
+
+### P281 - film simulation (owner, 2026-10-19: screenshots of a film-stock / print / format app; «реализуй это у нас, но не копируй один в один, сделай по-своему»; the same settings structure as the LUTs and the filters; the reference is not to be named in the changelogs): done, not device-tested.
+Our own model (processing/color/FilmSim, no code or data of the reference: its code is GPL, its data CC BY-SA): the display
+colour back to scene light (mid grey 0.18, the tone's shoulder undone, shadow stops x0.62), three film layers exposed through
+Gaussian spectral sensitivities over a partition-of-unity spectrum of the sRGB primaries (35 % of the spectral overlap kept: the
+masking / DIR correction), a characteristic curve per layer (difference of two softplus terms, mid grey at the stock's mid
+density), an interlayer effect on the log-exposure scale that keeps the neutral scale, dye bands with side absorptions on the
+base (the negative's orange mask), printing with a 3200 K lamp onto the paper's three narrow sensitivities balanced on mid grey
+(print exposure, tone), the paper's curve and dyes, viewed under D65 (CIE 1931 as the Wyman-Sloan-Shirley lobes, XYZ -> sRGB),
+paper white as white, a grey balance over the neutral scale; slides and B&W reversal projected, B&W one silver layer. 20 stocks
+(Portra 160/400/800, Gold 200, UltraMax 400, Ektar 100, C200, X-TRA 400, Pro 400H, Vision3 50D/250D/500T, E100, Velvia 50,
+Provia 100F, Kodachrome 64, Tri-X 400, T-Max 100, HP5, Tri-X 7266), 7 prints (Endura Premier, Ultra Endura, Ektacolor Edge,
+Portra Endura, Crystal Archive, Vision 2383 / 2393), 9 formats (off, 8 mm 4.8, Super 8 5.79, 16 mm 10.26, Super 16 12.52, Super
+35 24.89, 35 mm 36, 645 56, 6x7 70). A 33^3 LUT in ~65 ms (PC); FilmChain bakes the simulation then the chosen LUT into the one
+table ArkCombine (FILM_LUT) and both viewfinders apply. Effects on the GPU in micrometres of film / frame pixel size:
+FilmHalation (linear light before the tone: the image's gaussdown pyramid around 65 um still / 50 um cine, three bounces, energy
+kept, R > G > B by the antihalation), FilmGrain (after the final resize: film MTF blur, grain by Selwyn's law from the stock's RMS
+at the larger of the pixel and the grain, through the print's contrast, tonal weight, layers partly shared, blue coarser).
+UI: «Плёночная симуляция» page (FilmSimPreference: preview on the samples, tabs Плёнка / Печать / Формат / Эффекты: grain,
+halation, softness, film exposure, print exposure, print tone, strength), the viewfinder tray's film row (after the filters), the
+pill names the stock; the lab compares every film setting. Tests FilmSimTest (every stock x print: monotonic neutral grey scale,
+mid grey, hues kept, B&W grey, LUT time, the chain, grain vs format). Not on the phone yet: the look, the grain size, the
+halation; the viewfinder shows the colour and tone only.
+
+### P282 - single-frame remosaic where the donors were rejected (owner, 2026-10-19: «улучшить ремозаик для однокадра sabre чтобы улучшить движение в случае реджекта для quad и quad quad, заодно и для bayer»; ArkCam 1.70 / 1.71 shown as the example): Quad and Tetra done, Bayer open.
+A pass after the native fast merge (NAT_DEMOSAIC program of kHybMergeMosaicFast; kHybMergeMain1 untouched): where the donors'
+accepted frames F are below the widening's K the output takes t = baseDemosaic (1 - smoothstep(0, K, F)) of the base frame's
+own demosaic at the site position (skipped inside the Bento mask, at clipped or flagged sites, with the ultrashort frame).
+The demosaic (our own, after ArkCam 1.71's idea of a green-equivalent subpixel luma): cells of 2x2 sites (3x3 Quad, 5x5 Tetra
+around the site); direction from the intra-cell gradients, same-colour cells and - only where one pairing finds no colour -
+the row / column cross-phase disagreement (a saturated flat colour gave a false direction); colour differences R - G, B - G per
+red / blue cell against its own row's and column's nearest greens, cells weighted by distance (narrowed across the edge) and by
+how close their green is to the green at the site (a red / green edge flips R - G: the side the site belongs to); Gr / Gb
+disagreement damps the colour (aliasing); every site of a cone stretched along the edge gives a green equivalent (red / blue
+weighted down where the colour is strong; Quad: also by the distance to the greens' value), luma clamped to the greens' range.
+Tuning baseDemosaic (1; 0 = off, as before), baseDemosaicAniso (0.6), baseDemosaicDetailLo / Hi (0 / 0.01: the noise gate
+is off - the base noise model reads too low to gate on it). The program is prewarmed with the native set.
+Replay on the OPPO (syn_b2 / syn_b4 with GT, cdm 1e6 = no donor anywhere; dB luma full / low-passed): Quad zone plate
++2.5 / +2.2, bars +4.8, bars false colour 0.083 -> 0.001, coloured bars +2.1, lattice 2487 -> 176, edges -1.8 / +0.7 (the
+remaining loss: red / green edges); Tetra zone plate +3.2 / +5.3, bars +5.6, false colour 0.016 -> 0.001, coloured bars +3.3,
+lattice 3612 -> 133, edges -0.1 / +4.3. Moving bursts (syn_b2m / b4m): moving zone plate +1.0 dB both, static regions
+unchanged. Real bursts hand / isz2 / t100546: 0.6-1.9 % of the pixels change, no artefact seen, merge time within run noise.
+Cost (Adreno 750, programs cached): Quad +0.24 s with motion, +0.85 s with no donor at all; Tetra +0.9 s / +2.5 s. A shared-
+memory tile of the sites was tried and was slower (9 s): dropped. Open: Bayer (kHybChroma's base share: the same directional
+green and colour differences on the 3x3 Bayer neighbourhood), the red / green edges of Quad, the Tetra cost, phone shots of
+moving subjects.
+
+### P283 - lab: «как снято» next to the wrong value (owner, 2026-10-19 screenshot, Macro Contrast: «Снимал с 1.05, а как снято на 1.22 написано. Перепроверь»): label fixed, not device-tested.
+Code check (ScamLabFragment.control): A opens at the shot's value (1.05), B at suggested() = a quarter of the slider's range
+away (0.80..1.50: 1.05 + 0.175 = 1.22). The «как снято» on B's row is the reset link (shown only while the side differs from
+the shot), not a label of B's value - it reads as «B = as shot». To do: the link names its target («↺ 1.05» / «вернуть 1.05»),
+the side that equals the shot gets a small «как снято» tag instead (done: the link reads «↺ снято: 1.05», the side at the
+shot's value shows a muted «как снято»). Still to check that shotValue() reads the shot's own value for every kind
+(a slider stored as a string / int, a key never set -> spec.def must equal the settings' default) with a burst shot at a
+non-default value.
+
+### P284 - 200 MP on the vivo X300 Ultra (owner, 2026-10-19: «https://github.com/adityawarmanfw/rawr/releases/tag/debug - тут на 300 ультра работают 200мп, сделай их рабочими и у нас»): open.
+The «rawr» debug build (GitHub release tag `debug` of adityawarmanfw/rawr) gets full 200 MP RAW on the X300U. To do: fetch the
+release (APK / source, after the owner's OK for the download), find how it asks for the full-resolution stream (the session
+keys / vendor tags / sensor mode, the RAW size and format, the stream's camera id and the request template), compare with our
+FULLRES path (P179 / P187 / P192: memory cuts, native clip flags, mode-table rule) and the X300U mode table (P122), then route
+the X300U's 200 MP module the same way. Check on the phone: the RAW size, CFA, black / white level, the merge and the memory.
+Its code is studied, not copied (licence to be checked).

@@ -465,6 +465,9 @@
         <Preference android:key="photo_style_lut" android:title="@string/prefs_film_lut_title" android:summary="@string/prefs_photo_style_lut_summary" android:icon="@drawable/settings_ic_film" />
       </PreferenceCategory>
     </PreferenceScreen>
+    <PreferenceScreen android:key="film_sim_screen" android:title="@string/prefs_film_sim_title" android:summary="@string/prefs_film_sim_screen_summary" android:icon="@drawable/settings_ic_view" app:iconSpaceReserved="false">
+      <com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmSimPreference android:key="pref_film_sim_stock" android:title="@string/prefs_film_sim_title" android:defaultValue="" android:icon="@drawable/settings_ic_film" />
+    </PreferenceScreen>
     <PreferenceScreen android:key="film_lut_screen" android:title="@string/prefs_film_lut_title" android:summary="@string/prefs_film_lut_screen_summary" android:icon="@drawable/settings_ic_film" app:iconSpaceReserved="false">
       <com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference android:key="pref_film_lut" android:title="@string/prefs_film_lut_title" android:defaultValue="" android:icon="@drawable/settings_ic_palette" />
       <com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference android:key="pref_film_lut_strength" android:title="@string/prefs_film_lut_strength_title" android:summary="@string/prefs_film_lut_strength_summary" android:defaultValue="100" app:minValue="0" app:maxValue="100" app:stepPerUnit="1" app:isFloat="false" android:icon="@drawable/settings_ic_sliders" />

@@ -92,6 +92,8 @@ public final class LutTray {
     private final List<String> values = new ArrayList<>();
     private final List<ImageView> thumbs = new ArrayList<>();
     private final LinearLayout filterRow;
+    /** P281: the film simulation's stocks (FilmSim), the tray's first row. */
+    private final LinearLayout filmRow;
     private final List<ImageView> filterThumbs = new ArrayList<>();
     private final Map<String, FilmLut> luts = new HashMap<>();
     /** A card's two bitmaps: the one shown and the one the next frame is drawn into. */
@@ -127,6 +129,14 @@ public final class LutTray {
         tray.setBackground(bg);
         tray.setClickable(true);
         tray.removeAllViews();
+        // P281: the film stocks' row (the film simulation), built here, added after the filters
+        HorizontalScrollView filmScroll = new HorizontalScrollView(c);
+        filmScroll.setHorizontalScrollBarEnabled(false);
+        filmScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        filmRow = new LinearLayout(c);
+        filmRow.setOrientation(LinearLayout.HORIZONTAL);
+        filmRow.setTag("lut_tray_films");
+        filmScroll.addView(filmRow, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         HorizontalScrollView scroll = new HorizontalScrollView(c);
         scroll.setHorizontalScrollBarEnabled(false);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -170,6 +180,10 @@ public final class LutTray {
         LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         fp.topMargin = UiScale.dp(c, 6);
         tray.addView(fscroll, fp);
+        // P281: the film stocks' row (the film simulation), after the filters
+        LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        flp.topMargin = UiScale.dp(c, 6);
+        tray.addView(filmScroll, flp);
         strength.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int p, boolean user) {
                 strengthValue.setText(p + " %");
@@ -238,9 +252,11 @@ public final class LutTray {
         String value = PreferenceKeys.filmLut();
         String filter = PreferenceKeys.lensFilter();
         boolean filterOn = !filter.isEmpty() && PreferenceKeys.lensFilterStrength() > 0f;
-        boolean on = !value.isEmpty() && PreferenceKeys.filmLutStrength() > 0f || filterOn;
+        // P281: the film simulation's stock first on the pill
+        final com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film = com.particlesdevs.photoncamera.processing.color.FilmSim.current();
+        boolean on = !value.isEmpty() && PreferenceKeys.filmLutStrength() > 0f || filterOn || film != null;
         int accent = ShadeStyle.accent(c);
-        String label = value.isEmpty() ? "LUT" : name(c, value);
+        String label = value.isEmpty() ? (film != null ? film.stock.name : "LUT") : (film != null ? film.stock.name + " · " : "") + name(c, value);
         pill.setText(filterOn ? label + " · " + filterShort(c, filter) : label);
         pill.setEllipsize(TextUtils.TruncateAt.END);
         int fg = open ? ShadeStyle.INK : on ? accent : 0xFFFFFFFF;
@@ -318,6 +334,7 @@ public final class LutTray {
             if (on) selected = card;
         }
         rebuildFilters();
+        rebuildFilms();
         int s = Math.round(PreferenceKeys.filmLutStrength() * 100);
         strength.setProgress(s);
         strengthValue.setText(s + " %");
@@ -388,6 +405,52 @@ public final class LutTray {
     /** «Без фильтра» and every filter, in the user's order (P279). */
     static String[] filterIds() {
         return com.particlesdevs.photoncamera.settings.ItemOrder.filters().toArray(new String[0]);
+    }
+
+    /** P281: «Без плёнки» and every film stock as a small text card (maker, name); a tap makes it the camera's. */
+    private void rebuildFilms() {
+        Context c = tray.getContext();
+        filmRow.removeAllViews();
+        final String chosen = settings().getString(SettingsManager.SCOPE_GLOBAL, com.particlesdevs.photoncamera.processing.color.FilmSim.STOCK_KEY, "");
+        final int accent = ShadeStyle.accent(c);
+        final int count = com.particlesdevs.photoncamera.processing.color.FilmSim.STOCKS.length + 1;
+        View selected = null;
+        for (int i = 0; i < count; i++) {
+            final com.particlesdevs.photoncamera.processing.color.FilmSim.Stock st = i == 0 ? null : com.particlesdevs.photoncamera.processing.color.FilmSim.STOCKS[i - 1];
+            final String id = st == null ? "" : st.id;
+            final boolean on = id.equals(chosen);
+            LinearLayout card = new LinearLayout(c);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setGravity(Gravity.CENTER_VERTICAL);
+            card.setPadding(UiScale.dp(c, 8), UiScale.dp(c, 5), UiScale.dp(c, 8), UiScale.dp(c, 5));
+            GradientDrawable cbg = new GradientDrawable();
+            cbg.setCornerRadius(UiScale.dpF(c, 12));
+            cbg.setColor(on ? (accent & 0x00FFFFFF) | 0x1F000000 : 0x14FFFFFF);
+            cbg.setStroke(Math.max(1, UiScale.dp(c, 1)), on ? accent : 0);
+            card.setBackground(cbg);
+            TextView brand = text(c, st == null ? Lang.t(c, "Плёнка", "Film") : st.brand.toUpperCase(java.util.Locale.ROOT), 8.5f, on ? accent : ShadeStyle.MUTED);
+            card.addView(brand);
+            TextView name = text(c, st == null ? Lang.t(c, "Нет", "None") : st.name, 11, on ? accent : ShadeStyle.TEXT);
+            name.setMaxLines(1);
+            card.addView(name);
+            card.setContentDescription(st == null ? Lang.t(c, "Без плёнки", "No film") : st.brand + " " + st.name);
+            card.setTag("lut_tray_film_" + id);
+            card.setOnClickListener(v -> {
+                settings().set(SettingsManager.SCOPE_GLOBAL, com.particlesdevs.photoncamera.processing.color.FilmSim.STOCK_KEY, id);
+                rebuildFilms();
+                bindPill();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, UiScale.dp(c, 40));
+            if (filmRow.getChildCount() > 0) lp.setMarginStart(UiScale.dp(c, 6));
+            filmRow.addView(card, lp);
+            if (on) selected = card;
+        }
+        final View target = selected;
+        if (target != null) filmRow.post(() -> {
+            View sc = (View) filmRow.getParent();
+            if (sc instanceof HorizontalScrollView)
+                ((HorizontalScrollView) sc).smoothScrollTo(Math.max(0, target.getLeft() + target.getWidth() / 2 - sc.getWidth() / 2), 0);
+        });
     }
 
     /** A filter card tapped: that filter becomes the camera's (the settings' state). */

@@ -73,10 +73,12 @@ public final class ArkCombine extends Node {
         final boolean colourOn = !look.shaderNeutral();
         final int toneOp = ArkTone.toneOperator();
         // P134 «Плёночный LUT»: the chosen .cube on the display-encoded output (FILM_LUT), only with a strength above 0
-        final float lutStrength = com.particlesdevs.photoncamera.settings.PreferenceKeys.filmLutStrength();
-        final String lutName = com.particlesdevs.photoncamera.settings.PreferenceKeys.filmLut();
+        // P281: the film simulation (FilmSim) and the LUT as one table (FilmChain)
+        final com.particlesdevs.photoncamera.processing.color.FilmChain.State chain = com.particlesdevs.photoncamera.processing.color.FilmChain.current();
+        final float lutStrength = chain.strength;
+        final String lutName = chain.key;
         final com.particlesdevs.photoncamera.processing.color.FilmLut lut = lutStrength > 0f && !lutName.isEmpty()
-                ? com.particlesdevs.photoncamera.processing.color.FilmLut.chosen(com.particlesdevs.photoncamera.app.ScameraApp.getAppContext(), lutName) : null;
+                ? com.particlesdevs.photoncamera.processing.color.FilmChain.lut(com.particlesdevs.photoncamera.app.ScameraApp.getAppContext(), lutName) : null;
         int lutTexture = 0;
         GLTexture hlA = null, hlB = null;
         try {

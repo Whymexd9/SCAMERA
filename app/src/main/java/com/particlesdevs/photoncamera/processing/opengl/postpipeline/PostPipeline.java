@@ -742,6 +742,9 @@ public class PostPipeline extends GLBasePipeline {
         // P228: the lens filter on the linear RGB (highlights with their headroom), before the tone; none: no node at all
         final LensFilter lensFilter = LensFilter.fromSettings();
         if (lensFilter != null) add(lensFilter);
+        // P281: the film simulation's halation, on the linear light too (none: no node)
+        final FilmHalation halation = FilmHalation.fromSettings();
+        if (halation != null) add(halation);
         // The ArkCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX. LinearExposure only keeps the
         // Ultra HDR linear snapshot.
         if (captureDemosaic) add(new LinearExposure());
@@ -761,6 +764,9 @@ public class PostPipeline extends GLBasePipeline {
         Log.i("SCAM_PIPELINE", "ARK tail: sharpen=ark (ArkLumaSharpen) texture=" + texture);
         if (texture) add(new ScamLocalContrast());
         if (finalSize != null) add(new HybridFinalResize(finalSize, PreferenceKeys.hybridDownsampler()));
+        // P281: the film's sharpness and grain on the finished picture, at its final size (none: no node)
+        final FilmGrain grain = FilmGrain.fromSettings();
+        if (grain != null) add(grain);
         add(new RotateWatermark(getRotation()));
     }
 }

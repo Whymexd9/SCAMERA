@@ -1330,6 +1330,9 @@ static bool WriteTIFFTag(const unsigned short tag, const unsigned short type,
     }
 
     // Store offset value.
+    // SCAMERA P280: TIFF 6.0 word-aligns every value outside the IFD (Lightroom / the DNG SDK refused files whose values
+    // and IFD sat at odd offsets): a pad byte before an odd position and after an odd length.
+    if (static_cast<size_t>(data_out->tellp()) % 2) data_out->put(' ');
 
     unsigned int offset =
         static_cast<unsigned int>(data_out->tellp()) + kHeaderSize;
@@ -1337,6 +1340,7 @@ static bool WriteTIFFTag(const unsigned short tag, const unsigned short type,
 
     data_out->write(reinterpret_cast<const char *>(data),
                     static_cast<std::streamsize>(len));
+    if (len % 2) data_out->put(' ');
 
   } else {
     ifd.offset_or_value = 0;
@@ -1797,22 +1801,17 @@ bool DNGImage::SetWhiteLevelRational(unsigned int num_samples,
     return false;
   }
 
-  std::vector<unsigned int> vs(num_samples * 2);
-  for (size_t i = 0; i * 2 < vs.size(); i++) {
-    double numerator, denominator;
-    if (DoubleToRational(values[i], &numerator, &denominator) != 0) {
-      // Couldn't represent fp value as integer rational value.
-      return false;
-    }
-
-    vs[2 * i + 0] = static_cast<unsigned int>(numerator);
-    vs[2 * i + 1] = static_cast<unsigned int>(denominator);
+  // SCAMERA P280: WhiteLevel is SHORT or LONG in the DNG spec (a RATIONAL one made the DNG SDK refuse the file)
+  std::vector<unsigned int> vs(num_samples);
+  for (size_t i = 0; i < vs.size(); i++) {
+    if (!(values[i] >= 1.0) || values[i] > 4294967295.0) return false;
+    vs[i] = static_cast<unsigned int>(values[i] + 0.5);
   }
 
   unsigned int count = num_samples;
 
   bool ret = WriteTIFFTag(static_cast<unsigned short>(TIFFTAG_WHITE_LEVEL),
-                          TIFF_RATIONAL, count,
+                          TIFF_LONG, count,
                           reinterpret_cast<const unsigned char *>(vs.data()),
                           &ifd_tags_, &data_os_);
 
@@ -2713,11 +2712,14 @@ bool DNGImage::SetImageData(const unsigned char *data, const size_t data_len) {
     return false;
   }
 
+  // SCAMERA P280: the strip and what follows it (the IFD) start word-aligned
+  if (size_t(data_os_.tellp()) % 2) data_os_.put(' ');
   data_strip_offset_ = size_t(data_os_.tellp());
   data_strip_bytes_ = data_len;
 
   data_os_.write(reinterpret_cast<const char *>(data),
                  static_cast<std::streamsize>(data_len));
+  if (data_len % 2) data_os_.put(' ');
 
   // NOTE: STRIP_OFFSET tag will be written at `WriteIFDToStream()`.
 

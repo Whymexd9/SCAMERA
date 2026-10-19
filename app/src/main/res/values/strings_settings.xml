@@ -566,6 +566,8 @@
     <string name="prefs_tracking_af_title">Tracking autofocus</string>
     <string name="prefs_tracking_af_summary">How to start tracking: focus and exposure follow the chosen subject across the frame.</string>
     <string name="prefs_split_af_ae_title">Separate focus and exposure</string>
+    <string name="prefs_film_sim_title">Film simulation</string>
+    <string name="prefs_film_sim_screen_summary">A film stock, its print and frame size: colour, tone, grain and halation</string>
     <string name="prefs_film_lut_title">Film LUT</string>
     <string name="prefs_film_lut_strength_title">LUT strength</string>
     <string name="prefs_film_lut_strength_summary">How much of the look of the LUT goes into the photo: 0 — none, 100 — all of it.</string>

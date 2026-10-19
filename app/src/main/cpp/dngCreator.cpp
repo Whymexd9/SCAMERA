@@ -601,6 +601,16 @@ public:
         return output;
     }
 
+    /** P280: a 3x3 matrix worth writing: finite, not all zero (a zero matrix is an unset one). */
+    static bool usableMatrix(const double* m) {
+        double sum = 0;
+        for (int i = 0; i < 9; i++) {
+            if (!std::isfinite(m[i])) return false;
+            sum += std::fabs(m[i]);
+        }
+        return sum > 1e-9;
+    }
+
     void* createDng(void* imageData, int width, int height, size_t &size) {
         metadata.original_width  = width;
         metadata.original_height = height;
@@ -669,35 +679,42 @@ public:
             dng_image0->SetWhiteLevelRational(1, &metadata.white_level);
         }
 
-        // Set color matrices
-        if (metadata.has_color_matrix1) {
+        // P280 (owner, 2026-10-19: «Наши равы не открываются в лайтруме»): only usable colour data is written. An all-zero second
+        // matrix set (a single-illuminant profile: ColorMatrix2, ForwardMatrix2, CameraCalibration1/2 of zeros, illuminant 2 the
+        // same as 1) made Adobe's DNG SDK refuse the file; so did AsShotWhiteXY (0, 0) beside AsShotNeutral.
+        const bool cm1 = metadata.has_color_matrix1 && usableMatrix(metadata.color_matrix1);
+        const bool cm2 = cm1 && metadata.has_color_matrix2 && usableMatrix(metadata.color_matrix2)
+                && metadata.calibration_illuminant2 != 0 && metadata.calibration_illuminant2 != metadata.calibration_illuminant1;
+        if (cm1) {
             dng_image0->SetColorMatrix1(3, metadata.color_matrix1);
         }
-        if (metadata.has_color_matrix2) {
+        if (cm2) {
             dng_image0->SetColorMatrix2(3, metadata.color_matrix2);
         }
 
-        // Set forward matrices
-        if (metadata.has_forward_matrix1) {
+        // Set forward matrices (each only with its colour matrix)
+        if (cm1 && metadata.has_forward_matrix1 && usableMatrix(metadata.forward_matrix1)) {
             dng_image0->SetForwardMatrix1(3, metadata.forward_matrix1);
         }
-        if (metadata.has_forward_matrix2) {
+        if (cm2 && metadata.has_forward_matrix2 && usableMatrix(metadata.forward_matrix2)) {
             dng_image0->SetForwardMatrix2(3, metadata.forward_matrix2);
         }
-        
-        // Set camera calibration matrices
-        if (metadata.has_camera_calibration1) {
+
+        // Set camera calibration matrices (absent = identity)
+        if (cm1 && metadata.has_camera_calibration1 && usableMatrix(metadata.camera_calibration1)) {
             dng_image0->SetCameraCalibration1(3, metadata.camera_calibration1);
         }
-        if (metadata.has_camera_calibration2) {
+        if (cm2 && metadata.has_camera_calibration2 && usableMatrix(metadata.camera_calibration2)) {
             dng_image0->SetCameraCalibration2(3, metadata.camera_calibration2);
         }
 
-        // Set white balance info
-        if (metadata.has_as_shot_neutral) {
+        // Set white balance info: AsShotNeutral, or else a valid AsShotWhiteXY (the spec allows one of them)
+        const bool neutral = metadata.has_as_shot_neutral && metadata.as_shot_neutral[0] > 0 && metadata.as_shot_neutral[1] > 0
+                && metadata.as_shot_neutral[2] > 0;
+        if (neutral) {
             dng_image0->SetAsShotNeutral(3, metadata.as_shot_neutral);
         }
-        if (metadata.has_as_shot_white_xy) {
+        if (!neutral && metadata.has_as_shot_white_xy && metadata.as_shot_white_xy[0] > 0 && metadata.as_shot_white_xy[1] > 0) {
             dng_image0->SetAsShotWhiteXY(metadata.as_shot_white_xy[0], metadata.as_shot_white_xy[1]);
         }
         if (metadata.has_analog_balance) {
@@ -707,9 +724,9 @@ public:
             dng_image0->SetBaselineExposure(metadata.baseline_exposure);
         }
 
-        // Set illuminants
-        dng_image0->SetCalibrationIlluminant1(metadata.calibration_illuminant1);
-        dng_image0->SetCalibrationIlluminant2(metadata.calibration_illuminant2);
+        // Set illuminants (the second only with its matrix)
+        if (cm1) dng_image0->SetCalibrationIlluminant1(metadata.calibration_illuminant1);
+        if (cm2) dng_image0->SetCalibrationIlluminant2(metadata.calibration_illuminant2);
 
         // P24: lossless JPEG (LJ92, DNG compression 7): the Bayer rows in pairs, one component 2W x H/2 (tinydng's layout,
         // LibRaw reads it bit-exact; a 12.6 MP 16-bit frame 25.2 -> 14.7 MB in ~240 ms on the OPPO). Encoded first, so a

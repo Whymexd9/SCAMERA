@@ -297,6 +297,15 @@ struct HybridTuning {
     // slanted bright edges (OPPO 12 MP sill: bright pixels with a high-frequency chroma above 0.05: 359 -> 2, p99 0.073 -> 0.021;
     // signs and a red extinguisher keep their colour). 0: off (the merge as before), n: the median's block.
     int plainChromaMedian=1;
+    // P282 (owner, 2026-10-19: «улучшить ремозаик для однокадра sabre чтобы улучшить движение в случае реджекта для quad и quad
+    // quad, заодно и для bayer»): where the merge's donors were rejected (a moving subject: few accepted frames F), the base frame
+    // alone is demosaicked from ALL its sites (a green-equivalent luma of every colour, colour differences of the block means with
+    // the Gr / Gb phase cancelled and its aliasing damped) instead of each colour from its own sites through the widened kernel.
+    // baseDemosaic: its share at F = 0 (0 = off, the merge as before byte for byte), fading out by F as the widening does;
+    // baseDemosaicAniso: how much the luma kernel follows the local edge direction (0 = round).
+    float baseDemosaic=1.0f;
+    float baseDemosaicAniso=0.6f;
+    float baseDemosaicDetailLo=0.f,baseDemosaicDetailHi=0.01f; // off: flat areas measured ~2, structure 20-50 (the base noise model reads low)
     // P269 (owner, 2026-10-19: «Посмотри как работает маска бенто в арк кам и посмотри как можно улучшить нашу»): the
     // ultrashort frame's check of the mask reads it at the aligned position (bilinear between the 2x2 cells, as LMC 9.6 renders
     // the ultrashort aligned before its error test) instead of the nearest cell, whose half-cell misregistration along thin
@@ -629,7 +638,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("laStream",nullptr,&t.laStream)||set("laScam",nullptr,&t.laScam)||set("isoKernel",nullptr,&t.isoKernel)
-            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicGainField",nullptr,&t.mosaicGainField)||set("mosaicGainZones",nullptr,&t.mosaicGainZones)||set("mosaicUsSmooth",nullptr,&t.mosaicUsSmooth)||set("plainChromaMedian",nullptr,&t.plainChromaMedian)||set("bentoSubpixel",nullptr,&t.bentoSubpixel)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
+            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicGainField",nullptr,&t.mosaicGainField)||set("mosaicGainZones",nullptr,&t.mosaicGainZones)||set("mosaicUsSmooth",nullptr,&t.mosaicUsSmooth)||set("plainChromaMedian",nullptr,&t.plainChromaMedian)||set("baseDemosaic",&t.baseDemosaic)||set("baseDemosaicAniso",&t.baseDemosaicAniso)||set("baseDemosaicDetailLo",&t.baseDemosaicDetailLo)||set("baseDemosaicDetailHi",&t.baseDemosaicDetailHi)||set("bentoSubpixel",nullptr,&t.bentoSubpixel)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
             ||set("mosaicNative2x",nullptr,&t.mosaicNative2x)||set("mosaicTetraWindow2x",nullptr,&t.mosaicTetraWindow2x)||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicRemosaic",nullptr,&t.mosaicRemosaic)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
@@ -1414,7 +1423,7 @@ layout(std430,binding=8) readonly buffer Robust{float robust[];};
 #ifdef RIM_STATS
 layout(std430,binding=3) buffer Out{float outRgb[];};
 layout(std430,binding=6) buffer CFlags{uint cflags[];};
-#elif defined(NAT_BASEFILL) && NAT_BASEFILL
+#elif (defined(NAT_BASEFILL) && NAT_BASEFILL) || (defined(NAT_DEMOSAIC) && NAT_DEMOSAIC)
 layout(std430,binding=3) buffer Out{float outRgb[];};
 layout(std430,binding=4) writeonly buffer Eff{float eff[];};
 layout(std430,binding=6) writeonly buffer CFlags{uint cflags[];};
@@ -2747,6 +2756,167 @@ float natBaseFill(int c,vec2 O){
     return cnt>0.0?sum*fParam[0].x/cnt:0.0;
 }
 #endif
+#if defined(NAT_DEMOSAIC) && NAT_DEMOSAIC
+// P282: the base frame alone, demosaicked from all its sites at the native position S (a pixel the donors left to it).
+// Cells: 2x2 sites (a Quad colour block; a quarter of a Tetra block). Their means give the colour differences R - G and B - G,
+// each taken against the green of its own row (Gr for red, Gb for blue) or of its own column, by the local direction - the
+// phase of the blocks cancels; a Gr / Gb disagreement larger than the colour itself is aliasing and damps it. Every site in the
+// window then gives a green-equivalent value (its colour difference taken off; red and blue sites count less where the colour is
+// strong), summed with a cone kernel stretched along the local edge: the luma at site resolution, without the block lattice.
+// Returns false (the merge's value stays) at a clipped or flagged site of the window.
+uniform vec4 natDemU; // x = share at F = 0, y = anisotropy, z = cone slope (1 / radius in sites), w = cells a side (3 Quad, 5 Tetra)
+uniform vec2 natDemD; // the structure / noise ratio from which (x) to which (y) the demosaic takes over
+bool natDemosaic(vec2 S,float g,out vec3 rgb,out float detail){
+    int s=natV.x;
+    ivec2 N=ivec2(floor(S+0.5));
+    ivec2 c0=(N>>1)-ivec2(int(natDemU.w)>>1);
+    int nc=int(natDemU.w);
+    float sumC[4]=float[4](0.0,0.0,0.0,0.0),wC[4]=float[4](0.0,0.0,0.0,0.0);
+    float cm[25];vec2 cd[25];
+    float vx=0.0,vy=0.0,meanAll=0.0,nAll=0.0,grad=0.0;
+    vec3 lo=vec3(1.0e9),hi=vec3(-1.0e9); // each colour's range over the cells: the result stays inside it (no overshoot at edges)
+    for(int j=0;j<5;j++){
+        if(j>=nc)break;
+        for(int i=0;i<5;i++){
+            if(i>=nc)break;
+            int cx=c0.x+i,cy=c0.y+j,x=2*cx,y=2*cy;
+            uint f0,f1,f2,f3;
+            float a=natSite(0,x,y,f0),b=natSite(0,x+1,y,f1),c=natSite(0,x,y+1,f2),d=natSite(0,x+1,y+1,f3);
+            if(((f0|f1|f2|f3)&3u)!=0u||max(max(a,b),max(c,d))>=0.995)return false;
+            int ph=(((y>>s)&1)<<1)|((x>>s)&1);
+            float m=0.25*(a+b+c+d);
+            int col=ph==0?0:ph==3?2:1;
+            lo[col]=min(lo[col],min(min(a,b),min(c,d)));hi[col]=max(hi[col],max(max(a,b),max(c,d)));
+            vec2 dd=(vec2(float(x)+0.5,float(y)+0.5)-S)*0.5;
+            float w=exp2(-0.35*dot(dd,dd));
+            sumC[ph]+=m*w;wC[ph]+=w;
+            cm[j*5+i]=m;cd[j*5+i]=dd;
+            float gx=0.5*(abs(b-a)+abs(d-c)),gy=0.5*(abs(c-a)+abs(d-b));
+            vx+=gx;vy+=gy;grad+=0.5*(gx+gy);
+            meanAll+=m;nAll+=1.0;
+        }
+    }
+    float own=meanAll/max(nAll,1.0);
+    // structure against the base's noise: |a - b| of two noisy samples averages 1.128 sigma (fNoiseP[0]: variance slope, offset)
+    float sig=sqrt(max(fNoiseP[0].x*max(own,0.0)+fNoiseP[0].y,1.0e-10));
+    detail=grad/max(nAll,1.0)/(1.128*sig);
+    float mr=wC[0]>0.0?sumC[0]/wC[0]:own,mgr=wC[1]>0.0?sumC[1]/wC[1]:own,mgb=wC[2]>0.0?sumC[2]/wC[2]:own,mb=wC[3]>0.0?sumC[3]/wC[3]:own;
+    // canonical RGGB: Gr (phase 1) shares the red row and the blue column, Gb (phase 2) the blue row and the red column
+    float dRow=abs(mr-mgr)+abs(mb-mgb),dCol=abs(mr-mgb)+abs(mb-mgr);
+    // the cross-phase pairs only by how much the row and the column pairing disagree, and only where one pairing finds no colour
+    // (a neutral detail at the block's period differs along one of them; a colour - flat or in detail - along both)
+    float qn=min(dRow,dCol)/(0.1*own+3.0*sig+1.0e-5),neutral=1.0/(1.0+qn*qn);
+    vx+=2.0*neutral*max(dRow-dCol,0.0);vy+=2.0*neutral*max(dCol-dRow,0.0);
+    // the direction across cells from same-colour cells (the nearest one of the same phase per axis)
+    for(int j=0;j<5;j++){
+        if(j>=nc)break;
+        for(int i=0;i<5;i++){
+            if(i>=nc)break;
+            int x=2*(c0.x+i),y=2*(c0.y+j);
+            int ph=(((y>>s)&1)<<1)|((x>>s)&1);
+            for(int o=1;o<=2;o++){
+                if(i+o>=nc)break;
+                if(((((y>>s)&1)<<1)|(((2*(c0.x+i+o))>>s)&1))==ph){vx+=abs(cm[j*5+i+o]-cm[j*5+i]);break;}
+            }
+            for(int o=1;o<=2;o++){
+                if(j+o>=nc)break;
+                if((((((2*(c0.y+j+o))>>s)&1)<<1)|((x>>s)&1))==ph){vy+=abs(cm[(j+o)*5+i]-cm[j*5+i]);break;}
+            }
+        }
+    }
+    float e=1.0e-4+0.015*own;
+    float vx2=(vx+e)*(vx+e),vy2=(vy+e)*(vy+e);
+    float wRow=vy2/(vx2+vy2),wCol=1.0-wRow,aniso=abs(wRow-wCol);
+    float dR=wRow*(mr-mgr)+wCol*(mr-mgb),dB=wRow*(mb-mgb)+wCol*(mb-mgr);
+    float alias=1.5*abs(mgr-mgb)*(1.0-0.7*aniso)/(sqrt(dR*dR+dB*dB)+0.02*own+1.0e-6);
+    float damp=1.0/(1.0+alias*alias);
+    float gEst=0.5*(mgr+mgb),den=gEst*gEst+0.01;
+    float wcR=1.0/(1.0+4.0*dR*dR/den),wcB=1.0/(1.0+4.0*dB*dB/den);
+    // the cone along the edge: across a vertical structure (horizontal variation) narrower in x
+    float st=natDemU.y*aniso;
+    vec2 ax=vec2(1.0+2.0*st*wCol,1.0+2.0*st*wRow);
+    float k=natDemU.z;
+    int R=int(ceil(1.0/k))+1;
+    // two passes over the window: the greens alone, then red and blue sites by how far their green equivalent is from that green
+    // (a site across an edge, whose block colour difference is the other side's, adds no zipper)
+    float lumG=0.0,wG=0.0,lum=0.0,lw=0.0;
+    for(int pass=0;pass<2;pass++){
+        for(int j=-4;j<=4;j++){
+            if(abs(j)>R)continue;
+            for(int i=-4;i<=4;i++){
+                if(abs(i)>R)continue;
+                int x=N.x+i,y=N.y+j;
+                int ph=(((y>>s)&1)<<1)|((x>>s)&1);
+                bool green=ph==1||ph==2;
+                if(green!=(pass==0))continue;
+                float dx=float(x)-S.x,dy=float(y)-S.y;
+                float w=max(1.0-k*sqrt(ax.x*dx*dx+ax.y*dy*dy),0.0);
+                if(w<=0.0)continue;
+                uint fl;
+                float v=natSite(0,x,y,fl);
+                if((fl&3u)!=0u||v>=0.995)return false;
+                if(green){lumG+=w*v;wG+=w;continue;}
+                float ge=ph==0?v-dR:v-dB;
+                float wc=ph==0?wcR:wcB;
+                if(wG>0.0&&s==1){ // Quad: greens in every 2x2 neighbourhood (a Tetra block can hold none near S)
+                    float gg=lumG/wG,tau=2.5*sig+0.04*gg+1.0e-4;
+                    float q=(ge-gg)/tau;
+                    wc/=1.0+q*q;
+                }
+                lum+=w*wc*ge;lw+=w*wc;
+            }
+        }
+        if(pass==0){
+            lum=lumG;lw=wG;
+            // the colour differences per red / blue cell against its own row's and column's nearest green cells, the cells
+            // weighted by how close that green is to the green at S (and narrowed across the edge): at a red / green edge R - G
+            // flips sign, and a mean over cells on both sides gives neither (a fringe); the side S's green belongs to gives it
+            if(wG>0.0){
+                float GS=lumG/wG,tauG=3.0*sig+0.08*GS+1.0e-4;
+                float sa=6.0*natDemU.y*aniso;
+                vec2 fa=vec2(1.0+sa*wCol,1.0+sa*wRow);
+                float nR=0.0,sR=0.0,nB=0.0,sB=0.0;
+                for(int j=0;j<5;j++){
+                    if(j>=nc)break;
+                    for(int i=0;i<5;i++){
+                        if(i>=nc)break;
+                        int x=2*(c0.x+i),y=2*(c0.y+j);
+                        int ph=(((y>>s)&1)<<1)|((x>>s)&1);
+                        if(ph==1||ph==2)continue;
+                        int pr=ph==0?1:2,pc=ph==0?2:1; // canonical RGGB: red's row partner Gr, column Gb; blue's the other way
+                        float hs=0.0,hn=0.0,vs=0.0,vn=0.0;
+                        for(int side=-1;side<=1;side+=2){
+                            bool fh=false,fv=false;
+                            for(int o=1;o<=2;o++){
+                                int ii=i+side*o,jj=j+side*o;
+                                if(!fh&&ii>=0&&ii<nc&&(((y>>s)&1)<<1|((2*(c0.x+ii)>>s)&1))==pr){hs+=cm[j*5+ii];hn+=1.0;fh=true;}
+                                if(!fv&&jj>=0&&jj<nc&&((((2*(c0.y+jj))>>s)&1)<<1|((x>>s)&1))==pc){vs+=cm[jj*5+i];vn+=1.0;fv=true;}
+                            }
+                        }
+                        if(hn<=0.0||vn<=0.0)continue;
+                        float gk=wRow*hs/hn+wCol*vs/vn;
+                        vec2 dd=cd[j*5+i];
+                        float q=(gk-GS)/tauG;
+                        float w=exp2(-0.35*(fa.x*dd.x*dd.x+fa.y*dd.y*dd.y))/(1.0+q*q);
+                        if(ph==0){sR+=w*(cm[j*5+i]-gk);nR+=w;}else{sB+=w*(cm[j*5+i]-gk);nB+=w;}
+                    }
+                }
+                if(nR>1.0e-6)dR=sR/nR;
+                if(nB>1.0e-6)dB=sB/nB;
+                wcR=1.0/(1.0+4.0*dR*dR/den);wcB=1.0/(1.0+4.0*dB*dB/den);
+            }
+        }
+    }
+    if(lw<=1.0e-6)return false;
+    float G=lum/lw;
+    vec3 o=vec3(G+dR*damp,G,G+dB*damp);
+    // the luma inside the greens' range (no overshoot at an edge); red and blue keep their colour difference to it (a clamp of
+    // their own sites' range would bring the block aliasing back)
+    if(hi[1]>=lo[1]){float Gc=clamp(o.y,lo[1],hi[1]);o+=vec3(Gc-o.y);}
+    rgb=max(o,vec3(0.0))*g;
+    return true;
+}
+#endif
 void main(){
     int g=kG.x,ow=kG.y,w2=size.x/2;
     int ox=int(gl_GlobalInvocationID.x),row=chunkU+int(gl_GlobalInvocationID.y);
@@ -2770,6 +2940,30 @@ void main(){
 #endif
     ivec2 bi=ivec2(floor(B0+0.5));
     int cx=clamp(bi.x>>1,0,w2-1),cy=clamp(bi.y>>1,cy0,cy1-1);
+#if defined(NAT_DEMOSAIC) && NAT_DEMOSAIC
+    {
+        // P282: the share of the base's own demosaic: 1 - smoothstep(0, K, F) of the donors' accepted frames F, as the widening
+        if(kD.w>0.5&&bmask[(cy-cy0)*w2+cx]>0.0)return; // Bento's highlights keep the merge
+        if(kE.x>=0.0||mergeModeU.y!=0)return;
+        float K=natWidenS.y>0.0?natWidenS.y:kD.x;
+        float frames=0.0;
+        for(int f=1;f<frameCount;f++){
+            if(int(fParam[f].w)==5)continue;
+            float r=natRobust(f,B0,cx,cy,w2);
+            if(r<0.004)continue;
+            frames+=r/max(fParam[f].y,1.0e-6);
+            if(frames>=K)return; // the merge alone from here (most of a static frame: a few donors' reads, not all)
+        }
+        float t=natDemU.x*(1.0-smoothstep(0.0,max(K,1.0e-3),frames));
+        if(t<=1.0e-3)return;
+        vec3 d;float detail;
+        if(!natDemosaic(S,fParam[0].x,d,detail))return;
+        t*=smoothstep(natDemD.x,natDemD.y,detail); // flat areas keep the merge's smooth kernel (less noise); structure takes the demosaic
+        int i=row*ow+ox;
+        for(int c=0;c<3;c++)outRgb[i*3+c]=mix(outRgb[i*3+c],d[c],t);
+        return;
+    }
+#endif
     vec3 P=natCov(B0);
     float m=kD.w>0.5?bmask[(cy-cy0)*w2+cx]:0.0;
     vec2 cell=vec2(float(2*cx),float(2*cy));
@@ -3106,24 +3300,27 @@ class HybridGpu {
     // first used) and the normalised 2x2 cells of the strip (binding 18, outside the slots: written and read on the GPU only, one bank)
     GLuint natNormProgram=0,natFast[2][9][2][2]{},natNormBuf=0,natFieldBuf=0;
     GLuint natFastFill[2][9][2]{}; // P204: the base-fill pass of a marked fast merge (block, half-width, R / B fill)
+    GLuint natFastDem[2][9][2]{};  // P282: the base demosaic pass (block, half-width, R / B fill)
     // P62 Mochi (compiled on first use): programs and buffers (0 base rows, 1 frame rows, 2 tiles, 3 tile info, 4 final, 5 out)
     GLuint mochiStatsProgram=0,mochiBlurProgram=0,mochiApplyProgram=0,mochiBuf[6]{};
     size_t mochiCap[6]{};
     // P80: the base rows already in mochiBuf[0] (frame pointer and rows): the next bracketed frame of the shot reuses them
     const uint16_t* mochiBasePtr=nullptr;int mochiBaseR0=-1,mochiBaseR1=-1;
     size_t natNormCap=0;
-    GLuint natFastProgram(int block,int r,bool marked,bool fill,bool baseFill=false){
+    GLuint natFastProgram(int block,int r,bool marked,bool fill,bool baseFill=false,bool demosaic=false){
         const bool tetra=block==4;
         r=std::clamp(r,1,tetra?8:3);
         marked=marked||baseFill;
-        GLuint& p=baseFill?natFastFill[tetra?1:0][r][fill?1:0]:natFast[tetra?1:0][r][marked?1:0][fill?1:0];
+        if(demosaic){baseFill=false;marked=false;}
+        GLuint& p=demosaic?natFastDem[tetra?1:0][r][fill?1:0]:baseFill?natFastFill[tetra?1:0][r][fill?1:0]:natFast[tetra?1:0][r][marked?1:0][fill?1:0];
         if(!p){
             const auto t0=std::chrono::steady_clock::now();
             const std::string body=std::string("#define NAT_B ")+(tetra?"4":"2")+"\n#define NAT_R "+std::to_string(r)+"\n#define NAT_MARKED "+(marked?"1":"0")
-                +"\n#define NAT_FILL "+(fill?"1":"0")+"\n#define NAT_BASEFILL "+(baseFill?"1":"0")+"\n"+kHybMergeCommon+kHybNatAccess+kHybMergeMosaicFast;
-            compileName=baseFill?(tetra?"mosaicFillT":"mosaicFill"):tetra?"mosaicFastT":"mosaicFast"; // the crash report names the program
+                +"\n#define NAT_FILL "+(fill?"1":"0")+"\n#define NAT_BASEFILL "+(baseFill?"1":"0")+"\n#define NAT_DEMOSAIC "+(demosaic?"1":"0")+"\n"
+                +kHybMergeCommon+kHybNatAccess+kHybMergeMosaicFast;
+            compileName=demosaic?(tetra?"mosaicDemT":"mosaicDem"):baseFill?(tetra?"mosaicFillT":"mosaicFill"):tetra?"mosaicFastT":"mosaicFast"; // the crash report names the program
             p=compile(body.c_str());
-            compileMs+=std::string(baseFill?" mosaicFill":" mosaicFast")+(tetra?"T":"")+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
+            compileMs+=std::string(demosaic?" mosaicDem":baseFill?" mosaicFill":" mosaicFast")+(tetra?"T":"")+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
                 +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
         }
         return p;
@@ -3630,10 +3827,11 @@ public:
     }
     // P35 / P33: the native mosaic merge programs merge() compiles on first use (prewarm on module open, hybridPrewarmGpu): the fast
     // merge plain and, when the strips may carry site flags, marked; or the generic merge where the fast one does not apply.
-    void prewarmNative(int block,int window,bool fill,bool fullWindow,bool generic,bool mayMark){
+    void prewarmNative(int block,int window,bool fill,bool fullWindow,bool generic,bool mayMark,bool demosaic=false){
         if(fullWindow&&window>=1&&window<=(block==4?8:3)&&!(fill&&window<2)&&!generic){
             natFastProgram(block,window,false,fill);
             if(mayMark)natFastProgram(block,window,true,fill);
+            if(demosaic)natFastProgram(block,window,false,fill,false,true); // P282
         } else if(!mosaicProgram){
             compileName="mosaic";
             const auto t0=std::chrono::steady_clock::now();
@@ -3698,7 +3896,7 @@ public:
         const HybridMosaicNative* nat=in.native;
         // P34: Quad (window 1..3) and Tetra (window 1..8) with the full window merge with kHybNatNorm + kHybMergeMosaicFast (plain /
         // marked strips), anything else with kHybMergeMosaic (natMerge = the merge programs either way)
-        bool natFastOn=false;GLuint natPlain=0,natMarked=0,natMarkedFill=0;std::vector<GLuint> natMerge;
+        bool natFastOn=false;GLuint natPlain=0,natMarked=0,natMarkedFill=0,natDem=0;std::vector<GLuint> natMerge;
         if(nat){
             if(!natMarkProgram||!natNormProgram)throw std::runtime_error("HYBRID GPU compiled without the native mosaic programs");
             // P56: the output grid is the native sites (g = b) or the Sabre 2x grid of the sensor (g = 2b: 4 Quad, 8 Tetra)
@@ -3715,6 +3913,8 @@ public:
                     natMarked=natFastProgram(nat->block,nat->window,true,fill);natMerge.push_back(natMarked);
                     natMarkedFill=natFastProgram(nat->block,nat->window,true,fill,true);natMerge.push_back(natMarkedFill); // P204
                 }
+                // P282: the base's own demosaic where the donors were rejected (baseDemosaic 0: no program, the merge as before)
+                if(tune.baseDemosaic>0.f){natDem=natFastProgram(nat->block,nat->window,false,fill,false,true);natMerge.push_back(natDem);}
                 programs.push_back(natNormProgram);
             } else {
                 if(!mosaicProgram){
@@ -3899,6 +4099,10 @@ public:
                 glUniform4fv(loc(mosaicProgram,"rimU"),1,rimU);
                 const float kg=std::clamp(nat->ksG,0.25f,4.f),krb=std::clamp(nat->ksRB,0.25f,4.f);
                 glUniform4f(loc(mosaicProgram,"natK"),1.f/(float(nb)*ks*float(nb)*ks),kg*kg,krb*krb,std::clamp(nat->fillSupport,0.f,1.f));
+                // P282: share, anisotropy, cone slope (radius 2.2 sites Quad, 2.6 Tetra), cells a side (3 Quad, 5 Tetra)
+                glUniform4f(loc(mosaicProgram,"natDemU"),std::clamp(tune.baseDemosaic,0.f,1.f),std::clamp(tune.baseDemosaicAniso,0.f,2.f),
+                            nb==4?1.f/2.6f:1.f/2.2f,nb==4?5.f:3.f);
+                glUniform2f(loc(mosaicProgram,"natDemD"),tune.baseDemosaicDetailLo,std::max(tune.baseDemosaicDetailHi,tune.baseDemosaicDetailLo+0.01f));
             }
             glUseProgram(mergeProgram);
             check("native uniforms");
@@ -4391,6 +4595,13 @@ public:
                     glUniform1i(loc(natMarkedFill,"natMarkU"),1);
                     dispatchRows(natMarkedFill,ow,rows2,1,std::clamp(natChunk*4,8,128),5,true,true);
                 }
+                if(natFastOn&&natDem){ // P282: after the merge and its base fill - the base's demosaic where the donors were rejected
+                    glUseProgram(natDem);
+                    glUniform1i(loc(natDem,"cy0"),cy0);glUniform1i(loc(natDem,"cy1"),cy1);glUniform1i(loc(natDem,"ry0"),ry0);
+                    glUniform1i(loc(natDem,"natRy1"),ry1);
+                    glUniform1i(loc(natDem,"natMarkU"),natStripMode?1:0);
+                    dispatchRows(natDem,ow,rows2,1,std::clamp(natChunk*4,8,128),5,true,true);
+                }
             } else {
             glUseProgram(mergeProgram);
             glUniform1i(loc(mergeProgram,"cy0"),cy0);glUniform1i(loc(mergeProgram,"cy1"),cy1);glUniform1i(loc(mergeProgram,"ry0"),ry0);
@@ -4464,7 +4675,7 @@ inline void hybridPrewarmGpu(const HybridTuning& tune,int block,const std::funct
         const int mb=t2?2:block;
         const int window=block==4&&!t2?std::clamp(2*tune.mosaicWindow,1,8):std::clamp(tune.mosaicWindow,1,6);
         const bool fill=tune.mosaicChromaFill==1&&std::clamp(tune.mosaicFillSupport,0.f,1.f)>0.f;
-        gpu.prewarmNative(mb,window,fill,tune.mosaicWindowFull!=0,tune.mosaicGeneric!=0,tune.cellClip!=0||outlierPrograms);
+        gpu.prewarmNative(mb,window,fill,tune.mosaicWindowFull!=0,tune.mosaicGeneric!=0,tune.cellClip!=0||outlierPrograms,tune.baseDemosaic>0.f);
     }
     report("HYBRID PREWARM: block "+std::to_string(block)+(native?" native mosaic":" plain")+" programs ready in "
         +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()))+" ms ("+gpu.renderer+";"+gpu.compileMs+")");

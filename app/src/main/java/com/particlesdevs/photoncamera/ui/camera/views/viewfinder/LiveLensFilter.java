@@ -306,13 +306,15 @@ final class LiveLensFilter {
     /** The chosen LUT read off the GL thread (a .cube file can take a while). */
     private void readLut() {
         try {
-            lutStrength = PreferenceKeys.filmLutStrength();
-            final String name = lutStrength > 0f ? PreferenceKeys.filmLut() : "";
+            // P281: the film simulation and the LUT as one table (FilmChain)
+            final com.particlesdevs.photoncamera.processing.color.FilmChain.State chain = com.particlesdevs.photoncamera.processing.color.FilmChain.current();
+            lutStrength = chain.strength;
+            final String name = lutStrength > 0f ? chain.key : "";
             if (name.equals(lutWanted)) return;
             lutWanted = name;
             lutReady = null;
             if (!name.isEmpty()) LUT_LOADER.execute(() -> {
-                FilmLut lut = FilmLut.chosen(ScameraApp.getAppContext(), name);
+                FilmLut lut = com.particlesdevs.photoncamera.processing.color.FilmChain.lut(ScameraApp.getAppContext(), name);
                 if (name.equals(lutWanted)) lutReady = lut;
             });
         } catch (RuntimeException e) {

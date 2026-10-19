@@ -47,12 +47,14 @@ final class LiveRawRenderer {
             lookOn=!c.shaderNeutral();
             lookSkin=c.skinUniform();lookVib=c.vibUniform();lookMix=c.mixUniform();lookMixOn=c.mixerOn();lookMono=c.monoUniform();
             float[][] grade=c.gradeUniforms();lookGradeA=grade[0];lookGradeB=grade[1];
-            lutStrength=PreferenceKeys.filmLutStrength();
-            String name=lutStrength>0f?PreferenceKeys.filmLut():"";
+            // P281: the film simulation and the LUT as one table (FilmChain)
+            com.particlesdevs.photoncamera.processing.color.FilmChain.State chain=com.particlesdevs.photoncamera.processing.color.FilmChain.current();
+            lutStrength=chain.strength;
+            String name=lutStrength>0f?chain.key:"";
             if(!name.equals(lutWanted)){
                 lutWanted=name;lutReady=null;
                 if(!name.isEmpty())LUT_LOADER.execute(()->{
-                    FilmLut lut=FilmLut.chosen(ScameraApp.getAppContext(),name);
+                    FilmLut lut=com.particlesdevs.photoncamera.processing.color.FilmChain.lut(ScameraApp.getAppContext(),name);
                     if(name.equals(lutWanted))lutReady=lut;
                 });
             }

@@ -60,7 +60,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
 
     /** The settings pages the lab offers (the capture page is the burst's: fixed at the shot). */
     static final String[] GROUPS = {"scam_hybrid_photo_screen", "scam_hybrid_ark_sharp_screen", "scam_hybrid_ark_tone_screen",
-            "scam_hybrid_merge_screen", "photo_style_screen", "film_lut_screen", "lens_filter_screen", "photo_processing_screen"};
+            "scam_hybrid_merge_screen", "photo_style_screen", "film_sim_screen", "film_lut_screen", "lens_filter_screen", "photo_processing_screen"};
     /** Settings the burst fixed at the shot (its frames, its noise model, its grid): offered, said so. */
     static final java.util.Set<String> AT_SHOT = new java.util.HashSet<>(java.util.Arrays.asList("pref_scam_hybrid_output",
             "pref_scam_hybrid_noise_photon", "pref_scam_hybrid_noise_readout", "pref_scam_hybrid_noise_source",
@@ -375,6 +375,14 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 caption(String.valueOf(p.getTitle()));
                 addGroup((PreferenceGroup) p, s, null);
                 card = null;
+            } else if (p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmSimPreference) {
+                // P281: the film simulation's settings, one row each
+                for (String k : com.particlesdevs.photoncamera.processing.color.FilmSim.KEYS) {
+                    final Spec sp = spec(k);
+                    if (sp == null) continue;
+                    if (card == null) card = card(); else divider(card);
+                    card.addView(settingRow(k, sp.title, sp.summary, s));
+                }
             } else if (comparable(p)) {
                 if (card == null) card = card(); else divider(card);
                 card.addView(settingRow(p, s));
@@ -463,6 +471,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
             s.max = 100;
             s.def = "50";
             return s;
+        } else if (filmSpec(key, c) != null) {
+            return filmSpec(key, c);
         } else if (CURVE.equals(key)) {
             s = new Spec(key, Spec.CUSTOM);
             s.page = "scam_hybrid_ark_curves_screen";
@@ -494,6 +504,76 @@ public class ScamLabFragment extends ModuleConceptFragment {
         return s;
     }
 
+    /** P281: the film simulation's settings in the lab (FilmSim.KEYS). */
+    @Nullable
+    static Spec filmSpec(String key, Context c) {
+        Spec s;
+        switch (key) {
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.STOCK_KEY: {
+                s = new Spec(key, Spec.LIST);
+                final com.particlesdevs.photoncamera.processing.color.FilmSim.Stock[] st = com.particlesdevs.photoncamera.processing.color.FilmSim.STOCKS;
+                s.values = new String[st.length + 1];
+                s.labels = new CharSequence[st.length + 1];
+                s.values[0] = "";
+                s.labels[0] = Lang.t(c, "Нет", "None");
+                for (int i = 0; i < st.length; i++) { s.values[i + 1] = st[i].id; s.labels[i + 1] = st[i].brand + " " + st[i].name; }
+                s.def = "";
+                s.title = Lang.t(c, "Плёнка", "Film stock");
+                s.summary = Lang.t(c, "Плёночная симуляция: слои, проявка и печать плёнки", "Film simulation: the film's layers, development and print");
+                return s;
+            }
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.PRINT_KEY: {
+                s = new Spec(key, Spec.LIST);
+                final com.particlesdevs.photoncamera.processing.color.FilmSim.Print[] pr = com.particlesdevs.photoncamera.processing.color.FilmSim.PRINTS;
+                s.values = new String[pr.length];
+                s.labels = new CharSequence[pr.length];
+                for (int i = 0; i < pr.length; i++) { s.values[i] = pr[i].id; s.labels[i] = pr[i].brand + " " + pr[i].name; }
+                s.def = pr[0].id;
+                s.title = Lang.t(c, "Печать", "Print");
+                s.summary = Lang.t(c, "Бумага или кинопечать, на которую печатается негатив", "The paper or print film the negative is printed on");
+                return s;
+            }
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.FORMAT_KEY: {
+                s = new Spec(key, Spec.LIST);
+                final com.particlesdevs.photoncamera.processing.color.FilmSim.Format[] fm = com.particlesdevs.photoncamera.processing.color.FilmSim.FORMATS;
+                s.values = new String[fm.length];
+                s.labels = new CharSequence[fm.length];
+                for (int i = 0; i < fm.length; i++) { s.values[i] = fm[i].id; s.labels[i] = com.particlesdevs.photoncamera.processing.color.FilmSim.formatName(c, fm[i]); }
+                s.def = "135";
+                s.title = Lang.t(c, "Формат кадра", "Frame format");
+                s.summary = Lang.t(c, "Размер кадра плёнки: зерно, ореол и мягкость", "The film frame's size: grain, halation and softness");
+                return s;
+            }
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.GRAIN_KEY:
+                return slider(key, Lang.t(c, "Зерно плёнки", "Film grain"), 0, 300, 1, "100");
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.HALATION_KEY:
+                return slider(key, Lang.t(c, "Ореол плёнки", "Film halation"), 0, 300, 1, "100");
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.SOFTNESS_KEY:
+                return slider(key, Lang.t(c, "Мягкость плёнки", "Film softness"), 0, 300, 1, "100");
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.EXPOSURE_KEY:
+                return slider(key, Lang.t(c, "Экспозиция плёнки, EV", "Film exposure, EV"), -2, 2, .1f, "0");
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.PRINT_EV_KEY:
+                return slider(key, Lang.t(c, "Экспозиция печати, EV", "Print exposure, EV"), -1, 1, .05f, "0");
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.TONE_KEY:
+                return slider(key, Lang.t(c, "Тон печати", "Print tone"), -100, 100, 1, "0");
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.STRENGTH_KEY:
+                return slider(key, Lang.t(c, "Сила симуляции", "Simulation strength"), 0, 100, 1, "100");
+            default:
+                return null;
+        }
+    }
+
+    private static Spec slider(String key, String title, float min, float max, float step, String def) {
+        final Spec s = new Spec(key, Spec.SLIDER);
+        s.title = title;
+        s.min = min;
+        s.max = max;
+        s.step = step;
+        s.decimal = step < 1f;
+        s.def = def;
+        return s;
+    }
+
     /** The setting's value at the shot (its default when it was not set; a CUSTOM one: {@link #AS_SHOT}). */
     static Object shotValue(Spec spec, ScamLabRun.Shot s) {
         if (spec.kind == Spec.CUSTOM) return AS_SHOT;
@@ -520,31 +600,35 @@ public class ScamLabFragment extends ModuleConceptFragment {
     }
 
     private View settingRow(Preference p, ScamLabRun.Shot s) {
+        return settingRow(p.getKey(), String.valueOf(p.getTitle()), p.getSummary() == null ? null : String.valueOf(p.getSummary()), s);
+    }
+
+    private View settingRow(String key, String title, @Nullable String summary, ScamLabRun.Shot s) {
         LinearLayout r = row();
         r.setPadding(dp(12), dp(14), dp(12), dp(14));
         r.setMinimumHeight(dp(56));
         LinearLayout labels = column();
-        TextView head = text(String.valueOf(p.getTitle()), 15, TEXT);
+        TextView head = text(title, 15, TEXT);
         com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(head);
         labels.addView(head);
-        if (p.getSummary() != null) {
-            TextView sub = text(String.valueOf(p.getSummary()), 12, SettingsStyle.SUMMARY);
+        if (summary != null) {
+            TextView sub = text(summary, 12, SettingsStyle.SUMMARY);
             sub.setLineSpacing(dp(3), 1);
             sub.setMaxLines(3);
             sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
             labels.addView(sub, space(-1, -2, 6));
         }
-        final Spec spec = spec(p.getKey());
+        final Spec spec = spec(key);
         if (spec != null && spec.kind != Spec.CUSTOM) {
             String shotValue = Lang.t(getContext(), "При съёмке: ", "At the shot: ") + label(spec, shotValue(spec, s));
-            if (AT_SHOT.contains(p.getKey())) shotValue += Lang.t(getContext(), " · задаётся при съёмке", " · fixed at the shot");
+            if (AT_SHOT.contains(key)) shotValue += Lang.t(getContext(), " · задаётся при съёмке", " · fixed at the shot");
             labels.addView(text(shotValue, 12, accent), space(-1, -2, 6));
         }
         r.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
         r.addView(text("›", 25, MUTED));
-        r.setTag("lab_setting_" + p.getKey());
+        r.setTag("lab_setting_" + key);
         r.setFocusable(true);
-        r.setOnClickListener(x -> openResult(p.getKey(), s));
+        r.setOnClickListener(x -> openResult(key, s));
         return r;
     }
 
@@ -824,11 +908,14 @@ public class ScamLabFragment extends ModuleConceptFragment {
             put(getArguments(), side, spec.key, v);
             render();
         };
-        TextView reset = text(Lang.t(getContext(), "как снято", "as shot"), 13, accent);
+        // P283: the side at the shot's value says so (a muted tag); the other side's link names the value it goes back to (a bare
+        // «as shot» beside B's value read as «B is the shot's value»)
+        final boolean isShot = String.valueOf(atShot).equals(String.valueOf(value));
+        TextView reset = isShot ? text(Lang.t(getContext(), "как снято", "as shot"), 13, MUTED)
+                : text("↺ " + (spec.kind == Spec.CUSTOM ? label(spec, atShot) : Lang.t(getContext(), "снято: ", "shot: ") + label(spec, atShot)), 13, accent);
         reset.setPadding(dp(10), dp(6), dp(4), dp(6));
         reset.setTag("lab_reset_" + name + "_" + spec.key);
-        reset.setOnClickListener(x -> set.accept(atShot));
-        reset.setVisibility(String.valueOf(atShot).equals(String.valueOf(value)) ? View.INVISIBLE : View.VISIBLE);
+        if (!isShot) reset.setOnClickListener(x -> set.accept(atShot));
         r.addView(head);
         switch (spec.kind) {
             case Spec.SWITCH: {

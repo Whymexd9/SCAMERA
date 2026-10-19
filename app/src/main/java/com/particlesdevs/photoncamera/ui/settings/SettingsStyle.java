@@ -269,6 +269,7 @@ public final class SettingsStyle {
     /** SIMPLE_UI §4c: the parts of the «Плёночный LUT» page draw themselves (preview, strip, «Что меняется»). */
     static boolean page(Preference p) {
         return p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference
+                || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmSimPreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.LutChangesPreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.LensFilterPreference
                 || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.PhotoStylePreference
