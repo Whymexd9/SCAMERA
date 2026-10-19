@@ -157,6 +157,8 @@ public class SensorConfigPreferenceGenerator {
             category.addPreference(keyPref);
         }
 
+        addSensorModePick(context, category, physicalId);
+
         // P266 «Проверить частоты кадров»: asked here, run by the next session of this module (FpsProbe)
         androidx.preference.Preference probe = new androidx.preference.Preference(context);
         probe.setKey("pref_sensorconfig_" + physicalId + "_fpsprobe");
@@ -185,6 +187,49 @@ public class SensorConfigPreferenceGenerator {
             return true;
         });
         category.addPreference(addButton);
+    }
+
+    /**
+     * P276 «Режим сенсора (SensorModeTable)»: Auto or a row of the camera's own table ("Mode #4: 8192x6144 @ 30fps", as ArkCam
+     * lists it); a picked row opens the RAW stream at its size and sends the brand's mode key (SensorModePick). Shown only when
+     * the module's camera has a table.
+     */
+    private static void addSensorModePick(Context context, PreferenceCategory category, String slot) {
+        java.util.List<int[]> rows;
+        try {
+            final String camera = ModuleRegistry.slots().contains(slot) ? ModuleSensorSettings.physical(slot) : toPhysicalId(slot);
+            final android.hardware.camera2.CameraManager manager =
+                    (android.hardware.camera2.CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+            rows = com.particlesdevs.photoncamera.capture.SensorModePick.rows(manager.getCameraCharacteristics(camera));
+        } catch (Exception unavailable) {
+            return;
+        }
+        if (rows.isEmpty()) return;
+        final String[] entries = new String[rows.size() + 1], values = new String[rows.size() + 1];
+        entries[0] = Lang.t(context, "Авто (по умолчанию)", "Auto (default)");
+        values[0] = "-1";
+        for (int i = 0; i < rows.size(); i++) {
+            entries[i + 1] = com.particlesdevs.photoncamera.capture.SensorModePick.label(rows.get(i));
+            values[i + 1] = String.valueOf(rows.get(i)[0]);
+        }
+        ListPreference pick = new ListPreference(context);
+        pick.setKey(com.particlesdevs.photoncamera.capture.SensorModePick.prefKey(slot));
+        pick.setTitle(ModuleSensorSettings.title("Sensor Mode"));
+        pick.setDialogTitle(ModuleSensorSettings.title("Sensor Mode"));
+        pick.setEntries(entries);
+        pick.setEntryValues(values);
+        pick.setDefaultValue("-1");
+        pick.setIcon(com.particlesdevs.photoncamera.R.drawable.settings_ic_sliders);
+        pick.setOrder(99);
+        final String hint = Lang.t(context, "Режим сенсора из таблицы камеры: RAW-поток его размера, ключ режима в сессии и запросах, без потока ISP. "
+                        + "Если камера откажет — модуль вернётся в «Авто». Применяется при следующем открытии камеры.",
+                "A sensor mode of the camera's table: a RAW stream of its size, the mode key on the session and the requests, no ISP stream. "
+                        + "If the camera refuses it the module goes back to Auto. Applied the next time the camera opens.");
+        pick.setSummaryProvider(p -> {
+            final CharSequence e = ((ListPreference) p).getEntry();
+            return (e == null ? entries[0] : e) + "\n" + hint;
+        });
+        category.addPreference(pick);
     }
 
     /** The probe's row: asked (runs on the camera), the last result, or what it does. */

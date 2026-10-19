@@ -19,6 +19,7 @@ public final class ModuleSensorSettings {
             case "ISP Surface":return Lang.t("Поток ISP","ISP stream");
             case "RAW Frame Rate":return Lang.t("Частота кадров RAW","RAW frame rate");
             case "RAW Viewfinder Size":return Lang.t("Разрешение видоискателя RAW","RAW viewfinder size");
+            case "Sensor Mode":return Lang.t("Режим сенсора (SensorModeTable)","Sensor mode (SensorModeTable)");
             default:return title;
         }
     }
@@ -29,7 +30,7 @@ public final class ModuleSensorSettings {
             case "Белый уровень RAW вручную, в единицах RAW этого модуля; Авто — от камеры и по отсчётам кадра. Больше — снимок темнее; меньше — света выгорают раньше.":return Lang.t(text,"Manual RAW white level in this module's RAW units; Auto: from the camera and the frame's samples. Higher: darker shot; lower: highlights clip sooner.");
             case "Оптическая стабилизация. Авто выключает её на штативе и в Unlimited, чтобы кадр не плыл.":return Lang.t(text,"Optical stabilization. Auto turns it off on a tripod and in Unlimited so the frame does not drift.");
             case "Режим сессии камеры: 0 — обычный, 32768–65535 — режимы производителя (неверный может не открыть камеру). В FULLRES всегда 0. Применяется при следующем открытии камеры.":return Lang.t(text,"Camera session mode: 0 is normal, 32768-65535 are vendor modes (a wrong one may stop the camera opening). FULLRES always runs 0. Applied the next time the camera opens.");
-            case "Поток ISP в сессии камеры. Он может мешать режимам сенсора (ISZ, DCG): без него видоискатель строится из RAW. Авто — без потока ISP для модулей с режимом сенсора.":return Lang.t(text,"The ISP stream in the camera session. It may get in the way of sensor modes (ISZ, DCG): without it the viewfinder is built from the RAW. Auto: no ISP stream for modules with a sensor mode.");
+            case "Поток ISP в сессии камеры. Он может мешать режимам сенсора (ISZ, DCG): без него видоискатель строится из RAW. Авто — без потока ISP для модулей с режимом сенсора. Фиктивное откл. — поток в сессии, но камера его не заполняет.":return Lang.t(text,"The ISP stream in the camera session. It may get in the way of sensor modes (ISZ, DCG): without it the viewfinder is built from the RAW. Auto: no ISP stream for modules with a sensor mode. Fake off: the stream stays in the session, the camera does not fill it.");
             case "Размер кадра видоискателя из RAW по длинной стороне; соотношение сторон RAW сохраняется, фото не меняется. Меньше — быстрее и холоднее.":return Lang.t(text,"The RAW viewfinder frame's longest side; the RAW's aspect is kept, the photo does not change. Smaller: faster and cooler.");
             case "Частота кадров RAW, к/с. 0 — по умолчанию для объектива; своё значение может выбрать недокументированный режим сенсора.":return Lang.t(text,"RAW frame rate, fps. 0: the lens's default; a value of your own may pick an undocumented sensor mode.");
             default:return text;

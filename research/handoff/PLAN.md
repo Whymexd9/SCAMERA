@@ -6081,3 +6081,25 @@ A new package installs next to the CTS one: settings move by «Резервна�
 To check on the phone: «4.8×» / «9.6×» on the X300 Ultra (log: «ISZ camera 5: vivo SDK lease taken», «raw crop ... x2.0 (in-sensor
 zoom)», «RAW stream colour block 2»); X200 Ultra 2× / 4× native modules and FULLRES 50 / 200 MP with the new package.
 
+### P276 - a module's sensor mode from the camera's SensorModeTable, as the new ArkCam (owner, 2026-10-19, video_20261019_153550: «вот так это реализовано в новой Арк камере, мы сможем сделать схоже?», «я в видео имел ввиду работу с сенсормодами», «учитывай всю новую информацию которую я кидал тебе по оппо и виво»): done, local commit, not device-tested.
+ArkCam's lens page (the video): RAW10 / 12 / 16, the RAW stream's size (max / binning / own), «Sensor Mode (SensorModeTable)» with
+every row "Mode #N: W x H @ fps", the preview stream on / fake off / real off, the RAW buffer pool, the CFA pattern, black / white.
+Ours: «Режим сенсора (SensorModeTable)» on the module's sensor page (Auto + the rows of
+org.quic.camera2.sensormode.info.SensorModeTable, pref_sensorconfig_<slot>_sensormoderow) - capture/SensorModePick. A picked row:
+the RAW reader at the row's size (usage 0: sizes outside StreamConfigurationMap, as the native FULLRES readers and the ArkCam
+note), the brand's mode key on the session parameters and on every request (builderSessionApply): vivo forceSensorMode int[]
+with an Integer fallback, OPPO / OnePlus / realme agingtest.mode.select byte -> int32 (OppoNativeFullRes.setMode), other
+Qualcomm current_mode; «Поток ISP» Auto drops the ISP stream (RAW viewfinder); vivo opens under the SDK lease (33 = 2, 40 = 1);
+the shot's declared block is the sensor's mosaic for a full-size row with a binned row (Quad, Tetra above 100 MP), else
+measured; a refused session puts the module back on Auto with a message. «Поток ISP» gained «Фиктивное откл.» (3: the stream in
+the session, no request targets it). scam_dev sensor_mode_pick / sensor_mode_pick_lease. Test SensorModePickTest; CI list 253
+classes / 1539 tests pass. Not done: RAW10 / RAW12 stream format and the buffer pool choice (RAW_SENSOR as the native routes),
+the CFA pattern override. To check on the phones: a full-size row (vivo 8192x6144 / 16320x12288, OPPO 8192x6144) and a 2x ISZ
+row on a module, log «the module's sensor mode ... (SensorModeTable, P276)», «sensor mode pick on the session», the RAW size
+and «colour block».
+P276 follow-up (owner, 2026-10-19: «сделай его раздельным по модулям камер»): the pick is stored per module slot (the sensor page is
+per module); a module copy (ModuleRegistry.duplicate, the automatic ISZ modules made from a plain one) no longer inherits it -
+ModuleDuplicates.copyOf skips pref_sensorconfig_<source>_sensormoderow, the copy starts on Auto; the «Копировать в модули» dialog
+never offered it. So a lens can have a plain module and a copy with its own sensor mode side by side. Test
+ModuleDuplicatesTest.aCopyDoesNotTakeTheSensorModeOfItsSource; CI list 1540 tests pass.
+

@@ -315,9 +315,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      */
     @SensorConfig(
             title = "ISP Surface",
-            description = "Поток ISP в сессии камеры. Он может мешать режимам сенсора (ISZ, DCG): без него видоискатель строится из RAW. Авто — без потока ISP для модулей с режимом сенсора.",
-            entries = {"Auto", "On", "Off"},
-            entryValues = {"0", "1", "2"},
+            description = "Поток ISP в сессии камеры. Он может мешать режимам сенсора (ISZ, DCG): без него видоискатель строится из RAW. Авто — без потока ISP для модулей с режимом сенсора. Фиктивное откл. — поток в сессии, но камера его не заполняет.",
+            entries = {"Auto", "On", "Off", "Fake off"},
+            entryValues = {"0", "1", "2", "3"},
             defaultValue = 0
     )
     public int ispSurface = 0;
@@ -2659,7 +2659,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * the camera opens hands the HAL our vendor keys whatever the package; the values found are given back when it closes.
      */
     private void openIszLease(String id) {
-        if (mIszLease != null || mIsRecordingVideo || !(VivoQcomIsz.leaseWanted(id) || VivoPd2454NativeRaw.leaseWanted(id))) return;
+        if (mIszLease != null || mIsRecordingVideo || !(VivoQcomIsz.leaseWanted(id) || VivoPd2454NativeRaw.leaseWanted(id) || SensorModePick.leaseWanted(id))) return;
         try {
             mIszLease = VivoSdkRawSession.open();
             mCameraCharacteristicsMap.remove(id);
@@ -2950,6 +2950,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         + " (every stream and request in MAXIMUM_RESOLUTION pixel mode, ZSL ring on, RAW viewfinder binned)");
             }
         }
+        // P276: the module's sensor mode picked from the camera's SensorModeTable (SensorModePick): its RAW size, its mode key
+        final SensorModePick.Pick modePick = sdkFullRes || mFullResSession || mIsRecordingVideo || !isRawFormat(mTargetFormat)
+                ? null : SensorModePick.active(physicalID, characteristics);
+        SensorModePick.session(physicalID, modePick);
+        if (modePick != null) Log.i("SCAM_CAPTURE", "camera " + physicalID + ": the module's sensor mode " + modePick
+                + " (SensorModeTable, P276)");
         ArrayList<Size> allTargets = getAllTargets();
         // P108: every request of the full-resolution session in MAXIMUM_RESOLUTION pixel mode (VendorTagUtils.builderSessionApply)
         if (mFullResSession) useMaximumResolutionKey = true;
@@ -3070,6 +3076,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 } catch (IllegalStateException closed) { }
             }, mBackgroundHandler);
             }
+        } else if (modePick != null) {
+            // P276: the row's size, also one StreamConfigurationMap does not list (usage 0: no CPU usage bits for the HAL's
+            // stream validator, the planes still read on the CPU - the native FULLRES readers, ArkCam)
+            mTargetFormat = ImageFormat.RAW_SENSOR;
+            target = modePick.size;
+            this.target = target;
+            mImageReaderRaw = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                    ? ImageReader.newInstance(target.getWidth(), target.getHeight(), mTargetFormat, maxjpg, 0)
+                    : ImageReader.newInstance(target.getWidth(), target.getHeight(), mTargetFormat, maxjpg);
         } else if (VivoPd2454NativeRaw.active(physicalID)) {
             mTargetFormat = ImageFormat.RAW_SENSOR;
             target = new Size("5".equals(physicalID) ? 4080 : 4096, 3072);
@@ -3279,11 +3294,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P108: the full-resolution session always shows the RAW viewfinder (the Pixel ISP's own one is green in that mode)
             // P223: «ISP-превью в FULLRES и ISZ» off - such a session shows the RAW viewfinder, the only stream it repeats
             // P223 / P266: the module's «Поток ISP» Off in FULLRES / ISZ (the old global «ISP-превью в FULLRES и ISZ» is this now)
-            mIspPreviewOff = photoMode && ispSurface == 2 && (mFullResSession || IszCapturePolicy.mosaicModule(
-                    com.particlesdevs.photoncamera.settings.ModuleRegistry.active()));
+            // P276 «Фиктивное откл.» (ArkCam's fake off): the ISP stream stays in the session, no request targets it
+            mIspPreviewOff = photoMode && (ispSurface == 2 && (mFullResSession || IszCapturePolicy.mosaicModule(
+                    com.particlesdevs.photoncamera.settings.ModuleRegistry.active())) || ispSurface == 3);
             // P266: the ISP stream out of the session (the module's «Поток ISP»; Auto: a module that forces a sensor mode)
-            final boolean forcedMode = vivoQcomIsz || com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(
-                    com.particlesdevs.photoncamera.settings.ModuleRegistry.active()) > 0;
+            final boolean forcedMode = vivoQcomIsz || SensorModePick.session() != null
+                    || com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()) > 0;
             mIspSurfaceOff = photoMode && !isBurstSession && !mIsRecordingVideo && !sdkFullRes && mVivoSdkRawSession == null
                     && isRawFormat(mTargetFormat) && !mLiveRawRejected && (ispSurface == 2 || ispSurface == 0 && forcedMode);
             if (mIspSurfaceOff) {
@@ -3601,7 +3617,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     }
                     configuration.setSessionParameters(sdkSession.build());
                 } else if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || hiddenKeys || dcg14 || vivoQcomIsz || vivoQcomStreams
-                        || rawFps > 0
+                        || rawFps > 0 || SensorModePick.session() != null
                         || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
                     try {
                         CaptureRequest.Builder scamSession = sessionDevice.createCaptureRequest(
@@ -3633,6 +3649,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         // P122: the module's session-only vendor keys (vivo X300 Ultra: forceSensorMode)
                         com.particlesdevs.photoncamera.settings.TunableKeyManager.applySessionKeys(scamSession, physicalID);
                         VivoPd2454NativeRaw.apply(scamSession, physicalID);
+                        if (SensorModePick.session() != null) // P276: the picked mode on the session (and on every request)
+                            Log.i("SCAM_CAPTURE", "camera " + physicalID + " sensor mode pick on the session: " + SensorModePick.apply(scamSession));
                         if (rawFps > 0) scamSession.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(rawFps, rawFps)); // P266
                         if (VivoQcomIsz.device()) Log.i("SCAM_CAPTURE", "X300 Ultra camera " + physicalID + " sensor mode: "
                                 + VivoQcomIsz.sessionBuilt(scamSession));
@@ -3709,6 +3727,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     private boolean retryWithoutRequestedSensorMode(@Nullable CameraCaptureSession session, String why) {
+        // P276: a module's picked SensorModeTable row the camera refused goes back to Auto (said once, the camera reopens)
+        final SensorModePick.Pick pick = SensorModePick.session();
+        if (pick != null) {
+            final String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+            ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putString(SensorModePick.prefKey(slot), "-1").apply();
+            SensorModePick.session(null, null);
+            if (session != null) try { session.close(); } catch (RuntimeException ignored) { }
+            Log.w("SCAM_CAPTURE", "camera " + physicalID + ": sensor mode pick " + pick + " refused (" + why + "): the module is on Auto again");
+            showError(Lang.t("Режим сенсора " + pick.mode + " отклонён камерой; модуль снова в «Авто»",
+                    "Sensor mode " + pick.mode + " refused by the camera; the module is on Auto again"));
+            new Handler(Looper.getMainLooper()).post(this::restartCamera);
+            return true;
+        }
         final boolean dcg = Dcg14Mode.on();
         try {
             String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
@@ -7600,7 +7631,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P35: the stream key of this shot (its stored colour block skips the detector in the processing).
             final String shotMosaicKey=com.particlesdevs.photoncamera.processing.MosaicStream.key();
             // P214i: by the X300 Ultra's list; 0 once the module's frames proved a plain Bayer (the stored 1 merges then)
-            final int shotDeclaredBlock=VivoQcomIsz.declaredBlockOf(com.particlesdevs.photoncamera.settings.ModuleRegistry.active());
+            // P276: a picked full-size row of the SensorModeTable declares the sensor's own mosaic
+            final int iszBlock=VivoQcomIsz.declaredBlockOf(com.particlesdevs.photoncamera.settings.ModuleRegistry.active());
+            final int shotDeclaredBlock=iszBlock>0?iszBlock:SensorModePick.sessionBlock(mCameraCharacteristics);
             final int nativeBaseIndex=denoiseFrameCount/2;
             final TotalCaptureResult[] nativeBaseResult={hybridZsl?mNativeZslBase:null};
             // W1.9: the vendor-key scan of every bracket result (10-15 ms on the camera callback thread) only with diagnostics.

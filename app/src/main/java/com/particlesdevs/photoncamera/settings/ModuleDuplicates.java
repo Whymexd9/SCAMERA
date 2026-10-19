@@ -78,6 +78,9 @@ public final class ModuleDuplicates {
     }
 
     /** The writes that make {@code target} a duplicate of {@code source} (label / zoom as the source shows them). */
+    /** P276: SensorModePick.SUFFIX (the settings package does not depend on capture). */
+    static final String SENSOR_MODE_SUFFIX = "sensormoderow";
+
     static Map<String, Object> copyOf(Map<String, ?> p, String source, String target, String label, float zoom) {
         return copyOf(p, source, target, label, zoom, 1f, 1f);
     }
@@ -99,8 +102,11 @@ public final class ModuleDuplicates {
         if (autoLabel != null) out.put("module_label_" + target, autoLabel);
         out.put("module_visible_" + target, true);
         String from = ModuleSensorSettings.prefix(source), to = ModuleSensorSettings.prefix(target);
+        // P276 (owner: «сделай его раздельным по модулям камер»): the sensor mode picked from the table is the module's own - a
+        // copy (and an ISZ module made from a plain one) starts on Auto
         for (Map.Entry<String, ?> e : p.entrySet())
-            if (e.getKey().startsWith(from)) out.put(to + e.getKey().substring(from.length()), e.getValue());
+            if (e.getKey().startsWith(from) && !e.getKey().equals(from + SENSOR_MODE_SUFFIX))
+                out.put(to + e.getKey().substring(from.length()), e.getValue());
         out.put(MARK + target, source);
         return out;
     }

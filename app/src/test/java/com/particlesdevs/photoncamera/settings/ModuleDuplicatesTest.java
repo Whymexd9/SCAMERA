@@ -27,6 +27,17 @@ public class ModuleDuplicatesTest {
         return p;
     }
 
+    /** P276: the sensor mode picked from the table is each module's own: a copy starts on Auto, the rest is copied. */
+    @Test
+    public void aCopyDoesNotTakeTheSensorModeOfItsSource() {
+        Map<String, Object> p = x7();
+        p.put("pref_sensorconfig_back1_sensormoderow", "4");
+        Map<String, Object> w = ModuleDuplicates.copyOf(p, "back1", "back4", "1×", 1f);
+        assertNull(w.get("pref_sensorconfig_back4_sensormoderow"));
+        assertEquals("64", w.get("pref_sensorconfig_back4_blackleveloverride"));
+        assertEquals(com.particlesdevs.photoncamera.capture.SensorModePick.SUFFIX, ModuleDuplicates.SENSOR_MODE_SUFFIX);
+    }
+
     @Test
     public void aDuplicateTakesAFillerSlotAndCopiesCameraZoomAndRequests() {
         Map<String, Object> p = x7();
