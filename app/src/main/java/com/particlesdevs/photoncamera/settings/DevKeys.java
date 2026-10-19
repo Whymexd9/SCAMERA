@@ -261,6 +261,12 @@ public final class DevKeys {
         // P243: the DNG's colour tags from the JPEG's render (DngColour)
         k.add(s(post, "dng_colour_jpeg", true, Lang.t("DNG открывается в Lightroom/ACR в цвете JPEG: в DNG записаны баланс белого и цветовая матрица, с которыми сделан JPEG. Выкл — общий профиль камеры (два иллюминанта), как до P243",
                 "The DNG opens in Lightroom / ACR in the JPEG's colour: it carries the white balance and colour matrix the JPEG was made with. Off: the camera's generic two-illuminant profile, as before P243")));
+        // P252: the ISP preview out of the repeating request in every photo session (A/B of the HAL's use case and its AF)
+        k.add(s(merge, "isp_preview_off_always", false, Lang.t("Видоискатель из RAW во всех режимах: ISP-превью в сессии, но не в запросе (проверка автофокуса OPPO ночью)",
+                "The RAW viewfinder in every mode: the ISP preview in the session, not in the request (an OPPO night autofocus check)")));
+        // P258: a mosaic shot without our remosaic keeps its mosaic in the DNG (for Scam Remosaic's neural remosaic)
+        k.add(s(post, "dng_mosaic_as_captured", true, Lang.t("Без нашего ремозаика DNG снимка Quad / Tetra — опорный кадр как с сенсора (полная мозаика): его проявляет нейроремозаик Scam Remosaic. Выкл — склейка, сведённая в обычный Байер меньшего размера, как раньше",
+                "Without our remosaic a Quad / Tetra shot's DNG is the reference frame as the sensor gave it (the full mosaic) for Scam Remosaic's neural remosaic. Off: the merge binned into a smaller plain Bayer, as before")));
         // P236: the shot's frames closed off the critical path after the merge (ScamProcessor.releaseFrames)
         k.add(s(post, "release_async", true, Lang.t("После склейки кадры снимка освобождаются в фоне, обработка начинается сразу (не для 200 Мп). Выкл — сначала освобождение (~0.4 с на 50 Мп), как до P236",
                 "After the merge the shot's frames are freed in the background and the processing starts at once (not for 200 MP). Off: freed first (~0.4 s at 50 MP), as before P236")));

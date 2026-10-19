@@ -5779,6 +5779,15 @@ pro mist, glimmer glass и других подобных фильтров у н�
 - Next: the physical camera opened alone vs the stock's logical camera 6 (AF of the logical SAT use case), OIS on the physical
   request, the session parameters; a fallback if the HAL stays parked at the near limit in the dark (our contrast sweep on the
   preview, or the hyperfocal distance).
+- 2026-10-19 03:20, the OPPO on the night scene with 31121: CAF, PASSIVE_UNFOCUSED, the lens STATIONARY at 7.14 dpt beyond the
+  declared 5 dpt (focusRange 5..0), 60 ms ISO 3842 - the AF never drove the lens. The use-case idea (the ISP preview in the
+  session, not in the request: RealTimeFeatureZSLPreviewRaw) concerns the 8192x6144 FULLRES session; an A/B switch
+  (scam_dev isp_preview_off_always) did not take effect in its first try and was not needed.
+- DONE (local, phone-checked): ParkedLens - a continuous AF that leaves the lens beyond the declared nearest focus (margin
+  10 % + 0.1 dpt), STATIONARY, for 1.5 s: the viewfinder and the shot take the hyperfocal distance (f, aperture, two-pixel CoC)
+  until the scene gets 8x brighter (the HAL's AF again, 5 s cooldown); a touch focus / hand-set focus takes the lens from it;
+  the shutter skips the AF lock while AF is off (no 1 s wait). OPPO: 1x lens 7.14 -> 0.153 dpt, 2.8x -> 0.044 dpt, the night
+  photo SCA_20261019_033808 sharp (the 01:25 one fully blurred). Test: ParkedLensTest.
 
 ### P253 - a flickering lamp painted light blue in a 12 MP photo (owner, 2026-10-19, X200 Ultra build 31113: «исправь работу этой настройки» (Мерцание ламп), «ты смотри на лампу справа сверху», «исправь это во всех режимах»)
 - The shot: ISO 245, 10 ms base (whole 100 Hz periods: no bands in the frame), Route SHDR, plain 12 MP. The clipped ceiling lamp
@@ -5848,6 +5857,10 @@ pro mist, glimmer glass и других подобных фильтров у н�
   remosaic runs on it. To check first: what Scam Remosaic does with our DNG today (the owner's «нормально» may mean it is
   developed as a plain Bayer, so no remosaic is offered), which DNG tags it reads for the mosaic (CFA repeat pattern / our
   header, sensor id, black / white levels), and what our no-remosaic DNG writes there.
+- Found: without our remosaic the DNG was the merge binned into a plain Bayer W/b x H/b - Scam Remosaic just demosaics it.
+- DONE (local): such a shot's DNG is the reference frame's mosaic as captured (full size, one-frame noise profile;
+  uncompressed 16-bit CFA, what Scam Remosaic's reader takes); scam_dev dng_mosaic_as_captured 0: the binned merge as before.
+  Test: CropUpscaleTest. Phone: a no-remosaic Quad / Tetra shot opened in Scam Remosaic (X200 Ultra).
 
 ### P259 - 200 MP: «Native FULLRES mosaic has not been verified from RAW pixels» on a flat scene (owner, 2026-10-19, X200 Ultra 2.4x, a blurred sheet)
 - Every 200 MP still is checked by MosaicBlockDetector; a scene with no confident colour block verified none, and finish()
@@ -5869,3 +5882,38 @@ pro mist, glimmer glass и других подобных фильтров у н�
 - Tests: six Robolectric tests mocked ScameraApp without getStringStatic; a PreferenceKeys.Key enum first loaded under such a
   mock kept null names, and every later test of the JVM failed («scope is null») - ShadeTilesTest failed alone even at
   d16a480c. They now stub getStringStatic with the real resources.
+
+### P262 - importing a curve restarts the app, the curve lost (owner, 2026-10-19: ToneCurve_imx06A.txt, ark_art_drama_faces.json: «оно просто перезапускается, а кривая не переносится»)
+- Both files parse (P231 / P244 tests). The system file picker in front, Android may stop the camera's process; it comes back
+  with the settings recreated, CameraActivity never run in that process: the defaults and the profile listener (PreferenceKeys
+  .setDefaults) were set only by CameraActivity and the settings shortcut (P140).
+- DONE (local): SettingsActivity sets them up in any process that has not (PreferenceKeys.defaultsSet()); the curve import
+  never takes the app down (an error is a toast and a log line). Phone: import both files on the owner's phone; if it still
+  restarts, Download/SCAMERA/SCAMERA-crash.log.
+
+### P263 - «Сбой камеры (код 4), перезапуск» on any phone (owner, 2026-10-19: «исправь ошибку код4 чтобы её не было ни на одном телефоне»; seen on the OPPO once after an update, the old process's camera still being released)
+- DONE (local): the first device / service error since the last configured session reopens the same camera and module quietly
+  (no message, no module revert, no overlay for 6 s); a second before a session configures: the revert / the recovery as before,
+  the overlay; a message only when scheduleRecovery gives up. The revert messages no longer carry the HAL's code. With P254
+  (a refused configuration's error is quiet as well). Test: PlainPreviewCamerasTest.
+- Also: «Камера N недоступна, открыта основная камера M» shows only when the requested camera has not come back after 3 s
+  (the OPPO's 2.8x camera 4 came back at once, the note had shown anyway).
+
+### P264 - DCG without root on the X200 Ultra (owner, 2026-10-19: «После того как закончишь все, учитывая опыт с 15 ультра подумай как нам получить DCG без рута на X200 Ultra»)
+- After everything else. Study: what the Xiaomi 15 Ultra work taught (P230 Xiaomi DCG route: operation mode / session keys,
+  14-bit samples; P104 X500 Pro Max 3RD_APP_HDR scenario), the X200 Ultra's own DCG modes (P122 X300 Ultra mode table,
+  forceSensorMode as a session key, vivo.control.* tags the stock app sends for its DCG / 14-bit capture), what a third-party
+  app may request without root. Output: a written plan of candidate routes and a test order, before any code.
+
+### P265 - X300 Ultra «4.8×» / «9.6×»: «камера не включила ISZ-режим 5 (кадры — обычный Bayer)» (owner, 2026-10-19 07:03, V2562, build 31093, «Исправь»)
+- Log: forceSensorMode 5 / 7 as a session key; the HAL changes the sensor mode index (camera 5: -> 2), yet the RAW frames are a
+  confident plain Bayer on the default stream and on CROPPED_RAW (camera 5 arrays 4080x3072, raw crop the whole array) -> the
+  Bayer fallback with the button's zoom as a crop, and the message.
+- Found: after the app restart at 07:03:11 the trial began again from NONE (the firmware note lost: BrandMigration rewrote the
+  stored Build.FINGERPRINT, P254 round 2) - the restart and the message came back on every app start. Fixed by 2e0277a5: once
+  per firmware now.
+- Open (needs the X300 Ultra on adb): why mode 5 / 7 give Bayer in our session - the session's other keys (Motion mode
+  «Движение» was on: session mode=MOTION; P54b forced stabilisation; the vivo EIS key), the CTS package's AppType, the stream
+  set (preview + RAW vs RAW only), mode 31 (2x ISZ remosaiced: is the frame a 2x crop?) - and whether the Bayer frames are the
+  2x crop already (then the extra 2x crop of the fallback doubles the zoom). Test order: FOV of 2.4x vs 4.8x on one scene,
+  Motion off, RAW-only session, mode 31.

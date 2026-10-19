@@ -114,6 +114,7 @@ public class PreferenceKeys {
     }
 
     public static void setDefaults(Context context) {
+        sDefaultsSet = true;
         SettingsManager settingsManager = preferenceKeys.settingsManager;
         Resources resources = context.getResources();
         settingsManager.setInitial("default_scope", Key.KEY_EIS_PHOTO, resources.getBoolean(R.bool.pref_eis_photo_default));
@@ -133,6 +134,13 @@ public class PreferenceKeys {
         settingsManager.addListener(PROFILE_LISTENER);
     }
 
+    private static volatile boolean sDefaultsSet;
+
+    /** {@link #setDefaults} ran in this process (CameraActivity, the settings' shortcut or their recreation). */
+    public static boolean defaultsSet() {
+        return sDefaultsSet;
+    }
+
     /** One listener per process: every CameraActivity start and the settings shortcut (P140) call setDefaults. */
     static final SettingsManager.OnSettingChangedListener PROFILE_LISTENER = PreferenceKeys::lambda$setDefaults$0;
 
@@ -142,7 +150,7 @@ public class PreferenceKeys {
         }
         if(profiles().isApplying())return;
         profiles().changed(key);
-        ScameraApp.getSettings().loadCache();
+        if (ScameraApp.getSettings() != null) ScameraApp.getSettings().loadCache();
     }
 
     public static void addIds(String[] ids) {

@@ -74,10 +74,14 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         super.onCreate(savedInstanceState);
         // P140: from the shortcut the camera may never have run in this process: its defaults and the module-profile
         // listener (CameraActivity.onCreate) come first, so a change made here lands in the module's profile as usual
-        if (ACTION_SHORTCUT.equals(getIntent().getAction())) {
+        // P262 (owner, 2026-10-19: importing a curve «просто перезапускается, а кривая не переносится»): the system file picker
+        // in front, Android stopped the camera's process; it came back with these settings recreated, the camera never run,
+        // so the defaults and the listener were missing and the settings crashed - the picked file lost. Any process that
+        // has not set them up does it here.
+        if (ACTION_SHORTCUT.equals(getIntent().getAction()) || !PreferenceKeys.defaultsSet()) {
             PreferenceManager.setDefaultValues(this, R.xml.preferences, com.particlesdevs.photoncamera.settings.MigrationManager.readAgain);
             PreferenceKeys.setDefaults(this);
-            ScameraApp.getSettings().loadCache();
+            if (ScameraApp.getSettings() != null) ScameraApp.getSettings().loadCache();
         }
         setContentView(R.layout.activity_settings);
         
@@ -994,6 +998,17 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
         /** P144: a picked file's "x:y" points onto the own curve's graph (and into the store). */
         void importToneCurve(android.net.Uri uri) {
+            // P262: whatever fails here says so; it never takes the app down (the owner saw it restart, the curve lost)
+            try {
+                importToneCurveChecked(uri);
+            } catch (RuntimeException e) {
+                Log.e("SettingsFragment", "tone curve import crashed: " + Log.getStackTraceString(e));
+                if (mContext != null) android.widget.Toast.makeText(mContext, com.particlesdevs.photoncamera.util.Lang.t(mContext,
+                        "Кривую не удалось загрузить: " + e, "The curve could not be loaded: " + e), android.widget.Toast.LENGTH_LONG).show();
+            }
+        }
+
+        private void importToneCurveChecked(android.net.Uri uri) {
             com.particlesdevs.photoncamera.processing.color.ToneCurve curve = null;
             String text = null;
             try (java.io.InputStream in = mContext.getContentResolver().openInputStream(uri)) {

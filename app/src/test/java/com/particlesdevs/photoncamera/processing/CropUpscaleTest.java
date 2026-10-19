@@ -29,6 +29,20 @@ public class CropUpscaleTest {
         assertTrue("the gain map follows", s.indexOf("gm = gm.resizedFor(img.getWidth(), img.getHeight());", scale) > scale);
     }
 
+    /**
+     * P258 (owner, 2026-10-19): a mosaic shot without our remosaic keeps its mosaic in the DNG (the reference frame as captured)
+     * so Scam Remosaic's neural remosaic can develop it; the binned merge is dropped before the merged branch.
+     */
+    @Test public void aMosaicShotWithoutRemosaicKeepsItsMosaicInTheDng() throws Exception {
+        String s = src("src/main/java/com/particlesdevs/photoncamera/processing/processor/ScamProcessor.java");
+        int check = s.indexOf("if (scamMergedDng != null && mosaicAsCaptured(processingParameters.rawSize, mergedSize,");
+        int drop = s.indexOf("scamMergedDng = null;", check);
+        int merged = s.indexOf("if (scamMergedDng != null) {", check);
+        int reference = s.indexOf("imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output, processingParameters);", merged);
+        assertTrue(check > 0 && drop > check && merged > drop && reference > merged);
+        assertTrue(s.contains("return on && sensor != null && merged != null && merged.x > 0 && merged.y > 0 && (merged.x < sensor.x || merged.y < sensor.y);"));
+    }
+
     @Test public void theDownscaleStaysDownscaleOnly() throws Exception {
         String h = src("src/main/cpp/lanczos-downscale.h");
         assertTrue(h.contains("resample(source, sw, sh, srcStride, destination, dw, dh, dstStride, lobes, false);"));

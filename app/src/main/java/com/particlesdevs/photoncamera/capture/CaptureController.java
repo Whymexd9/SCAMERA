@@ -869,6 +869,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 final ExposureLimits limits = mExposureLimits;
                 if (limits != null) limits.observeManual(request, result);
                 paramController.onPreviewResult(result); // P82 shutter / ISO priority
+                observeParkedLens(result);
                 // P87: the ISO extremes the camera's own AE uses (the manual rulers' range)
                 if (iso != null) {
                     Integer aeMode = request.get(CaptureRequest.CONTROL_AE_MODE);
@@ -1002,7 +1003,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // expected: no overlay, no message, no module revert - the camera reopens with what the retry chose
             final boolean afterRetry = cameraDevice == mRetryDevice;
             mRetryDevice = null;
-            if (isCameraResumed && !afterRetry) recovering(true, "camera error " + error); // P240: every path below opens the camera again
+            // P263 (owner, 2026-10-19: «исправь ошибку код4 чтобы её не было ни на одном телефоне»; the OPPO showed «Сбой камеры
+            // (код 4), перезапуск» once after an update, the camera of the old process still being released): the first device /
+            // service error since the last configured session reopens the same camera and module quietly - no message, no module
+            // revert, no overlay for the first seconds. A second one before a session configures goes the old way (revert,
+            // recovery); scheduleRecovery says so only when it gives up.
+            final boolean quietError = !afterRetry && (error == ERROR_CAMERA_DEVICE || error == ERROR_CAMERA_SERVICE) && !mQuietErrorSpent;
+            if (quietError) mQuietErrorSpent = true;
+            if (isCameraResumed && !afterRetry && !quietError) recovering(true, "camera error " + error); // P240: every path below opens the camera again
             if (mVivoSdkRawSession != null && mVivoSdkRawDevice == null) mVivoSdkRawDevice = cameraDevice;
             rescueInFlightShot("camera error " + error);
             stopStallWatch();
@@ -1031,10 +1039,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 scheduleRecovery("Xiaomi logical camera error " + error);
                 return;
             }
+            if (quietError) {
+                Log.w("SCAM_CAPTURE", "camera " + physicalID + " error " + error + ": the first since its last session, reopened quietly");
+                mQuietUntilMs = android.os.SystemClock.elapsedRealtime() + QUIET_ERROR_MS;
+                scheduleRecovery("quiet onError " + error);
+                return;
+            }
             if (revertToLastGoodModule("error " + error)) return;
             if (revertToLastGoodCamera("error " + error)) return;
             if (error == ERROR_CAMERA_DEVICE || error == ERROR_CAMERA_SERVICE) {
-                showError(Lang.t("Сбой камеры (код ", "Camera failure (code ") + error + Lang.t("), перезапуск", "), restarting"));
+                // P263: the overlay «Камера перезапускается…» says it; a message only when the recovery gives up
                 scheduleRecovery("onError " + error);
             } else {
                 recovering(false, "camera error " + error + ": no recovery");
@@ -1187,8 +1201,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         mReverting = true;
         final String label = com.particlesdevs.photoncamera.settings.ModuleRegistry.label(current);
         Log.e(TAG, "module " + current + " (" + label + ") failed (" + reason + ") before its first frame: back to module " + good);
-        showError(Lang.t("Модуль " + label + " не запускается на этом телефоне (" + reason + "), возврат к предыдущему",
-                "Module " + label + " does not start on this phone (" + reason + "), back to the previous one"));
+        showError(Lang.t("Модуль " + label + " не запустился, возврат к предыдущему", "Module " + label + " did not start, back to the previous one"));
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             mReverting = false;
             com.particlesdevs.photoncamera.settings.ModuleRegistry.select(good);
@@ -1204,8 +1217,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (good == null || good.equals(current) || sGoodCameras.contains(current) || mReverting || !isCameraResumed) return false;
         mReverting = true;
         Log.e(TAG, "camera " + current + " failed (" + reason + ") and never ran in this session: back to camera " + good);
-        showError(Lang.t("Камера " + current + " не запускается (" + reason + "), возврат к камере " + good,
-                "Camera " + current + " does not start (" + reason + "), back to camera " + good));
+        showError(Lang.t("Камера " + current + " не запустилась, возврат к камере " + good, "Camera " + current + " did not start, back to camera " + good));
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             mReverting = false;
             PreferenceKeys.setCameraID(good);
@@ -1234,6 +1246,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** Until when the camera is being reopened quietly after a refused configuration (the HAL restarting: open retries). */
     private volatile long mQuietUntilMs;
     private static final long QUIET_REOPEN_MS = 12_000;
+    /** P263: the quiet window of a first device error: open retries after it show the overlay. */
+    private static final long QUIET_ERROR_MS = 6_000;
+    /** P263: a device / service error was answered quietly since the last configured session. */
+    private volatile boolean mQuietErrorSpent;
 
     private boolean quietRecovery() {
         return android.os.SystemClock.elapsedRealtime() < mQuietUntilMs;
@@ -1332,8 +1348,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         PreferenceKeys.setCameraID(fallback);
         ScameraApp.getSettings().mCameraID = fallback;
         awaitRequestedCamera(curID, requestedSlot, fallback, module);
-        showError(Lang.t("Камера " + logicalID + " недоступна, открыта основная камера " + fallback,
-                "Camera " + logicalID + " is not available, the main camera " + fallback + " is open"));
+        // P263 (owner: no camera errors on screen): the requested camera usually comes back at once (awaitRequestedCamera, OPPO
+        // X7U 2.8x 2026-10-19); the note shows only when the main camera is still standing in for it after 3 s
+        final String missing = logicalID;
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (isCameraResumed && fallback.equals(ScameraApp.getSettings().mCameraID))
+                showError(Lang.t("Камера " + missing + " недоступна, открыта основная камера " + fallback,
+                        "Camera " + missing + " is not available, the main camera " + fallback + " is open"));
+        }, 3000);
         logicalID = fallback;
         physicalID = fallback;
         return mCameraCharacteristicsMap.get(fallback);
@@ -3166,6 +3188,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mForcedStab = photoMode && !isBurstSession && !mIsRecordingVideo && !sdkFullRes && ForcedStabilization.active();
             mForcedStabEis = mForcedStab && ForcedStabilization.eisKey() && !PlainPreviewCameras.contains(physicalID);
             mPayloadFrames = 0;
+            mParkedLens.reset(); // P252
+            mParkedFocus = -1f;
             mPayloadBad = false;
             mPreviewLayouts.clear();
             mLayoutTs = Long.MIN_VALUE;
@@ -3176,6 +3200,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P223: «ISP-превью в FULLRES и ISZ» off - such a session shows the RAW viewfinder, the only stream it repeats
             mIspPreviewOff = photoMode && !PreferenceKeys.mosaicIspPreview() && (mFullResSession || IszCapturePolicy.mosaicModule(
                     com.particlesdevs.photoncamera.settings.ModuleRegistry.active()));
+            // P252 A/B (scam_dev.txt "isp_preview_off_always 1"): every photo session repeats the RAW stream only (the ISP preview in
+            // the session, not in the request) - on the OPPO X7U that picks the HAL's ZSL use case; does its AF focus at night?
+            if (photoMode && PreferenceKeys.scamDevSwitch("isp_preview_off_always", false)) mIspPreviewOff = true;
             mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected && (!sdkFullRes || nativeVivoFullRes())
                     && isRawFormat(mTargetFormat) && (nativeIsz || nativeVivoFullRes() || PreferenceKeys.isLiveViewfinderRawEnabled() || mFullResSession
                     || mIspPreviewOff);
@@ -3306,6 +3333,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         scheduleProgramWarmUp(); // P237
                         recovering(false, "session configured"); // P240
                         mRetryDevice = null;
+                        mQuietErrorSpent = false; // P263: the next device error is quiet again
                         experimentalRouteNotice(); // P240
                         com.particlesdevs.photoncamera.util.ThermalPolicy.watch(ScameraApp.getAppContext()); // P238
                         mPreviewCaptureResult = null;
@@ -3931,7 +3959,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     captureStillPicture();
                 }
             }, 1000);
-            if (mCameraAfModes != null && mCameraAfModes.length > 1) lockFocus();
+            // a focus held by hand or by the P252 fallback (AF off) has nothing to lock: no wait for the lock's 1 s timeout
+            if (mCameraAfModes != null && mCameraAfModes.length > 1 && !afOffInPreview()) lockFocus();
             else {
                 try {
                     mState = STATE_WAITING_NON_PRECAPTURE;
@@ -4499,6 +4528,63 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
                 com.particlesdevs.photoncamera.processing.RawLevels.current(c, result);
         RawLevel.observe(img, !mPayloadBad && mPreviewLayouts.isEmpty(), levels.meanBlack(), levels.white);
+    }
+
+    /** P252: the lens the HAL's AF left at its rest stop (ParkedLens) and the distance the fallback holds (-1: none). */
+    private final ParkedLens mParkedLens = new ParkedLens();
+    private volatile float mParkedFocus = -1f;
+
+    /** The repeating request runs AF off (a hand-set focus or the P252 fallback). */
+    private boolean afOffInPreview() {
+        final CaptureRequest.Builder b = mPreviewRequestBuilder;
+        final Integer af = b == null ? null : b.get(CaptureRequest.CONTROL_AF_MODE);
+        return af != null && af == CaptureRequest.CONTROL_AF_MODE_OFF;
+    }
+
+    /** P252: the AF result of a preview frame through ParkedLens; takes the lens to the hyperfocal distance or gives it back. */
+    private void observeParkedLens(CaptureResult result) {
+        if (paramController.FOCUS >= 0 || mIsRecordingVideo) return; // a hand-set focus, the video: theirs
+        final CameraCharacteristics c = mCameraCharacteristics;
+        if (c == null) return;
+        final Float min = c.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
+        final Long exposureNs = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+        final Long ts = result.get(CaptureResult.SENSOR_TIMESTAMP);
+        final double exposure = exposureNs == null || iso == null ? 0 : exposureNs / 1e9 * iso;
+        final int act = mParkedLens.observe(ts != null ? ts : android.os.SystemClock.elapsedRealtimeNanos(),
+                result.get(CaptureResult.CONTROL_AF_MODE), result.get(CaptureResult.LENS_FOCUS_DISTANCE),
+                result.get(CaptureResult.LENS_STATE), min == null ? 0f : min, exposure);
+        if (act == ParkedLens.NOTHING) return;
+        if (act == ParkedLens.YIELD) { mParkedFocus = -1f; return; }
+        final Handler handler = mBackgroundHandler;
+        final int generation = mSessionGeneration.get();
+        if (act == ParkedLens.TAKE) {
+            final float[] f = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+            final float[] n = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES);
+            final android.util.SizeF size = c.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
+            final Size pixels = c.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE);
+            final float pitch = size == null || pixels == null || pixels.getWidth() <= 0 ? 0f : size.getWidth() / pixels.getWidth();
+            final float target = ParkedLens.hyperfocalDiopters(f == null || f.length == 0 ? 0f : f[0], n == null || n.length == 0 ? 0f : n[0],
+                    pitch, min == null ? 0f : min);
+            mParkedFocus = target;
+            Log.w("SCAM_CAPTURE", String.format(java.util.Locale.ROOT, "camera %s: the HAL's AF left the lens at %s dpt beyond its %.2f dpt"
+                    + " near limit (exposure x ISO %.1f): hyperfocal %.3f dpt until the scene gets brighter (P252)", physicalID,
+                    result.get(CaptureResult.LENS_FOCUS_DISTANCE), min, exposure, target));
+            if (handler != null) handler.post(() -> {
+                if (generation != mSessionGeneration.get() || mPreviewRequestBuilder == null || mParkedFocus < 0f) return;
+                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+                mPreviewRequestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, mParkedFocus);
+                rebuildPreviewBuilder();
+            });
+        } else {
+            mParkedFocus = -1f;
+            Log.i("SCAM_CAPTURE", "camera " + physicalID + ": the scene got brighter, the HAL's AF takes the lens again (P252)");
+            if (handler != null) handler.post(() -> {
+                if (generation != mSessionGeneration.get() || mPreviewRequestBuilder == null || mParkedFocus >= 0f) return;
+                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, PreferenceKeys.getAfMode());
+                rebuildPreviewBuilder();
+            });
+        }
     }
 
     /** P110: the ISO the HAL honours for AE-off requests of this camera and RAW size (P27), MAX_VALUE while none is learned. */
@@ -7185,6 +7271,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             rebuildPreviewBuilder();*/
 
             paramController.applyWhiteBalance(captureBuilder);
+            // P252: the viewfinder's hyperfocal fallback holds for the shot (the still template carries the HAL's AF)
+            final float parked = mParkedFocus;
+            if (parked >= 0f && afOffInPreview()) {
+                captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+                captureBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, parked);
+            }
             IsoExpoSelector.useTripod = ScameraApp.getGyro().getTripod();
             if(scamHybridShot) {
                 // SCAM Hybrid: N from the ring, then the ultrashort (Bento) and the bracketed frames (Shasta) of the plan.

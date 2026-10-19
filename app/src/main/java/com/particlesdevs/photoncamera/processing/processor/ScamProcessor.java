@@ -637,6 +637,20 @@ public class ScamProcessor extends ProcessorBase {
                     Log.w(TAG, "DNG colour: the JPEG's matrices are not usable, the camera's profile is written");
             }
             try {
+            // P258 (owner, 2026-10-19: «Наш рав проявляется нормально в нашем приложение Scam Remosaic, нам нужно это исправить
+            // чтобы при съемке без ремозаика мы могли применить нейроремозаик в нём»): without our remosaic a Quad / Tetra burst's
+            // merge is the binned Bayer W/b x H/b - a plain Bayer that Scam Remosaic just demosaics. Such a shot's DNG is the
+            // reference frame as the sensor gave it (the full mosaic, the one-frame noise profile): Scam Remosaic's single-DNG
+            // input for its neural remosaic. scam_dev.txt "dng_mosaic_as_captured 0": the binned merge as before.
+            final Point mergedSize = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDngSize;
+            if (scamMergedDng != null && mosaicAsCaptured(processingParameters.rawSize, mergedSize,
+                    PreferenceKeys.scamDevSwitch("dng_mosaic_as_captured", true))) {
+                Log.i("SCAM_HDR", "DNG: the reference frame's mosaic as captured " + processingParameters.rawSize.x + "x"
+                        + processingParameters.rawSize.y + " (no remosaic: for the neural remosaic of Scam Remosaic; the merge was the binned "
+                        + mergedSize.x + "x" + mergedSize.y + ")");
+                Allocator.free(scamMergedDng);
+                scamMergedDng = null;
+            }
             if (scamMergedDng != null) {
                 // The whole burst's merge (the N frames, the bracketed and the ultrashort ones; nothing else, no denoise),
                 // P165: 16 bit over its headroom, BaselineExposure log2(headroom) keeps its brightness.
@@ -1046,6 +1060,14 @@ public class ScamProcessor extends ProcessorBase {
         p.customNeutral = neutral;
         p.ownNeutral = true;
         p.ReCalcColor(true, meta);
+    }
+
+    /**
+     * P258: the merged DNG is the binned Bayer of a mosaic shot without our remosaic (smaller than the sensor grid), and the
+     * switch asks for the mosaic as captured instead.
+     */
+    static boolean mosaicAsCaptured(@androidx.annotation.Nullable Point sensor, @androidx.annotation.Nullable Point merged, boolean on) {
+        return on && sensor != null && merged != null && merged.x > 0 && merged.y > 0 && (merged.x < sensor.x || merged.y < sensor.y);
     }
 
     /**

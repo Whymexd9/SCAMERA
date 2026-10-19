@@ -62,15 +62,29 @@ public class PlainPreviewCamerasTest {
                 "src/main/java/com/particlesdevs/photoncamera/capture/CaptureController.java").toPath()), StandardCharsets.UTF_8);
     }
 
+    /**
+     * P263 (owner, 2026-10-19: «исправь ошибку код4 чтобы её не было ни на одном телефоне»): the first device / service error
+     * since the last configured session reopens the camera quietly (no message, no revert); no message carries the HAL's code.
+     */
+    @Test public void theFirstDeviceErrorIsQuietAndNoMessageShowsTheCode() throws Exception {
+        String s = src();
+        int onError = s.indexOf("public void onError(@NonNull CameraDevice cameraDevice, int error)");
+        int quiet = s.indexOf("if (quietError) {", onError);
+        int revert = s.indexOf("revertToLastGoodModule(\"error \"", onError);
+        assertTrue(quiet > onError && quiet < revert);
+        assertTrue("spent once per configured session", s.contains("mQuietErrorSpent = false; // P263"));
+        assertTrue(!s.contains("Сбой камеры (код ") && !s.contains("не запускается на этом телефоне"));
+    }
+
     @Test public void theErrorAfterARefusedConfigurationIsQuiet() throws Exception {
         String s = src();
         int onError = s.indexOf("public void onError(@NonNull CameraDevice cameraDevice, int error)");
         assertTrue(onError > 0);
         int quiet = s.indexOf("if (afterRetry) {", onError);
         int revert = s.indexOf("revertToLastGoodModule(\"error \"", onError);
-        int message = s.indexOf("Сбой камеры (код ", onError);
-        assertTrue("the quiet reopen comes before the module revert and the message", quiet > 0 && quiet < revert && quiet < message);
-        assertTrue("no overlay after a refused configuration", s.contains("if (isCameraResumed && !afterRetry) recovering(true"));
+        int recovery = s.indexOf("scheduleRecovery(\"onError \" + error);", onError);
+        assertTrue("the quiet reopen comes before the module revert and the recovery", quiet > 0 && quiet < revert && quiet < recovery);
+        assertTrue("no overlay after a refused configuration", s.contains("if (isCameraResumed && !afterRetry && !quietError) recovering(true"));
         assertTrue("onError waits for the session's own callback", s.indexOf("mConfiguringDevice == cameraDevice", onError) > onError);
         int failed = s.indexOf("private void configureFailed(");
         int mark = s.indexOf("mRetryDevice = sessionDevice;", failed);
