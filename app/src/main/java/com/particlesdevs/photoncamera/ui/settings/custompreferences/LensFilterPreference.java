@@ -285,9 +285,8 @@ public class LensFilterPreference extends Preference {
         int gen = ++generation;
         final int s = sample;
         final SharedPreferences prefs = getSharedPreferences();
-        String[] all = new String[LensFilters.IDS.length + 1];
-        all[0] = "";
-        System.arraycopy(LensFilters.IDS, 0, all, 1, LensFilters.IDS.length);
+        // P279: the user's order (hold and drag a card), shared with the viewfinder's tray
+        final java.util.List<String> all = com.particlesdevs.photoncamera.settings.ItemOrder.filters();
         for (String id : all) {
             boolean on = id.equals(chosen);
             LinearLayout card = new LinearLayout(c);
@@ -321,6 +320,10 @@ public class LensFilterPreference extends Preference {
             card.setSelected(on);
             card.setContentDescription(LensFilters.name(c, id) + ": " + LensFilters.hint(c, id));
             card.setOnClickListener(v -> choose(id));
+            com.particlesdevs.photoncamera.ui.settings.StripReorder.attach(card, strip.getChildCount(), (from, to) -> {
+                com.particlesdevs.photoncamera.settings.ItemOrder.store(com.particlesdevs.photoncamera.settings.ItemOrder.FILTER_KEY, all, from, to);
+                fillStrip();
+            });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(cardW, ViewGroup.LayoutParams.MATCH_PARENT);
             lp.setMarginEnd(UiTokens.dp(c, 8));
             strip.addView(card, lp);

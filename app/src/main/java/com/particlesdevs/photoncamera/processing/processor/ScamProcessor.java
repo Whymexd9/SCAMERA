@@ -783,6 +783,8 @@ public class ScamProcessor extends ProcessorBase {
         }
         if (hybridShot) com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.snapshot(processingParameters, String.valueOf(processingParameters.physicalID)); // P277
         PostPipeline pipeline = new PostPipeline();
+        // P277: a lab shot's pipeline records the whole frame's statistics (the lab's fragments use them)
+        if (hybridShot && com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.recording()) pipeline.record = new com.particlesdevs.photoncamera.processing.opengl.postpipeline.LabFrame();
         // «HEIC 10 бит»: the final image comes out RGBA_1010102 for the HEVC Main10 HEIC; every 8-bit file of the shot gets an
         // 8-bit copy at its encode (PhotoOutput). The same for a 10 / 12-bit or lossless AVIF, which takes the 10 bits as they
         // are. Off: the pipeline output is the ARGB_8888 bitmap as before.
@@ -804,7 +806,7 @@ public class ScamProcessor extends ProcessorBase {
             restorePriority(priorityBefore);
         }
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_done");
-        com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.preview(img); // P277: the lab shot's photo (before the zoom / ISZ crops)
+        com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.preview(img, pipeline.record); // P277: the lab shot's photo (before the zoom / ISZ crops)
         stage(0.85f); // P158: processed
         // Ultra HDR (settings.ultraHdr is on only when the shot writes a JPEG) and the HDR HEIC / AVIF (P46, settings.hdrOutput)
         // take the same gain map (settings.gainMapPass). Ultra HDR: the gain-map pass runs on the bitmap exactly

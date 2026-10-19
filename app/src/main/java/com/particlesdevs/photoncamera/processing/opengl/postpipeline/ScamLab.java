@@ -39,7 +39,7 @@ public final class ScamLab {
     private ScamLab() {}
 
     public static final String PREF = "pref_scam_lab_keep";
-    public static final String DIR = "Lab", BURST = "burst.nch", META = "meta.json", PREVIEW = "preview.jpg";
+    public static final String DIR = "Lab", BURST = "burst.nch", META = "meta.json", PREVIEW = "preview.jpg", FRAME = "frame.json";
     /** A lab run and a shot's processing never overlap: one GL texture table, the worker's statics, one report. */
     public static final ReentrantLock LOCK = new ReentrantLock();
 
@@ -86,6 +86,33 @@ public final class ScamLab {
         final File dir = newFolder(root(), new Date());
         if (dir.mkdirs()) shotDir = dir;
         else Log.w("SCAM_LAB", "lab folder not made: " + dir);
+    }
+
+    /** ScamProcessor: this shot is a lab shot with its metadata written (its pipeline records the whole frame's statistics). */
+    public static boolean recording() {
+        return shotDir != null && shotMeta;
+    }
+
+    /** The whole frame's statistics of a lab folder ({@link #FRAME}), null when the shot has none (taken before them). */
+    @Nullable
+    public static LabFrame frame(File dir) {
+        final File f = new File(dir, FRAME);
+        if (!f.isFile()) return null;
+        try {
+            return LabFrame.fromJson(new JSONObject(new String(java.nio.file.Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8)));
+        } catch (Exception e) {
+            Log.w("SCAM_LAB", "lab frame statistics not read: " + e);
+            return null;
+        }
+    }
+
+    static void writeFrame(File dir, LabFrame frame) {
+        if (dir == null || frame == null || !frame.usable()) return;
+        try {
+            write(new File(dir, FRAME), frame.toJson().toString().getBytes(StandardCharsets.UTF_8));
+        } catch (Exception | OutOfMemoryError e) {
+            Log.w("SCAM_LAB", "lab frame statistics not written: " + e);
+        }
     }
 
     /** ScamNeuralClient: where the worker keeps this shot's burst (null: not a lab shot). */
@@ -139,9 +166,10 @@ public final class ScamLab {
      * ScamProcessor, right after the post pipeline (before the digital zoom and ISZ crops): the photo, at most 1600 px a side,
      * for the list and the lab's fragment, and how it lies over the sensor frame (meta "orient", ScamLabOrient).
      */
-    public static void preview(Bitmap img) {
+    public static void preview(Bitmap img, @Nullable LabFrame record) {
         final File dir = shotDir;
         if (dir == null || img == null || !shotMeta) return;
+        writeFrame(dir, record);
         final float[] thumb = shotThumb;
         shotThumb = null;
         if (thumb != null) try {
@@ -220,7 +248,7 @@ public final class ScamLab {
     /** A lab folder and the files the lab made in it (nothing else, nothing outside Lab). */
     public static boolean remove(File dir) {
         if (dir == null || !root().equals(dir.getParentFile())) return false;
-        for (String name : new String[]{BURST, META, PREVIEW}) new File(dir, name).delete();
+        for (String name : new String[]{BURST, META, PREVIEW, FRAME}) new File(dir, name).delete();
         return dir.delete();
     }
 

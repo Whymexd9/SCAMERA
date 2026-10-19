@@ -187,13 +187,39 @@ public final class ArkStats extends Node {
             settings.noiseS = pipeline.noiseS;
             settings.noiseO = pipeline.noiseO;
             // P212h (A5 = M5): the gain clamp sees the merged image's noise (N_eff of the merge's frame map), the denoisers keep theirs
-            final String clamp = ArkNoiseClamp.apply(settings, pipeline.mParameters.fullResRequested > 0, legacy,
-                    ScamHybridBurst.lastEffectiveFrames, WorkingTexture.mSize.x, WorkingTexture.mSize.y,
-                    ScamHybridBurst.lastEffectiveMedian, ScamHybridBurst.lastNormals);
+            // P277: a lab fragment takes the whole frame's scale (LabFrame), a lab shot records it
+            final LabFrame frozen = pipeline.frozen, record = pipeline.record;
+            final double noiseS0 = settings.noiseS, noiseO0 = settings.noiseO;
+            final String clamp;
+            if (frozen != null && Float.isFinite(frozen.noiseScale)) {
+                settings.noiseS *= frozen.noiseScale;
+                settings.noiseO *= frozen.noiseScale;
+                clamp = "AE noise clamp: the whole frame's scale x" + frozen.noiseScale + " (lab fragment)";
+            } else {
+                clamp = ArkNoiseClamp.apply(settings, pipeline.mParameters.fullResRequested > 0, legacy,
+                        ScamHybridBurst.lastEffectiveFrames, WorkingTexture.mSize.x, WorkingTexture.mSize.y,
+                        ScamHybridBurst.lastEffectiveMedian, ScamHybridBurst.lastNormals);
+            }
             if (clamp != null) Log.i("SCAM_PIPELINE", clamp);
+            if (record != null) {
+                record.noiseScale = (float) (noiseS0 > 0 ? settings.noiseS / noiseS0 : noiseO0 > 0 ? settings.noiseO / noiseO0 : 1.0);
+                record.lowWidth = lowSize.x;
+            }
             settings.sat *= ArkTone.ccmSatComp(pipeline.mParameters);
-            ArkAe.Stats gpu = legacy || ScamDiagnostics.active() ? null : ArkAeGpu.stats(glProg, st.low, settings.metering);
+            final ArkAe.Stats fixed = frozen == null ? null : frozen.stats(settings.metering);
+            ArkAe.Stats gpu = fixed != null ? LabFrame.copy(fixed)
+                    : legacy || ScamDiagnostics.active() ? null : ArkAeGpu.stats(glProg, st.low, settings.metering);
             glProg.closed = true;
+            if (fixed != null) Log.i("SCAM_PIPELINE", "ARK stats: the whole frame's (lab fragment, metering " + settings.metering + ")");
+            if (record != null && fixed == null && gpu != null && settings.metering >= 0 && settings.metering < LabFrame.MODES) {
+                // every metering mode, so a lab side with another metering decides from the whole frame too (three small passes)
+                record.stats[settings.metering] = gpu;
+                for (int m = 0; m < LabFrame.MODES; m++) {
+                    if (m == settings.metering) continue;
+                    record.stats[m] = ArkAeGpu.stats(glProg, st.low, m);
+                    glProg.closed = true;
+                }
+            }
             if (gpu != null) {
                 final boolean early = earlySharpen != null && earlySharpen.runEarly(pipeline, WorkingTexture);
                 ArkAe.Result r = ArkAe.finish(gpu, settings, iso, maxIso);

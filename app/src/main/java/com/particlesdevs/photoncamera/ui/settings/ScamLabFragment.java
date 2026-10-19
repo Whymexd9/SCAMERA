@@ -74,10 +74,10 @@ public class ScamLabFragment extends ModuleConceptFragment {
     private static Bitmap shotPhoto;
     private static String shotPhotoPath;
 
-    private static String runKey;
-    private static ScamLabRun.Result runResult;
-    private static String runError, runStage;
-    private static Thread runThread;
+    /** The comparison being rendered, the one asked for meanwhile (rendered next), and the last one rendered. */
+    private static Job running, next, shown;
+    private static ScamLabRun.Result shownResult;
+    private static volatile String runError, runStage;
     private int showMode;
     private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -275,7 +275,6 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 final int[] a = aligned(moved, s);
                 crops.put(id, a);
                 ScamLabRun.forget();
-                runKey = null;
             });
             body.addView(pick, space(-1, -2, 8));
             pick.setOnTouchListener((v, e) -> {
@@ -285,10 +284,12 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 return true;
             });
         }
+        // owner, 2026-10-19: «дай возможность ещё большего кропа, добавь 4ый вариант»
+        caption(Lang.t(getContext(), "Область сравнения", "Area compared"));
         LinearLayout r = row();
-        String[] labels = {Lang.t(getContext(), "Фрагмент 1/9", "Fragment 1/9"), Lang.t(getContext(), "Фрагмент 1/4", "Fragment 1/4"), Lang.t(getContext(), "Весь кадр", "Whole frame")};
-        int[] values = {3, 2, 1};
-        for (int i = 0; i < 3; i++) {
+        String[] labels = {"1/16", "1/9", "1/4", Lang.t(getContext(), "Весь кадр", "Whole frame")};
+        int[] values = {4, 3, 2, 1};
+        for (int i = 0; i < values.length; i++) {
             final int v = values[i];
             TextView b = button(labels[i], share == v, () -> {
                 shares.put(id, v);
@@ -298,18 +299,17 @@ public class ScamLabFragment extends ModuleConceptFragment {
                     crops.put(id, aligned(new int[]{cx - s.width / v / 2, cy - s.height / v / 2, s.width / v, s.height / v}, s));
                 }
                 ScamLabRun.forget();
-                runKey = null;
                 render();
             });
             b.setTag("lab_share_" + v);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
-            if (i < 2) lp.rightMargin = dp(8);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, v == 1 ? 1.6f : 1f);
+            if (i < values.length - 1) lp.rightMargin = dp(8);
             r.addView(b, lp);
         }
-        body.addView(r, space(-1, -2, 12));
+        body.addView(r, space(-1, -2, 8));
         note(share == 1 ? Lang.t(getContext(), "Весь кадр склеивается так же долго, как при съёмке (50 Мп — минуты на каждую сторону).", "The whole frame merges as long as at the shot (50 MP: minutes a side).")
-                : Lang.t(getContext(), "Нажмите на фото, чтобы передвинуть фрагмент. Экспозиция и тон считаются по фрагменту, поэтому яркость может немного отличаться от снимка.",
-                "Tap the photo to move the fragment. Exposure and tone are measured on the fragment, so the brightness can differ a little from the shot."));
+                : Lang.t(getContext(), "Нажмите на фото, чтобы передвинуть фрагмент. Экспозиция, тон и засветы считаются по всему кадру, как на снимке; для снимков без сохранённой статистики она считается один раз при первом сравнении.",
+                "Tap the photo to move the fragment. Exposure, tone and highlights are measured on the whole frame, as in the shot; a shot without saved statistics measures them once at its first comparison."));
         caption(Lang.t(getContext(), "Что сравнить", "What to compare"));
         final PreferenceScreen all = tree();
         for (String key : GROUPS) {
@@ -382,8 +382,141 @@ public class ScamLabFragment extends ModuleConceptFragment {
         }
     }
 
+    // ───── What a setting is in the lab (Spec) ─────
+
+    /** A tone curve, a LUT, a lens filter: settings of their own kind, compared too (owner, 2026-10-19). */
+    static final String CURVE_ON = "pref_scam_hybrid_ark_curve_on",
+            CURVE = com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.KEY,
+            LUT = com.particlesdevs.photoncamera.processing.color.FilmLut.KEY,
+            LUT_STRENGTH = com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY,
+            FILTER = com.particlesdevs.photoncamera.processing.color.LensFilters.KEY,
+            FILTER_STRENGTH = com.particlesdevs.photoncamera.processing.color.LensFilters.STRENGTH_KEY;
+    /** The settings shown with a setting on its page (each with its own A and B): the curve and its switch, a LUT and its strength. */
+    static final Map<String, String[]> LINKS = new HashMap<>();
+    static {
+        LINKS.put(CURVE_ON, new String[]{CURVE});
+        LINKS.put(CURVE, new String[]{CURVE_ON});
+        LINKS.put(LUT, new String[]{LUT_STRENGTH});
+        LINKS.put(LUT_STRENGTH, new String[]{LUT});
+        LINKS.put(FILTER, new String[]{FILTER_STRENGTH});
+    }
+    /** A value of a {@link Spec#CUSTOM} setting: the shot's own, or the one in the settings now (edited on its settings page). */
+    static final String AS_SHOT = "\u0001shot", IN_SETTINGS = "\u0001now";
+
+    static final class Spec {
+        static final int SWITCH = 0, LIST = 1, SLIDER = 2, CUSTOM = 3;
+        final String key;
+        final int kind;
+        String title = "", summary;
+        CharSequence[] labels;
+        String[] values;
+        float min, max, step = 1f;
+        boolean decimal;
+        Object def;
+        /** The settings page of a CUSTOM setting (its editor). */
+        String page;
+
+        Spec(String key, int kind) {
+            this.key = key;
+            this.kind = kind;
+        }
+
+        String number(float v) {
+            if (!decimal) return String.valueOf(Math.round(v));
+            final int decimals = Math.max(0, Math.min(4, (int) Math.ceil(Math.log10(Math.max(1, 1f / step)))));
+            return String.format(Locale.ROOT, "%." + decimals + "f", v);
+        }
+    }
+
     static boolean comparable(Preference p) {
-        return p.getKey() != null && (p instanceof TwoStatePreference || p instanceof ListPreference || p instanceof UniversalSeekBarPreference);
+        if (p.getKey() == null) return false;
+        if (p instanceof TwoStatePreference || p instanceof ListPreference || p instanceof UniversalSeekBarPreference) return true;
+        return CURVE.equals(p.getKey()) || LUT.equals(p.getKey()) || FILTER.equals(p.getKey());
+    }
+
+    @Nullable
+    Spec spec(String key) {
+        final Preference p = tree().findPreference(key);
+        final Context c = requireContext();
+        Spec s;
+        if (LUT.equals(key)) {
+            s = new Spec(key, Spec.LIST);
+            s.values = com.particlesdevs.photoncamera.settings.ItemOrder.luts(c).toArray(new String[0]);
+            s.labels = new CharSequence[s.values.length];
+            for (int i = 0; i < s.values.length; i++)
+                s.labels[i] = s.values[i].isEmpty() ? Lang.t(c, "Без LUT", "No LUT")
+                        : com.particlesdevs.photoncamera.processing.color.FilmLooks.isBuiltIn(s.values[i])
+                        ? com.particlesdevs.photoncamera.processing.color.FilmLooks.label(c, s.values[i]) : s.values[i];
+            s.def = "";
+        } else if (FILTER.equals(key)) {
+            s = new Spec(key, Spec.LIST);
+            s.values = com.particlesdevs.photoncamera.settings.ItemOrder.filters().toArray(new String[0]);
+            s.labels = new CharSequence[s.values.length];
+            for (int i = 0; i < s.values.length; i++)
+                s.labels[i] = s.values[i].isEmpty() ? Lang.t(c, "Без фильтра", "No filter")
+                        : com.particlesdevs.photoncamera.processing.color.LensFilters.name(c, s.values[i]);
+            s.def = "";
+        } else if (FILTER_STRENGTH.equals(key)) {
+            s = new Spec(key, Spec.SLIDER);
+            s.title = Lang.t(c, "Сила фильтра", "Filter strength");
+            s.min = 0;
+            s.max = 100;
+            s.def = "50";
+            return s;
+        } else if (CURVE.equals(key)) {
+            s = new Spec(key, Spec.CUSTOM);
+            s.page = "scam_hybrid_ark_curves_screen";
+            s.def = AS_SHOT;
+        } else if (p instanceof TwoStatePreference) {
+            s = new Spec(key, Spec.SWITCH);
+            s.def = ((TwoStatePreference) p).isChecked();
+        } else if (p instanceof ListPreference) {
+            s = new Spec(key, Spec.LIST);
+            final ListPreference l = (ListPreference) p;
+            s.labels = l.getEntries() == null ? new CharSequence[0] : l.getEntries();
+            final CharSequence[] v = l.getEntryValues() == null ? new CharSequence[0] : l.getEntryValues();
+            s.values = new String[v.length];
+            for (int i = 0; i < v.length; i++) s.values[i] = v[i].toString();
+            s.def = l.getValue();
+        } else if (p instanceof UniversalSeekBarPreference) {
+            final UniversalSeekBarPreference u = (UniversalSeekBarPreference) p;
+            s = new Spec(key, Spec.SLIDER);
+            s.min = u.minimum();
+            s.max = u.maximum();
+            s.decimal = u.decimal();
+            s.step = u.decimal() ? 1f / Math.max(1, u.stepPerUnit()) : 1f;
+            s.def = s.number(u.defaultNumber());
+        } else return null;
+        if (p != null) {
+            s.title = String.valueOf(p.getTitle());
+            s.summary = p.getSummary() == null ? null : String.valueOf(p.getSummary());
+        }
+        return s;
+    }
+
+    /** The setting's value at the shot (its default when it was not set; a CUSTOM one: {@link #AS_SHOT}). */
+    static Object shotValue(Spec spec, ScamLabRun.Shot s) {
+        if (spec.kind == Spec.CUSTOM) return AS_SHOT;
+        final Object v = s.pref(spec.key);
+        if (v == null) return spec.def;
+        if (spec.kind == Spec.SWITCH && !(v instanceof Boolean)) return "1".equals(String.valueOf(v)) || "true".equalsIgnoreCase(String.valueOf(v));
+        return v;
+    }
+
+    /** A value as the settings show it. */
+    String label(Spec spec, Object v) {
+        if (v == null) return Lang.t(getContext(), "по умолчанию", "default");
+        switch (spec.kind) {
+            case Spec.SWITCH:
+                return (v instanceof Boolean ? (Boolean) v : "1".equals(v.toString())) ? Lang.t(getContext(), "Вкл", "On") : Lang.t(getContext(), "Выкл", "Off");
+            case Spec.LIST:
+                for (int i = 0; i < spec.values.length; i++) if (spec.values[i].equals(v.toString())) return String.valueOf(spec.labels[i]);
+                return v.toString();
+            case Spec.CUSTOM:
+                return AS_SHOT.equals(v) ? Lang.t(getContext(), "как снято", "as shot") : Lang.t(getContext(), "как сейчас в настройках", "as in the settings now");
+            default:
+                return v.toString();
+        }
     }
 
     private View settingRow(Preference p, ScamLabRun.Shot s) {
@@ -401,137 +534,145 @@ public class ScamLabFragment extends ModuleConceptFragment {
             sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
             labels.addView(sub, space(-1, -2, 6));
         }
-        String shotValue = Lang.t(getContext(), "При съёмке: ", "At the shot: ") + label(p, shotValue(p, s));
-        if (AT_SHOT.contains(p.getKey())) shotValue += Lang.t(getContext(), " · задаётся при съёмке", " · fixed at the shot");
-        TextView v = text(shotValue, 12, accent);
-        labels.addView(v, space(-1, -2, 6));
+        final Spec spec = spec(p.getKey());
+        if (spec != null && spec.kind != Spec.CUSTOM) {
+            String shotValue = Lang.t(getContext(), "При съёмке: ", "At the shot: ") + label(spec, shotValue(spec, s));
+            if (AT_SHOT.contains(p.getKey())) shotValue += Lang.t(getContext(), " · задаётся при съёмке", " · fixed at the shot");
+            labels.addView(text(shotValue, 12, accent), space(-1, -2, 6));
+        }
         r.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
         r.addView(text("›", 25, MUTED));
         r.setTag("lab_setting_" + p.getKey());
         r.setFocusable(true);
-        r.setOnClickListener(x -> pickValue(p, s, null));
+        r.setOnClickListener(x -> openResult(p.getKey(), s));
         return r;
     }
 
-    /** The setting's value at the shot (its default when it was not set). */
-    static Object shotValue(Preference p, ScamLabRun.Shot s) {
-        final Object v = s.pref(p.getKey());
-        return v != null ? v : defaultValue(p);
-    }
+    // ───── The comparison: A and B, each setting of the page with its own controls ─────
 
-    static Object defaultValue(Preference p) {
-        if (p instanceof TwoStatePreference) return ((TwoStatePreference) p).isChecked();
-        if (p instanceof ListPreference) return ((ListPreference) p).getValue();
-        if (p instanceof UniversalSeekBarPreference) return number((UniversalSeekBarPreference) p, ((UniversalSeekBarPreference) p).defaultNumber());
-        return null;
-    }
+    /** A comparison: the shot, the fragment and the settings of each side. */
+    private static final class Job {
+        final String id, page;
+        final ScamLabRun.Shot shot;
+        @Nullable final int[] crop;
+        final java.util.TreeMap<String, Object> a, b;
 
-    static String number(UniversalSeekBarPreference p, float v) {
-        if (!p.decimal()) return String.valueOf(Math.round(v));
-        final int decimals = Math.max(0, Math.min(4, (int) Math.ceil(Math.log10(Math.max(1, p.stepPerUnit())))));
-        return String.format(Locale.ROOT, "%." + decimals + "f", v);
-    }
-
-    /** A value as the settings show it. */
-    String label(Preference p, Object v) {
-        if (v == null) return Lang.t(getContext(), "по умолчанию", "default");
-        if (p instanceof TwoStatePreference) {
-            final boolean on = v instanceof Boolean ? (Boolean) v : "1".equals(v.toString()) || "true".equalsIgnoreCase(v.toString());
-            return on ? Lang.t(getContext(), "Вкл", "On") : Lang.t(getContext(), "Выкл", "Off");
+        Job(ScamLabRun.Shot shot, @Nullable int[] crop, String key, java.util.TreeMap<String, Object> a, java.util.TreeMap<String, Object> b) {
+            this.shot = shot;
+            this.crop = crop;
+            this.a = a;
+            this.b = b;
+            page = shot.dir.getAbsolutePath() + "|" + (crop == null ? "whole" : java.util.Arrays.toString(crop)) + "|" + key;
+            id = page + "|" + a + "|" + b;
         }
-        if (p instanceof ListPreference) {
-            final ListPreference l = (ListPreference) p;
-            final int i = l.findIndexOfValue(v.toString());
-            return i >= 0 && l.getEntries() != null ? String.valueOf(l.getEntries()[i]) : v.toString();
-        }
-        return v.toString();
     }
 
-    /** The sheet of the value B; {@code onPicked} null: open its result page. */
-    private void pickValue(Preference p, ScamLabRun.Shot s, @Nullable java.util.function.Consumer<Object> onPicked) {
-        final java.util.function.Consumer<Object> done = onPicked != null ? onPicked : v -> openResult(p, v);
-        final Object at = shotValue(p, s);
-        if (p instanceof TwoStatePreference) {
-            final boolean on = at instanceof Boolean ? (Boolean) at : "1".equals(String.valueOf(at));
-            done.accept(!on);
-            return;
-        }
-        if (p instanceof ListPreference) {
-            final ListPreference l = (ListPreference) p;
-            final CharSequence[] entries = l.getEntries(), values = l.getEntryValues();
-            if (entries == null || values == null) return;
-            SettingsStyle.optionSheet(requireContext(), p.getTitle(), entries, values, l.findIndexOfValue(String.valueOf(at)), accent,
-                    i -> done.accept(values[i].toString())).show();
-            return;
-        }
-        final UniversalSeekBarPreference u = (UniversalSeekBarPreference) p;
-        LinearLayout sheetBody = SettingsStyle.sheetBody(requireContext(), p.getTitle(), null);
-        final float min = u.minimum(), max = u.maximum(), step = u.decimal() ? 1f / Math.max(1, u.stepPerUnit()) : 1f;
-        final int steps = Math.max(1, Math.round((max - min) / step));
-        float start;
-        try { start = Float.parseFloat(String.valueOf(at)); } catch (NumberFormatException e) { start = u.defaultNumber(); }
-        final TextView value = text("", 22, accent);
-        value.setGravity(Gravity.CENTER);
-        sheetBody.addView(value, space(-1, -2, 4));
-        final TextView atShot = text(Lang.t(getContext(), "При съёмке: ", "At the shot: ") + label(p, at), 12, MUTED);
-        atShot.setGravity(Gravity.CENTER);
-        sheetBody.addView(atShot, space(-1, -2, 6));
-        final SeekBar bar = new SeekBar(requireContext());
-        bar.setMax(steps);
-        bar.setProgress(Math.round((start - min) / step));
-        bar.setProgressTintList(ColorStateList.valueOf(accent));
-        bar.setThumbTintList(ColorStateList.valueOf(accent));
-        sheetBody.addView(bar, space(-1, dp(40), 14));
-        final Runnable show = () -> value.setText(number(u, min + bar.getProgress() * step));
-        show.run();
-        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar b, int progress, boolean fromUser) { show.run(); }
-            @Override public void onStartTrackingTouch(SeekBar b) {}
-            @Override public void onStopTrackingTouch(SeekBar b) {}
-        });
-        final BottomSheetDialog[] dialog = new BottomSheetDialog[1];
-        TextView go = button(Lang.t(getContext(), "Сравнить", "Compare"), true, () -> {
-            dialog[0].dismiss();
-            done.accept(number(u, min + bar.getProgress() * step));
-        });
-        go.setTag("lab_compare");
-        sheetBody.addView(go, space(-1, -2, 18));
-        dialog[0] = SettingsStyle.sheet(requireContext(), sheetBody);
-        dialog[0].show();
+    /** The keys of a setting's page: the setting and its {@link #LINKS}. */
+    static String[] keys(String key) {
+        final String[] linked = LINKS.get(key);
+        if (linked == null) return new String[]{key};
+        final String[] all = new String[linked.length + 1];
+        all[0] = key;
+        System.arraycopy(linked, 0, all, 1, linked.length);
+        return all;
     }
 
-    private void openResult(Preference p, Object v) {
-        Bundle a = new Bundle();
-        a.putString(PAGE, "result");
-        a.putString(DIR, arg(DIR));
-        a.putString(GROUP, arg(GROUP));
-        a.putString(KEY, p.getKey());
-        a.putString(TYPE, v instanceof Boolean ? "b" : "s");
-        a.putString(VALUE, String.valueOf(v));
-        open(of(a));
+    /** The page of one setting: A as shot; B the setting at another value ({@link #suggested}), its linked ones as shot. */
+    private void openResult(String key, ScamLabRun.Shot s) {
+        Bundle args = new Bundle();
+        args.putString(PAGE, "result");
+        args.putString(DIR, arg(DIR));
+        args.putString(GROUP, arg(GROUP));
+        args.putString(KEY, key);
+        for (String k : keys(key)) {
+            final Spec spec = spec(k);
+            if (spec == null) continue;
+            final Object at = shotValue(spec, s);
+            put(args, "a", k, at);
+            put(args, "b", k, k.equals(key) ? suggested(spec, at) : at);
+        }
+        // the curve compared is the one in the settings, switched on
+        if (CURVE.equals(key)) put(args, "b", CURVE_ON, true);
+        open(of(args));
     }
 
-    // ───── The comparison ─────
+    private static void put(Bundle b, String side, String key, Object v) {
+        b.putString(side + "t:" + key, v == null ? "n" : v instanceof Boolean ? "b" : "s");
+        b.putString(side + ":" + key, String.valueOf(v));
+    }
 
-    private Object value() {
-        final String v = arg(VALUE);
-        return "b".equals(arg(TYPE)) ? (Object) Boolean.parseBoolean(v) : v;
+    @Nullable
+    private Object get(String side, String key) {
+        final String type = arg(side + "t:" + key), v = arg(side + ":" + key);
+        if (type == null || "n".equals(type)) return null;
+        return "b".equals(type) ? (Object) Boolean.parseBoolean(v) : v;
+    }
+
+    /** A value to compare with {@code at}: a switch's other state, a list's next entry, a slider a quarter of its range away. */
+    static Object suggested(Spec spec, Object at) {
+        switch (spec.kind) {
+            case Spec.SWITCH:
+                return !(at instanceof Boolean ? (Boolean) at : "1".equals(String.valueOf(at)));
+            case Spec.LIST: {
+                if (spec.values.length == 0) return at;
+                int i = 0;
+                for (int k = 0; k < spec.values.length; k++) if (spec.values[k].equals(String.valueOf(at))) i = k;
+                return spec.values[(i + 1) % spec.values.length];
+            }
+            case Spec.CUSTOM:
+                return IN_SETTINGS;
+            default: {
+                float v;
+                try { v = Float.parseFloat(String.valueOf(at)); } catch (NumberFormatException e) { v = Float.parseFloat(String.valueOf(spec.def)); }
+                final float quarter = (spec.max - spec.min) / 4f;
+                return spec.number(v + quarter <= spec.max ? v + quarter : Math.max(spec.min, v - quarter));
+            }
+        }
+    }
+
+    /** The overrides of a side: a CUSTOM setting "as shot" is the shot's value, "in the settings" the stored one now. */
+    private java.util.TreeMap<String, Object> overrides(String side, String key, ScamLabRun.Shot s) {
+        final java.util.TreeMap<String, Object> m = new java.util.TreeMap<>();
+        final Map<String, ?> stored = prefs().getAll();
+        for (String k : keys(key)) {
+            Object v = get(side, k);
+            if (AS_SHOT.equals(v)) v = s.pref(k);
+            else if (IN_SETTINGS.equals(v)) v = stored.get(k);
+            else if (v == null && !arg2(side, k)) continue;
+            m.put(k, v);
+        }
+        return m;
+    }
+
+    private boolean arg2(String side, String key) {
+        return arg(side + "t:" + key) != null;
     }
 
     private void renderResult() {
-        final Preference p = tree().findPreference(arg(KEY));
+        final String key = arg(KEY);
         final ScamLabRun.Shot s = shot();
-        page(p == null ? arg(KEY) : String.valueOf(p.getTitle()), null);
-        if (s == null || p == null) return;
-        final Object b = value();
-        final String aText = "A · " + label(p, shotValue(p, s)), bText = "B · " + label(p, b);
-        subtitle.setText(aText + "   " + bText);
-        subtitle.setVisibility(View.VISIBLE);
+        final Spec main = s == null ? null : spec(key);
+        page(main == null ? key : main.title, null);
+        if (s == null || main == null) return;
+        if (main.summary != null) {
+            subtitle.setText(main.summary);
+            subtitle.setMaxLines(3);
+            subtitle.setVisibility(View.VISIBLE);
+        }
         final String id = s.dir.getAbsolutePath();
         final int[] crop = shares.containsKey(id) && shares.get(id) == 1 ? null : crops.containsKey(id) ? crops.get(id) : s.middleFragment();
-        final String key = id + "|" + (crop == null ? "whole" : java.util.Arrays.toString(crop)) + "|" + p.getKey() + "=" + b;
-        if (!key.equals(runKey)) start(key, s, crop, p.getKey(), b);
-        if (runResult == null) {
+        final Job job = new Job(s, crop, key, overrides("a", key, s), overrides("b", key, s));
+        start(job);
+        final boolean busy;
+        final ScamLabRun.Result r;
+        final Job seen;
+        synchronized (ScamLabFragment.class) {
+            busy = running != null || next != null;
+            seen = shown;
+            // the last result of this page (shot, fragment, setting) stays on screen while the new values render
+            r = seen != null && seen.page.equals(job.page) ? shownResult : null;
+        }
+        if (r == null) {
             LinearLayout box = column();
             box.setGravity(Gravity.CENTER);
             box.setPadding(0, dp(40), 0, dp(40));
@@ -540,24 +681,70 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 bar.setIndeterminateTintList(ColorStateList.valueOf(accent));
                 box.addView(bar, new LinearLayout.LayoutParams(dp(48), dp(48)));
             }
-            TextView st = text(runError != null ? runError : runStage == null ? Lang.t(getContext(), "Подготовка…", "Preparing…") : runStage, 14, runError != null ? SettingsStyle.WARN : MUTED);
+            TextView st = text(runError != null ? runError : runStage == null ? Lang.t(getContext(), "Подготовка…", "Preparing…") : runStage, 14,
+                    runError != null ? SettingsStyle.WARN : MUTED);
             st.setGravity(Gravity.CENTER);
             st.setTag("lab_status");
             box.addView(st, space(-2, -2, 14));
             body.addView(box, new LinearLayout.LayoutParams(-1, -2));
-            if (runError == null)
-                note(Lang.t(getContext(), "Склейка идёт тем же обработчиком, что и при съёмке. Можно уйти с экрана: результат дождётся.", "The merge runs on the same worker as a shot. You can leave the screen: the result waits."));
-            return;
+        } else {
+            final String aText = "A · " + label(main, seenValue(seen, "a", main)), bText = "B · " + label(main, seenValue(seen, "b", main));
+            LabCompareView compare = new LabCompareView(requireContext());
+            compare.setTag("lab_compare_view");
+            compare.setAccent(accent);
+            compare.setSpace(r.a.photo.getWidth(), r.a.photo.getHeight());
+            final int height = Math.round(getResources().getDisplayMetrics().heightPixels * .48f);
+            FrameLayout frame = new FrameLayout(requireContext());
+            frame.addView(compare, new FrameLayout.LayoutParams(-1, height));
+            if (busy || runError != null || !seen.id.equals(job.id)) {
+                TextView st = text(runError != null ? runError : runStage == null ? Lang.t(getContext(), "Пересчёт…", "Updating…") : runStage, 13,
+                        runError != null ? SettingsStyle.WARN : TEXT);
+                st.setTag("lab_status");
+                st.setPadding(dp(10), dp(6), dp(10), dp(6));
+                st.setBackground(shape(0xCC000000, 0, 10));
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+                lp.bottomMargin = dp(10);
+                frame.addView(st, lp);
+            }
+            body.addView(frame, space(-1, height, 6));
+            modes(r, compare, aText, bText);
         }
-        final ScamLabRun.Result r = runResult;
-        LabCompareView compare = new LabCompareView(requireContext());
-        compare.setTag("lab_compare_view");
-        compare.setAccent(accent);
-        compare.setSpace(r.a.photo.getWidth(), r.a.photo.getHeight());
-        final int height = Math.round(getResources().getDisplayMetrics().heightPixels * .52f);
-        body.addView(compare, space(-1, height, 6));
+        for (String k : keys(key)) {
+            final Spec spec = spec(k);
+            if (spec != null) controls(spec, s, !k.equals(key));
+        }
+        if (r != null) info(main, r);
+        TextView keep = button(Lang.t(getContext(), "Сохранить B в настройки", "Keep B in the settings"), false, () -> {
+            final SharedPreferences.Editor e = prefs().edit();
+            final java.util.TreeMap<String, Object> b = overrides("b", key, s);
+            for (Map.Entry<String, Object> en : b.entrySet()) {
+                final Object v = en.getValue();
+                if (v == null) e.remove(en.getKey());
+                else if (v instanceof Boolean) e.putBoolean(en.getKey(), (Boolean) v);
+                else if (v instanceof java.util.Set) {
+                    final java.util.Set<String> set = new java.util.HashSet<>();
+                    for (Object x : (java.util.Set<?>) v) set.add(String.valueOf(x));
+                    e.putStringSet(en.getKey(), set);
+                } else e.putString(en.getKey(), String.valueOf(v));
+            }
+            e.apply();
+            Toast.makeText(requireContext(), "«" + main.title + "»: " + label(main, get("b", key)), Toast.LENGTH_SHORT).show();
+        });
+        keep.setTag("lab_keep_value");
+        body.addView(keep, space(-1, -2, 12));
+    }
+
+    /** The main setting's value a rendered side had (for its label on the picture). */
+    private Object seenValue(Job seen, String side, Spec main) {
+        final Object v = ("a".equals(side) ? seen.a : seen.b).get(main.key);
+        if (main.kind == Spec.CUSTOM) return get(side, main.key);
+        return v;
+    }
+
+    private void modes(ScamLabRun.Result r, LabCompareView compare, String aText, String bText) {
         LinearLayout modes = row();
-        String[] names = {Lang.t(getContext(), "До / после", "Before / after"), Lang.t(getContext(), "Разница ×4", "Difference ×4"), Lang.t(getContext(), "Карта кадров", "Frame map")};
+        String[] names = {Lang.t(getContext(), "До / после", "Before / after"), Lang.t(getContext(), "Разница ×4", "Difference ×4"),
+                Lang.t(getContext(), "Карта кадров", "Frame map")};
         final TextView[] buttons = new TextView[3];
         final TextView explain = text("", 12, MUTED);
         explain.setLineSpacing(dp(3), 1);
@@ -578,7 +765,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
             }
             if (showMode == 1) {
                 if (diff[0] == null) diff[0] = ScamLabRun.difference(r.a.photo, r.b.photo, 4f);
-                compare.setSingle(diff[0], Lang.t(getContext(), "|A − B| × 4", "|A − B| × 4"));
+                compare.setSingle(diff[0], "|A − B| × 4");
                 explain.setText(Lang.t(getContext(), "Светлое — где B отличается от A. Чёрное — без изменений.", "Bright: where B differs from A. Black: unchanged."));
             } else if (showMode == 2 && r.a.frameMap != null && r.b.frameMap != null) {
                 compare.setPair(r.a.frameMap, r.b.frameMap, "A", "B");
@@ -593,67 +780,164 @@ public class ScamLabFragment extends ModuleConceptFragment {
         apply[0].run();
         body.addView(modes, space(-1, -2, 10));
         body.addView(explain, space(-1, -2, 8));
-        String info = r.same ? Lang.t(getContext(), "На этой серии настройка ничего не меняет: A и B совпадают до пикселя. ", "On this burst the setting changes nothing: A and B are the same pixels. ")
-                + (AT_SHOT.contains(p.getKey()) ? Lang.t(getContext(), "Она задаётся при съёмке (уже вшита в серию).", "It is fixed at the shot (already in the burst).")
-                : Lang.t(getContext(), "Её условие не наступило (сцена, шум, яркость) или она действует при съёмке.", "Its condition did not occur (scene, noise, brightness) or it acts at the shot."))
-                : (r.mergedAgain ? Lang.t(getContext(), "Настройка склейки: серия склеена заново для B. ", "A merge setting: the burst was merged again for B. ")
-                : Lang.t(getContext(), "Настройка обработки: склейка та же, обработка другая. ", "A processing setting: the same merge, other processing. "));
-        info += String.format(Locale.ROOT, Lang.t(getContext(), "Склейка A %.1f с, обработка %.1f с; B %.1f с + %.1f с.", "Merge A %.1f s, processing %.1f s; B %.1f s + %.1f s."),
-                r.a.mergeMs / 1000f, r.a.postMs / 1000f, r.b.mergeMs / 1000f, r.b.postMs / 1000f);
-        note(info);
-        LinearLayout actions = row();
-        TextView other = button(Lang.t(getContext(), "Другое значение", "Another value"), false, () -> pickValue(p, s, v -> {
-            getArguments().putString(TYPE, v instanceof Boolean ? "b" : "s");
-            getArguments().putString(VALUE, String.valueOf(v));
-            render();
-        }));
-        other.setTag("lab_other_value");
-        TextView keep = button(Lang.t(getContext(), "Сохранить B в настройки", "Keep B in the settings"), false, () -> {
-            final SharedPreferences.Editor e = prefs().edit();
-            final Object v = value();
-            if (v instanceof Boolean) e.putBoolean(p.getKey(), (Boolean) v); else e.putString(p.getKey(), String.valueOf(v));
-            e.apply();
-            Toast.makeText(requireContext(), Lang.t(getContext(), "«" + p.getTitle() + "»: " + label(p, v), "“" + p.getTitle() + "”: " + label(p, v)), Toast.LENGTH_SHORT).show();
-        });
-        keep.setTag("lab_keep_value");
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
-        lp.rightMargin = dp(8);
-        actions.addView(other, lp);
-        actions.addView(keep, new LinearLayout.LayoutParams(0, -2, 1));
-        body.addView(actions, space(-1, -2, 12));
     }
 
-    /** One run at a time; the page is drawn again with each stage and with the result. */
-    private void start(String key, ScamLabRun.Shot s, @Nullable int[] crop, String prefKey, Object value) {
-        if (runThread != null && runThread.isAlive()) {
-            if (key.equals(runKey)) return;
-            runError = Lang.t(getContext(), "Идёт предыдущее сравнение. Дождитесь его и откройте снова.", "The previous comparison is running. Wait for it and open again.");
-            runResult = null;
+    /** A setting's A and B, each with its own control: a change renders that side again. */
+    private void controls(Spec spec, ScamLabRun.Shot s, boolean linked) {
+        if (linked) caption(spec.title);
+        final Object atShot = shotValue(spec, s);
+        LinearLayout card = card();
+        card.addView(control(spec, "A", "a", atShot));
+        divider(card);
+        card.addView(control(spec, "B", "b", atShot));
+        if (spec.kind == Spec.CUSTOM) {
+            TextView edit = button(Lang.t(getContext(), "Изменить в настройках", "Edit in the settings"), false, () -> {
+                if (getActivity() instanceof SettingsActivity) ((SettingsActivity) getActivity()).openPageAt(spec.page, spec.key);
+            });
+            edit.setTag("lab_edit_" + spec.key);
+            LinearLayout.LayoutParams lp = space(-1, -2, 4);
+            lp.leftMargin = lp.rightMargin = dp(12);
+            lp.bottomMargin = dp(12);
+            card.addView(edit, lp);
             return;
         }
-        runKey = key;
-        runResult = null;
-        runError = null;
-        runStage = null;
-        final Context app = requireContext().getApplicationContext();
-        runThread = new Thread(() -> {
-            try {
-                final ScamLabRun.Result r = ScamLabRun.run(app, s, crop, prefKey, value, text -> {
-                    runStage = text;
-                    redraw(key);
-                });
-                if (key.equals(runKey)) runResult = r;
-            } catch (Throwable e) {
-                if (key.equals(runKey)) runError = Lang.t(getContext(), "Не получилось: ", "Failed: ") + e.getMessage();
-            }
-            redraw(key);
-        }, "scam-lab");
-        runThread.start();
+        String note = Lang.t(getContext(), "При съёмке: ", "At the shot: ") + label(spec, atShot);
+        if (AT_SHOT.contains(spec.key)) note += Lang.t(getContext(), " · задаётся при съёмке: на сохранённой серии не меняется", " · fixed at the shot: no change on a saved burst");
+        TextView t = text(note, 12, MUTED);
+        t.setPadding(dp(12), 0, dp(12), dp(12));
+        card.addView(t);
     }
 
-    private void redraw(String key) {
+    private View control(Spec spec, String name, String side, Object atShot) {
+        final Object value = get(side, spec.key);
+        LinearLayout r = column();
+        r.setPadding(dp(12), dp(12), dp(12), dp(12));
+        LinearLayout head = row();
+        TextView letter = text(name, 16, accent);
+        letter.setTypeface(null, android.graphics.Typeface.BOLD);
+        head.addView(letter, new LinearLayout.LayoutParams(dp(28), -2));
+        final TextView shown = text(label(spec, value), 15, TEXT);
+        com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(shown);
+        head.addView(shown, new LinearLayout.LayoutParams(0, -2, 1));
+        final java.util.function.Consumer<Object> set = v -> {
+            if (String.valueOf(v).equals(arg(side + ":" + spec.key))) return;
+            put(getArguments(), side, spec.key, v);
+            render();
+        };
+        TextView reset = text(Lang.t(getContext(), "как снято", "as shot"), 13, accent);
+        reset.setPadding(dp(10), dp(6), dp(4), dp(6));
+        reset.setTag("lab_reset_" + name + "_" + spec.key);
+        reset.setOnClickListener(x -> set.accept(atShot));
+        reset.setVisibility(String.valueOf(atShot).equals(String.valueOf(value)) ? View.INVISIBLE : View.VISIBLE);
+        r.addView(head);
+        switch (spec.kind) {
+            case Spec.SWITCH: {
+                head.addView(reset);
+                SwitchCompat toggle = new SwitchCompat(requireContext());
+                toggle.setTag("lab_value_" + name + "_" + spec.key);
+                toggle.setChecked(value instanceof Boolean ? (Boolean) value : "1".equals(String.valueOf(value)));
+                toggle.setThumbTintList(ColorStateList.valueOf(0xFFFFFFFF));
+                toggle.setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{accent, 0xFF606570}));
+                toggle.setOnCheckedChangeListener((v, on) -> set.accept(on));
+                head.addView(toggle, new LinearLayout.LayoutParams(dp(56), dp(40)));
+                break;
+            }
+            case Spec.LIST:
+            case Spec.CUSTOM: {
+                head.addView(reset);
+                final CharSequence[] labels = spec.kind == Spec.LIST ? spec.labels
+                        : new CharSequence[]{label(spec, AS_SHOT), label(spec, IN_SETTINGS)};
+                final String[] values = spec.kind == Spec.LIST ? spec.values : new String[]{AS_SHOT, IN_SETTINGS};
+                int selected = -1;
+                for (int i = 0; i < values.length; i++) if (values[i].equals(String.valueOf(value))) selected = i;
+                final int current = selected;
+                TextView pick = button(Lang.t(getContext(), "Выбрать…", "Choose…"), false, () ->
+                        SettingsStyle.optionSheet(requireContext(), spec.title + " · " + name, labels, values, current, accent,
+                                i -> set.accept(values[i])).show());
+                pick.setTag("lab_value_" + name + "_" + spec.key);
+                r.addView(pick, space(-1, -2, 8));
+                break;
+            }
+            default: {
+                head.addView(reset);
+                final float min = spec.min, max = spec.max, step = spec.step;
+                float start;
+                try { start = Float.parseFloat(String.valueOf(value)); } catch (NumberFormatException e) { start = Float.parseFloat(String.valueOf(spec.def)); }
+                final SeekBar bar = new SeekBar(requireContext());
+                bar.setTag("lab_value_" + name + "_" + spec.key);
+                bar.setMax(Math.max(1, Math.round((max - min) / step)));
+                bar.setProgress(Math.round((start - min) / step));
+                bar.setProgressTintList(ColorStateList.valueOf(accent));
+                bar.setThumbTintList(ColorStateList.valueOf(accent));
+                bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                    @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) { shown.setText(spec.number(min + progress * step)); }
+                    @Override public void onStartTrackingTouch(SeekBar sb) { sb.getParent().requestDisallowInterceptTouchEvent(true); }
+                    @Override public void onStopTrackingTouch(SeekBar sb) { set.accept(spec.number(min + sb.getProgress() * step)); }
+                });
+                r.addView(bar, space(-1, dp(36), 6));
+                LinearLayout ends = row();
+                ends.addView(text(spec.number(min), 11, MUTED), new LinearLayout.LayoutParams(0, -2, 1));
+                ends.addView(text(spec.number(max), 11, MUTED));
+                r.addView(ends);
+            }
+        }
+        return r;
+    }
+
+    private void info(Spec main, ScamLabRun.Result r) {
+        String info = r.same ? Lang.t(getContext(), "На этой серии A и B совпадают до пикселя. ", "On this burst A and B are the same pixels. ")
+                + (AT_SHOT.contains(main.key) ? Lang.t(getContext(), "Настройка задаётся при съёмке (уже вшита в серию).", "The setting is fixed at the shot (already in the burst).")
+                : Lang.t(getContext(), "Её условие не наступило (сцена, шум, яркость) или она действует при съёмке.", "Its condition did not occur (scene, noise, brightness) or it acts at the shot."))
+                : (r.mergedAgain ? Lang.t(getContext(), "Настройка склейки: A и B склеены каждая со своим значением. ", "A merge setting: A and B were merged each with its value. ")
+                : Lang.t(getContext(), "Настройка обработки: склейка одна, обработка разная. ", "A processing setting: one merge, different processing. "));
+        info += String.format(Locale.ROOT, Lang.t(getContext(), "A: склейка %.1f с, обработка %.1f с; B: %.1f с + %.1f с.", "A: merge %.1f s, processing %.1f s; B: %.1f s + %.1f s."),
+                r.a.mergeMs / 1000f, r.a.postMs / 1000f, r.b.mergeMs / 1000f, r.b.postMs / 1000f);
+        note(info);
+    }
+
+    /**
+     * Renders {@code job} (the page is drawn again at each stage and with the result). A job asked for while another one runs
+     * waits and replaces any earlier waiting one: turning a slider several times renders only its last value.
+     */
+    private void start(Job job) {
+        synchronized (ScamLabFragment.class) {
+            if (shown != null && shown.id.equals(job.id)) return;
+            if (running != null) {
+                next = running.id.equals(job.id) ? null : job;
+                return;
+            }
+            runError = null;
+            runStage = null;
+            running = job;
+        }
+        final Context app = requireContext().getApplicationContext();
+        new Thread(() -> {
+            Job j = job;
+            while (j != null) {
+                try {
+                    final ScamLabRun.Result r = ScamLabRun.run(app, j.shot, j.crop, j.a, j.b, text -> {
+                        runStage = text;
+                        redraw();
+                    });
+                    synchronized (ScamLabFragment.class) { shown = j; shownResult = r; runError = null; }
+                } catch (Throwable e) {
+                    runError = Lang.t(app, "Не получилось: ", "Failed: ") + e.getMessage();
+                    synchronized (ScamLabFragment.class) { shown = j; }
+                }
+                runStage = null;
+                synchronized (ScamLabFragment.class) {
+                    j = next;
+                    next = null;
+                    running = j;
+                }
+                redraw();
+            }
+        }, "scam-lab").start();
+    }
+
+    private void redraw() {
         main.post(() -> {
-            if (root != null && isAdded() && "result".equals(arg(PAGE)) && key.equals(runKey)) render();
+            if (root != null && isAdded() && "result".equals(arg(PAGE))) render();
         });
     }
 

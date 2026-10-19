@@ -106,7 +106,8 @@ public final class ArkCombine extends Node {
                 final Point hlSize = st.low.mSize;
                 hlA = new GLTexture(hlSize, new GLFormat(GLFormat.DataType.FLOAT_16, 1), null, GL_LINEAR, GL_CLAMP_TO_EDGE);
                 hlB = new GLTexture(hlSize, new GLFormat(GLFormat.DataType.FLOAT_16, 1), null, GL_LINEAR, GL_CLAMP_TO_EDGE);
-                final float sigma = Math.max(1f, 0.012f * hlSize.x);
+                // P277: of the whole frame's width on a lab fragment
+                final float sigma = Math.max(1f, 0.012f * (pipeline.frozen != null && pipeline.frozen.lowWidth > 0 ? pipeline.frozen.lowWidth : hlSize.x));
                 glProg.useAssetProgram("ark/hlmask", false);
                 glProg.setTexture("InputBuffer", st.low);
                 // P216: the share of the REAL ceiling (Bento data above the capped clip): a window at 4-8 x white is not blown

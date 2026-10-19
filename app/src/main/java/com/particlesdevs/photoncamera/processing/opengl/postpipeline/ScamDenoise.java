@@ -390,7 +390,15 @@ public final class ScamDenoise extends Node {
         final Parameters par = pipeline.mParameters;
         if (par.mapSize == null) return null;
         final float cap = clamp(PreferenceKeys.scamDevNumber("denoise_lsc_max", LSC_CAP), 1f, 16f);
-        return lscTerm(par.gainMap, par.mapSize.x, par.mapSize.y, cap);
+        // P277: a lab fragment's map is cropped: the reference of the whole map (LabFrame), a lab shot records it
+        final LabFrame frozen = pipeline.frozen;
+        if (frozen != null && (frozen.lsc != null || frozen.lscNone)) return frozen.lsc == null ? null : frozen.lsc.clone();
+        final float[] term = lscTerm(par.gainMap, par.mapSize.x, par.mapSize.y, cap);
+        if (pipeline.record != null) {
+            pipeline.record.lsc = term == null ? null : term.clone();
+            pipeline.record.lscNone = term == null;
+        }
+        return term;
     }
 
     /**
@@ -602,6 +610,15 @@ public final class ScamDenoise extends Node {
                     p50 = ys[Math.min(m - 1, m / 2)];
                     p90 = ys[Math.min(m - 1, (int) (m * 0.9f))];
                 }
+            }
+            // P277: a lab fragment measures its SNR on the whole frame's brightness, a lab shot records it
+            if (pipeline.frozen != null && pipeline.frozen.p50 > 0f) {
+                p50 = pipeline.frozen.p50;
+                p90 = pipeline.frozen.p90;
+            }
+            if (pipeline.record != null) {
+                pipeline.record.p50 = p50;
+                pipeline.record.p90 = p90;
             }
             float rawScale = par.scamHdrMode ? Math.max(1e-6f, par.scamHdrRawScale) : 1f;
             if (p50 > 0f) {

@@ -598,6 +598,16 @@ public final class ScamRgb extends Node {
         final long sideDone=System.nanoTime();
         if(hybrid){
             cc=stats.cc;
+            // P277: a lab fragment takes the whole frame's clip levels (when the merges agree on Bento), a lab shot records them
+            final LabFrame fz=p.frozen;
+            if(fz!=null&&fz.ccLo!=null&&fz.ccBento==bento){
+                System.arraycopy(fz.ccLo,0,cc.lo,0,3);System.arraycopy(fz.ccHi,0,cc.hi,0,3);System.arraycopy(fz.ccMax,0,cc.max,0,3);
+                cc.nearClip=fz.nearClip;cc.hiUnflagged=fz.hiUnflagged;cc.log="whole frame (lab) "+cc.log;
+            }
+            if(p.record!=null){
+                p.record.ccLo=cc.lo.clone();p.record.ccHi=cc.hi.clone();p.record.ccMax=cc.max.clone();
+                p.record.nearClip=cc.nearClip;p.record.hiUnflagged=cc.hiUnflagged;p.record.ccBento=bento;
+            }
             final float[] top=cc.hi[1]>0f?cc.hi:cc.lo;
             final float[] wp=p.mParameters.whitePoint;
             float white=0f;

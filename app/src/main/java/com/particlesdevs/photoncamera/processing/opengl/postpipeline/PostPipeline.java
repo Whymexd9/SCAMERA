@@ -55,6 +55,11 @@ public class PostPipeline extends GLBasePipeline {
     public boolean signedRgb;
     /** ARK tone of the SCAM Hybrid: state handed from ArkStats to ArkCombine; null outside that route. */
     public ArkTone.State ark;
+    /**
+     * P277: a lab shot's run records the whole frame's statistics here ({@link LabFrame}); a lab run on a fragment of it sets
+     * {@link #frozen} to those, used in place of the fragment's own. Both null in an ordinary run.
+     */
+    public LabFrame record, frozen;
     public ArrayList<Bitmap> debugData = new ArrayList<>();
     public Point cropSize;
     /** Final output size of the hybrid 2x pipeline (sensor orientation), produced by {@link HybridFinalResize}; null = output at rawSize. */

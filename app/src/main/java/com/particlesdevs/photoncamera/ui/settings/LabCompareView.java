@@ -13,7 +13,9 @@ import android.view.ScaleGestureDetector;
 import android.view.View;
 
 /**
- * P277: the lab's before / after - side A (as shot) left of a draggable border, side B right of it, over one picture space.
+ * P277: the lab's before / after - side A left of a draggable border, side B right of it, over one picture space. The border
+ * belongs to the screen (owner, 2026-10-19: «полоска сравнения должна всегда оставаться на экране»): zooming and panning move
+ * the picture under it, never the border off the view.
  * Double tap zooms in 3x at the tap (again: back to fit), two fingers zoom and pan, a drag away from the border pans a zoomed
  * picture, a long press holds a 3x magnifier over the finger (both sides, the border too). The layers are any pictures of
  * the same scene (the photos, the frame maps, the difference), each drawn over the photo's rectangle.
@@ -145,11 +147,9 @@ public class LabCompareView extends View {
         fit();
     }
 
-    /** The border's x on the view. */
+    /** The border's x on the view (a share of the view's width, whatever the zoom). */
     private float splitX() {
-        final float[] p = {split * iw, 0};
-        view.mapPoints(p);
-        return p[0];
+        return split * getWidth();
     }
 
     @Override public boolean onTouchEvent(MotionEvent e) {
@@ -165,13 +165,7 @@ public class LabCompareView extends View {
             case MotionEvent.ACTION_MOVE:
                 if (scale.isInProgress() || e.getPointerCount() > 1) { lastX = e.getX(); lastY = e.getY(); return true; }
                 if (loupe) { loupeX = e.getX(); loupeY = e.getY(); }
-                else if (dragSplit) {
-                    final Matrix inv = new Matrix();
-                    view.invert(inv);
-                    final float[] p = {e.getX(), e.getY()};
-                    inv.mapPoints(p);
-                    split = Math.max(0, Math.min(1, p[0] / iw));
-                } else if (zoom() > 1.01f) {
+                else if (dragSplit) split = Math.max(.02f, Math.min(.98f, e.getX() / Math.max(1, getWidth()))); else if (zoom() > 1.01f) {
                     view.postTranslate(e.getX() - lastX, e.getY() - lastY);
                     clamp();
                 }
@@ -193,7 +187,7 @@ public class LabCompareView extends View {
         if (base() == null) return;
         if (!fitted) fit();
         canvas.drawColor(0xFF000000);
-        layers(canvas, view);
+        layers(canvas, view, splitX());
         if (single == null) {
             final float x = splitX();
             canvas.drawLine(x, 0, x, getHeight(), line);
@@ -210,21 +204,25 @@ public class LabCompareView extends View {
         if (loupe) drawLoupe(canvas);
     }
 
-    private void layers(Canvas canvas, Matrix m) {
-        canvas.save();
-        canvas.concat(m);
+    /** The layers through {@code m}; A left of {@code cut} (an x of the canvas), B right of it. */
+    private void layers(Canvas canvas, Matrix m, float cut) {
         final RectF all = new RectF(0, 0, iw, ih);
-        if (single != null) canvas.drawBitmap(single, null, all, paint);
-        else {
+        if (single != null) {
             canvas.save();
-            canvas.clipRect(0, 0, split * iw, ih);
-            if (left != null) canvas.drawBitmap(left, null, all, paint);
+            canvas.concat(m);
+            canvas.drawBitmap(single, null, all, paint);
             canvas.restore();
-            canvas.save();
-            canvas.clipRect(split * iw, 0, iw, ih);
-            if (right != null) canvas.drawBitmap(right, null, all, paint);
-            canvas.restore();
+            return;
         }
+        canvas.save();
+        canvas.clipRect(-1e5f, -1e5f, cut, 1e5f);
+        canvas.concat(m);
+        if (left != null) canvas.drawBitmap(left, null, all, paint);
+        canvas.restore();
+        canvas.save();
+        canvas.clipRect(cut, -1e5f, 1e5f, 1e5f);
+        canvas.concat(m);
+        if (right != null) canvas.drawBitmap(right, null, all, paint);
         canvas.restore();
     }
 
@@ -247,12 +245,10 @@ public class LabCompareView extends View {
         canvas.save();
         canvas.clipPath(circle);
         canvas.drawColor(0xFF000000);
-        layers(canvas, m);
-        if (single == null) {
-            final float[] p = {split * iw, 0};
-            m.mapPoints(p);
-            canvas.drawLine(p[0], cy - r, p[0], cy + r, line);
-        }
+        // the screen's border as the magnifier shows it: x -> cx + 3 (x - loupeX)
+        final float cut = cx + 3 * (splitX() - loupeX);
+        layers(canvas, m, cut);
+        if (single == null) canvas.drawLine(cut, cy - r, cut, cy + r, line);
         canvas.restore();
         final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
         ring.setStyle(Paint.Style.STROKE);

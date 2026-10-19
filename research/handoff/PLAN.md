@@ -6129,6 +6129,15 @@ yellow); the times, whether the merge ran again, «A и B совпадают д�
 To check on the phone: switch on, an SHDR shot -> Lab/<date_time> with three files (log «SCAM_LAB: lab shot kept», «photo over
 the sensor frame: code N»); the lab page lists it; a merge setting (e.g. a rejection strength) and a processing one (sharpening)
 on the 1/9 fragment; the frame map; the fragment lies where it is on the photo.
+P277 round 2 (owner, 2026-10-19, screenshots + video): (1) «при любом кропе экспозиция и тон считались по всему кадру» -
+LabFrame: the shot's pipeline records the whole frame's statistics (ArkAe stats of every metering mode, the gain clamp's noise
+scale, arkLow width, ScamRgb clip levels, the denoise's p50 / p90, the lens-shading term, the lens filter's level and size) in
+frame.json; a fragment run uses them (PostPipeline.frozen) and still decides exposure / tone with each side's settings; a shot
+without frame.json gets one whole-frame run first. (2) both A and B have their own control on the comparison page (switch,
+list, slider; «как снято»), only the changed side renders again, the last result stays on screen while it does. (3) the border
+belongs to the screen (zoom / pan never move it off). (4) the tone curve, the LUT and the lens filter are comparable (LINKS:
+curve + its switch, LUT + strength, filter + strength; the curve «как сейчас в настройках» with «Изменить в настройках»).
+(5) a fourth area, 1/16. Test LabFrameTest.
 
 ### P278 - Xiaomi 12X: the shutter sound does not turn off (owner, 2026-10-19, log-2026-10-19_4 + SCAMERA-debug, build 31098, Xiaomi 2112123AG psyche): done, not device-tested.
 The log says why: «CameraSounds: shutter sound: switch off, the phone requires it true, normal ringer true -> played» -
@@ -6139,3 +6148,15 @@ country with the line above. Check on the 12X: the switch off -> «-> silent».
 Done: CameraSounds.lawRequires (the first known of SIM, network, locale country is JP or KR) gates the phone's rule; the log line
 «shutter sound: the phone requires it; country sim=.. network=.. locale=.. - not required there, the switch decides (P278)».
 Test CameraSoundsTest.thePhonesShutterRuleStandsOnlyInJapanAndKorea.
+
+### P279 - reorder the LUTs (owner, 2026-10-19: «дай возможность менять местами луты, можно сделать в основном меню по зажатию пальцем, при этом в меню из видоискателя тоже должно соответственно меняться»): done, not device-tested.
+Settings «Пленочный LUT» strip (FilmLutPreference.fillStrip: "" + FilmLutPreference.choices(files)): a long press picks a card up,
+a drag moves it, the order is stored (one pref, e.g. pref_film_lut_order = the values in order; new LUTs at the end, missing
+ones dropped). The viewfinder's LUT tray (ui/camera/LutTray, LUT row of the screenshot) reads the same order, so both strips
+match. «Нет» stays first. Test: the order helper (merge of stored order with the current list).
+Owner, 2026-10-19: «тоже самое для фильтров» - the lens filters the same way: the settings' filter list (LensFilterPreference)
+and the viewfinder tray's filter row share one stored order (pref_lens_filter_order); «Без фильтра» stays first.
+Done: settings/ItemOrder (stored order per strip, one item per line; first item fixed; new items after the known ones, gone ones
+dropped) and ui/settings/StripReorder (long press = Android drag and drop of the card, drop on a card takes its place, the strip
+scrolls near its ends) on FilmLutPreference's and LensFilterPreference's strips and on LutTray's LUT and filter rows (and its
+LUT swipe step); the lab's LUT / filter lists follow the same order. Test ItemOrderTest.

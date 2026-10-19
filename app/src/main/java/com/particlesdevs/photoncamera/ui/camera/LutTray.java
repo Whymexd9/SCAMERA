@@ -262,17 +262,11 @@ public final class LutTray {
         pill.setActivated(open);
     }
 
-    /** Every LUT as a card: «Нет», our looks, the folder's .cube files. */
+    /** Every LUT as a card: «Нет», our looks, the folder's .cube files - in the user's order (P279, ItemOrder). */
     private void rebuild() {
         Context c = tray.getContext();
         values.clear();
-        values.add("");
-        for (String v : FilmLooks.values()) values.add(v);
-        try {
-            for (String f : ScameraFolder.LUTS.list(c)) values.add(f);
-        } catch (RuntimeException e) {
-            Log.w("LutTray", "LUT folder: " + e);
-        }
+        values.addAll(com.particlesdevs.photoncamera.settings.ItemOrder.luts(c));
         row.removeAllViews();
         thumbs.clear();
         String chosen = PreferenceKeys.filmLut();
@@ -311,6 +305,13 @@ public final class LutTray {
             card.addView(name, nlp);
             card.setContentDescription(name(c, value));
             card.setOnClickListener(v -> choose(value));
+            // P279: hold and drag a card to move it; the settings' strip shows the same order
+            com.particlesdevs.photoncamera.ui.settings.StripReorder.attach(card, row.getChildCount(), (from, to) -> {
+                com.particlesdevs.photoncamera.settings.ItemOrder.store(com.particlesdevs.photoncamera.settings.ItemOrder.LUT_KEY, new ArrayList<>(values), from, to);
+                rebuild();
+                main.removeCallbacks(refreshThumbs);
+                main.post(refreshThumbs);
+            });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(UiScale.dp(c, 62), ViewGroup.LayoutParams.WRAP_CONTENT);
             if (row.getChildCount() > 0) lp.setMarginStart(UiScale.dp(c, 6));
             row.addView(card, lp);
@@ -371,17 +372,22 @@ public final class LutTray {
             card.setContentDescription(Lang.t(c, "Фильтр: ", "Filter: ") + LensFilters.name(c, id));
             card.setTag("lut_tray_filter_" + id);
             card.setOnClickListener(v -> chooseFilter(id));
+            // P279: the filters' order, shared with the settings' strip
+            com.particlesdevs.photoncamera.ui.settings.StripReorder.attach(card, filterRow.getChildCount(), (from, to) -> {
+                com.particlesdevs.photoncamera.settings.ItemOrder.store(com.particlesdevs.photoncamera.settings.ItemOrder.FILTER_KEY, java.util.Arrays.asList(filterIds()), from, to);
+                rebuildFilters();
+                main.removeCallbacks(refreshThumbs);
+                main.post(refreshThumbs);
+            });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(UiScale.dp(c, 62), ViewGroup.LayoutParams.WRAP_CONTENT);
             if (filterRow.getChildCount() > 0) lp.setMarginStart(UiScale.dp(c, 6));
             filterRow.addView(card, lp);
         }
     }
 
+    /** «Без фильтра» and every filter, in the user's order (P279). */
     static String[] filterIds() {
-        String[] all = new String[LensFilters.IDS.length + 1];
-        all[0] = "";
-        System.arraycopy(LensFilters.IDS, 0, all, 1, LensFilters.IDS.length);
-        return all;
+        return com.particlesdevs.photoncamera.settings.ItemOrder.filters().toArray(new String[0]);
     }
 
     /** A filter card tapped: that filter becomes the camera's (the settings' state). */
@@ -411,12 +417,7 @@ public final class LutTray {
         Context c = tray.getContext();
         if (!open) {
             values.clear();
-            values.add("");
-            for (String v : FilmLooks.values()) values.add(v);
-            try {
-                for (String f : ScameraFolder.LUTS.list(c)) values.add(f);
-            } catch (RuntimeException ignored) {
-            }
+            values.addAll(com.particlesdevs.photoncamera.settings.ItemOrder.luts(c));
         }
         int i = values.indexOf(PreferenceKeys.filmLut());
         int n = values.size();

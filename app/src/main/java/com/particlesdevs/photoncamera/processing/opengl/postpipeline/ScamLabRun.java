@@ -45,6 +45,8 @@ public final class ScamLabRun {
         public final File dir;
         public final JSONObject meta;
         public final int width, height, frames, grid, orient;
+        /** The whole frame's statistics (null: none yet; a fragment run records them first). */
+        @Nullable volatile LabFrame frame;
 
         Shot(File dir, JSONObject meta, ScamLabBurst burst) {
             this.dir = dir;
@@ -54,6 +56,7 @@ public final class ScamLabRun {
             frames = burst.frames;
             grid = burst.grid;
             orient = meta.optInt("orient", 0);
+            frame = ScamLab.frame(dir);
         }
 
         public static Shot load(File dir) throws IOException {
@@ -112,54 +115,72 @@ public final class ScamLabRun {
 
     public interface Progress { void stage(String text); }
 
-    private static String cacheKey;
-    private static Side cacheA;
+    /** The last sides rendered (shot | fragment | key = value): turning one control renders only its side again. */
+    private static final android.util.LruCache<String, Side> sides = new android.util.LruCache<>(3);
 
-    /** Forgets the cached side A (another shot, a deleted shot). */
+    /** Forgets the rendered sides (another fragment, a deleted shot). */
     public static synchronized void forget() {
-        cacheKey = null;
-        cacheA = null;
+        sides.evictAll();
     }
 
     /**
-     * Side A (cached) and side B with {@code key} = {@code value} (null: the key unset, its default). {@code crop} {x, y, w, h}
-     * of the sensor frame, null: the whole frame. Runs on the caller's thread (not the main one); throws with a message for the
-     * user when a shot is being processed or the merge fails.
+     * Side A with the settings {@code a} and side B with the settings {@code b} (key -> value, null: the key unset, its default),
+     * both on the shot's other settings; a side rendered before (same shot, fragment and values) is reused. {@code crop}
+     * {x, y, w, h} of the sensor frame, null: the whole frame. Runs on the caller's thread (not the main one); throws with a
+     * message for the user when a shot is being processed or the merge fails.
      */
-    public static synchronized Result run(Context context, Shot shot, @Nullable int[] crop, String key, @Nullable Object value,
-                                          Progress progress) throws Exception {
+    public static synchronized Result run(Context context, Shot shot, @Nullable int[] crop, java.util.SortedMap<String, Object> a,
+                                          java.util.SortedMap<String, Object> b, Progress progress) throws Exception {
         if (!ScamLab.LOCK.tryLock())
             throw new IOException(Lang.t("Идёт обработка снимка. Повторите, когда она закончится.", "A shot is being processed. Try again when it is done."));
-        final SharedPreferences prefs = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
         PreferenceKeys.beginShotProfile(true);
         try {
-            final Map<String, Object> base = basePrefs(shot);
-            final Map<String, Object> varied = new HashMap<>(base);
-            if (value == null) varied.remove(key); else varied.put(key, value);
             final String fragment = crop == null ? "whole" : crop[0] + "," + crop[1] + "," + crop[2] + "," + crop[3];
-            final String aKey = shot.dir.getAbsolutePath() + "|" + fragment;
             final Result r = new Result();
-            if (aKey.equals(cacheKey) && cacheA != null && !cacheA.photo.isRecycled()) r.a = cacheA;
-            else {
-                progress.stage(Lang.t("Склейка A (как снято)…", "Merge A (as shot)…"));
-                r.a = side(context, shot, crop, base, prefs, progress, "A");
-                cacheKey = aKey;
-                cacheA = r.a;
-            }
-            PreferenceValue.overlay(prefs, varied);
-            final String tuningB = PreferenceKeys.hybridTuningText();
-            PreferenceValue.overlay(null, null);
-            r.mergedAgain = !tuningB.equals(r.a.tuning);
-            progress.stage(Lang.t("Склейка B…", "Merge B…"));
-            r.b = side(context, shot, crop, varied, prefs, progress, "B");
+            r.a = cachedSide(context, shot, crop, a, fragment, progress, "A");
+            r.b = cachedSide(context, shot, crop, b, fragment, progress, "B");
+            r.mergedAgain = !r.a.tuning.equals(r.b.tuning);
             r.same = PostAb.md5(r.a.photo).equals(PostAb.md5(r.b.photo));
-            Log.i("SCAM_LAB", "lab " + shot.dir.getName() + " " + fragment + " " + key + "=" + value + ": merge again " + r.mergedAgain
-                    + ", same " + r.same + ", A " + r.a.mergeMs + "+" + r.a.postMs + " ms, B " + r.b.mergeMs + "+" + r.b.postMs + " ms");
+            Log.i("SCAM_LAB", "lab " + shot.dir.getName() + " " + fragment + " A=" + a + " B=" + b + ": merges differ "
+                    + r.mergedAgain + ", same " + r.same + ", A " + r.a.mergeMs + "+" + r.a.postMs + " ms, B " + r.b.mergeMs + "+" + r.b.postMs + " ms");
             return r;
         } finally {
             PreferenceValue.overlay(null, null);
             PreferenceKeys.endShotProfile();
             ScamLab.LOCK.unlock();
+        }
+    }
+
+    private static Side cachedSide(Context context, Shot shot, @Nullable int[] crop, java.util.SortedMap<String, Object> overrides,
+                                   String fragment, Progress progress, String name) throws Exception {
+        final String id = shot.dir.getAbsolutePath() + "|" + fragment + "|" + overrides;
+        final Side known = sides.get(id);
+        if (known != null && !known.photo.isRecycled()) return known;
+        final Map<String, Object> values = basePrefs(shot);
+        for (Map.Entry<String, Object> e : overrides.entrySet()) {
+            if (e.getValue() == null) values.remove(e.getKey()); else values.put(e.getKey(), e.getValue());
+        }
+        if (crop != null && shot.frame == null) wholeFrame(context, shot, progress);
+        progress.stage(Lang.t("Склейка " + name + "…", "Merge " + name + "…"));
+        final Side side = side(context, shot, crop, values, ScameraApp.getSettingsManagerStatic().getDefaultPreferences(), progress, name,
+                crop == null ? null : shot.frame, null);
+        sides.put(id, side);
+        return side;
+    }
+
+    /**
+     * A shot taken before the whole frame's statistics were kept (no ScamLab.FRAME): the whole frame merged and processed once
+     * as shot, recording them; a fragment then uses them like a newer shot's.
+     */
+    private static void wholeFrame(Context context, Shot shot, Progress progress) throws Exception {
+        progress.stage(Lang.t("Статистика всего кадра (один раз для снимка)…", "Whole-frame statistics (once per shot)…"));
+        final LabFrame record = new LabFrame();
+        final Side whole = side(context, shot, null, basePrefs(shot), ScameraApp.getSettingsManagerStatic().getDefaultPreferences(), progress,
+                "A", null, record);
+        whole.photo.recycle();
+        if (record.usable()) {
+            ScamLab.writeFrame(shot.dir, record);
+            shot.frame = record;
         }
     }
 
@@ -174,7 +195,7 @@ public final class ScamLabRun {
 
     /** One side: the merge and the post pipeline under {@code values}. */
     private static Side side(Context context, Shot shot, @Nullable int[] crop, Map<String, Object> values, SharedPreferences prefs,
-                             Progress progress, String name) throws Exception {
+                             Progress progress, String name, @Nullable LabFrame frozen, @Nullable LabFrame record) throws Exception {
         PreferenceValue.overlay(prefs, values);
         ByteBuffer rgb = null;
         Parameters p = null;
@@ -193,6 +214,9 @@ public final class ScamLabRun {
             p.scamRgbOwned = true;
             p.scamHdrRawScale = 1f;
             final PostPipeline pipeline = new PostPipeline();
+            // P277: a fragment's exposure, tone and highlights from the whole frame's statistics (LabFrame)
+            pipeline.frozen = frozen;
+            pipeline.record = record;
             Bitmap photo;
             try {
                 photo = pipeline.Run(null, p);

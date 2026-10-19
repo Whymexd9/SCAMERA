@@ -148,6 +148,16 @@ public final class LensFilter extends Node {
                 bytes.rewind();
                 expo = exposure(bytes.asFloatBuffer(), count);
             }
+            // P277: a lab fragment takes the whole frame's level and size (knee, streak length, PSF), a lab shot records them
+            final LabFrame frozen = pipeline.frozen;
+            final boolean whole = frozen != null && frozen.width > 0 && frozen.height > 0;
+            if (needsHi && frozen != null && Float.isFinite(frozen.lensExpo)) expo = frozen.lensExpo;
+            if (pipeline.record != null) {
+                if (needsHi) pipeline.record.lensExpo = expo;
+                pipeline.record.width = in.mSize.x;
+                pipeline.record.height = in.mSize.y;
+            }
+            final int frameW = whole ? frozen.width : in.mSize.x, frameH = whole ? frozen.height : in.mSize.y;
             // Glimmerglass's star keeps the filter's own knee (its fine «Ореол» control is the diffusion's halo)
             final float knee = (diffuses ? LensFilters.shape(id)[0] : shape[0]) / expo;
             final Point half = new Point(Math.max(1, in.mSize.x / 2), Math.max(1, in.mSize.y / 2));
@@ -174,7 +184,7 @@ public final class LensFilter extends Node {
             GLTexture diffAcc = in;
             if (diffuses) {
                 float[][] w = com.particlesdevs.photoncamera.processing.color.DiffusionModel.levelWeights(id, strength, tune,
-                        Math.max(in.mSize.x, in.mSize.y), com.particlesdevs.photoncamera.processing.color.DiffusionModel.pyramidSigmas(levels, 1.0));
+                        Math.max(frameW, frameH), com.particlesdevs.photoncamera.processing.color.DiffusionModel.pyramidSigmas(levels, 1.0));
                 if (w != null && levels >= 1) {
                     diffAcc = upsum(v, w, 1, levels, rgba, temp);
                     w0 = w[0];
@@ -192,7 +202,7 @@ public final class LensFilter extends Node {
                 glProg.setVar("dirA", star ? 1f : turned ? 0f : 1f, star ? 1f : turned ? 1f : 0f);
                 glProg.setVar("dirB", star ? 1f : 0f, star ? -1f : 0f);
                 // the CPU model's length is in full-size pixels; the plane is half size
-                final float len = LensFilters.streakLength(id, tune) * ((rot == 1 || rot == 3) ? in.mSize.y : in.mSize.x) * 0.5f;
+                final float len = LensFilters.streakLength(id, tune) * ((rot == 1 || rot == 3) ? frameH : frameW) * 0.5f;
                 glProg.setVar("lengthPx", len);
                 glProg.setVar("gain", LensFilters.streakGain(id));
                 glProg.drawBlocks(streaks);

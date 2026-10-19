@@ -326,6 +326,10 @@ public class FilmLutPreference extends Preference implements SharedPreferences.O
             list = new String[0];
         }
         for (String v : choices(list)) shown.add(v);
+        // P279: the user's order (hold and drag a card), shared with the viewfinder's tray
+        final List<String> ordered = com.particlesdevs.photoncamera.settings.ItemOrder.ordered(com.particlesdevs.photoncamera.settings.ItemOrder.LUT_KEY, shown);
+        shown.clear();
+        shown.addAll(ordered);
         strip.removeAllViews();
         int cardW = UiTokens.dp(c, 92);
         int gen = ++generation;
@@ -358,6 +362,10 @@ public class FilmLutPreference extends Preference implements SharedPreferences.O
             card.setContentDescription(displayName(c, value) + ": " + hint(c, value));
             card.setSelected(on);
             card.setOnClickListener(v -> select(value));
+            com.particlesdevs.photoncamera.ui.settings.StripReorder.attach(card, strip.getChildCount(), (from, to) -> {
+                com.particlesdevs.photoncamera.settings.ItemOrder.store(com.particlesdevs.photoncamera.settings.ItemOrder.LUT_KEY, new ArrayList<>(shown), from, to);
+                fillStrip();
+            });
             strip.addView(card, stripParams(c, cardW));
             if (on) selected = card;
             WORKER.execute(() -> {
