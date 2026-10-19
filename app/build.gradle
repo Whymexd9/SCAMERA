@@ -82,8 +82,10 @@ android {
     defaultConfig {
         compileSdk 36
         ndkVersion "27.2.12479018"
+        // P275 (owner, 2026-10-19: «имя пакета делаем наше собственное»): the app's own package; the vivo native routes take
+        // the SDK lease instead of the CTS package (-PscameraCtsNativeRaw=true still builds android.camera.cts for comparison)
         applicationId (providers.gradleProperty('scameraCtsNativeRaw').orNull == 'true'
-                ? 'android.camera.cts' : 'org.codeaurora.snapcam')
+                ? 'android.camera.cts' : 'com.scamera.app')
         // P183: the launcher shortcut targets whichever package this build is (CI builds the CTS one)
         resValue "string", "shortcut_target_package", applicationId
         minSdkVersion 26

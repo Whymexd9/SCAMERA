@@ -111,6 +111,9 @@ public class VivoPd2454IszTest {
             assertTrue(VivoPd2454NativeRaw.eligible(true, "android.camera.cts", camera, mode, false, false));
             assertFalse(VivoPd2454NativeRaw.eligible(false, "android.camera.cts", camera, mode, false, false));
             assertFalse(VivoPd2454NativeRaw.eligible(true, "org.codeaurora.snapcam", camera, mode, false, false));
+            // P275: our own package runs the native route as well (the SDK lease instead of the CTS package)
+            assertTrue(VivoPd2454NativeRaw.eligible(true, "com.scamera.app", camera, mode, false, false));
+            assertFalse(VivoPd2454NativeRaw.eligible(true, "com.scamera.app.extra", camera, mode, false, false));
             assertFalse(VivoPd2454NativeRaw.eligible(true, "android.camera.cts.extra", camera, mode, false, false));
             assertFalse(VivoPd2454NativeRaw.eligible(true, "android.camera.cts", camera, mode, true, false));
             assertFalse(VivoPd2454NativeRaw.eligible(true, "android.camera.cts", camera, mode, false, true));

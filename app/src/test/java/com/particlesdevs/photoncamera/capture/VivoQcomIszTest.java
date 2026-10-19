@@ -67,6 +67,12 @@ public class VivoQcomIszTest {
         VivoQcomIsz.mirrorRequest(null);
     }
 
+    /** P275: the SDK lease is an X300 Ultra ISZ module's only (never on another phone, never without a camera). */
+    @Test public void sdkLeaseOnlyForX300UltraIszModules() {
+        assertFalse(VivoQcomIsz.leaseWanted(null));
+        assertFalse("not an X300 Ultra in the unit test", VivoQcomIsz.leaseWanted("5"));
+    }
+
     /** P126 (X300 Ultra 2026-10-14): two «4.8×» and two «9.6×» on the tele, a plain «2×» crop next to the ISZ «2×». */
     @Test public void extraModulesGo() {
         java.util.List<VivoQcomIsz.Mod> mods = java.util.Arrays.asList(
@@ -233,16 +239,19 @@ public class VivoQcomIszTest {
                 mosaic = VivoQcomIsz.StreamCheck.Verdict.MOSAIC, none = VivoQcomIsz.StreamCheck.Verdict.NONE;
         final VivoQcomIsz.Trial n = VivoQcomIsz.Trial.NONE, p = VivoQcomIsz.Trial.PLAIN, c = VivoQcomIsz.Trial.CROPPED,
                 b = VivoQcomIsz.Trial.BAYER;
-        assertEquals("the default stream's Bayer: CROPPED_RAW next", p, VivoQcomIsz.next(n, plain, false, false));
-        assertEquals("CROPPED_RAW's Bayer too: the fallback", b, VivoQcomIsz.next(p, plain, true, false));
-        assertEquals("no CROPPED_RAW to try (refused / not listed): no restart loop", b, VivoQcomIsz.next(p, plain, false, false));
-        assertEquals("the mosaic with CROPPED_RAW: that stream stays", c, VivoQcomIsz.next(p, mosaic, true, false));
-        assertEquals("the mosaic on the default stream", n, VivoQcomIsz.next(p, mosaic, false, false));
+        final VivoQcomIsz.Trial d = VivoQcomIsz.Trial.DEFAULT;
+        // P275: CROPPED_RAW first (build 30906), the default stream second
+        assertEquals("CROPPED_RAW's Bayer: the default stream next", p, VivoQcomIsz.next(n, plain, true, false));
+        assertEquals("the default stream's Bayer too: the fallback", b, VivoQcomIsz.next(p, plain, false, false));
+        assertEquals("no CROPPED_RAW to try (refused / not listed): straight to the fallback, no restart loop", b, VivoQcomIsz.next(n, plain, false, false));
+        assertEquals("the mosaic with CROPPED_RAW: that stream stays", c, VivoQcomIsz.next(n, mosaic, true, false));
+        assertEquals("the mosaic on the default stream: that stream stays", d, VivoQcomIsz.next(p, mosaic, false, false));
         assertEquals("a fallback whose frames are the mosaic again", c, VivoQcomIsz.next(b, mosaic, true, false));
         assertEquals(b, VivoQcomIsz.next(c, plain, true, false));
+        assertEquals(b, VivoQcomIsz.next(d, plain, false, false));
         assertEquals(b, VivoQcomIsz.next(b, plain, true, false));
-        assertEquals("scam_dev fixes the stream: no trial of the other one", b, VivoQcomIsz.next(n, plain, false, true));
-        assertEquals(b, VivoQcomIsz.next(n, plain, true, true));
+        assertEquals("scam_dev fixes the stream: no trial of the other one", b, VivoQcomIsz.next(n, plain, true, true));
+        assertEquals(b, VivoQcomIsz.next(n, plain, false, true));
         assertEquals("no verdict, no change", p, VivoQcomIsz.next(p, none, false, false));
     }
 

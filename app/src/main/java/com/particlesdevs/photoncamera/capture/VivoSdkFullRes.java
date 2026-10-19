@@ -121,7 +121,7 @@ public final class VivoSdkFullRes {
      */
     static boolean nativeRaw() {
         android.content.Context context = ScameraApp.getAppContext();
-        return context != null && VivoNativeFullRes.device() && VivoPd2454NativeRaw.PACKAGE.equals(context.getPackageName());
+        return context != null && VivoNativeFullRes.device() && VivoPd2454NativeRaw.nativePackage(context.getPackageName());
     }
 
     /** The phone's native profile of a camera (P180: VivoNativeFullRes' table; the X200 Ultra's anywhere else). */

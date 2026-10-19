@@ -16,6 +16,24 @@ import java.util.Locale;
 
 public final class VivoPd2454NativeRaw {
     public static final String PACKAGE = "android.camera.cts";
+    /** P275: the app's own package (owner: «имя пакета делаем наше собственное»); the native routes run there too. */
+    public static final String APP_ID = "com.scamera.app";
+
+    /**
+     * P275 (owner: «для того чтобы ISZ и фулрез работали на виво, в том числе и 200у, не обязательна подпись android.camera.cts»):
+     * a package of the vivo native routes - the CTS one, or our own with the vivo SDK lease (VCF bypass, SDK RAW) taken before
+     * the camera opens.
+     */
+    public static boolean nativePackage(String applicationId) {
+        return PACKAGE.equals(applicationId) || APP_ID.equals(applicationId);
+    }
+
+    /** P275: the native ISZ module of our own package opens its camera under the vivo SDK lease (scam_dev vivo_native_isz_lease). */
+    public static boolean leaseWanted(String cameraId) {
+        Context context = ScameraApp.getAppContext();
+        return context != null && APP_ID.equals(context.getPackageName()) && active(cameraId)
+                && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vivo_native_isz_lease", true);
+    }
     private static final String OFFERED = "module_pd2454_native_isz_";
     private static final CaptureRequest.Key<int[]> FORCE =
             new CaptureRequest.Key<>(VivoQcomIsz.KEY, int[].class);
@@ -30,7 +48,7 @@ public final class VivoPd2454NativeRaw {
 
     static boolean eligible(boolean device, String applicationId, String camera, int mode,
                             boolean fullRes, boolean dcg) {
-        return device && PACKAGE.equals(applicationId) && !fullRes && !dcg && factor(camera, mode) > 0;
+        return device && nativePackage(applicationId) && !fullRes && !dcg && factor(camera, mode) > 0;
     }
 
     public static boolean active(String physicalId) {
@@ -57,7 +75,7 @@ public final class VivoPd2454NativeRaw {
     /** The native FULLRES profile the camera runs now (P180: on any phone of VivoNativeFullRes), null otherwise. */
     public static VivoSdkFullRes.Profile fullResProfile(String camera) {
         Context context = ScameraApp.getAppContext();
-        VivoSdkFullRes.Profile profile = context != null && VivoNativeFullRes.device() && PACKAGE.equals(context.getPackageName())
+        VivoSdkFullRes.Profile profile = context != null && VivoNativeFullRes.device() && nativePackage(context.getPackageName())
                 && PixelPro10.fullResOn() && !Dcg14Mode.on()
                 ? VivoSdkFullRes.profile(camera) : null;
         // P182: a hardware-remosaic FULLRES shot of the X200 Ultra runs the SDK route (no native forceSensorMode on its requests);
@@ -92,7 +110,7 @@ public final class VivoPd2454NativeRaw {
     }
 
     public static void ensureModules(Context context) {
-        if (context == null || !VivoQcomModes.device() || !PACKAGE.equals(context.getPackageName())) return;
+        if (context == null || !VivoQcomModes.device() || !nativePackage(context.getPackageName())) return;
         SharedPreferences prefs = ScameraApp.getSettingsManagerStatic().getDefaultPreferences();
         for (String slot : ModuleRegistry.slots()) {
             String marker = OFFERED + ModuleRegistry.camera(slot) + "_" + ModuleRegistry.sensorMode(slot);

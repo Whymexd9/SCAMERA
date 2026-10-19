@@ -406,6 +406,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private volatile ImageReader mImageReaderRawView;
     private ImageReader mVivoSdkJpeg;
     private volatile VivoSdkRawSession mVivoSdkRawSession;
+    /** P275: the vivo SDK lease (VCF bypass, SDK RAW) an X300 Ultra ISZ module holds while its camera is open. */
+    private volatile VivoSdkRawSession mIszLease;
     private volatile CameraDevice mVivoSdkRawDevice;
     private volatile VivoSdkFullResCapture mVivoSdkCapture;
     private String mVivoSdkCameraId;
@@ -1027,6 +1029,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         @Override public void onClosed(@NonNull CameraDevice cameraDevice) {
             closeVivoSdkRawSession(cameraDevice);
+            closeIszLease();
         }
 
         @Override
@@ -2592,9 +2595,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (known == null) try { known = mCameraManager.getCameraCharacteristics(id); } catch (Exception ignored) { known = null; }
             OppoNativeFullRes.learn(id, known);
         }
+        closeIszLease(); // P275: a lease of the camera before (normally given back when it closed)
         if (!VivoSdkFullRes.available(id) || !PixelPro10.fullResOn()
                 || !PreferenceKeys.isScamEnabled()
-                || !VivoSdkFullRes.supportsMode(mode) || mIsRecordingVideo) return;
+                || !VivoSdkFullRes.supportsMode(mode) || mIsRecordingVideo) {
+            openIszLease(id);
+            return;
+        }
         synchronized (mVivoSdkLock) {
             // P192: the OPPO Find X7 Ultra's native modes need no vivo SDK lease
             mVivoSdkRawSession = VivoSdkFullRes.oppo() ? VivoSdkRawSession.inert() : VivoSdkRawSession.open();
@@ -2642,6 +2649,37 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private boolean stillOnlyFullRes() {
         VivoSdkFullRes.Profile profile = mVivoSdkRawSession == null ? null : VivoSdkFullRes.profile(mVivoSdkCameraId);
         return profile != null && profile.nativeRoute() && profile.stillOnly;
+    }
+
+    /**
+     * P275 (owner, 2026-10-19: «для того чтобы ISZ и фулрез работали на виво, в том числе и 200у, не обязательна подпись
+     * android.camera.cts»): ISZ ran on the X300 Ultra while the app was org.codeaurora.snapcam (log 2026-10-15 / 16: raw crop
+     * x2.0 / x4.0, Quad / Tetra blocks) and stopped with the CTS package (2026-10-19: forceSensorMode on the session and every
+     * request, the normal mode). The vivo SDK lease of FULLRES - VivoCameraManager 33 (VCF) = 2, 40 (SDK RAW) = 1 - taken before
+     * the camera opens hands the HAL our vendor keys whatever the package; the values found are given back when it closes.
+     */
+    private void openIszLease(String id) {
+        if (mIszLease != null || mIsRecordingVideo || !(VivoQcomIsz.leaseWanted(id) || VivoPd2454NativeRaw.leaseWanted(id))) return;
+        try {
+            mIszLease = VivoSdkRawSession.open();
+            mCameraCharacteristicsMap.remove(id);
+            Log.i("SCAM_CAPTURE", "ISZ camera " + id + ": vivo SDK lease taken (VCF 33 = 2, SDK RAW 40 = 1), given back on close");
+        } catch (Exception failure) {
+            mIszLease = null;
+            Log.w("SCAM_CAPTURE", "ISZ camera " + id + ": vivo SDK lease refused: " + failure);
+        }
+    }
+
+    private void closeIszLease() {
+        final VivoSdkRawSession lease = mIszLease;
+        if (lease == null) return;
+        mIszLease = null;
+        try {
+            lease.close();
+            Log.i("SCAM_CAPTURE", "ISZ: vivo SDK lease given back");
+        } catch (Exception failure) {
+            Log.e(TAG, "ISZ: vivo SDK properties not restored: " + failure);
+        }
     }
 
     private void closeVivoSdkRawSession(@Nullable CameraDevice device) {

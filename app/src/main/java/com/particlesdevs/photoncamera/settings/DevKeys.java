@@ -93,6 +93,8 @@ public final class DevKeys {
         k.add(s(cap, "isz_module", true, Lang.t("Модуль «2×» для камер с CROPPED_RAW", "The «2×» module for cameras with CROPPED_RAW")));
         k.add(s(cap, "raw_wide", true, Lang.t("RAW шире заявленного белого (14 бит DCG) берётся по своим значениям", "A RAW wider than the declared white (14-bit DCG) is taken at its own range")));
         k.add(s(cap, "vivo_qcom_roi", true, Lang.t("X300 Ultra: модули ISZ без ремозаика и кнопка DCG (forceSensorMode в сессии)", "X300 Ultra: ISZ modules without remosaic and the DCG button (session forceSensorMode)")));
+        k.add(s(cap, "vivo_native_isz_lease", true, Lang.t("X200 Ultra (свой пакет): нативный модуль ISZ открывает камеру с арендой vivo SDK", "X200 Ultra (own package): a native ISZ module opens the camera under the vivo SDK lease")));
+        k.add(s(cap, "vivo_qcom_isz_lease", true, Lang.t("X300 Ultra: модуль ISZ открывает камеру с арендой vivo SDK (VCF 33 = 2, SDK RAW 40 = 1)", "X300 Ultra: an ISZ module opens the camera under the vivo SDK lease (VCF 33 = 2, SDK RAW 40 = 1)")));
         k.add(sAuto(cap, "vivo_qcom_isz_cropped_raw", Lang.t("X300 Ultra: RAW-поток модуля ISZ: 1 — с CROPPED_RAW (как в сборке 30912), 0 — без; без строки приложение пробует без, затем с", "X300 Ultra: the ISZ module's RAW stream: 1 = with CROPPED_RAW (as in build 30912), 0 = without; no line: the app tries without, then with")));
         k.add(s(cap, "mosaic_awb", true, Lang.t("ISZ без ремозаика: баланс белого по кадру на кривой камеры, а не от камеры", "ISZ without remosaic: white balance from the frame on the camera curve, not the camera's")));
         // P212f: the mosaic white balance's locus (W5), robust statistic (W4) and ISP teacher (W5, log only)

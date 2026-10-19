@@ -6068,3 +6068,16 @@ sessionModeIsRepeatedOnEveryRequest; CI list 252 classes / 1533 tests pass. Not 
 on the X300 Ultra (log: «X300 Ultra camera 5 sensor mode: vivo.control.forceSensorMode 5 on the session and on every request»,
 «sensor mode index 2 -> 5»).
 
+### P275 - X300 Ultra ISZ still off after P274; the app's own package (owner, 2026-10-19: log-2026-10-19_3 «на 300 ультра не работает isz, раньше он работал»; «для того чтобы ISZ и фулрез работали на виво, в том числе и 200у, не обязательна подпись android.camera.cts»; «имя пакета делаем наше собственное»; «на 300у перестал работать ISZ после 30906 билда»): done, pushed, not device-tested.
+Facts: build 31097 (P274) still streamed a plain Bayer with the key on the session and every request. Build 30906 (09b7b27c) was
+already android.camera.cts and sent the same session key; its X300 Ultra modules streamed CROPPED_RAW from the first session (the
+logs of 2026-10-15 / 16: raw crop x2.0 / x4.0 in-sensor, Quad / Tetra blocks). P214i (merge 30916) made the default use case the
+first try. Changes: (1) CROPPED_RAW first again, the default stream second (Trial PLAIN = Bayer on CROPPED_RAW, new DEFAULT =
+the mosaic on the default stream), old notes void (stamp "#lease"); (2) the vivo SDK lease of FULLRES (VivoCameraManager 33 = 2
+VCF bypass, 40 = 1 SDK RAW) is taken before an ISZ camera opens and given back when it closes: X300 Ultra modules (scam_dev
+vivo_qcom_isz_lease) and the X200 Ultra native ISZ modules of our own package (vivo_native_isz_lease); (3) applicationId
+com.scamera.app (CI no longer passes -PscameraCtsNativeRaw), the vivo native routes accept it (VivoPd2454NativeRaw.nativePackage).
+A new package installs next to the CTS one: settings move by «Резервная копия». CI list 252 classes / 1534 tests pass.
+To check on the phone: «4.8×» / «9.6×» on the X300 Ultra (log: «ISZ camera 5: vivo SDK lease taken», «raw crop ... x2.0 (in-sensor
+zoom)», «RAW stream colour block 2»); X200 Ultra 2× / 4× native modules and FULLRES 50 / 200 MP with the new package.
+

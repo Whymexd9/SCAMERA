@@ -390,28 +390,32 @@ public final class VivoQcomIsz {
             if (!physicalId.equals(ModuleRegistry.camera(slot)) || mode <= 0) return true;
             if (PreferenceKeys.scamDevOverrides("vivo_qcom_isz_cropped_raw"))
                 return PreferenceKeys.scamDevSwitch("vivo_qcom_isz_cropped_raw", false);
-            return trial(physicalId, mode) != Trial.NONE;
+            // P275: CROPPED_RAW first, as build 30906 ran the modules (owner: ISZ worked there); the default stream second
+            final Trial t = trial(physicalId, mode);
+            return t != Trial.PLAIN && t != Trial.DEFAULT;
         } catch (RuntimeException e) {
             return true;
         }
     }
 
     /**
-     * P214i: what this firmware's frames of an ISZ mode said ({@link StreamCheck}). NONE: not measured, or the mosaic on the
-     * default RAW stream. PLAIN: a plain Bayer on the default stream - the camera restarts and tries the CROPPED_RAW stream (build
-     * 30912's), as a FULLRES row the HAL remosaicked makes the next start try the next row (P188). CROPPED: the mosaic with
-     * CROPPED_RAW only (that stream stays). BAYER: a plain Bayer on both: the module falls back - Bayer merge
+     * P214i: what this firmware's frames of an ISZ mode said ({@link StreamCheck}). P275 (owner: ISZ ran on build 30906, whose
+     * modules streamed CROPPED_RAW from the first session): NONE: not measured, the CROPPED_RAW stream first. PLAIN: a plain Bayer
+     * on CROPPED_RAW - the camera restarts with the default RAW stream, as a FULLRES row the HAL remosaicked makes the next start
+     * try the next row (P188). CROPPED: the mosaic with CROPPED_RAW (that stream stays). DEFAULT: the mosaic on the default stream
+     * (that stream stays). BAYER: a plain Bayer on both: the module falls back - Bayer merge
      * ({@link #declaredBlock} 0) and the button's zoom as a crop (ModuleRegistry.sensorCrop false: digital, divided by the crop the
      * HAL's CROPPED_RAW frames say they hold, ZoomController.rawCropOfShot), said on the message card once.
      */
-    public enum Trial { NONE, PLAIN, CROPPED, BAYER }
+    public enum Trial { NONE, PLAIN, CROPPED, BAYER, DEFAULT }
 
     /** The trial after a session's verdict; {@code croppedRaw}: its RAW stream had CROPPED_RAW; {@code fixed}: scam_dev fixes it. */
     static Trial next(Trial now, StreamCheck.Verdict verdict, boolean croppedRaw, boolean fixed) {
-        if (verdict == StreamCheck.Verdict.MOSAIC) return croppedRaw ? Trial.CROPPED : Trial.NONE;
+        if (verdict == StreamCheck.Verdict.MOSAIC) return croppedRaw ? Trial.CROPPED : Trial.DEFAULT;
         if (verdict != StreamCheck.Verdict.PLAIN) return now;
         // the default stream's Bayer tries CROPPED_RAW next; a second Bayer (or no other stream to try) is the fallback
-        return now == Trial.NONE && !croppedRaw && !fixed ? Trial.PLAIN : Trial.BAYER;
+        // P275: the first stream is CROPPED_RAW (build 30906's); its Bayer tries the default stream, a second Bayer falls back
+        return now == Trial.NONE && croppedRaw && !fixed ? Trial.PLAIN : Trial.BAYER;
     }
 
     /** The trials of the ISZ modes (camera, mode -> "Build.FINGERPRINT|trial"): an own file, not a setting. */
@@ -485,7 +489,7 @@ public final class VivoQcomIsz {
             // the firmware alone
         }
         // P274: the trials of the session-only transport (build 31093 and before) do not count for the request copy
-        return android.os.Build.FINGERPRINT + "#" + spoof + "#req";
+        return android.os.Build.FINGERPRINT + "#" + spoof + "#lease";
     }
 
     /**
@@ -593,7 +597,7 @@ public final class VivoQcomIsz {
         } else {
             Log.w(TAG, what + ": the frames are a plain Bayer on " + stream + " (" + measured + "), not the block-" + c.expected
                     + " mosaic of the mode: the camera did not run it as a mosaic; " + (next == Trial.PLAIN
-                    ? "the camera restarts with the CROPPED_RAW stream (the next trial)"
+                    ? "the camera restarts with the default RAW stream (the next trial)"
                     : "fallback: Bayer merge, the button's zoom as a crop (digital unless the HAL's frames hold one)")
                     + " (trial " + now + " -> " + next + ")");
         }
@@ -639,6 +643,20 @@ public final class VivoQcomIsz {
             builder.set(new android.hardware.camera2.CaptureRequest.Key<>(KEY, Integer.class), mode);
         } catch (RuntimeException unknownTag) {
             // the tag is not in this camera's list: nothing to keep
+        }
+    }
+
+    /**
+     * P275: the X300 Ultra's active module on {@code cameraId} forces a sensor mode: the camera opens under the vivo SDK lease
+     * (VCF bypass, SDK RAW; CaptureController.openIszLease). scam_dev "vivo_qcom_isz_lease 0": without it.
+     */
+    public static boolean leaseWanted(@Nullable String cameraId) {
+        try {
+            if (cameraId == null || !enabled() || !PreferenceKeys.scamDevSwitch("vivo_qcom_isz_lease", true)) return false;
+            final String slot = ModuleRegistry.active();
+            return cameraId.equals(ModuleRegistry.camera(slot)) && ModuleRegistry.sensorMode(slot) > 0;
+        } catch (RuntimeException e) {
+            return false;
         }
     }
 
