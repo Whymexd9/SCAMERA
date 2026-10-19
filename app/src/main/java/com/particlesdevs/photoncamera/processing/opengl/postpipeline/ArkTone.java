@@ -102,6 +102,20 @@ public final class ArkTone {
      * P216: ArkCombine's handling of real Bento headroom - the shoulder knee and room (x the tonemapper top) and the share of the
      * full-size highlight contrast kept (scam_dev hybrid_ark_hr_knee / _room / _detail).
      */
+    /** P291: the fusion's well-exposed centre and highlight-layer weight with Bento headroom (ArkFusion; kernel: 0.6, 0.8). */
+    static float headroomCenter() {
+        return value("weight_center_hr", 0.75f);
+    }
+
+    static float headroomHlWeight() {
+        return Math.max(0f, value("weight_hl_hr", 0.4f));
+    }
+
+    /** P291: the rise of the fusion's monotonic envelope per ln of the light (ark/gf.glsl monoU; 0 = the kernel's fusion). */
+    static float fusionMono() {
+        return Math.max(0f, value("fusion_mono", 0.04f));
+    }
+
     static float[] headroomTone() {
         return new float[]{value("hr_knee", 0.5f), value("hr_room", 0.4f), Math.max(0f, value("hr_detail", 0.35f))};
     }

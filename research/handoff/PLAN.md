@@ -6324,3 +6324,48 @@ reference: grain 0..200 %, halation 0..400 %. Viewfinder tray (owner: «сдел
 вызывается в видоискателе, и дай возможность закрывать это подменю нажатием на пустой видоискатель»): three titled sections
 (LUT with «Все LUT ›» and the strength, lens filter, film) with the current choice after each title, rounded chips with the
 chosen one filled in the accent; a tap on the empty viewfinder closes the tray without focusing (Swipe.onSingleTapUp).
+
+### P290 - stepped contours on a lamp-lit sheet, echo sounder (owner, 2026-10-20, X200 Ultra bursts scam_burst-20261019-231619 / 231640; then «переходы плавные и мягкие, как на Арк, но больше информации»): merge fixed (replay), tone open, not device-tested.
+Cause (replay on the OPPO, clip-flag trailer): inside the base's clipped highlight the result comes from the ultrashort frames alone
+(Bento), scaled by one ratio for the frame (GAIN CHECK 0.1399, MAD 9.6 %: consistent; row profile: 15 of 48 bands agreeing, none).
+The 2.8 ms frames caught the desk lamp on another flicker phase than the ceiling lamps: under the desk lamp the per-colour ratio
+was 0.08..0.11, so the clipped part of the sheet came out up to 30 % darker and greener than the unclipped paper, the border along
+the clip on the binned cells. Fix: hybridUltrashortLocal after the row profile - 16 x 16 tiles of the ultrashort frame against the
+base (both unclipped, colours with signal, smooth base, 5 x 5 median outlier test), log green ratio and R/G, B/G, filled into
+unmeasured tiles (the clipped highlight) by normalised convolution from 32 tiles to 1; applied when a factor within 4 tiles of the
+base's clipped tiles departs by mosaicUsRowsMin (8 %) or more (binned frame, split sub-frames, native sites at upload via
+HybridMosaicNative::local, T2 Quad sites, plain path copy). Tuning key usLocal (1; 0 = rows only). Replay: 231619 and 231640
+contours gone (smooth gradient), ceiling lamp unchanged in look; static references syn_b1/b2/b4, hand, isz2, q1x, o12, main511 bit
+for bit with the previous worker; t100526 / t100546 (flickering scenes) changed <1 % on average in the most changed area.
+check_hybrid_us_rows: lamp case (ring error 19.9 % -> 1.8 %, under the clip 27.7 % -> 9.2 %; native vs binned 1 DN).
+Echo sounder: the red top line's blue segments are on the screen itself (the reference camera's shot shows them the same); the
+screen is not clipped in the merge, nothing of Bento there. Open: the tone of the sheet («мягко, как у Арк, но больше
+информации») - post pipeline (ArkCombine highlight roll-off), needs a shot of the new build / lab A/B.
+
+### P291 - soft light on the lamp-lit sheet, «максимально похоже на Арк, но с чуть большим количеством информации» (owner, 2026-10-20): done on the host, not device-tested.
+After P290 the sheet still had a dark ring round the white core. Host stand (session scratchpad art289/ark_host.py: the app's
+ark/low, bracket_dn, gf/box/ab fusion, hlmask, combine on the PC GPU with the shot's AE values from the phone log; it reproduces
+the phone JPEG of 231619 incl. the steps; colours calibrated to the JPEG by a 3x3 fit): the exposure fusion itself is not
+monotonic with Bento headroom - em = (0.029, 1, 1.5, 2.25): past the base layer's saturation the weights move to the 5 EV darker
+layer and the fused luma falls (0.81 at I 0.55 -> 0.72 at I 2.3) before it climbs to white. Shoulder / landing / guide /
+radius / eps changed nothing of it. Fix (ark/gf.glsl MODE 3, monoU, key hybrid_ark_fusion_mono, default 0.04): the fusion's
+own neutral curve F(I) lifted to its envelope max over I' <= I with F(I') >= 0.5 of F(I') + monoU ln(I / I'), the difference
+added to the guided result; a curve that never falls (usual layers, em.x >= 0.15) is unchanged. 231619 profile from the core:
+254 .. 223 203 166 160 163 171 179 .. (ring) -> 254 .. 234 229 218 212 209 203 199 193 (monotonic); 231640: 11 % of the
+pixels change (lamp-lit areas). check_ark_tone: vivo cases pass; its two synthetic cases fail the same on HEAD (not this change).
+Owner's idea (2 ultrashort + 1 short frame between them and the normal ones): answered in chat, not built.
+P291 round 2 (owner: «сделай ещё ближе к Арк камере», «белый никогда не уходил в серый»): the lit paper was grey because with
+Bento headroom the fusion's highlight layer is ~2 EV darker than ArkCam's (em.x 0.038 at hr 22 against ~0.125 on clipped data)
+and the kernel's weights (centre 0.6, highlight layer 0.8) take it. With headroom (r.hr > 0) ArkFusion now uses centre 0.75 and
+highlight-layer weight 0.4 (keys hybrid_ark_weight_center_hr / _weight_hl_hr); without headroom as before. Host replay, sheet
+points 255 255 254 249 227 210 / shaded part 132 against ArkCam 246 248 249 249 234 199 / 130 (before 208 .. 147 / 95);
+231619 from the core 255 .. 254 251 248 243 238 231 227 217 209 205, monotonic. Left as is: ArkCam's frame is ~1.3 EV brighter
+in the mid-tones and lifts the shadows (median luma 77 against 28) - a global AE / shadow change, not this scene's highlights.
+
+### P292 - purple line at the lamp shade's shadow edge (owner, 2026-10-20, on a P291 host render): done on the host, not device-tested.
+The strong line was the host stand's simplified ScamRgb; with the app's chain on the host (hlrecovery/chanprep + reduce,
+scamhdr/scamrgb, clipband with the shot's lo/hi from the log) it is faint, as on the phone (pink > 4 levels: phone JPEG 8218 px,
+new chain 2008 px in the sheet crop). Its source: at the ultrashort clip edge G reaches its ceiling first, partly clipped G
+carries no flag (0.96 of the ceiling, R/G 2.3 after WB). scamrgb: a channel at 0.80 .. 0.95 of its ceiling while another
+white-balanced channel is brighter is censored as well (satR), so the recovery raises it. check_highlight_recovery / _neutral /
+_one_channel_off / _landing and check_ark_highlights PASS; glslc OK.

@@ -181,6 +181,9 @@ public final class DevKeys {
         k.add(n(post, "hybrid_dn_dark_chroma_lo", "1.5", Lang.t("Шумодав: цвет в тенях, нижний порог (x1e-4)", "Denoise: colour in the shadows, lower threshold (x1e-4)")));
         k.add(n(post, "hybrid_dn_dark_chroma_noise", "0.35", Lang.t("Шумодав: цвет в тенях, доля шума", "Denoise: colour in the shadows, noise share")));
         k.add(n(post, "hybrid_ark_hr_mix", "0.5", Lang.t("Тон, света Bento выше 4x: пик к p99.9 (доля)", "Tone, Bento highlights above 4x: peak towards p99.9 (share)")));
+        k.add(n(post, "hybrid_ark_weight_center_hr", "0.75", Lang.t("Тон с запасом Bento: центр весов слияния", "Tone with Bento headroom: fusion weight centre")));
+        k.add(n(post, "hybrid_ark_weight_hl_hr", "0.4", Lang.t("Тон с запасом Bento: вес слоя светов", "Tone with Bento headroom: highlight layer weight")));
+        k.add(n(post, "hybrid_ark_fusion_mono", "0.04", Lang.t("Тон: подъём слияния к монотонной огибающей (нет тёмного кольца у лампы)", "Tone: fusion lifted to its monotonic envelope (no dark ring round a lamp)")));
         k.add(n(post, "hybrid_ark_hr_knee", "0.5", Lang.t("Тон, света Bento выше 4x: колено плеча (x верх)", "Tone, Bento highlights above 4x: shoulder knee (x top)")));
         k.add(n(post, "hybrid_ark_hr_room", "0.4", Lang.t("Тон, света Bento выше 4x: запас плеча (x верх)", "Tone, Bento highlights above 4x: shoulder room (x top)")));
         k.add(n(post, "hybrid_ark_hr_detail", "0.35", Lang.t("Тон, света Bento выше 4x: деталь светов", "Tone, Bento highlights above 4x: highlight detail")));

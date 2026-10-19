@@ -29,17 +29,21 @@ public final class ArkFusion extends Node {
     }
 
     /** gf.glsl with the weights of this shot. */
-    private void weightsProgram(int mode, GLTexture source, float[] em, float[] lw, float ae) {
+    private void weightsProgram(int mode, GLTexture source, float[] em, float[] lw, float ae, float center) {
         glProg.setDefine("MODE", mode);
         glProg.useAssetProgram("ark/gf", false);
         glProg.setTexture("InputBuffer", source);
         glProg.setVar("expU", em[0], em[1], em[2], em[3]);
         glProg.setVar("layerU", lw[0], lw[1], lw[2], lw[3]);
         glProg.setVar("aeU", ae);
-        glProg.setVar("centerU", ArkTone.value("weight_center", 0.6f));
+        glProg.setVar("centerU", center);
         glProg.setVar("smoothU", ArkTone.value("blend_smoothness", 0.25f));
         glProg.setVar("gammaInvU", 1f / ArkTone.gamma());
         glProg.setVar("toeU", ArkTone.value("aces_toe", 0.05f));
+        // P291 (owner, 2026-10-20: «сделай максимально похоже на результат Арк, но с чуть большим количеством информации»): the
+        // fusion lifted to its monotonic envelope where its curve falls (Bento headroom: no dark ring round a lamp); 0.04 = the
+        // replay of the owner's desk-lamp sheet closest to ArkCam with its gradient kept. 0 = the kernel's fusion.
+        glProg.setVar("monoU", ArkTone.fusionMono());
     }
 
     /** Separable box of radius r; closes the input. */
@@ -92,6 +96,16 @@ public final class ArkFusion extends Node {
         // layer weights in the kernel's order (hl, mid, ext_hl, shadow) [code 0x78b18-0x78b3c]
         float[] lw = {ArkTone.value("weight_hl", 0.8f), ArkTone.value("weight_mid", 1.0f),
                 ArkTone.value("weight_ext_hl", 0.7f), ArkTone.value("weight_shadow", 0.5f)};
+        // P291 (owner, 2026-10-20: «белый никогда не уходил в серый», «максимально похоже на результат Арк»): with Bento headroom
+        // the highlight layer is far darker than ArkCam's (em.x 0.038 at 22 x white where ArkCam's clipped data gives ~0.125), so
+        // the kernel's weights put lit paper on 150 - 190 grey where ArkCam has 245. There the well-exposed centre moves up and
+        // the highlight layer weighs less (host replay of the owner's desk-lamp shots: the sheet 255 .. 205 against ArkCam's
+        // 249 .. 199); without headroom the kernel's weights as before.
+        float center = ArkTone.value("weight_center", 0.6f);
+        if (r.hr > 0f) {
+            center = ArkTone.headroomCenter();
+            lw[0] = ArkTone.headroomHlWeight();
+        }
         int radius = Math.max(1, Math.round(ArkTone.value("gf_radius", 32f)));
         radius = radius > 1 ? radius >> 1 : 1;                                                  // [code 0x78f80-0x78f9c]
         // ef_gf_eps in units of 0.001 (the settings bar shows two decimals): max(eps, 1e-6) as the mod
@@ -100,7 +114,7 @@ public final class ArkFusion extends Node {
         GLTexture[] means = new GLTexture[3];
         for (int mode = 0; mode < 3; mode++) {
             GLTexture down = stats(half);
-            weightsProgram(mode, st.lowDn, em, lw, r.ae);
+            weightsProgram(mode, st.lowDn, em, lw, r.ae, center);
             glProg.drawBlocks(down);
             means[mode] = box(down, radius);
         }
@@ -118,7 +132,7 @@ public final class ArkFusion extends Node {
         }
         for (GLTexture t : means) t.close();
         st.fused = new GLTexture(lowSize, new GLFormat(GLFormat.DataType.FLOAT_32, 1), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
-        weightsProgram(3, st.lowDn, em, lw, r.ae);
+        weightsProgram(3, st.lowDn, em, lw, r.ae, center);
         glProg.setTexture("MeanA", ab[0]);
         glProg.setTexture("MeanB", ab[1]);
         glProg.drawBlocks(st.fused);
@@ -126,7 +140,7 @@ public final class ArkFusion extends Node {
         ab[0].close();
         ab[1].close();
         Log.i("SCAM_PIPELINE", "ARK fusion em=" + em[0] + "," + em[1] + "," + em[2] + "," + em[3] + " lw=" + lw[0] + "," + lw[1] + ","
-                + lw[2] + "," + lw[3] + " r=" + radius + " eps=" + eps + " bracketDn=" + (st.lowDn != st.low ? strength : 0f)
+                + lw[2] + "," + lw[3] + " center=" + center + " r=" + radius + " eps=" + eps + " bracketDn=" + (st.lowDn != st.low ? strength : 0f)
                 + " half=" + half.x + "x" + half.y + " ms=" + (System.currentTimeMillis() - started));
     }
 }

@@ -175,6 +175,15 @@ void main(){
         // saturated samples (the first rows inside a lamp: R 5.8, G 7.2, B 8 of k = 8 -> magenta). Its share of the
         // estimate fades in from 0.6 of the clip (a real colour far below, a red LED's G and B, is not touched).
         vec3 satR = max(sat, fl * smoothstep(vec3(0.60), vec3(0.985), rel));
+        // P292 (owner, 2026-10-20: a purple line along a lamp shade's shadow on lit paper): at the ultrashort frame's clip edge
+        // G reaches its ceiling first; where only some of its samples clipped it is a lower bound without a flag (0.96 of the
+        // ceiling: R/G 2.3 after WB, magenta). A channel at 0.8 .. 0.95 of its ceiling while another white-balanced channel
+        // is brighter cannot be the colour's own (the light is at least that bright in every channel): censored as well.
+        {
+            float hiC = max(max(c.r, c.g), c.b);
+            vec3 below = vec3(lessThan(c, vec3(hiC * 0.98)));
+            satR = max(satR, below * smoothstep(vec3(0.80), vec3(0.95), rel));
+        }
         if (max(max(satR.r, satR.g), satR.b) <= 0.0) { Output = c; return; }
         // A clipped channel is a lower bound. Its estimate scales a prior chromaticity to the unclipped channels (G of a
         // white highlight from R and B), and only ever raises it: a saturated single colour (neon, laser) keeps its

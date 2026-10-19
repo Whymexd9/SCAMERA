@@ -20,6 +20,7 @@ uniform float centerU;          // weight_center; <= 0 -> 0.6
 uniform float smoothU;          // blend_smoothness; <= 0 -> 0.25
 uniform float gammaInvU;        // 1 / ef_gamma; <= 0 -> 1 / 2.2
 uniform float toeU;             // ACES toe; <= 0 -> 0.05
+uniform float monoU;            // P291 MODE 3: rise of the fusion's monotonic envelope per ln of the light (0 / unset = the kernel)
 out vec4 Output;
 
 // ACES tone scale of the kernel [fc_cl_source.cl:971-976] with pre-gain 1.5, a 2.51, d 0.59.
@@ -56,6 +57,21 @@ void prepare(vec3 rgb, out float I, out vec4 p, out vec4 L) {
     p = w / (w.x + w.y + w.z + w.w);
 }
 
+// P291: the fused luma of a neutral pixel of guide I without the guided filter (prepare's weights and lumas: every layer's
+// meter is I x em).
+float fusedAt(float I) {
+    vec4 em = expU.x + expU.y + expU.z + expU.w > 0.0 ? expU : vec4(1.0);
+    vec4 lw = layerU.x + layerU.y + layerU.z + layerU.w > 0.0 ? layerU : vec4(0.8, 1.0, 0.7, 0.5);
+    float center = centerU > 0.0 ? centerU : 0.6;
+    float smoothness = smoothU > 0.0 ? smoothU : 0.25;
+    float gammaInv = gammaInvU > 0.0 ? gammaInvU : 1.0 / 2.2;
+    float toe = toeU > 0.0 ? toeU : 0.05;
+    vec4 L = pow(max(acescg(I * em, toe), vec4(0.000001)), vec4(gammaInv));
+    vec4 d = L - vec4(center);
+    vec4 w = exp(-0.5 * (d * d) / max(smoothness * smoothness, 0.001)) * lw + 0.000001;
+    return dot(w, L) / (w.x + w.y + w.z + w.w);
+}
+
 // Bilinear tap of upsample_2x_f4 along one axis: index pair and weight for output coordinate x (integer arithmetic).
 void upTap(int x, int n, out int i0, out int i1, out float f) {
     if (x <= 0) { i0 = 0; f = 0.0; }
@@ -83,7 +99,23 @@ void main() {
                  mix(texelFetch(MeanB, ivec2(x0, y1), 0), texelFetch(MeanB, ivec2(x1, y1), 0), fx), fy);
     vec4 q = max(a * I + b, vec4(0.0001));
     q /= q.x + q.y + q.z + q.w;
-    Output = vec4(dot(q, L), 0.0, 0.0, 1.0);
+    float fusedL = dot(q, L);
+    // P291 (owner, 2026-10-20: a sheet under a desk lamp, «переходы плавные и мягкие»): with Bento headroom the highlight layer
+    // lies ~5 EV under the base one (em.x 0.03 at 24 x white) and nothing between, so as the light rises past the base layer's
+    // saturation the weights move to the dark layer and the fused luma FALLS (0.81 at I 0.55 -> 0.72 at I 2.3 -> 1 at I 30): a
+    // dark ring round the lamp before its white core. The fusion's own curve F(I) is lifted to its monotonic envelope
+    // max over I' <= I with F(I') >= 0.5 of F(I') + monoU ln(I / I') (a gentle rise instead of a plateau, so the light keeps its gradient); the
+    // difference is added to the guided result. A curve that never falls (the usual layers, em.x >= 0.15) gets nothing.
+    if (monoU > 0.0 && I > 0.0) {
+        float f = fusedAt(I), env = f;
+        for (int j = 1; j <= 36; j++) {
+            float s = float(j) * (0.25 * 0.6931472);    // 1/4 EV steps, 9 EV down
+            float fj = fusedAt(I * exp(-s));
+            if (fj >= 0.5) env = max(env, fj + monoU * s);   // the highlights only: the toe's own rise is slower than any monoU
+        }
+        fusedL += env - f;
+    }
+    Output = vec4(fusedL, 0.0, 0.0, 1.0);
 #else
     vec4 acc = vec4(0.0);
     for (int j = 0; j < 2; j++) {
