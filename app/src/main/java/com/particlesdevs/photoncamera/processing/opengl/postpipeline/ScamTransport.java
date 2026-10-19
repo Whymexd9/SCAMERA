@@ -32,6 +32,18 @@ interface ScamTransport {
      * descriptor of that memfd is returned (the caller owns it); null: write() the burst as before.
      */
     default android.os.ParcelFileDescriptor sharedBurst() { return null; }
+    /** P277: the SCAM Hybrid merge (job markers hybrid-merge, rgb-half, cre-off and the tuning file); false: the 7-slot burst. */
+    default boolean hybrid() { return false; }
+    /** P80: the hybrid RGB comes back as half floats. */
+    default boolean rgbHalfTransport() { return false; }
+    /** The worker leaves the CRE motion out (job marker cre-off). */
+    default boolean creOff() { return false; }
+    /** The settings' part of the worker tuning (hybrid_tuning.txt), before {@link #burstTuning}. */
+    default String settingsTuning() { return com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText(); }
+    /** The burst's own tuning lines after the settings' (ScamHybridBurst.tuningOverride). */
+    default String burstTuning() { return ""; }
+    /** P277: whether the worker may keep this burst (keep_burst, the lab); false for a burst replayed from its file. */
+    default boolean keepable() { return hybrid(); }
     void write(FileChannel out) throws IOException;
     void write(File file) throws IOException;
 }

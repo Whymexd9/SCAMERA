@@ -136,6 +136,8 @@ public class ScamProcessor extends ProcessorBase {
     }
 
     public void Run() {
+        // P277: a lab run (settings «Гайд и лаборатория») and a shot never process at once
+        com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.LOCK.lock();
         try {
             processingStage = "camera metadata";
             Camera2ApiAutoFix.ApplyRes(captureResult);
@@ -169,6 +171,8 @@ public class ScamProcessor extends ProcessorBase {
             processingEventsListener.onProcessingError("SCAM processing failed at "
                     + processingStage + " — " + detail);
          } finally {
+          try {
+            com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.endShot();
             finishDeferredTeardown();
             com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamDiagnostics.finish();
             if (scamOwnedOutput != null) {
@@ -186,6 +190,9 @@ public class ScamProcessor extends ProcessorBase {
             if (com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastEffectiveFrames == shotEffectiveFrames)
                 com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastEffectiveFrames = null;
             shotClipFlags = shotEffectiveFrames = null;
+          } finally {
+            com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.LOCK.unlock();
+          }
         }
     }
 
@@ -589,6 +596,7 @@ public class ScamProcessor extends ProcessorBase {
                     // P220: the merge worker's heartbeat moves the ring (MergeProgress, from ScamNeuralClient's reader thread)
                     com.particlesdevs.photoncamera.processing.MergeProgress.listener =
                             share -> progress(com.particlesdevs.photoncamera.processing.ProcessingProgress.merge(share));
+                    com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.beginShot(hybridShot); // P277: «Сохранять снимки для лаборатории»
                     try {
                         scamOwnedOutput = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.process(
                                 ScameraApp.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
@@ -773,6 +781,7 @@ public class ScamProcessor extends ProcessorBase {
             processingParameters.outputScale = sx;
             Log.i("SCAM_HDR", "hybrid output " + hybridOut.x + "x" + hybridOut.y + " (scale " + sx + "): pipeline runs at the merged size");
         }
+        if (hybridShot) com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.snapshot(processingParameters, String.valueOf(processingParameters.physicalID)); // P277
         PostPipeline pipeline = new PostPipeline();
         // «HEIC 10 бит»: the final image comes out RGBA_1010102 for the HEVC Main10 HEIC; every 8-bit file of the shot gets an
         // 8-bit copy at its encode (PhotoOutput). The same for a 10 / 12-bit or lossless AVIF, which takes the 10 bits as they
@@ -795,6 +804,7 @@ public class ScamProcessor extends ProcessorBase {
             restorePriority(priorityBefore);
         }
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_done");
+        com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.preview(img); // P277: the lab shot's photo (before the zoom / ISZ crops)
         stage(0.85f); // P158: processed
         // Ultra HDR (settings.ultraHdr is on only when the shot writes a JPEG) and the HDR HEIC / AVIF (P46, settings.hdrOutput)
         // take the same gain map (settings.gainMapPass). Ultra HDR: the gain-map pass runs on the bitmap exactly

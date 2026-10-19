@@ -148,6 +148,31 @@ public final class CameraSounds {
         return am == null || am.getRingerMode() == AudioManager.RINGER_MODE_NORMAL;
     }
 
+    /**
+     * P278 (owner, 2026-10-19, Xiaomi 12X: «звук съемки не выключается»; its log: «switch off, the phone requires it true»): a ROM
+     * can say the shutter sound is required everywhere (ro.camera.sound.forced of a global build). The rule stands only where a law
+     * asks for it - Japan and South Korea, by the SIM, the network or the locale; elsewhere «Звук затвора» decides.
+     */
+    static boolean lawRequires(String... countries) {
+        for (String c : countries) {
+            if (c == null || c.trim().isEmpty()) continue;
+            final String code = c.trim().toUpperCase(java.util.Locale.ROOT);
+            return code.equals("JP") || code.equals("KR");
+        }
+        return false;
+    }
+
+    private String[] countries() {
+        String sim = null, network = null;
+        try {
+            android.telephony.TelephonyManager tm = (android.telephony.TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
+            if (tm != null) { sim = tm.getSimCountryIso(); network = tm.getNetworkCountryIso(); }
+        } catch (RuntimeException e) {
+            Log.d(TAG, "country: " + e.getMessage());
+        }
+        return new String[]{sim, network, java.util.Locale.getDefault().getCountry()};
+    }
+
     @SuppressWarnings("deprecation")
     private boolean regionForces() {
         if (forced != null) return forced;
@@ -161,6 +186,13 @@ public final class CameraSounds {
             }
         } catch (RuntimeException e) {
             Log.w(TAG, "shutter sound rule: " + e.getMessage());
+        }
+        if (f) {
+            final String[] c = countries();
+            final boolean law = lawRequires(c);
+            Log.i(TAG, "shutter sound: the phone requires it; country sim=" + c[0] + " network=" + c[1] + " locale=" + c[2]
+                    + (law ? " - required by law there, kept" : " - not required there, the switch decides (P278)"));
+            f = law;
         }
         forced = f;
         return f;

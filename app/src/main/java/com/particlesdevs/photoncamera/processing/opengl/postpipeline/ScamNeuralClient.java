@@ -334,9 +334,10 @@ public final class ScamNeuralClient {
             // Only the hybrid burst asks for the hybrid merge: a ScamBurst reaches the worker when the engine is
             // the network or the burst is a Quad/Tetra mosaic (ScamProcessor), and the hybrid would read the mosaic
             // as plain Bayer (vivo tele in ISZ: blue image, 3 October). Without the model the worker falls back itself.
-            final boolean hybridMerge=scamBurst instanceof ScamHybridBurst;
+            // P277: also a lab burst replayed from its file (ScamLabBurst)
+            final boolean hybridMerge=scamBurst.hybrid();
             // P80: the hybrid RGB comes back as half floats (marker rgb-half): half the bytes written, read and uploaded
-            final boolean rgbHalf=hybridMerge&&((ScamHybridBurst)scamBurst).rgbHalfTransport();
+            final boolean rgbHalf=hybridMerge&&scamBurst.rgbHalfTransport();
             if(rgbHalf&&!new File(dir,"rgb-half").createNewFile())throw new IOException(Lang.t("Не удалось создать маркер half","Could not create the half marker"));
             if(hybridMerge){
                 // SCAM Hybrid merge (scam-hybrid.h): no neural model, any GPU. The worker reads the marker
@@ -347,7 +348,13 @@ public final class ScamNeuralClient {
                 // manager on Android 16 no longer opens Android/data (owner, 2026-10-17)
                 // P191 (owner, 2026-10-17: «Добавь настройку с сохранением рав серии в группу настроек "Диагностика"»): the row
                 // «Сохранять RAW-серию» of Diagnostics; scam_dev.txt "keep_burst" still overrides it
-                if(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("keep_burst",
+                // P277: a lab shot keeps its burst in its own Lab folder (the worker keeps one copy: the lab's wins)
+                final File labBurst=scamBurst.keepable()?ScamLab.burstTarget():null;
+                if(labBurst!=null){
+                    try(java.io.FileWriter kb=new java.io.FileWriter(new File(dir,"keep-burst"))){
+                        kb.write(labBurst.getAbsolutePath());
+                    }catch(IOException kbe){log.accept("CLIENT: lab keep-burst marker not written: "+kbe.getMessage());}
+                }else if(scamBurst.keepable()&&com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("keep_burst",
                         com.particlesdevs.photoncamera.settings.PreferenceKeys.isKeepRawBurst())){
                     File kept=com.particlesdevs.photoncamera.util.ScameraFiles.dir();
                     if(!kept.isDirectory())log.accept("CLIENT: keep-burst folder not made: "+kept);
@@ -357,13 +364,15 @@ public final class ScamNeuralClient {
                     }catch(IOException kbe){log.accept("CLIENT: keep-burst marker not written: "+kbe.getMessage());}
                 }
                 // A worker of this process died inside the CRE: this one aligns with SCAMERA's own tile alignment.
-                if(((ScamHybridBurst)scamBurst).creOff()&&!new File(dir,"cre-off").createNewFile())
+                if(scamBurst.creOff()&&!new File(dir,"cre-off").createNewFile())
                     throw new IOException(Lang.t("Не удалось создать маркер CRE","Could not create the CRE marker"));
                 // P30: the worker keeps its compiled GPU programs in the app's cache (−0.6 s per shot after the first).
                 File glCache=new File(context.getCacheDir(),"hybrid-gl");
                 if(glCache.isDirectory()||glCache.mkdirs())
                     try(java.io.FileWriter cw=new java.io.FileWriter(new File(dir,"gl-cache"))){cw.write(glCache.getAbsolutePath());}
-                String tuning=com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText()+((ScamHybridBurst)scamBurst).tuningOverride();
+                final String settingsTuning=scamBurst.settingsTuning(),burstTuning=scamBurst.burstTuning();
+                if(labBurst!=null)ScamLab.recordTuning(settingsTuning,burstTuning);
+                String tuning=settingsTuning+burstTuning;
                 if(!tuning.isEmpty())try(java.io.FileWriter tw=new java.io.FileWriter(new File(dir,"hybrid_tuning.txt"))){tw.write(tuning);}
                 log.accept("CLIENT: SCAM Hybrid merge requested"+(tuning.isEmpty()?"":" tuning="+tuning.replace('\n',' ')));
             }
@@ -474,7 +483,7 @@ public final class ScamNeuralClient {
             },"scam-neural-output");
             reader.setDaemon(true);reader.start();
             // P27 any resolution: a Hybrid merge above 16 MP gets a wait in proportion to its pixels (900 s up to 16 MP, unchanged).
-            final long timeoutS=scamBurst instanceof ScamHybridBurst?ScamHybridBurst.workerTimeoutSeconds(scamBurst.width(),scamBurst.height()):900;
+            final long timeoutS=hybridMerge?ScamHybridBurst.workerTimeoutSeconds(scamBurst.width(),scamBurst.height()):900;
             if(timeoutS>900)log.accept("CLIENT: worker timeout "+timeoutS+" s for "+scamBurst.width()+"x"+scamBurst.height());
             final WorkerWatchdog.Worker watched=new WorkerWatchdog.Worker(){
                 @Override public boolean waitFor(long ms) throws InterruptedException{return child.waitFor(ms);}
@@ -490,7 +499,7 @@ public final class ScamNeuralClient {
                         :code>128?"signal "+(code-128):"code "+code)+(completed[0]?"":", no completion line"));
             }
             if(reader.isAlive()||process.exitValue()!=0||!completed[0])throw new IOException(
-                    scamBurst instanceof ScamHybridBurst?Lang.t("SHDR: склейка не завершена. Отчёт: Система → Диагностика → «Отчёт последней съёмки SHDR».","SHDR: merge not finished. Report: System → Diagnostics → “Last SHDR capture report”."):
+                    hybridMerge?Lang.t("SHDR: склейка не завершена. Отчёт: Система → Диагностика → «Отчёт последней съёмки SHDR».","SHDR: merge not finished. Report: System → Diagnostics → “Last SHDR capture report”."):
                     Lang.t("SCAM HDR не завершён. Откройте SCAM HDR — проверка запуска → Отчёт последней съёмки SCAM HDR.","SCAM HDR not finished. Open “SCAM HDR: launch check” → “Last SCAM HDR capture report”."));
             final int ow=scamBurst.outputWidth(),oh=scamBurst.outputHeight();
             long expected=(long)ow*oh*(rgbHalf?6:12);

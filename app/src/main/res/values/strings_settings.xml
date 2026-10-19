@@ -439,6 +439,10 @@
     <string name="prefs_scam_hybrid_diagnostics_title">Save processing stages</string>
     <string name="prefs_keep_raw_burst_title">Save the RAW burst</string>
     <string name="prefs_keep_raw_burst_summary">Each SHDR shot saves its RAW burst to Download/SCAMERA/scam_burst-&lt;time&gt;.bin for analysing the merge. The files are large (50 MP: up to a few GB a shot); delete them after sending.</string>
+    <string name="prefs_scam_lab_screen_title">Guide and lab</string>
+    <string name="prefs_scam_lab_screen_summary">The settings shown on your own RAW bursts: the shot as taken beside another value of a merge or processing setting</string>
+    <string name="prefs_scam_lab_keep_title">Keep shots for the lab</string>
+    <string name="prefs_scam_lab_keep_summary">Each SHDR shot keeps its RAW burst and parameters in Download/SCAMERA/Lab/&lt;date_time&gt; for «Guide and lab». The files are large (50 MP: up to a few GB a shot).</string>
     <string name="prefs_jpeg_fast_encoder_title">Fast JPEG</string>
     <string name="prefs_jpeg_fast_encoder_summary">System encoder: about twice as fast, but the file is a bit larger and fine colour detail is coarser.</string>
     <string name="prefs_scam_hybrid_profile_title">Time every GPU pass</string>

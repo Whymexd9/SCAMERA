@@ -1421,7 +1421,11 @@ public class SettingsMenuTest {
         assertEquals(order.length,screen.getPreferenceCount());
         for(int i=0;i<order.length;i++)assertEquals(order[i],screen.getPreference(i).getKey());
         androidx.preference.PreferenceGroup expert=screen.findPreference("root_expert");
-        assertEquals(1,expert.getPreferenceCount());
+        // P277: «Гайд и лаборатория» after the advanced page (a row that opens ScamLabFragment, no page of its own)
+        assertEquals(2,expert.getPreferenceCount());
+        assertEquals("advanced_screen",expert.getPreference(0).getKey());
+        assertEquals("scam_lab_screen",expert.getPreference(1).getKey());
+        assertEquals(0,((PreferenceScreen)expert.getPreference(1)).getPreferenceCount());
         PreferenceScreen advanced=screen.findPreference("advanced_screen");
         for(String key:new String[]{"scam_hybrid_screen","module_profiles_screen","camera_settings_screen","pref_scam_hybrid_zsl_frames",
                 "pref_zsl_buffer_count_key","scam_diagnostics_screen","camera_package_spoof_screen","developer_settings_screen",

@@ -371,6 +371,7 @@
         <SwitchPreferenceCompat android:key="scamera_full_debug" android:title="@string/prefs_scamera_full_debug_title" android:summary="@string/full_debug_summary" android:defaultValue="false" android:icon="@drawable/settings_ic_list" />
         <SwitchPreferenceCompat android:key="pref_scam_hybrid_diagnostics" android:title="@string/prefs_scam_hybrid_diagnostics_title" android:defaultValue="false" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_hybrid_diagnostics_summary" android:icon="@drawable/settings_ic_diag" />
         <SwitchPreferenceCompat android:key="pref_keep_raw_burst" android:title="@string/prefs_keep_raw_burst_title" android:defaultValue="false" app:iconSpaceReserved="false" android:summary="@string/prefs_keep_raw_burst_summary" android:icon="@drawable/settings_ic_save" />
+        <SwitchPreferenceCompat android:key="pref_scam_lab_keep" android:title="@string/prefs_scam_lab_keep_title" android:defaultValue="false" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_lab_keep_summary" android:icon="@drawable/settings_ic_save" />
         <SwitchPreferenceCompat android:key="pref_scam_hybrid_profile" android:title="@string/prefs_scam_hybrid_profile_title" android:defaultValue="false" app:iconSpaceReserved="false" android:summary="@string/prefs_scam_hybrid_profile_summary" android:icon="@drawable/settings_ic_diag" />
         <Preference android:key="pref_scam_hybrid_dev_note" android:selectable="false" app:iconSpaceReserved="false" android:title="@string/prefs_scam_hybrid_dev_note_title" android:summary="@string/prefs_scam_hybrid_dev_note_summary" />
       </PreferenceScreen>
@@ -384,6 +385,7 @@
       <PreferenceScreen android:key="developer_settings_screen" android:title="@string/prefs_developer_settings_screen_title" android:summary="@string/prefs_developer_settings_screen_summary" app:iconSpaceReserved="false" android:icon="@drawable/settings_ic_chip" />
     </PreferenceCategory>
     </PreferenceScreen>
+    <PreferenceScreen android:key="scam_lab_screen" android:title="@string/prefs_scam_lab_screen_title" android:summary="@string/prefs_scam_lab_screen_summary" android:icon="@drawable/settings_ic_eye" app:iconSpaceReserved="false" />
   </PreferenceCategory>
   <PreferenceCategory android:key="root_photo" android:title="@string/prefs_root_photo_title" app:iconSpaceReserved="false">
     <PreferenceScreen android:key="output_settings_screen" android:icon="@drawable/settings_ic_config" android:title="@string/prefs_file_format_title" app:iconSpaceReserved="false" android:summary="@string/prefs_file_format_summary">

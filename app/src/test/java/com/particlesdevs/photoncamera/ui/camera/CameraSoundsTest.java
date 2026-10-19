@@ -46,6 +46,16 @@ public class CameraSoundsTest {
         assertFalse(CameraSounds.timerAudible(true, false));
     }
 
+    /** P278: the phone's must-play rule only where a law asks for it (the first known of SIM, network, locale). */
+    @Test public void thePhonesShutterRuleStandsOnlyInJapanAndKorea() {
+        assertTrue(CameraSounds.lawRequires("jp", "ru", "RU"));
+        assertTrue(CameraSounds.lawRequires(null, "kr", "US"));
+        assertTrue(CameraSounds.lawRequires("", "", "JP"));
+        assertFalse(CameraSounds.lawRequires("ru", "jp", "JP"));
+        assertFalse(CameraSounds.lawRequires(null, null, "RU"));
+        assertFalse(CameraSounds.lawRequires(null, null, null));
+    }
+
     @Test public void synthesizedSoundsOnlyOnPd2454WithTheActualCtsPackage() {
         assertTrue(CameraSounds.synthesizedFor(true, "android.camera.cts"));
         assertFalse(CameraSounds.synthesizedFor(false, "android.camera.cts"));

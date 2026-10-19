@@ -439,6 +439,10 @@
     <string name="prefs_scam_hybrid_diagnostics_title">Сохранять этапы обработки</string>
     <string name="prefs_keep_raw_burst_title">Сохранять RAW-серию</string>
     <string name="prefs_keep_raw_burst_summary">Каждый снимок SHDR сохраняет свою RAW-серию в Download/SCAMERA/scam_burst-&lt;время&gt;.bin для разбора склейки. Файлы большие (50 Мп: до нескольких ГБ за снимок); после отправки их удаляйте.</string>
+    <string name="prefs_scam_lab_screen_title">Гайд и лаборатория</string>
+    <string name="prefs_scam_lab_screen_summary">Настройки на ваших RAW-сериях: снимок как снят рядом с другим значением настройки склейки или обработки</string>
+    <string name="prefs_scam_lab_keep_title">Сохранять снимки для лаборатории</string>
+    <string name="prefs_scam_lab_keep_summary">Каждый снимок SHDR сохраняет RAW-серию и параметры в Download/SCAMERA/Lab/&lt;дата_время&gt; для «Гайда и лаборатории». Файлы большие (50 Мп: до нескольких ГБ за снимок).</string>
     <string name="prefs_jpeg_fast_encoder_title">Быстрый JPEG</string>
     <string name="prefs_jpeg_fast_encoder_summary">Системный кодер: примерно вдвое быстрее, но файл чуть больше, а цвет мелочей грубее.</string>
     <string name="prefs_scam_hybrid_profile_title">Замер времени проходов GPU</string>

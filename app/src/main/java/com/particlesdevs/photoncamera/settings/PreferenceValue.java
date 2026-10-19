@@ -17,7 +17,25 @@ public final class PreferenceValue {
 
     private PreferenceValue() {}
 
+    /**
+     * P277 (ScamLabRun): while the lab renders a saved shot, the overlaid preferences read as the shot's own snapshot (with the
+     * tried value): {@code values} stands for the whole file (a key it lacks reads as unset). Null: the stored values.
+     */
+    private static volatile SharedPreferences overlaid;
+    private static volatile java.util.Map<String, Object> overlay;
+
+    public static void overlay(SharedPreferences prefs, java.util.Map<String, Object> values) {
+        overlay = values;
+        overlaid = values == null ? null : prefs;
+    }
+
+    public static boolean overlaid() {
+        return overlay != null;
+    }
+
     public static Object get(SharedPreferences prefs, String key) {
+        final java.util.Map<String, Object> o = overlay;
+        if (o != null && prefs != null && prefs == overlaid) return key == null ? null : o.get(key);
         if (prefs == null || key == null || !prefs.contains(key)) return null;
         Integer known = TYPES.get(key);
         if (known != null) {

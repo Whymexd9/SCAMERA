@@ -144,6 +144,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         
         String key = preferenceScreen.getKey();
         if (ModulePageFilter.HUB.equals(key)) { openModuleProfiles("module_profiles"); return true; }
+        if (ScamLabFragment.SCREEN.equals(key)) { openLab(); return true; }
         // P189: inside a module's group every page stays the module's (the sensor page is its slot's)
         String module = preferenceFragmentCompat instanceof SettingsFragment ? ((SettingsFragment) preferenceFragmentCompat).moduleProfile() : null;
         if (module != null) {
@@ -174,6 +175,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         return true;
     }
 
+    /** P277: «Гайд и лаборатория» (the root row and the search). */
+    void openLab() {
+        getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, ScamLabFragment.list())
+                .addToBackStack(ScamLabFragment.SCREEN).commit();
+    }
+
     /** P189: «Настройки по модулям» (the root row and the search; P218: no longer from «Камеры и сенсоры»). */
     void openModuleProfiles(String name) {
         getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleProfilesFragment())
@@ -193,6 +200,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
     void openSearchResult(SettingsSearchFragment.Entry entry) {
         if (ModulePageFilter.HUB.equals(entry.page)) { openModuleProfiles("search_result"); return; }
+        if (ScamLabFragment.SCREEN.equals(entry.page) || ScamLabFragment.SCREEN.equals(entry.key)) { openLab(); return; }
         SettingsFragment page = new SettingsFragment();
         Bundle args = new Bundle();
         if (!"prefscreen".equals(entry.page)) args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, entry.page);
@@ -1301,6 +1309,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new DcpSettingsFragment()).addToBackStack("dcp").commit();return true;
             }
             // P189: an empty PreferenceScreen does not navigate by itself (androidx returns at once without children)
+            if (ScamLabFragment.SCREEN.equals(preference.getKey()) && activity instanceof SettingsActivity) {
+                ((SettingsActivity) activity).openLab();
+                return true;
+            }
             if (ModulePageFilter.HUB.equals(preference.getKey()) && activity instanceof SettingsActivity) {
                 ((SettingsActivity) activity).openModuleProfiles("module_profiles");
                 return true;

@@ -6103,3 +6103,39 @@ ModuleDuplicates.copyOf skips pref_sensorconfig_<source>_sensormoderow, the copy
 never offered it. So a lens can have a plain module and a copy with its own sensor mode side by side. Test
 ModuleDuplicatesTest.aCopyDoesNotTakeTheSensorModeOfItsSource; CI list 1540 tests pass.
 
+
+### P277 - «Гайд и лаборатория»: the settings shown on the owner's own RAW series (owner, 2026-10-19: «гайд как небольшое приложение в котором всё будет полноценно показано ... чтобы в приложение можно было подгрузить например свою Рав серию»; «тогда лучше всё-таки встроить в наше приложение»; «Может мы сделаем отдельный тогл специально для этого раздела?»; «Сохранять будем в /storage/emulated/0/Download/SCAMERA/Lab и разделять по дате и времени по папкам»; «нам нужно чтобы было наглядно видно что и как работает, те же настройки склейки и тд чтобы можно было понять разницу»): done, local commit, not device-tested.
+Capture: «Сохранять снимки для лаборатории» (pref_scam_lab_keep; the lab page and Diagnostics) keeps each SHDR shot in
+Download/SCAMERA/Lab/yyyy-MM-dd_HH-mm-ss (ScamLab): burst.nch = the worker's input copied by the worker's keep-burst marker (the
+lab's folder wins over keep_burst), its header's merged-DNG and diagnostics flags cleared at the end of the shot; meta.json = the
+post pipeline's Parameters right before the post pipeline (ScamLabParams, reflection over the plain fields + CCT + noise model;
+the shot's metadata path needs the live CaptureResult), the worker tuning (settings' part and the burst's own lines apart), every
+default preference typed, sizes, lastNormals, and "orient" - how the photo lies over the sensor frame, found by correlating the
+worker RGB's luma with the photo (ScamLabOrient, 8 codes); preview.jpg (1600 px, the pipeline output before the zoom / ISZ crops).
+An incomplete folder (failed merge, DNG-only shot) is removed. ScamLab.LOCK: a shot's processing and a lab run never overlap.
+Replay (ScamLabRun): ScamLabBurst (a ScamTransport from the file: whole = the file's fd mapped by the worker, or a fragment =
+a v11 transport of a 32-aligned window of every frame), the job's ScamHybridBurst-only branches now interface methods
+(hybrid, rgbHalfTransport, creOff, settingsTuning, burstTuning, keepable); while a side runs PreferenceValue.overlay makes the
+default preferences read as the shot's snapshot (+ the tried value for B), so the tuning, the denoise, tone, colour, sharpening
+take the side's value. A merge setting (B's tuning differs) merges again; A of a shot and fragment is cached. The fragment gets
+its lens-shading map cropped (RawCrop.cropGainMap), its size and final size. PostPipeline.getRotation no longer needs an open camera.
+UI (ScamLabFragment, settings root «Гайд и лаборатория»): the shots (thumbnail, device, size, frames, file size; hold to delete),
+a shot's page (the photo with the fragment, tap to move it; 1/9, 1/4, whole frame; the groups SHDR photo / sharpening / tone /
+merge, style, LUT, lens filters, colour fine), a group's settings with the value at the shot, a value sheet (switch: the other
+state; list; slider), and the comparison (LabCompareView): before / after with a draggable border, double tap x3, pinch, a held
+magnifier; «Разница ×4»; «Карта кадров» (the worker's effective-frame map of A and B, few frames dark blue -> twice the median
+yellow); the times, whether the merge ran again, «A и B совпадают до пикселя» with why; «Другое значение», «Сохранить B в
+настройки». Tests ScamLabOrientTest, ScamLabBurstTest, ScamLabParamsTest. Not device-tested: the capture, the replay, the UI.
+To check on the phone: switch on, an SHDR shot -> Lab/<date_time> with three files (log «SCAM_LAB: lab shot kept», «photo over
+the sensor frame: code N»); the lab page lists it; a merge setting (e.g. a rejection strength) and a processing one (sharpening)
+on the 1/9 fragment; the frame map; the fragment lies where it is on the photo.
+
+### P278 - Xiaomi 12X: the shutter sound does not turn off (owner, 2026-10-19, log-2026-10-19_4 + SCAMERA-debug, build 31098, Xiaomi 2112123AG psyche): done, not device-tested.
+The log says why: «CameraSounds: shutter sound: switch off, the phone requires it true, normal ringer true -> played» -
+MediaActionSound.mustPlayShutterSound() is true on this phone (the ROM's ro.camera.sound.forced / its region config), and
+CameraSounds.shutterAudible lets the phone's rule win over «Звук затвора». Plan: the phone's must-play rule only where the law asks
+for it (the SIM / network country JP or KR, as the ROMs' own region tables mean it); elsewhere the switch decides; log the
+country with the line above. Check on the 12X: the switch off -> «-> silent».
+Done: CameraSounds.lawRequires (the first known of SIM, network, locale country is JP or KR) gates the phone's rule; the log line
+«shutter sound: the phone requires it; country sim=.. network=.. locale=.. - not required there, the switch decides (P278)».
+Test CameraSoundsTest.thePhonesShutterRuleStandsOnlyInJapanAndKorea.

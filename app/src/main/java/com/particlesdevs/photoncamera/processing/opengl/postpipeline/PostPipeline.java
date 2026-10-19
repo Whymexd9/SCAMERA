@@ -113,8 +113,13 @@ public class PostPipeline extends GLBasePipeline {
     public int getRotation() {
         int rotation = mParameters.cameraRotation;
         String TAG = "ParseExif";
-        Log.d(TAG, "Gravity rotation:" + ScameraApp.getGravity().getRotation());
-        Log.d(TAG, "Sensor rotation:" + ScameraApp.getCaptureController().mSensorOrientation);
+        // P277: the lab renders with no camera open (no gravity sensor or capture controller in the process yet)
+        try {
+            Log.d(TAG, "Gravity rotation:" + ScameraApp.getGravity().getRotation());
+            Log.d(TAG, "Sensor rotation:" + ScameraApp.getCaptureController().mSensorOrientation);
+        } catch (RuntimeException noCamera) {
+            Log.d(TAG, "rotation " + rotation + " (no camera open)");
+        }
         return rotation;
     }
 

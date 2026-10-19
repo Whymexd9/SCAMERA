@@ -502,7 +502,9 @@ public final class ScamHybridBurst implements ScamTransport {
 
     static long minimumPostBytes(int outputWidth, int outputHeight) { return 32L * outputWidth * outputHeight; }
 
-    public boolean rgbHalfTransport() { return rgbHalf; }
+    @Override public boolean rgbHalfTransport() { return rgbHalf; }
+    @Override public boolean hybrid() { return true; }
+    @Override public String burstTuning() { return tuningOverride(); }
 
     /**
      * P35: block of the active module's declared ISZ sensor mode (5 Quad -> 2, 7 Tetra -> 4), else 0. Only a fallback: a shot
@@ -627,7 +629,7 @@ public final class ScamHybridBurst implements ScamTransport {
         return series > 0 && (!huge || series > HUGE_SERIES) ? "seriesFrames " + sent + "\n" : "";
     }
     /** The worker leaves the CRE motion out (job marker cre-off) after a worker of this process died inside it. */
-    public boolean creOff() { return avoidedSteps.contains(STEP_CRE); }
+    @Override public boolean creOff() { return avoidedSteps.contains(STEP_CRE); }
 
     private ByteBuffer header() { return header(null); }
     /** pages: NCH v12, frame i at byte pages[i] * 4096 of the shared memfd (the shot's arena); null: v11, planes follow the table. */
