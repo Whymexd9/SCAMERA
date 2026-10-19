@@ -243,6 +243,8 @@ public class VendorTagUtils {
         com.particlesdevs.photoncamera.capture.VivoQcomModes.apply(builder,
                 com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics, physicalId);
         com.particlesdevs.photoncamera.capture.VivoPd2454Isz.mirrorRequest(builder, physicalId);
+        // P274: the X300 Ultra's forceSensorMode is a session key the camera service drops when a request lacks it
+        com.particlesdevs.photoncamera.capture.VivoQcomIsz.mirrorRequest(builder);
         com.particlesdevs.photoncamera.capture.VivoPd2454NativeRaw.apply(builder, physicalId);
     }
 }

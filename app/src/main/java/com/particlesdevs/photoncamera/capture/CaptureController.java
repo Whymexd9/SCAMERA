@@ -3553,6 +3553,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         com.particlesdevs.photoncamera.processing.RawLevels.staticBlack(mCameraCharacteristics),
                         com.particlesdevs.photoncamera.processing.RawLevels.staticWhite(mCameraCharacteristics),
                         Dcg14Mode.knownBits(mCameraCharacteristics), "Xiaomi DCG session");
+                VivoQcomIsz.sessionStart(); // P274: the session's forceSensorMode is known once its parameters are built
                 if (sdkFullRes) {
                     CaptureRequest.Builder sdkSession = sessionDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
                     if (nativeVivoFullRes()) applyVivoSdkPreview(sdkSession);
@@ -3595,6 +3596,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         com.particlesdevs.photoncamera.settings.TunableKeyManager.applySessionKeys(scamSession, physicalID);
                         VivoPd2454NativeRaw.apply(scamSession, physicalID);
                         if (rawFps > 0) scamSession.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(rawFps, rawFps)); // P266
+                        if (VivoQcomIsz.device()) Log.i("SCAM_CAPTURE", "X300 Ultra camera " + physicalID + " sensor mode: "
+                                + VivoQcomIsz.sessionBuilt(scamSession));
                         configuration.setSessionParameters(scamSession.build());
                     } catch (IllegalArgumentException unsupported) {
                         Log.w("SCAM_CAPTURE", "SCAM session control unavailable", unsupported);

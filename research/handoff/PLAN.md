@@ -6055,3 +6055,16 @@ viewfinder, the dimming behind it pulses darker / lighter frame by frame)
   NPU remosaic instead of our remosaic for the RGB. Compare detail and artefacts on the owner's 4x bursts (scam_burst-...100546).
 
 ### P273 - a short beginner guide to the camera's settings (owner, 2026-10-19: «Когда закончишь полностью всё по плану и зальешь на гит сделай короткий и понятный для новичка гайд по настройке нашей камеры с понятным описанием абсолютно каждого параметра и с наглядной демонстрацией работы каждого»): after the push (the push waits until only P273 is left).
+- Done 2026-10-19: artifact https://claude.ai/artifact/UK4frsnSXbMv9uBWpRV74T (private; built from preferences.xml + values-ru, @SensorConfig, the shade / Pro / module UI; 370 settings with descriptions, values and defaults, searchable; real before/after from the X200 Ultra bursts (one frame vs the merge, Bento off / on) and canvas demos marked as imitations). Builder scripts in the session scratchpad guide/ (extract.py, sensor.py, images.py, template.html, build.py).
+
+### P274 - ISZ does not work on the X300 Ultra (owner, 2026-10-19, log-2026-10-19_2, build 31093: «isz не работает на X300 Ultra ... должен быть доступен просто через реквест vivo.control.forceSensorMode»): done, pushed.
+Cause: every ISZ session streamed a plain Bayer at the normal sensor mode index 2 (the result key), «камера не включила ISZ-режим».
+vivo.control.forceSensorMode (0x811b0126) is in the camera's android.request.availableSessionKeys (x300u_camera.txt), and the
+camera service compares the session keys of every request with the session parameters: a request without the key removes it
+and reconfigures the session at the normal mode. We sent it on the session only («no request copy», P214i). Fix:
+VivoQcomIsz.sessionBuilt / mirrorRequest - the forceSensorMode of the session parameters (ISZ module or DCG) is repeated on every
+request (VendorTagUtils.builderSessionApply); the old trials (BAYER notes) are void (stamp "#req"). Test VivoQcomIszTest
+sessionModeIsRepeatedOnEveryRequest; CI list 252 classes / 1533 tests pass. Not device-tested: check «4.8×» / «9.6×» / DCG
+on the X300 Ultra (log: «X300 Ultra camera 5 sensor mode: vivo.control.forceSensorMode 5 on the session and on every request»,
+«sensor mode index 2 -> 5»).
+

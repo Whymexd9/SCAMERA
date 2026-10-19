@@ -21,7 +21,7 @@ import java.util.Locale;
  * P122 Sensor modes of the vivo X300 Ultra (owner, 2026-10-13: «Я даю тебе разрешение переключать сенсормоды», «На виво на
  * снапах сенсормоды можно переключать с помощью vivo.control.forceSensorMode реквеста», and the table of its working modes).
  * <p>
- * vivo.control.forceSensorMode works there as a SESSION key only (as a request key the HAL does not take it): the modules carry
+ * vivo.control.forceSensorMode works there as a SESSION key (as a request key alone the HAL does not take it): the modules carry
  * it as a «Session» vendor key (VendorTagUtils.TunableKey.TYPE_SESSION, set in the session parameters, not in the requests).
  * The table (14 mm ultra-wide / 35 mm main / 85 mm tele): 2x ISZ as a Quad mosaic = UW 21, main 10, tele 5; tele 4x ISZ «Quad
  * Quad Bayer» (Tetra) = 7; DCG 14 bit «Open Gate» = UW 11, main 17, tele 20 (owner: ISZ and DCG on all three modules).
@@ -48,11 +48,18 @@ import java.util.Locale;
  * session key only (the same int32 a one-element int[] is), next to a PRIVATE viewfinder and a RAW stream with the CROPPED_RAW
  * use case (P100) - the HAL's own in-sensor zoom by the zoom ratio, which may remosaic the cropped sensor; the tele streamed a
  * plain Bayer (block 1, raw crop x1.0), while the main's mode 10 reported a x2.0 raw crop (log-2026-10-14, 06:59:09). A module
- * that forces a sensor mode keeps the session key only (never a request copy) and tries the RAW stream of the default use case
+ * that forces a sensor mode sets the session key (P274: repeated on every request) and tries the RAW stream of the default use case
  * first, then the 30912 stream ({@link #croppedRawAllowed}, {@link Trial}; scam_dev "vivo_qcom_isz_cropped_raw 1 / 0" fixes
  * it). Its frames are checked ({@link StreamCheck}): a plain Bayer where the row declares a mosaic is said in the log, the next
  * stream is tried, and on both it falls back - Bayer merge, the button's zoom as a crop - noted per camera, mode and
  * Build.FINGERPRINT; a later session whose frames are the mosaic moves the note on.
+ * <p>
+ * P274 (owner's log 2026-10-19, build 31093: every ISZ session streamed a plain Bayer at the normal sensor mode index 2, «isz не
+ * работает на X300 Ultra ... просто через реквест vivo.control.forceSensorMode»): the key (0x811b0126) is one of the camera's
+ * android.request.availableSessionKeys (x300u_camera.txt), and the camera service compares every request's session keys with the
+ * session parameters - a request without it removes the key and reconfigures the session at the normal mode. The forceSensorMode
+ * of the session parameters ({@link #sessionBuilt}: ISZ module or DCG) is now repeated on every request ({@link #mirrorRequest}),
+ * as MotionCam's session keys reach the HAL. The trials of the session-only transport are void ({@link #stamp}).
  */
 public final class VivoQcomIsz {
     private static final String TAG = "VivoQcomIsz";
@@ -477,7 +484,8 @@ public final class VivoQcomIsz {
         } catch (RuntimeException ignored) {
             // the firmware alone
         }
-        return android.os.Build.FINGERPRINT + "#" + spoof;
+        // P274: the trials of the session-only transport (build 31093 and before) do not count for the request copy
+        return android.os.Build.FINGERPRINT + "#" + spoof + "#req";
     }
 
     /**
@@ -551,7 +559,7 @@ public final class VivoQcomIsz {
     public static String describe(StreamCheck c, boolean croppedRaw) {
         final Row r = row(c.role, c.mode);
         return "X300 Ultra ISZ module " + c.slot + " «" + c.label + "»: camera " + c.camera + " (" + c.role + "), " + KEY + " "
-                + c.mode + " = " + (r == null ? "?" : r.what) + " as a session key only (no request copy), RAW stream "
+                + c.mode + " = " + (r == null ? "?" : r.what) + " as a session key, repeated on every request (P274), RAW stream "
                 + (croppedRaw ? "with CROPPED_RAW" : "of the default use case") + ", declared block " + declaredBlock(c.camera, c.mode)
                 + ", trial " + trial(c.camera, c.mode)
                 + (PreferenceKeys.scamDevOverrides("vivo_qcom_isz_cropped_raw") ? " (stream fixed by scam_dev " + CROPPED_RAW_KEY + ")" : "");
@@ -595,6 +603,43 @@ public final class VivoQcomIsz {
                         + "»: камера не включила ISZ-режим " + c.mode + " (кадры — обычный Bayer), снимаю с кропом зума",
                 "«" + c.label + "»: the camera did not run ISZ mode " + c.mode + " (plain Bayer frames), shooting with a zoom crop");
         return new Outcome(card, next == Trial.PLAIN && now != Trial.PLAIN, (now == Trial.BAYER) != (next == Trial.BAYER));
+    }
+
+    /** P274: the forceSensorMode of the X300 Ultra's current session parameters, null when they carry none. */
+    private static volatile Integer sSessionMode;
+
+    /** P274: a new session is being configured: no mode until its parameters are built. */
+    public static void sessionStart() {
+        sSessionMode = null;
+    }
+
+    /** P274: the session parameters are complete: their forceSensorMode goes on every request of the session; the log text. */
+    public static String sessionBuilt(@Nullable android.hardware.camera2.CaptureRequest.Builder session) {
+        Integer mode = null;
+        if (session != null && device()) {
+            try {
+                mode = session.get(new android.hardware.camera2.CaptureRequest.Key<>(KEY, Integer.class));
+            } catch (RuntimeException unknownTag) {
+                mode = null;
+            }
+        }
+        remember(mode);
+        return mode == null ? "none" : KEY + " " + mode + " on the session and on every request";
+    }
+
+    static void remember(@Nullable Integer mode) {
+        sSessionMode = mode;
+    }
+
+    /** P274: a request of the session carries the session's forceSensorMode (the camera service keeps the mode then). */
+    public static void mirrorRequest(@Nullable android.hardware.camera2.CaptureRequest.Builder builder) {
+        final Integer mode = sSessionMode;
+        if (builder == null || mode == null) return;
+        try {
+            builder.set(new android.hardware.camera2.CaptureRequest.Key<>(KEY, Integer.class), mode);
+        } catch (RuntimeException unknownTag) {
+            // the tag is not in this camera's list: nothing to keep
+        }
     }
 
     static VendorTagUtils.TunableKey sessionKey(int mode) {

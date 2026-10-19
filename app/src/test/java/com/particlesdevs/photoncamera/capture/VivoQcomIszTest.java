@@ -51,6 +51,22 @@ public class VivoQcomIszTest {
         assertEquals("1.2×", VivoQcomIsz.label(0.6f * 2));
     }
 
+    /** P274: the session's forceSensorMode goes on every request (the camera service drops a session key a request lacks). */
+    @Test public void sessionModeIsRepeatedOnEveryRequest() {
+        android.hardware.camera2.CaptureRequest.Builder request = org.mockito.Mockito.mock(android.hardware.camera2.CaptureRequest.Builder.class);
+        VivoQcomIsz.sessionStart();
+        VivoQcomIsz.mirrorRequest(request);
+        org.mockito.Mockito.verifyNoInteractions(request);
+        VivoQcomIsz.remember(VivoQcomIsz.TELE_2X);
+        VivoQcomIsz.mirrorRequest(request);
+        org.mockito.Mockito.verify(request).set(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(VivoQcomIsz.TELE_2X));
+        VivoQcomIsz.sessionStart();
+        android.hardware.camera2.CaptureRequest.Builder next = org.mockito.Mockito.mock(android.hardware.camera2.CaptureRequest.Builder.class);
+        VivoQcomIsz.mirrorRequest(next);
+        org.mockito.Mockito.verifyNoInteractions(next);
+        VivoQcomIsz.mirrorRequest(null);
+    }
+
     /** P126 (X300 Ultra 2026-10-14): two «4.8×» and two «9.6×» on the tele, a plain «2×» crop next to the ISZ «2×». */
     @Test public void extraModulesGo() {
         java.util.List<VivoQcomIsz.Mod> mods = java.util.Arrays.asList(
