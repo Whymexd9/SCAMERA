@@ -302,66 +302,56 @@ public class ScamHybridBurstAnyResolutionTest {
     }
 
     /**
-     * P195 «Наш ремозаик» off: a Quad / Tetra stream the app knows is binned into plain Bayer by the worker (the same rule as
-     * hybridMosaicBinnable): the result, its 2x grid, the header's grid word and the merged RAW trailer follow the binned size, and
-     * the worker is told (mosaicRemosaic 0). On (default) nothing changes; an unknown block or a frame of partial colour periods
-     * keeps the remosaic.
+     * P267 «Наш ремозаик» off (owner, 2026-10-19: «При выкл сохраняй только днг без ремозаика»; «Склейка должны быть, просто без
+     * ремозаика»): a Quad / Tetra stream the app knows is merged at the sensor grid (no 2x) and asks for its merged RAW in the mosaic
+     * layout (dngMosaic 1, the merged-DNG flag); on (default), an unknown block or a frame of partial colour periods merges into a
+     * photo as before; the worker is always told to remosaic its RGB (mosaicRemosaic 1).
      */
-    @Test public void withoutTheRemosaicAMosaicIsMergedAsBinnedBayer() throws Exception {
-        assertEquals(1, ScamHybridBurst.binnedBlock(true, 2, 8192, 6144));
-        assertEquals(2, ScamHybridBurst.binnedBlock(false, 2, 8192, 6144));
-        assertEquals(2, ScamHybridBurst.binnedBlock(false, 2, 4096, 3072));
-        assertEquals(4, ScamHybridBurst.binnedBlock(false, 4, 16384, 12288));
-        assertEquals(4, ScamHybridBurst.binnedBlock(false, 4, 16320, 12240));
-        assertEquals("unknown block: the worker would measure it", 1, ScamHybridBurst.binnedBlock(false, 0, 8192, 6144));
-        assertEquals("plain Bayer", 1, ScamHybridBurst.binnedBlock(false, 1, 8192, 6144));
-        assertEquals("not whole 4x4 periods", 1, ScamHybridBurst.binnedBlock(false, 2, 4098, 3072));
-        assertEquals("not whole 8x8 periods", 1, ScamHybridBurst.binnedBlock(false, 4, 4092, 3072));
-        assertEquals("below 64 binned px", 1, ScamHybridBurst.binnedBlock(false, 4, 248, 256));
-        assertEquals("mosaicRemosaic 0\n", ScamHybridBurst.remosaicTuning(2, false, 2));
-        assertEquals("the switch off, the remosaic kept", "mosaicRemosaic 1\n", ScamHybridBurst.remosaicTuning(1, false, 2));
-        assertEquals("", ScamHybridBurst.remosaicTuning(1, false, 0));
-        assertEquals("the switch on: the tuning as before", "", ScamHybridBurst.remosaicTuning(1, true, 2));
+    @Test public void withoutTheRemosaicAMosaicShotIsItsMergedMosaicDng() throws Exception {
+        assertEquals(1, ScamHybridBurst.dngOnlyBlock(true, 2, 8192, 6144));
+        assertEquals(2, ScamHybridBurst.dngOnlyBlock(false, 2, 8192, 6144));
+        assertEquals(2, ScamHybridBurst.dngOnlyBlock(false, 2, 4096, 3072));
+        assertEquals(4, ScamHybridBurst.dngOnlyBlock(false, 4, 16384, 12288));
+        assertEquals(4, ScamHybridBurst.dngOnlyBlock(false, 4, 16320, 12240));
+        assertEquals("unknown block: the worker would measure it", 1, ScamHybridBurst.dngOnlyBlock(false, 0, 8192, 6144));
+        assertEquals("plain Bayer", 1, ScamHybridBurst.dngOnlyBlock(false, 1, 8192, 6144));
+        assertEquals("not whole 4x4 periods", 1, ScamHybridBurst.dngOnlyBlock(false, 2, 4098, 3072));
+        assertEquals("not whole 8x8 periods", 1, ScamHybridBurst.dngOnlyBlock(false, 4, 4092, 3072));
+        assertEquals("below 64 binned px", 1, ScamHybridBurst.dngOnlyBlock(false, 4, 248, 256));
         java.lang.reflect.Method header = ScamHybridBurst.class.getDeclaredMethod("header");
         header.setAccessible(true);
         try {
             // on (default): a declared Quad keeps the sensor grid and its 2x
             com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey("p195-test", 2);
             ScamHybridBurst on = burst(List.of(frame(128, 128, ByteBuffer.allocate(128 * 128 * 2))), parameters(128, 128));
-            assertEquals(1, on.binnedBlock());
             assertEquals(256, on.outputWidth());
             assertEquals(128L * 128, on.mergedRawPixels());
-            assertFalse(on.tuningOverride(), on.tuningOverride().contains("mosaicRemosaic"));
+            assertTrue(on.tuningOverride(), on.tuningOverride().startsWith("mosaicRemosaic 1\n"));
+            assertEquals(1, on.dngMosaic());
+            assertEquals(2, ((ByteBuffer) header.invoke(on)).getInt(52));
             prefs.when(() -> PreferenceKeys.hybridSwitch("mosaic_remosaic", true)).thenReturn(false);
-            // off, Quad: 64x64 binned, the 2x choice on its grid
-            ScamHybridBurst quad2x = burst(List.of(frame(128, 128, ByteBuffer.allocate(128 * 128 * 2))), parameters(128, 128));
-            assertEquals(2, quad2x.binnedBlock());
-            assertEquals(128, quad2x.outputWidth());
-            assertEquals(128, quad2x.outputHeight());
-            assertEquals(1f, quad2x.outputScale(), 0f);
-            assertEquals(64L * 64, quad2x.mergedRawPixels());
-            assertTrue(quad2x.tuningOverride(), quad2x.tuningOverride().endsWith("mosaicRemosaic 0\n"));
-            ByteBuffer h = (ByteBuffer) header.invoke(quad2x);
-            assertEquals("header: the real size and the block", 128, h.getInt(8));
-            assertEquals(2, h.getInt(52));
-            assertEquals(2, h.getInt(56));
-            outputMode = "sensor";
+            // off, Quad of whole periods: merged on the sensor grid, the merged RAW in the mosaic layout
             ScamHybridBurst quad = burst(List.of(frame(128, 128, ByteBuffer.allocate(128 * 128 * 2))), parameters(128, 128));
-            assertEquals(64, quad.outputWidth());
-            assertEquals(64, quad.outputHeight());
-            assertEquals(0.5f, quad.outputScale(), 0f);
-            assertEquals("the binned grid is the merge's 1x grid", 1, ((ByteBuffer) header.invoke(quad)).getInt(52));
-            // off, Tetra: 256 -> 64
+            assertEquals(2, quad.dngMosaic());
+            assertEquals(128, quad.outputWidth());
+            assertEquals(128L * 128, quad.mergedRawPixels());
+            assertTrue(quad.tuningOverride(), quad.tuningOverride().startsWith("mosaicRemosaic 1\ndngMosaic 1\n"));
+            ByteBuffer h = (ByteBuffer) header.invoke(quad);
+            assertEquals("header: the sensor grid, the block", 1, h.getInt(52));
+            assertEquals(2, h.getInt(56));
+            // off, Tetra: the same at its block
             com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey("p195-test", 4);
             ScamHybridBurst tetra = burst(List.of(frame(256, 256, ByteBuffer.allocate(256 * 256 * 2))), parameters(256, 256));
-            assertEquals(4, tetra.binnedBlock());
-            assertEquals(64, tetra.outputWidth());
-            assertEquals(64L * 64, tetra.mergedRawPixels());
-            // off, a Tetra frame of partial colour periods: the remosaic stays and the worker is told so
+            assertEquals(4, tetra.dngMosaic());
+            assertEquals(256, tetra.outputWidth());
+            assertEquals(256L * 256, tetra.mergedRawPixels());
+            // off, a Tetra frame of partial colour periods: merged with the remosaic at the sensor grid
+            outputMode = "sensor";
             ScamHybridBurst partial = burst(List.of(frame(260, 256, ByteBuffer.allocate(260 * 256 * 2))), parameters(260, 256));
-            assertEquals(1, partial.binnedBlock());
             assertEquals(260, partial.outputWidth());
-            assertTrue(partial.tuningOverride(), partial.tuningOverride().endsWith("mosaicRemosaic 1\n"));
+            assertEquals(260L * 256, partial.mergedRawPixels());
+            assertEquals(1, partial.dngMosaic());
+            assertTrue(partial.tuningOverride(), partial.tuningOverride().startsWith("mosaicRemosaic 1\n"));
         } finally {
             com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey("", -1);
         }

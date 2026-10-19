@@ -653,10 +653,15 @@ public final class ShadeCatalog {
     /**
      * SIMPLE_UI §2: the quick sheet's «Для опытных» card - these advanced settings, those not pinned as tiles (Кадры светов,
      * Пик фокуса, Находить лица, Следить за объектом, Кадр 16:9, RAW-видоискатель, Информация на экране).
+     * P271 (owner, 2026-10-19: «в настройках для опытных у нас одна настройка "Живой видоискатель"»): with most of those pinned
+     * the card held one row; it also lists the curated SHDR and output rows of the full level (frames, Shasta, the ultrashort
+     * frames, the luma / chroma denoise, the output size and its downsampler, the watermark), each left out when pinned.
      */
     public static final List<String> ADVANCED = Collections.unmodifiableList(Arrays.asList("pref_scam_hybrid_bento",
+            "pref_scam_hybrid_bento_frames", "pref_scam_hybrid_shasta", "pref_scam_hybrid_zsl_frames",
+            "pref_scam_hybrid_dn_luma_mult", "pref_scam_hybrid_dn_chroma_mult", OUTPUT, DOWNSAMPLER,
             "pref_peak_method_key", "pref_face_detect_mode", "pref_tracking_af_mode", "pref_wide169_key",
-            "pref_live_viewfinder_raw_key", "pref_show_afdata_key"));
+            "pref_live_viewfinder_raw_key", "pref_show_afdata_key", "pref_show_watermark_key"));
 
     /** A group of rows with this title (the sheet's «Для опытных» card). */
     public static Group group(@StringRes int title, List<String> keys) {

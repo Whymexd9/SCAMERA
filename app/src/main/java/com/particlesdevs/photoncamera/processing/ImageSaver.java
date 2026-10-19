@@ -280,6 +280,12 @@ public class ImageSaver {
             return saveSingleRaw(dngFilePath, buffer, parameters);
         }
 
+        /** P267: the merged mosaic DNG without our remosaic, uncompressed for Scam Remosaic (see saveSingleRaw). */
+        public static boolean saveStackedRaw(Path dngFilePath,
+                                             ByteBuffer buffer, Parameters parameters, boolean uncompressed) {
+            return saveSingleRaw(dngFilePath, buffer, parameters, uncompressed);
+        }
+
         public static boolean saveSyntheticMosaicRaw(Path dngFilePath, ByteBuffer buffer,
                                                      Parameters parameters, int width, int height,
                                                      String reconstructionLabel) {
@@ -323,9 +329,18 @@ public class ImageSaver {
 
         public static boolean saveSingleRaw(Path dngFilePath,
                                             ByteBuffer buffer, Parameters parameters) {
+            return saveSingleRaw(dngFilePath, buffer, parameters, false);
+        }
+
+        /**
+         * {@code uncompressed}: no «DNG без потерь» compression whatever the setting (P258: the mosaic DNG for Scam Remosaic, which
+         * reads uncompressed 16-bit CFA without a LinearizationTable only).
+         */
+        public static boolean saveSingleRaw(Path dngFilePath,
+                                            ByteBuffer buffer, Parameters parameters, boolean uncompressed) {
             DngCreator dngCreator = new DngCreator();
             dngCreator.setParameters(parameters);
-            dngCreator.setCompression(com.particlesdevs.photoncamera.settings.PreferenceKeys.isDngLossless());
+            dngCreator.setCompression(!uncompressed && com.particlesdevs.photoncamera.settings.PreferenceKeys.isDngLossless());
             //dngCreator.setBinning(true);
             // P27: a DNG that cannot be written (I/O, or a DngCreator RuntimeException) costs only the DNG, never the JPEG.
             try (OutputStream outputStream = Files.newOutputStream(dngFilePath)) {

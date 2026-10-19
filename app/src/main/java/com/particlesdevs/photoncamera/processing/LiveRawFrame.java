@@ -180,6 +180,49 @@ public final class LiveRawFrame {
         return result;
     }
 
+    /**
+     * P266 (owner, 2026-10-19: «это тоже можно добавить» - the RAW viewfinder's resolution, the RAW's aspect kept, the photo
+     * unchanged): the longest side the viewfinder's frame may have. 0 = auto (as before: 50 / 200 MP frames binned), -1 = the
+     * full frame (no binning at all), else a plain Bayer frame halved (one 2 x 2 quad of each 4 x 4) until it fits.
+     */
+    private static volatile int maxLongSide;
+    private static ByteBuffer halfA, halfB;
+
+    public static void setMaxLongSide(int px) {
+        maxLongSide = px;
+    }
+
+    /** How many halvings bring {@code w} x {@code h} to a longest side of at most {@code cap} (keeping both sides whole 4s). */
+    static int halvings(int w, int h, int cap) {
+        int n = 0;
+        while (cap > 0 && Math.max(w, h) > cap && w % 4 == 0 && h % 4 == 0 && w >= 8 && h >= 8) {
+            w /= 2;
+            h /= 2;
+            n++;
+        }
+        return n;
+    }
+
+    /** A plain 16-bit Bayer frame at half size: one 2 x 2 quad of each 4 x 4 (the CFA phase kept); into {@code into}. */
+    static ByteBuffer halveBayer(ByteBuffer plane, int w, int h, int stride, ByteBuffer into) {
+        final int bw = w / 2, bh = h / 2;
+        final java.nio.ShortBuffer in = plane.duplicate().order(ByteOrder.nativeOrder()).slice().order(ByteOrder.nativeOrder()).asShortBuffer();
+        final java.nio.ShortBuffer out = into.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
+        final short[] line = new short[w], row = new short[bw];
+        final int srcRow = stride / 2;
+        for (int y = 0; y < bh; y++) {
+            in.position((4 * (y >> 1) + (y & 1)) * srcRow);
+            in.get(line, 0, w);
+            for (int x = 0; x < bw; x++) row[x] = line[4 * (x >> 1) + (x & 1)];
+            out.position(y * bw);
+            out.put(row, 0, bw);
+        }
+        ByteBuffer result = into.duplicate().order(ByteOrder.nativeOrder());
+        result.clear();
+        result.limit(bw * bh * 2);
+        return result;
+    }
+
     /** Bumped on every published frame so the renderer can skip re-uploading. */
     private static int version = 0;
     private static float[] shading = {1,1,1};
@@ -264,7 +307,8 @@ public final class LiveRawFrame {
         // mode) is shown 2x2-binned as the plain Bayer 4080x3072, at most every QUAD_BIN_INTERVAL_NS (the camera thread); P194 a
         // plain Bayer frame as large (the hardware-remosaic FULLRES) one 2x2 quad of each 4x4, the same (w/2) x (h/2)
         final int bin = block == 2 || block == 4 ? block : 1, cell = bin == 1 ? 2 : bin;
-        if ((long) w * h >= QUAD_BIN_PIXELS && w % (cell * 2) == 0 && h % (cell * 2) == 0) {
+        final int cap = maxLongSide;
+        if (cap != -1 && (long) w * h >= QUAD_BIN_PIXELS && w % (cell * 2) == 0 && h % (cell * 2) == 0) {
             final long now = System.nanoTime();
             if (now - quadAtNs < binIntervalNs((long) w * h, lastBinNs)) return;
             quadAtNs = now;
@@ -273,6 +317,33 @@ public final class LiveRawFrame {
             publish(binned, w / cell, h / cell, w / cell * 2, cfa, white, black, gains, ccm, lensShading, sw, sh, cropRect, 1, sensorIso, analogIso,
                     automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR, minGain, maxGain, sceneLuma);
             return;
+        }
+        // P266: the module's «Разрешение видоискателя RAW» - a plain 16-bit Bayer frame halved until it fits
+        if (cap > 0 && bin == 1 && format == android.graphics.ImageFormat.RAW_SENSOR && (stride & 1) == 0
+                && (long) (h - 1) * stride + w * 2L <= plane.remaining()) {
+            final int n = halvings(w, h, cap);
+            if (n > 0) {
+                ByteBuffer src = plane;
+                int sw0 = w, sh0 = h, st = stride;
+                synchronized (LiveRawFrame.class) {
+                    for (int i = 0; i < n; i++) {
+                        final int need = (sw0 / 2) * (sh0 / 2) * 2;
+                        ByteBuffer into = (i & 1) == 0 ? halfA : halfB;
+                        if (into == null || into.capacity() < need) {
+                            into = ByteBuffer.allocateDirect(need).order(ByteOrder.nativeOrder());
+                            if ((i & 1) == 0) halfA = into; else halfB = into;
+                        }
+                        src = halveBayer(src, sw0, sh0, st, into);
+                        sw0 /= 2;
+                        sh0 /= 2;
+                        st = sw0 * 2;
+                    }
+                }
+                plane = src;
+                w = sw0;
+                h = sh0;
+                stride = st;
+            }
         }
         final boolean packed = com.particlesdevs.photoncamera.util.RawUnpack.isPacked(format);
         final long rowBytes = packed ? com.particlesdevs.photoncamera.util.RawUnpack.packedRowBytes(format, w) : w * 2L;

@@ -86,7 +86,6 @@ public final class SettingsAvailability {
             case "pref_avif_quality": case "pref_avif_lossless": case "pref_avif_depth": case "pref_avif_chroma":
             case "pref_avif_speed": return !format.equals("avif");
             case "pref_photo_also_jpeg": return format.equals("jpeg");
-            case "pref_photo_hdr": return !format.equals("heic") && !format.equals("avif");
             default: return false;
         }
     }
@@ -123,11 +122,8 @@ public final class SettingsAvailability {
         // P29 mosaic merge: the native rows follow the merge list, the split's edge kernel only acts on the split (P35: Tetra takes
         // the native merge too with "Tetra path" at its default, so the row is live only with the split for Quad or for Tetra).
         if (key.startsWith("pref_scam_hybrid_mosaic_")) {
-            // P195: without our remosaic the blocks are binned into Bayer and merged as such: only the frame count still acts
-            if (!on("pref_scam_hybrid_mosaic_remosaic", true)
-                    && !any(key, "pref_scam_hybrid_mosaic_remosaic", "pref_scam_hybrid_mosaic_frames", "pref_scam_hybrid_mosaic_note"))
-                return Lang.t("Только с «Наш ремозаик»: без него блоки усредняются в Байер и склеиваются как Байер.",
-                        "Only with “Our remosaic”: without it the blocks are binned into Bayer and merged as Bayer.");
+            // P267: without our remosaic a Quad / Tetra shot is merged as always, its merged mosaic is the DNG alone: every mosaic
+            // merge row still acts (the RGB the DNG is sampled from is that merge)
             boolean nativeMosaic = text("pref_scam_hybrid_mosaic_path", "1").equals("1"); // P34: the native merge is the default
             if (key.equals("pref_scam_hybrid_mosaic_edge_scale") && nativeMosaic && !text("pref_scam_hybrid_mosaic_tetra", "1").equals("0")) // P35: T1 default
                 return Lang.t("Только для разбиения на подкадры: Quad и Tetra идут нативной склейкой со своим «Ядром поперёк краёв».", "Subframe split only: Quad and Tetra both take the native merge with its own “Kernel across edges”.");
@@ -173,22 +169,24 @@ public final class SettingsAvailability {
         if (key.startsWith("pref_watermark_") && !on("pref_show_watermark_key", true)) return Lang.t("Включите водяной знак.", "Turn on the watermark.");
         // «Формат фото»: Ultra HDR and the JPEG quality act on a JPEG, which a HEIC / WebP / AVIF shot writes only with «Также сохранять JPEG».
         if (!writesJpeg()) {
-            if (key.equals("pref_ultrahdr_key"))
-                return Lang.t("Только для JPEG: включите «Также сохранять JPEG» — Ultra HDR будет в нём.",
-                        "JPEG only: turn on “Also save a JPEG” to get Ultra HDR in that JPEG.");
             if (key.equals("pref_jpeg_quality") || key.equals("pref_jpeg_fast_encoder"))
                 return Lang.t("Для JPEG: выберите формат JPEG или включите «Также сохранять JPEG».",
                         "For JPEG: choose the JPEG format or turn on “Also save a JPEG”.");
         }
         // «HEIC 10 бит» needs Android 13 and an HEVC Main10 encoder with P010 input; without them the shot is an 8-bit HEIC.
         if (key.equals("pref_heic_10bit") && heic10Unavailable != null) return heic10Unavailable;
-        // «HDR в HEIC / AVIF» (P46, P125 gain map): the HEIC needs the app's 10-bit HEIC writer; AVIF holds the map at any depth.
-        if (key.equals("pref_photo_hdr")) {
+        // P266 «HDR-фото» (one switch: the JPEG's Ultra HDR, P46 / P125 the HEIC / AVIF gain map): a JPEG of the shot holds it
+        // always; the HEIC needs the app's 10-bit HEIC writer, AVIF holds the map at any depth, WebP none.
+        if (key.equals("pref_ultrahdr_key") && !writesJpeg()) {
+            final String format = photoFormat();
+            if (format.equals("webp"))
+                return Lang.t("В WebP HDR не хранится: включите «Также сохранять JPEG» — HDR будет в нём.",
+                        "WebP holds no HDR: turn on “Also save a JPEG” to get it in that JPEG.");
             if (hdrUnavailable != null) return hdrUnavailable;
-            if (photoFormat().equals("heic")) {
+            if (format.equals("heic")) {
                 if (!on("pref_heic_10bit", false))
-                    return Lang.t("Включите «HEIC 10 бит»: HDR хранится только в 10-битном HEIC.",
-                            "Turn on “10-bit HEIC”: HDR needs the 10-bit HEIC.");
+                    return Lang.t("Включите «HEIC 10 бит» или «Также сохранять JPEG»: HDR хранится в 10-битном HEIC или в JPEG.",
+                            "Turn on “10-bit HEIC” or “Also save a JPEG”: HDR needs the 10-bit HEIC or a JPEG.");
                 if (heic10Unavailable != null)
                     return Lang.t("HDR хранится только в 10-битном HEIC, а он здесь недоступен. ", "HDR needs the 10-bit HEIC, which is unavailable here. ")
                             + heic10Unavailable;

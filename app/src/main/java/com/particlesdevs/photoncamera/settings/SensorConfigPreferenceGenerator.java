@@ -157,6 +157,21 @@ public class SensorConfigPreferenceGenerator {
             category.addPreference(keyPref);
         }
 
+        // P266 «Проверить частоты кадров»: asked here, run by the next session of this module (FpsProbe)
+        androidx.preference.Preference probe = new androidx.preference.Preference(context);
+        probe.setKey("pref_sensorconfig_" + physicalId + "_fpsprobe");
+        probe.setLayoutResource(com.particlesdevs.photoncamera.R.layout.preference_card);
+        probe.setTitle(Lang.t(context, "Проверить частоты кадров", "Check the frame rates"));
+        probe.setSummary(fpsProbeSummary(context, physicalId));
+        probe.setIcon(com.particlesdevs.photoncamera.R.drawable.settings_ic_sliders);
+        probe.setOrder(9999);
+        probe.setOnPreferenceClickListener(preference -> {
+            com.particlesdevs.photoncamera.capture.FpsProbe.request(context, physicalId);
+            preference.setSummary(fpsProbeSummary(context, physicalId));
+            return true;
+        });
+        category.addPreference(probe);
+
         androidx.preference.Preference addButton = new androidx.preference.Preference(context);
         addButton.setKey("pref_sensorconfig_" + physicalId + "_add_tunablekey");
         addButton.setLayoutResource(com.particlesdevs.photoncamera.R.layout.preference_card);
@@ -172,11 +187,23 @@ public class SensorConfigPreferenceGenerator {
         category.addPreference(addButton);
     }
 
+    /** The probe's row: asked (runs on the camera), the last result, or what it does. */
+    static String fpsProbeSummary(Context context, String slot) {
+        if (com.particlesdevs.photoncamera.capture.FpsProbe.requested(context, slot))
+            return Lang.t(context, "Откройте камеру с этим модулем: проверка займёт несколько секунд",
+                    "Open the camera on this module: the check takes a few seconds");
+        final String last = com.particlesdevs.photoncamera.capture.FpsProbe.lastResult(context, slot);
+        return last != null ? Lang.t(context, "Запрошено → получено к/с (режим сенсора): ", "Asked → delivered fps (sensor mode): ") + last
+                : Lang.t(context, "Каждая частота на секунду: что камера реально даёт и какой режим сенсора выбирает",
+                "Each rate for a second: what the camera really delivers and which sensor mode it picks");
+    }
+
     private static void refreshTunableKeys(Context context, PreferenceCategory category, String physicalId) {
         List<androidx.preference.Preference> toRemove = new ArrayList<>();
         for (int i = 0; i < category.getPreferenceCount(); i++) {
             androidx.preference.Preference p = category.getPreference(i);
-            if (p instanceof TunableKeyPreference || ("pref_sensorconfig_" + physicalId + "_add_tunablekey").equals(p.getKey())) {
+            if (p instanceof TunableKeyPreference || ("pref_sensorconfig_" + physicalId + "_add_tunablekey").equals(p.getKey())
+                    || ("pref_sensorconfig_" + physicalId + "_fpsprobe").equals(p.getKey())) {
                 toRemove.add(p);
             }
         }

@@ -75,7 +75,6 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_mm_boost_value": return new double[]{1,10,0};
             case "pref_scam_hybrid_mm_motion_threshold": return new double[]{0.25,8,0};
             case "pref_scam_hybrid_mm_bento": return new double[]{0,2,1};
-            case "pref_scam_hybrid_mm_fps": return new double[]{0,240,1};
             case "pref_scam_hybrid_mm_shutter": return new double[]{0,8000,1};
             case "pref_scam_hybrid_noise_photon": case "pref_scam_hybrid_noise_readout": return new double[]{0.25,4,0};
             // Per-channel highlight recovery of the hybrid (ScamRgb clamps the strength to 100 %).

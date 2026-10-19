@@ -134,8 +134,9 @@ public class ColourSettingsTest {
         }
         assertEquals("Цветовое пространство", ru.getString(R.string.prefs_photo_color_space_title));
         assertEquals("Colour space", en.getString(R.string.prefs_photo_color_space_title));
-        assertEquals("HDR в HEIC / AVIF", ru.getString(R.string.prefs_photo_hdr_title));
-        assertEquals("HDR in HEIC / AVIF", en.getString(R.string.prefs_photo_hdr_title));
+        // P266: one «HDR-фото» for every format (the JPEG's Ultra HDR and the HEIC / AVIF map)
+        assertEquals("HDR-фото", ru.getString(R.string.prefs_photo_hdr_title));
+        assertEquals("HDR photo", en.getString(R.string.prefs_photo_hdr_title));
         assertEquals("Display P3 (широкий цвет)", ru.getResources().getStringArray(R.array.photo_color_space_entries)[1]);
         assertEquals("sRGB (standard)", en.getResources().getStringArray(R.array.photo_color_space_entries)[0]);
     }
@@ -148,8 +149,12 @@ public class ColourSettingsTest {
             SettingsAvailability a = new SettingsAvailability(v);
             assertFalse(a.hidden(PhotoFormat.KEY_COLOR_SPACE));
             assertNull(a.reason(PhotoFormat.KEY_COLOR_SPACE));
-            assertEquals(f, f.equals("jpeg") || f.equals("webp"), a.hidden(PhotoFormat.KEY_HDR));
+            assertFalse(f, a.hidden(PhotoFormat.KEY_HDR)); // P266: the one HDR switch shows for every format
         }
+        v.put(PhotoFormat.KEY, "jpeg");
+        assertNull("a JPEG holds Ultra HDR", new SettingsAvailability(v).reason(PhotoFormat.KEY_HDR));
+        v.put(PhotoFormat.KEY, "webp");
+        assertNotNull("WebP alone holds none", new SettingsAvailability(v).reason(PhotoFormat.KEY_HDR));
         v.put(PhotoFormat.KEY, "heic");
         assertNotNull("HEIC without 10 bit", new SettingsAvailability(v).reason(PhotoFormat.KEY_HDR));
         v.put(PhotoFormat.KEY_HEIC_10BIT, true);

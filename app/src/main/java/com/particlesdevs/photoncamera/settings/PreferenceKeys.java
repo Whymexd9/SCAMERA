@@ -323,7 +323,7 @@ public class PreferenceKeys {
         return com.particlesdevs.photoncamera.processing.color.OutputColour.Space.parse(preferenceKeys.settingsManager.getString("default_scope",
                 com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_COLOR_SPACE, "srgb"));
     }
-    /** P46 «HDR в HEIC / AVIF» as stored (default off); whether a shot uses it: processing.color.HdrOutput.wanted. */
+    /** P46 / P266 «HDR-фото» as stored (default off; the one switch with Ultra HDR); whether a shot uses it: HdrOutput.wanted. */
     public static boolean isHdrOutputOn() {
         return preferenceKeys.settingsManager.getBoolean("default_scope", com.particlesdevs.photoncamera.processing.PhotoFormat.KEY_HDR, false);
     }
@@ -738,12 +738,10 @@ public class PreferenceKeys {
     /** P223 «Поправки баланса белого в FULLRES и ISZ» (on by default): off, the camera's own white balance. */
     public static final String MOSAIC_WB_KEY = "pref_mosaic_wb_corrections";
 
+    /** P266: the global switch is gone (the modules' «Поток ISP»); kept for the migration's key only. */
+    @Deprecated
     public static boolean mosaicIspPreview() {
-        try {
-            return preferenceKeys.settingsManager.getBoolean("default_scope", MOSAIC_ISP_PREVIEW_KEY, true);
-        } catch (RuntimeException e) {
-            return true;
-        }
+        return true;
     }
 
     /**
@@ -885,16 +883,14 @@ public class PreferenceKeys {
         if (!hybridSwitch("chroma_diff_clamp", true)) out.append("chromaDiffClamp 0\n");
         if (!hybridSwitch("bento_scam", true)) out.append("bentoScam 0\n");
         if (!hybridSwitch("mosaic_window_full", true)) out.append("mosaicWindowFull 0\n");
-        // P195 «Наш ремозаик» (on by default = the worker's mosaicRemosaic 1): off bins Quad / Tetra into plain Bayer
-        if (!isHybridMosaicRemosaic()) out.append("mosaicRemosaic 0\n");
         return out.toString();
     }
     /**
      * P195 (owner, 2026-10-17: «добавь так же возможность отключать наш 2х2 и 4х4 ремозаик чтобы получать фото без него»):
      * pref_scam_hybrid_mosaic_remosaic, the top row of «Мозаика без ремозаика»; on (default) = our remosaic of Quad / Tetra streams
-     * as before; off = no remosaic: every colour block binned into one plain Bayer site and merged as Bayer, the photo at the
-     * binned size (W/2 x H/2 Quad, W/4 x H/4 Tetra) or, with a 2x output, on that Bayer merge's Sabre 2x grid
-     * (ScamHybridBurst.binnedBlock). scam_dev.txt "hybrid_mosaic_remosaic 0/1".
+     * as before; off = no remosaic (P267, owner 2026-10-19: «При выкл сохраняй только днг без ремозаика»; «Склейка должны быть,
+     * просто без ремозаика»): such a shot is merged and saved as its merged mosaic DNG alone (the sensor's layout), for Scam
+     * Remosaic or another developer (ScamHybridBurst.dngMosaic). scam_dev.txt "hybrid_mosaic_remosaic 0/1".
      */
     public static boolean isHybridMosaicRemosaic() {
         return hybridSwitch("mosaic_remosaic", true);

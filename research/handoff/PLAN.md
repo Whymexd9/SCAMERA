@@ -5766,6 +5766,9 @@ pro mist, glimmer glass и других подобных фильтров у н�
   shoulder room, P212 white balance) may already cover it; ISO 58 of the same scene is clean.
 - Open: a shot of the same kind of scene on the current build (with its log / DNG) to see whether it is still there.
 
+- Closed 2026-10-19 without a device (owner: no X300 Ultra at hand): the highlight work since build 30798 (P215, P216, P212) and
+  P268 (a censored G never ends below both R and B, the ultrashort frames no longer refused on hand shake) cover the cause; reopen
+  with a current-build shot if pink comes back.
 ### P252 - the OPPO Find X7 Ultra does not focus at night (owner, 2026-10-18/19: «Оппо почему-то не фокусируется», «на всех», «На виво фокус работает нормально»)
 - Found and fixed (3b414aa7): unlockFocus - run at every session start - left AF_TRIGGER_CANCEL in the repeating preview request
   (every frame cancelled the AF); lockFocus sent START repeating; a SCAM-routed shot never released its AF lock. Test:
@@ -5861,6 +5864,10 @@ pro mist, glimmer glass и других подобных фильтров у н�
 - DONE (local): such a shot's DNG is the reference frame's mosaic as captured (full size, one-frame noise profile;
   uncompressed 16-bit CFA, what Scam Remosaic's reader takes); scam_dev dng_mosaic_as_captured 0: the binned merge as before.
   Test: CropUpscaleTest. Phone: a no-remosaic Quad / Tetra shot opened in Scam Remosaic (X200 Ultra).
+- Checked against remosaic-app/RAW_FOR_SCAM_REMOSAIC.md (2026-10-19): one frame, no merge / denoise / gain / WB, lens shading
+  as OpcodeList2 GainMap (not in the pixels), the frame's ISO and exposure, 16-bit CFA, the blocks' 2x2 order, AsShotNeutral and
+  the matrices, sizes of whole 8s - as written. Fixed: «DNG без потерь» compressed it (with a LinearizationTable), which that
+  reader refuses: the mosaic DNG is always uncompressed now. Sizes: 12 / 50 / 200 MP alike (the owner: the app takes 50 / 200).
 
 ### P259 - 200 MP: «Native FULLRES mosaic has not been verified from RAW pixels» on a flat scene (owner, 2026-10-19, X200 Ultra 2.4x, a blurred sheet)
 - Every 200 MP still is checked by MosaicBlockDetector; a scene with no confident colour block verified none, and finish()
@@ -5905,6 +5912,11 @@ pro mist, glimmer glass и других подобных фильтров у н�
   forceSensorMode as a session key, vivo.control.* tags the stock app sends for its DCG / 14-bit capture), what a third-party
   app may request without root. Output: a written plan of candidate routes and a test order, before any code.
 
+- Closed 2026-10-19 (owner: «Остальное решай без меня»): the study is the X200 Ultra part of the 15 Ultra DCG entry above (2026-10-18:
+  no 0x92xx operation mode in PD2454's CHI / camx libraries, the stock camera runs NORMAL sessions, vivo's sensor-mode selector
+  picks the 14-bit DCG modes by the client's AppType, the UI mode, SHDR and the frame rate; forceSensorMode alone under the
+  selector's PHOTO geometry gave no RAW frame) and its guarded route (scam_dev vivo_dcg_telegram, off by default) with its test
+  order. No further third-party route without root was found; the route's verification needs the X200 Ultra (owner's test above).
 ### P265 - X300 Ultra «4.8×» / «9.6×»: «камера не включила ISZ-режим 5 (кадры — обычный Bayer)» (owner, 2026-10-19 07:03, V2562, build 31093, «Исправь»)
 - Log: forceSensorMode 5 / 7 as a session key; the HAL changes the sensor mode index (camera 5: -> 2), yet the RAW frames are a
   confident plain Bayer on the default stream and on CROPPED_RAW (camera 5 arrays 4080x3072, raw crop the whole array) -> the
@@ -5917,3 +5929,129 @@ pro mist, glimmer glass и других подобных фильтров у н�
   set (preview + RAW vs RAW only), mode 31 (2x ISZ remosaiced: is the frame a 2x crop?) - and whether the Bayer frames are the
   2x crop already (then the extra 2x crop of the fallback doubles the zoom). Test order: FOV of 2.4x vs 4.8x on one scene,
   Motion off, RAW-only session, mode 31.
+- Owner, 2026-10-19 07:30: the full X300U table again (85 mm: 5 = 2x ISZ Quad, 7 = 4x ISZ Quad-Quad, 6 / 31 remosaiced, 10 /
+  13 / 17 16:9 / wide 2x ISZ ...; «Quad Bayer» = ISZ without remosaic; the key works as a SESSION key, as in MotionCam).
+- Found in the log: camera 5 runs sensor mode index 2 at 2.4x already (07:02:48), and with forceSensorMode 5 / 7 the index stays
+  2 - the HAL ignored the key in our sessions (no other session key was sent: tele availVs [0], no Motion HAL keys, operation
+  mode 0). Most likely cause: vivo's sensor-mode selector goes by the client's AppType (P230), our CTS package is AppType 21
+  (P227), MotionCam a plain third-party app.
+- Done (local): the ISZ trial notes count on the firmware and the camera package spoof (VivoQcomIsz.stamp): with «Подмена
+  пакета» on, the modes are tried again. Owner test: «Подмена пакета» with a plain third-party package (MotionCam's), the
+  4.8x module; the log's «sensor mode index 2 -> N (camera 5)» and «MosaicStream ... block 2» say it runs.
+- Owner, 2026-10-19: «vivo.control.forceSensorMode работает на любом пакете» - the AppType idea is out (the stamp change stays:
+  harmless). «Движение» is the app's own mode: the log has no «motion mode ... AE range», so the viewfinder ran its usual range -
+  the fps idea is out too.
+- Next (needs data): the X300U's dumpsys media.camera while MotionCam runs mode 5 and while SCAMERA runs «4.8×» (session
+  parameters, streams with sizes / formats / use cases, the latest request) - the difference is in there; or the phone on adb.
+
+- Closed 2026-10-19 without a device (owner: «X300 Ultra подключенного не будет, у меня лично его нет»): what the log allowed is
+  done (the per-firmware note, the stamp); the HAL ignoring forceSensorMode in our session needs a dumpsys from an X300 Ultra
+  owner - reopen when one arrives.
+### P266 - a per-lens camera setup (owner, 2026-10-19: screenshots of another app's «Настройка камеры / Профили объективов», «сделай как в ...», «это тоже можно добавить»; «сделай так чтобы фпс работал автоматически», «дай возможность выставить вручную количество кадров»)
+- In that setup, per lens: the RAW size, OIS for photos, «Дополнительная поверхность ISP» (Off: an invisible Android stream
+  that may change which sensor modes are available), «Частота кадров RAW» (the lens's default / a request of its own, «Проверить
+  частоты кадров»), «Исходных кадров на выходной кадр» and «Кадров для усреднения» (each group gives one frame, the first ones
+  averaged: 120 -> 30 fps), the viewfinder's resolution from the RAW (640x480 ... 4096x3072 Full, the RAW's aspect, the photo
+  unchanged).
+- Step 1 DONE (local): @SensorConfig «Поток ISP» (Auto / On / Off; Auto = out of the session for a module that forces a sensor
+  mode - the X300 Ultra ISZ, P265) - the session has the RAW stream alone, the RAW viewfinder, the shot adds no ISP target;
+  @SensorConfig «Частота кадров RAW» (0 = the lens's own; else [f, f] in every viewfinder request and in the session
+  parameters). The «Движение» mode's own rate: Auto (default, the photo mode's range) / the camera's maximum / by hand.
+- No settings of one meaning twice (owner: «убедись что нигде не дублируются схожие по смыслу настройки ... сделай схоже по
+  смыслу с новой реализацией»): the global «ISP-превью в FULLRES и ISZ» (P223) is the modules' «Поток ISP» (Off = the P223 RAW
+  viewfinder in FULLRES / ISZ; a switched-off global migrates to Off on the modules with a sensor mode of their own,
+  SettingsMigration.migrateIspPreview); the «Движение» mode's own rate rows (incl. the by-hand one of this round) are gone -
+  the module's «Частота кадров RAW» (0 = auto) is the one rate; not in the SDK FULLRES session.
+- The settings audit (25 overlaps found): merged - «HDR-фото» is one switch for every format (the JPEG's Ultra HDR and the HEIC /
+  AVIF gain map; PhotoFormat.KEY_HDR = pref_ultrahdr_key, the format page; «HDR в HEIC / AVIF» on migrates to it, the root
+  «Ultra HDR» row gone; WebP alone explains it holds none); scam_dev fullres_zsl is MENU_BACKED («50 Мп: ZSL»); a FULLRES profile
+  page hides «Кадров в склейке» (its count is «Кадров в снимке 50 / 200 Мп»); the per-frame black / white level descriptions
+  name their source (the frame's metadata) next to «Уровень чёрного по кадру» (the pixels). Kept: the three curve switches (one
+  exclusive choice with its own parameter sections), stage-specific rows of similar names (denoise vs merge noise, sharpening
+  halo vs RL halo, local-contrast tools, highlight band vs Bento chroma), the overall x per-scene multipliers, «Размер фото»
+  (sensor mode) vs «Разрешение» (merge output, P249), the «Движение» merge values (the mode's own copies by design).
+- Step 2 DONE (local): @SensorConfig «Разрешение видоискателя RAW» (Auto / 640 / 960 / 1440 / 1920 / 2880 / Full; a plain Bayer
+  frame halved - one 2 x 2 quad of each 4 x 4 - until its longest side fits; Full skips the 50 / 200 MP bin too;
+  LiveRawFrame.halvings / halveBayer, LiveRawFrameTest); «Проверить частоты кадров» on the module's sensor page (FpsProbe: asked
+  there, run a second after the module's next session configured: the camera's fixed rates and 15 / 24 / 30 / 60 / 90 / 120 /
+  240 up to twice its fastest, each [f, f] for 0.4 s settle + 0.9 s measured, the median frame interval and the sensor mode
+  index; shown as a message and under the button; the module's own range back after; FpsProbeTest).
+- Dropped: the frame groups («Исходных кадров на выходной кадр» / «Кадров для усреднения») - in this app they would average frames
+  before the merge, which «Кадров в склейке» already merges with alignment - owner, 2026-10-19: «не нужно». Not done.
+
+### P267 - «Наш ремозаик» off: ISZ / FULLRES came out as a 12 MP binned Bayer photo (owner, 2026-10-19: «если выключить наш ремозаик, то исз и фулрезы отключается и происходит съемка в 12мп баера, исправь это»; asked what then: «При выкл сохраняй только днг без ремозаика чтобы можно было его проявлять через сторонние проявщики по типу того же нашего Scam Remosaic»; «Склейка должны быть, просто без ремозаика»)
+
+- Done (8ae78095, local): P195's binned merge is gone. A Quad / Tetra burst without the remosaic (ScamHybridBurst.dngMosaic,
+  the old binnedBlock rule) is merged as always on the sensor grid (no 2x), the worker gets `dngMosaic 1` and writes its merged
+  RAW in the sensor's mosaic layout (hybridWriteMergedDng with the colour block: native merge and sub-frame split); ScamProcessor
+  saves that DNG alone, uncompressed, whatever the RAW setting says, and ends the shot (no JPEG; notice «сохранён только DNG
+  склеенной мозаики»). CPU tier (no merged RAW): the reference frame's mosaic as captured. Every merge tells the worker
+  `mosaicRemosaic 1`; PreferenceKeys no longer writes `mosaicRemosaic 0`; dev key `dng_mosaic_as_captured` removed; mosaic page
+  rows stay live with the switch off.
+- OPPO PHY110, APK 31127, 1x FULLRES 50 MP, switch off: worker «HYBRID DNG: merged mosaic layout, colour block 2»; only
+  SCA_20261019_102218.dng saved, 8192x6144, compression 1, 16 bit; horizontal neighbour difference within / across the 2x2
+  pairs 27.5 / 1140.3 (vertical 24.0 / 1140.8): Quad layout. check_dng_ceiling (block 1/2/4 layout) passed on the OPPO.
+- Open: the in-app thumbnail of such a DNG is pink (our gallery demosaics it as Bayer); the X200U ISZ (Tetra) case not shot yet.
+
+### P268 - the 2x2 / 4x4 grid and the highlight artefacts of the mosaic merges (owner, 2026-10-19, X200 Ultra 10:04-10:05 shots + 4 bursts: «нужно исправить сетку на 2x2 4x4 ... особенно она заметна на сверхширике»; 2x crops with ragged clip borders; «нам нужно чтобы таких артефактов не было и без бенто, причём в любом режиме»; «никогда не было фиолетовых засветов»; «С баером тоже не должно быть артефактов»)
+
+- Cause of the grid: the IMX06C (wide cam 4 and main cam 3, sensor mode 3, Quad) has one microlens per 2x2 block: each site
+  class's response changes smoothly over the field (wide: -16..+16 % from corner to corner, main ~1.4 % rms), and the merge
+  corrected it with ONE gain set per class: a 4 px hatch whose phase flips across the frame (JPEG: period-4 diagonal peaks 170-220x
+  the background on the wide, 11x on the main; HP9 tele fine).
+- Done (7a998ea4, 12c24b88, local): HybridGainField - the robust estimate also sums its tiles per zone (24 across the longer side),
+  a second pass with that field divided out and the strict tile test, each class a cubic of the zone position fitted with Tukey
+  weights (scene-biased zones drop out), applied only where it differs from the global set by more than 1 % rms (else the merge is
+  bit for bit as before). Applied on the GPU (kHybNatAccess / kHybNatMark natGainAt, binding 19, bilinear between zone centres)
+  and in the CPU binning (native and the sub-frame split; per row once for all frames). Tuning mosaicGainField 1, mosaicGainZones 24.
+  Replays (OPPO, worker on the owner's bursts): wide grid tiles median 256 -> 20-31, p90 940 -> 72-136; main 22 -> 15, max 1006 -> 332;
+  tele 4x Tetra p90 25 -> 10; tele 2x Quad (0.40 %) and every OPPO / synthetic series (<= 0.63 %) unchanged; cost +0.3 s response.
+- Done: the mosaic paths' ultrashort check measures on smooth tiles (hybridMeasuredGain smooth): the main 2x burst's three
+  ultrashort frames were refused at a MAD of 16.8 % (median 1.2 % from the metadata; hand shake on textured tiles), so no Bento and
+  every highlight stayed clipped. Now Bento applies there (mosaicUsSmooth 1; the plain path unchanged).
+- Done: a clipped sample is a lower bound in the native mosaic merges (kHybMergeMosaic / Fast, not kHybMergeMain1): a pixel whose
+  own sites clipped took the mean of its dark neighbours (G 0.90 -> 0.45 -> 1.00 across a screw head: the dark dots / ragged
+  borders of the 2x crops, also without Bento). Now max(unclipped mean, mean with the clipped samples at their clip).
+- Done: scamrgb.glsl never makes a censored G end below both R and B (magenta) - G is raised to min(R, B) by its censoring weight.
+- Checks: tools/check_gain_field.cpp (smooth field found within 0.65 %, uniform set / gratings / biased zones: no field; in CI),
+  check_dng_ceiling, check_highlight_* (scene C: G clipped in the ultrashort under a blue sky), replays md5: plain series identical
+  (syn_b1, x7u_1x, hh_1, zip), mosaic series change only near clipped samples (hand: 14403 px, 0.007 max away from clip flags).
+- Phone: OPPO 50 MP Quad before / after (31127 / 31128, same scene): magenta highlight pixels 590 -> 186 (> 8), 21 -> 0 (> 16),
+  the speckle inside the clipped windows gone. Not yet shot on the X200 Ultra.
+- Open (P269): a 12 MP plain Bayer shot on a resting phone (no shifts between frames) keeps orange / blue dashes along slanted bright
+  edges, inside the Bento mask where G clipped even in the ultrashort (the Bento colour pass skips any window with a clipped G)
+  and outside it (single-frame demosaic false colour).
+
+### P269 - the Bento mask and its processing (owner, 2026-10-19: «Займись затем маской бенто, нужно улучшить маску бенто и её обработку»)
+
+- Start from P268's open item: the orange / blue dashes along a slanted sill edge (OPPO 12 MP, 2026-10-19 11:40, burst kept as
+  scam_burst-20261019-114017.bin): kHybBento returns when its wide window holds any clipped ultrashort G; rebuild the colour from
+  the unclipped real-site ratios there (as kHybRim does), and look at the mask edge (bentoNearClip, dilate, smooth) for steps.
+
+- Owner: «Посмотри как работает маска бенто в арк кам и посмотри как можно улучшить нашу». Comparison (agent, from
+  research/lmc/audit/part2_bento.md + errata v4.1, research/ark12, ark23/quad_report.md; notes in the session scratchpad
+  bento_research/notes.md): LMC 9.6 / ArkCam v1.23 = replacement (rej *= 1 - mask for every frame but the ultrashort, the
+  ultrashort's map = the mask), mask from a ramp 0.98..1 on the base RGB max, binary dilation r 4, Gaussian sigma 1, the ultrashort
+  rendered ALIGNED (biquadratic) before the error test, the mask read bilinearly in the merge; the standalone ArkCam app: a soft
+  mask from 0.88 (smoothstep 0.88..0.98, max-dilation, a soft near-clip product 0.70..0.88), the short frames on a wider kernel
+  (G 1.26 / RB 1.50 px) and a highlight chroma dezipper (3x3 bilateral of R-G, B-G inside the mask).
+- Done (local): bentoSubpixel 1 - the ultrashort check reads the aligned position bilinearly (LMC) instead of the nearest cell:
+  invalid cells wide Quad 148 -> 101, main inpaint hole 1 -> 0, the tele / OPPO bursts unchanged.
+- Not taken: the mask's bilinear read and the per-colour ultrashort kernel live in kHybMergeMain1 (never edited: any edit of the
+  merge program made it ~15x slower on Adreno 750); the soft 0.88 mask lets the x8-noisier ultrashort replace unclipped bright areas
+  (skies at 0.9 of the clip) - worse noise there; the 3x3 dezipper does not reach the OPPO sill dashes (they alternate along a line
+  thinner than the CFA period over tens of px: a single resting frame's aliasing, not a 1-2 px zipper; plainChromaMedian takes the
+  1-2 px fringes). A capture-side /16 ultrashort when the ultrashort clips (usClippedRatio 0.24 on sunny windows) stays an idea.
+### P270 - the shade: a strange darkening (owner, 2026-10-19 video_2026-10-19_11-32-30.mp4: the quick-settings sheet open over the
+viewfinder, the dimming behind it pulses darker / lighter frame by frame)
+
+### P271 - «Для опытных» shows one setting only, «Живой видоискатель» (owner, 2026-10-19)
+
+### P272 - the 4x ISZ (HP9 Tetra) through SCAM Remosaic's neural remosaic (owner's question 2026-10-19: «Мы можем взять что-то из
+нейроремозаика в SCAM Remosaic чтобы улучшить результат на 4х isz?»)
+
+- Idea: P267's merged mosaic (dngMosaic: the burst merged on the sensor grid, the Tetra layout kept) is exactly a single-DNG input
+  of the HP9 neural remosaic (hexquad / quad-hp9 QNN models already in the private bundle): merge in the mosaic domain, then the
+  NPU remosaic instead of our remosaic for the RGB. Compare detail and artefacts on the owner's 4x bursts (scam_burst-...100546).
+
+### P273 - a short beginner guide to the camera's settings (owner, 2026-10-19: «Когда закончишь полностью всё по плану и зальешь на гит сделай короткий и понятный для новичка гайд по настройке нашей камеры с понятным описанием абсолютно каждого параметра и с наглядной демонстрацией работы каждого»): after the push (the push waits until only P273 is left).

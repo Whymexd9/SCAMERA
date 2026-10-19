@@ -307,6 +307,53 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     )
     public int oisMode = 0;
 
+    /**
+     * P266 (owner, 2026-10-19, a per-lens camera setup to copy: «Дополнительная поверхность ISP: Выкл. - невидимый поток Android,
+     * который может влиять на доступность режимов сенсора»): the ISP's viewfinder stream in the session. Auto: out of the
+     * session for a module that forces a sensor mode (vivo.control.forceSensorMode: the X300 Ultra's HAL kept its own mode with
+     * the stream there, 2026-10-19 log), in it otherwise. Off: the RAW stream alone, the viewfinder developed from the RAW.
+     */
+    @SensorConfig(
+            title = "ISP Surface",
+            description = "Поток ISP в сессии камеры. Он может мешать режимам сенсора (ISZ, DCG): без него видоискатель строится из RAW. Авто — без потока ISP для модулей с режимом сенсора.",
+            entries = {"Auto", "On", "Off"},
+            entryValues = {"0", "1", "2"},
+            defaultValue = 0
+    )
+    public int ispSurface = 0;
+
+    /**
+     * P266: the RAW frame rate asked of the camera (the AE target range [f, f] in every request and in the session's parameters):
+     * 0 = the lens's own (the rates Camera2 declares, the viewfinder's range); a rate of its own may pick an undocumented sensor
+     * mode.
+     */
+    @SensorConfig(title = "RAW Frame Rate", defaultValue = 0, min = 0, max = 240, step = 1,
+            description = "Частота кадров RAW, к/с. 0 — по умолчанию для объектива; своё значение может выбрать недокументированный режим сенсора.")
+    public int rawFps = 0;
+
+    /**
+     * P266: the RAW viewfinder's resolution, its longest side (the RAW's aspect kept, the photo unchanged): 0 = auto, -1 = the full
+     * frame.
+     */
+    @SensorConfig(
+            title = "RAW Viewfinder Size",
+            description = "Размер кадра видоискателя из RAW по длинной стороне; соотношение сторон RAW сохраняется, фото не меняется. Меньше — быстрее и холоднее.",
+            entries = {"Auto", "640", "960", "1440", "1920", "2880", "Full"},
+            entryValues = {"0", "640", "960", "1440", "1920", "2880", "-1"},
+            defaultValue = 0
+    )
+    public int rawViewfinder = 0;
+
+    /** P266: the session has no ISP viewfinder stream (ispSurface): the RAW stream alone, the RAW viewfinder. */
+    private boolean mIspSurfaceOff;
+
+    /** P266: the module's own fixed RAW frame rate as an AE range, null for the lens's own. */
+    @Nullable
+    private Range<Integer> moduleFps() {
+        // not in the SDK FULLRES session: its own automatic range (a fixed rate gave empty RAW frames on the PD2454)
+        return rawFps > 0 && mVivoSdkRawSession == null ? new Range<>(rawFps, rawFps) : null;
+    }
+
     private static int mTargetFormat = RAW_FORMAT;
     private ManualModeConsole manualModeConsole;
     private final ParamController paramController;
@@ -870,6 +917,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if (limits != null) limits.observeManual(request, result);
                 paramController.onPreviewResult(result); // P82 shutter / ISO priority
                 observeParkedLens(result);
+                observeFpsProbe(result); // P266
                 // P87: the ISO extremes the camera's own AE uses (the manual rulers' range)
                 if (iso != null) {
                     Integer aeMode = request.get(CaptureRequest.CONTROL_AE_MODE);
@@ -2043,12 +2091,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private int mLastModeIndex = Integer.MIN_VALUE;
 
     /** P86: the «Движение» mode's AE range on this camera (null: the mode is off or the camera lists no fixed range). */
-    private Range<Integer> motionFpsRange() {
-        if (mVivoSdkRawSession != null || !com.particlesdevs.photoncamera.settings.MotionMode.on() || mIsRecordingVideo) return null;
-        ImageReader raw = mImageReaderRaw;
-        Size size = raw != null ? new Size(raw.getWidth(), raw.getHeight()) : null;
-        return com.particlesdevs.photoncamera.settings.MotionMode.fpsRange(mCameraCharacteristics, mTargetFormat, size);
-    }
 
     private Range<Integer> getSelectedFpsRange() {
         switch (ScameraApp.getSettings().fpsMode) {
@@ -3198,14 +3240,26 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // RAW_SENSOR, RAW10 and RAW12: packed rows are unpacked for the viewfinder (RawUnpack).
             // P108: the full-resolution session always shows the RAW viewfinder (the Pixel ISP's own one is green in that mode)
             // P223: «ISP-превью в FULLRES и ISZ» off - such a session shows the RAW viewfinder, the only stream it repeats
-            mIspPreviewOff = photoMode && !PreferenceKeys.mosaicIspPreview() && (mFullResSession || IszCapturePolicy.mosaicModule(
+            // P223 / P266: the module's «Поток ISP» Off in FULLRES / ISZ (the old global «ISP-превью в FULLRES и ISZ» is this now)
+            mIspPreviewOff = photoMode && ispSurface == 2 && (mFullResSession || IszCapturePolicy.mosaicModule(
                     com.particlesdevs.photoncamera.settings.ModuleRegistry.active()));
+            // P266: the ISP stream out of the session (the module's «Поток ISP»; Auto: a module that forces a sensor mode)
+            final boolean forcedMode = vivoQcomIsz || com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(
+                    com.particlesdevs.photoncamera.settings.ModuleRegistry.active()) > 0;
+            mIspSurfaceOff = photoMode && !isBurstSession && !mIsRecordingVideo && !sdkFullRes && mVivoSdkRawSession == null
+                    && isRawFormat(mTargetFormat) && !mLiveRawRejected && (ispSurface == 2 || ispSurface == 0 && forcedMode);
+            if (mIspSurfaceOff) {
+                mIspPreviewOff = true;
+                Log.i("SCAM_CAPTURE", "camera " + physicalID + ": no ISP stream in the session (" + (ispSurface == 2 ? "the module's setting"
+                        : "a forced sensor mode") + "), the RAW viewfinder (P266)");
+            }
             // P252 A/B (scam_dev.txt "isp_preview_off_always 1"): every photo session repeats the RAW stream only (the ISP preview in
             // the session, not in the request) - on the OPPO X7U that picks the HAL's ZSL use case; does its AF focus at night?
             if (photoMode && PreferenceKeys.scamDevSwitch("isp_preview_off_always", false)) mIspPreviewOff = true;
             mLiveRawSession = photoMode && !isBurstSession && !mIsRecordingVideo && !mLiveRawRejected && (!sdkFullRes || nativeVivoFullRes())
                     && isRawFormat(mTargetFormat) && (nativeIsz || nativeVivoFullRes() || PreferenceKeys.isLiveViewfinderRawEnabled() || mFullResSession
                     || mIspPreviewOff);
+            LiveRawFrame.setMaxLongSide(rawViewfinder); // P266
             LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
             LiveRawFrame.setEnabled(mLiveRawSession);
             // P13: a module whose stream was measured as a mosaic before starts on the RAW viewfinder at once
@@ -3334,6 +3388,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         recovering(false, "session configured"); // P240
                         mRetryDevice = null;
                         mQuietErrorSpent = false; // P263: the next device error is quiet again
+                        startFpsProbeIfAsked(); // P266
                         experimentalRouteNotice(); // P240
                         com.particlesdevs.photoncamera.util.ThermalPolicy.watch(ScameraApp.getAppContext()); // P238
                         mPreviewCaptureResult = null;
@@ -3389,11 +3444,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             // P224: the viewfinder never below 20 fps (the automatic ranges' floor, ViewfinderFps)
                             mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
                                     ViewfinderFps.raise(scamPreview ? ScamPreview.STOCK_FPS : getSelectedFpsRange(), mRawMaxFps));
-                            // P86 «Движение»: the fastest fixed rate the RAW stream allows (exposure <= 1/f, ring refreshed most often)
-                            Range<Integer> motionFps = motionFpsRange();
-                            if (motionFps != null) {
-                                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, motionFps);
-                                Log.i("SCAM_CAPTURE", "motion mode: camera " + physicalID + " AE range " + motionFps);
+                            final Range<Integer> moduleFps = moduleFps(); // P266: the module's own RAW frame rate wins
+                            if (moduleFps != null) {
+                                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, moduleFps);
+                                Log.i("SCAM_CAPTURE", "camera " + physicalID + ": the module's RAW frame rate " + moduleFps + " (P266)");
                             }
                             // P230: the DCG mode on every request and its 60 fps (the shot's frames take the viewfinder's range)
                             if (mDcgRequestKeys) Log.i("SCAM_CAPTURE", "DCG viewfinder requests camera " + physicalID + ": "
@@ -3508,6 +3562,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     }
                     configuration.setSessionParameters(sdkSession.build());
                 } else if (scamPreview || mForcedStabEis || xiaomiLogical || vivoEis || moduleKeys || hiddenKeys || dcg14 || vivoQcomIsz || vivoQcomStreams
+                        || rawFps > 0
                         || vsMode != CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF) {
                     try {
                         CaptureRequest.Builder scamSession = sessionDevice.createCaptureRequest(
@@ -3539,6 +3594,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         // P122: the module's session-only vendor keys (vivo X300 Ultra: forceSensorMode)
                         com.particlesdevs.photoncamera.settings.TunableKeyManager.applySessionKeys(scamSession, physicalID);
                         VivoPd2454NativeRaw.apply(scamSession, physicalID);
+                        if (rawFps > 0) scamSession.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(rawFps, rawFps)); // P266
                         configuration.setSessionParameters(scamSession.build());
                     } catch (IllegalArgumentException unsupported) {
                         Log.w("SCAM_CAPTURE", "SCAM session control unavailable", unsupported);
@@ -3722,6 +3778,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             return java.util.Collections.singletonList(mImageReaderRaw.getSurface());
         if (mVivoSdkRawSession != null)
             return Arrays.asList(surface, mImageReaderRaw.getSurface(), mVivoSdkJpeg.getSurface());
+        if (mIspSurfaceOff) return java.util.Collections.singletonList(mImageReaderRaw.getSurface()); // P266
         // The viewfinder and the RAW stream.
         List<Surface> surfaces = Arrays.asList(surface, mImageReaderRaw.getSurface());
         if (mLiveRawSession && !surfaces.contains(mImageReaderRaw.getSurface())) {
@@ -4528,6 +4585,54 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
                 com.particlesdevs.photoncamera.processing.RawLevels.current(c, result);
         RawLevel.observe(img, !mPayloadBad && mPreviewLayouts.isEmpty(), levels.meanBlack(), levels.white);
+    }
+
+    /** P266 «Проверить частоты кадров»: the running probe of this session, null without one. */
+    private volatile FpsProbe mFpsProbe;
+
+    /** P266: the module's sensor page asked for the frame-rate probe: it runs a second after this session configured. */
+    private void startFpsProbeIfAsked() {
+        final String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+        if (mVivoSdkRawSession != null || mIsRecordingVideo || !FpsProbe.take(ScameraApp.getAppContext(), slot)) return;
+        final Handler handler = mBackgroundHandler;
+        final CameraCharacteristics c = mCameraCharacteristics;
+        if (handler == null || c == null) return;
+        final int generation = mSessionGeneration.get();
+        handler.postDelayed(() -> {
+            if (generation != mSessionGeneration.get() || mPreviewRequestBuilder == null) return;
+            final FpsProbe probe = new FpsProbe(FpsProbe.candidates(c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)));
+            if (!probe.next(android.os.SystemClock.elapsedRealtimeNanos())) return;
+            mFpsProbe = probe;
+            com.particlesdevs.photoncamera.util.UiMessages.info(Lang.t("Проверка частот кадров…", "Checking the frame rates…"));
+            applyProbeRate(probe);
+        }, 1000);
+    }
+
+    private void applyProbeRate(FpsProbe probe) {
+        final Integer f = probe.current();
+        if (f == null || mPreviewRequestBuilder == null) return;
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, new Range<>(f, f));
+        rebuildPreviewBuilder();
+    }
+
+    /** P266: a preview frame for the running probe: the next rate when this one is measured, the result after the last. */
+    private void observeFpsProbe(CaptureResult result) {
+        final FpsProbe probe = mFpsProbe;
+        final Long ts = result.get(CaptureResult.SENSOR_TIMESTAMP);
+        if (probe == null || ts == null) return;
+        final long now = android.os.SystemClock.elapsedRealtimeNanos();
+        if (!probe.frame(now, ts, mLastModeIndex)) return;
+        final Handler handler = mBackgroundHandler;
+        if (probe.next(now)) {
+            if (handler != null) handler.post(() -> { if (mFpsProbe == probe) applyProbeRate(probe); });
+            return;
+        }
+        mFpsProbe = null;
+        final String slot = com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
+        FpsProbe.keep(ScameraApp.getAppContext(), slot, probe.result());
+        Log.i("SCAM_CAPTURE", "frame-rate probe, camera " + physicalID + " (asked -> delivered fps (sensor mode)): " + probe.result());
+        com.particlesdevs.photoncamera.util.UiMessages.info(Lang.t("Частоты кадров: ", "Frame rates: ") + probe.result());
+        if (handler != null) handler.post(this::applyFpsRange); // the module's own range back
     }
 
     /** P252: the lens the HAL's AF left at its rest stop (ParkedLens) and the distance the fallback holds (-1: none). */
@@ -7105,7 +7210,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P90 (owner: the viewfinder froze 0.7-0.8 s at every shot): as ArkCam and other stock cameras do, the series also feeds the viewfinder;
             // the renderer scales each series frame back to the viewfinder's exposure (ViewfinderGain), so nothing flashes.
             // scam_dev "series_viewfinder 0": RAW only, as before.
-            if (surface != null && !VivoPd2454NativeRaw.active(physicalID)
+            if (surface != null && !VivoPd2454NativeRaw.active(physicalID) && !mIspSurfaceOff
                     && PreferenceKeys.scamDevSwitch("series_viewfinder", true)) {
                 captureBuilder.addTarget(surface);
                 com.particlesdevs.photoncamera.ui.camera.views.viewfinder.ViewfinderGain.setReference(
@@ -8086,9 +8191,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public void applyFpsRange() {
         if (mPreviewRequestBuilder == null) return;
         ScameraApp.getSettings().fpsMode = PreferenceKeys.getFpsMode();
-        Range<Integer> motionFps = motionFpsRange();
-        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                motionFps != null ? motionFps : ViewfinderFps.raise(getSelectedFpsRange(), mRawMaxFps)); // P224: not below 20 fps
+        final Range<Integer> moduleFps = moduleFps(); // P266: the module's «Частота кадров RAW», else the lens's own
+        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, moduleFps != null ? moduleFps
+                : ViewfinderFps.raise(getSelectedFpsRange(), mRawMaxFps)); // P224: not below 20 fps
         if (mDcgRequestKeys) Dcg14Mode.applyRequest(mPreviewRequestBuilder, mCameraCharacteristics); // P230: DCG runs 60 fps only
         rebuildPreviewBuilder();
     }

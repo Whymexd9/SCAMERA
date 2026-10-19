@@ -80,24 +80,22 @@ public class ArkSharpenR1Test {
     private static final String MEASURED = "HYBRID MOSAIC: header block 0, measured block 2 (confident; tile votes b1/b2/b4 3/120/1 of 130 tiles)\n";
 
     @Test public void theBlockIsTheOneTheWorkerMergedWith() {
-        assertEquals("a Bayer merge", 1, ScamHybridBurst.mergedBlock(1, 1, "HYBRID GPU: merge 10 frames\n"));
-        assertEquals("a Bayer stream, no report (CPU tier)", 1, ScamHybridBurst.mergedBlock(1, 1, null));
-        assertEquals("native Quad (ISZ 2x, FULLRES 50 MP)", 2, ScamHybridBurst.mergedBlock(2, 1, NATIVE_QUAD));
-        assertEquals("native Tetra (ISZ 4x, 200 MP)", 4, ScamHybridBurst.mergedBlock(4, 1, NATIVE_TETRA));
-        assertEquals("the sub-frame split", 2, ScamHybridBurst.mergedBlock(2, 1, SPLIT));
-        assertEquals("native failed, then the split", 2, ScamHybridBurst.mergedBlock(2, 1,
+        assertEquals("a Bayer merge", 1, ScamHybridBurst.mergedBlock(1, "HYBRID GPU: merge 10 frames\n"));
+        assertEquals("a Bayer stream, no report (CPU tier)", 1, ScamHybridBurst.mergedBlock(1, null));
+        assertEquals("native Quad (ISZ 2x, FULLRES 50 MP)", 2, ScamHybridBurst.mergedBlock(2, NATIVE_QUAD));
+        assertEquals("native Tetra (ISZ 4x, 200 MP)", 4, ScamHybridBurst.mergedBlock(4, NATIVE_TETRA));
+        assertEquals("the sub-frame split", 2, ScamHybridBurst.mergedBlock(2, SPLIT));
+        assertEquals("native failed, then the split", 2, ScamHybridBurst.mergedBlock(2,
                 NATIVE_QUAD + "HYBRID MOSAIC NATIVE: failed (out of memory); merging on the sub-frame split (mosaicPath 0) instead\n" + SPLIT));
-        // binned into plain Bayer: by the app's own decision or by the worker's line
-        assertEquals(1, ScamHybridBurst.mergedBlock(2, 2, NATIVE_QUAD));
-        assertEquals(1, ScamHybridBurst.mergedBlock(4, 4, null));
-        assertEquals(1, ScamHybridBurst.mergedBlock(2, 1, "HYBRID MOSAIC: block 2 forced by tuning\n" + BINNED));
+        // binned into plain Bayer by the worker (its line)
+        assertEquals(1, ScamHybridBurst.mergedBlock(2, "HYBRID MOSAIC: block 2 forced by tuning\n" + BINNED));
         // the app had no confident block: the worker's merge says which
-        assertEquals(2, ScamHybridBurst.mergedBlock(0, 1, MEASURED + SPLIT));
-        assertEquals("measured but no mosaic merge line", 1, ScamHybridBurst.mergedBlock(0, 1, MEASURED));
-        assertEquals("unknown, no report", 1, ScamHybridBurst.mergedBlock(0, 1, null));
+        assertEquals(2, ScamHybridBurst.mergedBlock(0, MEASURED + SPLIT));
+        assertEquals("measured but no mosaic merge line", 1, ScamHybridBurst.mergedBlock(0, MEASURED));
+        assertEquals("unknown, no report", 1, ScamHybridBurst.mergedBlock(0, null));
         // a report without the head lines (CPU tier after a failed worker): the block the app sent
-        assertEquals(2, ScamHybridBurst.mergedBlock(2, 1, "WORKER EXIT: signal 9\n"));
-        assertEquals(4, ScamHybridBurst.mergedBlock(4, 1, null));
+        assertEquals(2, ScamHybridBurst.mergedBlock(2, "WORKER EXIT: signal 9\n"));
+        assertEquals(4, ScamHybridBurst.mergedBlock(4, null));
     }
 
     /** Text ranges of every "if (r1) {" block of ArkLumaSharpen (brace counting). */

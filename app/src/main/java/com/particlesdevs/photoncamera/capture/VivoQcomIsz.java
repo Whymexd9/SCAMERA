@@ -446,7 +446,7 @@ public final class VivoQcomIsz {
         SharedPreferences n = notes();
         if (n == null) return Trial.NONE;
         try {
-            return noted(n.getString(noteKey(camera, mode), null), android.os.Build.FINGERPRINT);
+            return noted(n.getString(noteKey(camera, mode), null), stamp());
         } catch (ClassCastException e) {
             return Trial.NONE;
         }
@@ -461,7 +461,23 @@ public final class VivoQcomIsz {
         SharedPreferences n = notes();
         if (n == null) return;
         if (trial == Trial.NONE) n.edit().remove(noteKey(camera, mode)).apply();
-        else n.edit().putString(noteKey(camera, mode), noteValue(android.os.Build.FINGERPRINT, trial)).apply();
+        else n.edit().putString(noteKey(camera, mode), noteValue(stamp(), trial)).apply();
+    }
+
+    /**
+     * What a note counts on: the firmware and the camera package the camera service sees (owner, 2026-10-19, the X300U table:
+     * «forceSensorMode works ... as a session key»; vivo's sensor-mode selector goes by the app's AppType - our CTS package is
+     * AppType 21 - so another package of «Подмена пакета» tries the modes again).
+     */
+    static String stamp() {
+        String spoof = "off";
+        try {
+            final Context c = ScameraApp.getAppContext();
+            if (c != null) spoof = com.particlesdevs.photoncamera.capture.spoof.CameraPackageSpoof.signature(c);
+        } catch (RuntimeException ignored) {
+            // the firmware alone
+        }
+        return android.os.Build.FINGERPRINT + "#" + spoof;
     }
 
     /**

@@ -15,8 +15,8 @@ import java.util.Map;
  * P86 Photo mode «Движение» (owner, 2026-10-11: «максимально хорошее движение и максимально быстрый буфер чтобы успевать ловить
  * всё»; the switch beside the settings gear in the viewfinder's top bar). While it is on:
  * <ul>
- *   <li>the viewfinder and the ZSL ring run at the fastest fixed frame rate the RAW stream allows (the AE range [f, f]): the
- *       ring is refreshed most often and no ring frame is exposed longer than 1/f s, so the frame at the press is sharp;</li>
+ *   <li>the frame rate is the module's («Частота кадров RAW», P266; owner, 2026-10-19: «фпс ... автоматически», by hand
+ *       there): the mode's own rate row (the camera's fastest fixed rate) is gone - one setting for one thing;</li>
  *   <li>P110: the shutter of the ring frames has a ceiling (pref_scam_hybrid_mm_shutter, 1/250 s; manual/MotionShutter):
  *       a longer shutter of the camera's AE becomes the ceiling with the ISO raised (the fixed frame rate alone left 1/30 s,
  *       the photo mode's own indoor shutter);</li>
@@ -50,9 +50,6 @@ public final class MotionMode {
         d.put("widen_below", 0f);
         DEFAULTS = Collections.unmodifiableMap(d);
     }
-    /** Frame rate of the ring: 0 = the fastest the RAW stream allows (default), else this rate if the camera has it. */
-    static final String FPS = "fps";
-
     private MotionMode() {}
 
     public static boolean on() {
@@ -79,39 +76,4 @@ public final class MotionMode {
         return DEFAULTS.containsKey(key);
     }
 
-    /**
-     * The AE target range of the mode's viewfinder / ring: the fixed range [f, f] with the highest f not above the RAW stream's
-     * fastest rate ({@code rawMaxFps}, 0 = unknown: no limit) and not above {@code wantedFps} when that is set (> 0); null when the
-     * camera lists no fixed range.
-     */
-    @Nullable
-    static Range<Integer> fpsRange(@Nullable Range<Integer>[] available, float rawMaxFps, int wantedFps) {
-        if (available == null) return null;
-        // owner: «максимально возможный фпс видоискателя»: the camera's fastest fixed rate, within the RAW stream's limit when known
-        final float cap = Math.min(rawMaxFps > 0 ? rawMaxFps + 0.5f : Float.MAX_VALUE, wantedFps > 0 ? wantedFps + 0.5f : Float.MAX_VALUE);
-        Range<Integer> best = null;
-        for (Range<Integer> r : available) {
-            if (r == null || !r.getLower().equals(r.getUpper()) || r.getUpper() > cap) continue;
-            if (best == null || r.getUpper() > best.getUpper()) best = r;
-        }
-        return best;
-    }
-
-    /** The mode's AE target range on this camera, or null (keep the photo range). */
-    @Nullable
-    public static Range<Integer> fpsRange(@Nullable CameraCharacteristics c, int rawFormat, @Nullable Size rawSize) {
-        if (c == null) return null;
-        float rawMaxFps = 0;
-        try {
-            StreamConfigurationMap map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-            if (map != null && rawSize != null) {
-                long minNs = map.getOutputMinFrameDuration(rawFormat, rawSize);
-                if (minNs > 0) rawMaxFps = 1e9f / minNs;
-            }
-        } catch (RuntimeException ignored) {
-            // format / size not listed: the camera's fastest fixed rate
-        }
-        final int wanted = Math.round(PreferenceKeys.hybridValue(PREFIX + FPS, 0f));
-        return fpsRange(c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES), rawMaxFps, wanted);
-    }
 }

@@ -102,7 +102,7 @@
     <string name="prefs_scam_hybrid_mosaic_screen_summary">Merge for cameras that deliver the frame as a Quad or Tetra mosaic</string>
     <string name="prefs_scam_hybrid_mosaic_note_summary">For cameras whose frame arrives as a Quad 2×2 or Tetra 4×4 mosaic. Below: the merge method and its settings.</string>
     <string name="prefs_scam_hybrid_mosaic_remosaic_title">Our remosaic</string>
-    <string name="prefs_scam_hybrid_mosaic_remosaic_summary">On: the Quad 2×2 / Tetra 4×4 mosaic is rebuilt to full resolution by our merge. Off: no remosaic — each colour block is averaged into one Bayer pixel and merged like a normal Bayer burst: no grid or maze, a quarter (Quad) or a sixteenth (Tetra) of the pixels; a 2× resolution doubles each side from the shifts between the frames.</string>
+    <string name="prefs_scam_hybrid_mosaic_remosaic_summary">On: the Quad 2×2 / Tetra 4×4 mosaic is rebuilt to full resolution by our merge. Off: no remosaic — the frames are merged and only the DNG is saved: the merged mosaic at the sensor\'s full resolution, to develop in Scam Remosaic or another RAW developer.</string>
     <string name="prefs_scam_hybrid_mosaic_frames_title">Frames in the mosaic merge</string>
     <string name="prefs_scam_hybrid_mosaic_frames_summary">Mosaic frames to merge. Higher: less noise but slower; lower: faster but noisier.</string>
     <string name="prefs_scam_hybrid_mosaic_edge_scale_title">Sharpening: kernel across edges</string>
@@ -552,8 +552,8 @@
     <string name="prefs_avif_speed_summary">AVIF saving speed. Slower: slightly better detail; faster: slightly worse.</string>
     <string name="prefs_photo_color_space_title">Colour space</string>
     <string name="prefs_photo_color_space_summary">sRGB looks the same everywhere. Display P3: richer colours on P3 screens; flatter where P3 is ignored.</string>
-    <string name="prefs_photo_hdr_title">HDR in HEIC / AVIF</string>
-    <string name="prefs_photo_hdr_summary">Adds an HDR gain map, as Ultra HDR in JPEG: HDR screens show brighter highlights, other screens the normal photo.</string>
+    <string name="prefs_photo_hdr_title">HDR photo</string>
+    <string name="prefs_photo_hdr_summary">A brightness map in the photo: Ultra HDR in a JPEG, a gain map in a 10-bit HEIC or an AVIF. HDR screens show brighter highlights, other screens the normal photo.</string>
     <string name="prefs_photo_also_jpeg_title">Also save a JPEG</string>
     <string name="prefs_photo_also_jpeg_summary">A JPEG copy next to the HEIC / WebP / AVIF for apps that cannot open them.</string>
     <!-- P42: face detection and tracking autofocus (after ArkCamera v50) -->
@@ -799,8 +799,6 @@
     <string name="prefs_profiles_reset_summary">Settings back as after installing</string>
     <string name="prefs_crop_upscale_title">Upscale cropped shots</string>
     <string name="prefs_crop_upscale_summary">A shot of a crop module or with digital zoom is brought up to the photo size. Off: a cropped shot keeps its own size, no upscale</string>
-    <string name="prefs_mosaic_isp_preview_title">ISP preview in FULLRES and ISZ</string>
-    <string name="prefs_mosaic_isp_preview_summary">Off: in the FULLRES and ISZ modes the camera sends only the RAW stream and the viewfinder is drawn from RAW. Less load, but on some cameras focus and metering may work worse</string>
     <string name="prefs_mosaic_wb_title">White-balance corrections in FULLRES and ISZ</string>
     <string name="prefs_mosaic_wb_summary">Our white-balance estimate for shots without the camera\'s remosaic. Off: the camera\'s own white balance (on OPPO in FULLRES: from the normal mode)</string>
 </resources>

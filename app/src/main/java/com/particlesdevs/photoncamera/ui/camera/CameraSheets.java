@@ -333,10 +333,10 @@ public final class CameraSheets {
             texts.setOrientation(LinearLayout.VERTICAL);
             TextView t = line(c, rows[i][0], 14.5f, ShadeStyle.TEXT);
             texts.addView(t);
-            // P217: without our remosaic a FULLRES burst is binned - the photo comes out at the sensor's 12 MP
+            // P217 / P267: without our remosaic a FULLRES shot is saved as its merged mosaic DNG only
             final boolean binned = i > 0 && available && !off && !ourRemosaic();
             texts.addView(line(c, off ? Lang.t(c, "Режимы не сработали · подробнее", "Its modes failed · details")
-                    : binned ? Lang.t(c, "«Наш ремозаик» выключен: снимок выйдет 12 Мп", "«Our remosaic» is off: the photo comes out at 12 MP")
+                    : binned ? Lang.t(c, "«Наш ремозаик» выключен: сохранится только DNG", "«Our remosaic» is off: only the DNG is saved")
                     : available ? rows[i][1] : Lang.t(c, "Нет на этом объективе", "Not on this lens"), 12.5f, ShadeStyle.MUTED));
             row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             row.setOnClickListener(v -> {

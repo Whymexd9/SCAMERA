@@ -43,7 +43,8 @@ public final class DevKeys {
     /** scam_dev keys whose value is a menu setting as well (the line only overrides it for an A/B). */
     public static final Set<String> MENU_BACKED = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             "hybrid", "hybrid_output", "hybrid_downsampler", "hybrid_profile", "hybrid_motion_boost",
-            "keep_burst"))); // P191: «Сохранять RAW-серию» in Diagnostics
+            "keep_burst", // P191: «Сохранять RAW-серию» in Diagnostics
+            "fullres_zsl"))); // P266: «50 Мп: ZSL» in the FULLRES rows - one switch, not a second in «Для разработчика»
 
     private static List<Key> all;
 
@@ -236,9 +237,7 @@ public final class DevKeys {
                 "OPPO FULLRES own AE: while the flicker is unknown, a shutter from 30 ms is the one of 30 / 33.3 / 40 / 41.7 ms that bands least at both 100 and 120 Hz. Off: by the region's mains")));
         k.add(s(cap, "flicker_rows", true, Lang.t("Частота мерцания «Авто»: два снимка подряд с одинаковым голосом профиля строк ультракороткого кадра задают частоту. Выкл — голос только в логе",
                 "Flicker frequency Auto: two shots in a row whose ultrashort row profile votes alike set the frequency. Off: the vote is only logged")));
-        // P198: a native 50 MP FULLRES shot from the ZSL ring (200 MP stays serial PSL)
-        k.add(s(cap, "fullres_zsl", true, Lang.t("FULLRES 50 Мп: кадры из ZSL-кольца до нажатия (200 Мп всегда после нажатия). Выкл — вся серия после нажатия",
-                "FULLRES 50 MP: frames from the ZSL ring before the press (200 MP always after it). Off: the whole series after the press")));
+        // P198 / P266: «50 Мп: ZSL» (pref_scam_hybrid_fullres50_zsl) is the menu row of fullres_zsl (MENU_BACKED)
         k.add(s(cap, "fullres_plain_merge", true, Lang.t("FULLRES 50 Мп: на время склейки камера в обычном режиме (меньше нагрев и памяти). Выкл — 50 Мп поток идёт и во время склейки",
                 "FULLRES 50 MP: the camera runs its plain session while the shot merges (less heat and memory). Off: the 50 MP stream keeps running")));
         // P222: the stills a native FULLRES series keeps in flight (FullResInFlight)
@@ -264,9 +263,6 @@ public final class DevKeys {
         // P252: the ISP preview out of the repeating request in every photo session (A/B of the HAL's use case and its AF)
         k.add(s(merge, "isp_preview_off_always", false, Lang.t("Видоискатель из RAW во всех режимах: ISP-превью в сессии, но не в запросе (проверка автофокуса OPPO ночью)",
                 "The RAW viewfinder in every mode: the ISP preview in the session, not in the request (an OPPO night autofocus check)")));
-        // P258: a mosaic shot without our remosaic keeps its mosaic in the DNG (for Scam Remosaic's neural remosaic)
-        k.add(s(post, "dng_mosaic_as_captured", true, Lang.t("Без нашего ремозаика DNG снимка Quad / Tetra — опорный кадр как с сенсора (полная мозаика): его проявляет нейроремозаик Scam Remosaic. Выкл — склейка, сведённая в обычный Байер меньшего размера, как раньше",
-                "Without our remosaic a Quad / Tetra shot's DNG is the reference frame as the sensor gave it (the full mosaic) for Scam Remosaic's neural remosaic. Off: the merge binned into a smaller plain Bayer, as before")));
         // P236: the shot's frames closed off the critical path after the merge (ScamProcessor.releaseFrames)
         k.add(s(post, "release_async", true, Lang.t("После склейки кадры снимка освобождаются в фоне, обработка начинается сразу (не для 200 Мп). Выкл — сначала освобождение (~0.4 с на 50 Мп), как до P236",
                 "After the merge the shot's frames are freed in the background and the processing starts at once (not for 200 MP). Off: freed first (~0.4 s at 50 MP), as before P236")));

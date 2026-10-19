@@ -51,12 +51,6 @@
         <item>Авто (проверка резкости)</item>
         <item>Всегда</item>
     </string-array>
-    <string-array name="scam_motion_fps_entries">
-        <item>Максимум камеры</item>
-        <item>60 к/с</item>
-        <item>30 к/с</item>
-        <item>24 к/с</item>
-    </string-array>
     <string-array name="scam_motion_shutter_entries">
         <item>1/1000 с</item>
         <item>1/500 с</item>

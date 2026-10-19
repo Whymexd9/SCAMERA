@@ -339,6 +339,39 @@ public final class SettingsMigration {
      * 1x/16/20/2x»): a stored tile list with «Размер» (ui_photo_size) and without «Разрешение» (pref_scam_hybrid_output) gets
      * «Разрешение» in the same place; nothing stored: the new defaults have it already. Once.
      */
+    /**
+     * P266 (owner, 2026-10-19: «убедись что нигде не дублируются схожие по смыслу настройки»): the global «ISP-превью в FULLRES и
+     * ISZ» (P223) is the modules' «Поток ISP» now. Switched off, it becomes Off on the modules with a sensor mode of their own
+     * (ISZ, mosaic presets: where it acted besides FULLRES); the global key goes. True when something changed.
+     */
+    public static boolean migrateIspPreview(SharedPreferences prefs) {
+        if (prefs == null || !prefs.contains("pref_mosaic_isp_preview")) return false;
+        final boolean on = prefs.getBoolean("pref_mosaic_isp_preview", true);
+        SharedPreferences.Editor e = prefs.edit().remove("pref_mosaic_isp_preview");
+        if (!on) {
+            try {
+                for (String slot : ModuleRegistry.slots()) {
+                    final String key = ModuleSensorSettings.prefix(slot) + "ispsurface";
+                    if (!prefs.contains(key) && com.particlesdevs.photoncamera.capture.IszCapturePolicy.mosaicModule(slot)) e.putString(key, "2");
+                }
+            } catch (RuntimeException ignored) {
+                // no module registry yet: the default (Auto) stands
+            }
+        }
+        e.apply();
+        return true;
+    }
+
+    /** P266: «HDR в HEIC / AVIF» is the one «HDR-фото» now (pref_ultrahdr_key): on, it turns that on; the old key goes. */
+    public static boolean migrateHdrPhoto(SharedPreferences prefs) {
+        if (prefs == null || !prefs.contains("pref_photo_hdr")) return false;
+        final boolean on = prefs.getBoolean("pref_photo_hdr", false);
+        SharedPreferences.Editor e = prefs.edit().remove("pref_photo_hdr");
+        if (on) e.putBoolean("pref_ultrahdr_key", true);
+        e.apply();
+        return true;
+    }
+
     public static boolean migrateOutputTile(SharedPreferences prefs) {
         if (prefs.getBoolean(OUTPUT_TILE, false)) return false;
         SharedPreferences.Editor e = prefs.edit().putBoolean(OUTPUT_TILE, true);

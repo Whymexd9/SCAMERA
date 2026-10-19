@@ -102,7 +102,7 @@
     <string name="prefs_scam_hybrid_mosaic_screen_summary">Склейка для камер, которые отдают кадр мозаикой Quad или Tetra</string>
     <string name="prefs_scam_hybrid_mosaic_note_summary">Для камер, у которых кадр приходит мозаикой Quad 2×2 или Tetra 4×4. Ниже — способ склейки и его настройки.</string>
     <string name="prefs_scam_hybrid_mosaic_remosaic_title">Наш ремозаик</string>
-    <string name="prefs_scam_hybrid_mosaic_remosaic_summary">Вкл — мозаика Quad 2×2 / Tetra 4×4 восстанавливается нашей склейкой в полное разрешение. Выкл — без ремозаика: каждый цветной блок усредняется в один пиксель Байера и склеивается как обычный Байер: без сетки и лабиринта, в 4 (Quad) или 16 (Tetra) раз меньше пикселей; разрешение 2× удваивает каждую сторону за счёт сдвигов кадров.</string>
+    <string name="prefs_scam_hybrid_mosaic_remosaic_summary">Вкл — мозаика Quad 2×2 / Tetra 4×4 восстанавливается нашей склейкой в полное разрешение. Выкл — без ремозаика: кадры склеиваются, сохраняется только DNG — склеенная мозаика в полном разрешении сенсора, для проявки в Scam Remosaic или другом проявщике RAW.</string>
     <string name="prefs_scam_hybrid_mosaic_frames_title">Кадров в склейке мозаики</string>
     <string name="prefs_scam_hybrid_mosaic_frames_summary">Сколько кадров мозаики склеивать. Больше — меньше шума, но дольше; меньше — быстрее, но шумнее.</string>
     <string name="prefs_scam_hybrid_mosaic_edge_scale_title">Резкость: ядро поперёк краёв</string>
@@ -552,8 +552,8 @@
     <string name="prefs_avif_speed_summary">Скорость сохранения AVIF. Медленнее — детали чуть лучше; быстрее — чуть хуже.</string>
     <string name="prefs_photo_color_space_title">Цветовое пространство</string>
     <string name="prefs_photo_color_space_summary">sRGB одинаков везде. Display P3 — насыщеннее цвета на P3-экранах; где P3 не читают, бледнее.</string>
-    <string name="prefs_photo_hdr_title">HDR в HEIC / AVIF</string>
-    <string name="prefs_photo_hdr_summary">Добавляет HDR-карту, как Ultra HDR в JPEG: HDR-экран покажет яркие света, остальные — обычное фото.</string>
+    <string name="prefs_photo_hdr_title">HDR-фото</string>
+    <string name="prefs_photo_hdr_summary">Карта яркости в фото: Ultra HDR в JPEG, HDR-карта в 10-битном HEIC или AVIF. HDR-экран покажет яркие света, остальные — обычное фото.</string>
     <string name="prefs_photo_also_jpeg_title">Также сохранять JPEG</string>
     <string name="prefs_photo_also_jpeg_summary">Копия в JPEG рядом с HEIC / WebP / AVIF для программ, которые их не открывают.</string>
     <!-- P42: распознавание лиц и следящий автофокус (по ArkCamera v50) -->
@@ -799,8 +799,6 @@
     <string name="prefs_profiles_reset_summary">Вернуть настройки как после установки</string>
     <string name="prefs_crop_upscale_title">Увеличивать кадр с кропом</string>
     <string name="prefs_crop_upscale_summary">Снимок модуля с кропом или с цифровым зумом доводится до размера фото. Выкл. — снимок с кропом остаётся в своём размере, без увеличения</string>
-    <string name="prefs_mosaic_isp_preview_title">ISP-превью в FULLRES и ISZ</string>
-    <string name="prefs_mosaic_isp_preview_summary">Выкл. — в режимах FULLRES и ISZ камера отдаёт только RAW-поток, видоискатель рисуется из RAW. Меньше нагрузки, но на некоторых камерах фокус и замер могут работать хуже</string>
     <string name="prefs_mosaic_wb_title">Поправки баланса белого в FULLRES и ISZ</string>
     <string name="prefs_mosaic_wb_summary">Наша оценка баланса белого для снимков без ремозаика камеры. Выкл. — баланс белого самой камеры (на OPPO в FULLRES — из обычного режима)</string>
 </resources>

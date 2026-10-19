@@ -1558,10 +1558,24 @@ public class SettingsBarLayout extends LinearLayout {
     }
 
     private void updateScrim(float full) {
+        // P270 (owner's video 2026-10-19: a full sheet of tiles, the dimming behind it pulsing every ~1.6 s): with the tiles filling
+        // the sheet, PEEK sits a few px below FULL and the scrim, the share of that travel, went 0 -> 1 -> 0 on every small
+        // re-layout (a tile's text changing). No travel, nothing to dim: the scrim stays off then.
+        if (scrimTravelTiny()) full = 0f;
         for (View scrim : scrims) {
             scrim.setAlpha(full);
             scrim.setVisibility(full > 0f ? VISIBLE : GONE);
         }
+    }
+
+    /** P270: FULL shows at most 24 dp more than PEEK (the sheet's tiles fill it): no scrim. */
+    boolean scrimTravelTiny() {
+        return scrimTravelTiny(sheetPeekHeight, getHeight(),
+                com.particlesdevs.photoncamera.circularbarlib.ui.UiScale.dp(getContext(), 24));
+    }
+
+    static boolean scrimTravelTiny(int peek, int height, int slack) {
+        return peek > 0 && height > 0 && height - peek <= slack;
     }
 
     /**

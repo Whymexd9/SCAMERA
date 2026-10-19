@@ -670,4 +670,16 @@ public class ShadeUiTest {
         assertEquals(1f, sheet.getScaleX(), 0f);
         assertEquals(SettingsBarLayout.LEVEL_PEEK, sheet.getSheetLevel());
     }
+
+    /**
+     * P270 (owner's video 2026-10-19): a sheet whose tiles fill it has PEEK a few px under FULL; the scrim followed that travel
+     * and pulsed on every small re-layout. With at most 24 dp of travel there is no scrim; a real travel keeps it.
+     */
+    @Test
+    public void noScrimWithoutTravel() {
+        assertTrue(SettingsBarLayout.scrimTravelTiny(1990, 2000, 48));
+        assertTrue(SettingsBarLayout.scrimTravelTiny(2000, 2000, 48));
+        assertFalse(SettingsBarLayout.scrimTravelTiny(1200, 2000, 48));
+        assertFalse("before the first layout", SettingsBarLayout.scrimTravelTiny(0, 2000, 48));
+    }
 }

@@ -281,6 +281,31 @@ away = ~dilate(fl, 7)
 check(np.abs(out[away] - c_in[away]).max() <= 2e-3 * max(1.0, float(c_in[away].max())),
       'pass-through away from the flags: max |diff| %.2e' % np.abs(out[away] - c_in[away]).max())
 
+# ------------------------------------------------------------------ scene C: G clipped in the ultrashort too, blue sky light
+# P268, after the OPPO 12 MP window of 2026-10-19 (Bento k = 8, clip flags G only, bit 5): a white cloth (12 x white) on a
+# sill under a bright sky - G clips even in the ultrashort frame, R and B are measured - and the bright unclipped sky
+# around it makes the local light blue. Before, the prior scaled to R and B put G below both: lavender.
+# Check: the cloth is never magenta (G >= 0.99 x min(R, B)) and stays near neutral (chroma < 0.03).
+WPC = np.array([0.45, 1.0, 0.62], np.float32)
+H, W = 128, 192
+yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+wb = np.zeros((H, W, 3), np.float32)
+wb[:] = (3.0, 4.2, 6.5)                                                   # bright blue sky, unclipped in the ultrashort
+CLOTH = (xx >= 64) & (xx < 128) & (yy >= 40) & (yy < 96)
+wb[CLOTH] = 12.0
+raw = np.minimum(wb * WPC, K).astype(np.float32)
+flags = np.zeros((H, W), np.uint8)
+gclip = raw[..., 1] >= 0.98 * K
+flags[dilate(np.ones((H, W), bool), 0)] |= 16                             # all inside the Bento mask
+flags[dilate(gclip, 1)] |= 8 | 64
+flags[gclip] |= 2 | 32 | 8
+out = recover(raw, flags, WPC, (1.0, 1.0, 1.0), (K, K, K))
+cloth = erode(CLOTH, 3)
+o = out[cloth]
+mag = o[:, 1] < 0.99 * np.minimum(o[:, 0], o[:, 2])
+check(mag.sum() == 0, 'cloth with G clipped in the ultrashort is never magenta: %d px with G < min(R, B)' % mag.sum())
+check(chroma(o).max() < 0.03, 'cloth near neutral: max chroma %.4f < 0.03' % chroma(o).max())
+
 if REPORT:
     try:
         from PIL import Image

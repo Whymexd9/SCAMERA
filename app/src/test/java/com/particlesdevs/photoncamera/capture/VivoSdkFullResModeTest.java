@@ -149,14 +149,12 @@ public class VivoSdkFullResModeTest {
         assertEquals(auto, builder.get(android.hardware.camera2.CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE));
         assertEquals(Integer.valueOf(0), builder.get(android.hardware.camera2.CaptureRequest.SENSOR_SENSITIVITY));
         assertEquals(Long.valueOf(0), builder.get(android.hardware.camera2.CaptureRequest.SENSOR_EXPOSURE_TIME));
-        Method motion = CaptureController.class.getDeclaredMethod("motionFpsRange");
-        motion.setAccessible(true);
-        try (MockedStatic<com.particlesdevs.photoncamera.settings.MotionMode> mode =
-                     mockStatic(com.particlesdevs.photoncamera.settings.MotionMode.class)) {
-            mode.when(com.particlesdevs.photoncamera.settings.MotionMode::on).thenReturn(true);
-            assertNull(motion.invoke(controller));
-            mode.verify(() -> com.particlesdevs.photoncamera.settings.MotionMode.fpsRange(any(), anyInt(), any()), never());
-        }
+        // P266: the module's own RAW frame rate stays out of the SDK session too (as the «Движение» rate it replaced)
+        Method module = CaptureController.class.getDeclaredMethod("moduleFps");
+        module.setAccessible(true);
+        controller.rawFps = 60;
+        assertNull(module.invoke(controller));
+        controller.rawFps = 0;
     }
 
     @Test public void refusedSdkClearsTheRequestAndOnlyAnExplicitRetryReopensSdkAfterRestore() throws Exception {

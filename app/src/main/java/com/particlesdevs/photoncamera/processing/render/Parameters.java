@@ -151,12 +151,12 @@ public class Parameters {
     public int logicalID = 0;
 
     @Tunable(title = "Use Dynamic Black Level", category = "Parameters", defaultValue = 0, min = 0, max = 1, step = 1,
-            description = "Брать уровень чёрного из каждого кадра, а не из паспорта камеры. На части телефонов работает нестабильно."
+            description = "Уровень чёрного из метаданных каждого кадра (что сообщает камера), а не из её паспорта. Оценка по пикселям — «Уровень чёрного по кадру». На части телефонов работает нестабильно."
     )
     boolean useDynamicBlackLevel;
 
     @Tunable(title = "Use Dynamic White Level", category = "Parameters", defaultValue = 1, min = 0, max = 1, step = 1,
-            description = "Брать уровень белого из каждого кадра, а не из паспорта камеры. На части телефонов работает нестабильно."
+            description = "Уровень белого из метаданных каждого кадра (что сообщает камера), а не из её паспорта. На части телефонов работает нестабильно."
     )
     boolean useDynamicWhiteLevel;
 

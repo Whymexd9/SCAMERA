@@ -30,17 +30,31 @@ public class CropUpscaleTest {
     }
 
     /**
-     * P258 (owner, 2026-10-19): a mosaic shot without our remosaic keeps its mosaic in the DNG (the reference frame as captured)
-     * so Scam Remosaic's neural remosaic can develop it; the binned merge is dropped before the merged branch.
+     * P258 / P267 (owner, 2026-10-19: «При выкл сохраняй только днг без ремозаика»; «Склейка должны быть, просто без
+     * ремозаика»): a mosaic shot without our remosaic is merged and its merged mosaic DNG is the shot - saved whatever the RAW
+     * setting says, uncompressed (Scam Remosaic reads uncompressed 16-bit CFA only), the reference frame as captured when the merge
+     * gave none, and the shot ends there (no photo).
      */
-    @Test public void aMosaicShotWithoutRemosaicKeepsItsMosaicInTheDng() throws Exception {
+    @Test public void aMosaicShotWithoutRemosaicIsItsMergedMosaicDngAlone() throws Exception {
         String s = src("src/main/java/com/particlesdevs/photoncamera/processing/processor/ScamProcessor.java");
-        int check = s.indexOf("if (scamMergedDng != null && mosaicAsCaptured(processingParameters.rawSize, mergedSize,");
-        int drop = s.indexOf("scamMergedDng = null;", check);
+        int flag = s.indexOf("mosaicDngOnly = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastDngMosaic > 1;");
+        int dng = s.indexOf("if (mosaicDngOnly || ((saveRAW >= 1) && alignAlgorithm != 2)) {", flag);
+        int check = s.indexOf("final boolean mosaicDng = mosaicDngOnly;", dng);
         int merged = s.indexOf("if (scamMergedDng != null) {", check);
-        int reference = s.indexOf("imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output, processingParameters);", merged);
-        assertTrue(check > 0 && drop > check && merged > drop && reference > merged);
-        assertTrue(s.contains("return on && sensor != null && merged != null && merged.x > 0 && merged.y > 0 && (merged.x < sensor.x || merged.y < sensor.y);"));
+        int stacked = s.indexOf("imageSaved = mosaicDng ? ImageSaver.Util.saveStackedRaw(dngFile, scamMergedDng, processingParameters, true)", merged);
+        int reference = s.indexOf("imageSaved = mosaicDng ? ImageSaver.Util.saveSingleRaw(dngFile, output, processingParameters, true)", stacked);
+        int end = s.indexOf("if (saveRAW == 2 || mosaicDngOnly) {", reference);
+        int pipeline = s.indexOf("PostPipeline pipeline = new PostPipeline();", end);
+        assertTrue(flag > 0 && dng > flag && check > dng && merged > check && stacked > merged && reference > stacked
+                && end > reference && pipeline > end);
+        String h = src("src/main/java/com/particlesdevs/photoncamera/processing/opengl/postpipeline/ScamHybridBurst.java");
+        assertTrue(h.contains("burst.mergedDng = mergedDng || burst.dngMosaic > 1;"));
+        assertTrue(h.contains("safe.mergedDng = safe.dngMosaic > 1;"));
+        String w = src("src/main/cpp/scam-hybrid.h");
+        assertTrue(w.contains("||set(\"dngMosaic\",nullptr,&t.dngMosaic)"));
+        int at = w.indexOf("const int dngBlock=tune.dngMosaic!=0&&(block==2||block==4)?block:1;");
+        assertTrue("the native merge and the sub-frame split write the mosaic layout",
+                at > 0 && w.indexOf("const int dngBlock=tune.dngMosaic!=0&&(block==2||block==4)?block:1;", at + 1) > at);
     }
 
     @Test public void theDownscaleStaysDownscaleOnly() throws Exception {

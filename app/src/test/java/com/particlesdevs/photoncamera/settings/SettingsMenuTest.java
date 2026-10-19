@@ -1649,10 +1649,10 @@ public class SettingsMenuTest {
         assertTrue(category.isVisible());
         List<String> keys=new ArrayList<>();
         for(int i=0;i<category.getPreferenceCount();i++)if(category.getPreference(i).getKey().startsWith("pref_sensorconfig_back1_"))keys.add(category.getPreference(i).getKey().substring("pref_sensorconfig_back1_".length()));
-        // RAW levels, stabilization (only with OIS hardware), session; then the vendor tag button (the exposure limits read by
-        // nothing were removed)
+        // RAW levels, stabilization (only with OIS hardware), session, P266's ISP stream and RAW frame rate; then the vendor tag
+        // button (the exposure limits read by nothing were removed)
         keys.remove("oismode");
-        assertEquals(Arrays.asList("blackleveloverride","whiteleveloverride","sessiontype","add_tunablekey"),keys);
+        assertEquals(Arrays.asList("blackleveloverride","whiteleveloverride","sessiontype","ispsurface","rawfps","rawviewfinder","fpsprobe","add_tunablekey"),keys);
     }
     /**
      * P148: the module page groups its rows (basics, copies, advanced) and makes a copy with a lens crop: «1.3×» of the 1× camera
@@ -1943,15 +1943,21 @@ public class SettingsMenuTest {
         assertTrue(ModuleProfiles.isLocal(PreferenceKeys.CROP_UPSCALE_KEY));
         assertTrue(PreferenceKeys.cropUpscale());
     }
-    /** P223: «ISP-превью» and «Поправки баланса белого» for FULLRES / ISZ in «Экран камеры», both on by default. */
+    /**
+     * P223: «Поправки баланса белого» for FULLRES / ISZ in «Экран камеры», on by default. P266 (owner, 2026-10-19: no settings
+     * of one meaning twice): the global «ISP-превью в FULLRES и ISZ» is gone - the modules' «Поток ISP» (Auto / On / Off) holds
+     * it; a switched-off global becomes Off on the modules with a sensor mode of their own, the key goes.
+     */
     @Test public void mosaicPreviewAndWhiteBalanceSwitchesSitOnTheCameraScreenGroup(){
         PreferenceScreen screen=inflate();
         androidx.preference.PreferenceGroup view=screen.findPreference("root_view");
-        for(String key:new String[]{PreferenceKeys.MOSAIC_ISP_PREVIEW_KEY,PreferenceKeys.MOSAIC_WB_KEY}){
-            androidx.preference.TwoStatePreference sw=view.findPreference(key);
-            assertNotNull(key,sw);assertTrue(key,sw.isChecked());
-        }
-        assertTrue(PreferenceKeys.mosaicIspPreview());
+        androidx.preference.TwoStatePreference wb=view.findPreference(PreferenceKeys.MOSAIC_WB_KEY);
+        assertNotNull(wb);assertTrue(wb.isChecked());
+        assertNull("one setting for the ISP stream: the module's", screen.findPreference(PreferenceKeys.MOSAIC_ISP_PREVIEW_KEY));
+        prefs.edit().putBoolean(PreferenceKeys.MOSAIC_ISP_PREVIEW_KEY,true).commit();
+        assertTrue(SettingsMigration.migrateIspPreview(prefs));
+        assertFalse(prefs.contains(PreferenceKeys.MOSAIC_ISP_PREVIEW_KEY));
+        assertFalse(SettingsMigration.migrateIspPreview(prefs));
         assertTrue(PreferenceKeys.mosaicWbCorrections());
         prefs.edit().putBoolean(PreferenceKeys.MOSAIC_WB_KEY,false).commit();
         assertFalse(PreferenceKeys.mosaicWbCorrections());

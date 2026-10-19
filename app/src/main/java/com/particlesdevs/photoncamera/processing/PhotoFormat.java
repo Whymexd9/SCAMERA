@@ -33,7 +33,8 @@ public enum PhotoFormat {
     /** P46 «Цветовое пространство»: srgb (default) or p3 (processing.color.OutputColour.Space), every format. */
     public static final String KEY_COLOR_SPACE = "pref_photo_color_space";
     /** P46 «HDR в HEIC / AVIF»: an HLG BT.2020 picture in the 10-bit HEIC / 10-12-bit AVIF (processing.color.HdrOutput). */
-    public static final String KEY_HDR = "pref_photo_hdr";
+    /** P266: one «HDR-фото» for every format (the JPEG's Ultra HDR and the HEIC / AVIF gain map): the Ultra HDR key. */
+    public static final String KEY_HDR = "pref_ultrahdr_key";
     public static final int DEFAULT_QUALITY = 90;
     /** HEIC needs the platform HEIF support of Android 9 (androidx.heifwriter's minSdk, HEIF decode in the gallery). */
     public static final int HEIC_MIN_SDK = 28;

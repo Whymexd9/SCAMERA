@@ -931,8 +931,8 @@ public class HybridSettingsTest {
 
     /**
      * P195 (owner, 2026-10-17: «настройка должна находиться в группе настроек "Мозаика без ремозаика" В самом верху»): «Наш ремозаик»
-     * is the first row of the mosaic page, on by default (nothing written: the worker's mosaicRemosaic 1); off writes mosaicRemosaic 0
-     * and leaves only the frame count live on the page.
+     * is the first row of the mosaic page, on by default; P267: off is the merged mosaic DNG alone (ScamHybridBurst.dngMosaic), the
+     * worker is never told to bin (mosaicRemosaic 0) and every mosaic merge row stays live (that merge is the DNG).
      */
     @Test public void remosaicSwitchIsTheTopMosaicRowAndReachesTheWorker() {
         String tuning=PreferenceKeys.hybridTuningText();
@@ -947,14 +947,14 @@ public class HybridSettingsTest {
         manager.set("default_scope","pref_scam_hybrid_mosaic_remosaic",false);
         assertFalse(PreferenceKeys.isHybridMosaicRemosaic());
         tuning=PreferenceKeys.hybridTuningText();
-        assertTrue(tuning,tuning.contains("mosaicRemosaic 0\n"));
+        assertFalse(tuning,tuning.contains("mosaicRemosaic"));
         Map<String,Object> values=new HashMap<>();
         values.put("pref_scam_hybrid_mosaic_remosaic",false);
         SettingsAvailability rules=new SettingsAvailability(values).mosaicStreams(true);
         assertNull(rules.reason("pref_scam_hybrid_mosaic_remosaic"));
         assertNull(rules.reason("pref_scam_hybrid_mosaic_frames"));
-        assertNotNull(rules.reason("pref_scam_hybrid_mosaic_path"));
-        assertNotNull(rules.reason("pref_scam_hybrid_mosaic_window"));
+        assertNull(rules.reason("pref_scam_hybrid_mosaic_path"));
+        assertNull(rules.reason("pref_scam_hybrid_mosaic_window"));
         values.put("pref_scam_hybrid_mosaic_remosaic",true);
         assertNull(new SettingsAvailability(values).mosaicStreams(true).reason("pref_scam_hybrid_mosaic_path"));
     }

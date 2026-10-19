@@ -547,6 +547,8 @@ public class ScamProcessor extends ProcessorBase {
 
         ParseExif.syncWithParameters(exifData, processingParameters);
 
+        // P267: «Наш ремозаик» off and a Quad / Tetra shot (ScamHybridBurst.lastDngMosaic): the merged mosaic DNG alone, no photo
+        boolean mosaicDngOnly = false;
         {
             processingStage="SCAM HDR neural burst";
             try {
@@ -593,6 +595,7 @@ public class ScamProcessor extends ProcessorBase {
                     } finally {
                         com.particlesdevs.photoncamera.processing.MergeProgress.listener = null;
                     }
+                    mosaicDngOnly = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastDngMosaic > 1;
                     // P190: a FULLRES series the merge cut (the worker, a fallback tier, the memory budget) is said aloud
                     final String notice = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.takeSeriesNotice();
                     if (notice != null) {
@@ -625,7 +628,7 @@ public class ScamProcessor extends ProcessorBase {
         ByteBuffer scamMergedDng=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDng;
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDng=null;
         Log.d(TAG, "Alignment elapsed:" + (System.currentTimeMillis() - startTime) + " ms");
-        if ((saveRAW >= 1) && alignAlgorithm != 2) {
+        if (mosaicDngOnly || ((saveRAW >= 1) && alignAlgorithm != 2)) {
             boolean imageSaved = false;
             // P243: the DNG carries the JPEG's white balance and colour matrix (DngColour); scam_dev dng_colour_jpeg 0: the camera's
             // dual-illuminant profile as before
@@ -637,20 +640,15 @@ public class ScamProcessor extends ProcessorBase {
                     Log.w(TAG, "DNG colour: the JPEG's matrices are not usable, the camera's profile is written");
             }
             try {
-            // P258 (owner, 2026-10-19: «Наш рав проявляется нормально в нашем приложение Scam Remosaic, нам нужно это исправить
-            // чтобы при съемке без ремозаика мы могли применить нейроремозаик в нём»): without our remosaic a Quad / Tetra burst's
-            // merge is the binned Bayer W/b x H/b - a plain Bayer that Scam Remosaic just demosaics. Such a shot's DNG is the
-            // reference frame as the sensor gave it (the full mosaic, the one-frame noise profile): Scam Remosaic's single-DNG
-            // input for its neural remosaic. scam_dev.txt "dng_mosaic_as_captured 0": the binned merge as before.
-            final Point mergedSize = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDngSize;
-            if (scamMergedDng != null && mosaicAsCaptured(processingParameters.rawSize, mergedSize,
-                    PreferenceKeys.scamDevSwitch("dng_mosaic_as_captured", true))) {
-                Log.i("SCAM_HDR", "DNG: the reference frame's mosaic as captured " + processingParameters.rawSize.x + "x"
-                        + processingParameters.rawSize.y + " (no remosaic: for the neural remosaic of Scam Remosaic; the merge was the binned "
-                        + mergedSize.x + "x" + mergedSize.y + ")");
-                Allocator.free(scamMergedDng);
-                scamMergedDng = null;
-            }
+            // P258 / P267 (owner, 2026-10-19: «Наш рав проявляется нормально в нашем приложение Scam Remosaic, нам нужно это
+            // исправить чтобы при съемке без ремозаика мы могли применить нейроремозаик в нём»; «При выкл сохраняй только днг без
+            // ремозаика»; «Склейка должны быть, просто без ремозаика»): a Quad / Tetra shot without our remosaic is the merged
+            // mosaic DNG alone (the worker's dngMosaic: the sensor's layout, uncompressed - Scam Remosaic's single-DNG input for its
+            // neural remosaic); a merge that gave none (the CPU tier) leaves the reference frame's mosaic as captured.
+            final boolean mosaicDng = mosaicDngOnly;
+            if (mosaicDng) Log.i("SCAM_HDR", "DNG: " + (scamMergedDng != null ? "the merged" : "the reference frame's (no merged RAW)")
+                    + " mosaic " + processingParameters.rawSize.x + "x" + processingParameters.rawSize.y
+                    + " (no remosaic: the DNG alone, for the neural remosaic of Scam Remosaic)");
             if (scamMergedDng != null) {
                 // The whole burst's merge (the N frames, the bracketed and the ultrashort ones; nothing else, no denoise),
                 // P165: 16 bit over its headroom, BaselineExposure log2(headroom) keeps its brightness.
@@ -661,13 +659,6 @@ public class ScamProcessor extends ProcessorBase {
                 for (int i = 0; i < 4; i++) processingParameters.blackLevel[i] = Math.round(black[i] * k);
                 processingParameters.whiteLevel = 65535;
                 processingParameters.dngBaselineExposure = headroom > 1.0001f ? (float) (Math.log(headroom) / Math.log(2)) : 0f;
-                // P195: without the remosaic the merged RAW is the binned Bayer W/b x H/b (the same CFA order, black and white:
-                // each site the mean of one colour block); the DNG takes its size, the lens-shading map is normalised to it
-                final Point sensorSize = processingParameters.rawSize;
-                final Point dngSize = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDngSize;
-                if (dngSize != null && (long) dngSize.x * dngSize.y * 2 == scamMergedDng.capacity()) processingParameters.rawSize = new Point(dngSize);
-                if (!processingParameters.rawSize.equals(sensorSize))
-                    Log.i("SCAM_HDR", "DNG: merged binned Bayer " + processingParameters.rawSize.x + "x" + processingParameters.rawSize.y + " (no remosaic)");
                 try {
                     // P214c: NoiseProfile of what the file holds - the merge's level over the headroom, averaged over the frames
                     // the worker merged (DngMetadata.noiseProfile); without the worker's frames the legacy computeModel stands
@@ -676,24 +667,23 @@ public class ScamProcessor extends ProcessorBase {
                     final boolean framesKnown = Double.isFinite(mergeFrames) && mergeFrames >= 1;
                     final com.particlesdevs.photoncamera.processing.render.NoiseModeler nm = processingParameters.noiseModeler;
                     final double[] single = nm == null ? null : com.particlesdevs.photoncamera.processing.DngMetadata.planes(framesKnown ? nm.baseModel : nm.computeModel);
-                    final double averagedSites = (double) sensorSize.x * sensorSize.y / ((double) processingParameters.rawSize.x * processingParameters.rawSize.y);
                     final float noiseFactor = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastNoiseFactor;
                     if (single != null) processingParameters.dngNoiseProfile = com.particlesdevs.photoncamera.processing.DngMetadata.noiseProfile(
-                            single, noiseFactor, headroom, framesKnown ? mergeFrames : 1, averagedSites);
-                    imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, scamMergedDng, processingParameters);
+                            single, noiseFactor, headroom, framesKnown ? mergeFrames : 1, 1);
+                    imageSaved = mosaicDng ? ImageSaver.Util.saveStackedRaw(dngFile, scamMergedDng, processingParameters, true)
+                            : ImageSaver.Util.saveStackedRaw(dngFile, scamMergedDng, processingParameters);
                     Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "DNG: merged burst RAW (N, bracketed and ultrashort frames), "
                             + "16-bit, headroom x%.3f, BaselineExposure %+.2f EV", headroom, processingParameters.dngBaselineExposure));
                     final double[] np = processingParameters.dngNoiseProfile;
                     if (np != null && single != null) Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "DNG: NoiseProfile G %.4g / %.4g (frames %s, "
-                            + "headroom x%.3f, noise x%.3f, sites %.0f; one frame %.4g / %.4g)", np[2], np[3],
+                            + "headroom x%.3f, noise x%.3f; one frame %.4g / %.4g)", np[2], np[3],
                             framesKnown ? String.format(java.util.Locale.ROOT, "%.2f", mergeFrames) : "unknown: legacy model", headroom,
-                            noiseFactor, Math.max(1, averagedSites), single[2], single[3]));
+                            noiseFactor, single[2], single[3]));
                 } finally {
                     System.arraycopy(black, 0, processingParameters.blackLevel, 0, 4);
                     processingParameters.whiteLevel = white;
                     processingParameters.dngBaselineExposure = 0f;
                     processingParameters.dngNoiseProfile = null;
-                    processingParameters.rawSize = sensorSize;
                     Allocator.free(scamMergedDng);
                 }
             } else {
@@ -704,7 +694,9 @@ public class ScamProcessor extends ProcessorBase {
                 if (single != null) processingParameters.dngNoiseProfile = com.particlesdevs.photoncamera.processing.DngMetadata.noiseProfile(
                         single, com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastNoiseFactor, 1, 1, 1);
                 try {
-                    imageSaved = ImageSaver.Util.saveStackedRaw(dngFile, output, processingParameters);
+                    // P258: the mosaic as captured goes uncompressed (Scam Remosaic's reader: 16-bit CFA, no LinearizationTable)
+                    imageSaved = mosaicDng ? ImageSaver.Util.saveSingleRaw(dngFile, output, processingParameters, true)
+                            : ImageSaver.Util.saveStackedRaw(dngFile, output, processingParameters);
                 } finally {
                     processingParameters.dngNoiseProfile = null;
                 }
@@ -716,7 +708,13 @@ public class ScamProcessor extends ProcessorBase {
                 processingParameters.dngColour = null; // P243: only these DNG writes
             }
             processingEventsListener.notifyImageSavedStatus(imageSaved, dngFile);
-            if (saveRAW == 2) {
+            if (mosaicDngOnly) {
+                try {
+                    processingEventsListener.onProcessingChanged(Lang.t("«Наш ремозаик» выключен: сохранён только DNG склеенной мозаики",
+                            "«Our remosaic» is off: only the merged mosaic DNG is saved"));
+                } catch (RuntimeException e) { Log.d(TAG, "DNG-only notice: " + e); }
+            }
+            if (saveRAW == 2 || mosaicDngOnly) {
                 processingEventsListener.onProcessingFinished("RAW processing finished");
                 callback.onFinished();
                 Allocator.free(output);
@@ -1060,14 +1058,6 @@ public class ScamProcessor extends ProcessorBase {
         p.customNeutral = neutral;
         p.ownNeutral = true;
         p.ReCalcColor(true, meta);
-    }
-
-    /**
-     * P258: the merged DNG is the binned Bayer of a mosaic shot without our remosaic (smaller than the sensor grid), and the
-     * switch asks for the mosaic as captured instead.
-     */
-    static boolean mosaicAsCaptured(@androidx.annotation.Nullable Point sensor, @androidx.annotation.Nullable Point merged, boolean on) {
-        return on && sensor != null && merged != null && merged.x > 0 && merged.y > 0 && (merged.x < sensor.x || merged.y < sensor.y);
     }
 
     /**

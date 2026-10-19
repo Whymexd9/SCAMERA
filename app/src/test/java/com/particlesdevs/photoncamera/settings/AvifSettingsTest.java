@@ -196,7 +196,7 @@ public class AvifSettingsTest {
         for (int i = 0; i < config.getPreferenceCount(); i++) order.add(config.getPreference(i).getKey());
         int at = order.indexOf(PhotoFormat.KEY_WEBP_LOSSLESS);
         assertEquals(Arrays.asList(AVIF_ROWS), order.subList(at + 1, at + 1 + AVIF_ROWS.length));
-        // P46: «Цветовое пространство» and «HDR в HEIC / AVIF» come between the AVIF rows and «Также сохранять JPEG»
+        // P46 / P266: «Цветовое пространство» and «HDR-фото» come between the AVIF rows and «Также сохранять JPEG»
         assertEquals(Arrays.asList(PhotoFormat.KEY_COLOR_SPACE, PhotoFormat.KEY_HDR, PhotoFormat.KEY_ALSO_JPEG),
                 order.subList(at + 1 + AVIF_ROWS.length, at + 4 + AVIF_ROWS.length));
         assertTrue(config.findPreference(PhotoFormat.KEY_AVIF_QUALITY) instanceof UniversalSeekBarPreference);
@@ -236,7 +236,7 @@ public class AvifSettingsTest {
         assertTrue(avif.hidden(PhotoFormat.KEY_WEBP_QUALITY));
         assertTrue(avif.hidden(PhotoFormat.KEY_HEIC_QUALITY));
         assertFalse(avif.hidden(PhotoFormat.KEY_ALSO_JPEG));
-        assertNotNull("Ultra HDR needs «Также сохранять JPEG»", avif.reason("pref_ultrahdr_key"));
+        assertNull("P266: the one «HDR-фото» - AVIF holds its map", avif.reason("pref_ultrahdr_key"));
         values.put(PhotoFormat.KEY_AVIF_LOSSLESS, true);
         SettingsAvailability lossless = new SettingsAvailability(values);
         for (String key : new String[]{PhotoFormat.KEY_AVIF_QUALITY, PhotoFormat.KEY_AVIF_DEPTH, PhotoFormat.KEY_AVIF_CHROMA})

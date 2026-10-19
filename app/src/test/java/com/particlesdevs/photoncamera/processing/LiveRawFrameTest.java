@@ -86,4 +86,25 @@ public class LiveRawFrameTest {
         } finally {LiveRawFrame.setEnabled(false);}
     }
     private void publish(int value){LiveRawFrame.publish(ByteBuffer.wrap(new byte[]{(byte)value,0,0,0,0,0,0,0}),2,2,4,0,1023,new float[4],new float[]{1,1,1},new float[]{1,0,0,0,1,0,0,0,1});}
+
+    /** P266: «Разрешение видоискателя RAW» - the plain Bayer frame halved (one 2 x 2 quad of each 4 x 4) until it fits. */
+    @Test
+    public void theViewfinderSizeHalvesAPlainBayerFrame() {
+        assertEquals(0, LiveRawFrame.halvings(4096, 3072, 0));
+        assertEquals(0, LiveRawFrame.halvings(1920, 1440, 1920));
+        assertEquals(1, LiveRawFrame.halvings(4096, 3072, 2880));
+        assertEquals(2, LiveRawFrame.halvings(4096, 3072, 1440));
+        assertEquals(3, LiveRawFrame.halvings(4096, 3072, 640));
+        final int w = 8, h = 8;
+        java.nio.ByteBuffer in = java.nio.ByteBuffer.allocateDirect(w * h * 2).order(java.nio.ByteOrder.nativeOrder());
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) in.putShort((short) (y * 100 + x));
+        in.flip();
+        java.nio.ByteBuffer out = LiveRawFrame.halveBayer(in, w, h, w * 2,
+                java.nio.ByteBuffer.allocateDirect(w * h).order(java.nio.ByteOrder.nativeOrder()));
+        java.nio.ShortBuffer s = out.asShortBuffer();
+        // rows 0, 1, 4, 5 and columns 0, 1, 4, 5: the CFA phase stays (an even row / column stays even)
+        int[] keep = {0, 1, 4, 5};
+        for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) assertEquals(keep[y] * 100 + keep[x], s.get(y * 4 + x));
+    }
+
 }

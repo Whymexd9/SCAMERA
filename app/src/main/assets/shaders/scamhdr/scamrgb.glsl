@@ -240,6 +240,12 @@ void main(){
             vec3 rN = Ub > 1.0e-3 ? max(c, vec3(dot(ub, c) / Ub)) : vec3(max(max(c.r, c.g), c.b));
             r = mix(r, vec3(dot(rN, vec3(1.0 / 3.0))), blown);
         }
+        // Never magenta where G is censored (owner, 2026-10-19: «нам нужно чтобы у нас никогда не было фиолетовых засветов»;
+        // OPPO 12 MP window, G clipped even in the ultrashort frame, R and B measured: a sky-blue local light scaled to R and
+        // B put G below both - a lavender cloth). A clipped G is a lower bound and green is the channel a white light clips
+        // first; a magenta result there is the censoring, not the scene: G comes up to the lower of R and B, weighted by its
+        // censoring (an unclipped G keeps a real magenta).
+        r.g = mix(r.g, max(r.g, min(r.r, r.b)), satR.g);
         // Every channel clipped: no colour left; neutral white at the brightest level, reached gradually as the
         // last channel approaches its clip (no grey plateau, no step).
         float all3 = sat.r * sat.g * sat.b;

@@ -119,8 +119,6 @@
     <string name="prefs_scam_motion_on_summary">For motion: short shutter and fewer frames so the subject stays sharp. Same as the viewfinder icon.</string>
     <string name="prefs_scam_motion_screen_title">Motion</string>
     <string name="prefs_scam_motion_screen_summary">Settings of the Motion mode: a fast buffer and sharp moving subjects</string>
-    <string name="prefs_scam_motion_fps_title">Viewfinder and buffer rate</string>
-    <string name="prefs_scam_motion_fps_summary">%s. Viewfinder and buffer rate in Motion mode. Higher: shorter exposures and sharper motion.</string>
     <string name="prefs_scam_motion_shutter_title">Shutter at most</string>
     <string name="prefs_scam_motion_shutter_summary">%s. Longest shutter in Motion mode. Shorter: sharper motion but more noise (higher ISO).</string>
     <string name="prefs_scam_motion_flicker_title">No lamp flicker</string>

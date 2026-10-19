@@ -72,6 +72,19 @@ int main() {
     // without an ultrashort frame nothing goes above N white: the headroom is 1, as before P165's highlights
     std::vector<uint16_t> d3;
     assert(hybridWriteMergedDng(d3, w, h, input(0.f), level, false) == 1.f);
+    // P267 dngMosaic: block 2 / 4 writes each site the colour of its b x b block in the blocks' CFA order (cfa 3 = BGGR: the
+    // top-left block blue), the Quad / Tetra layout as captured; block 1 is the plain Bayer layout as before
+    auto byColour = [](int, int, int c) -> float { return 0.1f + 0.2f * float(c); }; // R 0.1, G 0.3, B 0.5
+    for (int b : {1, 2, 4}) {
+        std::vector<uint16_t> m;
+        hybridWriteMergedDng(m, w, h, input(0.f), byColour, false, b);
+        for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) {
+            const int bx = (x / b) & 1, by = (y / b) & 1;
+            const int c = bx == 0 && by == 0 ? 2 : bx == 1 && by == 1 ? 0 : 1; // BGGR
+            const float want = (64.f + (0.1f + 0.2f * float(c)) * (1023.f - 64.f)) * (65535.f / 1023.f);
+            assert(std::fabs(float(m[size_t(y) * w + x]) - want) <= 1.f);
+        }
+    }
     std::printf("check_dng_ceiling: OK\n");
     return 0;
 }

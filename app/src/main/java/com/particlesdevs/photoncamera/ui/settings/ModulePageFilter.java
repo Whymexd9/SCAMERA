@@ -63,6 +63,9 @@ final class ModulePageFilter {
         if (VivoSdkFullRes.PREF_HW_REMOSAIC.equals(key)) return FullResProfiles.hardwareRemosaicApplies(profile);
         // P190: «Кадров в снимке 50 / 200 Мп» only in the FULLRES profile of that size
         if (FullResProfiles.framesTag(key) != null) return FullResProfiles.framesRowApplies(key, profile);
+        // P266 (owner: no two rows of one meaning): a FULLRES profile counts its frames by «Кадров в снимке 50 / 200 Мп» - the
+        // general «Кадров в склейке» there would be a second, mostly ignored count
+        if ("pref_scam_hybrid_zsl_frames".equals(key) && FullResProfiles.isVariant(profile)) return false;
         if (key.startsWith("pref_") || key.startsWith("scamera_")) return ModuleProfiles.isLocal(key);
         return true;
     }
