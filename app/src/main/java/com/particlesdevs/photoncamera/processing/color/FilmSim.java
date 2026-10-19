@@ -39,10 +39,10 @@ public final class FilmSim {
     public static final String STOCK_KEY = "pref_film_sim_stock", PRINT_KEY = "pref_film_sim_print", FORMAT_KEY = "pref_film_sim_format",
             GRAIN_KEY = "pref_film_sim_grain", HALATION_KEY = "pref_film_sim_halation", SOFTNESS_KEY = "pref_film_sim_softness",
             EXPOSURE_KEY = "pref_film_sim_exposure", PRINT_EV_KEY = "pref_film_sim_print_ev", TONE_KEY = "pref_film_sim_tone",
-            STRENGTH_KEY = "pref_film_sim_strength";
+            STRENGTH_KEY = "pref_film_sim_strength", PRINT_M_KEY = "pref_film_sim_print_m", PRINT_Y_KEY = "pref_film_sim_print_y";
     /** Every stored key (the lab, the backups). */
     public static final String[] KEYS = {STOCK_KEY, PRINT_KEY, FORMAT_KEY, GRAIN_KEY, HALATION_KEY, SOFTNESS_KEY, EXPOSURE_KEY,
-            PRINT_EV_KEY, TONE_KEY, STRENGTH_KEY};
+            PRINT_EV_KEY, TONE_KEY, PRINT_M_KEY, PRINT_Y_KEY, STRENGTH_KEY};
 
     public static final int NEGATIVE = 0, CINE = 1, SLIDE = 2, BW_NEGATIVE = 3, BW_REVERSAL = 4;
 
@@ -72,6 +72,29 @@ public final class FilmSim {
         /** Halation strength of the red, green, blue layer (the antihalation layer's leak) and its scale (um). */
         public final float[] halation;
         public final float halationUm;
+        /** P286: the stock's measured data (FilmSpectral, the reference model); null: our own model (black and white). */
+        @Nullable public final String spectral;
+        /** P286: the paper the stock's maker pairs it with (the default print). */
+        @Nullable final String targetPrint;
+
+        /** P286: a stock of the reference model (its curves, dyes and sensitivities from the data; grain and halation ours). */
+        Stock(String spectral, String brand, String name, int type, int iso, @Nullable String targetPrint, float rms, float grainUm,
+              float mtfUm, float[] halation, float halationUm) {
+            this.id = spectral;
+            this.spectral = spectral;
+            this.targetPrint = targetPrint;
+            this.brand = brand;
+            this.name = name;
+            this.type = type;
+            this.iso = iso;
+            this.rms = rms;
+            this.grainUm = grainUm;
+            this.mtfUm = mtfUm;
+            this.halation = halation;
+            this.halationUm = halationUm;
+            peak = width = tilt = dyePeak = dyeWidth = null;
+            gamma = range = toe = shoulder = dir = impurity = warmth = 0;
+        }
 
         Stock(String id, String brand, String name, int type, int iso, float[] peak, float[] width, float gamma, float[] tilt,
               float range, float toe, float shoulder, float dir, float[] dyePeak, float[] dyeWidth, float impurity, float warmth,
@@ -98,6 +121,8 @@ public final class FilmSim {
             this.mtfUm = mtfUm;
             this.halation = halation;
             this.halationUm = halationUm;
+            spectral = null;
+            targetPrint = null;
         }
 
         public boolean mono() { return type == BW_NEGATIVE || type == BW_REVERSAL; }
@@ -114,38 +139,32 @@ public final class FilmSim {
     private static final float[] WEAK_AH = {.08f, .02f, 0f}, STRONG_AH = {.015f, .005f, 0f}, BW_AH = {.05f, .05f, .05f};
 
     public static final Stock[] STOCKS = {
-            new Stock("portra160", "Kodak", "Portra 160", NEGATIVE, 160, f(642, 549, 447), NEG_WIDTH, .60f, f(1, 1, 1), 2.6f, .26f, .45f,
-                    .16f, NEG_DYE, NEG_DYE_W, .9f, .06f, 4.0f, 2.6f, 4.2f, WEAK_AH, 65),
-            new Stock("portra400", "Kodak", "Portra 400", NEGATIVE, 400, f(642, 549, 446), NEG_WIDTH, .60f, f(1, .99f, .98f), 2.6f, .28f, .45f,
-                    .17f, NEG_DYE, NEG_DYE_W, .9f, .08f, 5.0f, 3.0f, 4.8f, WEAK_AH, 65),
-            new Stock("portra800", "Kodak", "Portra 800", NEGATIVE, 800, f(640, 548, 446), NEG_WIDTH, .62f, f(1, .98f, .97f), 2.5f, .30f, .42f,
-                    .18f, NEG_DYE, NEG_DYE_W, .95f, .10f, 7.0f, 3.6f, 5.6f, WEAK_AH, 65),
-            new Stock("gold200", "Kodak", "Gold 200", NEGATIVE, 200, f(645, 552, 446), NEG_WIDTH, .65f, f(1.02f, 1, .97f), 2.5f, .26f, .40f,
-                    .24f, NEG_DYE, NEG_DYE_W, 1.05f, .18f, 5.0f, 3.0f, 4.8f, WEAK_AH, 65),
-            new Stock("ultramax400", "Kodak", "UltraMax 400", NEGATIVE, 400, f(646, 551, 445), NEG_WIDTH, .66f, f(1.02f, 1, .98f), 2.5f, .27f,
-                    .40f, .27f, NEG_DYE, NEG_DYE_W, 1.1f, .12f, 6.0f, 3.4f, 5.2f, WEAK_AH, 65),
-            new Stock("ektar100", "Kodak", "Ektar 100", NEGATIVE, 100, f(648, 548, 446), f(24, 28, 27), .68f, f(1, 1, 1), 2.7f, .24f, .40f,
-                    .30f, NEG_DYE, f(46, 32, 29), .8f, .02f, 3.0f, 2.2f, 3.6f, WEAK_AH, 65),
-            new Stock("c200", "Fujifilm", "C200", NEGATIVE, 200, f(640, 543, 448), NEG_WIDTH, .63f, f(.98f, 1.02f, 1), 2.5f, .27f, .42f,
-                    .22f, f(682, 545, 450), NEG_DYE_W, 1.05f, -.06f, 5.0f, 3.0f, 4.8f, WEAK_AH, 65),
-            new Stock("xtra400", "Fujifilm", "X-TRA 400", NEGATIVE, 400, f(640, 541, 448), NEG_WIDTH, .64f, f(.98f, 1.03f, 1), 2.5f, .28f,
-                    .42f, .25f, f(680, 543, 450), NEG_DYE_W, 1.05f, -.04f, 6.0f, 3.4f, 5.2f, WEAK_AH, 65),
-            new Stock("pro400h", "Fujifilm", "Pro 400H", NEGATIVE, 400, f(641, 542, 450), f(28, 31, 29), .58f, f(.98f, 1, 1.01f), 2.6f, .30f,
-                    .48f, .14f, f(680, 545, 452), NEG_DYE_W, .85f, -.08f, 5.0f, 3.2f, 5.0f, WEAK_AH, 65),
-            new Stock("vision50d", "Kodak", "Vision3 50D", CINE, 50, f(644, 549, 446), NEG_WIDTH, .58f, f(1, 1, 1), 2.8f, .24f, .50f,
-                    .18f, NEG_DYE, NEG_DYE_W, .9f, 0f, 4.0f, 2.4f, 3.8f, STRONG_AH, 50),
-            new Stock("vision250d", "Kodak", "Vision3 250D", CINE, 250, f(644, 549, 446), NEG_WIDTH, .58f, f(1, 1, 1), 2.8f, .26f, .50f,
-                    .18f, NEG_DYE, NEG_DYE_W, .9f, 0f, 5.0f, 2.8f, 4.4f, STRONG_AH, 50),
-            new Stock("vision500t", "Kodak", "Vision3 500T", CINE, 500, f(643, 548, 447), NEG_WIDTH, .58f, f(1, 1, 1), 2.8f, .28f, .50f,
-                    .18f, NEG_DYE, NEG_DYE_W, .9f, -.10f, 7.0f, 3.4f, 5.2f, STRONG_AH, 50),
-            new Stock("ektachrome100", "Kodak", "Ektachrome E100", SLIDE, 100, f(640, 545, 448), f(26, 30, 28), 1.75f, f(1, 1, 1), 3.5f,
-                    .22f, .30f, .12f, REV_DYE, REV_DYE_W, 1.1f, -.04f, 8.0f, 2.4f, 4.0f, WEAK_AH, 65),
-            new Stock("velvia50", "Fujifilm", "Velvia 50", SLIDE, 50, f(645, 543, 446), f(24, 27, 27), 1.95f, f(1, 1.02f, 1), 3.6f, .20f,
-                    .28f, .26f, f(662, 546, 446), f(40, 32, 29), 1.25f, .04f, 9.0f, 2.2f, 3.6f, WEAK_AH, 65),
-            new Stock("provia100f", "Fujifilm", "Provia 100F", SLIDE, 100, f(642, 545, 448), f(26, 30, 28), 1.80f, f(1, 1, 1), 3.5f, .22f,
-                    .30f, .14f, REV_DYE, REV_DYE_W, 1.05f, -.02f, 8.0f, 2.3f, 3.8f, WEAK_AH, 65),
-            new Stock("kodachrome64", "Kodak", "Kodachrome 64", SLIDE, 64, f(650, 548, 445), f(25, 29, 27), 1.85f, f(1.02f, 1, .97f), 3.4f,
-                    .22f, .30f, .22f, f(655, 538, 446), f(42, 36, 30), 1.2f, .16f, 9.0f, 2.4f, 3.8f, WEAK_AH, 65),
+            // P286: the reference model's stocks (the halation preset by base and antihalation layer, as the reference's)
+            new Stock("kodak_portra_160", "Kodak", "Portra 160", NEGATIVE, 160, "kodak_portra_endura", 4.0f, 2.6f, 4.2f, STRONG_AH, 65),
+            new Stock("kodak_portra_400", "Kodak", "Portra 400", NEGATIVE, 400, "kodak_portra_endura", 5.0f, 3.0f, 4.8f, STRONG_AH, 65),
+            new Stock("kodak_portra_800", "Kodak", "Portra 800", NEGATIVE, 800, "kodak_portra_endura", 7.0f, 3.6f, 5.6f, STRONG_AH, 65),
+            new Stock("kodak_portra_800_push1", "Kodak", "Portra 800 (Push 1)", NEGATIVE, 1600, "kodak_portra_endura", 8.5f, 4.0f, 6.0f,
+                    STRONG_AH, 65),
+            new Stock("kodak_portra_800_push2", "Kodak", "Portra 800 (Push 2)", NEGATIVE, 3200, "kodak_portra_endura", 10.0f, 4.4f, 6.4f,
+                    STRONG_AH, 65),
+            new Stock("kodak_gold_200", "Kodak", "Gold 200", NEGATIVE, 200, "kodak_portra_endura", 5.0f, 3.0f, 4.8f, WEAK_AH, 65),
+            new Stock("kodak_ultramax_400", "Kodak", "Ultramax 400", NEGATIVE, 400, "kodak_portra_endura", 6.0f, 3.4f, 5.2f, WEAK_AH, 65),
+            new Stock("kodak_ektar_100", "Kodak", "Ektar 100", NEGATIVE, 100, "kodak_portra_endura", 3.0f, 2.2f, 3.6f, STRONG_AH, 65),
+            new Stock("fujifilm_c200", "Fujifilm", "C200", NEGATIVE, 200, "fujifilm_crystal_archive_typeii", 5.0f, 3.0f, 4.8f, WEAK_AH, 65),
+            new Stock("fujifilm_xtra_400", "Fujifilm", "X-Tra 400", NEGATIVE, 400, "fujifilm_crystal_archive_typeii", 6.0f, 3.4f, 5.2f,
+                    WEAK_AH, 65),
+            new Stock("fujifilm_pro_400h", "Fujifilm", "Pro 400H", NEGATIVE, 400, "fujifilm_crystal_archive_typeii", 5.0f, 3.2f, 5.0f,
+                    STRONG_AH, 65),
+            new Stock("kodak_vision3_50d", "Kodak", "Vision3 50D", CINE, 50, "kodak_2383", 4.0f, 2.4f, 3.8f, STRONG_AH, 50),
+            new Stock("kodak_vision3_200t", "Kodak", "Vision3 200T", CINE, 200, "kodak_2383", 5.0f, 2.8f, 4.4f, STRONG_AH, 50),
+            new Stock("kodak_vision3_250d", "Kodak", "Vision3 250D", CINE, 250, "kodak_2383", 5.0f, 2.8f, 4.4f, STRONG_AH, 50),
+            new Stock("kodak_vision3_500t", "Kodak", "Vision3 500T", CINE, 500, "kodak_2383", 7.0f, 3.4f, 5.2f, STRONG_AH, 50),
+            new Stock("kodak_verita_200d", "Kodak", "Verita 200D", CINE, 200, "kodak_2383", 5.0f, 2.8f, 4.4f, STRONG_AH, 50),
+            new Stock("kodak_ektachrome_100", "Kodak", "Ektachrome 100", SLIDE, 100, null, 8.0f, 2.4f, 4.0f, STRONG_AH, 65),
+            new Stock("fujifilm_provia_100f", "Fujifilm", "Provia 100F", SLIDE, 100, null, 8.0f, 2.3f, 3.8f, STRONG_AH, 65),
+            new Stock("fujifilm_velvia_100", "Fujifilm", "Velvia 100", SLIDE, 100, null, 9.0f, 2.2f, 3.6f, STRONG_AH, 65),
+            new Stock("kodak_kodachrome_64", "Kodak", "Kodachrome 64", SLIDE, 64, null, 9.0f, 2.4f, 3.8f, WEAK_AH, 65),
+            // black and white: no measured data in the reference; our own model
             new Stock("trix400", "Kodak", "Tri-X 400", BW_NEGATIVE, 400, f(560, 560, 560), f(110, 110, 110), .65f, f(1, 1, 1), 2.3f, .30f,
                     .40f, 0f, f(0, 0, 0), f(0, 0, 0), 0f, 0f, 17.0f, 6.0f, 6.0f, BW_AH, 65),
             new Stock("tmax100", "Kodak", "T-Max 100", BW_NEGATIVE, 100, f(555, 555, 555), f(105, 105, 105), .62f, f(1, 1, 1), 2.4f, .26f,
@@ -168,6 +187,11 @@ public final class FilmSim {
         final float[] dyePeak, dyeWidth;
         final float impurity;
 
+        /** P286: a print of the reference model. */
+        Print(String id, String brand, String name, boolean film) {
+            this(id, brand, name, film, null, null, 0, 0, 0, 0, 0, null, null, 0);
+        }
+
         Print(String id, String brand, String name, boolean film, float[] sensPeak, float[] sensWidth, float gamma, float dmax,
               float mid, float toe, float shoulder, float[] dyePeak, float[] dyeWidth, float impurity) {
             this.id = id;
@@ -187,22 +211,21 @@ public final class FilmSim {
         }
     }
 
+    /** The papers and print films of the reference model (the colour negatives print on them). */
     public static final Print[] PRINTS = {
-            new Print("endura_premier", "Kodak", "Endura Premier", false, f(692, 545, 450), f(18, 20, 22), 2.75f, 2.35f, .80f, .22f, .30f,
-                    f(655, 546, 446), f(42, 34, 29), 1f),
-            new Print("ultra_endura", "Kodak", "Ultra Endura", false, f(690, 546, 450), f(17, 19, 21), 3.0f, 2.40f, .80f, .20f, .28f,
-                    f(658, 547, 446), f(40, 32, 28), 1.1f),
-            new Print("ektacolor_edge", "Kodak", "Ektacolor Edge", false, f(694, 544, 452), f(18, 20, 22), 2.6f, 2.30f, .79f, .24f, .32f,
-                    f(652, 544, 448), f(42, 34, 30), 1.05f),
-            new Print("portra_endura", "Kodak", "Portra Endura", false, f(690, 545, 450), f(19, 21, 23), 2.4f, 2.30f, .80f, .26f, .34f,
-                    f(655, 546, 446), f(44, 36, 30), .9f),
-            new Print("crystal_archive", "Fujifilm", "Crystal Archive", false, f(688, 540, 452), f(18, 20, 22), 2.7f, 2.35f, .80f, .22f,
-                    .30f, f(660, 542, 448), f(40, 33, 29), 1f),
-            new Print("vision2383", "Kodak", "Vision 2383", true, f(690, 548, 452), f(16, 18, 20), 3.0f, 4.0f, 1.05f, .22f, .26f,
-                    f(662, 548, 446), f(42, 34, 28), 1f),
-            new Print("vision2393", "Kodak", "Vision Premier 2393", true, f(692, 546, 450), f(15, 17, 19), 3.2f, 4.2f, 1.05f, .20f, .24f,
-                    f(665, 548, 446), f(40, 32, 27), 1.1f),
+            new Print("kodak_portra_endura", "Kodak", "Portra Endura", false),
+            new Print("kodak_endura_premier", "Kodak", "Endura Premier", false),
+            new Print("kodak_ultra_endura", "Kodak", "Ultra Endura", false),
+            new Print("kodak_supra_endura", "Kodak", "Supra Endura", false),
+            new Print("kodak_ektacolor_edge", "Kodak", "Ektacolor Edge", false),
+            new Print("fujifilm_crystal_archive_typeii", "Fujifilm", "Crystal Archive Type II", false),
+            new Print("kodak_2383", "Kodak", "Vision 2383", true),
+            new Print("kodak_2393", "Kodak", "Vision Premier 2393", true),
     };
+
+    /** The paper our black-and-white model prints on (its curve; the colour papers are measured data). */
+    static final Print MONO_PAPER = new Print("endura_premier", "Kodak", "Endura Premier", false, f(692, 545, 450), f(18, 20, 22), 2.75f,
+            2.35f, .80f, .22f, .30f, f(655, 546, 446), f(42, 34, 29), 1f);
 
     // ───── the formats
 
@@ -230,15 +253,42 @@ public final class FilmSim {
             new Format("67", "6×7", 70f),
     };
 
+    /** P286: the P281 ids (stored settings) to the reference model's. */
+    private static final String[][] OLD_IDS = {{"portra160", "kodak_portra_160"}, {"portra400", "kodak_portra_400"},
+            {"portra800", "kodak_portra_800"}, {"gold200", "kodak_gold_200"}, {"ultramax400", "kodak_ultramax_400"},
+            {"ektar100", "kodak_ektar_100"}, {"c200", "fujifilm_c200"}, {"xtra400", "fujifilm_xtra_400"}, {"pro400h", "fujifilm_pro_400h"},
+            {"vision50d", "kodak_vision3_50d"}, {"vision250d", "kodak_vision3_250d"}, {"vision500t", "kodak_vision3_500t"},
+            {"ektachrome100", "kodak_ektachrome_100"}, {"velvia50", "fujifilm_velvia_100"}, {"provia100f", "fujifilm_provia_100f"},
+            {"kodachrome64", "kodak_kodachrome_64"}, {"endura_premier", "kodak_endura_premier"}, {"ultra_endura", "kodak_ultra_endura"},
+            {"ektacolor_edge", "kodak_ektacolor_edge"}, {"portra_endura", "kodak_portra_endura"},
+            {"crystal_archive", "fujifilm_crystal_archive_typeii"}, {"vision2383", "kodak_2383"}, {"vision2393", "kodak_2393"}};
+
+    static String currentId(String id) {
+        for (String[] o : OLD_IDS) if (o[0].equals(id)) return o[1];
+        return id;
+    }
+
     @Nullable
     public static Stock stock(@Nullable String id) {
-        if (id != null) for (Stock s : STOCKS) if (s.id.equals(id)) return s;
+        if (id != null) {
+            id = currentId(id);
+            for (Stock s : STOCKS) if (s.id.equals(id)) return s;
+        }
         return null;
     }
 
     public static Print print(@Nullable String id) {
-        if (id != null) for (Print p : PRINTS) if (p.id.equals(id)) return p;
+        if (id != null) {
+            id = currentId(id);
+            for (Print p : PRINTS) if (p.id.equals(id)) return p;
+        }
         return PRINTS[0];
+    }
+
+    /** The print a stock is printed on: the chosen one, or (none chosen) the one its maker pairs it with. */
+    public static Print print(@Nullable String id, @Nullable Stock stock) {
+        if ((id == null || id.isEmpty()) && stock != null && stock.targetPrint != null) return print(stock.targetPrint);
+        return print(id);
     }
 
     public static Format format(@Nullable String id) {
@@ -273,11 +323,22 @@ public final class FilmSim {
         public final Stock stock;
         public final Print print;
         public final Format format;
-        /** 0..2 of the stock's own grain / halation / softness; exposure and print exposure in stops; tone -1..1; strength 0..1. */
+        /**
+         * 0..2 of the stock's own grain / halation / softness; exposure and print exposure in stops; tone (the film's contrast) -1..1;
+         * the enlarger's magenta / yellow filters over the neutral (Kodak CC); strength 0..1.
+         */
         public final float grain, halation, softness, exposure, printEv, tone, strength;
+        public final float printM, printY;
 
         public Settings(Stock stock, Print print, Format format, float grain, float halation, float softness, float exposure,
                         float printEv, float tone, float strength) {
+            this(stock, print, format, grain, halation, softness, exposure, printEv, tone, 0f, 0f, strength);
+        }
+
+        public Settings(Stock stock, Print print, Format format, float grain, float halation, float softness, float exposure,
+                        float printEv, float tone, float printM, float printY, float strength) {
+            this.printM = printM;
+            this.printY = printY;
             this.stock = stock;
             this.print = print;
             this.format = format;
@@ -292,7 +353,8 @@ public final class FilmSim {
 
         /** What the LUT depends on (the effects do not change it). */
         public String lutKey() {
-            return stock.id + "|" + (stock.reversal() ? "-" : print.id) + "|" + fmt(exposure) + "|" + fmt(printEv) + "|" + fmt(tone);
+            return stock.id + "|" + (stock.reversal() ? "-" : print.id) + "|" + fmt(exposure) + "|" + fmt(printEv) + "|" + fmt(tone)
+                    + "|" + fmt(printM) + "|" + fmt(printY);
         }
 
         /** The film's pixel size (um) on an image {@code longPx} pixels long; 0 without a format. */
@@ -316,13 +378,15 @@ public final class FilmSim {
             if (stock == null) return null;
             final float strength = clamp(number(m.getString(scope, STRENGTH_KEY, "100"), 100f) / 100f, 0f, 1f);
             if (strength <= 0f) return null;
-            return new Settings(stock, print(m.getString(scope, PRINT_KEY, PRINTS[0].id)), format(m.getString(scope, FORMAT_KEY, "135")),
+            return new Settings(stock, print(m.getString(scope, PRINT_KEY, ""), stock), format(m.getString(scope, FORMAT_KEY, "135")),
                     clamp(number(m.getString(scope, GRAIN_KEY, "100"), 100f) / 100f, 0f, 3f),
                     clamp(number(m.getString(scope, HALATION_KEY, "100"), 100f) / 100f, 0f, 3f),
                     clamp(number(m.getString(scope, SOFTNESS_KEY, "100"), 100f) / 100f, 0f, 3f),
                     clamp(number(m.getString(scope, EXPOSURE_KEY, "0"), 0f), -3f, 3f),
                     clamp(number(m.getString(scope, PRINT_EV_KEY, "0"), 0f), -2f, 2f),
-                    clamp(number(m.getString(scope, TONE_KEY, "0"), 0f) / 100f, -1f, 1f), strength);
+                    clamp(number(m.getString(scope, TONE_KEY, "0"), 0f) / 100f, -1f, 1f),
+                    clamp(number(m.getString(scope, PRINT_M_KEY, "0"), 0f), -50f, 50f),
+                    clamp(number(m.getString(scope, PRINT_Y_KEY, "0"), 0f), -50f, 50f), strength);
         } catch (RuntimeException e) {
             return null;
         }
@@ -644,9 +708,44 @@ public final class FilmSim {
         return (float) (y <= 0.0031308 ? 12.92 * y : 1.055 * Math.pow(y, 1 / 2.4) - 0.055);
     }
 
+    /** P286: the film's contrast (the reference's density_curve_gamma) of the tone setting -1..1: x0.7 .. x1.4. */
+    static double gamma(float tone) {
+        return Math.pow(2, tone * .5);
+    }
+
+    /** P286: the reference model for a colour stock (null for our own black-and-white model, or when its data cannot be read). */
+    @Nullable
+    static FilmSpectral.Engine engine(Settings set) {
+        if (set.stock.spectral == null) return null;
+        try {
+            return FilmSpectral.engine(set.stock.spectral, set.print.id, set.exposure, set.printEv, set.printM, set.printY, gamma(set.tone));
+        } catch (java.io.IOException | RuntimeException e) {
+            com.particlesdevs.photoncamera.util.Log.e("FilmSim", "film data " + set.stock.id + ": " + e);
+            return null;
+        }
+    }
+
     /** The simulation as a LUT of the display-encoded colour, {@code n} points a side (red fastest). */
     public static FilmLut lut(Settings set, int n) {
-        final Model m = new Model(set.stock, set.print, set.exposure, set.printEv, set.tone);
+        if (set.stock.spectral != null) {
+            final FilmSpectral.Engine e = engine(set);
+            final float[] v = new float[n * n * n * 3];
+            final double[] sc = new double[n], o = new double[3];
+            for (int i = 0; i < n; i++) sc[i] = scene(i / (double) (n - 1));
+            int k = 0;
+            for (int b = 0; b < n; b++) for (int g = 0; g < n; g++) for (int r = 0; r < n; r++) {
+                if (e == null) {
+                    v[k++] = r / (float) (n - 1);
+                    v[k++] = g / (float) (n - 1);
+                    v[k++] = b / (float) (n - 1);
+                    continue;
+                }
+                e.render(sc[r], sc[g], sc[b], o);
+                for (int c = 0; c < 3; c++) v[k++] = (float) Math.max(0, Math.min(1, o[c]));
+            }
+            return FilmLut.of(n, v, set.stock.brand + " " + set.stock.name);
+        }
+        final Model m = new Model(set.stock, MONO_PAPER, set.exposure, set.printEv, set.tone);
         final float[] v = new float[n * n * n * 3];
         final double[] sc = new double[n];
         for (int i = 0; i < n; i++) sc[i] = scene(i / (double) (n - 1));
@@ -664,9 +763,94 @@ public final class FilmSim {
         return FilmLut.of(n, v, set.stock.brand + " " + set.stock.name);
     }
 
+    private static String grainKey;
+    private static FilmLut grainLut;
+
+    /**
+     * P286: the grain of the reference model on the finished picture, as a LUT over the picture's colour (the film LUT's output,
+     * {@code n} a side): per channel |d out / d density| x the grain's density sigma for a 1 um pixel (FilmSpectral.grainSigma) -
+     * the density noise seen through the print and the scan. Built from the film LUT's inputs (21 a side) scattered onto the
+     * output grid, the empty cells filled from their neighbours. Null for our own (black-and-white) model.
+     */
+    @Nullable
+    public static synchronized FilmLut grainLut(Settings set, int n) {
+        if (set.stock.spectral == null) return null;
+        final String key = set.lutKey() + "|" + n;
+        if (key.equals(grainKey)) return grainLut;
+        final FilmSpectral.Engine e = engine(set);
+        if (e == null) return null;
+        final int cells = n * n * n, side = 21;
+        final double[] sum = new double[cells * 3];
+        final int[] count = new int[cells];
+        final double[] d = new double[3], sig = new double[3], o = new double[3], hi = new double[3], lo = new double[3];
+        final double step = .02;
+        for (int b = 0; b < side; b++) for (int g = 0; g < side; g++) for (int r = 0; r < side; r++) {
+            e.densities(scene(r / (side - 1.0)), scene(g / (side - 1.0)), scene(b / (side - 1.0)), d);
+            e.fromDensities(d, o);
+            e.grainSigma(d, sig);
+            final int cell = (cellIndex(o[2], n) * n + cellIndex(o[1], n)) * n + cellIndex(o[0], n);
+            for (int c = 0; c < 3; c++) {
+                final double keep = d[c];
+                d[c] = keep + step;
+                e.fromDensities(d, hi);
+                d[c] = keep - step;
+                e.fromDensities(d, lo);
+                d[c] = keep;
+                sum[cell * 3 + c] += Math.abs(hi[c] - lo[c]) / (2 * step) * sig[c];
+            }
+            count[cell]++;
+        }
+        final float[] v = new float[cells * 3];
+        boolean[] known = new boolean[cells];
+        for (int i = 0; i < cells; i++) if (count[i] > 0) {
+            known[i] = true;
+            for (int c = 0; c < 3; c++) v[i * 3 + c] = (float) (sum[i * 3 + c] / count[i]);
+        }
+        // fill the cells no colour of the film reaches from their known neighbours (a few growing passes)
+        for (int pass = 0; pass < 3 * n; pass++) {
+            final boolean[] next = known.clone();
+            boolean grew = false;
+            for (int z = 0; z < n; z++) for (int y = 0; y < n; y++) for (int x = 0; x < n; x++) {
+                final int i = (z * n + y) * n + x;
+                if (known[i]) continue;
+                final float[] acc = new float[3];
+                int k = 0;
+                for (int dz = -1; dz <= 1; dz++) for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+                    final int xx = x + dx, yy = y + dy, zz = z + dz;
+                    if (xx < 0 || yy < 0 || zz < 0 || xx >= n || yy >= n || zz >= n) continue;
+                    final int j = (zz * n + yy) * n + xx;
+                    if (!known[j]) continue;
+                    for (int c = 0; c < 3; c++) acc[c] += v[j * 3 + c];
+                    k++;
+                }
+                if (k == 0) continue;
+                for (int c = 0; c < 3; c++) v[i * 3 + c] = acc[c] / k;
+                next[i] = true;
+                grew = true;
+            }
+            known = next;
+            if (!grew) break;
+        }
+        grainKey = key;
+        grainLut = FilmLut.of(n, v, set.stock.name + " grain");
+        return grainLut;
+    }
+
+    private static int cellIndex(double v, int n) {
+        return Math.max(0, Math.min(n - 1, (int) Math.round(v * (n - 1))));
+    }
+
     /** One colour through a simulation (tests, previews): display-encoded in and out. */
     public static float[] apply(Settings set, float r, float g, float b) {
-        final Model m = new Model(set.stock, set.print, set.exposure, set.printEv, set.tone);
+        if (set.stock.spectral != null) {
+            final FilmSpectral.Engine e = engine(set);
+            if (e == null) return new float[]{r, g, b};
+            final double[] o = new double[3];
+            e.render(scene(r), scene(g), scene(b), o);
+            return new float[]{(float) Math.max(0, Math.min(1, o[0])), (float) Math.max(0, Math.min(1, o[1])),
+                    (float) Math.max(0, Math.min(1, o[2]))};
+        }
+        final Model m = new Model(set.stock, MONO_PAPER, set.exposure, set.printEv, set.tone);
         final float[] o = m.render(new double[]{scene(r), scene(g), scene(b)});
         return new float[]{encode(o[0]), encode(o[1]), encode(o[2])};
     }

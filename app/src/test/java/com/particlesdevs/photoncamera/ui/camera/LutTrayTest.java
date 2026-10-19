@@ -136,7 +136,7 @@ public class LutTrayTest {
         tray.setOpen(true);
         ViewGroup filters = box.findViewWithTag("lut_tray_filters");
         assertNotNull(filters);
-        assertEquals("«Нет» and 12 filters", 13, filters.getChildCount());
+        assertEquals("«Нет» and the 4 filters", 5, filters.getChildCount());
         box.findViewWithTag("lut_tray_filter_bpm").performClick();
         assertEquals("bpm", PreferenceKeys.lensFilter());
         assertEquals(.5f, PreferenceKeys.lensFilterStrength(), 1e-6f);

@@ -22,9 +22,16 @@ public final class LensFilters {
     public static final String NONE = "", BLACK_PRO_MIST = "bpm", CINEBLOOM = "cinebloom", GLIMMERGLASS = "glimmer",
             PEARLESCENT = "pearl", FOG = "fog", DOUBLE_FOG = "dfog", GND = "gnd", LIGHT_POLLUTION = "lightpol", STREAK = "streak",
             PRISM = "prism", KALEIDOSCOPE = "kaleido", INFRARED = "ir";
-    /** The owner's order. */
-    public static final String[] IDS = {BLACK_PRO_MIST, CINEBLOOM, GLIMMERGLASS, PEARLESCENT, FOG, DOUBLE_FOG, GND, LIGHT_POLLUTION,
-            STREAK, PRISM, KALEIDOSCOPE, INFRARED};
+    /**
+     * P287 (owner, 2026-10-19: «Наши фильтры объективов замени на те что в спектра»): the filters offered are the reference
+     * model's diffusion families only, in its order - Glimmerglass, Black Pro-Mist, Pro-Mist (stored as "pearl"), CineBloom
+     * (DiffusionModel: its PSF groups, shares, strength table and halo warmth). The others are no longer offered: a stored one
+     * reads as none.
+     */
+    public static final String[] IDS = {GLIMMERGLASS, BLACK_PRO_MIST, PEARLESCENT, CINEBLOOM};
+    /** The GPU and CPU numbering of the filters (lensfilter/apply.glsl FILTER), fixed. */
+    private static final String[] NUMBERING = {BLACK_PRO_MIST, CINEBLOOM, GLIMMERGLASS, PEARLESCENT, FOG, DOUBLE_FOG, GND,
+            LIGHT_POLLUTION, STREAK, PRISM, KALEIDOSCOPE, INFRARED};
     /** Pyramid levels of the glow (each twice as wide as the one before; level 1 = half the image size). */
     public static final int LEVELS = 6;
 
@@ -118,9 +125,8 @@ public final class LensFilters {
     /** Which fine controls the filter has (T_* bits): the diffusion family all four, the star / streak fewer, the rest none. */
     public static int tunable(@Nullable String id) {
         switch (id == null ? "" : id) {
-            case BLACK_PRO_MIST: case CINEBLOOM: case PEARLESCENT: case FOG: case DOUBLE_FOG:
+            case BLACK_PRO_MIST: case CINEBLOOM: case PEARLESCENT: case FOG: case DOUBLE_FOG: case GLIMMERGLASS:
                 return T_KNEE | T_RADIUS | T_HAZE | T_WARMTH;
-            case GLIMMERGLASS: return T_KNEE | T_RADIUS | T_WARMTH;
             case STREAK: return T_KNEE | T_WARMTH;
             case PRISM: return T_HAZE;
             default: return 0;
@@ -131,7 +137,7 @@ public final class LensFilters {
     public static String controlName(@Nullable android.content.Context c, @Nullable String id, int control) {
         switch (control) {
             case T_KNEE: return DiffusionModel.diffuses(id) ? Lang.t(c, "Ореол", "Halo") : Lang.t(c, "Порог свечения", "Glow threshold");
-            case T_RADIUS: return GLIMMERGLASS.equals(id) ? Lang.t(c, "Длина лучиков", "Sparkle length") : Lang.t(c, "Радиус", "Radius");
+            case T_RADIUS: return Lang.t(c, "Радиус", "Radius");
             case T_HAZE: return PRISM.equals(id) ? Lang.t(c, "Яркость двойника", "Ghost brightness") : Lang.t(c, "Дымка", "Haze");
             default: return Lang.t(c, "Тон свечения", "Glow tone");
         }
@@ -142,8 +148,7 @@ public final class LensFilters {
         switch (control) {
             case T_KNEE: return DiffusionModel.diffuses(id) ? Lang.t(c, "левее слабее ореол вокруг огней, правее сильнее", "left a fainter halo round lights, right a stronger one")
                     : Lang.t(c, "левее - светятся и более тёмные места", "lower: dimmer areas glow too");
-            case T_RADIUS: return GLIMMERGLASS.equals(id) ? Lang.t(c, "короче или длиннее звёздочки", "shorter or longer stars")
-                    : Lang.t(c, "уже или шире ореол", "a tighter or wider halo");
+            case T_RADIUS: return Lang.t(c, "уже или шире ореол", "a tighter or wider halo");
             case T_HAZE: return PRISM.equals(id) ? Lang.t(c, "насколько заметен цветной двойник", "how visible the tinted ghost is")
                     : Lang.t(c, "шире дымка по кадру: светлее тени, ниже контраст", "a wider haze over the frame: lifted shadows, lower contrast");
             default: return Lang.t(c, "левее холоднее, правее теплее", "left cooler, right warmer");
@@ -153,7 +158,10 @@ public final class LensFilters {
     /** The filter's number for the shader (0: none, 1.. in {@link #IDS} order), -1 for an unknown id. */
     public static int index(@Nullable String id) {
         if (id == null || id.isEmpty()) return 0;
-        for (int i = 0; i < IDS.length; i++) if (IDS[i].equals(id)) return i + 1;
+        boolean offered = false;
+        for (String o : IDS) offered |= o.equals(id);
+        if (!offered) return -1;
+        for (int i = 0; i < NUMBERING.length; i++) if (NUMBERING[i].equals(id)) return i + 1;
         return -1;
     }
 
@@ -166,7 +174,7 @@ public final class LensFilters {
             case BLACK_PRO_MIST: return "Black Pro-Mist";
             case CINEBLOOM: return "CineBloom";
             case GLIMMERGLASS: return "Glimmerglass";
-            case PEARLESCENT: return "Pearlescent";
+            case PEARLESCENT: return "Pro-Mist";
             case FOG: return Lang.t(c, "Туман", "Fog");
             case DOUBLE_FOG: return Lang.t(c, "Двойной туман", "Double Fog");
             case GND: return Lang.t(c, "Градиент ND", "Graduated ND");
@@ -182,10 +190,10 @@ public final class LensFilters {
     /** The short hint under a card. */
     public static String hint(@Nullable android.content.Context c, @Nullable String id) {
         switch (id == null ? "" : id) {
-            case BLACK_PRO_MIST: return Lang.t(c, "мягкий ореол, чёрный глубокий", "soft glow, deep black");
-            case CINEBLOOM: return Lang.t(c, "кино-свечение светов", "cinematic bloom");
-            case GLIMMERGLASS: return Lang.t(c, "искры на бликах", "sparkle on highlights");
-            case PEARLESCENT: return Lang.t(c, "пастельное сияние", "pastel glow");
+            case BLACK_PRO_MIST: return Lang.t(c, "плотный ореол у светов, чёрный глубокий", "punchy halo, deep black");
+            case CINEBLOOM: return Lang.t(c, "свечение на весь кадр, тёплый ободок", "frame-wide bloom, warm rim");
+            case GLIMMERGLASS: return Lang.t(c, "чуть мягче, почти без дымки", "subtle, almost no haze");
+            case PEARLESCENT: return Lang.t(c, "пастельная дымка, широкий ореол", "pastel haze, broad halo");
             case FOG: return Lang.t(c, "дымка, мягкий контраст", "haze, soft contrast");
             case DOUBLE_FOG: return Lang.t(c, "свечение, детали целы", "glow, detail kept");
             case GND: return Lang.t(c, "темнее небо", "darker sky");
@@ -201,14 +209,14 @@ public final class LensFilters {
     /** What the filter does, one line. */
     public static String description(@Nullable android.content.Context c, @Nullable String id) {
         switch (id == null ? "" : id) {
-            case BLACK_PRO_MIST: return Lang.t(c, "Мягкое широкое свечение вокруг ярких мест, середина чуть мягче, чёрный остаётся чёрным",
-                    "A soft wide glow around bright areas, mid-tones a little softer, black stays black");
-            case CINEBLOOM: return Lang.t(c, "Свечение светов с длинным хвостом и лёгкой дымкой, как у кинофильтров",
-                    "A highlight bloom with a long tail and a light haze, like cine filters");
-            case GLIMMERGLASS: return Lang.t(c, "Короткие лучики и искры на точечных огнях и бликах, почти без дымки",
-                    "Short star-like sparkle on point lights and specular highlights, little haze");
-            case PEARLESCENT: return Lang.t(c, "Перламутровое пастельное сияние, тени чуть светлее",
-                    "A pearly pastel glow, shadows slightly lifted");
+            case BLACK_PRO_MIST: return Lang.t(c, "Плотный яркий ореол рядом со светом, быстро спадает; чёрный остаётся глубоким",
+                    "A concentrated punchy halo close to the light with a fast fall-off; the blacks stay deep");
+            case CINEBLOOM: return Lang.t(c, "Свечение на весь кадр с медленным хвостом и ретро-вуалью, самый тёплый ободок",
+                    "A frame-wide bloom with a slow tail and a retro veil, the warmest rim");
+            case GLIMMERGLASS: return Lang.t(c, "Тонкое смягчение микроконтраста, почти без вуали, слабый длинный хвост вокруг ярких огней",
+                    "Subtle micro-contrast smoothing, almost no veil, a faint long tail around bright lights");
+            case PEARLESCENT: return Lang.t(c, "Атмосферная пастельная дымка: широкий ореол и ровная вуаль",
+                    "An atmospheric pastel haze: a broad halo and a balanced veil");
             case FOG: return Lang.t(c, "Дымка на весь кадр: светлее тени, ниже контраст, свечение огней",
                     "A haze over the frame: lifted shadows, lower contrast, glowing lights");
             case DOUBLE_FOG: return Lang.t(c, "Свечение как у тумана, но детали и контраст сохраняются лучше",
@@ -341,7 +349,7 @@ public final class LensFilters {
     }
 
     public static boolean streaks(@Nullable String id) {
-        return STREAK.equals(id) || GLIMMERGLASS.equals(id);
+        return STREAK.equals(id);
     }
 
     /** The streak's half length as a fraction of the image width: Glimmerglass a short star, Streak 3..20 % by the parameter. */
@@ -381,15 +389,7 @@ public final class LensFilters {
         if (f <= 0 || strength <= 0f || w < 2 || h < 2) return;
         final float s = Math.min(1f, strength);
         if (DiffusionModel.diffuses(id)) {
-            float[] hi = GLIMMERGLASS.equals(id) ? highlights(rgb, shape(id)[0]) : null;
-            diffuse(rgb, w, h, id, s, tune);
-            if (hi != null) {
-                float[] star = streak(hi, w, h, id, streakLength(id, tune));
-                float[] tn = tint(id, tune);
-                for (int i = 0; i < rgb.length; i += 3)
-                    for (int ch = 0; ch < 3; ch++) rgb[i + ch] += s * star[i + ch] * tn[ch];
-            }
-            if (PEARLESCENT.equals(id)) pastel(rgb, 0.12f * s);
+            diffuse(rgb, w, h, id, s, tune); // P287: the reference's diffusion alone (no star, no pastel)
             return;
         }
         if (KALEIDOSCOPE.equals(id)) { kaleidoscope(rgb, w, h, s, param); return; }
@@ -428,7 +428,6 @@ public final class LensFilters {
                 if (prism) prismGhost(src, i, x, y, w, h, veil, s * hazeGain(tune.haze), param);
             }
         }
-        if (PEARLESCENT.equals(id)) pastel(src, 0.12f * s);
         System.arraycopy(src, 0, rgb, 0, rgb.length);
     }
 
@@ -457,29 +456,9 @@ public final class LensFilters {
      * summed from the coarse end with B-spline steps, plus the image itself times its own weight.
      */
     static void diffuse(float[] rgb, int w, int h, String id, float s, Tune tune) {
-        int n = diffusionLevels(w, h);
-        float[][] wt = DiffusionModel.levelWeights(id, s, tune, Math.max(w, h), DiffusionModel.pyramidSigmas(n, 0.75));
-        if (wt == null) return;
-        float[][] levels = new float[n + 1][];
-        int[] lw = new int[n + 1], lh = new int[n + 1];
-        levels[0] = rgb;
-        lw[0] = w;
-        lh[0] = h;
-        for (int k = 1; k <= n; k++) {
-            lw[k] = Math.max(1, lw[k - 1] / 2);
-            lh[k] = Math.max(1, lh[k - 1] / 2);
-            levels[k] = down(levels[k - 1], lw[k - 1], lh[k - 1], lw[k], lh[k]);
-        }
-        float[] acc = null;
-        for (int k = n; k >= 1; k--) {
-            float[] next = acc == null ? new float[levels[k].length] : bsplineUp(acc, lw[k + 1], lh[k + 1], lw[k], lh[k]);
-            for (int i = 0; i < next.length; i += 3)
-                for (int ch = 0; ch < 3; ch++) next[i + ch] += wt[k][ch] * levels[k][i + ch];
-            acc = next;
-        }
-        float[] up = acc == null ? new float[rgb.length] : bsplineUp(acc, lw[1], lh[1], w, h);
-        for (int i = 0; i < rgb.length; i += 3)
-            for (int ch = 0; ch < 3; ch++) rgb[i + ch] = wt[0][ch] * rgb[i + ch] + up[i + ch];
+        // P288: the photo's FFT convolution (DiffusionFft), the frame as long as this image
+        final DiffusionFft.Plan plan = DiffusionFft.plan(id, s, tune, w, h, Math.max(w, h));
+        if (plan != null) DiffusionFft.apply(rgb, w, h, plan);
     }
 
     /**

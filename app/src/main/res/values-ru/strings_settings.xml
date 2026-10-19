@@ -807,4 +807,6 @@
     <string name="prefs_crop_upscale_summary">Снимок модуля с кропом или с цифровым зумом доводится до размера фото. Выкл. — снимок с кропом остаётся в своём размере, без увеличения</string>
     <string name="prefs_mosaic_wb_title">Поправки баланса белого в FULLRES и ISZ</string>
     <string name="prefs_mosaic_wb_summary">Наша оценка баланса белого для снимков без ремозаика камеры. Выкл. — баланс белого самой камеры (на OPPO в FULLRES — из обычного режима)</string>
+    <string name="prefs_film_data_credit_title">Данные плёночной симуляции</string>
+    <string name="prefs_film_data_credit_summary">Профили плёнок и бумаг: spektrafilm, автор Andrea Volpato, github.com/andreavolpato/spektrafilm, CC BY-SA 4.0 (преобразованы и изменены SCAMERA: двоичные массивы и производные LUT, см. assets/film/CHANGELOG.txt). Цветовая модель — перенос spektrafilm (GPL-3.0).</string>
 </resources>

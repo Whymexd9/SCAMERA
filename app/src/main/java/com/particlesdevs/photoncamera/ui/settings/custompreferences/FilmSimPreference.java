@@ -218,7 +218,7 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
                     ids[i] = p.id;
                     text[i] = new String[]{p.brand, p.name, p.film ? Lang.t(c, "кинопечать", "print film") : Lang.t(c, "бумага", "paper")};
                 }
-                content.addView(strip(c, ids, text, FilmSim.print(stored(FilmSim.PRINT_KEY, FilmSim.PRINTS[0].id)).id,
+                content.addView(strip(c, ids, text, FilmSim.print(stored(FilmSim.PRINT_KEY, ""), stock).id,
                         id -> store(FilmSim.PRINT_KEY, id), "film_print_"));
                 if (stock != null && stock.reversal())
                     note(c, Lang.t(c, "Обращаемая плёнка (слайд) не печатается: её показывают на просвет, печать не влияет.",
@@ -244,7 +244,11 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
                 slider(c, FilmSim.SOFTNESS_KEY, Lang.t(c, "Мягкость плёнки", "Film softness"), 0, 300, 1, 100, "%");
                 slider(c, FilmSim.EXPOSURE_KEY, Lang.t(c, "Экспозиция плёнки", "Film exposure"), -2, 2, .1f, 0, " EV");
                 slider(c, FilmSim.PRINT_EV_KEY, Lang.t(c, "Экспозиция печати", "Print exposure"), -1, 1, .05f, 0, " EV");
-                slider(c, FilmSim.TONE_KEY, Lang.t(c, "Тон печати (холоднее … теплее)", "Print tone (cooler … warmer)"), -100, 100, 1, 0, "");
+                slider(c, FilmSim.TONE_KEY, Lang.t(c, "Контраст плёнки", "Film contrast"), -100, 100, 1, 0, "");
+                slider(c, FilmSim.PRINT_M_KEY, Lang.t(c, "Фильтр M увеличителя (пурпурнее … зеленее)", "Enlarger M filter (more magenta … greener)"),
+                        -30, 30, 1, 0, " CC");
+                slider(c, FilmSim.PRINT_Y_KEY, Lang.t(c, "Фильтр Y увеличителя (желтее … синее)", "Enlarger Y filter (more yellow … bluer)"),
+                        -30, 30, 1, 0, " CC");
                 slider(c, FilmSim.STRENGTH_KEY, Lang.t(c, "Сила симуляции", "Simulation strength"), 0, 100, 1, 100, "%");
                 note(c, Lang.t(c, "Зерно, ореол и мягкость видны на фото (в видоискателе — только цвет и тон плёнки).",
                         "Grain, halation and softness are in the photo (the viewfinder shows the film's colour and tone)."));

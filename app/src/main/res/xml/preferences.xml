@@ -593,6 +593,7 @@
   <PreferenceCategory android:key="root_about" android:title="@string/prefs_root_about_title" app:iconSpaceReserved="false">
     <Preference android:icon="@drawable/settings_ic_info" android:title="@string/app_name" android:key="@string/pref_app_key" android:summary="@string/app_summary" android:selectable="false" />
     <Preference android:title="@string/version_title" android:key="@string/pref_version_key" android:summary="@string/version_summary" android:icon="@drawable/settings_ic_info" android:selectable="false" />
+    <Preference android:key="film_data_credit" android:persistent="false" android:title="@string/prefs_film_data_credit_title" android:summary="@string/prefs_film_data_credit_summary" android:icon="@drawable/settings_ic_info" android:selectable="false" />
     <Preference android:key="scam_recent_messages" android:persistent="false" android:title="@string/prefs_scam_recent_messages_title" android:summary="@string/prefs_scam_recent_messages_summary" android:icon="@drawable/settings_ic_list" />
   </PreferenceCategory>
 </PreferenceScreen>

@@ -78,12 +78,6 @@ void main() {
     float s = strength;
 #if FILTER >= 1 && FILTER <= 6
     c = w0 * c + bspline(DiffAcc, uv);
-#if FILTER == 3
-    c += s * bl(Streaks, uv) * tint;          // Glimmerglass's short star on the brightest points
-#endif
-#if FILTER == 4
-    c += 0.12 * s * (vec3(luma(c)) - c);      // Pearlescent's pastel
-#endif
 #elif FILTER == 7
     // GND: the photo's top darker by up to 3 stops, the transition at param (0 top .. 1 bottom)
     float t = photoOf(uv).y;

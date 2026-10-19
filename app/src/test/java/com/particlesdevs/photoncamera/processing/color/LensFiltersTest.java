@@ -2,6 +2,7 @@ package com.particlesdevs.photoncamera.processing.color;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -106,7 +107,7 @@ public class LensFiltersTest {
     @Test public void theGlowKeepsTheEnergyAndSpreadsTheLight() {
         // owner, 2026-10-18: DiffusionModel - a share of all the light spread by the filter's PSF, energy kept exactly
         float[] base = big();
-        for (String id : new String[]{LensFilters.BLACK_PRO_MIST, LensFilters.CINEBLOOM, LensFilters.DOUBLE_FOG, LensFilters.FOG}) {
+        for (String id : LensFilters.IDS) {
             float[] a = base.clone();
             LensFilters.apply(a, BW, BH, id, 1f, 0f);
             for (int ch = 0; ch < 3; ch++)
@@ -124,52 +125,12 @@ public class LensFiltersTest {
         assertArrayEquals("Black Pro-Mist keeps the black (no lift)", dark, d, 1e-4f);
     }
 
-    @Test public void theStreakIsHorizontal() {
-        float[] a = scene();
-        float[] base = a.clone();
-        LensFilters.apply(a, W, H, LensFilters.STREAK, 1f, 0.5f);
-        int side = (40 * W + 30) * 3, above = (30 * W + 20) * 3;
-        assertTrue("light along the row", a[side + 2] - base[side + 2] > 0.01f);
-        assertEquals("nothing above the light", base[above + 2], a[above + 2], 1e-3f);
-    }
-
-    @Test public void gndDarkensTheTopOnly() {
-        float[] a = new float[W * H * 3];
-        java.util.Arrays.fill(a, 0.5f);
-        LensFilters.apply(a, W, H, LensFilters.GND, 1f, 0.45f);
-        assertEquals("the top by 3 stops", 0.5f / 8f, a[0], 1e-3f);
-        assertEquals("the bottom as it was", 0.5f, a[a.length - 1], 1e-4f);
-    }
-
-    @Test public void lightPollutionCutsSodiumNotBlue() {
-        float[] c = {1f, 0.6f, 0.1f, 1f, 0.6f, 0.1f, 0.1f, 0.2f, 0.6f, 0.1f, 0.2f, 0.6f};
-        LensFilters.apply(c, 2, 2, LensFilters.LIGHT_POLLUTION, 1f, 0f);
-        float sodiumChroma = c[0] - c[2], blueChroma = c[8] - c[6];
-        assertTrue("the orange loses most of its chroma", sodiumChroma < 0.3f * 0.9f);
-        assertTrue("the blue keeps its chroma", blueChroma > 0.45f);
-    }
-
-    @Test public void kaleidoscopeAndInfraredVariants() {
-        assertEquals(3, LensFilters.segments(0f));
-        assertEquals(12, LensFilters.segments(1f));
-        float[] base = scene();
-        float[] mono = base.clone(), swap = base.clone();
-        LensFilters.apply(mono, W, H, LensFilters.INFRARED, 1f, 0f);
-        for (int i = 0; i < mono.length; i += 3) {
-            assertEquals(mono[i], mono[i + 1], 1e-5f);
-            assertEquals(mono[i], mono[i + 2], 1e-5f);
-        }
-        LensFilters.apply(swap, W, H, LensFilters.INFRARED, 1f, 1f);
-        assertEquals("R / B swap", base[2], swap[0], 1e-6f);
-        assertEquals(base[0], swap[2], 1e-6f);
-    }
-
     /** The fine controls: stored per filter, 0.5 = the filter as designed, each one changes the picture its own way. */
     @Test public void fineControlsTuneTheFilter() {
-        LensFilters.Tune d = LensFilters.Tune.defaults(LensFilters.STREAK);
-        assertEquals(0.5f, d.param, 0f);
+        LensFilters.Tune d = LensFilters.Tune.defaults(LensFilters.GLIMMERGLASS);
+        assertEquals(0f, d.param, 0f);
         assertTrue(d.fineDefault());
-        assertEquals("50,50,50,50,50", d.serialize());
+        assertEquals("0,50,50,50,50", d.serialize());
         LensFilters.Tune t = LensFilters.Tune.parse(LensFilters.BLACK_PRO_MIST, "30,10,90,x,200");
         assertEquals(0.3f, t.param, 1e-6f);
         assertEquals(0.1f, t.knee, 1e-6f);
@@ -199,7 +160,6 @@ public class LensFiltersTest {
                 assertNotNull(LensFilters.controlHint(null, id, control));
             }
         }
-        assertEquals("GND has no fine controls (its own parameter only)", 0, LensFilters.tunable(LensFilters.GND));
         for (String id : LensFilters.IDS) {
             float[] psf = LensFilters.psf(id, LensFilters.Tune.parse(id, "50,50,100,50,50"));
             if (!LensFilters.glows(id)) continue;
@@ -214,10 +174,6 @@ public class LensFiltersTest {
         LensFilters.apply(strongHalo, BW, BH, LensFilters.BLACK_PRO_MIST, 1f, LensFilters.Tune.parse(LensFilters.BLACK_PRO_MIST, "0,100,50,50,50"));
         int ring = (162 * BW + 90) * 3;
         assertTrue("a stronger halo next to the light", strongHalo[ring + 1] > weakHalo[ring + 1]);
-        float[] lowKnee = scene(), highKnee = scene();
-        LensFilters.apply(lowKnee, W, H, LensFilters.STREAK, 1f, LensFilters.Tune.parse(LensFilters.STREAK, "50,0,50,50,50"));
-        LensFilters.apply(highKnee, W, H, LensFilters.STREAK, 1f, LensFilters.Tune.parse(LensFilters.STREAK, "50,100,50,50,50"));
-        assertTrue(diff(lowKnee, scene()) > diff(highKnee, scene()));
         // the tone moves warm light to the halo's rim without adding any (energy kept per channel)
         float[] warm = base.clone(), cool = base.clone();
         LensFilters.apply(warm, BW, BH, LensFilters.CINEBLOOM, 1f, LensFilters.Tune.parse(LensFilters.CINEBLOOM, "0,50,50,50,100"));
@@ -228,12 +184,19 @@ public class LensFiltersTest {
     }
 
     @Test public void idsNamesAndParameters() {
-        assertEquals(12, LensFilters.IDS.length);
+        // P287: the reference's four diffusion families, in its order; the filters we had besides read as none
+        assertArrayEquals(new String[]{LensFilters.GLIMMERGLASS, LensFilters.BLACK_PRO_MIST, LensFilters.PEARLESCENT, LensFilters.CINEBLOOM},
+                LensFilters.IDS);
+        assertEquals("Pro-Mist", LensFilters.name(null, LensFilters.PEARLESCENT));
         assertEquals(0, LensFilters.index(""));
         assertEquals(-1, LensFilters.index("x"));
+        for (String gone : new String[]{LensFilters.FOG, LensFilters.STREAK, LensFilters.GND, LensFilters.INFRARED}) {
+            assertEquals(gone, -1, LensFilters.index(gone));
+            assertFalse(gone, LensFilters.known(gone));
+        }
         for (int i = 0; i < LensFilters.IDS.length; i++) {
             String id = LensFilters.IDS[i];
-            assertEquals(i + 1, LensFilters.index(id));
+            assertTrue(id, LensFilters.index(id) > 0);
             assertNotNull(LensFilters.name(null, id));
             assertNotNull(LensFilters.hint(null, id));
             assertNotNull(LensFilters.description(null, id));
@@ -247,8 +210,7 @@ public class LensFiltersTest {
             float p = LensFilters.defaultParam(id);
             assertTrue(p >= 0f && p <= 1f);
         }
-        assertNull(LensFilters.paramName(null, LensFilters.BLACK_PRO_MIST));
-        assertNotNull(LensFilters.paramName(null, LensFilters.STREAK));
+        for (String id : LensFilters.IDS) assertNull(id, LensFilters.paramName(null, id));
     }
 
     /**

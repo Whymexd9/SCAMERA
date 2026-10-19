@@ -1772,8 +1772,8 @@ public class SettingsMenuTest {
         }
     }
     /**
-     * P228 «Фильтр на объектив»: its own page next to the LUT's - the before / after preview, three samples, the strip of 13
-     * cards («Нет» + 12 filters), «Сила» and the filter's own parameter; a card is the choice. Also draws the page and every
+     * P228 «Фильтр на объектив»: its own page next to the LUT's - the before / after preview, three samples, the strip of 5
+     * cards («Нет» + the reference's 4 diffusion filters, P287), «Сила» and the filter's own parameter; a card is the choice. Also draws the page and every
      * filter on every sample (build/reports/module-concept/lens-filters-*.png).
      */
     @Test public void lensFilterPageShowsTheStripPreviewAndSliders() throws Exception {
@@ -1794,15 +1794,15 @@ public class SettingsMenuTest {
                 assertNotNull(tag,view.findViewWithTag(tag));
             for(String id:ids)assertNotNull(id,view.findViewWithTag("lens_filter_"+id));
             assertNull("no filter: no sliders",view.findViewWithTag("lens_filter_strength"));
-            view.findViewWithTag("lens_filter_streak").performClick();
-            assertEquals("streak",lf.chosen());
-            assertEquals("streak",prefs.getString(com.particlesdevs.photoncamera.processing.color.LensFilters.KEY,""));
-            assertEquals("the photo uses it","streak",PreferenceKeys.lensFilter());
+            view.findViewWithTag("lens_filter_glimmer").performClick();
+            assertEquals("glimmer",lf.chosen());
+            assertEquals("glimmer",prefs.getString(com.particlesdevs.photoncamera.processing.color.LensFilters.KEY,""));
+            assertEquals("the photo uses it","glimmer",PreferenceKeys.lensFilter());
             assertEquals(0.5f,PreferenceKeys.lensFilterStrength(),1e-4f);
             view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
             assertNotNull("«Сила»",view.findViewWithTag("lens_filter_strength"));
-            assertNotNull("«Длина лучей»",view.findViewWithTag("lens_filter_param"));
-            assertTrue(shownText(view,com.particlesdevs.photoncamera.processing.color.LensFilters.description(activity,"streak")));
+            assertNull("P287: no parameter of its own",view.findViewWithTag("lens_filter_param"));
+            assertTrue(shownText(view,com.particlesdevs.photoncamera.processing.color.LensFilters.description(activity,"glimmer")));
             view.findViewWithTag("lens_filter_bpm").performClick();
             view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
             assertNotNull(view.findViewWithTag("lens_filter_strength"));
@@ -1818,14 +1818,10 @@ public class SettingsMenuTest {
             assertEquals("the photo uses the filter's own tune",0.8f,tune.radius,1e-4f);
             assertEquals(0.2f,tune.knee,1e-4f);
             assertEquals("another filter keeps its own",0.5f,PreferenceKeys.lensFilterTune("fog").radius,0f);
-            view.findViewWithTag("lens_filter_streak").performClick();
+            view.findViewWithTag("lens_filter_glimmer").performClick();
             view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
-            assertNull("Streak has no radius",view.findViewWithTag("lens_filter_tune_"+com.particlesdevs.photoncamera.processing.color.LensFilters.T_RADIUS));
-            assertNotNull(view.findViewWithTag("lens_filter_tune_"+com.particlesdevs.photoncamera.processing.color.LensFilters.T_KNEE));
-            view.findViewWithTag("lens_filter_gnd").performClick();
-            view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
-            assertNull("GND: its own parameter only",view.findViewWithTag("lens_filter_reset"));
-            assertNotNull(view.findViewWithTag("lens_filter_param"));
+            for(int control:com.particlesdevs.photoncamera.processing.color.LensFilters.CONTROLS)
+                assertNotNull("Glimmerglass: fine control "+control,view.findViewWithTag("lens_filter_tune_"+control));
             view.findViewWithTag("lens_filter_bpm").performClick();
             view=layout(fm.findFragmentById(R.id.settings_container).requireView(),360,2000);
             assertTrue("the tune is still there",view.findViewWithTag("lens_filter_reset").isEnabled());

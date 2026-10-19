@@ -2836,6 +2836,11 @@ float natBaseFill(int c,vec2 O){
 // window then gives a green-equivalent value (its colour difference taken off; red and blue sites count less where the colour is
 // strong), summed with a cone kernel stretched along the local edge: the luma at site resolution, without the block lattice.
 // Returns false (the merge's value stays) at a clipped or flagged site of the window.
+#if NAT_B==4
+#define DEM_NC 5
+#else
+#define DEM_NC 3
+#endif
 uniform vec4 natDemU; // x = share at F = 0, y = anisotropy, z = cone slope (1 / radius in sites), w = cells a side (3 Quad, 5 Tetra)
 uniform vec2 natDemD; // the structure / noise ratio from which (x) to which (y) the demosaic takes over
 bool natDemosaic(vec2 S,float g,out vec3 rgb,out float detail){
@@ -2844,7 +2849,11 @@ bool natDemosaic(vec2 S,float g,out vec3 rgb,out float detail){
     ivec2 c0=(N>>1)-ivec2(int(natDemU.w)>>1);
     int nc=int(natDemU.w);
     float sumC[4]=float[4](0.0,0.0,0.0,0.0),wC[4]=float[4](0.0,0.0,0.0,0.0);
-    float cm[25];vec2 cd[25];
+    // per-cell arrays at the block's own size (Adreno keeps 9 floats in registers; 25-float arrays went to memory: 1.4x slower)
+    float cm[DEM_NC*DEM_NC];vec2 cd[DEM_NC*DEM_NC];
+#if NAT_B==2
+    float cg[DEM_NC*DEM_NC];
+#endif
     float vx=0.0,vy=0.0,meanAll=0.0,nAll=0.0,grad=0.0;
     vec3 lo=vec3(1.0e9),hi=vec3(-1.0e9); // each colour's range over the cells: the result stays inside it (no overshoot at edges)
     for(int j=0;j<5;j++){
@@ -2862,7 +2871,10 @@ bool natDemosaic(vec2 S,float g,out vec3 rgb,out float detail){
             vec2 dd=(vec2(float(x)+0.5,float(y)+0.5)-S)*0.5;
             float w=exp2(-0.35*dot(dd,dd));
             sumC[ph]+=m*w;wC[ph]+=w;
-            cm[j*5+i]=m;cd[j*5+i]=dd;
+            cm[j*DEM_NC+i]=m;cd[j*DEM_NC+i]=dd;
+#if NAT_B==2
+            cg[j*DEM_NC+i]=0.25*(abs(b-a)+abs(d-c)+abs(c-a)+abs(d-b)); // a cell on an edge: its own sites disagree
+#endif
             float gx=0.5*(abs(b-a)+abs(d-c)),gy=0.5*(abs(c-a)+abs(d-b));
             vx+=gx;vy+=gy;grad+=0.5*(gx+gy);
             meanAll+=m;nAll+=1.0;
@@ -2888,11 +2900,11 @@ bool natDemosaic(vec2 S,float g,out vec3 rgb,out float detail){
             int ph=(((y>>s)&1)<<1)|((x>>s)&1);
             for(int o=1;o<=2;o++){
                 if(i+o>=nc)break;
-                if(((((y>>s)&1)<<1)|(((2*(c0.x+i+o))>>s)&1))==ph){vx+=abs(cm[j*5+i+o]-cm[j*5+i]);break;}
+                if(((((y>>s)&1)<<1)|(((2*(c0.x+i+o))>>s)&1))==ph){vx+=abs(cm[j*DEM_NC+i+o]-cm[j*DEM_NC+i]);break;}
             }
             for(int o=1;o<=2;o++){
                 if(j+o>=nc)break;
-                if((((((2*(c0.y+j+o))>>s)&1)<<1)|((x>>s)&1))==ph){vy+=abs(cm[(j+o)*5+i]-cm[j*5+i]);break;}
+                if((((((2*(c0.y+j+o))>>s)&1)<<1)|((x>>s)&1))==ph){vy+=abs(cm[(j+o)*DEM_NC+i]-cm[j*DEM_NC+i]);break;}
             }
         }
     }
@@ -2944,7 +2956,7 @@ bool natDemosaic(vec2 S,float g,out vec3 rgb,out float detail){
             // weighted by how close that green is to the green at S (and narrowed across the edge): at a red / green edge R - G
             // flips sign, and a mean over cells on both sides gives neither (a fringe); the side S's green belongs to gives it
             if(wG>0.0){
-                float GS=lumG/wG,tauG=3.0*sig+0.08*GS+1.0e-4;
+                float GS=lumG/wG,tauG=1.5*sig+0.015*GS+1.0e-4,tauC=2.0*sig+0.03*GS+1.0e-4;
                 float sa=6.0*natDemU.y*aniso;
                 vec2 fa=vec2(1.0+sa*wCol,1.0+sa*wRow);
                 float nR=0.0,sR=0.0,nB=0.0,sB=0.0;
@@ -2956,21 +2968,34 @@ bool natDemosaic(vec2 S,float g,out vec3 rgb,out float detail){
                         int ph=(((y>>s)&1)<<1)|((x>>s)&1);
                         if(ph==1||ph==2)continue;
                         int pr=ph==0?1:2,pc=ph==0?2:1; // canonical RGGB: red's row partner Gr, column Gb; blue's the other way
-                        float hs=0.0,hn=0.0,vs=0.0,vn=0.0;
+                        float hs=0.0,hn=0.0,vs=0.0,vn=0.0,eg=0.0;
+#if NAT_B==2
+                        eg=cg[j*DEM_NC+i];
+#endif
                         for(int side=-1;side<=1;side+=2){
                             bool fh=false,fv=false;
                             for(int o=1;o<=2;o++){
                                 int ii=i+side*o,jj=j+side*o;
-                                if(!fh&&ii>=0&&ii<nc&&(((y>>s)&1)<<1|((2*(c0.x+ii)>>s)&1))==pr){hs+=cm[j*5+ii];hn+=1.0;fh=true;}
-                                if(!fv&&jj>=0&&jj<nc&&((((2*(c0.y+jj))>>s)&1)<<1|((x>>s)&1))==pc){vs+=cm[jj*5+i];vn+=1.0;fv=true;}
+                                if(!fh&&ii>=0&&ii<nc&&(((y>>s)&1)<<1|((2*(c0.x+ii)>>s)&1))==pr){hs+=cm[j*DEM_NC+ii];hn+=1.0;fh=true;
+#if NAT_B==2
+                                    eg=max(eg,wRow*cg[j*DEM_NC+ii]);
+#endif
+                                }
+                                if(!fv&&jj>=0&&jj<nc&&((((2*(c0.y+jj))>>s)&1)<<1|((x>>s)&1))==pc){vs+=cm[jj*DEM_NC+i];vn+=1.0;fv=true;
+#if NAT_B==2
+                                    eg=max(eg,wCol*cg[jj*DEM_NC+i]);
+#endif
+                                }
                             }
                         }
                         if(hn<=0.0||vn<=0.0)continue;
                         float gk=wRow*hs/hn+wCol*vs/vn;
-                        vec2 dd=cd[j*5+i];
+                        vec2 dd=cd[j*DEM_NC+i];
                         float q=(gk-GS)/tauG;
-                        float w=exp2(-0.35*(fa.x*dd.x*dd.x+fa.y*dd.y*dd.y))/(1.0+q*q);
-                        if(ph==0){sR+=w*(cm[j*5+i]-gk);nR+=w;}else{sB+=w*(cm[j*5+i]-gk);nB+=w;}
+                        float qe=s==1?eg/tauC:0.0; // Quad: a cell (or its partner) across the edge gives a mixed colour difference
+                                                  // (a Tetra cell is a quarter of its block: the penalty only lost detail there)
+                        float w=exp2(-0.35*(fa.x*dd.x*dd.x+fa.y*dd.y*dd.y))/((1.0+q*q)*(1.0+qe*qe));
+                        if(ph==0){sR+=w*(cm[j*DEM_NC+i]-gk);nR+=w;}else{sB+=w*(cm[j*DEM_NC+i]-gk);nB+=w;}
                     }
                 }
                 if(nR>1.0e-6)dR=sR/nR;

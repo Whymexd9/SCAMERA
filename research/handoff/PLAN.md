@@ -6215,6 +6215,14 @@ unchanged. Real bursts hand / isz2 / t100546: 0.6-1.9 % of the pixels change, no
 Cost (Adreno 750, programs cached): Quad +0.24 s with motion, +0.85 s with no donor at all; Tetra +0.9 s / +2.5 s. A shared-
 memory tile of the sites was tried and was slower (9 s): dropped. Open: the red / green edges of Quad, the Tetra cost, phone shots
 of moving subjects.
+Round 2 (local, after f89d4ce0): Quad red / green edges - the colour differences were mixed by cells lying on the edge
+(their own sites disagree): such a cell (or its row / column partner) is weighted down by its intra-cell spread (Quad only:
+on Tetra it lost detail), the green-similarity tau tightened (1.5 sigma + 1.5 % instead of 3 sigma + 8 %). syn_b2 no donor:
+edges 41.7 -> 42.4 dB (base 43.5), the rest within 0.1 dB; Tetra edges 38.7 -> 38.9. Speed: the per-cell arrays sized by the
+block (9 Quad, 25 Tetra) and the cell offsets kept in an array - recomputing them, a cache of the sites (100 floats) or a
+shared-memory tile all made Adreno 750 spill registers and run 1.3-2.5x slower. Cost with no donor at all (cached programs):
+Quad 1.37 s vs 0.50 s off, Tetra 3.2 s vs 0.65 s off - the same as before the edge fix; with ordinary motion only the rejected
+area pays. A faster Tetra needs one invocation per 2x2 sites (shared cell statistics): not done.
 Bayer (local, after 52adf573): kHybChroma (the plain merge's colour-difference pass, on by default) blends the base's own
 demosaic by the same share (1 - smoothstep(0, K, F); by the cover without the 6.1 mode): a 9x9 site neighbourhood (false at a
 clipped / flagged site, outside the Bento mask), direction from the 3x3 sites' green differences and same-colour Laplacians,
@@ -6237,10 +6245,65 @@ missing there from the setting's default (a switch / list: its value, which is t
 (a slider stored as a string / int, a key never set -> spec.def must equal the settings' default) with a burst shot at a
 non-default value.
 
-### P284 - 200 MP on the vivo X300 Ultra (owner, 2026-10-19: «https://github.com/adityawarmanfw/rawr/releases/tag/debug - тут на 300 ультра работают 200мп, сделай их рабочими и у нас»): open.
+### P284 - 200 MP on the vivo X300 Ultra (owner, 2026-10-19: «https://github.com/adityawarmanfw/rawr/releases/tag/debug - тут на 300 ультра работают 200мп, сделай их рабочими и у нас»): dropped (owner, 2026-10-19: «Не нужно заниматься равр»).
 The «rawr» debug build (GitHub release tag `debug` of adityawarmanfw/rawr) gets full 200 MP RAW on the X300U. To do: fetch the
 release (APK / source, after the owner's OK for the download), find how it asks for the full-resolution stream (the session
 keys / vendor tags / sensor mode, the RAW size and format, the stream's camera id and the request template), compare with our
 FULLRES path (P179 / P187 / P192: memory cuts, native clip flags, mode-table rule) and the X300U mode table (P122), then route
 the X300U's 200 MP module the same way. Check on the phone: the RAW size, CFA, black / white level, the merge and the memory.
 Its code is studied, not copied (licence to be checked).
+
+### P285 - film simulation preview shows no difference between stocks (owner, 2026-10-19: «На превью не видно разницы между симуляциями пленки, исправь»; must be fixed before the next APK / push): done by P286, not device-tested.
+Our P281 model balanced every stock to the same neutral print, so the stocks hardly differed. With the reference model (P286)
+the stocks differ as their data do (FilmSpectralTest.stocksDiffer: Portra 400 / Ektar 100 / C200 on a skin, a sky and a
+foliage colour differ by more than 0.02 of the encoded value); the viewfinder and the settings' preview use the same LUT.
+
+### P286 - film simulation as the reference app (owner, 2026-10-19: «Перепроверь также все пленочные симуляции, у нас все не работает нормально, сделай максимально близко к [приложению-образцу] ... если можешь один в один, делай один в один. Но стиль меню и тд делай наш»; licence choice: one to one with attribution): done, not device-tested.
+The reference app is a closed Vulkan port of spektrafilm (Andrea Volpato, GPL-3.0 code, CC BY-SA 4.0 profiles; its .so shows
+the shader and data names). We port spektrafilm itself:
+- data: research/filmsim/export.py runs spektrafilm 0.3.4 (commit 3bb2c2d, a Python 3.12 venv with stubs for its image I/O)
+  and writes assets/film/<stock>.bin (SFD1 container): per film the linear sRGB -> XYZ matrix (CAT16 to its reference
+  illuminant), the Hanatos 2025 raw LUT 192^2 (fp16, its input gamut compression baked in), log exposure, density curves, the
+  sub-layer curves, channel and base densities, the DIR matrix of its stock defaults; per paper the sensitivities, the fitted
+  curves and the scan (density -> encoded sRGB with its CAM16 output gamut compression) as a 33^3 LUT; per slide its scan;
+  shared.bin the TH-KG3 lamp, the dichroic filters, the neutral print filter database. 7.2 MB. LICENSE-spektrafilm.txt and
+  CHANGELOG.txt beside them, the credit in Settings -> About («Данные плёночной симуляции»).
+- FilmSpectral (Java): the per-pixel pipeline - Hanatos raw (Mitchell cubic, reflected edges), film exposure, develop with
+  the curves before the couplers and the DIR inhibition, the enlarger (neutral filters + the user's M / Y shifts) through the
+  dye densities onto the paper (NaN densities pass no light, as density_to_light), print exposure normalised on the mid grey
+  of this film exposure, the paper curves, the scan LUT. Matches spektrafilm's output (spatial / stochastic effects off) within
+  0.003 of the encoded value on 13 film / paper / exposure / filter cases (research/filmsim/refs.py, FilmSpectralTest).
+- FilmSim: the stocks are the reference's 20 colour films (Portra 160/400/800/800 push 1/2, Gold 200, Ultramax 400, Ektar 100,
+  C200, X-Tra 400, Pro 400H, Vision3 50D/200T/250D/500T, Verita 200D, Ektachrome 100, Provia 100F, Velvia 100, Kodachrome
+  64) and its 8 prints (Portra / Endura Premier / Ultra / Supra Endura, Ektacolor Edge, Crystal Archive Type II, Vision 2383 /
+  2393); a stock without a chosen print takes its maker's; the P281 ids map to the new ones; the black-and-white stocks (no
+  data in the reference) stay on our model with its paper. Settings: «Контраст плёнки» (density_curve_gamma x0.7..x1.4),
+  «Фильтр M / Y увеличителя» (+-30 CC). The LUT input: the display colour back to scene light as before.
+- Grain (FilmGrain, film/grain_sf.glsl): the reference's particle model (Poisson-binomial per sub-layer; its variance formula
+  checked against its Monte Carlo within 1 %, research/filmsim/grainchk.py), per layer independent Gaussian density noise
+  blurred 0.65 px, seen through the print and the scan by a 17^3 LUT over the picture's colour of |d out / d density| x sigma.
+- Halation (FilmHalation): the reference's in-emulsion scatter (core 2.2 / 2.0 / 1.6 um + exponential tail 9.3 / 9.7 / 9.1 um,
+  weight 0.78 / 0.65 / 0.67, the tail as its three-Gaussian fit; «Мягкость плёнки» = the scatter's size; film/scatter.glsl,
+  separable) and its halation sum of three bounces G(sigma_h sqrt(k)) weighted 1, 1/2, 1/4 (film/blur.glsl on the pyramid
+  level under half the first bounce's width, film/halo_sum.glsl), energy kept.
+Not on a phone yet: the look of every stock, the grain and halation sizes, the LUT build time (~0.1 s on the PC).
+
+### P287 - lens filters replaced by the reference model's (owner, 2026-10-19: «"Фильтры объективов" возьми тоже со спектра», «Наши фильтры объективов замени на те что в спектра»; «Не нужно делать миниатюры для них ... живые превью», «Убираем маленькие живые превью в видоискателе»): done, not device-tested.
+Our DiffusionModel already had the reference's numbers (families, strength table, warmth axis). The filters offered are now
+its four families only, in its order: Glimmerglass, Black Pro-Mist, Pro-Mist (stored as "pearl"), CineBloom; our additions
+(Glimmerglass's star, Pearlescent's pastel) and the other filters (Fog, Double Fog, GND, Light Pollution, Streak, Prism,
+Kaleidoscope, Infrared) are no longer offered (a stored one reads as none; their code still in LensFilters / apply.glsl for the
+live viewfinder's shader - to remove). The viewfinder tray has no live thumbnails any more (LUT and filter cards by name).
+
+### P288 - exact FFT convolution of the lens filters (owner, 2026-10-19: «Сделай точную FFT-свёртку, если это возможно»): done, not device-tested.
+A full-size FFT of the whole PSF does not fit a phone (the bloom reaches across the frame). DiffusionFft: each exponential of
+the PSF on the box-pyramid level where its decay is 4..8 px (narrower ones on the image itself), cut at the reference's
+radius (8 x the bloom's largest decay, at most half the image; a narrow one at 12 decays), the PSF normalised as one like the
+reference; one FFT per level (overlapping tiles of 1024 with the kernel's radius as border where a level is larger); the
+levels summed from the coarsest, each bilinearly enlarged. Against the reference's single full-size convolution on a 320 x 240
+night scene at a 12 MP frame's scale: glow error 0.04 / 0.2 / 0.5 / 1.1 % of the peak (Glimmerglass / BPM / Pro-Mist /
+CineBloom), energy within 1 % (DiffusionFftTest). A component under half a pixel (only on a preview) is its pixel mean
+instead of a point sample (a point sample left no glow). The photo: LensFilter on the GPU (lensfft/load, fft - radix-2
+Stockham passes, the same index math as the Java -, mul, store, down, carry); the settings' preview the same plan on the CPU;
+the live viewfinder keeps the pyramid fit (LiveLensFilter). Not on a phone yet: correctness of the GPU passes, the time
+(12 MP: about 70 FFT planes of 1024^2 at level 0).

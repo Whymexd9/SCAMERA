@@ -1,0 +1,20 @@
+Film and paper data in this folder (*.bin)
+==========================================
+
+Source: spektrafilm by Andrea Volpato - https://github.com/andreavolpato/spektrafilm
+Version: commit 3bb2c2d2801ff68b92019cf1dbcbb133d60832bc (2026-06-07), package 0.3.4.
+Licence: CC BY-SA 4.0 for the profiles and their derivatives - see LICENSE-spektrafilm.txt in this folder.
+These derived files are distributed under the same licence (CC BY-SA 4.0).
+
+Modified by SCAMERA (2026-10-19):
+- the profiles' arrays (log exposure, density curves, channel densities, base densities, paper sensitivities) converted
+  to a binary container (little-endian float32), one file per stock;
+- per film: the Hanatos 2025 spectral-upsampling raw LUT for the film's sensitivities (192 x 192 x 3, float16) and the
+  linear sRGB -> XYZ matrix (CAT16 to the film's reference illuminant), computed with spektrafilm's own code;
+- per film: the DIR coupler matrix of spektrafilm's stock defaults;
+- per paper, and per reversal film: the scan of the densities to encoded sRGB (33 x 33 x 33 x 3, float16, spektrafilm's
+  scanning stage with its output gamut compression);
+- the paper curves evaluated from the fitted density-curve model (no morph);
+- shared.bin: the TH-KG3 enlarger lamp, the custom dichroic filters and the neutral print filters (TH-KG3) of
+  spektrafilm's database.
+The export script is research/filmsim/export.py in the SCAMERA repository.

@@ -1,10 +1,16 @@
 package com.particlesdevs.photoncamera.processing.color;
 
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
 
 public class FilmSimTest {
+    @BeforeClass
+    public static void assets() {
+        FilmSpectralTest.assets(); // P286: the colour stocks read the reference model's data
+    }
+
     static FilmSim.Settings set(String stock, String print) {
         return new FilmSim.Settings(FilmSim.stock(stock), FilmSim.print(print), FilmSim.format("135"), 1, 1, 1, 0, 0, 0, 1);
     }
@@ -26,9 +32,12 @@ public class FilmSimTest {
                     final float y = luma(o);
                     assertTrue(st.id + "/" + pr.id + " grey scale rises at " + v + ": " + y + " after " + last, y >= last - 1e-3f);
                     last = y;
-                    if (v > .1f && v < .95f) {
+                    // our model is neutral over the scale; the reference model (P286) at mid grey only: a stock on a paper it is not
+                    // balanced for keeps the reference's own tint in the shadows and highlights (X-Tra 400 on Endura Premier: blue whites)
+                    if (st.spectral == null ? v > .1f && v < .95f : Math.abs(v - .45f) < .01f) {
                         final float spread = Math.max(o[0], Math.max(o[1], o[2])) - Math.min(o[0], Math.min(o[1], o[2]));
-                        assertTrue(st.id + "/" + pr.id + " neutral at " + v + ": " + o[0] + " " + o[1] + " " + o[2], spread < .03f);
+                        assertTrue(st.id + "/" + pr.id + " neutral at " + v + ": " + o[0] + " " + o[1] + " " + o[2],
+                                spread < (st.spectral == null ? .03f : .05f));
                     }
                 }
                 final float mid = luma(FilmSim.apply(s, .46f, .46f, .46f));
@@ -71,7 +80,7 @@ public class FilmSimTest {
         assertEquals(9f, s35.pixelUm(4000), .01f);
         final FilmSim.Settings s8 = new FilmSim.Settings(FilmSim.stock("portra400"), FilmSim.print("x"), FilmSim.format("super8"), 1, 1, 1, 0, 0, 0, 1);
         assertEquals(5.79f * 1000 / 4000, s8.pixelUm(4000), .01f);
-        assertEquals("endura_premier", s8.print.id);
+        assertEquals("kodak_portra_endura", s8.print.id);
         assertEquals(0f, new FilmSim.Settings(FilmSim.stock("portra400"), FilmSim.print(null), FilmSim.format("off"), 1, 1, 1, 0, 0, 0, 1).pixelUm(4000), 0f);
     }
 

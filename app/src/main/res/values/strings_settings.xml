@@ -807,4 +807,6 @@
     <string name="prefs_crop_upscale_summary">A shot of a crop module or with digital zoom is brought up to the photo size. Off: a cropped shot keeps its own size, no upscale</string>
     <string name="prefs_mosaic_wb_title">White-balance corrections in FULLRES and ISZ</string>
     <string name="prefs_mosaic_wb_summary">Our white-balance estimate for shots without the camera\'s remosaic. Off: the camera\'s own white balance (on OPPO in FULLRES: from the normal mode)</string>
+    <string name="prefs_film_data_credit_title">Film simulation data</string>
+    <string name="prefs_film_data_credit_summary">Film and paper profiles: spektrafilm by Andrea Volpato, github.com/andreavolpato/spektrafilm, CC BY-SA 4.0 (converted and modified by SCAMERA: binary arrays and derived LUTs, see assets/film/CHANGELOG.txt). The colour model is a port of spektrafilm (GPL-3.0).</string>
 </resources>

@@ -555,7 +555,11 @@ public class ScamLabFragment extends ModuleConceptFragment {
             case com.particlesdevs.photoncamera.processing.color.FilmSim.PRINT_EV_KEY:
                 return slider(key, Lang.t(c, "Экспозиция печати, EV", "Print exposure, EV"), -1, 1, .05f, "0");
             case com.particlesdevs.photoncamera.processing.color.FilmSim.TONE_KEY:
-                return slider(key, Lang.t(c, "Тон печати", "Print tone"), -100, 100, 1, "0");
+                return slider(key, Lang.t(c, "Контраст плёнки", "Film contrast"), -100, 100, 1, "0");
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.PRINT_M_KEY:
+                return slider(key, Lang.t(c, "Фильтр M увеличителя, CC", "Enlarger M filter, CC"), -30, 30, 1, "0");
+            case com.particlesdevs.photoncamera.processing.color.FilmSim.PRINT_Y_KEY:
+                return slider(key, Lang.t(c, "Фильтр Y увеличителя, CC", "Enlarger Y filter, CC"), -30, 30, 1, "0");
             case com.particlesdevs.photoncamera.processing.color.FilmSim.STRENGTH_KEY:
                 return slider(key, Lang.t(c, "Сила симуляции", "Simulation strength"), 0, 100, 1, "100");
             default:

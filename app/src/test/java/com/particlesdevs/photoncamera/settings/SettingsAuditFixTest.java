@@ -228,7 +228,9 @@ public class SettingsAuditFixTest {
         for(String key:new String[]{"pref_app_key","pref_version_key","scam_recent_messages"})
             assertNotNull("SIMPLE_UI §4: the app, version (with the device) and messages rows are «О приложении»: "+key,about.findPreference(key));
         assertNull("the device is on the version row",screen.findPreference("pref_this_device_key"));
-        assertEquals("app, version, messages",3,about.getPreferenceCount());
+        // P286: the film data's credit (CC BY-SA 4.0 asks for it in the app)
+        assertNotNull(about.findPreference("film_data_credit"));
+        assertEquals("app, version, film data credit, messages",4,about.getPreferenceCount());
     }
 
     /** P129: SCAM HDR is gone: its settings (and the L frame / stock planner keys) are obsolete everywhere, the route row too. */

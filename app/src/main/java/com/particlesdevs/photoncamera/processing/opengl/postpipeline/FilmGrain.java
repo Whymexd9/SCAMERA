@@ -14,6 +14,9 @@ import com.particlesdevs.photoncamera.util.Log;
  *   <li>grain: the stock's RMS granularity (48 um aperture) by Selwyn's law at the larger of the pixel and the grain's size,
  *       seen through the print's contrast for a negative (film/grain.glsl), its clumps the grain's size in pixels.</li>
  * </ul>
+ * P286: a stock of the reference model (FilmSim.Stock.spectral) takes the reference's grain instead (film/grain_sf.glsl): the
+ * particle model's density noise per layer, blurred 0.65 px, through the print and the scan (FilmSim.grainLut); its film
+ * sharpness is the in-emulsion scatter of FilmHalation, so no blur here.
  */
 public final class FilmGrain extends Node {
     private final FilmSim.Settings set;
@@ -30,7 +33,7 @@ public final class FilmGrain extends Node {
     /** The node for the settings now, null without a simulation or a format, or with neither grain nor softness. */
     public static FilmGrain fromSettings() {
         final FilmSim.Settings s = FilmSim.current();
-        if (s == null || s.format.longMm <= 0 || (s.grain <= 0f && s.softness <= 0f)) return null;
+        if (s == null || s.format.longMm <= 0 || (s.grain <= 0f && (s.softness <= 0f || s.stock.spectral != null))) return null;
         return new FilmGrain(s);
     }
 
@@ -42,6 +45,36 @@ public final class FilmGrain extends Node {
     @Override
     public void Compile() {}
 
+    /** P286: the reference model's grain. */
+    private void runReference(GLTexture in, float um, long started) {
+        if (set.grain <= 0f) return;
+        final com.particlesdevs.photoncamera.processing.color.FilmLut lut =
+                com.particlesdevs.photoncamera.processing.color.FilmSim.grainLut(set, GRAIN_LUT);
+        if (lut == null) return;
+        final int tex = lut.upload();
+        try {
+            final GLTexture out = new GLTexture(in.mSize, in.mFormat);
+            glProg.useAssetProgram("film/grain_sf", false);
+            glProg.setTexture("InputBuffer", in);
+            glProg.setTexture3D("GrainLut", tex);
+            final float scale = set.grain * set.strength / um;
+            glProg.setVar("scale", scale);
+            glProg.setVar("blurSigma", com.particlesdevs.photoncamera.processing.color.FilmSpectral.GRAIN_BLUR_PX);
+            glProg.setVar("seed", (float) (Math.abs(set.stock.id.hashCode()) % 9973));
+            glProg.setVar("lutSize", (float) GRAIN_LUT);
+            glProg.drawBlocks(out);
+            glProg.closed = true;
+            WorkingTexture = out;
+            Log.i("SCAM_PIPELINE", "film grain (reference) " + set.stock.id + " " + set.format.id + String.format(java.util.Locale.ROOT,
+                    " pixel %.2f um scale %.4f ms=%d", um, scale, System.currentTimeMillis() - started));
+        } finally {
+            android.opengl.GLES30.glDeleteTextures(1, new int[]{tex}, 0);
+        }
+    }
+
+    /** The grain LUT's size a side. */
+    static final int GRAIN_LUT = 17;
+
     @Override
     public void Run() {
         final GLTexture in = previousNode.WorkingTexture;
@@ -50,6 +83,10 @@ public final class FilmGrain extends Node {
         final float um = set.pixelUm(Math.max(in.mSize.x, in.mSize.y));
         if (um <= 0f) return;
         GLTexture cur = in;
+        if (set.stock.spectral != null) {
+            runReference(in, um, started);
+            return;
+        }
         final float blur = set.stock.mtfUm / um * set.softness;
         if (blur >= .33f) {
             final GLTexture h = new GLTexture(in.mSize, in.mFormat);
