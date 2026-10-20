@@ -17,11 +17,15 @@ The APK (~54 MB) is above the Bot API upload limit (50 MB), so posting logs the 
 where bots upload up to 2 GB; that needs an application id/hash besides the bot token. The Worker only sends text.
 `telegram_bot.py` without `--post` answers waiting messages once by polling; it works only while no webhook is set.
 
-Changelog ("Что нового после <previous build>"): `telegram_publish.py` finds the previous successful push build of
-`main` (Actions API), takes the commits between the two builds (compare API, merges left out) and has Cloudflare
-Workers AI (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`, free plan: 10k neurons a day, one changelog ~200) retell them
-as 1–6 short items for users, in the bot's language. Without the Cloudflare secrets, or when the model fails, the
-changelog is the commit subjects without task numbers and plan/merge commits.
+Changelog ("Что нового после <previous build>"): the owner's own `CHANGELOG.md`. `telegram_publish.py` finds the
+previous successful push build of `main` (Actions API) and reads `CHANGELOG.md` at both builds' commits (contents
+API); the `## ` sections the new one adds (at most 5, newest first) are posted as written: the heading's title after
+" — " in bold, the `- ` items as bullets (`**bold**` and `` `code` `` kept, links reduced to their text). They go in the
+caption when they fit (1024 characters), otherwise the caption says "— в ответе ниже" and they follow as up to 3
+replies to the APK post in every place. Only when `CHANGELOG.md` has no new section are the commits between the builds
+retold instead: Cloudflare Workers AI (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`, free plan) writes 1–6 short items;
+without the Cloudflare secrets, or when the model fails, the commit subjects without task numbers and plan/merge
+commits. Everything is read from GitHub through its API, never from a local checkout.
 
 ## Setup (once)
 

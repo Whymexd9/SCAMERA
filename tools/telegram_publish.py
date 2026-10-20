@@ -14,9 +14,12 @@ Environment (Actions secrets):
   TELEGRAM_OWNER      the owner's @username or numeric id: the only account the bot obeys, settings are read there
   TELEGRAM_CHAT       optional target until /here is used: @username, -100... id or a topic link t.me/c/<id>/<topic>
   TELEGRAM_TOPIC      optional topic id for TELEGRAM_CHAT
-  GH_TOKEN            the workflow's token: finds the previous build and the commits since it (changelog)
-  CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_AI_TOKEN   Workers AI retells those commits for users; without them (or when it
-                      fails) the changelog is the commit subjects
+  GH_TOKEN            the workflow's token: finds the previous build, and what changed since it (changelog)
+  CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_AI_TOKEN   only when CHANGELOG.md has no new section: Workers AI retells the
+                      commits for users; without them (or when it fails) the changelog is the commit subjects
+Everything is read from GitHub through its API (CHANGELOG.md and commits at the build's commit), never from a local
+checkout. The changelog is the owner's own text: the CHANGELOG.md sections added since the previous build; when
+they do not fit the caption (1024 characters), the caption says so and they follow as replies to the APK post.
 Without the token/id/hash the post is skipped (forks, a repository without the secrets). Never print the secrets.
 """
 import argparse
@@ -26,7 +29,7 @@ import html
 import json
 import os
 import re
-import subprocess
+import http.client
 import sys
 import urllib.request
 from pathlib import Path
@@ -38,6 +41,11 @@ WORKFLOW = 'build-test-apk.yml'
 AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast'   # Workers AI free plan: 10k neurons a day, ~200 a changelog
 AI_INPUT_LIMIT = 12000      # characters of commit messages sent to the model
 CHANGELOG_ITEMS = 6
+CHANGELOG_FILE = 'CHANGELOG.md'
+CHANGELOG_SECTIONS = 5      # at most this many new CHANGELOG.md sections in one post
+MESSAGE_LIMIT = 4000        # a Telegram text message allows 4096 visible characters
+# A failed or cut GitHub request (IncompleteRead is an HTTPException, not an OSError) must not stop the post
+NET_ERRORS = (OSError, ValueError, KeyError, RuntimeError, http.client.HTTPException)
 SECRETS = ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_API_ID', 'TELEGRAM_API_HASH')
 MAX_TARGETS = 5
 # targets: [{'chat': -100..., 'topic': id or None, 'where': 'Group › Topic'}], every build goes to each of them
@@ -125,22 +133,70 @@ def sha256(path):
     return h.hexdigest()
 
 
-# ---- changelog: the commits since the previous build, retold for users by Workers AI ------------------------------
+# ---- changelog: CHANGELOG.md sections since the previous build; else the commits, retold by Workers AI ------------
 
-def github_api(path):
+def github_api(path, raw=False):
+    """JSON of a repository API path, or the raw text of a file (contents API with raw=True)."""
     token, repo = os.environ.get('GH_TOKEN', '').strip(), os.environ.get('GITHUB_REPOSITORY', '').strip()
     if not token or not repo:
         raise RuntimeError('GH_TOKEN / GITHUB_REPOSITORY not set')
     request = urllib.request.Request(os.environ.get('GITHUB_API_URL', 'https://api.github.com') + f'/repos/{repo}{path}',
-                                     headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'SCAMERA-bot',
-                                              'Authorization': 'Bearer ' + token})
+                                     headers={'Accept': 'application/vnd.github.raw+json' if raw
+                                              else 'application/vnd.github+json',
+                                              'User-Agent': 'SCAMERA-bot', 'Authorization': 'Bearer ' + token})
     with urllib.request.urlopen(request, timeout=60) as response:
-        return json.load(response)
+        return response.read().decode('utf-8') if raw else json.load(response)
+
+
+def repo_file(path, ref):
+    """Text of <path> at commit <ref> on GitHub (contents API), or None when it cannot be read."""
+    try:
+        return github_api(f'/contents/{path}?ref={ref}', raw=True)
+    except NET_ERRORS:
+        return None
+
+
+def changelog_sections(text):
+    """[(heading, [item, ...])] of a CHANGELOG.md, newest first: '## ' headings, '- ' items (wrapped lines joined)."""
+    sections, items = [], None
+    for line in (text or '').splitlines():
+        if line.startswith('## '):
+            items = []
+            sections.append((line[3:].strip(), items))
+        elif items is None or not line.strip():
+            continue
+        elif re.match(r'\s*[-*] ', line):
+            items.append(re.sub(r'^\s*[-*]\s+', '', line).strip())
+        elif items and line[:1].isspace():
+            items[-1] += ' ' + line.strip()   # the wrapped rest of an item
+        else:
+            items.append(line.strip())        # a plain paragraph
+    return sections
+
+
+def new_changelog(base, head):
+    """The CHANGELOG.md sections of commit <head> that commit <base> lacks (newest first); only the newest one when
+    <base> is unknown or its file cannot be read."""
+    now = changelog_sections(repo_file(CHANGELOG_FILE, head)) if head else []
+    before = repo_file(CHANGELOG_FILE, base) if (now and base) else None
+    if before is None:
+        return now[:1]
+    known = {heading for heading, _ in changelog_sections(before)}
+    return [s for s in now if s[0] not in known][:CHANGELOG_SECTIONS]
+
+
+def md_inline(text):
+    """A CHANGELOG.md line as Telegram HTML: **bold**, `code`; links keep their text only (no links to GitHub)."""
+    text = html.escape(text, quote=False)
+    text = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', text)
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    return re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
 
 
 def previous_build(head):
     """(commit, build number or '') of the last successful push build of main before the build of commit <head>."""
-    runs = github_api(f'/actions/workflows/{WORKFLOW}/runs?branch=main&event=push&status=success&per_page=30')
+    runs = github_api(f'/actions/workflows/{WORKFLOW}/runs?branch=main&event=push&status=success'
+                      '&exclude_pull_requests=true&per_page=10')   # 10: a run is ~13 KB of JSON
     runs = runs['workflow_runs']   # newest first
     same = [i for i, run in enumerate(runs) if run['head_sha'] == head]
     for run in runs[same[-1] + 1:] if same else runs:
@@ -153,25 +209,19 @@ def previous_build(head):
                 if m:
                     number = m[1]
                     break
-        except (OSError, ValueError, KeyError, RuntimeError):
+        except NET_ERRORS:
             pass
         return run['head_sha'], number
     return None, ''
 
 
 def commit_messages(base, head):
-    """Full messages of the commits base..head, oldest first, merges left out: GitHub's compare API, else local git."""
+    """Full messages of the commits base..head on GitHub (compare API), oldest first, merges left out."""
     try:
         data = github_api(f'/compare/{base}...{head}')
         return [c['commit']['message'] for c in data['commits'] if len(c.get('parents') or []) < 2]
-    except (OSError, ValueError, KeyError, RuntimeError):
-        pass
-    try:
-        out = subprocess.run(['git', 'log', '--no-merges', '--reverse', '--format=%B%x00', f'{base}..{head}'],
-                             check=True, capture_output=True, text=True, encoding='utf-8').stdout
-    except (OSError, subprocess.CalledProcessError):
+    except NET_ERRORS:
         return []
-    return [m.strip() for m in out.split('\0') if m.strip()]
 
 
 def plain_changes(messages):
@@ -239,7 +289,7 @@ def ai_changes(messages, lang):
     try:
         with urllib.request.urlopen(request, timeout=90) as response:
             answer = (json.load(response).get('result') or {}).get('response') or ''
-    except (OSError, ValueError, AttributeError) as e:
+    except (*NET_ERRORS, AttributeError) as e:
         print(f'::warning::Changelog AI failed: {type(e).__name__}; commit subjects instead')
         return None
     items = []
@@ -250,24 +300,29 @@ def ai_changes(messages, lang):
     return items[:CHANGELOG_ITEMS] or None
 
 
-def make_changes(args, lang):
-    """(changelog items, previous build number or '') for the build of --to-rev."""
+def build_range(args):
+    """(previous build's commit or None, this build's commit or '', previous build number or '') for --to-rev."""
     head = args.to_rev
-    if not re.fullmatch(r'[0-9a-f]{40}', head):
+    if not re.fullmatch(r'[0-9a-f]{40}', head):   # a branch or a short sha: GitHub names the commit
         try:
-            head = subprocess.run(['git', 'rev-parse', head], check=True, capture_output=True, text=True).stdout.strip()
-        except (OSError, subprocess.CalledProcessError):
+            head = github_api(f'/commits/{head}')['sha']
+        except NET_ERRORS:
             head = ''
-    base, since, messages = None, '', []
+    base, since = None, ''
     if head:
         try:
             base, since = previous_build(head)
-        except (OSError, ValueError, KeyError, RuntimeError) as e:
+        except NET_ERRORS as e:
             print(f'::warning::Previous build not found: {type(e).__name__}')
         if not base and args.from_rev and set(args.from_rev) != {'0'}:
             base = args.from_rev   # the push's own range (github.event.before)
-        if base:
-            messages = commit_messages(base, head)
+    return base, head, since
+
+
+def make_changes(args, lang, rng=None):
+    """(changelog items retold from the commits, previous build number or '') for the build of --to-rev."""
+    base, head, since = rng or build_range(args)
+    messages = commit_messages(base, head) if (base and head) else []
     if not messages:
         messages, since = list(args.subject), ''
     return ai_changes(messages, lang) or plain_changes(messages), since
@@ -315,6 +370,50 @@ def build_caption(apk, digest, changes, settings=None, since=''):
     if visible_length(caption) > CAPTION_LIMIT:   # only an absurd header gets here
         caption = join([])
     return caption
+
+
+def changelog_post(apk, digest, sections, settings, since=''):
+    """(caption, [reply texts]) with the owner's CHANGELOG.md sections: in the caption when they fit, else in up to
+    3 replies to the post (a caption holds 1024 characters, a message 4096)."""
+    lang = settings['lang']
+    head = f'<b>{html.escape(build_title(apk))}</b>'
+    if settings['header']:
+        head = html.escape(settings['header'][:HEADER_LIMIT], quote=False) + '\n\n' + head
+    tail = ['', f'SHA-256 <code>{digest}</code>'] if settings['sha'] else []
+    label = t(lang, f'Что нового после {since}', f'New since {since}') if since else t(lang, 'Что нового', 'What is new')
+    lines = []
+    for heading, items in sections:
+        title = heading.split(' — ', 1)[1] if ' — ' in heading else heading   # "2026-10-20 (2) — title"
+        lines += ([''] if lines else []) + [f'<b>{md_inline(title)}</b>']
+        lines += ['• ' + md_inline(item if len(item) <= 3000 else item[:3000].rstrip() + '…') for item in items]
+    caption = '\n'.join([head, '', f'<i>{label}:</i>', *lines, *tail])
+    if visible_length(caption) <= CAPTION_LIMIT:
+        return caption, []
+    replies, chunk = [], [f'<b>{label}</b>', '']
+    for line in lines:
+        if visible_length('\n'.join(chunk + [line])) > MESSAGE_LIMIT:
+            replies.append('\n'.join(chunk).strip())
+            chunk = []
+        chunk.append(line)
+    replies.append('\n'.join(chunk).strip())
+    if len(replies) > 3:
+        replies = replies[:3]
+        replies[-1] += '\n\n' + t(lang, '… и другие изменения', '… and more')
+    below = t(lang, f'{label} — в ответе ниже.', f'{label}: in the reply below.')
+    return '\n'.join([head, '', f'<i>{below}</i>', *tail]), replies
+
+
+def make_post(args, digest, settings):
+    """(caption, [reply texts]) of the build post: the new CHANGELOG.md sections, else the commits retold."""
+    if not settings['commits']:
+        return build_caption(args.apk, digest, [], settings), []
+    rng = build_range(args)
+    sections = new_changelog(rng[0], rng[1])
+    if sections:
+        return changelog_post(args.apk, digest, sections, settings, rng[2])
+    print('::notice::No new CHANGELOG.md section since the previous build: the commits are retold')
+    changes, since = make_changes(args, settings['lang'], rng)
+    return build_caption(args.apk, digest, changes, settings, since), []
 
 
 def parse_target(chat, topic=''):
@@ -389,9 +488,8 @@ async def publish(args, digest):
                                           'write /here in the topic of the group.'))
             print('::notice::Telegram post skipped: no target (/here in the bot, or the TELEGRAM_CHAT secret)')
             return None
-        changes, since = make_changes(args, lang) if settings['commits'] else ([], '')
-        caption = build_caption(args.apk, digest, changes, settings, since)
-        posted, failed, unpinned, media = [], [], [], None
+        caption, replies = make_post(args, digest, settings)
+        posted, failed, unpinned, unreplied, media = [], [], [], [], None
         for chat, topic, where in targets:
             name = f'«{html.escape(where, quote=False)}»'
             try:
@@ -410,6 +508,13 @@ async def publish(args, digest):
             except Exception as e:
                 print(f'::warning::Post not pinned: {type(e).__name__}')
                 unpinned.append(name)
+            for reply in replies:   # the CHANGELOG.md text that does not fit a caption, right under the post
+                try:
+                    await client.send_message(chat, reply, reply_to=message.id, parse_mode='html', link_preview=False)
+                except Exception as e:
+                    print(f'::warning::Changelog reply not posted: {type(e).__name__}')
+                    unreplied.append(name)
+                    break
         report = []
         if posted and args.notify == 'all':
             report.append(t(lang, f'✅ {title} выложена: ', f'✅ {title} posted: ') + ', '.join(n for n, _ in posted))
@@ -419,6 +524,8 @@ async def publish(args, digest):
             if unpinned:
                 report.append(t(lang, '⚠️ Не закреплена в ', '⚠️ Not pinned in ') + ', '.join(unpinned) +
                               t(lang, ': дай боту право закреплять сообщения.', ': allow the bot to pin messages.'))
+            if unreplied:
+                report.append(t(lang, '⚠️ Чейнжлог не дошёл в ', '⚠️ Changelog not posted in ') + ', '.join(unreplied))
         if report:
             await notify(client, owner, '\n'.join(report))
         if not posted:
@@ -431,7 +538,7 @@ async def publish(args, digest):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--apk', required=True, type=Path)
-    ap.add_argument('--to-rev', default='HEAD', help='commit of the build (a full sha needs no local git history)')
+    ap.add_argument('--to-rev', default='main', help='commit (or branch) of the build on GitHub')
     ap.add_argument('--from-rev', default='', help='changelog range start when no previous build is found '
                                                    '(github.event.before)')
     ap.add_argument('--subject', action='append', default=[], help='changelog source when no range is known (repeat)')
@@ -447,10 +554,11 @@ def main():
     digest = sha256(args.apk)
     if args.dry_run:
         settings = {**default_settings(), **(json.loads(args.settings_json) if args.settings_json else {})}
-        changes, since = make_changes(args, settings['lang'])
-        caption = build_caption(args.apk, digest, changes, settings, since)
+        caption, replies = make_post(args, digest, settings)
         print(caption)
         print(f'[{visible_length(caption)} visible characters]')
+        for reply in replies:
+            print(f'--- reply ---\n{reply}\n[{visible_length(reply)} visible characters]')
         return 0
 
     missing = [name for name in SECRETS if not os.environ.get(name, '').strip()]
