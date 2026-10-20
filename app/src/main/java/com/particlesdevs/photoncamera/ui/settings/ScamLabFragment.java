@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -79,7 +80,11 @@ public class ScamLabFragment extends ModuleConceptFragment {
     private static ScamLabRun.Result shownResult;
     private static volatile String runError, runStage;
     private int showMode;
+    /** P307: the side the single view shows (0 = A, 1 = B). */
+    private int showSide;
     private final Handler main = new Handler(Looper.getMainLooper());
+    /** P294: a render is running; a slider is under a finger; a stage redraw waits for its release. */
+    private boolean rendering, dragging, redrawWaiting;
 
     public static ScamLabFragment list() {
         return new ScamLabFragment();
@@ -96,11 +101,28 @@ public class ScamLabFragment extends ModuleConceptFragment {
     }
 
     @Override protected void render() {
-        final String page = arg(PAGE);
-        if ("shot".equals(page)) renderShot();
-        else if ("group".equals(page)) renderGroup();
-        else if ("result".equals(page)) renderResult();
-        else renderList();
+        // P294 (owner, 2026-10-20: lab crash): page() empties body with removeAllViews, which sends ACTION_CANCEL to the
+        // slider being dragged; its onStopTrackingTouch set the value and rendered again inside that removeAllViews. The
+        // nested render added the new page to body while the outer loop was still nulling body's child slots, so body kept
+        // null children under a non-zero count and the next traversal threw in dispatchCollectViewAttributes. A render asked
+        // for during a render runs after it.
+        if (rendering) {
+            main.post(() -> { if (root != null && isAdded()) render(); });
+            return;
+        }
+        rendering = true;
+        // the page's sliders are replaced: none is under a finger any more, a waiting redraw is this one
+        dragging = false;
+        redrawWaiting = false;
+        try {
+            final String page = arg(PAGE);
+            if ("shot".equals(page)) renderShot();
+            else if ("group".equals(page)) renderGroup();
+            else if ("result".equals(page)) renderResult();
+            else renderList();
+        } finally {
+            rendering = false;
+        }
     }
 
     // ───── The shots ─────
@@ -597,7 +619,9 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 for (int i = 0; i < spec.values.length; i++) if (spec.values[i].equals(v.toString())) return String.valueOf(spec.labels[i]);
                 return v.toString();
             case Spec.CUSTOM:
-                return AS_SHOT.equals(v) ? Lang.t(getContext(), "как снято", "as shot") : Lang.t(getContext(), "как сейчас в настройках", "as in the settings now");
+                if (AS_SHOT.equals(v)) return Lang.t(getContext(), "как снято", "as shot");
+                if (IN_SETTINGS.equals(v)) return Lang.t(getContext(), "как сейчас в настройках", "as in the settings now");
+                return Lang.t(getContext(), "своя кривая", "own curve"); // P307: edited on the lab page
             default:
                 return v.toString();
         }
@@ -831,27 +855,48 @@ public class ScamLabFragment extends ModuleConceptFragment {
 
     private void modes(ScamLabRun.Result r, LabCompareView compare, String aText, String bText) {
         LinearLayout modes = row();
+        // P307 (owner, 2026-10-20: «дай возможность переключать режим на одиночный без сравнения»): «Одиночный» shows one side over
+        // the whole frame (A or B below the modes), no split
         String[] names = {Lang.t(getContext(), "До / после", "Before / after"), Lang.t(getContext(), "Разница ×4", "Difference ×4"),
-                Lang.t(getContext(), "Карта кадров", "Frame map")};
-        final TextView[] buttons = new TextView[3];
+                Lang.t(getContext(), "Карта кадров", "Frame map"), Lang.t(getContext(), "Одиночный", "Single")};
+        final TextView[] buttons = new TextView[names.length];
         final TextView explain = text("", 12, MUTED);
         explain.setLineSpacing(dp(3), 1);
         final Bitmap[] diff = {null};
         final Runnable[] apply = {null};
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < names.length; i++) {
             final int m = i;
             buttons[i] = button(names[i], showMode == i, () -> { showMode = m; apply[0].run(); });
             buttons[i].setTag("lab_mode_" + i);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
-            if (i < 2) lp.rightMargin = dp(8);
+            if (i < names.length - 1) lp.rightMargin = dp(6);
             modes.addView(buttons[i], lp);
         }
+        final LinearLayout sides = row();
+        final TextView[] sideButtons = new TextView[2];
+        for (int i = 0; i < 2; i++) {
+            final int side = i;
+            sideButtons[i] = button(i == 0 ? aText : bText, showSide == i, () -> { showSide = side; apply[0].run(); });
+            sideButtons[i].setTag(i == 0 ? "lab_single_a" : "lab_single_b");
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
+            if (i == 0) lp.rightMargin = dp(8);
+            sides.addView(sideButtons[i], lp);
+        }
         apply[0] = () -> {
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < buttons.length; i++) {
                 buttons[i].setTextColor(showMode == i ? 0xFF15131D : accent);
                 buttons[i].setBackground(shape(showMode == i ? accent : BG, showMode == i ? 0 : 0xFF626974, 10));
             }
-            if (showMode == 1) {
+            for (int i = 0; i < 2; i++) {
+                sideButtons[i].setTextColor(showSide == i ? 0xFF15131D : accent);
+                sideButtons[i].setBackground(shape(showSide == i ? accent : BG, showSide == i ? 0 : 0xFF626974, 10));
+            }
+            sides.setVisibility(showMode == 3 ? View.VISIBLE : View.GONE);
+            if (showMode == 3) {
+                compare.setSingle(showSide == 0 ? r.a.photo : r.b.photo, showSide == 0 ? aText : bText);
+                explain.setText(Lang.t(getContext(), "Одна сторона на весь кадр, без сравнения. Двойное касание — увеличение ×3, удержание — лупа.",
+                        "One side over the whole frame, no comparison. Double tap zooms ×3, hold for a magnifier."));
+            } else if (showMode == 1) {
                 if (diff[0] == null) diff[0] = ScamLabRun.difference(r.a.photo, r.b.photo, 4f);
                 compare.setSingle(diff[0], "|A − B| × 4");
                 explain.setText(Lang.t(getContext(), "Светлое — где B отличается от A. Чёрное — без изменений.", "Bright: where B differs from A. Black: unchanged."));
@@ -867,6 +912,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
         };
         apply[0].run();
         body.addView(modes, space(-1, -2, 10));
+        body.addView(sides, space(-1, -2, 8));
         body.addView(explain, space(-1, -2, 8));
     }
 
@@ -875,9 +921,9 @@ public class ScamLabFragment extends ModuleConceptFragment {
         if (linked) caption(spec.title);
         final Object atShot = shotValue(spec, s);
         LinearLayout card = card();
-        card.addView(control(spec, "A", "a", atShot));
+        card.addView(control(spec, "A", "a", atShot, s));
         divider(card);
-        card.addView(control(spec, "B", "b", atShot));
+        card.addView(control(spec, "B", "b", atShot, s));
         if (spec.kind == Spec.CUSTOM) {
             TextView edit = button(Lang.t(getContext(), "Изменить в настройках", "Edit in the settings"), false, () -> {
                 if (getActivity() instanceof SettingsActivity) ((SettingsActivity) getActivity()).openPageAt(spec.page, spec.key);
@@ -896,7 +942,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
         card.addView(t);
     }
 
-    private View control(Spec spec, String name, String side, Object atShot) {
+    private View control(Spec spec, String name, String side, Object atShot, ScamLabRun.Shot s) {
         final Object value = get(side, spec.key);
         LinearLayout r = column();
         r.setPadding(dp(12), dp(12), dp(12), dp(12));
@@ -947,6 +993,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
                                 i -> set.accept(values[i])).show());
                 pick.setTag("lab_value_" + name + "_" + spec.key);
                 r.addView(pick, space(-1, -2, 8));
+                if (CURVE.equals(spec.key)) r.addView(curveEditor(name, value, s, set), space(-1, -2, 8));
                 break;
             }
             default: {
@@ -962,8 +1009,16 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 bar.setThumbTintList(ColorStateList.valueOf(accent));
                 bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                     @Override public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) { shown.setText(spec.number(min + progress * step)); }
-                    @Override public void onStartTrackingTouch(SeekBar sb) { sb.getParent().requestDisallowInterceptTouchEvent(true); }
-                    @Override public void onStopTrackingTouch(SeekBar sb) { set.accept(spec.number(min + sb.getProgress() * step)); }
+                    @Override public void onStartTrackingTouch(SeekBar sb) {
+                        dragging = true;
+                        sb.getParent().requestDisallowInterceptTouchEvent(true);
+                    }
+                    @Override public void onStopTrackingTouch(SeekBar sb) {
+                        dragging = false;
+                        set.accept(spec.number(min + sb.getProgress() * step));
+                        // P294: the redraw a stage asked for during the drag (set renders only when the value changed)
+                        if (redrawWaiting) render();
+                    }
                 });
                 r.addView(bar, space(-1, dp(36), 6));
                 LinearLayout ends = row();
@@ -973,6 +1028,57 @@ public class ScamLabFragment extends ModuleConceptFragment {
             }
         }
         return r;
+    }
+
+    /**
+     * P307 (owner, 2026-10-20: «Настройки кривой тут должны быть полноценные, чтобы можно было прямо тут и настраивать»): the
+     * side's curve in the settings' own editor (tap adds a point, drag moves it, hold deletes it; «S-кривая», «Прямая»); the end
+     * of a gesture makes the edited curve the side's value and renders that side again. The value goes in after the touch (a
+     * post: the page is rebuilt, never inside the graph's own event, P294), and no stage redraw rebuilds the page while a finger
+     * is on the graph.
+     */
+    private View curveEditor(String name, Object value, ScamLabRun.Shot s, java.util.function.Consumer<Object> set) {
+        final Context c = requireContext();
+        String text;
+        if (AS_SHOT.equals(value)) text = s.pref(CURVE) == null ? null : String.valueOf(s.pref(CURVE));
+        else if (IN_SETTINGS.equals(value)) text = prefs().getString(CURVE, null);
+        else text = value == null ? null : String.valueOf(value);
+        if (text == null) text = com.particlesdevs.photoncamera.processing.color.ToneCurve.DEFAULT_POINTS;
+        LinearLayout box = column();
+        final com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView graph =
+                new com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView(c);
+        graph.setTag("lab_curve_" + name);
+        graph.setCurve(com.particlesdevs.photoncamera.processing.color.ToneCurve.parse(text));
+        graph.setOnCommit(curve -> {
+            final String edited = curve.serialize();
+            main.post(() -> set.accept(edited));
+        });
+        graph.setOnTouchListener((v, e) -> {
+            final int action = e.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) dragging = true;
+            else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                dragging = false;
+                if (redrawWaiting) main.post(() -> { if (root != null && isAdded()) render(); });
+            }
+            return false; // the graph handles the gesture itself
+        });
+        box.addView(graph, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout chips = row();
+        TextView sCurve = button(Lang.t(c, "S-кривая", "S-curve"), false,
+                () -> set.accept(com.particlesdevs.photoncamera.processing.color.ToneCurve.defaults().serialize()));
+        sCurve.setTag("lab_curve_s_" + name);
+        TextView straight = button(Lang.t(c, "Прямая", "Straight"), false,
+                () -> set.accept(com.particlesdevs.photoncamera.processing.color.ToneCurve.identity().serialize()));
+        straight.setTag("lab_curve_straight_" + name);
+        LinearLayout.LayoutParams first = new LinearLayout.LayoutParams(0, -2, 1);
+        first.rightMargin = dp(8);
+        chips.addView(sCurve, first);
+        chips.addView(straight, new LinearLayout.LayoutParams(0, -2, 1));
+        box.addView(chips, space(-1, -2, 8));
+        TextView hint = text(Lang.t(c, "Тап — добавить точку, перетаскивание — двигать, удержание — удалить.",
+                "Tap adds a point, drag moves it, hold deletes it."), 12, MUTED);
+        box.addView(hint, space(-1, -2, 6));
+        return box;
     }
 
     private void info(Spec main, ScamLabRun.Result r) {
@@ -1028,7 +1134,14 @@ public class ScamLabFragment extends ModuleConceptFragment {
 
     private void redraw() {
         main.post(() -> {
-            if (root != null && isAdded() && "result".equals(arg(PAGE))) render();
+            if (root == null || !isAdded() || !"result".equals(arg(PAGE))) return;
+            // P294: a stage or a result never rebuilds the page under a finger on a slider (that ends the drag, and its
+            // cancel set the value in the middle of the rebuild); it waits for the release
+            if (dragging) {
+                redrawWaiting = true;
+                return;
+            }
+            render();
         });
     }
 

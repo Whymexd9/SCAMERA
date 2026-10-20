@@ -159,7 +159,7 @@ public class DeviceDefaultsTest {
         DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
         assertEquals("1.5", main.getString("pref_scam_hybrid_ark_sharp_rl3_amount", ""));
         assertEquals("20", main.getString("pref_scam_hybrid_zsl_frames", ""));
-        assertEquals(5, main.getInt("device_defaults_version", 0));
+        assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
     }
 
     /** Owner 2026-10-10: the Redmi Note 11 Pro's colour denoise is 20 % stronger in low light only; other phones unchanged. */
@@ -212,5 +212,12 @@ public class DeviceDefaultsTest {
         SharedPreferences main = prefs("defaults_scam");
         DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
         assertTrue(main.getAll().isEmpty());
+    }
+
+    /** P301: the RAW viewfinder with the photo's tone starts on for flagship SoCs only. */
+    @Test
+    public void flagshipSocsStartWithTheRawViewfinder() {
+        for (String soc : new String[]{"SM8650", "SM8750", "SM8850", "MT6989", "MT6991", "MT6993"}) assertTrue(soc, DeviceDefaults.flagshipSoc(soc));
+        for (String soc : new String[]{"SM8550", "SM8250", "SM7550", "MT6983", "MT6781", "", null}) assertFalse(String.valueOf(soc), DeviceDefaults.flagshipSoc(soc));
     }
 }

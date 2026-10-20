@@ -1,5 +1,10 @@
 precision highp float;
 precision highp sampler2D;
+// P305: the pixel coordinates (ivec2 xy) are highp too. A fragment shader's ints default to mediump, which Adreno runs as
+// fp16: the dither below took float(xy) and its phase 0.067 x + 0.0058 y in fp16, so instead of +-0.5 LSB noise it had 4..16
+// values in plates 1..4 px wide and 11..43 rows tall (wider and taller with x), which jpegli's dead-zone quantisation kept as
+// vertical streaks on every smooth area (the 50 MP ship's hull, the sky). Desktop GL runs mediump as fp32 (host replays).
+precision highp int;
 // ARK tone, final step (ArkCombine): ef_guided_combine of libfc_suppressor.so [fc_cl_source.cl:1399-1844] on every
 // output pixel, with the high-frequency detail taken from the full-size Sabre merge instead of Google's guide a3.
 //  1. colour/base: cubic B-spline of the colour source (arkLow after bracket_dn on the 1x grid, arkMid on the 2x grid)

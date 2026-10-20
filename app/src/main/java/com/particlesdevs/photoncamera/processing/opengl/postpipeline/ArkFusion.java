@@ -67,10 +67,10 @@ public final class ArkFusion extends Node {
 
     /**
      * The ARK tone's own denoise (bracket_denoise, chroma_denoise): only with the master switch «Шумоподавление» on (P165: on
-     * every shot), never on a 200 MP shot (P179: the merge alone).
+     * every shot; P306: a 200 MP shot too, as its finish denoise).
      */
     static boolean arkDenoise(com.particlesdevs.photoncamera.processing.render.Parameters p) {
-        return PreferenceKeys.isHybridDenoiseEnabled() && !ScamHdrDenoise.noDenoise(p);
+        return PreferenceKeys.isHybridDenoiseEnabled();
     }
 
     @Override

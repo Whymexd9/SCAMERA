@@ -46,6 +46,16 @@ def without_guard(src: str) -> str:
     return src.replace('    float weight = guardU > 0.0 ? pow(max(gain, 1.0), -guardU) : 1.0;\n'
                        '    Output = vec4(clamp(outRgb, 0.0, 1.0), weight);', '    Output = vec4(clamp(outRgb, 0.0, 1.0), 1.0);')
 
+P305_HIGHP_INT = 'precision highp int;\n'
+
+
+def without_highp_int(src: str) -> str:
+    """P305: combine.glsl declares its ints highp (the dither's float(xy) was fp16 on Adreno: vertical streaks). The statement
+    changes no token of the colour path and nothing on desktop GL (mediump runs as fp32 there): the current shader is compared
+    with the line taken out (shader_part checks that it is there)."""
+    return src.replace(P305_HIGHP_INT, '', 1)
+
+
 failures: list[str] = []
 skipped: list[str] = []
 
@@ -191,8 +201,9 @@ def find_glslc() -> str | None:
 
 def shader_part(strict: bool) -> None:
     new = (SH / 'ark/combine.glsl').read_text(encoding='utf-8')
-    got = token_hash(new)
-    print('combine.glsl P3_OUT 0 token stream: %s' % got)
+    check(('\n' + P305_HIGHP_INT) in new.replace('\r\n', '\n'), 'combine.glsl lost "precision highp int;" (P305: fp16 dither streaks on Adreno)')
+    got = token_hash(without_highp_int(new.replace('\r\n', '\n')))
+    print('combine.glsl P3_OUT 0 token stream (without the P305 highp int): %s' % got)
     check(got == BASELINE_COMBINE_TOKENS, 'combine.glsl (P3_OUT 0) differs from the pre-P46 shader: %s' % got)
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],

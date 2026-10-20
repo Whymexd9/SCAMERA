@@ -201,6 +201,27 @@ public class GalleryActivity extends BaseActivity {
         super.onResume();
         // Apply hideSystemUI in onResume to prevent flickering when returning to the gallery
         hideSystemUI();
+        childLaunch = false;
+    }
+
+    /** P299: this gallery started one of its own screens (share, edit, a viewer) - leaving for it keeps the gallery. */
+    private boolean childLaunch;
+
+    @Override
+    public void startActivityForResult(Intent intent, int requestCode, @Nullable Bundle options) {
+        childLaunch = true;
+        super.startActivityForResult(intent, requestCode, options);
+    }
+
+    /**
+     * P299 (owner, 2026-10-20: «если в камере зайти в галерею и свернуть, а потом нажать на иконку камеры, она откроется на
+     * галерее»): the gallery opened from the camera shares its task, and the launcher icon brings the task back with the gallery
+     * on top. Leaving it for the home screen (or another app) closes it, so the icon returns to the camera.
+     */
+    @Override
+    protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (!externalUsage && !childLaunch && !isFinishing()) finish();
     }
 
     @Override

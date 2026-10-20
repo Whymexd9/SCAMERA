@@ -247,6 +247,10 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 };
         auxButtonsViewModel = new ViewModelProvider(this).get(AuxButtonsViewModel.class);
         surfaceView = cameraFragmentBinding.layoutViewfinder.surfaceView;
+        // P293 (owner, 2026-10-20: «кнопка LUT перекрыта статистикой»): the HUD (shutter, ISO, focus ...) starts below the LUT pill
+        cameraFragmentBinding.layoutViewfinder.lutPill.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (surfaceView != null) surfaceView.setHudTop(b - surfaceView.getTop() + 6f * v.getResources().getDisplayMetrics().density);
+        });
         textureView = cameraFragmentBinding.layoutViewfinder.texture;
     }
 
@@ -357,7 +361,21 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             // SIMPLE_UI §1: the LUT pill and tray; Pro and the tray close each other
             lutTray = new LutTray(cameraFragmentBinding.layoutViewfinder.lutPill, cameraFragmentBinding.lutTray,
                     cameraFragmentBinding.layoutViewfinder.texture, this::openLutSettings);
-            lutTray.setOnOpen(() -> { if (panel.isExpanded()) panel.setExpanded(false, true); });
+            // P293 (owner, 2026-10-20: «одновременно открытые шторка и меню фильтров налазят друг на друга»): the tray closes Pro
+            // and the quick sheet; the sheet, at any level reached in any way (finger, «Ещё», a swipe, the model), closes the tray
+            lutTray.setOnOpen(() -> {
+                if (panel.isExpanded()) panel.setExpanded(false, true);
+                if (cameraFragmentViewModel.getSheetLevel() != CameraFragmentModel.SHEET_HIDDEN)
+                    cameraFragmentViewModel.setSheetLevel(CameraFragmentModel.SHEET_HIDDEN);
+            });
+            if (sheetTrayCallback != null) cameraFragmentViewModel.getCameraFragmentModel().removeOnPropertyChangedCallback(sheetTrayCallback);
+            sheetTrayCallback = new androidx.databinding.Observable.OnPropertyChangedCallback() {
+                @Override public void onPropertyChanged(androidx.databinding.Observable sender, int id) {
+                    if (id == com.particlesdevs.photoncamera.BR.sheetLevel && lutTray != null
+                            && cameraFragmentViewModel.getSheetLevel() != CameraFragmentModel.SHEET_HIDDEN) lutTray.setOpen(false);
+                }
+            };
+            cameraFragmentViewModel.getCameraFragmentModel().addOnPropertyChangedCallback(sheetTrayCallback);
             panel.setOnExpandedListener(open -> {
                 com.particlesdevs.photoncamera.ui.camera.views.BottomChrome.setSideOn(bar, R.id.pro_button, open);
                 if (open && lutTray != null) lutTray.setOpen(false);
@@ -708,6 +726,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     private MessageCard messageCard;
     /** SIMPLE_UI §1: the LUT pill and tray of the viewfinder. */
     @Nullable public LutTray lutTray;
+    /** P293: the model's sheet level closes the LUT tray (removed with the fragment). */
+    @Nullable private androidx.databinding.Observable.OnPropertyChangedCallback sheetTrayCallback;
 
     /** «Все LUT ›»: the settings at the film LUT row. */
     private void openLutSettings() {
@@ -1023,6 +1043,10 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
     @Override
     public void onDestroy() {
+        if (sheetTrayCallback != null && cameraFragmentViewModel != null) {
+            cameraFragmentViewModel.getCameraFragmentModel().removeOnPropertyChangedCallback(sheetTrayCallback);
+            sheetTrayCallback = null;
+        }
         super.onDestroy();
 //        Log.d(TAG, "onDestroy() called");
         try {

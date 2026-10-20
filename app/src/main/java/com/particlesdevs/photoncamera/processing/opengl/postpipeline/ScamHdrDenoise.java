@@ -168,19 +168,32 @@ public final class ScamHdrDenoise extends Node {
             Log.i("SCAM_PIPELINE", "denoise off (pref_scam_hybrid_denoise)");
             return;
         }
-        // P179 (owner, 2026-10-16: «Для 200мп мы можем полностью отключить шумодавы и использовать только склейку, я всё
-        // равно буду их использовать только днем»): a 200 MP shot is the merge alone - no finish denoise (and no ARK
-        // bracket / chroma denoise, ArkFusion.arkDenoise), as with «Шумоподавление» off; in daylight its top SNR tier was
-        // nearly transparent anyway, and it would take 3-4 GB of 200 MP textures and ~9 s
-        if (noDenoise(pipeline.mParameters)) {
-            WorkingTexture = previousNode.WorkingTexture;
-            glProg.closed = true;
-            Log.i("SCAM_PIPELINE", "denoise off: " + pipeline.mParameters.rawSize.x + "x" + pipeline.mParameters.rawSize.y
-                    + " (200 MP: the merge alone)");
-            return;
+        // P306 (owner, 2026-10-20: «можешь включить шумодав для 200мп, настрой по этому фото его», «только дай возможность его
+        // полностью отключать»): a 200 MP shot is denoised again (P179 had it the merge alone), on its 2x2 means (ScamDenoise: the
+        // Sabre 2x grid path, every pyramid at the 50 MP scale; the 200 MP pixel noise cored in scamdn/final2x); «Шумоподавление»
+        // off (above) still leaves it the merge alone. With too little memory for its textures it is the merge alone, in the log.
+        if (huge(pipeline.mParameters)) {
+            final long need = ScamDenoise.hugeBytes(previousNode.WorkingTexture.mSize), avail = availableMemory();
+            if (avail >= 0 && avail < need) {
+                WorkingTexture = previousNode.WorkingTexture;
+                glProg.closed = true;
+                Log.i("SCAM_PIPELINE", "denoise skipped: " + (avail >> 20) + " MB free, the 200 MP denoise needs " + (need >> 20) + " MB");
+                return;
+            }
         }
         // SCAM Hybrid shots: the SCAM finish denoise (pref_scam_hybrid_dn_engine = multiscale, default); this NLM route
         // stays the "nlm" engine and the SCAM HDR (SCAM) denoise. A failure there falls back to the NLM route.
+        // P306: never on a 200 MP shot: its full-grid textures (~3.6 GB) are what P179 took away; the "nlm" engine and a failure of
+        // the 2x2-means denoise leave it the merge alone.
+        // (a lab fragment of a 200 MP shot as the shot: its whole size)
+        final com.particlesdevs.photoncamera.processing.render.Parameters par = pipeline.mParameters;
+        final boolean huge = par != null && par.labWholeSize != null ? huge(par.labWholeSize.x, par.labWholeSize.y) : huge(par);
+        if (huge && !ScamDenoise.enabledFor(pipeline)) {
+            WorkingTexture = previousNode.WorkingTexture;
+            glProg.closed = true;
+            Log.i("SCAM_PIPELINE", "denoise skipped: the NLM denoise does not run on a 200 MP shot (pref_scam_hybrid_dn_engine)");
+            return;
+        }
         if (ScamDenoise.enabledFor(pipeline)) {
             try {
                 dumpInput(pipeline); // developer switch dump-denoise: the linear input for offline replays (tools/check_scamdn.py)
@@ -200,20 +213,44 @@ public final class ScamHdrDenoise extends Node {
                     pipeline.getMain();
                     ScamDenoise.lastMainTaken = false;
                 }
+                if (huge) {
+                    WorkingTexture = previousNode.WorkingTexture;
+                    glProg.closed = true;
+                    Log.i("SCAM_PIPELINE", "denoise skipped: the 200 MP denoise failed, no NLM pass on that size");
+                    return;
+                }
             }
         }
         runNlm();
     }
 
-    /** P179: above this many output pixels (200 MP) the shot is the merge alone, without any denoise of the pipeline. */
+    /**
+     * Above this many output pixels (200 MP): the finish denoise runs on the 2x2 means (P306) and the worker makes no
+     * effective-frame map (P187: its planes sat on the 200 MP merge's peak).
+     */
     static final long HUGE_PIXELS = 100_000_000L;
 
-    static boolean noDenoise(com.particlesdevs.photoncamera.processing.render.Parameters p) {
-        return p != null && p.rawSize != null && noDenoise(p.rawSize.x, p.rawSize.y);
+    static boolean huge(com.particlesdevs.photoncamera.processing.render.Parameters p) {
+        return p != null && p.rawSize != null && huge(p.rawSize.x, p.rawSize.y);
     }
 
-    static boolean noDenoise(int width, int height) {
+    static boolean huge(int width, int height) {
         return (long) width * height > HUGE_PIXELS;
+    }
+
+    /** MemAvailable of the system (bytes), -1 when unknown. */
+    private static long availableMemory() {
+        try {
+            android.content.Context context = com.particlesdevs.photoncamera.app.ScameraApp.getAppContext();
+            android.app.ActivityManager manager = context == null ? null
+                    : (android.app.ActivityManager) context.getSystemService(android.content.Context.ACTIVITY_SERVICE);
+            if (manager == null) return -1;
+            android.app.ActivityManager.MemoryInfo info = new android.app.ActivityManager.MemoryInfo();
+            manager.getMemoryInfo(info);
+            return info.availMem;
+        } catch (RuntimeException e) {
+            return -1;
+        }
     }
 
     /** The NLM route (SCAM HDR shots, or the hybrid with dn_engine = nlm). */

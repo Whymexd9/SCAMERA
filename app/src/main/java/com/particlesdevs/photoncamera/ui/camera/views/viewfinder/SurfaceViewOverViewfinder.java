@@ -29,6 +29,8 @@ public class SurfaceViewOverViewfinder extends SurfaceView {
     private final Paint strikePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float oisTextWidth = 0f;
     private float mDensity = 1.0f;
+    /** P293: the HUD's top, below the LUT pill in the same corner (px from this view's top; <= 0: 12dp). */
+    private float hudTopPx = 0f;
 
     private String mExpoText = null;
     private String mIsoText = null;
@@ -184,6 +186,11 @@ public class SurfaceViewOverViewfinder extends SurfaceView {
         this.debugText = debugText;
     }
 
+    /** P293 (owner, 2026-10-20: «кнопка LUT перекрыта статистикой»): the HUD starts below this many px. */
+    public void setHudTop(float px) {
+        hudTopPx = px;
+    }
+
     public void setHudData(String expo, String iso, String focal, String focus, String wb,
                            boolean isTripod, boolean isOisSupported, boolean isOisActive) {
         this.mExpoText = expo;
@@ -258,7 +265,7 @@ public class SurfaceViewOverViewfinder extends SurfaceView {
         if (mExpoText == null) return;
 
         float marginSide = 14f * mDensity;
-        float marginTop = 12f * mDensity;
+        float marginTop = hudTopPx > 0f ? hudTopPx : 12f * mDensity;
         float lineSpacing = 16f * mDensity;
 
         int rowCount = 5 + (mIsTripod ? 1 : 0) + (mIsOisSupported ? 1 : 0);

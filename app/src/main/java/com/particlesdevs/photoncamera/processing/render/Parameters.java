@@ -57,6 +57,8 @@ public class Parameters {
     // Per-capture policy, not a live settings lookup during asynchronous processing.
     /** Per-shot display correction; never changes sensor exposure, VST or Bayer DNG. */
     public Point rawSize;
+    /** P306: the whole shot's size when these are a lab fragment's (null otherwise): the 200 MP denoise is decided on it. */
+    public Point labWholeSize;
     /** P27: linear factor the RAW frames were binned by (RawBin) before the merge; 1 = as captured. Set before FillConstParameters. */
     public int rawBinning = 1;
     /**

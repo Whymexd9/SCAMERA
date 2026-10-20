@@ -131,6 +131,42 @@ public final class ScameraFolder {
         return null;
     }
 
+    /**
+     * P302: the document at {@code relative} of the primary storage ("Download/SCAMERA/DCIM/Camera/x.jpg") through the lasting
+     * grant of Download/SCAMERA ({@link #ROOT}), null without a grant that reaches it. The document need not exist.
+     */
+    @androidx.annotation.Nullable
+    public static Uri grantedPath(Context context, String relative) {
+        Uri tree = context == null || relative == null ? null : ROOT.grantedTree(context);
+        if (tree == null) return null;
+        try {
+            if (!covers(primaryId(tree.getAuthority(), DocumentsContract.getTreeDocumentId(tree)), "primary:" + relative)) return null;
+            String id = DOWNLOADS.equals(tree.getAuthority()) ? "raw:" + PRIMARY_PATH + "/" + relative : "primary:" + relative;
+            return DocumentsContract.buildDocumentUriUsingTree(tree, id);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** P302: names of the files (not folders) in the folder at {@code relative} through the grant of {@link #ROOT}. */
+    public static Map<String, Uri> grantedChildren(Context context, String relative) {
+        Map<String, Uri> out = new LinkedHashMap<>();
+        Uri tree = context == null ? null : ROOT.grantedTree(context);
+        Uri dir = grantedPath(context, relative);
+        if (tree == null || dir == null) return out;
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(dir));
+        try (Cursor c = context.getContentResolver().query(children, new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
+            while (c != null && c.moveToNext()) {
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(2))) continue;
+                out.put(c.getString(1), DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0)));
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "listing of " + relative + " through the grant failed: " + e);
+        }
+        return out;
+    }
+
     /** P191: a file directly in this folder through the lasting grant, null without the grant or the file. */
     @androidx.annotation.Nullable
     public Uri grantedDocument(Context context, String name) {
@@ -235,13 +271,29 @@ public final class ScameraFolder {
             }
         }
         File file = new File(legacyDir(), name);
-        if (!file.isFile()) {
-            Uri doc = treeFiles(context).get(name);
-            InputStream in = doc == null ? null : context.getContentResolver().openInputStream(doc);
-            if (in != null) return in;
-            throw new IOException("file not found: " + relative + "/" + name);
+        // P304 (owner, 2026-10-20: «при загрузке конфигов периодически получаю ошибку загрузки»): a file another install wrote
+        // (the configs saved before the package became com.scamera.app) is listed by the File API but its open fails with EACCES;
+        // the folder's grant opens it. The grant first only when the file cannot be opened directly.
+        IOException denied = null;
+        if (file.isFile()) {
+            try {
+                return new FileInputStream(file);
+            } catch (IOException | SecurityException e) {
+                denied = e instanceof IOException ? (IOException) e : new IOException(e.getMessage(), e);
+            }
         }
-        return new FileInputStream(file);
+        Uri doc = treeFiles(context).get(name);
+        InputStream in = null;
+        try {
+            in = doc == null ? null : context.getContentResolver().openInputStream(doc);
+        } catch (IOException | SecurityException e) {
+            Log.w(TAG, "open through the grant failed: " + e);
+        }
+        if (in != null) return in;
+        if (denied != null)
+            throw new IOException(Lang.t(context, "нет доступа к файлу (его сохранила прежняя установка): откройте папку кнопкой «Открыть папку» или выберите файл через «Загрузить из файла»",
+                    "no access to the file (an earlier install saved it): open the folder with «Open folder» or pick the file with «Load from file»"), denied);
+        throw new IOException("file not found: " + relative + "/" + name);
     }
 
     /**

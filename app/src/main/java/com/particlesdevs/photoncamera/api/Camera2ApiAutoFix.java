@@ -189,8 +189,18 @@ public class Camera2ApiAutoFix {
         }
     }
     private void ExposureCompensation(){
-        Range nrange = new Range(-24, 24);
+        Range nrange = exposureCompensationRange(CaptureController.mCameraCharacteristics.get(CONTROL_AE_COMPENSATION_RANGE));
         CameraReflectionApi.set(CaptureController.mCameraCharacteristics, CONTROL_AE_COMPENSATION_RANGE,nrange);
+    }
+
+    /**
+     * The widened compensation range: the former +-24 steps (+-8 EV at the usual 1/3 EV step), never narrower than declared.
+     * P296 (owner, 2026-10-20, OPPO Find X8 Ultra: «в ручнике регулировка экспозиции только 0 и -0.1»): its step is 1/330 EV
+     * (declared +-990 = +-3 EV), and the fixed +-24 steps left +-0.07 EV.
+     */
+    static Range<Integer> exposureCompensationRange(Range<Integer> declared) {
+        if (declared == null) return new Range<>(-24, 24);
+        return new Range<>(Math.min(declared.getLower(), -24), Math.max(declared.getUpper(), 24));
     }
 
     /*public static void patchWL(CameraCharacteristics characteristics,

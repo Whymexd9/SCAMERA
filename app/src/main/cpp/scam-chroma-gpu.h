@@ -65,6 +65,28 @@ void main(){
     o[y*size.x+x]=med5(at(x,y,-2),at(x,y,-1),at(x,y,0),at(x,y,1),at(x,y,2));
 }
 )";
+// P306: the medians smoothed by [1 2 1] x [1 2 1] / 16 for taps d >= 2 (mosaicSmooth121Row of scam-hybrid.h: the two column / row
+// parities of the 5-point taps meet; additions only, b + b then left to right), borders clamped
+static const char* kChromaGlslSmooth = R"(
+layout(local_size_x=8,local_size_y=8) in;
+layout(std430,binding=1) readonly buffer In{vec2 a[];};
+layout(std430,binding=3) writeonly buffer Out{vec2 o[];};
+vec2 tap(int x,int y){
+    int r=clamp(y,0,size.y-1)*size.x;
+    vec2 b=a[r+x],t=b+b;
+    vec2 s=a[r+max(x-1,0)]+t;
+    s=s+a[r+min(x+1,size.x-1)];
+    return s*0.25;
+}
+void main(){
+    int x=int(gl_GlobalInvocationID.x),y=rowBase+int(gl_GlobalInvocationID.y);
+    if(x>=size.x||y>=size.y)return;
+    vec2 m=tap(x,y),t=m+m;
+    vec2 s=tap(x,y-1)+t;
+    s=s+tap(x,y+1);
+    o[y*size.x+x]=s*0.25;
+}
+)";
 // box mean of radius r (clamped taps); T float or vec2. P80: a group of 64 x 4 outputs (horizontal: 64 columns of 4 rows;
 // vertical: 64 rows of 4 columns) loads its 64 + 2r inputs of each line into shared memory once; each output sums its 2r + 1 taps
 // in the same order as before (k = -r..r). r <= 32. HIGH_PASS (float): hp 1 = out is L - mean.
@@ -154,14 +176,14 @@ class ChromaMedianGpu {
     EGLDisplay display = EGL_NO_DISPLAY;
     EGLContext context = EGL_NO_CONTEXT;
     EGLSurface surface = EGL_NO_SURFACE;
-    GLuint pRatio = 0, pMedian = 0, pBoxF = 0, pBoxV2 = 0, pSign = 0, pBlend = 0;
+    GLuint pRatio = 0, pMedian = 0, pBoxF = 0, pBoxV2 = 0, pSign = 0, pBlend = 0, pSmooth = 0;
     enum { kRgb, kUv, kT, kX, kL, kA, kS, kOsc, kSlots };
     GLuint buf[kSlots]{};
     int w = 0, h = 0;
     void cleanup() noexcept {
         if (display == EGL_NO_DISPLAY) return;
         if (context != EGL_NO_CONTEXT && eglMakeCurrent(display, surface, surface, context)) {
-            for (GLuint p : {pRatio, pMedian, pBoxF, pBoxV2, pSign, pBlend}) if (p) glDeleteProgram(p);
+            for (GLuint p : {pRatio, pMedian, pBoxF, pBoxV2, pSign, pBlend, pSmooth}) if (p) glDeleteProgram(p);
             glDeleteBuffers(kSlots, buf);
             eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         }
@@ -255,6 +277,7 @@ public:
             pBoxV2 = compile("#define T vec2\n", kChromaGlslBox);
             pSign = compile("", kChromaGlslSign);
             pBlend = compile("", kChromaGlslBlend);
+            pSmooth = compile("", kChromaGlslSmooth);
             glGenBuffers(kSlots, buf);
             check("init");
             times = "init " + std::to_string(int(ms(t0)));
@@ -316,11 +339,21 @@ public:
         box(pBoxV2, kT, kX, r3, 1, 0, kA);
         box(pBoxV2, kX, kT, r3, 0, 0, kA);
         box(pBoxV2, kT, kX, r3, 1, 0, kA);
+        // P306: taps d >= 2: the blend takes the medians smoothed by [1 2 1] x [1 2 1] (into T, free after the wide boxes)
+        int medians = kUv;
+        if (d >= 2) {
+            glUseProgram(pSmooth);
+            bind(1, kUv); bind(3, kT);
+            run(pSmooth);
+            medians = kT;
+        }
         // blend and R / B
         glUseProgram(pBlend);
-        bind(0, kRgb); bind(1, kUv); bind(3, kX); bind(4, kS); bind(7, kOsc);
+        bind(0, kRgb); bind(1, medians); bind(3, kX); bind(4, kS); bind(7, kOsc);
         glUniform1f(glGetUniformLocation(pBlend, "eps"), eps);
-        glUniform2f(glGetUniformLocation(pBlend, "zr"), 0.51f / (2 * block), 1.02f / (2 * block));
+        // P306: taps d >= 2 (Tetra): the ramp at half the counts (MosaicChromaStream's z0, z1 in scam-hybrid.h)
+        const float zs = d >= 2 ? 0.5f : 1.f;
+        glUniform2f(glGetUniformLocation(pBlend, "zr"), 0.51f / (2 * block) * zs, 1.02f / (2 * block) * zs);
         glUniform4i(glGetUniformLocation(pBlend, "oscU"), rawOsc ? 1 : 0, block, std::max(bw, 1), std::max(bh, 1));
         run(pBlend);
         check("passes");

@@ -51,6 +51,8 @@
     <string name="prefs_scam_hybrid_cre_source_title">Alignment (CRE)</string>
     <string name="prefs_scam_hybrid_cre_source_summary">%s. Which frame alignment module to use: the system one (vivo only) or the one bundled with the app.</string>
     <string name="prefs_scam_hybrid_local_align_title">Local alignment F6</string>
+    <string name="prefs_scam_hybrid_la_engine_title">Local alignment on</string>
+    <string name="prefs_scam_hybrid_la_engine_summary">%s. Where F6 is computed. Auto: on the CPU alongside the merge when it can go there, otherwise on the GPU before the merge (faster than the CPU there). GPU: always on the GPU, the processor stays free. The field is the same; if the GPU fails, the CPU takes over.</string>
     <string name="prefs_scam_hybrid_local_align_summary">%s. Fine per-area frame alignment: more detail on handheld shots, adds about 0.8 s.</string>
     <string name="prefs_scam_hybrid_rejection_screen_title">Motion rejection</string>
     <string name="prefs_scam_hybrid_rejection_screen_summary">How ghosts of moving objects are removed</string>
@@ -134,6 +136,8 @@
     <string name="prefs_scam_hybrid_mosaic_tetra_summary">%s. How a Tetra 4×4 mosaic is merged. T1: more detail and faster; the others are older ways.</string>
     <string name="prefs_scam_hybrid_bento_weight_title">Highlight frames: weight</string>
     <string name="prefs_scam_hybrid_bento_weight_summary">Weight of the dark frame in clipped areas. Higher: it shapes the highlights more; lower: less.</string>
+    <string name="prefs_scam_hybrid_bento_ramp_title">Highlight frames: soft transition</string>
+    <string name="prefs_scam_hybrid_bento_ramp_summary">How gradually the dark frame takes over toward the clipped areas, in 2x2 cells. 0: the previous sharp switch; higher: a wider, softer transition between the exposures (grain and brightness change gradually). Separate bright objects are left alone.</string>
     <string name="prefs_scam_hybrid_bento_sigma_title">Highlight frames: kernel width, px</string>
     <string name="prefs_scam_hybrid_bento_sigma_summary">Blur of the dark frame in the highlights. Higher: softer highlights; below 0.7: colour jaggies on edges.</string>
     <string name="prefs_scam_hybrid_bento_chroma_sigma_title">Highlight frames: highlight edge colour, σ px</string>

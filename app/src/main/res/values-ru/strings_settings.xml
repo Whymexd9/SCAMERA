@@ -51,6 +51,8 @@
     <string name="prefs_scam_hybrid_cre_source_title">Выравнивание (CRE)</string>
     <string name="prefs_scam_hybrid_cre_source_summary">%s. Какой модуль совмещения кадров брать: системный (только vivo) или встроенный в приложение.</string>
     <string name="prefs_scam_hybrid_local_align_title">Локальное выравнивание F6</string>
+    <string name="prefs_scam_hybrid_la_engine_title">Где считать F6</string>
+    <string name="prefs_scam_hybrid_la_engine_summary">%s. Где считать F6. Авто: на CPU параллельно со склейкой, когда так можно, иначе на GPU до склейки (там он быстрее CPU). GPU: всегда на GPU, процессор свободен. Поле то же самое; если GPU не справится, посчитает CPU.</string>
     <string name="prefs_scam_hybrid_local_align_summary">%s. Точная подгонка кадров по участкам: больше деталей при съёмке с рук, около 0,8 с к обработке.</string>
     <string name="prefs_scam_hybrid_rejection_screen_title">Отбраковка движения</string>
     <string name="prefs_scam_hybrid_rejection_screen_summary">Как убираются призраки от движущихся объектов</string>
@@ -134,6 +136,8 @@
     <string name="prefs_scam_hybrid_mosaic_tetra_summary">%s. Как склеивать мозаику Tetra 4×4. T1 — детальнее и быстрее, остальные — прежние способы.</string>
     <string name="prefs_scam_hybrid_bento_weight_title">Кадры светов: вес</string>
     <string name="prefs_scam_hybrid_bento_weight_summary">Вес тёмного кадра в пересвеченных местах. Больше — он сильнее влияет на света, меньше — слабее.</string>
+    <string name="prefs_scam_hybrid_bento_ramp_title">Кадры светов: мягкий переход</string>
+    <string name="prefs_scam_hybrid_bento_ramp_summary">Насколько плавно тёмный кадр вступает к пересвету, в клетках 2×2. 0 — прежний резкий переход; больше — шире и мягче переход между экспозициями (зерно и яркость меняются постепенно). Отдельные яркие предметы не затрагиваются.</string>
     <string name="prefs_scam_hybrid_bento_sigma_title">Кадры светов: ширина ядра, px</string>
     <string name="prefs_scam_hybrid_bento_sigma_summary">Размытие тёмного кадра в светах. Больше — мягче света, меньше 0,7 — цветные зубцы на кромках.</string>
     <string name="prefs_scam_hybrid_bento_chroma_sigma_title">Кадры светов: цвет кромок светов, σ px</string>

@@ -124,6 +124,7 @@ public final class DevKeys {
         // viewfinder
         k.add(s(vf, "mosaic_preview", true, Lang.t("Модуль, измеренный как мозаика, сразу показывает RAW-видоискатель", "A module measured as a mosaic starts on the RAW viewfinder")));
         k.add(n(vf, "vf_priority", "1", Lang.t("Высокий приоритет потока видоискателя (0 — обычный)", "High priority of the viewfinder thread (0: normal)")));
+        k.add(n(vf, "vf_ark", "1", Lang.t("RAW-видоискатель: тон ARK итогового фото (0 — собственный вид видоискателя)", "RAW viewfinder: the photo's ARK tone (0: the viewfinder's own look)")));
         k.add(n(vf, "vf_gpu_priority", "1", Lang.t("Высокий приоритет GPU-контекста видоискателя (0 — обычный)", "High priority of the viewfinder GPU context (0: normal)")));
         // P212h (A6 = M11): the FULLRES viewfinder predicts the photo
         k.add(n(vf, "vf_native_gain", "1", Lang.t("OPPO FULLRES: усиление видоискателя — 1: только на экспозицию, которую режим не даёт (нехватка AE больше 0.3 EV), 2: замер видоискателя, пока экспозиция не задана вручную, 0: без усиления",
@@ -144,6 +145,10 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_hot_max_level", null, Lang.t("Горячие пиксели: предел уровня", "Hot pixels: level limit")));
         k.add(n(merge, "hybrid_hot_cap", null, Lang.t("Горячие пиксели: не больше мест на Мп полосы (0 — без предела)", "Hot pixels: at most this many sites per MP of a strip (0: no cap)")));
         k.add(n(merge, "hybrid_bento_invalid", null, Lang.t("Bento: порог негодных клеток", "Bento: invalid cell threshold")));
+        // P309: the soft transition's levels and reach (its width is the row «Кадры светов: мягкий переход»)
+        k.add(n(merge, "hybrid_bento_ramp_lo", null, Lang.t("Bento: уровень базы, где начинается переход", "Bento: base level where the transition starts")));
+        k.add(n(merge, "hybrid_bento_ramp_hi", null, Lang.t("Bento: уровень базы, где тёмный кадр уже один", "Bento: base level where the dark frame is alone")));
+        k.add(n(merge, "hybrid_bento_ramp_reach", null, Lang.t("Bento: радиус перехода от пересвета, клеток", "Bento: transition reach from the clip, cells")));
         k.add(n(merge, "hybrid_mosaic_block", null, Lang.t("Мозаика: блок цвета (1, 2, 4) вместо измеренного", "Mosaic: colour block (1, 2, 4) instead of the measured one")));
         k.add(n(merge, "hybrid_mosaic_share", null, Lang.t("Мозаика: доля голосов для решения", "Mosaic: vote share to decide")));
         k.add(n(merge, "hybrid_mosaic_native_night_kernel_scale", null, Lang.t("Нативная мозаика ночью: масштаб ядра", "Native mosaic at night: kernel scale")));
@@ -179,6 +184,8 @@ public final class DevKeys {
         k.add(n(post, "hybrid_isp_ccm", "1", Lang.t("vivo: цветовая матрица ISP по кадру (0 — матрицы DNG)", "vivo: the ISP colour matrix of the frame (0: the DNG matrices)")));
         k.add(n(post, "hybrid_dn_dark_chroma_hi", "4", Lang.t("Шумодав: цвет в тенях, верхний порог (x1e-4)", "Denoise: colour in the shadows, upper threshold (x1e-4)")));
         k.add(n(post, "hybrid_dn_dark_chroma_lo", "1.5", Lang.t("Шумодав: цвет в тенях, нижний порог (x1e-4)", "Denoise: colour in the shadows, lower threshold (x1e-4)")));
+        k.add(n(post, "hybrid_dn_huge_map", "4.3", Lang.t("Шумодав 200 МП: сила (карта силы; 1 — как при всех склеенных кадрах)", "Denoise 200 MP: strength (strength map; 1: as with every frame merged)")));
+        k.add(n(post, "hybrid_dn_huge_fine", "2", Lang.t("Шумодав 200 МП: срез мелкого шума яркости, в сигмах (0 — выкл.)", "Denoise 200 MP: fine luma noise coring, in sigmas (0: off)")));
         k.add(n(post, "hybrid_dn_dark_chroma_noise", "0.35", Lang.t("Шумодав: цвет в тенях, доля шума", "Denoise: colour in the shadows, noise share")));
         k.add(n(post, "hybrid_ark_hr_mix", "0.5", Lang.t("Тон, света Bento выше 4x: пик к p99.9 (доля)", "Tone, Bento highlights above 4x: peak towards p99.9 (share)")));
         k.add(n(post, "hybrid_ark_weight_center_hr", "0.75", Lang.t("Тон с запасом Bento: центр весов слияния", "Tone with Bento headroom: fusion weight centre")));

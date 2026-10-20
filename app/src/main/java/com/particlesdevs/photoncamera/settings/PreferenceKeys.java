@@ -583,6 +583,21 @@ public class PreferenceKeys {
         HYBRID_DEFAULTS.put("shasta_motion_max", 4f);
         HYBRID_DEFAULTS.put("soft_tone", 0f);    // AgX + Exposure Fusion with the Bento headroom
         HYBRID_DEFAULTS.put("bento_factor", 8f); // SCAM ultrashort_tet_factor
+        // P309 (owner, 2026-10-20: «нам нужно сделать более мягкий переход между экспозициями», «максимально мягкий переход ... чтобы
+        // не было резких скачков»): the ultrashort frames take over along smoothstep(0.4, 0.97) of the base level (spread by sigma 6
+        // cells), within 32 cells of a clip and in its connected bright area. OPPO lamp burst after the app's denoise (host
+        // emulation): the step of the grain per 4 px at the clip border 1.76x -> 1.09x (fine), 1.21x -> 1.10x (coarse); sigma 2 /
+        // threshold 0.6 / reach 16 gave 1.16x / 1.18x. The ring next to the clip no longer darker (x7u_1x +7 %), clipped areas and
+        // bursts without a clip unchanged.
+        HYBRID_DEFAULTS.put("bento_ramp", 6f);
+        HYBRID_DEFAULTS.put("bento_ramp_lo", 0.4f);
+        HYBRID_DEFAULTS.put("bento_ramp_hi", 0.97f);
+        HYBRID_DEFAULTS.put("bento_ramp_reach", 32f);
+        // P308 (owner, 2026-10-20: «нам нужно перевести всё на гпу», «сделай гпу выравнивание и дай возможность выбора»): F6 auto =
+        // the GPU where the CPU field would come whole before the merge, the CPU where it streams alongside it. OPPO Find X7 Ultra
+        // replays, program cache warm: the GPU 0.03-0.9 s faster than the whole CPU field, the streamed CPU field 0.03-0.3 s faster
+        // than the GPU; the same field either way (merge PSNR 124 dB between them).
+        HYBRID_DEFAULTS.put("la_engine", 2f);
     }
 
     /** The hybrid route is selected (pref_merge_route, see {@link #mergeRoute()}). */
@@ -795,6 +810,9 @@ public class PreferenceKeys {
             {"shastaSharpness", "shasta_sharpness"}, {"bentoUsWeight", "bento_weight"},
             {"shastaMaxRatio", "shasta_max_ratio"}, {"filterVariance", "filter_variance"},
             {"bentoUsSigma", "bento_sigma"}, {"bentoFrames", "bento_frames"}, {"bentoChromaSigma", "bento_chroma_sigma"},
+            // P309: the soft transition of the ultrashort frames (the share ramp of the base level near a clip; worker default 0 = the
+            // previous mask, replays unchanged; app defaults below)
+            {"bentoRamp", "bento_ramp"}, {"bentoRampLo", "bento_ramp_lo"}, {"bentoRampHi", "bento_ramp_hi"}, {"bentoRampReach", "bento_ramp_reach"},
             {"dilateFloor", "dilate_floor"}, {"widenBelow", "widen_below"}, {"chromaDiff", "chroma_diff"},
             {"bentoValidate", "bento_validate"}, {"bentoMotionMax", "bento_motion_max"},
             // P68: motion fallback of forced Shasta frames, % of the blocks (the Shasta mode is written below)
@@ -808,6 +826,8 @@ public class PreferenceKeys {
             // F6 tile-local alignment (research/hybrid5/f6_local_align.md): 0 off / 1 bilinear field / 2 constant per tile;
             // the 6.1 auto rule in daylight needs F6 and this much RMS donor motion; daylight 6.1 noise multipliers.
             {"localAlign", "local_align"}, {"s61MinMotion", "s61_min_motion"},
+            // P308: where F6 runs, 2 auto / 1 the GPU / 0 the CPU (worker default 0: replays unchanged; the app writes its default 2)
+            {"laGpu", "la_engine"},
             {"s61DayTensorNoise", "s61_day_tensor_noise"}, {"s61DayGdNoise", "s61_day_gd_noise"},
             {"s61TensorNoise", "s61_tensor_noise"}, {"s61GdNoise", "s61_gd_noise"},
             {"hotSigma", "hot_sigma"}, {"hotBaseSigma", "hot_base_sigma"}, {"hotFrames", "hot_frames"},
@@ -994,7 +1014,13 @@ public class PreferenceKeys {
                 if (file != null && file.isFile()) {
                     stamp = file.lastModified();
                     if (stamp == scamDevStamp) return scamDevValues.get(key);
-                    text = new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+                    try {
+                        text = new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+                    } catch (java.io.IOException | SecurityException denied) {
+                        // P303: listed but not the app's own (EACCES): the folder grant, as ScamDevFile.read
+                        text = ScamDevFile.readGranted(context);
+                        stamp = 0;
+                    }
                 } else if (context != null) {
                     text = ScamDevFile.readGranted(context);
                 }
@@ -1005,7 +1031,7 @@ public class PreferenceKeys {
                         if (parts.length == 2) try { values.put(parts[0], Float.parseFloat(parts[1])); } catch (NumberFormatException ignored) { }
                     }
                 }
-            } catch (java.io.IOException | RuntimeException ignored) { }
+            } catch (RuntimeException ignored) { }
             scamDevStamp = stamp;
             scamDevValues = values;
         }

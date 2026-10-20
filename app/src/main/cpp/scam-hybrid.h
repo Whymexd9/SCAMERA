@@ -19,6 +19,7 @@
 // effective-frames map and the merged Bayer RAW for the DNG.
 #include "scam-superres-gpu.h"
 #include "scam-chroma-gpu.h" // P80 mosaicChromaMedian on the GPU
+#include "scam-la-gpu.h"     // P308 the F6 alignment on the GPU (laGpu)
 #include "scam-crash.h"
 #include "scam-progress.h" // P220 the heartbeat counters (the app's watchdog and processing ring)
 #include <atomic>
@@ -160,6 +161,17 @@ struct HybridTuning {
     float bentoNearClip=0.85f;      // the dilated mask keeps only cells near saturation (any sample >= this, r = 1, sigma = 1):
                                     // elsewhere in the dilation band the 20 N frames beat the one ultrashort frame (x8..16 gain)
     int bentoMaxHole=15;         // HasLargeHoleNeedingInpainting (connected clipped us cells)
+    // P309 (owner, 2026-10-20: «нам нужно сделать более мягкий переход между экспозициями»): the ramp mask. With the mask above the
+    // ultrashort frames take over in about one cell along the bentoNearClip contour: there the share of the ultrashort frames is
+    // m U / (m U + (1 - m)(1 + sum A of the others)), which at ~20 N frames stays near 0 until m > 0.9 (OPPO lamp burst: the noise
+    // of the merge x2.5 within 6 px). bentoRamp > 0: the mask is the SHARE of the ultrashort frames, smoothstep(bentoRampLo,
+    // bentoRampHi) of the base level (each cell's brightest site over its 3x3 cells), only in the bright area connected to a clipped
+    // cell (cells >= bentoRampLo) and within bentoRampReach cells of one (dilated, then blurred), 1 on clipped cells, then spread by a
+    // gaussian of sigma bentoRamp cells inside that bright area only (never onto the dark side of a sharp edge), never below the share
+    // the mask above gave; the frame weights then turn the share into m (hybridReconstruct).
+    // 0 = the mask above (replays unchanged); the app sends its own values (bento_ramp*).
+    float bentoRamp=0.f,bentoRampLo=0.6f,bentoRampHi=0.97f;
+    int bentoRampReach=16;
     float bentoUsWeight=1.f;     // A of the ultrashort frame (driver: 1.0)
     float bentoUsSigma=1.f;      // isotropic kernel sigma (px) of the ultrashort frame: inside the mask it is the only frame,
                                  // and one Bayer frame needs >= ~0.7 px not to leave R/B holes (SCAM: base kernel x2.5 under Bento)
@@ -275,6 +287,12 @@ struct HybridTuning {
     int laStream=1;              // P33 W2.1: 1 = the field in tile-row bands alongside the GPU merge (LaStream), 0 = the whole field first;
                                  // P48: 1 takes windowed gray rows when the whole gray images do not fit, 2 = always windowed (A/B)
     int laScam=0;                // P33 W2.1: nice value of the LaStream threads (0 = as the merge thread; > 0 leaves the CPU to it)
+    // P308 (owner, 2026-10-20: «сделай гпу выравнивание и дай возможность выбора»): 1 = the F6 field on the GPU (scam-la-gpu.h: the
+    // same steps, float rounding apart; LaGpuWorker from the alignment on); 0 = the CPU (the banded LaStream alongside the merge, or
+    // the whole field first); 2 = auto: the GPU where the CPU field would come whole before the merge (Sabre 2x checked with the
+    // whole field, sub-frames, large frames without the large stream), the CPU where its bands stream alongside the merge (hidden
+    // there). A GPU failure falls back to the CPU. The app writes it (pref_scam_hybrid_la_engine, default auto).
+    int laGpu=0;
     int isoKernel=0;             // diagnostics, round-4 kernel only (sabre61 off): 1 = isotropic sigma = base (no edge shaping), 2 = also no
                                  // flat widening: a "spatial RGB"-like isotropic Gaussian (SCAM 9.6 spatial_rgb: sigma 0.28..0.40 px)
     // P14 / P15 colour-block mosaic: 0 = the header's block, measured from the base frame when the header has none or says
@@ -631,6 +649,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("kernelFloor",&t.kernelFloor)||set("chromaDiff",&t.chromaDiff)||set("chromaDiffClamp",nullptr,&t.chromaDiffClamp)||set("rawTensor",&t.rawTensor)||set("rawNoise",&t.rawNoise)||set("bento",nullptr,&t.bento)
             ||set("bentoHighlight",&t.bentoHighlight)||set("bentoDilate",nullptr,&t.bentoDilate)||set("bentoSmooth",&t.bentoSmooth)
             ||set("grid",nullptr,&t.grid)||set("bentoMinClipped",&t.bentoMinClipped)||set("bentoMaxUsClipped",&t.bentoMaxUsClipped)||set("bentoNearClip",&t.bentoNearClip)||set("bentoMaxHole",nullptr,&t.bentoMaxHole)
+            ||set("bentoRamp",&t.bentoRamp)||set("bentoRampLo",&t.bentoRampLo)||set("bentoRampHi",&t.bentoRampHi)||set("bentoRampReach",nullptr,&t.bentoRampReach)
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
@@ -642,7 +661,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("rimRatio",nullptr,&t.rimRatio)||set("rimSigma",&t.rimSigma)||set("rimLo",&t.rimLo)||set("rimHi",&t.rimHi)||set("rimStride",nullptr,&t.rimStride)
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
-            ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("laStream",nullptr,&t.laStream)||set("laScam",nullptr,&t.laScam)||set("isoKernel",nullptr,&t.isoKernel)
+            ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("laStream",nullptr,&t.laStream)||set("laGpu",nullptr,&t.laGpu)||set("laScam",nullptr,&t.laScam)||set("isoKernel",nullptr,&t.isoKernel)
             ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicGainField",nullptr,&t.mosaicGainField)||set("mosaicGainZones",nullptr,&t.mosaicGainZones)||set("mosaicUsSmooth",nullptr,&t.mosaicUsSmooth)||set("plainChromaMedian",nullptr,&t.plainChromaMedian)||set("baseDemosaic",&t.baseDemosaic)||set("baseDemosaicAniso",&t.baseDemosaicAniso)||set("baseDemosaicBayerLo",&t.baseDemosaicBayerLo)||set("baseDemosaicBayerHi",&t.baseDemosaicBayerHi)||set("baseDemosaicDetailLo",&t.baseDemosaicDetailLo)||set("baseDemosaicDetailHi",&t.baseDemosaicDetailHi)||set("bentoSubpixel",nullptr,&t.bentoSubpixel)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
@@ -1370,6 +1389,7 @@ uniform int cy0;
 uniform int cy1;
 uniform vec4 dl; // offset, scale, bento active, floor (rejection below it does not spread)
 uniform int validPlanesU; // bentoValidate: per-ultrashort-frame validity planes after the mask plane (0 = none)
+uniform float rampKU;     // P309: the ramp mask's K (0 = the previous mask)
 #ifdef SHARED_TILES
 // P76 (Adreno: SHARED_TILES): the 12x12 rejection weights around the group's 8x8 cells, read once per group (25 reads a cell
 // before; Adreno 750 dilate 533 -> 234 ms, float rounding differs by <= 2.3e-6). Mali keeps the plain reads: its shared memory is
@@ -1414,6 +1434,19 @@ void main(){
             float v=1.0;
             if(validPlanesU>0){int k=0;for(int j=1;j<f;j++)if(int(fParam[j].w)==5)k++;if(k<validPlanesU)v=bmask[(k+1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];}
             r=m*fParam[f].y*v;
+            // P309: where the ramp lets the ultrashort frames into unclipped areas (share below ~1) they follow the N frames' acceptance
+            // there: where those are rejected (motion: a hand, a screen) the ultrashort frames go as well; where they agree the
+            // ultrashort frames stay (their own rejection would also refuse the few % of level a lamp's flicker leaves). The clipped
+            // core keeps them as before (nothing else covers it).
+            if(rampKU>0.0){
+                float sh=m/max(m+rampKU*(1.0-m),1.0e-6);
+                if(sh<1.0){
+                    float acc=0.0;int cnt=0;
+                    int yy=clamp(cy,ry0,ry1-1);
+                    for(int j=1;j<frameCount;j++){int role=int(fParam[j].w);if(role==5||role==3)continue;acc+=rawR[(j-1)*(ry1-ry0)*w2+(yy-ry0)*w2+cx];cnt++;}
+                    r*=mix(cnt>0?acc/float(cnt):1.0,1.0,smoothstep(0.9,1.0,sh));
+                }
+            }
         } else r*=(1.0-m);
     } else if(int(fParam[f].w)==5)r=0.0;
     robust[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx]=r;
@@ -1603,6 +1636,7 @@ void baseChromaDiff(inout vec2 cdNum,inout vec2 cdDen,inout vec2 cdLo,inout vec2
 // green at O bilinear from the four sites around it; R - G and B - G from the 5x5 core's red / blue sites, weighted by distance
 // (narrowed across the edge) and by how close their green is to the green at O (a red / green edge flips R - G: the side O
 // belongs to). Returns false (the merge's value stays) at a clipped or flagged site of the neighbourhood.
+uniform float rampKU; // P309: the ramp mask's K (0 = the previous mask): the base demosaic fades out over share 0..0.5
 uniform vec4 bdU; // x = share at no donor (HybridTuning::baseDemosaic), y = anisotropy, z / w = structure / noise ratio from
                   // which to which the demosaic takes over (flat areas keep the merge's wider, less noisy kernel)
 bool bayerDemosaic(vec2 O,out vec3 rgb,out float detail){
@@ -1842,8 +1876,10 @@ void main(){
     }
     // P282: the base's own demosaic by the donors' share (after the colour difference: it replaces that share's value)
     vec3 d;float detail;
-    if(tDem>1.0e-3&&m<=0.0&&bayerDemosaic(pos,d,detail)){
-        tDem*=smoothstep(bdU.z,bdU.w,detail);
+    float rampT=m<=0.0?1.0:0.0;
+    if(rampKU>0.0&&m>0.0)rampT=1.0-smoothstep(0.0,0.5,m/max(m+rampKU*(1.0-m),1.0e-6));
+    if(tDem*rampT>1.0e-3&&bayerDemosaic(pos,d,detail)){
+        tDem*=rampT*smoothstep(bdU.z,bdU.w,detail);
         for(int c=0;c<3;c++)outRgb[i*3+c]=mix(outRgb[i*3+c],d[c],tDem);
     }
 }
@@ -2653,6 +2689,7 @@ uniform vec4 natK;     // as kHybMergeMosaic
 uniform int natRy1;
 uniform int natWidenU;
 uniform vec2 natWidenS; // as kHybMergeMosaic
+uniform float rampKU;   // P309: as kHybChroma (the native base demosaic fades out over share 0..0.5 under the ramp)
 #define NB (NAT_R+1)
 vec3 natCov(vec2 B){
     int w2=size.x/2;
@@ -3044,7 +3081,12 @@ void main(){
 #if defined(NAT_DEMOSAIC) && NAT_DEMOSAIC
     {
         // P282: the share of the base's own demosaic: 1 - smoothstep(0, K, F) of the donors' accepted frames F, as the widening
-        if(kD.w>0.5&&bmask[(cy-cy0)*w2+cx]>0.0)return; // Bento's highlights keep the merge
+        float rampT=1.0;
+        if(kD.w>0.5){
+            float mm=bmask[(cy-cy0)*w2+cx];
+            if(rampKU>0.0){if(mm>0.0){rampT=1.0-smoothstep(0.0,0.5,mm/max(mm+rampKU*(1.0-mm),1.0e-6));if(rampT<=0.0)return;}}
+            else if(mm>0.0)return; // Bento's highlights keep the merge
+        }
         if(kE.x>=0.0||mergeModeU.y!=0)return;
         float K=natWidenS.y>0.0?natWidenS.y:kD.x;
         float frames=0.0;
@@ -3055,7 +3097,7 @@ void main(){
             frames+=r/max(fParam[f].y,1.0e-6);
             if(frames>=K)return; // the merge alone from here (most of a static frame: a few donors' reads, not all)
         }
-        float t=natDemU.x*(1.0-smoothstep(0.0,max(K,1.0e-3),frames));
+        float t=natDemU.x*(1.0-smoothstep(0.0,max(K,1.0e-3),frames))*rampT;
         if(t<=1.0e-3)return;
         vec3 d;float detail;
         if(!natDemosaic(S,fParam[0].x,d,detail))return;
@@ -3701,6 +3743,7 @@ public:
         std::vector<int> role;
         float baseSlope=0,baseOffset=0,white=0;
         const std::vector<float>* mask=nullptr;         // per cell (w/2 x h/2), 0 = no Bento
+        float rampK=0.f; // P309: the ramp mask's K (share = m / (m + K (1 - m))); 0 = the previous mask
         std::vector<const std::vector<float>*> maskValid; // bentoValidate: per ultrashort frame in merge order, the validity factor per cell
         std::vector<int> hotList;                       // normal frames of the fixed-pattern outlier test (base first); empty = off
         std::array<float,4> k61a{},k61b{},k61c{};      // Sabre 6.1 kernel uniforms (k61a[3] = 0: round-4 kernel)
@@ -4131,6 +4174,7 @@ public:
         glUseProgram(dilateProgram);
         glUniform4f(loc(dilateProgram,"dl"),tune.dilateOffset,tune.dilateScale,bento?1.f:0.f,tune.dilateFloor);
         glUniform1i(loc(dilateProgram,"validPlanesU"),bento?int(in.maskValid.size()):0);
+        glUniform1f(loc(dilateProgram,"rampKU"),bento?in.rampK:0.f); // P309
         glUseProgram(mergeProgram);
         glUniform4f(loc(mergeProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
         {const float us=std::max(0.3f,tune.bentoUsSigma),cs=tune.bentoChromaSigma;
@@ -4160,6 +4204,7 @@ public:
             glUniform4i(loc(chromaProgram,"kG"),g,ow,0,0);
             glUniform4i(loc(chromaProgram,"mergeModeU"),in.mergeMode,in.noBase?1:0,0,0);
             glUniform2f(loc(chromaProgram,"cdU"),std::clamp(tune.chromaDiff,0.f,1.f),tune.chromaDiffClamp?1.f:0.f);
+            glUniform1f(loc(chromaProgram,"rampKU"),bento?in.rampK:0.f); // P309
             glUniform4f(loc(chromaProgram,"bdU"),std::clamp(tune.baseDemosaic,0.f,1.f),std::clamp(tune.baseDemosaicAniso,0.f,2.f),
                         tune.baseDemosaicBayerLo,std::max(tune.baseDemosaicBayerHi,tune.baseDemosaicBayerLo+0.01f)); // P282
             glUseProgram(mergeProgram);
@@ -4218,6 +4263,7 @@ public:
                 glUniform1i(loc(mosaicProgram,"natWidenU"),nat->widenRule);
                 glUniform1i(loc(mosaicProgram,"natBilinU"),tune.mosaicRobustBilinear); // P188
                 glUniform2f(loc(mosaicProgram,"natWidenS"),nat->widenMul,nat->widenFrames);
+                glUniform1f(loc(mosaicProgram,"rampKU"),bento?in.rampK:0.f); // P309
                 glUniform1i(loc(mosaicProgram,"natClampU"),nat->clampCov); // P34
                 const float us=std::max(0.3f,tune.bentoUsSigma),rs=std::max(0.3f,tune.rimSigma);
                 glUniform4f(loc(mosaicProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
@@ -4806,8 +4852,15 @@ inline void hybridPrewarmGpu(const HybridTuning& tune,int block,const std::funct
         const bool fill=tune.mosaicChromaFill==1&&std::clamp(tune.mosaicFillSupport,0.f,1.f)>0.f;
         gpu.prewarmNative(mb,window,fill,tune.mosaicWindowFull!=0,tune.mosaicGeneric!=0,tune.cellClip!=0||outlierPrograms,tune.baseDemosaic>0.f);
     }
+    // P308: the GPU F6's programs as well (laGpu: «Где считать F6» = GPU), in their own context (the merge's made current again
+    // by its own cleanup); a failure costs only their compile at the shot
+    std::string laNote;
+    if(tune.laGpu!=0&&tune.localAlign>0){
+        try{LaGpu f6(hybridProgramCacheDir());laNote=", F6"+f6.cacheNote();}
+        catch(const std::exception& e){laNote=std::string(", F6 failed: ")+e.what();}
+    }
     report("HYBRID PREWARM: block "+std::to_string(block)+(native?" native mosaic":" plain")+" programs ready in "
-        +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()))+" ms ("+gpu.renderer+";"+gpu.compileMs+")");
+        +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()))+" ms ("+gpu.renderer+";"+gpu.compileMs+laNote+")");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -4909,20 +4962,25 @@ struct BentoResult { bool active=false;std::string reason;double clippedFraction
 // same for every call of a burst (each ultrashort frame, the validation masks with bento 2): built once, during the alignment.
 // mask: the mask before the ultrashort frame's check, built only when a call can use it (clippedFraction above bentoMinClipped, or
 // bento 2); full says it was.
-struct BentoBase { double clippedFraction=0; bool full=false; std::vector<float> mask; };
+struct BentoBase { double clippedFraction=0; bool full=false; std::vector<float> mask;
+    std::vector<float> prev; /* P309: with bentoRamp the previous mask: the ramp never gives less than it, the counts of
+                                bentoMask stay on its cells */ };
 inline BentoBase bentoBase(const Burst& b,const HybridTuning& t) {
     BentoBase res;
     const int w2=b.w/2,h2=b.h/2;
     std::vector<uint8_t> clip(size_t(w2)*h2,0),near(size_t(w2)*h2,0);
     std::atomic<long> clipped{0};
     const float nearLevel=std::min(t.bentoNearClip,t.bentoHighlight);
+    const bool ramp=t.bentoRamp>0.f;
+    std::vector<float> level(ramp?size_t(w2)*h2:0); // P309: each cell's brightest site
     mergeRowBands(h2,[&](int y0,int y1){
         long lc=0;
         for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
-            bool c=false,nr=false;
-            for(int p=0;p<4;++p){const float v=b.sample(0,2*cx+(p&1),2*cy+(p>>1));if(v>=t.bentoHighlight)c=true;if(v>=nearLevel)nr=true;}
+            bool c=false,nr=false;float top=0.f;
+            for(int p=0;p<4;++p){const float v=b.sample(0,2*cx+(p&1),2*cy+(p>>1));if(v>=t.bentoHighlight)c=true;if(v>=nearLevel)nr=true;top=std::max(top,v);}
             if(c){clip[size_t(cy)*w2+cx]=1;++lc;}
             if(nr)near[size_t(cy)*w2+cx]=1;
+            if(ramp)level[size_t(cy)*w2+cx]=top;
         }
         clipped+=lc;
     });
@@ -4991,6 +5049,102 @@ inline BentoBase bentoBase(const Burst& b,const HybridTuning& t) {
             }
         });
     }
+    if(ramp){
+        // P309: the previous mask's cells: the counts of bentoMask (motion share, ultrashort clipping) stay on them
+        res.prev=std::move(mask);
+        std::vector<float>().swap(tmp);std::vector<uint8_t>().swap(dil);std::vector<uint8_t>().swap(near);
+        // the share of the ultrashort frames. Separable gaussian of a cell plane (sigma cells, window 3 sigma, edges clamped).
+        auto blur=[&](std::vector<float>& v,float sigma){
+            const int r=std::max(1,int(std::ceil(3.f*sigma)));
+            std::vector<float> k(size_t(2*r+1));float ks=0;
+            for(int i=-r;i<=r;++i){k[size_t(i+r)]=std::exp(-0.5f*float(i*i)/(sigma*sigma));ks+=k[size_t(i+r)];}
+            for(float& x:k)x/=ks;
+            std::vector<float> tmp(v.size());
+            mergeRowBands(h2,[&](int y0,int y1){
+                for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
+                    float s=0;for(int i=-r;i<=r;++i)s+=k[size_t(i+r)]*v[size_t(cy)*w2+std::clamp(cx+i,0,w2-1)];
+                    tmp[size_t(cy)*w2+cx]=s;
+                }
+            });
+            mergeRowBands(h2,[&](int y0,int y1){
+                for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
+                    float s=0;for(int i=-r;i<=r;++i)s+=k[size_t(i+r)]*tmp[size_t(std::clamp(cy+i,0,h2-1))*w2+cx];
+                    v[size_t(cy)*w2+cx]=s;
+                }
+            });
+        };
+        const float lo=std::min(t.bentoRampLo,t.bentoRampHi-0.01f),hi=t.bentoRampHi;
+        // the level a bright cell's kernel windows see: the brightest of its 3x3 cells (next to a clip the N frames' samples clip as
+        // well and their mean would come out grey: the share must be full there); a cell darker than bentoRampLo keeps its own (the
+        // dark side of a sharp edge, a device in front of a window, keeps the N frames' sharp edge)
+        std::vector<float> local(level.size());
+        mergeRowBands(h2,[&](int y0,int y1){
+            for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
+                float m=0.f;
+                for(int dy=-1;dy<=1;++dy){const int yy=std::clamp(cy+dy,0,h2-1);
+                    for(int dx=-1;dx<=1;++dx)m=std::max(m,level[size_t(yy)*w2+std::clamp(cx+dx,0,w2-1)]);}
+                local[size_t(cy)*w2+cx]=level[size_t(cy)*w2+cx]>=lo?m:level[size_t(cy)*w2+cx];
+            }
+        });
+        // only the bright area a clip belongs to: cells at or above bentoRampLo reached from a clipped cell through such cells
+        // (8-connected); a separate bright object (an LED next to a lamp, flickering in the ultrashort frames) keeps the N frames.
+        // Its border needs no fade: the share is 0 there (level bentoRampLo).
+        std::vector<float> conn(level.size(),0.f);
+        {
+            std::vector<int> queue;queue.reserve(std::min(level.size(),size_t(clipped)*4+16));
+            for(size_t i=0;i<clip.size();++i)if(clip[i]){conn[i]=1.f;queue.push_back(int(i));}
+            for(size_t q=0;q<queue.size();++q){
+                const int c=queue[q],cx=c%w2,cy=c/w2;
+                for(int dy=-1;dy<=1;++dy){const int yy=cy+dy;if(yy<0||yy>=h2)continue;
+                    for(int dx=-1;dx<=1;++dx){const int xx=cx+dx;if(xx<0||xx>=w2)continue;
+                        const size_t j=size_t(yy)*w2+xx;
+                        if(conn[j]==0.f&&local[j]>=lo){conn[j]=1.f;queue.push_back(int(j));}}}
+            }
+        }
+        level.swap(local);std::vector<float>().swap(local);
+        // the reach: clipped cells dilated by bentoRampReach (a square, by row and column counts), then blurred (sigma reach / 4)
+        const int reach=std::max(1,t.bentoRampReach);
+        std::vector<float> nearClip(size_t(w2)*h2,0.f);
+        {
+            std::vector<uint8_t> rows(size_t(w2)*h2,0);
+            mergeRowBands(h2,[&](int y0,int y1){
+                for(int cy=y0;cy<y1;++cy){
+                    const uint8_t* c=clip.data()+size_t(cy)*w2;int last=-1000000;
+                    std::vector<int> nextOn(size_t(w2)+1,1000000);
+                    for(int cx=w2-1;cx>=0;--cx)nextOn[size_t(cx)]=c[cx]?cx:nextOn[size_t(cx)+1];
+                    for(int cx=0;cx<w2;++cx){if(c[cx])last=cx;rows[size_t(cy)*w2+cx]=(cx-last<=reach||nextOn[size_t(cx)]-cx<=reach)?1:0;}
+                }
+            });
+            mergeRowBands(w2>=64?w2:64,[&](int x0,int x1){
+                for(int cx=x0;cx<std::min(x1,w2);++cx){
+                    int last=-1000000;std::vector<int> nextOn(size_t(h2)+1,1000000);
+                    for(int cy=h2-1;cy>=0;--cy)nextOn[size_t(cy)]=rows[size_t(cy)*w2+cx]?cy:nextOn[size_t(cy)+1];
+                    for(int cy=0;cy<h2;++cy){if(rows[size_t(cy)*w2+cx])last=cy;nearClip[size_t(cy)*w2+cx]=(cy-last<=reach||nextOn[size_t(cy)]-cy<=reach)?1.f:0.f;}
+                }
+            });
+        }
+        blur(nearClip,std::max(1.f,float(reach)/4.f));
+        std::vector<float> share(size_t(w2)*h2);
+        mergeRowBands(h2,[&](int y0,int y1){
+            for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
+                const size_t i=size_t(cy)*w2+cx;
+                if(clip[i]){share[i]=1.f;continue;}
+                const float u=std::clamp((level[i]-lo)/(hi-lo),0.f,1.f);
+                share[i]=std::clamp(u*u*(3.f-2.f*u)*nearClip[i]*conn[i],0.f,1.f);
+            }
+        });
+        // the share spread by a gaussian of sigma bentoRamp cells, only over the clip's bright area (the max of the two: never
+        // lower next to a clip, where the N frames' samples clip as well and their mean would come out grey); the darker side of
+        // a sharp edge (a device in front of a window) keeps the N frames: one ultrashort frame is x8..16 noisier there
+        {
+            std::vector<float> spread=share;
+            blur(spread,t.bentoRamp);
+            std::vector<float>().swap(level);
+            for(size_t i=0;i<share.size();++i)if(conn[i]>0.f)share[i]=std::max(share[i],std::min(spread[i],nearClip[i]));
+        }
+        res.mask=std::move(share);res.full=true;
+        return res;
+    }
     res.mask=std::move(mask);res.full=true;
     return res;
 }
@@ -5023,13 +5177,17 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
         long lu=0,lm=0,li=0;
         for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
             const size_t i=size_t(cy)*w2+cx;
-            if(mask[i]<=0.f)continue;
-            ++lm;
+            // P309: with the ramp the previous mask's cells are checked too (the share takes the larger of the two) and the counts
+            // (motion share, ultrashort clipping) stay on them
+            const bool prev=t.bentoRamp>0.f&&base->prev.size()==mask.size()&&base->prev[i]>0.f;
+            if(mask[i]<=0.f&&!prev)continue;
+            const bool counted=t.bentoRamp<=0.f||base->prev.size()!=mask.size()||prev;
+            if(counted)++lm;
             const DonorPoint o=usH.bayerOrigin(2*cx,2*cy);
             const int ux=std::clamp(int(std::lround(o.x*0.5f)),0,w2-1),uy=std::clamp(int(std::lround(o.y*0.5f)),0,h2-1);
             float us[4];bool c=false;
             for(int p=0;p<4;++p){us[p]=b.sample(usSlot,2*ux+(p&1),2*uy+(p>>1));if(us[p]>=t.bentoHighlight)c=true;}
-            if(c){usClip[i]=1;++lu;}
+            if(c){usClip[i]=1;if(counted)++lu;}
             if(t.bentoSubpixel){
                 // each phase bilinear between the four cells around the aligned position (the clip test above stays the
                 // nearest cell's: a clipped ultrashort sample is a lower bound, not an error)
@@ -5057,7 +5215,7 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
                 error=std::max(error,std::sqrt(p2));
             }
             if(error<t.bentoInvalid)continue;
-            ++li;
+            if(counted)++li;
             res.valid[i]=std::clamp(1.f-error,0.f,1.f);
             mask[i]=std::clamp((1.f-error)*mask[i],0.f,1.f);
             const float lo=std::min({base3[0],base3[1],base3[2]}),hi=std::max({base3[0],base3[1],base3[2]});
@@ -6153,14 +6311,48 @@ inline std::vector<float> hybridGridBlur(const std::vector<float>& a,int gw,int 
     const int r=std::max(1,int(std::ceil(3.f*sigma)));
     std::vector<float> k(size_t(2*r+1));for(int i=-r;i<=r;++i)k[size_t(i+r)]=std::exp(-0.5f*float(i*i)/(sigma*sigma));
     std::vector<float> t(a.size(),0.f),o(a.size(),0.f);
-    for(int y=0;y<gh;++y)for(int x=0;x<gw;++x){
-        float s=0;for(int i=std::max(-r,-x);i<=std::min(r,gw-1-x);++i)s+=k[size_t(i+r)]*a[size_t(y)*gw+x+i];
-        t[size_t(y)*gw+x]=s;
-    }
-    for(int y=0;y<gh;++y)for(int x=0;x<gw;++x){
-        float s=0;for(int i=std::max(-r,-y);i<=std::min(r,gh-1-y);++i)s+=k[size_t(i+r)]*t[size_t(y+i)*gw+x];
-        o[size_t(y)*gw+x]=s;
-    }
+    // P308: on all cores, and four outputs at a time whose sums run over the same taps (four rows of the horizontal pass, four
+    // columns of the vertical one): each output is the same sum in the same order as before, the chains no longer wait on each
+    // other (0.2 s of every ultrashort frame of a 50 MP shot one output at a time).
+    const float* kp=k.data();const float* ap=a.data();float* tp=t.data();float* op=o.data();
+    const int R=r,GW=gw,GH=gh;
+    mergeRowBands((gh+3)/4,[=](int q0,int q1){
+        for(int q=q0;q<q1;++q){
+            const int y=4*q;
+            if(y+4<=GH){
+                for(int x=0;x<GW;++x){
+                    float s0=0,s1=0,s2=0,s3=0;
+                    const float* r0=ap+size_t(y)*GW+x;const float* r1=r0+GW;const float* r2=r1+GW;const float* r3=r2+GW;
+                    for(int i=std::max(-R,-x);i<=std::min(R,GW-1-x);++i){
+                        const float kk=kp[size_t(i+R)];
+                        s0+=kk*r0[i];s1+=kk*r1[i];s2+=kk*r2[i];s3+=kk*r3[i];
+                    }
+                    tp[size_t(y)*GW+x]=s0;tp[size_t(y+1)*GW+x]=s1;tp[size_t(y+2)*GW+x]=s2;tp[size_t(y+3)*GW+x]=s3;
+                }
+            } else for(int yy=y;yy<GH;++yy)for(int x=0;x<GW;++x){
+                float s=0;for(int i=std::max(-R,-x);i<=std::min(R,GW-1-x);++i)s+=kp[size_t(i+R)]*ap[size_t(yy)*GW+x+i];
+                tp[size_t(yy)*GW+x]=s;
+            }
+        }
+    });
+    mergeRowBands(gh,[=](int y0,int y1){
+        for(int y=y0;y<y1;++y){
+            const int i0=std::max(-R,-y),i1=std::min(R,GH-1-y);
+            int x=0;
+            for(;x+4<=GW;x+=4){
+                float s0=0,s1=0,s2=0,s3=0;
+                for(int i=i0;i<=i1;++i){
+                    const float kk=kp[size_t(i+R)];const float* c=tp+size_t(y+i)*GW+x;
+                    s0+=kk*c[0];s1+=kk*c[1];s2+=kk*c[2];s3+=kk*c[3];
+                }
+                op[size_t(y)*GW+x]=s0;op[size_t(y)*GW+x+1]=s1;op[size_t(y)*GW+x+2]=s2;op[size_t(y)*GW+x+3]=s3;
+            }
+            for(;x<GW;++x){
+                float s=0;for(int i=i0;i<=i1;++i)s+=kp[size_t(i+R)]*tp[size_t(y+i)*GW+x];
+                op[size_t(y)*GW+x]=s;
+            }
+        }
+    });
     return o;
 }
 // base / us: plain Bayer frames w x h (sensor CFA `cfa`, black of the 2x2 phase), us at `expected` x the base's exposure.
@@ -6443,6 +6635,27 @@ inline HybridUsCheck hybridUsRowsCheck(const HybridInput& input,int f,const uint
         report(line);
     }
     return res;
+}
+
+// P308: the ultrashort frames of a mosaic burst checked at once, each its own binned frame `us[i]` against the shared base (the small
+// tile grids of hybridUltrashortLocal leave most cores idle frame by frame: 0.8 s for three frames of a 50 MP shot): the same
+// checks and results, their report lines in frame order.
+inline std::vector<HybridUsCheck> hybridUsRowsChecks(const HybridInput& input,const std::vector<int>& frames,const std::vector<uint16_t*>& us,
+                                                    const uint16_t* base,int w,int h,const HybridTuning& t,const std::string& tag,
+                                                    const std::function<void(const std::string&)>& report){
+    const size_t n=frames.size();
+    std::vector<HybridUsCheck> out(n);std::vector<std::vector<std::string>> lines(n);
+    {
+        std::vector<std::future<void>> jobs;
+        auto run=[&](size_t i){out[i]=hybridUsRowsCheck(input,frames[i],base,us[i],w,h,t,tag,[&lines,i](const std::string& l){lines[i].push_back(l);});};
+        for(size_t i=0;i+1<n;++i){
+            try{jobs.push_back(std::async(std::launch::async,run,i));}catch(const std::system_error&){run(i);}
+        }
+        if(n>0)run(n-1);
+        for(auto& j:jobs)j.get();
+    }
+    if(report)for(const auto& v:lines)for(const auto& l:v)report(l);
+    return out;
 }
 
 // The plain Bayer burst's ultrashort frames through steps 1-3 above (owner, 2026-10-19: «исправь это во всех режимах»), on the
@@ -6736,6 +6949,39 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const bool presetAlignment=preset&&int(preset->h.size())==n&&int(preset->aligned.size())==n;
     bool anyBracketed=false,anyUltrashort=false;
     for(int f=1;f<n;++f){anyBracketed|=input.frames[f].role==kRoleBracketed;anyUltrashort|=input.frames[f].role==kRoleUltrashort;}
+    // P308: where the F6 field is computed (tune laGpu: 1 GPU, 0 CPU, 2 auto). Auto takes the GPU where the CPU field could not
+    // stream alongside the merge (laStreamOn below without the GPU: the whole field would come first). OPPO Find X7 Ultra replays,
+    // program cache warm: the streamed CPU field 0.03-0.3 s faster than the GPU field first (it is hidden in the merge), the GPU
+    // 0.03-0.9 s faster than the whole CPU field first (x7u_1x 3.95 -> 3.06 s).
+    const bool laCpuStreams=tune.laStream!=0&&input.subFrames<=1&&!hybridAuto2x(input,tune,native?hybridRequestedGrid(input,tune)==2*std::max(1,native->block)
+                                                                                  :hybridRequestedGrid(input,tune)==2)
+        &&!std::getenv("SCAM_NO_PREFETCH")&&(!large||!std::getenv("SCAM_NO_LARGE_F6_STREAM"))&&!std::getenv("SCAM_LA_DUMP")&&!std::getenv("SCAM_NO_F6_STREAM");
+    bool laGpuUse=tune.localAlign>0&&n>1&&(tune.laGpu==1||(tune.laGpu==2&&!laCpuStreams));
+    if(laGpuUse&&large){
+        // the GPU field holds ~11.5 B per RAW pixel from the alignment to the F6 stage (two RAW uploads, the base and donor levels):
+        // within a quarter of MemAvailable as the CPU field's large path, else the CPU field
+        const uint64_t need=uint64_t(11.5*double(w)*double(h)),avail=hybridMemAvailable();
+        if(avail>0&&need>avail/4){
+            laGpuUse=false;
+            report("HYBRID LOCAL ALIGN: GPU field skipped ("+hybridMB(need)+" MB > a quarter of MemAvailable "+hybridMB(avail)+" MB): the CPU field");
+        }
+    }
+    // the GPU F6 on a thread of its own (LaGpuWorker): context, programs and the base pyramid while the frames align, then each frame
+    // as the alignment hands it over (streamFeed below); a thread the system refuses or any failure leaves the CPU field
+    std::unique_ptr<LaGpuWorker> laGpuWorker;
+    if(laGpuUse)try{laGpuWorker=std::make_unique<LaGpuWorker>(n,[&b,&input,&tune]{
+        const float slope=std::max(input.frames[0].slope,1e-9f),offset=std::max(input.frames[0].offset,0.f);
+        const float eps=std::max(offset/std::max(slope,1e-9f),1e-5f);
+        const int win=std::clamp(tune.laWin,4,kLaMaxWin)&~3,stride=std::clamp(tune.laStride,2,win);
+        LaImage l0,l1;l0.w=b.w/2;l0.h=b.h/2;l1.w=l0.w/2;l1.h=l0.h/2;
+        const LaGrid a=laGrid(l0,win,stride,2),c=laGrid(l1,16,8,4);
+        LaGpuBurst gb;gb.w=b.w;gb.h=b.h;gb.cfa=b.cfa;gb.canonical=b.canonicalRggb;gb.white=b.white;gb.black=b.black;
+        LaGpuTune gt;gt.mu=tune.laMu;gt.kappa=tune.laKappa;gt.maxShift=tune.laMaxShift;gt.iters=tune.laIters;
+        gt.itersCoarse=tune.laItersCoarse;gt.medians=tune.laMedian;
+        auto gpu=std::make_unique<LaGpu>(hybridProgramCacheDir());
+        gpu->base(gb,input.frames[0].raw,eps,slope/16.f,LaGpuGrid{a.nx,a.ny,a.win,a.stride,a.s},LaGpuGrid{c.nx,c.ny,c.win,c.stride,c.s},gt);
+        return gpu;
+    });}catch(const std::exception&){laGpuWorker.reset();}
     // W1.7: the context with the programs this merge will ask for as far as the tuning tells (the local alignment as asked, the
     // Bento colour pass whenever an ultrashort frame may be merged: merge() runs a pass only when its own flags say so).
     struct EarlyGpuLog { std::mutex lock;std::vector<std::string> lines;bool direct=false;double ms=0; };
@@ -6799,7 +7045,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // base pyramid on the pool and the field in bands alongside the merge. The stream's own MemAvailable test (windowed gray rows,
     // else the whole field first) bounds its memory. SCAM_NO_LARGE_F6_STREAM: the whole field first, as before.
     const bool largeStream=large&&!std::getenv("SCAM_NO_PREFETCH")&&!std::getenv("SCAM_NO_LARGE_F6_STREAM")&&input.subFrames<=1;
-    if((ahead||largeStream)&&tune.localAlign>0&&n>1)laAhead=tasks.run([&b,&input]{
+    if((ahead||largeStream)&&tune.localAlign>0&&n>1&&!laGpuUse)laAhead=tasks.run([&b,&input]{ // P308: the GPU builds its own
         const auto t0=Clock::now();
         LaBaseBuilt built;
         const float slope=std::max(input.frames[0].slope,1e-9f),offset=std::max(input.frames[0].offset,0.f); // baseSlope, baseOffset
@@ -6829,9 +7075,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const int colourBlock=native?std::max(1,native->block):1;
     const bool fine2x=native?requestedGrid==2*colourBlock:requestedGrid==2;
     std::unique_ptr<LaStream> laStream;double laStreamBaseMs=0;bool laStreamTried=false;
-    const bool laStreamOn=tune.localAlign>0&&n>1&&tune.laStream!=0&&!hybridAuto2x(input,tune,fine2x)&&(!large||largeStream)&&input.subFrames<=1&&laAhead.valid()
+    const bool laStreamOn=tune.localAlign>0&&n>1&&tune.laStream!=0&&!laGpuUse&&!hybridAuto2x(input,tune,fine2x)&&(!large||largeStream)&&input.subFrames<=1&&laAhead.valid()
             &&!std::getenv("SCAM_LA_DUMP")&&!std::getenv("SCAM_NO_F6_STREAM");
+    // P308: a frame for the GPU F6 (its homography as the F6 stage would read it)
+    auto laGpuJob=[&](int f){
+        LaGpuWorker::Job j;j.f=f;j.raw=input.frames[f].raw;j.gain=1.f/input.frames[f].exposure;
+        for(int i=0;i<8;++i)j.h[size_t(i)]=float(H[f].h[size_t(i)]);
+        j.up=H[f].upRatio;return j;
+    };
     auto streamFeed=[&](int f){
+        // P308: the GPU F6 takes each frame as soon as its homography is known (the frames the merge leaves out are dropped there)
+        if(laGpuWorker&&aligned[f]&&!(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort))laGpuWorker->add(laGpuJob(f));
         if(!laStreamOn||!aligned[f]||(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort))return;
         if(!laStream){
             if(laStreamTried)return;
@@ -6915,11 +7169,15 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 const auto donor=guides(one,1);
                 const Shift s=globalShift(ref,donor,input.frames[f].exposure);
                 BackwardHomography t;t.h={1,0,s.x,0,1,s.y,0,0};H[f]=t;
+                // P308: to the GPU F6 at once (thread-safe; streamFeed below hands the same job again: nothing new)
+                if(laGpuWorker&&!(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort))laGpuWorker->add(laGpuJob(f));
                 scam_progress::step(); // P220
             }
         };
         std::vector<std::thread> pool;
-        const int threads=std::max(1,std::min(n-1,std::min(8,int(std::thread::hardware_concurrency()))));
+        // P308: one core left to the GPU F6's feeder (it uploads each aligned frame meanwhile): the same shifts
+        const int cores=std::min(8,int(std::thread::hardware_concurrency()))-(laGpuWorker&&std::thread::hardware_concurrency()>2?1:0);
+        const int threads=std::max(1,std::min(n-1,cores));
         for(int t=1;t<threads;++t)pool.emplace_back(work);
         work();
         for(auto& th:pool)th.join();
@@ -6961,7 +7219,16 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         }
         motion=cnt?std::sqrt(motion/cnt):0.0;
     }
-    const bool night61=key61<=tune.s61MaxKey,handheld61=tune.localAlign>0&&motion>=tune.s61MinMotion;
+    // P306 (owner, 2026-10-20: «мы на 200мп будем снимать исключительно днём», «4x isz тоже только днём, Тетра в целом будет
+    // использоваться только днём»): a native Tetra merge (block 4: 200 MP FULLRES, 4x ISZ) is a daylight shot. Its sensor-site SNR
+    // key stays at or below s61MaxKey even at base ISO (vivo X200 Ultra tele HP9, ISO 50: key 28.25), which put every Tetra shot on
+    // the Tetra night point (kernel 1, edge 0.4, flat x4) and the night noise LUT. The daylight point on the owner's 200 MP ship
+    // burst (5 frames, OPPO replay): 1.2-2.4 px band of the text +10 %, 2.4-4.8 px +3 %, stack edge R / B misregistration about the
+    // same, flat noise unchanged.
+    const bool tetraDay=native&&native->block==4;
+    if(tetraDay&&key61<=tune.s61MaxKey)report("HYBRID KERNEL: Tetra: daylight kernel point (key "+std::to_string(key61)
+        +" <= "+std::to_string(tune.s61MaxKey)+"; Tetra is shot by day only)");
+    const bool night61=key61<=tune.s61MaxKey&&!tetraDay,handheld61=tune.localAlign>0&&motion>=tune.s61MinMotion;
     const bool sabre61=tune.sabre61==1||(tune.sabre61==2&&(night61||handheld61));
     HybridMosaicNative nativeNight; // P34: the native kernel scale at night (mosaicNativeNightKernelScale)
     // Tetra (4x4 colour blocks) has its own night point (mosaicTetraNight*; 0 = the Quad keys above); Quad is unchanged
@@ -7097,6 +7364,10 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         if(same&&int(usFrames.size())<std::clamp(tune.bentoFrames,1,4))usFrames.push_back(f); else keep[f]=false;
     }
     BentoResult bento;std::vector<std::vector<float>> bentoValids;
+    std::vector<float> bentoShare; // P309: the ramp mask's share of the ultrashort frames before the check (bentoRamp > 0)
+    std::vector<float> bentoPrev,bentoBest; // P309: the previous mask (the ramp never gives less), the cells' best validity
+    std::vector<uint8_t> bentoPrevOn; // P309: the previous mask's cells: the clip flags' bit 4 (inside the Bento mask) stays on them
+    float bentoK=0.f; // P309: (1 + A of the other frames) / A of the ultrashort frames
     const auto maskStarted=Clock::now();
     scam_progress::pass("bento"); // P220
     if(us>=0&&tune.bento>0){
@@ -7105,6 +7376,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         // P31 (W1.4): the base part of every mask below was built during the alignment (bentoAhead); the masks then run on the pool.
         // The validation masks are needed only when the first one can be applied: not started when its base has no mask.
         const BentoBase* shared=bentoAhead.valid()?&bentoAhead.get():nullptr;
+        // P309: a large burst builds no base ahead; the ramp's (several planes, blurs) is built once here for every mask below
+        BentoBase onceBase;
+        if(!shared&&tune.bentoRamp>0.f&&input.frames[us].exposure<1.f){onceBase=bentoBase(b,tune);shared=&onceBase;}
         auto poolMask=[&b,&tune,&bentoAhead](const HybridFrame& fr,const BackwardHomography& h,int mode){
             // the task holds the base itself (a validation mask still running when an exception leaves this block outlives it)
             return [&b,&tune,base=bentoAhead,raw=fr.raw,exposure=fr.exposure,h,mode]{
@@ -7116,7 +7390,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         std::vector<std::future<BentoResult>> otherMasks(usFrames.size());
         if(input.frames[us].exposure<1.f&&tune.bentoValidate>=1&&!large&&(!shared||shared->full))
             for(size_t k=1;k<usFrames.size();++k){
-                if(shared){otherMasks[k]=tasks.run(poolMask(input.frames[usFrames[k]],H[usFrames[k]],2));continue;}
+                if(shared&&bentoAhead.valid()){otherMasks[k]=tasks.run(poolMask(input.frames[usFrames[k]],H[usFrames[k]],2));continue;}
                 otherMasks[k]=std::async(std::launch::async,[&,k]{
                 const int f=usFrames[k];
                 Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
@@ -7125,10 +7399,10 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             });
             }
         if(input.frames[us].exposure>=1.f){bento.reason="ultrashort frame is not the shortest";}
-        else if(shared)bento=tasks.run(poolMask(input.frames[us],H[us],0)).get();
+        else if(shared&&bentoAhead.valid())bento=tasks.run(poolMask(input.frames[us],H[us],0)).get();
         else {
             Burst one=b;one.raw[1]=input.frames[us].raw;one.exposure[1]=input.frames[us].exposure;
-            bento=bentoMask(one,1,H[us],input.frames[us].exposure,tune);
+            bento=bentoMask(one,1,H[us],input.frames[us].exposure,tune,shared);
         }
         auto otherMask=[&](size_t k){
             if(otherMasks[k].valid())return otherMasks[k].get();
@@ -7156,6 +7430,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 valids.push_back(std::move(r.valid));line+=" "+std::to_string(f)+":"+std::to_string(r.invalidCells);
             }
             // P31: blocks of cells on all cores (integer counts, every cell's value as before)
+            if(tune.bentoRamp>0.f)bentoBest.assign(bento.mask.size(),1.f); // P309: the ramp's conversion scales by it
             std::atomic<long> onlyBaseSum{0},anyInvalidSum{0};
             const size_t cells=bento.mask.size();
             mergeRowBands(int((cells+4095)/4096),[&](int k0,int k1){
@@ -7164,6 +7439,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                     float best=0;for(const auto& v:valids)best=std::max(best,v[i]);
                     if(bento.smooth[i]>0.f){if(best<1.f)++anyInvalidLocal;if(best<=0.f)++onlyBaseLocal;}
                     bento.mask[i]=std::clamp(bento.smooth[i]*best,0.f,1.f);
+                    if(!bentoBest.empty())bentoBest[i]=best;
                 }
                 onlyBaseSum+=onlyBaseLocal;anyInvalidSum+=anyInvalidLocal;
             });
@@ -7187,7 +7463,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             +" inpaintHole="+std::to_string(bento.inpaintHole)+" invalid="+std::to_string(bento.invalidCells)
             +" checks="+(tune.bentoScam?"scam":"round4")+" factor="+std::to_string(1.f/input.frames[us].exposure)
             +" frames="+std::to_string(usFrames.size())+" chroma sigma="+std::to_string(tune.bentoChromaSigma));
-        // the mask before the check and the first frame's validity were for the validation only (bentoValids holds its copy)
+        // the mask before the check and the first frame's validity were for the validation only (bentoValids holds its copy);
+        // P309: with the ramp the share before the check stays for its conversion to m (frame weights, below)
+        if(bento.active&&tune.bentoRamp>0.f){
+            bentoShare=std::move(bento.smooth);
+            if(shared&&shared->prev.size()==bentoShare.size())bentoPrev=shared->prev;
+            if(bentoBest.empty()&&bento.valid.size()==bentoShare.size())bentoBest=bento.valid; // one ultrashort frame: its own check
+        }
         std::vector<float>().swap(bento.smooth);std::vector<float>().swap(bento.valid);
         // P31: a validation mask nobody took (the first mask was not applied) ends here, as the std::async futures made it end
         // before: it does not run on into the local alignment and the merge (all cores, ~50 MB at 12 MP while it is built).
@@ -7234,6 +7516,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         }
         if(!laStream)scam_progress::pass("local-align",int64_t(jobs.size())); // P220: the whole-field F6 before the merge, per frame
         if(laStream&&jobs.empty())laStream.reset();
+        if(laGpuWorker&&jobs.empty())laGpuWorker.reset(); // P308: nothing to refine: its thread, context and buffers go now
         if(laStream){ // P33 W2.1: the bands of the refined frames (phase 1 ran during the alignment), alongside the merge
             laStream->commit(jobs);
             laOn=true;laG0=laStream->grid0();
@@ -7242,23 +7525,77 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         LaBase laBase; // ~40 MB on 12 MP, freed before the GPU merge
         const float eps=std::max(baseOffset/std::max(baseSlope,1e-9f),1e-5f);
         double baseMs=0;
+        const int win=std::clamp(tune.laWin,4,kLaMaxWin)&~3,stride=std::clamp(tune.laStride,2,win);
+        std::vector<LaFrameStats> fstats(n);
+        // P308: the field on the GPU (tune laGpu): the base pyramid and every frame there; any failure leaves it to the CPU below
+        bool laGpuDone=false;std::string laGpuNote;
+        if(laGpuUse&&!jobs.empty()){
+            const auto gpuStarted=Clock::now();
+            try{
+                laBase.l0.w=b.w/2;laBase.l0.h=b.h/2;laBase.l1.w=laBase.l0.w/2;laBase.l1.h=laBase.l0.h/2; // the levels' sizes (laGrid)
+                laBase.g0=laGrid(laBase.l0,win,stride,2);laBase.g1=laGrid(laBase.l1,16,8,4);
+                if(!laGpuWorker)throw std::runtime_error("not prepared");
+                for(int f:jobs)laGpuWorker->add(laGpuJob(f)); // nothing new for the frames the alignment handed over
+                laGpuWorker->retain(jobs); // the frames the merge leaves out leave the queue
+                const int early=laGpuWorker->readyCount(jobs);
+                if(!laGpuWorker->wait(jobs))throw std::runtime_error(laGpuWorker->error());
+                const double waitedMs=millis(Clock::now()-gpuStarted);
+                baseMs=laGpuWorker->baseMs();
+                std::vector<LaGpuResult> taken(jobs.size());
+                for(size_t i=0;i<jobs.size();++i)taken[i]=laGpuWorker->take(jobs[i]);
+                const std::string gpuName=laGpuWorker->renderer();
+                laGpuWorker.reset(); // its thread ends, the context and buffers are freed before the merge
+                { // the frames' statistics on the cores (each frame alone, as laFrameField takes them)
+                    std::atomic<size_t> next{0};
+                    auto work=[&]{for(size_t i=next++;i<taken.size();i=next++)LaGpu::stats(taken[i]);};
+                    std::vector<std::thread> pool;
+                    const size_t threads=std::min<size_t>(taken.size(),std::max(1u,std::min(8u,std::thread::hardware_concurrency())));
+                    for(size_t t=1;t<threads;++t){try{pool.emplace_back(work);}catch(const std::system_error&){break;}}
+                    work();
+                    for(auto& th:pool)th.join();
+                }
+                for(size_t i=0;i<jobs.size();++i){
+                    const int f=jobs[i];
+                    LaGpuResult& r=taken[i];
+                    laFields[f]=std::move(r.field);laMotions[f]=std::move(r.motion);
+                    LaFrameStats& st=fstats[f];
+                    st.median=r.median;st.p90=r.p90;st.maxAbsY=r.maxAbsY;st.accepted=r.accepted;st.fromCoarse=r.fromCoarse;
+                    long over=0;for(float v:laMotions[f])over+=v>tune.motionThreshold;
+                    st.motionShare=float(over)/float(std::max<size_t>(1,laMotions[f].size()));
+                    st.ms[4]=r.ms;
+                    scam_progress::step(); // P220
+                }
+                laGpuDone=true;
+                char tail[160];
+                std::snprintf(tail,sizeof(tail),": context, programs and base %.0f ms from the alignment on; %d frames, %d of them done before this stage, waited %.0f ms for the rest",
+                    baseMs,int(jobs.size()),early,waitedMs);
+                laGpuNote=std::string("HYBRID LOCAL ALIGN: GPU")+(tune.laGpu==2?" (auto: the CPU field would come whole before the merge)":"")+" ("+gpuName+")"+tail;
+            }catch(const std::exception& e){
+                laGpuWorker.reset();
+                for(int f:jobs){laFields[f].clear();laMotions[f].clear();fstats[f]=LaFrameStats();}
+                laBase=LaBase();baseMs=0;
+                report(std::string("HYBRID LOCAL ALIGN: GPU failed (")+e.what()+"); the CPU computes the field");
+            }
+        }
+        if(!laGpuDone){
         if(laAhead.valid()){LaBaseBuilt built=laAhead.get();laBase=std::move(built.base);baseMs=built.ms;} // P31: built during the alignment
+        else if(laGpuUse&&jobs.empty()){laBase.l0.w=b.w/2;laBase.l0.h=b.h/2;laBase.l1.w=laBase.l0.w/2;laBase.l1.h=laBase.l0.h/2;} // P308: nothing to refine
         else {
         laGray(b,input.frames[0].raw,1.f,eps,laBase.l0,true);
         laDown(laBase.l0,laBase.l1,true);laBaseLevel(laBase.l1,true);laBaseLevel(laBase.l0,true);
         baseMs=millis(Clock::now()-laStarted);
         }
-        const int win=std::clamp(tune.laWin,4,kLaMaxWin)&~3,stride=std::clamp(tune.laStride,2,win);
         laBase.g0=laGrid(laBase.l0,win,stride,2);laBase.g1=laGrid(laBase.l1,16,8,4);
+        }
         laBase.v0=baseSlope/16.f;
         {
         // One worker per frame at a time (gray 12 MB + L1 3 MB each): long-lived threads, so the scheduler moves them to the big
         // cores (short parallel sections per pass stayed on the small ones: 3.3 s for 19 frames against 0.8 s for this pool on Adreno 750 phones (SM8650)).
-        std::vector<LaFrameStats> fstats(n);
         // An exception must not leave a worker thread (std::terminate: the shot is lost): it stops the pool, the merge then uses
         // the homographies only.
         std::atomic<bool> laFailed{false};std::string laFailure;std::mutex laFailureMutex;
-        {
+        if(laGpuDone)report(laGpuNote);
+        else {
             int threads=std::clamp(int(std::thread::hardware_concurrency()),1,std::clamp(tune.laThreads,1,8));
             if(large){ // any RAW size: every worker holds its frame's gray pyramid (1.25 B per pixel), together within MemAvailable / 4
                 const uint64_t avail=hybridMemAvailable();
@@ -7316,9 +7653,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const double grayMs=partMs[0];
         stats.localAlignMs=millis(Clock::now()-laStarted);
         laOn=done>0;laG0=laBase.g0;
-        char line[320];
-        std::snprintf(line,sizeof(line),"HYBRID LOCAL ALIGN: %s, %d frames, tiles %dx%d (%d RAW px, window %d RAW px), %.0f ms (gray %.0f ms thread sum) mu=%.2f kappa=%.1f maxShift=%.1f medians=%d; per frame |r| median/p90 RAW px / refined tiles / tiles over the motion threshold (rejection boost):",
-            tune.localAlign==2?"constant per tile":"bilinear field",done,laBase.g0.nx,laBase.g0.ny,2*stride,2*win,stats.localAlignMs,grayMs,tune.laMu,tune.laKappa,tune.laMaxShift,tune.laMedian);
+        char line[340];
+        std::snprintf(line,sizeof(line),"HYBRID LOCAL ALIGN: %s%s, %d frames, tiles %dx%d (%d RAW px, window %d RAW px), %.0f ms (gray %.0f ms thread sum) mu=%.2f kappa=%.1f maxShift=%.1f medians=%d; per frame |r| median/p90 RAW px / refined tiles / tiles over the motion threshold (rejection boost):",
+            tune.localAlign==2?"constant per tile":"bilinear field",laGpuDone?" (GPU)":"",done,laBase.g0.nx,laBase.g0.ny,2*stride,2*win,stats.localAlignMs,grayMs,tune.laMu,tune.laKappa,tune.laMaxShift,tune.laMedian);
         report(line+per);
         if(tune.profile){
             std::snprintf(line,sizeof(line),"HYBRID LOCAL ALIGN ms (thread sums): base=%.0f gray=%.0f down=%.0f L1=%.0f start=%.0f L0=%.0f accept=%.0f median=%.0f",
@@ -7394,6 +7731,49 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         char line[96];std::snprintf(line,sizeof(line)," | %d %d %.4f %.2f %.3f",f,fr.role,t,A,ls);table+=line;
     }
     report(table);
+    if(bento.active&&tune.bentoRamp>0.f){
+        // P309: the ultrashort frames' A x 16 under the ramp (the share is set by the mask below either way): the merge drops a
+        // frame below r 0.004, so near the share's top the N frames would stop at once (~8 % of the share at 20 N); with x16 that
+        // step is < 1 %. K leaves out the bracketed frames that clip in the ramp (base level (lo + hi) / 2 x their exposure >=
+        // the clip): they add nothing there.
+        const float mid=0.5f*(tune.bentoRampLo+tune.bentoRampHi);
+        double others=0,ultra=0;
+        for(size_t k=0;k<in.weight.size();++k){
+            if(in.role[k]==kRoleUltrashort){in.weight[k]*=16.f;ultra+=double(in.weight[k]);continue;}
+            if(in.role[k]==kRoleBracketed&&mid*input.frames[size_t(index[k])].exposure>=tune.bentoHighlight)continue;
+            others+=double(in.weight[k]);
+        }
+        bentoK=ultra>0?float(others/ultra):0.f;
+        in.rampK=bentoK;
+    }
+    if(bento.active&&tune.bentoRamp>0.f&&bentoShare.size()==bento.mask.size()&&bentoK>0.f){
+        // P309: the share s of the ultrashort frames into the mask m the merge weighs with: the base (1 - m), the other frames
+        // r (1 - m) A, the ultrashort frames m A; with K = (1 + their A) / (the ultrashort frames' A) the share is s when
+        // m = s K / (1 + s (K - 1)). A cell's check (the best frame's validity, mask / share) scales m as before.
+        // The previous mask's share at the frame weights it was made for (K without the x16): the ramp never gives the ultrashort
+        // frames less than it did (the dark side of a lamp's steep glow, the cells next to a clip).
+        const float K=bentoK,Kprev=bentoK*16.f;
+        const bool prev=bentoPrev.size()==bentoShare.size(),checked=bentoBest.size()==bentoShare.size();
+        mergeRowBands(int((bento.mask.size()+4095)/4096),[&](int k0,int k1){
+            for(size_t i=size_t(k0)*4096;i<std::min(bento.mask.size(),size_t(k1)*4096);++i){
+                const float mp=prev?bentoPrev[i]:0.f;
+                const float sh=std::max(bentoShare[i],mp>0.f?mp/(mp+Kprev*(1.f-mp)):0.f);
+                if(sh<=0.f){bento.mask[i]=0.f;continue;}
+                const float best=checked?std::clamp(bentoBest[i],0.f,1.f):bentoShare[i]>0.f?std::clamp(bento.mask[i]/bentoShare[i],0.f,1.f):1.f;
+                // the check scales the mask at the weights it was made for (Kprev), as before: an invalid cell keeps the share it had
+                const float mo=sh*Kprev/(1.f+sh*(Kprev-1.f))*best;
+                const float s2=mo>0.f?mo/(mo+Kprev*(1.f-mo)):0.f;
+                bento.mask[i]=std::clamp(s2*K/(1.f+s2*(K-1.f)),0.f,1.f);
+            }
+        });
+        if(prev){bentoPrevOn.resize(bentoPrev.size());for(size_t i=0;i<bentoPrev.size();++i)bentoPrevOn[i]=bentoPrev[i]>0.f?1:0;}
+        std::vector<float>().swap(bentoPrev);std::vector<float>().swap(bentoBest);
+        char line[200];
+        std::snprintf(line,sizeof(line),"HYBRID BENTO RAMP: share smoothstep(%.2f, %.2f) of the base level (sigma %.1f cells, reach %d cells) -> mask with K = %.2f (ultrashort A x 16)",
+            tune.bentoRampLo,tune.bentoRampHi,tune.bentoRamp,tune.bentoRampReach,K);
+        report(line);
+        std::vector<float>().swap(bentoShare);
+    }
     if(bento.active)in.mask=&bento.mask;
     if(bento.active&&!bentoValids.empty()){ // validity planes in merge order of the ultrashort frames
         for(int f=1;f<n;++f){if(!keep[f]||input.frames[f].role!=kRoleUltrashort)continue;
@@ -7751,8 +8131,15 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         std::mutex histLock;
         mergeRowBands(outH,[&](int y0,int y1){ // P30: rows on all cores, one histogram per band
             long local[256]{};
+            const int cw=w/2,ch=h/2;
             for(int y=y0;y<y1;++y)for(int x=0;x<outW;++x){
-                const uint8_t v=flagsRaw.empty()?0:flagsRaw[size_t(std::max(0,y-dy))*outW+std::max(0,x-dx)];
+                uint8_t v=flagsRaw.empty()?0:flagsRaw[size_t(std::max(0,y-dy))*outW+std::max(0,x-dx)];
+                // P309: the ramp spreads the mask (m > 0) over a clip's glow; the post's "inside the Bento mask" (bit 4: the clip
+                // level of the ultrashort frames, the light statistics of hlrecovery) stays where the previous mask was
+                if((v&16)!=0&&bentoPrevOn.size()==size_t(cw)*size_t(ch)){
+                    const size_t c=size_t(std::min(ch-1,std::max(0,y-dy)/(2*grid)))*size_t(cw)+size_t(std::min(cw-1,std::max(0,x-dx)/(2*grid)));
+                    if(!bentoPrevOn[c])v&=uint8_t(~16u);
+                }
                 (*clipFlags)[size_t(y)*outW+x]=v;
                 ++local[v]; // 50 M pixels on the 2x grid: one increment each, the bit counts from the histogram
             }
@@ -8017,6 +8404,46 @@ inline std::array<float,64> hybridMosaicGainsRobust(const HybridInput& in,const 
         for(int g=0;g<5;++g)if(cnt[g]){cxg[g]/=cnt[g];cyg[g]/=cnt[g];}}
     std::array<double,64> g1;g1.fill(1.0);
     long used=0,used1=0;
+    // P308 (owner, 2026-10-20: «нам нужно перевести всё на гпу»; «на качество ... не должно влиять»): a tile's means, its neighbours'
+    // group means and its prediction do not change between the rounds: computed once per picked tile, on all cores (before: the two
+    // rounds serially, every tile's 5 means of n frames read again in each, 1.5 s of a 50 MP shot), then the rounds and the
+    // field's second pass over them in the tiles' order. The same arithmetic in the same order: the same gains and field.
+    struct RespTile { int row;long tx,ty;double t[64],pred[64]; };
+    const int tileRows=tilesY>2?int((tilesY-2+step-1)/step):0;
+    std::vector<RespTile> picked;std::vector<size_t> rowStart(size_t(tileRows)+1,0);
+    {
+        std::vector<std::vector<RespTile>> perRow(static_cast<size_t>(tileRows));
+        mergeRowBands(tileRows,[&](int r0,int r1){
+            for(int r=r0;r<r1;++r){
+                const long ty=1+long(r)*step;
+                if(ty+1>=tilesY)continue;
+                for(long tx=1;tx+1<tilesX;tx+=step){
+                    RespTile c;c.row=r;c.tx=tx;c.ty=ty;
+                    double tl[64],tr[64],tu[64],td[64];
+                    if(!tileMean(tx,ty,c.t)||!tileMean(tx-1,ty,tl)||!tileMean(tx+1,ty,tr)||!tileMean(tx,ty-1,tu)||!tileMean(tx,ty+1,td))continue;
+                    double m[5],ml[5],mr[5],mu[5],md[5];
+                    groupMeans(c.t,m);groupMeans(tl,ml);groupMeans(tr,mr);groupMeans(tu,mu);groupMeans(td,md);
+                    // each colour's mean above four times the noise of a mean over its sites and the frames
+                    bool dim=false;
+                    for(int k=0;k<64&&!dim;++k){
+                        const int g=grpOf[k],cnt=g==4?32:16;
+                        dim=m[g]<std::max(0.002,4.0*std::sqrt(std::max(slope*m[g]+offset,0.0)/(double(n)*cnt)));
+                    }
+                    if(dim)continue;
+                    for(int k=0;k<64;++k){
+                        const int g=grpOf[k];
+                        const double gx=(mr[g]-ml[g])/16.0,gy=(md[g]-mu[g])/16.0;
+                        c.pred[k]=m[g]+gx*((k&7)-cxg[g])+gy*((k>>3)-cyg[g]);
+                    }
+                    perRow[size_t(r)].push_back(c);
+                }
+            }
+        });
+        size_t total=0;for(const auto& v:perRow)total+=v.size();
+        picked.reserve(total);
+        for(int r=0;r<tileRows;++r){rowStart[size_t(r)]=picked.size();picked.insert(picked.end(),perRow[size_t(r)].begin(),perRow[size_t(r)].end());}
+        rowStart[size_t(tileRows)]=picked.size();
+    }
     // P268: the first round's sums per zone (zonesAcross across the longer side, square, whole 8 px tiles)
     std::vector<double> zT,zP;std::vector<int> zTiles;
     int zx=0,zy=0,zs=0;
@@ -8028,23 +8455,10 @@ inline std::array<float,64> hybridMosaicGainsRobust(const HybridInput& in,const 
     std::array<double,64> sumT{},sumP{},sumTe{},sumPe{},sumTo{},sumPo{};
     for(int round=0;round<2;++round){
         sumT.fill(0);sumP.fill(0);sumTe.fill(0);sumPe.fill(0);sumTo.fill(0);sumPo.fill(0);used=0;
-        for(long ty=1;ty+1<tilesY;ty+=step)for(long tx=1;tx+1<tilesX;tx+=step){
-            double t[64],tl[64],tr[64],tu[64],td[64];
-            if(!tileMean(tx,ty,t)||!tileMean(tx-1,ty,tl)||!tileMean(tx+1,ty,tr)||!tileMean(tx,ty-1,tu)||!tileMean(tx,ty+1,td))continue;
-            double m[5],ml[5],mr[5],mu[5],md[5];
-            groupMeans(t,m);groupMeans(tl,ml);groupMeans(tr,mr);groupMeans(tu,mu);groupMeans(td,md);
-            // each colour's mean above four times the noise of a mean over its sites and the frames
-            bool dim=false;
-            for(int k=0;k<64&&!dim;++k){
-                const int g=grpOf[k],cnt=g==4?32:16;
-                dim=m[g]<std::max(0.002,4.0*std::sqrt(std::max(slope*m[g]+offset,0.0)/(double(n)*cnt)));
-            }
-            if(dim)continue;
-            double pred[64],e=0,l=0,nv=0;
+        for(const RespTile& c:picked){
+            const long tx=c.tx,ty=c.ty;const double* t=c.t;const double* pred=c.pred;
+            double e=0,l=0,nv=0;
             for(int k=0;k<64;++k){
-                const int g=grpOf[k];
-                const double gx=(mr[g]-ml[g])/16.0,gy=(md[g]-mu[g])/16.0;
-                pred[k]=m[g]+gx*((k&7)-cxg[g])+gy*((k>>3)-cyg[g]);
                 const double d=t[k]/g1[k]-pred[k];
                 e+=d*d;l+=pred[k]*pred[k];nv+=(slope*std::max(t[k],0.0)+offset)/n;
             }
@@ -8093,26 +8507,14 @@ inline std::array<float,64> hybridMosaicGainsRobust(const HybridInput& in,const 
             // the bands' sums added in band order afterwards (the same field whatever the threads' timing)
             struct Band{int r0;std::vector<double> T,P;std::vector<int> n;};
             std::vector<Band> bands;std::mutex zLock;
-            const int tileRows=int((tilesY-2+step-1)/step);
             mergeRowBands(tileRows,[&](int r0,int r1){
             std::vector<double> lT(zT.size(),0.0),lP(zP.size(),0.0);std::vector<int> lTiles(zTiles.size(),0);
-            for(long ty=1+long(r0)*step;ty<1+long(r1)*step&&ty+1<tilesY;ty+=step)for(long tx=1;tx+1<tilesX;tx+=step){
-                double t[64],tl[64],tr[64],tu[64],td[64];
-                if(!tileMean(tx,ty,t)||!tileMean(tx-1,ty,tl)||!tileMean(tx+1,ty,tr)||!tileMean(tx,ty-1,tu)||!tileMean(tx,ty+1,td))continue;
-                double m[5],ml[5],mr[5],mu[5],md[5];
-                groupMeans(t,m);groupMeans(tl,ml);groupMeans(tr,mr);groupMeans(tu,mu);groupMeans(td,md);
-                bool dim=false;
-                for(int k=0;k<64&&!dim;++k){
-                    const int g=grpOf[k],cnt=g==4?32:16;
-                    dim=m[g]<std::max(0.002,4.0*std::sqrt(std::max(slope*m[g]+offset,0.0)/(double(n)*cnt)));
-                }
-                if(dim)continue;
-                double pred[64],e=0,l=0,nv=0;
+            for(size_t i=rowStart[size_t(r0)];i<rowStart[size_t(r1)];++i){
+                const RespTile& c=picked[i];
+                const long tx=c.tx,ty=c.ty;const double* t=c.t;const double* pred=c.pred;
+                double e=0,l=0,nv=0;
                 const int cx=int(tx*8+4),cy=int(ty*8+4);
                 for(int k=0;k<64;++k){
-                    const int g=grpOf[k];
-                    const double gx=(mr[g]-ml[g])/16.0,gy=(md[g]-mu[g])/16.0;
-                    pred[k]=m[g]+gx*((k&7)-cxg[g])+gy*((k>>3)-cyg[g]);
                     const double d=t[k]*double(f.at(k,cx,cy))-pred[k];
                     e+=d*d;l+=pred[k]*pred[k];nv+=(slope*std::max(t[k],0.0)+offset)/n;
                 }
@@ -8353,6 +8755,29 @@ inline void mosaicSignRow(const float* hp,const float* below,const float* L,floa
         o[x]=c;
     }
 }
+// P306 (owner, 2026-10-20, 200 MP Tetra: «фиолетовые обводки» - dotted pink outlines along every dark-on-bright edge): with taps
+// d >= 2 apart (Tetra: 2 px) the five taps of the separable median are all of one column (row) parity, so the even and the odd
+// columns were filtered apart; across an edge their medians differ and the colour alternated pixel by pixel (in the 200 MP chimney
+// crop 79 % of the R/G second differences alternated in sign, 59 % before the median). The medians the blend takes are smoothed
+// by [1 2 1] x [1 2 1] / 16 (zero at the 2 px period) for d >= 2: Tetra, and a Quad merged on the Sabre 2x grid (its block in
+// output px is 4: OPPO q1x, edge pixels with a false colour above 5 % 25.3 -> 20.3 %, the alternation 0.58 -> 0.32 of the R/G
+// second differences, the gradient of real colour edges -2.6 %); Quad on the sensor grid (d = 1) and plain Bayer are untouched.
+// One row of it, columns [x0, x1), from the rows above (a), at (b) and below (c), borders clamped. Additions only (b + b, then left to right):
+// no multiply-add the compiler could contract differently here and in the reference of tools/check_chroma_band_ref.h.
+inline float mosaicTap121(const float* r,int x,int w){
+    const float b=r[x],t=b+b;
+    float s=r[std::max(x-1,0)]+t;
+    s=s+r[std::min(x+1,w-1)];
+    return s*0.25f;
+}
+inline void mosaicSmooth121Row(const float* a,const float* b,const float* c,float* o,int x0,int x1,int w){
+    for(int x=x0;x<x1;++x){
+        const float m=mosaicTap121(b,x,w),t=m+m;
+        float s=mosaicTap121(a,x,w)+t;
+        s=s+mosaicTap121(c,x,w);
+        o[x]=s*0.25f;
+    }
+}
 // Blend and rgb of one row, columns [x0, x1): the median ratios mu, mv go to their wide averages ul, vl (indexed from x0) by
 // the ramp of the boxed sign-change map z (and at least by the oscillation weight kosc of the base sites, indexed from x0;
 // nullptr: none), then R and B from the ratios and green (px: the row of rgb). e as in MosaicChromaStream.
@@ -8455,17 +8880,24 @@ public:
         const auto t0=std::chrono::steady_clock::now();
         d=std::max(1,b/2);r1=b;r2=2*b;r3=3*b;
         B=bandRows>0?bandRows:kMosaicChromaBandRows;
-        cap=B+2*d+2*r3+2;
+        cap=B+2*d+2*r3+2+(d>=2?2:0); // P306: the [1 2 1] smoothing of the medians reads one row more back
         ws=(w+15)&~15; // rows of whole cache lines: the column bands of two threads never share one
         nt=threads>0?threads:(ScamPool::inWorker()||h<64)?1:mosaicChromaThreads();
         ntMax=nt;
         z0=0.51f/(2*b);z1=1.02f/(2*b);
+        // P306 (owner, 2026-10-20: «нам важно чтобы артефакты ушли на гранях, но цветовые переходы при этом не были испорчены»):
+        // taps d >= 2 (Tetra; Quad on the 2x grid): the ramp at half the counts. A post or wire narrower than the colour block turns the luma
+        // high-pass twice and counted below the ramp's start: the railings of the owner's 200 MP ship kept red / blue stripes. Half
+        // the ramp (OPPO replay of that burst): edge pixels with a false colour above 5 % 3.8 -> 1.5 % (its 50 MP shot: 1.4 %); the
+        // letters' colour (red 'NO SMOKING', 'SAFETY FIRST') and the width of real colour transitions (an orange lifeboat on white
+        // 13 px, the red hull on the sea 20 px) unchanged. The GPU path (scam-chroma-gpu.h) and tools/check_chroma_band_ref.h follow.
+        if(d>=2){z0*=0.5f;z1*=0.5f;}
         bw=w/b;bh=h/b;
         if(oscillation&&bw>0&&bh>0&&oscillation->size()==size_t(bw)*bh){osc=oscillation->data();oscCap=bh;}
         store.assign(size_t(kRings)*cap*ws+16,0.f);
         rings=store.data()+((64-(reinterpret_cast<uintptr_t>(store.data())&63))&63)/sizeof(float);
         sums.assign(size_t(kSums)*ws,0.0);
-        scratchPer=size_t(ws)+3*size_t(kMosaicChromaCols)+16;
+        scratchPer=size_t(ws)*(d>=2?3:1)+3*size_t(kMosaicChromaCols)+16; // P306: + the smoothed medians (d >= 2)
         scratch.assign(scratchPer*size_t(nt),0.f);
 #ifdef SCAM_CHROMA_RING_CHECK
         tags.assign(size_t(kRings)*cap,-1);
@@ -8505,6 +8937,7 @@ public:
             lap(P::kStart);
             int sense=0;
             float* ratio=scratch.data()+scratchPer*size_t(id);float* ul=ratio+ws;float* vl=ul+kCols;float* kosc=vl+kCols;
+            float* smu=d>=2?kosc+kCols:nullptr;float* smv=d>=2?smu+ws:nullptr; // P306: the smoothed medians of a row (whole width)
             // the items [0, count) of one phase over the team, then the barrier
             auto phase=[&](int count,const auto& item){for(int k=team.take();k<count;k=team.take())item(k);team.sync(sense);};
 #ifdef SCAM_CHROMA_RING_CHECK
@@ -8615,7 +9048,14 @@ public:
                                 const float t2=std::clamp((o-0.2375f)/0.2375f,0.f,1.f);kosc[X-x0]=t2*t2*(3.f-2.f*t2);
                             }
                         }
-                        mosaicBlendRow(get(kZ,y),get(kMu,y),get(kMv,y),ul,vl,osc?kosc:nullptr,rgb+size_t(y)*w*3,x0,x1,z0,z1,e);
+                        const float* mu=get(kMu,y);const float* mv=get(kMv,y);
+                        if(d>=2){ // P306: [1 2 1] x [1 2 1] of the medians (the two parities of the taps meet)
+                            const int ya=std::max(y-1,0),yc=std::min(y+1,h-1);
+                            mosaicSmooth121Row(get(kMu,ya),mu,get(kMu,yc),smu,x0,x1,w);
+                            mosaicSmooth121Row(get(kMv,ya),mv,get(kMv,yc),smv,x0,x1,w);
+                            mu=smu;mv=smv;
+                        }
+                        mosaicBlendRow(get(kZ,y),mu,mv,ul,vl,osc?kosc:nullptr,rgb+size_t(y)*w*3,x0,x1,z0,z1,e);
                     }
                 });
                 lap(P::kCols3);
@@ -9173,9 +9613,12 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
     // corrected in its binned frame (the alignment) and its sub-frames (sub-frame (a, c) row J = binned row J + (c - (b-1)/2) / b),
     // or refused (not merged)
     std::vector<bool> usRefused(pick.size(),false);
-    for(size_t k=1;k<pick.size();++k){
-        if(input.frames[pick[k]].role!=kRoleUltrashort)continue;
-        const HybridUsCheck uc=hybridUsRowsCheck(input,pick[k],binned.data(),binned.data()+k*vpix,vw,vh,tune,"HYBRID MOSAIC",report);
+    std::vector<size_t> usK;std::vector<int> usF;std::vector<uint16_t*> usP;
+    for(size_t k=1;k<pick.size();++k)if(input.frames[pick[k]].role==kRoleUltrashort){usK.push_back(k);usF.push_back(pick[k]);usP.push_back(binned.data()+k*vpix);}
+    const std::vector<HybridUsCheck> usChecks=hybridUsRowsChecks(input,usF,usP,binned.data(),vw,vh,tune,"HYBRID MOSAIC",report);
+    for(size_t u=0;u<usK.size();++u){
+        const size_t k=usK[u];
+        const HybridUsCheck& uc=usChecks[u];
         if(uc.refused){usRefused[k]=true;continue;}
         if(uc.corrected)for(int c=0;c<b;++c)for(int a=0;a<b;++a){
             uint16_t* sf=sub.data()+(k*per+size_t(c*b+a))*vpix;
@@ -9368,6 +9811,27 @@ inline std::vector<float> hybridReconstructMosaic(const HybridInput& input,int b
 // mosaicTetra 0 keeps Tetra on the split.
 // The plain-Bayer path and mosaicPath 0 never come here. A failure of the native merge (GPU programs, storage, a lost context)
 // merges the burst on the split instead (hybridReconstructMosaicNative below).
+// P308: storage the binning writes in full (no zeroing first: 0.1 s of a 50 MP shot's 400 MB on one thread)
+template<class T> struct HybridNoInitAlloc : std::allocator<T> {
+    template<class U> struct rebind { using other=HybridNoInitAlloc<U>; };
+    HybridNoInitAlloc()=default;
+    template<class U> HybridNoInitAlloc(const HybridNoInitAlloc<U>&) noexcept {}
+    template<class U> void construct(U* p) noexcept {::new(static_cast<void*>(p)) U;}
+    template<class U,class... A> void construct(U* p,A&&... a){::new(static_cast<void*>(p)) U(std::forward<A>(a)...);}
+};
+// P308: the binned values of one block row (B x B sites a block; rows of `stride` floats, their clip flags alike): the sum of the
+// block's sites in double in the site loop's order (row c, then column a), its mean rounded as lround (the value is >= 0)
+template<int B> inline void mosaicBinBlocks(const float* out,const uint8_t* clip,size_t stride,uint16_t* dst,int vw,uint16_t whiteCode){
+    for(int I=0;I<vw;++I){
+        double acc=0;int clipped=0;
+        for(int c=0;c<B;++c){
+            const float* o=out+size_t(c)*stride+size_t(B)*I;const uint8_t* cl=clip+size_t(c)*stride+size_t(B)*I;
+            for(int a=0;a<B;++a){acc+=o[a];clipped|=cl[a];}
+        }
+        const double m=acc/(B*B),fl=std::floor(m);
+        dst[I]=clipped?whiteCode:uint16_t(m-fl>=0.5?fl+1.0:fl);
+    }
+}
 inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& input,int block,const HybridTuning& tune,const ScamAlignment& alignment,
                                                              const std::function<void(const std::string&)>& report,std::vector<uint16_t>* mergedDng,
                                                              std::vector<uint8_t>* effMap,HybridStats* statsOut,std::vector<uint8_t>* clipFlags){
@@ -9462,16 +9926,61 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     // its Tetra block's phase (vb, as the split's sub-frames), so the merge reads it without gains (natV.y = 0).
     const auto binStart=Clock::now();
     const size_t vpix=size_t(vw)*vh,qpix=size_t(MW)*MH;
-    std::vector<uint16_t> binned(vpix*pick.size()),quad(t2?qpix*pick.size():0);
+    std::vector<uint16_t,HybridNoInitAlloc<uint16_t>> binned(vpix*pick.size()); // every value written below
+    std::vector<uint16_t> quad(t2?qpix*pick.size():0);
     const float clipAt=input.white-1.f;
     const bool fieldOn=field.on(); // P268
     scam_progress::pass("mosaic-bin",vh); // P220: the binned rows (every picked frame)
     mergeRowBands(vh,[&](int j0,int j1){
         struct Done{int k;~Done(){scam_progress::step(k);}} done{j1-j0};
         // P268: the field's gains of the block's rows once for every frame (rows outside, frames inside)
-        std::vector<float> rg(fieldOn?size_t(b)*W:0);
+        std::vector<float> rg(fieldOn||!t2?size_t(b)*W:0);
+        // P308 (owner, 2026-10-20: «нам нужно перевести всё на гпу»; «на качество ... не должно влиять»): Quad / Tetra T1 by rows,
+        // the same float steps per site over a whole sensor row (the loops the compiler vectorises), then every block's sum in double
+        // in the order of the site loop below (c, then a) and its rounding (lround of a value >= 0): the same binned frames, 0.7 s ->
+        // a fraction of it on a 50 MP shot. (A GPU pass would first copy the RAW of every frame, 1.6 GB, as long as this takes.)
+        std::vector<float> outRow(t2?0:size_t(b)*W),vbRow(t2?0:size_t(W));std::vector<uint8_t> clipRow(t2?0:size_t(b)*W);
+        const uint16_t whiteCode=uint16_t(std::lround(input.white));
         for(int J=j0;J<j1;++J){
           if(fieldOn)for(int c=0;c<b;++c){const int y=b*J+c;for(int x=0;x<W;++x)rg[size_t(c)*W+x]=field.at(((y&7)<<3)|(x&7),x,y);}
+          else if(!t2)for(int c=0;c<b;++c){const int y=b*J+c;for(int x=0;x<W;++x)rg[size_t(c)*W+x]=gain[((y&7)<<3)|(x&7)];}
+          if(!t2){
+            for(int x=0;x<W;++x)vbRow[size_t(x)]=input.black[((J&1)<<1)|((x/b)&1)];
+            // locals: the lambda's captures may alias the rows written (the loop would not vectorise)
+            const float white=input.white,clipL=clipAt;const int wl=W,bl=b,vwl=vw;
+            for(size_t k=0;k<pick.size();++k){
+                const uint16_t* raw=input.frames[pick[k]].raw;
+                for(int c=0;c<bl;++c){
+                    const int y=bl*J+c;
+                    const uint16_t* src=raw+size_t(y)*wl;
+                    const float sb0=input.black[((y&1)<<1)],sb1=input.black[((y&1)<<1)|1];
+                    const float* g=rg.data()+size_t(c)*wl;const float* vbr=vbRow.data();
+                    float* o=outRow.data()+size_t(c)*wl;uint8_t* cl=clipRow.data()+size_t(c)*wl;
+                    for(int x=0;x<wl;++x){
+                        const float v=float(src[x]);
+                        const float sb=(x&1)?sb1:sb0;
+                        const float lin=(v-sb)*g[x];
+                        const float sum=vbr[x]+lin;
+                        const bool clip=v>=clipL;
+                        o[x]=clip?white:(sum<0.f?0.f:(white<sum?white:sum));
+                        cl[x]=clip?1:0;
+                    }
+                }
+                uint16_t* dst=binned.data()+k*vpix+size_t(J)*vwl;
+                if(bl==2)mosaicBinBlocks<2>(outRow.data(),clipRow.data(),size_t(wl),dst,vwl,whiteCode);
+                else if(bl==4)mosaicBinBlocks<4>(outRow.data(),clipRow.data(),size_t(wl),dst,vwl,whiteCode);
+                else for(int I=0;I<vwl;++I){
+                    double acc=0;bool clipped=false;
+                    for(int c=0;c<bl;++c){
+                        const float* o=outRow.data()+size_t(c)*wl+size_t(bl)*I;const uint8_t* cl=clipRow.data()+size_t(c)*wl+size_t(bl)*I;
+                        for(int a=0;a<bl;++a){acc+=o[a];clipped|=cl[a]!=0;}
+                    }
+                    const double m=acc/bb,fl=std::floor(m);
+                    dst[I]=clipped?whiteCode:uint16_t(m-fl>=0.5?fl+1.0:fl);
+                }
+            }
+            continue;
+          }
           for(size_t k=0;k<pick.size();++k){
             const uint16_t* raw=input.frames[pick[k]].raw;
             for(int I=0;I<vw;++I){
@@ -9498,9 +10007,12 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     // corrected here, its native sites as the GPU uploads them (nat.rowGain; T2: its Quad mosaic here), or the frame refused
     std::vector<std::vector<float>> usRowGain(pick.size());std::vector<bool> usRefused(pick.size(),false);
     std::vector<HybridUsLocal> usLocal(pick.size());
-    for(size_t k=1;k<pick.size();++k){
-        if(input.frames[pick[k]].role!=kRoleUltrashort)continue;
-        const HybridUsCheck uc=hybridUsRowsCheck(input,pick[k],binned.data(),binned.data()+k*vpix,vw,vh,tune,"HYBRID MOSAIC NATIVE",report);
+    std::vector<size_t> usK;std::vector<int> usF;std::vector<uint16_t*> usP;
+    for(size_t k=1;k<pick.size();++k)if(input.frames[pick[k]].role==kRoleUltrashort){usK.push_back(k);usF.push_back(pick[k]);usP.push_back(binned.data()+k*vpix);}
+    const std::vector<HybridUsCheck> usChecks=hybridUsRowsChecks(input,usF,usP,binned.data(),vw,vh,tune,"HYBRID MOSAIC NATIVE",report);
+    for(size_t u=0;u<usK.size();++u){
+        const size_t k=usK[u];
+        const HybridUsCheck& uc=usChecks[u];
         if(uc.refused){usRefused[k]=true;continue;}
         if(!uc.corrected)continue;
         if(t2){ // the Quad site (qx, qy): the mean of sensor rows 2 qy, 2 qy + 1 (centre 2 qy + 0.5), colour and black of its Tetra block
@@ -9591,7 +10103,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     nat.rowsSink=nullptr;
     hybridSeriesMerged(tune,input,st.merged,st.mergedNormals,report);
     const auto mergeDone=Clock::now();
-    std::vector<uint16_t>().swap(binned);
+    decltype(binned)().swap(binned);
     if(tune.mosaicChroma&&overlap&&overlap->done()){
         const std::string how=tune.chromaGpu>0?"cpu (size)":"cpu";
         report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,mb*k2/2))+" px of the "+std::to_string(ow)+"x"+std::to_string(oh)+" result, "+how
@@ -9781,9 +10293,12 @@ inline std::vector<float> hybridReconstructMosaicBinned(const HybridInput& input
     // P197: every ultrashort frame against the base, row band by row band and colour (hybridUsRowsCheck): corrected in place or
     // refused (not merged)
     std::vector<bool> usRefused(pick.size(),false);
-    for(size_t k=1;k<pick.size();++k)
-        if(input.frames[pick[k]].role==kRoleUltrashort)
-            usRefused[k]=hybridUsRowsCheck(input,pick[k],binned.data(),binned.data()+k*vpix,vw,vh,tune,"HYBRID MOSAIC BINNED",report).refused;
+    {
+        std::vector<size_t> usK;std::vector<int> usF;std::vector<uint16_t*> usP;
+        for(size_t k=1;k<pick.size();++k)if(input.frames[pick[k]].role==kRoleUltrashort){usK.push_back(k);usF.push_back(pick[k]);usP.push_back(binned.data()+k*vpix);}
+        const std::vector<HybridUsCheck> usChecks=hybridUsRowsChecks(input,usF,usP,binned.data(),vw,vh,tune,"HYBRID MOSAIC BINNED",report);
+        for(size_t u=0;u<usK.size();++u)usRefused[usK[u]]=usChecks[u].refused;
+    }
     // ---- the binned burst through the plain merge
     HybridInput bin;bin.w=vw;bin.h=vh;bin.cfa=input.cfa;bin.white=input.white;bin.black=input.black;bin.diagnostics=input.diagnostics;
     bin.mergedDng=input.mergedDng;bin.clipFlags=input.clipFlags;bin.noEffMap=input.noEffMap;bin.grid=gridOut;bin.mosaic=1;bin.subFrames=0;

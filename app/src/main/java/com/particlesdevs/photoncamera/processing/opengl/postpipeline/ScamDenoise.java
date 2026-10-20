@@ -452,8 +452,13 @@ public final class ScamDenoise extends Node {
         lastMainTaken = false;
         lastInputReleased = false;
         final Parameters par = pipeline.mParameters;
-        final int s = Math.max(1, Math.min(2, Math.round(par.outputScale)));
         final Point full = input.mSize;
+        // P306: a 200 MP shot is denoised on its 2x2 means (the Sabre 2x grid path: every pyramid at the 50 MP scale, 0.4 GB
+        // textures instead of 1.6 GB); scamdn/final2x puts the result on the full grid and cores its pixel noise there
+        // (a lab fragment of such a shot as the shot: its whole size, ScamLabRun)
+        final Point whole = par.labWholeSize != null ? par.labWholeSize : full;
+        final boolean huge = ScamHdrDenoise.huge(whole.x, whole.y);
+        final int s = huge ? 2 : Math.max(1, Math.min(2, Math.round(par.outputScale)));
         final Point size0 = new Point((full.x + s - 1) / s, (full.y + s - 1) / s);
         final ScamDenoiseTables.Config cfg = readConfig();
         final float chromaNight = com.particlesdevs.photoncamera.settings.DeviceDefaults.chromaDenoiseFactor(par.iso);
@@ -469,6 +474,14 @@ public final class ScamDenoise extends Node {
         final float effMax = clamp(PreferenceKeys.hybridValue("bento_denoise_max", 3f), 1f, 12f);
         // 2x grid: share of the colour finer than the sensor scale that is kept (0 = colour denoised as on the 1x grid).
         final float keep2x = clamp(PreferenceKeys.hybridValue("dn_chroma_2x_keep", 0f), 0f, 1f);
+        // P306 (owner, 2026-10-20: «настрой по этому фото его»), tuned on the owner's 200 MP ship (5 frames, ISO 50; host replay of
+        // the scamdn shaders on its merge): its finish SNR at the 2x2 means is ~97 (the top tier) and without an effective-frame map
+        // (none above 100 MP, P187) every pixel counts as fully merged, where the tiers put the removed noise back (revert 1): the
+        // denoise did nearly nothing. A flat strength map of 4.3 (the pixels as a quarter of the frames merged: noise x4.3, revert
+        // halved) and the pixel noise cored at 2 sigma: high-pass noise of the sea 0.92 -> 0.58 %, the hull 1.36 -> 1.00 %, the
+        // letters of 'NO SMOKING' still legible. scam_dev: hybrid_dn_huge_map (1 = as before this tuning), hybrid_dn_huge_fine (0 = off).
+        final float hugeMap = huge ? clamp(PreferenceKeys.hybridValue("dn_huge_map", 4.3f), 1f, 9f) : 1f;
+        final float hugeFine = huge ? clamp(PreferenceKeys.hybridValue("dn_huge_fine", 2f), 0f, 8f) : 0f;
         final List<GLTexture> owned = new ArrayList<>();
         final StringBuilder log = new StringBuilder("scam-denoise grid=").append(s).append('x');
         if (s == 2) log.append(" keep2x=").append(keep2x);
@@ -503,6 +516,18 @@ public final class ScamDenoise extends Node {
             }
 
             // ---- level 0 at the sensor scale (2x grid: kD8 / {1,3,3,1} down), despeckle, YUV
+            // P306: the pixel noise of a 200 MP shot (sigma of u = sqrt(Y + c) on the full grid) for the coring in scamdn/final2x
+            float sigmaFull = 0f;
+            if (huge && hugeFine > 0f) {
+                GLTexture noisyFull = tex(owned, full, GLFormat.DataType.FLOAT_16, 1, GL_LINEAR);
+                glProg.useAssetProgram("chromadn/luma", false);
+                glProg.setTexture("InputBuffer", input);
+                glProg.setVar("offsetC", 0.008f);
+                glProg.setVar("signedU", 0);
+                glProg.drawBlocks(noisyFull);
+                sigmaFull = ScamHdrDenoise.estimateNoise(glProg, noisyFull, 1);
+                release(owned, noisyFull);
+            }
             GLTexture base = input;
             if (s == 2) {
                 base = tex(owned, size0, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
@@ -646,7 +671,7 @@ public final class ScamDenoise extends Node {
                 // P214d: times min(g^2, cap) of the lens-shading gain the ARK tone applies after this denoise (lscTerm);
                 // a map is made for it also when the worker sent no effective-frame map
                 final float[] lsc = lscTerm(pipeline);
-                if (eff != null || lsc != null) {
+                if (eff != null || lsc != null || hugeMap > 1f) {
                     strMap = tex(owned, half(size0), GLFormat.DataType.FLOAT_16, 1, GL_LINEAR);
                     // Both samplers are always bound, each on a unit of its own: an unset one reads unit 0, where the
                     // other sampler type would sit (GL_INVALID_OPERATION at the draw). The 1 x 1 placeholders are never
@@ -662,12 +687,13 @@ public final class ScamDenoise extends Node {
                     glProg.setVar("effRefU", effRef[0]);
                     glProg.setVar("effMaxU", effMax);
                     glProg.setVar("noEffU", eff != null ? 0 : 1);
+                    glProg.setVar("flatU", eff != null ? 0f : hugeMap); // P306: the 200 MP flat strength (unset 0: 1)
                     glProg.setVar("lscU", lsc != null ? lsc[0] : 0f, lsc != null ? lsc[1] : 0f);
                     glProg.setVar("fullInvU", 1f / full.x, 1f / full.y);
                     glProg.drawBlocks(strMap);
                     release(owned, effTex);
                     if (gainTex != pipeline.GainMap) release(owned, gainTex);
-                    mapState = (eff != null ? "frames(ref=" + (int) effRef[0] + ",max=" + effMax + ")" : "uniform")
+                    mapState = (eff != null ? "frames(ref=" + (int) effRef[0] + ",max=" + effMax + ")" : hugeMap > 1f ? "flat(" + hugeMap + ")" : "uniform")
                             + (lsc != null ? "+lsc(cap=" + lsc[1] + ",peak=" + round(lsc[2]) + ")" : "");
                 } else if ("frames".equals(mapMode)) mapState = "uniform(no map)";
             }
@@ -812,7 +838,9 @@ public final class ScamDenoise extends Node {
                 glProg.setVar("darkFadeU", 0.0008f, 0.003f);
                 glProg.setVar("darkChromaU", darkKeep[0], darkKeep[1]);
                 glProg.setVar("darkNoiseU", darkKeep[2], darkKeep[3]);
+                glProg.setVar("fineU", huge ? hugeFine : 0f, sigmaFull); // P306: the 200 MP pixel-noise coring (0: none)
                 glProg.drawBlocks(output);
+                if (huge) log.append(" huge(2x2 means, fine=").append(hugeFine).append(" sigmaFull=").append(sigmaFull).append(')');
             }
             final long done = System.nanoTime();
             log.append(" snr=").append(round(snr)).append(snrFixed > 0f ? "(fixed)" : "")
@@ -836,6 +864,18 @@ public final class ScamDenoise extends Node {
             for (GLTexture t : owned) if (t != null) t.close();
             owned.clear();
         }
+    }
+
+    /**
+     * P306: memory the 200 MP denoise asks to be free before it starts (bytes): on the 2x2 means its largest set of RGBA16F
+     * textures is five half-size ones (the chroma pass of level 0: base, the luma result, two filter stages, the strength map and
+     * pyramids beside them), plus the full-grid noise statistic (R16F), plus a quarter and 512 MB of margin.
+     */
+    static long hugeBytes(Point full) { return hugeBytes(full.x, full.y); }
+
+    static long hugeBytes(int width, int height) {
+        final long half = (long) ((width + 1) / 2) * ((height + 1) / 2);
+        return (long) (1.25 * (5 * half * 8 + (long) width * height * 2)) + (512L << 20);
     }
 
     /** Level-1 hand-over (scamdn/llow): RG = (Den1 - Y1 - LP121(Den1), LP121(Den1)). */

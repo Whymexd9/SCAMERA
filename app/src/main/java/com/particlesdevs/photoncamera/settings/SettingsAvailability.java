@@ -153,7 +153,7 @@ public final class SettingsAvailability {
         if (key.equals("pref_scam_hybrid_bento_trigger") && !text("pref_scam_hybrid_bento", "2").equals("1")
                 && !(on("pref_motion_mode", false) && text("pref_scam_hybrid_mm_bento", "1").equals("1")))
             return Lang.t("Только при «Кадры светов» = «Авто».", "Only with “Highlight frames” = “Auto”.");
-        if (any(key, "pref_scam_hybrid_motion_boost", "pref_scam_hybrid_mm_motion_boost") && text("pref_scam_hybrid_local_align", "1").equals("0"))
+        if (any(key, "pref_scam_hybrid_motion_boost", "pref_scam_hybrid_mm_motion_boost", "pref_scam_hybrid_la_engine") && text("pref_scam_hybrid_local_align", "1").equals("0"))
             return Lang.t("Нужно «Локальное выравнивание F6».", "Needs “Local alignment F6”.");
         // P144: AgX and its look give way to the tone operator switched on in «Кривая AgX и ACES»
         if (key.startsWith("pref_scam_hybrid_ark_agx_")) {

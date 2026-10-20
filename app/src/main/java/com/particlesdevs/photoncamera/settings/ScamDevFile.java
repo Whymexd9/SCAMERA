@@ -116,6 +116,24 @@ public final class ScamDevFile {
         return valueOf(lines(read(context)), key);
     }
 
+    /**
+     * P303 (owner, 2026-10-20: «при переходе по пунктам меню появилась очень долгая задержка»): every key's value from ONE read of
+     * the file. The developer page is built with every settings screen; it read the file once per key (179 keys), and a file the
+     * owner wrote with a file manager is read through the folder grant (tens of ms each): seconds on every screen.
+     */
+    public static java.util.Map<String, String> snapshot(@Nullable Context context) {
+        return snapshotOf(read(context));
+    }
+
+    static java.util.Map<String, String> snapshotOf(@Nullable String text) {
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        for (String l : lines(text)) {
+            String[] p = l.trim().split("\\s+");
+            if (p.length == 2 && !out.containsKey(p[0])) out.put(p[0], p[1]);
+        }
+        return out;
+    }
+
     @Nullable
     static String valueOf(List<String> lines, String key) {
         for (String l : lines) {

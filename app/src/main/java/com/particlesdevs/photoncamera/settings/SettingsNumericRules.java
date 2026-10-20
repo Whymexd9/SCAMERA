@@ -33,6 +33,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_bento_trigger": return new double[]{0,0.1,0};
             case "pref_scam_hybrid_bento_weight": return new double[]{0.1,8,0};
             case "pref_scam_hybrid_bento_sigma": return new double[]{0.5,2,0};
+            case "pref_scam_hybrid_bento_ramp": return new double[]{0,12,0};
             case "pref_scam_hybrid_bento_frames": return new double[]{1,3,1};
             case "pref_scam_hybrid_bento_chroma_sigma": return new double[]{0,4,0};
             case "pref_scam_hybrid_cdm": return new double[]{0.01,2,0};
@@ -83,6 +84,7 @@ public final class SettingsNumericRules {
             // Worker round 5 (hybrid_tuning.txt): Sabre 6.1 kernel 0/1/2 (auto), its auto threshold, outlier sites, Bento checks.
             case "pref_scam_hybrid_sabre61": return new double[]{0,2,1};
             case "pref_scam_hybrid_local_align": return new double[]{0,2,1};
+            case "pref_scam_hybrid_la_engine": return new double[]{0,2,1};
             case "pref_scam_hybrid_s61_min_motion": return new double[]{0,20,0};
             case "pref_scam_hybrid_s61_max_key": case "pref_scam_hybrid_hot_max_key": return new double[]{5,100,0};
             case "pref_scam_hybrid_hot_sigma": case "pref_scam_hybrid_hot_base_sigma": return new double[]{0,12,0};

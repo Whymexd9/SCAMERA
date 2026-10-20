@@ -42,6 +42,22 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     /** Develops the preview RAW stream; replaces the ISP image when it has a frame. */
     private final LiveRawRenderer mRawRenderer = new LiveRawRenderer();
     private final LiveLensFilter mLensFilter = new LiveLensFilter();
+    /**
+     * P300 (owner, 2026-10-20: «исправь лайв превью для ISZ, isp поток для isz fullres отключаем»): the ISZ and FULLRES sessions
+     * have no ISP stream, so their viewfinder is the developed RAW, which had no lens filter. With a filter chosen the RAW frame
+     * is drawn off screen and goes through the ISP viewfinder's own filter shaders as a 2D texture (its LUT is in the RAW frame
+     * already, rawdevelop_fs: none here; so the filter comes after the LUT there, before it on the ISP path).
+     */
+    private final LiveLensFilter mRawLensFilter = new LiveLensFilter(false);
+    /** P301: the photo's ARK tone on the developed-RAW viewfinder (the RAW frame's linear values through the photo's shaders). */
+    private final com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveArkTone mArkTone =
+            new com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveArkTone();
+    private boolean mArkLogged;
+    private int hProgram2d, vPosition2d, enablePeak2d, uGain2d, mirror2d, resolution2d;
+    private int rawFbo, rawTex, rawW, rawH;
+    private static final float[] IDENTITY = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    private static final String VS_2D = "in vec2 vPosition;\nout vec2 texCoord;\nvoid main() {\n    texCoord = vPosition * 0.5 + 0.5;\n"
+            + "    gl_Position = vec4(vPosition, 0.0, 1.0);\n}\n";
     /** P42: downscaled copies of the drawn frame for the tracking autofocus (only while it asks for them). */
     private final SubjectFrameGrabber mSubjectGrabber = new SubjectFrameGrabber();
     private ManualModeConsole mManualModeConsole;
@@ -101,7 +117,32 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
                 com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderRawEnabled()
                         || com.particlesdevs.photoncamera.processing.LiveRawFrame.isEnabled()
                         || com.particlesdevs.photoncamera.processing.LiveRawFrame.isMosaicPreview();
-        boolean rawActive = rawLook && mRawRenderer.draw(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview, getPeakEnabled());
+        // P301 (owner, 2026-10-20: «Результат должен совпадать с итоговым фото»): the photo's ARK tone - the RAW frame's linear
+        // values through the photo's shaders into the off-screen target, then the filter / peaking pass puts it on screen
+        boolean rawActive = false;
+        final boolean ark = rawLook && hProgram2d != 0
+                && com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveArkTone.wanted() && !mArkTone.failed() && rawTarget();
+        if (ark) {
+            rawActive = mArkTone.draw(() -> mRawRenderer.drawLinear(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview), () -> {
+                com.particlesdevs.photoncamera.processing.LiveRawFrame.Frame f = mRawRenderer.lastFrame();
+                return f == null ? new double[]{100, 6400, 0, 0} : new double[]{f.iso, f.maxAnalogIso, f.noiseS, f.noiseO};
+            }, rawFbo, rawW, rawH);
+            if (rawActive) drawRawFiltered(getPeakEnabled());
+            if (!mArkLogged || !rawActive) {
+                if (!mArkLogged) Log.d("MainRenderer", "viewfinder: the photo's ARK tone " + (rawActive ? "on" : "not drawn (" + (mArkTone.failed() ? "failed" : "no frame") + ")"));
+                mArkLogged = rawActive;
+            }
+        }
+        // P300: with a lens filter the RAW frame is drawn off screen first, the filter pass puts it on screen
+        if (!rawActive) {
+            final boolean rawFilter = rawLook && hProgram2d != 0 && mRawLensFilter.active() && rawTarget();
+            if (rawFilter) GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, rawFbo);
+            rawActive = rawLook && mRawRenderer.draw(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview, getPeakEnabled());
+            if (rawFilter) {
+                GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0);
+                if (rawActive) drawRawFiltered(0);
+            }
+        }
         if (mLastRawActive == null || mLastRawActive != rawActive) {
             Log.d("MainRenderer", "viewfinder requestedRAW="+rawLook+" displaying="+(rawActive?"developed RAW":"ISP (RAW disabled, waiting, stale or unavailable)"));
             mLastRawActive = rawActive;
@@ -173,6 +214,8 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         }
         mUpdateST = false;
         mRawRenderer.onContextCreated();
+        mArkTone.onContextCreated();
+        mArkLogged = false;
         mSceneMeter.onContextCreated();
         mSubjectGrabber.onContextCreated();
         initTex();
@@ -196,6 +239,18 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         mirror = GLES20.glGetUniformLocation(hProgram, "mirror");
         mLensFilter.locate(hProgram);
         mLensFilter.locatePrep(loadShader(vss_default, ScameraApp.getAssetLoader().getString("shaders/preview/lensfilter_prep.glsl")));
+        // P300: the same filter for the developed-RAW frame drawn off screen (a 2D texture, the screen's layout)
+        rawFbo = rawTex = rawW = rawH = 0;
+        hProgram2d = loadShader(VS_2D, LiveLensFilter.to2d(fss_default));
+        if (hProgram2d != 0) {
+            vPosition2d = GLES20.glGetAttribLocation(hProgram2d, "vPosition");
+            enablePeak2d = GLES20.glGetUniformLocation(hProgram2d, "enablePeak");
+            uGain2d = GLES20.glGetUniformLocation(hProgram2d, "uGain");
+            mirror2d = GLES20.glGetUniformLocation(hProgram2d, "mirror");
+            resolution2d = GLES20.glGetUniformLocation(hProgram2d, "resolution");
+            mRawLensFilter.locate(hProgram2d);
+            mRawLensFilter.locatePrep(loadShader(VS_2D, LiveLensFilter.to2d(ScameraApp.getAssetLoader().getString("shaders/preview/lensfilter_prep.glsl"))));
+        }
         GLES20.glUseProgram(hProgram);
         GLES20.glVertexAttribPointer(vPosition, 2, GLES20.GL_FLOAT, false, 4 * 2, pVertex);
         GLES20.glVertexAttribPointer(vTexCoord, 2, GLES20.GL_FLOAT, false, 4 * 2, pTexCoord);
@@ -204,6 +259,65 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         GLES20.glUniform2f(GLES20.glGetUniformLocation(hProgram, "resolution"), mView.getWidth(), mView.getHeight());
         mGLInit = hProgram != 0;
         mView.fireOnSurfaceTextureAvailable(mSTexture, 0, 0);
+    }
+
+    /** P300: the off-screen target of the developed-RAW frame, the viewport's size (made or resized here); false without one. */
+    private boolean rawTarget() {
+        int[] v = new int[4];
+        GLES20.glGetIntegerv(GLES20.GL_VIEWPORT, v, 0);
+        int w = Math.max(1, v[2]), h = Math.max(1, v[3]);
+        if (rawFbo != 0 && w == rawW && h == rawH) return true;
+        if (rawFbo != 0) GLES30.glDeleteFramebuffers(1, new int[]{rawFbo}, 0);
+        if (rawTex != 0) GLES20.glDeleteTextures(1, new int[]{rawTex}, 0);
+        rawFbo = rawTex = rawW = rawH = 0;
+        int[] t = new int[1], f = new int[1];
+        GLES20.glGenTextures(1, t, 0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, t[0]);
+        GLES30.glTexStorage2D(GLES20.GL_TEXTURE_2D, 1, GLES30.GL_RGBA8, w, h);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
+        GLES30.glGenFramebuffers(1, f, 0);
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, f[0]);
+        GLES30.glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, t[0], 0);
+        int status = GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER);
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0);
+        if (status != GLES30.GL_FRAMEBUFFER_COMPLETE) {
+            Log.w("MainRenderer", "RAW filter target incomplete: 0x" + Integer.toHexString(status));
+            GLES30.glDeleteFramebuffers(1, f, 0);
+            GLES20.glDeleteTextures(1, t, 0);
+            hProgram2d = 0;   // no filter on the RAW viewfinder in this context, as before
+            return false;
+        }
+        rawFbo = f[0];
+        rawTex = t[0];
+        rawW = w;
+        rawH = h;
+        return true;
+    }
+
+    /**
+     * P300: the off-screen RAW frame through the live lens filter onto the screen (no gain or mirror: the RAW pass did them);
+     * P301: the focus peaking here when the frame came from the ARK tone (the RAW pass drew none).
+     */
+    private void drawRawFiltered(int peaking) {
+        mRawLensFilter.prepass(pVertex, pTexCoord, IDENTITY, rawTex, GLES20.GL_TEXTURE_2D, false, 1f);
+        GLES20.glUseProgram(hProgram2d);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, rawTex);
+        GLES20.glUniform1i(enablePeak2d, peaking);
+        GLES20.glUniform1i(mirror2d, 0);
+        GLES20.glUniform1f(uGain2d, 1f);
+        GLES20.glUniform2f(resolution2d, rawW, rawH);
+        mRawLensFilter.apply();
+        pVertex.position(0);
+        GLES20.glEnableVertexAttribArray(vPosition2d);
+        GLES20.glVertexAttribPointer(vPosition2d, 2, GLES20.GL_FLOAT, false, 4 * 2, pVertex);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+        GLES20.glDisableVertexAttribArray(vPosition2d);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
     }
 
     public void onSurfaceChanged(GL10 unused, int width, int height) {

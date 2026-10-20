@@ -55,6 +55,8 @@ final class DeveloperPreferences {
         });
         screen.addPreference(reset);
         Map<String, PreferenceCategory> groups = new LinkedHashMap<>();
+        // P303: the file read once for the page (it was once per key)
+        final Map<String, String> values = ScamDevFile.snapshot(app);
         for (DevKeys.Key k : DevKeys.all()) {
             PreferenceCategory group = groups.get(k.group);
             if (group == null) {
@@ -65,17 +67,17 @@ final class DeveloperPreferences {
                 screen.addPreference(group);
                 groups.put(k.group, group);
             }
-            group.addPreference(k.kind == DevKeys.Kind.SWITCH ? switchRow(context, app, k) : numberRow(context, app, k));
+            group.addPreference(k.kind == DevKeys.Kind.SWITCH ? switchRow(context, app, k, values.get(k.key))
+                    : numberRow(context, app, k, values.get(k.key)));
         }
     }
 
-    private static Preference switchRow(Context context, Context app, DevKeys.Key k) {
+    private static Preference switchRow(Context context, Context app, DevKeys.Key k, String cur) {
         SwitchPreferenceCompat p = new SwitchPreferenceCompat(context);
         p.setKey("dev_" + k.key);
         p.setPersistent(false);
         p.setIconSpaceReserved(false);
         p.setTitle(k.key);
-        String cur = ScamDevFile.get(app, k.key);
         p.setChecked(cur != null ? number(cur) != 0f : k.def != null && k.switchDefault());
         p.setSummary(summary(context, k, cur));
         p.setOnPreferenceChangeListener((pref, value) -> {
@@ -87,7 +89,7 @@ final class DeveloperPreferences {
         return p;
     }
 
-    private static Preference numberRow(Context context, Context app, DevKeys.Key k) {
+    private static Preference numberRow(Context context, Context app, DevKeys.Key k, String cur) {
         EditTextPreference p = new EditTextPreference(context);
         p.setKey("dev_" + k.key);
         p.setPersistent(false);
@@ -96,7 +98,6 @@ final class DeveloperPreferences {
         p.setDialogTitle(k.key);
         p.setDialogMessage(k.text + "\n" + Lang.t(context, "Пусто — по умолчанию", "Empty: default")
                 + (k.def != null ? " (" + k.def + ")" : ""));
-        String cur = ScamDevFile.get(app, k.key);
         p.setText(cur == null ? "" : cur);
         p.setSummary(summary(context, k, cur));
         p.setOnBindEditTextListener(input -> input.setInputType(InputType.TYPE_CLASS_NUMBER

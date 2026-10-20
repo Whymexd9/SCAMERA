@@ -584,11 +584,11 @@ public final class ScamHybridBurst implements ScamTransport {
     @Override public boolean diagnostics() { return diagnostics; }
     @Override public boolean clipFlags() { return clipFlags; }
     /**
-     * P187 (owner, 2026-10-17: less memory at full resolution, the same picture): its readers are the denoisers, and above 100 MP
-     * the shot has none (ScamHdrDenoise.noDenoise, the same predicate on the same output size): the worker does not make it - its
-     * float coverage plane (4 B a pixel, 765 MB at 200 MP), the median sample and the map itself sat on the merge's peak.
+     * P187 (owner, 2026-10-17: less memory at full resolution, the same picture): above 100 MP (ScamHdrDenoise.huge, the same
+     * predicate on the same output size) the worker does not make it - its float coverage plane (4 B a pixel, 765 MB at 200 MP),
+     * the median sample and the map itself sat on the merge's peak; the 200 MP denoise (P306) takes a flat strength map instead.
      */
-    @Override public boolean effectiveMap() { return !ScamHdrDenoise.noDenoise(outWidth, outHeight); }
+    @Override public boolean effectiveMap() { return !ScamHdrDenoise.huge(outWidth, outHeight); }
     /**
      * P27: extra hybrid_tuning.txt lines for this burst (the conservative retry), appended after the user's tuning; then the steps
      * a worker of this process died in (see {@link #avoidedSteps}).

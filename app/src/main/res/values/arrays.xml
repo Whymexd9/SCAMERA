@@ -213,6 +213,16 @@
         <item>1</item>
         <item>2</item>
     </string-array>
+    <string-array name="scam_hybrid_la_engine_entries">
+        <item>Auto (default)</item>
+        <item>GPU</item>
+        <item>CPU</item>
+    </string-array>
+    <string-array name="scam_hybrid_la_engine_values" translatable="false">
+        <item>2</item>
+        <item>1</item>
+        <item>0</item>
+    </string-array>
     <string-array name="scam_hybrid_mochi_entries">
         <item>Off (stock)</item>
         <item>Auto (&gt; 3 short frames)</item>

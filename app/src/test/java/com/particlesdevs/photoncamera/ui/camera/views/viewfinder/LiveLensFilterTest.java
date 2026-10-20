@@ -67,6 +67,17 @@ public class LiveLensFilterTest {
         assertTrue(prep.contains("layout(location = 1) out vec4 LinOut"));
     }
 
+    /** P300: the RAW viewfinder's filter pass reads the developed frame as a 2D texture with the same shaders. */
+    @Test public void theRawViewfinderGetsTheSameShadersOnA2dTexture() throws Exception {
+        for (String name : new String[]{"main_fs.glsl", "lensfilter_prep.glsl"}) {
+            String src = new String(Files.readAllBytes(new File("src/main/assets/shaders/preview/" + name).toPath()), StandardCharsets.UTF_8);
+            assertTrue(name, src.contains("samplerExternalOES") && src.contains("GL_OES_EGL_image_external_essl3"));
+            String flat = LiveLensFilter.to2d(src);
+            assertFalse(name, flat.contains("samplerExternalOES") || flat.contains("GL_OES_EGL_image_external"));
+            assertTrue(name, flat.contains("uniform sampler2D sTexture;"));
+        }
+    }
+
     @Test public void theViewfinderShaderCarriesTheMarker() throws Exception {
         String main = new String(Files.readAllBytes(new File("src/main/assets/shaders/preview/main_fs.glsl").toPath()), StandardCharsets.UTF_8);
         assertTrue(main.contains(LiveLensFilter.MARKER));

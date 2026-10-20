@@ -58,6 +58,30 @@ final class LiveLensFilter {
     private long readAt = -REFRESH_MS;
     private final float[] values = new float[VALUES];
     private int filter;
+    /** False: the developed-RAW viewfinder's filter (P300) - its frame carries the LUT already (rawdevelop_fs), none here. */
+    private final boolean ownLut;
+
+    LiveLensFilter() {
+        this(true);
+    }
+
+    LiveLensFilter(boolean ownLut) {
+        this.ownLut = ownLut;
+    }
+
+    /** P300: the settings ask for a filter (read at most twice a second). */
+    boolean active() {
+        refresh();
+        return filter != 0;
+    }
+
+    /**
+     * P300 (owner, 2026-10-20: «исправь лайв превью для ISZ»): a viewfinder shader of the external camera texture as one of a
+     * plain 2D texture (the developed-RAW frame drawn off screen first).
+     */
+    static String to2d(String shader) {
+        return shader.replace("#extension GL_OES_EGL_image_external_essl3 : require", "").replace("samplerExternalOES", "sampler2D");
+    }
     // the pyramid pass
     private int prep, pPosition, pTexCoord, pMatrix, pMirror, pGain, pKnee, pSqrt;
     private int fbo, hiTex, linTex, fboW, fboH;
@@ -146,6 +170,11 @@ final class LiveLensFilter {
      * back; the caller binds its own program and textures afterwards.
      */
     void prepass(FloatBuffer vertex, FloatBuffer texCoord, float[] matrix, int oesTexture, boolean mirror, float gain) {
+        prepass(vertex, texCoord, matrix, oesTexture, GLES11Ext.GL_TEXTURE_EXTERNAL_OES, mirror, gain);
+    }
+
+    /** The same of a frame in {@code target} (P300: the developed-RAW frame, GL_TEXTURE_2D). */
+    void prepass(FloatBuffer vertex, FloatBuffer texCoord, float[] matrix, int texture, int target, boolean mirror, float gain) {
         refresh();
         pyramid = false;
         if (prep == 0 || !needsPyramid(filter)) return;
@@ -163,7 +192,7 @@ final class LiveLensFilter {
         GLES20.glViewport(0, 0, w, h);
         GLES20.glUseProgram(prep);
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTexture);
+        GLES20.glBindTexture(target, texture);
         GLES20.glUniformMatrix4fv(pMatrix, 1, false, matrix, 0);
         GLES20.glUniform1i(pMirror, mirror ? 1 : 0);
         GLES20.glUniform1f(pGain, gain);
@@ -172,12 +201,14 @@ final class LiveLensFilter {
         vertex.position(0);
         texCoord.position(0);
         GLES20.glEnableVertexAttribArray(pPosition);
-        GLES20.glEnableVertexAttribArray(pTexCoord);
         GLES20.glVertexAttribPointer(pPosition, 2, GLES20.GL_FLOAT, false, 4 * 2, vertex);
-        GLES20.glVertexAttribPointer(pTexCoord, 2, GLES20.GL_FLOAT, false, 4 * 2, texCoord);
+        if (pTexCoord >= 0) {   // P300: the 2D pass's vertex shader takes the position only
+            GLES20.glEnableVertexAttribArray(pTexCoord);
+            GLES20.glVertexAttribPointer(pTexCoord, 2, GLES20.GL_FLOAT, false, 4 * 2, texCoord);
+        }
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
         GLES20.glDisableVertexAttribArray(pPosition);
-        GLES20.glDisableVertexAttribArray(pTexCoord);
+        if (pTexCoord >= 0) GLES20.glDisableVertexAttribArray(pTexCoord);
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0);
         GLES20.glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, hiTex);
@@ -282,7 +313,7 @@ final class LiveLensFilter {
 
     /** The film LUT's texture on unit 1 and its uniforms (the program in use); unit 0 is the camera's frame. */
     private void applyLut() {
-        FilmLut lut = lutStrength > 0f ? lutReady : null;
+        FilmLut lut = ownLut && lutStrength > 0f ? lutReady : null;
         if (lut != lutShown) {
             if (lutTex != 0) GLES20.glDeleteTextures(1, new int[]{lutTex}, 0);
             lutTex = lut != null ? lut.upload() : 0;
@@ -305,6 +336,10 @@ final class LiveLensFilter {
 
     /** The chosen LUT read off the GL thread (a .cube file can take a while). */
     private void readLut() {
+        if (!ownLut) {
+            lutStrength = 0f;
+            return;
+        }
         try {
             // P281: the film simulation and the LUT as one table (FilmChain)
             final com.particlesdevs.photoncamera.processing.color.FilmChain.State chain = com.particlesdevs.photoncamera.processing.color.FilmChain.current();

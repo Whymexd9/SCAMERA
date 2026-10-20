@@ -25,10 +25,12 @@ public final class DeviceDefaults {
      * phone then lists 5 cameras instead of 3, owner's log) and the OPPO-matrix saturation of the ARK tone at 1.1. 4 (owner,
      * 2026-10-10): the Redmi Note 11 Pro (Helio G96, Mali-G57 MC2: 19 frames took 16.7 s of GPU merge) merges 12 N frames and
      * 2 Shasta frames, with the ARK RL 3 (micro-texture) deconvolution at 1.2; the Pixel 7 takes RL 3 at 1.5. 5 (owner,
-     * 2026-10-10 evening, shots with the P77 build): the Redmi Note 11 Pro takes RL 3 at 1.5. A phone whose marker is older gets only the
+     * 2026-10-10 evening, shots with the P77 build): the Redmi Note 11 Pro takes RL 3 at 1.5. 6 (P301, owner, 2026-10-20: the
+     * viewfinder must match the photo): a flagship SoC (Snapdragon 8 Gen 3 and newer, Dimensity 9300 and newer) starts with the
+     * developed-RAW viewfinder (pref_live_viewfinder_raw_key) on every module, which shows the photo's ARK tone. A phone whose marker is older gets only the
      * entries of the newer versions, so an update never resets the user's other settings.
      */
-    static final int VERSION = 5;
+    static final int VERSION = 6;
     /** The package the Find X7 Ultra's camera service shows every lens to (owner's choice). */
     static final String X7U_SPOOF_PACKAGE = "com.ss.android.ugc.aweme";
     private DeviceDefaults() {}
@@ -42,9 +44,11 @@ public final class DeviceDefaults {
     static Map<String, Object> forDevice(Context context, int since) {
         String model = Build.MODEL == null ? "" : Build.MODEL.toUpperCase(java.util.Locale.ROOT);
         final boolean oppo = "OPPO".equalsIgnoreCase(Build.MANUFACTURER) && (model.equals("PHY110") || model.equals("PKJ110"));
-        final boolean note11Pro = redmiNote11Pro(), pixel7 = pixel7();
-        if (!oppo && !note11Pro && !pixel7) return null;
+        final boolean note11Pro = redmiNote11Pro(), pixel7 = pixel7(), flagship = flagshipSoc();
+        if (!oppo && !note11Pro && !pixel7 && !flagship) return null;
         Map<String, Object> out = new LinkedHashMap<>();
+        // v6 (P301): the RAW viewfinder with the photo's tone on a flagship SoC
+        if (since < 6 && flagship) out.put("pref_live_viewfinder_raw_key", Boolean.TRUE);
         // v4: Redmi Note 11 Pro (owner's log 2026-10-10: device viva, model 2201116TG)
         if (since < 4 && note11Pro) {
             out.put("pref_scam_hybrid_zsl_frames", "12");
@@ -97,6 +101,20 @@ public final class DeviceDefaults {
         return stored;
     }
     /** Pixel 7: Google, device panther (owner's log 2026-10-10). */
+    /**
+     * P301: Snapdragon 8 Gen 3 (SM8650), 8 Elite (SM8750), 8 Elite Gen 5 (SM8850) and Dimensity 9300 (MT6989) / 9400 / 9500
+     * (MT699x) - the GPUs that run the photo's tone on every viewfinder frame. Build.SOC_MODEL (API 31+); older: none.
+     */
+    public static boolean flagshipSoc() {
+        return flagshipSoc(android.os.Build.VERSION.SDK_INT >= 31 ? Build.SOC_MODEL : null);
+    }
+
+    static boolean flagshipSoc(String soc) {
+        if (soc == null) return false;
+        final String s = soc.toUpperCase(java.util.Locale.ROOT);
+        return s.startsWith("SM8650") || s.startsWith("SM8750") || s.startsWith("SM8850") || s.startsWith("MT6989") || s.startsWith("MT699");
+    }
+
     public static boolean pixel7() {
         return "Google".equalsIgnoreCase(Build.MANUFACTURER) && "panther".equalsIgnoreCase(Build.DEVICE);
     }

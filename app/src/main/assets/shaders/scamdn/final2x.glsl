@@ -19,6 +19,11 @@ uniform int fadeU;
 uniform vec2 darkFadeU;
 uniform vec2 darkChromaU;       // colour deviation |RGB - mean| kept despite the fade (scamdn/cbf; 0 = off)
 uniform vec2 darkNoiseU;        // the keep floor following the colour noise (scamdn/cbf; 0 = the fixed floor alone)
+// P306: the 200 MP shot (denoised on its 2x2 means): its pixel noise, which the half-size pyramid never sees, cored here - the
+// luma minus its [1 2 1] x [1 2 1] mean, clamped to +-t taken off, t = x sigma of that residual (0.8 of the pixel sigma) at
+// the local level: sigma_Y = 2 sqrt(Y + 0.008) sigma_u (u = sqrt(Y + 0.008), chromadn/luma). Edges and detail above t keep
+// all but t; x = fineU.x (0: off), sigma_u = fineU.y (ScamHdrDenoise.estimateNoise on the full grid).
+uniform vec2 fineU;
 out vec4 Output;
 const vec3 kY = vec3(0.2126, 0.7152, 0.0721996);
 const vec3 kU = vec3(-0.162450244, -0.546494309, 0.708944715);
@@ -44,6 +49,20 @@ void main() {
     vec3 d = up2(p);
     float keep = clamp(keepU, 0.0, 1.0);
     vec3 yuv = vec3(dot(c, kY) + d.x, keep * vec2(dot(c, kU), dot(c, kV)) + d.yz);
+    if (fineU.x > 0.0) {
+        ivec2 lim = textureSize(InputBuffer, 0) - 1;
+        float b3 = 0.0;
+        for (int j = -1; j <= 1; j++) {
+            for (int i = -1; i <= 1; i++) {
+                vec3 n = texelFetch(InputBuffer, clamp(p + ivec2(i, j), ivec2(0), lim), 0).rgb;
+                float w = (i == 0 ? 2.0 : 1.0) * (j == 0 ? 2.0 : 1.0);
+                b3 += w * dot(vec3(finite1(n.r), finite1(n.g), finite1(n.b)), kY);
+            }
+        }
+        b3 *= 0.0625;
+        float t = fineU.x * 1.6 * sqrt(max(b3, 0.0) + 0.008) * fineU.y;
+        yuv.x -= clamp(dot(c, kY) - b3, -t, t);
+    }
     if (fadeU != 0) {
         vec3 rgb = toRgb(yuv);
         float m = dot(rgb, vec3(1.0 / 3.0));

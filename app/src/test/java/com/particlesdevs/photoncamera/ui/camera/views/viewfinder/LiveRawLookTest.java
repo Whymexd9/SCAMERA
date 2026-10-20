@@ -5,6 +5,8 @@ import com.particlesdevs.photoncamera.processing.color.ColourLook;
 import org.junit.Test;
 
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 /**
  * P134: the RAW viewfinder takes the photo's white-balance look (ColourLook.whiteMatrix, row-major on linear sRGB) after the
@@ -24,6 +26,16 @@ public class LiveRawLookTest {
         float[] white = {1.1f, 0.05f, 0.0f, 0.0f, 1.0f, 0.0f, 0.02f, 0.0f, 0.9f};      // row-major, linear sRGB
         float[] got = LiveRawRenderer.lookTransform(white, columnMajor(camera));
         assertArrayEquals(columnMajor(ColourLook.mul(white, camera)), got, 1e-6f);
+    }
+
+    /** P297: the first frame reads the look at once (the old Long.MIN_VALUE start overflowed and never did), then twice a second. */
+    @Test
+    public void theLookIsReadOnTheFirstFrameAndThenTwiceASecond() {
+        assertTrue(LiveRawRenderer.lookDue(0L, LiveRawRenderer.LOOK_NEVER));
+        assertTrue(LiveRawRenderer.lookDue(123_456_789L, LiveRawRenderer.LOOK_NEVER));
+        assertFalse(LiveRawRenderer.lookDue(1_000L, 700L));
+        assertTrue(LiveRawRenderer.lookDue(1_200L, 700L));
+        assertFalse("the overflow P297 fixed", LiveRawRenderer.lookDue(123_456_789L, Long.MIN_VALUE));
     }
 
     @Test

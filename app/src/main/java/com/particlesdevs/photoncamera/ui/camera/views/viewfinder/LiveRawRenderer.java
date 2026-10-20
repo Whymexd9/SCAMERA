@@ -29,7 +29,14 @@ final class LiveRawRenderer {
     // parsed off the GL thread. The tone stays the viewfinder's own (ArkCore), so the look shows on its rendering.
     private static final java.util.concurrent.ExecutorService LUT_LOADER=java.util.concurrent.Executors.newSingleThreadExecutor(r->{
         Thread t=new Thread(r,"vf-film-lut");t.setDaemon(true);return t;});
-    private long lookAt=Long.MIN_VALUE;
+    // P297 (owner, 2026-10-20: no LUT / film on the ISZ viewfinder): the ISZ modules show this RAW viewfinder (no ISP stream,
+    // P223 / P266), the 1x module the ISP one (LiveLensFilter). lookAt started at Long.MIN_VALUE: now-lookAt overflowed to a
+    // negative number, below the interval for ever, so refreshLook never read the settings - no look, no film simulation, no LUT
+    // in any RAW viewfinder since P134. "Never read" is now one interval before the clock's zero (elapsedRealtime is >= 0).
+    static final long LOOK_REFRESH_MS=500, LOOK_NEVER=-LOOK_REFRESH_MS;
+    private long lookAt=LOOK_NEVER;
+    /** P297: the look is read again (at most twice a second; at once after {@link #LOOK_NEVER}). */
+    static boolean lookDue(long now,long last){return now-last>=LOOK_REFRESH_MS;}
     private float[] lookWhite,lookSkin,lookVib,lookMix,lookMono,lookGradeA,lookGradeB;
     private boolean lookOn,lookMixOn;
     private float lutStrength;
@@ -39,7 +46,7 @@ final class LiveRawRenderer {
     private int filmLutTex;
     private void refreshLook(){
         long now=android.os.SystemClock.elapsedRealtime();
-        if(now-lookAt<500)return;
+        if(!lookDue(now,lookAt))return;
         lookAt=now;
         try{
             ColourLook c=ArkTone.colourLook();
@@ -123,6 +130,18 @@ final class LiveRawRenderer {
     private void integer(String n,int v){GLES20.glUniform1i(loc(n),v);}
     private void number(String n,float v){GLES20.glUniform1f(loc(n),v);}
     boolean draw(FloatBuffer vertices,FloatBuffer coords,float[] rotation,boolean mirror,int peaking) {
+        return draw(vertices,coords,rotation,mirror,peaking,false);
+    }
+    /** P301: the frame's linear values (LiveArkTone's input) instead of the viewfinder's own tone; null-safe as draw. */
+    boolean drawLinear(FloatBuffer vertices,FloatBuffer coords,float[] rotation,boolean mirror) {
+        return draw(vertices,coords,rotation,mirror,0,true);
+    }
+    /** P301: the frame drawn last ({@link #drawLinear}): its ISO and noise for the ARK tone's AE. */
+    LiveRawFrame.Frame lastFrame() {
+        return lastFrame;
+    }
+    private LiveRawFrame.Frame lastFrame;
+    private boolean draw(FloatBuffer vertices,FloatBuffer coords,float[] rotation,boolean mirror,int peaking,boolean linear) {
         LiveRawFrame.Frame f=LiveRawFrame.acquire();
         if(f==null || System.nanoTime()-f.publishedNanos>500_000_000L)return false;
         if(frameSession!=f.session){frameSession=f.session;failed=false;uploadedVersion=-1;meter.reset();}
@@ -184,7 +203,8 @@ final class LiveRawRenderer {
             number("u_lsc_intensity",f.shadingWidth>1?1:0);
             number("u_auto_exposure",meter.exposure);number("u_contrast_boost",meter.contrast);
             GLES20.glUniform4fv(loc("u_exp_mults"),1,meter.multipliers,0);
-            integer("mirror",mirror?1:0);integer("peaking_enabled",peaking);
+            integer("mirror",mirror?1:0);integer("peaking_enabled",peaking);integer("u_linear_out",linear?1:0);
+            lastFrame=f;
             GLES20.glUniform3f(loc("peaking_color"),1,.8f,0);
             GLES20.glUniformMatrix4fv(loc("texRotate"),1,false,rotation,0);
             vertices.position(0);coords.position(0);

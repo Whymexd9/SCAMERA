@@ -21,6 +21,7 @@ uniform int factorU;            // output pixels per map texel (unset: 2)
 uniform float effRefU;          // median code
 uniform float effMaxU;          // sigma clamp (unset: 3)
 uniform int noEffU;             // 1: no effective-frame map (unset 0: the map, as before)
+uniform float flatU;            // P306: f without a map (the 200 MP shot, ScamDenoise dn_huge_map; unset 0: 1)
 uniform sampler2D GainMap;      // lens-shading gains (r, g_even, g_odd, b) as ScamRgb uploaded them (lscU.x > 0)
 uniform vec2 lscU;              // x: 1 / reference gain (0: no lens-shading term), y: cap of g^2
 uniform vec2 fullInvU;          // 1 / size of the output grid (GainMap coordinates, as scamrgb samples it)
@@ -30,7 +31,7 @@ void main() {
     float ref = effRefU > 0.0 ? effRefU : 64.0;
     float hi = effMaxU > 0.0 ? effMaxU : 3.0;
     ivec2 o = ivec2(gl_FragCoord.xy) * F;
-    float f = 1.0;
+    float f = flatU > 0.0 ? flatU : 1.0;
     if (noEffU == 0) {
         ivec2 last = textureSize(EffMap, 0) - 1;
         float s = 0.0;

@@ -282,6 +282,7 @@ public class HybridSettingsTest {
             assertNotNull(k,new SettingsAvailability(s).reason(k));
         assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_agx_slope")); // Custom is the default look
         assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_motion_boost"));
+        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_la_engine"));
         s.put("pref_scam_hybrid_sabre61","2");s.put("pref_scam_hybrid_shasta_mode","1");s.put("pref_scam_hybrid_bento","1");
         for(String k:new String[]{"pref_scam_hybrid_s61_max_key","pref_scam_hybrid_snr_scale","pref_scam_hybrid_shasta_sharpness",
                 "pref_scam_hybrid_shasta_max_ratio","pref_scam_hybrid_bento_trigger"})
@@ -289,6 +290,7 @@ public class HybridSettingsTest {
         s.put("pref_scam_hybrid_ark_agx_look","1");s.put("pref_scam_hybrid_local_align","0");
         assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_agx_slope"));
         assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_motion_boost"));
+        assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_la_engine")); // P308: only with F6 on
         // Motion mode's own Bento (Auto) uses the trigger
         Map<String,Object> m=new HashMap<>();m.put("pref_motion_mode",true);
         assertNull(new SettingsAvailability(m).reason("pref_scam_hybrid_bento_trigger"));
@@ -347,6 +349,35 @@ public class HybridSettingsTest {
         assertEquals("2",prefs.getString("pref_scam_hybrid_mochi","?"));
         tuning=PreferenceKeys.hybridTuningText();
         assertTrue(tuning,tuning.contains("mochi 2.0\n"));
+    }
+
+    @Test public void p309SoftUltrashortTransition() {
+        // owner, 2026-10-20: «нам нужно сделать более мягкий переход между экспозициями»: the ramp on by default, 0 = the previous mask
+        String tuning=PreferenceKeys.hybridTuningText();
+        for(String line:new String[]{"bentoRamp 6.0\n","bentoRampLo 0.4\n","bentoRampHi 0.97\n","bentoRampReach 32.0\n"})
+            assertTrue(line+tuning,tuning.contains(line));
+        manager.set("default_scope","pref_scam_hybrid_bento_ramp","0");
+        assertTrue(PreferenceKeys.hybridTuningText().contains("bentoRamp 0.0\n"));
+        prefs.edit().clear().commit();
+        inflate();
+        assertEquals(6f,Float.parseFloat(prefs.getString("pref_scam_hybrid_bento_ramp","0")),0f);
+    }
+
+    @Test public void p308AlignmentEngineChoice() {
+        // owner, 2026-10-20: «сделай гпу выравнивание и дай возможность выбора»: auto by default (written also when unset), GPU / CPU
+        String tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("laGpu 2.0\n"));
+        manager.set("default_scope","pref_scam_hybrid_la_engine","1");
+        assertTrue(PreferenceKeys.hybridTuningText().contains("laGpu 1.0\n"));
+        manager.set("default_scope","pref_scam_hybrid_la_engine","0");
+        tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("laGpu 0.0\n"));assertFalse(tuning,tuning.contains("laGpu 2.0\n"));
+        prefs.edit().clear().commit();
+        PreferenceScreen settings=inflate();
+        assertEquals("2",prefs.getString("pref_scam_hybrid_la_engine","?"));
+        ListPreference engine=settings.findPreference("pref_scam_hybrid_la_engine");
+        assertNotNull(engine);
+        assertArrayEquals(new CharSequence[]{"2","1","0"},engine.getEntryValues());
     }
 
     @Test public void p68DefaultsOnEveryPhone() {

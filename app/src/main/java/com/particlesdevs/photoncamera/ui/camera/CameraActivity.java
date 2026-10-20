@@ -246,6 +246,8 @@ public class CameraActivity extends BaseActivity {
             SimpleStorageHelper.updateFileManagerPaths(this);
         }
         FileManager.CreateFolders();
+        // P302: photos and RAW files of Download/SCAMERA/DCIM back to DCIM, once (in the background)
+        com.particlesdevs.photoncamera.util.DcimMoveBack.runOnce(getApplicationContext());
         Log.setLogFolder(getApplicationContext());
         // Reads the "Full debug" switch and, when on, opens Download/SCAMERA/SCAMERA-debug.txt
         // and writes the build/device/camera header for this session.

@@ -6369,3 +6369,237 @@ new chain 2008 px in the sheet crop). Its source: at the ultrashort clip edge G 
 carries no flag (0.96 of the ceiling, R/G 2.3 after WB). scamrgb: a channel at 0.80 .. 0.95 of its ceiling while another
 white-balanced channel is brighter is censored as well (satR), so the recovery raises it. check_highlight_recovery / _neutral /
 _one_channel_off / _landing and check_ark_highlights PASS; glslc OK.
+
+### P293 - LUT pill under the HUD; quick sheet over the LUT tray (owner, 2026-10-20, screenshots): done, not device-tested.
+The HUD (shutter, ISO, focus, WB, OIS) was drawn at 12dp from the viewfinder's top, where the LUT pill sits (8dp, 28dp high): it
+now starts 6dp below the pill's laid-out bottom (SurfaceViewOverViewfinder.setHudTop from the pill's layout listener). The tray
+closed only when the sheet was dragged; «Ещё», a swipe or the model opened it over the tray: the model's sheetLevel callback
+closes the tray at any level above HIDDEN, and opening the tray lowers the sheet to HIDDEN.
+
+### P294 - lab crash (owner, 2026-10-20, crash log x4, NPE in ViewGroup.dispatchCollectViewAttributes): done, not device-tested.
+A stage redraw rebuilt the page (removeAllViews) under a dragged slider; ACTION_CANCEL -> onStopTrackingTouch -> set -> render
+inside the outer removeAllViews, the nested page added into the array the outer loop was nulling. ScamLabFragment: a render
+asked for during a render runs after it; stage redraws wait for the slider's release.
+
+### P296 - OPPO Find X8 Ultra: Pro «Яркость» only 0 and -0.1 (owner, 2026-10-20): done, not device-tested.
+Camera2ApiAutoFix widened every camera's AE compensation range to +-24 steps (+-8 EV at 1/3 EV); the X8U steps 1/330 EV
+(declared +-990 = +-3 EV), so +-24 steps were +-0.07 EV. Never narrower than declared now (ExposureCompensationRangeTest).
+
+### P298 - horizon level: still no vibration when level (owner, 2026-10-20): done, not device-tested.
+Vibration.Soft returned early with the system's haptic feedback off (vivo ships touch vibration off) and used USAGE_TOUCH (that
+intensity); 18 ms at 70/255 was hardly felt. Now gated by the horizon tile only, default usage, 30 ms at 120.
+
+### P299 - camera icon opens the gallery after Home (owner, 2026-10-20): done, not device-tested.
+The camera's gallery shares the camera's task; the icon resumed it with the gallery on top. GalleryActivity opened from the camera
+finishes on onUserLeaveHint (Home / another app), not when it starts one of its own screens (startActivityForResult hook).
+
+### P297 - no LUT / film simulation on the ISZ viewfinder (owner, 2026-10-20, X200 Ultra 2x): done, not device-tested.
+ISZ (and FULLRES) sessions show the developed-RAW viewfinder (LiveRawRenderer: no ISP stream, P223 / P266); its look refresh
+started at lookAt = Long.MIN_VALUE, now - lookAt overflowed negative, the 500 ms gate never opened: no colour look, no film
+simulation, no LUT in any RAW viewfinder since P134. lookDue / LOOK_NEVER (LiveRawLookTest). rawdevelop_fs.glsl (its look branch
+runs on phones for the first time) compiles with glslc as ES 3.1 and links on a desktop GL. Open: the lens filter has no pass
+on the RAW viewfinder (LiveLensFilter works on the ISP frame only).
+
+### P295 - Snapdragon 870 slower than Helio G96 (owner, 2026-10-20, Xiaomi 12X timings 2026-10-19): POSTPONED (owner: «забудь пока что про 870»), analysis only, nothing changed.
+No slow path (GPU merge, cache 13/13 hits, no thermal, no shader compiles): the SM8250 phone merged 22-26 frames (flagship 20 N
+default) at ~0.45 s a frame on the Adreno 650, the G96 12 N + 2 Shasta (DeviceDefaults v4). Proposed (reverted): DeviceDefaults v6, SM8250
+(SOC_MODEL prefix, or Xiaomi psyche) takes 12 N + 2 Shasta once. Open: the merge and mark passes are 4.7x / 10x
+slower than on Adreno 840 where the others are 2-3x (possible register spill on Adreno 6xx) - needs a per-pass A/B on the phone.
+
+### P300 - the lens filter on the ISZ / FULLRES live viewfinder (owner, 2026-10-20: «исправь лайв превью для ISZ, isp поток для isz fullres отключаем»): done, not device-tested.
+Those sessions show the developed RAW (no ISP stream); it had no lens-filter pass. With a filter chosen MainRenderer draws the RAW
+frame into an off-screen RGBA8 target of the viewport's size and puts it on screen through the ISP viewfinder's own shaders made
+2D (LiveLensFilter.to2d: main_fs + lensfilter_live, lensfilter_prep; VS_2D), a second LiveLensFilter without its own LUT (the RAW
+frame has it: the filter comes after the LUT here, before it on the ISP path). No filter: as before, no extra pass. A failed
+program or target leaves the RAW viewfinder as before. Shaders: glslc ES 3.1 and desktop link OK; LiveLensFilterTest.
+P295 follow-up (owner's SD870 timings with worker_gpu_normal_priority 1): the GPU passes are the same (merge 2555 ms against
+2536 ms at low priority), so not the context priority - the merge shader itself is slow on Adreno 650 (per-pass A/B needed).
+
+### P302 - photos and RAW back to DCIM (owner, 2026-10-20): done, not device-tested.
+«/storage/emulated/0/Download/SCAMERA/DCIM/Camera/ и /storage/emulated/0/Download/SCAMERA/DCIM/SCAMERA/Raw/ перенести обратно в
+/storage/emulated/0/DCIM/. Это всё не нужно хранить в загрузках.» Cause: SimpleStorageHelper.updateFileManagerPaths took the first
+lasting folder grant whatever it was and appended "DCIM/" - since P191 that was the Download/SCAMERA grant, so photos and DNGs went
+to Download/SCAMERA/DCIM/...; hasStorageAccess counted that grant as DCIM access (the DCIM picker was never shown). Now dcimOf
+takes only a grant of DCIM, of a folder in it or of a storage root (primary first), else the primary DCIM (the File API writes
+photos and DNGs there); hasStorageAccess the same. DcimMoveBack (once, in the background at the camera's start): the files of
+Download/SCAMERA/DCIM/Camera and .../DCIM/SCAMERA/Raw go to DCIM/Camera and DCIM/SCAMERA/Raw - renamed where the File API allows,
+else copied, read back and compared byte for byte, then the old one deleted (File API, else through the Download/SCAMERA grant);
+the same bytes already there: the old one goes; another file of the name: "_1"; anything that cannot be read or deleted stays for
+the next start; media scan of both places; empty old folders removed; done once nothing is left. DcimMoveBackTest (CI).
+
+### P301 - the viewfinder shows the photo's tone (owner, 2026-10-20: «тонмапинг ... в живом видоискателе? Результат должен совпадать с итоговым фото», «Делай»; «нужно, чтобы RAW-видоискатель можно было включить не только для ISZ и фулреза»): done, not device-tested.
+Before: the ISP viewfinder shows the ISP's own tone (our LUT / film / filter on top); the RAW viewfinder ArkCore at its library
+defaults (ACES, per-pixel fusion, its own meter) - neither the photo's ARK tone. Now the developed-RAW viewfinder runs the photo's
+own shaders (LiveArkTone, the viewfinder's GL thread): rawdevelop_fs u_linear_out gives the frame's linear sRGB (WB, lens
+shading, color_transform; no tone), then ark/low, ArkAe on a factor-8 arkLow read back every 4 frames (smoothed), ark/gf + box +
+ab (the guided-filter fusion with the photo's weights and P291 envelope), ark/combine with the photo's settings (tone operator,
+colour look, film simulation / LUT), into the off-screen target; the 2D filter pass (P300) puts it on screen with the lens filter
+and the focus peaking. Differences left: the merge's noise and detail (detail off), no Bento headroom (one frame), the AE's noise
+clamp from the frame's noise over 0.55 x the burst's frames, the AE's statistics at factor 8. Any GL failure switches it off for
+the context (the RAW viewfinder's own look). scam_dev.txt "vf_ark 0": as before. The RAW viewfinder on any module: «Живой
+видоискатель» (settings and the sheet's «Для опытных»), or the module's «Поток ISP: Выкл»; DeviceDefaults v6 turns it on once on
+flagship SoCs (SM8650 / SM8750 / SM8850, MT6989 / MT699x). Open: frame rate and look on a phone.
+
+### P303 - long delay switching settings screens (owner, 2026-10-20: «все пункты открываются примерно с одинаковой задержкой»): done, not device-tested.
+Every settings screen inflates the whole preferences.xml, the developer page (DeveloperPreferences.populate, 179 DevKeys) with it,
+and each key's row read scam_dev.txt again (ScamDevFile.get per key). The owner's scam_dev.txt, written with a file manager after
+the P191 move to Download/SCAMERA, is not the app's own file: each read went through the folder grant (tens of ms) - seconds on
+every screen. The page reads the file once (ScamDevFile.snapshot). PreferenceKeys' dev-key cache falls back to the grant when a
+listed file cannot be read directly (its keys were silently ignored before).
+
+### P304 - «Ошибка загрузки» of a saved config (owner, 2026-10-20, screenshot: Download/SCAMERA/XML/SCAMERA_20261018_182943.xml): done, not device-tested.
+The config was saved by the earlier install (before the package became com.scamera.app, 2026-10-19): the File API lists it, but
+its open fails with EACCES and ScameraFolder.open never tried the folder's grant (it did only for files the File API does not
+see). Now a direct open that fails falls back to the grant; without one the message says to open the folder or pick the file.
+
+### P305 - 50 MP: stripes on a distant ship in the frame's centre (owner, 2026-10-20): done, not device-tested.
+«На 50мп по центру на судне в далеке есть полосы, нужно исправить»; «Полосы — это не фактура корпуса судна». Inputs:
+C:/Users/MECHREVO/Desktop/т/p7/SCAMERA.zip, scam_burst-20261020-115603.bin, scam_burst-20261020-115634.bin. The merge, the finish
+denoise (nearly transparent at this SNR) and the ARK sharpening are smooth on the hull; the stripes came from the dither of
+ark/combine.glsl: its ints were mediump, fp16 on Adreno, so float(xy) and the dither phase made plates 1-4 px wide and 11-43 rows
+tall instead of +-0.5 LSB noise, and jpegli's quantisation kept them as vertical streaks on smooth dark areas (the hull, the sky;
+at 200 MP the merge's noise hid them). combine.glsl declares precision highp int (host replay with the fp16 emulation reproduces
+the phone's streaks, without it they are gone; desktop GL runs mediump as fp32). check_colour_output.py checks the line. Same
+class, not fixed (off by default or negligible): the grain of ark/sharp_compose, the watermark, the lens-shading lookups.
+
+### P306 - 200 MP: every artifact - stair steps, purple outlines and the rest; detail better than 50 MP or at least not worse (owner, 2026-10-20): done, not device-tested.
+«На 200мп же нужно исправить все артефакты, лесенки, фиолетовые обводки и так далее. Нам нужно постараться получить деталь лучше
+чем на 50мп, либо хотя бы не хуже.» Same inputs as P305. Later: «мы на 200мп будем снимать исключительно днём», «4x isz тоже только
+днём, Тетра в целом будет использоваться только днём», «нам важно чтобы артефакты ушли на гранях, но цветовые переходы при этом не
+были испорчены», «можешь включить шумодав для 200мп, настрой по этому фото его», «только дай возможность его полностью отключать»,
+«для 200мп ... максимум 8-10 кадров» (unchanged: the series stays the owner's setting).
+- Purple / pink dotted outlines: the native Tetra merge's chroma median takes its five taps d = 2 px apart, one column (row)
+  parity each, so the even and the odd columns were filtered apart and the colour alternated pixel by pixel along edges (79 % of
+  the R/G second differences alternated, 59 % before the median). The medians the blend takes are smoothed by [1 2 1] x [1 2 1]
+  for d >= 2 (Tetra; Quad on the Sabre 2x grid), CPU stream, GPU path and the reference of check_chroma_band.
+- Red / blue stripes on railings, posts and wires narrower than the colour block: the false-colour ramp of the sign map at half the
+  counts for d >= 2. On the 200 MP ship (OPPO replay): edge pixels with a false colour above 5 % 7.9 -> 1.5 % (the 50 MP shot of
+  the scene 1.4 %), R / B edge misregistration on the stacks 0.61 / 0.39 -> 0.19 / 0.33 px; the letters' colour and the width of
+  real colour transitions (lifeboat 13 px, hull on the sea 20 px) unchanged. Quad 2x (q1x): false colour above 5 % 25.3 -> 20.3 %.
+- Tetra is a daylight shot: the Tetra night kernel point (kernel 1, edge 0.4, flat x4) is no longer taken (the HP9's site key is
+  28 even at ISO 50, under s61MaxKey 30); the 200 MP text's 1.2-2.4 px band +10 %, noise unchanged.
+- 200 MP denoise on again (P179 had the merge alone), on the 2x2 means (ScamDenoise's Sabre 2x grid path: pyramids at the 50 MP
+  scale), a flat strength map 4.3 (no effective-frame map above 100 MP, P187; without it every pixel counted as fully merged and the
+  tiers put the noise back), its pixel noise cored at 2 sigma in scamdn/final2x; colour from the 2x2 scale. Host replay of the
+  scamdn shaders on the burst: high-pass noise of the sea 0.92 -> 0.58 %, the hull 1.36 -> 1.00 %. A memory guard (3.4 GB free)
+  skips it with a log line; «Шумоподавление» off leaves the merge alone. scam_dev: hybrid_dn_huge_map, hybrid_dn_huge_fine.
+- Checked: Bayer / Quad replays bit-identical to the HEAD worker (syn_b1, syn_b2, x7u_1x, hand, isz2, nat_n8_b2, uw, the 50 MP
+  ship); Tetra and Quad 2x ones differ (syn_b4, syn_b4m, v10_1, v10_2, nat_n8_b4, nat_hi_b4, q1x); check_chroma_band /
+  _overlap / check_mosaic_chroma_bands pass on the OPPO (NEON and scalar, ring check). Not on a vivo: memory and time of the
+  200 MP denoise, the look of a real 200 MP JPEG. Detail: about the 50 MP shot's (haze limits this scene); noise of 200 MP stays
+  higher than 50 MP's (5 frames).
+
+### P307 - the lab: the curve edited right on its page; a single view without the comparison (owner, 2026-10-20, two screenshots): done, not device-tested.
+Done: each side of the curve page has the settings' own editor (ToneCurveView: tap adds, drag moves, hold deletes; «S-кривая»,
+«Прямая»); the end of a gesture makes the edited curve the side's value (shown «своя кривая», kept by «Сохранить B в настройки»),
+posted after the touch so the page is never rebuilt inside the graph's event, stage redraws wait while a finger is on it (P294).
+«Одиночный» beside «До / после», «Разница ×4», «Карта кадров»: one side over the whole frame, A / B buttons below.
+«Настройки кривой тут должны быть полноценные, чтобы можно было прямо тут и настраивать»; «так же дай возможность переключать
+режим на одиночный без сравнения». Screens: the lab pages «Своя кривая вместо AgX» and «Кривая» show for A / B only «Выбрать...»
+and «Изменить в настройках»: the curve editor itself (tap adds a point, drag moves, hold deletes; the -5..+5 EV range) on the lab
+page, per side, re-rendering as it changes; and a view switch beside «До / после», «Разница ×4», «Карта кадров»: «Одиночный» (one
+side over the whole frame, A / B toggle) without the split.
+
+### P308 - everything on the GPU (owner, 2026-10-20: «нам нужно перевести всё на гпу»): DONE, not device-tested in the app.
+The CPU steps of a shot today: the chroma median and false-colour suppression above 16.8 MP (MosaicChromaStream: every 50 / 200 MP
+mosaic merge; ChromaMedianGpu below that size), the oscillation map of the base sites, the site-class response and its field, the
+binning of the native mosaic frames, the shift to the RGGB origin, the outlier statistics, the row profiles of the ultrashort
+frames; app side: the Java steps around the merge. Each one on the GPU with the same results (bit-exact where the CPU path
+promised it, else float rounding), memory at 200 MP in strips, timings before / after on the X200 Ultra and the OPPO.
+Owner, same day: «сделай гпу выравнивание и дай возможность выбора»; «один в один выравнивание как Арк Кам не делаем, если возможно
+переводим наше на гпу»; «постарайся ускорить гпу выравнивание когда закончишь перенос»; «на качество ускорение не должно влиять».
+- F6 on the GPU: DONE, not device-tested in the app. `scam-la-gpu.h` (LaGpu): our laGray / laDown / laBaseLevel / laTilePass / laLK /
+  laMedian3 / laMotionExtent / laFrameField as GLES 3.1 compute, 16 invocations per tile (4 tiles a workgroup, shared-memory
+  reduction), base levels as rgba32f textures (masked value, gx, gy), the donor's bilinear quad one textureGather, two frames in
+  flight (submit / collect; no zero uploads: the first LK iteration clears the stop flags). Context, programs and base pyramid built
+  on a thread of their own during the alignment (laGpuAhead), released there and taken by the merge thread; any failure -> the CPU
+  field (whole-field path). Worker key `laGpu` (default 0: replays unchanged); app ListPreference `pref_scam_hybrid_la_engine`
+  «Где считать F6» GPU (default, HYBRID_DEFAULTS la_engine 1) / CPU, greyed out with F6 off; HybridSettingsTest p308.
+  OPPO Find X7 Ultra replays (same worker): the field equals the CPU's up to float rounding (merge max abs 0.00043, PSNR 124.5 dB;
+  stats identical), laGpu 0 bit-identical to before (b50 50e4f6ad, hh_1 63519568, x7u_1x c2f295fa); every GPU variant below gave
+  the same output (b50 6433c787). Per 12 MP frame: thread per tile 77 ms -> workgroup 67 -> textures + vec4 sums ~55 -> pipelined
+  21.6 ms (b50: 12 frames 266 ms; hh_1 24 frames 159 ms; x7u_1x 34 frames 592 ms). Shot totals GPU / CPU: b50 12144 / 12196 ms,
+  hh_1 3427, 3366 / 3344, 3395 ms, x7u_1x 3347, 3366 / 3340, 3469 ms; the merge 0.3-0.7 s faster with the processor free.
+  hh_1 still waits ~100 ms for the context (its alignment is shorter than the compile).
+- Speed-up of the GPU F6 (owner: «постарайся ускорить гпу выравнивание», «на качество ускорение не должно влиять»): DONE, every
+  step bit-identical (laGpu 1: b50 6433c787, hh_1 8f1f7a28, x7u_1x 105b7c1d; laGpu 0 unchanged):
+  - LaGpuWorker: the context lives on a thread of its own from the alignment on, each frame handed over as soon as its homography
+    is known (streamFeed; in the translation path from the alignment threads, one core left to the feeder), two in flight, a frame
+    handed over again with another homography computed again; the statistics (hypot, medians) after the wait on all cores;
+  - the programs from the merge's program binary cache (files la-*.bin, newest 24) and in the app's GPU prewarm
+    (hybridPrewarmGpu): context + programs + base 260 -> 51-58 ms;
+  - the passes without gradients (L0 start, acceptance) read an r32f copy of the base's masked value (a quarter of the bytes), the
+    start's two windows share it in one loop; workgroup 4 tiles (1 / 2 / 8 / 16 measured, all bit-identical, 4 fastest).
+  GPU per 12 MP frame ~20 ms (L1 3.5, start 4.6, L0 3 iterations 9.2, acceptance 2.8). x7u_1x F6 stage 592 -> 290-330 ms.
+- Measured with the program cache warm (as in the app; OPPO X7U, two runs each): the streamed CPU field is hidden in the merge and
+  stays faster than the GPU field (hh_1 2.35 / 2.37 against 2.55 / 2.59 s, x7u_1x 2.81 / 2.80 against 3.12 / 2.95 s, b50 11.37 /
+  11.27 against 11.42 / 11.42 s); where the CPU field comes whole before the merge (laStream 0, Sabre 2x checked with the whole field,
+  sub-frames, large frames) the GPU wins (x7u_1x 3.95 -> 3.06 s, hh_1 2.59 -> 2.57 s). Hence laGpu 2 = auto (the app default,
+  «Где считать F6» Авто / GPU / CPU): the GPU exactly where the CPU field could not stream (verified: auto = the CPU md5 when it
+  streams, the GPU md5 with laStream 0).
+- Pre-push review (two read-only workflows, findings verified adversarially; fixed): the GPU field is skipped for large frames
+  that do not fit a quarter of MemAvailable (~11.5 B per RAW pixel) and when the RAW exceeds a storage block; the worker is
+  reset when nothing is refined and right after its fields are taken (the context and buffers gone before the merge); frames the
+  merge left out leave its queue (retain); a low-priority context (scamProcessingContext, P57); the note no longer truncated.
+  P302: copies go to a hidden temporary name first (an interrupted copy never leaves a broken photo under a real name, leftovers
+  removed on the next start), an earlier copy under "_1", "_2"... is found (no second copy), sizes compared before reading, the
+  file time kept, the move stops after three starts without progress. P306: a 200 MP shot never reaches the full-grid NLM denoise
+  (engine "nlm" or a failure of the 2x2-means one: the merge alone); a lab fragment of a 200 MP shot takes its 200 MP denoise.
+  Second review (7 confirmed, fixed): P309 bit 16 of the clip flags ("inside the Bento mask": hlrecovery's light statistics) only
+  on the previous mask's cells (the ramp had widened it 1.3-2.9x); the check's validity scales the mask at the weights it was made
+  for; the ramp's planes freed as soon as they are used; no CPU base pyramid when the GPU field has nothing to refine. P302: the
+  copy is synced to the storage before the old file goes; the move is done only once the old folders are gone (with access to
+  selected photos only, the rest waits for the full access, no try counted). P306: the 200 MP NLM gate of a lab fragment by its
+  shot's size. Rechecked: every md5 above, hh_1 with the ramp = without, ramp metrics unchanged, bit 16 counts = bentoRamp 0.
+- Seen on the way (not P308, not changed): the merge's own program binary cache changes its rounding. x7u_1x with the cache warm
+  eae6a769 against 105b7c1d compiled (PSNR 52.9 dB on the image, 2253 px > 0.01, max 2.17); the F6 programs from the cache give the
+  same field. md5 checks of replays therefore run without SCAM_GL_CACHE.
+- The CPU steps before the merge (all bit-identical: b50 50e4f6ad / 6433c787, b200 6fc74e0f, hh_1, x7u_1x unchanged). b50 before the
+  merge 3131 -> 759-786 ms, b200 2460 -> ~1.3 s:
+  - site-class response (hybridMosaicGainsRobust): every picked tile's means, group means and prediction once on all cores (RespTile),
+    the rounds and the field's second pass over them in the same order (b50 1538 -> ~220 ms, b200 1320 -> 210-620 ms). Not on the
+    GPU: its sums are double (GLES has none), float sums would move the gains.
+  - binning (Quad / Tetra T1): by sensor rows, the same float steps vectorised (the captures copied to locals: the loop did not
+    vectorise), block sums in double in the old order (mosaicBinBlocks<2/4>), lround as floor + 0.5 test, the buffer not zeroed
+    (HybridNoInitAlloc): 713 -> ~335 ms. Not on the GPU: it would first copy every frame's RAW (1.6 GB at 50 MP), as long as this.
+  - the ultrashort checks (hybridUsRowsCheck): the frames at once (hybridUsRowsChecks, report lines in frame order) and
+    hybridGridBlur on all cores with four independent sums at a time (each the same order): 3 x ~250 ms -> ~215 ms for all.
+- Left on the CPU on purpose: the chroma median / oscillation map / RGGB shift above 16.8 MP run during the merge
+  (MosaicChromaOverlap; b50 done 49 ms after it, b200 47 ms): on the GPU they would slow the merge, which is the GPU's.
+  The merge itself is the shot now: b50 12.2 s of 13.1, b200 60.5 s of 62 (OPPO X7U, 5 frames).
+
+### P309 - softer transition between the exposures in the ultrashort mask (owner, 2026-10-20: «прежде чем лить на гит нас надо
+улучшить маску сверхкороткого кадра, нам нужно сделать более мягкий переход между экспозициями»; «у нас задача сделать
+максимально мягкий переход между экспозициями чтобы не было резких скачков/переходов»; «Сама маска не обязательно должна быть
+мягкой, главное чтобы мягкими были переходы без резких скачков»): DONE, not device-tested in the app.
+- Cause (code map by a read-only workflow, measured on the owner's lamp burst Desktop/т/7u/scam_burst-20261019-231619 = OPPO
+  /data/local/tmp/p306/l7u_a.nch, native Quad): the share of the ultrashort frames is m U / (m U + (1 - m)(1 + sum A of the others)),
+  ~0 until m > 0.9 with ~20 N frames, and the mask's edge ramp is 2 cells (hard-coded near-clip kernel): the merge switches from
+  the N frames to the ultrashort frames within ~1 cell along the base's 0.85 contour. In the image: no brightness or colour step,
+  but a grain / texture step (coarse grain of the ultrashort frames x7 against the merge's fine texture): after the app's denoise
+  (host emulation with this shot's logged parameters, scratchpad p309/dn.py) the fine grain jumps 1.76x and the coarse 1.21x
+  between neighbouring 4 px bands at the clip border. bentoUsWeight (4 / 11) changes nothing there (ultrashort only already).
+- Worker: bentoRamp (0 = the previous mask, replays unchanged): the mask holds the SHARE of the ultrashort frames, smoothstep
+  (bentoRampLo, bentoRampHi) of the base level (each cell's brightest site; over its 3x3 cells only for cells >= lo: the dark side
+  of a sharp edge keeps its own level), only in the bright area connected to a clipped cell (flood fill over cells >= lo: a separate
+  LED next to a lamp kept its N frames) and within bentoRampReach cells of one (dilated, blurred), clipped cells 1, then spread by a
+  gaussian of sigma bentoRamp cells over that bright area only, and never below the previous mask's share (BentoBase::prev, at the
+  frame weights it was made for): the ramp only adds. hybridReconstruct turns the share into m with K = (1 + A of the others) / A
+  of the ultrashort frames (bracketed frames that clip at the ramp's middle level left out; the ultrashort A x 16 under the ramp, so
+  the merge's r < 0.004 cut of the N frames near the share's top is < 1 % instead of ~8 %), the cells' best validity scaling m;
+  the previous mask's cells are checked and counted as before (motion share, refusals identical). GLSL (not kHybMergeMain1): in
+  kHybDilate the ultrashort frames follow the N frames' raw acceptance in unclipped ramp cells (motion: they go as well; their own
+  rejection refused the few % of level a lamp's flicker leaves and undid the softness); the P282 base demosaic (kHybChroma,
+  NAT_DEMOSAIC) fades over share 0..0.5 instead of switching off at m > 0. A large burst builds the ramp's base once.
+- App: «Кадры светов: мягкий переход» pref_scam_hybrid_bento_ramp 0..12 (default 6), dev keys bento_ramp_lo 0.4, bento_ramp_hi
+  0.97, bento_ramp_reach 32 (HYBRID_DEFAULTS); HybridSettingsTest p309.
+- Measured (OPPO replays, worker default vs the app values): grain steps after the denoise 1.76 / 1.21 -> 1.09 / 1.10 (sigma 2,
+  lo 0.6, reach 16 gave 1.16 / 1.18; sigma 4, lo 0.5, reach 24 1.10 / 1.16); brightness structure at the border unchanged or
+  smoother; the ring next to a clip no longer darker (the N frames' clipped samples dropped near the clip pulled it down: x7u_1x
+  0-4 px +7 %, the lamp sheet +5 %, colour ratios unchanged); clipped areas unchanged deep inside (max 0.01 on x7u_1x); b50, b200,
+  hh_1 (no clipped cell) bit-identical; no 4 px staircase on the native Quad (period-4 power not raised); motion share and
+  refusals unchanged; cost hidden in the alignment (the mask is built there). After the review fixes (final): grain steps 1.08 /
+  1.13; main511 (a device in front of a bright window, motion 1.2 %): no halo on the device's edge (an earlier version put the
+  ultrashort frames' wide kernel 2-4 px onto it), dark pixels changed > 20 %: 11 k (was 40 k); x7u_1x 0-4 px ring +1.7 %; clipped areas 8 px in: float rounding only (< 1 %,
+  l7u / x7u / main511). Tried and dropped: counting the ultrashort frames
+  at their noise in the effective-frames map (the coarse grain sits on pyramid levels the denoise barely touches: no change).

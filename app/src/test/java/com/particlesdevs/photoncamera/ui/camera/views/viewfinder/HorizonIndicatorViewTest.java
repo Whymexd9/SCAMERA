@@ -96,7 +96,7 @@ public class HorizonIndicatorViewTest {
         assertFalse(HorizonIndicatorView.levelNow(false, 0.7f));
         assertTrue(HorizonIndicatorView.levelNow(true, -0.9f));
         assertFalse(HorizonIndicatorView.levelNow(true, 1.2f));
-        assertEquals(android.os.VibrationEffect.createOneShot(18, 70),
+        assertEquals(android.os.VibrationEffect.createOneShot(30, 120),
                 com.particlesdevs.photoncamera.control.VibrationTestAccess.soft(true));
         assertEquals(android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_TICK),
                 com.particlesdevs.photoncamera.control.VibrationTestAccess.soft(false));

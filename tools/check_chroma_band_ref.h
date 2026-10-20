@@ -126,9 +126,18 @@ inline void mosaicChromaMedianRef(std::vector<float>& rgb,int w,int h,int block,
     box(sc,z,r2);
     std::vector<float>().swap(sc);
     std::vector<float> ul,vl;box(u,ul,r3);box(ul,ul,r3);box(v,vl,r3);box(vl,vl,r3);
+    if(d>=2){ // P306: the blend takes the medians smoothed by [1 2 1] x [1 2 1] (the wide averages above stay of the medians)
+        for(std::vector<float>* ch:{&u,&v}){
+            std::vector<float> s(ch->size());
+            for(int y=0;y<h;++y)mosaicSmooth121Row(ch->data()+size_t(std::max(y-1,0))*w,ch->data()+size_t(y)*w,
+                                                   ch->data()+size_t(std::min(y+1,h-1))*w,s.data()+size_t(y)*w,0,w,w);
+            ch->swap(s);
+        }
+    }
     // soft counts (mosaicSoftSignChange) are a little lower than the former hard ones on a grating: the ramp starts at 0.51 / (2b)
     // (was 0.6), the raw-site oscillation at 0.2375 (was 0.25), which kept the false colour of syn_b2 / syn_b4 and the real bursts
-    const float z0=0.51f/(2*block),z1=1.02f/(2*block);
+    float z0=0.51f/(2*block),z1=1.02f/(2*block);
+    if(d>=2){z0*=0.5f;z1*=0.5f;} // P306: the Tetra ramp at half the counts (MosaicChromaStream)
     const int bw=w/block,bh=h/block;
     const bool rawOsc=osc&&int(osc->size())==bw*bh;
     mergeRowBands(h,[&](int y0,int y1){for(int Y=y0;Y<y1;++Y){ // P76: by rows (no division per pixel), the same values

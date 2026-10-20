@@ -50,13 +50,19 @@ public class ShrinkingReadTest {
         assertEquals("down to the result's start", head, (long) cuts.get(cuts.size() - 1));
     }
 
-    /** P179 (owner): a 200 MP shot is the merge alone - no denoise of the pipeline; 50 MP keeps it. */
+    /**
+     * P306 (owner, 2026-10-20: «можешь включить шумодав для 200мп»): a 200 MP shot is denoised on its 2x2 means and asks the worker
+     * for no effective-frame map (P187); 50 MP and below keep the full-grid denoise and the map. Its memory guard asks for the
+     * half-size textures, not for 200 MP ones: well under the 1.6 GB of one full RGBA16F texture per set, above 2 GB with margin.
+     */
     @Test
-    public void a200MpShotIsTheMergeAlone() {
-        assertTrue(ScamHdrDenoise.noDenoise(16320, 12288));
-        assertTrue("the main camera's 200 MP too", ScamHdrDenoise.noDenoise(16320, 12256));
-        assertTrue("50 MP: denoised", !ScamHdrDenoise.noDenoise(8192, 6144));
-        assertTrue("12 MP: denoised", !ScamHdrDenoise.noDenoise(4096, 3072));
+    public void a200MpShotIsDenoisedOnItsHalfGrid() {
+        assertTrue(ScamHdrDenoise.huge(16320, 12288));
+        assertTrue("the main camera's 200 MP too", ScamHdrDenoise.huge(16320, 12256));
+        assertTrue("50 MP: full grid", !ScamHdrDenoise.huge(8192, 6144));
+        assertTrue("12 MP: full grid", !ScamHdrDenoise.huge(4096, 3072));
+        final long need = ScamDenoise.hugeBytes(16320, 12288);
+        assertTrue("need " + (need >> 20) + " MB", need > (2000L << 20) && need < (4000L << 20));
     }
 
     /**

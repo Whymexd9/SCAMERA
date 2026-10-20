@@ -27,7 +27,8 @@ public class Vibration {
     private final Context context;
 
     /** P245: a soft, light pulse's length (ms) and amplitude (1..255) where the vibrator controls its amplitude. */
-    static final int SOFT_MS = 18, SOFT_AMPLITUDE = 70;
+    // P298 (owner, 2026-10-20: «у уровня горизонта всё ещё не работает вибро отклик»): 18 ms at 70 was not felt on the X200 Ultra
+    static final int SOFT_MS = 30, SOFT_AMPLITUDE = 120;
 
     /**
      * P245 (owner, 2026-10-18: «Для уровня горизонта когда он стоит ровно добавь мягкую легкую вибрацию»): the pulse - short and
@@ -48,18 +49,14 @@ public class Vibration {
         soft = softEffect(vibrator != null && vibrator.hasAmplitudeControl());
     }
 
-    /** The soft pulse (P245), unless the system's touch feedback is off. */
+    /**
+     * The soft pulse (P245). P298: its switch is the setting that asks for it (the horizon tile), not the system's touch
+     * feedback - vivo ships «touch vibration» off, and a USAGE_TOUCH pulse follows that intensity too; so no touch usage.
+     */
     public void Soft(){
         if (vibrator == null || !vibrator.hasVibrator()) return;
         try {
-            if (android.provider.Settings.System.getInt(context.getContentResolver(),
-                    android.provider.Settings.System.HAPTIC_FEEDBACK_ENABLED, 1) == 0) return;
-        } catch (RuntimeException ignored) {
-        }
-        try {
-            if (Build.VERSION.SDK_INT >= 33)
-                vibrator.vibrate(soft, android.os.VibrationAttributes.createForUsage(android.os.VibrationAttributes.USAGE_TOUCH));
-            else vibrator.vibrate(soft);
+            vibrator.vibrate(soft);
         } catch (RuntimeException e) {
             com.particlesdevs.photoncamera.util.Log.w("Vibration", "soft pulse: " + e);
         }

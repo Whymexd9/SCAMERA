@@ -70,7 +70,8 @@ final class ScamLabBurst implements ScamTransport {
     @Override public boolean diagnostics() { return false; }
     @Override public boolean clipFlags() { return (flags & 4) != 0; }
     @Override public boolean effectiveMap() {
-        return crop == null ? (flags & 16) == 0 : !ScamHdrDenoise.noDenoise(outputWidth(), outputHeight());
+        // P306: a fragment as its shot: a 200 MP shot has no map (flag 16), its 200 MP denoise takes the flat strength instead
+        return (flags & 16) == 0 && (crop == null || !ScamHdrDenoise.huge(outputWidth(), outputHeight()));
     }
     @Override public boolean hybrid() { return true; }
     @Override public boolean rgbHalfTransport() { return half; }

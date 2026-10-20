@@ -22,6 +22,9 @@ uniform int crop_height;
 uniform int bayer_pattern;
 uniform int cfa_mode;
 uniform float u_auto_exposure;
+// P301 (owner, 2026-10-20: «Результат должен совпадать с итоговым фото»): 1 = the linear frame for the photo's ARK tone on the
+// viewfinder (LiveArkTone): white-balanced, lens-shaded, through color_transform, before any exposure or tone; no LUT, no peaking
+uniform int u_linear_out;
 uniform int u_ef_enabled;
 uniform vec4 u_exp_mults;
 uniform vec4 u_layer_weights;
@@ -597,6 +600,10 @@ void main() {
     } else {
         vec2 ndc = (vec2(u, v) - 0.5) * 2.0;
         corner_gain = 1.0 + 1.5 * dot(ndc, ndc);
+    }
+    if (u_linear_out == 1) {
+        FragColor = vec4(max(color_transform * cC, vec3(0.0)), 1.0);
+        return;
     }
     vec3 color = processPipeline(cC, corner_gain);
     if (u_lut_enabled == 1) {

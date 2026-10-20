@@ -86,6 +86,11 @@
         <item>Поле по тайлам (по умолчанию)</item>
         <item>Постоянное на тайл (новое ядро)</item>
     </string-array>
+    <string-array name="scam_hybrid_la_engine_entries">
+        <item>Авто (по умолчанию)</item>
+        <item>GPU</item>
+        <item>CPU</item>
+    </string-array>
     <string-array name="scam_hybrid_mochi_entries">
         <item>Выкл. (сток)</item>
         <item>Авто (&gt; 3 коротких)</item>

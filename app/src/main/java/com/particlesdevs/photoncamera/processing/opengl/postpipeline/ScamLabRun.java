@@ -247,6 +247,7 @@ public final class ScamLabRun {
             final double s = (double) p.hybridFinalSize.x / full.x;
             p.hybridFinalSize = new Point(Math.max(2, (int) Math.round(ow * s)) & ~1, Math.max(2, (int) Math.round(oh * s)) & ~1);
         }
+        p.labWholeSize = full != null ? new Point(full) : null; // P306: a 200 MP shot's fragment takes its 200 MP denoise
         p.rawSize = new Point(ow, oh);
         p.sensorPix = new android.graphics.Rect(0, 0, ow, oh);
         if (p.gainMap != null && p.mapSize != null)
