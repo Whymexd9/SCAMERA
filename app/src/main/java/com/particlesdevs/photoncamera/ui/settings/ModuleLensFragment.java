@@ -51,7 +51,10 @@ public class ModuleLensFragment extends ModuleConceptFragment {
         caption(Lang.t(getContext(),"Для опытных","Advanced"));
         navigation("▣","Camera ID",ModuleRegistry.camera(slot)+(ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getString("module_id_"+slot,"").isEmpty()?Lang.t(getContext()," · авто"," · auto"):Lang.t(getContext()," · вручную"," · manual")),this::choose);
         int mode=ModuleRegistry.sensorMode(slot);
-        navigation("⚙︎",Lang.t(getContext(),"Сенсор и вендорные ключи","Sensor and vendor keys"),(mode!=0?Lang.t(getContext(),"Сенсормод "+mode+" · ","Sensor mode "+mode+" · "):"")+Lang.t(getContext(),"Уровни RAW, стабилизация, тип сессии и vendor tags этого модуля","RAW levels, stabilization, session type and vendor tags of this module"),()->
+        // P316 (settings audit): a row picked in «Режим сенсора (SensorModeTable)» runs too (the OPPO way), not only the vivo vendor key
+        int row=com.particlesdevs.photoncamera.capture.SensorModePick.picked(slot);
+        navigation("⚙︎",Lang.t(getContext(),"Сенсор и вендорные ключи","Sensor and vendor keys"),(row>=0?Lang.t(getContext(),"Режим сенсора #"+row+" · ","Sensor mode #"+row+" · "):"")
+            +(mode!=0?Lang.t(getContext(),"Сенсормод "+mode+" · ","Sensor mode "+mode+" · "):"")+Lang.t(getContext(),"Уровни RAW, стабилизация, тип сессии, режим сенсора и vendor tags этого модуля","RAW levels, stabilization, session type, sensor mode and vendor tags of this module"),()->
             // straight to this module's sensor page (it no longer has a module list row to pick it in)
             getParentFragmentManager().beginTransaction().replace(com.particlesdevs.photoncamera.R.id.settings_container,SettingsActivity.SettingsFragment.sensorPage(slot)).addToBackStack("sensor").commit());
         if(slot.equals(ModuleRegistry.active())){

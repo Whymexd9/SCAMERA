@@ -33,7 +33,17 @@ import java.util.Locale;
 public final class MosaicNeutralResolver {
     private MosaicNeutralResolver() {}
 
-    public static final int ROUTE_NONE = 0, ROUTE_VIVO_NATIVE = 1, ROUTE_STILL_ONLY = 2;
+    /**
+     * P315: {@link #ROUTE_SENSOR_MODE}, an OPPO / OnePlus / realme session in a module's picked sensor mode (SensorModePick, the
+     * agingtest key): the HAL's 3A runs there as in the plain mode. The OPPO Find X8 Ultra's 2x ISZ (mode 8): its neutrals 0.446 /
+     * 0.589 and 0.435 / 0.605, 0.005 ln from the camera's curve and equal to the plain mode's of the same scene, while P121's estimate
+     * read the LED glow on the white case (0.985 / 0.856, 0.745 ln off the curve) and gave cyan whites, and its ownNeutral dropped
+     * the ISP matrix for the placeholder DNG matrices (owner, 2026-10-21: «обесцвеченные и с странным бб»). Same rule as the vivo
+     * native route.
+     */
+    public static final int ROUTE_NONE = 0, ROUTE_VIVO_NATIVE = 1, ROUTE_STILL_ONLY = 2, ROUTE_SENSOR_MODE = 3;
+    /** P315: a P121 estimate farther than this (ln) from every learned illuminant of the camera's curve is not taken as one. */
+    public static final double OFF_LOCUS = 0.4;
     /** ln: how far from the camera's curve a HAL neutral may lie and still be kept. */
     static final double CURVE_DISTANCE = 0.1;
     /** The viewfinder's neutrals before the press the still-only route takes (ms), the ring's size. */
@@ -65,8 +75,13 @@ public final class MosaicNeutralResolver {
             return new Press(ROUTE_VIVO_NATIVE, null, 0, 0f);
         }
 
+        /** P315: an OPPO-family session in a picked sensor mode (its HAL's 3A runs). */
+        public static Press sensorMode() {
+            return new Press(ROUTE_SENSOR_MODE, null, 0, 0f);
+        }
+
         @Override public String toString() {
-            return route == ROUTE_VIVO_NATIVE ? "vivo native" : route == ROUTE_STILL_ONLY ? viewfinder == null ? "still-only, no converged viewfinder result"
+            return route == ROUTE_VIVO_NATIVE ? "vivo native" : route == ROUTE_SENSOR_MODE ? "sensor mode (OPPO family)" : route == ROUTE_STILL_ONLY ? viewfinder == null ? "still-only, no converged viewfinder result"
                     : String.format(Locale.ROOT, "still-only, viewfinder %.3f / %.3f of %d results (spread %.3f)", viewfinder[0], viewfinder[2],
                     results, spread) : "none";
         }
@@ -160,7 +175,8 @@ public final class MosaicNeutralResolver {
             return new Decision(press.viewfinder.clone(), String.format(Locale.ROOT,
                     "still-only route: the normal-mode viewfinder's neutral %.3f / %.3f (median of %d converged results in the last %d ms, spread %.3f)",
                     press.viewfinder[0], press.viewfinder[2], press.results, WINDOW_MS, press.spread));
-        final String route = press.route == ROUTE_STILL_ONLY ? "still-only route without a converged viewfinder result" : "vivo native route";
+        final String route = press.route == ROUTE_STILL_ONLY ? "still-only route without a converged viewfinder result"
+                : press.route == ROUTE_SENSOR_MODE ? "sensor-mode route (OPPO family)" : "vivo native route";
         if (hal == null || hal.length < 3 || !(hal[1] > 0f) || !usable(hal[0] / hal[1]) || !usable(hal[2] / hal[1])) return null;
         if (!converged(awbState) || !(curveDistance <= CURVE_DISTANCE)) return null;
         final float r = hal[0] / hal[1], b = hal[2] / hal[1];
@@ -188,6 +204,27 @@ public final class MosaicNeutralResolver {
         if (n == null || n.length < 3 || !(n[1] > 0f) || !usable(n[0] / n[1]) || !usable(n[2] / n[1])) return Float.NaN;
         final MosaicNeutral.Result q = MosaicNeutral.resolve(id, n[0] / n[1], n[2] / n[1], 0, 0f, prior, "HAL");
         return q == null ? Float.NaN : q.distance;
+    }
+
+    /**
+     * P315: the camera's neutral instead of P121's estimate when that estimate lies more than {@link #OFF_LOCUS} from every learned
+     * illuminant of the camera's curve (a coloured light's glow, not a white point: the X8U's LED-lit white case, 0.745 / 0.872 ln)
+     * while the camera's own neutral lies on the curve (within {@link #CURVE_DISTANCE}) and away from the curve's point nearest raw
+     * grey (an ISP reading the mosaic as Bayer would converge there); the log text, null to keep P121.
+     */
+    @Nullable
+    public static String offLocus(String id, float ownDistance, @Nullable float[] hal, @Nullable MosaicNeutral.Prior prior) {
+        if (!(ownDistance > OFF_LOCUS) || !on() || hal == null || hal.length < 3 || !(hal[1] > 0f)) return null;
+        final float halDistance = curveDistance(id, hal, prior);
+        if (!(halDistance <= CURVE_DISTANCE)) return null;
+        final MosaicNeutral.Result foot = MosaicNeutral.resolve(id, 1f, 1f, 0, 0f, prior, "raw grey");
+        if (foot == null) return null;
+        final double r = hal[0] / hal[1], b = hal[2] / hal[1];
+        final double fromFoot = Math.hypot(Math.log(r / foot.neutral[0]), Math.log(b / foot.neutral[2]));
+        if (!(fromFoot > CURVE_DISTANCE)) return null;
+        return String.format(Locale.ROOT, "P121's estimate is %.3f from the camera's curve (more than %.1f: a coloured light, not an"
+                + " illuminant): the camera's neutral %.3f / %.3f kept (%.3f from the curve, %.3f from its raw-grey point)",
+                ownDistance, OFF_LOCUS, r, b, halDistance, fromFoot);
     }
 
     static boolean converged(@Nullable Integer state) {

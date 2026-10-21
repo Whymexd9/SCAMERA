@@ -146,6 +146,41 @@ public final class SensorModePick {
         return sSession;
     }
 
+    static final String SERIES_REASON = "a sensor mode picked on an OPPO-family camera: ring frames only (the X8U's HAL failed every"
+            + " request after the shutter in its agingtest mode and died; scam_dev sensor_mode_series 1 sends the series)";
+
+    /**
+     * P315: whether a shot of the session sends its frames after the shutter (the Hybrid series). Not in a picked sensor mode on an
+     * OPPO / OnePlus / realme camera: the OPPO Find X8 Ultra's 2x ISZ row (mode 8) failed every post-shutter request and its camera
+     * provider died at each shot (owner's log 2026-10-21 13:33 / 13:36, two restarts); the reference app takes such a shot
+     * from its ring alone. scam_dev "sensor_mode_series 1" sends the series again (to test a phone).
+     */
+    public static boolean seriesAllowed() {
+        return seriesAllowed(sSession != null, brand(), PreferenceKeys.scamDevSwitch("sensor_mode_series", false));
+    }
+
+    static boolean seriesAllowed(boolean picked, Brand brand, boolean forced) {
+        return !picked || brand != Brand.OPLUS || forced;
+    }
+
+    /** P316 (settings audit): a row picked on this phone makes its shots ring-only ({@link #seriesAllowed}): the row's hint says so. */
+    public static boolean pickTakesRingOnly() {
+        return !seriesAllowed(true, brand(), PreferenceKeys.scamDevSwitch("sensor_mode_series", false));
+    }
+
+    /**
+     * P316 (settings audit): a shot whose ring gave no usable frame (the drain dropped every RAW: a payload no plain / known
+     * packed layout, no exposure, after the shutter's cutoff) is refused where {@link #seriesAllowed} forbids the series - the
+     * normal-back plan would expose its N, Bento and Shasta frames after the shutter, the series the X8U's HAL died on.
+     */
+    public static boolean emptyRingRefused(boolean ringEmpty) {
+        return emptyRingRefused(ringEmpty, seriesAllowed());
+    }
+
+    static boolean emptyRingRefused(boolean ringEmpty, boolean seriesAllowed) {
+        return ringEmpty && !seriesAllowed;
+    }
+
     /** The brand's mode key of the session's pick on a builder (session parameters or a request); the log text, "" without. */
     public static String apply(@Nullable CaptureRequest.Builder builder) {
         final Pick p = sSession;

@@ -100,7 +100,7 @@ public class SettingsModelCheck {
         mo.put("pref_scam_hybrid_mosaic_chroma_fill","1");active(mo,"pref_scam_hybrid_mosaic_fill_support");
         mo.put("pref_merge_route","scamhdr");active(mo,"pref_scam_hybrid_mosaic_path");
         eq(SettingsNumericRules.value("pref_scam_hybrid_mosaic_path","3",0),1);
-        eq(SettingsNumericRules.value("pref_scam_hybrid_mosaic_window","9",3),6);
+        eq(SettingsNumericRules.value("pref_scam_hybrid_mosaic_window","9",3),4);
         eq(SettingsNumericRules.value("pref_scam_hybrid_mosaic_window","2.6",3),3);
         eq(SettingsNumericRules.value("pref_scam_hybrid_mosaic_kernel_rb","0.1",0.85),0.5);
         eq(SettingsNumericRules.value("pref_scam_hybrid_mosaic_native_edge_scale","2",0.4),1);
@@ -199,7 +199,10 @@ public class SettingsModelCheck {
         active(dn,"pref_scam_hybrid_post_luma");active(dn,"pref_scam_hybrid_post_chroma");active(dn,"pref_scam_hybrid_dn_engine");
         inactive(dn,"pref_scam_hybrid_dn_luma_mult");inactive(dn,"pref_scam_hybrid_dn_dark_fade");active(dn,"pref_scam_hybrid_despeckle");
         Map<String,Object> out=new HashMap<>(); // output "sensor" (default)
-        inactive(out,"pref_scam_hybrid_downsampler");inactive(out,"pref_scam_hybrid_dn_chroma_2x_keep");active(out,"pref_scam_hybrid_output");
+        inactive(out,"pref_scam_hybrid_downsampler");active(out,"pref_scam_hybrid_output");
+        // the 2x colour share also acts on 200 MP shots (their 2x2 means): inactive at the sensor size only without them
+        active(out,"pref_scam_hybrid_dn_chroma_2x_keep");
+        if(new SettingsAvailability(out).fullResSizes(true,false).reason("pref_scam_hybrid_dn_chroma_2x_keep")==null)throw new AssertionError("2x colour share live without 200 MP");
         out.put("pref_scam_hybrid_output","2x");inactive(out,"pref_scam_hybrid_downsampler");active(out,"pref_scam_hybrid_dn_chroma_2x_keep");
         for(String mp:new String[]{"12","16","20"}){out.put("pref_scam_hybrid_output",mp);active(out,"pref_scam_hybrid_downsampler");active(out,"pref_scam_hybrid_dn_chroma_2x_keep");}
         Map<String,Object> scam=new HashMap<>();
@@ -217,6 +220,39 @@ public class SettingsModelCheck {
         // the RAW burst row yields to the lab's copy; a DCP profile replaces the colour method's matrix
         Map<String,Object> cu=new HashMap<>();
         cu.put("pref_scam_hybrid_sabre61","1");active(cu,"pref_scam_hybrid_s61_max_key");inactive(cu,"pref_scam_hybrid_s61_min_motion");
+        // settings audit 2026-10-21: merge rows the other settings leave out (F6, the colour-difference strength, the new kernel,
+        // «Движение»)
+        Map<String,Object> au=new HashMap<>();au.put("pref_scam_hybrid_sabre61","2");active(au,"pref_scam_hybrid_s61_min_motion");
+        au.put("pref_scam_hybrid_local_align","0");inactive(au,"pref_scam_hybrid_s61_min_motion");inactive(au,"pref_scam_hybrid_boost_threshold");
+        active(au,"pref_scam_hybrid_chroma_diff_clamp");au.put("pref_scam_hybrid_chroma_diff","0");inactive(au,"pref_scam_hybrid_chroma_diff_clamp");
+        active(au,"pref_scam_hybrid_mosaic_native_flat_scale");active(au,"pref_scam_hybrid_mosaic_native_edge_scale");
+        au.put("pref_scam_hybrid_sabre61","0");inactive(au,"pref_scam_hybrid_mosaic_native_flat_scale");inactive(au,"pref_scam_hybrid_mosaic_native_edge_scale");
+        au.put("pref_scam_hybrid_mosaic_path","0");inactive(au,"pref_scam_hybrid_mosaic_edge_scale");
+        au.put("pref_scam_hybrid_sabre61","1");active(au,"pref_scam_hybrid_mosaic_edge_scale");
+        Map<String,Object> mm=new HashMap<>();active(mm,"pref_scam_hybrid_boost_value");active(mm,"pref_scam_hybrid_widen_below");
+        mm.put("pref_motion_mode",true);inactive(mm,"pref_scam_hybrid_boost_value");inactive(mm,"pref_scam_hybrid_motion_threshold");
+        inactive(mm,"pref_scam_hybrid_motion_boost");inactive(mm,"pref_scam_hybrid_widen_below");active(mm,"pref_scam_hybrid_boost_threshold");
+        mm.put("pref_scam_hybrid_mm_motion_boost",false);inactive(mm,"pref_scam_hybrid_boost_threshold");
+        // settings audit 2026-10-21 («Кадры светов и теней»): the frames' rows follow the switch in effect («Движение»: the mode's,
+        // which replaces the photo rows of the ring's count and of the switches); the kernel widening needs a weight above 10; the
+        // motion limit of the long frames «Всегда»; the highlight kernel the native mosaic merge; the edge colour from 0.5
+        Map<String,Object> fr=new HashMap<>();active(fr,"pref_scam_hybrid_bento_frames");active(fr,"pref_scam_hybrid_zsl_frames");
+        fr.put("pref_scam_hybrid_bento","0");inactive(fr,"pref_scam_hybrid_bento_frames");inactive(fr,"pref_scam_hybrid_bento_ramp");
+        fr.put("pref_motion_mode",true);active(fr,"pref_scam_hybrid_bento_frames");inactive(fr,"pref_scam_hybrid_zsl_frames");
+        inactive(fr,"pref_scam_hybrid_bento");inactive(fr,"pref_scam_hybrid_shasta");inactive(fr,"pref_scam_hybrid_shasta_sharpness");
+        Map<String,Object> lu=new HashMap<>();inactive(lu,"pref_scam_hybrid_lut_sigma");active(lu,"pref_scam_hybrid_shasta_motion_max");
+        lu.put("pref_scam_hybrid_shasta_ev","2");active(lu,"pref_scam_hybrid_lut_sigma");
+        lu.put("pref_scam_hybrid_shasta_mode","1");inactive(lu,"pref_scam_hybrid_shasta_motion_max");
+        active(lu,"pref_scam_hybrid_bento_sigma");
+        if(new SettingsAvailability(lu).mosaicStreams(false).reason("pref_scam_hybrid_bento_sigma")==null)throw new AssertionError("highlight kernel live without a mosaic");
+        eq(SettingsNumericRules.value("pref_scam_hybrid_bento_chroma_sigma","0",2),0.5);
+        // settings audit 2026-10-21: post rows the other settings leave out (the recovery, the ARK detail, the strength map, AgX)
+        Map<String,Object> po=new HashMap<>();active(po,"pref_scam_hybrid_highlight_band");active(po,"pref_scam_hybrid_ark_clarity");
+        active(po,"pref_scam_hybrid_bento_denoise_max");active(po,"pref_scam_hybrid_ark_ccm_sat");
+        po.put("pref_scam_hybrid_highlight_recovery","0");inactive(po,"pref_scam_hybrid_highlight_band");inactive(po,"pref_scam_hybrid_highlight_defringe");
+        po.put("pref_scam_hybrid_ark_sharp_gain","0");inactive(po,"pref_scam_hybrid_ark_clarity");inactive(po,"pref_scam_hybrid_ark_flat_protect");
+        po.put("pref_scam_hybrid_dn_strength_map","uniform");inactive(po,"pref_scam_hybrid_bento_denoise_max");
+        po.put("pref_scam_hybrid_ark_aces_on",true);inactive(po,"pref_scam_hybrid_ark_ccm_sat");
         active(cu,"pref_scam_hybrid_ark_bracket_denoise");cu.put("pref_scam_hybrid_denoise",false);
         inactive(cu,"pref_scam_hybrid_ark_bracket_denoise");inactive(cu,"pref_scam_hybrid_ark_chroma_denoise");
         active(cu,"pref_keep_raw_burst");cu.put("pref_scam_lab_keep",true);inactive(cu,"pref_keep_raw_burst");

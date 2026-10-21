@@ -22,7 +22,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,6 +34,9 @@ import java.util.Map;
  * as the shot's snapshot plus the tried value (PreferenceValue.overlay), so every setting read through the settings manager -
  * the merge's tuning, the denoise, the tone, the colour, the sharpening - takes the side's value. A setting the burst already
  * fixed at the shot (frame counts, the noise model's multipliers, the output grid) changes nothing here: the result says so.
+ * The scam_dev.txt lines read the same way (PreferenceKeys.labDevOverlay): the shot's lines (meta "dev"; a shot taken before
+ * them: the file now) without the lines that set a compared setting over its row, with the side's own «Для разработчика» lines
+ * ({@link #DEV} keys).
  * Side A of a shot and fragment is kept for the next setting (the same burst and settings give the same pixels).
  */
 public final class ScamLabRun {
@@ -39,6 +44,11 @@ public final class ScamLabRun {
 
     /** The longest side of a result kept for the screen. */
     static final int SCREEN_SIDE = 4096;
+    /** A side's key "dev:&lt;line&gt;": a scam_dev.txt line of «Для разработчика» (its value: null no line, a Boolean, a number). */
+    public static final String DEV = "dev:";
+    private static final String HYBRID = "pref_scam_hybrid_";
+    /** The «Движение» mode's own rows: pref_scam_hybrid_mm_&lt;key&gt; (MotionMode). */
+    private static final String MOTION = "mm_";
 
     /** A lab shot: its folder and metadata. */
     public static final class Shot {
@@ -47,6 +57,12 @@ public final class ScamLabRun {
         public final int width, height, frames, grid, orient;
         /** The whole frame's statistics (null: none yet; a fragment run records them first). */
         @Nullable volatile LabFrame frame;
+        /** The scam_dev.txt lines at the shot (null: a shot taken before they were kept). */
+        @Nullable public final Map<String, Float> dev;
+        /** The module profile the shot's settings are (per-module settings on at the shot; null: the common settings, or unknown). */
+        @Nullable public final String module;
+        /** The worker lines of the shot's own burst that replace a setting's value (a retry, a step left out): suffix -> line. */
+        public final Map<String, String> burstForced;
 
         Shot(File dir, JSONObject meta, ScamLabBurst burst) {
             this.dir = dir;
@@ -56,7 +72,14 @@ public final class ScamLabRun {
             frames = burst.frames;
             grid = burst.grid;
             orient = meta.optInt("orient", 0);
-            frame = ScamLab.frame(dir);
+            dev = devOf(meta.optJSONObject("dev"));
+            final String m = meta.optString("module", "");
+            module = m.isEmpty() ? null : m;
+            burstForced = java.util.Collections.unmodifiableMap(burstLines(meta.optString("tuningBurst", "")));
+            final LabFrame f = ScamLab.frame(dir);
+            // a frame recorded before its input scale was: the shot's «Масштаб входа, EV»
+            if (f != null && !(f.inScale > 0f)) f.inScale = (float) Math.pow(2.0, shotInputEv(this));
+            frame = f;
         }
 
         public static Shot load(File dir) throws IOException {
@@ -78,15 +101,162 @@ public final class ScamLabRun {
             return ScamLabBurst.aligned(new int[]{width / 3, height / 3, width / 3, height / 3}, width, height);
         }
 
+        /** The stored preferences when the shot was taken (read once). */
+        @Nullable private Map<String, Object> prefs;
+
+        /** The stored preferences when the shot was taken (a key unset there is absent). */
+        public synchronized Map<String, Object> prefs() {
+            if (prefs == null) {
+                Map<String, Object> m;
+                try {
+                    m = ScamLabParams.prefs(meta.getJSONObject("prefs"));
+                } catch (Exception e) {
+                    m = new HashMap<>();
+                }
+                prefs = java.util.Collections.unmodifiableMap(m);
+            }
+            return prefs;
+        }
+
         /** The value of a preference when the shot was taken (null: unset). */
         @Nullable
         public Object pref(String key) {
-            try {
-                return ScamLabParams.prefs(meta.getJSONObject("prefs")).get(key);
-            } catch (Exception e) {
-                return null;
-            }
+            return prefs().get(key);
         }
+
+        /** The shot was rendered with the OPPO tuned matrix (its Parameters' oppoTunedCcm: ArkTone.ccmSatComp acts on it). */
+        public boolean oppoTunedCcm() {
+            final JSONObject p = meta.optJSONObject("params");
+            return p != null && p.optBoolean("oppoTunedCcm", false);
+        }
+    }
+
+    @Nullable
+    static Map<String, Float> devOf(@Nullable JSONObject o) {
+        if (o == null) return null;
+        final Map<String, Float> m = new HashMap<>();
+        for (java.util.Iterator<String> it = o.keys(); it.hasNext(); ) {
+            final String k = it.next();
+            final double v = o.optDouble(k, Double.NaN);
+            if (!Double.isNaN(v)) m.put(k, (float) v);
+        }
+        return java.util.Collections.unmodifiableMap(m);
+    }
+
+    /**
+     * «Масштаб входа, EV» of the shot (its scam_dev line, else its setting, clamped as the setting is read): a float, as
+     * ArkTone.value gives it, so side A's input scale is the frame's to the bit (its statistics are used as they are).
+     */
+    static float shotInputEv(Shot shot) {
+        final Float dev = shot.dev == null ? null : shot.dev.get("hybrid_ark_input_ev");
+        if (dev != null) return dev;
+        final Object v = shot.pref(HYBRID + "ark_input_ev");
+        return v == null ? 0f : (float) com.particlesdevs.photoncamera.settings.SettingsNumericRules.value(HYBRID + "ark_input_ev", String.valueOf(v).trim(), 0);
+    }
+
+    /** The scam_dev.txt lines side A starts from: the shot's, or for a shot taken before they were kept the file's now. */
+    public static Map<String, Float> devLines(Shot shot) {
+        return shot.dev != null ? shot.dev : PreferenceKeys.scamDevLines();
+    }
+
+    /**
+     * The scam_dev.txt lines that set the setting {@code key} over its row: "hybrid_&lt;k&gt;", the plain "&lt;k&gt;" a hybrid
+     * shot reads too (PreferenceKeys.routeInternalValue), and for a «Движение» row pref_scam_hybrid_mm_&lt;k&gt; the line
+     * "hybrid_&lt;k&gt;" (hybridValue reads it before the mode's value). None for other keys.
+     */
+    static List<String> lineNames(String key) {
+        final List<String> out = new ArrayList<>();
+        if (key == null || !key.startsWith(HYBRID)) return out;
+        final String k = key.substring(HYBRID.length());
+        out.add("hybrid_" + k);
+        out.add(k);
+        final String mm = MOTION;
+        if (k.startsWith(mm)) out.add("hybrid_" + k.substring(mm.length()));
+        return out;
+    }
+
+    /** The lines of {@code lines} that set one of {@code keys} over its row ("line value"). */
+    public static List<String> overriding(java.util.Collection<String> keys, Map<String, Float> lines) {
+        final java.util.TreeSet<String> out = new java.util.TreeSet<>();
+        for (String k : keys) for (String n : lineNames(k)) {
+            final Float v = lines.get(n);
+            if (v != null) out.add(n + " " + com.particlesdevs.photoncamera.settings.ScamDevFile.number(v));
+        }
+        return new ArrayList<>(out);
+    }
+
+    /**
+     * A side's scam_dev.txt lines: {@code base} without the lines of the {@code compared} settings (the side's value of each is
+     * the one that applies), with the side's own {@link #DEV} lines (null: no line).
+     */
+    static Map<String, Float> sideDev(Map<String, Float> base, java.util.Collection<String> compared, Map<String, Object> side) {
+        final java.util.TreeMap<String, Float> out = new java.util.TreeMap<>(base);
+        for (String k : compared) for (String n : lineNames(k)) out.remove(n);
+        for (Map.Entry<String, Object> e : side.entrySet()) {
+            if (!e.getKey().startsWith(DEV)) continue;
+            final String n = e.getKey().substring(DEV.length());
+            final Float v = devNumber(e.getValue());
+            if (v == null) out.remove(n); else out.put(n, v);
+        }
+        return out;
+    }
+
+    /** A {@link #DEV} value as its line's number (null: no line). */
+    @Nullable
+    public static Float devNumber(@Nullable Object v) {
+        if (v == null) return null;
+        if (v instanceof Boolean) return (Boolean) v ? 1f : 0f;
+        try {
+            final float f = Float.parseFloat(String.valueOf(v).trim().replace(',', '.'));
+            return Float.isFinite(f) ? f : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The lines of a shot's own burst tuning (meta "tuningBurst": a conservative retry, the steps a crashed worker died in, a
+     * strict 2x grid) that carry a setting's value, by the setting's pref_scam_hybrid_ suffix: the worker reads them after the
+     * settings' lines and keeps the last value, so such a setting changes nothing on that burst.
+     */
+    static Map<String, String> burstLines(@Nullable String tuningBurst) {
+        final Map<String, String> out = new java.util.LinkedHashMap<>();
+        if (tuningBurst == null) return out;
+        for (String line : tuningBurst.split("\\r?\\n")) {
+            final String[] p = line.trim().split("\\s+");
+            if (p.length != 2) continue;
+            final String suffix = PreferenceKeys.hybridTuningSuffix(p[0]);
+            if (suffix != null) out.put(suffix, p[0] + " " + p[1]);
+        }
+        return out;
+    }
+
+    /** The burst's own line that fixes the setting {@code key} on this shot ({@link Shot#burstForced}), null: none. */
+    @Nullable
+    public static String burstLine(Shot shot, String key) {
+        return burstLine(shot.burstForced, key);
+    }
+
+    @Nullable
+    static String burstLine(Map<String, String> forced, String key) {
+        if (key == null) return null;
+        final String k = key.startsWith(DEV + "hybrid_") ? key.substring((DEV + "hybrid_").length())
+                : key.startsWith(HYBRID) ? key.substring(HYBRID.length()) : null;
+        if (k == null) return null;
+        String line = forced.get(k);
+        final String mm = MOTION;
+        if (line == null && k.startsWith(mm)) line = forced.get(k.substring(mm.length()));
+        return line;
+    }
+
+    /** A tuning file as the worker takes it: each name's last value (sorted), for whether two merges differ. */
+    static String effective(String tuning) {
+        final java.util.TreeMap<String, String> m = new java.util.TreeMap<>();
+        for (String line : tuning.split("\\r?\\n")) {
+            final String[] p = line.trim().split("\\s+");
+            if (p.length >= 2) m.put(p[0], p[1]);
+        }
+        return m.toString();
     }
 
     /** One side's picture: the photo, the merge's frame map (photo-oriented, small; null without one) and its time. */
@@ -111,6 +281,10 @@ public final class ScamLabRun {
         public boolean mergedAgain;
         /** A and B are the same pixels (the setting did nothing on this shot). */
         public boolean same;
+        /** The shot's scam_dev.txt lines of the compared settings the lab left out on both sides ("line value"). */
+        public List<String> devMasked = new ArrayList<>();
+        /** The shot kept no scam_dev.txt lines (taken before): both sides read the file as it is now. */
+        public boolean devNow;
     }
 
     public interface Progress { void stage(String text); }
@@ -137,8 +311,14 @@ public final class ScamLabRun {
         try {
             final String fragment = crop == null ? "whole" : crop[0] + "," + crop[1] + "," + crop[2] + "," + crop[3];
             final Result r = new Result();
-            r.a = cachedSide(context, shot, crop, a, fragment, progress, "A");
-            r.b = cachedSide(context, shot, crop, b, fragment, progress, "B");
+            // the scam_dev.txt lines of the settings compared (on either side) give way to each side's value
+            final java.util.TreeSet<String> compared = new java.util.TreeSet<>(a.keySet());
+            compared.addAll(b.keySet());
+            final Map<String, Float> lines = devLines(shot);
+            r.devMasked = overriding(compared, lines);
+            r.devNow = shot.dev == null && !lines.isEmpty();
+            r.a = cachedSide(context, shot, crop, a, sideDev(lines, compared, a), fragment, progress, "A");
+            r.b = cachedSide(context, shot, crop, b, sideDev(lines, compared, b), fragment, progress, "B");
             r.mergedAgain = !r.a.tuning.equals(r.b.tuning);
             r.same = PostAb.md5(r.a.photo).equals(PostAb.md5(r.b.photo));
             Log.i("SCAM_LAB", "lab " + shot.dir.getName() + " " + fragment + " A=" + a + " B=" + b + ": merges differ "
@@ -146,23 +326,25 @@ public final class ScamLabRun {
             return r;
         } finally {
             PreferenceValue.overlay(null, null);
+            PreferenceKeys.labDevOverlay(null);
             PreferenceKeys.endShotProfile();
             ScamLab.LOCK.unlock();
         }
     }
 
     private static Side cachedSide(Context context, Shot shot, @Nullable int[] crop, java.util.SortedMap<String, Object> overrides,
-                                   String fragment, Progress progress, String name) throws Exception {
-        final String id = shot.dir.getAbsolutePath() + "|" + fragment + "|" + overrides;
+                                   Map<String, Float> dev, String fragment, Progress progress, String name) throws Exception {
+        final String id = shot.dir.getAbsolutePath() + "|" + fragment + "|" + overrides + "|" + dev;
         final Side known = sides.get(id);
         if (known != null && !known.photo.isRecycled()) return known;
         final Map<String, Object> values = basePrefs(shot);
         for (Map.Entry<String, Object> e : overrides.entrySet()) {
+            if (e.getKey().startsWith(DEV)) continue; // a scam_dev.txt line: in dev
             if (e.getValue() == null) values.remove(e.getKey()); else values.put(e.getKey(), e.getValue());
         }
         if (crop != null && shot.frame == null) wholeFrame(context, shot, progress);
         progress.stage(Lang.t("Склейка " + name + "…", "Merge " + name + "…"));
-        final Side side = side(context, shot, crop, values, ScameraApp.getSettingsManagerStatic().getDefaultPreferences(), progress, name,
+        final Side side = side(context, shot, crop, values, dev, ScameraApp.getSettingsManagerStatic().getDefaultPreferences(), progress, name,
                 crop == null ? null : shot.frame, null);
         sides.put(id, side);
         return side;
@@ -175,8 +357,8 @@ public final class ScamLabRun {
     private static void wholeFrame(Context context, Shot shot, Progress progress) throws Exception {
         progress.stage(Lang.t("Статистика всего кадра (один раз для снимка)…", "Whole-frame statistics (once per shot)…"));
         final LabFrame record = new LabFrame();
-        final Side whole = side(context, shot, null, basePrefs(shot), ScameraApp.getSettingsManagerStatic().getDefaultPreferences(), progress,
-                "A", null, record);
+        final Side whole = side(context, shot, null, basePrefs(shot), devLines(shot), ScameraApp.getSettingsManagerStatic().getDefaultPreferences(),
+                progress, "A", null, record);
         whole.photo.recycle();
         if (record.usable()) {
             ScamLab.writeFrame(shot.dir, record);
@@ -193,15 +375,18 @@ public final class ScamLabRun {
         return m;
     }
 
-    /** One side: the merge and the post pipeline under {@code values}. */
-    private static Side side(Context context, Shot shot, @Nullable int[] crop, Map<String, Object> values, SharedPreferences prefs,
-                             Progress progress, String name, @Nullable LabFrame frozen, @Nullable LabFrame record) throws Exception {
+    /** One side: the merge and the post pipeline under {@code values} and the scam_dev.txt lines {@code dev}. */
+    private static Side side(Context context, Shot shot, @Nullable int[] crop, Map<String, Object> values, Map<String, Float> dev,
+                             SharedPreferences prefs, Progress progress, String name, @Nullable LabFrame frozen, @Nullable LabFrame record) throws Exception {
         PreferenceValue.overlay(prefs, values);
+        PreferenceKeys.labDevOverlay(dev);
         ByteBuffer rgb = null;
         Parameters p = null;
         try {
             final ScamLabBurst burst = new ScamLabBurst(new File(shot.dir, ScamLab.BURST), crop, shot.meta.optString("tuningBurst", ""));
-            final String tuning = burst.settingsTuning();
+            // what the worker merges with: the tuning file (the burst's own lines last, the last value of a name wins) and the CRE
+            // source, a job marker beside it (ScamNeuralClient)
+            final String tuning = effective(burst.settingsTuning() + burst.burstTuning()) + " creSource " + PreferenceKeys.getScamCreSource();
             ScamNeuralClient.carryReport = null;
             final long t0 = System.nanoTime();
             rgb = ScamNeuralClient.processScamBurst(context, burst);
@@ -229,6 +414,7 @@ public final class ScamLabRun {
             return new Side(screen, map, (t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000, tuning);
         } finally {
             PreferenceValue.overlay(null, null);
+            PreferenceKeys.labDevOverlay(null);
             // ScamRgb frees the worker RGB after its upload and leaves a small copy (ScamProcessor's rule)
             if (rgb != null && (p == null || p.scamRgb == rgb)) Allocator.free(rgb);
             ScamRgb.dropClipFlags();

@@ -24,7 +24,17 @@ public final class DeviceAvailability {
                 .fullResHwRemosaic(com.particlesdevs.photoncamera.capture.VivoSdkFullRes.hardwareRemosaicOffered())
                 .fullResSizes(FullResProfiles.sizeOffered("50"), FullResProfiles.sizeOffered("200"))
                 .oppoTunedColor(com.particlesdevs.photoncamera.processing.render.OppoTunedColor.applies())
-                .mosaicStreams(com.particlesdevs.photoncamera.processing.MosaicBlockStore.anyMosaic());
+                .mosaicStreams(com.particlesdevs.photoncamera.processing.MosaicBlockStore.anyMosaic())
+                .bentoBlend(bentoBlend());
+    }
+
+    /** The highlight frames are blended after the merge (P310; scam_dev.txt "hybrid_bento_blend 0" mixes them inside it). */
+    static boolean bentoBlend() {
+        try {
+            return PreferenceKeys.hybridSwitch("bento_blend", true);
+        } catch (RuntimeException unknown) {
+            return true;
+        }
     }
 
     /**

@@ -113,6 +113,11 @@ public final class FullResProfiles {
         return tag.isEmpty() ? Lang.t("полное разрешение", "full resolution") : tag + Lang.t(" Мп", " MP");
     }
 
+    /** A FULLRES 200 MP profile («back2@full200»): its shots never take the NLM denoise (SettingsAvailability.editing200). */
+    public static boolean is200(String id) {
+        return "200".equals(tagOf(id));
+    }
+
     /** P189: the hardware remosaic row acts in this profile: a FULLRES one but 200 MP (no hardware 200 MP mode, P182). */
     public static boolean hardwareRemosaicApplies(String id) {
         String tag = tagOf(id);

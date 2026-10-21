@@ -32,9 +32,10 @@ public class GLBuffer implements AutoCloseable {
         mBufferID = IDPointer[0];
         Bind();
         Buffering();
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, mBufferID, mBufferID);
-        //UnBind();
-        //BindBase();
+        // P317: no glBindBufferBase(SSBO, mBufferID, mBufferID) here any more. A buffer's name is not a binding index: it
+        // matched the shader's binding only when the driver handed out the names 1..n (Adreno), hid the unparsed one-line
+        // blocks there and left them unbound on Mali; a name >= GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS was a GL error. Every
+        // user binds explicitly through GLProg.setBufferCompute (the binding of the shader's layout).
     }
     public void Bind(){
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, mBufferID);

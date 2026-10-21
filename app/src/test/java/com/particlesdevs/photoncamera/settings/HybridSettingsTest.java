@@ -293,12 +293,223 @@ public class HybridSettingsTest {
         assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_agx_slope"));
         assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_motion_boost"));
         assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_la_engine")); // P308: only with F6 on
+        // P316: Auto's daylight rule and the boost's texture threshold read the F6 motion too
+        assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_s61_min_motion"));
+        assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_boost_threshold"));
         // Motion mode's own Bento (Auto) uses the trigger
         Map<String,Object> m=new HashMap<>();m.put("pref_motion_mode",true);
         assertNull(new SettingsAvailability(m).reason("pref_scam_hybrid_bento_trigger"));
         prefs.edit().clear().putString("pref_scam_hybrid_dn_strength_map","frames").commit();
         assertTrue(SettingsMigration.removeObsolete(prefs));
         assertEquals("auto",prefs.getString("pref_scam_hybrid_dn_strength_map",null));
+    }
+
+    /**
+     * Settings audit 2026-10-21 (merge rows that act only on some routes): a row the shot's other settings leave out is greyed with
+     * its reason, the lab shows the same (ScamLabFragment.inert).
+     */
+    @Test public void mergeRowsThatCannotActAreGreyed() {
+        // «Движение» on: the merge reads the mode's own boost values, never widens the base; the variance threshold follows the
+        // mode's boost switch (no android:dependency on the photo switch any more)
+        Map<String,Object> m=new HashMap<>();
+        for(String k:new String[]{"pref_scam_hybrid_motion_boost","pref_scam_hybrid_boost_value","pref_scam_hybrid_motion_threshold",
+                "pref_scam_hybrid_widen_below","pref_scam_hybrid_boost_threshold"})
+            assertNull(k,new SettingsAvailability(m).reason(k));
+        m.put("pref_motion_mode",true);
+        for(String k:new String[]{"pref_scam_hybrid_motion_boost","pref_scam_hybrid_boost_value","pref_scam_hybrid_motion_threshold",
+                "pref_scam_hybrid_widen_below"})
+            assertNotNull(k,new SettingsAvailability(m).reason(k));
+        m.put("pref_scam_hybrid_motion_boost",false);
+        assertNull(new SettingsAvailability(m).reason("pref_scam_hybrid_boost_threshold"));
+        assertNull(new SettingsAvailability(m).reason("pref_scam_hybrid_mm_boost_value"));
+        m.put("pref_scam_hybrid_mm_motion_boost",false);
+        assertNotNull(new SettingsAvailability(m).reason("pref_scam_hybrid_boost_threshold"));
+        m.put("pref_motion_mode",false);
+        assertNotNull(new SettingsAvailability(m).reason("pref_scam_hybrid_boost_threshold"));
+        m.put("pref_scam_hybrid_motion_boost",true);
+        assertNull(new SettingsAvailability(m).reason("pref_scam_hybrid_boost_threshold"));
+        assertNull(inflate().findPreference("pref_scam_hybrid_boost_threshold").getDependency());
+        // the colour-difference clamp is a uniform of the pass that runs only with its strength above 0
+        Map<String,Object> c=new HashMap<>();
+        assertNull(new SettingsAvailability(c).reason("pref_scam_hybrid_chroma_diff_clamp"));
+        c.put("pref_scam_hybrid_chroma_diff","0.4");
+        assertNull(new SettingsAvailability(c).reason("pref_scam_hybrid_chroma_diff_clamp"));
+        c.put("pref_scam_hybrid_chroma_diff","0");
+        assertNotNull(new SettingsAvailability(c).reason("pref_scam_hybrid_chroma_diff_clamp"));
+        // the edge and flat-area kernels of the mosaic merges are set inside the new kernel only
+        Map<String,Object> k=new HashMap<>();
+        String[] kernelRows={"pref_scam_hybrid_mosaic_native_edge_scale","pref_scam_hybrid_mosaic_native_flat_scale"};
+        for(String sabre:new String[]{"1","2"}){
+            k.put("pref_scam_hybrid_sabre61",sabre);
+            for(String row:kernelRows)assertNull(row,new SettingsAvailability(k).mosaicStreams(true).reason(row));
+        }
+        k.put("pref_scam_hybrid_sabre61","0");
+        for(String row:kernelRows)assertNotNull(row,new SettingsAvailability(k).mosaicStreams(true).reason(row));
+        k.put("pref_scam_hybrid_mosaic_path","0"); // the split: its own edge kernel, also only in the new kernel
+        assertNotNull(new SettingsAvailability(k).mosaicStreams(true).reason("pref_scam_hybrid_mosaic_edge_scale"));
+        k.put("pref_scam_hybrid_sabre61","2");
+        assertNull(new SettingsAvailability(k).mosaicStreams(true).reason("pref_scam_hybrid_mosaic_edge_scale"));
+    }
+
+    /**
+     * Settings audit 2026-10-21 («Кадры светов и теней»): the frames' rows follow the switch the shot reads (the «Движение» mode's
+     * own while it is on), the mode greys the photo rows it replaces, the shadow frames' kernel widening says when it can act, the
+     * highlight kernel acts in the native mosaic merge only, and «цвет кромок светов» starts at 0.5.
+     */
+    @Test public void captureRowsFollowTheFramesInEffect() {
+        String[] bentoRows={"pref_scam_hybrid_bento_frames","pref_scam_hybrid_bento_validate","pref_scam_hybrid_bento_motion_max",
+                "pref_scam_hybrid_bento_factor","pref_scam_hybrid_bento_ramp","pref_scam_hybrid_bento_chroma_sigma","pref_scam_hybrid_bento_scam"};
+        Map<String,Object> b=new HashMap<>();
+        for(String k:bentoRows)assertNull(k,new SettingsAvailability(b).reason(k));
+        b.put("pref_scam_hybrid_bento","0");
+        for(String k:bentoRows)assertNotNull(k,new SettingsAvailability(b).reason(k));
+        assertNotNull(new SettingsAvailability(b).reason("pref_scam_hybrid_bento_trigger"));
+        assertNotNull(new SettingsAvailability(b).mosaicStreams(true).reason("pref_scam_hybrid_bento_sigma"));
+        // «Движение»: its own Bento (Auto by default) rules them; the photo rows it replaces are greyed
+        b.put("pref_motion_mode",true);
+        for(String k:bentoRows)assertNull(k,new SettingsAvailability(b).reason(k));
+        assertNull(new SettingsAvailability(b).reason("pref_scam_hybrid_bento_trigger"));
+        for(String k:new String[]{"pref_scam_hybrid_zsl_frames","pref_scam_hybrid_bento","pref_scam_hybrid_shasta"})
+            assertNotNull(k,new SettingsAvailability(b).reason(k));
+        b.put("pref_scam_hybrid_mm_bento","0");
+        for(String k:bentoRows)assertNotNull(k,new SettingsAvailability(b).reason(k));
+        b.put("pref_motion_mode",false);
+        assertNull(new SettingsAvailability(b).reason("pref_scam_hybrid_zsl_frames"));
+        // shadow frames off: their sharpness, ratio and kernel widening rows; in «Движение» its own switch (off by default)
+        Map<String,Object> s=new HashMap<>();s.put("pref_scam_hybrid_shasta_mode","1");s.put("pref_scam_hybrid_shasta_ev","2");
+        for(String k:new String[]{"pref_scam_hybrid_shasta_sharpness","pref_scam_hybrid_shasta_max_ratio","pref_scam_hybrid_lut_sigma"}){
+            assertNull(k,new SettingsAvailability(s).reason(k));
+            s.put("pref_scam_hybrid_shasta",false);assertNotNull(k,new SettingsAvailability(s).reason(k));
+            s.put("pref_scam_hybrid_shasta",true);s.put("pref_motion_mode",true);assertNotNull(k,new SettingsAvailability(s).reason(k));
+            s.put("pref_scam_hybrid_mm_shasta",true);assertNull(k,new SettingsAvailability(s).reason(k));
+            s.remove("pref_motion_mode");s.remove("pref_scam_hybrid_mm_shasta");
+        }
+        // the rest of the category the same way, with no android:dependency on the photo switch («Движение» greys that one, which
+        // would grey them while the mode's own shadow frames are on)
+        for(String k:new String[]{"pref_scam_hybrid_shasta_mode","pref_scam_hybrid_shasta_frames","pref_scam_hybrid_shasta_ev"}){
+            assertNull(k,inflate().findPreference(k).getDependency());
+            Map<String,Object> v=new HashMap<>();
+            assertNull(k,new SettingsAvailability(v).reason(k));
+            v.put("pref_scam_hybrid_shasta",false);assertNotNull(k,new SettingsAvailability(v).reason(k));
+            v.put("pref_scam_hybrid_shasta",true);v.put("pref_motion_mode",true);assertNotNull(k,new SettingsAvailability(v).reason(k));
+            v.put("pref_scam_hybrid_mm_shasta",true);assertNull(k,new SettingsAvailability(v).reason(k));
+        }
+        assertNull(inflate().findPreference("pref_scam_hybrid_shasta_motion_max").getDependency());
+        // the motion limit of the long frames: «Всегда» only
+        assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_shasta_motion_max"));
+        s.put("pref_scam_hybrid_shasta_mode","2");assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_shasta_motion_max"));
+        // the kernel widening needs a merge weight above 10: EV above 1.66, the cap above 10, the exponent high enough
+        Map<String,Object> l=new HashMap<>();
+        assertNotNull("the default EV 1",new SettingsAvailability(l).reason("pref_scam_hybrid_lut_sigma"));
+        l.put("pref_scam_hybrid_shasta_ev","1.66");assertNotNull(new SettingsAvailability(l).reason("pref_scam_hybrid_lut_sigma"));
+        l.put("pref_scam_hybrid_shasta_ev","1.7");assertNull(new SettingsAvailability(l).reason("pref_scam_hybrid_lut_sigma"));
+        l.put("pref_scam_hybrid_weight_cap","10");assertNotNull(new SettingsAvailability(l).reason("pref_scam_hybrid_lut_sigma"));
+        l.put("pref_scam_hybrid_weight_cap","50");l.put("pref_scam_hybrid_fwe","0.5");
+        assertNotNull(new SettingsAvailability(l).reason("pref_scam_hybrid_lut_sigma"));
+        l.put("pref_scam_hybrid_shasta_ev","4");assertNull(new SettingsAvailability(l).reason("pref_scam_hybrid_lut_sigma"));
+        // the highlight kernel: the native Quad / Tetra merge only (not plain Bayer, the split, our remosaic off), unless the
+        // highlight frames are mixed inside the merge (scam_dev bento_blend 0)
+        Map<String,Object> k=new HashMap<>();
+        assertNull(new SettingsAvailability(k).mosaicStreams(true).reason("pref_scam_hybrid_bento_sigma"));
+        assertNotNull(new SettingsAvailability(k).mosaicStreams(false).reason("pref_scam_hybrid_bento_sigma"));
+        assertNull(new SettingsAvailability(k).mosaicStreams(false).bentoBlend(false).reason("pref_scam_hybrid_bento_sigma"));
+        k.put("pref_scam_hybrid_mosaic_path","0");
+        assertNotNull(new SettingsAvailability(k).mosaicStreams(true).reason("pref_scam_hybrid_bento_sigma"));
+        k.put("pref_scam_hybrid_mosaic_path","1");k.put("pref_scam_hybrid_mosaic_remosaic",false);
+        assertNotNull(new SettingsAvailability(k).mosaicStreams(true).reason("pref_scam_hybrid_bento_sigma"));
+        // «цвет кромок светов» from 0.5: a stored 0 (the blend took σ 2 for it) goes, 0.1..0.4 become 0.5
+        assertEquals(0.5,SettingsNumericRules.bounds("pref_scam_hybrid_bento_chroma_sigma")[0],0);
+        prefs.edit().clear().putString("pref_scam_hybrid_bento_chroma_sigma","0").commit();
+        assertTrue(SettingsMigration.removeObsolete(prefs));
+        assertFalse(prefs.contains("pref_scam_hybrid_bento_chroma_sigma"));
+        prefs.edit().putString("pref_scam_hybrid_bento_chroma_sigma","0.3").commit();
+        assertTrue(SettingsMigration.removeObsolete(prefs));
+        assertEquals("0.5",prefs.getString("pref_scam_hybrid_bento_chroma_sigma",null));
+        assertFalse(SettingsMigration.removeObsolete(prefs));
+        prefs.edit().putString("pref_scam_hybrid_bento_chroma_sigma","1.5").commit();
+        assertFalse(SettingsMigration.removeObsolete(prefs));
+        assertEquals("1.5",prefs.getString("pref_scam_hybrid_bento_chroma_sigma",null));
+    }
+
+    /**
+     * Settings audit 2026-10-21 (post rows that act only on some routes): greyed with the reason where the shot's other settings
+     * (or the phone, or the profile edited) leave them out, live everywhere else.
+     */
+    @Test public void postRowsThatCannotActAreGreyed() {
+        // «Сетка 2×: доля мелкого цвета»: the 2x grid, and every 200 MP shot (denoised on its 2x2 means at any resolution)
+        Map<String,Object> s=new HashMap<>();
+        assertNull("a phone with 200 MP shots",new SettingsAvailability(s).fullResSizes(false,true).reason("pref_scam_hybrid_dn_chroma_2x_keep"));
+        assertNotNull(new SettingsAvailability(s).fullResSizes(true,false).reason("pref_scam_hybrid_dn_chroma_2x_keep"));
+        s.put("pref_scam_hybrid_output","16");
+        assertNull(new SettingsAvailability(s).fullResSizes(false,false).reason("pref_scam_hybrid_dn_chroma_2x_keep"));
+        assertNotNull("auto 2x keeps its own rule",new SettingsAvailability(new HashMap<>()).fullResSizes(false,true).reason("pref_scam_hybrid_auto2x"));
+        // NLM on a FULLRES 200 MP profile: its shots keep the merge alone
+        Map<String,Object> n=new HashMap<>();n.put("pref_scam_hybrid_dn_engine","nlm");
+        assertNull(new SettingsAvailability(n).reason("pref_scam_hybrid_post_chroma"));
+        assertNotNull(new SettingsAvailability(n).editing200(true).reason("pref_scam_hybrid_post_chroma"));
+        assertNotNull(new SettingsAvailability(n).editing200(true).reason("pref_scam_hybrid_post_luma"));
+        assertNull(new SettingsAvailability(n).editing200(true).reason("pref_scam_hybrid_dn_engine"));
+        // the few-frame boost limit: the multiscale denoise's strength map only, NLM always
+        Map<String,Object> d=new HashMap<>();
+        assertNull(new SettingsAvailability(d).reason("pref_scam_hybrid_bento_denoise_max"));
+        d.put("pref_scam_hybrid_dn_strength_map","uniform");
+        assertNotNull(new SettingsAvailability(d).reason("pref_scam_hybrid_bento_denoise_max"));
+        d.put("pref_scam_hybrid_dn_engine","nlm");
+        assertNull(new SettingsAvailability(d).reason("pref_scam_hybrid_bento_denoise_max"));
+        // the OPPO matrix's saturation is AgX's: greyed under ACES, Uchimura and the own curve, live with every AgX look
+        Map<String,Object> t=new HashMap<>();
+        assertNull(new SettingsAvailability(t).reason("pref_scam_hybrid_ark_ccm_sat"));
+        t.put("pref_scam_hybrid_ark_agx_look","1");
+        assertNull(new SettingsAvailability(t).reason("pref_scam_hybrid_ark_ccm_sat"));
+        for(String op:new String[]{"pref_scam_hybrid_ark_aces_on","pref_scam_hybrid_ark_uchi_on","pref_scam_hybrid_ark_curve_on"}){
+            Map<String,Object> o=new HashMap<>();o.put(op,true);
+            assertNotNull(op,new SettingsAvailability(o).reason("pref_scam_hybrid_ark_ccm_sat"));
+        }
+        // the colour prior, the defringe and the clip band of the highlights: inside the per-channel recovery only
+        String[] trio={"pref_scam_hybrid_highlight_chroma","pref_scam_hybrid_highlight_defringe","pref_scam_hybrid_highlight_band"};
+        Map<String,Object> h=new HashMap<>();
+        for(String k:trio)assertNull(k,new SettingsAvailability(h).reason(k));
+        h.put("pref_scam_hybrid_highlight_recovery","0");
+        for(String k:trio)assertNotNull(k,new SettingsAvailability(h).reason(k));
+        h.put("pref_scam_hybrid_highlight_recovery",50);
+        for(String k:trio)assertNull(k,new SettingsAvailability(h).reason(k));
+        // clarity and the flat-area protection scale the ARK detail delta
+        Map<String,Object> a=new HashMap<>();
+        for(String k:new String[]{"pref_scam_hybrid_ark_clarity","pref_scam_hybrid_ark_flat_protect"}){
+            a.remove("pref_scam_hybrid_ark_sharp_gain");
+            assertNull(k,new SettingsAvailability(a).reason(k));
+            a.put("pref_scam_hybrid_ark_sharp_gain","0");
+            assertNotNull(k,new SettingsAvailability(a).reason(k));
+            a.put("pref_scam_hybrid_ark_sharp_gain","0.4");
+            assertNull(k,new SettingsAvailability(a).reason(k));
+        }
+    }
+
+    /**
+     * Settings audit 2026-10-21: the worker gets a stored merge row as the capture getters read it - clamped to the row's bounds,
+     * a decimal comma accepted - so a restored config cannot send a value the row cannot show; one that is no number leaves the
+     * app default (else the worker's own).
+     */
+    @Test public void tuningTextClampsStoredRows() {
+        manager.set("default_scope","pref_scam_hybrid_kernel","5");
+        manager.set("default_scope","pref_scam_hybrid_dilate_floor","0,5");
+        manager.set("default_scope","pref_scam_hybrid_bento","1.6");
+        manager.set("default_scope","pref_scam_hybrid_mosaic_window","6");
+        manager.set("default_scope","pref_scam_hybrid_cdm","x");
+        String tuning=PreferenceKeys.hybridTuningText();
+        for(String line:new String[]{"kernelScale 2.0","dilateFloor 0.5","bento 2.0","mosaicWindow 4.0"})
+            assertTrue(line+" missing in "+tuning,tuning.contains(line+"\n"));
+        assertFalse(tuning,tuning.contains("cdm "));
+        manager.set("default_scope","pref_scam_hybrid_bento","many");
+        assertTrue(PreferenceKeys.hybridTuningText().contains("bento 2.0\n")); // the app default (HYBRID_DEFAULTS)
+        // «Радиус окна» lost 5 and 6: a stored one becomes 4 (main settings, module profiles, restored configs)
+        prefs.edit().clear().putString("pref_scam_hybrid_mosaic_window","6").commit();
+        assertTrue(SettingsMigration.removeObsolete(prefs));
+        assertEquals("4",prefs.getString("pref_scam_hybrid_mosaic_window",null));
+        assertFalse(SettingsMigration.removeObsolete(prefs));
+        prefs.edit().clear().putString("pref_scam_hybrid_mosaic_window","3").commit();
+        assertFalse(SettingsMigration.removeObsolete(prefs));
+        assertEquals("3",prefs.getString("pref_scam_hybrid_mosaic_window",null));
     }
 
     /** P118: RAW CA as RawTherapee's CA_correct (P28) is gone: no page, a stored key never reaches the worker and is dropped. */

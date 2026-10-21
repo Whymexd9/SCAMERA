@@ -33,7 +33,8 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_bento_sigma": return new double[]{0.5,2,0};
             case "pref_scam_hybrid_bento_ramp": return new double[]{0,12,0};
             case "pref_scam_hybrid_bento_frames": return new double[]{1,3,1};
-            case "pref_scam_hybrid_bento_chroma_sigma": return new double[]{0,4,0};
+            // P316: from 0.5 - the blend (P310, the default) took 0 for its default 2, only the old in-merge colour pass for off
+            case "pref_scam_hybrid_bento_chroma_sigma": return new double[]{0.5,4,0};
             case "pref_scam_hybrid_cdm": return new double[]{0.01,2,0};
             case "pref_scam_hybrid_kernel": return new double[]{0.5,2,0};
             case "pref_scam_hybrid_weight_cap": return new double[]{1,50,0};
@@ -174,7 +175,9 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_mosaic_frames": return new double[]{4,32,1};
             // P29 native mosaic merge (worker mosaicPath / mosaicWindow / mosaicKernel* / mosaicChromaFill / mosaicFillSupport / mosaicTetra)
             case "pref_scam_hybrid_mosaic_path": case "pref_scam_hybrid_mosaic_chroma_fill": return new double[]{0,1,1};
-            case "pref_scam_hybrid_mosaic_window": return new double[]{1,6,1};
+            // 1..4: the fast native merge takes Quad / Tetra T2 up to 3, Tetra T1 2 x 4 = 8 sensor px (worker natFastOn); a Tetra T1
+            // 5 or 6 was clamped to 8 like 4, a Quad 4 runs the generic merge (no base demosaic, no ultrashort fill after it)
+            case "pref_scam_hybrid_mosaic_window": return new double[]{1,4,1};
             case "pref_scam_hybrid_mosaic_kernel_scale": return new double[]{0.25,2,0};
             case "pref_scam_hybrid_mosaic_native_edge_scale": return new double[]{0.25,1,0};
             case "pref_scam_hybrid_mosaic_kernel_g": case "pref_scam_hybrid_mosaic_kernel_rb": return new double[]{0.5,2,0};

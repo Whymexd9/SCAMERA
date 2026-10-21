@@ -46,9 +46,47 @@ public final class DevKeys {
             "keep_burst", // P191: «Сохранять RAW-серию» in Diagnostics
             "fullres_zsl"))); // P266: «50 Мп: ZSL» in the FULLRES rows - one switch, not a second in «Для разработчика»
 
+    /**
+     * Lines of the merge and processing groups the lab («Гайд и лаборатория») does not offer: they change the speed, a priority
+     * or the log, not the photo; or the saved burst and its Parameters fixed them at the shot (hybrid_isp_ccm: the colour
+     * matrix of the Parameters, hybrid_clip_flags: a flag of the burst); or only the DNG reads them; or nothing does any more.
+     */
+    static final Set<String> NOT_IN_LAB = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "post_priority", "gpu_low_priority", "jpeg_threads", "rgba_upload", "gl_warm_up", "release_async", "worker_watchdog",
+            "hybrid_la_threads", "hybrid_la_stream", "hybrid_la_scam", "hybrid_rgb_half", "worker_gpu_normal_priority",
+            "isp_preview_off_always", "hybrid_isp_ccm", "hybrid_clip_flags", "dng_colour_jpeg",
+            // P306: no native Tetra merge is a night shot any more, nothing reads its night point
+            "hybrid_mosaic_tetra_night_kernel_scale", "hybrid_mosaic_tetra_night_edge_scale", "hybrid_mosaic_tetra_night_flat_scale")));
+
     private static List<Key> all;
+    /** The merge and processing group names of {@link #all} as it was built. */
+    private static String builtMerge, builtPost;
 
     private DevKeys() {}
+
+    private static String mergeGroup() { return Lang.t("Склейка Hybrid (воркер)", "Hybrid merge (worker)"); }
+    private static String postGroup() { return Lang.t("Обработка", "Processing"); }
+
+    /** The line {@code key} of {@link #all()}, null when the page has none. */
+    public static Key find(String key) {
+        for (Key k : all()) if (k.key.equals(key)) return k;
+        return null;
+    }
+
+    /**
+     * The lines that change the photo of a saved burst (owner, 2026-10-21: «в лаборатории у нас не все пункты есть»): the merge
+     * and processing groups without {@link #NOT_IN_LAB}, in the page's order, for the lab's «Для разработчика».
+     */
+    public static List<Key> photo() {
+        final List<Key> keys = all();
+        // the group names {@link #all} was built with (the language may have changed since: it is built once)
+        final String merge, post;
+        synchronized (DevKeys.class) { merge = builtMerge; post = builtPost; }
+        List<Key> out = new ArrayList<>();
+        for (Key k : keys)
+            if ((k.group.equals(merge) || k.group.equals(post)) && !NOT_IN_LAB.contains(k.key)) out.add(k);
+        return out;
+    }
 
     private static Key s(String g, String key, boolean def, String text) { return new Key(g, key, Kind.SWITCH, def ? "1" : "0", text); }
     private static Key sAuto(String g, String key, String text) { return new Key(g, key, Kind.SWITCH, null, text); }
@@ -58,8 +96,8 @@ public final class DevKeys {
         if (all != null) return all;
         final String cap = Lang.t("Захват и сессия", "Capture and session");
         final String vf = Lang.t("Видоискатель", "Viewfinder");
-        final String merge = Lang.t("Склейка Hybrid (воркер)", "Hybrid merge (worker)");
-        final String post = Lang.t("Обработка", "Processing");
+        final String merge = mergeGroup();
+        final String post = postGroup();
         final String xiaomi = Lang.t("Xiaomi 17 Ultra (теле)", "Xiaomi 17 Ultra (tele)");
         final String xiaomi15 = Lang.t("Xiaomi 15 Ultra (DCG)", "Xiaomi 15 Ultra (DCG)");
         final String vivo = Lang.t("vivo", "vivo");
@@ -94,6 +132,7 @@ public final class DevKeys {
         k.add(s(cap, "raw_wide", true, Lang.t("RAW шире заявленного белого (14 бит DCG) берётся по своим значениям", "A RAW wider than the declared white (14-bit DCG) is taken at its own range")));
         k.add(s(cap, "vivo_qcom_roi", true, Lang.t("X300 Ultra: модули ISZ без ремозаика и кнопка DCG (forceSensorMode в сессии)", "X300 Ultra: ISZ modules without remosaic and the DCG button (session forceSensorMode)")));
         k.add(s(cap, "sensor_mode_pick", true, Lang.t("Режим сенсора модуля из таблицы камеры (SensorModeTable)", "The module's sensor mode from the camera's table (SensorModeTable)")));
+        k.add(s(cap, "sensor_mode_series", false, Lang.t("OPPO / OnePlus / realme: кадры после затвора и в выбранном режиме сенсора (иначе снимок только из буфера)", "OPPO / OnePlus / realme: frames after the shutter in a picked sensor mode too (otherwise the shot is taken from the ring only)")));
         k.add(s(cap, "sensor_mode_pick_lease", true, Lang.t("vivo: модуль с режимом сенсора открывает камеру с арендой vivo SDK", "vivo: a module with a sensor mode opens the camera under the vivo SDK lease")));
         k.add(s(cap, "vivo_native_isz_lease", true, Lang.t("X200 Ultra (свой пакет): нативный модуль ISZ открывает камеру с арендой vivo SDK", "X200 Ultra (own package): a native ISZ module opens the camera under the vivo SDK lease")));
         k.add(s(cap, "vivo_qcom_isz_lease", true, Lang.t("X300 Ultra: модуль ISZ открывает камеру с арендой vivo SDK (VCF 33 = 2, SDK RAW 40 = 1)", "X300 Ultra: an ISZ module opens the camera under the vivo SDK lease (VCF 33 = 2, SDK RAW 40 = 1)")));
@@ -120,6 +159,7 @@ public final class DevKeys {
         k.add(s(vf, "mosaic_preview", true, Lang.t("Модуль, измеренный как мозаика, сразу показывает RAW-видоискатель", "A module measured as a mosaic starts on the RAW viewfinder")));
         k.add(n(vf, "vf_priority", "1", Lang.t("Высокий приоритет потока видоискателя (0 — обычный)", "High priority of the viewfinder thread (0: normal)")));
         // P314: the photo's tone per pixel by default (one pass, the AE on the CPU), the guided-filter chain of P301 as 2
+        k.add(s(vf, "vf_black_floor", true, Lang.t("RAW-видоискатель: чёрный по самому кадру, когда поток пришёл без чёрного пьедестала (OPPO ISZ, режим сенсора)", "RAW viewfinder: the black from the frame itself when the stream lost its black pedestal (OPPO ISZ, a sensor mode)")));
         k.add(n(vf, "vf_ark", "1", Lang.t("RAW-видоискатель: тон ARK итогового фото — 1: по каждому пикселю (быстро), 2: локально, как в фото (направляемый фильтр, тяжелее, замедляет обработку), 0: собственный вид видоискателя",
                 "RAW viewfinder: the photo's ARK tone - 1: per pixel (fast), 2: local as in the photo (guided filter, heavier, slows processing down), 0: the viewfinder's own look")));
         // P314: the default (medium) GPU priority, the processing contexts stay low; 1 = P90's high priority
@@ -152,8 +192,8 @@ public final class DevKeys {
         k.add(s(merge, "hybrid_bento_blend", true, Lang.t("Bento: кадры светов накладываются после склейки по областям (выкл — смешивание внутри склейки)",
                 "Bento: highlight frames blended after the merge by region (off: mixed inside the merge)")));
         // P313: the native Quad / Tetra merge keeps the N frames in Bento's cells, the highlight frames fill only what they clipped
-        k.add(s(merge, "hybrid_us_fill", true, Lang.t("Bento (Quad / Tetra): кадры светов заполняют только пересвет основных кадров (выкл — по маске внутри склейки)",
-                "Bento (Quad / Tetra): highlight frames fill only what the main frames clipped (off: by the mask inside the merge)")));
+        k.add(s(merge, "hybrid_us_fill", true, Lang.t("Bento (Quad / Tetra): кадры светов заполняют только пересвет основных кадров (выкл — по маске внутри склейки); только с полным окном, у Quad и Tetra T2 — с окном до 3",
+                "Bento (Quad / Tetra): highlight frames fill only what the main frames clipped (off: by the mask inside the merge); only with the full window, for Quad and Tetra T2 a window up to 3")));
         // P309: the soft transition's levels and reach (its width is the row «Кадры светов: мягкий переход»); since P310 only for the
         // colour-block (Quad / Tetra) merge, the plain merge blends instead
         k.add(n(merge, "hybrid_bento_ramp_lo", null, Lang.t("Bento: уровень базы, где начинается переход", "Bento: base level where the transition starts")));
@@ -163,9 +203,9 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_mosaic_share", null, Lang.t("Мозаика: доля голосов для решения", "Mosaic: vote share to decide")));
         k.add(n(merge, "hybrid_mosaic_native_night_kernel_scale", null, Lang.t("Нативная мозаика ночью: масштаб ядра", "Native mosaic at night: kernel scale")));
         k.add(n(merge, "hybrid_mosaic_native_night_edge_scale", null, Lang.t("Нативная мозаика ночью: масштаб на краях", "Native mosaic at night: edge scale")));
-        k.add(n(merge, "hybrid_mosaic_tetra_night_kernel_scale", null, Lang.t("Tetra ночью: масштаб ядра", "Tetra at night: kernel scale")));
-        k.add(n(merge, "hybrid_mosaic_tetra_night_edge_scale", null, Lang.t("Tetra ночью: масштаб на краях", "Tetra at night: edge scale")));
-        k.add(n(merge, "hybrid_mosaic_tetra_night_flat_scale", null, Lang.t("Tetra ночью: масштаб на ровных местах", "Tetra at night: flat scale")));
+        k.add(n(merge, "hybrid_mosaic_tetra_night_kernel_scale", null, Lang.t("Tetra ночью: масштаб ядра (не действует: Tetra снимается днём, P306)", "Tetra at night: kernel scale (no effect: Tetra is shot by day, P306)")));
+        k.add(n(merge, "hybrid_mosaic_tetra_night_edge_scale", null, Lang.t("Tetra ночью: масштаб на краях (не действует: Tetra снимается днём, P306)", "Tetra at night: edge scale (no effect: Tetra is shot by day, P306)")));
+        k.add(n(merge, "hybrid_mosaic_tetra_night_flat_scale", null, Lang.t("Tetra ночью: масштаб на ровных местах (не действует: Tetra снимается днём, P306)", "Tetra at night: flat scale (no effect: Tetra is shot by day, P306)")));
         k.add(n(merge, "hybrid_mosaic_tetra_kernel_scale", null, Lang.t("Tetra днём: масштаб ядра", "Tetra by day: kernel scale")));
         k.add(n(merge, "hybrid_gain_measured", null, Lang.t("Измерять усиление кадров (1/0)", "Measure the frames' gain (1/0)")));
         k.add(n(merge, "hybrid_noise_measured", null, Lang.t("Измерять шум и поправлять модель (1/0)", "Measure the noise and correct the model (1/0)")));
@@ -198,8 +238,8 @@ public final class DevKeys {
         k.add(n(post, "hybrid_dn_huge_fine", "2", Lang.t("Шумодав 200 МП: срез мелкого шума яркости, в сигмах (0 — выкл.)", "Denoise 200 MP: fine luma noise coring, in sigmas (0: off)")));
         k.add(n(post, "hybrid_dn_dark_chroma_noise", "0.35", Lang.t("Шумодав: цвет в тенях, доля шума", "Denoise: colour in the shadows, noise share")));
         k.add(n(post, "hybrid_ark_hr_mix", "0.5", Lang.t("Тон, света Bento выше 4x: пик к p99.9 (доля)", "Tone, Bento highlights above 4x: peak towards p99.9 (share)")));
-        k.add(n(post, "hybrid_ark_weight_center_hr", "0.75", Lang.t("Тон с запасом Bento: центр весов слияния", "Tone with Bento headroom: fusion weight centre")));
-        k.add(n(post, "hybrid_ark_weight_hl_hr", "0.4", Lang.t("Тон с запасом Bento: вес слоя светов", "Tone with Bento headroom: highlight layer weight")));
+        k.add(n(post, "hybrid_ark_weight_center_hr", "0.75", Lang.t("Тон с запасом Bento: центр весов слияния (без строки — «Смещение центра экспозиции» + 0,15)", "Tone with Bento headroom: fusion weight centre (without the line: “Exposure centre shift” + 0.15)")));
+        k.add(n(post, "hybrid_ark_weight_hl_hr", "0.4", Lang.t("Тон с запасом Bento: вес слоя светов (без строки — половина «Вес слоя светов»)", "Tone with Bento headroom: highlight layer weight (without the line: half the “Highlight layer weight”)")));
         k.add(n(post, "hybrid_ark_sat_light_lo", "0.35", Lang.t("Тон с запасом Bento: цветной свет: насыщенность, с которой начинаются веса ядра (нижняя = верхней — выкл.)", "Tone with Bento headroom: coloured light - saturation where the kernel's weights start (lo = hi: off)")));
         k.add(n(post, "hybrid_ark_sat_light_hi", "0.7", Lang.t("Тон с запасом Bento: цветной свет: насыщенность полных весов ядра", "Tone with Bento headroom: coloured light - saturation of the full kernel weights")));
         k.add(n(post, "hybrid_ark_sat_light_level_lo", "0.25", Lang.t("Тон с запасом Bento: цветной свет: уровень света (x AE), с которого начинаются веса ядра", "Tone with Bento headroom: coloured light - light level (x AE) where the kernel's weights start")));
@@ -342,6 +382,8 @@ public final class DevKeys {
                 "Early release of the processing textures at any size (as above 100 MP; for the A/B)")));
         k.add(s(diag, "post_ab_upload", false, Lang.t("A/B: меняется только загрузка RGB", "A/B: only the RGB upload changes")));
         k.add(s(diag, "post_ab_dump", false, Lang.t("A/B: сохранить оба результата в PNG", "A/B: save both results as PNG")));
+        builtMerge = merge;
+        builtPost = post;
         all = Collections.unmodifiableList(k);
         return all;
     }

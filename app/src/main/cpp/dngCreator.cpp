@@ -470,15 +470,25 @@ public:
                 metadata.cfa_pattern[3] = 2; // Blue
                 break;
         }
-        // Expand the physical 2x2 Bayer layout to a 4x4 Quad Bayer layout:
-        // each Bayer sample describes a 2x2 block of equal-colour photosites.
-        unsigned char base[4] = {metadata.cfa_pattern[0], metadata.cfa_pattern[1],
-                                 metadata.cfa_pattern[2], metadata.cfa_pattern[3]};
-        for (int y = 0; y < 4; ++y) {
-            for (int x = 0; x < 4; ++x) {
-                metadata.cfa_pattern[y * 4 + x] = base[(y / 2) * 2 + (x / 2)];
-            }
-        }
+        // P318: cfa_pattern keeps the 2x2 order; createDng expands it per colour block. A 4x4 expansion was written here into
+        // the 4-byte array: it overwrote cfa_repeat_pattern_dim and the has_* flags after it with colour indices (BGGR: no
+        // ForwardMatrix1 and no AsShotNeutral in the file; GBRG: no colour matrices at all), and a matrix set later moved the CFA.
+    }
+
+    /** P318: the stored mosaic's colour block (2 Quad, 4 Tetra, else Bayer); before setGainMap, which places its maps by it. */
+    void setMosaicBlock(int block) {
+        metadata.mosaic_block = block == 2 || block == 4 ? block : 1;
+        if (metadata.gain_map_written && metadata.mosaic_block > 1)
+            LOGE("DNG: mosaic block %d set after the GainMap: its maps stay on the Bayer grid", metadata.mosaic_block);
+    }
+
+    /** P318: the 2x2 base order expanded to the 2b x 2b period of the stored mosaic (b = 1: the base itself). */
+    int expandedCfa(unsigned char* out) const {
+        const int b = metadata.binning ? 1 : metadata.mosaic_block, dim = 2 * b;
+        for (int y = 0; y < dim; ++y)
+            for (int x = 0; x < dim; ++x)
+                out[y * dim + x] = metadata.cfa_pattern[((y / b) & 1) * 2 + ((x / b) & 1)];
+        return dim;
     }
 
     void setGainMap(const float* gainMap, int xmin, int ymin, int xmax, int ymax, int width, int height) {
@@ -551,7 +561,28 @@ public:
         gainMaps[2].right = activeX;
         gainMaps[3].bottom = activeY;
         gainMaps[3].right = activeX;
+        // P318: a Quad / Tetra mosaic holds each channel on b x b sites of a 2b x 2b period: one map per channel and site
+        // (pitch 2b), else a channel's gain lands on its neighbours' sites (a binned file is Bayer, as expandedCfa)
+        const int b = metadata.binning ? 1 : metadata.mosaic_block;
+        if (b > 1) {
+            std::vector<tinydngwriter::GainMap> blockMaps;
+            for (const auto& m : gainMaps)
+                for (int sy = 0; sy < b; ++sy)
+                    for (int sx = 0; sx < b; ++sx) {
+                        tinydngwriter::GainMap s = m;
+                        s.top = m.top * b + sy;
+                        s.left = m.left * b + sx;
+                        s.row_pitch = s.col_pitch = 2 * b;
+                        blockMaps.push_back(s);
+                    }
+            gainMaps.swap(blockMaps);
+        }
         dng_image0->SetGainMap(gainMaps);
+        metadata.gain_map_written = true;
+        delete[] gainMap0;
+        delete[] gainMap1;
+        delete[] gainMap2;
+        delete[] gainMap3;
     }
 
     void setBinning(bool binning) {
@@ -649,17 +680,21 @@ public:
         dng_image0->SetXResolution(72.f);
         dng_image0->SetYResolution(72.f);
 
-        // Set black level repeat dimensions
-        dng_image0->SetBlackLevelRepeatDim(2, 2);
-
-        // Set CFA pattern
-        {
-            dng_image0->SetCFARepeatPatternDim(2, 2);
-            // The first four entries were expanded, so reconstruct the physical 2x2 cells.
-            unsigned char bayer[4] = {metadata.cfa_pattern[0], metadata.cfa_pattern[2],
-                                      metadata.cfa_pattern[8], metadata.cfa_pattern[10]};
-            dng_image0->SetCFAPattern(4, bayer);
-        }
+        // Set CFA pattern: P318, the 2x2 order over the colour blocks of the stored mosaic (2 x 2 Bayer, 4 x 4 Quad, 8 x 8 Tetra)
+        unsigned char cfa[64];
+        const int cfaDim = expandedCfa(cfa);
+        dng_image0->SetCFARepeatPatternDim(static_cast<unsigned short>(cfaDim), static_cast<unsigned short>(cfaDim));
+        dng_image0->SetCFAPattern(static_cast<unsigned int>(cfaDim * cfaDim), cfa);
+        // The black level per site of the 2x2 cell; a mosaic with unequal values repeats them over its colour blocks
+        auto setBlack = [&](const unsigned short* v) {
+            const bool uniform = v[0] == v[1] && v[0] == v[2] && v[0] == v[3];
+            const int dim = uniform ? 2 : cfaDim, b = dim / 2;
+            std::vector<unsigned short> levels(static_cast<size_t>(dim) * dim);
+            for (int y = 0; y < dim; ++y)
+                for (int x = 0; x < dim; ++x) levels[static_cast<size_t>(y) * dim + x] = v[((y / b) & 1) * 2 + ((x / b) & 1)];
+            dng_image0->SetBlackLevelRepeatDim(static_cast<unsigned short>(dim), static_cast<unsigned short>(dim));
+            dng_image0->SetBlackLevel(static_cast<unsigned int>(levels.size()), levels.data());
+        };
     
         // When input white level is >10-bit and we output 10-bit, use gamma compression + linearization table
         if (metadata.bps == 10 && metadata.white_level > 1023.0) {
@@ -672,10 +707,10 @@ public:
                 unsigned short compressedBlackLevel[4];
                 for(int i =0; i<4;i++)
                     compressedBlackLevel[i] = static_cast<unsigned short>((newLevel / metadata.white_level) * metadata.black_level[i]);
-                dng_image0->SetBlackLevel(4, compressedBlackLevel);
+                setBlack(compressedBlackLevel);
             }
         } else {
-            dng_image0->SetBlackLevel(4, metadata.black_level);
+            setBlack(metadata.black_level);
             dng_image0->SetWhiteLevelRational(1, &metadata.white_level);
         }
 
@@ -1155,6 +1190,13 @@ public:
         DngCreator* creator = reinterpret_cast<DngCreator*>(creatorPtr);
         if (creator) {
             creator->setCFAPattern(pattern);
+        }
+    }
+
+    JNIEXPORT void JNICALL Java_com_particlesdevs_photoncamera_processing_DngCreator_setMosaicBlock(JNIEnv *env, jobject obj, jlong creatorPtr, jint block) {
+        DngCreator* creator = reinterpret_cast<DngCreator*>(creatorPtr);
+        if (creator) {
+            creator->setMosaicBlock(block);
         }
     }
 

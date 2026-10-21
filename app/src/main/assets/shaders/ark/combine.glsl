@@ -615,6 +615,11 @@ void main() {
             delta = cbrtp(max(yD, 0.000001)) - lRef;
             // P311: beside a clipped light, against the side of the neighbourhood that is not the light
             if (delta < 0.0 && lightW > 0.0) delta = lightRimDelta(delta, yD, yRef, lightW, lbx, lby, lfx, lfy, refDomain);
+            // P315 (owner, X8U LED fan rings: two parallel bright lines with a darker gap along the core): the guide is clamped
+            // flat at 1 across a light's core while the reference takes in the dark beside it, so the positive delta ridged
+            // just inside both rims and nowhere in the middle. No positive detail inside a light's footprint (HDR detail above
+            // white stays with hrDetailU); the delta is unchanged bit for bit where no tap is a light.
+            if (delta > 0.0) delta *= 1.0 - smoothstep(0.0, 1.0, lightW);
         } else {
             delta = cbrtp(max(yFull * ae, 0.000001)) - cbrtp(max(yLow * ae, 0.000001));
         }

@@ -228,6 +228,18 @@ public final class SettingsMigration {
         if ("frames".equals(prefs.getAll().get("pref_scam_hybrid_dn_strength_map"))) {
             e.putString("pref_scam_hybrid_dn_strength_map", "auto"); changed = true;
         }
+        // P316: «Радиус окна, px» of the native mosaic lost 5 and 6 (a Tetra T1 window is at most 8 sensor px, which 4 gives
+        // already; a Quad window above 3 left the fast native merge): a stored 5 or 6 becomes 4
+        Object window = prefs.getAll().get(MOSAIC_WINDOW_KEY);
+        if (window != null && PreferenceNumber.read(window, 0) > 4) { e.putString(MOSAIC_WINDOW_KEY, "4"); changed = true; }
+        // P316: «Кадры светов: цвет кромок светов» starts at 0.5. A stored 0 was no «off» for the P310 blend (the default): it took
+        // σ 2, the default, which a removed value gives again; 0.1..0.4 become the narrowest 0.5
+        Object edge = prefs.getAll().get(BENTO_CHROMA_SIGMA_KEY);
+        if (edge != null) {
+            final double sigma = PreferenceNumber.read(edge, 2);
+            if (!(sigma > 0)) { e.remove(BENTO_CHROMA_SIGMA_KEY); changed = true; }
+            else if (sigma < 0.5) { e.putString(BENTO_CHROMA_SIGMA_KEY, "0.5"); changed = true; }
+        }
         // Rows that store a whole number and were decimal sliders (settings audit H4): the ARK metering, AgX look, sharpening
         // domain and RL kernels are lists now, the SCAM HDR radii integer sliders. A stored "1.00" or float 1.0 becomes "1"
         // (the list value); a value that is no number at all goes, so the row's default applies.
@@ -255,6 +267,8 @@ public final class SettingsMigration {
         return Long.toString(Math.round(v));
     }
 
+    static final String MOSAIC_WINDOW_KEY = "pref_scam_hybrid_mosaic_window";
+    static final String BENTO_CHROMA_SIGMA_KEY = "pref_scam_hybrid_bento_chroma_sigma";
     static final String CFA_KEY = "pref_cfa_key";
     /** The removed «Фильтр Байера» values: MONO (4) and QUAD (-2). */
     static boolean isRemovedCfa(Object value) {

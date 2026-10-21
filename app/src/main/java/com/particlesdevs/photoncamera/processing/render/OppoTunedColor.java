@@ -64,6 +64,16 @@ public final class OppoTunedColor {
         return "PHY110".equals(Build.MODEL);
     }
 
+    /**
+     * P315: a DNG forward matrix that is just sRGB -> XYZ (D50) (within 0.01 per element): the OPPO Find X8 Ultra's camera 2 - camera
+     * RGB taken as sRGB, no crosstalk correction (its mosaic shots on the DNG matrices came out at 0.31-0.58 of the chroma).
+     */
+    public static boolean placeholderForward(@androidx.annotation.Nullable float[] fm) {
+        if (fm == null || fm.length < 9) return false;
+        for (int i = 0; i < 9; i++) if (!(Math.abs(fm[i] - SRGB_TO_XYZ_D50[i]) < 0.01f)) return false;
+        return true;
+    }
+
 
     // Camera neutral ln(R/B) measured on a 6500 K white screen, per sensor focal length.
     private static final float[][] NEUTRAL_AT_6500 = {{8.67f, -0.696f}, {2.59f, -0.613f}, {15.38f, -0.551f}};

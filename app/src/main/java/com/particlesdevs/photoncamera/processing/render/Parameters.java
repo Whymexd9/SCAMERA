@@ -79,6 +79,11 @@ public class Parameters {
      * ScamProcessor around its DNG; null = the noise modeler's computeModel as before.
      */
     public double[] dngNoiseProfile;
+    /**
+     * P318: colour block of the mosaic the DNG being written holds (2 Quad, 4 Tetra; 1 Bayer), set by ScamProcessor around its
+     * DNG: the file declares its CFA, black level and GainMap over the blocks (DngCreator.setMosaicBlock).
+     */
+    public int dngMosaicBlock = 1;
     public boolean usedDynamic = false;
     public float[] blackLevel = new float[4];
     public float[] whitePoint = new float[3];
@@ -873,7 +878,13 @@ public class Parameters {
         com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup plainTable = null;
         boolean plainTableAsked = false;
         // P212z (review): FULLRES photos only by default ("mosaic_ccm_table 2": the 12 MP ISZ modules' mosaic photos as well)
-        final boolean plainTableWanted = com.particlesdevs.photoncamera.processing.color.PlainColourMemory.wanted(fullResRequested > 0);
+        // P315: a camera whose DNG forward matrices are the sRGB -> XYZ placeholder (X8U camera 2) never renders a mosaic shot through
+        // them: the plain-session table off FULLRES as well, else the ISP's matrix even with our own neutral
+        final boolean placeholderFm = mosaicShot && OppoTunedColor.placeholderForward(ForwardTransform1)
+                && OppoTunedColor.placeholderForward(ForwardTransform2);
+        if (placeholderFm) Log.i(TAG, "the DNG forward matrices are the sRGB -> XYZ placeholder: the plain-session table or the ISP matrix (P315)");
+        final boolean plainTableWanted = com.particlesdevs.photoncamera.processing.color.PlainColourMemory.wanted(fullResRequested > 0)
+                || placeholderFm;
         if (plainTableApplies(mosaicShot, oppoTuned, ownNeutral, ispUsable) && plainTableWanted) {
             plainTableAsked = true;
             plainTable = com.particlesdevs.photoncamera.processing.color.PlainColourMemory.lookup(String.valueOf(physicalID), whitePoint);
@@ -907,7 +918,7 @@ public class Parameters {
         // vivo X200 Ultra: the DNG matrices in the characteristics are generic (the interpolation always lands near D65), but the
         // HAL reports the colour transform its ISP tuning uses at the scene's colour temperature, together with the
         // matching white balance gains. SCAM HDR renders with that matrix (the same idea as the OPPO tuned CCM per CCT).
-        if (!oppoTuned && (plainTable != null || !ownNeutral && ispUsable)) {
+        if (!oppoTuned && (plainTable != null || (!ownNeutral || placeholderFm) && ispUsable)) {
             wrongCalibration = true;
             Log.d(TAG, plainTable != null ? "Using the camera's plain-session colour matrix (mosaic shot)"
                     : "Using the ISP colour transform of the capture result (vivo)");
@@ -965,7 +976,9 @@ public class Parameters {
             }
         }
         if (mosaicShot) {
-            mosaicMatrixSource = mosaicMatrixSource(dcpXyz != null, oppoTuned, plainTable, wrongCalibration && !ownNeutral && ispUsable,
+            // P315: what the branch above rendered with (the placeholder case takes the ISP transform with our own neutral too)
+            final boolean ispRendered = wrongCalibration && plainTable == null && (!ownNeutral || placeholderFm) && ispUsable;
+            mosaicMatrixSource = mosaicMatrixSource(dcpXyz != null, oppoTuned, plainTable, ispRendered, ownNeutral && placeholderFm,
                     plainTableAsked, plainTableWanted, String.valueOf(physicalID), whitePoint);
             Log.i(TAG, "mosaic colour matrix: " + mosaicMatrixSource + String.format(java.util.Locale.ROOT, ", scene %.0f K", sceneCct));
         }
@@ -975,10 +988,17 @@ public class Parameters {
     static String mosaicMatrixSource(boolean dcp, boolean oppoTuned,
                                      @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup table,
                                      boolean isp, boolean asked, boolean wanted, String camera, float[] neutral) {
+        return mosaicMatrixSource(dcp, oppoTuned, table, isp, false, asked, wanted, camera, neutral);
+    }
+
+    static String mosaicMatrixSource(boolean dcp, boolean oppoTuned,
+                                     @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup table,
+                                     boolean isp, boolean placeholder, boolean asked, boolean wanted, String camera, float[] neutral) {
         if (dcp) return "the active DCP profile";
         if (oppoTuned) return "the OPPO tuned matrix";
         if (table != null) return table.how;
-        if (isp) return "the ISP transform of the result (it fits the camera's own neutral)";
+        if (isp) return placeholder ? "the ISP transform of the result (the DNG forward matrices are the sRGB -> XYZ placeholder, P315)"
+                : "the ISP transform of the result (it fits the camera's own neutral)";
         if (!com.particlesdevs.photoncamera.processing.color.PlainColourMemory.on()) return "the DNG matrices (mosaic_ccm_table 0)";
         if (!wanted) return "the DNG matrices (not a FULLRES shot: the plain-session table with mosaic_ccm_table 2)";
         return asked ? String.format(java.util.Locale.ROOT, "the DNG matrices (camera %s's plain table has no bin near ln(r/b) %.3f)", camera,

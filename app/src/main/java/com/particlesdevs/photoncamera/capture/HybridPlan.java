@@ -98,12 +98,12 @@ public final class HybridPlan {
     /**
      * Ultrashort frames per shot: 1 = SCAM 9.6, 2 = a second one at the same exposure; the worker merges both inside the
      * mask (half the noise of the x8 replacement, the hand shake between them fills the R/B lattice of a single Bayer frame);
-     * 3 (default since P68) = the more than 3 non-bracketed frames Mochi needs.
+     * 3 (default since P68). P316 (settings audit 2026-10-21): the count as set - Mochi no longer raises it to 3. The worker
+     * merged only the set count (bentoFrames) and dropped the extra frames, and Mochi's «more than 3 non-bracketed frames»
+     * counts the ring's N frames too («Всегда», its default, needs none).
      */
     public static int bentoFrames() {
-        int count = Math.round(PreferenceKeys.hybridValue("bento_frames", 3f));
-        if (PreferenceKeys.getHybridMochi() > 0) count = Math.max(count, 3);
-        return Math.max(1, Math.min(3, count));
+        return Math.max(1, Math.min(3, Math.round(PreferenceKeys.hybridValue("bento_frames", 3f))));
     }
     public static float bentoTriggerClip() { return Math.max(0f, Math.min(0.1f, PreferenceKeys.hybridValue("bento_trigger", 0.0005f))); }
     public static double maxBracketRatio() { return Math.max(2, Math.min(100, PreferenceKeys.hybridValue("shasta_max_ratio", 32f))); }
@@ -290,9 +290,13 @@ public final class HybridPlan {
      * shutter is free for the next one.
      */
     public static HybridPlan zslOnly(long nShutterNs, int nIso) {
+        return zslOnly(nShutterNs, nIso, "Motion mode: nothing after the shutter");
+    }
+
+    /** P315: the ring frames alone for {@code why} (a sensor mode whose camera fails the series: SensorModePick.seriesAllowed). */
+    public static HybridPlan zslOnly(long nShutterNs, int nIso, String why) {
         return new HybridPlan(new ArrayList<>(), nShutterNs, nIso,
-                String.format(Locale.ROOT, "hybrid plan: N=%.3fms*ISO%d ring frames only (Motion mode: nothing after the shutter)",
-                        nShutterNs / 1e6, nIso));
+                String.format(Locale.ROOT, "hybrid plan: N=%.3fms*ISO%d ring frames only (%s)", nShutterNs / 1e6, nIso, why));
     }
 
     /**

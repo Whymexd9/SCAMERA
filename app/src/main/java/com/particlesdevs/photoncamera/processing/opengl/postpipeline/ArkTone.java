@@ -72,7 +72,11 @@ public final class ArkTone {
         s.hlOverflow = value("hl_overflow", 2.0f);
         float nightVal = value("night_thresh", 0.05f);
         if (nightVal >= 1.0f) nightVal = 0.05f; // migration of legacy ISO values (e.g. 100)
-        s.nightThresh = nightVal;
+        // The row is the noise-based gain clamp only. Since P63 the ISO night threshold took the same value, always below ISO 1,
+        // so ArkAe used ISO 1 (max(nightThresh, 1)) whatever the row said; that threshold is now set here on purpose, the pixels
+        // as before (settings audit 2026-10-21). The reference app's ISO 100 would strengthen the shadow lift (nf) at every ISO: a tone
+        // change for the owner to decide.
+        s.nightThresh = 1f;
         s.noiseMax = nightVal;
         s.nightDim = value("night_dim", 1.0f);
         s.metering = Math.round(value("metering", 0f));
@@ -102,13 +106,21 @@ public final class ArkTone {
      * P216: ArkCombine's handling of real Bento headroom - the shoulder knee and room (x the tonemapper top) and the share of the
      * full-size highlight contrast kept (scam_dev hybrid_ark_hr_knee / _room / _detail).
      */
-    /** P291: the fusion's well-exposed centre and highlight-layer weight with Bento headroom (ArkFusion; kernel: 0.6, 0.8). */
+    /**
+     * P291: the fusion's well-exposed centre and highlight-layer weight with Bento headroom (ArkFusion; kernel: 0.6, 0.8).
+     * Lab round (owner, 2026-10-21: «проверь что все настройки рабочие»): they follow the menu's «Смещение центра экспозиции» and «Вес
+     * слоя светов» (the headroom centre 0.15 above the menu's, the highlight weight half of it: 0.75 / 0.4 at the defaults, the
+     * pixels as before), so the two rows act on a headroom shot's neutral highlights too, not only on its coloured light (P310
+     * keeps the menu values there); a scam_dev line (hybrid_ark_weight_center_hr / _hl_hr) still sets them outright.
+     */
     static float headroomCenter() {
-        return value("weight_center_hr", 0.75f);
+        if (PreferenceKeys.scamDevOverrides("hybrid_ark_weight_center_hr")) return value("weight_center_hr", 0.75f);
+        return Math.max(0.2f, Math.min(0.9f, 0.75f + (value("weight_center", 0.6f) - 0.6f)));
     }
 
     static float headroomHlWeight() {
-        return Math.max(0f, value("weight_hl_hr", 0.4f));
+        if (PreferenceKeys.scamDevOverrides("hybrid_ark_weight_hl_hr")) return Math.max(0f, value("weight_hl_hr", 0.4f));
+        return Math.max(0f, 0.4f * (value("weight_hl", 0.8f) / 0.8f));
     }
 
     /**

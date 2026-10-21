@@ -6822,3 +6822,179 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   (correctness: the bin pool and the tone-size 2-cycle fixed, the draw-request comment corrected; pre-push: LiveRawFrameTest holds
   its frames by LiveRawFrame.pendingNs instead of racing the 100 ms; measurement: the colour fringes
   fixed, MEDIUM kept, focus peaking now samples 2 tone px apart - ~3.6 screen px at 2x ISZ - left as is).
+
+### P315 - no camera restart after a shot on any phone; the OPPO X8U 2x ISZ: viewfinder, white balance and colour; LED backlight (owner, 2026-10-21, build 31110 = 4068c161 on the OPPO Find X8 Ultra: «На оппо х8у при использовании ISZ вот такой видоискатель и после съемки камера зачем-то перезапускается, фото при этом выходят нормальные, но почему-то они обесцвеченные и с странным бб» + «проверь чтобы ни на одном смартфоне такого не было и не было перезапуска после снятия кадра» + «выясни почему хал оппо падал и исправь, можешь проверять на 7у» + the LED pair and crops: «посмотри артефакты на подсветке у нас и постарайся их исправить, так же исправь артефакты с ISZ примеров тоже» + «у isz и на верхней подсветки точками засветы»): DONE, not device-tested in the app.
+- The X8U restart (log 2026-10-21 13:33 / 13:36): the module «1× (2)» on camera 2 runs SensorModeTable row 8 (4096x3072 Quad,
+  the agingtest key, P276) with «Поток ISP» «Фиктивное откл.» (the ISP stream in the session, no repeating request on it) and
+  RAW10. Both shots: every post-shutter request (3 ultrashort, 3 long) failed (reason 0, the RAW and the ISP buffers lost), the
+  4 s series watchdog merged the 20 ring frames, the camera provider died («unknown device 2» for ~4 s). 13:33: PREVIEW_STALL
+  restarted the camera; 13:36: the watchdog's rebuild got -38 (INVALID_OPERATION on a device in error), onError 4, and
+  retryWithoutRequestedSensorMode blamed the mode («Режим сенсора 8 отклонён камерой; модуль снова в «Авто»») although it had
+  streamed for minutes. The same flush / series / AE restore in the X8U's plain mode (ISP stream in the repeating request) and in
+  the vivo ISZ modules (no ISP stream in the session) never failed. On the X7U (PHY110, the owner's go-ahead «можешь проверять на
+  7у»; probe com.scamera.oppofullresprobe v12, SCR p315/probe: a RAW-only session in an agingtest row, the repeating preview, then
+  abortCaptures (the HAL flush) + a STILL_CAPTURE burst of 6 manual frames + the repeating preview again): RAW_SENSOR in rows 1, 2,
+  11, 20, with the ISP stream absent / in the repeating request / in the session only - 6 of 6 frames and the preview back in ~0.3 s
+  every time, the provider untouched; RAW10 runs no session at all on the X7U (CamX InvalidState), so the X8U's exact case cannot be
+  replayed there. Changes:
+  1. mRepeatingIsp: the series frames (P90 series_viewfinder) and the AE restore frame (P54c) touch the ISP stream only when the
+     repeating preview does (the X8U's series were the first requests ever on its never-started ISP stream).
+  2. SensorModePick.seriesAllowed: a picked mode on an OPPO / OnePlus / realme camera shoots from the ring alone (HybridPlan.zslOnly
+     with the reason; no flush, nothing after the shutter - as ArkCam's ring snapshot); scam_dev sensor_mode_series 1 sends the
+     series again to test a phone.
+  3. onError: a picked mode is blamed (back to Auto) only when its session never delivered a frame; else the quiet P263 reopen.
+  4. FlushLossStats: a series the rescue completed (sequenceId -1: watchdog, error, closed session) does not vote (the dead HAL had
+     turned the flush off for the X8U's plain 1x shots too).
+- Cross-device audit of the logs (8 logs + the owner's X300U log 2026-10-21_1): the vivo X300 Ultra's ISZ module (forced sensor
+  mode, no ISP stream in the session) restarted ~6 s after every shot on 31109: the AE restore frame (P54c, forced stabilisation)
+  removed and re-added the viewfinder target on the preview builder, which never had it - every later preview request failed
+  («CaptureRequest contains unconfigured Input/Output Surface»), the preview stopped, PREVIEW_STALL restarted; fixed by (1). The
+  Xiaomi 12X (build 31093, session type 0x9001): after a complete series no preview frame came, PREVIEW_STALL restarted 4 times -
+  cause in the HAL unknown; checkPreviewStall now issues the repeating preview once more for a stall that began at a shot and
+  restarts only if no frame follows a second later. A failed 200 MP still restarted the camera twice (vivo X300U): once now. By
+  design and kept: a 50 MP FULLRES shot on the X300U / X100U goes to the plain session for the merge and back (P200: the app was
+  killed for memory and heat during 50 MP merges) - an owner decision.
+- The green ISZ viewfinder: the X8U's mode 8 RAW comes without its 64 DN black pedestal (data floor 0.3-0.5 DN; the photo knew it,
+  P114 «RAW black floor ... the RAW came without its black pedestal»); the RAW viewfinder subtracted the declared 64: R and B (0.45 /
+  0.58 of G on grey) went to 0 first, the colour matrix's negative terms did the rest - mid-tones pure green, half the frame black
+  (screenshot: luma 20-60 RGB 4.8 / 113 / 5.4). PedestalFloor: the viewfinder frame's 16x16 blocks of each channel (every 4th site,
+  every 250 ms); non-zero samples under a quarter of the black in >= 2 % of the blocks prove the pedestal lost (zero padding, read
+  noise around 64, a 64 -> 60 drift never do), two agreeing measurements switch the black to the frame's floor (the 3rd-lowest block
+  mean, never raised in the camera session); LiveRawFrame.publish applies it (the GL develop, LiveArkMeter, LiveRawMeter); gated as
+  the photo (no black override, «чёрный по данным» on), scam_dev vf_black_floor 0 off. Host model (SCR p315/vf-green/sim_vf.py) of
+  the logged black, gains and matrix reproduces the screenshot; with the floor it equals the mode-1 reference. Not a P314 regression.
+- The ISZ photos' colour: the OPPO sensor-mode shots took P121's mosaic white balance (the shades-of-grey p = 4 statistic read the
+  LED glow on the white case: 0.985 / 0.856, 0.745 ln off camera 2's curve, projected and extrapolated to 0.625 / 0.473 = cyan whites:
+  wallpaper hue 41-55 -> 188-203 deg) and, with ownNeutral, the DNG forward matrices - on the X8U's camera 2 just sRGB -> XYZ (D50),
+  camera RGB as sRGB (sticker chroma x0.31 / x0.58 of the 1x shot). The HAL's neutrals in mode 8 (0.446 / 0.589, 0.435 / 0.605) are
+  0.005 ln from the curve and equal the plain mode's of the same scene. Changes: MosaicNeutralResolver ROUTE_SENSOR_MODE
+  (mosaicWbAtPress: an OPPO-family picked mode keeps the HAL's converged neutral on the curve, so the ISP matrix renders it);
+  offLocus: a P121 estimate more than 0.4 ln from the curve gives way to the camera's neutral when that lies on the curve and away
+  from its raw-grey point (logged X200U tele cases 0.23 / 0.27 unchanged); OppoTunedColor.placeholderForward: a mosaic shot of a
+  camera with the placeholder forward matrices takes the plain-session table off FULLRES too, else the ISP matrix; the mosaic block
+  key carries the picked mode (mode 1 and 8 shared «2|4096x3072||0» for ~100 ms after each switch) and plainColour / plainTeacher
+  skip picked-mode results.
+- LED backlight (the 13:18 pair and the owner's crops: two parallel bright lines along the fan rings' cores, dotted highlights):
+  ark/combine.glsl fix A - no positive detail delta inside a light's footprint (lightW): the guide is clamped flat at 1 across a
+  light's core while the reference takes in the dark beside it, so the positive delta ridged just inside both rims; bit for bit
+  the same where no tap is a light. Host regression (SCR p311/ref/regress.py, 7 scenes, the HEAD shaders as base): outside the
+  light-edge mask 0 px > 2 codes (max 1 code), d1655 / d1853 bit-identical; LED scores jb 28.6 -> 24.0, pink 27.5 -> 23.3,
+  j0 25.3 -> 25.8. tools/check_colour_output.py knows the line (P315_RAIL_LINE).
+- Rejected by the independent verifiers (each topic 3 rounds of patch + verification; the owner stopped the 4th, 2026-10-22:
+  «почему у нас идёт 4ый раунд?» - «останавливай»). The common root: in the merged data a clipped LED and a clipped bright
+  coloured surface look alike, and every «this is a light» rule touched other scenes.
+  - The ARK tone: a white-core floor, a ceiling, the L1 landing (round 1-2: whites towards grey or new steps); the ultrashort
+    blend's hue clamp (round 1).
+  - The sharpening light gate (ark/sharp_light: fade the compose / RL sharpening in a light's own glow; SCR
+    p315/r3-sharpen/p315_sharpen_light_r3.diff): r1 dotted dark lines along the rims; r2 the seed fired below the clip (the
+    art289 x3 display text and strokes on a blue wall erased beyond sharpening-off); r3 (seed only at >= 0.995 of the raw clip,
+    the glow envelope, the guide unsmoothed: the rings' rails and dashed junction lines at the sharpening-off level, P311 means
+    jb 24.0 -> 23.1, pink 23.3 -> 22.7) softens detail on clipped EXTENDED saturated surfaces (sky, signs, screens, the
+    7-segment digits) to the sharpening-off level. Next idea, not built: a thinness test in the seed (an erosion of ~4 arkLow px
+    keeps skies / signs / screens out).
+  - The ISZ coloured-light highlight rule (scamrgb: a native-mosaic shot without highlight frames keeps a coloured LED's clipped
+    R / B; SCR p315/r3-isz/p315_isz_r3.diff): r1 / r2 tinted blown whites under a white-balance cast and moved the ARK clip; r3
+    (trust from the RAW levels only: R or B at its clip and >= 1.15..1.35 x raw G, a white-light guard; the cast sweep and the
+    vivo merges unchanged) puts grey beads into thin ring cores at LED levels 0.8 / 1.15 / 1.3 x (the guard zeroes the trust
+    around every G-clipped spot) and harder blotches on the bars in the as-shot colour path. Next idea, not built: guard only a
+    white light's core (an untrusted bright rim, a clipped extent > ~4 px) or blend by the share of guarded taps.
+- Checks: PedestalFloorTest (new, CI list), LiveRawFrameTest, SensorModePickTest, HybridPlanTest, MosaicNeutralResolverTest,
+  OppoTunedColorTest, FlushLossStatsTest, PreviewStallTest; the whole CI list (275 classes, 1650 tests); check_colour_output
+  --shader / --gl; independent reviews of the restart, viewfinder and colour changes (SCR p315/jrev-*) and a pre-push review
+  of P315-P318.
+- Open: the phones - an X8U 2x ISZ (mode 8) shot (no restart, the viewfinder's colour, the white balance; scam_dev
+  sensor_mode_series 1 brings the series back for a test), the X300U ISZ module (no restart ~6 s after a shot), the Xiaomi 12X;
+  the LED bar's white core, the green line at the bar's end and the grey islands of an ISZ LED bar (no X8U ISZ burst of the
+  scene exists - a burst is needed to work on them).
+
+### P316 - the lab compares every setting that changes a shot; every setting does what its row says (owner, 2026-10-21, a screenshot of the lab's «Склейка» page: «в лаборатории у нас не все пункты есть, исправь. также проверь что все настройки рабочие»): DONE, not device-tested.
+- Audit (three workflows: lab, merge, post): every preference row traced from preferences.xml through PreferenceKeys to the
+  worker tuning / the shader uniform / the capture plan, 74 findings, each verified against the code (rejected or partly-true
+  findings kept in SCR p316/rejected.json: mochi, weight_cap, fwe, la_engine work as their rows say).
+- The lab (ScamLabFragment, ScamLabRun, LabFrame, ScamLab): the missing pages (GROUPS: the five SHDR pages with «Кадры светов и
+  теней», the noise model, the photo size, «Движение», the whole «Цвет» root - «Тепло» and «Насыщенность» were not shown);
+  AT_SHOT gains the capture-time rows (bento_factor / trigger, shasta_frames / ev, the Motion mode's shutter / flicker / ring
+  frames, the colour method, the noise model profile, crop upscale) and loses highlight_recovery (ScamRgb re-applies it);
+  the denoise tables (32 keys) are comparable (SNR slider 0.1..500, the five-number rows as Spec.TEXT checked by
+  SettingsNumericRules.listValue); in the Motion mode the replaced rows compare the mm_* keys (MotionMode.prefKey); a row whose
+  switch / operator / film was off at the shot is switched on for both sides (forced, with a note); the lens filter's tuning
+  rows; inert(): the reason a row changes nothing on this shot (SettingsAvailability with the shot's values); the dev page
+  (labDevOverlay, hybridTuningSuffix / TUNING_KEYS); a side with another «Масштаб входа, EV» measures the frame at its own gain
+  (LabFrame.scaled); Shot.prefs() parsed once.
+- Settings that did nothing or less than their row: «Смещение центра экспозиции» / «Вес слоя светов» now move the Bento-headroom
+  fusion too (ArkTone.headroomCenter / headroomHlWeight: 0.75 / 0.4 at the defaults - pixels unchanged); «Насыщенность при
+  матрице OPPO» acts with every AgX look preset (ArkAe ccmSat after the preset; Custom as before); the NLM chroma strength below
+  1 blends (chromadn/apply chromaAmount; 1 bit for bit); «Сила симуляции» scales the film's grain, halation and softness as the
+  colour (FilmSim.grainApplied / halationAmounts / softnessApplied, the viewfinder too); «Быстрый JPEG» also takes Android's
+  encoder for the Ultra HDR photo; the Bento frame count as set (Mochi no longer forces 3 - the worker merged only the set
+  count); the ISO night threshold of ArkTone set explicitly (1, as it acted since P63). Greying rules and their texts
+  (SettingsAvailability, values / values-ru), numeric ranges (SettingsNumericRules), migrations (mosaic_window max 4,
+  bento_chroma_sigma min 0.5).
+- Defaults: the default photo unchanged (bento_frames 3, post_chroma 1, look 4 = Custom, the menu weights 0.6 / 0.8).
+- Checks: ScamLabFragmentTest (8), ArkHeadroomWeightsTest, ScamLabRunTest (new, CI list), SettingsMenu, HybridSettings, MotionMode,
+  DevKeysCoverage, ScamLabParams / Burst, ShadeCatalog, SettingsAuditFix, FilmEffectsTest; the whole CI list (274 classes);
+  check_settings_model, check_ui_language.
+- Open: the lab on the phone (every page against a shot of each kind).
+
+### P317 - film simulation and the GPU statistics on Mali (every MTK phone) (owner, 2026-10-21, vivo X300 Pro V2502A, Mali-G1-Ultra, build 31108: «вот такое словил на X300 Pro с включенной симуляцией пленки» - a white photo; then «Исправь работу на всех мтк»): DONE, not device-tested.
+- White photo: a fragment shader's ints default to mediump (ESSL 3.10 4.7.4) - 16 bit on Mali. The film noise hash (film/noise.glsl
+  ...) divided a 16-bit-wrapped int by 65536 in fp16: +inf, the grain added infinity, the photo white. Adreno's mediump int is 32 bit
+  (no change there). GLInterface.readProgram now inserts `precision highp int` into every program without its own #version (after
+  its #extension lines, with a #line fix); the film shaders declare it too; film/grain_sf.glsl guards NaN / Inf.
+- ARK AE «histogram weight 0 / 0 ... CPU statistics» on every Mali shot: GLInterface.getLayouts keyed a one-line SSBO block
+  ("buffer aeHistY { uint histY[]; };", ark/aestats, ultrahdr/gainmax, halfrgba) by "}", setBufferCompute bound nothing, and the
+  shader saw what sat at its binding - GLBuffer's own glBindBufferBase(SSBO, name, name), right on Adreno (names 1..n) by luck,
+  nothing on Mali. The parser takes the word before '{'; GLBuffer no longer binds at its name (every user binds through
+  setBufferCompute); setBufferCompute / setTextureCompute throw (logged) for an unknown block instead of a stack trace to logcat;
+  memoryBarrierShared() with every barrier() in aestats / gainmax / histogram (ESSL 3.10 8.14).
+- ScamHdrDenoise: the usampler EffMap always has a unit of its own (a 1x1 placeholder when there is no map; unit 0 held the
+  sampler2D input: GL_INVALID_OPERATION at the draw on Mali).
+- Checks: GLInterfaceLayoutsTest (new, CI list: every asset shader's layouts), tools/check_shader_fp16.py (new, CI: no mediump
+  operation with a constant outside the fp16 range), every asset shader through glslc as readProgram builds it (68 OK), the film
+  shaders bit-exact on the host with highp (film_bitexact), FilmEffectsTest, check_colour_output --gl.
+- Open: a Mali phone (X300 Pro / X200 Pro / Pixel 7): the film photo, «ARK AE GPU: stats=gpu» in the log.
+
+### P318 - Quad (2x2) and Tetra (4x4) for every colour filter arrangement (owner, 2026-10-21: «у нас 2x2 4x4 оптимизированы под все цветовые фильтры? Займись оптимизацией/исправлением без агентов, самостоятельно»): DONE (the lead, no agents); the merge and the DNG writer checked on the OPPO X7U, the app not device-tested.
+- Question: the native mosaic merge (scam-hybrid.h: canonical coordinates with cfaShift, kHybNatAccess, kHybMergeMosaicFast, the
+  P313 NAT_US_PASS fill, the row correction, hybridUsGlobalShift / hybridUltrashortLocal, the Bento / clip flags, the remosaic and
+  the merged mosaic DNG) and the app's mosaic paths (LiveRawFrame cell means + rawdevelop cfa_mode 0, LiveArkMeter, MosaicNeutral,
+  MosaicBlockDetector, the remosaic) for RGGB, GRBG, GBRG and BGGR phases of the colour blocks.
+- Method: the same burst in the four phases (cropped by one colour block on the left / top, CFA index XOR 1 / 2), merged by the
+  current worker on the OPPO; each output against the RGGB one shifted by the block - only the borders may differ.
+- Tools (SCR p318): nchcrop.cpp (a v10..v12 burst cropped by dx / dy colour blocks, the header's CFA index flipped per block
+  parity, an optional block for the synthetic bursts), cmp_cfa.py (per channel median ratio, share of pixels > 2 % apart, the
+  part of the difference periodic in 2b px - a CFA mistake leaves a pattern locked to the blocks - and the highlights' chroma /
+  level where the reference is >= 0.9). Controls: a shift by 2b (the same phase) shows what the crop alone changes (the
+  reference frame's tiles, the alignment, the Bento masks move with the border).
+- Merge: every phase as its same-phase control. syn_b2 (Quad): x / y / xy shifts 13.7 / 26.3 / 26.1 % > 2 % against the controls
+  13.7 / 26.3 %; syn_b4 (Tetra): 9.5 / 18.3 / 19.0 % against 9.5 / 18.2 %; isz2 (real 2x ISZ Quad, X7U): 1.8 / 1.5 / 2.6 %
+  against 2.0 %; v10_2 (real Tetra, BGGR): 0.003 / 0.002 / 0.003 % against 2.7 %. Channel ratios 0.9998..1.0001 in all, no
+  block-locked pattern (lattice rms 1e-6..2.5e-4 of a difference rms 3e-5..1.4e-2, at the controls' level), no NaN, the
+  highlights' chroma p99 ~0.01 in every phase. The app's mosaic paths take the CFA index per block (MosaicNeutral, the
+  LiveRawFrame cell means, the remosaic) and every crop keeps whole colour periods (RawCrop and Wide169 start on multiples of
+  8 = 2 x Tetra), so the phase never changes inside the app.
+- Found: the DNG writer. (1) dngCreator.cpp setCFAPattern expanded the 2x2 order to 4x4 inside its 4-byte array
+  (DngMetadata.cfa_pattern[4]): 12 bytes over cfa_repeat_pattern_dim and the has_* flags after it. With the colour set before the
+  CFA (DngCreator.setParameters) a BGGR file lost ForwardMatrix1 and AsShotNeutral and a GBRG file every colour matrix and its
+  illuminant (checked against the HEAD writer on the phone: 9 failures in 8 cases, RGGB / GRBG kept them by luck) - most likely P215
+  (X200 Ultra tele / X100 Ultra DNGs without AsShotNeutral and ForwardMatrix, the tele and the ISZ modules are BGGR), not a
+  non-finite value; a matrix set after the CFA moved the CFA instead. (2) The merged mosaic DNG of P267 (no remosaic: the shot
+  is the DNG in the Quad / Tetra layout) and a mosaic stream's reference frame declared a 2x2 Bayer pattern: every raw converter
+  (and our DNG preview: the pink thumbnail) developed a Quad / Tetra mosaic as Bayer; the GainMap put each channel's gain on its
+  neighbours' sites.
+- Fix: cfa_pattern keeps the 2x2 order; DngCreator.setMosaicBlock (JNI; from Parameters.dngMosaicBlock in setParameters, before
+  the GainMap) gives the stored mosaic's block: CFARepeatPatternDim 2b x 2b with the order per block (4x4 Quad, 8x8 Tetra: the
+  DNG SDK takes up to 8x8; Scam Remosaic's declaredRed reads the block order from either), BlackLevelRepeatDim 2b x 2b when the
+  four levels differ (2x2 as before when equal), one GainMap per channel and block site with pitch 2b (16 / 64 maps). ScamProcessor
+  sets it around its two DNGs: the merged DNG takes ScamHybridBurst.lastDngMosaic (1 with our remosaic: that DNG is Bayer), the
+  reference frame lastStreamBlock (the stream's measured / stored block, whole colour periods only), then 1 again. The writer
+  also frees its four gain-map copies (leaked before).
+- Also fixed: the CI's unit-test line had GLInterfaceLayoutsTest glued to the next --tests (P317's edit: one argument, the
+  next class taken for a Gradle task).
+- Checks: tools/check_dng_mosaic_cfa.cpp (new, CI: g++ -fsanitize=address,undefined; NDK clang on the X7U: 51 cases - the four
+  orders x blocks 1 / 2 / 4 x equal / unequal black x colour before / after the CFA: CFARepeatPatternDim, CFAPattern, BlackLevel,
+  ColorMatrix1, ForwardMatrix1, AsShotNeutral, CalibrationIlluminant1, every GainMap on a site of its own colour, every site once;
+  blocks 0 / 3 / 8 give Bayer), CropUpscaleTest (new case: the block reaches the writer before the GainMap, merged / reference
+  blocks, the reset), DngMetadataTest, DngPreviewTest (any repeat pattern), DngColourTest.
+- Open: a phone DNG of each kind (merged mosaic, reference frame, plain Bayer) in Lightroom and Scam Remosaic; whether the
+  owner's X200 Ultra / X100 Ultra DNGs carry AsShotNeutral / ForwardMatrix1 again (P215).

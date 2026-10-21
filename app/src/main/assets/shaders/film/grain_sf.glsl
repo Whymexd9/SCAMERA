@@ -16,6 +16,8 @@ void main() {
     ivec2 xy = ivec2(gl_FragCoord.xy);
     vec4 v = texelFetch(InputBuffer, xy, 0);
     vec3 n = texelFetch(Noise, xy, 0).rgb;
+    // P317: a broken noise (a driver's precision) leaves the grain out instead of whitening the photo (+inf) or blacking it
+    if (any(isnan(n)) || any(isinf(n))) n = vec3(0.0);
     vec3 c = clamp(v.rgb, 0.0, 1.0);
     vec3 g = texture(GrainLut, c * ((lutSize - 1.0) / lutSize) + 0.5 / lutSize).rgb;
     Output = vec4(clamp(c + g * scale * n, 0.0, 1.0), v.a);

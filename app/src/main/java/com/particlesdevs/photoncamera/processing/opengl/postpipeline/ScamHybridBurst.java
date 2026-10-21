@@ -769,6 +769,11 @@ public final class ScamHybridBurst implements ScamTransport {
      * 1 for a photo.
      */
     public static volatile int lastDngMosaic = 1;
+    /**
+     * P318: the colour block of the stream the last hybrid shot merged (2 Quad, 4 Tetra, whole colour periods; 1 Bayer or
+     * unmeasured): the layout of its reference frame's RAW, for that frame's DNG.
+     */
+    public static volatile int lastStreamBlock = 1;
     /** Final JPEG size of the last hybrid shot (the bitmap is resized to it after the whole pipeline). */
     public static volatile android.graphics.Point lastFinalSize;
     /** P27: the worker died at GPU init in this process (Mali, X200 Pro): further shots go straight to the CPU fallback. */
@@ -877,8 +882,10 @@ public final class ScamHybridBurst implements ScamTransport {
     public static ByteBuffer process(Context context, List<ImageFrame> frames, Parameters p, boolean mergedDng) throws Exception {
         seriesNotice = null;
         lastDngMosaic = 1;
+        lastStreamBlock = 1;
         final ScamHybridBurst[] made = new ScamHybridBurst[1];
         final ByteBuffer out = merge(context, frames, p, mergedDng, made);
+        if (made[0] != null) lastStreamBlock = dngOnlyBlock(false, made[0].mosaicBlock, made[0].width, made[0].height);
         seriesNotice = notice(made[0], ScamNeuralClient.lastJobReport, lastMergeTier);
         // P238 (speed-ux D2): the thermal state at the merge's end (with the press's: GPU throttling or the merge itself, P200)
         final com.particlesdevs.photoncamera.util.ThermalState.Sample thermal = com.particlesdevs.photoncamera.util.ThermalState.now();

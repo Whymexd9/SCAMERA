@@ -21,6 +21,7 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.SwitchCompat;
+import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceCategory;
@@ -36,12 +37,24 @@ import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLabOrient;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLabRun;
+import com.particlesdevs.photoncamera.processing.color.FilmSim;
+import com.particlesdevs.photoncamera.processing.color.LensFilters;
+import com.particlesdevs.photoncamera.settings.DevKeys;
+import com.particlesdevs.photoncamera.settings.FullResProfiles;
+import com.particlesdevs.photoncamera.settings.MotionMode;
+import com.particlesdevs.photoncamera.settings.PreferenceKeys;
+import com.particlesdevs.photoncamera.settings.PreferenceNumber;
+import com.particlesdevs.photoncamera.settings.ScamDevFile;
+import com.particlesdevs.photoncamera.settings.SettingsAvailability;
+import com.particlesdevs.photoncamera.settings.SettingsNumericRules;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference;
 import com.particlesdevs.photoncamera.util.Lang;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -57,15 +70,52 @@ import java.util.Map;
  */
 public class ScamLabFragment extends ModuleConceptFragment {
     static final String SCREEN = "scam_lab_screen";
-    private static final String PAGE = "page", DIR = "dir", GROUP = "group", KEY = "key", VALUE = "value", TYPE = "type";
+    private static final String PAGE = "page", DIR = "dir", GROUP = "group", KEY = "key", VALUE = "value", TYPE = "type", EXTRA = "extra";
 
-    /** The settings pages the lab offers (the capture page is the burst's: fixed at the shot). */
+    /**
+     * The settings pages the lab offers, in the settings' order (owner, 2026-10-21: «в лаборатории у нас не все пункты есть»): every
+     * SHDR page - «Кадры светов и теней» too: the saved burst holds its highlight and shadow frames and the worker merges them
+     * again with the side's values (its rows that only plan the capture are in {@link #AT_SHOT}) -, the noise model and the
+     * photo size (their rows fixed at the shot said so, the downsampler and Sabre 2x re-run), the «Движение» mode's merge
+     * values and the whole «Цвет и стиль» (its warmth and saturation sit beside its pages).
+     */
     static final String[] GROUPS = {"scam_hybrid_photo_screen", "scam_hybrid_ark_sharp_screen", "scam_hybrid_ark_tone_screen",
-            "scam_hybrid_merge_screen", "photo_style_screen", "film_sim_screen", "film_lut_screen", "lens_filter_screen", "photo_processing_screen"};
-    /** Settings the burst fixed at the shot (its frames, its noise model, its grid): offered, said so. */
+            "scam_hybrid_capture_screen", "scam_hybrid_merge_screen", "noise_model_screen", "photo_size_screen",
+            "scam_hybrid_motion_screen", "root_colour"};
+    /**
+     * Settings fixed at the shot: what the capture plan took (the exposures and counts of the highlight / shadow frames, the
+     * «Движение» shutter, flicker and ring frames), what the burst holds (its noise model, its grid and output size, the crop
+     * kept, the remosaic) and the colour transform the shot's Parameters were built with («Цветовой метод»): offered, said so.
+     */
     static final java.util.Set<String> AT_SHOT = new java.util.HashSet<>(java.util.Arrays.asList("pref_scam_hybrid_output",
-            "pref_scam_hybrid_noise_photon", "pref_scam_hybrid_noise_readout",
-            "pref_scam_hybrid_mosaic_remosaic", "pref_scam_hybrid_highlight_recovery"));
+            "pref_crop_upscale", "pref_scam_hybrid_noise_photon", "pref_scam_hybrid_noise_readout", "pref_noise_model_profile_key",
+            "pref_scam_hybrid_mosaic_remosaic", "pref_scam_hybrid_bento_factor", "pref_scam_hybrid_bento_trigger",
+            "pref_scam_hybrid_shasta_frames", "pref_scam_hybrid_shasta_ev", "pref_scam_hybrid_mm_shutter",
+            "pref_scam_hybrid_mm_flicker", "pref_scam_hybrid_mm_zsl_frames", "pref_color_method_key"));
+    /**
+     * Settings that plan the highlight / shadow frames at the shot and are applied again in the merge (worker bento, bentoFrames,
+     * shastaEnable, shastaForce, shastaMaxRatio): on a saved burst they can only drop or limit the frames it holds - a value that
+     * asks for more cannot add frames the shot did not take. Said beside the row, its controls and an A = B result.
+     */
+    static final java.util.Set<String> BURST_FRAMES = new java.util.HashSet<>(java.util.Arrays.asList("pref_scam_hybrid_bento",
+            "pref_scam_hybrid_bento_frames", "pref_scam_hybrid_shasta", "pref_scam_hybrid_shasta_mode",
+            "pref_scam_hybrid_shasta_max_ratio", "pref_scam_hybrid_mm_bento", "pref_scam_hybrid_mm_shasta"));
+
+    /**
+     * The lab's «Для разработчика» page: the scam_dev.txt lines that change the photo (DevKeys.photo), each compared as
+     * {@link ScamLabRun#DEV} + its line (ScamLabRun reads them as the side's lines, «Сохранить B» writes them into the file).
+     */
+    static final String DEV = ScamLabRun.DEV, DEV_GROUP = "lab_dev_lines";
+    /**
+     * Settings a fragment cannot show as the whole photo would: a fragment's exposure comes from the whole frame's statistics,
+     * measured with the shot's colour of arkLow (warmth, tint, the scene light kept, the calibration: ArkTone.colourMatrix) and
+     * the shot's gain clamp (ae_clamp_stack): on the whole photo the AE measures again with the side's value. The page says so.
+     */
+    static final java.util.Set<String> FRAGMENT_STATS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "pref_scam_hybrid_colour_warmth", "pref_scam_hybrid_colour_tint", "pref_scam_hybrid_colour_keep_warm",
+            "pref_scam_hybrid_colour_keep_cool", "pref_scam_hybrid_colour_cal_red_hue", "pref_scam_hybrid_colour_cal_red_sat",
+            "pref_scam_hybrid_colour_cal_green_hue", "pref_scam_hybrid_colour_cal_green_sat", "pref_scam_hybrid_colour_cal_blue_hue",
+            "pref_scam_hybrid_colour_cal_blue_sat", DEV + "ae_clamp_stack"));
 
     /** The fragment of each shot ({x, y, w, h} of the sensor frame, null: whole) and its share (3: a ninth, 2: a quarter, 1: whole). */
     private static final Map<String, int[]> crops = new HashMap<>();
@@ -339,6 +389,14 @@ public class ScamLabFragment extends ModuleConceptFragment {
             if (!(g instanceof PreferenceGroup)) continue;
             navigation("☷", String.valueOf(g.getTitle()), g.getSummary() == null ? null : String.valueOf(g.getSummary()), () -> openGroup(key));
         }
+        // the scam_dev.txt lines that change the photo (the settings page builds its rows from the file, not from the tree)
+        navigation("☷", devTitle(), Lang.t(getContext(), "Строки scam_dev.txt склейки и обработки, которые меняют фото",
+                "The merge and processing lines of scam_dev.txt that change the photo"), () -> openGroup(DEV_GROUP));
+    }
+
+    private String devTitle() {
+        final Preference g = tree().findPreference(DeveloperPreferences.SCREEN);
+        return g == null || g.getTitle() == null ? Lang.t(getContext(), "Для разработчика", "For developers") : String.valueOf(g.getTitle());
     }
 
     private static int[] aligned(int[] c, ScamLabRun.Shot s) {
@@ -357,27 +415,34 @@ public class ScamLabFragment extends ModuleConceptFragment {
 
     /** The settings tree with each value at its default (a store that keeps nothing: inflating writes no setting). */
     private PreferenceScreen tree() {
-        if (tree == null) {
-            // as ShadeCatalog.ensureTree: the settings theme, a store that answers the defaults and keeps nothing
-            final Context c = new android.view.ContextThemeWrapper(requireContext().getApplicationContext(), R.style.Theme_Scamera_SettingsActivity);
-            final PreferenceManager pm = new PreferenceManager(c);
-            pm.setPreferenceDataStore(new PreferenceDataStore() {
-                @Override public void putString(String key, String value) {}
-                @Override public void putStringSet(String key, java.util.Set<String> values) {}
-                @Override public void putInt(String key, int value) {}
-                @Override public void putLong(String key, long value) {}
-                @Override public void putFloat(String key, float value) {}
-                @Override public void putBoolean(String key, boolean value) {}
-            });
-            tree = pm.inflateFromResource(c, R.xml.preferences, null);
-            pm.setPreferences(tree);
-        }
+        if (tree == null) tree = defaultsTree(requireContext().getApplicationContext());
         return tree;
+    }
+
+    /** As ShadeCatalog.ensureTree: the settings theme, a store that answers the defaults and keeps nothing. */
+    static PreferenceScreen defaultsTree(Context app) {
+        final Context c = new android.view.ContextThemeWrapper(app, R.style.Theme_Scamera_SettingsActivity);
+        final PreferenceManager pm = new PreferenceManager(c);
+        pm.setPreferenceDataStore(new PreferenceDataStore() {
+            @Override public void putString(String key, String value) {}
+            @Override public void putStringSet(String key, java.util.Set<String> values) {}
+            @Override public void putInt(String key, int value) {}
+            @Override public void putLong(String key, long value) {}
+            @Override public void putFloat(String key, float value) {}
+            @Override public void putBoolean(String key, boolean value) {}
+        });
+        final PreferenceScreen screen = pm.inflateFromResource(c, R.xml.preferences, null);
+        pm.setPreferences(screen);
+        return screen;
     }
 
     // ───── A group: its settings ─────
 
     private void renderGroup() {
+        if (DEV_GROUP.equals(arg(GROUP))) {
+            renderDevGroup();
+            return;
+        }
         final ScamLabRun.Shot s = shot();
         final Preference g = tree().findPreference(arg(GROUP));
         page(g == null ? "" : String.valueOf(g.getTitle()), Lang.t(getContext(), "Нажмите настройку, чтобы сравнить", "Tap a setting to compare"));
@@ -385,10 +450,35 @@ public class ScamLabFragment extends ModuleConceptFragment {
         addGroup((PreferenceGroup) g, s, null);
     }
 
+    /** «Для разработчика»: each line of DevKeys.photo, grouped as on the settings page. */
+    private void renderDevGroup() {
+        page(devTitle(), Lang.t(getContext(), "Нажмите строку, чтобы сравнить", "Tap a line to compare"));
+        final ScamLabRun.Shot s = shot();
+        if (s == null) return;
+        note(Lang.t(getContext(), "Строки файла " + ScamDevFile.SHOWN + ", которые меняют склейку и обработку. «По умолчанию» — строки нет, работает значение из кода. "
+                        + (s.dev == null ? "Снимок сделан до того, как лаборатория стала сохранять эти строки: A берёт файл как сейчас. " : "A — строки, с которыми сделан снимок. ")
+                        + "«Сохранить B» записывает строку в файл.",
+                "The lines of " + ScamDevFile.SHOWN + " that change the merge and the processing. «Default»: no line, the code's value applies. "
+                        + (s.dev == null ? "The shot was taken before the lab kept these lines: A takes the file as it is now. " : "A: the lines the shot was taken with. ")
+                        + "«Keep B» writes the line into the file."));
+        String group = null;
+        LinearLayout card = null;
+        for (DevKeys.Key k : DevKeys.photo()) {
+            if (!k.group.equals(group)) {
+                caption(k.group);
+                group = k.group;
+                card = null;
+            }
+            if (card == null) card = card(); else divider(card);
+            card.addView(settingRow(DEV + k.key, k.key, k.text, s));
+        }
+    }
+
     private void addGroup(PreferenceGroup group, ScamLabRun.Shot s, @Nullable LinearLayout card) {
         for (int i = 0; i < group.getPreferenceCount(); i++) {
             final Preference p = group.getPreference(i);
-            if (!p.isVisible()) continue;
+            if (!p.isVisible() || hiddenFor(p.getKey(), s.prefs(), s.oppoTunedCcm())) continue;
+            if (p instanceof PreferenceCategory && !hasRows((PreferenceGroup) p, s.prefs(), s.oppoTunedCcm())) continue; // no empty caption
             if (p instanceof PreferenceScreen) {
                 final String key = p.getKey();
                 navigation("☷", String.valueOf(p.getTitle()), p.getSummary() == null ? null : String.valueOf(p.getSummary()), () -> openGroup(key));
@@ -412,6 +502,26 @@ public class ScamLabFragment extends ModuleConceptFragment {
         }
     }
 
+    /**
+     * A row the settings hide for what this shot was not taken with (SettingsAvailability.hidden): «Насыщенность при матрице
+     * OPPO» on a shot rendered without the OPPO tuned matrix (ArkTone.ccmSatComp gives 1 there, A and B would match).
+     */
+    static boolean hiddenFor(@Nullable String key, Map<String, ?> shot, boolean oppoTunedCcm) {
+        return key != null && new SettingsAvailability(shot).oppoTunedColor(oppoTunedCcm).hidden(key);
+    }
+
+    /** Whether a group shows anything in the lab: a page of its own, the film simulation or a row to compare. */
+    static boolean hasRows(PreferenceGroup group, Map<String, ?> shot, boolean oppoTunedCcm) {
+        for (int i = 0; i < group.getPreferenceCount(); i++) {
+            final Preference p = group.getPreference(i);
+            if (!p.isVisible() || hiddenFor(p.getKey(), shot, oppoTunedCcm)) continue;
+            if (p instanceof PreferenceScreen || p instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmSimPreference
+                    || comparable(p)) return true;
+            if (p instanceof PreferenceGroup && hasRows((PreferenceGroup) p, shot, oppoTunedCcm)) return true;
+        }
+        return false;
+    }
+
     // ───── What a setting is in the lab (Spec) ─────
 
     /** A tone curve, a LUT, a lens filter: settings of their own kind, compared too (owner, 2026-10-19). */
@@ -432,9 +542,17 @@ public class ScamLabFragment extends ModuleConceptFragment {
     }
     /** A value of a {@link Spec#CUSTOM} setting: the shot's own, or the one in the settings now (edited on its settings page). */
     static final String AS_SHOT = "\u0001shot", IN_SETTINGS = "\u0001now";
+    static final String HYBRID = "pref_scam_hybrid_", DENOISE = "pref_scam_hybrid_denoise",
+            ACES_ON = "pref_scam_hybrid_ark_aces_on", UCHI_ON = "pref_scam_hybrid_ark_uchi_on";
+    /** A lens filter's tune control on the filter's page: LensFilters.tuneKey(id) + this + control (0: its parameter, else T_*). */
+    static final String TUNE_SEP = "#";
 
     static final class Spec {
-        static final int SWITCH = 0, LIST = 1, SLIDER = 2, CUSTOM = 3;
+        /**
+         * TEXT: a number list "a,b,c,d,e" (SettingsNumericRules.listBounds: {@link #count} values from min to max); NUMBER: a
+         * scam_dev.txt number line (any number, null: no line).
+         */
+        static final int SWITCH = 0, LIST = 1, SLIDER = 2, CUSTOM = 3, TEXT = 4, NUMBER = 5;
         final String key;
         final int kind;
         String title = "", summary;
@@ -442,9 +560,18 @@ public class ScamLabFragment extends ModuleConceptFragment {
         String[] values;
         float min, max, step = 1f;
         boolean decimal;
+        int count;
         Object def;
         /** The settings page of a CUSTOM setting (its editor). */
         String page;
+        /** A {@link #DEV} line: the code's value without the line (DevKeys.Key.def; null: the app decides). */
+        String devDefault;
+        boolean dev;
+
+        /** A developer switch's state without its line. */
+        boolean devSwitchDefault() {
+            return devDefault != null && !"0".equals(devDefault);
+        }
 
         Spec(String key, int kind) {
             this.key = key;
@@ -461,15 +588,25 @@ public class ScamLabFragment extends ModuleConceptFragment {
     static boolean comparable(Preference p) {
         if (p.getKey() == null) return false;
         if (p instanceof TwoStatePreference || p instanceof ListPreference || p instanceof UniversalSeekBarPreference) return true;
+        // the denoise tables («Таблица яркости / цвета»): a number or a number list with its bounds (SettingsNumericRules)
+        if (p instanceof EditTextPreference)
+            return SettingsNumericRules.bounds(p.getKey()) != null || SettingsNumericRules.listBounds(p.getKey()) != null;
         return CURVE.equals(p.getKey()) || LUT.equals(p.getKey()) || FILTER.equals(p.getKey());
     }
 
     @Nullable
     Spec spec(String key) {
-        final Preference p = tree().findPreference(key);
-        final Context c = requireContext();
+        return spec(tree(), requireContext(), key);
+    }
+
+    @Nullable
+    static Spec spec(PreferenceScreen tree, Context c, String key) {
+        if (key != null && key.startsWith(DEV)) return devSpec(key);
+        final Preference p = tree.findPreference(key);
         Spec s;
-        if (LUT.equals(key)) {
+        if (tuneId(key) != null) {
+            return tuneSpec(key, c);
+        } else if (LUT.equals(key)) {
             s = new Spec(key, Spec.LIST);
             s.values = com.particlesdevs.photoncamera.settings.ItemOrder.luts(c).toArray(new String[0]);
             s.labels = new CharSequence[s.values.length];
@@ -518,11 +655,45 @@ public class ScamLabFragment extends ModuleConceptFragment {
             s.decimal = u.decimal();
             s.step = u.decimal() ? 1f / Math.max(1, u.stepPerUnit()) : 1f;
             s.def = s.number(u.defaultNumber());
+        } else if (p instanceof EditTextPreference) {
+            // the denoise tables: a tier's SNR (a number) and its five bands' strength / revert / outlier (a number list), each
+            // read by ScamDenoise.readConfig through the lab's overlay; the default is the XML's (the defaults-only tree)
+            final String text = ((EditTextPreference) p).getText();
+            final double[] list = SettingsNumericRules.listBounds(key), one = SettingsNumericRules.bounds(key);
+            if (list != null) {
+                s = new Spec(key, Spec.TEXT);
+                s.count = (int) list[0];
+                s.min = (float) list[1];
+                s.max = (float) list[2];
+                s.decimal = list[3] != 1;
+                s.def = text == null ? "" : text;
+            } else if (one != null) {
+                s = new Spec(key, Spec.SLIDER);
+                s.min = (float) one[0];
+                s.max = (float) one[1];
+                s.decimal = one[2] != 1;
+                s.step = s.decimal ? 0.1f : 1f;
+                s.def = s.number((float) PreferenceNumber.read(text, s.min));
+            } else return null;
         } else return null;
         if (p != null) {
             s.title = String.valueOf(p.getTitle());
             s.summary = p.getSummary() == null ? null : String.valueOf(p.getSummary());
         }
+        return s;
+    }
+
+    /** A scam_dev.txt line of «Для разработчика» ({@link #DEV} + its line): a switch or a number, its value null without the line. */
+    @Nullable
+    static Spec devSpec(String key) {
+        final DevKeys.Key k = DevKeys.find(key.substring(DEV.length()));
+        if (k == null) return null;
+        final Spec s = new Spec(key, k.kind == DevKeys.Kind.SWITCH ? Spec.SWITCH : Spec.NUMBER);
+        s.title = k.key;
+        s.summary = k.text;
+        s.dev = true;
+        s.devDefault = k.def;
+        s.decimal = true;
         return s;
     }
 
@@ -600,17 +771,193 @@ public class ScamLabFragment extends ModuleConceptFragment {
         return s;
     }
 
+    // ───── A lens filter's own parameter and fine tuning (P228, LensFilters.Tune) ─────
+
+    /** The filter of a tune control's key, null for any other key. */
+    @Nullable
+    static String tuneId(String key) {
+        if (key == null || !key.startsWith(LensFilters.TUNE_PREFIX)) return null;
+        final int at = key.indexOf(TUNE_SEP);
+        return at < 0 ? null : key.substring(LensFilters.TUNE_PREFIX.length(), at);
+    }
+
+    /** The control of a tune control's key: 0 the filter's parameter, else LensFilters.T_*. */
+    static int tuneControl(String key) {
+        return (int) PreferenceNumber.read(key.substring(key.indexOf(TUNE_SEP) + 1), 0);
+    }
+
+    /** The tune controls of filter {@code id} as the settings page shows them: its parameter (when it has one) and its fine controls. */
+    static List<String> tuneKeys(@Nullable String id, @Nullable Context c) {
+        final List<String> out = new ArrayList<>();
+        if (id == null || id.isEmpty() || !LensFilters.known(id)) return out;
+        if (LensFilters.paramName(c, id) != null) out.add(LensFilters.tuneKey(id) + TUNE_SEP + 0);
+        for (int control : LensFilters.CONTROLS)
+            if ((LensFilters.tunable(id) & control) != 0) out.add(LensFilters.tuneKey(id) + TUNE_SEP + control);
+        return out;
+    }
+
+    private static Spec tuneSpec(String key, Context c) {
+        final String id = tuneId(key);
+        final int control = tuneControl(key);
+        final String name = control == 0 ? LensFilters.paramName(c, id) : LensFilters.controlName(c, id, control);
+        final Spec s = slider(key, LensFilters.name(c, id) + ": " + name, 0, 100, 1,
+                String.valueOf(Math.round(LensFilters.Tune.defaults(id).get(control) * 100f)));
+        s.summary = control == 0 ? null : LensFilters.controlHint(c, id, control);
+        return s;
+    }
+
     /** The setting's value at the shot (its default when it was not set; a CUSTOM one: {@link #AS_SHOT}). */
     static Object shotValue(Spec spec, ScamLabRun.Shot s) {
+        if (spec.dev) return devValue(spec, ScamLabRun.devLines(s));
+        return shotValue(spec, s.prefs());
+    }
+
+    /** A developer line's value in {@code lines}: a Boolean or a number text, null without the line. */
+    @Nullable
+    static Object devValue(Spec spec, Map<String, Float> lines) {
+        final Float v = lines.get(spec.key.substring(DEV.length()));
+        if (v == null) return null;
+        return spec.kind == Spec.SWITCH ? (Object) (v != 0f) : ScamDevFile.number(v);
+    }
+
+    static Object shotValue(Spec spec, Map<String, ?> shot) {
         if (spec.kind == Spec.CUSTOM) return AS_SHOT;
-        final Object v = s.pref(spec.key);
+        final String id = tuneId(spec.key);
+        if (id != null) {
+            final Object stored = shot.get(LensFilters.tuneKey(id));
+            return String.valueOf(Math.round(LensFilters.Tune.parse(id, stored == null ? null : String.valueOf(stored)).get(tuneControl(spec.key)) * 100f));
+        }
+        final Object v = shot.get(spec.key);
         if (v == null) return spec.def;
         if (spec.kind == Spec.SWITCH && !(v instanceof Boolean)) return "1".equals(String.valueOf(v)) || "true".equalsIgnoreCase(String.valueOf(v));
         return v;
     }
 
+    // ───── What a setting compares on a shot ─────
+
+    /** The shot was taken in the «Движение» mode (its merge read the mode's own values, MotionMode). */
+    static boolean motionShot(Map<String, ?> shot) {
+        return PreferenceNumber.bool(shot.get(MotionMode.PREF), false);
+    }
+
+    /**
+     * The key a row compares on a shot: on a «Движение» shot a hybrid key the mode replaces is the mode's own
+     * pref_scam_hybrid_mm_&lt;key&gt; (PreferenceKeys.hybridValue / hybridSwitch read it there), null when the mode has no row
+     * for it (a fixed value: the row does nothing on that shot); any other key is itself.
+     */
+    @Nullable
+    static String effectiveKey(String key, boolean motionShot, PreferenceScreen tree) {
+        if (!motionShot || key == null || !key.startsWith(HYBRID)) return key;
+        final String k = key.substring(HYBRID.length());
+        if (!MotionMode.replaces(k)) return key;
+        final String mm = MotionMode.prefKey(k);
+        return tree.findPreference(mm) != null ? mm : null;
+    }
+
+    /** The switch a setting acts under: its android:dependency, «Шумоподавление» for the denoise rows (SettingsAvailability). */
+    @Nullable
+    static String requires(String key, PreferenceScreen tree) {
+        final Preference p = tree.findPreference(key);
+        if (p != null && p.getDependency() != null) return p.getDependency();
+        // «Порог дисперсии для усиления»: the boost switch rules it in SettingsAvailability (no android:dependency: in «Движение» the mode's own does)
+        if (key.equals(HYBRID + "boost_threshold")) return HYBRID + "motion_boost";
+        // «Кадры теней»'s rows: the same (no android:dependency since the mode greys the photo switch: its own rules there)
+        if (Arrays.asList(HYBRID + "shasta_mode", HYBRID + "shasta_motion_max", HYBRID + "shasta_frames", HYBRID + "shasta_ev").contains(key))
+            return HYBRID + "shasta";
+        if ((key.startsWith(HYBRID + "dn_") && !key.equals(HYBRID + "dn_engine"))
+                || key.equals(HYBRID + "ark_bracket_denoise") || key.equals(HYBRID + "ark_chroma_denoise")) return DENOISE;
+        return null;
+    }
+
+    /** A switch at the shot (its default when the shot did not set it). */
+    static boolean switchAt(String key, Map<String, ?> shot, PreferenceScreen tree) {
+        final Preference p = tree.findPreference(key);
+        return PreferenceNumber.bool(shot.get(key), p instanceof TwoStatePreference && ((TwoStatePreference) p).isChecked());
+    }
+
+    /**
+     * What a comparison of {@code key} sets on both sides so that the setting acts on this shot (each then on the page with its
+     * own A and B): the switch it depends on when the shot had it off; for ACES / Uchimura and their parameters the operator on
+     * and the ones before it off (ArkTone.toneOperator: own curve, Uchimura, ACES - a parameter of an operator left off gave the
+     * same pixels); for a film setting of a shot without film a stock (and a strength above 0: FilmSim.current is null else);
+     * for the colour prior and the defringe of the highlights on a shot without the per-channel recovery, the recovery at 100
+     * (ScamRgb runs them inside it; the clip band needs the burst's clip flags too, which such a shot does not hold).
+     */
+    static LinkedHashMap<String, Object> forced(String key, Map<String, ?> shot, PreferenceScreen tree) {
+        final LinkedHashMap<String, Object> f = new LinkedHashMap<>();
+        final List<String> own = Arrays.asList(keys(key));
+        String dep = requires(key, tree);
+        // on a «Движение» shot a switch the mode replaces is its own (motion_boost: mm_motion_boost), as the merge read it
+        final String modeDep = dep == null ? null : effectiveKey(dep, motionShot(shot), tree);
+        if (modeDep != null) dep = modeDep;
+        if (dep != null && !own.contains(dep) && !switchAt(dep, shot, tree)) f.put(dep, true);
+        final String operator = ACES_ON.equals(key) || UCHI_ON.equals(key) ? key : ACES_ON.equals(dep) || UCHI_ON.equals(dep) ? dep : null;
+        if (operator != null) {
+            if (switchAt(CURVE_ON, shot, tree)) f.put(CURVE_ON, false);
+            if (ACES_ON.equals(operator) && switchAt(UCHI_ON, shot, tree)) f.put(UCHI_ON, false);
+        }
+        if (Arrays.asList(FilmSim.KEYS).contains(key) && !FilmSim.STOCK_KEY.equals(key)) {
+            final Object stock = shot.get(FilmSim.STOCK_KEY);
+            if (FilmSim.stock(stock == null ? null : String.valueOf(stock)) == null) f.put(FilmSim.STOCK_KEY, FilmSim.STOCKS[0].id);
+            if (!FilmSim.STRENGTH_KEY.equals(key) && PreferenceNumber.read(shot.get(FilmSim.STRENGTH_KEY), 100) <= 0)
+                f.put(FilmSim.STRENGTH_KEY, "100");
+        }
+        if ((key.equals(HYBRID + "highlight_chroma") || key.equals(HYBRID + "highlight_defringe")) && !recoveryAt(shot))
+            f.put(RECOVERY, "100");
+        return f;
+    }
+
+    static final String RECOVERY = "pref_scam_hybrid_highlight_recovery";
+
+    /** The shot took the per-channel highlight recovery (its strength above 0; the merge then sent the clip flags). */
+    static boolean recoveryAt(Map<String, ?> shot) {
+        return PreferenceNumber.read(shot.get(RECOVERY), 100) > 0;
+    }
+
+    /**
+     * Why a setting cannot change this shot's picture (null: it can, or it is {@link #AT_SHOT}, said apart): a «Движение» shot
+     * without the mode's value of it ({@code effective} null), or the shot's other settings with the comparison's
+     * {@link #forced} ones leave it out (SettingsAvailability, as the settings page explains a greyed row).
+     */
+    @Nullable
+    static String inert(@Nullable Context c, String key, @Nullable String effective, Map<String, ?> shot, Map<String, Object> forced) {
+        if (AT_SHOT.contains(key)) return null;
+        if (effective == null)
+            return Lang.t(c, "снимок сделан в режиме «Движение», а в нём эта настройка не действует.",
+                    "the shot was taken in Motion mode, where this setting has no effect.");
+        // the clip band reads the per-pixel clip flags, which the merge sent only with the recovery on at the shot
+        if (effective.equals(HYBRID + "highlight_band") && !recoveryAt(shot))
+            return Lang.t(c, "при съёмке «Восстановление светов по каналам» было 0: в серии нет попиксельных флагов клипа.",
+                    "“Per-channel highlight recovery” was 0 at the shot: the burst holds no per-pixel clip flags.");
+        final Map<String, Object> values = new HashMap<>(shot);
+        values.putAll(forced);
+        return new SettingsAvailability(values).reason(effective);
+    }
+
+    /** A TEXT value's numbers (its default's when it does not read as {@link Spec#count} numbers), null when neither does. */
+    @Nullable
+    static float[] numbers(Spec spec, @Nullable Object v) {
+        return SettingsNumericRules.listValue(spec.key, v, SettingsNumericRules.listValue(spec.key, spec.def, null));
+    }
+
+    /** A TEXT value as stored: "a,b,c,d,e". */
+    static String listText(Spec spec, float[] v) {
+        final StringBuilder b = new StringBuilder();
+        for (int i = 0; i < v.length; i++) {
+            if (i > 0) b.append(',');
+            if (!spec.decimal) b.append(Math.round(v[i]));
+            else b.append(String.format(Locale.ROOT, "%.4f", v[i]).replaceAll("0+$", "").replaceAll("\\.$", ""));
+        }
+        return b.toString();
+    }
+
     /** A value as the settings show it. */
     String label(Spec spec, Object v) {
+        if (v == null && spec.dev) {
+            if (spec.devDefault == null) return Lang.t(getContext(), "по умолчанию (решает приложение)", "default (chosen by the app)");
+            return Lang.t(getContext(), "по умолчанию", "default") + " (" + (spec.kind == Spec.SWITCH
+                    ? (spec.devSwitchDefault() ? Lang.t(getContext(), "Вкл", "On") : Lang.t(getContext(), "Выкл", "Off")) : spec.devDefault) + ")";
+        }
         if (v == null) return Lang.t(getContext(), "по умолчанию", "default");
         switch (spec.kind) {
             case Spec.SWITCH:
@@ -646,18 +993,42 @@ public class ScamLabFragment extends ModuleConceptFragment {
             sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
             labels.addView(sub, space(-1, -2, 6));
         }
-        final Spec spec = spec(key);
+        // a «Движение» shot's merge read the mode's own value of a key it replaces: the row compares that one
+        final String effective = effectiveKey(key, motionShot(s.prefs()), tree());
+        final String compared = effective == null ? key : effective;
+        final Spec spec = spec(compared);
         if (spec != null && spec.kind != Spec.CUSTOM) {
             String shotValue = Lang.t(getContext(), "При съёмке: ", "At the shot: ") + label(spec, shotValue(spec, s));
-            if (AT_SHOT.contains(key)) shotValue += Lang.t(getContext(), " · задаётся при съёмке", " · fixed at the shot");
+            if (AT_SHOT.contains(compared)) shotValue += Lang.t(getContext(), " · задаётся при съёмке", " · fixed at the shot");
+            if (BURST_FRAMES.contains(compared))
+                shotValue += Lang.t(getContext(), " · на серии только убирает или ограничивает снятые кадры", " · on the burst it only drops or limits the frames taken");
+            if (!compared.equals(key)) shotValue += Lang.t(getContext(), " · снято в режиме «Движение»: его значение", " · shot in Motion mode: its value");
             labels.addView(text(shotValue, 12, accent), space(-1, -2, 6));
+        }
+        final String why = inert(getContext(), compared, effective, s.prefs(), forced(compared, s.prefs(), tree()));
+        if (why != null) {
+            TextView w = text(Lang.t(getContext(), "На этом снимке не действует: ", "No effect on this shot: ") + why, 12, SettingsStyle.WARN);
+            w.setLineSpacing(dp(3), 1);
+            labels.addView(w, space(-1, -2, 6));
+        }
+        final String line = ScamLabRun.burstLine(s, compared);
+        if (line != null) {
+            TextView w = text(burstFixed(line), 12, SettingsStyle.WARN);
+            w.setLineSpacing(dp(3), 1);
+            labels.addView(w, space(-1, -2, 6));
         }
         r.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
         r.addView(text("›", 25, MUTED));
         r.setTag("lab_setting_" + key);
         r.setFocusable(true);
-        r.setOnClickListener(x -> openResult(key, s));
+        r.setOnClickListener(x -> openResult(compared, s));
         return r;
+    }
+
+    /** A setting the shot's burst fixed with its own worker line (ScamLabRun.burstLine): why it changes nothing there. */
+    private String burstFixed(String line) {
+        return Lang.t(getContext(), "На этой серии не меняется: склейка снимка задала её сама строкой «" + line + "» (повтор после сбоя или режим снимка).",
+                "No change on this burst: the shot's merge set it itself with the line “" + line + "” (a retry after a failure or the shot's mode).");
     }
 
     // ───── The comparison: A and B, each setting of the page with its own controls ─────
@@ -689,7 +1060,10 @@ public class ScamLabFragment extends ModuleConceptFragment {
         return all;
     }
 
-    /** The page of one setting: A as shot; B the setting at another value ({@link #suggested}), its linked ones as shot. */
+    /**
+     * The page of one setting: A as shot; B the setting at another value ({@link #suggested}), its linked ones as shot; what the
+     * setting needs to act on this shot ({@link #forced}) set on both sides.
+     */
     private void openResult(String key, ScamLabRun.Shot s) {
         Bundle args = new Bundle();
         args.putString(PAGE, "result");
@@ -703,9 +1077,43 @@ public class ScamLabFragment extends ModuleConceptFragment {
             put(args, "a", k, at);
             put(args, "b", k, k.equals(key) ? suggested(spec, at) : at);
         }
+        final LinkedHashMap<String, Object> forced = forced(key, s.prefs(), tree());
+        for (Map.Entry<String, Object> e : forced.entrySet()) {
+            put(args, "a", e.getKey(), e.getValue());
+            put(args, "b", e.getKey(), e.getValue());
+        }
+        args.putStringArrayList(EXTRA, new ArrayList<>(forced.keySet()));
         // the curve compared is the one in the settings, switched on
         if (CURVE.equals(key)) put(args, "b", CURVE_ON, true);
         open(of(args));
+    }
+
+    /**
+     * The keys of a setting's page: the setting, its {@link #LINKS}, what {@link #openResult} set on both sides and, on the lens
+     * filter's page, the tune controls of the filter B shows (the shot's when B shows none).
+     */
+    private List<String> pageKeys(String key, ScamLabRun.Shot s) {
+        final List<String> out = new ArrayList<>(Arrays.asList(keys(key)));
+        final ArrayList<String> extra = getArguments() == null ? null : getArguments().getStringArrayList(EXTRA);
+        if (extra != null) for (String k : extra) if (!out.contains(k)) out.add(k);
+        if (FILTER.equals(key)) {
+            final Object b = get("b", FILTER);
+            String id = b == null ? "" : String.valueOf(b);
+            if (id.isEmpty() || !LensFilters.known(id)) {
+                final Object shot = s.pref(FILTER);
+                id = shot == null ? "" : String.valueOf(shot);
+            }
+            for (String k : tuneKeys(id, getContext())) if (!out.contains(k)) out.add(k);
+        }
+        // a key the page has no value of yet (the tune of another filter picked for B): the shot's on both sides
+        for (String k : out) {
+            if (arg2("a", k) && arg2("b", k)) continue;
+            final Spec spec = spec(k);
+            if (spec == null) continue;
+            if (!arg2("a", k)) put(getArguments(), "a", k, shotValue(spec, s));
+            if (!arg2("b", k)) put(getArguments(), "b", k, shotValue(spec, s));
+        }
+        return out;
     }
 
     private static void put(Bundle b, String side, String key, Object v) {
@@ -724,7 +1132,14 @@ public class ScamLabFragment extends ModuleConceptFragment {
     static Object suggested(Spec spec, Object at) {
         switch (spec.kind) {
             case Spec.SWITCH:
+                if (at == null && spec.dev) return !spec.devSwitchDefault();
                 return !(at instanceof Boolean ? (Boolean) at : "1".equals(String.valueOf(at)));
+            case Spec.NUMBER: {
+                // a developer number: twice its value (or the code's), 1 from 0 or without a known value
+                Float v = ScamLabRun.devNumber(at);
+                if (v == null) v = ScamLabRun.devNumber(spec.devDefault);
+                return ScamDevFile.number(v == null || v == 0f ? 1f : v * 2f);
+            }
             case Spec.LIST: {
                 if (spec.values.length == 0) return at;
                 int i = 0;
@@ -733,6 +1148,14 @@ public class ScamLabFragment extends ModuleConceptFragment {
             }
             case Spec.CUSTOM:
                 return IN_SETTINGS;
+            case Spec.TEXT: {
+                // each number a quarter of its range away, as a slider
+                final float[] v = numbers(spec, at);
+                if (v == null) return at;
+                final float quarter = (spec.max - spec.min) / 4f;
+                for (int i = 0; i < v.length; i++) v[i] = v[i] + quarter <= spec.max ? v[i] + quarter : Math.max(spec.min, v[i] - quarter);
+                return listText(spec, v);
+            }
             default: {
                 float v;
                 try { v = Float.parseFloat(String.valueOf(at)); } catch (NumberFormatException e) { v = Float.parseFloat(String.valueOf(spec.def)); }
@@ -742,18 +1165,37 @@ public class ScamLabFragment extends ModuleConceptFragment {
         }
     }
 
-    /** The overrides of a side: a CUSTOM setting "as shot" is the shot's value, "in the settings" the stored one now. */
+    /**
+     * The overrides of a side: a CUSTOM setting "as shot" is the shot's value, "in the settings" the stored one now; a lens
+     * filter's tune controls join into the filter's stored tune (left as shot when they all are).
+     */
     private java.util.TreeMap<String, Object> overrides(String side, String key, ScamLabRun.Shot s) {
         final java.util.TreeMap<String, Object> m = new java.util.TreeMap<>();
         final Map<String, ?> stored = prefs().getAll();
-        for (String k : keys(key)) {
+        final Map<String, LensFilters.Tune> tunes = new HashMap<>();
+        for (String k : pageKeys(key, s)) {
             Object v = get(side, k);
+            final String id = tuneId(k);
+            if (id != null) {
+                LensFilters.Tune t = tunes.get(id);
+                if (t == null) tunes.put(id, t = shotTune(id, s));
+                t.set(tuneControl(k), (float) PreferenceNumber.read(v, 50) / 100f);
+                continue;
+            }
             if (AS_SHOT.equals(v)) v = s.pref(k);
             else if (IN_SETTINGS.equals(v)) v = stored.get(k);
             else if (v == null && !arg2(side, k)) continue;
             m.put(k, v);
         }
+        for (Map.Entry<String, LensFilters.Tune> e : tunes.entrySet())
+            if (!e.getValue().serialize().equals(shotTune(e.getKey(), s).serialize()))
+                m.put(LensFilters.tuneKey(e.getKey()), e.getValue().serialize());
         return m;
+    }
+
+    private static LensFilters.Tune shotTune(String id, ScamLabRun.Shot s) {
+        final Object v = s.pref(LensFilters.tuneKey(id));
+        return LensFilters.Tune.parse(id, v == null ? null : String.valueOf(v));
     }
 
     private boolean arg2(String side, String key) {
@@ -821,16 +1263,58 @@ public class ScamLabFragment extends ModuleConceptFragment {
             body.addView(frame, space(-1, height, 6));
             modes(r, compare, aText, bText);
         }
-        for (String k : keys(key)) {
+        for (String k : pageKeys(key, s)) {
             final Spec spec = spec(k);
             if (spec != null) controls(spec, s, !k.equals(key));
         }
-        if (r != null) info(main, r);
-        TextView keep = button(Lang.t(getContext(), "Сохранить B в настройки", "Keep B in the settings"), false, () -> {
-            final SharedPreferences.Editor e = prefs().edit();
+        final LinkedHashMap<String, Object> forced = forced(key, s.prefs(), tree());
+        if (!forced.isEmpty()) {
+            final StringBuilder set = new StringBuilder();
+            for (Map.Entry<String, Object> e : forced.entrySet()) {
+                final Spec spec = spec(e.getKey());
+                if (spec == null) continue;
+                if (set.length() > 0) set.append("; ");
+                set.append('«').append(spec.title).append("» — ").append(label(spec, e.getValue()))
+                        .append(Lang.t(getContext(), " (при съёмке: ", " (at the shot: ")).append(label(spec, shotValue(spec, s))).append(')');
+            }
+            note(Lang.t(getContext(), "Чтобы настройка действовала на этом снимке, на обеих сторонах задано: ",
+                    "For the setting to act on this shot, both sides set: ") + set
+                    + Lang.t(getContext(), ". У каждого значения выше свои A и B.", ". Each has its own A and B above."));
+        }
+        if (key.startsWith(HYBRID + "mm_") && motionShot(s.prefs()))
+            note(Lang.t(getContext(), "Снимок сделан в режиме «Движение»: его склейка читает значения этого режима, их лаборатория и сравнивает.",
+                    "The shot was taken in Motion mode: its merge reads that mode's values, and the lab compares them."));
+        if (crop != null && FRAGMENT_STATS.contains(key))
+            note(Lang.t(getContext(), "На фрагменте экспозиция и тон берутся из статистики всего кадра, снятой с цветом и пределом усиления снимка: эту настройку она не учитывает, и разница на фрагменте может быть не такой, как на фото. Точно — «Весь кадр».",
+                    "On a fragment the exposure and the tone come from the whole frame's statistics, measured with the shot's colour and gain clamp: they do not take this setting in, so the difference on a fragment may not be the photo's. Exactly: «Whole frame»."));
+        devNotes(key, s, r);
+        if (r != null) info(main, r, s);
+        final List<String> keys = pageKeys(key, s);
+        boolean devOnly = true;
+        for (String k : keys) devOnly &= k.startsWith(DEV);
+        final boolean devPage = devOnly;
+        // P156 / P189: with per-module settings the shot's settings are its module's profile: B goes there, not into the module
+        // the settings edit now (the chip, another module's page, a shot taken with another lens)
+        final String module = devPage ? null : keepModule(s);
+        if (devPage) note(Lang.t(getContext(), "Это строка файла " + ScamDevFile.SHOWN + ": «Сохранить B» записывает её в файл (на все модули), «по умолчанию» — удаляет.",
+                "This is a line of " + ScamDevFile.SHOWN + ": «Keep B» writes it into the file (for every module), «default» removes it."));
+        final String keepText = devPage ? Lang.t(getContext(), "Сохранить B в scam_dev.txt", "Keep B in scam_dev.txt")
+                : module != null ? Lang.t(getContext(), "Сохранить B в «" + FullResProfiles.label(module) + "»", "Keep B in “" + FullResProfiles.label(module) + "”")
+                : Lang.t(getContext(), "Сохранить B в настройки", "Keep B in the settings");
+        TextView keep = button(keepText, false, () -> {
             final java.util.TreeMap<String, Object> b = overrides("b", key, s);
+            boolean prefsWritten = false, devFailed = false;
+            if (module != null && !module.equals(PreferenceKeys.profiles().editing())) PreferenceKeys.profiles().activate(module);
+            final SharedPreferences.Editor e = prefs().edit();
             for (Map.Entry<String, Object> en : b.entrySet()) {
                 final Object v = en.getValue();
+                if (en.getKey().startsWith(DEV)) {
+                    final Float n = ScamLabRun.devNumber(v);
+                    devFailed |= !ScamDevFile.set(requireContext().getApplicationContext(), en.getKey().substring(DEV.length()),
+                            n == null ? null : ScamDevFile.number(n));
+                    continue;
+                }
+                prefsWritten = true;
                 if (v == null) e.remove(en.getKey());
                 else if (v instanceof Boolean) e.putBoolean(en.getKey(), (Boolean) v);
                 else if (v instanceof java.util.Set) {
@@ -839,11 +1323,56 @@ public class ScamLabFragment extends ModuleConceptFragment {
                     e.putStringSet(en.getKey(), set);
                 } else e.putString(en.getKey(), String.valueOf(v));
             }
-            e.apply();
-            Toast.makeText(requireContext(), "«" + main.title + "»: " + label(main, get("b", key)), Toast.LENGTH_SHORT).show();
+            if (prefsWritten) e.apply();
+            String done = "«" + main.title + "»: " + label(main, get("b", key));
+            if (module != null) done += " → " + FullResProfiles.label(module);
+            if (devFailed) done = Lang.t(getContext(), "Не удалось записать ", "Could not write ") + ScamDevFile.SHOWN;
+            Toast.makeText(requireContext(), done, Toast.LENGTH_SHORT).show();
         });
         keep.setTag("lab_keep_value");
         body.addView(keep, space(-1, -2, 12));
+    }
+
+    /**
+     * The module profile «Сохранить B» writes into while per-module settings are on: the shot's (meta "module"), else (a shot
+     * taken before it was kept, or with per-module settings off) the one the settings edit now; null: the common settings.
+     */
+    @Nullable
+    private static String keepModule(ScamLabRun.Shot s) {
+        try {
+            if (!PreferenceKeys.isPerLensSettingsOn()) return null;
+            return s.module != null ? s.module : PreferenceKeys.profiles().editing();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The scam_dev.txt lines of the page's settings: the shot's the lab left out (ScamLabRun: A and B with their own values), one
+     * in the file now (in the camera it wins over the setting and over «Сохранить B»), a shot taken before the lines were kept.
+     */
+    private void devNotes(String key, ScamLabRun.Shot s, @Nullable ScamLabRun.Result r) {
+        final List<String> keys = pageKeys(key, s);
+        final List<String> now = ScamLabRun.overriding(keys, PreferenceKeys.scamDevLines());
+        final List<String> shot = r != null ? r.devMasked : ScamLabRun.overriding(keys, ScamLabRun.devLines(s));
+        if (!now.isEmpty())
+            note(Lang.t(getContext(), "Сейчас в scam_dev.txt есть строка " + quoted(now) + ": в камере действует она, а не эта настройка (и не «Сохранить B»). Лаборатория её не применяет: A и B — со своими значениями.",
+                    "scam_dev.txt has the line " + quoted(now) + " now: in the camera it applies instead of this setting (and of «Keep B»). The lab leaves it out: A and B have their own values."));
+        else if (!shot.isEmpty())
+            note(Lang.t(getContext(), "При съёмке в scam_dev.txt была строка " + quoted(shot) + ": лаборатория её не применяет, A и B — со своими значениями.",
+                    "At the shot scam_dev.txt had the line " + quoted(shot) + ": the lab leaves it out, A and B have their own values."));
+        if (r != null && r.devNow)
+            note(Lang.t(getContext(), "Снимок сделан до того, как лаборатория стала сохранять строки scam_dev.txt: обе стороны берут файл как сейчас, A может отличаться от снятого.",
+                    "The shot was taken before the lab kept the scam_dev.txt lines: both sides take the file as it is now, A may differ from the shot."));
+    }
+
+    private static String quoted(List<String> lines) {
+        final StringBuilder b = new StringBuilder();
+        for (String l : lines) {
+            if (b.length() > 0) b.append(", ");
+            b.append('«').append(l).append('»');
+        }
+        return b.toString();
     }
 
     /** The main setting's value a rendered side had (for its label on the picture). */
@@ -937,6 +1466,11 @@ public class ScamLabFragment extends ModuleConceptFragment {
         }
         String note = Lang.t(getContext(), "При съёмке: ", "At the shot: ") + label(spec, atShot);
         if (AT_SHOT.contains(spec.key)) note += Lang.t(getContext(), " · задаётся при съёмке: на сохранённой серии не меняется", " · fixed at the shot: no change on a saved burst");
+        if (BURST_FRAMES.contains(spec.key))
+            note += Lang.t(getContext(), " · на сохранённой серии действуют только меньшие значения или «Выкл»: кадры сняты при съёмке, добавить их нельзя",
+                    " · on a saved burst only lower values or off act: the frames were taken at the shot, none can be added");
+        final String line = ScamLabRun.burstLine(s, spec.key);
+        if (line != null) note += Lang.t(getContext(), " · склейка снимка задала «" + line + "»: на этой серии не меняется", " · the shot's merge set “" + line + "”: no change on this burst");
         TextView t = text(note, 12, MUTED);
         t.setPadding(dp(12), 0, dp(12), dp(12));
         card.addView(t);
@@ -972,7 +1506,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 head.addView(reset);
                 SwitchCompat toggle = new SwitchCompat(requireContext());
                 toggle.setTag("lab_value_" + name + "_" + spec.key);
-                toggle.setChecked(value instanceof Boolean ? (Boolean) value : "1".equals(String.valueOf(value)));
+                toggle.setChecked(value instanceof Boolean ? (Boolean) value
+                        : value == null && spec.dev ? spec.devSwitchDefault() : "1".equals(String.valueOf(value)));
                 toggle.setThumbTintList(ColorStateList.valueOf(0xFFFFFFFF));
                 toggle.setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{accent, 0xFF606570}));
                 toggle.setOnCheckedChangeListener((v, on) -> set.accept(on));
@@ -994,6 +1529,79 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 pick.setTag("lab_value_" + name + "_" + spec.key);
                 r.addView(pick, space(-1, -2, 8));
                 if (CURVE.equals(spec.key)) r.addView(curveEditor(name, value, s, set), space(-1, -2, 8));
+                break;
+            }
+            case Spec.TEXT: {
+                // a denoise table row: its numbers as the settings take them; «Done» renders the side again (after the key event:
+                // the page is rebuilt, never inside the field's own callback, P294)
+                head.addView(reset);
+                final android.widget.EditText field = new android.widget.EditText(requireContext());
+                field.setTag("lab_value_" + name + "_" + spec.key);
+                field.setText(value == null ? "" : String.valueOf(value));
+                field.setTextColor(TEXT);
+                field.setTextSize(15);
+                field.setSingleLine(true);
+                field.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+                field.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+                field.setBackground(shape(BG, 0xFF626974, 10));
+                field.setPadding(dp(10), dp(10), dp(10), dp(10));
+                field.setOnEditorActionListener((v, action, event) -> {
+                    if (action != android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                            && (event == null || event.getKeyCode() != android.view.KeyEvent.KEYCODE_ENTER)) return false;
+                    final float[] parsed = SettingsNumericRules.listValue(spec.key, v.getText().toString(), null);
+                    if (parsed == null) {
+                        Toast.makeText(requireContext(), String.format(Locale.ROOT, Lang.t(getContext(), "Нужно %d чисел через запятую.", "Enter %d numbers separated by commas."),
+                                spec.count), Toast.LENGTH_SHORT).show();
+                        return true;
+                    }
+                    final android.view.inputmethod.InputMethodManager im = (android.view.inputmethod.InputMethodManager)
+                            requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (im != null) im.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                    final String text = listText(spec, parsed);
+                    main.post(() -> { if (root != null && isAdded()) set.accept(text); });
+                    return true;
+                });
+                r.addView(field, space(-1, -2, 8));
+                TextView hint = text(String.format(Locale.ROOT, Lang.t(getContext(), "%d чисел через запятую, каждое от %s до %s; «Готово» на клавиатуре — пересчитать.",
+                        "%d numbers separated by commas, each from %s to %s; Done on the keyboard renders again."), spec.count,
+                        listText(spec, new float[]{spec.min}), listText(spec, new float[]{spec.max})), 12, MUTED);
+                r.addView(hint, space(-1, -2, 6));
+                break;
+            }
+            case Spec.NUMBER: {
+                // a developer number line: empty = no line (the code's value); «Done» renders the side again (after the key event, P294)
+                head.addView(reset);
+                final android.widget.EditText field = new android.widget.EditText(requireContext());
+                field.setTag("lab_value_" + name + "_" + spec.key);
+                field.setText(value == null ? "" : String.valueOf(value));
+                field.setHint(label(spec, null));
+                field.setTextColor(TEXT);
+                field.setTextSize(15);
+                field.setSingleLine(true);
+                field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+                        | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+                field.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+                field.setBackground(shape(BG, 0xFF626974, 10));
+                field.setPadding(dp(10), dp(10), dp(10), dp(10));
+                field.setOnEditorActionListener((v, action, event) -> {
+                    if (action != android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                            && (event == null || event.getKeyCode() != android.view.KeyEvent.KEYCODE_ENTER)) return false;
+                    final String typed = v.getText().toString().trim();
+                    final Float parsed = typed.isEmpty() ? null : ScamLabRun.devNumber(typed);
+                    if (!typed.isEmpty() && parsed == null) {
+                        Toast.makeText(requireContext(), Lang.t(getContext(), "Нужно число.", "Enter a number."), Toast.LENGTH_SHORT).show();
+                        return true;
+                    }
+                    final android.view.inputmethod.InputMethodManager im = (android.view.inputmethod.InputMethodManager)
+                            requireContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (im != null) im.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                    final String text = parsed == null ? null : ScamDevFile.number(parsed);
+                    main.post(() -> { if (root != null && isAdded()) set.accept(text); });
+                    return true;
+                });
+                r.addView(field, space(-1, -2, 8));
+                r.addView(text(Lang.t(getContext(), "Число; пусто — без строки (значение кода); «Готово» на клавиатуре — пересчитать.",
+                        "A number; empty: no line (the code's value); Done on the keyboard renders again."), 12, MUTED), space(-1, -2, 6));
                 break;
             }
             default: {
@@ -1081,9 +1689,16 @@ public class ScamLabFragment extends ModuleConceptFragment {
         return box;
     }
 
-    private void info(Spec main, ScamLabRun.Result r) {
+    private void info(Spec main, ScamLabRun.Result r, ScamLabRun.Shot s) {
+        final String why = r.same ? inert(getContext(), main.key, effectiveKey(main.key, motionShot(s.prefs()), tree()), s.prefs(),
+                forced(main.key, s.prefs(), tree())) : null;
+        final String line = r.same ? ScamLabRun.burstLine(s, main.key) : null;
         String info = r.same ? Lang.t(getContext(), "На этой серии A и B совпадают до пикселя. ", "On this burst A and B are the same pixels. ")
                 + (AT_SHOT.contains(main.key) ? Lang.t(getContext(), "Настройка задаётся при съёмке (уже вшита в серию).", "The setting is fixed at the shot (already in the burst).")
+                : line != null ? burstFixed(line) + " "
+                : why != null ? Lang.t(getContext(), "На этом снимке она не действует: ", "It has no effect on this shot: ") + why + " "
+                : BURST_FRAMES.contains(main.key) ? Lang.t(getContext(), "На сохранённой серии она только убирает или ограничивает снятые кадры светов и теней: больше, чем снято, добавить нельзя. ",
+                        "On a saved burst it only drops or limits the highlight and shadow frames taken: it cannot add more than were shot. ")
                 : Lang.t(getContext(), "Её условие не наступило (сцена, шум, яркость) или она действует при съёмке.", "Its condition did not occur (scene, noise, brightness) or it acts at the shot."))
                 : (r.mergedAgain ? Lang.t(getContext(), "Настройка склейки: A и B склеены каждая со своим значением. ", "A merge setting: A and B were merged each with its value. ")
                 : Lang.t(getContext(), "Настройка обработки: склейка одна, обработка разная. ", "A processing setting: one merge, different processing. "));

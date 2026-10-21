@@ -784,10 +784,11 @@ public class PreferenceKeys {
         tw = Math.max(64, Math.min(2 * w, tw)); th = Math.max(64, Math.min(2 * h, th));
         return new android.graphics.Point(tw, th);
     }
-    /** "key value" lines for the worker's hybrid_tuning.txt, from the pref_scam_hybrid_* preferences (scam_dev.txt "hybrid_<key>"). */
-    public static String hybridTuningText() {
-        StringBuilder out = new StringBuilder();
-        String[][] keys = {
+    /**
+     * The worker tuning lines of the hybrid settings: {tuning name, pref_scam_hybrid_ suffix} (hybridTuningText writes them; the lab
+     * maps a burst's own lines back to their rows with {@link #hybridTuningSuffix}).
+     */
+    private static final String[][] TUNING_KEYS = {
             {"bento", "bento"},
             {"cdm", "cdm"},
             {"kernelScale", "kernel"}, {"weightCap", "weight_cap"},
@@ -854,13 +855,53 @@ public class PreferenceKeys {
             // only ("hybrid_profile 1", "hybrid_la_threads 8"; no preference behind them). P33 W2.1: "hybrid_la_stream 0" merges with
             // the whole F6 field first (A/B), "hybrid_la_scam N" lowers the priority of the banded F6 threads.
             {"profile", "profile"}, {"laThreads", "la_threads"}, {"laStream", "la_stream"}, {"laScam", "la_scam"},
-        };
+    };
+    /** The lines hybridTuningText writes beside {@link #TUNING_KEYS}, by the row they come from (switches and modes). */
+    private static final Map<String, String> TUNING_EXTRA = new HashMap<>();
+    static {
+        TUNING_EXTRA.put("auto2x", "auto2x");
+        TUNING_EXTRA.put("shastaEnable", "shasta");
+        TUNING_EXTRA.put("shastaForce", "shasta_mode");
+        TUNING_EXTRA.put("boostEnable", "motion_boost");
+        TUNING_EXTRA.put("cellClip", "cell_clip");
+        TUNING_EXTRA.put("chromaDiffClamp", "chroma_diff_clamp");
+        TUNING_EXTRA.put("bentoScam", "bento_scam");
+        TUNING_EXTRA.put("bentoBlend", "bento_blend");
+        TUNING_EXTRA.put("mosaicUsFill", "us_fill");
+        TUNING_EXTRA.put("mosaicWindowFull", "mosaic_window_full");
+    }
+
+    /**
+     * The pref_scam_hybrid_ suffix (also the scam_dev.txt line "hybrid_&lt;suffix&gt;") whose value the worker tuning line
+     * {@code name} carries, null for a line no setting writes (the lab: a burst's own line that replaces a row's value).
+     */
+    public static String hybridTuningSuffix(String name) {
+        if (name == null) return null;
+        for (String[] k : TUNING_KEYS) if (k[0].equals(name)) return k[1];
+        return TUNING_EXTRA.get(name);
+    }
+
+    /**
+     * A stored tuning row as the worker gets it: read as {@link #hybridValue} reads it (a decimal comma too) and clamped to its
+     * SettingsNumericRules bounds, so a restored config or an old module profile cannot send a value the row cannot show;
+     * "" when unset or not a number (the caller then writes the app default, else the worker keeps its own).
+     */
+    static String storedTuningValue(String key) {
+        final String raw = hybridString(key, "");
+        if (raw.isEmpty()) return "";
+        final double d = PreferenceNumber.read(raw, Double.NaN);
+        return Double.isFinite(d) ? Float.toString((float) SettingsNumericRules.value(HYBRID_PREFIX + key, d, d)) : "";
+    }
+
+    /** "key value" lines for the worker's hybrid_tuning.txt, from the pref_scam_hybrid_* preferences (scam_dev.txt "hybrid_<key>"). */
+    public static String hybridTuningText() {
+        StringBuilder out = new StringBuilder();
         final boolean motion = isMotionMode();
-        for (String[] k : keys) {
+        for (String[] k : TUNING_KEYS) {
             Float dev = scamDevValue("hybrid_" + k[1]);
             // P86: in «Движение» the mode's own merge values (boost, motion threshold, Bento), as hybridValue gives them
             String v = dev != null ? dev.toString()
-                    : motion && MotionMode.replaces(k[1]) ? Float.toString(hybridValue(k[1], 0f)) : hybridString(k[1], "");
+                    : motion && MotionMode.replaces(k[1]) ? Float.toString(hybridValue(k[1], 0f)) : storedTuningValue(k[1]);
             // P68: a key with an app default (HYBRID_DEFAULTS) is written also when unset; any other keeps the worker default
             if ((v == null || v.isEmpty()) && HYBRID_DEFAULTS.containsKey(k[1])) v = HYBRID_DEFAULTS.get(k[1]).toString();
             if (v == null || v.isEmpty()) continue;
@@ -991,7 +1032,32 @@ public class PreferenceKeys {
         return v == null ? fallback : v;
     }
 
+    /**
+     * P277 lab (owner, 2026-10-21: «проверь что все настройки рабочие»): while ScamLabRun renders a side, the scam_dev.txt lines
+     * read as this map (the shot's lines, without the lines of the settings compared, with the side's own developer lines)
+     * instead of the file, as PreferenceValue.overlay does for the preferences: a line of the compared setting no longer gives
+     * A = B, and side A has the shot's lines, not today's file. Null: the file.
+     */
+    private static volatile java.util.Map<String, Float> labDev;
+
+    public static void labDevOverlay(java.util.Map<String, Float> lines) {
+        labDev = lines == null ? null : java.util.Collections.unmodifiableMap(new HashMap<>(lines));
+    }
+
+    /** The scam_dev.txt lines of the file now (a copy; never the lab's overlay): what a shot records for the lab. */
+    public static java.util.Map<String, Float> scamDevLines() {
+        refreshScamDev();
+        return new HashMap<>(scamDevValues);
+    }
+
     private static Float scamDevValue(String key) {
+        final java.util.Map<String, Float> lab = labDev;
+        if (lab != null) return lab.get(key);
+        refreshScamDev();
+        return scamDevValues.get(key);
+    }
+
+    private static void refreshScamDev() {
         long now = System.nanoTime();
         if (scamDevStamp == -1 || now - scamDevChecked > 2_000_000_000L) {
             scamDevChecked = now;
@@ -1005,7 +1071,7 @@ public class PreferenceKeys {
                 String text = null;
                 if (file != null && file.isFile()) {
                     stamp = file.lastModified();
-                    if (stamp == scamDevStamp) return scamDevValues.get(key);
+                    if (stamp == scamDevStamp) return;
                     try {
                         text = new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8);
                     } catch (java.io.IOException | SecurityException denied) {
@@ -1027,7 +1093,6 @@ public class PreferenceKeys {
             scamDevStamp = stamp;
             scamDevValues = values;
         }
-        return scamDevValues.get(key);
     }
 
     /**

@@ -325,7 +325,8 @@ public final class FilmSim {
         public final Format format;
         /**
          * 0..2 of the stock's own grain / halation / softness; exposure and print exposure in stops; tone (the film's contrast) -1..1;
-         * the enlarger's magenta / yellow filters over the neutral (Kodak CC); strength 0..1.
+         * the enlarger's magenta / yellow filters over the neutral (Kodak CC); strength 0..1 (the colour, the grain, the halation
+         * and the softness: {@link #halationAmounts}, {@link #softnessApplied}, {@link #grainApplied}).
          */
         public final float grain, halation, softness, exposure, printEv, tone, strength;
         public final float printM, printY;
@@ -355,6 +356,26 @@ public final class FilmSim {
         public String lutKey() {
             return stock.id + "|" + (stock.reversal() ? "-" : print.id) + "|" + fmt(exposure) + "|" + fmt(printEv) + "|" + fmt(tone)
                     + "|" + fmt(printM) + "|" + fmt(printY);
+        }
+
+        /**
+         * «Сила симуляции» on the spatial effects (settings audit 2026-10-21: at 50 % they applied in full): each layer's halation
+         * amount (the stock's antihalation leak x «Ореол» x the strength), as FilmHalation and the preview (FilmEffects) apply it.
+         */
+        public float[] halationAmounts() {
+            final float[] a = new float[3];
+            for (int c = 0; c < 3; c++) a[c] = stock.halation[c] * halation * strength;
+            return a;
+        }
+
+        /** «Мягкость плёнки» x the strength: the scale of the in-emulsion scatter and of a classic stock's sharpness blur. */
+        public float softnessApplied() {
+            return softness * strength;
+        }
+
+        /** «Зерно» x the strength: the grain of every stock (the reference model's and the classic one). */
+        public float grainApplied() {
+            return grain * strength;
         }
 
         /** The film's pixel size (um) on an image {@code longPx} pixels long; 0 without a format. */

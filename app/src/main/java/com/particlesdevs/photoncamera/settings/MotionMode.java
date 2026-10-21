@@ -71,9 +71,14 @@ public final class MotionMode {
         return wanted;
     }
 
-    /** Whether the mode replaces this hybrid key. */
-    static boolean replaces(String key) {
+    /** Whether the mode replaces this hybrid key (after pref_scam_hybrid_). */
+    public static boolean replaces(String key) {
         return DEFAULTS.containsKey(key);
+    }
+
+    /** The mode's own preference of a hybrid key it replaces: pref_scam_hybrid_mm_&lt;key&gt; (the lab compares it on a «Движение» shot). */
+    public static String prefKey(String key) {
+        return "pref_scam_hybrid_" + PREFIX + key;
     }
 
 }

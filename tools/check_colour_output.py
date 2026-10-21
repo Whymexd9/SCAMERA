@@ -108,6 +108,18 @@ def without_p311_rim(src: str) -> str:
     return src
 
 
+# P315: no positive detail delta inside a light's footprint (two parallel bright lines along LED fan rings). The token comparison
+# takes the line out again (its comment is dropped with the other comments); the GPU comparison renders the kernel's full-resolution
+# path (fU 1, no bounded delta), where it cannot act.
+P315_RAIL_LINE = '            if (delta > 0.0) delta *= 1.0 - smoothstep(0.0, 1.0, lightW);\n'
+
+
+def without_p315_rails(src: str) -> str:
+    """P315 (owner, X8U LED fan rings: two parallel lines with a darker gap along the core): the bounded detail delta keeps no
+    positive part inside a light's B-spline footprint; taken out for the token comparison (shader_part checks that it is there)."""
+    return src.replace(P315_RAIL_LINE, '', 1)
+
+
 def with_p310_white(src: str) -> str:
     """The P310 edit on the baseline shader (no TONE_OP there: the AgX gate the default TONE_OP 0 takes)."""
     src = src.replace('\r\n', '\n')
@@ -266,8 +278,10 @@ def shader_part(strict: bool) -> None:
     n = new.replace('\r\n', '\n')
     check('float lightRimDelta(' in n and all(e[0] in n for e in P311_RIM_EDITS),
           'combine.glsl lost the P311 rim rule of the detail delta (the dark / crimson line beside LED rings comes back)')
-    got = token_hash(without_p311_rim(without_p310_white(without_highp_int(n))))
-    print('combine.glsl P3_OUT 0 token stream (without the P305 highp int and the P311 rim rule, the P310 AgX white gate as the scene gate): %s' % got)
+    check(P315_RAIL_LINE in n, 'combine.glsl lost the P315 rail rule of the detail delta (two lines along LED rings come back)')
+    got = token_hash(without_p311_rim(without_p315_rails(without_p310_white(without_highp_int(n)))))
+    print('combine.glsl P3_OUT 0 token stream (without the P305 highp int, the P311 rim rule and the P315 rail rule, the P310 AgX '
+          'white gate as the scene gate): %s' % got)
     check(got == BASELINE_COMBINE_TOKENS, 'combine.glsl (P3_OUT 0) differs from the pre-P46 shader: %s' % got)
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],

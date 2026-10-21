@@ -49,6 +49,7 @@ public class DngCreator {
     private native void setIso(long nativePtr, short iso);
     private native void setExposureTime(long nativePtr, double exposureTime);
     private native void setCFAPattern(long nativePtr, int pattern);
+    private native void setMosaicBlock(long nativePtr, int block);
     private native void setGainMap(long nativePtr, float[] gainMap, int xmin, int ymin, int xmax, int ymax, int width, int height);
     private native void setAperture(long nativePtr, double aperture);
     private native void setFocalLength(long nativePtr, double focalLength);
@@ -414,6 +415,15 @@ public class DngCreator {
         setCFAPattern(nativePtr, pattern);
     }
 
+    /**
+     * P318: the colour block of the stored mosaic - 2 Quad, 4 Tetra (any other value: Bayer). The file then declares the
+     * CFA order over the blocks (CFARepeatPatternDim 2b x 2b), the black level and the lens-shading GainMap by block too.
+     * Call before {@link #setParameters}, whose GainMap is placed by it.
+     */
+    public void setMosaicBlock(int block) {
+        setMosaicBlock(nativePtr, block);
+    }
+
     public void setGainMap(float[] gainMap, int xmin, int ymin, int xmax, int ymax, int width, int height) {
         if (gainMap.length < 4) {
             throw new IllegalArgumentException("Gain map must have 4 elements");
@@ -485,6 +495,7 @@ public class DngCreator {
     }
 
     public void setParameters(Parameters parameters) {
+        setMosaicBlock(parameters.dngMosaicBlock); // P318: before the GainMap below
         short[] blackLevel = new short[4];
         for (int i = 0; i < 4; i++) {
             blackLevel[i] = (short) parameters.blackLevel[i];

@@ -76,7 +76,7 @@ public final class FilmGrain extends Node {
             glProg.setTexture("InputBuffer", in);
             glProg.setTexture("Noise", v);
             glProg.setTexture3D("GrainLut", tex);
-            final float scale = set.grain * set.strength / um;
+            final float scale = set.grainApplied() / um;
             glProg.setVar("scale", scale);
             glProg.setVar("lutSize", (float) GRAIN_LUT);
             glProg.drawBlocks(out);
@@ -107,7 +107,7 @@ public final class FilmGrain extends Node {
             runReference(in, um, started);
             return;
         }
-        final float blur = set.stock.mtfUm / um * set.softness;
+        final float blur = set.stock.mtfUm / um * set.softnessApplied(); // x the simulation's strength, as the grain
         if (blur >= .33f) {
             final GLTexture h = new GLTexture(in.mSize, in.mFormat);
             glProg.useAssetProgram("film/blur", false);
@@ -130,7 +130,7 @@ public final class FilmGrain extends Node {
             final FilmSim.Stock st = set.stock;
             // a print sees the negative's grain through its own contrast; a projected film shows its own
             final float through = st.reversal() ? 1f : set.print.film ? 3.0f : 2.7f;
-            s = sigma(st.rms, st.grainUm, um) * through * GRAIN_SCALE * set.grain;
+            s = sigma(st.rms, st.grainUm, um) * through * GRAIN_SCALE * set.grainApplied();
             final float cell = Math.max(1f, st.grainUm / um);
             final GLTexture out = new GLTexture(in.mSize, in.mFormat);
             glProg.useAssetProgram("film/grain", false);

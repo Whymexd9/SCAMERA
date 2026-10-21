@@ -65,6 +65,12 @@ public final class LiveRawFrame {
     private static double noiseS,noiseO;
     private static float whiteLevel = 1023.0f;
     private static final float[] blackLevel = new float[] {0, 0, 0, 0};
+    /** P315: the black of a stream that came without its pedestal (PedestalFloor), measured on the viewfinder's own frames. */
+    private static final PedestalFloor PEDESTAL = new PedestalFloor();
+    /** P315: the black may come from the frame's floor (CaptureController: no black override and «чёрный по данным» on). */
+    private static volatile boolean blackFromData = true;
+
+    public static void setBlackFromData(boolean value) { blackFromData = value; }
     private static final float[] wbGains = new float[] {1, 1, 1};
     private static final float[] colorTransform = new float[] {1, 0, 0, 0, 1, 0, 0, 0, 1};
     /** P108: frames this large with a 2x2 mosaic are binned for the viewfinder (a 50 MP Quad-Bayer full-resolution stream). */
@@ -208,10 +214,13 @@ public final class LiveRawFrame {
     /**
      * P266 (owner, 2026-10-19: «это тоже можно добавить» - the RAW viewfinder's resolution, the RAW's aspect kept, the photo
      * unchanged): the longest side the viewfinder's frame may have. 0 = auto (as before: 50 / 200 MP frames binned), -1 = the
-     * full frame (no binning at all), else a plain Bayer frame halved (one 2 x 2 quad of each 4 x 4) until it fits.
+     * full frame (no binning at all), else a plain Bayer frame halved (one 2 x 2 quad of each 4 x 4) until it fits - P316 a packed
+     * RAW10 / RAW12 one and a mosaic's cell means too.
      */
     private static volatile int maxLongSide;
     private static ByteBuffer halfA, halfB;
+    /** P316: a packed frame unpacked before its halvings (the size cap of RAW10 / RAW12 frames). */
+    private static ByteBuffer unpacked;
 
     public static void setMaxLongSide(int px) {
         maxLongSide = px;
@@ -392,15 +401,31 @@ public final class LiveRawFrame {
                     automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR, minGain, maxGain, sceneLuma, cellMeans);
             return;
         }
-        // P266: the module's «Разрешение видоискателя RAW» - a plain 16-bit Bayer frame halved until it fits (P314: not a frame of
-        // cell means: a mosaic was never halved)
-        if (cap > 0 && bin == 1 && !means && format == android.graphics.ImageFormat.RAW_SENSOR && (stride & 1) == 0
-                && (long) (h - 1) * stride + w * 2L <= plane.remaining()) {
+        // P266: the module's «Разрешение видоискателя RAW» - a plain Bayer frame halved until it fits. P316 (settings audit): a
+        // packed RAW10 / RAW12 frame too (unpacked first: the X8U's default raw10, RAW10-only lenses), and a Quad / Tetra frame's
+        // cell means (P314: one Bayer site a cell, halved as any Bayer frame) - the steps used to change only 16-bit plain Bayer
+        final boolean packedIn = com.particlesdevs.photoncamera.util.RawUnpack.isPacked(format);
+        if (cap > 0 && bin == 1 && (packedIn
+                ? (long) (h - 1) * stride + com.particlesdevs.photoncamera.util.RawUnpack.packedRowBytes(format, w) <= plane.remaining()
+                        && (long) w * h * 2 <= Integer.MAX_VALUE
+                : format == android.graphics.ImageFormat.RAW_SENSOR && (stride & 1) == 0
+                        && (long) (h - 1) * stride + w * 2L <= plane.remaining())) {
             final int n = halvings(w, h, cap);
             if (n > 0) {
                 ByteBuffer src = plane;
                 int sw0 = w, sh0 = h, st = stride;
                 synchronized (LiveRawFrame.class) {
+                    if (packedIn) {
+                        final int need = w * h * 2;
+                        if (unpacked == null || unpacked.capacity() < need)
+                            unpacked = ByteBuffer.allocateDirect(need).order(ByteOrder.nativeOrder());
+                        unpacked.clear();
+                        if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(plane.duplicate(), format, w, h, stride, unpacked)) return;
+                        unpacked.position(0);
+                        unpacked.limit(need);
+                        src = unpacked;
+                        st = w * 2;
+                    }
                     for (int i = 0; i < n; i++) {
                         final int need = (sw0 / 2) * (sh0 / 2) * 2;
                         ByteBuffer into = (i & 1) == 0 ? halfA : halfB;
@@ -418,6 +443,7 @@ public final class LiveRawFrame {
                 w = sw0;
                 h = sh0;
                 stride = st;
+                format = android.graphics.ImageFormat.RAW_SENSOR;
             }
         }
         final boolean packed = com.particlesdevs.photoncamera.util.RawUnpack.isPacked(format);
@@ -467,6 +493,10 @@ public final class LiveRawFrame {
             }
             target.flip();
         }
+        // P315 (OPPO Find X8 Ultra, sensor mode 8: the RAW without its 64 DN black pedestal, the viewfinder green and half black):
+        // the frame's own floor when its samples prove the pedestal lost (the GL develop, LiveArkMeter and LiveRawMeter read it)
+        if (black != null && blackFromData && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vf_black_floor", true))
+            black = PEDESTAL.black(generation, target, w, h, w * 2, block, black);
         synchronized (LOCK) {
             if (!enabled || session != generation) return;
             publishedNanos = System.nanoTime();

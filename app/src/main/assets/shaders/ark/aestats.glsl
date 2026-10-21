@@ -10,6 +10,8 @@ precision highp sampler2D;
 // aeSums[2 * group] (the CPU adds them in double). Same arithmetic as ArkAe.stats: Rec.709 luma, NaN -> 0, the bin
 // int(clamp(v * invClip, 0, 1) * 4095.99). P159: the max channel above the ceiling in 48 log2 bins (12 an octave,
 // ArkAe.tailBin) -> aeTail.
+// P317: memoryBarrierShared() before every barrier(): in ESSL 3.10 (8.14) barrier() alone does not order the accesses to
+// shared variables (only 3.20 says it does); the rare small weight mismatches on Adreno 830 may come from it (unproven).
 #define PASS 1
 #define LAYOUT //
 LAYOUT
@@ -33,7 +35,7 @@ uint orderKey(float f) {
 
 void main() {
     if (gl_LocalInvocationIndex == 0u) localMax = 0u;
-    barrier();
+    memoryBarrierShared(); barrier();
     ivec2 origin = ivec2(gl_WorkGroupID.xy) * TILE + ivec2(gl_LocalInvocationID.xy);
     uint best = 0u;
     for (int j = 0; j < TILE / GROUP; j++) {
@@ -48,7 +50,7 @@ void main() {
         }
     }
     if (best != 0u) atomicMax(localMax, best);
-    barrier();
+    memoryBarrierShared(); barrier();
     if (gl_LocalInvocationIndex == 0u && localMax != 0u) atomicMax(maxKey[0], localMax);
 }
 #else
@@ -63,7 +65,7 @@ void main() {
     uint li = gl_LocalInvocationIndex;
     for (uint b = li; b < 4096u; b += uint(GROUP * GROUP)) bins[b] = 0u;
     if (li < 48u) tailBins[li] = 0u;
-    barrier();
+    memoryBarrierShared(); barrier();
     ivec2 origin = ivec2(gl_WorkGroupID.xy) * TILE + ivec2(gl_LocalInvocationID.xy);
     float halfW = float(sizeU.x) * 0.5, halfH = float(sizeU.y) * 0.5;
     float sumY = 0.0, sumLog = 0.0;
@@ -95,24 +97,24 @@ void main() {
             }
         }
     }
-    barrier();
+    memoryBarrierShared(); barrier();
     for (uint b = li; b < 4096u; b += uint(GROUP * GROUP)) {
         uint n = bins[b];
         if ((n & 0xffffu) != 0u) atomicAdd(histY[b], n & 0xffffu);
         if ((n >> 16) != 0u) atomicAdd(histM[b], n >> 16);
     }
     if (li < 48u && tailBins[li] != 0u) atomicAdd(tail[li], tailBins[li]);
-    barrier();
+    memoryBarrierShared(); barrier();
     // the group's sums: a tree over the 64 invocations in the (now free) shared bins
     bins[2u * li] = floatBitsToUint(sumY);
     bins[2u * li + 1u] = floatBitsToUint(sumLog);
-    barrier();
+    memoryBarrierShared(); barrier();
     for (uint s = uint(GROUP * GROUP) / 2u; s > 0u; s >>= 1) {
         if (li < s) {
             bins[2u * li] = floatBitsToUint(uintBitsToFloat(bins[2u * li]) + uintBitsToFloat(bins[2u * (li + s)]));
             bins[2u * li + 1u] = floatBitsToUint(uintBitsToFloat(bins[2u * li + 1u]) + uintBitsToFloat(bins[2u * (li + s) + 1u]));
         }
-        barrier();
+        memoryBarrierShared(); barrier();
     }
     if (li == 0u) {
         uint group = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;

@@ -103,7 +103,7 @@
     <string name="zsl_buffer_count">ZSL buffer frames</string>
     <string name="zsl_buffer_count_summary">RAW frames kept before the press. Higher: more memory used; lower: the merge may run short of frames.</string>
     <string name="live_viewfinder_raw">Live viewfinder</string>
-    <string name="live_viewfinder_raw_summary">The viewfinder develops the RAW itself. Off: the standard camera preview. The photo is not affected.</string>
+    <string name="live_viewfinder_raw_summary">The viewfinder develops the RAW itself. Off: the standard camera preview, except on modules without an ISP stream (ISZ, FULLRES, a sensor mode with “ISP stream” Auto, “ISP stream” Off or Fake off) and modules streaming a Quad / Tetra mosaic: there the viewfinder is always from the RAW. The photo is not affected.</string>
     <!-- Settings sheet handles (TalkBack) -->
     <string name="sheet_handle_open">Open settings panel</string>
     <string name="sheet_handle_toggle">Expand or collapse settings panel</string>

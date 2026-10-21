@@ -221,10 +221,15 @@ public class SensorConfigPreferenceGenerator {
         pick.setDefaultValue("-1");
         pick.setIcon(com.particlesdevs.photoncamera.R.drawable.settings_ic_sliders);
         pick.setOrder(99);
-        final String hint = Lang.t(context, "Режим сенсора из таблицы камеры: RAW-поток его размера, ключ режима в сессии и запросах, без потока ISP. "
+        // P316 (settings audit): the ISP stream stays out only with «Поток ISP» Auto (or Off); on OPPO / OnePlus / realme a picked
+        // row's shots come from the ring alone (P315 SensorModePick.seriesAllowed), which the row says
+        final String hint = Lang.t(context, "Режим сенсора из таблицы камеры: RAW-поток его размера, ключ режима в сессии и запросах, без потока ISP (при «Поток ISP» Авто). "
                         + "Если камера откажет — модуль вернётся в «Авто». Применяется при следующем открытии камеры.",
-                "A sensor mode of the camera's table: a RAW stream of its size, the mode key on the session and the requests, no ISP stream. "
-                        + "If the camera refuses it the module goes back to Auto. Applied the next time the camera opens.");
+                "A sensor mode of the camera's table: a RAW stream of its size, the mode key on the session and the requests, no ISP stream (with “ISP stream” Auto). "
+                        + "If the camera refuses it the module goes back to Auto. Applied the next time the camera opens.")
+                + (com.particlesdevs.photoncamera.capture.SensorModePick.pickTakesRingOnly() ? " " + Lang.t(context,
+                        "OPPO / OnePlus / realme: снимок только из буфера — без кадров светов и теней, ручной длинной выдержки и подстройки под мерцание ламп.",
+                        "OPPO / OnePlus / realme: the shot comes from the ring only - no highlight or shadow frames, no manual long shutter, no lamp-flicker timing.") : "");
         pick.setSummaryProvider(p -> {
             final CharSequence e = ((ListPreference) p).getEntry();
             return (e == null ? entries[0] : e) + "\n" + hint;

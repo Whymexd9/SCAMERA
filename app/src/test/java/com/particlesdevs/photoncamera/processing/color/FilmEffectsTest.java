@@ -1,5 +1,6 @@
 package com.particlesdevs.photoncamera.processing.color;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.BeforeClass;
@@ -54,6 +55,24 @@ public class FilmEffectsTest {
                 ((halo[ring] >> 16) & 255) > ((dark[ring] >> 16) & 255) + 3 && ((halo[ring] >> 16) & 255) > (halo[ring] & 255) + 2);
         final int[] soft = FilmEffects.light(base, w, h, set(0, 0, 2, 0));
         assertTrue("softness " + diff(soft, base), diff(soft, base) > 0.2);
+    }
+
+    /** Settings audit 2026-10-21: «Сила симуляции» scales the halation, the softness and the grain, not only the colour. */
+    @Test
+    public void theStrengthScalesTheSpatialEffects() {
+        final FilmSim.Settings full = new FilmSim.Settings(FilmSim.stock("kodak_gold_200"), FilmSim.print("kodak_portra_endura"),
+                FilmSim.format("135"), 1, 2, 1.5f, 0, 0, 0, 1), half = new FilmSim.Settings(full.stock, full.print, full.format,
+                1, 2, 1.5f, 0, 0, 0, .5f);
+        for (int c = 0; c < 3; c++) assertEquals(full.halationAmounts()[c] / 2, half.halationAmounts()[c], 1e-6f);
+        assertEquals(full.softnessApplied() / 2, half.softnessApplied(), 1e-6f);
+        assertEquals(full.grainApplied() / 2, half.grainApplied(), 1e-6f);
+        assertEquals(2 * full.stock.halation[0], full.halationAmounts()[0], 0f); // strength 1: the photo as before
+        final int w = 160, h = 120;
+        final int[] dark = new int[w * h];
+        for (int i = 0; i < dark.length; i++) dark[i] = 0xFF282828;
+        for (int y = h / 2 - 4; y <= h / 2 + 4; y++) for (int x = w / 2 - 4; x <= w / 2 + 4; x++) dark[y * w + x] = 0xFFFFFFFF;
+        final double atFull = diff(FilmEffects.light(dark, w, h, full), dark), atHalf = diff(FilmEffects.light(dark, w, h, half), dark);
+        assertTrue("half " + atHalf + " full " + atFull, atHalf > 0 && atHalf < atFull * .8);
     }
 
     @Test

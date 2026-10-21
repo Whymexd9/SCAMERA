@@ -62,13 +62,12 @@ public final class FilmHalation extends Node {
         final GLFormat rgba = new GLFormat(GLFormat.DataType.FLOAT_16, 4);
         final List<GLTexture> temp = new ArrayList<>();
         try {
-            final float[] a = new float[3];
-            for (int c = 0; c < 3; c++) a[c] = set.stock.halation[c] * set.halation;
+            final float[] a = set.halationAmounts(); // x «Сила симуляции»
             final boolean halo = a[0] + a[1] + a[2] > 0f;
             GLTexture e1 = in;
             if (set.stock.spectral != null && set.softness > 0f) {
                 // P286: the scatter (the reference's scatter_amount 1, spatial scale = the setting)
-                final float k = set.softness / um;
+                final float k = set.softnessApplied() / um; // x «Сила симуляции»
                 final GLTexture h = new GLTexture(in.mSize, rgba), h2 = halo ? new GLTexture(in.mSize, rgba) : basePipeline.getMain();
                 temp.add(h);
                 if (halo) temp.add(h2);

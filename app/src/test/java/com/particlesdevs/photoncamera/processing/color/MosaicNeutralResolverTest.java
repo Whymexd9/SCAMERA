@@ -142,6 +142,37 @@ public class MosaicNeutralResolverTest {
         assertTrue(MosaicNeutralResolver.curveDistance("prior", new float[]{0.4668f, 1f, 1.0f}, prior) > 0.1f);
     }
 
+    /** The X8U camera 2's curve as logged (ln b = -0.5846 - 0.6602 (ln r + 0.7176), ln r -0.856 .. -0.515), its plain sessions' points. */
+    private static void teachX8uMain() {
+        for (int i = 0; i <= 6; i++) {
+            final double lr = -0.856 + i * (0.856 - 0.515) / 6, lb = -0.5846 - 0.6602 * (lr + 0.7176);
+            for (int k = 0; k < 4; k++) MosaicNeutral.learn("x8u", (float) Math.exp(lr), (float) Math.exp(lb));
+        }
+    }
+
+    /**
+     * P315 (owner's X8U ISZ shots, 2026-10-21: «обесцвеченные и с странным бб»): the OPPO sensor-mode route keeps the HAL's converged
+     * neutral on the curve (0.446 / 0.589, as the plain mode's); a P121 estimate 0.745 off the curve (the LED glow on the white case)
+     * gives way to the camera's neutral on any route; one nearer the curve, or a camera neutral off it, keeps P121.
+     */
+    @Test public void theX8uIszKeepsItsHalNeutral() {
+        teachX8uMain();
+        final float[] hal = {0.446f, 1f, 0.589f};
+        final float d = MosaicNeutralResolver.curveDistance("x8u", hal, null);
+        assertTrue("on the curve: " + d, d < 0.03f);
+        final MosaicNeutralResolver.Decision k = MosaicNeutralResolver.decide(MosaicNeutralResolver.Press.sensorMode(), hal, CONVERGED, d);
+        assertNotNull(k);
+        assertEquals(0.446f, k.neutral[0], 1e-6f);
+        assertTrue(k.how, k.how.contains("sensor-mode route"));
+        assertNull(MosaicNeutralResolver.decide(MosaicNeutralResolver.Press.sensorMode(), hal, SEARCHING, d));
+        final String keep = MosaicNeutralResolver.offLocus("x8u", 0.745f, hal, null);
+        assertNotNull(keep);
+        assertTrue(keep, keep.contains("camera's neutral 0.446 / 0.589 kept"));
+        assertNull("an estimate near the curve stays", MosaicNeutralResolver.offLocus("x8u", 0.3f, hal, null));
+        assertNull("a camera neutral off the curve is no better", MosaicNeutralResolver.offLocus("x8u", 0.745f, new float[]{1f, 1f, 1f}, null));
+        assertNull("no curve to tell", MosaicNeutralResolver.offLocus("none", 0.745f, hal, null));
+    }
+
     private static CaptureResult result(int awbMode, int awbState, float r, float b) {
         final CaptureResult c = mock(CaptureResult.class);
         when(c.get(CaptureResult.CONTROL_AWB_MODE)).thenReturn(awbMode);

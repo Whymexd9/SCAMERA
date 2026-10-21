@@ -122,8 +122,9 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         // Developed RAW takes over the viewfinder when a frame is available, so
         // what is framed is what the pipeline produces rather than the ISP's own
         // rendering. Falls through to the ISP path whenever a frame is missing,
-        // the shaders failed, or the setting is off - the viewfinder must never
-        // go blank because of this.
+        // the shaders failed, or nothing asks for it (the setting off and a session
+        // with its ISP stream and no mosaic: CaptureController forces the RAW
+        // viewfinder without them) - the viewfinder must never go blank because of this.
         // P13: a colour-block mosaic stream (sensor mode without remosaic) has a purple ISP preview: developed RAW then too
         final boolean rawLook =
                 com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderRawEnabled()

@@ -1,5 +1,6 @@
 precision highp float;
 precision highp sampler2D;
+precision highp int;    // P317: as film/noise.glsl (only small loop indices are converted here, exact either way)
 // P281: the film's own sharpness (FilmGrain): a separable Gaussian of the film's MTF (sigma in pixels of the frame), along
 // one axis per pass; taps spaced to cover three sigma with at most 25 of them.
 uniform sampler2D InputBuffer;

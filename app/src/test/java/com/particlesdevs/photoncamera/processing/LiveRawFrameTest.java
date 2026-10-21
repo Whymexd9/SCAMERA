@@ -112,7 +112,7 @@ public class LiveRawFrameTest {
                 LiveRawFrame.setEnabled(false);LiveRawFrame.setEnabled(true);
                 LiveRawFrame.publish(plane,w,h,w*2,3,1023,new float[]{64,64,64,64},new float[]{2,1,1.5f},null,null,1,1,null,block,100,6400,true,0,0,android.graphics.ImageFormat.RAW_SENSOR);
                 f=LiveRawFrame.acquire();
-                assertEquals("a size cap bins the mosaic too, never halves its means",w/block,f.width);assertTrue(f.cellMean);
+                assertEquals("a size cap bins the mosaic too (its means fit 1920)",w/block,f.width);assertTrue(f.cellMean);
             }finally{LiveRawFrame.setMaxLongSide(0);LiveRawFrame.setEnabled(false);}
         }
         assertTrue(LiveRawFrame.binsCellMeans(4096,3072,2,0));
@@ -249,6 +249,62 @@ public class LiveRawFrameTest {
         // rows 0, 1, 4, 5 and columns 0, 1, 4, 5: the CFA phase stays (an even row / column stays even)
         int[] keep = {0, 1, 4, 5};
         for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) assertEquals(keep[y] * 100 + keep[x], s.get(y * 4 + x));
+    }
+
+    /** The site a halving keeps: one 2 x 2 quad of each 4 x 4. */
+    private static int kept(int x) { return 4 * (x >> 1) + (x & 1); }
+
+    /** P316 (settings audit): «Разрешение видоискателя RAW» halves a packed RAW10 frame too (it was unpacked at its full size). */
+    @Test
+    public void theViewfinderSizeHalvesAPackedFrame() {
+        final int w = 64, h = 32, row = w * 5 / 4;
+        byte[] data = new byte[row * h];
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x += 4) {
+            int o = y * row + x * 5 / 4, low = 0;
+            for (int i = 0; i < 4; i++) { int v = (y * 7 + (x + i) * 3) % 1024; data[o + i] = (byte) (v >> 2); low |= (v & 3) << (2 * i); }
+            data[o + 4] = (byte) low;
+        }
+        LiveRawFrame.setEnabled(true);
+        try {
+            LiveRawFrame.setMaxLongSide(16);
+            LiveRawFrame.publish(ByteBuffer.wrap(data), w, h, row, 0, 1023, null, null, null, null, 1, 1, null, 1, 100, 6400, true, 0, 0, android.graphics.ImageFormat.RAW10);
+            LiveRawFrame.Frame f = LiveRawFrame.acquire();
+            assertNotNull(f);
+            assertEquals(w / 4, f.width); assertEquals(h / 4, f.height); assertEquals(w / 4 * 2, f.rowStride);
+            java.nio.ShortBuffer s = f.buffer.order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
+            for (int y = 0; y < h / 4; y++) for (int x = 0; x < w / 4; x++)
+                assertEquals(x + "," + y, (kept(kept(y)) * 7 + kept(kept(x)) * 3) % 1024, s.get(y * (w / 4) + x) & 0xffff);
+        } finally { LiveRawFrame.setMaxLongSide(0); LiveRawFrame.setEnabled(false); }
+    }
+
+    /** P316 (settings audit): ... and a Quad / Tetra frame's cell means (the steps did nothing there, only «Full»). */
+    @Test
+    public void theViewfinderSizeHalvesAMosaicsCellMeans() {
+        for (int block : new int[]{2, 4}) {
+            final int w = 32 * block, h = 16 * block;
+            ByteBuffer plane = ByteBuffer.allocate(w * h * 2).order(java.nio.ByteOrder.nativeOrder());
+            for (int i = 0; i < w * h; i++) plane.putShort(i * 2, (short) (64 + (i * 37) % 900));
+            LiveRawFrame.setEnabled(false); LiveRawFrame.setEnabled(true);
+            try {
+                LiveRawFrame.publish(plane, w, h, w * 2, 3, 1023, new float[]{64, 64, 64, 64}, new float[]{2, 1, 1.5f}, null, null, 1, 1, null, block, 100, 6400, true, 0, 0, android.graphics.ImageFormat.RAW_SENSOR);
+                LiveRawFrame.Frame means = LiveRawFrame.acquire();
+                assertNotNull(means);
+                assertEquals(32, means.width); assertTrue(means.cellMean);
+                java.nio.ShortBuffer m = means.buffer.order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
+                int[] full = new int[32 * 16];
+                for (int i = 0; i < full.length; i++) full[i] = m.get(i) & 0xffff;
+                LiveRawFrame.setMaxLongSide(8);
+                LiveRawFrame.setEnabled(false); LiveRawFrame.setEnabled(true);
+                LiveRawFrame.publish(plane, w, h, w * 2, 3, 1023, new float[]{64, 64, 64, 64}, new float[]{2, 1, 1.5f}, null, null, 1, 1, null, block, 100, 6400, true, 0, 0, android.graphics.ImageFormat.RAW_SENSOR);
+                LiveRawFrame.Frame f = LiveRawFrame.acquire();
+                assertNotNull(f);
+                assertEquals("block " + block, 8, f.width); assertEquals(4, f.height); assertEquals(1, f.cfaBlock);
+                assertTrue(f.cellMean); assertEquals(3, f.cfaPattern);
+                java.nio.ShortBuffer s = f.buffer.order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
+                for (int y = 0; y < 4; y++) for (int x = 0; x < 8; x++)
+                    assertEquals("block " + block + " " + x + "," + y, full[kept(kept(y)) * 32 + kept(kept(x))], s.get(y * 8 + x) & 0xffff);
+            } finally { LiveRawFrame.setMaxLongSide(0); LiveRawFrame.setEnabled(false); }
+        }
     }
 
 }

@@ -159,6 +159,20 @@ public class HybridPlanTest {
         for (int i = 3; i < 6; i++) { assertEquals(ImageFrame.CaptureRole.LONG, plan.requests.get(i).role); assertEquals(1318, plan.requests.get(i).iso); }
     }
 
+    /** P316: «Кадры светов: число» sets how many ultrashort frames are taken, with Mochi on too (it was raised to 3 and the extra dropped). */
+    @Test public void bentoFramesAsSetWithMochiOn() {
+        prefs.when(PreferenceKeys::getHybridMochi).thenReturn(2);
+        pinned.put("bento", 2f);
+        for (int set = 1; set <= 3; set++) {
+            pinned.put("bento_frames", (float) set);
+            assertEquals(set, HybridPlan.bentoFrames());
+            int us = 0;
+            for (HybridPlan.Request r : HybridPlan.build(10_000_000L, 659, 0f, camera(12000)).requests)
+                if (r.role == ImageFrame.CaptureRole.EXTRA_SHORT) us++;
+            assertEquals(set, us);
+        }
+    }
+
     @Test public void pixel7TakesBentoOnlyWhereTheFrameClips() {
         pinned.put("bento", 2f);
         assertEquals(ImageFrame.CaptureRole.EXTRA_SHORT, HybridPlan.build(10_000_000L, 659, 0f, camera(12000)).requests.get(0).role);

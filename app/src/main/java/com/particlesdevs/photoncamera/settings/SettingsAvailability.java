@@ -27,7 +27,16 @@ public final class SettingsAvailability {
     private boolean mosaicStreams = true;
     /** P190: a module here has FULLRES 50 / 200 MP shots (FullResProfiles.sizeOffered); assumed unless told otherwise. */
     private boolean fullRes50 = true, fullRes200 = true;
+    /**
+     * P310: the highlight frames are blended after the merge (worker bentoBlend; scam_dev.txt "hybrid_bento_blend 0" mixes them
+     * inside the merge as before); assumed unless told otherwise.
+     */
+    private boolean bentoBlend = true;
+    /** The settings hold a FULLRES 200 MP profile now (its page in «Настройки по модулям»); false unless told otherwise. */
+    private boolean editing200;
     public SettingsAvailability(Map<String, ?> values) { this.values = values; }
+    /** The fact behind the NLM rows of a 200 MP profile: the settings edited now are a FULLRES 200 MP profile's. */
+    public SettingsAvailability editing200(boolean on) { editing200 = on; return this; }
     /** The device fact behind «HEIC 10 бит»: the reason it is unavailable here (Android version, no Main10 / P010 encoder) or null. */
     public SettingsAvailability heic10Unavailable(String reason) { heic10Unavailable = reason; return this; }
     /** The device fact behind «HDR в HEIC / AVIF»: the reason it cannot act here (Android version) or null. */
@@ -45,6 +54,8 @@ public final class SettingsAvailability {
     public SettingsAvailability fullResSizes(boolean fifty, boolean twoHundred) { fullRes50 = fifty; fullRes200 = twoHundred; return this; }
     /** The device fact behind the mosaic merge rows: whether a module here has streamed a Quad / Tetra mosaic. */
     public SettingsAvailability mosaicStreams(boolean seen) { mosaicStreams = seen; return this; }
+    /** The fact behind «Кадры светов: ширина ядра»: the highlight frames are blended after the merge (not with scam_dev bento_blend 0). */
+    public SettingsAvailability bentoBlend(boolean on) { bentoBlend = on; return this; }
     private String text(String key, String fallback) {
         Object value = values.get(key); return value == null ? fallback : value.toString();
     }
@@ -98,19 +109,87 @@ public final class SettingsAvailability {
             return Lang.t("Только для многомасштабного шумодава в «Шумодав SHDR».", "Multiscale denoiser only (“SHDR denoiser”).");
         if (any(key, "pref_scam_hybrid_post_luma", "pref_scam_hybrid_post_chroma") && !nlm)
             return Lang.t("Только для шумодава NLM в «Шумодав SHDR».", "NLM denoiser only (“SHDR denoiser”).");
+        // P306: a 200 MP shot never takes the NLM denoise (ScamHdrDenoise: with "nlm" it keeps the merge alone)
+        if (any(key, "pref_scam_hybrid_post_luma", "pref_scam_hybrid_post_chroma") && editing200)
+            return Lang.t("На снимках 200 Мп NLM не работает: они остаются без шумодава. Выберите «Многомасштабный» в «Шумодав SHDR».",
+                    "NLM does not run on 200 MP shots: they keep no denoise. Choose “Multiscale” in “SHDR denoiser”.");
+        // the multiscale denoise boosts few-frame areas through its strength map only (ScamDenoise wantMap); NLM always does
+        if (key.equals("pref_scam_hybrid_bento_denoise_max") && !nlm && text("pref_scam_hybrid_dn_strength_map", "auto").trim().equals("uniform"))
+            return Lang.t("Только при «Карта силы» = «Авто»: при «Равномерно» многомасштабный шумодав не усиливает места из малого числа кадров.",
+                    "Only with “Strength map” = “Auto”: with “Uniform” the multiscale denoiser does not boost few-frame areas.");
         // Output size (pref_scam_hybrid_output): every size but the sensor's merges on the Sabre 2x grid; 12 / 16 / 20 MP are
         // then made with the downsampler (HybridFinalResize), 2x is kept as it is.
         String output = text("pref_scam_hybrid_output", "sensor").trim();
         if (key.equals("pref_scam_hybrid_downsampler") && !any(output, "12", "16", "20"))
             return Lang.t("Только при «Разрешение» 12, 16 или 20 МП.", "Only with “Resolution” 12, 16 or 20 MP.");
-        if (any(key, "pref_scam_hybrid_dn_chroma_2x_keep", "pref_scam_hybrid_auto2x") && output.equals("sensor"))
+        if (key.equals("pref_scam_hybrid_auto2x") && output.equals("sensor"))
             return Lang.t("Только на сетке 2×: «Разрешение» 12, 16, 20 МП или 2×.", "2× grid only: “Resolution” 12, 16, 20 MP or 2×.");
+        // P306: a 200 MP shot is denoised on its 2x2 means, the 2x grid path, whatever the resolution (ScamDenoise: s = 2)
+        if (key.equals("pref_scam_hybrid_dn_chroma_2x_keep") && output.equals("sensor") && !fullRes200)
+            return Lang.t("Только на сетке 2× («Разрешение» 12, 16, 20 МП или 2×) и в снимках 200 Мп.",
+                    "2× grid only (“Resolution” 12, 16, 20 MP or 2×) and 200 MP shots.");
         if (key.equals("pref_scam_hybrid_auto2x") && output.equals("2x"))
             return Lang.t("В «Разрешение 2×» всегда используется настоящая сетка склейки 2×; автоматическая замена на 1× выключена.",
                     "“Resolution 2×” always uses the native 2× merge grid; automatic 1× replacement is disabled.");
         // P128: the «Движение» rows replace the normal ones only while the mode is on (MotionMode, ParamController)
-        if (key.startsWith("pref_scam_hybrid_mm_") && !on("pref_motion_mode", false))
+        final boolean motion = on("pref_motion_mode", false);
+        if (key.startsWith("pref_scam_hybrid_mm_") && !motion)
             return Lang.t("Действует только в режиме «Движение» (кнопка в верхней панели).", "Acts only in “Motion” mode (the button in the top bar).");
+        // ...and while it is on, the merge reads the mode's value of a merge row it replaces (MotionMode.DEFAULTS, read by
+        // PreferenceKeys.hybridValue / hybridSwitch); it has no row for the base widening: always 0 there (P111)
+        if (motion && any(key, "pref_scam_hybrid_motion_boost", "pref_scam_hybrid_boost_value", "pref_scam_hybrid_motion_threshold"))
+            return Lang.t("В режиме «Движение» действует его значение (страница «Движение»).", "In “Motion” mode its own value applies (the “Motion” page).");
+        if (motion && key.equals("pref_scam_hybrid_widen_below"))
+            return Lang.t("В режиме «Движение» не действует: база там не расширяется.", "Not used in “Motion” mode: the base is never widened there.");
+        // «Порог дисперсии для усиления» is not replaced by the mode: it acts with the boost switch in effect (the mode's own in the mode) and F6
+        if (key.equals("pref_scam_hybrid_boost_threshold")
+                && !(motion ? on("pref_scam_hybrid_mm_motion_boost", true) : on("pref_scam_hybrid_motion_boost", true)))
+            return motion ? Lang.t("Включите «Усиление отбраковки при неоднородном движении» на странице «Движение».",
+                    "Turn on “Stronger rejection on uneven motion” on the “Motion” page.")
+                    : Lang.t("Включите «Усиление отбраковки при неоднородном движении».", "Turn on “Stronger rejection on uneven motion”.");
+        // Settings audit 2026-10-21 («Кадры светов и теней»): the mode replaces the photo rows of the ring's frame count and of the
+        // highlight / shadow switches too (MotionMode.DEFAULTS), and the frames' rows act through the switch the shot reads - the
+        // mode's own while it is on (the plan and the merge read it: PreferenceKeys.hybridValue / hybridSwitch)
+        if (motion && any(key, "pref_scam_hybrid_zsl_frames", "pref_scam_hybrid_bento", "pref_scam_hybrid_shasta"))
+            return Lang.t("В режиме «Движение» действует его значение (страница «Движение»).", "In “Motion” mode its own value applies (the “Motion” page).");
+        final String bento = (motion ? text("pref_scam_hybrid_mm_bento", "1") : text("pref_scam_hybrid_bento", "2")).trim();
+        final boolean shasta = motion ? on("pref_scam_hybrid_mm_shasta", false) : on("pref_scam_hybrid_shasta", true);
+        // «Кадры светов» off: no ultrashort frame is planned (HybridPlan) and the worker runs none of their passes
+        if (bento.equals("0") && any(key, "pref_scam_hybrid_bento_frames", "pref_scam_hybrid_bento_validate",
+                "pref_scam_hybrid_bento_motion_max", "pref_scam_hybrid_bento_factor", "pref_scam_hybrid_bento_trigger",
+                "pref_scam_hybrid_bento_sigma", "pref_scam_hybrid_bento_ramp", "pref_scam_hybrid_bento_chroma_sigma", "pref_scam_hybrid_bento_scam"))
+            return motion ? Lang.t("Включите «Кадры светов» на странице «Движение».", "Turn on “Highlight frames” on the “Motion” page.")
+                    : Lang.t("Включите «Кадры светов».", "Turn on “Highlight frames”.");
+        // «Кадры теней» off: no long frame is planned. The whole category follows the switch in effect here, not by
+        // android:dependency: in «Движение» the photo switch is greyed (the mode's own rules), which would grey its dependants too
+        if (!shasta && any(key, "pref_scam_hybrid_shasta_mode", "pref_scam_hybrid_shasta_motion_max", "pref_scam_hybrid_shasta_frames",
+                "pref_scam_hybrid_shasta_ev", "pref_scam_hybrid_shasta_sharpness", "pref_scam_hybrid_shasta_max_ratio", "pref_scam_hybrid_lut_sigma"))
+            return motion ? Lang.t("Включите «Кадры теней» на странице «Движение».", "Turn on “Shadow frames” on the “Motion” page.")
+                    : Lang.t("Включите «Кадры теней».", "Turn on “Shadow frames”.");
+        // the worker reads the motion limit of the long frames under shastaForce only («Всегда»)
+        if (key.equals("pref_scam_hybrid_shasta_motion_max") && !text("pref_scam_hybrid_shasta_mode", "2").trim().equals("2"))
+            return Lang.t("Только при «Кадры теней: режим» = «Всегда».", "Only with “Shadow frames: mode” = “Always”.");
+        // worker lutSigma: a frame's kernel widens only above a merge weight of 10 (lutLo). A shadow frame's weight is
+        // min(cap, ((TET ratio)^2 readB / readF)^exponent); the plan raises the gain first, so it is at most (4^EV)^exponent
+        if (key.equals("pref_scam_hybrid_lut_sigma")) {
+            final double ev = Math.max(1, Math.min(4, PreferenceNumber.read(values.get("pref_scam_hybrid_shasta_ev"), 1)));
+            final double fwe = PreferenceNumber.read(values.get("pref_scam_hybrid_fwe"), 1);
+            final double cap = PreferenceNumber.read(values.get("pref_scam_hybrid_weight_cap"), 50);
+            if (Math.min(cap, Math.pow(Math.pow(4, ev), fwe)) <= 10)
+                return Lang.t("Не действует: вес кадра теней в склейке не выходит за 10. Нужно «Кадры теней: EV над N» больше 1,66 "
+                                + "(при «Показатель веса кадра» 1) и «Предел веса кадра» больше 10.",
+                        "No effect: a shadow frame's merge weight stays at 10 or below. Needs “Shadow frames: EV above N” above 1.66 "
+                                + "(with “Frame weight exponent” 1) and “Frame weight limit” above 10.");
+        }
+        // bentoUsSigma is read by the native Quad / Tetra merge alone (its ultrashort fill). Elsewhere - plain Bayer, a mosaic merged
+        // as plain Bayer (the split, «Наш ремозаик» off) - the highlight frames are blended after the merge (P310 bentoBlend) with
+        // their own demosaic, without this kernel
+        if (key.equals("pref_scam_hybrid_bento_sigma") && bentoBlend && (!mosaicStreams
+                || text("pref_scam_hybrid_mosaic_path", "1").trim().equals("0") || !on("pref_scam_hybrid_mosaic_remosaic", true)))
+            return Lang.t("Только для нативной склейки Quad / Tetra («Наш ремозаик», «Склейка мозаики» = «Нативная мозаика»): "
+                            + "на обычном Байере кадры светов накладываются после склейки, без этого ядра.",
+                    "Native Quad / Tetra merge only (“Our remosaic”, “Mosaic merge” = “Native mosaic”): on plain Bayer the highlight "
+                            + "frames are blended after the merge, without this kernel.");
         // «Мерцание ламп» is never greyed out: besides the long frames' shutter (HybridPlan) the native FULLRES AE (OPPO, vivo)
         // rounds its shutter to whole flicker periods with or without them (P310 settings cleanup; P128 greyed it with Shasta off)
         // P128: the mosaic merge acts on Quad / Tetra streams (ISZ modules without the sensor's remosaic) only
@@ -132,6 +211,12 @@ public final class SettingsAvailability {
                 return Lang.t("Только для «Нативная мозаика» в «Склейка мозаики».", "Only with “Native mosaic” in “Mosaic merge”.");
             if (key.equals("pref_scam_hybrid_mosaic_fill_support") && text("pref_scam_hybrid_mosaic_chroma_fill", "0").equals("0"))
                 return Lang.t("Только с добором ArkCam.", "Only with the ArkCam fill.");
+            // the edge kernels of the split and of the native merge and the native flat-area kernel are set inside the new
+            // kernel only (worker hybridReconstruct: `if(sabre61)`); the previous kernel never reads them
+            if (any(key, "pref_scam_hybrid_mosaic_edge_scale", "pref_scam_hybrid_mosaic_native_edge_scale", "pref_scam_hybrid_mosaic_native_flat_scale")
+                    && text("pref_scam_hybrid_sabre61", "1").equals("0"))
+                return Lang.t("Только с «Новое ядро склейки» («Всегда» или «Авто»): прежнее ядро это значение не использует.",
+                        "Only with “New merge kernel” (“Always” or “Auto”): the previous kernel does not use this value.");
         }
         // P134 «Цвет»: the AgX looks but «Custom» set their own saturation (ArkAe.LOOKS); a grading zone's hue needs its strength
         if (key.equals("pref_scam_hybrid_ark_agx_sat") && !text("pref_scam_hybrid_ark_agx_look", "4").equals("4"))
@@ -148,13 +233,18 @@ public final class SettingsAvailability {
             return Lang.t("Только для прежнего ядра: «Новое ядро склейки» выключено или «Авто».", "Previous kernel only: “New merge kernel” off or “Auto”.");
         if (any(key, "pref_scam_hybrid_shasta_sharpness", "pref_scam_hybrid_shasta_max_ratio") && !text("pref_scam_hybrid_shasta_mode", "2").equals("1"))
             return Lang.t("Только при «Кадры теней: режим» = «Авто».", "Only with “Shadow frames: mode” = “Auto”.");
-        if (key.equals("pref_scam_hybrid_bento_trigger") && !text("pref_scam_hybrid_bento", "2").equals("1")
-                && !(on("pref_motion_mode", false) && text("pref_scam_hybrid_mm_bento", "1").equals("1")))
+        if (key.equals("pref_scam_hybrid_bento_trigger") && !bento.equals("1"))
             return Lang.t("Только при «Кадры светов» = «Авто».", "Only with “Highlight frames” = “Auto”.");
-        if (any(key, "pref_scam_hybrid_motion_boost", "pref_scam_hybrid_mm_motion_boost", "pref_scam_hybrid_la_engine") && text("pref_scam_hybrid_local_align", "1").equals("0"))
+        // the boost and its texture threshold need the F6 motion (worker boostMode); so does Auto's daylight rule (handheld61)
+        if (any(key, "pref_scam_hybrid_motion_boost", "pref_scam_hybrid_mm_motion_boost", "pref_scam_hybrid_boost_threshold",
+                "pref_scam_hybrid_la_engine", "pref_scam_hybrid_s61_min_motion") && text("pref_scam_hybrid_local_align", "1").equals("0"))
             return Lang.t("Нужно «Локальное выравнивание F6».", "Needs “Local alignment F6”.");
-        // P144: AgX and its look give way to the tone operator switched on in «Кривая AgX и ACES»
-        if (key.startsWith("pref_scam_hybrid_ark_agx_")) {
+        // the clamp is a uniform of the colour-difference pass, which runs only with its strength above 0
+        if (key.equals("pref_scam_hybrid_chroma_diff_clamp") && PreferenceNumber.read(values.get("pref_scam_hybrid_chroma_diff"), 1) <= 0)
+            return Lang.t("Нужно «Цвет базы по цветоразности» больше 0.", "Needs “Base colour from colour difference” above 0.");
+        // P144: AgX and its look give way to the tone operator switched on in «Кривая AgX и ACES»; so does the OPPO matrix's
+        // saturation, a factor of AgX's (ArkCombine agxAU.w: read by the AgX branch of ark/combine only)
+        if (key.startsWith("pref_scam_hybrid_ark_agx_") || key.equals("pref_scam_hybrid_ark_ccm_sat")) {
             String other = on("pref_scam_hybrid_ark_curve_on", false) ? Lang.t("своя кривая", "the own curve")
                     : on("pref_scam_hybrid_ark_uchi_on", false) ? "Uchimura" : on("pref_scam_hybrid_ark_aces_on", false) ? "ACES" : null;
             if (other != null)
@@ -164,6 +254,16 @@ public final class SettingsAvailability {
         if (key.startsWith("pref_scam_hybrid_ark_agx_") && !key.equals("pref_scam_hybrid_ark_agx_look")
                 && !text("pref_scam_hybrid_ark_agx_look", "4").equals("4"))
             return Lang.t("Только в стиле AgX «Custom»: другие стили задают эти значения сами.", "AgX look “Custom” only: the other looks set these values themselves.");
+        // ScamRgb: the colour prior, the defringe and the clip band act only inside the per-channel recovery (perChannel needs a
+        // strength above 0; the merge sends the band's clip flags only then)
+        if (any(key, "pref_scam_hybrid_highlight_chroma", "pref_scam_hybrid_highlight_defringe", "pref_scam_hybrid_highlight_band")
+                && PreferenceNumber.read(values.get("pref_scam_hybrid_highlight_recovery"), 100) <= 0)
+            return Lang.t("Включите «Восстановление светов по каналам».", "Turn on “Per-channel highlight recovery”.");
+        // ark/combine: clarity and the flat-area protection scale the ARK detail delta, which is off at a detail strength of 0
+        if (any(key, "pref_scam_hybrid_ark_clarity", "pref_scam_hybrid_ark_flat_protect")
+                && PreferenceNumber.read(values.get("pref_scam_hybrid_ark_sharp_gain"), 1) == 0)
+            return Lang.t("Не действует при «Сила детали резкости ARK» = 0: работает только с деталью ARK.",
+                    "No effect with “ARK sharpening detail strength” = 0: acts on the ARK detail only.");
         if (key.startsWith("pref_watermark_") && !on("pref_show_watermark_key", true)) return Lang.t("Включите водяной знак.", "Turn on the watermark.");
         // «Формат фото»: Ultra HDR and the JPEG quality act on a JPEG, which a HEIC / WebP / AVIF shot writes only with «Также сохранять JPEG».
         if (!writesJpeg()) {

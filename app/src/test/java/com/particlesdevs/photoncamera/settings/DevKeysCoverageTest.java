@@ -49,8 +49,9 @@ public class DevKeysCoverageTest {
     /** "hybrid_<key>" of the hybrid tuning table (PreferenceKeys) whose pref_scam_hybrid_<key> is not in preferences.xml. */
     private static Set<String> hiddenTuningKeys() throws IOException {
         String keys = new String(Files.readAllBytes(src("src/main/java/com/particlesdevs/photoncamera/settings/PreferenceKeys.java").toPath()), StandardCharsets.UTF_8);
-        int end = keys.indexOf("for (String[] k : keys)");
-        int start = keys.lastIndexOf("String[][] keys", end);
+        int start = keys.indexOf("String[][] TUNING_KEYS");
+        int end = keys.indexOf("};", start);
+        assertTrue("the hybrid tuning table of PreferenceKeys", start >= 0 && end > start);
         String xml = new String(Files.readAllBytes(src("src/main/res/xml/preferences.xml").toPath()), StandardCharsets.UTF_8);
         Set<String> out = new TreeSet<>();
         Matcher m = TUNE.matcher(keys.substring(start, end));

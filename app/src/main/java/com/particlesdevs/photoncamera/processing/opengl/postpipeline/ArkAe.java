@@ -35,6 +35,11 @@ public final class ArkAe {
         public int look = 4;
         public float slope = 2.7f, sp = 1.35f, tp = 1.6f, minEv = -8.5f, maxEv = 3.5f, sat = 1.0f, ev = 0.30f;
         /**
+         * The saturation factor of the OPPO tuned matrix (ArkTone.ccmSatComp, 1 = none): applied to the AgX saturation after a look
+         * preset set its own, so «Насыщенность при матрице OPPO» acts with every AgX look (settings audit 2026-10-21).
+         */
+        public float ccmSat = 1f;
+        /**
          * P216: the data above the ceiling is real (the Bento ultrashort frames were merged): a maximum above the native cap of
          * 4 is the shot's own highlight range, not a recovered clip.
          */
@@ -434,6 +439,8 @@ public final class ArkAe {
             r.r = (float) rr;
             r.m = (float) m;
         }
+        // the OPPO matrix's compensation on the look's saturation (Custom: the setting's, as before; a preset: its own)
+        if (s.ccmSat != 1f) r.sat *= s.ccmSat;
         return r;
     }
 

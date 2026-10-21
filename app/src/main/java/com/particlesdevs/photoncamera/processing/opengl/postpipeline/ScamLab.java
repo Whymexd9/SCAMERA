@@ -30,7 +30,8 @@ import java.util.concurrent.locks.ReentrantLock;
  *   <li>{@link #BURST}: the merge worker's input as it got it (the NCH transport; the merged-DNG and diagnostics flags cleared
  *       afterwards, so a replay returns only the RGB, its frame map and clip flags);</li>
  *   <li>{@link #META}: the post pipeline's Parameters right before the post pipeline ({@link ScamLabParams}), the worker tuning
- *       of the shot (the settings' part and the burst's own lines apart), every default preference, the device and sizes;</li>
+ *       of the shot (the settings' part and the burst's own lines apart), every default preference, the scam_dev.txt lines in
+ *       force ("dev"), the module profile of the preferences ("module", per-module settings only), the device and sizes;</li>
  *   <li>{@link #PREVIEW}: the photo of the shot, small, for the list.</li>
  * </ul>
  * The lab (ScamLabRun, «Гайд и лаборатория») merges and renders that burst again with one setting changed.
@@ -149,6 +150,14 @@ public final class ScamLab {
             meta.put("params", ScamLabParams.toJson(p));
             meta.put("prefs", ScamLabParams.prefs(com.particlesdevs.photoncamera.app.ScameraApp.getSettingsManagerStatic()
                     .getDefaultPreferences().getAll()));
+            // the scam_dev.txt lines in force (side A of a lab run reads these, not the file of the day) and, with per-module
+            // settings, the module profile the preferences above are (the lab's «Сохранить B» writes into it)
+            final JSONObject dev = new JSONObject();
+            for (java.util.Map.Entry<String, Float> e : com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevLines().entrySet())
+                if (e.getValue() != null && Float.isFinite(e.getValue())) dev.put(e.getKey(), (double) e.getValue());
+            meta.put("dev", dev);
+            final String module = shotModule();
+            if (module != null) meta.put("module", module);
             write(new File(dir, META), meta.toString().getBytes(StandardCharsets.UTF_8));
             shotMeta = true;
             if (p.scamRgb != null && p.rawSize != null) {
@@ -159,6 +168,18 @@ public final class ScamLab {
             }
         } catch (Exception | OutOfMemoryError e) {
             Log.w("SCAM_LAB", "lab metadata not written: " + e);
+        }
+    }
+
+    /** The module profile the main settings hold while per-module settings are on (null: off, the common settings). */
+    @Nullable
+    private static String shotModule() {
+        try {
+            if (!com.particlesdevs.photoncamera.settings.PreferenceKeys.isPerLensSettingsOn()) return null;
+            final String id = com.particlesdevs.photoncamera.settings.PreferenceKeys.profiles().editing();
+            return id == null || id.isEmpty() ? null : id;
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 

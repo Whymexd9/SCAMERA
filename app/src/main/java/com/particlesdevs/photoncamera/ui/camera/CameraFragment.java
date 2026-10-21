@@ -1329,12 +1329,12 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
                 if (oisMode == 2) {
                     oisActive = false;
                 } else if (oisMode == 1) {
-                    CameraMode curMode = ScameraApp.getSettings().selectedMode;
-                    boolean isContinuous = (curMode == CameraMode.UNLIMITED);
-                    oisActive = !(isTripod || isContinuous);
+                    oisActive = !isTripod;
                 } else {
                     oisActive = true;
                 }
+                // P316 (settings audit): what the camera reports, when it does (forced stabilisation keeps OIS on under Auto)
+                if (reported != null) oisActive = reported == CaptureResult.LENS_OPTICAL_STABILIZATION_MODE_ON;
             }
         }
 

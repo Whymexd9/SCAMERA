@@ -556,6 +556,8 @@ public class ScamProcessor extends ProcessorBase {
 
         // P267: «Наш ремозаик» off and a Quad / Tetra shot (ScamHybridBurst.lastDngMosaic): the merged mosaic DNG alone, no photo
         boolean mosaicDngOnly = false;
+        // P318: the colour blocks of the merged DNG (lastDngMosaic) and of the reference frame's RAW (the stream's)
+        int mergedDngBlock = 1, referenceDngBlock = 1;
         {
             processingStage="SCAM HDR neural burst";
             try {
@@ -603,7 +605,9 @@ public class ScamProcessor extends ProcessorBase {
                     } finally {
                         com.particlesdevs.photoncamera.processing.MergeProgress.listener = null;
                     }
-                    mosaicDngOnly = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastDngMosaic > 1;
+                    mergedDngBlock = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastDngMosaic;
+                    referenceDngBlock = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastStreamBlock;
+                    mosaicDngOnly = mergedDngBlock > 1;
                     // P190: a FULLRES series the merge cut (the worker, a fallback tier, the memory budget) is said aloud
                     final String notice = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.takeSeriesNotice();
                     if (notice != null) {
@@ -678,6 +682,7 @@ public class ScamProcessor extends ProcessorBase {
                     final float noiseFactor = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastNoiseFactor;
                     if (single != null) processingParameters.dngNoiseProfile = com.particlesdevs.photoncamera.processing.DngMetadata.noiseProfile(
                             single, noiseFactor, headroom, framesKnown ? mergeFrames : 1, 1);
+                    processingParameters.dngMosaicBlock = mergedDngBlock;
                     imageSaved = mosaicDng ? ImageSaver.Util.saveStackedRaw(dngFile, scamMergedDng, processingParameters, true)
                             : ImageSaver.Util.saveStackedRaw(dngFile, scamMergedDng, processingParameters);
                     Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "DNG: merged burst RAW (N, bracketed and ultrashort frames), "
@@ -692,6 +697,7 @@ public class ScamProcessor extends ProcessorBase {
                     processingParameters.whiteLevel = white;
                     processingParameters.dngBaselineExposure = 0f;
                     processingParameters.dngNoiseProfile = null;
+                    processingParameters.dngMosaicBlock = 1;
                     Allocator.free(scamMergedDng);
                 }
             } else {
@@ -701,12 +707,14 @@ public class ScamProcessor extends ProcessorBase {
                 final double[] single = nm == null ? null : com.particlesdevs.photoncamera.processing.DngMetadata.planes(nm.baseModel);
                 if (single != null) processingParameters.dngNoiseProfile = com.particlesdevs.photoncamera.processing.DngMetadata.noiseProfile(
                         single, com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastNoiseFactor, 1, 1, 1);
+                processingParameters.dngMosaicBlock = referenceDngBlock;
                 try {
                     // P258: the mosaic as captured goes uncompressed (Scam Remosaic's reader: 16-bit CFA, no LinearizationTable)
                     imageSaved = mosaicDng ? ImageSaver.Util.saveSingleRaw(dngFile, output, processingParameters, true)
                             : ImageSaver.Util.saveStackedRaw(dngFile, output, processingParameters);
                 } finally {
                     processingParameters.dngNoiseProfile = null;
+                    processingParameters.dngMosaicBlock = 1;
                 }
             }
             } catch (RuntimeException | OutOfMemoryError dngError) {
@@ -1052,6 +1060,14 @@ public class ScamProcessor extends ProcessorBase {
         if (own == null) {
             Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", too few usable cells; the camera's neutral " + camera + " kept");
             p.ReCalcColor(false, meta); // P212g (W7): the camera's neutral, the colour matrix of a mosaic shot
+            return;
+        }
+        // P315: an estimate far off every learned illuminant (the X8U ISZ shot's LED glow on a white case) is not taken as one
+        final String offLocus = com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.offLocus(id, own.distance,
+                p.whitePoint.clone(), prior);
+        if (offLocus != null) {
+            Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", " + offLocus + "; own estimate " + own.how + " (not used)");
+            p.ReCalcColor(false, meta);
             return;
         }
         Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", camera " + camera + " -> " + own.how);

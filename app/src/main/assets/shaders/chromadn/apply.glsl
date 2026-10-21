@@ -28,7 +28,7 @@ uniform int useEff;
 uniform float grain;         // share of the removed noise put back (a flat, fine grain), 0..1
 uniform float offsetC;
 uniform float lumaAmount;    // 0..1
-uniform float chromaAmount;  // 0..1: 0 keeps the original colour
+uniform float chromaAmount;  // 0..1: 0 keeps the original colour, between them a blend (NLM chroma strength below 1)
 uniform vec2 darkFade;       // mean level where colour starts to fade / is fully kept
 uniform vec2 darkChroma;     // colour deviation |RGB - mean| from which a dark colour starts to stay / stays fully
                              // (signed hybrid input; 0 = off, the fade of the luminance alone)
@@ -163,7 +163,10 @@ void main() {
         // signed pixel (see the head): luminance and colour difference added, no clamp
         float ys = dot(cIn, lw);
         float yt = mix(ys, y1, lumaAmount);
-        vec3 diff = chromaAmount > 0.0 ? max(yt, 0.0) * (q / max(dot(q, lw), 1.0e-6) - vec3(1.0)) : cIn - vec3(ys);
+        // chromaAmount below 1 blends the filtered colour difference with the pixel's own (1: the filtered one, bit for bit)
+        vec3 ownDiff = cIn - vec3(ys);
+        vec3 diff = chromaAmount > 0.0 ? max(yt, 0.0) * (q / max(dot(q, lw), 1.0e-6) - vec3(1.0)) : ownDiff;
+        if (chromaAmount > 0.0 && chromaAmount < 1.0) diff = mix(ownDiff, diff, chromaAmount);
         Output = vec4(vec3(yt) + diff, 1.0);
         return;
     }

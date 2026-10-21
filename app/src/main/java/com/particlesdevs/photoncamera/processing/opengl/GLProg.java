@@ -684,12 +684,19 @@ public class GLProg implements AutoCloseable {
         setBufferCompute(var,buff,GL_SHADER_STORAGE_BUFFER);
     }
     public void setBufferCompute(String var,GLBuffer buff,int type){
-        GLComputeLayout computeLayout = mComputeLayouts.get(var);
+        GLComputeLayout computeLayout = mComputeLayouts == null ? null : mComputeLayouts.get(var);
         if(computeLayout == null){
-            new Exception("Wrong computeLayout:"+var).printStackTrace();
-            return;
+            // P317: an unbound block reads and writes nothing, silently (the Mali AE histograms 0 / 0); a printStackTrace
+            // reached only logcat. The callers catch it, log it and fall back to the CPU.
+            throw missingLayout("buffer block", var);
         }
         buff.BindBase(computeLayout.binding,type);
+    }
+    private IllegalStateException missingLayout(String what, String var) {
+        final String message = "no " + what + " " + var + " in the program's layouts "
+                + (mComputeLayouts == null ? "(none)" : mComputeLayouts.keySet());
+        Log.e(TAG, message);
+        return new IllegalStateException(message);
     }
     public void setTextureCompute(String var,GLTexture tex,boolean write){
         int access = GL_READ_ONLY;
@@ -697,14 +704,9 @@ public class GLProg implements AutoCloseable {
         setTextureCompute(var,tex,access);
     }
     public void setTextureCompute(String var,GLTexture tex,int access){
-        if(mComputeLayouts == null){
-            new Exception("Wrong mComputeLayouts:"+var).printStackTrace();
-            return;
-        }
-        GLComputeLayout computeLayout = mComputeLayouts.get(var);
+        GLComputeLayout computeLayout = mComputeLayouts == null ? null : mComputeLayouts.get(var);
         if(computeLayout == null){
-            new Exception("Wrong computeLayout:"+var).printStackTrace();
-            return;
+            throw missingLayout("image", var); // P317: as setBufferCompute
         }
         glBindImageTexture(computeLayout.binding,
                 tex.mTextureID, 0, false, 0, access, tex.mFormat.getGLFormatInternal());

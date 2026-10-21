@@ -203,14 +203,19 @@ public final class ArkStats extends Node {
             if (clamp != null) Log.i("SCAM_PIPELINE", clamp);
             if (record != null) {
                 record.noiseScale = (float) (noiseS0 > 0 ? settings.noiseS / noiseS0 : noiseO0 > 0 ? settings.noiseO / noiseO0 : 1.0);
+                record.inScale = st.inScale;
                 record.lowWidth = lowSize.x;
             }
-            settings.sat *= ArkTone.ccmSatComp(pipeline.mParameters);
+            // applied by ArkAe.finish after an AgX look preset (which sets its own saturation)
+            settings.ccmSat = ArkTone.ccmSatComp(pipeline.mParameters);
             final ArkAe.Stats fixed = frozen == null ? null : frozen.stats(settings.metering);
-            ArkAe.Stats gpu = fixed != null ? LabFrame.copy(fixed)
+            // a lab side with another «Масштаб входа, EV» than the frame was measured at: the whole frame's statistics at its gain
+            final float rescale = fixed != null && frozen.inScale > 0f ? st.inScale / frozen.inScale : 1f;
+            ArkAe.Stats gpu = fixed != null ? LabFrame.scaled(fixed, rescale)
                     : legacy || ScamDiagnostics.active() ? null : ArkAeGpu.stats(glProg, st.low, settings.metering);
             glProg.closed = true;
-            if (fixed != null) Log.i("SCAM_PIPELINE", "ARK stats: the whole frame's (lab fragment, metering " + settings.metering + ")");
+            if (fixed != null) Log.i("SCAM_PIPELINE", "ARK stats: the whole frame's (lab fragment, metering " + settings.metering
+                    + (rescale != 1f ? ", input scale x" + rescale : "") + ")");
             if (record != null && fixed == null && gpu != null && settings.metering >= 0 && settings.metering < LabFrame.MODES) {
                 // every metering mode, so a lab side with another metering decides from the whole frame too (three small passes)
                 record.stats[settings.metering] = gpu;

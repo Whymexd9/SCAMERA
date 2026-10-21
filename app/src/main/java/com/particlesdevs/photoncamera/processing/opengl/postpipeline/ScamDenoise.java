@@ -472,7 +472,8 @@ public final class ScamDenoise extends Node {
         final float snrScale = clamp(PreferenceKeys.hybridValue("dn_snr_scale", 1f), 0.25f, 8f);
         final String mapMode = PreferenceKeys.hybridString("dn_strength_map", "auto");
         final float effMax = clamp(PreferenceKeys.hybridValue("bento_denoise_max", 3f), 1f, 12f);
-        // 2x grid: share of the colour finer than the sensor scale that is kept (0 = colour denoised as on the 1x grid).
+        // 2x grid (and a 200 MP shot, denoised on its 2x2 means: s = 2 above): share of the colour finer than the sensor scale
+        // that is kept (0 = colour denoised as on the 1x grid).
         final float keep2x = clamp(PreferenceKeys.hybridValue("dn_chroma_2x_keep", 0f), 0f, 1f);
         // P306 (owner, 2026-10-20: «настрой по этому фото его»), tuned on the owner's 200 MP ship (5 frames, ISO 50; host replay of
         // the scamdn shaders on its merge): its finish SNR at the 2x2 means is ~97 (the top tier) and without an effective-frame map

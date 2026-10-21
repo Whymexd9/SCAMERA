@@ -1,5 +1,9 @@
 precision highp float;
 precision highp sampler2D;
+// P317: highp ints (they default to mediump, fp16 on Mali): float(h & 0xFFFFu) / 65535.0 was mediump and 65535.0 is +inf
+// in fp16 (the B/W stocks' grain a constant, a flat brightening), and vec2(ixy) + 0.5 rounded the pixel position above
+// 2048 (as film/noise.glsl).
+precision highp int;
 // P281: the film simulation's grain (FilmGrain) on the finished picture (display encoded). Per layer a field of grain clumps:
 // Gaussian values on a lattice of the grain's size (in pixels of the frame) bilinearly blended with a smooth step, plus an
 // octave of half that size; the layers' fields partly shared (a colour film's grain is mostly in the brightness), the blue

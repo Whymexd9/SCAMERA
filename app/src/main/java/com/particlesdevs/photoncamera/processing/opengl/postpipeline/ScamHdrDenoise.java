@@ -108,8 +108,21 @@ public final class ScamHdrDenoise extends Node {
 
     /** Upper clamp of the per-pixel noise boost derived from the effective-frames map (Bento regions merged from one gained frame). */
     private float effMax = 3f;
+    /**
+     * P317 (Mali): the usampler2D EffMap always gets a unit of its own - left unset it read unit 0, where the sampler2D
+     * InputBuffer sits (two sampler types on one unit: GL_INVALID_OPERATION at the draw, which Mali enforces). The 1 x 1
+     * placeholder is never read (useEff 0), as ScamDenoise's.
+     */
+    private GLTexture effPlaceholder;
+
     private void bindEffectiveFrames(GLTexture effMap) {
-        if (effMap != null) glProg.setTexture("EffMap", effMap);
+        GLTexture bound = effMap;
+        if (bound == null) {
+            if (effPlaceholder == null)
+                effPlaceholder = new GLTexture(new Point(1, 1), new GLFormat(GLFormat.DataType.UNSIGNED_8, 1), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+            bound = effPlaceholder;
+        }
+        glProg.setTexture("EffMap", bound);
         glProg.setVar("useEff", effMap != null ? 1 : 0);
         glProg.setVar("effRef", effRef);
         glProg.setVar("effMax", effMax);
@@ -380,7 +393,9 @@ public final class ScamHdrDenoise extends Node {
             glProg.setVar("grain", luma > 0f ? Math.max(PreferenceKeys.routeInternalValue("grain_min", 0.12f), Math.min(1f, PreferenceKeys.routeInternalValue("grain_level", 0.0002f) / (Math.max(noiseSigma, 1.0e-4f) * luma))) : 1f);
             glProg.setVar("offsetC", offsetC);
             glProg.setVar("lumaAmount", luma > 0f ? 1f : 0f);
-            glProg.setVar("chromaAmount", chroma > 0f ? 1f : 0f);
+            // below 1 the filtered colour is blended in (settings audit 2026-10-21: every value in (0, 1] gave the same picture);
+            // above 1 the filter's tolerance grows instead
+            glProg.setVar("chromaAmount", Math.min(chroma, 1f));
             glProg.setVar("darkFade", 0.0008f, 0.003f);
             glProg.setVar("darkChroma", darkChroma[0], darkChroma[1]);
             glProg.setVar("signedU", signed ? 1 : 0);
@@ -390,6 +405,7 @@ public final class ScamHdrDenoise extends Node {
             pipeline.signedRgb = signed; // chromadn/apply writes >= 0 unless its input is signed
         } finally {
             for (GLTexture t : new GLTexture[]{cleaned, before, ping, pong, noisy, clean, quarter, coarse, effMap}) if (t != null) t.close();
+            if (effPlaceholder != null) { effPlaceholder.close(); effPlaceholder = null; }
         }
         dumpTexture(pipeline, WorkingTexture, "denoise-out");
         Log.i("SCAM_PIPELINE", "denoise chroma=" + chroma + " luma=" + luma + " despeckle=" + despeckle + " sigma=" + noiseSigma

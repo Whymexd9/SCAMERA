@@ -39,8 +39,7 @@ public final class FilmEffects {
         final float um = pixelUm(set);
         if (um <= 0f) return px;
         final boolean scatter = set.stock.spectral != null && set.softness > 0f;
-        final float[] a = new float[3];
-        for (int c = 0; c < 3; c++) a[c] = set.stock.halation[c] * set.halation;
+        final float[] a = set.halationAmounts(); // x «Сила симуляции», as the photo
         final boolean halo = a[0] + a[1] + a[2] > 0f;
         if (!scatter && !halo) return px;
         float[] e = new float[px.length * 3];
@@ -51,7 +50,7 @@ public final class FilmEffects {
         }
         if (scatter) {
             // per channel (1 - w) G(core) + w Exp(tail), the scale the setting
-            final float k = set.softness / um;
+            final float k = set.softnessApplied() / um;
             final float[] out = new float[e.length];
             for (int c = 0; c < 3; c++) {
                 final float[] ch = channel(e, c);
@@ -98,7 +97,7 @@ public final class FilmEffects {
         final float[] n = new float[px.length * 3];
         for (int i = 0; i < n.length; i++) n[i] = (float) rnd.nextGaussian();
         final float[] nb = DiffusionGauss.blur(n, w, h, FilmSpectral.GRAIN_BLUR_UM / um);
-        final float scale = set.grain * set.strength / um;
+        final float scale = set.grainApplied() / um;
         final int[] out = new int[px.length];
         for (int i = 0; i < px.length; i++) {
             final float r = ((px[i] >> 16) & 255) / 255f, g = ((px[i] >> 8) & 255) / 255f, b = (px[i] & 255) / 255f;

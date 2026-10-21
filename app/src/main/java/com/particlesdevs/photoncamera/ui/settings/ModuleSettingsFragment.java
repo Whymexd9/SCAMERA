@@ -36,7 +36,7 @@ public class ModuleSettingsFragment extends ModuleConceptFragment {
         // только на главной странице»): the module profiles (per-module switch, the group, copying between modules) live only in
         // «Настройки по модулям», opened from the main settings page
         caption(Lang.t(getContext(),"Для опытных","Advanced"));
-        navigation("⚙︎",Lang.t(getContext(),"RAW и сенсор","RAW and sensor"),Lang.t(getContext(),"Уровни RAW, формат потока, фильтр Байера, модель шума","RAW levels, stream format, Bayer filter, noise model"),()->{
+        navigation("⚙︎",Lang.t(getContext(),"RAW и сенсор","RAW and sensor"),Lang.t(getContext(),"Уровни RAW, обрезка, формат RAW-потока, фильтр Байера, RAW-метаданные, модель шума","RAW levels, crop, RAW stream format, Bayer filter, RAW metadata, noise model"),()->{
             SettingsActivity.SettingsFragment extra=new SettingsActivity.SettingsFragment();Bundle args=new Bundle();args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT,"capture_settings_screen");extra.setArguments(args);open(extra);
         });
     }
@@ -60,6 +60,7 @@ public class ModuleSettingsFragment extends ModuleConceptFragment {
         navigation(shown?"●":"○",ModuleRegistry.label(slot)+" · ID "+ModuleRegistry.camera(slot),
             String.format(java.util.Locale.US,Lang.t(getContext(),"Зум %.2f×","Zoom %.2f×"),ModuleRegistry.zoom(slot)).replaceAll("\\.?0+×","×")
             +(ModuleRegistry.sensorCrop(slot)?Lang.t(getContext()," · кроп на сенсоре"," · sensor crop"):"")+(ModuleRegistry.sensorMode(slot)!=0?Lang.t(getContext()," · сенсормод "," · sensor mode ")+ModuleRegistry.sensorMode(slot):"")
+            +(com.particlesdevs.photoncamera.capture.SensorModePick.picked(slot)>=0?Lang.t(getContext()," · режим сенсора #"," · sensor mode #")+com.particlesdevs.photoncamera.capture.SensorModePick.picked(slot):"")
             +(dup!=null?Lang.t(getContext()," · копия «"+ModuleRegistry.label(dup)+"»"," · copy of “"+ModuleRegistry.label(dup)+"”"):"")
             +(ModuleRegistry.crop(slot)>1.0001f?Lang.t(getContext()," · кроп "+cropText(ModuleRegistry.crop(slot))+"×"," · crop "+cropText(ModuleRegistry.crop(slot))+"×"):"")+(shown?"":Lang.t(getContext()," · скрыт"," · hidden")),
             ()->open(ModuleLensFragment.module(slot)));

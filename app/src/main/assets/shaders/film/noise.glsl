@@ -1,4 +1,8 @@
 precision highp float;
+// P317: the ints are highp too. A fragment shader's ints default to mediump (GLSL ES 3.10 4.7.4), so the hash, p + 32768
+// and float(h & 0xFFFFu) + 0.5, / 65536.0 below were mediump: fp16 on Mali, where 65536.0 is +inf, u = 0 and the
+// Box-Muller noise +inf in every pixel - every film photo with grain came out pure white (vivo X300 Pro, Mali-G1-Ultra).
+precision highp int;
 // P289 (FilmGrain): three independent unit Gaussians per pixel (Box-Muller from hashes), the grain's white noise before its
 // blur (film/blur.glsl) and its application (film/grain_sf.glsl).
 uniform float seed;

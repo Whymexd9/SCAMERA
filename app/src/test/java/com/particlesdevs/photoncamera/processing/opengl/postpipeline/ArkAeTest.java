@@ -64,6 +64,20 @@ public class ArkAeTest {
         }
     }
 
+    /** Settings audit 2026-10-21: «Насыщенность при матрице OPPO» acts with a look preset too (it set its own saturation over it). */
+    @Test
+    public void theOppoMatrixSaturationActsWithEveryLook() {
+        ArkAe.Settings s = new ArkAe.Settings();
+        s.look = 1;
+        assertEquals(ArkAe.LOOKS[1][5], ArkAe.smartHdr(synth(1.0, false), 3, W, H, s, 0, 0).sat, 0f);
+        s.ccmSat = 1.1f;
+        assertEquals(ArkAe.LOOKS[1][5] * 1.1f, ArkAe.smartHdr(synth(1.0, false), 3, W, H, s, 0, 0).sat, 1e-6f);
+        // Custom: the setting's saturation times the compensation, as when ArkStats multiplied it in
+        s.look = 4;
+        s.sat = 0.9f;
+        assertEquals(0.9f * 1.1f, ArkAe.smartHdr(synth(1.0, false), 3, W, H, s, 0, 0).sat, 0f);
+    }
+
     @Test
     public void exposuresFollowTheFusionMultipliers() {
         ArkAe.Result r = new ArkAe.Result();

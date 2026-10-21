@@ -104,4 +104,13 @@ public class OppoTunedColorTest {
         assertNull("no white point", OppoTunedColor.previewMatrix(8.67f, new float[]{Float.NaN, 1f, 0.5f}, null));
         assertNull(OppoTunedColor.previewMatrix(8.67f, new float[]{0f, 1f, 0.5f}, null));
     }
+
+    /** P315: the X8U camera 2's DNG forward matrix is the sRGB -> XYZ (D50) placeholder; a real camera matrix is not. */
+    @org.junit.Test public void thePlaceholderForwardMatrixIsRecognised() {
+        org.junit.Assert.assertTrue(OppoTunedColor.placeholderForward(new float[]{0.43898535f, 0.38411218f, 0.14110243f, 0.21875f, 0.71875f,
+                0.0625f, 0.01571238f, 0.09427429f, 0.7149133f}));
+        org.junit.Assert.assertFalse(OppoTunedColor.placeholderForward(new float[]{0.490f, 0.295f, 0.179f, 0.163f, 0.814f, 0.023f,
+                -0.023f, -0.319f, 1.167f}));
+        org.junit.Assert.assertFalse(OppoTunedColor.placeholderForward(null));
+    }
 }

@@ -39,6 +39,9 @@ struct DngMetadata {
     int cfa = 0;
     unsigned char cfa_pattern[4] = {1, 0, 2, 1}; // Default RGGB
     unsigned short cfa_repeat_pattern_dim[2] = {2, 2};
+    /** P318: colour block of the stored mosaic (1 Bayer, 2 Quad, 4 Tetra): CFA, black and GainMap repeat every 2 * block px. */
+    int mosaic_block = 1;
+    bool gain_map_written = false;
     
     // Flags to track what has been set
     bool has_color_matrix1 = false;

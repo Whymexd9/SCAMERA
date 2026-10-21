@@ -1,6 +1,7 @@
 precision highp sampler2D;
 precision highp int;
 precision highp float;
+// P317: memoryBarrierShared() with every barrier() (ESSL 3.10 8.14, as ark/aestats.glsl).
 uniform sampler2D inTexture;
 uniform vec4 exposure;
 uniform float input1;
@@ -63,7 +64,7 @@ void main() {
         localAlpha[index + i] = 0u;
         #endif
     }
-    barrier();
+    memoryBarrierShared(); barrier();
 
     if (storePos.x < imgsize.x && storePos.y < imgsize.y) {
         vec4 texColor = texture(inTexture,(vec2(storePos) + 0.5)/vec2(imgsize));
@@ -84,7 +85,7 @@ void main() {
         atomicAdd(localAlpha[texColorUint.a], 1u);
         #endif
     }
-    barrier();
+    memoryBarrierShared(); barrier();
 
     for (uint i = 0u; i < HISTSTEPS; i++) {
         #if COL_R == 1

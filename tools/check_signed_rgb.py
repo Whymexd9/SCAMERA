@@ -233,7 +233,7 @@ def nlm_engine(field, signed, luma, chroma, sigma):
                    {'InputBuffer': tin, 'EffMap': eff, 'Before': before, 'After': after, 'Noisy': noisy, 'Clean': clean,
                     'Coarse': coarse},
                    {'sigma': sigma if luma > 0 else 0.0, 'useEff': 0, 'pxStepU': 1, 'lowRatio': 2.0, 'grain': grain,
-                    'offsetC': OFFSET_C, 'lumaAmount': 1.0 if luma > 0 else 0.0, 'chromaAmount': 1.0 if chroma > 0 else 0.0,
+                    'offsetC': OFFSET_C, 'lumaAmount': 1.0 if luma > 0 else 0.0, 'chromaAmount': min(chroma, 1.0) if chroma > 0 else 0.0,
                     'darkFade': (0.0008, 0.003), 'darkChroma': DARK_CHROMA, 'signedU': signed})
     finally:
         for t in owned:

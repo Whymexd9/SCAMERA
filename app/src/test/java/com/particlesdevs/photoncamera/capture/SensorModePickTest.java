@@ -1,6 +1,7 @@
 package com.particlesdevs.photoncamera.capture;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -65,5 +66,31 @@ public class SensorModePickTest {
         CaptureRequest.Builder b = Mockito.mock(CaptureRequest.Builder.class);
         assertEquals("", SensorModePick.apply(b));
         Mockito.verifyNoInteractions(b);
+    }
+
+    /**
+     * P315: a picked sensor mode on an OPPO / OnePlus / realme camera shoots from the ring alone (the X8U's HAL failed every request
+     * after the shutter in mode 8 and died); other brands and sessions without a pick keep the series; the dev switch forces it.
+     */
+    @Test public void anOplusPickShootsFromTheRingAlone() {
+        assertFalse(SensorModePick.seriesAllowed(true, SensorModePick.Brand.OPLUS, false));
+        assertTrue(SensorModePick.seriesAllowed(true, SensorModePick.Brand.OPLUS, true));
+        assertTrue(SensorModePick.seriesAllowed(false, SensorModePick.Brand.OPLUS, false));
+        assertTrue(SensorModePick.seriesAllowed(true, SensorModePick.Brand.VIVO, false));
+        assertTrue(SensorModePick.seriesAllowed(true, SensorModePick.Brand.QCOM, false));
+        assertTrue(HybridPlan.zslOnly(10_000_000L, 200, SensorModePick.SERIES_REASON).requests.isEmpty());
+    }
+
+    /**
+     * P316 (settings audit): a shot whose ring drain gave no usable frame is refused in an OPPO-family pick (the normal-back plan
+     * would send the series after the shutter); everywhere else it falls back to the frames after the shutter, as before.
+     */
+    @Test public void anEmptyRingIsRefusedWhereTheSeriesIsNot() {
+        assertTrue(SensorModePick.emptyRingRefused(true, SensorModePick.seriesAllowed(true, SensorModePick.Brand.OPLUS, false)));
+        assertFalse(SensorModePick.emptyRingRefused(false, SensorModePick.seriesAllowed(true, SensorModePick.Brand.OPLUS, false)));
+        assertFalse("sensor_mode_series 1", SensorModePick.emptyRingRefused(true, SensorModePick.seriesAllowed(true, SensorModePick.Brand.OPLUS, true)));
+        assertFalse(SensorModePick.emptyRingRefused(true, SensorModePick.seriesAllowed(true, SensorModePick.Brand.VIVO, false)));
+        assertFalse(SensorModePick.emptyRingRefused(true, SensorModePick.seriesAllowed(true, SensorModePick.Brand.QCOM, false)));
+        assertFalse("no pick", SensorModePick.emptyRingRefused(true, SensorModePick.seriesAllowed(false, SensorModePick.Brand.OPLUS, false)));
     }
 }

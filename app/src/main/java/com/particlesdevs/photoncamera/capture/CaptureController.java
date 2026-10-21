@@ -300,7 +300,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     @SensorConfig(
             title = "OIS Mode",
-            description = "Оптическая стабилизация. Авто выключает её на штативе и в Unlimited, чтобы кадр не плыл.",
+            description = "Оптическая стабилизация. Авто выключает её на штативе, чтобы кадр не плыл.",
             entries = {"On", "Auto", "Off"},
             entryValues = {"0", "1", "2"},
             defaultValue = 0
@@ -346,6 +346,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     /** P266: the session has no ISP viewfinder stream (ispSurface): the RAW stream alone, the RAW viewfinder. */
     private boolean mIspSurfaceOff;
+    /**
+     * P315: the repeating preview request targets the ISP stream ({@code surface}). The series frames (P90 series_viewfinder) and
+     * the AE restore frame (P54c) touch that stream only then: the OPPO Find X8 Ultra's 2x ISZ module (sensor mode 8, «Поток ISP»
+     * «Фиктивное откл.» - the stream in the session, never started) failed every request of its series that targeted it and its
+     * HAL died (owner's log 2026-10-21 13:33 / 13:36); the vivo X300 Ultra's ISZ session (no ISP stream in it) got the stream
+     * added to its preview builder by the AE restore frame's re-add (P54c) and every later preview request failed («CaptureRequest
+     * contains unconfigured Input/Output Surface», owner's log 2026-10-21 07:26: the camera restarted ~6 s after each shot).
+     */
+    private volatile boolean mRepeatingIsp;
 
     /** P266: the module's own fixed RAW frame rate as an AE range, null for the lens's own. */
     @Nullable
@@ -554,6 +563,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private volatile long mLastPreviewResultMs, mPreviewSessionStartMs, mPreviewFrameMs;
     private volatile int mStallRestarts;
     private final Runnable mStallCheck = this::checkPreviewStall;
+    /** P315: the shot (its submit time) whose stalled preview was issued again once (checkPreviewStall). */
+    private volatile long mStallRearmSubmitNs;
     // Shutter presses made while a SCAM shot is still capturing; fired in order.
     private int mScamQueuedShots = 0;
     // Sensor timestamp of the newest tail frame (L/S/ES) of the current SCAM shot.
@@ -972,6 +983,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     if (gapLine != null) Log.i(PreviewGapMeter.TAG, gapLine);
                 }
                 maybeRunPendingRearm(session, request, result);
+                maybeReapplyAutoOis(session); // P316: «Оптическая стабилизация» Авто follows the tripod during the session
                 if(PreferenceKeys.isScamEnabled() && PreferenceKeys.useStockBracketPlanner() && isCurrentPreviewSession(session)) {
                     ScamStockAe stock=mStockAe;
                     if(stock==null || stock.generation!=mSessionGeneration.get()) {
@@ -1081,7 +1093,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 return;
             }
             if (retryWithoutVivoSdkFullRes(null, "camera error " + error)) return;
-            if (retryWithoutRequestedSensorMode(null, "camera error " + error)) return;
+            // P315: a picked sensor mode is blamed only when its session never delivered a frame - the X8U's mode 8 had streamed
+            // for minutes when its HAL died at a shot, and the module went back to Auto with «Режим сенсора 8 отклонён камерой»;
+            // an error after the mode's own frames takes the quiet path below (the same module and mode reopen)
+            // (the DCG / sensor-preset routes keep their P230 fallback: DCG off, a plain module, one restart)
+            if ((SensorModePick.session() == null || mLastPreviewResultMs == 0)
+                    && retryWithoutRequestedSensorMode(null, "camera error " + error)) return;
             if (mXiaomiRouted) {
                 // P41b: the logical camera failed for this app: the tele alone from now on
                 mXiaomiRouted = false;
@@ -2393,6 +2410,22 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mPreviewSessionStartMs = 0;
             handler.removeCallbacks(mStallCheck);
             return;
+        }
+        // P315 (owner, 2026-10-21: «проверь чтобы ни на одном смартфоне такого не было и не было перезапуска после снятия
+        // кадра»): a stall that began at a shot (Xiaomi 12X session type 0x9001: the series complete, then no preview frame)
+        // gets the repeating preview request once more before the camera restarts; the restart follows a second later if no
+        // frame comes
+        final long submitMs = sTimelineSubmitNs / 1_000_000L;
+        if (sTimelineSubmitNs > 0 && mLastPreviewResultMs > 0 && mLastPreviewResultMs <= submitMs + 2000
+                && mStallRearmSubmitNs != sTimelineSubmitNs && mCaptureSession != null && mPreviewRequestBuilder != null) {
+            mStallRearmSubmitNs = sTimelineSubmitNs;
+            try {
+                mCaptureSession.setRepeatingRequest(mPreviewInputRequest = mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
+                Log.w(TAG, "PREVIEW_STALL after a shot: the repeating preview issued again, the camera restarts only if no frame follows");
+                return;
+            } catch (CameraAccessException | RuntimeException e) {
+                Log.w(TAG, "PREVIEW_STALL after a shot: the repeating preview could not be issued again (" + e + ")");
+            }
         }
         if (!PreviewStall.mayRestart(mStallRestarts)) {
             mPreviewSessionStartMs = 0;   // one log line, no more restarts until the next session
@@ -3874,7 +3907,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
         // P223: without the ISP preview (FULLRES / ISZ, the RAW viewfinder on) the repeating request carries the RAW stream only
         final boolean ispOff = mIspPreviewOff && mLiveRawSession && mVivoSdkRawSession == null && !mIsRecordingVideo;
-        if (!nativeVivoFullRes() && !VivoPd2454NativeRaw.active(physicalID) && !ispOff) mPreviewRequestBuilder.addTarget(surface);
+        mRepeatingIsp = !nativeVivoFullRes() && !VivoPd2454NativeRaw.active(physicalID) && !ispOff;
+        if (mRepeatingIsp) mPreviewRequestBuilder.addTarget(surface);
         if (ispOff) Log.i("SCAM_CAPTURE", "camera " + physicalID + ": ISP preview off (P223), the repeating request has the RAW stream only");
         if (mVivoSdkRawSession != null) {
             if (nativeVivoFullRes()) mPreviewRequestBuilder.addTarget(stillOnlyFullRes() && mImageReaderRawView != null
@@ -4003,12 +4037,22 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // instead of exposing frames after the shutter
             final boolean motionWaited = mMotionWaitExpired;
             mMotionWaitExpired = false;
-            if (scamShutterQueues() && !mScamFireWaiting && !motionWaited && com.particlesdevs.photoncamera.settings.MotionMode.on()
+            // P315: so does a press in an OPPO-family picked sensor mode (its shots come from the ring alone)
+            if (scamShutterQueues() && !mScamFireWaiting && !motionWaited
+                    && (com.particlesdevs.photoncamera.settings.MotionMode.on() || !SensorModePick.seriesAllowed())
                     && !mZslCapturing && !mShotInProgress && !burst && motionRingFrames() == 0) {
                 Log.i("SCAM_CAPTURE", "motion: shutter waits for a ring frame");
                 mScamFireWaiting = true;
                 fireQueuedScamShot(android.os.SystemClock.elapsedRealtime() + MOTION_RING_WAIT_MS);
                 return true;
+            }
+            // P315: the wait ran out with an empty ring in an OPPO-family picked sensor mode: no shot rather than frames after the
+            // shutter (the X8U's HAL died on them)
+            if (motionWaited && scamShutterQueues() && !SensorModePick.seriesAllowed() && !mZslCapturing && !mShotInProgress && !burst
+                    && motionRingFrames() == 0) {
+                Log.w("SCAM_CAPTURE", "sensor mode: no ring frame after the wait, the shot is not taken (" + SensorModePick.SERIES_REASON + ")");
+                cameraEventsListener.onProcessingError(Lang.t("Камера ещё готовится. Повторите снимок.", "The camera is still getting ready. Take the shot again."));
+                return false;
             }
             if (scamShutterQueues() && !mScamFireWaiting && mScamTailTimestamp != 0 && !previewFreshAfterTail()) {
                 // Pressed just after a tail: the newest preview result still predates
@@ -4141,7 +4185,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // P54c: under the forced stabilisation (X300U) the manual frame skips the viewfinder stream, as ArkCam's manual
         // frames do: the HAL's preview / stabilisation path never sees an AE OFF request. Same exposure, ISO and RAW.
         final Surface viewfinder = surface;
-        final boolean dropViewfinder = viewfinder != null && ForcedStabilization.dropViewfinder(mForcedStab,
+        final boolean dropViewfinder = viewfinder != null && mRepeatingIsp && ForcedStabilization.dropViewfinder(mForcedStab,
                 ForcedStabilization.rawOnlySwitch(), isZslMode() || mLiveRawSession, mIsRecordingVideo);
         boolean viewfinderRemoved = false;
         try {
@@ -4981,7 +5025,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         String size = mImageReaderRaw == null ? "" : mImageReaderRaw.getWidth() + "x" + mImageReaderRaw.getHeight();
         return physicalID + "|" + size + "|" + com.particlesdevs.photoncamera.settings.TunableKeyManager.signature(physicalID)
                 + "|" + com.particlesdevs.photoncamera.settings.ModuleRegistry.sensorMode(com.particlesdevs.photoncamera.settings.ModuleRegistry.active())
-                + (nativeVivoFullRes() ? "|native-full-" + VivoSdkFullRes.profile(mVivoSdkCameraId).sensorMode : "");
+                + (nativeVivoFullRes() ? "|native-full-" + VivoSdkFullRes.profile(mVivoSdkCameraId).sensorMode : "")
+                // P315: a picked SensorModeTable row is a stream of its own (the X8U's mode 1 and its Quad mode 8 are both 4096x3072:
+                // the block of one was used for the other for ~100 ms after each switch)
+                + (SensorModePick.session() != null ? "|pick-" + SensorModePick.session().mode : "");
     }
 
     /** P214i: the frame check of this session's X300 Ultra ISZ module (VivoQcomIsz.check), null for any other session. */
@@ -5304,6 +5351,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     @Nullable
     private com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mosaicWbAtPress() {
         try {
+            // P315: an OPPO-family module's picked sensor mode (the X8U's 2x ISZ): the HAL's neutral when it is valid
+            if (mVivoSdkRawSession == null && SensorModePick.session() != null && SensorModePick.brand() == SensorModePick.Brand.OPLUS)
+                return com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press.sensorMode();
             if (mVivoSdkRawSession == null || VivoSdkFullRes.oppo() || !nativeVivoFullRes()) return null;
             if (stillOnlyFullRes()) {
                 final com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press p =
@@ -5328,7 +5378,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         final long now = android.os.SystemClock.elapsedRealtime();
         if (!com.particlesdevs.photoncamera.processing.color.PlainColourMemory.due(physicalID, now)) return;
         try {
-            if (com.particlesdevs.photoncamera.processing.MosaicStream.block() != 1 || OppoNativeFullRes.running()) return;
+            // P315: never a picked sensor mode's results (its matrix is the mode's, not the plain mode's)
+            if (com.particlesdevs.photoncamera.processing.MosaicStream.block() != 1 || OppoNativeFullRes.running()
+                    || SensorModePick.session() != null) return;
             final Integer awb = result.get(CaptureResult.CONTROL_AWB_MODE), state = result.get(CaptureResult.CONTROL_AWB_STATE);
             if (awb == null || awb != CaptureResult.CONTROL_AWB_MODE_AUTO || state == null || state != CaptureResult.CONTROL_AWB_STATE_CONVERGED)
                 return;
@@ -5374,6 +5426,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (now - mPlainTeacherMs < PLAIN_TEACHER_MS) return;
         try {
             if (com.particlesdevs.photoncamera.processing.MosaicStream.block() != 1 || OppoNativeFullRes.running()
+                    || SensorModePick.session() != null // P315: a picked mode's frame is no plain one (the X8U's Quad mode 8)
                     || !com.particlesdevs.photoncamera.processing.color.MosaicTeacher.on()) return;
             if (result == null) synchronized (mZslBufferLock) { result = mHexZslResults.get(img.getTimestamp()); }
             if (result == null) return;
@@ -5737,6 +5790,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     com.particlesdevs.photoncamera.settings.PreferenceValue.get(sensorValues,sensorPrefix+"whiteleveloverride"),-1);
             if(overrideWhite>0)white=overrideWhite;
             if(overrideBlack>=0&&overrideBlack<white)java.util.Arrays.fill(black,overrideBlack);
+            LiveRawFrame.setBlackFromData(overrideBlack < 0 && PreferenceKeys.isRawBlackFromData()); // P315: a stream without its pedestal
             float[] dcpMatrix = com.particlesdevs.photoncamera.processing.color.DcpProfiles.previewMatrix(gains);
             if (dcpMatrix != null) ccm = dcpMatrix;
             // P212h (A6 = M11): a native FULLRES viewfinder whose result transform is the identity (the X7 Ultra's, a vivo mosaic
@@ -7021,10 +7075,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
                 cameraEventsListener.onProcessingError(reason);
                 Log.w("SCAM_CAPTURE", "SDK FULLRES50 failed: " + reason);
-                // P179: a 200 MP series stopped the preview at the shutter: the camera opens again for it
-                if (hugeShot) new Handler(android.os.Looper.getMainLooper()).post(CaptureController.this::restartCamera);
+                // P179: a 200 MP series stopped the preview at the shutter: the camera opens again for it - P315: once (it restarted
+                // twice, the 200 MP restart and the FULLRES-off one: vivo X300 Ultra log 2026-10-19)
                 PixelPro10.setFullRes(false);
-                if (isCameraResumed && mCaptureSession == session)
+                if (hugeShot) new Handler(android.os.Looper.getMainLooper()).post(CaptureController.this::restartCamera);
+                else if (isCameraResumed && mCaptureSession == session)
                     new Handler(Looper.getMainLooper()).post(() -> {
                         if (isCurrentPreviewSession(session)) restartCamera();
                     });
@@ -7158,7 +7213,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final boolean scamHybridSelected = scamCapture && PreferenceKeys.isScamHybridEnabled();
             final boolean hybridZslRequested = isZslMode() && needsExposureBracket();
             // P84: the Hybrid with a hand-set shutter longer than 1/8 s takes its frames after the shutter (PSL), not from the ring
-            final boolean manualPsl = scamHybridSelected && paramController.pslShutterNs() > 0;
+            // P315: not in an OPPO-family picked sensor mode (nothing is exposed after the shutter there: the ring at the
+            // viewfinder's exposure)
+            final boolean manualPsl = scamHybridSelected && paramController.pslShutterNs() > 0 && SensorModePick.seriesAllowed();
             ScamStockAe.Plan planned;
             {
                 if(!hybridZslRequested)throw new IllegalStateException((scamHybridSelected?"Hybrid":"SCAM HDR")+Lang.t(" требует ZSL RAW-поток"," needs the ZSL RAW stream"));
@@ -7201,7 +7258,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P90 (owner: the viewfinder froze 0.7-0.8 s at every shot): as ArkCam and other stock cameras do, the series also feeds the viewfinder;
             // the renderer scales each series frame back to the viewfinder's exposure (ViewfinderGain), so nothing flashes.
             // scam_dev "series_viewfinder 0": RAW only, as before.
-            if (surface != null && !VivoPd2454NativeRaw.active(physicalID) && !mIspSurfaceOff
+            if (surface != null && mRepeatingIsp && !VivoPd2454NativeRaw.active(physicalID) && !mIspSurfaceOff
                     && PreferenceKeys.scamDevSwitch("series_viewfinder", true)) {
                 captureBuilder.addTarget(surface);
                 com.particlesdevs.photoncamera.ui.camera.views.viewfinder.ViewfinderGain.setReference(
@@ -7296,6 +7353,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     ScameraApp.getGyro().buildZslBurstShakiness(zslTimestamps,
                             previewExposure != null ? previewExposure : 0L, BurstShakiness, isGyroClockComparable());
                 } else {
+                    // P316 (settings audit): not in an OPPO-family picked sensor mode - the normal-back plan below would expose the
+                    // series P315 forbids (the press guard counts ring frames the drain may still drop); the shot is refused as the
+                    // guard refuses it, the catch below cleans up (nothing is submitted yet)
+                    if (SensorModePick.emptyRingRefused(true)) {
+                        Log.w("SCAM_CAPTURE", "sensor mode: the ring gave no usable frame, the shot is not taken (" + SensorModePick.SERIES_REASON + ")");
+                        throw new IllegalStateException(Lang.t("Камера ещё готовится. Повторите снимок.", "The camera is still getting ready. Take the shot again."));
+                    }
                     // Camera was just opened, the ring has not filled yet or holds no usable frame: N is taken after the
                     // shutter this once (tolerant for both routes, P27).
                     Log.w(TAG, (scamHybridShot ? "Hybrid" : "SCAM HDR") + " ZSL ring empty; N frames taken after the shutter");
@@ -7393,6 +7457,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     try {
                         // P113: «Движение» shoots from the ring alone, as the stock snapshot mode (no frames after the shutter)
                         plan=com.particlesdevs.photoncamera.settings.MotionMode.on() ? HybridPlan.zslOnly(nNs,nIso)
+                                : !SensorModePick.seriesAllowed() ? HybridPlan.zslOnly(nNs,nIso,SensorModePick.SERIES_REASON)
                                 : HybridPlan.build(nNs,nIso,mLastZslClipFraction,mCameraCharacteristics,mExposureLimits);
                     } catch(RuntimeException noPlan) {
                         Log.w("SCAM_CAPTURE","hybrid plan unavailable ("+noPlan.getMessage()+"): one more N frame after the shutter");
@@ -7718,7 +7783,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                                        long lastFrameNumber) {
                     if (!shotDone.compareAndSet(false, true)) return;
                     mInFlightRescue = null;
-                    if (scamSequence != null && scamSequence.futureCount > 0)
+                    // P315: a series the rescue completed (sequenceId -1: watchdog, camera error, closed session) does not vote:
+                    // the X8U's dead HAL in a sensor-mode session turned the flush off for its plain shots too
+                    if (scamSequence != null && scamSequence.futureCount > 0 && sequenceId >= 0)
                         Log.i("SCAM_CAPTURE", flushStats.record(shotFlushed.get(), scamSequence.futureCount, halLost));
                     final int finalFrameCount = scamSequence != null ? scamSequence.futureCount
                             : (int) (lastFrameNumber - baseFrameNumber[0]) + 1;
@@ -8572,6 +8639,44 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
     }
 
+    /**
+     * P316 (settings audit): the tripod state «Оптическая стабилизация» Авто last built the preview's OIS for (applyOisMode), null
+     * when the preview's OIS does not follow it (another choice, no OIS).
+     */
+    private volatile Boolean mOisAutoTripod;
+    private volatile boolean mOisReapplyPosted;
+
+    /**
+     * P316 (settings audit): Auto turns OIS off on a tripod - also when the phone is put on one (or picked up) after the session
+     * started (Gyro refreshes its tripod state every 600 samples): the preview's request takes the new state. It was applied once
+     * per session, and the series copies the preview's OIS (the lens must not move between the ring and the series), so a tripod
+     * found later never turned OIS off while the HUD showed it off. Not under forced stabilisation (P54b: OIS stays on), not while
+     * a shot is pending or its preview re-arm waits (the next preview result tries again).
+     */
+    private void maybeReapplyAutoOis(CameraCaptureSession session) {
+        final Boolean built = mOisAutoTripod;
+        if (built == null || oisMode != 1 || mForcedStab || mOisReapplyPosted || session == null || session != mCaptureSession) return;
+        if ((ScameraApp.getGyro() != null && ScameraApp.getGyro().getTripod()) == built) return;
+        final android.os.Handler handler = mBackgroundHandler;
+        if (handler == null) return;
+        mOisReapplyPosted = true;
+        handler.post(() -> {
+            mOisReapplyPosted = false;
+            synchronized (mPreviewStateLock) {
+                if (!isCameraResumed || session != mCaptureSession || mPreviewRequestBuilder == null || mIsRecordingVideo
+                        || mOisAutoTripod == null || oisMode != 1 || mForcedStab || mRearmPending || nextShotPending()) return;
+                applyOisMode(mPreviewRequestBuilder, false);
+                try {
+                    session.setRepeatingRequest(mPreviewInputRequest = mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
+                    Log.i("SCAM_CAPTURE", "OIS Auto: " + (Boolean.TRUE.equals(mOisAutoTripod) ? "tripod, OIS off" : "hand-held, OIS on")
+                            + " on the preview");
+                } catch (CameraAccessException | RuntimeException e) {
+                    Log.w("SCAM_CAPTURE", "OIS Auto: the preview could not take the tripod state (" + e + ")");
+                }
+            }
+        });
+    }
+
     /** P54b: OIS can be forced on: the camera has OIS and the user did not choose «OIS off» (oisMode 2). */
     private boolean oisForceable() {
         int[] modes = mCameraCharacteristics == null ? null
@@ -8604,6 +8709,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * @param isStillCapture true if configuring a still capture request, false for preview stream
      */
     private void applyOisMode(CaptureRequest.Builder builder, boolean isStillCapture) {
+        if (!isStillCapture) mOisAutoTripod = null;
         int[] stabilizationModes = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION);
         if (oisRequestable(stabilizationModes)) {
             int oisMode = this.oisMode;
@@ -8611,12 +8717,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // Always Off
                 builder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF);
             } else if (oisMode == 1) {
-                // Smart Auto
+                // Smart Auto: off on a tripod (P316: the retired Unlimited mode is read as Photo, CameraMode.valueOf). The preview
+                // follows the tripod state after the session started too (maybeReapplyAutoOis)
                 boolean isTripod = ScameraApp.getGyro() != null && ScameraApp.getGyro().getTripod();
-                CameraMode mode = ScameraApp.getSettings().selectedMode;
-                boolean isContinuousCapture = (mode == CameraMode.UNLIMITED);
+                if (!isStillCapture) mOisAutoTripod = isTripod;
 
-                if (isTripod || isContinuousCapture) {
+                if (isTripod) {
                     builder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF);
                 } else {
                     builder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON);

@@ -263,11 +263,20 @@ public class ShadeCatalogTest {
         assertNull(catalog.unavailable(cdm));
         assertNull(catalog.entry("pref_scamhdr_zsl_frames"));
 
+        // «Кадры теней»'s rows follow the switch in effect through SettingsAvailability (P316: no android:dependency - «Движение»
+        // greys the photo switch, which would grey them while the mode's own shadow frames are on)
         ShadeCatalog.Entry frames = catalog.entry("pref_scam_hybrid_shasta_frames");
-        assertEquals("pref_scam_hybrid_shasta", frames.dependency);
+        assertNull(frames.dependency);
         assertNull(catalog.unavailable(frames));
         prefs.edit().putBoolean("pref_scam_hybrid_shasta", false).commit();
-        assertEquals(context.getString(R.string.shade_reason_dependency, "Shadow frames"), catalog.unavailable(frames));
+        assertEquals("Turn on “Shadow frames”.", catalog.unavailable(frames));
+        // a switch the row depends on (android:dependency)
+        ShadeCatalog.Entry boost = catalog.entry("pref_scam_hybrid_boost_value");
+        assertEquals("pref_scam_hybrid_motion_boost", boost.dependency);
+        assertNull(catalog.unavailable(boost));
+        prefs.edit().putBoolean("pref_scam_hybrid_motion_boost", false).commit();
+        assertEquals(context.getString(R.string.shade_reason_dependency, catalog.entry("pref_scam_hybrid_motion_boost").title),
+                catalog.unavailable(boost));
 
         ShadeCatalog.Entry flash = catalog.entry(ShadeCatalog.FLASH);
         assertNull(catalog.unavailable(flash));
