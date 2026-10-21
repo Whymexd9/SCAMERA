@@ -505,14 +505,16 @@ public final class ScamDenoise extends Node {
                     modelSource = "camera x" + k;
                 }
             }
-            final float photon = PreferenceKeys.hybridValue("noise_photon", 1f), readout = PreferenceKeys.hybridValue("noise_readout", 1f);
+            // The merge's noise multipliers («Склейка: дробовая составляющая / шум считывания») no longer scale this model: the
+            // denoise has its own ρs / ρr (dn_model_shot / dn_model_read) for the same job, and both pairs multiplied here (P310
+            // settings cleanup; at their defaults 1 nothing changes).
             float sY = 0f, rY = 0f, sG = 0f, rG = 0f;
             for (int c = 0; c < 3; c++) {
                 float wp = par.whitePoint != null && par.whitePoint.length > c && par.whitePoint[c] > 1e-6f ? par.whitePoint[c] : 1f;
                 float g = 1f / wp;
-                sY += wY[c] * wY[c] * g * S[c] * photon;
-                rY += wY[c] * wY[c] * g * g * O[c] * readout;
-                if (c == 1) { sG = g * S[c] * photon; rG = g * g * O[c] * readout; }
+                sY += wY[c] * wY[c] * g * S[c];
+                rY += wY[c] * wY[c] * g * g * O[c];
+                if (c == 1) { sG = g * S[c]; rG = g * g * O[c]; }
             }
 
             // ---- level 0 at the sensor scale (2x grid: kD8 / {1,3,3,1} down), despeckle, YUV

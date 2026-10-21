@@ -53,6 +53,7 @@ public class ScamHybridBurstCrashTest {
         assertEquals(ScamHybridBurst.STEP_OUTLIERS, ScamHybridBurst.stepOf("GPU compile mean: glCompileShader"));
         assertEquals(ScamHybridBurst.STEP_RIM, ScamHybridBurst.stepOf("GPU compile rim"));
         assertEquals(ScamHybridBurst.STEP_BENTO, ScamHybridBurst.stepOf("GPU compile bento: glLinkProgram"));
+        assertEquals(ScamHybridBurst.STEP_BLEND, ScamHybridBurst.stepOf("GPU compile blend: glCompileShader")); // P310
         assertEquals(ScamHybridBurst.STEP_CHROMA, ScamHybridBurst.stepOf("GPU compile chroma"));
         assertEquals(ScamHybridBurst.STEP_GPU, ScamHybridBurst.stepOf("GPU compile reject"));
         assertEquals(ScamHybridBurst.STEP_GPU, ScamHybridBurst.stepOf("GPU context (EGL)"));
@@ -66,6 +67,9 @@ public class ScamHybridBurstCrashTest {
             assertEquals("", ScamHybridBurst.avoidedTuning());
             ScamHybridBurst.avoidedSteps.add(ScamHybridBurst.STEP_OUTLIERS);
             assertEquals("hotSigma 0\nhotBaseSigma 0\n", ScamHybridBurst.avoidedTuning());
+            ScamHybridBurst.avoidedSteps.clear();
+            ScamHybridBurst.avoidedSteps.add(ScamHybridBurst.STEP_BLEND);
+            assertEquals("bentoBlend 0\n", ScamHybridBurst.avoidedTuning()); // P310
         } finally {
             ScamHybridBurst.avoidedSteps.clear();
         }

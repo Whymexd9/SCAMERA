@@ -6603,3 +6603,69 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   ultrashort frames' wide kernel 2-4 px onto it), dark pixels changed > 20 %: 11 k (was 40 k); x7u_1x 0-4 px ring +1.7 %; clipped areas 8 px in: float rounding only (< 1 %,
   l7u / x7u / main511). Tried and dropped: counting the ultrashort frames
   at their noise in the effective-frames map (the coarse grain sits on pyramid levels the denoise barely touches: no change).
+### P310 - LED backlight without artifacts: the ultrashort frames blended after the merge by region, their gain against N, coloured light in the ARK tone; settings cleanup (owner, 2026-10-21: «Нам нужно исправить подсветку ... у нас куча артефактов на подсветке ... получить результат по артефактам и дд как минимум не хуже арк камеры»; «У нас скорее всего проблема с маской бенто, именно поэтому я тебя просил исправлять переходы»; «тут вижу артефакт, плюс вся лента зубчатая, сделай ещё лучше»; «учитывай другие сцены чтобы там нам всё не испортить»; «Проверяй на разных бурстах ... в сцене с ПК у нас всё тоже должно быть нормально»; «Когда закончишь исправлять проверь наше меню настроек и убедись что у нас нет дублирующихся бесполезных настроек»): DONE, not device-tested in the app.
+- Cause (the owner's burst Desktop/т/p7/scam_burst-20261020-193420.bin = OPPO /data/local/tmp/p310/led.nch, X8U main camera, plain
+  Bayer 4096x3072, 20 N frames 10 ms ISO 579 + 3 ultrashort 7.24 ms ISO 100 = x0.125): the ultrashort frames went into the merge site by
+  site and colour by colour (a clipped N sample left out of its colour only), so a ring's edge got isolated bright 2x2 cells, a G/B
+  checker and pink blocks wherever the ultrashort frames saw the light in another colour; their ring sits ~2 px off the N frames'; the
+  LEDs are PWM / ARGB driven: during the 7 ms the glow has G x0.55, B x0.67 of the N frames' (after the P290 tile correction). In the
+  post the bar went flat white and the rings lost their colour (ARK fusion weights and the path to white on saturated light).
+- Worker (scam-hybrid.h; kHybMergeMain1 untouched), HybridTuning::bentoBlend (worker default 0 = replays unchanged, plain Bayer only;
+  the native colour-block merge keeps the P309 ramp): the merge runs on the N frames and the base alone, then kHybUsBlend after each
+  strip's merge in four stages: 0 the N marks (clip / bright, clip flags bits 16-31); 1 the weight BY REGION - the N clip spread with
+  full weight 3 px and down to 0 at 8 px (bentoBlendNear / Far), gated by the bright neighbourhood (a gaussian of the N level, or the
+  ultrashort colour's own level: never onto a dark border), at least the base cells' weight (smoothstep 0.93..0.99 of the cell's
+  brightest site, dilated, gaussian bentoBlendSigma), neutral light x the best ultrashort check validity - and the ultrashort colour:
+  every frame demosaiced at its own sites from one 6x6 read (Hamilton-Adams green with soft direction weights, colour differences
+  weighted by the neighbours' green against the pixel's, every value clamped to the sites it lies between: no zipper at a x20 edge,
+  no black pixel on a ring), bilinear to the pixel; frames by validity and a soft rejection against their median level; 2 the gain of
+  the ultrashort colour against N per colour - the mean log ratio over the light's glow (N 0.25..0.97 of its clip, levels within x3),
+  a 12 px / 2 px and a 32 px / 8 px lattice anchored to fixed coordinates, the first rows of a strip continuing the gain the previous
+  strip ended with (carry rows in the scratch), its strength from the P290 tile check's deviation near the clip (HybridInput::usFlicker:
+  daylight o12 0.12 -> off, the LED shot 1.22 -> full, unmeasured -> full); 3 the blend with ONE weight for R, G and B, the colour
+  smoothed over 5x5 px with its luma kept, the effective frames (sum w)^2 / sum w^2, the clip flags: an ultrashort colour flagged at its
+  own clip only (3 % of it), the N merge's clip-border bits (3, 6) cleared where the blend dominates (the highlight recovery's defringe
+  drew a white ring round every LED dot). Removed on the way: every per-pixel test against N (it tore edges, left holes and doubled
+  moving paper / leaf shadows) and a floor at the N clip (it stamped N's 2x2 clip steps onto a 2 px shifted ring). Merge time +0.2-0.5 s
+  (the LED shot 1.6 -> 2.0 s).
+- App: bento_blend always written (bentoBlend 1, dev switch hybrid_bento_blend), bentoBlendSigma = «Кадры светов: мягкий переход» / 4
+  (at least 0.25: 0 now the sharpest; before, 0 fell back to the default softness); HybridSettingsTest p310.
+- Post (ARK, ArkFusion / gf.glsl, combine.glsl): saturated light keeps the kernel's centre and highlight weight in the fusion (satLightU,
+  saturation 0.35..0.7 of the pixel; neutral light keeps the P291 headroom weights), the AgX tone's path to white runs from 0.8 to
+  0.995 of the AgX white (was 0.6 .. 2.4 of the linear level: no white bar or rings below the white).
+- Measured (OPPO X7 Ultra replays of the owner's bursts, host emulation of the post): LED rings smooth (no 2x2 cells, checker, dots or
+  dark seam), cores pink-white like the reference app's, the bar's dots kept without white rings; o12 (daylight, paper and leaf
+  shadows in the wind) no doubling, sharper paper, no colour shift (gain off); l7u_b (desk lamp) the stair-stepped bar edges gone;
+  d1853 the basin inside a clip instead of a blocky patch, its water drops; d1655 (lamp on a wall) the clipped disk of the glow takes
+  the ultrashort frames' grain (0.56 % against 0.33 % high-pass) with an effective map that lets the denoise take it; x7u_1x similar;
+  l7u_a, hh_1, isz2, t100526, uw452, v10_1, main511, hand bit-identical (no blend there); bentoBlend 0 bit-identical to 4f6d8ace on
+  7 bursts x 2 tunings (x7u_1x c2f295fa, hh_1 63519568 as the P306 refs).
+- Settings cleanup (audit of all 375 rows and 186 dev keys, every finding re-checked in the code): the SCAM HDR bracket planner (dead
+  since P129: the route is always the hybrid) with its five dev keys (hybrid_planner_adaptive / _l_ev / _s_ev / _es_ev,
+  hybrid_long_boost_ev); «Источник шума для склейки» duplicated «Профиль модели шума» (the merge follows the profile when it is not
+  «Авто»); the merge's noise multipliers were multiplied into the denoise next to its own ρs / ρr (merge only now, titled so);
+  «Кадры светов: вес» acted on nothing with the blend (dev key hybrid_bento_weight); greyed out although acting: «Мерцание ламп» (the
+  native FULLRES AE), «Граница ночь / день (ключ SNR)» (was «Новое ядро, «авто»: предел ключа SNR»); now greyed: «Сохранять RAW-серию»
+  under the lab's copy, «Цветовой метод» with a DCP, the ARK denoise rows with «Шумоподавление» off; truer texts: «Root-доступ», «Кадров
+  в склейке мозаики: не больше». The two removed rows are OBSOLETE_KEYS. Unused code: SettingsAvailability.stockAeDevice,
+  PreferenceKeys.mosaicIspPreview / getScamNoiseSource / isScamPlannerAdaptive / getScamLongBoostEv. Kept (design or owner naming):
+  «Разрешение» next to «Размер фото», the two grains, the luma / contrast / saturation rows on several pages.
+- Pre-push review (all fixed, the replays above rerun with the final worker): tone - the saturated-light share only for BRIGHT light
+  (satLevelU: 0.25..0.6 of the brightest channel x the AE, dev keys hybrid_ark_sat_light_level_lo / _hi; without it skin, foliage and
+  coloured walls in a lamp shot's shadows took the kernel's weights and haloed), saturated light keeps the P291 envelope's plateau
+  (never a fall: no dark ring) and only drops its rise, the AgX white counts a negative EV (0.18 x 2^(maxEv + max(-EV, 0))); worker -
+  the blend program is compiled only when the blend runs (HybridGpu blendPass; bentoBlend 0 builds exactly the P309 programs) and the
+  app's crash ladder can drop it alone (ScamHybridBurst.STEP_BLEND -> bentoBlend 0), the N marks of the rows beyond a strip come from
+  the base frame's raw cells (reach and gate no longer stop at a strip border), the gain carry holds only where the strip's last row
+  blended (weighing it by its confidence made a 25 % step in l7u_b's lamp-lit wall at row 2304), the base cells' weight reads the
+  canonical cells (CFA shift, reflected borders), one checked ultrashort frame is its own validity plane, the mosaic split / binned
+  paths pass their own tile check as usFlicker, the clip spread's near distance kept below the far cap, slot 6 full size for the blend,
+  the chroma smoothing only over pixels the gain stage measured, the debug views write every pixel; tools/check_colour_output.py
+  compares the a3e94db baseline with the same AgX white edit applied (as P118's guard): everything else of P3_OUT 0 stays bit-exact.
+- Checks: CI unit list (266 classes, 1586 tests), check_settings_model (new rules), check_ui_language, make_ui_icons --check, the 14
+  C++ checks and --transport-check on the OPPO, glslc of the blend program (plain / LOCAL_ALIGN), gf.glsl MODE 0-3 and combine.glsl
+  TONE_OP 0/1, the CI GL checks on the host (moderngl: check_colour_output --shader / --gl, check_ark_highlights / _headroom,
+  check_highlight_*, check_tone_ops, check_colour_look, check_scam_hdr_gpu ...); check_ark_tone fails its two synthetic cases exactly
+  as on 4f6d8ace (not in CI). Final worker: the 5 blend replays (o12, x7u_1x, d1655, d1853, the LED shot) no strip-border step, the
+  references and 3 no-blend bursts bit-identical.
+- Open: the OPPO X8U pink RGB bulb with a white halo ring (owner's screenshot, no burst); the app on a phone.

@@ -476,15 +476,6 @@ public class PreferenceKeys {
         if (isHybridShot()) return false; // the hybrid takes no L frame (Shasta brackets after the press instead)
         return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_scamold_zsl_long", true);
     }
-    public static boolean isScamPlannerAdaptive() {
-        if (isHybridShot()) return hybridSwitch("planner_adaptive", true);
-        return preferenceKeys.settingsManager.getBoolean("default_scope", "pref_scamhdr_planner_adaptive", true);
-    }
-    /** SCAM noise profile source: auto | imx06c | camera2 | settings. */
-    public static String getScamNoiseSource() {
-        if (isHybridShot()) return hybridString("noise_source", "auto");
-        return preferenceKeys.settingsManager.getString("default_scope", "pref_scamhdr_noise_source", "auto");
-    }
     /** RAW lens shading map: auto | apply | skip (HAL already corrected RAW_SENSOR). */
     public static String getRawLscMode() {
         return preferenceKeys.settingsManager.getString("default_scope", "pref_raw_lsc_mode", "auto");
@@ -753,12 +744,6 @@ public class PreferenceKeys {
     /** P223 «Поправки баланса белого в FULLRES и ISZ» (on by default): off, the camera's own white balance. */
     public static final String MOSAIC_WB_KEY = "pref_mosaic_wb_corrections";
 
-    /** P266: the global switch is gone (the modules' «Поток ISP»); kept for the migration's key only. */
-    @Deprecated
-    public static boolean mosaicIspPreview() {
-        return true;
-    }
-
     /**
      * P223: our white-balance corrections of mosaic shots (ISZ without remosaic, FULLRES) - the frame estimate on the camera's
      * curve (P121 / P212f), the FULLRES neutral resolver (P212g), the OPPO native session's own estimate (P212e). Off: the
@@ -902,6 +887,12 @@ public class PreferenceKeys {
         if (!hybridSwitch("cell_clip", true)) out.append("cellClip 0\n");
         if (!hybridSwitch("chroma_diff_clamp", true)) out.append("chromaDiffClamp 0\n");
         if (!hybridSwitch("bento_scam", true)) out.append("bentoScam 0\n");
+        // P310 (owner, the LED fans and bar of a PC: «куча артефактов на подсветке», «проблема с маской бенто, ... исправлять
+        // переходы»): the ultrashort frames' RGB blended after the merge by region (worker HybridTuning::bentoBlend, plain Bayer;
+        // worker default 0 = replays unchanged), its softness from «Кадры светов: мягкий переход» (bento_ramp in 2x2 cells: sigma
+        // ramp / 4, at least 0.25 - 0 the sharpest). scam_dev.txt "hybrid_bento_blend 0" = the P309 mixing inside the merge.
+        if (hybridSwitch("bento_blend", true))
+            out.append("bentoBlend 1\nbentoBlendSigma ").append(Math.max(0.25f, 0.25f * hybridValue("bento_ramp", HYBRID_DEFAULTS.get("bento_ramp")))).append('\n');
         if (!hybridSwitch("mosaic_window_full", true)) out.append("mosaicWindowFull 0\n");
         return out.toString();
     }
@@ -963,10 +954,6 @@ public class PreferenceKeys {
      */
     public static boolean isHybridDenoiseEnabled() {
         return hybridSwitch("denoise", true);
-    }
-    /** Extra EV for the SCAM long frame over the stock plan (0 = stock). */
-    public static float getScamLongBoostEv() {
-        return routeInternalValue("long_boost_ev", 1.1f);
     }
     /** Normal-exposure N frames taken from the ZSL ring: SCAM HDR 4..50; on a hybrid shot the hybrid's own count. */
     public static int getScamZslFrames() {

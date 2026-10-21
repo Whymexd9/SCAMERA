@@ -609,7 +609,16 @@ void main() {
     if (hlWhiteU > 0.0) {
         float mx = max3(scene);
         float yS = dot(scene, LUMA);
+#if TONE_OP == 1
         float w = hlWhiteU * satW * smoothstep(0.6, 2.4, mx);
+#else
+        // P310 (owner, LED fans: the rings' and the bar's colour went white): only where the light's brightest channel reaches
+        // the AgX white (0.18 x 2^(maxEv - min(EV, 0)), where its tone curve ends: lg = 1 below); the scene gate 0.6 .. 2.4 above bleached every bright
+        // coloured light whose colour the curve still holds (host replay: the bar's body keeps its tint like ArkCam's, its LED
+        // dots and the rings' cores at the white still go to white, so a light stays the brightest thing around it)
+        float agxWhite = 0.18 * exp2(agxB.y + max(-agxB.z, 0.0));
+        float w = hlWhiteU * satW * smoothstep(0.8 * agxWhite, 0.995 * agxWhite, mx);
+#endif
 #if HL_LANDING == 1
         // P154 (owner: «белый цвет никогда не уходил в серый»): towards the white of its brightest channel, not down to its
         // luminance (a grey of the same Y)

@@ -279,14 +279,6 @@
         <item>1</item>
         <item>2</item>
     </string-array>
-    <string-array name="scam_hybrid_noise_source_entries">
-        <item>From the camera (each frame)</item>
-        <item>From the noise model profile (Auto: from the camera)</item>
-    </string-array>
-    <string-array name="scam_hybrid_noise_source_values" translatable="false">
-        <item>auto</item>
-        <item>settings</item>
-    </string-array>
     <string-array name="scam_cre_entries">
         <item>Auto (system, else bundled)</item>
         <item>System (/vendor, vivo only)</item>

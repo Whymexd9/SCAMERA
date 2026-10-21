@@ -559,7 +559,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     // Sensor timestamp of the newest tail frame (L/S/ES) of the current SCAM shot.
     private volatile long mScamTailTimestamp = 0;
     private volatile boolean mScamFireWaiting = false;
-    private volatile long mScamPlanDeadline;
     private List<ImageFrame> mPendingZslNormalFrames = new ArrayList<>();
     private volatile java.util.concurrent.CountDownLatch mZslCopyDone;
     // The stock-AE observer attaches to the camera provider after the session
@@ -4069,7 +4068,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             if (isZslMode()) {
                 mScamRingFrozen = PreferenceKeys.isScamEnabled();
-                mScamPlanDeadline = android.os.SystemClock.elapsedRealtime() + 3000;
                 captureStillPicture();
                 return true;
             }
@@ -6055,36 +6053,6 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private long scamZslShutterTimestamp;
     private int mOpenRetries;
 
-    /** Camera2-domain bracket (no root): N = preview exposure, L/S/ES by the configured steps. */
-    private ScamStockAe.Plan scameraBracketPlan() {
-        // N is the buffered ZSL RAW at the shutter: take its own metadata, not the
-        // latest preview result (that can already belong to another request).
-        CaptureResult preview;String nSource="zsl_cutoff";
-        synchronized (mZslBufferLock) {
-            preview=mHexZslResults.get(scamZslShutterTimestamp);
-            if(preview==null) {
-                long best=Long.MIN_VALUE;nSource="zsl_newest";
-                for(java.util.Map.Entry<Long,TotalCaptureResult> e:mHexZslResults.entrySet())
-                    if(e.getKey()<=scamZslShutterTimestamp && e.getKey()>best){best=e.getKey();preview=e.getValue();}
-            }
-        }
-        if(preview==null){preview=mPreviewCaptureResult;nSource="preview";}
-        Long nShutter=preview==null?null:preview.get(CaptureResult.SENSOR_EXPOSURE_TIME);
-        Integer nIso=preview==null?null:preview.get(CaptureResult.SENSOR_SENSITIVITY);
-        // Real N gain from the vendor AE (can exceed the Camera2 range at night).
-        final double trueIso=ScamStockAe.Plan.vendorIso(preview);
-        final float clip=zslClipFraction();
-        mLastZslClipFraction=clip;
-        ScamStockAe.Plan plan=ScamStockAe.Plan.scameraPlanner(nShutter==null?0:nShutter,nIso==null?0:nIso,trueIso,clip,
-                PreferenceKeys.routeInternalValue("planner_l_ev",1f),PreferenceKeys.routeInternalValue("planner_s_ev",3f),
-                PreferenceKeys.routeInternalValue("planner_es_ev",6f),PreferenceKeys.isScamPlannerAdaptive(),
-                mCameraCharacteristics,scamZslShutterTimestamp,mSessionGeneration.get())
-                .withLongBoost(PreferenceKeys.getScamLongBoostEv(),mCameraCharacteristics);
-        Log.i("SCAM_CAPTURE","bracket=SCAMERA_planner Camera2_RAW timestamp="+plan.timestamp+" N="+nShutter+"ns ISO"+nIso
-                +" from="+nSource+" "+plan.sceneDescription);
-        return plan;
-    }
-
     /**
      * P27: the Hybrid's N without the SCAM HDR planner (whose throws cost Hybrid shots): the ring frame at the shutter, else
      * the newest ring result before it, the preview result, the preview AE values. Null when no N exposure is known at all
@@ -7189,67 +7157,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P84: the Hybrid with a hand-set shutter longer than 1/8 s takes its frames after the shutter (PSL), not from the ring
             final boolean manualPsl = scamHybridSelected && paramController.pslShutterNs() > 0;
             ScamStockAe.Plan planned;
-            boolean scamToHybrid=false;
             {
                 if(!hybridZslRequested)throw new IllegalStateException((scamHybridSelected?"Hybrid":"SCAM HDR")+Lang.t(" требует ZSL RAW-поток"," needs the ZSL RAW stream"));
-                // The hybrid's N is the ring at the preview exposure (P27: its own N, never the SCAM HDR planner).
-                if(scamHybridSelected) {
-                    planned=hybridNPlan(manualPsl);
-                } else if(!PreferenceKeys.useStockBracketPlanner()) {
-                    try {
-                        planned=scameraBracketPlan();
-                    } catch(IllegalStateException noBracket) {
-                        // P27: no S/ES plan (bright scene at the sensor floor, no N metadata): this shot is captured and merged
-                        // by the Hybrid instead of failing.
-                        Log.w("SCAM_CAPTURE","SCAM HDR plan unavailable ("+noBracket.getMessage()+"); this shot is taken by the Hybrid");
-                        scamToHybrid=true;
-                        planned=hybridNPlan();
-                    }
-                } else {
-                ScamStockAe stock=mStockAe;
-                final boolean mayWait=android.os.SystemClock.elapsedRealtime()<mScamPlanDeadline && mBackgroundHandler!=null;
-                if(stock==null || stock.generation!=mSessionGeneration.get()) {
-                    if(mayWait){mBackgroundHandler.postDelayed(this::captureStillPicture,50);return;}
-                }
-                // Poll without blocking this camera thread: it also delivers
-                // the preview results the stock AE plan is bound to.
-                ScamStockAe.Plan solved;
-                try {
-                    if(stock==null || stock.generation!=mSessionGeneration.get())
-                        throw new IllegalStateException(Lang.t("Стоковый AE ещё не готов","Stock AE is not ready yet"));
-                    ScamStockAe.Plan ready=stock.tryFreeze(scamZslShutterTimestamp,mayWait);
-                    if(ready==null){mBackgroundHandler.postDelayed(this::captureStillPicture,50);return;}
-                    solved=ready.withDistinctBracket(mCameraCharacteristics)
-                            .withLongBoost(PreferenceKeys.getScamLongBoostEv(),mCameraCharacteristics);
-                } catch(IllegalStateException unavailable) {
-                    // No usable stock plan (observer failed, stale, or bright scene the
-                    // stock bracket cannot separate): the shot still goes through.
-                    Log.w("SCAM_CAPTURE","stock plan unavailable ("+unavailable.getMessage()+"); using SCAMERA planner for this shot");
-                    solved=null;
-                }
-                mStockObserverReady=solved!=null;
-                if(solved!=null && solved.fitsCamera(mCameraCharacteristics)) {
-                    planned=solved;
-                    Log.i("SCAM_CAPTURE","bracket=Scam_stock_solver Camera2_RAW frameId="+planned.frameId+" timestamp="+planned.timestamp+" "+planned.sceneDescription);
-                } else {
-                    // The vendor gain->ISO conversion is the main camera's; on other
-                    // modules (HP9 tele) the plan can land outside the Camera2 range.
-                    if(solved!=null)Log.w("SCAM_CAPTURE","stock plan outside Camera2 range for camera "+ScameraApp.getSettings().mCameraID
-                            +" ("+solved.describeRanges()+"; "+ScamStockAe.Plan.describeCamera(mCameraCharacteristics)
-                            +"); using SCAMERA planner for this shot");
-                    try {
-                        planned=scameraBracketPlan();
-                    } catch(IllegalStateException noBracket) {
-                        Log.w("SCAM_CAPTURE","SCAM HDR plan unavailable ("+noBracket.getMessage()+"); this shot is taken by the Hybrid");
-                        scamToHybrid=true;
-                        planned=hybridNPlan();
-                    }
-                }
-                }
+                // The hybrid's N is the ring at the preview exposure (P27: its own N, never the SCAM HDR planner). Since P129 every
+                // shot is the hybrid's (mergeRoute()): the SCAM HDR bracket planner and the vivo stock-AE plan are gone.
+                planned=hybridNPlan(manualPsl);
             }
             final ScamStockAe.Plan stockPlan=planned;
             // The capture route of this shot (P27: a SCAM HDR shot without an S/ES plan is captured and merged by the Hybrid).
-            final boolean scamHybridShot=scamHybridSelected||scamToHybrid;
+            final boolean scamHybridShot=scamHybridSelected;
             final HybridPlan[] hybridPlanHolder={null};
             final float[] normalBackLongRatio={0f};
             final boolean scamZslRequested = hybridZslRequested && scamCapture;

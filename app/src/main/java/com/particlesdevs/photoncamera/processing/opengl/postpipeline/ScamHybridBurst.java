@@ -411,12 +411,16 @@ public final class ScamHybridBurst implements ScamTransport {
 
     private double product(ImageFrame f) { return (double) f.measuredExposure * f.measuredIso; }
 
-    /** Per-frame noise model in normalised units (slope, offset): the frame's own Camera2 profile, or the selected settings profile. */
+    /**
+     * Per-frame noise model in normalised units (slope, offset): the frame's own Camera2 profile, or the noise model profile
+     * when one is chosen (not «Авто»; the denoise and the alignment take it too). A separate switch «Источник шума для склейки»
+     * chose between them until the settings cleanup of P310: with the profile on «Авто» its "settings" was the camera anyway,
+     * and a profile with the switch on the camera gave the merge and the denoise different models.
+     */
     private float[] noiseFor(ImageFrame frame) throws IOException {
         float slope = frame.noiseSlope, offset = frame.noiseOffset;
-        String source = PreferenceKeys.hybridString("noise_source", "auto");
-        com.particlesdevs.photoncamera.processing.render.NoiseModelProfile profile = "settings".equals(source)
-                ? com.particlesdevs.photoncamera.processing.render.NoiseModelProfile.byId(PreferenceKeys.getNoiseModelProfileId()) : null;
+        com.particlesdevs.photoncamera.processing.render.NoiseModelProfile profile =
+                com.particlesdevs.photoncamera.processing.render.NoiseModelProfile.byId(PreferenceKeys.getNoiseModelProfileId());
         if (profile != null) {
             Integer maxAnalog = com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics == null ? null
                     : com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics.get(
@@ -776,7 +780,7 @@ public final class ScamHybridBurst implements ScamTransport {
      */
     static final java.util.Set<String> avoidedSteps = java.util.concurrent.ConcurrentHashMap.newKeySet();
     static final String STEP_OUTLIERS = "outlier tests", STEP_RIM = "rim pass", STEP_BENTO = "Bento colour pass",
-            STEP_CHROMA = "chroma pass", STEP_CRE = "CRE motion";
+            STEP_CHROMA = "chroma pass", STEP_CRE = "CRE motion", STEP_BLEND = "Bento blend";
     /** Crash site that leaves no GPU merge (a required program, the context): the session goes to the CPU fallback. */
     static final String STEP_GPU = "GPU";
 
@@ -785,6 +789,8 @@ public final class ScamHybridBurst implements ScamTransport {
         if (avoidedSteps.contains(STEP_OUTLIERS)) t.append("hotSigma 0\nhotBaseSigma 0\n");
         if (avoidedSteps.contains(STEP_RIM)) t.append("rimRatio 0\n");
         if (avoidedSteps.contains(STEP_BENTO)) t.append("bentoChromaSigma 0\n");
+        // P310: the ultrashort blend after the merge (kHybUsBlend) left out: the highlight frames mix inside the merge as before
+        if (avoidedSteps.contains(STEP_BLEND)) t.append("bentoBlend 0\n");
         if (avoidedSteps.contains(STEP_CHROMA)) t.append("chromaDiff 0\n");
         return t.toString();
     }
@@ -831,6 +837,7 @@ public final class ScamHybridBurst implements ScamTransport {
                 case "mean": case "flags": return STEP_OUTLIERS;
                 case "rim": return STEP_RIM;
                 case "bento": return STEP_BENTO;
+                case "blend": return STEP_BLEND;
                 case "chroma": return STEP_CHROMA;
                 default: return STEP_GPU; // mark, guide, cells, reject, dilate, merge: every merge needs them
             }

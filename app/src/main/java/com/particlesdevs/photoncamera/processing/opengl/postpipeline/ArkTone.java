@@ -111,6 +111,16 @@ public final class ArkTone {
         return Math.max(0f, value("weight_hl_hr", 0.4f));
     }
 
+    /**
+     * P310: the saturation ((max - min) / max of the light) over which a pixel moves from the headroom weights to the kernel's
+     * (ark/gf.glsl satLightU; hi <= lo: off, every pixel the headroom weights as P291), then the light's level (its brightest
+     * channel x the AE) over which that fades in (satLevelU; only light near the top of the curve).
+     */
+    static float[] saturatedLightRamp() {
+        return new float[]{value("sat_light_lo", 0.35f), value("sat_light_hi", 0.7f),
+                value("sat_light_level_lo", 0.25f), Math.max(value("sat_light_level_hi", 0.6f), value("sat_light_level_lo", 0.25f) + 0.01f)};
+    }
+
     /** P291: the rise of the fusion's monotonic envelope per ln of the light (ark/gf.glsl monoU; 0 = the kernel's fusion). */
     static float fusionMono() {
         return Math.max(0f, value("fusion_mono", 0.04f));

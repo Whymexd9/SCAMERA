@@ -15,7 +15,6 @@ public final class SettingsAvailability {
     /** Why «HDR в HEIC / AVIF» cannot act on this phone (processing.color.HdrOutput.unavailableReason: Android 13), or null. */
     private String hdrUnavailable;
     /** The vivo stock AE observer runs on this phone (capture.ScamStockAe.supportedDevice: the vivo X200 Ultra). */
-    private boolean stockAeDevice;
     /** Why «Цветовой метод» does not act here (a tuned / ISP matrix replaces it), null when it does. */
     private String colorMethodOverride;
     /** The tele's smooth optical zoom exists here (capture.XiaomiTeleZoom.phone: the Xiaomi 17 Ultra); assumed unless told otherwise. */
@@ -34,7 +33,6 @@ public final class SettingsAvailability {
     /** The device fact behind «HDR в HEIC / AVIF»: the reason it cannot act here (Android version) or null. */
     public SettingsAvailability hdrUnavailable(String reason) { hdrUnavailable = reason; return this; }
     /** The device fact behind «Стоковый AE vivo»: the stock AE observer exists on this phone. */
-    public SettingsAvailability stockAeDevice(boolean supported) { stockAeDevice = supported; return this; }
     /** The device fact behind «Цветовой метод»: the matrix that replaces the choice on this phone, or null. */
     public SettingsAvailability colorMethodOverride(String reason) { colorMethodOverride = reason; return this; }
     /** The device fact behind «Плавный оптический зум»: hidden on any other phone than the Xiaomi 17 Ultra. */
@@ -92,7 +90,8 @@ public final class SettingsAvailability {
 
     public String reason(String key) {
         // The denoise and watermark switches sit on a parent page of these rows (P6), so the rule replaces android:dependency.
-        if (key.startsWith("pref_scam_hybrid_dn_") && !on("pref_scam_hybrid_denoise", true)) return Lang.t("Включите «Шумоподавление».", "Turn on “Noise reduction”.");
+        if ((key.startsWith("pref_scam_hybrid_dn_") || any(key, "pref_scam_hybrid_ark_bracket_denoise", "pref_scam_hybrid_ark_chroma_denoise"))
+                && !on("pref_scam_hybrid_denoise", true)) return Lang.t("Включите «Шумоподавление».", "Turn on “Noise reduction”.");
         // Denoise engine (pref_scam_hybrid_dn_engine): The reference finish (ScamDenoise) reads the dn_ rows, NLM (ScamHdrDenoise) its two strengths.
         boolean nlm = text("pref_scam_hybrid_dn_engine", "multiscale").trim().equals("nlm");
         if (key.startsWith("pref_scam_hybrid_dn_") && !key.equals("pref_scam_hybrid_dn_engine") && nlm)
@@ -112,9 +111,8 @@ public final class SettingsAvailability {
         // P128: the «Движение» rows replace the normal ones only while the mode is on (MotionMode, ParamController)
         if (key.startsWith("pref_scam_hybrid_mm_") && !on("pref_motion_mode", false))
             return Lang.t("Действует только в режиме «Движение» (кнопка в верхней панели).", "Acts only in “Motion” mode (the button in the top bar).");
-        // P128: «Мерцание ламп» rounds only the long frames' shutter to whole flicker periods (HybridPlan): nothing without them
-        if (key.equals("pref_antibanding_hz_key") && !on("pref_scam_hybrid_shasta", true))
-            return Lang.t("Подгоняет выдержку длинных кадров теней, а они выключены.", "Fits the shutter of the long shadow frames, which are off.");
+        // «Мерцание ламп» is never greyed out: besides the long frames' shutter (HybridPlan) the native FULLRES AE (OPPO, vivo)
+        // rounds its shutter to whole flicker periods with or without them (P310 settings cleanup; P128 greyed it with Shasta off)
         // P128: the mosaic merge acts on Quad / Tetra streams (ISZ modules without the sensor's remosaic) only
         if (key.startsWith("pref_scam_hybrid_mosaic_") && !mosaicStreams)
             return Lang.t("Только для модулей с мозаикой Quad / Tetra (ISZ без ремозаика); на этом телефоне её ещё не было.",
@@ -144,7 +142,7 @@ public final class SettingsAvailability {
                 return Lang.t("Сначала задайте силу этой зоны.", "Set this zone's strength first.");
         // P118: rows that act only with another setting off its default (found while the descriptions were rewritten)
         final String sabre61 = text("pref_scam_hybrid_sabre61", "1");
-        if (any(key, "pref_scam_hybrid_s61_max_key", "pref_scam_hybrid_s61_min_motion") && !sabre61.equals("2"))
+        if (key.equals("pref_scam_hybrid_s61_min_motion") && !sabre61.equals("2"))
             return Lang.t("Только при «Новое ядро склейки» = «Авто (ночью)».", "Only with “New merge kernel” = “Auto (at night)”.");
         if (any(key, "pref_scam_hybrid_snr_scale", "pref_scam_hybrid_tensor_noise") && sabre61.equals("1"))
             return Lang.t("Только для прежнего ядра: «Новое ядро склейки» выключено или «Авто».", "Previous kernel only: “New merge kernel” off or “Auto”.");
@@ -203,6 +201,14 @@ public final class SettingsAvailability {
             if (key.equals("pref_avif_chroma")) return Lang.t("Без потерь — всегда 4:4:4.", "Lossless is always 4:4:4.");
         }
         if (key.equals("pref_color_method_key") && colorMethodOverride != null) return colorMethodOverride;
+        // a DCP profile replaces the matrix the colour method picks (Parameters: sensorToProPhoto from the DCP)
+        if (key.equals("pref_color_method_key") && !text("pref_dcp_profile_key", "").trim().isEmpty())
+            return Lang.t("Выбран DCP-профиль: цвет задаёт его матрица, выбор не действует.",
+                    "A DCP profile is chosen: its matrix sets the colour, the choice has no effect.");
+        // the worker keeps one copy of a shot's burst: with the lab switch on it goes to the lab's folder (ScamNeuralClient)
+        if (key.equals("pref_keep_raw_burst") && on("pref_scam_lab_keep", false))
+            return Lang.t("Включено «Сохранять снимки для лаборатории»: RAW-серия уже сохраняется в папку снимка лаборатории.",
+                    "“Keep shots for the lab” is on: the RAW burst is already kept in the lab shot's folder.");
         return null;
     }
 }

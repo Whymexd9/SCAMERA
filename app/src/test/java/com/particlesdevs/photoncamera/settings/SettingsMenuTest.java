@@ -1290,7 +1290,7 @@ public class SettingsMenuTest {
      */
     @Test public void oneTopicInOnePlaceAndNoLiteralTitles() throws Exception {
         PreferenceScreen screen=inflate();
-        for(String k:new String[]{"pref_scam_hybrid_bento","pref_scam_hybrid_bento_weight","pref_scam_hybrid_bento_sigma",
+        for(String k:new String[]{"pref_scam_hybrid_bento","pref_scam_hybrid_bento_sigma",
                 "pref_scam_hybrid_bento_chroma_sigma","pref_scam_hybrid_bento_scam"})
             assertEquals(k,"scam_hybrid_capture_category",screen.findPreference(k).getParent().getKey());
         for(String k:new String[]{"pref_scam_hybrid_shasta","pref_scam_hybrid_shasta_sharpness","pref_scam_hybrid_shasta_max_ratio",
@@ -1453,7 +1453,9 @@ public class SettingsMenuTest {
         for(String key:new String[]{"pref_theme_key","pref_theme_accent_key","pref_hide_gallery_icon_key","pref_shade_transparency",
                 "backup_settings_screen"})assertNotNull(key,ui.findPreference(key));
         PreferenceScreen noise=screen.findPreference("noise_model_screen");
-        assertNotNull("the SHDR noise source next to the profile",noise.findPreference("pref_scam_hybrid_noise_source"));
+        // P310 settings cleanup: the merge follows the profile itself, no separate source switch next to it
+        assertNotNull(noise.findPreference("pref_noise_model_profile_key"));
+        org.junit.Assert.assertNull("the SHDR noise source duplicated the profile",noise.findPreference("pref_scam_hybrid_noise_source"));
     }
 
     /** P6b: inner pages (sliders, lists, tiles) render at 360 dp; the PNGs are kept for a look (build/reports/module-concept). */

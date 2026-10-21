@@ -208,10 +208,19 @@ public class SettingsModelCheck {
         if(!"matrix".equals(new SettingsAvailability(scam).colorMethodOverride("matrix").reason("pref_color_method_key")))throw new AssertionError("colour method reason");
         // The diagnostics page is never hidden (P175: the neural remosaic's 8 Elite rule went with its page and its check)
         if(new SettingsAvailability(scam).hidden("scam_diagnostics_screen"))throw new AssertionError("diagnostics hidden");
-        // P128: the «Движение» rows act only in that mode; the lamp flicker only with the long frames; the OPPO saturation only there
+        // P128: the «Движение» rows act only in that mode; the OPPO saturation only there. P310 settings cleanup: the lamp flicker
+        // acts without the long frames too (the native FULLRES AE rounds its shutter to it)
         Map<String,Object> m=new HashMap<>();
         inactive(m,"pref_scam_hybrid_mm_shutter");m.put("pref_motion_mode",true);active(m,"pref_scam_hybrid_mm_shutter");
-        active(m,"pref_antibanding_hz_key");m.put("pref_scam_hybrid_shasta",false);inactive(m,"pref_antibanding_hz_key");
+        active(m,"pref_antibanding_hz_key");m.put("pref_scam_hybrid_shasta",false);active(m,"pref_antibanding_hz_key");
+        // P310 settings cleanup: the night / day boundary acts at every kernel setting; the ARK denoise rows follow «Шумоподавление»;
+        // the RAW burst row yields to the lab's copy; a DCP profile replaces the colour method's matrix
+        Map<String,Object> cu=new HashMap<>();
+        cu.put("pref_scam_hybrid_sabre61","1");active(cu,"pref_scam_hybrid_s61_max_key");inactive(cu,"pref_scam_hybrid_s61_min_motion");
+        active(cu,"pref_scam_hybrid_ark_bracket_denoise");cu.put("pref_scam_hybrid_denoise",false);
+        inactive(cu,"pref_scam_hybrid_ark_bracket_denoise");inactive(cu,"pref_scam_hybrid_ark_chroma_denoise");
+        active(cu,"pref_keep_raw_burst");cu.put("pref_scam_lab_keep",true);inactive(cu,"pref_keep_raw_burst");
+        active(cu,"pref_color_method_key");cu.put("pref_dcp_profile_key","0123.dcp");inactive(cu,"pref_color_method_key");
         if(!new SettingsAvailability(m).oppoTunedColor(false).hidden("pref_scam_hybrid_ark_ccm_sat"))throw new AssertionError("OPPO saturation shown");
         if(new SettingsAvailability(m).mosaicStreams(false).reason("pref_scam_hybrid_mosaic_path")==null)throw new AssertionError("mosaic rows without a mosaic");
         if(!new SettingsAvailability(scam).xiaomiSmoothZoom(false).hidden("pref_xiaomi_smooth_zoom"))throw new AssertionError("Xiaomi zoom shown");

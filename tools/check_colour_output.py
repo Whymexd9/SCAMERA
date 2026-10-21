@@ -56,6 +56,28 @@ def without_highp_int(src: str) -> str:
     return src.replace(P305_HIGHP_INT, '', 1)
 
 
+P310_SCENE_GATE = '        float w = hlWhiteU * satW * smoothstep(0.6, 2.4, mx);\n'
+P310_AGX_GATE = ('        float agxWhite = 0.18 * exp2(agxB.y + max(-agxB.z, 0.0));\n'
+                 '        float w = hlWhiteU * satW * smoothstep(0.8 * agxWhite, 0.995 * agxWhite, mx);\n')
+P310_BLOCK = re.compile(r'#if TONE_OP == 1\n' + re.escape(P310_SCENE_GATE) + r'#else\n(?:\s*//[^\n]*\n)*' + re.escape(P310_AGX_GATE)
+                        + r'#endif\n')
+
+
+def without_p310_white(src: str) -> str:
+    """P310 (owner, LED fans: the rings' colour went white): under AgX the highlight white starts at the AgX white (the end of
+    its curve) instead of the scene gate 0.6 .. 2.4; ACES / Uchimura / the own curve keep the scene gate. The intended change
+    of the colour path: the current shader is compared token for token with the block put back to the scene gate (shader_part
+    checks that it is there), the baseline rendered with the same edit applied (with_p310_white)."""
+    return P310_BLOCK.sub(lambda m: P310_SCENE_GATE, src, count=1)
+
+
+def with_p310_white(src: str) -> str:
+    """The P310 edit on the baseline shader (no TONE_OP there: the AgX gate the default TONE_OP 0 takes)."""
+    src = src.replace('\r\n', '\n')
+    assert src.count(P310_SCENE_GATE) == 1, 'the baseline has no single scene gate of the highlight white'
+    return src.replace(P310_SCENE_GATE, P310_AGX_GATE)
+
+
 failures: list[str] = []
 skipped: list[str] = []
 
@@ -202,8 +224,10 @@ def find_glslc() -> str | None:
 def shader_part(strict: bool) -> None:
     new = (SH / 'ark/combine.glsl').read_text(encoding='utf-8')
     check(('\n' + P305_HIGHP_INT) in new.replace('\r\n', '\n'), 'combine.glsl lost "precision highp int;" (P305: fp16 dither streaks on Adreno)')
-    got = token_hash(without_highp_int(new.replace('\r\n', '\n')))
-    print('combine.glsl P3_OUT 0 token stream (without the P305 highp int): %s' % got)
+    check(P310_BLOCK.search(new.replace('\r\n', '\n')) is not None,
+          'combine.glsl lost the P310 AgX gate of the highlight white (the LED rings\' colour goes white)')
+    got = token_hash(without_p310_white(without_highp_int(new.replace('\r\n', '\n'))))
+    print('combine.glsl P3_OUT 0 token stream (without the P305 highp int, the P310 AgX white gate as the scene gate): %s' % got)
     check(got == BASELINE_COMBINE_TOKENS, 'combine.glsl (P3_OUT 0) differs from the pre-P46 shader: %s' % got)
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],
@@ -323,9 +347,9 @@ def gl_part(strict: bool) -> None:
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],
                               capture_output=True, check=True).stdout.decode('utf-8')
-        before = render('0', expand_imports(without_guard(base)))
+        before = render('0', expand_imports(with_p310_white(without_guard(base))))
         check(np.array_equal(before, srgb), 'P3_OUT 0 renders differently from the %s shader' % BASELINE_COMMIT)
-        print('GPU: P3_OUT 0 = the %s shader, bit for bit (%d colours)' % (BASELINE_COMMIT, n))
+        print('GPU: P3_OUT 0 = the %s shader with the P310 AgX white gate, bit for bit (%d colours)' % (BASELINE_COMMIT, n))
     except (subprocess.CalledProcessError, FileNotFoundError):
         print('GPU: (%s not in this checkout: the bit-exact comparison with it is skipped)' % BASELINE_COMMIT)
     # display-encoded (power 1/2.2) -> linear; the P3 picture in sRGB coordinates

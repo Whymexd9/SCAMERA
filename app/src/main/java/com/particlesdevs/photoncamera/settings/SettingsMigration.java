@@ -164,7 +164,10 @@ public final class SettingsMigration {
             // (pref_remosaic_key stays: api/Settings reads it; the HexQuad / Quad 2x2 network rows are OBSOLETE_PREFIXES)
             "pref_scam_hybrid_neural_remosaic", "pref_scam_hybrid_neural_remosaic_rev", "pref_tetra_response_key",
             "pref_remosaic_block_key", "pref_remosaic_profile_key", "pref_remosaic_steered_key", "pref_remosaic_clamp_key",
-            "pref_remosaic_flatfield_key", "pref_remosaic_phase_x_key", "pref_remosaic_phase_y_key"));
+            "pref_remosaic_flatfield_key", "pref_remosaic_phase_x_key", "pref_remosaic_phase_y_key",
+            // P310 settings cleanup: «Источник шума для склейки» (the merge follows «Профиль модели шума») and «Кадры светов:
+            // вес» (a dev key: scam_dev.txt "hybrid_bento_weight")
+            "pref_scam_hybrid_noise_source", "pref_scam_hybrid_bento_weight"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes

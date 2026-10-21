@@ -64,7 +64,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
             "scam_hybrid_merge_screen", "photo_style_screen", "film_sim_screen", "film_lut_screen", "lens_filter_screen", "photo_processing_screen"};
     /** Settings the burst fixed at the shot (its frames, its noise model, its grid): offered, said so. */
     static final java.util.Set<String> AT_SHOT = new java.util.HashSet<>(java.util.Arrays.asList("pref_scam_hybrid_output",
-            "pref_scam_hybrid_noise_photon", "pref_scam_hybrid_noise_readout", "pref_scam_hybrid_noise_source",
+            "pref_scam_hybrid_noise_photon", "pref_scam_hybrid_noise_readout",
             "pref_scam_hybrid_mosaic_remosaic", "pref_scam_hybrid_highlight_recovery"));
 
     /** The fragment of each shot ({x, y, w, h} of the sensor frame, null: whole) and its share (3: a ninth, 2: a quarter, 1: whole). */

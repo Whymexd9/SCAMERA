@@ -19,7 +19,6 @@ public final class DeviceAvailability {
         return new SettingsAvailability(values)
                 .heic10Unavailable(com.particlesdevs.photoncamera.processing.heif.Heic10Support.unavailableReason())
                 .hdrUnavailable(com.particlesdevs.photoncamera.processing.color.HdrOutput.unavailableReason())
-                .stockAeDevice(com.particlesdevs.photoncamera.capture.ScamStockAe.supportedDevice())
                 .colorMethodOverride(colorMethodOverride())
                 .xiaomiSmoothZoom(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.phone())
                 .fullResHwRemosaic(com.particlesdevs.photoncamera.capture.VivoSdkFullRes.hardwareRemosaicOffered())

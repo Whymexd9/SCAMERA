@@ -40,12 +40,10 @@
     <string name="prefs_scam_hybrid_shasta_frames_summary">Сколько светлых кадров снимать. Больше — чище тени, но дольше съёмка и больше памяти; меньше — наоборот.</string>
     <string name="prefs_scam_hybrid_shasta_ev_title">Кадры теней: EV над N</string>
     <string name="prefs_scam_hybrid_shasta_ev_summary">Насколько светлые кадры ярче обычных. Больше — чище тени, но каждый кадр шумнее; меньше — наоборот.</string>
-    <string name="prefs_scam_hybrid_noise_source_title">Источник шума для склейки</string>
-    <string name="prefs_scam_hybrid_noise_source_summary">%s. Откуда брать данные о шуме сенсора: от самой камеры или из ваших настроек.</string>
-    <string name="prefs_scam_hybrid_noise_photon_title">Дробовая составляющая</string>
-    <string name="prefs_scam_hybrid_noise_photon_summary">Поправка шума в светлых местах. Больше — глаже, но возможны призраки; меньше — резче и шумнее.</string>
-    <string name="prefs_scam_hybrid_noise_readout_title">Шум считывания</string>
-    <string name="prefs_scam_hybrid_noise_readout_summary">Поправка шума в тёмных местах. Больше — тени глаже, но возможны призраки; меньше — резче и шумнее.</string>
+    <string name="prefs_scam_hybrid_noise_photon_title">Склейка: дробовая составляющая</string>
+    <string name="prefs_scam_hybrid_noise_photon_summary">Поправка шума склейки в светлых местах (у шумодава своя, ρs). Больше — глаже, но возможны призраки; меньше — резче и шумнее.</string>
+    <string name="prefs_scam_hybrid_noise_readout_title">Склейка: шум считывания</string>
+    <string name="prefs_scam_hybrid_noise_readout_summary">Поправка шума склейки в тёмных местах (у шумодава своя, ρr). Больше — тени глаже, но возможны призраки; меньше — резче и шумнее.</string>
     <string name="prefs_scam_hybrid_merge_screen_title">Склейка</string>
     <string name="prefs_scam_hybrid_merge_screen_summary">Как кадры совмещаются и склеиваются в один</string>
     <string name="prefs_scam_hybrid_cre_source_title">Выравнивание (CRE)</string>
@@ -76,8 +74,8 @@
     <string name="prefs_scam_hybrid_kernel_screen_summary">Как кадры смешиваются в пиксели: резкость против шума</string>
     <string name="prefs_scam_hybrid_sabre61_title">Новое ядро склейки</string>
     <string name="prefs_scam_hybrid_sabre61_summary">%s. Новый способ смешивания кадров: больше деталей ночью и с рук. Выкл — прежнее ядро.</string>
-    <string name="prefs_scam_hybrid_s61_max_title">Новое ядро, «авто»: предел ключа SNR</string>
-    <string name="prefs_scam_hybrid_s61_max_summary">Для «Авто»: до какого уровня света включать новое ядро. Больше — и в светлых сценах, меньше — только в темноте.</string>
+    <string name="prefs_scam_hybrid_s61_max_title">Граница ночь / день (ключ SNR)</string>
+    <string name="prefs_scam_hybrid_s61_max_summary">До какого уровня света снимок считается ночным: ночные настройки шума склейки и, при «Новое ядро» = «Авто», само это ядро. Больше — и в светлых сценах, меньше — только в темноте.</string>
     <string name="prefs_scam_hybrid_s61_min_motion_title">Новое ядро днём: дрожание рук от, px</string>
     <string name="prefs_scam_hybrid_s61_min_motion_summary">Для «Авто» днём: с какой дрожи рук включать новое ядро. Меньше — чаще (на штативе шумнее), больше — реже.</string>
     <string name="prefs_scam_hybrid_kernel_title">Масштаб ядра склейки</string>
@@ -105,8 +103,8 @@
     <string name="prefs_scam_hybrid_mosaic_note_summary">Для камер, у которых кадр приходит мозаикой Quad 2×2 или Tetra 4×4. Ниже — способ склейки и его настройки.</string>
     <string name="prefs_scam_hybrid_mosaic_remosaic_title">Наш ремозаик</string>
     <string name="prefs_scam_hybrid_mosaic_remosaic_summary">Вкл — мозаика Quad 2×2 / Tetra 4×4 восстанавливается нашей склейкой в полное разрешение. Выкл — без ремозаика: кадры склеиваются, сохраняется только DNG — склеенная мозаика в полном разрешении сенсора, для проявки в Scam Remosaic или другом проявщике RAW.</string>
-    <string name="prefs_scam_hybrid_mosaic_frames_title">Кадров в склейке мозаики</string>
-    <string name="prefs_scam_hybrid_mosaic_frames_summary">Сколько кадров мозаики склеивать. Больше — меньше шума, но дольше; меньше — быстрее, но шумнее.</string>
+    <string name="prefs_scam_hybrid_mosaic_frames_title">Кадров в склейке мозаики: не больше</string>
+    <string name="prefs_scam_hybrid_mosaic_frames_summary">Не больше скольких кадров мозаики склеивать (сначала действует число кадров снимка). Больше — меньше шума, но дольше; меньше — быстрее, но шумнее.</string>
     <string name="prefs_scam_hybrid_mosaic_edge_scale_title">Резкость: ядро поперёк краёв</string>
     <string name="prefs_scam_hybrid_mosaic_edge_scale_summary">Только для разбиения: резкость на краях. Меньше — резче, но больше зерна; больше — мягче.</string>
     <string name="prefs_scam_hybrid_mosaic_path_title">Склейка мозаики</string>
@@ -134,10 +132,8 @@
     <string name="prefs_scam_hybrid_mosaic_fill_support_summary">Когда включается добор цвета. Больше — чаще, меньше — реже. Работает только при включённом доборе.</string>
     <string name="prefs_scam_hybrid_mosaic_tetra_title">Путь Tetra</string>
     <string name="prefs_scam_hybrid_mosaic_tetra_summary">%s. Как склеивать мозаику Tetra 4×4. T1 — детальнее и быстрее, остальные — прежние способы.</string>
-    <string name="prefs_scam_hybrid_bento_weight_title">Кадры светов: вес</string>
-    <string name="prefs_scam_hybrid_bento_weight_summary">Вес тёмного кадра в пересвеченных местах. Больше — он сильнее влияет на света, меньше — слабее.</string>
     <string name="prefs_scam_hybrid_bento_ramp_title">Кадры светов: мягкий переход</string>
-    <string name="prefs_scam_hybrid_bento_ramp_summary">Насколько плавно тёмный кадр вступает к пересвету, в клетках 2×2. 0 — прежний резкий переход; больше — шире и мягче переход между экспозициями (зерно и яркость меняются постепенно). Отдельные яркие предметы не затрагиваются.</string>
+    <string name="prefs_scam_hybrid_bento_ramp_summary">Насколько плавно тёмные кадры вступают к пересвету, в клетках 2×2. 0 — самый резкий переход; больше — мягче край области, где они заменяют основные кадры (на сенсорах Quad и Tetra — шире переход между экспозициями). Отдельные яркие предметы не затрагиваются.</string>
     <string name="prefs_scam_hybrid_bento_sigma_title">Кадры светов: ширина ядра, px</string>
     <string name="prefs_scam_hybrid_bento_sigma_summary">Размытие тёмного кадра в светах. Больше — мягче света, меньше 0,7 — цветные зубцы на кромках.</string>
     <string name="prefs_scam_hybrid_bento_chroma_sigma_title">Кадры светов: цвет кромок светов, σ px</string>
@@ -522,7 +518,7 @@
     <string name="prefs_system_settings_screen_title">Система</string>
     <string name="prefs_system_settings_screen_summary">Root, подмена пакета, диагностика, журнал, для разработчика, о приложении</string>
     <string name="prefs_root_enabled_title">Root-доступ</string>
-    <string name="prefs_root_enabled_summary">Не обязателен. Даёт запасной способ запустить обработку, если обычный не сработал.</string>
+    <string name="prefs_root_enabled_summary">Не обязателен. Нужен только сборке, где обработчик не установлен как библиотека приложения: тогда он запускается через su.</string>
     <string name="prefs_scam_diagnostics_screen_title">Диагностика</string>
     <string name="prefs_scam_diagnostics_screen_summary">Журналы и проверки с отчётом</string>
     <string name="prefs_camera_package_spoof_screen_title">Подмена пакета камеры</string>

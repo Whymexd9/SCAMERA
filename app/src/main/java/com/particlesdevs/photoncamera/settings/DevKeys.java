@@ -116,11 +116,6 @@ public final class DevKeys {
         k.add(s(cap, "oplus_ccm", true, Lang.t("OPPO: цветовая матрица com.oplus.custom.ccm вместо единичной", "OPPO: the com.oplus.custom.ccm colour matrix instead of an identity one")));
         k.add(s(cap, "fov_check", true, Lang.t("Замер реального поля зрения вендорных модулей", "Measure the real field of view of vendor modules")));
         k.add(s(cap, "hybrid_fast_capture", true, Lang.t("Сброс очереди HAL перед серией (задержка затвора ~0.4 → ~0.15 с)", "Flush the HAL request queue before the series (shutter lag ~0.4 -> ~0.15 s)")));
-        k.add(s(cap, "hybrid_planner_adaptive", true, Lang.t("Планировщик серии подстраивает L / S / ES под клип кадров кольца", "The series planner fits L / S / ES to the clip of the ring frames")));
-        k.add(n(cap, "hybrid_planner_l_ev", "1", Lang.t("Планировщик: EV длинного кадра над обычным", "Planner: EV of the long frame above the normal one")));
-        k.add(n(cap, "hybrid_planner_s_ev", "3", Lang.t("Планировщик: EV короткого кадра под обычным", "Planner: EV of the short frame below the normal one")));
-        k.add(n(cap, "hybrid_planner_es_ev", "6", Lang.t("Планировщик: EV сверхкороткого кадра под обычным", "Planner: EV of the extra-short frame below the normal one")));
-        k.add(n(cap, "hybrid_long_boost_ev", "1.1", Lang.t("Добавка EV длинного кадра к стоковому плану (0 — стоковый)", "Extra EV of the long frame over the stock plan (0: stock)")));
         // viewfinder
         k.add(s(vf, "mosaic_preview", true, Lang.t("Модуль, измеренный как мозаика, сразу показывает RAW-видоискатель", "A module measured as a mosaic starts on the RAW viewfinder")));
         k.add(n(vf, "vf_priority", "1", Lang.t("Высокий приоритет потока видоискателя (0 — обычный)", "High priority of the viewfinder thread (0: normal)")));
@@ -145,7 +140,15 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_hot_max_level", null, Lang.t("Горячие пиксели: предел уровня", "Hot pixels: level limit")));
         k.add(n(merge, "hybrid_hot_cap", null, Lang.t("Горячие пиксели: не больше мест на Мп полосы (0 — без предела)", "Hot pixels: at most this many sites per MP of a strip (0: no cap)")));
         k.add(n(merge, "hybrid_bento_invalid", null, Lang.t("Bento: порог негодных клеток", "Bento: invalid cell threshold")));
-        // P309: the soft transition's levels and reach (its width is the row «Кадры светов: мягкий переход»)
+        // P310 settings cleanup: «Кадры светов: вес» left the menu (the plain merge blends the highlight frames after it, their
+        // weight does not enter; the colour-block merge's ramp fixes their share)
+        k.add(n(merge, "hybrid_bento_weight", "1", Lang.t("Bento: вес кадров светов в склейке (Quad / Tetra и без наложения после склейки)",
+                "Bento: weight of the highlight frames in the merge (Quad / Tetra, and without the blend after the merge)")));
+        // P310: the highlight frames blended after the merge (plain Bayer; on by default, off = the P309 mixing in the merge)
+        k.add(s(merge, "hybrid_bento_blend", true, Lang.t("Bento: кадры светов накладываются после склейки по областям (выкл — смешивание внутри склейки)",
+                "Bento: highlight frames blended after the merge by region (off: mixed inside the merge)")));
+        // P309: the soft transition's levels and reach (its width is the row «Кадры светов: мягкий переход»); since P310 only for the
+        // colour-block (Quad / Tetra) merge, the plain merge blends instead
         k.add(n(merge, "hybrid_bento_ramp_lo", null, Lang.t("Bento: уровень базы, где начинается переход", "Bento: base level where the transition starts")));
         k.add(n(merge, "hybrid_bento_ramp_hi", null, Lang.t("Bento: уровень базы, где тёмный кадр уже один", "Bento: base level where the dark frame is alone")));
         k.add(n(merge, "hybrid_bento_ramp_reach", null, Lang.t("Bento: радиус перехода от пересвета, клеток", "Bento: transition reach from the clip, cells")));
@@ -190,6 +193,10 @@ public final class DevKeys {
         k.add(n(post, "hybrid_ark_hr_mix", "0.5", Lang.t("Тон, света Bento выше 4x: пик к p99.9 (доля)", "Tone, Bento highlights above 4x: peak towards p99.9 (share)")));
         k.add(n(post, "hybrid_ark_weight_center_hr", "0.75", Lang.t("Тон с запасом Bento: центр весов слияния", "Tone with Bento headroom: fusion weight centre")));
         k.add(n(post, "hybrid_ark_weight_hl_hr", "0.4", Lang.t("Тон с запасом Bento: вес слоя светов", "Tone with Bento headroom: highlight layer weight")));
+        k.add(n(post, "hybrid_ark_sat_light_lo", "0.35", Lang.t("Тон с запасом Bento: цветной свет: насыщенность, с которой начинаются веса ядра (нижняя = верхней — выкл.)", "Tone with Bento headroom: coloured light - saturation where the kernel's weights start (lo = hi: off)")));
+        k.add(n(post, "hybrid_ark_sat_light_hi", "0.7", Lang.t("Тон с запасом Bento: цветной свет: насыщенность полных весов ядра", "Tone with Bento headroom: coloured light - saturation of the full kernel weights")));
+        k.add(n(post, "hybrid_ark_sat_light_level_lo", "0.25", Lang.t("Тон с запасом Bento: цветной свет: уровень света (x AE), с которого начинаются веса ядра", "Tone with Bento headroom: coloured light - light level (x AE) where the kernel's weights start")));
+        k.add(n(post, "hybrid_ark_sat_light_level_hi", "0.6", Lang.t("Тон с запасом Bento: цветной свет: уровень света полных весов ядра", "Tone with Bento headroom: coloured light - light level of the full kernel weights")));
         k.add(n(post, "hybrid_ark_fusion_mono", "0.04", Lang.t("Тон: подъём слияния к монотонной огибающей (нет тёмного кольца у лампы)", "Tone: fusion lifted to its monotonic envelope (no dark ring round a lamp)")));
         k.add(n(post, "hybrid_ark_hr_knee", "0.5", Lang.t("Тон, света Bento выше 4x: колено плеча (x верх)", "Tone, Bento highlights above 4x: shoulder knee (x top)")));
         k.add(n(post, "hybrid_ark_hr_room", "0.4", Lang.t("Тон, света Bento выше 4x: запас плеча (x верх)", "Tone, Bento highlights above 4x: shoulder room (x top)")));

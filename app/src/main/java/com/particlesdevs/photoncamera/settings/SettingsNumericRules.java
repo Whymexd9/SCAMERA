@@ -14,7 +14,6 @@ public final class SettingsNumericRules {
             case "pref_scamhdr_norm": return new double[]{0.55,2.2,0};
             case "pref_scamhdr_noise_photon": case "pref_scamhdr_noise_readout":
             case "pref_scamhdr_noise_scale": return new double[]{0.25,4,0};
-            case "pref_scamhdr_long_boost_ev": return new double[]{0,2,0};
             case "pref_scamhdr_zsl_frames": return new double[]{4,50,1};
             case "pref_scamhdr_luma": case "pref_scamhdr_chroma": return new double[]{0,2,0};
             case "pref_scamhdr_merge": return new double[]{0,100,1};
@@ -31,7 +30,6 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_bento": return new double[]{0,2,1};
             case "pref_scam_hybrid_bento_factor": return new double[]{2,16,0};
             case "pref_scam_hybrid_bento_trigger": return new double[]{0,0.1,0};
-            case "pref_scam_hybrid_bento_weight": return new double[]{0.1,8,0};
             case "pref_scam_hybrid_bento_sigma": return new double[]{0.5,2,0};
             case "pref_scam_hybrid_bento_ramp": return new double[]{0,12,0};
             case "pref_scam_hybrid_bento_frames": return new double[]{1,3,1};

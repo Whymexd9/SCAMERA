@@ -21,6 +21,12 @@ uniform float smoothU;          // blend_smoothness; <= 0 -> 0.25
 uniform float gammaInvU;        // 1 / ef_gamma; <= 0 -> 1 / 2.2
 uniform float toeU;             // ACES toe; <= 0 -> 0.05
 uniform float monoU;            // P291 MODE 3: rise of the fusion's monotonic envelope per ln of the light (0 / unset = the kernel)
+// P310: x, y = the centre and the highlight layer weight for saturated light, z, w = the saturation ((max - min) / max) ramp from
+// the given weights to those; x <= 0 / unset: every pixel takes the given weights (and monoU) as before.
+uniform vec4 satLightU;
+// P310: the light's level (its brightest channel x the AE, the fusion's input) over which that share fades in: only light near
+// the top of the curve takes the kernel's weights; y <= 0 / unset: no level gate
+uniform vec2 satLevelU;
 out vec4 Output;
 
 // ACES tone scale of the kernel [fc_cl_source.cl:971-976] with pre-gain 1.5, a 2.51, d 0.59.
@@ -31,12 +37,32 @@ vec4 acescg(vec4 v, float toe) {
     return (x * (2.51 * x + b)) / (x * (2.43 * x + 0.59) + e);
 }
 
+// P310 (owner, LED fans and an LED bar in a dark room: «куча артефактов на подсветке», «по ДД как минимум не хуже Арк»): P291's
+// weights with Bento headroom (centre 0.75, highlight layer 0.4, the monotonic lift) keep a white sheet under a lamp white, but
+// they put every bright COLOURED light and the surfaces it lights near the top of the curve, where the AgX shoulder bleaches them:
+// the LED bar a flat white bar, the violet-lit case pale lavender (ArkCam: the bar's LEDs and their pink-violet kept, the case
+// deep violet). The share of saturated light takes the kernel's weights and no rise of the lift instead (host replay of the owner's
+// shots: saturation of the bright pixels 0.35 -> 0.66, ArkCam 0.68; the desk-lamp sheet unchanged). Only BRIGHT light (satLevelU):
+// without the gate every coloured surface at any level (skin, foliage, sky in the shadows of a lamp shot) took the kernel's weights,
+// darker than a grey of the same luminance, and the guided filter spread the difference as halos.
+float satShare(vec3 rgb) {
+    if (satLightU.x <= 0.0) return 0.0;
+    vec3 c = max(rgb, vec3(0.0));
+    float mx = max(max(c.r, c.g), c.b);
+    float sat = (mx - min(min(c.r, c.g), c.b)) / max(mx, 0.000001);
+    float level = satLevelU.y > 0.0 ? smoothstep(satLevelU.x, satLevelU.y, mx * (aeU > 0.0 ? aeU : 1.0)) : 1.0;
+    return smoothstep(satLightU.z, satLightU.w, sat) * level;
+}
+
 // Guide, weights and lumas of one arkLow pixel [gf_prepare_weights].
 void prepare(vec3 rgb, out float I, out vec4 p, out vec4 L) {
     float ae = aeU > 0.0 ? aeU : 1.0;
     vec4 em = expU.x + expU.y + expU.z + expU.w > 0.0 ? expU : vec4(1.0);
     vec4 lw = layerU.x + layerU.y + layerU.z + layerU.w > 0.0 ? layerU : vec4(0.8, 1.0, 0.7, 0.5);
     float center = centerU > 0.0 ? centerU : 0.6;
+    float sw = satShare(rgb);
+    center = mix(center, satLightU.x, sw);
+    lw.x = mix(lw.x, satLightU.y, sw);
     float smoothness = smoothU > 0.0 ? smoothU : 0.25;
     float gammaInv = gammaInvU > 0.0 ? gammaInvU : 1.0 / 2.2;
     float toe = toeU > 0.0 ? toeU : 0.05;
@@ -58,11 +84,13 @@ void prepare(vec3 rgb, out float I, out vec4 p, out vec4 L) {
 }
 
 // P291: the fused luma of a neutral pixel of guide I without the guided filter (prepare's weights and lumas: every layer's
-// meter is I x em).
-float fusedAt(float I) {
+// meter is I x em); sw: the pixel's saturated-light share (P310).
+float fusedAt(float I, float sw) {
     vec4 em = expU.x + expU.y + expU.z + expU.w > 0.0 ? expU : vec4(1.0);
     vec4 lw = layerU.x + layerU.y + layerU.z + layerU.w > 0.0 ? layerU : vec4(0.8, 1.0, 0.7, 0.5);
     float center = centerU > 0.0 ? centerU : 0.6;
+    center = mix(center, satLightU.x, sw);
+    lw.x = mix(lw.x, satLightU.y, sw);
     float smoothness = smoothU > 0.0 ? smoothU : 0.25;
     float gammaInv = gammaInvU > 0.0 ? gammaInvU : 1.0 / 2.2;
     float toe = toeU > 0.0 ? toeU : 0.05;
@@ -106,12 +134,16 @@ void main() {
     // dark ring round the lamp before its white core. The fusion's own curve F(I) is lifted to its monotonic envelope
     // max over I' <= I with F(I') >= 0.5 of F(I') + monoU ln(I / I') (a gentle rise instead of a plateau, so the light keeps its gradient); the
     // difference is added to the guided result. A curve that never falls (the usual layers, em.x >= 0.15) gets nothing.
+    // P310: saturated light keeps the envelope's plateau (never a fall: the dark ring would come back on a coloured lamp) but not its
+    // rise towards the shoulder.
+    float sw = satShare(texelFetch(InputBuffer, xy, 0).rgb);
     if (monoU > 0.0 && I > 0.0) {
-        float f = fusedAt(I), env = f;
+        float rise = monoU * (1.0 - sw);
+        float f = fusedAt(I, sw), env = f;
         for (int j = 1; j <= 36; j++) {
             float s = float(j) * (0.25 * 0.6931472);    // 1/4 EV steps, 9 EV down
-            float fj = fusedAt(I * exp(-s));
-            if (fj >= 0.5) env = max(env, fj + monoU * s);   // the highlights only: the toe's own rise is slower than any monoU
+            float fj = fusedAt(I * exp(-s), sw);
+            if (fj >= 0.5) env = max(env, fj + rise * s);   // the highlights only: the toe's own rise is slower than any monoU
         }
         fusedL += env - f;
     }

@@ -29,7 +29,7 @@ public final class ArkFusion extends Node {
     }
 
     /** gf.glsl with the weights of this shot. */
-    private void weightsProgram(int mode, GLTexture source, float[] em, float[] lw, float ae, float center) {
+    private void weightsProgram(int mode, GLTexture source, float[] em, float[] lw, float ae, float center, float[] satLight) {
         glProg.setDefine("MODE", mode);
         glProg.useAssetProgram("ark/gf", false);
         glProg.setTexture("InputBuffer", source);
@@ -44,6 +44,9 @@ public final class ArkFusion extends Node {
         // fusion lifted to its monotonic envelope where its curve falls (Bento headroom: no dark ring round a lamp); 0.04 = the
         // replay of the owner's desk-lamp sheet closest to ArkCam with its gradient kept. 0 = the kernel's fusion.
         glProg.setVar("monoU", ArkTone.fusionMono());
+        // P310: bright saturated light keeps the kernel's weights (the P291 lift's plateau, not its rise); zeros: off
+        glProg.setVar("satLightU", satLight[0], satLight[1], satLight[2], satLight[3]);
+        glProg.setVar("satLevelU", satLight[4], satLight[5]);
     }
 
     /** Separable box of radius r; closes the input. */
@@ -102,7 +105,12 @@ public final class ArkFusion extends Node {
         // the highlight layer weighs less (host replay of the owner's desk-lamp shots: the sheet 255 .. 205 against ArkCam's
         // 249 .. 199); without headroom the kernel's weights as before.
         float center = ArkTone.value("weight_center", 0.6f);
+        float[] satLight = new float[6];
         if (r.hr > 0f) {
+            // P310: only neutral light (a white sheet under a lamp) takes the headroom weights; a coloured light and what it lights
+            // keep the kernel's centre and highlight weight (and no monotonic lift), ramped over the light's saturation
+            final float[] ramp = ArkTone.saturatedLightRamp();
+            if (ramp[1] > ramp[0]) satLight = new float[]{center, lw[0], ramp[0], ramp[1], ramp[2], ramp[3]};
             center = ArkTone.headroomCenter();
             lw[0] = ArkTone.headroomHlWeight();
         }
@@ -114,7 +122,7 @@ public final class ArkFusion extends Node {
         GLTexture[] means = new GLTexture[3];
         for (int mode = 0; mode < 3; mode++) {
             GLTexture down = stats(half);
-            weightsProgram(mode, st.lowDn, em, lw, r.ae, center);
+            weightsProgram(mode, st.lowDn, em, lw, r.ae, center, satLight);
             glProg.drawBlocks(down);
             means[mode] = box(down, radius);
         }
@@ -132,7 +140,7 @@ public final class ArkFusion extends Node {
         }
         for (GLTexture t : means) t.close();
         st.fused = new GLTexture(lowSize, new GLFormat(GLFormat.DataType.FLOAT_32, 1), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
-        weightsProgram(3, st.lowDn, em, lw, r.ae, center);
+        weightsProgram(3, st.lowDn, em, lw, r.ae, center, satLight);
         glProg.setTexture("MeanA", ab[0]);
         glProg.setTexture("MeanB", ab[1]);
         glProg.drawBlocks(st.fused);
@@ -140,7 +148,9 @@ public final class ArkFusion extends Node {
         ab[0].close();
         ab[1].close();
         Log.i("SCAM_PIPELINE", "ARK fusion em=" + em[0] + "," + em[1] + "," + em[2] + "," + em[3] + " lw=" + lw[0] + "," + lw[1] + ","
-                + lw[2] + "," + lw[3] + " center=" + center + " r=" + radius + " eps=" + eps + " bracketDn=" + (st.lowDn != st.low ? strength : 0f)
+                + lw[2] + "," + lw[3] + " center=" + center
+                + (satLight[0] > 0f ? " saturatedLight=" + satLight[0] + "/" + satLight[1] + "@" + satLight[2] + ".." + satLight[3]
+                        + " level " + satLight[4] + ".." + satLight[5] : "") + " r=" + radius + " eps=" + eps + " bracketDn=" + (st.lowDn != st.low ? strength : 0f)
                 + " half=" + half.x + "x" + half.y + " ms=" + (System.currentTimeMillis() - started));
     }
 }

@@ -277,15 +277,17 @@ public class HybridSettingsTest {
     /** P118: rows that act only with another setting off its default are greyed with the reason; «Карта силы» has no duplicate. */
     @Test public void conditionalRowsFollowTheirSetting() {
         Map<String,Object> s=new HashMap<>();
-        for(String k:new String[]{"pref_scam_hybrid_s61_max_key","pref_scam_hybrid_snr_scale","pref_scam_hybrid_shasta_sharpness",
+        for(String k:new String[]{"pref_scam_hybrid_s61_min_motion","pref_scam_hybrid_snr_scale","pref_scam_hybrid_shasta_sharpness",
                 "pref_scam_hybrid_shasta_max_ratio","pref_scam_hybrid_bento_trigger"})
             assertNotNull(k,new SettingsAvailability(s).reason(k));
+        // P310 settings cleanup: the night / day boundary acts at every kernel setting (the worker's night noise and kernels)
+        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_s61_max_key"));
         assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_agx_slope")); // Custom is the default look
         assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_motion_boost"));
         assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_la_engine"));
         s.put("pref_scam_hybrid_sabre61","2");s.put("pref_scam_hybrid_shasta_mode","1");s.put("pref_scam_hybrid_bento","1");
-        for(String k:new String[]{"pref_scam_hybrid_s61_max_key","pref_scam_hybrid_snr_scale","pref_scam_hybrid_shasta_sharpness",
-                "pref_scam_hybrid_shasta_max_ratio","pref_scam_hybrid_bento_trigger"})
+        for(String k:new String[]{"pref_scam_hybrid_s61_max_key","pref_scam_hybrid_s61_min_motion","pref_scam_hybrid_snr_scale",
+                "pref_scam_hybrid_shasta_sharpness","pref_scam_hybrid_shasta_max_ratio","pref_scam_hybrid_bento_trigger"})
             assertNull(k,new SettingsAvailability(s).reason(k));
         s.put("pref_scam_hybrid_ark_agx_look","1");s.put("pref_scam_hybrid_local_align","0");
         assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_agx_slope"));
@@ -361,6 +363,18 @@ public class HybridSettingsTest {
         prefs.edit().clear().commit();
         inflate();
         assertEquals(6f,Float.parseFloat(prefs.getString("pref_scam_hybrid_bento_ramp","0")),0f);
+    }
+
+    @Test public void p310UltrashortBlendAfterTheMerge() {
+        // owner, 2026-10-21 (LED fans of a PC: «куча артефактов на подсветке», «исправлять переходы»): the ultrashort frames
+        // blended after the merge by region, always written (the worker default 0 keeps replays); its softness follows the
+        // transition row in 2x2 cells (sigma ramp / 4, at least 0.25: 0 = the sharpest, no longer the default softness)
+        String tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("bentoBlend 1\nbentoBlendSigma 1.5\n"));
+        manager.set("default_scope","pref_scam_hybrid_bento_ramp","0");
+        assertTrue(PreferenceKeys.hybridTuningText().contains("bentoBlendSigma 0.25\n"));
+        manager.set("default_scope","pref_scam_hybrid_bento_ramp","12");
+        assertTrue(PreferenceKeys.hybridTuningText().contains("bentoBlendSigma 3.0\n"));
     }
 
     @Test public void p308AlignmentEngineChoice() {
