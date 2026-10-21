@@ -62,6 +62,9 @@ public class GLPreview extends GLSurfaceView {
         setEGLContextClientVersion(3);
         // P90: the viewfinder's context at high GPU priority (EGL_IMG_context_priority), the processing contexts are low
         // (GLContext, worker): the viewfinder's few-ms draws go ahead of the shot's passes. Without the extension: a plain context.
+        // P314 (owner, 2026-10-21, of the reference viewfinder: «обработку он никак не замедляет»): the default
+        // (medium) priority, as the reference viewfinder's context - the processing contexts stay low, so the viewfinder still
+        // goes ahead of them, and it no longer competes with the compositor; scam_dev.txt "vf_gpu_priority 1": high, as P90.
         setEGLContextFactory(new EGLContextFactory() {
             private static final int EGL_CONTEXT_CLIENT_VERSION = 0x3098, PRIORITY = 0x3100, HIGH = 0x3101;
 
@@ -70,7 +73,7 @@ public class GLPreview extends GLSurfaceView {
                     javax.microedition.khronos.egl.EGLDisplay display, javax.microedition.khronos.egl.EGLConfig config) {
                 String ext = egl.eglQueryString(display, javax.microedition.khronos.egl.EGL10.EGL_EXTENSIONS);
                 if (ext != null && ext.contains("EGL_IMG_context_priority")
-                        && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevNumber("vf_gpu_priority", 1f) != 0f) {
+                        && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevNumber("vf_gpu_priority", 0f) != 0f) {
                     javax.microedition.khronos.egl.EGLContext c = egl.eglCreateContext(display, config,
                             javax.microedition.khronos.egl.EGL10.EGL_NO_CONTEXT,
                             new int[]{EGL_CONTEXT_CLIENT_VERSION, 3, PRIORITY, HIGH, javax.microedition.khronos.egl.EGL10.EGL_NONE});

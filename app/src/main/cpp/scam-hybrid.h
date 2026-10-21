@@ -550,12 +550,31 @@ struct HybridTuning {
     // lines): the ultrashort frame against the base tile by tile (hybridUltrashortLocal) after the row profile - lamps on other
     // flicker phases, a screen's backlight. 0 = off (the row profile alone, as before).
     int usLocal=1;
+    // P313 (owner, 2026-10-21: vivo X200 Ultra 2x ISZ in daylight, «все фото в области светов очень мыльное и с кучей артефактов»):
+    // the tile check above compared the two frames where they lie on the sensor, and a hand-held ultrashort frame is shifted against
+    // the base (16 x 4 sensor px on that shot): the tiles along a clipped highlight's edges saw other content in the two frames and
+    // read x0.52..1.79, the decision (the largest factor near the clip) corrected a frame the row check had found clean. 1 (default)
+    // = the tiles measured at the frames' global translation (hybridUsGlobalShift) and decided against the frame's own level; 0 = as
+    // P290 (no shift, the factors against the metadata ratio).
+    int usLocalAlign=1;
     // P219 (owner, 2026-10-17: «сделай так чтобы брались все кадры»): the native merge's frame pick (hybridMosaicNativePick). 1
     // (default) = every ultrashort frame of the burst (up to bentoFrames, at most 3, within x1.3 of the shortest) and every bracketed
     // frame within the budget: the first ultrashort and the first bracketed frame ahead of the N frames, a further ultrashort frame
     // where that lowers the noise (the base's clipped share), the others in what the N frames leave; 0 = one ultrashort and one
     // bracketed frame (the pick before P219).
     int mosaicNativePick=1;
+    // P313 (owner, 2026-10-21, vivo X200 Ultra 2x ISZ: «все фото в области светов очень мыльное и с кучей артефактов»): on the native
+    // mosaic merge Bento's mask took the N frames and the base down by (1 - m) in every mask cell and gave the cell to the ultrashort
+    // frame's wide isotropic kernel (sigma ~2 native px): on the ISZ burst the merge's high-pass at 0.70..0.97 of the clip was 100 %
+    // the ultrashort frame's, which carries 0.21..0.53 of the N frames' detail (cells the N frames never clipped), and a moving flag
+    // came out twice (its ultrashort position over the N one). mosaicUsFill 1 (fast native merge with Bento): the merge runs as without
+    // Bento (the N frames and the base at full weight, the ultrashort frames left out) and a pass after it (NAT_US_PASS) mixes the
+    // ultrashort colour in by the merge's own clipped share e of its kernel weight (the largest of R, G, B): one share
+    // smoothstep(0, mosaicUsFillShare, e) x Bento's weight of the cell (mask x the frame's check) for R, G and B, raising only
+    // (max with the merged colour, which is at least the clipped samples' lower bound). Needs the clip flags (the merge leaves e
+    // there). 0 = as before (replays unchanged).
+    int mosaicUsFill=0;
+    float mosaicUsFillShare=0.5f;
 };
 
 // restoreSensorOrigin() of scam-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -725,8 +744,9 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("mosaicTetra",nullptr,&t.mosaicTetra)||set("mosaicNativeWiden",nullptr,&t.mosaicNativeWiden)||set("mosaicGeneric",nullptr,&t.mosaicGeneric)
             ||set("mosaicNativeWidenMul",&t.mosaicNativeWidenMul)||set("mosaicNativeWidenFrames",&t.mosaicNativeWidenFrames)
             ||set("mosaicTetraWidenMul",&t.mosaicTetraWidenMul)||set("mosaicTetraWidenFrames",&t.mosaicTetraWidenFrames)
-            ||set("mosaicUsRows",nullptr,&t.mosaicUsRows)||set("usLocal",nullptr,&t.usLocal)||set("mosaicUsRowsMin",&t.mosaicUsRowsMin) // P197
+            ||set("mosaicUsRows",nullptr,&t.mosaicUsRows)||set("usLocal",nullptr,&t.usLocal)||set("usLocalAlign",nullptr,&t.usLocalAlign)||set("mosaicUsRowsMin",&t.mosaicUsRowsMin) // P197
             ||set("mosaicNativePick",nullptr,&t.mosaicNativePick) // P219
+            ||set("mosaicUsFill",nullptr,&t.mosaicUsFill)||set("mosaicUsFillShare",&t.mosaicUsFillShare) // P313
             // P27
             ||set("gainMeasured",nullptr,&t.gainMeasured)||set("noiseMeasured",nullptr,&t.noiseMeasured)||set("chromaGpu",nullptr,&t.chromaGpu)||set("dngDither",nullptr,&t.dngDither)||set("dngMosaic",nullptr,&t.dngMosaic)
             ||set("chromaOverlap",nullptr,&t.chromaOverlap) // P213c
@@ -3137,6 +3157,23 @@ uniform int natRy1;
 uniform int natWidenU;
 uniform vec2 natWidenS; // as kHybMergeMosaic
 uniform float rampKU;   // P309: as kHybChroma (the native base demosaic fades out over share 0..0.5 under the ramp)
+#if defined(NAT_US_PASS) && NAT_US_PASS
+uniform vec2 natUsU;      // P313: x = HybridTuning::mosaicUsFillShare
+uniform int validPlanesU; // the ultrashort frames' check planes after Bento's mask (bentoValidate; 0 = the mask holds the check)
+// Bento's weight of the k-th ultrashort frame at binned B0: mask x its check plane per cell (as kHybDilate gave it, without A),
+// between the 4 nearest cell centres as natRobust (natBilinU)
+float natUsCell(int k,int x,int y,int w2){
+    int i=(y-cy0)*w2+x;
+    return bmask[i]*(k<validPlanesU?bmask[(k+1)*(cy1-cy0)*w2+i]:1.0);
+}
+float natUsW(int k,vec2 B0,int cx,int cy,int w2){
+    if(natBilinU==0)return natUsCell(k,cx,cy,w2);
+    vec2 c=(B0-0.5)*0.5,c0=floor(c),t=c-c0;
+    int x0=clamp(int(c0.x),0,w2-1),x1=clamp(int(c0.x)+1,0,w2-1);
+    int y0=clamp(int(c0.y),cy0,cy1-1),y1=clamp(int(c0.y)+1,cy0,cy1-1);
+    return mix(mix(natUsCell(k,x0,y0,w2),natUsCell(k,x1,y0,w2),t.x),mix(natUsCell(k,x0,y1,w2),natUsCell(k,x1,y1,w2),t.x),t.y);
+}
+#endif
 #define NB (NAT_R+1)
 vec3 natCov(vec2 B){
     int w2=size.x/2;
@@ -3525,6 +3562,62 @@ void main(){
 #endif
     ivec2 bi=ivec2(floor(B0+0.5));
     int cx=clamp(bi.x>>1,0,w2-1),cy=clamp(bi.y>>1,cy0,cy1-1);
+#if defined(NAT_US_PASS) && NAT_US_PASS
+    {
+        // P313 (mosaicUsFill): the ultrashort frames after the merge, which ran as without Bento (the N frames and the base at full
+        // weight in Bento's cells, the ultrashort frames left out: kHybDilate / the merge got Bento off) and left the clipped share e
+        // of its kernel weight (the largest of R, G, B; 1 where a colour had clipped samples only) in its clip flags (bits 8..13, as
+        // for kHybRim). The ultrashort colour takes share smoothstep(0, natUsU.x, e) x Bento's weight ut of the cell, one share for
+        // R, G and B (per colour they left blocks of another hue, P310), and only raises the merged colour: max(u, v) (the merge's
+        // value is at least the clipped samples' lower bound; an ultrashort frame darker than it - its gain, its noise - would cut
+        // a dark rim into the highlight). Bits 6 and 8..13 are cleared, bit 4 set where the mask is on (the merge's flags without
+        // Bento otherwise). Its own pass: on Adreno 750 any change of the merge program's text (the ultrashort sums inside it, or
+        // only the base at full weight and the ultrashort frames skipped in its loop) made the merge 9..30x slower.
+        if(kE.x>=0.0)return;
+        int i=row*ow+ox;
+        uint cfl=cflags[i],in0=cfl;
+        float e=(cfl&7u)!=0u?1.0:float((cfl>>8)&63u)*(1.0/63.0);
+        cfl&=~0x3F40u;
+        if(bmask[(cy-cy0)*w2+cx]>0.0)cfl|=16u;
+        if(e>0.0){
+            vec2 cell=vec2(float(2*cx),float(2*cy));
+            vec3 un=vec3(0.0),ud=vec3(0.0),ucn=vec3(0.0),ucd=vec3(0.0);float ut=0.0,ucv=0.0,uclip=0.0;
+            int k=0;
+            for(int f=1;f<frameCount;f++){
+                if(int(fParam[f].w)!=5)continue;
+                float r=natUsW(k,B0,cx,cy,w2);k++;
+                if(r<0.004)continue;
+                vec2 Ob=originM(f,2*cx,2*cy)+(B0-cell);
+                float g=fParam[f].x;
+                vec3 Pu=vec3(kE.y,kE.y,0.0);
+#if NAT_B==4
+                NatSums su=natTaps(nGeo[clamp(f,0,127)],Ob*4.0+1.5,natClamp(Pu*(natK.x*4.0))*0.25,false,false,false);
+#else
+                NatSums su=natTaps(nGeo[clamp(f,0,127)],Ob*2.0+0.5,natClamp(Pu*natK.x),false,false,false);
+#endif
+                un+=(r*g)*su.nm;ud+=r*su.dn;ucn+=(r*g)*su.cn;ucd+=r*su.cd;
+                ut=max(ut,clamp(r,0.0,1.0));ucv+=r*su.dn.y;uclip+=r*(su.cd.x+su.cd.y+su.cd.z);
+            }
+            float sh=ut*smoothstep(0.0,natUsU.x,e);
+            if(sh>0.0){
+                for(int c=0;c<3;c++){
+                    if(ud[c]<=1.0e-7&&ucd[c]<=0.0)continue;
+                    float u;
+                    if(ud[c]>1.0e-7){u=un[c]/ud[c];if(ucd[c]>0.0)u=max(u,(un[c]+ucn[c])/(ud[c]+ucd[c]));}
+                    else u=ucn[c]/ucd[c]; // only clipped ultrashort samples: their clipped mean (a lower bound)
+                    float v=outRgb[i*3+c];
+                    outRgb[i*3+c]=mix(v,max(u,v),sh);
+                    if(ud[c]>1.0e-7)cfl&=~(1u<<uint(c));
+                    if(ucd[c]>0.0)cfl|=8u;
+                }
+                eff[i]+=sh*ucv;
+                if(uclip>0.0&&(cfl&7u)!=0u)cfl|=32u;
+            }
+        }
+        if(cfl!=in0)cflags[i]=cfl;
+        return;
+    }
+#endif
 #if defined(NAT_DEMOSAIC) && NAT_DEMOSAIC
     {
         // P282: the share of the base's own demosaic: 1 - smoothstep(0, K, F) of the donors' accepted frames F, as the widening
@@ -3679,9 +3772,13 @@ struct HybridGainField {
 struct HybridUsLocal {
     int gw=0,gh=0;float tile=16.f;long tiles=0;float maxDev=0;bool apply=false;
     std::array<std::vector<float>,3> f; // per tile (gw x gh): the factor of R, G, B
+    // P313: the field lies on the base: pixel (u, v) of the measured frame shows what base (u - ox, v - oy) shows (the frames'
+    // global translation, hybridUsGlobalShift; 0 = as measured)
+    float ox=0,oy=0;
     bool on() const {return apply&&gw>0;}
     // factor of colour c at (u, v) px of the measured frame (tile centres at (k + 0.5) tile - 0.5), bilinear, flat beyond the centres
     float at(int c,float u,float v) const {
+        u-=ox;v-=oy;
         const float tx=std::clamp((u+0.5f)/tile-0.5f,0.f,float(gw-1)),ty=std::clamp((v+0.5f)/tile-0.5f,0.f,float(gh-1));
         const int x0=std::min(int(tx),std::max(gw-2,0)),y0=std::min(int(ty),std::max(gh-2,0));
         const int x1=std::min(x0+1,gw-1),y1=std::min(y0+1,gh-1);
@@ -3917,26 +4014,34 @@ class HybridGpu {
     GLuint natNormProgram=0,natFast[2][9][2][2]{},natNormBuf=0,natFieldBuf=0;
     GLuint natFastFill[2][9][2]{}; // P204: the base-fill pass of a marked fast merge (block, half-width, R / B fill)
     GLuint natFastDem[2][9][2]{};  // P282: the base demosaic pass (block, half-width, R / B fill)
+    GLuint natFastUsPass[2][9][2][2]{}; // P313: the ultrashort pass of mosaicUsFill (block, half-width, marked, R / B fill)
     // P62 Mochi (compiled on first use): programs and buffers (0 base rows, 1 frame rows, 2 tiles, 3 tile info, 4 final, 5 out)
     GLuint mochiStatsProgram=0,mochiBlurProgram=0,mochiApplyProgram=0,mochiBuf[6]{};
     size_t mochiCap[6]{};
     // P80: the base rows already in mochiBuf[0] (frame pointer and rows): the next bracketed frame of the shot reuses them
     const uint16_t* mochiBasePtr=nullptr;int mochiBaseR0=-1,mochiBaseR1=-1;
     size_t natNormCap=0;
-    GLuint natFastProgram(int block,int r,bool marked,bool fill,bool baseFill=false,bool demosaic=false){
+    GLuint natFastProgram(int block,int r,bool marked,bool fill,bool baseFill=false,bool demosaic=false,bool usPass=false){
         const bool tetra=block==4;
         r=std::clamp(r,1,tetra?8:3);
         marked=marked||baseFill;
         if(demosaic){baseFill=false;marked=false;}
-        GLuint& p=demosaic?natFastDem[tetra?1:0][r][fill?1:0]:baseFill?natFastFill[tetra?1:0][r][fill?1:0]:natFast[tetra?1:0][r][marked?1:0][fill?1:0];
+        if(usPass){baseFill=false;demosaic=false;} // P313
+        GLuint& p=usPass?natFastUsPass[tetra?1:0][r][marked?1:0][fill?1:0]
+                 :demosaic?natFastDem[tetra?1:0][r][fill?1:0]:baseFill?natFastFill[tetra?1:0][r][fill?1:0]:natFast[tetra?1:0][r][marked?1:0][fill?1:0];
         if(!p){
             const auto t0=std::chrono::steady_clock::now();
-            const std::string body=std::string("#define NAT_B ")+(tetra?"4":"2")+"\n#define NAT_R "+std::to_string(r)+"\n#define NAT_MARKED "+(marked?"1":"0")
+            std::string body=std::string(usPass?"#define NAT_US_PASS 1\n":"")+"#define NAT_B "+(tetra?"4":"2")+"\n#define NAT_R "+std::to_string(r)+"\n#define NAT_MARKED "+(marked?"1":"0")
                 +"\n#define NAT_FILL "+(fill?"1":"0")+"\n#define NAT_BASEFILL "+(baseFill?"1":"0")+"\n#define NAT_DEMOSAIC "+(demosaic?"1":"0")+"\n"
                 +kHybMergeCommon+kHybNatAccess+kHybMergeMosaicFast;
-            compileName=demosaic?(tetra?"mosaicDemT":"mosaicDem"):baseFill?(tetra?"mosaicFillT":"mosaicFill"):tetra?"mosaicFastT":"mosaicFast"; // the crash report names the program
+            // P313: the ultrashort pass reads and writes the merged colour, the effective map and the clip flags (its text alone)
+            if(usPass)for(const char* w:{"writeonly buffer Out{","writeonly buffer Eff{","writeonly buffer CFlags{"}){
+                const std::string k(w);size_t at;
+                while((at=body.find(k))!=std::string::npos)body.replace(at,k.size(),k.substr(10)); // drops "writeonly "
+            }
+            compileName=usPass?(tetra?"mosaicUsT":"mosaicUs"):demosaic?(tetra?"mosaicDemT":"mosaicDem"):baseFill?(tetra?"mosaicFillT":"mosaicFill"):tetra?"mosaicFastT":"mosaicFast"; // the crash report names the program
             p=compile(body.c_str());
-            compileMs+=std::string(demosaic?" mosaicDem":baseFill?" mosaicFill":" mosaicFast")+(tetra?"T":"")+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
+            compileMs+=std::string(usPass?" mosaicUs":demosaic?" mosaicDem":baseFill?" mosaicFill":" mosaicFast")+(tetra?"T":"")+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
                 +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
         }
         return p;
@@ -3980,6 +4085,7 @@ class HybridGpu {
             for(GLuint program:{capProgram,pruneProgram})if(program)glDeleteProgram(program); // P214k
             for(auto& byBlock:natFast)for(auto& byR:byBlock)for(auto& byMark:byR)for(GLuint program:byMark)if(program)glDeleteProgram(program); // P34
             for(auto& byBlock:natFastFill)for(auto& byR:byBlock)for(GLuint program:byR)if(program)glDeleteProgram(program); // P204
+            for(auto& byBlock:natFastUsPass)for(auto& byR:byBlock)for(auto& byMark:byR)for(GLuint program:byMark)if(program)glDeleteProgram(program); // P313
             if(natTable[0]||natTable[1])glDeleteBuffers(2,natTable);
             if(natNormBuf)glDeleteBuffers(1,&natNormBuf);
             if(natFieldBuf)glDeleteBuffers(1,&natFieldBuf); // P268
@@ -4520,6 +4626,9 @@ public:
         // P34: Quad (window 1..3) and Tetra (window 1..8) with the full window merge with kHybNatNorm + kHybMergeMosaicFast (plain /
         // marked strips), anything else with kHybMergeMosaic (natMerge = the merge programs either way)
         bool natFastOn=false;GLuint natPlain=0,natMarked=0,natMarkedFill=0,natDem=0;std::vector<GLuint> natMerge;
+        // P313: the ultrashort fill (mosaicUsFill) of the fast native merge with Bento: the merge, its dilate and demosaic as without
+        // Bento (their uniforms), the ultrashort frames in a pass after them (plain / marked strips)
+        bool natUs=false;GLuint natUsPlain=0,natUsMarked=0;
         if(nat){
             if(!natMarkProgram||!natNormProgram)throw std::runtime_error("HYBRID GPU compiled without the native mosaic programs");
             // P56: the output grid is the native sites (g = b) or the Sabre 2x grid of the sensor (g = 2b: 4 Quad, 8 Tetra)
@@ -4538,6 +4647,11 @@ public:
                 }
                 // P282: the base's own demosaic where the donors were rejected (baseDemosaic 0: no program, the merge as before)
                 if(tune.baseDemosaic>0.f){natDem=natFastProgram(nat->block,nat->window,false,fill,false,true);natMerge.push_back(natDem);}
+                natUs=bento&&tune.mosaicUsFill>0&&clipFlags!=nullptr; // the pass reads the merge's clipped share in the clip flags
+                if(natUs){
+                    natUsPlain=natFastProgram(nat->block,nat->window,false,fill,false,false,true);natMerge.push_back(natUsPlain);
+                    if(mayMark){natUsMarked=natFastProgram(nat->block,nat->window,true,fill,false,false,true);natMerge.push_back(natUsMarked);}
+                }
                 programs.push_back(natNormProgram);
             } else {
                 if(!mosaicProgram){
@@ -4630,7 +4744,7 @@ public:
         if(bento&&in.blend&&!usBlend)throw std::runtime_error("HYBRID GPU: the ultrashort blend needs its program and the plain merge");
         const bool bentoMix=bento&&!usBlend;
         glUseProgram(dilateProgram);
-        glUniform4f(loc(dilateProgram,"dl"),tune.dilateOffset,tune.dilateScale,bentoMix?1.f:0.f,tune.dilateFloor);
+        glUniform4f(loc(dilateProgram,"dl"),tune.dilateOffset,tune.dilateScale,bentoMix&&!natUs?1.f:0.f,tune.dilateFloor); // P313: off under the fill
         glUniform1i(loc(dilateProgram,"validPlanesU"),bentoMix?int(in.maskValid.size()):0);
         glUniform1f(loc(dilateProgram,"rampKU"),bentoMix?in.rampK:0.f); // P309
         glUseProgram(mergeProgram);
@@ -4746,11 +4860,14 @@ public:
                 glUniform1f(loc(mosaicProgram,"rampKU"),bento?in.rampK:0.f); // P309
                 glUniform1i(loc(mosaicProgram,"natClampU"),nat->clampCov); // P34
                 const float us=std::max(0.3f,tune.bentoUsSigma),rs=std::max(0.3f,tune.rimSigma);
-                glUniform4f(loc(mosaicProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento?1.f:0.f);
+                glUniform4f(loc(mosaicProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento&&!natUs?1.f:0.f); // P313: off under the fill
+                if(natUs){glUniform2f(loc(mosaicProgram,"natUsU"),std::clamp(tune.mosaicUsFillShare,0.01f,1.f),0.f);
+                          glUniform1i(loc(mosaicProgram,"validPlanesU"),int(in.maskValid.size()));}
                 glUniform4f(loc(mosaicProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);
                 glUniform4i(loc(mosaicProgram,"kG"),g,ow,0,0);
                 glUniform4i(loc(mosaicProgram,"mergeModeU"),in.mergeMode,in.noBase?1:0,clipFlags?1:0,0);
-                const float rimU[4]={rim?1.f:0.f,-0.7213475f/(rs*rs),tune.rimLo,std::max(tune.rimHi,tune.rimLo+1e-4f)};
+                // P313: under the ultrashort fill the merge leaves its clipped share in the clip flags (the pass clears it)
+                const float rimU[4]={rim||natUs?1.f:0.f,-0.7213475f/(rs*rs),tune.rimLo,std::max(tune.rimHi,tune.rimLo+1e-4f)};
                 glUniform4fv(loc(mosaicProgram,"rimU"),1,rimU);
                 const float kg=std::clamp(nat->ksG,0.25f,4.f),krb=std::clamp(nat->ksRB,0.25f,4.f);
                 glUniform4f(loc(mosaicProgram,"natK"),1.f/(float(nb)*ks*float(nb)*ks),kg*kg,krb*krb,std::clamp(nat->fillSupport,0.f,1.f));
@@ -5262,6 +5379,15 @@ public:
                     glUniform1i(loc(natDem,"natRy1"),ry1);
                     glUniform1i(loc(natDem,"natMarkU"),natStripMode?1:0);
                     dispatchRows(natDem,ow,rows2,1,std::clamp(natChunk*4,8,128),5,true,true);
+                }
+                if(natUs){ // P313: last - the ultrashort frames by the merge's clipped share (Bento's weight)
+                    const GLuint up=natStripMode&&natUsMarked?natUsMarked:natUsPlain;
+                    if(natStripMode&&!natUsMarked)throw std::runtime_error("HYBRID GPU: native strip with flags but no marked ultrashort pass");
+                    glUseProgram(up);
+                    glUniform1i(loc(up,"cy0"),cy0);glUniform1i(loc(up,"cy1"),cy1);glUniform1i(loc(up,"ry0"),ry0);
+                    glUniform1i(loc(up,"natRy1"),ry1);
+                    glUniform1i(loc(up,"natMarkU"),natStripMode?1:0);
+                    dispatchRows(up,ow,rows2,1,std::clamp(natChunk*4,8,128),5,true,true);
                 }
             } else {
             glUseProgram(mergeProgram);
@@ -6855,9 +6981,80 @@ inline std::vector<float> hybridGridBlur(const std::vector<float>& a,int gw,int 
     });
     return o;
 }
+// P313: the global translation of the ultrashort frame `us` against the base (plain Bayer frames w x h, black of the 2x2 phase, us
+// at `expected` x the base's exposure), in even px so that every site keeps its colour: us (x + dx, y + dy) shows what base (x, y)
+// shows. Coarse: globalShift (scam-capture.h, the alignment's fallback) on a pyramid of S x S block means of both frames (S = 4, 8
+// from 3072 px wide: whole 2 x 2 site blocks, colour-balanced; level 0 at most ~512 blocks wide); fine: the 2 x 2 site blocks within
+// +-S / 2 px of it by the same bounded relative residual; none beyond 1/16 of the frame. Measured (dx, dy) on the owner's bursts:
+// the vivo 2x ISZ shot (2, 8) binned px, the OPPO lamp bursts (4..6, -2..-4) binned and (8, -12) / (4, -8) px, the X8U LED burst
+// (10, -8) px - within 2 px of a phase correlation of the frames everywhere; globalShift alone is 4 px coarse ((4, 8) on the ISZ
+// shot: the tile check still corrected it).
+struct HybridUsShift { int dx=0,dy=0; };
+inline HybridUsShift hybridUsGlobalShift(const uint16_t* base,const uint16_t* us,int w,int h,const std::array<float,4>& black,float white,float expected){
+    HybridUsShift r;
+    const int S=w>=3072?8:4;
+    const int gw=w/S,gh=h/S;
+    if(!base||!us||gw<64||gh<64||!(expected>0.f)||!(white>0.f))return r;
+    const double bl=0.25*(double(black[0])+black[1]+black[2]+black[3]),den=std::max(double(white)-bl,1.0);
+    std::vector<Guide> gb(1),gu(1);
+    gb[0].w=gu[0].w=gw;gb[0].h=gu[0].h=gh;gb[0].v.assign(size_t(gw)*gh,0.f);gu[0].v.assign(size_t(gw)*gh,0.f);
+    mergeRowBands(gh,[&](int y0,int y1){
+        for(int Y=y0;Y<y1;++Y)for(int X=0;X<gw;++X){
+            uint32_t sb=0,su=0;
+            for(int y=Y*S;y<Y*S+S;++y){
+                const uint16_t* pb=base+size_t(y)*w+size_t(X)*S;const uint16_t* pu=us+size_t(y)*w+size_t(X)*S;
+                for(int x=0;x<S;++x){sb+=pb[x];su+=pu[x];}
+            }
+            const double nn=double(S)*S;
+            gb[0].v[size_t(Y)*gw+X]=float(std::clamp((sb/nn-bl)/den,0.0,1.0));
+            gu[0].v[size_t(Y)*gw+X]=float(std::clamp((su/nn-bl)/den,0.0,1.0));
+        }
+    });
+    for(auto* g:{&gb,&gu})while(g->back().w>=64&&g->back().h>=64){ // as guides()
+        const Guide& prev=g->back();Guide next{prev.w/2,prev.h/2,{}};next.v.resize(size_t(next.w)*next.h);
+        for(int y=0;y<next.h;++y)for(int x=0;x<next.w;++x)
+            next.v[size_t(y)*next.w+x]=(prev.at(x*2,y*2)+prev.at(x*2+1,y*2)+prev.at(x*2,y*2+1)+prev.at(x*2+1,y*2+1))*.25f;
+        g->push_back(std::move(next));
+    }
+    const Shift coarse=globalShift(gb,gu,expected); // in level-0 blocks x 4
+    const int cx=int(std::lround(coarse.x/4.f))*S/2,cy=int(std::lround(coarse.y/4.f))*S/2; // in 2 x 2 site blocks
+    // a match farther than 1/16 of the frame is a repeated texture's alias, not the hand between two frames of a burst (the
+    // synthetic sine scene of check_hybrid_us_rows matched at (102, 114) px of 1024 x 768 with a column ramp): measured unshifted
+    const int lim=std::max(w,h)/16;
+    if(2*std::abs(cx)>lim||2*std::abs(cy)>lim)return r;
+    const int qw=w/2,qh=h/2,R=S/4,step=std::max(1,qw/512);
+    const double qden=std::max(4.0*white-4.0*bl,1.0);
+    auto quad=[&](const uint16_t* f,int qx,int qy){
+        const uint16_t* p=f+size_t(2*qy)*w+size_t(2*qx);
+        return float((double(p[0])+p[1]+p[w]+p[w+1]-4.0*bl)/qden);
+    };
+    auto score=[&](int ox,int oy){
+        double sum=0;long cnt=0;
+        for(int qy=0;qy<qh;qy+=step){
+            const int sy=qy+oy;if(sy<0||sy>=qh)continue;
+            for(int qx=0;qx<qw;qx+=step){
+                const int sx=qx+ox;if(sx<0||sx>=qw)continue;
+                const float a=quad(base,qx,qy),v=quad(us,sx,sy);
+                if(a>.97f||v>.97f||a<.002f||v<.002f)continue;
+                sum+=std::min(std::abs(a-v/expected)/(0.02f+a),.5f);++cnt;
+            }
+        }
+        return cnt>=16?sum/double(cnt):double(INFINITY);
+    };
+    std::vector<double> scores(size_t(2*R+1)*(2*R+1));
+    mergeRowBands(int(scores.size()),[&](int k0,int k1){
+        for(int k=k0;k<k1;++k)scores[size_t(k)]=score(cx+k%(2*R+1)-R,cy+k/(2*R+1)-R);
+    });
+    int bx=cx,by=cy;double best=scores[size_t(R)*(2*R+1)+R];
+    for(int k=0;k<int(scores.size());++k)if(scores[size_t(k)]<best){best=scores[size_t(k)];bx=cx+k%(2*R+1)-R;by=cy+k/(2*R+1)-R;}
+    if(!std::isfinite(best))return r;
+    r.dx=2*bx;r.dy=2*by;
+    return r;
+}
 // base / us: plain Bayer frames w x h (sensor CFA `cfa`, black of the 2x2 phase), us at `expected` x the base's exposure.
+// align (P313, HybridTuning::usLocalAlign): the tiles at the frames' global translation, the decision against the frame's level.
 inline HybridUsLocal hybridUltrashortLocal(const uint16_t* base,const uint16_t* us,int w,int h,int cfa,const std::array<float,4>& black,
-                                           float white,float expected,float minDev){
+                                           float white,float expected,float minDev,bool align=false){
     HybridUsLocal r;
     const int T=16;
     if(!base||!us||w<4*T||h<4*T||!(expected>0.f)||!(white>0.f))return r;
@@ -6868,6 +7065,10 @@ inline HybridUsLocal hybridUltrashortLocal(const uint16_t* base,const uint16_t* 
     const size_t n=size_t(gw)*gh;
     std::array<std::vector<float>,3> lv;for(auto& v:lv)v.assign(n,0.f); // log green ratio / expected, log R / G, log B / G
     std::vector<uint8_t> valid(n,0),clipped(n,0);
+    // P313: us read at (x + dx, y + dy) (even: the same colour); a site whose partner lies off the frame counts as unmeasured
+    const HybridUsShift sh=align?hybridUsGlobalShift(base,us,w,h,black,white,expected):HybridUsShift{};
+    const int dx=sh.dx,dy=sh.dy;
+    r.ox=float(dx);r.oy=float(dy);
     mergeRowBands(gh,[&](int ty0,int ty1){
         for(int ty=ty0;ty<ty1;++ty)for(int tx=0;tx<gw;++tx){
             double sb[3]{},so[3]{},sq=0;int cnt[3]{},all[3]{};bool baseClip=false;
@@ -6876,9 +7077,12 @@ inline HybridUsLocal hybridUltrashortLocal(const uint16_t* base,const uint16_t* 
                 const int p=((y&1)<<1)|(x&1),c=p==cfa?0:p==(cfa^3)?2:1;
                 ++all[c];
                 if(base[i]>=clip){baseClip=true;continue;}
-                if(us[i]>=clip)continue;
+                const int ux=x+dx,uy=y+dy;
+                if(ux<0||uy<0||ux>=w||uy>=h)continue;
+                const uint16_t u=us[size_t(uy)*w+ux];
+                if(u>=clip)continue;
                 const double b=double(base[i])-black[p];
-                sb[c]+=b;so[c]+=double(us[i])-black[p];++cnt[c];
+                sb[c]+=b;so[c]+=double(u)-black[p];++cnt[c];
                 if(c==1)sq+=b*b;
             }
             const size_t k=size_t(ty)*gw+tx;
@@ -6951,7 +7155,31 @@ inline HybridUsLocal hybridUltrashortLocal(const uint16_t* base,const uint16_t* 
         if(!clipped[size_t(ty)*gw+tx])continue;
         for(int y=std::max(0,ty-4);y<=std::min(gh-1,ty+4);++y)for(int x=std::max(0,tx-4);x<=std::min(gw-1,tx+4);++x)near[size_t(y)*gw+x]=1;
     }
-    for(size_t k=0;k<n;++k)if(near[k])for(int c=0;c<3;++c)r.maxDev=std::max(r.maxDev,std::abs(r.f[c][k]-1.f));
+    // P313 (align): against the frame's own level, the median green ratio of the measured tiles - an offset the whole frame shares is
+    // the gain check's (hybridApplyMeasuredGains keeps the metadata within kGainTolerance), not a lamp near the clip; the colour
+    // ratios against 1 as before (the ISZ shot: 3.3 % below the metadata everywhere, 0.074 -> 0.049 at the clip after the shift)
+    float rel=1.f;
+    if(align){
+        std::vector<float> g;g.reserve(size_t(r.tiles));
+        for(size_t k=0;k<n;++k)if(keep[k])g.push_back(lv[0][k]);
+        std::nth_element(g.begin(),g.begin()+g.size()/2,g.end());
+        rel=std::exp(g[g.size()/2]);
+    }
+    if(align){
+        // P313 (align): decided by the 4th-largest deviation near the clip, not the single largest - a lamp on another flicker
+        // phase moves many tiles, one to three tiles are a moving object or what the global shift leaves (the ISZ burst's third
+        // ultrashort frame: 8.3 % on its worst tile; o12's paper in the wind 9.6 -> 6.0 %; every lamp and LED burst unchanged)
+        std::vector<float> dev;
+        for(size_t k=0;k<n;++k)if(near[k]){
+            float d=0.f;for(int c=0;c<3;++c)d=std::max(d,std::abs(r.f[c][k]*rel-1.f));
+            dev.push_back(d);
+        }
+        if(!dev.empty()){
+            const size_t q=std::min<size_t>(3,dev.size()-1);
+            std::nth_element(dev.begin(),dev.begin()+long(q),dev.end(),std::greater<float>());
+            r.maxDev=dev[q];
+        }
+    }else for(size_t k=0;k<n;++k)if(near[k])for(int c=0;c<3;++c)r.maxDev=std::max(r.maxDev,std::abs(r.f[c][k]*rel-1.f));
     r.apply=r.maxDev>=minDev;
     return r;
 }
@@ -7108,12 +7336,13 @@ inline HybridUsCheck hybridUsRowsCheck(const HybridInput& input,int f,const uint
     // P290: what the rows leave, tile by tile
     if(t.usLocal){
         HybridUsLocal& l=res.rows.local;
-        l=hybridUltrashortLocal(base,us,w,h,input.cfa,input.black,input.white,expected,std::max(0.f,t.mosaicUsRowsMin));
+        l=hybridUltrashortLocal(base,us,w,h,input.cfa,input.black,input.white,expected,std::max(0.f,t.mosaicUsRowsMin),t.usLocalAlign!=0);
         if(l.tiles>=64){
             float lo[3],hi[3];
             for(int c=0;c<3;++c){lo[c]=*std::min_element(l.f[c].begin(),l.f[c].end());hi[c]=*std::max_element(l.f[c].begin(),l.f[c].end());}
-            std::snprintf(line,sizeof(line),"%s: ultrashort frame %d tiles against the base: %ld of %dx%d measured, factors R x%.3f..%.3f G x%.3f..%.3f B x%.3f..%.3f, near the clipped base %.1f %% -> %s",
-                tag.c_str(),f,l.tiles,l.gw,l.gh,lo[0],hi[0],lo[1],hi[1],lo[2],hi[2],100.0*l.maxDev,l.apply?"corrected (lamps on other flicker phases)":"as captured (within the limit)");
+            std::snprintf(line,sizeof(line),"%s: ultrashort frame %d tiles against the base: %ld of %dx%d measured%s, factors R x%.3f..%.3f G x%.3f..%.3f B x%.3f..%.3f, near the clipped base %.1f %% -> %s",
+                tag.c_str(),f,l.tiles,l.gw,l.gh,t.usLocalAlign?(" at the shift ("+std::to_string(int(l.ox))+", "+std::to_string(int(l.oy))+") px, against the frame's level").c_str():"",
+                lo[0],hi[0],lo[1],hi[1],lo[2],hi[2],100.0*l.maxDev,l.apply?"corrected (lamps on other flicker phases)":"as captured (within the limit)");
         } else std::snprintf(line,sizeof(line),"%s: ultrashort frame %d tiles against the base: %ld measured (too few)",tag.c_str(),f,l.tiles);
         if(report)report(line);
         if(l.on()){hybridUsLocalApply(l,us,w,h,input.cfa,input.black,input.white,0.f,0.f);res.corrected=true;}
@@ -7191,7 +7420,7 @@ inline HybridInput hybridPlainUsRows(const HybridInput& input,const HybridTuning
         bool tilesOff=false;
         if(!r.apply&&t.usLocal){
             const HybridUsLocal lc=hybridUltrashortLocal(base,input.frames[f].raw,w,h,input.cfa,input.black,input.white,
-                                                         input.frames[f].exposure,std::max(0.f,t.mosaicUsRowsMin));
+                                                         input.frames[f].exposure,std::max(0.f,t.mosaicUsRowsMin),t.usLocalAlign!=0);
             tilesOff=lc.on();
             if(lc.tiles>=64)out.usFlicker=std::max(out.usFlicker,lc.maxDev);
         }
@@ -10176,19 +10405,20 @@ inline double hybridMosaicBaseClipped(const HybridInput& input,const HybridTunin
 // it x1.11 over the other 99.4 % of the frame (x1.12 in the darkest tiles). The other bracketed frames take what is left too (the
 // Shasta motion gate refuses many: 2 of 3 on 185248, so a reserved slot would trade a merged N frame for a refused one).
 // mosaicNativePick 0: one ultrashort and one bracketed frame (the pick before P219).
-inline std::vector<int> hybridMosaicNativePick(const HybridInput& input,const HybridTuning& tune,int budget,int usFrom,double clipped){
+// reserveBr (P313): the bracketed frames that take their slots ahead of the N frames (1 as P219; the night rule of the caller more).
+inline std::vector<int> hybridMosaicNativePick(const HybridInput& input,const HybridTuning& tune,int budget,int usFrom,double clipped,int reserveBr=1){
     const bool every=tune.mosaicNativePick!=0;
     const int maxUs=every?std::clamp(tune.bentoFrames,1,3):1,maxBr=every?std::numeric_limits<int>::max():1,keepN=std::max(0,usFrom-2);
     const double f=std::clamp(clipped,0.0,1.0);
     int reserve=1;
-    std::vector<int> pick=hybridMosaicPick(input,tune,budget,usFrom,maxUs,maxBr,reserve,1,keepN);
+    std::vector<int> pick=hybridMosaicPick(input,tune,budget,usFrom,maxUs,maxBr,reserve,reserveBr,keepN);
     for(int k=2;k<=maxUs&&f>0.0;++k){
         int m=0,u=0;for(int fr:pick){m+=input.frames[fr].role==kRoleNormal?1:0;u+=input.frames[fr].role==kRoleUltrashort?1:0;}
         if(u>=k){reserve=k;continue;} // in already, in a slot the N frames left
         if(u<k-1||m<2)break;
         const double gain=1.0-std::sqrt(double(k-1)/double(k)),cost=std::sqrt(double(m)/double(m-1))-1.0;
         if(!(f*gain>(1.0-f)*cost))break;
-        std::vector<int> next=hybridMosaicPick(input,tune,budget,usFrom,maxUs,maxBr,k,1,keepN);
+        std::vector<int> next=hybridMosaicPick(input,tune,budget,usFrom,maxUs,maxBr,k,reserveBr,keepN);
         int u2=0;for(int fr:next)u2+=input.frames[fr].role==kRoleUltrashort?1:0;
         if(u2<k)break; // the N frames the first ultrashort frame needs (keepN) hold the slot
         reserve=k;pick.swap(next);
@@ -10511,16 +10741,68 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     // one judged there as in a plain burst (Bento validation per frame, the Shasta sharpness / motion gates); the merge program takes
     // any number of both (per-frame roles). Before P219 one of each (mosaicNativePick 0): 2 of 3 ultrashort and 2 of 3 bracketed
     // frames of every FULLRES shot were dropped («HYBRID SERIES CUT: 14 of 18 (frame rules)»).
-    const int budget=hybridMosaicNativeBudget(n,W,Ht,bb,t2,tune,int64_t(W)*Ht>kHybridClassicPixels?hybridMemAvailable():0,report);
+    // P35: the window follows the colour block: mosaicWindow is in Quad sites (2x2 blocks), a Tetra T1 window is twice as wide in
+    // sensor px (the same 1.5 binned px for the default 3), at most 8 (17x17 sites, 81 cells of kHybMergeMosaicFast); T2 runs the
+    // Quad pass on its Quad mosaic with mosaicWindow itself
+    // P56: a Tetra T1 burst merged natively on the Sabre 2x grid (4x the output pixels of its sensor grid) takes its own window
+    // (mosaicTetraWindow2x sensor px, 0 = as the sensor grid)
+    const int gridAsked=input.strict2x?2:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
+    const bool tetra2x=b==4&&!t2&&gridAsked==2&&tune.mosaicNative2x!=0;
+    const int window=b==4&&!t2?std::clamp(tetra2x&&tune.mosaicTetraWindow2x>0?tune.mosaicTetraWindow2x:2*tune.mosaicWindow,1,8)
+                              :std::clamp(tune.mosaicWindow,1,6);
+    const float fill=tune.mosaicChromaFill==1?std::clamp(tune.mosaicFillSupport,0.f,1.f):0.f;
+    const bool fullWindow=tune.mosaicWindowFull!=0;
+    // P313 (review): the ultrashort fill runs in the fast native merge only (HybridGpu::merge natUs: the full window of 1..3 sites,
+    // Tetra T1 1..8, no R/B fill at window 1, not the generic merge, clip flags) - elsewhere Bento stays inside the merge, and the P219
+    // pick with it
+    const bool fastFill=tune.mosaicUsFill>0&&tune.bento>0&&clipFlags!=nullptr&&fullWindow&&window>=1&&window<=(mb==4?8:3)
+        &&!(fill>0.f&&window<2)&&tune.mosaicGeneric==0;
+    int usCount=0;for(const auto& fr:input.frames)usCount+=fr.role==kRoleUltrashort?1:0;
+    // P313 (owner, 2026-10-21: «нам нужно чтобы Тетра и квад брали 3 ультракоротких кадра»): with the ultrashort fill (mosaicUsFill:
+    // the ultrashort frames fill only what the N frames clip, in a pass after the merge) every ultrashort frame Bento takes
+    // (bentoFrames, at most 3) gets a slot of its own on top of the N frames' (mosaicFrames + the further ones, within the memory
+    // budget) and ahead of them, instead of competing with an N frame for one - the vivo 2x ISZ burst kept 1 of 3 (28 N + 1 + 1 of
+    // 30 slots) because a second one in an N slot would have raised the noise over the 97 % of the frame its clip does not cover
+    const int usWanted=std::min(usCount,std::clamp(tune.bentoFrames,1,3));
+    const bool usAll=fastFill&&tune.mosaicNativePick!=0&&usWanted>1;
+    // P313 (owner: «длинных достаточно 2-3, 5 не нужны»): at night (the kernel's night rule: key61 of the base - these frames are
+    // sensor sites, the key of one site - at or below s61MaxKey, never Tetra, which P306 shoots by day only) up to 3 bracketed frames
+    // take slots of their own ahead of the N frames as well: their 2x exposure lowers the noise of the shadows there (plain bursts:
+    // hh_1 -45 % in the deepest shadows, x7u_1x -16..-19 %), by day it does nothing (o12 0 %; the vivo 2x ISZ day burst, key 54.7,
+    // +2 % with its long frame in an N slot), so by day one keeps its slot as in P219
+    int brCount=0;for(const auto& fr:input.frames)brCount+=fr.role==kRoleBracketed?1:0;
+    const float key=tune.snrFixed>0?float(tune.snrFixed):sabreSnr(std::max(input.frames[0].slope,1e-9f),std::max(input.frames[0].offset,0.f),1.f);
+    const int brWanted=std::min(brCount,3);
+    const bool brAll=tune.shastaEnable&&tune.mosaicNativePick!=0&&b!=4&&brWanted>1&&key<=tune.s61MaxKey;
+    HybridTuning budgetTune=tune;
+    budgetTune.mosaicFrames=tune.mosaicFrames+(usAll?usWanted-1:0)+(brAll?brWanted-1:0);
+    const uint64_t avail=int64_t(W)*Ht>kHybridClassicPixels?hybridMemAvailable():0;
+    const int budget=hybridMosaicNativeBudget(n,W,Ht,bb,t2,budgetTune,avail,report);
+    // P313 (review): slots of their own only as far as the raise of mosaicFrames got through the memory budget - a budget short of it
+    // would trade N frames for them (the noise outside the clip up, the trade P219's rule refuses); with room for the whole burst
+    // every frame is picked either way
+    const int grown=budget>=n?n:!(usAll||brAll)?0
+        :std::max(0,budget-hybridMosaicNativeBudget(n,W,Ht,bb,t2,tune,avail,[](const std::string&){}));
+    const int reserveUs=usAll?1+std::min(usWanted-1,grown):1;
+    const int reserveBr=brAll?1+std::min(brWanted-1,std::max(0,grown-(reserveUs-1))):1;
+    const bool usOwn=reserveUs>1;
     const bool huge=int64_t(W)*Ht>kHybridHugePixels;
     // the ultrashort takes a slot from 4 frames on (from 3 for a huge burst: two N and the ultrashort)
     const int usFrom=huge?3:4;
     // a budget short of the burst: the ultrashort frames after the first take N slots only where that lowers the noise (the base
     // scan only then: with room for the whole burst every frame is picked either way)
-    int usCount=0;for(const auto& fr:input.frames)usCount+=fr.role==kRoleUltrashort?1:0;
-    const bool usShort=tune.mosaicNativePick!=0&&tune.bento>0&&budget<n&&usCount>1;
+    const bool usShort=!usOwn&&tune.mosaicNativePick!=0&&tune.bento>0&&budget<n&&usCount>1;
     const double clippedShare=usShort?hybridMosaicBaseClipped(input,tune,b):0.0;
-    const std::vector<int> pick=hybridMosaicNativePick(input,tune,budget,usFrom,clippedShare);
+    // every bracketed frame as in P219 (the reserved ones ahead of the N frames, the others in the slots the N frames leave)
+    const std::vector<int> pick=usOwn?hybridMosaicPick(input,tune,budget,usFrom,reserveUs,std::numeric_limits<int>::max(),reserveUs,reserveBr,std::max(0,usFrom-2))
+                                     :hybridMosaicNativePick(input,tune,budget,usFrom,clippedShare,reserveBr);
+    if(usAll||brAll){
+        int inUs=0,inBr=0;for(int f:pick){inUs+=input.frames[f].role==kRoleUltrashort?1:0;inBr+=input.frames[f].role==kRoleBracketed?1:0;}
+        report("HYBRID MOSAIC NATIVE: "+std::to_string(budget)+" of "+std::to_string(n)+" frames: "+std::to_string(inUs)+" ultrashort"
+            +(usOwn?" in slots of their own (the ultrashort fill)":usAll?" (no slots of their own: the memory budget)":"")+", "
+            +std::to_string(inBr)+" bracketed"+(reserveBr>1?" in slots of their own (night: key "+std::to_string(key)+")"
+            :brAll?" (night: no slots of their own: the memory budget)":""));
+    }
     if(usShort){
         int inPick=0;for(int f:pick)inPick+=input.frames[f].role==kRoleUltrashort?1:0;
         char line[240];std::snprintf(line,sizeof(line),"HYBRID MOSAIC NATIVE: %d of %d frames: %d ultrashort frames picked, the base clips %.3f %% of"
@@ -10529,24 +10811,13 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
         report(line);
     }
     hybridSeriesCut(tune,int(pick.size()),n,budget>=n?"frame rules":"memory",report);
-    // P35: the window follows the colour block: mosaicWindow is in Quad sites (2x2 blocks), a Tetra T1 window is twice as wide in
-    // sensor px (the same 1.5 binned px for the default 3), at most 8 (17x17 sites, 81 cells of kHybMergeMosaicFast); T2 runs the
-    // Quad pass on its Quad mosaic with mosaicWindow itself
-    // P56: a Tetra T1 burst merged natively on the Sabre 2x grid (4x the output pixels of its sensor grid) takes its own window
-    // (mosaicTetraWindow2x sensor px, 0 = as the sensor grid)
-    const int gridAsked=input.strict2x?2:tune.grid>0?std::min(tune.grid,2):std::max(1,std::min(input.grid,2));
-    const bool tetra2x=b==4&&!t2&&gridAsked==2&&tune.mosaicNative2x!=0;
     // P80: the chroma median's GPU context builds during the merge. P219: only for a result the median takes on the GPU (ow x oh
     // below: Quad / T1 W x H, 4x that on the natively merged 2x grid, T2 a quarter), not for every 50 MP Quad merge
     const int k2Out=gridAsked==2&&!t2&&tune.mosaicNative2x!=0?2:1;
     if(tune.chromaGpu>0&&chromaGpuPossible(t2?int64_t(W)*Ht/4:int64_t(W)*Ht*k2Out*k2Out))chromaPrewarm();
-    const int window=b==4&&!t2?std::clamp(tetra2x&&tune.mosaicTetraWindow2x>0?tune.mosaicTetraWindow2x:2*tune.mosaicWindow,1,8)
-                              :std::clamp(tune.mosaicWindow,1,6);
     // P73: Tetra T1 by day has its own scale (the Quad kernel in sensor px)
     const float kernelScale=std::clamp(mb==4&&tune.mosaicTetraKernelScale>0.f?tune.mosaicTetraKernelScale:tune.mosaicKernelScale,0.1f,4.f);
     const float ksG=std::clamp(tune.mosaicKernelG,0.25f,4.f),ksRB=std::clamp(tune.mosaicKernelRB,0.25f,4.f);
-    const float fill=tune.mosaicChromaFill==1?std::clamp(tune.mosaicFillSupport,0.f,1.f):0.f;
-    const bool fullWindow=tune.mosaicWindowFull!=0;
     if(tune.mosaicChromaFill>1)report("HYBRID MOSAIC NATIVE: chroma fill "+std::to_string(tune.mosaicChromaFill)+" (directional, S7) is not built: fill off");
     {
         char head[400];
@@ -10710,6 +10981,8 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     nat.widenFrames=std::max(mb==4?tune.mosaicTetraWidenFrames:tune.mosaicNativeWidenFrames,0.01f);
     if(nat.widenRule==2)report("HYBRID MOSAIC NATIVE: base widening by accepted frames F: sigma x"+std::to_string(nat.widenMul)
         +" at F = 0 to x1 at F >= "+std::to_string(nat.widenFrames)+" (moving areas)");
+    if(fastFill)report("HYBRID MOSAIC NATIVE: ultrashort fill (P313): the merge as without Bento, the ultrashort frames after it by"
+        " the merge's clipped share smoothstep(0, "+std::to_string(tune.mosaicUsFillShare)+") x Bento's weight, raising only (fast merge with clip flags)");
     nat.generic=tune.mosaicGeneric!=0;nat.clampCov=std::clamp(tune.mosaicNativeClamp,0,2);
     // a binned pixel averages b^2 sites: the kernel keys (6.1 / round-4 curves, the 6.1 night rule, the outlier gate hotMaxKey) follow
     // one SENSOR site (noise x b^2 of the binned one), as the split and S0 (run_s0.py: key of the site noise); T2's merged 2x2 means

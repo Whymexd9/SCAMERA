@@ -893,6 +893,11 @@ public class PreferenceKeys {
         // ramp / 4, at least 0.25 - 0 the sharpest). scam_dev.txt "hybrid_bento_blend 0" = the P309 mixing inside the merge.
         if (hybridSwitch("bento_blend", true))
             out.append("bentoBlend 1\nbentoBlendSigma ").append(Math.max(0.25f, 0.25f * hybridValue("bento_ramp", HYBRID_DEFAULTS.get("bento_ramp")))).append('\n');
+        // P313 (owner, vivo X200 Ultra 2x ISZ in daylight: «все фото в области светов очень мыльное и с кучей артефактов»): the
+        // native mosaic merge (Quad / Tetra) leaves Bento's cells to the N frames and fills only what they clipped from the
+        // ultrashort frames, in a pass after it (worker HybridTuning::mosaicUsFill; default 0 = replays unchanged). scam_dev.txt
+        // "hybrid_us_fill 0" = the ultrashort frames inside the native merge by Bento's mask, as before.
+        if (hybridSwitch("us_fill", true)) out.append("mosaicUsFill 1\n");
         if (!hybridSwitch("mosaic_window_full", true)) out.append("mosaicWindowFull 0\n");
         return out.toString();
     }

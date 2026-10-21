@@ -172,14 +172,16 @@ float lookScene(inout vec3 lab, float satMult) {
 }
 // Adapted from the user-supplied libvf_demosaic.so (SHA-256 78a014...4285).
 // Camera2 supplies RAW_SENSOR here; packed inputs are not guessed from bit depth.
+// P314: the CFA period is 2, 4 or 8 (block 1 / 2 / 4), so its phase is a mask instead of the integer modulo (GPUs have no
+// integer divide: six software divisions a fetch, 16-20 fetches a pixel; GLSL ES leaves % of a negative x undefined). The
+// same sites for every x and y, negative ones too.
 float getUnpackedPixel(int x, int y) {
     // Preserve CFA phase at borders: +/-2 must stay on the same colour plane.
-    int block = max(cfa_block_size,1);
-    int period = block*2;
-    int px = ((x % period) + period) % period;
-    int py = ((y % period) + period) % period;
-    x = clamp(x, px, width-1-((width-1-px)%period));
-    y = clamp(y, py, height-1-((height-1-py)%period));
+    int mask = max(cfa_block_size,1)*2 - 1;
+    int px = x & mask;
+    int py = y & mask;
+    x = clamp(x, px, width-1-((width-1-px)&mask));
+    y = clamp(y, py, height-1-((height-1-py)&mask));
     return float(texelFetch(sTexture16, ivec2(x,y),0).r);
 }
 float getMacroPixel(int mx, int my) {
@@ -576,13 +578,15 @@ void main() {
         v = clamp((src_ny * 0.5) * u_ldc_aspect + u_ldc_cy, 0.0, 1.0);
     }
     vec3 cC;
+    // P314: the block 1 / 2 / 4 as a shift (the crop is never negative: the same as the division)
+    int shift = cfa_block_size == 4 ? 2 : cfa_block_size == 2 ? 1 : 0;
     if (cfa_mode == 1) {
         int px = int(u * float(crop_width)) + crop_left;
         int py = int(v * float(crop_height)) + crop_top;
         cC = getStandardBayerColor(px, py);
     } else {
-        int mx = int(u * float(crop_width / cfa_block_size)) + (crop_left / cfa_block_size);
-        int my = int(v * float(crop_height / cfa_block_size)) + (crop_top / cfa_block_size);
+        int mx = int(u * float(crop_width >> shift)) + (crop_left >> shift);
+        int my = int(v * float(crop_height >> shift)) + (crop_top >> shift);
         cC = getFastColor(mx, my);
     }
     float corner_gain = 1.0;
@@ -621,8 +625,8 @@ void main() {
             m_T = getStandardBayerColor(px, py - 2).g;
             m_B = getStandardBayerColor(px, py + 2).g;
         } else {
-            int mx = int(u * float(crop_width / cfa_block_size)) + (crop_left / cfa_block_size);
-            int my = int(v * float(crop_height / cfa_block_size)) + (crop_top / cfa_block_size);
+            int mx = int(u * float(crop_width >> shift)) + (crop_left >> shift);
+            int my = int(v * float(crop_height >> shift)) + (crop_top >> shift);
             m_L = getFastColor(mx - 2, my).g;
             m_R = getFastColor(mx + 2, my).g;
             m_T = getFastColor(mx, my - 2).g;

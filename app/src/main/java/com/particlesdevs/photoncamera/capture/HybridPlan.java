@@ -19,7 +19,7 @@ import com.particlesdevs.photoncamera.util.Lang;
  * <ul>
  * <li>one or two ultrashort frames (Bento, {@link ImageFrame.CaptureRole#EXTRA_SHORT}) at N / factor (SCAM: one at 8),
  *     only when the newest buffered frame clips (or Bento is forced),</li>
- * <li>up to five bracketed frames (Shasta, {@link ImageFrame.CaptureRole#LONG}) at N x 2^ev, gain first at the N shutter,
+ * <li>up to three bracketed frames (Shasta, {@link ImageFrame.CaptureRole#LONG}; five before P313) at N x 2^ev, gain first at the N shutter,
  *     the shutter lengthens only where the sensor's gain range ends (up to the handheld cap); skipped when the ratio is below
  *     1.5 or above the limit. As ArkCam 1.23 / SCAM 9.6 on the same Oppo by day (research/scam/device/oppo_debug_20261004):
  *     5 frames at 10 ms x analog gain 2.22 (TET x1.9 of N), sharpness 97-106 % of the base, none discarded, 82 % of the
@@ -86,7 +86,8 @@ public final class HybridPlan {
 
     /** Preferences of the plan: the hybrid's own pref_scam_hybrid_* (scam_dev.txt "hybrid_<key>" overrides), never SCAM HDR's. */
     public static boolean shastaEnabled() { return PreferenceKeys.hybridSwitch("shasta", true); }
-    public static int bracketCount() { return Math.max(0, Math.min(5, Math.round(PreferenceKeys.hybridValue("shasta_frames", 3f)))); }
+    /** P313 (owner, 2026-10-21: «длинных достаточно 2-3, 5 не нужны»): at most 3, a stored 4 or 5 takes 3. */
+    public static int bracketCount() { return Math.max(0, Math.min(3, Math.round(PreferenceKeys.hybridValue("shasta_frames", 3f)))); }
     /** P68: Shasta "always": the frames are taken whatever their ratio to N (above 1.2) and merged unless they moved (worker). */
     public static boolean shastaForced() { return PreferenceKeys.getHybridShastaMode() == 2; }
     public static double bracketEv() { return Math.max(1, Math.min(4, PreferenceKeys.hybridValue("shasta_ev", 1f))); }

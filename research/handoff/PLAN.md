@@ -6669,3 +6669,156 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   as on 4f6d8ace (not in CI). Final worker: the 5 blend replays (o12, x7u_1x, d1655, d1853, the LED shot) no strip-border step, the
   references and 3 no-blend bursts bit-identical.
 - Open: the OPPO X8U pink RGB bulb with a white halo ring (owner's screenshot, no burst); the app on a phone.
+
+### P311 - LED rings without lines in the ARK tone: the AgX path to white over 1.3 EV, the detail delta at the rim of a clipped light (owner, 2026-10-21, OPPO X8U photo of the PC on f9489748: a pink fan ring with a white core, a hard edge on its outer side and a crimson line along its inner side; «сделай ещё лучше»): DONE, not device-tested in the app.
+- The linear merge is clean at the rings (the LED burst replayed on the OPPO with the final P310 worker); both lines come from the
+  ARK tone (host chain SCR p310/led_host.py, phone sharpening; harness SCR p311/ref: render.py, score.py = dips / cliffs / colour
+  bands at six ring and bar locations, regress.py = seven scenes, changes outside the light edges, speck.py = roughness along the
+  rings; a synthetic merge with lines, holes, rims and LED rows).
+- Outer side: my own P310 gate of the AgX path to white, smoothstep(0.8, 0.995 x the AgX white): 0.3 EV, inside one pixel of a ring's
+  falloff (~0.3 EV per px), so the other channels (lifted to 15 % of the brightest one) fell 3.5 EV in a pixel after a plateau (blue
+  ring R 180 -> 96 in 2 px; pink: the white core breaking off into the saturated glow). Now 0.8 .. 2.0 x the white: pixels below 0.8 x
+  unchanged, from 2 x up the former core; nothing else in the tone moves (check_colour_output: the baseline with the same edit).
+- Inner side (and with that fix the outer side too): the bounded detail delta of combine.glsl dug a lobe 2-6 px wide beside a
+  clipped light - its reference (the B-spline of the arkLow box means of min(m Y, 1)) holds the light's spill, the cube root of
+  that linear mix lifts it far more than the base (the fusion mixes in the display domain), plus ArkLumaSharpen's undershoot at
+  that edge. Rule (lightShare / lightRimDelta): the light share of the arkLow taps (max channel 2 .. 4 x the reference's bound, or
+  the geometric mean of max channel and luminance 1.4 .. 2.4 x), its mass / first / second moment in a disc of 4 arkLow px, side =
+  |M|^4 / (H M'SM) (1 = the light on one side: a rim, 0 = around the pixel: a dark line or hole in front of a light), the reference
+  of the far side (the footprint taps behind the pixel, away from the light), and at a rim the negative delta against that far
+  side, never deeper than the plain delta; blended by side 0.3 .. 0.7 and the disc's light mass 0 .. 2. Every input smooth in the
+  position; no light in the footprint = bit for bit as before.
+- Rejected on the way (measured): a per-pixel rim test on the sharpened pixel with a 'valley' 2-3 px further out (dotted dark
+  lines along the rings: its decision followed the noise); a local-slope compression of the delta (design C: LED scores as good,
+  but dark wires 1-3 px within 4 px of a blown window lost 50-75 % of their contrast and lights at 4-6 x white got dashed rims);
+  the 16-tap footprint share as the gate (dashed rims at lights of ~2 x white and LED rows: review, replaced by the disc mass).
+- Measured (host, phone sharpening; mean LED score over six locations, lower = better, the reference app's own JPEG 25): blue
+  burst 55.7 -> 28.6, the pink channel swap 47.1 -> 27.5, the burst without the ultrashort frames 45.6 -> 25.3; the complaint ring's
+  inner dip 41 -> ~1 codes; no rise of the roughness along the rings; synthetic dark lines 3/4/6 px and holes r3/r5 in front of a 4 x
+  light unchanged, below-white cells bit-identical; o12 / x7u_1x / d1655 / d1853 outside the light edges <= 0.003 % of the pixels
+  (d1655 bit-identical), the changes there trenches removed at lamps and blown windows. Open: colour band at a non-white saturated
+  core (now visible instead of the dark line: the core-colour / path-to-white question), lights below ~2 x white keep part of the
+  lobe, dark objects ~8-10 px wide in front of a light keep their lobe rails.
+- Checks: check_colour_output --shader / --gl (the a3e94db baseline with the P310 + P311 edits, everything else bit-exact),
+  check_ark_highlights / _headroom, check_highlight_*, check_tone_ops, check_colour_look, check_film_lut, check_viewfinder_look,
+  glslc of every define combination (reviewers: 64).
+
+### P312 - the camera's start without a frozen viewfinder: the developed-RAW viewfinder's programs from driver binaries (owner, 2026-10-21, a video of three starts on the vivo X200 Ultra: «вот такие лаги ловлю при запуске»): DONE, not device-tested.
+- Cause (the video against the log): the viewfinder stood still 0.4 s at every start (2.1 - 2.5 s cold) right after its first
+  frames - the gap between the last ISP frame drawn and «the photo's ARK tone on». At the first RAW frame the viewfinder's GL thread
+  compiled from source rawdevelop (650 lines) and the ten programs of the photo's ARK tone (combine 815 lines); no ISP frame could
+  be drawn meanwhile (the camera kept 30 fps: STAB_TRACE maxGap 66 ms). The post pipeline's program binaries (P30 / P69) never
+  covered the viewfinder.
+- GLProg: viewfinder keys ("V\n" + attributes + vertex + U+0001 + fragment) in the same driver-binary cache (process + disk;
+  cachedViewfinderProgram / linkViewfinderProgram / viewfinderProgram; the idle warm-up recompiles them after a driver update; not
+  counted in the shot's "programs:" line; stale GL errors drained before glProgramBinary). LiveRawRenderer / LiveArkTone: their
+  programs through it, prepare() before the first draw (pending first, then the binary; a refused or missing binary goes to the
+  background once, else compiled in place); MainRenderer's own four programs too. ViewfinderPrograms: the keys without a binary
+  compiled on a background thread in a context of its own (display priority). MainRenderer: the ISP frame stays until the programs
+  are linked (no load while the background links: a driver's compiler lock), then straight to the ARK tone; a RAW-only session
+  (ISZ / FULLRES) shows the plain RAW look as soon as rawdevelop is there; the ARK set asked again when it becomes wanted; 8 s
+  deadline, then as before; the GL state put back after the set-up.
+- Expected: a start with binaries links them in a few ms (the first RAW frame keeps ~40-120 ms: the 24 MB upload, the ARK targets,
+  the first AE readback); the first start after an install compiles in the background while the ISP viewfinder runs.
+- Checks: GLProgramDiskCacheTest (keys round trip, kept for the warm-up, not counted), two code reviews (fixed: the pending/cache
+  race, per-frame key building, stats leak, stale errors, no deadline, RAW-only sessions). Open: the phone (VF_DRAW at a cold start).
+
+### P313 - vivo 2x ISZ in daylight: the highlights' detail back (the ultrashort frames fill only what the N frames clipped), no false flicker correction (owner, 2026-10-21, vivo X200 Ultra 2x ISZ, burst scam_burst-20261021-101423.bin: «все фото в области светов очень мыльное и с кучей артефактов» + «почему-то обработка фото с isz занимает кучу времени»): DONE in the worker, not device-tested in the app.
+- Soft highlights (the linear merge already; the post passes the same share of detail for every merge - host chain set up with the
+  shot's parameters, verified against the phone JPEG within 1 DN): on the native Quad merge Bento took the N frames and the base
+  down by (1 - m) in every mask cell and gave the cell to the single ultrashort frame's wide isotropic kernel (sigma ~2 native px);
+  the merge's high-pass at 0.70..0.97 of the clip was 100 % the ultrashort frame's (0.21..0.53 of the N frames' detail) although the
+  N frames clipped only 1.9 % of the pixels; the P309 ramp only widened the area; a moving flag came out twice. mosaicUsFill 1 (the
+  app always sends it; worker default 0 = replays unchanged; dev switch hybrid_us_fill): the fast native merge runs as without
+  Bento and a pass after it (NAT_US_PASS, a variant of kHybMergeMosaicFast - the merge program's own text untouched: on Adreno 750
+  any edit of it made the merge 9..30x slower) mixes the ultrashort colour in by the merge's own clipped share of its kernel weight
+  (one share for R, G, B, raising only). Detail slope against the no-Bento merge in the five owner regions: 0.24..0.59 -> 0.80..1.0;
+  clipped areas keep the ultrashort data (no new clipping, the dark values below the N clip gone: 28 % -> 0.2 %); the ghost flag
+  gone; isz2 (OPPO 2x ISZ) and v10_2 (vivo Tetra LED) cleaner the same way; merge time unchanged (OPPO 7.7 s). The app's crash ladder
+  can drop the pass alone (ScamHybridBurst.STEP_US_FILL -> mosaicUsFill 0).
+- Blotches: the P290 tile check compared the base and the ultrashort frame without aligning them (16 x 4 sensor px of hand
+  between them) and decided by the single largest deviation: the edges of clipped white objects read x0.52..1.79 and a frame the
+  row check had found clean was 'corrected' (up to +25 % brightness, +-8 % colour in the highlights). usLocalAlign 1 (default):
+  the tiles measured at the frames' global translation (hybridUsGlobalShift: globalShift on block means + a 2x2-site refinement, an
+  alias guard at 1/16 of the frame), the decision against the frame's own level. The ISZ shot: 'at the shift (2, 8) px ... 4.9 % ->
+  as captured'; the lamp / LED bursts keep their correction, now registered (lower cross-validated residual); usLocalAlign 0 =
+  P290 bit for bit. With the alignment the decision is the 4th-largest deviation near the clip, not the single largest: a lamp
+  on another flicker phase moves many tiles, one to three are a moving object or what the global shift leaves (the ISZ burst's third
+  ultrashort frame: 8.3 % on its worst tile -> as captured; o12's paper in the wind 9.6 -> 6.0 %; every lamp / LED burst unchanged).
+  Not fixed: the post-correction gain check never counts a tile on mosaic bursts (rms over all Bayer sites).
+- Three ultrashort frames on Quad / Tetra (owner: «почему только один ультракороткий, если мы снимаем 3?» + «нам нужно чтобы Тетра и
+  квад брали 3 ультракоротких кадра»): the native pick put them into N slots (28 N + 1 + 1 of 30 on the ISZ burst: a second one
+  there would have raised the noise over the 97 % of the frame its clip does not cover). With the fill every ultrashort frame Bento
+  takes (bentoFrames, at most 3) gets a slot of its own on top of mosaicFrames and ahead of the N frames (hybridMosaicPick with
+  the ultrashort frames reserved): the ISZ burst 32 of 36 frames with all 3 ultrashort frames ('3 ultrashort in slots of their own
+  (the ultrashort fill)'), merge 7.8 s on the OPPO; isz2 / t100526 / v10 the same rule. Pre-push review: only as many own slots as
+  the raise of mosaicFrames got through the memory budget (budget with the raise - budget without it; a budget short of the raise
+  would trade N frames for them: the noise outside the clip up), else the P219 pick ('no slots of their own: the memory budget');
+  only where the fill runs (the fast native merge: full window 1..3 sites, Tetra T1 1..8, not the generic merge - the report of
+  the fill there too); every bracketed frame as in P219 (the reserved ones ahead of the N frames, the others in the free slots).
+- Long frames (owner: «я не вижу пользы от длинных кадров, они точно работают?» + «длинных достаточно 2-3, 5 не нужны»): they work
+  where they can - the flat-area noise with and without them on the OPPO: hh_1 (night) -45 % in the deepest shadows, x7u_1x (night)
+  -16..-19 %, o12 (day) 0 %, the vivo ISZ (day) +2 % (its long frame in an N slot), hand: all rejected by the motion gate (10-20 %
+  moved > 4 %: by design, they are shot after the press at 2x the shutter). The app takes at most 3 (HybridPlan.bracketCount: a stored
+  4 or 5 takes 3; the slider 1..3; the default 3 since P68). Native Quad merges at night (the kernel's night rule: the base's key61
+  - one sensor site - at or below s61MaxKey; never Tetra, which P306 shoots by day only): up to 3 bracketed frames take slots of
+  their own as well ('3 bracketed in slots of their own (night: key K)'); by day one keeps its N slot as in P219. On the bursts at
+  hand the budget covers the whole burst (t100526, key 9.9: 26 frames, 34 slots), so the rule changes nothing there (md5 the same).
+- Slow processing: not the merge - on the vivo the ARK RAW viewfinder of P301 (P266 RAW-only session: ~20 passes per frame at
+  display priority) left the low-priority worker ~1/10 of the GPU: 46-51 rows/s while it ran, >= 410 rows/s once it stopped; the
+  same 2x ISZ merged in 5.5 s on 10-19 with the old one-pass RAW viewfinder. Fixed in P314 (the viewfinder like the reference app's).
+- Checks (worker_p313f, after the review): P306 refs (x7u_1x c2f295fa, hh_1 63519568) and the jref set (x7u_1x f51cddf6, hh_1,
+  isz2 b7dd6b8d, v10_1 879fed4a, hand f3ee3a0c, o12 47f225f6) bit-identical to the P313 worker before the long-frame rule; the 14
+  C++ checks and --transport-check on the OPPO (check_hybrid_prefetch once over its peak-memory bound while the phone was busy, 5 of 5
+  reruns PASS); the night rule against the day ISZ burst (e6dd6c43, unchanged) and t100526 / v10_1 / v10_2 / isz2 (unchanged);
+  HybridPlanTest (p313AtMostThreeShastaFrames) / HybridSettingsTest / ScamHybridBurstCrashTest / DevKeysCoverageTest.
+
+### P314 - the RAW viewfinder as light as ArkCam's: one pass of the photo's tone at the frame's colour grid, the AE on the CPU, a frame dropped when the viewfinder is busy, the GPU at normal priority (owner, 2026-10-21: «Исправь живой видоискатель, в ArkCam он тоже есть, но при этом обработку он никак не замедляет» + «Посмотри как работает живой видоискатель в Арк камере, нам нужно сделать схожим образом»): DONE, not device-tested.
+- Cause (P313's slow 2x ISZ shot): the P301 ARK RAW viewfinder drew ~20 passes a frame at the viewport (the guided-filter fusion,
+  its pyramid), copied (24 MB) and uploaded the whole frame, read the picture back for the AE every 4th frame, in a HIGH-priority
+  context (P90): the worker's LOW context got ~1/10 of the GPU (46-51 rows/s while it ran, >= 410 rows/s without it).
+- ArkCam v174 (jadx + the engine's disassembly; notes SCR arkvf/NOTES.md): ONE full-screen pass on the packed RAW (per pixel:
+  WB, lens shading, CCM, the CPU's exposure, a GLOBAL exposure-fusion curve on the pixel's own luma - no neighbourhood -, the
+  look, tone map, LUT); the producer (the camera thread) drops a frame while the render thread is busy (no copy), the AE from
+  <= 64 x 64 RAW samples on the CPU, no glReadPixels, no fences, no EGL priority.
+- Ours now (same shape, our photo's tone): (1) GLPreview: vf_gpu_priority default 0 = MEDIUM (1 = P90's HIGH); (2) main_fs: the
+  9-tap peaking average only with peaking on; (3) rawdevelop_fs: CFA mask / shift instead of % (SPIR-V OpSMod 6 -> 0);
+  (4) LiveRawFrame: three buffers (acquire no longer copies), drop-when-busy (takesFrame: a frame the GL thread has not taken
+  within 100 ms is replaced; CaptureController neither reads nor copies a skipped one), Quad / Tetra frames under 30 MP published
+  as their cell means (drawn with cfa_mode 0: lossless against the mosaic up to 1/2 DN; the >= 30 MP bins of P108 / P179 / P181 /
+  P194 unchanged); the bins on threads of their own (ParallelWork.Own: in the shared pool a shot's CPU pass held the camera thread
+  for its whole length on every frame - review, desktop: 4 -> 381 ms behind a 400 ms pass); (5) the ARK tone drawn at the visible
+  crop's colour grid (LiveRawRenderer.toneSize, 1/16 steps of the viewport, sized from the crop fitted to the screen - the crop of
+  the previous target made 2-cycles in 139 of ~84k cases: review): 2x ISZ 810 x 1080 instead of 1440 x 1920, Tetra 450 x 600,
+  1x Bayer and FULLRES the viewport; the filter / peaking pass scales it to the screen; (6) combine.glsl POINT_FUSED: the photo's
+  fusion as a per-pixel curve (FusedCurve: gf fusedAt + the P291 envelope, 353 entries, unit 8), LiveArkTone vf_ark 1 (default;
+  2 = the guided-filter chain, now at the tone size with its box radius scaled; 0 = off), the AE by LiveArkMeter (128 x 96 cells
+  of 2 x 2 colour quads of the RAW frame -> ArkAe.smartHdr, ~1 ms on the GL thread) instead of the readback. A 2x ISZ frame:
+  ~20 passes, 24 MB copy + upload, a readback, HIGH -> 3 passes at 810 x 1080, a 6 MB upload, no readback, MEDIUM. Fallbacks as
+  before (ARK failure -> the plain RAW look -> the ISP viewfinder).
+- Host checks: LiveArkMeter vs the photo's per-quad statistics within 1 % (ae, p50, p98, p995, effS / effH) on clean frames (the
+  old factor-8 readback smeared small lights: p995 0.69 vs the photo's 0.375); POINT_FUSED vs the exact per-pixel fusedAt +
+  envelope <= 0.66 codes (5 cases, TONE_OP 1 included); combine with POINT_FUSED 0 unchanged (check_colour_output --shader / --gl).
+- Measured on the OPPO X7U (Adreno 750; SCR p314/lens: vfload314 renders the old and the new viewfinder with the app's shaders
+  beside the 2x ISZ replay, worker output md5 7447d964 in all 50 runs): GPU per frame during a merge 20.0 -> 1.93 ms (idle phone
+  24-27 -> 4.1; new: rawdevelop 0.83, combine 2.48, 2D pass 0.78 ms), GL-thread CPU 11-13 -> 2-4.6 ms, 30 fps both; the merge
+  stage 7457 +- 127 ms without a viewfinder, 18515 (x2.51) with the old one drawing, 7775 +- 113 (+4.3 %) with the new one
+  drawing all the time at 30 fps; on/off windows (rows/s) old 0.42, new ~1.00 at MEDIUM, 0.92 at HIGH; the bin's thread count
+  (1, 3, 8) does not matter. Look (host, the app's shaders and AE classes): the vivo 2x ISZ day frame the same tone (mean dY +0.04
+  codes, dE_ok 0.9) and sharper (luma high-pass 4.6 -> 6.5, the photo 9.8); colour fringes at sharp edges from the cell means'
+  colour quads (chroma high-pass rms 0.66 -> 1.09, the photo 0.46) - fixed: POINT_FUSED takes the colour of the 3 x 3
+  neighbourhood at the pixel's own luminance (0.51); the X8U LED night frame 0.16 EV darker (ae 2.49 -> 2.235, the full-frame
+  meter 2.223: the old readback smeared the lamps), mid-tones -7 codes, the glow beside the LEDs -16..-40 codes (the point fusion
+  does not lift it as the guided filter did), against the photo's mid-tones -3.9 -> -10.7 codes.
+- Open: the phone (VF_DRAW draw=, HYBRID STAGES merge= and HYBRID PROGRESS rows/s on the vivo 2x ISZ with the viewfinder open;
+  no P90 stutter at MEDIUM - scam_dev vf_gpu_priority 1 brings HIGH back); the darker night viewfinder
+  (above; vf_ark 2 or a noise-filtered meter if the owner objects); night AE (one frame's noise raises the cells' p98 / p995:
+  +37 / +74 % against the clean photo, the exposure at the noise clamp either way); flatter shadows than the photo's local fusion
+  in strongly fused scenes (vf_ark 2 for an A/B); 1x sessions with an ISP stream still re-tone the same RAW frame on ISP frame
+  callbacks (since P301); LiveRawRenderer.lastView keeps the frame buffer after a session (since P301, up to 25 MB).
+- Checks: LiveRawFrameTest (13), LiveArkMeterTest, FusedCurveTest, LiveRawGeometryTest, ParallelWorkOwnTest (new, CI list),
+  LiveRawQuadBinTest, ArkAeTest, GLProgramDiskCacheTest; glslc of rawdevelop_fs / main_fs (2D form) and the 32 combine variants;
+  check_colour_output --shader / --gl --strict, check_viewfinder_look, check_settings_model, check_ui_language; two reviews
+  (correctness: the bin pool and the tone-size 2-cycle fixed, the draw-request comment corrected; pre-push: LiveRawFrameTest holds
+  its frames by LiveRawFrame.pendingNs instead of racing the 100 ms; measurement: the colour fringes
+  fixed, MEDIUM kept, focus peaking now samples 2 tone px apart - ~3.6 screen px at 2x ISZ - left as is).

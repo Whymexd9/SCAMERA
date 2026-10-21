@@ -90,4 +90,37 @@ public class GLProgramDiskCacheTest {
         assertFalse(odd.exists());
         assertTrue("no driver yet (no GL context): nothing", cache.missingSources(null, 64).isEmpty());
     }
+
+    /**
+     * P312: the viewfinder's programs share the cache under keys of their own ("V\n" + attributes + "\n" + vertex + U+0001 +
+     * fragment): the warm-up gets their whole sources back from a kept key, and they never collide with the post pipeline's.
+     */
+    @Test public void viewfinderKeysCarryBothShadersAndTheirAttributes() throws Exception {
+        final String vertex = "#version 310 es\nin vec4 vPosition;\nvoid main() { gl_Position = vPosition; }\n";
+        final String fragment = "#version 310 es\nprecision highp float;\nout vec4 o;\nvoid main() { o = vec4(1.0); }\n";
+        final String key = GLProg.viewfinderKey(vertex, fragment, "vPosition", "vTexCoord");
+        assertTrue(key.startsWith("V\n"));
+        assertArrayEquals(new String[]{"vPosition,vTexCoord", vertex, fragment}, GLProg.parseViewfinderKey(key));
+        assertArrayEquals(new String[]{"", vertex, fragment}, GLProg.parseViewfinderKey(GLProg.viewfinderKey(vertex, fragment)));
+        assertNotEquals(key, GLProg.viewfinderKey(vertex, fragment, "vPosition"));
+        assertNotEquals(key, GLProg.viewfinderKey(vertex, fragment + " ", "vPosition", "vTexCoord"));
+        assertNull("a post-pipeline key", GLProg.parseViewfinderKey("F\n" + vertex + "\n" + fragment));
+        assertNull("no separator", GLProg.parseViewfinderKey("V\nvPosition\n" + vertex));
+        assertNull(GLProg.parseViewfinderKey(null));
+        // kept like any other program: its source comes back for a new driver's warm-up
+        File dir = tmp.newFolder("glprog");
+        GLProgramDiskCache cache = new GLProgramDiskCache(dir);
+        cache.store("driver", key, 1, new byte[]{7});
+        cache.flush();
+        assertEquals(java.util.Collections.singletonList(key), cache.missingSources("new-driver", 64));
+        // ... but not counted in the shot's "programs:" line (P237's hits / misses / writes are the post pipeline's)
+        cache.takeStats();
+        assertNotNull(cache.load("driver", key));
+        assertNull(cache.load("driver", key + " "));
+        cache.store("driver", key + "  ", 1, new byte[]{8});
+        cache.flush();
+        assertEquals("disk 0 hit / 0 miss / 0 damaged / 0 written / 0 evicted", cache.takeStats());
+        assertNull(cache.load("driver", "C\nother"));
+        assertEquals("disk 0 hit / 1 miss / 0 damaged / 0 written / 0 evicted", cache.takeStats());
+    }
 }

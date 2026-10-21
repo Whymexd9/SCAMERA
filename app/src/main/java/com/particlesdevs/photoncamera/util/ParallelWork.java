@@ -52,8 +52,56 @@ public final class ParallelWork {
      * A RuntimeException or Error of an item is rethrown on the caller (the first one; the other items may still have run).
      */
     public static void forEach(int count, IntConsumer body) {
+        run(null, THREADS, count, body);
+    }
+
+    /**
+     * P314 (review): a pool of its own for one caller that runs at a frame's pace (the viewfinder's RAW bins on the camera
+     * thread). In the shared pool a shot's pass that held every thread queued that caller's helpers behind it, and the caller
+     * waited at their Future for the whole pass (a 4096 x 3072 Quad bin: 4 ms idle, 381 ms behind a 400 ms pass).
+     */
+    public static final class Own {
+        private final String name;
+        private final int threads;
+        private volatile ExecutorService pool;
+
+        /** {@code threads}: the caller included, at most {@link #threads()}. */
+        public Own(String name, int threads) {
+            this.name = name;
+            this.threads = Math.max(1, Math.min(THREADS, threads));
+        }
+
+        public int threads() { return threads; }
+
+        /** As {@link ParallelWork#forEach}, on this pool's threads. */
+        public void forEach(int count, IntConsumer body) {
+            run(this, threads, count, body);
+        }
+
+        private ExecutorService pool() {
+            ExecutorService p = pool;
+            if (p == null) {
+                synchronized (this) {
+                    p = pool;
+                    if (p == null) {
+                        final AtomicInteger number = new AtomicInteger();
+                        p = Executors.newFixedThreadPool(Math.max(1, threads - 1), r -> {
+                            Thread t = new Thread(() -> { INSIDE.set(true); r.run(); }, name + "-" + number.incrementAndGet());
+                            t.setDaemon(true);
+                            t.setPriority(Thread.NORM_PRIORITY);
+                            return t;
+                        });
+                        pool = p;
+                    }
+                }
+            }
+            return p;
+        }
+    }
+
+    private static void run(Own own, int threads, int count, IntConsumer body) {
         if (count <= 0) return;
-        final int helpers = Math.min(count, THREADS) - 1;
+        final int helpers = Math.min(count, threads) - 1;
         if (helpers <= 0 || INSIDE.get()) {
             for (int i = 0; i < count; i++) body.accept(i);
             return;
@@ -63,7 +111,7 @@ public final class ParallelWork {
             for (int i = next.getAndIncrement(); i < count; i = next.getAndIncrement()) body.accept(i);
         };
         final List<Future<?>> futures = new ArrayList<>(helpers);
-        final ExecutorService p = pool();
+        final ExecutorService p = own != null ? own.pool() : pool();
         for (int h = 0; h < helpers; h++) futures.add(p.submit(drain));
         Throwable failure = null;
         try {

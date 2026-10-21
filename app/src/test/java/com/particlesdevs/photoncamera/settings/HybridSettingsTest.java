@@ -377,6 +377,12 @@ public class HybridSettingsTest {
         assertTrue(PreferenceKeys.hybridTuningText().contains("bentoBlendSigma 3.0\n"));
     }
 
+    @Test public void p313UltrashortFillOfTheNativeMerge() {
+        // owner, 2026-10-21 (vivo 2x ISZ in daylight: «все фото в области светов очень мыльное»): the native Quad / Tetra merge
+        // keeps the N frames in Bento's cells, the ultrashort frames fill only what they clipped; always written (worker default 0)
+        assertTrue(PreferenceKeys.hybridTuningText().contains("mosaicUsFill 1\n"));
+    }
+
     @Test public void p308AlignmentEngineChoice() {
         // owner, 2026-10-20: «сделай гпу выравнивание и дай возможность выбора»: auto by default (written also when unset), GPU / CPU
         String tuning=PreferenceKeys.hybridTuningText();

@@ -141,9 +141,15 @@ public class GLProg implements AutoCloseable {
 
     /**
      * P237: compiles and links one program from its cache key ("C\n" + compute source, or "F\n" + the vertex shader + "\n" +
-     * fragment source) so its binary is kept (keepBinary); true when it linked.
+     * fragment source; P312: or a viewfinder key, {@link #viewfinderKey}) so its binary is kept (keepBinary); true when it linked.
      */
     boolean precompile(String key) {
+        if (key.startsWith("V\n")) {
+            int program = cachedViewfinderProgram(key);
+            if (program == 0) program = linkViewfinderProgram(key);
+            if (program != 0) glDeleteProgram(program);
+            return program != 0;
+        }
         final boolean compute = key.startsWith("C\n");
         final String fragmentHead = "F\n" + vertexShaderSource + "\n";
         if (!compute && !key.startsWith(fragmentHead)) return false;
@@ -167,15 +173,108 @@ public class GLProg implements AutoCloseable {
         return linked[0] != 0;
     }
 
-    private int programFromBinary(String key) {
+    private static int programFromBinary(String key) {
         Binary b = loadBinary(key);
         if (b == null) return 0;
+        // P312: errors left by the context's earlier work (the viewfinder's frame) are not this binary's: it was dropped for them
+        for (int i = 0; i < 16 && glGetError() != GL_NO_ERROR; i++) { }
         int program = glCreateProgram();
         glProgramBinary(program, b.format, java.nio.ByteBuffer.wrap(b.data), b.data.length);
         int[] ok = new int[1];
         glGetProgramiv(program, GL_LINK_STATUS, ok, 0);
         if (ok[0] == 0 || glGetError() != GL_NO_ERROR) { glDeleteProgram(program); dropBinary(key); return 0; }
         return program;
+    }
+
+    // ---- P312: the viewfinder's programs in the same cache
+    // (owner, 2026-10-21, a video of the camera's start: the viewfinder stood still for 0.4 s - 2.1 s just after it appeared, every
+    // start. The developed-RAW viewfinder compiled its programs from source on its GL thread at the first RAW frame - rawdevelop
+    // (650 lines) and the ten programs of the photo's ARK tone (combine: 815 lines) - while no ISP frame could be drawn. Their
+    // driver binaries are kept here like the post pipeline's: the next start links them in a few ms.)
+
+    /**
+     * P312: the cache key of a viewfinder program: "V\n" + its attribute names (bound to locations 0, 1, ... before the link,
+     * comma separated) + "\n" + the vertex source + U+0001 + the fragment source (GLSL has no control characters).
+     */
+    public static String viewfinderKey(String vertex, String fragment, String... attributes) {
+        return "V\n" + String.join(",", attributes) + "\n" + vertex + '\u0001' + fragment;
+    }
+
+    /** P312: {attribute names (comma separated), vertex source, fragment source} of a viewfinder key, or null. */
+    static String[] parseViewfinderKey(String key) {
+        if (key == null || !key.startsWith("V\n")) return null;
+        final int a = key.indexOf('\n', 2);
+        final int s = a < 0 ? -1 : key.indexOf('\u0001', a + 1);
+        if (s < 0) return null;
+        return new String[]{key.substring(2, a), key.substring(a + 1, s), key.substring(s + 1)};
+    }
+
+    /**
+     * P312: the linked program of a viewfinder key from its kept driver binary (this process, else the disk), 0 when there is
+     * none or the driver refuses it (then dropped). On the thread of a current context.
+     */
+    public static int cachedViewfinderProgram(String key) {
+        return programFromBinary(key);
+    }
+
+    /** P312: whether the binary of a key is kept (this process, or on the disk for this driver: then loaded into the process). */
+    public static boolean hasBinary(String key) {
+        return loadBinary(key) != null;
+    }
+
+    /**
+     * P312: compiles and links a viewfinder key (its attributes bound to locations 0, 1, ...; the binary retrievable) and keeps its
+     * binary; 0 when it does not compile or link (logged). On the thread of a current context.
+     */
+    public static int linkViewfinderProgram(String key) {
+        final String[] parts = parseViewfinderKey(key);
+        if (parts == null) return 0;
+        final long t0 = android.os.SystemClock.elapsedRealtime();
+        final int vs = compileQuiet(GL_VERTEX_SHADER, parts[1]);
+        final int fs = vs == 0 ? 0 : compileQuiet(GL_FRAGMENT_SHADER, parts[2]);
+        int program = 0;
+        if (fs != 0) {
+            program = glCreateProgram();
+            glAttachShader(program, vs);
+            glAttachShader(program, fs);
+            final String[] attributes = parts[0].isEmpty() ? new String[0] : parts[0].split(",");
+            for (int i = 0; i < attributes.length; i++) glBindAttribLocation(program, i, attributes[i]);
+            glProgramParameteri(program, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+            glLinkProgram(program);
+            final int[] linked = new int[1];
+            glGetProgramiv(program, GL_LINK_STATUS, linked, 0);
+            if (linked[0] == 0) {
+                Log.e(TAG, "viewfinder program link: " + glGetProgramInfoLog(program));
+                glDeleteProgram(program);
+                program = 0;
+            }
+        }
+        if (vs != 0) glDeleteShader(vs);
+        if (fs != 0) glDeleteShader(fs);
+        if (program != 0) keepBinary(key, program);
+        glGetError();
+        Log.d(TAG, "viewfinder program " + (program != 0 ? "compiled" : "failed") + " in " + (android.os.SystemClock.elapsedRealtime() - t0)
+                + " ms (" + parts[2].length() + " chars) on " + Thread.currentThread().getName());
+        return program;
+    }
+
+    /** P312: {@link #cachedViewfinderProgram}, else {@link #linkViewfinderProgram}. */
+    public static int viewfinderProgram(String key) {
+        final int program = cachedViewfinderProgram(key);
+        return program != 0 ? program : linkViewfinderProgram(key);
+    }
+
+    private static int compileQuiet(int type, String source) {
+        final int shader = glCreateShader(type);
+        if (shader == 0) return 0;
+        glShaderSource(shader, source);
+        glCompileShader(shader);
+        final int[] ok = new int[1];
+        glGetShaderiv(shader, GL_COMPILE_STATUS, ok, 0);
+        if (ok[0] != 0) return shader;
+        Log.e(TAG, "viewfinder shader compile: " + glGetShaderInfoLog(shader));
+        glDeleteShader(shader);
+        return 0;
     }
     private static void keepBinary(String key, int program) {
         int[] length = new int[1];

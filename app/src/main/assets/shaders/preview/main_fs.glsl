@@ -34,19 +34,22 @@ void main() {
     }
     vec2 size = resolution;
     // focus peaking (on the camera's frame itself: the filter and the LUT are no edges)
-    vec4 avg = vec4(0.0);
-    for (int i = -1; i <= 1; i++) {
-        for (int j = -1; j <= 1; j++) {
-            avg += texture(sTexture, uv + vec2(i*2, j*2) / size);
+    // P314: its 9 taps only when it is on (every ISP frame and every pass of the developed RAW to the screen read them for
+    // nothing; the output without peaking is the same)
+    if (enablePeak) {
+        vec4 avg = vec4(0.0);
+        for (int i = -1; i <= 1; i++) {
+            for (int j = -1; j <= 1; j++) {
+                avg += texture(sTexture, uv + vec2(i*2, j*2) / size);
+            }
         }
-    }
-    avg /= 9.0;
-    float diff = dot(abs(frame - avg), vec4(0.299, 0.587, 0.114, 0.0));
-    float denoiseK = 0.05;
-    // denoise
-    float w = (diff * diff) /(denoiseK + (diff * diff));
-    vec4 dc = vec4(1.0,0.0,1.0,0.0);
-    if(enablePeak)
+        avg /= 9.0;
+        float diff = dot(abs(frame - avg), vec4(0.299, 0.587, 0.114, 0.0));
+        float denoiseK = 0.05;
+        // denoise
+        float w = (diff * diff) /(denoiseK + (diff * diff));
+        vec4 dc = vec4(1.0,0.0,1.0,0.0);
         color = color + dc*32.0*diff*w;
+    }
     Output = color;
 }

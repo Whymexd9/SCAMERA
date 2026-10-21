@@ -4,14 +4,158 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 public class LiveRawFrameTest {
     @Test public void captureCannotOverwriteFrameBeingUploaded(){
+        LiveRawFrame.pendingNs=Long.MAX_VALUE; // no replacement by age, however slow the machine
         LiveRawFrame.setEnabled(true);
         try{
             publish(7);LiveRawFrame.Frame read=LiveRawFrame.acquire();
             publish(11);publish(13);publish(17);
             assertEquals(7,read.buffer.get(0));
-            assertEquals(17,LiveRawFrame.acquire().buffer.get(0));
-        }finally{LiveRawFrame.setEnabled(false);}
+            // P314 drop-when-busy: 13 and 17 came while 11 waited for the GL thread - not copied, 11 is the next frame
+            assertEquals(11,LiveRawFrame.acquire().buffer.get(0));
+            assertEquals("the frame taken stays the GL thread's: 7's buffer is not refilled while 11 is uploaded",7,read.buffer.get(0));
+            publish(19);
+            assertEquals(19,LiveRawFrame.acquire().buffer.get(0));
+        }finally{LiveRawFrame.setEnabled(false);LiveRawFrame.pendingNs=LiveRawFrame.PENDING_NS;}
         assertNull(LiveRawFrame.acquire());
+    }
+
+    /**
+     * P314 (owner, 2026-10-21: the reference viewfinder «обработку он никак не замедляет»): while the GL thread has not taken the
+     * last frame the camera thread copies nothing (takesFrame false, counted) - its copies follow the viewfinder's draws.
+     */
+    @Test public void aFrameWaitingForTheViewfinderIsNotReplaced(){
+        LiveRawFrame.pendingNs=Long.MAX_VALUE; // no replacement by age, however slow the machine
+        LiveRawFrame.setEnabled(true);
+        try{
+            assertTrue("nothing waits: a frame is taken",LiveRawFrame.takesFrame());
+            publish(21);int version=LiveRawFrame.getVersion();long dropped=LiveRawFrame.droppedFrames();
+            assertFalse(LiveRawFrame.takesFrame());
+            publish(23);publish(25);
+            assertEquals("not copied",version,LiveRawFrame.getVersion());
+            assertEquals("each skipped frame counted once",dropped+3,LiveRawFrame.droppedFrames());
+            assertTrue("the waiting frame is the one acquire returns",LiveRawFrame.peekSession()>=0);
+            LiveRawFrame.Frame f=LiveRawFrame.acquire();
+            assertEquals(21,f.buffer.get(0));assertEquals(version,f.version);
+            assertTrue("taken: the next frame is copied",LiveRawFrame.takesFrame());
+            publish(27);assertEquals(version+1,LiveRawFrame.getVersion());
+        }finally{LiveRawFrame.setEnabled(false);LiveRawFrame.pendingNs=LiveRawFrame.PENDING_NS;}
+        assertTrue("disabled: nothing is taken",!LiveRawFrame.takesFrame());
+    }
+
+    /** P314: a waiting frame is replaced once it is PENDING_NS old (a viewfinder not drawing RAW keeps a fresh frame). */
+    @Test public void aWaitingFrameIsReplacedOnceItIsOld() throws Exception {
+        assertTrue(LiveRawFrame.pending(true,0));
+        assertTrue(LiveRawFrame.pending(true,LiveRawFrame.PENDING_NS-1));
+        assertFalse(LiveRawFrame.pending(true,LiveRawFrame.PENDING_NS));
+        assertFalse("taken: never pending",LiveRawFrame.pending(false,0));
+        assertFalse("a clock step back is no reason to hold a frame",LiveRawFrame.pending(true,-1));
+        LiveRawFrame.setEnabled(true);
+        try{
+            publish(31);
+            Thread.sleep(LiveRawFrame.PENDING_NS/1_000_000L+20);
+            publish(33);
+            assertEquals(33,LiveRawFrame.acquire().buffer.get(0));
+        }finally{LiveRawFrame.setEnabled(false);}
+    }
+
+    /** P314 triple buffer: acquire copies nothing - without a new frame it hands the same buffer again. */
+    @Test public void acquireHandsTheSameBufferUntilANewFrame(){
+        LiveRawFrame.setEnabled(true);
+        try{
+            publish(41);
+            LiveRawFrame.Frame a=LiveRawFrame.acquire(),b=LiveRawFrame.acquire();
+            assertEquals(a.version,b.version);
+            a.buffer.put(1,(byte)99);
+            assertEquals("one buffer, not a copy",99,b.buffer.get(1));
+            publish(43);
+            LiveRawFrame.Frame c=LiveRawFrame.acquire();
+            assertEquals(43,c.buffer.get(0));assertEquals(0,c.buffer.get(1));
+            c.buffer.put(1,(byte)77);
+            assertEquals("the new frame is another buffer",99,a.buffer.get(1));
+            // three buffers turn round: the GL thread's never reaches the writer
+            publish(45);LiveRawFrame.Frame d=LiveRawFrame.acquire();
+            assertEquals(45,d.buffer.get(0));
+            assertEquals("the frame taken before stays untouched until the next acquire",77,c.buffer.get(1));
+        }finally{LiveRawFrame.setEnabled(false);}
+    }
+
+    /**
+     * P314: a 2x ISZ Quad / 4x Tetra frame (below the full-resolution sizes) is published as its cell means - (w / block) x
+     * (h / block), block 1, cellMean - unless the viewfinder size is «Full» (cap -1: as it came).
+     */
+    @Test public void aMosaicFrameIsPublishedAsItsCellMeans() throws Exception {
+        for(int block:new int[]{2,4}){
+            int w=8*block,h=4*block;
+            ByteBuffer plane=ByteBuffer.allocate(w*h*2).order(java.nio.ByteOrder.nativeOrder());
+            java.util.Random random=new java.util.Random(314+block);
+            int[] v=new int[w*h];
+            for(int i=0;i<w*h;i++){v[i]=64+random.nextInt(960);plane.putShort(i*2,(short)v[i]);}
+            // each publish in a session of its own: a session change resets the bins' pacing (binIntervalNs after the last bin)
+            LiveRawFrame.setEnabled(false);LiveRawFrame.setEnabled(true);
+            try{
+                LiveRawFrame.publish(plane,w,h,w*2,3,1023,new float[]{64,64,64,64},new float[]{2,1,1.5f},null,null,1,1,null,block,100,6400,true,0,0,android.graphics.ImageFormat.RAW_SENSOR);
+                LiveRawFrame.Frame f=LiveRawFrame.acquire();
+                assertNotNull("block "+block,f);
+                assertEquals(w/block,f.width);assertEquals(h/block,f.height);assertEquals(1,f.cfaBlock);assertTrue(f.cellMean);assertEquals(3,f.cfaPattern);
+                java.nio.ShortBuffer s=f.buffer.order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
+                for(int y=0;y<h/block;y++)for(int x=0;x<w/block;x++){
+                    int sum=0;for(int dy=0;dy<block;dy++)for(int dx=0;dx<block;dx++)sum+=v[(y*block+dy)*w+x*block+dx];
+                    assertEquals("block "+block+" cell "+x+","+y,(sum+block*block/2)/(block*block),s.get(y*(w/block)+x)&0xffff);
+                }
+                assertEquals(0,plane.position());
+                LiveRawFrame.setMaxLongSide(-1);
+                LiveRawFrame.publish(plane,w,h,w*2,3,1023,new float[]{64,64,64,64},new float[]{2,1,1.5f},null,null,1,1,null,block,100,6400,true,0,0,android.graphics.ImageFormat.RAW_SENSOR);
+                f=LiveRawFrame.acquire();
+                assertEquals("«Full»: as it came",w,f.width);assertEquals(block,f.cfaBlock);assertFalse(f.cellMean);
+                assertEquals(v[w+3],f.buffer.order(java.nio.ByteOrder.nativeOrder()).asShortBuffer().get(w+3)&0xffff);
+                LiveRawFrame.setMaxLongSide(1920);
+                LiveRawFrame.setEnabled(false);LiveRawFrame.setEnabled(true);
+                LiveRawFrame.publish(plane,w,h,w*2,3,1023,new float[]{64,64,64,64},new float[]{2,1,1.5f},null,null,1,1,null,block,100,6400,true,0,0,android.graphics.ImageFormat.RAW_SENSOR);
+                f=LiveRawFrame.acquire();
+                assertEquals("a size cap bins the mosaic too, never halves its means",w/block,f.width);assertTrue(f.cellMean);
+            }finally{LiveRawFrame.setMaxLongSide(0);LiveRawFrame.setEnabled(false);}
+        }
+        assertTrue(LiveRawFrame.binsCellMeans(4096,3072,2,0));
+        assertTrue(LiveRawFrame.binsCellMeans(4080,3072,4,0));
+        assertFalse("«Full»",LiveRawFrame.binsCellMeans(4096,3072,2,-1));
+        assertFalse("a plain Bayer frame",LiveRawFrame.binsCellMeans(4096,3072,1,0));
+        assertFalse("50 MP Quad: the P181 sparse bin as before",LiveRawFrame.binsCellMeans(8192,6144,2,0));
+        assertFalse("not whole cells",LiveRawFrame.binsCellMeans(4090,3072,4,0));
+    }
+
+    /**
+     * P314: the bin is lossless for the viewfinder - rawdevelop_fs's getFastColor (one colour per 2 x 2 of macro pixels, each the
+     * mean of a block x block cell) reads, on the binned frame with block 1, the same means it read on the mosaic with its block,
+     * for every macro pixel, up to the 1/2 DN rounding of the mean.
+     */
+    @Test public void aBinnedMosaicGivesTheViewfinderTheSameColours() throws Exception {
+        for(int block:new int[]{2,4}){
+            int w=16*block,h=8*block;
+            ByteBuffer plane=ByteBuffer.allocate(w*h*2).order(java.nio.ByteOrder.nativeOrder());
+            java.util.Random random=new java.util.Random(31400+block);
+            for(int i=0;i<w*h;i++)plane.putShort(i*2,(short)(64+random.nextInt(960)));
+            LiveRawFrame.setEnabled(false);LiveRawFrame.setEnabled(true);
+            try{
+                LiveRawFrame.publish(plane,w,h,w*2,0,1023,null,null,null,null,1,1,null,block,100,6400,true,0,0,android.graphics.ImageFormat.RAW_SENSOR);
+                LiveRawFrame.Frame binned=LiveRawFrame.acquire();
+                assertTrue(binned.cellMean);
+                java.nio.ShortBuffer full=plane.duplicate().order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
+                java.nio.ShortBuffer bin=binned.buffer.order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
+                for(int my=0;my<h/block;my++)for(int mx=0;mx<w/block;mx++){
+                    // getFastColor(mx, my): the quad at (mx & ~1, my & ~1) and its three neighbours, each getMacroPixel
+                    for(int q=0;q<4;q++){
+                        int qx=(mx&~1)+(q&1),qy=(my&~1)+(q>>1);
+                        assertEquals("block "+block+" macro "+qx+","+qy,macro(full,w,block,qx,qy),macro(bin,w/block,1,qx,qy),0.5);
+                    }
+                }
+            }finally{LiveRawFrame.setEnabled(false);}
+        }
+    }
+
+    /** rawdevelop_fs getMacroPixel: the mean of the block x block sites of macro pixel (mx, my). */
+    private static double macro(java.nio.ShortBuffer s,int rowPx,int block,int mx,int my){
+        double sum=0;for(int y=0;y<block;y++)for(int x=0;x<block;x++)sum+=s.get((my*block+y)*rowPx+mx*block+x)&0xffff;
+        return sum/(block*block);
     }
     @Test public void truncatedPlaneCannotReplaceAValidFrame(){
         LiveRawFrame.setEnabled(true);

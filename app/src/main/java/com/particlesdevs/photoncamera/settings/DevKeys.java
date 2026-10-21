@@ -119,8 +119,12 @@ public final class DevKeys {
         // viewfinder
         k.add(s(vf, "mosaic_preview", true, Lang.t("Модуль, измеренный как мозаика, сразу показывает RAW-видоискатель", "A module measured as a mosaic starts on the RAW viewfinder")));
         k.add(n(vf, "vf_priority", "1", Lang.t("Высокий приоритет потока видоискателя (0 — обычный)", "High priority of the viewfinder thread (0: normal)")));
-        k.add(n(vf, "vf_ark", "1", Lang.t("RAW-видоискатель: тон ARK итогового фото (0 — собственный вид видоискателя)", "RAW viewfinder: the photo's ARK tone (0: the viewfinder's own look)")));
-        k.add(n(vf, "vf_gpu_priority", "1", Lang.t("Высокий приоритет GPU-контекста видоискателя (0 — обычный)", "High priority of the viewfinder GPU context (0: normal)")));
+        // P314: the photo's tone per pixel by default (one pass, the AE on the CPU), the guided-filter chain of P301 as 2
+        k.add(n(vf, "vf_ark", "1", Lang.t("RAW-видоискатель: тон ARK итогового фото — 1: по каждому пикселю (быстро), 2: локально, как в фото (направляемый фильтр, тяжелее, замедляет обработку), 0: собственный вид видоискателя",
+                "RAW viewfinder: the photo's ARK tone - 1: per pixel (fast), 2: local as in the photo (guided filter, heavier, slows processing down), 0: the viewfinder's own look")));
+        // P314: the default (medium) GPU priority, the processing contexts stay low; 1 = P90's high priority
+        k.add(n(vf, "vf_gpu_priority", "0", Lang.t("Приоритет GPU-контекста видоискателя: 1 — высокий, 0 — обычный (меньше мешает обработке)",
+                "Viewfinder GPU context priority: 1 high, 0 normal (gets less in the way of processing)")));
         // P212h (A6 = M11): the FULLRES viewfinder predicts the photo
         k.add(n(vf, "vf_native_gain", "1", Lang.t("OPPO FULLRES: усиление видоискателя — 1: только на экспозицию, которую режим не даёт (нехватка AE больше 0.3 EV), 2: замер видоискателя, пока экспозиция не задана вручную, 0: без усиления",
                 "OPPO FULLRES viewfinder gain - 1: only for the exposure the mode cannot give (an AE deficit above 0.3 EV), 2: the viewfinder's meter unless the exposure is hand-set, 0: none")));
@@ -142,11 +146,14 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_bento_invalid", null, Lang.t("Bento: порог негодных клеток", "Bento: invalid cell threshold")));
         // P310 settings cleanup: «Кадры светов: вес» left the menu (the plain merge blends the highlight frames after it, their
         // weight does not enter; the colour-block merge's ramp fixes their share)
-        k.add(n(merge, "hybrid_bento_weight", "1", Lang.t("Bento: вес кадров светов в склейке (Quad / Tetra и без наложения после склейки)",
-                "Bento: weight of the highlight frames in the merge (Quad / Tetra, and without the blend after the merge)")));
+        k.add(n(merge, "hybrid_bento_weight", "1", Lang.t("Bento: вес кадров светов в склейке (обычный Байер — только без наложения после склейки; Quad / Tetra — в склейке без заполнения после неё, с заполнением — через маску, по которой оно идёт)",
+                "Bento: weight of the highlight frames in the merge (plain Bayer: only with the blend after the merge off; Quad / Tetra: inside the merge with the fill off, with the fill on through the mask it fills by)")));
         // P310: the highlight frames blended after the merge (plain Bayer; on by default, off = the P309 mixing in the merge)
         k.add(s(merge, "hybrid_bento_blend", true, Lang.t("Bento: кадры светов накладываются после склейки по областям (выкл — смешивание внутри склейки)",
                 "Bento: highlight frames blended after the merge by region (off: mixed inside the merge)")));
+        // P313: the native Quad / Tetra merge keeps the N frames in Bento's cells, the highlight frames fill only what they clipped
+        k.add(s(merge, "hybrid_us_fill", true, Lang.t("Bento (Quad / Tetra): кадры светов заполняют только пересвет основных кадров (выкл — по маске внутри склейки)",
+                "Bento (Quad / Tetra): highlight frames fill only what the main frames clipped (off: by the mask inside the merge)")));
         // P309: the soft transition's levels and reach (its width is the row «Кадры светов: мягкий переход»); since P310 only for the
         // colour-block (Quad / Tetra) merge, the plain merge blends instead
         k.add(n(merge, "hybrid_bento_ramp_lo", null, Lang.t("Bento: уровень базы, где начинается переход", "Bento: base level where the transition starts")));

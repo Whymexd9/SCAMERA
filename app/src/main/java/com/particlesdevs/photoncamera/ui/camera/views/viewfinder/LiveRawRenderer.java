@@ -124,7 +124,7 @@ final class LiveRawRenderer {
     }
     void onContextCreated() {
         program=rawTex=shadingTex=lutTex=filmLutTex=width=height=0;lutShown=null;
-        uploadedVersion=frameSession=-1; failed=false; uniforms.clear(); meter.reset();
+        uploadedVersion=frameSession=-1; failed=false; uniforms.clear(); meter.reset(); lastView=null;
     }
     private int loc(String name) {return uniforms.computeIfAbsent(name,n->GLES20.glGetUniformLocation(program,n));}
     private void integer(String n,int v){GLES20.glUniform1i(loc(n),v);}
@@ -136,11 +136,61 @@ final class LiveRawRenderer {
     boolean drawLinear(FloatBuffer vertices,FloatBuffer coords,float[] rotation,boolean mirror) {
         return draw(vertices,coords,rotation,mirror,0,true);
     }
-    /** P301: the frame drawn last ({@link #drawLinear}): its ISO and noise for the ARK tone's AE. */
-    LiveRawFrame.Frame lastFrame() {
-        return lastFrame;
+    /**
+     * P301: the frame drawn last ({@link #drawLinear}): its ISO and noise for the ARK tone's AE; P314 with its visible crop and the
+     * colour transform it was drawn with (LiveArkMeter meters it on the CPU). Null before one.
+     */
+    com.particlesdevs.photoncamera.processing.LiveArkMeter.View lastView() {
+        return lastView;
     }
-    private LiveRawFrame.Frame lastFrame;
+    private com.particlesdevs.photoncamera.processing.LiveArkMeter.View lastView;
+    /**
+     * P314: the frame's visible crop {left, top, width, height} in frame pixels (whole CFA periods, at least one), fitted to the
+     * viewport's aspect without stretching. {@code quarterTurn}: the rotation turns the frame by 90 degrees (frame x along the
+     * screen's x); without it the frame's x runs along the screen's y (rawdevelop_vs swaps the texture axes).
+     */
+    static int[] visibleCrop(LiveRawFrame.Frame f,int vpW,int vpH,boolean quarterTurn) {
+        int period=f.cfaBlock*2;
+        int left=(int)(f.crop[0]*f.width)/period*period,top=(int)(f.crop[1]*f.height)/period*period;
+        int cw=Math.min(f.width-left,(int)(f.crop[2]*f.width))/period*period;
+        int ch=Math.min(f.height-top,(int)(f.crop[3]*f.height))/period*period;
+        // RAW is in sensor coordinates; match the visible preview aspect without stretching.
+        if(vpW>0 && vpH>0) {
+            float aspect=quarterTurn ? vpW/(float)vpH : vpH/(float)vpW;
+            if(cw/(float)Math.max(ch,1)>aspect) {
+                int fitted=Math.max(period,(int)(ch*aspect)/period*period);
+                left+=(cw-fitted)/2/period*period;cw=fitted;
+            } else {
+                int fitted=Math.max(period,(int)(cw/aspect)/period*period);
+                top+=(ch-fitted)/2/period*period;ch=fitted;
+            }
+        }
+        return new int[]{left,top,Math.max(period,cw),Math.max(period,ch)};
+    }
+    /**
+     * rawdevelop_fs cfa_mode: 1 the range-filtered Bayer of a plain frame, 0 one colour per 2 x 2 of macro pixels (a mosaic's
+     * blocks); P314: a frame of Quad / Tetra cell means (LiveRawFrame, block 1) is drawn as its mosaic was, with 0.
+     */
+    static int cfaMode(LiveRawFrame.Frame f) {
+        return f.cfaBlock==1 && !f.cellMean?1:0;
+    }
+    /** P314: steps of the tone size (a share of the viewport): a zoom does not make the targets anew on every frame. */
+    static final int TONE_STEPS=16;
+    /**
+     * P314: the size the ARK tone is drawn at - the visible crop's colour grid (one colour per 2 x 2 block of macro pixels:
+     * crop / (2 block)) in screen orientation, never above the viewport, its aspect kept, the scale rounded up to 1 / TONE_STEPS:
+     * a 2x ISZ Quad frame has 1024 x 768 colours (1x Bayer 2048 x 1536), drawn at the 1440 x 1920 viewport each was computed 3.6
+     * times (a Tetra one 14 times). The filter / peaking pass scales it to the screen (bilinear).
+     */
+    static int[] toneSize(int vpW,int vpH,int cropW,int cropH,int block,boolean quarterTurn) {
+        vpW=Math.max(1,vpW);vpH=Math.max(1,vpH);
+        final int b=Math.max(1,block);
+        final double gx=(quarterTurn?cropW:cropH)/(2.0*b), gy=(quarterTurn?cropH:cropW)/(2.0*b);
+        final double need=Math.max(gx/vpW,gy/vpH);
+        if(!(need<1.0))return new int[]{vpW,vpH};
+        final double s=Math.max(1,Math.ceil(need*TONE_STEPS-1e-9))/(double)TONE_STEPS;
+        return new int[]{Math.max(1,(int)Math.round(vpW*s)),Math.max(1,(int)Math.round(vpH*s))};
+    }
     private boolean draw(FloatBuffer vertices,FloatBuffer coords,float[] rotation,boolean mirror,int peaking,boolean linear) {
         LiveRawFrame.Frame f=LiveRawFrame.acquire();
         if(f==null || System.nanoTime()-f.publishedNanos>500_000_000L)return false;
@@ -174,37 +224,23 @@ final class LiveRawRenderer {
             setLook();
             integer("sTexture16",2);integer("u_lsc_map",3);integer("u_lut_tex",4);
             integer("width",f.width);integer("height",f.height);integer("bayer_pattern",f.cfaPattern);
-            integer("cfa_mode",f.cfaBlock==1?1:0);integer("cfa_block_size",f.cfaBlock);
-            int period=f.cfaBlock*2;
-            int left=(int)(f.crop[0]*f.width)/period*period,top=(int)(f.crop[1]*f.height)/period*period;
-            int cw=Math.min(f.width-left,(int)(f.crop[2]*f.width))/period*period;
-            int ch=Math.min(f.height-top,(int)(f.crop[3]*f.height))/period*period;
-            // RAW is in sensor coordinates; match the visible preview aspect without stretching.
+            integer("cfa_mode",cfaMode(f));integer("cfa_block_size",f.cfaBlock);
             GLES20.glGetIntegerv(GLES20.GL_VIEWPORT,viewport,0);
-            if(viewport[2]>0 && viewport[3]>0) {
-                boolean quarterTurn=Math.abs(rotation[1])>Math.abs(rotation[0]);
-                float aspect=quarterTurn ? viewport[2]/(float)viewport[3] : viewport[3]/(float)viewport[2];
-                if(cw/(float)Math.max(ch,1)>aspect) {
-                    int fitted=Math.max(period,(int)(ch*aspect)/period*period);
-                    left+=(cw-fitted)/2/period*period;cw=fitted;
-                } else {
-                    int fitted=Math.max(period,(int)(cw/aspect)/period*period);
-                    top+=(ch-fitted)/2/period*period;ch=fitted;
-                }
-            }
-            integer("crop_left",left);integer("crop_top",top);
-            integer("crop_width",Math.max(period,cw));integer("crop_height",Math.max(period,ch));
+            final int[] crop=visibleCrop(f,viewport[2],viewport[3],Math.abs(rotation[1])>Math.abs(rotation[0]));
+            integer("crop_left",crop[0]);integer("crop_top",crop[1]);
+            integer("crop_width",crop[2]);integer("crop_height",crop[3]);
             int[][] orders={{0,1,2,3},{1,0,3,2},{2,3,0,1},{3,2,1,0}};
             int[] o=orders[f.cfaPattern];
             GLES20.glUniform4f(loc("u_black_level"),f.blackLevel[o[0]],f.blackLevel[o[1]],f.blackLevel[o[2]],f.blackLevel[o[3]]);
             number("u_white_level",f.whiteLevel);number("r_gain",f.wbGains[0]);number("g_gain",f.wbGains[1]);number("b_gain",f.wbGains[2]);
             float[] white=lookWhite;
-            GLES20.glUniformMatrix3fv(loc("color_transform"),1,false,white!=null?lookTransform(white,f.colorTransform):f.colorTransform,0);
+            final float[] transform=white!=null?lookTransform(white,f.colorTransform):f.colorTransform;
+            GLES20.glUniformMatrix3fv(loc("color_transform"),1,false,transform,0);
             number("u_lsc_intensity",f.shadingWidth>1?1:0);
             number("u_auto_exposure",meter.exposure);number("u_contrast_boost",meter.contrast);
             GLES20.glUniform4fv(loc("u_exp_mults"),1,meter.multipliers,0);
             integer("mirror",mirror?1:0);integer("peaking_enabled",peaking);integer("u_linear_out",linear?1:0);
-            lastFrame=f;
+            if(linear)lastView=new com.particlesdevs.photoncamera.processing.LiveArkMeter.View(f,crop[0],crop[1],crop[2],crop[3],transform);
             GLES20.glUniform3f(loc("peaking_color"),1,.8f,0);
             GLES20.glUniformMatrix4fv(loc("texRotate"),1,false,rotation,0);
             vertices.position(0);coords.position(0);
@@ -213,7 +249,8 @@ final class LiveRawRenderer {
             GLES20.glVertexAttribPointer(1,2,GLES20.GL_FLOAT,false,8,coords);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
             if(!check("draw"))return false;
-            if(draws++%120==0)Log.d("LiveRawRenderer","RAW developed session="+f.session+" frame="+f.version+" size="+f.width+"x"+f.height+" CFA="+f.cfaPattern+" block="+f.cfaBlock+" AE="+meter.exposure);
+            if(draws++%120==0)Log.d("LiveRawRenderer","RAW developed session="+f.session+" frame="+f.version+" size="+f.width+"x"+f.height+" CFA="+f.cfaPattern+" block="+f.cfaBlock
+                    +(f.cellMean?" cell means":"")+" AE="+meter.exposure+" target="+viewport[2]+"x"+viewport[3]+" dropped="+LiveRawFrame.droppedFrames());
             return true;
         } catch(RuntimeException e) {
             failed=true;Log.e("LiveRawRenderer","RAW preview fallback: "+e);return false;
@@ -232,13 +269,44 @@ final class LiveRawRenderer {
         GLES20.glTexParameteri(target,GLES20.GL_TEXTURE_MIN_FILTER,filter);GLES20.glTexParameteri(target,GLES20.GL_TEXTURE_MAG_FILTER,filter);
         GLES20.glTexParameteri(target,GLES20.GL_TEXTURE_WRAP_S,GLES20.GL_CLAMP_TO_EDGE);GLES20.glTexParameteri(target,GLES20.GL_TEXTURE_WRAP_T,GLES20.GL_CLAMP_TO_EDGE);return t[0];
     }
+    /** P312: the program's key in the driver-binary cache (its sources; rawdevelop_vs places its attributes itself). */
+    private static volatile String sKey;
+    static String programKey() {
+        String key=sKey;
+        if(key==null)sKey=key=com.particlesdevs.photoncamera.processing.opengl.GLProg.viewfinderKey(
+                ScameraApp.getAssetLoader().getString("shaders/preview/rawdevelop_vs.glsl"),
+                ScameraApp.getAssetLoader().getString("shaders/preview/rawdevelop_fs.glsl"));
+        return key;
+    }
+    /** P312: whether the program is linked (MainRenderer may then draw the plain RAW look while the ARK programs are built). */
+    boolean ready(){return program!=0;}
+    /**
+     * P312: links the program before the first RAW frame - from its kept driver binary at once; compiled here when it is missing,
+     * unless {@code compilingElsewhere} has it (then false: the caller keeps the ISP frame). True when linked or failed.
+     */
+    boolean prepare(java.util.function.Predicate<String> compilingElsewhere) {
+        if(program!=0 || failed)return true;
+        final String key=programKey();
+        // pending first: the background thread keeps the binary before it lets the key go
+        if(compilingElsewhere.test(key))return false;
+        int p=com.particlesdevs.photoncamera.processing.opengl.GLProg.cachedViewfinderProgram(key);
+        if(p==0){
+            // a binary refused or never kept: once to the background, then compiled here (this driver keeps none)
+            if(!ViewfinderPrograms.tried(key)){ViewfinderPrograms.prepare(java.util.Collections.singletonList(key));return false;}
+            p=com.particlesdevs.photoncamera.processing.opengl.GLProg.linkViewfinderProgram(key);
+        }
+        if(p==0){failed=true;return true;}
+        setup(p);
+        return true;
+    }
     private boolean init() {
-        int v=compile(GLES20.GL_VERTEX_SHADER,ScameraApp.getAssetLoader().getString("shaders/preview/rawdevelop_vs.glsl"));
-        int f=compile(GLES20.GL_FRAGMENT_SHADER,ScameraApp.getAssetLoader().getString("shaders/preview/rawdevelop_fs.glsl"));
-        if(v==0 || f==0){if(v!=0)GLES20.glDeleteShader(v);if(f!=0)GLES20.glDeleteShader(f);failed=true;return false;}
-        program=GLES20.glCreateProgram();GLES20.glAttachShader(program,v);GLES20.glAttachShader(program,f);GLES20.glLinkProgram(program);
-        GLES20.glDeleteShader(v);GLES20.glDeleteShader(f);int[] ok=new int[1];GLES20.glGetProgramiv(program,GLES20.GL_LINK_STATUS,ok,0);
-        if(ok[0]==0){Log.e("LiveRawRenderer",GLES20.glGetProgramInfoLog(program));GLES20.glDeleteProgram(program);program=0;failed=true;return false;}
+        // P312: from the kept driver binary (650 lines of rawdevelop_fs compiled at every start: the viewfinder stood still)
+        int p=com.particlesdevs.photoncamera.processing.opengl.GLProg.viewfinderProgram(programKey());
+        if(p==0){failed=true;return false;}
+        return setup(p);
+    }
+    private boolean setup(int p) {
+        program=p;
         uniforms.clear();GLES20.glUseProgram(program);
         rawTex=texture(GLES20.GL_TEXTURE2,GLES20.GL_TEXTURE_2D,GLES20.GL_NEAREST);
         shadingTex=texture(GLES20.GL_TEXTURE3,GLES20.GL_TEXTURE_2D,GLES20.GL_LINEAR);
@@ -252,12 +320,5 @@ final class LiveRawRenderer {
         number("u_aces_toe",.01f);number("u_aces_pre_gain",1.35f);number("u_aces_a_coeff",2.7f);number("u_aces_d_coeff",.59f);
         GLES20.glUniform4f(loc("u_layer_weights"),.7f,.8f,1,.5f);
         return check("initialize");
-    }
-    private static int compile(int type,String source) {
-        if(source==null)return 0;
-        int s=GLES20.glCreateShader(type);GLES20.glShaderSource(s,source);GLES20.glCompileShader(s);
-        int[] ok=new int[1];GLES20.glGetShaderiv(s,GLES20.GL_COMPILE_STATUS,ok,0);
-        if(ok[0]!=0)return s;
-        Log.e("LiveRawRenderer",GLES20.glGetShaderInfoLog(s));GLES20.glDeleteShader(s);return 0;
     }
 }

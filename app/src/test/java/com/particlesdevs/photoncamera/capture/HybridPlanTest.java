@@ -67,7 +67,7 @@ public class HybridPlanTest {
     @Test public void ownersLongFramesCappedAtTheNGainAreNFrames() {
         // 'LONG: ISO 320/640, shutter 10000000/10000000, 1.00 EV': the HAL capped the gain, the frame is an N exposure.
         HybridPlan plan = HybridPlan.build(10_000_000L, 320, 0f, camera(12000));
-        assertEquals(5, plan.requests.size());
+        assertEquals(3, plan.requests.size()); // the logs' 5 Shasta frames: at most 3 since P313
         HybridPlan.Request longFrame = plan.requests.get(0);
         assertEquals(ImageFrame.CaptureRole.LONG, longFrame.role);
         assertEquals(640, longFrame.iso);
@@ -93,9 +93,9 @@ public class HybridPlanTest {
     }
 
     @Test public void plansThatWorkedAreUnchanged() {
-        // X200 Pro log 3813: N 10 ms ISO 659 -> LONG 10 ms ISO 1318 x5.
+        // X200 Pro log 3813: N 10 ms ISO 659 -> LONG 10 ms ISO 1318 x5 (x3 since P313: «длинных достаточно 2-3, 5 не нужны»).
         HybridPlan day = HybridPlan.build(10_000_000L, 659, 0f, camera(12000));
-        assertEquals(5, day.requests.size());
+        assertEquals(3, day.requests.size());
         for (HybridPlan.Request r : day.requests) { assertEquals(10_000_000L, r.shutterNs); assertEquals(1318, r.iso); }
         // X200 Pro log 9489: N 80 ms ISO 12000 -> LONG 125 ms ISO 12000.
         HybridPlan night = HybridPlan.build(80_000_000L, 12000, 0f, camera(12000));
@@ -138,6 +138,18 @@ public class HybridPlanTest {
         assertEquals(10_000_000L, plain.requests.get(0).shutterNs);
     }
 
+    @Test public void p313AtMostThreeShastaFrames() {
+        // owner, 2026-10-21: «длинных достаточно 2-3, 5 не нужны» - a stored 4 or 5 takes 3, 1..3 as set
+        for (int set = 1; set <= 5; set++) {
+            pinned.put("shasta_frames", (float) set);
+            assertEquals(Math.min(set, 3), HybridPlan.bracketCount());
+            int longs = 0;
+            for (HybridPlan.Request r : HybridPlan.build(10_000_000L, 659, 0f, camera(12000)).requests)
+                if (r.role == ImageFrame.CaptureRole.LONG) longs++;
+            assertEquals(Math.min(set, 3), longs);
+        }
+    }
+
     @Test public void p68DefaultsTakeThreeUltrashortThenThreeShastaFrames() {
         // owner, 10 October 2026: Bento always with 3 frames, 3 Shasta frames; no clipping needed for Bento
         pinned.clear();
@@ -173,7 +185,7 @@ public class HybridPlanTest {
         assertTrue(HybridPlan.build(10_000_000L, 100, 0f, camera(12000)).description.contains("brackets skipped (ratio"));
         prefs.when(PreferenceKeys::getHybridShastaMode).thenReturn(2);
         HybridPlan forced = HybridPlan.build(10_000_000L, 100, 0f, camera(12000));
-        assertEquals(5, forced.requests.size());
+        assertEquals(3, forced.requests.size());
         for (HybridPlan.Request r : forced.requests) assertEquals(ImageFrame.CaptureRole.LONG, r.role);
         // the gain range ends at N and the shutter cannot grow (N at the handheld cap): no bracket even when forced
         HybridPlan atN = HybridPlan.build(125_000_000L, 12000, 0f, camera(12000));
@@ -331,10 +343,10 @@ public class HybridPlanTest {
         assertEquals(4, n);
         assertEquals(3, us);
         assertEquals(1, longs);
-        // five Shasta frames (the pinned logs' setting), Bento auto with a clipping ring frame: 3 + 1
+        // five Shasta frames (the pinned logs' setting: 3 since P313), Bento auto with a clipping ring frame: 3 + 1
         pinned.put("shasta_frames", 5f);
         HybridPlan five = HybridPlan.build(10_000_000L, 659, 0.01f, camera(12000)).withLongFrames(1);
         assertEquals(4, five.requests.size());
-        assertTrue(five.description, five.description.endsWith("FULLRES: 1 of 5 long frames"));
+        assertTrue(five.description, five.description.endsWith("FULLRES: 1 of 3 long frames"));
     }
 }

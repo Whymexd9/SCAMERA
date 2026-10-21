@@ -58,7 +58,7 @@ def without_highp_int(src: str) -> str:
 
 P310_SCENE_GATE = '        float w = hlWhiteU * satW * smoothstep(0.6, 2.4, mx);\n'
 P310_AGX_GATE = ('        float agxWhite = 0.18 * exp2(agxB.y + max(-agxB.z, 0.0));\n'
-                 '        float w = hlWhiteU * satW * smoothstep(0.8 * agxWhite, 0.995 * agxWhite, mx);\n')
+                 '        float w = hlWhiteU * satW * smoothstep(0.8 * agxWhite, 2.0 * agxWhite, mx);\n')  # P311: 0.995 -> 2.0
 P310_BLOCK = re.compile(r'#if TONE_OP == 1\n' + re.escape(P310_SCENE_GATE) + r'#else\n(?:\s*//[^\n]*\n)*' + re.escape(P310_AGX_GATE)
                         + r'#endif\n')
 
@@ -69,6 +69,43 @@ def without_p310_white(src: str) -> str:
     of the colour path: the current shader is compared token for token with the block put back to the scene gate (shader_part
     checks that it is there), the baseline rendered with the same edit applied (with_p310_white)."""
     return P310_BLOCK.sub(lambda m: P310_SCENE_GATE, src, count=1)
+
+
+# P311: the detail delta beside a clipped light (lightShare / lightRimDelta and their inputs). The token comparison takes them
+# out again; the GPU comparison renders without the detail (detailGainU 0), where they cannot act.
+P311_RIM_EDITS = [
+    ('    // P311: the light share of the reference\'s B-spline footprint, the arkLow position for lightRimDelta and the domain m of\n'
+     '    // ArkDetailRef (min(m * Y, 1); m = ae / sharpTone with ArkLumaS, else ae)\n'
+     '    float lightW = 0.0;\n    int lbx = 0, lby = 0;\n    float lfx = 0.0, lfy = 0.0;\n'
+     '    float refDomain = sharpU == 1 && sharpToneU > 0.0 ? ae / sharpToneU : ae;\n', ''),
+    ('        lbx = bx; lby = by; lfx = fx; lfy = fy;\n', ''),
+    ('                vec3 lowTap = texelFetch(ArkLow, clamp(p, ivec2(0), lastLow), 0).rgb;\n'
+     '                yLow += max(dot(lowTap, LUMA), 0.000001) * w;\n'
+     '                if (bounded) {\n'
+     '                    yRef += max(texelFetch(ArkDetailRef, clamp(p, ivec2(0), lastLow), 0).r, 0.000001) * w;\n'
+     '                    lightW += lightShare(lowTap, refDomain) * w;\n'
+     '                }\n',
+     '                yLow += max(dot(texelFetch(ArkLow, clamp(p, ivec2(0), lastLow), 0).rgb, LUMA), 0.000001) * w;\n'
+     '                if (bounded) yRef += max(texelFetch(ArkDetailRef, clamp(p, ivec2(0), lastLow), 0).r, 0.000001) * w;\n'),
+    ('            float yD = sharpU == 1 ? yS : min(yFull * ae, 1.0);\n'
+     '            delta = cbrtp(max(yD, 0.000001)) - lRef;\n'
+     '            // P311: beside a clipped light, against the side of the neighbourhood that is not the light\n'
+     '            if (delta < 0.0 && lightW > 0.0) delta = lightRimDelta(delta, yD, yRef, lightW, lbx, lby, lfx, lfy, refDomain);\n',
+     '            delta = cbrtp(max(sharpU == 1 ? yS : min(yFull * ae, 1.0), 0.000001)) - lRef;\n'),
+]
+
+
+def without_p311_rim(src: str) -> str:
+    """P311 (owner, LED fan rings: a crimson line along the inner side of the white core): the rim rule of the detail delta taken
+    out (its two functions and the four places that feed it), for the token comparison with the baseline (shader_part checks
+    that it is there)."""
+    i, j = src.find('float lightShare(vec3 lowTap, float m) {'), src.find('// Output pixel x on a grid reduced by a box of f')
+    if i < 0 or j < i:
+        return src
+    src = src[:i] + src[j:]
+    for new, old in P311_RIM_EDITS:
+        src = src.replace(new, old, 1)
+    return src
 
 
 def with_p310_white(src: str) -> str:
@@ -226,8 +263,11 @@ def shader_part(strict: bool) -> None:
     check(('\n' + P305_HIGHP_INT) in new.replace('\r\n', '\n'), 'combine.glsl lost "precision highp int;" (P305: fp16 dither streaks on Adreno)')
     check(P310_BLOCK.search(new.replace('\r\n', '\n')) is not None,
           'combine.glsl lost the P310 AgX gate of the highlight white (the LED rings\' colour goes white)')
-    got = token_hash(without_p310_white(without_highp_int(new.replace('\r\n', '\n'))))
-    print('combine.glsl P3_OUT 0 token stream (without the P305 highp int, the P310 AgX white gate as the scene gate): %s' % got)
+    n = new.replace('\r\n', '\n')
+    check('float lightRimDelta(' in n and all(e[0] in n for e in P311_RIM_EDITS),
+          'combine.glsl lost the P311 rim rule of the detail delta (the dark / crimson line beside LED rings comes back)')
+    got = token_hash(without_p311_rim(without_p310_white(without_highp_int(n))))
+    print('combine.glsl P3_OUT 0 token stream (without the P305 highp int and the P311 rim rule, the P310 AgX white gate as the scene gate): %s' % got)
     check(got == BASELINE_COMBINE_TOKENS, 'combine.glsl (P3_OUT 0) differs from the pre-P46 shader: %s' % got)
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],

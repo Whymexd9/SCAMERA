@@ -780,7 +780,7 @@ public final class ScamHybridBurst implements ScamTransport {
      */
     static final java.util.Set<String> avoidedSteps = java.util.concurrent.ConcurrentHashMap.newKeySet();
     static final String STEP_OUTLIERS = "outlier tests", STEP_RIM = "rim pass", STEP_BENTO = "Bento colour pass",
-            STEP_CHROMA = "chroma pass", STEP_CRE = "CRE motion", STEP_BLEND = "Bento blend";
+            STEP_CHROMA = "chroma pass", STEP_CRE = "CRE motion", STEP_BLEND = "Bento blend", STEP_US_FILL = "ultrashort fill";
     /** Crash site that leaves no GPU merge (a required program, the context): the session goes to the CPU fallback. */
     static final String STEP_GPU = "GPU";
 
@@ -791,6 +791,8 @@ public final class ScamHybridBurst implements ScamTransport {
         if (avoidedSteps.contains(STEP_BENTO)) t.append("bentoChromaSigma 0\n");
         // P310: the ultrashort blend after the merge (kHybUsBlend) left out: the highlight frames mix inside the merge as before
         if (avoidedSteps.contains(STEP_BLEND)) t.append("bentoBlend 0\n");
+        // P313: the native mosaic merge's ultrashort fill (its own program variant) left out: Bento by its mask inside the merge
+        if (avoidedSteps.contains(STEP_US_FILL)) t.append("mosaicUsFill 0\n");
         if (avoidedSteps.contains(STEP_CHROMA)) t.append("chromaDiff 0\n");
         return t.toString();
     }
@@ -838,6 +840,7 @@ public final class ScamHybridBurst implements ScamTransport {
                 case "rim": return STEP_RIM;
                 case "bento": return STEP_BENTO;
                 case "blend": return STEP_BLEND;
+                case "mosaicUs": case "mosaicUsT": return STEP_US_FILL;
                 case "chroma": return STEP_CHROMA;
                 default: return STEP_GPU; // mark, guide, cells, reject, dilate, merge: every merge needs them
             }

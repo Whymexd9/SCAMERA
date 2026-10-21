@@ -55,6 +55,11 @@ precision highp int;
 #define HL_LANDING 0
 // P216: real Bento headroom above ArkAe's capped clip (ArkCombine sets 1 when ArkAe's hr > 0; 0 = the shader before P216)
 #define HEADROOM_WIDE 0
+// P314 POINT_FUSED 1 (the RAW viewfinder, LiveArkTone; never the photo): with fU 1 the fused luma is the pixel's own guide
+// through the fusion's curve (FusedCurve: ark/gf.glsl fusedAt with its P291 monotonic envelope, tabulated on the CPU after each
+// viewfinder AE run - the guided filter's value on a flat area) instead of ArkFused, and ArkColour is the viewfinder's linear
+// frame, times inScaleU here. POINT_FUSED 0: every block below drops out (the photo's shader, token for token).
+#define POINT_FUSED 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -100,6 +105,10 @@ uniform float hrRoomU;              // shoulder headroom x the top; <= 0 -> 0.4 
 uniform float hrDetailU;            // highlight detail: share of the full-size log contrast kept in OKLab L (0 = off)
 #endif
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
+#if POINT_FUSED == 1
+uniform sampler2D FusedCurve;       // R32F n x 1: the fused display luma at log2 I = fusedCurveU.x + i / fusedCurveU.y
+uniform vec2 fusedCurveU;           // x: log2 I of entry 0, y: entries per EV
+#endif
 #if HL_LANDING == 1
 uniform float hlSoftU;              // P154 highlight landing: where it starts below the data ceiling (fraction, 0 = off)
 uniform sampler2D ArkHl;            // P154: the blurred share of the ceiling (ark/hlmask.glsl), arkLow size, linear filter
@@ -153,12 +162,96 @@ vec3 sceneLinear(ivec2 xy, ivec2 size) {
 }
 
 float max3(vec3 v) { return max(v.r, max(v.g, v.b)); }
+#if POINT_FUSED == 1
+// P314: the fused luma of exposed linear colour c: the guide of ark/gf.glsl prepare() (I = max(Y709, max / 2); every layer
+// meters I x em, so a pixel's own weights and lumas depend on I alone) through the tabulated curve, linear between entries
+float pointFused(vec3 c) {
+    c = max(c, vec3(0.0));
+    float I = max(dot(c, LUMA), max3(c) * 0.5);
+    int n = textureSize(FusedCurve, 0).x;
+    float t = clamp((log2(max(I, 1.0e-12)) - fusedCurveU.x) * fusedCurveU.y, 0.0, float(n - 1));
+    int i0 = min(int(t), n - 1);
+    int i1 = min(i0 + 1, n - 1);
+    return max(mix(texelFetch(FusedCurve, ivec2(i0, 0), 0).r, texelFetch(FusedCurve, ivec2(i1, 0), 0).r, t - float(i0)), 0.0);
+}
+#endif
 float cbrtp(float x) { return pow(x, 1.0 / 3.0); }
 
 vec4 bsplineWeights(float x) {
     float x2 = x * x, x3 = x2 * x;
     return vec4((1.0 - 3.0 * x + 3.0 * x2 - x3) / 6.0, (4.0 - 6.0 * x2 + 3.0 * x3) / 6.0,
                 (1.0 + 3.0 * x + 3.0 * x2 - 3.0 * x3) / 6.0, x3 / 6.0);
+}
+
+// P311: how much an arkLow tap is a light, in units of the bound of the detail reference (m: its domain): its brightest
+// channel from 2 x to 4 x the bound (a red, blue or pink LED: the clipped channel 3 .. 20 x while the luminance box mean stays
+// near the bound, also for a ring thinner than the 2 x 2 box), or the geometric mean of that channel and the luminance from
+// 1.4 x to 2.4 x (a near-white light clipped at 1.5 .. 3 x, a burst without the ultrashort frame). Bright saturated surfaces
+// (a yellow object at a window, a hull under orange lamps: the max channel 1.2 .. 2.6 x after the colour matrix, the
+// luminance 0.5 .. 1.5 x) stay below both.
+float lightShare(vec3 lowTap, float m) {
+    float mx = max(max3(lowTap), 0.0) * m;
+    float y = max(dot(lowTap, LUMA), 0.0) * m;
+    return max(smoothstep(2.0, 4.0, mx), smoothstep(1.4, 2.4, sqrt(mx * y)));
+}
+
+// P311 (owner, 2026-10-21, a pink LED ring: a crimson line along its inner side instead of a smooth rise into the light): the
+// detail delta of a pixel beside a clipped light, measured against the side of its neighbourhood that is not the light.
+// The B-spline reference spreads the light (its box means at the bound and the falloff boxes next to them) ~4 px into the
+// dark side, and the cube root of that linear mix lifts the reference far more than the base lifts there (the fused luma
+// mixes in the display domain, the light stops at its tone ceiling), so the delta dug a lobe 2-6 px wide below the dark
+// side itself (host replay of the blue ring: L 0.59 between 0.63 and 0.69; 8 bit blue 202 in a 235 glow).
+//  1. where the light lies: the light share of the arkLow taps in a disc of 4 arkLow px around the pixel (8 output px on
+//     the 1x grid; the weight tapers to 0 over its last px, so a tap enters and leaves the disc at weight 0), its mass H,
+//     first moment M and second moment S. side = |M|^4 / (H M^T S M) = (mean offset along M)^2 / (mean squared offset
+//     along M): 1 when all the light lies on one side of the pixel at one distance (a rim), 0 when it surrounds the pixel
+//     or lies on both sides (a dark line or hole in front of a light), in between for a light spread in depth.
+//  2. the reference of the far side: the same 16 B-spline taps weighted by how far they lie behind the pixel, away from the
+//     light along M (full weight from 1 arkLow px, none closer than 0.5 px), so neither the light nor its falloff boxes
+//     are in it.
+//  3. at a rim the negative delta is the pixel against that far side, never below 0 or the plain delta: the base's own
+//     smooth rise into the light shows, dark texture of the dark side (darker than its far side) keeps its delta.
+// Blended by side (0.3 .. 0.7) and faded in by the disc's light mass (0 .. 2: a light share summed over ~50 taps does not
+// alias against the arkLow grid, as the 16-tap share of the B-spline footprint did - dashed rims beside lights at 2 x white
+// and LED rows; review): every input is a smooth function of the tap values and of the pixel's position (no rounding, no tap
+// set chosen by a threshold), and with no light in the footprint the delta is unchanged bit for bit. The plain delta stays
+// where the light surrounds the pixel; dark objects up to ~7 px wide in front of a light keep their depth.
+// Cost: the light share of the 16 footprint taps on every pixel of the bounded path (~200 ALU); ~66 extra texel reads only
+// where the delta is negative and a light tap is in the footprint (0.1 - 0.6 % of the pixels of the test scenes).
+float lightRimDelta(float delta, float y, float yRef, float lightW, int bx, int by, float fx, float fy, float m) {
+    ivec2 last = textureSize(ArkDetailRef, 0) - ivec2(1);
+    vec2 mom = vec2(0.0);
+    vec3 sec = vec3(0.0);
+    float mass = 0.0;
+    for (int dy = -3; dy <= 4; dy++) {
+        for (int dx = -3; dx <= 4; dx++) {
+            vec2 v = vec2(float(dx) - fx, float(dy) - fy);
+            float k = 1.0 - smoothstep(3.0, 4.0, length(v));
+            if (k <= 0.0) continue;
+            float h = k * lightShare(texelFetch(ArkLow, clamp(ivec2(bx + dx, by + dy), ivec2(0), last), 0).rgb, m);
+            mass += h;
+            mom += h * v;
+            sec += h * vec3(v.x * v.x, v.x * v.y, v.y * v.y);
+        }
+    }
+    float m2 = dot(mom, mom);
+    float q = sec.x * mom.x * mom.x + 2.0 * sec.y * mom.x * mom.y + sec.z * mom.y * mom.y;
+    float side = m2 * m2 / max(mass * q, 1e-20);
+    vec2 n = mom / max(sqrt(m2), 1e-12);
+    vec4 wx = bsplineWeights(fx), wy = bsplineWeights(fy);
+    float sum = 0.0, wsum = 0.0;
+    for (int dy = -1; dy <= 2; dy++) {
+        for (int dx = -1; dx <= 2; dx++) {
+            vec2 v = vec2(float(dx) - fx, float(dy) - fy);
+            float w = wx[dx + 1] * wy[dy + 1] * smoothstep(-0.25, 0.25, -dot(v, n) - 0.75);
+            sum += w * max(texelFetch(ArkDetailRef, clamp(ivec2(bx + dx, by + dy), ivec2(0), last), 0).r, 0.000001);
+            wsum += w;
+        }
+    }
+    float yFar = (sum + 0.001 * yRef) / (wsum + 0.001);
+    float dFar = cbrtp(max(y, 0.000001)) - cbrtp(max(yFar, 0.000001));
+    float rim = smoothstep(0.3, 0.7, side) * smoothstep(0.0, 2.0, mass);
+    return mix(delta, max(delta, min(dFar, 0.0)), rim);
 }
 
 // Output pixel x on a grid reduced by a box of f: centre (x + 0.5) / f - 0.5 as an integer base and a fraction.
@@ -395,6 +488,12 @@ void main() {
     float yLow = 0.0;
     float yRef = 0.0;
     bool bounded = detailRefU == 1 && f != 1;
+    // P311: the light share of the reference's B-spline footprint, the arkLow position for lightRimDelta and the domain m of
+    // ArkDetailRef (min(m * Y, 1); m = ae / sharpTone with ArkLumaS, else ae)
+    float lightW = 0.0;
+    int lbx = 0, lby = 0;
+    float lfx = 0.0, lfy = 0.0;
+    float refDomain = sharpU == 1 && sharpToneU > 0.0 ? ae / sharpToneU : ae;
     if (f == 1) {
         // same size as the low grid: the kernel's full-resolution bypass (no interpolation)
 #if P3_OUT == 1
@@ -402,13 +501,37 @@ void main() {
 #else
         orig = sanitize(texelFetch(ArkColour, xy, 0).rgb);
 #endif
+#if POINT_FUSED == 1
+        // P314 (review): the colour of the 3 x 3 neighbourhood at the pixel's own luminance - a mosaic's cell means take R, G and B
+        // from sites 2 px apart (yellow / blue fringes at every sharp edge: chroma high-pass rms 1.09 -> 0.51, the photo 0.46; the
+        // luma detail unchanged)
+        {
+            ivec2 lastC = textureSize(ArkColour, 0) - ivec2(1);
+            vec3 acc = vec3(0.0);
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++) {
+#if P3_OUT == 1
+                    acc += clampP3(finiteTap(texelFetch(ArkColour, clamp(xy + ivec2(dx, dy), ivec2(0), lastC), 0).rgb));
+#else
+                    acc += sanitize(texelFetch(ArkColour, clamp(xy + ivec2(dx, dy), ivec2(0), lastC), 0).rgb);
+#endif
+                }
+            acc *= 1.0 / 9.0;
+            float yc = max(dot(orig, LUMA), 0.0), ya = dot(acc, LUMA);
+            if (ya > 1.0e-6) orig = acc * (yc / ya);
+        }
+        orig *= inScaleU > 0.0 ? inScaleU : 1.0;
+        fused = pointFused(orig * ae);
+#else
         fused = max(texelFetch(ArkFused, xy, 0).r, 0.0);
+#endif
         yLow = max(dot(texelFetch(ArkLow, xy, 0).rgb, LUMA), 0.000001);
     } else {
         int bx, by;
         float fx, fy;
         gridPos(xy.x, f, bx, fx);
         gridPos(xy.y, f, by, fy);
+        lbx = bx; lby = by; lfx = fx; lfy = fy;
         vec4 wx = bsplineWeights(fx), wy = bsplineWeights(fy);
         ivec2 lastLow = textureSize(ArkLow, 0) - ivec2(1);
         ivec2 lastFused = textureSize(ArkFused, 0) - ivec2(1);
@@ -417,8 +540,12 @@ void main() {
                 float w = wx[dx + 1] * wy[dy + 1];
                 ivec2 p = ivec2(bx + dx, by + dy);
                 fused += max(texelFetch(ArkFused, clamp(p, ivec2(0), lastFused), 0).r, 0.0) * w;
-                yLow += max(dot(texelFetch(ArkLow, clamp(p, ivec2(0), lastLow), 0).rgb, LUMA), 0.000001) * w;
-                if (bounded) yRef += max(texelFetch(ArkDetailRef, clamp(p, ivec2(0), lastLow), 0).r, 0.000001) * w;
+                vec3 lowTap = texelFetch(ArkLow, clamp(p, ivec2(0), lastLow), 0).rgb;
+                yLow += max(dot(lowTap, LUMA), 0.000001) * w;
+                if (bounded) {
+                    yRef += max(texelFetch(ArkDetailRef, clamp(p, ivec2(0), lastLow), 0).r, 0.000001) * w;
+                    lightW += lightShare(lowTap, refDomain) * w;
+                }
             }
         }
         gridPos(xy.x, fc, bx, fx);
@@ -484,7 +611,10 @@ void main() {
         } else if (bounded) {
             // bounded like the kernel's a3: min(m * Y, 1) (or its sharpened S) against the B-spline of its box mean
             lRef = cbrtp(max(yRef, 0.000001));
-            delta = cbrtp(max(sharpU == 1 ? yS : min(yFull * ae, 1.0), 0.000001)) - lRef;
+            float yD = sharpU == 1 ? yS : min(yFull * ae, 1.0);
+            delta = cbrtp(max(yD, 0.000001)) - lRef;
+            // P311: beside a clipped light, against the side of the neighbourhood that is not the light
+            if (delta < 0.0 && lightW > 0.0) delta = lightRimDelta(delta, yD, yRef, lightW, lbx, lby, lfx, lfy, refDomain);
         } else {
             delta = cbrtp(max(yFull * ae, 0.000001)) - cbrtp(max(yLow * ae, 0.000001));
         }
@@ -616,8 +746,12 @@ void main() {
         // the AgX white (0.18 x 2^(maxEv - min(EV, 0)), where its tone curve ends: lg = 1 below); the scene gate 0.6 .. 2.4 above bleached every bright
         // coloured light whose colour the curve still holds (host replay: the bar's body keeps its tint like ArkCam's, its LED
         // dots and the rings' cores at the white still go to white, so a light stays the brightest thing around it)
+        // P311 (owner, pink LED fan ring: a white core, then a hard edge and a saturated band on its outer side): full only at 2 x the white. Ending at
+        // the white (0.8 .. 0.995: 0.3 EV) the ramp lay within one pixel of a ring's falloff (~0.3 EV per px): the other channels,
+        // lifted to 15 % of the brightest one inside, dropped 3.5 EV there (8 bit R of a blue ring 180 -> 96 in 2 px after a
+        // plateau). Over 1.3 EV they fall with the light; below 0.8 x the white nothing changes, from 2 x up it is the former core.
         float agxWhite = 0.18 * exp2(agxB.y + max(-agxB.z, 0.0));
-        float w = hlWhiteU * satW * smoothstep(0.8 * agxWhite, 0.995 * agxWhite, mx);
+        float w = hlWhiteU * satW * smoothstep(0.8 * agxWhite, 2.0 * agxWhite, mx);
 #endif
 #if HL_LANDING == 1
         // P154 (owner: «белый цвет никогда не уходил в серый»): towards the white of its brightest channel, not down to its

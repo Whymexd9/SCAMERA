@@ -14,9 +14,9 @@ import java.nio.ByteOrder;
  * stream or HAL load is involved.
  *
  * <p>One frame is kept, not a queue: the viewfinder wants the newest frame, and
- * an older one is worthless the moment a newer arrives. The buffer is reused
- * across frames, so a 12.6 MP RAW costs one 25 MB allocation for the session
- * rather than one per frame.
+ * an older one is worthless the moment a newer arrives. The buffers are reused
+ * across frames, so a 12.6 MP RAW costs its allocations once for the session
+ * rather than once per frame.
  *
  * <p>Held statically because the producer (CaptureController's image callback)
  * and the consumer (the GL renderer) have no other connection, the same
@@ -27,20 +27,38 @@ public final class LiveRawFrame {
     private static final Object LOCK = new Object();
 
     /**
-     * Two buffers, not one. The capture thread writes while the GL thread is
+     * Three buffers, not one. The capture thread writes while the GL thread is
      * uploading the previous frame, and sharing a single buffer let the upload
      * read bytes from two different exposures - which shows up as the
      * viewfinder flickering between colours rather than as a clean error.
+     * P314 (owner, 2026-10-21: the reference viewfinder «обработку он никак не замедляет»; ours held a 2x ISZ merge at 21-56 s):
+     * the capture thread fills {@code writer}, {@code ready} is the newest whole frame, {@code consumer} the GL thread's (being
+     * uploaded and metered) until its next {@link #acquire()}. publish swaps writer and ready, acquire ready and consumer, both
+     * under the lock - acquire no longer copies the frame (24 MB at 2x ISZ, under the lock, on the GL thread at every new frame).
      */
-    private static ByteBuffer front;
-    private static ByteBuffer back;
+    private static ByteBuffer writer;
+    private static ByteBuffer ready;
     // Owned exclusively by the single GL consumer, never reused by the producer.
     private static ByteBuffer consumer;
-    private static int consumerVersion = -1;
+    /** P314: {@code ready} holds a frame acquire() has not taken yet. */
+    private static boolean readyFresh;
+    /**
+     * P314: drop-when-busy, as the reference viewfinder's hand-off: while the GL thread has not taken the last frame yet, a new one
+     * is not copied (the camera thread's copies follow the viewfinder's draws, not the camera's rate). A frame not taken within this
+     * long is replaced all the same (the viewfinder not drawing RAW for a while - its programs being linked, a paused view - must not
+     * be left with an old frame).
+     */
+    static final long PENDING_NS = 100_000_000L;
+    /** The limit in force (PENDING_NS; tests hold a frame for as long as they need: a slow machine must not make them flaky). */
+    static volatile long pendingNs = PENDING_NS;
+    /** P314: frames the camera delivered while the last one was still waiting for the GL thread (counted, logged with draws). */
+    private static long dropped;
     private static int width, height, rowStride;
     private static float[] crop = {0,0,1,1};
     private static int cfaPattern, cfaBlock=1, iso=100, maxAnalogIso=6400;
     private static boolean autoExposure=true;
+    /** P314: the frame is a Quad / Tetra frame's cell means (see {@link Frame#cellMean}). */
+    private static boolean cellMean;
     /** P212h (A6 = M11): the range the viewfinder's display gain is held to, and whether its meter gives SceneLuma. */
     private static float minDisplayGain=0f, maxDisplayGain=Float.POSITIVE_INFINITY;
     private static boolean sceneLuma=true;
@@ -99,6 +117,13 @@ public final class LiveRawFrame {
      * sparse only - one 2 x 2 Bayer quad of each 4 x 4 (the sites (4i + a, 4j + b), a, b in {0, 1}), a (w/2) x (h/2) plain Bayer
      * of the same CFA phase, a quarter of the reads as the 50 MP Quad bin; the viewfinder only, never the photo.
      */
+    /**
+     * P314 (review): the bins' own threads (the caller and two): in the shared ParallelWork pool a shot's CPU pass held the camera
+     * thread for its whole length on every frame of a viewfinder that kept running beside the shot.
+     */
+    private static final com.particlesdevs.photoncamera.util.ParallelWork.Own BIN_WORK =
+            new com.particlesdevs.photoncamera.util.ParallelWork.Own("SCAMERA-vf-bin", 3);
+
     static synchronized ByteBuffer binMosaic(ByteBuffer plane, int w, int h, int stride, int format, int block, boolean sparse) {
         final int cell = block == 1 ? 2 : block;
         if (plane == null || (block != 1 && block != 2 && block != 4) || (block == 1 && !sparse) || w < cell * 2 || h < cell * 2
@@ -122,7 +147,7 @@ public final class LiveRawFrame {
         final int bw = w / cell, bh = h / cell;
         if (quadBinned == null || quadBinned.capacity() < bw * bh * 2) quadBinned = ByteBuffer.allocateDirect(bw * bh * 2).order(ByteOrder.nativeOrder());
         java.nio.ShortBuffer out = quadBinned.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
-        final int chunks = Math.max(1, Math.min(bh, com.particlesdevs.photoncamera.util.ParallelWork.threads() * 4));
+        final int chunks = Math.max(1, Math.min(bh, BIN_WORK.threads() * 4));
         // P179 (200 MP: the preview ran at 2.7 fps, its development held the camera's buffers): above SPARSE_BIN_PIXELS a
         // Tetra block is the mean of its central 2 x 2 pixels (a quarter of the reads) - the viewfinder only, never the photo
         final long binStart = System.nanoTime();
@@ -131,7 +156,7 @@ public final class LiveRawFrame {
         final java.nio.ShortBuffer source = src, target = out;
         final int rows = sparse ? (block == 4 ? 2 : 1) : block, first = sparse && block == 4 ? 1 : 0;
         final int span = block == 1 ? w - 2 : sparse ? w - 1 : w;
-        com.particlesdevs.photoncamera.util.ParallelWork.forEach(chunks, chunk -> {
+        BIN_WORK.forEach(chunks, chunk -> {
             final java.nio.ShortBuffer in = source.duplicate(), put = target.duplicate();
             final short[][] line = new short[rows][span];
             final short[] row = new short[bw];
@@ -251,12 +276,38 @@ public final class LiveRawFrame {
             enabled = value;
             session++;
             if (!value) {
-                front = back = consumer = null;
-                consumerVersion = -1;
+                writer = ready = consumer = null;
+                readyFresh = false;
                 version++;
             }
         }
         if (!value) releaseBinBuffers();
+    }
+
+    /** P314: whether a frame waits for the GL thread and is young enough that a new one is dropped instead of copied. */
+    static boolean pending(boolean fresh, long ageNs) {
+        return fresh && ageNs >= 0 && ageNs < pendingNs;
+    }
+
+    /**
+     * P314: whether {@link #publish} would take a frame now (enabled, and the last one taken by the GL thread or old): the
+     * producer asks before it reads the frame's metadata, and requests no draw for a frame it skips (the waiting one has its draw
+     * requested already).
+     */
+    public static boolean takesFrame() {
+        synchronized (LOCK) {
+            if (!enabled) return false;
+            if (!pending(readyFresh, System.nanoTime() - publishedNanos)) return true;
+            dropped++;
+            return false;
+        }
+    }
+
+    /** P314: the camera's frames dropped so far while one waited for the GL thread. */
+    public static long droppedFrames() {
+        synchronized (LOCK) {
+            return dropped;
+        }
     }
 
     /**
@@ -266,6 +317,7 @@ public final class LiveRawFrame {
      */
     private static synchronized void releaseBinBuffers() {
         quadFull = quadBinned = null;
+        quadAtNs = 0;   // P314: the next session's first binned frame is not held back by this one's pacing
     }
 
     /**
@@ -302,24 +354,47 @@ public final class LiveRawFrame {
      */
     public static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise,int format,
                                float minGain,float maxGain,boolean sceneLuma){
+        // P314: nothing is binned or copied while the GL thread has not taken the last frame (drop-when-busy)
+        if (plane == null || !takesFrame()) return;
+        publish(plane,w,h,stride,cfa,white,black,gains,ccm,lensShading,sw,sh,cropRect,block,sensorIso,analogIso,automatic,shotNoise,readNoise,
+                format,minGain,maxGain,sceneLuma,false);
+    }
+
+    /**
+     * P314: a mosaic (Quad / Tetra) frame below the full-resolution sizes is binned for the viewfinder too - the mean of each colour
+     * cell, one Bayer site ((w / block) x (h / block)): the reference viewfinder's shape at the frame's real colour resolution. It is
+     * lossless for the viewfinder: rawdevelop_fs draws a mosaic of block 2 / 4 one colour per 2 x 2 of cell means (getFastColor),
+     * and the binned frame with block 1 drawn the same way ({@link Frame#cellMean}: cfa_mode 0, not the range-filtered Bayer of a
+     * plain frame) reads those same means, up to the 1/2 DN rounding of the mean. A 2x ISZ Quad frame is 6 MB to copy and upload
+     * instead of 24, its 16 fetches a pixel 4. Not with «Full» (cap -1: nothing binned, as before).
+     */
+    static boolean binsCellMeans(int w, int h, int block, int cap) {
+        return cap != -1 && (block == 2 || block == 4) && (long) w * h < QUAD_BIN_PIXELS && w % (block * 2) == 0 && h % (block * 2) == 0;
+    }
+
+    private static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise,int format,
+                               float minGain,float maxGain,boolean sceneLuma,boolean means){
         if (!enabled || plane == null) return;
         // P108: a full-resolution Quad-Bayer frame (Pixel 10 Pro: 8160x6144 RAW10, the ISP's own viewfinder is green in that
         // mode) is shown 2x2-binned as the plain Bayer 4080x3072, at most every QUAD_BIN_INTERVAL_NS (the camera thread); P194 a
         // plain Bayer frame as large (the hardware-remosaic FULLRES) one 2x2 quad of each 4x4, the same (w/2) x (h/2)
+        // P314: and a smaller Quad / Tetra frame by its cell means (binsCellMeans); the large frames' bins stay as they were
         final int bin = block == 2 || block == 4 ? block : 1, cell = bin == 1 ? 2 : bin;
         final int cap = maxLongSide;
-        if (cap != -1 && (long) w * h >= QUAD_BIN_PIXELS && w % (cell * 2) == 0 && h % (cell * 2) == 0) {
+        final boolean cellMeans = !means && binsCellMeans(w, h, bin, cap);
+        if (!means && (cellMeans || (cap != -1 && (long) w * h >= QUAD_BIN_PIXELS && w % (cell * 2) == 0 && h % (cell * 2) == 0))) {
             final long now = System.nanoTime();
             if (now - quadAtNs < binIntervalNs((long) w * h, lastBinNs)) return;
             quadAtNs = now;
             ByteBuffer binned = binMosaic(plane, w, h, stride, format, bin);
             if (binned == null) return;
             publish(binned, w / cell, h / cell, w / cell * 2, cfa, white, black, gains, ccm, lensShading, sw, sh, cropRect, 1, sensorIso, analogIso,
-                    automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR, minGain, maxGain, sceneLuma);
+                    automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR, minGain, maxGain, sceneLuma, cellMeans);
             return;
         }
-        // P266: the module's «Разрешение видоискателя RAW» - a plain 16-bit Bayer frame halved until it fits
-        if (cap > 0 && bin == 1 && format == android.graphics.ImageFormat.RAW_SENSOR && (stride & 1) == 0
+        // P266: the module's «Разрешение видоискателя RAW» - a plain 16-bit Bayer frame halved until it fits (P314: not a frame of
+        // cell means: a mosaic was never halved)
+        if (cap > 0 && bin == 1 && !means && format == android.graphics.ImageFormat.RAW_SENSOR && (stride & 1) == 0
                 && (long) (h - 1) * stride + w * 2L <= plane.remaining()) {
             final int n = halvings(w, h, cap);
             if (n > 0) {
@@ -371,10 +446,10 @@ public final class LiveRawFrame {
         synchronized (LOCK) {
             if (!enabled) return;
             generation = session;
-            if (back == null || back.capacity() < needed) {
-                back = ByteBuffer.allocateDirect(needed).order(ByteOrder.nativeOrder());
+            if (writer == null || writer.capacity() < needed) {
+                writer = ByteBuffer.allocateDirect(needed).order(ByteOrder.nativeOrder());
             }
-            target = back;
+            target = writer;
         }
         // Filled outside the lock: the copy is tens of megabytes and the GL
         // thread only needs the lock long enough to swap references.
@@ -395,12 +470,15 @@ public final class LiveRawFrame {
         synchronized (LOCK) {
             if (!enabled || session != generation) return;
             publishedNanos = System.nanoTime();
-            back = front;
-            front = target;
+            // P314: the filled buffer becomes the ready frame; the ready one (never the GL thread's) is the next to fill
+            writer = ready;
+            ready = target;
+            readyFresh = true;
             width = w;
             height = h;
             rowStride = w*2;
             cfaBlock = block==2 || block==4 ? block : 1;
+            cellMean = means;
             iso = sensorIso==null ? 100 : Math.max(1,sensorIso);
             maxAnalogIso = analogIso==null ? 6400 : Math.max(101,analogIso);
             autoExposure = automatic;
@@ -423,16 +501,21 @@ public final class LiveRawFrame {
         }
     }
 
-    /** Snapshot for the GL thread; null when nothing has been published. */
+    /**
+     * Snapshot for the GL thread; null when nothing has been published. P314: a new frame changes places with the GL thread's
+     * last one (no copy); without a new frame it is the last one again (the same buffer). Its buffer stays the frame's until the
+     * next acquire.
+     */
     public static Frame acquire() {
         synchronized (LOCK) {
-            if (front == null) return null;
-            Frame f = new Frame();
-            if(consumer == null || consumer.capacity() < front.limit()) {
-                consumer = ByteBuffer.allocateDirect(front.limit()).order(ByteOrder.nativeOrder());
-                consumerVersion = -1;
+            if (readyFresh) {
+                final ByteBuffer last = consumer;
+                consumer = ready;
+                ready = last;
+                readyFresh = false;
             }
-            if(consumerVersion != version){consumer.clear();consumer.put(front.duplicate());consumer.flip();consumerVersion=version;}
+            if (consumer == null) return null;
+            Frame f = new Frame();
             f.buffer = consumer.duplicate().order(ByteOrder.nativeOrder());
             f.buffer.position(0);
             f.crop = crop.clone();
@@ -441,6 +524,7 @@ public final class LiveRawFrame {
             f.rowStride = rowStride;
             f.cfaPattern = cfaPattern;
             f.cfaBlock = cfaBlock;
+            f.cellMean = cellMean;
             f.iso = iso; f.maxAnalogIso = maxAnalogIso; f.autoExposure = autoExposure;
             f.minDisplayGain = minDisplayGain; f.maxDisplayGain = maxDisplayGain; f.sceneLuma = sceneLuma;
             f.noiseS=noiseS;f.noiseO=noiseO;
@@ -462,7 +546,7 @@ public final class LiveRawFrame {
      */
     public static int peekSession() {
         synchronized (LOCK) {
-            return front == null ? -1 : session;
+            return readyFresh || consumer != null ? session : -1;
         }
     }
 
@@ -484,6 +568,11 @@ public final class LiveRawFrame {
         public int width, height, rowStride, cfaPattern, version, session;
         public int cfaBlock=1, iso=100, maxAnalogIso=6400;
         public boolean autoExposure=true;
+        /**
+         * P314: the sites are the cell means of a Quad / Tetra frame (block 1 here): drawn one colour per 2 x 2 of them (cfa_mode 0),
+         * as the mosaic itself, not as a plain Bayer frame.
+         */
+        public boolean cellMean;
         /** P212h (A6): the range of an automatic display gain (LiveRawMeter) and whether the meter is SceneLuma's. */
         public float minDisplayGain=0f, maxDisplayGain=Float.POSITIVE_INFINITY;
         public boolean sceneLuma=true;

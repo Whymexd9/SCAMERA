@@ -5686,6 +5686,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             LiveRawFrame.setEnabled(false);
             return;
         }
+        // P314: the viewfinder has not taken the last frame yet (drop-when-busy, as the reference viewfinder's hand-off): this one is
+        // neither read nor copied (the callers' draw request then coalesces with the waiting frame's own)
+        if (!LiveRawFrame.takesFrame()) return;
         // P72: a packed session (17 Ultra tele) whose frame fits none of its layouts and is not plain either: skipped (the last
         // developed frame stays) instead of developing it as 16-bit
         if (!mPreviewLayouts.isEmpty() && img.getFormat() == ImageFormat.RAW_SENSOR && frameLayout(img) == null

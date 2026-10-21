@@ -73,6 +73,11 @@ final class GLProgramDiskCache {
         return s;
     }
 
+    /** P312: the viewfinder's programs ("V\n" keys, GLProg.viewfinderKey) are kept here too but not counted in the shot's line. */
+    private static boolean counted(String key) {
+        return !key.startsWith("V\n");
+    }
+
     private synchronized void count(int hit, int miss, int bad, int write, int evict) {
         hits += hit; misses += miss; damaged += bad; written += write; evicted += evict;
     }
@@ -80,7 +85,7 @@ final class GLProgramDiskCache {
     /** {format, bytes} of the stored binary, or null. */
     Object[] load(String driver, String key) {
         File f = new File(dir, name(driver, key));
-        if (!f.isFile()) { count(0, 1, 0, 0, 0); return null; }
+        if (!f.isFile()) { if (counted(key)) count(0, 1, 0, 0, 0); return null; }
         Object[] out = null;
         try (DataInputStream in = new DataInputStream(new FileInputStream(f))) {
             if (in.readInt() == MAGIC) {
@@ -95,12 +100,12 @@ final class GLProgramDiskCache {
             out = null;
         }
         // closed before the delete / touch (Windows test hosts refuse both on an open file)
-        if (out == null) { f.delete(); count(0, 1, 1, 0, 0); }
+        if (out == null) { f.delete(); if (counted(key)) count(0, 1, 1, 0, 0); }
         else {
             final long now = System.currentTimeMillis();
             f.setLastModified(now);
             new File(dir, sourceName(key)).setLastModified(now); // P237: a source in use stays (LRU)
-            count(1, 0, 0, 0, 0);
+            if (counted(key)) count(1, 0, 0, 0, 0);
         }
         return out;
     }
@@ -122,7 +127,7 @@ final class GLProgramDiskCache {
                 return;
             }
             if (!tmp.renameTo(f)) { tmp.delete(); return; }
-            count(0, 0, 0, 1, 0);
+            if (counted(key)) count(0, 0, 0, 1, 0);
             keepSource(key);
             prune();
         });
