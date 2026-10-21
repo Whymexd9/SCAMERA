@@ -138,12 +138,13 @@ def main(argv: list[str]) -> int:
             Path(src).write_text(text, encoding='utf-8')
             spv = src + '.spv'
             r = subprocess.run([glslc, '--target-env=opengl', '-std=310es', '-fshader-stage=' + stage, '-fauto-map-locations',
-                                '-fauto-bind-uniforms', '-g', '-o', spv, src], capture_output=True, text=True)
+                                '-fauto-bind-uniforms', '-g', '-o', spv, src], capture_output=True, encoding='utf-8', errors='replace')
             if r.returncode != 0:
                 unchecked.append('%s (%s)' % (label, (r.stderr.strip().splitlines() or ['?'])[0].split(': ', 1)[-1][:90]))
                 continue
             checked += 1
-            asm = subprocess.run([dis, spv], capture_output=True, text=True, check=True).stdout.splitlines()
+            # -g embeds the shader source: spirv-dis may print bytes that are not UTF-8 (the opcodes read below are ASCII)
+            asm = subprocess.run([dis, spv], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.splitlines()
             for h in hazards(asm):
                 failures.append('%s %s' % (label, h))
     for u in unchecked:
