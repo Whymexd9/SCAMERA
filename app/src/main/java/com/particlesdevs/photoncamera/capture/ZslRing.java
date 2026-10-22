@@ -14,9 +14,9 @@ import com.particlesdevs.photoncamera.util.ShotArena;
 import java.nio.ByteBuffer;
 
 /**
- * P91 The ZSL ring in the app's own memory (owner, 2026-10-11: «гибрид буфера из нашей реализации, Motion Camera и ArkCam»).
+ * P91 The ZSL ring in the app's own memory (owner, 2026-10-11: «гибрид буфера из нашей реализации, Motion Camera и WhyCam»).
  * <ul>
- *   <li>ArkCam 1.05 / MotionCam: every RAW is copied out of the camera's reader when it arrives and its Image goes back at
+ *   <li>WhyCam 1.05 / MotionCam: every RAW is copied out of the camera's reader when it arrives and its Image goes back at
  *       once, so the reader holds a handful of buffers instead of the whole ring (ours held ring + 3 = 53 HAL buffers, ~1.2 GB of
  *       camera memory), and the ring keeps filling while a shot is in flight;</li>
  *   <li>MotionCam: the depth is bounded by a memory budget;</li>

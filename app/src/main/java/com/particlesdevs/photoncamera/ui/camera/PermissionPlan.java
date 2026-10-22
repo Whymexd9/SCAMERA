@@ -10,7 +10,7 @@ import java.util.function.Predicate;
 /**
  * The startup permission flow of {@link CameraActivity}, kept free of Android calls so it can be unit tested.
  *
- * <p>It follows ArkCam: every missing runtime permission goes into one batched system request with no dialog
+ * <p>It follows WhyCam: every missing runtime permission goes into one batched system request with no dialog
  * of ours in front of it (ColorOS shows the batch as one combined sheet, other ROMs show the standard prompts
  * one after another). A refusal is asked again, in one batch, only while the system can still show its prompt
  * and at most {@link #MAX_REQUESTS} times in a round; after that the user is sent to the app settings. On

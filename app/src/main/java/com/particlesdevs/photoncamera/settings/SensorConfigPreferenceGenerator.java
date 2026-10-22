@@ -190,7 +190,7 @@ public class SensorConfigPreferenceGenerator {
     }
 
     /**
-     * P276 «Режим сенсора (SensorModeTable)»: Auto or a row of the camera's own table ("Mode #4: 8192x6144 @ 30fps", as ArkCam
+     * P276 «Режим сенсора (SensorModeTable)»: Auto or a row of the camera's own table ("Mode #4: 8192x6144 @ 30fps", as WhyCam
      * lists it); a picked row opens the RAW stream at its size and sends the brand's mode key (SensorModePick). Shown only when
      * the module's camera has a table.
      */

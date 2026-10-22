@@ -42,7 +42,7 @@ public class SettingsModelCheck {
             p.put("pref_camera_mode_key", mode);
             for (String route : new String[]{"raw", "vcf2", "invalid"}) {
                 p.put("pref_scamhdr_route", route);
-                active(p,"pref_scam_hybrid_ark_sharp_gain");active(p,"pref_scam_hybrid_cdm");
+                active(p,"pref_scam_hybrid_why_sharp_gain");active(p,"pref_scam_hybrid_cdm");
             }
         }
         p.clear();p.putAll(saved);
@@ -54,8 +54,8 @@ public class SettingsModelCheck {
         h.put("pref_merge_route","scamhdr");active(h,"pref_scam_hybrid_cdm"); // P129: SHDR is the only merge
         h.remove("pref_merge_route");
         active(h,"pref_scam_hybrid_cdm");active(h,"pref_scam_hybrid_sabre61");active(h,"pref_scam_hybrid_highlight_recovery");
-        // P118: the ARK sharpening is the only one, its rows are always active
-        active(h,"pref_scam_hybrid_ark_sharp_gain");
+        // P118: the WHY sharpening is the only one, its rows are always active
+        active(h,"pref_scam_hybrid_why_sharp_gain");
         // the removed legacy switches (RAW MFSR, standalone remosaic) no longer take the hybrid off
         h.put("pref_raw_mfsr_enabled_key",true);h.put("pref_remosaic_enabled_key",true);active(h,"pref_scam_hybrid_cdm");
         // SCAM Hybrid (own section): pref_scam_hybrid_* bounds; copies of SCAM HDR knobs keep the original bounds; number lists.
@@ -73,7 +73,7 @@ public class SettingsModelCheck {
                 ||SettingsNumericRules.bounds("pref_scam_hybrid_fusion_dark_ev")!=null)throw new AssertionError("removed tone key still bounded");
         // P129: a stored SCAM HDR route takes nothing off: SHDR is the only merge
         Map<String,Object> s=new HashMap<>();s.put("pref_merge_route","scamhdr");
-        active(s,"pref_scam_hybrid_ark_ae_target");active(s,"pref_scam_hybrid_ark_sharp_gain");active(s,"pref_scam_hybrid_cdm");
+        active(s,"pref_scam_hybrid_why_ae_target");active(s,"pref_scam_hybrid_why_sharp_gain");active(s,"pref_scam_hybrid_cdm");
         if(SettingsNumericRules.bounds("pref_scam_hybrid_agx_desat")!=null||SettingsNumericRules.bounds("pref_scam_hybrid_enabled")!=null)
             throw new AssertionError("unbounded hybrid copies got bounds");
         // P62 Mochi (GCam 11 PhotometricMerge): 0 off / 1 auto / 2 force
@@ -81,7 +81,7 @@ public class SettingsModelCheck {
         eq(SettingsNumericRules.value("pref_scam_hybrid_mochi","5",0),2);
         eq(SettingsNumericRules.value("pref_scam_hybrid_mochi","-1",0),0);
         // P29 / P34 / P35 native mosaic merge (the default for Quad and Tetra): its rows need “Native mosaic”, the fill threshold the
-        // ArkCam fill; the split's edge kernel is live only when Quad or Tetra (“Tetra path” 0) merges on the split; worker key bounds
+        // WhyCam fill; the split's edge kernel is live only when Quad or Tetra (“Tetra path” 0) merges on the split; worker key bounds
         Map<String,Object> mo=new HashMap<>();
         String[] nativeRows={"window","window_full","kernel_scale","native_edge_scale","kernel_g","kernel_rb","chroma_fill","tetra",
                 "native_flat_scale","native_clamp"};
@@ -188,10 +188,10 @@ public class SettingsModelCheck {
         c.put("pref_avif_lossless",true);active(c,"pref_ultrahdr_key");
         c.put("pref_avif_lossless",false);c.put("pref_avif_depth","12");active(c,"pref_ultrahdr_key");
         // Settings audit H3: rows that do nothing in the current configuration explain why.
-        Map<String,Object> sh=new HashMap<>(); // P118: only the ARK sharpening stays, its rows are always active
-        active(sh,"pref_scam_hybrid_ark_sharp_gain");active(sh,"pref_scam_hybrid_ark_sharp_rl1_kernel");active(sh,"pref_scam_hybrid_ark_sharp_note");
+        Map<String,Object> sh=new HashMap<>(); // P118: only the WHY sharpening stays, its rows are always active
+        active(sh,"pref_scam_hybrid_why_sharp_gain");active(sh,"pref_scam_hybrid_why_sharp_rl1_kernel");active(sh,"pref_scam_hybrid_why_sharp_note");
         sh.put("pref_scam_hybrid_sharp_mode","off"); // a stored value of the removed mode list changes nothing
-        active(sh,"pref_scam_hybrid_ark_sharp_usm_amount");active(sh,"pref_scam_hybrid_ark_sharp_gain");
+        active(sh,"pref_scam_hybrid_why_sharp_usm_amount");active(sh,"pref_scam_hybrid_why_sharp_gain");
         Map<String,Object> dn=new HashMap<>(); // denoise engine "gcam" (default)
         active(dn,"pref_scam_hybrid_dn_luma_mult");active(dn,"pref_scam_hybrid_dn_luma_t1_snr");active(dn,"pref_scam_hybrid_dn_engine");
         inactive(dn,"pref_scam_hybrid_post_luma");inactive(dn,"pref_scam_hybrid_post_chroma");
@@ -216,7 +216,7 @@ public class SettingsModelCheck {
         Map<String,Object> m=new HashMap<>();
         inactive(m,"pref_scam_hybrid_mm_shutter");m.put("pref_motion_mode",true);active(m,"pref_scam_hybrid_mm_shutter");
         active(m,"pref_antibanding_hz_key");m.put("pref_scam_hybrid_shasta",false);active(m,"pref_antibanding_hz_key");
-        // P310 settings cleanup: the night / day boundary acts at every kernel setting; the ARK denoise rows follow «Шумоподавление»;
+        // P310 settings cleanup: the night / day boundary acts at every kernel setting; the WHY denoise rows follow «Шумоподавление»;
         // the RAW burst row yields to the lab's copy; a DCP profile replaces the colour method's matrix
         Map<String,Object> cu=new HashMap<>();
         cu.put("pref_scam_hybrid_sabre61","1");active(cu,"pref_scam_hybrid_s61_max_key");inactive(cu,"pref_scam_hybrid_s61_min_motion");
@@ -246,18 +246,18 @@ public class SettingsModelCheck {
         active(lu,"pref_scam_hybrid_bento_sigma");
         if(new SettingsAvailability(lu).mosaicStreams(false).reason("pref_scam_hybrid_bento_sigma")==null)throw new AssertionError("highlight kernel live without a mosaic");
         eq(SettingsNumericRules.value("pref_scam_hybrid_bento_chroma_sigma","0",2),0.5);
-        // settings audit 2026-10-21: post rows the other settings leave out (the recovery, the ARK detail, the strength map, AgX)
-        Map<String,Object> po=new HashMap<>();active(po,"pref_scam_hybrid_highlight_band");active(po,"pref_scam_hybrid_ark_clarity");
-        active(po,"pref_scam_hybrid_bento_denoise_max");active(po,"pref_scam_hybrid_ark_ccm_sat");
+        // settings audit 2026-10-21: post rows the other settings leave out (the recovery, the WHY detail, the strength map, AgX)
+        Map<String,Object> po=new HashMap<>();active(po,"pref_scam_hybrid_highlight_band");active(po,"pref_scam_hybrid_why_clarity");
+        active(po,"pref_scam_hybrid_bento_denoise_max");active(po,"pref_scam_hybrid_why_ccm_sat");
         po.put("pref_scam_hybrid_highlight_recovery","0");inactive(po,"pref_scam_hybrid_highlight_band");inactive(po,"pref_scam_hybrid_highlight_defringe");
-        po.put("pref_scam_hybrid_ark_sharp_gain","0");inactive(po,"pref_scam_hybrid_ark_clarity");inactive(po,"pref_scam_hybrid_ark_flat_protect");
+        po.put("pref_scam_hybrid_why_sharp_gain","0");inactive(po,"pref_scam_hybrid_why_clarity");inactive(po,"pref_scam_hybrid_why_flat_protect");
         po.put("pref_scam_hybrid_dn_strength_map","uniform");inactive(po,"pref_scam_hybrid_bento_denoise_max");
-        po.put("pref_scam_hybrid_ark_aces_on",true);inactive(po,"pref_scam_hybrid_ark_ccm_sat");
-        active(cu,"pref_scam_hybrid_ark_bracket_denoise");cu.put("pref_scam_hybrid_denoise",false);
-        inactive(cu,"pref_scam_hybrid_ark_bracket_denoise");inactive(cu,"pref_scam_hybrid_ark_chroma_denoise");
+        po.put("pref_scam_hybrid_why_aces_on",true);inactive(po,"pref_scam_hybrid_why_ccm_sat");
+        active(cu,"pref_scam_hybrid_why_bracket_denoise");cu.put("pref_scam_hybrid_denoise",false);
+        inactive(cu,"pref_scam_hybrid_why_bracket_denoise");inactive(cu,"pref_scam_hybrid_why_chroma_denoise");
         active(cu,"pref_keep_raw_burst");cu.put("pref_scam_lab_keep",true);inactive(cu,"pref_keep_raw_burst");
         active(cu,"pref_color_method_key");cu.put("pref_dcp_profile_key","0123.dcp");inactive(cu,"pref_color_method_key");
-        if(!new SettingsAvailability(m).oppoTunedColor(false).hidden("pref_scam_hybrid_ark_ccm_sat"))throw new AssertionError("OPPO saturation shown");
+        if(!new SettingsAvailability(m).oppoTunedColor(false).hidden("pref_scam_hybrid_why_ccm_sat"))throw new AssertionError("OPPO saturation shown");
         if(new SettingsAvailability(m).mosaicStreams(false).reason("pref_scam_hybrid_mosaic_path")==null)throw new AssertionError("mosaic rows without a mosaic");
         if(!new SettingsAvailability(scam).xiaomiSmoothZoom(false).hidden("pref_xiaomi_smooth_zoom"))throw new AssertionError("Xiaomi zoom shown");
         if(!new SettingsAvailability(scam).fullResHwRemosaic(false).hidden("pref_fullres_hw_remosaic"))throw new AssertionError("FULLRES hardware remosaic shown");

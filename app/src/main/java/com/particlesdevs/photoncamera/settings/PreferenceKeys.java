@@ -988,15 +988,15 @@ public class PreferenceKeys {
         return Math.max(1, Math.min(2, Math.round(hybridValue("shasta_mode", 2f))));
     }
     /**
-     * SCAM Hybrid tone: the ArkCam 1.23 / SCAM 9.6 photo tone (ArkStats -> ArkFusion -> ArkCombine: Smart-HDR AE, exposure
+     * SCAM Hybrid tone: the WhyCam 1.23 / SCAM 9.6 photo tone (WhyStats -> WhyFusion -> WhyCombine: Smart-HDR AE, exposure
      * fusion on a guided filter, OKLab grading, AgX Custom, detail of the Sabre merge) instead of the SCAMERA exposure,
-     * Exposure Fusion and AgX render. pref_scam_hybrid_ark_tone, on by default; scam_dev.txt "hybrid_ark_tone 0/1".
-     * Its knobs are pref_scam_hybrid_ark_&lt;key&gt; (read with {@link #hybridValue}, defaults = ArkCam 2.85 X8U).
+     * Exposure Fusion and AgX render. pref_scam_hybrid_why_tone, on by default; scam_dev.txt "hybrid_why_tone 0/1".
+     * Its knobs are pref_scam_hybrid_why_&lt;key&gt; (read with {@link #hybridValue}, defaults = WhyCam 2.85 X8U).
      */
     /**
      * Master switch of every noise reduction of the hybrid (pref_scam_hybrid_denoise, on by default; scam_dev.txt
      * "hybrid_denoise 0/1"): off skips the denoise after the merge (SCAM finish or NLM, despeckle), the Bento
-     * highlight denoise of the ARK fusion and the chroma denoise of lifted shadows. The merge itself is untouched.
+     * highlight denoise of the WHY fusion and the chroma denoise of lifted shadows. The merge itself is untouched.
      */
     public static boolean isHybridDenoiseEnabled() {
         return hybridSwitch("denoise", true);
@@ -1053,11 +1053,43 @@ public class PreferenceKeys {
     private static Float scamDevValue(String key) {
         final java.util.Map<String, Float> lab = labDev;
         if (lab != null) return lab.get(key);
-        refreshScamDev();
+        refreshScamDevInBackground();
         return scamDevValues.get(key);
     }
 
-    private static void refreshScamDev() {
+    /**
+     * P319 (user report: «Лайв-вью работает гораздо тормознее»): the viewfinder's GL thread and the camera thread read dev
+     * keys on every frame, and every 2 s one of those reads did the file / folder-grant I/O itself (tens of ms through SAF,
+     * P303) - a hitch in the viewfinder. The first read stays synchronous (the values from the start); after that a stale
+     * map is read again on a thread of its own while the callers keep the current one (a changed line still takes ~2 s).
+     */
+    private static final java.util.concurrent.atomic.AtomicBoolean scamDevLoading = new java.util.concurrent.atomic.AtomicBoolean();
+    private static final java.util.concurrent.Executor SCAM_DEV_IO = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "scam-dev-io");
+        t.setDaemon(true);
+        return t;
+    });
+
+    private static void refreshScamDevInBackground() {
+        if (scamDevStamp == -1) {
+            refreshScamDev();
+            return;
+        }
+        if (System.nanoTime() - scamDevChecked <= 2_000_000_000L || !scamDevLoading.compareAndSet(false, true)) return;
+        try {
+            SCAM_DEV_IO.execute(() -> {
+                try {
+                    refreshScamDev();
+                } finally {
+                    scamDevLoading.set(false);
+                }
+            });
+        } catch (RuntimeException e) {
+            scamDevLoading.set(false);
+        }
+    }
+
+    private static synchronized void refreshScamDev() { // P319: the background refresh and a first read never interleave
         long now = System.nanoTime();
         if (scamDevStamp == -1 || now - scamDevChecked > 2_000_000_000L) {
             scamDevChecked = now;
@@ -1086,7 +1118,11 @@ public class PreferenceKeys {
                     values = new java.util.HashMap<>();
                     for (String line : text.split("\r?\n")) {
                         String[] parts = line.trim().split("\\s+");
-                        if (parts.length == 2) try { values.put(parts[0], Float.parseFloat(parts[1])); } catch (NumberFormatException ignored) { }
+                        // P319: a line written before the Why rename keeps working under its new key (a new line wins)
+                        if (parts.length == 2) try {
+                            final String k = BrandMigration.why(parts[0]);
+                            if (k.equals(parts[0]) || !values.containsKey(k)) values.put(k, Float.parseFloat(parts[1]));
+                        } catch (NumberFormatException ignored) { }
                     }
                 }
             } catch (RuntimeException ignored) { }

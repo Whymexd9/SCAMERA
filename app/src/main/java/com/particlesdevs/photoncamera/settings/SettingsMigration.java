@@ -123,11 +123,11 @@ public final class SettingsMigration {
             "pref_sensor_sharpening_enabled", "pref_noise_disable_digital_gain_key", "pref_noise_model_coefficient_key",
             "pref_noise_iso_curve_key", "pref_noise_iso_min_key", "pref_noise_iso_max_key", "pref_noise_iso_manual_key",
             "pref_noise_seekbar_key", "pref_agx_local_highlights", "pref_agx_local_start",
-            // P10: one tone (ARK) for both routes; the SCAMERA tone of SCAM HDR and the hybrid's «Тон SCAMERA» go
+            // P10: one tone (WHY) for both routes; the SCAMERA tone of SCAM HDR and the hybrid's «Тон SCAMERA» go
             "pref_expocompensation_seekbar_key", "pref_scamold_ae_mid", "pref_scamold_ae_high", "pref_scamold_ae_gain_max",
             "pref_scamhdr_soft_tone", "pref_scamhdr_tone_key", "pref_scamhdr_sharp_amount", "pref_scamhdr_texture",
             "pref_scamhdr_warm_retention", "pref_scam_hybrid_ae_mid", "pref_scam_hybrid_ae_high",
-            "pref_scam_hybrid_ae_gain_max", "pref_scam_hybrid_bento_fusion", "pref_scam_hybrid_texture", "pref_scam_hybrid_ark_tone",
+            "pref_scam_hybrid_ae_gain_max", "pref_scam_hybrid_bento_fusion", "pref_scam_hybrid_texture", "pref_scam_hybrid_why_tone",
             "pref_scam_hybrid_soft_tone", "pref_scam_hybrid_tone_key", "pref_scam_hybrid_warm_retention",
             // P8: the retired VCF2 route selector and the unreachable RAW video mode
             "pref_scamhdr_route", "pref_rawvideo_downscale_4x_key", "pref_rawvideo_write_zip_key", "pref_rawvideo_crop_169_key",
@@ -152,13 +152,13 @@ public final class SettingsMigration {
             "pref_quad_bayer_key", "scamera_quad_bayer_enabled", "scamera_quad_bayer_mode", "scamera_quad_dng_metadata",
             // P118: «Показать градиентный фон» (its theme set the background to the colour it already had)
             "pref_show_gradient_key",
-            // P118: two ArkCore exposure rows nothing read (faces never reach processing; the trade-off is fixed at 0.33)
-            "pref_scam_hybrid_ark_face_priority", "pref_scam_hybrid_ark_hl_blend",
-            // P118: only the ARK sharpening stays (owner, 2026-10-13): the mode list, its «Доп. резкость после тона», the
+            // P118: two WhyCore exposure rows nothing read (faces never reach processing; the trade-off is fixed at 0.33)
+            "pref_scam_hybrid_why_face_priority", "pref_scam_hybrid_why_hl_blend",
+            // P118: only the WHY sharpening stays (owner, 2026-10-13): the mode list, its «Доп. резкость после тона», the
             // weight of a post-tone sharpening in lifted shadows, the RawTherapee multiplier, SCAM's amount, and the Sabre
-            // detail used only without ARK sharpening
-            "pref_scam_hybrid_sharp_mode", "pref_scam_hybrid_ark_post_sharp", "pref_scam_hybrid_ark_sharp_guard",
-            "pref_scam_hybrid_sharp_strength", "pref_scam_hybrid_sharp_amount", "pref_scam_hybrid_ark_detail_gain",
+            // detail used only without WHY sharpening
+            "pref_scam_hybrid_sharp_mode", "pref_scam_hybrid_why_post_sharp", "pref_scam_hybrid_why_sharp_guard",
+            "pref_scam_hybrid_sharp_strength", "pref_scam_hybrid_sharp_amount", "pref_scam_hybrid_why_detail_gain",
             // P175: the neural remosaic (owner, 2026-10-16: it ran only on the X200 Ultra and the 8 Elite): its switch and the
             // marker of its P129 migration, the GPU remosaic of the other frames and the Tetra response correction
             // (pref_remosaic_key stays: api/Settings reads it; the HexQuad / Quad 2x2 network rows are OBSOLETE_PREFIXES)
@@ -183,7 +183,7 @@ public final class SettingsMigration {
             "pref_scam_hybrid_rawca_",
             // P118: «Опыты JSR» (phase kernel, CA in the merge, polynomial field); «Sabre 2× только когда есть смысл» is its own row
             "pref_scam_hybrid_jsr_",
-            // P118: only the ARK sharpening stays (owner, 2026-10-13): the RawTherapee sharpening page (USM, RL deconvolution,
+            // P118: only the WHY sharpening stays (owner, 2026-10-13): the RawTherapee sharpening page (USM, RL deconvolution,
             // microcontrast) and the SCAM HDR sharpening knobs ScamSharpen read (pref_scamhdr_sharp_*)
             "pref_sharp_", "pref_scamhdr_sharp_",
             // P129: SCAM HDR is gone (its settings, the L frame from the ZSL ring, the stock planner); migrateScamHybrid runs
@@ -240,7 +240,7 @@ public final class SettingsMigration {
             if (!(sigma > 0)) { e.remove(BENTO_CHROMA_SIGMA_KEY); changed = true; }
             else if (sigma < 0.5) { e.putString(BENTO_CHROMA_SIGMA_KEY, "0.5"); changed = true; }
         }
-        // Rows that store a whole number and were decimal sliders (settings audit H4): the ARK metering, AgX look, sharpening
+        // Rows that store a whole number and were decimal sliders (settings audit H4): the WHY metering, AgX look, sharpening
         // domain and RL kernels are lists now, the SCAM HDR radii integer sliders. A stored "1.00" or float 1.0 becomes "1"
         // (the list value); a value that is no number at all goes, so the row's default applies.
         for (String key : WHOLE_NUMBER_KEYS) {
@@ -255,9 +255,9 @@ public final class SettingsMigration {
     }
 
     /** Keys whose rows store a whole number but were decimal sliders before the settings audit. */
-    static final String[] WHOLE_NUMBER_KEYS = {"pref_scam_hybrid_ark_metering", "pref_scam_hybrid_ark_agx_look",
-            "pref_scam_hybrid_ark_sharp_domain", "pref_scam_hybrid_ark_sharp_rl1_kernel", "pref_scam_hybrid_ark_sharp_rl2_kernel",
-            "pref_scam_hybrid_ark_sharp_rl3_kernel", "pref_scamhdr_luma_radius", "pref_scamhdr_chroma_radius"};
+    static final String[] WHOLE_NUMBER_KEYS = {"pref_scam_hybrid_why_metering", "pref_scam_hybrid_why_agx_look",
+            "pref_scam_hybrid_why_sharp_domain", "pref_scam_hybrid_why_sharp_rl1_kernel", "pref_scam_hybrid_why_sharp_rl2_kernel",
+            "pref_scam_hybrid_why_sharp_rl3_kernel", "pref_scamhdr_luma_radius", "pref_scamhdr_chroma_radius"};
     /** The stored value as the whole number its row writes, within the key's bounds; null when it is no number. */
     static String wholeNumber(String key, Object value) {
         double v = PreferenceNumber.read(value, Double.NaN);
@@ -526,21 +526,21 @@ public final class SettingsMigration {
             if (values.containsKey(old)) { e.remove(old); changed = true; }
         for (String old : new String[]{"pref_scamhdr_engine", "pref_scamhdr_hybrid"})
             if (values.containsKey(old)) { e.remove(old); changed = true; }
-        // Defaults revision 2 (the Sabre detail ark_detail_gain 1 -> 2) is gone with that row (P118: only the ARK sharpening
-        // stays, the detail without it is never used); revision 3 lost its sharp_mode "rt" -> "ark" step the same way.
+        // Defaults revision 2 (the Sabre detail why_detail_gain 1 -> 2) is gone with that row (P118: only the WHY sharpening
+        // stays, the detail without it is never used); revision 3 lost its sharp_mode "rt" -> "why" step the same way.
         Object rev = values.get(DEFAULTS_REV);
         int revision = rev instanceof Integer ? (Integer) rev : 0;
         boolean markOnly = false; // a revision block below only moves the marker (not reported as a change)
-        // Defaults revision 3 (4 October 2026): the noise reduction is ArkCam's exact tables (no revert cap, no stock coarse
+        // Defaults revision 3 (4 October 2026): the noise reduction is WhyCam's exact tables (no revert cap, no stock coarse
         // luma, no chroma floor); stored values equal to the former XML defaults (2, 0.5, 2.75) are those defaults, not user choices.
         if (revision < 3) {
             boolean touched = false;
             String[] keys = {"dn_revert_max", "dn_coarse_stock", "dn_chroma_floor"};
-            float[] former = {2f, 0.5f, 2.75f}, ark = {9f, 0f, 0f};
+            float[] former = {2f, 0.5f, 2.75f}, why = {9f, 0f, 0f};
             for (int i = 0; i < keys.length; i++) {
                 Object v = values.get(ScamHybridKeys.PREFIX + keys[i]);
                 if (v == null) continue;
-                if (isNumber(v, former[i])) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + keys[i], v instanceof String ? PreferenceNumber.format(ark[i], true) : (Object) ark[i]);
+                if (isNumber(v, former[i])) ModuleProfiles.put(e, ScamHybridKeys.PREFIX + keys[i], v instanceof String ? PreferenceNumber.format(why[i], true) : (Object) why[i]);
                 touched = true;
             }
             if (touched) {
@@ -548,7 +548,7 @@ public final class SettingsMigration {
                 changed = true;
             }
         }
-        // Defaults revision 4 (4 October 2026): Shasta as ArkCam on the same phone, 5 bracketed frames at x2 by gain (the
+        // Defaults revision 4 (4 October 2026): Shasta as WhyCam on the same phone, 5 bracketed frames at x2 by gain (the
         // shutter-first x4 frames were blurred and never merged); stored former XML defaults (2 frames, EV 2) move along.
         if (revision < 4) {
             boolean touched = false;
@@ -622,7 +622,7 @@ public final class SettingsMigration {
                 markOnly = true;
             }
         }
-        // N frames from the ZSL ring 20 -> 30 (owner, 7 October 2026: towards ArkCam's ~30 merged frames; detail grows with
+        // N frames from the ZSL ring 20 -> 30 (owner, 7 October 2026: towards WhyCam's ~30 merged frames; detail grows with
         // the frame count). A stored 20 is the former XML default (the row stores it when the screen is first shown) and
         // moves to 30; any other value is the user's and stays. Its own one-time marker, set in the first run whatever it
         // finds: a value copied from SCAM HDR in this run (the hybrid took the shots with it) is not in `values` and stays,
@@ -639,7 +639,7 @@ public final class SettingsMigration {
             markOnly = true;
         }
         // Frames in the mosaic merge 24 -> 30 (owner, 7 October 2026, with the N frames above: our Quad merge took 21 frames,
-        // ArkCam 30). A stored 24 is the former XML default and moves to 30; any other value is the user's and stays. Its own
+        // WhyCam 30). A stored 24 is the former XML default and moves to 30; any other value is the user's and stays. Its own
         // one-time marker, as the N frames' (the key has no legacy or SCAM HDR source to copy from): set in the first run
         // whatever it finds, so a 24 chosen after this run is never moved.
         if (!values.containsKey(MOSAIC_FRAMES_REV)) {
@@ -704,12 +704,12 @@ public final class SettingsMigration {
         // Night noise protection (AGC Noise-based Gain Clamp): legacy ISO threshold (default 100) moves to AGC noise threshold 0.05.
         // Stored values >= 1.0 are legacy ISO values and move to "0.05".
         if (!values.containsKey(NIGHT_THRESH_REV)) {
-            Object night = values.get(ScamHybridKeys.PREFIX + "ark_night_thresh");
+            Object night = values.get(ScamHybridKeys.PREFIX + "why_night_thresh");
             if (night != null) {
                 try {
                     float f = Float.parseFloat(String.valueOf(night).trim());
                     if (f >= 1.0f) {
-                        ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "ark_night_thresh", night instanceof String ? "0.05" : (Object) 0.05f);
+                        ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "why_night_thresh", night instanceof String ? "0.05" : (Object) 0.05f);
                         changed = true;
                     }
                 } catch (NumberFormatException ignored) {}
@@ -717,7 +717,7 @@ public final class SettingsMigration {
             e.putInt(NIGHT_THRESH_REV, 1);
             markOnly = true;
         }
-        // P135 (owner, 2026-10-15: strong grain in poor light): the stored former defaults of the night denoise tier (ArkCam's
+        // P135 (owner, 2026-10-15: strong grain in poor light): the stored former defaults of the night denoise tier (WhyCam's
         // SabreLow {1, 3, 0, 0, 0} with revert {9, 9, ...}) and of the revert limit (9) move to the P135 tier (the stock
         // strengths, half the fine grain put back) and the limit 1; a value chosen by hand stays. Own marker.
         if (!values.containsKey(LOW_LIGHT_DN_REV)) {
@@ -730,7 +730,7 @@ public final class SettingsMigration {
                 e.putString(p + "dn_luma_t1_revert", "0.6,0.5,0.08,0.12,0");
                 changed = true;
             }
-            // 9 = ArkCam's (revision 3 above may have just written it over the older default 2)
+            // 9 = WhyCam's (revision 3 above may have just written it over the older default 2)
             Object max = values.get(p + "dn_revert_max");
             if (max != null && (isNumber(max, 9f) || isNumber(max, 2f) && revision < 3)) {
                 ModuleProfiles.put(e, p + "dn_revert_max", max instanceof String ? "1" : (Object) 1f);
@@ -781,7 +781,7 @@ public final class SettingsMigration {
         return true;
     }
 
-    /** Marker of the one-time move of the former night denoise defaults (ArkCam SabreLow, revert limit 9), P135. */
+    /** Marker of the one-time move of the former night denoise defaults (WhyCam SabreLow, revert limit 9), P135. */
     static final String LOW_LIGHT_DN_REV = "pref_scam_hybrid_low_light_dn_rev";
     /** P191: the native mosaic kernel 0.7 -> 1.0 moved once. */
     static final String MOSAIC_KERNEL_REV = "pref_scam_hybrid_mosaic_kernel_rev";
@@ -816,7 +816,7 @@ public final class SettingsMigration {
         if (key.startsWith(LEGACY_HYBRID) || key.equals("pref_scamhdr_hybrid")) return false;
         if (key.startsWith("pref_scamhdr_")) {
             String k = key.substring("pref_scamhdr_".length());
-            // The soft tone is gone for the hybrid; so are its sharpening knobs (P118: only the ARK sharpening stays).
+            // The soft tone is gone for the hybrid; so are its sharpening knobs (P118: only the WHY sharpening stays).
             if (k.equals("soft_tone")) return false;
             if (SHARED_SCAM_KEYS.contains(k)) return true;
             for (String prefix : SHARED_SCAM_PREFIXES) if (k.startsWith(prefix)) return true;

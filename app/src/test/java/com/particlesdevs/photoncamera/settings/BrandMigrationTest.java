@@ -25,7 +25,8 @@ public class BrandMigrationTest {
             for (String line; (line = r.readLine()) != null; ) {
                 if (line.isEmpty()) continue;
                 String[] p = line.split("\t");
-                assertEquals(p[0], p[1], BrandMigration.word(p[0]));
+                // P319: the frozen P55 table, then the tone's word renamed to «why» (WhyRenameMigrationTest)
+                assertEquals(p[0], WhyRenameMigrationTest.whyStage(p[1]), BrandMigration.word(p[0]));
                 n++;
             }
         }

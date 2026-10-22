@@ -4,36 +4,36 @@ import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-/** Host arithmetic of the SCAM Hybrid noise reduction against research/hybrid5/denoise_port.md §2.4 (ArkCam 2.85). */
+/** Host arithmetic of the SCAM Hybrid noise reduction against research/hybrid5/denoise_port.md §2.4 (WhyCam 2.85). */
 public class ScamDenoiseTablesTest {
-    private static ScamDenoiseTables.Config arkcam() {
+    private static ScamDenoiseTables.Config whycam() {
         ScamDenoiseTables.Config c = new ScamDenoiseTables.Config();
         c.revertMax = 9f; c.coarseStock = 0f; c.chromaFloor = 0f;   // exact emulation, no safeguards
-        c.lumaStrength[0] = new float[]{1f, 3f, 0f, 0f, 0f};        // ArkCam's SabreLow (P135: GCam stock by default)
+        c.lumaStrength[0] = new float[]{1f, 3f, 0f, 0f, 0f};        // WhyCam's SabreLow (P135: GCam stock by default)
         c.lumaRevert[0] = new float[]{9f, 9f, 0.08f, 0.12f, 0f};
         return c;
     }
 
-    @Test public void interpolationMatchesTheArkCamTables() {
+    @Test public void interpolationMatchesTheWhyCamTables() {
         ScamDenoiseTables.Pick[] p = new ScamDenoiseTables.Pick[1];
-        float[][] l = ScamDenoiseTables.luma(arkcam(), 7.80806f, p);   // "Finish input frame SNR" of the vivo ArkCam dump
+        float[][] l = ScamDenoiseTables.luma(whycam(), 7.80806f, p);   // "Finish input frame SNR" of the vivo WhyCam dump
         assertEquals(0, p[0].lo); assertEquals(1, p[0].hi);
         assertEquals(1.56f, l[0][0], 0.01f); assertEquals(4.37f, l[0][1], 0.015f); assertEquals(0.82f, l[0][2], 0.01f);
         assertEquals(1.88f, l[1][0], 0.01f); assertEquals(4.34f, l[1][1], 0.015f); assertEquals(0.74f, l[1][2], 0.01f);
         assertEquals(0.11f, l[2][0], 0.01f); assertEquals(0.43f, l[2][1], 0.01f); assertEquals(0.67f, l[2][2], 0.01f);
-        float[][] c = ScamDenoiseTables.chroma(arkcam(), 7.80806f, null);
+        float[][] c = ScamDenoiseTables.chroma(whycam(), 7.80806f, null);
         float[] expected = {2.75f, 2.75f, 2.75f, 1.0f, 1.72f};
         for (int b = 0; b < 5; b++) assertEquals(expected[b], c[b][0], 0.02f);
         // clamped outside the tiers, exact at a key
-        assertEquals(9f, ScamDenoiseTables.luma(arkcam(), 1f, null)[0][1], 0f);
-        assertEquals(0.95f, ScamDenoiseTables.luma(arkcam(), 500f, null)[0][1], 1e-6f);
-        assertEquals(2f, ScamDenoiseTables.luma(arkcam(), 10f, null)[0][0], 1e-6f);
-        assertEquals(0.5f, ScamDenoiseTables.chroma(arkcam(), 25f, null)[0][0], 1e-6f);
+        assertEquals(9f, ScamDenoiseTables.luma(whycam(), 1f, null)[0][1], 0f);
+        assertEquals(0.95f, ScamDenoiseTables.luma(whycam(), 500f, null)[0][1], 1e-6f);
+        assertEquals(2f, ScamDenoiseTables.luma(whycam(), 10f, null)[0][0], 1e-6f);
+        assertEquals(0.5f, ScamDenoiseTables.chroma(whycam(), 25f, null)[0][0], 1e-6f);
     }
 
     /**
      * P135: a night shot (SCA_20261015_024212: SNR 3.04) keeps its grain but not an abnormal amount: every level denoised with
-     * GCam's stock SabreLow strengths, half the fine grain put back, nothing stronger than it was - instead of ArkCam's
+     * GCam's stock SabreLow strengths, half the fine grain put back, nothing stronger than it was - instead of WhyCam's
      * {1, 3, 0, 0, 0} with revert 9 (the fine grain amplified, the coarse levels untouched).
      */
     @Test public void nightTierNeverAmplifiesTheNoise() {
@@ -49,17 +49,17 @@ public class ScamDenoiseTablesTest {
         assertEquals(0.6f, night[0][1], 1e-6f);
         assertEquals(0.5f, night[1][1], 1e-6f);
         assertTrue("the grain kept: a share of it put back", night[0][1] > 0.3f);
-        // between the night and the GID14 tier (SNR 7.8, ArkCam's dump): revert well under 1 on the fine levels
+        // between the night and the GID14 tier (SNR 7.8, WhyCam's dump): revert well under 1 on the fine levels
         float[][] mid = ScamDenoiseTables.luma(c, 7.80806f, null);
         assertTrue(mid[0][1] <= 0.75f && mid[1][1] <= 0.7f);
         assertTrue("coarse levels denoised", mid[2][0] > 0.5f && mid[3][0] > 0.3f);
     }
 
     @Test public void safeguardsAndMultipliers() {
-        ScamDenoiseTables.Config c = new ScamDenoiseTables.Config();       // defaults: ArkCam above SNR 5, revert limit 1
+        ScamDenoiseTables.Config c = new ScamDenoiseTables.Config();       // defaults: WhyCam above SNR 5, revert limit 1
         assertEquals(1f, c.revertMax, 0f); assertEquals(0f, c.coarseStock, 0f); assertEquals(0f, c.chromaFloor, 0f);
-        c = arkcam();
-        c.revertMax = 2f; c.coarseStock = 0.5f; c.chromaFloor = 2.75f;   // the optional safeguards on ArkCam's tables
+        c = whycam();
+        c.revertMax = 2f; c.coarseStock = 0.5f; c.chromaFloor = 2.75f;   // the optional safeguards on WhyCam's tables
         float[][] l = ScamDenoiseTables.luma(c, 3f, null);
         assertEquals(2f, l[0][1], 0f);
         assertEquals(2f, l[1][1], 0f);

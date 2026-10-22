@@ -63,7 +63,7 @@ public class DeviceDefaultsTest {
             assertFalse(key, key.startsWith("pref_scamhdr_") || key.startsWith("pref_scamold_"));
     }
 
-    /** The spoof is shared by every lens (ModuleProfiles.isGlobal): main settings only; the ARK saturation reaches the profiles. */
+    /** The spoof is shared by every lens (ModuleProfiles.isGlobal): main settings only; the WHY saturation reaches the profiles. */
     @Test public void sharedEntriesStayOutOfModuleProfiles() {
         ShadowBuild.setManufacturer("OPPO");
         ShadowBuild.setModel("PHY110");
@@ -77,12 +77,12 @@ public class DeviceDefaultsTest {
         for (SharedPreferences p : new SharedPreferences[]{module, baseline}) {
             assertFalse(p.contains("pref_camera_package_spoof_enabled"));
             assertFalse(p.contains("pref_oplus_spoof_package_key"));
-            assertEquals("1.1", p.getString("pref_scam_hybrid_ark_ccm_sat", ""));
+            assertEquals("1.1", p.getString("pref_scam_hybrid_why_ccm_sat", ""));
         }
         meta.edit().clear().commit();
     }
 
-    /** Owner 2026-10-08: the X7 Ultra lists 5 cameras with the aweme package on all three spoof methods; ARK saturation 1.1. */
+    /** Owner 2026-10-08: the X7 Ultra lists 5 cameras with the aweme package on all three spoof methods; WHY saturation 1.1. */
     @Test public void findX7UltraSpoofsAwemeAndRaisesTheOppoMatrixSaturation() {
         ShadowBuild.setManufacturer("OPPO");
         ShadowBuild.setModel("PHY110");
@@ -91,7 +91,7 @@ public class DeviceDefaultsTest {
         assertTrue(main.getBoolean("pref_camera_package_spoof_enabled", false));
         for (String key : new String[]{"pref_oplus_spoof_package_key", "pref_generic_spoof_package_key", "pref_binder_spoof_package_key"})
             assertEquals(key, "com.ss.android.ugc.aweme", main.getString(key, ""));
-        assertEquals("1.1", main.getString("pref_scam_hybrid_ark_ccm_sat", ""));
+        assertEquals("1.1", main.getString("pref_scam_hybrid_why_ccm_sat", ""));
         assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
     }
 
@@ -101,10 +101,10 @@ public class DeviceDefaultsTest {
         SharedPreferences main = prefs("defaults_x7u_update");
         // v2 applied, the user then changed a v1 setting and stored the old saturation default
         main.edit().putInt("device_defaults_version", 2).putString("pref_scamhdr_zsl_frames", "12")
-                .putString("pref_scam_hybrid_ark_ccm_sat", "0.6").commit();
+                .putString("pref_scam_hybrid_why_ccm_sat", "0.6").commit();
         DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
         assertEquals("12", main.getString("pref_scamhdr_zsl_frames", ""));
-        assertEquals("1.1", main.getString("pref_scam_hybrid_ark_ccm_sat", ""));
+        assertEquals("1.1", main.getString("pref_scam_hybrid_why_ccm_sat", ""));
         assertTrue(main.getBoolean("pref_camera_package_spoof_enabled", false));
         // applied once: switching the spoof off afterwards stays off
         main.edit().putBoolean("pref_camera_package_spoof_enabled", false).commit();
@@ -118,10 +118,10 @@ public class DeviceDefaultsTest {
         SharedPreferences main = prefs("defaults_x8u_v3");
         DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
         assertFalse(main.contains("pref_camera_package_spoof_enabled"));
-        assertFalse(main.contains("pref_scam_hybrid_ark_ccm_sat"));
+        assertFalse(main.contains("pref_scam_hybrid_why_ccm_sat"));
     }
 
-    /** Owner 2026-10-10: Redmi Note 11 Pro (viva) 12 N frames, 2 Shasta frames, ARK RL 3 amount 1.5 (v5); also in module profiles. */
+    /** Owner 2026-10-10: Redmi Note 11 Pro (viva) 12 N frames, 2 Shasta frames, WHY RL 3 amount 1.5 (v5); also in module profiles. */
     @Test public void redmiNote11ProMergesFewerFrames() {
         ShadowBuild.setManufacturer("Xiaomi");
         ShadowBuild.setModel("2201116TG");
@@ -137,7 +137,7 @@ public class DeviceDefaultsTest {
         for (SharedPreferences p : new SharedPreferences[]{main, module}) {
             assertEquals("12", p.getString("pref_scam_hybrid_zsl_frames", ""));
             assertEquals("2", p.getString("pref_scam_hybrid_shasta_frames", ""));
-            assertEquals("1.5", p.getString("pref_scam_hybrid_ark_sharp_rl3_amount", ""));
+            assertEquals("1.5", p.getString("pref_scam_hybrid_why_sharp_rl3_amount", ""));
         }
         assertFalse(main.contains("pref_camera_package_spoof_enabled"));
         assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
@@ -155,9 +155,9 @@ public class DeviceDefaultsTest {
         ShadowBuild.setDevice("viva");
         SharedPreferences main = prefs("defaults_note11pro_v4");
         main.edit().putInt("device_defaults_version", 4).putString("pref_scam_hybrid_zsl_frames", "20")
-                .putString("pref_scam_hybrid_ark_sharp_rl3_amount", "1.2").commit();
+                .putString("pref_scam_hybrid_why_sharp_rl3_amount", "1.2").commit();
         DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
-        assertEquals("1.5", main.getString("pref_scam_hybrid_ark_sharp_rl3_amount", ""));
+        assertEquals("1.5", main.getString("pref_scam_hybrid_why_sharp_rl3_amount", ""));
         assertEquals("20", main.getString("pref_scam_hybrid_zsl_frames", ""));
         assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
     }
@@ -173,14 +173,14 @@ public class DeviceDefaultsTest {
         assertEquals(1f, DeviceDefaults.chromaDenoiseFactor(7746), 0f);
     }
 
-    /** Owner 2026-10-10: Pixel 7 (panther) ARK RL 3 amount 1.5, nothing else. */
+    /** Owner 2026-10-10: Pixel 7 (panther) WHY RL 3 amount 1.5, nothing else. */
     @Test public void pixel7TakesRl3At15() {
         ShadowBuild.setManufacturer("Google");
         ShadowBuild.setModel("Pixel 7");
         ShadowBuild.setDevice("panther");
         SharedPreferences main = prefs("defaults_pixel7");
         DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
-        assertEquals("1.5", main.getString("pref_scam_hybrid_ark_sharp_rl3_amount", ""));
+        assertEquals("1.5", main.getString("pref_scam_hybrid_why_sharp_rl3_amount", ""));
         assertFalse(main.contains("pref_scam_hybrid_zsl_frames"));
         assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
     }

@@ -144,7 +144,7 @@ public final class ScamLab {
             final android.graphics.Point out = ScamHybridBurst.lastOutputSize, fin = ScamHybridBurst.lastFinalSize;
             if (out != null) meta.put("outWidth", out.x).put("outHeight", out.y);
             if (fin != null) meta.put("finalWidth", fin.x).put("finalHeight", fin.y);
-            meta.put("normals", ScamHybridBurst.lastNormals); // ArkStats reads it beside the frame map
+            meta.put("normals", ScamHybridBurst.lastNormals); // WhyStats reads it beside the frame map
             meta.put("tuning", shotTuning);
             meta.put("tuningBurst", shotOverride);
             meta.put("params", ScamLabParams.toJson(p));

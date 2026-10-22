@@ -77,7 +77,7 @@
         <item>Оптика / линза (Pillbox)</item>
         <item>Диск Эйри (волновая дифракция)</item>
     </string-array>
-    <string name="live_viewfinder_raw">Живой видоискатель</string>
+    <string name="live_viewfinder_raw">RAW-видоискатель</string>
     <string name="live_viewfinder_raw_summary">Видоискатель сам проявляет RAW. Выкл. — обычное превью камеры, кроме модулей без потока ISP (ISZ, FULLRES, режим сенсора при «Поток ISP» Авто, «Поток ISP» Выкл. или «Фиктивное откл.») и модулей с мозаикой Quad / Tetra: там видоискатель всегда из RAW. На готовое фото не влияет.</string>
     <string name="motion_mode_on">Режим «Движение»: вкл</string>
     <string name="motion_mode_off">Режим «Движение»: выкл</string>

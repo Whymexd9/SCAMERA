@@ -90,6 +90,17 @@ public final class LiveRawFrame {
      * frame; a packed RAW10 / RAW12 frame that is slow to unpack keeps the camera thread free as before). P191: twice the last
      * binning held a 45 ms bin at ~11 fps.
      */
+    /**
+     * P319 (user report: «Лайв-вью работает гораздо тормознее»): a Quad / Tetra frame's cell means (P314: a few ms) are taken for
+     * every frame - P188's pacing, made for the 50 / 200 MP bins, halved a 2x ISZ viewfinder to 15 fps whenever one bin took
+     * longer than ~27 ms (a merge running, a hot phone). Paced only when the bin itself is near a frame's time.
+     */
+    static final long CELL_MEAN_PACE_NS = 30_000_000L;
+
+    static long paceNs(boolean cellMeans, long pixels, long lastBin) {
+        return cellMeans && lastBin < CELL_MEAN_PACE_NS ? 0 : binIntervalNs(pixels, lastBin);
+    }
+
     static long binIntervalNs(long pixels, long lastBin) {
         final long bin = Math.max(0, lastBin);
         return pixels > SPARSE_BIN_PIXELS ? QUAD_BIN_INTERVAL_NS : Math.min(QUAD_BIN_INTERVAL_NS, bin + bin / 4);
@@ -393,7 +404,7 @@ public final class LiveRawFrame {
         final boolean cellMeans = !means && binsCellMeans(w, h, bin, cap);
         if (!means && (cellMeans || (cap != -1 && (long) w * h >= QUAD_BIN_PIXELS && w % (cell * 2) == 0 && h % (cell * 2) == 0))) {
             final long now = System.nanoTime();
-            if (now - quadAtNs < binIntervalNs((long) w * h, lastBinNs)) return;
+            if (now - quadAtNs < paceNs(cellMeans, (long) w * h, lastBinNs)) return;
             quadAtNs = now;
             ByteBuffer binned = binMosaic(plane, w, h, stride, format, bin);
             if (binned == null) return;
@@ -494,7 +505,7 @@ public final class LiveRawFrame {
             target.flip();
         }
         // P315 (OPPO Find X8 Ultra, sensor mode 8: the RAW without its 64 DN black pedestal, the viewfinder green and half black):
-        // the frame's own floor when its samples prove the pedestal lost (the GL develop, LiveArkMeter and LiveRawMeter read it)
+        // the frame's own floor when its samples prove the pedestal lost (the GL develop, LiveWhyMeter and LiveRawMeter read it)
         if (black != null && blackFromData && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vf_black_floor", true))
             black = PEDESTAL.black(generation, target, w, h, w * 2, block, black);
         synchronized (LOCK) {

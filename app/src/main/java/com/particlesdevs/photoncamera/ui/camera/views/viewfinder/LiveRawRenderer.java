@@ -7,7 +7,7 @@ import com.particlesdevs.photoncamera.processing.LiveRawFrame;
 import com.particlesdevs.photoncamera.processing.LiveRawMeter;
 import com.particlesdevs.photoncamera.processing.color.ColourLook;
 import com.particlesdevs.photoncamera.processing.color.FilmLut;
-import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ArkTone;
+import com.particlesdevs.photoncamera.processing.opengl.postpipeline.WhyTone;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
 import java.nio.ByteBuffer;
@@ -26,7 +26,7 @@ final class LiveRawRenderer {
     }
     // P134: the photo's «Цвет» look (ColourLook: the white-balance matrix, monochrome, skin, vibrance by brightness, the
     // mixer, the grading) and the film LUT in the RAW viewfinder, read from the settings twice a second; the LUT file is
-    // parsed off the GL thread. The tone stays the viewfinder's own (ArkCore), so the look shows on its rendering.
+    // parsed off the GL thread. The tone stays the viewfinder's own (WhyCore), so the look shows on its rendering.
     private static final java.util.concurrent.ExecutorService LUT_LOADER=java.util.concurrent.Executors.newSingleThreadExecutor(r->{
         Thread t=new Thread(r,"vf-film-lut");t.setDaemon(true);return t;});
     // P297 (owner, 2026-10-20: no LUT / film on the ISZ viewfinder): the ISZ modules show this RAW viewfinder (no ISP stream,
@@ -49,7 +49,7 @@ final class LiveRawRenderer {
         if(!lookDue(now,lookAt))return;
         lookAt=now;
         try{
-            ColourLook c=ArkTone.colourLook();
+            ColourLook c=WhyTone.colourLook();
             lookWhite=c.whiteMatrix(0f);
             lookOn=!c.shaderNeutral();
             lookSkin=c.skinUniform();lookVib=c.vibUniform();lookMix=c.mixUniform();lookMixOn=c.mixerOn();lookMono=c.monoUniform();
@@ -132,18 +132,18 @@ final class LiveRawRenderer {
     boolean draw(FloatBuffer vertices,FloatBuffer coords,float[] rotation,boolean mirror,int peaking) {
         return draw(vertices,coords,rotation,mirror,peaking,false);
     }
-    /** P301: the frame's linear values (LiveArkTone's input) instead of the viewfinder's own tone; null-safe as draw. */
+    /** P301: the frame's linear values (LiveWhyTone's input) instead of the viewfinder's own tone; null-safe as draw. */
     boolean drawLinear(FloatBuffer vertices,FloatBuffer coords,float[] rotation,boolean mirror) {
         return draw(vertices,coords,rotation,mirror,0,true);
     }
     /**
-     * P301: the frame drawn last ({@link #drawLinear}): its ISO and noise for the ARK tone's AE; P314 with its visible crop and the
-     * colour transform it was drawn with (LiveArkMeter meters it on the CPU). Null before one.
+     * P301: the frame drawn last ({@link #drawLinear}): its ISO and noise for the WHY tone's AE; P314 with its visible crop and the
+     * colour transform it was drawn with (LiveWhyMeter meters it on the CPU). Null before one.
      */
-    com.particlesdevs.photoncamera.processing.LiveArkMeter.View lastView() {
+    com.particlesdevs.photoncamera.processing.LiveWhyMeter.View lastView() {
         return lastView;
     }
-    private com.particlesdevs.photoncamera.processing.LiveArkMeter.View lastView;
+    private com.particlesdevs.photoncamera.processing.LiveWhyMeter.View lastView;
     /**
      * P314: the frame's visible crop {left, top, width, height} in frame pixels (whole CFA periods, at least one), fitted to the
      * viewport's aspect without stretching. {@code quarterTurn}: the rotation turns the frame by 90 degrees (frame x along the
@@ -177,7 +177,7 @@ final class LiveRawRenderer {
     /** P314: steps of the tone size (a share of the viewport): a zoom does not make the targets anew on every frame. */
     static final int TONE_STEPS=16;
     /**
-     * P314: the size the ARK tone is drawn at - the visible crop's colour grid (one colour per 2 x 2 block of macro pixels:
+     * P314: the size the WHY tone is drawn at - the visible crop's colour grid (one colour per 2 x 2 block of macro pixels:
      * crop / (2 block)) in screen orientation, never above the viewport, its aspect kept, the scale rounded up to 1 / TONE_STEPS:
      * a 2x ISZ Quad frame has 1024 x 768 colours (1x Bayer 2048 x 1536), drawn at the 1440 x 1920 viewport each was computed 3.6
      * times (a Tetra one 14 times). The filter / peaking pass scales it to the screen (bilinear).
@@ -240,7 +240,7 @@ final class LiveRawRenderer {
             number("u_auto_exposure",meter.exposure);number("u_contrast_boost",meter.contrast);
             GLES20.glUniform4fv(loc("u_exp_mults"),1,meter.multipliers,0);
             integer("mirror",mirror?1:0);integer("peaking_enabled",peaking);integer("u_linear_out",linear?1:0);
-            if(linear)lastView=new com.particlesdevs.photoncamera.processing.LiveArkMeter.View(f,crop[0],crop[1],crop[2],crop[3],transform);
+            if(linear)lastView=new com.particlesdevs.photoncamera.processing.LiveWhyMeter.View(f,crop[0],crop[1],crop[2],crop[3],transform);
             GLES20.glUniform3f(loc("peaking_color"),1,.8f,0);
             GLES20.glUniformMatrix4fv(loc("texRotate"),1,false,rotation,0);
             vertices.position(0);coords.position(0);
@@ -278,7 +278,7 @@ final class LiveRawRenderer {
                 ScameraApp.getAssetLoader().getString("shaders/preview/rawdevelop_fs.glsl"));
         return key;
     }
-    /** P312: whether the program is linked (MainRenderer may then draw the plain RAW look while the ARK programs are built). */
+    /** P312: whether the program is linked (MainRenderer may then draw the plain RAW look while the WHY programs are built). */
     boolean ready(){return program!=0;}
     /**
      * P312: links the program before the first RAW frame - from its kept driver binary at once; compiled here when it is missing,
@@ -312,7 +312,7 @@ final class LiveRawRenderer {
         shadingTex=texture(GLES20.GL_TEXTURE3,GLES20.GL_TEXTURE_2D,GLES20.GL_LINEAR);
         lutTex=texture(GLES20.GL_TEXTURE4,GLES30.GL_TEXTURE_3D,GLES20.GL_LINEAR);
         GLES30.glTexImage3D(GLES30.GL_TEXTURE_3D,0,GLES30.GL_RGB8,1,1,1,0,GLES20.GL_RGB,GLES20.GL_UNSIGNED_BYTE,ByteBuffer.allocateDirect(4));
-        // The look of libvf_demosaic (ArkCore) at its library defaults: 4-layer exposure fusion metered by LiveRawMeter, ACES,
+        // The look of libvf_demosaic (WhyCore) at its library defaults: 4-layer exposure fusion metered by LiveRawMeter, ACES,
         // OKLab macro contrast and vibrance, gamma 2.2 with the film toe. Optional LUT/LDC are disabled until supplied with a profile.
         integer("u_ef_enabled",1);integer("u_tonemap_op",0);integer("u_lut_enabled",0);integer("u_ldc_enabled",0);
         number("u_weight_center",.5f);number("u_blend_smoothness",.15f);number("u_macro_contrast",1.1f);

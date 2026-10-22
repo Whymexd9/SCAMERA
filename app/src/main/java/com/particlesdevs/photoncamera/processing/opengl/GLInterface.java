@@ -76,7 +76,7 @@ public class GLInterface {
             int comment = val.indexOf("//");
             if (comment >= 0) val = val.substring(0, comment);
             if(val.contains("layout")){
-                // P317: a block is named by the word before its '{'. A one-line block (ark/aestats, ultrahdr/gainmax:
+                // P317: a block is named by the word before its '{'. A one-line block (why/aestats, ultrahdr/gainmax:
                 // "buffer aeHistY { uint histY[]; };") was keyed "}", so setBufferCompute bound nothing and the shader saw
                 // whatever sat at its binding - the GLBuffer's own name by luck on Adreno, nothing on Mali (histograms 0 / 0).
                 final int brace = val.indexOf('{');

@@ -98,7 +98,7 @@ public class Parameters {
     /**
      * P214e: colour block of the image the merge returned (ScamHybridBurst.mergedBlock): 2 Quad / 4 Tetra when the worker
      * merged a mosaic stream on its mosaic (the ISZ modules, FULLRES native mosaic), 1 otherwise (a Bayer stream, a mosaic
-     * binned into plain Bayer, a block nobody measured, every shot that is not a hybrid merge). Above 1 ArkLumaSharpen
+     * binned into plain Bayer, a block nobody measured, every shot that is not a hybrid merge). Above 1 WhyLumaSharpen
      * sharpens the 3x3-smoothed luma (R1).
      */
     public int mosaicBlock = 1;

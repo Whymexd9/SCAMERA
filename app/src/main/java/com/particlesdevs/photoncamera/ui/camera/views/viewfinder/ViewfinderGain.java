@@ -1,7 +1,7 @@
 package com.particlesdevs.photoncamera.ui.camera.views.viewfinder;
 
 /**
- * P90 Series frames on the viewfinder (owner, 2026-10-11: «видоискатель зависает во время съёмки»). As in ArkCam the
+ * P90 Series frames on the viewfinder (owner, 2026-10-11: «видоискатель зависает во время съёмки»). As in WhyCam the
  * post-shutter series also targets the viewfinder surface, so the viewfinder keeps moving through the series instead of
  * holding its last frame for 0.7-0.8 s (and the vivo HAL no longer switches between preview+RAW and RAW-only requests). The
  * series frames are exposed from x0.06 (Bento) to x2 (Shasta) of the viewfinder's exposure: the renderer scales each one back

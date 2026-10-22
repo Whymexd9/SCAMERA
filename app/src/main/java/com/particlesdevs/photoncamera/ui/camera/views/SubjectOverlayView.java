@@ -14,7 +14,7 @@ import android.view.View;
 import androidx.annotation.Nullable;
 
 /**
- * Face boxes and the tracking box over the viewfinder (P42), in ArkCamera v50's style (FaceIndicatorView): rounded
+ * Face boxes and the tracking box over the viewfinder (P42), in WhyCamera v50's style (FaceIndicatorView): rounded
  * corner brackets, no text, boxes glide to their new place and fade in / out. Colours follow the app theme: the
  * primary face and the tracked subject in the accent colour, other faces in translucent white.
  * <p>

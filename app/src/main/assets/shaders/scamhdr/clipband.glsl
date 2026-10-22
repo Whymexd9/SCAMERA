@@ -4,7 +4,7 @@ precision highp sampler2D;
 // merge gives a colour either from the clipped mean (flags bits 0-2: every nearby sample of that colour clipped) or from
 // the few unclipped samples left (bit 3: low, they sit on the darker side). Where a slanted edge crosses the Bayer rows
 // the two alternate every few pixels: an orange/blue dashed line along bright window frames and sills, already in a
-// single RAW frame. ArkCam has none (the Bento frame covers the band). On a pixel whose colour came out of the clip
+// single RAW frame. WhyCam has none (the Bento frame covers the band). On a pixel whose colour came out of the clip
 // handling (own flag bits 0-3, a colour that is unreliable anyway) or next to one, the colour becomes that of a mix of
 // the window's dark side (its darkest pixels, at their level) and the window's mean colour (the light) for the rest of
 // the pixel's own luminance: on the bright side that is the window's mean colour (the alternation averages out), on

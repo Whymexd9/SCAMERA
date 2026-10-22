@@ -943,7 +943,7 @@ public final class ScamHybridBurst implements ScamTransport {
             java.util.regex.Pattern.compile("HYBRID MOSAIC NATIVE: block ([24])[ ,]|HYBRID MOSAIC: block ([24]), \\d+ plain-Bayer sub-frames");
 
     /**
-     * P214e: colour block of the image a merge returned (Parameters.mosaicBlock; above 1 ArkLumaSharpen sharpens the
+     * P214e: colour block of the image a merge returned (Parameters.mosaicBlock; above 1 WhyLumaSharpen sharpens the
      * 3x3-smoothed luma, R1). 1 when the worker says the burst was binned into plain Bayer («HYBRID MOSAIC BINNED»); else the block of the worker's mosaic merge head (native or the sub-frame split), which also
      * covers a block only the worker measured (the app sent 0); without a report (the CPU single-frame tier, which averages
      * each colour over its blocks) or without such a line the block the app sent (2 or 4), otherwise 1.

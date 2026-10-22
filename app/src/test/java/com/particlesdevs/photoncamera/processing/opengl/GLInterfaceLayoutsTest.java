@@ -16,7 +16,7 @@ import static org.junit.Assert.*;
 
 /**
  * P317: GLProg binds a compute shader's buffers and images by the bindings GLInterface.getLayouts reads from its source. A
- * block declared on one line ("layout(std430, binding = 2) buffer aeHistY { uint histY[]; };", ark/aestats and
+ * block declared on one line ("layout(std430, binding = 2) buffer aeHistY { uint histY[]; };", why/aestats and
  * ultrahdr/gainmax) was keyed "}", so setBufferCompute bound nothing: the GPU AE histograms of every Mali shot came back
  * 0 / 0 (vivo X300 Pro log 2026-10-21) and only the GLBuffer's bind at index = its GL name hid it on Adreno.
  */
@@ -78,7 +78,7 @@ public class GLInterfaceLayoutsTest {
     }
 
     @Test public void theOneLineBlocksOfTheGpuAeAndGainMapResolve() throws IOException {
-        Map<String, GLComputeLayout> ae = GLInterface.getLayouts(withLayout(read(src(SHADERS + "/ark/aestats.glsl"))));
+        Map<String, GLComputeLayout> ae = GLInterface.getLayouts(withLayout(read(src(SHADERS + "/why/aestats.glsl"))));
         String[] names = {"aeMax", "aeHistY", "aeHistM", "aeSums", "aeTail"};
         for (int i = 0; i < names.length; i++) {
             assertNotNull(names[i], ae.get(names[i]));

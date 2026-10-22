@@ -100,10 +100,11 @@ public final class TopBar {
         tb.formatBadge.setTextColor(ShadeStyle.TEXT);
         tb.formatBadge.setContentDescription(c.getString(R.string.topbar_format, format.longLabel()));
         int size = PhotoSize.current();
-        tb.sizeBadge.setText(PhotoSize.label(size));
+        final String sizeText = PhotoSize.badge(); // P319: the photo this lens really writes
+        tb.sizeBadge.setText(sizeText);
         tb.sizeBadge.setTextColor(size != PhotoSize.NORMAL ? accent : ShadeStyle.TEXT);
-        tb.sizeBadge.setContentDescription(Lang.t(c, "Размер фото: " + PhotoSize.label(size) + ". Нажатие — следующий размер, удержание — все размеры",
-                "Photo size: " + PhotoSize.label(size) + ". Tap: next size, hold: all sizes"));
+        tb.sizeBadge.setContentDescription(Lang.t(c, "Размер фото: " + sizeText + ". Нажатие — следующий размер, удержание — все размеры",
+                "Photo size: " + sizeText + ". Tap: next size, hold: all sizes"));
         boolean dcg = dcgHere, dcgOn = dcg && Dcg14Mode.mode() != Dcg14Mode.OFF;
         tb.dcgBadge.setVisibility(dcg ? View.VISIBLE : View.GONE);
         tb.dcgDivider.setVisibility(dcg ? View.VISIBLE : View.GONE);

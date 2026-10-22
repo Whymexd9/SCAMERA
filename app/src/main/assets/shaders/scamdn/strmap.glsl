@@ -9,9 +9,9 @@ precision highp usampler2D;
 // uniform map). Same clamp as the NLM route (bento_denoise_max limits the noise boost of Bento regions merged from one
 // gained frame).
 // P214d: times the lens-shading term min(g^2, cap), g = the luminance gain of the shading map at this texel (the mean
-// of r, (g_even + g_odd) / 2, b: the factor ark/low, ark/combine and ark/sharp_in multiply the image by, AFTER this
+// of r, (g_even + g_odd) / 2, b: the factor why/low, why/combine and why/sharp_in multiply the image by, AFTER this
 // denoise; scamrgb applies the colour part only, normalised to mean 1) over the map's smallest gain (ScamDenoise.lscTerm,
-// a 1/512 margin above it for the fp16 storage and the filtering): the noise the ARK tone lifts in the corners (corner
+// a 1/512 margin above it for the fp16 storage and the filtering): the noise the WHY tone lifts in the corners (corner
 // gains 2.0-3.8 in the phone logs) is filtered harder, after GCam's (1, g, g^2) strength map. One-sided as well: where
 // g <= 1 (the optical centre) the factor is 1 exactly. lscU.x = 0 (unset, scam_dev "denoise_lsc 0", no real map,
 // the old run of post_ab): no term, the map of before. noEffU = 1: no effective-frame map (EffMap is a 1x1

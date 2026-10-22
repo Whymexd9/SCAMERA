@@ -183,7 +183,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
     /** P189: «Настройки по модулям» (the root row and the search; P218: no longer from «Камеры и сенсоры»). */
     void openModuleProfiles(String name) {
-        getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleProfilesFragment())
+        // P319: «Настройки по модулям» is a part of «Камеры и модули» now
+        getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleSettingsFragment())
                 .addToBackStack(name).commit();
     }
 
@@ -273,7 +274,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         private ActivityResultLauncher<String[]> cubeLutImportLauncher;
         /** P144: the switches of «Кривая AgX и ACES» of which one at most is on. */
         static final java.util.List<String> TONE_OPERATORS = java.util.Arrays.asList(
-                "pref_scam_hybrid_ark_aces_on", "pref_scam_hybrid_ark_uchi_on", "pref_scam_hybrid_ark_curve_on");
+                "pref_scam_hybrid_why_aces_on", "pref_scam_hybrid_why_uchi_on", "pref_scam_hybrid_why_curve_on");
         /** P143: this screen was opened by the camera's config menu for the picker only. */
         private boolean importFromCamera;
         /** P143: Download/SCAMERA opened to the app once (ScameraFolder.grantedTree): every file there is listed. */
@@ -314,6 +315,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             if (module != null) moduleHidden = ModulePageFilter.apply(getPreferenceScreen(), module, rootKey == null);
             setupPhotoFormat();
+            setupSounds();
+            // P319: «Настройки по модулям» lives on «Камеры и модули»; its row stays for search and the links, not on the page
+            Preference hub = findPreference(ModulePageFilter.HUB);
+            if (hub != null && rootKey == null) hub.setVisible(false);
             setupCaptureReport();
             SettingsStyle.apply(getPreferenceScreen());
         }
@@ -343,6 +348,36 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         com.particlesdevs.photoncamera.settings.FormatChoice.valueOf(value.toString()));
                 return true;
             });
+        }
+
+        /**
+         * P319 (user report 2026-10-22: «Многие меню можно объединить, например "звук затвора" и "звук таймера"»): one «Звуки»
+         * row - shutter and timer, shutter only, timer only, none - over the two switches (their keys, defaults, the shade's
+         * sound tile and backups unchanged), which this page hides. Not persistent: it reads and writes the two switches.
+         */
+        private void setupSounds() {
+            ListPreference sounds = findPreference("pref_camera_sounds_all");
+            androidx.preference.TwoStatePreference shutter = findPreference(getString(R.string.pref_camera_sounds_key));
+            androidx.preference.TwoStatePreference timer = findPreference(getString(R.string.pref_timer_sound_key));
+            if (sounds == null) return;
+            if (shutter == null || timer == null) {
+                sounds.setVisible(false);
+                return;
+            }
+            shutter.setVisible(false);
+            timer.setVisible(false);
+            sounds.setPersistent(false);
+            sounds.setValue(soundsValue(shutter.isChecked(), timer.isChecked()));
+            sounds.setOnPreferenceChangeListener((preference, value) -> {
+                final String v = String.valueOf(value);
+                shutter.setChecked("all".equals(v) || "shutter".equals(v));
+                timer.setChecked("all".equals(v) || "timer".equals(v));
+                return true;
+            });
+        }
+
+        static String soundsValue(boolean shutter, boolean timer) {
+            return shutter ? timer ? "all" : "shutter" : timer ? "timer" : "none";
         }
 
         // ───── P6b: the card look of «Камеры и сенсоры» on every page ─────
@@ -406,6 +441,13 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     super.onBindViewHolder(holder, position);
                     Preference p = getItem(position);
                     if (p != null) SettingsStyle.bind(holder, p);
+                    // P319: a long press on a row opens its help (what it does, how to set it, its value)
+                    if (SettingHelp.helps(p)) {
+                        holder.itemView.setOnLongClickListener(v -> {
+                            SettingHelp.show(v.getContext(), p);
+                            return true;
+                        });
+                    }
                 }
             };
         }
@@ -476,7 +518,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
          * P156: the module whose profile the main settings hold (the camera's module unless the chip chose another); P181: a
          * module's FULLRES profile («back2@full200») while FULLRES is on for it.
          */
-        static String editedModule() {
+        public static String editedModule() {
             String slot = null;
             try { slot = PreferenceKeys.profiles().editing(); } catch (RuntimeException ignored) { }
             return slot == null || slot.isEmpty() ? com.particlesdevs.photoncamera.settings.FullResProfiles.profileFor(com.particlesdevs.photoncamera.settings.ModuleRegistry.active()) : slot;
@@ -1027,12 +1069,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             }
             if (curve == null) {
                 android.widget.Toast.makeText(mContext, com.particlesdevs.photoncamera.util.Lang.t(mContext,
-                        "В файле нет кривой: нужны точки «x:y» от 0 до 1 или файл кривой ArkCam (.json)",
-                        "No curve in the file: it needs «x:y» points from 0 to 1 or an ArkCam curve file (.json)"),
+                        "В файле нет кривой: нужны точки «x:y» от 0 до 1 или файл кривой .json",
+                        "No curve in the file: it needs «x:y» points from 0 to 1 or a .json curve file"),
                         android.widget.Toast.LENGTH_LONG).show();
                 return;
             }
-            // P231: an ArkCam curve file keeps its name - the curve goes into Download/SCAMERA/ToneCurves under it (our .txt)
+            // P231: an WhyCam curve file keeps its name - the curve goes into Download/SCAMERA/ToneCurves under it (our .txt)
             String name = com.particlesdevs.photoncamera.processing.color.ToneCurve.jsonName(text);
             if (name != null) {
                 try {

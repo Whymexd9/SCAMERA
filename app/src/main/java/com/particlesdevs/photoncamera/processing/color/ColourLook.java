@@ -1,16 +1,16 @@
 package com.particlesdevs.photoncamera.processing.color;
 
 /**
- * P134 «Цвет»: the colour look of the photo on top of the ARK tone (owner: «добавь нам настройки цвета ... не дублируй ...
+ * P134 «Цвет»: the colour look of the photo on top of the WHY tone (owner: «добавь нам настройки цвета ... не дублируй ...
  * можешь сделать свои варианты»). Two places in the pipeline:
  * <ul>
  * <li>a 3x3 matrix on linear sRGB after the camera matrix (warmth, tint, the scene light kept): {@link #whiteMatrix}, folded
- * into ArkTone's colour chain, so the AE statistics and the photo see the same colour and it costs no GPU time;</li>
- * <li>ark/combine.glsl with COLOUR_LOOK 1: skin protection / hue / evenness, vibrance by brightness, the 8-band colour
+ * into WhyTone's colour chain, so the AE statistics and the photo see the same colour and it costs no GPU time;</li>
+ * <li>why/combine.glsl with COLOUR_LOOK 1: skin protection / hue / evenness, vibrance by brightness, the 8-band colour
  * mixer and the monochrome filters in scene OKLab before the hue lock, the gamut compression, the hue-lock mode, and the
  * colour grading of shadows / mid-tones / highlights in display OKLab after the hue lock.</li>
  * </ul>
- * Every value at its default changes nothing: the matrix is not applied and ArkCombine does not set COLOUR_LOOK, so the
+ * Every value at its default changes nothing: the matrix is not applied and WhyCombine does not set COLOUR_LOOK, so the
  * shader is the one before P134 token for token (tools/check_colour_output.py pins it). Sources (own implementation, no
  * code copied): Lightcraft (MIT / Apache-2.0) for the band centres, the raised-cosine bands, the grading zones; CIE for the
  * daylight and Planckian loci (Kim et al. 2002 cubic); CAT16 (CIECAM16) for the chromatic adaptation; ACES Reference Gamut
@@ -105,7 +105,7 @@ public final class ColourLook {
         return new double[]{m[0] * v[0] + m[1] * v[1] + m[2] * v[2], m[3] * v[0] + m[4] * v[1] + m[5] * v[2], m[6] * v[0] + m[7] * v[1] + m[8] * v[2]};
     }
 
-    // ---------------------------------------------------------------- uniforms of ark/combine.glsl (COLOUR_LOOK 1)
+    // ---------------------------------------------------------------- uniforms of why/combine.glsl (COLOUR_LOOK 1)
 
     /** skinU: protection 0..1, hue shift -1..1 (x 12 degrees), evenness 0..1. */
     public float[] skinUniform() {

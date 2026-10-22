@@ -36,7 +36,7 @@ import java.util.TreeSet;
  */
 public final class ScameraFolder {
     public static final ScameraFolder CONFIGS = new ScameraFolder("XML", "text/xml", ".xml", ".json");
-    /** P231: our .txt curves and ArkCam's .json / .curve files (saved as .txt). */
+    /** P231: our .txt curves and WhyCam's .json / .curve files (saved as .txt). */
     public static final ScameraFolder CURVES = new ScameraFolder("ToneCurves", "text/plain", ".txt", ".json", ".curve");
     /** P134: film / look LUTs (.cube) for «Плёночный LUT». */
     public static final ScameraFolder LUTS = new ScameraFolder("LUT", "application/octet-stream", ".cube");

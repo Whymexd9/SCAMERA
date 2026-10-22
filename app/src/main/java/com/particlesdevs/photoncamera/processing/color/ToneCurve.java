@@ -10,19 +10,19 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * P144: the tone operators of «Кривая AgX и ACES» besides AgX - ACES, Uchimura (Gran Turismo) and an own curve - as ArkCam
+ * P144: the tone operators of «Кривая AgX и ACES» besides AgX - ACES, Uchimura (Gran Turismo) and an own curve - as WhyCam
  * 1.42 has them (libopenhdr_engine.so, tonemap_final: eval_acescg, uchimura_curve, u_tex_custom_curve; ToneCurveHelper).
  * <p>
  * The own curve: points in the unit square, x the normalised log exposure (0.5 + EV / 10: -5..+5 EV around the 0.18 middle
  * grey of the AgX inset), y the display value (raised to 2.4 into the AgX outset, as AgX's own tonescale); between the points
- * a monotone cubic (Fritsch-Carlson), so the curve never overshoots its points. Stored as "x:y,x:y,..." (ArkCam's format).
- * The Java evaluators here mirror ark/combine.glsl (TONE_OP 1) for the tests and the curve preview.
+ * a monotone cubic (Fritsch-Carlson), so the curve never overshoots its points. Stored as "x:y,x:y,..." (WhyCam's format).
+ * The Java evaluators here mirror why/combine.glsl (TONE_OP 1) for the tests and the curve preview.
  */
 public final class ToneCurve {
     public static final int AGX = 0, ACES = 1, UCHIMURA = 2, CUSTOM = 3;
     /** Samples of the curve the shader gets (uniform vec4 curveU[64]). */
     public static final int SAMPLES = 256;
-    /** ArkCam's default: a gentle S around the middle grey. */
+    /** WhyCam's default: a gentle S around the middle grey. */
     public static final String DEFAULT_POINTS = "0.0000:0.0000,0.2500:0.1600,0.5000:0.5000,0.7500:0.8400,1.0000:1.0000";
     /** Two points never share an x closer than this (a vertical step is no tone curve). */
     public static final float MIN_GAP = 0.01f;
@@ -97,9 +97,9 @@ public final class ToneCurve {
             JSON_NAME = Pattern.compile("\"name\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
 
     /**
-     * P231: the points of ArkCam's curve file (ToneCurveFileManager, 1.5x: {"name": ..., "points": [{"x": .., "y": ..}, ...]},
+     * P231: the points of WhyCam's curve file (ToneCurveFileManager, 1.5x: {"name": ..., "points": [{"x": .., "y": ..}, ...]},
      * or a bare array, points also as [x, y]) - the same points as its "x:y" preference string and as ours (x the normalised log
-     * exposure, y the display value), clamped to 0..1 as ArkCam does; null when the text is no such JSON.
+     * exposure, y the display value), clamped to 0..1 as WhyCam does; null when the text is no such JSON.
      */
     @Nullable
     static List<Point> jsonPoints(String text) {
@@ -127,7 +127,7 @@ public final class ToneCurve {
         return out;
     }
 
-    /** P231: the curve's own name in an ArkCam JSON file ("name"), null without one. */
+    /** P231: the curve's own name in an WhyCam JSON file ("name"), null without one. */
     @Nullable
     public static String jsonName(@Nullable String text) {
         if (text == null || !text.trim().startsWith("{")) return null;
@@ -138,9 +138,9 @@ public final class ToneCurve {
     }
 
     /**
-     * A curve from a file's text, or null when it holds fewer than two points: P231 ArkCam's JSON curve file (jsonPoints), else
+     * A curve from a file's text, or null when it holds fewer than two points: P231 WhyCam's JSON curve file (jsonPoints), else
      * every "x:y" pair outside the lines starting with '#' (commas, spaces, new lines or semicolons between them - our files,
-     * ArkCam's "x:y,..." string, a list typed by hand); values up to 255 (an 8-bit curve) are scaled to 0..1, larger ones refuse
+     * WhyCam's "x:y,..." string, a list typed by hand); values up to 255 (an 8-bit curve) are scaled to 0..1, larger ones refuse
      * the file.
      */
     @Nullable
@@ -336,7 +336,7 @@ public final class ToneCurve {
         return out;
     }
 
-    /** Fritsch-Carlson tangents (ArkCam's generateLut): no overshoot between the points. */
+    /** Fritsch-Carlson tangents (WhyCam's generateLut): no overshoot between the points. */
     private float[] tangents() {
         int n = points.size();
         float[] d = new float[n - 1], m = new float[n];
@@ -364,9 +364,9 @@ public final class ToneCurve {
         return m;
     }
 
-    // ───── the operators (mirrors of ark/combine.glsl TONE_OP 1) ─────
+    // ───── the operators (mirrors of why/combine.glsl TONE_OP 1) ─────
 
-    /** ArkCam eval_acescg: Narkowicz ACES with ArkCam's toe-driven b, e and its pre-gain, a, d. */
+    /** WhyCam eval_acescg: Narkowicz ACES with WhyCam's toe-driven b, e and its pre-gain, a, d. */
     public static float aces(float v, float toe, float preGain, float a, float d) {
         float x = Math.max(v, 0f) * preGain;
         float b = Math.max(toe * 0.75f, 0.005f);
@@ -374,7 +374,7 @@ public final class ToneCurve {
         return x * (a * x + b) / (x * (2.43f * x + d) + e);
     }
 
-    /** ArkCam uchimura_curve (Gran Turismo): toe power c to m, a linear section of slope a and length l, a shoulder to P. */
+    /** WhyCam uchimura_curve (Gran Turismo): toe power c to m, a linear section of slope a and length l, a shoulder to P. */
     public static float uchimura(float x, float P, float a, float m, float l, float c, float bOffset) {
         float l0 = (P - m) * l / a;
         float s0 = m + l0, s1 = m + a * l0;
@@ -395,7 +395,7 @@ public final class ToneCurve {
         return 0.18f * (float) Math.pow(2.0, (x - 0.5f) * 10f);
     }
 
-    /** AgX at x: its tonescale (ark/combine.glsl agxTonescale) over its log range, a display value as the own curve's y. */
+    /** AgX at x: its tonescale (why/combine.glsl agxTonescale) over its log range, a display value as the own curve's y. */
     public static float agxAt(float x, float slope, float sp, float tp, float minEv, float maxEv, float ev) {
         float range = Math.max(maxEv + Math.max(ev, 0f) - minEv, 1f);
         float px = Math.max(0.05f, Math.min(0.95f, -minEv / range));
@@ -403,7 +403,7 @@ public final class ToneCurve {
         return clamp01(agxTonescale(lg, slope, sp, tp, px));
     }
 
-    /** ark/combine.glsl agxTonescale (the kernel's AgX sigmoid of slope, shoulder and toe powers around the pivot px). */
+    /** why/combine.glsl agxTonescale (the kernel's AgX sigmoid of slope, shoulder and toe powers around the pivot px). */
     static float agxTonescale(float x, float slope, float sp, float tp, float px) {
         final float py = 0.5f;
         if (x >= px) {
@@ -422,12 +422,12 @@ public final class ToneCurve {
         return py - ts * ft;
     }
 
-    /** ACES at x ({pre-gain, a, d, toe} as ArkTone.acesUniform): its linear display value raised to 1 / 2.4 as the own curve's y. */
+    /** ACES at x ({pre-gain, a, d, toe} as WhyTone.acesUniform): its linear display value raised to 1 / 2.4 as the own curve's y. */
     public static float acesAt(float x, float[] u) {
         return (float) Math.pow(clamp01(aces(sceneOf(x), u[3], u[0], u[1], u[2])), 1.0 / 2.4);
     }
 
-    /** Uchimura at x ({pre, post, P, a} and {m, l, c, b} as ArkTone.uchimuraUniforms), as the own curve's y. */
+    /** Uchimura at x ({pre, post, P, a} and {m, l, c, b} as WhyTone.uchimuraUniforms), as the own curve's y. */
     public static float uchimuraAt(float x, float[] a, float[] b) {
         float v = uchimura(sceneOf(x) * a[0], a[2], a[3], b[0], b[1], b[2], b[3]) * a[1];
         return (float) Math.pow(clamp01(v), 1.0 / 2.4);

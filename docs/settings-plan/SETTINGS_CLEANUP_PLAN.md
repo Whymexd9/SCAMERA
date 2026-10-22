@@ -86,9 +86,9 @@ If a target screen is missing, the generator throws inside a `try`, and all late
 | `scamera_quad_bayer_screen` | Yes: `pref_raw_lsc_mode`, `pref_raw_black_from_data` (`Parameters` ~406/462), `pref_raw_stream_format`, `pref_cfa_key`, Quad compatibility (`VendorTagUtils` ~214). Demosaic choice and `expert_raw_screen`: no, because NICE outputs RGB. |
 | `noise_model_screen` | Only the profile, import and export, and only when `pref_lmc_hybrid_noise_source` or `pref_vivo_nice_noise_source` = `settings`. Dynamic ISO, ISO curve, digital gain and the slider: no. |
 | `rt_denoise_screen` (RT512, ESD3D, AI Bayer) | No. |
-| `sharp_settings_screen` | `pref_sharp_*` via `RTSharpening` only in the `rt` sharpen modes: hybrid `sharp_mode` = rt, or ark + `ark_post_sharp`; SCAM HDR with soft tone 0. `pref_sensor_sharpening_enabled`, LLF, MFSR and Mosaic SR: no. |
+| `sharp_settings_screen` | `pref_sharp_*` via `RTSharpening` only in the `rt` sharpen modes: hybrid `sharp_mode` = rt, or why + `why_post_sharp`; SCAM HDR with soft tone 0. `pref_sensor_sharpening_enabled`, LLF, MFSR and Mosaic SR: no. |
 | `processing_group_screen` | DCP yes (`Parameters` ~724). Tone pipeline selector: no. LMC curves: yes. ACES, Capture One, darktable, optical correction, contrast, saturation, shadows, compressor and `expert_tone`: no. |
-| `agx_screen` | SCAM HDR: `pref_nice_ae_*` and `pref_vivo_nice_fusion_*`, soft tone, tone key, sharp amount, texture. With soft tone = 0, also the shared AgX curve and `pref_vivo_hdr_*` tone. Hybrid with ARK off: the shared AgX curve + `pref_lmc_hybrid_*`. `pref_expocompensation_seekbar_key`: no NICE route reads it (`IsoExpoSelector` ~360). |
+| `agx_screen` | SCAM HDR: `pref_nice_ae_*` and `pref_vivo_nice_fusion_*`, soft tone, tone key, sharp amount, texture. With soft tone = 0, also the shared AgX curve and `pref_vivo_hdr_*` tone. Hybrid with WHY off: the shared AgX curve + `pref_lmc_hybrid_*`. `pref_expocompensation_seekbar_key`: no NICE route reads it (`IsoExpoSelector` ~360). |
 | `gcam_finish_screen` | No (PP ~665; `scene_ae` is off for NICE, CC ~2559). |
 | `vivo_hdr_screen` | `pref_vivo_hdr_luma`, `pref_vivo_hdr_chroma` and `pref_vivo_hdr_sharpen` only on "autonomous HDR without NICE", which is removed. The rest is SCAM HDR. |
 | `vivo_remosaic_screen` | In SCAM HDR mosaic mode: block, profile, steered, clamp, flatfield, phase, `pref_tetra_response_key`, `hexquad_*`, `quad2x2_*`. Not used there: `hexquad_exposure_ev`, `pref_hexquad_frames`, `pref_quad_frames`, `hexquad_full_resolution` (x2 is forbidden there), `*_post_denoise`. |
@@ -105,7 +105,7 @@ If a target screen is missing, the generator throws inside a `try`, and all late
 - **Worker and client:** `VivoNeuralClient` / `VivoNeuralWorker` and the one native worker `app/src/main/cpp/vivo-neural-worker.cpp`. That worker hosts NICE, the hybrid, HexQuad/Quad and the CRE runtime — and VSR, which goes.
 - **Post path:**
   - `VivoNiceRgb`, `HighlightRecovery`, `NiceDenoise`, `LmcDenoise`;
-  - Ark* (`ArkStats`, `ArkFusion`, `ArkLumaSharpen`, `ArkCombine`, `ArkSharpenGuard`);
+  - Why* (`WhyStats`, `WhyFusion`, `WhyLumaSharpen`, `WhyCombine`, `WhySharpenGuard`);
   - `LinearExposure`, `NiceExposureFusion`, `VivoHdrTone` (a subclass of `HeadroomRender` — keep `HeadroomRender`), `AgxTone`;
   - `LmcCurves`, `NiceLocalContrast`, `NiceSharpen`, `RTSharpening`, `HybridFinalResize`, `RotateWatermark`.
 - **Ultra HDR:** `ultrahdr/*` and `PP.RunHDRGainMap`.
@@ -259,7 +259,7 @@ If a target screen is missing, the generator throws inside a `try`, and all late
 **Keep:**
 - DCP, LMC curves;
 - `pref_sharp_*` (RT sharpening for the `rt` modes);
-- the shared AgX curve, look and colour keys (SCAM HDR with soft tone 0, hybrid with ARK off);
+- the shared AgX curve, look and colour keys (SCAM HDR with soft tone 0, hybrid with WHY off);
 - all SCAM HDR tone keys, `pref_nice_ae_*`.
 
 **CI:** replace the aapt2 assertions on `rt_denoise_screen` / `rt512_*` (`build-test-apk.yml` ~251-257) with assertions on screens that exist now (e.g. `lmc_hybrid_screen`, the SCAM HDR screen, `output_settings_screen`).
@@ -279,7 +279,7 @@ Only move XML rows. Do not rename keys, so no migration is needed for moves.
 │   ├ Модель шума нейросети
 │   ├ Тон и светотень: яркость (AE), Exposure Fusion, света, тени и уровни, сброс   (from agx_screen)
 │   └ Мозаика ISZ и нейроремозаик: pref_vivo_nice_mosaic, GPU remosaic tuning, HP9 / Quad 2×2 NN tuning
-├ Цвет и резкость ▸ DCP, кривые Hybrid, общая кривая AgX (ARK off / soft tone 0), резкость RawTherapee (rt modes)
+├ Цвет и резкость ▸ DCP, кривые Hybrid, общая кривая AgX (WHY off / soft tone 0), резкость RawTherapee (rt modes)
 ├ Захват и RAW ▸ буфер ZSL, антибандинг, LSC, чёрный по кадру, формат RAW-потока, CFA, Quad-совместимость,
 │                 профиль модели шума (импорт / экспорт), RAW-метаданные (expert_sensor_screen)
 ├ Видоискатель и интерфейс ▸ (tweaks_screen content, Кнопки видоискателя)
@@ -308,7 +308,7 @@ Replacements:
 | "LMC-гибрид", "гибрид" (any case or form) | "Hybrid" (Latin, always capitalised) |
 | "Тоновая и гамма-кривые (LMC)" / "Кривые LMC" | "Кривые Hybrid" |
 | "Sabre 6.1 × LMC 9.6" | "Sabre 6.1" |
-| "GCam / LMC 9.6 (ArkCam)" | "GCam / Hybrid (ArkCam)" |
+| "GCam / LMC 9.6 (WhyCam)" | "GCam / Hybrid (WhyCam)" |
 | "Отбраковка движения (rejection LMC 9.6)" | "Отбраковка движения" |
 | "1 кадр (как LMC)" | "1 кадр" |
 | "Bento: проверки отказа как в LMC 9.6" | "Bento: строгие проверки отказа" |
@@ -412,8 +412,8 @@ Check: grep every `res/values*/*.xml`, `preferences.xml`, and the string literal
   - **Tree (concept order, keys unchanged):** root = route card + Hybrid / SCAM HDR / Цвет и резкость / Захват и RAW /
     Видоискатель и интерфейс / Конфиг / Камеры и сенсоры / Система (the two root categories are gone). Hybrid: Разрешение,
     Даунсемплер, Кадры и захват, Модель шума, Склейка (Отбраковка, Ядро Sabre, Bento и Shasta, Света), Шумоподавление
-    (SNR, Множители, Отличия от ArkCam, таблицы), Обработка ArkCore, Диагностика. SCAM HDR: N, удлинение L, этапы, Брекет и
-    выравнивание, Шумоподавление, Модель шума нейросети (key vivo_nice_internal_screen), a link to the shared ArkCore page,
+    (SNR, Множители, Отличия от WhyCam, таблицы), Обработка WhyCore, Диагностика. SCAM HDR: N, удлинение L, этапы, Брекет и
+    выравнивание, Шумоподавление, Модель шума нейросети (key vivo_nice_internal_screen), a link to the shared WhyCore page,
     Мозаика ISZ. Settings newer than the concept (F6, неоднородное движение, Xiaomi zoom, звуки, дубликаты модулей, P11 path
     to white, …) stay in their sections. Rows whose master switch moved to a parent page (denoise tables, watermark text)
     lost android:dependency; SettingsAvailability disables them instead.
@@ -524,7 +524,7 @@ Check: grep every `res/values*/*.xml`, `preferences.xml`, and the string literal
   native code): every Quad / Tetra frame splits into b² plain-Bayer sub-frames with composed site offsets, the unchanged
   Bayer merge accumulates them on the 2× / 4× grid, then chroma median and false-colour suppression. Checked on synthetic
   bursts and on the X7 Ultra (1× / 5.9× Quad).
-- **Goal:** more fine detail from the mosaic stream inside the normal Hybrid shot (same capture, Bento / Shasta, ARK finish),
+- **Goal:** more fine detail from the mosaic stream inside the normal Hybrid shot (same capture, Bento / Shasta, WHY finish),
   so a module without remosaic is worth shooting.
 - **Input:** the owner's handheld shot (one frame with the burst dump). Replay it on the worker and measure before / after:
   - detail: MTF50 / high-band energy on edges and texture crops; lattice amplitude at period 2 / 4 px (`tools/quad/lattice.py`);
@@ -683,7 +683,7 @@ The settings live in different places now; the curated groups use these keys.
 |---|---|---|---|
 | flash | `pref_ae_mode_key` | no tree row; 0 torch / 1 off | virtual entry; write via CameraUIController FLASH; there is no «авто» |
 | timer | `pref_countdown_timer_key` | no tree row; off / 3 s / 10 s | virtual; top-bar TimerButton follows |
-| замер | `pref_ae_metering_std_mode_key` (Camera2, no tree row) or `pref_lmc_hybrid_ark_metering` (ARK slider, Hybrid › Обработка ArkCore › Тонмап) | | question 6 |
+| замер | `pref_ae_metering_std_mode_key` (Camera2, no tree row) or `pref_lmc_hybrid_why_metering` (WHY slider, Hybrid › Обработка WhyCore › Тонмап) | | question 6 |
 | склейка | `pref_merge_route` | root, hybrid / scamhdr | show the effective `mergeRoute()` (MediaTek lock, nice_dev) |
 | RAW | `pref_save_raw_key` | no tree row; JPEG / R+J / RAW | virtual; new icons |
 | разрешение Hybrid | `pref_lmc_hybrid_output` | Hybrid, list | effective value via the nice_dev override; dimmed on SCAM HDR |
@@ -693,15 +693,15 @@ The settings live in different places now; the curated groups use these keys.
 | Shasta | `pref_lmc_hybrid_shasta` | Hybrid, switch, on by default | |
 | N-кадров (Hybrid) | `pref_lmc_hybrid_zsl_frames` | Hybrid, slider 4-44 | same title as the SCAM HDR row: shortTitle «N-кадров Hybrid» |
 | Luma, Chroma | `pref_lmc_hybrid_post_luma` / `_post_chroma` (NLM only) or `pref_lmc_hybrid_dn_luma_mult` / `_dn_chroma_mult` (gcam engine, the default) | Hybrid › Шумоподавление | duplicate titles; question 8 |
-| резкость | `pref_lmc_hybrid_sharp_mode` | Hybrid › Обработка ArkCore › Резкость, ark / rt / scam / off | moved |
-| тон ARK | `pref_lmc_hybrid_ark_tone` | **removed** (P10, ARK always on) | drop or replace (question 8) |
+| резкость | `pref_lmc_hybrid_sharp_mode` | Hybrid › Обработка WhyCore › Резкость, why / rt / scam / off | moved |
+| тон WHY | `pref_lmc_hybrid_why_tone` | **removed** (P10, WHY always on) | drop or replace (question 8) |
 | отбраковка | `pref_lmc_hybrid_cdm` | Hybrid › Склейка › Отбраковка движения, slider | moved |
 | N-кадров (SCAM HDR) | `pref_vivo_nice_zsl_frames` | SCAM HDR, slider 4-50 | dimmed on Hybrid; hidden on MediaTek |
 | удлинение L | `pref_vivo_nice_long_boost_ev` | EditTextPreference | not pinnable by the spec's rule; question 8 |
 | мозаика ISZ | `pref_vivo_nice_mosaic` | SCAM HDR › Мозаика ISZ, 7 values | «Нейро + Sabre» > 8 characters; 7 segments don't fit at 360dp |
 | Exposure Fusion | `pref_vivo_nice_fusion_*` | **removed** (P10) | drop or replace (question 8) |
 | кривая Hybrid | `pref_lmc_tone_curve` | Цвет и резкость › Кривые Hybrid, 77 entries | opens the list sheet instead of cycling |
-| USM | `pref_sharp_usm_enabled_key` | Цвет и резкость › Резкость RawTherapee | a no-op with sharp_mode = ark; `SettingsModelCheck.java:47,62` asserts it stays active |
+| USM | `pref_sharp_usm_enabled_key` | Цвет и резкость › Резкость RawTherapee | a no-op with sharp_mode = why; `SettingsModelCheck.java:47,62` asserts it stays active |
 | сетка | `pref_show_grid_key` | Видоискатель, 0-4 | short Выкл / 3×3 / 4×4 / Φ / Диаг |
 | пик фокуса | `pref_peak_method_key` | Видоискатель, Off / On / Auto | needs Russian short labels |
 | живой RAW | `pref_live_viewfinder_raw_key` | Видоискатель, switch | read at session build: restart or «после перезапуска» |
@@ -793,10 +793,10 @@ The settings live in different places now; the curated groups use these keys.
 5. **Tiles:** highlight = differs from the default (lists, sliders and toggles alike); toggle tiles show «Вкл./Выкл.»; flash
    keeps its 2 values; accent = the camera accent (`AccentPalette.camera`); hardware-unavailable tiles are dimmed, a tap shows
    the reason.
-6. **«Замер»** in Съёмка = the ARK slider `pref_lmc_hybrid_ark_metering` (slider tile); Camera2 metering
+6. **«Замер»** in Съёмка = the WHY slider `pref_lmc_hybrid_why_metering` (slider tile); Camera2 metering
    `pref_ae_metering_std_mode_key` stays a virtual catalog entry.
 7. **Session-time tiles** (живой RAW, 16:9): restart the camera at once through the existing `restartCamera`.
-8. **Curated rows:** «тон ARK» and «Exposure Fusion» dropped; «удлинение L» as a 0-2 slider from SettingsNumericRules;
+8. **Curated rows:** «тон WHY» and «Exposure Fusion» dropped; «удлинение L» as a 0-2 slider from SettingsNumericRules;
    Luma / Chroma = `pref_lmc_hybrid_dn_luma_mult` / `pref_lmc_hybrid_dn_chroma_mult`; USM stays the RT switch.
 9. **☆ favourites:** removed; its keys migrate into the shade list (max 12), its settings row and fragment go.
 10. **Storage:** `ui_shade_tiles`; first value = the user's old pins, then the 8 defaults (max 12).
@@ -834,15 +834,15 @@ The settings live in different places now; the curated groups use these keys.
    - flash has only 2 values (torch / off): adding «авто» would change AE;
    - the accent: settings (lavender) or camera (yellow)?
    - hide or dim tiles that are blocked by hardware (no flash on a lens)?
-6. **«замер»:** Camera2 metering or the ARK slider? If ARK, Camera2 metering stays as a virtual catalog entry (its only UI).
+6. **«замер»:** Camera2 metering or the WHY slider? If WHY, Camera2 metering stays as a virtual catalog entry (its only UI).
 7. **Session-time tiles** (живой RAW, 16:9): restart the camera via the existing `restartCamera` (still UI-only?) or show
    «применится после перезапуска»?
 8. **Curated rows:**
-   - replacements for the removed «тон ARK» and «Exposure Fusion» (e.g. `pref_lmc_hybrid_ark_detail_gain`,
+   - replacements for the removed «тон WHY» and «Exposure Fusion» (e.g. `pref_lmc_hybrid_why_detail_gain`,
      `pref_nice_zsl_long`) or drop them;
    - «удлинение L» (EditText): exclude it or show a 0-2 slider;
    - Luma / Chroma: `post_*` (NLM) or `dn_*_mult` (gcam engine, the default);
-   - USM stays the RT switch (a no-op with ARK sharpening).
+   - USM stays the RT switch (a no-op with WHY sharpening).
 9. **☆ favourites:** remove (migrating its keys into the shade list) or keep both?
 10. **Storage key:** `ui_shade_tiles` instead of `pref_shade_tiles` (otherwise per-lens). Precedence when old pins exist: the
     user's ≤ 4 pins only / pins then the 8 defaults / the 8 defaults.
@@ -1071,18 +1071,18 @@ The settings live in different places now; the curated groups use these keys.
 - **Checks:** parity with the C++ reference; outer-ring R / B shift before / after (tools/quad/measure_raw_ca.py); no new
   fringes of the opposite sign; time per burst; plain-Bayer output bit-identical with the setting off.
 
-### P29 — Sabre Quad remosaic from ArkCam v23, combined with our GCam 11 remosaic (owner's request, 2026-10-06; study running)
+### P29 — Sabre Quad remosaic from WhyCam v23, combined with our GCam 11 remosaic (owner's request, 2026-10-06; study running)
 
 - **Owner:** «К разбору ARC Camera добавь ещё Sabre квад ремозаик», then «Я хочу совместить этот ремозаик с нашим который мы
   взяли с 11 гкама».
-- **ArkCam v23 (libopenhdr_engine.so) has its own Quad Bayer path:** `uCfaSensorType` 0 = Bayer / 1 = Quad, a
+- **WhyCam v23 (libopenhdr_engine.so) has its own Quad Bayer path:** `uCfaSensorType` 0 = Bayer / 1 = Quad, a
   `k_fs_gcam_sabre_merge_quad` program, `k_cs_sabre_superResLinearRaw / superResDetailMerge / superResDetailResolve`, a 5x5
   binomial for the 4x4 CFA, the OpenCL `quad_speckle_filter` (`pref_quad_speckle_radius_key`), a "quad CA killer" and a
   "standard binned mode". On the Java side: Quad needs 16 ring frames (5 for Bayer), and the -3 EV burst is skipped on Quad.
 - **Ours (P14 / P15 / P22):** GCam 11 QuadBayerRgbMerge design. b² plain-Bayer sub-frames go through the unchanged merge on
   the 2x / 4x grid, followed by a chroma median and false-colour suppression; plus `mosaicEdgeScale` and `mosaicShare`.
 - **Study done (2026-10-06, `research/ark23/quad_report.md`, disassembly listings in `research/ark23/quad_disasm/`):**
-  - **No remosaic.** ArkCam's Quad path merges every frame's raw sites straight from the mosaic into native-resolution RGB:
+  - **No remosaic.** WhyCam's Quad path merges every frame's raw sites straight from the mosaic into native-resolution RGB:
     - `merge_quad`: a 5x5 native-pixel Sabre RBF; R / B kernel 1.18x wider than G (scales 1.0 / 0.85, constants in `main()`);
     - R / B fill from G + the local (R−G) / (B−G) of the 3x3 block means when their weight < 0.25 × G's weight;
     - the base frame is merged last, with a cone kernel where coverage is below 4.5 frames;
@@ -1093,10 +1093,10 @@ The settings live in different places now; the curated groups use these keys.
   - **Keep ours:** block detector, site gains, binned alignment, F6, robustness, Bento / Shasta, chroma median + false-colour
     suppression.
   - **Per frame:** guide / rejection / F6 once per frame on the binned burst (not per sub-frame).
-  - **New pass `kHybMergeMosaic`:** ArkCam's RBF over the raw mosaic with our gains instead of the b² sub-frame split
+  - **New pass `kHybMergeMosaic`:** WhyCam's RBF over the raw mosaic with our gains instead of the b² sub-frame split
     (`kHybMergeMain1` untouched, plain Bayer md5-identical).
-  - **R / B fill:** ArkCam's fill before our median, later GCam 11's directional colour-difference fill.
-  - **Low coverage:** GCam 11's edge-directed Quad demosaic of the base instead of ArkCam's cone kernel.
+  - **R / B fill:** WhyCam's fill before our median, later GCam 11's directional colour-difference fill.
+  - **Low coverage:** GCam 11's edge-directed Quad demosaic of the base instead of WhyCam's cone kernel.
   - **Tetra:** 2x2 binning into a true Quad at W/2 by default, native 7x7 as an option.
   - **Keys:** `mosaicPath` (0 = today), `mosaicWindow`, `mosaicKernelG` / `RB`, `mosaicChromaFill`, `mosaicFillSupport`,
     `mosaicFallback`, `mosaicTetra`.
@@ -1107,20 +1107,20 @@ The settings live in different places now; the curated groups use these keys.
     - S2: kernel split;
     - S3: site gains;
     - S4: sweep / default;
-    - S5: Ark fill;
+    - S5: Why fill;
     - S6: GCam fallback;
     - S7: directional fill;
     - S8: Tetra.
     Each step gated on lattice 2 / 4 px, zone-plate false colour, maze (`eval_zipper.py`), 2-4 px band energy at equal noise,
     time and the Bayer md5.
-  - **Not to port:** ArkCam's hot-pixel filter (compares different colours on Quad), the cone fallback, the super-res shaders.
+  - **Not to port:** WhyCam's hot-pixel filter (compares different colours on Quad), the cone fallback, the super-res shaders.
 - **Checks (owner's rule for every remosaic change):**
   - no lattice at period 2 / 4 px (`tools/quad/lattice.py`), no maze, no false colour;
   - detail band energy, time;
   - synthetic bursts (`gen_mosaic_burst.py` / `eval_mosaic_burst.py`), then a replay of `hand.nch` on the OPPO.
 - **Built (branch p29, 2026-10-07; host replays only, device check pending):**
   - S0 numpy reference (`research/p29/S0_results.md`); S1 native pass at parity, S2 ks per colour, S3 site gains at read
-    time, S5 ArkCam R / B fill, S8 Tetra T2 / T1 (all in `vivo-nice-hybrid.h`, `kHybMergeMain1` untouched).
+    time, S5 WhyCam R / B fill, S8 Tetra T2 / T1 (all in `vivo-nice-hybrid.h`, `kHybMergeMain1` untouched).
   - Worker keys: `mosaicPath` (0), `mosaicWindow` (3), `mosaicWindowFull` (1), `mosaicKernelScale` (1),
     `mosaicNativeEdgeScale` (0.4), `mosaicKernelG` / `RB` (1 / 0.85), `mosaicChromaFill` (0), `mosaicFillSupport` (0.25),
     `mosaicTetra` (2). The path-1 defaults are the S0 point; `mosaicPath` stays 0 until the device check.
@@ -1129,7 +1129,7 @@ The settings live in different places now; the curated groups use these keys.
   - Device check plan for the coordinator: `research/p29/DEVICE_CHECK.md`.
   - Not built: S4 device sweep, S6 GCam fallback, S7 directional fill, T2 evaluated at the sensor sub-positions (S0).
 
-### P30 — Hybrid speed: what ArkCam v23 does faster (study 2026-10-06; not started)
+### P30 — Hybrid speed: what WhyCam v23 does faster (study 2026-10-06; not started)
 
 - **Study:** `libopenhdr_engine.so` (openhdr_engine 3.0.3) is a GLSL port of Sabre. Everything runs on the GPU in the app process,
   in one EGL context that is created and compiled once at app start:
@@ -1148,7 +1148,7 @@ The settings live in different places now; the curated groups use these keys.
   - GPU passes 1.77 s;
   - PostPipeline 1.56 s;
   - jpegli 0.23 s.
-- **ArkCam:** not measured; estimated 1.3-2.3 s from the code.
+- **WhyCam:** not measured; estimated 1.3-2.3 s from the code.
 - **Speed-ups with the same image (target 8.0 → ~4.5-5.5 s), in order:**
   1. glProgramBinary cache of the worker programs (−0.55-0.75 s);
   2. global alignment in parallel over frames, bit-exact (−0.6 s);
@@ -1167,4 +1167,4 @@ The settings live in different places now; the curated groups use these keys.
   - TurboJPEG instead of jpegli;
   - the FrameSelector culling.
 - **To measure:** both apps on one phone, same scene, 1x, diagnostics and `nice_keep` off. Full list in the session
-  scratchpad `ark_all.txt`, to copy to `research/ark23/`.
+  scratchpad `why_all.txt`, to copy to `research/ark23/`.

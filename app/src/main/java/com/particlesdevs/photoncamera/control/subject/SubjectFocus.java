@@ -28,18 +28,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Face detection and tracking autofocus (P42), combined from ArkCamera v50 with the existing focus path.
+ * Face detection and tracking autofocus (P42), combined from WhyCamera v50 with the existing focus path.
  * <p>
  * <b>Faces.</b> {@code STATISTICS_FACE_DETECT_MODE} is set on the preview request from the module's advertised modes
- * ({@link FaceDetectModes}); without HAL faces the platform FaceDetector runs on viewfinder frames. Unlike ArkCam —
- * whose faces only feed its own digital tone — the primary face (ArkCam's prominence score plus hysteresis) drives the
+ * ({@link FaceDetectModes}); without HAL faces the platform FaceDetector runs on viewfinder frames. Unlike WhyCam —
+ * whose faces only feed its own digital tone — the primary face (WhyCam's prominence score plus hysteresis) drives the
  * Camera2 AF and AE regions of the repeating preview request: AF on the face box, AE on the box grown by 30 %,
  * throttled, held 0.6 s after the face is gone, then the metering-mode regions come back.
  * <p>
- * <b>Tracking.</b> A long press (or a tap, by setting) locks onto the subject. The {@link PatchTracker} (ArkCam's ZNCC
+ * <b>Tracking.</b> A long press (or a tap, by setting) locks onto the subject. The {@link PatchTracker} (WhyCam's ZNCC
  * tracker) follows it on the quarter-size frames {@code SubjectFrameGrabber} reads back from the viewfinder, at most
  * 15 per second, on its own thread; the AF / AE regions follow at most 10 times a second with hysteresis. When the
- * target is lost the regions return to the defaults and the continuous AF of the user's AF mode takes over (ArkCam
+ * target is lost the regions return to the defaults and the continuous AF of the user's AF mode takes over (WhyCam
  * leaves the region where the target was lost).
  * <p>
  * <b>Precedence.</b> Manual focus (AF_MODE_OFF) keeps AF regions untouched, manual ISO / shutter (AE_MODE_OFF) keeps
@@ -63,7 +63,7 @@ public final class SubjectFocus implements SubjectFrames.Sink {
     private static final int MAX_FACES = 10;
     /** Tracking box (and metering region) relative to the tracker patch. */
     private static final float TRACK_BOX = 1.6f;
-    /** Misses that end a track: ArkCam's 12 frames at ~30 fps is ~0.4 s, i.e. 6 frames at 15 fps. */
+    /** Misses that end a track: WhyCam's 12 frames at ~30 fps is ~0.4 s, i.e. 6 frames at 15 fps. */
     private static final int MAX_LOST = 6;
 
     private final CaptureController cc;

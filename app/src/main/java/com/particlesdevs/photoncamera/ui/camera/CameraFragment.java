@@ -1023,22 +1023,71 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         super.onPause();
     }
 
+    /** P319: the time in which a second Back during a capture leaves anyway (the first one only says so). */
+    private static final long BACK_AGAIN_MS = 2000;
+    /** P319: when Back last warned that a shot is still being captured (uptime ms, 0: never). */
+    private long backWarnedAt;
+
     /**
-     * Back closes the catalog, else lowers the settings sheet one level (FULL -> PEEK -> HIDDEN). With the sheet already
-     * HIDDEN it does nothing, and the app stays open as before.
+     * P319 (user review 2026-10-22, item 8: «Кнопка "назад" все же должна работать как выход из камеры»). Back closes one
+     * thing per press (CameraBack): a running self-timer, the catalog, the shade's drag / edit mode, the quick sheet, the LUT
+     * tray, the Pro panel. With nothing open it leaves the camera: false lets CameraActivity finish; while a shot is
+     * captured, queued or merged the task goes to the background as with Home instead (ProcessingKeepAlive keeps the
+     * process, this controller stays for the queued shots). While the frames of a shot still arrive the first Back only says
+     * so; a second one within {@link #BACK_AGAIN_MS} leaves and the shot is merged from the frames that arrived (P27).
      */
     @Override
     public boolean onBackPressed() {
-        // Back order (P25): the catalog, then the sheet's own states, then one level down.
-        if (isCatalogOpen()) {
-            catalogView.close();
-            return true;
+        if (cameraFragmentBinding == null) return false;
+        final View panelView = cameraFragmentBinding.manualMode;
+        final com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel pro =
+                panelView instanceof com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel
+                        ? (com.particlesdevs.photoncamera.circularbarlib.ui.ExpandingManualPanel) panelView : null;
+        final long now = android.os.SystemClock.uptimeMillis();
+        final boolean capturing = captureController != null && captureController.subjectRegionsFrozen();
+        final CameraBack.Step step = CameraBack.next(
+                mCameraUIEventsListener != null && mCameraUIEventsListener.timerRunning(),
+                isCatalogOpen(),
+                cameraFragmentBinding.settingsBar.isEditing(),
+                cameraFragmentViewModel.getSheetLevel(),
+                lutTray != null && lutTray.isOpen(),
+                pro != null && pro.isExpanded(),
+                capturing && (backWarnedAt == 0 || now - backWarnedAt > BACK_AGAIN_MS),
+                com.particlesdevs.photoncamera.processing.ProcessingKeepAlive.busy.getAsBoolean());
+        Log.i(TAG, "back: " + step);
+        switch (step) {
+            case TIMER:
+                mCameraUIEventsListener.cancelTimer();
+                return true;
+            case CATALOG:
+                catalogView.close();
+                return true;
+            case SHADE_EDIT:
+                cameraFragmentBinding.settingsBar.onBackPressed(); // the drag first, then the edit mode
+                return true;
+            case SHEET:
+                cameraFragmentViewModel.sheetLevelDown(); // SIMPLE_UI §2: straight to HIDDEN
+                return true;
+            case TRAY:
+                lutTray.setOpen(false);
+                return true;
+            case PRO:
+                pro.setExpanded(false, true); // collapsing closes the ruler too
+                return true;
+            case WARN_CAPTURING:
+                backWarnedAt = now;
+                showSnackBar(com.particlesdevs.photoncamera.util.Lang.t(
+                        "Снимок ещё снимается. Нажмите «Назад» ещё раз, чтобы выйти",
+                        "The shot is still being taken. Press Back again to leave"));
+                return true;
+            case BACKGROUND:
+                backWarnedAt = 0;
+                requireActivity().moveTaskToBack(true);
+                return true;
+            default: // LEAVE
+                backWarnedAt = 0;
+                return false;
         }
-        if (cameraFragmentBinding != null && cameraFragmentBinding.settingsBar.onBackPressed()) return true;
-        if (cameraFragmentViewModel.getSheetLevel() != CameraFragmentModel.SHEET_HIDDEN) {
-            cameraFragmentViewModel.sheetLevelDown();
-        }
-        return true;
     }
 
     @Override

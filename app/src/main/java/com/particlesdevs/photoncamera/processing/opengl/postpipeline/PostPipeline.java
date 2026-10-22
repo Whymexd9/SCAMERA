@@ -41,7 +41,7 @@ public class PostPipeline extends GLBasePipeline {
     public GLTexture FusionMap;
     public GLTexture GainMap;
     /**
-     * Linear display gain of the shot: the ARK exposure (ArkStats / ArkAe).
+     * Linear display gain of the shot: the WHY exposure (WhyStats / WhyAe).
      */
     public float linearDisplayGain = 1.0f;
     /** Noise sigma of the frame (variance stabilised units) estimated by ScamHdrDenoise; 0 = not measured. */
@@ -49,12 +49,12 @@ public class PostPipeline extends GLBasePipeline {
     /**
      * The working RGB holds signed values: set by ScamRgb (scamrgb signedU, SCAM Hybrid), cleared by a noise reduction
      * that writes its clamped output (the SCAM engine; the NLM engine keeps it: chromadn/apply clips once, downstream).
-     * ArkCombine then clamps its B-spline colour after the interpolation; otherwise (SCAM HDR, or the hybrid after the
+     * WhyCombine then clamps its B-spline colour after the interpolation; otherwise (SCAM HDR, or the hybrid after the
      * SCAM denoise) per tap as before, so negative taps of the colour matrix change nothing there.
      */
     public boolean signedRgb;
-    /** ARK tone of the SCAM Hybrid: state handed from ArkStats to ArkCombine; null outside that route. */
-    public ArkTone.State ark;
+    /** WHY tone of the SCAM Hybrid: state handed from WhyStats to WhyCombine; null outside that route. */
+    public WhyTone.State why;
     /**
      * P277: a lab shot's run records the whole frame's statistics here ({@link LabFrame}); a lab run on a fragment of it sets
      * {@link #frozen} to those, used in place of the fragment's own. Both null in an ordinary run.
@@ -106,8 +106,8 @@ public class PostPipeline extends GLBasePipeline {
      */
     public boolean tenBitOutput;
     /**
-     * P46 «Цветовое пространство» Display P3 (set by the caller before {@link #Run}): ArkCombine renders the final image in
-     * Display P3 primaries (ark/combine.glsl with P3_OUT 1). Off: the sRGB shader exactly as before (the define is not set).
+     * P46 «Цветовое пространство» Display P3 (set by the caller before {@link #Run}): WhyCombine renders the final image in
+     * Display P3 primaries (why/combine.glsl with P3_OUT 1). Off: the sRGB shader exactly as before (the define is not set).
      */
     public boolean p3Output;
 
@@ -302,11 +302,11 @@ public class PostPipeline extends GLBasePipeline {
         // limit, so the snapshot is allocated in native memory instead
         // (same backing as the pipeline's other large I/O buffers).
         // P27 any resolution: in long; above one 2 GB buffer (~134 MP) the snapshot is skipped like a failed allocation.
-        // P147: as the halves the texture holds (8 B/pixel) where the driver reads them back exactly (ArkStats' probe): half
+        // P147: as the halves the texture holds (8 B/pixel) where the driver reads them back exactly (WhyStats' probe): half
         // the read-back and the upload of RunHDRGainMap (1.2 s for the 50 MP snapshot on the X200 Ultra), the same values.
         tex.BindBuffer();
-        final int halfType = com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy() ? 0 : ArkStats.halfReadType();
-        if (halfType != 0 && ArkStats.halfReadbackExact(halfType)) {
+        final int halfType = com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy() ? 0 : WhyStats.halfReadType();
+        if (halfType != 0 && WhyStats.halfReadbackExact(halfType)) {
             final long halfBytes = 8L * tex.mSize.x * tex.mSize.y;
             ByteBuffer buf = halfBytes > Integer.MAX_VALUE ? null : Allocator.allocate((int) halfBytes);
             if (buf != null) {
@@ -730,11 +730,11 @@ public class PostPipeline extends GLBasePipeline {
     private void BuildDefaultPipeline() {
         if (mParameters.scamRgb == null)
             throw new IllegalStateException("no merge route: the photo pipeline takes the RGB of Hybrid or SCAM HDR");
-        // One tone for both routes: the ARK tone (ArkStats -> ArkFusion -> [ArkLumaSharpen] -> ArkCombine).
+        // One tone for both routes: the WHY tone (WhyStats -> WhyFusion -> [WhyLumaSharpen] -> WhyCombine).
         Log.i("SCAM_PIPELINE","route="+(PreferenceKeys.isHybridShot()?"SCAM_hybrid":"SCAM_HDR")
                 +" import=SCAM_linear_RGB WB_LSC=SCAMERA TCE=not_connected"
                 +" postDenoise=bypassed"
-                +" tone=ARK (ArkStats/ArkFusion/ArkCombine)"
+                +" tone=WHY (WhyStats/WhyFusion/WhyCombine)"
                 +"; actual node order/timings follow in Pipeline log");
         add(new ScamRgb());
         // P129: HighlightRecovery is gone (SCAM HDR's; SHDR recovers the highlights per channel in ScamRgb)
@@ -745,23 +745,23 @@ public class PostPipeline extends GLBasePipeline {
         // P281: the film simulation's halation, on the linear light too (none: no node)
         final FilmHalation halation = FilmHalation.fromSettings();
         if (halation != null) add(halation);
-        // The ArkCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX. LinearExposure only keeps the
+        // The WhyCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX. LinearExposure only keeps the
         // Ultra HDR linear snapshot.
         if (captureDemosaic) add(new LinearExposure());
-        final ArkStats arkStats = new ArkStats();
-        add(arkStats);
-        add(new ArkFusion());
-        // The only sharpening is ArkCam's own (ArkLumaSharpen before the detail delta; P118, owner 2026-10-13: the
-        // RawTherapee and SCAM sharpenings and «off» are gone, the ARK strength rows weaken it).
-        final ArkLumaSharpen arkLumaSharpen = new ArkLumaSharpen();
-        // W1.6: in the G_CLEAN domain the sharpening needs nothing of the AE, so ArkStats issues its GPU passes before
-        // the CPU Smart-HDR statistics run (ArkLumaSharpen then only passes the image on).
-        arkStats.earlySharpen = arkLumaSharpen;
-        add(arkLumaSharpen);
-        add(new ArkCombine());
-        // Texture only on request (ArkCam has no mid-frequency boost).
-        final boolean texture = PreferenceKeys.hybridSwitch("ark_texture", false);
-        Log.i("SCAM_PIPELINE", "ARK tail: sharpen=ark (ArkLumaSharpen) texture=" + texture);
+        final WhyStats whyStats = new WhyStats();
+        add(whyStats);
+        add(new WhyFusion());
+        // The only sharpening is WhyCam's own (WhyLumaSharpen before the detail delta; P118, owner 2026-10-13: the
+        // RawTherapee and SCAM sharpenings and «off» are gone, the WHY strength rows weaken it).
+        final WhyLumaSharpen whyLumaSharpen = new WhyLumaSharpen();
+        // W1.6: in the G_CLEAN domain the sharpening needs nothing of the AE, so WhyStats issues its GPU passes before
+        // the CPU Smart-HDR statistics run (WhyLumaSharpen then only passes the image on).
+        whyStats.earlySharpen = whyLumaSharpen;
+        add(whyLumaSharpen);
+        add(new WhyCombine());
+        // Texture only on request (WhyCam has no mid-frequency boost).
+        final boolean texture = PreferenceKeys.hybridSwitch("why_texture", false);
+        Log.i("SCAM_PIPELINE", "WHY tail: sharpen=why (WhyLumaSharpen) texture=" + texture);
         if (texture) add(new ScamLocalContrast());
         if (finalSize != null) add(new HybridFinalResize(finalSize, PreferenceKeys.hybridDownsampler()));
         // P281: the film's sharpness and grain on the finished picture, at its final size (none: no node)

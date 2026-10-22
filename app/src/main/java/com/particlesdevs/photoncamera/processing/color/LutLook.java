@@ -38,7 +38,7 @@ public final class LutLook {
     private final Fn lut;
     private final float strength;
 
-    /** {@code strength} 0..1: the mix in + (lut - in) x strength, as the photo (ArkCombine) and the preview mix it. */
+    /** {@code strength} 0..1: the mix in + (lut - in) x strength, as the photo (WhyCombine) and the preview mix it. */
     public LutLook(Fn lut, float strength) {
         this.lut = lut;
         this.strength = Math.max(0f, Math.min(1f, strength));

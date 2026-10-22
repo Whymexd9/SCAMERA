@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Numpy reference of the LMC hybrid noise reduction (LmcDenoise, shaders lmcdn/*), written from the spec
-research/hybrid5/denoise_port.md section 7 (GCam 9.6 LumaDenoise F16 / ChromaDenoise as ArkCam 2.85 runs them), not from
+research/hybrid5/denoise_port.md section 7 (GCam 9.6 LumaDenoise F16 / ChromaDenoise as WhyCam 2.85 runs them), not from
 the shaders: exact kD8 / {1,3,3,1} pyramids with edge clamp, BilateralFilter3x3 (as research/hybrid5/ref/denoise/bf_sim.py,
 edge clamp instead of wrap), BilateralFilterChroma3x3, Up2 = bilinear x2 at p/2 - 0.25, revert with kVarMultLUT.
 Also the host arithmetic of LmcDenoiseTables (tiers, interpolation, statistics reduction, SNR), in float64.

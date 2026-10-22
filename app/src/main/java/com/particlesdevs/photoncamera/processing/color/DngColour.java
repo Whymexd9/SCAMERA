@@ -13,7 +13,7 @@ import java.util.Locale;
  * matched what a raw converter did with the tags.
  * <p>
  * The JPEG's linear render of a camera RAW value c (after the lens shading, the DNG's GainMap) is the linear sRGB
- * {@code intermediateToSRGB · sensorToProPhoto · c} (ark/low.glsl, combine.glsl: {@code inColor * neutral} is c); the «Цвет»
+ * {@code intermediateToSRGB · sensorToProPhoto · c} (why/low.glsl, combine.glsl: {@code inColor * neutral} is c); the «Цвет»
  * look's white matrix and the tone come on top of it and are no camera colour. The DNG's colour model with a ForwardMatrix is
  * XYZ_D50 = FM · diag(1 / AsShotNeutral) · c (no CameraCalibration, no AnalogBalance); sRGB here is our D50-adapted one
  * (Converter.sXYZtoSRGB, Bradford), so

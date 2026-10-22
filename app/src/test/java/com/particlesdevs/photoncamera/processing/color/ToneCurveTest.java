@@ -8,9 +8,9 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-/** P144: the own tone curve (points, monotone cubic) and ArkCam 1.42's ACES / Uchimura operators. */
+/** P144: the own tone curve (points, monotone cubic) and WhyCam 1.42's ACES / Uchimura operators. */
 public class ToneCurveTest {
-    @Test public void defaultIsArkCamsSCurve() {
+    @Test public void defaultIsWhyCamsSCurve() {
         ToneCurve c = ToneCurve.defaults();
         assertEquals(5, c.size());
         assertEquals(ToneCurve.DEFAULT_POINTS, c.serialize());
@@ -76,7 +76,7 @@ public class ToneCurveTest {
         assertEquals(n - 1, c.size());
     }
 
-    @Test public void acesAndUchimuraAsArkCam() {
+    @Test public void acesAndUchimuraAsWhyCam() {
         // eval_acescg with toe 0.05: b = 0.0375, e = 0.132; pre-gain 1, a 2.61, d 0.59
         float x = 0.18f;
         float want = x * (2.61f * x + 0.0375f) / (x * (2.43f * x + 0.59f) + 0.132f);
@@ -137,7 +137,7 @@ public class ToneCurveTest {
         String text = c.toFileText();
         assertTrue(text.startsWith(ToneCurve.FILE_HEADER + "\n"));
         assertEquals(c.serialize(), ToneCurve.fromFileText(text).serialize());
-        // ArkCam's string, new lines, semicolons, comments
+        // WhyCam's string, new lines, semicolons, comments
         assertEquals(c.serialize(), ToneCurve.fromFileText("# my curve 1:1\r\n0:0; 0.2 : 0.1\n0.5:0.55  1:1").serialize());
         // an 8-bit curve (0..255) is scaled
         ToneCurve eight = ToneCurve.fromFileText("0:0,64:32,128:140,255:255");
@@ -153,7 +153,7 @@ public class ToneCurveTest {
         assertNull("only comments", ToneCurve.fromFileText("# 0:0,1:1"));
     }
 
-    /** P231: ArkCam's curve file (ToneCurveFileManager): {"name", "points": [{"x", "y"}]}, or [x, y] pairs, or a bare array. */
+    /** P231: WhyCam's curve file (ToneCurveFileManager): {"name", "points": [{"x", "y"}]}, or [x, y] pairs, or a bare array. */
     /**
      * Owner, 2026-10-18 (ToneCurve_imx06A.txt): a camera's DNG ProfileToneCurve - a bare list x0, y0, x1, y1 ... in linear gamma,
      * 128 points - comes in as our curve (x the exposure around middle grey, y the display value): middle grey through the curve
@@ -183,8 +183,8 @@ public class ToneCurveTest {
         assertNull("our x:y pairs keep their own reading", ToneCurve.linearPairs("0:0, 1:1"));
     }
 
-    @Test public void arkCamJsonCurveFiles() {
-        String file = "{\n  \"name\": \"ark_art_drama_faces\",\n  \"points\": [\n"
+    @Test public void whyCamJsonCurveFiles() {
+        String file = "{\n  \"name\": \"why_art_drama_faces\",\n  \"points\": [\n"
                 + "    {\"x\": 0.0, \"y\": 0.0}, {\"x\": 0.0961, \"y\": 0.011}, {\"x\": 0.15, \"y\": 0.0245}, {\"x\": 0.2, \"y\": 0.0493},\n"
                 + "    {\"x\": 0.26, \"y\": 0.0956}, {\"x\": 0.3, \"y\": 0.1365}, {\"x\": 0.34, \"y\": 0.1814}, {\"x\": 0.38, \"y\": 0.2345},\n"
                 + "    {\"x\": 0.42, \"y\": 0.2998}, {\"x\": 0.47, \"y\": 0.4048}, {\"x\": 0.54, \"y\": 0.562}, {\"x\": 0.6, \"y\": 0.6961},\n"
@@ -199,8 +199,8 @@ public class ToneCurveTest {
         assertEquals(0.0961f, c.get(1).x, 1e-6f);
         assertEquals(0.011f, c.get(1).y, 1e-6f);
         for (int i = 1; i < c.size(); i++) assertTrue("monotone", c.get(i).y >= c.get(i - 1).y);
-        assertEquals("ark_art_drama_faces", ToneCurve.jsonName(file));
-        // «y» before «x», [x, y] pairs, a bare array; values are clamped to 0..1 (no 8-bit scaling in JSON, as ArkCam)
+        assertEquals("why_art_drama_faces", ToneCurve.jsonName(file));
+        // «y» before «x», [x, y] pairs, a bare array; values are clamped to 0..1 (no 8-bit scaling in JSON, as WhyCam)
         assertEquals(0.3f, ToneCurve.fromFileText("{\"points\":[{\"y\":0,\"x\":0},{\"y\":0.2,\"x\":0.3},{\"y\":1,\"x\":1}]}").get(1).x, 1e-6f);
         assertEquals(3, ToneCurve.fromFileText("{\"points\": [[0, 0], [0.5, 0.6], [1, 1]]}").size());
         assertEquals(0.6f, ToneCurve.fromFileText("[[0, 0], [0.5, 0.6], [1, 1]]").get(1).y, 1e-6f);

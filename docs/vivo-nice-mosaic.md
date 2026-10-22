@@ -80,7 +80,7 @@ handheld; on a tripod the colour gaps are filled only by the model, and isolated
 `DeviceDefaults` (Find X7 Ultra PHY110, Find X8 Ultra PKJ110) applies once per defaults version, at the first start after
 install or update. Its first version, the SCAM HDR set described here (planner SCAMERA, 20 N frames, the tuned merge /
 denoise / tone set of the vivo main camera), was removed on 8 October 2026: SCAM HDR runs only on the Snapdragon 8 Elite, so
-nothing on these phones read it; so was the `force-oppo-defaults` test file. Versions 2 (X8U RAW10) and 3 (X7U spoof, ARK
+nothing on these phones read it; so was the `force-oppo-defaults` test file. Versions 2 (X8U RAW10) and 3 (X7U spoof, WHY
 saturation 1.1) remain.
 
 ## Plain-photo fixes found in an OPPO X8 Ultra log

@@ -7,7 +7,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.particlesdevs.photoncamera.processing.color.ToneCurve;
-import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ArkTone;
+import com.particlesdevs.photoncamera.processing.opengl.postpipeline.WhyTone;
 import com.particlesdevs.photoncamera.ui.settings.SettingsStyle;
 import com.particlesdevs.photoncamera.util.Lang;
 
@@ -50,7 +50,7 @@ public final class ToneCurveCompare {
 
     /** The operator's curve as samples of the own curve's domain. */
     static float[] samples(int op) {
-        java.util.function.DoubleUnaryOperator f = ArkTone.reference(op);
+        java.util.function.DoubleUnaryOperator f = WhyTone.reference(op);
         float[] s = new float[SAMPLES];
         for (int i = 0; i < SAMPLES; i++) s[i] = (float) f.applyAsDouble(i / (double) (SAMPLES - 1));
         return s;
@@ -122,7 +122,7 @@ public final class ToneCurveCompare {
     public static ToneCurve template(int i) {
         if (i == 0) return ToneCurve.defaults();
         if (i == 1) return ToneCurve.identity();
-        return ToneCurve.following(ArkTone.reference(OPS[i - 2]), TEMPLATE_POINTS);
+        return ToneCurve.following(WhyTone.reference(OPS[i - 2]), TEMPLATE_POINTS);
     }
 
     /** A sheet of the templates; the picked one is handed over (to be shown and stored). */

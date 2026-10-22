@@ -49,16 +49,16 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
      * already, rawdevelop_fs: none here; so the filter comes after the LUT there, before it on the ISP path).
      */
     private final LiveLensFilter mRawLensFilter = new LiveLensFilter(false);
-    /** P301: the photo's ARK tone on the developed-RAW viewfinder (the RAW frame's linear values through the photo's shaders). */
-    private final com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveArkTone mArkTone =
-            new com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveArkTone();
-    private boolean mArkLogged;
+    /** P301: the photo's WHY tone on the developed-RAW viewfinder (the RAW frame's linear values through the photo's shaders). */
+    private final com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone mWhyTone =
+            new com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone();
+    private boolean mWhyLogged;
     /**
-     * P312: the developed-RAW viewfinder's programs linked in this context (with the ARK tone's: mRawProgramsArk, P314 the
-     * LiveArkTone mode whose set was asked for, 0 none); asked at.
+     * P312: the developed-RAW viewfinder's programs linked in this context (with the WHY tone's: mRawProgramsWhy, P314 the
+     * LiveWhyTone mode whose set was asked for, 0 none); asked at.
      */
     private boolean mRawProgramsReady;
-    private int mRawProgramsArk;
+    private int mRawProgramsWhy;
     private long mRawProgramsAsked;
     /** P312: when an ISP frame was latched last (a RAW-only session - ISZ, FULLRES - never latches one). */
     private long mIspLatchNs;
@@ -105,6 +105,24 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         return sShownTimestamp;
     }
 
+    /** P319: the key of the tone in rawFbo (Long.MIN_VALUE: none), when it was drawn, and the redraws that reused it. */
+    private long mToneKey = Long.MIN_VALUE, mToneAtNs, mToneReused;
+    /** P319: the VF_RAW line every 2 s while the tone draws: new toned frames, reused redraws, frames the hand-off dropped. */
+    private long mVfRawAtNs, mVfRawToned, mVfRawReused, mVfRawDropped0;
+    /** P319: a tone older than this is drawn again even for the same frame (a stalled stream falls back as before). */
+    static final long TONE_REUSE_NS = 300_000_000L;
+
+    /** P319: the RAW frame (session, version), the tone target and the geometry the WHY tone in rawFbo was drawn for. */
+    private long toneKey() {
+        long k = ((long) com.particlesdevs.photoncamera.processing.LiveRawFrame.currentSession() << 32)
+                ^ (com.particlesdevs.photoncamera.processing.LiveRawFrame.getVersion() & 0xffffffffL);
+        k = 31 * k + rawW;
+        k = 31 * k + rawH;
+        k = 31 * k + rawFbo;
+        k = 31 * k + java.util.Arrays.hashCode(mTexRotateMatrix);
+        return 31 * k + (mMirrorPreview ? 1 : 0);
+    }
+
     private void drawFrame() {
         // GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
@@ -130,31 +148,58 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
                 com.particlesdevs.photoncamera.settings.PreferenceKeys.isLiveViewfinderRawEnabled()
                         || com.particlesdevs.photoncamera.processing.LiveRawFrame.isEnabled()
                         || com.particlesdevs.photoncamera.processing.LiveRawFrame.isMosaicPreview();
-        // P301 (owner, 2026-10-20: «Результат должен совпадать с итоговым фото»): the photo's ARK tone - the RAW frame's linear
+        // P301 (owner, 2026-10-20: «Результат должен совпадать с итоговым фото»): the photo's WHY tone - the RAW frame's linear
         // values through the photo's shaders into the off-screen target, then the filter / peaking pass puts it on screen
         boolean rawActive = false;
         // P312: the developed RAW only once its programs are linked (from their driver binaries; a missing one is compiled in the
         // background, or here one per frame): until then the ISP frame stays - the viewfinder no longer stops for a compile, and
-        // goes from the ISP frame straight to the ARK tone
+        // goes from the ISP frame straight to the WHY tone
         final boolean rawReady = rawLook && rawProgramsReady();
-        // a RAW-only session has no ISP frame to keep: its plain RAW look as soon as rawdevelop is linked, the ARK tone after
+        // a RAW-only session has no ISP frame to keep: its plain RAW look as soon as rawdevelop is linked, the WHY tone after
         final boolean rawPlain = rawReady || (rawLook && mRawRenderer.ready() && System.nanoTime() - mIspLatchNs > 300_000_000L);
         // P314: the tone at the frame's colour resolution (LiveRawRenderer.toneSize), the filter / peaking pass scales it up
-        final boolean ark = rawReady && hProgram2d != 0
-                && com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveArkTone.wanted() && !mArkTone.failed() && rawToneTarget();
-        if (ark) {
-            rawActive = mArkTone.draw(() -> mRawRenderer.drawLinear(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview),
-                    mRawRenderer::lastView, rawFbo, rawW, rawH);
+        final boolean why = rawReady && hProgram2d != 0
+                && com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone.wanted() && !mWhyTone.failed() && rawToneTarget();
+        if (why) {
+            // P319 (user report: «Лайв-вью работает гораздо тормознее»): an ISP frame wakes this thread too (1x sessions keep the
+            // ISP stream), and each such draw toned the same RAW frame again - up to half the draws. The tone in rawFbo is reused
+            // while the RAW frame, the target and the geometry are the same and it is fresh; only the filter / peaking pass runs.
+            // A setting change shows with the next RAW frame. scam_dev vf_tone_reuse 0: every draw tones (as before).
+            final long key = toneKey();
+            final long now = System.nanoTime();
+            if (key == mToneKey && now - mToneAtNs < TONE_REUSE_NS
+                    && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vf_tone_reuse", true)) {
+                rawActive = true;
+                mToneReused++;
+                mVfRawReused++;
+            } else {
+                rawActive = mWhyTone.draw(() -> mRawRenderer.drawLinear(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview),
+                        mRawRenderer::lastView, rawFbo, rawW, rawH);
+                mToneKey = rawActive ? key : Long.MIN_VALUE;
+                mToneAtNs = now;
+                if (rawActive) mVfRawToned++;
+            }
+            if (now - mVfRawAtNs >= 2_000_000_000L) {
+                final long dropped = com.particlesdevs.photoncamera.processing.LiveRawFrame.droppedFrames();
+                if (mVfRawAtNs != 0) {
+                    final double s = (now - mVfRawAtNs) / 1e9;
+                    Log.i("VF_RAW", String.format(java.util.Locale.ROOT, "toned %.1f/s reused %.1f/s dropped %.1f/s tone %dx%d",
+                            mVfRawToned / s, mVfRawReused / s, (dropped - mVfRawDropped0) / s, rawW, rawH));
+                }
+                mVfRawAtNs = now;
+                mVfRawToned = mVfRawReused = 0;
+                mVfRawDropped0 = dropped;
+            }
             if (rawActive) drawRawFiltered(getPeakEnabled());
-            if (!mArkLogged || !rawActive) {
-                if (!mArkLogged) Log.d("MainRenderer", "viewfinder: the photo's ARK tone " + (rawActive ? "on" : "not drawn (" + (mArkTone.failed() ? "failed" : "no frame") + ")"));
-                mArkLogged = rawActive;
+            if (!mWhyLogged || !rawActive) {
+                if (!mWhyLogged) Log.d("MainRenderer", "viewfinder: the photo's WHY tone " + (rawActive ? "on" : "not drawn (" + (mWhyTone.failed() ? "failed" : "no frame") + ")"));
+                mWhyLogged = rawActive;
             }
         }
         // P300: with a lens filter the RAW frame is drawn off screen first, the filter pass puts it on screen
-        // P314: not after the ARK tone found no frame (the plain draw has none either; its viewport-sized target would be made
+        // P314: not after the WHY tone found no frame (the plain draw has none either; its viewport-sized target would be made
         // anew, and the tone's again with the next frame) - only when the tone failed
-        if (!rawActive && (!ark || mArkTone.failed())) {
+        if (!rawActive && (!why || mWhyTone.failed())) {
             final boolean rawFilter = rawPlain && hProgram2d != 0 && mRawLensFilter.active() && rawTarget();
             if (rawFilter) GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, rawFbo);
             rawActive = rawPlain && mRawRenderer.draw(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview, getPeakEnabled());
@@ -234,10 +279,10 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         }
         mUpdateST = false;
         mRawRenderer.onContextCreated();
-        mArkTone.onContextCreated();
-        mArkLogged = false;
+        mWhyTone.onContextCreated();
+        mWhyLogged = false;
         mRawProgramsReady = false;
-        mRawProgramsArk = 0;
+        mRawProgramsWhy = 0;
         mRawProgramsAsked = 0;
         mIspLatchNs = 0;
         mSceneMeter.onContextCreated();
@@ -288,35 +333,35 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     }
 
     /**
-     * P312: links the developed-RAW viewfinder's programs (rawdevelop, and the photo's ARK tone when it is wanted) before the
+     * P312: links the developed-RAW viewfinder's programs (rawdevelop, and the photo's WHY tone when it is wanted) before the
      * first RAW frame needs them: their driver binaries at once; the ones without a binary are compiled by ViewfinderPrograms in
      * the background (asked once per context), else here, at most one per call. True when they are all linked (or failed: the
      * draw falls back as before).
      */
     private boolean rawProgramsReady() {
-        // P314: which of the tone's program sets (vf_ark 1 per pixel / 2 the guided-filter chain; 0 none)
-        final int arkMode = hProgram2d != 0 && !mArkTone.failed()
-                ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveArkTone.mode() : 0;
-        final boolean ark = arkMode != 0;
-        if (mRawProgramsReady && (!ark || mRawProgramsArk == arkMode)) return true;
+        // P314: which of the tone's program sets (vf_why 1 per pixel / 2 the guided-filter chain; 0 none)
+        final int whyMode = hProgram2d != 0 && !mWhyTone.failed()
+                ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone.mode() : 0;
+        final boolean why = whyMode != 0;
+        if (mRawProgramsReady && (!why || mRawProgramsWhy == whyMode)) return true;
         final long now = android.os.SystemClock.elapsedRealtime();
         try {
-            if (mRawProgramsAsked == 0 || (ark && mRawProgramsArk != arkMode)) {
-                // first ask in this context, or the ARK tone wanted now (vf_ark switched on, or to the other set): its programs built
+            if (mRawProgramsAsked == 0 || (why && mRawProgramsWhy != whyMode)) {
+                // first ask in this context, or the WHY tone wanted now (vf_why switched on, or to the other set): its programs built
                 // in the background too
                 mRawProgramsReady = false;
                 mRawProgramsAsked = now;
-                mRawProgramsArk = arkMode;
+                mRawProgramsWhy = whyMode;
                 final java.util.ArrayList<String> keys = new java.util.ArrayList<>();
                 keys.add(LiveRawRenderer.programKey());
-                if (ark) keys.addAll(mArkTone.programKeys());
+                if (why) keys.addAll(mWhyTone.programKeys());
                 ViewfinderPrograms.prepare(keys);
             }
             final boolean waiting = now - mRawProgramsAsked < RAW_PROGRAMS_WAIT_MS;
             final java.util.function.Predicate<String> elsewhere = k -> waiting && ViewfinderPrograms.pending(k);
             if (waiting && ViewfinderPrograms.busy()) {
                 // no binary is loaded while the background thread links (a driver's compiler lock would hold this thread), except
-                // rawdevelop's in a RAW-only session: it has no ISP frame to show meanwhile, the plain RAW look draws until the ARK tone
+                // rawdevelop's in a RAW-only session: it has no ISP frame to show meanwhile, the plain RAW look draws until the WHY tone
                 if (System.nanoTime() - mIspLatchNs > 300_000_000L) mRawRenderer.prepare(elsewhere);
                 return false;
             }
@@ -325,7 +370,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
                 ViewfinderPrograms.prepare(java.util.Collections.singletonList(k));
                 return true;
             };
-            mRawProgramsReady = mRawRenderer.prepare(elsewhere) && (!ark || mArkTone.prepare(elsewhere, sendOnce));
+            mRawProgramsReady = mRawRenderer.prepare(elsewhere) && (!why || mWhyTone.prepare(elsewhere, sendOnce));
         } catch (RuntimeException e) {
             Log.w("MainRenderer", "viewfinder programs: " + e);
             mRawProgramsReady = true;   // the draws fall back as before
@@ -336,7 +381,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         }
         if (mRawProgramsReady)
             Log.d("MainRenderer", "viewfinder: RAW programs linked " + (android.os.SystemClock.elapsedRealtime() - mRawProgramsAsked)
-                    + " ms after they were asked for (ARK " + ark + ", vf_ark " + arkMode + ")");
+                    + " ms after they were asked for (WHY " + why + ", vf_why " + whyMode + ")");
         return mRawProgramsReady;
     }
 
@@ -349,12 +394,12 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private final int[] mViewport = new int[4];
 
     /**
-     * P314: the target of the ARK tone: the visible crop's colour grid of the frame drawn last (LiveRawRenderer.toneSize: a 2x ISZ
+     * P314: the target of the WHY tone: the visible crop's colour grid of the frame drawn last (LiveRawRenderer.toneSize: a 2x ISZ
      * Quad frame 810 x 1080 instead of the 1440 x 1920 viewport, a 1x Bayer frame the viewport), the viewport before a first frame.
      */
     private boolean rawToneTarget() {
         GLES20.glGetIntegerv(GLES20.GL_VIEWPORT, mViewport, 0);
-        final com.particlesdevs.photoncamera.processing.LiveArkMeter.View v = mRawRenderer.lastView();
+        final com.particlesdevs.photoncamera.processing.LiveWhyMeter.View v = mRawRenderer.lastView();
         if (v == null) return rawTarget(mViewport[2], mViewport[3]);
         // the crop fitted to the screen, not the one drawn last: that one was fitted to the previous target's rounded aspect, and
         // the two could flip each other every frame (review: 139 of ~84k viewport / frame / zoom cases in a 2-cycle)
@@ -401,7 +446,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
     /**
      * P300: the off-screen RAW frame through the live lens filter onto the screen (no gain or mirror: the RAW pass did them);
-     * P301: the focus peaking here when the frame came from the ARK tone (the RAW pass drew none).
+     * P301: the focus peaking here when the frame came from the WHY tone (the RAW pass drew none).
      */
     private void drawRawFiltered(int peaking) {
         mRawLensFilter.prepass(pVertex, pTexCoord, IDENTITY, rawTex, GLES20.GL_TEXTURE_2D, false, 1f);

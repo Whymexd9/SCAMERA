@@ -54,7 +54,7 @@ public final class OppoNativeFullRes {
     /** P214j: the same key where the HAL declares it an int32 (the byte is refused: no marshaler for Byte on an int32 tag). */
     private static final CaptureRequest.Key<Integer> MODE_INT = new CaptureRequest.Key<>(MODE_KEY, Integer.class);
     private static final CaptureResult.Key<int[]> MODE_INDEX = new CaptureResult.Key<>("com.qti.sensorbps.mode_index", int[].class);
-    /** P227: the same report under the name ArkCam reads (CamX lists both on the Oplus phones). */
+    /** P227: the same report under the name WhyCam reads (CamX lists both on the Oplus phones). */
     private static final CaptureResult.Key<int[]> MODE_INDEX_QUIC = new CaptureResult.Key<>("org.quic.camera.sensorbps.SensorModeIndex", int[].class);
 
     /** The OPPO Find X7 Ultra (PHY110): the phone of the measured modes. */

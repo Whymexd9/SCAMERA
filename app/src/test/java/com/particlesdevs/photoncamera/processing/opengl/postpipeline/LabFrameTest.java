@@ -17,7 +17,7 @@ public class LabFrameTest {
     @Test public void theWholeFramesStatisticsComeBackExactly() throws Exception {
         final LabFrame f = new LabFrame();
         for (int m = 0; m < LabFrame.MODES; m++) {
-            final ArkAe.Stats s = new ArkAe.Stats();
+            final WhyAe.Stats s = new WhyAe.Stats();
             s.gmax = 3.25f + m;
             s.hy[0] = 12345678901L;
             s.hy[4095] = 7 + m;
@@ -62,7 +62,7 @@ public class LabFrameTest {
         assertTrue(g.lscNone);
         assertTrue(Float.isNaN(g.lensExpo));
         assertEquals(8192, g.width);
-        final ArkAe.Stats c = LabFrame.copy(g.stats[1]);
+        final WhyAe.Stats c = LabFrame.copy(g.stats[1]);
         c.hy[0] = 0;
         assertEquals(12345678901.0, g.stats[1].hy[0], 0);
     }
@@ -74,7 +74,7 @@ public class LabFrameTest {
     /** The input scale the statistics were measured at comes back; a frame recorded before it reads NaN (the lab fills it in). */
     @Test public void theInputScaleIsKept() throws Exception {
         final LabFrame f = new LabFrame();
-        f.stats[0] = new ArkAe.Stats();
+        f.stats[0] = new WhyAe.Stats();
         f.inScale = 2f;
         assertEquals(2f, LabFrame.fromJson(new JSONObject(f.toJson().toString())).inScale, 0f);
         f.inScale = Float.NaN;
@@ -89,36 +89,36 @@ public class LabFrameTest {
     @Test public void scaledStatisticsAreThoseOfTheScaledFrame() {
         final int w = 160, h = 120;
         for (float k : new float[]{2f, 0.5f, 0.25f, 4f}) {
-            final ArkAe.Stats base = ArkAe.stats(scene(w, 1f), 3, w, h, 0);
-            final ArkAe.Stats truth = ArkAe.stats(scene(w, k), 3, w, h, 0);
-            final ArkAe.Stats scaled = LabFrame.scaled(base, k);
+            final WhyAe.Stats base = WhyAe.stats(scene(w, 1f), 3, w, h, 0);
+            final WhyAe.Stats truth = WhyAe.stats(scene(w, k), 3, w, h, 0);
+            final WhyAe.Stats scaled = LabFrame.scaled(base, k);
             assertEquals("gmax x" + k, truth.gmax, scaled.gmax, truth.gmax * 1e-6f);
             assertEquals("sumY x" + k, truth.sumY, scaled.sumY, Math.abs(truth.sumY) * 1e-5);
             assertEquals("sumLog x" + k, truth.sumLog, scaled.sumLog, Math.abs(truth.sumLog) * 1e-4 + 1);
             assertEquals(truth.tot, scaled.tot, 0);
             double hy = 0, hm = 0;
-            for (int i = 0; i < ArkAe.BINS; i++) { hy += scaled.hy[i]; hm += scaled.hm[i]; }
+            for (int i = 0; i < WhyAe.BINS; i++) { hy += scaled.hy[i]; hm += scaled.hm[i]; }
             assertEquals("every sample kept", truth.tot, hy, 1e-6);
             assertEquals("every sample kept", truth.tot, hm, 1e-6);
-            final ArkAe.Settings s = new ArkAe.Settings();
+            final WhyAe.Settings s = new WhyAe.Settings();
             s.bentoHeadroom = true;
-            final ArkAe.Result a = ArkAe.finish(truth, s, 100, 6400), b = ArkAe.finish(scaled, s, 100, 6400);
-            final float bin = a.clip / ArkAe.BINS * 2;
+            final WhyAe.Result a = WhyAe.finish(truth, s, 100, 6400), b = WhyAe.finish(scaled, s, 100, 6400);
+            final float bin = a.clip / WhyAe.BINS * 2;
             assertEquals("p50 x" + k, a.p50, b.p50, bin);
             // the max channel above the ceiling comes back from the tail's bins (12 an octave)
             assertEquals("p98 x" + k, a.p98, b.p98, Math.max(bin, a.p98 * 0.05f));
             assertEquals("ae x" + k, a.ae, b.ae, a.ae * 0.04f);
             assertEquals("hr x" + k, a.hr, b.hr, a.hr * 1e-5f);
             // and it matters: the shot's own statistics give another exposure
-            assertTrue("ae x" + k, Math.abs(a.ae - ArkAe.finish(base, s, 100, 6400).ae) > a.ae * 0.05f);
+            assertTrue("ae x" + k, Math.abs(a.ae - WhyAe.finish(base, s, 100, 6400).ae) > a.ae * 0.05f);
         }
         // 1: the statistics as they are
-        final ArkAe.Stats base = ArkAe.stats(scene(w, 1f), 3, w, h, 0);
+        final WhyAe.Stats base = WhyAe.stats(scene(w, 1f), 3, w, h, 0);
         assertArrayEquals(base.hm, LabFrame.scaled(base, 1f).hm, 0);
     }
 
     /** A frame with shadows, mid-tones, coloured light and Bento highlights up to 6 x the clip, times {@code k}. */
-    private static ArkAe.Rows scene(int w, float k) {
+    private static WhyAe.Rows scene(int w, float k) {
         return (y, row) -> {
             for (int x = 0; x < w; x++) {
                 final float t = (x + 0.5f) / w, u = (y + 0.5f) / 120f;

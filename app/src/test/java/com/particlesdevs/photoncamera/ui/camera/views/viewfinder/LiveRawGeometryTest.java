@@ -14,7 +14,7 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * P314: the RAW viewfinder's geometry - the visible crop (moved out of LiveRawRenderer.draw for the CPU AE, unchanged), the size
- * the ARK tone is drawn at (the crop's colour grid, never above the viewport) and how a frame of cell means is sampled.
+ * the WHY tone is drawn at (the crop's colour grid, never above the viewport) and how a frame of cell means is sampled.
  */
 public class LiveRawGeometryTest {
     private static LiveRawFrame.Frame frame(int w, int h, int block, float[] crop) {

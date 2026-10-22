@@ -164,6 +164,16 @@ final class CameraUIController implements CameraUIEventsListener,
         if (this.shutterButton != null) this.shutterButton.setHovered(false);
     }
 
+    /** P319: a self-timer counts down (the shutter is hovered from startTimer to the shot, as onClick reads it). */
+    boolean timerRunning() {
+        return this.shutterButton != null && this.shutterButton.isHovered();
+    }
+
+    /** P319: Back stops the countdown; no shot is taken. */
+    void cancelTimer() {
+        resetTimer();
+    }
+
     @Override
     public void onAuxButtonClicked(String id) {
         Log.d(TAG, "onAuxButtonClicked() called with: id = [" + id + "]");

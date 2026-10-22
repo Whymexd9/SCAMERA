@@ -118,11 +118,11 @@ public final class ShadeCatalog {
     }
 
     /**
-     * The FULL level's groups (SHADE_TASK.md §3 with the owner's answers 6 and 8: «замер» is the ARK metering (a list since the settings audit),
-     * «тон ARK» and Exposure Fusion are gone, Luma / Chroma are the multiscale engine's multipliers, «удлинение L» a 0-2 slider).
+     * The FULL level's groups (SHADE_TASK.md §3 with the owner's answers 6 and 8: «замер» is the WHY metering (a list since the settings audit),
+     * «тон WHY» and Exposure Fusion are gone, Luma / Chroma are the multiscale engine's multipliers, «удлинение L» a 0-2 slider).
      */
     public static final List<Group> GROUPS = Collections.unmodifiableList(Arrays.asList(
-            new Group(R.string.shade_group_shoot, FLASH, TIMER, "pref_scam_hybrid_ark_metering"),
+            new Group(R.string.shade_group_shoot, FLASH, TIMER, "pref_scam_hybrid_why_metering"),
             new Group(R.string.shade_group_format, FORMAT, OUTPUT, DOWNSAMPLER, "pref_ultrahdr_key", "pref_wide169_key",
                     "pref_show_watermark_key"),
             new Group(R.string.shade_group_hybrid, "pref_scam_hybrid_bento", "pref_scam_hybrid_bento_frames",
@@ -213,7 +213,7 @@ public final class ShadeCatalog {
         spec(SOUND, R.string.shade_t_sound, 0, R.drawable.ui_ic_sound);
         spec(FLICKER, R.string.shade_t_flicker, 0, R.drawable.ui_ic_lamp);
         spec(METERING_STD, R.string.shade_t_metering_std, R.array.shade_s_metering_std, R.drawable.ic_sheet_metering);
-        spec("pref_scam_hybrid_ark_metering", R.string.shade_t_metering, R.array.shade_s_ark_metering, R.drawable.ic_shade_meter);
+        spec("pref_scam_hybrid_why_metering", R.string.shade_t_metering, R.array.shade_s_why_metering, R.drawable.ic_shade_meter);
         spec(OUTPUT, R.string.shade_t_output, R.array.shade_s_output, R.drawable.settings_ic_zoom);
         spec(DOWNSAMPLER, R.string.shade_t_downsampler, R.array.shade_s_downsampler, R.drawable.ic_sheet_downsampler);
         spec("pref_ultrahdr_key", R.string.shade_t_ultrahdr, 0, R.drawable.settings_ic_hdr);

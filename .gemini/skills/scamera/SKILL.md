@@ -28,7 +28,7 @@ description: Работа над SCAMERA — Android-камерой (форк Ph
 - vivo на MediaTek: ISZ и DCG не работают (владелец, 2026-10-13), удалены в P123 — не возвращать.
 - SCAM TEST (`SCAMERA-PC/scam-test/`, `com.scam.test`) — отдельное приложение; его отчёты только входные данные.
 - Без root (root необязателен). Без подмены пакета/`clientName` стоковой камеры.
-- Части ArkCam комбинировать с нашим пайплайном, а не подменять.
+- Части WhyCam комбинировать с нашим пайплайном, а не подменять.
 - Тесты не отключать и не ослаблять. md5 контрольных серий не должен меняться без умысла.
 - Трафик ограничен: одна сборка APK на проверку, без больших загрузок. APK из CI не скачивать без просьбы.
 - Пуш только по команде владельца: `git push origin HEAD:main` (ветка `migration/nice-camera2`). При HTTP 408:
@@ -70,7 +70,7 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 4. Воркер: выравнивание, склейка на GPU (ядро склейки = Sabre + отбраковка + кадры светов = Bento + кадры теней = Shasta,
    фотометрическая склейка = Mochi, нативные мозаики Quad/Tetra). Результат — float RGB обратно в приложение. Ветки SCAM HDR
    в воркере (`MappedScamBurst`, `scam::reconstruct`) и в `CaptureController` ещё в коде — шаг 3b P129.
-5. `PostPipeline` (тон ARK, шумодав, света, резкость) → `RunHDRGainMap` → `PhotoOutput.save` (JPEG/HEIC/WebP/AVIF/DNG).
+5. `PostPipeline` (тон WHY, шумодав, света, резкость) → `RunHDRGainMap` → `PhotoOutput.save` (JPEG/HEIC/WebP/AVIF/DNG).
 
 Нативные модули (`app/src/main/cpp/CMakeLists.txt`): `dngCreator`, `allocator` (+`worker-spawn.cpp`),
 `camera2native` (`scamAe` и `scamProbe` убраны в P129, `scamNeuralProbe` — в P175), `scameraJpeg`
@@ -79,7 +79,7 @@ Kotlin нет. Сборка: JDK 17, Gradle 8.11.1, SDK 36, Build Tools 36.0.0, 
 см. HANDOFF §3). В APK: `assets/scam-neural/arm64-v8a/scam-neural-worker` + `lib/arm64-v8a/libscamera_worker.so`.
 
 Шейдеры:
-- ассеты `app/src/main/assets/shaders/` (через `GLProg`, `shaders/<имя>.glsl`): `ark/` тон, `scamhdr/scamrgb.glsl`,
+- ассеты `app/src/main/assets/shaders/` (через `GLProg`, `shaders/<имя>.glsl`): `why/` тон, `scamhdr/scamrgb.glsl`,
   `clipband.glsl` света, `hlrecovery/`, `scamdn/` шумодав, `scamlc/`, `chromadn/`,
   `preview/`, `ultrahdr/`, `utils/` (`remosaic/` убран в P175);
 - строками в заголовках: `scam-hybrid.h` (`kHyb*`: склейка, `kHybMergeMosaic/Fast`, `kHybMochi*`, Bento, chroma),

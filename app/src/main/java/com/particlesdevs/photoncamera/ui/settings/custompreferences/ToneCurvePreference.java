@@ -39,15 +39,15 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * P144: the own tone curve of «Кривая AgX и ACES» - its points ("x:y,..." in pref_scam_hybrid_ark_curve_points) edited on a
- * graph with a finger (ToneCurveView), plus «S-кривая» (ArkCam's default) and «Прямая» (the straight line). Under them the
+ * P144: the own tone curve of «Кривая AgX и ACES» - its points ("x:y,..." in pref_scam_hybrid_why_curve_points) edited on a
+ * graph with a finger (ToneCurveView), plus «S-кривая» (WhyCam's default) and «Прямая» (the straight line). Under them the
  * selected point: ‹ › to step through the points, «Удалить», and two sliders - «Экспозиция» (x, -5..+5 EV around middle grey)
  * and «Яркость» (y, 0..100 %) - whose values tap to type them (PrecisionEditor). Stored when a gesture ends; the next shot
- * reads it (ArkTone.curveSamples). At the bottom «Сохранить» (a named .txt in Download/SCAMERA/ToneCurves) and «Загрузить»
+ * reads it (WhyTone.curveSamples). At the bottom «Сохранить» (a named .txt in Download/SCAMERA/ToneCurves) and «Загрузить»
  * (the saved curves with a preview and a bin, and «Из файла…»: the system picker, through the settings screen's launcher).
  */
 public class ToneCurvePreference extends Preference {
-    public static final String KEY = "pref_scam_hybrid_ark_curve_points";
+    public static final String KEY = "pref_scam_hybrid_why_curve_points";
     private static final int STEPS = 1000;
     /** Larger files are no curve. */
     private static final int MAX_FILE = 256 * 1024;
@@ -131,7 +131,7 @@ public class ToneCurvePreference extends Preference {
         return text == null ? null : ToneCurve.fromFileText(text);
     }
 
-    /** A picked file's text, null above 256 KB (P231: the import also reads an ArkCam file's «name»). */
+    /** A picked file's text, null above 256 KB (P231: the import also reads an WhyCam file's «name»). */
     @Nullable
     public static String readText(InputStream in) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -274,7 +274,7 @@ public class ToneCurvePreference extends Preference {
 
     /**
      * «Загрузить»: the saved curves (a preview of each, a tap loads it; the bin asks once more, then deletes the file) and
-     * «Из файла…» for a curve from anywhere (another phone, ArkCam's "x:y,..." text).
+     * «Из файла…» for a curve from anywhere (another phone, WhyCam's "x:y,..." text).
      */
     private void loadSheet(Context c) {
         LinearLayout body = SettingsStyle.sheetBody(c, Lang.t(c, "Загрузить кривую", "Load a curve"), null);

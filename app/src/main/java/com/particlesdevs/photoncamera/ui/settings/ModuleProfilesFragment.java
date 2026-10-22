@@ -26,6 +26,14 @@ public class ModuleProfilesFragment extends ModuleConceptFragment {
     }
     @Override protected void render(){
         page(Lang.t(getContext(),"Настройки по модулям","Settings per module"),null);
+        profilesSection();
+    }
+
+    /**
+     * P319: the per-module processing profiles (the switch, each module with its FULLRES 50 / 200 MP profiles and trials, copying
+     * between modules) - this page's content and the second half of «Камеры и модули» (ModuleSettingsFragment).
+     */
+    protected void profilesSection(){
         boolean on=PreferenceKeys.isPerLensSettingsOn();
         note(on?Lang.t(getContext(),"Нажмите модуль или его снимки 50 / 200 Мп — откроются только их настройки. Формат, качество, звуки, сетка и водяной знак общие и остаются на обычных страницах.","Tap a module or its 50 / 200 MP shots to open only their settings. Format, quality, sounds, grid and watermark are shared and stay on the usual pages.")
             :Lang.t(getContext(),"Сейчас все модули снимают с общими настройками. Включите «Свои настройки для каждого модуля», чтобы настроить каждый объектив и его 50 / 200 Мп отдельно.","All modules shoot with the common settings now. Turn on “Separate settings for each module” to set up each lens and its 50 / 200 MP shots on their own."));

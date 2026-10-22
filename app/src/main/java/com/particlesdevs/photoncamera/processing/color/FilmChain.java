@@ -3,7 +3,7 @@ package com.particlesdevs.photoncamera.processing.color;
 import androidx.annotation.Nullable;
 
 /**
- * P281: the one 3D LUT the photo (ArkCombine, FILM_LUT) and the viewfinder apply - the film simulation (FilmSim) followed by
+ * P281: the one 3D LUT the photo (WhyCombine, FILM_LUT) and the viewfinder apply - the film simulation (FilmSim) followed by
  * the chosen LUT (FilmLut, «Плёночный LUT»), each at its own strength, baked into one table; without a simulation it is the
  * chosen LUT as before (its strength then applied by the shader, unchanged).
  */

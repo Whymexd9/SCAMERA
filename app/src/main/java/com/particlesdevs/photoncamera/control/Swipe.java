@@ -211,7 +211,11 @@ public class Swipe {
         if (cameraFragmentViewModel.getSheetLevel() != CameraFragmentModel.SHEET_HIDDEN) return;
         com.particlesdevs.photoncamera.ui.camera.LutTray tray = cameraFragment.lutTray;
         if (tray == null) return;
-        cameraFragment.showCardToast(tray.step(direction));
+        // P319: the new look wipes in from the side the finger moved to (LutWipeView), the name in the message band
+        final Runnable change = () -> cameraFragment.showCardToast(tray.step(direction));
+        final com.particlesdevs.photoncamera.databinding.CameraFragmentBinding b = cameraFragment.cameraFragmentBinding;
+        if (b == null || b.layoutViewfinder.lutWipe == null) { change.run(); return; }
+        b.layoutViewfinder.lutWipe.wipe(b.layoutViewfinder.texture, direction, change);
     }
 
 }

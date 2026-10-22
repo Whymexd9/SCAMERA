@@ -219,7 +219,7 @@ public final class GallerySheets {
         View sw = toggleView(c, on);
         row.addView(sw);
         row.setContentDescription(t + ", " + sub);
-        row.setStateDescription(on ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
+        androidx.core.view.ViewCompat.setStateDescription(row, on ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
         row.setTag(on);
         row.setClickable(true);
         row.setFocusable(true);
@@ -227,7 +227,7 @@ public final class GallerySheets {
             boolean now = !(Boolean) row.getTag();
             row.setTag(now);
             setToggle(sw, now);
-            row.setStateDescription(now ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
+            androidx.core.view.ViewCompat.setStateDescription(row, now ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
             switched.on(now);
         });
         return row;

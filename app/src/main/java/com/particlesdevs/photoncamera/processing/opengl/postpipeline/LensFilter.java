@@ -17,7 +17,7 @@ import static android.opengl.GLES20.GL_CLAMP_TO_EDGE;
 import static android.opengl.GLES20.GL_LINEAR;
 
 /**
- * P228 / P287 / P289: the lens filter on the linear scene-referred RGB after the merge and its denoise, before the ARK tone
+ * P228 / P287 / P289: the lens filter on the linear scene-referred RGB after the merge and its denoise, before the WHY tone
  * (where a bright source still has its real energy): the reference model's diffusion filters (Glimmerglass, Black Pro-Mist,
  * Pro-Mist, CineBloom; DiffusionModel), out = (1 - p) E + p (K * E), run as the reference app runs them - DiffusionGauss's
  * plan: every exponential of the PSF as three Gaussians, each a separable blur on the box-pyramid level where it is 3..6 pixels

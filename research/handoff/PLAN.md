@@ -6898,6 +6898,27 @@ Owner, same day: «сделай гпу выравнивание и дай воз
     vivo merges unchanged) puts grey beads into thin ring cores at LED levels 0.8 / 1.15 / 1.3 x (the guard zeroes the trust
     around every G-clipped spot) and harder blotches on the bars in the as-shot colour path. Next idea, not built: guard only a
     white light's core (an untrusted bright rim, a clipped extent > ~4 px) or blend by the share of guarded taps.
+- Round 4 (the owner relaunched it after the push: «запускай 4ый раунд»; two verifiers per topic, both must pass): REJECTED
+  again, nothing applied.
+  - Sharpening (SCR p315/r4-sharpen/p315_sharpen_light_r4.diff: a 6-pass light map, a core counts only as a THIN light - >= 8..16
+    cores in a 49x49-texel window, clipped share < 0.18..0.24, mean raw level < 0.38..0.52, cores > 0.18..0.28 of the colour
+    share; the gate edge 2.5 -> 4.5 px; the LED bar left out as extended): every round-3 case bit-identical (near 36 cells,
+    art289 x1..x3, sky, x7u3, oc3, 26 daylight sweeps), ring gains kept (P311 jb 23.3, pink 22.6, j0 25.5). Verifiers: the
+    7-segment digits come back at x3.5..x8 (lost 0.81..0.84 of the sharpening), a red box behind a railing at x4..x6, and a
+    broad class of non-lights passes the thin test - clipped red / blue / purple flowers on foliage, stripes on fabric, a rope
+    on grass, small signs, sky slivers between buildings, backlit keys (lost 0.70..0.92, a smooth ~10 px band); the gate forks
+    around an ungated core where 0 < thin < 0.67 (build the glow envelope from clip x level, thin only in the reach); strokes
+    2..8 px from a saturated clipped strip on a lit wall stay between off and base (no window statistic separates them from a
+    ring flank - an owner decision: accept, or drop the flank gate).
+  - ISZ coloured light (SCR p315/r4-isz/p315_isz_r4.diff: a stricter white-core test as a distance-weighted share, a white-rim
+    guard, a fill near the clip, the mode steps aside on WIDE lights - a 16-tap circle of radius 10 px - so the bar keeps HEAD):
+    0 bead runs at 0.65..1.6x in both profiles, the pink bar = HEAD. Verifiers: beads come back at 1.75x / 2.0x in the x8u
+    profile (the X8U ISZ path since 5a40841d: core R/B carried only 1.00..1.07 x G flips the trust per pixel); a ring split
+    into HEAD and trusted parts with hard steps (rainbow rings, width changes, beside a white window / bar / lamp, junctions;
+    colour-step events 43 -> 221, Tetra 14 -> 390); amber rings beaded at 1.6x; touching rings get grey blobs; concentric rings
+    show the 16-tap circle's 16-fold pattern; Tetra specks 2115 -> 3230; cyan rings darker / blue-grey. Their remedy: decide
+    the trust per light, not per pixel (fade it for the whole ring by its share of all-clipped core taps), or smooth it along
+    the light; validate at 1.6..2.5x, both profiles, Tetra.
 - Checks: PedestalFloorTest (new, CI list), LiveRawFrameTest, SensorModePickTest, HybridPlanTest, MosaicNeutralResolverTest,
   OppoTunedColorTest, FlushLossStatsTest, PreviewStallTest; the whole CI list (275 classes, 1650 tests); check_colour_output
   --shader / --gl; independent reviews of the restart, viewfinder and colour changes (SCR p315/jrev-*) and a pre-push review
@@ -6998,3 +7019,64 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   blocks, the reset), DngMetadataTest, DngPreviewTest (any repeat pattern), DngColourTest.
 - Open: a phone DNG of each kind (merged mosaic, reference frame, plain Bayer) in Lightroom and Scam Remosaic; whether the
   owner's X200 Ultra / X100 Ultra DNGs carry AsShotNeutral / ForwardMatrix1 again (P215).
+
+### P319 - a user's report: Back, the size pill, the settings, the RAW viewfinder, «Ark» -> «Why»; the LUT swipe; the merge on Android 10 (owner, 2026-10-22, forwarding a user's nine points: «изучи и подумай что и как можно исправить и улучшить. Везде где есть "Ark" меняй на "Why"» + «постарайся побольше пунктов сделать сам» + «у нас по свайпу по экрану переключаются луты, сделай для этого анимацию» + a crash / debug zip of a nubia NX563J): DONE in code, not device-tested.
+- Study (one workflow: rename, viewfinder, size label, settings, Back - each read by a second agent; notes and tools in SCR
+  fb319/), then done by the lead.
+- Back (item 8): CameraFragment.onBackPressed returned true on every path since 48554ac9, so Back never left the camera.
+  CameraBack (pure, CameraBackTest): one thing per press - a running self-timer, the catalog, the shade's edit mode, the quick
+  sheet, the LUT tray, the Pro panel; then the first Back during a capture only warns («Снимок ещё снимается…»), a second one
+  within 2 s leaves; with a shot captured / queued / merged the task goes to the background (ProcessingKeepAlive keeps the
+  process); else the activity finishes. ParseExif.parse no longer dereferences a missing capture controller (a queued shot of
+  a finished screen was lost).
+- The size pill (item 2): PhotoSize used 12 / 50 / 200 as ids and as the text, so every lens without FULLRES said «12 Мп».
+  CaptureController reports the session's stream (PhotoSize.stream); the pill shows the photo the lens writes - the stream, its
+  «16:9» crop and, for an SHDR shot, «Разрешение» - in the gallery's words (PhotoInfo.megapixels: «12,6 Мп», «8 Мп»); the size
+  sheet's «Обычный» row the lens's own normal size, and a size the lens lacks is not listed (P214h's failed sizes stay, dimmed).
+  PhotoSizeBadgeTest; CameraSheetsTest updated on purpose. The settings' «Размер фото» page of a module of another camera
+  shows that module (its normal size as last seen, its FULLRES sizes from its profiles; a pick there says to open it in the
+  camera). Open: FULLRES rows keep «50 / 200 Мп» (study item: a pure OutputSize shared with the pipeline).
+- Settings (items 3, 4, 6, 7, 9):
+  - item 7: «Сохранять снимки для лаборатории» only on the lab page (the Diagnostics row removed; the key and its reader stay);
+  - item 9 sounds: one «Звуки» row (Затвор и таймер / Только затвор / Только таймер / Без звука) over the two switches, which the
+    page hides (their keys, defaults, the shade's sound tile and backups unchanged); SoundsRowTest;
+  - item 4: a long press on any settings row opens its help (SettingHelp: what it does and how to set it from strings_help.xml
+    where written - the brightness / colour tables of the denoiser row by row, sounds, the RAW viewfinder, the format, LUT -,
+    else the row's summary; its value; «В шторку»); the @Tunable switches keep their reset; SettingHelpTest. Texts of their own
+    for 38 rows and families (size, resolution, 16:9, HDR photo, colour space, caption, «Движение», lamp flicker, grid, horizon,
+    peaking, faces, tracking, split AF / AE, night viewfinder, mosaic WB, style, film, lens filter, warmth, tint, the mixer /
+    grading / calibration rows, colour method, backup); the other rows show their summary;
+  - item 6: «Камеры и сенсоры» and «Настройки по модулям» are one page «Камеры и модули» (ModuleSettingsFragment extends
+    ModuleProfilesFragment: the modules, then their profiles, then «RAW и сенсор»); the main page's row is hidden, its key opens
+    the page (search, links); SettingsMenuTest's P218 assertion updated on purpose;
+  - item 9 viewfinder controls: the LUT tray has «Цвет» - «Тепло» / «Оттенок» (the same keys); the settings rows stay;
+  - one name «RAW-видоискатель» in the settings and the shade (was «Живой видоискатель» / «RAW-экран»).
+  - Owner, 2026-10-22, asked: the root order (the user wants the ordinary groups first) - «нет»: «Для опытных» stays first
+    (SIMPLE_UI §4); a developer-mode gate hiding the expert pages - «нет»: they stay visible to everyone.
+- The RAW viewfinder (item 1; the reporter's log has it off, so nothing is measured): an ISP-woken redraw of the same RAW frame
+  reuses its tone (MainRenderer.toneKey: frame session / version, target, geometry; fresh < 300 ms; scam_dev vf_tone_reuse 0
+  off) - up to half the draws of a 1x session were a second tone of a drawn frame; the scam_dev refresh (file / SAF I/O every 2
+  s) runs on a thread of its own after the first read (it ran on the GL or camera thread); Quad / Tetra cell means are no
+  longer paced unless a bin takes > 30 ms (P188's pacing halved 2x ISZ to 15 fps). LiveRawPaceTest. A VF_RAW log line every
+  2 s while the tone draws (toned / reused / dropped frames per second, tone size) - the first measure for a phone. Open
+  (study, SCR fb319/study_results.txt): newest-frame-wins hand-off, publish on image arrival, a one-pass 1x shader.
+- The nubia NX563J (Snapdragon 835, LineageOS Android 10, build 31110): (1) a crash opening the viewer -
+  TextView.setStateDescription is API 30: every call goes through ViewCompat now (7 sites); (2) the merge worker died at every
+  shot with signal 31 (SIGSYS) before its first line: worker-spawn.cpp's child called close_range, which the app seccomp
+  filter of older Android does not allow - every SHDR shot fell back to the CPU tier there. close_range only from Android 13;
+  below, a close() loop to RLIMIT_NOFILE. The viewfinder ran at 20 fps (the camera's own rate for that 22 MP stream).
+- LUT swipe (owner): LutWipeView - the old picture copied (PixelCopy of the preview surface), the LUT changed under it, the old
+  picture cut away from the side the finger came from with a bright edge (320 ms); every swipe steps once; no copy - no
+  animation, the step as before. LutWipeViewTest.
+- «Ark» -> «Why» (owner's order, item 5): the UI texts first (the third-party app's name dropped where it named a variant of
+  an algorithm: «Многомасштабный», «Средние цветовых блоков», «Кривая ACES»…; «Тон Why», «Резкость Why»), then the whole tree
+  (rename_ark.py: tokenised rules Ark -> Why, ARK -> WHY, the word ark -> why; protected: research/, CHANGELOG history, the P55
+  vectors, kHybMergeMain1 (byte-identical), paths into research/, the tools' historical `git show a3e94db:...ark/...`): 172 files,
+  36 moved (shaders/ark -> shaders/why, Ark* / LiveArk* classes and tests, check_ark_* tools). Stored keys: BrandMigration gets
+  a WHY stage (the key segment «ark», kept reversed, -> «why» after the P55 words: preferences, profiles, backups, shade tiles
+  in one pass; dark / mark untouched); scam_dev.txt lines and lab records of old names are read under the new ones
+  (BrandMigration.why / whyMap: the tone word only, never the P55 vendor words - vivo_sdk_fullres stays). Proof:
+  check_colour_output's baseline is a3e94db through the same rules: the token stream and the GL render equal bit for bit;
+  WhyRenameMigrationTest (every *_why_* key of preferences.xml from its old name, profiles, tiles, a second pass changes
+  nothing); BrandMigrationTest's frozen vectors through the WHY stage. Left with «ark»: PLAN / HANDOFF / research history,
+  CHANGELOG history, tools/check_ark_tone.py (not ours).

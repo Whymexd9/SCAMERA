@@ -70,7 +70,7 @@ public class HybridSettingsTest {
     }
 
     /**
-     * P129 / P132: the SHDR section (noise reduction, sharpening, ARK tone, frames, merge); SCAM HDR and the route row gone. The
+     * P129 / P132: the SHDR section (noise reduction, sharpening, WHY tone, frames, merge); SCAM HDR and the route row gone. The
      * SHDR keys may sit in the groups an ordinary user looks in (resolution in «Фото», frames and «Движение» in «Съёмка», vibrance
      * in «Цвет», the noise source in «RAW и сенсор»), but they stay per-module values with numeric bounds.
      */
@@ -78,18 +78,18 @@ public class HybridSettingsTest {
         PreferenceScreen root=inflate();
         PreferenceScreen hybrid=root.findPreference("scam_hybrid_screen");
         assertNotNull(hybrid);assertEquals("SHDR",hybrid.getTitle().toString());
-        for(String screen:new String[]{"scam_hybrid_photo_screen","scam_hybrid_ark_sharp_screen","scam_hybrid_ark_tone_screen",
+        for(String screen:new String[]{"scam_hybrid_photo_screen","scam_hybrid_why_sharp_screen","scam_hybrid_why_tone_screen",
                 "scam_hybrid_capture_screen","scam_hybrid_merge_screen","scam_hybrid_nr_snr_screen","scam_hybrid_nr_mult_screen",
-                "scam_hybrid_nr_safe_screen","scam_hybrid_rejection_screen","scam_hybrid_ark_rl_screen"})
+                "scam_hybrid_nr_safe_screen","scam_hybrid_rejection_screen","scam_hybrid_why_rl_screen"})
             assertTrue(screen,hybrid.findPreference(screen) instanceof PreferenceScreen);
         // P175: the neural remosaic page is gone
         assertNull(root.findPreference("shdr_neural_remosaic_screen"));
         // P134: «Цвет» holds the colour rows (the vibrance page dissolved into its «Насыщенность»)
         assertTrue(root.findPreference("colour_mixer_screen") instanceof PreferenceScreen);
         assertTrue(root.findPreference("colour_grading_screen") instanceof PreferenceScreen);
-        assertNull(root.findPreference("scam_hybrid_ark_vibrance_screen"));
+        assertNull(root.findPreference("scam_hybrid_why_vibrance_screen"));
         assertTrue(root.findPreference("scam_hybrid_motion_screen") instanceof PreferenceScreen);
-        for(String gone:new String[]{"scam_hdr_screen","scam_hybrid_arkcore_screen","scam_hdr_ark_link","scam_probe",PreferenceKeys.ROUTE_KEY,
+        for(String gone:new String[]{"scam_hdr_screen","scam_hybrid_whycore_screen","scam_hdr_why_link","scam_probe",PreferenceKeys.ROUTE_KEY,
                 "pref_scam_hybrid_enabled","sharp_settings_screen"})
             assertNull(gone,root.findPreference(gone));
         List<Preference> all=new ArrayList<>();collect(root,all);
@@ -185,36 +185,36 @@ public class HybridSettingsTest {
     }
 
     /**
-     * P118 (owner, 2026-10-13): only the ARK sharpening stays. The page «Резкость» keeps the ARK rows; the mode list, the
+     * P118 (owner, 2026-10-13): only the WHY sharpening stays. The page «Резкость» keeps the WHY rows; the mode list, the
      * RawTherapee page, «Доп. резкость после тона», the guard, the RawTherapee / SCAM amounts and the Sabre detail (used only
-     * without ARK sharpening) are gone, and their stored values are dropped.
+     * without WHY sharpening) are gone, and their stored values are dropped.
      */
-    @Test public void onlyTheArkSharpeningStays() {
+    @Test public void onlyTheWhySharpeningStays() {
         PreferenceScreen root=inflate();
-        PreferenceScreen sharp=root.findPreference("scam_hybrid_ark_sharp_screen");
+        PreferenceScreen sharp=root.findPreference("scam_hybrid_why_sharp_screen");
         assertNotNull(sharp);
-        for(String kept:new String[]{"pref_scam_hybrid_ark_sharp_note","pref_scam_hybrid_ark_sharp_gain","pref_scam_hybrid_ark_sharp_domain",
-                "pref_scam_hybrid_ark_sharp_scale","pref_scam_hybrid_ark_sharp_usm_amount","pref_scam_hybrid_ark_sharp_bilateral_amount",
-                "pref_scam_hybrid_ark_sharp_gf_lc","pref_scam_hybrid_ark_sharp_film_grain","pref_scam_hybrid_ark_sharp_rl1_amount",
-                "pref_scam_hybrid_ark_sharp_halo_control"})
+        for(String kept:new String[]{"pref_scam_hybrid_why_sharp_note","pref_scam_hybrid_why_sharp_gain","pref_scam_hybrid_why_sharp_domain",
+                "pref_scam_hybrid_why_sharp_scale","pref_scam_hybrid_why_sharp_usm_amount","pref_scam_hybrid_why_sharp_bilateral_amount",
+                "pref_scam_hybrid_why_sharp_gf_lc","pref_scam_hybrid_why_sharp_film_grain","pref_scam_hybrid_why_sharp_rl1_amount",
+                "pref_scam_hybrid_why_sharp_halo_control"})
             assertNotNull(kept,sharp.findPreference(kept));
         String[] gone={"pref_scam_hybrid_sharp_mode","sharp_settings_screen","unsharp_settings_screen","deconvolution_settings_screen",
                 "microcontrast_settings_screen","pref_sharp_usm_enabled_key","pref_sharp_radius_key","pref_sharp_deconv_enabled_key",
-                "pref_sharp_micro_enabled_key","pref_scam_hybrid_ark_post_sharp","pref_scam_hybrid_ark_sharp_guard",
-                "pref_scam_hybrid_sharp_strength","pref_scam_hybrid_sharp_amount","pref_scam_hybrid_ark_detail_gain"};
+                "pref_sharp_micro_enabled_key","pref_scam_hybrid_why_post_sharp","pref_scam_hybrid_why_sharp_guard",
+                "pref_scam_hybrid_sharp_strength","pref_scam_hybrid_sharp_amount","pref_scam_hybrid_why_detail_gain"};
         for(String key:gone)assertNull(key,root.findPreference(key));
-        // the ARK rows are never greyed for a sharpening mode
+        // the WHY rows are never greyed for a sharpening mode
         Map<String,Object> s=new HashMap<>();s.put("pref_scam_hybrid_sharp_mode","off");
-        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_sharp_gain"));
-        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_sharp_rl1_amount"));
+        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_why_sharp_gain"));
+        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_why_sharp_rl1_amount"));
         prefs.edit().clear().putString("pref_scam_hybrid_sharp_mode","rt")
-                .putBoolean("pref_scam_hybrid_ark_post_sharp",true).putString("pref_scam_hybrid_ark_sharp_guard","0.5")
+                .putBoolean("pref_scam_hybrid_why_post_sharp",true).putString("pref_scam_hybrid_why_sharp_guard","0.5")
                 .putString("pref_scam_hybrid_sharp_strength","1").putString("pref_scam_hybrid_sharp_amount","1.2")
-                .putString("pref_scam_hybrid_ark_detail_gain","2").putBoolean("pref_sharp_usm_enabled_key",true)
+                .putString("pref_scam_hybrid_why_detail_gain","2").putBoolean("pref_sharp_usm_enabled_key",true)
                 .putString("pref_sharp_deconv_radius_1_key","1.0").putString("pref_scamhdr_sharp_mode","1")
-                .putString("pref_scam_hybrid_ark_sharp_gain","1.5").commit();
+                .putString("pref_scam_hybrid_why_sharp_gain","1.5").commit();
         assertTrue(SettingsMigration.removeObsolete(prefs));
-        assertEquals(java.util.Collections.singleton("pref_scam_hybrid_ark_sharp_gain"),prefs.getAll().keySet());
+        assertEquals(java.util.Collections.singleton("pref_scam_hybrid_why_sharp_gain"),prefs.getAll().keySet());
     }
 
     @Test public void tuningTextAndOutputUseTheNewKeys() {
@@ -282,15 +282,15 @@ public class HybridSettingsTest {
             assertNotNull(k,new SettingsAvailability(s).reason(k));
         // P310 settings cleanup: the night / day boundary acts at every kernel setting (the worker's night noise and kernels)
         assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_s61_max_key"));
-        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_agx_slope")); // Custom is the default look
+        assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_why_agx_slope")); // Custom is the default look
         assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_motion_boost"));
         assertNull(new SettingsAvailability(s).reason("pref_scam_hybrid_la_engine"));
         s.put("pref_scam_hybrid_sabre61","2");s.put("pref_scam_hybrid_shasta_mode","1");s.put("pref_scam_hybrid_bento","1");
         for(String k:new String[]{"pref_scam_hybrid_s61_max_key","pref_scam_hybrid_s61_min_motion","pref_scam_hybrid_snr_scale",
                 "pref_scam_hybrid_shasta_sharpness","pref_scam_hybrid_shasta_max_ratio","pref_scam_hybrid_bento_trigger"})
             assertNull(k,new SettingsAvailability(s).reason(k));
-        s.put("pref_scam_hybrid_ark_agx_look","1");s.put("pref_scam_hybrid_local_align","0");
-        assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_ark_agx_slope"));
+        s.put("pref_scam_hybrid_why_agx_look","1");s.put("pref_scam_hybrid_local_align","0");
+        assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_why_agx_slope"));
         assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_motion_boost"));
         assertNotNull(new SettingsAvailability(s).reason("pref_scam_hybrid_la_engine")); // P308: only with F6 on
         // P316: Auto's daylight rule and the boost's texture threshold read the F6 motion too
@@ -458,12 +458,12 @@ public class HybridSettingsTest {
         assertNull(new SettingsAvailability(d).reason("pref_scam_hybrid_bento_denoise_max"));
         // the OPPO matrix's saturation is AgX's: greyed under ACES, Uchimura and the own curve, live with every AgX look
         Map<String,Object> t=new HashMap<>();
-        assertNull(new SettingsAvailability(t).reason("pref_scam_hybrid_ark_ccm_sat"));
-        t.put("pref_scam_hybrid_ark_agx_look","1");
-        assertNull(new SettingsAvailability(t).reason("pref_scam_hybrid_ark_ccm_sat"));
-        for(String op:new String[]{"pref_scam_hybrid_ark_aces_on","pref_scam_hybrid_ark_uchi_on","pref_scam_hybrid_ark_curve_on"}){
+        assertNull(new SettingsAvailability(t).reason("pref_scam_hybrid_why_ccm_sat"));
+        t.put("pref_scam_hybrid_why_agx_look","1");
+        assertNull(new SettingsAvailability(t).reason("pref_scam_hybrid_why_ccm_sat"));
+        for(String op:new String[]{"pref_scam_hybrid_why_aces_on","pref_scam_hybrid_why_uchi_on","pref_scam_hybrid_why_curve_on"}){
             Map<String,Object> o=new HashMap<>();o.put(op,true);
-            assertNotNull(op,new SettingsAvailability(o).reason("pref_scam_hybrid_ark_ccm_sat"));
+            assertNotNull(op,new SettingsAvailability(o).reason("pref_scam_hybrid_why_ccm_sat"));
         }
         // the colour prior, the defringe and the clip band of the highlights: inside the per-channel recovery only
         String[] trio={"pref_scam_hybrid_highlight_chroma","pref_scam_hybrid_highlight_defringe","pref_scam_hybrid_highlight_band"};
@@ -473,14 +473,14 @@ public class HybridSettingsTest {
         for(String k:trio)assertNotNull(k,new SettingsAvailability(h).reason(k));
         h.put("pref_scam_hybrid_highlight_recovery",50);
         for(String k:trio)assertNull(k,new SettingsAvailability(h).reason(k));
-        // clarity and the flat-area protection scale the ARK detail delta
+        // clarity and the flat-area protection scale the WHY detail delta
         Map<String,Object> a=new HashMap<>();
-        for(String k:new String[]{"pref_scam_hybrid_ark_clarity","pref_scam_hybrid_ark_flat_protect"}){
-            a.remove("pref_scam_hybrid_ark_sharp_gain");
+        for(String k:new String[]{"pref_scam_hybrid_why_clarity","pref_scam_hybrid_why_flat_protect"}){
+            a.remove("pref_scam_hybrid_why_sharp_gain");
             assertNull(k,new SettingsAvailability(a).reason(k));
-            a.put("pref_scam_hybrid_ark_sharp_gain","0");
+            a.put("pref_scam_hybrid_why_sharp_gain","0");
             assertNotNull(k,new SettingsAvailability(a).reason(k));
-            a.put("pref_scam_hybrid_ark_sharp_gain","0.4");
+            a.put("pref_scam_hybrid_why_sharp_gain","0.4");
             assertNull(k,new SettingsAvailability(a).reason(k));
         }
     }
@@ -866,7 +866,7 @@ public class HybridSettingsTest {
         assertEquals("hybrid",prefs.getString(PreferenceKeys.ROUTE_KEY,""));
     }
 
-    /** P135: the stored former night denoise defaults (ArkCam SabreLow, revert limit 9) move once; chosen values stay. */
+    /** P135: the stored former night denoise defaults (WhyCam SabreLow, revert limit 9) move once; chosen values stay. */
     @Test public void lowLightDenoiseDefaultsMoveOnce() {
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",9)
                 .putString("pref_scam_hybrid_dn_luma_t1_strength","1,3,0,0,0").putString("pref_scam_hybrid_dn_luma_t1_revert","9,9,0.08,0.12,0")
@@ -887,19 +887,19 @@ public class HybridSettingsTest {
         assertEquals("9",prefs.getString("pref_scam_hybrid_dn_revert_max",""));
     }
 
-    @Test public void defaultsRevisionThreeMovesTheFormerNoiseDefaultsToArk() {
-        // the former noise-reduction safeguards (stored XML defaults) become ArkCam's values; other values stay
-        // (its former sharp_mode "rt" -> "ark" step is gone with the mode list, P118)
+    @Test public void defaultsRevisionThreeMovesTheFormerNoiseDefaultsToWhy() {
+        // the former noise-reduction safeguards (stored XML defaults) become WhyCam's values; other values stay
+        // (its former sharp_mode "rt" -> "why" step is gone with the mode list, P118)
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",2)
                 .putString("pref_scam_hybrid_dn_revert_max","2").putString("pref_scam_hybrid_dn_coarse_stock","0.5")
                 .putString("pref_scam_hybrid_dn_chroma_floor","1.5").commit();
         assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
-        // P135: ArkCam's 9 is then the night grain amplifier: the default limit is 1
+        // P135: WhyCam's 9 is then the night grain amplifier: the default limit is 1
         assertEquals(1f,Float.parseFloat(prefs.getString("pref_scam_hybrid_dn_revert_max","")),0f);
         assertEquals(0f,Float.parseFloat(prefs.getString("pref_scam_hybrid_dn_coarse_stock","")),0f);
         assertEquals("1.5",prefs.getString("pref_scam_hybrid_dn_chroma_floor",""));
         assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
-        // revision 4: the former Shasta defaults (2 frames, EV 2) become ArkCam's (5 frames at x2); a chosen value stays
+        // revision 4: the former Shasta defaults (2 frames, EV 2) become WhyCam's (5 frames at x2); a chosen value stays
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",3)
                 .putString("pref_scam_hybrid_shasta_frames","2").putString("pref_scam_hybrid_shasta_ev","3").commit();
         assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));

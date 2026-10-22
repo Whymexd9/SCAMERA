@@ -15,7 +15,7 @@ import androidx.annotation.Nullable;
 import com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle;
 
 /**
- * P158 (owner, 2026-10-16: «сделай процесс обработки фото как в ArkCam, прогресс постепенно должен идти вокруг иконки
+ * P158 (owner, 2026-10-16: «сделай процесс обработки фото как в WhyCam, прогресс постепенно должен идти вокруг иконки
  * галереи»): the processing of a shot as a line in the accent running clockwise round the gallery card's edge from the top
  * centre, over a faint track. It moves on by time (an ease-out over the last shot's processing time) and never lags behind
  * the pipeline's own milestones ({@link #setStage}: merged, processed, saved); it stops short of the end until the shot is

@@ -88,7 +88,7 @@
 
     <string name="wide169" translatable="false">16:9</string>
 
-    <!-- PSF of the ARK Richardson-Lucy stages (pref_scam_hybrid_ark_sharp_rl*_kernel) -->
+    <!-- PSF of the WHY Richardson-Lucy stages (pref_scam_hybrid_why_sharp_rl*_kernel) -->
     <string-array name="sharp_deconv_kernel_entries">
         <item>Gaussian (classic)</item>
         <item>Optics / lens (Pillbox)</item>
@@ -102,7 +102,7 @@
     <string name="pref_zsl_buffer_count_default" translatable="false">50</string>
     <string name="zsl_buffer_count">ZSL buffer frames</string>
     <string name="zsl_buffer_count_summary">RAW frames kept before the press. Higher: more memory used; lower: the merge may run short of frames.</string>
-    <string name="live_viewfinder_raw">Live viewfinder</string>
+    <string name="live_viewfinder_raw">RAW viewfinder</string>
     <string name="live_viewfinder_raw_summary">The viewfinder develops the RAW itself. Off: the standard camera preview, except on modules without an ISP stream (ISZ, FULLRES, a sensor mode with “ISP stream” Auto, “ISP stream” Off or Fake off) and modules streaming a Quad / Tetra mosaic: there the viewfinder is always from the RAW. The photo is not affected.</string>
     <!-- Settings sheet handles (TalkBack) -->
     <string name="sheet_handle_open">Open settings panel</string>

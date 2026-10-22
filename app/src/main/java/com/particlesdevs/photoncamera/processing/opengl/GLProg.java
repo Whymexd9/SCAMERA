@@ -189,7 +189,7 @@ public class GLProg implements AutoCloseable {
     // ---- P312: the viewfinder's programs in the same cache
     // (owner, 2026-10-21, a video of the camera's start: the viewfinder stood still for 0.4 s - 2.1 s just after it appeared, every
     // start. The developed-RAW viewfinder compiled its programs from source on its GL thread at the first RAW frame - rawdevelop
-    // (650 lines) and the ten programs of the photo's ARK tone (combine: 815 lines) - while no ISP frame could be drawn. Their
+    // (650 lines) and the ten programs of the photo's WHY tone (combine: 815 lines) - while no ISP frame could be drawn. Their
     // driver binaries are kept here like the post pipeline's: the next start links them in a few ms.)
 
     /**

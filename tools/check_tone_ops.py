@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""P144 «Кривая AgX и ACES»: ark/combine.glsl with TONE_OP 1 on the GPU (moderngl).
+"""P144 «Кривая AgX и ACES»: why/combine.glsl with TONE_OP 1 on the GPU (moderngl).
 
 A ramp of greys goes through the shader with each operator and is compared with a numpy reference of the same chain (for a
 grey: the operator on the AgX inset value, the outset, the display power 1/2.2 and the film toe below 0.15):
-- ACES (ArkCam eval_acescg) and Uchimura (uchimura_curve) at ArkCam's defaults and with other values;
-- the own curve: the straight line and ArkCam's S (processing.color.ToneCurve, the same monotone cubic);
+- ACES (WhyCam eval_acescg) and Uchimura (uchimura_curve) at WhyCam's defaults and with other values;
+- the own curve: the straight line and WhyCam's S (processing.color.ToneCurve, the same monotone cubic);
 - every operator rises with the input and stays in 0..1; TONE_OP 0 still renders the AgX of before (check_colour_output pins it).
 """
 import sys
@@ -115,7 +115,7 @@ def main():
         ctx = moderngl.create_standalone_context(backend='egl', require=430)
     except Exception:
         ctx = moderngl.create_standalone_context(require=430)
-    src = expand_imports((SH / 'ark/combine.glsl').read_text(encoding='utf-8'))
+    src = expand_imports((SH / 'why/combine.glsl').read_text(encoding='utf-8'))
     greys = np.geomspace(0.004, 2.5, 96)
     n = len(greys)
     W = 32
@@ -146,8 +146,8 @@ def main():
         fb = ctx.framebuffer([out])
         fb.use()
         ctx.viewport = (0, 0, W, H)
-        units = {'InputBuffer': t_img, 'GainMap': ones, 'ArkLow': t_img, 'ArkColour': t_img, 'ArkFused': t_fused,
-                 'ArkDetailRef': t_img, 'ArkLumaS': t_img}
+        units = {'InputBuffer': t_img, 'GainMap': ones, 'WhyLow': t_img, 'WhyColour': t_img, 'WhyFused': t_fused,
+                 'WhyDetailRef': t_img, 'WhyLumaS': t_img}
         for i, (k, t) in enumerate(units.items()):
             if k in prog:
                 t.use(i)
@@ -184,16 +184,16 @@ def main():
         print('  %-34s max |GPU - numpy| %.5f over %d greys' % (label, err.max(), int(reach.sum())))
 
     print('tone operators on the GPU (TONE_OP 1):')
-    compare('ACES (ArkCam defaults)', render(1), aces(greys))
+    compare('ACES (WhyCam defaults)', render(1), aces(greys))
     compare('ACES (pre-gain 1.6, a 3, d 0.8)', render(1, aces_u=(1.6, 3.0, 0.8, 0.05)), aces(greys, pre=1.6, a=3.0, d=0.8))
-    compare('Uchimura (ArkCam defaults)', render(2), uchimura(greys))
+    compare('Uchimura (WhyCam defaults)', render(2), uchimura(greys))
     compare('Uchimura (P 1.4, c 2, b 0.05)', render(2, uchi_a=(1.0, 0.9, 1.4, 1.0), uchi_b=(0.22, 0.4, 2.0, 0.05)),
             uchimura(greys, P=1.4, c=2.0, b=0.05))
     line = curve_samples([(0, 0), (1, 1)])
     compare('own curve: straight line', render(3, curve=line), curve_apply(line, greys))
     s = curve_samples([(0, 0), (0.25, 0.16), (0.5, 0.5), (0.75, 0.84), (1, 1)])
     s_out = render(3, curve=s)
-    compare('own curve: ArkCam S', s_out, curve_apply(s, greys))
+    compare('own curve: WhyCam S', s_out, curve_apply(s, greys))
     line_out = render(3, curve=line)
     mid = np.argmin(np.abs(greys - 0.18))
     check(s_out[mid - 20, 1] < line_out[mid - 20, 1] and s_out[mid + 12, 1] > line_out[mid + 12, 1],

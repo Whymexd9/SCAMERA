@@ -21,7 +21,7 @@ import com.particlesdevs.photoncamera.util.Lang;
  *     only when the newest buffered frame clips (or Bento is forced),</li>
  * <li>up to three bracketed frames (Shasta, {@link ImageFrame.CaptureRole#LONG}; five before P313) at N x 2^ev, gain first at the N shutter,
  *     the shutter lengthens only where the sensor's gain range ends (up to the handheld cap); skipped when the ratio is below
- *     1.5 or above the limit. As ArkCam 1.23 / SCAM 9.6 on the same Oppo by day (research/scam/device/oppo_debug_20261004):
+ *     1.5 or above the limit. As WhyCam 1.23 / SCAM 9.6 on the same Oppo by day (research/scam/device/oppo_debug_20261004):
  *     5 frames at 10 ms x analog gain 2.22 (TET x1.9 of N), sharpness 97-106 % of the base, none discarded, 82 % of the
  *     pixels weighted from them. The former shutter-first rule (33 ms x ISO 145 for N = 10 ms) blurred them by hand shake
  *     and ship vibration: 33-82 % of the base sharpness, below the 80 % gate in every shot, never merged.</li>

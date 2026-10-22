@@ -20,7 +20,7 @@ import static org.junit.Assert.*;
 public class DngColourTest {
     private static final float[] NEUTRAL = {0.52f, 1f, 0.71f}; // a daylight-ish camera neutral (R/G, 1, B/G)
 
-    /** The JPEG's linear sRGB of camera value c: intermediateToSRGB · sensorToProPhoto · c (ark/low.glsl). */
+    /** The JPEG's linear sRGB of camera value c: intermediateToSRGB · sensorToProPhoto · c (why/low.glsl). */
     private static double[] jpeg(float[] s2p, float[] i2s, double[] c) {
         return DngColour.map(DngColour.mul(DngColour.toDouble(i2s), DngColour.toDouble(s2p)), c);
     }

@@ -26,9 +26,9 @@ import java.util.stream.Stream;
 public class DevKeysCoverageTest {
     private static final Pattern DEV = Pattern.compile("scamDev(?:Switch|Number|Value|Overrides)\\(\"([a-z0-9_]+)\"");
     private static final Pattern TUNE = Pattern.compile("\\{\"[A-Za-z0-9]+\", *\"([a-z0-9_]+)\"}");
-    // P128: hybrid settings read by literal key (scam_dev.txt "hybrid_<key>" overrides each); ArkTone.value adds "ark_"
+    // P128: hybrid settings read by literal key (scam_dev.txt "hybrid_<key>" overrides each); WhyTone.value adds "why_"
     private static final Pattern HYBRID = Pattern.compile("(?:hybridValue|hybridSwitch|hybridString|routeInternalValue)\\(\"([a-z0-9_]+)\"\\s*[,)]");
-    private static final Pattern ARK = Pattern.compile("(?<![A-Za-z])value\\(\"([a-z0-9_]+)\"\\s*[,)]");
+    private static final Pattern WHY = Pattern.compile("(?<![A-Za-z])value\\(\"([a-z0-9_]+)\"\\s*[,)]");
 
     private static File src(String path) {
         File f = new File(path);
@@ -69,9 +69,9 @@ public class DevKeysCoverageTest {
                 Set<String> keys = new TreeSet<>();
                 Matcher m = HYBRID.matcher(code);
                 while (m.find()) keys.add(m.group(1).startsWith("hybrid_") ? m.group(1).substring("hybrid_".length()) : m.group(1));
-                if (p.getFileName().toString().equals("ArkTone.java")) {
-                    m = ARK.matcher(code);
-                    while (m.find()) keys.add("ark_" + m.group(1));
+                if (p.getFileName().toString().equals("WhyTone.java")) {
+                    m = WHY.matcher(code);
+                    while (m.find()) keys.add("why_" + m.group(1));
                 }
                 for (String k : keys) if (!xml.contains("\"pref_scam_hybrid_" + k + "\"")) out.add("hybrid_" + k);
             }

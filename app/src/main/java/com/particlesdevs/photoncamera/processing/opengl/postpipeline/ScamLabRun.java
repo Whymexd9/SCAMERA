@@ -109,7 +109,8 @@ public final class ScamLabRun {
             if (prefs == null) {
                 Map<String, Object> m;
                 try {
-                    m = ScamLabParams.prefs(meta.getJSONObject("prefs"));
+                    // P319: a shot recorded before the Why rename: its keys under the new names
+                    m = com.particlesdevs.photoncamera.settings.BrandMigration.whyMap(ScamLabParams.prefs(meta.getJSONObject("prefs")));
                 } catch (Exception e) {
                     m = new HashMap<>();
                 }
@@ -124,7 +125,7 @@ public final class ScamLabRun {
             return prefs().get(key);
         }
 
-        /** The shot was rendered with the OPPO tuned matrix (its Parameters' oppoTunedCcm: ArkTone.ccmSatComp acts on it). */
+        /** The shot was rendered with the OPPO tuned matrix (its Parameters' oppoTunedCcm: WhyTone.ccmSatComp acts on it). */
         public boolean oppoTunedCcm() {
             final JSONObject p = meta.optJSONObject("params");
             return p != null && p.optBoolean("oppoTunedCcm", false);
@@ -138,20 +139,20 @@ public final class ScamLabRun {
         for (java.util.Iterator<String> it = o.keys(); it.hasNext(); ) {
             final String k = it.next();
             final double v = o.optDouble(k, Double.NaN);
-            if (!Double.isNaN(v)) m.put(k, (float) v);
+            if (!Double.isNaN(v)) m.put(com.particlesdevs.photoncamera.settings.BrandMigration.why(k), (float) v); // P319: old names too
         }
         return java.util.Collections.unmodifiableMap(m);
     }
 
     /**
      * «Масштаб входа, EV» of the shot (its scam_dev line, else its setting, clamped as the setting is read): a float, as
-     * ArkTone.value gives it, so side A's input scale is the frame's to the bit (its statistics are used as they are).
+     * WhyTone.value gives it, so side A's input scale is the frame's to the bit (its statistics are used as they are).
      */
     static float shotInputEv(Shot shot) {
-        final Float dev = shot.dev == null ? null : shot.dev.get("hybrid_ark_input_ev");
+        final Float dev = shot.dev == null ? null : shot.dev.get("hybrid_why_input_ev");
         if (dev != null) return dev;
-        final Object v = shot.pref(HYBRID + "ark_input_ev");
-        return v == null ? 0f : (float) com.particlesdevs.photoncamera.settings.SettingsNumericRules.value(HYBRID + "ark_input_ev", String.valueOf(v).trim(), 0);
+        final Object v = shot.pref(HYBRID + "why_input_ev");
+        return v == null ? 0f : (float) com.particlesdevs.photoncamera.settings.SettingsNumericRules.value(HYBRID + "why_input_ev", String.valueOf(v).trim(), 0);
     }
 
     /** The scam_dev.txt lines side A starts from: the shot's, or for a shot taken before they were kept the file's now. */

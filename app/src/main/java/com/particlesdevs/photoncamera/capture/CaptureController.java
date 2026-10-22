@@ -3003,7 +3003,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // reader has to have room for all of them plus the in-flight ones,
             // otherwise acquireNextImage starves once the ring is full.
             // P91: with the ring in the app's memfd the reader only passes frames through (copied on arrival) and holds the
-            // post-shutter series: scam_dev "zsl_reader" (default 20; LMC keeps 50, ArkCam 1.05 min(max(2 x frames, 8), 48))
+            // post-shutter series: scam_dev "zsl_reader" (default 20; LMC keeps 50, WhyCam 1.05 min(max(2 x frames, 8), 48))
             // A YUV ring (no RAW) still holds the camera's Images: reader = ring + 3, as before.
             maxjpg = PreferenceKeys.scamDevSwitch("zsl_memfd_ring", true) && isRawFormat(mTargetFormat)
                     // floor 16: the Galaxy S24 Ultra's RAW stream ran at 15 fps with 8 reader buffers, 28 with 12, 30 from 16 (SCAM
@@ -3110,7 +3110,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
         } else if (modePick != null) {
             // P276: the row's size, also one StreamConfigurationMap does not list (usage 0: no CPU usage bits for the HAL's
-            // stream validator, the planes still read on the CPU - the native FULLRES readers, ArkCam)
+            // stream validator, the planes still read on the CPU - the native FULLRES readers, WhyCam)
             mTargetFormat = ImageFormat.RAW_SENSOR;
             target = modePick.size;
             this.target = target;
@@ -3141,6 +3141,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mImageReaderRaw = ImageReader.newInstance(target.getWidth(), target.getHeight(), mTargetFormat, maxjpg);
         }
         mImageReaderRaw.setOnImageAvailableListener(mOnRawImageAvailableListener, mBackgroundHandler);
+        // P319: the size the session really captures, for the photo size pill (PhotoSize.badge)
+        com.particlesdevs.photoncamera.ui.camera.PhotoSize.stream(physicalID, mImageReaderRaw.getWidth(), mImageReaderRaw.getHeight());
         mRawMaxFps = ViewfinderFps.maxFps(characteristics, mTargetFormat, mImageReaderRaw.getWidth(), mImageReaderRaw.getHeight(),
                 useMaximumResolutionKey);
         // P230: a DCG mode (60 fps only) has its own limits, not the normal mode's of the same RAW size
@@ -3326,7 +3328,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P108: the full-resolution session always shows the RAW viewfinder (the Pixel ISP's own one is green in that mode)
             // P223: «ISP-превью в FULLRES и ISZ» off - such a session shows the RAW viewfinder, the only stream it repeats
             // P223 / P266: the module's «Поток ISP» Off in FULLRES / ISZ (the old global «ISP-превью в FULLRES и ISZ» is this now)
-            // P276 «Фиктивное откл.» (ArkCam's fake off): the ISP stream stays in the session, no request targets it
+            // P276 «Фиктивное откл.» (WhyCam's fake off): the ISP stream stays in the session, no request targets it
             mIspPreviewOff = photoMode && (ispSurface == 2 && (mFullResSession || IszCapturePolicy.mosaicModule(
                     com.particlesdevs.photoncamera.settings.ModuleRegistry.active())) || ispSurface == 3);
             // P266: the ISP stream out of the session (the module's «Поток ISP»; Auto: a module that forces a sensor mode)
@@ -4182,7 +4184,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         Long oldExposure = b.get(CaptureRequest.SENSOR_EXPOSURE_TIME);
         Integer oldIso = b.get(CaptureRequest.SENSOR_SENSITIVITY);
         Long oldDuration = b.get(CaptureRequest.SENSOR_FRAME_DURATION);
-        // P54c: under the forced stabilisation (X300U) the manual frame skips the viewfinder stream, as ArkCam's manual
+        // P54c: under the forced stabilisation (X300U) the manual frame skips the viewfinder stream, as WhyCam's manual
         // frames do: the HAL's preview / stabilisation path never sees an AE OFF request. Same exposure, ISO and RAW.
         final Surface viewfinder = surface;
         final boolean dropViewfinder = viewfinder != null && mRepeatingIsp && ForcedStabilization.dropViewfinder(mForcedStab,
@@ -5951,7 +5953,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     /**
      * P91: the frame for the ring. With «zsl_memfd_ring» (scam_dev, default on) the camera's RAW is copied into the ring's
-     * memfd and its Image goes back at once (ArkCam 1.05 / MotionCam: the reader holds a few buffers, not the whole ring); the
+     * memfd and its Image goes back at once (WhyCam 1.05 / MotionCam: the reader holds a few buffers, not the whole ring); the
      * oldest ring frame makes room when every slot is taken. Without a memfd the Image itself is held, as before.
      */
     private RingFrame ringFrameLocked(Image img) {
@@ -7255,7 +7257,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // SCAM keeps the preview running: its L/S/ES must not reach the
             // viewfinder (they flashed dark/bright there), as in the stock camera.
             captureBuilder.addTarget(mImageReaderRaw.getSurface());
-            // P90 (owner: the viewfinder froze 0.7-0.8 s at every shot): as ArkCam and other stock cameras do, the series also feeds the viewfinder;
+            // P90 (owner: the viewfinder froze 0.7-0.8 s at every shot): as WhyCam and other stock cameras do, the series also feeds the viewfinder;
             // the renderer scales each series frame back to the viewfinder's exposure (ViewfinderGain), so nothing flashes.
             // scam_dev "series_viewfinder 0": RAW only, as before.
             if (surface != null && mRepeatingIsp && !VivoPd2454NativeRaw.active(physicalID) && !mIspSurfaceOff
@@ -7482,7 +7484,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                             normal.measuredIso,normal.measuredIso,normal.measuredIso,normal.measuredIso);
                     IsoExpoSelector.fullpairs.add(pair);
                 }
-                // Focus and stabilisation as the preview that delivered the N frames (ArkCam / SCAM 9.6: continuous_picture, no
+                // Focus and stabilisation as the preview that delivered the N frames (WhyCam / SCAM 9.6: continuous_picture, no
                 // trigger). The still template above switches to AF_MODE_AUTO with a CANCEL trigger, which moved the lens on
                 // PHY110: every post-shutter frame came out ~26 % softer than the N frames at the same shutter, so the Shasta
                 // gate dropped all bracketed frames and the ultrashort (Bento) highlights were soft.

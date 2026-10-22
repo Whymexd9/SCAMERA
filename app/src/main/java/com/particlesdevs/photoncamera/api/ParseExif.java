@@ -43,10 +43,12 @@ public class ParseExif {
     public static ExifData parse(CaptureResult result, CaptureRequest request) {
         ExifData data = new ExifData();
 
-        int rotation = ScameraApp.getCaptureController().cameraRotation;
+        // P319: only logged here. A queued shot can start after the camera screen is gone (no controller): no NPE for it.
+        final com.particlesdevs.photoncamera.capture.CaptureController controller = ScameraApp.getCaptureController();
+        int rotation = controller != null ? controller.cameraRotation : 0;
         String TAG = "ParseExif";
         Log.d(TAG, "Gravity rotation:" + ScameraApp.getGravity().getRotation());
-        Log.d(TAG, "Sensor rotation:" + ScameraApp.getCaptureController().mSensorOrientation);
+        Log.d(TAG, "Sensor rotation:" + (controller != null ? controller.mSensorOrientation : -1));
         int orientation = ORIENTATION_NORMAL;
         switch (rotation) {
             case 90:

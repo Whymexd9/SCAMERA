@@ -3,7 +3,7 @@
 
 The hybrid merge keeps its noise signed and clips once. A per-pixel max(0) of a channel near zero lifts its mean by up to
 half its noise: on the OPPO Find X8 Ultra (2026-10-07, ISO 489) the red of a dark teal curtain came out x1.5 along the
-frame edge, where fewer donor frames overlap and the noise is twice as high, and the ARK shadow lift showed it as a red
+frame edge, where fewer donor frames overlap and the noise is twice as high, and the WHY shadow lift showed it as a red
 band and red mottling. The scene here: a dark field with a low red channel (R ~ its noise, a third of the samples
 negative), the first columns twice as noisy (the frame edge), a few non-finite samples.
 Checks:
@@ -13,9 +13,9 @@ Checks:
   output, bit for bit; non-finite samples come out as 0;
 - chromadn/despeckle: the signed field keeps its mean colour (|bias| < 2 % of the red), output finite;
 - chromadn/down (NLM colour stage): the box mean of the signed values (no lift), as numpy;
-- ark/low colour mode: the box mean of the signed values (no lift); DETAIL_REF 1 keeps its per-pixel clamp, the box mean
-  of min(ae * Y(max(rgb, 0)), 1), as ark/combine's detail luminance;
-- ark/combine B-spline colour: signedColourU 0 (SCAM HDR, the hybrid after the SCAM denoise) is the former per-tap clamp,
+- why/low colour mode: the box mean of the signed values (no lift); DETAIL_REF 1 keeps its per-pixel clamp, the box mean
+  of min(ae * Y(max(rgb, 0)), 1), as why/combine's detail luminance;
+- why/combine B-spline colour: signedColourU 0 (SCAM HDR, the hybrid after the SCAM denoise) is the former per-tap clamp,
   bit for bit, also for the negative taps of a colour outside sRGB; signedColourU 1 (signed hybrid input) clamps after the
   interpolation (the red of a dark teal field is not lifted); non-negative taps give the same output in both modes;
 - the NLM denoise engine (ScamHdrDenoise.runNlm: chromadn/luma, down, filter, nlm, down4, coarse, apply as the Java sets them,
@@ -78,7 +78,7 @@ def texture(a, dtype='f4', linear=False):
 
 
 def draw(p, size, textures, uniforms, dtype='f2'):
-    out = ctx.texture(size, 4, dtype=dtype)   # p.getMain() and the ARK low grid: FLOAT_16 RGBA
+    out = ctx.texture(size, 4, dtype=dtype)   # p.getMain() and the WHY low grid: FLOAT_16 RGBA
     out.filter = (moderngl.NEAREST, moderngl.NEAREST)
     out.repeat_x = out.repeat_y = False
     fbo = ctx.framebuffer([out])
@@ -132,16 +132,16 @@ def scamrgb(raw, signed):
 
 
 def combine(colour, signed):
-    """ark/combine on a 2x reduced colour source (fU = colourFU = 2), no detail, identity colour chain."""
+    """why/combine on a 2x reduced colour source (fU = colourFU = 2), no detail, identity colour chain."""
     cw, ch = colour.shape[1], colour.shape[0]
     rgba = np.concatenate([colour, np.ones((ch, cw, 1))], -1).astype(np.float32)
     fused = np.zeros((ch, cw, 4), np.float32)
     fused[..., 0] = 0.45
     full = np.full((2 * ch, 2 * cw, 4), 0.05, np.float32)
     texs = {'InputBuffer': texture(full), 'GainMap': texture(np.ones((1, 1, 4), np.float32), linear=True),
-            'ArkLow': texture(rgba), 'ArkColour': texture(rgba), 'ArkFused': texture(fused), 'ArkDetailRef': texture(rgba),
-            'ArkLumaS': texture(rgba)}
-    p = program('ark/combine.glsl')
+            'WhyLow': texture(rgba), 'WhyColour': texture(rgba), 'WhyFused': texture(fused), 'WhyDetailRef': texture(rgba),
+            'WhyLumaS': texture(rgba)}
+    p = program('why/combine.glsl')
     try:
         return draw(p, (2 * cw, 2 * ch), texs,
                     {'sensorToIntermediate': IDENT, 'intermediateToSRGB': IDENT, 'neutralPointU': (1.0, 1.0, 1.0),
@@ -171,14 +171,14 @@ def combine_checks():
     teal = (slice(4, 2 * ch - 4), slice(cw + 8, 2 * cw - 8))
     lift = s0[teal][..., 0].mean() / max(s1[teal][..., 0].mean(), 1e-9)
     if REPORT:
-        print('ark/combine: per tap |raw - pre-clamped| %.2e, non-negative taps |signed - per tap| %.2e, '
+        print('why/combine: per tap |raw - pre-clamped| %.2e, non-negative taps |signed - per tap| %.2e, '
               'dark teal red per tap / signed x%.3f' % (np.abs(s0 - s0c).max(), np.abs(a1 - a0).max(), lift))
     if not np.array_equal(s0, s0c):
-        fails.append('ark/combine signedColourU 0: not the per-tap clamp of before (max diff %.2e)' % np.abs(s0 - s0c).max())
+        fails.append('why/combine signedColourU 0: not the per-tap clamp of before (max diff %.2e)' % np.abs(s0 - s0c).max())
     if not np.array_equal(a0, a1):
-        fails.append('ark/combine: non-negative taps differ between signedColourU 0 and 1 (max diff %.2e)' % np.abs(a1 - a0).max())
+        fails.append('why/combine: non-negative taps differ between signedColourU 0 and 1 (max diff %.2e)' % np.abs(a1 - a0).max())
     if not lift > 1.1:
-        fails.append('ark/combine signedColourU 1: the red of negative taps is still lifted (per tap / signed x%.3f)' % lift)
+        fails.append('why/combine signedColourU 1: the red of negative taps is still lifted (per tap / signed x%.3f)' % lift)
     return fails
 
 
@@ -352,21 +352,21 @@ def main():
     if err > 2e-6:
         fails.append('chromadn/down: not the box mean of the signed values (max error %.2e)' % err)
 
-    # ---- ark/low: colour box mean of the signed values; DETAIL_REF keeps its per-pixel clamp
+    # ---- why/low: colour box mean of the signed values; DETAIL_REF keeps its per-pixel clamp
     g = texture(np.ones((1, 1, 4), np.float32), linear=True)
     colour = {'sensorToIntermediate': IDENT, 'intermediateToSRGB': IDENT, 'neutralPointU': (1.0, 1.0, 1.0), 'inScaleU': 1.0,
               'factorU': 2}
-    p = program('ark/low.glsl')
+    p = program('why/low.glsl')
     low = draw(p, (W // 2, H // 2), {'InputBuffer': t, 'GainMap': g}, colour)
     p.release()
     err = np.abs(low - ref)[:-1, :-1].max()
     lift = low[:, :EDGE // 2, 0].mean() / ref[:, :EDGE // 2, 0].mean()
     if REPORT:
-        print('ark/low colour: max |GPU - signed box mean| %.2e, edge red mean / signed mean %.4f' % (err, lift))
+        print('why/low colour: max |GPU - signed box mean| %.2e, edge red mean / signed mean %.4f' % (err, lift))
     if err > 2e-6 or abs(lift - 1) > 0.002:
-        fails.append('ark/low colour: not the signed box mean (max error %.2e, edge red x%.4f)' % (err, lift))
+        fails.append('why/low colour: not the signed box mean (max error %.2e, edge red x%.4f)' % (err, lift))
     ae = 40.0
-    p = program('ark/low.glsl', {'DETAIL_REF': '1'})
+    p = program('why/low.glsl', {'DETAIL_REF': '1'})
     dref = draw(p, (W // 2, H // 2), {'InputBuffer': t, 'GainMap': g}, dict(colour, detailClipU=ae))
     p.release()
     pos = np.maximum(new, 0)
@@ -374,12 +374,12 @@ def main():
     want = np.minimum(yv * ae, 1).reshape(H // 2, 2, W // 2, 2).mean(axis=(1, 3))
     err = np.abs(dref[..., 0] - want)[:-1, :-1].max()
     if REPORT:
-        print('ark/low DETAIL_REF: max |GPU - clamped box mean| %.2e' % err)
+        print('why/low DETAIL_REF: max |GPU - clamped box mean| %.2e' % err)
     if err > 1e-4:
-        fails.append('ark/low DETAIL_REF: not the box mean of min(ae Y(max(rgb, 0)), 1) (max error %.2e)' % err)
+        fails.append('why/low DETAIL_REF: not the box mean of min(ae Y(max(rgb, 0)), 1) (max error %.2e)' % err)
     t.release(); g.release()
 
-    # ---- ark/combine B-spline colour: signedColourU 0 (SCAM HDR, hybrid after the denoise) clamps per tap as before, so
+    # ---- why/combine B-spline colour: signedColourU 0 (SCAM HDR, hybrid after the denoise) clamps per tap as before, so
     # the colour matrix's negative taps (a saturated colour outside sRGB) change nothing; 1 (signed hybrid input) clamps
     # after the interpolation and no longer lifts a channel near zero; for non-negative taps both are the same.
     fails += combine_checks()
@@ -392,7 +392,7 @@ def main():
         for f in fails:
             print('FAIL:', f)
         sys.exit(1)
-    print('signed RGB PASS: scamrgb edge bias %+.2f %% (clamped %+.1f %%), despeckle / down / ark low keep the mean, '
+    print('signed RGB PASS: scamrgb edge bias %+.2f %% (clamped %+.1f %%), despeckle / down / why low keep the mean, '
           'NLM chroma 0 edge red %+.1f %% (clamped %+.1f %%)'
           % (100 * (be[0] - 1), 100 * (oe[0] - 1), 100 * nlm_signed, 100 * nlm_clamped))
 

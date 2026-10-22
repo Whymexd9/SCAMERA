@@ -8,12 +8,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * P314: the RAW viewfinder's per-pixel fusion curve (FusedCurve, read by ark/combine.glsl POINT_FUSED 1) against the shader's own
- * formula - ark/gf.glsl fusedAt and MODE 3's P291 monotonic envelope, here in float as the GPU evaluates them - and the lookup
+ * P314: the RAW viewfinder's per-pixel fusion curve (FusedCurve, read by why/combine.glsl POINT_FUSED 1) against the shader's own
+ * formula - why/gf.glsl fusedAt and MODE 3's P291 monotonic envelope, here in float as the GPU evaluates them - and the lookup
  * pointFused() does between its entries.
  */
 public class FusedCurveTest {
-    /** ark/gf.glsl acescg of one channel (float). */
+    /** why/gf.glsl acescg of one channel (float). */
     private static float acescg(float v, float toe) {
         float x = Math.max(v, 0f) * 1.5f;
         float b = Math.max(toe * 0.75f, 0.005f);
@@ -21,7 +21,7 @@ public class FusedCurveTest {
         return (x * (2.51f * x + b)) / (x * (2.43f * x + 0.59f) + e);
     }
 
-    /** ark/gf.glsl fusedAt(I, 0) (float, the shader's defaults for unset values). */
+    /** why/gf.glsl fusedAt(I, 0) (float, the shader's defaults for unset values). */
     private static float shaderFusedAt(float I, float[] em, float[] lw, float center, float smooth, float gammaInv, float toe) {
         center = center > 0f ? center : 0.6f;
         smooth = smooth > 0f ? smooth : 0.25f;
@@ -38,7 +38,7 @@ public class FusedCurveTest {
         return swl / sw;
     }
 
-    /** ark/gf.glsl MODE 3's envelope of a neutral flat area: the guided filter's value there (float). */
+    /** why/gf.glsl MODE 3's envelope of a neutral flat area: the guided filter's value there (float). */
     private static float shaderEnvelope(float I, float[] em, float[] lw, float center, float smooth, float gammaInv, float toe, float mono) {
         float f = shaderFusedAt(I, em, lw, center, smooth, gammaInv, toe), env = f;
         if (mono > 0f && I > 0f) {
@@ -51,7 +51,7 @@ public class FusedCurveTest {
         return env;
     }
 
-    /** ark/combine.glsl pointFused() of a guide I on the table (linear between entries, clamped at its ends). */
+    /** why/combine.glsl pointFused() of a guide I on the table (linear between entries, clamped at its ends). */
     private static float lookup(float[] table, float I) {
         int n = table.length;
         float t = Math.max(0f, Math.min(n - 1f, ((float) (Math.log(Math.max(I, 1.0e-12f)) / Math.log(2.0)) - FusedCurve.LOG2_MIN) * FusedCurve.PER_EV));
@@ -60,10 +60,10 @@ public class FusedCurveTest {
     }
 
     private static float[] exposures(float effS, float effH) {
-        ArkAe.Result r = new ArkAe.Result();
+        WhyAe.Result r = new WhyAe.Result();
         r.effS = effS;
         r.effH = effH;
-        return ArkAe.exposures(r);
+        return WhyAe.exposures(r);
     }
 
     private static final float[] LW = {0.8f, 1f, 0.7f, 0.5f};
@@ -90,7 +90,7 @@ public class FusedCurveTest {
     public void theTableAndItsLookupAreTheShadersEnvelope() {
         float[][] strengths = {{0.5f, 0.5f}, {1.5f, 1.0f}, {2f, 2f}, {2f, 3.5f}, {0.2f, 0f}};
         float[] table = new float[FusedCurve.SIZE];
-        // monoU up to 0.1 (ArkTone.fusionMono: 0.04); a steeper rise makes the shader's own gate (fj >= 0.5) jump between entries
+        // monoU up to 0.1 (WhyTone.fusionMono: 0.04); a steeper rise makes the shader's own gate (fj >= 0.5) jump between entries
         for (float mono : new float[]{0f, 0.04f, 0.1f}) {
             for (float[] s : strengths) {
                 float[] em = exposures(s[0], s[1]);

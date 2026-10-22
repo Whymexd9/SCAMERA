@@ -21,7 +21,7 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** P31: the startup permissions are asked like ArkCam does, in one batch and never in an endless loop. */
+/** P31: the startup permissions are asked like WhyCam does, in one batch and never in an endless loop. */
 public class PermissionPlanTest {
     private static final String CAMERA = "android.permission.CAMERA";
     private static final String MIC = "android.permission.RECORD_AUDIO";

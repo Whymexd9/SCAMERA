@@ -22,12 +22,12 @@ public final class DeviceDefaults {
     /**
      * 1: the SCAM HDR set of both OPPO phones (removed 2026-10-08: SCAM HDR never runs there). 2 (owner, 2026-10-06): the
      * Find X8 Ultra streams RAW10 by default. 3 (owner, 2026-10-08): the Find X7 Ultra opens with the camera package spoof of com.ss.android.ugc.aweme (all three methods: the
-     * phone then lists 5 cameras instead of 3, owner's log) and the OPPO-matrix saturation of the ARK tone at 1.1. 4 (owner,
+     * phone then lists 5 cameras instead of 3, owner's log) and the OPPO-matrix saturation of the WHY tone at 1.1. 4 (owner,
      * 2026-10-10): the Redmi Note 11 Pro (Helio G96, Mali-G57 MC2: 19 frames took 16.7 s of GPU merge) merges 12 N frames and
-     * 2 Shasta frames, with the ARK RL 3 (micro-texture) deconvolution at 1.2; the Pixel 7 takes RL 3 at 1.5. 5 (owner,
+     * 2 Shasta frames, with the WHY RL 3 (micro-texture) deconvolution at 1.2; the Pixel 7 takes RL 3 at 1.5. 5 (owner,
      * 2026-10-10 evening, shots with the P77 build): the Redmi Note 11 Pro takes RL 3 at 1.5. 6 (P301, owner, 2026-10-20: the
      * viewfinder must match the photo): a flagship SoC (Snapdragon 8 Gen 3 and newer, Dimensity 9300 and newer) starts with the
-     * developed-RAW viewfinder (pref_live_viewfinder_raw_key) on every module, which shows the photo's ARK tone. A phone whose marker is older gets only the
+     * developed-RAW viewfinder (pref_live_viewfinder_raw_key) on every module, which shows the photo's WHY tone. A phone whose marker is older gets only the
      * entries of the newer versions, so an update never resets the user's other settings.
      */
     static final int VERSION = 6;
@@ -53,23 +53,23 @@ public final class DeviceDefaults {
         if (since < 4 && note11Pro) {
             out.put("pref_scam_hybrid_zsl_frames", "12");
             out.put("pref_scam_hybrid_shasta_frames", "2");
-            out.put("pref_scam_hybrid_ark_sharp_rl3_amount", "1.2");
+            out.put("pref_scam_hybrid_why_sharp_rl3_amount", "1.2");
         }
         // v5: Redmi Note 11 Pro RL 3 at 1.5 (owner, after the P77 shots)
-        if (since < 5 && note11Pro) out.put("pref_scam_hybrid_ark_sharp_rl3_amount", String.valueOf(NOTE11PRO_RL3));
+        if (since < 5 && note11Pro) out.put("pref_scam_hybrid_why_sharp_rl3_amount", String.valueOf(NOTE11PRO_RL3));
         // v4: Pixel 7 (owner 2026-10-10, his shots of p7.zip were taken with it)
-        if (since < 4 && pixel7) out.put("pref_scam_hybrid_ark_sharp_rl3_amount", String.valueOf(PIXEL7_RL3));
+        if (since < 4 && pixel7) out.put("pref_scam_hybrid_why_sharp_rl3_amount", String.valueOf(PIXEL7_RL3));
         if (!oppo) return out;
         // v2: RAW10 stream on the Find X8 Ultra (unpacked to 16 bit on copy; the RAW viewfinder needs RAW_SENSOR and is off).
         if (since < 2 && model.equals("PKJ110")) out.put("pref_raw_stream_format", "raw10");
         // v3: the Find X7 Ultra shows its tele / ultra-wide lenses to a whitelisted package only, and its tuned ISP matrix
-        // under the ARK tone needs AgX saturation 1.1 (not 0.6) to match ArkCam SCAM 9.6 with the X7U config (2026-10-08 pair).
+        // under the WHY tone needs AgX saturation 1.1 (not 0.6) to match WhyCam SCAM 9.6 with the X7U config (2026-10-08 pair).
         if (since < 3 && model.equals("PHY110")) {
             out.put("pref_camera_package_spoof_enabled", true);
             out.put("pref_oplus_spoof_package_key", X7U_SPOOF_PACKAGE);
             out.put("pref_generic_spoof_package_key", X7U_SPOOF_PACKAGE);
             out.put("pref_binder_spoof_package_key", X7U_SPOOF_PACKAGE);
-            out.put("pref_scam_hybrid_ark_ccm_sat", "1.1");
+            out.put("pref_scam_hybrid_why_ccm_sat", "1.1");
         }
         return out;
     }

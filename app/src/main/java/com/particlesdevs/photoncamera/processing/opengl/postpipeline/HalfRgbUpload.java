@@ -135,7 +135,7 @@ final class HalfRgbUpload {
             GLES31.glGenFramebuffers(1, framebuffer, 0);
             GLES31.glBindFramebuffer(GLES31.GL_READ_FRAMEBUFFER, framebuffer[0]);
             GLES31.glFramebufferTexture2D(GLES31.GL_READ_FRAMEBUFFER, GLES31.GL_COLOR_ATTACHMENT0, GLES31.GL_TEXTURE_2D, tex.mTextureID, 0);
-            final int halfType = ArkStats.halfReadType();
+            final int halfType = WhyStats.halfReadType();
             final ByteBuffer back = ByteBuffer.allocateDirect(w * h * (halfType != 0 ? 8 : 16)).order(ByteOrder.nativeOrder());
             GLES31.glReadPixels(0, 0, w, h, GLES31.GL_RGBA, halfType != 0 ? halfType : GLES31.GL_FLOAT, back);
             if (GLES31.glGetError() != GLES31.GL_NO_ERROR) return 0x10000;

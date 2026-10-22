@@ -29,7 +29,7 @@
 - `vivo-stock-capture-logcat.txt`, `shot.txt`, `VivoCamera-relevant-strings.txt` —
   большие логи/строки, но БЕЗ полезных для брекета совпадений (проверено grep'ом
   по aecFrameControl/SuperNight/sceneMode — 0 совпадений; это в основном телефония/несвязанные строки)
-- `ArkCam_deep_audit_ru.md` — сторонний документ, не проверялся, не путать с нашими выводами
+- `WhyCam_deep_audit_ru.md` — сторонний документ, не проверялся, не путать с нашими выводами
 
 ## Находка 1: реальные Camera2 vendor-теги для сцены/режима/движения
 

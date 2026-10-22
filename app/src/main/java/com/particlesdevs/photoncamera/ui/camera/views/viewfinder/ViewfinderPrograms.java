@@ -14,7 +14,7 @@ import java.util.Set;
 /**
  * P312 (owner, 2026-10-21, a video of the camera's start: «вот такие лаги ловлю при запуске» - the viewfinder stood still for
  * 0.4 s at every start, 2.1 s at a cold one, just after it appeared): the developed-RAW viewfinder compiled its programs from
- * source on the viewfinder's GL thread at the first RAW frame (rawdevelop and the ten programs of the photo's ARK tone) while
+ * source on the viewfinder's GL thread at the first RAW frame (rawdevelop and the ten programs of the photo's WHY tone) while
  * no ISP frame could be drawn. Their driver binaries are now kept with the post pipeline's (GLProg), so a start links them in a
  * few ms; MainRenderer keeps the ISP frame until they are linked. A binary that is missing (the first start after an install or
  * a driver update) is compiled here, in a context of its own on a background thread, while the ISP viewfinder keeps running.

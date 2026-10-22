@@ -7,9 +7,15 @@ import androidx.preference.PreferenceFragmentCompat;
 import com.particlesdevs.photoncamera.settings.*;
 import com.particlesdevs.photoncamera.util.Lang;
 
-public class ModuleSettingsFragment extends ModuleConceptFragment {
+/**
+ * P319 (user report 2026-10-22: «раздел "Камеры и сенсоры" объединить с "Настройки по модулям". По сути это один раздел, где
+ * хардварно настраиваем сенсоры на работу со скамом»): one page «Камеры и модули» - the modules (lens, zoom, crop, copies),
+ * then their processing profiles (ModuleProfilesFragment.profilesSection, whose back handling keeps the edited profile), then
+ * «RAW и сенсор». «Настройки по модулям» of the main page opens this page too.
+ */
+public class ModuleSettingsFragment extends ModuleProfilesFragment {
     @Override protected void render(){
-        page(Lang.t(getContext(),"Камеры и сенсоры","Cameras and sensors"),null);
+        page(Lang.t(getContext(),"Камеры и модули","Cameras and modules"),null);
         // P132 (owner, 2026-10-15: a simple, logical order): the modules first - rear by zoom, front, hidden ones last -, then
         // the per-module profiles, then the expert RAW / sensor page. Name, Camera ID, zoom / sensor crop, the viewfinder
         // button and the sensor page of a module live on its own page.
@@ -35,6 +41,9 @@ public class ModuleSettingsFragment extends ModuleConceptFragment {
         // P218 (owner, 2026-10-18: «группа настроек "Настройки по модулям" дублируется в нескольких местах, исправь чтобы было
         // только на главной странице»): the module profiles (per-module switch, the group, copying between modules) live only in
         // «Настройки по модулям», opened from the main settings page
+        // P319: the processing profiles of the modules on the same page (was the separate «Настройки по модулям»)
+        caption(Lang.t(getContext(),"Настройки по модулям","Settings per module"));
+        profilesSection();
         caption(Lang.t(getContext(),"Для опытных","Advanced"));
         navigation("⚙︎",Lang.t(getContext(),"RAW и сенсор","RAW and sensor"),Lang.t(getContext(),"Уровни RAW, обрезка, формат RAW-потока, фильтр Байера, RAW-метаданные, модель шума","RAW levels, crop, RAW stream format, Bayer filter, RAW metadata, noise model"),()->{
             SettingsActivity.SettingsFragment extra=new SettingsActivity.SettingsFragment();Bundle args=new Bundle();args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT,"capture_settings_screen");extra.setArguments(args);open(extra);

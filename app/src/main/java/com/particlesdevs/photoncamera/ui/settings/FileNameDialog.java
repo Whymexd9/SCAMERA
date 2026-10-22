@@ -20,7 +20,7 @@ import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Lang;
 
 /**
- * «Название фото» (P119, like ArkCam's «Формат названия фото»): the template, the name it gives now, the date / time variables to
+ * «Название фото» (P119, like WhyCam's «Формат названия фото»): the template, the name it gives now, the date / time variables to
  * insert at the cursor, ready templates; «Сбросить» (the default SCA_yyyyMMdd_HHmmss), «Отмена», «Сохранить».
  */
 final class FileNameDialog {

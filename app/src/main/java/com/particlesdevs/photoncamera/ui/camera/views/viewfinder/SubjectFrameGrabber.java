@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
 /**
  * Hands the tracking-AF worker a small copy of the frame that was just drawn (P42).
  * <p>
- * ArkCam adds a 640x480 YUV analysis stream to its session for this; here no stream is added (the session and the
+ * WhyCam adds a 640x480 YUV analysis stream to its session for this; here no stream is added (the session and the
  * sensor mode stay as they are). After the renderer drew a frame (ISP or developed RAW), two
  * {@code glBlitFramebuffer} passes halve the default framebuffer twice — at exactly 2:1 a linear blit is a 2x2 box
  * average, so this is a small mip pyramid without aliasing — and the quarter-size level is read into a pixel-pack

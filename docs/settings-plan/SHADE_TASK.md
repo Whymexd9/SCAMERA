@@ -70,7 +70,7 @@ After each step: run the checks, then report one short paragraph.
 - **FULL level:** pinned tiles first, then a curated set of shade groups, accordion style with one open group:
   - Съёмка: вспышка, таймер, замер, склейка;
   - Формат: RAW, разрешение Hybrid, даунсемплер, Ultra HDR, 16:9, водяной знак;
-  - Hybrid: Bento, Bento кадров, Shasta, N-кадров, Luma, Chroma, резкость, тон ARK, отбраковка;
+  - Hybrid: Bento, Bento кадров, Shasta, N-кадров, Luma, Chroma, резкость, тон WHY, отбраковка;
   - SCAM HDR: N-кадров, удлинение L, мозаика ISZ, Exposure Fusion;
   - Цвет и резкость: кривая Hybrid, USM;
   - Видоискатель: сетка, пик фокуса, живой RAW, отладка.

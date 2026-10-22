@@ -111,9 +111,9 @@ public class ShotSpeedBitExactTest {
         return (short) (sign | ((e + 15) << 10) | m);
     }
 
-    private static void assertSameResult(ArkAe.Result expected, ArkAe.Result actual) throws IllegalAccessException {
+    private static void assertSameResult(WhyAe.Result expected, WhyAe.Result actual) throws IllegalAccessException {
         assertEquals(expected.describe(), actual.describe());
-        for (Field f : ArkAe.Result.class.getDeclaredFields()) {
+        for (Field f : WhyAe.Result.class.getDeclaredFields()) {
             if (f.getType() == float.class)
                 assertEquals(f.getName(), Float.floatToRawIntBits(f.getFloat(expected)), Float.floatToRawIntBits(f.getFloat(actual)));
             else if (f.getType() == boolean.class) assertEquals(f.getName(), f.getBoolean(expected), f.getBoolean(actual));
@@ -141,9 +141,9 @@ public class ShotSpeedBitExactTest {
                 hs.put(i, half);
                 fs.put(i, HalfFloat.TABLE[half & 0xffff]);
             }
-            ArkAe.Settings s = new ArkAe.Settings();
-            ArkAe.Result fromFloats = ArkAe.smartHdr(fs, 4, w, h, s, 200, 6400);
-            ArkAe.Result fromHalves = ArkAe.smartHdrHalf(hs, 4, w, h, s, 200, 6400);
+            WhyAe.Settings s = new WhyAe.Settings();
+            WhyAe.Result fromFloats = WhyAe.smartHdr(fs, 4, w, h, s, 200, 6400);
+            WhyAe.Result fromHalves = WhyAe.smartHdrHalf(hs, 4, w, h, s, 200, 6400);
             assertSameResult(fromFloats, fromHalves);
         }
     }
@@ -165,36 +165,36 @@ public class ShotSpeedBitExactTest {
         ShortBuffer halves = probeHalves();
         FloatBuffer floats = probeFloats();
         for (int h = 0x7c01; h < 0x7c10; h++) { halves.put(h, (short) 0x7e00); floats.put(h, Float.intBitsToFloat(0x7fc00000)); }
-        assertEquals(-1, ArkStats.firstHalfMismatch(halves, floats));
+        assertEquals(-1, WhyStats.firstHalfMismatch(halves, floats));
 
         // GL_FLOAT conversion flushing denormal halves to zero (ES allows it): the first positive denormal is found.
         floats = probeFloats();
         for (int h = 1; h < 0x400; h++) { floats.put(h, 0f); floats.put(0x8000 | h, -0f); }
-        assertEquals(1, ArkStats.firstHalfMismatch(probeHalves(), floats));
+        assertEquals(1, WhyStats.firstHalfMismatch(probeHalves(), floats));
 
         // Only the negative ones flushed, to +0, and the sign of -0 lost: the first one in pattern order.
         floats = probeFloats();
         floats.put(0x8000, 0f);
         floats.put(0x8001, 0f);
-        assertEquals(0x8000, ArkStats.firstHalfMismatch(probeHalves(), floats));
+        assertEquals(0x8000, WhyStats.firstHalfMismatch(probeHalves(), floats));
 
         // The half read-back itself changed a pattern (flushed on upload or read): not accepted either.
         halves = probeHalves();
         halves.put(0x0123, (short) 0);
-        assertEquals(0x0123, ArkStats.firstHalfMismatch(halves, probeFloats()));
+        assertEquals(0x0123, WhyStats.firstHalfMismatch(halves, probeFloats()));
 
         // A NaN read back as a number, or a number read back as NaN.
         floats = probeFloats();
         floats.put(0x7e00, 0f);
-        assertEquals(0x7e00, ArkStats.firstHalfMismatch(probeHalves(), floats));
+        assertEquals(0x7e00, WhyStats.firstHalfMismatch(probeHalves(), floats));
         floats = probeFloats();
         floats.put(0x3c00, Float.NaN);
-        assertEquals(0x3c00, ArkStats.firstHalfMismatch(probeHalves(), floats));
+        assertEquals(0x3c00, WhyStats.firstHalfMismatch(probeHalves(), floats));
 
         // Infinities must stay infinities.
         floats = probeFloats();
         floats.put(0xfc00, -Float.MAX_VALUE);
-        assertEquals(0xfc00, ArkStats.firstHalfMismatch(probeHalves(), floats));
+        assertEquals(0xfc00, WhyStats.firstHalfMismatch(probeHalves(), floats));
     }
 
     @Test public void chunkedEffHistogramEqualsTheStrideLoop() {

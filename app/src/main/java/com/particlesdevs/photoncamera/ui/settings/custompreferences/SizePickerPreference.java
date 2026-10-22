@@ -37,11 +37,28 @@ public class SizePickerPreference extends Preference {
         Context c = getContext();
         FrameLayout host = (FrameLayout) holder.itemView;
         host.removeAllViews();
-        host.addView(CameraSheets.sizeCard(c, PhotoSize.current(), PhotoSize.fullAvailable(), PhotoSize.maxAvailable(), size -> {
-            String message = PhotoSize.set(null, size);
-            Toast.makeText(c, message, Toast.LENGTH_SHORT).show();
-            notifyChanged();
-        }, refused -> Toast.makeText(c, refused, Toast.LENGTH_SHORT).show()), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
+        // P319 (user report: «В настройках линзы "размер фото" - такая же фигня»): on a module page of another camera the card is
+        // that module's - its normal size as last seen, its FULLRES sizes from its profiles; a size is picked in the camera
+        String camera = null;
+        java.util.List<String> variants = java.util.Collections.emptyList();
+        try {
+            String slot = com.particlesdevs.photoncamera.settings.FullResProfiles.slotOf(
+                    com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment.editedModule());
+            camera = com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot);
+            variants = com.particlesdevs.photoncamera.settings.FullResProfiles.variants(slot);
+        } catch (RuntimeException ignored) { }
+        final boolean other = camera != null && !camera.equals(PhotoSize.boundCamera());
+        final android.widget.LinearLayout card = other
+                ? CameraSheets.sizeCard(c, PhotoSize.NORMAL, !variants.isEmpty(), variants.size() > 1,
+                        size -> Toast.makeText(c, com.particlesdevs.photoncamera.util.Lang.t(c,
+                                "Размер этого модуля выбирается в камере: откройте его там", "This module's size is picked in the camera: open it there"),
+                                Toast.LENGTH_SHORT).show(),
+                        refused -> Toast.makeText(c, refused, Toast.LENGTH_SHORT).show(), null, PhotoSize.normalBadge(camera))
+                : CameraSheets.sizeCard(c, PhotoSize.current(), PhotoSize.fullAvailable(), PhotoSize.maxAvailable(), size -> {
+                    String message = PhotoSize.set(null, size);
+                    Toast.makeText(c, message, Toast.LENGTH_SHORT).show();
+                    notifyChanged();
+                }, refused -> Toast.makeText(c, refused, Toast.LENGTH_SHORT).show());
+        host.addView(card, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 }

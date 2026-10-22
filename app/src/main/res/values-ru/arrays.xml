@@ -74,7 +74,7 @@
         <item>3 кадра</item>
     </string-array>
     <string-array name="scam_hybrid_dn_engine_entries">
-        <item>Многомасштабный (ArkCam)</item>
+        <item>Многомасштабный</item>
         <item>NLM (прежний)</item>
     </string-array>
     <string-array name="scam_hybrid_dn_map_entries">
@@ -102,12 +102,12 @@
     </string-array>
     <string-array name="scam_hybrid_mosaic_native_clamp_entries">
         <item>Выкл.</item>
-        <item>ArkCam: по компонентам ковариации</item>
-        <item>Диапазон ArkCam по осям ядра (по умолчанию)</item>
+        <item>По компонентам ковариации</item>
+        <item>Диапазон по осям ядра (по умолчанию)</item>
     </string-array>
     <string-array name="scam_hybrid_mosaic_chroma_fill_entries">
         <item>Выкл. (по умолчанию)</item>
-        <item>ArkCam: средние цветовых блоков</item>
+        <item>Средние цветовых блоков</item>
     </string-array>
     <string-array name="scam_hybrid_mosaic_tetra_entries">
         <item>Разбиение на подкадры</item>
@@ -168,21 +168,21 @@
         <item>Долгое нажатие</item>
         <item>Касание</item>
     </string-array>
-    <string-array name="scam_hybrid_ark_metering_entries">
+    <string-array name="scam_hybrid_why_metering_entries">
         <item>По всему кадру</item>
         <item>Центровзвешенный</item>
         <item>Точечный</item>
     </string-array>
-    <string-array name="scam_hybrid_ark_agx_look_entries">
+    <string-array name="scam_hybrid_why_agx_look_entries">
         <item>Default</item>
         <item>Punchy</item>
         <item>Soft</item>
         <item>Golden</item>
         <item>Custom</item>
     </string-array>
-    <string-array name="scam_hybrid_ark_sharp_domain_entries">
+    <string-array name="scam_hybrid_why_sharp_domain_entries">
         <item>После экспозиции ae</item>
-        <item>G_CLEAN, как ArkCam</item>
+        <item>G_CLEAN</item>
     </string-array>
     <!-- P134 «Цвет» -->
     <string-array name="colour_mono_entries">
@@ -198,5 +198,11 @@
         <item>Полное</item>
         <item>Только синие</item>
         <item>Выкл</item>
+    </string-array>
+    <string-array name="sounds_entries">
+        <item>Затвор и таймер</item>
+        <item>Только затвор</item>
+        <item>Только таймер</item>
+        <item>Без звука</item>
     </string-array>
 </resources>

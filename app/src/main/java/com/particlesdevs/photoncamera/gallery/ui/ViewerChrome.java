@@ -186,7 +186,7 @@ public final class ViewerChrome {
         hdrPill.setText(on ? Lang.t("HDR: вкл.", "HDR: on") : Lang.t("HDR: выкл.", "HDR: off"));
         hdrPill.setTextColor(on ? GalleryUi.accent(hdrPill.getContext()) : GalleryUi.MUTED);
         hdrPill.setContentDescription("Ultra HDR");
-        hdrPill.setStateDescription(on ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
+        androidx.core.view.ViewCompat.setStateDescription(hdrPill, on ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
     }
 
     /** Keeps the current thumbnail centred. */
@@ -259,7 +259,7 @@ public final class ViewerChrome {
             if (on) ((android.graphics.drawable.GradientDrawable) f.getForeground()).setStroke(GalleryUi.dp(c, 2), GalleryUi.accent(c));
             f.setSelected(on);
             f.setContentDescription(GalleryUi.dayTime(item.getFile().getLastModified(), System.currentTimeMillis()));
-            f.setStateDescription(on ? Lang.t("текущий", "current") : null);
+            androidx.core.view.ViewCompat.setStateDescription(f, on ? Lang.t("текущий", "current") : null);
             f.setOnClickListener(v -> open.open(holder.getAbsoluteAdapterPosition()));
             if (item.getFile().getFileUri() != null && GalleryKeys.waitForFile(i, item.getFile(), () -> {
                 if (holder.getAbsoluteAdapterPosition() == position) notifyItemChanged(position);

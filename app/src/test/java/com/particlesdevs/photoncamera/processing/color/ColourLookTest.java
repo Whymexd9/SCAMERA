@@ -8,7 +8,7 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-/** P134 «Цвет»: the white-balance matrix and the uniforms of the colour look (ark/combine.glsl: tools/check_colour_look.py). */
+/** P134 «Цвет»: the white-balance matrix and the uniforms of the colour look (why/combine.glsl: tools/check_colour_look.py). */
 public class ColourLookTest {
     private static float[] white(float[] m) {
         return new float[]{m[0] + m[1] + m[2], m[3] + m[4] + m[5], m[6] + m[7] + m[8]};

@@ -1,9 +1,9 @@
 """P46 colour output check (Display P3, HDR HLG), no device.
 
     python3 tools/check_colour_output.py            every part whose tools are installed (the rest is reported as skipped)
-    python3 tools/check_colour_output.py --shader   ark/combine.glsl: P3_OUT 0 is the pre-P46 shader token for token
+    python3 tools/check_colour_output.py --shader   why/combine.glsl: P3_OUT 0 is the pre-P46 shader token for token
                                                     (+ glslc compiles both variants when an NDK is found)
-    python3 tools/check_colour_output.py --gl       ark/combine.glsl on the GPU (moderngl): Display P3 renders the sRGB
+    python3 tools/check_colour_output.py --gl       why/combine.glsl on the GPU (moderngl): Display P3 renders the sRGB
                                                     picture exactly for colours inside sRGB and keeps wider colours
     python3 tools/check_colour_output.py --files    the app's ICC / JPEG / WebP / HEIF code (javac) on files of Pillow,
                                                     libwebp and libheif, read back by them; the HLG maths against an
@@ -32,17 +32,26 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 SH = ROOT / 'app/src/main/assets/shaders'
 JAVA = ROOT / 'app/src/main/java/com/particlesdevs/photoncamera/processing'
-# SHA-256 of the token stream of ark/combine.glsl at a3e94db (before P46) without the sharpening guard (see without_guard),
+# SHA-256 of the token stream of why/combine.glsl at a3e94db (before P46) without the sharpening guard (see without_guard),
 # #import expanded, comments dropped.
-BASELINE_COMBINE_TOKENS = 'e4b863e602aa7fd94ce0816e75013241664d8818fbf8394e1f3d33ae69a5186c'
+BASELINE_COMBINE_TOKENS = '4649ce9ff089ae8244e629a4c8ecbb77b5e5072cb1fae675225f8d7c75a5bee0'  # P319: a3e94db under the Why names
 BASELINE_COMMIT = 'a3e94db'
 
 
+def why_names(src: str) -> str:
+    """P319: the baseline commit's shader under the names of today (the tone's word renamed to Why: identifiers, samplers,
+    comments), so its token stream and its renders compare with the current shader."""
+    for pat, new in ((r'ARKCORE', 'WHYCORE'), (r'(?<![A-Za-z])ARK(?![A-Za-z])', 'WHY'), (r'Ark', 'Why'),
+                     (r'(?<![A-Za-z])ark(?=cam|core|tone|[^a-z]|$)', 'why')):
+        src = re.sub(pat, new, src)
+    return src
+
+
 def without_guard(src: str) -> str:
-    """P118 (8fdb8dd): ArkSharpenGuard is gone, so combine.glsl's alpha (gain^-guardU, read only by the guard) is 1. The RGB
+    """P118 (8fdb8dd): WhySharpenGuard is gone, so combine.glsl's alpha (gain^-guardU, read only by the guard) is 1. The RGB
     is untouched: the baseline is compared with the same edit applied."""
     src = src.replace('uniform float guardU;               // alpha = gain^-guard: the sharpening weight read by '
-                      'ArkSharpenGuard; <= 0 -> alpha 1\n', '')
+                      'WhySharpenGuard; <= 0 -> alpha 1\n', '')
     return src.replace('    float weight = guardU > 0.0 ? pow(max(gain, 1.0), -guardU) : 1.0;\n'
                        '    Output = vec4(clamp(outRgb, 0.0, 1.0), weight);', '    Output = vec4(clamp(outRgb, 0.0, 1.0), 1.0);')
 
@@ -74,19 +83,19 @@ def without_p310_white(src: str) -> str:
 # P311: the detail delta beside a clipped light (lightShare / lightRimDelta and their inputs). The token comparison takes them
 # out again; the GPU comparison renders without the detail (detailGainU 0), where they cannot act.
 P311_RIM_EDITS = [
-    ('    // P311: the light share of the reference\'s B-spline footprint, the arkLow position for lightRimDelta and the domain m of\n'
-     '    // ArkDetailRef (min(m * Y, 1); m = ae / sharpTone with ArkLumaS, else ae)\n'
+    ('    // P311: the light share of the reference\'s B-spline footprint, the whyLow position for lightRimDelta and the domain m of\n'
+     '    // WhyDetailRef (min(m * Y, 1); m = ae / sharpTone with WhyLumaS, else ae)\n'
      '    float lightW = 0.0;\n    int lbx = 0, lby = 0;\n    float lfx = 0.0, lfy = 0.0;\n'
      '    float refDomain = sharpU == 1 && sharpToneU > 0.0 ? ae / sharpToneU : ae;\n', ''),
     ('        lbx = bx; lby = by; lfx = fx; lfy = fy;\n', ''),
-    ('                vec3 lowTap = texelFetch(ArkLow, clamp(p, ivec2(0), lastLow), 0).rgb;\n'
+    ('                vec3 lowTap = texelFetch(WhyLow, clamp(p, ivec2(0), lastLow), 0).rgb;\n'
      '                yLow += max(dot(lowTap, LUMA), 0.000001) * w;\n'
      '                if (bounded) {\n'
-     '                    yRef += max(texelFetch(ArkDetailRef, clamp(p, ivec2(0), lastLow), 0).r, 0.000001) * w;\n'
+     '                    yRef += max(texelFetch(WhyDetailRef, clamp(p, ivec2(0), lastLow), 0).r, 0.000001) * w;\n'
      '                    lightW += lightShare(lowTap, refDomain) * w;\n'
      '                }\n',
-     '                yLow += max(dot(texelFetch(ArkLow, clamp(p, ivec2(0), lastLow), 0).rgb, LUMA), 0.000001) * w;\n'
-     '                if (bounded) yRef += max(texelFetch(ArkDetailRef, clamp(p, ivec2(0), lastLow), 0).r, 0.000001) * w;\n'),
+     '                yLow += max(dot(texelFetch(WhyLow, clamp(p, ivec2(0), lastLow), 0).rgb, LUMA), 0.000001) * w;\n'
+     '                if (bounded) yRef += max(texelFetch(WhyDetailRef, clamp(p, ivec2(0), lastLow), 0).r, 0.000001) * w;\n'),
     ('            float yD = sharpU == 1 ? yS : min(yFull * ae, 1.0);\n'
      '            delta = cbrtp(max(yD, 0.000001)) - lRef;\n'
      '            // P311: beside a clipped light, against the side of the neighbourhood that is not the light\n'
@@ -271,7 +280,7 @@ def find_glslc() -> str | None:
 
 
 def shader_part(strict: bool) -> None:
-    new = (SH / 'ark/combine.glsl').read_text(encoding='utf-8')
+    new = (SH / 'why/combine.glsl').read_text(encoding='utf-8')
     check(('\n' + P305_HIGHP_INT) in new.replace('\r\n', '\n'), 'combine.glsl lost "precision highp int;" (P305: fp16 dither streaks on Adreno)')
     check(P310_BLOCK.search(new.replace('\r\n', '\n')) is not None,
           'combine.glsl lost the P310 AgX gate of the highlight white (the LED rings\' colour goes white)')
@@ -286,6 +295,7 @@ def shader_part(strict: bool) -> None:
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],
                               capture_output=True, check=True).stdout.decode('utf-8')
+        base = why_names(base)  # P319
         check(token_hash(without_guard(base)) == BASELINE_COMBINE_TOKENS,
               'the stored baseline hash is not the %s shader' % BASELINE_COMMIT)
         print('  %s shader: the same token stream' % BASELINE_COMMIT)
@@ -327,7 +337,7 @@ def gl_part(strict: bool) -> None:
         ctx = moderngl.create_standalone_context(backend='egl', require=430)
     except Exception:
         ctx = moderngl.create_standalone_context(require=430)
-    src = expand_imports((SH / 'ark/combine.glsl').read_text(encoding='utf-8'))
+    src = expand_imports((SH / 'why/combine.glsl').read_text(encoding='utf-8'))
     rng = np.random.default_rng(46)
     # Colours inside sRGB (random linear values over 7 stops, saturated ones included) and colours outside it (P3 primaries
     # and mixtures: in sRGB coordinates some channels are negative), as the colour source and the full-size input.
@@ -376,8 +386,8 @@ def gl_part(strict: bool) -> None:
         fb = ctx.framebuffer([out])
         fb.use()
         ctx.viewport = (0, 0, W, H)
-        units = {'InputBuffer': t_img, 'GainMap': ones, 'ArkLow': t_img, 'ArkColour': t_img, 'ArkFused': t_fused,
-                 'ArkDetailRef': t_img, 'ArkLumaS': t_img}
+        units = {'InputBuffer': t_img, 'GainMap': ones, 'WhyLow': t_img, 'WhyColour': t_img, 'WhyFused': t_fused,
+                 'WhyDetailRef': t_img, 'WhyLumaS': t_img}
         for i, (k, t) in enumerate(units.items()):
             if k in prog:
                 t.use(i)
@@ -401,6 +411,7 @@ def gl_part(strict: bool) -> None:
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],
                               capture_output=True, check=True).stdout.decode('utf-8')
+        base = why_names(base)  # P319
         before = render('0', expand_imports(with_p310_white(without_guard(base))))
         check(np.array_equal(before, srgb), 'P3_OUT 0 renders differently from the %s shader' % BASELINE_COMMIT)
         print('GPU: P3_OUT 0 = the %s shader with the P310 AgX white gate, bit for bit (%d colours)' % (BASELINE_COMMIT, n))

@@ -318,9 +318,9 @@ public final class LibraryAdapter extends RecyclerView.Adapter<RecyclerView.View
             check.setVisibility(selecting ? View.VISIBLE : View.GONE);
             check.setBackground(GalleryUi.round(c, on ? accent : 0x66000000, on ? accent : 0xFFFFFFFF, 999));
             checkMark.setVisibility(on ? View.VISIBLE : View.INVISIBLE);
-            if (selecting) cell.setStateDescription(on ? com.particlesdevs.photoncamera.util.Lang.t("выбрано", "selected")
+            if (selecting) androidx.core.view.ViewCompat.setStateDescription(cell, on ? com.particlesdevs.photoncamera.util.Lang.t("выбрано", "selected")
                     : com.particlesdevs.photoncamera.util.Lang.t("не выбрано", "not selected"));
-            else cell.setStateDescription(null);
+            else androidx.core.view.ViewCompat.setStateDescription(cell, null);
         }
     }
 

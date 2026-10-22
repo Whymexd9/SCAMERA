@@ -2,11 +2,13 @@
 // worker runs in the app sandbox from nativeLibraryDir, with chosen file
 // descriptors (memfd burst/result) mapped to 3, 4, ... and stdout+stderr on a pipe.
 #include <jni.h>
+#include <android/api-level.h>
 #include <cerrno>
 #include <csignal>
 #include <cstring>
 #include <fcntl.h>
 #include <string>
+#include <sys/resource.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -58,6 +60,13 @@ Java_com_particlesdevs_photoncamera_util_WorkerSpawn_spawn(JNIEnv* env,jclass,jo
     int pipeFds[2];
     if(pipe2(pipeFds,O_CLOEXEC)){for(int x:high)close(x);return nullptr;}
     const int devNull=open("/dev/null",O_RDONLY|O_CLOEXEC);
+    // P319 (nubia NX563J, Android 10: «WORKER EXIT: signal 31» at every shot): close_range is not in the app seccomp allowlist
+    // of older Android - the child died of SIGSYS before execve, so no merge ever ran there. It stays on Android 13+, where the
+    // allowlist has it; below, a close() loop up to the fd limit (both read here: the child calls async-signal-safe code only).
+    const bool closeRange=android_get_device_api_level()>=33;
+    rlimit files{};
+    const int maxFd=getrlimit(RLIMIT_NOFILE,&files)==0 && files.rlim_cur!=RLIM_INFINITY && files.rlim_cur<=65536
+            ?int(files.rlim_cur):32768;
     const pid_t pid=fork();
     if(pid==0) {
         // Child: async-signal-safe calls only.
@@ -65,7 +74,8 @@ Java_com_particlesdevs_photoncamera_util_WorkerSpawn_spawn(JNIEnv* env,jclass,jo
         dup2(pipeFds[1],1);dup2(pipeFds[1],2);
         for(size_t i=0;i<high.size();++i)dup2(high[i],3+int(i));
         const unsigned first=3u+unsigned(high.size());
-        syscall(__NR_close_range,first,~0u,0u);
+        if(closeRange)syscall(__NR_close_range,first,~0u,0u);
+        else for(int fd=int(first);fd<maxFd;++fd)close(fd);
         sigset_t none;sigemptyset(&none);sigprocmask(SIG_SETMASK,&none,nullptr);
         execve(argv[0],argv.data(),envp.data());
         _exit(127);

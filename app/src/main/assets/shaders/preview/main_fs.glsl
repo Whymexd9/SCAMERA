@@ -9,7 +9,7 @@ uniform float uGain;
 out vec4 Output;
 in vec2 texCoord;
 // P228 / owner, 2026-10-18 («не видна работа лута в видоискателе»): the film LUT on the ISP viewfinder too, as on the
-// developed-RAW one (rawdevelop_fs) and the photo (ArkCombine): display values in, mixed by its strength
+// developed-RAW one (rawdevelop_fs) and the photo (WhyCombine): display values in, mixed by its strength
 uniform highp sampler3D uLut;
 uniform int uLutOn;
 uniform float uLutStrength;

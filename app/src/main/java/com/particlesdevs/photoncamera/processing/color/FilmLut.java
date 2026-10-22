@@ -16,7 +16,7 @@ import java.util.Locale;
 
 /**
  * P134 «Плёночный LUT»: a 3D look LUT from an Adobe / Resolve .cube file (LUT_3D_SIZE N, N^3 rows "r g b", red fastest,
- * optional TITLE, DOMAIN_MIN / DOMAIN_MAX, LUT_3D_INPUT_RANGE). ArkCombine looks the display-encoded output up in it
+ * optional TITLE, DOMAIN_MIN / DOMAIN_MAX, LUT_3D_INPUT_RANGE). WhyCombine looks the display-encoded output up in it
  * (trilinear, a 3D texture) and mixes the result by the strength. A 1D LUT, a size outside 2..65, a wrong row count or a
  * value that is not a number makes {@link #parse} return null.
  */

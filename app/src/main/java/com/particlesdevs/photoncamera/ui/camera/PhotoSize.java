@@ -140,6 +140,77 @@ public final class PhotoSize {
         return size + Lang.t(" Мп", " MP");
     }
 
+    /** P319: the stream the open session captures (its RAW reader, or the YUV / JPEG target without RAW) and its camera. */
+    private static volatile int streamWidth, streamHeight;
+    private static volatile String streamCamera = "";
+
+    /** The normal (non-FULLRES) stream last seen per camera: the «Обычный» row names its size while FULLRES runs. */
+    private static final java.util.Map<String, int[]> normalStreams = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static void stream(@Nullable String camera, int width, int height) {
+        streamCamera = camera == null ? "" : camera;
+        streamWidth = width;
+        streamHeight = height;
+        if (current() == NORMAL && width > 0 && height > 0) normalStreams.put(streamCamera, new int[]{width, height});
+    }
+
+    /** P319: the «Обычный» size of the bound camera in the gallery's words («12,6 Мп», «8 Мп»); «12 Мп» before its first session. */
+    public static String normalBadge() {
+        return normalBadge(boundCamera);
+    }
+
+    /** P319: the camera the sizes are bound to (the open one). */
+    public static String boundCamera() {
+        return boundCamera;
+    }
+
+    /** P319: the «Обычный» size of {@code camera} as last seen in a session of it; «12 Мп» before one. */
+    public static String normalBadge(@Nullable String camera) {
+        final int[] s = camera == null ? null : normalStreams.get(camera);
+        if (s == null) return label(NORMAL);
+        final int[] out = output(s[0], s[1]);
+        final String text = com.particlesdevs.photoncamera.gallery.ui.PhotoInfo.megapixels(out[0], out[1]);
+        return text != null ? text : label(NORMAL);
+    }
+
+    /**
+     * P319 (user report 2026-10-22: «в верхнем правом углу надпись "12 Мп" даже, если камера имеет большее или меньшее
+     * разрешение (не забываем про фронталки)»): the pill names the photo this lens really writes - the session's stream, its
+     * «16:9» crop and, for an SHDR shot, «Разрешение» - in the gallery's words («12,6 Мп», «8 Мп», «50 Мп»); the size class
+     * (12 / 50 / 200) only until the session has its stream.
+     */
+    public static String badge() {
+        final int w = streamWidth, h = streamHeight;
+        if (w <= 0 || h <= 0) return label(current());
+        final int[] out = output(w, h);
+        final String text = com.particlesdevs.photoncamera.gallery.ui.PhotoInfo.megapixels(out[0], out[1]);
+        return text != null ? text : label(current());
+    }
+
+    private static int[] output(int w, int h) {
+        try {
+            final boolean hybrid = com.particlesdevs.photoncamera.settings.PreferenceKeys.isHybridShot();
+            return output(w, h, ScameraApp.getSettings().aspect169,
+                    hybrid ? com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridOutputMode() : "sensor");
+        } catch (RuntimeException e) {
+            Log.d("PhotoSize", "output size: " + e);
+            return new int[]{w, h};
+        }
+    }
+
+    /** The photo of a {@code w} x {@code h} stream: the «16:9» crop of a landscape frame, then «Разрешение» ({@code mode}). */
+    static int[] output(int w, int h, boolean wide169, String mode) {
+        int ow = w, oh = h;
+        if (wide169 && ow > oh) oh = com.particlesdevs.photoncamera.processing.Wide169.rows(ow, oh);
+        if ("2x".equals(mode)) return new int[]{2 * ow, 2 * oh};
+        if ("12".equals(mode) || "16".equals(mode) || "20".equals(mode)) {
+            android.graphics.Point t = com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTargetSize(Integer.parseInt(mode), ow, oh);
+            return new int[]{t.x, t.y};
+        }
+        return new int[]{ow, oh};
+    }
+
+
     /**
      * Switches to {@code size}; returns the message for the band («Размер: 50 Мп · перезапуск») or the reason it did not
      * switch. A real change restarts the camera with the module's profile (as the FULLRES button did).

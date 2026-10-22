@@ -160,8 +160,11 @@ public final class DevKeys {
         k.add(n(vf, "vf_priority", "1", Lang.t("Высокий приоритет потока видоискателя (0 — обычный)", "High priority of the viewfinder thread (0: normal)")));
         // P314: the photo's tone per pixel by default (one pass, the AE on the CPU), the guided-filter chain of P301 as 2
         k.add(s(vf, "vf_black_floor", true, Lang.t("RAW-видоискатель: чёрный по самому кадру, когда поток пришёл без чёрного пьедестала (OPPO ISZ, режим сенсора)", "RAW viewfinder: the black from the frame itself when the stream lost its black pedestal (OPPO ISZ, a sensor mode)")));
-        k.add(n(vf, "vf_ark", "1", Lang.t("RAW-видоискатель: тон ARK итогового фото — 1: по каждому пикселю (быстро), 2: локально, как в фото (направляемый фильтр, тяжелее, замедляет обработку), 0: собственный вид видоискателя",
-                "RAW viewfinder: the photo's ARK tone - 1: per pixel (fast), 2: local as in the photo (guided filter, heavier, slows processing down), 0: the viewfinder's own look")));
+        k.add(n(vf, "vf_why", "1", Lang.t("RAW-видоискатель: тон Why итогового фото — 1: по каждому пикселю (быстро), 2: локально, как в фото (направляемый фильтр, тяжелее, замедляет обработку), 0: собственный вид видоискателя",
+                "RAW viewfinder: the photo's Why tone - 1: per pixel (fast), 2: local as in the photo (guided filter, heavier, slows processing down), 0: the viewfinder's own look")));
+        // P319: an ISP-woken redraw of the same RAW frame reuses its tone (MainRenderer.toneKey)
+        k.add(s(vf, "vf_tone_reuse", true, Lang.t("RAW-видоискатель: повторная отрисовка того же RAW-кадра берёт готовый тон (0 — тонировать каждую отрисовку)",
+                "RAW viewfinder: a redraw of the same RAW frame reuses its tone (0: tone every draw)")));
         // P314: the default (medium) GPU priority, the processing contexts stay low; 1 = P90's high priority
         k.add(n(vf, "vf_gpu_priority", "0", Lang.t("Приоритет GPU-контекста видоискателя: 1 — высокий, 0 — обычный (меньше мешает обработке)",
                 "Viewfinder GPU context priority: 1 high, 0 normal (gets less in the way of processing)")));
@@ -223,10 +226,10 @@ public final class DevKeys {
         // P214d: ScamDenoise.lscTerm
         k.add(s(post, "denoise_lsc", true, Lang.t("Шумоподавление сильнее к углам кадра по коррекции виньетирования (g² карты затенения объектива)", "Denoise harder towards the frame corners after the vignetting correction (g² of the lens-shading map)")));
         k.add(n(post, "denoise_lsc_max", "4", Lang.t("Шумоподавление к углам: предел множителя дисперсии (1–16; 4 — шум в углах считается вдвое сильнее)", "Corner denoise: cap of the variance multiplier (1-16; 4: the corner noise counts twice as strong)")));
-        // P214e: ArkLumaSharpen.smoothedSource (R1); P214z: not above 100 MP (r1Fits)
+        // P214e: WhyLumaSharpen.smoothedSource (R1); P214z: not above 100 MP (r1Fits)
         k.add(s(post, "sharpen_r1", true, Lang.t("Резкость мозаичных снимков (ISZ Quad/Tetra, FULLRES до 100 Мп) по яркости, сглаженной 3×3: решётка мозаики почти не усиливается. Выкл — резкость как у снимков Bayer",
                 "Sharpening of mosaic shots (ISZ Quad / Tetra, FULLRES up to 100 MP) on the 3x3-smoothed luma: the mosaic lattice is hardly lifted. Off: the sharpening of Bayer shots")));
-        // P212h (A5 = M5): the gain clamp of the ARK exposure from the merged image's noise
+        // P212h (A5 = M5): the gain clamp of the WHY exposure from the merged image's noise
         k.add(n(post, "ae_clamp_stack", "1", Lang.t("Яркость фото: предел усиления по шуму — по числу склеенных кадров N (карта склейки, N^0.4). 1: FULLRES, 2: все снимки, 0: по одному кадру",
                 "Photo brightness: the noise gain clamp from the merged N frames (the merge's frame map, N^0.4). 1: FULLRES, 2: every shot, 0: one frame")));
         k.add(n(post, "jpeg_threads", null, Lang.t("Потоков кодирования JPEG (1 — один поток, прогрессивный; пусто — все ядра)", "Threads of the JPEG encode (1: one thread, progressive; empty: every core)")));
@@ -237,17 +240,17 @@ public final class DevKeys {
         k.add(n(post, "hybrid_dn_huge_map", "4.3", Lang.t("Шумодав 200 МП: сила (карта силы; 1 — как при всех склеенных кадрах)", "Denoise 200 MP: strength (strength map; 1: as with every frame merged)")));
         k.add(n(post, "hybrid_dn_huge_fine", "2", Lang.t("Шумодав 200 МП: срез мелкого шума яркости, в сигмах (0 — выкл.)", "Denoise 200 MP: fine luma noise coring, in sigmas (0: off)")));
         k.add(n(post, "hybrid_dn_dark_chroma_noise", "0.35", Lang.t("Шумодав: цвет в тенях, доля шума", "Denoise: colour in the shadows, noise share")));
-        k.add(n(post, "hybrid_ark_hr_mix", "0.5", Lang.t("Тон, света Bento выше 4x: пик к p99.9 (доля)", "Tone, Bento highlights above 4x: peak towards p99.9 (share)")));
-        k.add(n(post, "hybrid_ark_weight_center_hr", "0.75", Lang.t("Тон с запасом Bento: центр весов слияния (без строки — «Смещение центра экспозиции» + 0,15)", "Tone with Bento headroom: fusion weight centre (without the line: “Exposure centre shift” + 0.15)")));
-        k.add(n(post, "hybrid_ark_weight_hl_hr", "0.4", Lang.t("Тон с запасом Bento: вес слоя светов (без строки — половина «Вес слоя светов»)", "Tone with Bento headroom: highlight layer weight (without the line: half the “Highlight layer weight”)")));
-        k.add(n(post, "hybrid_ark_sat_light_lo", "0.35", Lang.t("Тон с запасом Bento: цветной свет: насыщенность, с которой начинаются веса ядра (нижняя = верхней — выкл.)", "Tone with Bento headroom: coloured light - saturation where the kernel's weights start (lo = hi: off)")));
-        k.add(n(post, "hybrid_ark_sat_light_hi", "0.7", Lang.t("Тон с запасом Bento: цветной свет: насыщенность полных весов ядра", "Tone with Bento headroom: coloured light - saturation of the full kernel weights")));
-        k.add(n(post, "hybrid_ark_sat_light_level_lo", "0.25", Lang.t("Тон с запасом Bento: цветной свет: уровень света (x AE), с которого начинаются веса ядра", "Tone with Bento headroom: coloured light - light level (x AE) where the kernel's weights start")));
-        k.add(n(post, "hybrid_ark_sat_light_level_hi", "0.6", Lang.t("Тон с запасом Bento: цветной свет: уровень света полных весов ядра", "Tone with Bento headroom: coloured light - light level of the full kernel weights")));
-        k.add(n(post, "hybrid_ark_fusion_mono", "0.04", Lang.t("Тон: подъём слияния к монотонной огибающей (нет тёмного кольца у лампы)", "Tone: fusion lifted to its monotonic envelope (no dark ring round a lamp)")));
-        k.add(n(post, "hybrid_ark_hr_knee", "0.5", Lang.t("Тон, света Bento выше 4x: колено плеча (x верх)", "Tone, Bento highlights above 4x: shoulder knee (x top)")));
-        k.add(n(post, "hybrid_ark_hr_room", "0.4", Lang.t("Тон, света Bento выше 4x: запас плеча (x верх)", "Tone, Bento highlights above 4x: shoulder room (x top)")));
-        k.add(n(post, "hybrid_ark_hr_detail", "0.35", Lang.t("Тон, света Bento выше 4x: деталь светов", "Tone, Bento highlights above 4x: highlight detail")));
+        k.add(n(post, "hybrid_why_hr_mix", "0.5", Lang.t("Тон, света Bento выше 4x: пик к p99.9 (доля)", "Tone, Bento highlights above 4x: peak towards p99.9 (share)")));
+        k.add(n(post, "hybrid_why_weight_center_hr", "0.75", Lang.t("Тон с запасом Bento: центр весов слияния (без строки — «Смещение центра экспозиции» + 0,15)", "Tone with Bento headroom: fusion weight centre (without the line: “Exposure centre shift” + 0.15)")));
+        k.add(n(post, "hybrid_why_weight_hl_hr", "0.4", Lang.t("Тон с запасом Bento: вес слоя светов (без строки — половина «Вес слоя светов»)", "Tone with Bento headroom: highlight layer weight (without the line: half the “Highlight layer weight”)")));
+        k.add(n(post, "hybrid_why_sat_light_lo", "0.35", Lang.t("Тон с запасом Bento: цветной свет: насыщенность, с которой начинаются веса ядра (нижняя = верхней — выкл.)", "Tone with Bento headroom: coloured light - saturation where the kernel's weights start (lo = hi: off)")));
+        k.add(n(post, "hybrid_why_sat_light_hi", "0.7", Lang.t("Тон с запасом Bento: цветной свет: насыщенность полных весов ядра", "Tone with Bento headroom: coloured light - saturation of the full kernel weights")));
+        k.add(n(post, "hybrid_why_sat_light_level_lo", "0.25", Lang.t("Тон с запасом Bento: цветной свет: уровень света (x AE), с которого начинаются веса ядра", "Tone with Bento headroom: coloured light - light level (x AE) where the kernel's weights start")));
+        k.add(n(post, "hybrid_why_sat_light_level_hi", "0.6", Lang.t("Тон с запасом Bento: цветной свет: уровень света полных весов ядра", "Tone with Bento headroom: coloured light - light level of the full kernel weights")));
+        k.add(n(post, "hybrid_why_fusion_mono", "0.04", Lang.t("Тон: подъём слияния к монотонной огибающей (нет тёмного кольца у лампы)", "Tone: fusion lifted to its monotonic envelope (no dark ring round a lamp)")));
+        k.add(n(post, "hybrid_why_hr_knee", "0.5", Lang.t("Тон, света Bento выше 4x: колено плеча (x верх)", "Tone, Bento highlights above 4x: shoulder knee (x top)")));
+        k.add(n(post, "hybrid_why_hr_room", "0.4", Lang.t("Тон, света Bento выше 4x: запас плеча (x верх)", "Tone, Bento highlights above 4x: shoulder room (x top)")));
+        k.add(n(post, "hybrid_why_hr_detail", "0.35", Lang.t("Тон, света Bento выше 4x: деталь светов", "Tone, Bento highlights above 4x: highlight detail")));
         k.add(n(post, "hybrid_grain_level", "0.0002", Lang.t("Шумодав: уровень оставляемого зерна", "Denoise: level of the grain left")));
         k.add(n(post, "hybrid_grain_min", "0.12", Lang.t("Шумодав: наименьшая доля возвращаемого зерна", "Denoise: least share of the grain put back")));
         k.add(n(post, "hybrid_texture_g0", null, Lang.t("Текстура: усиление полосы 0 (по умолчанию 1.5, на 8 Elite 1.35)", "Texture: gain of band 0 (default 1.5, 1.35 on the 8 Elite)")));

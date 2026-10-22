@@ -1,12 +1,12 @@
 package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
 /**
- * P314: the RAW viewfinder's per-pixel ARK fusion (ark/combine.glsl POINT_FUSED 1, LiveArkTone vf_ark 1): the fused display luma
- * of ark/gf.glsl as a function of the guide I alone - fusedAt(I) (every layer meters I x em, so a pixel's own weights and lumas
+ * P314: the RAW viewfinder's per-pixel WHY fusion (why/combine.glsl POINT_FUSED 1, LiveWhyTone vf_why 1): the fused display luma
+ * of why/gf.glsl as a function of the guide I alone - fusedAt(I) (every layer meters I x em, so a pixel's own weights and lumas
  * depend on I only; the guided filter gives the same on a flat area) with the P291 monotonic envelope (36 quarter-EV steps down),
  * tabulated over log2 I at PER_EV entries an EV. At the grid points the table is the shader's formula (a quarter EV is PER_EV / 4
  * entries); between them the shader's linear lookup errs below 1e-3 (a quarter of an 8-bit step) for monoU up to 0.1 (the default
- * 0.04; a steeper rise makes the envelope's own gate, fj >= 0.5, jump by more between two entries). Pure Java, no GL: LiveArkTone
+ * 0.04; a steeper rise makes the envelope's own gate, fj >= 0.5, jump by more between two entries). Pure Java, no GL: LiveWhyTone
  * fills it after each viewfinder AE run (SIZE fusedAt evaluations) and uploads it as an R32F SIZE x 1 texture.
  */
 final class FusedCurve {
@@ -17,7 +17,7 @@ final class FusedCurve {
     static final int PER_EV = 16;
     static final int SIZE = (int) ((LOG2_MAX - LOG2_MIN) * PER_EV) + 1;
 
-    /** The kernel's ACES tone scale (ark/gf.glsl acescg: pre-gain 1.5, a 2.51, d 0.59). */
+    /** The kernel's ACES tone scale (why/gf.glsl acescg: pre-gain 1.5, a 2.51, d 0.59). */
     static double acescg(double v, double toe) {
         final double x = Math.max(v, 0.0) * 1.5;
         final double b = Math.max(toe * 0.75, 0.005), e = Math.max(0.14 - (toe - 0.04) * 0.8, 0.03);
@@ -25,7 +25,7 @@ final class FusedCurve {
     }
 
     /**
-     * ark/gf.glsl fusedAt(I, sw = 0) with the shader's defaults for unset values (em: the four exposures, lw: the layer weights;
+     * why/gf.glsl fusedAt(I, sw = 0) with the shader's defaults for unset values (em: the four exposures, lw: the layer weights;
      * the viewfinder sets no saturated-light share).
      */
     static double fusedAt(double I, float[] em, float[] lw, float center, float smooth, float gammaInv, float toe) {
@@ -43,7 +43,7 @@ final class FusedCurve {
     }
 
     /**
-     * The table into {@code out} (SIZE floats): entry i at log2 I = LOG2_MIN + i / PER_EV. {@code mono}: monoU of ark/gf.glsl
+     * The table into {@code out} (SIZE floats): entry i at log2 I = LOG2_MIN + i / PER_EV. {@code mono}: monoU of why/gf.glsl
      * (the envelope's rise per ln of the light; 0 = the kernel's curve as it is).
      */
     static void fill(float[] out, float[] em, float[] lw, float center, float smooth, float gammaInv, float toe, float mono) {

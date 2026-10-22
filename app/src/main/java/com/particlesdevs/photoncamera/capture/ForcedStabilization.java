@@ -16,8 +16,8 @@ import com.particlesdevs.photoncamera.settings.PreferenceKeys;
  *       the X200 Ultra's stock profile;</li>
  *   <li>no HAL queue flush around the shot (the stock app never flushes; the flush is the first suspect since P38): the
  *       preview keeps running into the series, so the HAL never restarts its pipeline. The series starts ~0.1-0.2 s later.</li>
- *   <li>P54c (owner, 2026-10-09: ArkCam v73 keeps the X300U stabilisation after shots; fix it without touching the merge or
- *       the result): ArkCam never sends a manual (AE OFF) request to the viewfinder stream - its post-shutter manual frames
+ *   <li>P54c (owner, 2026-10-09: WhyCam v73 keeps the X300U stabilisation after shots; fix it without touching the merge or
+ *       the result): WhyCam never sends a manual (AE OFF) request to the viewfinder stream - its post-shutter manual frames
  *       target the RAW stream only, the repeating preview stays AE ON - and it sends no vivo key at all. Here the AE restore
  *       frame behind the series (same exposure / ISO, so the AE hand-back and the next shot's ZSL ring are unchanged) goes to
  *       the RAW stream only, and the vivo EIS key is opt-in. The series requests are not changed (RAW only already).</li>
@@ -51,7 +51,7 @@ public final class ForcedStabilization {
         return active() && PreferenceKeys.scamDevSwitch("force_stab_noflush", true);
     }
 
-    /** The vivo preview EIS key is sent (a vivo HAL only: other HALs do not define it). P54c: opt-in, ArkCam sends none. */
+    /** The vivo preview EIS key is sent (a vivo HAL only: other HALs do not define it). P54c: opt-in, WhyCam sends none. */
     public static boolean eisKey() {
         return active() && ScamPreview.supported() && PreferenceKeys.scamDevSwitch("force_stab_eis", false);
     }

@@ -573,7 +573,7 @@ public class ShadeUiTest {
     @Test
     public void ownCurveTileOpensItsGraphInTheCard() throws Exception {
         String key = com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.KEY;
-        prefs.edit().putBoolean("pref_scam_hybrid_ark_curve_on", true).commit();
+        prefs.edit().putBoolean("pref_scam_hybrid_why_curve_on", true).commit();
         layoutFull();
         sheet.togglePin(key);
         layoutFull();

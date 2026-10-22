@@ -45,6 +45,6 @@ texts are the `LICENSE` and `PATENTS` files of those archives.
 ## Lightcraft (colour controls of «Цвет», P134)
 
 The band centres of the colour mixer, its raised-cosine band weights and the shape of the colour-grading zones in
-`processing/color/ColourLook.java` and `assets/shaders/ark/combine.glsl` (COLOUR_LOOK) follow the published formulas of
+`processing/color/ColourLook.java` and `assets/shaders/why/combine.glsl` (COLOUR_LOOK) follow the published formulas of
 Lightcraft, <https://github.com/storytold/lightcraft>, available under the MIT License or the Apache License 2.0 at your
 option. No Lightcraft source code is included; the implementation is SCAMERA's own.

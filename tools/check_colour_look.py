@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P134 «Цвет»: ark/combine.glsl with COLOUR_LOOK 1 on the GPU (moderngl).
+"""P134 «Цвет»: why/combine.glsl with COLOUR_LOOK 1 on the GPU (moderngl).
 
     python3 tools/check_colour_look.py
 
@@ -40,7 +40,7 @@ def main():
         ctx = moderngl.create_standalone_context(backend='egl', require=430)
     except Exception:
         ctx = moderngl.create_standalone_context(require=430)
-    src = expand_imports((SH / 'ark/combine.glsl').read_text(encoding='utf-8'))
+    src = expand_imports((SH / 'why/combine.glsl').read_text(encoding='utf-8'))
     rng = np.random.default_rng(134)
     # a hue circle of moderately saturated colours at three exposures, skin tones, greys and colours outside sRGB
     ang = np.radians(np.arange(0, 360, 4))
@@ -88,8 +88,8 @@ def main():
         fb = ctx.framebuffer([out])
         fb.use()
         ctx.viewport = (0, 0, W, H)
-        units = {'InputBuffer': t_img, 'GainMap': ones, 'ArkLow': t_img, 'ArkColour': t_img, 'ArkFused': t_fused,
-                 'ArkDetailRef': t_img, 'ArkLumaS': t_img}
+        units = {'InputBuffer': t_img, 'GainMap': ones, 'WhyLow': t_img, 'WhyColour': t_img, 'WhyFused': t_fused,
+                 'WhyDetailRef': t_img, 'WhyLumaS': t_img}
         for i, (k, t) in enumerate(units.items()):
             if k in prog:
                 t.use(i)

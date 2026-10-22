@@ -51,7 +51,7 @@
     <string name="shade_t_rejection">Rejection</string>
     <string name="shade_t_grid">Grid</string>
     <string name="shade_t_peak">Peaking</string>
-    <string name="shade_t_live_raw">RAW view</string>
+    <string name="shade_t_live_raw">RAW viewfinder</string>
     <string name="shade_t_debug">Info</string>
 
     <!-- Short values on tiles and segments -->
@@ -203,7 +203,7 @@
         <item>Hold</item>
         <item>Tap</item>
     </string-array>
-    <string-array name="shade_s_ark_metering">
+    <string-array name="shade_s_why_metering">
         <item>Frame</item>
         <item>Centre</item>
         <item>Spot</item>

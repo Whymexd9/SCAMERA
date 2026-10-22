@@ -6,7 +6,7 @@
 проект совмещения — `research/lmc/Sabre61_x_SpatialRGB_Bento_Shasta.md`.
 
 Сделано 3 октября 2026; проверено на OPPO Find X7 Ultra (PHY110, SM8650, Adreno 750, без root). Раунд 5
-(4 октября 2026: отдельный раздел, тон и шумодав ArkCam, света, горячие пиксели, ядро Sabre 6.1) — ниже и в
+(4 октября 2026: отдельный раздел, тон и шумодав WhyCam, света, горячие пиксели, ядро Sabre 6.1) — ниже и в
 `research/hybrid5/IMPL_STATUS.md`. Прежняя попытка для 8 Gen 3 (дистиллированный «студент» нейросети на NPU v75 +
 «портативный» путь без модели) удалена: гибрид — единственный путь без модели. Нейросеть vivo NICE на SM8750
 осталась в SCAM HDR, это отдельный движок со своим разделом.
@@ -25,7 +25,7 @@ SCAM HDR, которые гибрид раньше читал (fusion, тон, A
 
 Категории раздела: Основное (переключатель, разрешение, даунсемплер) · Захват (N, Bento, Shasta) · Склейка (отбраковка,
 ядро Sabre и веса, Bento/Shasta в склейке, света и горячие пиксели, выравнивание и модель шума) · Света (поканальное
-восстановление) · Шумоподавление (движок ARK/LMC или NLM) · Тон (тон ARK и его экран; прежний тон SCAMERA — откат) ·
+восстановление) · Шумоподавление (движок WHY/LMC или NLM) · Тон (тон WHY и его экран; прежний тон SCAMERA — откат) ·
 Резкость (rt | scam | off, множитель RawTherapee) · Диагностика. При выключенном гибриде его пункты неактивны
 («Включите LMC‑гибрид.»); при включённом этапы, которые маршрут гибрида пропускает (RT/AI‑шумодав, ACES, тональный
 конвейер, алгоритмы склейки HDR+), показаны неактивными с причиной (`SettingsAvailability`).
@@ -38,18 +38,18 @@ SCAM HDR, которые гибрид раньше читал (fusion, тон, A
 и `hybrid_<ключ> значение` перекрывают настройки гибрида без пересборки; строка без префикса (`fusion_dark_ev 2`) действует
 на общий узел в обоих движках.
 
-## Раунд 5: вид как у ArkCam 1.23, деталь Sabre (4 октября 2026)
+## Раунд 5: вид как у WhyCam 1.23, деталь Sabre (4 октября 2026)
 
-Цель — «как ARK, но детальнее» (`research/hybrid5/PLAN.md`, `research/hybrid5/IMPL_STATUS.md`). Маршрут поста снимка
-гибрида (`PostPipeline.BuildDefaultPipeline`, ветка `vivoNiceRgb != null`, тон ARK — `ArkTone.enabledFor`):
+Цель — «как WHY, но детальнее» (`research/hybrid5/PLAN.md`, `research/hybrid5/IMPL_STATUS.md`). Маршрут поста снимка
+гибрида (`PostPipeline.BuildDefaultPipeline`, ветка `vivoNiceRgb != null`, тон WHY — `WhyTone.enabledFor`):
 
 VivoNiceRgb (поканальное восстановление светов) → [HighlightRecovery — на гибриде пропускается] → NiceDenoise
-(→ `LmcDenoise`: шумодав финиша GCam / LMC 9.6 с таблицами ArkCam 2.85) → [LinearExposure — только ради Ultra HDR] →
-ArkStats → ArkFusion → ArkCombine (тон ArkCam: Smart‑HDR AE, фьюжн на guided filter, OKLab, AgX Custom, деталь Sabre) →
-резкость (rt | scam | off) → ArkSharpenGuard → [NiceLocalContrast — только с `ark_texture`] → [LmcCurves — только пресеты
+(→ `LmcDenoise`: шумодав финиша GCam / LMC 9.6 с таблицами WhyCam 2.85) → [LinearExposure — только ради Ultra HDR] →
+WhyStats → WhyFusion → WhyCombine (тон WhyCam: Smart‑HDR AE, фьюжн на guided filter, OKLab, AgX Custom, деталь Sabre) →
+резкость (rt | scam | off) → WhySharpenGuard → [NiceLocalContrast — только с `why_texture`] → [LmcCurves — только пресеты
 пользователя, без кривой GCAM_MATCH] → HybridFinalResize → RotateWatermark.
 
-С `pref_lmc_hybrid_ark_tone` = выкл. остаётся прежний тон SCAMERA (LinearExposure → NiceExposureFusion → VivoHdrTone /
+С `pref_lmc_hybrid_why_tone` = выкл. остаётся прежний тон SCAMERA (LinearExposure → NiceExposureFusion → VivoHdrTone /
 HeadroomRender → LmcCurves → NiceLocalContrast), с `pref_lmc_hybrid_dn_engine` = nlm — прежний NLM‑шумодав.
 
 * **Света** (`VivoNiceRgb`, `vivohdr/nicergb.glsl` режим `hlModeU = 1`, `hlrecovery/chanprep.glsl`): уровень клипа каждого
@@ -59,14 +59,14 @@ HeadroomRender → LmcCurves → NiceLocalContrast), с `pref_lmc_hybrid_dn_engi
   внутри. Настройки: `pref_lmc_hybrid_highlight_recovery` (0–100 %, 100), `pref_lmc_hybrid_highlight_chroma` (0.35).
   `VivoNiceRgb.lastClipWhite` — уровень белого клипа для тона. SCAM HDR (NICE) не менялся.
 * **Шумодав** (`LmcDenoise`, `assets/shaders/lmcdn/*`): лапласова пирамида яркости kD8 / хромы {1,3,3,1}, BF3x3 + revert,
-  BilateralFilterChroma3x3; пороги — из модели шума кадра и измеренных по уровням G; таблицы по SNR (ArkCam 2.85) с
+  BilateralFilterChroma3x3; пороги — из модели шума кадра и измеренных по уровням G; таблицы по SNR (WhyCam 2.85) с
   предохранителями (`dn_revert_max` 2, `dn_coarse_stock` 0.5, `dn_chroma_floor` 2.75); на сетке 2× пирамида строится с
   масштаба сенсора, затем `final2x`. Лог — строка `NICE_PIPELINE lmc-denoise`. Подробно — `research/hybrid5/impl_nr.md`,
   `review_nr.md`.
-* **Тон** (`ArkStats/ArkFusion/ArkCombine/ArkSharpenGuard`, `assets/shaders/ark/*`): порт `smart_hdr` и
-  `ef_guided_combine` ArkCam 1.23 (`research/hybrid5/tone_port.md` §7); ключи `pref_lmc_hybrid_ark_*` (умолчания ArkCam
-  2.85 X8U), лог `ARK SMART_HDR_STAT …`. Деталь Sabre δ ограничена как у a3 ядра (нет чёрного обода вокруг ламп).
-  Подробно — `research/hybrid5/impl_arktone.md`, `review_arktone.md`.
+* **Тон** (`WhyStats/WhyFusion/WhyCombine/WhySharpenGuard`, `assets/shaders/why/*`): порт `smart_hdr` и
+  `ef_guided_combine` WhyCam 1.23 (`research/hybrid5/tone_port.md` §7); ключи `pref_lmc_hybrid_why_*` (умолчания WhyCam
+  2.85 X8U), лог `WHY SMART_HDR_STAT …`. Деталь Sabre δ ограничена как у a3 ядра (нет чёрного обода вокруг ламп).
+  Подробно — `research/hybrid5/impl_arktone.md`, `review_whytone.md`.
 * **Слияние** — пункт 8 раздела «Слияние в воркере».
 
 ## Съёмка (CaptureController + `HybridPlan`)
@@ -80,7 +80,7 @@ HeadroomRender → LmcCurves → NiceLocalContrast), с `pref_lmc_hybrid_dn_engi
     Усиление снижается первым, затем выдержка. Второй кадр той же экспозиции вдвое снижает шум светов и сдвигом
     рук заполняет пропуски решётки R/B одного кадра (+1 кадр после нажатия, ~25 МБ).
   * **Shasta** — 1–5 кадров (`hybrid_shasta_frames`, 5 по умолчанию) с экспозицией N·2^EV (`hybrid_shasta_ev`,
-    1 = ×2 по умолчанию): усилением при выдержке N, как ArkCam 1.23 / LMC 9.6 на этом же Oppo днём (5 кадров, 10 мс ×
+    1 = ×2 по умолчанию): усилением при выдержке N, как WhyCam 1.23 / LMC 9.6 на этом же Oppo днём (5 кадров, 10 мс ×
     аналоговое усиление 2.22, резкость 97–106 % базы, ни один не отброшен, 82 % пикселей с весом от них).
     Выдержка удлиняется только сверх диапазона усиления сенсора (до 1/8 с с рук, с привязкой к периодам мерцания
     `pref_antibanding_hz_key`). Прежнее правило «выдержка первой» (33 мс × ISO 145 при N = 10 мс) смазывало кадры:
@@ -152,7 +152,7 @@ lanczos | bicubic | area | bilinear); те же чипы — в шторке б�
   (а не по базе σ≈40 px): 3 EV контраста внутри окна превращались в 0.4 EV на самом плоском участке сигмоиды,
   а разница окно/стена 4.3 EV — в 0.7 EV (ореол). Теперь, как в финише HDR+, запас k берёт на себя Exposure Fusion:
   тёмная синтетическая экспозиция `NiceExposureFusion` сдвигается на долю log2(k·displayGain) EV
-  (`pref_lmc_hybrid_bento_fusion`; только тон SCAMERA — тон ARK ведёт запас Bento сам: потолок 1.35, roll‑off),
+  (`pref_lmc_hybrid_bento_fusion`; только тон SCAMERA — тон WHY ведёт запас Bento сам: потолок 1.35, roll‑off),
   режим «только осветление» снимается, и карта фьюжна локально опускает окно в
   диапазон с сохранением его контраста. A/B на vivo (ровное небо в окне, k = 7.7): доля 0 — окно 250/255 ровное
   (как раньше, без содержимого); 0.5 — 239 в центре / 242 у рамы, ровное и светлое; 1.0 — 199 в центре / 250 у рамы:
@@ -162,17 +162,17 @@ lanczos | bicubic | area | bilinear); те же чипы — в шторке б�
 * Шумодав в окне: карта эффективных кадров внутри маски ≈2–3 против ≈23 снаружи, усиление сигмы ограничено
   клампом — теперь настраиваемым (`pref_lmc_hybrid_bento_denoise_max`, 3 по умолчанию, до 12).
 
-Про «ARK‑обработку» LMC/ArkCam: разбор libvf_demosaic.so (LMC 9.6 и ArkCam 1.23beta) показал, что ArkCore — только
+Про «WHY‑обработку» LMC/WhyCam: разбор libvf_demosaic.so (LMC 9.6 и WhyCam 1.23beta) показал, что WhyCore — только
 видоискатель (Live View): один GLSL‑проход демозаик + 4‑слойный попиксельный «exposure fusion» + AgX/ACES/Uchimura,
 вызывается из `DemosaicProxy.processRawBuffer`; `processPayloadHardwareBuffer` — заглушка `mov x0,x2; ret` без
 вызовов из Java. Снимки идут через финиш Google (libgcastartup) с патчами констант RamPatcher (`lib_*_key_pro`:
 таблицы Luma/Chroma Denoise, Bento, HDRrange, dehaze, резкость) и кривыми тона мода. Материалы:
-`research/lmc/arkcore/` (shader_map.md, native_logic.md, java_hook.md, x8u_settings.md, ARKCORE.md) и `research/lmc/arkcam/`.
+`research/lmc/arkcore/` (shader_map.md, native_logic.md, java_hook.md, x8u_settings.md, WHYCORE.md) и `research/lmc/arkcam/`.
 
 ## Шумоподавление после склейки (настройки)
 
 Раздел «LMC‑гибрид» → «Шумоподавление»: `pref_lmc_hybrid_dn_engine` — `gcam` (по умолчанию, `LmcDenoise`, под‑экран
-«Шумоподавление ARK / LMC (Noise Reduction)»: SNR и модель, множители патчера, предохранители, таблицы яркости t1–t5 и
+«Шумоподавление WHY / LMC (Noise Reduction)»: SNR и модель, множители патчера, предохранители, таблицы яркости t1–t5 и
 цвета t1–t4 строками «a,b,c,d,e») или `nlm` (прежний NLM: `pref_lmc_hybrid_post_luma` 0.6, `pref_lmc_hybrid_post_chroma`
 1.0). Для обоих: `pref_lmc_hybrid_despeckle` (одиночные точки), `pref_lmc_hybrid_bento_denoise_max`. Все читаются через
 `PreferenceKeys.hybridValue/hybridSwitch/hybridList` (переопределения `hybrid_<ключ>` в `nice_dev.txt`); у SCAM HDR (NICE)
@@ -382,8 +382,8 @@ ZSL‑кольцо, RAW‑видоискатель и оценка клиппи�
   2 чётные доноры), profile, debugFrame. Приложение пишет job‑файл из настроек раздела (`PreferenceKeys.hybridTuningText`,
   nice_dev `hybrid_<ключ настройки>`, например `hybrid_sabre61 0`, `hybrid_hot_sigma 0`, `hybrid_cell_clip 0`,
   `hybrid_bento_lmc 0`, `hybrid_s61_max_key 100`).
-* `nice_dev.txt`: `hybrid 0` — A/B со SCAM HDR той же сборки; `hybrid_ark_tone 0` — прежний тон SCAMERA;
-  `hybrid_dn_engine 1` — прежний NLM‑шумодав (0 — ARK/LMC), `hybrid_dn_strength_map 0|1|2` (auto | frames | uniform).
+* `nice_dev.txt`: `hybrid 0` — A/B со SCAM HDR той же сборки; `hybrid_why_tone 0` — прежний тон SCAMERA;
+  `hybrid_dn_engine 1` — прежний NLM‑шумодав (0 — WHY/LMC), `hybrid_dn_strength_map 0|1|2` (auto | frames | uniform).
 
 ## Что осталось
 

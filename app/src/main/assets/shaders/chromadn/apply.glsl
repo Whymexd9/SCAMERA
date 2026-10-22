@@ -10,7 +10,7 @@ precision highp usampler2D;
 // mean, so a channel near zero is not lifted by a clamp per pixel. A pixel with a negative channel is not clamped either:
 // its luminance is the non-local-means result (chromadn/luma took its signed luminance) or, without the luma pass, its own
 // signed luminance; its colour difference is the filtered colour's (chroma pass) or its own signed one (chroma 0). Such a
-// pixel may stay negative: the hybrid clips once, after averaging, downstream (ark/low, ark/combine signedColourU), and
+// pixel may stay negative: the hybrid clips once, after averaging, downstream (why/low, why/combine signedColourU), and
 // PostPipeline.signedRgb stays set. A pixel without a negative channel takes the former formula and comes out >= 0 (its
 // non-local-means luminance may see signed neighbours); input without negative values, and signedU 0 (SCAM HDR), give the
 // former output bit for bit (tools/check_signed_rgb.py).

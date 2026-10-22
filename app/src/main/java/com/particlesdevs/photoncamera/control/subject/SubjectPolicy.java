@@ -32,7 +32,7 @@ public final class SubjectPolicy {
 
     // ------------------------------------------------------------------ primary face
 
-    /** Smallest face side (fraction of the view) that is drawn and metered; ArkCam drops faces under 4 %. */
+    /** Smallest face side (fraction of the view) that is drawn and metered; WhyCam drops faces under 4 %. */
     public static final float MIN_FACE = 0.03f;
     /** A new face must beat the current primary by this factor to take over (hysteresis). */
     public static final float SWITCH_MARGIN = 1.25f;
@@ -40,7 +40,7 @@ public final class SubjectPolicy {
     public static final float SAME_FACE = 0.12f;
 
     /**
-     * ArkCam's prominence score (CameraVisionTracker.updateFaces): confidence, size, closeness to the centre.
+     * WhyCam's prominence score (CameraVisionTracker.updateFaces): confidence, size, closeness to the centre.
      *
      * @param score Camera2 face score 1..100 (software faces map their confidence onto it)
      * @param l..b  normalized view rectangle

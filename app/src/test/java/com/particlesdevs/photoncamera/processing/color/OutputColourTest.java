@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 
 import static org.junit.Assert.*;
 
-/** P46 colour matrices, luminance weights, H.273 codes and the GLSL constants of ark/combine.glsl. */
+/** P46 colour matrices, luminance weights, H.273 codes and the GLSL constants of why/combine.glsl. */
 public class OutputColourTest {
     private static void near(double[] expected, double[] got, double tolerance) {
         assertEquals(expected.length, got.length);
@@ -52,7 +52,7 @@ public class OutputColourTest {
 
     @Test
     public void shaderConstantsAreTheJavaMatrices() throws Exception {
-        final String glsl = new String(Files.readAllBytes(new File("src/main/assets/shaders/ark/combine.glsl").toPath()), StandardCharsets.UTF_8);
+        final String glsl = new String(Files.readAllBytes(new File("src/main/assets/shaders/why/combine.glsl").toPath()), StandardCharsets.UTF_8);
         assertTrue(glsl.contains("#define P3_OUT 0"));
         checkMat3(glsl, "SRGB_TO_P3", OutputColour.srgbToP3());
         checkMat3(glsl, "P3_TO_SRGB", OutputColour.p3ToSrgb());

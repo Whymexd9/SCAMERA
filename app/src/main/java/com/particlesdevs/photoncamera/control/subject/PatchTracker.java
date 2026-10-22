@@ -1,7 +1,7 @@
 package com.particlesdevs.photoncamera.control.subject;
 
 /**
- * Single-target visual tracker on a downscaled luma frame (P42), after ArkCamera v50's VisualPatchTracker:
+ * Single-target visual tracker on a downscaled luma frame (P42), after WhyCamera v50's VisualPatchTracker:
  * <ul>
  *   <li>a square luma patch around the target is the template; the score of a candidate position is
  *       {@code 0.65 * ZNCC(running template) + 0.35 * ZNCC(initial template)} — the initial template keeps the
@@ -11,9 +11,9 @@ package com.particlesdevs.photoncamera.control.subject;
  *       sub-pixel offset (at most ±0.6 pixel) on each axis;</li>
  *   <li>the running template learns {@code 0.92 old + 0.08 new} only on confident matches (score above 0.6);</li>
  *   <li>a score under 0.42 is a miss: the position holds and the velocity decays; {@code maxLost} misses in a row
- *       end the track (ArkCam: 12 frames at ~30 fps; here a time-equivalent count at the throttled rate).</li>
+ *       end the track (WhyCam: 12 frames at ~30 fps; here a time-equivalent count at the throttled rate).</li>
  * </ul>
- * Unlike ArkCam's fixed 40-pixel patch on a 640x480 YUV stream, the patch and the search radius scale with the frame
+ * Unlike WhyCam's fixed 40-pixel patch on a 640x480 YUV stream, the patch and the search radius scale with the frame
  * (10 % and 85 % of it), because the frames here are the displayed viewfinder at a quarter of the view size.
  * <p>
  * Frames are 8-bit luma, row-major, stride = width, top row first. Pure Java, allocation-free after construction;
@@ -217,7 +217,7 @@ public final class PatchTracker {
         }
     }
 
-    /** Parabolic peak offset from three samples, limited to ±0.6 (ArkCam). */
+    /** Parabolic peak offset from three samples, limited to ±0.6 (WhyCam). */
     static float parabola(float left, float centre, float right) {
         float denom = (left - 2f * centre + right) * 2f;
         if (Math.abs(denom) <= 1e-4f || left < -1f || right < -1f) return 0f;

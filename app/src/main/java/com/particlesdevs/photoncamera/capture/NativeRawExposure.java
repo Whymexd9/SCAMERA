@@ -371,7 +371,7 @@ final class NativeRawExposure {
     /**
      * P212c (M9's law, LOG ONLY - the AE does not use it yet): a clip budget instead of the hard p98 rule. More than twice
      * CLIP_BUDGET of the cells clipped steps down by 0.3-2 EV; else a peak over 0.9 blends softly (lim + (m - lim) / 3, lim =
-     * 0.9 / P, the ArkCore rule); a raise only while the clip it predicts stays under half the budget; never under the two-stop
+     * 0.9 / P, the WhyCore rule); a raise only while the clip it predicts stays under half the budget; never under the two-stop
      * floor of today's law (daylight shots already clip 1-3 % of the cells, the floor keeps them as bright as today).
      */
     static double clipBudget(Metered m, float ev) {

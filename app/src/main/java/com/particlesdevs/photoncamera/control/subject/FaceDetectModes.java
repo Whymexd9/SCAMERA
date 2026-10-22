@@ -1,10 +1,10 @@
 package com.particlesdevs.photoncamera.control.subject;
 
 /**
- * Face detection modes (P42, after ArkCamera v50's per-lens «Face Detection Mode»: Off / Simple / Full /
+ * Face detection modes (P42, after WhyCamera v50's per-lens «Face Detection Mode»: Off / Simple / Full /
  * Extended 0x80) and their resolution against what the current camera module advertises.
  * <p>
- * ArkCam writes its choice into {@code STATISTICS_FACE_DETECT_MODE} unchecked, including the raw vendor value
+ * WhyCam writes its choice into {@code STATISTICS_FACE_DETECT_MODE} unchecked, including the raw vendor value
  * 0x80. Here the value written to the HAL is always one the module lists in
  * {@code STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES}: an unsupported choice falls back to the best supported one,
  * so a request can never be rejected for it. Without any HAL mode, "auto" and "software" run the platform
@@ -21,7 +21,7 @@ public final class FaceDetectModes {
             SOFTWARE = "software";
     public static final String DEFAULT = AUTO;
 
-    /** Camera2 STATISTICS_FACE_DETECT_MODE values; EXTENDED is the vendor value ArkCam offers (Pixel / Qualcomm). */
+    /** Camera2 STATISTICS_FACE_DETECT_MODE values; EXTENDED is the vendor value WhyCam offers (Pixel / Qualcomm). */
     public static final int HAL_OFF = 0, HAL_SIMPLE = 1, HAL_FULL = 2, HAL_EXTENDED = 0x80;
 
     /** How faces are produced for one camera module. */

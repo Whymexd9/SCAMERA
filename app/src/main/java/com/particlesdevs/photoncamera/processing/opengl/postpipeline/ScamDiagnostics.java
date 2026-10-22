@@ -159,7 +159,7 @@ public final class ScamDiagnostics {
         }catch(Exception e){Log.e("SCAM_DIAG","Native diagnostic copy failed",e);}
     }
     public static void gpu(String name,GLTexture source) {
-        if(active.get()==null||source==null||!Arrays.asList("ScamRgb","ArkCombine","Sharpening").contains(name))return;
+        if(active.get()==null||source==null||!Arrays.asList("ScamRgb","WhyCombine","Sharpening").contains(name))return;
         // Read sampled rows through a temporary READ framebuffer. No diagnostic
         // shader/texture bindings can disturb the processing program's state.
         int[] oldRead=new int[1],framebuffer=new int[1];
@@ -185,7 +185,7 @@ public final class ScamDiagnostics {
             }
             sampled.flip();
             buffer("03-"+name,sampled,w,h,3,
-                    !Arrays.asList("ArkCombine","Sharpening").contains(name));
+                    !Arrays.asList("WhyCombine","Sharpening").contains(name));
         }catch(Exception e){Log.e("SCAM_DIAG","GPU stage failed: "+name,e);}
         finally{glBindFramebuffer(GL_READ_FRAMEBUFFER,oldRead[0]);if(framebuffer[0]!=0)glDeleteFramebuffers(1,framebuffer,0);}
     }

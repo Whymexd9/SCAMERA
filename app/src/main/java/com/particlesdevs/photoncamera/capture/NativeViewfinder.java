@@ -6,7 +6,7 @@ import androidx.annotation.Nullable;
  * P212h (A6 = M11): the native FULLRES viewfinder predicts the photo. Pure rules, CaptureController.publishLiveRawFrame applies them.
  * <ul>
  * <li>Display gain: the OPPO native results say AE OFF (OppoNativeFullRes.apply), so LiveRawMeter showed the night frame's median of
- * 0.001-0.004 at gain 1 while ArkAe lifts the photo 3-4x. The gain now covers the exposure the mode cannot deliver - the own AE's
+ * 0.001-0.004 at gain 1 while WhyAe lifts the photo 3-4x. The gain now covers the exposure the mode cannot deliver - the own AE's
  * deficit (P212a NativeRawExposure.deficitEv: the meter's wish above the ISO cap at the frame time) - when it exceeds
  * {@link #DEFICIT_GATE_EV}: LiveRawMeter's gain held to [1, 2^deficit]; below it [1, 1], today's viewfinder (the daylight view
  * keeps its brightness). scam_dev.txt "vf_native_gain": 1 that (default), 2 the verifier's variant (the meter's own law whenever

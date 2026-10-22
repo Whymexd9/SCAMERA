@@ -84,18 +84,17 @@ public class CameraSheetsTest {
     }
 
     @Test
-    public void theSizeSheetDimsWhatTheModuleLacks() throws Exception {
+    public void theSizeSheetListsOnlyWhatTheModuleHas() throws Exception {
         AppCompatActivity activity = Robolectric.buildActivity(AppCompatActivity.class).setup().get();
         activity.setTheme(R.style.Theme_Scamera_SettingsActivity);
         List<Integer> picked = new ArrayList<>();
         List<CharSequence> refused = new ArrayList<>();
         BottomSheetDialog d = CameraSheets.size(activity, PhotoSize.NORMAL, true, false, picked::add, refused::add);
         View sheet = d.findViewById(android.R.id.content);
-        View max = sheet.findViewWithTag("size_" + PhotoSize.MAX);
-        assertEquals(.45f, max.getAlpha(), 1e-4f);
-        max.performClick();
+        // P319 (user report: a front camera listed 50 and 200 MP): a size the lens lacks is not listed at all
+        assertNull(sheet.findViewWithTag("size_" + PhotoSize.MAX));
         assertTrue(picked.isEmpty());
-        assertEquals("200 Мп — нет на этом объективе", refused.get(0).toString());
+        assertTrue(refused.isEmpty());
         sheet.findViewWithTag("size_" + PhotoSize.FULL).performClick();
         assertEquals(Arrays.asList(PhotoSize.FULL), picked);
         render(sheet.getRootView(), "size-sheet.png");

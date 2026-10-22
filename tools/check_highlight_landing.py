@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""P154 «Мягкость засветов»: the highlight landing of ark/combine.glsl and its mask ark/hlmask.glsl on the GPU (moderngl).
+"""P154 «Мягкость засветов»: the highlight landing of why/combine.glsl and its mask why/hlmask.glsl on the GPU (moderngl).
 
-ark/hlmask.glsl: the max channel over the ceiling, then a gaussian along x and along y, equals numpy's separable gaussian.
+why/hlmask.glsl: the max channel over the ceiling, then a gaussian along x and along y, equals numpy's separable gaussian.
 
-Ramps up to the data ceiling (a grey, an orange light, a slightly blue white) go through ark/combine.glsl with clipped
-data in the frame (headroomU 1) without the landing (HL_LANDING 0) and with it (hlSoftU 0.7, ArkHl = the pixel's own share
+Ramps up to the data ceiling (a grey, an orange light, a slightly blue white) go through why/combine.glsl with clipped
+data in the frame (headroomU 1) without the landing (HL_LANDING 0) and with it (hlSoftU 0.7, WhyHl = the pixel's own share
 of the ceiling, i.e. a large blown area):
 - the blown grey ends on pure white (1.0 in every channel; without the landing it stays a grey below 0.99);
 - below the start of the landing (0.3 of the ceiling) nothing changes;
@@ -12,7 +12,7 @@ of the ceiling, i.e. a large blown area):
 - P159: the orange light lands on ITS colour at full brightness (the scene's channel ratios, display-encoded), not on the
   colour the tone's shoulder bleached; its chroma never drops below the toned one on the way up;
 - a slightly blue near-white ends on pure white;
-- a dark pixel inside a blown neighbourhood (ArkHl 1, own share below 0.15) is left alone (no glow on dark objects);
+- a dark pixel inside a blown neighbourhood (WhyHl 1, own share below 0.15) is left alone (no glow on dark objects);
 - without clipped data (headroomU 0) the landing does nothing.
 A blown disc with a soft edge on a mid grey, with the real mask: the disc lands on white, and the steepest step across its
 edge is not steeper than without the landing (owner: «очень резкие переходы с уходом в серый» of the per-pixel landing).
@@ -44,9 +44,9 @@ def main():
         ctx = moderngl.create_standalone_context(backend='egl', require=430)
     except Exception:
         ctx = moderngl.create_standalone_context(require=430)
-    src_off = expand_imports((SH / 'ark/combine.glsl').read_text(encoding='utf-8'))
+    src_off = expand_imports((SH / 'why/combine.glsl').read_text(encoding='utf-8'))
     src = set_define(src_off, 'HL_LANDING', '1')
-    mask_src = expand_imports((SH / 'ark/hlmask.glsl').read_text(encoding='utf-8'))
+    mask_src = expand_imports((SH / 'why/hlmask.glsl').read_text(encoding='utf-8'))
     clip = 2.5
     soft = 0.7
     k = np.geomspace(0.02, 1.0, 96)                      # fraction of the ceiling
@@ -78,7 +78,7 @@ def main():
     prog_mask = ctx.program(vertex_shader=vs, fragment_shader='#version 300 es\n' + mask_src)
 
     def run_mask(a, sigma):
-        """ark/hlmask.glsl: the share, then the gaussian along x and along y (ArkCombine's three passes)."""
+        """why/hlmask.glsl: the share, then the gaussian along x and along y (WhyCombine's three passes)."""
         h, w = a.shape[:2]
         t_in = tex(a)
         outs = [ctx.texture((w, h), 4, dtype='f4') for _ in range(3)]
@@ -120,7 +120,7 @@ def main():
     want = gauss_np(np.clip(probe[..., :3].max(2) / clip, 0, 4), 3.0)
     err = np.abs(got - want).max()
     print('  hlmask: max |GPU - numpy gaussian| %.2e' % err)
-    check(err < 1e-4, 'ark/hlmask.glsl differs from the gaussian of the share (%.2e)' % err)
+    check(err < 1e-4, 'why/hlmask.glsl differs from the gaussian of the share (%.2e)' % err)
 
     def render(image, fz, share, hl, headroom=1, full=None, detail=0.0):
         h, w = image.shape[:2]
@@ -131,8 +131,8 @@ def main():
         fb = ctx.framebuffer([out])
         fb.use()
         ctx.viewport = (0, 0, w, h)
-        units = {'InputBuffer': t_full, 'GainMap': ones, 'ArkLow': t_img, 'ArkColour': t_img, 'ArkFused': t_fused,
-                 'ArkDetailRef': t_img, 'ArkLumaS': t_img, 'ArkHl': t_hl}
+        units = {'InputBuffer': t_full, 'GainMap': ones, 'WhyLow': t_img, 'WhyColour': t_img, 'WhyFused': t_fused,
+                 'WhyDetailRef': t_img, 'WhyLumaS': t_img, 'WhyHl': t_hl}
         for i, (key, t) in enumerate(units.items()):
             if key in prog:
                 t.use(i)
@@ -194,7 +194,7 @@ def main():
     same = np.abs(ramps(soft, headroom=0) - ramps(0.0, headroom=0)).max()
     print('  without clipped data: max |with - without| %.2e' % same)
     check(same < 1e-6, 'the landing acts without clipped data')
-    # a dark pixel in a blown neighbourhood (ArkHl 1) is left alone
+    # a dark pixel in a blown neighbourhood (WhyHl 1) is left alone
     dark = np.abs(ramps(soft, share=np.ones_like(own))[:, k < 0.15] - base[:, k < 0.15]).max()
     print('  dark pixels inside a blown neighbourhood: max |with - without| %.2e' % dark)
     check(dark < 1e-6, 'the landing lifts dark pixels next to a light (%.2e)' % dark)

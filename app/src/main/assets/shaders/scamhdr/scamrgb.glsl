@@ -26,9 +26,9 @@ uniform float chromaLimitU;       // deviation of the local chroma from neutral 
 uniform float defringeU;          // clip-border colour suppression 0..1 (0 = unset: 0.85; < 0: off)
 // 1 (SCAM Hybrid): the worker's signed values pass on. The merge keeps its noise signed and clips once; a per-pixel
 // max(0) here lifted the mean of every channel near zero by up to half its noise - x1.5 red along the frame edge of a dark
-// teal curtain, where fewer donors overlap (OPPO X8U 2026-10-07), and red mottling of dark saturated colours once the ARK
-// tone lifted them. The clamp now follows the noise reduction (ScamDenoise / ScamHdrDenoise output) or an average (ark/low,
-// ark/combine). 0 (unset): clamp at zero (SCAM HDR route, whose stages expect it).
+// teal curtain, where fewer donors overlap (OPPO X8U 2026-10-07), and red mottling of dark saturated colours once the WHY
+// tone lifted them. The clamp now follows the noise reduction (ScamDenoise / ScamHdrDenoise output) or an average (why/low,
+// why/combine). 0 (unset): clamp at zero (SCAM HDR route, whose stages expect it).
 uniform int signedU;
 out vec3 Output;
 
@@ -128,7 +128,7 @@ void main(){
         // before WB and lens shading), the reconstruction on the white-balanced values.
         // Clip border (flag bit 3): each colour comes from the unclipped samples that are left, which sit on different
         // sides of a sharp clip edge for different Bayer sites -> a dotted red/blue fringe along lamp shades and paper
-        // edges. Keep the luminance, take the colour of the local light (a 1-2 px band, like ArkCam's OKLab defringe).
+        // edges. Keep the luminance, take the colour of the local light (a 1-2 px band, like WhyCam's OKLab defringe).
         // Bit 6: the worker's clip-border pass already rebuilt these colours from real-site ratios
         // (research/hybrid5/fix_rim.md): no blanket defringe there. It matters: inside a Bento highlight bit 3 is set
         // almost everywhere (the base frame's clipped samples at weight 1 - m), and the blanket defringe turned a blue
@@ -204,7 +204,7 @@ void main(){
         //   it does not, and the core goes neutral gradually.
         // * One channel left: extrapolating the other two follows every tint of the prior (a cyan cast from the censored
         //   colours along a dark edge made a lamp core cyan, an orange glow left it pink next to a clipped blue): the
-        //   neutral white core of ArkCam wherever neutral is consistent with the lower bounds; the local light only
+        //   neutral white core of WhyCam wherever neutral is consistent with the lower bounds; the local light only
         //   where neutral is not (R and G of a warm lamp clipped, B left: neutral would put G at B's level, a dark ring).
         //   The weight follows the unclipped channels continuously.
         float trust = 0.0;

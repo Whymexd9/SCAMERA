@@ -51,7 +51,7 @@
     <string name="shade_t_rejection">Отбраковка</string>
     <string name="shade_t_grid">Сетка</string>
     <string name="shade_t_peak">Фокус-пик</string>
-    <string name="shade_t_live_raw">RAW-экран</string>
+    <string name="shade_t_live_raw">RAW-видоискатель</string>
     <string name="shade_t_debug">Инфо</string>
 
     <!-- Short values on tiles and segments -->
@@ -202,7 +202,7 @@
         <item>Удерж.</item>
         <item>Касание</item>
     </string-array>
-    <string-array name="shade_s_ark_metering">
+    <string-array name="shade_s_why_metering">
         <item>Кадр</item>
         <item>Центр</item>
         <item>Точка</item>

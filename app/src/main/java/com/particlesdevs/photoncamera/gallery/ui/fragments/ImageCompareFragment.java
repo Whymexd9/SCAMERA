@@ -146,13 +146,13 @@ public class ImageCompareFragment extends Fragment {
         card.setClickable(true);
         card.setFocusable(true);
         card.setContentDescription(Lang.t("Зум и сдвиг вместе", "Zoom and pan together"));
-        card.setStateDescription(toSync ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
+        androidx.core.view.ViewCompat.setStateDescription(card, toSync ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
         card.setOnClickListener(v -> {
             toSync = !toSync;
             // On again: linked as the panes are shown now, so a zoom or place set while it was off is kept
             if (toSync) ssivListener.relink(false);
             GallerySheets.setToggle(sw, toSync);
-            card.setStateDescription(toSync ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
+            androidx.core.view.ViewCompat.setStateDescription(card, toSync ? Lang.t("включено", "on") : Lang.t("выключено", "off"));
         });
         return card;
     }

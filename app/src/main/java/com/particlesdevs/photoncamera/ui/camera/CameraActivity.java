@@ -53,7 +53,7 @@ public class CameraActivity extends BaseActivity {
     private static final String STATE_PERMISSION_PENDING = "permission_pending";
     private static final String STATE_AWAITING_SETTINGS = "permission_awaiting_settings";
 
-    /** Startup permissions, asked like ArkCam does: one system request, no dialog of ours in front (P31). */
+    /** Startup permissions, asked like WhyCam does: one system request, no dialog of ours in front (P31). */
     private PermissionPlan permissionPlan;
     private ActivityResultLauncher<String[]> permissionLauncher;
     private ActivityResultLauncher<RequestStorageAccessContract.Options> storageAccessLauncher;

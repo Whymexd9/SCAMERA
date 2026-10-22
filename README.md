@@ -3,7 +3,7 @@
 Android RAW camera with multi-frame processing.
 
 - **SCAM Hybrid** — the default route on every phone: a zero-shutter-lag RAW burst plus a short exposure bracket, merged on the
-  GPU by a separate worker process (alignment, robust merge, highlight frames), then the ARK tone, denoise and sharpening.
+  GPU by a separate worker process (alignment, robust merge, highlight frames), then the WHY tone, denoise and sharpening.
 - **SCAM HDR** — the neural route on Snapdragon 8 Elite phones (NPU models), with the same capture.
 - **«Движение» (Motion)** — the frames of the moment of the press, a shutter that follows the motion in the scene and a fast series.
 - Output: JPEG (jpegli), 10-bit HEIC, AVIF, WebP, DNG and Ultra HDR gain maps; Display P3 or sRGB.

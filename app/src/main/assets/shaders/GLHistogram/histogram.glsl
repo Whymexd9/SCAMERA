@@ -1,7 +1,7 @@
 precision highp sampler2D;
 precision highp int;
 precision highp float;
-// P317: memoryBarrierShared() with every barrier() (ESSL 3.10 8.14, as ark/aestats.glsl).
+// P317: memoryBarrierShared() with every barrier() (ESSL 3.10 8.14, as why/aestats.glsl).
 uniform sampler2D inTexture;
 uniform vec4 exposure;
 uniform float input1;

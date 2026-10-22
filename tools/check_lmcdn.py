@@ -8,7 +8,7 @@ numpy reference tools/lmcdn_ref.py (written from denoise_port.md section 7):
      BilateralFilterChroma3x3, block statistics;
   2. the whole pipeline on the 1x grid and on the Sabre 2x grid (identity with zero strengths, GPU vs reference);
   3. per-band noise reduction factors (Laplacian bands b0..b4 of Y, U, V) on synthetic frames with a known noise model,
-     white and correlated, for several SNR tiers and for the exact ArkCam emulation (revert_max 9, no safeguards);
+     white and correlated, for several SNR tiers and for the exact WhyCam emulation (revert_max 9, no safeguards);
   4. a crop of a real merged linear frame (research/cct/cap2/denoise-in.f32) when it is present.
 Usage: python tools/check_lmcdn.py [--quick]
 """
@@ -480,13 +480,13 @@ def main():
           f'gU1 {gw[2]:.2f} (expect {8e-4/6e-5:.1f}), uvsU {gw[6]:.3f} (expect 0.5), uvsV {gw[8]:.3f} (expect 0.333)')
     check(abs(gw[0] / (2e-4 / 6e-5) - 1) < 0.05 and abs(gw[2] / (8e-4 / 6e-5) - 1) < 0.05 and abs(gw[6] - 0.5) < 0.03 and abs(gw[8] - 1 / 3) < 0.02, 'measured gains of white noise (480 blocks)')
 
-    print('2. tables (spec 2.4 values, exact ArkCam emulation: revert_max 9, coarse_stock 0, chroma floor 0)')
-    ark = R.default_config(revert_max=9, coarse_stock=0, chroma_floor=0)
-    l78, _ = R.luma_params(ark, 7.80806); c78, _ = R.chroma_params(ark, 7.80806)
+    print('2. tables (spec 2.4 values, exact WhyCam emulation: revert_max 9, coarse_stock 0, chroma floor 0)')
+    why = R.default_config(revert_max=9, coarse_stock=0, chroma_floor=0)
+    l78, _ = R.luma_params(why, 7.80806); c78, _ = R.chroma_params(why, 7.80806)
     check(abs(l78[0][0] - 1.56) < .01 and abs(l78[0][1] - 4.37) < .015 and abs(l78[1][1] - 4.34) < .015 and abs(l78[2][2] - 0.67) < .01,
           f'SNR 7.8 luma b0 {l78[0][0]:.2f}/{l78[0][1]:.2f}/{l78[0][2]:.2f} b1 {l78[1][0]:.2f}/{l78[1][1]:.2f}/{l78[1][2]:.2f} b2 {l78[2][0]:.2f}/{l78[2][1]:.2f}/{l78[2][2]:.2f}')
     check(all(abs(c78[b][0] - v) < .02 for b, v in enumerate([2.75, 2.75, 2.75, 1.0, 1.72])), 'SNR 7.8 chroma ' + '/'.join(f'{c[0]:.2f}' for c in c78))
-    l15, _ = R.luma_params(ark, 15)
+    l15, _ = R.luma_params(why, 15)
     check(abs(l15[1][0] - 2.0) < .01 and abs(l15[0][1] - .875) < .01, f'SNR 15 luma b0 {l15[0][0]:.2f}/{l15[0][1]:.3f} b1 {l15[1][0]:.2f}')
 
     print('3. whole pipeline, 1x grid')
@@ -511,9 +511,9 @@ def main():
              ('SNR 7.8 defaults', 7.8, R.default_config()),
              ('SNR 15 defaults', 15.0, R.default_config()),
              ('SNR 40 defaults', 40.0, R.default_config()),
-             ('SNR 3, exact ArkCam (rf 9, no safeguards)', 3.0, ark),
-             ('SNR 7.8, exact ArkCam', 7.8, ark),
-             ('SNR 15, exact ArkCam', 15.0, ark)]
+             ('SNR 3, exact WhyCam (rf 9, no safeguards)', 3.0, why),
+             ('SNR 7.8, exact WhyCam', 7.8, why),
+             ('SNR 15, exact WhyCam', 15.0, why)]
     if quick:
         cases = cases[:2] + cases[4:5]
     for name, snr, cfg in cases:

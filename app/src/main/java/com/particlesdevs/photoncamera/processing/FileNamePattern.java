@@ -4,7 +4,7 @@ import java.util.Calendar;
 import java.util.Locale;
 
 /**
- * «Название фото» (P119, owner 2026-10-13: «вместо IMG сделать SCA», «настраивать как это сделано в ArkCam»): the file name of a new
+ * «Название фото» (P119, owner 2026-10-13: «вместо IMG сделать SCA», «настраивать как это сделано в WhyCam»): the file name of a new
  * photo from a template. The date / time variables {@link #VARIABLES} are replaced, everything else is kept as it is (so «SCA» or
  * «Отпуск» need no quoting). Characters a file name cannot hold are dropped; an empty result falls back to {@link #DEFAULT}.
  */

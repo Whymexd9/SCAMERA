@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 
 /**
  * P91 A RAW frame of the ZSL ring: either the camera's own Image (the ring as before) or a copy in a slot of the ring's memfd
- * (capture/ZslRing: the camera's buffer goes back at once, as in ArkCam 1.05 and MotionCam). The ring code and the shot's
+ * (capture/ZslRing: the camera's buffer goes back at once, as in WhyCam 1.05 and MotionCam). The ring code and the shot's
  * frame selection see only this.
  */
 public interface RingFrame {

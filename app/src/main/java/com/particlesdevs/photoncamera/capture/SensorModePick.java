@@ -18,13 +18,13 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * P276 (owner, 2026-10-19, a video of the new ArkCam: «вот так это реализовано в новой Арк камере, мы сможем сделать схоже?»,
+ * P276 (owner, 2026-10-19, a video of the new WhyCam: «вот так это реализовано в новой Why камере, мы сможем сделать схоже?»,
  * «я в видео имел ввиду работу с сенсормодами», «учитывай всю новую информацию которую я кидал тебе по оппо и виво»): a module's
  * «Режим сенсора» picked from the camera's own org.quic.camera2.sensormode.info.SensorModeTable (Auto + "Mode #N: W x H @ fps").
  * A picked row makes the module's session
  * <ul>
  *   <li>open its RAW stream at the row's size (also a size StreamConfigurationMap does not list: an ImageReader of usage 0, as
- *       the native FULLRES route and ArkCam do);</li>
+ *       the native FULLRES route and WhyCam do);</li>
  *   <li>send the brand's mode key on the session parameters AND on every request: vivo vivo.control.forceSensorMode as int[]
  *       (Integer when the HAL refuses the array), OPPO / OnePlus / realme com.oplus.engineercamera.agingtest.mode.select as a
  *       byte (int32 when refused, OppoNativeFullRes.setMode), any other Qualcomm phone
@@ -74,7 +74,7 @@ public final class SensorModePick {
         return rows(SensorModeBand.table(c));
     }
 
-    /** "Mode #4: 8192x6144 @ 30fps", as ArkCam lists them. */
+    /** "Mode #4: 8192x6144 @ 30fps", as WhyCam lists them. */
     public static String label(int[] row) {
         return "Mode #" + row[0] + ": " + row[1] + "x" + row[2] + " @ " + row[3] + "fps";
     }

@@ -15,7 +15,7 @@ import static org.junit.Assert.*;
 
 /**
  * P214d: the lens-shading term of the scamdn strength map (ScamDenoise.lscTerm / lscFactor, scamdn/strmap.glsl): f times
- * min(g^2, cap) of the luminance gain the ARK tone applies after the denoise, g over the map's smallest gain; no term
+ * min(g^2, cap) of the luminance gain the WHY tone applies after the denoise, g over the map's smallest gain; no term
  * without a real map; one-sided (the optical centre keeps f = 1 exactly, also through the fp16 texture); the uniforms the
  * host sets are the ones the shader declares.
  */
@@ -125,8 +125,8 @@ public class ScamDenoiseLscTest {
         assertEquals(g * g, term[2], 1e-5f);
     }
 
-    @Test public void luminanceGainIsTheArkToneFactor() {
-        // ark/low: lsc = dot((r, (g_even + g_odd) / 2, b), 1/3)
+    @Test public void luminanceGainIsTheWhyToneFactor() {
+        // why/low: lsc = dot((r, (g_even + g_odd) / 2, b), 1/3)
         assertEquals((2f + 2f + 4f) / 3f, ScamDenoise.lscGain(2f, 1f, 3f, 4f), 1e-6f);
         // colour shading alone (scamrgb's part, normalised to mean 1): the luminance gain is flat - no term
         float[] m = new float[4 * MW * MH];

@@ -21,7 +21,7 @@ import static android.opengl.GLES20.GL_LINEAR;
 import static android.opengl.GLES20.GL_NEAREST;
 
 /**
- * "SCAM Noise Reduction" of the SCAM Hybrid: the finish denoise of SCAM 9.6 as ArkCam 2.85 runs it, on the
+ * "SCAM Noise Reduction" of the SCAM Hybrid: the finish denoise of SCAM 9.6 as WhyCam 2.85 runs it, on the
  * white-balanced linear RGB after ScamRgb (the space where the reference denoises, before the colour matrix).
  * <ol>
  * <li>Despeckle (as the NLM route: isolated dots, also hot pixels the merge let through), then the YUV of the reference
@@ -29,7 +29,7 @@ import static android.opengl.GLES20.GL_NEAREST;
  *     {1,3,3,1}) and the change is put back with a Laplacian re-assembly: out = RGB_2x + RGB(Up2(Den0 - X0)).</li>
  * <li>Noise: the single-frame model of the base frame (Camera2 profile, white-balance gains) times the measured
  *     difference variance of every pyramid level and stride (the reference derives it from a white spectrum; our merge leaves
- *     correlated noise), rho = how much noisier the model ArkCam hands the reference is than the real one.</li>
+ *     correlated noise), rho = how much noisier the model WhyCam hands the reference is than the real one.</li>
  * <li>SNR of the finish input (EstimateSnr: mean 0.18 / display gain) selects and interpolates the tiers of
  *     {@link ScamDenoiseTables}.</li>
  * <li>Luma (the reference LumaDenoise F16): kD8 pyramid, 4 levels x {BilateralFilter3x3 stride 2, stride 1}, revert per band
@@ -83,7 +83,7 @@ public final class ScamDenoise extends Node {
     }
     private static Point half(Point p) { return new Point((p.x + 1) / 2, (p.y + 1) / 2); }
 
-    /** Settings of the hybrid section «Шумоподавление ARK / SCAM». */
+    /** Settings of the hybrid section «Шумоподавление WHY / SCAM». */
     static ScamDenoiseTables.Config readConfig() {
         ScamDenoiseTables.Config c = new ScamDenoiseTables.Config();
         for (int i = 0; i < c.lumaSnr.length; i++) {
@@ -317,7 +317,7 @@ public final class ScamDenoise extends Node {
 
     /**
      * P214d: the luminance gain of one lens-shading site (r, g_even, g_odd, b): the mean of r, (g_even + g_odd) / 2 and b,
-     * the factor ark/low, ark/combine and ark/sharp_in multiply the denoised image by (scamrgb applies only the colour part,
+     * the factor why/low, why/combine and why/sharp_in multiply the denoised image by (scamrgb applies only the colour part,
      * normalised to mean 1).
      */
     static float lscGain(float r, float gEven, float gOdd, float b) {
@@ -337,7 +337,7 @@ public final class ScamDenoise extends Node {
      * P214d: the lens-shading term of the strength map, from the map ScamRgb uploaded as the pipeline's GainMap
      * (Parameters.gainMap, {@code mw} x {@code mh} sites of (r, g_even, g_odd, b)).
      * <p>
-     * Why: the denoise works before the ARK tone, which multiplies every pixel by the luminance gain of the map (corner
+     * Why: the denoise works before the WHY tone, which multiplies every pixel by the luminance gain of the map (corner
      * gains 2.0-3.8 in the phone logs, quality survey section 7): the noise the denoise leaves in a corner comes out
      * up to 3.8 x larger in amplitude than the same residue in the centre, on a signal that collected fewer photons. GCam 11
      * multiplies its strength map by (1, g, g^2) of the shading gain (GCAM11_PIPELINE.md in SCAMERA-PC/research/gcam11,
@@ -351,7 +351,7 @@ public final class ScamDenoise extends Node {
      * carries the model through that gain. Here only the colour part of the shading comes before the denoise, and the
      * model already reads the local, still unshaded signal (lbf / cbf: sigma^2 = f (noise.x Y + noise.y)): at f = 1 a
      * corner is filtered for the noise it has (GCam's behaviour). The g^2 on top is the deliberate part: a corner keeps
-     * less of its noise, so after the ARK gain its grain comes closer to the centre's - at the cost of fine corner texture
+     * less of its noise, so after the WHY gain its grain comes closer to the centre's - at the cost of fine corner texture
      * near the noise level (the lbf revert also drops to 0.71 x where f > 2). Phone check: sigma of a flat wall / sky in
      * the centre and the corners, and the detail of a textured scene's corners, against "denoise_lsc 0".
      * <p>
@@ -657,7 +657,7 @@ public final class ScamDenoise extends Node {
             }
             final float snrMeasured = ScamDenoiseTables.snr(mu, GY[0][0], sG, rG, rhoS, rhoR);
             final float snr = snrFixed > 0f ? snrFixed : snrMeasured * snrScale;
-            par.finishSnr = snr; // P135: the ARK sharpening backs off on a noisy shot
+            par.finishSnr = snr; // P135: the WHY sharpening backs off on a noisy shot
 
             // ---- tiers
             ScamDenoiseTables.Pick[] lp = new ScamDenoiseTables.Pick[1], cp = new ScamDenoiseTables.Pick[1];
@@ -671,7 +671,7 @@ public final class ScamDenoise extends Node {
             String mapState = "uniform";
             if (wantMap) {
                 GLTexture eff = loadEffectiveFrames(owned, full, effRef);
-                // P214d: times min(g^2, cap) of the lens-shading gain the ARK tone applies after this denoise (lscTerm);
+                // P214d: times min(g^2, cap) of the lens-shading gain the WHY tone applies after this denoise (lscTerm);
                 // a map is made for it also when the worker sent no effective-frame map
                 final float[] lsc = lscTerm(pipeline);
                 if (eff != null || lsc != null || hugeMap > 1f) {

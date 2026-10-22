@@ -40,7 +40,7 @@ import java.util.List;
  * the pill in the accent while the tray is open) and the LUT tray in the Pro panel's place above row 1 (Pro and the tray
  * close each other): a snap row of every LUT («Нет», the five film looks, every .cube of Download/SCAMERA/LUT) as cards
  * with their names (owner, 2026-10-19: no small live previews in the viewfinder); the strength slider; «Все LUT ›» to the settings' LUT row. The choice is the same state as the settings'
- * (pref_film_lut / pref_film_lut_strength): the live viewfinder (LiveRawRenderer) and the photo (ArkCombine) follow it.
+ * (pref_film_lut / pref_film_lut_strength): the live viewfinder (LiveRawRenderer) and the photo (WhyCombine) follow it.
  * P228 / P287: under the strength a second row of the lens filters («Нет» and the reference's four diffusion filters) by
  * name; a card is the settings' pref_lens_filter. The pill names the filter after the
  * LUT («Кино 500 · Pro-Mist»).
@@ -64,6 +64,14 @@ public final class LutTray {
     private final LinearLayout filmRow;
     /** The sections' current choices, after their titles. */
     private final TextView lutNow, filterNow, filmNow;
+    /**
+     * P319 (user report 2026-10-22: «Много лишнего, в том числе того, что должно быть только в видоискателе (фильтр на объектив,
+     * тепло, и т.п.)»): «Тепло» and «Оттенок» of «Цвет» in the tray too, the same settings (pref_scam_hybrid_colour_warmth /
+     * _tint, -100..100); the RAW viewfinder shows them at once, the photo always.
+     */
+    static final String WARMTH_KEY = "pref_scam_hybrid_colour_warmth", TINT_KEY = "pref_scam_hybrid_colour_tint";
+    private final SeekBar warmth, tint;
+    private final TextView warmthValue, tintValue;
     @Nullable private Runnable onOpen;
     private boolean open;
 
@@ -130,6 +138,12 @@ public final class LutTray {
         // P281: the film simulation's stocks
         filmNow = section(c, Lang.t(c, "Плёнка", "Film"), null, 10);
         filmRow = chipRow(c, "lut_tray_films");
+        // P319: the colour's warmth and tint
+        section(c, Lang.t(c, "Цвет", "Colour"), null, 10);
+        warmthValue = text(c, "", 12, ShadeStyle.TEXT);
+        warmth = colourSlider(c, Lang.t(c, "Тепло", "Warmth"), WARMTH_KEY, warmthValue, "lut_tray_warmth", accent);
+        tintValue = text(c, "", 12, ShadeStyle.TEXT);
+        tint = colourSlider(c, Lang.t(c, "Оттенок", "Tint"), TINT_KEY, tintValue, "lut_tray_tint", accent);
         strength.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int p, boolean user) {
                 strengthValue.setText(p + " %");
@@ -140,6 +154,51 @@ public final class LutTray {
         });
         tray.setVisibility(View.GONE);
         bindPill();
+    }
+
+    /** P319: a «label · slider · value» row of a -100..100 colour setting, written as the settings page writes it. */
+    private SeekBar colourSlider(Context c, String label, String key, TextView value, String tag, int accent) {
+        LinearLayout r = new LinearLayout(c);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setTag(tag);
+        TextView l = text(c, label, 12, ShadeStyle.MUTED);
+        l.setMinWidth(UiScale.dp(c, 64));
+        r.addView(l);
+        SeekBar bar = new SeekBar(c);
+        bar.setMax(200);
+        bar.setProgressTintList(ColorStateList.valueOf(accent));
+        bar.setThumbTintList(ColorStateList.valueOf(accent));
+        bar.setProgressBackgroundTintList(ColorStateList.valueOf(0x40FFFFFF));
+        bar.setContentDescription(label);
+        r.addView(bar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        value.setMinWidth(UiScale.dp(c, 40));
+        value.setGravity(Gravity.END);
+        value.setFontFeatureSettings("tnum");
+        r.addView(value);
+        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar s, int p, boolean user) {
+                value.setText(signed(p - 100));
+                if (user) settings().set(SettingsManager.SCOPE_GLOBAL, key, String.valueOf(p - 100));
+            }
+            @Override public void onStartTrackingTouch(SeekBar s) { }
+            @Override public void onStopTrackingTouch(SeekBar s) { }
+        });
+        tray.addView(r, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return bar;
+    }
+
+    static String signed(int v) {
+        return v > 0 ? "+" + v : String.valueOf(v);
+    }
+
+    /** P319: a -100..100 colour setting's value now (a stored text, as UniversalSeekBarPreference keeps it). */
+    static int colourValue(String key) {
+        try {
+            return Math.max(-100, Math.min(100, Math.round(PreferenceKeys.hybridValue(key.substring("pref_scam_hybrid_".length()), 0f))));
+        } catch (RuntimeException e) {
+            return 0;
+        }
     }
 
     private static SettingsManager settings() {
@@ -326,6 +385,9 @@ public final class LutTray {
         }
         rebuildFilters();
         rebuildFilms();
+        // P319: the colour sliders follow the settings (also after the settings page changed them)
+        warmth.setProgress(colourValue(WARMTH_KEY) + 100);
+        tint.setProgress(colourValue(TINT_KEY) + 100);
         int s = Math.round(PreferenceKeys.filmLutStrength() * 100);
         strength.setProgress(s);
         strengthValue.setText(s + " %");

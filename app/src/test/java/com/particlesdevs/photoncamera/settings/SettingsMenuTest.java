@@ -42,13 +42,13 @@ public class SettingsMenuTest {
         ScameraApp app=mock(ScameraApp.class,RETURNS_DEEP_STUBS);when(app.getSettingsManager()).thenReturn(manager);
         camera.when(()->ScameraApp.getInstance(any(Context.class))).thenReturn(app);
     }
-    @Test public void oneArkToneForBothRoutes() {
+    @Test public void oneWhyToneForBothRoutes() {
         PreferenceScreen screen=inflate();
-        // P10: the SCAMERA tone (AgX / Exposure Fusion / headroom) is gone; ArkCore and its sharpening serve both routes.
-        for(String old:new String[]{"agx_screen","scam_hybrid_scamera_tone_screen","pref_scam_hybrid_ark_tone","pref_scamroute_gamma",
+        // P10: the SCAMERA tone (AgX / Exposure Fusion / headroom) is gone; WhyCore and its sharpening serve both routes.
+        for(String old:new String[]{"agx_screen","scam_hybrid_scamera_tone_screen","pref_scam_hybrid_why_tone","pref_scamroute_gamma",
                 "pref_scamhdr_soft_tone","pref_scamhdr_fusion_enabled","pref_scamold_ae_mid","pref_expocompensation_seekbar_key"})
             assertNull(old,screen.findPreference(old));
-        for(String kept:new String[]{"scam_hybrid_ark_tone_screen","pref_scam_hybrid_ark_ae_target","pref_scam_hybrid_ark_sharp_gain"})
+        for(String kept:new String[]{"scam_hybrid_why_tone_screen","pref_scam_hybrid_why_ae_target","pref_scam_hybrid_why_sharp_gain"})
             assertNotNull(kept,screen.findPreference(kept));
         // P64: the «Hybrid curves» presets are gone (owner, 2026-10-09)
         for(String old:new String[]{"scam_curves_screen","pref_scam_tone_curve","pref_scam_tone_curve_strength","pref_scam_gamma_curve",
@@ -57,13 +57,13 @@ public class SettingsMenuTest {
         // P129: SHDR is the only merge: its rows act whatever route was stored
         java.util.Map<String,Object> values=new java.util.HashMap<>();values.put(PreferenceKeys.ROUTE_KEY,"scamhdr");
         SettingsAvailability shdr=new SettingsAvailability(values);
-        assertNull(shdr.reason("pref_scam_hybrid_ark_ae_target"));assertNull(shdr.reason("pref_scam_hybrid_ark_sharp_gain"));
+        assertNull(shdr.reason("pref_scam_hybrid_why_ae_target"));assertNull(shdr.reason("pref_scam_hybrid_why_sharp_gain"));
         assertNull(shdr.reason("pref_scam_hybrid_cdm"));
-        prefs.edit().putString("pref_agx_contrast","20").putString("pref_scamroute_gamma","1.2").putBoolean("pref_scam_hybrid_ark_tone",false)
-                .putString("pref_scam_hybrid_ark_ae_target","0.2").commit();
+        prefs.edit().putString("pref_agx_contrast","20").putString("pref_scamroute_gamma","1.2").putBoolean("pref_scam_hybrid_why_tone",false)
+                .putString("pref_scam_hybrid_why_ae_target","0.2").commit();
         assertTrue(SettingsMigration.removeObsolete(prefs));
         assertFalse(prefs.contains("pref_agx_contrast"));assertFalse(prefs.contains("pref_scamroute_gamma"));
-        assertFalse(prefs.contains("pref_scam_hybrid_ark_tone"));assertEquals("0.2",prefs.getString("pref_scam_hybrid_ark_ae_target",""));
+        assertFalse(prefs.contains("pref_scam_hybrid_why_tone"));assertEquals("0.2",prefs.getString("pref_scam_hybrid_why_ae_target",""));
     }
     @Test public void scamHdrControlsPersistAndEveryRouteIsAScamRoute() {
         PreferenceScreen screen=inflate();
@@ -206,7 +206,7 @@ public class SettingsMenuTest {
                 "scamera_darktable_screen","optical_correction_screen","expert_raw_screen","expert_noise_screen","expert_detail_screen",
                 "expert_tone_screen","pref_tunable_postpipeline_tonepipeline","pref_tunable_postpipeline_demosaicingmethod",
                 "pref_saturation_seekbar_key","pref_contrast_seekbar_key","pref_sensor_sharpening_enabled","pref_noise_iso_curve_key",
-                "sharp_settings_screen")) // P118: the RawTherapee sharpening is gone too (only the ARK sharpening stays)
+                "sharp_settings_screen")) // P118: the RawTherapee sharpening is gone too (only the WHY sharpening stays)
             assertNull(key,screen.findPreference(key));
         for (String key:Arrays.asList("pref_noise_model_profile_key","pref_dcp_profile_key"))
             assertNotNull(key,screen.findPreference(key));
@@ -488,9 +488,9 @@ public class SettingsMenuTest {
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             var modules=new com.particlesdevs.photoncamera.ui.settings.ModuleSettingsFragment();fm.beginTransaction().replace(R.id.settings_container,modules).commitNow();renderPage(modules.requireView(),"modules"+png);
             assertEquals(android.view.View.GONE,activity.findViewById(R.id.settings_toolbar).getVisibility());
-            // P218: «Камеры и сенсоры» no longer repeats the module group (it is opened from the main settings page only)
-            assertNull("no «"+groupRow+"» on «Камеры и сенсоры»",modules.requireView().findViewWithTag(groupRow));
-            assertNull("no «"+copyRow+"» on «Камеры и сенсоры»",modules.requireView().findViewWithTag(copyRow));
+            // P319 (user report: «объединить "Камеры и сенсоры" с "Настройки по модулям"»): one page «Камеры и модули» holds the
+            // modules and their profiles (still in one place only: the main page's row is hidden, its key opens this page)
+            assertNotNull("«"+copyRow+"» on «Камеры и модули»",modules.requireView().findViewWithTag(copyRow));
             var group=new com.particlesdevs.photoncamera.ui.settings.ModuleProfilesFragment();fm.beginTransaction().replace(R.id.settings_container,group).commitNow();
             group.requireView().findViewWithTag(copyRow).performClick();fm.executePendingTransactions();
             var copy=(com.particlesdevs.photoncamera.ui.settings.ModuleCopyFragment)fm.findFragmentById(R.id.settings_container);renderPage(copy.requireView(),"copy"+png);
@@ -528,18 +528,18 @@ public class SettingsMenuTest {
         assertEquals(before.get(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue),prefs.getAll().get(PreferenceKeys.Key.KEY_HIDE_GALLERY_ICON.mValue));
     }
 
-    @Test public void nestedArkTonePageOpensWithoutParentDependency() {
+    @Test public void nestedWhyTonePageOpensWithoutParentDependency() {
         try(var controller=org.robolectric.Robolectric.buildActivity(
                 com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)) {
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();
             fm.executePendingTransactions();
             var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            PreferenceScreen tone=root.findPreference("scam_hybrid_ark_tone_screen");
+            PreferenceScreen tone=root.findPreference("scam_hybrid_why_tone_screen");
             activity.onPreferenceStartScreen(root,tone);fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var page=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            assertEquals("scam_hybrid_ark_tone_screen",page.getPreferenceScreen().getKey());
-            assertTrue(page.findPreference("pref_scam_hybrid_ark_ae_target").isEnabled());
+            assertEquals("scam_hybrid_why_tone_screen",page.getPreferenceScreen().getKey());
+            assertTrue(page.findPreference("pref_scam_hybrid_why_ae_target").isEnabled());
             assertTrue(PreferenceKeys.isScamHdrEnabled());
             camera.verify(()->ScameraApp.restartApp(any(android.content.Context.class)),never());
         }
@@ -786,9 +786,9 @@ public class SettingsMenuTest {
         v.put("pref_scam_hybrid_colour_grade_highlights_str","30");
         assertNull(new SettingsAvailability(v).reason("pref_scam_hybrid_colour_grade_highlights_hue"));
         assertNotNull(new SettingsAvailability(v).reason("pref_scam_hybrid_colour_grade_shadows_hue"));
-        assertNull(new SettingsAvailability(v).reason("pref_scam_hybrid_ark_agx_sat"));
-        v.put("pref_scam_hybrid_ark_agx_look","1");
-        assertNotNull(new SettingsAvailability(v).reason("pref_scam_hybrid_ark_agx_sat"));
+        assertNull(new SettingsAvailability(v).reason("pref_scam_hybrid_why_agx_sat"));
+        v.put("pref_scam_hybrid_why_agx_look","1");
+        assertNotNull(new SettingsAvailability(v).reason("pref_scam_hybrid_why_agx_sat"));
         for(String k:new String[]{"pref_scam_hybrid_colour_warmth","pref_scam_hybrid_colour_mix_red_hue","pref_scam_hybrid_colour_vib_shadows",
                 "pref_scam_hybrid_colour_grade_mids_hue","pref_scam_hybrid_colour_grade_blend"})
             assertNotNull(k+" needs numeric bounds",SettingsNumericRules.bounds(k));
@@ -835,13 +835,13 @@ public class SettingsMenuTest {
      */
     @Test public void toneOperatorsInTheirOwnGroups(){
         PreferenceScreen root=inflate();
-        androidx.preference.PreferenceGroup screen=root.findPreference("scam_hybrid_ark_curves_screen");
+        androidx.preference.PreferenceGroup screen=root.findPreference("scam_hybrid_why_curves_screen");
         assertNotNull(screen);
-        String[] order={"scam_hybrid_ark_agx_category","scam_hybrid_ark_aces_category","scam_hybrid_ark_uchi_category","scam_hybrid_ark_curve_category"};
+        String[] order={"scam_hybrid_why_agx_category","scam_hybrid_why_aces_category","scam_hybrid_why_uchi_category","scam_hybrid_why_curve_category"};
         for(int i=0;i<order.length;i++)assertEquals(order[i],screen.getPreference(i).getKey());
-        String[][] groups={{"scam_hybrid_ark_aces_category","pref_scam_hybrid_ark_aces_on","pref_scam_hybrid_ark_aces_"},
-                {"scam_hybrid_ark_uchi_category","pref_scam_hybrid_ark_uchi_on","pref_scam_hybrid_ark_uchi_"},
-                {"scam_hybrid_ark_curve_category","pref_scam_hybrid_ark_curve_on","pref_scam_hybrid_ark_curve_"}};
+        String[][] groups={{"scam_hybrid_why_aces_category","pref_scam_hybrid_why_aces_on","pref_scam_hybrid_why_aces_"},
+                {"scam_hybrid_why_uchi_category","pref_scam_hybrid_why_uchi_on","pref_scam_hybrid_why_uchi_"},
+                {"scam_hybrid_why_curve_category","pref_scam_hybrid_why_curve_on","pref_scam_hybrid_why_curve_"}};
         for(String[] g:groups){
             androidx.preference.PreferenceGroup cat=root.findPreference(g[0]);
             assertTrue(g[0]+" starts with its switch",cat.getPreference(0) instanceof androidx.preference.TwoStatePreference);
@@ -850,15 +850,15 @@ public class SettingsMenuTest {
             for(int i=0;i<cat.getPreferenceCount();i++)
                 assertTrue("only its own settings in "+g[0]+": "+cat.getPreference(i).getKey(),cat.getPreference(i).getKey().startsWith(g[2]));
         }
-        assertEquals("pref_scam_hybrid_ark_aces_on",root.findPreference("pref_scam_hybrid_ark_aces_a").getDependency());
-        assertEquals("pref_scam_hybrid_ark_uchi_on",root.findPreference("pref_scam_hybrid_ark_uchi_m").getDependency());
-        assertTrue(root.findPreference("pref_scam_hybrid_ark_curve_points") instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference);
-        assertEquals("pref_scam_hybrid_ark_curve_on",root.findPreference("pref_scam_hybrid_ark_curve_points").getDependency());
+        assertEquals("pref_scam_hybrid_why_aces_on",root.findPreference("pref_scam_hybrid_why_aces_a").getDependency());
+        assertEquals("pref_scam_hybrid_why_uchi_on",root.findPreference("pref_scam_hybrid_why_uchi_m").getDependency());
+        assertTrue(root.findPreference("pref_scam_hybrid_why_curve_points") instanceof com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference);
+        assertEquals("pref_scam_hybrid_why_curve_on",root.findPreference("pref_scam_hybrid_why_curve_points").getDependency());
         // AgX's rows tell which operator works instead
         java.util.Map<String,Object> values=new java.util.HashMap<>();
-        assertNull(new SettingsAvailability(values).reason("pref_scam_hybrid_ark_agx_look"));
-        values.put("pref_scam_hybrid_ark_uchi_on",true);
-        String why=new SettingsAvailability(values).reason("pref_scam_hybrid_ark_agx_look");
+        assertNull(new SettingsAvailability(values).reason("pref_scam_hybrid_why_agx_look"));
+        values.put("pref_scam_hybrid_why_uchi_on",true);
+        String why=new SettingsAvailability(values).reason("pref_scam_hybrid_why_agx_look");
         assertNotNull(why);assertTrue(why,why.contains("Uchimura"));
     }
 
@@ -867,16 +867,16 @@ public class SettingsMenuTest {
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();
             SharedPreferences sp=prefs; // the settings' own store (SettingsManager), which the screen listens to
-            sp.edit().putBoolean("pref_scam_hybrid_ark_uchi_on",true).commit();
+            sp.edit().putBoolean("pref_scam_hybrid_why_uchi_on",true).commit();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            sp.edit().putBoolean("pref_scam_hybrid_ark_aces_on",true).commit();
+            sp.edit().putBoolean("pref_scam_hybrid_why_aces_on",true).commit();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            assertTrue(sp.getBoolean("pref_scam_hybrid_ark_aces_on",false));
-            assertFalse("Uchimura went off",sp.getBoolean("pref_scam_hybrid_ark_uchi_on",true));
-            sp.edit().putBoolean("pref_scam_hybrid_ark_curve_on",true).commit();
+            assertTrue(sp.getBoolean("pref_scam_hybrid_why_aces_on",false));
+            assertFalse("Uchimura went off",sp.getBoolean("pref_scam_hybrid_why_uchi_on",true));
+            sp.edit().putBoolean("pref_scam_hybrid_why_curve_on",true).commit();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            assertFalse("ACES went off",sp.getBoolean("pref_scam_hybrid_ark_aces_on",true));
-            assertTrue(sp.getBoolean("pref_scam_hybrid_ark_curve_on",false));
+            assertFalse("ACES went off",sp.getBoolean("pref_scam_hybrid_why_aces_on",true));
+            assertTrue(sp.getBoolean("pref_scam_hybrid_why_curve_on",false));
         }
     }
 
@@ -889,7 +889,7 @@ public class SettingsMenuTest {
             controller.setup();var activity=controller.get();
             PreferenceManager pm=new PreferenceManager(activity);PreferenceScreen screen=pm.createPreferenceScreen(activity);
             var pref=new com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference(activity);
-            pref.setKey("pref_scam_hybrid_ark_curve_points");screen.addPreference(pref);
+            pref.setKey("pref_scam_hybrid_why_curve_points");screen.addPreference(pref);
             android.view.View row=android.view.LayoutInflater.from(activity).inflate(R.layout.preference_tone_curve,null);
             androidx.preference.PreferenceViewHolder holder=androidx.preference.PreferenceViewHolder.createInstanceForTests(row);
             pref.onBindViewHolder(holder);
@@ -978,10 +978,10 @@ public class SettingsMenuTest {
     @Test public void resetClearsEverySettingAndKeepsTheConfigs() throws Exception {
         Context app=RuntimeEnvironment.getApplication();
         SharedPreferences def=androidx.preference.PreferenceManager.getDefaultSharedPreferences(app);
-        def.edit().putString("pref_jpeg_quality","90").putBoolean("pref_scam_hybrid_ark_curve_on",true).commit();
+        def.edit().putString("pref_jpeg_quality","90").putBoolean("pref_scam_hybrid_why_curve_on",true).commit();
         SharedPreferences module=app.getSharedPreferences("module_profile_v2_back0",0);
-        module.edit().putFloat("pref_scam_hybrid_ark_aces_a",3f).commit();
-        prefs.edit().putBoolean("pref_scam_hybrid_ark_uchi_on",true).commit();
+        module.edit().putFloat("pref_scam_hybrid_why_aces_a",3f).commit();
+        prefs.edit().putBoolean("pref_scam_hybrid_why_uchi_on",true).commit();
         java.io.File dev=ScamDevFile.file(app);dev.getParentFile().mkdirs();
         java.nio.file.Files.write(dev.toPath(),"hybrid 1\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         java.io.File configs=new java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),"SCAMERA/XML");
@@ -1111,22 +1111,22 @@ public class SettingsMenuTest {
      * curve's group, a new point being dragged, an edited curve with more points, then the ACES and Uchimura groups.
      */
     @Test @Config(qualifiers="ru-w400dp-h880dp-xhdpi") public void toneCurvePageRenderedForReview() throws Exception {
-        prefs.edit().putBoolean("pref_scam_hybrid_ark_curve_on",true).commit();
+        prefs.edit().putBoolean("pref_scam_hybrid_why_curve_on",true).commit();
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
             var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            activity.onPreferenceStartScreen(root,root.findPreference("scam_hybrid_ark_tone_screen"));fm.executePendingTransactions();
+            activity.onPreferenceStartScreen(root,root.findPreference("scam_hybrid_why_tone_screen"));fm.executePendingTransactions();
             var tone=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            activity.onPreferenceStartScreen(tone,tone.findPreference("scam_hybrid_ark_curves_screen"));fm.executePendingTransactions();
+            activity.onPreferenceStartScreen(tone,tone.findPreference("scam_hybrid_why_curves_screen"));fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var page=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            assertEquals("scam_hybrid_ark_curves_screen",page.getPreferenceScreen().getKey());
+            assertEquals("scam_hybrid_why_curves_screen",page.getPreferenceScreen().getKey());
             float density=activity.getResources().getDisplayMetrics().density;
             int w=Math.round(400*density),h=Math.round(880*density);
             android.view.View view=page.requireView();
             frame(view,w,h);
             var list=page.getListView();
-            int curvePos=((androidx.preference.PreferenceGroup.PreferencePositionCallback)list.getAdapter()).getPreferenceAdapterPosition("scam_hybrid_ark_curve_category");
+            int curvePos=((androidx.preference.PreferenceGroup.PreferencePositionCallback)list.getAdapter()).getPreferenceAdapterPosition("scam_hybrid_why_curve_category");
             ((androidx.recyclerview.widget.LinearLayoutManager)list.getLayoutManager()).scrollToPositionWithOffset(curvePos,Math.round(8*density));
             frame(view,w,h);
             var graph=(com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurveView)list.findViewWithTag("tone_curve_view");
@@ -1152,7 +1152,7 @@ public class SettingsMenuTest {
                 graph.dispatchTouchEvent(android.view.MotionEvent.obtain(t,t+40,android.view.MotionEvent.ACTION_UP,q[0],q[1],0));
             }
             assertEquals(9,graph.curve().size());
-            assertEquals(9,prefs.getString("pref_scam_hybrid_ark_curve_points","").split(",").length);
+            assertEquals(9,prefs.getString("pref_scam_hybrid_why_curve_points","").split(",").length);
             shot(view,w,h,"3-more-points");
             // the selected point's sliders: the point at +2.5 EV raised by its brightness slider
             graph.select(6);
@@ -1220,7 +1220,7 @@ public class SettingsMenuTest {
             // ACES and Uchimura in their own groups (the jump without the item animator: a finger scroll binds the rows plainly,
             // while a jump in the same pass as the rows the curve's save changed would fade them in at full alpha)
             list.setItemAnimator(null);
-            int acesPos=((androidx.preference.PreferenceGroup.PreferencePositionCallback)list.getAdapter()).getPreferenceAdapterPosition("scam_hybrid_ark_aces_category");
+            int acesPos=((androidx.preference.PreferenceGroup.PreferencePositionCallback)list.getAdapter()).getPreferenceAdapterPosition("scam_hybrid_why_aces_category");
             ((androidx.recyclerview.widget.LinearLayoutManager)list.getLayoutManager()).scrollToPositionWithOffset(acesPos,Math.round(8*density));
             frame(view,w,h);
             shot(view,w,h,"9-aces-uchimura");
@@ -1239,13 +1239,13 @@ public class SettingsMenuTest {
         try(var out=new java.io.FileOutputStream(new java.io.File(dir,name+".png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
     }
 
-    /** «Кривая AgX и ACES» is the first row of «Тон ARK» (owner, 2026-10-15). */
-    @Test public void curvesOpenTheArkTonePage(){
+    /** «Кривая AgX и ACES» is the first row of «Тон WHY» (owner, 2026-10-15). */
+    @Test public void curvesOpenTheWhyTonePage(){
         PreferenceScreen root=inflate();
-        androidx.preference.PreferenceGroup tone=root.findPreference("scam_hybrid_ark_tone_screen");
+        androidx.preference.PreferenceGroup tone=root.findPreference("scam_hybrid_why_tone_screen");
         assertNotNull(tone);
-        assertEquals("scam_hybrid_ark_curves_screen",tone.getPreference(0).getKey());
-        assertNotNull(root.findPreference("pref_scam_hybrid_ark_agx_look"));assertNotNull(root.findPreference("pref_scam_hybrid_ark_aces_toe"));
+        assertEquals("scam_hybrid_why_curves_screen",tone.getPreference(0).getKey());
+        assertNotNull(root.findPreference("pref_scam_hybrid_why_agx_look"));assertNotNull(root.findPreference("pref_scam_hybrid_why_aces_toe"));
     }
     /** Every page of the settings root has its own icon («Цвет» and «Интерфейс» both showed the palette, 2026-10-15). */
     @Test public void rootPagesHaveTheirOwnIcons() throws Exception{
@@ -1302,8 +1302,8 @@ public class SettingsMenuTest {
         for(int i=0;i<noise.getPreferenceCount();i++)order.add(noise.getPreference(i).getKey());
         int hl=order.indexOf("pref_scam_hybrid_bento_denoise_max"),dark=order.indexOf("pref_scam_hybrid_dn_dark_fade");
         assertTrue(order.toString(),hl>0&&dark>0);
-        assertEquals("pref_scam_hybrid_ark_bracket_denoise",order.get(hl+1));
-        assertEquals("pref_scam_hybrid_ark_chroma_denoise",order.get(dark+1));
+        assertEquals("pref_scam_hybrid_why_bracket_denoise",order.get(hl+1));
+        assertEquals("pref_scam_hybrid_why_chroma_denoise",order.get(dark+1));
         for(String k:new String[]{"pref_scam_hybrid_diagnostics","pref_scam_hybrid_profile","pref_scam_hybrid_dev_note",
                 "shdr_capture_report","scamera_full_debug"})
             assertEquals(k,"scam_diagnostics_screen",screen.findPreference(k).getParent().getKey());
@@ -1316,7 +1316,7 @@ public class SettingsMenuTest {
 
     /** P129: the merge is SHDR; the borrowed code names (LMC, AGC, Sabre, Bento, Shasta, Mochi, GCam, SCAM HDR) are ours now. */
     private static boolean oldName(String s){
-        for(String old:new String[]{"LMC","NICE","Nice","Hybrid","Bento","Shasta","Sabre","Mochi","GCam","AGC","SCAM HDR","ArkCore","Sabre 6.1","round 4","раунда 4"})
+        for(String old:new String[]{"LMC","NICE","Nice","Hybrid","Bento","Shasta","Sabre","Mochi","GCam","AGC","SCAM HDR","WhyCore","Sabre 6.1","round 4","раунда 4"})
             if(s.contains(old))return true;
         return s.toLowerCase(Locale.ROOT).contains("гибрид");
     }
@@ -1443,10 +1443,10 @@ public class SettingsMenuTest {
         androidx.preference.PreferenceGroup colour=screen.findPreference("root_colour");
         // P134: every colour row in «Цвет» (white balance, saturation, mixer, grading, style, advanced)
         for(String key:new String[]{"pref_dcp_profile_key","pref_color_method_key","pref_scam_hybrid_colour_warmth","pref_scam_hybrid_colour_tint",
-                "pref_scam_hybrid_colour_keep_warm","pref_scam_hybrid_ark_agx_sat","pref_scam_hybrid_ark_vibrance","pref_scam_hybrid_ark_vibrance_sky",
+                "pref_scam_hybrid_colour_keep_warm","pref_scam_hybrid_why_agx_sat","pref_scam_hybrid_why_vibrance","pref_scam_hybrid_why_vibrance_sky",
                 "pref_scam_hybrid_colour_skin_protect","colour_mixer_screen","pref_scam_hybrid_colour_mix_blue_sat","colour_grading_screen",
                 "pref_scam_hybrid_colour_grade_highlights_hue","pref_scam_hybrid_colour_mono","pref_scam_hybrid_colour_gamut",
-                "pref_scam_hybrid_colour_hue_lock","pref_scam_hybrid_ark_ccm_sat","pref_scam_hybrid_ark_hl_white"})assertNotNull(key,colour.findPreference(key));
+                "pref_scam_hybrid_colour_hue_lock","pref_scam_hybrid_why_ccm_sat","pref_scam_hybrid_why_hl_white"})assertNotNull(key,colour.findPreference(key));
         PreferenceScreen cameras=screen.findPreference("camera_settings_screen");
         assertNotNull(cameras.findPreference("capture_settings_screen"));assertNotNull(cameras.findPreference("pref_sensor_config_submenu"));
         androidx.preference.PreferenceGroup ui=screen.findPreference("root_app");
@@ -1470,7 +1470,7 @@ public class SettingsMenuTest {
                 java.io.File dir=new java.io.File("build/reports/module-concept");dir.mkdirs();
                 try(var out=new java.io.FileOutputStream(new java.io.File(dir,"page-root.png"))){bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}
             }
-            for(String key:new String[]{"scam_hybrid_screen","scam_hybrid_capture_screen","output_settings_screen","scam_hybrid_ark_sharp_screen","advanced_screen","interface_settings_screen","photo_style_screen","shade_transparency_screen","backup_settings_screen","photo_size_screen"}){
+            for(String key:new String[]{"scam_hybrid_screen","scam_hybrid_capture_screen","output_settings_screen","scam_hybrid_why_sharp_screen","advanced_screen","interface_settings_screen","photo_style_screen","shade_transparency_screen","backup_settings_screen","photo_size_screen"}){
                 var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
                 PreferenceScreen target=root.findPreference(key);if(target==null){fm.popBackStackImmediate(null,androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
                     root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);target=root.findPreference(key);}

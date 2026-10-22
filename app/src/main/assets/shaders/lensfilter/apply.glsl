@@ -1,6 +1,6 @@
 precision highp float;
 precision highp sampler2D;
-// P228 lens filters on the linear scene-referred RGB before the ARK tone (the CPU model: processing/color/LensFilters):
+// P228 lens filters on the linear scene-referred RGB before the WHY tone (the CPU model: processing/color/LensFilters):
 // FILTER 1 Black Pro-Mist, 2 CineBloom, 3 Glimmerglass, 4 Pearlescent, 5 Fog, 6 Double Fog, 7 GND, 8 Light Pollution,
 // 9 Streak, 10 Prism, 11 Kaleidoscope, 12 Infrared.
 #ifndef FILTER

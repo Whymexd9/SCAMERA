@@ -71,7 +71,7 @@ and rejects a candidate that exceeds available gain. It preserves the achieved
 clipped policy product rather than trying to recover an unreachable target.
 The existing short/long IsoExpoSelector call sites consume the result.
 
-All 192 original ARM64 outputs from ArkCam native-math-checks.json are checked
+All 192 original ARM64 outputs from WhyCam native-math-checks.json are checked
 by tools/java/TetModelCheck.java and tools/fixtures/gcam-tet.csv. Maximum absolute
 error is 2.9443e-6. Additional checks cover upward snapping, cap fallback, gain
 limits, minimum shutter, non-finite target handling and sensor output bounds.

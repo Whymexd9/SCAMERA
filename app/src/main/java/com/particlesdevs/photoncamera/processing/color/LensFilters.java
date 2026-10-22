@@ -7,7 +7,7 @@ import com.particlesdevs.photoncamera.util.Lang;
 /**
  * P228 (owner, 2026-10-18: «Реализовать симуляцию Black pro mist, glimmer glass и других подобных фильтров ... с возможностью
  * настройки»): the lens filters - Black Pro-Mist, CineBloom, Glimmerglass, Pearlescent, Fog, Double Fog, GND, Light Pollution,
- * Streak, Prism, Kaleidoscope, Infrared - as models on the linear scene-referred RGB before the ARK tone (LensFilter node on the
+ * Streak, Prism, Kaleidoscope, Infrared - as models on the linear scene-referred RGB before the WHY tone (LensFilter node on the
  * GPU, {@link #apply} here on the CPU for the settings' preview and the LUT tray's thumbnails; both follow the same formulas).
  * <p>
  * The diffusion family (Black Pro-Mist, CineBloom, Glimmerglass, Pearlescent, Fog, Double Fog) is {@link DiffusionModel}: a share

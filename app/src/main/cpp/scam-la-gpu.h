@@ -1,6 +1,6 @@
 #pragma once
 // P308 (owner, 2026-10-20: «нам нужно перевести всё на гпу», «сделай гпу выравнивание и дай возможность выбора», «один в один
-// выравнивание как Арк Кам не делаем, если возможно переводим наше на гпу»): our F6 tile-local alignment (scam-hybrid.h, laGray /
+// выравнивание как Why Кам не делаем, если возможно переводим наше на гпу»): our F6 tile-local alignment (scam-hybrid.h, laGray /
 // laDown / laBaseLevel / laTilePass / laLK / laMedian3 / laMotionExtent / laFrameField) on the GPU, the same steps on the same
 // tiles: the gray pyramid of the base and of each donor, the L1 Lucas-Kanade field and its median, the L0 start (the better of the
 // homography and the L1 field), the L0 Lucas-Kanade, the Z channel (motion extent), the acceptance test and the medians. 16

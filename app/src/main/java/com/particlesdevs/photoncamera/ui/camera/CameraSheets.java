@@ -302,12 +302,20 @@ public final class CameraSheets {
 
     public static LinearLayout sizeCard(Context c, int current, boolean full, boolean max, java.util.function.IntConsumer pick,
                                         @Nullable Consumer<CharSequence> refuse, @Nullable java.util.function.IntPredicate dead) {
+        return sizeCard(c, current, full, max, pick, refuse, dead, null);
+    }
+
+    /** P319: {@code normalSize}: the «Обычный» row's size (a module of another camera); null: the open camera's. */
+    public static LinearLayout sizeCard(Context c, int current, boolean full, boolean max, java.util.function.IntConsumer pick,
+                                        @Nullable Consumer<CharSequence> refuse, @Nullable java.util.function.IntPredicate dead,
+                                        @Nullable String normalSize) {
         LinearLayout card = new LinearLayout(c);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackground(SettingsStyle.shape(c, ShadeStyle.CARD, ShadeStyle.LINE, UiScale.dpF(c, 20) / c.getResources().getDisplayMetrics().density));
         card.setTag("size_sheet");
         String[][] rows = {
-                {Lang.t(c, "Обычный · 12 Мп", "Normal · 12 MP"), Lang.t(c, "Быстро и немного места. Подходит почти всегда", "Fast and small. Fits nearly always")},
+                // P319: the lens's own normal size, not a fixed «12»
+                {Lang.t(c, "Обычный · ", "Normal · ") + (normalSize != null ? normalSize : PhotoSize.normalBadge()), Lang.t(c, "Быстро и немного места. Подходит почти всегда", "Fast and small. Fits nearly always")},
                 {Lang.t(c, "Подробный · 50 Мп", "Detailed · 50 MP"), Lang.t(c, "Больше деталей при хорошем свете. Снимок дольше", "More detail in good light. A slower shot")},
                 {Lang.t(c, "Максимум · 200 Мп", "Maximum · 200 MP"), Lang.t(c, "Для печати и кадрирования", "For prints and cropping")}};
         int[] sizes = {PhotoSize.NORMAL, PhotoSize.FULL, PhotoSize.MAX};
@@ -316,6 +324,9 @@ public final class CameraSheets {
             final int size = sizes[i];
             boolean available = i == 0 || i == 1 && full || i == 2 && max;
             boolean off = dead != null && dead.test(size);   // P214h: every row of the size failed
+            // P319 (user report: a front camera listed 50 and 200 MP): a size the lens does not have is not listed (one failed by
+            // its trials stays, dimmed, with its reason)
+            if (!available && !off) continue;
             LinearLayout row = new LinearLayout(c);
             row.setGravity(Gravity.CENTER_VERTICAL);
             int ph = UiScale.dp(c, 14), pv = UiScale.dp(c, 12);

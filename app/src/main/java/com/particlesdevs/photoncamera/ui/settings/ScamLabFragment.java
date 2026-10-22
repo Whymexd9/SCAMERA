@@ -79,7 +79,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
      * photo size (their rows fixed at the shot said so, the downsampler and Sabre 2x re-run), the «Движение» mode's merge
      * values and the whole «Цвет и стиль» (its warmth and saturation sit beside its pages).
      */
-    static final String[] GROUPS = {"scam_hybrid_photo_screen", "scam_hybrid_ark_sharp_screen", "scam_hybrid_ark_tone_screen",
+    static final String[] GROUPS = {"scam_hybrid_photo_screen", "scam_hybrid_why_sharp_screen", "scam_hybrid_why_tone_screen",
             "scam_hybrid_capture_screen", "scam_hybrid_merge_screen", "noise_model_screen", "photo_size_screen",
             "scam_hybrid_motion_screen", "root_colour"};
     /**
@@ -108,7 +108,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
     static final String DEV = ScamLabRun.DEV, DEV_GROUP = "lab_dev_lines";
     /**
      * Settings a fragment cannot show as the whole photo would: a fragment's exposure comes from the whole frame's statistics,
-     * measured with the shot's colour of arkLow (warmth, tint, the scene light kept, the calibration: ArkTone.colourMatrix) and
+     * measured with the shot's colour of whyLow (warmth, tint, the scene light kept, the calibration: WhyTone.colourMatrix) and
      * the shot's gain clamp (ae_clamp_stack): on the whole photo the AE measures again with the side's value. The page says so.
      */
     static final java.util.Set<String> FRAGMENT_STATS = new java.util.HashSet<>(java.util.Arrays.asList(
@@ -504,7 +504,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
 
     /**
      * A row the settings hide for what this shot was not taken with (SettingsAvailability.hidden): «Насыщенность при матрице
-     * OPPO» on a shot rendered without the OPPO tuned matrix (ArkTone.ccmSatComp gives 1 there, A and B would match).
+     * OPPO» on a shot rendered without the OPPO tuned matrix (WhyTone.ccmSatComp gives 1 there, A and B would match).
      */
     static boolean hiddenFor(@Nullable String key, Map<String, ?> shot, boolean oppoTunedCcm) {
         return key != null && new SettingsAvailability(shot).oppoTunedColor(oppoTunedCcm).hidden(key);
@@ -525,7 +525,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
     // ───── What a setting is in the lab (Spec) ─────
 
     /** A tone curve, a LUT, a lens filter: settings of their own kind, compared too (owner, 2026-10-19). */
-    static final String CURVE_ON = "pref_scam_hybrid_ark_curve_on",
+    static final String CURVE_ON = "pref_scam_hybrid_why_curve_on",
             CURVE = com.particlesdevs.photoncamera.ui.settings.custompreferences.ToneCurvePreference.KEY,
             LUT = com.particlesdevs.photoncamera.processing.color.FilmLut.KEY,
             LUT_STRENGTH = com.particlesdevs.photoncamera.processing.color.FilmLut.STRENGTH_KEY,
@@ -543,7 +543,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
     /** A value of a {@link Spec#CUSTOM} setting: the shot's own, or the one in the settings now (edited on its settings page). */
     static final String AS_SHOT = "\u0001shot", IN_SETTINGS = "\u0001now";
     static final String HYBRID = "pref_scam_hybrid_", DENOISE = "pref_scam_hybrid_denoise",
-            ACES_ON = "pref_scam_hybrid_ark_aces_on", UCHI_ON = "pref_scam_hybrid_ark_uchi_on";
+            ACES_ON = "pref_scam_hybrid_why_aces_on", UCHI_ON = "pref_scam_hybrid_why_uchi_on";
     /** A lens filter's tune control on the filter's page: LensFilters.tuneKey(id) + this + control (0: its parameter, else T_*). */
     static final String TUNE_SEP = "#";
 
@@ -634,7 +634,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
             return filmSpec(key, c);
         } else if (CURVE.equals(key)) {
             s = new Spec(key, Spec.CUSTOM);
-            s.page = "scam_hybrid_ark_curves_screen";
+            s.page = "scam_hybrid_why_curves_screen";
             s.def = AS_SHOT;
         } else if (p instanceof TwoStatePreference) {
             s = new Spec(key, Spec.SWITCH);
@@ -865,7 +865,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
         if (Arrays.asList(HYBRID + "shasta_mode", HYBRID + "shasta_motion_max", HYBRID + "shasta_frames", HYBRID + "shasta_ev").contains(key))
             return HYBRID + "shasta";
         if ((key.startsWith(HYBRID + "dn_") && !key.equals(HYBRID + "dn_engine"))
-                || key.equals(HYBRID + "ark_bracket_denoise") || key.equals(HYBRID + "ark_chroma_denoise")) return DENOISE;
+                || key.equals(HYBRID + "why_bracket_denoise") || key.equals(HYBRID + "why_chroma_denoise")) return DENOISE;
         return null;
     }
 
@@ -878,7 +878,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
     /**
      * What a comparison of {@code key} sets on both sides so that the setting acts on this shot (each then on the page with its
      * own A and B): the switch it depends on when the shot had it off; for ACES / Uchimura and their parameters the operator on
-     * and the ones before it off (ArkTone.toneOperator: own curve, Uchimura, ACES - a parameter of an operator left off gave the
+     * and the ones before it off (WhyTone.toneOperator: own curve, Uchimura, ACES - a parameter of an operator left off gave the
      * same pixels); for a film setting of a shot without film a stock (and a strength above 0: FilmSim.current is null else);
      * for the colour prior and the defringe of the highlights on a shot without the per-channel recovery, the recovery at 100
      * (ScamRgb runs them inside it; the clip band needs the burst's clip flags too, which such a shot does not hold).

@@ -236,7 +236,7 @@ struct HybridTuning {
                                  // the Bento edge pixels with a colour step above 0.1; 1.0: 11 %)
     // Daylight kernel: where the round-4 kernel merges a daylight burst on the sensor grid (6.1 SNR key above s61MaxKey; a static
     // burst, the handheld one takes the 6.1 kernel), every sigma x this, ramped in over key s61MaxKey..2 s61MaxKey. 0.5 on the still
-    // ship scene (1x): fine detail 0.77 -> 0.96 of ArkCam (water 0.69 -> 0.95) at +6 % sky noise (= ArkCam);
+    // ship scene (1x): fine detail 0.77 -> 0.96 of WhyCam (water 0.69 -> 0.95) at +6 % sky noise (= WhyCam);
     // research/hybrid5/ark_sharpen_device.md. Not on the 2x grid: a static burst there has no sub-pixel diversity (not measured).
     float dayKernelScale=0.5f;
     // Shasta
@@ -363,7 +363,7 @@ struct HybridTuning {
     float baseDemosaicAniso=0.6f;
     float baseDemosaicDetailLo=0.f,baseDemosaicDetailHi=0.01f;
     float baseDemosaicBayerLo=1.3f,baseDemosaicBayerHi=2.5f; // Bayer: the base noise model holds there (flat sky ~1) // off: flat areas measured ~2, structure 20-50 (the base noise model reads low)
-    // P269 (owner, 2026-10-19: «Посмотри как работает маска бенто в арк кам и посмотри как можно улучшить нашу»): the
+    // P269 (owner, 2026-10-19: «Посмотри как работает маска бенто в why кам и посмотри как можно улучшить нашу»): the
     // ultrashort frame's check of the mask reads it at the aligned position (bilinear between the 2x2 cells, as LMC 9.6 renders
     // the ultrashort aligned before its error test) instead of the nearest cell, whose half-cell misregistration along thin
     // bright edges counted as errors (holes, the mask cut back). 0: the nearest cell as before.
@@ -415,7 +415,7 @@ struct HybridTuning {
     int mosaicFrames=30;         // frames of a mosaic burst merged (b^2 sub-frames each, at most kHybridGpuFrames sub-frames): the
                                  // merge time grows with the sub-frames; 24 Quad frames (96 sub-frames) take about 8 s on the X7 Ultra,
                                  // 16 about 6.8 s (P22: the extra frames pay for the narrower edge kernel). 30 since 7 October 2026
-                                 // (owner: towards ArkCam's ~30 merged frames; the ZSL ring sends 30 N): the native merge (one GPU
+                                 // (owner: towards WhyCam's ~30 merged frames; the ZSL ring sends 30 N): the native merge (one GPU
                                  // slot per frame, strips within the storage block and a quarter of MemAvailable) takes them all, the
                                  // split up to kHybridGpuFrames / b^2 (Quad 30, Tetra 8); above 16 MP both stay within half of
                                  // MemAvailable
@@ -424,7 +424,7 @@ struct HybridTuning {
                                  // budget and mosaicFrames say (the split: at most kHybridGpuFrames / b^2); 0 = the pick as before
     // P29 native mosaic path (research/ark23/quad_report.md section 8, plan P29). mosaicPath 0 = the b^2 sub-frame split above
     // (hybridReconstructMosaic, unchanged); 1 = hybridReconstructMosaicNative: one GPU slot per FRAME (mosaicFrames frames, up to
-    // kHybridGpuFrames), the binned burst for alignment / guide / rejection / F6 (one field per frame), and the ArkCam-style RBF
+    // kHybridGpuFrames), the binned burst for alignment / guide / rejection / F6 (one field per frame), and the WhyCam-style RBF
     // kHybMergeMosaic over the raw mosaic itself.
     // DEFAULTS: mosaicPath 1 since P34 (Quad: the native merge, 2x faster than the split on the OPPO with +11-12 % 2-4 px detail at
     // matched noise on the handheld bursts; Tetra too since P35, mosaicTetra 1). The keys below only act with mosaicPath 1;
@@ -433,8 +433,8 @@ struct HybridTuning {
     // rule (mosaicNativeWiden 0). The S1 parity point (the split's sites and kernel):
     // mosaicWindowFull 0, mosaicNativeEdgeScale 0.6 (= mosaicEdgeScale), mosaicKernelRB 1, mosaicKernelScale 1,
     // mosaicNativeFlatScale 1, mosaicNativeClamp 0. P34 (research/p29/QUAD_COMBINED.md): kernel scale 0.7, flat scale 2.4,
-    // eigenvalue clamp in daylight, kernel scale 1 / edge scale 0.6 at night; ArkCam's point is kernel scale 0.5, edge scale 0.5
-    // (isz2: ArkCam's noise with 21 frames against its 30, 0.96 of its poster detail).
+    // eigenvalue clamp in daylight, kernel scale 1 / edge scale 0.6 at night; WhyCam's point is kernel scale 0.5, edge scale 0.5
+    // (isz2: WhyCam's noise with 21 frames against its 30, 0.96 of its poster detail).
     // Path 1 merges without the colour-difference (chromaDiff), clip-border (rimRatio) and Bento colour passes: they re-sample the
     // binned base at the binned positions, half a native px (Quad) off the native merge's output, and correct it with sums of the
     // binned base the native merge never added (P29 review). They come back only as native variants of those passes.
@@ -459,11 +459,11 @@ struct HybridTuning {
                                  // around the nearest site (S0's full window, no Chebyshev clip); 0: as the split, |d| <= r with the
                                  // 6.1 window, d in (-4r/3, 4r/3] without it. Quad 3 with mosaicWindowFull 0 = parity with the split
                                  // (its 6.1 window +-1.5 sub-frame px = +-3 px, its two lattice sites per axis and phase = (-4, 4]);
-                                 // 2 = ArkCam's 5x5. Tetra T1 (P35): 2r sensor px, at most 8 (3: 13x13; 3 with mosaicWindowFull 0 =
+                                 // 2 = WhyCam's 5x5. Tetra T1 (P35): 2r sensor px, at most 8 (3: 13x13; 3 with mosaicWindowFull 0 =
                                  // the split's sites)
     int mosaicWindowFull=1;      // S0: es 0.4 with the full 7x7 window had 10 % less flat noise than the clipped one at equal detail
     float mosaicKernelScale=1.0f; // native kernel precision = binned precision / (b s)^2: 1 = the split's physical kernel (its sigmas
-                                 // were in sub-frame px = b native px); 1/b = ArkCam (Quad 0.5). P34: 0.7 with the flat scale 2.4 and
+                                 // were in sub-frame px = b native px); 1/b = WhyCam (Quad 0.5). P34: 0.7 with the flat scale 2.4 and
                                  // the eigenvalue clamp below (daylight; mosaicNativeNightKernelScale at night): isz2 detail +12 % at
                                  // the split's noise, hh_1 / hh_2 / hh_4 +11 % (2-4 px band at matched noise). P191: 1.0 - on the
                                  // owner's handheld bursts 0.7 left a diagonal lattice the sharpening amplified (1.0: half of it)
@@ -474,7 +474,7 @@ struct HybridTuning {
     float mosaicNativeEdgeScale=0.6f;
     // P34: the native path's blurred (flat-area) and along-edge kernels, x sigma (> 1 = wider); across / base follow
     // mosaicNativeEdgeScale, all of them mosaicKernelScale
-    // P34 isz2 (against ArkCam's DNG): the flat kernel x1.4 at ArkCam's kernel scale 0.5 took the wall's noise from 1.40 to 1.07
+    // P34 isz2 (against WhyCam's DNG): the flat kernel x1.4 at WhyCam's kernel scale 0.5 took the wall's noise from 1.40 to 1.07
     // at 0.955 -> 0.917 poster detail (the kernel scale alone: 0.6 -> 1.15 / 0.91); 2.4 with kernel scale 0.7 and edge scale 0.6
     float mosaicNativeFlatScale=2.4f,mosaicNativeAlongScale=1.f;
     // P34: the native kernel and edge scales at night (6.1 night key, key <= s61MaxKey; 0 = the daylight values above). The night
@@ -498,17 +498,17 @@ struct HybridTuning {
     // +1.5 dB, background 75.4 -> 70.6 dB (Quad 66.6, plain Bayer 62.5), lattice 3.3 -> 4.8. Night (6.1 night key) keeps the
     // Tetra night point above.
     float mosaicTetraKernelScale=0.35f;
-    int mosaicNativeClamp=2;     // P34: ArkCam's covariance packing range on the native kernel (across-edge sigma >= 0.242 px):
-                                 // 1 per component as ArkCam, 2 on the eigenvalues (orientation kept; syn_b2 B/W edge colour
+    int mosaicNativeClamp=2;     // P34: WhyCam's covariance packing range on the native kernel (across-edge sigma >= 0.242 px):
+                                 // 1 per component as WhyCam, 2 on the eigenvalues (orientation kept; syn_b2 B/W edge colour
                                  // 0.0137 against 0.0195 for 1 at edge scale 0.5, 0.0126 for the split). Tetra (P35): the range in
                                  // sigma x2 (4x4 blocks: across-edge sigma 0.48..3.96 px)
-    // S2: kernel per colour, ArkCam's ks (multipliers on the distance, < 1 = wider): green / red-blue. 1 / 1 = parity (one kernel
-    // for every colour, as the split); ArkCam 1.0 / 0.85 (R / B 1.18x wider: a colour with a quarter of the sites), S0's choice
+    // S2: kernel per colour, WhyCam's ks (multipliers on the distance, < 1 = wider): green / red-blue. 1 / 1 = parity (one kernel
+    // for every colour, as the split); WhyCam 1.0 / 0.85 (R / B 1.18x wider: a colour with a quarter of the sites), S0's choice
     // (false colour on bars -7 %)
     float mosaicKernelG=1.f,mosaicKernelRB=0.85f;
-    // S5: per-frame R / B fill (M5b) before the frame weight: 0 off (parity), 1 ArkCam's colour difference of the 3x3 block means
+    // S5: per-frame R / B fill (M5b) before the frame weight: 0 off (parity), 1 WhyCam's colour difference of the 3x3 block means
     // (a colour whose kernel weight in the frame is below mosaicFillSupport x the green weight is topped up to it with G + (R - G)).
-    // Needed with narrow native kernels (ArkCam's point, mosaicKernelScale 1/b); 2 (v11 directional) is step S7, not built.
+    // Needed with narrow native kernels (WhyCam's point, mosaicKernelScale 1/b); 2 (v11 directional) is step S7, not built.
     int mosaicChromaFill=0;
     float mosaicFillSupport=0.25f;
     // S8 / P35 Tetra route with mosaicPath 1: 1 (default since P35) = T1: the Tetra mosaic merged natively (block 4,
@@ -2035,7 +2035,7 @@ float blendAt(vec2 pos){
     float a=mix(blendCell(x0,y0),blendCell(x0+1,y0),t.x),b=mix(blendCell(x0,y0+1),blendCell(x0+1,y0+1),t.x);
     return mix(a,b,t.y);
 }
-// The ultrashort frame f's colour at frame position O, demosaiced at its own sites (ArkCam does the same for its short frames; a
+// The ultrashort frame f's colour at frame position O, demosaiced at its own sites (WhyCam does the same for its short frames; a
 // gaussian splat of three single Bayer frames that hardly move against each other staircased every thin line) and bilinear between
 // the four sites around O: green at an R / B site by Hamilton-Adams with soft direction weights, R and B by their colour
 // differences at the neighbouring sites (against the green along their smoother direction), the neighbours weighted by how close
@@ -2357,7 +2357,7 @@ void main(){
     if(!got||alpha<=0.002)return;
     if(blendU.w>0.0){
         // the colour of the gained ultrashort frames over 5 x 5 px (a gaussian), its luma kept: three frames at x8 carry a
-        // grainy weak colour (green on a red LED ring), the gain x2.4 made it white speckles on the ring (ArkCam smooths the
+        // grainy weak colour (green on a red LED ring), the gain x2.4 made it white speckles on the ring (WhyCam smooths the
         // highlight colour the same way inside its mask)
         vec3 sc=vec3(0.0);
         for(int dy=-2;dy<=2;dy++)for(int dx=-2;dx<=2;dx++){
@@ -2614,8 +2614,8 @@ float natSiteG(uvec4 geo,int x,int y,out uint fl){
 }
 float natSite(int f,int x,int y,out uint fl){return natSiteG(nGeo[clamp(f,0,127)],x,y,fl);}
 // P34: the merges' bound on the native kernel precision (HybridTuning::mosaicNativeClamp)
-uniform int natClampU;  // 1: ArkCam's covariance packing range on the native precision, 2: the same bounds on its eigenvalues
-// ArkCam v23 stores the kernel covariance C (exp2(-0.5 d'Cd), C = P / ln 2) in a texture with the ranges cov_range_rg / _b
+uniform int natClampU;  // 1: WhyCam's covariance packing range on the native precision, 2: the same bounds on its eigenvalues
+// WhyCam v23 stores the kernel covariance C (exp2(-0.5 d'Cd), C = P / ln 2) in a texture with the ranges cov_range_rg / _b
 // (quad_report, merge L22-23): C_xx, C_yy in [0.367, 24.8], C_xy in [-6.98, 7.03], i.e. an across-edge sigma >= 0.242 px.
 // Clamped per component (1) a narrow kernel on a diagonal edge loses its orientation (diagonal capped, xy capped apart);
 // 2 bounds the eigenvalues instead (sigma in [0.242, 1.98] px along both axes of the kernel, orientation kept).
@@ -2835,7 +2835,7 @@ void main(){
 // binned position of the output pixel ((ox + 0.5) / b - 0.5, i.e. native ox), while this merge writes native ox - (b-1)/2, and they
 // correct with sums of the binned base that this merge never added (P29 review: chroma on, Quad, one frame: edges -1.2 dB, flat
 // noise +8 %). hybridReconstructMosaicNative turns them off; native variants of them are not built.
-// Accumulation: ArkCam v23 Quad Sabre merge kernel (SampleNeighborhoodQuadRBF, source given to the SCAMERA owner by the ArkCam
+// Accumulation: WhyCam v23 Quad Sabre merge kernel (SampleNeighborhoodQuadRBF, source given to the SCAMERA owner by the WhyCam
 // author, research/ark23, its Quad Sabre merge kernel; its logic is ported here with the author's permission): every raw site of
 // the window around the frame's sample position, at its native position, colour from its block, anisotropic RBF in native px.
 // Ours around it: the binned guide's covariance scaled to native px (natK.x = 1 / (b mosaicKernelScale)^2), bilinear between the
@@ -2859,7 +2859,7 @@ float natRobust(int f,vec2 B0,int cx,int cy,int w2){
     float r01=robust[base+(y1-cy0)*w2+x0],r11=robust[base+(y1-cy0)*w2+x1];
     return mix(mix(r00,r10,t.x),mix(r01,r11,t.x),t.y);
 }
-uniform vec4 natK; // x = binned precision -> native precision, y / z = ks^2 of green / red-blue (ArkCam's distance multipliers per
+uniform vec4 natK; // x = binned precision -> native precision, y / z = ks^2 of green / red-blue (WhyCam's distance multipliers per
                    // colour, mosaicKernelG / RB), w = minimum R / B support of the colour fill relative to green (0 = off)
 uniform int natRy1;    // end of the guide cell rows held in Cov (ry1: the strip's cells + 3, clamped to the frame)
 uniform int natWidenU; // 6.1 base widening: 0 = the split's rule b^2 F + b^2 - 1 < widenBelow, 1 = S0's rule F < widenBelow,
@@ -2886,10 +2886,10 @@ vec3 natDcov(int f,vec2 Ob){
     vec3 p1=mix(dcovAt(f,x0,y0+1),dcovAt(f,x0+1,y0+1),t.x);
     return mix(p0,p1,t.y);
 }
-// S5 (mosaicChromaFill 1): ArkCam v23's colour-difference regularisation of SampleNeighborhoodQuadRBF (ported with the author's
+// S5 (mosaicChromaFill 1): WhyCam v23's colour-difference regularisation of SampleNeighborhoodQuadRBF (ported with the author's
 // permission, research/ark23, its Quad Sabre merge kernel): a colour whose kernel weight in this frame is below natK.w x the
 // green weight gets the missing weight at G + (mean R (B) - mean G) of the 3x3 colour blocks around the sample, G = this frame's
-// kernel-weighted green; before the frame's weight is applied. Block means of the unflagged, unclipped sites, each >= 0 (ArkCam's
+// kernel-weighted green; before the frame's weight is applied. Block means of the unflagged, unclipped sites, each >= 0 (WhyCam's
 // clamp); a colour with clipped samples in this frame keeps its clipped mean (a lower bound), no fill.
 void natFill(inout vec3 num,inout vec3 den,vec3 cd,uvec4 geo,vec2 O,float g){
     int s=natV.x,b=natU.x,bb=natU.x*natU.x;
@@ -3016,7 +3016,7 @@ void main(){
     if(ox>=ow||row>=2*(cy1-cy0)*g)return;
     int b=natU.x,bb=b*b;
     float o=0.5*float(b-1);
-    float cs=0.25*float(bb); // natClamp's bounds are ArkCam's Quad range (native px of 2x2 blocks): scaled by (b/2)^2 in precision
+    float cs=0.25*float(bb); // natClamp's bounds are WhyCam's Quad range (native px of 2x2 blocks): scaled by (b/2)^2 in precision
     // native canonical position of the output pixel (X - (b-1)/2); P56: on a grid finer than the sites (g = 2b, Sabre 2x of a
     // Quad stream) the output pixel X sits at native (X + 0.5) b / g - 0.5 (exactly X when g = b)
     vec2 S=(vec2(float(ox),float(2*cy0*g+row))+0.5)*(float(b)/float(g))-0.5-o;
@@ -3087,7 +3087,7 @@ void main(){
 }
 )";
 
-// P34: the native Quad merge restructured for speed after ArkCam v23's Quad Sabre merge kernel (research/ark23): whole colour
+// P34: the native Quad merge restructured for speed after WhyCam v23's Quad Sabre merge kernel (research/ark23): whole colour
 // blocks are loaded once per frame and output pixel (its q_cache of normalised 2x2 blocks), the loops have constant bounds, the
 // site normalisation runs once per site and strip instead of once per tap. kHybMergeMosaic read every site of the window with a
 // uniform-bound loop, one 16-bit load per tap behind the kernel test and the site-gain arithmetic per tap: ~4 ns per tap on
@@ -3095,7 +3095,7 @@ void main(){
 // kHybNatNorm: every held site of every frame of the strip once, normalised exactly as natSiteG (site gains, black, white clip),
 // flags in the float bits (outlier site: all ones; site of a clipped cell: bit 30, which no value in [-0.25, 1] has), one uvec4
 // per 2x2 sensor cell (TL, TR, BL, BR) of the frame's held rows; NatTable w = the frame's first cell. Quad: the cell is the colour
-// block; Tetra (b = 4): a quarter of the 4x4 colour block (ArkCam's "2x2-of-2x2" texel, quad_report section 8.5), colour from the
+// block; Tetra (b = 4): a quarter of the 4x4 colour block (WhyCam's "2x2-of-2x2" texel, quad_report section 8.5), colour from the
 // 4x4 block's parity. The held rows of a Tetra frame start at and span a multiple of 4 sensor rows (natPlan), so a Tetra block
 // is always 2x2 whole cells.
 static const char* kHybNatNorm=R"(
@@ -3131,7 +3131,7 @@ void main(){
 // half-width (Quad 1..3, Tetra 1..8), NAT_MARKED = the strip's sites carry flags, NAT_FILL = the S5 R / B fill): kHybMergeMosaic
 // with the full window (mosaicWindowFull 1) on the 2x2 cells of kHybNatNorm. The (2r+1)^2 sites around N = floor(O + 0.5) lie in
 // the (r+1)^2 cells from (N - r) >> 1 (for any r); the cells' sites outside the window weigh 0. A cell is one colour for both
-// blocks: Quad colour from the cell's parity, Tetra from its 4x4 block's ((cell >> 1) parity, ArkCam's "2x2-of-2x2" texel), so the
+// blocks: Quad colour from the cell's parity, Tetra from its 4x4 block's ((cell >> 1) parity, WhyCam's "2x2-of-2x2" texel), so the
 // loop, the one-kernel-constant-per-cell rule and the register budget are the Quad's. Same sites, kernel, weights, flags and clip
 // handling as kHybMergeMosaic (the sums in another order: last-bit differences). With NAT_B 2 the preprocessed text is the P34
 // Quad program's.
@@ -3230,7 +3230,7 @@ float natVal(uint u,out bool ok,out bool cl){
 // (N - r) >> 1 hold the window's (2r+1)^2 sites; one block at a time (one colour, one kernel constant), its four sites tested
 // against the window on their coordinates, kernel and weights exactly as kHybMergeMosaic writes them. selfCover: natSelfCover's sum
 // instead (green sites other than the block's first, unflagged, unclipped, the donor rule kw >= 0.002).
-// Register-light on purpose: the first form (a row of blocks in a local array, ArkCam's precomputed column terms dx^2 Cxx /
+// Register-light on purpose: the first form (a row of blocks in a local array, WhyCam's precomputed column terms dx^2 Cxx /
 // 2 dx Cxy in local arrays, per block phase sums, a window test on the cache indices) was miscompiled by the Adreno 750 driver
 // (OPPO PHY110, 2026-10): some R / B taps got wrong weights (syn_b2, round-4 kernel: R / B off by up to 0.28 at ~6000 pixels,
 // G exact), and small changes of its text moved the error around instead of removing it.
@@ -8631,7 +8631,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(bento.active&&tune.bentoBlend>0&&native==nullptr){
         // the cells' check as smooth planes (a gaussian of bentoBlendValidSigma cells): its hard 2x2 cells, where the frames
         // moved or flickered, switched between the ultrashort frames and the N frames cell by cell (the 2x2 squares, torn
-        // edges); smooth, the weight passes over a few cells (as ArkCam cleans and blurs its validity)
+        // edges); smooth, the weight passes over a few cells (as WhyCam cleans and blurs its validity)
         const int w2=w/2,h2=h/2;
         for(const auto* v:in.maskValid){
             if(!v||v->size()!=size_t(w2)*h2){blendValids.emplace_back();continue;}
@@ -9244,7 +9244,7 @@ inline bool hybridGainFieldFromZones(HybridGainField& out,const std::vector<doub
 }
 inline std::array<float,64> hybridMosaicGainsRobust(const HybridInput& in,const std::vector<int>& frames,int block,float& spread,long* tilesUsed,
                                                    float* errOut=nullptr,HybridGainField* field=nullptr,int zonesAcross=24){
-    // P188c (ArkCam 1.56 study, 2026-10-17: no site correction there; a simulation of the HP9 pattern, 16 frames: residual 0.11 %
+    // P188c (WhyCam 1.56 study, 2026-10-17: no site correction there; a simulation of the HP9 pattern, 16 frames: residual 0.11 %
     // against 0.50 % for the median of per-frame ratios): every picked tile is the MEAN of all the normal frames in SENSOR
     // coordinates (the pattern sits on the sensor and adds up, the hand-held scene blurs, the noise falls by sqrt(N)); each site is
     // predicted from its colour group's mean in the tile plus the gradient of that group between the neighbouring tiles (a tile

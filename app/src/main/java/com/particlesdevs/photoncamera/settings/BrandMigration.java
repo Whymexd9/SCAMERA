@@ -24,9 +24,16 @@ public final class BrandMigration {
         return new StringBuilder(s).reverse().toString();
     }
 
-    /** A word with one of the old names: [A-Za-z0-9_]* around (lmc | vivo | nice), any case. */
+    /** A word with one of the old names: [A-Za-z0-9_]* around (lmc | vivo | nice | P319's tone word), any case. */
     private static final Pattern TOKEN = Pattern.compile(
-            "[A-Za-z0-9_]*(?:[Ll][Mm][Cc]|[Vv][Ii][Vv][Oo]|[Nn][Ii][Cc][Ee])[A-Za-z0-9_]*");
+            "[A-Za-z0-9_]*(?:[Ll][Mm][Cc]|[Vv][Ii][Vv][Oo]|[Nn][Ii][Cc][Ee]|[Aa][Rr][Kk])[A-Za-z0-9_]*");
+
+    /**
+     * P319 (owner, 2026-10-22: rename the tone to «Why» everywhere): the stored keys' word of the tone (a whole segment between
+     * underscores: pref_scam_hybrid_*_tone, hybrid_*_hr_mix, vf_*) becomes «why»; a word that only contains the letters
+     * (dark, mark) stays. After the P55 words, so a key from before both renames gets both in one pass.
+     */
+    private static final Pattern WHY_SEGMENT = Pattern.compile("(?<![A-Za-z0-9])" + r("kra") + "(?![A-Za-z0-9])");
 
     /** Stored-key prefixes (old reversed, new); no new prefix starts another one, so startsWith checks keep their meaning. */
     private static final String[][] PREF = {
@@ -67,6 +74,7 @@ public final class BrandMigration {
         out = COLLAPSE_CAP.matcher(out).replaceAll("$1");
         out = COLLAPSE_LOW.matcher(out).replaceAll("$1");
         out = COLLAPSE_UP.matcher(out).replaceAll("$1");
+        out = WHY_SEGMENT.matcher(out).replaceAll("why");
         return out;
     }
 
@@ -112,6 +120,26 @@ public final class BrandMigration {
             return changed ? out : v;
         }
         return v;
+    }
+
+    /**
+     * P319: only the tone word's rename - for names of today that may still hold a vendor word the P55 rules would take
+     * (scam_dev.txt's vivo_sdk_fullres, a lab shot's module_vivo_* keys).
+     */
+    public static String why(String key) {
+        return key == null ? null : WHY_SEGMENT.matcher(key).replaceAll("why");
+    }
+
+    /** P319: a map's keys through {@link #why}; a new key already present wins over its old twin. */
+    public static Map<String, Object> whyMap(Map<String, ?> values) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (values == null) return out;
+        for (Map.Entry<String, ?> e : values.entrySet()) {
+            String k = why(e.getKey());
+            if (!k.equals(e.getKey()) && values.containsKey(k)) continue;
+            out.put(k, e.getValue());
+        }
+        return out;
     }
 
     /** A settings map (backup, module profile) with the new names; a new key already present wins over its old twin. */

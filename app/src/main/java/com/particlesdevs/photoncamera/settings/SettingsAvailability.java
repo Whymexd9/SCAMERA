@@ -86,8 +86,8 @@ public final class SettingsAvailability {
         if (!fullResHwRemosaic && key.equals("pref_fullres_hw_remosaic")) return true;
         if (!fullRes50 && (key.equals("pref_scam_hybrid_fullres50_frames") || key.equals("pref_scam_hybrid_fullres50_zsl"))) return true;
         if (!fullRes200 && key.equals("pref_scam_hybrid_fullres200_frames")) return true;
-        // P128: the AgX saturation of the OPPO tuned matrix acts only on the phones that matrix renders (ArkTone.ccmSatComp)
-        if (!oppoTunedColor && key.equals("pref_scam_hybrid_ark_ccm_sat")) return true;
+        // P128: the AgX saturation of the OPPO tuned matrix acts only on the phones that matrix renders (WhyTone.ccmSatComp)
+        if (!oppoTunedColor && key.equals("pref_scam_hybrid_why_ccm_sat")) return true;
         String format = photoFormat();
         switch (key) {
             case "pref_heic_quality": case "pref_heic_10bit": return !format.equals("heic");
@@ -101,7 +101,7 @@ public final class SettingsAvailability {
 
     public String reason(String key) {
         // The denoise and watermark switches sit on a parent page of these rows (P6), so the rule replaces android:dependency.
-        if ((key.startsWith("pref_scam_hybrid_dn_") || any(key, "pref_scam_hybrid_ark_bracket_denoise", "pref_scam_hybrid_ark_chroma_denoise"))
+        if ((key.startsWith("pref_scam_hybrid_dn_") || any(key, "pref_scam_hybrid_why_bracket_denoise", "pref_scam_hybrid_why_chroma_denoise"))
                 && !on("pref_scam_hybrid_denoise", true)) return Lang.t("Включите «Шумоподавление».", "Turn on “Noise reduction”.");
         // Denoise engine (pref_scam_hybrid_dn_engine): The reference finish (ScamDenoise) reads the dn_ rows, NLM (ScamHdrDenoise) its two strengths.
         boolean nlm = text("pref_scam_hybrid_dn_engine", "multiscale").trim().equals("nlm");
@@ -210,7 +210,7 @@ public final class SettingsAvailability {
                     "pref_scam_hybrid_mosaic_native_flat_scale", "pref_scam_hybrid_mosaic_native_clamp") && !nativeMosaic)
                 return Lang.t("Только для «Нативная мозаика» в «Склейка мозаики».", "Only with “Native mosaic” in “Mosaic merge”.");
             if (key.equals("pref_scam_hybrid_mosaic_fill_support") && text("pref_scam_hybrid_mosaic_chroma_fill", "0").equals("0"))
-                return Lang.t("Только с добором ArkCam.", "Only with the ArkCam fill.");
+                return Lang.t("Только с добором «Средние цветовых блоков».", "Only with the “Colour-block means” fill.");
             // the edge kernels of the split and of the native merge and the native flat-area kernel are set inside the new
             // kernel only (worker hybridReconstruct: `if(sabre61)`); the previous kernel never reads them
             if (any(key, "pref_scam_hybrid_mosaic_edge_scale", "pref_scam_hybrid_mosaic_native_edge_scale", "pref_scam_hybrid_mosaic_native_flat_scale")
@@ -218,8 +218,8 @@ public final class SettingsAvailability {
                 return Lang.t("Только с «Новое ядро склейки» («Всегда» или «Авто»): прежнее ядро это значение не использует.",
                         "Only with “New merge kernel” (“Always” or “Auto”): the previous kernel does not use this value.");
         }
-        // P134 «Цвет»: the AgX looks but «Custom» set their own saturation (ArkAe.LOOKS); a grading zone's hue needs its strength
-        if (key.equals("pref_scam_hybrid_ark_agx_sat") && !text("pref_scam_hybrid_ark_agx_look", "4").equals("4"))
+        // P134 «Цвет»: the AgX looks but «Custom» set their own saturation (WhyAe.LOOKS); a grading zone's hue needs its strength
+        if (key.equals("pref_scam_hybrid_why_agx_sat") && !text("pref_scam_hybrid_why_agx_look", "4").equals("4"))
             return Lang.t("Только при «Стиль AgX» = «Custom»: другие стили задают насыщенность сами.",
                     "Only with “AgX look” = “Custom”: the other looks set their own saturation.");
         for (String zone : new String[]{"shadows", "mids", "highlights"})
@@ -243,27 +243,27 @@ public final class SettingsAvailability {
         if (key.equals("pref_scam_hybrid_chroma_diff_clamp") && PreferenceNumber.read(values.get("pref_scam_hybrid_chroma_diff"), 1) <= 0)
             return Lang.t("Нужно «Цвет базы по цветоразности» больше 0.", "Needs “Base colour from colour difference” above 0.");
         // P144: AgX and its look give way to the tone operator switched on in «Кривая AgX и ACES»; so does the OPPO matrix's
-        // saturation, a factor of AgX's (ArkCombine agxAU.w: read by the AgX branch of ark/combine only)
-        if (key.startsWith("pref_scam_hybrid_ark_agx_") || key.equals("pref_scam_hybrid_ark_ccm_sat")) {
-            String other = on("pref_scam_hybrid_ark_curve_on", false) ? Lang.t("своя кривая", "the own curve")
-                    : on("pref_scam_hybrid_ark_uchi_on", false) ? "Uchimura" : on("pref_scam_hybrid_ark_aces_on", false) ? "ACES" : null;
+        // saturation, a factor of AgX's (WhyCombine agxAU.w: read by the AgX branch of why/combine only)
+        if (key.startsWith("pref_scam_hybrid_why_agx_") || key.equals("pref_scam_hybrid_why_ccm_sat")) {
+            String other = on("pref_scam_hybrid_why_curve_on", false) ? Lang.t("своя кривая", "the own curve")
+                    : on("pref_scam_hybrid_why_uchi_on", false) ? "Uchimura" : on("pref_scam_hybrid_why_aces_on", false) ? "ACES" : null;
             if (other != null)
                 return Lang.t("Сейчас вместо AgX работает " + other + " (в «Кривая AgX и ACES»).",
                         "Now " + other + " works instead of AgX (in “AgX and ACES curve”).");
         }
-        if (key.startsWith("pref_scam_hybrid_ark_agx_") && !key.equals("pref_scam_hybrid_ark_agx_look")
-                && !text("pref_scam_hybrid_ark_agx_look", "4").equals("4"))
+        if (key.startsWith("pref_scam_hybrid_why_agx_") && !key.equals("pref_scam_hybrid_why_agx_look")
+                && !text("pref_scam_hybrid_why_agx_look", "4").equals("4"))
             return Lang.t("Только в стиле AgX «Custom»: другие стили задают эти значения сами.", "AgX look “Custom” only: the other looks set these values themselves.");
         // ScamRgb: the colour prior, the defringe and the clip band act only inside the per-channel recovery (perChannel needs a
         // strength above 0; the merge sends the band's clip flags only then)
         if (any(key, "pref_scam_hybrid_highlight_chroma", "pref_scam_hybrid_highlight_defringe", "pref_scam_hybrid_highlight_band")
                 && PreferenceNumber.read(values.get("pref_scam_hybrid_highlight_recovery"), 100) <= 0)
             return Lang.t("Включите «Восстановление светов по каналам».", "Turn on “Per-channel highlight recovery”.");
-        // ark/combine: clarity and the flat-area protection scale the ARK detail delta, which is off at a detail strength of 0
-        if (any(key, "pref_scam_hybrid_ark_clarity", "pref_scam_hybrid_ark_flat_protect")
-                && PreferenceNumber.read(values.get("pref_scam_hybrid_ark_sharp_gain"), 1) == 0)
-            return Lang.t("Не действует при «Сила детали резкости ARK» = 0: работает только с деталью ARK.",
-                    "No effect with “ARK sharpening detail strength” = 0: acts on the ARK detail only.");
+        // why/combine: clarity and the flat-area protection scale the WHY detail delta, which is off at a detail strength of 0
+        if (any(key, "pref_scam_hybrid_why_clarity", "pref_scam_hybrid_why_flat_protect")
+                && PreferenceNumber.read(values.get("pref_scam_hybrid_why_sharp_gain"), 1) == 0)
+            return Lang.t("Не действует при «Сила детали резкости Why» = 0: работает только с деталью Why.",
+                    "No effect with “Why sharpening detail strength” = 0: acts on the Why detail only.");
         if (key.startsWith("pref_watermark_") && !on("pref_show_watermark_key", true)) return Lang.t("Включите водяной знак.", "Turn on the watermark.");
         // «Формат фото»: Ultra HDR and the JPEG quality act on a JPEG, which a HEIC / WebP / AVIF shot writes only with «Также сохранять JPEG».
         if (!writesJpeg()) {

@@ -176,7 +176,7 @@ public class SettingsAuditFixTest {
                 "pref_binder_spoof_package_key","pref_face_detect_mode","pref_tracking_af_mode","pref_hide_gallery_icon_key",
                 "pref_theme_key","pref_antibanding_hz_key"};
         for(String key:global){assertTrue(key,ModuleProfiles.isGlobal(key));assertFalse(key,ModuleProfiles.isLocal(key));}
-        for(String key:new String[]{"pref_scam_hybrid_cdm","pref_scam_hybrid_ark_sharp_gain","pref_cfa_key","pref_dng_lossless",
+        for(String key:new String[]{"pref_scam_hybrid_cdm","pref_scam_hybrid_why_sharp_gain","pref_cfa_key","pref_dng_lossless",
                 "pref_dcp_profile_key","pref_raw_stream_format","pref_film_lut_strength"})
             assertTrue(key,ModuleProfiles.isLocal(key));
         // P175: the neural remosaic's network rows are no module setting any more
@@ -283,7 +283,7 @@ public class SettingsAuditFixTest {
         Map<String,Object> values=new HashMap<>();values.put("pref_root_enabled",true);
         // Robolectric is no vivo / OPPO: no tuned or ISP matrix replaces the colour method, the OPPO saturation row is hidden
         assertNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
-        assertTrue(DeviceAvailability.of(values).hidden("pref_scam_hybrid_ark_ccm_sat"));
+        assertTrue(DeviceAvailability.of(values).hidden("pref_scam_hybrid_why_ccm_sat"));
         org.robolectric.shadows.ShadowBuild.setManufacturer("vivo");
         assertNotNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
         org.robolectric.shadows.ShadowBuild.setManufacturer("OPPO");org.robolectric.shadows.ShadowBuild.setModel("PHY110");
@@ -307,26 +307,26 @@ public class SettingsAuditFixTest {
     }
 
     /**
-     * H4: the six enum-like ARK sliders are lists with named entries; a value stored by the slider ("1.00", a float) becomes the
+     * H4: the six enum-like WHY sliders are lists with named entries; a value stored by the slider ("1.00", a float) becomes the
      * list value in every profile and reads the same; the SCAM HDR radii are integer sliders; RawTherapee sits by «Резкость Hybrid».
      */
     @Test public void enumSlidersAreListsAndStoredValuesKeepWorking() {
-        String[] lists={"pref_scam_hybrid_ark_metering","pref_scam_hybrid_ark_agx_look","pref_scam_hybrid_ark_sharp_domain",
-                "pref_scam_hybrid_ark_sharp_rl1_kernel","pref_scam_hybrid_ark_sharp_rl2_kernel","pref_scam_hybrid_ark_sharp_rl3_kernel"};
+        String[] lists={"pref_scam_hybrid_why_metering","pref_scam_hybrid_why_agx_look","pref_scam_hybrid_why_sharp_domain",
+                "pref_scam_hybrid_why_sharp_rl1_kernel","pref_scam_hybrid_why_sharp_rl2_kernel","pref_scam_hybrid_why_sharp_rl3_kernel"};
         SharedPreferences[] module=profiles();
-        prefs.edit().putString("pref_scam_hybrid_ark_metering","1.00").putFloat("pref_scam_hybrid_ark_agx_look",3f)
-                .putString("pref_scam_hybrid_ark_sharp_rl1_kernel","7")
-                .putString("pref_scam_hybrid_ark_sharp_domain","x").commit();
-        module[0].edit().clear().putString("pref_scam_hybrid_ark_metering","2.0").commit();
+        prefs.edit().putString("pref_scam_hybrid_why_metering","1.00").putFloat("pref_scam_hybrid_why_agx_look",3f)
+                .putString("pref_scam_hybrid_why_sharp_rl1_kernel","7")
+                .putString("pref_scam_hybrid_why_sharp_domain","x").commit();
+        module[0].edit().clear().putString("pref_scam_hybrid_why_metering","2.0").commit();
         // read as before the migration
-        assertEquals(1f,PreferenceKeys.hybridValue("ark_metering",0f),0f);
+        assertEquals(1f,PreferenceKeys.hybridValue("why_metering",0f),0f);
         SettingsMigration.removeObsolete(context,prefs);
-        assertEquals("1",prefs.getString("pref_scam_hybrid_ark_metering",""));assertEquals("3",prefs.getString("pref_scam_hybrid_ark_agx_look",""));
-        assertEquals("clamped to the list","2",prefs.getString("pref_scam_hybrid_ark_sharp_rl1_kernel",""));
-        assertFalse(prefs.contains("pref_scam_hybrid_ark_sharp_domain"));
-        assertEquals("2",module[0].getString("pref_scam_hybrid_ark_metering",""));
+        assertEquals("1",prefs.getString("pref_scam_hybrid_why_metering",""));assertEquals("3",prefs.getString("pref_scam_hybrid_why_agx_look",""));
+        assertEquals("clamped to the list","2",prefs.getString("pref_scam_hybrid_why_sharp_rl1_kernel",""));
+        assertFalse(prefs.contains("pref_scam_hybrid_why_sharp_domain"));
+        assertEquals("2",module[0].getString("pref_scam_hybrid_why_metering",""));
         assertFalse("a second run changes nothing",SettingsMigration.removeObsolete(prefs));
-        assertEquals(1f,PreferenceKeys.hybridValue("ark_metering",0f),0f);assertEquals(3f,PreferenceKeys.hybridValue("ark_agx_look",4f),0f);
+        assertEquals(1f,PreferenceKeys.hybridValue("why_metering",0f),0f);assertEquals(3f,PreferenceKeys.hybridValue("why_agx_look",4f),0f);
         PreferenceScreen screen=inflate();
         for(String key:lists){
             Preference p=screen.findPreference(key);
@@ -335,10 +335,10 @@ public class SettingsAuditFixTest {
             assertEquals(key,l.getEntries().length,l.getEntryValues().length);
             assertNotNull(key+" shows a named value",l.getEntry());
         }
-        assertEquals("1",((ListPreference)screen.findPreference("pref_scam_hybrid_ark_metering")).getValue());
-        // P118: only the ARK sharpening stays; the RawTherapee page is gone everywhere.
+        assertEquals("1",((ListPreference)screen.findPreference("pref_scam_hybrid_why_metering")).getValue());
+        // P118: only the WHY sharpening stays; the RawTherapee page is gone everywhere.
         PreferenceGroup sharp=screen.findPreference("scam_hybrid_sharp_category");
-        assertNotNull(sharp.findPreference("pref_scam_hybrid_ark_sharp_gain"));assertNull(screen.findPreference("sharp_settings_screen"));
+        assertNotNull(sharp.findPreference("pref_scam_hybrid_why_sharp_gain"));assertNull(screen.findPreference("sharp_settings_screen"));
     }
 
     /** S5: inherited keys without a row that api/Settings still read are dropped; the AF data key they aliased stays. */

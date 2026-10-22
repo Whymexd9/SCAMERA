@@ -6,12 +6,12 @@ import java.util.Locale;
  * Colour of the saved photo (P46): «Цветовое пространство» sRGB (default) / Display P3, and the primaries, transfer and
  * matrix codes (ITU-T H.273 / CICP, the 'nclx' colour box of HEIF / AVIF) each output carries. Pure Java: the matrices are
  * derived here from the CIE xy chromaticities of the primaries and the D65 white (the same derivation as SMPTE RP 177),
- * so the GLSL constants of ark/combine.glsl and the tests can be checked against one source.
+ * so the GLSL constants of why/combine.glsl and the tests can be checked against one source.
  *
  * <ul>
  *   <li>sRGB: BT.709 primaries (1), sRGB transfer (13); the photo as before, no profile in the file.</li>
  *   <li>Display P3: P3 primaries with the D65 white (SMPTE EG 432-1, code 12), sRGB transfer (13); the post pipeline
- *       renders the final image in P3 (ArkCombine, define P3_OUT) and every file says so (ICC profile, nclx 12/13).</li>
+ *       renders the final image in P3 (WhyCombine, define P3_OUT) and every file says so (ICC profile, nclx 12/13).</li>
  *   <li>HDR (HLG): BT.2020 primaries (9), HLG transfer (ARIB STD-B67, 18), BT.2020 non-constant-luminance matrix (9);
  *       only the HDR HEIC / AVIF ({@link HlgRendition}).</li>
  * </ul>

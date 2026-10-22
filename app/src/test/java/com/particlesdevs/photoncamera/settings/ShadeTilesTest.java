@@ -112,7 +112,7 @@ public class ShadeTilesTest {
 
     @Test
     public void removeObsoleteCleansTheTileList() {
-        prefs.edit().putString(ShadeTiles.KEY, "pref_show_grid_key,pref_scam_hybrid_ark_tone,pref_agx_contrast," + ShadeCatalog.TIMER).commit();
+        prefs.edit().putString(ShadeTiles.KEY, "pref_show_grid_key,pref_scam_hybrid_why_tone,pref_agx_contrast," + ShadeCatalog.TIMER).commit();
         assertTrue(SettingsMigration.removeObsolete(prefs));
         assertEquals(Arrays.asList("pref_show_grid_key", ShadeCatalog.TIMER), ShadeTiles.stored(prefs));
         assertFalse(SettingsMigration.removeObsolete(prefs));

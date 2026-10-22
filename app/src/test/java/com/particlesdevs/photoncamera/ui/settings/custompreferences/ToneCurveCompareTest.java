@@ -81,7 +81,7 @@ public class ToneCurveCompareTest {
         // the template of AgX: nine points along AgX with today's settings, monotone, its middle at AgX's middle
         ToneCurve agx = ToneCurveCompare.template(2);
         assertEquals(ToneCurveCompare.TEMPLATE_POINTS, agx.size());
-        float mid = (float) com.particlesdevs.photoncamera.processing.opengl.postpipeline.ArkTone.reference(ToneCurve.AGX).applyAsDouble(0.5);
+        float mid = (float) com.particlesdevs.photoncamera.processing.opengl.postpipeline.WhyTone.reference(ToneCurve.AGX).applyAsDouble(0.5);
         assertEquals(mid, agx.get(4).y, 1e-4f);
         for (int i = 1; i < agx.size(); i++) assertTrue(agx.get(i).y >= agx.get(i - 1).y);
         assertEquals("S-curve and straight stay the first two", ToneCurve.DEFAULT_POINTS, ToneCurveCompare.template(0).serialize());

@@ -14,12 +14,12 @@ import org.mockito.Mockito;
 
 import java.util.List;
 
-/** P276: the module's sensor mode from the camera's SensorModeTable (ArkCam's per-lens list). */
+/** P276: the module's sensor mode from the camera's SensorModeTable (WhyCam's per-lens list). */
 public class SensorModePickTest {
     /** count 4, stride 3: 8192x6144@30 (Quad), 4096x3072@30 (binned), 4096x2304@60, 2048x1536@120. */
     private static final int[] TABLE = {4, 3, 8192, 6144, 30, 4096, 3072, 30, 4096, 2304, 60, 2048, 1536, 120};
 
-    @Test public void rowsAndLabelsAsArkCamListsThem() {
+    @Test public void rowsAndLabelsAsWhyCamListsThem() {
         List<int[]> rows = SensorModePick.rows(TABLE);
         assertEquals(4, rows.size());
         assertEquals("Mode #0: 8192x6144 @ 30fps", SensorModePick.label(rows.get(0)));

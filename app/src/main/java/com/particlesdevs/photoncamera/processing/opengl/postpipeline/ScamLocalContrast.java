@@ -60,7 +60,7 @@ public final class ScamLocalContrast extends Node {
     @Override public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
         WorkingTexture = previousNode.WorkingTexture;
-        // Texture on top of the ARK tone (hybrid switch ark_texture), at the strength matched to a SCAM render.
+        // Texture on top of the WHY tone (hybrid switch why_texture), at the strength matched to a SCAM render.
         final float amount = 1f;
         long started = System.currentTimeMillis();
         GLFormat mono = new GLFormat(GLFormat.DataType.FLOAT_16, 1);

@@ -42,7 +42,7 @@ public class MotionModeTest {
         assertTrue(MotionMode.replaces("shasta"));
         assertEquals(8f, MotionMode.DEFAULTS.get("zsl_frames"), 0f);
         assertEquals(0f, MotionMode.DEFAULTS.get("shasta"), 0f);
-        assertTrue(!MotionMode.replaces("ark_sharp_rl3_amount"));
+        assertTrue(!MotionMode.replaces("why_sharp_rl3_amount"));
     }
 
 

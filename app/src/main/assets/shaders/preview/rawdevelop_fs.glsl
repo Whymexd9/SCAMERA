@@ -22,8 +22,8 @@ uniform int crop_height;
 uniform int bayer_pattern;
 uniform int cfa_mode;
 uniform float u_auto_exposure;
-// P301 (owner, 2026-10-20: «Результат должен совпадать с итоговым фото»): 1 = the linear frame for the photo's ARK tone on the
-// viewfinder (LiveArkTone): white-balanced, lens-shaded, through color_transform, before any exposure or tone; no LUT, no peaking
+// P301 (owner, 2026-10-20: «Результат должен совпадать с итоговым фото»): 1 = the linear frame for the photo's WHY tone on the
+// viewfinder (LiveWhyTone): white-balanced, lens-shaded, through color_transform, before any exposure or tone; no LUT, no peaking
 uniform int u_linear_out;
 uniform int u_ef_enabled;
 uniform vec4 u_exp_mults;
@@ -75,7 +75,7 @@ uniform highp sampler3D u_lut_tex;
 uniform int u_lut_enabled;
 uniform float u_lut_strength;
 uniform float u_lut_size;
-// P134: the photo's «Цвет» look in the RAW viewfinder (processing.color.ColourLook, the same stages as ark/combine.glsl's
+// P134: the photo's «Цвет» look in the RAW viewfinder (processing.color.ColourLook, the same stages as why/combine.glsl's
 // COLOUR_LOOK 1; u_look_on 0 = the viewfinder before P134) and the film LUT's domain
 uniform int u_look_on;
 uniform vec3 u_look_mono;            // monochrome filter transmission, 0 = colour
@@ -118,7 +118,7 @@ vec3 lookFromOklab(vec3 lab) {
                 -1.2684380046 * lms.x + 2.6097574011 * lms.y - 0.3413193965 * lms.z,
                 -0.0041960863 * lms.x - 0.7034186147 * lms.y + 1.7076147010 * lms.z);
 }
-// the skin mask of ark/combine.glsl: OKLab hue ~50 deg, chroma / L 0.03..0.32
+// the skin mask of why/combine.glsl: OKLab hue ~50 deg, chroma / L 0.03..0.32
 float lookSkinWeight(vec3 lab) {
     float c = length(lab.yz);
     if (c < 0.000001) return 0.0;
@@ -126,7 +126,7 @@ float lookSkinWeight(vec3 lab) {
     float d = mod(degrees(atan(lab.z, lab.y)) - 50.0 + 180.0, 360.0) - 180.0;
     return exp(-(d * d) / 400.0) * smoothstep(0.03, 0.06, r) * (1.0 - smoothstep(0.22, 0.32, r));
 }
-// the scene stage of ark/combine.glsl's COLOUR_LOOK 1 after the vibrance (satMult): skin protection of positive gains,
+// the scene stage of why/combine.glsl's COLOUR_LOOK 1 after the vibrance (satMult): skin protection of positive gains,
 // vibrance by brightness, the 8-band mixer, skin hue / evenness; returns the skin weight for the grading
 float lookScene(inout vec3 lab, float satMult) {
     if (length(lab.yz) <= 0.000001) return 0.0;
@@ -518,7 +518,7 @@ vec3 processPipeline(vec3 color, float corner_gain) {
     float base_tm_gain = mapped_norm / norm;
     vec3 graded = color * base_tm_gain;
     color = clamp(graded, 0.0, 1.0);
-    // P134: the grading of the display value in OKLab, zones around 0.5 - balance / 4 (ark/combine.glsl)
+    // P134: the grading of the display value in OKLab, zones around 0.5 - balance / 4 (why/combine.glsl)
     if (u_look_on == 1 && (u_look_grade_a != vec4(0.0) || u_look_grade_b.xy != vec2(0.0))) {
         vec3 post = lookToOklab(color);
         float m = 0.5 - 0.25 * u_look_grade_b.z;

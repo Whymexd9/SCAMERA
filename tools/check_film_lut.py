@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P134 «Плёночный LUT»: ark/combine.glsl with FILM_LUT 1 on the GPU (moderngl).
+"""P134 «Плёночный LUT»: why/combine.glsl with FILM_LUT 1 on the GPU (moderngl).
 
 A ramp of colours goes through the shader without the LUT and with it; the LUT stage must
 - leave the output alone with an identity LUT at full strength (17^3, the sampling of the texel centres);
@@ -62,7 +62,7 @@ def main():
         ctx = moderngl.create_standalone_context(backend='egl', require=430)
     except Exception:
         ctx = moderngl.create_standalone_context(require=430)
-    src = expand_imports((SH / 'ark/combine.glsl').read_text(encoding='utf-8'))
+    src = expand_imports((SH / 'why/combine.glsl').read_text(encoding='utf-8'))
     rng = np.random.default_rng(5)
     n = 512
     W = 32
@@ -89,8 +89,8 @@ def main():
         fb = ctx.framebuffer([out])
         fb.use()
         ctx.viewport = (0, 0, W, H)
-        units = {'InputBuffer': t_img, 'GainMap': ones, 'ArkLow': t_img, 'ArkColour': t_img, 'ArkFused': t_fused,
-                 'ArkDetailRef': t_img, 'ArkLumaS': t_img}
+        units = {'InputBuffer': t_img, 'GainMap': ones, 'WhyLow': t_img, 'WhyColour': t_img, 'WhyFused': t_fused,
+                 'WhyDetailRef': t_img, 'WhyLumaS': t_img}
         for i, (k, t) in enumerate(units.items()):
             if k in prog:
                 t.use(i)

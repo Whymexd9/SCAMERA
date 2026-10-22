@@ -41,7 +41,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * P134 / SIMPLE_UI §4c «Плёночный LUT»: the look the photo goes through (ArkCombine, FILM_LUT) - «Нет», our five film looks
+ * P134 / SIMPLE_UI §4c «Плёночный LUT»: the look the photo goes through (WhyCombine, FILM_LUT) - «Нет», our five film looks
  * (P170, FilmLooks) or a .cube of Download/SCAMERA/LUT. The top of the concept's LUT page: the before / after preview with a
  * draggable cut, three sample pictures («Пейзаж», «Закат», «Шкала цветов»), «Плёнка» - a strip of cards, each the sample
  * through that LUT with its name and hint, «Импорт .cube» (the picker; the file is copied into the folder) and, until the

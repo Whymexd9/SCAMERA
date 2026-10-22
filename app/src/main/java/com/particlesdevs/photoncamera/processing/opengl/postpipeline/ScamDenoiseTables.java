@@ -5,7 +5,7 @@ import java.util.Arrays;
 /**
  * Tables and host arithmetic of {@link ScamDenoise} (no Android or GL state, so it runs in unit tests).
  * <p>
- * Tables: SCAM 9.6 (reference finish) as ArkCam 2.85 PRO leaves them for the main camera (research/hybrid5/denoise_port.md
+ * Tables: SCAM 9.6 (reference finish) as WhyCam 2.85 PRO leaves them for the main camera (research/hybrid5/denoise_port.md
  * §2.4). Luma tiers by the SNR of the finish input: {5: SabreLow, 10: GID14_T10, 20: SabreMed, 40: SabreHigh,
  * 80: GID14_T80} (FinishShot writes the Sabre tiers over luma_denoise_004 for Sabre shots); per band b0..b4 (b0 finest)
  * strength (sigma multiplier), revert factor (share of the unfiltered level, b4 has none) and outlier threshold
@@ -13,7 +13,7 @@ import java.util.Arrays;
  * integer outlier threshold. Between tiers everything is linear in SNR, outside the first/last tier it is clamped
  * (0x33ec5d4 + 0x54b36e8).
  * <p>
- * P135 (owner, 2026-10-15: very strong grain, made stronger by the sharpening, in poor light on every phone): ArkCam's
+ * P135 (owner, 2026-10-15: very strong grain, made stronger by the sharpening, in poor light on every phone): WhyCam's
  * SabreLow tier (SNR 5) is {1, 3, 0, 0, 0} with revert {9, 9, ...}: the fine levels put the removed noise back amplified
  * (out = d + rf (recon - d), rf' = 9 / 2 at 4 effective frames) and the coarse levels are not denoised at all, so the darker
  * the shot the grainier it came out (SCA_20261015_024212: SNR 3.04, 0.8 s ISO 6400, 4 frames). The owner wants the grain,
@@ -21,7 +21,7 @@ import java.util.Arrays;
  * the blotches and colour mottle are, as the reference) and puts back 60 / 50 % of the fine grain (revert 0.6 / 0.5 on b0 / b1,
  * under the 0.75 / 0.7 of the SNR-10 tier, so a darker shot is never grainier than a brighter one); and no revert above 1
  * by default (dn_revert_max 1: the removed noise never comes back stronger than it was). The tiers from SNR 10 up stay
- * ArkCam's.
+ * WhyCam's.
  */
 final class ScamDenoiseTables {
     private ScamDenoiseTables() {}
@@ -49,7 +49,7 @@ final class ScamDenoiseTables {
     static final float[][] CHROMA_STRENGTH = {{5f, 5f, 5f, 4f, 4f}, {5f, 5f, 5f, 1f, 2f}, {1f, 1f, 1f, 1f, 1.5f}, {0.5f, 0.5f, 0f, 0f, 0f}};
     static final float[][] CHROMA_OUTLIER = {{0f, 5f, 5f, 4f, 4f}, {0f, 5f, 5f, 4f, 4f}, {0f, 5f, 5f, 4f, 4f}, {0f, 5f, 5f, 4f, 4f}};
 
-    /** User configuration (defaults = ArkCam 2.85 effective values, SabreLow = stock and the revert limit 1, P135). */
+    /** User configuration (defaults = WhyCam 2.85 effective values, SabreLow = stock and the revert limit 1, P135). */
     static final class Config {
         float[] lumaSnr = LUMA_SNR.clone();
         float[][] lumaStrength = copy(LUMA_STRENGTH), lumaRevert = copy(LUMA_REVERT), lumaOutlier = copy(LUMA_OUTLIER);
@@ -132,7 +132,7 @@ final class ScamDenoiseTables {
     /**
      * SNR of the finish input as the reference EstimateSnr computes it for the merged frame: mean signal mu = 0.18 / display gain,
      * noise from the frame's model (green channel) scaled by the measured level-0 difference variance (g01 / 2 = variance
-     * of one pixel for a white spectrum) and by rho (the model ArkCam hands the reference is noisier than the real one).
+     * of one pixel for a white spectrum) and by rho (the model WhyCam hands the reference is noisier than the real one).
      */
     static float snr(float mu, float g01, float sG, float rG, float rhoS, float rhoR) {
         double var = Math.max(g01, 1e-6) * 0.5 * (rhoS * sG * Math.max(mu, 0f) + rhoR * rG);

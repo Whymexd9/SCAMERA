@@ -103,7 +103,7 @@ public class ShadeCatalogTest {
         assertEquals(22, curated); // P129: the route tile and the SCAM HDR group (frames, L boost, mosaic) are gone; «Кодек» (pref_photo_format) is part of the FORMAT choice now, no row of its own; P42 added «Лица» and «Трекинг»;
                                    // P64 removed «Кривая» (the Hybrid tone curve); P118 «Резкость» (sharp_mode) and «USM» with its group
         // The rows the owner dropped (answer 8) stay out.
-        for (String gone : new String[]{"pref_scam_hybrid_ark_tone", "pref_scamhdr_fusion_enabled", "pref_scam_tone_curve"})
+        for (String gone : new String[]{"pref_scam_hybrid_why_tone", "pref_scamhdr_fusion_enabled", "pref_scam_tone_curve"})
             assertFalse(gone, ShadeCatalog.isCurated(gone));
         for (String key : ShadeCatalog.DEFAULT_TILES) assertTrue(key, catalog.isKnown(key));
         assertEquals("SIMPLE_UI §2: the concept's 18 default tiles (with Стиль and Селфи)", 18, ShadeCatalog.DEFAULT_TILES.size());
@@ -229,11 +229,11 @@ public class ShadeCatalogTest {
 
         assertNull("P129: SCAM HDR's «Удлинение L» is gone", catalog.entry("pref_scamhdr_long_boost_ev"));
 
-        // «Замер» is the ARK metering, a list of named modes since the settings audit (H4: it was a 0-2 slider whose numbers only
+        // «Замер» is the WHY metering, a list of named modes since the settings audit (H4: it was a 0-2 slider whose numbers only
         // the summary explained); the Camera2 metering stays a camera control.
-        ShadeCatalog.Entry metering = catalog.entry("pref_scam_hybrid_ark_metering");
+        ShadeCatalog.Entry metering = catalog.entry("pref_scam_hybrid_why_metering");
         assertEquals(ShadeCatalog.LIST, metering.kind);
-        assertEquals(context.getResources().getStringArray(R.array.shade_s_ark_metering)[0], catalog.valueText(metering, true));
+        assertEquals(context.getResources().getStringArray(R.array.shade_s_why_metering)[0], catalog.valueText(metering, true));
         assertTrue(catalog.entry(ShadeCatalog.METERING_STD).isVirtual());
 
         // The format tile reads the virtual key and shows the new icons.
@@ -293,7 +293,7 @@ public class ShadeCatalogTest {
                 "pref_restore_preferences_key", "pref_backup_preferences_key", "settings_favorites", "scam_hybrid_screen"})
             assertFalse(key, catalog.isKnown(key));
         // Free text of the hybrid denoise tables is not pinnable.
-        for (ShadeCatalog.Entry e : catalog.all()) assertFalse(e.key, e.key.startsWith("pref_scam_hybrid_ark_luma_"));
+        for (ShadeCatalog.Entry e : catalog.all()) assertFalse(e.key, e.key.startsWith("pref_scam_hybrid_why_luma_"));
         assertTrue(catalog.isKnown("pref_scam_hybrid_post_luma"));
         assertTrue(catalog.isKnown("pref_jpeg_quality"));
     }

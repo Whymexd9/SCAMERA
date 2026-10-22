@@ -99,7 +99,7 @@ public final class ScamRgb extends Node {
      * nothing could clip. For the tone stages that place the brightest data at white.
      */
     public static volatile float lastClipWhite;
-    /** The shot's RGB has real clipped highlights (a clip plateau of the base or Bento frames): the ARK tone may use the
+    /** The shot's RGB has real clipped highlights (a clip plateau of the base or Bento frames): the WHY tone may use the
      *  Bento ceiling. False when the data only exceeds 1 by the white balance of unclipped saturated colour. */
     public static volatile boolean lastRealClip;
 
@@ -285,7 +285,7 @@ public final class ScamRgb extends Node {
     /**
      * SCAM Hybrid: the worker's signed RGB passes through this node unclamped (scamrgb signedU). The merge keeps its noise
      * signed and clips once; a per-pixel max(0) here lifted the mean of every channel near zero by up to half its noise
-     * (x1.5 red along the frame edge of a dark teal curtain where fewer donors overlap, OPPO X8U 2026-10-07), and the ARK
+     * (x1.5 red along the frame edge of a dark teal curtain where fewer donors overlap, OPPO X8U 2026-10-07), and the WHY
      * tone turned that into a red band and red mottling. The stages after it clamp only after the noise reduction or an
      * average. The SCAM HDR route keeps the clamp. scam_dev.txt "post_ab_clamp 1": the old run of post_ab (PostAb) gets the
      * former per-pixel clamp, so the A/B shows this change on the same worker result.
@@ -758,9 +758,9 @@ public final class ScamRgb extends Node {
                 WorkingTexture=banded;
             }
             if(early){
-                // P187: what nothing reads any more goes back now instead of through ArkStats .. ArkCombine: the input (when it
+                // P187: what nothing reads any more goes back now instead of through WhyStats .. WhyCombine: the input (when it
                 // did not become main2), the flags, the chroma blocks and the unbanded scamrgb output (the pipeline makes main1
-                // again for ArkCombine's output). glFinish first - storage is freed only when the GPU is done with it, and the
+                // again for WhyCombine's output). glFinish first - storage is freed only when the GPU is done with it, and the
                 // next nodes' textures should not come on top of it. Nulled, as GL may hand the freed names to new textures.
                 android.opengl.GLES30.glFinish();
                 if(input!=null){input.close();input=null;}
@@ -770,7 +770,7 @@ public final class ScamRgb extends Node {
                 if(chromaHuge!=null){chromaHuge.close();chromaHuge=null;}
                 if(unbanded!=null&&!largeTwoX)p.releaseMain(unbanded);
             }
-            if(hybrid)com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","scamrgb input "+(signed?"signed (clamped after the noise reduction or the ARK colour averages)":"clamped per pixel (post_ab_clamp)"));
+            if(hybrid)com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","scamrgb input "+(signed?"signed (clamped after the noise reduction or the WHY colour averages)":"clamped per pixel (post_ab_clamp)"));
             if(perChannel)com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","highlight recovery per channel: chroma="
                     +chromaLog
                     +" limit="+chromaLimit+" band="+band+(early?" early release"+(inputIsMain2?" (input as main2)":""):"")

@@ -129,7 +129,8 @@ public final class ScamDevFile {
         java.util.Map<String, String> out = new java.util.HashMap<>();
         for (String l : lines(text)) {
             String[] p = l.trim().split("\\s+");
-            if (p.length == 2 && !out.containsKey(p[0])) out.put(p[0], p[1]);
+            // P319: a line written before the Why rename shows under its new key (a new line wins)
+            if (p.length == 2 && !out.containsKey(BrandMigration.why(p[0]))) out.put(BrandMigration.why(p[0]), p[1]);
         }
         return out;
     }
@@ -138,7 +139,7 @@ public final class ScamDevFile {
     static String valueOf(List<String> lines, String key) {
         for (String l : lines) {
             String[] p = l.trim().split("\\s+");
-            if (p.length == 2 && p[0].equals(key)) return p[1];
+            if (p.length == 2 && (p[0].equals(key) || BrandMigration.why(p[0]).equals(key))) return p[1]; // P319: old names too
         }
         return null;
     }

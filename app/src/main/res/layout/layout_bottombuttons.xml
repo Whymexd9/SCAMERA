@@ -64,7 +64,7 @@
                     app:shapeAppearanceOverlay="@style/ShapeAppearance.Scamera.Thumb"
                     />
 
-            <!-- P158: the shot's processing runs round the card's edge in the accent (as in ArkCam). -->
+            <!-- P158: the shot's processing runs round the card's edge in the accent (as in WhyCam). -->
             <com.particlesdevs.photoncamera.ui.camera.views.ProcessingRing
                     android:id="@+id/processing_progress_bar"
                     android:visibility="invisible"

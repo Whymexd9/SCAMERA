@@ -114,7 +114,7 @@ public class ScamLabFragmentTest {
                 H + "mm_boost_value", H + "mm_bento", H + "mm_shutter", H + "noise_photon", "pref_noise_model_profile_key",
                 H + "downsampler", H + "auto2x", H + "output", "pref_crop_upscale",
                 // «Цвет и стиль»: the warmth and saturation beside its pages, its pages' rows
-                H + "colour_warmth", H + "ark_agx_sat", H + "colour_tint", "pref_color_method_key", FilmSim.GRAIN_KEY,
+                H + "colour_warmth", H + "why_agx_sat", H + "colour_tint", "pref_color_method_key", FilmSim.GRAIN_KEY,
                 LensFilters.KEY, "pref_film_lut", H + "colour_mono"})
             assertTrue(key, offered.contains(key));
         // a fixed-at-the-shot entry is a row the lab shows (none left unreachable)
@@ -211,24 +211,24 @@ public class ScamLabFragmentTest {
 
     @Test public void acesAndUchimuraParametersActWithTheirOperator() {
         final Map<String, Object> none = Collections.emptyMap();
-        assertEquals(Collections.singletonMap(H + "ark_aces_on", true), ScamLabFragment.forced(H + "ark_aces_a", none, tree));
-        assertEquals(Collections.singletonMap(H + "ark_uchi_on", true), ScamLabFragment.forced(H + "ark_uchi_b", none, tree));
-        // ArkTone.toneOperator: own curve > Uchimura > ACES
+        assertEquals(Collections.singletonMap(H + "why_aces_on", true), ScamLabFragment.forced(H + "why_aces_a", none, tree));
+        assertEquals(Collections.singletonMap(H + "why_uchi_on", true), ScamLabFragment.forced(H + "why_uchi_b", none, tree));
+        // WhyTone.toneOperator: own curve > Uchimura > ACES
         final Map<String, Object> both = new HashMap<>();
-        both.put(H + "ark_curve_on", true);
-        both.put(H + "ark_uchi_on", true);
-        final LinkedHashMap<String, Object> aces = ScamLabFragment.forced(H + "ark_aces_d", both, tree);
-        assertEquals(Boolean.TRUE, aces.get(H + "ark_aces_on"));
-        assertEquals(Boolean.FALSE, aces.get(H + "ark_curve_on"));
-        assertEquals(Boolean.FALSE, aces.get(H + "ark_uchi_on"));
-        final LinkedHashMap<String, Object> uchi = ScamLabFragment.forced(H + "ark_uchi_pre_gain", both, tree);
-        assertEquals(Collections.singletonMap(H + "ark_curve_on", false), uchi); // Uchimura is already on
-        final LinkedHashMap<String, Object> acesOn = ScamLabFragment.forced(H + "ark_aces_on", both, tree);
+        both.put(H + "why_curve_on", true);
+        both.put(H + "why_uchi_on", true);
+        final LinkedHashMap<String, Object> aces = ScamLabFragment.forced(H + "why_aces_d", both, tree);
+        assertEquals(Boolean.TRUE, aces.get(H + "why_aces_on"));
+        assertEquals(Boolean.FALSE, aces.get(H + "why_curve_on"));
+        assertEquals(Boolean.FALSE, aces.get(H + "why_uchi_on"));
+        final LinkedHashMap<String, Object> uchi = ScamLabFragment.forced(H + "why_uchi_pre_gain", both, tree);
+        assertEquals(Collections.singletonMap(H + "why_curve_on", false), uchi); // Uchimura is already on
+        final LinkedHashMap<String, Object> acesOn = ScamLabFragment.forced(H + "why_aces_on", both, tree);
         assertEquals(2, acesOn.size());
-        assertEquals(Boolean.FALSE, acesOn.get(H + "ark_curve_on"));
-        assertEquals(Boolean.FALSE, acesOn.get(H + "ark_uchi_on"));
+        assertEquals(Boolean.FALSE, acesOn.get(H + "why_curve_on"));
+        assertEquals(Boolean.FALSE, acesOn.get(H + "why_uchi_on"));
         // the toe acts under AgX too: nothing to switch
-        assertTrue(ScamLabFragment.forced(H + "ark_aces_toe", none, tree).isEmpty());
+        assertTrue(ScamLabFragment.forced(H + "why_aces_toe", none, tree).isEmpty());
     }
 
     @Test public void aFilmSettingOfAShotWithoutFilmGetsAStock() {
@@ -286,11 +286,11 @@ public class ScamLabFragmentTest {
             assertTrue(ScamLabFragment.forced(spec.key, Collections.emptyMap(), tree).isEmpty());
             assertNull(ScamLabFragment.inert(context, spec.key, spec.key, Collections.emptyMap(), new HashMap<>()));
         }
-        for (String k : new String[]{"hybrid_texture_g1", "hybrid_ark_weight_center_hr", "hybrid_dn_huge_map", "sharpen_r1",
+        for (String k : new String[]{"hybrid_texture_g1", "hybrid_why_weight_center_hr", "hybrid_dn_huge_map", "sharpen_r1",
                 "hybrid_bento_blend", "hybrid_us_fill", "hybrid_hot_cap", "hybrid_s61_mode", "ae_clamp_stack", "effmap_real"})
             assertTrue(k, lines.contains(k));
         for (String k : new String[]{"post_priority", "jpeg_threads", "hybrid_la_threads", "worker_watchdog", "hybrid_rgb_half",
-                "hybrid_isp_ccm", "hybrid_clip_flags", "dng_colour_jpeg", "vf_ark", "zsl_reader"})
+                "hybrid_isp_ccm", "hybrid_clip_flags", "dng_colour_jpeg", "vf_why", "zsl_reader"})
             assertFalse(k, lines.contains(k));
         // a line's value at the shot, and B's first value
         final ScamLabFragment.Spec blend = ScamLabFragment.spec(tree, context, ScamLabFragment.DEV + "hybrid_bento_blend");
@@ -316,14 +316,14 @@ public class ScamLabFragmentTest {
             else assertTrue(key, offered.contains(key));
         }
         // the input scale is rescaled exactly (LabFrame.scaled): no note
-        assertFalse(ScamLabFragment.FRAGMENT_STATS.contains(H + "ark_input_ev"));
+        assertFalse(ScamLabFragment.FRAGMENT_STATS.contains(H + "why_input_ev"));
     }
 
     @Test public void aRowSaysWhyItDoesNothingOnThisShot() {
         // AgX's own values act only in the «Custom» look (SettingsAvailability on the shot's values)
-        assertNotNull(ScamLabFragment.inert(context, H + "ark_agx_slope", H + "ark_agx_slope",
-                Collections.singletonMap(H + "ark_agx_look", "1"), new HashMap<>()));
-        assertNull(ScamLabFragment.inert(context, H + "ark_agx_slope", H + "ark_agx_slope", Collections.emptyMap(), new HashMap<>()));
+        assertNotNull(ScamLabFragment.inert(context, H + "why_agx_slope", H + "why_agx_slope",
+                Collections.singletonMap(H + "why_agx_look", "1"), new HashMap<>()));
+        assertNull(ScamLabFragment.inert(context, H + "why_agx_slope", H + "why_agx_slope", Collections.emptyMap(), new HashMap<>()));
         // a fixed-at-the-shot row is said apart
         assertNull(ScamLabFragment.inert(context, H + "bento_factor", H + "bento_factor", Collections.emptyMap(), new HashMap<>()));
     }
@@ -352,9 +352,9 @@ public class ScamLabFragmentTest {
      */
     @Test public void hiddenRowsAndEmptyCaptionsAreLeftOut() {
         final Map<String, Object> none = Collections.emptyMap();
-        assertTrue(ScamLabFragment.hiddenFor(H + "ark_ccm_sat", none, false));
-        assertFalse(ScamLabFragment.hiddenFor(H + "ark_ccm_sat", none, true));
-        assertFalse(ScamLabFragment.hiddenFor(H + "ark_vibrance", none, false));
+        assertTrue(ScamLabFragment.hiddenFor(H + "why_ccm_sat", none, false));
+        assertFalse(ScamLabFragment.hiddenFor(H + "why_ccm_sat", none, true));
+        assertFalse(ScamLabFragment.hiddenFor(H + "why_vibrance", none, false));
         final PreferenceGroup photo = (PreferenceGroup) tree.findPreference("scam_hybrid_photo_screen");
         assertTrue(ScamLabFragment.hasRows(photo, none, false));
         final PreferenceScreen screen = new androidx.preference.PreferenceManager(context).createPreferenceScreen(context);
