@@ -7080,3 +7080,23 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   WhyRenameMigrationTest (every *_why_* key of preferences.xml from its old name, profiles, tiles, a second pass changes
   nothing); BrandMigrationTest's frozen vectors through the WHY stage. Left with «ark»: PLAN / HANDOFF / research history,
   CHANGELOG history, tools/check_ark_tone.py (not ours).
+
+### P320 - settings for ordinary users: plain titles and one-line summaries, no setting lost (owner, 2026-10-23: «Упростить экран настроек и тексты параметров так, чтобы их понимал обычный пользователь… не потеряв ни одной функции»; keys, defaults and ranges unchanged; then «Когда закончишь залей на гит, затем обнови описание нашей камеры на гитхаб»): DONE in code, not device-tested.
+- Audit (scratchpad settings319/audit*.py, table in Downloads/x200u/settings_audit_p320.md): all 373 rows of preferences.xml with
+  their reader - literal keys, R.string keys, PreferenceKeys getters traced to their callers, the hybrid / WhyTone suffix reads
+  (`hybridValue("dn_luma_t" + i + "_snr")`, `WhyTone.value("sharp_gain")`, `"colour_mix_" + band + "_hue"`). No value row without
+  a reader: nothing dead. Rows without a value: notes / credits / version, actions (backup, import / export, size and style
+  pickers) and pref_camera_sounds_all (persistent=false, writes the two sound switches).
+- Texts (string resources only, ru + en, 56 names): titles cut to 1-3 words saying what one gets («Авто 2×», «До размера фото»,
+  «Способ уменьшения», «Чёткость цвета», «Копия в JPEG», «Сжатие RAW (DNG)», «Горизонт», «Подсветка резкости», «Раздельная
+  экспозиция», «Ночной видоискатель», «Скруглённые углы», «Против двоения», «Порог движения», «Свой баланс белого», «Источник
+  цвета», «Цветовой профиль», «Сочность», «Сохранить тепло / синеву», «Ровная кожа», «Защита ярких цветов», «Насыщенность
+  OPPO», «Яркий цвет в белый», «Основные цвета»…); summaries without unexplained jargon (SHDR / FULLRES / ISZ / AgX / RAW px gone
+  from the ordinary rows, LUT and DCP explained). The Lang.t hints quoting old titles (SettingsAvailability: motion boost, JPEG
+  copy; DcpSettingsFragment page) and two help texts follow.
+- Grouping: «Свой баланс белого» (FULLRES / ISZ white balance) leaves «Экран камеры» for «Цвет и стиль › Тонкая настройка цвета ›
+  Для опытных», with «Источник цвета» and «Цветовой профиль (DCP)». The root keeps the owner's order («Для опытных» first,
+  P319 answer «1 нет») and its name: «Для опытных» is quoted by many hints (shade, DCG button, sheets), so it is the
+  «Расширенные» group of the task. Expert pages (SHDR, RAW, modules, diagnostics) keep their texts.
+- Tests updated on purpose: AvifSettingsTest / PhotoFormatSettingsTest titles, SettingsMenuTest's white-balance row place.
+- README: a short «Чем хороша» list (RU) + an About paragraph (EN); the GitHub «About» line itself needs the owner (no gh here).

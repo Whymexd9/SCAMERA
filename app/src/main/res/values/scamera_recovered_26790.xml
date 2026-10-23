@@ -116,7 +116,7 @@
     <string name="noise_model_export">Export noise model</string>
     <string name="noise_model_export_summary">Save the current profile to Download/SCAMERA</string>
     <string name="antibanding_hz">Lamp flicker</string>
-    <string name="antibanding_hz_summary">Long SHDR frames are timed to the lamp flicker, so they show no stripes. Auto: as the camera sees it</string>
+    <string name="antibanding_hz_summary">Long frames are timed to the lamp flicker so the photo has no stripes. Auto: as the camera detects it.</string>
     <string name="noise_model_profile_desc">How the sensor is noisy. Decides what the merge and the denoise treat as noise and what as detail. Auto: the camera\'s own profile of every frame.</string>
     <string name="wide169_desc">A 16:9 frame instead of the full sensor frame: cropped at the top and bottom.</string>
     <string name="hide_gallery_icon_desc">Removes the SGallery icon from the app list. The SCAMERA icon stays.</string>

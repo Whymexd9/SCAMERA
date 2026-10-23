@@ -5,17 +5,17 @@
     <string name="camera_error">Это устройство не поддерживает Camera2 API.</string>
 
     <string name="turn_on_grid">Сетка</string>
-    <string name="turn_on_round_edges">Включить закруглённые края</string>
+    <string name="turn_on_round_edges">Скруглённые углы</string>
     <string name="turn_on_watermark">Водяной знак</string>
     <string name="turn_on_afdata">Информация на экране</string>
     <string name="yes">Да</string>
     <string name="cancel">Отмена</string>
-    <string name="hide_gallery_icon">Скрыть иконку галереи</string>
+    <string name="hide_gallery_icon">Скрыть значок галереи</string>
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
     <string name="theme_follow_system">Как в системе</string>
     <string name="cfa">Фильтр Байера</string>
-    <string name="app_summary">RAW-камера с многокадровой обработкой SHDR</string>
+    <string name="app_summary">Камера, которая склеивает несколько RAW-кадров в одно чистое фото (SHDR)</string>
     <string name="version_title">Версия</string>
     <string name="backup">Сохранить</string>
     <string name="reset_preferences_warning">Это сбросит настройки на стандартные, продолжить?</string>
@@ -47,8 +47,8 @@
     <string name="session_on_configure_failed">"Системная ошибка конфигурации, попробуйте другой формат превью "</string>
     <string name="binning">Обрабатывать вчетверо меньшее разрешение</string>
     <string name="gallery_folders">Папки галереи</string>
-    <string name="color_method">Цветовой метод</string>
-    <string name="focus_peaking">Пик фокуса</string>
+    <string name="color_method">Источник цвета</string>
+    <string name="focus_peaking">Подсветка резкости</string>
     <string name="focus_peaking_auto">Авто</string>
     <!-- Settings sheet handles (TalkBack) -->
     <string name="sheet_handle_open">Открыть панель настроек</string>
@@ -59,7 +59,7 @@
     <string name="sheet_all_settings">Все настройки</string>
     <!-- AE metering -->
     <string name="ultrahdr_summary">В JPEG добавляется карта яркости: на HDR-экранах света ярче. Обычный экран покажет обычное фото.</string>
-    <string name="show_horizon_on_preview">Показывать горизонт в превью</string>
+    <string name="show_horizon_on_preview">Горизонт</string>
     <string name="sensor_configurations">Настройки сенсоров по модулям</string>
     <string name="sensor_configurations_summary">Уровни RAW, стабилизация, сессия и вендорные ключи каждого модуля</string>
     <string name="options">Параметры</string>
@@ -86,20 +86,20 @@
     <string name="prefs_scam_motion_on_title">Режим «Движение»</string>
     <string name="prefs_scam_motion_on_summary">Для движения: короткая выдержка и меньше кадров, чтобы объект был резким. Как значок в видоискателе.</string>
     <string name="prefs_scam_motion_screen_title">Движение</string>
-    <string name="prefs_scam_motion_screen_summary">Настройки режима «Движение»: быстрый буфер и чёткие движущиеся объекты</string>
+    <string name="prefs_scam_motion_screen_summary">Выдержка и число кадров для чётких движущихся объектов</string>
     <string name="prefs_scam_motion_shutter_title">Выдержка не длиннее</string>
-    <string name="prefs_scam_motion_shutter_summary">%s. Самая длинная выдержка в режиме «Движение». Короче — чётче движение, но шумнее (выше ISO).</string>
+    <string name="prefs_scam_motion_shutter_summary">%s. Самая длинная выдержка в режиме «Движение». Короче — чётче движение, но шумнее (камера поднимает чувствительность, ISO).</string>
     <string name="prefs_scam_motion_flicker_title">Без мерцания ламп</string>
     <string name="prefs_scam_motion_flicker_summary">Не даёт выдержке стать короче мерцания ламп, чтобы на фото не было полос.</string>
     <string name="prefs_scam_motion_frames_title">Кадров в склейке</string>
     <string name="prefs_scam_motion_frames_summary">Сколько кадров склеивать в режиме «Движение». Больше — меньше шума, но дольше; меньше — быстрее.</string>
     <string name="prefs_scam_motion_shasta_summary">Светлые кадры после нажатия в режиме «Движение»: меньше шума в тенях, но движущееся смазывается.</string>
     <string name="prefs_scam_motion_bento_summary">%s. Тёмный кадр для пересвеченных мест в режиме «Движение». Авто — только когда есть пересвет.</string>
-    <string name="prefs_scam_motion_boost_summary">В режиме «Движение» сильнее убирает призраки там, где части кадра движутся по-разному.</string>
-    <string name="prefs_scam_motion_boost_value_summary">Сила подавления призраков в режиме «Движение». Больше — меньше призраков, но шумнее; меньше — наоборот.</string>
-    <string name="prefs_scam_motion_threshold_summary">Режим «Движение»: с какого сдвига участок считается подвижным. Меньше — меньше призраков, больше — чище.</string>
-    <string name="prefs_low_light_boost_title">Яркий видоискатель в темноте</string>
-    <string name="prefs_low_light_boost_summary">В темноте видоискатель ярче, но медленнее; кадры буфера длиннее. Android 15, не в «Движении».</string>
+    <string name="prefs_scam_motion_boost_summary">В режиме «Движение» сильнее убирает двоящиеся контуры там, где части кадра движутся по-разному.</string>
+    <string name="prefs_scam_motion_boost_value_summary">Больше — меньше двоящихся контуров, но шумнее; меньше — наоборот.</string>
+    <string name="prefs_scam_motion_threshold_summary">С какого сдвига (в пикселях сенсора) участок считается движущимся. Меньше — меньше двоения, больше — меньше шума.</string>
+    <string name="prefs_low_light_boost_title">Ночной видоискатель</string>
+    <string name="prefs_low_light_boost_summary">В темноте видоискатель ярче, но обновляется реже, а кадры для снимка длиннее. Android 15, не в «Движении».</string>
     <string name="dcg14_on">DCG 14 бит: вкл</string>
     <string name="dcg14_off">DCG 14 бит: выкл</string>
     <string name="dcg14_on_toast">DCG 14 бит вкл: запрошен режим сенсора с двойным усилением, камера перезапускается</string>

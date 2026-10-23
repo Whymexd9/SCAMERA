@@ -1946,14 +1946,16 @@ public class SettingsMenuTest {
         assertTrue(PreferenceKeys.cropUpscale());
     }
     /**
-     * P223: «Поправки баланса белого» for FULLRES / ISZ in «Экран камеры», on by default. P266 (owner, 2026-10-19: no settings
+     * P223: «Поправки баланса белого» for FULLRES / ISZ, on by default; P320: «Свой баланс белого» under «Цвет и стиль» › «Тонкая
+     * настройка цвета» › «Для опытных» (a colour row, not a camera screen one). P266 (owner, 2026-10-19: no settings
      * of one meaning twice): the global «ISP-превью в FULLRES и ISZ» is gone - the modules' «Поток ISP» (Auto / On / Off) holds
      * it; a switched-off global becomes Off on the modules with a sensor mode of their own, the key goes.
      */
     @Test public void mosaicPreviewAndWhiteBalanceSwitchesSitOnTheCameraScreenGroup(){
         PreferenceScreen screen=inflate();
-        androidx.preference.PreferenceGroup view=screen.findPreference("root_view");
-        androidx.preference.TwoStatePreference wb=view.findPreference(PreferenceKeys.MOSAIC_WB_KEY);
+        androidx.preference.PreferenceGroup colour=screen.findPreference("colour_expert_category");
+        androidx.preference.TwoStatePreference wb=colour.findPreference(PreferenceKeys.MOSAIC_WB_KEY);
+        assertNull(((androidx.preference.PreferenceGroup)screen.findPreference("root_view")).findPreference(PreferenceKeys.MOSAIC_WB_KEY));
         assertNotNull(wb);assertTrue(wb.isChecked());
         assertNull("one setting for the ISP stream: the module's", screen.findPreference(PreferenceKeys.MOSAIC_ISP_PREVIEW_KEY));
         prefs.edit().putBoolean(PreferenceKeys.MOSAIC_ISP_PREVIEW_KEY,true).commit();

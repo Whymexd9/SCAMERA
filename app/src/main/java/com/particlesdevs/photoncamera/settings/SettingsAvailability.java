@@ -144,9 +144,9 @@ public final class SettingsAvailability {
         // «Порог дисперсии для усиления» is not replaced by the mode: it acts with the boost switch in effect (the mode's own in the mode) and F6
         if (key.equals("pref_scam_hybrid_boost_threshold")
                 && !(motion ? on("pref_scam_hybrid_mm_motion_boost", true) : on("pref_scam_hybrid_motion_boost", true)))
-            return motion ? Lang.t("Включите «Усиление отбраковки при неоднородном движении» на странице «Движение».",
-                    "Turn on “Stronger rejection on uneven motion” on the “Motion” page.")
-                    : Lang.t("Включите «Усиление отбраковки при неоднородном движении».", "Turn on “Stronger rejection on uneven motion”.");
+            return motion ? Lang.t("Включите «Против двоения» на странице «Движение».",
+                    "Turn on “Anti-ghosting” on the “Motion” page.")
+                    : Lang.t("Включите «Против двоения».", "Turn on “Anti-ghosting”.");
         // Settings audit 2026-10-21 («Кадры светов и теней»): the mode replaces the photo rows of the ring's frame count and of the
         // highlight / shadow switches too (MotionMode.DEFAULTS), and the frames' rows act through the switch the shot reads - the
         // mode's own while it is on (the plan and the merge read it: PreferenceKeys.hybridValue / hybridSwitch)
@@ -268,8 +268,8 @@ public final class SettingsAvailability {
         // «Формат фото»: Ultra HDR and the JPEG quality act on a JPEG, which a HEIC / WebP / AVIF shot writes only with «Также сохранять JPEG».
         if (!writesJpeg()) {
             if (key.equals("pref_jpeg_quality") || key.equals("pref_jpeg_fast_encoder"))
-                return Lang.t("Для JPEG: выберите формат JPEG или включите «Также сохранять JPEG».",
-                        "For JPEG: choose the JPEG format or turn on “Also save a JPEG”.");
+                return Lang.t("Для JPEG: выберите формат JPEG или включите «Копия в JPEG».",
+                        "For JPEG: choose the JPEG format or turn on “JPEG copy”.");
         }
         // «HEIC 10 бит» needs Android 13 and an HEVC Main10 encoder with P010 input; without them the shot is an 8-bit HEIC.
         if (key.equals("pref_heic_10bit") && heic10Unavailable != null) return heic10Unavailable;
@@ -278,13 +278,13 @@ public final class SettingsAvailability {
         if (key.equals("pref_ultrahdr_key") && !writesJpeg()) {
             final String format = photoFormat();
             if (format.equals("webp"))
-                return Lang.t("В WebP HDR не хранится: включите «Также сохранять JPEG» — HDR будет в нём.",
-                        "WebP holds no HDR: turn on “Also save a JPEG” to get it in that JPEG.");
+                return Lang.t("В WebP HDR не хранится: включите «Копия в JPEG» — HDR будет в нём.",
+                        "WebP holds no HDR: turn on “JPEG copy” to get it in that JPEG.");
             if (hdrUnavailable != null) return hdrUnavailable;
             if (format.equals("heic")) {
                 if (!on("pref_heic_10bit", false))
-                    return Lang.t("Включите «HEIC 10 бит» или «Также сохранять JPEG»: HDR хранится в 10-битном HEIC или в JPEG.",
-                            "Turn on “10-bit HEIC” or “Also save a JPEG”: HDR needs the 10-bit HEIC or a JPEG.");
+                    return Lang.t("Включите «HEIC 10 бит» или «Копия в JPEG»: HDR хранится в 10-битном HEIC или в JPEG.",
+                            "Turn on “10-bit HEIC” or “JPEG copy”: HDR needs the 10-bit HEIC or a JPEG.");
                 if (heic10Unavailable != null)
                     return Lang.t("HDR хранится только в 10-битном HEIC, а он здесь недоступен. ", "HDR needs the 10-bit HEIC, which is unavailable here. ")
                             + heic10Unavailable;

@@ -126,7 +126,7 @@ public class PhotoFormatSettingsTest {
             assertTrue(r, r.matches(".*[\\u0400-\\u04FF].*"));
         }
         assertEquals("Формат фото", ru.getString(R.string.prefs_photo_format_title));
-        assertEquals("Также сохранять JPEG", ru.getString(R.string.prefs_photo_also_jpeg_title));
+        assertEquals("Копия в JPEG", ru.getString(R.string.prefs_photo_also_jpeg_title));
         assertEquals("HEIC 10 бит", ru.getString(R.string.prefs_heic_10bit_title));
         assertEquals("10-bit HEIC", en.getString(R.string.prefs_heic_10bit_title));
         assertEquals(4, ru.getResources().getStringArray(R.array.photo_format_entries).length);

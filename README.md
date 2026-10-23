@@ -1,13 +1,26 @@
 # SCAMERA
 
-Android RAW camera with multi-frame processing.
+RAW-камера для Android, которая склеивает несколько кадров в одно чистое и детальное фото.
 
-- **SCAM Hybrid** — the default route on every phone: a zero-shutter-lag RAW burst plus a short exposure bracket, merged on the
-  GPU by a separate worker process (alignment, robust merge, highlight frames), then the WHY tone, denoise and sharpening.
-- **SCAM HDR** — the neural route on Snapdragon 8 Elite phones (NPU models), with the same capture.
-- **«Движение» (Motion)** — the frames of the moment of the press, a shutter that follows the motion in the scene and a fast series.
-- Output: JPEG (jpegli), 10-bit HEIC, AVIF, WebP, DNG and Ultra HDR gain maps; Display P3 or sRGB.
-- Per-lens modules (vendor tags, in-sensor zoom), manual controls, an in-app gallery.
+## Чем хороша
+
+- **Склейка SHDR.** Серия RAW-кадров с момента нажатия (без задержки затвора) плюс тёмные кадры для светов и светлые для
+  теней. Кадры выравниваются и склеиваются на видеокарте: меньше шума, больше деталей, света и тени не теряются, движущееся
+  почти не двоится.
+- **Тон Why, шумодав и резкость** — естественный вид снимка с мягкими светами.
+- **Режим «Движение»** — короткая выдержка и быстрая серия для детей, животных и спорта.
+- **Каждый объектив — свой модуль:** зум сенсора и полное разрешение (50 / 200 Мп) на поддерживаемых vivo, OPPO и Xiaomi,
+  свои настройки для каждой камеры.
+- **Стиль:** LUT с переключением свайпом по кадру, плёночная симуляция, фильтры на объектив, микшер и цветокоррекция,
+  тепло и оттенок прямо в видоискателе.
+- **Форматы:** JPEG, 10-битный HEIC, AVIF, WebP, RAW (DNG), HDR-фото (Ultra HDR), Display P3.
+- **Ручной режим**, своя галерея, понятные настройки: долгое нажатие на любой пункт объясняет, что он делает.
+
+## About
+
+An Android RAW camera that merges a burst of frames into one clean, detailed photo: a zero-shutter-lag RAW burst with
+highlight and shadow frames merged on the GPU, its own tone, denoise and sharpening, a Motion mode, per-lens modules with
+in-sensor zoom and 50 / 200 MP full resolution, LUTs and film simulation, JPEG / HEIC / AVIF / WebP / DNG and Ultra HDR.
 
 ## Building
 

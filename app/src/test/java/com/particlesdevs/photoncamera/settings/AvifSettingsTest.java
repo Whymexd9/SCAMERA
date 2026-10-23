@@ -266,7 +266,7 @@ public class AvifSettingsTest {
         assertEquals("Качество AVIF", ru.getString(R.string.prefs_avif_quality_title));
         assertEquals("Без потерь", ru.getString(R.string.prefs_avif_lossless_title));
         assertEquals("Глубина цвета", ru.getString(R.string.prefs_avif_depth_title));
-        assertEquals("Цветовая субдискретизация", ru.getString(R.string.prefs_avif_chroma_title));
+        assertEquals("Чёткость цвета", ru.getString(R.string.prefs_avif_chroma_title));
         assertEquals("Скорость кодирования", ru.getString(R.string.prefs_avif_speed_title));
         assertTrue(en.getString(R.string.prefs_avif_lossless_summary).contains("larger"));
         assertTrue(ru.getString(R.string.prefs_photo_format_summary).contains("AVIF"));

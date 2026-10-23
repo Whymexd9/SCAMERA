@@ -32,7 +32,7 @@
     <string name="noise_model_export">Экспорт модели шума</string>
     <string name="noise_model_export_summary">Сохранить текущий профиль в Download/SCAMERA</string>
     <string name="antibanding_hz">Мерцание ламп</string>
-    <string name="antibanding_hz_summary">Длинные кадры SHDR подстраиваются под мерцание ламп, чтобы не было полос. Авто — как видит камера</string>
+    <string name="antibanding_hz_summary">Длинные кадры подстраиваются под мерцание ламп, чтобы на фото не было полос. Авто — как определит камера.</string>
     <string name="noise_model_profile_desc">Как шумит сенсор. От этого зависит, что склейка и шумодав считают шумом, а что деталью. «Авто» — профиль самой камеры для каждого кадра.</string>
     <string name="wide169_desc">Кадр 16:9 вместо полного кадра сенсора: обрезается сверху и снизу.</string>
     <string name="hide_gallery_icon_desc">Убирает значок SGallery из списка приложений. Значок SCAMERA остаётся.</string>

@@ -24,7 +24,7 @@ public class DcpSettingsFragment extends ModuleConceptFragment {
     });
     private void choose(String id){ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putString(DcpProfiles.KEY,id).apply();render();}
     @Override protected void render(){
-        page(Lang.t(getContext(),"Матрицы DCP","DCP matrices"),ModuleRegistry.label(ModuleRegistry.active()));
+        page(Lang.t(getContext(),"Цветовой профиль","Colour profile"),ModuleRegistry.label(ModuleRegistry.active()));
         String selected=ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getString(DcpProfiles.KEY,"");
         DcpProfiles.list(requireContext()).forEach((id,label)->navigation("◉",(id.equals(selected)?"✓  ":"")+label,null,()->choose(id)));
         note(Lang.t(getContext(),"Выбирайте профиль для этого сенсора. Используются ColorMatrix, ForwardMatrix и источники освещения. Таблицы оттенков и тональные кривые DCP не применяются.","Pick a profile for this sensor. ColorMatrix, ForwardMatrix and the illuminants are used. DCP hue tables and tone curves are not applied."));
