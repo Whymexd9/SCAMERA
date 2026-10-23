@@ -350,13 +350,13 @@ public final class LiveWhyTone {
 
     /**
      * P320: the viewfinder's DCG ISO scale, by the photo's rule (ScamProcessor.dcgIsoScale): the session's resolved range over the
-     * declared one when its white is a measured clip; 1 otherwise.
+     * declared one (1 for a stream no wider than declared).
      */
     static float liveDcgIsoScale(android.hardware.camera2.CameraCharacteristics c) {
-        if (c == null || !com.particlesdevs.photoncamera.capture.VivoQcomIsz.enabled()) return 1f; // the photo's evidence rule
+        if (c == null || !com.particlesdevs.photoncamera.processing.processor.ScamProcessor.isoInflationSeen()) return 1f;
         try {
             final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels = com.particlesdevs.photoncamera.processing.RawLevels.current(c, null);
-            if (levels == null || levels.source == null || !levels.source.contains("measured clip")) return 1f;
+            if (levels == null) return 1f;
             float declaredBlack = 0f;
             final float[] black = com.particlesdevs.photoncamera.processing.RawLevels.staticBlack(c);
             if (black != null && black.length > 0) { for (float b : black) declaredBlack += b; declaredBlack /= black.length; }

@@ -28,7 +28,7 @@ public final class RawLinearity {
     static final double MIN_STEP = 1.6;
     /** The phases agree on the step within this ratio. */
     static final double PHASE_AGREEMENT = 1.3;
-    /** Counts within this ratio on either side of the knee: a step, not a slope. */
+    /** The count trends on both sides of a knee agree within this ratio: a step, not a bend of the scene's histogram. */
     static final double FLAT = 1.33;
     /** Samples a window of one phase needs to vote. */
     static final int MIN_WINDOW_SAMPLES = 400;
@@ -95,30 +95,42 @@ public final class RawLinearity {
         float b = 0f;
         if (black != null && black.length > 0) { for (float v : black) b += v; b /= black.length; }
         final float top = Math.min(white > b ? white : maxCode, maxCode);
-        final int low = (int) Math.ceil(b + 0.03 * (top - b)), high = (int) Math.floor(top - 0.03 * (top - b));
+        // P322: the range the shot occupies - above the black's noise peak (0.2 % of the range, 16 codes at least), below the clip
+        // plateau (3 %) and the sparse top (the 99.5th percentile): a dark DCG frame (the X200 Ultra's: half its samples within 60
+        // codes of the 1029 black) is judged where its pixels are, not above 3 % of the range where hardly any lie
+        final int low = (int) Math.ceil(b + Math.max(16, 0.002 * (top - b)));
+        final int clipBand = (int) Math.floor(top - 0.03 * (top - b));
+        final int high = Math.min(clipBand, percentile(hist, 0.995, clipBand));
         if (high - low < MIN_RANGE || samples < 10_000)
             return new Result(Verdict.NO_DATA, new int[0], new double[0], low, high, maxCode, samples, 0);
         final long[][] prefix = colourPrefix(hist, high);
-        final int w = Math.max(16, (high - low) / 48), step = Math.max(1, w / 4);
+        // P322: windows grow with the level (1/32 of the distance to the black, 16 codes at least, 1/48 of the range at most): a raw
+        // histogram is dense near the black and sparse above, so one window size for the whole range left the dense codes in a
+        // window or two
         // candidate codes; a run of them (gaps up to 2 windows) is one knee at its strongest step
         List<int[]> found = new ArrayList<>();      // {code, ratio x1000}
-        int runBest = -1, runLast = -1; double runScore = 0;
+        int runBest = -1, runLast = -1, runW = 16; double runScore = 0;
         long decided = 0, scanned = 0;
-        for (int k = low + 2 * w; k <= high - 2 * w; k += step) {
+        final int range = high - low;
+        int k = low + 2 * window(low, b, range);
+        while (k + 2 * window(k, b, range) <= high) {
+            final int w = window(k, b, range), step = Math.max(1, w / 4);
             final double score = step(prefix, k, w);
             long bin = 0;
-            for (long[] pre : prefix) bin += count(pre, k - step / 2, k - step / 2 + step);
+            for (long[] pre : prefix) bin += count(pre, k, k + step);
             scanned += bin;
             if (score >= 0) decided += bin;
-            if (score <= 0) continue;
-            if (runBest >= 0 && k - runLast > 2 * w) {
-                found.add(knee(prefix, low, runBest, w));
-                runBest = -1;
+            if (score > 0) {
+                if (runBest >= 0 && k - runLast > 2 * w) {
+                    found.add(knee(prefix, low, runBest, runW));
+                    runBest = -1;
+                }
+                if (runBest < 0 || score > runScore) { runBest = k; runScore = score; runW = w; }
+                runLast = k;
             }
-            if (runBest < 0 || score > runScore) { runBest = k; runScore = score; }
-            runLast = k;
+            k += step;
         }
-        if (runBest >= 0) found.add(knee(prefix, low, runBest, w));
+        if (runBest >= 0) found.add(knee(prefix, low, runBest, runW));
         final double coverage = scanned > 0 ? (double) decided / scanned : 0;
         if (found.isEmpty())
             return new Result(coverage >= MIN_COVERAGE ? Verdict.LINEAR : Verdict.NO_DATA, new int[0], new double[0], low, high, maxCode,
@@ -146,6 +158,28 @@ public final class RawLinearity {
     }
 
     private static long at(int[] h, int c) { return c < h.length ? h[c] : 0; }
+
+    /**
+     * P322: the knee test's window at code {@code k}: 1/32 of its distance to the black {@code b}, at most {@code range} / 48, in
+     * whole multiples of 16 codes, so a stream whose upper codes come in steps of 16 (a DCG low-gain read x16: the X200 Ultra's
+     * above black + 959) puts the same number of used codes in every window instead of a false 4 : 5 step.
+     */
+    static int window(int k, float b, int range) {
+        return 16 * Math.max(1, Math.min(range / 48 / 16, Math.round((k - b) / 512f)));
+    }
+
+    /** The code under which a share {@code q} of all phases' samples below {@code below} lies (the clip plateau left out). */
+    private static int percentile(int[][] hist, double q, int below) {
+        long total = 0;
+        for (int[] h : hist) for (int c = 0; c < Math.min(below, h.length); c++) total += h[c];
+        final long target = (long) Math.ceil(q * total);
+        long run = 0;
+        for (int c = 0; c < below; c++) {
+            for (int[] h : hist) run += at(h, c);
+            if (run >= target) return c;
+        }
+        return 65535;
+    }
 
     /** L1 distance of two histograms normalised to their totals. */
     private static double distance(int[] a, int[] b) {
@@ -176,10 +210,13 @@ public final class RawLinearity {
             long[] pre = prefix[c];
             long l2 = count(pre, k - 2 * w, k - w), l1 = count(pre, k - w, k), r1 = count(pre, k, k + w), r2 = count(pre, k + w, k + 2 * w);
             if (l1 < MIN_WINDOW_SAMPLES || r1 < MIN_WINDOW_SAMPLES || l2 < MIN_WINDOW_SAMPLES / 2 || r2 < MIN_WINDOW_SAMPLES / 2) continue;
-            if (!(l1 <= l2 * FLAT && l2 <= l1 * FLAT && r2 <= r1 * FLAT && r1 <= r2 * FLAT)) continue; // the scene's slope: unknown
+            // P322: the counts may fall steeply (a dark frame's tail): the step is the count right of k over the left count
+            // carried on by the local trend (the geometric mean of the trends on both sides); a trend that bends: unknown
+            final double tIn = (double) l1 / l2, tOut = (double) r2 / r1;
+            if (Math.max(tIn, tOut) > Math.min(tIn, tOut) * FLAT) continue;
             known++;
             if (c == 0) green = true;
-            double r = (double) r1 / l1;
+            double r = r1 / (l1 * Math.sqrt(tIn * tOut));
             if (r < MIN_STEP) without = true;
             else { min = Math.min(min, r); max = Math.max(max, r); }
         }
@@ -196,8 +233,9 @@ public final class RawLinearity {
     private static double ratio(long[][] prefix, int k, int w) {
         List<Double> r = new ArrayList<>();
         for (long[] pre : prefix) {
-            long l1 = count(pre, k - w, k), r1 = count(pre, k, k + w);
-            if (l1 >= MIN_WINDOW_SAMPLES && r1 >= MIN_WINDOW_SAMPLES) r.add((double) r1 / l1);
+            long l2 = count(pre, k - 2 * w, k - w), l1 = count(pre, k - w, k), r1 = count(pre, k, k + w), r2 = count(pre, k + w, k + 2 * w);
+            if (l1 >= MIN_WINDOW_SAMPLES && r1 >= MIN_WINDOW_SAMPLES && l2 > 0 && r2 > 0)
+                r.add(r1 / (l1 * Math.sqrt(((double) l1 / l2) * ((double) r2 / r1))));
         }
         r.sort(Double::compare);
         return r.isEmpty() ? 1 : r.get(r.size() / 2);

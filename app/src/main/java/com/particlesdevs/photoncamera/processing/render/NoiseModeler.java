@@ -24,9 +24,11 @@ public class NoiseModeler {
     }
 
     /**
-     * P320: {@code isoScale} > 1 (a DCG mode's Parameters.dcgIsoScale: the X300 Ultra reports ISO x8 for the gain its photons
-     * saw) evaluates a chosen profile and the no-profile fallback at ISO / isoScale; the HAL's own profile is used as reported
-     * (its normalisation for the widened stream is unverified). 1 (or less, or not a number) = the reported ISO, as before.
+     * P320: {@code isoScale} > 1 (a DCG mode's Parameters.dcgIsoScale: the X300 Ultra reports ISO x8, the X200 Ultra x16 for the
+     * gain its photons saw) evaluates a chosen profile and the no-profile fallback at ISO / isoScale. P322: the HAL's own profile
+     * is keyed by the same inflated ISO (the X200 Ultra's DCG bursts: its slope 14 - 19x, its offset 55 - 100x the measured ones),
+     * so it is taken as slope / isoScale, offset / isoScale^2 - a variance linear and quadratic in the gain. 1 (or less, or not a
+     * number) = the reported ISO and profile, as before.
      */
     public NoiseModeler(Pair<Double,Double>[] inModel, Integer analogISO, Integer ISO, int bayer, float isoScale) {
         AnalogueISO = analogISO;
@@ -41,7 +43,9 @@ public class NoiseModeler {
         // significance gate in align.glsl.
         modelIso1 = modelIso(ISO, this.isoScale);
         if (this.isoScale > 1f) Log.i(TAG, "DCG ISO x" + this.isoScale + ": a chosen profile / the fallback at ISO " + modelIso1
-                + " (reported " + ISO + ")" + (inModel != null && inModel.length > 0 ? ", the HAL profile as reported" : ""));
+                + " (reported " + ISO + ")" + (inModel != null && inModel.length > 0 ? ", the HAL profile / x" + this.isoScale
+                + " (slope), / x" + (this.isoScale * this.isoScale) + " (offset)" : ""));
+        if (this.isoScale > 1f && inModel != null && inModel.length > 0) inModel = scaledProfile(inModel, this.isoScale);
 
         NoiseModelProfile profile = null;
         try {
@@ -99,6 +103,14 @@ public class NoiseModeler {
         Log.d(TAG, "ComputedNoiseModel2->" + computeModel[2]);
     }
 
+
+    /** P322: a HAL profile keyed by an ISO {@code scale} times the gain: slope / scale, offset / scale^2. */
+    static Pair<Double, Double>[] scaledProfile(Pair<Double, Double>[] in, float scale) {
+        @SuppressWarnings("unchecked") Pair<Double, Double>[] out = new Pair[in.length];
+        for (int i = 0; i < in.length; i++)
+            out[i] = in[i] == null ? null : new Pair<>(in[i].first / scale, in[i].second / ((double) scale * scale));
+        return out;
+    }
 
     /** P320: the ISO a chosen profile / the fallback reads: the reported ISO over the scale (> 1), at least 1; else the ISO itself. */
     static int modelIso(int iso, float isoScale) {

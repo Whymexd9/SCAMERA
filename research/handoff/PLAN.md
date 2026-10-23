@@ -7138,3 +7138,26 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   timeout 60 min, the dead CodeQL workflow removed.
 - Open: a phone DCG burst (X300 Ultra / 15 Ultra / Pixel) for the knee, the zones and the ISO scale; the 15 Ultra's ISO scale (its
   white is a guess, no scale applied); the viewfinder's noise clamp still uses one curve; the round-4 tensor floor (sabre61 off only).
+
+### P322 - DCG shadows: the X200 Ultra's DCG frames detected by their data, the HAL noise profile scaled by the ISO inflation, the linearity proof on dark frames (owner, 2026-10-23: «Вот такой результат с DCG, исправь, везде в тенях артефакты/пастеризация . Займись этим», the X200 Ultra bursts scam_burst-20261023-122855/122922 + log, then the X300 Ultra log of 12:00-12:11): DONE in code, not device-tested.
+- Evidence (X200 Ultra camera 3 bursts, NCH v12): 14-bit codes, black ~1028 (dynamic), clip 16368; HCG up to black + 959 at 1 DN,
+  above it LCG x16 (codes in steps of 16), fused linearly (histogram trend ratio 1.00 across the transition, no knee). Temporal
+  variance ~12 DN^2 at the black, ~4270 at ~1900 DN, ~23800 at ~3800 DN: two zones. Reported ISO x16 (floor 1144 against 72), and
+  the HAL SENSOR_NOISE_PROFILE is keyed by that ISO: 14-19x the measured slope, 55-256x the offset. The shot was not taken as DCG
+  (Dcg14Mode.frames required the switch), so: brackets planned, one noise line, the worker's check clamped at 1/16, the denoise
+  model far too noisy (shadows smeared into flat steps), WHY nf=0 / gainClamp=1 (dark). The X300 Ultra log (P321 build) showed its
+  tele DCG mode 20 at 14 bit / white 16383 with dcg(isoScale=1.0) (the «measured clip» gate) and linearity 0 % decided.
+- Dcg14Mode.frames: also a stream whose resolved levels are >= 14 bits under a narrower declared depth (no switch needed).
+- ScamProcessor.dcgIsoScale / LiveWhyTone.liveDcgIsoScale: the range ratio for every DCG stream (the measured-clip and X300-only
+  gates removed) except the Xiaomi 15 Ultra (isoInflationSeen: its ISO was never seen inflated); X200 Ultra 16, X300 Ultra main
+  8, tele 16.
+- NoiseModeler: with isoScale > 1 the HAL profile is taken as slope / s, offset / s^2 (scaledProfile); ScamHybridBurst.noiseFor
+  scales the per-frame header values the same way.
+- RawLinearity: range from black + max(16, 0.2 %) to min(clip band, 99.5th percentile); the knee test corrects for the local count
+  trend (a dark frame's falling tail); windows 1/32 of the distance to the black, at most 1/48 of the range, in multiples of 16
+  codes (an LCG x16 stream gave a false x1.6 knee with free-size windows). X200 Ultra bursts: 122855 LINEAR on all 10 frames
+  (89-94 % decided), 122922 normals NO_DATA (80 % decided, nothing changed), brackets LINEAR; synthetic tests 7/7.
+- Tests: DcgGatesTest (X200 Ultra x16), NoiseModelerDcgTest (scaled HAL profile); CI list 1698/1698, UI language + settings PASS.
+- Open: the OPPO X7U DCG (Meitu package) is not detected by the depth rule (declared white 16383 = 14 bit) - needs a burst / DNG;
+  the X300 Ultra tele plain mode measured 0.035-0.076 x its HAL model in the noise check (clamped at 1/16) - a plain-mode issue,
+  not changed here.

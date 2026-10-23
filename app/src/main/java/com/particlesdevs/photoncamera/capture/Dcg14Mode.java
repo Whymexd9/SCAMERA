@@ -92,15 +92,18 @@ public final class Dcg14Mode {
 
     /**
      * P320: this camera's RAW frames are DCG now (one exposure, high- and low-gain reads fused), shown by the data, not by the
-     * switch alone: the switch's routes once the session's samples resolve the mode's 14 bits (a HAL that ran its plain mode under
-     * the request - the 15 Ultra's «NOT the DCG mode», the X200 Ultra's routes that never delivered - stays 10-bit and plain), or
-     * the Pixel 10 Pro's main. For the processing gates (no exposure brackets, the histogram's linearity proof, two noise zones),
-     * never for session keys.
+     * switch alone: a stream the session's levels resolve wider than its declared depth (the samples or the dynamic black prove
+     * 14 bits under a declared 1023: the vivo DCG modes, whatever turned them on - P322, the owner's X200 Ultra bursts of
+     * 2026-10-23 12:28: 14-bit codes, black 1029, clip 16368, two noise zones, no switch), the switch's routes once their 14 bits
+     * are resolved (a HAL that ran its plain mode under the request stays plain), or the Pixel 10 Pro's main. For the processing
+     * gates (no exposure brackets, the histogram's linearity proof, two noise zones, the ISO scale), never for session keys.
      */
     public static boolean frames(@Nullable CameraCharacteristics c) {
         try {
             if (PixelPro10.dcgMain(c)) return true;
-            return active(c) && com.particlesdevs.photoncamera.processing.RawLevels.current(c, null).bits >= 14;
+            final com.particlesdevs.photoncamera.processing.RawLevels.Levels l = com.particlesdevs.photoncamera.processing.RawLevels.current(c, null);
+            // 14 bits at least: a 12-bit stream under a declared 10 was never seen as a DCG fusion
+            return l.bits >= 14 && (l.bits > l.declaredBits || active(c));
         } catch (RuntimeException e) {
             return false;
         }

@@ -22,6 +22,8 @@ public class DcgGatesTest {
     /** X300 Ultra DCG main: (8694 - 1030.75) / (1023 - 64) = 7.99 -> 8, the ISO 1336 given for 167 asked (HybridPlan P163). */
     @Test public void theIsoScaleIsTheRangeOverTheDeclaredRange() {
         assertEquals(8f, com.particlesdevs.photoncamera.processing.processor.ScamProcessor.isoScale(8694 - 1030.75, 1023 - 64), 0f);
+        // P322: X200 Ultra DCG main (bursts of 2026-10-23): (16368 - 1028) / (1023 - 64) = 16.0, its ISO floor 1144 for 72
+        assertEquals(16f, com.particlesdevs.photoncamera.processing.processor.ScamProcessor.isoScale(16368 - 1028, 1023 - 64), 0f);
         assertEquals("a plain stream", 1f, com.particlesdevs.photoncamera.processing.processor.ScamProcessor.isoScale(959, 959), 0f);
         assertEquals("no range", 1f, com.particlesdevs.photoncamera.processing.processor.ScamProcessor.isoScale(0, 959), 0f);
         assertEquals("not near a power of two", 3f, com.particlesdevs.photoncamera.processing.processor.ScamProcessor.isoScale(2877, 959), 0f);

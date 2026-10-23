@@ -1212,15 +1212,15 @@ public class ScamProcessor extends ProcessorBase {
      * HAL's noise profile describes the companded codes then; the merge measures the shot's noise itself (DCG bursts: two zones).
      */
     /**
-     * P320: the factor a DCG mode's ISO carries above the gain its photons saw, from the levels: the stream's range against the
-     * declared range when the white is a measured clip (RawLevels «white = measured clip»), snapped to a power of two within
-     * 15 %; 1 otherwise (a guessed white proves nothing). The X300 Ultra's DCG main: 8694 - 1030.75 over 1023 - 64 = 8, as the
-     * owner's log had it (ISO 1336 given for 167 asked, HybridPlan P163).
+     * P320 / P322: the factor a DCG mode's ISO carries above the gain its photons saw: the stream's range against the declared
+     * range, snapped to a power of two within 15 % (1 for a stream no wider than declared). Seen twice: the X300 Ultra's DCG main
+     * (8694 - 1030.75 over 1023 - 64 = 8; ISO 1336 given for 167 asked, HybridPlan P163) and the X200 Ultra's DCG main (16383 -
+     * 1028 over 959 = 16: its ISO floor 1144 against the plain mode's 72, the HAL noise profile 14 - 19x the measured slope).
      */
     static float dcgIsoScale(Parameters p, CameraCharacteristics c) {
-        if (p == null || p.levelSource == null || !p.levelSource.contains("measured clip") || c == null) return 1f;
-        if (!com.particlesdevs.photoncamera.capture.VivoQcomIsz.enabled()) {
-            Log.i("SCAM_HDR", "DCG ISO scale: not applied (an inflated ISO was seen on the X300 Ultra's DCG modes only)");
+        if (p == null || c == null) return 1f;
+        if (!isoInflationSeen()) {
+            Log.i("SCAM_HDR", "DCG ISO scale: not applied (an inflated ISO was seen on the vivo DCG modes only)");
             return 1f;
         }
         final Integer declaredWhite = c.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
@@ -1238,6 +1238,11 @@ public class ScamProcessor extends ProcessorBase {
     }
 
     /** P320: range over declared range, a power of two when within 15 % of one (else 1 decimal); 1 below x1.5. */
+    /** P322: the phones whose DCG ISO was seen inflated by the range (vivo X300 / X200 Ultra), not the Xiaomi 15 Ultra's route. */
+    public static boolean isoInflationSeen() {
+        return !com.particlesdevs.photoncamera.capture.XiaomiDcg.device();
+    }
+
     public static float isoScale(double range, double declaredRange) {
         if (!(range > 0) || !(declaredRange > 0)) return 1f;
         final double r = range / declaredRange;

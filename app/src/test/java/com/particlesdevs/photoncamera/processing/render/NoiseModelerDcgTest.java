@@ -13,8 +13,8 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * P320: a DCG mode reports its ISO times its range scale (the X300 Ultra's DCG main: ISO 1336 for the gain of 167, x8), so a
- * chosen noise profile and the no-profile fallback, both keyed by ISO, are evaluated at ISO / dcgIsoScale; the HAL's own
- * profile is used as reported. Parameters.applyDcgIsoScale rebuilds the model once the scale is known (after
+ * chosen noise profile and the no-profile fallback, both keyed by ISO, are evaluated at ISO / dcgIsoScale; P322: the HAL's own
+ * profile, keyed by the same ISO, is taken as slope / scale, offset / scale^2. Parameters.applyDcgIsoScale rebuilds the model once the scale is known (after
  * FillDynamicParameters), idempotently, and leaves every other shot's model as it was.
  */
 @RunWith(RobolectricTestRunner.class)
@@ -50,12 +50,18 @@ public class NoiseModelerDcgTest {
         assertSameModel(reported, new NoiseModeler(null, 100, 1336, 0, 1f));
     }
 
-    @Test @SuppressWarnings("unchecked") public void halProfileIsUsedAsReported() {
+    @Test @SuppressWarnings("unchecked") public void halProfileIsScaledLikeItsIso() {
         final Pair<Double, Double>[] hal = new Pair[]{new Pair<>(2e-4, 4e-7), new Pair<>(1.5e-4, 3e-7), new Pair<>(1.7e-4, 3.4e-7),
                 new Pair<>(2.5e-4, 5e-7)};
+        final Pair<Double, Double>[] scaled = NoiseModeler.scaledProfile(hal, 8f);
+        assertEquals(4, scaled.length);
+        assertEquals(2e-4 / 8, scaled[0].first, 1e-15);
+        assertEquals(4e-7 / 64, scaled[0].second, 1e-18);
+        assertEquals("the input is left as it was", 2e-4, hal[0].first, 0);
         final NoiseModeler plain = new NoiseModeler(hal, 100, 1336, 0), dcg = new NoiseModeler(hal, 100, 1336, 0, 8f);
-        assertSameModel(plain, dcg);
-        assertEquals(1.6e-4, dcg.baseModel[1].first, 1e-12);
+        assertSameModel(new NoiseModeler(scaled, 100, 1336, 0), dcg);
+        assertEquals(1.6e-4, plain.baseModel[1].first, 1e-12);
+        assertEquals(1.6e-4 / 8, dcg.baseModel[1].first, 1e-12);
     }
 
     @Test public void parametersRebuildTheModelOnlyForADcgShotWithAScale() {

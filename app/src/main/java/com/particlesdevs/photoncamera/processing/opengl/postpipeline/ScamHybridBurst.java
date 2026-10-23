@@ -429,6 +429,8 @@ public final class ScamHybridBurst implements ScamTransport {
      */
     private float[] noiseFor(ImageFrame frame) throws IOException {
         float slope = frame.noiseSlope, offset = frame.noiseOffset;
+        // P322: a DCG frame's HAL profile is keyed by its inflated ISO (NoiseModeler.scaledProfile; X200 Ultra x16)
+        if (dcgIsoScale > 1f) { slope /= dcgIsoScale; offset /= dcgIsoScale * dcgIsoScale; }
         com.particlesdevs.photoncamera.processing.render.NoiseModelProfile profile =
                 com.particlesdevs.photoncamera.processing.render.NoiseModelProfile.byId(PreferenceKeys.getNoiseModelProfileId());
         if (profile != null) {
