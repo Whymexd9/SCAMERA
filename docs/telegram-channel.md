@@ -61,7 +61,7 @@ write `/here` in the topic that should get the builds.
 |---|---|
 | `/status` | settings and your numeric id |
 | `/on`, `/off` | auto-posting of new builds (`/post` works either way) |
-| `/post`, `/post 30830` | post the latest successful `main` build, or a given build (artifacts are kept 90 days); 1–3 min |
+| `/post`, `/post 30830` | post the latest successful `main` build, or a given build (artifacts are kept 3 days); 1–3 min |
 | `/here` | in a group or one of its topics: post builds there too (adds a place, up to 5; the same place again only renames it) |
 | `/where`, `/forget 2` | the numbered list of places / remove place 2 |
 | `/commits on\|off`, `/sha on\|off` | the changelog, SHA-256 in the caption |

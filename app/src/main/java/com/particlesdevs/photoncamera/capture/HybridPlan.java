@@ -119,14 +119,27 @@ public final class HybridPlan {
     public static HybridPlan build(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics, ExposureLimits limits) {
         boolean dcg;
         try {
-            dcg = Dcg14Mode.active(characteristics);
+            dcg = Dcg14Mode.frames(characteristics);
         } catch (RuntimeException e) {
             dcg = false;
         }
-        return build(nShutterNs, nIso, clipFraction, characteristics, limits, dcg);
+        return build(nShutterNs, nIso, clipFraction, characteristics, limits, dcg, dcg && Dcg14Mode.gainFloor(characteristics));
+    }
+
+    /** As below with the X300 Ultra's DCG gain floor whenever {@code dcg} (the tests' DCG session). */
+    static HybridPlan build(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics, ExposureLimits limits,
+                            boolean dcg) {
+        return build(nShutterNs, nIso, clipFraction, characteristics, limits, dcg, dcg);
     }
 
     /**
+     * {@code dcg}: the shot's frames come from a DCG sensor mode (Dcg14Mode.active). P320 (owner, 2026-10-23: «с DCG света и тени
+     * должны тянуться так же хорошо как с применением сверхкороткого и длинного кадра, т.е. ему по идее они не нужны»; DCG rules:
+     * no exposure bracketing by default, short frames add noise and motion for nothing): one DCG exposure holds the high- and the
+     * low-gain read, so the plan takes no Shasta frames and Bento only where the buffered DCG frame itself is measured to clip
+     * («Всегда» reads as «Авто»): the X300 Ultra's DCG main still clipped a window (below), so «the highlights are in the frame»
+     * is checked per shot, never assumed. The N frames are equal exposures: they average noise, not dynamic range.
+     * <p>
      * {@code gainFloorAtN}: the HAL gives no gain below the N frames' (P163, the X300 Ultra's «DCG 14 бит» session, owner's log
      * 2026-10-16 14:49: the main camera's DCG mode answered ISO 1336 to every request of ISO 167, the AE itself sat at 1339
      * where the plain mode had ISO 179 a few seconds before; the three ultrashort frames came at x0.998 of N, merged as N, and
@@ -134,7 +147,7 @@ public final class HybridPlan {
      * shutter, which the DCG mode honours to the nanosecond.
      */
     static HybridPlan build(long nShutterNs, int nIso, float clipFraction, CameraCharacteristics characteristics, ExposureLimits limits,
-                            boolean gainFloorAtN) {
+                            boolean dcg, boolean gainFloorAtN) {
         Range<Long> times = capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE), limits == null ? Long.MAX_VALUE : limits.shutterCap());
         Range<Integer> isos = capped(characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE), limits == null ? Integer.MAX_VALUE : limits.isoCap());
         if (times == null || isos == null || nShutterNs <= 0 || nIso <= 0)
@@ -147,7 +160,7 @@ public final class HybridPlan {
         // auto (its forced Bento ran on masks of 0.001-0.01 % of the frame: ~130 ms a shot with nothing to replace)
         // P79: the Redmi Note 11 Pro as well (3 of its 17 frames went through every GPU pass with weight 0: "would fall back: not
         // enough clipping" in each of the owner's shots).
-        final int bento = bentoMode() == 2 && (DeviceDefaults.pixel7() || DeviceDefaults.redmiNote11Pro()) ? 1 : bentoMode();
+        final int bento = bentoMode() == 2 && (dcg || DeviceDefaults.pixel7() || DeviceDefaults.redmiNote11Pro()) ? 1 : bentoMode();
         if (bento == 2 || (bento == 1 && clipFraction > bentoTriggerClip())) {
             final double factor = ultrashortFactor(), target = n / factor;
             final int floor = gainFloorAtN ? Math.max(isos.getLower(), nIso) : isos.getLower();
@@ -157,10 +170,11 @@ public final class HybridPlan {
             if (ratio < 0.5) for (int i = bentoFrames(); i > 0; i--) out.add(new Request(ImageFrame.CaptureRole.EXTRA_SHORT, ns, iso, ratio));
             else why.append(" us skipped (sensor floor)");
             if (gainFloorAtN) why.append(" DCG: ultrashort by the shutter");
-        } else why.append(bento == 0 ? " bento off" : String.format(Locale.ROOT, " no clipping (%.4f)", clipFraction));
+        } else why.append(bento == 0 ? " bento off" : String.format(Locale.ROOT, " no clipping (%.4f)%s", clipFraction,
+                dcg ? " DCG: highlights kept in the frame" : ""));
         // Bracketed (Shasta): gain first at the N shutter (no extra motion blur), the shutter lengthens only beyond the sensor's
-        // gain range, within the handheld cap.
-        final int count = shastaEnabled() ? bracketCount() : 0;
+        // gain range, within the handheld cap. Never for DCG (above): its high-gain read holds the shadows.
+        final int count = shastaEnabled() && !dcg ? bracketCount() : 0;
         if (count > 0) {
             final double ev = bracketEv(), target = n * Math.pow(2, ev);
             int iso = (int) Math.max(isos.getLower(), Math.min(isos.getUpper(), Math.round(target / nShutterNs)));
@@ -174,7 +188,7 @@ public final class HybridPlan {
             else if (ratio < 1.2) why.append(String.format(Locale.ROOT, " brackets skipped (ratio %.2f)", ratio));
             else for (int i = 0; i < count; i++) out.add(new Request(ImageFrame.CaptureRole.LONG, ns, iso, ratio));
             if (sMotionCapNs > 0) why.append(String.format(Locale.ROOT, " HAL motion: shutter cap %.1fms", handheldCap(nShutterNs, sMotionCapNs) / 1e6));
-        } else why.append(" shasta off");
+        } else why.append(dcg ? " DCG: no shasta" : " shasta off");
         // Nothing to add after the shutter: one more frame at N keeps the capture path uniform.
         if (out.isEmpty()) out.add(new Request(ImageFrame.CaptureRole.NORMAL, nShutterNs, nIso, 1.0));
         String description = String.format(Locale.ROOT, "hybrid plan: N=%.3fms*ISO%d clip=%.4f requests=%s%s",
@@ -242,10 +256,30 @@ public final class HybridPlan {
      */
     public static HybridPlan manualLong(long shutterNs, int iso, float clipFraction, CameraCharacteristics characteristics,
                                         ExposureLimits limits) {
+        boolean dcg;
+        try {
+            dcg = Dcg14Mode.frames(characteristics);
+        } catch (RuntimeException e) {
+            dcg = false;
+        }
+        return manualLong(shutterNs, iso, clipFraction, characteristics, limits, dcg, dcg && Dcg14Mode.gainFloor(characteristics));
+    }
+
+    static HybridPlan manualLong(long shutterNs, int iso, float clipFraction, CameraCharacteristics characteristics,
+                                 ExposureLimits limits, boolean dcg) {
+        return manualLong(shutterNs, iso, clipFraction, characteristics, limits, dcg, dcg);
+    }
+
+    /**
+     * P320: {@code dcg} (see {@link #build}): no Bento forced by the long shutter and no Shasta - the DCG frames are N exposures
+     * only unless the buffered DCG frame measurably clips.
+     */
+    static HybridPlan manualLong(long shutterNs, int iso, float clipFraction, CameraCharacteristics characteristics,
+                                 ExposureLimits limits, boolean dcg, boolean gainFloorAtN) {
         List<Request> bento = new ArrayList<>(), longs = new ArrayList<>();
         String extrasText;
         try {
-            HybridPlan extras = build(shutterNs, iso, Math.max(clipFraction, 1f), characteristics, limits);
+            HybridPlan extras = build(shutterNs, iso, dcg ? clipFraction : Math.max(clipFraction, 1f), characteristics, limits, dcg, gainFloorAtN);
             for (Request r : extras.requests) {
                 if (r.role == ImageFrame.CaptureRole.LONG) longs.add(r);
                 else if (r.role != ImageFrame.CaptureRole.NORMAL) bento.add(r);

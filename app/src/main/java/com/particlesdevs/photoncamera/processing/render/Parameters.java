@@ -46,6 +46,19 @@ public class Parameters {
      * any other shot; the frames the shot asked for (0: not FULLRES).
      */
     public int fullResSeries, fullResRequested;
+    /** P320: the frames come from a DCG sensor mode (one exposure, high- and low-gain reads fused): see ScamProcessor.dcgLinearity. */
+    public boolean dcgShot;
+    /**
+     * P320: how many times the ISO a DCG mode reports exceeds the gain its photons saw: the stream's range against the declared
+     * one when the white is a measured clip (X300 Ultra DCG: (8694 - 1030.75) / (1023 - 64) = 8, the 1336-for-167 ISO of the
+     * owner's log, HybridPlan P163); 1 = not a DCG shot or not known. ISO-keyed noise and night rules divide by it.
+     */
+    public float dcgIsoScale = 1f;
+    /**
+     * P320: the DCG shot's noise the merge measured on its own frames (worker «HYBRID NOISE CHECK DCG»), normalised units:
+     * {slope, high-gain offset, low-gain offset, knee}; var = slope x + (x < knee ? hcg : lcg). Null: not measured.
+     */
+    public float[] dcgNoise;
     private static final String TAG = "Parameters";
     private int analogIso;
     public int iso;
@@ -171,6 +184,11 @@ public class Parameters {
             defaultValue = -1, min = -1, max = 65535, step = 1,
             description = "Белый уровень RAW вручную, в единицах RAW этого модуля; Авто — от камеры и по отсчётам кадра. Больше — снимок темнее; меньше — света выгорают раньше.")
     int whiteLevelOverride;
+    /** P320: the camera's declared white of this frame (the session's measured clip belongs to that camera only). */
+    int declaredWhite;
+    /** P320: the module's hand-set levels are in effect (never on a DCG frame: they are the plain mode's). */
+    boolean whiteOverride() { return whiteLevelOverride >= 0 && !dcgShot; }
+    boolean blackOverride() { return blackLevelOverride >= 0 && !dcgShot; }
 
     @Tunable(title = "Disable front mirror", category = "Parameters", defaultValue = 0, min = 0, max = 1, step = 1,
             description = "Фото с фронтальной камеры сохраняются без зеркального отражения, как видит камера.")
@@ -294,6 +312,17 @@ public class Parameters {
         //hotPixels = ScameraApp.getCameraFragment().mHotPixelMap;
     }
 
+    /**
+     * P320: rebuilds the noise model of a DCG shot at ISO / dcgIsoScale (NoiseModeler.withIsoScale: a chosen profile and the
+     * no-profile fallback read the gain the photons saw, the HAL profile stays as reported). dcgIsoScale is known only after
+     * FillDynamicParameters (ScamProcessor.dcgLinearity), so this runs right after it is set; a no-op for any other shot, a
+     * scale <= 1 or no model, and idempotent (the rebuild always starts from the reported ISO).
+     */
+    public void applyDcgIsoScale() {
+        if (!dcgShot || !(dcgIsoScale > 1f) || noiseModeler == null) return;
+        noiseModeler = noiseModeler.withIsoScale(dcgIsoScale);
+    }
+
     public void FillDynamicParameters(CaptureResult result, CaptureRequest request, int ISO) {
         // Selection may change the reference after the first metadata pass.
         // Missing tags must not retain another frame's dynamic calibration.
@@ -301,6 +330,7 @@ public class Parameters {
         hasGainMap = false;
         Integer staticWhite = CaptureController.mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
         if (staticWhite != null) whiteLevel = staticWhite;
+        declaredWhite = staticWhite == null ? 0 : staticWhite;
         Integer sensivity = result.get(CaptureResult.SENSOR_SENSITIVITY);
         if (sensivity == null) {
             sensivity = request.get(CaptureRequest.SENSOR_SENSITIVITY);
@@ -404,9 +434,15 @@ public class Parameters {
         usedDynamic = levels.dynamicBlack;
         levelBits = levels.bits;
         levelSource = levels.source;
-        if (whiteLevelOverride >= 0) whiteLevel = whiteLevelOverride;
-        if (blackLevelOverride >= 0) {
-            for (int i = 0; i < 4; i++) blackLevel[i] = blackLevelOverride;
+        // P320: a module's hand-set levels are the plain mode's; a DCG frame keeps the levels its own data resolved
+        if (dcgShot && (whiteLevelOverride >= 0 || blackLevelOverride >= 0)) {
+            Log.i(TAG, "RAW levels: DCG frame, the module's level overrides (white " + whiteLevelOverride + ", black "
+                    + blackLevelOverride + ") are the plain mode's and are not applied");
+        } else {
+            if (whiteLevelOverride >= 0) whiteLevel = whiteLevelOverride;
+            if (blackLevelOverride >= 0) {
+                for (int i = 0; i < 4; i++) blackLevel[i] = blackLevelOverride;
+            }
         }
         Log.i(TAG, "RAW levels: " + levels + (whiteLevelOverride >= 0 ? ", white override " + whiteLevelOverride : "")
                 + (blackLevelOverride >= 0 ? ", black override " + blackLevelOverride : ""));
@@ -448,7 +484,7 @@ public class Parameters {
      */
     public void refineBlackLevel(java.nio.ByteBuffer buffer, int width, int height) {
         if (buffer == null || width < 128 || height < 128) return;
-        final boolean floorOn = blackLevelOverride < 0 && PreferenceKeys.isRawBlackFromData();
+        final boolean floorOn = !blackOverride() && PreferenceKeys.isRawBlackFromData();
         // Same frame again (SCAM re-reads the reference metadata): reuse what it showed.
         if (buffer == blackFloorSource) {
             widenToSamples(blackFloorMax, blackFloorLow);
@@ -544,7 +580,7 @@ public class Parameters {
      * sits on the 14-bit pedestal): black and white rescaled to that depth (the user's overrides kept). True when changed.
      */
     boolean widenToSamples(int secondMax, float lowestBlock) {
-        if (whiteLevelOverride >= 0 || secondMax <= whiteLevel || !com.particlesdevs.photoncamera.processing.RawLevels.wideEnabled())
+        if (whiteOverride() || secondMax <= whiteLevel || !com.particlesdevs.photoncamera.processing.RawLevels.wideEnabled())
             return false;
         final int from = levelBits > 0 ? levelBits : com.particlesdevs.photoncamera.processing.RawLevels.bitsOfWhite(whiteLevel);
         float black = Float.MAX_VALUE;
@@ -552,8 +588,14 @@ public class Parameters {
         final int bits = com.particlesdevs.photoncamera.processing.RawLevels.sampledBits(secondMax, whiteLevel, black, lowestBlock);
         if (from <= 0 || bits <= from) return false;
         final int k = bits - from;
-        if (blackLevelOverride < 0) for (int i = 0; i < 4; i++) blackLevel[i] = Math.min(65535f, blackLevel[i] * (1 << k));
+        if (!blackOverride()) for (int i = 0; i < 4; i++) blackLevel[i] = Math.min(65535f, blackLevel[i] * (1 << k));
         whiteLevel = (int) Math.min(65535L, ((whiteLevel + 1L) << k) - 1);
+        // P320: the scaled white of a DCG frame is a guess; the clip its session measured is the real one (X300 Ultra: 8694)
+        final int clip = com.particlesdevs.photoncamera.processing.RawLevels.saturationFor(declaredWhite);
+        if (dcgShot && clip > 2f * black * (1 << k) && clip < whiteLevel) {
+            whiteLevel = clip;
+            levelSource += ", white = measured clip " + clip;
+        }
         levelBits = bits;
         levelSource += ", widened to the frame's samples (" + secondMax + ")";
         Log.i(TAG, "RAW levels: the frame's samples reach " + secondMax + ": " + from + " -> " + bits + " bit, black "
@@ -575,9 +617,9 @@ public class Parameters {
     private float blackFloorLow = -1f;
     /** Where the black and white levels of the shot came from (diagnostics): bit depth, override / data floor / dynamic / static. */
     public String levelSources() {
-        String black = blackLevelOverride >= 0 ? "override" : blackFloorSource != null && blackFloorEstimate != Float.MAX_VALUE
+        String black = blackOverride() ? "override" : blackFloorSource != null && blackFloorEstimate != Float.MAX_VALUE
                 ? "data floor (" + blackFloorEstimate + ")" : usedDynamic ? "dynamic" : "static";
-        String white = whiteLevelOverride >= 0 ? "override" : useDynamicWhiteLevel ? "dynamic if reported" : "static";
+        String white = whiteOverride() ? "override" : useDynamicWhiteLevel ? "dynamic if reported" : "static";
         return levelBits + " bit, black=" + black + " white=" + white + " [" + levelSource + "]";
     }
     private float blackFloorEstimate = Float.MAX_VALUE;
@@ -1102,6 +1144,9 @@ public class Parameters {
         params.mapSize = new Point(mapSize);
         params.sensorPix = new Rect(sensorPix);
         params.rawBinning = rawBinning;
+        params.dcgShot = dcgShot;
+        params.dcgIsoScale = dcgIsoScale;
+        params.dcgNoise = dcgNoise == null ? null : dcgNoise.clone();
         params.rawCrop = rawCrop;
         params.rawCropFull = rawCropFull == null ? null : new Point(rawCropFull);
         params.rawCropSensorShiftY = rawCropSensorShiftY;

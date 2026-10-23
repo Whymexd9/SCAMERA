@@ -407,9 +407,9 @@ def post_build(number, chat_id, lang, announce=True):
                        f'GitHub did not answer: {type(e).__name__}. Try again later.'))
         return 1
     if artifact is None:
-        say(chat_id, t(lang, f'Сборки {number} нет: номер неверный или её артефакт уже удалён (хранится 90 дней).'
+        say(chat_id, t(lang, f'Сборки {number} нет: номер неверный или её артефакт уже удалён (хранится 3 дня).'
                        if number else 'Готовых сборок main не нашёл.',
-                       f'No build {number}: a wrong number, or its artifact expired (kept 90 days).'
+                       f'No build {number}: a wrong number, or its artifact expired (kept 3 days).'
                        if number else 'No finished build of main found.'))
         return 1
     build = ARTIFACT.fullmatch(artifact['name'])[1]

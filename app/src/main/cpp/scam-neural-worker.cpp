@@ -202,6 +202,10 @@ int main(int argc,char** argv) {
                 const auto tuning=scam::loadHybridTuning(argv[2],report);
                 scam::HybridInput hin=hybridBurst.hybrid?hybridBurst.input:scam::hybridFromScamBurst(mapped->burst);
                 if(std::getenv("SCAM_MERGED_DNG"))hin.mergedDng=true;
+                // P320: a DCG burst (header flag 32): the two-zone noise check runs on it; the app's DCG tuning lines (bento 1,
+                // shastaEnable 0, mochi 0) come last in the job's hybrid_tuning.txt, the values in effect are reported here
+                if(hin.dcg)report("HYBRID DCG: dual conversion gain burst (header flag 32), tuning bento="+std::to_string(tuning.bento)
+                    +" shastaEnable="+std::to_string(tuning.shastaEnable)+" mochi="+std::to_string(tuning.mochi));
                 // Clip flags trailer: asked by the request header (flag 4), the job marker `clip-flags` or, in an offline replay
                 // (SCAM_HYBRID) only, the tuning key clipFlags. The app checks the result size exactly: a fallback tuning file
                 // (external files dir, /data/local/tmp) must not add a trailer it did not ask for.

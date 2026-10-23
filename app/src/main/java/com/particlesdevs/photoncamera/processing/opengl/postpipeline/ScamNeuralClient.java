@@ -520,6 +520,7 @@ public final class ScamNeuralClient {
                 ScamHybridBurst.lastBentoUsClipped=reportNumber(report,"HYBRID BENTO: applied","usClippedRatio=",0f);
                 final float noiseK=reportNumber(report,"HYBRID NOISE CHECK:","-> model x",1f);
                 ScamHybridBurst.lastNoiseFactor=noiseK>=1f/16&&noiseK<=4f?noiseK:1f;
+                ScamHybridBurst.lastDcgNoise=dcgNoise(report); // P320
                 ScamHybridBurst.lastRgbHalf=rgbHalf;}
             final long readStart=android.os.SystemClock.elapsedRealtime();
             // P179 (200 MP: the app was killed for LOW_MEMORY): an output above 1 GiB is read from its end and the memfd shortened
@@ -625,6 +626,26 @@ public final class ScamNeuralClient {
     static final String EFFECTIVE_MAP_LINE="HYBRID EFFECTIVE MAP:";
 
     /** Number after `key=` on the first report line containing `line` (worker report), or `fallback`. */
+    /**
+     * P320: the worker's «HYBRID NOISE CHECK DCG: slope=S hcg=O1 lcg=O2 knee=T ...» as {S, O1, O2, T} (normalised units); null
+     * without that line or with a value out of range (the denoise then keeps the camera's model and the worker's factor).
+     */
+    static float[] dcgNoise(CharSequence rep){
+        final String line="HYBRID NOISE CHECK DCG:";
+        final float s=reportFloat(rep,line,"slope="),hcg=reportFloat(rep,line,"hcg="),
+                lcg=reportFloat(rep,line,"lcg="),knee=reportFloat(rep,line,"knee=");
+        if(!(s>0f)||hcg<0f||lcg<0f||knee<0f||knee>1f||!Float.isFinite(s)||!Float.isFinite(hcg)||!Float.isFinite(lcg))return null;
+        return new float[]{s,hcg,lcg,knee};
+    }
+    /** A number after {@code key} on the report line starting with {@code line}, exponents allowed; -1 when absent. */
+    static float reportFloat(CharSequence rep,String line,String key){
+        String report=rep.toString();
+        int at=report.indexOf(line); if(at<0)return -1f;
+        int end=report.indexOf('\n',at); String l=end<0?report.substring(at):report.substring(at,end);
+        int k=l.indexOf(key); if(k<0)return -1f;
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile("-?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?").matcher(l.substring(k+key.length()));
+        try{ return m.lookingAt()?Float.parseFloat(m.group()):-1f; }catch(NumberFormatException e){ return -1f; }
+    }
     static float reportNumber(CharSequence rep,String line,String key,float fallback){
         String report=rep.toString();
         int at=report.indexOf(line); if(at<0)return fallback;

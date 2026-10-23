@@ -77,6 +77,47 @@ public final class Dcg14Mode {
         return on() && available(c) && VivoQcomIsz.plainModule();
     }
 
+    /**
+     * P320: this camera's session asks for DCG frames: the switch's routes ({@link #active}) or the Pixel 10 Pro's main camera,
+     * whose RAW is DCG in every format (owner, P108; {@link PixelPro10#dcgMain}). For the session's level learning and the settings
+     * hint; a shot takes the DCG gates only when its frames are shown to be DCG ({@link #frames}).
+     */
+    public static boolean requested(@Nullable CameraCharacteristics c) {
+        try {
+            return active(c) || PixelPro10.dcgMain(c);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * P320: this camera's RAW frames are DCG now (one exposure, high- and low-gain reads fused), shown by the data, not by the
+     * switch alone: the switch's routes once the session's samples resolve the mode's 14 bits (a HAL that ran its plain mode under
+     * the request - the 15 Ultra's «NOT the DCG mode», the X200 Ultra's routes that never delivered - stays 10-bit and plain), or
+     * the Pixel 10 Pro's main. For the processing gates (no exposure brackets, the histogram's linearity proof, two noise zones),
+     * never for session keys.
+     */
+    public static boolean frames(@Nullable CameraCharacteristics c) {
+        try {
+            if (PixelPro10.dcgMain(c)) return true;
+            return active(c) && com.particlesdevs.photoncamera.processing.RawLevels.current(c, null).bits >= 14;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * P320: the HAL gives no gain below the N frames' in this DCG session (P163, the X300 Ultra's DCG modes: ISO 1336 for 167);
+     * the switch's routes only, not the Pixel (never shown to refuse a lower gain).
+     */
+    public static boolean gainFloor(@Nullable CameraCharacteristics c) {
+        try {
+            return active(c);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     /** Sets the mode on the session parameters; returns what was set ("" when inactive). */
     public static String apply(CaptureRequest.Builder builder, @Nullable CameraCharacteristics c, @Nullable String physicalId) {
         if (builder == null || !active(c)) return "";

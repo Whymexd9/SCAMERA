@@ -6,6 +6,7 @@ import com.particlesdevs.photoncamera.processing.opengl.GLFormat;
 import com.particlesdevs.photoncamera.processing.opengl.GLProg;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
+import com.particlesdevs.photoncamera.processing.render.NoiseModeler;
 import com.particlesdevs.photoncamera.processing.render.Parameters;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.util.Log;
@@ -162,14 +163,14 @@ public final class ScamDenoise extends Node {
     }
 
     /** Block statistics of one level (scamdn/stats), reduced on the host; null when too few flat blocks (old model of post_ab). */
-    private static float[] levelNoise(GLProg glProg, List<GLTexture> owned, GLTexture level, int block, float sY, float rY, float[][] rawOut) {
+    private static float[] levelNoise(GLProg glProg, List<GLTexture> owned, GLTexture level, int block, float sY, float rY, float[] dcg,
+                                      float[][] rawOut) {
         Point blocks = new Point(Math.max(1, level.mSize.x / block), Math.max(1, level.mSize.y / block));
         GLTexture st = tex(owned, blocks, GLFormat.DataType.UNSIGNED_32, 4, GL_NEAREST);
         try {
-            glProg.useAssetProgram("scamdn/stats", false);
+            statsProgram(glProg, dcg, sY, rY);
             glProg.setTexture("InputBuffer", level);
             glProg.setVar("blockU", block);
-            glProg.setVar("modelU", sY, rY);
             glProg.drawBlocks(st);
             float[] raw = readStats(st);
             if (rawOut != null) rawOut[0] = raw;
@@ -180,12 +181,26 @@ public final class ScamDenoise extends Node {
     }
 
     /**
+     * scamdn/stats with the single-frame model (sY, rY); P320: a DCG shot ({@code dcg} = {rY_lcg / rY, knee in Y}, null for any
+     * other) takes the DCG_ZONES variant, rY being the high-gain zone's and modelHiU the low-gain one's.
+     */
+    private static void statsProgram(GLProg glProg, float[] dcg, float sY, float rY) {
+        if (dcg != null) glProg.setDefine("DCG_ZONES", 1);
+        glProg.useAssetProgram("scamdn/stats", false);
+        glProg.setVar("modelU", sY, rY);
+        if (dcg != null) {
+            glProg.setVar("modelHiU", rY * dcg[0]);
+            glProg.setVar("kneeU", dcg[1]);
+        }
+    }
+
+    /**
      * W1.6: {@link #levelNoise} of several levels at once. Every statistics pass is drawn first, then they are read back
      * (one sync instead of one per level), and the levels are reduced in parallel with the primitive-key sorts of
      * {@link ScamDenoiseTables#reduce}. The same passes, read-backs and reductions, so the same gains; rawOut gets level 0.
      */
     private static float[][] levelNoiseBatch(GLProg glProg, List<GLTexture> owned, GLTexture[] levels, int block, float sY, float rY,
-                                             float[][] rawOut) {
+                                             float[] dcg, float[][] rawOut) {
         final int n = levels.length;
         final GLTexture[] st = new GLTexture[n];
         final int[] counts = new int[n];
@@ -195,10 +210,9 @@ public final class ScamDenoise extends Node {
                 Point blocks = new Point(Math.max(1, levels[i].mSize.x / block), Math.max(1, levels[i].mSize.y / block));
                 counts[i] = blocks.x * blocks.y;
                 st[i] = tex(owned, blocks, GLFormat.DataType.UNSIGNED_32, 4, GL_NEAREST);
-                glProg.useAssetProgram("scamdn/stats", false);
+                statsProgram(glProg, dcg, sY, rY);
                 glProg.setTexture("InputBuffer", levels[i]);
                 glProg.setVar("blockU", block);
-                glProg.setVar("modelU", sY, rY);
                 glProg.drawBlocks(st[i]);
             }
             for (int i = 0; i < n; i++) {
@@ -440,6 +454,26 @@ public final class ScamDenoise extends Node {
         return new float[]{darkChroma[0], darkChroma[1], k * k * g * sY, k * k * g * rY};
     }
 
+    /**
+     * P320: the measured two noise zones of a DCG shot (NoiseModeler.dcgZones of Parameters.dcgNoise), which replace the
+     * camera's single curve here; null for any other shot, a DCG shot without usable zones, and the old run of post_ab (the A/B
+     * shows this change on one worker result).
+     */
+    static float[] dcgZones(Parameters par) {
+        if (par == null || !par.dcgShot || com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) return null;
+        return NoiseModeler.dcgZones(par.dcgNoise);
+    }
+
+    /**
+     * P320: the DCG_ZONES uniforms of scamdn stats / lbf / cbf, {rY_lcg / rY, knee in Y}; null (the plain shaders on the measured
+     * single curve) for one measured zone (knee 0: GLSL smoothstep(0, 0, Y) is undefined) or a term that is not usable.
+     */
+    static float[] dcgShaderPass(float rY, float rYlcg, float kneeY) {
+        if (!(kneeY > 0f) || !Float.isFinite(kneeY) || !(rY > 0f)) return null;
+        final float ratio = rYlcg / rY;
+        return Float.isFinite(ratio) ? new float[]{ratio, kneeY} : null;
+    }
+
     /** Set once {@link #process} took the pipeline's output texture (a failure after it cannot fall back to another pass). */
     static volatile boolean lastMainTaken;
 
@@ -493,15 +527,21 @@ public final class ScamDenoise extends Node {
             final float[] wY = {0.2126f, 0.7152f, 0.0721996f};
             float[] S = {2e-4f, 2e-4f, 2e-4f}, O = {2e-6f, 2e-6f, 2e-6f};
             String modelSource = "fallback";
+            // P320: a DCG shot's two measured noise zones (null for any other shot, without them, in the old run of post_ab)
+            final float[] zones = dcgZones(par);
+            if (par.dcgShot && zones == null && !com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy())
+                Log.i("SCAM_PIPELINE", "scam-denoise DCG shot without measured noise zones (" + (par.dcgNoise == null ? "none"
+                        : Arrays.toString(par.dcgNoise)) + "): the camera's single curve");
             if (par.noiseModeler != null && par.noiseModeler.baseModel != null && par.noiseModeler.baseModel[0] != null) {
                 for (int c = 0; c < 3; c++) {
                     S[c] = (float) Math.max(1e-9, par.noiseModeler.baseModel[c].first);
                     O[c] = (float) Math.max(1e-12, par.noiseModeler.baseModel[c].second);
                 }
                 modelSource = "camera";
-                // P77: the factor the worker measured on the burst and merged with (Redmi Note 11 Pro: HAL profile ~16 x too high)
+                // P77: the factor the worker measured on the burst and merged with (Redmi Note 11 Pro: HAL profile ~16 x too high);
+                // P320: never on top of a DCG shot's measured zones (they are the burst's own noise)
                 final float k = ScamHybridBurst.lastNoiseFactor;
-                if (k != 1f) {
+                if (k != 1f && zones == null) {
                     for (int c = 0; c < 3; c++) { S[c] *= k; O[c] *= k; }
                     modelSource = "camera x" + k;
                 }
@@ -516,6 +556,18 @@ public final class ScamDenoise extends Node {
                 sY += wY[c] * wY[c] * g * S[c];
                 rY += wY[c] * wY[c] * g * g * O[c];
                 if (c == 1) { sG = g * S[c]; rG = g * g * O[c]; }
+            }
+            // P320: with DCG zones rY / rG are the high-gain zone's (below the knee: the shadows, the darkKeep floor) and
+            // rYhi / rGhi the low-gain one's; dcgPass = {rYhi / rY, knee in Y} turns on DCG_ZONES in scamdn stats / lbf / cbf
+            // (two zones only: one measured zone, knee 0, runs the plain shaders on its own single curve)
+            float rYhi = rY, rGhi = rG, kneeY = 0f;
+            float[] dcgPass = null;
+            if (zones != null) {
+                final float[] t = ScamDenoiseTables.dcgTerms(zones, S, O, par.whitePoint);
+                sY = t[0]; rY = t[1]; rYhi = t[2]; sG = t[3]; rG = t[4]; rGhi = t[5]; kneeY = t[6];
+                dcgPass = dcgShaderPass(rY, rYhi, kneeY);
+                modelSource = "dcg(S=" + zones[0] + ",hcg=" + zones[1] + ",lcg=" + zones[2] + ",knee=" + zones[3]
+                        + (modelSource.startsWith("camera") ? ",camera ratios" : "") + ")";
             }
 
             // ---- level 0 at the sensor scale (2x grid: kD8 / {1,3,3,1} down), despeckle, YUV
@@ -594,17 +646,17 @@ public final class ScamDenoise extends Node {
             float[][] gL = new float[ScamDenoiseTables.LEVELS][], gC = new float[ScamDenoiseTables.LEVELS][];
             float[][] raw0 = new float[1][];
             if (com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) {
-                gL[0] = gC[0] = levelNoise(glProg, owned, x0, 16, sY, rY, raw0);
+                gL[0] = gC[0] = levelNoise(glProg, owned, x0, 16, sY, rY, dcgPass, raw0);
                 for (int L = 1; L < ScamDenoiseTables.LEVELS; L++) {
-                    gL[L] = levelNoise(glProg, owned, Y[L], 16, sY, rY, null);
-                    gC[L] = levelNoise(glProg, owned, XC[L], 16, sY, rY, null);
+                    gL[L] = levelNoise(glProg, owned, Y[L], 16, sY, rY, dcgPass, null);
+                    gC[L] = levelNoise(glProg, owned, XC[L], 16, sY, rY, dcgPass, null);
                 }
             } else {
                 // The same levels in the same order: x0, then Y[L], XC[L] for L = 1..3.
                 GLTexture[] levels = new GLTexture[2 * ScamDenoiseTables.LEVELS - 1];
                 levels[0] = x0;
                 for (int L = 1; L < ScamDenoiseTables.LEVELS; L++) { levels[2 * L - 1] = Y[L]; levels[2 * L] = XC[L]; }
-                float[][] g = levelNoiseBatch(glProg, owned, levels, 16, sY, rY, raw0);
+                float[][] g = levelNoiseBatch(glProg, owned, levels, 16, sY, rY, dcgPass, raw0);
                 gL[0] = gC[0] = g[0];
                 for (int L = 1; L < ScamDenoiseTables.LEVELS; L++) { gL[L] = g[2 * L - 1]; gC[L] = g[2 * L]; }
             }
@@ -655,7 +707,9 @@ public final class ScamDenoise extends Node {
             } else {
                 mu = 0.18f;
             }
-            final float snrMeasured = ScamDenoiseTables.snr(mu, GY[0][0], sG, rG, rhoS, rhoR);
+            // P320: a DCG shot's SNR at mu takes the read term of mu's zone (high gain below the knee, blended over +-10 %)
+            final float rGmu = zones != null ? NoiseModeler.zoneOffset(mu, rG, rGhi, kneeY) : rG;
+            final float snrMeasured = ScamDenoiseTables.snr(mu, GY[0][0], sG, rGmu, rhoS, rhoR);
             final float snr = snrFixed > 0f ? snrFixed : snrMeasured * snrScale;
             par.finishSnr = snr; // P135: the WHY sharpening backs off on a noisy shot
 
@@ -735,17 +789,17 @@ public final class ScamDenoise extends Node {
                     if (f0) {
                         d0 = tex(owned, sz, GLFormat.DataType.FLOAT_16, 1, GL_LINEAR);
                         lumaPass(glProg, d0, recon, recon, x0, L == 0, strMap, mapSize, 2, true,
-                                k0 * GY[L][1] * rhoS * sY, k0 * GY[L][1] * rhoR * rY, luma[L + 1][2] * 16f, 0, 0f, 0, null, null, null);
+                                k0 * GY[L][1] * rhoS * sY, k0 * GY[L][1] * rhoR * rY, dcgPass, luma[L + 1][2] * 16f, 0, 0f, 0, null, null, null);
                     }
                     GLTexture out;
                     if (L >= 2) {
                         out = tex(owned, sz, GLFormat.DataType.FLOAT_16, 1, GL_LINEAR);
                         lumaPass(glProg, out, d0, recon, x0, false, strMap, mapSize, 1, f1,
-                                k1 * GY[L][0] * rhoS * sY, k1 * GY[L][0] * rhoR * rY, luma[L][2] * 16f, 1, luma[L][1], 1, Y[L], null, null);
+                                k1 * GY[L][0] * rhoS * sY, k1 * GY[L][0] * rhoR * rY, dcgPass, luma[L][2] * 16f, 1, luma[L][1], 1, Y[L], null, null);
                     } else if (L == 1) {
                         GLTexture den1 = tex(owned, sz, GLFormat.DataType.FLOAT_16, 1, GL_LINEAR);
                         lumaPass(glProg, den1, d0, recon, x0, false, strMap, mapSize, 1, f1,
-                                k1 * GY[L][0] * rhoS * sY, k1 * GY[L][0] * rhoR * rY, luma[L][2] * 16f, 1, luma[L][1], 0, null, null, null);
+                                k1 * GY[L][0] * rhoS * sY, k1 * GY[L][0] * rhoR * rY, dcgPass, luma[L][2] * 16f, 1, luma[L][1], 0, null, null, null);
                         if (d0 != recon) release(owned, d0);
                         if (recon != Y[L]) release(owned, recon);
                         d0 = recon = null;
@@ -754,7 +808,7 @@ public final class ScamDenoise extends Node {
                     } else {
                         out = tex(owned, size0, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
                         lumaPass(glProg, out, d0, recon, x0, true, strMap, mapSize, 1, f1,
-                                k1 * GY[0][0] * rhoS * sY, k1 * GY[0][0] * rhoR * rY, luma[0][2] * 16f, 1, luma[0][1], 2, x0, delta, x0);
+                                k1 * GY[0][0] * rhoS * sY, k1 * GY[0][0] * rhoR * rY, dcgPass, luma[0][2] * 16f, 1, luma[0][1], 2, x0, delta, x0);
                     }
                     if (d0 != null && d0 != recon) release(owned, d0);
                     if (recon != null && recon != Y[L]) release(owned, recon);
@@ -791,13 +845,13 @@ public final class ScamDenoise extends Node {
                 if (deltaUV != null) {
                     // reconstruction X_L + (0, Up2(DenC_{L+1} - X_{L+1})) once per pixel (integer Up2), then the filters
                     c0 = tex(owned, sz, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
-                    chromaPass(glProg, c0, level, deltaUV, null, strMap, sz, 1, false, 0f, 0f, 1f, 1f, 0f, 0, false, 0f, null);
+                    chromaPass(glProg, c0, level, deltaUV, null, strMap, sz, 1, false, 0f, 0f, null, 1f, 1f, 0f, 0, false, 0f, null);
                     release(owned, deltaUV);
                     deltaUV = null;
                 }
                 if (f0) {
                     GLTexture c1 = tex(owned, sz, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
-                    chromaPass(glProg, c1, c0, null, null, strMap, sz, 2, true, k0 * GC[L][1] * rhoS * sY, k0 * GC[L][1] * rhoR * rY,
+                    chromaPass(glProg, c1, c0, null, null, strMap, sz, 2, true, k0 * GC[L][1] * rhoS * sY, k0 * GC[L][1] * rhoR * rY, dcgPass,
                             UVS[L][1], UVS[L][3], (float) (int) chroma[L + 1][1], 0, false, 0f, null);
                     if (c0 != level) release(owned, c0);
                     c0 = c1;
@@ -810,18 +864,18 @@ public final class ScamDenoise extends Node {
                 GLTexture out;
                 if (L >= 1) {
                     out = tex(owned, sz, GLFormat.DataType.FLOAT_16, 2, GL_LINEAR);
-                    chromaPass(glProg, out, c0, null, level, strMap, sz, 1, f1, k1 * GC[L][0] * rhoS * sY, k1 * GC[L][0] * rhoR * rY,
+                    chromaPass(glProg, out, c0, null, level, strMap, sz, 1, f1, k1 * GC[L][0] * rhoS * sY, k1 * GC[L][0] * rhoR * rY, dcgPass,
                             UVS[L][0], UVS[L][2], (float) (int) chroma[L][1], 1, false, 0f, null);
                 } else if (s == 1) {
                     out = pipeline.getMain(); // the last write of this node
                     lastMainTaken = true;
-                    chromaPass(glProg, out, c0, null, null, strMap, sz, 1, f1, k1 * GC[0][0] * rhoS * sY, k1 * GC[0][0] * rhoR * rY,
+                    chromaPass(glProg, out, c0, null, null, strMap, sz, 1, f1, k1 * GC[0][0] * rhoS * sY, k1 * GC[0][0] * rhoR * rY, dcgPass,
                             UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 2, darkFade, 0f, darkKeep);
                     output = out;
                 } else {
                     // (Y change, UV(Den0) - keep UV(X0)): final2x upsamples this one texture
                     out = tex(owned, size0, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
-                    chromaPass(glProg, out, c0, null, base, strMap, sz, 1, f1, k1 * GC[0][0] * rhoS * sY, k1 * GC[0][0] * rhoR * rY,
+                    chromaPass(glProg, out, c0, null, base, strMap, sz, 1, f1, k1 * GC[0][0] * rhoS * sY, k1 * GC[0][0] * rhoR * rY, dcgPass,
                             UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 3, false, keep2x, null);
                     release(owned, base);
                     base = null;
@@ -850,6 +904,7 @@ public final class ScamDenoise extends Node {
                .append(" mu=").append(mu).append(" gain=").append(round(gain)).append(" p50=").append(p50)
                .append(" g01=").append(round(GY[0][0])).append(" rho=").append(rhoS).append('/').append(rhoR)
                .append(" model=").append(modelSource).append(chromaNight != 1f ? " chromaNight=x" + chromaNight : "").append(" sY=").append(sY).append(" rY=").append(rY)
+               .append(zones != null ? " rYlcg=" + rYhi + " kneeY=" + kneeY + " rGmu=" + rGmu : "")
                .append(" luma ").append(lp[0]).append(" str=").append(col(luma, 0)).append(" rev=").append(col(luma, 1))
                .append(" out=").append(col(luma, 2)).append(" levels").append(lumaLog)
                .append(" chroma ").append(cp[0]).append(" str=").append(col(chroma, 0)).append(" out=").append(col(chroma, 1))
@@ -892,8 +947,9 @@ public final class ScamDenoise extends Node {
     }
 
     private static void lumaPass(GLProg glProg, GLTexture target, GLTexture in, GLTexture recon, GLTexture yin, boolean useYin,
-                                 GLTexture strMap, Point levelSize, int stride, boolean filter, float nx, float ny, float thr,
+                                 GLTexture strMap, Point levelSize, int stride, boolean filter, float nx, float ny, float[] dcg, float thr,
                                  int stage, float rf, int mode, GLTexture base, GLTexture lowFreq, GLTexture chroma) {
+        if (dcg != null) glProg.setDefine("DCG_ZONES", 1); // P320: dcg = {noiseHiU / noiseU.y, knee in Y} of a DCG shot
         glProg.useAssetProgram("scamdn/lbf", false);
         glProg.setTexture("InputBuffer", in);
         glProg.setTexture("Recon", recon);
@@ -905,6 +961,10 @@ public final class ScamDenoise extends Node {
         glProg.setVar("strideU", stride);
         glProg.setVar("filterU", filter ? 1 : 0);
         glProg.setVar("noiseU", nx, ny);
+        if (dcg != null) {
+            glProg.setVar("noiseHiU", ny * dcg[0]);
+            glProg.setVar("kneeU", dcg[1]);
+        }
         glProg.setVar("thrU", thr);
         glProg.setVar("stageU", stage);
         glProg.setVar("rfU", rf);
@@ -916,8 +976,9 @@ public final class ScamDenoise extends Node {
     }
 
     private static void chromaPass(GLProg glProg, GLTexture target, GLTexture in, GLTexture deltaUV, GLTexture orig, GLTexture strMap,
-                                   Point levelSize, int stride, boolean filter, float nx, float ny, float uvsU, float uvsV, float thr,
-                                   int mode, boolean fade, float keep, float[] darkKeep) {
+                                   Point levelSize, int stride, boolean filter, float nx, float ny, float[] dcg, float uvsU, float uvsV,
+                                   float thr, int mode, boolean fade, float keep, float[] darkKeep) {
+        if (dcg != null) glProg.setDefine("DCG_ZONES", 1); // P320: dcg = {noiseHiU / noiseU.y, knee in Y} of a DCG shot
         glProg.useAssetProgram("scamdn/cbf", false);
         glProg.setTexture("InputBuffer", in);
         glProg.setTexture("DeltaUV", deltaUV != null ? deltaUV : in);
@@ -928,6 +989,10 @@ public final class ScamDenoise extends Node {
         glProg.setVar("useDeltaU", deltaUV != null ? 1 : 0);
         glProg.setVar("useMapU", strMap != null ? 1 : 0);
         glProg.setVar("noiseU", nx, ny);
+        if (dcg != null) {
+            glProg.setVar("noiseHiU", ny * dcg[0]);
+            glProg.setVar("kneeU", dcg[1]);
+        }
         glProg.setVar("uvsU", uvsU, uvsV);
         glProg.setVar("thrU", thr);
         glProg.setVar("mapInvU", 1f / levelSize.x, 1f / levelSize.y);

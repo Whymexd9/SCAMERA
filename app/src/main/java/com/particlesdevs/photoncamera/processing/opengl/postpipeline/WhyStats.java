@@ -186,6 +186,11 @@ public final class WhyStats extends Node {
             WhyAe.Settings settings = WhyTone.settings();
             settings.noiseS = pipeline.noiseS;
             settings.noiseO = pipeline.noiseO;
+            // P320: a DCG frame keeps its captured exposure and its night factor reads ISO / dcgIsoScale (the clamp's model is
+            // its measured zones: PostPipeline.computeNoise); the old run of post_ab keeps the plain rules
+            settings.dcg = pipeline.mParameters.dcgShot && !legacy;
+            settings.dcgIsoScale = settings.dcg && pipeline.mParameters.dcgIsoScale > 1f ? pipeline.mParameters.dcgIsoScale : 1f;
+            final String dcgLog = settings.dcg ? " dcg(isoScale=" + settings.dcgIsoScale + ")" : "";
             // P212h (A5 = M5): the gain clamp sees the merged image's noise (N_eff of the merge's frame map), the denoisers keep theirs
             // P277: a lab fragment takes the whole frame's scale (LabFrame), a lab shot records it
             final LabFrame frozen = pipeline.frozen, record = pipeline.record;
@@ -232,7 +237,7 @@ public final class WhyStats extends Node {
                 pipeline.linearDisplayGain = r.ae;
                 Log.i("SCAM_PIPELINE", "WHY SMART_HDR_STAT " + r.describe() + " iso=" + iso + " maxIso=" + maxIso
                         + " inScale=" + st.inScale + " low=" + lowSize.x + "x" + lowSize.y + " factor=" + st.factor
-                        + " ms=" + (System.currentTimeMillis() - started) + " stats=gpu" + (early ? " sharpen=early" : ""));
+                        + " ms=" + (System.currentTimeMillis() - started) + " stats=gpu" + (early ? " sharpen=early" : "") + dcgLog);
                 return;
             }
             // W1.6: whyLow read back as the IEEE halves it holds (8 B/pixel: 25 MB at 2048x1536) and widened exactly on the
@@ -273,7 +278,7 @@ public final class WhyStats extends Node {
             Log.i("SCAM_PIPELINE", "WHY SMART_HDR_STAT " + r.describe() + " iso=" + iso + " maxIso=" + maxIso
                     + " inScale=" + st.inScale + " low=" + lowSize.x + "x" + lowSize.y + " factor=" + st.factor
                     + " ms=" + (System.currentTimeMillis() - started) + " readback=" + (half ? "half" : "float")
-                    + (early ? " sharpen=early" : ""));
+                    + (early ? " sharpen=early" : "") + dcgLog);
         } finally {
             if (pixels != null) Allocator.free(pixels);
             if (fallback != null) fallback.close();

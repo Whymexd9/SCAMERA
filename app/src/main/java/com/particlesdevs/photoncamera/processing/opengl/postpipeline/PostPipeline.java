@@ -161,6 +161,25 @@ public class PostPipeline extends GLBasePipeline {
                 modeler.computeModel[2].second.floatValue();
         noiseS /= 3.f;
         noiseO /= 3.f;
+        // P320: a DCG shot's clamp (WhyAe.gainClamp: sigma at 0.5, WhyStats' only reader of noiseS / noiseO) takes the measured
+        // zones: the slope and the offset of 0.5's zone (low gain above the knee) in place of the green one-frame pair, scaled as
+        // the model averaged here (its channel ratios and stacking); without zones the camera's curve stays (logged)
+        if (parameters.dcgShot && !com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy()) {
+            final float[] zones = NoiseModeler.dcgZones(parameters.dcgNoise);
+            final float[] clamp = zones == null ? null : WhyAe.dcgClampModel(zones, noiseS, noiseO,
+                    modeler.baseModel != null && modeler.baseModel.length > 1 && modeler.baseModel[1] != null
+                            ? modeler.baseModel[1].first : Double.NaN,
+                    modeler.baseModel != null && modeler.baseModel.length > 1 && modeler.baseModel[1] != null
+                            ? modeler.baseModel[1].second : Double.NaN);
+            if (clamp != null) {
+                Log.i("PostPipeline", "DCG gain clamp model: S " + noiseS + " -> " + clamp[0] + ", O " + noiseO + " -> " + clamp[1]
+                        + " (zones " + java.util.Arrays.toString(zones) + ", offset of 0.5's zone)");
+                noiseS = clamp[0];
+                noiseO = clamp[1];
+            } else {
+                Log.i("PostPipeline", "DCG gain clamp: no measured noise zones, the camera's single curve");
+            }
+        }
         Log.d("PostPipeline", "NoiseS:" + noiseS + "\n" + "NoiseO:" + noiseO);
         noiseO = Math.max(noiseO, Float.MIN_NORMAL);
         noiseS = Math.max(noiseS, Float.MIN_NORMAL);

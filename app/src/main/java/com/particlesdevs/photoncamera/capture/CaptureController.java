@@ -2672,6 +2672,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /** P223: this session runs without the ISP preview stream (set with mLiveRawSession). */
     private boolean mIspPreviewOff;
 
+    /** P320: the shot about to be taken comes from a DCG sensor mode (its processing knows it even if the switch moves). */
+    private boolean dcgShotNow() {
+        try {
+            return Dcg14Mode.frames(mCameraCharacteristics);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     private boolean nativeVivoFullRes() {
         VivoSdkFullRes.Profile profile = mVivoSdkRawSession == null ? null : VivoSdkFullRes.profile(mVivoSdkCameraId);
         return profile != null && profile.nativeRoute();
@@ -3635,7 +3644,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 final boolean hiddenKeys = HiddenFeatures.wantsSession(mCameraCharacteristics);
                 final boolean dcg14 = Dcg14Mode.active(mCameraCharacteristics);
                 final boolean vivoQcomStreams = VivoQcomModes.wantsStreamUsage();
-                com.particlesdevs.photoncamera.processing.RawPayloadCheck.setWideEnabled(PreferenceKeys.scamDevSwitch("raw_wide", true));
+                // P320: a DCG session always learns its depth, clip and floor from the samples (its white is never the declared
+                // 1023): scam_dev raw_wide 0 keeps it for the plain modes only
+                final boolean dcgFrames = Dcg14Mode.requested(mCameraCharacteristics);
+                com.particlesdevs.photoncamera.processing.RawPayloadCheck.setWideEnabled(PreferenceKeys.scamDevSwitch("raw_wide", true) || dcgFrames);
+                com.particlesdevs.photoncamera.processing.RawLevels.noteDcgFrames(dcgFrames); // P320
                 // P230: the DCG route's 14-bit samples resolve as such from the first frame (the results confirm or take it back)
                 if (dcgOperationMode != 0) com.particlesdevs.photoncamera.processing.RawLevels.noteKnownBits(
                         com.particlesdevs.photoncamera.processing.RawLevels.staticBlack(mCameraCharacteristics),
@@ -5790,6 +5803,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     com.particlesdevs.photoncamera.settings.PreferenceValue.get(sensorValues,sensorPrefix+"blackleveloverride"),-1);
             float overrideWhite=(float)com.particlesdevs.photoncamera.settings.PreferenceNumber.read(
                     com.particlesdevs.photoncamera.settings.PreferenceValue.get(sensorValues,sensorPrefix+"whiteleveloverride"),-1);
+            // P320: a module's hand-set levels are the plain mode's; a DCG frame keeps the levels its own data resolved
+            if(Dcg14Mode.frames(c)){overrideWhite=-1;overrideBlack=-1;}
             if(overrideWhite>0)white=overrideWhite;
             if(overrideBlack>=0&&overrideBlack<white)java.util.Arrays.fill(black,overrideBlack);
             LiveRawFrame.setBlackFromData(overrideBlack < 0 && PreferenceKeys.isRawBlackFromData()); // P315: a stream without its pedestal
@@ -6860,6 +6875,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         saver.iszAspect4x3 = mShutterIszAspect4x3 || nativeVivoFullRes();
         saver.manualWbAtPress = mShutterManualWb;
         saver.mosaicWbAtPress = mShutterMosaicWb;
+        saver.dcgShot = dcgShotNow();
         saver.setFrameCount(count);
         saver.fullResSeries = seriesMode ? total : 0; // P190: the merge keeps a series whole
         saver.fullResRequested = requested;
@@ -7560,6 +7576,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mImageSaver = new ImageSaver(cameraEventsListener);
             mImageSaver.iszAspect4x3 = mShutterIszAspect4x3;
             mImageSaver.manualWbAtPress = mShutterManualWb;
+            mImageSaver.dcgShot = dcgShotNow();
             final ScamCaptureSequence scamSequence = hybridPlanHolder[0]!=null
                         ? (hybridZsl ? ScamCaptureSequence.hybridZsl(captures,mPendingZslNormalFrames,scamZslShutterTimestamp)
                                      : ScamCaptureSequence.hybridFuture(captures,scamZslShutterTimestamp))

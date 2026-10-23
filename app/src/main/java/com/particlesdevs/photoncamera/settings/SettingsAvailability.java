@@ -32,6 +32,8 @@ public final class SettingsAvailability {
      * inside the merge as before); assumed unless told otherwise.
      */
     private boolean bentoBlend = true;
+    /** P320: the camera running now takes DCG frames (its shots take no shadow frames: HybridPlan). */
+    private boolean dcg;
     /** The settings hold a FULLRES 200 MP profile now (its page in «Настройки по модулям»); false unless told otherwise. */
     private boolean editing200;
     public SettingsAvailability(Map<String, ?> values) { this.values = values; }
@@ -56,6 +58,7 @@ public final class SettingsAvailability {
     public SettingsAvailability mosaicStreams(boolean seen) { mosaicStreams = seen; return this; }
     /** The fact behind «Кадры светов: ширина ядра»: the highlight frames are blended after the merge (not with scam_dev bento_blend 0). */
     public SettingsAvailability bentoBlend(boolean on) { bentoBlend = on; return this; }
+    public SettingsAvailability dcg(boolean on) { dcg = on; return this; }
     private String text(String key, String fallback) {
         Object value = values.get(key); return value == null ? fallback : value.toString();
     }
@@ -152,6 +155,12 @@ public final class SettingsAvailability {
         // mode's own while it is on (the plan and the merge read it: PreferenceKeys.hybridValue / hybridSwitch)
         if (motion && any(key, "pref_scam_hybrid_zsl_frames", "pref_scam_hybrid_bento", "pref_scam_hybrid_shasta"))
             return Lang.t("В режиме «Движение» действует его значение (страница «Движение»).", "In “Motion” mode its own value applies (the “Motion” page).");
+        // P320: a DCG shot takes no shadow frames (its high-gain read holds the shadows; HybridPlan, the worker's DCG tuning)
+        if (dcg && !motion && any(key, "pref_scam_hybrid_shasta", "pref_scam_hybrid_shasta_mode", "pref_scam_hybrid_shasta_motion_max",
+                "pref_scam_hybrid_shasta_frames", "pref_scam_hybrid_shasta_ev", "pref_scam_hybrid_shasta_sharpness",
+                "pref_scam_hybrid_shasta_max_ratio", "pref_scam_hybrid_lut_sigma"))
+            return Lang.t("С DCG кадры теней не снимаются: один DCG-кадр держит тени сам. Кадры светов — только если он клипует.",
+                    "With DCG no shadow frames are taken: one DCG frame holds the shadows itself. Highlight frames only where it clips.");
         final String bento = (motion ? text("pref_scam_hybrid_mm_bento", "1") : text("pref_scam_hybrid_bento", "2")).trim();
         final boolean shasta = motion ? on("pref_scam_hybrid_mm_shasta", false) : on("pref_scam_hybrid_shasta", true);
         // «Кадры светов» off: no ultrashort frame is planned (HybridPlan) and the worker runs none of their passes

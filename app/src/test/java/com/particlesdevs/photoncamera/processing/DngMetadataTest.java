@@ -171,6 +171,40 @@ public class DngMetadataTest {
         assertNull(DngMetadata.planes(incomplete));
     }
 
+    /**
+     * P320: a DCG shot with measured zones writes the one curve a DNG plane can hold on purpose: (S, O_hcg), exact in the
+     * shadows, with the model's channel ratios and stacking and then the same frames / headroom handling; O_lcg never enters.
+     */
+    @Test public void dcgPlanesAreTheSlopeAndTheHighGainOffset() {
+        final float[] zones = {2e-4f, 1e-6f, 4e-5f, 0.125f};
+        final double s = zones[0], oh = zones[1];
+        // the camera's one-frame model: R 2x the green slope and offset, B 1.5x the slope
+        final double[] model = {4e-4, 2e-6, 2e-4, 1e-6, 3e-4, 1e-6};
+        double[] p = DngMetadata.dcgPlanes(zones, model, 2e-4, 1e-6);
+        final double[] expected = {s * 2, oh * 2, s, oh, s * 1.5, oh};
+        for (int i = 0; i < 6; i++) assertEquals("plane term " + i, expected[i], p[i], 1e-9 * expected[i]);
+        // the legacy stacked model (a quarter of the one frame) carries its scale over the same one-frame green
+        final double[] stacked = new double[6];
+        for (int i = 0; i < 6; i++) stacked[i] = model[i] / 4;
+        p = DngMetadata.dcgPlanes(zones, stacked, 2e-4, 1e-6);
+        for (int i = 0; i < 6; i++) assertEquals(expected[i] / 4, p[i], 1e-9 * expected[i]);
+        // no camera model: every plane the measured green
+        p = DngMetadata.dcgPlanes(zones, null, Double.NaN, Double.NaN);
+        assertArrayEquals(new double[]{s, oh, s, oh, s, oh}, p, 0);
+        assertArrayEquals(p, DngMetadata.dcgPlanes(zones, model, 0, -1), 0);
+        // then the merged file's handling: S / (H N), O / (H^2 N)
+        final double[] merged = DngMetadata.noiseProfile(DngMetadata.dcgPlanes(zones, model, 2e-4, 1e-6), 1, 2, 5, 1);
+        assertEquals(s * 2 / 10, merged[0], 1e-9 * merged[0]);
+        assertEquals(oh * 2 / 20, merged[1], 1e-9 * merged[1]);
+        for (int c = 0; c < 3; c++) assertTrue("the low-gain offset is not written", merged[2 * c + 1] < zones[2] / 20);
+        try {
+            DngMetadata.dcgPlanes(null, model, 2e-4, 1e-6);
+            throw new AssertionError("no zones");
+        } catch (IllegalArgumentException expectedError) {
+            // the caller checks NoiseModeler.dcgZones first
+        }
+    }
+
     @Test public void softwareNamesThisApk() {
         assertEquals("SCAMERA 0.98 (30966) cab4480a", DngMetadata.software("0.98", 30966, "cab4480a96a2f1e0", false));
         assertEquals("SCAMERA 0.98 (30966) cab4480a+dirty", DngMetadata.software("0.98", 30966, "cab4480a", true));

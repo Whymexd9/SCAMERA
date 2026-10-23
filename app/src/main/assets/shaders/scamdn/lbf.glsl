@@ -29,6 +29,13 @@ uniform int modeU;              // 0: den; 1: den - Base; 2: level-0 output (den
 uniform int useYinU;
 uniform int useMapU;
 uniform vec2 mapInvU;           // 1 / size of this level (strength-map coordinates)
+// P320: a DCG shot (ScamDenoise sets 1) has two read-noise zones: noiseU.y below the knee (high gain), noiseHiU above it
+// (low gain), blended over 0.9 .. 1.1 x the knee in Y; 0 = the single curve, token for token as before.
+#define DCG_ZONES 0
+#if DCG_ZONES
+uniform float noiseHiU;         // noise.y of the low-gain zone (the same k * G * rho_r scaling as noiseU.y)
+uniform float kneeU;            // the zone switch in Y (> 0)
+#endif
 out vec4 Output;
 
 float up2(sampler2D t, ivec2 p) {
@@ -53,7 +60,11 @@ void main() {
             for (int i = 0; i < 5; i++)
                 P[j * 5 + i] = texelFetch(InputBuffer, clamp(p + ivec2(i - 2, j - 2) * s, ivec2(0), last), 0).r;
         float y = useYinU != 0 ? texelFetch(Yin, p, 0).r : c;
+#if DCG_ZONES
+        float sigma = sqrt(max(f * (noiseU.x * max(y, 0.0) + mix(noiseU.y, noiseHiU, smoothstep(0.9 * kneeU, 1.1 * kneeU, y))), 0.0));
+#else
         float sigma = sqrt(max(f * (noiseU.x * max(y, 0.0) + noiseU.y), 0.0));
+#endif
         vec2 sw = vec2(4.0), sum = vec2(4.0 * c);
         for (int ry = -1; ry <= 1; ry++) {
             for (int rx = -1; rx <= 1; rx++) {

@@ -139,6 +139,41 @@ final class ScamDenoiseTables {
         return var > 0 ? (float) (mu / Math.sqrt(var)) : 1000f;
     }
 
+    /**
+     * P320: the noise terms of a DCG shot with measured zones in ScamDenoise's white-balanced RGB. {@code zones} = {slope S,
+     * high-gain offset, low-gain offset, knee t} (NoiseModeler.dcgZones: validated), measured by the worker on one green phase
+     * in normalised units; per channel S_c = S camS_c / camS_G and O_c = O camO_c / camO_G (the camera model's channel ratios,
+     * 1 without a model or for a non-positive green term), weighted as the single curve: sY = sum wY^2 g S_c, rY = sum
+     * wY^2 g^2 O_c, the green terms for the SNR, g = 1 / white point (1 for a missing or non-positive one); the knee in Y is
+     * green's level g_G t (a neutral grey's luminance; 0 for one measured zone, whose two offsets are equal). Offsets at least
+     * 1e-12 and slopes at least 1e-9 per channel (as the camera model's).
+     *
+     * @return {sY, rY high gain, rY low gain, sG, rG high gain, rG low gain, knee in Y}
+     */
+    static float[] dcgTerms(float[] zones, float[] camS, float[] camO, float[] whitePoint) {
+        final float[] wY = {0.2126f, 0.7152f, 0.0721996f};
+        final float sG0 = camS != null && camS.length > 2 && camS[1] > 0f ? camS[1] : 0f;
+        final float oG0 = camO != null && camO.length > 2 && camO[1] > 0f ? camO[1] : 0f;
+        final float[] out = new float[7];
+        for (int c = 0; c < 3; c++) {
+            final float rs = sG0 > 0f && camS[c] > 0f && Float.isFinite(camS[c] / sG0) ? camS[c] / sG0 : 1f;
+            final float ro = oG0 > 0f && camO[c] > 0f && Float.isFinite(camO[c] / oG0) ? camO[c] / oG0 : 1f;
+            final float s = Math.max(1e-9f, zones[0] * rs), oh = Math.max(1e-12f, zones[1] * ro), ol = Math.max(1e-12f, zones[2] * ro);
+            final float wp = whitePoint != null && whitePoint.length > c && whitePoint[c] > 1e-6f ? whitePoint[c] : 1f;
+            final float g = 1f / wp;
+            out[0] += wY[c] * wY[c] * g * s;
+            out[1] += wY[c] * wY[c] * g * g * oh;
+            out[2] += wY[c] * wY[c] * g * g * ol;
+            if (c == 1) {
+                out[3] = g * s;
+                out[4] = g * g * oh;
+                out[5] = g * g * ol;
+                out[6] = g * zones[3];
+            }
+        }
+        return out;
+    }
+
     /** IEEE half to float (packHalf2x16 halves of the statistics readback). */
     static float half(int h) {
         int s = (h >> 15) & 1, e = (h >> 10) & 31, m = h & 1023;

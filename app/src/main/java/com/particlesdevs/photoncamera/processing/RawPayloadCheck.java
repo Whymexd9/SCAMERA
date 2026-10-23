@@ -67,7 +67,15 @@ public final class RawPayloadCheck {
     public static Result check(ByteBuffer buffer, int width, int height, int rowStride, int whiteLevel) {
         // P230: a session whose sensor mode has a known depth (Xiaomi 15 Ultra DCG: 14 bit under the declared 1023) checks
         // against that depth's white: its samples are no impossible values, its empty bottom rows no packed tail
-        whiteLevel = Math.max(whiteLevel, RawLevels.knownWhite());
+        final int known = RawLevels.knownWhite();
+        // P320: that white is the depth's scale, not the mode's clip (a DCG mode can clip under it, as the X300 Ultra's at 8694
+        // of 16383); the known-depth frames are not checked, but their clip plateau is still measured for the white
+        if (known > 4095 && whiteLevel > 0 && whiteLevel <= 4095 && RawLevels.wideEnabled() && buffer != null
+                && width > 0 && height > 0 && rowStride >= 2 * width && buffer.capacity() >= (long) (height - 1) * rowStride + 2L * width) {
+            final int clip = knownDepthClip(buffer, width, height, rowStride);
+            if (clip > 0) RawLevels.noteSaturation(clip);
+        }
+        whiteLevel = Math.max(whiteLevel, known);
         if (buffer == null || width <= 0 || height <= 0 || whiteLevel <= 0 || whiteLevel > 4095) return UNCHECKED;
         String geometry = String.format(Locale.ROOT, "%dx%d, rowStride %d, %d bytes", width, height, rowStride, buffer.capacity());
         if (rowStride < 2 * width || (rowStride & 1) != 0)
@@ -114,6 +122,10 @@ public final class RawPayloadCheck {
             if (wider) {
                 final int clip = clipPlateau(samples, n);
                 if (clip > 0) RawLevels.noteSaturation(clip);
+            } else if (RawLevels.dcgFrames() && zeroShare < 0.05f) {
+                // P320: a DCG stream at its declared depth (the Pixel 10 Pro's main): its white is checked against its clip too
+                final int clip = clipPlateau(samples, n);
+                if (clip > 0) RawLevels.noteSaturation(clip);
             }
             if (bits > 0) return new Result(null, share, zeroShare, false);
         }
@@ -122,6 +134,23 @@ public final class RawPayloadCheck {
                     "RAW is not plain 16-bit: %.1f %% of samples at or above 4x white %d, %.1f %% zero rows (%s)",
                     share * 100, whiteLevel, zeroShare * 100, geometry), share, zeroShare, packed10);
         return new Result(null, share, zeroShare, false);
+    }
+
+    /** P320: the clip plateau of a known-depth frame ({@link #clipPlateau} on the same samples as the check), 0 when none. */
+    static int knownDepthClip(ByteBuffer buffer, int width, int height, int rowStride) {
+        ByteBuffer view = buffer.duplicate();
+        view.position(0);
+        ShortBuffer data = view.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer();
+        final int image = sImageRows > 0 && sImageRows < height && sImageRows >= height / 2 ? sImageRows : height;
+        final int rows = Math.min(ROWS, image), step = Math.max(1, width / SAMPLES);
+        final int[] samples = new int[ROWS * SAMPLES];
+        int n = 0;
+        for (int r = 0; r < rows; r++) {
+            int y = rows == 1 ? 0 : (int) ((long) r * (image - 1) / (rows - 1));
+            int base = (int) ((long) y * rowStride / 2);
+            for (int i = 0, x = step / 2; i < SAMPLES && x < width && n < samples.length; i++, x += step) samples[n++] = data.get(base + x) & 0xffff;
+        }
+        return clipPlateau(samples, n);
     }
 
     /**

@@ -78,6 +78,9 @@ public class ScamProcessor extends ProcessorBase {
     private boolean iszAspect4x3;
     /** P190: the FULLRES series of the queued shot (frames the merge keeps whole, 0: none; frames asked for, 0: not FULLRES). */
     public int ownedFullResSeries, ownedFullResRequested;
+    /** P320: the shot's frames come from a DCG sensor mode (set at the press, ImageSaver.dcgShot). */
+    public boolean ownedDcgShot;
+    private boolean dcgShot;
     private int fullResSeries, fullResRequested;
     /** P212f (W2 = M3): the hand-set white balance's gains at the press of the queued shot (null: automatic). */
     public android.hardware.camera2.params.RggbChannelVector ownedManualWb;
@@ -115,6 +118,8 @@ public class ScamProcessor extends ProcessorBase {
         this.fullResSeries = ownedFullResSeries;
         this.fullResRequested = ownedFullResRequested;
         ownedFullResSeries = ownedFullResRequested = 0;
+        this.dcgShot = ownedDcgShot;
+        ownedDcgShot = false;
         this.manualWb = ownedManualWb;
         ownedManualWb = null;
         this.mosaicWb = ownedMosaicWb;
@@ -381,6 +386,7 @@ public class ScamProcessor extends ProcessorBase {
         processingParameters.rawBinning = rawBinning;
         processingParameters.fullResSeries = fullResSeries;
         processingParameters.fullResRequested = fullResRequested;
+        processingParameters.dcgShot = dcgShot;
         processingParameters.manualWbAtPress = manualWb;
         processingParameters.mosaicWbAtPress = mosaicWb;
         if (rawCrop != null && rawCrop.area != null) {
@@ -584,6 +590,7 @@ public class ScamProcessor extends ProcessorBase {
                 processingParameters.FillDynamicParameters(referenceMetadata, captureRequest,
                         scamReference.measuredIso);
                 refineBlackFromDarkestFrame(processingParameters, images);
+                if (dcgShot) dcgLinearity(processingParameters, images, scamReference);
                 applyMosaicNeutral(processingParameters, scamReference, referenceMetadata, images, characteristics, iszAspect4x3);
                 ParseExif.syncWithParameters(exifData, processingParameters);
                 Log.i("SCAM_HDR", "Reference calibration timestamp=" + scamReference.timestamp
@@ -604,6 +611,22 @@ public class ScamProcessor extends ProcessorBase {
                                 ScameraApp.getAppContext(), images, processingParameters, saveRAW >= 1 && alignAlgorithm != 2);
                     } finally {
                         com.particlesdevs.photoncamera.processing.MergeProgress.listener = null;
+                    }
+                    // P320: the DCG shot's own two noise zones (the worker measured them on the merged frames)
+                    if (dcgShot) {
+                        final float[] zones = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastDcgNoise;
+                        processingParameters.dcgNoise = zones == null ? null : zones.clone();
+                        Log.i("SCAM_HDR", "DCG noise " + (zones == null ? "not measured: the camera's model x the merge's factor"
+                                : java.util.Arrays.toString(zones) + " (slope, high-gain offset, low-gain offset, knee)"));
+                        if (zones == null) {
+                            // the owner's rule is two noise zones for DCG: a shot the merge could not measure says so
+                            try {
+                                processingEventsListener.onProcessingChanged(Lang.t("DCG: шум не измерен (мало ровных участков) — одна кривая шума",
+                                        "DCG: noise not measured (too few flat areas): one noise curve"));
+                            } catch (RuntimeException e) {
+                                Log.d(TAG, "DCG noise notice: " + e);
+                            }
+                        }
                     }
                     mergedDngBlock = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastDngMosaic;
                     referenceDngBlock = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastStreamBlock;
@@ -678,8 +701,17 @@ public class ScamProcessor extends ProcessorBase {
                     final double mergeFrames = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergeFrames;
                     final boolean framesKnown = Double.isFinite(mergeFrames) && mergeFrames >= 1;
                     final com.particlesdevs.photoncamera.processing.render.NoiseModeler nm = processingParameters.noiseModeler;
-                    final double[] single = nm == null ? null : com.particlesdevs.photoncamera.processing.DngMetadata.planes(framesKnown ? nm.baseModel : nm.computeModel);
-                    final float noiseFactor = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastNoiseFactor;
+                    final double[] camera = nm == null ? null : com.particlesdevs.photoncamera.processing.DngMetadata.planes(framesKnown ? nm.baseModel : nm.computeModel);
+                    // P320: a DCG shot with measured zones: (S, O_hcg) per plane (DngMetadata.dcgPlanes, the same channel ratios,
+                    // frames and headroom), its zones the burst's own noise, so not times the merge's factor; without zones as before
+                    final float[] dcgZones = processingParameters.dcgShot
+                            ? com.particlesdevs.photoncamera.processing.render.NoiseModeler.dcgZones(processingParameters.dcgNoise) : null;
+                    final double[] baseG = nm == null ? null : com.particlesdevs.photoncamera.processing.DngMetadata.planes(nm.baseModel);
+                    final double[] single = dcgZones != null ? com.particlesdevs.photoncamera.processing.DngMetadata.dcgPlanes(dcgZones, camera,
+                            baseG != null ? baseG[2] : Double.NaN, baseG != null ? baseG[3] : Double.NaN) : camera;
+                    final float noiseFactor = dcgZones != null ? 1f : com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastNoiseFactor;
+                    if (processingParameters.dcgShot) Log.i("SCAM_HDR", "DNG: NoiseProfile of a DCG shot: " + (dcgZones != null
+                            ? "slope and high-gain offset of the measured zones" : "no measured zones, the camera's single curve"));
                     if (single != null) processingParameters.dngNoiseProfile = com.particlesdevs.photoncamera.processing.DngMetadata.noiseProfile(
                             single, noiseFactor, headroom, framesKnown ? mergeFrames : 1, 1);
                     processingParameters.dngMosaicBlock = mergedDngBlock;
@@ -704,9 +736,16 @@ public class ScamProcessor extends ProcessorBase {
                 // P214c: the reference RAW is one frame as the sensor gave it: the one-frame model (H, N, sites = 1), with the
                 // worker's measured correction of it when it made one (1 after the CPU fallback)
                 final com.particlesdevs.photoncamera.processing.render.NoiseModeler nm = processingParameters.noiseModeler;
-                final double[] single = nm == null ? null : com.particlesdevs.photoncamera.processing.DngMetadata.planes(nm.baseModel);
+                final double[] camera = nm == null ? null : com.particlesdevs.photoncamera.processing.DngMetadata.planes(nm.baseModel);
+                // P320: a DCG shot with measured zones: (S, O_hcg) per plane of the one frame, not times the merge's factor
+                final float[] dcgZones = processingParameters.dcgShot
+                        ? com.particlesdevs.photoncamera.processing.render.NoiseModeler.dcgZones(processingParameters.dcgNoise) : null;
+                final double[] single = dcgZones != null ? com.particlesdevs.photoncamera.processing.DngMetadata.dcgPlanes(dcgZones, camera,
+                        camera != null ? camera[2] : Double.NaN, camera != null ? camera[3] : Double.NaN) : camera;
+                if (processingParameters.dcgShot) Log.i("SCAM_HDR", "DNG: NoiseProfile of a DCG reference frame: " + (dcgZones != null
+                        ? "slope and high-gain offset of the measured zones" : "no measured zones, the camera's single curve"));
                 if (single != null) processingParameters.dngNoiseProfile = com.particlesdevs.photoncamera.processing.DngMetadata.noiseProfile(
-                        single, com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastNoiseFactor, 1, 1, 1);
+                        single, dcgZones != null ? 1f : com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastNoiseFactor, 1, 1, 1);
                 processingParameters.dngMosaicBlock = referenceDngBlock;
                 try {
                     // P258: the mosaic as captured goes uncompressed (Scam Remosaic's reader: 16-bit CFA, no LinearizationTable)
@@ -1164,6 +1203,103 @@ public class ScamProcessor extends ProcessorBase {
             if (exposure < lowest) { lowest = exposure; darkest = frame; }
         }
         if (darkest != null) processingParameters.refineBlackLevel(darkest.buffer, darkest.width, darkest.height);
+    }
+
+    /**
+     * P320: a DCG shot's codes are taken as linear only when the reference frame's histogram proves it (RawLinearity: no
+     * companding knee in the range the shot occupies). A knee found is undone on every frame before any other math (the white
+     * balance, the merge, the noise check): the frames are expanded through the inverse curve and the levels follow it. The
+     * HAL's noise profile describes the companded codes then; the merge measures the shot's noise itself (DCG bursts: two zones).
+     */
+    /**
+     * P320: the factor a DCG mode's ISO carries above the gain its photons saw, from the levels: the stream's range against the
+     * declared range when the white is a measured clip (RawLevels «white = measured clip»), snapped to a power of two within
+     * 15 %; 1 otherwise (a guessed white proves nothing). The X300 Ultra's DCG main: 8694 - 1030.75 over 1023 - 64 = 8, as the
+     * owner's log had it (ISO 1336 given for 167 asked, HybridPlan P163).
+     */
+    static float dcgIsoScale(Parameters p, CameraCharacteristics c) {
+        if (p == null || p.levelSource == null || !p.levelSource.contains("measured clip") || c == null) return 1f;
+        if (!com.particlesdevs.photoncamera.capture.VivoQcomIsz.enabled()) {
+            Log.i("SCAM_HDR", "DCG ISO scale: not applied (an inflated ISO was seen on the X300 Ultra's DCG modes only)");
+            return 1f;
+        }
+        final Integer declaredWhite = c.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
+        final android.hardware.camera2.params.BlackLevelPattern pattern = c.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
+        if (declaredWhite == null || declaredWhite <= 0) return 1f;
+        float declaredBlack = 0f;
+        if (pattern != null) {
+            for (int i = 0; i < 4; i++) declaredBlack += pattern.getOffsetForIndex(i & 1, i >> 1);
+            declaredBlack /= 4f;
+        }
+        float black = 0f;
+        for (float b : p.blackLevel) black += b;
+        black /= 4f;
+        return isoScale(p.whiteLevel - black, declaredWhite - declaredBlack);
+    }
+
+    /** P320: range over declared range, a power of two when within 15 % of one (else 1 decimal); 1 below x1.5. */
+    public static float isoScale(double range, double declaredRange) {
+        if (!(range > 0) || !(declaredRange > 0)) return 1f;
+        final double r = range / declaredRange;
+        if (r < 1.5) return 1f;
+        final double pow = Math.pow(2, Math.round(Math.log(r) / Math.log(2)));
+        return (float) (Math.abs(r / pow - 1) <= 0.15 ? pow : Math.round(r * 10) / 10.0);
+    }
+
+    /** P320: no frame of a DCG shot is scaled by its exposure while its codes are not shown linear: the reference's exposure only. */
+    private static void keepReferenceExposure(ArrayList<ImageFrame> frames, ImageFrame reference, String why) {
+        final double ref = (double) reference.measuredExposure * reference.measuredIso;
+        int dropped = 0;
+        for (java.util.Iterator<ImageFrame> it = frames.iterator(); it.hasNext();) {
+            ImageFrame f = it.next();
+            if (f == reference || f == null) continue;
+            final double ev = Math.abs(Math.log((double) f.measuredExposure * f.measuredIso / ref) / Math.log(2));
+            if (ev <= 0.07) continue;
+            f.close();
+            it.remove();
+            dropped++;
+        }
+        if (dropped > 0) Log.w("SCAM_HDR", "DCG RAW " + why + ": " + dropped + " frame(s) of another exposure left out");
+    }
+
+    private void dcgLinearity(Parameters p, ArrayList<ImageFrame> frames, ImageFrame reference) {
+        p.dcgIsoScale = dcgIsoScale(p, characteristics);
+        if (p.dcgIsoScale > 1f) {
+            Log.i("SCAM_HDR", "DCG ISO scale x" + p.dcgIsoScale + " (" + p.levelSource + ")");
+            p.applyDcgIsoScale(); // the noise model of a chosen profile / the fallback at the gain, not at the reported ISO
+        }
+        final com.particlesdevs.photoncamera.processing.RawLinearity.Result r;
+        try {
+            r = com.particlesdevs.photoncamera.processing.RawLinearity.analyze(reference.buffer, reference.width, reference.height,
+                    reference.width * 2, p.blackLevel, p.whiteLevel);
+        } catch (RuntimeException e) {
+            Log.w("SCAM_HDR", "DCG RAW linearity: not checked (" + e + ")");
+            keepReferenceExposure(frames, reference, "linearity not checked");
+            return;
+        }
+        Log.i("SCAM_HDR", "DCG " + r.describe());
+        if (r.verdict == com.particlesdevs.photoncamera.processing.RawLinearity.Verdict.NO_DATA) {
+            keepReferenceExposure(frames, reference, "linearity not proven");
+            return;
+        }
+        if (r.verdict != com.particlesdevs.photoncamera.processing.RawLinearity.Verdict.COMPANDED) return;
+        for (ImageFrame f : frames)
+            if (f != null && f.buffer != null && f.buffer.isReadOnly()) {
+                Log.w("SCAM_HDR", "DCG RAW companded but frame " + f.number + " is read-only: not linearised");
+                keepReferenceExposure(frames, reference, "companded, not linearised");
+                return;
+            }
+        final int[] lut = com.particlesdevs.photoncamera.processing.RawLinearity.expandLut(r.knees, r.ratios, p.whiteLevel);
+        for (ImageFrame f : frames) if (f != null && f.buffer != null) com.particlesdevs.photoncamera.processing.RawLinearity.expand(f.buffer, lut);
+        for (int i = 0; i < 4; i++) p.blackLevel[i] = lut[Math.max(0, Math.min(65535, Math.round(p.blackLevel[i])))];
+        p.whiteLevel = lut[Math.max(0, Math.min(65535, p.whiteLevel))];
+        Log.w("SCAM_HDR", "DCG RAW companded: " + frames.size() + " frames expanded, black " + p.blackLevel[0] + " white " + p.whiteLevel);
+        try {
+            processingEventsListener.onProcessingChanged(Lang.t("DCG: RAW сжат кривой, выпрямлен перед склейкой",
+                    "DCG: the RAW is companded, linearised before the merge"));
+        } catch (RuntimeException e) {
+            Log.d(TAG, "DCG notice: " + e);
+        }
     }
 
 

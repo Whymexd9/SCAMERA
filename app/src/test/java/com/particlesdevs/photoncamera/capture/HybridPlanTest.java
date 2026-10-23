@@ -138,6 +138,42 @@ public class HybridPlanTest {
         assertEquals(10_000_000L, plain.requests.get(0).shutterNs);
     }
 
+    /**
+     * P320 (owner: «с DCG света и тени должны тянуться так же хорошо как с применением сверхкороткого и длинного кадра»; DCG rules:
+     * no exposure bracketing by default): a DCG shot with the app defaults (Bento «Всегда», 3 Shasta frames) takes no Shasta and
+     * no ultrashort while the buffered DCG frame does not clip - the ring's N frames only; a measured clip still brings the
+     * ultrashort (the X300 Ultra's DCG window clipped), never a long frame. A plain shot keeps both.
+     */
+    @Test public void aDcgShotTakesNoBracketsUnlessItsFrameClips() {
+        pinned.clear();
+        HybridPlan dcg = HybridPlan.build(10_000_000L, 400, 0f, camera(12000), null, true);
+        assertEquals(1, dcg.requests.size());
+        assertEquals(ImageFrame.CaptureRole.NORMAL, dcg.requests.get(0).role);
+        assertTrue(dcg.description, dcg.description.contains("DCG: no shasta"));
+        assertTrue(dcg.description, dcg.description.contains("DCG: highlights kept in the frame"));
+        HybridPlan clipped = HybridPlan.build(10_000_000L, 400, 0.01f, camera(12000), null, true);
+        for (HybridPlan.Request r : clipped.requests) assertNotEquals("never a long frame", ImageFrame.CaptureRole.LONG, r.role);
+        assertEquals(ImageFrame.CaptureRole.EXTRA_SHORT, clipped.requests.get(0).role);
+        HybridPlan plain = HybridPlan.build(10_000_000L, 400, 0f, camera(12000), null, false);
+        int us = 0, longs = 0;
+        for (HybridPlan.Request r : plain.requests) {
+            if (r.role == ImageFrame.CaptureRole.EXTRA_SHORT) us++;
+            if (r.role == ImageFrame.CaptureRole.LONG) longs++;
+        }
+        assertEquals("plain: Bento «Всегда»", 3, us);
+        assertEquals("plain: 3 Shasta frames", 3, longs);
+    }
+
+    /** P320: a hand-set long shutter in a DCG session: the N frames only (no forced ultrashort, no Shasta); a plain one keeps both. */
+    @Test public void aDcgManualLongShutterTakesNoBrackets() {
+        pinned.clear();
+        HybridPlan dcg = HybridPlan.manualLong(500_000_000L, 200, 0f, camera(12000), null, true);
+        assertEquals(HybridPlan.MANUAL_NORMALS, dcg.requests.size());
+        for (HybridPlan.Request r : dcg.requests) assertEquals(ImageFrame.CaptureRole.NORMAL, r.role);
+        HybridPlan plain = HybridPlan.manualLong(500_000_000L, 200, 0f, camera(12000), null, false);
+        assertTrue(plain.requests.size() > HybridPlan.MANUAL_NORMALS);
+    }
+
     @Test public void p313AtMostThreeShastaFrames() {
         // owner, 2026-10-21: «длинных достаточно 2-3, 5 не нужны» - a stored 4 or 5 takes 3, 1..3 as set
         for (int set = 1; set <= 5; set++) {

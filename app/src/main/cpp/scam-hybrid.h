@@ -22,6 +22,7 @@
 #include "scam-la-gpu.h"     // P308 the F6 alignment on the GPU (laGpu)
 #include "scam-crash.h"
 #include "scam-progress.h" // P220 the heartbeat counters (the app's watchdog and processing ring)
+#include "scam-dcg-noise.h" // P320 the DCG two-zone noise fit (dcgNoiseFit)
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -53,6 +54,10 @@ struct HybridFrame {
     unsigned iso=0;
     float slope=0,offset=0; // noise model of this frame in its own exposure (normalised 0..1 units)
     float orderMs=0;        // capture time relative to the base (for the report only)
+    // P320: DCG two-zone noise (HybridInput::dcg, measured by the noise check), own exposure, normalised units: from the level
+    // dcgKnee up the read-noise offset is dcgOffsetLcg instead of offset (the slope is shared; blended over 0.9 .. 1.1 x the knee,
+    // hybridDcgShare); 0, 0 = one curve (every non-DCG frame)
+    float dcgKnee=0,dcgOffsetLcg=0;
 };
 
 struct HybridInput {
@@ -81,7 +86,33 @@ struct HybridInput {
     // P310: the plain path's tile check (P290) of the ultrashort frames against the base: the largest |factor - 1| of a colour
     // within 4 tiles of the base's clip, over the frames (LEDs on PWM / ARGB animation 1.0 - 1.2, daylight 0.1); -1 = not measured
     float usFlicker=-1.f;
+    // P320: NCH header flag 32: a DCG burst (dual conversion gain: one exposure read at a high and a low conversion gain, fused into one
+    // linear frame; the app proved the linearity). Its noise is two zones (the noise check fits them, hybridDcgZones); 0 = every other
+    // burst and every old burst, unchanged.
+    bool dcg=false;
 };
+// P320: a DCG burst whose two noise zones were measured (the frames carry dcgKnee / dcgOffsetLcg): the two-zone GPU programs and keys
+inline bool hybridDcgZones(const HybridInput& in){
+    return in.dcg&&!in.frames.empty()&&in.frames[0].dcgKnee>0&&in.frames[0].dcgOffsetLcg>0;
+}
+// P320: the LCG zone's share at a level (own exposure): smoothstep over 0.9 .. 1.1 x the knee, as the DCG programs (hybridDcgSources)
+// and the app's denoise (NoiseModeler.zoneWeight) blend the two offsets; 0 for a knee <= 0
+inline float hybridDcgShare(float level,float knee){
+    if(!(knee>0.f))return 0.f;
+    const float t=std::clamp((level-0.9f*knee)/(0.2f*knee),0.f,1.f);
+    return t*t*(3.f-2.f*t);
+}
+// P320: the F6 damping floor, the noise variance of the sqrt-domain gray (gray = sqrt(L + O / S): slope / 16 for one curve). A DCG
+// burst's LCG offset adds up to (Ol - Oh) / (16 (T + Oh / S)) at the knee and less above it: that worst case is taken (the field is a
+// little stiffer in the mid-tones, never refined on the LCG zone's noise). Every other burst: slope / 16.
+inline float hybridLaV0(const HybridInput& in,float slope,float offset){
+    float v0=slope/16.f;
+    if(hybridDcgZones(in)){
+        const HybridFrame& b=in.frames[0];
+        v0+=std::max(0.f,b.dcgOffsetLcg-offset)/(16.f*(b.dcgKnee+offset/std::max(slope,1e-9f)));
+    }
+    return v0;
+}
 
 // Tuning (SCAM-like; a "key value" text file in the job dir or the external files dir overrides it).
 // Frames one hybrid merge takes (the app sends up to 48; a Quad / Tetra burst becomes 4 / 16 plain-Bayer sub-frames per frame).
@@ -3997,6 +4028,51 @@ struct HybridLaStream {
     double waitMs=0;int waits=0;                        // time the strips spent waiting (report)
 };
 
+// P320 DCG: the programs of a burst with two measured noise zones (HybridGpu(.., dcg)): exact-line replacements in kHybHelpers (noiseU,
+// sabreCov61Q), kHybMergeCommon (the Bayer base demosaic's structure test) and kHybMergeMosaicFast (the native one), the read-noise
+// offset of the level's zone (fNoiseP[f].z = knee, .w = LCG offset, frame f's own exposure), the HCG one blended into the LCG one over
+// 0.9 .. 1.1 x the knee (hybridDcgShare: the app's denoise blends the same way, owner: two zones with a transition); w = 0 or z = 0
+// gives the original value. Each line must be found exactly once, else the GPU merge fails naming it (never a silent single-curve DCG
+// program). Every other burst compiles the unchanged sources (the same program cache entries); kHybMergeMain1 is not touched.
+// kHybGuide's texture floor takes the green difference's noise at the centre's level (noiseU: its zone) instead of the one-curve
+// 0.56 sqrt(slope) - the same value below the knee (1.128 sqrt(S / 4)), the LCG offset's above it.
+struct HybridDcgSources { std::string helpers,mergeCommon,mosaicFast,guide; };
+inline std::string hybridDcgReplace(const std::string& text,const char* what,const char* from,const char* to){
+    std::string s=text;
+    const size_t at=s.find(from);
+    if(at==std::string::npos||s.find(from,at+1)!=std::string::npos)
+        throw std::runtime_error(std::string("HYBRID GPU: DCG two-zone programs: the ")+what+" line is not found exactly once");
+    s.replace(at,std::strlen(from),to);
+    return s;
+}
+inline const HybridDcgSources& hybridDcgSources(){
+    static const HybridDcgSources sources=[]{
+        HybridDcgSources d;
+        d.helpers=hybridDcgReplace(kHybHelpers,"noiseU variance",
+            "\n    float var=fNoiseP[f].xy.x*l*g+fNoiseP[f].xy.y*g*g;\n",
+            "\n    float var=fNoiseP[f].xy.x*l*g+((fNoiseP[f].w>0.0&&fNoiseP[f].z>0.0)?mix(fNoiseP[f].xy.y,fNoiseP[f].w,"
+            "smoothstep(0.9*fNoiseP[f].z*g,1.1*fNoiseP[f].z*g,l)):fNoiseP[f].xy.y)*g*g;\n");
+        // v = lum^2 is the level (base units): the quad lumas are sqrt of the samples without epsU (sabreQuad61)
+        d.helpers=hybridDcgReplace(d.helpers,"sabreCov61Q varU",
+            "\n    float varU=(nm.x*v*g+nm.y*g*g)/(4.0*v);\n",
+            "\n    float varU=(nm.x*v*g+((fNoiseP[f].w>0.0&&fNoiseP[f].z>0.0)?mix(nm.y,fNoiseP[f].w,"
+            "smoothstep(0.9*fNoiseP[f].z*g,1.1*fNoiseP[f].z*g,v)):nm.y)*g*g)/(4.0*v);\n");
+        d.mergeCommon=hybridDcgReplace(kHybMergeCommon,"Bayer base demosaic sig",
+            "\n    float sig=sqrt(max(baseNoise.x*max(own,0.0)+baseNoise.y,1.0e-10));\n",
+            "\n    float sig=sqrt(max(baseNoise.x*max(own,0.0)+((fNoiseP[0].w>0.0&&fNoiseP[0].z>0.0)?mix(baseNoise.y,fNoiseP[0].w,"
+            "smoothstep(0.9*fNoiseP[0].z,1.1*fNoiseP[0].z,own)):baseNoise.y),1.0e-10));\n");
+        d.mosaicFast=hybridDcgReplace(kHybMergeMosaicFast,"native base demosaic sig",
+            "\n    float sig=sqrt(max(fNoiseP[0].x*max(own,0.0)+fNoiseP[0].y,1.0e-10));\n",
+            "\n    float sig=sqrt(max(fNoiseP[0].x*max(own,0.0)+((fNoiseP[0].w>0.0&&fNoiseP[0].z>0.0)?mix(fNoiseP[0].y,fNoiseP[0].w,"
+            "smoothstep(0.9*fNoiseP[0].z,1.1*fNoiseP[0].z,own)):fNoiseP[0].y),1.0e-10));\n");
+        d.guide=hybridDcgReplace(kHybGuide,"guide texture floor",
+            "\n    float gdTex=max(gdSum-0.56*sqrt(baseNoise.x),0.0);\n",
+            "\n    float gdTex=max(gdSum-1.128*sqrt(noiseU(0,Lc)),0.0);\n");
+        return d;
+    }();
+    return sources;
+}
+
 class HybridGpu {
     EGLDisplay display=EGL_NO_DISPLAY;
     EGLContext context=EGL_NO_CONTEXT;
@@ -4033,7 +4109,7 @@ class HybridGpu {
             const auto t0=std::chrono::steady_clock::now();
             std::string body=std::string(usPass?"#define NAT_US_PASS 1\n":"")+"#define NAT_B "+(tetra?"4":"2")+"\n#define NAT_R "+std::to_string(r)+"\n#define NAT_MARKED "+(marked?"1":"0")
                 +"\n#define NAT_FILL "+(fill?"1":"0")+"\n#define NAT_BASEFILL "+(baseFill?"1":"0")+"\n#define NAT_DEMOSAIC "+(demosaic?"1":"0")+"\n"
-                +kHybMergeCommon+kHybNatAccess+kHybMergeMosaicFast;
+                +mergeCommon()+kHybNatAccess+mosaicFast();
             // P313: the ultrashort pass reads and writes the merged colour, the effective map and the clip flags (its text alone)
             if(usPass)for(const char* w:{"writeonly buffer Out{","writeonly buffer Eff{","writeonly buffer CFlags{"}){
                 const std::string k(w);size_t at;
@@ -4164,14 +4240,18 @@ class HybridGpu {
     void markCompile(const char* step){
         std::snprintf(compileStage(),96,"GPU compile %s: %s",compileName,step);worker_crash::mark(compileStage());
     }
+    // P320: kHybMergeCommon / kHybMergeMosaicFast as this context compiles them (a DCG two-zone burst: hybridDcgSources)
+    const char* mergeCommon() const {return dcg?hybridDcgSources().mergeCommon.c_str():kHybMergeCommon;}
+    const char* mosaicFast() const {return dcg?hybridDcgSources().mosaicFast.c_str():kHybMergeMosaicFast;}
     GLuint compile(const char* body,bool standalone=false){
-        std::string source=standalone?std::string(body):std::string(kHybCommon)+helpersPrefix+kHybHelpers+body;
+        const char* helpers=dcg&&!standalone?hybridDcgSources().helpers.c_str():kHybHelpers; // P320
+        std::string source=standalone?std::string(body):std::string(kHybCommon)+helpersPrefix+helpers+body;
         const std::string cacheFile=programCacheFile(source);
         markCompile("glProgramBinary (cache)");
         scam_progress::tick(); // P220: each program is progress (built ahead on a helper thread during the alignment, too)
         if(!cacheFile.empty())if(GLuint cached=loadProgramBinary(cacheFile))return cached;
         markCompile("glCompileShader");
-        GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kHybCommon,helpersPrefix,kHybHelpers,body};
+        GLuint shader=glCreateShader(GL_COMPUTE_SHADER);const char* sources[]={kHybCommon,helpersPrefix,helpers,body};
         if(standalone)glShaderSource(shader,1,&body,nullptr); else glShaderSource(shader,4,sources,nullptr);
         glCompileShader(shader);
         GLint ok=0;glGetShaderiv(shader,GL_COMPILE_STATUS,&ok);
@@ -4293,6 +4373,7 @@ public:
         std::vector<const uint16_t*> frames;            // 0 = base
         std::vector<BackwardHomography> homography;     // per frame
         std::vector<float> gain,weight,kmul,noiseSlope,noiseOffset;
+        std::vector<float> noiseKnee,noiseLcg;          // P320 DCG: per frame fNoiseP.zw (knee, LCG offset); empty / 0 = one curve
         std::vector<int> role;
         float baseSlope=0,baseOffset=0,white=0;
         const std::vector<float>* mask=nullptr;         // per cell (w/2 x h/2), 0 = no Bento
@@ -4343,11 +4424,14 @@ public:
     // false only for a merge with both thresholds 0: the vivo X200 Pro's Mali worker died compiling kHybFlags (owner's log
     // 2026-10-07), the app's retry turns the tests off and the merge then runs without those two programs. true = as before.
     const bool outlierPrograms=true;
+    // dcg (P320): the DCG two-zone programs (hybridDcgSources) for a burst whose two noise zones were measured (hybridDcgZones);
+    // false = the programs as before.
+    const bool dcg=false;
     // blendPass (P310): compile the ultrashort blend (kHybUsBlend) for bentoBlend > 0 on the plain merge.
     explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false,
                        const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false,
-                       bool withOutlierPrograms=true,bool blendPass=false)
-            :localAlign(withLocalAlign),sumsCarry(withSumsCarry),outlierPrograms(withOutlierPrograms){
+                       bool withOutlierPrograms=true,bool blendPass=false,bool dcgZones=false)
+            :localAlign(withLocalAlign),sumsCarry(withSumsCarry),outlierPrograms(withOutlierPrograms),dcg(dcgZones){
         if(localAlign)helpersPrefix="#define LOCAL_ALIGN 1\n";
         try{
             display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -4387,7 +4471,7 @@ public:
                 pruneProgram=timed("prune",kHybFlagPrune,true);
             } else if(early)early("HYBRID GPU: outlier tests off, mean / flags programs not compiled");
             markProgram=timed("mark",kHybMark,true);
-            guideProgram=timed("guide",kHybGuide);
+            guideProgram=timed("guide",dcg?hybridDcgSources().guide.c_str():kHybGuide); // P320: the zone's texture floor
             cellsProgram=timed("cells",kHybCells);
             // P76: the shared-memory variants (Adreno only; debugging: SCAM_HYB_NO_TILES=1 builds the Mali variants anywhere)
             const std::string tiles=std::string(adreno&&!std::getenv("SCAM_HYB_NO_TILES")?"#define SHARED_TILES 1\n":"");
@@ -4404,13 +4488,13 @@ public:
             { // debugging: SCAM_HYB_DEFS=A,B -> "#define A" / "#define B" before the merge body
                 std::string defs;const char* env=std::getenv("SCAM_HYB_DEFS");
                 if(env){std::stringstream s(env);std::string d;while(std::getline(s,d,','))if(!d.empty())defs+="#define "+d+"\n";}
-                const std::string body=defs+kHybMergeCommon+kHybMergeMain1;
+                const std::string body=defs+mergeCommon()+kHybMergeMain1;
                 mergeProgram=timed("merge",body.c_str());
             }
-            if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+kHybMergeCommon+kHybRim;rimProgram=timed("rim",body.c_str());}
-            if(bentoPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+kHybMergeCommon+kHybBento;bentoProgram=timed("bento",body.c_str());}
-            if(blendPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+kHybMergeCommon+kHybUsBlend;blendProgram=timed("blend",body.c_str());} // P310
-            if(chromaPass){const std::string body=std::string("#define RIM_STATS 1\n#define CHROMA_PASS 1\n")+kHybMergeCommon+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
+            if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+mergeCommon()+kHybRim;rimProgram=timed("rim",body.c_str());}
+            if(bentoPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+mergeCommon()+kHybBento;bentoProgram=timed("bento",body.c_str());}
+            if(blendPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+mergeCommon()+kHybUsBlend;blendProgram=timed("blend",body.c_str());} // P310
+            if(chromaPass){const std::string body=std::string("#define RIM_STATS 1\n#define CHROMA_PASS 1\n")+mergeCommon()+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
             if(nativeMosaic){ // P29: new programs only, the ones above are compiled from the same sources as without it
                 natMeanProgram=timed("natMean",(std::string(kHybNatAccess)+kHybNatMean).c_str());
                 natFlagsProgram=timed("natFlags",(std::string(kHybNatAccess)+kHybFlagRank+kHybNatFlags).c_str());
@@ -4563,7 +4647,7 @@ public:
         } else if(!mosaicProgram){
             compileName="mosaic";
             const auto t0=std::chrono::steady_clock::now();
-            mosaicProgram=compile((std::string(kHybMergeCommon)+kHybNatAccess+kHybMergeMosaic).c_str());
+            mosaicProgram=compile((std::string(mergeCommon())+kHybNatAccess+kHybMergeMosaic).c_str());
             compileMs+=" mosaic="+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
         }
     }
@@ -4598,6 +4682,7 @@ public:
         std::vector<float> noise4(size_t(frames)*4,0.f),param(size_t(frames)*4);
         for(int f=0;f<frames;++f){
             noise4[f*4]=in.noiseSlope[f];noise4[f*4+1]=in.noiseOffset[f];
+            if(size_t(f)<in.noiseKnee.size()&&size_t(f)<in.noiseLcg.size()){noise4[f*4+2]=in.noiseKnee[f];noise4[f*4+3]=in.noiseLcg[f];} // P320
             param[f*4]=in.gain[f];param[f*4+1]=in.weight[f];param[f*4+2]=in.kmul[f];param[f*4+3]=float(in.role[f]);
         }
         { // the frame table: homographies, parameters and noise for the whole merge; the geometry follows per strip
@@ -4657,7 +4742,7 @@ public:
                 if(!mosaicProgram){
                     const auto t0=std::chrono::steady_clock::now();
                     compileName="mosaic";
-                    mosaicProgram=compile((std::string(kHybMergeCommon)+kHybNatAccess+kHybMergeMosaic).c_str());
+                    mosaicProgram=compile((std::string(mergeCommon())+kHybNatAccess+kHybMergeMosaic).c_str());
                     compileMs+=" mosaic="+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
                 }
                 natMerge.push_back(mosaicProgram);
@@ -7542,7 +7627,10 @@ inline GridCoverage gridCoverage(const std::vector<BackwardHomography>& H,const 
     return c;
 }
 
-struct HybridNoiseCheck { double ratio=0; long flat=0,blocks=0; int frame=-1; };
+struct HybridNoiseCheck {
+    double ratio=0; long flat=0,blocks=0; int frame=-1;
+    std::vector<std::array<float,2>> dcgBlocks; // P320 a DCG burst: (mean, noise) of every flat block, for the two-zone fit
+};
 inline HybridNoiseCheck hybridMeasureNoise(const HybridInput& in){
     HybridNoiseCheck res;
     const int n=int(in.frames.size());
@@ -7554,6 +7642,7 @@ inline HybridNoiseCheck hybridMeasureNoise(const HybridInput& in){
     const double slope=0.5*(double(a.slope)+b.slope),offset=0.5*(double(a.offset)+b.offset);
     const int bw=in.w/64,bh=in.h/64; // 32x32 sites of the phase
     std::vector<float> ratio(size_t(bw)*bh,-1.f);
+    std::vector<std::array<float,2>> dcgAt(in.dcg?size_t(bw)*bh:0); // P320: the flat blocks' (mean, noise), DCG only
     mergeRowBands(bh,[&](int y0,int y1){
         for(int by=y0;by<y1;++by)for(int bx=0;bx<bw;++bx){
             double s0=0,s00=0,sd=0,sdd=0;bool bad=false;
@@ -7571,10 +7660,12 @@ inline HybridNoiseCheck hybridMeasureNoise(const HybridInput& in){
             const double model=slope*std::max(m,0.0)+offset;
             if(m<=0.002||model<=0||noise<=0||var0>1.5*noise)continue;
             ratio[size_t(by)*bw+bx]=float(noise/model);
+            if(in.dcg)dcgAt[size_t(by)*bw+bx]={float(m),float(noise)};
         }
     });
     std::vector<float> flat;
     for(float r:ratio)if(r>0)flat.push_back(r);
+    if(in.dcg)for(size_t i=0;i<ratio.size();++i)if(ratio[i]>0)res.dcgBlocks.push_back(dcgAt[i]);
     res.blocks=long(bw)*bh;res.flat=long(flat.size());
     if(flat.empty())return res;
     std::nth_element(flat.begin(),flat.begin()+flat.size()/2,flat.end());
@@ -7701,6 +7792,38 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         // (the synthetic replay series: x40..x400) or a measurement fault. Below x1/50 as well (identical frames, a frame copied twice).
         const HybridNoiseCheck c=hybridMeasureNoise(input);
         HybridTuning t2=tune;t2.noiseMeasured=-1;
+        // P320 DCG (owner: never one noise curve over a DCG frame): the same flat blocks fit var = S m + (m < T ? Oh : Ol)
+        // (dcgNoiseFit). Measured: every frame gets (S, Oh) in its slope / offset and (T, Ol) as dcgKnee / dcgOffsetLcg (0, 0 for one
+        // zone), the header's frame-to-frame ratios kept (a burst of one model: exactly S, Oh, Ol), no single-k scaling; the factor line
+        // says x1 so that the app's denoise does not scale its model again (it takes the zones from the DCG line). Not measured: the
+        // single-curve check as for any burst.
+        if(input.dcg){
+            const DcgNoiseFit z=c.frame>=0?dcgNoiseFit(c.dcgBlocks):DcgNoiseFit{};
+            if(z.measured&&z.knee<1.0){
+                report("HYBRID NOISE CHECK: base vs frame "+std::to_string(c.frame)+", "+std::to_string(c.flat)+" flat of "
+                    +std::to_string(c.blocks)+" blocks, measured / model "+std::to_string(c.ratio)
+                    +" -> model x1 (DCG: the measured zones replace the model)");
+                char line[384];
+                std::snprintf(line,sizeof(line),"HYBRID NOISE CHECK DCG: slope=%.6g hcg=%.6g lcg=%.6g knee=%.6g blocks=%ld/%ld zones=%d",
+                    z.slope,z.hcg,z.lcg,z.knee,z.used,c.blocks,z.zones); // blocks: the fit's inliers / the frame's blocks
+                report(line);
+                std::snprintf(line,sizeof(line),"HYBRID DCG NOISE FIT: one line slope=%.6g offset=%.6g; two zones slope=%.6g hcg=%.6g lcg=%.6g "
+                    "knee=%.6g; residual %.4g -> %.4g%s%s",z.oneSlope,z.oneOffset,z.twoSlope,z.twoHcg,z.twoLcg,z.twoKnee,z.resOne,z.resTwo,
+                    *z.why?"; one zone: ":"",z.why);
+                report(line);
+                const HybridFrame& a=input.frames[0];const HybridFrame& bf=input.frames[size_t(c.frame)];
+                const double pairSlope=0.5*(double(a.slope)+bf.slope),pairOffset=0.5*(double(a.offset)+bf.offset);
+                HybridInput measured=input;
+                for(auto& fr:measured.frames){ // a header value <= 0 (the app clamps a negative HAL offset to 0): the pair's (no zero LCG offset)
+                    const double rs=pairSlope>0&&fr.slope>0?fr.slope/pairSlope:1.0,ro=pairOffset>0&&fr.offset>0?fr.offset/pairOffset:1.0;
+                    fr.slope=float(z.slope*rs);fr.offset=float(z.hcg*ro);
+                    fr.dcgKnee=z.zones==2?float(z.knee):0.f;fr.dcgOffsetLcg=z.zones==2?float(z.lcg*ro):0.f;
+                }
+                return hybridReconstruct(measured,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
+            }
+            report(std::string("HYBRID NOISE CHECK DCG: not measured (")+(c.frame<0?"no normal frame to compare":z.measured?"knee out of range":z.why)
+                +", "+std::to_string(c.flat)+" flat blocks): the single-curve check");
+        }
         const bool up=c.ratio>=1.5&&c.ratio<=6.0,down=c.ratio>=0.02&&c.ratio<=0.67;
         const bool scale=c.flat>=100&&(up||down);
         const double k=up?std::min(c.ratio,4.0):std::max(c.ratio,1.0/16);
@@ -7819,7 +7942,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         LaGpuTune gt;gt.mu=tune.laMu;gt.kappa=tune.laKappa;gt.maxShift=tune.laMaxShift;gt.iters=tune.laIters;
         gt.itersCoarse=tune.laItersCoarse;gt.medians=tune.laMedian;
         auto gpu=std::make_unique<LaGpu>(hybridProgramCacheDir());
-        gpu->base(gb,input.frames[0].raw,eps,slope/16.f,LaGpuGrid{a.nx,a.ny,a.win,a.stride,a.s},LaGpuGrid{c.nx,c.ny,c.win,c.stride,c.s},gt);
+        gpu->base(gb,input.frames[0].raw,eps,hybridLaV0(input,slope,offset),LaGpuGrid{a.nx,a.ny,a.win,a.stride,a.s},LaGpuGrid{c.nx,c.ny,c.win,c.stride,c.s},gt);
         return gpu;
     });}catch(const std::exception&){laGpuWorker.reset();}
     // W1.7: the context with the programs this merge will ask for as far as the tuning tells (the local alignment as asked, the
@@ -7831,9 +7954,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const bool rimPass=tune.rimRatio!=0,la=tune.localAlign>0&&n>1,chromaPass=tune.chromaDiff>0.f,nat=native!=nullptr;
         const bool blendPass=tune.bento>0&&anyUltrashort&&tune.bentoBlend>0&&!nat;
         const bool bentoPass=tune.bento>0&&anyUltrashort&&!blendPass&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
-        const bool outlierPrograms=tune.hotSigma>0||tune.hotBaseSigma>0;
+        const bool outlierPrograms=tune.hotSigma>0||tune.hotBaseSigma>0,dcgZones=hybridDcgZones(input); // P320
         // a thread the system refuses (std::system_error) leaves earlyGpu empty: the merge builds its context, as before P31
-        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat,outlierPrograms,blendPass]{
+        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat,outlierPrograms,blendPass,dcgZones]{
             const auto t0=Clock::now();
             // The constructor's report: on Adreno one context line, printed where the merge reports the GPU. Off Adreno it reports
             // program by program (P26: a driver that dies while compiling): those lines go out at once, one write each on stderr
@@ -7847,7 +7970,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 }
                 earlyLog->lines.push_back(line);
             };
-            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat,outlierPrograms,blendPass);
+            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat,outlierPrograms,blendPass,dcgZones);
             gpu->release();
             earlyLog->ms=std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
             return gpu;
@@ -7956,7 +8079,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             LaBase laBase=std::move(built.base);laStreamBaseMs=built.ms;
             laBase.g0=laGrid(laBase.l0,win,stride,2);laBase.g1=laGrid(laBase.l1,16,8,4);
             const float slope=std::max(input.frames[0].slope,1e-9f),offset=std::max(input.frames[0].offset,0.f); // baseSlope, baseOffset
-            laBase.v0=slope/16.f;
+            laBase.v0=hybridLaV0(input,slope,offset);
             const int threads=std::clamp(int(std::thread::hardware_concurrency()),1,std::clamp(tune.laThreads,1,8));
             laStream=std::make_unique<LaStream>(b,std::move(laBase),std::max(offset/std::max(slope,1e-9f),1e-5f),tune,threads,windowed);
         }
@@ -8038,16 +8161,24 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     SuperResTuning kernel;
     // P29: the binned burst of the native mosaic path averages b^2 sites per pixel; the SNR keys of the kernel curves follow the
     // sites the merge accumulates (HybridMosaicNative::keyNoise), the binned noise model stays for the guide / rejection / F6
-    const float snr=tune.snrFixed>0?float(tune.snrFixed):native?sabreSnr(baseSlope*native->keyNoise,baseOffset*native->keyNoise,tune.snrScale)
-                    :sabreSnr(baseSlope,baseOffset,tune.snrScale);
+    // P320: a DCG burst with two measured zones keys the curves with the read noise of the zone mid grey (0.18) lies in: above the
+    // knee the LCG offset (one curve there read a day key where the mid-grey noise is night-like), blended over 0.9 .. 1.1 x the knee
+    // as in the programs (hybridDcgShare); every other burst: baseOffset
+    const float dcgShare=hybridDcgZones(input)?hybridDcgShare(0.18f,base.dcgKnee):0.f;
+    const float keyOffset=dcgShare>0.f?baseOffset+(std::max(base.dcgOffsetLcg,0.f)-baseOffset)*dcgShare:baseOffset;
+    const float snr=tune.snrFixed>0?float(tune.snrFixed):native?sabreSnr(baseSlope*native->keyNoise,keyOffset*native->keyNoise,tune.snrScale)
+                    :sabreSnr(baseSlope,keyOffset,tune.snrScale);
     snrKernel(kernel,snr);
     kernel.base*=tune.kernelScale;kernel.shrunk*=tune.kernelScale;kernel.stretched*=tune.kernelScale;kernel.flat*=tune.kernelScale;
     if(tune.isoKernel){kernel.shrunk=kernel.stretched=kernel.base;if(tune.isoKernel>=2)kernel.flat=kernel.base;}
     // Sabre 6.1 kernel (sabre2x_61.md F1): key = 0.18/sqrt(O + 0.18 S) of the base frame (no snrScale), 6.1 curves f0..f3
     // (the Sabre 6.1 curves in research), f4 = 4, f5 = 2.2; uniforms exactly as the reference library 0x723f04-0x724008.
     std::array<float,4> k61a{},k61b{},k61c{};
-    const float key61=tune.snrFixed>0?float(tune.snrFixed):native?sabreSnr(baseSlope*native->keyNoise,baseOffset*native->keyNoise,1.f)
-                      :sabreSnr(baseSlope,baseOffset,1.f);
+    const float key61=tune.snrFixed>0?float(tune.snrFixed):native?sabreSnr(baseSlope*native->keyNoise,keyOffset*native->keyNoise,1.f)
+                      :sabreSnr(baseSlope,keyOffset,1.f);
+    if(hybridDcgZones(input))report("HYBRID DCG: two noise zones (knee "+std::to_string(base.dcgKnee)+", offset "+std::to_string(baseOffset)+" / "
+        +std::to_string(base.dcgOffsetLcg)+"): the GPU programs take the offset of each level's zone (blended over 0.9 .. 1.1 x the knee); Sabre key "
+        +std::to_string(key61)+" snr "+std::to_string(snr)+" from the offset at 0.18 (LCG share "+std::to_string(dcgShare)+")");
     // Hand motion of the burst: RMS shift of the aligned normal donors at the frame centre (sub-pixel diversity for the 6.1 kernel).
     double motion=0;
     {
@@ -8432,7 +8563,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         }
         laBase.g0=laGrid(laBase.l0,win,stride,2);laBase.g1=laGrid(laBase.l1,16,8,4);
         }
-        laBase.v0=baseSlope/16.f;
+        laBase.v0=hybridLaV0(input,baseSlope,baseOffset);
         {
         // One worker per frame at a time (gray 12 MB + L1 3 MB each): long-lived threads, so the scheduler moves them to the big
         // cores (short parallel sections per pass stayed on the small ones: 3.3 s for 19 frames against 0.8 s for this pool on Adreno 750 phones (SM8650)).
@@ -8527,7 +8658,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const GridCoverage cov=gridCoverage(H,donors,w,h,colourBlock,local);
         // light: the base frame's SNR at 0.1 of white (its noise model, normalised units), averaged by the frames that share a
         // 2x cell (a quarter of them each); below auto2xMinSnr the 2x grid shows its lattice and noise, not detail
-        const double level=0.1,snr1=level/std::sqrt(std::max(1e-12,double(baseSlope)*level+double(baseOffset)));
+        // P320: a DCG burst with two measured zones: the read noise of the zone 0.1 lies in (blended as the programs do)
+        const double level=0.1;
+        const double share2x=hybridDcgZones(input)?hybridDcgShare(float(level),input.frames[0].dcgKnee):0.0;
+        const double offset2x=double(baseOffset)+(std::max(double(input.frames[0].dcgOffsetLcg),0.0)-double(baseOffset))*share2x;
+        const double snr1=level/std::sqrt(std::max(1e-12,double(baseSlope)*level+offset2x));
         const double snr2x=snr1*std::sqrt(double(cov.frames)/4.0);
         const bool sparse=cov.green>tune.auto2xMaxGap,dark=snr2x<tune.auto2xMinSnr;
         coarse2x=sparse||dark;
@@ -8572,6 +8707,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         in.role.push_back(fr.role);
         in.noiseSlope.push_back(std::max(fr.slope,1e-9f));
         in.noiseOffset.push_back(std::max(fr.offset,0.f));
+        in.noiseKnee.push_back(std::max(fr.dcgKnee,0.f));in.noiseLcg.push_back(std::max(fr.dcgOffsetLcg,0.f)); // P320 (0, 0: one curve)
         index.push_back(f);
         char line[96];std::snprintf(line,sizeof(line)," | %d %d %.4f %.2f %.3f",f,fr.role,t,A,ls);table+=line;
     }
@@ -8793,13 +8929,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         if(earlyGpu.valid()){ // P31 (W1.7): the context built during the front end, when it holds the programs this merge needs
             try{held=earlyGpu.get();}catch(const std::exception&){held.reset();} // built again below, as before
             {std::lock_guard<std::mutex> l(earlyLog->lock);for(const auto& line:earlyLog->lines)report(line);earlyLog->lines.clear();}
-            if(held&&(held->localAlign!=withLocalAlign||(bentoPass&&!held->hasBentoPass())||(blendPass&&!held->hasBlendPass())))held.reset();
+            if(held&&(held->localAlign!=withLocalAlign||(bentoPass&&!held->hasBentoPass())||(blendPass&&!held->hasBlendPass())
+                      ||held->dcg!=hybridDcgZones(input)))held.reset(); // P320: the DCG two-zone programs or not
             if(held){
                 try{held->acquire();built=" built ahead in "+std::to_string(int(earlyLog->ms))+" ms";}catch(const std::exception&){held.reset();}
             }
         }
         if(!held)held=std::make_unique<HybridGpu>(tune.rimRatio!=0,withLocalAlign,bentoPass,tune.chromaDiff>0.f,report,large,native!=nullptr,
-                tune.hotSigma>0||tune.hotBaseSigma>0,blendPass);
+                tune.hotSigma>0||tune.hotBaseSigma>0,blendPass,hybridDcgZones(input));
         HybridGpu& gpu=*held;gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")"+built);
@@ -11276,6 +11413,7 @@ struct MappedHybridBurst {
             std::memcpy(&input.white,h+6,4);std::memcpy(input.black.data(),h+7,16);
             const uint32_t flags=h[11];input.diagnostics=flags&1;input.mergedDng=flags&2;input.clipFlags=flags&4;input.strict2x=flags&8;
             input.noEffMap=flags&16;
+            input.dcg=flags&32; // P320
             if(h[1]>=11){ // v11: h[12] = base index (0), h[13] = output grid 1|2, h[14] = colour block 0 (unknown) | 1 | 2 | 4
                 if(h[13]!=0&&h[13]!=1&&h[13]!=2)throw std::runtime_error("Unsupported hybrid output grid");
                 input.grid=h[13]==0?1:int(h[13]);

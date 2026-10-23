@@ -25,7 +25,20 @@ public final class DeviceAvailability {
                 .fullResSizes(FullResProfiles.sizeOffered("50"), FullResProfiles.sizeOffered("200"))
                 .oppoTunedColor(com.particlesdevs.photoncamera.processing.render.OppoTunedColor.applies())
                 .mosaicStreams(com.particlesdevs.photoncamera.processing.MosaicBlockStore.anyMosaic())
-                .bentoBlend(bentoBlend());
+                .bentoBlend(bentoBlend())
+                .dcg(dcgOn());
+    }
+
+    /**
+     * P320: the camera running now takes DCG frames (its session asked for them: the «DCG 14 бит» switch on a camera with the mode,
+     * or the Pixel 10 Pro's main); another camera of the phone keeps its shadow-frame rows.
+     */
+    static boolean dcgOn() {
+        try {
+            return com.particlesdevs.photoncamera.processing.RawLevels.dcgFrames();
+        } catch (RuntimeException unknown) {
+            return false;
+        }
     }
 
     /** The highlight frames are blended after the merge (P310; scam_dev.txt "hybrid_bento_blend 0" mixes them inside it). */

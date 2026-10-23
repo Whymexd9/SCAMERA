@@ -133,6 +133,31 @@ public final class DngMetadata {
         return Double.isFinite(v) && v > 1 ? v : 1;
     }
 
+    /**
+     * P320: the per-plane one-frame model of a DCG shot with measured zones, for {@link #noiseProfile}. A DNG holds one curve
+     * per plane; the closest one on purpose is (S, O_hcg): exact in the shadows where the offset matters, while above the knee
+     * the missing O_lcg - O_hcg is small next to S x. {@code zones} = {slope, high-gain offset, low-gain offset, knee}
+     * (NoiseModeler.dcgZones: one green phase, normalised units); {@code model} = the planes the non-DCG path writes
+     * ({S_R, O_R, S_G, O_G, S_B, O_B}, the one-frame or the legacy stacked model) and {@code baseS} / {@code baseO} the camera's
+     * one-frame green pair it is relative to: plane c gets S model_Sc / baseS and O_hcg model_Oc / baseO (the model's channel
+     * ratios and any stacking it carries); a ratio whose terms are not positive finite numbers (no model) is 1.
+     */
+    public static double[] dcgPlanes(float[] zones, double[] model, double baseS, double baseO) {
+        if (zones == null || zones.length < 4) throw new IllegalArgumentException("zones must hold slope, two offsets and the knee");
+        final boolean m = model != null && model.length == 6;
+        final double[] out = new double[6];
+        for (int c = 0; c < 3; c++) {
+            out[2 * c] = zones[0] * ratio(m ? model[2 * c] : Double.NaN, baseS);
+            out[2 * c + 1] = zones[1] * ratio(m ? model[2 * c + 1] : Double.NaN, baseO);
+        }
+        return out;
+    }
+
+    private static double ratio(double v, double base) {
+        final double r = v / base;
+        return v > 0 && base > 0 && Double.isFinite(r) && r > 0 ? r : 1;
+    }
+
     /** A NoiseModeler model (R, G, B pairs of slope / offset) as {S_R, O_R, S_G, O_G, S_B, O_B}; null when incomplete. */
     public static double[] planes(Pair<Double, Double>[] model) {
         if (model == null || model.length < 3) return null;

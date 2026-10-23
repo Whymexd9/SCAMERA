@@ -24,6 +24,8 @@ public class DefaultSaver extends SaverImplementation {
     Boolean ownedIszAspect4x3;
     /** P190: the FULLRES series of the queued shot (ImageSaver.fullResSeries / fullResRequested). */
     int ownedFullResSeries, ownedFullResRequested;
+    /** P320: the queued shot is a DCG shot (ImageSaver.dcgShot). */
+    boolean ownedDcgShot;
     /** P212f (W2 = M3): the hand-set white balance's gains at the press of the queued shot (null: automatic). */
     android.hardware.camera2.params.RggbChannelVector ownedManualWb;
     /** P212g (W6 = M6): the mosaic white balance's route at the press of the queued shot (null: none). */
@@ -49,6 +51,8 @@ public class DefaultSaver extends SaverImplementation {
             scamProcessor.ownedFullResSeries = ownedFullResSeries;
             scamProcessor.ownedFullResRequested = ownedFullResRequested;
             ownedFullResSeries = ownedFullResRequested = 0;
+            scamProcessor.ownedDcgShot = ownedDcgShot;
+            ownedDcgShot = false;
             scamProcessor.ownedManualWb = ownedManualWb;
             ownedManualWb = null;
             scamProcessor.ownedMosaicWb = ownedMosaicWb;

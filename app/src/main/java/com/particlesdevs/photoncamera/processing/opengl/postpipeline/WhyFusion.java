@@ -76,6 +76,15 @@ public final class WhyFusion extends Node {
         return PreferenceKeys.isHybridDenoiseEnabled();
     }
 
+    /**
+     * P320: the strength of bracket_denoise for this shot: the setting's, 0 for a DCG frame without Bento (its Y > 0.95 range
+     * is the frame's own highlight data - clouds, snow - not a gained ultrashort, and the fused high/low-gain reads are clean
+     * there); the old run of post_ab keeps the setting's.
+     */
+    static float bracketStrength(float setting, boolean dcg, boolean bentoApplied, boolean legacy) {
+        return dcg && !bentoApplied && !legacy ? 0f : setting;
+    }
+
     @Override
     public void Run() {
         PostPipeline pipeline = (PostPipeline) basePipeline;
@@ -87,6 +96,8 @@ public final class WhyFusion extends Node {
         WhyAe.Result r = st.ae;
         Point lowSize = st.low.mSize;
         float strength = whyDenoise(basePipeline.mParameters) ? WhyTone.value("bracket_denoise", 1f) : 0f;
+        strength = bracketStrength(strength, basePipeline.mParameters != null && basePipeline.mParameters.dcgShot,
+                ScamHybridBurst.lastBentoApplied, com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy());
         st.lowDn = st.low;
         if (r.clip > 1.05f && strength > 0.001f) {
             st.lowDn = new GLTexture(lowSize, new GLFormat(GLFormat.DataType.FLOAT_16, 4), null, GL_NEAREST, GL_CLAMP_TO_EDGE);

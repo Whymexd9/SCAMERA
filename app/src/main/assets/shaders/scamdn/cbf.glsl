@@ -33,6 +33,13 @@ uniform vec2 darkChromaU;       // fadeU: colour deviation |RGB - mean| from whi
                                 // fully (signed hybrid input; 0 = off, the fade of the luminance alone)
 uniform vec2 darkNoiseU;        // darkChromaU on: the keep floor follows the colour noise left after the denoise,
                                 // floor^2 = x * mean + y (ScamDenoise.darkNoise; 0 = the fixed floor alone)
+// P320: a DCG shot (ScamDenoise sets 1) has two read-noise zones: noiseU.y below the knee (high gain), noiseHiU above it
+// (low gain), blended over 0.9 .. 1.1 x the knee in Y; 0 = the single curve, token for token as before.
+#define DCG_ZONES 0
+#if DCG_ZONES
+uniform float noiseHiU;         // noise.y of the low-gain zone (the same k * G * rho_r scaling as noiseU.y)
+uniform float kneeU;            // the zone switch in Y (> 0)
+#endif
 out vec4 Output;
 
 const vec3 kY = vec3(0.2126, 0.7152, 0.0721996);
@@ -64,7 +71,11 @@ void main() {
     vec3 r = c;
     if (filterU != 0) {
         float f = useMapU != 0 ? max(texture(StrMap, (vec2(p) + 0.5) * mapInvU).r, 0.0) : 1.0;
+#if DCG_ZONES
+        float sigma2 = f * (noiseU.x * max(c.x, 0.0) + mix(noiseU.y, noiseHiU, smoothstep(0.9 * kneeU, 1.1 * kneeU, c.x)));
+#else
         float sigma2 = f * (noiseU.x * max(c.x, 0.0) + noiseU.y);
+#endif
         vec2 a0 = vec2(0.0), a1 = vec2(0.0);
         float s0 = 0.0, s1 = 0.0;
         for (int j = -1; j <= 1; j++) {

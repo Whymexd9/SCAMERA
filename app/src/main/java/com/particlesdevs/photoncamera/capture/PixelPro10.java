@@ -70,6 +70,22 @@ public final class PixelPro10 {
         return d.equals("mustang") || d.equals("blazer");
     }
 
+    /**
+     * P320: this camera is the main one, whose RAW is DCG (owner, 2026-10-12: «у пикселя DCG работает в raw12 и raw sensor сразу
+     * же на основной камере»): a back camera with the main's 6.9 mm lens on its full sensor width. The main's 2x crop module
+     * (4.9 mm wide) and the max-resolution stream are not shown DCG and stay plain.
+     */
+    public static boolean dcgMain(@Nullable CameraCharacteristics c) {
+        if (c == null || !device() || fullResOn()) return false;
+        Integer facing = c.get(CameraCharacteristics.LENS_FACING);
+        return facing != null && facing == CameraCharacteristics.LENS_FACING_BACK && mainLens(focal(c), width(c));
+    }
+
+    /** P320: the main's lens (6.9 mm, 5 %) on a sensor wider than 7 mm (the 2x crop is 4.9 mm). */
+    static boolean mainLens(float focal, float width) {
+        return Math.abs(focal - 6.9f) <= 0.35f && width > 7f;
+    }
+
     /** Field of view against the main camera from focal length and sensor width (35 mm-equivalent ratio). */
     static float field(float focal, float width, float mainFocal, float mainWidth) {
         if (width <= 0f || mainWidth <= 0f || mainFocal <= 0f) return 0f;

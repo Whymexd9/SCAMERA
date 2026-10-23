@@ -276,6 +276,11 @@ public final class LiveWhyTone {
         settingsAt = now;
         settings = WhyTone.settings();
         settings.bentoHeadroom = false;     // a single frame: no Bento data above the clip
+        // P320: a DCG session's frames take the photo's DCG rules: the night factor reads the gain (the reported ISO over the
+        // mode's range scale), a bright scene keeps its exposure
+        final android.hardware.camera2.CameraCharacteristics camera = com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics;
+        settings.dcg = com.particlesdevs.photoncamera.capture.Dcg14Mode.frames(camera);
+        settings.dcgIsoScale = settings.dcg ? liveDcgIsoScale(camera) : 1f;
         look = WhyTone.colourLook();
         colourOn = !look.shaderNeutral();
         toneOp = WhyTone.toneOperator();
@@ -341,6 +346,25 @@ public final class LiveWhyTone {
         aeShown = ae == null ? r.ae : aeShown + (r.ae - aeShown) * AE_SMOOTH;
         ae = r;
         return true;
+    }
+
+    /**
+     * P320: the viewfinder's DCG ISO scale, by the photo's rule (ScamProcessor.dcgIsoScale): the session's resolved range over the
+     * declared one when its white is a measured clip; 1 otherwise.
+     */
+    static float liveDcgIsoScale(android.hardware.camera2.CameraCharacteristics c) {
+        if (c == null || !com.particlesdevs.photoncamera.capture.VivoQcomIsz.enabled()) return 1f; // the photo's evidence rule
+        try {
+            final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels = com.particlesdevs.photoncamera.processing.RawLevels.current(c, null);
+            if (levels == null || levels.source == null || !levels.source.contains("measured clip")) return 1f;
+            float declaredBlack = 0f;
+            final float[] black = com.particlesdevs.photoncamera.processing.RawLevels.staticBlack(c);
+            if (black != null && black.length > 0) { for (float b : black) declaredBlack += b; declaredBlack /= black.length; }
+            return com.particlesdevs.photoncamera.processing.processor.ScamProcessor.isoScale(levels.white - levels.meanBlack(),
+                    com.particlesdevs.photoncamera.processing.RawLevels.staticWhite(c) - declaredBlack);
+        } catch (RuntimeException e) {
+            return 1f;
+        }
     }
 
     /** The photo's AE clamps the shadow gain by the MERGED image's noise: the frame's noise over the merge's frames. */

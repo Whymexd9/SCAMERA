@@ -7100,3 +7100,41 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   «Расширенные» group of the task. Expert pages (SHDR, RAW, modules, diagnostics) keep their texts.
 - Tests updated on purpose: AvifSettingsTest / PhotoFormatSettingsTest titles, SettingsMenuTest's white-balance row place.
 - README: a short «Чем хороша» list (RU) + an About paragraph (EN); the GitHub «About» line itself needs the owner (no gh here).
+
+### P321 - DCG frames are not normal RAW: no brackets, linearity proven by the histogram, two noise zones (owner, 2026-10-23: the DCG table «DCG — это НЕ обычный RAW» with its four prohibitions, «с DCG света и тени должны тянуться так же хорошо как с применением сверхкороткого и длинного кадра, т.е. ему по идее они не нужны», «подтверждения мои не нужны, делай и решай всё сам»): DONE in code, not device-tested.
+- Audit (scratchpad dcg/r5-r9, map4-map7; report Downloads/x200u/dcg_report_p321.md): the X200 Ultra's camera 3 (imx06c) never runs DCG in
+  SCAMERA - its logs show sensor modes 1 / 3 / 4 / 13 only, all bpp 10 with hdrDcgMode 0 (CHI inventory, reports/pd2454-native-main-
+  force7-isz-usecase6-observed-20261015.txt:4), white 1023, every saved buffer / DNG max 1023 without gaps; the DCG rows are 5 / 12
+  (4096x2304 / 4096x2632, 14-bit sensor fusion) and 9 / 11 (DCG4, 10-bit IMAGE + IMAGE_SHORT pair), none delivered a RAW
+  (DEVICE-FRONTIER-20261016.md). SCAMERA's DCG frames come from the «DCG 14 бит» switch (X300 Ultra 17 / 11 / 20, 14-bit under 1023,
+  clip 8694; Xiaomi 15 Ultra mode 24) and the Pixel 10 Pro main (owner: DCG in every format). 186 pipeline places classified against
+  the 7 assumptions: 68 broke.
+- Predicate: Dcg14Mode.frames(c) = PixelPro10.dcgMain(c) (back, 6.9 mm, sensor > 7 mm wide, not FULLRES) || (active(c) && the
+  session's levels resolve 14 bit: a HAL that ran its plain mode under the request stays plain), latched at the press (ImageSaver.
+  dcgShot -> DefaultSaver -> ScamProcessor -> Parameters.dcgShot); Dcg14Mode.requested(c) (the request) for the session's level
+  learning and the settings hint (RawLevels.dcgFrames: the running camera only); the P163 gain floor for the switch's routes only.
+- Plan (HybridPlan.build / manualLong, dcg): no Shasta; Bento «Всегда» reads as «Авто» - ultrashort only where the buffered DCG frame
+  measurably clips (the X300 Ultra's DCG window clipped, P163); the worker gets "bento 1 / shastaEnable 0 / mochi 0"
+  (ScamHybridBurst.DCG_TUNING), bracketed frames of a DCG burst are left out.
+- Linearity (RawLinearity, ScamProcessor.dcgLinearity, before the white balance and the merge): votes per colour (greens pooled);
+  a knee = R, G and B stepping alike at one code; one colour without the step decides «no knee there»; LINEAR only with no knee and
+  >= 85 % of the samples at decided codes (an untested code is no proof); found -> every frame expanded through the inverse PWL in
+  place, levels follow; not proven / not checkable / not linearisable -> the frames of another exposure are left out.
+- Levels: raw_wide forced in DCG sessions; module level overrides not applied to DCG; widenToSamples takes the measured clip;
+  RawPayloadCheck measures the clip of known-depth sessions (15 Ultra) and of DCG streams at the declared depth (Pixel, RawLevels.
+  dcgClip); Parameters.dcgIsoScale = range / declared range when the white is a measured clip, on the X300 Ultra only (where the ISO
+  1336 for 167 was seen; other routes log it and keep 1).
+- Noise: the worker fits var = S m + (m < T ? Oh : Ol) on the noise check's flat blocks (scam-dcg-noise.h, tools/check_dcg_noise.cpp
+  in CI), the DCG programs take the zone's offset blended over 0.9 .. 1.1 x T (exact-line replacements in kHybHelpers / kHybMergeCommon /
+  kHybMergeMosaicFast / kHybGuide; every non-DCG source byte-identical, kHybMergeMain1 untouched); Sabre key, auto2x and the F6 damping
+  take the zones; "HYBRID NOISE CHECK DCG:" -> Parameters.dcgNoise -> ScamDenoise (scamdn DCG_ZONES), finish SNR, dark keep, the WhyAe
+  clamp, the DNG NoiseProfile (S, Oh). NoiseModeler evaluates a chosen profile / the fallback at ISO / dcgIsoScale.
+- Tone: WhyAe's night factor reads ISO / dcgIsoScale (photo and viewfinder), the «not below the captured exposure» floor holds for DCG,
+  WhyFusion's bracket_dn is off for DCG without Bento.
+- Settings: while the running camera takes DCG frames, the shadow-frame rows say why they do not act. A DCG shot the merge could
+  not measure says «DCG: шум не измерен … одна кривая шума». Review (3 lenses + verify): 17 findings fixed (predicate by the data,
+  the hint per camera, the gain floor, coverage, colour voting, the ISO scale's evidence, override flags, «bento» off kept, timeout).
+- CI: builds for main only (paths-ignore docs), cancel superseded runs, artifacts 3 days (neural-assets copy only without the key),
+  timeout 60 min, the dead CodeQL workflow removed.
+- Open: a phone DCG burst (X300 Ultra / 15 Ultra / Pixel) for the knee, the zones and the ISO scale; the 15 Ultra's ISO scale (its
+  white is a guess, no scale applied); the viewfinder's noise clamp still uses one curve; the round-4 tensor floor (sabre61 off only).

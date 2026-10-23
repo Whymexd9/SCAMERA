@@ -12,17 +12,36 @@ public class NoiseModeler {
     public int AnalogueISO;
     public int SensivityISO;
     double adaptiveMpy = 1.0;
-    /** ISO fed to the model (the capture sensitivity). */
+    /** ISO fed to the model (the capture sensitivity; P320: over {@link #isoScale} for a DCG frame). */
     private int modelIso1;
+    /** P320: the HAL profile as reported (null: none) and the CFA, kept for {@link #withIsoScale}. */
+    private final Pair<Double,Double>[] reportedModel;
+    private final int bayer;
+    /** P320: what the reported ISO was divided by before a chosen profile / the fallback read it (1: the reported ISO). */
+    public final float isoScale;
     public NoiseModeler(Pair<Double,Double>[] inModel, Integer analogISO, Integer ISO, int bayer) {
+        this(inModel, analogISO, ISO, bayer, 1f);
+    }
+
+    /**
+     * P320: {@code isoScale} > 1 (a DCG mode's Parameters.dcgIsoScale: the X300 Ultra reports ISO x8 for the gain its photons
+     * saw) evaluates a chosen profile and the no-profile fallback at ISO / isoScale; the HAL's own profile is used as reported
+     * (its normalisation for the widened stream is unverified). 1 (or less, or not a number) = the reported ISO, as before.
+     */
+    public NoiseModeler(Pair<Double,Double>[] inModel, Integer analogISO, Integer ISO, int bayer, float isoScale) {
         AnalogueISO = analogISO;
         SensivityISO = ISO;
+        reportedModel = inModel;
+        this.bayer = bayer;
+        this.isoScale = isoScale > 1f && Float.isFinite(isoScale) ? isoScale : 1f;
         baseModel = new Pair[3];
         computeModel = new Pair[3];
         // A selected profile replaces whatever the sensor reported, so it reaches every
         // consumer of computeModel at once: the denoise nodes and the alignment
         // significance gate in align.glsl.
-        modelIso1 = ISO;
+        modelIso1 = modelIso(ISO, this.isoScale);
+        if (this.isoScale > 1f) Log.i(TAG, "DCG ISO x" + this.isoScale + ": a chosen profile / the fallback at ISO " + modelIso1
+                + " (reported " + ISO + ")" + (inModel != null && inModel.length > 0 ? ", the HAL profile as reported" : ""));
 
         NoiseModelProfile profile = null;
         try {
@@ -34,7 +53,7 @@ public class NoiseModeler {
         }
         if (profile != null) {
             inModel = profile.evaluate(modelIso1, AnalogueISO);
-            Log.d(TAG, "Noise model profile: " + profile.name + " at ISO " + ISO
+            Log.d(TAG, "Noise model profile: " + profile.name + " at ISO " + modelIso1
                     + " -> R(S,O)=" + inModel[0] + " Gr=" + inModel[1]
                     + " Gb=" + inModel[2] + " B=" + inModel[3]);
         }
@@ -80,6 +99,57 @@ public class NoiseModeler {
         Log.d(TAG, "ComputedNoiseModel2->" + computeModel[2]);
     }
 
+
+    /** P320: the ISO a chosen profile / the fallback reads: the reported ISO over the scale (> 1), at least 1; else the ISO itself. */
+    static int modelIso(int iso, float isoScale) {
+        return isoScale > 1f && Float.isFinite(isoScale) ? Math.max(1, Math.round(iso / isoScale)) : iso;
+    }
+
+    /**
+     * P320 (Parameters.applyDcgIsoScale): this model rebuilt from the same HAL profile, analogue and reported ISO with the ISO
+     * scale {@code scale}; idempotent (it always starts from the reported ISO). The stacking multiplier carries over and
+     * computeModel is the one-frame stack again (ScamProcessor rescales it for the merge before the post).
+     */
+    public NoiseModeler withIsoScale(float scale) {
+        final NoiseModeler n = new NoiseModeler(reportedModel, AnalogueISO, SensivityISO, bayer, scale);
+        if (adaptiveMpy != 1.0) {
+            n.adaptiveMpy = adaptiveMpy;
+            n.computeStackingNoiseModel();
+        }
+        return n;
+    }
+
+    /**
+     * P320: the DCG shot's measured two zones (Parameters.dcgNoise = {slope S, high-gain offset, low-gain offset, knee t},
+     * normalised units (v - black) / (white - black), the worker's «HYBRID NOISE CHECK DCG»; var = S x + offset of x's zone)
+     * when usable: four finite numbers, S > 0, both offsets >= 0, t in [1e-6, 1] (below, the shaders' smoothstep edges could
+     * meet as fp32 denormals flush), or t = 0 with equal offsets (the worker's one measured zone: «zones=1», lcg = hcg, knee 0;
+     * its factor line then says x1, so the camera's curve would go uncorrected); else null, and every reader (ScamDenoise, the
+     * WHY gain clamp, the DNG NoiseProfile) keeps the camera's single curve.
+     */
+    public static float[] dcgZones(float[] z) {
+        if (z == null || z.length < 4) return null;
+        for (int i = 0; i < 4; i++) if (!Float.isFinite(z[i])) return null;
+        if (!(z[0] > 0f) || z[1] < 0f || z[2] < 0f || z[3] < 0f || z[3] > 1f || (z[3] > 0f && z[3] < 1e-6f)) return null;
+        if (z[3] == 0f && z[1] != z[2]) return null; // knee 0 is one zone only: an offset step without a knee is no model
+        return new float[]{z[0], z[1], z[2], z[3]};
+    }
+
+    /**
+     * P320: the low-gain zone's share at level x: smoothstep over 0.9 .. 1.1 x the knee (scamdn lbf / cbf / stats blend with
+     * the same weight under DCG_ZONES 1); 0 for a knee <= 0 or a level that is not a number.
+     */
+    public static float zoneWeight(float x, float knee) {
+        if (!(knee > 0f) || Float.isNaN(x)) return 0f;
+        final float t = Math.max(0f, Math.min(1f, (x - 0.9f * knee) / (0.2f * knee)));
+        return t * t * (3f - 2f * t);
+    }
+
+    /** P320: the offset at level x of two zones: {@code hcg} below the knee, {@code lcg} above it, {@link #zoneWeight} between. */
+    public static float zoneOffset(float x, float hcg, float lcg, float knee) {
+        final float w = zoneWeight(x, knee);
+        return w <= 0f ? hcg : w >= 1f ? lcg : hcg + (lcg - hcg) * w;
+    }
 
     public void setAdaptiveMpy(double mpy){
         adaptiveMpy = mpy;

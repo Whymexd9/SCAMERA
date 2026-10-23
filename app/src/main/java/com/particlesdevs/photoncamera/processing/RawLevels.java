@@ -245,6 +245,8 @@ public final class RawLevels {
     private static final int[] sVotes = new int[5];
     /** P230: the depth of the session's sensor mode (0: none), see {@link #noteKnownBits}. */
     private static int sKnownBits;
+    /** P320: the session's frames are DCG (Dcg14Mode.frames), see {@link #noteDcgFrames}. */
+    private static boolean sDcgFrames;
 
     /** A new camera session: the stream is learnt again. {@code wide}: dev switch raw_wide (a stream may be wider than declared). */
     public static void newSession(boolean wide) {
@@ -269,7 +271,32 @@ public final class RawLevels {
         sSampledFloor = -1;
         sSaturation = 0;
         sKnownBits = 0;
+        sDcgFrames = false;
         Arrays.fill(sVotes, 0);
+    }
+
+    /**
+     * P320: the session's frames are DCG. At the declared depth (the Pixel 10 Pro's main) the declared white is not taken on
+     * trust: the clip plateau its samples show (RawPayloadCheck) replaces it when lower ({@link #dcgClip}).
+     */
+    public static void noteDcgFrames(boolean on) {
+        synchronized (LOCK) {
+            sDcgFrames = on;
+        }
+    }
+
+    public static boolean dcgFrames() {
+        synchronized (LOCK) {
+            return sDcgFrames;
+        }
+    }
+
+    /** P320: a DCG session's levels at the declared depth with the measured clip as the white when it lies under the declared one. */
+    private static Levels dcgClip(Levels l, boolean session) {
+        if (!session || !sDcgFrames || l.bits != l.declaredBits || sSaturation <= 0 || sSaturation >= l.white
+                || sSaturation <= 2f * max(l.black)) return l;
+        return new Levels(l.black, sSaturation, l.bits, l.declaredBits, l.dynamicBlack,
+                l.source + ", white = measured clip " + sSaturation + " (DCG at the declared depth)");
     }
 
     /**
@@ -377,6 +404,13 @@ public final class RawLevels {
         }
     }
 
+    /** P320: the session's clip plateau when the session is of the camera declaring {@code staticWhite}, 0 otherwise. */
+    public static int saturationFor(int staticWhite) {
+        synchronized (LOCK) {
+            return staticWhite > 0 && sStaticWhite == staticWhite ? sSaturation : 0;
+        }
+    }
+
     public static int sampledSaturation() {
         synchronized (LOCK) {
             return sSaturation;
@@ -414,8 +448,8 @@ public final class RawLevels {
     }
 
     private static Levels resolveLocked(float[] staticBlack, int staticWhite) {
-        return resolve(staticBlack, staticWhite, sDynamicBlack, sDynamicWhite, sSampledBits, sSampledFloor, sSaturation, sKnownBits, sWide,
-                true, true);
+        return dcgClip(resolve(staticBlack, staticWhite, sDynamicBlack, sDynamicWhite, sSampledBits, sSampledFloor, sSaturation, sKnownBits,
+                sWide, true, true), true);
     }
 
     /**
@@ -426,9 +460,9 @@ public final class RawLevels {
                                   boolean useDynamicBlack, boolean useDynamicWhite) {
         synchronized (LOCK) {
             final boolean session = sessionCamera(staticBlack, staticWhite);
-            return resolve(staticBlack, staticWhite, dynamicBlack, dynamicWhite, session ? sSampledBits : 0,
+            return dcgClip(resolve(staticBlack, staticWhite, dynamicBlack, dynamicWhite, session ? sSampledBits : 0,
                     session ? sSampledFloor : -1f, session ? sSaturation : 0, session ? sKnownBits : 0, sWide, useDynamicBlack,
-                    useDynamicWhite);
+                    useDynamicWhite), session);
         }
     }
 

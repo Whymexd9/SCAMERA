@@ -46,6 +46,16 @@ public final class WhyAe {
         public boolean bentoHeadroom;
         /** P216: where the highlight peak of a shot with real headroom lies between P159's (0) and the p99.9 level (1), in log. */
         public float hrMix = 0.5f;
+        /**
+         * P320: a DCG frame (one exposure read at high and low conversion gain, fused; Parameters.dcgShot): its highlights are its
+         * own data, as Bento headroom's are, so a bright scene keeps its captured exposure ({@link #keepsCapturedExposure}).
+         */
+        public boolean dcg;
+        /**
+         * P320: how many times a DCG mode's reported ISO exceeds the gain its photons saw (Parameters.dcgIsoScale; 1 = none): the
+         * night factor reads ISO / it ({@link #nightIso}), the HCG shadows being as clean as that gain's.
+         */
+        public float dcgIsoScale = 1f;
     }
 
     /** Exposure, ceiling, fusion strengths and the effective AgX parameters of one shot (+ the logged statistics). */
@@ -291,6 +301,37 @@ public final class WhyAe {
         return Math.max(noiseMax / sigmaMid, 1.0);
     }
 
+    /**
+     * P320: the gain clamp's model of a DCG shot with measured zones ({@code zones} = {slope, high-gain offset, low-gain offset,
+     * knee}, NoiseModeler.dcgZones: one frame of green, normalised units) in place of the camera's averaged pair: the slope
+     * and the offset of mid grey's zone (0.5: low gain above the knee, NoiseModeler.zoneOffset), each carried by the averaged
+     * model's scale over the camera's one-frame green term ({@code avgS / baseS}, {@code avgO / baseO}: its channel ratios and
+     * stacking; 1 when that term is not a positive finite number). Returns {S, O}.
+     */
+    public static float[] dcgClampModel(float[] zones, float avgS, float avgO, double baseS, double baseO) {
+        final double kS = baseS > 0 && Double.isFinite(baseS) && avgS > 0f && Float.isFinite(avgS) ? avgS / baseS : 1.0;
+        final double kO = baseO > 0 && Double.isFinite(baseO) && avgO > 0f && Float.isFinite(avgO) ? avgO / baseO : 1.0;
+        final float o = com.particlesdevs.photoncamera.processing.render.NoiseModeler.zoneOffset(0.5f, zones[1], zones[2], zones[3]);
+        return new float[]{(float) (zones[0] * kS), (float) (o * kO)};
+    }
+
+    /**
+     * P320: the ISO the night factor reads: the reported one (at least 1), a DCG frame's over its ISO scale (Settings.dcgIsoScale
+     * > 1: the X300 Ultra's DCG mode reports x8, its high-gain shadows are as clean as the gain the photons saw), at least 1.
+     */
+    static double nightIso(int iso, Settings s) {
+        final double isof = Math.max(iso, 1);
+        return s.dcg && s.dcgIsoScale > 1f && Float.isFinite(s.dcgIsoScale) ? Math.max(isof / s.dcgIsoScale, 1.0) : isof;
+    }
+
+    /**
+     * P216 / P320: whether a bright scene keeps its captured exposure instead of being pulled down to the target grey: with real
+     * Bento headroom (hr > 0) or a DCG frame, whose highlights are kept by the frame itself.
+     */
+    static boolean keepsCapturedExposure(float hr, boolean dcg) {
+        return hr > 0f || dcg;
+    }
+
     /** The exposure, ceiling, fusion strengths and AgX parameters from the statistics (the rest of smart_hdr). */
     public static Result finish(Stats st, Settings s, int iso, int maxIso) {
         final float gmax = st.gmax;
@@ -332,7 +373,7 @@ public final class WhyAe {
         final double fp = 0.0;                                                               // no face metering
         double nf = 1.0;                                                                     // iso ratio 0x72bac-0x72c3c
         if (iso >= 1) {
-            double thr = Math.max(s.nightThresh, 1.0), isof = Math.max(iso, 1);
+            double thr = Math.max(s.nightThresh, 1.0), isof = nightIso(iso, s);     // P320: a DCG frame's ISO over its scale
             if (isof > thr) {
                 double mx = Math.max(maxIso, thr + 1);
                 double t = Math.min(Math.max(Math.max(log2(isof / thr), 0) / Math.max(log2(mx / thr), 0.001), 0), 1);
@@ -353,8 +394,8 @@ public final class WhyAe {
             // P216 (owner, ultrawide over a sunlit deck: «В такой сцене небо не должно темнить», «Нам нужно чтобы оно было не
             // затемненное»): with real Bento headroom the highlights are kept by the ultrashort frames and the shoulder, so a
             // bright scene is not pulled down towards the target grey below its captured exposure (ae 0.86 there); the highlight
-            // overflow below may still lower it
-            if (r.hr > 0f && aeC < 1.0) aeC = Math.min(1.0, mxB);
+            // overflow below may still lower it. P320: a DCG frame keeps its highlights itself (one exposure, the low-gain read)
+            if (keepsCapturedExposure(r.hr, s.dcg) && aeC < 1.0) aeC = Math.min(1.0, mxB);
             double aeF = aeC;
             if (p995 > 0.01 && p995 * aeC > s.hlOverflow) {                                    // 0x72d0c-0x72d48
                 double lim = s.hlOverflow / p995;

@@ -152,6 +152,9 @@ public final class ScamHybridBurst implements ScamTransport {
     private final List<Float> orderMs = new ArrayList<>();
     final ImageFrame base;
     private String noiseSource = "Camera2 SENSOR_NOISE_PROFILE";
+    /** P320: a DCG shot (header flag 32): the worker measures its two noise zones and merges it without exposure brackets. */
+    private final boolean dcg;
+    private final float dcgIsoScale;
 
     /**
      * P27: one frame never costs the shot. A frame without a usable RAW, role or exposure, or whose payload is not plain 16-bit,
@@ -162,6 +165,8 @@ public final class ScamHybridBurst implements ScamTransport {
     private ScamHybridBurst(List<ImageFrame> source, Parameters p, boolean conservative) throws IOException {
         width = p.rawSize.x; height = p.rawSize.y; white = p.whiteLevel; black = p.blackLevel.clone();
         cfa = p.cfaPattern;
+        dcg = p.dcgShot;
+        dcgIsoScale = p.dcgShot && p.dcgIsoScale > 1f ? p.dcgIsoScale : 1f;
         this.conservative = conservative;
         series = conservative ? 0 : Math.max(0, p.fullResSeries);
         requested = p.fullResRequested;
@@ -276,6 +281,11 @@ public final class ScamHybridBurst implements ScamTransport {
             }
             normal.add(promoted);
             Log.w("SCAM_HDR", "hybrid: no N frame arrived, frame " + promoted.number + " (" + promoted.getCaptureRole() + ") is the base");
+        }
+        if (dcg && !bracketed.isEmpty()) {
+            // P320: a DCG frame holds the high- and the low-gain read of one exposure; a longer frame brings motion, not range
+            Log.i("SCAM_HDR", "hybrid DCG: " + bracketed.size() + " bracketed frame(s) left out (no exposure brackets for DCG)");
+            bracketed.clear();
         }
         normal.sort(Comparator.comparingLong(f -> -f.timestamp)); // newest first
         // P27 any resolution: above 16 MP the worker's working set grows with the frame, so N is capped by the memory available
@@ -425,7 +435,9 @@ public final class ScamHybridBurst implements ScamTransport {
             Integer maxAnalog = com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics == null ? null
                     : com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics.get(
                             android.hardware.camera2.CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY);
-            android.util.Pair<Double, Double>[] model = profile.evaluate(frame.measuredIso, maxAnalog == null ? frame.measuredIso : maxAnalog);
+            // P320: a DCG mode's ISO is its range scale times the gain (dcgIsoScale); the profile is keyed by the gain
+            final int iso = Math.max(1, Math.round(frame.measuredIso / dcgIsoScale));
+            android.util.Pair<Double, Double>[] model = profile.evaluate(iso, maxAnalog == null ? iso : maxAnalog);
             double s = 0, o = 0; for (android.util.Pair<Double, Double> c : model) { s += c.first; o += c.second; }
             slope = (float) (s / model.length); offset = (float) (o / model.length);
             noiseSource = "settings profile " + profile.id;
@@ -442,8 +454,9 @@ public final class ScamHybridBurst implements ScamTransport {
                 break;
             }
             if (fallback == null) {
+                final int iso = Math.max(1, Math.round(frame.measuredIso / dcgIsoScale));
                 android.util.Pair<Double, Double>[] model = com.particlesdevs.photoncamera.processing.render.NoiseModelProfile.LGV50_IMX363_0
-                        .evaluate(frame.measuredIso, frame.measuredIso);
+                        .evaluate(iso, iso);
                 double s = 0, o = 0; for (android.util.Pair<Double, Double> c : model) { s += c.first; o += c.second; }
                 slope = (float) (s / model.length); offset = (float) (o / model.length);
                 fallback = "built-in model at ISO " + frame.measuredIso;
@@ -600,7 +613,14 @@ public final class ScamHybridBurst implements ScamTransport {
     public String tuningOverride() {
         // P267: the remosaic and the mosaic DNG layout first (still after the user's tuning)
         return REMOSAIC_TUNING + (dngMosaic > 1 ? "dngMosaic 1\n" : "") + (conservative ? CONSERVATIVE_TUNING : "") + avoidedTuning()
-                + (strictTwoX ? "grid 2\nauto2x 0\n" : "") + seriesTuning();
+                + (strictTwoX ? "grid 2\nauto2x 0\n" : "") + seriesTuning() + (dcg ? dcgTuning(com.particlesdevs.photoncamera.capture.HybridPlan.bentoMode()) : "");
+    }
+    /**
+     * P320: a DCG burst: Bento only where its frame measurably clips («Всегда» reads as «Авто»: no ultrashort mask without
+     * clipping), no Shasta and no Mochi (they exist for exposure brackets, which a DCG frame does not need).
+     */
+    static String dcgTuning(int bento) {
+        return (bento == 2 ? "bento 1\n" : "") + "shastaEnable 0\nmochi 0\n";
     }
     /**
      * P267: every merge remosaics - this burst's result is read at the sensor grid, so a tuning file's own mosaicRemosaic 0 (the
@@ -641,7 +661,8 @@ public final class ScamHybridBurst implements ScamTransport {
         ByteBuffer h = ByteBuffer.allocate(128 + 32 * frames.size()).order(ByteOrder.LITTLE_ENDIAN);
         h.putInt(0x3143484e).putInt(pages != null ? 12 : 11).putInt(width).putInt(height).putInt(cfa).putInt(frames.size()).putFloat(white);
         for (float b : black) h.putFloat(b);
-        h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0) | (clipFlags ? 4 : 0) | (strictTwoX ? 8 : 0) | (effectiveMap() ? 0 : 16)).putInt(0)
+        h.putInt((diagnostics ? 1 : 0) | (mergedDng ? 2 : 0) | (clipFlags ? 4 : 0) | (strictTwoX ? 8 : 0) | (effectiveMap() ? 0 : 16)
+                | (dcg ? 32 : 0)).putInt(0)
          .putInt(outWidth == width && outHeight == height ? 1 : 2).putInt(mosaicBlock).putInt(0).putInt(0);
         h.position(128);
         for (int i = 0; i < frames.size(); i++) {
@@ -758,6 +779,11 @@ public final class ScamHybridBurst implements ScamTransport {
     public static volatile double lastMergeFrames = Double.NaN;
     /** P77: noise model factor the worker measured and merged with (HYBRID NOISE CHECK "-> model xK"), 1 = HAL model kept. */
     public static volatile float lastNoiseFactor = 1f;
+    /**
+     * P320: the DCG shot's noise the worker measured («HYBRID NOISE CHECK DCG: slope= hcg= lcg= knee=», normalised units):
+     * {slope, high-gain offset, low-gain offset, knee}; null when the shot was not DCG or the worker could not measure it.
+     */
+    public static volatile float[] lastDcgNoise;
     /** P80: the last hybrid RGB is IEEE half floats (6 B a pixel, the worker's rgb-half output), not float32. */
     public static volatile boolean lastRgbHalf;
     /** P80: whether the worker returns the RGB as half floats; scam_dev.txt "hybrid_rgb_half 0" keeps float32. */
@@ -1169,6 +1195,7 @@ public final class ScamHybridBurst implements ScamTransport {
         // Nothing of an earlier shot may apply to this one: sensor-grid output, no Bento, no clip flags, no frame map.
         lastOutputSize = new android.graphics.Point(w, h);
         lastBentoApplied = false; lastBentoFactor = 1f; lastBentoUsClipped = 0f; lastNoiseFactor = 1f; lastRgbHalf = false;
+        lastDcgNoise = null;
         lastMergeFrames = Double.NaN;
         ScamRgb.dropClipFlags();
         lastEffectiveFrames = null;

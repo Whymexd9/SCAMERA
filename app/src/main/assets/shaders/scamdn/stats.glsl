@@ -16,6 +16,13 @@ precision highp sampler2D;
 uniform sampler2D InputBuffer;   // Y,U,V of the level in rgb (a luma level: Y in r, the rest unused)
 uniform int blockU;              // block side in level pixels (16; unset = 16)
 uniform vec2 modelU;             // (s_Y, r_Y): single-frame variance of Y = s_Y * Y + r_Y (unset = 1e-4, 1e-6)
+// P320: a DCG shot (ScamDenoise sets 1): r_Y is the high-gain zone's, modelHiU the low-gain one's, blended over 0.9 .. 1.1 x
+// the knee in the block's mean Y, so each level's gain is measured against its own zone; 0 = the single curve, as before.
+#define DCG_ZONES 0
+#if DCG_ZONES
+uniform float modelHiU;          // r_Y of the low-gain zone (above the knee)
+uniform float kneeU;             // the zone switch in Y (> 0)
+#endif
 out uvec4 Output;
 
 float median16(float v[16]) {
@@ -59,7 +66,11 @@ void main() {
     sx /= 20.0 * float(sub);                     // per level pixel
     sy /= 20.0 * float(sub);
     float meanY = tot.x / 16.0;
+#if DCG_ZONES
+    float var = max(model.x * max(meanY, 0.0) + mix(model.y, modelHiU, smoothstep(0.9 * kneeU, 1.1 * kneeU, meanY)), 1.0e-12);
+#else
     float var = max(model.x * max(meanY, 0.0) + model.y, 1.0e-12);
+#endif
     float subVar = max(sumM2 / 16.0 - (sumM / 16.0) * (sumM / 16.0), 0.0);
     float t = min(subVar * float(sub * sub) / var, 60000.0);
     // pass 2: per sub-block mean squared difference without the gradient (pairs inside the sub-block)

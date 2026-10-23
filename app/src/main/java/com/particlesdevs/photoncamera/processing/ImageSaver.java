@@ -45,6 +45,8 @@ public class ImageSaver {
     public boolean iszAspect4x3;
     /** P190: frames of a FULLRES series the merge keeps whole (0: not a series) and the frames asked for (0: not FULLRES). */
     public int fullResSeries, fullResRequested;
+    /** P320: the shot's frames come from a DCG sensor mode (Dcg14Mode.active at the press). */
+    public boolean dcgShot;
     /** P212f (W2 = M3): the hand-set white balance's gains at the press (null: automatic). */
     public android.hardware.camera2.params.RggbChannelVector manualWbAtPress;
     /** P212g (W6 = M6): the mosaic white balance's route at the press (MosaicNeutralResolver; null: none). */
@@ -88,6 +90,7 @@ public class ImageSaver {
         saver.ownedIszAspect4x3 = iszAspect4x3;
         saver.ownedFullResSeries = fullResSeries;
         saver.ownedFullResRequested = fullResRequested;
+        saver.ownedDcgShot = dcgShot;
         saver.ownedManualWb = manualWbAtPress;
         saver.ownedMosaicWb = mosaicWbAtPress;
         saver.ownedFrames = new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
