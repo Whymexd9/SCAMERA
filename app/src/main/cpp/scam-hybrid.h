@@ -397,6 +397,10 @@ struct HybridTuning {
     // slanted bright edges (OPPO 12 MP sill: bright pixels with a high-frequency chroma above 0.05: 359 -> 2, p99 0.073 -> 0.021;
     // signs and a red extinguisher keep their colour). 0: off (the merge as before), n: the median's block.
     int plainChromaMedian=1;
+    // P335 (owner, 2026-10-25: «днём слишком сильный хрома шумодав»): the share of that median's colour change a hand-held burst
+    // keeps (its donors moved, P150's test): 1 = the whole median as before (replays unchanged), 0 = none; the app sends 0.35.
+    // A still burst always takes the whole median.
+    float plainChromaHand=1.f;
     // P282 (owner, 2026-10-19: «улучшить ремозаик для однокадра sabre чтобы улучшить движение в случае реджекта для quad и quad
     // quad, заодно и для bayer»): where the merge's donors were rejected (a moving subject: few accepted frames F), the base frame
     // alone is demosaicked from ALL its sites (a green-equivalent luma of every colour, colour differences of the block means with
@@ -777,7 +781,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("laStream",nullptr,&t.laStream)||set("laGpu",nullptr,&t.laGpu)||set("laScam",nullptr,&t.laScam)||set("isoKernel",nullptr,&t.isoKernel)
-            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicGainField",nullptr,&t.mosaicGainField)||set("mosaicGainZones",nullptr,&t.mosaicGainZones)||set("mosaicUsSmooth",nullptr,&t.mosaicUsSmooth)||set("plainChromaMedian",nullptr,&t.plainChromaMedian)||set("baseDemosaic",&t.baseDemosaic)||set("baseDemosaicAniso",&t.baseDemosaicAniso)||set("baseDemosaicAlias",&t.baseDemosaicAlias)||set("baseDemosaicBayerLo",&t.baseDemosaicBayerLo)||set("baseDemosaicBayerHi",&t.baseDemosaicBayerHi)||set("baseDemosaicDetailLo",&t.baseDemosaicDetailLo)||set("baseDemosaicDetailHi",&t.baseDemosaicDetailHi)||set("bentoSubpixel",nullptr,&t.bentoSubpixel)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
+            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicGainField",nullptr,&t.mosaicGainField)||set("mosaicGainZones",nullptr,&t.mosaicGainZones)||set("mosaicUsSmooth",nullptr,&t.mosaicUsSmooth)||set("plainChromaMedian",nullptr,&t.plainChromaMedian)||set("plainChromaHand",&t.plainChromaHand)||set("baseDemosaic",&t.baseDemosaic)||set("baseDemosaicAniso",&t.baseDemosaicAniso)||set("baseDemosaicAlias",&t.baseDemosaicAlias)||set("baseDemosaicBayerLo",&t.baseDemosaicBayerLo)||set("baseDemosaicBayerHi",&t.baseDemosaicBayerHi)||set("baseDemosaicDetailLo",&t.baseDemosaicDetailLo)||set("baseDemosaicDetailHi",&t.baseDemosaicDetailHi)||set("bentoSubpixel",nullptr,&t.bentoSubpixel)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
             ||set("mosaicNative2x",nullptr,&t.mosaicNative2x)||set("mosaicTetraWindow2x",nullptr,&t.mosaicTetraWindow2x)||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicRemosaic",nullptr,&t.mosaicRemosaic)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
@@ -7787,6 +7791,17 @@ inline int hybridMovedDonors(const std::vector<BackwardHomography>& homography,i
     if(largest)*largest=most;
     return moved;
 }
+// P335: IEEE half -> float (the inverse of floatToHalf, every half value exact)
+inline float hybridHalfToFloat(uint16_t h){
+    const uint32_t s=uint32_t(h&0x8000u)<<16,e=(h>>10)&0x1fu,m=h&0x3ffu;
+    uint32_t bits;
+    if(e==0){
+        if(m==0)bits=s;
+        else{int k=-1;uint32_t mm=m;do{++k;mm<<=1;}while(!(mm&0x400u));bits=s|(uint32_t(127-15-k)<<23)|((mm&0x3ffu)<<13);}
+    }else if(e==31)bits=s|0x7f800000u|(m<<13);
+    else bits=s|((e+112u)<<23)|(m<<13);
+    float f;std::memcpy(&f,&bits,4);return f;
+}
 // P150: a still burst - fewer than a quarter of its donors moved (the rest sample the base's sites)
 inline bool hybridStillBurst(int moved,int donors){return donors>0&&moved*4<donors;}
 struct MosaicChromaPasses;
@@ -8128,6 +8143,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     std::vector<bool> aligned(n,true);
     // P334: normal donors the alignment refused, handed to F6 from the identity (left out of the hand-motion and still-burst tests)
     std::vector<bool> idStart(n,false);
+    int stillSeen=-1; // P335: the burst's donors (aligned ones) moved: 0, a still burst: 1, not tested: -1 (plainChromaHand)
     // P33 W2.1: the F6 field in tile-row bands (LaStream). Phase 1 of a frame (gray, L1 field) starts as soon as the alignment
     // publishes its homography, the bands once the refined frames are known (commit below) and run alongside the GPU merge. Plain
     // Bayer and the native mosaic's binned frames up to kHybridClassicPixels (the split's sub-frames share their fields frame-wide);
@@ -9119,6 +9135,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 report(line);
             }
         }
+        if(movedH.size()>1) // P335: for the plain chroma median's share (any cellClip setting)
+            stillSeen=hybridStillBurst(hybridMovedDonors(movedH,w,h,tune.staticShift>0.f?tune.staticShift:0.75f),int(movedH.size())-1)?1:0;
         gpu.merge(in,mergeTune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr,effMap!=nullptr);
         if(gpu.profile){
             const double* p=gpu.passMs;char pl[200];
@@ -9250,8 +9268,31 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(!sunk)shiftOrigin(out,outW,outH,3,(input.cfa&1)*grid,(input.cfa>>1)*grid);
     if(!sunk&&!native&&tune.plainChromaMedian>0){
         const auto t0=Clock::now();std::string how;
-        mosaicChromaMedian(out,outW,outH,std::max(1,tune.plainChromaMedian)*grid,nullptr,tune.chromaGpu>0,&how,0,nullptr);
-        report("HYBRID PLAIN: chroma median (block "+std::to_string(tune.plainChromaMedian)+", "+how+") "+std::to_string(int(millis(Clock::now()-t0)))+" ms");
+        // P335: a hand-held burst (its donors moved) samples every colour phase at sub-pixel offsets: its colour is real down to
+        // ~1 px and the median (5 taps 1 px apart) took fine colour texture away; it keeps plainChromaHand of the median's
+        // change there (R, B kept as halves meanwhile: 4 B per pixel), a still burst (P269's case: a resting phone, one frame's
+        // demosaic colour along slanted edges) the whole median
+        const float keepMedian=stillSeen==0?std::clamp(tune.plainChromaHand,0.f,1.f):1.f;
+        std::vector<uint16_t> rb;
+        const size_t px=size_t(outW)*outH;
+        if(keepMedian>0.f&&keepMedian<1.f){
+            rb.resize(px*2);
+            mergeRowBands(outH,[&](int y0,int y1){
+                for(size_t i=size_t(y0)*outW;i<size_t(y1)*outW;++i){rb[2*i]=floatToHalf(out[3*i]);rb[2*i+1]=floatToHalf(out[3*i+2]);}
+            });
+        }
+        if(keepMedian>0.f)mosaicChromaMedian(out,outW,outH,std::max(1,tune.plainChromaMedian)*grid,nullptr,tune.chromaGpu>0,&how,0,nullptr);
+        if(!rb.empty()){
+            mergeRowBands(outH,[&](int y0,int y1){
+                for(size_t i=size_t(y0)*outW;i<size_t(y1)*outW;++i){
+                    const float r=hybridHalfToFloat(rb[2*i]),b=hybridHalfToFloat(rb[2*i+1]);
+                    out[3*i]=r+keepMedian*(out[3*i]-r);out[3*i+2]=b+keepMedian*(out[3*i+2]-b);
+                }
+            });
+        }
+        report("HYBRID PLAIN: chroma median (block "+std::to_string(tune.plainChromaMedian)+", "+(keepMedian>0.f?how:std::string("skipped"))
+            +(stillSeen==0?", hand-held: x"+std::to_string(keepMedian):stillSeen==1?", still burst: whole":"")+") "
+            +std::to_string(int(millis(Clock::now()-t0)))+" ms");
     }
     if(effMap){
         std::vector<float> sample;sample.reserve(effective.size()/7+1);
