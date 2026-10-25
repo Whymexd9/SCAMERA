@@ -16,6 +16,8 @@ uniform sampler2D InputBuffer;  // YUV of this level: X (stage 0) or the stride-
 uniform sampler2D DeltaUV;      // RG: DenC - X of the next coarser level (useDeltaU = 1)
 uniform sampler2D Orig;         // modeU 1: X of this level; modeU 3: the sensor-scale RGB before any filtering
 uniform sampler2D StrMap;       // strength-map variance multiplier f (useMapU = 1)
+uniform sampler2D Grain;        // P335 (grainU 1, modes 2 / 3): the share of the removed fine luma noise put back (scamdn/lgrain)
+uniform int grainU;
 uniform int strideU;            // 2 or 1 (unset: 1)
 uniform int filterU;            // 1: filter; 0: pass through (strength 0)
 uniform int useDeltaU;
@@ -91,6 +93,7 @@ void main() {
         }
         r = vec3(c.x, s0 > thrU ? a0 / s0 : a1 / max(s1, 1.0e-6));
     }
+    if (grainU != 0 && modeU >= 2) r.x += texelFetch(Grain, p, 0).r;
     if (modeU == 1) {
         Output = vec4(r.yz - texelFetch(Orig, p, 0).gb, 0.0, 1.0);
     } else if (modeU == 2) {

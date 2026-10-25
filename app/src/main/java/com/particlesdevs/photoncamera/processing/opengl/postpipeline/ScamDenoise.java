@@ -45,6 +45,12 @@ public final class ScamDenoise extends Node {
     public ScamDenoise() { super("", "ScamDenoise"); }
     @Override public void Compile() {}
 
+    /**
+     * P335 (owner, 2026-10-25: the grain «между арк и нашим»): the share of the luma noise the denoise removed on the finest scale
+     * that comes back at the output (scam_dev hybrid_dn_luma_grain; 0 = the denoise as before).
+     */
+    static final float LUMA_GRAIN = 0.5f;
+
     /** Noise reduction engine of the hybrid: "multiscale" (this node, default) or "nlm" ({@link ScamHdrDenoise}). */
     static String engine() {
         String v = PreferenceKeys.hybridString("dn_engine", "multiscale");
@@ -326,8 +332,11 @@ public final class ScamDenoise extends Node {
      */
     static final float LSC_MARGIN = 1f + 1f / 512f;
 
-    /** P214d: default cap of the lens-shading variance multiplier (sigma at most x2): scam_dev "denoise_lsc_max". */
-    static final float LSC_CAP = 4f;
+    /**
+     * P214d: default cap of the lens-shading variance multiplier: scam_dev "denoise_lsc_max". P330: 2 (sigma at most x1.41; was 4):
+     * at f > 2 scamdn/lbf also cuts the revert to 0.71, so the corners lost about 30 % of a level that the centre puts back whole.
+     */
+    static final float LSC_CAP = 2f;
 
     /**
      * P214d: the luminance gain of one lens-shading site (r, g_even, g_odd, b): the mean of r, (g_even + g_odd) / 2 and b,
@@ -501,7 +510,10 @@ public final class ScamDenoise extends Node {
         final boolean darkFade = PreferenceKeys.hybridSwitch("dn_dark_fade", true);
         final float[] darkChroma = darkChroma(pipeline.signedRgb);
         final float rhoS = clamp(PreferenceKeys.hybridValue("dn_model_shot", 1.2f), 0.25f, 4f);
-        final float rhoR = clamp(PreferenceKeys.hybridValue("dn_model_read", 6f), 0.25f, 16f);
+        final float lumaGrain = clamp(PreferenceKeys.hybridValue("dn_luma_grain", LUMA_GRAIN), 0f, 1f);
+        // P330: 2 (was 6). G is the noise measured on the merge itself, so rho_r = 6 filtered the shadows for 2.45 x their real sigma
+        // (strict threshold ~3.5-4 sigma, soft ~7-8): low-contrast shadow texture went with the noise
+        final float rhoR = clamp(PreferenceKeys.hybridValue("dn_model_read", 2f), 0.25f, 16f);
         final float snrFixed = clamp(PreferenceKeys.hybridValue("dn_snr", 0f), 0f, 200f);
         final float snrScale = clamp(PreferenceKeys.hybridValue("dn_snr_scale", 1f), 0.25f, 8f);
         final String mapMode = PreferenceKeys.hybridString("dn_strength_map", "auto");
@@ -716,6 +728,10 @@ public final class ScamDenoise extends Node {
             // ---- tiers
             ScamDenoiseTables.Pick[] lp = new ScamDenoiseTables.Pick[1], cp = new ScamDenoiseTables.Pick[1];
             final float[][] luma = ScamDenoiseTables.luma(cfg, snr, lp);
+            // P335 (owner, 2026-10-25: «днём слишком сильный хрома шумодав»): the colour denoise eases off above SNR 20
+            final float chromaDay = ScamDenoiseTables.dayChroma(snr,
+                    clamp(PreferenceKeys.hybridValue("dn_chroma_day", ScamDenoiseTables.CHROMA_DAY), 0f, 1f));
+            cfg.chromaMult *= chromaDay;
             final float[][] chroma = ScamDenoiseTables.chroma(cfg, snr, cp);
 
             // ---- strength map
@@ -829,6 +845,16 @@ public final class ScamDenoise extends Node {
                 glProg.setTexture("InputBuffer", XP[L - 1]);
                 glProg.drawBlocks(XP[L]);
             }
+            // P335: the share of the finest-scale luma noise the denoise removed that comes back at the output (scamdn/lgrain)
+            GLTexture grain = null;
+            if (lumaOn && x0p != x0 && lumaGrain > 0f) {
+                grain = tex(owned, size0, GLFormat.DataType.FLOAT_16, 1, GL_NEAREST);
+                glProg.useAssetProgram("scamdn/lgrain", false);
+                glProg.setTexture("Orig", x0);
+                glProg.setTexture("Den", x0p);
+                glProg.setVar("keepU", lumaGrain);
+                glProg.drawBlocks(grain);
+            }
             if (x0p != x0) release(owned, x0);
             GLTexture deltaUV = null;
             StringBuilder chromaLog = new StringBuilder();
@@ -845,14 +871,14 @@ public final class ScamDenoise extends Node {
                 if (deltaUV != null) {
                     // reconstruction X_L + (0, Up2(DenC_{L+1} - X_{L+1})) once per pixel (integer Up2), then the filters
                     c0 = tex(owned, sz, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
-                    chromaPass(glProg, c0, level, deltaUV, null, strMap, sz, 1, false, 0f, 0f, null, 1f, 1f, 0f, 0, false, 0f, null);
+                    chromaPass(glProg, c0, level, deltaUV, null, strMap, sz, 1, false, 0f, 0f, null, 1f, 1f, 0f, 0, false, 0f, null, null);
                     release(owned, deltaUV);
                     deltaUV = null;
                 }
                 if (f0) {
                     GLTexture c1 = tex(owned, sz, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
                     chromaPass(glProg, c1, c0, null, null, strMap, sz, 2, true, k0 * GC[L][1] * rhoS * sY, k0 * GC[L][1] * rhoR * rY, dcgPass,
-                            UVS[L][1], UVS[L][3], (float) (int) chroma[L + 1][1], 0, false, 0f, null);
+                            UVS[L][1], UVS[L][3], (float) (int) chroma[L + 1][1], 0, false, 0f, null, null);
                     if (c0 != level) release(owned, c0);
                     c0 = c1;
                 }
@@ -865,18 +891,18 @@ public final class ScamDenoise extends Node {
                 if (L >= 1) {
                     out = tex(owned, sz, GLFormat.DataType.FLOAT_16, 2, GL_LINEAR);
                     chromaPass(glProg, out, c0, null, level, strMap, sz, 1, f1, k1 * GC[L][0] * rhoS * sY, k1 * GC[L][0] * rhoR * rY, dcgPass,
-                            UVS[L][0], UVS[L][2], (float) (int) chroma[L][1], 1, false, 0f, null);
+                            UVS[L][0], UVS[L][2], (float) (int) chroma[L][1], 1, false, 0f, null, null);
                 } else if (s == 1) {
                     out = pipeline.getMain(); // the last write of this node
                     lastMainTaken = true;
                     chromaPass(glProg, out, c0, null, null, strMap, sz, 1, f1, k1 * GC[0][0] * rhoS * sY, k1 * GC[0][0] * rhoR * rY, dcgPass,
-                            UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 2, darkFade, 0f, darkKeep);
+                            UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 2, darkFade, 0f, darkKeep, grain);
                     output = out;
                 } else {
                     // (Y change, UV(Den0) - keep UV(X0)): final2x upsamples this one texture
                     out = tex(owned, size0, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
                     chromaPass(glProg, out, c0, null, base, strMap, sz, 1, f1, k1 * GC[0][0] * rhoS * sY, k1 * GC[0][0] * rhoR * rY, dcgPass,
-                            UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 3, false, keep2x, null);
+                            UVS[0][0], UVS[0][2], (float) (int) chroma[0][1], 3, false, keep2x, null, grain);
                     release(owned, base);
                     base = null;
                 }
@@ -903,7 +929,8 @@ public final class ScamDenoise extends Node {
             log.append(" snr=").append(round(snr)).append(snrFixed > 0f ? "(fixed)" : "")
                .append(" mu=").append(mu).append(" gain=").append(round(gain)).append(" p50=").append(p50)
                .append(" g01=").append(round(GY[0][0])).append(" rho=").append(rhoS).append('/').append(rhoR)
-               .append(" model=").append(modelSource).append(chromaNight != 1f ? " chromaNight=x" + chromaNight : "").append(" sY=").append(sY).append(" rY=").append(rY)
+               .append(" model=").append(modelSource).append(chromaNight != 1f ? " chromaNight=x" + chromaNight : "")
+               .append(chromaDay != 1f ? " chromaDay=x" + round(chromaDay) : "").append(" sY=").append(sY).append(" rY=").append(rY)
                .append(zones != null ? " rYlcg=" + rYhi + " kneeY=" + kneeY + " rGmu=" + rGmu : "")
                .append(" luma ").append(lp[0]).append(" str=").append(col(luma, 0)).append(" rev=").append(col(luma, 1))
                .append(" out=").append(col(luma, 2)).append(" levels").append(lumaLog)
@@ -977,13 +1004,15 @@ public final class ScamDenoise extends Node {
 
     private static void chromaPass(GLProg glProg, GLTexture target, GLTexture in, GLTexture deltaUV, GLTexture orig, GLTexture strMap,
                                    Point levelSize, int stride, boolean filter, float nx, float ny, float[] dcg, float uvsU, float uvsV,
-                                   float thr, int mode, boolean fade, float keep, float[] darkKeep) {
+                                   float thr, int mode, boolean fade, float keep, float[] darkKeep, GLTexture grain) {
         if (dcg != null) glProg.setDefine("DCG_ZONES", 1); // P320: dcg = {noiseHiU / noiseU.y, knee in Y} of a DCG shot
         glProg.useAssetProgram("scamdn/cbf", false);
         glProg.setTexture("InputBuffer", in);
         glProg.setTexture("DeltaUV", deltaUV != null ? deltaUV : in);
         glProg.setTexture("Orig", orig != null ? orig : in);
         glProg.setTexture("StrMap", strMap != null ? strMap : in);
+        glProg.setTexture("Grain", grain != null ? grain : in);   // P335: modes 2 / 3 add it to Y (grainU 1)
+        glProg.setVar("grainU", grain != null ? 1 : 0);
         glProg.setVar("strideU", stride);
         glProg.setVar("filterU", filter ? 1 : 0);
         glProg.setVar("useDeltaU", deltaUV != null ? 1 : 0);

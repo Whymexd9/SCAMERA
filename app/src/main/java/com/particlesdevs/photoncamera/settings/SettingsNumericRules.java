@@ -107,8 +107,7 @@ public final class SettingsNumericRules {
             case "pref_scam_hybrid_why_blend_smoothness": return new double[]{0.05,1,0};
             case "pref_scam_hybrid_why_weight_hl": case "pref_scam_hybrid_why_weight_mid":
             case "pref_scam_hybrid_why_weight_ext_hl": case "pref_scam_hybrid_why_weight_shadow": return new double[]{0,2,0};
-            case "pref_scam_hybrid_why_gf_radius": return new double[]{4,128,1};
-            case "pref_scam_hybrid_why_gf_eps_e3": return new double[]{0.001,100,0};
+            case "pref_scam_hybrid_why_ef_coarse": return new double[]{8,512,1};
             case "pref_scam_hybrid_why_aces_toe": return new double[]{0.005,0.2,0};
             // P144: ACES and Uchimura of «Кривая AgX и ACES» (WhyCam 1.42 ParamRegistry ranges)
             case "pref_scam_hybrid_why_aces_pre_gain": case "pref_scam_hybrid_why_uchi_pre_gain":

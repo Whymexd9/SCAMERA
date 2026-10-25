@@ -1,0 +1,54 @@
+name: SHDR merge A/B replay
+
+# Offline replay of the merge on small burst crops (tools/replay_hybrid_ab.py, host worker on Mesa) for tuning A/B without a
+# phone. Runs only for replay/* branches, which carry the crops (research/replay-bursts/*.nch.xz) and the variants
+# (research/replay-bursts/variants.txt); main never runs it. Two synthetic bursts with their truth (tools/replay_synth_burst.py:
+# hand shake, a moving object, day / night noise) are made here. The artifact replay-ab holds the report (tools/replay_ab_report.py),
+# the side-by-side JPEGs and the worker logs (no images of the merge: they stay on the runner), kept 3 days.
+on:
+  push:
+    branches: [ 'replay/**' ]
+
+concurrency:
+  group: replay-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the worker for the host
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl-dev libgles-dev libegl1 libegl-mesa0 libgles2 libgl1-mesa-dri
+          g++ -pthread -std=c++17 -O2 app/src/main/cpp/scam-neural-worker.cpp -ldl -lEGL -lGLESv2 -o /tmp/scam-neural-worker
+          /tmp/scam-neural-worker --transport-check
+          python3 -m venv /tmp/replay-py
+          /tmp/replay-py/bin/pip install -q numpy==2.3.5 scipy==1.16.2 pillow==12.3.0
+      - name: Replay
+        run: |
+          mkdir -p /tmp/bursts /tmp/truth
+          cp research/replay-bursts/*.nch.xz /tmp/bursts/ 2>/dev/null || true
+          /tmp/replay-py/bin/python tools/replay_synth_burst.py proc /tmp/bursts/sday.nch day 12 7
+          /tmp/replay-py/bin/python tools/replay_synth_burst.py proc /tmp/bursts/snight.nch night 12 8
+          mv /tmp/bursts/*.truth.npz /tmp/truth/
+          for f in /tmp/truth/*.nch.truth.npz; do mv "$f" "${f%.nch.truth.npz}.truth.npz"; done
+          # Mesa without a window system: the surfaceless platform for eglGetDisplay(EGL_DEFAULT_DISPLAY), llvmpipe
+          EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe /tmp/replay-py/bin/python tools/replay_hybrid_ab.py \
+            /tmp/scam-neural-worker /tmp/bursts /tmp/replay-ab research/replay-bursts/variants.txt
+          /tmp/replay-py/bin/python tools/replay_ab_report.py /tmp/replay-ab /tmp/truth
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: replay-ab
+          path: |
+            /tmp/replay-ab/report.txt
+            /tmp/replay-ab/*.jpg
+            /tmp/replay-ab/*.log
+            /tmp/replay-ab/summary.txt
+          retention-days: 3

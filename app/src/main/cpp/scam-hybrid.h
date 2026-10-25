@@ -158,6 +158,11 @@ struct HybridTuning {
     float boostEnable=1.f;       // 1: boost where the F6 local motion varies (v11 Z channel); 2: everywhere (SCAM without a
                                  // motion test, the old switch); 0: off. Without the local alignment 1 does nothing.
     float varianceThreshold=25.f;// motion_robustness_boost_variance_threshold
+    // P335 (owner, 2026-10-25: «посмотри как работают у Арк реджекты и подумай как их можно улучшить у нас»): 1 = the motion prior
+    // of the rejection as a share (smoothstep 0.5 .. 1.5 x motionThreshold of the Z channel, bilinear between the tiles) instead of
+    // a switch on the nearest tile, and half the difference noise forgiven inside it; 0 = the switch as before (replays unchanged;
+    // the app sends 1).
+    float rejPrior=0.f;
     float motionThreshold=1.5f;  // extra_motion_robustness_motion_threshold: min-max extent of the raw LK flow over the 3x3 tiles (RAW px)
     float filterVariance=0.5f;   // variance scale of the bilinear donor sample (kFilterVarianceScale analogue)
     float dilateOffset=0.2f,dilateScale=2.f; // DilateMask: rej = (sum25 - 0.2) / 2
@@ -273,6 +278,11 @@ struct HybridTuning {
     // Shasta
     float shastaSharpness=0.35f; // bracketed_sharpness_threshold
     float shastaMaxRatio=32.f;   // max bracketed/base TET ratio
+    // P335: a bracketed frame's merge weight by its sharpness against the base (Shasta's score): whole at shastaSharpHi and above,
+    // smoothly down to that of one N frame at shastaSharpLo; Hi <= Lo = the weight A as before. Not sent by the app: on the owner's
+    // ISO 12800 crops the bracketed frames add SNR, not blur (without them texture and flat noise both rose 11-16 %, their ratio
+    // unchanged; 0.75 / 0.97 left the detail as it was)
+    float shastaSharpLo=0.f,shastaSharpHi=0.f;
     float shastaSat=0.5f;        // sharpness pixels: guide mean below this share of white in both frames. The guide is a 4x4 mean:
                                  // at 0.9 blocks along bright edges still held clipped sites of the x2 brighter bracketed frame, their
                                  // truncated gradients scored it 74-77 % of the base at the same shutter (all dropped); 0.4-0.6: 96-100 %
@@ -324,6 +334,14 @@ struct HybridTuning {
     float s61MaxKey=30.f;
     float s61MinMotion=2.f;
     float s61TensorNoise=1.f,s61GdNoise=1.f; // multipliers of the emulated 6.1 noise LUT (tensor, green difference)
+    // P332 (owner, 2026-10-25: «исправь чтобы не было мыла», the 6.1 kernel stays «Всегда»): the 6.1 structure tensor from the
+    // quad lumas (2x2 means, differences 2 px apart per axis) cannot see detail finer than a 4 px period, and above it the
+    // direction flips (a 3 px grating at 17 degrees reads -18): its kernel (along sigma 1.2 px by day) smears such texture.
+    // s61Fine > 0: the tensor of the green sites' differences to their diagonal neighbours (1 px per axis, the same rotated form),
+    // its noise term x16 (single sites, half the step) times this value. Synthetic handheld burst (12 frames, ISO ~100, F6, day
+    // noise x16/x4), grating response 4 % / 30 % contrast at 3 px: 0.22 / 0.37 -> 0.50 / 0.62 at 2, diagonal 3 px 0.29 -> 0.75;
+    // flat noise x1.10 (8: x1.0 with 0.31 / 0.61 / 0.65). 0 = the quad tensor (replays unchanged); the app sends 2.
+    float s61Fine=0.f;
     // ... in daylight (key > s61MaxKey) instead: the emulated LUT leaves flat areas on the narrow "structure" kernel at ISO 100-200
     // (smooth-area noise x2.3 against the round-4 kernel); 16 / 4 keep the detail (-1 %) at x1.45 (f6_local_align.md)
     float s61DayTensorNoise=16.f,s61DayGdNoise=4.f;
@@ -384,6 +402,11 @@ struct HybridTuning {
     // slanted bright edges (OPPO 12 MP sill: bright pixels with a high-frequency chroma above 0.05: 359 -> 2, p99 0.073 -> 0.021;
     // signs and a red extinguisher keep their colour). 0: off (the merge as before), n: the median's block.
     int plainChromaMedian=1;
+    // P335 (owner, 2026-10-25: «днём слишком сильный хрома шумодав»): the share of that median's colour change a hand-held burst
+    // keeps (its donors moved, P150's test): 1 = the whole median as before, 0 = none. A still burst always takes the whole median.
+    // Not sent by the app: on the synthetic hand-held bursts (tools/replay_synth_burst.py) 0.35 doubled the colour error against
+    // the truth (the median also removes the merge's residual false colour); scam_dev hybrid_plain_chroma_hand for tests.
+    float plainChromaHand=1.f;
     // P282 (owner, 2026-10-19: «улучшить ремозаик для однокадра sabre чтобы улучшить движение в случае реджекта для quad и quad
     // quad, заодно и для bayer»): where the merge's donors were rejected (a moving subject: few accepted frames F), the base frame
     // alone is demosaicked from ALL its sites (a green-equivalent luma of every colour, colour differences of the block means with
@@ -392,6 +415,9 @@ struct HybridTuning {
     // baseDemosaicAniso: how much the luma kernel follows the local edge direction (0 = round).
     float baseDemosaic=1.0f;
     float baseDemosaicAniso=0.6f;
+    // P335: Bayer base demosaic, share of the false-colour damping by the Gr / Gb step above its noise (0 = off, replays
+    // unchanged; the app sends 1)
+    float baseDemosaicAlias=0.f;
     float baseDemosaicDetailLo=0.f,baseDemosaicDetailHi=0.01f;
     float baseDemosaicBayerLo=1.3f,baseDemosaicBayerHi=2.5f; // Bayer: the base noise model holds there (flat sky ~1) // off: flat areas measured ~2, structure 20-50 (the base noise model reads low)
     // P269 (owner, 2026-10-19: «Посмотри как работает маска бенто в why кам и посмотри как можно улучшить нашу»): the
@@ -729,7 +755,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             applied+=" "+key+"="+std::to_string(v);return true;
         };
         while(f>>key>>v){
-            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("varianceThreshold",&t.varianceThreshold)
+            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("rejPrior",&t.rejPrior)||set("varianceThreshold",&t.varianceThreshold)
             ||set("motionThreshold",&t.motionThreshold)
             ||set("filterVariance",&t.filterVariance)||set("dilateOffset",&t.dilateOffset)||set("dilateScale",&t.dilateScale)||set("dilateFloor",&t.dilateFloor)
             ||set("clipLevel",&t.clipLevel)||set("fwe",&t.fwe)||set("weightCap",&t.weightCap)||set("lutLo",&t.lutLo)||set("lutHi",&t.lutHi)
@@ -750,18 +776,18 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoBlendClipLo",&t.bentoBlendClipLo)||set("bentoBlendClipHi",&t.bentoBlendClipHi)||set("bentoBlendNear",&t.bentoBlendNear)
             ||set("bentoBlendFar",&t.bentoBlendFar)||set("bentoBlendDilate",nullptr,&t.bentoBlendDilate)
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
-            ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
+            ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSharpLo",&t.shastaSharpLo)||set("shastaSharpHi",&t.shastaSharpHi)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
             ||set("cellClip",nullptr,&t.cellClip)||set("staticShift",&t.staticShift)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
             ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("hotCap",&t.hotCap)||set("bentoScam",nullptr,&t.bentoScam)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
-            ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)
+            ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)||set("s61Fine",&t.s61Fine)
             ||set("s61TensorNoise",&t.s61TensorNoise)||set("s61GdNoise",&t.s61GdNoise)||set("s61MinMotion",&t.s61MinMotion)
             ||set("s61DayTensorNoise",&t.s61DayTensorNoise)||set("s61DayGdNoise",&t.s61DayGdNoise)||set("s61Mode",nullptr,&t.s61Mode)||set("s61MaxKey",&t.s61MaxKey)||set("hotMaxKey",&t.hotMaxKey)||set("subset",nullptr,&t.subset)||set("profile",nullptr,&t.profile)
             ||set("rimRatio",nullptr,&t.rimRatio)||set("rimSigma",&t.rimSigma)||set("rimLo",&t.rimLo)||set("rimHi",&t.rimHi)||set("rimStride",nullptr,&t.rimStride)
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("laStream",nullptr,&t.laStream)||set("laGpu",nullptr,&t.laGpu)||set("laScam",nullptr,&t.laScam)||set("isoKernel",nullptr,&t.isoKernel)
-            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicGainField",nullptr,&t.mosaicGainField)||set("mosaicGainZones",nullptr,&t.mosaicGainZones)||set("mosaicUsSmooth",nullptr,&t.mosaicUsSmooth)||set("plainChromaMedian",nullptr,&t.plainChromaMedian)||set("baseDemosaic",&t.baseDemosaic)||set("baseDemosaicAniso",&t.baseDemosaicAniso)||set("baseDemosaicBayerLo",&t.baseDemosaicBayerLo)||set("baseDemosaicBayerHi",&t.baseDemosaicBayerHi)||set("baseDemosaicDetailLo",&t.baseDemosaicDetailLo)||set("baseDemosaicDetailHi",&t.baseDemosaicDetailHi)||set("bentoSubpixel",nullptr,&t.bentoSubpixel)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
+            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicGainField",nullptr,&t.mosaicGainField)||set("mosaicGainZones",nullptr,&t.mosaicGainZones)||set("mosaicUsSmooth",nullptr,&t.mosaicUsSmooth)||set("plainChromaMedian",nullptr,&t.plainChromaMedian)||set("plainChromaHand",&t.plainChromaHand)||set("baseDemosaic",&t.baseDemosaic)||set("baseDemosaicAniso",&t.baseDemosaicAniso)||set("baseDemosaicAlias",&t.baseDemosaicAlias)||set("baseDemosaicBayerLo",&t.baseDemosaicBayerLo)||set("baseDemosaicBayerHi",&t.baseDemosaicBayerHi)||set("baseDemosaicDetailLo",&t.baseDemosaicDetailLo)||set("baseDemosaicDetailHi",&t.baseDemosaicDetailHi)||set("bentoSubpixel",nullptr,&t.bentoSubpixel)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
             ||set("mosaicNative2x",nullptr,&t.mosaicNative2x)||set("mosaicTetraWindow2x",nullptr,&t.mosaicTetraWindow2x)||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicRemosaic",nullptr,&t.mosaicRemosaic)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
@@ -955,7 +981,7 @@ float laMotionAt(int f,int x,int y){
 #endif
 uniform vec4 k61aU; // covariance_parameters1: f5/f0 (shrunk), 1/(f0 f4) (stretched), f2 (gradient clip), 1/f0 (base); w = 0: off
 uniform vec4 k61bU; // 1/(f0 f1) (blurred), 1/f3 (transition), 1/kernelScale^2, tensor noise multiplier
-uniform vec4 k61cU; // green difference noise multiplier
+uniform vec4 k61cU; // x: green difference noise multiplier, y: > 0 the fine (green site) tensor, its noise x16 x this (P332)
 // P76: quad luma Y and |sqrt g1 - sqrt g2| of quad (i,j) of frame f; kHybCells keeps them in shared memory for the 3x3 cells around.
 vec2 sabreQuad61(int f,int i,int j){
     float g=fParam[f].x;int X=2*i,Z=2*j;
@@ -963,7 +989,27 @@ vec2 sabreQuad61(int f,int i,int j){
     float g2=sqrt(max(sampleRawM(f,X,Z+1)*g,0.0)),b=sqrt(max(sampleRawM(f,X+1,Z+1)*g,0.0));
     return vec2(0.25*(r+g1+g2+b),abs(g1-g2));
 }
-vec3 sabreCov61Q(int f,float Y[9],float gd,float lum);
+vec3 sabreCov61Q(int f,float Y[9],float gd,float lum,vec3 fine);
+// P332: the fine tensor of cell (i,j) of frame f from u (sqrt of the gained green sites of its 8x8 site window, 0 at the other
+// colours; site (2i-3+x, 2j-3+y) at u[y*8+x]): every green site of the inner 6x6 against its (+1,+1) and (+1,-1) green neighbours,
+// summed as sabreCov61Q's quad pairs (dx along (1,1), dy along (1,-1)) in its units (x4 for the half step, x0.5 for 4 pairs x 0.125).
+vec3 sabreFine61U(int i,int j,float u[64]){
+    float dxx=0.0,dyy=0.0,dxy=0.0,n=0.0;
+    for(int y=1;y<7;y++)for(int x=1;x<7;x++){
+        if(phaseColor[(((2*j-3+y)&1)<<1)|((2*i-3+x)&1)]!=1)continue;
+        float c=u[y*8+x],du=u[(y+1)*8+x+1]-c,dv=u[(y-1)*8+x+1]-c;
+        dxx+=du*du;dyy+=dv*dv;dxy+=du*dv;n+=1.0;
+    }
+    return vec3(dxx,dyy,dxy)*(2.0/max(n,1.0));
+}
+vec3 sabreFine61(int f,int i,int j){
+    float g=fParam[f].x;float u[64];
+    for(int y=0;y<8;y++)for(int x=0;x<8;x++){
+        int X=2*i-3+x,Z=2*j-3+y;
+        u[y*8+x]=phaseColor[((Z&1)<<1)|(X&1)]==1?sqrt(max(sampleRawM(f,X,Z)*g,0.0)):0.0;
+    }
+    return sabreFine61U(i,j,u);
+}
 vec3 sabreCov61(int f,int i,int j){
     float Y[9];float gd=0.0,lum=0.0;
     for(int dj=-1;dj<=1;dj++)for(int di=-1;di<=1;di++){
@@ -971,10 +1017,11 @@ vec3 sabreCov61(int f,int i,int j){
         float w=(di==0?0.5:0.25)*(dj==0?0.5:0.25);
         Y[(dj+1)*3+di+1]=q.x;gd+=q.y*w;lum+=q.x*w;
     }
-    return sabreCov61Q(f,Y,gd,lum);
+    return sabreCov61Q(f,Y,gd,lum,k61cU.y>0.0?sabreFine61(f,i,j):vec3(-1.0));
 }
-// The 6.1 precision from the 3x3 quad lumas Y and the weighted green difference gd / luma lum around the cell.
-vec3 sabreCov61Q(int f,float Y[9],float gd,float lum){
+// The 6.1 precision from the 3x3 quad lumas Y and the weighted green difference gd / luma lum around the cell; fine.x >= 0: the
+// structure tensor is the fine one (sabreFine61U) instead of the quad lumas'.
+vec3 sabreCov61Q(int f,float Y[9],float gd,float lum,vec3 fine){
     float g=fParam[f].x;
     float v=max(lum*lum,1.0e-6);vec2 nm=fNoiseP[f].xy;
     float varU=(nm.x*v*g+nm.y*g*g)/(4.0*v);
@@ -987,6 +1034,7 @@ vec3 sabreCov61Q(int f,float Y[9],float gd,float lum){
         dxx+=dx*dx;dyy+=dy*dy;dxy+=dx*dy;
     }
     vec3 c=vec3(dxx,dyy,dxy)*0.125;float c0=0.5*(c.x+c.y),c1=0.5*(c.y-c.x);
+    if(fine.x>=0.0){c=fine;c0=0.5*(c.x+c.y);c1=0.5*(c.y-c.x);nTensor*=16.0*k61cU.y;} // P332: single sites, half the step
     vec3 s=vec3(c0+c.z,c0-c.z,c1);                                   // RotateCovariance
     float tr=s.x+s.y,df=s.x-s.y,sq=sqrt(max(df*df+4.0*s.z*s.z,0.0)),l1=0.5*(tr+sq),l2=0.5*(tr-sq);
     vec2 e1=vec2(1.0,0.0),e2=vec2(0.0,1.0);
@@ -1378,6 +1426,8 @@ uniform int dcovU;      // 1: DCov holds every donor cell (merge mode bit 1) and
                         // (with the 6.1 kernel but without the per-frame covariance DCov is a 16-byte stub)
 // P76: the 10x10 quads around the group's 8x8 cells, read once per group (sabreCov61 read each quad for 9 cells: 36 RAW sites a cell).
 shared vec2 cellQuad[100];
+// P332: the 22x22 sites around them for the fine tensor (sqrt of the gained greens, 0 at the other colours), also once per group
+shared float cellSite[484];
 void main(){
     int w2=size.x/2;
     int f=int(gl_GlobalInvocationID.z)+1+cellFrameU;
@@ -1385,6 +1435,14 @@ void main(){
     bool cov=dcovU!=0&&k61aU.w>0.0&&fParam[fs].y>0.0&&int(fParam[fs].w)!=5;
     int bx=int(gl_WorkGroupID.x)*8-1,by=fCells[fs].x+chunkU+int(gl_WorkGroupID.y)*8-1;
     if(cov)for(int k=int(gl_LocalInvocationIndex);k<100;k+=64)cellQuad[k]=sabreQuad61(fs,bx+k%10,by+k/10);
+    bool fine=cov&&k61cU.y>0.0;
+    if(fine){
+        float g=fParam[fs].x;
+        for(int k=int(gl_LocalInvocationIndex);k<484;k+=64){
+            int X=2*bx-1+k%22,Z=2*by-1+k/22;
+            cellSite[k]=phaseColor[((Z&1)<<1)|(X&1)]==1?sqrt(max(sampleRawM(fs,X,Z)*g,0.0)):0.0;
+        }
+    }
     barrier();
     if(f>=frameCount)return;
     int cx=int(gl_GlobalInvocationID.x),cy=fCells[f].x+chunkU+int(gl_GlobalInvocationID.y);
@@ -1401,7 +1459,13 @@ void main(){
             float w=(di==0?0.5:0.25)*(dj==0?0.5:0.25);
             Y[(dj+1)*3+di+1]=q.x;qd+=q.y*w;lum+=q.x*w;
         }
-        vec3 P=sabreCov61Q(f,Y,qd,lum);
+        vec3 fineT=vec3(-1.0);
+        if(fine){
+            float u[64];int s0=(2*(cy-by)-2)*22+2*(cx-bx)-2; // site (2cx-3, 2cy-3) in cellSite
+            for(int y=0;y<8;y++)for(int x=0;x<8;x++)u[y*8+x]=cellSite[s0+y*22+x];
+            fineT=sabreFine61U(cx,cy,u);
+        }
+        vec3 P=sabreCov61Q(f,Y,qd,lum,fineT);
         dcov[idx]=uvec2(packHalf2x16(P.xy),packHalf2x16(vec2(P.z,0.0)));
     }
 }
@@ -1414,7 +1478,20 @@ layout(std430,binding=10) readonly buffer Guide{vec4 guide[];};
 uniform int ry0;
 uniform int ry1;
 uniform vec4 rj; // cdm, boost, variance threshold, filter variance scale
-uniform vec4 rk; // boost mode (0 off, 1 local motion, 2 everywhere), motion threshold (RAW px), 0, 0
+uniform vec4 rk; // boost mode (0 off, 1 local motion, 2 everywhere), motion threshold (RAW px), z: 1 = soft motion prior (P335), 0
+#ifdef LOCAL_ALIGN
+// P335: the Z channel of frame f bilinear between the tile centres (laMotionAt takes the nearest tile: the boost switched on and off
+// in 16 px blocks along a moving edge).
+float laMotionSoft(int f,int x,int y){
+    int nx=max(laU.y,1),ny=max(laU.z,1);
+    uint fb=uint(clamp(f,0,frameCount-1)*nx*ny);
+    vec2 p=clamp((vec2(float(x),float(y))+0.5-laG.xy)*laG.w,vec2(0.0),vec2(float(nx-1),float(ny-1)));
+    ivec2 i0=clamp(ivec2(p),ivec2(0),ivec2(nx-1,ny-1)),i1=min(i0+1,ivec2(nx-1,ny-1));
+    vec2 a=p-vec2(i0);
+    float z00=laZ[fb+uint(i0.y*nx+i0.x)],z10=laZ[fb+uint(i0.y*nx+i1.x)],z01=laZ[fb+uint(i1.y*nx+i0.x)],z11=laZ[fb+uint(i1.y*nx+i1.x)];
+    return f==0?0.0:mix(mix(z00,z10,a.x),mix(z01,z11,a.x),a.y);
+}
+#endif
 void main(){
     int w2=size.x/2;
     int cx=int(gl_GlobalInvocationID.x),cy=ry0+chunkU+int(gl_GlobalInvocationID.y),f=int(gl_GlobalInvocationID.z)+1;
@@ -1456,16 +1533,25 @@ void main(){
         float nvs=noiseU(0,Lb)+rj.w*noiseU(f,Lb);
         vec3 nv=nvs*vec3(1.0,0.5,1.0);
         float nvMean=(nv.x+nv.y+nv.z)*(1.0/3.0);
+        // SCAM / v11 extra motion robustness: textured base and, with the local alignment, varying local motion
+        float prior=rk.x>1.5?1.0:0.0;
+        float forgive=1.0; // share of the difference noise forgiven before the distance (1: all of it)
+#ifdef LOCAL_ALIGN
+        if(rk.x>0.5&&rk.x<1.5){
+            if(rk.z>0.5){
+                // P335: the motion prior as a share instead of a switch at the threshold (no seam where the varying local motion
+                // crosses it), and inside it only half the noise forgiven: a moving surface whose difference sits near the noise
+                // level is not taken as noise (Sabre's motion-prior noise subtraction, made continuous)
+                prior=smoothstep(0.5*rk.y,1.5*rk.y,laMotionSoft(f,2*cx,2*cy));
+                forgive=1.0-0.5*prior;
+            } else prior=laMotionAt(f,2*cx,2*cy)>rk.y?1.0:0.0;
+        }
+#endif
         vec3 d=g-G.xyz;
-        vec3 D2=max(d*d-nv,vec3(0.0));
+        vec3 D2=max(d*d-forgive*nv,vec3(0.0));
         float varc=max(2.0*min(G.w,Vcur),nvMean);
         float dist=rj.x*(D2.x+D2.y+D2.z)*(1.0/3.0)/varc;
-        // SCAM / v11 extra motion robustness: textured base and, with the local alignment, varying local motion
-        bool moving=rk.x>1.5;
-#ifdef LOCAL_ALIGN
-        if(rk.x>0.5&&rk.x<1.5)moving=laMotionAt(f,2*cx,2*cy)>rk.y;
-#endif
-        float boost=(moving&&G.w>rj.z*nvMean)?rj.y:1.0;
+        float boost=G.w>rj.z*nvMean?mix(1.0,rj.y,prior):1.0;
         w=exp2(-dist*boost);
         // A longer (bracketed) frame clips where the base does not: its clipped cells carry no signal.
         if(int(fParam[f].w)==3&&dclip)w=0.0;
@@ -1739,6 +1825,7 @@ void baseChromaDiff(inout vec2 cdNum,inout vec2 cdDen,inout vec2 cdLo,inout vec2
 uniform float rampKU; // P309: the ramp mask's K (0 = the previous mask): the base demosaic fades out over share 0..0.5
 uniform vec4 bdU; // x = share at no donor (HybridTuning::baseDemosaic), y = anisotropy, z / w = structure / noise ratio from
                   // which to which the demosaic takes over (flat areas keep the merge's wider, less noisy kernel)
+uniform float bdAliasU; // P335: 0..1 share of the false-colour damping (0 = off, the demosaic as before)
 bool bayerDemosaic(vec2 O,out vec3 rgb,out float detail){
     ivec2 N=ivec2(floor(O+0.5));
     float A[81];
@@ -1791,7 +1878,27 @@ bool bayerDemosaic(vec2 O,out vec3 rgb,out float detail){
         if(c==0){sR+=w*df;nR+=w;}else{sB+=w*df;nB+=w;}
     }
     if(nR<=1.0e-6||nB<=1.0e-6)return false;
-    rgb=max(vec3(G+sR/nR,G,G+sB/nB),vec3(0.0))*fParam[0].x;
+    float dR=sR/nR,dB=sB/nB;
+    if(bdAliasU>0.0){
+        // P335 (owner, 2026-10-25: Ark's anti-zipper «попробуй его улучшить и добавить нам»): luma detail near the Bayer Nyquist
+        // shows in one frame as a step between the two green phases and as false colour (the zipper / moire of a moving subject);
+        // where the Gr / Gb step of the 5x5 core is large against the colour difference the colour is damped (Sabre's motion
+        // fallback damping). Unlike that one the step is taken above its own noise (the two phase means' sigma x2) and is
+        // reduced along a clear edge direction, so a noisy flat area or a straight edge keeps its colour.
+        float g0=0.0,n0=0.0,g1=0.0,n1=0.0;
+        for(int k=0;k<25;k++){
+            if(Cs[k]!=1)continue;
+            float v=A[((k/5)+2)*9+(k%5)+2];
+            if(((N.y+k/5)&1)==0){g0+=v;n0+=1.0;}else{g1+=v;n1+=1.0;}
+        }
+        if(n0>0.0&&n1>0.0){
+            float gd=max(abs(g0/n0-g1/n1)-2.0*sig*sqrt(1.0/n0+1.0/n1),0.0)*(1.0-0.7*aniso);
+            float ar=1.4*gd/(sqrt(dR*dR+dB*dB)+0.02*max(G,0.0)+1.0e-6);
+            float damp=mix(1.0,1.0/(1.0+ar*ar),clamp(bdAliasU,0.0,1.0));
+            dR*=damp;dB*=damp;
+        }
+    }
+    rgb=max(vec3(G+dR,G,G+dB),vec3(0.0))*fParam[0].x;
     return true;
 }
 #endif
@@ -4822,7 +4929,7 @@ public:
         glUniform4f(loc(rejectProgram,"rj"),tune.cdm,tune.boost,tune.varianceThreshold,tune.filterVariance);
         // boost mode 1 needs the Z channel of the local alignment; without it only the forced mode 2 boosts
         const float boostMode=tune.boostEnable>1.5f?2.f:(tune.boostEnable>0.5f&&localAlign?1.f:0.f);
-        glUniform4f(loc(rejectProgram,"rk"),boostMode,tune.motionThreshold,0,0);
+        glUniform4f(loc(rejectProgram,"rk"),boostMode,tune.motionThreshold,tune.rejPrior>0.f?1.f:0.f,0);
         // P310: with the ultrashort blend the merge (and its colour passes) runs as without Bento: the ultrashort frames get no
         // robust weight (kHybDilate), the base and the N frames their full one; kHybUsBlend blends them in after the strip's merge
         const bool usBlend=bento&&in.blend&&blendProgram!=0&&!in.native;
@@ -4886,6 +4993,7 @@ public:
             glUniform1f(loc(chromaProgram,"rampKU"),bentoMix?in.rampK:0.f); // P309
             glUniform4f(loc(chromaProgram,"bdU"),std::clamp(tune.baseDemosaic,0.f,1.f),std::clamp(tune.baseDemosaicAniso,0.f,2.f),
                         tune.baseDemosaicBayerLo,std::max(tune.baseDemosaicBayerHi,tune.baseDemosaicBayerLo+0.01f)); // P282
+            glUniform1f(loc(chromaProgram,"bdAliasU"),std::clamp(tune.baseDemosaicAlias,0.f,1.f)); // P335
             glUseProgram(mergeProgram);
         }
         {const float s=std::max(0.3f,tune.rimSigma);
@@ -7689,6 +7797,17 @@ inline int hybridMovedDonors(const std::vector<BackwardHomography>& homography,i
     if(largest)*largest=most;
     return moved;
 }
+// P335: IEEE half -> float (the inverse of floatToHalf, every half value exact)
+inline float hybridHalfToFloat(uint16_t h){
+    const uint32_t s=uint32_t(h&0x8000u)<<16,e=(h>>10)&0x1fu,m=h&0x3ffu;
+    uint32_t bits;
+    if(e==0){
+        if(m==0)bits=s;
+        else{int k=-1;uint32_t mm=m;do{++k;mm<<=1;}while(!(mm&0x400u));bits=s|(uint32_t(127-15-k)<<23)|((mm&0x3ffu)<<13);}
+    }else if(e==31)bits=s|0x7f800000u|(m<<13);
+    else bits=s|((e+112u)<<23)|(m<<13);
+    float f;std::memcpy(&f,&bits,4);return f;
+}
 // P150: a still burst - fewer than a quarter of its donors moved (the rest sample the base's sites)
 inline bool hybridStillBurst(int moved,int donors){return donors>0&&moved*4<donors;}
 struct MosaicChromaPasses;
@@ -8028,6 +8147,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // ---- alignment: every frame against the base, groups of six
     std::vector<BackwardHomography> H(n);
     std::vector<bool> aligned(n,true);
+    // P334: normal donors the alignment refused, handed to F6 from the identity (left out of the hand-motion and still-burst tests)
+    std::vector<bool> idStart(n,false);
+    int stillSeen=-1; // P335: the burst's donors (aligned ones) moved: 0, a still burst: 1, not tested: -1 (plainChromaHand)
     // P33 W2.1: the F6 field in tile-row bands (LaStream). Phase 1 of a frame (gray, L1 field) starts as soon as the alignment
     // publishes its homography, the bands once the refined frames are known (commit below) and run alongside the GPU merge. Plain
     // Bayer and the native mosaic's binned frames up to kHybridClassicPixels (the split's sub-frames share their fields frame-wide);
@@ -8115,9 +8237,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             }
             for(int j=0;j<count;++j){
                 H[first+j]=hs[1+j];
-                try{H[first+j].validate();}catch(const std::exception&){aligned[first+j]=false;}
-                // replaceFailed() points a failed slot at the reference frame: detect and drop it.
-                if(group.raw[1+j]!=input.frames[first+j].raw)aligned[first+j]=false;
+                try{H[first+j].validate();}catch(const std::exception&){aligned[first+j]=false;H[first+j]=BackwardHomography{};}
+                // replaceFailed() points a failed slot at the reference frame (the CRE and its translation refused the frame).
+                // P334: a normal donor was merged at the identity without F6 (the comment said "drop it", nothing did): x1.3-1.8
+                // the error of a sharp burst for a frame 0.8-2 px off. It now goes to F6 from the identity (F6 absorbs up to
+                // laMaxShift, the rejection the rest), which beat dropping it on every synthetic case (dropping: a dark scene whose
+                // reference has too few corners loses every donor at once, noise x1.6); without F6 it is dropped below while two
+                // aligned normal donors remain. Bracketed and ultrashort frames are dropped as before.
+                if(group.raw[1+j]!=input.frames[first+j].raw){
+                    if(input.frames[first+j].role==kRoleNormal&&tune.localAlign>0){H[first+j]=BackwardHomography{};idStart[first+j]=true;}
+                    else aligned[first+j]=false;
+                }
                 streamFeed(first+j); // P33 W2.1: its F6 phase 1 now
             }
         }
@@ -8148,6 +8278,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         for(int f=1;f<n;++f)streamFeed(f);
     }
     stats.alignMs=millis(Clock::now()-alignStarted);
+    {
+        std::string ids;
+        for(int f=1;f<n;++f)if(idStart[f])ids+=(ids.empty()?"":",")+std::to_string(f);
+        if(!ids.empty())report("HYBRID ALIGN: frames "+ids+" refused by the alignment: local alignment from the identity and the rejection");
+    }
     if(tune.profile){ // the homographies, so the residual alignment error can be measured offline (sabre2x_61.md F7b / R4)
         for(int f=1;f<n;++f){
             char line[200];const auto& m=H[f].h;
@@ -8184,7 +8319,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     {
         int cnt=0;
         for(int f=1;f<n;++f){
-            if(input.frames[f].role!=kRoleNormal||!aligned[f])continue;
+            if(input.frames[f].role!=kRoleNormal||!aligned[f]||idStart[f])continue;
             const DonorPoint p=H[f].project(w/2,h/2);
             const double dx=p.x/H[f].upRatio-w/2,dy=p.y/H[f].upRatio-h/2;
             motion+=dx*dx+dy*dy;++cnt;
@@ -8247,7 +8382,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const float tn=dayNoise?tune.s61DayTensorNoise:tune.s61TensorNoise,gn=dayNoise?tune.s61DayGdNoise:tune.s61GdNoise;
         k61b={1.f/(f0*f1),1.f/f3,1.f/(ks*ks),tn>0?tn:1.f};
         if(native&&flatScale!=1.f)k61b[0]/=std::clamp(flatScale,0.25f,4.f); // P34
-        k61c={gn>0?gn:1.f,0,0,0};
+        k61c={gn>0?gn:1.f,tune.s61Fine>0.f?tune.s61Fine:0.f,0,0};
         auto sigma=[&](float p){return std::to_string(ks/(p*std::sqrt(std::log(2.f))));};
         report("HYBRID KERNEL: Sabre 6.1 baseNoise slope="+std::to_string(baseSlope)+" offset="+std::to_string(baseOffset)+" key="+std::to_string(key)
             +" f0="+std::to_string(f0)+" f1="+std::to_string(f1)+" f2="+std::to_string(f2)+" f3="+std::to_string(f3)
@@ -8255,7 +8390,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             +" ("+((tune.s61Mode&1)?"per-frame covariance":"base covariance for all frames")+((tune.s61Mode&2)?", window 1.5 px":"")
             +((tune.s61Mode&4)?", base x0.3 below "+std::to_string(tune.widenBelow)+" frames":", base widening by donor coverage")+")"
             +(tune.sabre61==2?std::string(" auto (")+(night61?"night key":"handheld with local alignment")+")":std::string())
-            +" noise x"+std::to_string(k61b[3])+"/x"+std::to_string(k61c[0])+" motion="+std::to_string(motion)+" px");
+            +" noise x"+std::to_string(k61b[3])+"/x"+std::to_string(k61c[0])
+            +(k61c[1]>0.f?" fine tensor (noise x"+std::to_string(16.f*k61c[1])+")":std::string(" quad tensor"))+" motion="+std::to_string(motion)+" px");
     } else {
     if(tune.sabre61==2)report("HYBRID KERNEL: Sabre 6.1 kernel off (auto: key "+std::to_string(key61)+" > "+std::to_string(tune.s61MaxKey)
         +", motion "+std::to_string(motion)+" px "+(tune.localAlign>0?"< "+std::to_string(tune.s61MinMotion):std::string("without local alignment"))+")");
@@ -8273,6 +8409,19 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     // ---- Shasta: bracketed frames softer than the base are dropped; too long a ratio drops them all
     std::vector<bool> keep(n,true);
+    std::vector<double> sharpShare(n,1.0); // P335: a bracketed frame's sharpness against the base (Shasta's score), 1 = not measured
+    {
+        // P334: normal donors the alignment refused without F6 to refine them (localAlign 0, the conservative retry; the mosaic
+        // split's sub-frames): left out while two aligned normal donors remain, else merged at the identity as before
+        int alignedNormals=0;
+        for(int f=1;f<n;++f)if(input.frames[f].role==kRoleNormal&&aligned[f])++alignedNormals;
+        for(int f=1;f<n;++f){
+            if(input.frames[f].role!=kRoleNormal||aligned[f])continue;
+            if(alignedNormals>=2){keep[f]=false;report("HYBRID ALIGN: frame "+std::to_string(f)+" refused by the alignment: left out");}
+            else report("HYBRID ALIGN: frame "+std::to_string(f)+" refused by the alignment: merged at the identity ("
+                +std::to_string(alignedNormals)+" aligned normal donors)");
+        }
+    }
     {
         float maxRatio=1;
         // P30: the base guide once, the frames' sharpness in parallel; decisions and report in frame order as before.
@@ -8301,6 +8450,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             if(!tune.shastaEnable||!aligned[f]){keep[f]=false;++stats.droppedBracketed;continue;}
             const SharpnessPair sp=sharp[f].get();
             const double pct=sp.base>0?sp.frame/sp.base:1.0;
+            sharpShare[f]=pct;
             report("HYBRID SHASTA sharpness frame="+std::to_string(f)+" score="+std::to_string(sp.frame)+" base="+std::to_string(sp.base)
                 +" pixels="+std::to_string(sp.pixels)+" ("+std::to_string(100*pct)+" % of base)");
             if(tune.shastaForce){
@@ -8697,6 +8847,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             A=std::min(tune.weightCap,std::pow(t*t*readB/readF,tune.fwe));
             if(fr.role==kRoleUltrashort)A=tune.bentoUsWeight/float(std::max<size_t>(usFrames.size(),1));
             if(!std::isfinite(A)||A<=0)A=1.f;
+            // P335: a bracketed frame (2x the exposure, A = t^2 = 4: three of them outweighed 12 N frames) carries the hand's
+            // blur of its longer exposure; forced Shasta (P68) merged it at full weight at any sharpness (the owner's ISO 12800 shot:
+            // 82 % of the base's sharpness, ~37 % of the merge's weight). Its weight now follows its measured sharpness: whole from
+            // shastaSharpHi of the base's, down to 1 / t^2 of it (the weight of one N frame) at shastaSharpLo and below.
+            if(fr.role==kRoleBracketed&&tune.shastaSharpHi>tune.shastaSharpLo&&A>1.f){
+                const double u=std::clamp((sharpShare[f]-tune.shastaSharpLo)/(tune.shastaSharpHi-tune.shastaSharpLo),0.0,1.0);
+                A=float(1.0+(double(A)-1.0)*u*u*(3.0-2.0*u));
+            }
         }
         const float ls=lutSigma(A);
         in.frames.push_back(fr.raw);
@@ -8979,9 +9137,12 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         // (synthetic still burst on the X200 Ultra: error at the detail 0.079 -> 0.034, chroma p99 0.24 -> 0.15; the green-clipped
         // sky of the magenta-rim case unchanged); a moving burst keeps cellClip (its merge unchanged).
         HybridTuning mergeTune=tune;
-        if(tune.cellClip&&tune.staticShift>0.f&&in.frames.size()>1){
-            const int donors=int(in.frames.size())-1;float largest=0.f;
-            const int moved=hybridMovedDonors(in.homography,w,h,tune.staticShift,&largest);
+        // P334: frames the alignment refused (identity start of F6) say nothing about the hand's motion
+        std::vector<BackwardHomography> movedH;
+        for(size_t i=0;i<in.homography.size();++i)if(i==0||!idStart[size_t(index[i])])movedH.push_back(in.homography[i]);
+        if(tune.cellClip&&tune.staticShift>0.f&&movedH.size()>1){
+            const int donors=int(movedH.size())-1;float largest=0.f;
+            const int moved=hybridMovedDonors(movedH,w,h,tune.staticShift,&largest);
             if(hybridStillBurst(moved,donors)){
                 mergeTune.cellClip=0;
                 char line[200];
@@ -8990,6 +9151,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 report(line);
             }
         }
+        if(movedH.size()>1) // P335: for the plain chroma median's share (any cellClip setting)
+            stillSeen=hybridStillBurst(hybridMovedDonors(movedH,w,h,tune.staticShift>0.f?tune.staticShift:0.75f),int(movedH.size())-1)?1:0;
         gpu.merge(in,mergeTune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr,effMap!=nullptr);
         if(gpu.profile){
             const double* p=gpu.passMs;char pl[200];
@@ -9121,8 +9284,31 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     if(!sunk)shiftOrigin(out,outW,outH,3,(input.cfa&1)*grid,(input.cfa>>1)*grid);
     if(!sunk&&!native&&tune.plainChromaMedian>0){
         const auto t0=Clock::now();std::string how;
-        mosaicChromaMedian(out,outW,outH,std::max(1,tune.plainChromaMedian)*grid,nullptr,tune.chromaGpu>0,&how,0,nullptr);
-        report("HYBRID PLAIN: chroma median (block "+std::to_string(tune.plainChromaMedian)+", "+how+") "+std::to_string(int(millis(Clock::now()-t0)))+" ms");
+        // P335: a hand-held burst (its donors moved) samples every colour phase at sub-pixel offsets: its colour is real down to
+        // ~1 px and the median (5 taps 1 px apart) took fine colour texture away; it keeps plainChromaHand of the median's
+        // change there (R, B kept as halves meanwhile: 4 B per pixel), a still burst (P269's case: a resting phone, one frame's
+        // demosaic colour along slanted edges) the whole median
+        const float keepMedian=stillSeen==0?std::clamp(tune.plainChromaHand,0.f,1.f):1.f;
+        std::vector<uint16_t> rb;
+        const size_t px=size_t(outW)*outH;
+        if(keepMedian>0.f&&keepMedian<1.f){
+            rb.resize(px*2);
+            mergeRowBands(outH,[&](int y0,int y1){
+                for(size_t i=size_t(y0)*outW;i<size_t(y1)*outW;++i){rb[2*i]=floatToHalf(out[3*i]);rb[2*i+1]=floatToHalf(out[3*i+2]);}
+            });
+        }
+        if(keepMedian>0.f)mosaicChromaMedian(out,outW,outH,std::max(1,tune.plainChromaMedian)*grid,nullptr,tune.chromaGpu>0,&how,0,nullptr);
+        if(!rb.empty()){
+            mergeRowBands(outH,[&](int y0,int y1){
+                for(size_t i=size_t(y0)*outW;i<size_t(y1)*outW;++i){
+                    const float r=hybridHalfToFloat(rb[2*i]),b=hybridHalfToFloat(rb[2*i+1]);
+                    out[3*i]=r+keepMedian*(out[3*i]-r);out[3*i+2]=b+keepMedian*(out[3*i+2]-b);
+                }
+            });
+        }
+        report("HYBRID PLAIN: chroma median (block "+std::to_string(tune.plainChromaMedian)+", "+(keepMedian>0.f?how:std::string("skipped"))
+            +(stillSeen==0?", hand-held: x"+std::to_string(keepMedian):stillSeen==1?", still burst: whole":"")+") "
+            +std::to_string(int(millis(Clock::now()-t0)))+" ms");
     }
     if(effMap){
         std::vector<float> sample;sample.reserve(effective.size()/7+1);

@@ -7161,3 +7161,33 @@ Owner, same day: «сделай гпу выравнивание и дай воз
 - Open: the OPPO X7U DCG (Meitu package) is not detected by the depth rule (declared white 16383 = 14 bit) - needs a burst / DNG;
   the X300 Ultra tele plain mode measured 0.035-0.076 x its HAL model in the noise check (clamped at 1/16) - a plain-mode issue,
   not changed here.
+
+### P330-P334 - less smear (branch claude/stitching-noise-reduction-uktsf9, another session, owner 2026-10-25: «исправь чтобы не было мыла»; build 31123): dn_model_read 6 -> 2 and denoise_lsc_max 4 -> 2 (P330, one-time move of the stored defaults), N frames below 0.75 x the median sharpness left out (P331), the Sabre 6.1 structure tensor from the green sites at full resolution (s61Fine 2, P332), the WHY fusion as a Laplacian pyramid (why_ef_coarse 48, P333), alignment-refused donors to F6 from the identity (P334); the 6.1 kernel stays «Всегда». Not device-tested.
+
+### P335 - Ark 1.92 studied, its ideas improved and added: soft rejection motion prior, noise-aware false-colour damping, grain, daylight colour denoise (owner, 2026-10-25: «не уверен что ядро 6.1 у нас работает, детализация хуже чем у Арк камеры», «днём слишком сильный хрома шумодав, да и люма тоже», D:/scam_burst-20261025-124513.bin + D:/LUT.zip (crops, logs, ArkCam JPEG), «по поводу зерна шумодава же, у нас должно быть что-то между арк и нашим», arkcamv192.apk, «посмотри как работают у Арк реджекты и подумай как их можно улучшить у нас, так же проверь как у него работают антизиппер и попробуй его улучшить и добавить нам», «вместо того чтобы в точности переносить что-либо с Арк, сначала постарайся это улучшить», «когда полностью всё закончишь заливай на гит»): DONE in code, not device-tested (the phone was disconnected).
+- Ark 1.92 (com.arkcam, libopenhdr_engine.so, no libgcastartup any more): its own GLSL Sabre. The kernel's SNR is Google's key
+  0.18 / sqrt(O + 0.18 S) of the base frame and its curves are ours (f2 {1,4,14,30} -> {0.01,0.002,0.001,0.001}, f3 {1,3,12,30} ->
+  {0.02,0.015,0.009,0.006}, cov_* defaults = the key-30 values 8.8 / 1.0 / 0.001 / 4.0 / 1.33 / 166.7): the 6.1 kernel is the same.
+  Defaults: multiscale denoise off, Sabre denoise factor 0.4 with luma revert 0.85 (motion 0.5), grain 0.15 only where < 5 frames
+  merged, no sharpening (USM / bilateral radius 0), 15 frames, no long frames. Rejection = Google's with a binary motion prior
+  (flow variation / affine residual: half the noise forgiven, boost); anti-zipper = on the motion fallback a 3x3 directional green +
+  chroma damping by the Gr / Gb step, and a 5x5 chroma-difference filter on the highlight mask.
+- The owner's ISO 12800 pair: our fine / mid luma noise 0.65 / 0.59 x Ark's, chroma 0.6 x: 23 merged frames (3 long at A = 4)
+  against Ark's 15, not a stronger luma denoise (the tiers revert 0.9 / 0.88 there).
+- Worker: rejPrior 1 (the Z channel bilinear between the tiles, the prior smoothstep 0.5..1.5 x motionThreshold, half the noise
+  forgiven inside it, the boost by the share), baseDemosaicAlias 1 (Bayer base demosaic: colour difference damped by the Gr / Gb
+  step of the 5x5 core above 2 sigma of the phase means, less along a clear edge). Both off by worker default (replays unchanged),
+  sent by the app. Kept off (keys only): plainChromaHand (the hand-held share of the plain chroma median: 0.35 doubled the
+  synthetic colour error) and shastaSharpLo / Hi (bracketed weight by sharpness: no detail change, the long frames add SNR).
+- App: ScamDenoise puts back dn_luma_grain 0.5 of the finest-scale luma noise it removed (scamdn/lgrain: high band of
+  Y_in - Y_den, added to Y in the last chroma pass: the colour denoise sees no extra grain), and the colour denoise eases off
+  above SNR 20 to dn_chroma_day 0.5 at SNR 80 (ScamDenoiseTables.dayChroma). scam_dev keys hybrid_rej_prior, hybrid_base_demosaic_alias,
+  hybrid_plain_chroma_hand, hybrid_dn_luma_grain, hybrid_dn_chroma_day.
+- Tools: tools/replay_hybrid_ab.py (host worker on Mesa, burst x variants), replay_crop_nch.py, replay_synth_burst.py (hand-held +
+  moving object, day / night noise, truth), replay_ab_report.py; workflow replay-ab.yml runs on replay/* branches only (crops in
+  research/replay-bursts there). Round 4 (final vs 31123): synthetic day colour error static -4 %, moving -2 %, border -6.5 %; night
+  moving luma -0.4 %, colour -1.4 %; real crops (124513 night, 193420, 101423 day) unchanged where static. check_luma_grain.py (CI).
+- Tests: CI list 1701/1701, UI language, settings model, shader fp16, WHY pyramid PASS.
+- Open: Ark's crisper night edges in the owner's pair are not reproduced on the host (no vendor CRE there: the global alignment
+  differs); a phone replay of 124513 with the CRE would tell whether alignment / ghosting is the difference.
+

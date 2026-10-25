@@ -401,10 +401,8 @@
     <string name="prefs_scam_hybrid_why_weight_center_summary">Какую яркость слоёв слияние считает лучшей. Больше — снимок светлее, меньше — темнее. На снимках с кадрами светов (данные выше потолка) центр на 0,15 выше этого значения.</string>
     <string name="prefs_scam_hybrid_why_blend_smoothness_title">Плавность слияния слоёв</string>
     <string name="prefs_scam_hybrid_why_blend_smoothness_summary">Плавность смешивания слоёв. Больше — мягче и естественнее, меньше — сильнее эффект HDR.</string>
-    <string name="prefs_scam_hybrid_why_gf_radius_title">Слои тона: радиус фильтра, px</string>
-    <string name="prefs_scam_hybrid_why_gf_radius_summary">Размер зон карты слияния, px. Больше — тон меняется по крупным зонам, меньше — по мелким деталям.</string>
-    <string name="prefs_scam_hybrid_why_gf_eps_e3_title">Слои тона: регуляризация, ×0,001</string>
-    <string name="prefs_scam_hybrid_why_gf_eps_e3_summary">Сглаживание карты слияния. Больше — карта глаже и общее, меньше — точнее по краям.</string>
+    <string name="prefs_scam_hybrid_why_ef_coarse_title">Слои тона: масштаб пирамиды, px</string>
+    <string name="prefs_scam_hybrid_why_ef_coarse_summary">Короткая сторона самого грубого уровня пирамиды Лапласа слияния, px. Больше — тон подстраивается под мелкие зоны, картинка площе; меньше — под крупные, больше общего контраста.</string>
     <string name="prefs_scam_hybrid_why_texture_title">Текстура в тоне Why</string>
     <string name="prefs_scam_hybrid_why_texture_summary">Добавляет локальный контраст SCAMERA после тона Why: текстуры выразительнее.</string>
     <string name="prefs_scam_hybrid_why_artifacts_category_title">Артефакты и восстановление</string>

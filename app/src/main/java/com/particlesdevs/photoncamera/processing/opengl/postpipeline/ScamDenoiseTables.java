@@ -115,6 +115,20 @@ final class ScamDenoiseTables {
         return out;
     }
 
+    /** P335: the colour denoise's multiplier at SNR >= 80 (scam_dev hybrid_dn_chroma_day). */
+    static final float CHROMA_DAY = 0.5f;
+
+    /**
+     * P335 (owner, 2026-10-25: «днём слишком сильный хрома шумодав»): the multiplier of the colour denoise by the SNR of the finish
+     * input: 1 up to SNR 20 (the tier VeryHigh and every darker shot as before), log-linear down to {@code atHigh} at SNR 80 (a
+     * daylight shot, whose colour noise is far below the colour detail the table's 0.5 strength took), constant above.
+     */
+    static float dayChroma(float snr, float atHigh) {
+        if (!(snr > 20f)) return 1f;
+        final float t = (float) Math.min(1.0, Math.log(snr / 20.0) / Math.log(4.0));
+        return 1f + (Math.max(0f, Math.min(1f, atHigh)) - 1f) * t;
+    }
+
     /** Per band {strength, outlier} of the chroma denoise at this SNR (floor on b0..b2 relative to the unscaled table). */
     static float[][] chroma(Config c, float snr, Pick[] pickOut) {
         Pick p = pick(c.chromaSnr, snr);

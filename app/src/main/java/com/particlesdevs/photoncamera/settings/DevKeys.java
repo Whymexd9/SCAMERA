@@ -55,6 +55,7 @@ public final class DevKeys {
             "post_priority", "gpu_low_priority", "jpeg_threads", "rgba_upload", "gl_warm_up", "release_async", "worker_watchdog",
             "hybrid_la_threads", "hybrid_la_stream", "hybrid_la_scam", "hybrid_rgb_half", "worker_gpu_normal_priority",
             "isp_preview_off_always", "hybrid_isp_ccm", "hybrid_clip_flags", "dng_colour_jpeg",
+            "hybrid_sharp_select", // P331: picks the frames of the saved burst at the shot
             // P306: no native Tetra merge is a night shot any more, nothing reads its night point
             "hybrid_mosaic_tetra_night_kernel_scale", "hybrid_mosaic_tetra_night_edge_scale", "hybrid_mosaic_tetra_night_flat_scale")));
 
@@ -160,8 +161,8 @@ public final class DevKeys {
         k.add(n(vf, "vf_priority", "1", Lang.t("Высокий приоритет потока видоискателя (0 — обычный)", "High priority of the viewfinder thread (0: normal)")));
         // P314: the photo's tone per pixel by default (one pass, the AE on the CPU), the guided-filter chain of P301 as 2
         k.add(s(vf, "vf_black_floor", true, Lang.t("RAW-видоискатель: чёрный по самому кадру, когда поток пришёл без чёрного пьедестала (OPPO ISZ, режим сенсора)", "RAW viewfinder: the black from the frame itself when the stream lost its black pedestal (OPPO ISZ, a sensor mode)")));
-        k.add(n(vf, "vf_why", "1", Lang.t("RAW-видоискатель: тон Why итогового фото — 1: по каждому пикселю (быстро), 2: локально, как в фото (направляемый фильтр, тяжелее, замедляет обработку), 0: собственный вид видоискателя",
-                "RAW viewfinder: the photo's Why tone - 1: per pixel (fast), 2: local as in the photo (guided filter, heavier, slows processing down), 0: the viewfinder's own look")));
+        k.add(n(vf, "vf_why", "1", Lang.t("RAW-видоискатель: тон Why итогового фото — 1: по каждому пикселю (быстро), 2: локально направляемым фильтром (прежнее слияние фото, до пирамиды Лапласа; тяжелее, замедляет обработку), 0: собственный вид видоискателя",
+                "RAW viewfinder: the photo's Why tone - 1: per pixel (fast), 2: local with the guided filter (the photo's fusion before the Laplacian pyramid; heavier, slows processing down), 0: the viewfinder's own look")));
         // P319: an ISP-woken redraw of the same RAW frame reuses its tone (MainRenderer.toneKey)
         k.add(s(vf, "vf_tone_reuse", true, Lang.t("RAW-видоискатель: повторная отрисовка того же RAW-кадра берёт готовый тон (0 — тонировать каждую отрисовку)",
                 "RAW viewfinder: a redraw of the same RAW frame reuses its tone (0: tone every draw)")));
@@ -182,6 +183,11 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_s61_day_gd_noise", null, Lang.t("Sabre 6.1 днём: шум градиента", "Sabre 6.1 by day: gradient noise")));
         k.add(n(merge, "hybrid_s61_tensor_noise", null, Lang.t("Sabre 6.1: шум тензора", "Sabre 6.1: tensor noise")));
         k.add(n(merge, "hybrid_s61_gd_noise", null, Lang.t("Sabre 6.1: шум градиента", "Sabre 6.1: gradient noise")));
+        k.add(n(merge, "hybrid_s61_fine", "2", Lang.t("Sabre 6.1: структура по зелёным пикселям в полном разрешении, множитель её шума (0 — по квадам 2×2, как раньше)", "Sabre 6.1: structure from the green sites at full resolution, its noise multiplier (0: from the 2x2 quads, as before)")));
+        k.add(n(merge, "hybrid_rej_prior", "1", Lang.t("Реджекты: плавный учёт движения по полю выравнивания (0 — порог по плитке, как раньше)", "Rejection: soft motion prior from the alignment field (0: the per-tile threshold as before)")));
+        k.add(n(merge, "hybrid_base_demosaic_alias", "1", Lang.t("Одиночный кадр: подавление ложного цвета по ступеньке Gr/Gb выше шума (0 — выкл.)", "Single frame: false-colour damping by the Gr/Gb step above the noise (0: off)")));
+        k.add(n(merge, "hybrid_plain_chroma_hand", "1", Lang.t("Цветовая медиана при съёмке с рук: доля (1 — целиком; со штатива всегда целиком)", "Chroma median of a hand-held burst: share (1: whole; a still burst always takes it whole)")));
+        k.add(n(merge, "hybrid_sharp_select", "0.75", Lang.t("Отбор кадров по резкости: N-кадры мягче этой доли медианы не склеиваются (0 — все кадры)", "Frame selection by sharpness: N frames softer than this share of the median are not merged (0: every frame)")));
         k.add(n(merge, "hybrid_hot_frames", null, Lang.t("Горячие пиксели: кадров для поиска", "Hot pixels: frames to search")));
         k.add(n(merge, "hybrid_hot_cross", null, Lang.t("Горячие пиксели: порог креста", "Hot pixels: cross threshold")));
         k.add(n(merge, "hybrid_hot_max_level", null, Lang.t("Горячие пиксели: предел уровня", "Hot pixels: level limit")));
@@ -225,7 +231,7 @@ public final class DevKeys {
         k.add(s(post, "effmap_real", true, Lang.t("Карта числа кадров для шумоподавления — реальная (выкл — старая)", "Frame-count map for the denoise: the real one (off: the old one)")));
         // P214d: ScamDenoise.lscTerm
         k.add(s(post, "denoise_lsc", true, Lang.t("Шумоподавление сильнее к углам кадра по коррекции виньетирования (g² карты затенения объектива)", "Denoise harder towards the frame corners after the vignetting correction (g² of the lens-shading map)")));
-        k.add(n(post, "denoise_lsc_max", "4", Lang.t("Шумоподавление к углам: предел множителя дисперсии (1–16; 4 — шум в углах считается вдвое сильнее)", "Corner denoise: cap of the variance multiplier (1-16; 4: the corner noise counts twice as strong)")));
+        k.add(n(post, "denoise_lsc_max", "2", Lang.t("Шумоподавление к углам: предел множителя дисперсии (1–16; 2 — шум в углах считается в 1,4 раза сильнее)", "Corner denoise: cap of the variance multiplier (1-16; 2: the corner noise counts 1.4 times as strong)")));
         // P214e: WhyLumaSharpen.smoothedSource (R1); P214z: not above 100 MP (r1Fits)
         k.add(s(post, "sharpen_r1", true, Lang.t("Резкость мозаичных снимков (ISZ Quad/Tetra, FULLRES до 100 Мп) по яркости, сглаженной 3×3: решётка мозаики почти не усиливается. Выкл — резкость как у снимков Bayer",
                 "Sharpening of mosaic shots (ISZ Quad / Tetra, FULLRES up to 100 MP) on the 3x3-smoothed luma: the mosaic lattice is hardly lifted. Off: the sharpening of Bayer shots")));
@@ -235,6 +241,8 @@ public final class DevKeys {
         k.add(n(post, "jpeg_threads", null, Lang.t("Потоков кодирования JPEG (1 — один поток, прогрессивный; пусто — все ядра)", "Threads of the JPEG encode (1: one thread, progressive; empty: every core)")));
         k.add(sAuto(post, "rgba_upload", Lang.t("Загрузка RGB в GPU как RGBA (по умолчанию решает приложение)", "RGB uploaded to the GPU as RGBA (default: chosen by the app)")));
         k.add(n(post, "hybrid_isp_ccm", "1", Lang.t("vivo: цветовая матрица ISP по кадру (0 — матрицы DNG)", "vivo: the ISP colour matrix of the frame (0: the DNG matrices)")));
+        k.add(n(post, "hybrid_dn_luma_grain", "0.5", Lang.t("Шумодав: доля убранного мелкого зерна яркости, которая возвращается (0 — как раньше)", "Denoise: share of the removed fine luma grain that comes back (0: as before)")));
+        k.add(n(post, "hybrid_dn_chroma_day", "0.5", Lang.t("Шумодав цвета днём: множитель при SNR 80 и выше (1 — как раньше; до SNR 20 всегда 1)", "Daylight colour denoise: multiplier at SNR 80 and above (1: as before; up to SNR 20 always 1)")));
         k.add(n(post, "hybrid_dn_dark_chroma_hi", "4", Lang.t("Шумодав: цвет в тенях, верхний порог (x1e-4)", "Denoise: colour in the shadows, upper threshold (x1e-4)")));
         k.add(n(post, "hybrid_dn_dark_chroma_lo", "1.5", Lang.t("Шумодав: цвет в тенях, нижний порог (x1e-4)", "Denoise: colour in the shadows, lower threshold (x1e-4)")));
         k.add(n(post, "hybrid_dn_huge_map", "4.3", Lang.t("Шумодав 200 МП: сила (карта силы; 1 — как при всех склеенных кадрах)", "Denoise 200 MP: strength (strength map; 1: as with every frame merged)")));

@@ -71,8 +71,8 @@ public class ScamDenoiseLscTest {
         assertNotNull(term);
         assertEquals(3, term.length);
         assertEquals(1f / (1.0005f * ScamDenoise.LSC_MARGIN), term[0], 1e-6f);        // lscU.x
-        assertEquals(4f, term[1], 0f);                                                // lscU.y
-        assertEquals(4f, term[2], 0f);                                                // the corner hits the cap
+        assertEquals(2f, term[1], 0f);                                                // lscU.y (P330: cap 2)
+        assertEquals(2f, term[2], 0f);                                                // the corner hits the cap
         // a cap above the corner's g^2: the peak is the corner's own (3.8325 / 1.0005 / margin)^2
         term = ScamDenoise.lscTerm(radial(1.0005f, 3.8325f), MW, MH, 16f);
         float g = 3.8325f / (1.0005f * ScamDenoise.LSC_MARGIN);

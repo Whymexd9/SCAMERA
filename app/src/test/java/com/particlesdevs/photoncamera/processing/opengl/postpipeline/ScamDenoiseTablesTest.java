@@ -110,4 +110,15 @@ public class ScamDenoiseTablesTest {
         // the SNR estimate: mu / sqrt(g01 / 2 * (rho_s s mu + rho_r r))
         assertEquals(0.01f / (float) Math.sqrt(0.125 * (1e-3 * 0.01 + 1e-6)), ScamDenoiseTables.snr(0.01f, 0.25f, 1e-3f, 1e-6f, 1f, 1f), 1e-3f);
     }
+
+    /** P335: the daylight colour denoise multiplier: 1 up to SNR 20, log-linear to atHigh at SNR 80, constant above. */
+    @Test public void dayChromaEasesOffAboveSnr20() {
+        assertEquals(1f, ScamDenoiseTables.dayChroma(5f, 0.5f), 0f);
+        assertEquals(1f, ScamDenoiseTables.dayChroma(20f, 0.5f), 0f);
+        assertEquals(0.75f, ScamDenoiseTables.dayChroma(40f, 0.5f), 1e-6f);
+        assertEquals(0.5f, ScamDenoiseTables.dayChroma(80f, 0.5f), 1e-6f);
+        assertEquals(0.5f, ScamDenoiseTables.dayChroma(464f, 0.5f), 1e-6f);
+        assertEquals("1 = as before", 1f, ScamDenoiseTables.dayChroma(464f, 1f), 0f);
+        assertEquals(1f, ScamDenoiseTables.dayChroma(Float.NaN, 0.5f), 0f);
+    }
 }

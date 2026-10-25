@@ -335,11 +335,12 @@ public final class ScamHybridBurst implements ScamTransport {
                 base.number, (anchor - base.timestamp) / 1e6, start));
         final double ref = product(base);
         add(base, ROLE_NORMAL, ref, newest);
+        final java.util.Set<ImageFrame> blurred = blurredNormals(normal, base);
         // The worker holds at most WORKER_MAX_FRAMES frames (uniform arrays); the oldest N frames go first,
         // reserved slots stay for the ultrashort frames and the bracketed ones.
         int normals = 1;
         for (ImageFrame f : normal) {
-            if (f == base) continue;
+            if (f == base || blurred.contains(f)) continue;
             if (normals >= normalLimit) {
                 Log.w("SCAM_HDR", "hybrid: " + (normal.size() - normals) + " oldest N frames dropped, " + limitReason + " " + normalLimit);
                 if ("memory budget".equals(limitReason)) budgetDropped = normal.size() - normals;
@@ -399,6 +400,73 @@ public final class ScamHybridBurst implements ScamTransport {
         if (!motion) return -1;
         for (int i = 0; i < normal.size(); i++) if (normal.get(i).fromZsl) return i;
         return -1;
+    }
+
+    /** P331: N frames below this share of the burst's median sharpness are left out (scam_dev hybrid_sharp_select; 0 = off). */
+    static final float SHARP_SELECT = 0.75f;
+    /** P331: the selection keeps at least this many N frames (base included) and leaves out at most this share of the donors. */
+    static final int SHARP_KEEP = 8;
+    static final float SHARP_MAX_SHARE = 1f / 3f;
+
+    /**
+     * P331 (owner, 2026-10-25: «исправь чтобы не было мыла»): every N frame took the same weight, a ZSL frame smeared by the
+     * hand's shake as much as a sharp one (the rejection catches shifts and motion, not blur). The N donors whose
+     * RawFrameQuality score is below SHARP_SELECT x the median of the N frames (base included) stay out of the merge, the
+     * softest first, while at least SHARP_KEEP N frames remain and at most SHARP_MAX_SHARE of the donors go. The score
+     * subtracts its own noise floor, so in a noise-bound shot the frames score alike and none goes; frames with no score
+     * (NaN) always stay.
+     */
+    private java.util.Set<ImageFrame> blurredNormals(List<ImageFrame> normal, ImageFrame base) {
+        final java.util.Set<ImageFrame> out = new java.util.HashSet<>();
+        final float ratio = PreferenceKeys.hybridValue("sharp_select", SHARP_SELECT);
+        if (!(ratio > 0f) || normal.size() <= SHARP_KEEP) return out;
+        final float[] scores = new float[normal.size()];
+        int baseIndex = -1;
+        for (int i = 0; i < scores.length; i++) {
+            final ImageFrame f = normal.get(i);
+            if (Float.isNaN(f.sharpness)) f.computeSharpness();
+            scores[i] = f.sharpness;
+            if (f == base) baseIndex = i;
+        }
+        final List<Integer> drop = blurredDonors(scores, baseIndex, Math.min(ratio, 1f), SHARP_KEEP, SHARP_MAX_SHARE);
+        if (drop.isEmpty()) return out;
+        final StringBuilder log = new StringBuilder("hybrid sharpness: median ").append(medianFinite(scores))
+                .append(", below x").append(ratio).append(" left out:");
+        for (int i : drop) {
+            out.add(normal.get(i));
+            log.append(' ').append(normal.get(i).number).append('=').append(scores[i]);
+        }
+        Log.i("SCAM_HDR", log.toString());
+        return out;
+    }
+
+    /** Median of the finite values (NaN when fewer than 4). */
+    static float medianFinite(float[] v) {
+        final float[] f = new float[v.length];
+        int n = 0;
+        for (float x : v) if (Float.isFinite(x)) f[n++] = x;
+        if (n < 4) return Float.NaN;
+        java.util.Arrays.sort(f, 0, n);
+        return (n & 1) == 1 ? f[n / 2] : 0.5f * (f[n / 2 - 1] + f[n / 2]);
+    }
+
+    /**
+     * P331: the indices of {@code scores} (N frames; {@code baseIndex} the base, never left out) below {@code ratio} x their
+     * median, softest first, while at least {@code keep} frames remain and at most {@code maxShare} of the donors go. Empty
+     * without a positive median of at least 4 finite scores.
+     */
+    static List<Integer> blurredDonors(float[] scores, int baseIndex, float ratio, int keep, float maxShare) {
+        final List<Integer> out = new ArrayList<>();
+        final float median = medianFinite(scores);
+        if (!(ratio > 0f) || !(median > 0f)) return out;
+        final float limit = ratio * median;
+        final List<Integer> soft = new ArrayList<>();
+        for (int i = 0; i < scores.length; i++) if (i != baseIndex && Float.isFinite(scores[i]) && scores[i] < limit) soft.add(i);
+        soft.sort((a, b) -> Float.compare(scores[a], scores[b]));
+        final int donors = scores.length - (baseIndex >= 0 ? 1 : 0);
+        final int most = Math.min((int) Math.floor(maxShare * donors), scores.length - keep);
+        for (int i = 0; i < soft.size() && i < most; i++) out.add(soft.get(i));
+        return out;
     }
 
     /** P27: a frame this much darker (or barely brighter) than the base is merged as an N frame (HybridPlan.classify's band). */

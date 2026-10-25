@@ -167,7 +167,10 @@ public final class SettingsMigration {
             "pref_remosaic_flatfield_key", "pref_remosaic_phase_x_key", "pref_remosaic_phase_y_key",
             // P310 settings cleanup: «Источник шума для склейки» (the merge follows «Профиль модели шума») and «Кадры светов:
             // вес» (a dev key: scam_dev.txt "hybrid_bento_weight")
-            "pref_scam_hybrid_noise_source", "pref_scam_hybrid_bento_weight"));
+            "pref_scam_hybrid_noise_source", "pref_scam_hybrid_bento_weight",
+            // P333: the fusion's guided filter gave way to a Laplacian pyramid (pref_scam_hybrid_why_ef_coarse); the post_ab old run
+            // and the RAW viewfinder's vf_why 2 keep its WhyCam values (WhyFusion.GF_RADIUS / GF_EPS)
+            "pref_scam_hybrid_why_gf_radius", "pref_scam_hybrid_why_gf_eps_e3"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",
             // P5: the legacy post-processing and the tunables of its nodes
@@ -762,6 +765,18 @@ public final class SettingsMigration {
             e.putInt(FULLRES50_FRAMES_REV, 1);
             markOnly = true;
         }
+        // P330 (owner, 2026-10-25: «исправь чтобы не было мыла»): the denoise's shadow model rho_r 6 -> 2. A stored former XML
+        // default moves once, any other value stays. Own marker. (Build 31118 also moved the Sabre 6.1 kernel to auto here; the
+        // owner keeps «Всегда» as the default, so this block no longer touches it.)
+        if (!values.containsKey(DETAIL_DEFAULTS_REV)) {
+            final Object v = values.get(ScamHybridKeys.PREFIX + "dn_model_read");
+            if (v != null && isNumber(v, 6f)) {
+                ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "dn_model_read", v instanceof String ? PreferenceNumber.format(2f, true) : (Object) 2f);
+                changed = true;
+            }
+            e.putInt(DETAIL_DEFAULTS_REV, 1);
+            markOnly = true;
+        }
         // P164: the multiscale finish denoise's stored engine value has its own name; any value but "nlm" is that engine
         final Object engine = values.get(ScamHybridKeys.PREFIX + "dn_engine");
         if (engine instanceof String && !"nlm".equals(engine) && !"multiscale".equals(engine)) {
@@ -801,6 +816,8 @@ public final class SettingsMigration {
     static final String SCAM_DEFAULTS_REV = "pref_scamhdr_defaults_rev";
     /** Marker of the one-time move of the former night protection threshold (default 100) to AGC noise clamp (0.05). */
     static final String NIGHT_THRESH_REV = "pref_scam_hybrid_night_thresh_rev";
+    /** P330: marker of the one-time move of the former denoise rho_r default (6) to 2. */
+    static final String DETAIL_DEFAULTS_REV = "pref_scam_hybrid_detail_defaults_rev";
 
     private static boolean isNumber(Object v, float expected) {
         try {

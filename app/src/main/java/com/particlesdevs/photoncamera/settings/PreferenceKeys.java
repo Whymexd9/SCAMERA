@@ -916,6 +916,22 @@ public class PreferenceKeys {
         // replays: synthetic PSNR 46.24 -> 46.30 / 42.24 -> 42.24 dB, real handheld x7u detail energy -0.2 %.
         if (scamDevValue("hybrid_s61_mode") == null && hybridString("s61_mode", "").isEmpty() && DeviceDefaults.redmiNote11Pro())
             out.append("s61Mode 6\n");
+        // P332: the 6.1 kernel's structure tensor from the green sites at the full resolution (worker HybridTuning::s61Fine, its
+        // noise term x16 x this; worker default 0 = the quad tensor, replays unchanged): fine texture no longer reads as flat or
+        // in a flipped direction. scam_dev.txt "hybrid_s61_fine 0" = the quad tensor as before.
+        final float s61Fine = hybridValue("s61_fine", 2f);
+        if (s61Fine > 0f) out.append("s61Fine ").append(s61Fine).append('\n');
+        // P335 (owner, 2026-10-25: Ark's rejections and anti-zipper «улучшить и добавить нам»): the rejection's soft motion prior
+        // (worker rejPrior) and the Bayer base demosaic's false-colour damping by the Gr / Gb step above its noise (baseDemosaicAlias);
+        // worker defaults = before (replays unchanged). Synthetic bursts with their truth (tools/replay_synth_burst.py): moving-area
+        // colour error -3 % (day) with the damping, moving luma error -0.3 % (night) with the prior. The worker's plainChromaHand and
+        // shastaSharpLo / Hi stay off (the hand-held chroma median share doubled the synthetic colour error; the long frames' sharpness
+        // weight left the detail as it was). scam_dev.txt "hybrid_rej_prior 0", "hybrid_base_demosaic_alias 0" = as before.
+        if (hybridValue("rej_prior", 1f) > 0f) out.append("rejPrior 1\n");
+        final float alias = clamp01(hybridValue("base_demosaic_alias", 1f));
+        if (alias > 0f) out.append("baseDemosaicAlias ").append(alias).append('\n');
+        final Float hand = scamDevValue("hybrid_plain_chroma_hand");
+        if (hand != null) out.append("plainChromaHand ").append(clamp01(hand)).append('\n');
         // P118 «Sabre 2× только когда есть смысл» (on by default; the worker keeps it off for replays)
         if (hybridSwitch("auto2x", true)) out.append("auto2x 1\n");
         final int shasta = getHybridShastaMode();
@@ -1136,6 +1152,8 @@ public class PreferenceKeys {
      * "hybrid_&lt;key&gt; v" overrides it; unset or invalid: the hybrid default of the key, else {@code fallback}.
      * Independent of the shot profile and of SCAM HDR.
      */
+    private static float clamp01(float v) { return Float.isNaN(v) ? 0f : Math.max(0f, Math.min(1f, v)); }
+
     public static float hybridValue(String key, float fallback) {
         Float override = scamDevValue("hybrid_" + key);
         if (override != null) return override;
