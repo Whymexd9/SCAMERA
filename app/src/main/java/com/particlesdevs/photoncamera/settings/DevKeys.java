@@ -184,6 +184,9 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_s61_tensor_noise", null, Lang.t("Sabre 6.1: шум тензора", "Sabre 6.1: tensor noise")));
         k.add(n(merge, "hybrid_s61_gd_noise", null, Lang.t("Sabre 6.1: шум градиента", "Sabre 6.1: gradient noise")));
         k.add(n(merge, "hybrid_s61_fine", "2", Lang.t("Sabre 6.1: структура по зелёным пикселям в полном разрешении, множитель её шума (0 — по квадам 2×2, как раньше)", "Sabre 6.1: structure from the green sites at full resolution, its noise multiplier (0: from the 2x2 quads, as before)")));
+        k.add(n(merge, "hybrid_rej_prior", "1", Lang.t("Реджекты: плавный учёт движения по полю выравнивания (0 — порог по плитке, как раньше)", "Rejection: soft motion prior from the alignment field (0: the per-tile threshold as before)")));
+        k.add(n(merge, "hybrid_base_demosaic_alias", "1", Lang.t("Одиночный кадр: подавление ложного цвета по ступеньке Gr/Gb выше шума (0 — выкл.)", "Single frame: false-colour damping by the Gr/Gb step above the noise (0: off)")));
+        k.add(n(merge, "hybrid_plain_chroma_hand", "1", Lang.t("Цветовая медиана при съёмке с рук: доля (1 — целиком; со штатива всегда целиком)", "Chroma median of a hand-held burst: share (1: whole; a still burst always takes it whole)")));
         k.add(n(merge, "hybrid_sharp_select", "0.75", Lang.t("Отбор кадров по резкости: N-кадры мягче этой доли медианы не склеиваются (0 — все кадры)", "Frame selection by sharpness: N frames softer than this share of the median are not merged (0: every frame)")));
         k.add(n(merge, "hybrid_hot_frames", null, Lang.t("Горячие пиксели: кадров для поиска", "Hot pixels: frames to search")));
         k.add(n(merge, "hybrid_hot_cross", null, Lang.t("Горячие пиксели: порог креста", "Hot pixels: cross threshold")));
@@ -238,6 +241,8 @@ public final class DevKeys {
         k.add(n(post, "jpeg_threads", null, Lang.t("Потоков кодирования JPEG (1 — один поток, прогрессивный; пусто — все ядра)", "Threads of the JPEG encode (1: one thread, progressive; empty: every core)")));
         k.add(sAuto(post, "rgba_upload", Lang.t("Загрузка RGB в GPU как RGBA (по умолчанию решает приложение)", "RGB uploaded to the GPU as RGBA (default: chosen by the app)")));
         k.add(n(post, "hybrid_isp_ccm", "1", Lang.t("vivo: цветовая матрица ISP по кадру (0 — матрицы DNG)", "vivo: the ISP colour matrix of the frame (0: the DNG matrices)")));
+        k.add(n(post, "hybrid_dn_luma_grain", "0.5", Lang.t("Шумодав: доля убранного мелкого зерна яркости, которая возвращается (0 — как раньше)", "Denoise: share of the removed fine luma grain that comes back (0: as before)")));
+        k.add(n(post, "hybrid_dn_chroma_day", "0.5", Lang.t("Шумодав цвета днём: множитель при SNR 80 и выше (1 — как раньше; до SNR 20 всегда 1)", "Daylight colour denoise: multiplier at SNR 80 and above (1: as before; up to SNR 20 always 1)")));
         k.add(n(post, "hybrid_dn_dark_chroma_hi", "4", Lang.t("Шумодав: цвет в тенях, верхний порог (x1e-4)", "Denoise: colour in the shadows, upper threshold (x1e-4)")));
         k.add(n(post, "hybrid_dn_dark_chroma_lo", "1.5", Lang.t("Шумодав: цвет в тенях, нижний порог (x1e-4)", "Denoise: colour in the shadows, lower threshold (x1e-4)")));
         k.add(n(post, "hybrid_dn_huge_map", "4.3", Lang.t("Шумодав 200 МП: сила (карта силы; 1 — как при всех склеенных кадрах)", "Denoise 200 MP: strength (strength map; 1: as with every frame merged)")));

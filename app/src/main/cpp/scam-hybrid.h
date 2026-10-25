@@ -279,8 +279,9 @@ struct HybridTuning {
     float shastaSharpness=0.35f; // bracketed_sharpness_threshold
     float shastaMaxRatio=32.f;   // max bracketed/base TET ratio
     // P335: a bracketed frame's merge weight by its sharpness against the base (Shasta's score): whole at shastaSharpHi and above,
-    // smoothly down to that of one N frame at shastaSharpLo; Hi <= Lo = the weight A as before (replays unchanged; the app sends
-    // 0.75 / 0.97)
+    // smoothly down to that of one N frame at shastaSharpLo; Hi <= Lo = the weight A as before. Not sent by the app: on the owner's
+    // ISO 12800 crops the bracketed frames add SNR, not blur (without them texture and flat noise both rose 11-16 %, their ratio
+    // unchanged; 0.75 / 0.97 left the detail as it was)
     float shastaSharpLo=0.f,shastaSharpHi=0.f;
     float shastaSat=0.5f;        // sharpness pixels: guide mean below this share of white in both frames. The guide is a 4x4 mean:
                                  // at 0.9 blocks along bright edges still held clipped sites of the x2 brighter bracketed frame, their
@@ -402,8 +403,9 @@ struct HybridTuning {
     // signs and a red extinguisher keep their colour). 0: off (the merge as before), n: the median's block.
     int plainChromaMedian=1;
     // P335 (owner, 2026-10-25: «днём слишком сильный хрома шумодав»): the share of that median's colour change a hand-held burst
-    // keeps (its donors moved, P150's test): 1 = the whole median as before (replays unchanged), 0 = none; the app sends 0.35.
-    // A still burst always takes the whole median.
+    // keeps (its donors moved, P150's test): 1 = the whole median as before, 0 = none. A still burst always takes the whole median.
+    // Not sent by the app: on the synthetic hand-held bursts (tools/replay_synth_burst.py) 0.35 doubled the colour error against
+    // the truth (the median also removes the merge's residual false colour); scam_dev hybrid_plain_chroma_hand for tests.
     float plainChromaHand=1.f;
     // P282 (owner, 2026-10-19: «улучшить ремозаик для однокадра sabre чтобы улучшить движение в случае реджекта для quad и quad
     // quad, заодно и для bayer»): where the merge's donors were rejected (a moving subject: few accepted frames F), the base frame

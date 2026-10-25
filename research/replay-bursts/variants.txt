@@ -1,21 +1,5 @@
-# P335 A/B round 3: the first block is the reference (31123's tuning as the app sends it)
+# P335 round 4: the final app tuning against 31123's
 [base]
-[rejp]
-rejPrior 1
-[alias]
-baseDemosaicAlias 1
-[cmh35]
-plainChromaHand 0.35
-[sharpw]
-shastaSharpLo 0.75
-shastaSharpHi 0.97
-[nolong night]
-shastaEnable 0
-[tn05 night]
-s61TensorNoise 0.5
-[all]
+[final]
 rejPrior 1
 baseDemosaicAlias 1
-plainChromaHand 0.35
-shastaSharpLo 0.75
-shastaSharpHi 0.97
