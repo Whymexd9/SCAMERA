@@ -7337,6 +7337,22 @@ inline HybridUsLocal hybridUltrashortLocal(const uint16_t* base,const uint16_t* 
             }
         }
     }
+    // P336 (owner, 2026-10-25: lilac blotches in the white core of a lit LED bar, 11:59:23): the coarse scales above carry the
+    // field from a few hundred measured tiles over the whole frame (254 of 49152 there, colour factors x0.58 .. x2.25), and the
+    // clipped core next to the lamp - nothing measurable in the base - took a far tile's colour: the field now holds only as far as
+    // measurements are dense around (the confidence of the sigma 8 scale: 30 % of the tiles within ~16 measured holds it whole;
+    // a desk lamp's ring carries in as before), and fades to the frame as captured (its level: the
+    // median green ratio with align, 1 without; colour ratios 1) beyond.
+    {
+        float lv0=0.f;
+        if(align){std::vector<float> g;g.reserve(size_t(r.tiles));for(size_t k=0;k<n;++k)if(keep[k])g.push_back(lv[0][k]);
+            std::nth_element(g.begin(),g.begin()+g.size()/2,g.end());lv0=g[g.size()/2];}
+        const std::vector<float> W4=hybridGridBlur(wgt,gw,gh,8.f),F4=hybridGridBlur(ones,gw,gh,8.f);
+        for(size_t k=0;k<n;++k){
+            const float conf=std::clamp(W4[k]/(0.3f*std::max(F4[k],1e-6f)),0.f,1.f);
+            field[0][k]=lv0+(field[0][k]-lv0)*conf;field[1][k]*=conf;field[2][k]*=conf;
+        }
+    }
     for(auto& v:r.f)v.assign(n,1.f);
     for(size_t k=0;k<n;++k){
         const float g=std::clamp(std::exp(-field[0][k]),0.4f,2.5f);

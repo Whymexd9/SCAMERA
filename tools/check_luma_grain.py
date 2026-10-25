@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """P335: scamdn/lgrain (the share of the removed fine luma noise ScamDenoise puts back) against a numpy reference.
 
-Checks: the GPU result equals keep x (r - 1-2-1 blur of r), r = Y_in - Y_den, with clamped borders (max |diff| < 1e-6);
+Checks: the GPU result equals keep x (r - its 5-tap binomial blur - its 2 px alternations), r = Y_in - Y_den, with clamped borders
+(max |diff| < 1e-6);
 nothing comes back where the denoise removed nothing or only a smooth (coarse) part (a constant / linear r gives 0 inside);
-keep 0 gives 0; the put-back noise has the removed noise's fine band only (its rms below the removed rms).
+keep 0 gives 0; the put-back noise is a band below the removed rms; P336: a 2 px checker in r (the merge's Bayer lattice) comes
+back at most 1 % of its amplitude.
 """
 import sys
 from pathlib import Path
@@ -45,11 +47,19 @@ def run(gl, orig, den, keep):
 
 
 def reference(orig, den, keep):
+    """P336: keep x (r - 5-tap binomial blur of r - the 2 px alternations of r over the 5 x 5 sites around
+    (weights (1 2 2 2 1) / 8 per axis)), r = Y_in - Y_den,
+    borders clamped."""
     r = orig.astype(np.float64) - den
-    p = np.pad(r, 1, mode='edge')
-    b = (4 * p[1:-1, 1:-1] + 2 * (p[1:-1, 2:] + p[1:-1, :-2] + p[2:, 1:-1] + p[:-2, 1:-1])
-         + p[2:, 2:] + p[:-2, :-2] + p[2:, :-2] + p[:-2, 2:]) / 16
-    return keep * (r - b)
+    h, w = r.shape
+    p = np.pad(r, 2, mode='edge')
+    sh = lambda i, j: p[2 + j:2 + j + h, 2 + i:2 + i + w]
+    k = [0.0625, 0.25, 0.375, 0.25, 0.0625]
+    b5 = sum(k[j + 2] * k[i + 2] * sh(i, j) for j in range(-2, 3) for i in range(-2, 3))
+    wv = [0.125, 0.25, 0.25, 0.25, 0.125]
+    sg = lambda i: 1 if i % 2 == 0 else -1
+    lat = sum((sg(i) * sg(j) + sg(j) + sg(i)) * wv[i + 2] * wv[j + 2] * sh(i, j) for j in range(-2, 3) for i in range(-2, 3))
+    return keep * (r - b5 - lat)
 
 
 def main():
@@ -72,6 +82,12 @@ def main():
     zero = run(gl, orig, den, 0.0)
     if np.abs(zero).max() != 0:
         fails.append('keep 0')
+    yy, xx = np.mgrid[0:h, 0:w]
+    checker = 0.02 * np.where((xx + yy) % 2 == 0, 1.0, -1.0)
+    lat = run(gl, base + checker, base, 1.0)[3:-3, 3:-3]
+    print('2 px checker of 0.02 put back: max |out| %.2e' % np.abs(lat).max())
+    if np.abs(lat).max() > 2e-4:
+        fails.append('lattice')
     removed = orig - den
     back = run(gl, orig, den, 1.0)
     print('rms removed %.4f, put back (keep 1) %.4f' % (removed.std(), back.std()))
@@ -80,7 +96,7 @@ def main():
     if fails:
         print('FAIL:', ', '.join(fails))
         sys.exit(1)
-    print('PASS: lgrain = keep x high band of the removed luma, nothing from smooth parts')
+    print('PASS: lgrain = keep x the fine removed luma without its 2 px lattice, nothing from smooth parts')
 
 
 if __name__ == '__main__':

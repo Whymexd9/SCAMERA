@@ -919,7 +919,10 @@ public class PreferenceKeys {
         // P332: the 6.1 kernel's structure tensor from the green sites at the full resolution (worker HybridTuning::s61Fine, its
         // noise term x16 x this; worker default 0 = the quad tensor, replays unchanged): fine texture no longer reads as flat or
         // in a flipped direction. scam_dev.txt "hybrid_s61_fine 0" = the quad tensor as before.
-        final float s61Fine = hybridValue("s61_fine", 2f);
+        // P336 (owner, 2026-10-25: «недавно у нас увеличилось время обработки», a 2 px grid on lit panels): off by default. On the
+        // host replays it made the merge pass 3-7 x slower (the PC-backlight crop 1617 against 230 ms, the night crop 1053 against
+        // 377 ms; ~+1 s a 26-frame shot on the phone) and raised the merge's 2 px lattice 7-16 %; scam_dev "hybrid_s61_fine 2" = P332.
+        final float s61Fine = hybridValue("s61_fine", 0f);
         if (s61Fine > 0f) out.append("s61Fine ").append(s61Fine).append('\n');
         // P335 (owner, 2026-10-25: Ark's rejections and anti-zipper «улучшить и добавить нам»): the rejection's soft motion prior
         // (worker rejPrior) and the Bayer base demosaic's false-colour damping by the Gr / Gb step above its noise (baseDemosaicAlias);

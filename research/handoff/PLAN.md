@@ -7191,3 +7191,28 @@ Owner, same day: «сделай гпу выравнивание и дай воз
 - Open: Ark's crisper night edges in the owner's pair are not reproduced on the host (no vendor CRE there: the global alignment
   differs); a phone replay of 124513 with the CRE would tell whether alignment / ghosting is the difference.
 
+### P336 - PC backlight artifacts and the processing time (owner, 2026-10-25: «Перепроверь как наша последняя обработка работает с подсветкой пк и исправь все косяки», Desktop.zip SCA_20261025_115901 / 115923 + SCAMERA-debug-20261019-151900.txt (31117 = c7f39aa5): «на подсветке сверху артефакты, а на одном из вентиляторов сетка», «недавно у нас увеличилось время обработки, займись исправлением», «проверь и исправь работу пирамиды лапласа, возможно она перенесена не совсем корректно»): DONE in code, not device-tested.
+- Time: the owner's log, 26-frame shots: merge phase (w_gpu -> w_f6) 1.9 s (31112) -> 2.9 s (31117). Host replays with profile 1
+  (replay-ab.yml): P332's s61Fine 2 made the merge pass 3-9 x and the cells pass ~2 x slower (PC-backlight crop merge 3114 ->
+  357 ms, night 2178 -> 579 ms without it). App default now 0 (scam_dev hybrid_s61_fine 2 = P332). Cost on the synthetic gratings:
+  HF gain 0.656 -> 0.568 (day), 0.460 -> 0.419 (night); moving-border colour error 0.34 -> 0.29 (night).
+- Grid on flat lit panels: the merge's 2 px lattice (s61Fine +7-16 % lattice energy on the 193420 LED crop) and P335's grain,
+  which put back the removed high band with the lattice in it (+14 % lattice on the cooler). scamdn/lgrain now returns r minus its
+  5-tap blur minus its 2 px checker / row / column alternations (5 x 5, weights 1 2 2 2 1): grain rms 0.0112 -> 0.0102 of white noise
+  at keep 1, a 2 px checker and a linear ramp give 0 (check_luma_grain.py); host render: cooler lattice back to the no-grain level.
+- Laplacian pyramid (P333) checked: the structure is Mertens' (Gaussian pyramid of the normalised weights, Laplacian bands of the
+  lumas, collapse from the coarsest); it matches the numpy reference. Its linear expand (even sites unfiltered) against
+  Burt-Adelson's: no measurable difference in the fused map, even at the LED edges (5th digit), and a wider horizon halo (0.039 / 72
+  rows against 0.032 / 57) - kept as it was. A guided-style flat-area noise hold inside the pyramid smoothed wallpaper texture
+  (-20 %) more than the panel noise (-7 %): rejected. The grid is not the pyramid's.
+- Lilac blotches in the white core of the lit LED bar (115923, ultrashort frames on): P290's ultrashort tile field was measured on
+  254 of 49152 tiles with colour factors x0.58..x2.25 and the normalised convolution's coarse scales (sigma up to 32 tiles) carried it
+  over the clipped core. The field now fades with the confidence of the sigma 8 scale (30 % of the tiles within ~16 measured holds it
+  whole) to the frame as captured (align: the median green ratio). check_hybrid_us_rows (P290 desk lamp: the ring's factor still
+  carried into the clipped highlight) passes; no burst of the owner's shot to replay.
+- Host post chain for the backlight scene (session scratchpad p336/why_host.py: the phone merge p311/out/jb.f32 through the current
+  WHY shaders, pyramid / guided, grain, day chroma). replay-ab.yml also runs check_hybrid_us_rows.
+- Tests: CI list 1701/1701, UI language, settings model, shader fp16, WHY pyramid, luma grain PASS.
+- Open: the owner's burst of the backlight scene (keep-burst) to replay the blotch fix; the pyramid's red rim at the LED bar edge
+  (a Mertens dark band next to the light) is still there in the host render.
+

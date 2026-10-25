@@ -183,7 +183,7 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_s61_day_gd_noise", null, Lang.t("Sabre 6.1 днём: шум градиента", "Sabre 6.1 by day: gradient noise")));
         k.add(n(merge, "hybrid_s61_tensor_noise", null, Lang.t("Sabre 6.1: шум тензора", "Sabre 6.1: tensor noise")));
         k.add(n(merge, "hybrid_s61_gd_noise", null, Lang.t("Sabre 6.1: шум градиента", "Sabre 6.1: gradient noise")));
-        k.add(n(merge, "hybrid_s61_fine", "2", Lang.t("Sabre 6.1: структура по зелёным пикселям в полном разрешении, множитель её шума (0 — по квадам 2×2, как раньше)", "Sabre 6.1: structure from the green sites at full resolution, its noise multiplier (0: from the 2x2 quads, as before)")));
+        k.add(n(merge, "hybrid_s61_fine", "0", Lang.t("Sabre 6.1: структура по зелёным пикселям в полном разрешении, множитель её шума (0 — по квадам 2×2; 2 медленнее и даёт решётку на подсветке)", "Sabre 6.1: structure from the green sites at full resolution, its noise multiplier (0: from the 2x2 quads; 2 is slower and leaves a grid on backlights)")));
         k.add(n(merge, "hybrid_rej_prior", "1", Lang.t("Реджекты: плавный учёт движения по полю выравнивания (0 — порог по плитке, как раньше)", "Rejection: soft motion prior from the alignment field (0: the per-tile threshold as before)")));
         k.add(n(merge, "hybrid_base_demosaic_alias", "1", Lang.t("Одиночный кадр: подавление ложного цвета по ступеньке Gr/Gb выше шума (0 — выкл.)", "Single frame: false-colour damping by the Gr/Gb step above the noise (0: off)")));
         k.add(n(merge, "hybrid_plain_chroma_hand", "1", Lang.t("Цветовая медиана при съёмке с рук: доля (1 — целиком; со штатива всегда целиком)", "Chroma median of a hand-held burst: share (1: whole; a still burst always takes it whole)")));
