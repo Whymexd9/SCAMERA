@@ -23,12 +23,13 @@ jobs:
       - name: Build the worker for the host
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libegl-dev libgles-dev libegl1 libgl1-mesa-dri python3-numpy
+          sudo apt-get install -y libegl-dev libgles-dev libegl1 libegl-mesa0 libgles2 libgl1-mesa-dri python3-numpy
           g++ -pthread -std=c++17 -O2 app/src/main/cpp/scam-neural-worker.cpp -ldl -lEGL -lGLESv2 -o /tmp/scam-neural-worker
           /tmp/scam-neural-worker --transport-check
       - name: Replay
         run: |
-          LIBGL_ALWAYS_SOFTWARE=1 python3 tools/replay_hybrid_ab.py /tmp/scam-neural-worker research/replay-bursts /tmp/replay-ab research/replay-bursts/variants.txt
+          # Mesa without a window system: the surfaceless platform for eglGetDisplay(EGL_DEFAULT_DISPLAY), llvmpipe
+          EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe python3 tools/replay_hybrid_ab.py /tmp/scam-neural-worker research/replay-bursts /tmp/replay-ab research/replay-bursts/variants.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
