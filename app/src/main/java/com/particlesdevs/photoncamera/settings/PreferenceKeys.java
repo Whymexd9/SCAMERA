@@ -924,6 +924,11 @@ public class PreferenceKeys {
         // 377 ms; ~+1 s a 26-frame shot on the phone) and raised the merge's 2 px lattice 7-16 %; scam_dev "hybrid_s61_fine 2" = P332.
         final float s61Fine = hybridValue("s61_fine", 0f);
         if (s61Fine > 0f) out.append("s61Fine ").append(s61Fine).append('\n');
+        // P337 (owner, 2026-10-25: an ISO 12800 room next to ArkCam, «у нас заметно хуже мелкая деталь»): the 6.1 kernel x0.8 at
+        // a key up to 8, back to x1 at 16 (worker s61NightScale; worker default 1 = replays unchanged). Phone replay of the owner's
+        // burst: fine detail +11..16 %, text in the darks +31..48 %, flat noise +18 %. scam_dev.txt "hybrid_s61_night_scale 1" = before.
+        final float nightScale = hybridValue("s61_night_scale", 0.8f);
+        if (nightScale > 0f && nightScale != 1f) out.append("s61NightScale ").append(Math.max(0.25f, Math.min(2f, nightScale))).append('\n');
         // P335 (owner, 2026-10-25: Ark's rejections and anti-zipper «улучшить и добавить нам»): the rejection's soft motion prior
         // (worker rejPrior) and the Bayer base demosaic's false-colour damping by the Gr / Gb step above its noise (baseDemosaicAlias);
         // worker defaults = before (replays unchanged). Synthetic bursts with their truth (tools/replay_synth_burst.py): moving-area

@@ -25,6 +25,8 @@ Checks:
 - the red sticker's core keeps its chroma (within 5 %); the sky and the blue wall 3 px and more from the flagged border
   keep theirs (within 5 %);
 - pixels without flags further than 2 x the clip-band radius are passed through (white balance only).
+Scene D (P337), the vivo X200 Ultra backlit sea of 2026-10-25 (no ultrashort, white point 0.428 / 1 / 0.604): the sun's rim
+with G clipped and R / B measured (R 1.38 x G after WB) is not pink; a blue sky with G clipped keeps its B/R.
 Usage: check_highlight_neutral.py [--shaders DIR] [--report]
 """
 from pathlib import Path
@@ -305,6 +307,35 @@ o = out[cloth]
 mag = o[:, 1] < 0.99 * np.minimum(o[:, 0], o[:, 2])
 check(mag.sum() == 0, 'cloth with G clipped in the ultrashort is never magenta: %d px with G < min(R, B)' % mag.sum())
 check(chroma(o).max() < 0.03, 'cloth near neutral: max chroma %.4f < 0.03' % chroma(o).max())
+
+# ------------------------------------------------------------------ scene D (P337): the sun's rim and its glitter on a sea
+# vivo X200 Ultra 2026-10-25 (backlit, no ultrashort: the sensor's shortest exposure, white point 0.428 / 1 / 0.604): G clipped,
+# R measured at 0.59 and B at 0.57 of the clip - after WB R 1.38, G 1.0, B 0.94: pink. A clipped G under a measured R comes up
+# to R (warm white, never pink); a blue sky with G clipped (R below G) keeps its colour.
+WPD = np.array([0.428, 1.0, 0.604], np.float32)
+H, W = 96, 160
+yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+raw = np.zeros((H, W, 3), np.float32)
+raw[:] = np.array([0.30, 0.55, 0.30], np.float32)                         # the sunlit sky around, unclipped
+SUN = (xx >= 24) & (xx < 88) & (yy >= 16) & (yy < 80)
+raw[SUN] = (0.59, 1.0, 0.57)
+BLUE = (xx >= 104) & (xx < 152) & (yy >= 16) & (yy < 80)                  # G clipped, R below G, B above: a bright blue sky
+raw[BLUE] = np.array([0.8, 1.4, 1.3], np.float32) * WPD
+raw[BLUE] = np.minimum(raw[BLUE], 1.0)
+flags = np.zeros((H, W), np.uint8)
+gclip = raw[..., 1] >= 0.999
+flags[dilate(gclip, 1)] |= 8
+flags[gclip] |= 2
+out = recover(raw, flags, WPD, (1.0, 1.0, 1.0), (0.0, 0.0, 0.0))
+sun = out[erode(SUN, 3)]
+pink = (sun[:, 0] > 1.01 * sun[:, 1]) & (sun[:, 2] < sun[:, 0])
+check(pink.sum() == 0, 'sun rim with G clipped under a measured R is not pink: %d px with R > G (input R/G %.2f after WB)'
+      % (pink.sum(), (0.59 / 0.428)))
+blue_in = raw[erode(BLUE, 3)] / WPD
+blue_out = out[erode(BLUE, 3)]
+check(abs(np.median(blue_out[:, 2] / blue_out[:, 0]) / np.median(blue_in[:, 2] / blue_in[:, 0]) - 1) < 0.03,
+      'blue sky with G clipped keeps its colour: B/R %.3f -> %.3f' % (np.median(blue_in[:, 2] / blue_in[:, 0]),
+                                                                       np.median(blue_out[:, 2] / blue_out[:, 0])))
 
 if REPORT:
     try:

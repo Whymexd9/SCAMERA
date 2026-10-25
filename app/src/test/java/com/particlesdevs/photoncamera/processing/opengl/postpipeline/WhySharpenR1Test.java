@@ -21,6 +21,8 @@ import static org.junit.Assert.*;
  * measured, every shot that is not a hybrid merge - keeps the passes of before: the gate is false, no scam_dev line is read,
  * the sharp_r1 program is only drawn inside the R1 branches and every other pass reads ya as before. The numbers (the shader
  * against numpy, the lattice and the detail response) are in tools/check_why_sharpen.py.
+ * P337: a plain Bayer shot (block <= 1) goes through the same branches with mode 3 as the source: Ya without its 2 px
+ * alternations, which come back unsharpened (scam_dev sharpen_lattice 0: the passes of before).
  */
 public class WhySharpenR1Test {
     private static File src(String path) {
@@ -54,6 +56,22 @@ public class WhySharpenR1Test {
         assertTrue("Tetra", WhyLumaSharpen.smoothedSource(4, true));
         assertFalse("scam_dev sharpen_r1 0", WhyLumaSharpen.smoothedSource(2, false));
         assertFalse("scam_dev sharpen_r1 0", WhyLumaSharpen.smoothedSource(4, false));
+    }
+
+    @Test public void bayerShotsSharpenWithoutTheirLattice() throws IOException {
+        // P337: block <= 1 takes the lattice-free source unless switched off; a mosaic shot keeps R1 (B3), never both
+        for (int block : new int[]{-1, 0, 1}) {
+            assertTrue("block " + block, WhyLumaSharpen.latticeSource(block, true));
+            assertFalse("scam_dev sharpen_lattice 0, block " + block, WhyLumaSharpen.latticeSource(block, false));
+        }
+        assertFalse("Quad", WhyLumaSharpen.latticeSource(2, true));
+        assertFalse("Tetra", WhyLumaSharpen.latticeSource(4, true));
+        assertFalse("above 100 MP before the scam_dev file is read", WhyLumaSharpen.latticeSource(1, 16320, 12288));
+        final String java = read(SHARPEN), glsl = read(SHADER);
+        assertTrue(java.contains("final boolean lattice = !r1 && latticeSource(block, size.x, size.y);"));
+        // mode 3: Ya minus the checker / row / column alternation of the 5 x 5 sites, weights (1 2 2 2 1) / 8
+        assertTrue(glsl.contains("if (modeU == 3) {") && glsl.contains("float[5](0.125, 0.25, 0.25, 0.25, 0.125)")
+                && glsl.contains("lat += (si * sj + sj + si) * v;"));
     }
 
     @Test public void aGridAbove100MpKeepsThePassesOfBefore() {
@@ -98,11 +116,11 @@ public class WhySharpenR1Test {
         assertEquals(4, ScamHybridBurst.mergedBlock(4, null));
     }
 
-    /** Text ranges of every "if (r1) {" block of WhyLumaSharpen (brace counting). */
+    /** Text ranges of every "if (r1 || lattice) {" block of WhyLumaSharpen (brace counting). */
     private static List<int[]> r1Blocks(String java) {
         List<int[]> out = new ArrayList<>();
         int at = 0;
-        while ((at = java.indexOf("if (r1) {", at)) >= 0) {
+        while ((at = java.indexOf("if (r1 || lattice) {", at)) >= 0) {
             int open = java.indexOf('{', at), depth = 0, i = open;
             for (; i < java.length(); i++) {
                 char c = java.charAt(i);
@@ -165,7 +183,7 @@ public class WhySharpenR1Test {
         assertTrue(glsl.contains("texelFetch(InputBuffer, xy, 0).r - texelFetch(Smoothed, xy, 0).r"));
         assertTrue(glsl.contains("max(texelFetch(Sharpened, xy, 0).r + texelFetch(Residual, xy, 0).r, 0.0)"));
         // the passes in the order the shader's modes need them: B, then D (Ya goes), the chain on B, then S + D
-        final int b = java.indexOf("glProg.setVar(\"modeU\", 0);\n            glProg.drawBlocks(src);");
+        final int b = java.indexOf("glProg.setVar(\"modeU\", r1 ? 0 : 3);\n            glProg.drawBlocks(src);");
         final int d = java.indexOf("glProg.drawBlocks(residual);");
         final int compose = java.indexOf("useAssetProgram(\"why/sharp_compose\"");
         final int last = java.indexOf("glProg.setVar(\"modeU\", 2);");

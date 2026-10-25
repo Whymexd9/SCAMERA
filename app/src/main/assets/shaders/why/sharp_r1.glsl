@@ -7,8 +7,14 @@ precision highp sampler2D;
 // (0.5 cycles / px) not at all - and otherwise passes through at its own level, instead of being lifted x2.5-2.9 (diagonal)
 // by the USM, the bilateral high boost and the Richardson-Lucy stages. Measured on the owner's 50 MP burst: diagonal lattice
 // 0.084 / 0.093 % -> 0.045 / 0.049 % of the level (0.032 / 0.036 % unsharpened). Image detail below ~0.2 cycles / px keeps
-// most of its sharpening (B passes 0.65 of it at 0.2, 0.9 at 0.1). A plain Bayer shot never runs this program.
+// most of its sharpening (B passes 0.65 of it at 0.2, 0.9 at 0.1).
+// P337 (owner, 2026-10-25: a mesh on the sea of a 3.7x telephoto shot): a plain Bayer shot reads Ya without its 2 px lattice
+// (mode 3): the merge leaves the checker / row / column alternation at 10 % of the high band (sea, vivo X200 Ultra tele), the
+// USM, bilateral and Richardson-Lucy stages lifted it to 16 % in the JPEG (row alternation 1.8 x ArkCam's). Mode 3 takes out
+// exactly the 2 px alternations of the 5 x 5 sites around (weights (1 2 2 2 1) / 8 per axis, as scamdn/lgrain): a constant or
+// a linear Ya gives 0 in them, every other detail is sharpened as before, and the lattice comes back at its own level (mode 2).
 //  modeU 0: Output = B(InputBuffer), B = [1 2 1]^T [1 2 1] / 16, edge pixels repeated     -> R16F: the sharpening's source
+//  modeU 3: Output = InputBuffer - its 2 px alternations (P337, plain Bayer)             -> R16F: the sharpening's source
 //  modeU 1: Output = InputBuffer - Smoothed = Ya - B, B as stored by mode 0              -> R16F: the residual D (Ya goes)
 //  modeU 2: Output = max(Sharpened + Residual, 0) = Ya + S(B) - B                        -> R16F: WhyCombine's WhyLumaS
 // Ya + S - B is never formed from a B computed again (a driver may round the fp16 store differently from the shader): D is
@@ -33,6 +39,20 @@ void main() {
         return;
     }
     ivec2 last = textureSize(InputBuffer, 0) - ivec2(1);
+    if (modeU == 3) {
+        const float w5[5] = float[5](0.125, 0.25, 0.25, 0.25, 0.125);
+        float lat = 0.0;
+        for (int j = -2; j <= 2; j++) {
+            float sj = (j & 1) == 0 ? 1.0 : -1.0;
+            for (int i = -2; i <= 2; i++) {
+                float si = (i & 1) == 0 ? 1.0 : -1.0;
+                float v = texelFetch(InputBuffer, clamp(xy + ivec2(i, j), ivec2(0), last), 0).r * w5[i + 2] * w5[j + 2];
+                lat += (si * sj + sj + si) * v;   // checker + row + column alternation, sign + at xy
+            }
+        }
+        Output = vec4(texelFetch(InputBuffer, xy, 0).r - lat, 0.0, 0.0, 1.0);
+        return;
+    }
     float s = 0.0;
     for (int dy = -1; dy <= 1; dy++) {
         float row = 0.0;

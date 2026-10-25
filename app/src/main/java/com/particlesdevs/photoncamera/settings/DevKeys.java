@@ -183,6 +183,7 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_s61_day_gd_noise", null, Lang.t("Sabre 6.1 днём: шум градиента", "Sabre 6.1 by day: gradient noise")));
         k.add(n(merge, "hybrid_s61_tensor_noise", null, Lang.t("Sabre 6.1: шум тензора", "Sabre 6.1: tensor noise")));
         k.add(n(merge, "hybrid_s61_gd_noise", null, Lang.t("Sabre 6.1: шум градиента", "Sabre 6.1: gradient noise")));
+        k.add(n(merge, "hybrid_s61_night_scale", "0.8", Lang.t("Sabre 6.1 ночью: множитель ширины ядра при SNR-ключе до 8 (к 16 — снова 1; 1 — как раньше)", "Sabre 6.1 at night: kernel width multiplier at an SNR key up to 8 (back to 1 at 16; 1: as before)")));
         k.add(n(merge, "hybrid_s61_fine", "0", Lang.t("Sabre 6.1: структура по зелёным пикселям в полном разрешении, множитель её шума (0 — по квадам 2×2; 2 медленнее и даёт решётку на подсветке)", "Sabre 6.1: structure from the green sites at full resolution, its noise multiplier (0: from the 2x2 quads; 2 is slower and leaves a grid on backlights)")));
         k.add(n(merge, "hybrid_rej_prior", "1", Lang.t("Реджекты: плавный учёт движения по полю выравнивания (0 — порог по плитке, как раньше)", "Rejection: soft motion prior from the alignment field (0: the per-tile threshold as before)")));
         k.add(n(merge, "hybrid_base_demosaic_alias", "1", Lang.t("Одиночный кадр: подавление ложного цвета по ступеньке Gr/Gb выше шума (0 — выкл.)", "Single frame: false-colour damping by the Gr/Gb step above the noise (0: off)")));
@@ -235,6 +236,8 @@ public final class DevKeys {
         // P214e: WhyLumaSharpen.smoothedSource (R1); P214z: not above 100 MP (r1Fits)
         k.add(s(post, "sharpen_r1", true, Lang.t("Резкость мозаичных снимков (ISZ Quad/Tetra, FULLRES до 100 Мп) по яркости, сглаженной 3×3: решётка мозаики почти не усиливается. Выкл — резкость как у снимков Bayer",
                 "Sharpening of mosaic shots (ISZ Quad / Tetra, FULLRES up to 100 MP) on the 3x3-smoothed luma: the mosaic lattice is hardly lifted. Off: the sharpening of Bayer shots")));
+        k.add(s(post, "sharpen_lattice", true, Lang.t("Резкость снимков Bayer без 2-пиксельной решётки склейки: сетка на воде и ровных текстурах не усиливается. Выкл — как раньше",
+                "Sharpening of Bayer shots without the merge's 2 px lattice: no mesh lifted on water and flat texture. Off: as before")));
         // P212h (A5 = M5): the gain clamp of the WHY exposure from the merged image's noise
         k.add(n(post, "ae_clamp_stack", "1", Lang.t("Яркость фото: предел усиления по шуму — по числу склеенных кадров N (карта склейки, N^0.4). 1: FULLRES, 2: все снимки, 0: по одному кадру",
                 "Photo brightness: the noise gain clamp from the merged N frames (the merge's frame map, N^0.4). 1: FULLRES, 2: every shot, 0: one frame")));

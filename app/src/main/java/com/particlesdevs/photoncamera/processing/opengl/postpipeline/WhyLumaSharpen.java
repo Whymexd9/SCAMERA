@@ -96,6 +96,19 @@ public final class WhyLumaSharpen extends Node {
         return r1Fits(w, h) && smoothedSource(mosaicBlock);
     }
 
+    /**
+     * P337 (owner, 2026-10-25: a mesh on the sea of a telephoto shot): a plain Bayer (or binned) shot whose grid fits R1's budget
+     * sharpens Ya without its 2 px alternations (why/sharp_r1 mode 3) and adds them back unsharpened; scam_dev
+     * "sharpen_lattice 0" = the passes of before.
+     */
+    static boolean latticeSource(int mosaicBlock, boolean enabled) {
+        return mosaicBlock <= 1 && enabled;
+    }
+
+    static boolean latticeSource(int mosaicBlock, int w, int h) {
+        return r1Fits(w, h) && latticeSource(mosaicBlock, mosaicBlock <= 1 && PreferenceKeys.scamDevSwitch("sharpen_lattice", true));
+    }
+
     /** Amount factor at grid scale s: 1 at s <= 1, k at s >= 2, linear in between. */
     static float scaleComp(float s, float k) {
         return 1f + (k - 1f) * Math.min(Math.max(s - 1f, 0f), 1f);
@@ -331,12 +344,14 @@ public final class WhyLumaSharpen extends Node {
         // Otherwise src is ya, as before.
         final int block = pipeline.mParameters.mosaicBlock;
         final boolean r1 = smoothedSource(block, size.x, size.y);
+        // P337: a plain Bayer shot reads Ya without its 2 px lattice (sharp_r1 mode 3), which comes back at its own level
+        final boolean lattice = !r1 && latticeSource(block, size.x, size.y);
         GLTexture src = ya, residual = null;
-        if (r1) {
+        if (r1 || lattice) {
             src = plane(size, GLFormat.DataType.FLOAT_16, 1);
             glProg.useAssetProgram("why/sharp_r1", false);
             glProg.setTexture("InputBuffer", ya);
-            glProg.setVar("modeU", 0);
+            glProg.setVar("modeU", r1 ? 0 : 3);
             glProg.drawBlocks(src);
             residual = plane(size, GLFormat.DataType.FLOAT_16, 1);
             glProg.useAssetProgram("why/sharp_r1", false);
@@ -441,7 +456,7 @@ public final class WhyLumaSharpen extends Node {
             stages.append(" rl").append(i + 1).append("=").append(kernel == 2 ? "airy" : kernel == 1 ? "disk" : "gauss")
                     .append(rad * s).append("x").append(iters).append("@").append(amount);
         }
-        if (r1) {
+        if (r1 || lattice) {
             // P214e R1: S(B) + (Ya - B); the RL ratio goes first, the output takes a free plane of the pool
             if (ratio != null) { ratio.close(); ratio = null; }
             GLTexture out = spare(pool, size, obs);
@@ -452,7 +467,7 @@ public final class WhyLumaSharpen extends Node {
             glProg.drawBlocks(out);
             residual.close();
             obs = out;
-            stages.append(" r1=B3(block ").append(block).append(")");
+            stages.append(r1 ? " r1=B3(block " + block + ")" : " lattice=off-sharpened");
         } else if (block > 1) stages.append(r1Fits(size.x, size.y) ? " r1=off(block " : " r1=off(>100MP, block ").append(block).append(")");
         glProg.closed = true;
         if (ratio != null) ratio.close();

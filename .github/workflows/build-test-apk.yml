@@ -112,6 +112,7 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_why_highlights.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_why_pyramid.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_luma_grain.py
+          LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_why_sharpen.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_why_headroom.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_highlight_recovery.py
           LIBGL_ALWAYS_SOFTWARE=1 /tmp/tetra-gpu-check/bin/python tools/check_highlight_neutral.py
@@ -166,6 +167,9 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-series
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_us_rows.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-us-rows
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-us-rows
+          # P337: the lateral CA beyond the old 2-cell cut (R +6 / B -3 px at the corner) measured and corrected
+          g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_raw_ca.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-raw-ca
+          ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-raw-ca
           # P219: the mosaic merges' frame pick (the split unchanged, the native merge takes every frame) and the skipped detector
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_mosaic_pick.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-mosaic-pick
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-mosaic-pick

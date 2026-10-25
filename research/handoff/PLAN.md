@@ -7216,3 +7216,32 @@ Owner, same day: «сделай гпу выравнивание и дай воз
 - Open: the owner's burst of the backlight scene (keep-burst) to replay the blotch fix; the pyramid's red rim at the LED bar edge
   (a Mertens dark band next to the light) is still there in the host render.
 
+### P337 - night detail next to ArkCam, the telephoto mesh, the pink sun, lateral CA without the 2 px cut (owner, 2026-10-25: D:/Games/SCAMERA.zip (ArkCam pair ISO 12800, crops, log of 31148) + scam_burst-20261025-170530.bin «у нас заметно хуже мелкая деталь»; SCAMERA2.zip + scam_burst-20261025-171106 / 171123.bin «фото с телевика где мелкая деталь хуже и контровой снимок где у нас фиолетовый артефакт на солнце и отражение на воде слилось в кашу»; «коррекция ха у нас ограничена 2мя пикселями, убери ограничение»; «когда закончишь залей на гит»): DONE in code, replayed on the OPPO (PHY110, the worker with the owner's tuning, CRE off), not shot on a phone.
+- Replay route: the owner's full bursts pushed to the OPPO, the NDK-built worker run with each shot's hybrid_tuning from the log
+  (session scratchpad p337/rp.sh), merged RGB pulled and measured (detail = high band of sqrt luma minus the flat-wall noise).
+- Night (key 5.05): our merge already lost the detail ArkCam keeps (the JPEG: ArkCam +12..24 % detail, +19 % noise). ArkCam's
+  kernel is ours (libopenhdr_engine: f0 0.33 at that key, f1 by the key table 6/12/30 -> 5/4/3, f2 / f3 the same; the Java
+  cov_* are the key-30 values). The structure threshold (f2 / f3 x0.1..0.5), the tensor noise, rejection and the base widening
+  changed nothing; the kernel width did: x0.8 = detail +11..16 %, text in the darks +31..48 %, flat noise +18 %. Worker
+  s61NightScale (x at a key <= 8, x1 at 16; default 1), the app sends 0.8 (scam_dev hybrid_s61_night_scale).
+- Telephoto mesh on the sea: not in the merge (2 px lattice 10 % of its high band); WhyLumaSharpen lifted the 2 px
+  alternations x3.9-4.7 (USM 0.5, bilateral, RL Airy / Gauss). A plain Bayer shot now sharpens Ya without them (why/sharp_r1
+  mode 3: checker + rows + columns of the 5 x 5 sites, weights (1 2 2 2 1) / 8) and adds them back at their own level; detail
+  up to 0.2 cycles / px keeps its gain (within 8 %). check_why_sharpen.py section 5 (now in CI); scam_dev sharpen_lattice 0.
+- Pink sun / glitter (171106: the sensor's shortest exposure, no ultrashort): G clipped, R measured at 1.1-1.4 x G after WB,
+  B lower; the «never magenta» rule raised G only to min(R, B). scamrgb: where R is itself measured G comes up to R (an
+  orange lamp with R clipped keeps the old rule). check_highlight_neutral scene D (the old shader: 3364 pink px). A near-clip
+  chroma pull to the 5 x 5 neighbourhood was tried and dropped (it tinted recovered neutral lamp cores; the glitter's local
+  false colour was only 0.03).
+- Lateral CA: a tile's shift was cut at 2 cells (4 RAW px) and found by Lucas-Kanade from 0 inside the tile only; the
+  correction clamped at 4 RAW px. Now an integer NCC search on 2 x 2 cell means (+-10 cells), taken only when it beats no
+  shift clearly (best > r0 + 0.15, r0 < 0.7: noise at ISO 12800 and sea waves left it at 0), then the Lucas-Kanade steps on
+  R / B read around the tile; model and correction up to 20 RAW px (kCaReach), worth-test rms <= max(0.4, 0.1 x corner).
+  tools/check_hybrid_raw_ca.cpp (CI): R +6 / B -3 px found within 0.07 px, 0.5 / -0.4 within 0.01, none 0.003, correction
+  0.0164 -> 0.0003. Real bursts: night -0.32 px (as before), tele -0.31 (as before), backlit +0.27 / -0.30 (was +0.19 / -0.17).
+  On the OPPO 66-163 ms (was 50-80), run during the alignment.
+- Water glitter shape («каша»): the sparkles move between the frames; cellClip / rimRatio / widenBelow variants did not make
+  them crisp - open.
+- Tests: CI list, check_ui_language, check_settings_model, highlight checks (neutral / recovery / landing / one channel off /
+  why highlights), check_why_sharpen, check_hybrid_raw_ca on the OPPO.
+

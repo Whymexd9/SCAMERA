@@ -10,7 +10,10 @@ numpy reference of WhyCam's process_luma_fp16 (tools/why_sharpen_ref.py = resear
      why_sharpen.md 0.3), i.e. the 50 MP image downscaled looks like the 12 MP one;
   4. P214e R1 (a mosaic shot, why/sharp_r1.glsl): B(Ya) = the 3x3 binomial as numpy computes it, S + (Ya - B) with S = B
      gives Ya back, the whole R1 chain = Ya + process_luma(B) - B, and the Quad / Tetra site lattice (diagonal 4 px,
-     2 px) is lifted far less than by the plain sharpening while the image detail below ~0.1 cycles / px keeps its gain.
+     2 px) is lifted far less than by the plain sharpening while the image detail below ~0.1 cycles / px keeps its gain;
+  5. P337 lattice-free source (a plain Bayer shot, sharp_r1 mode 3): Ya minus its 2 px alternations (checker, rows, columns
+     over the 5 x 5 sites, weights (1 2 2 2 1) / 8) = numpy; a constant / linear ramp passes untouched; the chain lifts the
+     2 px rows / columns / checker at most 5 % (the plain chain: x3.9-4.7), detail up to 0.2 cycles / px keeps its gain (8 %).
 Usage: python tools/check_why_sharpen.py
 """
 import sys, math
@@ -23,7 +26,10 @@ SH = ROOT / 'app/src/main/assets/shaders'
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import why_sharpen_ref as R
 
-ctx = moderngl.create_standalone_context(require=430)
+try:
+    ctx = moderngl.create_standalone_context(backend='egl', require=430)
+except Exception:
+    ctx = moderngl.create_standalone_context(require=430)
 VS = "#version 310 es\nin vec2 vPos;\nvoid main(){ gl_Position = vec4(vPos, 0.0, 1.0); }\n"
 quad = ctx.buffer(np.array([-1, -1, 1, -1, -1, 1, 1, 1], 'f4').tobytes())
 _progs = {}
@@ -183,6 +189,31 @@ def gpu_r1(ya, P=R.X8U, scale=1.0, sharpen=None):
     return read(out)[..., 0], b, read(D)[..., 0]
 
 
+def gpu_lattice(ya, P=R.X8U, scale=1.0, sharpen=None):
+    """P337: WhyLumaSharpen on a plain Bayer shot - sharp_r1 mode 3 (Ya without its 2 px lattice), mode 1 (the lattice), the
+    chain on the source, mode 2 (S + lattice). Returns the output and the source."""
+    H, W = ya.shape
+    L = tex(ya)
+    B = run('why/sharp_r1', empty(W, H, 1), {'InputBuffer': L}, modeU=3)
+    D = run('why/sharp_r1', empty(W, H, 1), {'InputBuffer': L, 'Smoothed': B}, modeU=1)
+    b = read(B)[..., 0]
+    s_out = gpu_sharpen(b, P, scale)[0] if sharpen is None else sharpen(b)
+    out = run('why/sharp_r1', empty(W, H, 1), {'Sharpened': tex(s_out), 'Residual': D}, modeU=2)
+    return read(out)[..., 0], b
+
+
+def lattice_free(a):
+    """numpy mode 3: a minus the checker + row + column alternation of the 5 x 5 sites (edge clamped), weights (1 2 2 2 1) / 8."""
+    a = a.astype(np.float64)
+    h, w = a.shape
+    p = np.pad(a, 2, mode='edge')
+    wv = [0.125, 0.25, 0.25, 0.25, 0.125]
+    sg = lambda i: 1 if i % 2 == 0 else -1
+    lat = sum((sg(i) * sg(j) + sg(j) + sg(i)) * wv[i + 2] * wv[j + 2] * p[2 + j:2 + j + h, 2 + i:2 + i + w]
+              for j in range(-2, 3) for i in range(-2, 3))
+    return a - lat
+
+
 def binomial3(a):
     """numpy B: [1 2 1]^T [1 2 1] / 16 with the edge pixels repeated (as sharp_r1 clamps), rounded to fp16."""
     p = np.pad(a.astype(np.float64), 1, mode='edge')
@@ -294,6 +325,26 @@ def main():
     print('     R1                                ' + '  '.join(f'{g:5.2f}' for g in m1))
     check(all(abs(a - b) / b < 0.06 for a, b in zip(m1[:2], g1[:2])), 'R1: detail up to 0.1 cycles / px keeps the plain gain (within 6 %)')
     check(all(1.0 < a < b for a, b in zip(m1[2:], g1[2:4])), 'R1: finer detail is still sharpened, less than by the plain chain')
+
+    # ---- 5. P337 lattice-free source of a plain Bayer shot
+    lf_out, lf_src = gpu_lattice(img)
+    dl = np.abs(lf_src - lattice_free(ya16))[2:-2, 2:-2]
+    check(dl.max() < 2e-3, f'lattice-free source = numpy (max diff {dl.max():.2e}, fp16)')
+    yy, xx = np.mgrid[0:64, 0:96]
+    ramp = (0.1 + 0.002 * xx + 0.001 * yy).astype(np.float32)
+    dramp = np.abs(gpu_lattice(ramp, sharpen=lambda a: a)[1] - R.H16(ramp))[2:-2, 2:-2]
+    check(dramp.max() <= 2.5e-4, f'a linear ramp passes the lattice removal untouched (max diff {dramp.max():.2e}: one fp16 ulp at 0.3)')
+    lfree = lambda a: gpu_lattice(a)[0]
+    print('     lattice gain (amp 0.005 on 0.18)     plain    lattice-free')
+    g_plain, g_lf = [], []
+    for name, fy, fx in (('2 px rows (0.5, 0)', 0.5, 0.0), ('2 px cols (0, 0.5)', 0.0, 0.5), ('2 px checker (0.5, 0.5)', 0.5, 0.5)):
+        g_plain.append(pattern_gain(plain, fy, fx)); g_lf.append(pattern_gain(lfree, fy, fx))
+        print(f'       {name:30s} {g_plain[-1]:6.2f} {g_lf[-1]:6.2f}')
+    check(all(abs(g - 1) <= 0.05 for g in g_lf), 'lattice-free: the 2 px rows, columns and checker pass at their own level (within 5 %)')
+    m3 = [mtf_gain(lfree, f) for f in fs]
+    print('     lattice-free                      ' + '  '.join(f'{g:5.2f}' for g in m3))
+    check(all(abs(a - b) / b < 0.08 for a, b in zip(m3[:3], g1[:3])), 'lattice-free: detail up to 0.2 cycles / px keeps the plain gain (within 8 %)')
+    check(1.0 < m3[3] <= g1[3] + 0.02, 'lattice-free: 0.3 cycles / px is still sharpened')
     print('ALL OK' if ok else 'FAILED')
     return 0 if ok else 1
 

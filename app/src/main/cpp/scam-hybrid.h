@@ -342,6 +342,12 @@ struct HybridTuning {
     // noise x16/x4), grating response 4 % / 30 % contrast at 3 px: 0.22 / 0.37 -> 0.50 / 0.62 at 2, diagonal 3 px 0.29 -> 0.75;
     // flat noise x1.10 (8: x1.0 with 0.31 / 0.61 / 0.65). 0 = the quad tensor (replays unchanged); the app sends 2.
     float s61Fine=0.f;
+    // P337 (owner, 2026-10-25: an ISO 12800 room next to ArkCam, «у нас заметно хуже мелкая деталь»): every 6.1 kernel sigma times
+    // s61NightScale at a key up to s61NightKeyLo, back to x1 at s61NightKeyHi (linear in the key). Phone replay of the owner's burst
+    // (OPPO, 26 frames): x0.8 - fine detail +11..16 %, text in the darks +31..48 %, flat noise +18 % (ArkCam's JPEG against ours:
+    // detail +12..24 %, noise +19 %); the structure threshold (f2 / f3 x0.1..0.5) and the rejection changed nothing. 1 = off (replays
+    // unchanged); the app sends 0.8.
+    float s61NightScale=1.f,s61NightKeyLo=8.f,s61NightKeyHi=16.f;
     // ... in daylight (key > s61MaxKey) instead: the emulated LUT leaves flat areas on the narrow "structure" kernel at ISO 100-200
     // (smooth-area noise x2.3 against the round-4 kernel); 16 / 4 keep the detail (-1 %) at x1.45 (f6_local_align.md)
     float s61DayTensorNoise=16.f,s61DayGdNoise=4.f;
@@ -780,7 +786,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
             ||set("cellClip",nullptr,&t.cellClip)||set("staticShift",&t.staticShift)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
             ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("hotCap",&t.hotCap)||set("bentoScam",nullptr,&t.bentoScam)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
-            ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)||set("s61Fine",&t.s61Fine)
+            ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)||set("s61Fine",&t.s61Fine)||set("s61NightScale",&t.s61NightScale)||set("s61NightKeyLo",&t.s61NightKeyLo)||set("s61NightKeyHi",&t.s61NightKeyHi)
             ||set("s61TensorNoise",&t.s61TensorNoise)||set("s61GdNoise",&t.s61GdNoise)||set("s61MinMotion",&t.s61MinMotion)
             ||set("s61DayTensorNoise",&t.s61DayTensorNoise)||set("s61DayGdNoise",&t.s61DayGdNoise)||set("s61Mode",nullptr,&t.s61Mode)||set("s61MaxKey",&t.s61MaxKey)||set("hotMaxKey",&t.hotMaxKey)||set("subset",nullptr,&t.subset)||set("profile",nullptr,&t.profile)
             ||set("rimRatio",nullptr,&t.rimRatio)||set("rimSigma",&t.rimSigma)||set("rimLo",&t.rimLo)||set("rimHi",&t.rimHi)||set("rimStride",nullptr,&t.rimStride)
@@ -6787,6 +6793,8 @@ inline void hybridSeriesCut(const HybridTuning& tune,int kept,int n,const std::s
 // four green neighbours; per 64 x 64-cell tile with gradient and nothing clipped, R (B) matched to G by gain / offset and the
 // displacement solved by two Lucas-Kanade steps; the radial model d = (k1 + k2 r^2) p (p from the centre over the half diagonal,
 // canonical cells) fitted by least squares, refitted without the worst 20 % of the tiles.
+// P337: the reach of the lateral CA search, cells (2 RAW px each): the model and its correction follow up to this many as well.
+constexpr int kCaReach=10;
 struct HybridCa { bool ok=false; float k1[2]{},k2[2]{},cornerPx[2]{},rmsPx[2]{}; int tiles[2]{}; float cx=0,cy=0,invHalf=0; };
 // Lateral CA removed from a merged RGB (canonical geometry, grid g): R and B at output pixel X are taken at the canonical position
 // of X plus the model displacement 2 d (RAW px), bilinear; G stays. The merge has aligned the frames and every frame carries the
@@ -6813,16 +6821,22 @@ inline HybridCa hybridRawCa(const HybridInput& in){
     std::mutex m;
     std::vector<std::pair<int,int>> tiles;
     for(int ty=T;ty+2*T<=h2;ty+=T)for(int tx=T;tx+2*T<=w2;tx+=T)tiles.push_back({tx,ty});
+    // P337 (owner, 2026-10-25: «коррекция ха у нас ограничена 2мя пикселями, убери ограничение»): a tile's shift was found by two
+    // Lucas-Kanade steps from 0 inside the tile alone, which only converges within about a cell and was cut at 2 cells (4 RAW px).
+    // Now an integer search first (normalised cross-correlation on 2 x 2 cell means, +-kCaReach cells; taken only when it beats no
+    // shift clearly), then the Lucas-Kanade steps from it on R / B read from the frame around the tile (not clamped at its edge); a
+    // tile counts up to kCaReach cells.
+    constexpr int R=kCaReach,P=R+2-(R&1),TW=T+2*P; // P: the window margin, even (2 x 2 means stay aligned)
     mergeRowBands(int(tiles.size()),[&](int t0,int t1){
-        std::vector<float> c(T*T),g(T*T),cs(T*T);
+        std::vector<float> c(TW*TW),g(T*T),cs(T*T),g2((T/2)*(T/2)),c2((TW/2)*(TW/2));
         for(int t=t0;t<t1;++t){
             const int tx=tiles[t].first,ty=tiles[t].second;
             for(int ch=0;ch<2;++ch){
                 float cmax=-1e9f,gmax=-1e9f;double gmean=0,grad=0;
                 for(int y=0;y<T;++y)for(int x=0;x<T;++x){
                     const int i=tx+x,j=ty+y;
-                    const float cv=ch?cellB(i,j):cellR(i,j),gv=ch?cellGB(i,j):cellGR(i,j);
-                    c[y*T+x]=cv;g[y*T+x]=gv;cmax=std::max(cmax,cv);gmax=std::max(gmax,gv);gmean+=gv;
+                    const float gv=ch?cellGB(i,j):cellGR(i,j),cv=ch?cellB(i,j):cellR(i,j);
+                    g[y*T+x]=gv;cmax=std::max(cmax,cv);gmax=std::max(gmax,gv);gmean+=gv;
                 }
                 gmean/=T*T;
                 if(cmax>=clip||gmax>=clip||gmean<20)continue;
@@ -6832,12 +6846,41 @@ inline HybridCa hybridRawCa(const HybridInput& in){
                 if(grad<4.0)continue;
                 const double det=mxx*myy-mxy*mxy,tr=mxx+myy;
                 if(det<=0||tr*tr/det>2*50.0)continue; // condition number
-                float dx=0,dy=0;bool good=true;
-                for(int it=0;it<2&&good;++it){
-                    for(int y=0;y<T;++y)for(int x=0;x<T;++x){ // c sampled at +d (bilinear, clamped)
-                        const float sx=std::clamp(x+dx,0.f,float(T-1)),sy=std::clamp(y+dy,0.f,float(T-1));
-                        const int x0=std::min(int(sx),T-2),y0=std::min(int(sy),T-2);const float fx=sx-x0,fy=sy-y0;
-                        cs[y*T+x]=(c[y0*T+x0]*(1-fx)+c[y0*T+x0+1]*fx)*(1-fy)+(c[(y0+1)*T+x0]*(1-fx)+c[(y0+1)*T+x0+1]*fx)*fy;
+                // R (B) of the cells around the tile: c[(y + P) * TW + x + P] is cell (tx + x, ty + y)
+                bool clipped=false;
+                for(int y=0;y<TW;++y)for(int x=0;x<TW;++x){
+                    const int i=tx+x-P,j=ty+y-P;const float cv=ch?cellB(i,j):cellR(i,j);c[y*TW+x]=cv;
+                    if(cv>=clip&&x>=P-R&&x<T+P+R&&y>=P-R&&y<T+P+R)clipped=true;
+                }
+                if(clipped)continue;
+                // integer search on 2 x 2 cell means: the offset (even, cells) with the highest correlation of c(x + d) with g(x)
+                const int T2=T/2,W2=TW/2;
+                for(int y=0;y<T2;++y)for(int x=0;x<T2;++x)g2[y*T2+x]=g[2*y*T+2*x]+g[2*y*T+2*x+1]+g[(2*y+1)*T+2*x]+g[(2*y+1)*T+2*x+1];
+                for(int y=0;y<W2;++y)for(int x=0;x<W2;++x)c2[y*W2+x]=c[2*y*TW+2*x]+c[2*y*TW+2*x+1]+c[(2*y+1)*TW+2*x]+c[(2*y+1)*TW+2*x+1];
+                double gs=0,gss=0;
+                for(int k=0;k<T2*T2;++k){gs+=g2[k];gss+=double(g2[k])*g2[k];}
+                const double nn=double(T2)*T2,gv2=gss-gs*gs/nn;
+                float dx=0,dy=0;double best=-2,r0=-2;
+                for(int oy=-R/2;oy<=R/2;++oy)for(int ox=-R/2;ox<=R/2;++ox){
+                    double cs_=0,css=0,cg=0;
+                    for(int y=0;y<T2;++y){const float* cr=c2.data()+size_t(y+oy+P/2)*W2+(ox+P/2);const float* gr=g2.data()+size_t(y)*T2;
+                        for(int x=0;x<T2;++x){const double v=cr[x];cs_+=v;css+=v*v;cg+=v*gr[x];}}
+                    const double cv2=css-cs_*cs_/nn,cov=cg-cs_*gs/nn;
+                    const double r=cv2>0&&gv2>0?cov/std::sqrt(cv2*gv2):-2;
+                    if(ox==0&&oy==0)r0=r;
+                    if(r>best){best=r;dx=float(2*ox);dy=float(2*oy);}
+                }
+                // another offset only when it correlates clearly better than none: noise (ISO 12800: the search scattered by 3 px)
+                // and periodic texture (sea waves: a false -7 px) leave the start at 0, the Lucas-Kanade steps as before
+                // (the zero shift itself correlating poorly: a real CA of a few px decorrelates the blobs, a small one does not)
+                const bool jumped=best>r0+0.15&&best>0.6&&r0<0.7;
+                if(!jumped){dx=0;dy=0;}
+                bool good=true;
+                for(int it=0;it<(jumped?3:2)&&good;++it){ // from 0: the two steps of before
+                    for(int y=0;y<T;++y)for(int x=0;x<T;++x){ // c sampled at +d (bilinear, inside the window)
+                        const float sx=std::clamp(x+P+dx,0.f,float(TW-1)),sy=std::clamp(y+P+dy,0.f,float(TW-1));
+                        const int x0=std::min(int(sx),TW-2),y0=std::min(int(sy),TW-2);const float fx=sx-x0,fy=sy-y0;
+                        cs[y*T+x]=(c[y0*TW+x0]*(1-fx)+c[y0*TW+x0+1]*fx)*(1-fy)+(c[(y0+1)*TW+x0]*(1-fx)+c[(y0+1)*TW+x0+1]*fx)*fy;
                     }
                     double sg=0,sc=0,sgg=0,sgc=0;const double n=T*T;
                     for(int k=0;k<T*T;++k){sg+=g[k];sc+=cs[k];sgg+=double(g[k])*g[k];sgc+=double(g[k])*cs[k];}
@@ -6849,9 +6892,10 @@ inline HybridCa hybridRawCa(const HybridInput& in){
                         const double e=(cs[y*T+x]-bb)/kk-g[y*T+x];bx+=gx*e;by+=gy*e;
                     }
                     // R(x + d) ~ G(x): e = -grad G . step
-                    dx+=float(-(myy*bx-mxy*by)/det);dy+=float(-(mxx*by-mxy*bx)/det);
+                    const float sx_=float(-(myy*bx-mxy*by)/det),sy_=float(-(mxx*by-mxy*bx)/det);
+                    dx+=jumped?std::clamp(sx_,-1.f,1.f):sx_;dy+=jumped?std::clamp(sy_,-1.f,1.f):sy_;
                 }
-                if(!good||std::abs(dx)>=2.f||std::abs(dy)>=2.f)continue;
+                if(!good||std::abs(dx)>=float(R)||std::abs(dy)>=float(R))continue;
                 std::lock_guard<std::mutex> lock(m);obs[ch].push_back({tx+T*0.5f,ty+T*0.5f,dx,dy});
             }
         }
@@ -6886,12 +6930,12 @@ inline HybridCa hybridRawCa(const HybridInput& in){
     return ca;
 }
 // P33 W2.2: hybridCorrectCa in bands that follow the merge's strips (advance(rgb, rows): the rows [0, rows) are final). A band reads
-// the R / B of its rows +- margin and its clamps never bind inside the image (|d| <= 4 g < margin), so any band split gives the
-// same floats as one pass.
+// the R / B of its rows +- margin and its clamps never bind inside the image (|d| <= 2 kCaReach g < margin), so any band split
+// gives the same floats as one pass.
 class HybridCaBands {
 public:
     HybridCaBands(int width,int height,int grid,const HybridCa& model):w(width),h(height),g(float(grid)),ca(model),
-            margin(int(std::ceil(4.f*float(grid)))+2),rx(width),ry(height){
+            margin(int(std::ceil(2.f*kCaReach*float(grid)))+2),rx(width),ry(height){
         for(int X=0;X<w;++X)rx[X]=(0.5f*((X+0.5f)/g-0.5f)-ca.cx)*ca.invHalf;
         for(int Y=0;Y<h;++Y)ry[Y]=(0.5f*((Y+0.5f)/g-0.5f)-ca.cy)*ca.invHalf;
     }
@@ -6918,7 +6962,7 @@ public:
                         const float xx=rx[X],r2=xx*xx+yy*yy;
                         for(int ch=0;ch<2;++ch){
                             const float k=ca.k1[ch]+ca.k2[ch]*r2;
-                            const float dx=std::clamp(2.f*k*xx*g,-4.f*g,4.f*g),dy=std::clamp(2.f*k*yy*g,-4.f*g,4.f*g);
+                            const float lim=2.f*kCaReach*g,dx=std::clamp(2.f*k*xx*g,-lim,lim),dy=std::clamp(2.f*k*yy*g,-lim,lim);
                             const float sx=std::clamp(X+dx,0.f,float(w-1)),sy=std::clamp(Y+dy,float(b0),float(b1-1));
                             const int x0=std::min(int(sx),w-2),yq=std::min(int(sy),b1-2);const float fx=sx-x0,fy=sy-yq;
                             const float* p0=buf.data()+(size_t(yq-b0)*w+x0)*2+ch;const float* p1=p0+size_t(w)*2;
@@ -8378,7 +8422,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         static const float kf3[]={1.f,3.f,12.f,30.f},vf3[]={0.02f,0.015f,0.009f,0.006f};
         const float key=key61;
         const float f0=sabreCurve(key,kf0,vf0),f1=sabreCurve(key,kf1,vf1),f2=sabreCurve(key,kf2,vf2),f3=sabreCurve(key,kf3,vf3),f4=4.f,f5=2.2f;
-        const float ks=std::max(tune.kernelScale,0.05f);
+        const float nightT=tune.s61NightKeyHi>tune.s61NightKeyLo?std::clamp((key-tune.s61NightKeyLo)/(tune.s61NightKeyHi-tune.s61NightKeyLo),0.f,1.f):(key>tune.s61NightKeyLo?1.f:0.f);
+        const float lowKeyKs=1.f+(std::clamp(tune.s61NightScale,0.25f,2.f)-1.f)*(1.f-nightT); // P337
+        const float ks=std::max(tune.kernelScale*lowKeyKs,0.05f);
         k61a={f5/f0,1.f/(f0*f4),f2,1.f/f0};
         // P34: the native path's night edge scale (mosaicNativeNightEdgeScale)
         const float esTune=native&&night61&&nightEs>0.f?nightEs:tune.mosaicEdgeScale;
@@ -8406,6 +8452,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             +" ("+((tune.s61Mode&1)?"per-frame covariance":"base covariance for all frames")+((tune.s61Mode&2)?", window 1.5 px":"")
             +((tune.s61Mode&4)?", base x0.3 below "+std::to_string(tune.widenBelow)+" frames":", base widening by donor coverage")+")"
             +(tune.sabre61==2?std::string(" auto (")+(night61?"night key":"handheld with local alignment")+")":std::string())
+            +(lowKeyKs!=1.f?" night kernel x"+std::to_string(lowKeyKs):std::string())
             +" noise x"+std::to_string(k61b[3])+"/x"+std::to_string(k61c[0])
             +(k61c[1]>0.f?" fine tensor (noise x"+std::to_string(16.f*k61c[1])+")":std::string(" quad tensor"))+" motion="+std::to_string(motion)+" px");
     } else {
@@ -9021,7 +9068,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         else {ca=hybridRawCa(input);caMs=millis(Clock::now()-caStarted);}
         char line[260];
         const bool worth=ca.ok&&(std::abs(ca.cornerPx[0])>=tune.caMinShift||std::abs(ca.cornerPx[1])>=tune.caMinShift)
-                &&ca.rmsPx[0]<0.4f&&ca.rmsPx[1]<0.4f;
+                &&ca.rmsPx[0]<std::max(0.4f,0.1f*std::abs(ca.cornerPx[0]))&&ca.rmsPx[1]<std::max(0.4f,0.1f*std::abs(ca.cornerPx[1])); // P337: a large CA scatters in proportion
         std::snprintf(line,sizeof(line),"HYBRID RAW CA: R corner %+.2f px (rms %.2f, %d tiles) B corner %+.2f px (rms %.2f, %d tiles) -> %s, %.0f ms",
             ca.cornerPx[0],ca.rmsPx[0],ca.tiles[0],ca.cornerPx[1],ca.rmsPx[1],ca.tiles[1],
             worth?"corrected":!ca.ok?"not measurable":"below the threshold",caMs);

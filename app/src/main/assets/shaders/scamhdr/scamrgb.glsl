@@ -254,7 +254,11 @@ void main(){
         // B put G below both - a lavender cloth). A clipped G is a lower bound and green is the channel a white light clips
         // first; a magenta result there is the censoring, not the scene: G comes up to the lower of R and B, weighted by its
         // censoring (an unclipped G keeps a real magenta).
-        r.g = mix(r.g, max(r.g, min(r.r, r.b)), satR.g);
+        // P337 (owner, 2026-10-25: «фиолетовый артефакт на солнце»): ... nor pink. A backlit sea: sun glitter and the sun's rim with
+        // G clipped, R measured at 1.1-1.4 x G after WB and B lower - G comes up to R where R is itself measured (a clipped G under
+        // an unclipped R cannot be the darker channel of a light that bright). A blue sky with G clipped (R below G) keeps its
+        // colour; where R is clipped too (an orange lamp) G stays at the lower of R and B as before.
+        r.g = mix(r.g, max(r.g, mix(min(r.r, r.b), r.r, 1.0 - satR.r)), satR.g);
         // Every channel clipped: no colour left; neutral white at the brightest level, reached gradually as the
         // last channel approaches its clip (no grey plateau, no step).
         float all3 = sat.r * sat.g * sat.b;
