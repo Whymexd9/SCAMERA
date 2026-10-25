@@ -655,7 +655,6 @@ public final class SettingsMigration {
         // Bento auto -> always with 2 -> 3 frames, Shasta frames 5 -> 3 (Shasta "always" is a new row, pref_scam_hybrid_shasta_mode).
         // A stored former XML default (written when the screen was first shown) moves once, any other value is the user's and
         // stays; a 30 the N-frames move above wrote in this run is that former default too. Own marker, set in the first run.
-        boolean p68MovedSabre = false; // values is the snapshot before this run: P330 below sees the "1" written here
         if (!values.containsKey(P68_DEFAULTS_REV)) {
             final String[] keys = {"zsl_frames", "sabre61", "mochi", "bento", "bento_frames", "shasta_frames"};
             final float[] former = {30f, 2f, 0f, 1f, 2f, 5f}, now = {20f, 1f, 2f, 2f, 3f, 3f};
@@ -664,7 +663,6 @@ public final class SettingsMigration {
                 Object v = values.get(key);
                 if (v == null || !(isNumber(v, former[i]) || (i == 0 && zslMovedTo30))) continue;
                 ModuleProfiles.put(e, key, v instanceof String ? PreferenceNumber.format(now[i], false) : (Object) now[i]);
-                if (i == 1) p68MovedSabre = true;
                 changed = true;
             }
             e.putInt(P68_DEFAULTS_REV, 1);
@@ -764,17 +762,13 @@ public final class SettingsMigration {
             e.putInt(FULLRES50_FRAMES_REV, 1);
             markOnly = true;
         }
-        // P330 (owner, 2026-10-25: «исправь чтобы не было мыла»): Sabre 6.1 kernel always -> auto and the denoise's shadow model
-        // rho_r 6 -> 2. A stored former XML default (P68's "1" above included) moves once, any other value stays. Own marker.
+        // P330 (owner, 2026-10-25: «исправь чтобы не было мыла»): the denoise's shadow model rho_r 6 -> 2. A stored former XML
+        // default moves once, any other value stays. Own marker. (Build 31118 also moved the Sabre 6.1 kernel to auto here; the
+        // owner keeps «Всегда» as the default, so this block no longer touches it.)
         if (!values.containsKey(DETAIL_DEFAULTS_REV)) {
-            final String[] keys = {"sabre61", "dn_model_read"};
-            final float[] former = {1f, 6f}, now = {2f, 2f};
-            for (int i = 0; i < keys.length; i++) {
-                final String key = ScamHybridKeys.PREFIX + keys[i];
-                Object v = values.get(key);
-                if (i == 0 && p68MovedSabre) v = values.get(key) instanceof String ? "1" : (Object) 1f;
-                if (v == null || !isNumber(v, former[i])) continue;
-                ModuleProfiles.put(e, key, v instanceof String ? PreferenceNumber.format(now[i], i == 1) : (Object) now[i]);
+            final Object v = values.get(ScamHybridKeys.PREFIX + "dn_model_read");
+            if (v != null && isNumber(v, 6f)) {
+                ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "dn_model_read", v instanceof String ? PreferenceNumber.format(2f, true) : (Object) 2f);
                 changed = true;
             }
             e.putInt(DETAIL_DEFAULTS_REV, 1);
@@ -819,7 +813,7 @@ public final class SettingsMigration {
     static final String SCAM_DEFAULTS_REV = "pref_scamhdr_defaults_rev";
     /** Marker of the one-time move of the former night protection threshold (default 100) to AGC noise clamp (0.05). */
     static final String NIGHT_THRESH_REV = "pref_scam_hybrid_night_thresh_rev";
-    /** P330: marker of the one-time move of the former Sabre 6.1 "always" (1) and denoise rho_r (6) defaults to auto / 2. */
+    /** P330: marker of the one-time move of the former denoise rho_r default (6) to 2. */
     static final String DETAIL_DEFAULTS_REV = "pref_scam_hybrid_detail_defaults_rev";
 
     private static boolean isNumber(Object v, float expected) {

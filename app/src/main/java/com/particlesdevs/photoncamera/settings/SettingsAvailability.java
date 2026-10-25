@@ -223,7 +223,7 @@ public final class SettingsAvailability {
             // the edge kernels of the split and of the native merge and the native flat-area kernel are set inside the new
             // kernel only (worker hybridReconstruct: `if(sabre61)`); the previous kernel never reads them
             if (any(key, "pref_scam_hybrid_mosaic_edge_scale", "pref_scam_hybrid_mosaic_native_edge_scale", "pref_scam_hybrid_mosaic_native_flat_scale")
-                    && text("pref_scam_hybrid_sabre61", "2").equals("0"))
+                    && text("pref_scam_hybrid_sabre61", "1").equals("0"))
                 return Lang.t("Только с «Новое ядро склейки» («Всегда» или «Авто»): прежнее ядро это значение не использует.",
                         "Only with “New merge kernel” (“Always” or “Auto”): the previous kernel does not use this value.");
         }
@@ -235,7 +235,7 @@ public final class SettingsAvailability {
             if (key.equals("pref_scam_hybrid_colour_grade_" + zone + "_hue") && PreferenceNumber.read(values.get("pref_scam_hybrid_colour_grade_" + zone + "_str"), 0) <= 0)
                 return Lang.t("Сначала задайте силу этой зоны.", "Set this zone's strength first.");
         // P118: rows that act only with another setting off its default (found while the descriptions were rewritten)
-        final String sabre61 = text("pref_scam_hybrid_sabre61", "2"); // P330: the default is auto
+        final String sabre61 = text("pref_scam_hybrid_sabre61", "1");
         if (key.equals("pref_scam_hybrid_s61_min_motion") && !sabre61.equals("2"))
             return Lang.t("Только при «Новое ядро склейки» = «Авто (ночью)».", "Only with “New merge kernel” = “Auto (at night)”.");
         if (any(key, "pref_scam_hybrid_snr_scale", "pref_scam_hybrid_tensor_noise") && sabre61.equals("1"))
