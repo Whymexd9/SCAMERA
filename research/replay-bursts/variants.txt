@@ -1,5 +1,10 @@
-# P335 round 4: the final app tuning against 31123's
-[base]
-[final]
+# P336 timing: s61Fine 2 (main) vs 0, GPU pass times
+[main]
 rejPrior 1
 baseDemosaicAlias 1
+profile 1
+[fine0]
+rejPrior 1
+baseDemosaicAlias 1
+profile 1
+s61Fine 0
