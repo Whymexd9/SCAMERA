@@ -183,6 +183,7 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_s61_day_gd_noise", null, Lang.t("Sabre 6.1 днём: шум градиента", "Sabre 6.1 by day: gradient noise")));
         k.add(n(merge, "hybrid_s61_tensor_noise", null, Lang.t("Sabre 6.1: шум тензора", "Sabre 6.1: tensor noise")));
         k.add(n(merge, "hybrid_s61_gd_noise", null, Lang.t("Sabre 6.1: шум градиента", "Sabre 6.1: gradient noise")));
+        k.add(n(merge, "hybrid_us_need_clip", "1", Lang.t("Склейка: кадры светов не обрабатываются, если в опорном кадре нет клипа (быстрее; 0 — всегда)", "Merge: highlight frames are skipped when the base frame has no clipping (faster; 0: always)")));
         k.add(n(merge, "hybrid_clip_reject", "1", Lang.t("Склейка: кадр заметно темнее клипа опорного кадра отбрасывается (блики на воде не тускнеют; 0 — как раньше)", "Merge: a frame clearly darker than the base's clip is rejected (sparkles on water stay bright; 0: as before)")));
         k.add(n(merge, "hybrid_rim_lift", "1", Lang.t("Склейка: зелёный в клипе не ниже среднего всех сэмплов, клиппированные по их значению (0 — как раньше)", "Merge: a clipped green at least the mean of all its samples, the clipped ones at their values (0: as before)")));
         k.add(n(merge, "hybrid_s61_night_scale", "0.8", Lang.t("Sabre 6.1 ночью: множитель ширины ядра при SNR-ключе до 8 (к 16 — снова 1; 1 — как раньше)", "Sabre 6.1 at night: kernel width multiplier at an SNR key up to 8 (back to 1 at 16; 1: as before)")));

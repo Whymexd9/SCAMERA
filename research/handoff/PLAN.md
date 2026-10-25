@@ -7251,3 +7251,15 @@ Owner, same day: «сделай гпу выравнивание и дай воз
 - Tests: CI list, check_ui_language, check_settings_model, highlight checks (neutral / recovery / landing / one channel off /
   why highlights), check_why_sharpen, check_hybrid_raw_ca on the OPPO.
 
+### P339 - processing speed towards ArkCam (owner, 2026-10-25: «займись ускорением обработки чтобы скорость была на уровне ArkCam»): DONE in part, replayed on the OPPO, not shot on a phone.
+- ArkCam saves its JPEG 1-3 s after the shot (file times in the owner's zips against the EXIF capture time); ours 8-11 s in the log
+  of 31148, of which 3.3-3.8 s was the keep-burst write in front of the merge («mapped» 3343-3784 ms).
+- Worker: the keep-burst copy runs on a thread of its own under the merge (joined before the mapping goes; the app waits for the
+  worker's exit, so the file is whole before the lab reads it).
+- Worker usNeedClip (the app sends 1): a plain burst whose base has no site at the clip next to another (isolated hot pixels
+  do not count) leaves its ultrashort frames out before the row check, Bento and the blend. OPPO: night 5.29 -> 3.15 s,
+  telephoto 4.85 -> 3.00 s, merged RGB the same (night 0.0001 % of the pixels > 0.01, telephoto bit-identical). The app's own
+  clip estimate (zslClipFraction) samples one Bayer phase at 1 / 32 of the sites, so the capture still takes the frames.
+- Measured, not changed: 15 instead of 20 normal frames saves 0.1-0.5 s at +15 % noise; the long frames ~1 s; the merge pass
+  1.8 s (kHybMergeMain1, untouched); the plain chroma median 0.3 s; the post 0.7 s on the phone. Open: the viewfinder's RAW
+  development keeps the GPU busy at 60-80 fps during the merge (worker at low GPU priority).

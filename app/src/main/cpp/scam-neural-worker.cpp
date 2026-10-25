@@ -129,18 +129,26 @@ int main(int argc,char** argv) {
             scam::MappedHybridBurst hybridBurst(argv[3],requestedHalf);
             std::unique_ptr<scam::MappedScamBurst> mapped;
             if(!hybridBurst.hybrid)mapped=std::make_unique<scam::MappedScamBurst>(argv[3]);
-            // P188: the app's keep-burst marker names where (its own external files): the burst of this shot, for a replay
+            // P188: the app's keep-burst marker names where (its own external files): the burst of this shot, for a replay.
+            // P339 (owner, 2026-10-25: «займись ускорением обработки чтобы скорость была на уровне ArkCam»): written on a thread of its
+            // own while the merge runs - the 1.6 GB of a 26-frame 12 MP burst took 3.3-3.8 s in front of the merge (every shot of the
+            // owner's log of 31148: «mapped» 3343-3784 ms), now under it (the merge reads the same mapping, nothing is copied). The
+            // writer is joined before the mapping goes (it is declared after it: destroyed first, on an exception as well).
+            struct KeepWriter{std::thread t;~KeepWriter(){if(t.joinable())t.join();}} keepWriter;
             {
                 std::ifstream keep(std::string(argv[2])+"/keep-burst");std::string dest;
                 if(keep&&std::getline(keep,dest)&&!dest.empty()&&dest!=argv[3]&&!std::getenv("SCAM_HYBRID")){
-                    std::ofstream dst(dest,std::ios::binary|std::ios::trunc);
-                    // P220: in 64 MB writes, each one progress (a 3.4 GB 50 MP burst took ~7 s, longer on slow storage); the same bytes
                     const char* src=mapped?static_cast<const char*>(mapped->address):static_cast<const char*>(hybridBurst.address);
                     const size_t bytes=mapped?mapped->length:hybridBurst.length;
-                    constexpr size_t kChunk=size_t(64)<<20;
-                    scam_progress::pass("keep-burst",int64_t((bytes+kChunk-1)/kChunk));
-                    for(size_t at=0;at<bytes&&dst;at+=kChunk){dst.write(src+at,std::streamsize(std::min(kChunk,bytes-at)));scam_progress::step();}
-                    report(std::string("SCAM KEEP: burst ")+(dst?"kept in ":"NOT kept in ")+dest);
+                    try{keepWriter.t=std::thread([src,bytes,dest,report]{
+                        worker_crash::Stage stage("keep burst");
+                        std::ofstream dst(dest,std::ios::binary|std::ios::trunc);
+                        // P220: in 64 MB writes (a 3.4 GB 50 MP burst took ~7 s, longer on slow storage); the same bytes
+                        constexpr size_t kChunk=size_t(64)<<20;
+                        for(size_t at=0;at<bytes&&dst;at+=kChunk)dst.write(src+at,std::streamsize(std::min(kChunk,bytes-at)));
+                        dst.close();
+                        report(std::string("SCAM KEEP: burst ")+(dst?"kept in ":"NOT kept in ")+dest);
+                    });}catch(const std::exception&){report("SCAM KEEP: burst NOT kept in "+dest+" (no thread)");}
                 }
             }
             const char* outputPath=argv[4];

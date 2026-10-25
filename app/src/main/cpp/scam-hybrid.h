@@ -170,6 +170,12 @@ struct HybridTuning {
     // sparkles. GCam / ArkCam reject every donor where the base's green clips (kForceRejectReferenceColor); a donor as bright
     // there (a lamp, a static highlight) stays here. 0 = off (replays unchanged); the app sends 1.
     float clipReject=0.f;
+    // P339 (owner, 2026-10-25: «займись ускорением обработки чтобы скорость была на уровне ArkCam»): a plain burst whose base frame
+    // has no site at the clip leaves its ultrashort frames out before the row check (hybridPlainUsRows), Bento and the blend: they
+    // have nothing to replace (Bento would fall back, their merge weight is 0) and cost ~0.7 s on the OPPO's night replay (row
+    // check 454 ms, blend 254 ms, three more frames through every pass). The app's plan takes them on a preview estimate that
+    // samples one Bayer phase at 1 / 32 of the sites; this test reads every site of the base. 0 = off (replays unchanged).
+    int usNeedClip=0;
     float motionThreshold=1.5f;  // extra_motion_robustness_motion_threshold: min-max extent of the raw LK flow over the 3x3 tiles (RAW px)
     float filterVariance=0.5f;   // variance scale of the bilinear donor sample (kFilterVarianceScale analogue)
     float dilateOffset=0.2f,dilateScale=2.f; // DilateMask: rej = (sum25 - 0.2) / 2
@@ -774,7 +780,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             applied+=" "+key+"="+std::to_string(v);return true;
         };
         while(f>>key>>v){
-            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("rejPrior",&t.rejPrior)||set("clipReject",&t.clipReject)||set("varianceThreshold",&t.varianceThreshold)
+            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("rejPrior",&t.rejPrior)||set("clipReject",&t.clipReject)||set("usNeedClip",nullptr,&t.usNeedClip)||set("varianceThreshold",&t.varianceThreshold)
             ||set("motionThreshold",&t.motionThreshold)
             ||set("filterVariance",&t.filterVariance)||set("dilateOffset",&t.dilateOffset)||set("dilateScale",&t.dilateScale)||set("dilateFloor",&t.dilateFloor)
             ||set("clipLevel",&t.clipLevel)||set("fwe",&t.fwe)||set("weightCap",&t.weightCap)||set("lutLo",&t.lutLo)||set("lutHi",&t.lutHi)
@@ -8070,6 +8076,41 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             return hybridReconstructMosaicNative(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
         if(block>1&&tune.mosaicPath==1)report("HYBRID MOSAIC NATIVE: Tetra stays on the sub-frame split (mosaicTetra 0)");
         if(block>1)return hybridReconstructMosaic(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
+    }
+    // P339 (usNeedClip): no base site at the clip - the ultrashort frames leave the plain merge before anything reads them
+    if(tune.usNeedClip&&!native&&!preset&&input.subFrames<=1&&!input.frames.empty()&&input.frames[0].raw){
+        int us=0;
+        for(size_t f=1;f<input.frames.size();++f)us+=input.frames[f].role==kRoleUltrashort;
+        if(us>0){
+            const float bl=std::min({input.black[0],input.black[1],input.black[2],input.black[3]});
+            const uint16_t at=uint16_t(std::clamp(bl+tune.clipLevel*(input.white-bl),0.f,65535.f));
+            const uint16_t* raw=input.frames[0].raw;
+            // a site at the clip with a neighbour at the clip as well (left / right / above / below): a hot pixel alone is no light
+            std::atomic<long long> clipped{0},alone{0};
+            const int W=input.w,Hh=input.h;
+            mergeRowBands(Hh,[&](int y0,int y1){
+                long long c=0,a=0;
+                for(int y=y0;y<y1;++y){
+                    const uint16_t* r=raw+size_t(y)*W;
+                    const uint16_t* up=y>0?r-W:nullptr;const uint16_t* dn=y+1<Hh?r+W:nullptr;
+                    for(int x=0;x<W;++x){
+                        if(r[x]<at)continue;
+                        const bool pair=(x>0&&r[x-1]>=at)||(x+1<W&&r[x+1]>=at)||(up&&up[x]>=at)||(dn&&dn[x]>=at);
+                        if(pair)++c; else ++a;
+                    }
+                }
+                clipped+=c;alone+=a;
+            });
+            if(clipped.load()==0){
+                HybridInput lean=input;
+                lean.frames.erase(std::remove_if(lean.frames.begin()+1,lean.frames.end(),[](const HybridFrame& fr){return fr.role==kRoleUltrashort;}),
+                    lean.frames.end());
+                report("HYBRID ULTRASHORT: "+std::to_string(us)+" frame(s) left out: no base site at the clip next to another ("
+                    +std::to_string(alone.load())+" alone, hot pixels; usNeedClip)");
+                HybridTuning t2=tune;t2.usNeedClip=0;
+                return hybridReconstruct(lean,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
+            }
+        }
     }
     // Owner, 2026-10-19 («исправь это во всех режимах»): a plain Bayer burst's ultrashort frames through the row check as the mosaic
     // paths' (their binned / native / split merges arrive here checked or with their own preset / native data)

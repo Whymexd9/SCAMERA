@@ -943,6 +943,10 @@ public class PreferenceKeys {
         // worker defaults 0 (replays unchanged); scam_dev.txt "hybrid_clip_reject 0", "hybrid_rim_lift 0" = before.
         if (hybridValue("clip_reject", 1f) > 0f) out.append("clipReject 1\n");
         if (hybridValue("rim_lift", 1f) > 0f) out.append("rimLift 1\n");
+        // P339 (owner, 2026-10-25: «займись ускорением обработки чтобы скорость была на уровне ArkCam»): the worker leaves the
+        // ultrashort frames out when the base has no site at the clip next to another (worker usNeedClip): OPPO replays of the
+        // owner's night / telephoto bursts 5.29 -> 3.15 s / 4.85 -> 3.00 s, the result the same. scam_dev "hybrid_us_need_clip 0".
+        if (hybridValue("us_need_clip", 1f) > 0f) out.append("usNeedClip 1\n");
         final float alias = clamp01(hybridValue("base_demosaic_alias", 1f));
         if (alias > 0f) out.append("baseDemosaicAlias ").append(alias).append('\n');
         final Float hand = scamDevValue("hybrid_plain_chroma_hand");
