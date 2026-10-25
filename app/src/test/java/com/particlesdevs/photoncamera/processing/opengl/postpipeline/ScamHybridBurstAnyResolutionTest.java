@@ -356,4 +356,24 @@ public class ScamHybridBurstAnyResolutionTest {
             com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey("", -1);
         }
     }
+
+    /** P331: the N donors clearly softer than the burst's median stay out, softest first, within the keep / share limits. */
+    @Test public void blurredDonorsLeaveTheMerge() {
+        float[] sharp = {1f, 1.05f, 0.95f, 1.1f, 0.4f, 1f, 0.9f, 0.6f, 1.02f, 0.98f, 0.3f, 1f};
+        // median 0.99: below 0.74 are 0.6 (7), 0.4 (4), 0.3 (10); the base is never left out
+        assertEquals(java.util.Arrays.asList(10, 4, 7), ScamHybridBurst.blurredDonors(sharp, 0, 0.75f, 8, 1f / 3f));
+        assertFalse(ScamHybridBurst.blurredDonors(sharp, 10, 0.75f, 8, 1f / 3f).contains(10));
+        // at least keep frames remain: 12 - 10 = 2 may go
+        assertEquals(java.util.Arrays.asList(10, 4), ScamHybridBurst.blurredDonors(sharp, 0, 0.75f, 10, 1f / 3f));
+        // at most a third of the 11 donors (3)
+        float[] many = {1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 1f, 1f, 1f, 1f, 1f, 1f};
+        assertEquals(3, ScamHybridBurst.blurredDonors(many, 0, 0.75f, 2, 1f / 3f).size());
+        // frames that score alike (a noise-bound shot) all stay; no score (NaN) stays; off at 0; no positive median: none
+        assertTrue(ScamHybridBurst.blurredDonors(new float[]{1f, 0.9f, 1.1f, 0.95f, 1.05f, 0.8f, 1f, 0.97f, 1f}, 0, 0.75f, 2, 1f / 3f).isEmpty());
+        float[] unknown = sharp.clone(); unknown[10] = Float.NaN;
+        assertFalse(ScamHybridBurst.blurredDonors(unknown, 0, 0.75f, 8, 1f / 3f).contains(10));
+        assertTrue(ScamHybridBurst.blurredDonors(sharp, 0, 0f, 8, 1f / 3f).isEmpty());
+        assertTrue(ScamHybridBurst.blurredDonors(new float[]{0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f}, 0, 0.75f, 2, 1f / 3f).isEmpty());
+        assertTrue(ScamHybridBurst.blurredDonors(new float[]{1f, 0.1f, Float.NaN, Float.NaN}, 0, 0.75f, 1, 1f).isEmpty());
+    }
 }

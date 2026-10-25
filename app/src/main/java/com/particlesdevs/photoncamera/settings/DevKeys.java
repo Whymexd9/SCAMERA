@@ -55,6 +55,7 @@ public final class DevKeys {
             "post_priority", "gpu_low_priority", "jpeg_threads", "rgba_upload", "gl_warm_up", "release_async", "worker_watchdog",
             "hybrid_la_threads", "hybrid_la_stream", "hybrid_la_scam", "hybrid_rgb_half", "worker_gpu_normal_priority",
             "isp_preview_off_always", "hybrid_isp_ccm", "hybrid_clip_flags", "dng_colour_jpeg",
+            "hybrid_sharp_select", // P331: picks the frames of the saved burst at the shot
             // P306: no native Tetra merge is a night shot any more, nothing reads its night point
             "hybrid_mosaic_tetra_night_kernel_scale", "hybrid_mosaic_tetra_night_edge_scale", "hybrid_mosaic_tetra_night_flat_scale")));
 
@@ -182,6 +183,7 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_s61_day_gd_noise", null, Lang.t("Sabre 6.1 днём: шум градиента", "Sabre 6.1 by day: gradient noise")));
         k.add(n(merge, "hybrid_s61_tensor_noise", null, Lang.t("Sabre 6.1: шум тензора", "Sabre 6.1: tensor noise")));
         k.add(n(merge, "hybrid_s61_gd_noise", null, Lang.t("Sabre 6.1: шум градиента", "Sabre 6.1: gradient noise")));
+        k.add(n(merge, "hybrid_sharp_select", "0.75", Lang.t("Отбор кадров по резкости: N-кадры мягче этой доли медианы не склеиваются (0 — все кадры)", "Frame selection by sharpness: N frames softer than this share of the median are not merged (0: every frame)")));
         k.add(n(merge, "hybrid_hot_frames", null, Lang.t("Горячие пиксели: кадров для поиска", "Hot pixels: frames to search")));
         k.add(n(merge, "hybrid_hot_cross", null, Lang.t("Горячие пиксели: порог креста", "Hot pixels: cross threshold")));
         k.add(n(merge, "hybrid_hot_max_level", null, Lang.t("Горячие пиксели: предел уровня", "Hot pixels: level limit")));
