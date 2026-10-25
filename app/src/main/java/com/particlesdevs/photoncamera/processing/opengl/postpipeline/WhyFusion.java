@@ -179,7 +179,7 @@ public final class WhyFusion extends Node {
                         + " level " + satLight[4] + ".." + satLight[5] : "");
     }
 
-    /** The guided filter's ef_gf_radius and ef_gf_eps (WhyCam's), since P333 for the post_ab old run and the viewfinder's vf_why 0. */
+    /** The guided filter's ef_gf_radius and ef_gf_eps (WhyCam's), since P333 for the post_ab old run and the viewfinder's vf_why 2. */
     static final int GF_RADIUS = 32;
     static final float GF_EPS = 0.001f;
 
@@ -205,7 +205,12 @@ public final class WhyFusion extends Node {
     private void pyramid(WhyTone.State st, float[] em, float[] lw, float ae, float center, float[] satLight, long started, float strength) {
         final Point low = st.low.mSize;
         final float coarse = WhyTone.value("ef_coarse", COARSE);
-        final int levels = pyramidLevels(low.x, low.y, coarse);
+        // a lab fragment takes the whole frame's depth (its own size would give its lowest band weights blurred ~4x less), as far as
+        // the fragment halves (fewer levels than the whole frame only for a fragment under ~2 px at that depth)
+        final LabFrame frozen = ((PostPipeline) basePipeline).frozen;
+        final int levels = frozen != null && frozen.lowWidth > 0 && frozen.lowHeight > 0
+                ? Math.min(pyramidLevels(frozen.lowWidth, frozen.lowHeight, coarse), pyramidLevels(low.x, low.y, 2f))
+                : pyramidLevels(low.x, low.y, coarse);
         final GLFormat rgba = new GLFormat(GLFormat.DataType.FLOAT_16, 4), one = new GLFormat(GLFormat.DataType.FLOAT_32, 1);
         final GLTexture[] L = new GLTexture[levels + 1], W = new GLTexture[levels + 1], F = new GLTexture[levels + 1];
         try {

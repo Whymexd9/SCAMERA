@@ -210,6 +210,7 @@ public final class WhyStats extends Node {
                 record.noiseScale = (float) (noiseS0 > 0 ? settings.noiseS / noiseS0 : noiseO0 > 0 ? settings.noiseO / noiseO0 : 1.0);
                 record.inScale = st.inScale;
                 record.lowWidth = lowSize.x;
+                record.lowHeight = lowSize.y;
             }
             // applied by WhyAe.finish after an AgX look preset (which sets its own saturation)
             settings.ccmSat = WhyTone.ccmSatComp(pipeline.mParameters);

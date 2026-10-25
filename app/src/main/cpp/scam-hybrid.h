@@ -8074,6 +8074,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // ---- alignment: every frame against the base, groups of six
     std::vector<BackwardHomography> H(n);
     std::vector<bool> aligned(n,true);
+    // P334: normal donors the alignment refused, handed to F6 from the identity (left out of the hand-motion and still-burst tests)
+    std::vector<bool> idStart(n,false);
     // P33 W2.1: the F6 field in tile-row bands (LaStream). Phase 1 of a frame (gray, L1 field) starts as soon as the alignment
     // publishes its homography, the bands once the refined frames are known (commit below) and run alongside the GPU merge. Plain
     // Bayer and the native mosaic's binned frames up to kHybridClassicPixels (the split's sub-frames share their fields frame-wide);
@@ -8161,9 +8163,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             }
             for(int j=0;j<count;++j){
                 H[first+j]=hs[1+j];
-                try{H[first+j].validate();}catch(const std::exception&){aligned[first+j]=false;}
-                // replaceFailed() points a failed slot at the reference frame: detect and drop it.
-                if(group.raw[1+j]!=input.frames[first+j].raw)aligned[first+j]=false;
+                try{H[first+j].validate();}catch(const std::exception&){aligned[first+j]=false;H[first+j]=BackwardHomography{};}
+                // replaceFailed() points a failed slot at the reference frame (the CRE and its translation refused the frame).
+                // P334: a normal donor was merged at the identity without F6 (the comment said "drop it", nothing did): x1.3-1.8
+                // the error of a sharp burst for a frame 0.8-2 px off. It now goes to F6 from the identity (F6 absorbs up to
+                // laMaxShift, the rejection the rest), which beat dropping it on every synthetic case (dropping: a dark scene whose
+                // reference has too few corners loses every donor at once, noise x1.6); without F6 it is dropped below while two
+                // aligned normal donors remain. Bracketed and ultrashort frames are dropped as before.
+                if(group.raw[1+j]!=input.frames[first+j].raw){
+                    if(input.frames[first+j].role==kRoleNormal&&tune.localAlign>0){H[first+j]=BackwardHomography{};idStart[first+j]=true;}
+                    else aligned[first+j]=false;
+                }
                 streamFeed(first+j); // P33 W2.1: its F6 phase 1 now
             }
         }
@@ -8194,6 +8204,11 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         for(int f=1;f<n;++f)streamFeed(f);
     }
     stats.alignMs=millis(Clock::now()-alignStarted);
+    {
+        std::string ids;
+        for(int f=1;f<n;++f)if(idStart[f])ids+=(ids.empty()?"":",")+std::to_string(f);
+        if(!ids.empty())report("HYBRID ALIGN: frames "+ids+" refused by the alignment: local alignment from the identity and the rejection");
+    }
     if(tune.profile){ // the homographies, so the residual alignment error can be measured offline (sabre2x_61.md F7b / R4)
         for(int f=1;f<n;++f){
             char line[200];const auto& m=H[f].h;
@@ -8230,7 +8245,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     {
         int cnt=0;
         for(int f=1;f<n;++f){
-            if(input.frames[f].role!=kRoleNormal||!aligned[f])continue;
+            if(input.frames[f].role!=kRoleNormal||!aligned[f]||idStart[f])continue;
             const DonorPoint p=H[f].project(w/2,h/2);
             const double dx=p.x/H[f].upRatio-w/2,dy=p.y/H[f].upRatio-h/2;
             motion+=dx*dx+dy*dy;++cnt;
@@ -8320,6 +8335,18 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     // ---- Shasta: bracketed frames softer than the base are dropped; too long a ratio drops them all
     std::vector<bool> keep(n,true);
+    {
+        // P334: normal donors the alignment refused without F6 to refine them (localAlign 0, the conservative retry; the mosaic
+        // split's sub-frames): left out while two aligned normal donors remain, else merged at the identity as before
+        int alignedNormals=0;
+        for(int f=1;f<n;++f)if(input.frames[f].role==kRoleNormal&&aligned[f])++alignedNormals;
+        for(int f=1;f<n;++f){
+            if(input.frames[f].role!=kRoleNormal||aligned[f])continue;
+            if(alignedNormals>=2){keep[f]=false;report("HYBRID ALIGN: frame "+std::to_string(f)+" refused by the alignment: left out");}
+            else report("HYBRID ALIGN: frame "+std::to_string(f)+" refused by the alignment: merged at the identity ("
+                +std::to_string(alignedNormals)+" aligned normal donors)");
+        }
+    }
     {
         float maxRatio=1;
         // P30: the base guide once, the frames' sharpness in parallel; decisions and report in frame order as before.
@@ -9026,9 +9053,12 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         // (synthetic still burst on the X200 Ultra: error at the detail 0.079 -> 0.034, chroma p99 0.24 -> 0.15; the green-clipped
         // sky of the magenta-rim case unchanged); a moving burst keeps cellClip (its merge unchanged).
         HybridTuning mergeTune=tune;
-        if(tune.cellClip&&tune.staticShift>0.f&&in.frames.size()>1){
-            const int donors=int(in.frames.size())-1;float largest=0.f;
-            const int moved=hybridMovedDonors(in.homography,w,h,tune.staticShift,&largest);
+        // P334: frames the alignment refused (identity start of F6) say nothing about the hand's motion
+        std::vector<BackwardHomography> movedH;
+        for(size_t i=0;i<in.homography.size();++i)if(i==0||!idStart[size_t(index[i])])movedH.push_back(in.homography[i]);
+        if(tune.cellClip&&tune.staticShift>0.f&&movedH.size()>1){
+            const int donors=int(movedH.size())-1;float largest=0.f;
+            const int moved=hybridMovedDonors(movedH,w,h,tune.staticShift,&largest);
             if(hybridStillBurst(moved,donors)){
                 mergeTune.cellClip=0;
                 char line[200];

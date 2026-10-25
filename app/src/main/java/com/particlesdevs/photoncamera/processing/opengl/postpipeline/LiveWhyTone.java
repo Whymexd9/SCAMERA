@@ -41,7 +41,8 @@ import java.util.concurrent.Executors;
  * linear frame - the fusion's curve per pixel (FusedCurve: the guided filter's value on a flat area), the photo's AE, AgX, colour
  * look, film LUT and dither. Two passes a frame. The guided-filter chain above stays as vf_why 2 (now at the tone size too) for
  * an A/B against the photo; it differs in strongly fused scenes (the point fusion lifts the shadows evenly: up to 0.02-0.06 of
- * display luma at effS 1.5-2, host model of a 2x ISZ merge).
+ * display luma at effS 1.5-2, host model of a 2x ISZ merge). P333: the photo's fusion is a Laplacian pyramid now (WhyFusion); vf_why 2
+ * keeps the guided filter (the photo's fusion before it): equal to the photo on flat areas, not at edges.
  */
 public final class LiveWhyTone {
     private static final String TAG = "LiveWhyTone";

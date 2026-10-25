@@ -30,6 +30,8 @@ public final class LabFrame {
     /** WhyStats' input scale (2^«Масштаб входа, EV») the statistics were measured at; NaN: not recorded (a frame before it). */
     float inScale = Float.NaN;
     int lowWidth;
+    /** P333: the whole frame's whyLow height (0: not recorded), the depth of the fusion's pyramid with lowWidth. */
+    int lowHeight;
     @Nullable float[] ccLo, ccHi, ccMax;
     boolean nearClip, hiUnflagged, ccBento;
     float p50 = Float.NaN, p90 = Float.NaN;
@@ -57,6 +59,7 @@ public final class LabFrame {
         put(o, "noiseScale", noiseScale);
         put(o, "inScale", inScale);
         o.put("lowWidth", lowWidth);
+        o.put("lowHeight", lowHeight);
         if (ccLo != null) o.put("ccLo", floats(ccLo)).put("ccHi", floats(ccHi)).put("ccMax", floats(ccMax))
                 .put("nearClip", nearClip).put("hiUnflagged", hiUnflagged).put("ccBento", ccBento);
         put(o, "p50", p50);
@@ -76,6 +79,7 @@ public final class LabFrame {
         f.noiseScale = get(o, "noiseScale");
         f.inScale = get(o, "inScale");
         f.lowWidth = o.optInt("lowWidth", 0);
+        f.lowHeight = o.optInt("lowHeight", 0);
         if (o.has("ccLo")) {
             f.ccLo = floats(o.getJSONArray("ccLo"));
             f.ccHi = floats(o.getJSONArray("ccHi"));

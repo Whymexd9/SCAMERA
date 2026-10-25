@@ -1,5 +1,5 @@
 // WHY tone, the exposure fusion's per-pixel part shared by why/gf.glsl (the guided filter: the post_ab old run, the RAW viewfinder
-// with vf_why 0) and why/lpyr.glsl (P333: the Laplacian pyramid of the photo): the synthetic exposures, their ACES lumas and
+// with vf_why 2) and why/lpyr.glsl (P333: the Laplacian pyramid of the photo): the synthetic exposures, their ACES lumas and
 // Gaussian weights (prepare), the saturated-light share (P310) and the fused luma of a flat neutral area (fusedAt, P291).
 // Imported after the including program's InputBuffer.
 uniform vec4 expU;              // exposure multipliers em; unset -> (1, 1, 1, 1)

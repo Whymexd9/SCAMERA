@@ -169,7 +169,7 @@ public final class SettingsMigration {
             // вес» (a dev key: scam_dev.txt "hybrid_bento_weight")
             "pref_scam_hybrid_noise_source", "pref_scam_hybrid_bento_weight",
             // P333: the fusion's guided filter gave way to a Laplacian pyramid (pref_scam_hybrid_why_ef_coarse); the post_ab old run
-            // and the RAW viewfinder's vf_why 0 keep its WhyCam values (WhyFusion.GF_RADIUS / GF_EPS)
+            // and the RAW viewfinder's vf_why 2 keep its WhyCam values (WhyFusion.GF_RADIUS / GF_EPS)
             "pref_scam_hybrid_why_gf_radius", "pref_scam_hybrid_why_gf_eps_e3"));
     static final String[] OBSOLETE_PREFIXES = {"pref_raisr_", "pref_softpqe_",
             "pref_snr_", "pref_mfsr_", "scamera_mosaic_sr_", "pref_hdrplus_", "pref_tunable_esd4d_", "pref_tunable_pyramidalignment_",

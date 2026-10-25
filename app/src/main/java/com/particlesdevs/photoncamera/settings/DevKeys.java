@@ -161,8 +161,8 @@ public final class DevKeys {
         k.add(n(vf, "vf_priority", "1", Lang.t("Высокий приоритет потока видоискателя (0 — обычный)", "High priority of the viewfinder thread (0: normal)")));
         // P314: the photo's tone per pixel by default (one pass, the AE on the CPU), the guided-filter chain of P301 as 2
         k.add(s(vf, "vf_black_floor", true, Lang.t("RAW-видоискатель: чёрный по самому кадру, когда поток пришёл без чёрного пьедестала (OPPO ISZ, режим сенсора)", "RAW viewfinder: the black from the frame itself when the stream lost its black pedestal (OPPO ISZ, a sensor mode)")));
-        k.add(n(vf, "vf_why", "1", Lang.t("RAW-видоискатель: тон Why итогового фото — 1: по каждому пикселю (быстро), 2: локально, как в фото (направляемый фильтр, тяжелее, замедляет обработку), 0: собственный вид видоискателя",
-                "RAW viewfinder: the photo's Why tone - 1: per pixel (fast), 2: local as in the photo (guided filter, heavier, slows processing down), 0: the viewfinder's own look")));
+        k.add(n(vf, "vf_why", "1", Lang.t("RAW-видоискатель: тон Why итогового фото — 1: по каждому пикселю (быстро), 2: локально направляемым фильтром (прежнее слияние фото, до пирамиды Лапласа; тяжелее, замедляет обработку), 0: собственный вид видоискателя",
+                "RAW viewfinder: the photo's Why tone - 1: per pixel (fast), 2: local with the guided filter (the photo's fusion before the Laplacian pyramid; heavier, slows processing down), 0: the viewfinder's own look")));
         // P319: an ISP-woken redraw of the same RAW frame reuses its tone (MainRenderer.toneKey)
         k.add(s(vf, "vf_tone_reuse", true, Lang.t("RAW-видоискатель: повторная отрисовка того же RAW-кадра берёт готовый тон (0 — тонировать каждую отрисовку)",
                 "RAW viewfinder: a redraw of the same RAW frame reuses its tone (0: tone every draw)")));
