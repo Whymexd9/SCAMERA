@@ -4,14 +4,17 @@ precision highp sampler2D;
 // after bartwronski.com/2022/02/28/exposure-fusion-local-tonemapping-for-real-time-rendering and Mertens et al.): the exposure
 // fusion of the luminance as a Laplacian pyramid blend instead of the guided filter of the weights. The synthetic exposures, their
 // lumas L_k and weights p_k are the guided filter's (import why_fusion: prepare); every band of the lumas is blended with the
-// weights blurred to that band's scale, so an edge keeps its contrast at every scale (no halo of the weights' blur) while flat
-// areas take the smooth weights. Pyramid: level l + 1 = the 5-tap binomial (1 4 6 4 1) / 16 of level l at the even sites (coarse
+// weights blurred to that band's scale (a plain binomial blur, not edge-aware). Flat areas take the per-pixel fusion exactly; a
+// strong edge gets Mertens' halo: a bright band on its bright side and a dark band on its dark side about as wide as the coarse
+// levels (host, 12 MP whyLow at ef_coarse 48: about +-0.03-0.05 of fused luma over ~30 whyLow px; the guided filter, edge-aware,
+// stays within ~1 %), and a small light a dark ring; a larger ef_coarse (fewer levels) narrows it, its height stays. Pyramid: level l + 1 = the 5-tap binomial (1 4 6 4 1) / 16 of level l at the even sites (coarse
 // i = fine 2i, edges clamped); expand = linear interpolation onto the odd sites; the reconstruction is exact for any weights.
 // Level 0 (whyLow) is never stored: level 1 is reduced from prepare() of the whyLow pixels, and the last pass prepares its pixel.
 //   MODE 0: level 1 of the lumas L (the four exposures)   MODE 1: level 1 of the weights p (normalised per pixel)
 //   MODE 2: reduce InputBuffer (RGBA) to the next level    MODE 3: the coarsest level, F = <p, L> / sum p
 //   MODE 4: F_l = expand(F_l+1) + <p_l, L_l - expand(L_l+1)> / sum p_l
-//   MODE 5: MODE 4 at level 0 (its L, p prepared from InputBuffer) plus P291's monotonic envelope (gf.glsl MODE 3's): "fused"
+//   MODE 5: MODE 4 at level 0 (its L, p prepared from InputBuffer), the saturated-light share back to the per-pixel fusion (P310),
+//           plus P291's monotonic envelope (gf.glsl MODE 3's): "fused"
 #define MODE 0
 uniform sampler2D InputBuffer;  // MODE 0, 1, 5: whyLow (after bracket_dn), linear Rec.709; MODE 2: the level to reduce
 uniform sampler2D LevelL;       // MODE 3, 4: lumas L of this level (RGBA)
@@ -73,8 +76,12 @@ void main() {
     vec4 p, L;
     prepare(rgb, I, p, L);
     float fusedL = blendBand(xy, L, p);
-    // P291: the monotonic envelope of the fusion's own curve, added to the blended luma (gf.glsl MODE 3)
     float sw = satShare(rgb);
+    // P310: saturated bright light keeps the per-pixel fusion (dot(p, L) = fusedAt(I, sw)): the coarse bands would build a narrow
+    // light from the room's bright exposures, where it clips (a violet 2-16 px LED bar at 8 x white in a 0.03 room: fused 0.98-1.04
+    // instead of the guided filter's 0.795, flat white after the tone)
+    fusedL = mix(fusedL, dot(p, L), sw);
+    // P291: the monotonic envelope of the fusion's own curve, added to the blended luma (gf.glsl MODE 3)
     if (monoU > 0.0 && I > 0.0) {
         float rise = monoU * (1.0 - sw);
         float f = fusedAt(I, sw), env = f;

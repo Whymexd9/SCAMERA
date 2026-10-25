@@ -18,9 +18,11 @@ import static android.opengl.GLES20.GL_NEAREST;
  * <p>
  * P333 (owner, 2026-10-25: «замени блок локального тонмапинга с гуидед фильтра на пирамиду Лапласа», after Wronski's exposure
  * fusion for real-time local tonemapping and Mertens et al.): the lumas are blended as a Laplacian pyramid, every band with the
- * weights blurred to its own scale (why/lpyr.glsl), down to the level whose shorter side is about ef_coarse px; edges keep their
- * contrast at every scale instead of the guided filter's weight map. The guided filter (2x2 down, box r = ef_gf_radius / 2, eps,
- * box, bilinear up; statistics in RGBA32F) stays for the old run of post_ab only, so the A/B shows this change on one shot.
+ * weights blurred (binomial, not edge-aware) to its own scale (why/lpyr.glsl), down to the level whose shorter side is about
+ * ef_coarse px. Flat areas equal the per-pixel fusion; a strong edge gets Mertens' halo (a bright band on its bright side, a dark
+ * band on its dark side, about as wide as the coarse levels: ~30 whyLow px at 12 MP; a larger ef_coarse narrows it), where the
+ * guided filter (edge-aware: 2x2 down, box r = ef_gf_radius / 2, eps, box, bilinear up; statistics in RGBA32F) stays within ~1 %.
+ * The guided filter stays for the old run of post_ab only, so the A/B shows this change on one shot.
  */
 public final class WhyFusion extends Node {
     public WhyFusion() { super("", "WhyFusion"); }
