@@ -278,6 +278,10 @@ struct HybridTuning {
     // Shasta
     float shastaSharpness=0.35f; // bracketed_sharpness_threshold
     float shastaMaxRatio=32.f;   // max bracketed/base TET ratio
+    // P335: a bracketed frame's merge weight by its sharpness against the base (Shasta's score): whole at shastaSharpHi and above,
+    // smoothly down to that of one N frame at shastaSharpLo; Hi <= Lo = the weight A as before (replays unchanged; the app sends
+    // 0.75 / 0.97)
+    float shastaSharpLo=0.f,shastaSharpHi=0.f;
     float shastaSat=0.5f;        // sharpness pixels: guide mean below this share of white in both frames. The guide is a 4x4 mean:
                                  // at 0.9 blocks along bright edges still held clipped sites of the x2 brighter bracketed frame, their
                                  // truncated gradients scored it 74-77 % of the base at the same shutter (all dropped); 0.4-0.6: 96-100 %
@@ -766,7 +770,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoBlendClipLo",&t.bentoBlendClipLo)||set("bentoBlendClipHi",&t.bentoBlendClipHi)||set("bentoBlendNear",&t.bentoBlendNear)
             ||set("bentoBlendFar",&t.bentoBlendFar)||set("bentoBlendDilate",nullptr,&t.bentoBlendDilate)
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
-            ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
+            ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSharpLo",&t.shastaSharpLo)||set("shastaSharpHi",&t.shastaSharpHi)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
             ||set("cellClip",nullptr,&t.cellClip)||set("staticShift",&t.staticShift)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
             ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("hotCap",&t.hotCap)||set("bentoScam",nullptr,&t.bentoScam)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
@@ -8387,6 +8391,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     }
     // ---- Shasta: bracketed frames softer than the base are dropped; too long a ratio drops them all
     std::vector<bool> keep(n,true);
+    std::vector<double> sharpShare(n,1.0); // P335: a bracketed frame's sharpness against the base (Shasta's score), 1 = not measured
     {
         // P334: normal donors the alignment refused without F6 to refine them (localAlign 0, the conservative retry; the mosaic
         // split's sub-frames): left out while two aligned normal donors remain, else merged at the identity as before
@@ -8427,6 +8432,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             if(!tune.shastaEnable||!aligned[f]){keep[f]=false;++stats.droppedBracketed;continue;}
             const SharpnessPair sp=sharp[f].get();
             const double pct=sp.base>0?sp.frame/sp.base:1.0;
+            sharpShare[f]=pct;
             report("HYBRID SHASTA sharpness frame="+std::to_string(f)+" score="+std::to_string(sp.frame)+" base="+std::to_string(sp.base)
                 +" pixels="+std::to_string(sp.pixels)+" ("+std::to_string(100*pct)+" % of base)");
             if(tune.shastaForce){
@@ -8823,6 +8829,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             A=std::min(tune.weightCap,std::pow(t*t*readB/readF,tune.fwe));
             if(fr.role==kRoleUltrashort)A=tune.bentoUsWeight/float(std::max<size_t>(usFrames.size(),1));
             if(!std::isfinite(A)||A<=0)A=1.f;
+            // P335: a bracketed frame (2x the exposure, A = t^2 = 4: three of them outweighed 12 N frames) carries the hand's
+            // blur of its longer exposure; forced Shasta (P68) merged it at full weight at any sharpness (the owner's ISO 12800 shot:
+            // 82 % of the base's sharpness, ~37 % of the merge's weight). Its weight now follows its measured sharpness: whole from
+            // shastaSharpHi of the base's, down to 1 / t^2 of it (the weight of one N frame) at shastaSharpLo and below.
+            if(fr.role==kRoleBracketed&&tune.shastaSharpHi>tune.shastaSharpLo&&A>1.f){
+                const double u=std::clamp((sharpShare[f]-tune.shastaSharpLo)/(tune.shastaSharpHi-tune.shastaSharpLo),0.0,1.0);
+                A=float(1.0+(double(A)-1.0)*u*u*(3.0-2.0*u));
+            }
         }
         const float ls=lutSigma(A);
         in.frames.push_back(fr.raw);
