@@ -1,9 +1,9 @@
-# P336 timing: s61Fine 2 (main) vs 0, GPU pass times
-[main]
+# P336: the app tuning after P336 (s61Fine 0) against 31117's (s61Fine 2)
+[s31117]
 rejPrior 1
 baseDemosaicAlias 1
 profile 1
-[fine0]
+[p336]
 rejPrior 1
 baseDemosaicAlias 1
 profile 1

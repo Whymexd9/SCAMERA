@@ -30,6 +30,10 @@ jobs:
           /tmp/scam-neural-worker --transport-check
           python3 -m venv /tmp/replay-py
           /tmp/replay-py/bin/pip install -q numpy==2.3.5 scipy==1.16.2 pillow==12.3.0
+      - name: Host checks of the ultrashort tile field and the still merge
+        run: |
+          g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_us_rows.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-us-rows
+          EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-us-rows
       - name: Replay
         run: |
           mkdir -p /tmp/bursts /tmp/truth
