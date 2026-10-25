@@ -1,0 +1,23 @@
+# P335 A/B: the first block is the reference (31123's tuning as the app sends it)
+[base]
+[new]
+rejPrior 1
+baseDemosaicAlias 1
+[f0 night]
+rejPrior 1
+baseDemosaicAlias 1
+s61Fine 0
+[f1 night]
+rejPrior 1
+baseDemosaicAlias 1
+s61Fine 1
+[day4 day]
+rejPrior 1
+baseDemosaicAlias 1
+s61DayTensorNoise 4
+s61DayGdNoise 2
+[day1 day]
+rejPrior 1
+baseDemosaicAlias 1
+s61DayTensorNoise 1
+s61DayGdNoise 1
