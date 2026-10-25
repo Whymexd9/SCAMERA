@@ -1,22 +1,21 @@
-# P335 A/B round 2: the first block is the reference (31123's tuning as the app sends it)
+# P335 A/B round 3: the first block is the reference (31123's tuning as the app sends it)
 [base]
 [rejp]
 rejPrior 1
 [alias]
 baseDemosaicAlias 1
-[new]
-rejPrior 1
-baseDemosaicAlias 1
-[cmh0]
-plainChromaHand 0
 [cmh35]
 plainChromaHand 0.35
-[f0 night]
-s61Fine 0
-[f1 night]
-s61Fine 1
+[sharpw]
+shastaSharpLo 0.75
+shastaSharpHi 0.97
+[nolong night]
+shastaEnable 0
 [tn05 night]
 s61TensorNoise 0.5
-[day1 day]
-s61DayTensorNoise 1
-s61DayGdNoise 1
+[all]
+rejPrior 1
+baseDemosaicAlias 1
+plainChromaHand 0.35
+shastaSharpLo 0.75
+shastaSharpHi 0.97
