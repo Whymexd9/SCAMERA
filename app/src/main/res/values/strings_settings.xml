@@ -401,10 +401,8 @@
     <string name="prefs_scam_hybrid_why_weight_center_summary">Layer brightness the fusion prefers. Higher: brighter picture; lower: darker. On shots with highlight frames (data above the ceiling) the centre is 0.15 above this value.</string>
     <string name="prefs_scam_hybrid_why_blend_smoothness_title">Layer blend smoothness</string>
     <string name="prefs_scam_hybrid_why_blend_smoothness_summary">How smoothly layers mix. Higher: softer, more natural; lower: stronger HDR effect.</string>
-    <string name="prefs_scam_hybrid_why_gf_radius_title">Tone layers: filter radius, px</string>
-    <string name="prefs_scam_hybrid_why_gf_radius_summary">Zone size of the fusion map, px. Higher: tone follows large areas; lower: follows small details.</string>
-    <string name="prefs_scam_hybrid_why_gf_eps_e3_title">Tone layers: regularisation, ×0.001</string>
-    <string name="prefs_scam_hybrid_why_gf_eps_e3_summary">Smoothing of the fusion map. Higher: smoother, more global; lower: more precise at edges.</string>
+    <string name="prefs_scam_hybrid_why_ef_coarse_title">Tone layers: pyramid scale, px</string>
+    <string name="prefs_scam_hybrid_why_ef_coarse_summary">Shorter side of the coarsest level of the fusion\'s Laplacian pyramid, px. Higher: tone adapts to smaller areas, flatter; lower: to larger areas, more overall contrast.</string>
     <string name="prefs_scam_hybrid_why_texture_title">Texture in the Why tone</string>
     <string name="prefs_scam_hybrid_why_texture_summary">Adds SCAMERA local contrast after the Why tone: textures look stronger.</string>
     <string name="prefs_scam_hybrid_why_artifacts_category_title">Artefacts and recovery</string>

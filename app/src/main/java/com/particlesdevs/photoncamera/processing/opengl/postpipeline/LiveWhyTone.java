@@ -290,9 +290,8 @@ public final class LiveWhyTone {
         smooth = WhyTone.value("blend_smoothness", 0.25f);
         gammaInv = 1f / WhyTone.gamma();
         toe = WhyTone.value("aces_toe", 0.05f);
-        int rad = Math.max(1, Math.round(WhyTone.value("gf_radius", 32f)));
-        radius = rad > 1 ? rad >> 1 : 1;
-        eps = Math.max(WhyTone.value("gf_eps_e3", 1f) * 0.001f, 1e-6f);
+        radius = WhyFusion.GF_RADIUS > 1 ? WhyFusion.GF_RADIUS >> 1 : 1;
+        eps = WhyFusion.GF_EPS;
         mono = WhyTone.fusionMono();
         inScale = (float) Math.pow(2.0, WhyTone.value("input_ev", 0f));
         macro = WhyTone.value("macro_contrast", 1.1f);
