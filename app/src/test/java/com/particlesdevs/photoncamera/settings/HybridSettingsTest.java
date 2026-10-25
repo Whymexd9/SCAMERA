@@ -251,10 +251,10 @@ public class HybridSettingsTest {
 
     @Test public void roundFiveWorkerKeysReachTheTuningFile() {
         // Unset: the worker keeps its own defaults (cell clip, outlier sites, SCAM Bento checks); the Sabre 6.1 kernel has an app
-        // default since P68 (always), written also when unset.
+        // default since P68 (always; P330: auto), written also when unset.
         String tuning=PreferenceKeys.hybridTuningText();
         for(String k:new String[]{"hotSigma","cellClip","bentoScam","s61MaxKey"})assertFalse(tuning,tuning.contains(k+" "));
-        assertTrue(tuning,tuning.contains("sabre61 1.0\n"));
+        assertTrue(tuning,tuning.contains("sabre61 2.0\n"));
         manager.set("default_scope","pref_scam_hybrid_sabre61","0");
         manager.set("default_scope","pref_scam_hybrid_s61_max_key","20");
         manager.set("default_scope","pref_scam_hybrid_hot_sigma","0");
@@ -264,12 +264,12 @@ public class HybridSettingsTest {
         assertTrue(tuning,tuning.contains("sabre61 0.0\n"));assertTrue(tuning,tuning.contains("s61MaxKey 20.0\n"));
         assertTrue(tuning,tuning.contains("hotSigma 0.0\n"));
         assertTrue(tuning,tuning.contains("cellClip 0\n"));assertTrue(tuning,tuning.contains("bentoScam 0\n"));
-        // XML default = the app default (setDefaultValues writes it into every user's preferences): «Всегда» = "1".
+        // XML default = the app default (setDefaultValues writes it into every user's preferences): «Авто» = "2" (P330).
         PreferenceScreen settings=inflate(),hybrid=settings.findPreference("scam_hybrid_screen");
         assertEquals("2",((ListPreference)hybrid.findPreference("pref_scam_hybrid_sabre61")).getEntryValues()[2].toString());
         prefs.edit().clear().commit();
         inflate();
-        assertEquals("1",prefs.getString("pref_scam_hybrid_sabre61","?"));
+        assertEquals("2",prefs.getString("pref_scam_hybrid_sabre61","?"));
         assertNotNull(settings.findPreference("pref_scam_hybrid_highlight_recovery"));
         assertNotNull(hybrid.findPreference("pref_scam_hybrid_hot_base_sigma"));
     }
@@ -277,6 +277,10 @@ public class HybridSettingsTest {
     /** P118: rows that act only with another setting off its default are greyed with the reason; «Карта силы» has no duplicate. */
     @Test public void conditionalRowsFollowTheirSetting() {
         Map<String,Object> s=new HashMap<>();
+        // P330: unset = auto, where the motion threshold and the previous kernel's rows act
+        for(String k:new String[]{"pref_scam_hybrid_s61_min_motion","pref_scam_hybrid_snr_scale"})
+            assertNull(k,new SettingsAvailability(s).reason(k));
+        s.put("pref_scam_hybrid_sabre61","1");
         for(String k:new String[]{"pref_scam_hybrid_s61_min_motion","pref_scam_hybrid_snr_scale","pref_scam_hybrid_shasta_sharpness",
                 "pref_scam_hybrid_shasta_max_ratio","pref_scam_hybrid_bento_trigger"})
             assertNotNull(k,new SettingsAvailability(s).reason(k));
@@ -614,7 +618,7 @@ public class HybridSettingsTest {
     @Test public void p68DefaultsOnEveryPhone() {
         // owner, 10 October 2026: XML defaults stored on the first opening, and the same values written to the worker when unset
         String tuning=PreferenceKeys.hybridTuningText();
-        for(String line:new String[]{"sabre61 1.0\n","mochi 2.0\n","bento 2.0\n","bentoFrames 3.0\n","shastaMotionMax 4.0\n","shastaForce 1\n"})
+        for(String line:new String[]{"sabre61 2.0\n","mochi 2.0\n","bento 2.0\n","bentoFrames 3.0\n","shastaMotionMax 4.0\n","shastaForce 1\n"})
             assertTrue(line+tuning,tuning.contains(line));
         assertEquals(2,PreferenceKeys.getHybridShastaMode());
         assertEquals(20,PreferenceKeys.getHybridZslFrames());
@@ -625,7 +629,7 @@ public class HybridSettingsTest {
         assertEquals("P203: 12 N", "12",prefs.getString("pref_scam_hybrid_fullres50_frames","?"));
         assertEquals("4",prefs.getString("pref_scam_hybrid_fullres200_frames","?"));
         assertEquals(12,PreferenceKeys.getFullRes50Frames());assertEquals(4,PreferenceKeys.getFullRes200Frames());
-        assertEquals("1",prefs.getString("pref_scam_hybrid_sabre61","?"));
+        assertEquals("2",prefs.getString("pref_scam_hybrid_sabre61","?"));
         assertEquals("2",prefs.getString("pref_scam_hybrid_mochi","?"));
         assertEquals("2",prefs.getString("pref_scam_hybrid_bento","?"));
         assertEquals("3",prefs.getString("pref_scam_hybrid_bento_frames","?"));
@@ -695,7 +699,9 @@ public class HybridSettingsTest {
 
     @Test public void p68FormerDefaultsMoveOnce() {
         // stored former XML defaults move once; a value chosen before or after stays
+        // (the P330 move 1 -> 2 marked as done: this rule alone; the chain is detailDefaultsMoveOnce)
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.DETAIL_DEFAULTS_REV,1)
                 .putInt(SettingsMigration.ZSL_FRAMES_REV,1).putString("pref_scam_hybrid_zsl_frames","30")
                 .putString("pref_scam_hybrid_sabre61","2").putString("pref_scam_hybrid_mochi","0").putString("pref_scam_hybrid_bento","1")
                 .putString("pref_scam_hybrid_bento_frames","2").putString("pref_scam_hybrid_shasta_frames","5").commit();
@@ -713,6 +719,7 @@ public class HybridSettingsTest {
         assertEquals("30",prefs.getString("pref_scam_hybrid_zsl_frames",""));assertEquals("2",prefs.getString("pref_scam_hybrid_sabre61",""));
         // chosen before (not a former default): stays, the marker is set anyway
         prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.DETAIL_DEFAULTS_REV,1)
                 .putInt(SettingsMigration.ZSL_FRAMES_REV,1).putString("pref_scam_hybrid_zsl_frames","25").putString("pref_scam_hybrid_sabre61","0").commit();
         assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
         assertEquals("25",prefs.getString("pref_scam_hybrid_zsl_frames",""));assertEquals("0",prefs.getString("pref_scam_hybrid_sabre61",""));
@@ -1017,6 +1024,37 @@ public class HybridSettingsTest {
         assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
         assertEquals("1",prefs.getString("pref_scam_hybrid_mosaic_tetra",""));
         assertEquals(7,prefs.getInt("pref_scam_hybrid_defaults_rev",0));
+    }
+
+    @Test public void detailDefaultsMoveOnce() {
+        // P330: a stored former default ("1" of P68, also the one P68 writes in the same run; rho_r 6) moves once to auto / 2
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.P68_DEFAULTS_REV,1).putString("pref_scam_hybrid_sabre61","1")
+                .putString("pref_scam_hybrid_dn_model_read","6.00").commit();
+        assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("2",prefs.getString("pref_scam_hybrid_sabre61",""));
+        assertEquals("2",prefs.getString("pref_scam_hybrid_dn_model_read",""));
+        assertEquals(1,prefs.getInt(SettingsMigration.DETAIL_DEFAULTS_REV,0));
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
+        // chosen after the move: stays
+        prefs.edit().putString("pref_scam_hybrid_sabre61","1").putString("pref_scam_hybrid_dn_model_read","6").commit();
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("1",prefs.getString("pref_scam_hybrid_sabre61",""));
+        assertEquals("6",prefs.getString("pref_scam_hybrid_dn_model_read",""));
+        // chosen before (not a former default): stays, the marker is set anyway
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.P68_DEFAULTS_REV,1).putString("pref_scam_hybrid_sabre61","0")
+                .putString("pref_scam_hybrid_dn_model_read","4").commit();
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("0",prefs.getString("pref_scam_hybrid_sabre61",""));
+        assertEquals("4",prefs.getString("pref_scam_hybrid_dn_model_read",""));
+        assertEquals(1,prefs.getInt(SettingsMigration.DETAIL_DEFAULTS_REV,0));
+        // a build before P68: its stored "2" (auto) goes through P68's "1" and ends at auto in one run
+        prefs.edit().clear().putString(PreferenceKeys.ROUTE_KEY,"hybrid").putInt("pref_scam_hybrid_defaults_rev",7)
+                .putInt(SettingsMigration.ZSL_FRAMES_REV,1).putString("pref_scam_hybrid_sabre61","2").commit();
+        assertTrue(SettingsMigration.migrateScamHybrid(prefs,false));
+        assertEquals("2",prefs.getString("pref_scam_hybrid_sabre61",""));
+        assertFalse(SettingsMigration.migrateScamHybrid(prefs,false));
     }
 
     @Test public void hybridZslFramesFormerDefaultMovesTo30Once() {

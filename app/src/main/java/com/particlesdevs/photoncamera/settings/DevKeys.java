@@ -225,7 +225,7 @@ public final class DevKeys {
         k.add(s(post, "effmap_real", true, Lang.t("Карта числа кадров для шумоподавления — реальная (выкл — старая)", "Frame-count map for the denoise: the real one (off: the old one)")));
         // P214d: ScamDenoise.lscTerm
         k.add(s(post, "denoise_lsc", true, Lang.t("Шумоподавление сильнее к углам кадра по коррекции виньетирования (g² карты затенения объектива)", "Denoise harder towards the frame corners after the vignetting correction (g² of the lens-shading map)")));
-        k.add(n(post, "denoise_lsc_max", "4", Lang.t("Шумоподавление к углам: предел множителя дисперсии (1–16; 4 — шум в углах считается вдвое сильнее)", "Corner denoise: cap of the variance multiplier (1-16; 4: the corner noise counts twice as strong)")));
+        k.add(n(post, "denoise_lsc_max", "2", Lang.t("Шумоподавление к углам: предел множителя дисперсии (1–16; 2 — шум в углах считается в 1,4 раза сильнее)", "Corner denoise: cap of the variance multiplier (1-16; 2: the corner noise counts 1.4 times as strong)")));
         // P214e: WhyLumaSharpen.smoothedSource (R1); P214z: not above 100 MP (r1Fits)
         k.add(s(post, "sharpen_r1", true, Lang.t("Резкость мозаичных снимков (ISZ Quad/Tetra, FULLRES до 100 Мп) по яркости, сглаженной 3×3: решётка мозаики почти не усиливается. Выкл — резкость как у снимков Bayer",
                 "Sharpening of mosaic shots (ISZ Quad / Tetra, FULLRES up to 100 MP) on the 3x3-smoothed luma: the mosaic lattice is hardly lifted. Off: the sharpening of Bayer shots")));

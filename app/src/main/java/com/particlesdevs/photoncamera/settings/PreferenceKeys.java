@@ -565,7 +565,10 @@ public class PreferenceKeys {
         HYBRID_DEFAULTS.put("fullres200_frames", 4f);
         // P68 (owner, 10 October 2026), every phone: Sabre 6.1 kernel always, Mochi always, Bento always with 3 ultrashort frames,
         // Shasta always with 3 frames. The worker keeps its own defaults (replays unchanged); the app writes these keys when unset.
-        HYBRID_DEFAULTS.put("sabre61", 1f);
+        // P330 (owner, 2026-10-25: «исправь чтобы не было мыла»): the Sabre 6.1 kernel auto (the worker's own default): "always"
+        // took it also for a still daylight burst, where it only adds noise and its blurred kernel of fine low-contrast texture
+        // (~0.9 px) replaced the round-4 kernel with dayKernelScale 0.5 (fine detail 0.77 -> 0.96 of WhyCam), which only auto runs.
+        HYBRID_DEFAULTS.put("sabre61", 2f);
         HYBRID_DEFAULTS.put("mochi", 2f);
         HYBRID_DEFAULTS.put("bento", 2f);
         HYBRID_DEFAULTS.put("bento_frames", 3f);

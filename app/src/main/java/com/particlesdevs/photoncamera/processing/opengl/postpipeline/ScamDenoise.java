@@ -326,8 +326,11 @@ public final class ScamDenoise extends Node {
      */
     static final float LSC_MARGIN = 1f + 1f / 512f;
 
-    /** P214d: default cap of the lens-shading variance multiplier (sigma at most x2): scam_dev "denoise_lsc_max". */
-    static final float LSC_CAP = 4f;
+    /**
+     * P214d: default cap of the lens-shading variance multiplier: scam_dev "denoise_lsc_max". P330: 2 (sigma at most x1.41; was 4):
+     * at f > 2 scamdn/lbf also cuts the revert to 0.71, so the corners lost about 30 % of a level that the centre puts back whole.
+     */
+    static final float LSC_CAP = 2f;
 
     /**
      * P214d: the luminance gain of one lens-shading site (r, g_even, g_odd, b): the mean of r, (g_even + g_odd) / 2 and b,
@@ -501,7 +504,9 @@ public final class ScamDenoise extends Node {
         final boolean darkFade = PreferenceKeys.hybridSwitch("dn_dark_fade", true);
         final float[] darkChroma = darkChroma(pipeline.signedRgb);
         final float rhoS = clamp(PreferenceKeys.hybridValue("dn_model_shot", 1.2f), 0.25f, 4f);
-        final float rhoR = clamp(PreferenceKeys.hybridValue("dn_model_read", 6f), 0.25f, 16f);
+        // P330: 2 (was 6). G is the noise measured on the merge itself, so rho_r = 6 filtered the shadows for 2.45 x their real sigma
+        // (strict threshold ~3.5-4 sigma, soft ~7-8): low-contrast shadow texture went with the noise
+        final float rhoR = clamp(PreferenceKeys.hybridValue("dn_model_read", 2f), 0.25f, 16f);
         final float snrFixed = clamp(PreferenceKeys.hybridValue("dn_snr", 0f), 0f, 200f);
         final float snrScale = clamp(PreferenceKeys.hybridValue("dn_snr_scale", 1f), 0.25f, 8f);
         final String mapMode = PreferenceKeys.hybridString("dn_strength_map", "auto");
