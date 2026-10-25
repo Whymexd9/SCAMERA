@@ -44,6 +44,8 @@ interface ScamTransport {
     default String burstTuning() { return ""; }
     /** P277: whether the worker may keep this burst (keep_burst, the lab); false for a burst replayed from its file. */
     default boolean keepable() { return hybrid(); }
+    /** Lab stage view: the worker writes the merge's stage maps (job marker stage-dump, ScamNeuralClient.lastStages). */
+    default boolean stages() { return false; }
     void write(FileChannel out) throws IOException;
     void write(File file) throws IOException;
 }

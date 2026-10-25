@@ -7251,6 +7251,16 @@ Owner, same day: «сделай гпу выравнивание и дай воз
 - Tests: CI list, check_ui_language, check_settings_model, highlight checks (neutral / recovery / landing / one channel off /
   why highlights), check_why_sharpen, check_hybrid_raw_ca on the OPPO.
 
+### P338 - lab merge stage view (owner, 2026-10-25: «Дай возможность в лаборатории просмотра полностью всех этапов склейки в том числе реджект карты», «прежде чем добавлять изучи что нового в последних апк»): DONE in code on top of 1db9cc4f (P335-P337 studied: rejPrior / clipReject change the rejection values the view shows, the buffers it reads are unchanged), not device-tested.
+- Lab bursts set the job marker stage-dump (ScamTransport.stages); the worker sets hybridStageDir and HybridGpu::merge reads back,
+  per strip after kHybDilate, slot 7 (acceptance before the spread), slot 8 (weight after the spread and Bento, over A) and slot 16
+  (F6 offset), every step-th cell (<= 768 a side). hybridWriteStages writes <job>/stages.bin: base and merged previews (grey-world
+  gains of the base), Bento / blend mask, mean acceptance of the N donors, per donor raw / robust / flow. The client reads it before
+  the folder goes (ScamNeuralClient.lastStages -> ScamLabRun.Side.stages); ScamLabFragment mode 4 «Этапы склейки».
+- The merge result is bit-exact with and without the dump (tools/check_hybrid_stages.cpp, CI, Mesa surfaceless; also passes with
+  the app's rejPrior / clipReject / rimLift / s61NightScale 0.8). The split mosaic merge keeps the last sub-merge's maps only.
+- Open: the root worker's stages.bin read by the app on the phone (SELinux; the file is chmod 0644, like scam-diag-*.pfm).
+
 ### P339 - processing speed towards ArkCam (owner, 2026-10-25: «займись ускорением обработки чтобы скорость была на уровне ArkCam»): DONE in part, replayed on the OPPO, not shot on a phone.
 - ArkCam saves its JPEG 1-3 s after the shot (file times in the owner's zips against the EXIF capture time); ours 8-11 s in the log
   of 31148, of which 3.3-3.8 s was the keep-burst write in front of the merge («mapped» 3343-3784 ms).

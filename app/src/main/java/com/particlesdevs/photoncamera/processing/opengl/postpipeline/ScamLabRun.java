@@ -260,16 +260,21 @@ public final class ScamLabRun {
         return m.toString();
     }
 
-    /** One side's picture: the photo, the merge's frame map (photo-oriented, small; null without one) and its time. */
+    /**
+     * One side's picture: the photo, the merge's frame map (photo-oriented, small; null without one), its stage maps (sensor
+     * cells, {@link ScamMergeStages#orient} the photo's turn; null: a burst of one frame or the worker wrote none) and its time.
+     */
     public static final class Side {
         public final Bitmap photo;
         @Nullable public final Bitmap frameMap;
+        @Nullable public final ScamMergeStages stages;
         public final long mergeMs, postMs;
         final String tuning;
 
-        Side(Bitmap photo, Bitmap frameMap, long mergeMs, long postMs, String tuning) {
+        Side(Bitmap photo, Bitmap frameMap, ScamMergeStages stages, long mergeMs, long postMs, String tuning) {
             this.photo = photo;
             this.frameMap = frameMap;
+            this.stages = stages;
             this.mergeMs = mergeMs;
             this.postMs = postMs;
             this.tuning = tuning;
@@ -389,10 +394,14 @@ public final class ScamLabRun {
             // source, a job marker beside it (ScamNeuralClient)
             final String tuning = effective(burst.settingsTuning() + burst.burstTuning()) + " creSource " + PreferenceKeys.getScamCreSource();
             ScamNeuralClient.carryReport = null;
+            ScamNeuralClient.lastStages = null;
             final long t0 = System.nanoTime();
             rgb = ScamNeuralClient.processScamBurst(context, burst);
             final long t1 = System.nanoTime();
             final Bitmap map = frameMap(ScamHybridBurst.lastEffectiveFrames, burst.outputWidth(), burst.outputHeight(), shot.orient);
+            final ScamMergeStages stages = ScamNeuralClient.lastStages;
+            ScamNeuralClient.lastStages = null;
+            if (stages != null) stages.orient = shot.orient;
             progress.stage(Lang.t("Обработка " + name + "…", "Processing " + name + "…"));
             p = parameters(shot, crop, burst);
             ScamHybridBurst.lastNormals = shot.meta.optInt("normals", 1);
@@ -412,7 +421,7 @@ public final class ScamLabRun {
             final long t2 = System.nanoTime();
             final Bitmap screen = ScamLab.scaled(photo, SCREEN_SIDE);
             if (screen != photo) photo.recycle();
-            return new Side(screen, map, (t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000, tuning);
+            return new Side(screen, map, stages, (t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000, tuning);
         } finally {
             PreferenceValue.overlay(null, null);
             PreferenceKeys.labDevOverlay(null);
@@ -421,6 +430,7 @@ public final class ScamLabRun {
             ScamRgb.dropClipFlags();
             ScamHybridBurst.lastEffectiveFrames = null;
             ScamHybridBurst.lastMergedDng = null;
+            ScamNeuralClient.lastStages = null;
         }
     }
 

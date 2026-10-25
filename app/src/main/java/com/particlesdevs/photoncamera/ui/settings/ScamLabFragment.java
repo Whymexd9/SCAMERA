@@ -12,6 +12,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -37,6 +38,7 @@ import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLabOrient;
 import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLabRun;
+import com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamMergeStages;
 import com.particlesdevs.photoncamera.processing.color.FilmSim;
 import com.particlesdevs.photoncamera.processing.color.LensFilters;
 import com.particlesdevs.photoncamera.settings.DevKeys;
@@ -132,6 +134,9 @@ public class ScamLabFragment extends ModuleConceptFragment {
     private int showMode;
     /** P307: the side the single view shows (0 = A, 1 = B). */
     private int showSide;
+    /** The stage view's map (ScamMergeStages kind) and donor frame (-1: the first). */
+    private String showStage = ScamMergeStages.ROBUST;
+    private int showFrame = -1;
     private final Handler main = new Handler(Looper.getMainLooper());
     /** P294: a render is running; a slider is under a finger; a stage redraw waits for its release. */
     private boolean rendering, dragging, redrawWaiting;
@@ -1386,8 +1391,12 @@ public class ScamLabFragment extends ModuleConceptFragment {
         LinearLayout modes = row();
         // P307 (owner, 2026-10-20: «дай возможность переключать режим на одиночный без сравнения»): «Одиночный» shows one side over
         // the whole frame (A or B below the modes), no split
+        // «Этапы склейки» (owner, 2026-10-25: «Дай возможность в лаборатории просмотра полностью всех этапов склейки в том числе
+        // реджект карты»): the worker's stage maps of each side (ScamMergeStages), one stage and donor at a time, A against B
         String[] names = {Lang.t(getContext(), "До / после", "Before / after"), Lang.t(getContext(), "Разница ×4", "Difference ×4"),
-                Lang.t(getContext(), "Карта кадров", "Frame map"), Lang.t(getContext(), "Одиночный", "Single")};
+                Lang.t(getContext(), "Карта кадров", "Frame map"), Lang.t(getContext(), "Одиночный", "Single"),
+                Lang.t(getContext(), "Этапы склейки", "Merge stages")};
+        final LinearLayout modes2 = row();
         final TextView[] buttons = new TextView[names.length];
         final TextView explain = text("", 12, MUTED);
         explain.setLineSpacing(dp(3), 1);
@@ -1398,9 +1407,16 @@ public class ScamLabFragment extends ModuleConceptFragment {
             buttons[i] = button(names[i], showMode == i, () -> { showMode = m; apply[0].run(); });
             buttons[i].setTag("lab_mode_" + i);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
-            if (i < names.length - 1) lp.rightMargin = dp(6);
-            modes.addView(buttons[i], lp);
+            if (i != 2 && i < names.length - 1) lp.rightMargin = dp(6);
+            (i < 3 ? modes : modes2).addView(buttons[i], lp);
         }
+        final LinearLayout stageKinds = row(), stageFrames = row();
+        final HorizontalScrollView kindScroll = new HorizontalScrollView(requireContext()), frameScroll = new HorizontalScrollView(requireContext());
+        kindScroll.setHorizontalScrollBarEnabled(false);
+        frameScroll.setHorizontalScrollBarEnabled(false);
+        kindScroll.addView(stageKinds);
+        frameScroll.addView(stageFrames);
+        final java.util.Map<String, Bitmap> stageBitmaps = new java.util.HashMap<>();
         final LinearLayout sides = row();
         final TextView[] sideButtons = new TextView[2];
         for (int i = 0; i < 2; i++) {
@@ -1421,7 +1437,11 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 sideButtons[i].setBackground(shape(showSide == i ? accent : BG, showSide == i ? 0 : 0xFF626974, 10));
             }
             sides.setVisibility(showMode == 3 ? View.VISIBLE : View.GONE);
-            if (showMode == 3) {
+            kindScroll.setVisibility(showMode == 4 ? View.VISIBLE : View.GONE);
+            frameScroll.setVisibility(View.GONE);
+            if (showMode == 4) {
+                stages(r, compare, explain, stageKinds, stageFrames, frameScroll, stageBitmaps, apply[0]);
+            } else if (showMode == 3) {
                 compare.setSingle(showSide == 0 ? r.a.photo : r.b.photo, showSide == 0 ? aText : bText);
                 explain.setText(Lang.t(getContext(), "Одна сторона на весь кадр, без сравнения. Двойное касание — увеличение ×3, удержание — лупа.",
                         "One side over the whole frame, no comparison. Double tap zooms ×3, hold for a magnifier."));
@@ -1441,8 +1461,118 @@ public class ScamLabFragment extends ModuleConceptFragment {
         };
         apply[0].run();
         body.addView(modes, space(-1, -2, 10));
+        body.addView(modes2, space(-1, -2, 6));
         body.addView(sides, space(-1, -2, 8));
+        body.addView(kindScroll, space(-1, -2, 8));
+        body.addView(frameScroll, space(-1, -2, 6));
         body.addView(explain, space(-1, -2, 8));
+    }
+
+    /** The stage view: the kinds either side has, the donors of a per-donor kind, the chosen map of A against B. */
+    private void stages(ScamLabRun.Result r, LabCompareView compare, TextView explain, LinearLayout kinds, LinearLayout frames,
+                        View frameScroll, java.util.Map<String, Bitmap> cache, Runnable redraw) {
+        final ScamMergeStages a = r.a.stages, b = r.b.stages;
+        final java.util.List<String> present = new java.util.ArrayList<>();
+        for (ScamMergeStages s : new ScamMergeStages[]{a, b}) if (s != null) for (String k : s.kinds()) if (!present.contains(k)) present.add(k);
+        kinds.removeAllViews();
+        frames.removeAllViews();
+        if (present.isEmpty()) {
+            explain.setText(Lang.t(getContext(), "Этапов склейки нет: в серии один кадр или склейка не дошла до отбраковки.",
+                    "No merge stages: the burst has one frame or the merge did not reach the rejection."));
+            compare.setPair(r.a.photo, r.b.photo, "A", "B");
+            return;
+        }
+        // the merge order: base, rejection, weight, F6, Bento, accepted, merged
+        java.util.Collections.sort(present, (x, y) -> Integer.compare(stageRank(x), stageRank(y)));
+        if (!present.contains(showStage)) showStage = present.contains(ScamMergeStages.ROBUST) ? ScamMergeStages.ROBUST : present.get(0);
+        for (String k : present) {
+            final TextView t = button(stageTitle(k), k.equals(showStage), () -> { showStage = k; redraw.run(); });
+            t.setTag("lab_stage_" + k);
+            t.setTextSize(13);
+            final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+            lp.rightMargin = dp(6);
+            kinds.addView(t, lp);
+        }
+        int frame = -1;
+        if (ScamMergeStages.perDonor(showStage)) {
+            final java.util.List<Integer> list = new java.util.ArrayList<>();
+            final java.util.Map<Integer, Integer> roles = new java.util.HashMap<>();
+            for (ScamMergeStages s : new ScamMergeStages[]{a, b}) if (s != null) for (ScamMergeStages.Map m : s.maps)
+                if (m.name.equals(showStage) && m.frame >= 0 && !list.contains(m.frame)) { list.add(m.frame); roles.put(m.frame, m.role); }
+            if (!list.contains(showFrame) && !list.isEmpty()) showFrame = list.get(0);
+            frame = showFrame;
+            for (int f : list) {
+                final int role = roles.get(f);
+                final String suffix = role == 5 ? Lang.t(getContext(), " · УК", " · US") : role == 3 ? Lang.t(getContext(), " · Д", " · L") : "";
+                final TextView t = button(Lang.t(getContext(), "Кадр ", "Frame ") + f + suffix, f == showFrame, () -> { showFrame = f; redraw.run(); });
+                t.setTag("lab_stage_frame_" + f);
+                t.setTextSize(13);
+                final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+                lp.rightMargin = dp(6);
+                frames.addView(t, lp);
+            }
+            frameScroll.setVisibility(list.isEmpty() ? View.GONE : View.VISIBLE);
+        }
+        final Bitmap pa = stageBitmap(a, "a", showStage, frame, cache), pb = stageBitmap(b, "b", showStage, frame, cache);
+        final String title = stageTitle(showStage) + (frame >= 0 ? Lang.t(getContext(), ", кадр ", ", frame ") + frame : "");
+        if (pa != null && pb != null) compare.setPair(pa, pb, "A", "B");
+        else if (pa != null || pb != null) compare.setSingle(pa != null ? pa : pb, (pa != null ? "A: " : "B: ") + title);
+        explain.setText(stageExplain(showStage) + (pa == null || pb == null
+                ? Lang.t(getContext(), " Этот этап есть только у одной стороны.", " Only one side has this stage.") : ""));
+    }
+
+    private static int stageRank(String kind) {
+        final String[] order = {ScamMergeStages.BASE, ScamMergeStages.RAW, ScamMergeStages.ROBUST, ScamMergeStages.FLOW,
+                ScamMergeStages.BENTO, ScamMergeStages.BLEND, ScamMergeStages.ACCEPTED, ScamMergeStages.MERGED};
+        for (int i = 0; i < order.length; i++) if (order[i].equals(kind)) return i;
+        return order.length;
+    }
+
+    @Nullable
+    private static Bitmap stageBitmap(@Nullable ScamMergeStages s, String side, String kind, int frame, java.util.Map<String, Bitmap> cache) {
+        if (s == null) return null;
+        final ScamMergeStages.Map m = s.find(kind, frame);
+        if (m == null) return null;
+        final String id = side + "|" + kind + "|" + m.frame;
+        Bitmap bmp = cache.get(id);
+        if (bmp == null) cache.put(id, bmp = ScamMergeStages.bitmap(m, s.orient));
+        return bmp;
+    }
+
+    private String stageTitle(String kind) {
+        switch (kind) {
+            case ScamMergeStages.BASE: return Lang.t(getContext(), "База", "Base");
+            case ScamMergeStages.RAW: return Lang.t(getContext(), "Реджект", "Rejection");
+            case ScamMergeStages.ROBUST: return Lang.t(getContext(), "Вес кадра", "Frame weight");
+            case ScamMergeStages.FLOW: return Lang.t(getContext(), "Сдвиг F6", "F6 offset");
+            case ScamMergeStages.BENTO: return Lang.t(getContext(), "Маска Bento", "Bento mask");
+            case ScamMergeStages.BLEND: return Lang.t(getContext(), "Смешивание УК", "US blend");
+            case ScamMergeStages.ACCEPTED: return Lang.t(getContext(), "Принято", "Accepted");
+            case ScamMergeStages.MERGED: return Lang.t(getContext(), "Склейка", "Merged");
+            default: return kind;
+        }
+    }
+
+    private String stageExplain(String kind) {
+        switch (kind) {
+            case ScamMergeStages.BASE: return Lang.t(getContext(), "Опорный кадр серии до склейки: один цвет на клетку 2×2, баланс по серому.",
+                    "The burst's reference frame before the merge: one colour per 2×2 cell, grey-world balance.");
+            case ScamMergeStages.RAW: return Lang.t(getContext(), "Карта реджекта до расширения: насколько клетка кадра совпала с базой. Жёлтый — принята, тёмно-синий — отклонена (движение, ошибка выравнивания, пересвет длинного кадра).",
+                    "Rejection map before the spread: how well the frame's cell matched the base. Yellow accepted, dark blue rejected (motion, misalignment, a clipped longer frame).");
+            case ScamMergeStages.ROBUST: return Lang.t(getContext(), "Итоговый вес кадра в склейке: отказ растянут на клетки вокруг (5×5), учтены маска Bento и вес кадра. Жёлтый — полный вес, тёмно-синий — кадр здесь не вошёл.",
+                    "The frame's final weight in the merge: rejection spread over the 5×5 cells around, Bento and the frame weight applied. Yellow full weight, dark blue not merged here.");
+            case ScamMergeStages.FLOW: return Lang.t(getContext(), "Локальное доравнивание F6 поверх гомографии, |сдвиг| в RAW-пикселях: тёмно-синий — 0, жёлтый — 8 и больше.",
+                    "F6 local alignment on top of the homography, |offset| in RAW pixels: dark blue 0, yellow 8 and more.");
+            case ScamMergeStages.BENTO: return Lang.t(getContext(), "Маска Bento: где склейка берёт ультракороткие кадры вместо обычных (жёлтый — пересвет, берутся они).",
+                    "Bento mask: where the merge takes the ultrashort frames instead of the normal ones (yellow: clipped, they are taken).");
+            case ScamMergeStages.BLEND: return Lang.t(getContext(), "Вес смешивания ультракоротких кадров после склейки (P310): жёлтый — берутся они.",
+                    "The ultrashort frames' blend weight after the merge (P310): yellow, they are taken.");
+            case ScamMergeStages.ACCEPTED: return Lang.t(getContext(), "Средний вес обычных кадров в каждой клетке: сколько серии получила база. Тёмно-синий — почти только база (шум выше).",
+                    "Mean weight of the normal frames per cell: how much of the burst the base got. Dark blue: almost the base alone (more noise).");
+            case ScamMergeStages.MERGED: return Lang.t(getContext(), "Результат склейки до постобработки, то же превью, что у базы: сравните шум и детали.",
+                    "The merge before the post pipeline, the same preview as the base: compare noise and detail.");
+            default: return "";
+        }
     }
 
     /** A setting's A and B, each with its own control: a change renders that side again. */

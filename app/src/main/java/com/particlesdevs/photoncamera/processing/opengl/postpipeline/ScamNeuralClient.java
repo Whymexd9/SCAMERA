@@ -343,6 +343,7 @@ public final class ScamNeuralClient {
                 // SCAM Hybrid merge (scam-hybrid.h): no neural model, any GPU. The worker reads the marker
                 // and the tuning lines written from the SCAM HDR settings.
                 if(!new File(dir,"hybrid-merge").createNewFile())throw new IOException(Lang.t("Не удалось создать маркер склейки SHDR","Could not create the SHDR merge marker"));
+                if(scamBurst.stages()&&!new File(dir,"stage-dump").createNewFile())log.accept("CLIENT: stage-dump marker not written");
                 // P188: scam_dev "keep_burst 1" - the worker keeps the shot's RAW burst for an offline replay. P191: one file per shot
                 // in Download/SCAMERA (scam_burst-<time>.bin, next to the debug log), not the package's external files: a file
                 // manager on Android 16 no longer opens Android/data (owner, 2026-10-17)
@@ -612,10 +613,17 @@ public final class ScamNeuralClient {
                 lastRowProfiles=java.util.Collections.unmodifiableList(new java.util.ArrayList<>(rowProfiles));
             }
             ScamDiagnostics.nativeFiles(dir,report.toString());
+            if(scamBurst.stages()){ // lab stage view: read before the folder goes
+                final File stages=new File(dir,"stages.bin");
+                try{lastStages=stages.isFile()?ScamMergeStages.read(stages):null;}
+                catch(IOException se){lastStages=null;log.accept("CLIENT: stage maps not read: "+se.getMessage());}
+            }
             deleteTreeLater(dir);
         }
     }
 
+    /** Lab stage view: the stage maps of the last job that asked for them (ScamTransport.stages); the lab takes and clears it. */
+    public static volatile ScamMergeStages lastStages;
     /** P27: the report of the last merge job (ScamHybridBurst reads how the worker ended to pick its fallback tier). */
     public static volatile String lastJobReport;
     /** P212d: the row-profile lines of the last merge job (capture.RowFlicker votes on the lamp flicker from them). */

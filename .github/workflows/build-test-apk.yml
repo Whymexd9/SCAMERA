@@ -163,6 +163,8 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-chroma-overlap quick
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_still.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-still
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-still
+          g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_stages.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-stages
+          LIBGL_ALWAYS_SOFTWARE=1 EGL_PLATFORM=surfaceless ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-stages
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_series.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-series
           ASAN_OPTIONS=detect_leaks=0 /tmp/check-hybrid-series
           g++ -pthread -std=c++17 -O1 -fsanitize=address,undefined tools/check_hybrid_us_rows.cpp -ldl -lEGL -lGLESv2 -o /tmp/check-hybrid-us-rows

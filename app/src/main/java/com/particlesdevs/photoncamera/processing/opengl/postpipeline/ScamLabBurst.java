@@ -77,6 +77,7 @@ final class ScamLabBurst implements ScamTransport {
     @Override public boolean rgbHalfTransport() { return half; }
     @Override public String burstTuning() { return burstTuning; }
     @Override public boolean keepable() { return false; }
+    @Override public boolean stages() { return true; }
 
     /** The whole frame: the file itself (ScamLab cleared its DNG and diagnostics flags), mapped by the worker. */
     @Override public android.os.ParcelFileDescriptor sharedBurst() {

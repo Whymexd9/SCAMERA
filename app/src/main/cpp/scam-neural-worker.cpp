@@ -222,6 +222,8 @@ int main(int argc,char** argv) {
                 if(std::getenv("SCAM_NO_EFFMAP"))hin.noEffMap=true;
                 noEffMap=hin.noEffMap;
                 if(noEffMap)report("HYBRID EFFECTIVE MAP: not made (header flag 16: the app reads none at this size)");
+                // Lab stage view: the job marker `stage-dump` (ScamNeuralClient, a lab render) -> <job>/stages.bin
+                scam::hybridStageDir()=access((std::string(argv[2])+"/stage-dump").c_str(),F_OK)==0?argv[2]:"";
                 worker_crash::mark("hybrid merge");
                 scam_progress::pass("prepare"); // P220: the merge's front end (gain / noise checks, mosaic) until its own stages
                 result=scam::hybridReconstruct(hin,tuning,alignment,report,&mergedDng,noEffMap?nullptr:&effMap,nullptr,wantClipFlags?&clipFlags:nullptr);

@@ -3901,6 +3901,10 @@ void main(){
 // its own driver binary runs the identical code.
 inline std::string& hybridProgramCacheDir(){static std::string dir;return dir;}
 
+// Lab stage view: directory the merge writes its stage maps to (empty = off), set by the worker for a job with a "stage-dump"
+// marker. Only the lab asks for it: every strip then reads its rejection buffers back (slower merge, same result).
+inline std::string& hybridStageDir(){static std::string dir;return dir;}
+
 // P213c: a consumer of the merged rows while the GPU merges the next strips (the CPU chroma median of the native mosaic merge,
 // MosaicChromaOverlap). hybridReconstruct calls begin() before every merge attempt (output width x height, the shift to the RGGB
 // origin the rows get before the consumer reads them; a retry starts over), rows() on the merge thread after every strip's
@@ -4543,6 +4547,10 @@ public:
         bool large=false;
     };
     long fixedOutliers=0,baseOutliers=0;                // sites flagged by the last merge
+    // Lab stage view (hybridStageDir() set): per donor in merge order, every step-th cell of the last merge, 0..255:
+    // raw = the donor's acceptance before the spread (kHybReject), robust = its weight after the spread and Bento (kHybDilate,
+    // over its frame weight A), flow = |F6 offset| (RAW px x 32, laCell). Empty without a stage directory or a donor.
+    struct StageMaps{int w=0,h=0,step=1,donors=0;bool la=false;std::vector<uint8_t> raw,robust,flow;} stage;
     // P214k: the plausibility cap of the last merge (0 / 0 without it): fixed-pattern sites it cleared and strips over the cap
     // (plain and native sites), the strips of the merge and the cap it ran with (sites per MP, 0 = off)
     long fixedCapped=0,natFixedCapped=0;int capStrips=0,natCapStrips=0,stripCount=0;float capPerMP=0.f;
@@ -5156,6 +5164,13 @@ public:
             +std::to_string(stripCells)+" cells (readback "+hybridMB(uint64_t(2)*stripCells*g*ow*12)+" MB), dispatch rows x"+std::to_string(chunkOf(64))
             +"/64, storage block "+hybridMB(blockLimit)+" MB, strip memory budget "+(gpuBudget?hybridMB(gpuBudget)+" MB":std::string("unknown")));
         const int donors=std::max(1,frames-1);
+        stage=StageMaps{};
+        if(!hybridStageDir().empty()&&frames>1){
+            stage.step=std::max(1,(std::max(w2,h2)+767)/768);
+            stage.w=(w2+stage.step-1)/stage.step;stage.h=(h2+stage.step-1)/stage.step;stage.donors=donors;stage.la=localAlign;
+            const size_t n=size_t(donors)*stage.w*stage.h;
+            stage.raw.assign(n,0);stage.robust.assign(n,0);if(stage.la)stage.flow.assign(n,0);
+        }
         std::vector<GLuint> offsets(frames),cellOff(frames);std::vector<GLint> row0(frames),rows(frames),crow0(frames),crows(frames),cellGeom(size_t(frames)*4);
         std::vector<float> maskStrip;std::vector<GLuint> flagStrip;
         // Clipped samples per frame and 32-row block (CPU, once): without outlier tests a strip whose frames hold no clipped
@@ -5571,6 +5586,30 @@ public:
                 glUniform1i(loc(dilateProgram,"cy0"),cy0);glUniform1i(loc(dilateProgram,"cy1"),cy1);
                 dispatchRows(dilateProgram,w2,cy1-cy0,frames-1,chunkOf(256),4);
                 check("rejection");
+                if(!stage.raw.empty()){ // lab stage view: the strip's maps before the merge reuses the buffers
+                    const int nr=cy1-cy0,nry=ry1-ry0;
+                    std::vector<float> rob(size_t(donors)*nr*w2),raw(size_t(donors)*nry*w2);
+                    get(8,rob.data(),rob.size()*4);get(7,raw.data(),raw.size()*4);
+                    std::vector<uint32_t> cell;if(stage.la){cell.resize(size_t(donors)*nr*w2);get(16,cell.data(),cell.size()*4);}
+                    auto half=[](uint32_t b){ // IEEE half -> float (packHalf2x16)
+                        const uint32_t e=(b>>10)&31u,m=b&1023u;const float v=e?std::ldexp(float(m|1024u),int(e)-25):std::ldexp(float(m),-24);
+                        return (b&32768u)?-v:v;
+                    };
+                    auto u8=[](float v){return uint8_t(std::clamp(v,0.f,1.f)*255.f+0.5f);};
+                    for(int cy=cy0+(stage.step-cy0%stage.step)%stage.step;cy<cy1;cy+=stage.step)for(int f=0;f<donors;++f){
+                        const float A=in.weight[size_t(f)+1]>0.f?in.weight[size_t(f)+1]:1.f;
+                        const size_t o=(size_t(f)*stage.h+cy/stage.step)*stage.w;
+                        for(int sx=0;sx<stage.w;++sx){
+                            const int cx=sx*stage.step;
+                            stage.robust[o+sx]=u8(rob[(size_t(f)*nr+(cy-cy0))*w2+cx]/A);
+                            stage.raw[o+sx]=u8(raw[(size_t(f)*nry+(cy-ry0))*w2+cx]);
+                            if(stage.la){
+                                const uint32_t p=cell[(size_t(f)*nr+(cy-cy0))*w2+cx];
+                                stage.flow[o+sx]=u8(std::hypot(half(p&65535u),half(p>>16))*32.f/255.f);
+                            }
+                        }
+                    }
+                }
             }
             const int rows2=(y1-y0)*g,oy0=y0*g; // output-grid rows of this strip
             reserveBank(3,size_t(rows2)*ow*3*4,bank);reserveBank(4,size_t(rows2)*ow*4,bank);
@@ -7986,6 +8025,80 @@ inline std::vector<float> hybridBlendWeight(const HybridInput& input,const Hybri
     return a;
 }
 
+// Lab stage view: the stage maps of the last merge to <hybridStageDir()>/stages.bin. Records, little-endian int32: 'STG1',
+// name length, name, burst frame (-1 = none), role, width, height, channels, then width x height x channels bytes. Previews:
+// the base (one RGB per cell, the base's grey-world gains) and the merge (the same gains, the base's level), sRGB-like gamma.
+inline void hybridWriteStages(const HybridGpu& gpu,const HybridGpu::Frames& in,const std::vector<int>& index,
+                              const std::vector<float>& out,int outW,int outH,int grid,const std::function<void(const std::string&)>& report){
+    const auto& st=gpu.stage;
+    if(hybridStageDir().empty()||st.raw.empty())return;
+    const std::string path=hybridStageDir()+"/stages.bin",tmp=path+".tmp";
+    std::ofstream f(tmp,std::ios::binary);
+    auto record=[&](const char* name,int frame,int role,int ch,const uint8_t* data){
+        const int32_t magic=0x31475453,n=int32_t(std::strlen(name));
+        const int32_t hd[5]={frame,role,st.w,st.h,ch};
+        f.write(reinterpret_cast<const char*>(&magic),4);f.write(reinterpret_cast<const char*>(&n),4);f.write(name,n);
+        f.write(reinterpret_cast<const char*>(hd),sizeof(hd));f.write(reinterpret_cast<const char*>(data),std::streamsize(size_t(st.w)*st.h*ch));
+    };
+    const size_t plane=size_t(st.w)*st.h;
+    const int w=in.w,w2=in.w/2,h2=in.h/2;
+    // base cell colours (R, mean G, B) in normalised RAW units
+    std::vector<float> base(plane*3,0.f);
+    for(int sy=0;sy<st.h;++sy)for(int sx=0;sx<st.w;++sx){
+        const int cx=std::min(sx*st.step,w2-1),cy=std::min(sy*st.step,h2-1);
+        float c[3]{},k[3]{};
+        for(int p=0;p<4;++p){
+            const int x=2*cx+(p&1),y=2*cy+(p>>1),ph=((y&1)<<1)|(x&1),col=std::clamp(in.phaseColor[ph],0,2);
+            c[col]+=(float(in.frames[0][size_t(y)*w+x])-in.black[ph])*in.inv[ph];k[col]+=1.f;
+        }
+        for(int j=0;j<3;++j)base[(size_t(sy)*st.w+sx)*3+j]=k[j]>0.f?std::max(c[j]/k[j],0.f):0.f;
+    }
+    double mean[3]{};for(size_t i=0;i<plane;++i)for(int j=0;j<3;++j)mean[j]+=base[i*3+j];
+    float gain[3];for(int j=0;j<3;++j)gain[j]=float(mean[1]/std::max(mean[j],1e-9));
+    auto preview=[&](const char* name,const std::vector<float>& rgb){
+        std::vector<float> lum(plane);
+        for(size_t i=0;i<plane;++i)lum[i]=std::max({rgb[i*3]*gain[0],rgb[i*3+1]*gain[1],rgb[i*3+2]*gain[2]});
+        std::vector<float> sorted=lum;std::nth_element(sorted.begin(),sorted.begin()+ptrdiff_t(plane*99/100),sorted.end());
+        const float scale=0.9f/std::max(sorted[plane*99/100],1e-6f);
+        std::vector<uint8_t> px(plane*3);
+        for(size_t i=0;i<plane;++i)for(int j=0;j<3;++j)
+            px[i*3+j]=uint8_t(std::pow(std::clamp(rgb[i*3+j]*gain[j]*scale,0.f,1.f),1.f/2.2f)*255.f+0.5f);
+        record(name,-1,0,3,px.data());
+    };
+    preview("base",base);
+    if(out.size()>=size_t(outW)*outH*3){
+        std::vector<float> merged(plane*3);
+        for(int sy=0;sy<st.h;++sy)for(int sx=0;sx<st.w;++sx){
+            const int x=std::min((2*sx*st.step+1)*grid,outW-1),y=std::min((2*sy*st.step+1)*grid,outH-1);
+            for(int j=0;j<3;++j)merged[(size_t(sy)*st.w+sx)*3+j]=std::max(out[(size_t(y)*outW+x)*3+j],0.f);
+        }
+        preview("merged",merged);
+    }
+    if(in.mask&&in.mask->size()==size_t(w2)*h2){
+        std::vector<uint8_t> m(plane);
+        for(int sy=0;sy<st.h;++sy)for(int sx=0;sx<st.w;++sx)
+            m[size_t(sy)*st.w+sx]=uint8_t(std::clamp((*in.mask)[size_t(std::min(sy*st.step,h2-1))*w2+std::min(sx*st.step,w2-1)],0.f,1.f)*255.f+0.5f);
+        record(in.blend?"blend":"bento",-1,0,1,m.data());
+    }
+    // the mean weight of the normal donors (what the base gets from the burst at each cell)
+    std::vector<float> acc(plane,0.f);int normals=0;
+    for(int d=0;d<st.donors;++d)if(in.role[size_t(d)+1]==kRoleNormal){++normals;for(size_t i=0;i<plane;++i)acc[i]+=st.robust[size_t(d)*plane+i];}
+    if(normals){
+        std::vector<uint8_t> a(plane);for(size_t i=0;i<plane;++i)a[i]=uint8_t(acc[i]/normals+0.5f);
+        record("accepted",-1,0,1,a.data());
+    }
+    for(int d=0;d<st.donors;++d){
+        const int frame=size_t(d)+1<index.size()?index[size_t(d)+1]:d+1,role=in.role[size_t(d)+1];
+        record("raw",frame,role,1,st.raw.data()+size_t(d)*plane);
+        record("robust",frame,role,1,st.robust.data()+size_t(d)*plane);
+        if(st.la)record("flow",frame,role,1,st.flow.data()+size_t(d)*plane);
+    }
+    f.close();
+    if(!f||std::rename(tmp.c_str(),path.c_str())!=0){std::remove(tmp.c_str());report("HYBRID STAGES: write failed");return;}
+    chmod(path.c_str(),0644); // a root worker's file, read by the app
+    report("HYBRID STAGES: "+std::to_string(st.donors)+" donors, "+std::to_string(st.w)+"x"+std::to_string(st.h)+" (cell step "+std::to_string(st.step)+")");
+}
+
 inline std::vector<float> hybridReconstruct(const HybridInput& input,const HybridTuning& tune,
                                             const ScamAlignment& alignment,
                                             const std::function<void(const std::string&)>& report,
@@ -9279,6 +9392,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         if(movedH.size()>1) // P335: for the plain chroma median's share (any cellClip setting)
             stillSeen=hybridStillBurst(hybridMovedDonors(movedH,w,h,tune.staticShift>0.f?tune.staticShift:0.75f),int(movedH.size())-1)?1:0;
         gpu.merge(in,mergeTune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr,effMap!=nullptr);
+        hybridWriteStages(gpu,in,index,out,outW,outH,grid,report);
         if(gpu.profile){
             const double* p=gpu.passMs;char pl[200];
             std::snprintf(pl,sizeof(pl),"HYBRID GPU ms: flags=%.0f mark=%.0f guide=%.0f cells=%.0f reject=%.0f dilate=%.0f merge=%.0f readback=%.0f",p[0],p[7],p[1],p[2],p[3],p[4],p[5],p[6]);
