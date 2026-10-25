@@ -324,6 +324,14 @@ struct HybridTuning {
     float s61MaxKey=30.f;
     float s61MinMotion=2.f;
     float s61TensorNoise=1.f,s61GdNoise=1.f; // multipliers of the emulated 6.1 noise LUT (tensor, green difference)
+    // P332 (owner, 2026-10-25: «исправь чтобы не было мыла», the 6.1 kernel stays «Всегда»): the 6.1 structure tensor from the
+    // quad lumas (2x2 means, differences 2 px apart per axis) cannot see detail finer than a 4 px period, and above it the
+    // direction flips (a 3 px grating at 17 degrees reads -18): its kernel (along sigma 1.2 px by day) smears such texture.
+    // s61Fine > 0: the tensor of the green sites' differences to their diagonal neighbours (1 px per axis, the same rotated form),
+    // its noise term x16 (single sites, half the step) times this value. Synthetic handheld burst (12 frames, ISO ~100, F6, day
+    // noise x16/x4), grating response 4 % / 30 % contrast at 3 px: 0.22 / 0.37 -> 0.50 / 0.62 at 2, diagonal 3 px 0.29 -> 0.75;
+    // flat noise x1.10 (8: x1.0 with 0.31 / 0.61 / 0.65). 0 = the quad tensor (replays unchanged); the app sends 2.
+    float s61Fine=0.f;
     // ... in daylight (key > s61MaxKey) instead: the emulated LUT leaves flat areas on the narrow "structure" kernel at ISO 100-200
     // (smooth-area noise x2.3 against the round-4 kernel); 16 / 4 keep the detail (-1 %) at x1.45 (f6_local_align.md)
     float s61DayTensorNoise=16.f,s61DayGdNoise=4.f;
@@ -754,7 +762,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
             ||set("cellClip",nullptr,&t.cellClip)||set("staticShift",&t.staticShift)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
             ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("hotCap",&t.hotCap)||set("bentoScam",nullptr,&t.bentoScam)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
-            ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)
+            ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)||set("s61Fine",&t.s61Fine)
             ||set("s61TensorNoise",&t.s61TensorNoise)||set("s61GdNoise",&t.s61GdNoise)||set("s61MinMotion",&t.s61MinMotion)
             ||set("s61DayTensorNoise",&t.s61DayTensorNoise)||set("s61DayGdNoise",&t.s61DayGdNoise)||set("s61Mode",nullptr,&t.s61Mode)||set("s61MaxKey",&t.s61MaxKey)||set("hotMaxKey",&t.hotMaxKey)||set("subset",nullptr,&t.subset)||set("profile",nullptr,&t.profile)
             ||set("rimRatio",nullptr,&t.rimRatio)||set("rimSigma",&t.rimSigma)||set("rimLo",&t.rimLo)||set("rimHi",&t.rimHi)||set("rimStride",nullptr,&t.rimStride)
@@ -955,7 +963,7 @@ float laMotionAt(int f,int x,int y){
 #endif
 uniform vec4 k61aU; // covariance_parameters1: f5/f0 (shrunk), 1/(f0 f4) (stretched), f2 (gradient clip), 1/f0 (base); w = 0: off
 uniform vec4 k61bU; // 1/(f0 f1) (blurred), 1/f3 (transition), 1/kernelScale^2, tensor noise multiplier
-uniform vec4 k61cU; // green difference noise multiplier
+uniform vec4 k61cU; // x: green difference noise multiplier, y: > 0 the fine (green site) tensor, its noise x16 x this (P332)
 // P76: quad luma Y and |sqrt g1 - sqrt g2| of quad (i,j) of frame f; kHybCells keeps them in shared memory for the 3x3 cells around.
 vec2 sabreQuad61(int f,int i,int j){
     float g=fParam[f].x;int X=2*i,Z=2*j;
@@ -963,7 +971,27 @@ vec2 sabreQuad61(int f,int i,int j){
     float g2=sqrt(max(sampleRawM(f,X,Z+1)*g,0.0)),b=sqrt(max(sampleRawM(f,X+1,Z+1)*g,0.0));
     return vec2(0.25*(r+g1+g2+b),abs(g1-g2));
 }
-vec3 sabreCov61Q(int f,float Y[9],float gd,float lum);
+vec3 sabreCov61Q(int f,float Y[9],float gd,float lum,vec3 fine);
+// P332: the fine tensor of cell (i,j) of frame f from u (sqrt of the gained green sites of its 8x8 site window, 0 at the other
+// colours; site (2i-3+x, 2j-3+y) at u[y*8+x]): every green site of the inner 6x6 against its (+1,+1) and (+1,-1) green neighbours,
+// summed as sabreCov61Q's quad pairs (dx along (1,1), dy along (1,-1)) in its units (x4 for the half step, x0.5 for 4 pairs x 0.125).
+vec3 sabreFine61U(int i,int j,float u[64]){
+    float dxx=0.0,dyy=0.0,dxy=0.0,n=0.0;
+    for(int y=1;y<7;y++)for(int x=1;x<7;x++){
+        if(phaseColor[(((2*j-3+y)&1)<<1)|((2*i-3+x)&1)]!=1)continue;
+        float c=u[y*8+x],du=u[(y+1)*8+x+1]-c,dv=u[(y-1)*8+x+1]-c;
+        dxx+=du*du;dyy+=dv*dv;dxy+=du*dv;n+=1.0;
+    }
+    return vec3(dxx,dyy,dxy)*(2.0/max(n,1.0));
+}
+vec3 sabreFine61(int f,int i,int j){
+    float g=fParam[f].x;float u[64];
+    for(int y=0;y<8;y++)for(int x=0;x<8;x++){
+        int X=2*i-3+x,Z=2*j-3+y;
+        u[y*8+x]=phaseColor[((Z&1)<<1)|(X&1)]==1?sqrt(max(sampleRawM(f,X,Z)*g,0.0)):0.0;
+    }
+    return sabreFine61U(i,j,u);
+}
 vec3 sabreCov61(int f,int i,int j){
     float Y[9];float gd=0.0,lum=0.0;
     for(int dj=-1;dj<=1;dj++)for(int di=-1;di<=1;di++){
@@ -971,10 +999,11 @@ vec3 sabreCov61(int f,int i,int j){
         float w=(di==0?0.5:0.25)*(dj==0?0.5:0.25);
         Y[(dj+1)*3+di+1]=q.x;gd+=q.y*w;lum+=q.x*w;
     }
-    return sabreCov61Q(f,Y,gd,lum);
+    return sabreCov61Q(f,Y,gd,lum,k61cU.y>0.0?sabreFine61(f,i,j):vec3(-1.0));
 }
-// The 6.1 precision from the 3x3 quad lumas Y and the weighted green difference gd / luma lum around the cell.
-vec3 sabreCov61Q(int f,float Y[9],float gd,float lum){
+// The 6.1 precision from the 3x3 quad lumas Y and the weighted green difference gd / luma lum around the cell; fine.x >= 0: the
+// structure tensor is the fine one (sabreFine61U) instead of the quad lumas'.
+vec3 sabreCov61Q(int f,float Y[9],float gd,float lum,vec3 fine){
     float g=fParam[f].x;
     float v=max(lum*lum,1.0e-6);vec2 nm=fNoiseP[f].xy;
     float varU=(nm.x*v*g+nm.y*g*g)/(4.0*v);
@@ -987,6 +1016,7 @@ vec3 sabreCov61Q(int f,float Y[9],float gd,float lum){
         dxx+=dx*dx;dyy+=dy*dy;dxy+=dx*dy;
     }
     vec3 c=vec3(dxx,dyy,dxy)*0.125;float c0=0.5*(c.x+c.y),c1=0.5*(c.y-c.x);
+    if(fine.x>=0.0){c=fine;c0=0.5*(c.x+c.y);c1=0.5*(c.y-c.x);nTensor*=16.0*k61cU.y;} // P332: single sites, half the step
     vec3 s=vec3(c0+c.z,c0-c.z,c1);                                   // RotateCovariance
     float tr=s.x+s.y,df=s.x-s.y,sq=sqrt(max(df*df+4.0*s.z*s.z,0.0)),l1=0.5*(tr+sq),l2=0.5*(tr-sq);
     vec2 e1=vec2(1.0,0.0),e2=vec2(0.0,1.0);
@@ -1378,6 +1408,8 @@ uniform int dcovU;      // 1: DCov holds every donor cell (merge mode bit 1) and
                         // (with the 6.1 kernel but without the per-frame covariance DCov is a 16-byte stub)
 // P76: the 10x10 quads around the group's 8x8 cells, read once per group (sabreCov61 read each quad for 9 cells: 36 RAW sites a cell).
 shared vec2 cellQuad[100];
+// P332: the 22x22 sites around them for the fine tensor (sqrt of the gained greens, 0 at the other colours), also once per group
+shared float cellSite[484];
 void main(){
     int w2=size.x/2;
     int f=int(gl_GlobalInvocationID.z)+1+cellFrameU;
@@ -1385,6 +1417,14 @@ void main(){
     bool cov=dcovU!=0&&k61aU.w>0.0&&fParam[fs].y>0.0&&int(fParam[fs].w)!=5;
     int bx=int(gl_WorkGroupID.x)*8-1,by=fCells[fs].x+chunkU+int(gl_WorkGroupID.y)*8-1;
     if(cov)for(int k=int(gl_LocalInvocationIndex);k<100;k+=64)cellQuad[k]=sabreQuad61(fs,bx+k%10,by+k/10);
+    bool fine=cov&&k61cU.y>0.0;
+    if(fine){
+        float g=fParam[fs].x;
+        for(int k=int(gl_LocalInvocationIndex);k<484;k+=64){
+            int X=2*bx-1+k%22,Z=2*by-1+k/22;
+            cellSite[k]=phaseColor[((Z&1)<<1)|(X&1)]==1?sqrt(max(sampleRawM(fs,X,Z)*g,0.0)):0.0;
+        }
+    }
     barrier();
     if(f>=frameCount)return;
     int cx=int(gl_GlobalInvocationID.x),cy=fCells[f].x+chunkU+int(gl_GlobalInvocationID.y);
@@ -1401,7 +1441,13 @@ void main(){
             float w=(di==0?0.5:0.25)*(dj==0?0.5:0.25);
             Y[(dj+1)*3+di+1]=q.x;qd+=q.y*w;lum+=q.x*w;
         }
-        vec3 P=sabreCov61Q(f,Y,qd,lum);
+        vec3 fineT=vec3(-1.0);
+        if(fine){
+            float u[64];int s0=(2*(cy-by)-2)*22+2*(cx-bx)-2; // site (2cx-3, 2cy-3) in cellSite
+            for(int y=0;y<8;y++)for(int x=0;x<8;x++)u[y*8+x]=cellSite[s0+y*22+x];
+            fineT=sabreFine61U(cx,cy,u);
+        }
+        vec3 P=sabreCov61Q(f,Y,qd,lum,fineT);
         dcov[idx]=uvec2(packHalf2x16(P.xy),packHalf2x16(vec2(P.z,0.0)));
     }
 }
@@ -8247,7 +8293,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const float tn=dayNoise?tune.s61DayTensorNoise:tune.s61TensorNoise,gn=dayNoise?tune.s61DayGdNoise:tune.s61GdNoise;
         k61b={1.f/(f0*f1),1.f/f3,1.f/(ks*ks),tn>0?tn:1.f};
         if(native&&flatScale!=1.f)k61b[0]/=std::clamp(flatScale,0.25f,4.f); // P34
-        k61c={gn>0?gn:1.f,0,0,0};
+        k61c={gn>0?gn:1.f,tune.s61Fine>0.f?tune.s61Fine:0.f,0,0};
         auto sigma=[&](float p){return std::to_string(ks/(p*std::sqrt(std::log(2.f))));};
         report("HYBRID KERNEL: Sabre 6.1 baseNoise slope="+std::to_string(baseSlope)+" offset="+std::to_string(baseOffset)+" key="+std::to_string(key)
             +" f0="+std::to_string(f0)+" f1="+std::to_string(f1)+" f2="+std::to_string(f2)+" f3="+std::to_string(f3)
@@ -8255,7 +8301,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             +" ("+((tune.s61Mode&1)?"per-frame covariance":"base covariance for all frames")+((tune.s61Mode&2)?", window 1.5 px":"")
             +((tune.s61Mode&4)?", base x0.3 below "+std::to_string(tune.widenBelow)+" frames":", base widening by donor coverage")+")"
             +(tune.sabre61==2?std::string(" auto (")+(night61?"night key":"handheld with local alignment")+")":std::string())
-            +" noise x"+std::to_string(k61b[3])+"/x"+std::to_string(k61c[0])+" motion="+std::to_string(motion)+" px");
+            +" noise x"+std::to_string(k61b[3])+"/x"+std::to_string(k61c[0])
+            +(k61c[1]>0.f?" fine tensor (noise x"+std::to_string(16.f*k61c[1])+")":std::string(" quad tensor"))+" motion="+std::to_string(motion)+" px");
     } else {
     if(tune.sabre61==2)report("HYBRID KERNEL: Sabre 6.1 kernel off (auto: key "+std::to_string(key61)+" > "+std::to_string(tune.s61MaxKey)
         +", motion "+std::to_string(motion)+" px "+(tune.localAlign>0?"< "+std::to_string(tune.s61MinMotion):std::string("without local alignment"))+")");

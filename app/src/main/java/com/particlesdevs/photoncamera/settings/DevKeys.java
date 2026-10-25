@@ -183,6 +183,7 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_s61_day_gd_noise", null, Lang.t("Sabre 6.1 днём: шум градиента", "Sabre 6.1 by day: gradient noise")));
         k.add(n(merge, "hybrid_s61_tensor_noise", null, Lang.t("Sabre 6.1: шум тензора", "Sabre 6.1: tensor noise")));
         k.add(n(merge, "hybrid_s61_gd_noise", null, Lang.t("Sabre 6.1: шум градиента", "Sabre 6.1: gradient noise")));
+        k.add(n(merge, "hybrid_s61_fine", "2", Lang.t("Sabre 6.1: структура по зелёным пикселям в полном разрешении, множитель её шума (0 — по квадам 2×2, как раньше)", "Sabre 6.1: structure from the green sites at full resolution, its noise multiplier (0: from the 2x2 quads, as before)")));
         k.add(n(merge, "hybrid_sharp_select", "0.75", Lang.t("Отбор кадров по резкости: N-кадры мягче этой доли медианы не склеиваются (0 — все кадры)", "Frame selection by sharpness: N frames softer than this share of the median are not merged (0: every frame)")));
         k.add(n(merge, "hybrid_hot_frames", null, Lang.t("Горячие пиксели: кадров для поиска", "Hot pixels: frames to search")));
         k.add(n(merge, "hybrid_hot_cross", null, Lang.t("Горячие пиксели: порог креста", "Hot pixels: cross threshold")));

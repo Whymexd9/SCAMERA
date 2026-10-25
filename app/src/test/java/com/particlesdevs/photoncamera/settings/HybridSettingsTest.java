@@ -614,7 +614,7 @@ public class HybridSettingsTest {
     @Test public void p68DefaultsOnEveryPhone() {
         // owner, 10 October 2026: XML defaults stored on the first opening, and the same values written to the worker when unset
         String tuning=PreferenceKeys.hybridTuningText();
-        for(String line:new String[]{"sabre61 1.0\n","mochi 2.0\n","bento 2.0\n","bentoFrames 3.0\n","shastaMotionMax 4.0\n","shastaForce 1\n"})
+        for(String line:new String[]{"sabre61 1.0\n","mochi 2.0\n","bento 2.0\n","bentoFrames 3.0\n","shastaMotionMax 4.0\n","shastaForce 1\n","s61Fine 2.0\n"})
             assertTrue(line+tuning,tuning.contains(line));
         assertEquals(2,PreferenceKeys.getHybridShastaMode());
         assertEquals(20,PreferenceKeys.getHybridZslFrames());

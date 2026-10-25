@@ -916,6 +916,11 @@ public class PreferenceKeys {
         // replays: synthetic PSNR 46.24 -> 46.30 / 42.24 -> 42.24 dB, real handheld x7u detail energy -0.2 %.
         if (scamDevValue("hybrid_s61_mode") == null && hybridString("s61_mode", "").isEmpty() && DeviceDefaults.redmiNote11Pro())
             out.append("s61Mode 6\n");
+        // P332: the 6.1 kernel's structure tensor from the green sites at the full resolution (worker HybridTuning::s61Fine, its
+        // noise term x16 x this; worker default 0 = the quad tensor, replays unchanged): fine texture no longer reads as flat or
+        // in a flipped direction. scam_dev.txt "hybrid_s61_fine 0" = the quad tensor as before.
+        final float s61Fine = hybridValue("s61_fine", 2f);
+        if (s61Fine > 0f) out.append("s61Fine ").append(s61Fine).append('\n');
         // P118 «Sabre 2× только когда есть смысл» (on by default; the worker keeps it off for replays)
         if (hybridSwitch("auto2x", true)) out.append("auto2x 1\n");
         final int shasta = getHybridShastaMode();
