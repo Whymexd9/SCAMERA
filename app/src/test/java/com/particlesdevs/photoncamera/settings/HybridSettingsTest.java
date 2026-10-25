@@ -619,6 +619,7 @@ public class HybridSettingsTest {
             assertTrue(line+tuning,tuning.contains(line));
         assertFalse("P336: the green-site 6.1 tensor is off by default",tuning.contains("s61Fine"));
         assertTrue("P337: the night 6.1 kernel x0.8",tuning.contains("s61NightScale 0.8\n"));
+        assertTrue("P337: glitter keeps its sparkles",tuning.contains("clipReject 1\n")&&tuning.contains("rimLift 1\n"));
         assertEquals(2,PreferenceKeys.getHybridShastaMode());
         assertEquals(20,PreferenceKeys.getHybridZslFrames());
         prefs.edit().clear().commit();

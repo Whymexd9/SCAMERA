@@ -936,6 +936,13 @@ public class PreferenceKeys {
         // shastaSharpLo / Hi stay off (the hand-held chroma median share doubled the synthetic colour error; the long frames' sharpness
         // weight left the detail as it was). scam_dev.txt "hybrid_rej_prior 0", "hybrid_base_demosaic_alias 0" = as before.
         if (hybridValue("rej_prior", 1f) > 0f) out.append("rejPrior 1\n");
+        // P337 (owner, 2026-10-25: a backlit sea, «отражение на воде слилось в кашу»): sun glitter keeps its sparkles - a donor clearly
+        // darker than a clipped base cell is rejected (clipReject) and a saturated G is at least the mean of all its samples,
+        // the clipped ones at their values (rimLift). Phone replay of the owner's burst: merged G at the base's clipped green sites
+        // median 0.69 -> 0.99, p10 0.31 -> 0.94; the night and telephoto bursts unchanged (0.002 % / 0 % of the pixels).
+        // worker defaults 0 (replays unchanged); scam_dev.txt "hybrid_clip_reject 0", "hybrid_rim_lift 0" = before.
+        if (hybridValue("clip_reject", 1f) > 0f) out.append("clipReject 1\n");
+        if (hybridValue("rim_lift", 1f) > 0f) out.append("rimLift 1\n");
         final float alias = clamp01(hybridValue("base_demosaic_alias", 1f));
         if (alias > 0f) out.append("baseDemosaicAlias ").append(alias).append('\n');
         final Float hand = scamDevValue("hybrid_plain_chroma_hand");

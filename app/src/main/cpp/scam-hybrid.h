@@ -163,6 +163,13 @@ struct HybridTuning {
     // a switch on the nearest tile, and half the difference noise forgiven inside it; 0 = the switch as before (replays unchanged;
     // the app sends 1).
     float rejPrior=0.f;
+    // P337 (owner, 2026-10-25: a backlit sea, «отражение на воде слилось в кашу»): a normal donor whose green is darker than a
+    // clipped base cell by more than 3 sigma of the difference noise is rejected - the base's true value is at least the clip,
+    // the donor's is clearly below it: the sparkle moved (sun glitter on water). The texture variance of the glitter (clipped spots next to dark water)
+    // made the distance test tolerant enough to average the base's sparkles with the dark water of the other frames: dim, smeared
+    // sparkles. GCam / ArkCam reject every donor where the base's green clips (kForceRejectReferenceColor); a donor as bright
+    // there (a lamp, a static highlight) stays here. 0 = off (replays unchanged); the app sends 1.
+    float clipReject=0.f;
     float motionThreshold=1.5f;  // extra_motion_robustness_motion_threshold: min-max extent of the raw LK flow over the 3x3 tiles (RAW px)
     float filterVariance=0.5f;   // variance scale of the bilinear donor sample (kFilterVarianceScale analogue)
     float dilateOffset=0.2f,dilateScale=2.f; // DilateMask: rej = (sum25 - 0.2) / 2
@@ -364,6 +371,12 @@ struct HybridTuning {
     float rimSigma=1.5f;         // isotropic kernel of the ratio sites (sensor px)
     float rimLo=0.02f,rimHi=0.2f;// ramp of the largest excluded (clipped) weight share of a colour
     int rimStride=4;             // donors used for the ratios: every rimStride-th (the base and the ultrashort always)
+    // P337 (owner, 2026-10-25: a backlit sea, «отражение на воде слилось в кашу»): the clip-border pass also lifts G to the mean of
+    // ALL its samples, the clipped ones at their values (a lower bound: a clipped sample is at least that). The merge keeps a
+    // colour's clipped samples out where real ones are left; on sun glitter - sparkles of 1-3 px, G clipped, R / B not - that left
+    // each sparkle's G to the dark water around it: dim grey-pink blobs instead of white points (ArkCam / GCam keep the base's
+    // clipped samples). R and B then follow from the real ratios as before. 0 = off (replays unchanged); the app sends 1.
+    int rimLift=0;
     // F6 local alignment (research/hybrid5/f6_local_align.md): a per-tile residual offset of every donor on top of its homography,
     // Lucas-Kanade on a two-level gray pyramid. 0 = off (output byte-identical to the merge without it), 1 = field interpolated
     // bilinearly between tile centres, 2 = constant per tile (NEAREST, as 6.1 / v11).
@@ -761,7 +774,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             applied+=" "+key+"="+std::to_string(v);return true;
         };
         while(f>>key>>v){
-            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("rejPrior",&t.rejPrior)||set("varianceThreshold",&t.varianceThreshold)
+            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("rejPrior",&t.rejPrior)||set("clipReject",&t.clipReject)||set("varianceThreshold",&t.varianceThreshold)
             ||set("motionThreshold",&t.motionThreshold)
             ||set("filterVariance",&t.filterVariance)||set("dilateOffset",&t.dilateOffset)||set("dilateScale",&t.dilateScale)||set("dilateFloor",&t.dilateFloor)
             ||set("clipLevel",&t.clipLevel)||set("fwe",&t.fwe)||set("weightCap",&t.weightCap)||set("lutLo",&t.lutLo)||set("lutHi",&t.lutHi)
@@ -789,7 +802,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)||set("s61Fine",&t.s61Fine)||set("s61NightScale",&t.s61NightScale)||set("s61NightKeyLo",&t.s61NightKeyLo)||set("s61NightKeyHi",&t.s61NightKeyHi)
             ||set("s61TensorNoise",&t.s61TensorNoise)||set("s61GdNoise",&t.s61GdNoise)||set("s61MinMotion",&t.s61MinMotion)
             ||set("s61DayTensorNoise",&t.s61DayTensorNoise)||set("s61DayGdNoise",&t.s61DayGdNoise)||set("s61Mode",nullptr,&t.s61Mode)||set("s61MaxKey",&t.s61MaxKey)||set("hotMaxKey",&t.hotMaxKey)||set("subset",nullptr,&t.subset)||set("profile",nullptr,&t.profile)
-            ||set("rimRatio",nullptr,&t.rimRatio)||set("rimSigma",&t.rimSigma)||set("rimLo",&t.rimLo)||set("rimHi",&t.rimHi)||set("rimStride",nullptr,&t.rimStride)
+            ||set("rimRatio",nullptr,&t.rimRatio)||set("rimSigma",&t.rimSigma)||set("rimLo",&t.rimLo)||set("rimHi",&t.rimHi)||set("rimStride",nullptr,&t.rimStride)||set("rimLift",nullptr,&t.rimLift)
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("laStream",nullptr,&t.laStream)||set("laGpu",nullptr,&t.laGpu)||set("laScam",nullptr,&t.laScam)||set("isoKernel",nullptr,&t.isoKernel)
@@ -1484,7 +1497,8 @@ layout(std430,binding=10) readonly buffer Guide{vec4 guide[];};
 uniform int ry0;
 uniform int ry1;
 uniform vec4 rj; // cdm, boost, variance threshold, filter variance scale
-uniform vec4 rk; // boost mode (0 off, 1 local motion, 2 everywhere), motion threshold (RAW px), z: 1 = soft motion prior (P335), 0
+uniform vec4 rk; // boost mode (0 off, 1 local motion, 2 everywhere), motion threshold (RAW px), z: 1 = soft motion prior (P335),
+                // w: 1 = a normal donor clearly darker than a clipped base cell is rejected (P337 clipReject)
 #ifdef LOCAL_ALIGN
 // P335: the Z channel of frame f bilinear between the tile centres (laMotionAt takes the nearest tile: the boost switched on and off
 // in 16 px blocks along a moving edge).
@@ -1561,6 +1575,9 @@ void main(){
         w=exp2(-dist*boost);
         // A longer (bracketed) frame clips where the base does not: its clipped cells carry no signal.
         if(int(fParam[f].w)==3&&dclip)w=0.0;
+        // P337: the base clipped here (its value is at least the clip) and the donor's green is darker than it by more than 3
+        // sigma of the difference noise: the sparkle moved
+        if(rk.w>0.5&&w>0.0&&int(fParam[f].w)==1&&d.y<-3.0*sqrt(nv.y)){bool bcl;float bgd;cellU(0,cx,cy,bcl,bgd);if(bcl)w=0.0;}
     }
     rawR[(f-1)*(ry1-ry0)*w2+(cy-ry0)*w2+cx]=w;
 }
@@ -2547,6 +2564,7 @@ layout(std430,binding=9) buffer Sums{uint sums[];}; // [frameCount + 2]: output 
 // rimU (kHybMergeCommon): x = 1 on, y = ratio kernel exponent -log2(e)/(2 sigma^2), z/w = ramp of the largest excluded weight share
 uniform int rimStrideU;   // donors that give ratios: every rimStrideU-th (the base and the ultrashort always)
 uniform int rimSitesU;    // 16 = the 4x4 lattice; a uniform trip count keeps the compiler from unrolling the ~300 reads (compile time)
+uniform int rimLiftU;     // P337: 1 = G at least the mean of all its samples (the clipped ones at their values) where G saturated
 // Clip-border colour (research/hybrid5/fix_rim.md). At a sharp clip edge every colour keeps only its unclipped lattice sites. They
 // lie on other rows/columns for R, G and B (R and G1 on even rows, G2 and B on odd ones), and a colour with none left in its
 // two-site lattice takes the clipped mean, i.e. the real values of the clipped cells on the BRIGHT side. Across an edge that rises
@@ -2667,6 +2685,8 @@ void main(){
     // level rises until that lower bound fits the real ratio (G of a white light from its clipped B). Where green did not
     // saturate (a red or blue light: green is real) the level stays.
     float L=col.g;
+    // P337 (rimLift): a saturated G is at least the mean of all its samples, the clipped ones included at their values
+    if(rimLiftU!=0&&ts.y>0.0&&a.den.y+a.clipDen.y>1.0e-20)L=max(L,mix(L,(a.num.y+a.clipNum.y)/(a.den.y+a.clipDen.y),smoothstep(0.0,0.1,ts.y)));
     if(ts.y>0.25){
         // ratio floor 0.15 (review_fix_rim.md): the lifts seen on lamp0322/hh2241/user use R/G 0.31-0.36, B/G 0.52-0.6; a ratio
         // measured near 0 on dark surroundings must not raise the level x10^4 (was max(rho, 1e-4))
@@ -4935,7 +4955,7 @@ public:
         glUniform4f(loc(rejectProgram,"rj"),tune.cdm,tune.boost,tune.varianceThreshold,tune.filterVariance);
         // boost mode 1 needs the Z channel of the local alignment; without it only the forced mode 2 boosts
         const float boostMode=tune.boostEnable>1.5f?2.f:(tune.boostEnable>0.5f&&localAlign?1.f:0.f);
-        glUniform4f(loc(rejectProgram,"rk"),boostMode,tune.motionThreshold,tune.rejPrior>0.f?1.f:0.f,0);
+        glUniform4f(loc(rejectProgram,"rk"),boostMode,tune.motionThreshold,tune.rejPrior>0.f?1.f:0.f,tune.clipReject>0.f?1.f:0.f);
         // P310: with the ultrashort blend the merge (and its colour passes) runs as without Bento: the ultrashort frames get no
         // robust weight (kHybDilate), the base and the N frames their full one; kHybUsBlend blends them in after the strip's merge
         const bool usBlend=bento&&in.blend&&blendProgram!=0&&!in.native;
@@ -5010,6 +5030,7 @@ public:
          glUniform4fv(loc(rimProgram,"rimU"),1,rimU);
          glUniform1i(loc(rimProgram,"rimStrideU"),std::max(1,tune.rimStride));
          glUniform1i(loc(rimProgram,"rimSitesU"),16);
+         glUniform1i(loc(rimProgram,"rimLiftU"),tune.rimLift>0?1:0); // P337
          glUniform4f(loc(rimProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bentoMix?1.f:0.f);
          {const float us=std::max(0.3f,tune.bentoUsSigma);glUniform4f(loc(rimProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);}
          glUniform4i(loc(rimProgram,"kG"),g,ow,0,0);

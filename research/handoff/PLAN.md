@@ -7240,8 +7240,14 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   tools/check_hybrid_raw_ca.cpp (CI): R +6 / B -3 px found within 0.07 px, 0.5 / -0.4 within 0.01, none 0.003, correction
   0.0164 -> 0.0003. Real bursts: night -0.32 px (as before), tele -0.31 (as before), backlit +0.27 / -0.30 (was +0.19 / -0.17).
   On the OPPO 66-163 ms (was 50-80), run during the alignment.
-- Water glitter shape («каша»): the sparkles move between the frames; cellClip / rimRatio / widenBelow variants did not make
-  them crisp - open.
+- Water glitter shape («каша», follow-up 5ab3d5ff+): the merge follows the base's sparkles (correlation 0.955) but dims them:
+  where real samples are left the merge keeps a colour's clipped ones out, so a 1-3 px sparkle's G came from the dark water
+  around it (merged G at the base's clipped green sites: median 0.69, p10 0.31), and the glitter's texture variance let dark
+  donors pass. Worker rimLift (kHybRim: a saturated G at least the mean of all its samples, the clipped ones at their values;
+  kHybMergeMain1 untouched) -> median 0.99, p10 0.91; clipReject (kHybReject: a normal donor whose green is darker than a
+  clipped base cell by > 3 sigma is rejected, the physical form of GCam / ArkCam's force-reject) -> p10 0.94. The app sends
+  both (scam_dev hybrid_rim_lift / hybrid_clip_reject 0 = before); the night and telephoto bursts change in 0.002 % / 0 % of
+  the pixels (run-to-run GPU noise alone touches 56 % below 0.016).
 - Tests: CI list, check_ui_language, check_settings_model, highlight checks (neutral / recovery / landing / one channel off /
   why highlights), check_why_sharpen, check_hybrid_raw_ca on the OPPO.
 
