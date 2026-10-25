@@ -158,6 +158,11 @@ struct HybridTuning {
     float boostEnable=1.f;       // 1: boost where the F6 local motion varies (v11 Z channel); 2: everywhere (SCAM without a
                                  // motion test, the old switch); 0: off. Without the local alignment 1 does nothing.
     float varianceThreshold=25.f;// motion_robustness_boost_variance_threshold
+    // P335 (owner, 2026-10-25: «посмотри как работают у Арк реджекты и подумай как их можно улучшить у нас»): 1 = the motion prior
+    // of the rejection as a share (smoothstep 0.5 .. 1.5 x motionThreshold of the Z channel, bilinear between the tiles) instead of
+    // a switch on the nearest tile, and half the difference noise forgiven inside it; 0 = the switch as before (replays unchanged;
+    // the app sends 1).
+    float rejPrior=0.f;
     float motionThreshold=1.5f;  // extra_motion_robustness_motion_threshold: min-max extent of the raw LK flow over the 3x3 tiles (RAW px)
     float filterVariance=0.5f;   // variance scale of the bilinear donor sample (kFilterVarianceScale analogue)
     float dilateOffset=0.2f,dilateScale=2.f; // DilateMask: rej = (sum25 - 0.2) / 2
@@ -400,6 +405,9 @@ struct HybridTuning {
     // baseDemosaicAniso: how much the luma kernel follows the local edge direction (0 = round).
     float baseDemosaic=1.0f;
     float baseDemosaicAniso=0.6f;
+    // P335: Bayer base demosaic, share of the false-colour damping by the Gr / Gb step above its noise (0 = off, replays
+    // unchanged; the app sends 1)
+    float baseDemosaicAlias=0.f;
     float baseDemosaicDetailLo=0.f,baseDemosaicDetailHi=0.01f;
     float baseDemosaicBayerLo=1.3f,baseDemosaicBayerHi=2.5f; // Bayer: the base noise model holds there (flat sky ~1) // off: flat areas measured ~2, structure 20-50 (the base noise model reads low)
     // P269 (owner, 2026-10-19: «Посмотри как работает маска бенто в why кам и посмотри как можно улучшить нашу»): the
@@ -737,7 +745,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             applied+=" "+key+"="+std::to_string(v);return true;
         };
         while(f>>key>>v){
-            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("varianceThreshold",&t.varianceThreshold)
+            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("rejPrior",&t.rejPrior)||set("varianceThreshold",&t.varianceThreshold)
             ||set("motionThreshold",&t.motionThreshold)
             ||set("filterVariance",&t.filterVariance)||set("dilateOffset",&t.dilateOffset)||set("dilateScale",&t.dilateScale)||set("dilateFloor",&t.dilateFloor)
             ||set("clipLevel",&t.clipLevel)||set("fwe",&t.fwe)||set("weightCap",&t.weightCap)||set("lutLo",&t.lutLo)||set("lutHi",&t.lutHi)
@@ -769,7 +777,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("localAlign",nullptr,&t.localAlign)||set("laWin",nullptr,&t.laWin)||set("laStride",nullptr,&t.laStride)||set("laIters",nullptr,&t.laIters)
             ||set("laItersCoarse",nullptr,&t.laItersCoarse)||set("laMu",&t.laMu)||set("laKappa",&t.laKappa)||set("laMaxShift",&t.laMaxShift)
             ||set("laMedian",nullptr,&t.laMedian)||set("laUltrashort",nullptr,&t.laUltrashort)||set("laThreads",nullptr,&t.laThreads)||set("laStream",nullptr,&t.laStream)||set("laGpu",nullptr,&t.laGpu)||set("laScam",nullptr,&t.laScam)||set("isoKernel",nullptr,&t.isoKernel)
-            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicGainField",nullptr,&t.mosaicGainField)||set("mosaicGainZones",nullptr,&t.mosaicGainZones)||set("mosaicUsSmooth",nullptr,&t.mosaicUsSmooth)||set("plainChromaMedian",nullptr,&t.plainChromaMedian)||set("baseDemosaic",&t.baseDemosaic)||set("baseDemosaicAniso",&t.baseDemosaicAniso)||set("baseDemosaicBayerLo",&t.baseDemosaicBayerLo)||set("baseDemosaicBayerHi",&t.baseDemosaicBayerHi)||set("baseDemosaicDetailLo",&t.baseDemosaicDetailLo)||set("baseDemosaicDetailHi",&t.baseDemosaicDetailHi)||set("bentoSubpixel",nullptr,&t.bentoSubpixel)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
+            ||set("mosaicBlock",nullptr,&t.mosaicBlock)||set("mosaicGain",nullptr,&t.mosaicGain)||set("mosaicGainField",nullptr,&t.mosaicGainField)||set("mosaicGainZones",nullptr,&t.mosaicGainZones)||set("mosaicUsSmooth",nullptr,&t.mosaicUsSmooth)||set("plainChromaMedian",nullptr,&t.plainChromaMedian)||set("baseDemosaic",&t.baseDemosaic)||set("baseDemosaicAniso",&t.baseDemosaicAniso)||set("baseDemosaicAlias",&t.baseDemosaicAlias)||set("baseDemosaicBayerLo",&t.baseDemosaicBayerLo)||set("baseDemosaicBayerHi",&t.baseDemosaicBayerHi)||set("baseDemosaicDetailLo",&t.baseDemosaicDetailLo)||set("baseDemosaicDetailHi",&t.baseDemosaicDetailHi)||set("bentoSubpixel",nullptr,&t.bentoSubpixel)||set("mosaicRobustBilinear",nullptr,&t.mosaicRobustBilinear)||set("mosaicFrames",nullptr,&t.mosaicFrames)||set("seriesFrames",nullptr,&t.seriesFrames)||set("mosaicChroma",nullptr,&t.mosaicChroma)||set("mosaicShare",nullptr,&t.mosaicShare)||set("mosaicEdgeScale",&t.mosaicEdgeScale)
             ||set("caCorrect",nullptr,&t.caCorrect)||set("caMinShift",&t.caMinShift)
             // P29 native mosaic path
             ||set("mosaicNative2x",nullptr,&t.mosaicNative2x)||set("mosaicTetraWindow2x",nullptr,&t.mosaicTetraWindow2x)||set("mosaicPath",nullptr,&t.mosaicPath)||set("mosaicRemosaic",nullptr,&t.mosaicRemosaic)||set("mosaicWindow",nullptr,&t.mosaicWindow)||set("mosaicKernelScale",&t.mosaicKernelScale)
@@ -1460,7 +1468,20 @@ layout(std430,binding=10) readonly buffer Guide{vec4 guide[];};
 uniform int ry0;
 uniform int ry1;
 uniform vec4 rj; // cdm, boost, variance threshold, filter variance scale
-uniform vec4 rk; // boost mode (0 off, 1 local motion, 2 everywhere), motion threshold (RAW px), 0, 0
+uniform vec4 rk; // boost mode (0 off, 1 local motion, 2 everywhere), motion threshold (RAW px), z: 1 = soft motion prior (P335), 0
+#ifdef LOCAL_ALIGN
+// P335: the Z channel of frame f bilinear between the tile centres (laMotionAt takes the nearest tile: the boost switched on and off
+// in 16 px blocks along a moving edge).
+float laMotionSoft(int f,int x,int y){
+    int nx=max(laU.y,1),ny=max(laU.z,1);
+    uint fb=uint(clamp(f,0,frameCount-1)*nx*ny);
+    vec2 p=clamp((vec2(float(x),float(y))+0.5-laG.xy)*laG.w,vec2(0.0),vec2(float(nx-1),float(ny-1)));
+    ivec2 i0=clamp(ivec2(p),ivec2(0),ivec2(nx-1,ny-1)),i1=min(i0+1,ivec2(nx-1,ny-1));
+    vec2 a=p-vec2(i0);
+    float z00=laZ[fb+uint(i0.y*nx+i0.x)],z10=laZ[fb+uint(i0.y*nx+i1.x)],z01=laZ[fb+uint(i1.y*nx+i0.x)],z11=laZ[fb+uint(i1.y*nx+i1.x)];
+    return f==0?0.0:mix(mix(z00,z10,a.x),mix(z01,z11,a.x),a.y);
+}
+#endif
 void main(){
     int w2=size.x/2;
     int cx=int(gl_GlobalInvocationID.x),cy=ry0+chunkU+int(gl_GlobalInvocationID.y),f=int(gl_GlobalInvocationID.z)+1;
@@ -1502,16 +1523,25 @@ void main(){
         float nvs=noiseU(0,Lb)+rj.w*noiseU(f,Lb);
         vec3 nv=nvs*vec3(1.0,0.5,1.0);
         float nvMean=(nv.x+nv.y+nv.z)*(1.0/3.0);
+        // SCAM / v11 extra motion robustness: textured base and, with the local alignment, varying local motion
+        float prior=rk.x>1.5?1.0:0.0;
+        float forgive=1.0; // share of the difference noise forgiven before the distance (1: all of it)
+#ifdef LOCAL_ALIGN
+        if(rk.x>0.5&&rk.x<1.5){
+            if(rk.z>0.5){
+                // P335: the motion prior as a share instead of a switch at the threshold (no seam where the varying local motion
+                // crosses it), and inside it only half the noise forgiven: a moving surface whose difference sits near the noise
+                // level is not taken as noise (Sabre's motion-prior noise subtraction, made continuous)
+                prior=smoothstep(0.5*rk.y,1.5*rk.y,laMotionSoft(f,2*cx,2*cy));
+                forgive=1.0-0.5*prior;
+            } else prior=laMotionAt(f,2*cx,2*cy)>rk.y?1.0:0.0;
+        }
+#endif
         vec3 d=g-G.xyz;
-        vec3 D2=max(d*d-nv,vec3(0.0));
+        vec3 D2=max(d*d-forgive*nv,vec3(0.0));
         float varc=max(2.0*min(G.w,Vcur),nvMean);
         float dist=rj.x*(D2.x+D2.y+D2.z)*(1.0/3.0)/varc;
-        // SCAM / v11 extra motion robustness: textured base and, with the local alignment, varying local motion
-        bool moving=rk.x>1.5;
-#ifdef LOCAL_ALIGN
-        if(rk.x>0.5&&rk.x<1.5)moving=laMotionAt(f,2*cx,2*cy)>rk.y;
-#endif
-        float boost=(moving&&G.w>rj.z*nvMean)?rj.y:1.0;
+        float boost=G.w>rj.z*nvMean?mix(1.0,rj.y,prior):1.0;
         w=exp2(-dist*boost);
         // A longer (bracketed) frame clips where the base does not: its clipped cells carry no signal.
         if(int(fParam[f].w)==3&&dclip)w=0.0;
@@ -1785,6 +1815,7 @@ void baseChromaDiff(inout vec2 cdNum,inout vec2 cdDen,inout vec2 cdLo,inout vec2
 uniform float rampKU; // P309: the ramp mask's K (0 = the previous mask): the base demosaic fades out over share 0..0.5
 uniform vec4 bdU; // x = share at no donor (HybridTuning::baseDemosaic), y = anisotropy, z / w = structure / noise ratio from
                   // which to which the demosaic takes over (flat areas keep the merge's wider, less noisy kernel)
+uniform float bdAliasU; // P335: 0..1 share of the false-colour damping (0 = off, the demosaic as before)
 bool bayerDemosaic(vec2 O,out vec3 rgb,out float detail){
     ivec2 N=ivec2(floor(O+0.5));
     float A[81];
@@ -1837,7 +1868,27 @@ bool bayerDemosaic(vec2 O,out vec3 rgb,out float detail){
         if(c==0){sR+=w*df;nR+=w;}else{sB+=w*df;nB+=w;}
     }
     if(nR<=1.0e-6||nB<=1.0e-6)return false;
-    rgb=max(vec3(G+sR/nR,G,G+sB/nB),vec3(0.0))*fParam[0].x;
+    float dR=sR/nR,dB=sB/nB;
+    if(bdAliasU>0.0){
+        // P335 (owner, 2026-10-25: Ark's anti-zipper «попробуй его улучшить и добавить нам»): luma detail near the Bayer Nyquist
+        // shows in one frame as a step between the two green phases and as false colour (the zipper / moire of a moving subject);
+        // where the Gr / Gb step of the 5x5 core is large against the colour difference the colour is damped (Sabre's motion
+        // fallback damping). Unlike that one the step is taken above its own noise (the two phase means' sigma x2) and is
+        // reduced along a clear edge direction, so a noisy flat area or a straight edge keeps its colour.
+        float g0=0.0,n0=0.0,g1=0.0,n1=0.0;
+        for(int k=0;k<25;k++){
+            if(Cs[k]!=1)continue;
+            float v=A[((k/5)+2)*9+(k%5)+2];
+            if(((N.y+k/5)&1)==0){g0+=v;n0+=1.0;}else{g1+=v;n1+=1.0;}
+        }
+        if(n0>0.0&&n1>0.0){
+            float gd=max(abs(g0/n0-g1/n1)-2.0*sig*sqrt(1.0/n0+1.0/n1),0.0)*(1.0-0.7*aniso);
+            float ar=1.4*gd/(sqrt(dR*dR+dB*dB)+0.02*max(G,0.0)+1.0e-6);
+            float damp=mix(1.0,1.0/(1.0+ar*ar),clamp(bdAliasU,0.0,1.0));
+            dR*=damp;dB*=damp;
+        }
+    }
+    rgb=max(vec3(G+dR,G,G+dB),vec3(0.0))*fParam[0].x;
     return true;
 }
 #endif
@@ -4868,7 +4919,7 @@ public:
         glUniform4f(loc(rejectProgram,"rj"),tune.cdm,tune.boost,tune.varianceThreshold,tune.filterVariance);
         // boost mode 1 needs the Z channel of the local alignment; without it only the forced mode 2 boosts
         const float boostMode=tune.boostEnable>1.5f?2.f:(tune.boostEnable>0.5f&&localAlign?1.f:0.f);
-        glUniform4f(loc(rejectProgram,"rk"),boostMode,tune.motionThreshold,0,0);
+        glUniform4f(loc(rejectProgram,"rk"),boostMode,tune.motionThreshold,tune.rejPrior>0.f?1.f:0.f,0);
         // P310: with the ultrashort blend the merge (and its colour passes) runs as without Bento: the ultrashort frames get no
         // robust weight (kHybDilate), the base and the N frames their full one; kHybUsBlend blends them in after the strip's merge
         const bool usBlend=bento&&in.blend&&blendProgram!=0&&!in.native;
@@ -4932,6 +4983,7 @@ public:
             glUniform1f(loc(chromaProgram,"rampKU"),bentoMix?in.rampK:0.f); // P309
             glUniform4f(loc(chromaProgram,"bdU"),std::clamp(tune.baseDemosaic,0.f,1.f),std::clamp(tune.baseDemosaicAniso,0.f,2.f),
                         tune.baseDemosaicBayerLo,std::max(tune.baseDemosaicBayerHi,tune.baseDemosaicBayerLo+0.01f)); // P282
+            glUniform1f(loc(chromaProgram,"bdAliasU"),std::clamp(tune.baseDemosaicAlias,0.f,1.f)); // P335
             glUseProgram(mergeProgram);
         }
         {const float s=std::max(0.3f,tune.rimSigma);
