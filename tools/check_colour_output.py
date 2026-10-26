@@ -129,6 +129,25 @@ def without_p315_rails(src: str) -> str:
     return src.replace(P315_RAIL_LINE, '', 1)
 
 
+# P341 (owner, 2026-10-26: a sunset sky as pale as white next to the stock camera; a ladder rung lost in the sun's glow): the
+# light-tone vibrance (vibHlU; 0 / unset = off, the block does nothing) and the darkening detail delta scaled by the compression,
+# not its square. The token comparison takes the uniform and the block out and puts the square back (the GPU comparison renders
+# the kernel's full-resolution path: no vibHlU, no bounded delta).
+P341_VIB_UNIFORM = 'uniform float vibHlU;               // P341: vibrance of the light tones (OKLab L 0.45 .. 0.75 up), lightness kept (0 = off)\n'
+P341_VIB_BLOCK = ('    if (vibHlU > 0.0) {\n'
+                  '        float c0 = length(lab.yz);\n'
+                  '        lab.yz *= 1.0 + 1.6 * vibHlU * smoothstep(0.45, 0.75, lab.x) * smoothstep(0.002, 0.008, c0) * max(1.0 - c0 / 0.10, 0.0);\n'
+                  '    }\n')
+P341_DELTA_NEW = '        delta *= delta < 0.0 ? compression : compression * compression;\n'
+P341_DELTA_OLD = '        delta *= compression * compression;\n'
+
+
+def without_p341(src: str) -> str:
+    """P341: the light-tone vibrance and the darkening delta's compression taken back out for the token comparison (shader_part
+    checks that they are there)."""
+    return src.replace(P341_VIB_UNIFORM, '', 1).replace(P341_VIB_BLOCK, '', 1).replace(P341_DELTA_NEW, P341_DELTA_OLD, 1)
+
+
 def with_p310_white(src: str) -> str:
     """The P310 edit on the baseline shader (no TONE_OP there: the AgX gate the default TONE_OP 0 takes)."""
     src = src.replace('\r\n', '\n')
@@ -288,9 +307,11 @@ def shader_part(strict: bool) -> None:
     check('float lightRimDelta(' in n and all(e[0] in n for e in P311_RIM_EDITS),
           'combine.glsl lost the P311 rim rule of the detail delta (the dark / crimson line beside LED rings comes back)')
     check(P315_RAIL_LINE in n, 'combine.glsl lost the P315 rail rule of the detail delta (two lines along LED rings come back)')
-    got = token_hash(without_p311_rim(without_p315_rails(without_p310_white(without_highp_int(n)))))
-    print('combine.glsl P3_OUT 0 token stream (without the P305 highp int, the P311 rim rule and the P315 rail rule, the P310 AgX '
-          'white gate as the scene gate): %s' % got)
+    check(P341_VIB_UNIFORM in n and P341_VIB_BLOCK in n and P341_DELTA_NEW in n,
+          'combine.glsl lost the P341 light-tone vibrance or the darkening delta rule (a pale sunset sky, a rung lost in the glow)')
+    got = token_hash(without_p341(without_p311_rim(without_p315_rails(without_p310_white(without_highp_int(n))))))
+    print('combine.glsl P3_OUT 0 token stream (without the P305 highp int, the P311 rim rule, the P315 rail rule and the P341 '
+          'vibrance / delta rule, the P310 AgX white gate as the scene gate): %s' % got)
     check(got == BASELINE_COMBINE_TOKENS, 'combine.glsl (P3_OUT 0) differs from the pre-P46 shader: %s' % got)
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],
