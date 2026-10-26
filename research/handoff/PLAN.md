@@ -7284,3 +7284,16 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   0.0106-0.016), 3.7x sea mid band +18 % (ours above ArkCam, LMC's fine band 2 x ours is mostly its grain/sharpening).
 - Not changed: the 3.7x sky is bluer than the others (the telephoto ISP WB is colder); the night is ArkCam's brightness, LMC
   brighter. Tests: WhyPairsTest (CI list); check_why_* / check_highlight_* PASS; the CI unit list passes.
+
+### P341 - the 17:57 sunset after P340: the lilac rim, the lost rung, the sky colour (owner, 2026-10-26: before / after against 31148, the stock camera and GCam; «кайму тоже убери», «я вижу что у нас пропадает ступенька возле солнца», «нам нужно получить цвет у неба как у стока, при этом чтобы небо не темнило», «сделай чтобы было лучше чем в стоке», «в новой версии у нас теперь артефакт оранжевый, переход должен быть плавный»): DONE in code (218b12d5), host replay of the owner's three bursts, not shot on a phone.
+- Rim: R clipped, G / B measured, B blurred wider than G (B / G 1.09 at the disc edge against the glow's 0.45): pink-lilac with R the
+  largest, which clipband's B-beyond-R test let through. New test: B above the line light -> dark side in (log R/G, log B/G) at the
+  pixel's projection; the dark side from the 2r window (the r window sat inside the rim). Ring B-G max 9 -> 0.
+- Rung: P340's darkest exposure 1 / (ae hr) sat 5.3 stops under the next; now 2 / (ae hr) (disc clips white). And the detail delta
+  in compressed highlights: a darkening delta scales with the compression, not its square (combine.glsl) - a rung 10 x darker
+  than the glow kept 9 % of its detail.
+- Sky: P310's saturated-light ramp 0.35..0.7 switched weights within ~100 px of a sunset sky's warmth slope: an orange wedge with
+  an edge; now 0.15..0.95. vibHlU (key vibrance_hl 1.0): light tones x (1 + 1.6 v) for pale chroma, none from OKLab chroma 0.10,
+  L kept. Host: 1x sky Lab C 8 / 22 -> 20 / 34 (stock 25 / 42, lower L), 3.7x glow 34 -> 43 (LMC / ArkCam 33-38).
+- Open: thin light rims along the window frame next to the sun (from the darker em0, P340), seen on the host only.
+- Tests: WhyPairsTest (2 x ceiling), DevKeysCoverage; check_why_* / check_highlight_* PASS (check_why_pyramid uses the new ramp).
