@@ -7273,3 +7273,14 @@ Owner, same day: «сделай гпу выравнивание и дай воз
 - Measured, not changed: 15 instead of 20 normal frames saves 0.1-0.5 s at +15 % noise; the long frames ~1 s; the merge pass
   1.8 s (kHybMergeMain1, untouched); the plain chroma median 0.3 s; the post 0.7 s on the phone. Open: the viewfinder's RAW
   development keeps the GPU busy at 60-80 fps during the merge (worker at low GPU priority).
+
+### P340 - the owner's three pairs against LMC 9.6, ArkCam and the stock camera (owner, 2026-10-25: D:/оо/scam_burst-20261025-175757 / 180552 / 184023.bin + скинуть.zip (ARK_* LMC 9.6, ArkCam_*, IMG_* stock, SCA_* ours: 1x backlit sunset, 3.7x sunset, ultrawide ISO ~2900 night), «сделай так чтобы у нас был лучший результат среди всех пар», «я разрешаю тебе искать, добавлять и делать всё что нужно»): DONE in code, replayed (OPPO worker with the owner's tuning + host post chain p340/vivo_host.py), not shot on a phone.
+- The sun: the WHY fusion's darkest synthetic exposure came from the frame statistics (2^(-1.5 effH)) only, 0.48 / 1.0 on the
+  sunsets, so the Bento-recovered glow (2-8 x white) went white with the disc and the clipped core drew a ring.
+  WhyFusion.headroomExposure caps it at 1 / (ae x hr) when the headroom is above the clip. Host: white/red disc with an orange
+  glow (like ArkCam / LMC), full-frame p1 / p50 0.072 / 0.410 against LMC 0.078 / 0.404.
+- Fine detail: the full-size merge's detail delta was ~0.6 x LMC on water and deck. WhyCombine.detailBoost(finishSnr): x1 to
+  SNR 20, log to x1.7 at SNR 150+ (sunsets 1.7, the ISO 2900 night 1.22). Host: 1x sunset fine band 0.0072 -> 0.0101 (LMC
+  0.0106-0.016), 3.7x sea mid band +18 % (ours above ArkCam, LMC's fine band 2 x ours is mostly its grain/sharpening).
+- Not changed: the 3.7x sky is bluer than the others (the telephoto ISP WB is colder); the night is ArkCam's brightness, LMC
+  brighter. Tests: WhyPairsTest (CI list); check_why_* / check_highlight_* PASS; the CI unit list passes.

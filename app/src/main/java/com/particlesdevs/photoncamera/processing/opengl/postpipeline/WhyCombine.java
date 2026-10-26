@@ -29,6 +29,19 @@ public final class WhyCombine extends Node {
     @Override public void Compile() {}
 
     /**
+     * P340 (owner, 2026-10-25: pairs against LMC 9.6, ArkCam and the stock camera): the detail delta of the full-size merge x this,
+     * by the finish SNR: 1 up to SNR 20, log-linear to 1.7 at SNR 150 and above (the owner's sunsets at SNR 527 / 683: 1.7, the
+     * ISO 2900 night at SNR 39: 1.22). Host replay of the sunset: the finest band of the display luma 0.0072 -> 0.0101 (LMC 9.6
+     * 0.0106 .. 0.016 on the same water and deck, the stock camera 0.030 .. 0.036), the 1 - 3 px band +20 %; noise is the denoise's
+     * matter at low SNR, where it stays x1. 1 when the SNR is unknown.
+     */
+    static float detailBoost(float snr) {
+        if (!(snr > 20f)) return 1f;   // NaN (unknown) included
+        if (snr >= 150f) return 1.7f;
+        return (float) (1.0 + 0.7 * Math.log(snr / 20.0) / Math.log(150.0 / 20.0));
+    }
+
+    /**
      * Bounded reference of the detail delta (review_whytone F1): box mean of min(m * Y, 1) on the whyLow grid (m = ae, or the
      * domain of WhyLumaSharpen). The unbounded delta of a light edge reached -0.7 in OKLab L and drew black rings around lamps.
      * P187: drawn here, or by WhyLumaSharpen right after its own read of the image when the image goes back early.
@@ -67,7 +80,7 @@ public final class WhyCombine extends Node {
         // the Sabre luminance with the former default gain 2 only if no sharpened luma arrived (defensive fallback).
         final boolean sharp = st.lumaS != null;
         final float sharpMul = st.sharpMul;
-        final float detail = sharp ? WhyTone.value("sharp_gain", 1.0f) : 2.0f;
+        final float detail = sharp ? WhyTone.value("sharp_gain", 1.0f) * detailBoost(pipeline.mParameters.finishSnr) : 2.0f;
         // P134 «Цвет»: COLOUR_LOOK only when a colour setting is off its default (else the shader before P134)
         final com.particlesdevs.photoncamera.processing.color.ColourLook look = WhyTone.colourLook();
         final boolean colourOn = !look.shaderNeutral();

@@ -118,6 +118,7 @@ public final class WhyFusion extends Node {
             glProg.drawBlocks(st.lowDn);
         }
         float[] em = WhyAe.exposures(r);
+        em[0] = headroomExposure(em[0], r.ae, r.clip, r.hr);
         // layer weights in the kernel's order (hl, mid, ext_hl, shadow) [code 0x78b18-0x78b3c]
         float[] lw = {WhyTone.value("weight_hl", 0.8f), WhyTone.value("weight_mid", 1.0f),
                 WhyTone.value("weight_ext_hl", 0.7f), WhyTone.value("weight_shadow", 0.5f)};
@@ -173,6 +174,20 @@ public final class WhyFusion extends Node {
         ab[1].close();
         Log.i("SCAM_PIPELINE", "WHY fusion (guided filter, post_ab old run) " + params(em, lw, center, satLight) + " r=" + radius + " eps=" + eps
                 + " bracketDn=" + (st.lowDn != st.low ? strength : 0f) + " half=" + half.x + "x" + half.y + " ms=" + (System.currentTimeMillis() - started));
+    }
+
+    /**
+     * P340 (owner, 2026-10-25: pairs against LMC 9.6, ArkCam and the stock camera, «сделай так чтобы у нас был лучший результат среди
+     * всех пар»): with Bento headroom (recovered light above the clip, ceiling hr) the darkest synthetic exposure reaches that
+     * ceiling: at most 1 / (ae x hr), so the recovered range lands inside the fusion instead of above it. Its multiplier came
+     * from the frame's statistics alone (2^(-1.5 effH)), which a setting sun or the moon (< 0.5 % of the frame) never moves:
+     * 0.48 and 1.0 on the owner's sunsets, the glow at 2 - 8 x white went white with the disc and the clipped core drew a ring.
+     * Host replay of the owner's three bursts: the disc white, the glow orange, the frame's percentiles unchanged (p1 / p50 0.072 /
+     * 0.410 against LMC's 0.078 / 0.404). Neutral light keeps its own weights (P291 / P310), so lit paper stays white.
+     */
+    static float headroomExposure(float em0, float ae, float clip, float hr) {
+        if (!(hr > clip) || !(ae > 0f) || !Float.isFinite(hr)) return em0;
+        return Math.min(em0, 1f / (ae * hr));
     }
 
     private static String params(float[] em, float[] lw, float center, float[] satLight) {
