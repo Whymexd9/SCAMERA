@@ -30,7 +30,19 @@
                 app:exitAnim="@anim/slide_up_exit"
                 app:popEnterAnim="@anim/slide_down_enter"
                 app:popExitAnim="@anim/slide_down_exit"/>
+        <!-- P351: the photo editor -->
+        <action
+                android:id="@+id/action_imageViewerFragment_to_photoEditorFragment"
+                app:destination="@id/photoEditorFragment"
+                app:enterAnim="@anim/slide_up_enter"
+                app:exitAnim="@anim/slide_up_exit"
+                app:popEnterAnim="@anim/slide_down_enter"
+                app:popExitAnim="@anim/slide_down_exit"/>
     </fragment>
+    <fragment
+            android:id="@+id/photoEditorFragment"
+            android:name="com.particlesdevs.photoncamera.gallery.editor.PhotoEditorFragment"
+            android:label="PhotoEditorFragment"/>
     <fragment
             android:id="@+id/imageLibraryFragment"
             android:name="com.particlesdevs.photoncamera.gallery.ui.fragments.ImageLibraryFragment"

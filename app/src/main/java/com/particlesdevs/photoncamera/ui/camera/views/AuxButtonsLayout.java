@@ -227,8 +227,14 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
                 com.particlesdevs.photoncamera.control.ZoomController.syncToActive();
             }
         }
+        List<String> shown = new ArrayList<>();
+        for (String slot : slots) if (ModuleRegistry.visible(slot)) shown.add(slot);
+        // P343: one button per stop (an ISZ module before a lens's own before a digital copy)
+        shown = ZoomStops.unique(shown, ModuleRegistry::label, s -> ModuleRegistry.sensorMode(s) != 0 || ModuleRegistry.sensorCrop(s) ? 2
+                : ModuleRegistry.duplicateOf(s) == null && Math.abs(ModuleRegistry.crop(s) - 1f) < 1e-4f ? 1 : 0, ModuleRegistry.active());
+        logStrip(side, slots, shown);
         List<String> visible = new ArrayList<>(), labels = new ArrayList<>();
-        for (String slot : slots) if (ModuleRegistry.visible(slot)) {
+        for (String slot : shown) {
             visible.add(slot);labels.add(ModuleRegistry.label(slot));
             for (float p : presets(slot)) labels.add(com.particlesdevs.photoncamera.capture.XiaomiTeleZoom.presetLabel(p));
         }
@@ -243,6 +249,26 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
         }
         setListenerAndSelected(activeId);
         updateVisibility();
+    }
+
+    private static String loggedStrip = "";
+
+    /** P343: the strip once per change - every visible module: slot, camera, zoom, sensor mode / crop, and which ones are shown. */
+    private static void logStrip(String side, List<String> slots, List<String> shown) {
+        StringBuilder b = new StringBuilder("strip ").append(side).append(':');
+        for (String slot : slots) {
+            if (!ModuleRegistry.visible(slot)) continue;
+            b.append(' ').append(slot).append("=cam").append(ModuleRegistry.camera(slot)).append(String.format(Locale.US, "@%.3f", ModuleRegistry.zoom(slot)));
+            if (ModuleRegistry.sensorMode(slot) != 0) b.append(" mode").append(ModuleRegistry.sensorMode(slot));
+            if (ModuleRegistry.sensorCrop(slot)) b.append(" sensorcrop");
+            if (Math.abs(ModuleRegistry.crop(slot) - 1f) > 1e-4f) b.append(" crop").append(ModuleRegistry.crop(slot));
+            if (!shown.contains(slot)) b.append(" (same stop, hidden)");
+            b.append(',');
+        }
+        String line = b.toString();
+        if (line.equals(loggedStrip)) return;
+        loggedStrip = line;
+        com.particlesdevs.photoncamera.util.Log.i("ZOOM_STRIP", line);
     }
 
     private void setListenerAndSelected(String activeId) {

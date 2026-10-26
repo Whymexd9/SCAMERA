@@ -626,6 +626,8 @@ public class HybridSettingsTest {
         assertTrue("P339: highlight frames only with a clipped base",tuning.contains("usNeedClip 1\n"));
         assertTrue("P344: the rejection set",tuning.contains("rejPool 3\n")&&tuning.contains("rejMatchBlur 1\n")
                 &&tuning.contains("rejKneeLo 0.05\nrejKneeHi 0.8\n")&&!tuning.contains("rejPool 1\n"));
+        assertTrue("P350: the ultrashort mask set",tuning.contains("bentoUsRegister 2\nlaUltrashort 1\n")&&tuning.contains("bentoRefuseScope 1\n")
+                &&tuning.lastIndexOf("bentoMotionMax ")==tuning.indexOf("bentoMotionMax 25\n"));
         assertTrue("P344: the spread floor over the untouched default",tuning.lastIndexOf("dilateFloor ")==tuning.indexOf("dilateFloor 0.35\n"));
         assertEquals(2,PreferenceKeys.getHybridShastaMode());
         assertEquals(20,PreferenceKeys.getHybridZslFrames());

@@ -74,6 +74,14 @@ ICONS = {
     'text': '<path d="M5 6V4.5h14V6M12 4.5V20M9 20h6"/>',
     'mirror': '<path d="M12 3v18M8 7 4 12l4 5zM16 7l4 5-4 5z"/>',
     'raw': '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 9h4M3 15h4M17 9h4M17 15h4"/>',
+    # P351: the photo editor's tabs and its top bar (drawn for SCAMERA in the concept's line style)
+    'crop': '<path d="M6.5 2.5v13a2 2 0 0 0 2 2h13M2.5 6.5h13a2 2 0 0 1 2 2v13"/>',
+    'undo': '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+    'redo': '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+    'rotate': '<rect x="3.5" y="10" width="10.5" height="10.5" rx="2"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/><path d="m17.5 9.5 3 2.5 2.5-3"/>',
+    'detail': '<path d="M12 3.5 21 19.5H3z"/>',
+    'effects': '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><circle cx="12" cy="12" r="4.5"/>',
+    'styles': '<rect x="4" y="7" width="13" height="13" rx="2.5"/><path d="M8 4h9.5A2.5 2.5 0 0 1 20 6.5V16"/>',
 }
 
 NAMES = {

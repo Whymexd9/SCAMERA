@@ -62,6 +62,8 @@ public class GalleryActivity extends BaseActivity {
         if ((Intent.ACTION_VIEW.equals(action) || Constants.ACTION_REVIEW.equals(action)) 
                 && intent.getData() != null) {
             handleExternalViewIntent(intent.getData());
+        } else if (Intent.ACTION_EDIT.equals(action) && intent.getData() != null) {
+            openEditorFor(intent.getData(), intent.getType());
         } else {
             // Normal gallery mode - show all media
             viewModel.fetchAllMedia();
@@ -177,6 +179,25 @@ public class GalleryActivity extends BaseActivity {
     }
     
     /**
+     * P351: another app asked this gallery to edit a photo (ACTION_EDIT): the editor alone (the graph starts there), the copy's
+     * URI returned with RESULT_OK; back without saving returns RESULT_CANCELED. A file outside MediaStore's DCIM / Pictures
+     * gets its copy in Pictures/SCAMERA.
+     */
+    private void openEditorFor(Uri uri, @Nullable String type) {
+        externalUsage = true;
+        ImageFile file = createImageFileFromUri(uri);
+        List<GalleryItem> single = new ArrayList<>();
+        single.add(new GalleryItem(file));
+        viewModel.getCurrentFolderImages().setValue(single);
+        NavHostFragment host = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.gallery_navigation_host);
+        if (host == null) return;
+        NavController nav = host.getNavController();
+        androidx.navigation.NavGraph graph = nav.getNavInflater().inflate(R.navigation.gallery_nav_graph);
+        graph.setStartDestination(R.id.photoEditorFragment);
+        nav.setGraph(graph, com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.args(uri, file.getDisplayName(), null, type, true));
+    }
+
+    /**
      * Creates an ImageFile object from a URI
      * Extracts file information like name, size, etc. from the URI
      */
@@ -202,6 +223,11 @@ public class GalleryActivity extends BaseActivity {
             e.printStackTrace();
         }
         
+        // P352: a file:// URI (or a provider without a name) is named by its path, so its extension (a RAW) is known
+        if ("Unknown".equals(displayName) && uri.getLastPathSegment() != null) {
+            String seg = uri.getLastPathSegment();
+            displayName = seg.substring(seg.lastIndexOf('/') + 1);
+        }
         // Create and return the ImageFile
         // Use a negative ID to indicate this is an external file
         return new ImageFile(-1, uri, displayName, lastModified, size, uri.toString());

@@ -143,6 +143,10 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
             @Override public void hdr() { onHdrToggleClicked(); }
             @Override public void openPosition(int position) { if (viewPager != null) viewPager.setCurrentItem(position, true); }
         });
+        chrome.edit.setOnLongClickListener(v -> {
+            onEditElsewhere(); // P351: the long press keeps the old «edit in another app»
+            return true;
+        });
         root.addView(chrome.top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
         root.addView(chrome.bottom, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
         overlays = new LinearLayout(c);
@@ -247,6 +251,11 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         });
         viewPager.setAdapter(adapter);
         if (chrome != null) chrome.filmstrip.setItems(galleryItems);
+        // P351: after «Сохранить копию» the viewer opens on the copy
+        Uri select = viewModel.takePendingSelect();
+        if (select != null)
+            for (int i = 0; i < galleryItems.size(); i++)
+                if (select.equals(galleryItems.get(i).getFile().getFileUri())) seek_position = i;
         int position = Math.max(0, Math.min(seek_position, galleryItems.size() - 1));
         viewPager.setCurrentItem(position);
         final ViewPager pager = viewPager;
@@ -462,17 +471,34 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         } else navController.navigateUp();
     }
 
+    /**
+     * P351 (owner, 2026-10-26: «нам нужен редактор изображения в галерее с базовыми функциями как в мобильном приложении
+     * лайтрума»): «Изменить» opens the gallery's own editor (PhotoEditorFragment); a long press on it - or a file the editor
+     * does not take - goes to another app's editor as before (ExternalEdit).
+     */
     private void onEditButtonClick() {
-        if (viewPager == null || galleryItems == null || getContext() == null || galleryItems.isEmpty()) return;
+        if (viewPager == null || galleryItems == null || getContext() == null || galleryItems.isEmpty() || navController == null) return;
         GalleryItem galleryItem = galleryItems.get(viewPager.getCurrentItem());
         String fileName = galleryItem.getFile().getDisplayName();
         Uri uri = galleryItem.getFile().getFileUri();
-        Intent editIntent = new Intent(Intent.ACTION_EDIT);
-        editIntent.setDataAndType(uri, mediaTypeOf(fileName));
-        String outPutFileUri = uri.toString().replace(fileName, ImagePath.newBaseName() + '.' + FileUtils.getExtension(fileName));
-        editIntent.putExtra(MediaStore.EXTRA_OUTPUT, outPutFileUri);
-        editIntent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        startActivityForResult(Intent.createChooser(editIntent, null), Constants.REQUEST_EDIT_IMAGE);
+        if (uri == null) return;
+        String mime = mediaTypeOf(fileName);
+        if (!com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.editable(fileName, mime)) {
+            onEditElsewhere();
+            return;
+        }
+        seek_position = viewPager.getCurrentItem();
+        navController.navigate(R.id.action_imageViewerFragment_to_photoEditorFragment,
+                com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.args(uri, fileName, galleryItem.getFile().getAbsolutePath(), mime, false));
+    }
+
+    /** The old route: another app's editor (ACTION_EDIT chooser without this gallery). */
+    private void onEditElsewhere() {
+        if (viewPager == null || galleryItems == null || getContext() == null || galleryItems.isEmpty()) return;
+        GalleryItem galleryItem = galleryItems.get(viewPager.getCurrentItem());
+        if (galleryItem.getFile().getFileUri() == null) return;
+        com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.openInOtherApp(this, galleryItem.getFile().getFileUri(),
+                galleryItem.getFile().getDisplayName());
     }
 
     @Override
@@ -501,10 +527,7 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
 
     /** MIME type for share / edit: MimeTypeMap lacks HEIC on older Android versions, the photo formats are mapped here. */
     private static String mediaTypeOf(String fileName) {
-        String known = com.particlesdevs.photoncamera.processing.PhotoFormat.mimeForName(fileName);
-        if (known != null) return known;
-        String guessed = MimeTypeMap.getSingleton().getMimeTypeFromExtension(FileUtils.getExtension(fileName));
-        return guessed != null ? guessed : "image/*";
+        return com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.mediaTypeOf(fileName);
     }
 
     private void onShareButtonClick() {

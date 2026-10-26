@@ -159,7 +159,7 @@ public enum PhotoFormat {
             case "avif": return "image/avif";
             case "dng": return "image/x-adobe-dng";
             case "png": return "image/png";
-            default: return null;
+            default: return com.particlesdevs.photoncamera.gallery.raw.RawFormats.mimeForName(name); // P352: camera RAWs
         }
     }
 

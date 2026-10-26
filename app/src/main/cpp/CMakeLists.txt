@@ -98,3 +98,19 @@ target_link_libraries(scameraAvif PRIVATE scameraLibavif jnigraphics log)
 add_library(lanczosDownscale SHARED lanczos-downscale-jni.cpp)
 target_compile_options(lanczosDownscale PRIVATE -O3)
 target_link_libraries(lanczosDownscale PRIVATE jnigraphics)
+
+# P352 (owner, 2026-10-26: «галерея должна работать с любыми Рав форматами»): camera RAW (CR2/CR3, NEF, ARW, RAF, ORF, RW2,
+# PEF, SRW, 3FR, IIQ, ... and DNGs the Java reader refuses) through LibRaw 0.21.3 (third_party/libraw, LGPL-2.1 / CDDL,
+# unchanged sources; third_party/README.md). The thread-safe build (no LIBRAW_NOTHREADS: Glide decodes on several threads),
+# zlib for deflate DNG, no JPEG / Jasper / OpenMP / RawSpeed / DNG SDK. Library scameraRaw = scamera-raw.cpp + LibRaw.
+set(LIBRAW_DIR ${SRC_DIR}/third_party/libraw)
+file(GLOB_RECURSE LIBRAW_SRC ${LIBRAW_DIR}/src/*.cpp)
+list(FILTER LIBRAW_SRC EXCLUDE REGEX ".*_ph\.cpp$")
+add_library(scameraLibRaw STATIC ${LIBRAW_SRC})
+target_include_directories(scameraLibRaw PUBLIC ${LIBRAW_DIR})
+target_compile_definitions(scameraLibRaw PUBLIC USE_ZLIB=1 LIBRAW_NODLL)
+target_compile_options(scameraLibRaw PRIVATE -O2 -w -fexceptions -fvisibility=hidden -fvisibility-inlines-hidden)
+add_library(scameraRaw SHARED scamera-raw.cpp)
+target_compile_options(scameraRaw PRIVATE -O2 -fexceptions -fvisibility=hidden)
+target_link_options(scameraRaw PRIVATE -Wl,--exclude-libs,ALL -Wl,--gc-sections)
+target_link_libraries(scameraRaw PRIVATE scameraLibRaw z log)

@@ -322,6 +322,66 @@ struct HybridTuning {
     float bentoBlendValidSigma=1.f; // the cells' check planes smoothed by a gaussian of this many cells (0 = as checked)
     int bentoBlendDebug=0;       // diagnostics: 1 = the blend weight as the image, 2 = the gained ultrashort colour alone, 3 = its gain
     int bentoBlendDilate=2;
+    // P350 (owner, 2026-10-26: «Займись самой маской коротких кадров, нам нужно улучшить её максимально, сделать её максимально
+    // точной»): precision keys of the blend's mask (research/handoff/PLAN.md P350, audit F1-F12). All 0 = off = the merge bit for bit
+    // as before: the shader parts are compiled only when one of them is on (BLEND_OPTS, hybridBlendOptions; as P344's REJ_OPTS).
+    // F2: the stage-0 clip mark from the N merge's clipped share e of its kernel weight (clip flags bits 8-13, kept through the rim
+    // pass then) instead of the level ramp smoothstep(bentoBlendClipLo, Hi) of its brightest colour: smoothstep(0, x, e). The ramp
+    // missed survivor-biased partly clipped pixels (glints, LED dots: N below 0.97 from the frames that did not clip) and marked
+    // good N at 0.97 - 0.99. 0 = the level ramp; without the rim pass (no e) the level ramp as well.
+    float bentoBlendMarkShare=0.f;
+    // F1: the clip's spread (reach) gated by the pixel's OWN brightness smoothstep(lo, hi, max(N's brightest colour, the
+    // ultrashort colour's brightest at the pixel)) - the gaussian gate of the neighbourhood opened onto 1-4 px dark rails / rungs
+    // beside a light. hi > lo = on. bentoBlendGateMid 1: a clip mark's reach also needs the bright mark (or a clip mark) at the
+    // midpoint between it and the pixel (geodesic-ish: no spread across a dark gap).
+    float bentoBlendGateOwnLo=0.f,bentoBlendGateOwnHi=0.f;
+    int bentoBlendGateMid=0;
+    // F3: the base cells' weight (hybridBlendWeight). 0 = smoothstep(bentoBlendLo, Hi) of one frame's brightest site (a flat 0.9
+    // area took 0.1 - 0.3 ultrashort share from its noise, a single clipped cell lost to the near-clip gate); 1 = only truly clipped
+    // cells (brightest site >= 0.98), dilated and blurred, the gate not on those cells themselves; 2 = the ramp of a denoised
+    // level (gaussian of 1 cell) or a clipped cell, the gate not on clipped cells.
+    int bentoBlendCellMode=0;
+    // F4: the 'coloured light' test (saturation >= bentoBlendSat of the ultrashort wide colour) after a white balance: a white lamp
+    // in camera RGB read as coloured and skipped the validity. 1 = on; the gains from wbR / wbB (the camera neutral R/G, B/G as
+    // AsShotNeutral: gain = 1 / neutral; 0 = not given) or else the base frame's grey world (as hybridWriteStages).
+    int bentoBlendSatWb=0;
+    float wbR=0.f,wbB=0.f;
+    // F7: the ultrashort check (bentoMask) noise-normalised: z = rms over R, G, B of the difference between the gained ultrashort
+    // frame and the base in sigma of both frames' noise (+ bentoValidZFloor x level as the model error: flicker, sub-cell shift),
+    // one-sided where the base is clipped (only darker is an error), validity exp(-max(0, z - k)^2) instead of 1 - |error| >= 0.9
+    // (absolute, near-binary); on the blend path over every cell the blend can reach (base >= 0.25 or in the mask), not only the
+    // old mask's cells (the reach beyond them read validity 1). 0 = off.
+    float bentoValidZ=0.f,bentoValidZFloor=0.05f;
+    // F7: the base's range the ultrashort cell is compared with: 1 = its 3 x 3 cells (tolerates a residual misregistration of a
+    // cell at a light's edge), 0 = the cell itself (with bentoUsRegister the registration is sub-pixel: a 1 - 2 cell glint that
+    // moved, whose 3 x 3 range held the dark water around it, is caught then)
+    int bentoValidZRange=1;
+    int bentoBlendValidOnce=0;       // F7: 1 = the validity scales the blend once (the shader's best frame), not again in the cells' weight
+    int bentoBlendValidBilinear=0;   // F7: 1 = the shader's best validity bilinear between the cells, not the nearest cell
+    // F8: x > 0 = the gain stage leaves out every pixel with a clipped N sample (clip flags bit 3: the survivor-biased N pulled the
+    // gain below 1 and darkened the core) and, where the flicker strength is below 1, matches the level (luma only) clamped to
+    // +- x (the +-5 % level ramp at the clip border without flicker). 0 = off.
+    float bentoBlendGainLevel=0.f;
+    // F5: 1 = on the blend path the motion refusal per 8-connected component of the mask instead of the whole frame: a component
+    // with more than bentoMotionMax % invalid cells gets validity 0 (the N frames there), the others keep the blend; the whole-frame
+    // inpainting-hole and ultrashort-clipping refusals are skipped (usNeedClip and 'not enough clipping' stay). 0 = whole frame.
+    int bentoRefuseScope=0;
+    // F6: the blend's radii (near / far, gate, gain, chroma 5 x 5, fill) are OUTPUT px: on the 2x grid they halved in sensor px.
+    // 1 = x grid (sensor px), 2 = also x sqrt(MP / 12) (the radii of a 12 MP frame at any resolution); clamps raised. 0 = off.
+    int bentoBlendScale=0;
+    int bentoBlendFillMean=0;        // F12: 1 = a hole's fill is the mean of the hits on the first ring that has any (was: the first hit, east first)
+    // F12: the 5 x 5 chroma smoothing weighted by luma similarity exp(-((lq - lp) / max(lq, lp) / k)^2) (k = this; 0 = off): the
+    // colour of a light no longer bleeds across its edge
+    float bentoBlendChromaEdge=0.f;
+    // F10: the ultrashort frames registered sub-pixel against the base after the alignment (hybridUsRegister: translation + level
+    // on the base's unclipped texture), before Bento's check, the F6 field and the merge read their transform. 1 = on, 2 = also an
+    // ultrashort frame the corner tracker refused (CRE failed on its x8 noise) starts from the global translation instead of being
+    // dropped (kept only when the registration succeeds). bentoUsRegisterMax: the largest correction (sensor px). 0 = off.
+    int bentoUsRegister=0;
+    float bentoUsRegisterMax=8.f;
+    // item 5 of the P350 harness: the gain against N (stage 2) at least this strength whatever the tile check measured (the PWM
+    // LEDs' 7 ms colour: usFlicker 0.06 left the gain off, rings ~45 % darker). 0 = the tile check alone.
+    float bentoBlendGainMin=0.f;
     float bentoUsWeight=1.f;     // A of the ultrashort frame (driver: 1.0)
     float bentoUsSigma=1.f;      // isotropic kernel sigma (px) of the ultrashort frame: inside the mask it is the only frame,
                                  // and one Bayer frame needs >= ~0.7 px not to leave R/B holes (SCAM: base kernel x2.5 under Bento)
@@ -720,6 +780,11 @@ struct HybridTuning {
     // there). 0 = as before (replays unchanged).
     int mosaicUsFill=0;
     float mosaicUsFillShare=0.5f;
+    // P350 F11 (owner, 2026-10-26: «Займись самой маской коротких кадров ... сделать её максимально точной»): the fill raises only,
+    // max(u, v), so the ultrashort frames' noise biased it up (every positive draw kept). k > 0: max(u - k sigma_u, v) with sigma_u
+    // the ultrashort mean's noise from the frames' noise model (one sample at u over the number of frames: conservative). The pass
+    // is compiled with NAT_US_TOL then; 0 = the program as before.
+    float mosaicUsFillTol=0.f;
 };
 
 // restoreSensorOrigin() of scam-capture.h for a grid scaled by `scale` (CFA phase shift in output pixels).
@@ -866,6 +931,13 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoBlendChroma",&t.bentoBlendChroma)
             ||set("bentoBlendClipLo",&t.bentoBlendClipLo)||set("bentoBlendClipHi",&t.bentoBlendClipHi)||set("bentoBlendNear",&t.bentoBlendNear)
             ||set("bentoBlendFar",&t.bentoBlendFar)||set("bentoBlendDilate",nullptr,&t.bentoBlendDilate)
+            ||set("bentoBlendMarkShare",&t.bentoBlendMarkShare)||set("bentoBlendGateOwnLo",&t.bentoBlendGateOwnLo)||set("bentoBlendGateOwnHi",&t.bentoBlendGateOwnHi) // P350
+            ||set("bentoBlendGateMid",nullptr,&t.bentoBlendGateMid)||set("bentoBlendCellMode",nullptr,&t.bentoBlendCellMode)||set("bentoBlendSatWb",nullptr,&t.bentoBlendSatWb)
+            ||set("wbR",&t.wbR)||set("wbB",&t.wbB)||set("bentoValidZ",&t.bentoValidZ)||set("bentoValidZFloor",&t.bentoValidZFloor)||set("bentoValidZRange",nullptr,&t.bentoValidZRange)
+            ||set("bentoBlendValidOnce",nullptr,&t.bentoBlendValidOnce)||set("bentoBlendValidBilinear",nullptr,&t.bentoBlendValidBilinear)
+            ||set("bentoBlendGainLevel",&t.bentoBlendGainLevel)||set("bentoRefuseScope",nullptr,&t.bentoRefuseScope)||set("bentoBlendScale",nullptr,&t.bentoBlendScale)
+            ||set("bentoBlendFillMean",nullptr,&t.bentoBlendFillMean)||set("bentoBlendChromaEdge",&t.bentoBlendChromaEdge)||set("mosaicUsFillTol",&t.mosaicUsFillTol)
+            ||set("bentoUsRegister",nullptr,&t.bentoUsRegister)||set("bentoUsRegisterMax",&t.bentoUsRegisterMax)||set("bentoBlendGainMin",&t.bentoBlendGainMin)
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSharpLo",&t.shastaSharpLo)||set("shastaSharpHi",&t.shastaSharpHi)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
@@ -2444,6 +2516,13 @@ uniform vec2 blendGainLoU; // x: the gain is measured on N levels from this shar
 uniform float blendSatU;   // saturation ((max - min) / max of the frame's wide colour) from which a light counts as coloured
 uniform vec4 blendPxU;     // x, y: without clip flags, smoothstep of the N merge's brightest colour at the pixel raising the weight
                            // inside the cells' blend zone; z: radius (px) of the hole fill search, 0 = off; w: debug view
+#ifdef BLEND_OPTS
+// P350 (hybridBlendOptions: compiled only when a P350 key is on; without it the preprocessed program is the one before P350)
+uniform vec4 blendOptU;    // x: bentoBlendMarkShare (0 = the level ramp), y, z: bentoBlendGateOwnLo / Hi (z > y = on), w: 1 = the midpoint check
+uniform vec4 blendOpt2U;   // x: 1 = bilinear validity, y: bentoBlendGainLevel, z: chroma scale (1 = 5 x 5 px), w: 1 = hole fill mean
+uniform vec4 blendOpt3U;   // x: bentoBlendChromaEdge (0 = off), yzw: white balance gains for the coloured test (1, 1, 1 = none)
+uniform int blendStepU;    // the reach / gate disc's step (px): 1, the grid with bentoBlendScale
+#endif
 // The weight of a cell row of the strip (plane 0) or of the row just above / below it (edge plane: row cy0 - 1, then row cy1).
 float blendCell(int x,int y){
     int w2=size.x/2,rows=cy1-cy0;
@@ -2534,6 +2613,16 @@ vec3 usColourAt(int f,vec2 O,inout uint cl){
 // their check validity and a soft rejection against the median level (one frame of three on another flicker phase weighs
 // little); the colour is the weighted mean of the frames' demosaiced colours. No test against the N merge here (see the caller).
 // lvl: the weighted brightest colour of the frames' wide colours (the gate). false: no frame.
+#ifdef BLEND_OPTS
+// P350 bentoBlendValidBilinear: the k-th ultrashort frame's check plane bilinear between the cell centres (strip rows), not the
+// nearest cell (its 2x2 steps showed in the weight)
+float validAt(int k,vec2 p){
+    int w2=size.x/2,rows=cy1-cy0,b=(k+1)*rows*w2;
+    vec2 c=(p-0.5)*0.5,f=floor(c),t=c-f;
+    int x0=clamp(int(f.x),0,w2-1),x1=clamp(int(f.x)+1,0,w2-1),y0=clamp(int(f.y),cy0,cy1-1)-cy0,y1=clamp(int(f.y)+1,cy0,cy1-1)-cy0;
+    return mix(mix(bmask[b+y0*w2+x0],bmask[b+y0*w2+x1],t.x),mix(bmask[b+y1*w2+x0],bmask[b+y1*w2+x1],t.x),t.y);
+}
+#endif
 bool usAt(vec2 p,bool inLight,out vec3 U,out float cover,out uint uclip,out bool coloured,out float bestV,out float lvl){
     int w2=size.x/2;
     p.y=clamp(p.y,float(2*cy0),float(2*cy1)-0.5);  // the strip's rows (its frames' rows are uploaded around them)
@@ -2545,7 +2634,11 @@ bool usAt(vec2 p,bool inLight,out vec3 U,out float cover,out uint uclip,out bool
     for(int f=1;f<frameCount;f++){
         if(int(fParam[f].w)!=5)continue;
         float v=1.0;
+#ifdef BLEND_OPTS
+        if(k<validPlanesU)v=blendOpt2U.x>0.5?validAt(k,p):bmask[(k+1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+#else
         if(k<validPlanesU)v=bmask[(k+1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx];
+#endif
         k++;
         vec2 O=originM(f,2*cx,2*cy)+(p-cell);
         vec3 uNum=vec3(0.0),uDen=vec3(0.0),uClip=vec3(0.0);
@@ -2557,7 +2650,13 @@ bool usAt(vec2 p,bool inLight,out vec3 U,out float cover,out uint uclip,out bool
         // lamp) keeps the strict check: there a refused cell is motion, and the N frames' clip is the right answer.
         vec3 wc=vec3(uDen.x>0.0?uNum.x/uDen.x:(uClip.x>0.0?fParam[f].x*clipLevel:l),l,uDen.z>0.0?uNum.z/uDen.z:(uClip.z>0.0?fParam[f].x*clipLevel:l));
         float wmx=max(wc.r,max(wc.g,wc.b));
+#ifdef BLEND_OPTS
+        // P350 bentoBlendSatWb: the saturation after the white balance (a white lamp is not coloured light in camera RGB)
+        {vec3 wq=wc*blendOpt3U.yzw;float qmx=max(wq.r,max(wq.g,wq.b));
+         nf++;if(qmx>0.0&&(qmx-min(wq.r,min(wq.g,wq.b)))/qmx>=blendSatU)nc++;}
+#else
         nf++;if(wmx>0.0&&(wmx-min(wc.r,min(wc.g,wc.b)))/wmx>=blendSatU)nc++;
+#endif
         bestV=max(bestV,v);
         if(inLight&&nc*2>nf)v=max(v,0.3);   // coloured light (so far the frames' majority): a residual of the global alignment
         if(v<0.004||n>=4)continue;
@@ -2616,7 +2715,14 @@ void regionStage(int i,int row,int ox,int rows,int ow,bool flags){
         // by 2x2 cells, wider than the base frame's): bits 16-23 the clip mark (1 = a colour fell back to the clipped mean or
         // reached the clip), bits 24-31 the bright mark of the gate. The flags leave the worker as their low byte.
         if(flags){
+#ifdef BLEND_OPTS
+            // P350 bentoBlendMarkShare: the clip mark from the merge's clipped share e of its kernel weight (bits 8-13, kept by
+            // the rim pass under BLEND_OPTS): the information N lost, not its level
+            float mc=nClipped?1.0:blendOptU.x>0.0?smoothstep(0.0,blendOptU.x,float((cfl>>8)&63u)*(1.0/63.0)):smoothstep(blendClipU.x,blendClipU.y,mxN);
+            float mb=smoothstep(blendGateU.x,blendGateU.y,mxN);
+#else
             float mc=nClipped?1.0:smoothstep(blendClipU.x,blendClipU.y,mxN),mb=smoothstep(blendGateU.x,blendGateU.y,mxN);
+#endif
             cflags[i]=(cfl&0xFFFFu)|(uint(mc*255.0+0.5)<<16)|(uint(mb*255.0+0.5)<<24);
         }
         return;
@@ -2627,12 +2733,22 @@ void regionStage(int i,int row,int ox,int rows,int ow,bool flags){
     // The weight by region, the same for R, G and B (HybridTuning::bentoBlend): the N clip spread over its bright neighbourhood,
     // at least the base frame's cell weight; the N clip itself always 1.
     float alpha,reach=0.0,gateN=0.0,own=0.0;
+#ifdef BLEND_OPTS
+    float reachRaw=0.0; // P350: the reach without the midpoint check (the ultrashort colour's own bright light below)
+#endif
     if(flags){
         own=float((cfl>>16)&255u)*(1.0/255.0);
         float gs=0.0,gw=0.0;
         int R=int(ceil(blendClipU.w));
         float kg=-0.5/max(blendGateU.z*blendGateU.z,0.01);
+#ifdef BLEND_OPTS
+        // P350 bentoBlendScale: the disc read every blendStepU-th output px (the grid: one read per sensor px, whose 2x2-cell marks
+        // cover g x g output px) - the radii x g would otherwise cost g^2 more reads
+        int R0=(R/blendStepU)*blendStepU;
+        for(int dy=-R0;dy<=R0;dy+=blendStepU)for(int dx=-R0;dx<=R0;dx+=blendStepU){
+#else
         for(int dy=-R;dy<=R;dy++)for(int dx=-R;dx<=R;dx++){
+#endif
             float d2=float(dx*dx+dy*dy);
             if(d2>blendClipU.w*blendClipU.w)continue;
             int qr=row+dy;
@@ -2641,13 +2757,40 @@ void regionStage(int i,int row,int ox,int rows,int ow,bool flags){
                 uint c=cflags[qr*ow+clamp(ox+dx,0,ow-1)];
                 m=float((c>>16)&255u)*(1.0/255.0);mbq=float(c>>24)*(1.0/255.0);
             } else m=baseMarks(qr,clamp(ox+dx,0,ow-1),mbq);
+#ifdef BLEND_OPTS
+            if(m>0.0){
+                float rq=m*(1.0-smoothstep(blendClipU.z,blendClipU.w,sqrt(d2)));
+                // P350 bentoBlendGateMid: the mark reaches the pixel only through a bright (or clipped) midpoint - not across a
+                // dark rail between the light and the pixel
+                if(blendOptU.w>0.0&&rq>reach&&d2>2.0){
+                    int mr=row+dy/2,mx=clamp(ox+dx/2,0,ow-1);
+                    float mm,mbm;
+                    if(mr>=0&&mr<rows){uint c=cflags[mr*ow+mx];mm=float((c>>16)&255u)*(1.0/255.0);mbm=float(c>>24)*(1.0/255.0);}
+                    else mm=baseMarks(mr,mx,mbm);
+                    rq*=smoothstep(0.08,0.45,max(mm,mbm));
+                }
+                reach=max(reach,rq);
+                reachRaw=max(reachRaw,m*(1.0-smoothstep(blendClipU.z,blendClipU.w,sqrt(d2))));
+            }
+#else
             if(m>0.0)reach=max(reach,m*(1.0-smoothstep(blendClipU.z,blendClipU.w,sqrt(d2))));
+#endif
             float k=exp(kg*d2);
             gs+=k*mbq;gw+=k;
         }
         gateN=gs/max(gw,1.0e-6);
+#ifdef BLEND_OPTS
+        if(reachRaw<=0.002&&aCell<=0.002){bs[i]=uvec4(0u,packHalf2x16(vec2(0.0,-1.0)),0u,0u);return;}
+#else
         if(reach<=0.002&&aCell<=0.002){bs[i]=uvec4(0u,packHalf2x16(vec2(0.0,-1.0)),0u,0u);return;}
+#endif
+#ifdef BLEND_OPTS
+        // P350 bentoBlendGateOwn: the spread (the clip's reach and the cells' dilated weight) also needs the pixel's own brightness
+        // (N here; the ultrashort colour below): dark detail beside a light keeps N
+        alpha=max(own,max(aCell,reach*smoothstep(0.08,0.45,gateN))*(blendOptU.z>blendOptU.y?smoothstep(blendOptU.y,blendOptU.z,mxN):1.0));
+#else
         alpha=max(max(own,aCell),reach*smoothstep(0.08,0.45,gateN));
+#endif
     } else {
         if(aCell<=0.002&&!nClipped){bs[i]=uvec4(0u,packHalf2x16(vec2(0.0,-1.0)),0u,0u);return;}
         alpha=nClipped?1.0:max(aCell,smoothstep(blendPxU.x,blendPxU.y,mxN)*min(1.0,aCell*5.0));
@@ -2657,13 +2800,36 @@ void regionStage(int i,int row,int ox,int rows,int ow,bool flags){
     bool got=usAt(pos,inLight,U,cover,uclip,coloured,bestV,lvl);
     // the gate also opens where the ultrashort colour itself is bright: its light 1-3 px beside the N frames' clipped one (the
     // residual of the global alignment on a thin LED line) is taken whole with the clip it replaces, not cut by N's dark side
+#ifdef BLEND_OPTS
+    // (bentoBlendGateMid: the ultrashort colour's own bright light opens the gate for the reach without the midpoint check - its
+    // light 1-3 px beside the N clip has N's dark side at the midpoint)
+    if(got&&flags){float gu=smoothstep(blendGateU.x,blendGateU.y,lvl);
+        alpha=max(alpha,max(own,max(aCell,max(reach*smoothstep(0.08,0.45,max(gateN,gu)),reachRaw*smoothstep(0.08,0.45,gu)))
+                        *(blendOptU.z>blendOptU.y?smoothstep(blendOptU.y,blendOptU.z,max(mxN,max(U.r,max(U.g,U.b)))):1.0)));}
+#else
     if(got&&flags)alpha=max(alpha,reach*smoothstep(0.08,0.45,max(gateN,smoothstep(blendGateU.x,blendGateU.y,lvl))));
+#endif
     // The cells' check (the best ultrashort frame's validity: a dark object moved over a clipped window, a hand) scales the
     // weight - the N frames' clip is the right answer there. Not for coloured light (LEDs on PWM / ARGB effects: their colour
     // and level differ between the exposures, the check refused whole edges of a line and left the N clip's steps).
     if(!coloured)alpha*=clamp(bestV,0.0,1.0);
     // a pixel inside the light without any usable ultrashort sample (every frame invalid there): the nearest ultrashort colour
     // around it (8 directions, 2 px steps), so no white / lilac clipped spot stays inside a light
+#ifdef BLEND_OPTS
+    // P350 bentoBlendFillMean: the mean of the hits on the first ring that has any (off: the first hit, as below); one call site
+    if(!got&&nClipped&&blendPxU.z>0.0){
+        vec3 sU=vec3(0.0);float sc=0.0,sn=0.0;uint sk=7u;
+        for(int t=0;t<64;t++){
+            if(sn>0.0&&(blendOpt2U.w<=0.0||t%8==0))break;
+            float r=2.0*float(1+t/8);
+            if(r>blendPxU.z)break;
+            float an=0.7853982*float(t%8);
+            vec3 U1;float c1,b1,l1;uint k1;bool o1;
+            if(usAt(pos+r*vec2(cos(an),sin(an)),true,U1,c1,k1,o1,b1,l1)){sU+=U1;sc+=c1;sn+=1.0;sk&=k1;}
+        }
+        if(sn>0.0){got=true;U=sU/sn;cover=sc/sn;uclip=sk;}
+    }
+#else
     if(!got&&nClipped&&blendPxU.z>0.0){
         for(int t=0;t<64&&!got;t++){
             float r=2.0*float(1+t/8);
@@ -2672,6 +2838,7 @@ void regionStage(int i,int row,int ox,int rows,int ow,bool flags){
             got=usAt(pos+r*vec2(cos(an),sin(an)),true,U,cover,uclip,coloured,bestV,lvl);
         }
     }
+#endif
     bs[i]=uvec4(packHalf2x16(U.rg),packHalf2x16(vec2(U.b,got?alpha:-1.0)),packHalf2x16(vec2(1.0)),
                 packHalf2x16(vec2(1.0,got?cover+8.0*float(uclip&7u):0.0)));
 }
@@ -2700,7 +2867,12 @@ void gainSums(int row,int ox,int rows,int ow,bool flags,int step,int R,float sig
         vec2 qa=unpackHalf2x16(bq.y);
         if(qa.y<0.0)continue;                                           // no ultrashort colour there
         if(unpackHalf2x16(bq.w).y>=8.0)continue;                        // an ultrashort colour at its clip
+#ifdef BLEND_OPTS
+        // P350 bentoBlendGainLevel: also no pixel with a clipped N sample (bit 3: N survivor-biased low, the gain pulled < 1)
+        if(flags&&(cflags[q]&(blendOpt2U.y>0.0?15u:7u))!=0u)continue;
+#else
         if(flags&&(cflags[q]&7u)!=0u)continue;                          // N from the clipped mean
+#endif
         vec3 Nq=vec3(outRgb[q*3],outRgb[q*3+1],outRgb[q*3+2]);
         if(max(Nq.r,max(Nq.g,Nq.b))>=blendClipU.x)continue;             // N at / near its clip
         vec3 Uq=vec3(unpackHalf2x16(bq.x),qa.x);
@@ -2722,7 +2894,11 @@ void gainStage(int i,int row,int ox,int rows,int ow,bool flags){
     bool px=ba.y>0.002,last=row==rows-1&&blendCarryU.x>0;
     if(!px&&!last)return;
     vec3 lk=vec3(0.0);
+#ifdef BLEND_OPTS
+    if(blendGainU.x>0.0&&(blendGainLoU.y>0.0||blendOpt2U.y>0.0)){
+#else
     if(blendGainU.x>0.0&&blendGainLoU.y>0.0){
+#endif
         int R=int(blendGainU.x),R2=(R*8)/3;
         vec3 sl=vec3(0.0);float sw=0.0,sAll=0.0;
         gainSums(row,ox,rows,ow,flags,2,R,blendGainU.y,sl,sw,sAll);
@@ -2748,7 +2924,13 @@ void gainStage(int i,int row,int ox,int rows,int ow,bool flags){
     }
     if(last)bs[blendCarryU.x+blendCarryU.y*ow+ox]=uvec4(packHalf2x16(lk.rg),packHalf2x16(vec2(lk.b,px?1.0:0.0)),0u,0u);
     if(!px)return;
+#ifdef BLEND_OPTS
+    // P350 bentoBlendGainLevel: below full flicker strength the level (luma of the log gain, clamped to +- x) still matches
+    float lq=log(1.0+blendOpt2U.y),ll=clamp(dot(lk,vec3(0.25,0.5,0.25)),-lq,lq);
+    vec3 k=blendOpt2U.y>0.0?exp(lk*blendGainLoU.y+(1.0-blendGainLoU.y)*vec3(ll)):exp(lk*blendGainLoU.y);
+#else
     vec3 k=exp(lk*blendGainLoU.y);
+#endif
     bs[i].z=packHalf2x16(k.rg);
     bs[i].w=packHalf2x16(vec2(k.b,unpackHalf2x16(b.w).y));
 }
@@ -2784,14 +2966,29 @@ void main(){
         // grainy weak colour (green on a red LED ring), the gain x2.4 made it white speckles on the ring (WhyCam smooths the
         // highlight colour the same way inside its mask)
         vec3 sc=vec3(0.0);
+#ifdef BLEND_OPTS
+        // P350 bentoBlendScale: the window x the scale (5 x 5 px at 1); bentoBlendChromaEdge: weighted by luma similarity
+        int cR=int(2.0*blendOpt2U.z+0.5);float cK=-0.25/max(blendOpt2U.z*blendOpt2U.z,0.25);
+        float lp=dot(max(Uk,vec3(0.0)),vec3(0.25,0.5,0.25));
+        for(int dy=-cR;dy<=cR;dy++)for(int dx=-cR;dx<=cR;dx++){
+#else
         for(int dy=-2;dy<=2;dy++)for(int dx=-2;dx<=2;dx++){
+#endif
             int qr=row+dy,qx=ox+dx;
             if(qr<0||qr>=rows||qx<0||qx>=ow)continue;
             uvec4 bq=bs[qr*ow+qx];
             vec2 qa=unpackHalf2x16(bq.y);
             if(qa.y<=0.002)continue;   // only pixels whose gain stage 2 computed (the others keep the placeholder 1)
             vec3 Uq=max(vec3(unpackHalf2x16(bq.x),qa.x)*vec3(unpackHalf2x16(bq.z),unpackHalf2x16(bq.w).x),vec3(0.0));
+#ifdef BLEND_OPTS
+            float a=exp(cK*float(dx*dx+dy*dy));
+            if(blendOpt3U.x>0.0){
+                float lq=dot(Uq,vec3(0.25,0.5,0.25)),d=(lq-lp)/(max(max(lq,lp),1.0e-6)*blendOpt3U.x);
+                a*=exp(-d*d);
+            }
+#else
             float a=exp(-0.25*float(dx*dx+dy*dy));
+#endif
             sc+=a*Uq;
         }
         float lm=dot(sc,vec3(0.25,0.5,0.25)),lu=dot(max(Uk,vec3(0.0)),vec3(0.25,0.5,0.25));
@@ -2879,7 +3076,11 @@ void main(){
     if(e6==0u)return;
     float t=smoothstep(rimU.z,rimU.w,float(e6)*(1.0/63.0));
     if(t<=0.0)return;
+#ifdef BLEND_OPTS
+    cfl&=0x3FFFu;   // P350 bentoBlendMarkShare: the clipped share (bits 8-13) stays for the blend's clip mark
+#else
     cfl&=255u;
+#endif
     int x=ox/g,y=2*cy0+row/g,sx=ox-(ox/g)*g,sy=row-(row/g)*g;
     int cx=x>>1,cy=y>>1;
     vec2 pos=vec2(float(x),float(y))+(g>1?(vec2(float(sx),float(sy))+0.5)/float(g)-0.5:vec2(0.0));
@@ -4009,6 +4210,9 @@ void main(){
         if(e>0.0){
             vec2 cell=vec2(float(2*cx),float(2*cy));
             vec3 un=vec3(0.0),ud=vec3(0.0),ucn=vec3(0.0),ucd=vec3(0.0);float ut=0.0,ucv=0.0,uclip=0.0;
+#if defined(NAT_US_TOL) && NAT_US_TOL
+            float tS=0.0,tO=0.0,tR=0.0,tN=0.0;
+#endif
             int k=0;
             for(int f=1;f<frameCount;f++){
                 if(int(fParam[f].w)!=5)continue;
@@ -4024,6 +4228,9 @@ void main(){
 #endif
                 un+=(r*g)*su.nm;ud+=r*su.dn;ucn+=(r*g)*su.cn;ucd+=r*su.cd;
                 ut=max(ut,clamp(r,0.0,1.0));ucv+=r*su.dn.y;uclip+=r*(su.cd.x+su.cd.y+su.cd.z);
+#if defined(NAT_US_TOL) && NAT_US_TOL
+                tS+=r*g*fNoiseP[f].x;tO+=r*g*g*fNoiseP[f].y;tR+=r;tN+=1.0; // P350: the frames' noise in base units
+#endif
             }
             float sh=ut*smoothstep(0.0,natUsU.x,e);
             if(sh>0.0){
@@ -4032,6 +4239,11 @@ void main(){
                     float u;
                     if(ud[c]>1.0e-7){u=un[c]/ud[c];if(ucd[c]>0.0)u=max(u,(un[c]+ucn[c])/(ud[c]+ucd[c]));}
                     else u=ucn[c]/ucd[c]; // only clipped ultrashort samples: their clipped mean (a lower bound)
+#if defined(NAT_US_TOL) && NAT_US_TOL
+                    // P350 mosaicUsFillTol: raise only by what exceeds k sigma of the ultrashort mean's noise (one sample at u
+                    // over the frames): the raise no longer keeps every positive noise draw. Not for a clipped-only mean (a bound).
+                    if(ud[c]>1.0e-7&&tR>0.0)u-=natUsU.y*sqrt(max((tS*max(u,0.0)+tO)/tR,0.0)/max(tN,1.0));
+#endif
                     float v=outRgb[i*3+c];
                     outRgb[i*3+c]=mix(v,max(u,v),sh);
                     if(ud[c]>1.0e-7)cfl&=~(1u<<uint(c));
@@ -4442,6 +4654,13 @@ inline bool hybridRejOptions(const HybridTuning& t){
     return t.rejPool>1.5f||t.rejNoiseCdm>0.f||t.rejMatchBlur>0.f||t.rejRelFloor>0.f||t.rejVarExact>0.f||t.rejPerChannel>0.f||t.rejMeanDiff>0.f||t.rejClipSym>0.f
         ||(t.rejKneeHi>t.rejKneeLo&&t.rejKneeLo>=0.f)||t.rejBinHi>t.rejBinLo;
 }
+// P350: a shader key of the ultrashort blend's mask is on - kHybUsBlend and kHybRim are compiled with BLEND_OPTS (their P350 code).
+// All off: the programs exactly as before (same preprocessed text, bit-identical merge). The host-only keys (bentoBlendCellMode,
+// bentoValidZ, bentoBlendValidOnce, bentoRefuseScope) leave the programs alone.
+inline bool hybridBlendOptions(const HybridTuning& t){
+    return t.bentoBlendMarkShare>0.f||t.bentoBlendGateOwnHi>t.bentoBlendGateOwnLo||t.bentoBlendGateMid>0||t.bentoBlendSatWb>0
+        ||t.bentoBlendValidBilinear>0||t.bentoBlendGainLevel>0.f||t.bentoBlendScale>0||t.bentoBlendFillMean>0||t.bentoBlendChromaEdge>0.f;
+}
 struct HybridDcgSources { std::string helpers,mergeCommon,mosaicFast,guide; };
 inline std::string hybridDcgReplace(const std::string& text,const char* what,const char* from,const char* to){
     std::string s=text;
@@ -4497,23 +4716,25 @@ class HybridGpu {
     GLuint natFastFill[2][9][2]{}; // P204: the base-fill pass of a marked fast merge (block, half-width, R / B fill)
     GLuint natFastDem[2][9][2]{};  // P282: the base demosaic pass (block, half-width, R / B fill)
     GLuint natFastUsPass[2][9][2][2]{}; // P313: the ultrashort pass of mosaicUsFill (block, half-width, marked, R / B fill)
+    GLuint natFastUsTol[2][9][2][2]{};  // P350: the same with NAT_US_TOL (mosaicUsFillTol > 0)
     // P62 Mochi (compiled on first use): programs and buffers (0 base rows, 1 frame rows, 2 tiles, 3 tile info, 4 final, 5 out)
     GLuint mochiStatsProgram=0,mochiBlurProgram=0,mochiApplyProgram=0,mochiBuf[6]{};
     size_t mochiCap[6]{};
     // P80: the base rows already in mochiBuf[0] (frame pointer and rows): the next bracketed frame of the shot reuses them
     const uint16_t* mochiBasePtr=nullptr;int mochiBaseR0=-1,mochiBaseR1=-1;
     size_t natNormCap=0;
-    GLuint natFastProgram(int block,int r,bool marked,bool fill,bool baseFill=false,bool demosaic=false,bool usPass=false){
+    GLuint natFastProgram(int block,int r,bool marked,bool fill,bool baseFill=false,bool demosaic=false,bool usPass=false,bool usTol=false){
         const bool tetra=block==4;
         r=std::clamp(r,1,tetra?8:3);
         marked=marked||baseFill;
         if(demosaic){baseFill=false;marked=false;}
         if(usPass){baseFill=false;demosaic=false;} // P313
-        GLuint& p=usPass?natFastUsPass[tetra?1:0][r][marked?1:0][fill?1:0]
+        usTol=usTol&&usPass; // P350
+        GLuint& p=usTol?natFastUsTol[tetra?1:0][r][marked?1:0][fill?1:0]:usPass?natFastUsPass[tetra?1:0][r][marked?1:0][fill?1:0]
                  :demosaic?natFastDem[tetra?1:0][r][fill?1:0]:baseFill?natFastFill[tetra?1:0][r][fill?1:0]:natFast[tetra?1:0][r][marked?1:0][fill?1:0];
         if(!p){
             const auto t0=std::chrono::steady_clock::now();
-            std::string body=std::string(usPass?"#define NAT_US_PASS 1\n":"")+"#define NAT_B "+(tetra?"4":"2")+"\n#define NAT_R "+std::to_string(r)+"\n#define NAT_MARKED "+(marked?"1":"0")
+            std::string body=std::string(usPass?"#define NAT_US_PASS 1\n":"")+(usTol?"#define NAT_US_TOL 1\n":"")+"#define NAT_B "+(tetra?"4":"2")+"\n#define NAT_R "+std::to_string(r)+"\n#define NAT_MARKED "+(marked?"1":"0")
                 +"\n#define NAT_FILL "+(fill?"1":"0")+"\n#define NAT_BASEFILL "+(baseFill?"1":"0")+"\n#define NAT_DEMOSAIC "+(demosaic?"1":"0")+"\n"
                 +mergeCommon()+kHybNatAccess+mosaicFast();
             // P313: the ultrashort pass reads and writes the merged colour, the effective map and the clip flags (its text alone)
@@ -4521,9 +4742,9 @@ class HybridGpu {
                 const std::string k(w);size_t at;
                 while((at=body.find(k))!=std::string::npos)body.replace(at,k.size(),k.substr(10)); // drops "writeonly "
             }
-            compileName=usPass?(tetra?"mosaicUsT":"mosaicUs"):demosaic?(tetra?"mosaicDemT":"mosaicDem"):baseFill?(tetra?"mosaicFillT":"mosaicFill"):tetra?"mosaicFastT":"mosaicFast"; // the crash report names the program
+            compileName=usTol?(tetra?"mosaicUsTolT":"mosaicUsTol"):usPass?(tetra?"mosaicUsT":"mosaicUs"):demosaic?(tetra?"mosaicDemT":"mosaicDem"):baseFill?(tetra?"mosaicFillT":"mosaicFill"):tetra?"mosaicFastT":"mosaicFast"; // the crash report names the program
             p=compile(body.c_str());
-            compileMs+=std::string(usPass?" mosaicUs":demosaic?" mosaicDem":baseFill?" mosaicFill":" mosaicFast")+(tetra?"T":"")+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
+            compileMs+=std::string(usTol?" mosaicUsTol":usPass?" mosaicUs":demosaic?" mosaicDem":baseFill?" mosaicFill":" mosaicFast")+(tetra?"T":"")+std::to_string(r)+(marked?"m":"")+(fill?"f":"")+"="
                 +std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
         }
         return p;
@@ -4568,6 +4789,7 @@ class HybridGpu {
             for(auto& byBlock:natFast)for(auto& byR:byBlock)for(auto& byMark:byR)for(GLuint program:byMark)if(program)glDeleteProgram(program); // P34
             for(auto& byBlock:natFastFill)for(auto& byR:byBlock)for(GLuint program:byR)if(program)glDeleteProgram(program); // P204
             for(auto& byBlock:natFastUsPass)for(auto& byR:byBlock)for(auto& byMark:byR)for(GLuint program:byMark)if(program)glDeleteProgram(program); // P313
+            for(auto& byBlock:natFastUsTol)for(auto& byR:byBlock)for(auto& byMark:byR)for(GLuint program:byMark)if(program)glDeleteProgram(program); // P350
             if(natTable[0]||natTable[1])glDeleteBuffers(2,natTable);
             if(natNormBuf)glDeleteBuffers(1,&natNormBuf);
             if(natFieldBuf)glDeleteBuffers(1,&natFieldBuf); // P268
@@ -4785,6 +5007,7 @@ public:
         const std::vector<float>* mask=nullptr;         // per cell (w/2 x h/2), 0 = no Bento
         bool blend=false;                               // P310: mask = the ultrashort blend weight (kHybUsBlend), the merge without them
         float blendGain=1.f;                            // P310: strength of the ultrashort colour's gain against N (kHybUsBlend stage 2)
+        std::array<float,3> blendWb{1.f,1.f,1.f};       // P350 bentoBlendSatWb: white balance gains of the blend's coloured test
         float rampK=0.f; // P309: the ramp mask's K (share = m / (m + K (1 - m))); 0 = the previous mask
         std::vector<const std::vector<float>*> maskValid; // bentoValidate: per ultrashort frame in merge order, the validity factor per cell
         std::vector<int> hotList;                       // normal frames of the fixed-pattern outlier test (base first); empty = off
@@ -4842,11 +5065,14 @@ public:
     const bool dcg=false;
     // rejOpts (P344): kHybReject / kHybDilate with REJ_OPTS (hybridRejOptions); false = the programs as before.
     const bool rejOpts=false;
+    // blendOpts (P350): kHybUsBlend / kHybRim with BLEND_OPTS (hybridBlendOptions; only with the blend program); false = as before.
+    const bool blendOpts=false;
     // blendPass (P310): compile the ultrashort blend (kHybUsBlend) for bentoBlend > 0 on the plain merge.
     explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false,
                        const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false,
-                       bool withOutlierPrograms=true,bool blendPass=false,bool dcgZones=false,bool rejOptions=false)
-            :localAlign(withLocalAlign),sumsCarry(withSumsCarry),outlierPrograms(withOutlierPrograms),dcg(dcgZones),rejOpts(rejOptions){
+                       bool withOutlierPrograms=true,bool blendPass=false,bool dcgZones=false,bool rejOptions=false,bool blendOptions=false)
+            :localAlign(withLocalAlign),sumsCarry(withSumsCarry),outlierPrograms(withOutlierPrograms),dcg(dcgZones),rejOpts(rejOptions),
+             blendOpts(blendOptions&&blendPass){
         if(localAlign)helpersPrefix="#define LOCAL_ALIGN 1\n";
         try{
             display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -4907,9 +5133,10 @@ public:
                 const std::string body=defs+mergeCommon()+kHybMergeMain1;
                 mergeProgram=timed("merge",body.c_str());
             }
-            if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+mergeCommon()+kHybRim;rimProgram=timed("rim",body.c_str());}
+            const char* blendDefs=blendOpts?"#define BLEND_OPTS 1\n":""; // P350
+            if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+blendDefs+mergeCommon()+kHybRim;rimProgram=timed("rim",body.c_str());}
             if(bentoPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+mergeCommon()+kHybBento;bentoProgram=timed("bento",body.c_str());}
-            if(blendPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+mergeCommon()+kHybUsBlend;blendProgram=timed("blend",body.c_str());} // P310
+            if(blendPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+blendDefs+mergeCommon()+kHybUsBlend;blendProgram=timed("blend",body.c_str());} // P310
             if(chromaPass){const std::string body=std::string("#define RIM_STATS 1\n#define CHROMA_PASS 1\n")+mergeCommon()+kHybChroma;chromaProgram=timed("chroma",body.c_str());}
             if(nativeMosaic){ // P29: new programs only, the ones above are compiled from the same sources as without it
                 natMeanProgram=timed("natMean",(std::string(kHybNatAccess)+kHybNatMean).c_str());
@@ -5150,8 +5377,9 @@ public:
                 if(tune.baseDemosaic>0.f){natDem=natFastProgram(nat->block,nat->window,false,fill,false,true);natMerge.push_back(natDem);}
                 natUs=bento&&tune.mosaicUsFill>0&&clipFlags!=nullptr; // the pass reads the merge's clipped share in the clip flags
                 if(natUs){
-                    natUsPlain=natFastProgram(nat->block,nat->window,false,fill,false,false,true);natMerge.push_back(natUsPlain);
-                    if(mayMark){natUsMarked=natFastProgram(nat->block,nat->window,true,fill,false,false,true);natMerge.push_back(natUsMarked);}
+                    const bool tol=tune.mosaicUsFillTol>0.f; // P350: NAT_US_TOL
+                    natUsPlain=natFastProgram(nat->block,nat->window,false,fill,false,false,true,tol);natMerge.push_back(natUsPlain);
+                    if(mayMark){natUsMarked=natFastProgram(nat->block,nat->window,true,fill,false,false,true,tol);natMerge.push_back(natUsMarked);}
                 }
                 programs.push_back(natNormProgram);
             } else {
@@ -5281,6 +5509,7 @@ public:
              glUniform4f(loc(blendProgram,"blendU"),std::max(tune.bentoBlendReject,0.01f),(clipFlags||(tune.rimRatio!=0&&rimProgram!=0))?1.f:0.f,
                          0.f,std::clamp(tune.bentoBlendChroma,0.f,1.f));
              glUniform1f(loc(blendProgram,"blendSatU"),std::clamp(tune.bentoBlendSat,0.f,1.f));
+             if(!blendOpts){
              {const float bNear=std::clamp(tune.bentoBlendNear,0.f,11.5f); // far stays at least 0.5 px above near (smoothstep)
               glUniform4f(loc(blendProgram,"blendClipU"),tune.bentoBlendClipLo,std::max(tune.bentoBlendClipHi,tune.bentoBlendClipLo+0.005f),
                           bNear,std::clamp(std::max(tune.bentoBlendFar,bNear+0.5f),0.5f,12.f));}
@@ -5291,6 +5520,31 @@ public:
              glUniform2f(loc(blendProgram,"blendGainLoU"),std::clamp(tune.bentoBlendGainLo,0.f,0.95f),std::clamp(in.blendGain,0.f,1.f));
              glUniform4f(loc(blendProgram,"blendPxU"),tune.bentoBlendPixLo,std::max(tune.bentoBlendPixHi,tune.bentoBlendPixLo+0.01f),
                          std::clamp(tune.bentoBlendFill,0.f,8.f),float(tune.bentoBlendDebug));
+             } else { // P350 (BLEND_OPTS): the same uniforms, the radii x bentoBlendScale (clamps raised), and the option uniforms
+             const bool sc=tune.bentoBlendScale>0;
+             const float s=sc?float(g)*(tune.bentoBlendScale>=2?std::sqrt(std::max(float(w)*float(h)/12.0e6f,0.25f)):1.f):1.f;
+             {const float bNear=std::clamp(tune.bentoBlendNear*s,0.f,sc?23.5f:11.5f);
+              glUniform4f(loc(blendProgram,"blendClipU"),tune.bentoBlendClipLo,std::max(tune.bentoBlendClipHi,tune.bentoBlendClipLo+0.005f),
+                          bNear,std::clamp(std::max(tune.bentoBlendFar*s,bNear+0.5f),0.5f,sc?24.f:12.f));}
+             glUniform4f(loc(blendProgram,"blendGateU"),tune.bentoBlendGateLo,std::max(tune.bentoBlendGateHi,tune.bentoBlendGateLo+0.01f),
+                         std::clamp(tune.bentoBlendGateSigma*s,0.25f,sc?12.f:6.f),0.f);
+             {const float gr=std::clamp(tune.bentoBlendGainRadius*s,0.f,sc?32.f:24.f);
+              glUniform4f(loc(blendProgram,"blendGainU"),gr,std::max(0.5f,0.5f*gr),
+                          std::clamp(tune.bentoBlendGainSupport,0.01f,1.f),std::clamp(tune.bentoBlendGainMax,1.f,16.f));}
+             glUniform2f(loc(blendProgram,"blendGainLoU"),std::clamp(tune.bentoBlendGainLo,0.f,0.95f),std::clamp(in.blendGain,0.f,1.f));
+             glUniform4f(loc(blendProgram,"blendPxU"),tune.bentoBlendPixLo,std::max(tune.bentoBlendPixHi,tune.bentoBlendPixLo+0.01f),
+                         std::clamp(tune.bentoBlendFill*s,0.f,sc?16.f:8.f),float(tune.bentoBlendDebug));
+             // the share mark needs the merge's clipped share: the rim pass on (the merge writes it only then), else the level ramp
+             const bool share=tune.bentoBlendMarkShare>0.f&&tune.rimRatio!=0&&rimProgram!=0;
+             const bool own=tune.bentoBlendGateOwnHi>tune.bentoBlendGateOwnLo;
+             glUniform4f(loc(blendProgram,"blendOptU"),share?std::clamp(tune.bentoBlendMarkShare,0.01f,1.f):0.f,
+                         own?std::clamp(tune.bentoBlendGateOwnLo,0.f,1.f):0.f,own?std::clamp(tune.bentoBlendGateOwnHi,0.01f,2.f):0.f,
+                         tune.bentoBlendGateMid>0?1.f:0.f);
+             glUniform4f(loc(blendProgram,"blendOpt2U"),tune.bentoBlendValidBilinear>0?1.f:0.f,std::clamp(tune.bentoBlendGainLevel,0.f,0.5f),
+                         std::clamp(s,1.f,8.f),tune.bentoBlendFillMean>0?1.f:0.f);
+             glUniform4f(loc(blendProgram,"blendOpt3U"),std::max(tune.bentoBlendChromaEdge,0.f),in.blendWb[0],in.blendWb[1],in.blendWb[2]);
+             glUniform1i(loc(blendProgram,"blendStepU"),sc?std::max(1,g):1);
+             }
              glUseProgram(mergeProgram);
          }}
         glUniform4i(loc(mergeProgram,"kG"),g,ow,0,0);
@@ -5373,7 +5627,7 @@ public:
                 glUniform1i(loc(mosaicProgram,"natClampU"),nat->clampCov); // P34
                 const float us=std::max(0.3f,tune.bentoUsSigma),rs=std::max(0.3f,tune.rimSigma);
                 glUniform4f(loc(mosaicProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bento&&!natUs?1.f:0.f); // P313: off under the fill
-                if(natUs){glUniform2f(loc(mosaicProgram,"natUsU"),std::clamp(tune.mosaicUsFillShare,0.01f,1.f),0.f);
+                if(natUs){glUniform2f(loc(mosaicProgram,"natUsU"),std::clamp(tune.mosaicUsFillShare,0.01f,1.f),std::clamp(tune.mosaicUsFillTol,0.f,8.f)); // P350: y = mosaicUsFillTol
                           glUniform1i(loc(mosaicProgram,"validPlanesU"),int(in.maskValid.size()));}
                 glUniform4f(loc(mosaicProgram,"kE"),float(tune.debugFrame),1.f/(us*us),0,0);
                 glUniform4i(loc(mosaicProgram,"kG"),g,ow,0,0);
@@ -6018,7 +6272,7 @@ inline void hybridPrewarmGpu(const HybridTuning& tune,int block,const std::funct
     const bool blendPass=t.bento>0&&t.bentoBlend>0&&!native;
     const bool bentoPass=t.bento>0&&!blendPass&&t.bentoChromaSigma>0.f&&t.bentoChroma>0.f;
     const bool outlierPrograms=t.hotSigma>0||t.hotBaseSigma>0;
-    HybridGpu gpu(rimPass,la,bentoPass,chromaPass,nullptr,false,native,outlierPrograms,blendPass,false,hybridRejOptions(t));
+    HybridGpu gpu(rimPass,la,bentoPass,chromaPass,nullptr,false,native,outlierPrograms,blendPass,false,hybridRejOptions(t),hybridBlendOptions(t));
     if(native){
         const bool t2=block==4&&tune.mosaicTetra!=1;
         const int mb=t2?2:block;
@@ -6326,8 +6580,10 @@ inline BentoBase bentoBase(const Burst& b,const HybridTuning& t) {
 // Highlight mask of the base (per 2x2 cell): clipped -> dilate r -> gaussian smooth; checked against the
 // aligned ultrashort frame (SCAM bento mask.cl + ShouldFallback). base (P31): bentoBase of this burst, built once for every call;
 // null (or built without the mask this call needs): built here.
+// noise (P350 bentoValidZ): the base's and the ultrashort frame's noise model (slope, offset; each in its own exposure,
+// normalised units); null = bentoValidZ cannot run (the check as before).
 inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography& usH,float usExposure,const HybridTuning& t,
-                             const BentoBase* base=nullptr) {
+                             const BentoBase* base=nullptr,const std::array<float,4>* noise=nullptr) {
     BentoResult res;
     const int w2=b.w/2,h2=b.h/2;
     BentoBase own;
@@ -6347,6 +6603,10 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
     std::vector<uint8_t> inpaint(size_t(w2)*h2,0);
     res.smooth=mask;res.valid.assign(size_t(w2)*h2,1.f);
     const float ratio=1.f/std::max(usExposure,1e-6f);
+    // P350 bentoValidZ: the graded, noise-normalised check; with the blend (bentoBlend) on every cell bright enough to be blended
+    // (base >= 0.25: the reach of the N clip and the cells' weight go beyond the mask's cells, whose validity read 1 there)
+    const bool zCheck=t.bentoValidZ>0.f&&noise!=nullptr&&t.bentoScam;
+    const bool zWide=zCheck&&t.bentoBlend>0;
     mergeRowBands(h2,[&](int y0,int y1){
         long lu=0,lm=0,li=0;
         for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
@@ -6354,14 +6614,19 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
             // P309: with the ramp the previous mask's cells are checked too (the share takes the larger of the two) and the counts
             // (motion share, ultrashort clipping) stay on them
             const bool prev=t.bentoRamp>0.f&&base->prev.size()==mask.size()&&base->prev[i]>0.f;
-            if(mask[i]<=0.f&&!prev)continue;
-            const bool counted=t.bentoRamp<=0.f||base->prev.size()!=mask.size()||prev;
+            bool inMask=true; // P350: false = a cell checked only for the blend's validity plane (zWide): no count, no mask change
+            if(mask[i]<=0.f&&!prev){
+                if(!zWide)continue;
+                if(std::max({b.sample(0,2*cx,2*cy),b.sample(0,2*cx+1,2*cy),b.sample(0,2*cx,2*cy+1),b.sample(0,2*cx+1,2*cy+1)})<0.25f)continue;
+                inMask=false;
+            }
+            const bool counted=inMask&&(t.bentoRamp<=0.f||base->prev.size()!=mask.size()||prev);
             if(counted)++lm;
             const DonorPoint o=usH.bayerOrigin(2*cx,2*cy);
             const int ux=std::clamp(int(std::lround(o.x*0.5f)),0,w2-1),uy=std::clamp(int(std::lround(o.y*0.5f)),0,h2-1);
             float us[4];bool c=false;
             for(int p=0;p<4;++p){us[p]=b.sample(usSlot,2*ux+(p&1),2*uy+(p>>1));if(us[p]>=t.bentoHighlight)c=true;}
-            if(c){usClip[i]=1;if(counted)++lu;}
+            if(c&&inMask){usClip[i]=1;if(counted)++lu;}
             if(t.bentoSubpixel){
                 // each phase bilinear between the four cells around the aligned position (the clip test above stays the
                 // nearest cell's: a clipped ultrashort sample is a lower bound, not an error)
@@ -6379,6 +6644,48 @@ inline BentoResult bentoMask(const Burst& b,int usSlot,const BackwardHomography&
             // canonical RGGB: phase 0 red, 1 and 2 green, 3 blue
             const float base3[3]={b.sample(0,2*cx,2*cy),0.5f*(b.sample(0,2*cx+1,2*cy)+b.sample(0,2*cx,2*cy+1)),b.sample(0,2*cx+1,2*cy+1)};
             const float us3[3]={std::min(us[0]*ratio,1.f),std::min(0.5f*(us[1]+us[2])*ratio,1.f),std::min(us[3]*ratio,1.f)};
+            if(zCheck){
+                // P350 bentoValidZ: z = rms of the differences in sigma of both frames' noise (the ultrashort frame's x its gain)
+                // plus the model error bentoValidZFloor x the level; the difference is the distance of the ultrashort cell from
+                // the RANGE of the base's 3 x 3 cells around (a residual of the global alignment up to a cell at a light's edge
+                // is not motion: the point test refused 20 % of a lamp's mask cells at k = 3); one-sided (only darker) where
+                // that range reaches the clip, and with bentoValidate < 2 everywhere; validity exp(-max(0, z - k)^2)
+                const float bs=(*noise)[0],bo=(*noise)[1],us_=(*noise)[2],uo=(*noise)[3],fl=std::max(t.bentoValidZFloor,0.f);
+                float lo3[3]={base3[0],base3[1],base3[2]},hi3[3]={base3[0],base3[1],base3[2]};
+                const int zr=std::clamp(t.bentoValidZRange,0,2);
+                for(int j=-zr;j<=zr;++j)for(int q=-zr;q<=zr;++q){
+                    if(!j&&!q)continue;
+                    const int nx=std::clamp(cx+q,0,w2-1),ny=std::clamp(cy+j,0,h2-1);
+                    const float c3[3]={b.sample(0,2*nx,2*ny),0.5f*(b.sample(0,2*nx+1,2*ny)+b.sample(0,2*nx,2*ny+1)),b.sample(0,2*nx+1,2*ny+1)};
+                    for(int k=0;k<3;++k){lo3[k]=std::min(lo3[k],c3[k]);hi3[k]=std::max(hi3[k],c3[k]);}
+                }
+                float z2=0;
+                for(int k=0;k<3;++k){
+                    // brighter than the base: an error unless the cell itself clipped (a clipped NEIGHBOUR is no excuse: a light
+                    // that moved onto an unclipped cell beside its clip is a ghost there), measured against the range when it
+                    // stays below the clip, else against the cell itself
+                    const bool oneSided=base3[k]>=0.98f||t.bentoValidate<2;
+                    const float hiRef=hi3[k]<0.98f?hi3[k]:base3[k];
+                    const float d=us3[k]<lo3[k]?us3[k]-lo3[k]:(us3[k]>hiRef&&!oneSided?us3[k]-hiRef:0.f);
+                    const float ref=us3[k]<lo3[k]?lo3[k]:hiRef;
+                    const float lv=std::max(std::max(ref,us3[k]),0.f),fe=fl*lv;
+                    const float var=std::max(bs*std::max(ref,0.f)+bo,0.f)*(k==1?0.5f:1.f)
+                                   +ratio*(us_*std::max(us3[k],0.f)+ratio*uo)*(k==1?0.5f:1.f)+fe*fe+1e-10f;
+                    z2+=d*d/var;
+                }
+                const float z=std::sqrt(z2/3.f),e=std::max(0.f,z-t.bentoValidZ),v=std::exp(-e*e);
+                if(v>=0.999f)continue;
+                res.valid[i]=v;
+                if(!inMask)continue;
+                if(v<=0.1f&&counted)++li;
+                mask[i]=std::clamp(v*mask[i],0.f,1.f);
+                if(v<=0.1f){
+                    const float lo=std::min({base3[0],base3[1],base3[2]}),hi=std::max({base3[0],base3[1],base3[2]});
+                    const float middle=base3[0]+base3[1]+base3[2]-lo-hi;
+                    if(lo>=t.bentoInpaintMin&&middle>=t.bentoInpaintMiddle)inpaint[i]=1;
+                }
+                continue;
+            }
             float e2=0;
             for(int k=0;k<3;++k){const float d=std::min(us3[k]-base3[k],0.f);e2+=d*d;}
             float error=std::sqrt(e2);
@@ -7637,6 +7944,122 @@ inline HybridUsShift hybridUsGlobalShift(const uint16_t* base,const uint16_t* us
     r.dx=2*bx;r.dy=2*by;
     return r;
 }
+// P350 F10 (bentoUsRegister; owner, 2026-10-26: «Займись самой маской коротких кадров ... сделать её максимально точной»): the
+// ultrashort frames got only the alignment's global transform (the corner tracker on a x8 noisy frame, or globalShift in 4 px
+// steps), no F6 field: on hand-held bursts their colour landed 1-2 px off the N merge's light, the main source of the halo / step /
+// colour edge pairs at every clip contour and of the false 'motion' that refused Bento whole frames. Here the residual
+// translation (and a level factor: flicker) of the gained ultrashort frame against the base, sub-pixel, by Gauss-Newton on the 2x2
+// site sums (quads; colour-mixed alike in both frames) of both frames blurred by 1.5 then 0.75 quads, on the base's UNCLIPPED
+// texture only (quads within 3 of a site >= 95 % of white in either frame left out: the ultrashort frame shows structure where
+// the base is flat clipped), Huber-weighted against the residual's own spread (moving content, LED layers on PWM), every 2nd quad.
+// Accepted when it lowered the robust cost, used >= 200 quads and stays within maxShift sensor px; H is then H + (dx, dy).
+struct HybridUsRegister { bool ok=false;float dx=0,dy=0,gain=1;long samples=0;double cost0=0,cost1=0;std::string why; };
+inline HybridUsRegister hybridUsRegister(const uint16_t* base,const uint16_t* us,int w,int h,const std::array<float,4>& black,
+                                         float white,float expected,const BackwardHomography& H,float maxShift){
+    HybridUsRegister r;
+    const int qw=w/2,qh=h/2;
+    if(!base||!us||qw<64||qh<64||!(expected>0.f)||!(white>0.f)){r.why="no frames";return r;}
+    const double sb=double(black[0])+black[1]+black[2]+black[3],den=std::max(4.0*white-sb,1.0);
+    const float clipQ=0.95f*white;
+    std::vector<float> B(size_t(qw)*qh),U(size_t(qw)*qh);std::vector<uint8_t> cb(size_t(qw)*qh),cu(size_t(qw)*qh);
+    mergeRowBands(qh,[&](int y0,int y1){
+        for(int y=y0;y<y1;++y)for(int x=0;x<qw;++x){
+            const size_t i=size_t(y)*qw+x;const uint16_t* pb=base+size_t(2*y)*w+2*x;const uint16_t* pu=us+size_t(2*y)*w+2*x;
+            B[i]=float((double(pb[0])+pb[1]+pb[w]+pb[w+1]-sb)/den);
+            U[i]=float((double(pu[0])+pu[1]+pu[w]+pu[w+1]-sb)/den/expected);
+            cb[i]=std::max({pb[0],pb[1],pb[w],pb[w+1]})>=clipQ;cu[i]=std::max({pu[0],pu[1],pu[w],pu[w+1]})>=clipQ;
+        }
+    });
+    auto dilate=[&](std::vector<uint8_t>& m,int R){ // separable max, R quads
+        std::vector<uint8_t> t(m.size());
+        mergeRowBands(qh,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<qw;++x){uint8_t v=0;for(int k=std::max(0,x-R);k<=std::min(qw-1,x+R)&&!v;++k)v=m[size_t(y)*qw+k];t[size_t(y)*qw+x]=v;}});
+        mergeRowBands(qh,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<qw;++x){uint8_t v=0;for(int k=std::max(0,y-R);k<=std::min(qh-1,y+R)&&!v;++k)v=t[size_t(k)*qw+x];m[size_t(y)*qw+x]=v;}});
+    };
+    dilate(cb,3);dilate(cu,3);
+    auto blurred=[&](const std::vector<float>& src,float sg){
+        const int R=std::max(1,int(std::ceil(3.f*sg)));std::vector<float> k(size_t(2*R+1));float ks=0;
+        for(int i=-R;i<=R;++i){k[size_t(i+R)]=std::exp(-0.5f*float(i*i)/(sg*sg));ks+=k[size_t(i+R)];}
+        for(float& v:k)v/=ks;
+        std::vector<float> t(src.size()),o(src.size());
+        mergeRowBands(qh,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<qw;++x){float a=0;for(int i=-R;i<=R;++i)a+=k[size_t(i+R)]*src[size_t(y)*qw+std::clamp(x+i,0,qw-1)];t[size_t(y)*qw+x]=a;}});
+        mergeRowBands(qh,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<qw;++x){float a=0;for(int i=-R;i<=R;++i)a+=k[size_t(i+R)]*t[size_t(std::clamp(y+i,0,qh-1))*qw+x];o[size_t(y)*qw+x]=a;}});
+        return o;
+    };
+    auto bil=[&](const std::vector<float>& m,float x,float y){
+        const int x0=int(std::floor(x)),y0=int(std::floor(y));const float tx=x-float(x0),ty=y-float(y0);
+        auto at=[&](int xx,int yy){return m[size_t(std::clamp(yy,0,qh-1))*qw+std::clamp(xx,0,qw-1)];};
+        return (at(x0,y0)*(1-tx)+at(x0+1,y0)*tx)*(1-ty)+(at(x0,y0+1)*(1-tx)+at(x0+1,y0+1)*tx)*ty;
+    };
+    // the ultrashort quad position of every sampled base quad at the current transform (the cell's top-left site, as bayerOrigin)
+    const int st=2,sw=qw/st,sh=qh/st;
+    std::vector<float> px(size_t(sw)*sh),py(size_t(sw)*sh);
+    for(int j=0;j<sh;++j)for(int i=0;i<sw;++i){const DonorPoint o=H.bayerOrigin(2*i*st,2*j*st);px[size_t(j)*sw+i]=o.x*0.5f;py[size_t(j)*sw+i]=o.y*0.5f;}
+    float dx=0,dy=0,g=1;
+    // one pass: robust cost and normal equations at (dx, dy, g); per-row sums added in order (deterministic)
+    struct Row { double A[6],b[3],c,n; };
+    auto pass=[&](const std::vector<float>& Bb,const std::vector<float>& Ub,float scale,bool solve,double& cost,long& n,double* A,double* bv){
+        std::vector<Row> rows(static_cast<size_t>(sh));
+        mergeRowBands(sh,[&](int j0,int j1){
+            for(int j=j0;j<j1;++j){
+                Row q{};
+                for(int i=0;i<sw;++i){
+                    const int bx=i*st,by=j*st;const size_t bi=size_t(by)*qw+bx;
+                    if(cb[bi])continue;
+                    const float bvv=Bb[bi];if(bvv<0.01f||bvv>0.85f)continue;
+                    const float ux=px[size_t(j)*sw+i]+dx,uy=py[size_t(j)*sw+i]+dy;
+                    if(ux<2||uy<2||ux>qw-3||uy>qh-3)continue;
+                    if(cu[size_t(int(uy+0.5f))*qw+int(ux+0.5f)])continue;
+                    const float u=bil(Ub,ux,uy),gx=0.5f*(bil(Ub,ux+1,uy)-bil(Ub,ux-1,uy)),gy=0.5f*(bil(Ub,ux,uy+1)-bil(Ub,ux,uy-1));
+                    const float res=g*u-bvv,sg=scale*(0.01f+0.05f*bvv);   // relative scale: the frames' noise and flicker grow with the level
+                    const float a=std::abs(res)/sg,wt=a<=1.f?1.f:1.f/a;   // Huber
+                    q.c+=a<=1.f?0.5*a*a:a-0.5;q.n+=1;
+                    if(!solve)continue;
+                    const double J[3]={g*gx/sg,g*gy/sg,u/sg},rr=res/sg;
+                    q.A[0]+=wt*J[0]*J[0];q.A[1]+=wt*J[0]*J[1];q.A[2]+=wt*J[0]*J[2];q.A[3]+=wt*J[1]*J[1];q.A[4]+=wt*J[1]*J[2];q.A[5]+=wt*J[2]*J[2];
+                    q.b[0]-=wt*J[0]*rr;q.b[1]-=wt*J[1]*rr;q.b[2]-=wt*J[2]*rr;
+                }
+                rows[size_t(j)]=q;
+            }
+        });
+        cost=0;double nn=0;for(int k=0;k<6;++k)A[k]=0;for(int k=0;k<3;++k)bv[k]=0;
+        for(const Row& q:rows){cost+=q.c;nn+=q.n;for(int k=0;k<6;++k)A[k]+=q.A[k];for(int k=0;k<3;++k)bv[k]+=q.b[k];}
+        n=long(nn);cost/=std::max(nn,1.0);
+    };
+    double A[6],bv[3],c0=0;long n0=0;
+    {const std::vector<float> Bb=blurred(B,0.75f),Ub=blurred(U,0.75f);pass(Bb,Ub,1.f,false,c0,n0,A,bv);}
+    for(float sg:{1.5f,0.75f}){
+        const std::vector<float> Bb=blurred(B,sg),Ub=blurred(U,sg);
+        for(int it=0;it<12;++it){
+            double c;long n;pass(Bb,Ub,1.f,true,c,n,A,bv);
+            if(n<200){r.why="too few unclipped textured quads ("+std::to_string(n)+")";return r;}
+            // 3 x 3 solve (Cramer), damped
+            const double a=A[0]+1e-6,b2=A[1],c2=A[2],d=A[3]+1e-6,e=A[4],f=A[5]+1e-6;
+            const double det=a*(d*f-e*e)-b2*(b2*f-e*c2)+c2*(b2*e-d*c2);
+            if(!(std::abs(det)>1e-12)){r.why="singular (no texture)";return r;}
+            const double s0=(bv[0]*(d*f-e*e)-b2*(bv[1]*f-e*bv[2])+c2*(bv[1]*e-d*bv[2]))/det;
+            const double s1=(a*(bv[1]*f-e*bv[2])-bv[0]*(b2*f-e*c2)+c2*(b2*bv[2]-bv[1]*c2))/det;
+            const double s2=(a*(d*bv[2]-bv[1]*e)-b2*(b2*bv[2]-bv[1]*c2)+bv[0]*(b2*e-d*c2))/det;
+            dx+=float(std::clamp(s0,-1.0,1.0));dy+=float(std::clamp(s1,-1.0,1.0));g=std::clamp(g+float(s2),0.5f,2.f);
+            if(std::abs(s0)<0.005&&std::abs(s1)<0.005)break;
+        }
+    }
+    double c1=0;long n1=0;
+    {const std::vector<float> Bb=blurred(B,0.75f),Ub=blurred(U,0.75f);pass(Bb,Ub,1.f,false,c1,n1,A,bv);}
+    r.dx=2.f*dx;r.dy=2.f*dy;r.gain=g;r.samples=n1;r.cost0=c0;r.cost1=c1;
+    if(n1<200){r.why="too few quads at the result";return r;}
+    if(std::hypot(r.dx,r.dy)>maxShift){r.why="beyond the limit";return r;}
+    if(!(c1<0.98*c0)){r.why="no better";return r;}
+    r.ok=true;r.why="applied";
+    return r;
+}
+// H + (dx, dy) donor px (the backward homography's output shifted: numerator += d x denominator; upRatio units)
+inline BackwardHomography hybridShifted(const BackwardHomography& H,float dx,float dy){
+    BackwardHomography m=H;
+    const float ux=dx*H.upRatio,uy=dy*H.upRatio;
+    m.h[0]+=ux*H.h[6];m.h[1]+=ux*H.h[7];m.h[2]+=ux;
+    m.h[3]+=uy*H.h[6];m.h[4]+=uy*H.h[7];m.h[5]+=uy;
+    return m;
+}
 // base / us: plain Bayer frames w x h (sensor CFA `cfa`, black of the 2x2 phase), us at `expected` x the base's exposure.
 // align (P313, HybridTuning::usLocalAlign): the tiles at the frames' global translation, the decision against the frame's level.
 inline HybridUsLocal hybridUltrashortLocal(const uint16_t* base,const uint16_t* us,int w,int h,int cfa,const std::array<float,4>& black,
@@ -8228,6 +8651,26 @@ inline void mosaicChromaMedian(std::vector<float>& rgb,int w,int h,int block,con
 // dilation does not reach onto a dark border), times the best ultrashort frame's validity on the cells the base did not clip (none
 // valid: the base stays; a clipped cell has nothing better than the ultrashort frames), a light gaussian last (the validity is per
 // cell).
+// P350 bentoBlendSatWb: the white balance gains of the blend's coloured test - the camera neutral wbR / wbB when given (gain =
+// 1 / neutral), else the base frame's grey world over its unclipped 2x2 cells (every 4th cell; as hybridWriteStages' preview).
+inline std::array<float,3> hybridBlendWb(const HybridInput& input,const HybridTuning& t){
+    if(t.wbR>0.f&&t.wbB>0.f)return {std::clamp(1.f/t.wbR,0.1f,10.f),1.f,std::clamp(1.f/t.wbB,0.1f,10.f)};
+    const int w2=input.w/2,h2=input.h/2,sx=input.cfa&1,sy=input.cfa>>1;
+    const uint16_t* raw=input.frames[0].raw;
+    double sum[3]{};
+    for(int cy=0;cy+1<h2;cy+=4)for(int cx=0;cx+1<w2;cx+=4){
+        float v[4];bool clip=false;
+        for(int p=0;p<4;++p){
+            const int X=2*cx+(p&1)+sx,Y=2*cy+(p>>1)+sy,q=((Y&1)<<1)|(X&1);
+            v[p]=(float(raw[size_t(Y)*input.w+X])-input.black[q])/std::max(input.white-input.black[q],1.f);
+            clip=clip||v[p]>=0.98f;
+        }
+        if(clip)continue;
+        sum[0]+=v[0];sum[1]+=0.5*(v[1]+v[2]);sum[2]+=v[3];
+    }
+    if(sum[0]<=0.0||sum[1]<=0.0||sum[2]<=0.0)return {1.f,1.f,1.f};
+    return {float(std::clamp(sum[1]/sum[0],0.1,10.0)),1.f,float(std::clamp(sum[1]/sum[2],0.1,10.0))};
+}
 inline std::vector<float> hybridBlendWeight(const HybridInput& input,const HybridTuning& t,
                                             const std::vector<const std::vector<float>*>& valid){
     const int w2=input.w/2,h2=input.h/2;
@@ -8274,6 +8717,14 @@ inline std::vector<float> hybridBlendWeight(const HybridInput& input,const Hybri
     };
     std::vector<float> a(cells),near(cells);
     std::vector<uint8_t> core(cells);
+    if(t.bentoBlendCellMode==1){ // P350 F3: only truly clipped cells (the brightest site at the clip), dilated and blurred below
+        for(size_t i=0;i<cells;++i){core[i]=lvl[i]>=0.98f;a[i]=core[i]?1.f:0.f;near[i]=smooth(0.70f,0.88f,lvl[i]);}
+    } else if(t.bentoBlendCellMode>=2){ // P350 F3: the ramp of a denoised level (a gaussian of 1 cell: no noise peaks of one
+        // frame's brightest site), a clipped cell always 1
+        for(size_t i=0;i<cells;++i)core[i]=lvl[i]>=0.98f;
+        gauss(lvl,1.f);
+        for(size_t i=0;i<cells;++i){a[i]=core[i]?1.f:smooth(t.bentoBlendLo,t.bentoBlendHi,lvl[i]);near[i]=core[i]?1.f:smooth(0.70f,0.88f,lvl[i]);}
+    } else
     for(size_t i=0;i<cells;++i){a[i]=smooth(t.bentoBlendLo,t.bentoBlendHi,lvl[i]);near[i]=smooth(0.70f,0.88f,lvl[i]);core[i]=lvl[i]>=0.98f;}
     std::vector<float>().swap(lvl);
     for(int it=0;it<std::clamp(t.bentoBlendDilate,0,16);++it){ // diamond: one 4-neighbour max per step
@@ -8299,6 +8750,15 @@ inline std::vector<float> hybridBlendWeight(const HybridInput& input,const Hybri
     }
     // the validity only where the base has data: on its clipped cells nothing better than the ultrashort frames exists (their 2-3 px
     // residual on an LED line made the check refuse whole edges, the N frames' clipped steps then showed)
+    if(t.bentoBlendCellMode>0||t.bentoBlendValidOnce>0){
+        // P350: F3 - the near-clip gate not on a clipped cell itself (a single clipped cell, a glint, kept its weight); F7
+        // bentoBlendValidOnce - the validity left to the shader's best frame (it scaled the weight twice)
+        for(size_t i=0;i<cells;++i){
+            const float v=core[i]||t.bentoBlendValidOnce>0?1.f:std::clamp(best[i],0.f,1.f);
+            const float gate=core[i]&&t.bentoBlendCellMode>0?1.f:smooth(0.08f,0.45f,near[i]);
+            a[i]=std::clamp(a[i]*gate*v,0.f,1.f);
+        }
+    } else
     for(size_t i=0;i<cells;++i){
         const float v=core[i]?1.f:std::clamp(best[i],0.f,1.f);
         a[i]=std::clamp(a[i]*smooth(0.08f,0.45f,near[i])*v,0.f,1.f);
@@ -8616,8 +9076,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const bool bentoPass=tune.bento>0&&anyUltrashort&&!blendPass&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
         const bool outlierPrograms=tune.hotSigma>0||tune.hotBaseSigma>0,dcgZones=hybridDcgZones(input); // P320
         const bool rejOpts=hybridRejOptions(tune); // P344
+        const bool blendOpts=hybridBlendOptions(tune); // P350
         // a thread the system refuses (std::system_error) leaves earlyGpu empty: the merge builds its context, as before P31
-        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat,outlierPrograms,blendPass,dcgZones,rejOpts]{
+        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat,outlierPrograms,blendPass,dcgZones,rejOpts,blendOpts]{
             const auto t0=Clock::now();
             // The constructor's report: on Adreno one context line, printed where the merge reports the GPU. Off Adreno it reports
             // program by program (P26: a driver that dies while compiling): those lines go out at once, one write each on stderr
@@ -8631,7 +9092,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 }
                 earlyLog->lines.push_back(line);
             };
-            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat,outlierPrograms,blendPass,dcgZones,rejOpts);
+            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat,outlierPrograms,blendPass,dcgZones,rejOpts,blendOpts);
             gpu->release();
             earlyLog->ms=std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
             return gpu;
@@ -8711,7 +9172,23 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         for(int i=0;i<8;++i)j.h[size_t(i)]=float(H[f].h[size_t(i)]);
         j.up=H[f].upRatio;return j;
     };
+    // P350 F10 (bentoUsRegister): each ultrashort frame registered once, before anything reads its transform (Bento's check, the
+    // F6 jobs, the merge); the lines are reported after the alignment (the no-CRE path calls this on its worker threads)
+    std::vector<uint8_t> usRegDone(static_cast<size_t>(n),0);std::vector<std::string> usRegLine(static_cast<size_t>(n));
+    auto usReg=[&](int f){
+        if(tune.bentoUsRegister<=0||f<=0||f>=n||usRegDone[size_t(f)]||input.frames[f].role!=kRoleUltrashort||!aligned[f])return true;
+        usRegDone[size_t(f)]=1;
+        const HybridUsRegister rg=hybridUsRegister(input.frames[0].raw,input.frames[f].raw,w,h,input.black,input.white,input.frames[f].exposure,
+                                                   H[f],std::clamp(tune.bentoUsRegisterMax,0.5f,64.f));
+        char line[240];
+        std::snprintf(line,sizeof(line),"HYBRID US REGISTER (P350): frame %d %s: (%+.2f, %+.2f) px, level x%.3f, %ld quads, robust cost %.4f -> %.4f",
+            f,rg.why.c_str(),rg.dx,rg.dy,rg.gain,rg.samples,rg.cost0,rg.cost1);
+        usRegLine[size_t(f)]=line;
+        if(rg.ok)H[f]=hybridShifted(H[f],rg.dx,rg.dy);
+        return rg.ok;
+    };
     auto streamFeed=[&](int f){
+        usReg(f); // P350 F10
         // P308: the GPU F6 takes each frame as soon as its homography is known (the frames the merge leaves out are dropped there)
         if(laGpuWorker&&aligned[f]&&!(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort))laGpuWorker->add(laGpuJob(f));
         if(!laStreamOn||!aligned[f]||(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort))return;
@@ -8788,6 +9265,17 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 // aligned normal donors remain. Bracketed and ultrashort frames are dropped as before.
                 if(group.raw[1+j]!=input.frames[first+j].raw){
                     if(input.frames[first+j].role==kRoleNormal&&tune.localAlign>0){H[first+j]=BackwardHomography{};idStart[first+j]=true;}
+                    else if(tune.bentoUsRegister>=2&&input.frames[first+j].role==kRoleUltrashort){
+                        // P350 F10: an ultrashort frame the corner tracker refused starts from the global translation; it stays
+                        // only when the registration succeeds
+                        const int f=first+j;
+                        if(fallbackRef.empty())fallbackRef=guides(b,0);
+                        Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
+                        const Shift t=globalShift(fallbackRef,guides(one,1),input.frames[f].exposure);
+                        BackwardHomography m;m.h={1,0,t.x,0,1,t.y,0,0};H[f]=m;aligned[f]=true;
+                        if(!usReg(f)){aligned[f]=false;H[f]=BackwardHomography{};usRegLine[size_t(f)]+=" (refused by the corner tracker: dropped)";}
+                        else usRegLine[size_t(f)]+=" (refused by the corner tracker: from the global translation)";
+                    }
                     else aligned[first+j]=false;
                 }
                 streamFeed(first+j); // P33 W2.1: its F6 phase 1 now
@@ -8805,6 +9293,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 const auto donor=guides(one,1);
                 const Shift s=globalShift(ref,donor,input.frames[f].exposure);
                 BackwardHomography t;t.h={1,0,s.x,0,1,s.y,0,0};H[f]=t;
+                usReg(f); // P350 F10 (before the GPU F6 takes the frame)
                 // P308: to the GPU F6 at once (thread-safe; streamFeed below hands the same job again: nothing new)
                 if(laGpuWorker&&!(input.frames[f].role==kRoleUltrashort&&!tune.laUltrashort))laGpuWorker->add(laGpuJob(f));
                 scam_progress::step(); // P220
@@ -8820,6 +9309,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         for(int f=1;f<n;++f)streamFeed(f);
     }
     stats.alignMs=millis(Clock::now()-alignStarted);
+    for(const std::string& l:usRegLine)if(!l.empty())report(l); // P350 F10
     {
         std::string ids;
         for(int f=1;f<n;++f)if(idStart[f])ids+=(ids.empty()?"":",")+std::to_string(f);
@@ -9046,37 +9536,46 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         // P309: a large burst builds no base ahead; the ramp's (several planes, blurs) is built once here for every mask below
         BentoBase onceBase;
         if(!shared&&tune.bentoRamp>0.f&&input.frames[us].exposure<1.f){onceBase=bentoBase(b,tune);shared=&onceBase;}
-        auto poolMask=[&b,&tune,&bentoAhead](const HybridFrame& fr,const BackwardHomography& h,int mode){
+        // P350 bentoRefuseScope 1 (blend path): the whole-frame inpainting-hole / ultrashort-clipping refusals off (the motion one
+        // runs per mask component below); keys off: maskTune == tune. bentoValidZ: each mask gets the two frames' noise models.
+        const bool scoped=tune.bentoRefuseScope>0&&tune.bentoBlend>0&&native==nullptr;
+        HybridTuning maskTune=tune;
+        if(scoped){maskTune.bentoMaxHole=1<<30;maskTune.bentoMaxUsClipped=2.f;}
+        auto noiseOf=[&input](int f){return std::array<float,4>{input.frames[0].slope,input.frames[0].offset,input.frames[f].slope,input.frames[f].offset};};
+        auto poolMask=[&b,&maskTune,&bentoAhead](const HybridFrame& fr,const BackwardHomography& h,int mode,std::array<float,4> nz){
             // the task holds the base itself (a validation mask still running when an exception leaves this block outlives it)
-            return [&b,&tune,base=bentoAhead,raw=fr.raw,exposure=fr.exposure,h,mode]{
+            return [&b,tc=maskTune,base=bentoAhead,raw=fr.raw,exposure=fr.exposure,h,mode,nz]{
                 Burst one=b;one.raw[1]=raw;one.exposure[1]=exposure;
-                HybridTuning t2=tune;if(mode)t2.bento=mode;
-                return bentoMask(one,1,h,exposure,t2,&base.get());
+                HybridTuning t2=tc;if(mode)t2.bento=mode;
+                return bentoMask(one,1,h,exposure,t2,&base.get(),&nz);
             };
         };
         std::vector<std::future<BentoResult>> otherMasks(usFrames.size());
         if(input.frames[us].exposure<1.f&&tune.bentoValidate>=1&&!large&&(!shared||shared->full))
             for(size_t k=1;k<usFrames.size();++k){
-                if(shared&&bentoAhead.valid()){otherMasks[k]=tasks.run(poolMask(input.frames[usFrames[k]],H[usFrames[k]],2));continue;}
+                if(shared&&bentoAhead.valid()){otherMasks[k]=tasks.run(poolMask(input.frames[usFrames[k]],H[usFrames[k]],2,noiseOf(usFrames[k])));continue;}
                 otherMasks[k]=std::async(std::launch::async,[&,k]{
                 const int f=usFrames[k];
                 Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
-                HybridTuning t2=tune;t2.bento=2;
-                return bentoMask(one,1,H[f],input.frames[f].exposure,t2);
+                HybridTuning t2=maskTune;t2.bento=2;
+                const std::array<float,4> nz=noiseOf(f);
+                return bentoMask(one,1,H[f],input.frames[f].exposure,t2,nullptr,&nz);
             });
             }
         if(input.frames[us].exposure>=1.f){bento.reason="ultrashort frame is not the shortest";}
-        else if(shared&&bentoAhead.valid())bento=tasks.run(poolMask(input.frames[us],H[us],0)).get();
+        else if(shared&&bentoAhead.valid())bento=tasks.run(poolMask(input.frames[us],H[us],0,noiseOf(us))).get();
         else {
             Burst one=b;one.raw[1]=input.frames[us].raw;one.exposure[1]=input.frames[us].exposure;
-            bento=bentoMask(one,1,H[us],input.frames[us].exposure,tune,shared);
+            const std::array<float,4> nz=noiseOf(us);
+            bento=bentoMask(one,1,H[us],input.frames[us].exposure,maskTune,shared,&nz);
         }
         auto otherMask=[&](size_t k){
             if(otherMasks[k].valid())return otherMasks[k].get();
             const int f=usFrames[k];
             Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
-            HybridTuning t2=tune;t2.bento=2;
-            return bentoMask(one,1,H[f],input.frames[f].exposure,t2,shared);
+            HybridTuning t2=maskTune;t2.bento=2;
+            const std::array<float,4> nz=noiseOf(f);
+            return bentoMask(one,1,H[f],input.frames[f].exposure,t2,shared,&nz);
         };
         std::vector<long> usInvalid{bento.invalidCells}; // per ultrashort frame (merge order of usFrames), for the motion share
         auto frameLine=[&](int f,const BentoResult& r){
@@ -9121,7 +9620,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             for(size_t k=1;k<usFrames.size()&&tune.bentoValidate>=1;++k)fewest=std::min(fewest,usInvalid.size()>k?usInvalid[k]:fewest);
             motionShare=100.0*double(fewest)/double(bento.maskCells);
         }
-        if(bento.active&&tune.bentoMotionMax<100.f&&motionShare>tune.bentoMotionMax){
+        if(bento.active&&!scoped&&tune.bentoMotionMax<100.f&&motionShare>tune.bentoMotionMax){
             bento.active=false;
             bento.reason="motion: "+std::to_string(motionShare)+" % of the mask > "+std::to_string(tune.bentoMotionMax)+" %"+(tune.bento==2?" (refused also in mode always)":"");
         }
@@ -9141,6 +9640,36 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         // (the merge's Bento mask held it; the blend weighs by the planes only)
         if(tune.bentoBlend>0&&native==nullptr&&bentoValids.empty()&&!bento.valid.empty()&&bento.valid.size()==bento.mask.size())
             bentoValids.push_back(std::move(bento.valid));
+        if(scoped&&bento.active&&!bentoValids.empty()&&tune.bentoMotionMax<100.f&&bento.smooth.size()==bento.mask.size()){
+            // P350 bentoRefuseScope 1: the motion refusal per 8-connected component of the mask (before the check): a component
+            // with more than bentoMotionMax % of its cells invalid (<= 0.1) in the best ultrashort frame gets validity 0 in every
+            // frame (the N frames there: a hand over one lamp no longer takes the ultrashort frames off every other light)
+            const int w2=b.w/2,h2=b.h/2;const size_t cells=bento.smooth.size();
+            bool planes=true;for(const auto& v:bentoValids)planes=planes&&v.size()==cells;
+            if(planes&&cells==size_t(w2)*h2){
+                std::vector<int> label(cells,-1),stack,members;int comps=0,refused=0;long refusedCells=0;
+                static const int nb[8][2]={{1,0},{-1,0},{0,1},{0,-1},{1,1},{-1,1},{1,-1},{-1,-1}};
+                for(size_t i0=0;i0<cells;++i0){
+                    if(bento.smooth[i0]<=0.f||label[i0]>=0)continue;
+                    members.clear();stack.assign(1,int(i0));label[i0]=comps;long bad=0;
+                    while(!stack.empty()){
+                        const int c=stack.back();stack.pop_back();members.push_back(c);
+                        float best=0;for(const auto& v:bentoValids)best=std::max(best,v[size_t(c)]);
+                        if(best<=0.1f)++bad;
+                        const int cx=c%w2,cy=c/w2;
+                        for(const auto& d:nb){const int xx=cx+d[0],yy=cy+d[1];if(xx<0||yy<0||xx>=w2||yy>=h2)continue;
+                            const size_t j=size_t(yy)*w2+xx;if(bento.smooth[j]>0.f&&label[j]<0){label[j]=comps;stack.push_back(int(j));}}
+                    }
+                    ++comps;
+                    if(100.0*double(bad)/double(members.size())>tune.bentoMotionMax){
+                        ++refused;refusedCells+=long(members.size());
+                        for(int c:members)for(auto& v:bentoValids)v[size_t(c)]=0.f;
+                    }
+                }
+                report("HYBRID BENTO SCOPE (P350): motion refusal per mask component: "+std::to_string(refused)+" of "+std::to_string(comps)
+                    +" components ("+std::to_string(refusedCells)+" cells) above "+std::to_string(tune.bentoMotionMax)+" % -> validity 0 there");
+            }
+        }
         std::vector<float>().swap(bento.smooth);std::vector<float>().swap(bento.valid);
         // P31: a validation mask nobody took (the first mask was not applied) ends here, as the std::async futures made it end
         // before: it does not run on into the local alignment and the merge (all cores, ~50 MB at 12 MP while it is built).
@@ -9492,12 +10021,19 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         blendWeight=hybridBlendWeight(input,tune,in.maskValid);
         double on=0,full=0;for(float v:blendWeight){on+=v>0.01f;full+=v>0.99f;}
         in.mask=&blendWeight;in.blend=true;
+        if(tune.bentoBlendSatWb>0){ // P350 F4
+            in.blendWb=hybridBlendWb(input,tune);
+            char wl[160];std::snprintf(wl,sizeof(wl),"HYBRID BENTO BLEND: coloured test after white balance x%.3f, x%.3f, x%.3f (%s)",
+                in.blendWb[0],in.blendWb[1],in.blendWb[2],tune.wbR>0.f&&tune.wbB>0.f?"camera neutral":"grey world");
+            report(wl);
+        }
         // the gain only where the ultrashort frames saw the lights in other levels / colours than the N frames (the tile check);
         // unmeasured (too few tiles: a dark scene of lamps): on
         if(input.usFlicker>=0.f){
             const float u=std::clamp((input.usFlicker-tune.bentoBlendGainFlickerLo)/std::max(tune.bentoBlendGainFlickerHi-tune.bentoBlendGainFlickerLo,0.01f),0.f,1.f);
             in.blendGain=u*u*(3.f-2.f*u);
         }
+        if(tune.bentoBlendGainMin>0.f)in.blendGain=std::max(in.blendGain,std::min(tune.bentoBlendGainMin,1.f)); // P350
         char line[260];
         std::snprintf(line,sizeof(line),"HYBRID BENTO BLEND: ultrashort RGB blended after the merge by region (the N clip spread %.0f..%.0f px,"
             " at least the base cells' weight: %.0f cells > 0.01, %.0f full), gain against N x%.2f (tile check %.2f) (%.0f ms)",
@@ -9633,13 +10169,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             try{held=earlyGpu.get();}catch(const std::exception&){held.reset();} // built again below, as before
             {std::lock_guard<std::mutex> l(earlyLog->lock);for(const auto& line:earlyLog->lines)report(line);earlyLog->lines.clear();}
             if(held&&(held->localAlign!=withLocalAlign||(bentoPass&&!held->hasBentoPass())||(blendPass&&!held->hasBlendPass())
-                      ||held->dcg!=hybridDcgZones(input)||held->rejOpts!=hybridRejOptions(tune)))held.reset(); // P320: the DCG two-zone programs or not; P344 REJ_OPTS
+                      ||held->dcg!=hybridDcgZones(input)||held->rejOpts!=hybridRejOptions(tune)
+                      ||(blendPass&&held->blendOpts!=hybridBlendOptions(tune))))held.reset(); // P320: the DCG two-zone programs or not; P344 REJ_OPTS; P350 BLEND_OPTS
             if(held){
                 try{held->acquire();built=" built ahead in "+std::to_string(int(earlyLog->ms))+" ms";}catch(const std::exception&){held.reset();}
             }
         }
         if(!held)held=std::make_unique<HybridGpu>(tune.rimRatio!=0,withLocalAlign,bentoPass,tune.chromaDiff>0.f,report,large,native!=nullptr,
-                tune.hotSigma>0||tune.hotBaseSigma>0,blendPass,hybridDcgZones(input),hybridRejOptions(tune));
+                tune.hotSigma>0||tune.hotBaseSigma>0,blendPass,hybridDcgZones(input),hybridRejOptions(tune),hybridBlendOptions(tune));
         HybridGpu& gpu=*held;gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")"+built);

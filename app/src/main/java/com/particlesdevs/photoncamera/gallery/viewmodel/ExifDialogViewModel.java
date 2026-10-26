@@ -79,6 +79,29 @@ public class ExifDialogViewModel extends AndroidViewModel {
         String attr_fnum = exifInterface.getAttribute(ExifInterface.TAG_F_NUMBER);
         String attr_focal = exifInterface.getAttribute(ExifInterface.TAG_FOCAL_LENGTH);
         String attr_date = exifInterface.getAttribute(ExifInterface.TAG_DATETIME);
+        // P352: a camera RAW ExifInterface does not read (CR3, RAF on old versions, 3FR, IIQ...): the same facts from LibRaw
+        String rawName = imageFile.getDisplayName();
+        if ((attr_iso == null || attr_exp == null || attr_make == null || attr_width == null)
+                && com.particlesdevs.photoncamera.gallery.raw.RawFormats.isRawName(rawName)
+                && !com.particlesdevs.photoncamera.gallery.raw.RawFormats.isDngName(rawName)
+                && com.particlesdevs.photoncamera.gallery.raw.LibRawBridge.available()) {
+            try (com.particlesdevs.photoncamera.gallery.raw.LibRawBridge.RawFile raw =
+                         com.particlesdevs.photoncamera.gallery.raw.LibRawBridge.open(getApplication(), imageFile.getFileUri())) {
+                if (attr_make == null && !raw.make.isEmpty()) attr_make = raw.make;
+                if (attr_model == null && !raw.model.isEmpty()) attr_model = raw.model;
+                if (attr_iso == null && raw.iso() > 0) attr_iso = String.valueOf(Math.round(raw.iso()));
+                if (attr_exp == null && raw.shutter() > 0) attr_exp = String.valueOf(raw.shutter());
+                if (attr_fnum == null && raw.aperture() > 0) attr_fnum = String.valueOf(raw.aperture());
+                if (attr_focal == null && raw.focal() > 0) attr_focal = Math.round(raw.focal() * 1000) + "/1000";
+                if (attr_width == null && raw.width() > 0) {
+                    boolean turned = com.particlesdevs.photoncamera.gallery.editor.CropMath.swapsSides(raw.orientation());
+                    attr_width = String.valueOf(turned ? raw.height() : raw.width());
+                    attr_length = String.valueOf(turned ? raw.width() : raw.height());
+                }
+            } catch (IOException | RuntimeException e) {
+                com.particlesdevs.photoncamera.util.Log.d("ExifDialogViewModel", "LibRaw facts of " + rawName + ": " + e);
+            }
+        }
         // P196: the pixels the file really stores (owner: «фактическое разрешение»): its own headers first (JPEG SOF, WebP
         // bitstream, HEIC / AVIF primary item 'ispe'), then the decoder's bounds; the EXIF size tags only when neither
         // reads (DNG: ExifInterface reads the raw image's own IFD). As shown: swapped for a 90 / 270 degree orientation.

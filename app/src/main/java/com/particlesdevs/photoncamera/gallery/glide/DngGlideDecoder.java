@@ -43,14 +43,13 @@ public final class DngGlideDecoder implements ResourceDecoder<InputStream, Bitma
 
     @Override
     public boolean handles(@NonNull InputStream source, @NonNull Options options) throws IOException {
-        byte[] head = new byte[4];
-        int n = 0;
-        while (n < 4) {
-            int r = source.read(head, n, 4 - n);
-            if (r < 0) break;
-            n += r;
-        }
-        return DngPreview.isTiff(head, n);
+        // P352: a DNG (DNGVersion in the first IFD); other TIFF-based camera RAWs go to RawGlideDecoder (LibRaw), and come here
+        // only when this build has no LibRaw (their embedded JPEG previews, as before)
+        byte[] head = RawGlideDecoder.head(source, RawGlideDecoder.HEAD);
+        int n = head.length;
+        if (!DngPreview.isTiff(head, n)) return false;
+        return com.particlesdevs.photoncamera.gallery.raw.RawFormats.looksDng(head, n)
+                || !com.particlesdevs.photoncamera.gallery.raw.LibRawBridge.available();
     }
 
     @Nullable

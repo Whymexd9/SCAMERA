@@ -7314,7 +7314,7 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   +-1 %, colour hf -9 % (day).
 - Tests: HybridSettingsTest (rejPool 1 sent), DevKeys (hybrid_rej_pool).
 
-### P343 - duplicate stops in the zoom strip (owner, 2026-10-26: X200 Ultra PD2454 screenshot + log, «добавь в план исправить»): OPEN.
+### P343 - duplicate stops in the zoom strip (owner, 2026-10-26: X200 Ultra PD2454 screenshot + log, «добавь в план исправить»): DONE in code (not phone-checked): ui/camera/views/ZoomStops.unique - one button per label key (tenths below 10x), an ISZ / sensor-crop module before a lens's own module before a digital copy, the active module always keeps its stop; AuxButtonsLayout logs the strip once per change (ZOOM_STRIP: slot, camera, zoom, mode, sensorcrop, crop, hidden duplicates) so the next log shows which modules collided; ZoomStopsTest.
 - Build in the log: SCAMERA 0.98 com.scamera.app 5f32a380 CI. Cameras [1, 3, 4, 5]: 3 main 10.09 mm (x1), 4 UW 4.03 mm (x0.399),
   5 tele 22.48 mm (x2.436), 1 front. The strip on the main camera shows 0,4 | 0,8 | 0,8 | 1x | 2 | 2 | 2,4 | 4,8 | 9,6: two 0,8 and
   two 2 stops (likely two module slots / ISZ crops with the same factor, e.g. UW ISZ x2 = 0.8 next to a main crop 0.8, main ISZ 2x
@@ -7435,3 +7435,100 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   speckle, and the long frames' by-design clip zeros drew a static window black); 'accepted' back to the mean weight.
 - Checks: keys off bit-identical (b175757 d7b04597..., b184023 2cd8d9cf...), glslc 16 reject / dilate variants (8 without REJ_OPTS ==
   HEAD), check_hybrid_stages / still / series on the OPPO, HybridSettingsTest, ScamLab*. Mali only offline + forced no-tiles path.
+
+### P351 - the gallery's photo editor, Lightroom-mobile basics (owner, 2026-10-26: «нам нужен редактор изображения в галерее с базовыми функциями как в мобильном приложении лайтрума»; «можешь взять за основу для функционала» LightCraft): BUILT, host-tested, not run on a phone.
+- Entry: the viewer's «Изменить» opens `gallery/editor/PhotoEditorFragment` (gallery_nav_graph, no new activity, P299 untouched); a
+  long press on «Изменить» or the editor's «Открыть в другом приложении» is the old ACTION_EDIT chooser (ExternalEdit, this gallery
+  excluded). GalleryActivity also answers ACTION_EDIT image/* (start destination = the editor, RESULT_OK + the copy's URI).
+- Tabs: Кадр (Свободный / Оригинал / 1:1 / 4:5 / 3:4 / 4:3 / 16:9 / 9:16, corner / edge handles, drag, pinch, rotate 90, flip,
+  Выпрямить +-45 with automatic inset), Стили (8 looks + Сила), Свет (Экспозиция +-4 EV, Контраст, Света, Тени, Белые, Чёрные +
+  Кривая: parametric regions with splits and point curves RGB / R / G / B), Цвет (Температура, Оттенок, Сочность, Насыщенность;
+  Смешение 8 bands x Тон / Насыщенность / Яркость; Цветокоррекция shadows / midtones / highlights / global + blending / balance;
+  Ч/Б with an 8-band mix), Эффекты (Текстура, Чёткость, Дымка, Виньетка + середина, Зерно + размер), Детали (Резкость + радиус,
+  Шумоподавление яркости / цвета). Double tap resets a slider; undo / redo (EditHistory, 100 steps); «Сбросить всё», copy / paste of
+  settings (crop excluded) in the menu; long press on the picture = «Оригинал»; live RGB histogram (a 160 px readback of the crop,
+  at most every 120 ms); back with unsaved edits asks.
+- State: `EditState` (sliders by Param, 4 point curves, quarter turns, flip, straighten, crop rect in the turned frame's 0..1,
+  ratio) as JSON (defaults left out) in the saved instance state; EditorViewModel keeps the decode, the history and the export
+  across rotation.
+- GPU (OpenGL ES 3, own context: GLSurfaceView for the preview, EGL pbuffer for the export; shaders in assets/shaders/editor):
+  demosaic (RAW, Malvar-He-Cutler) -> nr (5x5 bilateral luma + luma-guided chroma) -> develop (linear light: WB, camera / P3 matrix,
+  exposure; log2 Y) -> gauss2 (sharpening + texture blurs) -> main (local tone from guided-filter bases of a 512 px proxy: clarity at
+  1 %, shadows / highlights / dehaze at 4 % of the side; tone table; OkLCh colour stage; point curves) -> finish (crop / turn / flip /
+  straighten, vignette after the crop, seeded grain on a lattice fixed in crop coordinates). Radii are fractions of the long side
+  ("px at 4000"), so the export looks like the preview; crop drags only re-run finish. CPU reference of develop / main in
+  EditMath (tests).
+- Sources (EditSource): JPEG via BitmapFactory / BitmapRegionDecoder + EXIF orientation; HEIC / WebP / PNG / GIF / AVIF via
+  ImageDecoder (preview in linear extended sRGB F16, export in the file's colour space, Display P3 through its matrix; whether the
+  platform already turned it is measured against the gallery's Glide thumbnail); DNG via DngRaw (raw data, linearisation, black
+  pattern + deltas, white, GainMap, ActiveArea / DefaultCrop, Bayer any phase, Quad -> half-size Bayer, LinearRaw), other RAWs via
+  LibRaw (P352); Glide as the fallback. RAW = scene-referred: WB as CCT / Duv from AsShotNeutral through ColorMatrix /
+  ForwardMatrix / CameraCalibration interpolated by 1/CCT (DngColor; Температура shows K and «Как снято»), clipped channels to
+  neutral, a filmic shoulder with Белые as its white point, BaselineExposure + an automatic lift.
+- Export (EditExporter): «Сохранить копию» = new `<name>_edit.jpg` next to the original (MediaStore RELATIVE_PATH, IS_PENDING; DCIM /
+  Pictures only, else Pictures/SCAMERA; Android 8 / 9: a file + scan), jpegli q95 4:4:4, EXIF copied (dates, camera, exposure,
+  lens, GPS, description) with orientation 1 and the new size; the viewer then opens on the copy. Tiles of 1024 output px, each with
+  its source region + EditMath.overlapPx (NR + Gaussian + demosaic reach); one ARGB_8888 output of at most 64 MP (less when free
+  memory is short) - 50 MP at full size, 200 MP scaled to the limit with a message; JPEG tiles by BitmapRegionDecoder (a
+  power-of-two sample only past 4x the limit), other formats decoded once within the limit, RAW decoded again at full size (2x2
+  binned past 64 M samples). Ultra HDR gain maps / HDR renditions are not carried over (SDR sRGB copy); the original is never written.
+- LightCraft (MIT OR Apache-2.0, used under MIT, commit bb08a697a41b2561a54f1b740245119503b24758): ported - the OkLCh colour stage of
+  crates/pipeline/src/colorops.rs (vibrance with skin protection, saturation, 8-band mixer weights / scales, B&W mix, 3-way
+  grading weights) and the parametric curve of curve.rs; written here - everything else (local tone, NR, sharpening, dehaze,
+  vignette, grain, geometry, tone table, point curves, RAW colour). Notices: THIRD_PARTY_NOTICES.md, assets/licenses/LightCraft-MIT.txt.
+- Files: gallery/editor/* (EditState, EditHistory, CropMath, EditMath, EditGl, EditRenderer, EditSource, EditExporter, EditorView,
+  CropOverlayView, CurveView, EditSlider, EditHistogramView, EditPanels, EditPresets, EditorViewModel, ExternalEdit,
+  PhotoEditorFragment), gallery/dng/DngRaw + DngColor (+ DngPreview parses the raw tags), assets/shaders/editor/*, icons
+  ui_ic_crop / undo / redo / rotate / detail / effects / styles (tools/make_concept_icons.py), GalleryViewModel.showNewFile,
+  ImageViewerFragment (entry, long press, select the copy), GalleryActivity (ACTION_EDIT), manifest.
+- Checks: tests EditStateTest 8, CropMathTest 11, EditMathTest 12, DngRawTest 10, RawFormatsTest 4 (+ DngPreviewTest 5 and the
+  gallery tests still green); glslc 12 / 12; check_ui_language, check_settings_model PASS; compileDebugJavaWithJavac, assembleDebug.
+- Not on a phone yet (needs the owner's CI APK): GL on Adreno / Mali (RGBA16F / RGBA32F targets, R16UI upload), 60 fps while
+  dragging, the ImageDecoder orientation probe, HEIC 10-bit / P3 colours vs the viewer, export of 50 / 200 MP (time, memory),
+  MediaStore insert into another app's DCIM folder, ACTION_EDIT from another app, RAW colour vs Lightroom on SCAMERA / other DNGs.
+- Later: masks, healing / retouch, lens corrections, a 1:1 zoom in the Детали tab, graphical colour wheels, HDR (gain map) export.
+
+### P352 - any camera RAW in the gallery (owner, 2026-10-26: «галерея должна работать с любыми Рав форматами»): BUILT (the native library builds and packs), not run on a phone.
+- LibRaw 0.21.3 vendored unchanged in app/src/main/cpp/third_party/libraw (deps/ is git-ignored; third_party/README.md has the
+  archive SHA-256), built as `scameraLibRaw` (static, thread-safe, USE_ZLIB, -w) + JNI `scameraRaw` (scamera-raw.cpp: open a
+  /proc/self/fd path, metadata, embedded thumbnail, a Bayer mosaic in DngRaw's fixed point with LibRaw's black pattern, or LibRaw's
+  linear camera RGB without WB / flip / brightening for X-Trans / Foveon / sRAW, an 8-bit camera-WB render for the gallery).
+  libscameraRaw.so 1.23 MB (444 KB compressed in the APK); the APK grows by about 0.6 MB with the editor.
+- Gallery: RawGlideDecoder (by magic: TIFF RAW without DNGVersion, CR3, RAF, ORF, RW2, MRW, X3F, CRW, IIQ...; thumbnail when big
+  enough, else LibRaw's render; turned by its flip) after DngGlideDecoder, which now takes only DNG (any TIFF when LibRaw is
+  missing); every RAW extension labelled «RAW»; RAWs MediaStore files outside Images found in the Files collection by extension
+  (Android 10+, what the app may see); the info sheet falls back to LibRaw for make / model / ISO / shutter / f / focal / size.
+- Intents: VIEW for application/octet-stream or untyped file URIs with RAW extensions (pathPattern), image/x-* RAW types already
+  under image/*; ACTION_EDIT image/*.
+- DNG routing: the Java DngRaw first (GainMap, Quad, our own DNGs, no native code), LibRaw when it refuses (deflate, X-Trans DNG...);
+  DNG thumbnails stay DngPreview.
+- Checks: all LibRaw sources + the wrapper compile for aarch64 (NDK clang), assembleDebug (local CMake 4.4.3) packs
+  libscameraRaw.so with 7 JNI exports; RawFormatsTest (routing, magic, flip -> EXIF). JNI is not unit-testable on the JVM.
+- Not on a phone yet: real CR2 / CR3 / NEF / ARW / RAF / ORF / RW2 files (thumbnail orientation, colour, memory of LibRaw's
+  full-size RGB for X-Trans), the Files query on Android 13+.
+
+### P350 - the ultrashort-frame mask as precise as possible (owner, 2026-10-27: «Займись самой маской коротких кадров, нам нужно улучшить её максимально, сделать её максимально точной»): DONE (truth harness + OPPO replays), not shot in the app.
+- Truth harness (session scratchpad p350: scenes350.py, score350.py, ev350.sh): 17 synthetic variants with HDR truth (sunset with
+  rails, window, desk lamp + text, PWM LED rings with US gains G x0.55 / B x0.67, moving shop window + headlights, glitter,
+  night lamps, coloured lights; 10 N + 3 US at 1/8 with a realistic 2.6 px hand drift), metrics per region (core / rim / bands /
+  dark detail / near clip / moving), mask recall / precision / spill, halo / step / grain.
+- Found: the US frames landed 1.2 - 1.7 px off (global shift only; cre-off globalShift in 4 px steps) - halos, steps and colour
+  edge pairs everywhere; the whole-frame motion refusal (4 %) switched Bento off on static scenes from that misregistration, on
+  PWM LEDs, moving scenes, night lamps (CRE dropped all US frames) and the real mv2131; the N-clip spread put the US on dark
+  rails / text; the PWM gain never engaged (tile check usFlicker 0.06). Audit of the code: research in scratchpad p350/audit.md.
+- Worker keys (scam-hybrid.h, all off by default, shader code behind BLEND_OPTS / NAT_US_TOL, keys off bit-identical on b184023,
+  b175757, main511, isz2): bentoUsRegister 1/2 (sub-pixel translation + level of each US against the base's unclipped texture,
+  Gauss-Newton + Huber; 2 also keeps US frames the corner tracker refused), bentoBlendGateOwnLo / Hi, bentoBlendGateMid,
+  bentoBlendMarkShare, bentoBlendCellMode 1/2, bentoBlendSatWb (+ wbR / wbB), bentoValidZ / ZFloor / ZRange, bentoBlendValidOnce,
+  bentoBlendValidBilinear, bentoBlendGainLevel, bentoBlendGainMin, bentoRefuseScope, bentoBlendScale 1/2, bentoBlendFillMean,
+  bentoBlendChromaEdge, mosaicUsFillTol. Skipped: per-channel ratio transfer (the merge keeps one clipped share per pixel),
+  tile-local US alignment, measured per-channel clip level, the false row flicker correction on the synthetic sunset.
+- App (hybrid_us_set 1): bentoUsRegister 2, laUltrashort 1, own gate 0.3 / 0.6, bentoRefuseScope 1, bentoMotionMax 25, bentoValidZ 3
+  range 1, bentoBlendGainMin 0.5 (1.0: LED chroma 59 -> 40 but daylight paper in wind changes; 0.5: 49), bentoBlendGainLevel 0.1,
+  bentoBlendCellMode 2, bentoBlendScale 2. Harness means (base -> set): applied 11 -> 17 of 17, core 26.7 -> 4.7, rim 39 -> 8,
+  band02 56 -> 18, dark-detail damage 61 -> 26 (alpha there 0.36 -> 0.04), halo 31 -> 8, step 25 -> 8; moving scenes: core error
+  108 -> 3 - 6 but the unclipped ghost share 2.5 -> 6 %; synthetic glitter specks vanish (real b175757 sea glitter unchanged: 141 /
+  136 bright specks). Real b175757 through the host post chain: the sunset and rails unchanged / slightly cleaner. Cost: US
+  registration +0.6 - 0.75 s CPU (+0.2 - 0.3 s wall) at 12 MP.
+- Checks: glslc 200 programs (148 non-P350 variants == HEAD), check_hybrid_stages / still / series / us_rows on the OPPO,
+  HybridSettingsTest. Not phone-shot; risk: mv2131 registration may lock on moving content (shifts 2 - 2.7 px).

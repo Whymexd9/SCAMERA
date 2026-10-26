@@ -65,7 +65,51 @@ public class GalleryViewModel extends AndroidViewModel {
     }
 
     public void setCurrentFolderImages(GalleryItem currentFolder) {
+        currentFolderName = currentFolder != null ? currentFolder.getDisplayName() : null;
         currentFolderImages.setValue(currentFolder.getFiles());
+    }
+
+    /** P351: the folder the viewer shows («ALL» for every selected folder), null for a list built by hand (another app's file). */
+    @androidx.annotation.Nullable private String currentFolderName;
+    /** P351: the photo the viewer moves to when it next binds its list (the editor's new copy), null for none. */
+    @androidx.annotation.Nullable private android.net.Uri pendingSelect;
+
+    @androidx.annotation.Nullable
+    public android.net.Uri takePendingSelect() {
+        android.net.Uri u = pendingSelect;
+        pendingSelect = null;
+        return u;
+    }
+
+    /**
+     * P351: after «Сохранить копию»: the media lists read again, the viewer's folder rebuilt (or every folder), the copy put
+     * first when the lists do not have it (a folder the gallery does not show, another app's file), and selected next.
+     */
+    public void showNewFile(ImageFile copy) {
+        fetchAllMedia();
+        GalleryItem folder = null;
+        List<GalleryItem> folders = selectedDisplayFolders.getValue();
+        if (folders != null) {
+            for (GalleryItem f : folders)
+                if (currentFolderName != null && currentFolderName.equals(f.getDisplayName())) folder = f;
+            if (folder == null) folder = allSelectedImagesFolder.getValue();
+        }
+        List<GalleryItem> list;
+        if (folder != null && currentFolderName != null) {
+            setCurrentFolderImages(folder);
+            list = currentFolderImages.getValue();
+        } else {
+            list = new ArrayList<>(currentFolderImages.getValue() != null ? currentFolderImages.getValue() : new ArrayList<>());
+        }
+        boolean found = false;
+        if (list != null) for (GalleryItem i : list) if (copy.getFileUri().equals(i.getFile().getFileUri())) found = true;
+        if (!found && list != null) {
+            list = new ArrayList<>(list);
+            list.add(0, new GalleryItem(copy));
+            currentFolderImages.setValue(list);
+        }
+        pendingSelect = copy.getFileUri();
+        setUpdatePending(true);
     }
 
     public MutableLiveData<List<GalleryItem>> getSelectedDisplayFolders() {

@@ -41,6 +41,10 @@ public final class DngPreview {
         int blackRows = 1, blackCols = 1;
         double white = -1;
         long jpegOffset = -1, jpegLength;
+        // P351 (the editor's RAW decode, DngRaw): the raw IFD's area, crop, black deltas and stage-2 opcodes
+        int[] activeArea;
+        double[] cropOrigin, cropSize, blackDeltaH, blackDeltaV;
+        byte[] opcodeList2;
     }
 
     private final ByteBuffer b;
@@ -48,6 +52,9 @@ public final class DngPreview {
     int orientation = 1;
     double[] colorMatrix1, forwardMatrix1, asShotNeutral;
     double baselineExposure;
+    // P351: the second calibration and the rest of the DNG colour tags (DngColor)
+    double[] colorMatrix2, forwardMatrix2, cameraCalibration1, cameraCalibration2, analogBalance, asShotWhiteXY;
+    int illuminant1, illuminant2;
     boolean dng;
 
     private DngPreview(ByteBuffer buffer) throws IOException {
@@ -61,6 +68,15 @@ public final class DngPreview {
         long off = b.getInt(4) & 0xFFFFFFFFL;
         int guard = 0;
         while (off != 0 && off < b.limit() && guard++ < 16) off = readIfd(off, 0, true);
+    }
+
+    /** P351: the parsed file (IFDs and DNG tags) for DngRaw. */
+    static DngPreview parse(ByteBuffer buffer) throws IOException {
+        return new DngPreview(buffer);
+    }
+
+    ByteBuffer buffer() {
+        return b;
     }
 
     /** True when the first bytes are a TIFF header (the caller then reads the whole file with {@link #read}). */
@@ -168,6 +184,20 @@ public final class DngPreview {
                 case 0xC628: asShotNeutral = doubles(type, vo, count); break;
                 case 0xC62A: baselineExposure = num(type, vo, 0); break;
                 case 0xC714: forwardMatrix1 = doubles(type, vo, count); break;
+                case 0xC715: forwardMatrix2 = doubles(type, vo, count); break;
+                case 0xC622: colorMatrix2 = doubles(type, vo, count); break;
+                case 0xC623: cameraCalibration1 = doubles(type, vo, count); break;
+                case 0xC624: cameraCalibration2 = doubles(type, vo, count); break;
+                case 0xC627: analogBalance = doubles(type, vo, count); break;
+                case 0xC629: asShotWhiteXY = doubles(type, vo, count); break;
+                case 0xC65A: illuminant1 = (int) num(type, vo, 0); break;
+                case 0xC65B: illuminant2 = (int) num(type, vo, 0); break;
+                case 0xC68D: f.activeArea = ints(type, vo, count); break;
+                case 0xC61F: f.cropOrigin = doubles(type, vo, count); break;
+                case 0xC620: f.cropSize = doubles(type, vo, count); break;
+                case 0xC61B: f.blackDeltaH = doubles(type, vo, count); break;
+                case 0xC61C: f.blackDeltaV = doubles(type, vo, count); break;
+                case 0xC740: { f.opcodeList2 = new byte[(int) count]; ByteBuffer d = b.duplicate(); d.position(vo); d.get(f.opcodeList2); break; }
                 default: break;
             }
         }

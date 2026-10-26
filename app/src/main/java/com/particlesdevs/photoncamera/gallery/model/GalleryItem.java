@@ -35,7 +35,7 @@ public class GalleryItem implements Checkable {
 
     private String getTagName(String fileName) {
         String ext = FileUtils.getExtension(fileName);
-        if (ext.equalsIgnoreCase("dng")) {
+        if (ext.equalsIgnoreCase("dng") || com.particlesdevs.photoncamera.gallery.raw.RawFormats.isRawName(fileName)) { // P352
             return "RAW";
         } else if (ext.equalsIgnoreCase("jpg") || ext.equalsIgnoreCase("jpeg")) {
             return "";

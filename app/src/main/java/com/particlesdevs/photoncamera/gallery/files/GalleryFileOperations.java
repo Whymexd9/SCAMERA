@@ -306,6 +306,7 @@ public class GalleryFileOperations {
             }
             cursor.close();
         }
+        appendOtherRawFiles(contentResolver);
         //find latest image:
         ALL_FOLDERS.forEach(imagesFolder -> {
             imagesFolder.getAllImageFiles().sort(Comparator.comparingLong(value -> -value.getLastModified()));
@@ -313,6 +314,51 @@ public class GalleryFileOperations {
         });
         ALL_FOLDERS.sort(Comparator.comparing(o -> o.folderName));
         return ALL_FOLDERS;
+    }
+
+    /**
+     * P352 (owner, 2026-10-26: «галерея должна работать с любыми Рав форматами»): camera RAWs MediaStore does not file as images
+     * (CR3, 3FR, IIQ, MRW, X3F... as application/octet-stream or without a type) from the Files collection, by extension, into
+     * the folders of their bucket. Android 10+ (the bucket columns of Files); only what this app may see there.
+     */
+    static void appendOtherRawFiles(@NonNull ContentResolver resolver) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return;
+        java.util.Set<Long> known = new java.util.HashSet<>();
+        for (ImagesFolder f : ALL_FOLDERS) for (ImageFile i : f.getAllImageFiles()) known.add(i.getId());
+        StringBuilder sel = new StringBuilder(MediaStore.Files.FileColumns.MEDIA_TYPE + " != " + MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE + " AND (");
+        List<String> args = new ArrayList<>();
+        for (String ext : com.particlesdevs.photoncamera.gallery.raw.RawFormats.EXTENSIONS) {
+            if (!args.isEmpty()) sel.append(" OR ");
+            sel.append(MediaStore.MediaColumns.DISPLAY_NAME).append(" LIKE ?");
+            args.add("%." + ext);
+        }
+        sel.append(')');
+        String[] projection = {MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.DATE_ADDED,
+                MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.BUCKET_ID,
+                MediaStore.MediaColumns.BUCKET_DISPLAY_NAME};
+        Uri files = MediaStore.Files.getContentUri("external");
+        try (Cursor c = resolver.query(files, projection, sel.toString(), args.toArray(new String[0]), null)) {
+            if (c == null) return;
+            while (c.moveToNext()) {
+                long id = c.getLong(0);
+                String bucket = c.getString(6);
+                if (known.contains(id) || bucket == null) continue;
+                ImageFile file = new ImageFile(id, ContentUris.withAppendedId(files, id), c.getString(1),
+                        TimeUnit.SECONDS.toMillis(c.getLong(2)), c.getLong(3), c.getString(4));
+                ImagesFolder folder = null;
+                for (ImagesFolder f : ALL_FOLDERS) if (bucket.equals(f.getFolderName())) folder = f;
+                if (folder == null) {
+                    folder = new ImagesFolder();
+                    folder.setFolderName(bucket);
+                    folder.setFolderId(c.getLong(5));
+                    folder.setAllImageFiles(new ArrayList<>());
+                    ALL_FOLDERS.add(folder);
+                }
+                folder.getAllImageFiles().add(file);
+            }
+        } catch (RuntimeException e) {
+            Log.w("GalleryFileOperations", "RAW files query: " + e);
+        }
     }
 
 }

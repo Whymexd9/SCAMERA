@@ -48,3 +48,24 @@ The band centres of the colour mixer, its raised-cosine band weights and the sha
 `processing/color/ColourLook.java` and `assets/shaders/why/combine.glsl` (COLOUR_LOOK) follow the published formulas of
 Lightcraft, <https://github.com/storytold/lightcraft>, available under the MIT License or the Apache License 2.0 at your
 option. No Lightcraft source code is included; the implementation is SCAMERA's own.
+
+## LibRaw 0.21.3 (camera RAW in the gallery and its editor, P352)
+
+`libscameraRaw.so` statically links LibRaw 0.21.3 (<https://www.libraw.org>, <https://github.com/LibRaw/LibRaw>, tag
+0.21.3, archive SHA-256 `dc3d8b54e333d9d5441336049db255d14b27f19bd326a306cf5aea866806780a`), Copyright (C) 2008-2021 LibRaw
+LLC, used under the GNU Lesser General Public License 2.1 (or, at your option, the CDDL 1.0). LibRaw uses code from Dave
+Coffin's dcraw.c and the DCB demosaic / FBDD denoise (BSD-like 3-clause, Copyright (C) 2010 Jacek Gozdz). The unchanged
+sources are in `app/src/main/cpp/third_party/libraw` (the corresponding source of the library in the APK); the licence texts
+ship in the APK as `assets/licenses/LibRaw-LGPL-2.1.txt`, `LibRaw-CDDL-1.0.txt` and `LibRaw-COPYRIGHT.txt`. LibRaw is
+linked into its own shared library behind a small JNI wrapper (`app/src/main/cpp/scamera-raw.cpp`), so it can be replaced
+by a modified build of the same version.
+
+## LightCraft (the photo editor's colour stage and parametric curve, P351)
+
+The OkLCh colour stage of the gallery's editor (vibrance with skin protection, saturation, the 8-band mixer and its
+raised-cosine band weights, the B&W mix, the 3-way colour grading weights) in `gallery/editor/EditMath.java` and
+`assets/shaders/editor/main.glsl`, and the parametric curve regions in `EditMath.parametric`, are ported from LightCraft,
+<https://github.com/storytold/lightcraft>, `crates/pipeline/src/colorops.rs` and `crates/pipeline/src/curve.rs` at commit
+`bb08a697a41b2561a54f1b740245119503b24758`, Copyright (c) 2026 ArtCraft Team and the LightCraft contributors, used under
+the MIT License (LightCraft is MIT OR Apache-2.0); the text is `assets/licenses/LightCraft-MIT.txt`. No LightCraft assets
+are included.

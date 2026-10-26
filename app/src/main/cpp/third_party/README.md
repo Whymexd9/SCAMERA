@@ -28,3 +28,14 @@ app's NDK toolchain. Needs Perl (Git for Windows ships one) for libaom's generat
 Used by `scamera-avif.cpp` (library `scameraAvif`) through `scamera-avif-core.h`: the AVIF photo format, AV1 still
 image (`AOM_USAGE_ALL_INTRA`), encoder only (Android decodes AVIF itself from Android 12), 8 / 10 / 12-bit, 4:4:4 /
 4:2:0, lossless. arm64 code paths: NEON, dot product, i8mm, SVE / SVE2, chosen at run time.
+
+## LibRaw (P352)
+
+| Directory | Source | Version | Licence |
+|---|---|---|---|
+| `libraw/libraw`, `libraw/internal`, `libraw/src` | https://github.com/LibRaw/LibRaw (release archive `LibRaw-0.21.3.tar.gz`, SHA-256 `dc3d8b54e333d9d5441336049db255d14b27f19bd326a306cf5aea866806780a`) | 0.21.3 (2024-09-18) | LGPL-2.1 or CDDL-1.0 (`libraw/LICENSE.LGPL`, `libraw/LICENSE.CDDL`, `libraw/COPYRIGHT`) |
+
+Copied without changes; left out: samples, bin, doc, RawSpeed / RawSpeed3, GoPro, DNG SDK glue builds (the glue sources
+compile to nothing without USE_RAWSPEED / USE_DNGSDK), the `*_ph.cpp` placeholders (not built) and `src/Makefile`. Built as
+`scameraLibRaw` (static, thread-safe: no LIBRAW_NOTHREADS; USE_ZLIB for deflate DNG; no JPEG, Jasper, OpenMP) and linked
+into `scameraRaw` (`../scamera-raw.cpp`, the JNI wrapper the gallery calls through `gallery/raw/LibRawBridge`).

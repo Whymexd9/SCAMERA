@@ -995,6 +995,20 @@ public class PreferenceKeys {
         // ramp / 4, at least 0.25 - 0 the sharpest). scam_dev.txt "hybrid_bento_blend 0" = the P309 mixing inside the merge.
         if (hybridSwitch("bento_blend", true))
             out.append("bentoBlend 1\nbentoBlendSigma ").append(Math.max(0.25f, 0.25f * hybridValue("bento_ramp", HYBRID_DEFAULTS.get("bento_ramp")))).append('\n');
+        // P350 (owner, 2026-10-27: «Займись самой маской коротких кадров, нам нужно улучшить её максимально, сделать её максимально
+        // точной»): the ultrashort mask set measured on a truth harness (17 synthetic scenes: sunset, window, desk lamp, PWM LEDs,
+        // moving lights, glitter, night lamps, coloured lights) and real bursts. The ultrashort frames registered to the base to
+        // sub-pixel (they arrived 1.2 - 1.7 px off: halos, steps and colour edge pairs at every light) and F6-aligned, the spread
+        // gated by the pixel's own brightness (no ultrashort on dark rails / text next to a light), motion refused per region
+        // instead of the whole frame with a noise-normalised validity, the cell weight from a denoised level, radii in sensor px,
+        // a +-10 % luma level match and half the PWM colour gain without a measured flicker. Harness means: core error 26.7 ->
+        // 4.7, rim 39 -> 8, halo 31 -> 8, step 25 -> 8, dark-detail damage 61 -> 26, ultrashort used on 17 of 17 scenes (11
+        // before); moving lights ghost more (unclipped ghost share 2.5 -> 6 %). Merge +0.2 - 0.3 s at 12 MP. scam_dev.txt
+        // "hybrid_us_set 0" = before (the worker's defaults keep replays bit-identical).
+        if (hybridValue("us_set", 1f) > 0f)
+            out.append("bentoUsRegister 2\nlaUltrashort 1\nbentoBlendGateOwnLo 0.3\nbentoBlendGateOwnHi 0.6\nbentoRefuseScope 1\n")
+                    .append("bentoMotionMax 25\nbentoValidZ 3\nbentoValidZRange 1\nbentoBlendGainMin 0.5\nbentoBlendGainLevel 0.1\n")
+                    .append("bentoBlendCellMode 2\nbentoBlendScale 2\n");
         // P313 (owner, vivo X200 Ultra 2x ISZ in daylight: «все фото в области светов очень мыльное и с кучей артефактов»): the
         // native mosaic merge (Quad / Tetra) leaves Bento's cells to the N frames and fills only what they clipped from the
         // ultrashort frames, in a pass after it (worker HybridTuning::mosaicUsFill; default 0 = replays unchanged). scam_dev.txt

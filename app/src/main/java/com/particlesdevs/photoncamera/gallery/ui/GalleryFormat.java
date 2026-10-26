@@ -52,6 +52,8 @@ public enum GalleryFormat {
 
     /** The format of {@code name}; {@code withRaw}: a DNG of the same base name is next to it. */
     public static GalleryFormat of(String name, boolean withRaw) {
+        // P352: every camera RAW is «RAW»
+        if (com.particlesdevs.photoncamera.gallery.raw.RawFormats.isRawName(name)) return RAW;
         switch (extension(name)) {
             case "dng": return RAW;
             case "jpg": case "jpeg": return withRaw ? RAW_JPEG : JPEG;
@@ -67,14 +69,14 @@ public enum GalleryFormat {
         Set<String> out = new HashSet<>();
         if (items == null) return out;
         for (GalleryItem i : items)
-            if (i != null && i.getFile() != null && "dng".equals(extension(i.getFile().getDisplayName())))
+            if (i != null && i.getFile() != null && com.particlesdevs.photoncamera.gallery.raw.RawFormats.isRawName(i.getFile().getDisplayName()))
                 out.add(baseName(i.getFile().getDisplayName()));
         return out;
     }
 
     public static GalleryFormat of(GalleryItem item, Set<String> rawBases) {
         String name = item.getFile().getDisplayName();
-        return of(name, !"dng".equals(extension(name)) && rawBases.contains(baseName(name)));
+        return of(name, !com.particlesdevs.photoncamera.gallery.raw.RawFormats.isRawName(name) && rawBases.contains(baseName(name)));
     }
 
     private static final Pattern ROUTE = Pattern.compile("Route=(SHDR|Hybrid|SCAM HDR)");
