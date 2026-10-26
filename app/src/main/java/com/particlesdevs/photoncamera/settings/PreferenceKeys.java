@@ -936,6 +936,11 @@ public class PreferenceKeys {
         // shastaSharpLo / Hi stay off (the hand-held chroma median share doubled the synthetic colour error; the long frames' sharpness
         // weight left the detail as it was). scam_dev.txt "hybrid_rej_prior 0", "hybrid_base_demosaic_alias 0" = as before.
         if (hybridValue("rej_prior", 1f) > 0f) out.append("rejPrior 1\n");
+        // P341 (owner, 2026-10-26: our rejection map next to ArkCam's, «займись картой реджектов»): the rejection distance from the
+        // squared differences of the 3 x 3 cells (worker rejPool), not one cell's single noise draw. Phone replay of the owner's
+        // bursts: a static night sky keeps 0.95 of each frame instead of 0.78 (the map clean instead of a noise cloud), the moving
+        // sea stays rejected (0.44) with its ripples; replays with rejPool 0 bit-identical. scam_dev.txt "hybrid_rej_pool 0" = before.
+        if (hybridValue("rej_pool", 1f) > 0f) out.append("rejPool 1\n");
         // P337 (owner, 2026-10-25: a backlit sea, «отражение на воде слилось в кашу»): sun glitter keeps its sparkles - a donor clearly
         // darker than a clipped base cell is rejected (clipReject) and a saturated G is at least the mean of all its samples,
         // the clipped ones at their values (rimLift). Phone replay of the owner's burst: merged G at the base's clipped green sites

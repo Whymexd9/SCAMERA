@@ -621,6 +621,7 @@ public class HybridSettingsTest {
         assertTrue("P337: the night 6.1 kernel x0.8",tuning.contains("s61NightScale 0.8\n"));
         assertTrue("P337: glitter keeps its sparkles",tuning.contains("clipReject 1\n")&&tuning.contains("rimLift 1\n"));
         assertTrue("P339: highlight frames only with a clipped base",tuning.contains("usNeedClip 1\n"));
+        assertTrue("P341: the rejection distance over 3 x 3 cells",tuning.contains("rejPool 1\n"));
         assertEquals(2,PreferenceKeys.getHybridShastaMode());
         assertEquals(20,PreferenceKeys.getHybridZslFrames());
         prefs.edit().clear().commit();

@@ -7297,3 +7297,19 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   L kept. Host: 1x sky Lab C 8 / 22 -> 20 / 34 (stock 25 / 42, lower L), 3.7x glow 34 -> 43 (LMC / ArkCam 33-38).
 - Open: thin light rims along the window frame next to the sun (from the darker em0, P340), seen on the host only.
 - Tests: WhyPairsTest (2 x ceiling), DevKeysCoverage; check_why_* / check_highlight_* PASS (check_why_pyramid uses the new ramp).
+
+### P342 - the rejection map (owner, 2026-10-26: lab screenshots of our «Реджект» map next to ArkCam's «после · отсечение», «вот так выглядит реджект у нас и у Арк камеры», «займись картой реджектов»): DONE in code, replayed on the OPPO (worker with the owner's tuning, CRE off), not shot on a phone; not pushed («на гит не лей»).
+- Cause: kHybReject tested one cell (the donor's bilinear sample against the base cell): a single noise draw. With the noise
+  model exact (simulation) the mean weight is 0.94 and 13 % of the cells fall under 0.85; DilateMask sums 25 cells of those tails
+  into a rejection of the area. Owner's 18:40 night burst: static sky 0.78 of each frame (raw 0.92, 20 % of the cells < 0.85),
+  deck 0.81, dark sea 0.97. Merged noise changed little (-1 %: a uniform weight hardly changes the variance) - the map was wrong,
+  the image only slightly.
+- Fix (worker rejPool, app sends 1; rejPool 0 bit-identical to before, md5 checked): the distance from the mean over the 3 x 3
+  cells of the squared difference (the donor bilinear at each neighbour from the 4 x 4 cells, the base cell from the guide), the
+  noise forgiven after the mean; a single cell still rejected by itself above the pooled distance + rejPoolT 0.7 (< 0.7 % of
+  noise cells). The difference of the 3 x 3 means (Google's) was tried first: it cancels moving water's ripples (accepted 0.42 ->
+  0.52, the waves went soft) - rejected.
+- Replay: night sky 0.78 -> 0.95, deck 0.81 -> 0.96, merge factors 0.86 -> 0.96; day 17:57 wall 0.94 -> 0.98, moving sea 0.42 ->
+  0.44 (ripples as before). Time unchanged. Synthetic moving-object bursts (replay_synth_burst): moving / border error within
+  +-1 %, colour hf -9 % (day).
+- Tests: HybridSettingsTest (rejPool 1 sent), DevKeys (hybrid_rej_pool).

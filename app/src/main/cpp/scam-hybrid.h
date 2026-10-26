@@ -170,6 +170,17 @@ struct HybridTuning {
     // sparkles. GCam / ArkCam reject every donor where the base's green clips (kForceRejectReferenceColor); a donor as bright
     // there (a lamp, a static highlight) stays here. 0 = off (replays unchanged); the app sends 1.
     float clipReject=0.f;
+    // P341 (owner, 2026-10-26: our rejection map next to ArkCam's, «вот так выглядит реджект у нас и у Арк камеры», then «займись
+    // картой реджектов»): the distance from the squared differences of the 3 x 3 cells around the cell instead of one cell. One
+    // cell's difference is a single noise draw: with the noise model exact, 13 % of the cells of a static frame fell under 0.85
+    // (mean 0.94), and DilateMask's 25-cell sum turned those tails into a rejection of the whole area - the owner's night sky kept
+    // 0.78 of each frame where nothing moved (raw 0.92, 20 % of its cells under 0.85; dark sea 0.97). The mean of nine squares
+    // has a third of the spread; the noise is forgiven after the mean, so an underestimated noise (x 1.5) shifts it by a few %
+    // instead of 22 % of the cells. Squares, not the difference of the 3 x 3 means: that one cancels moving water's ripples and
+    // averaged the waves into mush. A single cell is still rejected on its own when its distance exceeds the pooled one by
+    // rejPoolT (a wire, a bird: < 0.7 % of noise cells reach it). 0 = per cell as before (replays unchanged).
+    float rejPool=0.f;
+    float rejPoolT=0.7f;
     // P339 (owner, 2026-10-25: «займись ускорением обработки чтобы скорость была на уровне ArkCam»): a plain burst whose base frame
     // has no site at the clip leaves its ultrashort frames out before the row check (hybridPlainUsRows), Bento and the blend: they
     // have nothing to replace (Bento would fall back, their merge weight is 0) and cost ~0.7 s on the OPPO's night replay (row
@@ -780,7 +791,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             applied+=" "+key+"="+std::to_string(v);return true;
         };
         while(f>>key>>v){
-            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("rejPrior",&t.rejPrior)||set("clipReject",&t.clipReject)||set("usNeedClip",nullptr,&t.usNeedClip)||set("varianceThreshold",&t.varianceThreshold)
+            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("rejPrior",&t.rejPrior)||set("clipReject",&t.clipReject)||set("rejPool",&t.rejPool)||set("rejPoolT",&t.rejPoolT)||set("usNeedClip",nullptr,&t.usNeedClip)||set("varianceThreshold",&t.varianceThreshold)
             ||set("motionThreshold",&t.motionThreshold)
             ||set("filterVariance",&t.filterVariance)||set("dilateOffset",&t.dilateOffset)||set("dilateScale",&t.dilateScale)||set("dilateFloor",&t.dilateFloor)
             ||set("clipLevel",&t.clipLevel)||set("fwe",&t.fwe)||set("weightCap",&t.weightCap)||set("lutLo",&t.lutLo)||set("lutHi",&t.lutHi)
@@ -1505,6 +1516,7 @@ uniform int ry1;
 uniform vec4 rj; // cdm, boost, variance threshold, filter variance scale
 uniform vec4 rk; // boost mode (0 off, 1 local motion, 2 everywhere), motion threshold (RAW px), z: 1 = soft motion prior (P335),
                 // w: 1 = a normal donor clearly darker than a clipped base cell is rejected (P337 clipReject)
+uniform vec2 rp; // P341: x 1 = the distance of the 3 x 3 means (rejPool), y: a single cell's own excess over it (rejPoolT)
 #ifdef LOCAL_ALIGN
 // P335: the Z channel of frame f bilinear between the tile centres (laMotionAt takes the nearest tile: the boost switched on and off
 // in 16 px blocks along a moving edge).
@@ -1577,6 +1589,25 @@ void main(){
         vec3 D2=max(d*d-forgive*nv,vec3(0.0));
         float varc=max(2.0*min(G.w,Vcur),nvMean);
         float dist=rj.x*(D2.x+D2.y+D2.z)*(1.0/3.0)/varc;
+        if(rp.x>0.5){
+            // P341: the mean over the 3 x 3 cells of the squared difference (the donor bilinear at each neighbour's warped place,
+            // from the 4 x 4 cells around it, against the base cell of the guide), the noise forgiven after the mean: a ninth of
+            // its spread. The squares, not the difference of the means: moving water's ripples (zero-mean shifts of a texture)
+            // cancel in a mean difference and the waves were averaged into mush.
+            vec3 c4[16];
+            for(int k=0;k<16;k++)c4[k]=cellAt(f,ix-1+(k&3),iy-1+(k>>2)).xyz;
+            vec3 S=vec3(0.0);
+            for(int dj=0;dj<3;dj++)for(int di=0;di<3;di++){
+                int k0=dj*4+di;
+                vec3 gk=(c4[k0]*(1.0-fx)+c4[k0+1]*fx)*(1.0-fy)+(c4[k0+4]*(1.0-fx)+c4[k0+5]*fx)*fy;
+                int bx=clamp(cx-1+di,0,w2-1),by=clamp(cy-1+dj,ry0,ry1-1);
+                vec3 dk=gk-guide[(by-ry0)*w2+bx].xyz;
+                S+=dk*dk;
+            }
+            vec3 D2p=max(S*(1.0/9.0)-forgive*nv,vec3(0.0));
+            float distP=rj.x*(D2p.x+D2p.y+D2p.z)*(1.0/3.0)/varc;
+            dist=max(distP,dist-rp.y);
+        }
         float boost=G.w>rj.z*nvMean?mix(1.0,rj.y,prior):1.0;
         w=exp2(-dist*boost);
         // A longer (bracketed) frame clips where the base does not: its clipped cells carry no signal.
@@ -4970,6 +5001,7 @@ public:
         // boost mode 1 needs the Z channel of the local alignment; without it only the forced mode 2 boosts
         const float boostMode=tune.boostEnable>1.5f?2.f:(tune.boostEnable>0.5f&&localAlign?1.f:0.f);
         glUniform4f(loc(rejectProgram,"rk"),boostMode,tune.motionThreshold,tune.rejPrior>0.f?1.f:0.f,tune.clipReject>0.f?1.f:0.f);
+        glUniform2f(loc(rejectProgram,"rp"),tune.rejPool>0.f?1.f:0.f,tune.rejPoolT);
         // P310: with the ultrashort blend the merge (and its colour passes) runs as without Bento: the ultrashort frames get no
         // robust weight (kHybDilate), the base and the N frames their full one; kHybUsBlend blends them in after the strip's merge
         const bool usBlend=bento&&in.blend&&blendProgram!=0&&!in.native;
