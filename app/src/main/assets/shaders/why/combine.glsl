@@ -81,6 +81,7 @@ uniform float toeU;                 // ACES toe; <= 0 -> 0.05
 uniform float gammaInvU;            // 1 / ef_gamma; <= 0 -> 1 / 2.2
 uniform float macroU;               // OKLab macro contrast; <= 0 -> 1.1
 uniform vec3 vibU;                  // vibrance: overall, sky, green (0 = off)
+uniform float vibHlU;               // P341: vibrance of the light tones (OKLab L 0.45 .. 0.75 up), lightness kept (0 = off)
 uniform float chromaDnU;            // chroma denoise of strongly lifted pixels (0 = off)
 uniform float clarityU;             // delta * (1 + clarity)
 uniform float flatProtectU;         // flat-area protection of the delta (0 = off)
@@ -644,6 +645,17 @@ void main() {
     if (abs(vibU.y) > 0.001 && lab.z < 0.0) satMult += vibU.y * clamp(-lab.z / sat, 0.0, 1.0) * protect;
     if (abs(vibU.z) > 0.001 && lab.y < 0.0) satMult += vibU.z * clamp(-lab.y / sat, 0.0, 1.0) * protect;
     lab.yz *= satMult;
+    // P341 (owner, 2026-10-26: «нам нужно получить цвет у неба как у стока, при этом чтобы небо не темнило», «сделай чтобы было
+    // лучше чем в стоке»): the AgX shoulder and the path to white take most of a pale bright sky's chroma (the 17:57 sunset at
+    // OKLab-L 0.85: Lab chroma 8 / 22 against the stock camera's 25 / 42 at the same hue and a lower L). The light tones get
+    // vibrance before the tone, L unchanged: x (1 + 1.6 vibHlU) for a pale colour, falling to none at chroma 0.10 - a sky that
+    // has its colour already stays (the 3.7x sunset's glow at chroma 34 went to 66, red-orange, under a plain x 2.2; LMC 9.6 /
+    // ArkCam 33 - 38), none on a neutral (its hue is noise below chroma 0.004). Host replay: the 1x sky 8 / 22 -> ~20 / ~33,
+    // the 3.7x glow 34 -> ~42.
+    if (vibHlU > 0.0) {
+        float c0 = length(lab.yz);
+        lab.yz *= 1.0 + 1.6 * vibHlU * smoothstep(0.45, 0.75, lab.x) * smoothstep(0.002, 0.008, c0) * max(1.0 - c0 / 0.10, 0.0);
+    }
 #if COLOUR_LOOK == 1
     float skinW = 0.0;
     if (length(lab.yz) > 0.000001) {
@@ -852,7 +864,11 @@ void main() {
         // Where the tone compresses (Bento roll-off, fusion darkening, AgX shoulder: L_base below the cube-root
         // reference) the delta is scaled down with it; lifted shadows and mid-tones (ratio >= 1) keep the full delta.
         float compression = min(1.0, post.x / (lRef * (sharpTone != 1.0 ? cbrtp(sharpTone) : 1.0)));
-        delta *= compression * compression;
+        // P341 (owner, 2026-10-26: «на 31148 есть ступенька, а на новой нет»): a darkening delta scales with the compression, not
+        // its square. A ladder rung 10 x darker than the sun's glow around it (2 - 4 x white, compressed ~0.3) kept 9 % of its
+        // detail and read as glow; the fused base carries it only at half size. Brightening detail keeps the square (no
+        // white rims around lights).
+        delta *= delta < 0.0 ? compression : compression * compression;
     }
     float lBefore = post.x;
     post.x = clamp(post.x + delta * (1.0 - smoothstep(0.75, 1.0, post.x) * 0.5), 0.0001, 1.0);

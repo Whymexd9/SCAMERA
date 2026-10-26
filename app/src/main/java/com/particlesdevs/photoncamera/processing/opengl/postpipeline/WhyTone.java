@@ -127,10 +127,20 @@ public final class WhyTone {
      * P310: the saturation ((max - min) / max of the light) over which a pixel moves from the headroom weights to the kernel's
      * (why/gf.glsl satLightU; hi <= lo: off, every pixel the headroom weights as P291), then the light's level (its brightest
      * channel x the AE) over which that fades in (satLevelU; only light near the top of the curve).
+     * P341 (owner, 2026-10-26: «в новой версии у нас теперь артефакт оранжевый, переход должен быть плавный»): the saturation ramp
+     * 0.15 .. 0.95 (was 0.35 .. 0.7). A sunset sky warms steadily towards the sun; the narrow ramp switched its weights within
+     * ~100 px of that slope and the two tones (kernel: darker, orange; headroom: paler) met along an iso-saturation line, an
+     * orange wedge with an edge. The wide ramp spreads the same switch over the whole slope (host replay of the owner's
+     * 17:57:57 sunset: no edge, the glow still orange); a fully saturated LED (0.9+) keeps ~all of the kernel's weights.
      */
     static float[] saturatedLightRamp() {
-        return new float[]{value("sat_light_lo", 0.35f), value("sat_light_hi", 0.7f),
+        return new float[]{value("sat_light_lo", 0.15f), value("sat_light_hi", 0.95f),
                 value("sat_light_level_lo", 0.25f), Math.max(value("sat_light_level_hi", 0.6f), value("sat_light_level_lo", 0.25f) + 0.01f)};
+    }
+
+    /** P341: the vibrance of the light tones (why/combine.glsl vibHlU; 0 = off). */
+    static float vibranceHl() {
+        return Math.max(0f, value("vibrance_hl", 1.0f));
     }
 
     /** P291: the rise of the fusion's monotonic envelope per ln of the light (why/gf.glsl monoU; 0 = the kernel's fusion). */

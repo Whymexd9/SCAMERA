@@ -179,15 +179,20 @@ public final class WhyFusion extends Node {
     /**
      * P340 (owner, 2026-10-25: pairs against LMC 9.6, ArkCam and the stock camera, «сделай так чтобы у нас был лучший результат среди
      * всех пар»): with Bento headroom (recovered light above the clip, ceiling hr) the darkest synthetic exposure reaches that
-     * ceiling: at most 1 / (ae x hr), so the recovered range lands inside the fusion instead of above it. Its multiplier came
+     * ceiling: at most 2 / (ae x hr) (P341), so the recovered range lands inside the fusion instead of above it. Its multiplier came
      * from the frame's statistics alone (2^(-1.5 effH)), which a setting sun or the moon (< 0.5 % of the frame) never moves:
      * 0.48 and 1.0 on the owner's sunsets, the glow at 2 - 8 x white went white with the disc and the clipped core drew a ring.
      * Host replay of the owner's three bursts: the disc white, the glow orange, the frame's percentiles unchanged (p1 / p50 0.072 /
      * 0.410 against LMC's 0.078 / 0.404). Neutral light keeps its own weights (P291 / P310), so lit paper stays white.
+     * P341 (owner, 2026-10-26: «у нас пропадает ступенька возле солнца»): the ceiling at 2 x, not 1 x, of that exposure. At
+     * 1 / (ae x hr) the darkest exposure sat 40 x (5.3 stops) below the next one: a ladder rung inside the glow (2 - 5 x white)
+     * was dark in it and clipped in the next, well exposed in none, and the pyramid filled it with the glow. At 2 / (ae x hr)
+     * the disc itself clips (white, as every camera shows it) and the rung keeps its contrast up to the disc; the glow stays
+     * orange.
      */
     static float headroomExposure(float em0, float ae, float clip, float hr) {
         if (!(hr > clip) || !(ae > 0f) || !Float.isFinite(hr)) return em0;
-        return Math.min(em0, 1f / (ae * hr));
+        return Math.min(em0, 2f / (ae * hr));
     }
 
     private static String params(float[] em, float[] lw, float center, float[] satLight) {

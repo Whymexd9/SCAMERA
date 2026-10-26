@@ -11,8 +11,10 @@ import static org.junit.Assert.assertEquals;
 public class WhyPairsTest {
     @Test public void theDarkestExposureReachesTheHeadroomCeiling() {
         // the owner's sunsets: ae 2.0 / 1.16, hr 21 / 17.8 (the frame statistics gave 0.484 / 1.0)
-        assertEquals(1f / (2.0015552f * 21.046875f), WhyFusion.headroomExposure(0.48407066f, 2.0015552f, 4f, 21.046875f), 1e-6f);
-        assertEquals(1f / (1.1568732f * 17.8125f), WhyFusion.headroomExposure(1f, 1.1568732f, 4f, 17.8125f), 1e-6f);
+        assertEquals(2f / (2.0015552f * 21.046875f), WhyFusion.headroomExposure(0.48407066f, 2.0015552f, 4f, 21.046875f), 1e-6f);
+        assertEquals(2f / (1.1568732f * 17.8125f), WhyFusion.headroomExposure(1f, 1.1568732f, 4f, 17.8125f), 1e-6f);
+        // P341: twice the ceiling (a rung in the glow kept); the statistics' exposure when that is darker already
+        assertEquals(0.05f, WhyFusion.headroomExposure(0.05f, 2f, 4f, 10f), 0f);
         // without headroom (hr 0, or not above the clip) the statistics' exposure as before
         assertEquals(0.5f, WhyFusion.headroomExposure(0.5f, 2f, 4f, 0f), 0f);
         assertEquals(0.5f, WhyFusion.headroomExposure(0.5f, 2f, 4f, 4f), 0f);

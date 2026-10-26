@@ -96,11 +96,15 @@ void main() {
     int r2 = 2 * r, s2 = max(2, r / 2);
     vec3 light = vec3(0.0);
     float top2 = top;
+    vec3 dark2 = vec3(0.0);    // P341: the darkest pixel (by its brightest channel) of the wider window, outside the rim
+    float dark2M = 1.0e30;
     for (int dy = -r2; dy <= r2; dy += s2) {
         for (int dx = -r2; dx <= r2; dx += s2) {
             vec3 v = max(texelFetch(InputBuffer, clamp(xy + ivec2(dx, dy), ivec2(0), last), 0).rgb, vec3(0.0));
             float lv = dot(v, W);
             top2 = max(top2, lv);
+            float mv = max(max(v.r, v.g), v.b);
+            if (mv < dark2M) { dark2M = mv; dark2 = v; }
             float lv2 = lv * lv;
             light += (lv2 * lv2) * v;
         }
@@ -138,6 +142,27 @@ void main() {
         vec3 d = (lp - dot(lp, vec3(1.0 / 3.0))) - (lt - dot(lt, vec3(1.0 / 3.0)));
         // B in excess beyond any R excess (blue, violet, purple - not a red detail the halo reaches), or R in deficit
         col = mix(col, ft, wf0 * smoothstep(0.04, 0.15, max(d.b - max(d.r, 0.0), -d.r)));
+        // P341 (owner, 2026-10-26: «кайму тоже убери»): the setting sun's pink-lilac rim. R clipped, G and B measured, B's
+        // wider blur leading G (B / G 1.09 where the disc's 20 x white meets an orange glow of B / G 0.45): R the largest,
+        // so the test above let it through. Between the light and a coloured dark side every pixel of the edge lies on
+        // the line joining their log chromaticities (log R / G, log B / G); B above that line at the pixel's own place
+        // along it (its projection) is the blur, and the pixel takes the line's colour there at its own luminance.
+        // A neutral dark side (no line) and a pixel on the line (the warm white -> orange transition) stay.
+        vec2 pL = vec2(log(max(light.r, 1.0e-30) / max(light.g, 1.0e-30)), log(max(light.b, 1.0e-30) / max(light.g, 1.0e-30)));
+        // the dark side from the wider window: the 3 px one sits inside the rim itself next to a large disc (B / G 0.75 of
+        // the blur against the glow's 0.45)
+        vec2 pD = vec2(log(max(dark2.r, 1.0e-6) / max(dark2.g, 1.0e-6)), log(max(dark2.b, 1.0e-6) / max(dark2.g, 1.0e-6)));
+        vec3 cp = max(col, vec3(1.0e-6));
+        vec2 pP = vec2(log(cp.r / cp.g), log(cp.b / cp.g));
+        vec2 v = pD - pL;
+        float vv = dot(v, v);
+        if (vv > 0.04) {
+            float t = clamp(dot(pP - pL, v) / vv, 0.0, 1.0);
+            vec2 e = pL + t * v;
+            vec3 lineCol = vec3(exp(e.x), 1.0, exp(e.y));
+            lineCol *= l / max(dot(lineCol, W), 1.0e-6);
+            col = mix(col, lineCol, wf0 * smoothstep(0.04, 0.15, pP.y - e.y));
+        }
     }
     Output = vec4(col, c.a);
 }

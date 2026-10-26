@@ -198,6 +198,7 @@ public final class WhyCombine extends Node {
             glProg.setVar("gammaInvU", 1f / WhyTone.gamma());
             glProg.setVar("macroU", WhyTone.value("macro_contrast", 1.1f));
             glProg.setVar("vibU", WhyTone.value("vibrance", 0f), WhyTone.value("vibrance_sky", 0.40f), WhyTone.value("vibrance_green", 0.20f));
+            glProg.setVar("vibHlU", WhyTone.vibranceHl());
             glProg.setVar("chromaDnU", WhyFusion.whyDenoise(basePipeline.mParameters) ? WhyTone.value("chroma_denoise", 0f) : 0f);
             glProg.setVar("clarityU", WhyTone.value("clarity", 0f));
             glProg.setVar("flatProtectU", WhyTone.value("flat_protect", 0f));

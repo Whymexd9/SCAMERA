@@ -103,7 +103,7 @@ def uniforms(lw=(0.8, 1.0, 0.7, 0.5), mono=0.0):
 
 # the Bento headroom weights of WhyFusion with P310's saturated-light ramp (WhyTone defaults)
 BENTO = {'expU': (0.038, 1.0, 2.0, 4.0), 'layerU': (0.4, 1.0, 0.7, 0.5), 'aeU': 1.0, 'centerU': 0.75, 'smoothU': 0.25,
-         'gammaInvU': 1 / 2.2, 'toeU': 0.05, 'monoU': 0.04, 'satLightU': (0.6, 0.8, 0.35, 0.7), 'satLevelU': (0.25, 0.6)}
+         'gammaInvU': 1 / 2.2, 'toeU': 0.05, 'monoU': 0.04, 'satLightU': (0.6, 0.8, 0.15, 0.95), 'satLevelU': (0.25, 0.6)}
 
 
 def levels_for(w, h, coarse=48):
