@@ -84,14 +84,17 @@ public class WhyAeTest {
         r.effS = 1.5f;
         r.effH = 2f;
         float[] em = WhyAe.exposures(r);
+        // P348: two dark (the second halfway in stops) and one bright
         assertEquals(0.125f, em[0], 1e-6f);
         assertEquals(1f, em[1], 0f);
-        assertEquals((float) Math.pow(2, 1.5), em[2], 1e-5f);
-        assertEquals(8f, em[3], 1e-5f);
+        assertEquals((float) Math.sqrt(0.125), em[2], 1e-6f);
+        assertEquals((float) Math.pow(2, 2.25), em[3], 1e-5f);
         r.effS = 3f;
         em = WhyAe.exposures(r);
-        assertEquals(8f, em[2], 0f);
-        assertEquals(16f, em[3], 0f);
+        assertEquals(8f, em[3], 0f);
+        em = WhyAe.exposures(r, 0.04f);
+        assertEquals(0.04f, em[0], 0f);
+        assertEquals(0.2f, em[2], 1e-6f);
     }
 
     /**

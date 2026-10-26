@@ -179,8 +179,60 @@ struct HybridTuning {
     // instead of 22 % of the cells. Squares, not the difference of the 3 x 3 means: that one cancels moving water's ripples and
     // averaged the waves into mush. A single cell is still rejected on its own when its distance exceeds the pooled one by
     // rejPoolT (a wire, a bird: < 0.7 % of noise cells reach it). 0 = per cell as before (replays unchanged).
+    // P344 rejPool 2: the pooled test with each of the 3 x 3 cells normalised by ITS OWN tolerance (its base level's difference
+    // noise, max(2 min(its base texture, the donor's), that noise)), the noise forgiven as the mean of the cells' noise / tolerance
+    // after the mean. rejPool 1 divides the nine squares by the centre's tolerance alone: on the hand-held day buildings a flat
+    // cell next to a window grid or an outline took the grid's squares at the flat cell's tolerance (static_day Neff 9.89 -> 4.92,
+    // robust 0.974 -> 0.541: window grids, outlines and wires rejected).
     float rejPool=0.f;
     float rejPoolT=0.7f;
+    // P344 (owner, 2026-10-26: «займись картой реджектов», the rejection maps as clean as ArkCam's and still catching motion). Each
+    // 0 / off = the merge exactly as before (replays bit-identical); the app sends none of them yet.
+    // rejVarExact 1: the donor's interpolation noise is the true variance factor of its bilinear sample, ((1-fx)^2+fx^2)((1-fy)^2+fy^2)
+    // (0.25 .. 1 with the frame's sub-cell offset), in place of the constant filterVariance 0.5: frames at whole-cell offsets (a
+    // tripod, even-pixel shifts) were under-forgiven (pooled static robust 0.94, 3-4 % of the cells < 0.85), half-cell ones
+    // over-forgiven (0.987); with the exact factor every offset sits at 0.975 (model, rejsim2.py).
+    float rejVarExact=0.f;
+    // rejPerChannel 1: the tolerance per colour, max(2 min(texture), noise of that colour), as GCam 11's float3 variance, instead of
+    // one scalar max(.., mean of the three noises): the scalar weighted the green (half the noise: a cell averages two sites) at 0.6x
+    // and R / B at 1.2x of their noise; a 2.5-sigma green-only change kept robust 0.88 (0.51 per channel). Single-cell and pooled tests.
+    float rejPerChannel=0.f;
+    // rejMeanDiff w > 0: a companion low-contrast test on the difference of the 3 x 3 means (the donor's nine bilinear samples from
+    // its 4 x 4 cells against the base's nine cells of the guide), the noise forgiven at the mean's (nv / 9; with rejVarExact the
+    // exact factor of the nine-sample mean), tolerance max(2 min(texture) x rejMeanTex, that noise); dist = max(dist, w distMean):
+    // it only adds rejection. The energy test (squares) keeps the ripples of moving water but hardly sees a smooth change near the
+    // noise: a 24 x 24-cell object 1.5 sigma off was merged at 0.19 (the mean test as Google's / ArkCam's: 0.001, model re/sim3-5.py).
+    float rejMeanDiff=0.f;
+    float rejMeanTex=0.5f;
+    // rejKneeLo / rejKneeHi (hi > lo >= 0): the weight 1 - smoothstep(lo, hi, dist x boost) instead of exp2(-dist x boost), a dead
+    // zone as Wronski's clamp / ArkCam's threshold: every noise draw lowered the exp2 weight (static cells 0.95 .. 0.99, only 20 %
+    // exactly 1: the speckled map); research model lo / hi = 0.16 / 0.6: 98.8 % of the static cells exactly 1.
+    float rejKneeLo=0.f,rejKneeHi=0.f;
+    // rejBinLo / rejBinHi (hi > lo) in kHybDilate: the donor's map r = smoothstep(lo, hi, min(own, 1 - spread)) before its frame weight,
+    // ArkCam's near-binary map (s002 smoothstep(0.2, 0.8)): soft weights in moving areas are still acceptance (20 donors at 0.4
+    // leave the base 11 %), and min(own, ..) passes each cell's noise tail into the merge.
+    float rejBinLo=0.f,rejBinHi=0.f;
+    // rejClipSym 1: the other half of P337's clipReject - a normal donor whose four bilinear cells are clipped where the base cell is
+    // not and whose green is brighter than the base's by more than 3 sigma of the difference noise is rejected (a light that moved
+    // in: a headlight, a sparkle). Guard against a clip edge the sample straddles by a sub-cell misalignment: none of the base's
+    // 3 x 3 cells may be clipped (a static lamp's border keeps its donors).
+    float rejClipSym=0.f;
+    // rejPool 3: rejPool 2 with the donor's texture taken around each neighbour's own sample (the 3 x 3 window of the 4 x 4 donor
+    // cells that holds it) instead of the centre's: a flat centre two cells from an outline still judged the outline's neighbour at
+    // the flat donor texture (static_day buildings Neff 7.0 with rejPool 2).
+    // rejNoiseCdm cN > 0: the noise regime's own scale, tol = max(2 min(texture) / cdm, noise / cN) (0 = cdm). With the pooled
+    // test the noise-only excess has a known spread, and cdm 0.2 there merged 1-sigma ripples of night water at 0.9.
+    float rejNoiseCdm=0.f;
+    // rejMatchBlur 1: the base cell through the symmetric 3-tap [a, 1 - 2a, a] (a = f (1 - f) / 2 per axis of the donor's sub-cell
+    // offset f) before the comparison: the donor's bilinear sample blurs, the unfiltered base cell did not, and on thin wires,
+    // window grids and outlines that alone was half the contrast where nothing moved.
+    float rejMatchBlur=0.f;
+    // rejRelFloor k > 0: (k u)^2 added to the difference noise of the rejection (u: the base cell's level in the u domain), the
+    // alignment / resampling error that scales with the level: hand-held day sky's pooled noise excess was 2.4x the tripod's.
+    float rejRelFloor=0.f;
+    // rejMeanFloor k: (k u)^2 added to the noise of rejMeanDiff's difference of the 3 x 3 means (a frame's global gain: flicker,
+    // an AE ramp, is not motion; a low-contrast object below k is merged).
+    float rejMeanFloor=0.f;
     // P339 (owner, 2026-10-25: «займись ускорением обработки чтобы скорость была на уровне ArkCam»): a plain burst whose base frame
     // has no site at the clip leaves its ultrashort frames out before the row check (hybridPlainUsRows), Bento and the blend: they
     // have nothing to replace (Bento would fall back, their merge weight is 0) and cost ~0.7 s on the OPPO's night replay (row
@@ -791,7 +843,10 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             applied+=" "+key+"="+std::to_string(v);return true;
         };
         while(f>>key>>v){
-            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("rejPrior",&t.rejPrior)||set("clipReject",&t.clipReject)||set("rejPool",&t.rejPool)||set("rejPoolT",&t.rejPoolT)||set("usNeedClip",nullptr,&t.usNeedClip)||set("varianceThreshold",&t.varianceThreshold)
+            set("cdm",&t.cdm)||set("boost",&t.boost)||set("boostEnable",&t.boostEnable)||set("rejPrior",&t.rejPrior)||set("clipReject",&t.clipReject)||set("rejPool",&t.rejPool)||set("rejPoolT",&t.rejPoolT)
+            ||set("rejVarExact",&t.rejVarExact)||set("rejPerChannel",&t.rejPerChannel)||set("rejMeanDiff",&t.rejMeanDiff)||set("rejMeanTex",&t.rejMeanTex)
+            ||set("rejKneeLo",&t.rejKneeLo)||set("rejKneeHi",&t.rejKneeHi)||set("rejBinLo",&t.rejBinLo)||set("rejBinHi",&t.rejBinHi)||set("rejClipSym",&t.rejClipSym)||set("rejNoiseCdm",&t.rejNoiseCdm)||set("rejMatchBlur",&t.rejMatchBlur)||set("rejRelFloor",&t.rejRelFloor)||set("rejMeanFloor",&t.rejMeanFloor)
+            ||set("usNeedClip",nullptr,&t.usNeedClip)||set("varianceThreshold",&t.varianceThreshold)
             ||set("motionThreshold",&t.motionThreshold)
             ||set("filterVariance",&t.filterVariance)||set("dilateOffset",&t.dilateOffset)||set("dilateScale",&t.dilateScale)||set("dilateFloor",&t.dilateFloor)
             ||set("clipLevel",&t.clipLevel)||set("fwe",&t.fwe)||set("weightCap",&t.weightCap)||set("lutLo",&t.lutLo)||set("lutHi",&t.lutHi)
@@ -1517,6 +1572,34 @@ uniform vec4 rj; // cdm, boost, variance threshold, filter variance scale
 uniform vec4 rk; // boost mode (0 off, 1 local motion, 2 everywhere), motion threshold (RAW px), z: 1 = soft motion prior (P335),
                 // w: 1 = a normal donor clearly darker than a clipped base cell is rejected (P337 clipReject)
 uniform vec2 rp; // P341: x 1 = the distance of the 3 x 3 means (rejPool), y: a single cell's own excess over it (rejPoolT)
+                 // P344: x 2 = each of the 3 x 3 cells normalised by its own tolerance (rejPool 2, REJ_OPTS only), x 3 = with
+                 // the donor texture around each cell's sample (rejPool 3)
+// P344 REJ_OPTS (hybridRejOptions: compiled only when a P344 rejection option is on): without it the preprocessed program is
+// exactly the one before P344 - the same driver code, bit-identical maps (an edited program that only branched on these uniforms
+// already merged with other float rounding on the Adreno 750: MERGE FACTORS average 0.679813 -> 0.679814 on b175757).
+#ifdef REJ_OPTS
+uniform vec4 rq; // x 1 = the exact bilinear noise factor (rejVarExact), y 1 = the tolerance per colour (rejPerChannel),
+                 // z 1 = a light that moved in is rejected (rejClipSym), w = the noise regime's scale (rejNoiseCdm, 0 = cdm)
+uniform vec4 rm; // x = weight of the 3 x 3 mean-difference test (rejMeanDiff, 0 off), y = its texture factor (rejMeanTex),
+                 // zw = the knee lo, hi of the weight (w > z: 1 - smoothstep; else exp2)
+uniform vec4 rb; // x 1 = the base blurred as the donor's bilinear sample (rejMatchBlur), y = the relative error floor (rejRelFloor),
+                 // z = the mean test's relative floor (rejMeanFloor)
+// The guide (base cells) around the group's 8 x 8 cells, +-2 cells, read once per group: the P344 tests read the 5 x 5 base cells
+// around each cell (rejMatchBlur's 3 x 3 blur of each of the nine neighbours). Held per cell in registers (vec4[25]) they made
+// the pass 9x slower on the Adreno 750 (b175757: reject 596 -> 5609 ms).
+shared vec4 rjG[144];
+// rejMatchBlur: the base's second differences of the inner 10 x 10 cells, x, y and xy: the blur of a cell with weights
+// [a, 1 - 2a, a] per axis is c + ax Dx + ay Dy + ax ay Dxy (4 reads instead of 9).
+shared vec3 rjD[300];
+int rjIdx(int cx,int cy,int dx,int dy){
+    return (cy-(ry0+chunkU+int(gl_WorkGroupID.y)*8-2)+dy)*12+cx-int(gl_WorkGroupID.x)*8+2+dx;
+}
+vec4 rjTile(int cx,int cy,int dx,int dy){ return rjG[rjIdx(cx,cy,dx,dy)]; }
+vec3 rjBlur(int cx,int cy,int dx,int dy,float ax,float ay){
+    int t=rjIdx(cx,cy,dx,dy);int k=((t/12)-1)*10+(t%12)-1;
+    return rjG[t].xyz+ax*rjD[3*k]+ay*rjD[3*k+1]+ax*ay*rjD[3*k+2];
+}
+#endif
 #ifdef LOCAL_ALIGN
 // P335: the Z channel of frame f bilinear between the tile centres (laMotionAt takes the nearest tile: the boost switched on and off
 // in 16 px blocks along a moving edge).
@@ -1533,6 +1616,24 @@ float laMotionSoft(int f,int x,int y){
 void main(){
     int w2=size.x/2;
     int cx=int(gl_GlobalInvocationID.x),cy=ry0+chunkU+int(gl_GlobalInvocationID.y),f=int(gl_GlobalInvocationID.z)+1;
+#ifdef REJ_OPTS
+    {
+        int bx=int(gl_WorkGroupID.x)*8-2,by=ry0+chunkU+int(gl_WorkGroupID.y)*8-2;
+        for(int k=int(gl_LocalInvocationIndex);k<144;k+=64){
+            int y=clamp(by+k/12,ry0,ry1-1),x=clamp(bx+k%12,0,w2-1);
+            rjG[k]=guide[(y-ry0)*w2+x];
+        }
+        barrier();
+        if(rb.x>0.5)for(int k=int(gl_LocalInvocationIndex);k<100;k+=64){
+            int t=(k/10+1)*12+k%10+1;
+            vec3 c=rjG[t].xyz,u=rjG[t-12].xyz,d=rjG[t+12].xyz;
+            vec3 dxc=rjG[t-1].xyz+rjG[t+1].xyz-2.0*c;
+            vec3 dxu=rjG[t-13].xyz+rjG[t-11].xyz-2.0*u,dxd=rjG[t+11].xyz+rjG[t+13].xyz-2.0*d;
+            rjD[3*k]=dxc;rjD[3*k+1]=u+d-2.0*c;rjD[3*k+2]=dxu+dxd-2.0*dxc;
+        }
+    }
+    barrier();
+#endif
     if(cx>=w2||cy>=ry1||f>=frameCount)return;
     vec4 G=guide[(cy-ry0)*w2+cx];
     float w=0.0;
@@ -1568,7 +1669,13 @@ void main(){
         float Lb=max(dot(G.xyz*G.xyz,vec3(1.0/3.0))-epsU(),0.0);
         // Variance of (donor - base): the base cell is read unfiltered, the donor cell is a bilinear sample
         // (variance scaled by rj.w); the green of a cell averages two sites.
+#ifdef REJ_OPTS
+        // P344 rejVarExact: the sample's own factor, the sum of its four squared bilinear weights
+        float fvar=rq.x>0.5?((1.0-fx)*(1.0-fx)+fx*fx)*((1.0-fy)*(1.0-fy)+fy*fy):rj.w;
+        float nvs=noiseU(0,Lb)+fvar*noiseU(f,Lb);
+#else
         float nvs=noiseU(0,Lb)+rj.w*noiseU(f,Lb);
+#endif
         vec3 nv=nvs*vec3(1.0,0.5,1.0);
         float nvMean=(nv.x+nv.y+nv.z)*(1.0/3.0);
         // SCAM / v11 extra motion robustness: textured base and, with the local alignment, varying local motion
@@ -1589,6 +1696,7 @@ void main(){
         vec3 D2=max(d*d-forgive*nv,vec3(0.0));
         float varc=max(2.0*min(G.w,Vcur),nvMean);
         float dist=rj.x*(D2.x+D2.y+D2.z)*(1.0/3.0)/varc;
+#ifndef REJ_OPTS
         if(rp.x>0.5){
             // P341: the mean over the 3 x 3 cells of the squared difference (the donor bilinear at each neighbour's warped place,
             // from the 4 x 4 cells around it, against the base cell of the guide), the noise forgiven after the mean: a ninth of
@@ -1608,13 +1716,122 @@ void main(){
             float distP=rj.x*(D2p.x+D2p.y+D2p.z)*(1.0/3.0)/varc;
             dist=max(distP,dist-rp.y);
         }
+#else
+        // P344: one tolerance for both regimes, tol = max(2 min(texture) / cdm, noise / cN), dist = D2 / tol. cN = rejNoiseCdm
+        // (rq.w; 0 = cdm: the old cdm D2 / max(2 min(texture), noise)). The texture regime's scale (cdm 0.2: a static edge's
+        // interpolation and alignment mismatch, about its own 3 x 3 variance, stays accepted) is wrong for the noise regime: with the
+        // noise model exact a pooled noise-only excess has a known spread (~0.3 of the noise), and cdm 0.2 merged a 1-sigma ripple
+        // of moving night water at 0.9. Half the noise still forgiven inside the motion prior (P335) adds 0.5 prior x noise / tol:
+        // scaled by cdm / cN it adds what it did before.
+        float cN=rq.w>0.0?rq.w:rj.x;
+        float tex2=2.0*min(G.w,Vcur);
+        if(rq.w>0.0)forgive=max(1.0-(1.0-forgive)*rj.x/cN,0.0); // (review: min(.., 1) halved the prior's term for cN < cdm)
+        // P344 rejMatchBlur (rb.x): the base blurred as the donor's bilinear sample is. The sample at sub-cell offset (fx, fy) is the
+        // signal through the 2-tap filter (1 - fx, fx) per axis: amplitude sqrt(1 - 2 fx (1 - fx)(1 - cos w)); the base cell is not
+        // filtered at all. On a thin wire, a window grid or an outline that difference is half the contrast at fx 0.5 although nothing
+        // moved (static_day wires raw 0.82, robust 0.52), and it is what the texture tolerance and the boost had to absorb. The
+        // base through the symmetric 3-tap [a, 1 - 2a, a], a = fx (1 - fx) / 2 per axis, has the same amplitude to first order
+        // (no shift): the comparison is symmetric as Google's / ArkCam's pre-filtered guides, without their 3 x 3 low pass (which
+        // averages ripples away). Its noise factor ((1 - 2a)^2 + 2a^2) per axis replaces the base's 1.
+        bool mb=rb.x>0.5;
+        float ax=0.5*fx*(1.0-fx),ay=0.5*fy*(1.0-fy);
+        vec3 wx=mb?vec3(ax,1.0-2.0*ax,ax):vec3(0.0,1.0,0.0),wy=mb?vec3(ay,1.0-2.0*ay,ay):vec3(0.0,1.0,0.0);
+        float fb=dot(wx,wx)*dot(wy,wy);
+        vec3 Bc=G.xyz;
+        if(mb)Bc=rjBlur(cx,cy,0,0,ax,ay);
+        // P344 rejRelFloor (rb.y = k): a model-error floor (k u)^2 added to the difference noise (forgiven and in the tolerance).
+        // Hand-held day sky: the pooled noise excess sat at 0.33 of the noise (tripod 0.14, night 0.09) - alignment and
+        // resampling errors that scale with the level, invisible under night noise.
+        vec3 nvD=(mb?(fb*noiseU(0,Lb)+fvar*noiseU(f,Lb))*vec3(1.0,0.5,1.0):nv)+rb.y*rb.y*Bc*Bc;
+        float nvDMean=(nvD.x+nvD.y+nvD.z)*(1.0/3.0);
+        vec3 dd=g-Bc;
+        D2=max(dd*dd-forgive*nvD,vec3(0.0));
+        // P344 rejPerChannel: each colour over its own tolerance (GCam 11: variance_rgb = max(pixel_variance, noise_variance), float3)
+        vec3 tol3=rq.y>0.5?max(vec3(tex2/rj.x),nvD/cN):vec3(max(tex2/rj.x,nvDMean/cN));
+        dist=dot(D2/tol3,vec3(1.0/3.0));
+        if(rp.x>0.5||rm.x>0.0){
+            // P341's pooled test (as above without REJ_OPTS) and the P344 additions in the same pass over the 3 x 3 cells
+            vec3 c4[16];
+            for(int k=0;k<16;k++)c4[k]=cellAt(f,ix-1+(k&3),iy-1+(k>>2)).xyz;
+            // P344 rejPool 3: the donor's texture around each neighbour from the 3 x 3 window of the 4 x 4 cells that holds its
+            // bilinear sample (one of the four corner windows): rejPool 2 took the centre's for all nine, and a flat centre next to a
+            // window grid or an outline 2 cells away judged the grid's neighbour at the flat centre's tolerance.
+            float Vq[4];
+            for(int q=0;q<4;q++){
+                Vq[q]=Vcur;
+                if(rp.x>2.5){
+                    vec3 a=vec3(0.0),a2=vec3(0.0);
+                    for(int j=0;j<3;j++)for(int i=0;i<3;i++){vec3 u=c4[((q>>1)+j)*4+(q&1)+i];a+=u*(1.0/9.0);a2+=u*u*(1.0/9.0);}
+                    vec3 v=max(a2-a*a,vec3(0.0));
+                    float La=max(dot(a*a,vec3(1.0/3.0))-epsU(),0.0);
+                    Vq[q]=max((v.x+v.y+v.z)*(1.0/3.0)-noiseU(f,La)*0.742,0.0);
+                }
+            }
+            vec3 S=vec3(0.0);
+            vec3 SN=vec3(0.0),FN=vec3(0.0),Mg=vec3(0.0),Mb=vec3(0.0); // P344: rejPool 2 / 3 sums, the two 3 x 3 means
+            for(int dj=0;dj<3;dj++)for(int di=0;di<3;di++){
+                int k0=dj*4+di;
+                vec3 gk=(c4[k0]*(1.0-fx)+c4[k0+1]*fx)*(1.0-fy)+(c4[k0+4]*(1.0-fx)+c4[k0+5]*fx)*fy;
+                vec4 Gk=rjTile(cx,cy,di-1,dj-1);
+                vec3 Bk=Gk.xyz;
+                if(mb)Bk=rjBlur(cx,cy,di-1,dj-1,ax,ay);
+                vec3 dk=gk-Bk;
+                S+=dk*dk;
+                Mg+=gk;Mb+=Gk.xyz;
+                if(rp.x>1.5){
+                    // P344 rejPool 2: this cell's own difference noise (its base level) and tolerance (its base texture against
+                    // the donor's: around the centre, rejPool 3 around this cell's sample)
+                    float Lk=max(dot(Gk.xyz*Gk.xyz,vec3(1.0/3.0))-epsU(),0.0);
+                    vec3 nvk=(fb*noiseU(0,Lk)+fvar*noiseU(f,Lk))*vec3(1.0,0.5,1.0)+rb.y*rb.y*Bk*Bk;
+                    float tk=2.0*min(Gk.w,Vq[min(di,1)+2*min(dj,1)]);
+                    vec3 vk=rq.y>0.5?max(vec3(tk/rj.x),nvk/cN):vec3(max(tk/rj.x,(nvk.x+nvk.y+nvk.z)*(1.0/3.0)/cN));
+                    SN+=dk*dk/vk;FN+=nvk/vk;
+                }
+            }
+            if(rp.x>0.5){
+                float distP;
+                if(rp.x>1.5){vec3 Dn=max(SN-forgive*FN,vec3(0.0))*(1.0/9.0);distP=(Dn.x+Dn.y+Dn.z)*(1.0/3.0);}
+                else {vec3 D2p=max(S*(1.0/9.0)-forgive*nvD,vec3(0.0));distP=dot(D2p/tol3,vec3(1.0/3.0));}
+                dist=max(distP,dist-rp.y);
+            }
+            if(rm.x>0.0){
+                // P344 rejMeanDiff: the difference of the 3 x 3 means, a matched filter for a smooth change near the noise (the
+                // squares above hardly see it); its noise is the means' (/ 9; the donor mean's exact factor: its 4 x 4 cells
+                // weighted ((1-fx), 1, 1, fx) / 3 per axis), the base texture's tolerance scaled by rejMeanTex. Only adds rejection.
+                vec3 dm=(Mg-Mb)*(1.0/9.0);
+                float fm=rq.x>0.5?((1.0-fx)*(1.0-fx)+fx*fx+2.0)*((1.0-fy)*(1.0-fy)+fy*fy+2.0)*(1.0/9.0):fvar;
+                // P344 rejMeanFloor (rb.z = k): (k u)^2 added to the means' difference noise, not divided by 9 - a global gain of the
+                // frame (flicker, an AE ramp, a lens shading drift) is no motion: the mean test rejected a hand-held day scene with
+                // +-3 % flicker (Neff 9.1 -> 7.8) at a floor of noise only.
+                vec3 mb9=Mb*(1.0/9.0);
+                vec3 nvM=(noiseU(0,Lb)+fm*noiseU(f,Lb))*(1.0/9.0)*vec3(1.0,0.5,1.0)+rb.z*rb.z*mb9*mb9;
+                float tM=tex2*rm.y;
+                vec3 vM=rq.y>0.5?max(vec3(tM/rj.x),nvM/cN):vec3(max(tM/rj.x,(nvM.x+nvM.y+nvM.z)*(1.0/3.0)/cN));
+                vec3 DM=max(dm*dm-forgive*nvM,vec3(0.0))/vM;
+                dist=max(dist,rm.x*(DM.x+DM.y+DM.z)*(1.0/3.0));
+            }
+        }
+#endif
         float boost=G.w>rj.z*nvMean?mix(1.0,rj.y,prior):1.0;
         w=exp2(-dist*boost);
+#ifdef REJ_OPTS
+        // P344 rejKneeLo / rejKneeHi: a dead zone, then a smooth fall to 0 (no noise draw lowers a static cell)
+        if(rm.w>rm.z)w=1.0-smoothstep(rm.z,rm.w,dist*boost);
+#endif
         // A longer (bracketed) frame clips where the base does not: its clipped cells carry no signal.
         if(int(fParam[f].w)==3&&dclip)w=0.0;
         // P337: the base clipped here (its value is at least the clip) and the donor's green is darker than it by more than 3
         // sigma of the difference noise: the sparkle moved
         if(rk.w>0.5&&w>0.0&&int(fParam[f].w)==1&&d.y<-3.0*sqrt(nv.y)){bool bcl;float bgd;cellU(0,cx,cy,bcl,bgd);if(bcl)w=0.0;}
+#ifdef REJ_OPTS
+        // P344 rejClipSym: the reverse - the donor's four cells clipped, its green brighter than the base's by more than 3 sigma,
+        // and no base cell of the 3 x 3 clipped (not a static lamp's border the sample straddles): a light moved in
+        if(rq.z>0.5&&w>0.0&&int(fParam[f].w)==1&&min(min(c00.w,c10.w),min(c01.w,c11.w))>0.5&&d.y>3.0*sqrt(nv.y)){
+            bool anyClip=false;
+            for(int k=0;k<9;k++){bool bcl;float bgd;cellU(0,clamp(cx-1+k%3,0,w2-1),clamp(cy-1+k/3,0,size.y/2-1),bcl,bgd);anyClip=anyClip||bcl;}
+            if(!anyClip)w=0.0;
+        }
+#endif
     }
     rawR[(f-1)*(ry1-ry0)*w2+(cy-ry0)*w2+cx]=w;
 }
@@ -1636,6 +1853,9 @@ uniform int cy1;
 uniform vec4 dl; // offset, scale, bento active, floor (rejection below it does not spread)
 uniform int validPlanesU; // bentoValidate: per-ultrashort-frame validity planes after the mask plane (0 = none)
 uniform float rampKU;     // P309: the ramp mask's K (0 = the previous mask)
+#ifdef REJ_OPTS
+uniform vec2 db;          // P344 rejBinLo, rejBinHi: y > x = the map smoothstep(x, y, ..) before the frame weight (near-binary)
+#endif
 #ifdef SHARED_TILES
 // P76 (Adreno: SHARED_TILES): the 12x12 rejection weights around the group's 8x8 cells, read once per group (25 reads a cell
 // before; Adreno 750 dilate 533 -> 234 ms, float rounding differs by <= 2.3e-6). Mali keeps the plain reads: its shared memory is
@@ -1670,7 +1890,13 @@ void main(){
         if(di==0&&dj==0)wc=v;
     }
     float rej=clamp((s-dl.x)/max(dl.y,1.0e-3),0.0,1.0);
+#ifdef REJ_OPTS
+    float rb=min(wc,1.0-rej);
+    if(db.y>db.x)rb=smoothstep(db.x,db.y,rb); // P344 rejBin: ArkCam's near-binary map (its s002 smoothstep(0.2, 0.8))
+    float r=rb*fParam[f].y;
+#else
     float r=min(wc,1.0-rej)*fParam[f].y;
+#endif
 #ifdef LOCAL_ALIGN
     laCell[(f-1)*(cy1-cy0)*w2+(cy-cy0)*w2+cx]=packHalf2x16(laFlowAt(f,2*cx,2*cy)); // read by the merge and the rim pass
 #endif
@@ -4210,6 +4436,12 @@ struct HybridLaStream {
 // program). Every other burst compiles the unchanged sources (the same program cache entries); kHybMergeMain1 is not touched.
 // kHybGuide's texture floor takes the green difference's noise at the centre's level (noiseU: its zone) instead of the one-curve
 // 0.56 sqrt(slope) - the same value below the knee (1.128 sqrt(S / 4)), the LCG offset's above it.
+// P344: a rejection option of HybridTuning is on - kHybReject / kHybDilate are compiled with REJ_OPTS (their P344 code). All off:
+// the programs exactly as before (same preprocessed text, bit-identical merge).
+inline bool hybridRejOptions(const HybridTuning& t){
+    return t.rejPool>1.5f||t.rejNoiseCdm>0.f||t.rejMatchBlur>0.f||t.rejRelFloor>0.f||t.rejVarExact>0.f||t.rejPerChannel>0.f||t.rejMeanDiff>0.f||t.rejClipSym>0.f
+        ||(t.rejKneeHi>t.rejKneeLo&&t.rejKneeLo>=0.f)||t.rejBinHi>t.rejBinLo;
+}
 struct HybridDcgSources { std::string helpers,mergeCommon,mosaicFast,guide; };
 inline std::string hybridDcgReplace(const std::string& text,const char* what,const char* from,const char* to){
     std::string s=text;
@@ -4578,10 +4810,13 @@ public:
         bool large=false;
     };
     long fixedOutliers=0,baseOutliers=0;                // sites flagged by the last merge
-    // Lab stage view (hybridStageDir() set): per donor in merge order, every step-th cell of the last merge, 0..255:
-    // raw = the donor's acceptance before the spread (kHybReject), robust = its weight after the spread and Bento (kHybDilate,
-    // over its frame weight A), flow = |F6 offset| (RAW px x 32, laCell). Empty without a stage directory or a donor.
-    struct StageMaps{int w=0,h=0,step=1,donors=0;bool la=false;std::vector<uint8_t> raw,robust,flow;} stage;
+    // Lab stage view (hybridStageDir() set): per donor in merge order, one value per step x step block of cells of the last merge,
+    // 0..255: raw = the donor's acceptance before the spread (kHybReject), robust = its weight after the spread and Bento (kHybDilate,
+    // over its frame weight A), both the MINIMUM over the block (P344: the point sample of every 3rd / 6th / 11th cell hid a
+    // rejected wire or bird between the samples), flow = |F6 offset| (RAW px x 32, laCell) of the block's first cell; robSum = the
+    // SUM of robust / A over the block's cells (the 'accepted' and 'cutoff' records take the block mean: a minimum over 19 - 27 noisy
+    // donors of block minima drew static scenes as speckle, review of P344). Empty without a stage directory or a donor.
+    struct StageMaps{int w=0,h=0,step=1,donors=0;bool la=false;std::vector<uint8_t> raw,robust,flow;std::vector<float> robSum;} stage;
     // P214k: the plausibility cap of the last merge (0 / 0 without it): fixed-pattern sites it cleared and strips over the cap
     // (plain and native sites), the strips of the merge and the cap it ran with (sites per MP, 0 = off)
     long fixedCapped=0,natFixedCapped=0;int capStrips=0,natCapStrips=0,stripCount=0;float capPerMP=0.f;
@@ -4605,11 +4840,13 @@ public:
     // dcg (P320): the DCG two-zone programs (hybridDcgSources) for a burst whose two noise zones were measured (hybridDcgZones);
     // false = the programs as before.
     const bool dcg=false;
+    // rejOpts (P344): kHybReject / kHybDilate with REJ_OPTS (hybridRejOptions); false = the programs as before.
+    const bool rejOpts=false;
     // blendPass (P310): compile the ultrashort blend (kHybUsBlend) for bentoBlend > 0 on the plain merge.
     explicit HybridGpu(bool rimPass=true,bool withLocalAlign=false,bool bentoPass=false,bool chromaPass=false,
                        const std::function<void(const std::string&)>& early=nullptr,bool withSumsCarry=false,bool nativeMosaic=false,
-                       bool withOutlierPrograms=true,bool blendPass=false,bool dcgZones=false)
-            :localAlign(withLocalAlign),sumsCarry(withSumsCarry),outlierPrograms(withOutlierPrograms),dcg(dcgZones){
+                       bool withOutlierPrograms=true,bool blendPass=false,bool dcgZones=false,bool rejOptions=false)
+            :localAlign(withLocalAlign),sumsCarry(withSumsCarry),outlierPrograms(withOutlierPrograms),dcg(dcgZones),rejOpts(rejOptions){
         if(localAlign)helpersPrefix="#define LOCAL_ALIGN 1\n";
         try{
             display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -4653,16 +4890,17 @@ public:
             cellsProgram=timed("cells",kHybCells);
             // P76: the shared-memory variants (Adreno only; debugging: SCAM_HYB_NO_TILES=1 builds the Mali variants anywhere)
             const std::string tiles=std::string(adreno&&!std::getenv("SCAM_HYB_NO_TILES")?"#define SHARED_TILES 1\n":"");
-            rejectProgram=timed("reject",(tiles+kHybReject).c_str());
+            const std::string rejDefs=tiles+(rejOpts?"#define REJ_OPTS 1\n":""); // P344
+            rejectProgram=timed("reject",(rejDefs+kHybReject).c_str());
             if(sumsCarry){ // the same program with a carry word per frame (the source without it stays byte-identical: same cache entry)
-                std::string body=tiles+kHybDilate;
+                std::string body=rejDefs+kHybDilate;
                 const std::string plain="atomicAdd(sums[f],uint(clamp(r,0.0,1.0)*255.0+0.5));";
                 const size_t at=body.find(plain);
                 if(at==std::string::npos)throw std::runtime_error("HYBRID GPU: dilate program without its sum");
                 body.replace(at,plain.size(),"{uint v=uint(clamp(r,0.0,1.0)*255.0+0.5);uint old=atomicAdd(sums[f],v);"
                     "if(old>0xFFFFFFFFu-v)atomicAdd(sums[frameCount+3+f],1u);}");
                 dilateProgram=timed("dilate",body.c_str());
-            } else dilateProgram=timed("dilate",(tiles+kHybDilate).c_str());
+            } else dilateProgram=timed("dilate",(rejDefs+kHybDilate).c_str());
             { // debugging: SCAM_HYB_DEFS=A,B -> "#define A" / "#define B" before the merge body
                 std::string defs;const char* env=std::getenv("SCAM_HYB_DEFS");
                 if(env){std::stringstream s(env);std::string d;while(std::getline(s,d,','))if(!d.empty())defs+="#define "+d+"\n";}
@@ -5001,7 +5239,13 @@ public:
         // boost mode 1 needs the Z channel of the local alignment; without it only the forced mode 2 boosts
         const float boostMode=tune.boostEnable>1.5f?2.f:(tune.boostEnable>0.5f&&localAlign?1.f:0.f);
         glUniform4f(loc(rejectProgram,"rk"),boostMode,tune.motionThreshold,tune.rejPrior>0.f?1.f:0.f,tune.clipReject>0.f?1.f:0.f);
-        glUniform2f(loc(rejectProgram,"rp"),tune.rejPool>0.f?1.f:0.f,tune.rejPoolT);
+        glUniform2f(loc(rejectProgram,"rp"),tune.rejPool>2.5f?3.f:tune.rejPool>1.5f?2.f:tune.rejPool>0.f?1.f:0.f,tune.rejPoolT);
+        // P344: the rejection options (all 0 = the program's results as before)
+        glUniform4f(loc(rejectProgram,"rq"),tune.rejVarExact>0.f?1.f:0.f,tune.rejPerChannel>0.f?1.f:0.f,tune.rejClipSym>0.f?1.f:0.f,
+                    std::max(tune.rejNoiseCdm,0.f));
+        glUniform4f(loc(rejectProgram,"rb"),tune.rejMatchBlur>0.f?1.f:0.f,std::max(tune.rejRelFloor,0.f),std::max(tune.rejMeanFloor,0.f),0.f);
+        {const bool knee=tune.rejKneeHi>tune.rejKneeLo&&tune.rejKneeLo>=0.f;
+         glUniform4f(loc(rejectProgram,"rm"),std::max(tune.rejMeanDiff,0.f),std::max(tune.rejMeanTex,0.f),knee?tune.rejKneeLo:0.f,knee?tune.rejKneeHi:0.f);}
         // P310: with the ultrashort blend the merge (and its colour passes) runs as without Bento: the ultrashort frames get no
         // robust weight (kHybDilate), the base and the N frames their full one; kHybUsBlend blends them in after the strip's merge
         const bool usBlend=bento&&in.blend&&blendProgram!=0&&!in.native;
@@ -5011,6 +5255,8 @@ public:
         glUniform4f(loc(dilateProgram,"dl"),tune.dilateOffset,tune.dilateScale,bentoMix&&!natUs?1.f:0.f,tune.dilateFloor); // P313: off under the fill
         glUniform1i(loc(dilateProgram,"validPlanesU"),bentoMix?int(in.maskValid.size()):0);
         glUniform1f(loc(dilateProgram,"rampKU"),bentoMix?in.rampK:0.f); // P309
+        {const bool bin=tune.rejBinHi>tune.rejBinLo; // P344: the near-binary map
+         glUniform2f(loc(dilateProgram,"db"),bin?tune.rejBinLo:0.f,bin?tune.rejBinHi:0.f);}
         glUseProgram(mergeProgram);
         glUniform4f(loc(mergeProgram,"kD"),tune.widenBelow,tune.widenMul,tune.kernelFloor,bentoMix?1.f:0.f);
         {const float us=std::max(0.3f,tune.bentoUsSigma),cs=tune.bentoChromaSigma;
@@ -5201,7 +5447,7 @@ public:
             stage.step=std::max(1,(std::max(w2,h2)+767)/768);
             stage.w=(w2+stage.step-1)/stage.step;stage.h=(h2+stage.step-1)/stage.step;stage.donors=donors;stage.la=localAlign;
             const size_t n=size_t(donors)*stage.w*stage.h;
-            stage.raw.assign(n,0);stage.robust.assign(n,0);if(stage.la)stage.flow.assign(n,0);
+            stage.raw.assign(n,255);stage.robust.assign(n,255);stage.robSum.assign(n,0.f);if(stage.la)stage.flow.assign(n,0); // P344: min-pooled from 255
         }
         std::vector<GLuint> offsets(frames),cellOff(frames);std::vector<GLint> row0(frames),rows(frames),crow0(frames),crows(frames),cellGeom(size_t(frames)*4);
         std::vector<float> maskStrip;std::vector<GLuint> flagStrip;
@@ -5628,17 +5874,22 @@ public:
                         return (b&32768u)?-v:v;
                     };
                     auto u8=[](float v){return uint8_t(std::clamp(v,0.f,1.f)*255.f+0.5f);};
-                    for(int cy=cy0+(stage.step-cy0%stage.step)%stage.step;cy<cy1;cy+=stage.step)for(int f=0;f<donors;++f){
+                    // P344: raw and robust min-pooled over every cell of the step x step block (a block can span two strips: the
+                    // planes start at 255), the flow point-sampled at the block's first cell as before
+                    for(int cy=cy0;cy<cy1;++cy)for(int f=0;f<donors;++f){
                         const float A=in.weight[size_t(f)+1]>0.f?in.weight[size_t(f)+1]:1.f;
                         const size_t o=(size_t(f)*stage.h+cy/stage.step)*stage.w;
-                        for(int sx=0;sx<stage.w;++sx){
-                            const int cx=sx*stage.step;
-                            stage.robust[o+sx]=u8(rob[(size_t(f)*nr+(cy-cy0))*w2+cx]/A);
-                            stage.raw[o+sx]=u8(raw[(size_t(f)*nry+(cy-ry0))*w2+cx]);
-                            if(stage.la){
-                                const uint32_t p=cell[(size_t(f)*nr+(cy-cy0))*w2+cx];
-                                stage.flow[o+sx]=u8(std::hypot(half(p&65535u),half(p>>16))*32.f/255.f);
-                            }
+                        const float* robRow=rob.data()+(size_t(f)*nr+(cy-cy0))*w2;
+                        const float* rawRow=raw.data()+(size_t(f)*nry+(cy-ry0))*w2;
+                        for(int cx=0;cx<w2;++cx){
+                            const size_t i=o+size_t(cx/stage.step);
+                            stage.robust[i]=std::min(stage.robust[i],u8(robRow[cx]/A));
+                            stage.robSum[i]+=std::clamp(robRow[cx]/A,0.f,1.f);
+                            stage.raw[i]=std::min(stage.raw[i],u8(rawRow[cx]));
+                        }
+                        if(stage.la&&cy%stage.step==0)for(int sx=0;sx<stage.w;++sx){
+                            const uint32_t p=cell[(size_t(f)*nr+(cy-cy0))*w2+size_t(sx)*stage.step];
+                            stage.flow[o+sx]=u8(std::hypot(half(p&65535u),half(p>>16))*32.f/255.f);
                         }
                     }
                 }
@@ -5767,7 +6018,7 @@ inline void hybridPrewarmGpu(const HybridTuning& tune,int block,const std::funct
     const bool blendPass=t.bento>0&&t.bentoBlend>0&&!native;
     const bool bentoPass=t.bento>0&&!blendPass&&t.bentoChromaSigma>0.f&&t.bentoChroma>0.f;
     const bool outlierPrograms=t.hotSigma>0||t.hotBaseSigma>0;
-    HybridGpu gpu(rimPass,la,bentoPass,chromaPass,nullptr,false,native,outlierPrograms,blendPass);
+    HybridGpu gpu(rimPass,la,bentoPass,chromaPass,nullptr,false,native,outlierPrograms,blendPass,false,hybridRejOptions(t));
     if(native){
         const bool t2=block==4&&tune.mosaicTetra!=1;
         const int mb=t2?2:block;
@@ -8060,6 +8311,10 @@ inline std::vector<float> hybridBlendWeight(const HybridInput& input,const Hybri
 // Lab stage view: the stage maps of the last merge to <hybridStageDir()>/stages.bin. Records, little-endian int32: 'STG1',
 // name length, name, burst frame (-1 = none), role, width, height, channels, then width x height x channels bytes. Previews:
 // the base (one RGB per cell, the base's grey-world gains) and the merge (the same gains, the base's level), sRGB-like gamma.
+// Then 'bento' / 'blend' (the mask), 'accepted' (the mean robust of the normal donors, block means), P344 'cutoff' (frame -1,
+// role 0, one channel: the minimum over the merged normal donors of their block-mean robust / A, white = every frame merged, as
+// ArkCam's «ОТСЕЧЕНИЕ»; absent without such a donor), then per donor 'raw', 'robust' (both min-pooled over the step x step block
+// since P344) and 'flow'.
 inline void hybridWriteStages(const HybridGpu& gpu,const HybridGpu::Frames& in,const std::vector<int>& index,
                               const std::vector<float>& out,int outW,int outH,int grid,const std::function<void(const std::string&)>& report){
     const auto& st=gpu.stage;
@@ -8112,12 +8367,31 @@ inline void hybridWriteStages(const HybridGpu& gpu,const HybridGpu::Frames& in,c
             m[size_t(sy)*st.w+sx]=uint8_t(std::clamp((*in.mask)[size_t(std::min(sy*st.step,h2-1))*w2+std::min(sx*st.step,w2-1)],0.f,1.f)*255.f+0.5f);
         record(in.blend?"blend":"bento",-1,0,1,m.data());
     }
+    // the cells of each block (the last row / column of blocks may be cut short), for the block means of robust / A
+    std::vector<float> cells(plane);
+    for(int sy=0;sy<st.h;++sy)for(int sx=0;sx<st.w;++sx)
+        cells[size_t(sy)*st.w+sx]=float(std::max(1,std::min(st.step,w2-sx*st.step))*std::max(1,std::min(st.step,h2-sy*st.step)));
+    const bool sums=st.robSum.size()==st.robust.size();
+    auto blockMean=[&](int d,size_t i){return sums?std::clamp(st.robSum[size_t(d)*plane+i]/cells[i],0.f,1.f):st.robust[size_t(d)*plane+i]/255.f;};
     // the mean weight of the normal donors (what the base gets from the burst at each cell)
     std::vector<float> acc(plane,0.f);int normals=0;
-    for(int d=0;d<st.donors;++d)if(in.role[size_t(d)+1]==kRoleNormal){++normals;for(size_t i=0;i<plane;++i)acc[i]+=st.robust[size_t(d)*plane+i];}
+    for(int d=0;d<st.donors;++d)if(in.role[size_t(d)+1]==kRoleNormal){++normals;for(size_t i=0;i<plane;++i)acc[i]+=blockMean(d,i);}
     if(normals){
-        std::vector<uint8_t> a(plane);for(size_t i=0;i<plane;++i)a[i]=uint8_t(acc[i]/normals+0.5f);
+        std::vector<uint8_t> a(plane);for(size_t i=0;i<plane;++i)a[i]=uint8_t(acc[i]/normals*255.f+0.5f);
         record("accepted",-1,0,1,a.data());
+    }
+    // P344 'cutoff' (ArkCam's «ПОСЛЕ · ОТСЕЧЕНИЕ»): the minimum over the merged normal donors of the block-mean robust / A: 255 =
+    // every frame merged there, 0 = at least one frame cut over the whole block. Review of P344: the minimum of block minima over
+    // 19 - 27 donors drew static tripod scenes as speckle (q1x 58 % of the blocks under 0.85 with 'accepted' at 2.8 %), and the
+    // long frames' clip exclusion (w 0 by design where they clip) drew a static window solid black - bracketed donors are left out.
+    {
+        std::vector<uint8_t> cut(plane,255);int cutDonors=0;
+        for(int d=0;d<st.donors;++d){
+            if(in.role[size_t(d)+1]!=kRoleNormal||!(in.weight[size_t(d)+1]>0.f))continue;
+            ++cutDonors;
+            for(size_t i=0;i<plane;++i)cut[i]=std::min(cut[i],uint8_t(blockMean(d,i)*255.f+0.5f));
+        }
+        if(cutDonors)record("cutoff",-1,0,1,cut.data());
     }
     for(int d=0;d<st.donors;++d){
         const int frame=size_t(d)+1<index.size()?index[size_t(d)+1]:d+1,role=in.role[size_t(d)+1];
@@ -8341,8 +8615,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const bool blendPass=tune.bento>0&&anyUltrashort&&tune.bentoBlend>0&&!nat;
         const bool bentoPass=tune.bento>0&&anyUltrashort&&!blendPass&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
         const bool outlierPrograms=tune.hotSigma>0||tune.hotBaseSigma>0,dcgZones=hybridDcgZones(input); // P320
+        const bool rejOpts=hybridRejOptions(tune); // P344
         // a thread the system refuses (std::system_error) leaves earlyGpu empty: the merge builds its context, as before P31
-        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat,outlierPrograms,blendPass,dcgZones]{
+        try{earlyGpu=std::async(std::launch::async,[earlyLog,rimPass,la,bentoPass,chromaPass,nat,outlierPrograms,blendPass,dcgZones,rejOpts]{
             const auto t0=Clock::now();
             // The constructor's report: on Adreno one context line, printed where the merge reports the GPU. Off Adreno it reports
             // program by program (P26: a driver that dies while compiling): those lines go out at once, one write each on stderr
@@ -8356,7 +8631,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 }
                 earlyLog->lines.push_back(line);
             };
-            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat,outlierPrograms,blendPass,dcgZones);
+            auto gpu=std::make_unique<HybridGpu>(rimPass,la,bentoPass,chromaPass,early,false,nat,outlierPrograms,blendPass,dcgZones,rejOpts);
             gpu->release();
             earlyLog->ms=std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
             return gpu;
@@ -9358,13 +9633,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             try{held=earlyGpu.get();}catch(const std::exception&){held.reset();} // built again below, as before
             {std::lock_guard<std::mutex> l(earlyLog->lock);for(const auto& line:earlyLog->lines)report(line);earlyLog->lines.clear();}
             if(held&&(held->localAlign!=withLocalAlign||(bentoPass&&!held->hasBentoPass())||(blendPass&&!held->hasBlendPass())
-                      ||held->dcg!=hybridDcgZones(input)))held.reset(); // P320: the DCG two-zone programs or not
+                      ||held->dcg!=hybridDcgZones(input)||held->rejOpts!=hybridRejOptions(tune)))held.reset(); // P320: the DCG two-zone programs or not; P344 REJ_OPTS
             if(held){
                 try{held->acquire();built=" built ahead in "+std::to_string(int(earlyLog->ms))+" ms";}catch(const std::exception&){held.reset();}
             }
         }
         if(!held)held=std::make_unique<HybridGpu>(tune.rimRatio!=0,withLocalAlign,bentoPass,tune.chromaDiff>0.f,report,large,native!=nullptr,
-                tune.hotSigma>0||tune.hotBaseSigma>0,blendPass,hybridDcgZones(input));
+                tune.hotSigma>0||tune.hotBaseSigma>0,blendPass,hybridDcgZones(input),hybridRejOptions(tune));
         HybridGpu& gpu=*held;gpu.trace=report;gpu.profile=tune.profile!=0;gpu.profilePasses=tune.profile>=2;
         report("HYBRID GPU: "+gpu.renderer+" frames="+std::to_string(in.frames.size())+" limits "+gpu.limits
             +" init ms="+std::to_string(int(millis(Clock::now()-gpuStarted)))+" (compile"+gpu.compileMs+")"+built);

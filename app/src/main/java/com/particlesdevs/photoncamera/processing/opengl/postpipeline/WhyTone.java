@@ -63,6 +63,18 @@ public final class WhyTone {
         return PreferenceKeys.hybridValue("why_" + key, fallback);
     }
 
+    /** P348: the default layer weights in the exposures' order (darkest, base, second dark, bright; WhyAe.exposures). */
+    static final float[] LAYER_WEIGHTS = {0.8f, 1f, 0.4f, 1f};
+
+    /**
+     * The fusion's layer weights: the kernel's highlight and base weights [code 0x78b18-0x78b3c]; P348's second dark layer 0.4 and
+     * the one bright layer 1.0 (the closest to the old set's shadows and mid-tones of the curves on a grid of strengths).
+     */
+    static float[] layerWeights() {
+        return new float[]{value("weight_hl", LAYER_WEIGHTS[0]), value("weight_mid", LAYER_WEIGHTS[1]),
+                value("weight_dark2", LAYER_WEIGHTS[2]), value("weight_bright", LAYER_WEIGHTS[3])};
+    }
+
     /** AE / Smart-HDR / AgX settings (defaults: WhyCam 2.85 X8U effective values, tone_port.md section 3). */
     static WhyAe.Settings settings() {
         WhyAe.Settings s = new WhyAe.Settings();
@@ -136,6 +148,30 @@ public final class WhyTone {
     static float[] saturatedLightRamp() {
         return new float[]{value("sat_light_lo", 0.15f), value("sat_light_hi", 0.95f),
                 value("sat_light_level_lo", 0.25f), Math.max(value("sat_light_level_hi", 0.6f), value("sat_light_level_lo", 0.25f) + 0.01f)};
+    }
+
+    /**
+     * P348: the warm hue band ((g - b) / (r - b) of r >= g >= b: orange to yellow, a setting sun's glow, fire) that keeps the
+     * pyramid instead of P310's kernel weights (import why_fusion warmU; hi <= lo: off).
+     */
+    static float[] warmLight() {
+        return new float[]{value("sat_light_warm_lo", 0.1f), value("sat_light_warm_hi", 0.25f)};
+    }
+
+    /**
+     * P349: the sun bloom round fully clipped cores (why/combine.glsl SUN_BLOOM): strength (0 = off) and the glow's radius as a
+     * share of the frame's shorter side.
+     */
+    static float[] sunBloom() {
+        return new float[]{Math.max(0f, Math.min(1f, value("sun_bloom", 1f))), Math.max(0.005f, value("sun_bloom_radius", 0.033f))};
+    }
+
+    /**
+     * P349: the guide's range (luminance x AE) over which the WHY fusion goes from the Laplacian pyramid to the guided filter
+     * (why/lpyr guidedMixU): light above white, where the pyramid draws halos round dark objects; hi <= lo: the pyramid alone.
+     */
+    static float[] guidedLights() {
+        return new float[]{value("fusion_guided_lo", 0.8f), value("fusion_guided_hi", 1.6f)};
     }
 
     /** P341: the vibrance of the light tones (why/combine.glsl vibHlU; 0 = off). */

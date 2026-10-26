@@ -108,7 +108,7 @@ public final class LiveWhyTone {
     private ColourLook look;
     private boolean colourOn;
     private int toneOp;
-    private float[] lw = {0.8f, 1f, 0.7f, 0.5f};
+    private float[] lw = WhyTone.LAYER_WEIGHTS.clone();
     private float center, smooth, gammaInv, toe, eps, mono, inScale, macro, hlWhite, filmToe, deltaChroma, clarity, flatProtect;
     private float[] vib = new float[3];
     private int radius;
@@ -285,8 +285,7 @@ public final class LiveWhyTone {
         look = WhyTone.colourLook();
         colourOn = !look.shaderNeutral();
         toneOp = WhyTone.toneOperator();
-        lw = new float[]{WhyTone.value("weight_hl", 0.8f), WhyTone.value("weight_mid", 1.0f),
-                WhyTone.value("weight_ext_hl", 0.7f), WhyTone.value("weight_shadow", 0.5f)};
+        lw = WhyTone.layerWeights();
         center = WhyTone.value("weight_center", 0.6f);
         smooth = WhyTone.value("blend_smoothness", 0.25f);
         gammaInv = 1f / WhyTone.gamma();

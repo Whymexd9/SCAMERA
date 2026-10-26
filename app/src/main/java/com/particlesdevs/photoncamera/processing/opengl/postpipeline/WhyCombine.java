@@ -93,7 +93,8 @@ public final class WhyCombine extends Node {
         final com.particlesdevs.photoncamera.processing.color.FilmLut lut = lutStrength > 0f && !lutName.isEmpty()
                 ? com.particlesdevs.photoncamera.processing.color.FilmChain.lut(com.particlesdevs.photoncamera.app.ScameraApp.getAppContext(), lutName) : null;
         int lutTexture = 0;
-        GLTexture hlA = null, hlB = null;
+        GLTexture hlA = null, hlB = null, sunBloom = null;
+        boolean sunBloomOn = false;
         try {
             GLTexture colour = st.lowDn != null ? st.lowDn : st.low;
             int colourFactor = st.factor;
@@ -152,7 +153,23 @@ public final class WhyCombine extends Node {
             if (lut != null) glProg.setDefine("FILM_LUT", 1);
             // P216: real Bento headroom above the capped clip (without it the shader is the one before P216, token for token)
             if (r.hr > 0f) glProg.setDefine("HEADROOM_WIDE", 1);
+            // P349: the sun bloom round fully clipped cores (ScamRgb.sunBloom), on the image those flags covered
+            sunBloom = pipeline.sunBloom;
+            pipeline.sunBloom = null;
+            final Point bloomSize = pipeline.sunBloomSize;
+            if (sunBloom != null && (bloomSize == null || bloomSize.x * input.mSize.y != bloomSize.y * input.mSize.x)) {
+                sunBloom.close();
+                sunBloom = null;
+            }
+            if (sunBloom != null) glProg.setDefine("SUN_BLOOM", 1);
+            sunBloomOn = sunBloom != null;
             glProg.useAssetProgram("why/combine", false);
+            if (sunBloom != null) {
+                final int block = Math.max(1, Math.round(Math.min(bloomSize.x, bloomSize.y) / 192f));
+                glProg.setTexture("SunBloom", sunBloom);
+                glProg.setVar("sunGridU", bloomSize.x / (float) (sunBloom.mSize.x * block), bloomSize.y / (float) (sunBloom.mSize.y * block));
+                glProg.setVar("sunBloomU", WhyTone.sunBloom()[0]);
+            }
             if (lut != null) {
                 lutTexture = lut.upload();
                 glProg.setTexture3D("FilmLut", lutTexture);
@@ -174,6 +191,7 @@ public final class WhyCombine extends Node {
             glProg.setTexture("WhyLumaS", sharp ? st.lumaS : st.low);
             if (hlB != null) glProg.setTexture("WhyHl", hlB);
             glProg.setVar("sharpU", sharp ? 1 : 0);
+            glProg.setVar("fullInputU", st.inputReleased ? 0 : 1);   // P349: the bright rim reads the full-size merge
             glProg.setVar("sharpToneU", sharp ? r.ae / Math.max(st.sharpMul, 1e-6f) : 1f);
             glProg.setVar("fU", st.factor);
             glProg.setVar("colourFU", colourFactor);
@@ -241,11 +259,13 @@ public final class WhyCombine extends Node {
             if (lutTexture != 0) android.opengl.GLES30.glDeleteTextures(1, new int[]{lutTexture}, 0);
             if (hlA != null) hlA.close();
             if (hlB != null) hlB.close();
+            if (sunBloom != null) sunBloom.close();
         }
         Log.i("SCAM_PIPELINE", "WHY combine ae=" + r.ae + " clip=" + r.clip + (r.hr > 0f ? " hr=" + r.hr : "") + " headroom=" + (ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f)
                 + " hlWhite=" + WhyTone.value("hl_white", 0.15f) + " hlSoft=" + WhyTone.value("hl_soft", 0.7f) + " grid=" + input.mSize.x + "x" + input.mSize.y
                 + " lowFactor=" + st.factor + (st.factor > 2 ? " colour=whyMid" : " colour=whyLow") + " detail=" + detail
                 + (sharp ? " (WhyLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")
+                + (sunBloomOn ? " sunBloom=" + WhyTone.sunBloom()[0] + "@" + WhyTone.sunBloom()[1] : "")
                 + (pipeline.p3Output ? " output=DisplayP3" : "") + (colourOn ? " colourLook" : "")
                 + (lut != null ? " filmLut=" + lutName + " " + lut.size + "^3 x" + lutStrength : lutStrength > 0f && !lutName.isEmpty() ? " filmLut=" + lutName + " unreadable" : "") + " ms=" + (System.currentTimeMillis() - started));
     }

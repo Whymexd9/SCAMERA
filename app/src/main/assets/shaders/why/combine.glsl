@@ -60,6 +60,8 @@ precision highp int;
 // viewfinder AE run - the guided filter's value on a flat area) instead of WhyFused, and WhyColour is the viewfinder's linear
 // frame, times inScaleU here. POINT_FUSED 0: every block below drops out (the photo's shader, token for token).
 #define POINT_FUSED 0
+// P349 SUN_BLOOM 1: the glow round fully clipped cores (SunBloom); 0: the shader before P349, token for token.
+#define SUN_BLOOM 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -88,6 +90,7 @@ uniform float flatProtectU;         // flat-area protection of the delta (0 = of
 uniform float detailGainU;          // why_detail_gain; 0 (unset) = no detail
 uniform int detailRefU;             // 1: bounded, compression-scaled delta against WhyDetailRef; unset -> unbounded delta
 uniform int sharpU;                 // 1: the delta's luminance is WhyLumaS; unset -> the full-size merge
+uniform int fullInputU;             // P349: 1 = InputBuffer is the full-size image (not given back above 100 MP); 0 / unset: it may not be
 uniform float sharpToneU;           // sharpU 1: ae / m (WhyLumaS domain -> ae domain); <= 0 -> 1
 uniform float deltaChromaU;         // 0..1: a darkening delta scales a, b with L (hue and relative chroma kept); 0 = kernel
 uniform float filmToeU;             // film toe (0 = off)
@@ -106,6 +109,11 @@ uniform float hrRoomU;              // shoulder headroom x the top; <= 0 -> 0.4 
 uniform float hrDetailU;            // highlight detail: share of the full-size log contrast kept in OKLab L (0 = off)
 #endif
 uniform float hlWhiteU;             // path to white of saturated light entering the shoulder (0 = off)
+#if SUN_BLOOM == 1
+uniform sampler2D SunBloom;         // P349: the glow share of the fully clipped cores (scamhdr/suncore.glsl), linear filter
+uniform vec2 sunGridU;              // output uv -> SunBloom uv (its blocks cover a little more than the image)
+uniform float sunBloomU;            // strength 0..1
+#endif
 #if POINT_FUSED == 1
 uniform sampler2D FusedCurve;       // R32F n x 1: the fused display luma at log2 I = fusedCurveU.x + i / fusedCurveU.y
 uniform vec2 fusedCurveU;           // x: log2 I of entry 0, y: entries per EV
@@ -219,7 +227,12 @@ float lightShare(vec3 lowTap, float m) {
 // where the light surrounds the pixel; dark objects up to ~7 px wide in front of a light keep their depth.
 // Cost: the light share of the 16 footprint taps on every pixel of the bounded path (~200 ALU); ~66 extra texel reads only
 // where the delta is negative and a light tap is in the footprint (0.1 - 0.6 % of the pixels of the test scenes).
-float lightRimDelta(float delta, float y, float yRef, float lightW, int bx, int by, float fx, float fy, float m) {
+// P349: brightAe > 0 - the same rule for light above white instead of a clipped light: a tap's share is its luminance x brightAe
+// from 0.7 to 1.1 of white (the sun's glow by a window frame, 1 - 2 x white, under lightShare's 2 x). There the darkening goes
+// down to the far side's level (a rung's edge against the glow stays as sharp as ArkCam's), and a pixel in a 1 px trench
+// (trench 1: trenchAt - the merge's own ring at a hard edge, the line along the window's frame by the sun) takes none;
+// a thin dark object with the light on both sides (side ~0) keeps its delta.
+float rimDeltaBy(float delta, float y, float yRef, int bx, int by, float fx, float fy, float m, float brightAe, float trench) {
     ivec2 last = textureSize(WhyDetailRef, 0) - ivec2(1);
     vec2 mom = vec2(0.0);
     vec3 sec = vec3(0.0);
@@ -229,7 +242,8 @@ float lightRimDelta(float delta, float y, float yRef, float lightW, int bx, int 
             vec2 v = vec2(float(dx) - fx, float(dy) - fy);
             float k = 1.0 - smoothstep(3.0, 4.0, length(v));
             if (k <= 0.0) continue;
-            float h = k * lightShare(texelFetch(WhyLow, clamp(ivec2(bx + dx, by + dy), ivec2(0), last), 0).rgb, m);
+            vec3 tap = texelFetch(WhyLow, clamp(ivec2(bx + dx, by + dy), ivec2(0), last), 0).rgb;
+            float h = k * (brightAe > 0.0 ? smoothstep(0.7, 1.1, max(dot(tap, LUMA), 0.0) * brightAe) : lightShare(tap, m));
             mass += h;
             mom += h * v;
             sec += h * vec3(v.x * v.x, v.x * v.y, v.y * v.y);
@@ -252,7 +266,30 @@ float lightRimDelta(float delta, float y, float yRef, float lightW, int bx, int 
     float yFar = (sum + 0.001 * yRef) / (wsum + 0.001);
     float dFar = cbrtp(max(y, 0.000001)) - cbrtp(max(yFar, 0.000001));
     float rim = smoothstep(0.3, 0.7, side) * smoothstep(0.0, 2.0, mass);
+    // P349: beside light above white the pixel's own luma dips below the far side too (the merge's 1 px ring at a hard edge,
+    // sharpened): there the darkening goes down to the far side's level and no further - a sharp edge, no trench
+    if (brightAe > 0.0) return mix(delta, max(delta, mix(cbrtp(max(yFar, 0.000001)) - cbrtp(max(yRef, 0.000001)), 0.0, trench)), rim);
     return mix(delta, max(delta, min(dFar, 0.0)), rim);
+}
+
+float lightRimDelta(float delta, float y, float yRef, float lightW, int bx, int by, float fx, float fy, float m) {
+    return rimDeltaBy(delta, y, yRef, bx, by, fx, fy, m, 0.0, 0.0);
+}
+
+// P349: the full-size merge's luminance at a clamped pixel.
+float sceneY(ivec2 p, ivec2 size) {
+    return max(dot(sceneLinear(clamp(p, ivec2(0), size - ivec2(1)), size), LUMA), 0.0);
+}
+
+// P349: 1 where the merge itself has a 1 px trench - the pixel darker by 3.5 - 6 % than both its neighbours along a row or a
+// column (its ring at a hard edge: the line along the window's frame by the sun). Read from the merge, not the sharpened luma:
+// the sharpening deepens every dark band at an edge (a rung's lower edge, 2.5 % in the merge) into one.
+float trenchAt(ivec2 xy, ivec2 size) {
+    if (fullInputU != 1) return 0.0;
+    float c = sceneY(xy, size);
+    float h = min(sceneY(xy - ivec2(1, 0), size), sceneY(xy + ivec2(1, 0), size));
+    float v = min(sceneY(xy - ivec2(0, 1), size), sceneY(xy + ivec2(0, 1), size));
+    return smoothstep(0.035, 0.06, 1.0 - c / max(max(h, v), 0.000001));
 }
 
 // Output pixel x on a grid reduced by a box of f: centre (x + 0.5) / f - 0.5 as an integer base and a fraction.
@@ -489,6 +526,7 @@ void main() {
     float yLow = 0.0;
     float yRef = 0.0;
     bool bounded = detailRefU == 1 && f != 1;
+    float brightMax = 0.0;      // P349: the brightest whyLow tap of the footprint (luminance x ae: 1 = white)
     // P311: the light share of the reference's B-spline footprint, the whyLow position for lightRimDelta and the domain m of
     // WhyDetailRef (min(m * Y, 1); m = ae / sharpTone with WhyLumaS, else ae)
     float lightW = 0.0;
@@ -547,6 +585,7 @@ void main() {
                     yRef += max(texelFetch(WhyDetailRef, clamp(p, ivec2(0), lastLow), 0).r, 0.000001) * w;
                     lightW += lightShare(lowTap, refDomain) * w;
                 }
+                if (bounded) brightMax = max(brightMax, dot(max(lowTap, vec3(0.0)), LUMA) * ae);
             }
         }
         gridPos(xy.x, fc, bx, fx);
@@ -616,15 +655,27 @@ void main() {
             delta = cbrtp(max(yD, 0.000001)) - lRef;
             // P311: beside a clipped light, against the side of the neighbourhood that is not the light
             if (delta < 0.0 && lightW > 0.0) delta = lightRimDelta(delta, yD, yRef, lightW, lbx, lby, lfx, lfy, refDomain);
+            // P349: and beside light above white (the window frame by the sun: a 1 px trench 2 - 3 px into the wall)
+            if (delta < 0.0 && brightMax > 0.7) delta = rimDeltaBy(delta, yD, yRef, lbx, lby, lfx, lfy, refDomain, ae, trenchAt(xy, size));
             // P315 (owner, X8U LED fan rings: two parallel bright lines with a darker gap along the core): the guide is clamped
             // flat at 1 across a light's core while the reference takes in the dark beside it, so the positive delta ridged
             // just inside both rims and nowhere in the middle. No positive detail inside a light's footprint (HDR detail above
             // white stays with hrDetailU); the delta is unchanged bit for bit where no tap is a light.
             if (delta > 0.0) delta *= 1.0 - smoothstep(0.0, 1.0, lightW);
+            // P349: nor on a pixel above white (the window's edge by the sun drew a bright tick at every rung's corner)
+            if (delta > 0.0) delta *= 1.0 - smoothstep(0.8, 1.2, yFull * ae);
         } else {
             delta = cbrtp(max(yFull * ae, 0.000001)) - cbrtp(max(yLow * ae, 0.000001));
         }
-        delta *= detailGainU;
+        // P349 (owner, 2026-10-26, the sunset with the ladder: «грани у нас выглядят гораздо хуже чем у Арк камеры», «ступеньки
+        // у Арк тоже выглядят отлично»): a gain above 1 (P340's detail by finish SNR, up to 1.7) lifts texture - the small
+        // deltas - and leaves an edge's delta as it is. The whole delta x 1.7 overshot every edge the base (whyLow, B-spline)
+        // has soft: a dark line with the merge's stair-steps along the dark side (rails and rungs against the sky, the window's
+        // frame by the sun), where the merge itself is clean and ArkCam has none. Host replay: the lines gone, the rails'
+        // cracks and the wall's grain kept. A gain up to 1 scales the delta as before.
+        delta = detailGainU > 1.0 ? delta + (detailGainU - 1.0) * clamp(delta, -0.02, 0.02) : delta * detailGainU;
+        // and next to light above white (luminance x AE over ~1: the sun's glow by the window's frame) the darkening delta stops
+        // at the kernel's full-resolution floor (-0.035 L): there it is the edge itself, where ArkCam's bright side is clipped
         if (abs(clarityU) > 0.001) delta *= 1.0 + clarityU;
         if (flatProtectU > 0.001) {
             float smoothFactor = 1.0 - smoothstep(0.0, (flatProtectU / 10.0) * 0.015, abs(delta));
@@ -951,6 +1002,26 @@ void main() {
             sTop /= max(max3(sTop), 0.000001);
             vec3 top = mix(sTop, vec3(1.0), 1.0 - smoothstep(0.08, 0.30, satS));
             outRgb = mix(outRgb, top, landing);
+        }
+    }
+#endif
+#if SUN_BLOOM == 1
+    // P349 (owner, 2026-10-26: «у нас солнце как круг выглядит на новой версии, сделай схоже с Арк камерой»): a core with no
+    // data at all (the setting sun's disc: R, G, B clipped in the ultrashort too) stood as a flat white disc with a hard rim in
+    // its orange glow (2 - 3 x white, kept below white by the Bento headroom), where ArkCam, clipping all of it, shows a soft
+    // warm-white area. Bright pixels round such a core move by distance towards warm white, white near the core; dark ones
+    // (the ladder's rungs in front of the sun) keep their tone. Host replay of the owner's 17:57 sunset: the disc's rim gone,
+    // the rungs kept; the moon (a core of ~300 px) and recovered windows (no fully clipped core) get none.
+    {
+        float m = texture(SunBloom, (vec2(xy) + 0.5) / vec2(size) * sunGridU).r;
+        float b = smoothstep(0.4, 0.9, m);
+        if (b > 0.0 && sunBloomU > 0.0) {
+            vec3 lin = pow(clamp(outRgb, 0.0, 1.0), vec3(1.0 / gammaInv));
+            float gate = smoothstep(0.55, 0.85, dot(lin, LUMA));
+            vec3 top = mix(vec3(1.0, 0.93, 0.78), vec3(1.0), clamp(b * 1.5 - 0.5, 0.0, 1.0));
+            top = max(top, lin / max(max3(lin), 0.000001));
+            lin += (top - lin) * (b * gate * sunBloomU);
+            outRgb = pow(lin, vec3(gammaInv));
         }
     }
 #endif

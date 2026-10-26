@@ -291,11 +291,14 @@ public class ImageLibraryFragment extends Fragment implements LibraryAdapter.Hos
         List<GalleryItem> toDelete = new ArrayList<>(selection.getSelectedItems());
         if (toDelete.isEmpty()) return;
         long bytes = toDelete.stream().mapToLong(g -> g.getFile().getSize()).sum();
-        GallerySheets.showDelete(requireContext(), toDelete.size(), bytes, () -> {
+        List<ImageFile> files = toDelete.stream().map(g -> (ImageFile) g.getFile()).collect(Collectors.toList());
+        Runnable delete = () -> {
             pendingDelete = toDelete;
-            GalleryFileOperations.deleteImageFiles(getActivity(), toDelete.stream().map(g -> (ImageFile) g.getFile()).collect(Collectors.toList()),
-                    this::handleImagesDeletedCallback);
-        });
+            GalleryFileOperations.deleteImageFiles(getActivity(), files, this::handleImagesDeletedCallback);
+        };
+        // P345: one confirmation - the system's own dialog when it is needed, the app's sheet otherwise
+        if (GalleryFileOperations.needsSystemDeleteRequest(requireContext(), files)) delete.run();
+        else GallerySheets.showDelete(requireContext(), toDelete.size(), bytes, delete);
     }
 
     public void handleImagesDeletedCallback(boolean isDeleted) {

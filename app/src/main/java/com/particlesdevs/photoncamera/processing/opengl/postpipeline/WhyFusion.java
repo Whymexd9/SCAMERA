@@ -13,7 +13,8 @@ import static android.opengl.GLES20.GL_NEAREST;
 
 /**
  * WHY tone, step 2 (tone_port.md 2.2-2.3 / 7.3) on whyLow: bracket_denoise of the Bento range (clip > 1.05), then the
- * mod's exposure fusion of the luminance - four synthetic exposures (2^-1.5H, 1, 2^S, 2^2S) of the AE result, ACES
+ * mod's exposure fusion of the luminance - four synthetic exposures (since P348 two dark and one bright: em0, 1, sqrt(em0),
+ * 2^1.5S; WhyAe.exposures) of the AE result, ACES
  * lumas and Gaussian weights - into "fused", the display luma WhyCombine inverts to the per-pixel gain. The image passes through.
  * <p>
  * P333 (owner, 2026-10-25: «замени блок локального тонмапинга с гуидед фильтра на пирамиду Лапласа», after Wronski's exposure
@@ -58,6 +59,8 @@ public final class WhyFusion extends Node {
         // P310: bright saturated light keeps the kernel's weights (the P291 lift's plateau, not its rise); zeros: off
         glProg.setVar("satLightU", satLight[0], satLight[1], satLight[2], satLight[3]);
         glProg.setVar("satLevelU", satLight[4], satLight[5]);
+        final float[] warm = WhyTone.warmLight();
+        glProg.setVar("warmU", warm[0], warm[1]);
     }
 
     /** Separable box of radius r; closes the input. */
@@ -117,11 +120,8 @@ public final class WhyFusion extends Node {
             glProg.setVar("strengthU", strength);
             glProg.drawBlocks(st.lowDn);
         }
-        float[] em = WhyAe.exposures(r);
-        em[0] = headroomExposure(em[0], r.ae, r.clip, r.hr);
-        // layer weights in the kernel's order (hl, mid, ext_hl, shadow) [code 0x78b18-0x78b3c]
-        float[] lw = {WhyTone.value("weight_hl", 0.8f), WhyTone.value("weight_mid", 1.0f),
-                WhyTone.value("weight_ext_hl", 0.7f), WhyTone.value("weight_shadow", 0.5f)};
+        float[] em = WhyAe.exposures(r, headroomExposure(WhyAe.darkestExposure(r), r.ae, r.clip, r.hr));
+        float[] lw = WhyTone.layerWeights();
         // P291 (owner, 2026-10-20: «белый никогда не уходил в серый», «максимально похоже на результат Why»): with Bento headroom
         // the highlight layer is far darker than WhyCam's (em.x 0.038 at 22 x white where WhyCam's clipped data gives ~0.125), so
         // the kernel's weights put lit paper on 150 - 190 grey where WhyCam has 245. There the well-exposed centre moves up and
@@ -141,13 +141,21 @@ public final class WhyFusion extends Node {
             pyramid(st, em, lw, r.ae, center, satLight, started, strength);
             return;
         }
+        st.fused = guided(st, em, lw, r.ae, center, satLight);
+        Log.i("SCAM_PIPELINE", "WHY fusion (guided filter, post_ab old run) " + params(em, lw, center, satLight) + " r=" + (GF_RADIUS > 1 ? GF_RADIUS >> 1 : 1)
+                + " eps=" + GF_EPS + " bracketDn=" + (st.lowDn != st.low ? strength : 0f) + " ms=" + (System.currentTimeMillis() - started));
+    }
+
+    /** The guided filter's fused luma of whyLow (why/gf, WhyCam's kernel): the post_ab old run, and P349's share in the lights. */
+    private GLTexture guided(WhyTone.State st, float[] em, float[] lw, float ae, float center, float[] satLight) {
+        final Point lowSize = st.low.mSize;
         final int radius = GF_RADIUS > 1 ? GF_RADIUS >> 1 : 1;                                    // [code 0x78f80-0x78f9c]
         final float eps = GF_EPS;
         Point half = new Point((lowSize.x + 1) / 2, (lowSize.y + 1) / 2);
         GLTexture[] means = new GLTexture[3];
         for (int mode = 0; mode < 3; mode++) {
             GLTexture down = stats(half);
-            weightsProgram(mode, st.lowDn, em, lw, r.ae, center, satLight);
+            weightsProgram(mode, st.lowDn, em, lw, ae, center, satLight);
             glProg.drawBlocks(down);
             means[mode] = box(down, radius);
         }
@@ -164,16 +172,15 @@ public final class WhyFusion extends Node {
             ab[mode] = box(coef, radius);
         }
         for (GLTexture t : means) t.close();
-        st.fused = new GLTexture(lowSize, new GLFormat(GLFormat.DataType.FLOAT_32, 1), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
-        weightsProgram(3, st.lowDn, em, lw, r.ae, center, satLight);
+        final GLTexture fused = new GLTexture(lowSize, new GLFormat(GLFormat.DataType.FLOAT_32, 1), null, GL_NEAREST, GL_CLAMP_TO_EDGE);
+        weightsProgram(3, st.lowDn, em, lw, ae, center, satLight);
         glProg.setTexture("MeanA", ab[0]);
         glProg.setTexture("MeanB", ab[1]);
-        glProg.drawBlocks(st.fused);
+        glProg.drawBlocks(fused);
         glProg.closed = true;
         ab[0].close();
         ab[1].close();
-        Log.i("SCAM_PIPELINE", "WHY fusion (guided filter, post_ab old run) " + params(em, lw, center, satLight) + " r=" + radius + " eps=" + eps
-                + " bracketDn=" + (st.lowDn != st.low ? strength : 0f) + " half=" + half.x + "x" + half.y + " ms=" + (System.currentTimeMillis() - started));
+        return fused;
     }
 
     /**
@@ -235,6 +242,7 @@ public final class WhyFusion extends Node {
                 : pyramidLevels(low.x, low.y, coarse);
         final GLFormat rgba = new GLFormat(GLFormat.DataType.FLOAT_16, 4), one = new GLFormat(GLFormat.DataType.FLOAT_32, 1);
         final GLTexture[] L = new GLTexture[levels + 1], W = new GLTexture[levels + 1], F = new GLTexture[levels + 1];
+        GLTexture guidedF = null;
         try {
             Point size = low;
             for (int l = 1; l <= levels; l++) {
@@ -271,14 +279,26 @@ public final class WhyFusion extends Node {
                 glProg.setTexture("CoarseF", F[l + 1]);
                 glProg.drawBlocks(F[l]);
             }
+            // P349: the guided filter's fusion for the light above white (no Mertens halo round dark objects in a glow)
+            final float[] gmix = WhyTone.guidedLights();
+            if (gmix[1] > gmix[0]) {
+                for (GLTexture t : W) if (t != null) t.close();
+                java.util.Arrays.fill(W, null);
+                guidedF = guided(st, em, lw, ae, center, satLight);
+            }
             st.fused = new GLTexture(low, one, null, GL_NEAREST, GL_CLAMP_TO_EDGE);
             fusionProgram("why/lpyr", 5, st.lowDn, em, lw, ae, center, satLight);
             glProg.setTexture("CoarseL", L[1]);
             glProg.setTexture("CoarseF", F[1]);
+            if (guidedF != null) {
+                glProg.setTexture("GuidedF", guidedF);
+                glProg.setVar("guidedMixU", gmix[0], gmix[1]);
+            }
             glProg.drawBlocks(st.fused);
             glProg.closed = true;
         } finally {
             for (GLTexture[] p : new GLTexture[][]{L, W, F}) for (GLTexture t : p) if (t != null) t.close();
+            if (guidedF != null) guidedF.close();
         }
         Log.i("SCAM_PIPELINE", "WHY fusion (Laplacian pyramid) " + params(em, lw, center, satLight) + " levels=" + levels + " coarse=" + coarse
                 + " bracketDn=" + (st.lowDn != st.low ? strength : 0f) + " ms=" + (System.currentTimeMillis() - started));

@@ -852,6 +852,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
     public void onResume() {
         if (lutTray != null) lutTray.bindPill();
         super.onResume();
+        showFrozenViewfinder();
         updateSettingsBar();
         mSwipe.init();
         this.mCameraUIView.refresh(CaptureController.isProcessing);
@@ -994,6 +995,75 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         }
     }
 
+    /**
+     * P345 (owner, 2026-10-26, X200 Ultra screen recording: back from the gallery the viewfinder was black ~1.5 s): the camera closes
+     * in onPause and reopens in onResume, and until the new session's first frame the viewfinder is cleared. The last frame is kept
+     * here (half size, PixelCopy of the composited viewfinder, waited for at most 80 ms) and shown over the viewfinder from onResume
+     * until a new camera frame is drawn (MainRenderer.shownTimestamp moves), or 4 s; older than a minute it is not shown.
+     */
+    private android.graphics.Bitmap frozenVf;
+    private long frozenVfAtMs;
+
+    private void freezeViewfinder() {
+        frozenVf = null;
+        final com.particlesdevs.photoncamera.ui.camera.views.viewfinder.GLPreview view = textureView;
+        if (view == null || android.os.Build.VERSION.SDK_INT < 24 || view.getWidth() <= 0 || view.getHeight() <= 0) return;
+        try {
+            final android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(Math.max(1, view.getWidth() / 2),
+                    Math.max(1, view.getHeight() / 2), android.graphics.Bitmap.Config.ARGB_8888);
+            final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+            final boolean[] ok = new boolean[1];
+            android.os.HandlerThread t = new android.os.HandlerThread("VfFreeze");
+            t.start();
+            android.view.PixelCopy.request(view, bmp, result -> {
+                ok[0] = result == android.view.PixelCopy.SUCCESS;
+                done.countDown();
+            }, new android.os.Handler(t.getLooper()));
+            boolean in = done.await(80, java.util.concurrent.TimeUnit.MILLISECONDS);
+            t.quitSafely();
+            if (in && ok[0]) {
+                frozenVf = bmp;
+                frozenVfAtMs = android.os.SystemClock.uptimeMillis();
+            }
+        } catch (RuntimeException | InterruptedException e) {
+            Log.d(TAG, "viewfinder freeze failed: " + e);
+        }
+    }
+
+    private void showFrozenViewfinder() {
+        final android.graphics.Bitmap bmp = frozenVf;
+        frozenVf = null;
+        if (cameraFragmentBinding == null) return;
+        final android.widget.ImageView freeze = cameraFragmentBinding.layoutViewfinder.vfFreeze;
+        if (freeze == null) return;
+        if (bmp == null || android.os.SystemClock.uptimeMillis() - frozenVfAtMs > 60_000) {
+            freeze.setVisibility(View.GONE);
+            freeze.setImageDrawable(null);
+            return;
+        }
+        freeze.animate().cancel();
+        freeze.setImageBitmap(bmp);
+        freeze.setAlpha(1f);
+        freeze.setVisibility(View.VISIBLE);
+        final long shownBefore = com.particlesdevs.photoncamera.ui.camera.views.viewfinder.MainRenderer.shownTimestamp();
+        final long startedMs = android.os.SystemClock.uptimeMillis();
+        freeze.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (freeze.getVisibility() != View.VISIBLE) return;
+                boolean fresh = com.particlesdevs.photoncamera.ui.camera.views.viewfinder.MainRenderer.shownTimestamp() != shownBefore;
+                if (fresh || android.os.SystemClock.uptimeMillis() - startedMs > 4000 || !isResumed()) {
+                    freeze.animate().alpha(0f).setDuration(fresh ? 120 : 0).withEndAction(() -> {
+                        freeze.setVisibility(View.GONE);
+                        freeze.setImageDrawable(null);
+                    }).start();
+                    return;
+                }
+                freeze.postDelayed(this, 40);
+            }
+        }, 40);
+    }
+
     @Override
     public void onPause() {
         if (mSubjectFocus != null) {
@@ -1006,6 +1076,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         ScameraApp.getSettings().saveID();
         // P214g: the camera closes here, so the session after the settings is a new one
         if (sessionWatch) sessionWatchPaused = true;
+        freezeViewfinder();
         // Stop camera outputs before GLSurfaceView destroys their SurfaceTexture.
         captureController.closeCamera();
         textureView.onPause();

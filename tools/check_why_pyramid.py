@@ -102,7 +102,8 @@ def uniforms(lw=(0.8, 1.0, 0.7, 0.5), mono=0.0):
 
 
 # the Bento headroom weights of WhyFusion with P310's saturated-light ramp (WhyTone defaults)
-BENTO = {'expU': (0.038, 1.0, 2.0, 4.0), 'layerU': (0.4, 1.0, 0.7, 0.5), 'aeU': 1.0, 'centerU': 0.75, 'smoothU': 0.25,
+# P348: two dark exposures and one bright (WhyAe.exposures: em0, 1, sqrt(em0), 2^1.5S), their layer weights, the warm hue band
+BENTO = {'expU': (0.038, 1.0, 0.195, 2.83), 'layerU': (0.4, 1.0, 0.4, 1.0), 'warmU': (0.1, 0.25), 'aeU': 1.0, 'centerU': 0.75, 'smoothU': 0.25,
          'gammaInvU': 1 / 2.2, 'toeU': 0.05, 'monoU': 0.04, 'satLightU': (0.6, 0.8, 0.15, 0.95), 'satLevelU': (0.25, 0.6)}
 
 
@@ -277,6 +278,17 @@ def main():
             print('violet bar %2d px (%d levels): core pyramid %.4f guided %.4f' % (bw, n, p[375, xc], g[375, xc]))
         if abs(p[375, xc] - g[375, xc]) > 0.01 or p[375, xc] > 0.85:
             failures.append('P310: the %d px violet bar core is %.4f (guided filter %.4f): bleached' % (bw, p[375, xc], g[375, xc]))
+    # P348: an orange light as wide as a sunset's glow leaves the share (warmU): the pyramid without P310
+    rgb = np.full((h, w, 3), 0.03)
+    rgb[(xx >= 400) & (xx < 700) & (yy > 150) & (yy < 600)] = 8.0 * np.array((1.0, 0.45, 0.08))
+    img = rgba(rgb)
+    pw, _ = pyramid(gl, img, BENTO, coarse)
+    pn, _ = pyramid(gl, img, dict(BENTO, satLightU=(0.0, 0.0, 0.0, 0.0)), coarse)
+    d = float(np.max(np.abs(pw - pn)))
+    if REPORT:
+        print('orange glow: max |pyramid - pyramid without P310| %.2e' % d)
+    if d > 2e-3:
+        failures.append('P348: the orange glow still takes the P310 share (%.2e from the plain pyramid)' % d)
     # 5. the horizon's halo (sky 1.5 over ground 0.03, 5 levels): height and width against the guided filter, pinned
     rgb = np.where((yy < 384)[..., None], 1.5, 0.03) * np.ones((h, w, 3))
     img = rgba(rgb)
@@ -295,7 +307,7 @@ def main():
             print('FAIL: ' + f)
         sys.exit(1)
     print('PASS: the pyramid fusion matches the numpy Mertens reference (%.1e), the guided filter on flat areas, one layer exactly; '
-          'P310 lights keep their core; the halo stays pinned' % worst)
+          'P310 lights keep their core, warm light the pyramid; the halo stays pinned' % worst)
 
 
 if __name__ == '__main__':

@@ -5,6 +5,7 @@ import android.app.PendingIntent;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
+import android.content.Context;
 import android.content.IntentSender;
 import android.database.Cursor;
 import android.net.Uri;
@@ -153,9 +154,32 @@ public class GalleryFileOperations {
         return imageFile;
     }
 
+    /**
+     * P345 (owner, 2026-10-26, X200 Ultra screen recording: «Удалить снимок?» and then the system's «Разрешить приложению SCAMERA
+     * удалить это фото?» for the same photo): true when deleting these files needs the system's MediaStore delete request, i.e. on
+     * Android 11+ when one of them is not this app's own (another camera's photo, or ours from before a reinstall / the package
+     * change of 2026-10-19). The system dialog is then the only confirmation; the app's own photos are deleted after the app's sheet
+     * without it. An unknown owner counts as foreign.
+     */
+    public static boolean needsSystemDeleteRequest(Context context, List<ImageFile> files) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false;
+        String own = context.getPackageName();
+        ContentResolver resolver = context.getContentResolver();
+        for (ImageFile f : files) {
+            String owner = null;
+            try (Cursor c = resolver.query(f.getFileUri(), new String[]{MediaStore.MediaColumns.OWNER_PACKAGE_NAME}, null, null, null)) {
+                if (c != null && c.moveToFirst()) owner = c.getString(0);
+            } catch (RuntimeException e) {
+                Log.w("GalleryFileOperations", "owner of " + f.getFileUri() + ": " + e);
+            }
+            if (!own.equals(owner)) return true;
+        }
+        return false;
+    }
+
     public static void deleteImageFiles(Activity activity, List<ImageFile> toDelete, ImagesDeletedCallback deletedCallback) {
         List<Uri> toDeleteUriList = toDelete.stream().map(ImageFile::getFileUri).collect(Collectors.toList());
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R && needsSystemDeleteRequest(activity, toDelete)) {
             PendingIntent pi = MediaStore.createDeleteRequest(activity.getContentResolver(), toDeleteUriList);
             try {
                 ActivityCompat.startIntentSenderForResult(activity, pi.getIntentSender(), REQUEST_PERM_DELETE, null, 0, 0, 0, null);
@@ -164,10 +188,12 @@ public class GalleryFileOperations {
                 deletedCallback.deleted(false);
             }
         } else {
+            // before Android 11, or every file is this app's own (P345): deleted at once, no system dialog
             ContentResolver contentResolver = activity.getContentResolver();
             for (ImageFile file : toDelete) {
                 try {
-                    contentResolver.delete(file.getFileUri(), MediaStore.Images.Media._ID + "= ?", new String[]{String.valueOf(file.getId())});
+                    contentResolver.delete(file.getFileUri(), Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ? null : MediaStore.Images.Media._ID + "= ?",
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ? null : new String[]{String.valueOf(file.getId())});
                 } catch (SecurityException e) {
                     e.printStackTrace();
                     deletedCallback.deleted(false);

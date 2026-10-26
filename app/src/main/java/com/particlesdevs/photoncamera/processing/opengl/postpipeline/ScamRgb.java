@@ -20,6 +20,48 @@ public final class ScamRgb extends Node {
     @Override public void Compile(){}
 
     /**
+     * P349: the glow share of the fully clipped cores (scamhdr/suncore.glsl) for WhyCombine's sun bloom, or null (off): the
+     * share of R/G/B-clipped pixels per block (~192 blocks on the shorter side), spread by a max-gaussian of the setting's
+     * radius. A few hundred kB; WhyCombine closes it.
+     */
+    private GLTexture sunBloom(GLTexture flags,Point size){
+        final float[] set=WhyTone.sunBloom();
+        if(set[0]<=0f)return null;
+        final int block=Math.max(1,Math.round(Math.min(size.x,size.y)/192f));
+        final Point coarse=new Point((size.x+block-1)/block,(size.y+block-1)/block);
+        final GLFormat one=new GLFormat(GLFormat.DataType.FLOAT_16,1);
+        GLTexture share=null,half=null,out=null;
+        try{
+            share=new GLTexture(coarse,one,null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            glProg.setDefine("MODE",0);
+            glProg.useAssetProgram("scamhdr/suncore",false);
+            glProg.setTexture("InputBuffer",flags);
+            glProg.setVar("blockU",block);
+            glProg.drawBlocks(share);
+            final float radius=set[1]*Math.min(size.x,size.y)/block;
+            half=new GLTexture(coarse,one,null,GL_NEAREST,GL_CLAMP_TO_EDGE);
+            glProg.setDefine("MODE",1);
+            glProg.useAssetProgram("scamhdr/suncore",false);
+            glProg.setTexture("InputBuffer",share);
+            glProg.setVar("dirU",1,0);glProg.setVar("radiusU",radius);
+            glProg.drawBlocks(half);
+            out=new GLTexture(coarse,one,null,GL_LINEAR,GL_CLAMP_TO_EDGE);
+            glProg.setDefine("MODE",1);
+            glProg.useAssetProgram("scamhdr/suncore",false);
+            glProg.setTexture("InputBuffer",half);
+            glProg.setVar("dirU",0,1);glProg.setVar("radiusU",radius);
+            glProg.drawBlocks(out);
+            glProg.closed=true;
+            final GLTexture done=out;out=null;
+            return done;
+        }finally{
+            if(share!=null)share.close();
+            if(half!=null)half.close();
+            if(out!=null)out.close();
+        }
+    }
+
+    /**
      * Per-pixel clip flags of the last hybrid merge, or null: uint8 per OUTPUT pixel (the worker's clipFlags trailer,
      * scam-hybrid.h): bits 0-2 = R/G/B from the clipped mean, 3 = a clipped sample was excluded nearby, 4 = inside
      * the Bento mask, 5 = the clipped mean holds the ultrashort frame. Set by the client that reads the worker result
@@ -732,6 +774,7 @@ public final class ScamRgb extends Node {
             glProg.setVar("inverseSize",1f/size.x,1f/size.y);
             // Keep the ping-pong cursor in sync for every following postprocessing pass.
             WorkingTexture=p.getMain();glProg.drawBlocks(WorkingTexture);glProg.closed=true;
+            if(hybrid&&flagsTex!=null){p.sunBloom=sunBloom(flagsTex,size);p.sunBloomSize=p.sunBloom!=null?new Point(size):null;}
             final String chromaLog=chromaNear!=null?chromaNear.mSize.x+"x"+chromaNear.mSize.y+" block "+block:"neutral";
             // Clip band: the dashed orange/blue line where a slanted clip edge alternates between clipped-mean and
             // unclipped-sample colours (assets/shaders/scamhdr/clipband.glsl). pref_scam_hybrid_highlight_band 0..1.

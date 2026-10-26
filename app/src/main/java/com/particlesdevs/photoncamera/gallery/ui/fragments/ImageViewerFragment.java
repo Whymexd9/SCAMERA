@@ -490,10 +490,13 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
         if (viewPager == null || galleryItems.isEmpty() || getContext() == null) return;
         int position = viewPager.getCurrentItem();
         GalleryItem item = galleryItems.get(position);
-        GallerySheets.showDelete(requireContext(), 1, item.getFile().getSize(), () -> {
+        Runnable delete = () -> {
             indexToDelete = position;
             GalleryFileOperations.deleteImageFiles(getActivity(), Collections.singletonList((ImageFile) item.getFile()), this::handleImagesDeletedCallback);
-        });
+        };
+        // P345: one confirmation - the system's own dialog when it is needed, the app's sheet otherwise
+        if (GalleryFileOperations.needsSystemDeleteRequest(requireContext(), Collections.singletonList((ImageFile) item.getFile()))) delete.run();
+        else GallerySheets.showDelete(requireContext(), 1, item.getFile().getSize(), delete);
     }
 
     /** MIME type for share / edit: MimeTypeMap lacks HEIC on older Android versions, the photo formats are mapped here. */

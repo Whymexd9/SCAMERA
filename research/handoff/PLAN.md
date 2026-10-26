@@ -7313,3 +7313,125 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   0.44 (ripples as before). Time unchanged. Synthetic moving-object bursts (replay_synth_burst): moving / border error within
   +-1 %, colour hf -9 % (day).
 - Tests: HybridSettingsTest (rejPool 1 sent), DevKeys (hybrid_rej_pool).
+
+### P343 - duplicate stops in the zoom strip (owner, 2026-10-26: X200 Ultra PD2454 screenshot + log, «добавь в план исправить»): OPEN.
+- Build in the log: SCAMERA 0.98 com.scamera.app 5f32a380 CI. Cameras [1, 3, 4, 5]: 3 main 10.09 mm (x1), 4 UW 4.03 mm (x0.399),
+  5 tele 22.48 mm (x2.436), 1 front. The strip on the main camera shows 0,4 | 0,8 | 0,8 | 1x | 2 | 2 | 2,4 | 4,8 | 9,6: two 0,8 and
+  two 2 stops (likely two module slots / ISZ crops with the same factor, e.g. UW ISZ x2 = 0.8 next to a main crop 0.8, main ISZ 2x
+  next to another 2x entry). The log has no line listing the strip's stops or the slot behind each.
+- Fix: find where the strip is built from ModuleRegistry slots, dedupe stops that round to the same label (keep the slot with the
+  native optics / higher quality route, or merge them into one stop), and log the strip (slot -> camera id, factor, route) once per
+  session. Test on the X200U: each label once, each stop opens the expected camera / ISZ mode.
+- Evidence: research/handoff/evidence/P343-x200u-log-2026-10-26.txt, P343-x200u-zoom-strip-2026-10-26.jpg.
+
+### P345 - gallery / viewer bugs on the X200 Ultra (owner, 2026-10-26: screen recording Screenrecording_20261026_163809.mp4 (10 s), build 5f32a380 CI, «на видео ты ещё видишь баг с галереей»):DONE in code (not yet tried on a phone).
+- 0.0-1.5 s: gallery «Галерея» (Все 4524 / Camera 4522 / Raw 2) -> back to the camera: the viewfinder is black ~1.5 s (1.2 s frame) before
+  the picture comes back (2.9 s).
+- 3.0-5.2 s: the thumbnail opens the viewer (Сегодня 16:36, 35 мм, 13 Мп, JPEG) -> Удалить -> our sheet «Удалить снимок? Файл удалится с
+  телефона...» -> Удалить -> then the SYSTEM dialog «Разрешить приложению SCAMERA удалить это фото?» (MediaStore delete request): a double
+  confirmation; the system dialog's preview is grey at first (5.9 s), and behind it the viewer has already closed to the camera.
+- 6.6-9.5 s: after «Разрешить» the camera viewfinder stays BLACK ~3 s before the picture returns (9.9 s).
+- After the delete the bottom-left thumbnail still shows the deleted photo (the dark room shot) at 9.9 s: it is not refreshed to the
+  previous photo.
+- Fix: one confirmation only (when MediaStore.createDeleteRequest is needed, skip our own sheet or use the system one alone; app-owned
+  files can be deleted without the system request); keep the viewer open on the next photo after the delete; refresh the thumbnail to the
+  newest remaining photo (or clear it) when its file is gone; find why the camera session restarts black for 1.5-3 s after the gallery /
+  the system dialog (onPause/onResume of the camera fragment closing the session? keep it, or show the last frame instead of black) -
+  needs a log of the same sequence (SCAMERA-debug.log) to see the session timeline.
+- Cause of the closing viewer / lost result / stale thumbnail / 3 s black: GalleryFileOperations.deleteImageFiles starts the system
+  delete request with ActivityCompat.startIntentSenderForResult; P299's onUserLeaveHint rule (close the gallery when the user leaves it)
+  knew only startActivityForResult as the gallery's own launch, so the system dialog finished the gallery under it (the camera came to
+  the front behind the dialog, the result went nowhere). Fix: GalleryActivity.startIntentSenderForResult sets childLaunch too.
+- One confirmation: GalleryFileOperations.needsSystemDeleteRequest (Android 11+, any file whose OWNER_PACKAGE_NAME is not this app): then
+  the system dialog alone (no «Удалить снимок?» sheet); the app's own photos: the sheet, then ContentResolver.delete without the system
+  dialog. Viewer and library fragments both.
+- Black viewfinder on the way back: CameraFragment.freezeViewfinder (onPause: PixelCopy of the viewfinder at half size, waits <= 80 ms)
+  and showFrozenViewfinder (onResume: an ImageView vfFreeze over the viewfinder until MainRenderer.shownTimestamp moves, or 4 s).
+- Evidence: research/handoff/evidence/P345-x200u-gallery-delete-frames.jpg (every changed frame, 0.5 s step) and
+  P345-x200u-gallery-delete-key-frames.jpg (1.2 / 2.9 / 5.2 / 5.9 / 6.6 / 7.0 / 7.5 / 9.9 s).
+
+### P346 - fewer settings (owner, 2026-10-26: «После того как закончишь с реджектами и галереей, зальешь на гит. затем займись уменьшением количества настроек, все не важные настройки перемести в одну группу, а ненужные удали»): OPEN, after P344 (rejection) + P345 (gallery) and their push.
+- Order from the owner: finish P344 + P345 -> push to main -> then this.
+- Audit every settings row (preferences.xml, the settings screens, DevKeys / scam_dev keys): keep the important ones where they are, move the
+  unimportant ones into ONE group (e.g. «Дополнительно»), delete the unneeded ones (no effect on the result, duplicates, dead modes) with
+  their code paths and SettingsMigration of stored values; keep tests (SettingsMenuTest, DevKeysCoverageTest, check_settings_model.py) green
+  without weakening them.
+
+### P347 - the gallery's launcher icon opens the library (owner, 2026-10-26: «Сделай так чтобы когда открывал галерею через иконку на рабочем столе открывалось не последнее фото, а открывался наш список по папкам как обычно»): DONE in code (not yet tried on a phone).
+- GalleryActivity.openLibraryFirst: an ACTION_MAIN + CATEGORY_LAUNCHER start (the GalleryActivityLauncher alias) sets the nav graph with
+  imageLibraryFragment as its start destination; the camera thumbnail and VIEW / REVIEW intents keep the viewer start. Back from a
+  photo -> the library; back from the library finishes (its callback: navigateUp false -> finish).
+
+### P348 - WHY fusion: two dark synthetic exposures and one bright; the warm glow out of P310 (owner, 2026-10-26: «по поводу синтетических экспозиций, сделай две тёмных и одну светлую»; «на примере с лесницей у нас очень жёсткий переход оранжевого, сделай ближе к Арк камере»): DONE in code, host replay only.
+- WhyAe.exposures: (em0, 1, sqrt(em0), min(2^(1.5 effS), 8)) instead of (em0, 1, 2^effS, 2^2effS); em0 = 2^(-1.5 effH), WhyFusion caps it
+  by the Bento headroom first (the second dark follows the capped one). Layer weights 0.8 / 1 / 0.4 / 1.0 (WhyTone.layerWeights;
+  new keys pref_scam_hybrid_why_weight_dark2 / _bright replace weight_ext_hl / weight_shadow, whose stored defaults 0.7 / 0.5 meant the
+  old layers). Chosen on a grid of fused curves (6 strength cases): closest to the old shadows / mid-tones with 10 x less fall of the
+  curve; the viewfinder (LiveWhyTone) takes the same set.
+- P310 share: warm hues (r >= g >= b, (g - b) / (r - b) ramp 0.1 .. 0.25, back to the share towards yellow) leave it (warmU; dev keys
+  hybrid_why_sat_light_warm_lo / _hi). The owner's 17:57 sunset glow is as saturated as an LED (0.85 - 0.9) and its share fell
+  0.95 -> 0 within ~15 whyLow px (the level gate): a dark orange ring round a white disc. Its hue 0.30 - 0.58. Weaker share / wider
+  level gates tried: rings or bleached LED bars (check_why_pyramid). Not checked: orange LEDs (they now take the pyramid like the sun).
+- Host replay (p340 vivo_host, s1 / s2 / s3): the ladder glow soft and bright like ArkCam, s2's V wedge gone, s3 (night, sodium deck
+  lights) unchanged. A faint 2 px rim (-4 levels) at the clipped disc's edge shows on the now near-white glow (it was there before).
+- Checks: FusedCurveTest host values recomputed (independent numpy, envelope included), WhyAeTest new set, check_why_pyramid with the
+  new BENTO set + an orange-glow case (fails without warmU), glslc lpyr / gf every MODE. Not device-tested.
+
+### P349 - the sun a flat disc, dark contours along edges against the glow (owner, 2026-10-26: «у нас солнце как круг выглядит на новой версии, сделай схоже с Арк камерой»; «грани у нас выглядят гораздо хуже чем у Арк камеры», «хорошо видно справа от солнца», «ступеньки у Арк тоже выглядят отлично»; «перепроверь лестницу»): DONE in code, host replay only.
+- The disc: the merge holds it as a flat plateau at the data ceiling (8.0, clip flags 55: R, G, B clipped in the ultrashort too)
+  inside a 2 - 3 x white glow; the tone kept the glow below white, so the plateau stood out with a hard edge, plus a -4 level
+  ring from hr_detail at the clipped edge. A higher em0 ceiling (4 / 8 / none) or a lower tone ceiling (hr 8 / 5) did not
+  help (hr 5 / 8: an orange ring). New sun bloom: ScamRgb.sunBloom builds the share of fully clipped pixels ((flags & 7) == 7)
+  per block (~192 blocks on the shorter side, scamhdr/suncore.glsl MODE 0) and spreads it by a separable max-gaussian
+  (R = 0.033 x the shorter side, MODE 1: max over blocks of exp(-d^2/R^2) x share); WhyCombine (SUN_BLOOM) moves bright
+  pixels (display Y 0.55 .. 0.85 gate: the rungs in front of the sun stay dark) towards warm white (1, 0.93, 0.78), white near
+  the core, by smoothstep(0.4, 0.9, that share). A core much smaller than a block (the moon here, 285 px; LEDs) gets none;
+  recovered windows (no fully clipped core) none. Dev keys hybrid_why_sun_bloom (1) / _radius (0.033).
+- The contours: the merge is clean; the detail delta x 1.7 (P340 gain by SNR) overshot every edge the whyLow base has soft (a
+  dark line with stair-steps on the dark side: rails / rungs against the sky, the window frame by the sun). Now a gain above
+  1 lifts only the small deltas (delta + (g - 1) clamp(delta, +-0.02)); and next to light above white (brightest footprint
+  tap, Y x ae 0.8 .. 1.3) the darkening delta stops at the kernel full-resolution floor -0.035 L. Host: water texture -5 %
+  (still +21 % over gain 1.0), wall and sky unchanged; at night the black dots inside the ships' lights on the horizon gone.
+- Checks: glslc combine (4 define sets) + suncore, check_colour_output (P349 strip), check_why_pyramid, check_highlight_landing,
+  check_shader_fp16, unit tests. Not device-tested; the bloom needs the clip flags (hybrid with highlight recovery).
+
+#### P349 round 2 (owner, 2026-10-26: «я ещё вижу этот артефакт» - the window frame right of the sun; «на ступеньке обводка ещё больше стала»; «я вижу все ещё гало на ступеньке»)
+- Measured against ArkCam (NCC-aligned rows): a rung in front of the window is 3 x brighter than over the wall in the merge itself
+  (veiling glare; ArkCam 171 / 109, ours 161 / 114) - physics, kept. What differed: (1) the window frame: a 1 px trench 2 - 3 px into
+  the wall - a 5 % dip in the merge (its ring at a hard edge), deepened by the luma sharpening; (2) the rung's lower edge 26 levels
+  lighter than ArkCam (the base smeared, a zero floor on the darkening kept it there); (3) a Mertens band in the glow above / below
+  each rung (the warm glow goes through the pyramid since P348).
+- Now: beside light above white (brightMax, Y x ae >= 0.7 in the footprint) the P311 rim rule in a bright mode (rimDeltaBy: share
+  0.7 .. 1.1 x white): a one-sided rim's darkening goes down to the far side's level (sharp edge) and, on a 1 px trench of the merge
+  itself (trenchAt: 3.5 - 6 % below both neighbours of a row or a column, read from the unsharpened merge - the sharpened luma makes
+  every dark band at an edge look like one), not at all; no positive delta on a pixel above white (bright ticks at the rung corners);
+  the fusion of light above white from the guided filter (why/lpyr guidedMixU 0.8 .. 1.6 x white of the guide; WhyFusion.guided;
+  dev keys hybrid_why_fusion_guided_lo / _hi): no Mertens band round dark objects in a glow, mid-tones and shadows keep the pyramid.
+  The earlier -0.035 floor is gone. fullInputU: off above 100 MP (the full-size image is given back there).
+- Host rows vs ArkCam: rung lower edge 148 / 161 (ArkCam 158 / 152, main 128 / 144, the sent build 154 / 171); the window frame
+  row 1494 182 181 181 178 (ArkCam 188 182 176 173, main 174 167 151 176); rows 1524 / 1540 keep a 7 - 10 level ripple (main 28 - 64).
+- Tried and dropped: a larger pyramid coarse level (96 - 384: brighter bands), the full guided filter, the far side's base for
+  dark rim pixels (bilinear far taps: a step 4 px into the wall), the unsharpened delta for every rim pixel (new dips at the edge).
+
+### P344 - rejection maps as clean as ArkCam's, motion still cut (owner, 2026-10-26: «Постарайся максимально насколько можешь улучшить реджект карты»; «Для режима "движения" сделай упор на максимальный захват движения»): DONE (harness + OPPO replays), not shot in the app.
+- Worker keys (scam-hybrid.h, all off by default; every shader change behind REJ_OPTS, compiled only when a key is on - the
+  edited text alone changed Adreno's rounding): rejPool 2 / 3 (each 3 x 3 cell over its own tolerance; 3: the donor texture
+  around its own bilinear sample), rejVarExact (the exact bilinear noise factor), rejMatchBlur (the base blurred as the donor's
+  sample), rejPerChannel, rejRelFloor (model-error floor), rejMeanDiff / rejMeanTex / rejMeanFloor (3 x 3 means for smooth motion,
+  a gain floor so flicker / AE steps are not motion), rejKneeLo / Hi (dead zone + fall to 0), rejBinLo / Hi, rejClipSym (inert on
+  real bursts, keep off), rejNoiseCdm (its forgiveness rescale fixed after review). Shared-memory guide tile: reject +190 ms.
+- App (PreferenceKeys, hybrid_rej_set 1): rejPool 3, rejVarExact, rejMatchBlur, rejPerChannel, rejRelFloor 0.004, rejMeanDiff 0.2,
+  rejMeanFloor 0.015, rejPoolT 1.2, knee 0.05 / 0.8, dilateFloor 0.35 over the untouched slider default. The tuner's knee 0.1 / 0.6
+  cut late hand-held frames on t100546's smooth wall into patches (review): 0.05 / 0.8 halves that (last 4 donors <0.1: r1 8.8 %,
+  0.05/0.8 16 %, 0.1/0.6 20.7 %; whole frame cutoff 0.754 / 0.818 / 0.796); no knee at all lost the motion (night water caught
+  0.17, lamp ghosts 15.6 %). «Движение»: knee 0.1 / 0.6 + cdm 0.3, no 0.35 floor (harness: night dots caught 0.93 -> 0.97, day
+  water 0.60 -> 0.68, ghosts 2.8 -> 2.4 %, static day map 0.976).
+- Harness (p342eval, 13 scenes) of the photo set vs rejPool 1: static day robust 0.89 -> 0.99 (cells <0.85 12.8 -> 1.4 %), lamp ghosts
+  12 -> 4 %, night water ghosts 16.6 -> 11 %; known trade-off: moving thin wires caught 0.69 -> 0.57 (rejPool 1 also cut static
+  wires), water_day ghost 2.5 -> 3.0 %. Real bursts (7): static flat 0.85 - 0.96 -> 0.94 - 0.99; sea / hand still black; isz2 window
+  mesh with parallax and a door-bolt specular get more frames (review, small).
+- Lab: raw / robust per donor min-pooled over the block (a point sample hid a rejected wire); 'cutoff' («Отсечение», ArkCam's
+  view) = min over the NORMAL donors of their block-MEAN robust / A (review: min of minima over 19 - 27 donors drew static scenes as
+  speckle, and the long frames' by-design clip zeros drew a static window black); 'accepted' back to the mean weight.
+- Checks: keys off bit-identical (b175757 d7b04597..., b184023 2cd8d9cf...), glslc 16 reject / dilate variants (8 without REJ_OPTS ==
+  HEAD), check_hybrid_stages / still / series on the OPPO, HybridSettingsTest, ScamLab*. Mali only offline + forced no-tiles path.

@@ -940,7 +940,28 @@ public class PreferenceKeys {
         // squared differences of the 3 x 3 cells (worker rejPool), not one cell's single noise draw. Phone replay of the owner's
         // bursts: a static night sky keeps 0.95 of each frame instead of 0.78 (the map clean instead of a noise cloud), the moving
         // sea stays rejected (0.44) with its ripples; replays with rejPool 0 bit-identical. scam_dev.txt "hybrid_rej_pool 0" = before.
-        if (hybridValue("rej_pool", 1f) > 0f) out.append("rejPool 1\n");
+        // P344 (owner, 2026-10-26: «Постарайся максимально насколько можешь улучшить реджект карты»): the rejection set tuned on the
+        // synthetic harness with its truth and 7 real bursts (worker defaults = before, replays unchanged without these lines):
+        // rejPool 3 = each of the 3 x 3 cells over its own tolerance with the donor's texture around its own sample (P341's pooled
+        // test had lost day texture: static buildings Neff 8.4 -> 10.0), the exact bilinear noise factor, the base blurred as the
+        // donor's sample is, each colour over its own tolerance, a 0.4 % model-error floor, the 3 x 3 means' difference for smooth
+        // motion near the noise (with a 1.5 % gain floor: flicker and AE steps are not motion), a soft knee (a dead zone to 0.05,
+        // 0 from 0.8 x boost: the review's 0.6 cut late hand-held frames on a smooth wall into patches) and the spread from 0.35.
+        // Harness: static day map 0.89 -> 0.99 accepted, lamp ghosts 12 -> 4 %, night water ghosts 16.6 -> 10.7 %; real bursts:
+        // static flat 0.85 - 0.96 -> 0.94 - 0.99 with the moving sea and hand still black. Costs ~0.3 s per 12 MP merge (Adreno 750).
+        // Moving thin wires are caught a little less than with rejPool 1 (that caught the static wires too). scam_dev.txt
+        // "hybrid_rej_set 0" = P341's rejPool 1; the spread floor 0.35 only over the slider's untouched default 0.15.
+        // «Движение» (owner, 2026-10-26: «Для режима "движения" сделай упор на максимальный захват движения»): the hard knee (a dead
+        // zone to 0.1, 0 from 0.6 x boost) and the stricter difference cdm 0.3, the spread from the slider's floor: harness night
+        // dots caught 0.93 -> 0.97 (their fade 16.6 -> 12.5 %), day water 0.60 -> 0.68 (ghosts 2.8 -> 2.4 %), at a static day map
+        // of 0.976 instead of 0.986 (the mode's boost 10 adds nothing on the harness).
+        if (hybridValue("rej_set", 1f) > 0f) {
+            final boolean motionMode = isMotionMode();
+            out.append("rejPool 3\nrejVarExact 1\nrejMatchBlur 1\nrejPerChannel 1\nrejRelFloor 0.004\nrejMeanDiff 0.2\n")
+                    .append("rejMeanFloor 0.015\nrejPoolT 1.2\n")
+                    .append(motionMode ? "rejKneeLo 0.1\nrejKneeHi 0.6\ncdm 0.3\n" : "rejKneeLo 0.05\nrejKneeHi 0.8\n");
+            if (!motionMode && Math.abs(hybridValue("dilate_floor", 0.15f) - 0.15f) < 1e-4f) out.append("dilateFloor 0.35\n");
+        } else if (hybridValue("rej_pool", 1f) > 0f) out.append("rejPool 1\n");
         // P337 (owner, 2026-10-25: a backlit sea, «отражение на воде слилось в кашу»): sun glitter keeps its sparkles - a donor clearly
         // darker than a clipped base cell is rejected (clipReject) and a saturated G is at least the mean of all its samples,
         // the clipped ones at their values (rimLift). Phone replay of the owner's burst: merged G at the base's clipped green sites

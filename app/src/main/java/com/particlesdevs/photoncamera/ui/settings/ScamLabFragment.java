@@ -1482,7 +1482,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
             compare.setPair(r.a.photo, r.b.photo, "A", "B");
             return;
         }
-        // the merge order: base, rejection, weight, F6, Bento, accepted, merged
+        // the merge order: base, rejection, weight, cutoff, F6, Bento, accepted, merged (P344: the cutoff only from a worker that
+        // writes it; an older worker's stages list none)
         java.util.Collections.sort(present, (x, y) -> Integer.compare(stageRank(x), stageRank(y)));
         if (!present.contains(showStage)) showStage = present.contains(ScamMergeStages.ROBUST) ? ScamMergeStages.ROBUST : present.get(0);
         for (String k : present) {
@@ -1522,8 +1523,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
     }
 
     private static int stageRank(String kind) {
-        final String[] order = {ScamMergeStages.BASE, ScamMergeStages.RAW, ScamMergeStages.ROBUST, ScamMergeStages.FLOW,
-                ScamMergeStages.BENTO, ScamMergeStages.BLEND, ScamMergeStages.ACCEPTED, ScamMergeStages.MERGED};
+        final String[] order = {ScamMergeStages.BASE, ScamMergeStages.RAW, ScamMergeStages.ROBUST, ScamMergeStages.CUTOFF,
+                ScamMergeStages.FLOW, ScamMergeStages.BENTO, ScamMergeStages.BLEND, ScamMergeStages.ACCEPTED, ScamMergeStages.MERGED};
         for (int i = 0; i < order.length; i++) if (order[i].equals(kind)) return i;
         return order.length;
     }
@@ -1544,6 +1545,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
             case ScamMergeStages.BASE: return Lang.t(getContext(), "База", "Base");
             case ScamMergeStages.RAW: return Lang.t(getContext(), "Реджект", "Rejection");
             case ScamMergeStages.ROBUST: return Lang.t(getContext(), "Вес кадра", "Frame weight");
+            case ScamMergeStages.CUTOFF: return Lang.t(getContext(), "Отсечение", "Cutoff");
             case ScamMergeStages.FLOW: return Lang.t(getContext(), "Сдвиг F6", "F6 offset");
             case ScamMergeStages.BENTO: return Lang.t(getContext(), "Маска Bento", "Bento mask");
             case ScamMergeStages.BLEND: return Lang.t(getContext(), "Смешивание УК", "US blend");
@@ -1557,18 +1559,21 @@ public class ScamLabFragment extends ModuleConceptFragment {
         switch (kind) {
             case ScamMergeStages.BASE: return Lang.t(getContext(), "Опорный кадр серии до склейки: один цвет на клетку 2×2, баланс по серому.",
                     "The burst's reference frame before the merge: one colour per 2×2 cell, grey-world balance.");
-            case ScamMergeStages.RAW: return Lang.t(getContext(), "Карта реджекта до расширения: насколько клетка кадра совпала с базой. Жёлтый — принята, тёмно-синий — отклонена (движение, ошибка выравнивания, пересвет длинного кадра).",
-                    "Rejection map before the spread: how well the frame's cell matched the base. Yellow accepted, dark blue rejected (motion, misalignment, a clipped longer frame).");
-            case ScamMergeStages.ROBUST: return Lang.t(getContext(), "Итоговый вес кадра в склейке: отказ растянут на клетки вокруг (5×5), учтены маска Bento и вес кадра. Жёлтый — полный вес, тёмно-синий — кадр здесь не вошёл.",
-                    "The frame's final weight in the merge: rejection spread over the 5×5 cells around, Bento and the frame weight applied. Yellow full weight, dark blue not merged here.");
+            // P344: the weights on a ramp with a plateau (ScamMergeStages.weight): white from 0.97 up, the noise-level dip cream
+            case ScamMergeStages.RAW: return Lang.t(getContext(), "Карта реджекта до расширения: насколько клетка кадра совпала с базой. Белый — принята (0,97 и выше), кремовый и янтарный — разница на уровне шума, красный → чёрный — отклонена (движение, ошибка выравнивания, пересвет длинного кадра).",
+                    "Rejection map before the spread: how well the frame's cell matched the base. White accepted (0.97 and up), cream and amber a noise-level difference, red to black rejected (motion, misalignment, a clipped longer frame).");
+            case ScamMergeStages.ROBUST: return Lang.t(getContext(), "Итоговый вес кадра в склейке: отказ растянут на клетки вокруг (5×5), учтены маска Bento и вес кадра. Белый — полный вес (0,97 и выше), кремовый → красный — вес снижен, чёрный — кадр здесь не вошёл.",
+                    "The frame's final weight in the merge: rejection spread over the 5×5 cells around, Bento and the frame weight applied. White full weight (0.97 and up), cream to red a lower weight, black not merged here.");
+            case ScamMergeStages.CUTOFF: return Lang.t(getContext(), "Отсечение после склейки: в каждой клетке наименьший средний итоговый вес среди обычных кадров серии, без цветовой шкалы. Белый — вошли все кадры, чёрный — хотя бы один кадр здесь отсечён (движение, отказ), серый — частично. Длинные кадры брекета не учитываются: в клипе они отключены всегда.",
+                    "Cutoff after the merge: per cell the smallest mean final weight over the burst's normal frames, plain grey. White every frame merged, black at least one frame cut here (motion, rejection), grey partly. The bracket's long frames are left out: they always drop out where they clip.");
             case ScamMergeStages.FLOW: return Lang.t(getContext(), "Локальное доравнивание F6 поверх гомографии, |сдвиг| в RAW-пикселях: тёмно-синий — 0, жёлтый — 8 и больше.",
                     "F6 local alignment on top of the homography, |offset| in RAW pixels: dark blue 0, yellow 8 and more.");
             case ScamMergeStages.BENTO: return Lang.t(getContext(), "Маска Bento: где склейка берёт ультракороткие кадры вместо обычных (жёлтый — пересвет, берутся они).",
                     "Bento mask: where the merge takes the ultrashort frames instead of the normal ones (yellow: clipped, they are taken).");
             case ScamMergeStages.BLEND: return Lang.t(getContext(), "Вес смешивания ультракоротких кадров после склейки (P310): жёлтый — берутся они.",
                     "The ultrashort frames' blend weight after the merge (P310): yellow, they are taken.");
-            case ScamMergeStages.ACCEPTED: return Lang.t(getContext(), "Средний вес обычных кадров в каждой клетке: сколько серии получила база. Тёмно-синий — почти только база (шум выше).",
-                    "Mean weight of the normal frames per cell: how much of the burst the base got. Dark blue: almost the base alone (more noise).");
+            case ScamMergeStages.ACCEPTED: return Lang.t(getContext(), "Средний вес обычных кадров в каждой клетке: сколько серии получила база. Белый — взяты все (0,97 и выше), красный → чёрный — почти только база (шум выше).",
+                    "Mean weight of the normal frames per cell: how much of the burst the base got. White: all of them (0.97 and up), red to black: almost the base alone (more noise).");
             case ScamMergeStages.MERGED: return Lang.t(getContext(), "Результат склейки до постобработки, то же превью, что у базы: сравните шум и детали.",
                     "The merge before the post pipeline, the same preview as the base: compare noise and detail.");
             default: return "";

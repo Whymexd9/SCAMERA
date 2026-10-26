@@ -111,15 +111,19 @@ public class FusedCurveTest {
         }
     }
 
-    /** The host model of the design (tools/fused_curve_model.py, effS 1.5, effH 1, mono 0.04) at three entries. */
+    /**
+     * The host model of the design (effS 1.5, effH 1, mono 0.04) at three entries. P348: the exposures two dark and one bright
+     * (0.354, 1, 0.595, 4.76); an independent numpy fusedAt with the envelope gives 0.43456 / 0.88904 / 0.98738 (the lift only near the
+     * top, where the curve flattens: 0.98625 without it).
+     */
     @Test
     public void theTableMatchesTheHostModel() {
         float[] table = new float[FusedCurve.SIZE];
         FusedCurve.fill(table, exposures(1.5f, 1.0f), LW, 0.6f, 0.25f, 1f / 2.2f, 0.05f, 0.04f);
         assertEquals(353, FusedCurve.SIZE);
-        assertEquals(0.53759, table[(int) ((-4 - FusedCurve.LOG2_MIN) * FusedCurve.PER_EV)], 2e-5);
-        assertEquals(0.90395, table[(int) ((0 - FusedCurve.LOG2_MIN) * FusedCurve.PER_EV)], 2e-5);
-        assertEquals(0.99435, table[(int) ((2 - FusedCurve.LOG2_MIN) * FusedCurve.PER_EV)], 2e-5);
+        assertEquals(0.43456, table[(int) ((-4 - FusedCurve.LOG2_MIN) * FusedCurve.PER_EV)], 2e-5);
+        assertEquals(0.88904, table[(int) ((0 - FusedCurve.LOG2_MIN) * FusedCurve.PER_EV)], 2e-5);
+        assertEquals(0.98738, table[(int) ((2 - FusedCurve.LOG2_MIN) * FusedCurve.PER_EV)], 2e-5);
     }
 
     /** P291's envelope: a curve that falls (em.x far below the base: a light past the base layer) is lifted, never lowered. */

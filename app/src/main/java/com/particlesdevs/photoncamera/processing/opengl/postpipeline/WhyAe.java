@@ -486,11 +486,27 @@ public final class WhyAe {
     }
 
     /**
-     * Exposure multipliers of the four synthetic exposures of the fusion [code 0x78ac4-0x78b34]:
-     * (2^(-1.5 effH), 1, min(2^effS, 8), min(2^(2 effS), 16)).
+     * Exposure multipliers of the four synthetic exposures of the fusion: (em0, 1, sqrt(em0), min(2^(1.5 effS), 8)) with the
+     * darkest em0 = 2^(-1.5 effH) - two dark exposures and one bright.
+     * P348 (owner, 2026-10-26: «по поводу синтетических экспозиций, сделай две тёмных и одну светлую»): the kernel's set
+     * [code 0x78ac4-0x78b34] was one dark and two bright, (2^(-1.5 effH), 1, min(2^effS, 8), min(2^(2 effS), 16)). The second
+     * dark one halves the gap (in stops) between the darkest and the base: with Bento headroom the darkest sits 4 - 5 stops
+     * below (P341), and a light between them was well exposed in neither, so the fused curve fell there (the ladder rung by the
+     * sun) and the P291 lift had to hold it up; with it the curve rises. The one bright exposure at 1.5 effS (between the old
+     * two) keeps the shadows' lift: host replay of the owner's three sunsets, p5 / p50 within 3 % / 4 % of the old set, the glow
+     * round the sun more orange and the lit wall's texture kept (p95 215 -> 197).
      */
     public static float[] exposures(Result r) {
-        return new float[]{(float) Math.pow(2.0, -1.5 * r.effH), 1f,
-                (float) Math.min(Math.pow(2.0, r.effS), 8.0), (float) Math.min(Math.pow(2.0, 2.0 * r.effS), 16.0)};
+        return exposures(r, darkestExposure(r));
+    }
+
+    /** The darkest synthetic exposure from the frame's statistics, 2^(-1.5 effH) (WhyFusion caps it by the Bento headroom). */
+    public static float darkestExposure(Result r) {
+        return (float) Math.pow(2.0, -1.5 * r.effH);
+    }
+
+    /** {@link #exposures(Result)} with the darkest exposure {@code em0} given (the second dark one follows it). */
+    public static float[] exposures(Result r, float em0) {
+        return new float[]{em0, 1f, (float) Math.sqrt(em0), (float) Math.min(Math.pow(2.0, 1.5 * r.effS), 8.0)};
     }
 }

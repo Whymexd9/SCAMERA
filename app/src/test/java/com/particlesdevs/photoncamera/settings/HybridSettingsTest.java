@@ -243,6 +243,9 @@ public class HybridSettingsTest {
         String tuning=PreferenceKeys.hybridTuningText();
         assertTrue(tuning,tuning.contains("boost 10.0\n"));assertTrue(tuning,tuning.contains("motionThreshold 0.5\n"));
         assertTrue(tuning,tuning.contains("bento 1.0\n"));assertTrue(tuning,tuning.contains("widenBelow 0.0\n"));
+        // P344: «Движение» catches motion first - the hard knee and cdm 0.3 last (the worker keeps a key's last value)
+        assertTrue(tuning,tuning.contains("rejKneeLo 0.1\nrejKneeHi 0.6\ncdm 0.3\n")&&tuning.lastIndexOf("cdm ")==tuning.lastIndexOf("cdm 0.3\n"));
+        assertFalse(tuning,tuning.contains("dilateFloor 0.35\n"));
         PreferenceKeys.setMotionMode(false);
         tuning=PreferenceKeys.hybridTuningText();
         assertTrue(tuning,tuning.contains("boost 6.0\n"));assertTrue(tuning,tuning.contains("motionThreshold 1.5\n"));
@@ -621,7 +624,9 @@ public class HybridSettingsTest {
         assertTrue("P337: the night 6.1 kernel x0.8",tuning.contains("s61NightScale 0.8\n"));
         assertTrue("P337: glitter keeps its sparkles",tuning.contains("clipReject 1\n")&&tuning.contains("rimLift 1\n"));
         assertTrue("P339: highlight frames only with a clipped base",tuning.contains("usNeedClip 1\n"));
-        assertTrue("P341: the rejection distance over 3 x 3 cells",tuning.contains("rejPool 1\n"));
+        assertTrue("P344: the rejection set",tuning.contains("rejPool 3\n")&&tuning.contains("rejMatchBlur 1\n")
+                &&tuning.contains("rejKneeLo 0.05\nrejKneeHi 0.8\n")&&!tuning.contains("rejPool 1\n"));
+        assertTrue("P344: the spread floor over the untouched default",tuning.lastIndexOf("dilateFloor ")==tuning.indexOf("dilateFloor 0.35\n"));
         assertEquals(2,PreferenceKeys.getHybridShastaMode());
         assertEquals(20,PreferenceKeys.getHybridZslFrames());
         prefs.edit().clear().commit();

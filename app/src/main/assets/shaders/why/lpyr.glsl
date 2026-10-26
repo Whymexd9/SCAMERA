@@ -21,6 +21,8 @@ uniform sampler2D LevelL;       // MODE 3, 4: lumas L of this level (RGBA)
 uniform sampler2D LevelW;       // MODE 3, 4: weights p of this level (RGBA)
 uniform sampler2D CoarseL;      // MODE 4, 5: lumas of the next coarser level
 uniform sampler2D CoarseF;      // MODE 4, 5: fused luma of the next coarser level (.r)
+uniform sampler2D GuidedF;      // MODE 5, P349: the guided filter's fused luma of the same pixels (why/gf MODE 3, .r)
+uniform vec2 guidedMixU;        // MODE 5, P349: its share over the guide I (x AE) from x to y; y <= x / unset: the pyramid alone
 #import why_fusion
 out vec4 Output;
 
@@ -92,6 +94,12 @@ void main() {
         }
         fusedL += env - f;
     }
+    // P349 (owner, 2026-10-26, the sunset with the ladder: «на ступеньке обводка ещё больше стала»): Mertens' halo of a dark
+    // object in light above white - a bright band under each rung and a dark one above it, ~100 px, in the sun's glow (the warm
+    // glow takes the pyramid since P348) - where ArkCam's guided filter, edge-aware, has none. Light above white takes the
+    // guided filter's fusion, the mid-tones and shadows keep the pyramid's; on flat areas the two agree, so the share needs no
+    // spatial smoothing.
+    if (guidedMixU.y > guidedMixU.x) fusedL = mix(fusedL, max(texelFetch(GuidedF, xy, 0).r, 0.0), smoothstep(guidedMixU.x, guidedMixU.y, I));
     Output = vec4(fusedL, 0.0, 0.0, 1.0);
 #endif
 }

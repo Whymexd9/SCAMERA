@@ -297,6 +297,30 @@ def find_glslc() -> str | None:
                 return hits[0]
     return None
 
+# P349 (owner, 2026-10-26: the sun a flat disc in its glow, dark lines along every edge against it, next to ArkCam): the sun
+# bloom (SUN_BLOOM, its uniforms and its block; SUN_BLOOM 0 = off) and a detail gain above 1 on the small deltas only. The
+# token comparison takes the bloom out and puts the plain gain back.
+P349_DEFINE = ('// P349 SUN_BLOOM 1: the glow round fully clipped cores (SunBloom); 0: the shader before P349, token for token.\n'
+               '#define SUN_BLOOM 0\n')
+P349_BLOCK = re.compile(r'#if SUN_BLOOM == 1\n.*?#endif\n', re.S)
+P349_GAIN_NEW = '        delta = detailGainU > 1.0 ? delta + (detailGainU - 1.0) * clamp(delta, -0.02, 0.02) : delta * detailGainU;\n'
+P349_GAIN_OLD = '        delta *= detailGainU;\n'
+# and the rim rule beside light above white, no positive delta above white (brightMax: its declaration, its tap and the two
+# rules; rimDeltaBy itself goes with P311's functions)
+P349_FLOOR = ('    float brightMax = 0.0;      // P349: the brightest whyLow tap of the footprint (luminance x ae: 1 = white)\n',
+              '                if (bounded) brightMax = max(brightMax, dot(max(lowTap, vec3(0.0)), LUMA) * ae);\n',
+              '            if (delta < 0.0 && brightMax > 0.7) delta = rimDeltaBy(delta, yD, yRef, lbx, lby, lfx, lfy, refDomain, ae, trenchAt(xy, size));\n',
+              'uniform int fullInputU;             // P349: 1 = InputBuffer is the full-size image (not given back above 100 MP); 0 / unset: it may not be\n',
+              '            if (delta > 0.0) delta *= 1.0 - smoothstep(0.8, 1.2, yFull * ae);\n')
+
+
+def without_p349(src: str) -> str:
+    """P349: the sun bloom, the small-delta gain and the delta floor beside light taken back out for the token comparison
+    (shader_part checks they are there)."""
+    for line in P349_FLOOR:
+        src = src.replace(line, '', 1)
+    return P349_BLOCK.sub('', src.replace(P349_DEFINE, '', 1)).replace(P349_GAIN_NEW, P349_GAIN_OLD, 1)
+
 
 def shader_part(strict: bool) -> None:
     new = (SH / 'why/combine.glsl').read_text(encoding='utf-8')
@@ -309,9 +333,11 @@ def shader_part(strict: bool) -> None:
     check(P315_RAIL_LINE in n, 'combine.glsl lost the P315 rail rule of the detail delta (two lines along LED rings come back)')
     check(P341_VIB_UNIFORM in n and P341_VIB_BLOCK in n and P341_DELTA_NEW in n,
           'combine.glsl lost the P341 light-tone vibrance or the darkening delta rule (a pale sunset sky, a rung lost in the glow)')
-    got = token_hash(without_p341(without_p311_rim(without_p315_rails(without_p310_white(without_highp_int(n))))))
+    check(P349_DEFINE in n and len(P349_BLOCK.findall(n)) == 2 and P349_GAIN_NEW in n and all(line in n for line in P349_FLOOR),
+          'combine.glsl lost the P349 sun bloom or the small-delta detail gain (a flat sun disc, dark lines along edges)')
+    got = token_hash(without_p349(without_p341(without_p311_rim(without_p315_rails(without_p310_white(without_highp_int(n)))))))
     print('combine.glsl P3_OUT 0 token stream (without the P305 highp int, the P311 rim rule, the P315 rail rule and the P341 '
-          'vibrance / delta rule, the P310 AgX white gate as the scene gate): %s' % got)
+          'vibrance / delta rule, the P349 sun bloom / gain, the P310 AgX white gate as the scene gate): %s' % got)
     check(got == BASELINE_COMBINE_TOKENS, 'combine.glsl (P3_OUT 0) differs from the pre-P46 shader: %s' % got)
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],

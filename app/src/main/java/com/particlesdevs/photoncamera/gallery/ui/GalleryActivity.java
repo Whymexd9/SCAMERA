@@ -2,6 +2,7 @@ package com.particlesdevs.photoncamera.gallery.ui;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.IntentSender;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
@@ -65,7 +66,23 @@ public class GalleryActivity extends BaseActivity {
             // Normal gallery mode - show all media
             viewModel.fetchAllMedia();
             viewModel.setCurrentFolderImages(viewModel.getAllSelectedImageFolder().getValue());
+            if (Intent.ACTION_MAIN.equals(action) && intent.hasCategory(Intent.CATEGORY_LAUNCHER)) openLibraryFirst();
         }
+    }
+
+    /**
+     * P347 (owner, 2026-10-26: «когда открывал галерею через иконку на рабочем столе открывалось не последнее фото, а открывался наш
+     * список по папкам как обычно»): the gallery's own launcher icon starts on the library (the folders and the photo grid); the
+     * camera's thumbnail still opens the viewer on the newest photo (the graph's start destination). Back from a photo opened there
+     * returns to the library.
+     */
+    private void openLibraryFirst() {
+        NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.gallery_navigation_host);
+        if (navHostFragment == null) return;
+        NavController navController = navHostFragment.getNavController();
+        androidx.navigation.NavGraph graph = navController.getNavInflater().inflate(R.navigation.gallery_nav_graph);
+        graph.setStartDestination(R.id.imageLibraryFragment);
+        navController.setGraph(graph, null);
     }
     
     /**
@@ -211,6 +228,19 @@ public class GalleryActivity extends BaseActivity {
     public void startActivityForResult(Intent intent, int requestCode, @Nullable Bundle options) {
         childLaunch = true;
         super.startActivityForResult(intent, requestCode, options);
+    }
+
+    /**
+     * P345 (owner, 2026-10-26, X200 Ultra screen recording): the system's delete request (MediaStore.createDeleteRequest) comes in
+     * through an IntentSender, not startActivityForResult, so the P299 rule below took its dialog for the user leaving and closed the
+     * gallery under it: the camera behind the dialog, the result lost (the viewer gone, no «Удалено», the camera's thumbnail still the
+     * deleted photo) and the camera session restarted twice. It is the gallery's own screen as well.
+     */
+    @Override
+    public void startIntentSenderForResult(IntentSender intent, int requestCode, @Nullable Intent fillInIntent, int flagsMask,
+                                           int flagsValues, int extraFlags, @Nullable Bundle options) throws IntentSender.SendIntentException {
+        childLaunch = true;
+        super.startIntentSenderForResult(intent, requestCode, fillInIntent, flagsMask, flagsValues, extraFlags, options);
     }
 
     /**

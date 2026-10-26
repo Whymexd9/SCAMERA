@@ -3,7 +3,7 @@
 // Gaussian weights (prepare), the saturated-light share (P310) and the fused luma of a flat neutral area (fusedAt, P291).
 // Imported after the including program's InputBuffer.
 uniform vec4 expU;              // exposure multipliers em; unset -> (1, 1, 1, 1)
-uniform vec4 layerU;            // layer weights (hl, mid, ext_hl, shadow); unset -> WhyCam (0.8, 1, 0.7, 0.5)
+uniform vec4 layerU;            // layer weights in expU's order; unset -> WhyCam (0.8, 1, 0.7, 0.5)
 uniform float aeU;              // auto exposure; <= 0 -> 1
 uniform float centerU;          // weight_center; <= 0 -> 0.6
 uniform float smoothU;          // blend_smoothness; <= 0 -> 0.25
@@ -16,6 +16,9 @@ uniform vec4 satLightU;
 // P310: the light's level (its brightest channel x the AE, the fusion's input) over which that share fades in: only light near
 // the top of the curve takes the kernel's weights; y <= 0 / unset: no level gate
 uniform vec2 satLevelU;
+// P348: the warm hues (r >= g >= b, (g - b) / (r - b) from x to y: orange to yellow - the sun, its glow, fire) left out of that
+// share; y <= x / unset: every hue as before
+uniform vec2 warmU;
 
 // ACES tone scale of the kernel [fc_cl_source.cl:971-976] with pre-gain 1.5, a 2.51, d 0.59.
 vec4 acescg(vec4 v, float toe) {
@@ -39,6 +42,15 @@ float satShare(vec3 rgb) {
     float mx = max(max(c.r, c.g), c.b);
     float sat = (mx - min(min(c.r, c.g), c.b)) / max(mx, 0.000001);
     float level = satLevelU.y > 0.0 ? smoothstep(satLevelU.x, satLevelU.y, mx * (aeU > 0.0 ? aeU : 1.0)) : 1.0;
+    // P348 (owner, 2026-10-26, the sunset with the ladder: «очень жёсткий переход оранжевого, сделай ближе к Арк камере»): the
+    // glow round a setting sun is as saturated as an LED (0.85 - 0.9) and falls 10 x within ~15 whyLow px, so the level gate
+    // switched it from the pyramid to the per-pixel fusion there: a dark orange ring round a white disc, where ArkCam (no share)
+    // has a bright, soft glow. Its hue is orange ((g - b) / (r - b) 0.30 - 0.58 on the owner's burst), the LEDs of P310 violet,
+    // pink and blue; red (g ~ b) keeps the share. Natural warm light takes the pyramid, as ArkCam's.
+    if (warmU.y > warmU.x && c.r >= c.g && c.g >= c.b && mx > c.b) {
+        float t = (c.g - c.b) / (mx - c.b);
+        level *= 1.0 - smoothstep(warmU.x, warmU.y, t) * (1.0 - smoothstep(0.85, 1.0, t));
+    }
     return smoothstep(satLightU.z, satLightU.w, sat) * level;
 }
 

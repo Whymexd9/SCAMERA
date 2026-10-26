@@ -55,6 +55,9 @@ public class PostPipeline extends GLBasePipeline {
     public boolean signedRgb;
     /** WHY tone of the SCAM Hybrid: state handed from WhyStats to WhyCombine; null outside that route. */
     public WhyTone.State why;
+    /** P349: the glow share of the fully clipped cores (ScamRgb.sunBloom, WhyCombine's sun bloom) and the image size it covers. */
+    public GLTexture sunBloom;
+    public Point sunBloomSize;
     /**
      * P277: a lab shot's run records the whole frame's statistics here ({@link LabFrame}); a lab run on a fragment of it sets
      * {@link #frozen} to those, used in place of the fragment's own. Both null in an ordinary run.
@@ -199,6 +202,8 @@ public class PostPipeline extends GLBasePipeline {
         linearDisplayGain = 1.0f;
         scamNoiseSigma = 0f;
         signedRgb = false;
+        sunBloom = null;
+        sunBloomSize = null;
         // Drop any stale reference from a previous run; the texture itself is
         // reclaimed by GLTexture.closeAll().
         rawClipLevel = 1.0f;
