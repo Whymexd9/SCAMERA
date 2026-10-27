@@ -56,9 +56,27 @@ void main() {
     float d = c;
     if (filterU != 0) {
         float P[25];
-        for (int j = 0; j < 5; j++)
-            for (int i = 0; i < 5; i++)
-                P[j * 5 + i] = texelFetch(InputBuffer, clamp(p + ivec2(i - 2, j - 2) * s, ivec2(0), last), 0).r;
+        if (s == 1) {
+            // P364: the stride-1 5 x 5 from 9 textureGathers (.r of a 2 x 2 footprint over the 6 x 6 texels p - 2 .. p + 3; every
+            // input is CLAMP_TO_EDGE, so a texel off the frame reads its edge texel as the clamped texelFetch did) instead of 25
+            // texelFetch: the same texels in P, everything below unchanged
+            highp vec2 inv = 1.0 / vec2(last + 1);
+            float Q[36];
+            for (int b = 0; b < 3; b++) {
+                for (int a = 0; a < 3; a++) {
+                    // the texels p + (2a - 2 .. 2a - 1, 2b - 2 .. 2b - 1): their shared corner p + (2a - 1, 2b - 1)
+                    vec4 g = textureGather(InputBuffer, vec2(p + ivec2(2 * a - 1, 2 * b - 1)) * inv, 0);  // (x0,y1) (x1,y1) (x1,y0) (x0,y0)
+                    int k = 12 * b + 2 * a;
+                    Q[k] = g.w; Q[k + 1] = g.z; Q[k + 6] = g.x; Q[k + 7] = g.y;
+                }
+            }
+            for (int j = 0; j < 5; j++)
+                for (int i = 0; i < 5; i++) P[j * 5 + i] = Q[j * 6 + i];
+        } else {
+            for (int j = 0; j < 5; j++)
+                for (int i = 0; i < 5; i++)
+                    P[j * 5 + i] = texelFetch(InputBuffer, clamp(p + ivec2(i - 2, j - 2) * s, ivec2(0), last), 0).r;
+        }
         float y = useYinU != 0 ? texelFetch(Yin, p, 0).r : c;
 #if DCG_ZONES
         float sigma = sqrt(max(f * (noiseU.x * max(y, 0.0) + mix(noiseU.y, noiseHiU, smoothstep(0.9 * kneeU, 1.1 * kneeU, y))), 0.0));

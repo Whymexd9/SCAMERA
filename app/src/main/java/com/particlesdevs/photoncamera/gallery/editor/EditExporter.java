@@ -70,7 +70,7 @@ public final class EditExporter {
     public static Result export(Context context, EditSource source, EditState state, Progress progress) throws IOException {
         Context c = context.getApplicationContext();
         long budget = EditSource.memoryBudget(c);
-        long outMax = Math.max(4_000_000L, Math.min(EditSource.OUT_MAX, budget / 10));
+        long outMax = outMax(budget);
         double cropFraction = Math.max(1e-6, (state.cropR - state.cropL) * (state.cropB - state.cropT));
         Bitmap out;
         String shrink;
@@ -93,11 +93,10 @@ public final class EditExporter {
 
             reader = source.openReader(c, cropFraction, outMax);
             final int sw = reader.width(), sh = reader.height();
-            final int orientation = source.orientation;
-            final double ow0 = CropMath.swapsSides(orientation) ? sh : sw, oh0 = CropMath.swapsSides(orientation) ? sw : sh;
-            double[] crop = CropMath.cropPixels(state, ow0, oh0);
+            final Plan plan = plan(state, sw, sh, source.orientation, outMax);
+            double[] crop = CropMath.cropPixels(state, plan.ow, plan.oh);
             double k = Math.min(1.0, Math.sqrt(outMax / Math.max(1.0, crop[0] * crop[1])));
-            final int W = Math.max(1, (int) Math.round(crop[0] * k)), H = Math.max(1, (int) Math.round(crop[1] * k));
+            final int W = plan.W, H = plan.H;
             shrink = reader.shrinkNote();
             if (k < 0.999) {
                 String s = Lang.t("сохранено в " + W + "×" + H + " (предел памяти)", "saved at " + W + "x" + H + " (memory limit)");
@@ -109,10 +108,8 @@ public final class EditExporter {
                 throw new IOException(Lang.t("Не хватает памяти для копии " + W + "×" + H, "Not enough memory for a " + W + "x" + H + " copy"));
             }
             // output px -> crop uv -> base uv -> oriented uv -> source uv -> source px
-            CropMath.Affine outToBase = CropMath.Affine.scale(1.0 / W, 1.0 / H).then(CropMath.cropToBase(state));
-            CropMath.Affine baseToImg = CropMath.baseToOriented(state, ow0, oh0);
-            CropMath.Affine imgToSrcUv = CropMath.orientationToDisplay(orientation).inverse();
-            CropMath.Affine outToSrcPx = outToBase.then(baseToImg).then(imgToSrcUv).then(CropMath.Affine.scale(sw, sh));
+            final CropMath.Affine outToBase = plan.outToBase, baseToImg = plan.baseToImg, imgToSrcUv = plan.imgToSrcUv;
+            final CropMath.Affine outToSrcPx = plan.outToSrcPx;
             int overlap = EditMath.overlapPx(Math.max(sw, sh)) + 2;
             EditRenderer.Target tile = new EditRenderer.Target();
             ByteBuffer pixels = ByteBuffer.allocateDirect(TILE * TILE * 4).order(ByteOrder.LITTLE_ENDIAN);
@@ -142,8 +139,8 @@ public final class EditExporter {
                     f.outToBase = outToBase;
                     f.baseToImg = baseToImg;
                     f.imgToTex = imgToSrcUv.then(texToSrcUv.inverse());
-                    f.outLongSide = Math.max(W, H);
-                    r.latticeAspect = W / (float) H;
+                    f.outLongSide = plan.longSide();
+                    r.latticeAspect = plan.latticeAspect();
                     r.finish(f, state, u);
                     pixels.clear();
                     GLES30.glReadPixels(0, 0, tw, th, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, pixels);
@@ -175,25 +172,64 @@ public final class EditExporter {
         }
     }
 
-    /** The source rectangle {x, y, w, h} an output tile needs: its corners mapped back, the overlap around, inside the source. */
+    /**
+     * The source rectangle {x, y, w, h} an output tile needs: its corners mapped back, the overlap around, inside the source
+     * (P367: the math lives in {@link EditZoom#region}, shared with the zoom's full-resolution regions).
+     */
     static int[] region(CropMath.Affine outToSrcPx, int ox, int oy, int tw, int th, int overlap, int sw, int sh, boolean even) {
-        double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE, maxX = -Double.MAX_VALUE, maxY = -Double.MAX_VALUE;
-        for (int[] p : new int[][]{{ox, oy}, {ox + tw, oy}, {ox, oy + th}, {ox + tw, oy + th}}) {
-            double[] q = outToSrcPx.apply(p[0], p[1]);
-            minX = Math.min(minX, q[0]);
-            minY = Math.min(minY, q[1]);
-            maxX = Math.max(maxX, q[0]);
-            maxY = Math.max(maxY, q[1]);
+        return EditZoom.region(outToSrcPx, ox, oy, tw, th, overlap, sw, sh, even);
+    }
+
+    /** The export's output pixel limit for this much free memory (P367: the zoom renders its grain for the same output). */
+    static long outMax(long budget) {
+        return Math.max(4_000_000L, Math.min(EditSource.OUT_MAX, budget / 10));
+    }
+
+    /** The copy's size {W, H} for a crop of {@code cropW x cropH} reader px: scaled down to {@code outMax} pixels at most. */
+    static int[] outputSize(double cropW, double cropH, long outMax) {
+        double k = Math.min(1.0, Math.sqrt(outMax / Math.max(1.0, cropW * cropH)));
+        return new int[]{Math.max(1, (int) Math.round(cropW * k)), Math.max(1, (int) Math.round(cropH * k))};
+    }
+
+    /**
+     * P367: the copy of {@code state} from a reader picture {@code sw x sh} stored with EXIF {@code orientation}, at most
+     * {@code outMax} pixels: its size, the output px -> crop uv -> base uv -> oriented uv -> source uv -> source px chain and the
+     * grain's output size / lattice aspect. {@link #export} renders with it; the zoom's full-resolution regions and the tests use
+     * the same object, so the zoomed view is the copy's mapping by construction.
+     */
+    static final class Plan {
+        final int W, H;
+        /** The oriented reader picture (what the crop math works in). */
+        final double ow, oh;
+        final CropMath.Affine outToBase, baseToImg, imgToSrcUv, outToSrcPx;
+
+        Plan(EditState state, int sw, int sh, int orientation, long outMax) {
+            boolean swap = CropMath.swapsSides(orientation);
+            ow = swap ? sh : sw;
+            oh = swap ? sw : sh;
+            double[] crop = CropMath.cropPixels(state, ow, oh);
+            int[] size = outputSize(crop[0], crop[1], outMax);
+            W = size[0];
+            H = size[1];
+            outToBase = CropMath.Affine.scale(1.0 / W, 1.0 / H).then(CropMath.cropToBase(state));
+            baseToImg = CropMath.baseToOriented(state, ow, oh);
+            imgToSrcUv = CropMath.orientationToDisplay(orientation).inverse();
+            outToSrcPx = outToBase.then(baseToImg).then(imgToSrcUv).then(CropMath.Affine.scale(sw, sh));
         }
-        int x0 = Math.max(0, (int) Math.floor(minX) - overlap), y0 = Math.max(0, (int) Math.floor(minY) - overlap);
-        int x1 = Math.min(sw, (int) Math.ceil(maxX) + overlap), y1 = Math.min(sh, (int) Math.ceil(maxY) + overlap);
-        if (even) {
-            x0 &= ~1;
-            y0 &= ~1;
+
+        /** The grain's output pixels on the long side (EditRenderer.Finish.outLongSide). */
+        int longSide() {
+            return Math.max(W, H);
         }
-        x1 = Math.max(x1, Math.min(sw, x0 + 2));
-        y1 = Math.max(y1, Math.min(sh, y0 + 2));
-        return new int[]{x0, y0, x1 - x0, y1 - y0};
+
+        /** The grain lattice's aspect (EditRenderer.latticeAspect): the copy's rounded W / H. */
+        float latticeAspect() {
+            return W / (float) H;
+        }
+    }
+
+    static Plan plan(EditState state, int sw, int sh, int orientation, long outMax) {
+        return new Plan(state, sw, sh, orientation, outMax);
     }
 
     // ---------------------------------------------------------------- saving

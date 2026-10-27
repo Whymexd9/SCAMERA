@@ -24,7 +24,8 @@ import java.util.Locale;
  * the full-size stream takes the stills only - the stock camera's method, Desktop/x300u_stock200.txt): the median (ln) of the
  * viewfinder's neutrals of the last {@link #WINDOW_MS} before the press with AWB CONVERGED / LOCKED ({@link Ring}); without any,
  * the still's own HAL neutral by the rule above, else P121.</li>
- * <li>anything else (the 12 MP ISZ modules of any brand, the OPPO native route): P121 as before.</li>
+ * <li>anything else (the 12 MP ISZ modules of any brand, the OPPO native route): P121 as before; P366: in a RAW-only session whose
+ * ISP runs no 3A ({@link #ispIdle}) the ISP teacher's neutral where it has learned enough (MosaicTeacher.use, MosaicNeutral.taught).</li>
  * </ul>
  * No trust score and no fitted variances (the verifier: agreement between the HAL and our estimate cannot say which is wrong, and
  * constants fitted to the ~10 logged cases would only reproduce them). scam_dev.txt "mosaic_awb_resolver 0": P121 on every route;
@@ -198,11 +199,13 @@ public final class MosaicNeutralResolver {
 
     /**
      * The distance (ln) of neutral {@code n} (r, g, b) from camera {@code id}'s curve as MosaicNeutral projects onto it (the locus,
-     * or the P121 polyline with "mosaic_awb_locus 0"); NaN when the camera has none.
+     * or the P121 polyline with "mosaic_awb_locus 0"); NaN when the camera has none. P366 (review): the curve its learned points fit
+     * (MosaicNeutral.onLearnedCurve), not the one P366's slope guard puts a photo's statistic on - a converged HAL neutral under a
+     * light the camera learned stays within CURVE_DISTANCE of it, as before.
      */
     public static float curveDistance(String id, @Nullable float[] n, @Nullable MosaicNeutral.Prior prior) {
         if (n == null || n.length < 3 || !(n[1] > 0f) || !usable(n[0] / n[1]) || !usable(n[2] / n[1])) return Float.NaN;
-        final MosaicNeutral.Result q = MosaicNeutral.resolve(id, n[0] / n[1], n[2] / n[1], 0, 0f, prior, "HAL");
+        final MosaicNeutral.Result q = MosaicNeutral.onLearnedCurve(id, n[0] / n[1], n[2] / n[1], prior, "HAL");
         return q == null ? Float.NaN : q.distance;
     }
 
@@ -210,14 +213,15 @@ public final class MosaicNeutralResolver {
      * P315: the camera's neutral instead of P121's estimate when that estimate lies more than {@link #OFF_LOCUS} from every learned
      * illuminant of the camera's curve (a coloured light's glow, not a white point: the X8U's LED-lit white case, 0.745 / 0.872 ln)
      * while the camera's own neutral lies on the curve (within {@link #CURVE_DISTANCE}) and away from the curve's point nearest raw
-     * grey (an ISP reading the mosaic as Bayer would converge there); the log text, null to keep P121.
+     * grey (an ISP reading the mosaic as Bayer would converge there); the log text, null to keep P121. P366 (review): all three
+     * against the curve the camera's learned points fit ({@code ownDistance}: MosaicNeutral.Result#learnedDistance).
      */
     @Nullable
     public static String offLocus(String id, float ownDistance, @Nullable float[] hal, @Nullable MosaicNeutral.Prior prior) {
         if (!(ownDistance > OFF_LOCUS) || !on() || hal == null || hal.length < 3 || !(hal[1] > 0f)) return null;
         final float halDistance = curveDistance(id, hal, prior);
         if (!(halDistance <= CURVE_DISTANCE)) return null;
-        final MosaicNeutral.Result foot = MosaicNeutral.resolve(id, 1f, 1f, 0, 0f, prior, "raw grey");
+        final MosaicNeutral.Result foot = MosaicNeutral.onLearnedCurve(id, 1f, 1f, prior, "raw grey");
         if (foot == null) return null;
         final double r = hal[0] / hal[1], b = hal[2] / hal[1];
         final double fromFoot = Math.hypot(Math.log(r / foot.neutral[0]), Math.log(b / foot.neutral[2]));
@@ -225,6 +229,74 @@ public final class MosaicNeutralResolver {
         return String.format(Locale.ROOT, "P121's estimate is %.3f from the camera's curve (more than %.1f: a coloured light, not an"
                 + " illuminant): the camera's neutral %.3f / %.3f kept (%.3f from the curve, %.3f from its raw-grey point)",
                 ownDistance, OFF_LOCUS, r, b, halDistance, fromFoot);
+    }
+
+    /** P366: results a burst needs, the sensor time they span, how far (ln) their gains may stray from the median, for {@link #ispIdle}. */
+    static final int IDLE_RESULTS = 4;
+    static final long IDLE_SPAN_NS = 300_000_000L;
+    static final double IDLE_SPREAD = 0.005;
+
+    /**
+     * P366 (owner, 2026-10-27: «вот такие фото получаю с исз, исправь»): whether a mosaic burst comes from a RAW-only session whose ISP
+     * runs no 3A, where the camera's neutral says nothing (MosaicTeacher.useMode 1): every result has AWB AUTO, the identity
+     * COLOR_CORRECTION_TRANSFORM (no OPPO com.oplus.custom.ccm: an OPPO ISP with an identity transform renders through that one) and
+     * COLOR_CORRECTION_GAINS within {@link #IDLE_SPREAD} ln of their median (R / G and B / G), at least {@link #IDLE_RESULTS}
+     * results over {@link #IDLE_SPAN_NS} of sensor time. The owner's X200U camera 4 ISZ burst (forceSensorMode 3, the vivo SDK lease,
+     * no ISP stream): 14 results (8 from the ring, 6 after the press) over more than 0.5 s, the identity, R 2.4336-2.4365 / B 1.5693
+     * (0.12 %, the HAL's 1/1024 steps), the same 7 s later while the scene's statistic moved; a running ISP (camera 3's plain results a moment before: CCM [153 -19 -6 | -17 175 -30 | 0 -55 184] / 128)
+     * never reports the identity on vivo. Only asked for a burst without a route (the vivo native and OPPO sensor-mode routes run
+     * their 3A). Returns the log text, null when the ISP may be running (or the results do not tell).
+     */
+    @Nullable
+    public static String ispIdle(@Nullable java.util.List<CaptureResult> results) {
+        if (results == null) return null;
+        final java.util.ArrayList<double[]> gains = new java.util.ArrayList<>(); // {ln R/G, ln B/G, timestamp}
+        final java.util.HashSet<Long> seen = new java.util.HashSet<>();
+        long first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        try {
+            for (CaptureResult r : results) {
+                if (r == null) continue;
+                final Long ts = r.get(CaptureResult.SENSOR_TIMESTAMP);
+                if (ts == null || !seen.add(ts)) continue;
+                final Integer awb = r.get(CaptureResult.CONTROL_AWB_MODE);
+                if (awb == null || awb != CaptureResult.CONTROL_AWB_MODE_AUTO) return null;
+                final android.hardware.camera2.params.ColorSpaceTransform t = r.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
+                if (t == null) return null;
+                final float[] m = new float[9];
+                for (int row = 0; row < 3; row++) for (int c = 0; c < 3; c++) m[row * 3 + c] = t.getElement(c, row).floatValue();
+                if (!OplusCcm.identity(m) || oplusCcm(r)) return null;
+                final android.hardware.camera2.params.RggbChannelVector g = r.get(CaptureResult.COLOR_CORRECTION_GAINS);
+                if (g == null) return null;
+                final double green = 0.5 * (g.getGreenEven() + g.getGreenOdd());
+                if (!(green > 0) || !(g.getRed() > 0) || !(g.getBlue() > 0)) return null;
+                gains.add(new double[]{Math.log(g.getRed() / green), Math.log(g.getBlue() / green)});
+                first = Math.min(first, ts);
+                last = Math.max(last, ts);
+            }
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (gains.size() < IDLE_RESULTS || last - first < IDLE_SPAN_NS) return null;
+        final double[] lr = new double[gains.size()], lb = new double[gains.size()];
+        for (int i = 0; i < gains.size(); i++) {
+            lr[i] = gains.get(i)[0];
+            lb[i] = gains.get(i)[1];
+        }
+        final double mr = median(lr, lr.length), mb = median(lb, lb.length);
+        double spread = 0;
+        for (int i = 0; i < lr.length; i++) spread = Math.max(spread, Math.max(Math.abs(lr[i] - mr), Math.abs(lb[i] - mb)));
+        if (spread > IDLE_SPREAD) return null;
+        return String.format(Locale.ROOT, "the ISP runs no 3A: %d results over %d ms, the identity colour transform, gains R %.3f / B %.3f"
+                + " frozen within %.2f %%", gains.size(), (last - first) / 1_000_000L, Math.exp(mr), Math.exp(mb), 100 * spread);
+    }
+
+    /** P366: whether the result carries a usable OPPO ISP matrix (com.oplus.custom.ccm): its ISP renders, whatever the transform says. */
+    private static boolean oplusCcm(CaptureResult r) {
+        try {
+            return OplusCcm.parse(r.get(new CaptureResult.Key<>(OplusCcm.TAG_NAME, byte[].class))) != null;
+        } catch (RuntimeException noTag) {
+            return false;
+        }
     }
 
     static boolean converged(@Nullable Integer state) {

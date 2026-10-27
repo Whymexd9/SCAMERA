@@ -724,8 +724,8 @@ public class Parameters {
     /**
      * P212g (W7 = M12): a mosaic shot takes the plain-session table's matrix when no tuned one renders it and the result's transform
      * does not fit its neutral - our own neutral (the ISP's matrix was picked at the camera's), or none the ISP branch accepts (the
-     * vivo mosaic results' identity). P212z: ReCalcColor asks the table only when PlainColourMemory.wanted - a FULLRES shot by
-     * default, the 12 MP ISZ modules with "mosaic_ccm_table 2".
+     * vivo mosaic results' identity). P212z: ReCalcColor asks the table only when PlainColourMemory.wanted - P366: every mosaic shot
+     * by default ("mosaic_ccm_table 2"; the owner's green X200U ISZ photos were the A/B), FULLRES only with 1.
      */
     static boolean plainTableApplies(boolean mosaicShot, boolean oppoTuned, boolean ownNeutral, boolean ispUsable) {
         return mosaicShot && !oppoTuned && (ownNeutral || !ispUsable);
@@ -919,7 +919,8 @@ public class Parameters {
         final boolean ispUsable = ispCcmUsable(CST);
         com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup plainTable = null;
         boolean plainTableAsked = false;
-        // P212z (review): FULLRES photos only by default ("mosaic_ccm_table 2": the 12 MP ISZ modules' mosaic photos as well)
+        // P212z (review): FULLRES photos only with "mosaic_ccm_table 1"; P366 (owner, 2026-10-27: «вот такие фото получаю с исз,
+        // исправь»): the 12 MP ISZ modules' mosaic photos as well by default (2) - the generic DNG matrices rendered them green
         // P315: a camera whose DNG forward matrices are the sRGB -> XYZ placeholder (X8U camera 2) never renders a mosaic shot through
         // them: the plain-session table off FULLRES as well, else the ISP's matrix even with our own neutral
         final boolean placeholderFm = mosaicShot && OppoTunedColor.placeholderForward(ForwardTransform1)
@@ -1042,7 +1043,7 @@ public class Parameters {
         if (isp) return placeholder ? "the ISP transform of the result (the DNG forward matrices are the sRGB -> XYZ placeholder, P315)"
                 : "the ISP transform of the result (it fits the camera's own neutral)";
         if (!com.particlesdevs.photoncamera.processing.color.PlainColourMemory.on()) return "the DNG matrices (mosaic_ccm_table 0)";
-        if (!wanted) return "the DNG matrices (not a FULLRES shot: the plain-session table with mosaic_ccm_table 2)";
+        if (!wanted) return "the DNG matrices (not a FULLRES shot: mosaic_ccm_table 1 gives the plain-session table to FULLRES only)";
         return asked ? String.format(java.util.Locale.ROOT, "the DNG matrices (camera %s's plain table has no bin near ln(r/b) %.3f)", camera,
                 Math.log(neutral[0] / neutral[2])) : "the DNG matrices";
     }

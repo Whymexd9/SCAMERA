@@ -10,12 +10,19 @@ import androidx.lifecycle.MutableLiveData;
 
 import com.particlesdevs.photoncamera.util.Log;
 
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 /**
  * P351: what outlives a configuration change of the editor: the decoded source, the undo history and the running export
  * (its progress and result). The state itself also goes into the saved instance state as JSON (process death).
  */
 public final class EditorViewModel extends AndroidViewModel {
     private static final String TAG = "EditorViewModel";
+    /** P367: how long the export waits for the zoom's reader to close (a RAW open in progress finishes first). */
+    static final long READY_WAIT_S = 30;
 
     /** null while decoding; the error text when it failed. */
     final MutableLiveData<EditSource> source = new MutableLiveData<>();
@@ -55,7 +62,11 @@ public final class EditorViewModel extends AndroidViewModel {
         return exporting;
     }
 
-    void export(EditState s) {
+    /**
+     * The export on its own thread; P367: after {@code ready} (the editor zoom's reader closing, EditorView.closeFullRes) is
+     * done - its memory is the export's - or {@link #READY_WAIT_S} passed.
+     */
+    void export(EditState s, @Nullable Future<?> ready) {
         EditSource src = source.getValue();
         if (src == null || exporting) return;
         exporting = true;
@@ -63,6 +74,15 @@ public final class EditorViewModel extends AndroidViewModel {
         final EditState snapshot = s.copy();
         Thread t = new Thread(() -> {
             try {
+                if (ready != null) {
+                    try {
+                        ready.get(READY_WAIT_S, TimeUnit.SECONDS);
+                    } catch (TimeoutException | ExecutionException e) {
+                        Log.w(TAG, "the zoom's reader did not close in time: " + e);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
                 EditExporter.Result r = EditExporter.export(getApplication(), src, snapshot, exportProgress::postValue);
                 exported.postValue(r);
             } catch (Exception | OutOfMemoryError e) {

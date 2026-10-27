@@ -103,6 +103,32 @@ public class ScamHybridBurstRolesTest {
         assertEquals(3, plain.size());
     }
 
+    /** P366 (owner, 2026-10-27, X200 Ultra ISZ at sea at noon: «вот такие фото получаю с исз, исправь»): the base frame's EV100 goes
+     *  to the worker, which holds its lamp-flicker corrections of the ultrashort frames from daylight up. */
+    @Test public void sceneBrightnessOfTheBaseFrameGoesToTheWorker() throws Exception {
+        assertEquals("the owner's sea, 12:57:50", 11.19f, ScamHybridBurst.sceneEv100(2_382_580L, 72, 2.0f), 0.01f);
+        assertEquals("his LED bar, 2026-10-25 11:58:45", 5.07f, ScamHybridBurst.sceneEv100(9_999_991L, 851, 1.69f), 0.01f);
+        assertTrue(Float.isNaN(ScamHybridBurst.sceneEv100(0L, 72, 2f)) && Float.isNaN(ScamHybridBurst.sceneEv100(2_000_000L, 0, 2f))
+                && Float.isNaN(ScamHybridBurst.sceneEv100(2_000_000L, 72, 0f)) && Float.isNaN(ScamHybridBurst.sceneEv100(2_000_000L, 72, Float.NaN)));
+        assertEquals("usSceneEv 11.19\n", ScamHybridBurst.sceneEvTuning(11.187f));
+        assertEquals("usSceneEv -1.50\n", ScamHybridBurst.sceneEvTuning(-1.5f));
+        assertEquals("", ScamHybridBurst.sceneEvTuning(Float.NaN));
+        // a burst: the merge's base frame (N 2.38 ms at ISO 72), not its ultrashort or long frames, at the shot's aperture
+        List<ImageFrame> frames = new ArrayList<>();
+        for (int i = 0; i < 3; i++) frames.add(frame(ImageFrame.CaptureRole.NORMAL, 2_382_580L, 72));
+        frames.add(frame(ImageFrame.CaptureRole.EXTRA_SHORT, 313_000L, 72));
+        frames.add(frame(ImageFrame.CaptureRole.LONG, 4_765_160L, 72));
+        Parameters p = parameters(); p.aperture = 2.0f;
+        Constructor<ScamHybridBurst> c = ScamHybridBurst.class.getDeclaredConstructor(List.class, Parameters.class, boolean.class);
+        c.setAccessible(true);
+        ScamHybridBurst b = c.newInstance(frames, p, false);
+        assertEquals(11.19f, b.sceneEv, 0.01f);
+        assertTrue(b.tuningOverride(), b.tuningOverride().contains("usSceneEv 11.19\n"));
+        // no aperture known: no line (the worker's daylight rule stays off)
+        ScamHybridBurst unknown = c.newInstance(new ArrayList<>(frames), parameters(), false);
+        assertFalse(unknown.tuningOverride(), unknown.tuningOverride().contains("usSceneEv"));
+    }
+
     @Test public void longFramesDeliveredAtNAreMergedAsN() throws Exception {
         List<ImageFrame> frames = new ArrayList<>();
         for (int i = 0; i < 3; i++) frames.add(frame(ImageFrame.CaptureRole.NORMAL, 10_000_000L, 320));

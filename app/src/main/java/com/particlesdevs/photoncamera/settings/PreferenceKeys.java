@@ -1024,6 +1024,17 @@ public class PreferenceKeys {
         // "hybrid_us_fill 0" = the ultrashort frames inside the native merge by Bento's mask, as before.
         if (hybridSwitch("us_fill", true)) out.append("mosaicUsFill 1\n");
         if (!hybridSwitch("mosaic_window_full", true)) out.append("mosaicWindowFull 0\n");
+        // P366 (owner, 2026-10-27, vivo X200 Ultra ISZ at sea at noon: «вот такие фото получаю с исз, исправь» - pink blotches in
+        // the white foam): the worker holds the lamp-flicker corrections of the ultrashort frames from the base frame's EV100
+        // usDaylightEv up (the burst's usSceneEv, ScamHybridBurst) and holds a tile field whose deviating tiles disagree with their
+        // neighbours (usIncoherent). Its defaults (ScamHybridBurst.US_DAYLIGHT_EV / US_INCOHERENT) are not written; scam_dev.txt
+        // "hybrid_us_daylight_ev 0" / "hybrid_us_incoherent 0" = off (the lamp-flicker corrections as before P366).
+        final float daylightEv = hybridValue("us_daylight_ev", com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.US_DAYLIGHT_EV);
+        final float incoherent = hybridValue("us_incoherent", com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.US_INCOHERENT);
+        if (daylightEv != com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.US_DAYLIGHT_EV)
+            out.append("usDaylightEv ").append(Math.max(0f, daylightEv)).append('\n');
+        if (incoherent != com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.US_INCOHERENT)
+            out.append("usIncoherent ").append(Math.max(0f, incoherent)).append('\n');
         return out.toString();
     }
     /**

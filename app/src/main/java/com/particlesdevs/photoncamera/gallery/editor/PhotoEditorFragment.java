@@ -13,6 +13,7 @@ import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -51,6 +52,12 @@ import com.particlesdevs.photoncamera.util.Lang;
  * settles, the bars rise), the tab bar's selection glides between tabs (pill, colour, icon bounce), panels slide in from the
  * side of the tab, their rows come in one after another, buttons give under a finger, pills and the save card fade / scale in
  * (EditMotion; the system's animation scale applies).
+ * P367 (owner, 2026-10-27: «В редакторе фото дай возможность кропать фото, при этом оно должно быть в полном разрешении» -
+ * «Я имею ввиду кропать предпосмотр во время редактирования»): outside «Кадр» the picture zooms for a closer look - pinch,
+ * drag, double tap fit <-> 100 % (EditorView / EditZoom) - and past the preview's resolution shows the original's pixels as the
+ * copy will have them; a pill gives the zoom (and «детали…» while they load). The view only: the copy, undo and the crop do
+ * not change; «Кадр», a geometry change, saving and the first back return to the fit. A second finger ends the long-press
+ * «before». Test hook: ExternalEdit.ARG_ZOOM.
  */
 public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
     private static final String KEY_STATE = "edit_state", KEY_TAB = "edit_tab";
@@ -71,6 +78,13 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
     private CropOverlayView overlay;
     private EditHistogramView histogram;
     private TextView beforePill, notePill, exportText;
+    /** P367: the zoom pill («250 %», «100 % · детали…») and what the editor view last said about the zoom. */
+    @Nullable private TextView zoomPill;
+    private int zoomPercent, zoomDetail;
+    private boolean zoomed, zoomPillOn;
+    private final Runnable hideNote = () -> {
+        if (notePill != null) EditMotion.show(notePill, false, GalleryUi.dp(notePill.getContext(), 12));
+    };
     private ProgressBar spinner, exportBar;
     private FrameLayout imageArea, exportOverlay;
     private ScrollView panelScroll;
@@ -106,6 +120,9 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         Context c = requireContext();
         panels = new EditPanels(c, this);
         View root = build(c);
+        // P367 test hook: start zoomed (a fresh editor only: a recreated one keeps the fit)
+        if (saved == null && a.containsKey(ExternalEdit.ARG_ZOOM))
+            gl.startZoom(a.getFloat(ExternalEdit.ARG_ZOOM, 1f), a.getFloat(ExternalEdit.ARG_ZOOM_CX, 0.5f), a.getFloat(ExternalEdit.ARG_ZOOM_CY, 0.5f));
         vm.source.observe(getViewLifecycleOwner(), this::onSource);
         vm.error.observe(getViewLifecycleOwner(), e -> {
             if (e == null) return;
@@ -133,7 +150,7 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                onBack();
+                onBack(true);
             }
         });
         if (clipboard == null) {
@@ -156,7 +173,7 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.setPadding(GalleryUi.dp(c, 12), GalleryUi.dp(c, 14), GalleryUi.dp(c, 12), GalleryUi.dp(c, 6));
-        View close = iconButton(c, R.drawable.ui_ic_close, Lang.t("Закрыть редактор", "Close the editor"), v -> onBack());
+        View close = iconButton(c, R.drawable.ui_ic_close, Lang.t("Закрыть редактор", "Close the editor"), v -> onBack(false));
         GalleryUi.setEnabledLook(close, true);
         top.addView(close, new LinearLayout.LayoutParams(GalleryUi.dp(c, 44), GalleryUi.dp(c, 44)));
         TextView title = GalleryUi.fitText(c, name, 13, GalleryUi.MUTED);
@@ -196,6 +213,12 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         overlay.setListener(this::onCrop);
         imageArea.addView(overlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         histogram = new EditHistogramView(c);
+        // P367: the zoom pill, where the «before» pill goes (it hides while that one shows)
+        zoomPill = GalleryUi.pill(c, "", false);
+        zoomPill.setVisibility(View.GONE);
+        FrameLayout.LayoutParams zp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
+        zp.topMargin = zp.leftMargin = GalleryUi.dp(c, 12);
+        imageArea.addView(zoomPill, zp);
         FrameLayout.LayoutParams hp = new FrameLayout.LayoutParams(GalleryUi.dp(c, 132), GalleryUi.dp(c, 60), Gravity.TOP | Gravity.END);
         hp.topMargin = hp.rightMargin = GalleryUi.dp(c, 10);
         imageArea.addView(histogram, hp);
@@ -213,12 +236,27 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         spinner = new ProgressBar(c);
         imageArea.addView(spinner, new FrameLayout.LayoutParams(GalleryUi.dp(c, 48), GalleryUi.dp(c, 48), Gravity.CENTER));
         col.addView(imageArea, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        // P367: pinch zooms about the fingers (no quick scale: a double tap toggles fit <-> 100 %)
+        final ScaleGestureDetector pinch = new ScaleGestureDetector(c, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            @Override
+            public boolean onScaleBegin(ScaleGestureDetector d) {
+                return tab != TAB_CROP && gl != null && gl.zoomable();
+            }
+
+            @Override
+            public boolean onScale(ScaleGestureDetector d) {
+                if (gl != null) gl.zoomBy(d.getScaleFactor(), d.getFocusX(), d.getFocusY());
+                return true;
+            }
+        });
+        pinch.setQuickScaleEnabled(false);
         GestureDetector press = new GestureDetector(c, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public void onLongPress(MotionEvent e) {
-                if (tab == TAB_CROP) return;
+                if (tab == TAB_CROP || pinch.isInProgress()) return;
                 before = true;
                 EditMotion.show(beforePill, true, -GalleryUi.dp(c, 6));
+                updateZoomPill();
                 render();
             }
 
@@ -226,13 +264,33 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
             public boolean onDown(MotionEvent e) {
                 return true;
             }
+
+            /** P367: one finger (or the fingers' centre during a pinch) pans a zoomed picture. */
+            @Override
+            public boolean onScroll(MotionEvent e1, MotionEvent e2, float dx, float dy) {
+                if (tab == TAB_CROP || before || gl == null) return false;
+                gl.panBy(-dx, -dy);
+                return true;
+            }
+
+            /** P367: fit <-> 100 % centred on the tapped point. */
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                if (tab == TAB_CROP || before || gl == null) return false;
+                gl.toggleZoom(e.getX(), e.getY());
+                return true;
+            }
         });
         gl.setOnTouchListener((v, e) -> {
-            press.onTouchEvent(e);
             int action = e.getActionMasked();
-            if ((action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) && before) {
+            if (action == MotionEvent.ACTION_DOWN && gl != null) gl.stopZoomAnimation();
+            pinch.onTouchEvent(e);
+            press.onTouchEvent(e);
+            // P367: a second finger is a pinch, not «before»; lifting every finger ends «before» as always
+            if (before && (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)) {
                 before = false;
                 EditMotion.show(beforePill, false, -GalleryUi.dp(c, 6));
+                updateZoomPill();
                 render();
             }
             return true;
@@ -283,6 +341,19 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
                 if (getContext() == null) return;
                 Toast.makeText(getContext(), Lang.t("Редактор не запустился на GPU: ", "The editor could not start on the GPU: ") + why,
                         Toast.LENGTH_LONG).show();
+            }
+
+            @Override
+            public void zoom(int percent, boolean isZoomed, int detail) {
+                zoomPercent = percent;
+                zoomed = isZoomed;
+                zoomDetail = detail;
+                updateZoomPill();
+            }
+
+            @Override
+            public void note(String text) {
+                showNote(text);
             }
         });
         updateHistoryButtons();
@@ -433,13 +504,7 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
                 vm.history.commit(restore);
             }
         }
-        if (s.note != null) {
-            notePill.setText(s.note);
-            EditMotion.show(notePill, true, GalleryUi.dp(requireContext(), 12));
-            notePill.postDelayed(() -> {
-                if (notePill != null) EditMotion.show(notePill, false, GalleryUi.dp(notePill.getContext(), 12));
-            }, 6000);
-        }
+        if (s.note != null) showNote(s.note);
         gl.setSource(s);
         showPanel();
         if (!entered) {
@@ -457,6 +522,35 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         if (gl == null) return;
         gl.setState(vm.state, tab == TAB_CROP, before);
         EditMotion.show(histogram, tab != TAB_CROP, 0f);
+        updateZoomPill();
+    }
+
+    /** A line in the note pill for 6 s (a RAW's limits; P367: full resolution unavailable). */
+    private void showNote(String text) {
+        if (notePill == null || getContext() == null) return;
+        notePill.setText(text);
+        EditMotion.show(notePill, true, GalleryUi.dp(requireContext(), 12));
+        notePill.removeCallbacks(hideNote);
+        notePill.postDelayed(hideNote, 6000);
+    }
+
+    /**
+     * P367: the zoom pill while zoomed (not in «Кадр», not over «before»), «детали…» while the full resolution loads,
+     * «уменьшено» when the original is read below its own resolution (memory; the note pill said why).
+     */
+    private void updateZoomPill() {
+        if (zoomPill == null) return;
+        boolean show = zoomed && !before && tab != TAB_CROP;
+        if (show) {
+            String t = zoomPercent + " %";
+            if (zoomDetail == EditorView.DETAIL_LOADING) t += " · " + Lang.t("детали…", "detail…");
+            else if (zoomDetail == EditorView.DETAIL_REDUCED) t += " · " + Lang.t("уменьшено", "reduced");
+            if (!t.contentEquals(zoomPill.getText())) zoomPill.setText(t);
+        }
+        if (show != zoomPillOn) {
+            zoomPillOn = show;
+            EditMotion.show(zoomPill, show, -GalleryUi.dp(zoomPill.getContext(), 6));
+        }
     }
 
     @Override
@@ -657,7 +751,8 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
             card.animate().scaleX(1f).scaleY(1f).setDuration(EditMotion.LONG).setInterpolator(new android.view.animation.OvershootInterpolator(1.6f)).start();
         }
         exportBar.setProgress(0);
-        vm.export(vm.state);
+        // P367: the zoom's reader gives its memory to the export (which waits until it is closed)
+        vm.export(vm.state, gl != null ? gl.closeFullRes() : null);
     }
 
     private void onExported(EditExporter.Result r) {
@@ -686,8 +781,13 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         leave(true);
     }
 
-    private void onBack() {
+    /** Leaving (asks first with unsaved edits); {@code systemBack}: P367 - the first back returns a zoomed picture to the fit. */
+    private void onBack(boolean systemBack) {
         if (vm.exporting()) return;
+        if (systemBack && gl != null && gl.isZoomed()) {
+            gl.resetZoom(true);
+            return;
+        }
         if (vm.history != null && vm.history.changed()) {
             Context c = requireContext();
             final BottomSheetDialog[] d = new BottomSheetDialog[1];
@@ -779,9 +879,12 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
             gl.setCallbacks(null);
             gl.release();
         }
+        if (notePill != null) notePill.removeCallbacks(hideNote);
         gl = null;
         overlay = null;
         histogram = null;
+        zoomPill = null;
+        zoomPillOn = false;
         super.onDestroyView();
     }
 }

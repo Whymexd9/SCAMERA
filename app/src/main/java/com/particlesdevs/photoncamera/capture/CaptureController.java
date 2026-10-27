@@ -653,7 +653,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if (mClosedForProcessing) { img.close(); return; }
                 synchronized (mZslBufferLock) {
                     if (!isCameraResumed || reader != mImageReaderRaw) { img.close(); return; }
+                    final long copyStart = android.os.SystemClock.elapsedRealtimeNanos();
                     mZslRingBuffer.addLast(ringFrameLocked(img));
+                    LiveRawFrame.noteRingCopy(android.os.SystemClock.elapsedRealtimeNanos() - copyStart); // P365 step 1
                     int maxFrames = ringCapacityLocked();
                     while (mZslRingBuffer.size() > maxFrames) {
                         RingFrame old = mZslRingBuffer.pollFirst();
@@ -1682,10 +1684,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
     /**
      * The RAW stream format of this camera: pref_raw_stream_format auto (RAW_SENSOR when the camera offers it,
-     * else RAW10, else RAW12), or the forced format when the camera offers it. ZSL / live RAW stay RAW_SENSOR-only.
+     * else RAW10, else RAW12), or the forced format when the camera offers it. The ZSL ring and the live RAW viewfinder unpack
+     * RAW10 / RAW12 (P316 LiveRawFrame; P365 the ring on arrival, ZslRing.store).
+     * P365: "raw10" only where the camera's samples fit 10 bits ({@link #raw10Fits}): a lens of a wider white level keeps the auto
+     * order, so nothing 12-bit is cut to 10.
      */
-    private static int resolveRawFormat(StreamConfigurationMap map) {
+    private static int resolveRawFormat(StreamConfigurationMap map, @Nullable Integer whiteLevel) {
         String mode = PreferenceKeys.getRawStreamFormat();
+        if ("raw10".equals(mode) && !raw10Fits(whiteLevel)) mode = "auto";
         int[] order;
         if ("raw10".equals(mode)) order = new int[]{ImageFormat.RAW10, ImageFormat.RAW_SENSOR, ImageFormat.RAW12};
         else if ("raw12".equals(mode)) order = new int[]{ImageFormat.RAW12, ImageFormat.RAW_SENSOR, ImageFormat.RAW10};
@@ -1695,6 +1701,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (sizes != null && sizes.length > 0) return format;
         }
         return ImageFormat.RAW_SENSOR;
+    }
+
+    /** P365: the camera's declared white level (SENSOR_INFO_WHITE_LEVEL) fits a RAW10 sample (known and at most 1023). */
+    static boolean raw10Fits(@Nullable Integer whiteLevel) {
+        return whiteLevel != null && whiteLevel > 0 && whiteLevel <= 1023;
     }
 
     /**
@@ -1960,6 +1971,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mShotInProgress = false;
         }
         clearZslPreviewFrames();
+        mMeterUnpacked = null; // P365 (review): the meters' unpacked frame (meterSamples), made again when a meter needs it
         LiveRawFrame.setEnabled(false);
         LiveRawFrame.setMosaicPreview(false);
         mLiveRawSession = false;
@@ -2550,6 +2562,78 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return retsize;
     }
 
+    /** P365 step 9: the long side of the ISP stream under the RAW viewfinder (the reference app's 1440x1080 on the X7 Ultra). */
+    static final int LIGHT_PREVIEW_LONG = 1440;
+
+    /**
+     * P365 step 9: the smallest of {@code sizes} (sensor-oriented SurfaceTexture sizes) of {@code aspect} (short : long, as
+     * getAspect) whose long side is at least {@link #LIGHT_PREVIEW_LONG}, portrait (short x long) as getPreviewOutputSize gives
+     * {@code current}; {@code current} when none is smaller.
+     */
+    static Size lightPreviewSize(@Nullable Size[] sizes, Size aspect, Size current) {
+        Size best = current;
+        long bestArea = (long) current.getWidth() * current.getHeight();
+        if (sizes != null) for (Size size : sizes) {
+            final int sizeShort = Math.min(size.getWidth(), size.getHeight()), sizeLong = Math.max(size.getWidth(), size.getHeight());
+            if (sizeLong < LIGHT_PREVIEW_LONG || sizeLong % aspect.getHeight() != 0
+                    || sizeShort != aspect.getWidth() * sizeLong / aspect.getHeight()) continue;
+            final long area = (long) sizeShort * sizeLong;
+            if (area < bestArea) {
+                best = new Size(sizeShort, sizeLong);
+                bestArea = area;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * P365 step 9 (scam_dev vf_isp_light; default on the OPPO Find X7 Ultra, DeviceDefaults.ispLightViewfinder): under the RAW
+     * viewfinder the ISP stream is the reference app's - 1440x1080 class, noise reduction and edge off on the repeating request.
+     */
+    private static boolean ispLight() {
+        return PreferenceKeys.scamDevSwitch("vf_isp_light", com.particlesdevs.photoncamera.settings.DeviceDefaults.ispLightViewfinder());
+    }
+
+    /** P365 step 9: the repeating request's noise reduction / edge modes before vf_isp_light set them off (null: not applied). */
+    private volatile Integer[] mIspLightModes;
+
+    /**
+     * P365 step 9: noise reduction and edge OFF on the repeating request while the RAW viewfinder is shown (the camera must list
+     * the OFF mode); the stills keep the template's modes (mIspLightModes), the ISP picture the user sees is never made softer.
+     */
+    private void applyIspLight(CaptureRequest.Builder builder) {
+        mIspLightModes = null;
+        if (builder == null || !mLiveRawSession || mIsRecordingVideo || mFullResSession || !ispLight()) return;
+        CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
+        if (c == null) c = mCameraCharacteristics;
+        if (c == null) return;
+        final boolean nr = listed(c.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES), CaptureRequest.NOISE_REDUCTION_MODE_OFF);
+        final boolean edge = listed(c.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES), CaptureRequest.EDGE_MODE_OFF);
+        if (!nr && !edge) return;
+        mIspLightModes = new Integer[]{builder.get(CaptureRequest.NOISE_REDUCTION_MODE), builder.get(CaptureRequest.EDGE_MODE)};
+        if (nr) builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF);
+        if (edge) builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
+        Log.i("SCAM_CAPTURE", "camera " + physicalID + ": RAW viewfinder, the repeating request's" + (nr ? " noise reduction" : "")
+                + (nr && edge ? " and" : "") + (edge ? " edge" : "") + " off (P365 vf_isp_light)");
+    }
+
+    /** P365 step 9: the ISP picture is what the user sees now (the RAW viewfinder gave up): the template's modes again. */
+    private void restoreIspModes() {
+        final Integer[] modes = mIspLightModes;
+        final CaptureRequest.Builder builder = mPreviewRequestBuilder;
+        if (modes == null || builder == null) return;
+        mIspLightModes = null;
+        if (modes[0] != null) builder.set(CaptureRequest.NOISE_REDUCTION_MODE, modes[0]);
+        if (modes[1] != null) builder.set(CaptureRequest.EDGE_MODE, modes[1]);
+        Log.i("SCAM_CAPTURE", "camera " + physicalID + ": ISP viewfinder, noise reduction / edge back to " + modes[0] + " / " + modes[1] + " (P365)");
+        rebuildPreviewBuilder();
+    }
+
+    private static boolean listed(@Nullable int[] modes, int mode) {
+        if (modes != null) for (int m : modes) if (m == mode) return true;
+        return false;
+    }
+
     /**
      * Lock the focus as the first step for a still image capture.
      */
@@ -2935,9 +3019,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
         }
         if (isRawFormat(mTargetFormat)) {
-            int resolved = resolveRawFormat(map);
+            final Integer white = characteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
+            int resolved = resolveRawFormat(map, white);
             Log.i(TAG, "RAW stream format " + mTargetFormat + " -> " + resolved + " (setting " + PreferenceKeys.getRawStreamFormat()
-                    + ", camera " + physicalID + ")");
+                    + ", camera " + physicalID + ("raw10".equals(PreferenceKeys.getRawStreamFormat()) && !raw10Fits(white)
+                    ? ", white level " + white + " is wider than RAW10: the auto order (P365)" : "") + ")");
             mTargetFormat = resolved;
         }
         // Packed RAW10 / RAW12 samples onto the camera's declared levels (Pixel 10 Pro XL main: white 4095 over RAW10)
@@ -3007,6 +3093,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         // The raw viewfinder consumes from this reader continuously, so it
         // needs its own headroom even when ZSL is off.
         if (PreferenceKeys.isLiveViewfinderRawEnabled()) maxjpg = 6;
+        // P365 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»): the
+        // phone's own reader depth (DeviceDefaults.zslReaderImages: 8 on the OPPO Find X7 Ultra, the reference app's reader there at
+        // 30 fps) as the default and the floor; 0 = no rule: 20, at least 16
+        final int deviceReader = com.particlesdevs.photoncamera.settings.DeviceDefaults.zslReaderImages();
         if (isZslMode())
             // The ring buffer can hold up to zslRingCapacity() frames, and the
             // reader has to have room for all of them plus the in-flight ones,
@@ -3017,7 +3107,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             maxjpg = PreferenceKeys.scamDevSwitch("zsl_memfd_ring", true) && isRawFormat(mTargetFormat)
                     // floor 16: the Galaxy S24 Ultra's RAW stream ran at 15 fps with 8 reader buffers, 28 with 12, 30 from 16 (SCAM
                     // TEST ring depth search, 2026-05-18); the «Движение» ring of 8 frames would otherwise get a reader of 11
-                    ? Math.max(16, Math.min(Math.min(zslRingCapacity() + 3, MAX_READER_IMAGES), (int) PreferenceKeys.scamDevNumber("zsl_reader", 20f)))
+                    ? Math.max(deviceReader > 0 ? deviceReader : 16, Math.min(Math.min(zslRingCapacity() + 3, MAX_READER_IMAGES),
+                            (int) PreferenceKeys.scamDevNumber("zsl_reader", deviceReader > 0 ? deviceReader : 20f)))
                     : Math.min(zslRingCapacity() + 3, MAX_READER_IMAGES);
         Size target = getCameraOutputSize(allTargets.toArray(new Size[0]), preview);
         // Diagnostics: the vivo X200 Pro's 4096x3072 RAW holds its image in 4000x3000 (zeros elsewhere, black stripe at the edge);
@@ -3062,6 +3153,19 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mImageReaderPreview.setOnImageAvailableListener(mOnYuvImageAvailableListener, mBackgroundHandler);
         }
             mBufferSize = getPreviewOutputSize(getSafeDisplay(),characteristics,ScameraApp.getSettings().selectedMode);
+        // P365 step 9 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»;
+        // scam_dev vf_isp_light, on by default on the X7 Ultra): under the RAW viewfinder the ISP stream is only its fallback - the
+        // reference app's 1440x1080 class (the smallest of the session's aspect with a long side of at least 1440)
+        if (mBufferSize != null && fullRes == null && !mIsRecordingVideo && !mLiveRawRejected && isRawFormat(mTargetFormat) && ispLight()
+                && PreferenceKeys.isLiveViewfinderRawEnabled() && isZslMode()) {
+            final Size[] textureSizes = map.getOutputSizes(SurfaceTexture.class);
+            final Size light = lightPreviewSize(textureSizes, aspect, mBufferSize);
+            if (!light.equals(mBufferSize)) {
+                Log.i("SCAM_CAPTURE", "camera " + physicalID + ": ISP stream " + light.getHeight() + "x" + light.getWidth() + " instead of "
+                        + mBufferSize.getHeight() + "x" + mBufferSize.getWidth() + " under the RAW viewfinder (P365 vf_isp_light)");
+                mBufferSize = light;
+            }
+        }
         if (sSafeStreams.getOrDefault(physicalID, 0) >= 1 && mBufferSize != null) {
             // mBufferSize is portrait (short x long); the stream sizes are sensor-oriented
             final Size sensor = new Size(Math.max(mBufferSize.getWidth(), mBufferSize.getHeight()),
@@ -3914,6 +4018,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     private void setCaptureRequestBuilder() throws CameraAccessException {
         mPreviewRequestBuilder = null;
+        mIspLightModes = null;
         if (mIsRecordingVideo) {
             mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
         } else {
@@ -3975,6 +4080,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         applyZoom(mPreviewRequestBuilder, false);
         // P42: face statistics on the preview request only (modes the module advertises).
         com.particlesdevs.photoncamera.control.subject.SubjectFocus.applyFaceDetectMode(mPreviewRequestBuilder, mCameraCharacteristics);
+        applyIspLight(mPreviewRequestBuilder); // P365 step 9
     }
 
     /**
@@ -4713,7 +4819,54 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         if (c == null) return;
         final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
                 com.particlesdevs.photoncamera.processing.RawLevels.current(c, result);
-        RawLevel.observe(img, !mPayloadBad && mPreviewLayouts.isEmpty(), levels.meanBlack(), levels.white);
+        // P365 (review): a RAW10 / RAW12 stream's frame too, unpacked (meterSamples)
+        if (img == null || mPayloadBad || !mPreviewLayouts.isEmpty()) return;
+        final java.nio.ByteBuffer samples = meterSamples(img);
+        if (samples != null)
+            RawLevel.observe(samples, img.getWidth(), img.getHeight(), mMeterStride, img.getTimestamp(), levels.meanBlack(), levels.white);
+    }
+
+    /** P365 (review): the unpacked packed frame of meterSamples (reused; released with the camera), its frame and row stride. */
+    private java.nio.ByteBuffer mMeterUnpacked;
+    private long mMeterUnpackedTs = Long.MIN_VALUE;
+    private int mMeterStride;
+
+    /**
+     * P365 (review; owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»): the
+     * plain 16-bit samples of a live RAW frame for the per-frame RAW meters (plainMeter, plainTeacher, ettrMeter, observeRawLevel),
+     * asked for only when one of them is due - the camera's plane of a RAW_SENSOR frame; a packed RAW10 / RAW12 frame (the Find X7
+     * Ultra's stream since DeviceDefaults v7, the X8 Ultra's since v2) unpacked once per frame into a reused buffer (RawUnpack:
+     * liballocator, rows on several cores) that the meters of that frame share - they read the camera's Image before the ring
+     * copy, so the ring's own unpack (ZslRing.store) is not theirs. Before this a packed frame was skipped (RAW_SENSOR only: the
+     * native AE's plain sample, the WB teacher, the «Движение» level) or read as 16-bit (ETTR: p99.9 ~1.0, always "clipped").
+     * Null: no plain samples (another format, a pixel stride other than 2, an unpack that failed); else {@link #mMeterStride} is
+     * its row stride in bytes.
+     */
+    @Nullable
+    private java.nio.ByteBuffer meterSamples(Image img) {
+        final int format = img.getFormat();
+        final Image.Plane plane = img.getPlanes()[0];
+        if (format == ImageFormat.RAW_SENSOR) {
+            if (plane.getPixelStride() != 2) return null;
+            mMeterStride = plane.getRowStride();
+            return plane.getBuffer();
+        }
+        if (!com.particlesdevs.photoncamera.util.RawUnpack.isPacked(format)) return null;
+        final int w = img.getWidth(), h = img.getHeight(), bytes = w * h * 2;
+        java.nio.ByteBuffer buffer = mMeterUnpacked;
+        if (buffer == null || buffer.capacity() < bytes || mMeterUnpackedTs != img.getTimestamp()) {
+            if (buffer == null || buffer.capacity() < bytes)
+                mMeterUnpacked = buffer = java.nio.ByteBuffer.allocateDirect(bytes).order(java.nio.ByteOrder.nativeOrder());
+            mMeterUnpackedTs = Long.MIN_VALUE;
+            if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(plane.getBuffer().duplicate(), format, w, h, plane.getRowStride(), buffer))
+                return null;
+            mMeterUnpackedTs = img.getTimestamp();
+        }
+        mMeterStride = w * 2;
+        final java.nio.ByteBuffer out = buffer.duplicate().order(java.nio.ByteOrder.nativeOrder());
+        out.position(0);
+        out.limit(bytes);
+        return out;
     }
 
     /** P266 «Проверить частоты кадров»: the running probe of this session, null without one. */
@@ -4872,6 +5025,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     private void onMatchedLiveRaw(Image img, TotalCaptureResult result) {
         boolean retained = false;
+        java.nio.ByteBuffer ringView = null; // P365: a view of the frame's ring slot until the viewfinder takes it
         try {
             if (!isCameraResumed || !mLiveRawSession || mZslCapturing || mHybridZslCapture || mScamRingFrozen) return;
             watchRawPayload(img);
@@ -4884,11 +5038,21 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P238: at SEVERE the developed RAW viewfinder shows at most ThermalPolicy.SEVERE_VF_FPS frames a second (the AE, the
             // ring and the stream see every frame)
             final boolean shown = !probe && com.particlesdevs.photoncamera.util.ThermalPolicy.viewfinderFrameDue(img.getTimestamp());
-            if (shown) publishLiveRawFrame(img, result);
+            // the ZSL ring's mode barrier (P41, below), decided before the viewfinder takes the frame (P365)
+            final boolean zslPass = isZslMode() && passModeBarrier(img, result);
+            // P365 step 4 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»;
+            // scam_dev vf_ring_ref): a shown frame the ring copies anyway as plain 16-bit reaches the viewfinder from its slot after
+            // the ring copy (ringFrameView) instead of a copy of its own out of the camera's buffer; its parameters are read now,
+            // while the Image is open
+            final boolean viaRing = shown && zslPass && !mClosedForProcessing && ringRefFrame(img);
+            final LiveRawFrame.Meta ringMeta = viaRing ? liveRawMeta(img, result) : null;
+            if (shown && !viaRing) publishLiveRawFrame(img, result);
             if (!probe) nativeExposure(img, result);
             if (!probe) ettrMeter(img, result); // P356
             vivoAeAudit(img, result); // P212h: the vivo HAL AE against our RAW meter (log only)
-            if (mTextureView != null && (shown || probe)) mTextureView.requestRender();
+            // P365 step 2 (scam_dev vf_one_request): a published frame asks for its draw itself (publishLiveRawFrame, the ring view
+            // below); a second request made the GL thread draw the same frame again whenever it had begun the first
+            if (mTextureView != null && (probe || shown && !PreferenceKeys.scamDevSwitch("vf_one_request", true))) mTextureView.requestRender();
             // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
             // P187: not while a 200 MP merge runs (its plain session takes no shot)
             // P198: the native 50 MP FULLRES session rings its frames as well (the viewfinder keeps running from them), not while a
@@ -4898,13 +5062,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final boolean ringIdle = nativeZslSession() && nativeRingPaused();
             final boolean nativeRing = !isZslMode() && mVivoSdkCapture == null && !mShotInProgress && !fullResMergeRunning() && !probe
                     && !ringIdle && nativeZslSession() && nativeRingDue(android.os.SystemClock.elapsedRealtimeNanos());
-            if ((isZslMode() && passModeBarrier(img, result) || nativeRing && nativeRingFrame(result)) && !mClosedForProcessing)
+            if ((zslPass || nativeRing && nativeRingFrame(result)) && !mClosedForProcessing)
                 synchronized (mZslBufferLock) {
                 if (!isCameraResumed || !mLiveRawSession) return;
                 final long timestamp = img.getTimestamp(), copyStart = android.os.SystemClock.elapsedRealtimeNanos();
                 final RingFrame frame = ringFrameLocked(img); // P91: copied into the ring's memfd (img closed) or held as it is
                 retained = true;
-                if (nativeRing) nativeRingCopied(copyStart, android.os.SystemClock.elapsedRealtimeNanos() - copyStart);
+                final long copyNs = android.os.SystemClock.elapsedRealtimeNanos() - copyStart;
+                LiveRawFrame.noteRingCopy(copyNs); // P365 step 1: VF_RAW "copy ... ring="
+                if (nativeRing) nativeRingCopied(copyStart, copyNs);
+                if (ringMeta != null) ringView = ringFrameView(frame, img, ringMeta);
                 if (nativeRing && frame.arenaSlot() == null) {
                     // P198: never the camera's own image: the native reader holds 4, one held by the ring stalls the viewfinder
                     frame.close();
@@ -4922,7 +5089,17 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     if (old != null) old.close();
                 }
             }
-        } finally { if (!retained) img.close(); }
+            // P365 step 4: handed over outside the ring's lock (the view pins the slot whatever the ring does with its frame meanwhile)
+            if (ringView != null) {
+                final java.nio.ByteBuffer view = ringView;
+                ringView = null;
+                LiveRawFrame.publishRef(view, ringMeta); // takes the view (kept pinned or freed)
+                if (mTextureView != null) mTextureView.requestRender();
+            }
+        } finally {
+            if (!retained) img.close();
+            if (ringView != null) Allocator.free(ringView); // never handed over (an exception on the way)
+        }
     }
 
     /** P238: why the native ring rests now (null: it runs); its frames were dropped when it began. */
@@ -5155,7 +5332,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 CaptureResult latest = mPreviewCaptureResult;
                 if (r == null && latest instanceof TotalCaptureResult) r = (TotalCaptureResult) latest;
                 publishLiveRawFrame(img, r);
-                if (mTextureView != null) mTextureView.requestRender();
+                // P365 step 2 (vf_one_request): publishLiveRawFrame asked for the draw of a frame it published
+                if (mTextureView != null && !PreferenceKeys.scamDevSwitch("vf_one_request", true)) mTextureView.requestRender();
             }
         } catch (RuntimeException e) {
             Log.w(TAG, "mosaic preview: " + e.getMessage());
@@ -5436,7 +5614,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * AUTO converged / locked, no native session). Any brand; nothing a photo uses (scam_dev.txt "mosaic_awb_teacher 0": none).
      */
     private void plainTeacher(Image img, @Nullable TotalCaptureResult result) {
-        if (mVivoSdkRawSession != null || img == null || img.getFormat() != ImageFormat.RAW_SENSOR || mPayloadBad || !mPreviewLayouts.isEmpty())
+        // P365 (review): a RAW10 / RAW12 stream's frame too, unpacked (meterSamples)
+        if (mVivoSdkRawSession != null || img == null || !isRawFormat(img.getFormat()) || mPayloadBad || !mPreviewLayouts.isEmpty())
             return;
         final long now = android.os.SystemClock.elapsedRealtime();
         if (now - mPlainTeacherMs < PLAIN_TEACHER_MS) return;
@@ -5463,10 +5642,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (cfa > 3) return;
             final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
                     com.particlesdevs.photoncamera.processing.RawLevels.current(c, result);
-            final Image.Plane plane = img.getPlanes()[0];
+            final java.nio.ByteBuffer samples = meterSamples(img);
+            if (samples == null) return;
             final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Stat m =
-                    com.particlesdevs.photoncamera.processing.color.MosaicNeutral.measure2(plane.getBuffer(), img.getWidth(), img.getHeight(),
-                            plane.getRowStride(), cfa, levels.black, levels.white, 1, mosaicSetup(c, result));
+                    com.particlesdevs.photoncamera.processing.color.MosaicNeutral.measure2(samples, img.getWidth(), img.getHeight(),
+                            mMeterStride, cfa, levels.black, levels.white, 1, mosaicSetup(c, result));
             if (m == null) return;
             String id = physicalID;
             if (id == null) return;
@@ -5548,8 +5728,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     com.particlesdevs.photoncamera.processing.RawLevels.current(c, result);
             float black = 0f;
             for (float b : levels.black) black += b / levels.black.length;
-            final Image.Plane plane = img.getPlanes()[0];
-            final float p = Ettr.p999(plane.getBuffer(), img.getWidth(), img.getHeight(), plane.getRowStride(), black, levels.white, 4);
+            // P365 (review): the plain 16-bit samples - a RAW10 / RAW12 frame unpacked (meterSamples), never read as 16-bit
+            final java.nio.ByteBuffer samples = meterSamples(img);
+            if (samples == null) return;
+            final float p = Ettr.p999(samples, img.getWidth(), img.getHeight(), mMeterStride, black, levels.white, 4);
             if (Float.isNaN(p)) return;
             final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
             final Range<Integer> isoRange = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
@@ -5693,7 +5875,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
      * plain 16-bit Bayer RAW (no colour-block mosaic, no packed layout). {@code result}: the matched one, else the ZSL results'.
      */
     private void plainMeter(Image img, @Nullable TotalCaptureResult result) {
-        if (mVivoSdkRawSession != null || img == null || img.getFormat() != ImageFormat.RAW_SENSOR || mPayloadBad || !mPreviewLayouts.isEmpty())
+        // P365 (review): a RAW10 / RAW12 stream's frame too, unpacked (meterSamples) - the Find X7 Ultra's plain session streams
+        // RAW10 since DeviceDefaults v7, and this sample is its native FULLRES AE's start
+        if (mVivoSdkRawSession != null || img == null || !isRawFormat(img.getFormat()) || mPayloadBad || !mPreviewLayouts.isEmpty())
             return;
         final long now = android.os.SystemClock.elapsedRealtime();
         if (now - mPlainMeterMs < 300) return;
@@ -5720,10 +5904,11 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             float[] neutral = null;
             final android.util.Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
             if (n != null && n.length >= 3) neutral = new float[]{n[0].floatValue(), n[1].floatValue(), n[2].floatValue()};
-            final Image.Plane plane = img.getPlanes()[0];
-            final NativeRawExposure.Metered metered = NativeRawExposure.meter2(plane.getBuffer(), img.getWidth(), img.getHeight(),
-                    plane.getRowStride(), cfa, 1, levels.black, levels.white, meterSetup(c, result, neutral));
+            final java.nio.ByteBuffer samples = meterSamples(img);
             mPlainMeterMs = now;
+            if (samples == null) return;
+            final NativeRawExposure.Metered metered = NativeRawExposure.meter2(samples, img.getWidth(), img.getHeight(),
+                    mMeterStride, cfa, 1, levels.black, levels.white, meterSetup(c, result, neutral));
             if (metered != null)
                 NativeAeSeed.plainSample(physicalID, metered.p50, metered.p98, (double) exposure * iso / 100.0, now);
         } catch (RuntimeException e) {
@@ -5820,23 +6005,88 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     private void publishLiveRawFrame(Image img, TotalCaptureResult matchedResult) {
-        if (!LiveRawFrame.isEnabled() || img == null || matchedResult == null) return; // no result: nothing to develop it with
-        if (!isRawFormat(img.getFormat())) return;
+        final LiveRawFrame.Meta meta = liveRawMeta(img, matchedResult);
+        if (meta == null) return;
+        try {
+            LiveRawFrame.publish(img.getPlanes()[0].getBuffer(), meta);
+            if (mTextureView != null) mTextureView.requestRender();
+        } catch (Exception e) {
+            Log.w(TAG, "publishLiveRawFrame: " + e.getMessage());
+        }
+    }
+
+    /**
+     * P365 step 4: whether a shown frame reaches the viewfinder from its memfd ring slot (scam_dev vf_ring_ref): the ring copies it
+     * there anyway (the memfd ring, one plane, not the native 50 MP ring) and the slot holds plain 16-bit samples - a RAW_SENSOR
+     * stream with no packed layout behind it, or a RAW10 / RAW12 stream the ring unpacks on arrival (ringUnpack). Any other frame
+     * keeps the viewfinder's own copy.
+     */
+    private boolean ringRefFrame(Image img) {
+        if (!PreferenceKeys.scamDevSwitch("vf_ring_ref", true) || mZslRingUnavailable || !PreferenceKeys.scamDevSwitch("zsl_memfd_ring", true)
+                || nativeZslSession() || img.getPlanes().length != 1) return false;
+        final int format = img.getFormat();
+        if (format == ImageFormat.RAW_SENSOR) return mPreviewLayouts.isEmpty();
+        return ringUnpack() && ZslRing.unpacks(format, img.getWidth());
+    }
+
+    /**
+     * P365 step 8 (scam_dev zsl_ring_unpack): a packed RAW10 / RAW12 frame of the 12 MP ring is unpacked into its slot as it arrives
+     * (ZslRing.store) - the worker then takes a view of the slot instead of unpacking every ring frame after the press, and the
+     * viewfinder draws the slot. Not the Pixel's 50 MP session (its ring copies the packed frames as before).
+     */
+    private boolean ringUnpack() {
+        return !mFullResSession && PreferenceKeys.scamDevSwitch("zsl_ring_unpack", true);
+    }
+
+    /**
+     * P365 step 4, under the ring's lock right after the ring copy: a view of the shown frame's slot for the viewfinder
+     * (LiveRawFrame.publishRef: drawn where it is, or copied from the view when it cannot be), {@code meta} set to the slot's
+     * layout; null when there is none - a ring that held the camera's Image itself (no memfd slot) has it copied here as before.
+     */
+    @Nullable
+    private java.nio.ByteBuffer ringFrameView(RingFrame frame, Image img, LiveRawFrame.Meta meta) {
+        try {
+            final long[] slot = frame.arenaSlot();
+            if (slot == null) {
+                LiveRawFrame.publish(img.getPlanes()[0].getBuffer(), meta); // the ring holds the open Image (RingFrame.of)
+                if (mTextureView != null) mTextureView.requestRender();
+                return null;
+            }
+            if (ZslRing.unpacked(frame)) {
+                meta.format = frame.getFormat();
+                meta.rowStride = frame.rowStride();
+            }
+            return Allocator.arenaView((int) slot[0], slot[1], frame.buffer().capacity());
+        } catch (RuntimeException e) {
+            Log.w(TAG, "ringFrameView: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * The viewfinder's parameters of this frame (levels, white balance, colour matrix, lens shading, crop, noise, gain range), null
+     * when it is not to be published. P365: apart from the hand-off (publishLiveRawFrame copies the camera's plane,
+     * onMatchedLiveRaw hands over the ring slot, ringFrameView), so it runs while the Image is open.
+     */
+    @Nullable
+    private LiveRawFrame.Meta liveRawMeta(Image img, TotalCaptureResult matchedResult) {
+        if (!LiveRawFrame.isEnabled() || img == null || matchedResult == null) return null; // no result: nothing to develop it with
+        if (!isRawFormat(img.getFormat())) return null;
         if (mPayloadBad) {
             // The developed RAW viewfinder would show the same garbage: the ISP preview takes over for this session.
             LiveRawFrame.setEnabled(false);
-            return;
+            restoreIspModes(); // P365 step 9: the ISP picture is what the user sees now
+            return null;
         }
         // P314: the viewfinder has not taken the last frame yet (drop-when-busy, as the reference viewfinder's hand-off): this one is
         // neither read nor copied (the callers' draw request then coalesces with the waiting frame's own)
-        if (!LiveRawFrame.takesFrame()) return;
+        if (!LiveRawFrame.takesFrame()) return null;
         // P72: a packed session (17 Ultra tele) whose frame fits none of its layouts and is not plain either: skipped (the last
         // developed frame stays) instead of developing it as 16-bit
         if (!mPreviewLayouts.isEmpty() && img.getFormat() == ImageFormat.RAW_SENSOR && frameLayout(img) == null
                 && com.particlesdevs.photoncamera.processing.RawPayloadCheck.dataEnd(img.getPlanes()[0].getBuffer())
-                   < img.getPlanes()[0].getBuffer().capacity() - img.getWidth()) return;
+                   < img.getPlanes()[0].getBuffer().capacity() - img.getWidth()) return null;
         try {
-            Image.Plane plane = img.getPlanes()[0];
             CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
             if (c == null) c = mCameraCharacteristics;
             int cfa = 0;
@@ -5948,21 +6198,38 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             }
             // P212h: the frame's median is the shutter / ISO priority's SceneLuma, but not where the own AE meters the other value
             final boolean sceneLuma = !ownAe && PreferenceKeys.scamDevSwitch("vf_raw_scene_luma", true);
-            LiveRawFrame.publish(plane.getBuffer(), img.getWidth(), img.getHeight(),
-                    readStride(img), cfa, white, black, gains, ccm,shading,sw,sh,crop,
-                    // P108: the Pixel's full-resolution RAW is Quad-Bayer (measured block 2), binned for the viewfinder
-                    // P208: the still-only route's viewfinder is the normal mode's stream
-                    stillOnlyFullRes() ? Math.max(1, com.particlesdevs.photoncamera.processing.MosaicStream.block())
-                            : nativeVivoFullRes() ? VivoSdkFullRes.profile(mVivoSdkCameraId).nativeBlock
-                            : mFullResSession ? 2 : com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1
-                            ? com.particlesdevs.photoncamera.processing.MosaicStream.block() : PreferenceKeys.mosaicBlock(),
-                    colorResult.get(CaptureResult.SENSOR_SENSITIVITY),
-                    c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY),
-                    automatic,shotNoise,readNoise,
-                    readFormat(img), minGain, maxGain, sceneLuma);
-            if (mTextureView != null) mTextureView.requestRender();
+            final LiveRawFrame.Meta m = new LiveRawFrame.Meta();
+            m.width = img.getWidth();
+            m.height = img.getHeight();
+            m.rowStride = readStride(img);
+            m.cfa = cfa;
+            m.white = white;
+            m.black = black;
+            m.gains = gains;
+            m.ccm = ccm;
+            m.shading = shading;
+            m.shadingWidth = sw;
+            m.shadingHeight = sh;
+            m.crop = crop;
+            // P108: the Pixel's full-resolution RAW is Quad-Bayer (measured block 2), binned for the viewfinder
+            // P208: the still-only route's viewfinder is the normal mode's stream
+            m.block = stillOnlyFullRes() ? Math.max(1, com.particlesdevs.photoncamera.processing.MosaicStream.block())
+                    : nativeVivoFullRes() ? VivoSdkFullRes.profile(mVivoSdkCameraId).nativeBlock
+                    : mFullResSession ? 2 : com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1
+                    ? com.particlesdevs.photoncamera.processing.MosaicStream.block() : PreferenceKeys.mosaicBlock();
+            m.sensorIso = colorResult.get(CaptureResult.SENSOR_SENSITIVITY);
+            m.analogIso = c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY);
+            m.automatic = automatic;
+            m.shotNoise = shotNoise;
+            m.readNoise = readNoise;
+            m.format = readFormat(img);
+            m.minGain = minGain;
+            m.maxGain = maxGain;
+            m.sceneLuma = sceneLuma;
+            return m;
         } catch (Exception e) {
             Log.w(TAG, "publishLiveRawFrame: " + e.getMessage());
+            return null;
         }
     }
 
@@ -6062,10 +6329,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     : ZslRing.create(ScameraApp.getAppContext(), zslRingCapacity(), need);
             if (mZslRing == null) { mZslRingUnavailable = true; return RingFrame.of(img); }
         }
-        RingFrame f = mZslRing.store(img);
+        // P365 step 8: a RAW10 / RAW12 frame of the 12 MP ring unpacked into its slot on arrival (zsl_ring_unpack)
+        final boolean unpack = !fullRes && ringUnpack();
+        RingFrame f = mZslRing.store(img, unpack);
         while (f == null && !mZslRingBuffer.isEmpty()) {
             mZslRingBuffer.pollFirst().close();
-            f = mZslRing.store(img);
+            f = mZslRing.store(img, unpack);
         }
         return f != null ? f : RingFrame.of(img);
     }
@@ -6479,7 +6748,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             ImageFrame frame = defer
                     ? ImageFrame.deferred(img, format, width, rowStride, offset, capacity)
                     : new ImageFrame(img.buffer(), format, width, rowStride, offset, capacity);
-            frame.timestamp = img.getTimestamp();frame.fromZsl=true;frame.sourceFormat=format;
+            // P365: a frame unpacked into its ring slot on arrival keeps its stream's RAW10 / RAW12 (the post-shutter frames' layout)
+            frame.timestamp = img.getTimestamp();frame.fromZsl=true;frame.sourceFormat=ZslRing.sourceFormat(img, format);
             frame.setCaptureMetadata(selectedMetadata.get(frame.timestamp));
             frame.width = ScameraApp.getSettings().binning ? width / 2 : width;
             frame.height = ScameraApp.getSettings().binning ? height / 2 : height;
@@ -7582,6 +7852,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                         CaptureRequest.CONTROL_CAPTURE_INTENT,CaptureRequest.NOISE_REDUCTION_MODE,CaptureRequest.EDGE_MODE,
                         CaptureRequest.HOT_PIXEL_MODE)) {
                     Integer v=mPreviewRequestBuilder.get(key);
+                    // P365 step 9: the viewfinder's own noise reduction / edge off (vf_isp_light) stays off the series
+                    final Integer[] ispLight=mIspLightModes;
+                    if(ispLight!=null&&key==CaptureRequest.NOISE_REDUCTION_MODE) v=ispLight[0];
+                    else if(ispLight!=null&&key==CaptureRequest.EDGE_MODE) v=ispLight[1];
                     if(v!=null) captureBuilder.set(key,v);
                 }
                 // P84c: AE_TARGET_FPS_RANGE is a session parameter on the X200 Ultra (availableSessionKeys): a series request with
@@ -8850,5 +9124,15 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.d(TAG, "evCompRange(" + lens + ") : " + evRange.toString());
         }
 
+    }
+
+    /**
+     * P365 step 7 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»):
+     * whether a shot's series is being taken - the flags under which onMatchedLiveRaw publishes no viewfinder frame (MainRenderer
+     * keeps the last RAW frame on the screen meanwhile, scam_dev vf_series_hold).
+     */
+    public static boolean seriesInFlight() {
+        final CaptureController c = ScameraApp.getCaptureController();
+        return c != null && (c.mZslCapturing || c.mHybridZslCapture || c.mScamRingFrozen);
     }
 }

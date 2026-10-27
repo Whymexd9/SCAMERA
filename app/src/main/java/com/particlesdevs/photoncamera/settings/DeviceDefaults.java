@@ -27,10 +27,13 @@ public final class DeviceDefaults {
      * 2 Shasta frames, with the WHY RL 3 (micro-texture) deconvolution at 1.2; the Pixel 7 takes RL 3 at 1.5. 5 (owner,
      * 2026-10-10 evening, shots with the P77 build): the Redmi Note 11 Pro takes RL 3 at 1.5. 6 (P301, owner, 2026-10-20: the
      * viewfinder must match the photo): a flagship SoC (Snapdragon 8 Gen 3 and newer, Dimensity 9300 and newer) starts with the
-     * developed-RAW viewfinder (pref_live_viewfinder_raw_key) on every module, which shows the photo's WHY tone. A phone whose marker is older gets only the
-     * entries of the newer versions, so an update never resets the user's other settings.
+     * developed-RAW viewfinder (pref_live_viewfinder_raw_key) on every module, which shows the photo's WHY tone. 7 (P365, owner,
+     * 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»): the Find X7 Ultra streams
+     * RAW10 as the reference app does there (4096x3072 RAW10: its main camera's white level is 1023, nothing is lost), unpacked
+     * into the ZSL ring slot on arrival. A phone whose marker is older gets only the entries of the newer versions, so an update
+     * never resets the user's other settings.
      */
-    static final int VERSION = 6;
+    static final int VERSION = 7;
     /** The package the Find X7 Ultra's camera service shows every lens to (owner's choice). */
     static final String X7U_SPOOF_PACKAGE = "com.ss.android.ugc.aweme";
     private DeviceDefaults() {}
@@ -60,7 +63,8 @@ public final class DeviceDefaults {
         // v4: Pixel 7 (owner 2026-10-10, his shots of p7.zip were taken with it)
         if (since < 4 && pixel7) out.put("pref_scam_hybrid_why_sharp_rl3_amount", String.valueOf(PIXEL7_RL3));
         if (!oppo) return out;
-        // v2: RAW10 stream on the Find X8 Ultra (unpacked to 16 bit on copy; the RAW viewfinder needs RAW_SENSOR and is off).
+        // v2: RAW10 stream on the Find X8 Ultra (unpacked to 16 bit: P316 the RAW viewfinder unpacks it too, P365 the ZSL ring on
+        // arrival - the worker takes the slot as it is)
         if (since < 2 && model.equals("PKJ110")) out.put("pref_raw_stream_format", "raw10");
         // v3: the Find X7 Ultra shows its tele / ultra-wide lenses to a whitelisted package only, and its tuned ISP matrix
         // under the WHY tone needs AgX saturation 1.1 (not 0.6) to match WhyCam SCAM 9.6 with the X7U config (2026-10-08 pair).
@@ -71,7 +75,32 @@ public final class DeviceDefaults {
             out.put("pref_binder_spoof_package_key", X7U_SPOOF_PACKAGE);
             out.put("pref_scam_hybrid_why_ccm_sat", "1.1");
         }
+        // v7 (P365): RAW10 on the Find X7 Ultra (CaptureController honours it only on a lens whose white level fits 10 bits)
+        if (since < 7 && model.equals("PHY110")) out.put("pref_raw_stream_format", "raw10");
         return out;
+    }
+
+    /** P365: the OPPO Find X7 Ultra (PHY110). */
+    public static boolean findX7Ultra() {
+        return "OPPO".equalsIgnoreCase(Build.MANUFACTURER) && "PHY110".equalsIgnoreCase(Build.MODEL);
+    }
+
+    /**
+     * P365 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»): the RAW
+     * reader depth of the memfd ZSL ring on this phone (every frame is copied on arrival), the default and the floor of scam_dev
+     * zsl_reader; 0 = no rule (20, at least 16: the Galaxy S24 Ultra's RAW stream slowed below 16 buffers). The Find X7 Ultra:
+     * 8, the reference app's reader there at 30 fps.
+     */
+    public static int zslReaderImages() {
+        return findX7Ultra() ? 8 : 0;
+    }
+
+    /**
+     * P365 step 9: the default of scam_dev vf_isp_light (under the RAW viewfinder the ISP stream of the 1440x1080 class, noise
+     * reduction and edge off on the repeating request, as the reference app's viewfinder): on the Find X7 Ultra.
+     */
+    public static boolean ispLightViewfinder() {
+        return findX7Ultra();
     }
 
     /** RL 3 amount of the Redmi Note 11 Pro default (v5). */

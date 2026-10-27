@@ -347,8 +347,12 @@ public final class WhyLumaSharpen extends Node {
         // P337: a plain Bayer shot reads Ya without its 2 px lattice (sharp_r1 mode 3), which comes back at its own level
         final boolean lattice = !r1 && latticeSource(block, size.x, size.y);
         GLTexture src = ya, residual = null;
+        // P364: the full-grid passes below read their windows as 2 x 2 textureGather blocks (GATHER 1 of why/sharp_r1 mode 3,
+        // why/sharp_box mode 0 and why/sharp_compose): the same taps in the same order; the old model of post_ab keeps the loops
+        final boolean gather = !com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy();
         if (r1 || lattice) {
             src = plane(size, GLFormat.DataType.FLOAT_16, 1);
+            if (gather && !r1) glProg.setDefine("GATHER", 1);
             glProg.useAssetProgram("why/sharp_r1", false);
             glProg.setTexture("InputBuffer", ya);
             glProg.setVar("modeU", r1 ? 0 : 3);
@@ -370,6 +374,7 @@ public final class WhyLumaSharpen extends Node {
             gfBox = Math.max(1, Math.round(gfRadius * s / gfDown));
             Point reduced = WhyTone.reduced(size, gfDown);
             GLTexture h = plane(reduced, GLFormat.DataType.FLOAT_32, 2);
+            if (gather) glProg.setDefine("GATHER", 1);
             glProg.useAssetProgram("why/sharp_box", false);
             glProg.setTexture("InputBuffer", src);
             glProg.setVar("modeU", 0);
@@ -394,6 +399,7 @@ public final class WhyLumaSharpen extends Node {
         boolean bil = bilRadius > 0f && Math.abs(bilAmount) > 0.001f;
         List<GLTexture> pool = new ArrayList<>();
         GLTexture obs = spare(pool, size);
+        if (gather) glProg.setDefine("GATHER", 1);
         glProg.useAssetProgram("why/sharp_compose", false);
         glProg.setTexture("InputBuffer", src);
         glProg.setTexture("GfAB", ab != null ? ab : src);
@@ -425,8 +431,12 @@ public final class WhyLumaSharpen extends Node {
             Psf k = psf(kernel, rad * s);
             if (kernel == 0) amount *= scaleComp(s, SCALE2_RL_GAUSS);
             if (ratio == null) ratio = plane(size, GLFormat.DataType.FLOAT_16, 1);
+            // P364: the PSF's half size as a define - the convolutions read 2 x 2 textureGather blocks, the same taps in the same
+            // order (why/sharp_rl.glsl PSF_HALF; 9 reads instead of 25 at half 2); the old model of post_ab and wider PSFs keep the loop
+            final int gatherHalf = !com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy() && k.half <= 4 ? k.half : 0;
             GLTexture est = obs;
             for (int it = 0; it < iters; it++) {
+                if (gatherHalf > 0) glProg.setDefine("PSF_HALF", gatherHalf);
                 glProg.useAssetProgram("why/sharp_rl", false);
                 glProg.setTexture("Observed", obs);
                 glProg.setTexture("Estimate", est);
@@ -435,6 +445,7 @@ public final class WhyLumaSharpen extends Node {
                 glProg.setVarFloats("psfU", k.quadrant);
                 glProg.drawBlocks(ratio);
                 GLTexture next = spare(pool, size, obs, est);
+                if (gatherHalf > 0) glProg.setDefine("PSF_HALF", gatherHalf);
                 glProg.useAssetProgram("why/sharp_rl", false);
                 glProg.setTexture("Observed", obs);
                 glProg.setTexture("Estimate", est);

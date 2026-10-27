@@ -53,6 +53,20 @@ import java.util.function.LongSupplier;
  * P212f (W4 = M10): {@link #measure2}, the robust statistic with a confidence (per-site clipping, noise weights from the camera's
  * noise profile instead of the dark cut, the lens shading gains, the output crop, grey-cell selection, a split sigma), over up to
  * 3 N frames ({@link #combine}); the photo logs it beside the P121 one and takes it with scam_dev.txt "mosaic_awb_v2 1".
+ * <p>
+ * P366 (owner, 2026-10-27, X200 Ultra camera 4 ISZ at noon by the sea: «вот такие фото получаю с исз, исправь» - green / yellow-green
+ * photos): camera 4's 12 learned points were two clusters (daylight-ish 0.44-0.51 / 0.57-0.65 and an indoor lamp 0.53 / 0.38), so the
+ * line through them fell at -3.08 against its DNG prior's -1.06, and the cool daylight statistic 0.357 / 0.708 was put on its cool
+ * extension at 0.429 / 0.752 (R/G and B/G 10-15 % above the ISP's ~0.39 / 0.645: green). Now (scam_dev.txt "mosaic_awb_slope_guard",
+ * default on) a fitted locus whose slope at the learned points' centre is more than {@link #SLOPE_BAND} x as steep as the prior's
+ * is not taken while the points cover less than {@link #PRIOR_SPAN_TRUST} of the prior's span along its direction (camera
+ * 4: 0.54 of 1.37 ln): the prior's slope through their weighted centre instead (0.357 / 0.708 -> 0.356 / 0.706, its colour
+ * temperature kept). And ("mosaic_awb_cool_keep", default on) a measurement beyond the extended cool end is moved along the locus by
+ * at most what it is moved towards it ({@link Locus#project}: the clamp at the end raised the R/G of a light cooler than any learned
+ * one), and never more than WARM_MAX beyond that end (as the warm end: a blue-dominated frame's statistic is no light to follow
+ * further). The along-locus offset of the statistic against the ISP stays: that is the teacher's ({@link #taught}, MosaicTeacher).
+ * Both are for a photo's own measurement: a neutral checked against the camera's curve (the HAL's on the vivo native and OPPO
+ * sensor-mode routes, P315's off-locus check) is checked against the curve its points fit, as before ({@link #onLearnedCurve}).
  */
 public final class MosaicNeutral {
     private MosaicNeutral() {}
@@ -74,6 +88,20 @@ public final class MosaicNeutral {
     static final double DEFAULT_SLOPE = -1.14;
     /** P212f: the DNG prior's two neutrals must be this far apart (ln) to describe a locus. */
     static final double PRIOR_MIN_SPAN = 0.2;
+    /**
+     * P366: a fitted slope (at the learned points' centre) at most SLOPE_BAND x as steep as the prior's stands (X200U camera 4's -3.08
+     * against -1.06 is 2.9 x: two clusters apart in tint more than in colour temperature). A shallower one stands as before: learned
+     * daylight loci are shallower than the D65-StdA chord (OPPO camera 2's -0.62 against its prior's -1.14, 0.55 x; the X8U's -0.66),
+     * and a placeholder ColorMatrix (sRGB, as the X8U's forward matrices are, P315) would put a prior near -1.58 - a band of 0.5..2
+     * would replace the X8U's learned slope, and its sensor-mode route holds the HAL's neutral to that curve.
+     */
+    static final double SLOPE_BAND = 2.0;
+    /**
+     * P366: the learned points' extent along the prior's direction, as a share of the prior's own span (its two reference
+     * illuminants, D65 to StdA), from which their slope stands against the prior whatever it is (they then describe the camera's
+     * locus over a good part of its daylight-to-tungsten range; camera 4's 0.54 of 1.37 ln does not).
+     */
+    static final double PRIOR_SPAN_TRUST = 0.5;
     private static final String PREFS = "mosaic_awb_curve";
     /** P212f: the counted points (ln r, ln b, count, last seen in hours); the P121 list is still written for an older build. */
     private static final String LOCUS_PREFS = "mosaic_awb_locus";
@@ -93,6 +121,16 @@ public final class MosaicNeutral {
     /** P212f: scam_dev.txt "mosaic_awb_locus" (default on; off: the P121 polyline, skip within the spacing, FIFO). */
     static boolean locusOn() {
         return com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("mosaic_awb_locus", true);
+    }
+
+    /** P366: scam_dev.txt "mosaic_awb_slope_guard" (default on; off: any falling fitted slope stands, as P212f). */
+    static boolean slopeGuardOn() {
+        return com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("mosaic_awb_slope_guard", true);
+    }
+
+    /** P366: scam_dev.txt "mosaic_awb_cool_keep" (default on; off: beyond the extended cool end the end itself, as P212f). */
+    static boolean coolKeepOn() {
+        return com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("mosaic_awb_cool_keep", true);
     }
 
     /** A plain-Bayer viewfinder neutral (r, 1, b) of camera {@code id}: a point of its illuminant curve. */
@@ -201,7 +239,9 @@ public final class MosaicNeutral {
 
     /**
      * The result: the neutral (r, 1, b), how it was found (log line), (P212e) the cells it was measured on, and (P212f) its distance
-     * from the locus (ln; NaN: no locus) and whether the locus was extrapolated to reach it.
+     * from the locus (ln; NaN: no locus) and whether the locus was extrapolated to reach it. P366 (review): {@code learnedDistance},
+     * the measurement's distance from the curve its learned points fit ({@link #onLearnedCurve}) - {@code distance} unless the slope
+     * guard set that fit aside; what P315's off-locus check compares (MosaicNeutralResolver.offLocus).
      */
     public static final class Result {
         public final float[] neutral;
@@ -209,13 +249,18 @@ public final class MosaicNeutral {
         public final int cells;
         public final float distance;
         public final boolean extrapolated;
+        public final float learnedDistance;
         Result(float[] neutral, String how, int cells) { this(neutral, how, cells, Float.NaN, false); }
         Result(float[] neutral, String how, int cells, float distance, boolean extrapolated) {
+            this(neutral, how, cells, distance, extrapolated, distance);
+        }
+        Result(float[] neutral, String how, int cells, float distance, boolean extrapolated, float learnedDistance) {
             this.neutral = neutral;
             this.how = how;
             this.cells = cells;
             this.distance = distance;
             this.extrapolated = extrapolated;
+            this.learnedDistance = learnedDistance;
         }
     }
 
@@ -261,6 +306,22 @@ public final class MosaicNeutral {
      * curve the measured neutral as it is, within a sane range.
      */
     static Result resolve(String id, float r, float b, int cells, float confidence, @Nullable Prior prior, String what) {
+        return resolve(id, r, b, cells, confidence, prior, what, false);
+    }
+
+    /**
+     * P366 (review): neutral {@code r} / {@code b} on camera {@code id}'s curve as its learned points fit it - P212f's fit and the clamp
+     * at its cool end, without the slope guard and the cool keep, which are for a photo's own measurement: an illuminant the camera
+     * learned stays on that curve (X200U camera 4's lamp, its ISP's 0.504 / 0.377: 0.06 ln from its points' line, 0.18 from the
+     * guarded one, which runs between the daylight and the lamp clusters). MosaicNeutralResolver.curveDistance (the vivo native and
+     * OPPO sensor-mode routes keep a converged HAL neutral within CURVE_DISTANCE of the curve) and P315's raw-grey point (offLocus).
+     */
+    static Result onLearnedCurve(String id, float r, float b, @Nullable Prior prior, String what) {
+        return resolve(id, r, b, 0, 0f, prior, what, true);
+    }
+
+    private static Result resolve(String id, float r, float b, int cells, float confidence, @Nullable Prior prior, String what,
+                                  boolean learned) {
         final float lr = (float) Math.log(r), lb = (float) Math.log(b);
         final ArrayList<float[]> pts;
         synchronized (MosaicNeutral.class) { pts = copy(curve(id)); }
@@ -271,15 +332,37 @@ public final class MosaicNeutral {
                     String.format(Locale.ROOT, "%s %.3f / %.3f, on the curve of camera %s (%d points, %.3f away) %.3f / %.3f",
                             what, r, b, id, pts.size(), q[2], Math.exp(q[0]), Math.exp(q[1])), cells, q[2], false);
         }
-        final Locus locus = locus(id, pts, prior);
-        if (locus == null) return measuredAsIs(id, r, b, cells, what);
+        final Locus fitted = locus(id, pts, prior);
+        if (fitted == null) return measuredAsIs(id, r, b, cells, what);
+        // P366 (review): a check against the learned curve takes the fit the slope guard set aside, and P212f's clamp at its cool end
+        final Locus locus = learned && fitted.learned != null ? fitted.learned : fitted;
         final double tint = TINT * Math.max(0f, Math.min(1f, confidence));
-        final Projection q = locus.project(lr, lb, tint);
+        final Projection q = locus.project(lr, lb, tint, !learned && locus.coolKeep);
+        final double learnedDistance = learned || fitted.learned == null ? q.distance : fitted.learned.project(lr, lb, 0, false).distance;
         return new Result(new float[]{(float) Math.exp(q.lr), 1f, (float) Math.exp(q.lb)},
-                String.format(Locale.ROOT, "%s %.3f / %.3f, on the curve of camera %s (%s, %.3f away%s%s) %.3f / %.3f", what, r, b, id,
+                String.format(Locale.ROOT, "%s %.3f / %.3f, on the curve of camera %s (%s, %.3f away%s%s%s) %.3f / %.3f", what, r, b, id,
                         locus.describe(), q.distance, q.extrapolated ? String.format(Locale.ROOT, ", extrapolated %.3f", q.beyond) : "",
+                        q.coolKept ? ", beyond the cool end: its colour temperature kept" : "",
                         tint > 0 ? String.format(Locale.ROOT, ", tint %+.3f of %.3f", q.tint, tint) : "", Math.exp(q.lr), Math.exp(q.lb)),
-                cells, (float) q.distance, q.extrapolated);
+                cells, (float) q.distance, q.extrapolated, (float) learnedDistance);
+    }
+
+    /**
+     * P366: the neutral the ISP teacher sets for a mosaic photo (MosaicTeacher.Use, the photo's robust statistic {@code stat}):
+     * ln n = c ln T + (1 - c) ln L - T the teacher's neutral for the statistic, L the same statistic on the camera's locus (its
+     * tint kept by its confidence: the teacher's grid is of this statistic, so both read the same frame the same way), c the
+     * teacher's weight ({@link MosaicTeacher.Use#weight}).
+     */
+    public static Result taught(String id, Stat stat, @Nullable Prior prior, MosaicTeacher.Use use) {
+        final Result locus = resolve(id, stat, prior);
+        final double c = Math.max(0, Math.min(1, use.weight));
+        final double lr = c * Math.log(use.prediction.r) + (1 - c) * Math.log(locus.neutral[0]);
+        final double lb = c * Math.log(use.prediction.b) + (1 - c) * Math.log(locus.neutral[2]);
+        final float r = (float) Math.exp(lr), b = (float) Math.exp(lb);
+        return new Result(new float[]{r, 1f, b}, String.format(Locale.ROOT,
+                "the ISP teacher (%s) %.3f / %.3f x %.2f + the locus %.3f / %.3f x %.2f = %.3f / %.3f [the locus: %s]", use.describe(),
+                use.prediction.r, use.prediction.b, c, locus.neutral[0], locus.neutral[2], 1 - c, r, b, locus.how),
+                stat.cells, locus.distance, locus.extrapolated, locus.learnedDistance);
     }
 
     private static Result measuredAsIs(String id, float r, float b, int cells, String what) {
@@ -338,6 +421,11 @@ public final class MosaicNeutral {
         double slope() {
             final double du = r2 - r1;
             return Math.abs(du) > 1e-6 ? (b2 - b1) / du : DEFAULT_SLOPE;
+        }
+
+        /** P366: the distance (ln) between its two reference illuminants' neutrals. */
+        double span() {
+            return Math.hypot(r1 - r2, b1 - b2);
         }
 
         @Override public String toString() {
@@ -450,13 +538,19 @@ public final class MosaicNeutral {
         /** The neutral (ln r, ln b), its distance from the locus, the tint kept, how far beyond the ends (ln, 0: inside). */
         final double lr, lb, distance, tint, beyond;
         final boolean extrapolated;
+        /** P366: beyond the extended cool end, moved along the locus by no more than towards it (its colour temperature kept). */
+        final boolean coolKept;
         Projection(double lr, double lb, double distance, double tint, double beyond, boolean extrapolated) {
+            this(lr, lb, distance, tint, beyond, extrapolated, false);
+        }
+        Projection(double lr, double lb, double distance, double tint, double beyond, boolean extrapolated, boolean coolKept) {
             this.lr = lr;
             this.lb = lb;
             this.distance = distance;
             this.tint = tint;
             this.beyond = beyond;
             this.extrapolated = extrapolated;
+            this.coolKept = coolKept;
         }
     }
 
@@ -470,6 +564,13 @@ public final class MosaicNeutral {
         final String kind;
         final int points;
         final boolean warmKeep;
+        /** P366: beyond the extended cool end the measurement's colour temperature is kept ({@link #project}); false: P212f's clamp. */
+        boolean coolKeep = true;
+        /**
+         * P366 (review): the fit of the learned points the slope guard set aside (P212f's quadratic or line), null when the guard let
+         * it stand: the curve a neutral is checked against ({@link #onLearnedCurve}).
+         */
+        @Nullable Locus learned;
         /** The learned points (ln r, ln b), their kernel weights ln(1 + count) and tints off the curve (along its normal); null: none. */
         @Nullable double[] pu, pb, pw, pt;
 
@@ -545,10 +646,21 @@ public final class MosaicNeutral {
          * The neutral for a measurement: its nearest point on the curve within [elo, ehi] - beyond the warmest learned light
          * moved by WARM_KEEP of the excess (at most WARM_MAX; P212z: only when {@link #warmKeep}, else the whole excess up to
          * EXTRAPOLATE as beyond the cool end) - offset along the normal there by the learned points' local tint, the measurement's
-         * own tint kept within {@code tint} of it.
+         * own tint kept within {@code tint} of it. P366 ({@link #coolKeep}): a measurement whose nearest point lies beyond the
+         * extended cool end (held at elo) is moved along the curve there by no more than it is moved towards it - the end pulled a
+         * light cooler than any the camera learned back towards the learned ones, raising its R/G; nothing is known of the locus
+         * there but its direction - and (review) left at most WARM_MAX beyond the end, as the warm end holds its excess: a
+         * measurement lying along the curve 1 ln beyond the end was followed the whole way (0.157 / 1.991 against a cool end at
+         * 0.306 / 0.943), and a sky- or sea-filled frame's statistic, biased cool, would have warmed the photo by that much.
          */
         Projection project(double lr, double lb, double tint) {
+            return project(lr, lb, tint, coolKeep);
+        }
+
+        /** {@link #project} with the cool keep on or off (P366 review: off for a check against the learned curve). */
+        Projection project(double lr, double lb, double tint, boolean keepCool) {
             double u = footU(lr, lb);
+            final boolean atCoolEnd = keepCool && u - elo < 1e-6 && elo < lo;
             final double f0 = f(u), s0 = df(u), n0 = Math.sqrt(1 + s0 * s0);
             final double along = (lr - u) * (-s0 / n0) + (lb - f0) / n0; // the measurement's own tint
             final double distance = Math.hypot(lr - u, lb - f0);
@@ -564,7 +676,22 @@ public final class MosaicNeutral {
             final double nx = -s / norm, ny = 1 / norm; // the normal towards larger ln b
             final double local = localTint(lr, lb);
             final double t = local + Math.max(-tint, Math.min(tint, along - local));
-            return new Projection(u + t * nx, fu + t * ny, distance, t, beyond, beyond > 1e-4);
+            double qx = u + t * nx, qy = fu + t * ny;
+            boolean coolKept = false;
+            if (atCoolEnd) {
+                // the move from the measurement: along the curve (its tangent towards warmer light, larger ln r) and towards it;
+                // q - m = alongMove t + towardMove n, so keeping |towardMove| of the along move leaves the neutral alongMove -
+                // |towardMove| beyond the end along the tangent - at most WARM_MAX (review)
+                final double tx = 1 / norm, ty = s / norm, dx = qx - lr, dy = qy - lb;
+                final double alongMove = dx * tx + dy * ty, towardMove = dx * nx + dy * ny;
+                if (alongMove > Math.abs(towardMove)) {
+                    final double past = Math.min(WARM_MAX, alongMove - Math.abs(towardMove));
+                    qx -= past * tx;
+                    qy -= past * ty;
+                    coolKept = true;
+                }
+            }
+            return new Projection(qx, qy, distance, t, beyond, beyond > 1e-4, coolKept);
         }
 
         /** u of the nearest point of the curve within [elo, ehi] to (lr, lb). */
@@ -615,9 +742,12 @@ public final class MosaicNeutral {
         synchronized (MosaicNeutral.class) {
             final Object[] f = FITS.get(id);
             final Integer version = VERSIONS.getOrDefault(id, 0);
-            if (f != null && version.equals(f[0]) && f[1] == prior && ((Integer) f[3]) == pts.size()) return (Locus) f[2];
+            // P366: the scam_dev switches of the fit are part of the key (an A/B within a process)
+            final int switches = (slopeGuardOn() ? 1 : 0) | (coolKeepOn() ? 2 : 0);
+            if (f != null && version.equals(f[0]) && f[1] == prior && ((Integer) f[3]) == pts.size() && ((Integer) f[4]) == switches)
+                return (Locus) f[2];
             final Locus l = fit(pts, prior);
-            FITS.put(id, new Object[]{version, prior, l, pts.size()});
+            FITS.put(id, new Object[]{version, prior, l, pts.size(), switches});
             return l;
         }
     }
@@ -638,16 +768,29 @@ public final class MosaicNeutral {
      * else a Huber line (≥ 2 points over ≥ 0.05 of ln r, a falling slope), else the prior's slope (or DEFAULT_SLOPE) through the
      * points' weighted mean; one point: the prior's shape through it, P212z over the prior's span of ln r on either side of the
      * point (a vivo prior is the shape only, so where the point lies on it is unknown: it may be the daylight end or the tungsten
-     * one); none: the prior itself (unless shape only). Null: nothing.
+     * one); none: the prior itself (unless shape only). Null: nothing. P366: with a prior, a quadratic or line whose slope at the
+     * points' centre is more than SLOPE_BAND x as steep as the prior's is not taken while the points cover less than
+     * PRIOR_SPAN_TRUST of the prior's span along its direction (the prior's slope through their weighted centre then).
      */
     @Nullable
     static Locus fit(List<float[]> pts, @Nullable Prior prior) {
+        final Locus l = fitLocus(pts, prior);
+        if (l != null) l.coolKeep = coolKeepOn();
+        return l;
+    }
+
+    @Nullable
+    private static Locus fitLocus(List<float[]> pts, @Nullable Prior prior) {
         final int n = pts.size();
         if (n == 0) {
             if (prior == null || prior.shapeOnly) return null;
             final double s = prior.slope();
             return new Locus(prior.r2, prior.b2, s, 0, Math.min(prior.r1, prior.r2), Math.max(prior.r1, prior.r2), "DNG prior", 0, false);
         }
+        // P366: the points' own slope stands against the prior only within the band, unless they cover enough of its range
+        final boolean guard = prior != null && n >= 2 && slopeGuardOn() && spanAlong(pts, prior) < PRIOR_SPAN_TRUST * prior.span();
+        double rejected = Double.NaN;
+        Locus setAside = null; // P366 (review): the fit P212f took, when the guard does not (Locus.learned)
         double wsum = 0, mu = 0, mb = 0, lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE, clo = Double.MAX_VALUE, chi = -Double.MAX_VALUE;
         final double[] u = new double[n], y = new double[n], w = new double[n];
         for (int i = 0; i < n; i++) {
@@ -669,14 +812,25 @@ public final class MosaicNeutral {
             final double[] a = huber(u, y, w, mu, 2);
             if (a != null) {
                 final Locus q = new Locus(mu, a[0], a[1], a[2], lo, hi, "quadratic", n);
-                if (falling(q)) return q.withPoints(pts);
+                if (falling(q)) {
+                    if (!guard || inBand(q.df(mu), prior)) return q.withPoints(pts);
+                    rejected = q.df(mu);
+                    setAside = q.withPoints(pts);
+                }
             }
         }
         if (n >= 2 && hi - lo >= 0.05) {
             final double[] a = huber(u, y, w, mu, 1);
             if (a != null) {
                 final Locus line = new Locus(mu, a[0], a[1], 0, lo, hi, "line", n);
-                if (falling(line)) return line.withPoints(pts);
+                if (falling(line)) {
+                    if (!guard || inBand(a[1], prior)) {
+                        line.learned = setAside;
+                        return line.withPoints(pts);
+                    }
+                    rejected = a[1];
+                    if (setAside == null) setAside = line.withPoints(pts);
+                }
             }
         }
         if (n == 1 && prior == null) return null;
@@ -686,8 +840,29 @@ public final class MosaicNeutral {
             final double span = Math.abs(prior.r1 - prior.r2);
             return new Locus(mu, mb, s, 0, lo - span, hi + span, "DNG shape through 1 point", 1, false).withPoints(pts);
         }
-        return new Locus(mu, mb, s, 0, lo, hi, prior != null ? "DNG shape through the points" : "default slope through the points", n)
-                .withPoints(pts);
+        final String kind = !Double.isNaN(rejected)
+                ? String.format(Locale.ROOT, "DNG slope through the points (their %.2f is %.1f x the prior's)", rejected, rejected / s)
+                : prior != null ? "DNG shape through the points" : "default slope through the points";
+        final Locus held = new Locus(mu, mb, s, 0, lo, hi, kind, n).withPoints(pts);
+        held.learned = setAside;
+        return held;
+    }
+
+    /** P366: the extent (ln) of points {ln r, ln b, ...} along the prior's direction (1, slope). */
+    static double spanAlong(List<float[]> pts, Prior prior) {
+        final double s = prior.slope(), norm = Math.sqrt(1 + s * s);
+        double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
+        for (float[] p : pts) {
+            final double a = (p[0] + s * p[1]) / norm;
+            lo = Math.min(lo, a);
+            hi = Math.max(hi, a);
+        }
+        return pts.isEmpty() ? 0 : hi - lo;
+    }
+
+    /** P366: a (falling) slope at most SLOPE_BAND x as steep as the prior's. */
+    static boolean inBand(double slope, Prior prior) {
+        return slope / prior.slope() <= SLOPE_BAND;
     }
 
     /** P212f: a locus whose slope falls (warmer: r up, b down) within [-4, -0.2] over its whole extended domain. */

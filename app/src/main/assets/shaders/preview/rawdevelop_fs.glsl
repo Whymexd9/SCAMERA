@@ -546,6 +546,11 @@ vec3 processPipeline(vec3 color, float corner_gain) {
     return clamp(color, 0.0, 1.0);
 }
 
+// P365 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»): a pixel
+// centre exactly on a quad's border (every 15th row and column at 1440 x 1920 of 3072 x 4096) takes the quad after it whatever
+// the rasteriser's last bits - the fused WHY pass (utils/import_vfraw.glsl VF_TIE, the same value) finds the same quad for it
+// from a neighbouring pixel; 1/300 px of shift otherwise
+const float RAW_TIE = 0.0031;
 void main() {
     // The front mirror flips the same texture axis as the ISP preview (main_fs.glsl: uv.y). Flipping x instead
     // turned the front RAW viewfinder upside down: two different mirrors differ by a 180 degree turn.
@@ -581,12 +586,12 @@ void main() {
     // P314: the block 1 / 2 / 4 as a shift (the crop is never negative: the same as the division)
     int shift = cfa_block_size == 4 ? 2 : cfa_block_size == 2 ? 1 : 0;
     if (cfa_mode == 1) {
-        int px = int(u * float(crop_width)) + crop_left;
-        int py = int(v * float(crop_height)) + crop_top;
+        int px = int(u * float(crop_width) + RAW_TIE) + crop_left;
+        int py = int(v * float(crop_height) + RAW_TIE) + crop_top;
         cC = getStandardBayerColor(px, py);
     } else {
-        int mx = int(u * float(crop_width >> shift)) + (crop_left >> shift);
-        int my = int(v * float(crop_height >> shift)) + (crop_top >> shift);
+        int mx = int(u * float(crop_width >> shift) + RAW_TIE) + (crop_left >> shift);
+        int my = int(v * float(crop_height >> shift) + RAW_TIE) + (crop_top >> shift);
         cC = getFastColor(mx, my);
     }
     float corner_gain = 1.0;
@@ -618,15 +623,15 @@ void main() {
     if (peaking_enabled == 1) {
         float m_L, m_R, m_T, m_B;
         if (cfa_mode == 1) {
-            int px = int(u * float(crop_width)) + crop_left;
-            int py = int(v * float(crop_height)) + crop_top;
+            int px = int(u * float(crop_width) + RAW_TIE) + crop_left;
+            int py = int(v * float(crop_height) + RAW_TIE) + crop_top;
             m_L = getStandardBayerColor(px - 2, py).g;
             m_R = getStandardBayerColor(px + 2, py).g;
             m_T = getStandardBayerColor(px, py - 2).g;
             m_B = getStandardBayerColor(px, py + 2).g;
         } else {
-            int mx = int(u * float(crop_width >> shift)) + (crop_left >> shift);
-            int my = int(v * float(crop_height >> shift)) + (crop_top >> shift);
+            int mx = int(u * float(crop_width >> shift) + RAW_TIE) + (crop_left >> shift);
+            int my = int(v * float(crop_height >> shift) + RAW_TIE) + (crop_top >> shift);
             m_L = getFastColor(mx - 2, my).g;
             m_R = getFastColor(mx + 2, my).g;
             m_T = getFastColor(mx, my - 2).g;

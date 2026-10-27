@@ -60,6 +60,14 @@ precision highp int;
 // viewfinder AE run - the guided filter's value on a flat area) instead of WhyFused, and WhyColour is the viewfinder's linear
 // frame, times inScaleU here. POINT_FUSED 0: every block below drops out (the photo's shader, token for token).
 #define POINT_FUSED 0
+// P365 RAW_SOURCE 1 (with POINT_FUSED 1: the RAW viewfinder's fused pass, LiveWhyTone.drawFused; never the photo; owner,
+// 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»): the linear colour comes
+// straight from the RAW frame at texCoord (utils/import_vfraw.glsl: rawdevelop_fs's linear output, and the 3 x 3 colour
+// neighbourhood from the same range-filtered quads / cell means at the neighbouring pixels' frame positions, textureGather), the
+// pixel grid is gl_FragCoord less the viewport's origin (vpOriginU, vpSizeU) - one pass instead of the linear frame, the tone and
+// the copy to the screen.
+// RAW_SOURCE 0: every block below drops out (the photo's shader, token for token; tools/check_vf_fused.py).
+#define RAW_SOURCE 0
 // P349 SUN_BLOOM 1: the glow round fully clipped cores (SunBloom); 0: the shader before P349, token for token.
 #define SUN_BLOOM 0
 #import interpolation
@@ -117,6 +125,12 @@ uniform float sunBloomU;            // strength 0..1
 #if POINT_FUSED == 1
 uniform sampler2D FusedCurve;       // R32F n x 1: the fused display luma at log2 I = fusedCurveU.x + i / fusedCurveU.y
 uniform vec2 fusedCurveU;           // x: log2 I of entry 0, y: entries per EV
+#endif
+#if RAW_SOURCE == 1
+#import vfraw
+in vec2 texCoord;                   // P365: the frame position of the pixel (rawdevelop_vs)
+uniform ivec2 vpOriginU;            // P365: the viewport's origin in the framebuffer
+uniform ivec2 vpSizeU;              // P365: the viewport's size (the tone size)
 #endif
 #if HL_LANDING == 1
 uniform float hlSoftU;              // P154 highlight landing: where it starts below the data ceiling (fraction, 0 = off)
@@ -507,8 +521,16 @@ vec3 landingColour(ivec2 xy, int fc, float clipCeiling, vec3 own) {
 #endif
 
 void main() {
+#if RAW_SOURCE == 1
+    // P365: the tone grid is the viewport (drawn on the screen at its origin, or into the tone target at 0, 0); the frame
+    // positions of the neighbouring pixels from the derivatives of texCoord (taken here, in uniform control flow)
+    ivec2 xy = ivec2(gl_FragCoord.xy) - vpOriginU;
+    ivec2 size = vpSizeU;
+    vec2 rawDx = dFdx(texCoord), rawDy = dFdy(texCoord);
+#else
     ivec2 xy = ivec2(gl_FragCoord.xy);
     ivec2 size = textureSize(InputBuffer, 0);
+#endif
     int f = fU > 0 ? fU : 2;
     int fc = colourFU > 0 ? colourFU : f;
     float ae = aeU > 0.0 ? aeU : 1.0;
@@ -535,16 +557,43 @@ void main() {
     float refDomain = sharpU == 1 && sharpToneU > 0.0 ? ae / sharpToneU : ae;
     if (f == 1) {
         // same size as the low grid: the kernel's full-resolution bypass (no interpolation)
+#if RAW_SOURCE == 1
+        // P365: the pixel's linear colour from the RAW frame (the linear frame's value at xy)
+        vec3 rawLin = vfLinear(texCoord);
+#if P3_OUT == 1
+        orig = clampP3(finiteTap(rawLin));
+#else
+        orig = sanitize(rawLin);
+#endif
+#else
 #if P3_OUT == 1
         orig = clampP3(finiteTap(texelFetch(WhyColour, xy, 0).rgb));
 #else
         orig = sanitize(texelFetch(WhyColour, xy, 0).rgb);
+#endif
 #endif
 #if POINT_FUSED == 1
         // P314 (review): the colour of the 3 x 3 neighbourhood at the pixel's own luminance - a mosaic's cell means take R, G and B
         // from sites 2 px apart (yellow / blue fringes at every sharp edge: chroma high-pass rms 1.09 -> 0.51, the photo 0.46; the
         // luma detail unchanged)
         {
+#if RAW_SOURCE == 1
+            // P365: the neighbours' colours from the RAW frame at their frame positions (the edge pixels' neighbours clamped into
+            // the grid as before), with the pixel's lens-shading gain; the pixel itself is the linear value above
+            vec3 rawGain = vfShading(texCoord);
+            vec3 acc = vec3(0.0);
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++) {
+                    vec2 d = vec2(clamp(xy + ivec2(dx, dy), ivec2(0), size - ivec2(1)) - xy);
+                    vec3 tap = rawLin;
+                    if (d != vec2(0.0)) tap = color_transform * (vfColour(texCoord + d.x * rawDx + d.y * rawDy) * rawGain);
+#if P3_OUT == 1
+                    acc += clampP3(finiteTap(tap));
+#else
+                    acc += sanitize(tap);
+#endif
+                }
+#else
             ivec2 lastC = textureSize(WhyColour, 0) - ivec2(1);
             vec3 acc = vec3(0.0);
             for (int dy = -1; dy <= 1; dy++)
@@ -555,6 +604,7 @@ void main() {
                     acc += sanitize(texelFetch(WhyColour, clamp(xy + ivec2(dx, dy), ivec2(0), lastC), 0).rgb);
 #endif
                 }
+#endif
             acc *= 1.0 / 9.0;
             float yc = max(dot(orig, LUMA), 0.0), ya = dot(acc, LUMA);
             if (ya > 1.0e-6) orig = acc * (yc / ya);
@@ -564,7 +614,11 @@ void main() {
 #else
         fused = max(texelFetch(WhyFused, xy, 0).r, 0.0);
 #endif
+#if RAW_SOURCE == 1
+        yLow = max(dot(rawLin, LUMA), 0.000001);
+#else
         yLow = max(dot(texelFetch(WhyLow, xy, 0).rgb, LUMA), 0.000001);
+#endif
     } else {
         int bx, by;
         float fx, fy;

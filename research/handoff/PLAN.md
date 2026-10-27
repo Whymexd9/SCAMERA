@@ -7815,4 +7815,73 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   blend 0.23, dilate 0.15, guide / chroma 0.14); post 0.65 s (denoise 0.25-0.3, WHY stats + early sharpen 0.14, ScamRgb 0.13-0.18,
   combine 0.08, fusion 0.06). The reference app: ~2.7 s. The gap is the per-pixel merge on 26 frames and the CPU front end; closing
   it without a quality change needs the merge kernel itself (P364 rule: untouched) or a GPU registration / Shasta.
-- Status: DONE for this round (pushed with P362 / P363).
+- Status: parts 1-8 pushed with P362 / P363 (5538ae90); the round went on (owner, 2026-10-27: «пойми почему у Арк гораздо быстрее
+  чем у нас ... сделай так чтобы у нас была скорость такая же, либо быстрее», «для всех делай на ГПУ»).
+- Why the reference app is faster (its 2.01 shaders and strings): everything on the GPU in one process - a homography per frame
+  from 24 x 24 corners, single-level KLT and RANSAC on compute shaders, a per-frame accumulating merge in fragment shaders on
+  textures (3 x 3 Bayer sites through the texture cache), a simpler rejection, the kernel covariance in a texture, zero-copy post.
+  Ours had a CPU front end (corner tracker + ultrashort registration + Shasta / Bento checks ~1.1-1.4 s) before the GPU.
+- Part 9 (gpuAlign 1, default; 2 = the corner tracker plus the GPU estimate and its distance as a report): the global alignment on
+  the GPU (scam-la-gpu.h LaGpu homSubmit / homCollect): Shi-Tomasi corners on the base's L0 gray, a SAD search on L3 (+-12 px)
+  with a GPU argmin, KLT L1 -> L0, adaptive RANSAC + least squares on the CPU (2 RAW px), two frames in flight; accepted with
+  >= 60 inliers and >= 20 % of the tracks, else the corner tracker's fallbacks. F6 residual median 0.06-0.11 px (corner tracker
+  0.13-0.33), merge factors equal or higher (led1934 0.619 -> 0.658), crops equal or better.
+- Part 10: ultrashort frames first, then bracketed, then normal ones (their F6 field right after the homography, on its gray
+  levels); the ultrashort registration skipped after a good homography (>= 100 inliers, rms <= 1.2 px; gpuAlignUsRegister 1
+  keeps it); the Shasta motion checks and Bento masks start as soon as their frames are aligned; the GPU F6 field and alignment on
+  every GPU (laGpu auto). A GPU failure falls back to the corner tracker for the whole burst (md5 = the old CPU-chroma refs).
+- Part 11: the alignment's EGL context and programs made on the worker's warm-up thread while it waits for the burst.
+  md5 refs at this point (app tuning + rejSkipUs 1, noiseRoles 1, shastaNoiseWeight 0.005): lamp2324 045ac410, b175757
+  bf0595f8, x7u_1x 25f80add, isz2 43a730c1, led1934 b506f059. Shots 31185 (thermal none): total 4.71-4.85 s, merge 3.38-3.46 s.
+- Part 12 (seven analyses wrote 26 bit-identical / rounding-level patches; each measured on the OPPO, alternating with HEAD):
+  kept - the ultrashort blend's stages 1-3 on GPU-built 16 x 16 tile lists with one program per stage (blend 235 -> 93 ms), the
+  cells pass taking a cell's colour from its tile's own quad + no dispatch for donors nothing reads + only the rows the reject and
+  merge read, the dilate's accepted weight summed per work group. md5 the same on the five bursts, worker C++ checks 8/8; lamp2324
+  replay merge 1896 -> 1730 ms, total 2678 -> 2512 ms (4 alternating runs). Not kept: reject restrict qualifiers / tile indices /
+  laCell from the reject / zero exits (slower, or another md5), homography SAD by gathers, fused L0 start + LK, KLT gathers, field
+  outputs without copies (alignment 514 -> 514-598 ms: no gain), strip transfers through unsynchronized maps (no gain).
+- Viewfinder share (vfcost.sh, the same replay with the camera closed / our viewfinder open / the reference app's open): 2.51 /
+  2.77 / 2.83 s - our RAW viewfinder already costs a parallel merge less than the reference one (P365 makes its stream and per-frame
+  work like it anyway).
+
+### P365 - the RAW viewfinder with the reference app's requirements (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»): DONE (OPPO X7U measured)
+- Measured first (OPPO, the same replay with the camera closed / our viewfinder / the reference app's open): 2.51 / 2.77 / 2.83 s -
+  our RAW viewfinder already cost a parallel merge less. Sessions: the reference app runs 4096x3072 RAW10 with an 8-image reader
+  (16 HAL buffers), a 1440x1080 ISP stream, noise reduction and edge OFF in the repeating request; ours RAW_SENSOR, 20 images
+  (28 buffers), 1920x1440, FAST / FAST; process CPU ~80 % against our ~97 % (the camera thread's two 25 MB copies a frame, GL 24 %).
+  Its live view develops the RAW frame in one fragment pass (decompiled 2.01; design in the session scratchpad vf/design.md).
+- Done (keys in DevKeys, viewfinder group): one draw request a frame (vf_one_request); the viewfinder reads the pinned ZSL ring slot
+  instead of its own copy (vf_ring_ref, at most 2 pinned, freed exactly once - LiveRawFrameTest); RAW10 / RAW12 unpacked into the
+  ring slot on arrival (zsl_ring_unpack; raw10 only for a 10-bit white level); DeviceDefaults v7 on the PHY110: RAW10, reader 8,
+  vf_isp_light (1440x1080 ISP stream, NR / edge OFF on the repeating request only); the last RAW frame held during the series
+  (vf_series_hold); the RAW meters unpack a RAW10 frame themselves (RawLevel / ETTR / plain teacher).
+- The fused one-pass tone (vf_fused: import_vfraw + combine RAW_SOURCE 1, check_vf_fused.py mean 0.03/255) is OFF by default: on the
+  Adreno 750 it toned 4 frames/s against 27 (a 3 x 3 neighbourhood of range-filtered quads = 9x the first pass's work a pixel).
+- OPPO with APK 31190 / 31191: streams now 1440x1080 + 4096x3072 RAW10, reader 8, 16 buffers, NR / edge OFF (as the reference app);
+  camera thread 32 % (was 39 %), viewfinder 27 tones/s; replay with the app open 2.93 s, closed 2.92 s, the reference app open
+  2.99 s. In-app shots 31191 (thermal none): total 4.16 - 4.32 s (5.04 s the first after install: program compile), merge 3.02 -
+  3.14 s, post 0.51 - 0.53 s (31172 at the start of P364: 6.42 s).
+- Not done: the plan's step 5 (GPU priorities) and step 6 (full frame rate while processing): the merge's speed is the goal.
+
+### P367 - zoom into the editor's preview at full resolution (owner, 2026-10-27: «В редакторе фото дай возможность кропать фото, при этом оно должно быть в полном разрешении»; «Я имею ввиду кропать предпросмотр во время редактирования»): DONE (OPPO checked by the test hook)
+- Pinch / pan / double tap (fit <-> 100 %) in every tab but Crop (EditZoom, pure math, EditZoomTest); past the preview decode's
+  resolution the visible area comes from the original through the export's reader on its own thread (EditZoomLoader) and is
+  rendered with the export's math (radii, grain, lattice, overlap): 100 % shows the saved copy's pixels. One region on the GPU,
+  bounded by memory; the reader closes before an export. Three-lens review: 15 findings fixed; unit tests 53/53.
+- OPPO: am start ACTION_EDIT with scam_edit_zoom 1 -> «P367 full-res region shown: route JPEG ... decode 145 ms, upload+render 20 ms,
+  zoom 100 %», the screenshot sharp at the pixel level. Pinch by hand not tried (adb only).
+
+### P366 - X200U ISZ photos at noon: green, pink foam, haze (owner, 2026-10-27: «вот такие фото получаю с исз, исправь»; build 31130, log only - the X200U cannot be connected): DONE in code, host tests + OPPO md5
+- From the log (camera 4 ISZ, forceSensorMode 3, RAW-only session, MOTION mode): the HAL's transform identity and gains frozen
+  (R 2.434 / B 1.569) - no ISP 3A; our mosaic white balance projected the statistic 0.357 / 0.708 onto camera 4's learned locus (12
+  points, two warm clusters, slope -3.08, no daylight point) to 0.429 / 0.752 (green); the 12 MP ISZ shot took the generic DNG
+  matrices (mosaic_ccm_table 1 = FULLRES only); the ultrashort lamp-flicker tile correction fired on moving water (pink foam);
+  the sun bloom (P349) counted foam (milky haze).
+- Fixed: the bloom only round cores clipped in the ultrashort too (clip flag bit 5); mosaic_ccm_table 2 by default; the locus slope
+  guard (the DNG prior's slope when the points cover < half its span and the fit is > 2x steeper), the cool end kept (<= 0.2 ln
+  beyond), the teacher on photos in RAW-only sessions without an ISP 3A (own grid, else a same-sensor camera's; the two shots ->
+  0.383 / 0.639 and 0.380 / 0.650); the lamp-flicker corrections held at EV100 >= 10 (app sends usSceneEv) and for a tile field
+  incoherent over the burst (median over the frames). Forward check of the teacher on the owner's log: median 0.034 ln (criterion
+  0.02 not met; projection 0.10-0.13) - hence only the idle-ISP case by default (mosaic_awb_teacher_use 1).
+- Checks: MosaicIszNoonTest 8/8, colour / render packages 372 tests, check_hybrid_us_daylight + 17 C++ checks on the OPPO, md5 of
+  the five reference bursts unchanged (led1934 changes only when given a daylight EV, as intended). Not checked on the X200U.

@@ -192,10 +192,25 @@ public final class ZslRing {
      */
     @Nullable
     public RingFrame store(Image image) {
+        return store(image, false);
+    }
+
+    /**
+     * {@link #store(Image)}; {@code unpack}: P365 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его
+     * такимже по требованиям как там»; scam_dev zsl_ring_unpack) a packed RAW10 / RAW12 frame is unpacked into its slot as it
+     * arrives (Allocator.arenaCopyUnpack, the decode of ImageFrame.materialize's after the press) and reported with RAW_SENSOR
+     * geometry (rowStride w * 2), so the worker gets a zero-copy view of it (ImageFrame.viewable) and the viewfinder can draw
+     * the slot itself; {@link #sourceFormat} keeps the stream's format for the merge's one-layout rule.
+     */
+    @Nullable
+    public RingFrame store(Image image, boolean unpack) {
         final Image.Plane plane = image.getPlanes()[0];
         final ByteBuffer src = plane.getBuffer();
         final int bytes = src.capacity();
-        if (bytes <= 0 || bytes > slotBytes) return null;
+        final int format = image.getFormat(), width = image.getWidth(), height = image.getHeight();
+        final boolean unpacking = unpack && unpacks(format, width);
+        final long need = unpacking ? (long) width * height * 2 : bytes;
+        if (bytes <= 0 || need > slotBytes) return null;
         final int slot;
         synchronized (this) {
             if (closed) return null;
@@ -203,15 +218,37 @@ public final class ZslRing {
             if (slot < 0) return null;
             ringOwned[slot] = true;
         }
-        final ByteBuffer view = Allocator.arenaCopy(id, offset(slot), src, 0, bytes);
+        final ByteBuffer view = unpacking
+                ? Allocator.arenaCopyUnpack(id, offset(slot), src, 0, format, width, plane.getRowStride(), height)
+                : Allocator.arenaCopy(id, offset(slot), src, 0, bytes);
         if (view == null) {
             synchronized (this) { ringOwned[slot] = false; }
             return null;
         }
-        final Frame f = new Frame(slot, view, image.getTimestamp(), image.getFormat(), image.getWidth(), image.getHeight(),
-                plane.getRowStride(), plane.getPixelStride());
+        final Frame f = unpacking
+                ? new Frame(slot, view, image.getTimestamp(), android.graphics.ImageFormat.RAW_SENSOR, width, height, width * 2, 2, format)
+                : new Frame(slot, view, image.getTimestamp(), format, width, height, plane.getRowStride(), plane.getPixelStride(), format);
         image.close();
         return f;
+    }
+
+    /** P365: a stream format the ring unpacks into its slot (MIPI RAW10 / RAW12 of whole 4-pixel groups). */
+    static boolean unpacks(int format, int width) {
+        return (format == android.graphics.ImageFormat.RAW10 || format == android.graphics.ImageFormat.RAW12) && width >= 4 && width % 4 == 0;
+    }
+
+    /** P365: the frame was unpacked into its slot on arrival (RAW_SENSOR geometry, a packed stream). */
+    public static boolean unpacked(RingFrame frame) {
+        return frame instanceof Frame && ((Frame) frame).sourceFormat != frame.getFormat();
+    }
+
+    /**
+     * P365: the format the frame was read in from the camera ({@code fallback} for any other frame): ImageFrame.sourceFormat of a
+     * frame unpacked on arrival is its stream's RAW10 / RAW12, as the post-shutter frames of the same stream (ScamHybridBurst
+     * keepOneLayout merges one layout).
+     */
+    public static int sourceFormat(RingFrame frame, int fallback) {
+        return unpacked(frame) ? ((Frame) frame).sourceFormat : fallback;
     }
 
     /**
@@ -257,8 +294,10 @@ public final class ZslRing {
         private ByteBuffer view;
         private final long timestamp;
         private final int format, width, height, rowStride, pixelStride;
+        /** P365: the camera's format of the frame (RAW10 / RAW12 of a frame unpacked on arrival; else {@code format}). */
+        private final int sourceFormat;
 
-        Frame(int slot, ByteBuffer view, long timestamp, int format, int width, int height, int rowStride, int pixelStride) {
+        Frame(int slot, ByteBuffer view, long timestamp, int format, int width, int height, int rowStride, int pixelStride, int sourceFormat) {
             this.slot = slot;
             this.view = view;
             this.timestamp = timestamp;
@@ -267,6 +306,7 @@ public final class ZslRing {
             this.height = height;
             this.rowStride = rowStride;
             this.pixelStride = pixelStride;
+            this.sourceFormat = sourceFormat;
         }
 
         @Override public long getTimestamp() { return timestamp; }

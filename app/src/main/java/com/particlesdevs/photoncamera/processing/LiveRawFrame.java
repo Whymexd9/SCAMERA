@@ -43,6 +43,27 @@ public final class LiveRawFrame {
     /** P314: {@code ready} holds a frame acquire() has not taken yet. */
     private static boolean readyFresh;
     /**
+     * P365 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»; scam_dev
+     * vf_ring_ref): {@code ready} / {@code consumer} may be a pinned view of a ZSL ring slot ({@link #publishRef}) instead of a
+     * buffer of this class; these hold the view to free (Allocator.free) then, null for an own buffer. A pinned {@code ready} is
+     * always fresh (acquire frees the GL thread's last view instead of handing it back as {@code ready}), so the GL thread never
+     * saw it and the camera thread frees it when a newer frame replaces it; the GL thread's view goes at its next acquire after a
+     * newer frame. Every view sits in exactly one of these fields or in {@link #retired}, moved under LOCK, and is freed once.
+     */
+    private static ByteBuffer readyPinned, consumerPinned;
+    /**
+     * P365: the GL thread's view when the viewfinder was turned off (it may be uploading it right now; a freed view whose ring was
+     * released would be unmapped): freed at the GL thread's next acquire or after {@link #retireGraceMs}, whichever comes first.
+     */
+    private static final java.util.ArrayList<ByteBuffer> retired = new java.util.ArrayList<>();
+    /** P365: at most this many ring slots pinned by the viewfinder (its frame and the next one); a third frame is copied. */
+    static final int MAX_PINNED = 2;
+    /** P365: how long a retired view waits for the GL thread (tests: 0 = freed at once). */
+    static volatile long retireGraceMs = 2000;
+    /** P365: tests replace Allocator.free (no native library on the host), counting every free. */
+    static volatile java.util.function.Consumer<ByteBuffer> freeHook;
+    private static java.util.concurrent.ScheduledExecutorService unpinTimer;
+    /**
      * P314: drop-when-busy, as the reference viewfinder's hand-off: while the GL thread has not taken the last frame yet, a new one
      * is not copied (the camera thread's copies follow the viewfinder's draws, not the camera's rate). A frame not taken within this
      * long is replaced all the same (the viewfinder not drawing RAW for a while - its programs being linked, a paused view - must not
@@ -291,17 +312,124 @@ public final class LiveRawFrame {
     private static long publishedNanos;
 
     public static void setEnabled(boolean value) {
+        ByteBuffer untaken = null, inUse = null;
         synchronized (LOCK) {
             if (enabled == value) return;
             enabled = value;
             session++;
             if (!value) {
+                // P365: a ring view the GL thread never took goes now; its own may be uploading this moment: retired
+                untaken = readyPinned;
+                inUse = consumerPinned;
+                if (inUse != null) retired.add(inUse);
                 writer = ready = consumer = null;
+                readyPinned = consumerPinned = null;
                 readyFresh = false;
                 version++;
             }
         }
+        if (untaken != null) free(untaken);
+        if (inUse != null) retire(inUse);
         if (!value) releaseBinBuffers();
+    }
+
+    /** P365: Allocator.free of a ring view (or the test hook). */
+    private static void free(ByteBuffer view) {
+        final java.util.function.Consumer<ByteBuffer> hook = freeHook;
+        if (hook != null) hook.accept(view);
+        else com.particlesdevs.photoncamera.util.Allocator.free(view);
+    }
+
+    /** P365: a retired view (already in {@link #retired}) freed after the grace unless the GL thread's acquire freed it first. */
+    private static void retire(ByteBuffer view) {
+        final long grace = retireGraceMs;
+        if (grace <= 0) {
+            freeRetired(view);
+            return;
+        }
+        final java.util.concurrent.ScheduledExecutorService timer;
+        synchronized (LiveRawFrame.class) {
+            if (unpinTimer == null) unpinTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                final Thread t = new Thread(r, "SCAMERA-vf-unpin");
+                t.setDaemon(true);
+                return t;
+            });
+            timer = unpinTimer;
+        }
+        try {
+            timer.schedule(() -> freeRetired(view), grace, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (RuntimeException e) {
+            freeRetired(view); // no timer: freed now rather than leaked (the ring's whole memfd would stay mapped)
+        }
+    }
+
+    /** P365: frees {@code view} when it is still retired (by identity: a ByteBuffer's equals compares its bytes). */
+    private static void freeRetired(ByteBuffer view) {
+        boolean mine = false;
+        synchronized (LOCK) {
+            for (java.util.Iterator<ByteBuffer> it = retired.iterator(); it.hasNext(); )
+                if (it.next() == view) { it.remove(); mine = true; break; }
+        }
+        if (mine) free(view);
+    }
+
+    /** P365: ring slots the viewfinder pins now (its frame, the next one, a view retired at a disable). */
+    public static int pinnedViews() {
+        synchronized (LOCK) {
+            return (readyPinned != null ? 1 : 0) + (consumerPinned != null ? 1 : 0) + retired.size();
+        }
+    }
+
+    // P365 step 1: the camera thread's copies per frame for VF_RAW (MainRenderer), means over windows of COPY_WINDOW_NS
+    private static final Object STATS = new Object();
+    static final long COPY_WINDOW_NS = 2_000_000_000L;
+    /** The window in force (COPY_WINDOW_NS; tests take a short one). */
+    static volatile long copyWindow = COPY_WINDOW_NS;
+    private static long copyWindowNs, vfCopySumNs, ringCopySumNs;
+    private static int vfCopies, ringCopies;
+    private static double vfCopyMs, ringCopyMs;
+
+    /** P365: a ring copy (CaptureController.ringFrameLocked) took {@code ns}. */
+    public static void noteRingCopy(long ns) {
+        synchronized (STATS) {
+            rollLocked(System.nanoTime());
+            ringCopySumNs += Math.max(0, ns);
+            ringCopies++;
+        }
+    }
+
+    /** The viewfinder's hand-off of a published frame (copy, unpack, bin; a pinned view: ~0) took {@code ns}. */
+    private static void noteVfCopy(long ns) {
+        synchronized (STATS) {
+            rollLocked(System.nanoTime());
+            vfCopySumNs += Math.max(0, ns);
+            vfCopies++;
+        }
+    }
+
+    private static void rollLocked(long now) {
+        if (copyWindowNs == 0) { copyWindowNs = now; return; }
+        if (now - copyWindowNs < copyWindow) return;
+        vfCopyMs = vfCopies > 0 ? vfCopySumNs / 1e6 / vfCopies : 0;
+        ringCopyMs = ringCopies > 0 ? ringCopySumNs / 1e6 / ringCopies : 0;
+        vfCopySumNs = ringCopySumNs = 0;
+        vfCopies = ringCopies = 0;
+        copyWindowNs = now;
+    }
+
+    /** P365: the viewfinder's copy per published frame, mean ms of the last 2 s window (0: none). */
+    public static double vfCopyMs() {
+        synchronized (STATS) { return vfCopyMs; }
+    }
+
+    /** P365: the ZSL ring's copy per frame, mean ms of the last 2 s window (0: none). */
+    public static double ringCopyMs() {
+        synchronized (STATS) { return ringCopyMs; }
+    }
+
+    /** P365: "copy vf=… ring=… ms pinned=…" for the VF_RAW line. */
+    public static String copyStats() {
+        return String.format(java.util.Locale.ROOT, "copy vf=%.1f ring=%.1f ms pinned=%d", vfCopyMs(), ringCopyMs(), pinnedViews());
     }
 
     /** P314: whether a frame waits for the GL thread and is young enough that a new one is dropped instead of copied. */
@@ -376,8 +504,50 @@ public final class LiveRawFrame {
                                float minGain,float maxGain,boolean sceneLuma){
         // P314: nothing is binned or copied while the GL thread has not taken the last frame (drop-when-busy)
         if (plane == null || !takesFrame()) return;
-        publish(plane,w,h,stride,cfa,white,black,gains,ccm,lensShading,sw,sh,cropRect,block,sensorIso,analogIso,automatic,shotNoise,readNoise,
-                format,minGain,maxGain,sceneLuma,false);
+        publishFrame(plane,w,h,stride,cfa,white,black,gains,ccm,lensShading,sw,sh,cropRect,block,sensorIso,analogIso,automatic,shotNoise,readNoise,
+                format,minGain,maxGain,sceneLuma,false,false,System.nanoTime());
+    }
+
+    /**
+     * P365: a frame's development parameters apart from its pixels (CaptureController.liveRawMeta) - what {@link #publish} takes
+     * besides the plane, so that a frame can be published from its ZSL ring slot once the camera's Image went back.
+     */
+    public static final class Meta {
+        public int width, height, rowStride, cfa, block = 1, format = android.graphics.ImageFormat.RAW_SENSOR;
+        public int shadingWidth = 1, shadingHeight = 1;
+        public float white = 1023f, minGain = 0f, maxGain = Float.POSITIVE_INFINITY;
+        public float[] black, gains, ccm, shading, crop;
+        public Integer sensorIso, analogIso;
+        public boolean automatic = true, sceneLuma = true;
+        public double shotNoise, readNoise;
+    }
+
+    /** P365: {@link #publish} with the parameters of {@code m} (the camera's plane, copied as before). */
+    public static void publish(ByteBuffer plane, Meta m) {
+        if (m == null) return;
+        publish(plane, m.width, m.height, m.rowStride, m.cfa, m.white, m.black, m.gains, m.ccm, m.shading, m.shadingWidth, m.shadingHeight,
+                m.crop, m.block, m.sensorIso, m.analogIso, m.automatic, m.shotNoise, m.readNoise, m.format, m.minGain, m.maxGain, m.sceneLuma);
+    }
+
+    /**
+     * P365 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»; scam_dev
+     * vf_ring_ref): the frame as its ZSL ring slot holds it - {@code view}, a pinned view of the slot (Allocator.arenaView), whose
+     * ownership passes here. A plain 16-bit frame of whole rows is drawn from the slot itself: no copy of the viewfinder's own,
+     * the slot stays pinned (ZslRing skips it) until the GL thread's next acquire after a newer frame. Any other frame - packed,
+     * padded rows, binned or halved, or a third pinned slot ({@link #MAX_PINNED}) - is copied from the view as {@link #publish}
+     * copies the camera's plane (from cached memory, not the camera's buffer) and the view is freed at once. The caller checked
+     * {@link #takesFrame()} before it read the frame's metadata. Every view is freed exactly once: here, at acquire, or at a disable.
+     */
+    public static void publishRef(ByteBuffer view, Meta m) {
+        if (view == null) return;
+        boolean pinned = false;
+        try {
+            if (m != null) pinned = publishFrame(view, m.width, m.height, m.rowStride, m.cfa, m.white, m.black, m.gains, m.ccm, m.shading,
+                    m.shadingWidth, m.shadingHeight, m.crop, m.block, m.sensorIso, m.analogIso, m.automatic, m.shotNoise, m.readNoise, m.format,
+                    m.minGain, m.maxGain, m.sceneLuma, false, true, System.nanoTime());
+        } finally {
+            if (!pinned) free(view);
+        }
     }
 
     /**
@@ -392,9 +562,13 @@ public final class LiveRawFrame {
         return cap != -1 && (block == 2 || block == 4) && (long) w * h < QUAD_BIN_PIXELS && w % (block * 2) == 0 && h % (block * 2) == 0;
     }
 
-    private static void publish(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise,int format,
-                               float minGain,float maxGain,boolean sceneLuma,boolean means){
-        if (!enabled || plane == null) return;
+    /**
+     * The hand-off of one frame; true when {@code plane} itself became the frame (P365 {@code pin}: a ring view kept pinned), false
+     * when it was copied or not taken. {@code startNs}: when the caller began (P365: the copy time of a published frame).
+     */
+    private static boolean publishFrame(ByteBuffer plane,int w,int h,int stride,int cfa,float white,float[] black,float[] gains,float[] ccm,float[] lensShading,int sw,int sh,float[] cropRect,int block,Integer sensorIso,Integer analogIso,boolean automatic,double shotNoise,double readNoise,int format,
+                               float minGain,float maxGain,boolean sceneLuma,boolean means,boolean pin,long startNs){
+        if (!enabled || plane == null) return false;
         // P108: a full-resolution Quad-Bayer frame (Pixel 10 Pro: 8160x6144 RAW10, the ISP's own viewfinder is green in that
         // mode) is shown 2x2-binned as the plain Bayer 4080x3072, at most every QUAD_BIN_INTERVAL_NS (the camera thread); P194 a
         // plain Bayer frame as large (the hardware-remosaic FULLRES) one 2x2 quad of each 4x4, the same (w/2) x (h/2)
@@ -404,13 +578,14 @@ public final class LiveRawFrame {
         final boolean cellMeans = !means && binsCellMeans(w, h, bin, cap);
         if (!means && (cellMeans || (cap != -1 && (long) w * h >= QUAD_BIN_PIXELS && w % (cell * 2) == 0 && h % (cell * 2) == 0))) {
             final long now = System.nanoTime();
-            if (now - quadAtNs < paceNs(cellMeans, (long) w * h, lastBinNs)) return;
+            if (now - quadAtNs < paceNs(cellMeans, (long) w * h, lastBinNs)) return false;
             quadAtNs = now;
             ByteBuffer binned = binMosaic(plane, w, h, stride, format, bin);
-            if (binned == null) return;
-            publish(binned, w / cell, h / cell, w / cell * 2, cfa, white, black, gains, ccm, lensShading, sw, sh, cropRect, 1, sensorIso, analogIso,
-                    automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR, minGain, maxGain, sceneLuma, cellMeans);
-            return;
+            if (binned == null) return false;
+            // P365: a ring view was read by the bin (cached memory) and is not kept
+            publishFrame(binned, w / cell, h / cell, w / cell * 2, cfa, white, black, gains, ccm, lensShading, sw, sh, cropRect, 1, sensorIso, analogIso,
+                    automatic, shotNoise, readNoise, android.graphics.ImageFormat.RAW_SENSOR, minGain, maxGain, sceneLuma, cellMeans, false, startNs);
+            return false;
         }
         // P266: the module's «Разрешение видоискателя RAW» - a plain Bayer frame halved until it fits. P316 (settings audit): a
         // packed RAW10 / RAW12 frame too (unpacked first: the X8U's default raw10, RAW10-only lenses), and a Quad / Tetra frame's
@@ -431,7 +606,7 @@ public final class LiveRawFrame {
                         if (unpacked == null || unpacked.capacity() < need)
                             unpacked = ByteBuffer.allocateDirect(need).order(ByteOrder.nativeOrder());
                         unpacked.clear();
-                        if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(plane.duplicate(), format, w, h, stride, unpacked)) return;
+                        if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(plane.duplicate(), format, w, h, stride, unpacked)) return false;
                         unpacked.position(0);
                         unpacked.limit(need);
                         src = unpacked;
@@ -455,22 +630,23 @@ public final class LiveRawFrame {
                 h = sh0;
                 stride = st;
                 format = android.graphics.ImageFormat.RAW_SENSOR;
+                pin = false; // P365: the halved copy is the frame
             }
         }
         final boolean packed = com.particlesdevs.photoncamera.util.RawUnpack.isPacked(format);
         final long rowBytes = packed ? com.particlesdevs.photoncamera.util.RawUnpack.packedRowBytes(format, w) : w * 2L;
         if (w < 2 || h < 2 || cfa < 0 || cfa > 3 || stride < rowBytes || (!packed && (stride & 1) != 0)
-                || (long)(h-1)*stride+rowBytes > plane.remaining() || !Float.isFinite(white) || white <= 0) return;
-        if ((long)w*h*2 > Integer.MAX_VALUE) return;
+                || (long)(h-1)*stride+rowBytes > plane.remaining() || !Float.isFinite(white) || white <= 0) return false;
+        if ((long)w*h*2 > Integer.MAX_VALUE) return false;
         block = block==2 || block==4 ? block : 1;
-        if (w < 2*block || h < 2*block) return;
-        if (black!=null) { if(black.length<4)return; for(float v:black)if(!Float.isFinite(v)||v<0||v>=white)return; }
-        if (gains!=null) { if(gains.length<3)return; for(float v:gains)if(!Float.isFinite(v)||v<=0)return; }
-        if (ccm!=null) { if(ccm.length<9)return; for(float v:ccm)if(!Float.isFinite(v))return; }
+        if (w < 2*block || h < 2*block) return false;
+        if (black!=null) { if(black.length<4)return false; for(float v:black)if(!Float.isFinite(v)||v<0||v>=white)return false; }
+        if (gains!=null) { if(gains.length<3)return false; for(float v:gains)if(!Float.isFinite(v)||v<=0)return false; }
+        if (ccm!=null) { if(ccm.length<9)return false; for(float v:ccm)if(!Float.isFinite(v))return false; }
         if (cropRect!=null) {
-            if(cropRect.length!=4)return;
-            for(float v:cropRect)if(!Float.isFinite(v))return;
-            if(cropRect[0]<0||cropRect[1]<0||cropRect[2]<=0||cropRect[3]<=0||cropRect[0]+cropRect[2]>1.001f||cropRect[1]+cropRect[3]>1.001f)return;
+            if(cropRect.length!=4)return false;
+            for(float v:cropRect)if(!Float.isFinite(v))return false;
+            if(cropRect[0]<0||cropRect[1]<0||cropRect[2]<=0||cropRect[3]<=0||cropRect[0]+cropRect[2]>1.001f||cropRect[1]+cropRect[3]>1.001f)return false;
         }
         if(lensShading!=null) {
             boolean valid=sw>0&&sh>0&&(long)sw*sh*3==lensShading.length;
@@ -478,41 +654,66 @@ public final class LiveRawFrame {
             if(!valid)lensShading=null;
         }
         int needed = w*h*2;
+        // P365: a plain 16-bit frame of whole rows (a ring slot) is drawn where it is
+        pin &= !packed && stride == w * 2;
         final int generation;
         ByteBuffer target;
         synchronized (LOCK) {
-            if (!enabled) return;
+            if (!enabled) return false;
             generation = session;
-            if (writer == null || writer.capacity() < needed) {
-                writer = ByteBuffer.allocateDirect(needed).order(ByteOrder.nativeOrder());
+            // P365: the GL thread's view, a retired one and this one at most MAX_PINNED (a fresh ready view is replaced and freed)
+            pin &= (consumerPinned != null ? 1 : 0) + retired.size() + 1 <= MAX_PINNED;
+            if (pin) {
+                target = null;
+            } else {
+                if (writer == null || writer.capacity() < needed) {
+                    writer = ByteBuffer.allocateDirect(needed).order(ByteOrder.nativeOrder());
+                }
+                target = writer;
             }
-            target = writer;
         }
-        // Filled outside the lock: the copy is tens of megabytes and the GL
-        // thread only needs the lock long enough to swap references.
-        target.clear();
-        if (packed) {
-            if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(plane.duplicate(), format, w, h, stride, target)) return;
-            target.position(0); target.limit(needed);
+        if (pin) {
+            ByteBuffer v = plane.duplicate();
+            v.limit(plane.position() + needed);
+            target = v.slice().order(ByteOrder.nativeOrder());
         } else {
-            ByteBuffer src = plane.duplicate();
-            int start = src.position();
-            for (int y=0;y<h;y++) {
-                src.limit(start+y*stride+w*2);
-                src.position(start+y*stride);
-                target.put(src);
+            // Filled outside the lock: the copy is tens of megabytes and the GL
+            // thread only needs the lock long enough to swap references.
+            target.clear();
+            if (packed) {
+                if (!com.particlesdevs.photoncamera.util.RawUnpack.unpack(plane.duplicate(), format, w, h, stride, target)) return false;
+                target.position(0); target.limit(needed);
+            } else {
+                ByteBuffer src = plane.duplicate();
+                int start = src.position();
+                for (int y=0;y<h;y++) {
+                    src.limit(start+y*stride+w*2);
+                    src.position(start+y*stride);
+                    target.put(src);
+                }
+                target.flip();
             }
-            target.flip();
         }
         // P315 (OPPO Find X8 Ultra, sensor mode 8: the RAW without its 64 DN black pedestal, the viewfinder green and half black):
         // the frame's own floor when its samples prove the pedestal lost (the GL develop, LiveWhyMeter and LiveRawMeter read it)
         if (black != null && blackFromData && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vf_black_floor", true))
             black = PEDESTAL.black(generation, target, w, h, w * 2, block, black);
+        ByteBuffer replaced;
         synchronized (LOCK) {
-            if (!enabled || session != generation) return;
+            if (!enabled || session != generation) return false;
             publishedNanos = System.nanoTime();
-            // P314: the filled buffer becomes the ready frame; the ready one (never the GL thread's) is the next to fill
-            writer = ready;
+            // P365: a ring view waiting as the ready frame was never the GL thread's: freed below, never refilled
+            replaced = readyPinned;
+            if (replaced != null) ready = null;
+            if (pin) {
+                // P365: the view is the frame; the own buffers go (the copy path makes them again when a frame needs it)
+                writer = null;
+                readyPinned = plane;
+            } else {
+                // P314: the filled buffer becomes the ready frame; the ready one (never the GL thread's) is the next to fill
+                writer = ready;
+                readyPinned = null;
+            }
             ready = target;
             readyFresh = true;
             width = w;
@@ -540,45 +741,65 @@ public final class LiveRawFrame {
             shadingWidth=lensShading==null?1:sw;shadingHeight=lensShading==null?1:sh;
             version++;
         }
+        if (replaced != null) free(replaced);
+        noteVfCopy(System.nanoTime() - startNs);
+        return pin;
     }
 
     /**
      * Snapshot for the GL thread; null when nothing has been published. P314: a new frame changes places with the GL thread's
      * last one (no copy); without a new frame it is the last one again (the same buffer). Its buffer stays the frame's until the
-     * next acquire.
+     * next acquire. P365: the GL thread is done with every earlier frame here - its last ring view and a retired one are freed.
      */
     public static Frame acquire() {
+        final java.util.ArrayList<ByteBuffer> done = new java.util.ArrayList<>(2);
+        final Frame f;
         synchronized (LOCK) {
-            if (readyFresh) {
-                final ByteBuffer last = consumer;
-                consumer = ready;
-                ready = last;
-                readyFresh = false;
-            }
-            if (consumer == null) return null;
-            Frame f = new Frame();
-            f.buffer = consumer.duplicate().order(ByteOrder.nativeOrder());
-            f.buffer.position(0);
-            f.crop = crop.clone();
-            f.width = width;
-            f.height = height;
-            f.rowStride = rowStride;
-            f.cfaPattern = cfaPattern;
-            f.cfaBlock = cfaBlock;
-            f.cellMean = cellMean;
-            f.iso = iso; f.maxAnalogIso = maxAnalogIso; f.autoExposure = autoExposure;
-            f.minDisplayGain = minDisplayGain; f.maxDisplayGain = maxDisplayGain; f.sceneLuma = sceneLuma;
-            f.noiseS=noiseS;f.noiseO=noiseO;
-            f.whiteLevel = whiteLevel;
-            f.blackLevel = blackLevel.clone();
-            f.wbGains = wbGains.clone();
-            f.colorTransform = colorTransform.clone();
-            f.shading=shading;f.shadingWidth=shadingWidth;f.shadingHeight=shadingHeight;
-            f.version = version;
-            f.session = session;
-            f.publishedNanos = publishedNanos;
-            return f;
+            f = acquireLocked(done);
         }
+        for (ByteBuffer v : done) free(v);
+        return f;
+    }
+
+    /** {@link #acquire()} under LOCK; the ring views the GL thread is done with go into {@code done} (freed after the lock). */
+    private static Frame acquireLocked(java.util.List<ByteBuffer> done) {
+        if (readyFresh) {
+            final ByteBuffer last = consumer, lastPinned = consumerPinned;
+            consumer = ready;
+            consumerPinned = readyPinned;
+            readyPinned = null;
+            // P365: a ring view is not handed back as the next ready buffer (the producer never writes into a slot)
+            if (lastPinned != null) {
+                done.add(lastPinned);
+                ready = null;
+            } else ready = last;
+            readyFresh = false;
+        }
+        done.addAll(retired);
+        retired.clear();
+        if (consumer == null) return null;
+        Frame f = new Frame();
+        f.buffer = consumer.duplicate().order(ByteOrder.nativeOrder());
+        f.buffer.position(0);
+        f.crop = crop.clone();
+        f.width = width;
+        f.height = height;
+        f.rowStride = rowStride;
+        f.cfaPattern = cfaPattern;
+        f.cfaBlock = cfaBlock;
+        f.cellMean = cellMean;
+        f.iso = iso; f.maxAnalogIso = maxAnalogIso; f.autoExposure = autoExposure;
+        f.minDisplayGain = minDisplayGain; f.maxDisplayGain = maxDisplayGain; f.sceneLuma = sceneLuma;
+        f.noiseS=noiseS;f.noiseO=noiseO;
+        f.whiteLevel = whiteLevel;
+        f.blackLevel = blackLevel.clone();
+        f.wbGains = wbGains.clone();
+        f.colorTransform = colorTransform.clone();
+        f.shading=shading;f.shadingWidth=shadingWidth;f.shadingHeight=shadingHeight;
+        f.version = version;
+        f.session = session;
+        f.publishedNanos = publishedNanos;
+        return f;
     }
 
     /**

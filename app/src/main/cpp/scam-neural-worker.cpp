@@ -104,10 +104,15 @@ int main(int argc,char** argv) {
                     try{motion->warmUp();}catch(const std::exception&){}
                     creReadyMs=int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-warmStarted).count());
                 });}catch(const std::exception&){}
-                try{eglWarm=std::thread([]{
+                // (the program cache of the job, read here: the main thread sets hybridProgramCacheDir later)
+                std::string warmCache;
+                {std::ifstream c(std::string(argv[2])+"/gl-cache");if(!(c&&std::getline(c,warmCache))||warmCache.empty()){if(const char* e=std::getenv("SCAM_GL_CACHE"))warmCache=e;}}
+                try{eglWarm=std::thread([warmCache]{
                     worker_crash::Stage stage("EGL warm-up (driver load)");
                     EGLDisplay display=eglGetDisplay(EGL_DEFAULT_DISPLAY);
                     if(display!=EGL_NO_DISPLAY)eglInitialize(display,nullptr,nullptr); // loads the driver; the merge's own init is then a no-op
+                    // P364: the GPU F6 / alignment context and its programs as well (the hybrid merge takes it)
+                    if(!std::getenv("SCAM_NO_LA_PREWARM")&&!warmCache.empty())scam::laGpuPrewarmMake(warmCache);
                 });}catch(const std::exception&){}
             }
             auto joinCreWarm=[&]{

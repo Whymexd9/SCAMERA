@@ -35,7 +35,8 @@ import org.robolectric.annotation.Config;
  * P212g (W7 = M12): a mosaic shot whose result has no usable ISP matrix for its neutral (the vivo mosaic results' identity, or
  * P121's own neutral) is rendered with the camera's plain-session matrix at that neutral, its scene light from the table's AWB
  * labels; any other shot, a result whose ISP matrix fits the camera's neutral, and an empty table keep what they had. P212z
- * (review): a FULLRES shot by default; a 12 MP ISZ mosaic shot only with scam_dev.txt "mosaic_ccm_table 2".
+ * (review): a FULLRES shot only with scam_dev.txt "mosaic_ccm_table 1"; P366: every mosaic shot (the 12 MP ISZ modules too) by
+ * default ("mosaic_ccm_table 2" - the owner's green X200U ISZ photos with the DNG matrices were the A/B P212z waited for).
  */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35, application = Application.class)
@@ -191,29 +192,32 @@ public class ParametersPlainTableTest {
     }
 
     /**
-     * P212z (review): a 12 MP ISZ mosaic shot keeps the DNG matrices by default (M12 scoped the table to FULLRES, a visible change
-     * that needs the owner's A/B) - the same render as before the table; "mosaic_ccm_table 2" gives it the table, 0 takes it from
-     * FULLRES too.
+     * P366 (owner, 2026-10-27: «вот такие фото получаю с исз, исправь»): a 12 MP ISZ mosaic shot takes the table by default - P212z
+     * kept the DNG matrices there until an owner A/B, and the owner's green X200U camera 4 ISZ photos (log-2026-10-27 L13851: "the DNG
+     * matrices (not a FULLRES shot ...)") are that A/B, so the old default's expectation here was the bug; "mosaic_ccm_table 1" keeps
+     * P212z's FULLRES-only scope (the same render as before the table), 0 takes it from FULLRES too.
      */
-    @Test public void aTwelveMegapixelMosaicShotTakesTheTableOnlyWhenAsked() {
+    @Test public void aTwelveMegapixelMosaicShotTakesTheTableByDefault() {
         final Parameters before = iszMosaic(true);
         before.customNeutral = new float[]{0.47f, 1f, 0.61f};
         before.ReCalcColor(true, result(IDENTITY, 0.40f, 0.70f));
         teach();
+        assertTrue(PlainColourMemory.wanted(true));
+        assertTrue("P366: the 12 MP ISZ modules by default", PlainColourMemory.wanted(false));
         final Parameters isz = iszMosaic(true);
         isz.customNeutral = new float[]{0.47f, 1f, 0.61f};
         isz.ReCalcColor(true, result(IDENTITY, 0.40f, 0.70f));
-        assertTrue(isz.mosaicMatrixSource, isz.mosaicMatrixSource.contains("DNG matrices") && isz.mosaicMatrixSource.contains("not a FULLRES shot"));
-        for (int i = 0; i < 9; i++) assertEquals("element " + i, before.CCT.matrix[i], isz.CCT.matrix[i], 1e-6f);
+        assertEquals(plainRows()[0], isz.CCT.matrix[0], 2e-3f);
+        assertTrue(isz.mosaicMatrixSource, isz.mosaicMatrixSource.contains("plain-session"));
+        ccmTable = 1f;
         assertTrue(PlainColourMemory.wanted(true));
         assertFalse(PlainColourMemory.wanted(false));
-        ccmTable = 2f;
-        assertTrue(PlainColourMemory.wanted(false));
-        final Parameters asked = iszMosaic(true);
-        asked.customNeutral = new float[]{0.47f, 1f, 0.61f};
-        asked.ReCalcColor(true, result(IDENTITY, 0.40f, 0.70f));
-        assertEquals(plainRows()[0], asked.CCT.matrix[0], 2e-3f);
-        assertTrue(asked.mosaicMatrixSource, asked.mosaicMatrixSource.contains("plain-session"));
+        final Parameters fullResOnly = iszMosaic(true);
+        fullResOnly.customNeutral = new float[]{0.47f, 1f, 0.61f};
+        fullResOnly.ReCalcColor(true, result(IDENTITY, 0.40f, 0.70f));
+        assertTrue(fullResOnly.mosaicMatrixSource, fullResOnly.mosaicMatrixSource.contains("DNG matrices")
+                && fullResOnly.mosaicMatrixSource.contains("not a FULLRES shot"));
+        for (int i = 0; i < 9; i++) assertEquals("element " + i, before.CCT.matrix[i], fullResOnly.CCT.matrix[i], 1e-6f);
         ccmTable = 0f;
         final Parameters off = mosaic(true);
         off.customNeutral = new float[]{0.47f, 1f, 0.61f};

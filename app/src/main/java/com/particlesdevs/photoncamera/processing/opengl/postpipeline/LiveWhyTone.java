@@ -43,6 +43,15 @@ import java.util.concurrent.Executors;
  * an A/B against the photo; it differs in strongly fused scenes (the point fusion lifts the shadows evenly: up to 0.02-0.06 of
  * display luma at effS 1.5-2, host model of a 2x ISZ merge). P333: the photo's fusion is a Laplacian pyramid now (WhyFusion); vf_why 2
  * keeps the guided filter (the photo's fusion before it): equal to the photo on flat areas, not at edges.
+ *
+ * <p>P365 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»; the reference
+ * viewfinder draws its look in one pass from the RAW texture): {@link #drawFused} - vf_why 1 in one pass, why/combine with
+ * POINT_FUSED 1 and RAW_SOURCE 1 reading the RAW frame itself (utils/import_vfraw.glsl: rawdevelop_fs's linear values, the 3 x 3
+ * colour neighbourhood from the same filtered quads), the same AE, curve and uniforms as {@link #draw}. No RGBA16F linear frame,
+ * one GPU submission instead of two (three with the copy to the screen: MainRenderer draws it straight to the screen when no
+ * filter, peaking or smaller tone size needs its target). scam_dev vf_fused 0: the two passes of P314. Any failure turns the fused
+ * pass off for the context ({@link #fusedFailed()}): the passes of P314 draw instead (then the viewfinder's own look, then the
+ * ISP picture, as before).
  */
 public final class LiveWhyTone {
     private static final String TAG = "LiveWhyTone";
@@ -70,6 +79,53 @@ public final class LiveWhyTone {
     }
 
     /**
+     * P365: scam_dev.txt "vf_fused": vf_why 1 in one fused pass; 0 (default) = the two passes of P314. Off by default: on the OPPO
+     * Find X7 Ultra (Adreno 750) the fused pass toned 4 frames a second against 27 for P314's passes (its 3 x 3 neighbourhood of
+     * range-filtered quads is 45 gathers and 144 exp a pixel - nine times the first pass's work - where P314 computes each linear
+     * pixel once into the tone target).
+     */
+    public static boolean fusedSwitch() {
+        return PreferenceKeys.scamDevSwitch("vf_fused", false);
+    }
+
+    /** P365: whether the next draw is the fused pass ({@link #drawFused}): vf_fused, vf_why 1, neither failed in this context. */
+    public boolean fused() {
+        return !failed && !fusedFailed && mode() == POINT && fusedSwitch();
+    }
+
+    /** P365: the fused pass failed in this context (the passes of P314 draw instead). */
+    public boolean fusedFailed() {
+        return fusedFailed;
+    }
+
+    /**
+     * P365: the set of programs the draws need now (0: none, vf_why 0; else per vf_why and whether it is fused) - MainRenderer asks
+     * for a set's background compile when this changes.
+     */
+    public int programSet() {
+        final int mode = failed ? OWN : mode();
+        return mode == OWN ? 0 : 2 * mode + (fused() ? 1 : 0);
+    }
+
+    /**
+     * P365: the RAW frame of the fused pass (MainRenderer: LiveRawRenderer.bindFrame / drawBound with the viewfinder's vertices,
+     * rotation and mirror).
+     */
+    public interface RawSource {
+        /** Binds the frame to the program {@code program} (its RAW uniforms, units 9 and 10); false without a frame to draw. */
+        boolean bind(int program);
+
+        /** Whether the bound frame is new (not drawn before): the AE counts and runs on new frames. */
+        boolean fresh();
+
+        /** The bound frame with its visible crop and colour transform (the CPU AE meters it). */
+        com.particlesdevs.photoncamera.processing.LiveWhyMeter.View view();
+
+        /** Draws the bound program over the viewport with the frame's vertices. */
+        void draw();
+    }
+
+    /**
      * P314: how the RAW viewfinder tones its frame - scam_dev.txt "vf_why": 0 {@link #OWN}, 1 {@link #POINT} (the default: the
      * photo's tone per pixel), 2 {@link #LOCAL} (the photo's guided-filter fusion, P301); any other value: 1.
      */
@@ -86,6 +142,8 @@ public final class LiveWhyTone {
     private final HashMap<Integer, HashMap<String, Integer>> locations = new HashMap<>();
     private int ones, dummy3d, lutTex;
     private boolean inited, failed;
+    /** P365: the fused pass failed in this context. */
+    private boolean fusedFailed;
     private final Tex lin = new Tex(), low = new Tex(), aeLow = new Tex(), fused = new Tex();
     private final Tex[] means = {new Tex(), new Tex(), new Tex()}, ab = {new Tex(), new Tex()}, boxTmp = {new Tex(), new Tex()};
     private final FloatBuffer quad = ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -127,6 +185,7 @@ public final class LiveWhyTone {
         inited = false;
         lutShown = null;
         failed = false;
+        fusedFailed = false;
         for (Tex t : new Tex[]{lin, low, aeLow, fused, means[0], means[1], means[2], ab[0], ab[1], boxTmp[0], boxTmp[1]})
             t.id = t.fbo = t.w = t.h = 0;
         ae = null;
@@ -236,10 +295,63 @@ public final class LiveWhyTone {
         }
     }
 
+    /**
+     * P365: vf_why 1 in one pass - why/combine with POINT_FUSED 1 and RAW_SOURCE 1 into {@code outFbo} at the viewport {@code x},
+     * {@code y}, {@code w} x {@code h} (MainRenderer: the screen's own viewport when the tone size is the viewport and no filter or
+     * peaking pass follows, else the tone target at 0, 0), the RAW frame bound by {@code raw}. The AE, the fusion's curve, the
+     * settings, the colour look and the film LUT as {@link #draw}; the AE counts new frames only (a redraw of the same frame draws
+     * the same tone). The default framebuffer and the viewport are put back. False: nothing drawn - no frame, or the fused pass
+     * failed ({@link #fusedFailed()}: off for the context).
+     */
+    public boolean drawFused(RawSource raw, int outFbo, int x, int y, int w, int h) {
+        if (failed || fusedFailed) return false;
+        int[] viewport = new int[4];
+        GLES20.glGetIntegerv(GLES20.GL_VIEWPORT, viewport, 0);
+        try {
+            if (!inited && !init()) return fusedFail("init");
+            refreshSettings();
+            final FilmLut lut = lutNow();
+            final boolean lutOn = lutTex != 0 && lut != null;
+            final int p = program("why/combine", combineDefines(lutOn, true, true));
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, outFbo);
+            GLES20.glViewport(x, y, w, h);
+            if (!raw.bind(p)) return false;
+            if (ae == null || raw.fresh() && frames++ % AE_EVERY == 0) {
+                if (!runAePoint(raw.view())) return fusedFail("ae");
+            }
+            if (curveOf != ae) fillCurve(ae);
+            use(p);
+            // the textures of P314's linear frame are not read with RAW_SOURCE 1: the 2 x 2 placeholder on their units
+            final String[] inputs = {"InputBuffer", "WhyLow", "WhyColour", "WhyFused", "WhyDetailRef", "WhyLumaS"};
+            for (int unit = 0; unit < inputs.length; unit++) texture(p, inputs[unit], unit, ones);
+            combineUniforms(p, ae, aeShown, true, lutOn, lut);
+            GLES20.glUniform2i(loc(p, "vpOriginU"), x, y);
+            GLES20.glUniform2i(loc(p, "vpSizeU"), w, h);
+            raw.draw();
+            int error = GLES20.glGetError();
+            if (error != GLES20.GL_NO_ERROR) return fusedFail("GL error 0x" + Integer.toHexString(error));
+            return true;
+        } catch (RuntimeException e) {
+            return fusedFail(e.toString());
+        } finally {
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0);
+            GLES20.glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        }
+    }
+
     private boolean fail(String why) {
         failed = true;
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0);
         Log.e(TAG, "the photo's tone on the viewfinder is off for this context: " + why);
+        return false;
+    }
+
+    /** P365: the fused pass off for this context (the passes of P314 draw instead). */
+    private boolean fusedFail(String why) {
+        fusedFailed = true;
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0);
+        Log.e(TAG, "the fused WHY pass on the viewfinder is off for this context (the two passes instead): " + why);
         return false;
     }
 
@@ -461,14 +573,9 @@ public final class LiveWhyTone {
      * whyLow / fused at factor 2.
      */
     private void combine(WhyAe.Result r, float aeNow, int outFbo, int w, int h, boolean point) {
-        FilmLut lut = lutStrength > 0f ? lutReady : null;
-        if (lut != lutShown) {
-            if (lutTex != 0) GLES20.glDeleteTextures(1, new int[]{lutTex}, 0);
-            lutTex = lut != null ? lut.upload() : 0;
-            lutShown = lut;
-        }
+        final FilmLut lut = lutNow();
         final boolean lutOn = lutTex != 0 && lut != null;
-        int p = program("why/combine", combineDefines(lutOn, point));
+        int p = program("why/combine", combineDefines(lutOn, point, false));
         use(p);
         final int colourSource = point ? lin.id : low.id;
         texture(p, "InputBuffer", 0, lin.id);
@@ -477,6 +584,25 @@ public final class LiveWhyTone {
         texture(p, "WhyFused", 3, point ? lin.id : fused.id);
         texture(p, "WhyDetailRef", 4, colourSource);
         texture(p, "WhyLumaS", 5, colourSource);
+        combineUniforms(p, r, aeNow, point, lutOn, lut);
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, outFbo);
+        GLES20.glViewport(0, 0, w, h);
+        quad(p);
+    }
+
+    /** The film LUT of the settings, uploaded when it changed (lutTex; null: none). */
+    private FilmLut lutNow() {
+        FilmLut lut = lutStrength > 0f ? lutReady : null;
+        if (lut != lutShown) {
+            if (lutTex != 0) GLES20.glDeleteTextures(1, new int[]{lutTex}, 0);
+            lutTex = lut != null ? lut.upload() : 0;
+            lutShown = lut;
+        }
+        return lut;
+    }
+
+    /** why/combine's uniforms but its image inputs (units 0 - 5): the LUT (6), the gain map (7), the fusion's curve (8), the tone. */
+    private void combineUniforms(int p, WhyAe.Result r, float aeNow, boolean point, boolean lutOn, FilmLut lut) {
         GLES20.glActiveTexture(GLES20.GL_TEXTURE6);
         GLES30.glBindTexture(GLES30.GL_TEXTURE_3D, lutOn ? lutTex : dummy3d);
         set(p, "FilmLut", 6);
@@ -537,9 +663,6 @@ public final class LiveWhyTone {
             GLES20.glUniform3f(loc(p, "lutScaleU"), 1f / (lut.domainMax[0] - lut.domainMin[0]), 1f / (lut.domainMax[1] - lut.domainMin[1]),
                     1f / (lut.domainMax[2] - lut.domainMin[2]));
         }
-        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, outFbo);
-        GLES20.glViewport(0, 0, w, h);
-        quad(p);
     }
 
     // ---- GL helpers
@@ -570,14 +693,35 @@ public final class LiveWhyTone {
             ArrayList<String[]> list = new ArrayList<>();
             if (defines != null) for (String[] d : defines) list.add(d);
             String source = GLInterface.loadShader(ScameraApp.getAssetLoader().getString("shaders/" + asset + ".glsl"), list);
+            // P365: the fused pass's vertex shader is the RAW viewfinder's (its texCoord; attributes at locations 0 and 1)
+            if (rawSource(defines))
+                return GLProg.viewfinderKey(fusedVertexShader(ScameraApp.getAssetLoader().getString("shaders/preview/rawdevelop_vs.glsl")), source);
             return GLProg.viewfinderKey(VS, source, "vPosition");
         });
     }
 
-    /** The defines of why/combine for the current settings and film LUT (P314: {@code point}, the per-pixel fusion). */
-    private String[][] combineDefines(boolean lutOn, boolean point) {
+    /** P365: whether the defines draw from the RAW frame (RAW_SOURCE 1: the fused pass). */
+    static boolean rawSource(String[][] defines) {
+        if (defines != null) for (String[] d : defines) if ("RAW_SOURCE".equals(d[0]) && "1".equals(d[1])) return true;
+        return false;
+    }
+
+    /**
+     * P365: the fused pass's vertex shader - preview/rawdevelop_vs.glsl as GLSL ES 3.10 (why/combine is compiled as 3.10, and a
+     * program's stages must share the version); the source is otherwise the RAW viewfinder's own.
+     */
+    static String fusedVertexShader(String rawdevelopVs) {
+        return rawdevelopVs.replaceFirst("#version 300 es", "#version 310 es");
+    }
+
+    /**
+     * The defines of why/combine for the current settings and film LUT (P314: {@code point}, the per-pixel fusion; P365
+     * {@code fused}: from the RAW frame in one pass).
+     */
+    private String[][] combineDefines(boolean lutOn, boolean point, boolean fused) {
         ArrayList<String[]> defs = new ArrayList<>();
         if (point) defs.add(new String[]{"POINT_FUSED", "1"});
+        if (point && fused) defs.add(new String[]{"RAW_SOURCE", "1"});
         if (colourOn) defs.add(new String[]{"COLOUR_LOOK", "1"});
         if (toneOp != ToneCurve.AGX) defs.add(new String[]{"TONE_OP", "1"});
         if (lutOn) defs.add(new String[]{"FILM_LUT", "1"});
@@ -586,20 +730,22 @@ public final class LiveWhyTone {
 
     /**
      * P312: the programs draw() uses with the current settings: {asset, defines} (both why/combine variants with a film LUT on);
-     * P314: with vf_why 1 only why/combine's POINT_FUSED variants, with 2 the guided-filter chain's programs.
+     * P314: with vf_why 1 only why/combine's POINT_FUSED variants, with 2 the guided-filter chain's programs; P365: with the fused
+     * pass ({@link #fused()}) its RAW_SOURCE variants instead (the passes of P314 are built when it fails).
      */
     private ArrayList<Object[]> programsWanted() {
         refreshSettings();
         ArrayList<Object[]> out = new ArrayList<>();
         final boolean point = mode() != LOCAL;
+        final boolean fused = point && fused();
         if (!point) {
             out.add(new Object[]{"why/low", null});
             for (int mode = 0; mode <= 3; mode++) out.add(new Object[]{"why/gf", new String[][]{{"MODE", String.valueOf(mode)}}});
             for (int mode = 0; mode <= 1; mode++) out.add(new Object[]{"why/ab", new String[][]{{"MODE", String.valueOf(mode)}}});
             out.add(new Object[]{"why/box", null});
         }
-        out.add(new Object[]{"why/combine", combineDefines(false, point)});
-        if (lutStrength > 0f) out.add(new Object[]{"why/combine", combineDefines(true, point)});
+        out.add(new Object[]{"why/combine", combineDefines(false, point, fused)});
+        if (lutStrength > 0f) out.add(new Object[]{"why/combine", combineDefines(true, point, fused)});
         return out;
     }
 
@@ -635,6 +781,8 @@ public final class LiveWhyTone {
                     if (compiled || sendOnce.test(key)) return false;
                     p = GLProg.linkViewfinderProgram(key);
                     compiled = true;
+                    // P365: a fused program that does not link turns the fused pass off; the caller asks for P314's set next
+                    if (p == 0 && rawSource(defines)) return fusedFail("program " + name);
                     if (p == 0) return !fail("program " + name);
                 }
                 programs.put(name, p);

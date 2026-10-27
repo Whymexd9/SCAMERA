@@ -16,6 +16,7 @@ precision highp sampler2D;
 uniform sampler2D InputBuffer;   // Y,U,V of the level in rgb (a luma level: Y in r, the rest unused)
 uniform int blockU;              // block side in level pixels (16; unset = 16)
 uniform vec2 modelU;             // (s_Y, r_Y): single-frame variance of Y = s_Y * Y + r_Y (unset = 1e-4, 1e-6)
+uniform ivec2 atU;               // P364: this level's corner in ScamDenoise's statistics atlas (unset: 0, a texture of its own)
 // P320: a DCG shot (ScamDenoise sets 1): r_Y is the high-gain zone's, modelHiU the low-gain one's, blended over 0.9 .. 1.1 x
 // the knee in the block's mean Y, so each level's gain is measured against its own zone; 0 = the single curve, as before.
 #define DCG_ZONES 0
@@ -90,7 +91,7 @@ void main() {
     int sub = max(B / 4, 3);
     vec2 model = modelU.x > 0.0 ? modelU : vec2(1.0e-4, 1.0e-6);
     ivec2 size = textureSize(InputBuffer, 0);
-    ivec2 o = ivec2(gl_FragCoord.xy) * B;
+    ivec2 o = (ivec2(gl_FragCoord.xy) - atU) * B;
     if (o.x + 4 * sub > size.x || o.y + 4 * sub > size.y) {
         Output = uvec4(packHalf2x16(vec2(-1.0, 0.0)), 0u, 0u, 0u);
         return;

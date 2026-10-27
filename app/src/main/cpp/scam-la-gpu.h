@@ -19,6 +19,7 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -359,34 +360,315 @@ void main(){
 }
 )";
 
+// P364 GPU homography (tune gpuAlign; ArkCam 2.01's HomographyEngine shape: corners on a 24 x 24 grid, a pyramidal KLT per corner,
+// RANSAC on the tracks), on the gray pyramid of the F6 above (sqrt of the gained quads, -1 at a clip):
+// the base's corners: per grid cell the strongest Shi-Tomasi minimum eigenvalue (5 x 5 central differences, x255 scale as an 8-bit
+// guide) among every 2nd pixel, a 9 x 9 patch around it free of clipped quads
+static const char* kLaGlslCorners = R"(
+layout(local_size_x=8,local_size_y=8) in;
+uniform highp sampler2D v;   // base L0, masked value
+uniform ivec2 size;
+uniform ivec2 cells;
+layout(std430,binding=0) writeonly buffer Corners{vec4 corners[];}; // x, y (L0 px), score (-1: none)
+shared float sScore[64];
+shared vec2 sPt[64];
+float px(int x,int y){return texelFetch(v,ivec2(clamp(x,0,size.x-1),clamp(y,0,size.y-1)),0).x;}
+void main(){
+    uint tid=gl_LocalInvocationIndex;
+    int cx=int(gl_WorkGroupID.x),cy=int(gl_WorkGroupID.y);
+    int sx=cx*size.x/cells.x+8,ex=(cx+1)*size.x/cells.x-8,sy=cy*size.y/cells.y+8,ey=(cy+1)*size.y/cells.y-8;
+    float best=-1.0;vec2 bp=vec2(0.0);
+    for(int y=sy+int(gl_LocalInvocationID.y)*2;y<ey;y+=16){
+        for(int x=sx+int(gl_LocalInvocationID.x)*2;x<ex;x+=16){
+            float c=px(x,y);
+            if(c<0.0)continue;
+            float d=abs(c-px(x,y-3))+abs(c-px(x,y+3))+abs(c-px(x-3,y))+abs(c-px(x+3,y));
+            if(d*255.0<12.0)continue;
+            float gxx=0.0,gyy=0.0,gxy=0.0;
+            for(int dy=-2;dy<=2;dy++)for(int dx=-2;dx<=2;dx++){
+                float ix=(px(x+dx+1,y+dy)-px(x+dx-1,y+dy))*255.0,iy=(px(x+dx,y+dy+1)-px(x+dx,y+dy-1))*255.0;
+                gxx+=ix*ix;gyy+=iy*iy;gxy+=ix*iy;
+            }
+            float tr=gxx+gyy,det=gxx*gyy-gxy*gxy,me=0.5*(tr-sqrt(max(0.0,tr*tr-4.0*det)));
+            if(me<=best||me<=30.0)continue;
+            bool clip=false;
+            for(int dy=-5;dy<=5&&!clip;dy++)for(int dx=-5;dx<=5;dx++)if(px(x+dx,y+dy)<0.0){clip=true;break;}
+            if(clip)continue;
+            best=me;bp=vec2(float(x),float(y));
+        }
+    }
+    sScore[tid]=best;sPt[tid]=bp;
+    barrier();
+    for(uint st=32u;st>0u;st>>=1u){
+        if(tid<st&&sScore[tid+st]>sScore[tid]){sScore[tid]=sScore[tid+st];sPt[tid]=sPt[tid+st];}
+        barrier();
+    }
+    if(tid==0u)corners[cy*cells.x+cx]=vec4(sPt[0],sScore[0],0.0);
+}
+)";
+
+// the coarse translation: per shift (dx, dy) of the donor's L3 within +-R, the mean |base - donor| over the quads both hold
+static const char* kLaGlslCoarse = R"(
+layout(local_size_x=256) in;
+uniform highp sampler2D b3;
+uniform highp sampler2D d3;
+uniform ivec2 size;
+uniform int R;
+layout(std430,binding=0) writeonly buffer Sad{vec2 sad[];};
+shared vec2 red[256];
+void main(){
+    uint tid=gl_LocalInvocationIndex;
+    int k=int(gl_WorkGroupID.x),n=2*R+1,dx=k%n-R,dy=k/n-R;
+    float s=0.0,c=0.0;
+    for(int i=int(tid);i<size.x*size.y;i+=256){
+        int x=i%size.x,y=i/size.x,X=x+dx,Y=y+dy;
+        if(X<0||Y<0||X>=size.x||Y>=size.y)continue;
+        float a=texelFetch(b3,ivec2(x,y),0).x,d=texelFetch(d3,ivec2(X,Y),0).x;
+        if(a<0.0||d<0.0)continue;
+        s+=abs(a-d);c+=1.0;
+    }
+    red[tid]=vec2(s,c);
+    barrier();
+    for(uint st=128u;st>0u;st>>=1u){if(tid<st)red[tid]+=red[tid+st];barrier();}
+    if(tid==0u)sad[k]=red[0];
+}
+)";
+
+// the coarse search's best shift (the lowest mean, the first index on a tie) and its parabola sub-pixel, for the KLT
+static const char* kLaGlslArgmin = R"(
+layout(local_size_x=256) in;
+layout(std430,binding=0) readonly buffer Sad{vec2 sad[];};
+layout(std430,binding=1) writeonly buffer Start{vec4 start[];}; // L3 px x, y; z 1 = found; w the mean
+uniform int R;
+uniform float minCount;
+shared float sv[256];
+shared int si[256];
+float val(int k){vec2 v=sad[k];return v.y>=minCount?v.x/v.y:1.0e30;}
+void main(){
+    uint tid=gl_LocalInvocationIndex;
+    int n=(2*R+1)*(2*R+1);
+    float best=1.0e30;int bi=-1;
+    for(int k=int(tid);k<n;k+=256){float v=val(k);if(v<best){best=v;bi=k;}}
+    sv[tid]=best;si[tid]=bi;
+    barrier();
+    for(uint st=128u;st>0u;st>>=1u){
+        if(tid<st){
+            float o=sv[tid+st];int oi=si[tid+st];
+            if(oi>=0&&(o<sv[tid]||(o==sv[tid]&&(si[tid]<0||oi<si[tid])))){sv[tid]=o;si[tid]=oi;}
+        }
+        barrier();
+    }
+    if(tid==0u){
+        int k=si[0];
+        if(k<0||sv[0]>=1.0e29){start[0]=vec4(0.0,0.0,0.0,1.0e30);return;}
+        int m=2*R+1,bx=k%m-R,by=k/m-R;
+        float fx=0.0,fy=0.0;
+        if(bx>-R&&bx<R){float a=val(k-1),b=val(k),c=val(k+1);float d=a-2.0*b+c;if(a<1.0e29&&c<1.0e29&&d>1.0e-12)fx=clamp(0.5*(a-c)/d,-0.5,0.5);}
+        if(by>-R&&by<R){float a=val(k-m),b=val(k),c=val(k+m);float d=a-2.0*b+c;if(a<1.0e29&&c<1.0e29&&d>1.0e-12)fy=clamp(0.5*(a-c)/d,-0.5,0.5);}
+        start[0]=vec4(float(bx)+fx,float(by)+fy,1.0,sv[0]);
+    }
+}
+)";
+
+// KLT of every corner: L1 (from the start homography), then L0; 9 x 9 patches of the base (its masked levels), the donor bilinear;
+// a clipped quad on either side leaves its pixel out
+static const char* kLaGlslKlt = R"(
+layout(local_size_x=64) in;
+uniform highp sampler2D b0;
+uniform highp sampler2D b1;
+uniform highp sampler2D d0;
+uniform highp sampler2D d1;
+uniform ivec2 size0;
+uniform ivec2 size1;
+uniform int count;
+layout(std430,binding=0) readonly buffer Corners{vec4 corners[];};
+layout(std430,binding=1) writeonly buffer Tracked{vec4 tracked[];}; // donor L0 x, y, status (1 tracked), mean SSD; [count] = the start
+layout(std430,binding=2) readonly buffer Start{vec4 start[];};       // the coarse translation (L3 px), z 1 = found
+float tex(highp sampler2D t,ivec2 s,int x,int y){return texelFetch(t,ivec2(clamp(x,0,s.x-1),clamp(y,0,s.y-1)),0).x;}
+// bilinear donor sample at p (texel centres at integers); negative when a texel of the four is clipped or p leaves the level
+float bil(highp sampler2D t,ivec2 s,vec2 p){
+    if(p.x<0.0||p.y<0.0||p.x>float(s.x-1)||p.y>float(s.y-1))return -1.0;
+    vec2 f=floor(p);ivec2 i=ivec2(f);vec2 a=p-f;
+    float p00=tex(t,s,i.x,i.y),p10=tex(t,s,i.x+1,i.y),p01=tex(t,s,i.x,i.y+1),p11=tex(t,s,i.x+1,i.y+1);
+    if(min(min(p00,p10),min(p01,p11))<0.0)return -1.0;
+    return mix(mix(p00,p10,a.x),mix(p01,p11,a.x),a.y);
+}
+// one level: base patch centred at integer r, donor point q (in / out); false when lost
+bool level(highp sampler2D bt,highp sampler2D dt,ivec2 s,ivec2 r,inout vec2 q,out float ssd){
+    float I[81],Ix[81],Iy[81];
+    float gxx=0.0,gyy=0.0,gxy=0.0;int k=0;
+    for(int dy=-4;dy<=4;dy++)for(int dx=-4;dx<=4;dx++){
+        float c=tex(bt,s,r.x+dx,r.y+dy),l=tex(bt,s,r.x+dx-1,r.y+dy),rr=tex(bt,s,r.x+dx+1,r.y+dy),u=tex(bt,s,r.x+dx,r.y+dy-1),d=tex(bt,s,r.x+dx,r.y+dy+1);
+        bool ok=min(min(c,l),min(min(rr,u),d))>=0.0;
+        I[k]=ok?c*255.0:-1.0;
+        Ix[k]=ok?(rr-l)*127.5:0.0;Iy[k]=ok?(d-u)*127.5:0.0;
+        gxx+=Ix[k]*Ix[k];gyy+=Iy[k]*Iy[k];gxy+=Ix[k]*Iy[k];k++;
+    }
+    float det=gxx*gyy-gxy*gxy;
+    ssd=1.0e9;
+    if(det<1.0)return false;
+    float inv=1.0/det;
+    for(int it=0;it<12;it++){
+        float bx=0.0,by=0.0;k=0;
+        for(int dy=-4;dy<=4;dy++)for(int dx=-4;dx<=4;dx++){
+            if(I[k]>=0.0){
+                float J=bil(dt,s,q+vec2(float(dx),float(dy)));
+                if(J>=0.0){float e=I[k]-J*255.0;bx+=e*Ix[k];by+=e*Iy[k];}
+            }
+            k++;
+        }
+        float ux=clamp((gyy*bx-gxy*by)*inv,-3.0,3.0),uy=clamp((gxx*by-gxy*bx)*inv,-3.0,3.0);
+        q+=vec2(ux,uy);
+        if(q.x<4.0||q.y<4.0||q.x>float(s.x-5)||q.y>float(s.y-5))return false;
+        if(ux*ux+uy*uy<0.0009)break;
+    }
+    float e2=0.0,m=0.0;k=0;
+    for(int dy=-4;dy<=4;dy++)for(int dx=-4;dx<=4;dx++){
+        if(I[k]>=0.0){float J=bil(dt,s,q+vec2(float(dx),float(dy)));if(J>=0.0){float e=I[k]-J*255.0;e2+=e*e;m+=1.0;}}
+        k++;
+    }
+    if(m<40.0)return false;
+    ssd=e2/m;
+    return true;
+}
+void main(){
+    int t=int(gl_GlobalInvocationID.x);
+    vec4 st=start[0];
+    if(t==0)tracked[count]=st;
+    if(t>=count)return;
+    vec4 c=corners[t];
+    tracked[t]=vec4(0.0,0.0,0.0,1.0e9);
+    if(c.z<0.0||st.z<0.5)return;
+    vec2 r0=c.xy;
+    vec2 h0=r0+8.0*st.xy; // L3 px = 8 L0 px
+    // L1: L1 px i holds L0 px 2i, 2i + 1 (its centre is L0 2i + 0.5)
+    ivec2 r1=ivec2(floor((r0-0.5)*0.5+0.5));
+    vec2 q1=vec2(r1)+(h0-r0)*0.5;
+    float e1;
+    if(!level(b1,d1,size1,r1,q1,e1))return;
+    vec2 q0=r0+(q1-vec2(r1))*2.0;
+    float e0;
+    if(!level(b0,d0,size0,ivec2(r0),q0,e0))return;
+    if(e0>2500.0)return;
+    tracked[t]=vec4(q0,1.0,e0);
+}
+)";
+
 // The burst geometry the GPU F6 needs (Burst's fields), the grids and the tuning of laFrameField.
 struct LaGpuBurst { int w=0,h=0,cfa=0;bool canonical=false;float white=0;std::array<float,4> black{}; };
 struct LaGpuGrid { int nx=0,ny=0,win=16,stride=8,s=2; };
 struct LaGpuTune { float mu=0.1f,kappa=2.f,maxShift=6.f;int iters=3,itersCoarse=3,medians=2; };
 struct LaGpuResult { std::vector<float> field,motion;std::vector<uint32_t> flags;float median=0,p90=0,maxAbsY=0,accepted=0,fromCoarse=0;double ms=0; };
+// P364: a donor's GPU homography (base canonical RAW px -> donor canonical RAW px, h33 = 1)
+struct LaGpuHom { bool ok=false;std::array<float,8> h{1,0,0,0,1,0,0,0};int corners=0,tracked=0,inliers=0;float rms=0,coarseX=0,coarseY=0;double ms=0,msGray=0,msCoarse=0,msKlt=0,msRansac=0;std::string why; };
+
+// P364: the homography of point pairs (base, donor; canonical RAW px): RANSAC of 4-point DLTs (deterministic: seeded by the
+// frame), then least squares on the inliers twice. Normalised coordinates, h33 = 1, double precision.
+inline bool laSolveH(const std::vector<std::array<double,4>>& pts,const std::vector<int>& use,double cx,double cy,double sc,std::array<double,9>& H){
+    // normalised: x' = (x - cx) sc for both frames
+    double A[8][9]={};
+    for(int idx:use){
+        const double x=(pts[size_t(idx)][0]-cx)*sc,y=(pts[size_t(idx)][1]-cy)*sc,u=(pts[size_t(idx)][2]-cx)*sc,v=(pts[size_t(idx)][3]-cy)*sc;
+        const double r1[9]={x,y,1,0,0,0,-u*x,-u*y,u},r2[9]={0,0,0,x,y,1,-v*x,-v*y,v};
+        for(int i=0;i<8;++i)for(int j=0;j<9;++j)A[i][j]+=r1[i]*r1[j]+r2[i]*r2[j];
+    }
+    for(int i=0;i<8;++i){ // Gauss-Jordan on the normal equations [AtA | Atb]
+        int piv=i;for(int r=i+1;r<8;++r)if(std::abs(A[r][i])>std::abs(A[piv][i]))piv=r;
+        if(std::abs(A[piv][i])<1e-12)return false;
+        if(piv!=i)for(int j=0;j<9;++j)std::swap(A[i][j],A[piv][j]);
+        const double d=A[i][i];for(int j=i;j<9;++j)A[i][j]/=d;
+        for(int r=0;r<8;++r)if(r!=i){const double f=A[r][i];if(f!=0)for(int j=i;j<9;++j)A[r][j]-=f*A[i][j];}
+    }
+    double hn[9];for(int i=0;i<8;++i)hn[i]=A[i][8];hn[8]=1;
+    // denormalise: H = T^-1 Hn T, T = [sc 0 -sc cx; 0 sc -sc cy; 0 0 1]
+    const double T[9]={sc,0,-sc*cx,0,sc,-sc*cy,0,0,1},Ti[9]={1/sc,0,cx,0,1/sc,cy,0,0,1};
+    double M[9]={},R[9]={};
+    for(int i=0;i<3;++i)for(int j=0;j<3;++j)for(int k=0;k<3;++k)M[i*3+j]+=hn[i*3+k]*T[k*3+j];
+    for(int i=0;i<3;++i)for(int j=0;j<3;++j)for(int k=0;k<3;++k)R[i*3+j]+=Ti[i*3+k]*M[k*3+j];
+    if(!(std::abs(R[8])>1e-12))return false;
+    for(int i=0;i<9;++i)H[size_t(i)]=R[i]/R[8];
+    for(double v:H)if(!std::isfinite(v))return false;
+    return true;
+}
+inline double laReproj(const std::array<double,9>& H,const std::array<double,4>& p){
+    const double d=H[6]*p[0]+H[7]*p[1]+H[8];
+    if(!(std::abs(d)>1e-9))return 1e9;
+    const double u=(H[0]*p[0]+H[1]*p[1]+H[2])/d,v=(H[3]*p[0]+H[4]*p[1]+H[5])/d;
+    return std::hypot(u-p[2],v-p[3]);
+}
+inline bool laRansacH(const std::vector<std::array<double,4>>& pts,uint32_t seed,double thr,std::array<double,9>& best,int& inliers,double& rms){
+    const int n=int(pts.size());
+    inliers=0;rms=0;
+    if(n<8)return false;
+    double cx=0,cy=0;for(const auto& p:pts){cx+=p[0];cy+=p[1];}cx/=n;cy/=n;
+    double md=0;for(const auto& p:pts)md+=std::hypot(p[0]-cx,p[1]-cy);md/=n;
+    const double sc=md>0?std::sqrt(2.0)/md:1.0;
+    uint32_t st=seed?seed:0x9e3779b9u;
+    auto rnd=[&]{st^=st<<13;st^=st>>17;st^=st<<5;return st;};
+    int bestCount=-1;std::array<double,9> H{};
+    int maxIt=400; // adaptive: enough draws for a 99.9 % chance of an all-inlier sample at the best ratio so far (at least 60)
+    for(int it=0;it<maxIt;++it){
+        int idx[4];
+        for(int k=0;k<4;++k){
+            for(int tries=0;tries<16;++tries){idx[k]=int(rnd()%uint32_t(n));bool dup=false;for(int j=0;j<k;++j)dup|=idx[j]==idx[k];if(!dup)break;}
+        }
+        if(idx[0]==idx[1]||idx[0]==idx[2]||idx[0]==idx[3]||idx[1]==idx[2]||idx[1]==idx[3]||idx[2]==idx[3])continue;
+        std::array<double,9> h{};
+        if(!laSolveH(pts,{idx[0],idx[1],idx[2],idx[3]},cx,cy,sc,h))continue;
+        int cnt=0;for(const auto& p:pts)cnt+=laReproj(h,p)<thr;
+        if(cnt>bestCount){
+            bestCount=cnt;H=h;
+            const double w4=std::pow(double(cnt)/n,4.0);
+            if(w4>0&&w4<1)maxIt=std::clamp(int(std::ceil(std::log(0.001)/std::log(1.0-w4))),60,400);
+            else if(w4>=1)maxIt=60;
+        }
+    }
+    if(bestCount<8)return false;
+    for(int pass=0;pass<3;++pass){ // least squares on the inliers, the inliers again
+        std::vector<int> use;
+        for(int i=0;i<n;++i)if(laReproj(H,pts[size_t(i)])<(pass==2?0.75*thr:thr))use.push_back(i);
+        if(int(use.size())<8)break;
+        std::array<double,9> h{};
+        if(!laSolveH(pts,use,cx,cy,sc,h))break;
+        H=h;
+    }
+    double s2=0;int cnt=0;
+    for(const auto& p:pts){const double e=laReproj(H,p);if(e<thr){s2+=e*e;++cnt;}}
+    inliers=cnt;rms=cnt?std::sqrt(s2/cnt):0;best=H;
+    return true;
+}
 
 class LaGpu {
     EGLDisplay display=EGL_NO_DISPLAY;
     EGLContext context=EGL_NO_CONTEXT;
     EGLSurface surface=EGL_NO_SURFACE;
     GLuint pGray=0,pDown=0,pBase=0,pLk=0,pStart=0,pAccept=0,pMedian=0,pMotion=0;
+    GLuint pCorners=0,pCoarse=0,pKlt=0,pArgmin=0; // P364 GPU homography (compiled on first use)
     // two frames in flight: the RAW and the outputs (field, Z, flags) alternate between two slots, the rest is the GPU's alone
-    enum { kRaw, kRaw2, kR1, kR1b, kR0, kR0b, kS0, kFlags, kZ, kStop, kOutField, kOutField2, kOutZ, kOutZ2, kOutFlags, kOutFlags2, kSlots };
+    enum { kRaw, kRaw2, kR1, kR1b, kR0, kR0b, kS0, kFlags, kZ, kStop, kOutField, kOutField2, kOutZ, kOutZ2, kOutFlags, kOutFlags2,
+           kRawE, kRawE2, kCorners, kSad, kStart, kTracked, kTracked2, kSlots };
     GLuint buf[kSlots]{};
     size_t cap[kSlots]{};
-    enum { kTB0, kTB1, kTD0, kTD1, kTV0, kTV1, kTextures }; // base levels (rgba32f: masked value, gx, gy), donor levels (r32f),
+    enum { kTB0, kTB1, kTD0, kTD1, kTV0, kTV1,             // base levels (rgba32f: masked value, gx, gy), donor levels (r32f),
                                                          // the base levels' masked values alone (r32f)
+           kTV2, kTV3, kTE0, kTE1, kTE2, kTE3,               // P364: the base's L2 / L3, the homography donor's L0..L3 (r32f)
+           kTF0, kTF1, kTF2, kTF3, kTextures };              // and those of the second homography in flight
     GLuint tex[kTextures]{};
     LaGpuBurst burst;
     LaGpuGrid g0,g1;
     LaGpuTune tune;
     float v0=0,eps=0;
     int w0=0,h0=0,w1=0,h1=0; // level sizes (gray, L1)
+    int w2=0,h2=0,w3=0,h3=0; // P364: L2, L3 (the homography's coarse search)
+    bool homReady=false;int cornerCount=0;
+    std::vector<float> cornersHost; // the base's corners (read once)
+    int homSubmitted=0,homCollected=0;int homFrame[2]{};std::chrono::steady_clock::time_point homAt[2];
+    int homLastSlot=0; // the slot of the last collected homography (its levels stay until a homography is submitted there)
     using Clock=std::chrono::steady_clock;
     void cleanup() noexcept {
         if(display==EGL_NO_DISPLAY)return;
         if(context!=EGL_NO_CONTEXT&&eglMakeCurrent(display,surface,surface,context)){
-            for(GLuint p:{pGray,pDown,pBase,pLk,pStart,pAccept,pMedian,pMotion})if(p)glDeleteProgram(p);
+            for(GLuint p:{pGray,pDown,pBase,pLk,pStart,pAccept,pMedian,pMotion,pCorners,pCoarse,pKlt,pArgmin})if(p)glDeleteProgram(p);
             glDeleteBuffers(kSlots,buf);
             glDeleteTextures(kTextures,tex);
             eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
@@ -514,12 +796,39 @@ class LaGpu {
         dispatch2d(w0,h0);
         barrier();
     }
-    void down(int in,int out){
+    void down(int in,int out){downTo(in,out,w1,h1);}
+    void downTo(int in,int out,int ow,int oh){
         glUseProgram(pDown);
         sampler(pDown,"a",0,in);image(out,GL_R32F);
-        u2(pDown,"outSize",w1,h1);
-        dispatch2d(w1,h1);
+        u2(pDown,"outSize",ow,oh);
+        dispatch2d(ow,oh);
         barrier();
+    }
+public:
+    // P364: the homography's programs (from the binary cache: the prewarm builds them before the burst arrives)
+    void prepareHomography(){
+        if(!pCorners){pCorners=compile("",kLaGlslCorners);pCoarse=compile("",kLaGlslCoarse);pKlt=compile("",kLaGlslKlt);pArgmin=compile("",kLaGlslArgmin);}
+    }
+private:
+    // P364: the homography's base side once: L2 / L3 of the base and its corners (24 x 24 cells)
+    void homBase(){
+        if(homReady)return;
+        prepareHomography();
+        w2=std::max(1,w1/2);h2=std::max(1,h1/2);w3=std::max(1,w2/2);h3=std::max(1,h2/2);
+        texture(kTV2,GL_R32F,w2,h2);texture(kTV3,GL_R32F,w3,h3);
+        texture(kTE0,GL_R32F,w0,h0);texture(kTE1,GL_R32F,w1,h1);texture(kTE2,GL_R32F,w2,h2);texture(kTE3,GL_R32F,w3,h3);
+        texture(kTF0,GL_R32F,w0,h0);texture(kTF1,GL_R32F,w1,h1);texture(kTF2,GL_R32F,w2,h2);texture(kTF3,GL_R32F,w3,h3);
+        downTo(kTV1,kTV2,w2,h2);downTo(kTV2,kTV3,w3,h3);
+        constexpr int cells=24;cornerCount=cells*cells;
+        reserve(kCorners,size_t(cornerCount)*16);
+        glUseProgram(pCorners);
+        sampler(pCorners,"v",0,kTV0);u2(pCorners,"size",w0,h0);u2(pCorners,"cells",cells,cells);
+        bind(0,kCorners);
+        glDispatchCompute(GLuint(cells),GLuint(cells),1);
+        barrier();
+        read(kCorners,cornersHost,size_t(cornerCount)*4);
+        check("homography base");
+        homReady=true;
     }
     // the gray level `in` -> the base texture `out` (the masked samples take the level's place, as laBaseLevel swaps them in)
     void baseLevel(int in,int out,int value,int w,int h){
@@ -639,6 +948,72 @@ public:
         baseLevel(kTD0,kTB0,kTV0,w0,h0);
         check("base");
     }
+    // P364: the homography of one donor in two halves, two in flight (the CPU's RANSAC of one while the GPU runs the next):
+    // homSubmit - its gray pyramid, the coarse translation (L3, +-12 px = +-192 RAW px) and its best shift on the GPU, the KLT of the
+    // base's corners from it; homCollect - the tracks read back, RANSAC + least squares (2 RAW px) on the CPU. gain = 1 / exposure,
+    // frame = the RANSAC seed.
+    int homInFlight() const {return homSubmitted-homCollected;}
+    void homSubmit(const uint16_t* raw,float gain,int frame){
+        if(homInFlight()>=2)throw std::runtime_error("LA GPU: two homographies in flight already");
+        homBase();
+        const int p=homSubmitted&1;
+        homAt[p]=Clock::now();homFrame[p]=frame;
+        const int L0=p?kTF0:kTE0,L1=p?kTF1:kTE1,L2=p?kTF2:kTE2,L3=p?kTF3:kTE3;
+        gray(raw,gain,L0,kRawE+p);
+        downTo(L0,L1,w1,h1);downTo(L1,L2,w2,h2);downTo(L2,L3,w3,h3);
+        constexpr int R=12,shifts=(2*R+1)*(2*R+1);
+        reserve(kSad,size_t(shifts)*8);reserve(kStart,16);
+        glUseProgram(pCoarse);
+        sampler(pCoarse,"b3",0,kTV3);sampler(pCoarse,"d3",1,L3);u2(pCoarse,"size",w3,h3);
+        glUniform1i(glGetUniformLocation(pCoarse,"R"),R);bind(0,kSad);
+        glDispatchCompute(GLuint(shifts),1,1);
+        barrier();
+        glUseProgram(pArgmin);
+        glUniform1i(glGetUniformLocation(pArgmin,"R"),R);glUniform1f(glGetUniformLocation(pArgmin,"minCount"),0.3f*float(w3)*float(h3));
+        bind(0,kSad);bind(1,kStart);
+        glDispatchCompute(1,1,1);
+        barrier();
+        reserve(kTracked+p,size_t(cornerCount+1)*16);
+        glUseProgram(pKlt);
+        sampler(pKlt,"b0",0,kTV0);sampler(pKlt,"b1",1,kTV1);sampler(pKlt,"d0",2,L0);sampler(pKlt,"d1",3,L1);
+        u2(pKlt,"size0",w0,h0);u2(pKlt,"size1",w1,h1);glUniform1i(glGetUniformLocation(pKlt,"count"),cornerCount);
+        bind(0,kCorners);bind(1,kTracked+p);bind(2,kStart);
+        glDispatchCompute(GLuint((cornerCount+63)/64),1,1);
+        barrier();
+        check("homography");
+        glFlush();
+        ++homSubmitted;
+    }
+    LaGpuHom homCollect(){
+        if(homCollected>=homSubmitted)throw std::runtime_error("LA GPU: no homography in flight");
+        const int p=homCollected&1;
+        LaGpuHom out;
+        std::vector<float> tracked;read(kTracked+p,tracked,size_t(cornerCount+1)*4);
+        check("homography readback");
+        const int frame=homFrame[p];
+        ++homCollected;homLastSlot=p;
+        const float* st=tracked.data()+size_t(cornerCount)*4;
+        out.coarseX=16.f*st[0];out.coarseY=16.f*st[1]; // RAW px
+        out.msKlt=std::chrono::duration<double,std::milli>(Clock::now()-homAt[p]).count();
+        std::vector<std::array<double,4>> pts;
+        for(int k=0;k<cornerCount;++k){
+            if(cornersHost[size_t(k)*4+2]>=0.f)++out.corners;
+            if(tracked[size_t(k)*4+2]<0.5f)continue;
+            // L0 px c -> canonical RAW 2 c + 0.5
+            pts.push_back({2.0*cornersHost[size_t(k)*4]+0.5,2.0*cornersHost[size_t(k)*4+1]+0.5,2.0*tracked[size_t(k)*4]+0.5,2.0*tracked[size_t(k)*4+1]+0.5});
+        }
+        out.tracked=int(pts.size());
+        if(st[2]<0.5f){out.why="no coarse match";out.ms=std::chrono::duration<double,std::milli>(Clock::now()-homAt[p]).count();return out;}
+        std::array<double,9> H{};double rms=0;
+        const bool solved=laRansacH(pts,0x9e3779b9u^uint32_t(frame*2654435761u),2.0,H,out.inliers,rms);
+        out.rms=float(rms);
+        out.msRansac=std::chrono::duration<double,std::milli>(Clock::now()-homAt[p]).count();
+        if(!solved)out.why="RANSAC failed";
+        else if(out.inliers<60||out.inliers<0.2*out.tracked)out.why="too few inliers"; // (a night ultrashort frame: ~1/3 of the tracks)
+        else {for(int i=0;i<8;++i)out.h[size_t(i)]=float(H[size_t(i)]);out.ok=true;out.why="ok";}
+        out.ms=std::chrono::duration<double,std::milli>(Clock::now()-homAt[p]).count();
+        return out;
+    }
     // Queue the field of one donor (laFrameField with its motion output): homography h (8) / upRatio, gain = 1 / exposure. At most
     // two frames in flight: the GPU runs the next one while collect() reads one back and takes its statistics.
     void submit(const uint16_t* raw,float gain,const float* hm,float upRatio){
@@ -647,20 +1022,31 @@ public:
         submittedAt[p]=Clock::now();
         gray(raw,gain,kTD0,kRaw+p);
         down(kTD0,kTD1);
+        fieldPasses(kTD0,kTD1,hm,upRatio);
+    }
+    // P364: the field of the donor whose homography was collected last, on its gray levels (the same gray, the same field: no second
+    // upload of the RAW)
+    void submitFromHomography(const float* hm,float upRatio){
+        if(submitted-collected>=2)throw std::runtime_error("LA GPU: two frames in flight already");
+        submittedAt[submitted&1]=Clock::now();
+        fieldPasses(homLastSlot?kTF0:kTE0,homLastSlot?kTF1:kTE1,hm,upRatio);
+    }
+    void fieldPasses(int D0,int D1,const float* hm,float upRatio){
+        const int p=submitted&1;
         const int n1=g1.nx*g1.ny,n0=g0.nx*g0.ny;
         // L1: Lucas-Kanade from the homography, one median
         reserve(kR1,size_t(n1)*8);reserve(kR1b,size_t(n1)*8);
         if(tune.itersCoarse<=0)zero(kR1,size_t(n1)*8);
-        lk(g1,kTB1,kTD1,w1,h1,kR1,hm,upRatio,v0*0.25f,std::max(0,tune.itersCoarse),true);
+        lk(g1,kTB1,D1,w1,h1,kR1,hm,upRatio,v0*0.25f,std::max(0,tune.itersCoarse),true);
         median(kR1,kR1b,g1);
         // L0 start: the better of the homography and the L1 field
         reserve(kR0,size_t(n0)*8);reserve(kR0b,size_t(n0)*8);reserve(kS0,size_t(n0)*4);reserve(kFlags,size_t(n0)*4);
         glUseProgram(pStart);
-        sampler(pStart,"tv",0,kTV0);sampler(pStart,"td",1,kTD0);bind(4,kR0);bind(5,kS0);bind(6,kFlags);bind(7,kR1b);
+        sampler(pStart,"tv",0,kTV0);sampler(pStart,"td",1,D0);bind(4,kR0);bind(5,kS0);bind(6,kFlags);bind(7,kR1b);
         tileUniforms(pStart,g0,w0,h0,w0,h0,hm,upRatio,v0);
         dispatchTiles(pStart,n0);
         // L0 Lucas-Kanade
-        lk(g0,kTB0,kTD0,w0,h0,kR0,hm,upRatio,v0,std::max(0,tune.iters),false);
+        lk(g0,kTB0,D0,w0,h0,kR0,hm,upRatio,v0,std::max(0,tune.iters),false);
         // the Z channel from the raw LK flow, before the acceptance test and any median
         reserve(kZ,size_t(n0)*4);
         glUseProgram(pMotion);
@@ -670,7 +1056,7 @@ public:
         barrier();
         // acceptance
         glUseProgram(pAccept);
-        sampler(pAccept,"tv",0,kTV0);sampler(pAccept,"td",1,kTD0);bind(4,kR0);bind(5,kS0);bind(6,kFlags);bind(7,kR1b);
+        sampler(pAccept,"tv",0,kTV0);sampler(pAccept,"td",1,D0);bind(4,kR0);bind(5,kS0);bind(6,kFlags);bind(7,kR1b);
         tileUniforms(pAccept,g0,w0,h0,w0,h0,hm,upRatio,v0);
         dispatchTiles(pAccept,n0);
         // medians (ping-pong; the result ends in kR0)
@@ -717,6 +1103,26 @@ public:
     }
 };
 
+// P364: the GPU F6 / alignment context with its programs, made on the worker's EGL warm-up thread while it waits for the burst
+// (its checks then run beside it); the F6 worker takes it instead of making its own (null: none was started, or it failed)
+struct LaGpuPrewarm { std::mutex m;std::condition_variable cv;bool started=false,done=false;std::unique_ptr<LaGpu> gpu; };
+inline LaGpuPrewarm& laGpuPrewarm(){static LaGpuPrewarm p;return p;}
+inline void laGpuPrewarmMake(const std::string& cache){
+    LaGpuPrewarm& p=laGpuPrewarm();
+    {std::lock_guard<std::mutex> l(p.m);p.started=true;}
+    std::unique_ptr<LaGpu> g;
+    try{g=std::make_unique<LaGpu>(cache);g->prepareHomography();g->release();}catch(...){g.reset();}
+    {std::lock_guard<std::mutex> l(p.m);p.gpu=std::move(g);p.done=true;}
+    p.cv.notify_all();
+}
+inline std::unique_ptr<LaGpu> laGpuPrewarmTake(){
+    LaGpuPrewarm& p=laGpuPrewarm();
+    std::unique_lock<std::mutex> l(p.m);
+    if(!p.started)return nullptr;
+    p.cv.wait(l,[&]{return p.done;});
+    return std::move(p.gpu);
+}
+
 // P308 (owner, 2026-10-20: «постарайся ускорить гпу выравнивание», «на качество ускорение не должно влиять»): the GPU F6 on a thread
 // of its own, where its context lives: built (context, programs, the base pyramid) while the frames align, then each frame handed
 // over as soon as its homography is known (the alignment's groups; the CPU aligns the next ones meanwhile), two in flight. The
@@ -751,6 +1157,18 @@ public:
         return k;
     }
     LaGpuResult take(int f){std::lock_guard<std::mutex> l(m);return std::move(results[size_t(f)]);}
+    // P364: a donor's GPU homography, before any queued field (the alignment waits for it)
+    std::shared_future<LaGpuHom> estimate(int f,const uint16_t* raw,float gain,bool field=false){
+        auto pr=std::make_shared<std::promise<LaGpuHom>>();
+        std::shared_future<LaGpuHom> fut=pr->get_future().share();
+        {
+            std::lock_guard<std::mutex> l(m);
+            if(failed||closed||stop){LaGpuHom h;h.why=failed?"GPU failed: "+failure:"closed";pr->set_value(h);return fut;}
+            homQueue.push_back(HomJob{f,raw,gain,pr,field});
+        }
+        cv.notify_all();
+        return fut;
+    }
     // only these frames still matter: the others leave the queue (the merge dropped them after the alignment handed them over)
     void retain(const std::vector<int>& frames){
         std::lock_guard<std::mutex> l(m);
@@ -768,6 +1186,12 @@ public:
 private:
     std::mutex m;std::condition_variable cv;
     std::deque<Job> queue;bool closed=false,stop=false,failed=false;
+    struct HomJob { int f=0;const uint16_t* raw=nullptr;float gain=1.f;std::shared_ptr<std::promise<LaGpuHom>> pr;bool field=false; };
+    std::deque<HomJob> homQueue; // P364
+    void failHoms(const std::string& why){ // under the lock: every waiting estimate gets an answer
+        for(HomJob& j:homQueue){LaGpuHom h;h.why=why;j.pr->set_value(h);}
+        homQueue.clear();
+    }
     std::vector<LaGpuResult> results;std::vector<char> ready;std::vector<Job> fed;
     std::string failure,name;double built=0;
     std::thread th;
@@ -776,21 +1200,59 @@ private:
         const auto t0=std::chrono::steady_clock::now();
         std::unique_ptr<LaGpu> gpu;
         try{gpu=build();}
-        catch(const std::exception& e){std::lock_guard<std::mutex> l(m);failed=true;failure=e.what();cv.notify_all();return;}
+        catch(const std::exception& e){std::lock_guard<std::mutex> l(m);failed=true;failure=e.what();failHoms(failure);cv.notify_all();return;}
         {
             std::lock_guard<std::mutex> l(m);
             built=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count();name=gpu->renderer+gpu->cacheNote();
         }
         std::deque<Job> inflight;
+        std::deque<HomJob> homInflight; // P364
         try{
             for(;;){
                 Job job;bool have=false;
+                HomJob hom;bool haveHom=false,collectHom=false;
                 {
                     std::unique_lock<std::mutex> l(m);
-                    if(inflight.empty())cv.wait(l,[&]{return stop||closed||!queue.empty();});
+                    if(inflight.empty()&&homInflight.empty())cv.wait(l,[&]{return stop||closed||!queue.empty()||!homQueue.empty();});
                     if(stop)break;
-                    if(!queue.empty()&&inflight.size()<2){job=queue.front();queue.pop_front();have=true;}
-                    else if(inflight.empty())break; // closed, nothing left
+                    if(!homQueue.empty()&&homInflight.size()<2){hom=homQueue.front();homQueue.pop_front();haveHom=true;}
+                    else if(!homInflight.empty())collectHom=true; // the alignment waits for these first
+                    else if(!queue.empty()&&inflight.size()<2){job=queue.front();queue.pop_front();have=true;}
+                    else if(inflight.empty()&&homInflight.empty())break; // closed, nothing left
+                }
+                if(haveHom){ // P364: the alignment waits for it; two in flight
+                    try{gpu->homSubmit(hom.raw,hom.gain,hom.f);homInflight.push_back(hom);}
+                    catch(const std::exception& e){LaGpuHom r;r.why=std::string("GPU error: ")+e.what();while(glGetError()!=GL_NO_ERROR){}hom.pr->set_value(r);}
+                    continue;
+                }
+                if(collectHom){
+                    HomJob done=homInflight.front();homInflight.pop_front();
+                    LaGpuHom r;
+                    bool collected=false;
+                    try{r=gpu->homCollect();collected=true;}
+                    catch(const std::exception& e){r=LaGpuHom{};r.why=std::string("GPU error: ")+e.what();while(glGetError()!=GL_NO_ERROR){}}
+                    // P364: the frame's field right away on the levels the homography just used (the alignment hands it over with this
+                    // homography: add() then finds it fed), before the next homography takes that slot
+                    if(collected&&r.ok&&done.field){
+                        Job fj;fj.f=done.f;fj.raw=done.raw;fj.gain=done.gain;fj.h=r.h;fj.up=1.f;
+                        if(inflight.size()>=2){ // a slot first
+                            LaGpuResult fr=gpu->collect();
+                            const Job old=inflight.front();inflight.pop_front();
+                            std::lock_guard<std::mutex> l(m);
+                            if(same(fed[size_t(old.f)],old)){results[size_t(old.f)]=std::move(fr);ready[size_t(old.f)]=1;}
+                        }
+                        {
+                            std::lock_guard<std::mutex> l(m);
+                            if(!failed&&!closed&&fj.f>=0&&size_t(fj.f)<fed.size()){
+                                fed[size_t(fj.f)]=fj;ready[size_t(fj.f)]=0;
+                                std::deque<Job> left;for(const Job& j:queue)if(j.f!=fj.f)left.push_back(j);queue.swap(left);
+                            } else fj.f=-1;
+                        }
+                        if(fj.f>=0){gpu->submitFromHomography(fj.h.data(),fj.up);inflight.push_back(fj);}
+                    }
+                    done.pr->set_value(r);
+                    cv.notify_all();
+                    continue;
                 }
                 if(have){gpu->submit(job.raw,job.gain,job.h.data(),job.up);inflight.push_back(job);continue;}
                 LaGpuResult r=gpu->collect();
@@ -800,6 +1262,7 @@ private:
                 cv.notify_all();
             }
         }catch(const std::exception& e){std::lock_guard<std::mutex> l(m);failed=true;failure=e.what();cv.notify_all();}
+        {std::lock_guard<std::mutex> l(m);for(HomJob& j:homInflight)homQueue.push_front(j);homInflight.clear();failHoms(failed?"GPU failed: "+failure:"closed");}
         gpu.reset(); // its objects and context, on the thread that holds them
     }
 };

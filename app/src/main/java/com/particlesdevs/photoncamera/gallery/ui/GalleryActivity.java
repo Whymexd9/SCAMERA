@@ -194,7 +194,9 @@ public class GalleryActivity extends BaseActivity {
         NavController nav = host.getNavController();
         androidx.navigation.NavGraph graph = nav.getNavInflater().inflate(R.navigation.gallery_nav_graph);
         graph.setStartDestination(R.id.photoEditorFragment);
-        nav.setGraph(graph, com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.args(uri, file.getDisplayName(), null, type, true));
+        // P367: the zoom test hook's extras (scam_edit_zoom / _cx / _cy) pass through; nothing when absent
+        nav.setGraph(graph, com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.withZoomHook(
+                com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.args(uri, file.getDisplayName(), null, type, true), getIntent()));
     }
 
     /**

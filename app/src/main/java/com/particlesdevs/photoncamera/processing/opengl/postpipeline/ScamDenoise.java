@@ -206,11 +206,13 @@ public final class ScamDenoise extends Node {
 
     /**
      * scamdn/stats with the single-frame model (sY, rY); P320: a DCG shot ({@code dcg} = {rY_lcg / rY, knee in Y}, null for any
-     * other) takes the DCG_ZONES variant, rY being the high-gain zone's and modelHiU the low-gain one's.
+     * other) takes the DCG_ZONES variant, rY being the high-gain zone's and modelHiU the low-gain one's. P364: the atlas corner
+     * atU is (0, 0) until levelNoiseBatch sets it (the program keeps a uniform between uses).
      */
     private static void statsProgram(GLProg glProg, float[] dcg, float sY, float rY) {
         if (dcg != null) glProg.setDefine("DCG_ZONES", 1);
         glProg.useAssetProgram("scamdn/stats", false);
+        glProg.setVar("atU", 0, 0);
         glProg.setVar("modelU", sY, rY);
         if (dcg != null) {
             glProg.setVar("modelHiU", rY * dcg[0]);
@@ -222,38 +224,122 @@ public final class ScamDenoise extends Node {
      * W1.6: {@link #levelNoise} of several levels at once. Every statistics pass is drawn first, then they are read back
      * (one sync instead of one per level), and the levels are reduced in parallel with the primitive-key sorts of
      * {@link ScamDenoiseTables#reduce}. The same passes, read-backs and reductions, so the same gains; rawOut gets level 0.
+     * <p>
+     * P364: the passes write the rectangles of one RGBA32UI atlas ({@link #statsAtlas}; scamdn/stats atU = the level's corner,
+     * the same block origins), read back by ONE glReadPixels (seven read-backs were seven GPU round trips behind the viewfinder's
+     * work: statsRead 14-44 ms), widened by HalfFloat.TABLE (= ScamDenoiseTables.half) on the helpers beside the reductions.
+     * {@code whileGpu} (the strength map: nothing in it reads the statistics) runs after the passes are queued, so its CPU part
+     * (effective-frame histogram, upload) overlaps the GPU. (A Y-only variant of the statistics for the luma levels was the same
+     * bits but 2.5 x slower on level 1 on the OPPO's Adreno 750, so every level keeps the full shader.)
      */
-    private static float[][] levelNoiseBatch(GLProg glProg, List<GLTexture> owned, GLTexture[] levels, int block, float sY, float rY,
-                                             float[] dcg, float[][] rawOut, Laps laps) {
+    private static float[][] levelNoiseBatch(GLProg glProg, List<GLTexture> owned, GLTexture[] levels, int block,
+                                             float sY, float rY, float[] dcg, float[][] rawOut, Laps laps, Runnable whileGpu) {
         final int n = levels.length;
-        final GLTexture[] st = new GLTexture[n];
-        final int[] counts = new int[n];
+        final int[] bw = new int[n], bh = new int[n], ax = new int[n], ay = new int[n];
+        for (int i = 0; i < n; i++) {
+            bw[i] = Math.max(1, levels[i].mSize.x / block);
+            bh[i] = Math.max(1, levels[i].mSize.y / block);
+        }
+        final int[] atlasSize = statsAtlas(bw, bh, ax, ay);
         final float[][] raws = new float[n][];
+        final int[] texels;
+        GLTexture atlas = null;
         try {
+            atlas = tex(owned, new Point(atlasSize[0], atlasSize[1]), GLFormat.DataType.UNSIGNED_32, 4, GL_NEAREST);
             for (int i = 0; i < n; i++) {
-                Point blocks = new Point(Math.max(1, levels[i].mSize.x / block), Math.max(1, levels[i].mSize.y / block));
-                counts[i] = blocks.x * blocks.y;
-                st[i] = tex(owned, blocks, GLFormat.DataType.UNSIGNED_32, 4, GL_NEAREST);
                 statsProgram(glProg, dcg, sY, rY);
                 glProg.setTexture("InputBuffer", levels[i]);
                 glProg.setVar("blockU", block);
-                glProg.drawBlocks(st[i]);
+                glProg.setVar("atU", ax[i], ay[i]);
+                drawRegion(glProg, atlas, ax[i], ay[i], bw[i], bh[i]);
             }
             laps.lap("statsDraw");
-            for (int i = 0; i < n; i++) {
-                raws[i] = readStats(st[i]);
-                release(owned, st[i]);
-                st[i] = null;
+            if (whileGpu != null) {
+                whileGpu.run();
+                laps.lap("strmap");
             }
+            texels = readInts(atlas);
         } finally {
-            for (GLTexture t : st) release(owned, t);
+            release(owned, atlas);
         }
         laps.lap("statsRead");
-        if (rawOut != null) rawOut[0] = raws[0];
         final float[][] out = new float[n][];
-        com.particlesdevs.photoncamera.util.ParallelWork.forEach(n, i -> out[i] = ScamDenoiseTables.reduce(raws[i], counts[i], 0.8f));
+        com.particlesdevs.photoncamera.util.ParallelWork.forEach(n, i -> {
+            raws[i] = statsOf(texels, atlasSize[0], ax[i], ay[i], bw[i], bh[i]);
+            out[i] = ScamDenoiseTables.reduce(raws[i], bw[i] * bh[i], 0.8f);
+        });
+        if (rawOut != null) rawOut[0] = raws[0];
         laps.lap("statsReduce");
         return out;
+    }
+
+    /**
+     * P364: shelf layout of the statistics atlas: rectangle 0 (level 0) alone on the first shelf, then the others left to right in
+     * order, a new shelf when one would pass the width so far. Writes the corners into x / y; returns {width, height}.
+     */
+    static int[] statsAtlas(int[] w, int[] h, int[] x, int[] y) {
+        int width = 0, shelfY = 0, shelfH = 0, at = 0;
+        for (int i = 0; i < w.length; i++) {
+            if (i > 0 && at + w[i] > width) { shelfY += shelfH; shelfH = 0; at = 0; }
+            x[i] = at;
+            y[i] = shelfY;
+            at += w[i];
+            shelfH = Math.max(shelfH, h[i]);
+            width = Math.max(width, at);
+        }
+        return new int[]{width, shelfY + shelfH};
+    }
+
+    /**
+     * P364: the statistics of one level from the atlas ints (4 per texel, rows from y = 0, {@code atlasWidth} texels a row): 8
+     * floats per block in {@link #readStats}' layout, each half widened by HalfFloat.TABLE (bit for bit ScamDenoiseTables.half).
+     */
+    static float[] statsOf(int[] texels, int atlasWidth, int x0, int y0, int w, int h) {
+        final float[] table = HalfFloat.TABLE;
+        final float[] out = new float[w * h * 8];
+        for (int y = 0; y < h; y++) {
+            final int src = ((y0 + y) * atlasWidth + x0) * 4, dst = y * w * 8;
+            for (int k = 0; k < w * 4; k++) {
+                final int v = texels[src + k];
+                out[dst + 2 * k] = table[v & 0xffff];
+                out[dst + 2 * k + 1] = table[v >>> 16];
+            }
+        }
+        return out;
+    }
+
+    /** P364: one pass into the rectangle (x, y, w, h) of target, rows tiled as drawBlocks tiles them (gl_FragCoord is target's). */
+    private static void drawRegion(GLProg glProg, GLTexture target, int x, int y, int w, int h) {
+        target.BufferLoad();
+        final com.particlesdevs.photoncamera.processing.opengl.GLBlockDivider divider =
+                new com.particlesdevs.photoncamera.processing.opengl.GLBlockDivider(h, com.particlesdevs.photoncamera.processing.opengl.GLDrawParams.TileSize);
+        final int[] row = new int[2];
+        while (divider.nextBlock(row)) {
+            android.opengl.GLES30.glViewport(x, y + row[0], w, row[1]);
+            glProg.draw();
+        }
+        android.opengl.GLES30.glFlush();
+    }
+
+    /** P364: an RGBA32UI texture read back whole as ints (4 per texel, rows from y = 0): one glReadPixels. */
+    private static int[] readInts(GLTexture t) {
+        int w = t.mSize.x, h = t.mSize.y;
+        int[] oldRead = new int[1], framebuffer = new int[1];
+        android.opengl.GLES30.glGetIntegerv(android.opengl.GLES30.GL_READ_FRAMEBUFFER_BINDING, oldRead, 0);
+        try {
+            android.opengl.GLES30.glGenFramebuffers(1, framebuffer, 0);
+            android.opengl.GLES30.glBindFramebuffer(android.opengl.GLES30.GL_READ_FRAMEBUFFER, framebuffer[0]);
+            android.opengl.GLES30.glFramebufferTexture2D(android.opengl.GLES30.GL_READ_FRAMEBUFFER, android.opengl.GLES30.GL_COLOR_ATTACHMENT0,
+                    android.opengl.GLES30.GL_TEXTURE_2D, t.mTextureID, 0);
+            ByteBuffer data = ByteBuffer.allocateDirect(w * h * 16).order(ByteOrder.nativeOrder());
+            android.opengl.GLES30.glReadPixels(0, 0, w, h, android.opengl.GLES30.GL_RGBA_INTEGER, android.opengl.GLES30.GL_UNSIGNED_INT, data);
+            final int[] out = new int[w * h * 4];
+            data.asIntBuffer().get(out);
+            return out;
+        } finally {
+            android.opengl.GLES30.glBindFramebuffer(android.opengl.GLES30.GL_READ_FRAMEBUFFER, oldRead[0]);
+            if (framebuffer[0] != 0) android.opengl.GLES30.glDeleteFramebuffers(1, framebuffer, 0);
+        }
     }
 
     /** Histogram of every 7th code of the effective-frame map (codes 1..255); returns the number of non-zero samples. */
@@ -662,10 +748,11 @@ public final class ScamDenoise extends Node {
                 log.append(" inputReleased");
             }
 
-            // ---- pyramids: luma kD8 Y1..Y4, chroma {1,3,3,1} XC1..XC3 of the noisy YUV (noise statistics)
+            // ---- pyramids: luma kD8 Y1..Y3, chroma {1,3,3,1} XC1..XC3 of the noisy YUV (noise statistics)
             GLTexture[] Y = new GLTexture[ScamDenoiseTables.LEVELS + 1];
             Y[0] = x0;
-            for (int L = 1; L <= ScamDenoiseTables.LEVELS; L++) {
+            // P364: no Y4 (it was made and never read: the luma levels run 3 .. 0, band 4 is level 3's stride-2 strength)
+            for (int L = 1; L < ScamDenoiseTables.LEVELS; L++) {
                 Y[L] = tex(owned, half(Y[L - 1].mSize), GLFormat.DataType.FLOAT_16, 1, GL_LINEAR);
                 glProg.useAssetProgram("scamdn/down8", false);
                 glProg.setTexture("InputBuffer", Y[L - 1]);
@@ -682,6 +769,45 @@ public final class ScamDenoise extends Node {
             laps.lap("pyramids");
             tPrep = System.nanoTime();
 
+            // ---- strength map (P364: a Runnable, drawn by levelNoiseBatch while the GPU runs the statistics passes - it reads none
+            // of them -, so the effective-frame histogram and upload no longer wait behind the statistics read-back; the same pass)
+            final float[] effRef = {64f};
+            final GLTexture[] strMapOut = {null};
+            final String[] mapStateOut = {"uniform"};
+            final Runnable strengthMap = () -> {
+                if ("uniform".equals(mapMode)) return;
+                GLTexture eff = loadEffectiveFrames(owned, full, effRef);
+                // P214d: times min(g^2, cap) of the lens-shading gain the WHY tone applies after this denoise (lscTerm);
+                // a map is made for it also when the worker sent no effective-frame map
+                final float[] lsc = lscTerm(pipeline);
+                if (eff != null || lsc != null || hugeMap > 1f) {
+                    final GLTexture strMap = tex(owned, half(size0), GLFormat.DataType.FLOAT_16, 1, GL_LINEAR);
+                    // Both samplers are always bound, each on a unit of its own: an unset one reads unit 0, where the
+                    // other sampler type would sit (GL_INVALID_OPERATION at the draw). The 1 x 1 placeholders are never
+                    // read (noEffU 1 / lscU.x 0).
+                    final GLTexture effTex = eff != null ? eff
+                            : tex(owned, new Point(1, 1), GLFormat.DataType.UNSIGNED_8, 1, GL_NEAREST);
+                    final GLTexture gainTex = lsc != null ? pipeline.GainMap
+                            : tex(owned, new Point(1, 1), GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
+                    glProg.useAssetProgram("scamdn/strmap", false);
+                    glProg.setTexture("EffMap", effTex);
+                    glProg.setTexture("GainMap", gainTex);
+                    glProg.setVar("factorU", 2 * s);
+                    glProg.setVar("effRefU", effRef[0]);
+                    glProg.setVar("effMaxU", effMax);
+                    glProg.setVar("noEffU", eff != null ? 0 : 1);
+                    glProg.setVar("flatU", eff != null ? 0f : hugeMap); // P306: the 200 MP flat strength (unset 0: 1)
+                    glProg.setVar("lscU", lsc != null ? lsc[0] : 0f, lsc != null ? lsc[1] : 0f);
+                    glProg.setVar("fullInvU", 1f / full.x, 1f / full.y);
+                    glProg.drawBlocks(strMap);
+                    release(owned, effTex);
+                    if (gainTex != pipeline.GainMap) release(owned, gainTex);
+                    strMapOut[0] = strMap;
+                    mapStateOut[0] = (eff != null ? "frames(ref=" + (int) effRef[0] + ",max=" + effMax + ")" : hugeMap > 1f ? "flat(" + hugeMap + ")" : "uniform")
+                            + (lsc != null ? "+lsc(cap=" + lsc[1] + ",peak=" + round(lsc[2]) + ")" : "");
+                } else if ("frames".equals(mapMode)) mapStateOut[0] = "uniform(no map)";
+            };
+
             // ---- measured noise per level and stride (luma pyramid: Y; chroma pyramid: Y, U, V)
             float[][] gL = new float[ScamDenoiseTables.LEVELS][], gC = new float[ScamDenoiseTables.LEVELS][];
             float[][] raw0 = new float[1][];
@@ -691,15 +817,19 @@ public final class ScamDenoise extends Node {
                     gL[L] = levelNoise(glProg, owned, Y[L], 16, sY, rY, dcgPass, null);
                     gC[L] = levelNoise(glProg, owned, XC[L], 16, sY, rY, dcgPass, null);
                 }
+                strengthMap.run();
+                laps.lap("strmap");
             } else {
                 // The same levels in the same order: x0, then Y[L], XC[L] for L = 1..3.
                 GLTexture[] levels = new GLTexture[2 * ScamDenoiseTables.LEVELS - 1];
                 levels[0] = x0;
                 for (int L = 1; L < ScamDenoiseTables.LEVELS; L++) { levels[2 * L - 1] = Y[L]; levels[2 * L] = XC[L]; }
-                float[][] g = levelNoiseBatch(glProg, owned, levels, 16, sY, rY, dcgPass, raw0, laps);
+                float[][] g = levelNoiseBatch(glProg, owned, levels, 16, sY, rY, dcgPass, raw0, laps, strengthMap);
                 gL[0] = gC[0] = g[0];
                 for (int L = 1; L < ScamDenoiseTables.LEVELS; L++) { gL[L] = g[2 * L - 1]; gC[L] = g[2 * L]; }
             }
+            final GLTexture strMap = strMapOut[0];
+            final String mapState = mapStateOut[0];
             for (int L = 1; L < ScamDenoiseTables.LEVELS; L++) release(owned, XC[L]);
             // Gains used by the filters: measured, else level 0 scaled by the kernel energy, else a white spectrum of ~4 frames.
             float[][] GY = new float[ScamDenoiseTables.LEVELS][2], GC = new float[ScamDenoiseTables.LEVELS][2], UVS = new float[ScamDenoiseTables.LEVELS][4];
@@ -726,9 +856,10 @@ public final class ScamDenoise extends Node {
                 float[] ys = new float[n];
                 for (int i = 0; i < n; i++) if (raw[8 * i] >= 0f && Float.isFinite(raw[8 * i])) ys[m++] = raw[8 * i];
                 if (m > 0) {
-                    Arrays.sort(ys, 0, m);
-                    p50 = ys[Math.min(m - 1, m / 2)];
-                    p90 = ys[Math.min(m - 1, (int) (m * 0.9f))];
+                    // P364: the two elements of the sorted means by selection (the sort of ~50 k floats ran on the GL thread
+                    // while the GPU waited): the same values (Arrays.sort's order = Float.compare = ScamDenoiseTables.sortableBits)
+                    p50 = ScamDenoiseTables.selectFloat(ys, m, Math.min(m - 1, m / 2));
+                    p90 = ScamDenoiseTables.selectFloat(ys, m, Math.min(m - 1, (int) (m * 0.9f)));
                 }
             }
             // P277: a lab fragment measures its SNR on the whole frame's brightness, a lab shot records it
@@ -762,43 +893,7 @@ public final class ScamDenoise extends Node {
             cfg.chromaMult *= chromaDay;
             final float[][] chroma = ScamDenoiseTables.chroma(cfg, snr, cp);
 
-            // ---- strength map
-            float[] effRef = {64f};
-            GLTexture strMap = null;
-            boolean wantMap = !"uniform".equals(mapMode);
-            String mapState = "uniform";
-            if (wantMap) {
-                GLTexture eff = loadEffectiveFrames(owned, full, effRef);
-                // P214d: times min(g^2, cap) of the lens-shading gain the WHY tone applies after this denoise (lscTerm);
-                // a map is made for it also when the worker sent no effective-frame map
-                final float[] lsc = lscTerm(pipeline);
-                if (eff != null || lsc != null || hugeMap > 1f) {
-                    strMap = tex(owned, half(size0), GLFormat.DataType.FLOAT_16, 1, GL_LINEAR);
-                    // Both samplers are always bound, each on a unit of its own: an unset one reads unit 0, where the
-                    // other sampler type would sit (GL_INVALID_OPERATION at the draw). The 1 x 1 placeholders are never
-                    // read (noEffU 1 / lscU.x 0).
-                    final GLTexture effTex = eff != null ? eff
-                            : tex(owned, new Point(1, 1), GLFormat.DataType.UNSIGNED_8, 1, GL_NEAREST);
-                    final GLTexture gainTex = lsc != null ? pipeline.GainMap
-                            : tex(owned, new Point(1, 1), GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
-                    glProg.useAssetProgram("scamdn/strmap", false);
-                    glProg.setTexture("EffMap", effTex);
-                    glProg.setTexture("GainMap", gainTex);
-                    glProg.setVar("factorU", 2 * s);
-                    glProg.setVar("effRefU", effRef[0]);
-                    glProg.setVar("effMaxU", effMax);
-                    glProg.setVar("noEffU", eff != null ? 0 : 1);
-                    glProg.setVar("flatU", eff != null ? 0f : hugeMap); // P306: the 200 MP flat strength (unset 0: 1)
-                    glProg.setVar("lscU", lsc != null ? lsc[0] : 0f, lsc != null ? lsc[1] : 0f);
-                    glProg.setVar("fullInvU", 1f / full.x, 1f / full.y);
-                    glProg.drawBlocks(strMap);
-                    release(owned, effTex);
-                    if (gainTex != pipeline.GainMap) release(owned, gainTex);
-                    mapState = (eff != null ? "frames(ref=" + (int) effRef[0] + ",max=" + effMax + ")" : hugeMap > 1f ? "flat(" + hugeMap + ")" : "uniform")
-                            + (lsc != null ? "+lsc(cap=" + lsc[1] + ",peak=" + round(lsc[2]) + ")" : "");
-                } else if ("frames".equals(mapMode)) mapState = "uniform(no map)";
-            }
-            laps.lap("strmap");
+            // ---- strength map: drawn with the statistics above (P364)
             tStats = System.nanoTime();
 
             // ---- luma: levels 3 .. 0

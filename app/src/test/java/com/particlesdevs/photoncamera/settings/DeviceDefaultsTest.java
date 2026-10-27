@@ -49,13 +49,64 @@ public class DeviceDefaultsTest {
         assertEquals("auto", main.getString("pref_raw_stream_format", ""));
     }
 
-    @Test public void findX7UltraKeepsTheAutoRawFormat() {
+    /** P365 (v7, owner 2026-10-27): the Find X7 Ultra streams RAW10 as the reference app does there. */
+    @Test public void findX7UltraStreamsRaw10FromVersion7() {
         ShadowBuild.setManufacturer("OPPO");
         ShadowBuild.setModel("PHY110");
         SharedPreferences main = prefs("defaults_x7u");
         DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
-        assertFalse(main.contains("pref_raw_stream_format"));
+        assertEquals("raw10", main.getString("pref_raw_stream_format", "auto"));
         assertNoScamHdrSet(main);
+        assertEquals(DeviceDefaults.VERSION, main.getInt("device_defaults_version", 0));
+    }
+
+    /** P365: a Find X7 Ultra on v6 gets RAW10 (also in its module profiles) and keeps every other setting; applied once. */
+    @Test public void updateFromVersionSixAddsOnlyRaw10OnTheX7Ultra() {
+        ShadowBuild.setManufacturer("OPPO");
+        ShadowBuild.setModel("PHY110");
+        Context context = RuntimeEnvironment.getApplication();
+        SharedPreferences meta = prefs("module_profiles_meta");
+        meta.edit().putBoolean("exists_back2", true).commit();
+        SharedPreferences module = prefs("module_profile_v2_back2");
+        SharedPreferences main = prefs("defaults_x7u_v6");
+        main.edit().putInt("device_defaults_version", 6).putBoolean("pref_camera_package_spoof_enabled", false)
+                .putString("pref_scam_hybrid_why_ccm_sat", "0.8").commit();
+        DeviceDefaults.applyOnce(context, main);
+        for (SharedPreferences p : new SharedPreferences[]{main, module}) assertEquals("raw10", p.getString("pref_raw_stream_format", ""));
+        assertFalse(main.getBoolean("pref_camera_package_spoof_enabled", true));
+        assertEquals("0.8", main.getString("pref_scam_hybrid_why_ccm_sat", ""));
+        assertEquals(7, main.getInt("device_defaults_version", 0));
+        main.edit().putString("pref_raw_stream_format", "auto").commit();
+        DeviceDefaults.applyOnce(context, main);
+        assertEquals("the user's later choice stays", "auto", main.getString("pref_raw_stream_format", ""));
+        meta.edit().clear().commit();
+    }
+
+    /** P365: v7 is the X7 Ultra's only: a Find X8 Ultra on v6 gets nothing (its RAW10 came with v2). */
+    @Test public void updateFromVersionSixLeavesTheX8UltraAlone() {
+        ShadowBuild.setManufacturer("OPPO");
+        ShadowBuild.setModel("PKJ110");
+        SharedPreferences main = prefs("defaults_x8u_v6");
+        main.edit().putInt("device_defaults_version", 6).putString("pref_raw_stream_format", "auto").commit();
+        DeviceDefaults.applyOnce(RuntimeEnvironment.getApplication(), main);
+        assertEquals("auto", main.getString("pref_raw_stream_format", ""));
+    }
+
+    /** P365: the X7 Ultra's runtime rules - a RAW reader of 8 (the reference app's there), the light ISP stream; none elsewhere. */
+    @Test public void theX7UltraTakesTheReferenceReaderAndTheLightIspStream() {
+        ShadowBuild.setManufacturer("OPPO");
+        ShadowBuild.setModel("PHY110");
+        assertTrue(DeviceDefaults.findX7Ultra());
+        assertEquals(8, DeviceDefaults.zslReaderImages());
+        assertTrue(DeviceDefaults.ispLightViewfinder());
+        ShadowBuild.setModel("PKJ110");
+        assertFalse(DeviceDefaults.findX7Ultra());
+        assertEquals("no rule: zsl_reader 20, at least 16", 0, DeviceDefaults.zslReaderImages());
+        assertFalse(DeviceDefaults.ispLightViewfinder());
+        ShadowBuild.setManufacturer("vivo");
+        ShadowBuild.setModel("PHY110");
+        assertFalse(DeviceDefaults.findX7Ultra());
+        assertEquals(0, DeviceDefaults.zslReaderImages());
     }
 
     private static void assertNoScamHdrSet(SharedPreferences main) {

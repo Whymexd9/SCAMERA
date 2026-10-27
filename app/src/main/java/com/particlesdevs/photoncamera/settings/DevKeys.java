@@ -110,7 +110,8 @@ public final class DevKeys {
         k.add(n(cap, "vf_min_fps", String.valueOf(com.particlesdevs.photoncamera.capture.ViewfinderFps.DEFAULT_FLOOR),
                 Lang.t("Видоискатель не медленнее N к/с (автоматический диапазон AE; 0 — как разрешает камера)",
                         "Viewfinder not slower than N fps (the automatic AE range; 0: as low as the camera allows)")));
-        k.add(n(cap, "zsl_reader", "20", Lang.t("Буферов RAW-ридера при memfd-кольце (не меньше 16)", "RAW reader buffers with the memfd ring (at least 16)")));
+        k.add(n(cap, "zsl_reader", null, Lang.t("Буферов RAW-ридера при memfd-кольце (по умолчанию 20, не меньше 16; OPPO Find X7 Ultra: 8, не меньше 8)",
+                "RAW reader buffers with the memfd ring (default 20, at least 16; OPPO Find X7 Ultra: 8, at least 8)")));
         k.add(s(cap, "zsl_steadiest", true, Lang.t("Без OIS: из кольца берутся самые устойчивые по гироскопу кадры. Выкл — самые новые", "Without OIS: the steadiest ring frames by the gyro. Off: the newest")));
         k.add(n(cap, "ae_restore", "1", Lang.t("Кадр после серии, возвращающий экспозицию превью: 0 — нет, 1 — ручной кадр, 2 — AE ON + lock", "Frame after the series restoring the preview exposure: 0 none, 1 manual frame, 2 AE on + lock")));
         k.add(n(cap, "preview_lead", "1", Lang.t("Кадров превью перед серией после сброса очереди HAL", "Preview frames ahead of the series after the HAL queue flush")));
@@ -144,13 +145,20 @@ public final class DevKeys {
                 "Mosaic white balance: a smooth weighted curve of the camera, extended beyond its ends, from the DNG matrices while it has few points. Off: the P121 polyline clamped at its ends")));
         k.add(s(cap, "mosaic_awb_v2", false, Lang.t("Баланс белого мозаики: устойчивая оценка (клип по пикселям, веса по шуму, виньетирование, кроп снимка, до 3 кадров, своя точность) вместо P121. Выкл — только в лог рядом с P121",
                 "Mosaic white balance: the robust estimate (per-site clipping, noise weights, shading, the photo's crop, up to 3 frames, its own confidence) instead of P121. Off: only logged beside P121")));
-        k.add(s(cap, "mosaic_awb_teacher", true, Lang.t("Баланс белого мозаики: «учитель» — в обычном режиме запоминает, какую нейтраль ISP выбирает для нашей оценки кадра; только сбор и лог, на фото не влияет",
-                "Mosaic white balance teacher: in the plain mode it learns which neutral the ISP picks for our estimate of the frame; collected and logged only, never applied to a photo")));
+        k.add(s(cap, "mosaic_awb_teacher", true, Lang.t("Баланс белого мозаики: «учитель» — в обычном режиме запоминает, какую нейтраль ISP выбирает для нашей оценки кадра (на фото — по mosaic_awb_teacher_use). Выкл — ни сбора, ни лога",
+                "Mosaic white balance teacher: in the plain mode it learns which neutral the ISP picks for our estimate of the frame (photos: see mosaic_awb_teacher_use). Off: neither collected nor logged")));
+        // P366: the X200U ISZ photos at noon (green): the locus's slope held to the DNG prior's, the cool end, the teacher on photos
+        k.add(s(cap, "mosaic_awb_slope_guard", true, Lang.t("Баланс белого мозаики: кривая камеры для оценки кадра не круче 2× наклона по матрицам DNG, пока её точки не покрывают половину диапазона дневной свет — лампа накаливания (иначе наклон DNG через центр точек; баланс камеры на маршрутах проверяется по кривой точек). Выкл — любой наклон",
+                "Mosaic white balance: the camera curve for the frame's estimate no more than 2x as steep as the DNG matrices' slope while its points cover less than half of the daylight-to-tungsten range (else the DNG slope through their centre; the camera's balance on the routes is checked against the points' curve). Off: any slope")));
+        k.add(s(cap, "mosaic_awb_cool_keep", true, Lang.t("Баланс белого мозаики: свет холоднее всего выученного не тянется вдоль кривой к выученному больше, чем к самой кривой (цветовая температура сохраняется), но не дальше 0.2 ln за концом кривой. Выкл — конец кривой",
+                "Mosaic white balance: a light cooler than anything learned is not pulled along the curve towards the learned lights by more than towards the curve (its colour temperature kept), at most 0.2 ln beyond the curve's end. Off: the curve's end")));
+        k.add(n(cap, "mosaic_awb_teacher_use", "1", Lang.t("Баланс белого мозаики по «учителю» (своя сетка или сетка камеры с тем же сенсором, смесь с кривой): 1 — только RAW-сессия без 3A ISP (ISZ X200 Ultra), 2 — любой снимок мозаики без маршрута, 0 — только лог",
+                "Mosaic white balance from the teacher (its own grid or a same-sensor camera's, blended with the curve): 1 = only a RAW-only session without the ISP's 3A (X200 Ultra ISZ), 2 = any route-less mosaic photo, 0 = log only")));
         // P212g: whose neutral a vivo mosaic photo takes (W6) and the plain-session colour matrices of mosaic photos (W7)
         k.add(s(cap, "mosaic_awb_resolver", true, Lang.t("vivo FULLRES: баланс белого камеры, если он установился и лежит на кривой камеры; 200 Мп без своего видоискателя — баланс видоискателя обычного режима за секунду до нажатия. Выкл — оценка по кадру (P121) на всех маршрутах",
                 "vivo FULLRES: the camera's white balance when it has converged and lies on the camera's curve; 200 MP without its own viewfinder: the normal-mode viewfinder's balance of the second before the press. Off: the frame estimate (P121) on every route")));
-        k.add(n(cap, "mosaic_ccm_table", "1", Lang.t("Снимки мозаики: цветовая матрица ISP из обычного режима этой камеры при том же свете вместо общих матриц DNG. 1: FULLRES, 2: также ISZ 12 Мп, 0: матрицы DNG",
-                "Mosaic shots: the ISP's colour matrix of this camera's plain mode at the same light instead of the generic DNG matrices. 1: FULLRES, 2: the 12 MP ISZ modules too, 0: the DNG matrices")));
+        k.add(n(cap, "mosaic_ccm_table", "2", Lang.t("Снимки мозаики: цветовая матрица ISP из обычного режима этой камеры при том же свете вместо общих матриц DNG. 2: все (и ISZ 12 Мп), 1: только FULLRES, 0: матрицы DNG",
+                "Mosaic shots: the ISP's colour matrix of this camera's plain mode at the same light instead of the generic DNG matrices. 2: all (the 12 MP ISZ modules too), 1: FULLRES only, 0: the DNG matrices")));
         k.add(s(cap, "oppo_cct_anchor", true, Lang.t("OPPO X7 Ultra: точка 6500 K для 6× и фронтальной камеры по меткам AWB 6000–7000 K обычного режима. Выкл — −0.6, как раньше",
                 "OPPO X7 Ultra: the 6500 K point of the 6x and front cameras from the plain mode's 6000-7000 K AWB labels. Off: -0.6 as before")));
         k.add(s(cap, "oplus_ccm", true, Lang.t("OPPO: цветовая матрица com.oplus.custom.ccm вместо единичной", "OPPO: the com.oplus.custom.ccm colour matrix instead of an identity one")));
@@ -174,6 +182,12 @@ public final class DevKeys {
                 "RAW viewfinder while a shot is processed: at most this many frames a second (processing does not share the GPU with it); 0 = every frame")));
         k.add(s(vf, "vf_isp_latch", true, Lang.t("RAW-видоискатель: кадр ISP только принимается, без перерисовки того же RAW-кадра (выкл — перерисовка на каждый кадр ISP)",
                 "RAW viewfinder: an ISP frame is only latched, the same RAW frame is not drawn again (off: a redraw for every ISP frame)")));
+        // P365: the photo's tone in one fused pass from the RAW texture (MainRenderer / LiveWhyTone.drawFused), the last RAW frame
+        // kept on the screen while the shot's series is taken
+        k.add(s(vf, "vf_fused", false, Lang.t("RAW-видоискатель: тон Why за один проход прямо из RAW-текстуры (без промежуточного кадра, сразу на экран, если нет фильтра и фокус-пикинга), две RAW-текстуры по очереди (выкл — прежние проходы P314)",
+                "RAW viewfinder: the Why tone in one pass straight from the RAW texture (no intermediate frame, straight to the screen without a lens filter or focus peaking), two RAW textures in turn (off: the passes of P314)")));
+        k.add(s(vf, "vf_series_hold", true, Lang.t("RAW-видоискатель: пока снимается серия, на экране последний RAW-кадр (до 2 с), без вспышки вида ISP (выкл — через 0.3 с показывается поток ISP)",
+                "RAW viewfinder: while the series is taken the last RAW frame stays on the screen (up to 2 s), no flash of the ISP look (off: the ISP stream shows after 0.3 s)")));
         // P212h (A6 = M11): the FULLRES viewfinder predicts the photo
         k.add(n(vf, "vf_native_gain", "1", Lang.t("OPPO FULLRES: усиление видоискателя — 1: только на экспозицию, которую режим не даёт (нехватка AE больше 0.3 EV), 2: замер видоискателя, пока экспозиция не задана вручную, 0: без усиления",
                 "OPPO FULLRES viewfinder gain - 1: only for the exposure the mode cannot give (an AE deficit above 0.3 EV), 2: the viewfinder's meter unless the exposure is hand-set, 0: none")));
@@ -181,6 +195,15 @@ public final class DevKeys {
                 "FULLRES: the photo's colour matrix on the viewfinder instead of the identity (OPPO X7 Ultra: the tuning at the light's colour temperature; other OPPO and vivo: the plain mode's matrix at that light or the ISP's). Off: the identity")));
         k.add(s(vf, "vf_raw_scene_luma", true, Lang.t("Приоритет выдержки / ISO: яркость сцены из RAW-видоискателя (без неё в FULLRES второй параметр не двигался). Выкл — только из видоискателя ISP",
                 "Shutter / ISO priority: the scene brightness from the RAW viewfinder (without it the other value never moved in FULLRES). Off: from the ISP viewfinder only")));
+        // P365: the RAW viewfinder with the reference viewfinder's resource requirements (one draw request, the ring slot, RAW10)
+        k.add(s(vf, "vf_one_request", true, Lang.t("RAW-видоискатель: один запрос отрисовки на кадр (выкл — как раньше: второй запрос, лишняя перерисовка того же кадра)",
+                "RAW viewfinder: one draw request a frame (off: as before, a second request and a redraw of the same frame)")));
+        k.add(s(vf, "vf_ring_ref", true, Lang.t("RAW-видоискатель берёт кадр из ячейки ZSL-кольца, без своей копии (выкл — копия из буфера камеры)",
+                "RAW viewfinder takes the frame from its ZSL ring slot, no copy of its own (off: a copy out of the camera's buffer)")));
+        k.add(s(vf, "zsl_ring_unpack", true, Lang.t("RAW10 / RAW12 распаковывается в ячейку ZSL-кольца при приходе кадра: склейка и видоискатель берут её без копии (выкл — распаковка после нажатия)",
+                "RAW10 / RAW12 is unpacked into the ZSL ring slot as the frame arrives: the merge and the viewfinder take it without a copy (off: unpacked after the press)")));
+        k.add(sAuto(vf, "vf_isp_light", Lang.t("Под RAW-видоискателем поток ISP 1440x1080, шумодав и резкость ISP выкл. в повторяющемся запросе (по умолчанию — на OPPO Find X7 Ultra; со следующего открытия камеры)",
+                "Under the RAW viewfinder the ISP stream at 1440x1080, ISP noise reduction and edge off in the repeating request (default: on the OPPO Find X7 Ultra; from the next camera start)")));
         // merge (worker)
         k.add(s(merge, "hybrid_rgb_half", true, Lang.t("RGB от воркера в half float (меньше данных). Выкл — float32", "Worker RGB as half floats (less data). Off: float32")));
         k.add(n(merge, "hybrid_s61_mode", null, Lang.t("Режим ковариации Sabre 6.1 (6 — от базового кадра, быстрее)", "Sabre 6.1 covariance mode (6: from the base frame, faster)")));
@@ -194,6 +217,11 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_s61_night_scale", "0.8", Lang.t("Sabre 6.1 ночью: множитель ширины ядра при SNR-ключе до 8 (к 16 — снова 1; 1 — как раньше)", "Sabre 6.1 at night: kernel width multiplier at an SNR key up to 8 (back to 1 at 16; 1: as before)")));
         k.add(n(merge, "hybrid_s61_fine", "0", Lang.t("Sabre 6.1: структура по зелёным пикселям в полном разрешении, множитель её шума (0 — по квадам 2×2; 2 медленнее и даёт решётку на подсветке)", "Sabre 6.1: structure from the green sites at full resolution, its noise multiplier (0: from the 2x2 quads; 2 is slower and leaves a grid on backlights)")));
         k.add(n(merge, "hybrid_us_set", "1", Lang.t("Короткие кадры: набор P350 (регистрация, маска по своей яркости, отказ по областям; 0 — как раньше)", "Ultrashort frames: the P350 set (registration, own-brightness mask, refusal per region; 0: as before)")));
+        // P366: the lamp-flicker corrections of the ultrashort frames held in daylight / for an incoherent tile field
+        k.add(n(merge, "hybrid_us_daylight_ev", "10", Lang.t("Короткие кадры: коррекция мерцания ламп не работает от этой яркости сцены (EV100 опорного кадра; 0 — всегда работает)",
+                "Ultrashort frames: the lamp-flicker correction is off from this scene brightness up (the base frame's EV100; 0: always on)")));
+        k.add(n(merge, "hybrid_us_incoherent", "0.5", Lang.t("Короткие кадры: поле мерцания по плиткам не применяется, если плитки расходятся с соседями на эту долю своего отклонения (движение; 0 — всегда)",
+                "Ultrashort frames: the tile flicker field is not applied when its tiles depart from their neighbours by this share of their deviation (motion; 0: always)")));
         k.add(n(merge, "hybrid_long_set", "1", Lang.t("Длинные кадры: набор P358 (шум по замеру, вес по шуму; 0 — как раньше)",
                 "Long frames: the P358 set (measured noise, weight by noise; 0: as before)")));
         k.add(n(merge, "hybrid_rej_set", "1", Lang.t("Реджекты: набор P344 (чистая карта на статике, движение отсекается; 0 — как P341)", "Rejection: the P344 set (a clean map on static areas, motion still cut; 0: as P341)")));

@@ -32,6 +32,7 @@ def run(gl, orig, den, keep):
     def tex(a):
         t = gl.texture((w, h), 4, np.dstack([a, np.zeros_like(a), np.zeros_like(a), np.ones_like(a)]).astype('f4').tobytes(), dtype='f4')
         t.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        t.repeat_x = t.repeat_y = False   # P364: CLAMP_TO_EDGE as ScamDenoise's textures (lgrain reads them by textureGather)
         return t
     to, td = tex(orig), tex(den)
     out = gl.texture((w, h), 4, dtype='f4')

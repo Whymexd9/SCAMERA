@@ -21,7 +21,8 @@ public final class ScamRgb extends Node {
 
     /**
      * P349: the glow share of the fully clipped cores (scamhdr/suncore.glsl) for WhyCombine's sun bloom, or null (off): the
-     * share of R/G/B-clipped pixels per block (~192 blocks on the shorter side), spread by a max-gaussian of the setting's
+     * share of R/G/B-clipped pixels whose clipped mean holds the ultrashort frame too (P366: clip flag bit 5; foam the normal
+     * frames clip is no sun) per block (~192 blocks on the shorter side), spread by a max-gaussian of the setting's
      * radius. A few hundred kB; WhyCombine closes it.
      */
     private GLTexture sunBloom(GLTexture flags,Point size){
@@ -218,6 +219,9 @@ public final class ScamRgb extends Node {
     }
 
     private static void histogram(int[] h, double[] sum, float t) {
+        // P364: a sample below the first bin (most of them) leaves at once: for every t < 0.8 the bin below is negative (t - 0.8 is
+        // negative and never rounds to 0), so nothing is counted, as before; a NaN still takes the old path (bin 0)
+        if (t < HIST_T0) return;
         final int b = (int) Math.floor((t - HIST_T0) / HIST_BIN);
         if (b >= 0 && b < HIST_BINS) { h[b]++; sum[b] += t; }
     }
@@ -623,11 +627,22 @@ public final class ScamRgb extends Node {
     static long opposedPixels(java.nio.ByteBuffer flags){
         final java.nio.ByteBuffer f=flags.duplicate();
         final int n=f.capacity();
-        final long[] counts=new long[Math.max(1,ParallelWork.threads())];
-        final int parts=counts.length,step=(n+parts-1)/parts;
+        // P364: eight flags a read (one long; per byte: bits 0-2 not all clear and bits 4-5 clear, both as the high bit of the byte
+        // - no carry leaves a byte - counted by Long.bitCount: the same count), and four parts a thread (the little cores held the
+        // last of equal parts)
+        final long[] counts=new long[Math.max(1,4*ParallelWork.threads())];
+        final int parts=counts.length,step=((n+parts-1)/parts+7)&~7;
         ParallelWork.forEach(parts,k->{
             long c=0;
-            for(int i=k*step,e=Math.min(n,i+step);i<e;i++){
+            final int s=(int)Math.min(n,(long)k*step),e=(int)Math.min(n,(long)s+step);
+            int i=s;
+            for(;i+8<=e;i+=8){
+                final long x=f.getLong(i);
+                final long low=((x&0x0707070707070707L)+0x7F7F7F7F7F7F7F7FL)&0x8080808080808080L;
+                final long us=~((x&0x3030303030303030L)+0x7F7F7F7F7F7F7F7FL)&0x8080808080808080L;
+                c+=Long.bitCount(low&us);
+            }
+            for(;i<e;i++){
                 final int v=f.get(i)&0xFF;
                 if((v&7)!=0&&(v&48)==0)c++;
             }

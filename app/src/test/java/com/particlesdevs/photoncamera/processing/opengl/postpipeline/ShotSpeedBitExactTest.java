@@ -260,4 +260,93 @@ public class ShotSpeedBitExactTest {
             assertNotNull(e.getMessage());
         }
     }
+
+    /** The level block grids of ScamDenoise.process for a level-0 size (x0, then Y[L] and XC[L] for L = 1..3, 16 px blocks). */
+    private static int[][] statsGrids(int w0, int h0) {
+        int[] w = new int[7], h = new int[7];
+        int lw = w0, lh = h0;
+        w[0] = Math.max(1, lw / 16);
+        h[0] = Math.max(1, lh / 16);
+        for (int L = 1; L < 4; L++) {
+            lw = (lw + 1) / 2;
+            lh = (lh + 1) / 2;
+            w[2 * L - 1] = w[2 * L] = Math.max(1, lw / 16);
+            h[2 * L - 1] = h[2 * L] = Math.max(1, lh / 16);
+        }
+        return new int[][]{w, h};
+    }
+
+    /** P364: the statistics atlas holds every level's rectangle inside it, none overlapping another. */
+    @Test public void statsAtlasRectanglesAreDisjointAndInside() {
+        int[][] sizes = {{4096, 3072}, {4000, 3000}, {4031, 3023}, {3072, 4096}, {8160, 6120}, {6144, 8192}, {100, 60}, {17, 15},
+                {1, 1}, {33, 2000}, {2000, 33}};
+        for (int[] sz : sizes) {
+            int[][] g = statsGrids(sz[0], sz[1]);
+            int[] w = g[0], h = g[1], x = new int[7], y = new int[7];
+            int[] atlas = ScamDenoise.statsAtlas(w, h, x, y);
+            for (int i = 0; i < 7; i++) {
+                String what = sz[0] + "x" + sz[1] + " level " + i;
+                assertTrue(what, x[i] >= 0 && y[i] >= 0 && x[i] + w[i] <= atlas[0] && y[i] + h[i] <= atlas[1]);
+                for (int j = 0; j < i; j++)
+                    assertTrue(what + " vs " + j, x[i] + w[i] <= x[j] || x[j] + w[j] <= x[i] || y[i] + h[i] <= y[j] || y[j] + h[j] <= y[i]);
+            }
+            assertEquals(0, x[0]);
+            assertEquals(0, y[0]);
+        }
+        // 12 MP: 256 x 192 blocks of level 0 over two shelves of 128 x 96 and 64 x 48 / 32 x 24 rectangles
+        int[] atlas = ScamDenoise.statsAtlas(statsGrids(4096, 3072)[0], statsGrids(4096, 3072)[1], new int[7], new int[7]);
+        assertEquals(256, atlas[0]);
+        assertEquals(336, atlas[1]);
+    }
+
+    /** P364: a level's statistics from the atlas are the floats readStats gave from a texture of its own, bit for bit. */
+    @Test public void atlasStatisticsEqualTheReadStatsDecode() {
+        Random r = new Random(364);
+        int[][] g = statsGrids(1000, 700);
+        int[] w = g[0], h = g[1], x = new int[7], y = new int[7];
+        int[] atlas = ScamDenoise.statsAtlas(w, h, x, y);
+        int[] texels = new int[atlas[0] * atlas[1] * 4];
+        for (int i = 0; i < texels.length; i++) {
+            int lo = r.nextInt(65536), hi = r.nextInt(65536);
+            if (r.nextInt(9) == 0) lo = new int[]{0x7c00, 0xfc00, 0x7e00, 0x8000, 0x0001, 0x83ff, 0xbc00}[r.nextInt(7)];
+            texels[i] = (hi << 16) | lo;
+        }
+        for (int level = 0; level < 7; level++) {
+            // readStats: the level's own w x h texture, row-major from y = 0, ScamDenoiseTables.half of each 16-bit half
+            float[] expected = new float[w[level] * h[level] * 8];
+            for (int by = 0; by < h[level]; by++) {
+                for (int bx = 0; bx < w[level]; bx++) {
+                    for (int c = 0; c < 4; c++) {
+                        int v = texels[((y[level] + by) * atlas[0] + x[level] + bx) * 4 + c];
+                        int i = (by * w[level] + bx) * 4 + c;
+                        expected[2 * i] = ScamDenoiseTables.half(v & 0xffff);
+                        expected[2 * i + 1] = ScamDenoiseTables.half((v >>> 16) & 0xffff);
+                    }
+                }
+            }
+            float[] got = ScamDenoise.statsOf(texels, atlas[0], x[level], y[level], w[level], h[level]);
+            assertEquals("level " + level + " length", expected.length, got.length);
+            for (int i = 0; i < expected.length; i++) {
+                if (Float.isNaN(expected[i])) assertTrue("level " + level + " [" + i + "]", Float.isNaN(got[i]));
+                else assertEquals("level " + level + " [" + i + "]", Float.floatToRawIntBits(expected[i]), Float.floatToRawIntBits(got[i]));
+            }
+        }
+    }
+
+    /** P364: ScamDenoise.process takes p50 / p90 of the level-0 block means by selection: the elements of the sort of before. */
+    @Test public void meanPercentilesBySelectionEqualTheSort() {
+        Random r = new Random(9);
+        for (int n : new int[]{1, 2, 3, 9, 10, 11, 100, 1001, 49152}) {
+            for (int kind = 0; kind < 3; kind++) {
+                float[] ys = new float[n];
+                for (int i = 0; i < n; i++)
+                    ys[i] = kind == 0 ? r.nextFloat() : kind == 1 ? r.nextInt(7) * 0.125f : (r.nextInt(5) == 0 ? (r.nextBoolean() ? -0.0f : 0.0f) : r.nextFloat() * 1e-3f);
+                float[] sorted = ys.clone();
+                java.util.Arrays.sort(sorted, 0, n);
+                int k50 = Math.min(n - 1, n / 2), k90 = Math.min(n - 1, (int) (n * 0.9f));
+                assertEquals("p50 n " + n, Float.floatToRawIntBits(sorted[k50]), Float.floatToRawIntBits(ScamDenoiseTables.selectFloat(ys, n, k50)));
+                assertEquals("p90 n " + n, Float.floatToRawIntBits(sorted[k90]), Float.floatToRawIntBits(ScamDenoiseTables.selectFloat(ys, n, k90)));
+            }
+        }
+    }
 }

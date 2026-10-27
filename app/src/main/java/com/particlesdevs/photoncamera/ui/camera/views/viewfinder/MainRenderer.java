@@ -111,6 +111,63 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private long mVfRawAtNs, mVfRawToned, mVfRawReused, mVfRawDropped0;
     /** P319: a tone older than this is drawn again even for the same frame (a stalled stream falls back as before). */
     static final long TONE_REUSE_NS = 300_000_000L;
+    /**
+     * P365: the GPU passes of the last tone for VF_RAW (1 the fused pass straight to the screen, 2 the fused pass and the filter /
+     * peaking pass, 3 P314's linear frame, tone and filter pass) and the way the last tone was logged (the same numbers, 0 none).
+     */
+    private int mVfRawPasses, mFusedLogged;
+    /**
+     * P365 step 7 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»;
+     * scam_dev vf_series_hold): while the shot's series is taken (CaptureController.seriesInFlight: the RAW frames stop from the
+     * press until its frames are in, 0.38-0.40 s on the OPPO) the ISP frames are only latched for up to this long after the last
+     * RAW draw - the screen keeps the last RAW frame instead of the ISP look appearing after RAW_SHOWN_NS and going again (a draw
+     * asked for meanwhile draws that RAW frame, up to this old). After it, or with the switch off, as before.
+     */
+    static final long SERIES_HOLD_NS = 2_000_000_000L;
+    /** P365: the RAW frame of the fused pass (LiveWhyTone.drawFused) with this renderer's vertices, rotation and mirror. */
+    private final com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone.RawSource mFusedRaw =
+            new com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone.RawSource() {
+                @Override
+                public boolean bind(int program) {
+                    return mRawRenderer.bindFrame(program, mTexRotateMatrix, mMirrorPreview);
+                }
+
+                @Override
+                public boolean fresh() {
+                    return mRawRenderer.boundFresh();
+                }
+
+                @Override
+                public com.particlesdevs.photoncamera.processing.LiveWhyMeter.View view() {
+                    return mRawRenderer.lastView();
+                }
+
+                @Override
+                public void draw() {
+                    mRawRenderer.drawBound(pVertex, pTexCoord);
+                }
+            };
+
+    /**
+     * P365: whether the fused tone goes straight to the screen in one pass - the tone at the viewport's size (a 1x Bayer frame; a
+     * mosaic's colour grid is smaller: drawn into the tone target, the filter pass scales it up), no lens filter and no focus
+     * peaking (their pass reads the tone target).
+     */
+    static boolean directPass(int toneW, int toneH, int viewportW, int viewportH, boolean lensFilter, int peaking) {
+        return toneW == viewportW && toneH == viewportH && !lensFilter && peaking == 0;
+    }
+
+    /** P365 step 7: whether the ISP frames wait (vf_series_hold on, a series in flight, a RAW frame drawn less than SERIES_HOLD_NS ago). */
+    static boolean holdsSeries(boolean on, boolean inFlight, long sinceRawNs) {
+        return on && inFlight && sinceRawNs >= 0 && sinceRawNs < SERIES_HOLD_NS;
+    }
+
+    private boolean seriesHold(long now) {
+        final long since = now - mRawShownNs;
+        // the cheap tests first: the ISP frames' thread asks this ~30 times a second
+        return since >= 0 && since < SERIES_HOLD_NS && CaptureController.seriesInFlight()
+                && holdsSeries(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vf_series_hold", true), true, since);
+    }
 
     /** P319: the RAW frame (session, version), the tone target and the geometry the WHY tone in rawFbo was drawn for. */
     private long toneKey() {
@@ -148,49 +205,98 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         final boolean rawReady = rawLook && rawProgramsReady();
         // a RAW-only session has no ISP frame to keep: its plain RAW look as soon as rawdevelop is linked, the WHY tone after
         final boolean rawPlain = rawReady || (rawLook && mRawRenderer.ready() && System.nanoTime() - mIspLatchNs > 300_000_000L);
+        // P365 step 7: while a series is held the RAW frame drawn last stays drawable for SERIES_HOLD_NS (MAX_AGE_NS otherwise)
+        mRawRenderer.setMaxAge(seriesHold(System.nanoTime()) ? SERIES_HOLD_NS : LiveRawRenderer.MAX_AGE_NS);
         // P314: the tone at the frame's colour resolution (LiveRawRenderer.toneSize), the filter / peaking pass scales it up
-        final boolean why = rawReady && hProgram2d != 0
-                && com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone.wanted() && !mWhyTone.failed() && rawToneTarget();
+        final boolean whyOn = rawReady && hProgram2d != 0
+                && com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone.wanted() && !mWhyTone.failed();
+        // P365 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»; scam_dev
+        // vf_fused): vf_why 1 in one fused pass from the RAW texture - straight to the screen when the tone is the viewport's size
+        // and nothing reads it afterwards (no lens filter, no peaking: one pass, no target of its own), else into the tone target
+        // and the filter / peaking pass (two). Failing, it is off for the context and P314's passes draw once their programs are
+        // built (the viewfinder's own look or the ISP picture meanwhile, as at a start).
+        final int[] tone = whyOn ? toneSizeNow() : null;
+        final boolean fused = whyOn && mWhyTone.fused();
+        final int peaking = getPeakEnabled();
+        final boolean direct = fused && directPass(tone[0], tone[1], mViewport[2], mViewport[3], mRawLensFilter.active(), peaking);
+        final boolean why = whyOn && (direct || rawTarget(tone[0], tone[1]));
+        boolean fusedFailedNow = false;
         if (why) {
             // P319 (user report: «Лайв-вью работает гораздо тормознее»): an ISP frame wakes this thread too (1x sessions keep the
             // ISP stream), and each such draw toned the same RAW frame again - up to half the draws. The tone in rawFbo is reused
             // while the RAW frame, the target and the geometry are the same and it is fresh; only the filter / peaking pass runs.
             // A setting change shows with the next RAW frame. scam_dev vf_tone_reuse 0: every draw tones (as before).
-            final long key = toneKey();
+            // P365: the direct pass has no tone to reuse: a redraw of the same frame draws it again from its texture (no upload,
+            // no AE), counted as reused
             final long now = System.nanoTime();
-            if (key == mToneKey && now - mToneAtNs < TONE_REUSE_NS
-                    && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vf_tone_reuse", true)) {
-                rawActive = true;
-                mToneReused++;
-                mVfRawReused++;
+            if (direct) {
+                rawActive = mWhyTone.drawFused(mFusedRaw, 0, mViewport[0], mViewport[1], mViewport[2], mViewport[3]);
+                mToneKey = Long.MIN_VALUE;
+                if (rawActive) {
+                    mVfRawPasses = 1;
+                    if (mRawRenderer.boundFresh()) mVfRawToned++;
+                    else mVfRawReused++;
+                    releaseRawTarget();
+                }
             } else {
-                rawActive = mWhyTone.draw(() -> mRawRenderer.drawLinear(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview),
-                        mRawRenderer::lastView, rawFbo, rawW, rawH);
-                mToneKey = rawActive ? key : Long.MIN_VALUE;
-                mToneAtNs = now;
-                if (rawActive) mVfRawToned++;
+                final long key = toneKey();
+                if (key == mToneKey && now - mToneAtNs < TONE_REUSE_NS
+                        && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vf_tone_reuse", true)) {
+                    rawActive = true;
+                    mToneReused++;
+                    mVfRawReused++;
+                } else {
+                    if (fused) {
+                        rawActive = mWhyTone.drawFused(mFusedRaw, rawFbo, 0, 0, rawW, rawH);
+                        if (rawActive) mVfRawPasses = 2;
+                    } else {
+                        rawActive = mWhyTone.draw(() -> mRawRenderer.drawLinear(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview),
+                                mRawRenderer::lastView, rawFbo, rawW, rawH);
+                        if (rawActive) mVfRawPasses = 3;
+                    }
+                    mToneKey = rawActive ? key : Long.MIN_VALUE;
+                    mToneAtNs = now;
+                    if (rawActive) mVfRawToned++;
+                }
+                if (rawActive) drawRawFiltered(peaking);
+            }
+            fusedFailedNow = fused && mWhyTone.fusedFailed();
+            if (fusedFailedNow) {
+                // P365: P314's programs are asked for (their background compile), this frame takes the fall-back below
+                mRawProgramsReady = false;
+                mFusedLogged = 0;
             }
             if (now - mVfRawAtNs >= 2_000_000_000L) {
                 final long dropped = com.particlesdevs.photoncamera.processing.LiveRawFrame.droppedFrames();
                 if (mVfRawAtNs != 0) {
                     final double s = (now - mVfRawAtNs) / 1e9;
-                    Log.i("VF_RAW", String.format(java.util.Locale.ROOT, "toned %.1f/s reused %.1f/s dropped %.1f/s tone %dx%d",
-                            mVfRawToned / s, mVfRawReused / s, (dropped - mVfRawDropped0) / s, rawW, rawH));
+                    // P365: the passes of the tone and the camera thread's copies per frame (LiveRawFrame.copyStats)
+                    Log.i("VF_RAW", String.format(java.util.Locale.ROOT, "toned %.1f/s reused %.1f/s dropped %.1f/s tone %dx%d passes=%d %s",
+                            mVfRawToned / s, mVfRawReused / s, (dropped - mVfRawDropped0) / s, tone[0], tone[1], mVfRawPasses,
+                            com.particlesdevs.photoncamera.processing.LiveRawFrame.copyStats()));
                 }
                 mVfRawAtNs = now;
                 mVfRawToned = mVfRawReused = 0;
                 mVfRawDropped0 = dropped;
             }
-            if (rawActive) drawRawFiltered(getPeakEnabled());
+            if (rawActive && mFusedLogged != mVfRawPasses) {
+                mFusedLogged = mVfRawPasses;
+                Log.d("MainRenderer", "viewfinder: " + (mVfRawPasses == 1 ? "fused WHY tone on (direct)"
+                        : mVfRawPasses == 2 ? "fused WHY tone on (2 passes: tone " + rawW + "x" + rawH + ", filter / peaking)"
+                        : "the WHY tone in P314's passes" + (com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone.fusedSwitch()
+                        && com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone.mode()
+                        == com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone.POINT ? " (the fused pass failed)" : "")));
+            }
             if (!mWhyLogged || !rawActive) {
-                if (!mWhyLogged) Log.d("MainRenderer", "viewfinder: the photo's WHY tone " + (rawActive ? "on" : "not drawn (" + (mWhyTone.failed() ? "failed" : "no frame") + ")"));
+                if (!mWhyLogged) Log.d("MainRenderer", "viewfinder: the photo's WHY tone " + (rawActive ? "on" : "not drawn ("
+                        + (mWhyTone.failed() ? "failed" : fusedFailedNow ? "the fused pass failed" : "no frame") + ")"));
                 mWhyLogged = rawActive;
             }
         }
         // P300: with a lens filter the RAW frame is drawn off screen first, the filter pass puts it on screen
         // P314: not after the WHY tone found no frame (the plain draw has none either; its viewport-sized target would be made
-        // anew, and the tone's again with the next frame) - only when the tone failed
-        if (!rawActive && (!why || mWhyTone.failed())) {
+        // anew, and the tone's again with the next frame) - only when the tone failed (P365: or its fused pass, this frame)
+        if (!rawActive && (!why || mWhyTone.failed() || fusedFailedNow)) {
             final boolean rawFilter = rawPlain && hProgram2d != 0 && mRawLensFilter.active() && rawTarget();
             if (rawFilter) GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, rawFbo);
             rawActive = rawPlain && mRawRenderer.draw(pVertex, pTexCoord, mTexRotateMatrix, mMirrorPreview, getPeakEnabled());
@@ -273,6 +379,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         mRawRenderer.onContextCreated();
         mWhyTone.onContextCreated();
         mWhyLogged = false;
+        mFusedLogged = 0;
         mRawProgramsReady = false;
         mRawProgramsWhy = 0;
         mRawProgramsAsked = 0;
@@ -331,9 +438,9 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
      * draw falls back as before).
      */
     private boolean rawProgramsReady() {
-        // P314: which of the tone's program sets (vf_why 1 per pixel / 2 the guided-filter chain; 0 none)
-        final int whyMode = hProgram2d != 0 && !mWhyTone.failed()
-                ? com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone.mode() : 0;
+        // P314: which of the tone's program sets (vf_why 1 per pixel / 2 the guided-filter chain; 0 none); P365: the fused pass's
+        // set or P314's (LiveWhyTone.programSet)
+        final int whyMode = hProgram2d != 0 && !mWhyTone.failed() ? mWhyTone.programSet() : 0;
         final boolean why = whyMode != 0;
         if (mRawProgramsReady && (!why || mRawProgramsWhy == whyMode)) return true;
         final long now = android.os.SystemClock.elapsedRealtime();
@@ -373,7 +480,8 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         }
         if (mRawProgramsReady)
             Log.d("MainRenderer", "viewfinder: RAW programs linked " + (android.os.SystemClock.elapsedRealtime() - mRawProgramsAsked)
-                    + " ms after they were asked for (WHY " + why + ", vf_why " + whyMode + ")");
+                    + " ms after they were asked for (WHY " + why + ", set " + whyMode + ": vf_why " + whyMode / 2
+                    + (whyMode % 2 == 1 ? " fused" : "") + ")");
         return mRawProgramsReady;
     }
 
@@ -386,19 +494,28 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private final int[] mViewport = new int[4];
 
     /**
-     * P314: the target of the WHY tone: the visible crop's colour grid of the frame drawn last (LiveRawRenderer.toneSize: a 2x ISZ
-     * Quad frame 810 x 1080 instead of the 1440 x 1920 viewport, a 1x Bayer frame the viewport), the viewport before a first frame.
+     * P314: the size of the WHY tone: the visible crop's colour grid of the frame drawn last (LiveRawRenderer.toneSize: a 2x ISZ
+     * Quad frame 810 x 1080 instead of the 1440 x 1920 viewport, a 1x Bayer frame the viewport), the viewport before a first frame;
+     * P365: only the size (the fused pass straight to the screen makes no target), mViewport read.
      */
-    private boolean rawToneTarget() {
+    private int[] toneSizeNow() {
         GLES20.glGetIntegerv(GLES20.GL_VIEWPORT, mViewport, 0);
         final com.particlesdevs.photoncamera.processing.LiveWhyMeter.View v = mRawRenderer.lastView();
-        if (v == null) return rawTarget(mViewport[2], mViewport[3]);
+        if (v == null) return new int[]{Math.max(1, mViewport[2]), Math.max(1, mViewport[3])};
         // the crop fitted to the screen, not the one drawn last: that one was fitted to the previous target's rounded aspect, and
         // the two could flip each other every frame (review: 139 of ~84k viewport / frame / zoom cases in a 2-cycle)
         final boolean quarterTurn = Math.abs(mTexRotateMatrix[1]) > Math.abs(mTexRotateMatrix[0]);
         final int[] crop = LiveRawRenderer.visibleCrop(v.frame, mViewport[2], mViewport[3], quarterTurn);
         final int[] size = LiveRawRenderer.toneSize(mViewport[2], mViewport[3], crop[2], crop[3], v.frame.cfaBlock, quarterTurn);
-        return rawTarget(size[0], size[1]);
+        return new int[]{Math.max(1, size[0]), Math.max(1, size[1])};
+    }
+
+    /** P365: the off-screen target goes while the fused tone is drawn straight to the screen (11 MB at 1440 x 1920). */
+    private void releaseRawTarget() {
+        if (rawFbo == 0) return;
+        GLES30.glDeleteFramebuffers(1, new int[]{rawFbo}, 0);
+        GLES20.glDeleteTextures(1, new int[]{rawTex}, 0);
+        rawFbo = rawTex = rawW = rawH = 0;
     }
 
     /** P300 / P314: the off-screen target at w x h (made or resized here); false without one. */
@@ -498,8 +615,14 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         // buffer goes back to the camera) - each such wake-up drew the same RAW frame again, ~25 of the ~55 draws a second on the
         // OPPO, on the GPU the merge needs. The RAW frames ask for their own draws; without one for RAW_SHOWN_NS the ISP frames
         // draw again (the fall-back to the ISP picture). scam_dev vf_isp_latch 0: every ISP frame draws (as before).
-        if (System.nanoTime() - mRawShownNs < RAW_SHOWN_NS
+        final long now = System.nanoTime();
+        if (now - mRawShownNs < RAW_SHOWN_NS
                 && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vf_isp_latch", true)) {
+            mView.queueEvent(this::latchIsp);
+            return;
+        }
+        // P365 step 7: while the shot's series is taken the last RAW frame stays on the screen (up to SERIES_HOLD_NS)
+        if (seriesHold(now)) {
             mView.queueEvent(this::latchIsp);
             return;
         }

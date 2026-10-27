@@ -29,6 +29,34 @@ public class ScamRgbOpposedTest {
     }
 
     @Test
+    public void theWordCountIsTheByteCount() {
+        // P364: eight flags a read: every byte value at every place of a word and of the tail, and odd sizes of random flags
+        for (int v = 0; v < 256; v++) {
+            for (int at = 0; at < 19; at++) {
+                final java.nio.ByteBuffer f = java.nio.ByteBuffer.allocateDirect(19);
+                f.put(at, (byte) v);
+                assertEquals("byte 0x" + Integer.toHexString(v) + " at " + at, byteCount(f), ScamRgb.opposedPixels(f));
+            }
+        }
+        final java.util.Random r = new java.util.Random(364);
+        for (int n : new int[]{0, 1, 7, 8, 9, 255, 4097, 1 << 20, (1 << 20) + 3}) {
+            final java.nio.ByteBuffer f = java.nio.ByteBuffer.allocateDirect(n);
+            for (int i = 0; i < n; i++) f.put(i, (byte) r.nextInt(256));
+            assertEquals("n " + n, byteCount(f), ScamRgb.opposedPixels(f));
+        }
+    }
+
+    /** The count byte by byte, as before P364. */
+    private static long byteCount(java.nio.ByteBuffer f) {
+        long c = 0;
+        for (int i = 0; i < f.capacity(); i++) {
+            final int v = f.get(i) & 0xFF;
+            if ((v & 7) != 0 && (v & 48) == 0) c++;
+        }
+        return c;
+    }
+
+    @Test
     public void aNonFiniteGroupSumIsLeftOut() {
         final int[] v = group(Float.NaN, 2f, Float.POSITIVE_INFINITY, 0, 4, 0);
         assertArrayEquals(new float[]{0f, 0.5f, 0f}, ScamRgb.opposedMeans(v, 1), 1e-6f);

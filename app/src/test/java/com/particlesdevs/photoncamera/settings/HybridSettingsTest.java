@@ -591,6 +591,17 @@ public class HybridSettingsTest {
         assertTrue(PreferenceKeys.hybridTuningText().contains("bentoBlendSigma 3.0\n"));
     }
 
+    @Test public void p366FlickerRulesOfTheUltrashortFrames() {
+        // owner, 2026-10-27 (X200 Ultra ISZ at sea at noon: «вот такие фото получаю с исз, исправь»): the worker holds its lamp-flicker
+        // corrections in daylight and for an incoherent tile field by its own defaults (no line); a changed threshold, 0 = off, is written
+        String tuning=PreferenceKeys.hybridTuningText();
+        assertFalse(tuning,tuning.contains("usDaylightEv")||tuning.contains("usIncoherent")||tuning.contains("usSceneEv"));
+        manager.set("default_scope","pref_scam_hybrid_us_daylight_ev","0");
+        manager.set("default_scope","pref_scam_hybrid_us_incoherent","0.7");
+        tuning=PreferenceKeys.hybridTuningText();
+        assertTrue(tuning,tuning.contains("usDaylightEv 0.0\n")&&tuning.contains("usIncoherent 0.7\n"));
+    }
+
     @Test public void p313UltrashortFillOfTheNativeMerge() {
         // owner, 2026-10-21 (vivo 2x ISZ in daylight: «все фото в области светов очень мыльное»): the native Quad / Tetra merge
         // keeps the N frames in Bento's cells, the ultrashort frames fill only what they clipped; always written (worker default 0)

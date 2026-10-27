@@ -18,11 +18,22 @@ import java.util.HashMap;
 /** RAW development adapted from libvf_demosaic, using the preview's own GL context.
  * One context owns upload and draw: no cross-context HardwareBuffer race or readback. */
 final class LiveRawRenderer {
-    private int program, rawTex, shadingTex, lutTex, width, height;
+    private int program, shadingTex, lutTex;
+    /**
+     * P365 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»; scam_dev
+     * vf_fused): two RAW textures taken in turn, so a frame's upload never waits for the GPU to finish reading the texture of the
+     * frame before (busy with the merge: the 36-134 ms worst draws of P353's logs); +25 MB at 4096 x 3072. vf_fused 0: one, as
+     * before. Their sizes, the frame versions they hold (-1 none) and the one drawn ({@code cur}).
+     */
+    private final int[] rawTexs=new int[2], texW=new int[2], texH=new int[2], texVersion={-1,-1};
+    private int cur;
     private void deleteResources(){
         if(program!=0)GLES20.glDeleteProgram(program);
-        GLES20.glDeleteTextures(4,new int[]{rawTex,shadingTex,lutTex,filmLutTex},0);
-        program=rawTex=shadingTex=lutTex=filmLutTex=width=height=0;uploadedVersion=-1;uniforms.clear();lutShown=null;
+        GLES20.glDeleteTextures(5,new int[]{rawTexs[0],rawTexs[1],shadingTex,lutTex,filmLutTex},0);
+        program=shadingTex=lutTex=filmLutTex=0;forgetTextures();uniforms.clear();programUniforms.clear();lutShown=null;
+    }
+    private void forgetTextures(){
+        rawTexs[0]=rawTexs[1]=texW[0]=texW[1]=texH[0]=texH[1]=cur=0;texVersion[0]=texVersion[1]=-1;shadingShown=null;meteredVersion=-1;
     }
     // P134: the photo's «Цвет» look (ColourLook: the white-balance matrix, monochrome, skin, vibrance by brightness, the
     // mixer, the grading) and the film LUT in the RAW viewfinder, read from the settings twice a second; the LUT file is
@@ -103,7 +114,12 @@ final class LiveRawRenderer {
         GLES20.glUniform4f(loc("u_look_grade_a"),lookGradeA[0],lookGradeA[1],lookGradeA[2],lookGradeA[3]);
         GLES20.glUniform4f(loc("u_look_grade_b"),lookGradeB[0],lookGradeB[1],lookGradeB[2],lookGradeB[3]);
     }
-    private int uploadedVersion=-1, frameSession=-1, draws;
+    private int frameSession=-1, draws;
+    /** P365: the frame version LiveRawMeter measured last (-1 none): the meter runs per frame, not per upload. */
+    private int meteredVersion=-1;
+    /** P365: the lens-shading map in the texture (null: none yet): a frame with the same map uploads none. */
+    private float[] shadingShown;
+    private int shadingShownW, shadingShownH;
     private boolean failed;
     private final int[] viewport=new int[4];
     private FloatBuffer shadingBuffer;
@@ -123,10 +139,17 @@ final class LiveRawRenderer {
         if(Double.isFinite(luma))com.particlesdevs.photoncamera.manual.SceneLuma.publishRaw(luma);
     }
     void onContextCreated() {
-        program=rawTex=shadingTex=lutTex=filmLutTex=width=height=0;lutShown=null;
-        uploadedVersion=frameSession=-1; failed=false; uniforms.clear(); meter.reset(); lastView=null;
+        program=shadingTex=lutTex=filmLutTex=0;lutShown=null;forgetTextures();
+        frameSession=-1; failed=false; uniforms.clear(); programUniforms.clear(); meter.reset(); lastView=null; boundFresh=false;
     }
     private int loc(String name) {return uniforms.computeIfAbsent(name,n->GLES20.glGetUniformLocation(program,n));}
+    /** P365: the uniform locations of the fused program(s) (LiveWhyTone's why/combine RAW_SOURCE 1), per program. */
+    private final HashMap<Integer,HashMap<String,Integer>> programUniforms=new HashMap<>();
+    private int loc(int p,String name){
+        HashMap<String,Integer> m=programUniforms.get(p);
+        if(m==null)programUniforms.put(p,m=new HashMap<>());
+        return m.computeIfAbsent(name,n->GLES20.glGetUniformLocation(p,n));
+    }
     private void integer(String n,int v){GLES20.glUniform1i(loc(n),v);}
     private void number(String n,float v){GLES20.glUniform1f(loc(n),v);}
     boolean draw(FloatBuffer vertices,FloatBuffer coords,float[] rotation,boolean mirror,int peaking) {
@@ -191,35 +214,26 @@ final class LiveRawRenderer {
         final double s=Math.max(1,Math.ceil(need*TONE_STEPS-1e-9))/(double)TONE_STEPS;
         return new int[]{Math.max(1,(int)Math.round(vpW*s)),Math.max(1,(int)Math.round(vpH*s))};
     }
+    /** A frame published longer ago than this is not drawn (the ISP picture takes over); P365: longer while a series is held. */
+    static final long MAX_AGE_NS=500_000_000L;
     private boolean draw(FloatBuffer vertices,FloatBuffer coords,float[] rotation,boolean mirror,int peaking,boolean linear) {
+        return draw(vertices,coords,rotation,mirror,peaking,linear,maxAgeNs);
+    }
+    /** P365: the age limit of the next draws (MainRenderer: {@link #MAX_AGE_NS}, longer while a series is held). */
+    private long maxAgeNs=MAX_AGE_NS;
+    void setMaxAge(long ns){maxAgeNs=ns;}
+    private boolean draw(FloatBuffer vertices,FloatBuffer coords,float[] rotation,boolean mirror,int peaking,boolean linear,long maxAge) {
         LiveRawFrame.Frame f=LiveRawFrame.acquire();
-        if(f==null || System.nanoTime()-f.publishedNanos>500_000_000L)return false;
-        if(frameSession!=f.session){frameSession=f.session;failed=false;uploadedVersion=-1;meter.reset();}
+        if(f==null || System.nanoTime()-f.publishedNanos>maxAge)return false;
+        if(frameSession!=f.session){frameSession=f.session;failed=false;texVersion[0]=texVersion[1]=-1;meteredVersion=-1;meter.reset();}
         if(failed)return false;
         try {
             if(program==0 && !init())return false;
             refreshLook();
             GLES20.glUseProgram(program);
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE2);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,rawTex);
-            if(uploadedVersion!=f.version) {
-                f.buffer.position(0);
-                GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT,2);
-                GLES30.glPixelStorei(GLES30.GL_UNPACK_ROW_LENGTH,f.rowStride/2);
-                if(width!=f.width || height!=f.height) {
-                    GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES30.GL_R16UI,f.width,f.height,0,GLES30.GL_RED_INTEGER,GLES20.GL_UNSIGNED_SHORT,f.buffer);
-                    width=f.width;height=f.height;
-                } else GLES30.glTexSubImage2D(GLES20.GL_TEXTURE_2D,0,0,0,f.width,f.height,GLES30.GL_RED_INTEGER,GLES20.GL_UNSIGNED_SHORT,f.buffer);
-                GLES30.glPixelStorei(GLES30.GL_UNPACK_ROW_LENGTH,0);GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT,4);
-                GLES20.glActiveTexture(GLES20.GL_TEXTURE3);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,shadingTex);
-                if(shadingBuffer==null || shadingBuffer.capacity()<f.shading.length)
-                    shadingBuffer=ByteBuffer.allocateDirect(f.shading.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-                shadingBuffer.clear();shadingBuffer.put(f.shading).flip();
-                GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES30.GL_RGB16F,f.shadingWidth,f.shadingHeight,0,GLES20.GL_RGB,GLES20.GL_FLOAT,shadingBuffer);
-                if(!check("upload"))return false;
-                meter.update(f);
-                sceneLuma(f);
-                uploadedVersion=f.version;
-            }
+            if(!upload(f,fusedOn()))return false;
+            meter(f,linear);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE2);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,rawTexs[cur]);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE3);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,shadingTex);
             setLook();
             integer("sTexture16",2);integer("u_lsc_map",3);integer("u_lut_tex",4);
@@ -249,8 +263,7 @@ final class LiveRawRenderer {
             GLES20.glVertexAttribPointer(1,2,GLES20.GL_FLOAT,false,8,coords);
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
             if(!check("draw"))return false;
-            if(draws++%120==0)Log.d("LiveRawRenderer","RAW developed session="+f.session+" frame="+f.version+" size="+f.width+"x"+f.height+" CFA="+f.cfaPattern+" block="+f.cfaBlock
-                    +(f.cellMean?" cell means":"")+" AE="+meter.exposure+" target="+viewport[2]+"x"+viewport[3]+" dropped="+LiveRawFrame.droppedFrames());
+            logDraw(f);
             return true;
         } catch(RuntimeException e) {
             failed=true;Log.e("LiveRawRenderer","RAW preview fallback: "+e);return false;
@@ -258,6 +271,131 @@ final class LiveRawRenderer {
             GLES30.glPixelStorei(GLES30.GL_UNPACK_ROW_LENGTH,0);GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT,4);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         }
+    }
+    private void logDraw(LiveRawFrame.Frame f){
+        if(draws++%120==0)Log.d("LiveRawRenderer","RAW developed session="+f.session+" frame="+f.version+" size="+f.width+"x"+f.height+" CFA="+f.cfaPattern+" block="+f.cfaBlock
+                +(f.cellMean?" cell means":"")+" AE="+meter.exposure+" target="+viewport[2]+"x"+viewport[3]+" dropped="+LiveRawFrame.droppedFrames()
+                +(fusedOn()?" textures 2":""));
+    }
+    /** P365: scam_dev vf_fused (default on): the fused pass and, with it, this renderer's two textures and its uploads on change. */
+    static boolean fusedOn(){
+        return com.particlesdevs.photoncamera.processing.opengl.postpipeline.LiveWhyTone.fusedSwitch();
+    }
+    /**
+     * P365: the texture slot a frame of {@code version} is drawn from - the one holding it already, else (two textures) the other
+     * one than {@code current} (the GPU read it longest ago), else (one texture, vf_fused 0) slot 0. {@code versions}: the frame
+     * version each slot holds (-1 none).
+     */
+    static int slotFor(int version,int current,int[] versions,boolean twin){
+        if(versions[current]==version)return current;
+        if(!twin)return 0;
+        return 1-current;
+    }
+    /**
+     * The frame into its texture (slotFor) unless the texture holds it already, the shading map with it; P365 {@code twin}: the
+     * two textures in turn, the shading map only when it changed. False on a GL error (then failed, as before).
+     */
+    private boolean upload(LiveRawFrame.Frame f,boolean twin){
+        final int slot=slotFor(f.version,cur,texVersion,twin);
+        boundFresh=texVersion[slot]!=f.version;
+        cur=slot;
+        if(rawTexs[slot]==0)rawTexs[slot]=texture(GLES20.GL_TEXTURE2,GLES20.GL_TEXTURE_2D,GLES20.GL_NEAREST);
+        if(shadingTex==0)shadingTex=texture(GLES20.GL_TEXTURE3,GLES20.GL_TEXTURE_2D,GLES20.GL_LINEAR);
+        if(!boundFresh)return true;
+        f.buffer.position(0);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE2);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,rawTexs[slot]);
+        GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT,2);
+        GLES30.glPixelStorei(GLES30.GL_UNPACK_ROW_LENGTH,f.rowStride/2);
+        if(texW[slot]!=f.width || texH[slot]!=f.height) {
+            GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES30.GL_R16UI,f.width,f.height,0,GLES30.GL_RED_INTEGER,GLES20.GL_UNSIGNED_SHORT,f.buffer);
+            texW[slot]=f.width;texH[slot]=f.height;
+        } else GLES30.glTexSubImage2D(GLES20.GL_TEXTURE_2D,0,0,0,f.width,f.height,GLES30.GL_RED_INTEGER,GLES20.GL_UNSIGNED_SHORT,f.buffer);
+        GLES30.glPixelStorei(GLES30.GL_UNPACK_ROW_LENGTH,0);GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT,4);
+        texVersion[slot]=f.version;
+        if(!twin || !sameShading(shadingShown,shadingShownW,shadingShownH,f.shading,f.shadingWidth,f.shadingHeight)) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE3);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,shadingTex);
+            if(shadingBuffer==null || shadingBuffer.capacity()<f.shading.length)
+                shadingBuffer=ByteBuffer.allocateDirect(f.shading.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+            shadingBuffer.clear();shadingBuffer.put(f.shading).flip();
+            GLES30.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES30.GL_RGB16F,f.shadingWidth,f.shadingHeight,0,GLES20.GL_RGB,GLES20.GL_FLOAT,shadingBuffer);
+            shadingShown=f.shading;shadingShownW=f.shadingWidth;shadingShownH=f.shadingHeight;
+        }
+        if(!check("upload")){texVersion[slot]=-1;shadingShown=null;return false;}
+        return true;
+    }
+    /** P365: whether a frame's lens-shading map is the one in the texture (LiveRawFrame hands every frame its own array). */
+    static boolean sameShading(float[] shown,int shownW,int shownH,float[] map,int w,int h){
+        return shown!=null && map!=null && shownW==w && shownH==h && java.util.Arrays.equals(shown,map);
+    }
+    /**
+     * LiveRawMeter on a frame it has not measured (the viewfinder's own look exposes by it), then SceneLuma (P212h). P365: vf_fused 0
+     * - on every new frame, as before; else only for the own look ({@code linear} false) or while SceneLuma wants a value.
+     */
+    private void meter(LiveRawFrame.Frame f,boolean linear){
+        if(meteredVersion==f.version)return;
+        if(fusedOn() && linear && !(f.sceneLuma && com.particlesdevs.photoncamera.manual.SceneLuma.wanted()))return;
+        meter.update(f);
+        sceneLuma(f);
+        meteredVersion=f.version;
+    }
+    /** P365: whether the frame bound last ({@link #bindFrame}, {@link #draw}) was new to its texture (the WHY tone's AE runs then). */
+    private boolean boundFresh;
+    boolean boundFresh(){return boundFresh;}
+    /**
+     * P365 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»): the RAW
+     * frame for the fused WHY pass (LiveWhyTone.drawFused: why/combine RAW_SOURCE 1 is {@code p}, its target bound and its viewport
+     * set) - uploaded as for {@link #draw}, the RAW on unit 9 and the lens-shading map on unit 10 (why/combine takes 0 - 8),
+     * rawdevelop_fs's uniforms of the linear frame (the look's white matrix in color_transform), texRotate; lastView as
+     * {@link #drawLinear} sets it. False without a frame young enough or after a failure (the caller falls back).
+     */
+    boolean bindFrame(int p,float[] rotation,boolean mirror){
+        LiveRawFrame.Frame f=LiveRawFrame.acquire();
+        if(f==null || System.nanoTime()-f.publishedNanos>maxAgeNs)return false;
+        if(frameSession!=f.session){frameSession=f.session;failed=false;texVersion[0]=texVersion[1]=-1;meteredVersion=-1;meter.reset();}
+        if(failed)return false;
+        try {
+            refreshLook();
+            if(!upload(f,fusedOn()))return false;
+            meter(f,true);
+            GLES20.glUseProgram(p);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE9);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,rawTexs[cur]);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE10);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,shadingTex);
+            GLES20.glUniform1i(loc(p,"sTexture16"),9);GLES20.glUniform1i(loc(p,"u_lsc_map"),10);
+            GLES20.glUniform1i(loc(p,"width"),f.width);GLES20.glUniform1i(loc(p,"height"),f.height);
+            GLES20.glUniform1i(loc(p,"bayer_pattern"),f.cfaPattern);
+            GLES20.glUniform1i(loc(p,"cfa_mode"),cfaMode(f));GLES20.glUniform1i(loc(p,"cfa_block_size"),f.cfaBlock);
+            GLES20.glGetIntegerv(GLES20.GL_VIEWPORT,viewport,0);
+            final int[] crop=visibleCrop(f,viewport[2],viewport[3],Math.abs(rotation[1])>Math.abs(rotation[0]));
+            GLES20.glUniform1i(loc(p,"crop_left"),crop[0]);GLES20.glUniform1i(loc(p,"crop_top"),crop[1]);
+            GLES20.glUniform1i(loc(p,"crop_width"),crop[2]);GLES20.glUniform1i(loc(p,"crop_height"),crop[3]);
+            int[][] orders={{0,1,2,3},{1,0,3,2},{2,3,0,1},{3,2,1,0}};
+            int[] o=orders[f.cfaPattern];
+            GLES20.glUniform4f(loc(p,"u_black_level"),f.blackLevel[o[0]],f.blackLevel[o[1]],f.blackLevel[o[2]],f.blackLevel[o[3]]);
+            GLES20.glUniform1f(loc(p,"u_white_level"),f.whiteLevel);
+            GLES20.glUniform1f(loc(p,"r_gain"),f.wbGains[0]);GLES20.glUniform1f(loc(p,"g_gain"),f.wbGains[1]);GLES20.glUniform1f(loc(p,"b_gain"),f.wbGains[2]);
+            float[] white=lookWhite;
+            final float[] transform=white!=null?lookTransform(white,f.colorTransform):f.colorTransform;
+            GLES20.glUniformMatrix3fv(loc(p,"color_transform"),1,false,transform,0);
+            GLES20.glUniform1f(loc(p,"u_lsc_intensity"),f.shadingWidth>1?1:0);
+            GLES20.glUniform1i(loc(p,"mirror"),mirror?1:0);GLES20.glUniform1i(loc(p,"u_ldc_enabled"),0);
+            GLES20.glUniformMatrix4fv(loc(p,"texRotate"),1,false,rotation,0);
+            lastView=new com.particlesdevs.photoncamera.processing.LiveWhyMeter.View(f,crop[0],crop[1],crop[2],crop[3],transform);
+            logDraw(f);
+            return true;
+        } catch(RuntimeException e) {
+            failed=true;Log.e("LiveRawRenderer","RAW preview fallback: "+e);return false;
+        } finally {
+            GLES30.glPixelStorei(GLES30.GL_UNPACK_ROW_LENGTH,0);GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT,4);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        }
+    }
+    /** P365: the program {@link #bindFrame} bound, over the viewport with the frame's vertices (rawdevelop_vs: locations 0, 1). */
+    void drawBound(FloatBuffer vertices,FloatBuffer coords){
+        vertices.position(0);coords.position(0);
+        GLES20.glEnableVertexAttribArray(0);GLES20.glEnableVertexAttribArray(1);
+        GLES20.glVertexAttribPointer(0,2,GLES20.GL_FLOAT,false,8,vertices);
+        GLES20.glVertexAttribPointer(1,2,GLES20.GL_FLOAT,false,8,coords);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);
     }
     private boolean check(String step) {
         int error=GLES20.glGetError();
@@ -308,8 +446,7 @@ final class LiveRawRenderer {
     private boolean setup(int p) {
         program=p;
         uniforms.clear();GLES20.glUseProgram(program);
-        rawTex=texture(GLES20.GL_TEXTURE2,GLES20.GL_TEXTURE_2D,GLES20.GL_NEAREST);
-        shadingTex=texture(GLES20.GL_TEXTURE3,GLES20.GL_TEXTURE_2D,GLES20.GL_LINEAR);
+        // the RAW and shading textures are made at the first upload (P365: the fused pass draws without this program)
         lutTex=texture(GLES20.GL_TEXTURE4,GLES30.GL_TEXTURE_3D,GLES20.GL_LINEAR);
         GLES30.glTexImage3D(GLES30.GL_TEXTURE_3D,0,GLES30.GL_RGB8,1,1,1,0,GLES20.GL_RGB,GLES20.GL_UNSIGNED_BYTE,ByteBuffer.allocateDirect(4));
         // The look of libvf_demosaic (WhyCore) at its library defaults: 4-layer exposure fusion metered by LiveRawMeter, ACES,

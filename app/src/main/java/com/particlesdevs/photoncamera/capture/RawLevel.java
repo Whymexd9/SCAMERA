@@ -9,7 +9,8 @@ import java.nio.ShortBuffer;
 /**
  * P110 The mean level of the ring's RAW frames (0..1 above black, linear), for the «Движение» shutter ceiling
  * (manual/MotionShutter): the same signal in every viewfinder mode (the viewfinder's own meter runs only on the ISP
- * viewfinder). A sparse grid of 2x2 sites; only plain 16-bit RAW_SENSOR, only while the mode is on. Each level carries its
+ * viewfinder). A sparse grid of 2x2 sites; only plain 16-bit samples (RAW_SENSOR; P365: a RAW10 / RAW12 frame unpacked by the
+ * controller), only while the mode is on. Each level carries its
  * frame's sensor timestamp, so the controller pairs it with that frame's own exposure.
  */
 public final class RawLevel {
@@ -42,10 +43,23 @@ public final class RawLevel {
         try {
             Image.Plane p = img.getPlanes()[0];
             if (p.getPixelStride() != 2) return;
-            ShortBuffer s = p.getBuffer().duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
-            double m = mean(s, img.getWidth(), img.getHeight(), p.getRowStride() / 2, black, white);
-            if (!Double.isNaN(m)) latest = new Sample(m, img.getTimestamp());
-            MotionMeter.observe(s, img.getWidth(), img.getHeight(), p.getRowStride() / 2, black, img.getTimestamp()); // P111
+            observe(p.getBuffer(), img.getWidth(), img.getHeight(), p.getRowStride(), img.getTimestamp(), black, white);
+        } catch (RuntimeException ignored) {
+            // a frame closed under us or an odd layout: no level from it
+        }
+    }
+
+    /**
+     * One ring frame's plain 16-bit samples ({@code rowStride} bytes a row; P365: a RAW10 / RAW12 frame unpacked by the controller,
+     * CaptureController.meterSamples) of sensor timestamp {@code timestampNs}.
+     */
+    static void observe(java.nio.ByteBuffer samples, int width, int height, int rowStride, long timestampNs, float black, float white) {
+        if (samples == null) return;
+        try {
+            ShortBuffer s = samples.duplicate().order(ByteOrder.nativeOrder()).asShortBuffer();
+            double m = mean(s, width, height, rowStride / 2, black, white);
+            if (!Double.isNaN(m)) latest = new Sample(m, timestampNs);
+            MotionMeter.observe(s, width, height, rowStride / 2, black, timestampNs); // P111
         } catch (RuntimeException ignored) {
             // a frame closed under us or an odd layout: no level from it
         }

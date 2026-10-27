@@ -307,4 +307,192 @@ public class LiveRawFrameTest {
         }
     }
 
+    // P365 (owner, 2026-10-27: «В арк камере тоже есть живой видоискатель, сделай его такимже по требованиям как там»): the
+    // viewfinder draws a ZSL ring slot through a pinned view (publishRef); every view is freed exactly once (Allocator.free is
+    // replaced by a counting hook: no native library on the host)
+
+    /** Frees by identity: a ByteBuffer's equals compares its bytes. */
+    private static final java.util.IdentityHashMap<ByteBuffer, Integer> FREED = new java.util.IdentityHashMap<>();
+
+    private static void hookFrees(long graceMs) {
+        synchronized (FREED) { FREED.clear(); }
+        LiveRawFrame.freeHook = v -> { synchronized (FREED) { FREED.merge(v, 1, Integer::sum); } };
+        LiveRawFrame.retireGraceMs = graceMs;
+    }
+
+    private static void unhookFrees() {
+        LiveRawFrame.setEnabled(false);
+        LiveRawFrame.pendingNs = LiveRawFrame.PENDING_NS;
+        LiveRawFrame.retireGraceMs = 2000;
+        LiveRawFrame.freeHook = null;
+    }
+
+    private static int frees(ByteBuffer v) {
+        synchronized (FREED) { return FREED.getOrDefault(v, 0); }
+    }
+
+    private static int totalFrees() {
+        synchronized (FREED) { int n = 0; for (int c : FREED.values()) n += c; return n; }
+    }
+
+    /** A 4 x 2 plain 16-bit ring slot whose first sample is {@code value}. */
+    private static ByteBuffer slot(int value) {
+        ByteBuffer v = ByteBuffer.allocateDirect(16).order(java.nio.ByteOrder.nativeOrder());
+        for (int i = 0; i < 8; i++) v.putShort(i * 2, (short) (i == 0 ? value : 100 + i));
+        v.clear();
+        return v;
+    }
+
+    private static LiveRawFrame.Meta meta(int w, int h, int stride, int format) {
+        LiveRawFrame.Meta m = new LiveRawFrame.Meta();
+        m.width = w; m.height = h; m.rowStride = stride; m.format = format;
+        m.black = new float[]{0, 0, 0, 0}; m.gains = new float[]{1, 1, 1}; m.ccm = new float[]{1, 0, 0, 0, 1, 0, 0, 0, 1};
+        return m;
+    }
+
+    private static LiveRawFrame.Meta plain() { return meta(4, 2, 8, android.graphics.ImageFormat.RAW_SENSOR); }
+
+    @Test public void aRingSlotIsDrawnWhereItIsAndFreedOnceTheGlThreadMovesOn() {
+        hookFrees(0);
+        LiveRawFrame.pendingNs = Long.MAX_VALUE;
+        LiveRawFrame.setEnabled(true);
+        try {
+            ByteBuffer a = slot(7), b = slot(11);
+            LiveRawFrame.publishRef(a, plain());
+            assertEquals(1, LiveRawFrame.pinnedViews());
+            LiveRawFrame.Frame f = LiveRawFrame.acquire();
+            assertEquals(7, f.buffer.getShort(0));
+            assertEquals(8, f.rowStride);
+            a.putShort(2, (short) 555);
+            assertEquals("no copy: the frame is the slot", 555, f.buffer.getShort(2));
+            assertEquals("the GL thread's frame stays pinned", 0, frees(a));
+            LiveRawFrame.publishRef(b, plain());
+            assertEquals(2, LiveRawFrame.pinnedViews());
+            assertEquals("taken by the GL thread: never freed by the camera thread", 0, frees(a));
+            assertEquals(11, LiveRawFrame.acquire().buffer.getShort(0));
+            assertEquals("freed at the GL thread's next acquire after a newer frame", 1, frees(a));
+            assertEquals(1, LiveRawFrame.pinnedViews());
+            assertEquals("no newer frame: the same slot again, nothing freed", 11, LiveRawFrame.acquire().buffer.getShort(0));
+            assertEquals(0, frees(b));
+            LiveRawFrame.setEnabled(false);
+            assertEquals("the viewfinder off: the GL thread's view freed (no grace here)", 1, frees(b));
+            assertEquals(0, LiveRawFrame.pinnedViews());
+            assertNull(LiveRawFrame.acquire());
+            assertEquals("each view exactly once", 2, totalFrees());
+        } finally { unhookFrees(); }
+    }
+
+    @Test public void aRingSlotTheGlThreadNeverTookIsFreedWhenReplacedOrDropped() {
+        hookFrees(0);
+        LiveRawFrame.pendingNs = 0; // every new frame replaces a waiting one
+        LiveRawFrame.setEnabled(true);
+        try {
+            ByteBuffer a = slot(3), b = slot(5), c = slot(9);
+            LiveRawFrame.publishRef(a, plain());
+            LiveRawFrame.publishRef(b, plain());
+            assertEquals("replaced before the GL thread took it: freed by the camera thread", 1, frees(a));
+            assertEquals(1, LiveRawFrame.pinnedViews());
+            // a copied frame replaces a waiting view too, and never fills the slot
+            ByteBuffer copied = ByteBuffer.wrap(new byte[]{21, 0, 0, 0, 0, 0, 0, 0});
+            LiveRawFrame.publish(copied, 2, 2, 4, 0, 1023, new float[4], new float[]{1, 1, 1}, new float[]{1, 0, 0, 0, 1, 0, 0, 0, 1});
+            assertEquals(1, frees(b));
+            assertEquals(5, b.getShort(0));
+            assertEquals(0, LiveRawFrame.pinnedViews());
+            assertEquals(21, LiveRawFrame.acquire().buffer.get(0));
+            LiveRawFrame.publishRef(c, plain());
+            LiveRawFrame.setEnabled(false);
+            assertEquals("never taken, the viewfinder off: freed at once", 1, frees(c));
+            ByteBuffer d = slot(1);
+            LiveRawFrame.publishRef(d, plain());
+            assertEquals("disabled: freed at once", 1, frees(d));
+            assertEquals(4, totalFrees());
+        } finally { unhookFrees(); }
+    }
+
+    /** P365: a slot the viewfinder cannot draw as it is (packed, padded rows, a bad parameter) is copied from the view and freed. */
+    @Test public void aRingSlotThatIsNotPlainIsCopiedAndFreedAtOnce() {
+        hookFrees(0);
+        LiveRawFrame.setEnabled(true);
+        try {
+            int[][] px = {{1023, 512, 3, 700}, {0, 1, 2, 1022}};
+            ByteBuffer packed = ByteBuffer.allocateDirect(10);
+            for (int y = 0; y < 2; y++) { int o = y * 5, low = 0; for (int i = 0; i < 4; i++) { packed.put(o + i, (byte) (px[y][i] >> 2)); low |= (px[y][i] & 3) << (2 * i); } packed.put(o + 4, (byte) low); }
+            LiveRawFrame.publishRef(packed, meta(4, 2, 5, android.graphics.ImageFormat.RAW10));
+            assertEquals("unpacked into the viewfinder's own buffer", 1, frees(packed));
+            assertEquals(0, LiveRawFrame.pinnedViews());
+            java.nio.ShortBuffer v = LiveRawFrame.acquire().buffer.order(java.nio.ByteOrder.nativeOrder()).asShortBuffer();
+            for (int y = 0; y < 2; y++) for (int i = 0; i < 4; i++) assertEquals(px[y][i], v.get(y * 4 + i) & 0xffff);
+            ByteBuffer padded = ByteBuffer.allocateDirect(20).order(java.nio.ByteOrder.nativeOrder());
+            padded.putShort(0, (short) 31); padded.putShort(12, (short) 37);
+            LiveRawFrame.publishRef(padded, meta(4, 2, 12, android.graphics.ImageFormat.RAW_SENSOR));
+            assertEquals(1, frees(padded));
+            LiveRawFrame.Frame f = LiveRawFrame.acquire();
+            assertEquals(8, f.rowStride); assertEquals(31, f.buffer.getShort(0)); assertEquals(37, f.buffer.getShort(8));
+            int version = LiveRawFrame.getVersion();
+            ByteBuffer bad = slot(4);
+            LiveRawFrame.Meta m = plain(); m.black = new float[]{2000, 0, 0, 0};
+            LiveRawFrame.publishRef(bad, m);
+            assertEquals("a parameter out of range: not published, freed", 1, frees(bad));
+            assertEquals(version, LiveRawFrame.getVersion());
+            ByteBuffer none = slot(6);
+            LiveRawFrame.publishRef(none, null);
+            assertEquals(1, frees(none));
+            assertEquals(4, totalFrees());
+        } finally { unhookFrees(); }
+    }
+
+    /**
+     * P365: the GL thread may be uploading its frame when the viewfinder is turned off: that view is retired - freed at the GL
+     * thread's next acquire or after the grace, once - and at most MAX_PINNED slots are pinned at any time.
+     */
+    @Test public void aRetiredSlotWaitsForTheGlThreadAndIsFreedOnce() throws Exception {
+        hookFrees(60_000);
+        LiveRawFrame.pendingNs = Long.MAX_VALUE;
+        LiveRawFrame.setEnabled(true);
+        try {
+            ByteBuffer a = slot(2), b = slot(4), c = slot(8);
+            LiveRawFrame.publishRef(a, plain());
+            LiveRawFrame.Frame held = LiveRawFrame.acquire();
+            LiveRawFrame.setEnabled(false);
+            assertEquals("still the GL thread's: not freed yet", 0, frees(a));
+            assertEquals(2, held.buffer.getShort(0));
+            assertEquals(1, LiveRawFrame.pinnedViews());
+            LiveRawFrame.setEnabled(true);
+            LiveRawFrame.publishRef(b, plain());
+            assertTrue(LiveRawFrame.pinnedViews() <= LiveRawFrame.MAX_PINNED);
+            assertEquals(4, LiveRawFrame.acquire().buffer.getShort(0));
+            assertEquals("the GL thread moved on: the retired view goes", 1, frees(a));
+            LiveRawFrame.publishRef(c, plain());
+            assertTrue(LiveRawFrame.pinnedViews() <= LiveRawFrame.MAX_PINNED);
+            assertEquals(8, LiveRawFrame.acquire().buffer.getShort(0));
+            assertEquals(1, frees(b));
+            // the grace: a view retired with no GL thread drawing any more is freed by the timer, once
+            LiveRawFrame.retireGraceMs = 30;
+            LiveRawFrame.setEnabled(false);
+            for (int i = 0; i < 200 && frees(c) == 0; i++) Thread.sleep(10);
+            assertEquals(1, frees(c));
+            LiveRawFrame.setEnabled(true);
+            assertNull(LiveRawFrame.acquire());
+            Thread.sleep(60);
+            assertEquals("freed once, by whichever came first", 1, frees(c));
+            assertEquals(1, frees(a));
+            assertEquals(3, totalFrees());
+            assertEquals(0, LiveRawFrame.pinnedViews());
+        } finally { unhookFrees(); }
+    }
+
+    /** P365 step 1: the copies of the camera thread, means over a window, for VF_RAW "copy vf=… ring=… ms pinned=…". */
+    @Test public void copyTimesAreMeansOfTheLastWindow() throws Exception {
+        LiveRawFrame.copyWindow = 50_000_000L;
+        try {
+            LiveRawFrame.noteRingCopy(0);
+            Thread.sleep(60);
+            LiveRawFrame.noteRingCopy(2_000_000);
+            LiveRawFrame.noteRingCopy(4_000_000);
+            Thread.sleep(60);
+            LiveRawFrame.noteRingCopy(0); // closes the window
+            assertEquals(3.0, LiveRawFrame.ringCopyMs(), 0.01);
+            assertTrue(LiveRawFrame.copyStats(), LiveRawFrame.copyStats().matches("copy vf=\\d+\\.\\d ring=3\\.0 ms pinned=\\d+"));
+        } finally { LiveRawFrame.copyWindow = LiveRawFrame.COPY_WINDOW_NS; }
+    }
 }

@@ -21,12 +21,27 @@ precision highp sampler2D;
 // the difference of two fp16 planes, exact in fp16 wherever B lies within a factor 2 of Ya (all but the strongest edges) and
 // is not below the fp16 normal range, so where the chain leaves B alone (S = B) the result is Ya bit for bit, else within an
 // ulp of it.
+// P364: GATHER 1 - mode 3 reads its 5 x 5 sites as nine 2 x 2 textureGather blocks instead of 25 texelFetch, the same taps
+// added in the same order (row by row, left to right) with the same expression; InputBuffer is clamp-to-edge, so a block past
+// the border repeats the edge texels as clamp() did (bit-identical). 0 = the loop.
+#define GATHER 0
 uniform sampler2D InputBuffer;      // modes 0, 1: Ya (.r), output grid
 uniform sampler2D Smoothed;         // mode 1: B(Ya) (.r) of mode 0
 uniform sampler2D Sharpened;        // mode 2: S(B(Ya)) (.r), the chain's last output
 uniform sampler2D Residual;         // mode 2: D = Ya - B (.r) of mode 1
 uniform int modeU;
 out vec4 Output;
+
+#if GATHER == 1
+// mode 3: tap (i, j) of value t added to lat, as the loop below adds it
+float latTap(float lat, int i, int j, float t) {
+    const float w5[5] = float[5](0.125, 0.25, 0.25, 0.25, 0.125);
+    float sj = (j & 1) == 0 ? 1.0 : -1.0;
+    float si = (i & 1) == 0 ? 1.0 : -1.0;
+    float v = t * w5[i + 2] * w5[j + 2];
+    return lat + (si * sj + sj + si) * v;   // checker + row + column alternation, sign + at xy
+}
+#endif
 
 void main() {
     ivec2 xy = ivec2(gl_FragCoord.xy);
@@ -40,6 +55,25 @@ void main() {
     }
     ivec2 last = textureSize(InputBuffer, 0) - ivec2(1);
     if (modeU == 3) {
+#if GATHER == 1
+        // blocks (x0, y0) .. (x0 + 1, y0 + 1) by a gather at the centre of texel (x0 + 1, y0 + 1): .w (x0, y0), .z (x0 + 1, y0),
+        // .x (x0, y0 + 1), .y (x0 + 1, y0 + 1)
+        vec2 inv = 1.0 / vec2(last + ivec2(1));
+        float lt = 0.0;
+        for (int by = -2; by <= 2; by += 2) {
+            vec4 g0 = textureGather(InputBuffer, (vec2(xy + ivec2(-2, by)) + 1.0) * inv);
+            vec4 g1 = textureGather(InputBuffer, (vec2(xy + ivec2(0, by)) + 1.0) * inv);
+            vec4 g2 = textureGather(InputBuffer, (vec2(xy + ivec2(2, by)) + 1.0) * inv);
+            lt = latTap(lt, -2, by, g0.w); lt = latTap(lt, -1, by, g0.z); lt = latTap(lt, 0, by, g1.w);
+            lt = latTap(lt, 1, by, g1.z); lt = latTap(lt, 2, by, g2.w);
+            if (by < 2) {
+                lt = latTap(lt, -2, by + 1, g0.x); lt = latTap(lt, -1, by + 1, g0.y); lt = latTap(lt, 0, by + 1, g1.x);
+                lt = latTap(lt, 1, by + 1, g1.y); lt = latTap(lt, 2, by + 1, g2.x);
+            }
+        }
+        Output = vec4(texelFetch(InputBuffer, xy, 0).r - lt, 0.0, 0.0, 1.0);
+        return;
+#endif
         const float w5[5] = float[5](0.125, 0.25, 0.25, 0.25, 0.125);
         float lat = 0.0;
         for (int j = -2; j <= 2; j++) {

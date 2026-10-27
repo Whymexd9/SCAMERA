@@ -23,6 +23,23 @@ import java.util.function.LongSupplier;
  * prediction made before it was learned (a forward check: the log alone gives the teacher's error against the projection), the
  * photo logs its prediction beside the neutral it used. To be switched on only after a leave-one-session-out check on a phone log
  * (median error ≤ 0.02 ln and ≥ 30 % below the projection's).
+ * <p>
+ * P366 (owner, 2026-10-27: «вот такие фото получаю с исз, исправь» - X200 Ultra camera 4 ISZ, green at noon by the sea): the check on
+ * the owner's log-2026-10-27 (build 31130), its 18 "WB TEACHER ... predicted before" lines (a forward check: each prediction made
+ * before its pair was learned) against MosaicNeutral's projection of the same statistic (camera 4: its logged curve; camera 3: a
+ * curve of its 30 plain ISP neutrals in the log, its own session left out): the teacher's median error 0.0385 ln over all 18,
+ * 0.034 over the 8 with support ≥ 3 and the 6 with support ≥ 10 (0.010-0.040); the projection's 0.103 / 0.104 / 0.103 on the same
+ * pairs (the statistic as it is: 0.071 / 0.065 / 0.059); a leave-one-session-out over the logged pairs alone 0.043 (n 17). The
+ * teacher is 67 % below the projection but not ≤ 0.02 ln: the criterion is NOT met. So a photo takes the teacher's neutral only
+ * where the projection is all there is - a RAW-only session whose ISP runs no 3A (MosaicNeutralResolver.ispIdle: the identity
+ * colour transform and gains frozen on every result of the burst; the owner's case: R 2.434 / B 1.569 on all 14 results) - with
+ * scam_dev.txt "mosaic_awb_teacher_use" 1 (default; 2: every mosaic photo without a route, 0: log only): {@link #use}, blended
+ * with the locus by {@link Use#weight} (MosaicNeutral.taught). Its errors stop falling at a support of about 10 (11.7-25.2: 0.010-0.040;
+ * 6.0 / 7.9: 0.059 / 0.011; below 3: up to 0.415), so the weight is full from {@link #FULL_USE}, none below {@link #USE_MIN} of it,
+ * times the teacher's share against the projection by their median errors ({@link #W_OWN}). A camera whose own grid has nothing
+ * near the statistic takes the grid of another camera of the device with the same sensor ({@link #sensorKey}; X200U cameras 3
+ * and 4) at {@link #W_SIBLING}: ln n - ln m is the same for two modules of one sensor up to where on the grid the statistic of a
+ * light falls (their daylight neutrals 0.3945 / 0.6396 and 0.3896 / 0.6709, 0.049 ln apart, about one KERNEL).
  */
 public final class MosaicTeacher {
     private MosaicTeacher() {}
@@ -30,6 +47,14 @@ public final class MosaicTeacher {
     static final double CELL = 0.02, KERNEL = 0.05;
     static final int MAX_CELLS = 2000, COUNT_CAP = 50;
     static final double MIN_SUPPORT = 3, FULL_SUPPORT = 20;
+    /** P366: the support from which a photo takes the teacher at full weight; a photo takes none below USE_MIN of it (support 5). */
+    static final double FULL_USE = 10, USE_MIN = 0.5;
+    /**
+     * P366: the teacher's share against the projection, σL² / (σL² + σT²) of the forward check's median errors (σT 0.034, σL 0.103:
+     * 0.90); a same-sensor camera's grid σT = hypot(0.034, 0.017) - the residual's slope over the daylight cells of camera 3 (0.35
+     * ln / ln, its pairs 0.388 / 0.693 and 0.354 / 0.713) times the two modules' daylight offset (0.049 ln) - 0.88.
+     */
+    static final double W_OWN = 0.90, W_SIBLING = 0.88;
     static final long SAVE_EVERY_MS = 30_000L;
     private static final String PREFS = "mosaic_awb_teacher";
     private static Context context;
@@ -54,6 +79,15 @@ public final class MosaicTeacher {
     /** scam_dev.txt "mosaic_awb_teacher" (default on: collected and logged; off: nothing). */
     public static boolean on() {
         return com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("mosaic_awb_teacher", true);
+    }
+
+    /** P366: a photo takes the teacher's neutral in no session (0), a RAW-only session without the ISP's 3A (1), any route-less one (2). */
+    public static final int USE_NEVER = 0, USE_ISP_IDLE = 1, USE_ALWAYS = 2;
+
+    /** P366: scam_dev.txt "mosaic_awb_teacher_use" (default 1: a RAW-only session without the ISP's 3A); nothing without {@link #on}. */
+    public static int useMode() {
+        if (!on()) return USE_NEVER;
+        return Math.round(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevNumber("mosaic_awb_teacher_use", USE_ISP_IDLE));
     }
 
     /** A prediction: the neutral (r / g, b / g), the kernel's support and the confidence (0 below MIN_SUPPORT). */
@@ -164,6 +198,132 @@ public final class MosaicTeacher {
         return new Prediction((float) (mr * Math.exp(sr / sw)), (float) (mb * Math.exp(sb / sw)), sw);
     }
 
+    /** P366: what a mosaic photo takes from the teacher: the prediction, whose grid (the camera's own or a same-sensor one's), the weight. */
+    public static final class Use {
+        public final Prediction prediction;
+        public final String camera;
+        public final boolean sibling;
+        /** min(1, support / FULL_USE) x (W_OWN or W_SIBLING): the teacher's share of the photo's neutral (MosaicNeutral.taught). */
+        public final double weight;
+
+        Use(Prediction prediction, String camera, boolean sibling) {
+            this.prediction = prediction;
+            this.camera = camera;
+            this.sibling = sibling;
+            this.weight = supportShare(prediction.support) * (sibling ? W_SIBLING : W_OWN);
+        }
+
+        /** True when the photo takes it (support of USE_MIN x FULL_USE and more). */
+        public boolean usable() {
+            return supportShare(prediction.support) >= USE_MIN;
+        }
+
+        public String describe() {
+            return String.format(Locale.ROOT, "%s grid, support %.1f, weight %.2f", sibling ? "camera " + camera + "'s (same sensor)" : "own",
+                    prediction.support, weight);
+        }
+
+        @Override public String toString() {
+            return String.format(Locale.ROOT, "%.3f / %.3f (%s)", prediction.r, prediction.b, describe());
+        }
+    }
+
+    static double supportShare(double support) {
+        return Math.min(1.0, support / FULL_USE);
+    }
+
+    /**
+     * P366: the teacher's neutral for our statistic m of camera {@code id}: its own grid's prediction when that one has the support
+     * a photo takes (USE_MIN x FULL_USE), else the best supported of the grids of {@code sameSensor} (cameras of the device with the
+     * same sensor, {@link #sameSensor}) at W_SIBLING; null when none has any prediction. {@link Use#usable} tells whether a photo
+     * takes it.
+     */
+    @Nullable
+    public static synchronized Use use(String id, float mr, float mb, @Nullable java.util.List<String> sameSensor) {
+        if (id == null || id.isEmpty() || !valid(mr) || !valid(mb)) return null;
+        final Prediction own = predictLocked(id, mr, mb);
+        Use best = own == null ? null : new Use(own, id, false);
+        if (best != null && best.usable()) return best;
+        if (sameSensor != null)
+            for (String other : sameSensor) {
+                if (other == null || other.equals(id)) continue;
+                final Prediction p = predictLocked(other, mr, mb);
+                if (p == null) continue;
+                final Use u = new Use(p, other, true);
+                if (best == null || u.weight > best.weight) best = u;
+            }
+        return best;
+    }
+
+    /** P366: the cameras with a grid (in this process or stored). */
+    public static synchronized java.util.Set<String> cameras() {
+        final java.util.TreeSet<String> out = new java.util.TreeSet<>();
+        for (Map.Entry<String, LinkedHashMap<Long, Cell>> e : GRIDS.entrySet()) if (!e.getValue().isEmpty()) out.add(e.getKey());
+        if (context != null)
+            for (Map.Entry<String, ?> e : context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getAll().entrySet())
+                if (e.getValue() instanceof String && !((String) e.getValue()).isEmpty()) out.add(e.getKey());
+        return out;
+    }
+
+    /**
+     * P366: what makes two cameras of a device the same sensor for the teacher: the pixel array (and the maximum-resolution one), the
+     * physical size (to 0.05 mm) and the white level of their characteristics, a Bayer filter. The order of the Bayer colours is
+     * not compared: it follows the readout's orientation (X200U camera 3 BGGR, camera 4 RGGB, the same IMX06C), and the statistic
+     * is per colour (R / G, B / G) whatever its place in the 2x2 (a colour block's arrangement is the same 2x2 after the block).
+     * Null when the characteristics do not tell.
+     */
+    @Nullable
+    public static String sensorKey(@Nullable android.hardware.camera2.CameraCharacteristics c) {
+        if (c == null) return null;
+        try {
+            final android.util.Size pixels = c.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE);
+            final Integer white = c.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
+            final Integer cfa = c.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT);
+            final android.util.SizeF physical = c.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
+            if (pixels == null || white == null || white <= 0 || cfa == null) return null;
+            android.util.Size max = null;
+            if (android.os.Build.VERSION.SDK_INT >= 31)
+                max = c.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE_MAXIMUM_RESOLUTION);
+            return String.format(Locale.ROOT, "%dx%d/%s/%s/%d/%s", pixels.getWidth(), pixels.getHeight(),
+                    max == null ? "-" : max.getWidth() + "x" + max.getHeight(),
+                    physical == null ? "-" : Math.round(physical.getWidth() * 20) + "x" + Math.round(physical.getHeight() * 20),
+                    white, cfa >= 0 && cfa <= 3 ? "bayer" : "cfa" + cfa);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static final Map<String, String> SENSOR_KEYS = new HashMap<>();
+
+    /**
+     * P366: the cameras with a grid ({@link #cameras}) whose sensor is camera {@code id}'s ({@link #sensorKey}; {@code own} its
+     * characteristics, {@code lookup} another camera's, null when it cannot be read).
+     */
+    public static java.util.List<String> sameSensor(String id, @Nullable android.hardware.camera2.CameraCharacteristics own,
+                                                    java.util.function.Function<String, android.hardware.camera2.CameraCharacteristics> lookup) {
+        final java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        final String key = sensorKey(own);
+        if (key == null || id == null) return out;
+        for (String other : cameras()) {
+            if (other.equals(id)) continue;
+            String k;
+            synchronized (SENSOR_KEYS) { k = SENSOR_KEYS.get(other); }
+            if (k == null) {
+                android.hardware.camera2.CameraCharacteristics c;
+                try {
+                    c = lookup.apply(other);
+                } catch (RuntimeException e) {
+                    c = null;
+                }
+                k = sensorKey(c);
+                if (k == null) k = "";
+                synchronized (SENSOR_KEYS) { SENSOR_KEYS.put(other, k); }
+            }
+            if (key.equals(k)) out.add(other);
+        }
+        return out;
+    }
+
     /** Pairs learned for camera {@code id} in this process (for the log's pacing). */
     public static synchronized int seen(String id) {
         return SEEN.getOrDefault(id, 0);
@@ -204,5 +364,6 @@ public final class MosaicTeacher {
         GRIDS.clear();
         SAVED.clear();
         SEEN.clear();
+        synchronized (SENSOR_KEYS) { SENSOR_KEYS.clear(); }
     }
 }

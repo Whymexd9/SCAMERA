@@ -155,6 +155,8 @@ public final class ScamHybridBurst implements ScamTransport {
     /** P320: a DCG shot (header flag 32): the worker measures its two noise zones and merges it without exposure brackets. */
     private final boolean dcg;
     private final float dcgIsoScale;
+    /** P366: the base frame's EV100 for the worker (tuning usSceneEv, {@link #sceneEv100}); NaN when its exposure is unknown. */
+    final float sceneEv;
 
     /**
      * P27: one frame never costs the shot. A frame without a usable RAW, role or exposure, or whose payload is not plain 16-bit,
@@ -331,6 +333,8 @@ public final class ScamHybridBurst implements ScamTransport {
             if (s > bestScore) { bestScore = s; best = f; }
         }
         base = best;
+        // P366: the scene brightness of the merge's base frame (the ISO a DCG frame's noise model takes: its analog gain)
+        sceneEv = sceneEv100(base.measuredExposure, Math.max(1, Math.round(base.measuredIso / dcgIsoScale)), p.aperture);
         if (moment) Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "motion: base = frame %d, %.1f ms before the moment's frame (%d after it skipped)",
                 base.number, (anchor - base.timestamp) / 1e6, start));
         final double ref = product(base);
@@ -388,7 +392,8 @@ public final class ScamHybridBurst implements ScamTransport {
         }
         Log.i("SCAM_HDR", "hybrid burst: frames=" + frames.size() + " base=" + base.number + " sharpness=" + base.sharpness
                 + " normals=" + normals + " bracketed=" + bracketedCount
-                + " ultrashort=" + ultrashort + " noise=" + noiseSource + " base slope=" + noise.get(0)[0] + " offset=" + noise.get(0)[1]);
+                + " ultrashort=" + ultrashort + " noise=" + noiseSource + " base slope=" + noise.get(0)[0] + " offset=" + noise.get(0)[1]
+                + " EV100=" + sceneEv + " (f/" + p.aperture + ")");
     }
 
     /**
@@ -683,7 +688,28 @@ public final class ScamHybridBurst implements ScamTransport {
     public String tuningOverride() {
         // P267: the remosaic and the mosaic DNG layout first (still after the user's tuning)
         return REMOSAIC_TUNING + (dngMosaic > 1 ? "dngMosaic 1\n" : "") + (conservative ? CONSERVATIVE_TUNING : "") + avoidedTuning()
+                + sceneEvTuning(sceneEv)
                 + (strictTwoX ? "grid 2\nauto2x 0\n" : "") + seriesTuning() + (dcg ? dcgTuning(com.particlesdevs.photoncamera.capture.HybridPlan.bentoMode()) : "");
+    }
+    /**
+     * P366 (owner, 2026-10-27, vivo X200 Ultra ISZ at sea at noon: «вот такие фото получаю с исз, исправь» - pink blotches in the
+     * white wake foam): the worker's lamp-flicker corrections of the ultrashort frames (the row profile and the tile field) took
+     * water that moved between the frames for lamps on other flicker phases and recoloured the foam. The worker holds both from
+     * daylight up (HybridTuning::usDaylightEv, default {@link #US_DAYLIGHT_EV}: the owner's sea read 11.2 / 11.7, his LED and
+     * lamp shots 4 - 6) and holds a tile field that is incoherent (usIncoherent, default {@link #US_INCOHERENT}). Every burst
+     * with a known exposure tells it the base frame's EV100 (usSceneEv); the thresholds are the settings' lines
+     * (PreferenceKeys.hybridTuningText, scam_dev.txt "hybrid_us_daylight_ev" / "hybrid_us_incoherent", 0 = off).
+     */
+    public static final float US_DAYLIGHT_EV = 10f, US_INCOHERENT = 0.5f;
+    /** P366: EV100 = log2(N^2 / t) - log2(ISO / 100) of a frame exposed {@code exposureNs} at {@code iso} through f/{@code aperture}; NaN without one of them. */
+    static float sceneEv100(long exposureNs, int iso, float aperture) {
+        if (exposureNs <= 0 || iso <= 0 || !(aperture > 0f) || !Float.isFinite(aperture)) return Float.NaN;
+        final double t = exposureNs * 1e-9, n = aperture;
+        return (float) (Math.log(n * n / t / (iso / 100.0)) / Math.log(2.0));
+    }
+    /** P366: the burst's EV100 line for the worker (none when unknown). */
+    static String sceneEvTuning(float ev) {
+        return Float.isFinite(ev) ? String.format(Locale.ROOT, "usSceneEv %.2f\n", ev) : "";
     }
     /**
      * P320: a DCG burst: Bento only where its frame measurably clips («Всегда» reads as «Авто»: no ultrashort mask without

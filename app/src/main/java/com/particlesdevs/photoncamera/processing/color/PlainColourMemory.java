@@ -32,9 +32,16 @@ import java.util.Map;
  * {@link #NEAR} away; nothing beyond {@link #FAR} or from bins of fewer than {@link #MIN_COUNT} samples (the DNG matrices then, as
  * before). scam_dev.txt "mosaic_ccm_table 0": nothing is learned or used.
  * <p>
- * P212z (review): the table renders FULLRES photos (and their viewfinder) only by default - "mosaic_ccm_table 1"; the 12 MP ISZ
- * modules' mosaic photos keep the DNG matrices as before until an owner A/B ({@link #wanted}; "mosaic_ccm_table 2": every mosaic
- * photo). M12 scoped the change to FULLRES; its verifier: a visible change that needs the owner's A/B.
+ * P212z (review): the table rendered FULLRES photos (and their viewfinder) only - "mosaic_ccm_table 1"; the 12 MP ISZ modules' mosaic
+ * photos kept the DNG matrices until an owner A/B ({@link #wanted}; "mosaic_ccm_table 2": every mosaic photo). M12 scoped the
+ * change to FULLRES; its verifier: a visible change that needs the owner's A/B.
+ * <p>
+ * P366 (owner, 2026-10-27: «вот такие фото получаю с исз, исправь»): the owner's X200 Ultra camera 4 ISZ photos at noon are that A/B -
+ * green, rendered with the generic DNG matrices ("mosaic colour matrix: the DNG matrices (not a FULLRES shot ...)", log-2026-10-27
+ * L13851; the X200U's DNG matrices do not describe its sensors, SceneIlluminant) where the plain sessions of the same scene render
+ * with the ISP's [153 -19 -6 | -17 175 -30 | 0 -55 184] / 128. "mosaic_ccm_table" is 2 by default now: every mosaic photo takes the
+ * plain-session matrix at its neutral; the DNG matrices only when the table has no bin within {@link #FAR} (as before); 1: FULLRES
+ * only (P212z), 0: none.
  */
 public final class PlainColourMemory {
     private PlainColourMemory() {}
@@ -74,22 +81,25 @@ public final class PlainColourMemory {
     private static volatile SharedPreferences store;
     private static volatile String fingerprint = android.os.Build.FINGERPRINT;
 
-    /** scam_dev.txt "mosaic_ccm_table" (default 1): above 0 the table is learned (and the FULLRES viewfinder takes it). */
+    /** scam_dev.txt "mosaic_ccm_table" (P366: default 2): above 0 the table is learned (and the FULLRES viewfinder takes it). */
     public static boolean on() {
         return mode() > 0f;
     }
 
     /**
      * P212z (review): a mosaic photo takes the table - a FULLRES one ({@code fullRes}: Parameters.fullResRequested) with
-     * "mosaic_ccm_table 1" (default), every mosaic photo (the 12 MP ISZ modules too) with 2, none with 0.
+     * "mosaic_ccm_table 1", every mosaic photo (the 12 MP ISZ modules too) with 2 (P366: the default), none with 0.
      */
     public static boolean wanted(boolean fullRes) {
         final float mode = mode();
         return mode >= 2f || mode > 0f && fullRes;
     }
 
+    /** P366: "mosaic_ccm_table" without a scam_dev.txt line: every mosaic photo (the owner's ISZ photos were the P212z A/B). */
+    static final float DEFAULT_MODE = 2f;
+
     private static float mode() {
-        return com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevNumber("mosaic_ccm_table", 1f);
+        return com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevNumber("mosaic_ccm_table", DEFAULT_MODE);
     }
 
     /**

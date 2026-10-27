@@ -150,13 +150,35 @@ public final class ScamHdrDenoise extends Node {
             android.opengl.GLES30.glBindFramebuffer(android.opengl.GLES30.GL_READ_FRAMEBUFFER, framebuffer[0]);
             android.opengl.GLES30.glFramebufferTexture2D(android.opengl.GLES30.GL_READ_FRAMEBUFFER, android.opengl.GLES30.GL_COLOR_ATTACHMENT0,
                     android.opengl.GLES30.GL_TEXTURE_2D, est.mTextureID, 0);
-            java.nio.ByteBuffer data = java.nio.ByteBuffer.allocateDirect(blocks.x * blocks.y * 16).order(java.nio.ByteOrder.nativeOrder());
-            android.opengl.GLES30.glReadPixels(0, 0, blocks.x, blocks.y, android.opengl.GLES30.GL_RGBA, android.opengl.GLES30.GL_FLOAT, data);
             float[] values = new float[blocks.x * blocks.y];
             int n = 0;
-            for (int i = 0; i < values.length; i++) {
-                float v = data.getFloat(i * 16);
-                if (v > 0f && !Float.isNaN(v)) values[n++] = v;
+            // P364: the blocks read back as the IEEE halves est holds (8 B a block, widened by HalfFloat.TABLE) where the driver
+            // reads RGBA16F natively as halves and its GL_FLOAT conversion is that exact widening (WhyStats.halfReadbackExact,
+            // probed once per process): the floats of the GL_FLOAT read-back without the driver converting 4 channels of every
+            // block (and half the bytes); else, and in the old run of post_ab, the GL_FLOAT read-back as before
+            final int halfType = com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy() ? 0 : WhyStats.halfReadType();
+            boolean half = halfType != 0 && WhyStats.halfReadbackExact(halfType);
+            if (half) {
+                java.nio.ByteBuffer data = java.nio.ByteBuffer.allocateDirect(blocks.x * blocks.y * 8).order(java.nio.ByteOrder.nativeOrder());
+                android.opengl.GLES30.glReadPixels(0, 0, blocks.x, blocks.y, android.opengl.GLES30.GL_RGBA, halfType, data);
+                half = android.opengl.GLES30.glGetError() == android.opengl.GLES30.GL_NO_ERROR;
+                if (half) {
+                    final short[] halves = new short[blocks.x * blocks.y * 4];
+                    data.asShortBuffer().get(halves);
+                    final float[] table = HalfFloat.TABLE;
+                    for (int i = 0; i < values.length; i++) {
+                        float v = table[halves[4 * i] & 0xffff];
+                        if (v > 0f && !Float.isNaN(v)) values[n++] = v;
+                    }
+                }
+            }
+            if (!half) {
+                java.nio.ByteBuffer data = java.nio.ByteBuffer.allocateDirect(blocks.x * blocks.y * 16).order(java.nio.ByteOrder.nativeOrder());
+                android.opengl.GLES30.glReadPixels(0, 0, blocks.x, blocks.y, android.opengl.GLES30.GL_RGBA, android.opengl.GLES30.GL_FLOAT, data);
+                for (int i = 0; i < values.length; i++) {
+                    float v = data.getFloat(i * 16);
+                    if (v > 0f && !Float.isNaN(v)) values[n++] = v;
+                }
             }
             if (n == 0) return 0f;
             // P364: the quarter's element by selection (the sort of ~200 k blocks took ~20 ms): the same value

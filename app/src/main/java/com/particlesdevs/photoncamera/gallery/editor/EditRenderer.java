@@ -467,10 +467,19 @@ final class EditRenderer {
         GLES30.glUniform1i(loc(p, name), unit);
     }
 
-    void release() {
+    /**
+     * P367: frees every texture and framebuffer (the zoom's renderer back at the fit), keeps the programs and tables; the proxy
+     * must be set again ({@link #setProxySource}) before the next frame.
+     */
+    void releaseTargets() {
         for (Target t : new Target[]{raw, proxySrc, pm, pmTmp, pmBlur, ab, abTmp, abMid, lm, lmTmp, lmBlur, lab, labTmp, abLarge, nr,
                 dev, blurTmp, blur, main, hist})
             t.release();
+        invalidate();
+    }
+
+    void release() {
+        releaseTargets();
         for (int p : new int[]{pDemosaic, pNr, pDevelop, pArea, pProxy, pDown4, pGauss4, pGauss2, pGuided, pMain, pFinish})
             if (p != 0) GLES30.glDeleteProgram(p);
         if (vao != 0) GLES30.glDeleteVertexArrays(1, new int[]{vao}, 0);

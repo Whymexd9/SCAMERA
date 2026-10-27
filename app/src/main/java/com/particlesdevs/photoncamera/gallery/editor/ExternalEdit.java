@@ -27,6 +27,19 @@ import java.util.Locale;
 public final class ExternalEdit {
     public static final String ARG_URI = "editUri", ARG_NAME = "editName", ARG_PATH = "editPath", ARG_MIME = "editMime",
             ARG_EXTERNAL = "editExternal";
+    /**
+     * P367 test hook (the owner's helper checks the full-resolution zoom over adb, without touching the screen): optional float
+     * extras of the gallery's ACTION_EDIT intent, copied into the editor's arguments ({@link #withZoomHook}). With
+     * {@link #ARG_ZOOM} (1.0 = 100 % of the original's pixels, clamped to the fit .. 400 %) the editor starts zoomed once the
+     * picture is shown, the crop point {@link #ARG_ZOOM_CX}, {@link #ARG_ZOOM_CY} (0..1 of the crop, 0.5 when absent) at the
+     * view's centre; logcat then has EditorView's «P367 full-res region shown» line. Without the extras nothing changes:
+     * <pre>
+     * adb shell am start -a android.intent.action.EDIT -t image/jpeg -d content://media/external/images/media/ID \
+     *   -n com.scamera.app/com.particlesdevs.photoncamera.gallery.ui.GalleryActivity \
+     *   --ef scam_edit_zoom 1.0 --ef scam_edit_cx 0.5 --ef scam_edit_cy 0.5
+     * </pre>
+     */
+    public static final String ARG_ZOOM = "scam_edit_zoom", ARG_ZOOM_CX = "scam_edit_cx", ARG_ZOOM_CY = "scam_edit_cy";
 
     private ExternalEdit() {}
 
@@ -49,6 +62,17 @@ public final class ExternalEdit {
         b.putString(ARG_MIME, mime);
         b.putBoolean(ARG_EXTERNAL, external);
         return b;
+    }
+
+    /** P367: the test hook's extras of {@code intent} ({@link #ARG_ZOOM}) into the editor's {@code args}; nothing when absent. */
+    public static Bundle withZoomHook(Bundle args, @Nullable Intent intent) {
+        if (intent == null || !intent.hasExtra(ARG_ZOOM)) return args;
+        float z = intent.getFloatExtra(ARG_ZOOM, 0f);
+        if (!(z > 0f) || Float.isInfinite(z)) return args;
+        args.putFloat(ARG_ZOOM, z);
+        args.putFloat(ARG_ZOOM_CX, intent.getFloatExtra(ARG_ZOOM_CX, 0.5f));
+        args.putFloat(ARG_ZOOM_CY, intent.getFloatExtra(ARG_ZOOM_CY, 0.5f));
+        return args;
     }
 
     /** MIME type for an edit / share intent (the photo formats and RAWs mapped here; MimeTypeMap lacks some). */

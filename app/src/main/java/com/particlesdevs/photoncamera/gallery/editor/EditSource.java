@@ -51,6 +51,8 @@ import java.nio.channels.FileChannel;
  *       referred, white balance by the DNG matrices.</li>
  *   <li>Anything else, or when the above fail: Glide (the gallery's decoders, turned, 8-bit sRGB).</li>
  * </ul>
+ * P367: the editor's zoom reads the original through the same {@link Reader} (EditZoomLoader), a region at a time
+ * ({@link Reader#decode} on its worker thread, {@link Region#upload} on the GL thread).
  */
 public final class EditSource implements Closeable {
     private static final String TAG = "EditSource";
@@ -477,8 +479,74 @@ public final class EditSource implements Closeable {
         /** Regions start on even pixels (a CFA). */
         default boolean evenAligned() { return false; }
 
+        /** P367: {@link #decode} levels are whole numbers (a RAW is binned, not resampled). */
+        default boolean integerLevels() { return false; }
+
+        /** P367: the JPEG decoder's power-of-two sample ({@link #regionSample}), 1 for the other readers. */
+        default int sample() { return 1; }
+
         /** Why the export is smaller than the original, null when it is not. */
         @Nullable String shrinkNote();
+
+        /**
+         * P367: the region {@code x, y, w, h} (reader px) decoded on the calling thread - the zoom's worker, never the GL or UI
+         * thread - into a CPU picture of about {@code level} reader px a texel (1: full resolution), its own copy (closing the
+         * reader does not touch it); {@link Region#upload} puts it on the GPU later. The same pixels {@link #upload} gives an
+         * export tile.
+         */
+        Region decode(int x, int y, int w, int h, double level) throws IOException;
+    }
+
+    /**
+     * P367: a region of the original on the CPU, between the zoom's worker (decode) and the GL thread (upload): the reader px
+     * it covers ({@code x, y, w, h}), its size in texels ({@code texW x texH}, {@code level} reader px a texel), its colour.
+     */
+    static final class Region {
+        final int x, y, w, h, texW, texH;
+        final double level;
+        final EditMath.SourceColour colour;
+        @Nullable private Bitmap bitmap;
+        @Nullable private DngRaw.Image raw;
+
+        Region(int x, int y, int w, int h, int texW, int texH, EditMath.SourceColour colour, @Nullable Bitmap bitmap, @Nullable DngRaw.Image raw) {
+            this.x = x;
+            this.y = y;
+            this.w = w;
+            this.h = h;
+            this.texW = Math.max(1, texW);
+            this.texH = Math.max(1, texH);
+            this.level = w / (double) this.texW;
+            this.colour = colour;
+            this.bitmap = bitmap;
+            this.raw = raw;
+        }
+
+        /**
+         * The texture (GL thread): a picture's own (the caller deletes it), a RAW's demosaiced into {@code r}'s target (valid until
+         * r's next rawSource; r owns it, {@link #rendererOwnsTexture}).
+         */
+        int upload(EditRenderer r) {
+            if (raw != null) return r.rawSource(raw, 0, 0, raw.width, raw.height);
+            if (bitmap != null && !bitmap.isRecycled()) return EditRenderer.bitmapSource(bitmap);
+            return 0;
+        }
+
+        boolean rendererOwnsTexture() {
+            return raw != null;
+        }
+
+        /** The CPU picture's bytes. */
+        long bytes() {
+            if (raw != null && raw.data != null) return raw.data.capacity() * 2L;
+            return bitmap != null ? bitmap.getAllocationByteCount() : 0;
+        }
+
+        /** Drops the CPU picture (after the upload, or when it is not wanted any more). */
+        void free() {
+            if (bitmap != null) bitmap.recycle();
+            bitmap = null;
+            raw = null;
+        }
     }
 
     /** Free memory for the export's buffers (bytes; a bit under what the system says is available). */
@@ -500,6 +568,18 @@ public final class EditSource implements Closeable {
         }
     }
 
+    /**
+     * The JPEG reader's power-of-two sample for an export of at most {@code outMax} pixels of a crop covering
+     * {@code cropFraction} of a {@code fullW x fullH} picture: tiles are decoded at most 2x the output on each side (P367: the
+     * zoom's reader takes the same, and opens again when a new crop changes it).
+     */
+    static int regionSample(int fullW, int fullH, double cropFraction, long outMax) {
+        double crop = (double) fullW * fullH * cropFraction;
+        int s = 1;
+        while (crop / ((double) s * s) > outMax * 4.0 && s < 1 << 12) s *= 2;
+        return s;
+    }
+
     /** JPEG tiles from BitmapRegionDecoder with a power-of-two sample (a 200 MP crop over the budget at 1/2 ...). */
     private final class RegionReader implements Reader {
         final BitmapRegionDecoder decoder;
@@ -512,15 +592,14 @@ public final class EditSource implements Closeable {
             if (stream == null) throw new IOException("cannot read " + uri);
             decoder = BitmapRegionDecoder.newInstance(stream, false);
             if (decoder == null) throw new IOException("no region decoder");
-            double crop = (double) fullW * fullH * cropFraction;
-            int s = 1;
-            while (crop / ((double) s * s) > outMax * 4.0) s *= 2; // tiles are decoded at most 2x the output on each side
-            sample = s;
+            sample = regionSample(fullW, fullH, cropFraction, outMax);
         }
 
         @Override public int width() { return fullW / sample; }
 
         @Override public int height() { return fullH / sample; }
+
+        @Override public int sample() { return sample; }
 
         @Override
         public int upload(EditRenderer r, int x, int y, int w, int h, EditMath.SourceColour[] colour) throws IOException {
@@ -540,6 +619,27 @@ public final class EditSource implements Closeable {
             int t = EditRenderer.bitmapSource(b);
             b.recycle();
             return t;
+        }
+
+        /** P367: the region with the decoder's power-of-two sample up to {@code level}, the rest by a filtered resize. */
+        @Override
+        public Region decode(int x, int y, int w, int h, double level) throws IOException {
+            int p = 1;
+            while (p * 2 <= level + 1e-6) p *= 2;
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inSampleSize = sample * p;
+            o.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            Rect rect = new Rect(x * sample, y * sample, Math.min(fullW, (x + w) * sample), Math.min(fullH, (y + h) * sample));
+            Bitmap b = decoder.decodeRegion(rect, o);
+            if (b == null) throw new IOException("region " + rect + " not decoded");
+            b = normalise(b);
+            int tw = Math.max(1, (int) Math.round(w / level)), th = Math.max(1, (int) Math.round(h / level));
+            if (b.getWidth() != tw || b.getHeight() != th) {
+                Bitmap s = Bitmap.createScaledBitmap(b, tw, th, true);
+                if (s != b) b.recycle();
+                b = s;
+            }
+            return new Region(x, y, w, h, b.getWidth(), b.getHeight(), colourOf(b), b, null);
         }
 
         @Nullable
@@ -595,6 +695,27 @@ public final class EditSource implements Closeable {
             return t;
         }
 
+        /** P367: the region cut from the decoded picture (a copy), resized with filtering when {@code level} > 1. */
+        @Override
+        public Region decode(int x, int y, int w, int h, double level) {
+            int tw = Math.max(1, (int) Math.round(w / level)), th = Math.max(1, (int) Math.round(h / level));
+            Bitmap part;
+            if (tw == w && th == h) part = Bitmap.createBitmap(full, x, y, w, h);
+            else {
+                android.graphics.Matrix m = new android.graphics.Matrix();
+                m.setScale(tw / (float) w, th / (float) h);
+                part = Bitmap.createBitmap(full, x, y, w, h, m, true);
+            }
+            if (part == full) part = full.copy(full.getConfig(), false);
+            part = normalise(part);
+            if (part.getWidth() != tw || part.getHeight() != th) {
+                Bitmap s = Bitmap.createScaledBitmap(part, tw, th, true);
+                if (s != part) part.recycle();
+                part = s;
+            }
+            return new Region(x, y, w, h, part.getWidth(), part.getHeight(), colourOf(full), part, null);
+        }
+
         @Nullable
         @Override
         public String shrinkNote() {
@@ -646,10 +767,45 @@ public final class EditSource implements Closeable {
 
         @Override public boolean evenAligned() { return img.info.kind == DngRaw.KIND_BAYER; }
 
+        @Override public boolean integerLevels() { return true; }
+
         @Override
         public int upload(EditRenderer r, int x, int y, int w, int h, EditMath.SourceColour[] colour) {
             colour[0] = EditSource.this.colour;
             return r.rawSource(img, x, y, w, h);
+        }
+
+        /**
+         * P367: the region's samples copied (level 1) or binned {@code level x level} (same-colour samples of a CFA, as DngRaw
+         * bins) into an image of its own, so the GL thread never reads the reader's buffer; a Bayer region starts on even
+         * samples and spans whole 2 x level cells (rounded up inside the picture).
+         */
+        @Override
+        public Region decode(int x, int y, int w, int h, double level) throws IOException {
+            boolean cfa = img.info.kind != DngRaw.KIND_RGB;
+            int l = Math.max(1, (int) Math.round(level));
+            if (cfa && ((x | y) & 1) != 0) {
+                w += x & 1;
+                h += y & 1;
+                x &= ~1;
+                y &= ~1;
+            }
+            int step = cfa ? 2 * l : l;
+            int cw = (w + step - 1) / step * step, ch = (h + step - 1) / step * step;
+            if (x + cw > img.width) cw = (img.width - x) / step * step;
+            if (y + ch > img.height) ch = (img.height - y) / step * step;
+            if (cw < step || ch < step) throw new IOException("RAW region " + w + "x" + h + " too small at level " + l);
+            int ow = cw / l, oh = ch / l;
+            DngRaw.Image part = new DngRaw.Image();
+            part.info = img.info;
+            part.width = ow;
+            part.height = oh;
+            part.bin = img.bin * l;
+            part.phase = img.phase;
+            part.scale = img.scale;
+            part.autoLiftStops = img.autoLiftStops;
+            part.data = EditZoom.bin(img.data, img.width, cfa ? 1 : 3, x, y, ow, oh, l, cfa);
+            return new Region(x, y, cw, ch, ow, oh, EditSource.this.colour, null, part);
         }
 
         @Nullable

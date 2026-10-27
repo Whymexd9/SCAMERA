@@ -1019,7 +1019,9 @@ public class ScamProcessor extends ProcessorBase {
      * ремозаик» off - the stream (and the ISP's misread neutral) is the same mosaic, only the worker bins it instead of remosaicking.
      * P212f: a hand-set white balance (P201) holds (W2 = M3); the curve is the smooth counted locus with the camera's DNG prior
      * (W5 = M13 phase 1); the robust statistic of up to 3 N frames (W4 = M10) is logged beside the P121 one and taken with
-     * scam_dev.txt "mosaic_awb_v2 1"; the ISP teacher's prediction is logged only (W5 phase 2).
+     * scam_dev.txt "mosaic_awb_v2 1"; the ISP teacher's prediction is logged only (W5 phase 2). P366: in a RAW-only session whose ISP
+     * runs no 3A (no route; MosaicNeutralResolver.ispIdle) the teacher's neutral - the camera's own grid, else a same-sensor
+     * camera's - blended with the locus when it has learned enough (MosaicTeacher.use, MosaicNeutral.taught).
      */
     private static void applyMosaicNeutral(Parameters p, ImageFrame ref, CaptureResult meta, java.util.List<ImageFrame> frames,
                                            CameraCharacteristics characteristics, boolean aspect4x3) {
@@ -1067,13 +1069,16 @@ public class ScamProcessor extends ProcessorBase {
                         ref.width, ref.height, ref.width * 2, p.baseCfaPattern, p.blackLevel, p.whiteLevel, block, prior);
         final String camera = String.format(java.util.Locale.ROOT, "%.3f / %.3f", p.whitePoint[0] / p.whitePoint[1], p.whitePoint[2] / p.whitePoint[1]);
         if (stat != null) Log.i("SCAM_HDR", "mosaic white balance statistic" + (v2 ? "" : " (log only)") + ": " + stat);
-        // P212f (W5 phase 2): what the ISP would choose for this statistic (log only)
+        // P212f (W5 phase 2): what the ISP would choose for this statistic; P366: its own grid, else a same-sensor camera's (X200U
+        // cameras 3 and 4), taken below in a RAW-only session whose ISP runs no 3A
+        com.particlesdevs.photoncamera.processing.color.MosaicTeacher.Use teacher = null;
         if (stat != null && com.particlesdevs.photoncamera.processing.color.MosaicTeacher.on()) {
             com.particlesdevs.photoncamera.processing.color.MosaicTeacher.init(ScameraApp.getAppContext());
-            final com.particlesdevs.photoncamera.processing.color.MosaicTeacher.Prediction t =
-                    com.particlesdevs.photoncamera.processing.color.MosaicTeacher.predict(id, stat.r, stat.b);
-            Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "WB TEACHER camera %s (log only): m %.3f / %.3f -> %s", id, stat.r, stat.b,
-                    t == null ? "nothing learned near it (" + com.particlesdevs.photoncamera.processing.color.MosaicTeacher.cells(id) + " cells)" : t.toString()));
+            teacher = com.particlesdevs.photoncamera.processing.color.MosaicTeacher.use(id, stat.r, stat.b,
+                    com.particlesdevs.photoncamera.processing.color.MosaicTeacher.sameSensor(id, characteristics, ScamProcessor::cameraCharacteristics));
+            Log.i("SCAM_HDR", String.format(java.util.Locale.ROOT, "WB TEACHER camera %s: m %.3f / %.3f -> %s", id, stat.r, stat.b,
+                    teacher == null ? "nothing learned near it (" + com.particlesdevs.photoncamera.processing.color.MosaicTeacher.cells(id) + " cells)"
+                            : teacher + (teacher.usable() ? "" : ", too little support for a photo")));
         }
         // P212g (W6 = M6): the vivo native routes, whose HAL 3A runs, keep the HAL's neutral when it is converged and on the camera's
         // curve, and P208's still-only route takes its normal-mode viewfinder's neutral at the press (MosaicNeutralResolver); ownNeutral
@@ -1097,13 +1102,38 @@ public class ScamProcessor extends ProcessorBase {
             Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", " + press + ": P121 ("
                     + com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.whyNot(press, hal, awbState, distance) + ")");
         }
+        // P366 (owner, 2026-10-27: «вот такие фото получаю с исз, исправь»): without a route, a RAW-only session whose ISP runs no 3A
+        // (the X200U's ISZ modules under the vivo SDK lease: the identity transform, gains frozen at R 2.434 / B 1.569) has nothing
+        // but the projection, whose median error on the owner's log is 3 x the teacher's: the teacher's neutral blended with the
+        // locus (scam_dev.txt "mosaic_awb_teacher_use": 1 default, 2 any route-less mosaic photo, 0 log only)
+        if ((press == null || press.route == com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.ROUTE_NONE)
+                && stat != null && teacher != null && teacher.usable()) {
+            final int use = com.particlesdevs.photoncamera.processing.color.MosaicTeacher.useMode();
+            final String idle = use == com.particlesdevs.photoncamera.processing.color.MosaicTeacher.USE_NEVER ? null
+                    : com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.ispIdle(frameResults(frames));
+            if (use == com.particlesdevs.photoncamera.processing.color.MosaicTeacher.USE_ALWAYS
+                    || use == com.particlesdevs.photoncamera.processing.color.MosaicTeacher.USE_ISP_IDLE && idle != null) {
+                final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result taught =
+                        com.particlesdevs.photoncamera.processing.color.MosaicNeutral.taught(id, stat, prior, teacher);
+                Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", camera " + camera + " ("
+                        + (idle != null ? idle : "mosaic_awb_teacher_use 2") + ") -> " + taught.how + "; P121 "
+                        + (own == null ? "none (too few usable cells)" : own.how) + " (not used)");
+                p.customNeutral = taught.neutral;
+                p.ownNeutral = true;
+                p.ReCalcColor(true, meta);
+                return;
+            }
+            Log.i("SCAM_HDR", "WB TEACHER not used: " + (use == com.particlesdevs.photoncamera.processing.color.MosaicTeacher.USE_NEVER
+                    ? "mosaic_awb_teacher_use 0" : "the ISP may run its 3A (" + (idle == null ? "not an idle RAW-only burst" : idle) + ")"));
+        }
         if (own == null) {
             Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", too few usable cells; the camera's neutral " + camera + " kept");
             p.ReCalcColor(false, meta); // P212g (W7): the camera's neutral, the colour matrix of a mosaic shot
             return;
         }
-        // P315: an estimate far off every learned illuminant (the X8U ISZ shot's LED glow on a white case) is not taken as one
-        final String offLocus = com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.offLocus(id, own.distance,
+        // P315: an estimate far off every learned illuminant (the X8U ISZ shot's LED glow on a white case) is not taken as one; P366
+        // (review): its distance from the curve the learned points fit, not from the one the slope guard projected it on
+        final String offLocus = com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.offLocus(id, own.learnedDistance,
                 p.whitePoint.clone(), prior);
         if (offLocus != null) {
             Log.i("SCAM_HDR", "mosaic white balance: colour block " + block + ", " + offLocus + "; own estimate " + own.how + " (not used)");
@@ -1140,6 +1170,29 @@ public class ScamProcessor extends ProcessorBase {
         if (hybridFinal == null || (long) hybridFinal.x * hybridFinal.y >= (long) w * h) return new Point(w & ~1, h & ~1);
         final double s = Math.sqrt((double) hybridFinal.x * hybridFinal.y / ((double) w * h));
         return new Point(Math.max(2, (int) Math.round(w * s)) & ~1, Math.max(2, (int) Math.round(h * s)) & ~1);
+    }
+
+    /** P366: the results of a burst's frames (MosaicNeutralResolver.ispIdle). */
+    private static java.util.List<CaptureResult> frameResults(java.util.List<ImageFrame> frames) {
+        final java.util.ArrayList<CaptureResult> out = new java.util.ArrayList<>();
+        if (frames == null) return out;
+        for (ImageFrame f : frames) {
+            final CaptureResult r = f == null ? null : f.getMatchedCaptureMetadata();
+            if (r != null) out.add(r);
+        }
+        return out;
+    }
+
+    /** P366: another camera's characteristics (MosaicTeacher.sameSensor), null when they cannot be read. */
+    @androidx.annotation.Nullable
+    private static CameraCharacteristics cameraCharacteristics(String id) {
+        try {
+            final android.hardware.camera2.CameraManager m = (android.hardware.camera2.CameraManager)
+                    ScameraApp.getAppContext().getSystemService(android.content.Context.CAMERA_SERVICE);
+            return m == null ? null : m.getCameraCharacteristics(id);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** P212f: the cameras whose curve this process has logged. */

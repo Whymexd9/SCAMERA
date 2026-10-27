@@ -6,6 +6,12 @@ precision highp sampler2D;
 // (halo control), faded towards white (protect highlights) and black (protect shadows), optional luma grain.
 // Sobel and edge thinning (off in the X8U config) are not ported. On the Sabre 2x grid the spatial constants come
 // scaled by WhyLumaSharpen (radii x scale, neighbourhood radius nbU), so the response matches WhyCam's on the 1x grid.
+// P364: GATHER 1 - with the 1x grid's window sizes (min / max 3 x 3, USM radius 2, bilateral radius 1) the pixel's 6 x 6
+// neighbourhood (-2 .. 3) is read once as nine 2 x 2 textureGather blocks instead of 44 texelFetch, and every sum takes its
+// taps from it in the same order with the same expressions (the constant loops also let the compiler evaluate each of the
+// USM's repeated weights once: the same values). InputBuffer is clamp-to-edge, so a block past the border repeats the edge
+// texels as clamp() did (bit-identical). Other window sizes, and GATHER 0, take the loops.
+#define GATHER 0
 uniform sampler2D InputBuffer;      // Ya (.r), output grid
 uniform sampler2D GfAB;             // (a, b) of the guided filter on the grid reduced by downU (sharp_box.glsl)
 uniform int downU;                  // <= 0 -> 1
@@ -44,6 +50,66 @@ void main() {
     float c = texelFetch(InputBuffer, xy, 0).r;
     int nb = nbU > 0 ? nbU : 1;
     float lmin = c, lmax = c;
+    float halo = haloU;
+    float tot = 0.0;
+#if GATHER == 1
+    bool usmOn = usmSigmaU > 0.0 && abs(usmAmountU) > 0.001, bilOn = abs(bilAmountU) > 0.001;
+    if (nb == 1 && (!usmOn || min(int(ceil(usmSigmaU * 3.5)), 8) == 2) && (!bilOn || (bilRadiusU > 0 ? bilRadiusU : 1) == 1)) {
+        // t[(dy + 2) * 6 + dx + 2] = Ya at xy + (dx, dy), dx, dy = -2 .. 3; block (x0, y0) .. (x0 + 1, y0 + 1) by a gather at the
+        // centre of texel (x0 + 1, y0 + 1): .w (x0, y0), .z (x0 + 1, y0), .x (x0, y0 + 1), .y (x0 + 1, y0 + 1)
+        float t[36];
+        vec2 inv = 1.0 / vec2(last + ivec2(1));
+        for (int by = 0; by < 6; by += 2) {
+            for (int bx = 0; bx < 6; bx += 2) {
+                vec4 g = textureGather(InputBuffer, (vec2(xy + ivec2(bx - 2, by - 2)) + 1.0) * inv);
+                t[by * 6 + bx] = g.w;
+                t[by * 6 + bx + 1] = g.z;
+                t[(by + 1) * 6 + bx] = g.x;
+                t[(by + 1) * 6 + bx + 1] = g.y;
+            }
+        }
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                float v = t[(dy + 2) * 6 + dx + 2];
+                lmin = min(lmin, v);
+                lmax = max(lmax, v);
+            }
+        }
+        if (usmOn) {
+            float inv2 = 1.0 / (2.0 * usmSigmaU * usmSigmaU);
+            float sum = 0.0, wsum = 0.0;
+            for (int dy = -2; dy <= 2; dy++) {
+                float wy = exp(-float(dy * dy) * inv2);
+                for (int dx = -2; dx <= 2; dx++) {
+                    float w = wy * exp(-float(dx * dx) * inv2);
+                    sum += t[(dy + 2) * 6 + dx + 2] * w;
+                    wsum += w;
+                }
+            }
+            float d = c - sum / wsum;
+            if (d < 0.0) d = max(d, -0.35 * c);
+            float mag = max(0.0, abs(d) - usmThreshU);
+            if (halo > 0.001 && d < 0.0) mag *= 1.0 - halo;
+            tot += sign(d) * mag * usmAmountU;
+        }
+        if (bilOn) {
+            float ss = bilSigmaSU > 0.0 ? bilSigmaSU : 0.5;
+            float sl = bilSigmaLU > 0.0 ? bilSigmaLU : 0.1;
+            float sv = 1.0 / (2.0 * ss * ss), lv = 1.0 / (2.0 * sl * sl);
+            float num = 0.0, den = 0.0;
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    float v = t[(dy + 2) * 6 + dx + 2];
+                    float w = exp(-float(dx * dx + dy * dy) * sv) * exp(-(v - c) * (v - c) * lv);
+                    num += v * w;
+                    den += w;
+                }
+            }
+            tot += (c - num / max(den, 0.0001)) * bilAmountU;
+        }
+    } else
+#endif
+    {
     for (int dy = -nb; dy <= nb; dy++) {
         for (int dx = -nb; dx <= nb; dx++) {
             float v = texelFetch(InputBuffer, clamp(xy + ivec2(dx, dy), ivec2(0), last), 0).r;
@@ -51,9 +117,6 @@ void main() {
             lmax = max(lmax, v);
         }
     }
-    float lc = lmax - lmin;
-    float halo = haloU;
-    float tot = 0.0;
     if (usmSigmaU > 0.0 && abs(usmAmountU) > 0.001) {
         int r = min(int(ceil(usmSigmaU * 3.5)), 8);
         float inv = 1.0 / (2.0 * usmSigmaU * usmSigmaU);
@@ -88,6 +151,8 @@ void main() {
         }
         tot += (c - num / max(den, 0.0001)) * bilAmountU;
     }
+    }
+    float lc = lmax - lmin;
     if (abs(gfLcU) > 0.001) {
         int d = downU > 0 ? downU : 1;
         vec2 ab;

@@ -8,6 +8,10 @@ precision highp sampler2D;
 //  modeU 0: horizontal box of (I, I^2), I from InputBuffer = Ya (full grid)   -> RG32F, reduced grid
 //  modeU 1: vertical box -> (a, b)                                           -> RG16F
 //  modeU 2: horizontal box of (a, b); modeU 3: vertical box of (a, b)        -> RG16F
+// P364: GATHER 1 - mode 0 on the full grid (downU 1) reads its 2r + 1 taps of a row as 2 x 2 textureGather blocks (the row's
+// pairs (x0, x0 + 1) in .w, .z): r + 1 reads instead of 2r + 1, the same values added in the same order; InputBuffer is
+// clamp-to-edge, so a pair past the border repeats the edge texel as clamp() did (bit-identical). 0 = the loop.
+#define GATHER 0
 uniform sampler2D InputBuffer;
 uniform int modeU;
 uniform int radiusU;                // box radius on the reduced grid; <= 0 -> 8
@@ -33,6 +37,18 @@ void main() {
         ivec2 lastFull = full - ivec2(1);
         int lastX = (full.x + d - 1) / d - 1;
         vec2 s = vec2(0.0);
+#if GATHER == 1
+        if (d == 1) {
+            vec2 inv = 1.0 / vec2(full);
+            for (int i = -r; i <= r; i += 2) {
+                vec4 g = textureGather(InputBuffer, (vec2(xy + ivec2(i, 0)) + 1.0) * inv);
+                s += vec2(g.w, g.w * g.w);
+                if (i < r) s += vec2(g.z, g.z * g.z);
+            }
+            Output = vec4(s / n, 0.0, 1.0);
+            return;
+        }
+#endif
         for (int i = -r; i <= r; i++) {
             float v = guide(ivec2(clamp(xy.x + i, 0, lastX), xy.y), d, lastFull);
             s += vec2(v, v * v);

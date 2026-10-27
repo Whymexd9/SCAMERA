@@ -9,6 +9,11 @@ precision highp sampler2D;
 //  modeU 0: ratio            (Estimate -> R16F)
 //  modeU 1: estimate update  (Estimate, Ratio -> R16F)
 //  modeU 2: estimate update + rl_blend with Observed (the stage output)
+// P364: PSF_HALF > 0 = psfHalfU known when the program is made (WhyLumaSharpen: 2 for both stages of the 1x grid, 4 on the 2x
+// grid): the convolutions read 2 x 2 blocks by textureGather - (H + 1)^2 reads instead of (2H + 1)^2 texelFetch (9 instead of 25)
+// - and add the same taps with the same weights in the same order (row by row, left to right). The planes are clamp-to-edge,
+// so a block past the border repeats the edge texels as clamp() did: the same sums bit for bit. 0 = the loop below.
+#define PSF_HALF 0
 uniform sampler2D Observed;         // Lobs: input of this stage
 uniform sampler2D Estimate;         // current estimate (the first iteration passes Observed)
 uniform sampler2D Ratio;            // modes 1, 2
@@ -27,6 +32,41 @@ out vec4 Output;
 // The kernel's blur buffers are half: round the convolutions to fp16 as OpenCL stores them.
 float h16(float x) { return unpackHalf2x16(packHalf2x16(vec2(x, 0.0))).x; }
 
+#if PSF_HALF > 0
+// P364: block (x0, y0) .. (x0 + 1, y0 + 1) of a gather at the centre of texel (x0 + 1, y0 + 1): .w (x0, y0), .z (x0 + 1, y0),
+// .x (x0, y0 + 1), .y (x0 + 1, y0 + 1); the rows by and by + 1 of a block row are added one after the other.
+float convolve(sampler2D tex, ivec2 xy, ivec2 last, int h) {
+    const int H = PSF_HALF;
+    vec2 inv = 1.0 / vec2(last + ivec2(1));
+    float s = 0.0;
+    for (int by = -H; by <= H; by += 2) {
+        vec2 lower[H + 1];
+        for (int k = 0; k <= H; k++) {
+            int bx = 2 * k - H;
+            vec4 g = textureGather(tex, (vec2(xy + ivec2(bx, by)) + 1.0) * inv);
+            float w = psfU[abs(by) * (H + 1) + abs(bx)];
+            if (w > 0.0) s += g.w * w;
+            if (bx < H) {
+                w = psfU[abs(by) * (H + 1) + abs(bx + 1)];
+                if (w > 0.0) s += g.z * w;
+            }
+            lower[k] = g.xy;
+        }
+        if (by < H) {
+            for (int k = 0; k <= H; k++) {
+                int bx = 2 * k - H;
+                float w = psfU[abs(by + 1) * (H + 1) + abs(bx)];
+                if (w > 0.0) s += lower[k].x * w;
+                if (bx < H) {
+                    w = psfU[abs(by + 1) * (H + 1) + abs(bx + 1)];
+                    if (w > 0.0) s += lower[k].y * w;
+                }
+            }
+        }
+    }
+    return h16(s);
+}
+#else
 float convolve(sampler2D tex, ivec2 xy, ivec2 last, int h) {
     float s = 0.0;
     for (int dy = -h; dy <= h; dy++) {
@@ -38,6 +78,7 @@ float convolve(sampler2D tex, ivec2 xy, ivec2 last, int h) {
     }
     return h16(s);
 }
+#endif
 
 void main() {
     ivec2 xy = ivec2(gl_FragCoord.xy);
