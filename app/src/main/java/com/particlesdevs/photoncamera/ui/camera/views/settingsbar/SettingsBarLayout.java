@@ -374,6 +374,14 @@ public class SettingsBarLayout extends LinearLayout {
                 if (e != null) apply(e, ShadeRows.valueAt(e, seekBar.getProgress()));
             }
         });
+        // P357: a double tap on the bar puts the setting's default back
+        com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(sliderBar, () -> {
+            ShadeCatalog.Entry e = openSliderEntry();
+            if (e != null && e.kind == ShadeCatalog.SLIDER && e.defaultValue instanceof Number) {
+                apply(e, ((Number) e.defaultValue).floatValue());
+                bindSliderCard();
+            }
+        });
         LayoutParams barParams = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
         barParams.topMargin = dp(6);
         sliderCard.addView(sliderBar, barParams);

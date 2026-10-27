@@ -597,7 +597,7 @@ public class ParamController implements Observer {
             Log.w(TAG, "setEV(): mPreviewRequestBuilder is null");
             return;
         }
-        builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, ev);
+        builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, CaptureController.ettrIndex(captureController, ev)); // P356: plus the ETTR boost
         captureController.rebuildPreviewBuilder();
     }
 
@@ -614,7 +614,7 @@ public class ParamController implements Observer {
     /** ISO or shutter changed: the EV lock may have changed, so the builder gets the effective EV before the rebuild. */
     private void syncEvLock() {
         CaptureRequest.Builder builder = captureController.mPreviewRequestBuilder;
-        if (builder != null && EV != 0) builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, effectiveEv());
+        if (builder != null && EV != 0) builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, CaptureController.ettrIndex(captureController, effectiveEv()));
     }
 
     /** P201: the hand-set ISO (0 = automatic). */

@@ -68,8 +68,12 @@ final class WhyAeGpu {
             double weight = totalWeight(w, h, mode), hmTotal = 0;
             for (double v : st.hm) hmTotal += v;
             // both histograms count every pixel once with its weight; the average metering's total is exact, the centre and
-            // spot weights may differ on a ring pixel where the GPU rounds the distance differently (a fused multiply-add)
-            boolean exact = st.tot == hmTotal && (mode < 1 ? st.tot == weight : Math.abs(st.tot - weight) <= weight * 1e-3);
+            // spot weights may differ on a ring pixel where the GPU rounds the distance differently (a fused multiply-add).
+            // P353: the Adreno 830 loses or doubles a few counts in about 1 shot of 5 (owner's log 2026-10-26: 4 of 21, at most
+            // 258 of 3145728 = 8e-5 in either histogram): within 1e-4 the percentiles do not move, and the CPU recount cost
+            // ~80 ms on those shots. Anything larger still goes to the CPU.
+            final double tolerance = mode < 1 ? weight * 1e-4 : weight * 1e-3;
+            boolean exact = Math.abs(st.tot - weight) <= tolerance && Math.abs(hmTotal - weight) <= tolerance;
             if (!exact) {
                 Log.w("SCAM_PIPELINE", "WHY AE GPU: histogram weight " + (long) st.tot + " / " + (long) hmTotal + " instead of "
                         + (long) weight + ", CPU statistics");

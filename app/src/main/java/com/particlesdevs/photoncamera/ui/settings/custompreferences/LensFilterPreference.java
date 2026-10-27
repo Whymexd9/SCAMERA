@@ -350,11 +350,11 @@ public class LensFilterPreference extends Preference {
             box.setVisibility(View.GONE);
         } else {
             box.setVisibility(View.VISIBLE);
-            box.addView(slider(c, Lang.t(c, "Сила", "Strength"), null, "lens_filter_strength", strength(prefs),
+            box.addView(slider(c, Lang.t(c, "Сила", "Strength"), null, "lens_filter_strength", strength(prefs), .5f,
                     v -> prefs.edit().putString(LensFilters.STRENGTH_KEY, String.valueOf(v)).apply()));
             String pn = LensFilters.paramName(c, id);
             if (pn != null)
-                box.addView(slider(c, pn, null, "lens_filter_param", tune(prefs, id).param, v -> {
+                box.addView(slider(c, pn, null, "lens_filter_param", tune(prefs, id).param, LensFilters.Tune.defaults(id).param, v -> {
                     LensFilters.Tune t = tune(prefs, id);
                     t.param = v / 100f;
                     storeTune(prefs, id, t);
@@ -382,7 +382,7 @@ public class LensFilterPreference extends Preference {
                 for (int control : LensFilters.CONTROLS) {
                     if ((fine & control) == 0) continue;
                     box.addView(slider(c, LensFilters.controlName(c, id, control), LensFilters.controlHint(c, id, control),
-                            "lens_filter_tune_" + control, tune(prefs, id).get(control), v -> {
+                            "lens_filter_tune_" + control, tune(prefs, id).get(control), LensFilters.Tune.defaults(id).get(control), v -> {
                                 LensFilters.Tune t = tune(prefs, id);
                                 t.set(control, v / 100f);
                                 storeTune(prefs, id, t);
@@ -402,8 +402,8 @@ public class LensFilterPreference extends Preference {
         void set(int value);
     }
 
-    /** The concept's .strength line: the name (and what it does), the slider, the value. */
-    private View slider(Context c, String label, @Nullable String hint, String tag, float value, OnValue store) {
+    /** The concept's .strength line: the name (and what it does), the slider, the value; a double tap puts {@code def} back (P357). */
+    private View slider(Context c, String label, @Nullable String hint, String tag, float value, float def, OnValue store) {
         LinearLayout row = new LinearLayout(c);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setMinimumHeight(UiTokens.dp(c, 52));
@@ -443,6 +443,14 @@ public class LensFilterPreference extends Preference {
             @Override public void onStartTrackingTouch(SeekBar s) { }
             @Override public void onStopTrackingTouch(SeekBar s) { }
         });
+        final Runnable reset = () -> {
+            final int p = Math.round(def * 100f);
+            bar.setProgress(p);
+            store.set(p);
+            redraw();
+        };
+        com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(bar, reset);
+        com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(row, reset);
         return row;
     }
 

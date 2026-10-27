@@ -4886,6 +4886,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             final boolean shown = !probe && com.particlesdevs.photoncamera.util.ThermalPolicy.viewfinderFrameDue(img.getTimestamp());
             if (shown) publishLiveRawFrame(img, result);
             if (!probe) nativeExposure(img, result);
+            if (!probe) ettrMeter(img, result); // P356
             vivoAeAudit(img, result); // P212h: the vivo HAL AE against our RAW meter (log only)
             if (mTextureView != null && (shown || probe)) mTextureView.requestRender();
             // P41: after an in-session sensor mode change (Xiaomi ISZ) frames of the old mode stay out of the ZSL ring
@@ -5503,6 +5504,78 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Log.i("SCAM_AE", "native AE trace camera " + mVivoSdkCameraId + ":" + mNativeAeTrace);
             mNativeAeTrace.setLength(0);
         }
+    }
+
+    /** P356: the ETTR boost of this session (capture/Ettr). */
+    private final Ettr mEttr = new Ettr();
+    /** P356: why the boost is held now (logged once a change), null while it runs. */
+    private String mEttrHeld = "off";
+
+    /**
+     * P356: the exposure compensation index of the request: the user's {@code userIndex} plus the ETTR boost of {@code cc}, in
+     * range (static: a controller without its session state - a test's mock - adds nothing).
+     */
+    public static int ettrIndex(CaptureController cc, int userIndex) {
+        final Ettr ettr = cc == null ? null : cc.mEttr;
+        final CameraCharacteristics c = cc == null ? null : cc.mCameraCharacteristics;
+        if (ettr == null || c == null || ettr.ev() <= 0f) return userIndex;
+        final Range<Integer> range = c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
+        final android.util.Rational step = c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
+        if (range == null || step == null) return userIndex;
+        return Ettr.index(userIndex, ettr.ev(), step.floatValue(), range.getLower(), range.getUpper());
+    }
+
+    /**
+     * P356 ETTR: meters a live RAW frame now and then and moves the boost (Ettr); the request gets the user's compensation plus it,
+     * the ISP viewfinder the matching display gain. Off (the switch, a hand-set ISO / shutter, the own native AE, a vivo SDK
+     * session, a shot in progress): no boost.
+     */
+    private void ettrMeter(Image img, TotalCaptureResult result) {
+        final String held = !PreferenceKeys.isEttr() ? "off" : mNativeAe != null ? "own native AE" : mVivoSdkCapture != null ? "vivo SDK"
+                : paramController.manualIsoValue() != 0 || paramController.manualPreviewShutterNs() != 0 ? "hand-set exposure" : null;
+        if (held != null && !held.equals(mEttrHeld)) Log.i("SCAM_AE", "ETTR held: " + held);
+        mEttrHeld = held;
+        if (held != null) {
+            if (mEttr.reset()) ettrApply(held);
+            return;
+        }
+        if (mShotInProgress) return; // the series keeps the boost of the press
+        if (!mEttr.due()) return;
+        try {
+            CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
+            if (c == null) c = mCameraCharacteristics;
+            final com.particlesdevs.photoncamera.processing.RawLevels.Levels levels =
+                    com.particlesdevs.photoncamera.processing.RawLevels.current(c, result);
+            float black = 0f;
+            for (float b : levels.black) black += b / levels.black.length;
+            final Image.Plane plane = img.getPlanes()[0];
+            final float p = Ettr.p999(plane.getBuffer(), img.getWidth(), img.getHeight(), plane.getRowStride(), black, levels.white, 4);
+            if (Float.isNaN(p)) return;
+            final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+            final Range<Integer> isoRange = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+            // room: the AE still lengthens the shutter (below 4x the base ISO; above it a boost would only raise the ISO, no light)
+            final boolean room = iso == null || isoRange == null || iso < 4 * isoRange.getLower();
+            final CaptureRequest.Builder b = mPreviewRequestBuilder;
+            final Integer now = b == null ? null : b.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
+            final boolean changed = mEttr.update(p, room);
+            if (changed || now == null || now != ettrIndex(this, paramController.effectiveEv()))
+                ettrApply(String.format(java.util.Locale.ROOT, "p99.9 %.3f iso %s room %b", p, iso, room));
+        } catch (RuntimeException e) {
+            Log.w("SCAM_AE", "ETTR meter: " + e);
+        }
+    }
+
+    private void ettrApply(String why) {
+        final CaptureRequest.Builder b = mPreviewRequestBuilder;
+        if (b == null) return;
+        final int user = paramController.effectiveEv(), index = ettrIndex(this, user);
+        b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, index);
+        final CameraCharacteristics c = mCameraCharacteristics;
+        final android.util.Rational step = c == null ? null : c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
+        final float shown = step == null ? 0f : (index - user) * step.floatValue();
+        com.particlesdevs.photoncamera.ui.camera.views.viewfinder.ViewfinderGain.setDisplayEv(shown);
+        Log.i("SCAM_AE", String.format(java.util.Locale.ROOT, "ETTR boost %.2f EV (index %d, user %d): %s", shown, index, user, why));
+        rebuildPreviewBuilder();
     }
 
     /** P212c: the user's exposure compensation of the viewfinder request (EV). */
@@ -7926,6 +7999,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                     SCAM_PROCESSING.execute(() -> {
                                         com.particlesdevs.photoncamera.processing.ShotTimeline.attach(shotTimeline);
                                         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("proc");
+                                        com.particlesdevs.photoncamera.util.ThermalPolicy.processing(true); // P353: the viewfinder tones less meanwhile
                                         try {
                                             com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey(shotMosaicKey, shotDeclaredBlock);
                                             saver.runRaw(shotCharacteristics, shotResult, shotRequest,
@@ -7934,6 +8008,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                             Log.e(TAG, "runRaw:" + Log.getStackTraceString(e));
                                             cameraEventsListener.onProcessingError(e.getLocalizedMessage());
                                         } finally {
+                                            com.particlesdevs.photoncamera.util.ThermalPolicy.processing(false);
                                             sScamPending.decrementAndGet();
                                             // W1.0: the stage times of the shot in one line, after it was saved.
                                             com.particlesdevs.photoncamera.processing.ShotTimeline.print();

@@ -152,6 +152,12 @@ public final class LutTray {
             @Override public void onStartTrackingTouch(SeekBar s) { }
             @Override public void onStopTrackingTouch(SeekBar s) { bindPill(); }
         });
+        // P357: a double tap puts the default back (the settings' 100 %)
+        com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(strength, () -> {
+            strength.setProgress(100);
+            settings().set(SettingsManager.SCOPE_GLOBAL, FilmLut.STRENGTH_KEY, "100");
+            bindPill();
+        });
         tray.setVisibility(View.GONE);
         bindPill();
     }
@@ -183,6 +189,11 @@ public final class LutTray {
             }
             @Override public void onStartTrackingTouch(SeekBar s) { }
             @Override public void onStopTrackingTouch(SeekBar s) { }
+        });
+        // P357: a double tap puts the default (0) back
+        com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(bar, () -> {
+            bar.setProgress(100);
+            settings().set(SettingsManager.SCOPE_GLOBAL, key, "0");
         });
         tray.addView(r, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return bar;

@@ -172,6 +172,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
         try {
             final String page = arg(PAGE);
             if ("shot".equals(page)) renderShot();
+            else if ("pipeline".equals(page)) renderPipeline();
+            else if ("sandbox".equals(page)) renderSandbox();
             else if ("group".equals(page)) renderGroup();
             else if ("result".equals(page)) renderResult();
             else renderList();
@@ -193,16 +195,75 @@ public class ScamLabFragment extends ModuleConceptFragment {
         caption(Lang.t(getContext(), "Снимки · Download/SCAMERA/Lab", "Shots · Download/SCAMERA/Lab"));
         if (shots.isEmpty()) {
             note(Lang.t(getContext(), "Пока нет снимков. Включите переключатель выше и сделайте снимок SHDR.", "No shots yet. Turn on the switch above and take an SHDR shot."));
-            return;
+        } else {
+            LinearLayout card = card();
+            boolean first = true;
+            for (File dir : shots) {
+                if (!first) divider(card);
+                first = false;
+                card.addView(shotRow(dir));
+            }
+            note(Lang.t(getContext(), "Удерживайте снимок, чтобы удалить его (серия, параметры и превью).", "Hold a shot to delete it (burst, parameters and preview)."));
         }
+        keptSeries();
+    }
+
+    /**
+     * P359 (owner, 2026-10-27: «Дай возможность в лаборатории использовать старые бурсты с новой обработкой/пайплайном»): the RAW
+     * series «Сохранять RAW-серию» kept in Download/SCAMERA, opened in the lab without a copy (ScamLab.importSeries).
+     */
+    private void keptSeries() {
+        final List<File> kept = ScamLab.keptSeries();
+        if (kept.isEmpty()) return;
+        caption(Lang.t(getContext(), "Сохранённые RAW-серии · Download/SCAMERA", "Kept RAW series · Download/SCAMERA"));
         LinearLayout card = card();
         boolean first = true;
-        for (File dir : shots) {
+        for (File f : kept) {
             if (!first) divider(card);
             first = false;
-            card.addView(shotRow(dir));
+            final boolean own = ScamLab.keptMeta(f) != null;
+            LinearLayout r = row();
+            r.setPadding(dp(12), dp(12), dp(12), dp(12));
+            r.setMinimumHeight(dp(60));
+            LinearLayout labels = column();
+            TextView head = text(f.getName(), 14.5f, TEXT);
+            com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens.title(head);
+            labels.addView(head);
+            TextView sub = text(size(f.length()) + " · " + (own ? Lang.t(getContext(), "с параметрами снимка", "with its shot's parameters")
+                    : Lang.t(getContext(), "без параметров: цвет по снимку-образцу", "no parameters: colour from a template shot")), 12, SettingsStyle.SUMMARY);
+            labels.addView(sub, space(-1, -2, 4));
+            r.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+            r.addView(text(Lang.t(getContext(), "Открыть", "Open"), 14, accent));
+            r.setTag("lab_series_" + f.getName());
+            r.setFocusable(true);
+            r.setOnClickListener(v -> {
+                final Context app = requireContext().getApplicationContext();
+                Toast.makeText(app, Lang.t(app, "Открываю серию…", "Opening the series…"), Toast.LENGTH_SHORT).show();
+                new Thread(() -> {
+                    try {
+                        final File dir = ScamLab.importSeries(f);
+                        main.post(() -> {
+                            if (root == null || !isAdded()) return;
+                            Bundle a = new Bundle();
+                            a.putString(PAGE, "shot");
+                            a.putString(DIR, dir.getAbsolutePath());
+                            open(of(a));
+                        });
+                    } catch (Exception e) {
+                        main.post(() -> {
+                            if (getContext() == null) return;
+                            new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                                    .setTitle(Lang.t(getContext(), "Серию не открыть", "The series cannot be opened"))
+                                    .setMessage(String.valueOf(e.getMessage()))
+                                    .setPositiveButton(android.R.string.ok, null).show();
+                        });
+                    }
+                }, "scam-lab-import").start();
+            });
+            card.addView(r);
         }
-        note(Lang.t(getContext(), "Удерживайте снимок, чтобы удалить его (серия, параметры и превью).", "Hold a shot to delete it (burst, parameters and preview)."));
+        note(Lang.t(getContext(), "Серия открывается без копирования: в Lab появляется папка со ссылкой на файл. Серии, сохранённые этой версией, несут параметры своего снимка; более старые берут цвет и геометрию у последнего снимка лаборатории того же размера кадра (баланс белого — по самой серии) и обрабатываются с текущими настройками.",
+                "A series opens without a copy: Lab gets a folder that names the file. Series kept by this version carry their shot's parameters; older ones take the colour and geometry of the newest lab shot of the same frame size (the white balance from the series itself) and are processed with the settings of now."));
     }
 
     private void labSwitch() {
@@ -252,7 +313,9 @@ public class ScamLabFragment extends ModuleConceptFragment {
         String sub;
         try {
             ScamLabRun.Shot s = ScamLabRun.Shot.load(dir);
-            sub = s.meta.optString("device", "") + " · " + s.width + "×" + s.height + " · " + s.frames + Lang.t(getContext(), " кадр.", " frames") + " · " + size(s.bytes());
+            sub = s.meta.optString("device", "") + " · " + s.width + "×" + s.height + " · " + s.frames + Lang.t(getContext(), " кадр.", " frames") + " · " + size(s.bytes())
+                    + (s.meta.has("source") ? " · " + s.meta.optString("source") : "")
+                    + (s.now ? Lang.t(getContext(), " · текущие настройки", " · settings of now") : "");
         } catch (Exception e) {
             sub = Lang.t(getContext(), "Не читается: ", "Unreadable: ") + e.getMessage();
         }
@@ -387,16 +450,123 @@ public class ScamLabFragment extends ModuleConceptFragment {
         note(share == 1 ? Lang.t(getContext(), "Весь кадр склеивается так же долго, как при съёмке (50 Мп — минуты на каждую сторону).", "The whole frame merges as long as at the shot (50 MP: minutes a side).")
                 : Lang.t(getContext(), "Нажмите на фото, чтобы передвинуть фрагмент. Экспозиция, тон и засветы считаются по всему кадру, как на снимке; для снимков без сохранённой статистики она считается один раз при первом сравнении.",
                 "Tap the photo to move the fragment. Exposure, tone and highlights are measured on the whole frame, as in the shot; a shot without saved statistics measures them once at its first comparison."));
+        // P359: the settings the lab starts from (side A and every B): the shot's, or today's
+        caption(Lang.t(getContext(), "Настройки обработки", "Processing settings"));
+        LinearLayout base = row();
+        final String[] baseNames = {Lang.t(getContext(), "Как снято", "As shot"), Lang.t(getContext(), "Текущие", "Of now")};
+        for (int i = 0; i < 2; i++) {
+            final boolean now = i == 1;
+            TextView b = button(baseNames[i], s.now == now, () -> {
+                if (s.now == now) return;
+                ScamLab.settingsNow(s.dir, now);
+                ScamLabRun.forget();
+                render();
+            });
+            b.setTag(now ? "lab_settings_now" : "lab_settings_shot");
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
+            if (i == 0) lp.rightMargin = dp(8);
+            base.addView(b, lp);
+        }
+        body.addView(base, space(-1, -2, 8));
+        note(s.now ? Lang.t(getContext(), "A и B начинаются с настроек приложения сейчас (и строк scam_dev.txt сейчас): видно, как серия выглядит с сегодняшними настройками. Склейка и обработка — всегда этой версии приложения.",
+                "A and B start from the app's settings of now (and today's scam_dev.txt lines): how the series looks with today's settings. The merge and processing are always this version's.")
+                : Lang.t(getContext(), "A и B начинаются с настроек, с которыми сделан снимок. Склейка и обработка — всегда этой версии приложения, так что старая серия проходит через новый пайплайн.",
+                "A and B start from the settings the shot was taken with. The merge and processing are always this version's, so an old series goes through the new pipeline."));
+        if (s.templated)
+            note(Lang.t(getContext(), "Серия сохранена без параметров своего снимка: цвет и геометрия взяты у снимка «" + s.meta.optString("template") + "», баланс белого — серый мир по самой серии. Цвет может отличаться от снятого.",
+                    "The series was kept without its shot's parameters: the colour and geometry come from the shot «" + s.meta.optString("template") + "», the white balance from the grey world of the series. The colour may differ from the shot's."));
+        if (new File(s.dir, ScamLab.PREVIEW).isFile())
+            navigation("⇄", Lang.t(getContext(), "Тогда и сейчас", "Then and now"), Lang.t(getContext(),
+                    "Фото снимка (обработка той версии) рядом с той же серией, склеенной и обработанной сейчас", "The shot's photo (that version's processing) beside the same series merged and processed now"),
+                    () -> {
+                        Bundle a = new Bundle();
+                        a.putString(PAGE, "pipeline");
+                        a.putString(DIR, arg(DIR));
+                        open(of(a));
+                    });
+        sandboxCard(s);
+        favouritesCard(s);
         caption(Lang.t(getContext(), "Что сравнить", "What to compare"));
         final PreferenceScreen all = tree();
-        for (String key : GROUPS) {
+        // P355: the section opened last comes first (as the reference app keeps its last category)
+        final String last = labStore(requireContext()).getString(LAST_GROUP, null);
+        final List<String> order = new ArrayList<>(Arrays.asList(GROUPS));
+        if (last != null && order.remove(last)) order.add(0, last);
+        for (String key : order) {
             final Preference g = all.findPreference(key);
             if (!(g instanceof PreferenceGroup)) continue;
-            navigation("☷", String.valueOf(g.getTitle()), g.getSummary() == null ? null : String.valueOf(g.getSummary()), () -> openGroup(key));
+            final String sub = key.equals(last) ? Lang.t(getContext(), "Открыт последним", "Opened last")
+                    : g.getSummary() == null ? null : String.valueOf(g.getSummary());
+            navigation(key.equals(last) ? "↻" : "☷", String.valueOf(g.getTitle()), sub, () -> openGroup(key));
         }
         // the scam_dev.txt lines that change the photo (the settings page builds its rows from the file, not from the tree)
         navigation("☷", devTitle(), Lang.t(getContext(), "Строки scam_dev.txt склейки и обработки, которые меняют фото",
                 "The merge and processing lines of scam_dev.txt that change the photo"), () -> openGroup(DEV_GROUP));
+    }
+
+    /** P359: «Тогда и сейчас»: the shot's photo (A) and the series merged and processed now (B), on the shot's fragment. */
+    private void renderPipeline() {
+        page(Lang.t(getContext(), "Тогда и сейчас", "Then and now"), null);
+        final ScamLabRun.Shot s = shot();
+        if (s == null) return;
+        subtitle.setText(when(s.dir.getName()) + (s.now ? Lang.t(getContext(), " · текущие настройки", " · settings of now") : Lang.t(getContext(), " · настройки снимка", " · the shot's settings")));
+        subtitle.setVisibility(View.VISIBLE);
+        final String id = s.dir.getAbsolutePath();
+        final int[] crop = shares.containsKey(id) && shares.get(id) == 1 ? null : crops.containsKey(id) ? crops.get(id) : s.middleFragment();
+        final Job job = new Job(s, crop, PIPELINE, new java.util.TreeMap<>(), new java.util.TreeMap<>());
+        start(job);
+        final ScamLabRun.Result r;
+        final boolean busy;
+        synchronized (ScamLabFragment.class) {
+            busy = running != null || next != null;
+            r = shown != null && shown.id.equals(job.id) ? shownResult : null;
+        }
+        if (r == null) {
+            LinearLayout box = column();
+            box.setGravity(Gravity.CENTER);
+            box.setPadding(0, dp(40), 0, dp(40));
+            if (runError == null) {
+                ProgressBar bar = new ProgressBar(requireContext());
+                bar.setIndeterminateTintList(ColorStateList.valueOf(accent));
+                box.addView(bar, new LinearLayout.LayoutParams(dp(48), dp(48)));
+            }
+            TextView st = text(runError != null ? runError : runStage == null ? Lang.t(getContext(), "Подготовка…", "Preparing…") : runStage, 14,
+                    runError != null ? SettingsStyle.WARN : MUTED);
+            st.setGravity(Gravity.CENTER);
+            st.setTag("lab_status");
+            box.addView(st, space(-2, -2, 14));
+            body.addView(box, new LinearLayout.LayoutParams(-1, -2));
+        } else {
+            final String aText = Lang.t(getContext(), "A · тогда (фото снимка)", "A · then (the shot's photo)"), bText = Lang.t(getContext(), "B · сейчас", "B · now");
+            LabCompareView compare = new LabCompareView(requireContext());
+            compare.setTag("lab_compare_view");
+            compare.setAccent(accent);
+            compare.setSpace(r.b.photo.getWidth(), r.b.photo.getHeight());
+            compare.setPair(r.a.photo, r.b.photo, aText, bText);
+            final int height = Math.round(getResources().getDisplayMetrics().heightPixels * .55f);
+            body.addView(compare, space(-1, height, 6));
+            LinearLayout sides = row();
+            final TextView[] b = new TextView[3];
+            final String[] names = {Lang.t(getContext(), "До / после", "Before / after"), "A", "B"};
+            for (int i = 0; i < 3; i++) {
+                final int m = i;
+                b[i] = button(names[i], i == 0, () -> {
+                    if (m == 0) compare.setPair(r.a.photo, r.b.photo, aText, bText);
+                    else compare.setSingle(m == 1 ? r.a.photo : r.b.photo, m == 1 ? aText : bText);
+                    for (int k = 0; k < 3; k++) {
+                        b[k].setTextColor(k == m ? 0xFF15131D : accent);
+                        b[k].setBackground(shape(k == m ? accent : BG, k == m ? 0 : 0xFF626974, 10));
+                    }
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, i == 0 ? 1.6f : 1f);
+                if (i < 2) lp.rightMargin = dp(8);
+                sides.addView(b[i], lp);
+            }
+            body.addView(sides, space(-1, -2, 8));
+            note(Lang.t(getContext(), "A — фото, которое сохранила версия приложения при съёмке (не больше 1600 пикселей по стороне, поэтому на фрагменте оно мягче). B — та же серия сейчас: склейка " + r.b.mergeMs + " мс, обработка " + r.b.postMs + " мс.",
+                    "A is the photo the app's version saved at the shot (at most 1600 px a side, so softer on a fragment). B is the same series now: merge " + r.b.mergeMs + " ms, processing " + r.b.postMs + " ms."));
+            if (busy) note(runStage == null ? Lang.t(getContext(), "Пересчёт…", "Updating…") : runStage);
+        }
     }
 
     private String devTitle() {
@@ -411,6 +581,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
     }
 
     private void openGroup(String key) {
+        labStore(requireContext()).edit().putString(LAST_GROUP, key).apply();
         Bundle a = new Bundle();
         a.putString(PAGE, "group");
         a.putString(DIR, arg(DIR));
@@ -1023,6 +1194,18 @@ public class ScamLabFragment extends ModuleConceptFragment {
             labels.addView(w, space(-1, -2, 6));
         }
         r.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+        // P355: a star puts the setting into «Избранное» at the top of every shot
+        final boolean fav = favourites(requireContext()).contains(compared);
+        final TextView star = text(fav ? "★" : "☆", 22, fav ? accent : MUTED);
+        star.setGravity(Gravity.CENTER);
+        star.setTag("lab_fav_" + compared);
+        star.setContentDescription(Lang.t(getContext(), "В избранное", "Favourite"));
+        star.setOnClickListener(v -> {
+            final boolean on = toggleFavourite(requireContext(), compared);
+            star.setText(on ? "★" : "☆");
+            star.setTextColor(on ? accent : MUTED);
+        });
+        r.addView(star, new LinearLayout.LayoutParams(dp(40), dp(40)));
         r.addView(text("›", 25, MUTED));
         r.setTag("lab_setting_" + key);
         r.setFocusable(true);
@@ -1039,6 +1222,11 @@ public class ScamLabFragment extends ModuleConceptFragment {
     // ───── The comparison: A and B, each setting of the page with its own controls ─────
 
     /** A comparison: the shot, the fragment and the settings of each side. */
+    /** P359: the key of «Тогда и сейчас» (a Job that compares the shot's photo with the series processed now). */
+    static final String PIPELINE = "lab:pipeline";
+    /** P355: the key of the sandbox page's comparison. */
+    static final String SANDBOX_KEY = "lab:sandbox";
+
     private static final class Job {
         final String id, page;
         final ScamLabRun.Shot shot;
@@ -1050,7 +1238,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
             this.crop = crop;
             this.a = a;
             this.b = b;
-            page = shot.dir.getAbsolutePath() + "|" + (crop == null ? "whole" : java.util.Arrays.toString(crop)) + "|" + key;
+            // P359: a shot's settings of now (their key) or as shot are another page
+            page = shot.dir.getAbsolutePath() + "|" + shot.nowKey + "|" + (crop == null ? "whole" : java.util.Arrays.toString(crop)) + "|" + key;
             id = page + "|" + a + "|" + b;
         }
     }
@@ -1176,6 +1365,15 @@ public class ScamLabFragment extends ModuleConceptFragment {
      */
     private java.util.TreeMap<String, Object> overrides(String side, String key, ScamLabRun.Shot s) {
         final java.util.TreeMap<String, Object> m = new java.util.TreeMap<>();
+        // P355: side B carries the sandbox's pinned values (this page's own keys set below win)
+        if ("b".equals(side)) m.putAll(sandbox(s));
+        m.putAll(pageOverrides(side, key, s));
+        return m;
+    }
+
+    /** The overrides of a side from this page's keys only (no sandbox). */
+    private java.util.TreeMap<String, Object> pageOverrides(String side, String key, ScamLabRun.Shot s) {
+        final java.util.TreeMap<String, Object> m = new java.util.TreeMap<>();
         final Map<String, ?> stored = prefs().getAll();
         final Map<String, LensFilters.Tune> tunes = new HashMap<>();
         for (String k : pageKeys(key, s)) {
@@ -1294,6 +1492,32 @@ public class ScamLabFragment extends ModuleConceptFragment {
                     "On a fragment the exposure and the tone come from the whole frame's statistics, measured with the shot's colour and gain clamp: they do not take this setting in, so the difference on a fragment may not be the photo's. Exactly: «Whole frame»."));
         devNotes(key, s, r);
         if (r != null) info(main, r, s);
+        // P355: the sandbox - B of several settings at once
+        final java.util.TreeMap<String, Object> box = sandbox(s);
+        if (!box.isEmpty())
+            note(Lang.t(getContext(), "B включает песочницу: " + box.size() + " закреплённых настроек (A — как снято).",
+                    "B includes the sandbox: " + box.size() + " pinned settings (A as shot)."));
+        LinearLayout tools = row();
+        TextView pin = button(Lang.t(getContext(), "📌 В песочницу", "📌 Pin to sandbox"), false, () -> {
+            final java.util.TreeMap<String, Object> b = pageOverrides("b", key, s);
+            b.entrySet().removeIf(e -> java.util.Objects.equals(String.valueOf(e.getValue()), String.valueOf(pageOverrides("a", key, s).get(e.getKey())))
+                    && pageOverrides("a", key, s).containsKey(e.getKey()));
+            if (b.isEmpty()) {
+                Toast.makeText(requireContext(), Lang.t(getContext(), "B совпадает с A: закреплять нечего", "B equals A: nothing to pin"), Toast.LENGTH_SHORT).show();
+                return;
+            }
+            box.putAll(b);
+            saveSandbox(s, box);
+            Toast.makeText(requireContext(), Lang.t(getContext(), "В песочнице: ", "In the sandbox: ") + box.size(), Toast.LENGTH_SHORT).show();
+        });
+        pin.setTag("lab_pin");
+        LinearLayout.LayoutParams pl = new LinearLayout.LayoutParams(0, -2, 1);
+        pl.rightMargin = dp(8);
+        tools.addView(pin, pl);
+        TextView jpeg = button(Lang.t(getContext(), "Сохранить B (JPEG)", "Save B (JPEG)"), false, () -> saveJpeg(s, key, r));
+        jpeg.setTag("lab_save_b");
+        tools.addView(jpeg, new LinearLayout.LayoutParams(0, -2, 1));
+        body.addView(tools, space(-1, -2, 12));
         final List<String> keys = pageKeys(key, s);
         boolean devOnly = true;
         for (String k : keys) devOnly &= k.startsWith(DEV);
@@ -1307,28 +1531,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 : module != null ? Lang.t(getContext(), "Сохранить B в «" + FullResProfiles.label(module) + "»", "Keep B in “" + FullResProfiles.label(module) + "”")
                 : Lang.t(getContext(), "Сохранить B в настройки", "Keep B in the settings");
         TextView keep = button(keepText, false, () -> {
-            final java.util.TreeMap<String, Object> b = overrides("b", key, s);
-            boolean prefsWritten = false, devFailed = false;
-            if (module != null && !module.equals(PreferenceKeys.profiles().editing())) PreferenceKeys.profiles().activate(module);
-            final SharedPreferences.Editor e = prefs().edit();
-            for (Map.Entry<String, Object> en : b.entrySet()) {
-                final Object v = en.getValue();
-                if (en.getKey().startsWith(DEV)) {
-                    final Float n = ScamLabRun.devNumber(v);
-                    devFailed |= !ScamDevFile.set(requireContext().getApplicationContext(), en.getKey().substring(DEV.length()),
-                            n == null ? null : ScamDevFile.number(n));
-                    continue;
-                }
-                prefsWritten = true;
-                if (v == null) e.remove(en.getKey());
-                else if (v instanceof Boolean) e.putBoolean(en.getKey(), (Boolean) v);
-                else if (v instanceof java.util.Set) {
-                    final java.util.Set<String> set = new java.util.HashSet<>();
-                    for (Object x : (java.util.Set<?>) v) set.add(String.valueOf(x));
-                    e.putStringSet(en.getKey(), set);
-                } else e.putString(en.getKey(), String.valueOf(v));
-            }
-            if (prefsWritten) e.apply();
+            // P355: this page's B only (the sandbox has its own «Сохранить всё»)
+            final boolean devFailed = !keepValues(pageOverrides("b", key, s), module);
             String done = "«" + main.title + "»: " + label(main, get("b", key));
             if (module != null) done += " → " + FullResProfiles.label(module);
             if (devFailed) done = Lang.t(getContext(), "Не удалось записать ", "Could not write ") + ScamDevFile.SHOWN;
@@ -1336,6 +1540,248 @@ public class ScamLabFragment extends ModuleConceptFragment {
         });
         keep.setTag("lab_keep_value");
         body.addView(keep, space(-1, -2, 12));
+    }
+
+    /** Writes {@code b} into the settings ({@code module}'s profile) and its scam_dev.txt lines into the file; false: the file failed. */
+    private boolean keepValues(Map<String, Object> b, @Nullable String module) {
+        boolean prefsWritten = false, devFailed = false;
+        if (module != null && !module.equals(PreferenceKeys.profiles().editing())) PreferenceKeys.profiles().activate(module);
+        final SharedPreferences.Editor e = prefs().edit();
+        for (Map.Entry<String, Object> en : b.entrySet()) {
+            final Object v = en.getValue();
+            if (en.getKey().startsWith(DEV)) {
+                final Float n = ScamLabRun.devNumber(v);
+                devFailed |= !ScamDevFile.set(requireContext().getApplicationContext(), en.getKey().substring(DEV.length()),
+                        n == null ? null : ScamDevFile.number(n));
+                continue;
+            }
+            prefsWritten = true;
+            if (v == null) e.remove(en.getKey());
+            else if (v instanceof Boolean) e.putBoolean(en.getKey(), (Boolean) v);
+            else if (v instanceof java.util.Set) {
+                final java.util.Set<String> set = new java.util.HashSet<>();
+                for (Object x : (java.util.Set<?>) v) set.add(String.valueOf(x));
+                e.putStringSet(en.getKey(), set);
+            } else e.putString(en.getKey(), String.valueOf(v));
+        }
+        if (prefsWritten) e.apply();
+        return !devFailed;
+    }
+
+    // ───── P355 (owner, 2026-10-27: «Сделай лабораторию более удобной и практичной, посмотри как сделано в арк камере»): favourites,
+    // the last section, a sandbox of several settings at once, B saved as a JPEG ─────
+
+    static final String LAB_STORE = "scam_lab", FAVOURITES = "favourites", LAST_GROUP = "last_group", SANDBOX_FILE = "sandbox.json";
+    /** The sandbox of each shot (folder path -> pinned B values), read from its folder once. */
+    private static final Map<String, java.util.TreeMap<String, Object>> SANDBOXES = new HashMap<>();
+
+    /** The lab's own small store (not the settings: no backup, no module profile). */
+    static SharedPreferences labStore(Context c) {
+        return c.getApplicationContext().getSharedPreferences(LAB_STORE, Context.MODE_PRIVATE);
+    }
+
+    /** The favourite settings, in the order they were starred. */
+    static List<String> favourites(Context c) {
+        final String v = labStore(c).getString(FAVOURITES, "");
+        final List<String> out = new ArrayList<>();
+        for (String k : v.split("\n")) if (!k.isEmpty()) out.add(k);
+        return out;
+    }
+
+    /** Stars or unstars {@code key}; true when it is a favourite now. */
+    static boolean toggleFavourite(Context c, String key) {
+        final List<String> f = favourites(c);
+        final boolean on = !f.remove(key);
+        if (on) f.add(key);
+        labStore(c).edit().putString(FAVOURITES, android.text.TextUtils.join("\n", f)).apply();
+        return on;
+    }
+
+    /** The shot's sandbox (pinned B values: setting key -> value, null = unset). */
+    static synchronized java.util.TreeMap<String, Object> sandbox(ScamLabRun.Shot s) {
+        final String id = s.dir.getAbsolutePath();
+        java.util.TreeMap<String, Object> box = SANDBOXES.get(id);
+        if (box == null) {
+            box = readSandbox(new File(s.dir, SANDBOX_FILE));
+            SANDBOXES.put(id, box);
+        }
+        return box;
+    }
+
+    static java.util.TreeMap<String, Object> readSandbox(File f) {
+        final java.util.TreeMap<String, Object> box = new java.util.TreeMap<>();
+        if (!f.isFile()) return box;
+        try {
+            final org.json.JSONObject o = new org.json.JSONObject(new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8));
+            for (java.util.Iterator<String> it = o.keys(); it.hasNext(); ) {
+                final String k = it.next();
+                final org.json.JSONArray e = o.getJSONArray(k);
+                final String t = e.getString(0);
+                box.put(k, "n".equals(t) ? null : "b".equals(t) ? (Object) e.getBoolean(1) : e.getString(1));
+            }
+        } catch (Exception e) {
+            com.particlesdevs.photoncamera.util.Log.w("SCAM_LAB", "sandbox not read: " + e);
+        }
+        return box;
+    }
+
+    static synchronized void saveSandbox(ScamLabRun.Shot s, java.util.TreeMap<String, Object> box) {
+        SANDBOXES.put(s.dir.getAbsolutePath(), box);
+        final File f = new File(s.dir, SANDBOX_FILE);
+        try {
+            if (box.isEmpty()) {
+                f.delete();
+                return;
+            }
+            final org.json.JSONObject o = new org.json.JSONObject();
+            for (Map.Entry<String, Object> e : box.entrySet()) {
+                final Object v = e.getValue();
+                o.put(e.getKey(), new org.json.JSONArray().put(v == null ? "n" : v instanceof Boolean ? "b" : "s").put(v == null ? "" : v instanceof Boolean ? v : String.valueOf(v)));
+            }
+            java.nio.file.Files.write(f.toPath(), o.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            com.particlesdevs.photoncamera.util.Log.w("SCAM_LAB", "sandbox not written: " + e);
+        }
+    }
+
+    /** «Избранное»: the starred settings of every shot, at the top of a shot's page. */
+    private void favouritesCard(ScamLabRun.Shot s) {
+        final List<String> fav = favourites(requireContext());
+        if (fav.isEmpty()) return;
+        caption(Lang.t(getContext(), "Избранное", "Favourites"));
+        LinearLayout card = null;
+        for (String k : fav) {
+            final Spec sp = spec(k);
+            if (sp == null) continue;
+            if (card == null) card = card(); else divider(card);
+            card.addView(settingRow(k, sp.title, sp.summary, s));
+        }
+    }
+
+    /** «Песочница»: the pinned values of this shot, each removable, compared all at once and kept all at once. */
+    private void sandboxCard(ScamLabRun.Shot s) {
+        final java.util.TreeMap<String, Object> box = sandbox(s);
+        if (box.isEmpty()) return;
+        caption(Lang.t(getContext(), "Песочница · B из нескольких настроек", "Sandbox · B of several settings"));
+        LinearLayout card = card();
+        boolean first = true;
+        for (Map.Entry<String, Object> e : new java.util.TreeMap<>(box).entrySet()) {
+            if (!first) divider(card);
+            first = false;
+            final Spec sp = spec(e.getKey());
+            LinearLayout r = row();
+            r.setPadding(dp(12), dp(10), dp(6), dp(10));
+            LinearLayout labels = column();
+            labels.addView(text(sp == null ? e.getKey() : sp.title, 14.5f, TEXT));
+            labels.addView(text(sp == null ? String.valueOf(e.getValue()) : label(sp, e.getValue()), 12, accent), space(-1, -2, 4));
+            r.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+            final TextView x = text("✕", 18, MUTED);
+            x.setGravity(Gravity.CENTER);
+            x.setTag("lab_unpin_" + e.getKey());
+            x.setOnClickListener(v -> {
+                box.remove(e.getKey());
+                saveSandbox(s, box);
+                ScamLabRun.forget();
+                render();
+            });
+            r.addView(x, new LinearLayout.LayoutParams(dp(40), dp(40)));
+            card.addView(r);
+        }
+        navigation("⇄", Lang.t(getContext(), "Сравнить песочницу", "Compare the sandbox"),
+                Lang.t(getContext(), "A — как снято, B — со всеми закреплёнными значениями", "A as shot, B with every pinned value"), () -> {
+                    Bundle a = new Bundle();
+                    a.putString(PAGE, "sandbox");
+                    a.putString(DIR, arg(DIR));
+                    open(of(a));
+                });
+    }
+
+    /** P355: the sandbox page - A as shot, B with every pinned value; keep them all or clear the sandbox. */
+    private void renderSandbox() {
+        page(Lang.t(getContext(), "Песочница", "Sandbox"), null);
+        final ScamLabRun.Shot s = shot();
+        if (s == null) return;
+        final java.util.TreeMap<String, Object> box = sandbox(s);
+        subtitle.setText(when(s.dir.getName()) + " · " + box.size() + Lang.t(getContext(), " настроек", " settings"));
+        subtitle.setVisibility(View.VISIBLE);
+        if (box.isEmpty()) {
+            note(Lang.t(getContext(), "Песочница пуста: на странице настройки нажмите «В песочницу».", "The sandbox is empty: press «Pin to sandbox» on a setting's page."));
+            return;
+        }
+        final String id = s.dir.getAbsolutePath();
+        final int[] crop = shares.containsKey(id) && shares.get(id) == 1 ? null : crops.containsKey(id) ? crops.get(id) : s.middleFragment();
+        final Job job = new Job(s, crop, SANDBOX_KEY, new java.util.TreeMap<>(), new java.util.TreeMap<>(box));
+        start(job);
+        final ScamLabRun.Result r;
+        synchronized (ScamLabFragment.class) {
+            r = shown != null && shown.id.equals(job.id) ? shownResult : null;
+        }
+        if (r == null) {
+            LinearLayout wait = column();
+            wait.setGravity(Gravity.CENTER);
+            wait.setPadding(0, dp(40), 0, dp(40));
+            if (runError == null) {
+                ProgressBar bar = new ProgressBar(requireContext());
+                bar.setIndeterminateTintList(ColorStateList.valueOf(accent));
+                wait.addView(bar, new LinearLayout.LayoutParams(dp(48), dp(48)));
+            }
+            TextView st = text(runError != null ? runError : runStage == null ? Lang.t(getContext(), "Подготовка…", "Preparing…") : runStage, 14,
+                    runError != null ? SettingsStyle.WARN : MUTED);
+            st.setGravity(Gravity.CENTER);
+            st.setTag("lab_status");
+            wait.addView(st, space(-2, -2, 14));
+            body.addView(wait, new LinearLayout.LayoutParams(-1, -2));
+        } else {
+            final String aText = Lang.t(getContext(), "A · как снято", "A · as shot"), bText = Lang.t(getContext(), "B · песочница", "B · sandbox");
+            LabCompareView compare = new LabCompareView(requireContext());
+            compare.setTag("lab_compare_view");
+            compare.setAccent(accent);
+            compare.setSpace(r.a.photo.getWidth(), r.a.photo.getHeight());
+            final int height = Math.round(getResources().getDisplayMetrics().heightPixels * .48f);
+            FrameLayout frame = new FrameLayout(requireContext());
+            frame.addView(compare, new FrameLayout.LayoutParams(-1, height));
+            body.addView(frame, space(-1, height, 6));
+            modes(r, compare, aText, bText);
+        }
+        final String module = keepModule(s);
+        TextView keepAll = button(module != null ? Lang.t(getContext(), "Сохранить всё в «" + FullResProfiles.label(module) + "»", "Keep all in “" + FullResProfiles.label(module) + "”")
+                : Lang.t(getContext(), "Сохранить всё в настройки", "Keep all in the settings"), true, () -> {
+            final boolean ok = keepValues(box, module);
+            Toast.makeText(requireContext(), ok ? Lang.t(getContext(), "Сохранено настроек: " + box.size(), "Settings kept: " + box.size())
+                    : Lang.t(getContext(), "Не удалось записать ", "Could not write ") + ScamDevFile.SHOWN, Toast.LENGTH_SHORT).show();
+        });
+        keepAll.setTag("lab_keep_all");
+        body.addView(keepAll, space(-1, -2, 12));
+        TextView clear = button(Lang.t(getContext(), "Очистить песочницу", "Clear the sandbox"), false, () -> {
+            saveSandbox(s, new java.util.TreeMap<>());
+            ScamLabRun.forget();
+            requireActivity().getOnBackPressedDispatcher().onBackPressed();
+        });
+        clear.setTag("lab_sandbox_clear");
+        body.addView(clear, space(-1, -2, 8));
+    }
+
+    /** P355: side B of a result as a JPEG in the shot's folder (the screen's size, at most 4096 px a side). */
+    private void saveJpeg(ScamLabRun.Shot s, String key, @Nullable ScamLabRun.Result r) {
+        if (r == null || r.b == null || r.b.photo == null || r.b.photo.isRecycled()) {
+            Toast.makeText(requireContext(), Lang.t(getContext(), "B ещё не готово", "B is not ready yet"), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String tag = key.replaceAll("[^A-Za-z0-9_]", "_").replaceFirst("^pref_scam_hybrid_", "");
+        final File out = new File(s.dir, "B_" + tag + "_" + new java.text.SimpleDateFormat("HHmmss", Locale.ROOT).format(new java.util.Date()) + ".jpg");
+        final android.graphics.Bitmap photo = r.b.photo;
+        final Context app = requireContext().getApplicationContext();
+        new Thread(() -> {
+            String msg;
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(out)) {
+                photo.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, o);
+                msg = Lang.t(app, "Сохранено: ", "Saved: ") + out.getAbsolutePath();
+            } catch (Exception e) {
+                msg = Lang.t(app, "Не удалось сохранить: ", "Saving failed: ") + e.getMessage();
+            }
+            final String m = msg;
+            main.post(() -> Toast.makeText(app, m, Toast.LENGTH_LONG).show());
+        }, "scam-lab-jpeg").start();
     }
 
     /**
@@ -1561,9 +2007,14 @@ public class ScamLabFragment extends ModuleConceptFragment {
                     "The burst's reference frame before the merge: one colour per 2×2 cell, grey-world balance.");
             // P344: the weights on a ramp with a plateau (ScamMergeStages.weight): white from 0.97 up, the noise-level dip cream
             case ScamMergeStages.RAW: return Lang.t(getContext(), "Карта реджекта до расширения: насколько клетка кадра совпала с базой. Белый — принята (0,97 и выше), кремовый и янтарный — разница на уровне шума, красный → чёрный — отклонена (движение, ошибка выравнивания, пересвет длинного кадра).",
-                    "Rejection map before the spread: how well the frame's cell matched the base. White accepted (0.97 and up), cream and amber a noise-level difference, red to black rejected (motion, misalignment, a clipped longer frame).");
+                    "Rejection map before the spread: how well the frame's cell matched the base. White accepted (0.97 and up), cream and amber a noise-level difference, red to black rejected (motion, misalignment, a clipped longer frame).")
+                    // P358: what the worker now dumps for the ultrashort and long frames
+                    + Lang.t(getContext(), " У сверхкороткого кадра («УК») — его карта годности: где он совпал с базой (движение и мерцание — чёрным). У длинного кадра его собственный пересвет не показан как отказ.",
+                    " For an ultrashort frame («US») its validity: where it matched the base (motion and flicker black). A long frame's own clipping is not drawn as rejection.");
             case ScamMergeStages.ROBUST: return Lang.t(getContext(), "Итоговый вес кадра в склейке: отказ растянут на клетки вокруг (5×5), учтены маска Bento и вес кадра. Белый — полный вес (0,97 и выше), кремовый → красный — вес снижен, чёрный — кадр здесь не вошёл.",
-                    "The frame's final weight in the merge: rejection spread over the 5×5 cells around, Bento and the frame weight applied. White full weight (0.97 and up), cream to red a lower weight, black not merged here.");
+                    "The frame's final weight in the merge: rejection spread over the 5×5 cells around, Bento and the frame weight applied. White full weight (0.97 and up), cream to red a lower weight, black not merged here.")
+                    + Lang.t(getContext(), " У сверхкороткого кадра — маска Bento × годность (максимум по блоку): белое там, где он заменяет света.",
+                    " For an ultrashort frame: the Bento mask × validity (block maximum): white where it replaces the lights.");
             case ScamMergeStages.CUTOFF: return Lang.t(getContext(), "Отсечение после склейки: в каждой клетке наименьший средний итоговый вес среди обычных кадров серии, без цветовой шкалы. Белый — вошли все кадры, чёрный — хотя бы один кадр здесь отсечён (движение, отказ), серый — частично. Длинные кадры брекета не учитываются: в клипе они отключены всегда.",
                     "Cutoff after the merge: per cell the smallest mean final weight over the burst's normal frames, plain grey. White every frame merged, black at least one frame cut here (motion, rejection), grey partly. The bracket's long frames are left out: they always drop out where they clip.");
             case ScamMergeStages.FLOW: return Lang.t(getContext(), "Локальное доравнивание F6 поверх гомографии, |сдвиг| в RAW-пикселях: тёмно-синий — 0, жёлтый — 8 и больше.",
@@ -1763,6 +2214,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
                         if (redrawWaiting) render();
                     }
                 });
+                // P357: a double tap puts the shot's value back (as «как снято» does)
+                if (!isShot) com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(bar, () -> set.accept(atShot));
                 r.addView(bar, space(-1, dp(36), 6));
                 LinearLayout ends = row();
                 ends.addView(text(spec.number(min), 11, MUTED), new LinearLayout.LayoutParams(0, -2, 1));
@@ -1862,10 +2315,12 @@ public class ScamLabFragment extends ModuleConceptFragment {
             Job j = job;
             while (j != null) {
                 try {
-                    final ScamLabRun.Result r = ScamLabRun.run(app, j.shot, j.crop, j.a, j.b, text -> {
+                    final ScamLabRun.Progress progress = text -> {
                         runStage = text;
                         redraw();
-                    });
+                    };
+                    final ScamLabRun.Result r = j.page.endsWith("|" + PIPELINE) ? ScamLabRun.pipeline(app, j.shot, j.crop, progress)
+                            : ScamLabRun.run(app, j.shot, j.crop, j.a, j.b, progress);
                     synchronized (ScamLabFragment.class) { shown = j; shownResult = r; runError = null; }
                 } catch (Throwable e) {
                     runError = Lang.t(app, "Не получилось: ", "Failed: ") + e.getMessage();
@@ -1884,7 +2339,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
 
     private void redraw() {
         main.post(() -> {
-            if (root == null || !isAdded() || !"result".equals(arg(PAGE))) return;
+            if (root == null || !isAdded() || !("result".equals(arg(PAGE)) || "pipeline".equals(arg(PAGE)) || "sandbox".equals(arg(PAGE)))) return;
             // P294: a stage or a result never rebuilds the page under a finger on a slider (that ends the drag, and its
             // cancel set the value in the middle of the rebuild); it waits for the release
             if (dragging) {

@@ -7532,3 +7532,190 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   registration +0.6 - 0.75 s CPU (+0.2 - 0.3 s wall) at 12 MP.
 - Checks: glslc 200 programs (148 non-P350 variants == HEAD), check_hybrid_stages / still / series / us_rows on the OPPO,
   HybridSettingsTest. Not phone-shot; risk: mv2131 registration may lock on moving content (shifts 2 - 2.7 px).
+
+### P353 - processing as fast as the reference app (owner, 2026-10-27: «Узнай почему у арк гораздо быстрее обработка чем у нас и
+  ускорь нашу до его уровня»; log, config and APK 2.01 on the Desktop): part 1 DONE (md5-identical), the rest open.
+- Reference app 2.01 (decompiled in the session scratchpad ark201): an in-process ring of packed RAW10 frames, a GPU homography per
+  frame interleaved with its merge, the whole post on the same GL context and only RGBA8 read back. Its own log on the OPPO X7U
+  (the owner installed it there): 32 frames aligned + merged in 1742 ms (~54 ms a frame), post 323 ms, JPEG 158 ms, press -> file
+  2.7 s; on the X200 Ultra 2.0 - 2.8 s for 30 frames. Normal and ultrashort frames only (no long ones).
+- Ours (owner's X200 Ultra log 2026-10-26, chandelier, 26 frames): press -> file 7.4 s; worker start -> GPU merge ~3.0 s (CRE groups,
+  the P350 ultrashort registration 3 x ~0.5 s serial, the blend weight 0.3 s), merge 2.6 s, post 0.6 s. OPPO replay ~96 ms a frame,
+  in the app 150 - 170 ms a frame. The same OPPO and burst size: ISP viewfinder 3.06 s merge, developed RAW viewfinder 4.38 s.
+- Done (lamp2324 73b08661, b175757 3f346b19, x7u_1x 9d1e7c0d, isz2 eae70fc7, led1934 2f07637b: md5 as HEAD):
+  - hybridUsRegister: the base frame's side (quads, dilated clip mask, both blurs) once per shot (HybridUsRegisterBase), each
+    blur once, the sample positions on all cores: 3 frames 1.64 -> ~0.6 s (OPPO).
+  - the Bento blend weight (valid-plane blurs + hybridBlendWeight) on a task beside the GPU merge; the mask rows go up right before
+    the strip's blend pass (Input::maskReady): 0.45 s off the front of the merge.
+  - chromaPrewarm() for the plain chroma median during the merge (it built its context after the merge): 425 -> 258 ms.
+  - App: ThermalPolicy.processing() from the processing task's start to post_done: the developed RAW viewfinder tones at most
+    vf_busy_fps (15) frames a second meanwhile; MainRenderer only latches an ISP frame while the RAW frame is on screen
+    (vf_isp_latch; ~25 of ~55 draws a second redrew the same frame); WhyAeGpu accepts a count off by <= 1e-4 (Adreno 830: 4 of
+    21 shots fell back to the CPU statistics, ~80 ms).
+  - Diagnostics: tuning profile 1 also prints «HYBRID GPU PROGRAMS ms» per program; SCAM_LOG_MS=1 prefixes the worker's lines with
+    ms since its start (replays).
+- Tried, no gain (reverted): GL timer queries (0 on the Adreno 750), the reject pass's base noise in shared memory (+25 %), no rjD
+  table, Vq[0] reuse, the guide from shared tiles (its time is the strip upload), the ultrashort base made on a helper thread.
+- Open: the REJ_OPTS reject program (1.1 - 1.2 s profiled for 22 donors on the OPPO against 0.48 s without REJ_OPTS, even with the
+  pooled test off: its footprint), cells 0.5 s, the CRE front 0.6 - 1 s, the post pipeline 0.6 - 0.8 s (programs from binaries
+  60 ms a shot, denoise ~0.3 s), the in-app merge still slower than a replay (thermal state and the viewfinder); phone check of
+  31162 on the X200 Ultra.
+
+- Part 2 (owner chose all three: «Обработка в одном контексте», «Выравнивание на GPU», «Облегчить отбраковку»):
+  - the ultrashort frames' row / tile / gain tests (hybridPlainUsRows) one thread per frame, decisions and lines in frame order:
+    the corner tracker now starts 0.33 s after the worker instead of 0.9 - 1.3 s (OPPO; the tile test ~0.33 s a frame). md5 kept.
+  - the reject program built for the tuning's P344 switches (hybridRejSpec: RJ_* macros true / false, part of the cache key):
+    1122 -> 981 ms for 22 donors (OPPO profile). Rounding only: b175757 mean |diff| 2e-8, p99.99 relative 1.3e-4, max 1.3e-3. New
+    refs (app tuning): lamp2324 4ec99910, b175757 1002c7a8, x7u_1x 6ae2d8e6, isz2 007ccc88, led1934 c4796585; without the P344
+    set the programs are the same as before (x7u_1x bcaa7e6d both).
+  - lighter rejection measured with the specialised program (reject ms, 22 donors): set 981, rejMeanDiff 0 992, rejPool 2 1037,
+    rejMatchBlur 0 968, rejPool 1 951, pool 1 + no mean test 1019: no subset is meaningfully cheaper - the cost is the shared-tile
+    scheme of REJ_OPTS itself (478 ms without it). Kept as it is (going back to the pre-P344 rejection would lose its quality).
+  - corner tracker tracks of a group on 6 threads: the same homographies, no time gained (reverted).
+
+  - the ultrashort registration on a thread of its own as soon as its group is aligned, its F6 hand-over at the end of the
+    alignment (SCAM_US_SYNC: as before): align 1026 / 1005 -> 788 / 812 ms on the lamp burst, md5 kept.
+  - own pyramidal LK + RANSAC instead of the CRE's track: tried and reverted - F6 residuals worse (median / p90 up to 0.7 / 3.5 RAW
+    px against 0.16 / 0.8) and no time gained (the CRE's track is not the cost; GPU alignment like the reference app would not pay
+    either).
+
+  - the post pipeline on one GL context kept for the process (GLContext(w, h, shared), GLCoreBlockProcessing(.., shared)):
+    its ~46 programs linked once; one pipeline at a time takes it (another gets its own as before); GL state reset when taken;
+    tile FBO / RBO deleted per shot; scam_dev post_shared_context 0 = as before. OPPO, 31163: post 802 ms (first shot, 46
+    programs from binaries in 64 ms) -> 662 - 719 ms (0 programs loaded); the photos of the first and the fourth shot alike.
+
+### P354 - LED backlight edges and the chandelier on build 31129 (owner, 2026-10-27: «Вот так теперь выходит подсветка на ласт апк. Нужно исправлять.
+  ... На люстре же у нас есть лесенки и также затенение вокруг люстры из-за неправильного локального тонмапинга»; «Закончи с первой задачей, просто
+  добавляй в план работы»): TO DO after P353.
+- Input: Desktop/Desktop.zip (2026-10-27): SCA_20261026_224127.jpg (PC case with LED fan rings, OPPO Find X8 Ultra, ISO 526, 1/100) and
+  SCA_20261026_224359.jpg (room, ceiling chandelier, ISO 318), both 0.98(31129) = a3c1be5e, Route=SHDR; the owner's marked crops in chat.
+- Seen at 1:1 (session scratchpad p354 led1.png / lamp1.png): along every LED ring and the top LED bar a dark dotted / dashed outline
+  with a ~4 px period and saw-tooth (stair) edges of the bright core; on the chandelier shades a stepped (staircase) contour with a faint
+  lilac fringe, and a darker grey band around each shade on the ceiling (local tone: the P348 fusion exposures em0 / sqrt(em0) with
+  weights 0.8 / 0.4 and the P349 guided fusion in lights are the first suspects for the band; the US blend cell mode 2 / scale 2 (P350),
+  the P344 rejection set and the P349 combine edge rules for the steps).
+- Data: the X8U LED burst of the same PC (Desktop/т/p7/scam_burst-20261020-193420.bin, P310) is on the OPPO as
+  /data/local/tmp/led1934.bin. Chandelier (owner, 2026-10-27): Desktop/scam_burst-20261026-232432.bin + the ArkCam pair in
+  Desktop/lamp.zip. Replay the LED burst
+  through the worker + the host post chain (scratchpad p340 vivo_host route), bisect P344 / P348 / P349 / P350 by their switches.
+- DONE (glow): host replay (session scratchpad p354: r5.py on the WHY chain of p340 / p348, the burst through worker 353p2) found
+  the darker ring and the flat glow round the shades in the fusion weights, not the pyramid: P348's second dark layer (sqrt(em0),
+  weight 0.4) takes a share wherever the lit ceiling is bright. Without it the glow comes back as in the reference shot while
+  the darkest layer still draws the shade; weight 0.1 kept most of that (WhyTone.LAYER_WEIGHTS, preferences default,
+  SettingsMigration GLOW_DEFAULTS_REV moves a stored 0.4). The P348 / P349 sunset (s1): softer, brighter glow, no darker orange
+  ring, rungs unchanged. Guided fusion only, coarser pyramid, wider guided range: no effect on the ring.
+- OPEN (needs the shots' bursts): the stepped shade edge of SCA_20261026_224359 and the dashed LED ring edges of
+  SCA_20261026_224127 (X8U). Neither shows on the bursts at hand: the lamp2324 shade edge is smooth with a thin lilac rim (the
+  same on the phone JPEG), the led1934 (2026-10-20) ring edges are clean in the linear merge and through the post chain with and
+  without sharpening / the clip band. Owner asked for scam_burst exports of those two scenes on the current build.
+
+### P355 - the lab, handier and practical like ArkCam's (owner, 2026-10-27: «Сделай лабораторию более удобной и практичной, посмотри как
+  сделано в арк камере и сделай у нас схожим образом»): DONE (UI not phone-tried).
+- Study ArkCam 2.01's lab / adjustment screens (Desktop/arkcamv201.apk, decompiled in the session scratchpad ark201; its config keys in
+  Desktop/init_33.xml: pref_adj_last_category_key, pref_quick_params_list, pref_lab_capture_dump_enabled, per-lens keys) and our
+  ScamLabFragment (P277, see memory scam-lab); list what makes theirs quicker (categories, quick parameter list, per-lens values,
+  live re-render), then bring ours close to it without dropping our A/B replay.
+- Study (2.01 decompiled with jadx in the session scratchpad ark201/jadx: LabActivity, LabSettingsActivity, AdjustmentsBottomSheet,
+  LabManager): sessions from a LAB capture switch, one session screen with a zoomable picture, hold-to-compare, split view,
+  debug layers; an adjustments sheet with categories, a «Quick» tab of starred params (pref_quick_params_list), the last
+  category kept (pref_adj_last_category_key), a per-session sandbox of every changed value (fast pass 80 ms / full pass 350 ms,
+  one pending render), «Export to lens» of the values that differ, export of the render to a file.
+- DONE (UI not phone-tried; owner: decide alone): ours keeps its A/B pages and stages and gets
+  - «Избранное»: a star on every setting row (the lab's own store scam_lab, not the settings), the starred rows at the top of
+    every shot page;
+  - the section opened last first in «Что сравнить» («Открыт последним»);
+  - «Песочница»: «📌 В песочницу» pins a page's B values (those that differ from A) into the shot's sandbox (sandbox.json in its
+    folder); every B then carries the sandbox; the shot page lists the pinned values (✕ removes one) and «Сравнить
+    песочницу» (A as shot, B with all of them) with «Сохранить всё в настройки» (the module's profile, scam_dev lines into the
+    file) and «Очистить песочницу»; «Сохранить B» keeps only its page's values now;
+  - «Сохранить B (JPEG)» into the shot's folder (removed with it).
+  ScamLabSandboxTest. Not taken: the bottom-sheet layout, split view, debug layers (ours: stages), live per-drag re-render
+  (ours renders on release, the merge takes seconds).
+
+### P356 - ETTR as its own switch (owner, 2026-10-27: «Добавь как отдельный переключатель ETTR»): DONE (daylight unverified).
+- Expose to the right as a separate on / off switch of the capture exposure (the N frames exposed as bright as the highlights allow,
+  the tone brings the mids back), independent of the other AE settings; check what our AE already does in that direction before
+  adding anything (no setting without an effect on the shot).
+- Owner's choice: the capture plus a shade tile («Съёмка + шторка»). Before: nothing pushed the capture right - the HAL AE plus
+  the user's EV set the N frames, WHY only tones the merge.
+- DONE: capture/Ettr (live RAW meter: the 99.9th percentile of the brightest site of the 2x2 quads, every 8th frame; boost up to
+  +2 EV toward 0.85 of white, steps of >= 0.3 EV after 8 settle frames, a clipped frame drops a stop at once; held at 0 past 4x
+  the base ISO, with a hand-set ISO / shutter, the OPPO own native AE and a vivo SDK session; kept through a shot). The request's
+  CONTROL_AE_EXPOSURE_COMPENSATION = user + boost (CaptureController.ettrIndex, ParamController's EV paths too); the ISP
+  viewfinder shows x2^-boost (ViewfinderGain display EV), the RAW viewfinder meters itself. pref_ettr (default off) in the
+  settings and the shade's «Съёмка» group; scam_dev.txt "ettr" overrides. EttrTest; OPPO (forced-on test build 31168): meters
+  every frame, indoor lamp scene p99.9 0.997-1.000 at ISO 2560 -> boost 0 as intended; a daylight boost not seen on a phone yet.
+- Seen in passing: the OPPO's Download/SCAMERA/scam_dev.txt belongs to an old install's uid, MediaProvider denies the app every
+  2 s (the poll). Not touched (not my file to delete).
+
+### P357 - double tap resets a parameter, a reset-all button (owner, 2026-10-27: «При двойном тапе по параметру он должен сбрасываться
+  на дефолтное значение. Так же добавь кнопку сброса всех настроек. сделай это для всех»; screenshots of «Плёночная симуляция» sliders
+  and the settings list with «Плёночный LUT» / «Фильтр на объектив»): DONE.
+- Every slider row (UniversalSeekBarPreference and the film / lens-filter / editor slider cards): a double tap puts the default back.
+- Every such page gets a «Сбросить всё» button for its own rows (confirm first), plus one for all settings.
+- DONE: ui/controls/DoubleTapReset (own tap tracker: two short taps within the double-tap time / slop; a row's single tap -
+  the precise value dialog - waits for it, so the two never both run) on UniversalSeekBarPreference and TunableSeekBarPreference
+  (bar, value pill, row), the film simulation sliders (+ «↺ Сбросить все ползунки»), the lens filter's strength / parameter /
+  fine controls, the shade's slider rows and slider card, the LUT tray's strength / warmth / tint, the lab's sliders (back to
+  «как снято»); the gallery editor's sliders had it already (EditSlider). Every settings page's header has a reset disc:
+  PageReset puts the page's rows (not its sub-pages) back - sliders by their own default, switches / lists / text by the
+  android:defaultValue of preferences.xml, through the preference (a module page writes its profile), confirmed, with the count;
+  on the root page the disc opens the existing full reset («Сбросить настройки»). PageResetTest (XML defaults, a switch, a
+  slider's double tap). Not tried on a phone (UI taps are the owner's).
+
+### P358 - the rejection maps of the ultrashort and the long frames, checked and improved (owner, 2026-10-27: «Перепроверить и
+  улучшить реджект карты сверхкороткого и длинного кадров»): DONE (OPPO replays, not shot in the app).
+- The P344 rejection and the P350 ultrashort validity were tuned on the normal donors and the ultrashort mask; the bracketed (long,
+  Shasta) frames' rejection (clipped cells, Mochi-corrected levels, motion drop at shastaMotionMax) and the ultrashort frames' own
+  rejection / validity get the same truth-harness check (P342 / P350 harnesses), stage dumps of real bursts (lamp2324, led1934,
+  b175757) and fixes where they are wrong.
+- Findings (OPPO replays of lamp2324, led1934, b175757, x7u_1x, isz2): the ultrashort donors' GPU reject map was never read
+  (kHybDilate / the blend use Bento mask x validity) - the lab showed it (night: black on 76 % of the cells) and a min-pooled
+  weight that was always black. The long frames of lamp2324 are ISO 636 at the N shutter: their noise 0.61 - 0.90 x N in base
+  units against a header model of 0.30 - 0.57, merged at A = 3.32 from t^2 read_b / read_f; x7u_1x's real long shutter 0.41 x N
+  at A = 4.00. Their extra rejection in dark texture is hand blur (level <= 0.04 DN, not the mean test or Mochi): kept. The
+  whole-frame motion drop of b175757 / led1934 kept (sharpness 59 % / 34 %).
+- DONE: lab stage dump - ultrashort «Реджект» = its validity plane (block minimum), «Вес кадра» = mask x validity (block
+  maximum); a long frame's «Реджект» without its by-design clip cells (base x t >= white). Worker keys (off by default, md5 =
+  refs with them off): rejSkipUs (RJ_SKIP_US with REJ_OPTS), noiseRoles 1 (hybridMeasureRoleNoise on flat blocks,
+  «HYBRID NOISE CHECK BRACKETED»), shastaNoiseWeight m. App: rejSkipUs 1 in rej_set; hybrid_long_set 1 -> noiseRoles 1,
+  shastaNoiseWeight 0.005 (DevKeys, HybridSettingsTest). Results: reject pass -216 to -228 ms (driver rounding only, max |d|
+  9.9e-6); long A lamp 3.32 -> 1.48 (optimum 1.46), x7u_1x 4.00 -> 2.63, isz2 3.96 -> 2.71; flat noise lamp -2 to -4 %, x7u_1x -2
+  to -3 %, isz2 -1 to -4 %; detail >= -0.1 %; no ghosts. glslc 24 reject / dilate variants. Not adopted: a measured ultrashort
+  noise (night flat blocks reach 1/80 of its white; LED invalid cells 7545 -> 9489 with a fitted slope). Not shot in the app;
+  the stage dump on changes x7u_1x's merge md5 (bd6c80fd vs 6ae2d8e6), a lab replay of it may differ from the shot.
+
+### P359 - old bursts through the current pipeline in the lab (owner, 2026-10-27: «Дай возможность в лаборатории использовать старые
+  бурсты с новой обработкой/пайплайном и тд»): DONE (UI not phone-tried).
+- The lab (P277, ScamLabFragment) replays its own Lab/<date_time> shots; let it open any saved burst (scam_burst-*.bin from «Сохранять
+  RAW-серию», older lab shots) and run it through the current merge and post pipeline with the current settings (or A/B against
+  the settings stored with the burst), whatever build wrote it (NCH version / header checks, a clear message when it cannot).
+- DONE (not tried on a phone: the lab is UI): the merge and post of a lab run were always this build's; now
+  - «Настройки обработки: Как снято / Текущие» per shot (ScamLab.NOW marker): «Текущие» renders A and every B from the app's
+    settings and scam_dev.txt lines of now (Shot.load swaps meta prefs / dev / module; nowKey in the side cache and the job ids;
+    the whole-frame statistics of now kept per app run, NOW_FRAMES, not over the shot's frame.json);
+  - «Тогда и сейчас»: the shot's saved photo (that build's pipeline, preview.jpg <= 1600 px, the fragment's part of it) beside
+    the series merged and processed now (ScamLabRun.pipeline), before / after, A, B;
+  - «Сохранённые RAW-серии · Download/SCAMERA»: every NCH v11 / v12 file there (scam_burst-*.bin of «Сохранять RAW-серию»)
+    opens in the lab without a copy (Lab/<time>_imp with source.txt naming it; ScamLab.burstOf; remove() leaves the series).
+    A series kept from now on carries the lab's metadata, photo and whole-frame statistics beside it (scam_burst-<time>.json /
+    .jpg / .frame.json: ScamLab.keeping from ScamNeuralClient, snapshot / preview write there; endShot drops them when the
+    worker kept nothing). An older series takes a template: the newest lab shot or sidecar of the same size, CFA, grid and block
+    (its parameters, colour matrices, geometry), with the series' own white point (grey world of the base frame's mid-tones,
+    2 - 90 % of white, clipped cells out) and its base frame's ISO and noise model from the frame table; such a shot opens with
+    the settings of now and says where its colour came from. No template: a message to take one lab shot with that module.
+  - ScamLabSeriesTest (sidecars, source folder, header, base noise, settings mode, grey world RGGB / BGGR / clipped).
+
+### P360 - the gallery editor, a nicer interface with smooth animations (owner, 2026-10-27: «Наш редактор фото в галерее сделай с
+  более красивым интерфейсом с красивыми анимациями»): DONE (not phone-tried).
+- P351's editor (gallery/editor): animated tool / panel transitions, slider value bubbles, before / after with a smooth wipe,
+  material motion for the bottom sheets, consistent spacing and typography with the rest of the app.
+- DONE (not seen on a phone; gallery tests green): gallery/editor/EditMotion (Material 3 emphasized / standard easing, 120 /
+  240 / 360 ms, all through ViewPropertyAnimator / ValueAnimator so the system animation scale applies). The editor arrives
+  with a cover fading off the picture (a GL surface: never scaled or faded itself) and the panel / tab bar rising in; the tab
+  bar keeps its views: the selection pill fades between tabs, icon / name colours cross-fade, the new icon bounces in; a panel
+  change slips the old panel out and slides the new one in from the tab's side with its rows staggered (25 ms apart); top
+  buttons and «Сохранить копию» give under a finger (0.9, overshoot back); the «Оригинал» and note pills and the histogram
+  fade / rise; the menu sheet's rows stagger in; the save card fades in and scales up with an overshoot. EditSlider: the thumb
+  grows with a halo and takes the accent while dragged, a value bubble rises over it (label / value dim under it), a double
+  tap glides the value to the default in 240 ms (the picture follows, one undo step at the end).

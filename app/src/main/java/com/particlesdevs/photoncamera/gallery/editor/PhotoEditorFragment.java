@@ -47,6 +47,10 @@ import com.particlesdevs.photoncamera.util.Lang;
  * paste of settings, a live histogram, a long press on the picture shows the photo without the tone edits. «Сохранить копию»
  * writes a new JPEG next to the original (EditExporter); back with unsaved edits asks first. Opened by another app through
  * ACTION_EDIT it returns the copy's URI.
+ * P360 (owner, 2026-10-27: «сделай с более красивым интерфейсом с красивыми анимациями»): the editor arrives (the picture
+ * settles, the bars rise), the tab bar's selection glides between tabs (pill, colour, icon bounce), panels slide in from the
+ * side of the tab, their rows come in one after another, buttons give under a finger, pills and the save card fade / scale in
+ * (EditMotion; the system's animation scale applies).
  */
 public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
     private static final String KEY_STATE = "edit_state", KEY_TAB = "edit_tab";
@@ -71,6 +75,13 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
     private FrameLayout imageArea, exportOverlay;
     private ScrollView panelScroll;
     private LinearLayout tabBar;
+    /** P360: the tab buttons, their icons, names and selection pills (built once, animated on a change). */
+    private LinearLayout[] tabButtons;
+    private ImageView[] tabIcons;
+    private TextView[] tabNames;
+    private android.graphics.drawable.GradientDrawable[] tabPills;
+    private boolean entered;
+    private View cover;
     private View undo, redo, save;
     private EditPanels panels;
     private boolean before;
@@ -156,6 +167,7 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         redo = iconButton(c, R.drawable.ui_ic_redo, Lang.t("Повторить", "Redo"), v -> redo());
         View more = iconButton(c, R.drawable.ui_ic_more, Lang.t("Ещё", "More"), v -> menu());
         for (View b : new View[]{undo, redo, more}) top.addView(b, new LinearLayout.LayoutParams(GalleryUi.dp(c, 44), GalleryUi.dp(c, 44)));
+        for (View b : new View[]{close, undo, redo, more}) EditMotion.press(b);
         TextView saveBtn = GalleryUi.text(c, Lang.t("Сохранить копию", "Save a copy"), 13.5f, GalleryUi.INK);
         saveBtn.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         saveBtn.setGravity(Gravity.CENTER);
@@ -165,6 +177,7 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         saveBtn.setClickable(true);
         saveBtn.setFocusable(true);
         saveBtn.setOnClickListener(v -> save());
+        EditMotion.press(saveBtn);
         save = saveBtn;
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         sp.leftMargin = GalleryUi.dp(c, 6);
@@ -174,6 +187,11 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         imageArea = new FrameLayout(c);
         gl = new EditorView(c);
         imageArea.addView(gl, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // P360: the cover the picture is revealed from (EditMotion.enter)
+        cover = new View(c);
+        cover.setBackgroundColor(GalleryUi.BG);
+        cover.setClickable(false);
+        imageArea.addView(cover, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         overlay = new CropOverlayView(c);
         overlay.setListener(this::onCrop);
         imageArea.addView(overlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -200,7 +218,7 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
             public void onLongPress(MotionEvent e) {
                 if (tab == TAB_CROP) return;
                 before = true;
-                beforePill.setVisibility(View.VISIBLE);
+                EditMotion.show(beforePill, true, -GalleryUi.dp(c, 6));
                 render();
             }
 
@@ -214,7 +232,7 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
             int action = e.getActionMasked();
             if ((action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) && before) {
                 before = false;
-                beforePill.setVisibility(View.GONE);
+                EditMotion.show(beforePill, false, -GalleryUi.dp(c, 6));
                 render();
             }
             return true;
@@ -293,44 +311,114 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
                 R.drawable.ui_ic_effects, R.drawable.ui_ic_detail};
         String[] names = {Lang.t("Кадр", "Crop"), Lang.t("Стили", "Styles"), Lang.t("Свет", "Light"), Lang.t("Цвет", "Colour"),
                 Lang.t("Эффекты", "Effects"), Lang.t("Детали", "Detail")};
+        tabButtons = new LinearLayout[icons.length];
+        tabIcons = new ImageView[icons.length];
+        tabNames = new TextView[icons.length];
+        tabPills = new android.graphics.drawable.GradientDrawable[icons.length];
+        final int accent = GalleryUi.accent(c);
         for (int i = 0; i < icons.length; i++) {
             final int k = i;
             boolean on = i == tab;
-            int colour = on ? GalleryUi.accent(c) : GalleryUi.TEXT;
+            int colour = on ? accent : GalleryUi.TEXT;
             LinearLayout b = new LinearLayout(c);
             b.setOrientation(LinearLayout.VERTICAL);
             b.setGravity(Gravity.CENTER);
             b.setPadding(0, GalleryUi.dp(c, 8), 0, GalleryUi.dp(c, 6));
-            b.setBackground(GalleryUi.pressable(GalleryUi.round(c, android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT, 14)));
+            // P360: the selection pill (accent at 16 %), faded between tabs
+            final android.graphics.drawable.GradientDrawable pill = GalleryUi.round(c, (accent & 0x00FFFFFF) | 0x29000000, android.graphics.Color.TRANSPARENT, 14);
+            pill.setAlpha(on ? 255 : 0);
+            tabPills[i] = pill;
+            b.setBackground(GalleryUi.pressable(pill));
             b.setClickable(true);
             b.setFocusable(true);
             b.setSelected(on);
             b.setContentDescription(names[i]);
             b.setOnClickListener(v -> selectTab(k));
-            b.addView(GalleryUi.icon(c, icons[i], colour, 22));
+            tabIcons[i] = GalleryUi.icon(c, icons[i], colour, 22);
+            b.addView(tabIcons[i]);
             TextView t = GalleryUi.fitText(c, names[i], 10, colour);
             t.setGravity(Gravity.CENTER);
+            tabNames[i] = t;
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.topMargin = GalleryUi.dp(c, 3);
             b.addView(t, lp);
-            tabBar.addView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            tabButtons[i] = b;
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+            bp.leftMargin = bp.rightMargin = GalleryUi.dp(c, 2);
+            tabBar.addView(b, bp);
         }
     }
 
     private void selectTab(int t) {
+        if (t == tab) return;
+        final int from = tab;
         tab = t;
-        buildTabs(requireContext());
-        showPanel();
+        animateTabs(from, t);
+        showPanel(Integer.compare(t, from));
         updateOverlay();
         render();
     }
 
+    /** P360: the old tab fades to plain, the new one takes the pill and the accent with a small bounce of its icon. */
+    private void animateTabs(int from, int to) {
+        if (tabButtons == null || getContext() == null) return;
+        final int accent = GalleryUi.accent(requireContext());
+        for (int i = 0; i < tabButtons.length; i++) {
+            if (i != from && i != to) continue;
+            final boolean on = i == to;
+            final ImageView icon = tabIcons[i];
+            final TextView name = tabNames[i];
+            final android.graphics.drawable.GradientDrawable pill = tabPills[i];
+            tabButtons[i].setSelected(on);
+            EditMotion.colour(on ? GalleryUi.TEXT : accent, on ? accent : GalleryUi.TEXT, EditMotion.MEDIUM, col -> {
+                icon.setImageTintList(android.content.res.ColorStateList.valueOf(col));
+                name.setTextColor(col);
+            });
+            EditMotion.fraction(on ? 0f : 1f, on ? 1f : 0f, EditMotion.MEDIUM, EditMotion.MOVE, f -> pill.setAlpha(Math.round(255 * f)));
+            if (on) {
+                icon.setScaleX(.8f);
+                icon.setScaleY(.8f);
+                icon.animate().scaleX(1f).scaleY(1f).setDuration(EditMotion.LONG).setInterpolator(new android.view.animation.OvershootInterpolator(2.5f)).start();
+            }
+        }
+    }
+
     private void showPanel() {
-        panelScroll.removeAllViews();
-        if (vm.source.getValue() == null) return;
-        View p = panels.forTab(tab);
-        if (p != null) panelScroll.addView(p);
-        panelScroll.scrollTo(0, 0);
+        showPanel(0);
+    }
+
+    /**
+     * The tab's panel; P360: with {@code direction} != 0 the old panel slips out and the new one slides in from that side, its
+     * rows staggered.
+     */
+    private void showPanel(int direction) {
+        if (vm.source.getValue() == null) {
+            panelScroll.removeAllViews();
+            return;
+        }
+        final View old = panelScroll.getChildCount() > 0 ? panelScroll.getChildAt(0) : null;
+        final View p = panels.forTab(tab);
+        final float shift = GalleryUi.dp(requireContext(), 28) * direction;
+        final Runnable in = () -> {
+            panelScroll.removeAllViews();
+            if (p == null) return;
+            panelScroll.addView(p);
+            panelScroll.scrollTo(0, 0);
+            if (direction == 0) return;
+            p.setAlpha(0f);
+            p.setTranslationX(shift);
+            p.animate().alpha(1f).translationX(0f).setDuration(EditMotion.MEDIUM).setInterpolator(EditMotion.ENTER).start();
+            if (p instanceof ViewGroup) EditMotion.stagger((ViewGroup) p);
+        };
+        if (old == null || direction == 0) {
+            in.run();
+            return;
+        }
+        old.animate().cancel();
+        old.animate().alpha(0f).translationX(-shift * .6f).setDuration(EditMotion.SHORT - 30).setInterpolator(EditMotion.EXIT)
+                .withEndAction(() -> {
+                    if (panelScroll != null && panels != null) in.run();
+                }).start();
     }
 
     // ---------------------------------------------------------------- state
@@ -347,13 +435,19 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         }
         if (s.note != null) {
             notePill.setText(s.note);
-            notePill.setVisibility(View.VISIBLE);
+            EditMotion.show(notePill, true, GalleryUi.dp(requireContext(), 12));
             notePill.postDelayed(() -> {
-                if (notePill != null) notePill.setVisibility(View.GONE);
+                if (notePill != null) EditMotion.show(notePill, false, GalleryUi.dp(notePill.getContext(), 12));
             }, 6000);
         }
         gl.setSource(s);
         showPanel();
+        if (!entered) {
+            // P360: the editor's arrival, once
+            entered = true;
+            EditMotion.enter(cover, panelScroll, tabBar);
+            spinner.setVisibility(View.GONE);
+        }
         updateHistoryButtons();
         updateOverlay();
         render();
@@ -362,7 +456,7 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
     private void render() {
         if (gl == null) return;
         gl.setState(vm.state, tab == TAB_CROP, before);
-        histogram.setVisibility(tab == TAB_CROP ? View.GONE : View.VISIBLE);
+        EditMotion.show(histogram, tab != TAB_CROP, 0f);
     }
 
     @Override
@@ -529,6 +623,7 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
             ExternalEdit.openInOtherApp(this, uri, name);
         }));
         d[0] = GallerySheets.show(c, sheet);
+        EditMotion.stagger(sheet);
     }
 
     private static View menuRow(Context c, int icon, String text, Runnable run) {
@@ -551,7 +646,16 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
 
     private void save() {
         if (vm.source.getValue() == null || vm.exporting()) return;
+        // P360: the save card fades and scales in over the dimmed editor
+        exportOverlay.setAlpha(0f);
         exportOverlay.setVisibility(View.VISIBLE);
+        exportOverlay.animate().alpha(1f).setDuration(EditMotion.MEDIUM).setInterpolator(EditMotion.ENTER).start();
+        if (exportOverlay.getChildCount() > 0) {
+            final View card = exportOverlay.getChildAt(0);
+            card.setScaleX(.88f);
+            card.setScaleY(.88f);
+            card.animate().scaleX(1f).scaleY(1f).setDuration(EditMotion.LONG).setInterpolator(new android.view.animation.OvershootInterpolator(1.6f)).start();
+        }
         exportBar.setProgress(0);
         vm.export(vm.state);
     }

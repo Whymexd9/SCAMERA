@@ -126,16 +126,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private void drawFrame() {
         // GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
-        synchronized (this) {
-            if (mUpdateST) {
-                mSTexture.updateTexImage();
-                mUpdateST = false;
-                mHaveFrame = true;
-                mIspLatchNs = System.nanoTime();
-                mFrameGain = ViewfinderGain.gainFor(mSTexture.getTimestamp()); // P90
-                sShownTimestamp = mSTexture.getTimestamp(); // P111
-            }
-        }
+        latchIsp();
         applyPendingTransform();
         // Developed RAW takes over the viewfinder when a frame is available, so
         // what is framed is what the pipeline produces rather than the ISP's own
@@ -213,6 +204,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
             mLastRawActive = rawActive;
         }
         com.particlesdevs.photoncamera.control.subject.SubjectFrames.setRawDisplayed(rawActive);
+        mRawShownNs = rawActive ? System.nanoTime() : Long.MIN_VALUE / 2;
         if (rawActive) {
             mSubjectGrabber.afterDraw();
             GLES20.glUseProgram(hProgramHandle);
@@ -502,7 +494,31 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
 
     public synchronized void onFrameAvailable(SurfaceTexture st) {
         mUpdateST = true;
+        // P353: while the developed RAW frame is on screen (drawn less than RAW_SHOWN_NS ago) an ISP frame is only latched (its
+        // buffer goes back to the camera) - each such wake-up drew the same RAW frame again, ~25 of the ~55 draws a second on the
+        // OPPO, on the GPU the merge needs. The RAW frames ask for their own draws; without one for RAW_SHOWN_NS the ISP frames
+        // draw again (the fall-back to the ISP picture). scam_dev vf_isp_latch 0: every ISP frame draws (as before).
+        if (System.nanoTime() - mRawShownNs < RAW_SHOWN_NS
+                && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vf_isp_latch", true)) {
+            mView.queueEvent(this::latchIsp);
+            return;
+        }
         mView.requestRender();
+    }
+
+    /** P353: when the developed RAW frame was put on screen last (System.nanoTime). */
+    private volatile long mRawShownNs = Long.MIN_VALUE / 2;
+    static final long RAW_SHOWN_NS = 300_000_000L;
+
+    /** The pending ISP frame onto the texture (GL thread). */
+    private synchronized void latchIsp() {
+        if (!mUpdateST || !mGLInit) return;
+        mSTexture.updateTexImage();
+        mUpdateST = false;
+        mHaveFrame = true;
+        mIspLatchNs = System.nanoTime();
+        mFrameGain = ViewfinderGain.gainFor(mSTexture.getTimestamp()); // P90
+        sShownTimestamp = mSTexture.getTimestamp(); // P111
     }
 
     private static String GetSupportedVersion() {

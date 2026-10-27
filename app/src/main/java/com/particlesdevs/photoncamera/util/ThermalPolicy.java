@@ -20,6 +20,17 @@ import android.os.PowerManager;
  */
 public final class ThermalPolicy {
     public static final int SEVERE_VF_FPS = 15;
+    /**
+     * P353 (owner, 2026-10-27: «Узнай почему у арк гораздо быстрее обработка чем у нас и ускорь нашу до его уровня»): while a shot
+     * is processed (the merge worker and the post pipeline on the same GPU) the developed RAW viewfinder tones at most this many
+     * frames a second. OPPO Find X7 Ultra, the same 26-frame merge: 3.06 s with the ISP viewfinder (30 draws a second, 1.3 ms
+     * each), 4.38 s with the developed RAW one (29 tones and 55 draws a second, 8 - 10 ms each). scam_dev vf_busy_fps: the rate
+     * (0 = every frame, as before).
+     */
+    static final int BUSY_VF_FPS = 15;
+    /** A processing flag older than this counts as cleared (a path that never cleared it must not slow the viewfinder for good). */
+    static final long BUSY_MAX_NS = 20_000_000_000L;
+    private static volatile long busySinceNs;
     static final long NOTICE_EVERY_MS = 5 * 60_000L;
     private static volatile int status = -1;
     private static volatile boolean registered;
@@ -61,6 +72,25 @@ public final class ThermalPolicy {
         }
     }
 
+    /** P353: a shot is being processed from now ({@code true}) / no longer ({@code false}). */
+    public static void processing(boolean on) {
+        busySinceNs = on ? Math.max(1L, android.os.SystemClock.elapsedRealtimeNanos()) : 0L;
+    }
+
+    static int busyFps() {
+        try {
+            return Math.max(0, Math.round(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevNumber("vf_busy_fps", BUSY_VF_FPS)));
+        } catch (RuntimeException | LinkageError e) {
+            return BUSY_VF_FPS;
+        }
+    }
+
+    /** P353: a shot is being processed (set less than {@link #BUSY_MAX_NS} ago). */
+    static boolean busy(long nowNs) {
+        final long since = busySinceNs;
+        return since != 0 && nowNs - since < BUSY_MAX_NS;
+    }
+
     /** SEVERE or worse, with the policy on. */
     public static boolean severe() {
         return status >= 3 && enabled();
@@ -77,12 +107,20 @@ public final class ThermalPolicy {
      * {@link #SEVERE_VF_FPS} s passed since the last one shown (a small tolerance keeps a 30 fps stream at 15).
      */
     public static synchronized boolean viewfinderFrameDue(long nowNs) {
-        if (!severe()) { lastVfNs = nowNs; return true; }
-        return due(nowNs);
+        if (severe()) return due(nowNs, SEVERE_VF_FPS);
+        // P353: while a shot is processed (the flag's age on the monotonic clock; nowNs is the frame's sensor time)
+        final int busyFps = busy(android.os.SystemClock.elapsedRealtimeNanos()) ? busyFps() : 0;
+        if (busyFps > 0) return due(nowNs, busyFps);
+        lastVfNs = nowNs;
+        return true;
     }
 
     static synchronized boolean due(long nowNs) {
-        final long period = 1_000_000_000L / SEVERE_VF_FPS;
+        return due(nowNs, SEVERE_VF_FPS);
+    }
+
+    static synchronized boolean due(long nowNs, int fps) {
+        final long period = 1_000_000_000L / fps;
         if (lastVfNs != 0 && nowNs - lastVfNs < period - period / 8) return false;
         lastVfNs = nowNs;
         return true;

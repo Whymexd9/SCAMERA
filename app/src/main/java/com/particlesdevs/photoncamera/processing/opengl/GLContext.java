@@ -45,6 +45,94 @@ public class GLContext implements AutoCloseable {
         createContext(surfaceWidth,surfaceHeight);
 
     }
+
+    /**
+     * P353: the post pipeline's context kept for the process (and its GLProg with every program it linked): each shot made a new
+     * EGL context, loaded its ~46 programs from the driver binaries again (60 ms) and terminated the display at the end. One
+     * pipeline at a time takes it ({@code shared}); another one meanwhile gets a context of its own as before. Its textures and
+     * framebuffers still go at the end of every shot (GLTexture.closeAll, GLCoreBlockProcessing.close); the GL state is reset to the
+     * defaults when it is taken. scam_dev post_shared_context 0: a new context every shot, as before.
+     */
+    public GLContext(int surfaceWidth, int surfaceHeight, boolean shared) {
+        if (shared && sharedAllowed() && takeShared()) {
+            mShared = true;
+            return;
+        }
+        createContext(surfaceWidth, surfaceHeight);
+        if (shared && sharedAllowed()) keepShared();
+    }
+
+    private boolean mShared;
+    private static EGLDisplay sDisplay;
+    private static EGLContext sContext;
+    private static EGLSurface sSurface;
+    private static GLProg sProgram;
+    private static boolean sTaken;
+
+    private static boolean sharedAllowed() {
+        try {
+            return com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("post_shared_context", true);
+        } catch (RuntimeException | LinkageError e) {
+            return false;
+        }
+    }
+
+    private boolean takeShared() {
+        synchronized (GLContext.class) {
+            if (sContext == null || sTaken) return false;
+            if (!eglMakeCurrent(sDisplay, sSurface, sSurface, sContext)) return false;
+            sTaken = true;
+            mDisplay = sDisplay;
+            mContext = sContext;
+            mSurface = sSurface;
+            mProgram = sProgram;
+        }
+        resetState();
+        return true;
+    }
+
+    /** This new context becomes the kept one (when none is kept yet). */
+    private void keepShared() {
+        synchronized (GLContext.class) {
+            if (sContext != null) return;
+            sDisplay = mDisplay;
+            sContext = mContext;
+            sSurface = mSurface;
+            sProgram = mProgram;
+            sTaken = true;
+            mShared = true;
+        }
+    }
+
+    /** The defaults a fresh context starts with, for the state the passes rely on. */
+    private static void resetState() {
+        android.opengl.GLES31.glBindFramebuffer(android.opengl.GLES31.GL_FRAMEBUFFER, 0);
+        android.opengl.GLES31.glBindRenderbuffer(android.opengl.GLES31.GL_RENDERBUFFER, 0);
+        android.opengl.GLES31.glUseProgram(0);
+        android.opengl.GLES31.glBindVertexArray(0);
+        for (int target : new int[]{android.opengl.GLES31.GL_ARRAY_BUFFER, android.opengl.GLES31.GL_ELEMENT_ARRAY_BUFFER,
+                android.opengl.GLES31.GL_PIXEL_PACK_BUFFER, android.opengl.GLES31.GL_PIXEL_UNPACK_BUFFER,
+                android.opengl.GLES31.GL_SHADER_STORAGE_BUFFER, android.opengl.GLES31.GL_UNIFORM_BUFFER})
+            android.opengl.GLES31.glBindBuffer(target, 0);
+        for (int unit = 0; unit < 16; unit++) {
+            android.opengl.GLES31.glActiveTexture(android.opengl.GLES31.GL_TEXTURE0 + unit);
+            android.opengl.GLES31.glBindTexture(android.opengl.GLES31.GL_TEXTURE_2D, 0);
+        }
+        android.opengl.GLES31.glActiveTexture(android.opengl.GLES31.GL_TEXTURE0);
+        android.opengl.GLES31.glDisable(android.opengl.GLES31.GL_BLEND);
+        android.opengl.GLES31.glDisable(android.opengl.GLES31.GL_DEPTH_TEST);
+        android.opengl.GLES31.glDisable(android.opengl.GLES31.GL_SCISSOR_TEST);
+        android.opengl.GLES31.glDisable(android.opengl.GLES31.GL_CULL_FACE);
+        android.opengl.GLES31.glColorMask(true, true, true, true);
+        android.opengl.GLES31.glPixelStorei(android.opengl.GLES31.GL_PACK_ALIGNMENT, 4);
+        android.opengl.GLES31.glPixelStorei(android.opengl.GLES31.GL_UNPACK_ALIGNMENT, 4);
+        android.opengl.GLES31.glPixelStorei(android.opengl.GLES31.GL_UNPACK_ROW_LENGTH, 0);
+        android.opengl.GLES31.glPixelStorei(android.opengl.GLES31.GL_PACK_ROW_LENGTH, 0);
+        while (android.opengl.GLES31.glGetError() != android.opengl.GLES31.GL_NO_ERROR) {
+            // an error left from the last shot is not this one's
+        }
+    }
+
     public void createContext(int surfaceWidth, int surfaceHeight){
         int[] major = new int[2];
         int[] minor = new int[2];
@@ -93,6 +181,17 @@ public class GLContext implements AutoCloseable {
     @Override
     public void close() {
         if (mDisplay == null) return;
+        if (mShared) { // P353: released for the next shot, the context and its programs kept
+            try {
+                eglMakeCurrent(mDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+            } catch (Exception ignored) {}
+            synchronized (GLContext.class) { sTaken = false; }
+            mShared = false;
+            mDisplay = null;
+            mContext = null;
+            mSurface = null;
+            return;
+        }
         try {
             if (mProgram != null) mProgram.close();
         } catch (Exception ignored) {}

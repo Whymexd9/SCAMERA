@@ -394,7 +394,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             page.setPadding(SettingsStyle.dp(c, 16), SettingsStyle.dp(c, 12), SettingsStyle.dp(c, 16), 0);
             // SIMPLE_UI §4: as the concept, the search is a pill under the root's header only; P189: a module page has none
             // (a hit would open the usual page)
-            header = SettingsStyle.header(c, () -> requireActivity().getOnBackPressedDispatcher().onBackPressed(), null);
+            header = SettingsStyle.header(c, () -> requireActivity().getOnBackPressedDispatcher().onBackPressed(), null, this::resetPage);
             page.addView(header.view, new android.widget.LinearLayout.LayoutParams(-1, -2));
             boolean root = getArguments() == null || getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) == null;
             if (root && moduleProfile() == null) {
@@ -450,6 +450,34 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     }
                 }
             };
+        }
+
+        /**
+         * P357 (owner, 2026-10-27: «добавь кнопку сброса всех настроек»): the header's reset - on the root page the full reset of
+         * «Сбросить настройки» (its dialog), on any other page this page's rows back to their defaults (PageReset), confirmed.
+         */
+        private void resetPage() {
+            final Context c = getContext();
+            final PreferenceScreen screen = getPreferenceScreen();
+            if (c == null || screen == null) return;
+            final boolean root = getArguments() == null || getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) == null;
+            if (root && moduleProfile() == null) {
+                Preference all = fullPreferenceScreen == null ? null : fullPreferenceScreen.findPreference(getString(R.string.pref_reset_preferences_key));
+                if (all != null) onDisplayPreferenceDialog(all);
+                return;
+            }
+            final CharSequence title = screen.getTitle();
+            new android.app.AlertDialog.Builder(c)
+                    .setTitle(Lang.t(c, "Сбросить страницу?", "Reset this page?"))
+                    .setMessage(Lang.t(c, "Все параметры страницы «" + title + "» вернутся к значениям по умолчанию. Вложенные страницы не затрагиваются.",
+                            "Every setting of «" + title + "» goes back to its default. Pages inside it stay as they are."))
+                    .setPositiveButton(Lang.t(c, "Сбросить", "Reset"), (d, w) -> {
+                        final int n = PageReset.reset(c, screen);
+                        android.widget.Toast.makeText(c, n == 0 ? Lang.t(c, "Всё уже по умолчанию", "Everything is at its default already")
+                                : Lang.t(c, "Сброшено параметров: " + n, "Settings reset: " + n), android.widget.Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton(Lang.t(c, "Отмена", "Cancel"), null)
+                    .show();
         }
 
         /** Title, and the chip: the active route on the root page, the module being edited on pages with per-module values. */

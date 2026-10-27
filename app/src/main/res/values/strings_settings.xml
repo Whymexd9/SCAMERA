@@ -809,4 +809,7 @@
     <string name="prefs_mosaic_wb_summary">Full-resolution (50 / 200 MP) and in-sensor zoom shots: our white-balance estimate. Off: the camera\'s white balance.</string>
     <string name="prefs_film_data_credit_title">Film simulation data</string>
     <string name="prefs_film_data_credit_summary">Film and paper profiles: spektrafilm by Andrea Volpato, github.com/andreavolpato/spektrafilm, CC BY-SA 4.0 (converted and modified by SCAMERA: binary arrays and derived LUTs, see assets/film/CHANGELOG.txt). The colour model is a port of spektrafilm (GPL-3.0).</string>
+    <string name="prefs_ettr_title">ETTR (expose to the right)</string>
+    <string name="prefs_ettr_summary">The shot is exposed brighter, up to just below the clipping of its brightest highlights (at most +2 EV): more light in the shadows, less noise. The photo and the viewfinder keep their usual brightness. Off indoors and at night, once the ISO has gone up (a boost would add no light there).</string>
+    <string name="shade_t_ettr">ETTR</string>
 </resources>

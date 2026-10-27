@@ -63,7 +63,13 @@ int main(int argc,char** argv) {
                 std::string target;
                 if(marker && std::getline(marker,target) && !target.empty())setenv("SCAM_DUMP_FORWARD",target.c_str(),1);
             }
-            auto report=[](const std::string& line){worker_crash::note(line.data(),line.size());scam_nn::log(line);};
+            // P353: SCAM_LOG_MS (replays only) prefixes every line with the ms since the worker started (the app timestamps its copy)
+            const bool logMs=std::getenv("SCAM_LOG_MS")!=nullptr;
+            auto report=[logMs,&sinceStart](const std::string& line){
+                worker_crash::note(line.data(),line.size());
+                if(logMs){char t[24];std::snprintf(t,sizeof(t),"[%6.0f] ",sinceStart());scam_nn::log(t+line);}
+                else scam_nn::log(line);
+            };
             // vivo's CRE motion lives in /vendor on vivo only; elsewhere (OPPO etc.)
             // fall back to SCAMERA's own tile alignment instead of failing.
             std::unique_ptr<scam::StockMotion> motion;

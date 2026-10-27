@@ -99,13 +99,12 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
         // Read-only refresh: must not quantize or rewrite what is already stored.
         showStoredValue();
 
-        // Add click listener for precise value input on the value text
-        if (seekBarValue != null) {
-            seekBarValue.setOnClickListener(v -> showPreciseValueDialog());
-        }
-        // Match the reference UI: tapping anywhere on the parameter row opens
-        // direct numeric entry; the slider remains available for quick tuning.
-        holder.itemView.setOnClickListener(v -> showPreciseValueDialog());
+        // Tapping the value or anywhere on the parameter row opens direct numeric entry; the slider remains available for quick
+        // tuning. P357: a double tap on the bar, the value or the row puts the default back.
+        final Runnable reset = () -> { if (isEnabled() && callChangeListener(formatExactValue(clamp(defaultNumber())))) resetToDefault(); };
+        com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(seekBar, reset);
+        if (seekBarValue != null) com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(seekBarValue, this::showPreciseValueDialog, reset);
+        com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(holder.itemView, this::showPreciseValueDialog, reset);
     }
 
     @Override

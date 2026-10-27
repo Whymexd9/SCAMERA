@@ -853,6 +853,7 @@ public class ScamProcessor extends ProcessorBase {
             restorePriority(priorityBefore);
         }
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_done");
+        com.particlesdevs.photoncamera.util.ThermalPolicy.processing(false); // P353: the GPU work of the shot is done (the encoders are CPU)
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.preview(img, pipeline.record); // P277: the lab shot's photo (before the zoom / ISZ crops)
         stage(0.85f); // P158: processed
         // Ultra HDR (settings.ultraHdr is on only when the shot writes a JPEG) and the HDR HEIC / AVIF (P46, settings.hdrOutput)

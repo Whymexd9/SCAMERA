@@ -362,6 +362,7 @@ public final class ScamNeuralClient {
                     String name="scam_burst-"+new java.text.SimpleDateFormat("yyyyMMdd-HHmmss",java.util.Locale.ROOT).format(new java.util.Date())+".bin";
                     try(java.io.FileWriter kb=new java.io.FileWriter(new File(dir,"keep-burst"))){
                         kb.write(new File(kept,name).getAbsolutePath());
+                        ScamLab.keeping(new File(kept,name)); // P359: the lab's metadata beside it
                     }catch(IOException kbe){log.accept("CLIENT: keep-burst marker not written: "+kbe.getMessage());}
                 }
                 // A worker of this process died inside the CRE: this one aligns with SCAMERA's own tile alignment.

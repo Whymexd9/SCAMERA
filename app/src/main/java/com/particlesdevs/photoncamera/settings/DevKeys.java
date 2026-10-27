@@ -169,6 +169,11 @@ public final class DevKeys {
         // P314: the default (medium) GPU priority, the processing contexts stay low; 1 = P90's high priority
         k.add(n(vf, "vf_gpu_priority", "0", Lang.t("Приоритет GPU-контекста видоискателя: 1 — высокий, 0 — обычный (меньше мешает обработке)",
                 "Viewfinder GPU context priority: 1 high, 0 normal (gets less in the way of processing)")));
+        // P353: the developed RAW viewfinder's tone rate while a shot is processed
+        k.add(n(vf, "vf_busy_fps", "15", Lang.t("RAW-видоискатель во время обработки снимка: не больше стольких кадров в секунду (обработка не делит GPU с ним); 0 — каждый кадр",
+                "RAW viewfinder while a shot is processed: at most this many frames a second (processing does not share the GPU with it); 0 = every frame")));
+        k.add(s(vf, "vf_isp_latch", true, Lang.t("RAW-видоискатель: кадр ISP только принимается, без перерисовки того же RAW-кадра (выкл — перерисовка на каждый кадр ISP)",
+                "RAW viewfinder: an ISP frame is only latched, the same RAW frame is not drawn again (off: a redraw for every ISP frame)")));
         // P212h (A6 = M11): the FULLRES viewfinder predicts the photo
         k.add(n(vf, "vf_native_gain", "1", Lang.t("OPPO FULLRES: усиление видоискателя — 1: только на экспозицию, которую режим не даёт (нехватка AE больше 0.3 EV), 2: замер видоискателя, пока экспозиция не задана вручную, 0: без усиления",
                 "OPPO FULLRES viewfinder gain - 1: only for the exposure the mode cannot give (an AE deficit above 0.3 EV), 2: the viewfinder's meter unless the exposure is hand-set, 0: none")));
@@ -189,6 +194,8 @@ public final class DevKeys {
         k.add(n(merge, "hybrid_s61_night_scale", "0.8", Lang.t("Sabre 6.1 ночью: множитель ширины ядра при SNR-ключе до 8 (к 16 — снова 1; 1 — как раньше)", "Sabre 6.1 at night: kernel width multiplier at an SNR key up to 8 (back to 1 at 16; 1: as before)")));
         k.add(n(merge, "hybrid_s61_fine", "0", Lang.t("Sabre 6.1: структура по зелёным пикселям в полном разрешении, множитель её шума (0 — по квадам 2×2; 2 медленнее и даёт решётку на подсветке)", "Sabre 6.1: structure from the green sites at full resolution, its noise multiplier (0: from the 2x2 quads; 2 is slower and leaves a grid on backlights)")));
         k.add(n(merge, "hybrid_us_set", "1", Lang.t("Короткие кадры: набор P350 (регистрация, маска по своей яркости, отказ по областям; 0 — как раньше)", "Ultrashort frames: the P350 set (registration, own-brightness mask, refusal per region; 0: as before)")));
+        k.add(n(merge, "hybrid_long_set", "1", Lang.t("Длинные кадры: набор P358 (шум по замеру, вес по шуму; 0 — как раньше)",
+                "Long frames: the P358 set (measured noise, weight by noise; 0: as before)")));
         k.add(n(merge, "hybrid_rej_set", "1", Lang.t("Реджекты: набор P344 (чистая карта на статике, движение отсекается; 0 — как P341)", "Rejection: the P344 set (a clean map on static areas, motion still cut; 0: as P341)")));
         k.add(n(merge, "hybrid_rej_pool", "1", Lang.t("Реджекты: расстояние по 3×3 клеткам вместо одной (чистая карта без шумовых отказов; 0 — как раньше)", "Rejection: the distance over 3x3 cells instead of one (a clean map without noise rejections; 0: as before)")));
         k.add(n(merge, "hybrid_rej_prior", "1", Lang.t("Реджекты: плавный учёт движения по полю выравнивания (0 — порог по плитке, как раньше)", "Rejection: soft motion prior from the alignment field (0: the per-tile threshold as before)")));
@@ -235,6 +242,8 @@ public final class DevKeys {
         // processing
         k.add(n(post, "post_priority", null, Lang.t("Приоритет потока обработки (nice; пусто — не менять)", "Priority of the processing thread (nice; empty: unchanged)")));
         k.add(n(post, "gpu_low_priority", "1", Lang.t("Низкий приоритет GPU-контекста обработки (0 — обычный)", "Low priority of the processing GPU context (0: normal)")));
+        k.add(s(post, "post_shared_context", true, Lang.t("Один GPU-контекст обработки на всё время работы: программы шейдеров не загружаются заново на каждый снимок (выкл — новый контекст на каждый снимок)",
+                "One processing GPU context for the whole run: the shader programs are not loaded again for every shot (off: a new context every shot)")));
         k.add(s(post, "effmap_real", true, Lang.t("Карта числа кадров для шумоподавления — реальная (выкл — старая)", "Frame-count map for the denoise: the real one (off: the old one)")));
         // P214d: ScamDenoise.lscTerm
         k.add(s(post, "denoise_lsc", true, Lang.t("Шумоподавление сильнее к углам кадра по коррекции виньетирования (g² карты затенения объектива)", "Denoise harder towards the frame corners after the vignetting correction (g² of the lens-shading map)")));
@@ -312,6 +321,9 @@ public final class DevKeys {
                 "OPPO FULLRES own AE: start from the camera's last settled exposure or a plain-mode sample. Off: from the last preview exposure")));
         k.add(s(cap, "native_ae_smooth", true, Lang.t("OPPO FULLRES, своя AE: сглаживание и гистерезис (без качания у ламп). Выкл — закон P192",
                 "OPPO FULLRES own AE: smoothing and hysteresis (no hunting at lamps). Off: the P192 law")));
+        // P356: ETTR over the shade's switch (A/B without the UI)
+        k.add(sAuto(cap, "ettr", Lang.t("ETTR (экспозиция вправо): 1 — вкл, 0 — выкл поверх переключателя в шторке",
+                "ETTR (expose to the right): 1 on, 0 off over the shade's switch")));
         k.add(s(cap, "native_ae_meter", true, Lang.t("OPPO FULLRES, своя AE: замер по кадру снимка (кроп, центр, касание, виньетирование, клип по пикселям). Выкл — замер P192 по всему кадру",
                 "OPPO FULLRES own AE: metering of the photo's frame (crop, centre, tap, shading, per-site clipping). Off: the P192 whole-frame meter")));
         k.add(s(cap, "native_ae_trace", false, Lang.t("OPPO FULLRES, своя AE: строка лога на каждый кадр (SCAM_AE, раз в секунду)",

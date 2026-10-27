@@ -63,10 +63,25 @@ public final class ScamLabRun {
         @Nullable public final String module;
         /** The worker lines of the shot's own burst that replace a setting's value (a retry, a step left out): suffix -> line. */
         public final Map<String, String> burstForced;
+        /**
+         * P359: rendered with the settings of now (ScamLab.NOW): {@link #meta}'s prefs, dev and module are today's; {@link #nowKey}
+         * names them (a side and the whole frame's statistics belong to one set of settings). False: as shot.
+         */
+        public final boolean now;
+        public final String nowKey;
+        /** P359: a kept series opened in the lab with a template shot's parameters (its colour and geometry are approximate). */
+        public final boolean templated;
 
         Shot(File dir, JSONObject meta, ScamLabBurst burst) {
+            this(dir, meta, burst, false, "");
+        }
+
+        Shot(File dir, JSONObject meta, ScamLabBurst burst, boolean now, String nowKey) {
             this.dir = dir;
             this.meta = meta;
+            this.now = now;
+            this.nowKey = nowKey;
+            templated = meta.optBoolean("imported", false);
             width = burst.width;
             height = burst.height;
             frames = burst.frames;
@@ -76,7 +91,7 @@ public final class ScamLabRun {
             final String m = meta.optString("module", "");
             module = m.isEmpty() ? null : m;
             burstForced = java.util.Collections.unmodifiableMap(burstLines(meta.optString("tuningBurst", "")));
-            final LabFrame f = ScamLab.frame(dir);
+            final LabFrame f = now ? NOW_FRAMES.get(dir.getAbsolutePath() + "|" + nowKey) : ScamLab.frame(dir);
             // a frame recorded before its input scale was: the shot's «Масштаб входа, EV»
             if (f != null && !(f.inScale > 0f)) f.inScale = (float) Math.pow(2.0, shotInputEv(this));
             frame = f;
@@ -86,14 +101,27 @@ public final class ScamLabRun {
             try {
                 final JSONObject meta = new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(dir, ScamLab.META).toPath()),
                         StandardCharsets.UTF_8));
-                return new Shot(dir, meta, new ScamLabBurst(new File(dir, ScamLab.BURST), null, ""));
+                final ScamLabBurst burst = new ScamLabBurst(ScamLab.burstOf(dir), null, "");
+                if (!ScamLab.settingsNow(dir)) return new Shot(dir, meta, burst);
+                // P359: the settings of now in place of the shot's (its parameters, burst lines and orientation stay)
+                final JSONObject prefs = ScamLabParams.prefs(ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getAll());
+                final JSONObject dev = new JSONObject();
+                for (Map.Entry<String, Float> e : PreferenceKeys.scamDevLines().entrySet())
+                    if (e.getValue() != null && Float.isFinite(e.getValue())) dev.put(e.getKey(), (double) e.getValue());
+                meta.put("prefs", prefs).put("dev", dev);
+                meta.remove("module");
+                if (PreferenceKeys.isPerLensSettingsOn()) {
+                    final String editing = PreferenceKeys.profiles().editing();
+                    if (editing != null && !editing.isEmpty()) meta.put("module", editing);
+                }
+                return new Shot(dir, meta, burst, true, Integer.toHexString((prefs.toString() + "|" + dev).hashCode()));
             } catch (org.json.JSONException e) {
                 throw new IOException(e);
             }
         }
 
         public long bytes() {
-            return new File(dir, ScamLab.BURST).length();
+            return ScamLab.burstOf(dir).length();
         }
 
         /** The default fragment: the middle third of each side (a ninth of the frame). */
@@ -131,6 +159,9 @@ public final class ScamLabRun {
             return p != null && p.optBoolean("oppoTunedCcm", false);
         }
     }
+
+    /** P359: the whole frame's statistics of shots rendered with the settings of now (this run of the app; dir|settings key). */
+    private static final Map<String, LabFrame> NOW_FRAMES = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Nullable
     static Map<String, Float> devOf(@Nullable JSONObject o) {
@@ -340,7 +371,7 @@ public final class ScamLabRun {
 
     private static Side cachedSide(Context context, Shot shot, @Nullable int[] crop, java.util.SortedMap<String, Object> overrides,
                                    Map<String, Float> dev, String fragment, Progress progress, String name) throws Exception {
-        final String id = shot.dir.getAbsolutePath() + "|" + fragment + "|" + overrides + "|" + dev;
+        final String id = shot.dir.getAbsolutePath() + "|" + shot.nowKey + "|" + fragment + "|" + overrides + "|" + dev;
         final Side known = sides.get(id);
         if (known != null && !known.photo.isRecycled()) return known;
         final Map<String, Object> values = basePrefs(shot);
@@ -367,8 +398,51 @@ public final class ScamLabRun {
                 progress, "A", null, record);
         whole.photo.recycle();
         if (record.usable()) {
-            ScamLab.writeFrame(shot.dir, record);
+            if (shot.now) NOW_FRAMES.put(shot.dir.getAbsolutePath() + "|" + shot.nowKey, record);
+            else ScamLab.writeFrame(new File(shot.dir, ScamLab.FRAME), record);
             shot.frame = record;
+        }
+    }
+
+    /**
+     * P359 (owner, 2026-10-27: «использовать старые бурсты с новой обработкой/пайплайном»): the shot's own photo (A, the
+     * pipeline of the build that took it: its preview, at most 1600 px a side) beside the same burst merged and processed now
+     * (B: this build's worker and pipeline with the lab's base settings - the shot's, or today's for a shot set to them). A
+     * fragment's A is the preview's part over it, scaled to B's size. Null A when the shot has no photo.
+     */
+    public static synchronized Result pipeline(Context context, Shot shot, @Nullable int[] crop, Progress progress) throws Exception {
+        if (!ScamLab.LOCK.tryLock())
+            throw new IOException(Lang.t("Идёт обработка снимка. Повторите, когда она закончится.", "A shot is being processed. Try again when it is done."));
+        PreferenceKeys.beginShotProfile(true);
+        try {
+            final Result r = new Result();
+            final java.util.TreeMap<String, Object> none = new java.util.TreeMap<>();
+            final Map<String, Float> lines = devLines(shot);
+            r.b = cachedSide(context, shot, crop, none, lines, crop == null ? "whole" : crop[0] + "," + crop[1] + "," + crop[2] + "," + crop[3], progress, "B");
+            final Bitmap preview = android.graphics.BitmapFactory.decodeFile(new File(shot.dir, ScamLab.PREVIEW).getAbsolutePath());
+            if (preview == null) throw new IOException(Lang.t("У снимка нет сохранённого фото", "The shot has no saved photo"));
+            Bitmap part = preview;
+            if (crop != null) {
+                final float[] f = ScamLabOrient.photoRect(shot.orient, crop, shot.width, shot.height);
+                final int pw = preview.getWidth(), ph = preview.getHeight();
+                final int x = Math.max(0, Math.min(pw - 1, Math.round(f[0] * pw))), y = Math.max(0, Math.min(ph - 1, Math.round(f[1] * ph)));
+                final int w = Math.max(1, Math.min(pw - x, Math.round((f[2] - f[0]) * pw))), h = Math.max(1, Math.min(ph - y, Math.round((f[3] - f[1]) * ph)));
+                part = Bitmap.createBitmap(preview, x, y, w, h);
+            }
+            final Bitmap a = Bitmap.createScaledBitmap(part, r.b.photo.getWidth(), r.b.photo.getHeight(), true);
+            if (part != preview && part != a) part.recycle();
+            if (preview != a) preview.recycle();
+            r.a = new Side(a, null, null, 0, 0, "");
+            r.mergedAgain = true;
+            r.same = false;
+            Log.i("SCAM_LAB", "lab " + shot.dir.getName() + " pipeline then / now " + (crop == null ? "whole" : java.util.Arrays.toString(crop))
+                    + ": now " + r.b.mergeMs + "+" + r.b.postMs + " ms");
+            return r;
+        } finally {
+            PreferenceValue.overlay(null, null);
+            PreferenceKeys.labDevOverlay(null);
+            PreferenceKeys.endShotProfile();
+            ScamLab.LOCK.unlock();
         }
     }
 
@@ -389,7 +463,7 @@ public final class ScamLabRun {
         ByteBuffer rgb = null;
         Parameters p = null;
         try {
-            final ScamLabBurst burst = new ScamLabBurst(new File(shot.dir, ScamLab.BURST), crop, shot.meta.optString("tuningBurst", ""));
+            final ScamLabBurst burst = new ScamLabBurst(ScamLab.burstOf(shot.dir), crop, shot.meta.optString("tuningBurst", ""));
             // what the worker merges with: the tuning file (the burst's own lines last, the last value of a name wins) and the CRE
             // source, a job marker beside it (ScamNeuralClient)
             final String tuning = effective(burst.settingsTuning() + burst.burstTuning()) + " creSource " + PreferenceKeys.getScamCreSource();

@@ -41,10 +41,17 @@ public final class ScamLab {
 
     public static final String PREF = "pref_scam_lab_keep";
     public static final String DIR = "Lab", BURST = "burst.nch", META = "meta.json", PREVIEW = "preview.jpg", FRAME = "frame.json";
+    /**
+     * P359: an imported burst's folder holds no copy of it: SOURCE names the file (a kept RAW series in Download/SCAMERA); NOW
+     * marks a shot the lab renders with the settings of now instead of the shot's (its whole-frame statistics: FRAME_NOW).
+     */
+    public static final String SOURCE = "source.txt", NOW = "settings-now", FRAME_NOW = "frame-now.json";
     /** A lab run and a shot's processing never overlap: one GL texture table, the worker's statics, one report. */
     public static final ReentrantLock LOCK = new ReentrantLock();
 
     private static volatile File shotDir;
+    /** P359: the RAW series «Сохранять RAW-серию» keeps of this shot (not a lab shot): its metadata go beside it. */
+    private static volatile File keptBurst;
     private static volatile String shotTuning = "", shotOverride = "";
     private static volatile boolean shotMeta;
     /** The worker RGB's luma, small (the shot's sensor side), for the photo's orientation (ScamLabOrient). */
@@ -80,6 +87,7 @@ public final class ScamLab {
     /** ScamProcessor, before the merge of a shot: its lab folder when the switch is on (hybrid shots only). */
     public static void beginShot(boolean hybrid) {
         shotDir = null;
+        keptBurst = null;
         shotMeta = false;
         shotTuning = shotOverride = "";
         shotThumb = null;
@@ -91,13 +99,42 @@ public final class ScamLab {
 
     /** ScamProcessor: this shot is a lab shot with its metadata written (its pipeline records the whole frame's statistics). */
     public static boolean recording() {
-        return shotDir != null && shotMeta;
+        return (shotDir != null || keptBurst != null) && shotMeta;
+    }
+
+    /**
+     * P359 (owner, 2026-10-27: «Дай возможность в лаборатории использовать старые бурсты с новой обработкой/пайплайном»):
+     * ScamNeuralClient, a shot whose RAW series «Сохранять RAW-серию» keeps in Download/SCAMERA: the lab's metadata, photo and
+     * whole-frame statistics go beside it (scam_burst-&lt;time&gt;.json / .jpg / .frame.json), so the lab can open it later.
+     */
+    static void keeping(File burst) {
+        if (shotDir == null) keptBurst = burst;
+    }
+
+    /** A kept series' file beside it: its name without ".bin" / ".nch" + {@code suffix}. */
+    public static File sidecar(File burst, String suffix) {
+        final String n = burst.getName();
+        final int dot = n.lastIndexOf('.');
+        return new File(burst.getParentFile(), (dot > 0 ? n.substring(0, dot) : n) + suffix);
+    }
+
+    /** Where this shot's metadata, photo and statistics go: the lab folder's files, or a kept series' sidecars; null: neither. */
+    @Nullable
+    private static File target(String labName, String sideSuffix) {
+        final File dir = shotDir, kept = keptBurst;
+        if (dir != null) return new File(dir, labName);
+        return kept == null ? null : sidecar(kept, sideSuffix);
     }
 
     /** The whole frame's statistics of a lab folder ({@link #FRAME}), null when the shot has none (taken before them). */
     @Nullable
     public static LabFrame frame(File dir) {
-        final File f = new File(dir, FRAME);
+        return frameFile(new File(dir, FRAME));
+    }
+
+    /** The whole frame's statistics in {@code f}, null without them. */
+    @Nullable
+    static LabFrame frameFile(File f) {
         if (!f.isFile()) return null;
         try {
             return LabFrame.fromJson(new JSONObject(new String(java.nio.file.Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8)));
@@ -107,10 +144,10 @@ public final class ScamLab {
         }
     }
 
-    static void writeFrame(File dir, LabFrame frame) {
-        if (dir == null || frame == null || !frame.usable()) return;
+    static void writeFrame(@Nullable File file, LabFrame frame) {
+        if (file == null || frame == null || !frame.usable()) return;
         try {
-            write(new File(dir, FRAME), frame.toJson().toString().getBytes(StandardCharsets.UTF_8));
+            write(file, frame.toJson().toString().getBytes(StandardCharsets.UTF_8));
         } catch (Exception | OutOfMemoryError e) {
             Log.w("SCAM_LAB", "lab frame statistics not written: " + e);
         }
@@ -132,8 +169,8 @@ public final class ScamLab {
 
     /** ScamProcessor, right before the post pipeline: the shot's metadata. */
     public static void snapshot(Parameters p, @Nullable String camera) {
-        final File dir = shotDir;
-        if (dir == null || p == null) return;
+        final File metaFile = target(META, ".json");
+        if (metaFile == null || p == null) return;
         try {
             final JSONObject meta = new JSONObject();
             meta.put("version", 1);
@@ -158,7 +195,7 @@ public final class ScamLab {
             meta.put("dev", dev);
             final String module = shotModule();
             if (module != null) meta.put("module", module);
-            write(new File(dir, META), meta.toString().getBytes(StandardCharsets.UTF_8));
+            write(metaFile, meta.toString().getBytes(StandardCharsets.UTF_8));
             shotMeta = true;
             if (p.scamRgb != null && p.rawSize != null) {
                 final int w = p.rawSize.x, h = p.rawSize.y;
@@ -188,9 +225,9 @@ public final class ScamLab {
      * for the list and the lab's fragment, and how it lies over the sensor frame (meta "orient", ScamLabOrient).
      */
     public static void preview(Bitmap img, @Nullable LabFrame record) {
-        final File dir = shotDir;
-        if (dir == null || img == null || !shotMeta) return;
-        writeFrame(dir, record);
+        final File metaFile = target(META, ".json"), previewFile = target(PREVIEW, ".jpg"), frameFile = target(FRAME, ".frame.json");
+        if (metaFile == null || img == null || !shotMeta) return;
+        writeFrame(frameFile, record);
         final float[] thumb = shotThumb;
         shotThumb = null;
         if (thumb != null) try {
@@ -202,7 +239,6 @@ public final class ScamLab {
             final float[] luma = new float[pw * ph];
             for (int i = 0; i < px.length; i++) luma[i] = (float) Math.log(1 + ((px[i] >> 16 & 255) * 2 + (px[i] >> 8 & 255) * 5 + (px[i] & 255)));
             final int code = ScamLabOrient.find(thumb, thumbW, thumbH, luma, pw, ph);
-            final File metaFile = new File(dir, META);
             final JSONObject meta = new JSONObject(new String(java.nio.file.Files.readAllBytes(metaFile.toPath()), StandardCharsets.UTF_8));
             meta.put("orient", code).put("photoWidth", img.getWidth()).put("photoHeight", img.getHeight());
             write(metaFile, meta.toString().getBytes(StandardCharsets.UTF_8));
@@ -212,7 +248,7 @@ public final class ScamLab {
         }
         try {
             final Bitmap small = scaled(img, 1600);
-            try (FileOutputStream o = new FileOutputStream(new File(dir, PREVIEW))) {
+            try (FileOutputStream o = new FileOutputStream(previewFile)) {
                 small.compress(Bitmap.CompressFormat.JPEG, 90, o);
             } finally {
                 if (small != img) small.recycle();
@@ -227,9 +263,14 @@ public final class ScamLab {
      * DNG and the diagnostics; an incomplete one (the merge failed, the switch was turned on mid-shot) is removed.
      */
     public static void endShot() {
-        final File dir = shotDir;
+        final File dir = shotDir, kept = keptBurst;
         shotDir = null;
-        if (dir == null) return;
+        keptBurst = null;
+        if (dir == null) {
+            // P359: a kept series the worker did not write takes its sidecars with it
+            if (kept != null && !kept.isFile()) for (String suffix : new String[]{".json", ".jpg", ".frame.json"}) sidecar(kept, suffix).delete();
+            return;
+        }
         final File burst = new File(dir, BURST);
         if (shotMeta && burst.isFile() && clearReplayFlags(burst)) {
             Log.i("SCAM_LAB", "lab shot kept: " + dir + " (" + (burst.length() >> 20) + " MB)");
@@ -262,15 +303,247 @@ public final class ScamLab {
         final List<File> out = new ArrayList<>();
         if (dirs == null) return out;
         Arrays.sort(dirs, (a, b) -> b.getName().compareTo(a.getName()));
-        for (File d : dirs) if (new File(d, BURST).isFile() && new File(d, META).isFile()) out.add(d);
+        for (File d : dirs) if (burstOf(d).isFile() && new File(d, META).isFile()) out.add(d);
         return out;
     }
 
-    /** A lab folder and the files the lab made in it (nothing else, nothing outside Lab). */
+    /** P359: a lab folder's burst: its own, or the kept series an imported folder names. */
+    public static File burstOf(File dir) {
+        final File own = new File(dir, BURST);
+        if (own.isFile()) return own;
+        final File source = new File(dir, SOURCE);
+        if (source.isFile()) try {
+            final String path = new String(java.nio.file.Files.readAllBytes(source.toPath()), StandardCharsets.UTF_8).trim();
+            if (!path.isEmpty()) return new File(path);
+        } catch (IOException e) {
+            Log.w("SCAM_LAB", "lab source not read: " + e);
+        }
+        return own;
+    }
+
+    /** P359: the lab renders this shot with the settings of now (true) or as shot (false). */
+    public static boolean settingsNow(File dir) {
+        return new File(dir, NOW).isFile();
+    }
+
+    public static void settingsNow(File dir, boolean now) {
+        final File f = new File(dir, NOW);
+        try {
+            if (now) {
+                if (!f.isFile()) write(f, new byte[0]);
+            } else f.delete();
+        } catch (IOException e) {
+            Log.w("SCAM_LAB", "lab settings mode not stored: " + e);
+        }
+    }
+
+    /** A lab folder and the files the lab made in it (nothing else, nothing outside Lab: an imported series stays). */
     public static boolean remove(File dir) {
         if (dir == null || !root().equals(dir.getParentFile())) return false;
-        for (String name : new String[]{BURST, META, PREVIEW, FRAME}) new File(dir, name).delete();
+        for (String name : new String[]{BURST, META, PREVIEW, FRAME, SOURCE, NOW, FRAME_NOW, "sandbox.json"}) new File(dir, name).delete();
+        // P355: the JPEGs of B the lab saved there
+        final File[] saved = dir.listFiles(f -> f.getName().startsWith("B_") && f.getName().endsWith(".jpg"));
+        if (saved != null) for (File f : saved) f.delete();
         return dir.delete();
+    }
+
+    // ───── P359: kept RAW series (Download/SCAMERA) opened in the lab ─────
+
+    /** An NCH v11 / v12 burst file's header: {width, height, cfa, frames, grid, block}, null when it is none. */
+    @Nullable
+    static int[] header(File f) {
+        if (f == null || !f.isFile() || f.length() < 128) return null;
+        try (RandomAccessFile r = new RandomAccessFile(f, "r")) {
+            final byte[] b = new byte[128];
+            r.readFully(b);
+            final java.nio.ByteBuffer h = java.nio.ByteBuffer.wrap(b).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            final int version = h.getInt(4);
+            if (h.getInt(0) != ScamLabBurst.MAGIC || (version != 11 && version != 12)) return null;
+            final int w = h.getInt(8), hh = h.getInt(12), frames = h.getInt(20);
+            if (w <= 0 || hh <= 0 || frames < 1 || frames > 64) return null;
+            return new int[]{w, hh, h.getInt(16), frames, Math.max(1, h.getInt(52)), h.getInt(56)};
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** The kept RAW series in Download/SCAMERA not opened in the lab yet, newest first. */
+    public static List<File> keptSeries() {
+        final File[] files = com.particlesdevs.photoncamera.util.ScameraFiles.dir().listFiles(f -> f.isFile()
+                && (f.getName().endsWith(".bin") || f.getName().endsWith(".nch")) && f.length() > 128);
+        final List<File> out = new ArrayList<>();
+        if (files == null) return out;
+        final java.util.Set<String> opened = new java.util.HashSet<>();
+        final File[] dirs = root().listFiles(File::isDirectory);
+        if (dirs != null) for (File d : dirs) if (new File(d, SOURCE).isFile()) opened.add(burstOf(d).getAbsolutePath());
+        Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+        for (File f : files) if (!opened.contains(f.getAbsolutePath()) && header(f) != null) out.add(f);
+        return out;
+    }
+
+    /** A kept series' metadata beside it (a series kept since P359), null for an older one. */
+    @Nullable
+    public static File keptMeta(File burst) {
+        final File m = sidecar(burst, ".json");
+        return m.isFile() ? m : null;
+    }
+
+    /**
+     * Opens a kept series in the lab: a folder Lab/&lt;its time&gt;_imp naming it (no copy). Its metadata: its own sidecar, or
+     * (a series kept before P359) the newest lab shot or sidecar of the same frame size, grid and CFA as a template - its
+     * parameters with this burst's own white point (the grey world of its base frame), rendered with the settings of now.
+     * Throws with a message for the user when there is no template.
+     */
+    public static File importSeries(File burst) throws IOException {
+        final int[] h = header(burst);
+        if (h == null) throw new IOException(com.particlesdevs.photoncamera.util.Lang.t("Не серия SHDR (NCH v11 / v12)", "Not an SHDR burst (NCH v11 / v12)"));
+        JSONObject meta;
+        boolean templated = false;
+        try {
+            final File own = keptMeta(burst);
+            if (own != null) meta = new JSONObject(new String(java.nio.file.Files.readAllBytes(own.toPath()), StandardCharsets.UTF_8));
+            else {
+                meta = template(h, burst);
+                if (meta == null) throw new IOException(com.particlesdevs.photoncamera.util.Lang.t(
+                        "Серия сохранена без параметров снимка, и нет снимка-образца того же размера (" + h[0] + "×" + h[1]
+                                + "): сделайте один снимок для лаборатории этим модулем и откройте серию снова.",
+                        "The series was kept without its shot's parameters and there is no template shot of its size (" + h[0] + "×" + h[1]
+                                + "): take one lab shot with this module and open the series again."));
+                templated = true;
+            }
+        } catch (org.json.JSONException e) {
+            throw new IOException(e);
+        }
+        final File dir = newFolder(root(), new Date(burst.lastModified()));
+        final File named = new File(dir.getParentFile(), dir.getName() + "_imp");
+        if (!named.mkdirs()) throw new IOException("lab folder not made: " + named);
+        try {
+            if (templated) meta.put("imported", true);
+            meta.put("source", burst.getName());
+            write(new File(named, META), meta.toString().getBytes(StandardCharsets.UTF_8));
+            write(new File(named, SOURCE), burst.getAbsolutePath().getBytes(StandardCharsets.UTF_8));
+            for (String[] pair : new String[][]{{".jpg", PREVIEW}, {".frame.json", FRAME}}) {
+                final File side = sidecar(burst, pair[0]);
+                if (side.isFile()) write(new File(named, pair[1]), java.nio.file.Files.readAllBytes(side.toPath()));
+            }
+            // an older series has only the template's settings: the lab renders it with the settings of now
+            if (templated) settingsNow(named, true);
+        } catch (org.json.JSONException | IOException e) {
+            remove(named);
+            throw e instanceof IOException ? (IOException) e : new IOException(e);
+        }
+        Log.i("SCAM_LAB", "series " + burst + " opened in the lab as " + named + (templated ? " (template parameters)" : ""));
+        return named;
+    }
+
+    /** The metadata of the newest lab shot (or kept sidecar) of the same burst geometry, with {@code burst}'s white point. */
+    @Nullable
+    private static JSONObject template(int[] h, File burst) throws org.json.JSONException, IOException {
+        final List<File[]> metas = new ArrayList<>(); // {metadata, its burst}
+        for (File d : shots()) metas.add(new File[]{new File(d, META), burstOf(d)});
+        final File[] side = com.particlesdevs.photoncamera.util.ScameraFiles.dir().listFiles(f -> f.getName().startsWith("scam_burst-")
+                && f.getName().endsWith(".json") && !f.getName().endsWith(".frame.json"));
+        if (side != null) {
+            Arrays.sort(side, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+            for (File m : side) metas.add(new File[]{m, sidecar(m, ".bin")});
+        }
+        for (File[] m : metas) {
+            final int[] other = header(m[1]);
+            if (other == null || other[0] != h[0] || other[1] != h[1] || other[2] != h[2] || other[4] != h[4] || other[5] != h[5]) continue;
+            final JSONObject meta = new JSONObject(new String(java.nio.file.Files.readAllBytes(m[0].toPath()), StandardCharsets.UTF_8));
+            final JSONObject params = meta.optJSONObject("params");
+            if (params == null) continue;
+            final float[] white = greyWorld(burst, h);
+            if (white != null) params.put("whitePoint", new org.json.JSONArray().put(white[0]).put(white[1]).put(white[2]));
+            // the base frame's own ISO and noise (its table entry) for the denoise, not the template's
+            final float[] noise = baseNoise(burst);
+            if (noise != null) {
+                final org.json.JSONArray pairs = new org.json.JSONArray();
+                for (int c = 0; c < 3; c++) pairs.put(new org.json.JSONArray().put((double) noise[1]).put((double) noise[2]));
+                params.put("iso", Math.round(noise[0]));
+                params.put("noiseModeler", new JSONObject().put("base", pairs).put("compute", pairs).put("analog", Math.round(noise[0]))
+                        .put("iso", Math.round(noise[0])));
+            }
+            meta.put("template", m[0].getName().equals(META) ? m[0].getParentFile().getName() : m[0].getName());
+            meta.remove("tuningBurst"); // the template's retry lines are not this burst's
+            meta.remove("orient"); // the template's way up (ScamLabOrient) is not known to be this burst's
+            return meta;
+        }
+        return null;
+    }
+
+    /** The base frame's {measured ISO, noise slope, noise offset} from the burst's frame table, null when unreadable. */
+    @Nullable
+    static float[] baseNoise(File burst) {
+        try (RandomAccessFile r = new RandomAccessFile(burst, "r")) {
+            final byte[] e = new byte[32];
+            r.seek(128);
+            r.readFully(e);
+            final java.nio.ByteBuffer b = java.nio.ByteBuffer.wrap(e).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            final int iso = b.getInt(8);
+            final float slope = b.getFloat(12), offset = b.getFloat(16);
+            if (iso <= 0 || !(slope > 0f) || !(offset >= 0f) || !Float.isFinite(slope) || !Float.isFinite(offset)) return null;
+            return new float[]{iso, slope, offset};
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The white point (camera R / G, 1, B / G of a grey) of a burst's base frame by the grey world over its mid-tones (2 % - 90 %
+     * of white over black, clipped cells out), null when it cannot be read.
+     */
+    @Nullable
+    static float[] greyWorld(File burst, int[] h) {
+        try (RandomAccessFile r = new RandomAccessFile(burst, "r")) {
+            final byte[] head = new byte[128 + 32 * h[3]];
+            r.readFully(head);
+            final java.nio.ByteBuffer hb = java.nio.ByteBuffer.wrap(head).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            final int version = hb.getInt(4), w = h[0], hh = h[1];
+            final float white = hb.getFloat(24);
+            final float[] black = {hb.getFloat(28), hb.getFloat(32), hb.getFloat(36), hb.getFloat(40)};
+            final java.nio.ByteBuffer table = java.nio.ByteBuffer.wrap(head, 128, 32 * h[3]).slice().order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            final long plane = ScamLabBurst.planeOffset(version, table, h[3], 0, w, hh);
+            return greyWorld(r.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_ONLY, plane, (long) w * hh * 2)
+                    .order(java.nio.ByteOrder.LITTLE_ENDIAN), w, hh, h[2], Math.max(1, h[5]), black, white);
+        } catch (IOException | RuntimeException e) {
+            Log.w("SCAM_LAB", "grey world of " + burst + ": " + e);
+            return null;
+        }
+    }
+
+    /**
+     * The grey world of a RAW16 plane ({@code cfa} 0 RGGB, 1 GRBG, 2 GBRG, 3 BGGR of the colour cells, {@code block} sites a cell
+     * side: 2 Quad, 4 Tetra), every 4th 2 x 2 cell each way.
+     */
+    @Nullable
+    static float[] greyWorld(java.nio.ByteBuffer plane, int w, int h, int cfa, int block, float[] black, float white) {
+        final int[][] colour = {{0, 1, 1, 2}, {1, 0, 2, 1}, {1, 2, 0, 1}, {2, 1, 1, 0}};
+        final int[] c = colour[Math.max(0, Math.min(3, cfa))];
+        final double[] sum = new double[3];
+        final long[] n = new long[3];
+        final int cell = 2 * block, step = cell * 4;
+        final float[] v = new float[4];
+        for (int y = 0; y + cell <= h; y += step) {
+            for (int x = 0; x + cell <= w; x += step) {
+                boolean usable = true;
+                for (int q = 0; q < 4 && usable; q++) {
+                    final int px = x + (q & 1) * block, py = y + (q >> 1) * block;
+                    final float s = ((plane.getShort((py * w + px) * 2) & 0xFFFF) - black[q]) / (white - black[q]);
+                    if (!(s > 0.02f && s < 0.9f)) usable = false;
+                    v[q] = s;
+                }
+                if (!usable) continue;
+                for (int q = 0; q < 4; q++) {
+                    sum[c[q]] += v[q];
+                    n[c[q]]++;
+                }
+            }
+        }
+        if (n[0] < 64 || n[1] < 64 || n[2] < 64) return null;
+        final double r = sum[0] / n[0], g = sum[1] / n[1], b = sum[2] / n[2];
+        if (!(r > 0 && g > 0 && b > 0)) return null;
+        return new float[]{(float) (r / g), 1f, (float) (b / g)};
     }
 
     /** log(1 + luma) of an RGB (float32 or half, 3 a pixel, w x h) at tw x th points, each the mean of a 3 x 3 sample. */

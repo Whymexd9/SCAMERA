@@ -83,6 +83,8 @@ public final class ShadeCatalog {
     public static final String MIRROR = "pref_tunable_parameters_disablemirror";
     public static final String HORIZON = "pref_horizon", MOTION = "pref_motion_mode", SOUND = "pref_camera_sounds_key",
             FLICKER = "pref_antibanding_hz_key";
+    /** P356: ETTR, the capture exposed to the right (capture/Ettr). */
+    public static final String ETTR = "pref_ettr";
     public static final String OUTPUT = "pref_scam_hybrid_output";
     private static final String DOWNSAMPLER = "pref_scam_hybrid_downsampler";
     /** Virtual entries, in catalog order. */
@@ -122,7 +124,7 @@ public final class ShadeCatalog {
      * «тон WHY» and Exposure Fusion are gone, Luma / Chroma are the multiscale engine's multipliers, «удлинение L» a 0-2 slider).
      */
     public static final List<Group> GROUPS = Collections.unmodifiableList(Arrays.asList(
-            new Group(R.string.shade_group_shoot, FLASH, TIMER, "pref_scam_hybrid_why_metering"),
+            new Group(R.string.shade_group_shoot, FLASH, TIMER, "pref_scam_hybrid_why_metering", ETTR),
             new Group(R.string.shade_group_format, FORMAT, OUTPUT, DOWNSAMPLER, "pref_ultrahdr_key", "pref_wide169_key",
                     "pref_show_watermark_key"),
             new Group(R.string.shade_group_hybrid, "pref_scam_hybrid_bento", "pref_scam_hybrid_bento_frames",
@@ -210,6 +212,7 @@ public final class ShadeCatalog {
         spec(MIRROR, R.string.shade_t_mirror, R.array.shade_l_mirror, R.drawable.ui_ic_mirror);
         spec(HORIZON, R.string.shade_t_horizon, 0, R.drawable.ui_ic_level);
         spec(MOTION, R.string.shade_t_motion, 0, R.drawable.ui_ic_motion);
+        spec(ETTR, R.string.shade_t_ettr, 0, R.drawable.ic_shade_meter); // P356
         spec(SOUND, R.string.shade_t_sound, 0, R.drawable.ui_ic_sound);
         spec(FLICKER, R.string.shade_t_flicker, 0, R.drawable.ui_ic_lamp);
         spec(METERING_STD, R.string.shade_t_metering_std, R.array.shade_s_metering_std, R.drawable.ic_sheet_metering);

@@ -959,7 +959,10 @@ public class PreferenceKeys {
             final boolean motionMode = isMotionMode();
             out.append("rejPool 3\nrejVarExact 1\nrejMatchBlur 1\nrejPerChannel 1\nrejRelFloor 0.004\nrejMeanDiff 0.2\n")
                     .append("rejMeanFloor 0.015\nrejPoolT 1.2\n")
-                    .append(motionMode ? "rejKneeLo 0.1\nrejKneeHi 0.6\ncdm 0.3\n" : "rejKneeLo 0.05\nrejKneeHi 0.8\n");
+                    .append(motionMode ? "rejKneeLo 0.1\nrejKneeHi 0.6\ncdm 0.3\n" : "rejKneeLo 0.05\nrejKneeHi 0.8\n")
+                    // P358: the ultrashort donors skip the reject pass (the merge reads their Bento mask x validity, never its map):
+                    // -0.22 s on the OPPO, the result the same to the driver's rounding
+                    .append("rejSkipUs 1\n");
             if (!motionMode && Math.abs(hybridValue("dilate_floor", 0.15f) - 0.15f) < 1e-4f) out.append("dilateFloor 0.35\n");
         } else if (hybridValue("rej_pool", 1f) > 0f) out.append("rejPool 1\n");
         // P337 (owner, 2026-10-25: a backlit sea, «отражение на воде слилось в кашу»): sun glitter keeps its sparkles - a donor clearly
@@ -1009,6 +1012,12 @@ public class PreferenceKeys {
             out.append("bentoUsRegister 2\nlaUltrashort 1\nbentoBlendGateOwnLo 0.3\nbentoBlendGateOwnHi 0.6\nbentoRefuseScope 1\n")
                     .append("bentoMotionMax 25\nbentoValidZ 3\nbentoValidZRange 1\nbentoBlendGainMin 0.5\nbentoBlendGainLevel 0.1\n")
                     .append("bentoBlendCellMode 2\nbentoBlendScale 2\n");
+        // P358 (owner, 2026-10-27: «Перепроверить и улучшить реджект карты сверхкороткого и длинного кадров»): the long (bracketed)
+        // frames' noise model measured against the N frames' on flat blocks (their header model said 0.30 - 0.57 of N, measured
+        // 0.61 - 0.90: the rejection read their noise as motion) and their weight from that noise at level 0.005 instead of
+        // t^2 read_b / read_f (lamp: A 3.32 -> 1.48, the optimum 1.46; X7U long shutter 4.00 -> 2.63). OPPO replays: flat noise -1 to
+        // -4 %, detail -0.1 % or less, no ghosts. scam_dev.txt "hybrid_long_set 0" = before.
+        if (hybridValue("long_set", 1f) > 0f) out.append("noiseRoles 1\nshastaNoiseWeight 0.005\n");
         // P313 (owner, vivo X200 Ultra 2x ISZ in daylight: «все фото в области светов очень мыльное и с кучей артефактов»): the
         // native mosaic merge (Quad / Tetra) leaves Bento's cells to the N frames and fills only what they clipped from the
         // ultrashort frames, in a pass after it (worker HybridTuning::mosaicUsFill; default 0 = replays unchanged). scam_dev.txt
@@ -1226,6 +1235,16 @@ public class PreferenceKeys {
         if (override != null) return override > 0f;
         if (MotionMode.replaces(key) && isMotionMode()) return hybridStoredSwitch(MotionMode.PREFIX + key, MotionMode.DEFAULTS.get(key) > 0f);
         return hybridStoredSwitch(key, fallback);
+    }
+
+    /** P356: ETTR (pref_ettr; the shade's «ETTR»): the capture exposed to the right (capture/Ettr). */
+    public static boolean isEttr() {
+        try {
+            // scam_dev.txt "ettr": the A/B override of the switch
+            return scamDevSwitch("ettr", preferenceKeys != null && preferenceKeys.settingsManager.getBoolean("default_scope", "pref_ettr", false));
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /** P86: the «Движение» photo mode (global switch beside the settings gear). */

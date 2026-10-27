@@ -433,6 +433,12 @@ final class ShadeRows {
                     actions.pick(entry, valueAt(entry, seekBar.getProgress()));
                 }
             });
+            // P357: a double tap on the bar puts the default back
+            if (entry.defaultValue instanceof Number)
+                com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(bar, () -> {
+                    actions.pick(entry, ((Number) entry.defaultValue).floatValue());
+                    bindValue();
+                });
             LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36));
             bp.topMargin = dp(6);
             card.addView(bar, bp);

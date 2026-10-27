@@ -101,7 +101,7 @@ public final class SettingsStyle {
     public static final class Header {
         public FrameLayout view;
         public TextView heading, subtitle;
-        public ImageView back, search;
+        public ImageView back, search, reset;
     }
 
     /**
@@ -109,6 +109,11 @@ public final class SettingsStyle {
      * {@code onSearch} null: no search button.
      */
     public static Header header(Context c, Runnable onBack, Runnable onSearch) {
+        return header(c, onBack, onSearch, null);
+    }
+
+    /** The header with, for {@code onReset}, a reset disc at its end (P357: the page's rows back to their defaults). */
+    public static Header header(Context c, Runnable onBack, Runnable onSearch, Runnable onReset) {
         Header h = new Header();
         h.view = new FrameLayout(c);
         LinearLayout row = new LinearLayout(c);
@@ -141,6 +146,16 @@ public final class SettingsStyle {
             LinearLayout.LayoutParams qp = new LinearLayout.LayoutParams(dp(c, 44), dp(c, 44));
             qp.setMarginStart(dp(c, 6));
             row.addView(h.search, qp);
+        }
+        if (onReset != null) {
+            h.reset = disc(c, R.drawable.settings_ic_reset);
+            h.reset.setContentDescription(Lang.t(c, "Сбросить настройки страницы", "Reset this page"));
+            h.reset.setTag("settings_page_reset");
+            h.reset.setFocusable(true);
+            h.reset.setOnClickListener(v -> onReset.run());
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(dp(c, 44), dp(c, 44));
+            rp.setMarginStart(dp(c, 6));
+            row.addView(h.reset, rp);
         }
         h.view.addView(row, new FrameLayout.LayoutParams(-1, -2));
         return h;

@@ -777,6 +777,16 @@ public final class SettingsMigration {
             e.putInt(DETAIL_DEFAULTS_REV, 1);
             markOnly = true;
         }
+        // P354: the second dark fusion layer 0.4 -> 0.1 (the lamps' glow): a stored former XML default moves once. Own marker.
+        if (!values.containsKey(GLOW_DEFAULTS_REV)) {
+            final Object v = values.get(ScamHybridKeys.PREFIX + "why_weight_dark2");
+            if (v != null && isNumber(v, 0.4f)) {
+                ModuleProfiles.put(e, ScamHybridKeys.PREFIX + "why_weight_dark2", v instanceof String ? PreferenceNumber.format(0.1f, true) : (Object) 0.1f);
+                changed = true;
+            }
+            e.putInt(GLOW_DEFAULTS_REV, 1);
+            markOnly = true;
+        }
         // P164: the multiscale finish denoise's stored engine value has its own name; any value but "nlm" is that engine
         final Object engine = values.get(ScamHybridKeys.PREFIX + "dn_engine");
         if (engine instanceof String && !"nlm".equals(engine) && !"multiscale".equals(engine)) {
@@ -818,6 +828,8 @@ public final class SettingsMigration {
     static final String NIGHT_THRESH_REV = "pref_scam_hybrid_night_thresh_rev";
     /** P330: marker of the one-time move of the former denoise rho_r default (6) to 2. */
     static final String DETAIL_DEFAULTS_REV = "pref_scam_hybrid_detail_defaults_rev";
+    /** P354: marker of the one-time move of the former second dark layer weight (0.4) to 0.1. */
+    static final String GLOW_DEFAULTS_REV = "pref_scam_hybrid_glow_defaults_rev";
 
     private static boolean isNumber(Object v, float expected) {
         try {

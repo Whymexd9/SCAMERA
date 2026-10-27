@@ -63,8 +63,15 @@ public final class WhyTone {
         return PreferenceKeys.hybridValue("why_" + key, fallback);
     }
 
-    /** P348: the default layer weights in the exposures' order (darkest, base, second dark, bright; WhyAe.exposures). */
-    static final float[] LAYER_WEIGHTS = {0.8f, 1f, 0.4f, 1f};
+    /**
+     * P348: the default layer weights in the exposures' order (darkest, base, second dark, bright; WhyAe.exposures). P354 (owner,
+     * 2026-10-27, the chandelier: «затенение вокруг люстры из-за неправильного локального тонмапинга»): the second dark layer
+     * (sqrt(em0)) 0.4 -> 0.1 - at 0.4 it took a share wherever the lit ceiling around a lamp was bright (its luma there sits at the
+     * weights' centre), and the glow of every lamp went flat with a darker ring round the shade; the darkest layer still draws the
+     * shade itself. Host replay of the owner's burst: the glow back as in the reference shot; the sunset of P348 / P349: a softer,
+     * brighter glow round the disc and no darker orange ring, the rungs unchanged.
+     */
+    static final float[] LAYER_WEIGHTS = {0.8f, 1f, 0.1f, 1f};
 
     /**
      * The fusion's layer weights: the kernel's highlight and base weights [code 0x78b18-0x78b3c]; P348's second dark layer 0.4 and

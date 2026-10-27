@@ -230,9 +230,8 @@ public class PostPipeline extends GLBasePipeline {
         GLFormat format = new GLFormat(GLFormat.DataType.SIMPLE_8, 4);
         GLImage output = new GLImage(rotatedSize, format, false);
         // No full-frame readback buffer: runAllToBitmap() copies the last pass tile by tile into the bitmap.
-        GLCoreBlockProcessing glproc = tenBitOutput
-                ? new GLCoreBlockProcessing(rotatedSize, output, format, GLDrawParams.Allocate.None, true)
-                : new GLCoreBlockProcessing(rotatedSize, output, format, GLDrawParams.Allocate.None);
+        // P353: on the context kept for the process (its programs linked once)
+        GLCoreBlockProcessing glproc = new GLCoreBlockProcessing(rotatedSize, output, format, GLDrawParams.Allocate.None, tenBitOutput, true);
         glint = new GLInterface(glproc);
         stackFrame = inBuffer;
         glint.parameters = parameters;

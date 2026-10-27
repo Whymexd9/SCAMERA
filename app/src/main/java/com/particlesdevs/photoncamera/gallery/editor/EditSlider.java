@@ -23,6 +23,8 @@ import com.particlesdevs.photoncamera.util.Lang;
  * not the default), the track under them (a bipolar slider fills from its middle). A horizontal drag anywhere on the row moves
  * the value by the drag (the whole width = the whole range; a vertical move scrolls the panel instead), a double tap puts the
  * default back. {@link Listener#changed} while dragging, {@link Listener#committed} when let go (one undo step).
+ * P360: the thumb grows and takes the accent while dragged, a value bubble rises over it, and a double tap glides the value
+ * back to the default (the picture follows) instead of jumping.
  */
 public final class EditSlider extends View {
     public interface Listener {
@@ -47,6 +49,12 @@ public final class EditSlider extends View {
     @Nullable private int[] gradient;
     private float downX, downY, downValue;
     private boolean dragging;
+    /** P360: 0 at rest, 1 while dragged (the thumb, the bubble). */
+    private float press;
+    @Nullable private android.animation.ValueAnimator pressAnim, glide;
+    private final Paint bubble = new Paint(Paint.ANTI_ALIAS_FLAG), bubbleText = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final android.graphics.RectF bubbleBox = new android.graphics.RectF();
+    private final android.animation.ArgbEvaluator argb = new android.animation.ArgbEvaluator();
 
     public EditSlider(Context c) {
         super(c);
@@ -60,13 +68,17 @@ public final class EditSlider extends View {
         fill.setStrokeWidth(GalleryUi.dp(c, 3));
         fill.setStrokeCap(Paint.Cap.ROUND);
         thumb.setColor(GalleryUi.TEXT);
+        bubble.setColor(GalleryUi.accent(c));
+        bubbleText.setColor(GalleryUi.INK);
+        bubbleText.setTextSize(GalleryUi.dp(c, 12.5f));
+        bubbleText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        bubbleText.setTextAlign(Paint.Align.CENTER);
         setFocusable(true);
         setClickable(true);
         taps = new GestureDetector(c, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onDoubleTap(MotionEvent e) {
-                set(def, true);
-                if (listener != null) listener.committed();
+                glideTo(def);
                 return true;
             }
         });
@@ -116,6 +128,43 @@ public final class EditSlider extends View {
         if (notify && listener != null) listener.changed(value);
     }
 
+    /** P360: the value glides to {@code target} (~0.24 s; the listener sees each step), then one commit. */
+    private void glideTo(float target) {
+        if (glide != null) glide.cancel();
+        if (Math.abs(target - value) < 1e-6f) {
+            if (listener != null) listener.committed();
+            return;
+        }
+        final android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(value, target);
+        a.setDuration(EditMotion.MEDIUM);
+        a.setInterpolator(EditMotion.MOVE);
+        a.addUpdateListener(x -> set((Float) x.getAnimatedValue(), true));
+        a.addListener(new android.animation.AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override public void onAnimationCancel(android.animation.Animator animation) {
+                cancelled = true;
+            }
+
+            @Override public void onAnimationEnd(android.animation.Animator animation) {
+                if (cancelled) return;
+                set(target, true);
+                if (listener != null) listener.committed();
+            }
+        });
+        glide = a;
+        a.start();
+    }
+
+    /** P360: the drag look (thumb, bubble) eases in / out. */
+    private void pressTo(float to) {
+        if (pressAnim != null) pressAnim.cancel();
+        pressAnim = EditMotion.fraction(press, to, to > press ? 160 : 220, to > press ? EditMotion.ENTER : EditMotion.MOVE, f -> {
+            press = f;
+            invalidate();
+        });
+    }
+
     String valueText() {
         if (format != null) return format.of(value);
         if (step >= 1f) {
@@ -136,13 +185,18 @@ public final class EditSlider extends View {
         Context c = getContext();
         int pad = GalleryUi.dp(c, 18);
         float w = getWidth(), top = GalleryUi.dp(c, 20);
+        // P360: the label and value give way to the bubble while dragged
+        final int textAlpha = Math.round(255 * (1f - .75f * press));
         text.setColor(GalleryUi.TEXT);
+        text.setAlpha(textAlpha);
         text.setTextAlign(Paint.Align.LEFT);
         canvas.drawText(label != null ? label : "", pad, top, text);
         boolean changed = Math.abs(value - def) > 1e-6f;
         text.setColor(changed ? GalleryUi.accent(c) : GalleryUi.MUTED);
+        text.setAlpha(textAlpha);
         text.setTextAlign(Paint.Align.RIGHT);
         canvas.drawText(valueText(), w - pad, top, text);
+        text.setAlpha(255);
         float y = GalleryUi.dp(c, 38), x0 = pad, x1 = w - pad;
         if (gradient != null) {
             track.setShader(new LinearGradient(x0, y, x1, y, gradient, null, Shader.TileMode.CLAMP));
@@ -155,8 +209,27 @@ public final class EditSlider extends View {
         float from = x0 + (x1 - x0) * ((bipolar ? def : min) - min) / Math.max(1e-6f, max - min);
         if (gradient == null && changed) canvas.drawLine(Math.min(from, tv), y, Math.max(from, tv), y, fill);
         if (bipolar) canvas.drawCircle(from, y, GalleryUi.dp(c, 2), track);
-        thumb.setColor(dragging ? GalleryUi.accent(c) : GalleryUi.TEXT);
-        canvas.drawCircle(tv, y, GalleryUi.dp(c, dragging ? 9 : 7.5f), thumb);
+        thumb.setColor((Integer) argb.evaluate(press, GalleryUi.TEXT, GalleryUi.accent(c)));
+        if (press > 0f) {
+            // a soft halo under the thumb
+            thumb.setAlpha(Math.round(60 * press));
+            canvas.drawCircle(tv, y, GalleryUi.dp(c, 9 + 7 * press), thumb);
+            thumb.setAlpha(255);
+        }
+        canvas.drawCircle(tv, y, GalleryUi.dp(c, 7.5f + 2f * press), thumb);
+        if (press > 0.02f) {
+            // the value bubble over the thumb, rising and growing in with the press
+            final String t = valueText();
+            final float bw = bubbleText.measureText(t) + GalleryUi.dp(c, 18), bh = GalleryUi.dp(c, 22);
+            final float cx = Math.max(bw / 2, Math.min(w - bw / 2, tv)), cy = GalleryUi.dp(c, 14) + (1f - press) * GalleryUi.dp(c, 6);
+            final float k = .7f + .3f * press;
+            bubbleBox.set(cx - bw / 2 * k, cy - bh / 2 * k, cx + bw / 2 * k, cy + bh / 2 * k);
+            bubble.setAlpha(Math.round(255 * press));
+            canvas.drawRoundRect(bubbleBox, bh / 2, bh / 2, bubble);
+            bubbleText.setAlpha(Math.round(255 * press));
+            bubbleText.setTextSize(GalleryUi.dp(c, 12.5f) * k);
+            canvas.drawText(t, cx, cy - (bubbleText.descent() + bubbleText.ascent()) / 2, bubbleText);
+        }
     }
 
     @Override
@@ -179,9 +252,11 @@ public final class EditSlider extends View {
                     }
                     if (Math.abs(dx) > slop) {
                         dragging = true;
+                        if (glide != null) glide.cancel();
+                        downValue = value;
                         downX = e.getX();
                         getParent().requestDisallowInterceptTouchEvent(true);
-                        invalidate();
+                        pressTo(1f);
                     }
                     return true;
                 }
@@ -191,7 +266,7 @@ public final class EditSlider extends View {
             case MotionEvent.ACTION_CANCEL:
                 if (dragging) {
                     dragging = false;
-                    invalidate();
+                    pressTo(0f);
                     if (listener != null) listener.committed();
                 }
                 return true;

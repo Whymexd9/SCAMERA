@@ -13,6 +13,8 @@ public final class ViewfinderGain {
     private static final double[] PRODUCT = new double[SIZE];
     private static int next;
     private static volatile double reference;
+    /** P356: the ETTR boost of the viewfinder's own exposure, shown at the usual brightness (x 2^-EV on every ISP frame). */
+    private static volatile float displayGain = 1f;
 
     private ViewfinderGain() {}
 
@@ -29,13 +31,22 @@ public final class ViewfinderGain {
         next = (next + 1) % SIZE;
     }
 
-    /** The gain for the viewfinder frame with sensor {@code timestamp}: 1 for a viewfinder frame, clamped to x1/16..x16. */
+    /** P356: the ETTR boost (EV, 0 = none) the ISP frames are brought back from. */
+    public static void setDisplayEv(float ev) {
+        displayGain = ev > 0f ? (float) Math.pow(2.0, -ev) : 1f;
+    }
+
+    /**
+     * The gain for the viewfinder frame with sensor {@code timestamp}: 1 for a viewfinder frame (the ETTR display gain, P356), a
+     * series frame's clamped to x1/16..x16.
+     */
     public static synchronized float gainFor(long timestamp) {
         final double ref = reference;
-        if (ref <= 0 || timestamp == 0) return 1f;
+        final float ettr = displayGain;
+        if (ref <= 0 || timestamp == 0) return ettr;
         for (int i = 0; i < SIZE; i++)
-            if (TS[i] == timestamp) return gain(ref, PRODUCT[i]);
-        return 1f;
+            if (TS[i] == timestamp) return gain(ref, PRODUCT[i]) * ettr;
+        return ettr;
     }
 
     static float gain(double reference, double product) {
@@ -48,5 +59,6 @@ public final class ViewfinderGain {
         java.util.Arrays.fill(TS, 0);
         next = 0;
         reference = 0;
+        displayGain = 1f;
     }
 }

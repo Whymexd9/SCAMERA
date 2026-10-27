@@ -50,6 +50,8 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
     static int tab;
 
     private final Handler main = new Handler(Looper.getMainLooper());
+    /** P357: the sliders' resets of the shown tab («Сбросить всё»). */
+    private final java.util.List<Runnable> sliderResets = new java.util.ArrayList<>();
     @Nullable private LutCompareView compare;
     @Nullable private LinearLayout samples, tabs, content;
     private int generation;
@@ -191,6 +193,7 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
         if (content == null) return;
         final Context c = getContext();
         content.removeAllViews();
+        sliderResets.clear();
         final String stockId = stored(FilmSim.STOCK_KEY, "");
         final FilmSim.Stock stock = FilmSim.stock(stockId);
         switch (tab) {
@@ -250,6 +253,15 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
                 slider(c, FilmSim.PRINT_Y_KEY, Lang.t(c, "Фильтр Y увеличителя (желтее … синее)", "Enlarger Y filter (more yellow … bluer)"),
                         -30, 30, 1, 0, " CC");
                 slider(c, FilmSim.STRENGTH_KEY, Lang.t(c, "Сила симуляции", "Simulation strength"), 0, 100, 1, 100, "%");
+                // P357: every slider of the tab back to its default
+                final TextView all = SettingsStyle.text(c, Lang.t(c, "↺ Сбросить все ползунки", "↺ Reset all sliders"), 13.5f, SettingsStyle.accent(c));
+                all.setTag("film_reset_all");
+                all.setPadding(UiTokens.dp(c, 6), UiTokens.dp(c, 12), UiTokens.dp(c, 6), UiTokens.dp(c, 4));
+                all.setOnClickListener(v -> {
+                    for (Runnable r : new java.util.ArrayList<>(sliderResets)) r.run();
+                    redrawPreview();
+                });
+                content.addView(all);
                 note(c, Lang.t(c, "Превью показывает зерно, ореол и мягкость как на фото в полном размере (кусок кадра 1:1). В видоискателе — только цвет и тон плёнки.",
                         "The preview shows the grain, halation and softness as on the full-size photo (a 1:1 crop). The viewfinder shows the film's colour and tone only."));
             }
@@ -353,6 +365,14 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
             }
         });
         row.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UiTokens.dp(c, 36)));
+        // P357: a double tap puts the default back
+        final Runnable reset = () -> {
+            bar.setProgress(Math.round((def - min) / step));
+            store(key, step < 1 ? String.format(Locale.ROOT, "%.2f", def) : String.valueOf(Math.round(def)));
+        };
+        com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(bar, reset);
+        com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(row, reset);
+        sliderResets.add(reset);
         final LinearLayout.LayoutParams lp = margin(c, 8);
         content.addView(row, lp);
     }

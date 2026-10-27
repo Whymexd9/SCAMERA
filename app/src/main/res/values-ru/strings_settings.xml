@@ -809,4 +809,7 @@
     <string name="prefs_mosaic_wb_summary">Снимки в полном разрешении (50 / 200 Мп) и с зумом сенсора: наш расчёт баланса белого. Выкл. — баланс белого камеры.</string>
     <string name="prefs_film_data_credit_title">Данные плёночной симуляции</string>
     <string name="prefs_film_data_credit_summary">Профили плёнок и бумаг: spektrafilm, автор Andrea Volpato, github.com/andreavolpato/spektrafilm, CC BY-SA 4.0 (преобразованы и изменены SCAMERA: двоичные массивы и производные LUT, см. assets/film/CHANGELOG.txt). Цветовая модель — перенос spektrafilm (GPL-3.0).</string>
+    <string name="prefs_ettr_title">ETTR (экспозиция вправо)</string>
+    <string name="prefs_ettr_summary">Кадры снимаются светлее, почти до пересвета самых ярких мест (не больше +2 EV): больше света в тенях, меньше шума. Фото и видоискатель остаются привычной яркости. В помещении и ночью, когда ISO уже поднят, не работает (там буст не добавит света).</string>
+    <string name="shade_t_ettr">ETTR</string>
 </resources>

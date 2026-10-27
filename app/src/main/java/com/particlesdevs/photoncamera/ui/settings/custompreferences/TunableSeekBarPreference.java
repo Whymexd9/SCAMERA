@@ -56,8 +56,11 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
         seekBar.setMax(maxProgress());
         refresh();
         seekBar.setOnSeekBarChangeListener(this);
-        holder.itemView.setOnClickListener(v -> showPreciseValueDialog());
-        if (seekBarValue != null) seekBarValue.setOnClickListener(v -> showPreciseValueDialog());
+        // P357: a double tap on the bar, the value or the row puts the camera's own value back (the stored one goes)
+        final Runnable reset = this::resetToDefault;
+        com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(seekBar, reset);
+        com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(holder.itemView, this::showPreciseValueDialog, reset);
+        if (seekBarValue != null) com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(seekBarValue, this::showPreciseValueDialog, reset);
     }
     private void refresh() {
         float value = getFloatValue();
@@ -91,6 +94,13 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
     }
     @Override public void onStartTrackingTouch(SeekBar bar) {}
     @Override public void onStopTrackingTouch(SeekBar bar) {}
+
+    /** P357: the camera's own value back (the stored one goes); true when one was stored. */
+    public boolean resetToDefault() {
+        if (!isChanged() || !isEnabled()) return false;
+        save(mDefaultValue, true);
+        return true;
+    }
 
     public float minimum(){return mMin;}
     public float maximum(){return mMax;}

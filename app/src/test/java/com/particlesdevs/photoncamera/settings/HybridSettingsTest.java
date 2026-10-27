@@ -628,6 +628,8 @@ public class HybridSettingsTest {
                 &&tuning.contains("rejKneeLo 0.05\nrejKneeHi 0.8\n")&&!tuning.contains("rejPool 1\n"));
         assertTrue("P350: the ultrashort mask set",tuning.contains("bentoUsRegister 2\nlaUltrashort 1\n")&&tuning.contains("bentoRefuseScope 1\n")
                 &&tuning.lastIndexOf("bentoMotionMax ")==tuning.indexOf("bentoMotionMax 25\n"));
+        assertTrue("P358: the reject pass skips the ultrashort donors, the long frames' measured noise and weight",
+                tuning.contains("rejSkipUs 1\n")&&tuning.contains("noiseRoles 1\nshastaNoiseWeight 0.005\n"));
         assertTrue("P344: the spread floor over the untouched default",tuning.lastIndexOf("dilateFloor ")==tuning.indexOf("dilateFloor 0.35\n"));
         assertEquals(2,PreferenceKeys.getHybridShastaMode());
         assertEquals(20,PreferenceKeys.getHybridZslFrames());

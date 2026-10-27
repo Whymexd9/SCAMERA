@@ -79,6 +79,21 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
         this(size, out, glFormat, alloc);
         if (tenBitOutput) enableTenBit();
     }
+
+    /** P353: the post pipeline's processing on the context kept for the process (GLContext(w, h, true)). */
+    public GLCoreBlockProcessing(Point size, GLImage out, GLFormat glFormat, GLDrawParams.Allocate alloc, boolean tenBitOutput, boolean shared) {
+        super(size.x, GLDrawParams.TileSize, shared);
+        allocation = alloc;
+        mOutAllocation = alloc;
+        mglFormat = glFormat;
+        mOutWidth = size.x;
+        mOutHeight = size.y;
+        mBlockBuffer = ByteBuffer.allocateDirect(mOutWidth * GLDrawParams.TileSize * mglFormat.mFormat.mSize * mglFormat.mChannels);
+        createTileTarget(glFormat);
+        mOutCapacity = (long) mOutWidth * mOutHeight * mglFormat.mFormat.mSize * mglFormat.mChannels;
+        mOut = out;
+        if (tenBitOutput) enableTenBit();
+    }
     public GLCoreBlockProcessing(Point size, GLImage out, GLFormat glFormat) {
         this(size, glFormat, GLDrawParams.Allocate.Direct);
         mOut = out;
@@ -433,6 +448,12 @@ public class GLCoreBlockProcessing extends GLContext implements AutoCloseable {
         // Ensure GPU work is complete before tearing down EGL state.
         try {
             GLES30.glFinish();
+        } catch (Exception ignored) {}
+        // P353: the tile target goes with the shot (a kept context would hold one per shot otherwise)
+        try {
+            makeCurrent();
+            GLES30.glDeleteFramebuffers(1, bindFB, 0);
+            GLES30.glDeleteRenderbuffers(1, bindRB, 0);
         } catch (Exception ignored) {}
         try {
             super.close();
