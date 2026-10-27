@@ -159,8 +159,8 @@ public final class ScamHdrDenoise extends Node {
                 if (v > 0f && !Float.isNaN(v)) values[n++] = v;
             }
             if (n == 0) return 0f;
-            java.util.Arrays.sort(values, 0, n);
-            return values[n / 4] / 0.8463f / (float) Math.sqrt(1.125);
+            // P364: the quarter's element by selection (the sort of ~200 k blocks took ~20 ms): the same value
+            return ScamDenoiseTables.selectFloat(values, n, n / 4) / 0.8463f / (float) Math.sqrt(1.125);
         } catch (RuntimeException e) {
             return 0f;
         } finally {

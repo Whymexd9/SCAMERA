@@ -99,8 +99,8 @@ public final class ScamLabRun {
 
         public static Shot load(File dir) throws IOException {
             try {
-                final JSONObject meta = new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(dir, ScamLab.META).toPath()),
-                        StandardCharsets.UTF_8));
+                // P363: through the folder grant when an earlier installation wrote it
+                final JSONObject meta = new JSONObject(new String(LabFiles.read(new File(dir, ScamLab.META)), StandardCharsets.UTF_8));
                 final ScamLabBurst burst = new ScamLabBurst(ScamLab.burstOf(dir), null, "");
                 if (!ScamLab.settingsNow(dir)) return new Shot(dir, meta, burst);
                 // P359: the settings of now in place of the shot's (its parameters, burst lines and orientation stay)
@@ -419,7 +419,7 @@ public final class ScamLabRun {
             final java.util.TreeMap<String, Object> none = new java.util.TreeMap<>();
             final Map<String, Float> lines = devLines(shot);
             r.b = cachedSide(context, shot, crop, none, lines, crop == null ? "whole" : crop[0] + "," + crop[1] + "," + crop[2] + "," + crop[3], progress, "B");
-            final Bitmap preview = android.graphics.BitmapFactory.decodeFile(new File(shot.dir, ScamLab.PREVIEW).getAbsolutePath());
+            final Bitmap preview = LabFiles.decode(new File(shot.dir, ScamLab.PREVIEW), null);
             if (preview == null) throw new IOException(Lang.t("У снимка нет сохранённого фото", "The shot has no saved photo"));
             Bitmap part = preview;
             if (crop != null) {

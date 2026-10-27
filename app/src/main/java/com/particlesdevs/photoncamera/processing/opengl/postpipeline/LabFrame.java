@@ -34,6 +34,8 @@ public final class LabFrame {
     int lowHeight;
     @Nullable float[] ccLo, ccHi, ccMax;
     boolean nearClip, hiUnflagged, ccBento;
+    /** P362: the «Inpaint opposed» chrominance of the whole frame (a fragment uses it), null: none measured. */
+    @Nullable float[] oppChroma;
     float p50 = Float.NaN, p90 = Float.NaN;
     @Nullable float[] lsc;
     boolean lscNone;
@@ -62,6 +64,7 @@ public final class LabFrame {
         o.put("lowHeight", lowHeight);
         if (ccLo != null) o.put("ccLo", floats(ccLo)).put("ccHi", floats(ccHi)).put("ccMax", floats(ccMax))
                 .put("nearClip", nearClip).put("hiUnflagged", hiUnflagged).put("ccBento", ccBento);
+        if (oppChroma != null) o.put("oppChroma", floats(oppChroma));
         put(o, "p50", p50);
         put(o, "p90", p90);
         if (lsc != null) o.put("lsc", floats(lsc));
@@ -88,6 +91,7 @@ public final class LabFrame {
             f.hiUnflagged = o.optBoolean("hiUnflagged");
             f.ccBento = o.optBoolean("ccBento");
         }
+        if (o.has("oppChroma")) f.oppChroma = floats(o.getJSONArray("oppChroma"));
         f.p50 = get(o, "p50");
         f.p90 = get(o, "p90");
         if (o.has("lsc")) f.lsc = floats(o.getJSONArray("lsc"));

@@ -87,6 +87,10 @@ struct HybridInput {
     // P310: the plain path's tile check (P290) of the ultrashort frames against the base: the largest |factor - 1| of a colour
     // within 4 tiles of the base's clip, over the frames (LEDs on PWM / ARGB animation 1.0 - 1.2, daylight 0.1); -1 = not measured
     float usFlicker=-1.f;
+    // P364: the plain path's ultrashort row / tile check still running beside this merge (hybridReconstruct joins it after the
+    // alignment: its frames unchanged - the usual case - the merge goes on with its usFlicker; changed, the merge starts again
+    // with the checked frames); null = checked before (or not at all)
+    std::shared_ptr<struct HybridUsPending> usPending;
     // P320: NCH header flag 32: a DCG burst (dual conversion gain: one exposure read at a high and a low conversion gain, fused into one
     // linear frame; the app proved the linearity). Its noise is two zones (the noise check fits them, hybridDcgZones); 0 = every other
     // burst and every old burst, unchanged.
@@ -1606,6 +1610,17 @@ uniform int dcovU;      // 1: DCov holds every donor cell (merge mode bit 1) and
 shared vec2 cellQuad[100];
 // P332: the 22x22 sites around them for the fine tensor (sqrt of the gained greens, 0 at the other colours), also once per group
 shared float cellSite[484];
+// P364: sabreFine61U read straight from cellSite (its u[y*8+x] = cellSite[s0+y*22+x]): the 64 floats copied per cell into
+// registers spilled on the Adreno 750. The same sums in the same order.
+vec3 sabreFine61S(int i,int j,int s0){
+    float dxx=0.0,dyy=0.0,dxy=0.0,n=0.0;
+    for(int y=1;y<7;y++)for(int x=1;x<7;x++){
+        if(phaseColor[(((2*j-3+y)&1)<<1)|((2*i-3+x)&1)]!=1)continue;
+        float c=cellSite[s0+y*22+x],du=cellSite[s0+(y+1)*22+x+1]-c,dv=cellSite[s0+(y-1)*22+x+1]-c;
+        dxx+=du*du;dyy+=dv*dv;dxy+=du*dv;n+=1.0;
+    }
+    return vec3(dxx,dyy,dxy)*(2.0/max(n,1.0));
+}
 void main(){
     int w2=size.x/2;
     int f=int(gl_GlobalInvocationID.z)+1+cellFrameU;
@@ -1638,11 +1653,7 @@ void main(){
             Y[(dj+1)*3+di+1]=q.x;qd+=q.y*w;lum+=q.x*w;
         }
         vec3 fineT=vec3(-1.0);
-        if(fine){
-            float u[64];int s0=(2*(cy-by)-2)*22+2*(cx-bx)-2; // site (2cx-3, 2cy-3) in cellSite
-            for(int y=0;y<8;y++)for(int x=0;x<8;x++)u[y*8+x]=cellSite[s0+y*22+x];
-            fineT=sabreFine61U(cx,cy,u);
-        }
+        if(fine)fineT=sabreFine61S(cx,cy,(2*(cy-by)-2)*22+2*(cx-bx)-2); // site (2cx-3, 2cy-3) in cellSite
         vec3 P=sabreCov61Q(f,Y,qd,lum,fineT);
         dcov[idx]=uvec2(packHalf2x16(P.xy),packHalf2x16(vec2(P.z,0.0)));
     }
@@ -1753,6 +1764,14 @@ void main(){
         // P76 (Adreno): the 3x3 cells around (ix, iy) read once; the bilinear sample takes 4 of them (13 reads a cell before). Mali
         // keeps the 13 reads (the 9 vec4 held across the variance made the pass slower on the Mali-G57).
         vec4 c3[9];
+#if defined(REJ_OPTS)&&defined(RJ_POOL1)
+        // P364: with the pooled tests the 4 x 4 cells around (ix, iy) read here once (they hold the 3 x 3: 16 reads a cell, not 25)
+        vec4 c4[16];
+        if(RJ_POOL1||RJ_MEAN){
+            for(int k=0;k<16;k++)c4[k]=cellAt(f,ix-1+(k&3),iy-1+(k>>2));
+            for(int k=0;k<9;k++)c3[k]=c4[(k/3)*4+k%3];
+        } else
+#endif
         for(int k=0;k<9;k++)c3[k]=cellAt(f,ix-1+k%3,iy-1+k/3);
         vec4 c00=c3[4],c10=c3[5],c01=c3[7],c11=c3[8];
 #else
@@ -1856,8 +1875,10 @@ void main(){
         dist=dot(D2/tol3,vec3(1.0/3.0));
         if(RJ_POOL1||RJ_MEAN){
             // P341's pooled test (as above without REJ_OPTS) and the P344 additions in the same pass over the 3 x 3 cells
-            vec3 c4[16];
-            for(int k=0;k<16;k++)c4[k]=cellAt(f,ix-1+(k&3),iy-1+(k>>2)).xyz;
+#if !(defined(SHARED_TILES)&&defined(RJ_POOL1))
+            vec4 c4[16];
+            for(int k=0;k<16;k++)c4[k]=cellAt(f,ix-1+(k&3),iy-1+(k>>2));
+#endif
             // P344 rejPool 3: the donor's texture around each neighbour from the 3 x 3 window of the 4 x 4 cells that holds its
             // bilinear sample (one of the four corner windows): rejPool 2 took the centre's for all nine, and a flat centre next to a
             // window grid or an outline 2 cells away judged the grid's neighbour at the flat centre's tolerance.
@@ -1866,7 +1887,7 @@ void main(){
                 Vq[q]=Vcur;
                 if(RJ_POOL3){
                     vec3 a=vec3(0.0),a2=vec3(0.0);
-                    for(int j=0;j<3;j++)for(int i=0;i<3;i++){vec3 u=c4[((q>>1)+j)*4+(q&1)+i];a+=u*(1.0/9.0);a2+=u*u*(1.0/9.0);}
+                    for(int j=0;j<3;j++)for(int i=0;i<3;i++){vec3 u=c4[((q>>1)+j)*4+(q&1)+i].xyz;a+=u*(1.0/9.0);a2+=u*u*(1.0/9.0);}
                     vec3 v=max(a2-a*a,vec3(0.0));
                     float La=max(dot(a*a,vec3(1.0/3.0))-epsU(),0.0);
                     Vq[q]=max((v.x+v.y+v.z)*(1.0/3.0)-noiseU(f,La)*0.742,0.0);
@@ -1876,7 +1897,7 @@ void main(){
             vec3 SN=vec3(0.0),FN=vec3(0.0),Mg=vec3(0.0),Mb=vec3(0.0); // P344: rejPool 2 / 3 sums, the two 3 x 3 means
             for(int dj=0;dj<3;dj++)for(int di=0;di<3;di++){
                 int k0=dj*4+di;
-                vec3 gk=(c4[k0]*(1.0-fx)+c4[k0+1]*fx)*(1.0-fy)+(c4[k0+4]*(1.0-fx)+c4[k0+5]*fx)*fy;
+                vec3 gk=(c4[k0].xyz*(1.0-fx)+c4[k0+1].xyz*fx)*(1.0-fy)+(c4[k0+4].xyz*(1.0-fx)+c4[k0+5].xyz*fx)*fy;
                 vec4 Gk=rjTile(cx,cy,di-1,dj-1);
                 vec3 Bk=Gk.xyz;
                 if(mb)Bk=rjBlur(cx,cy,di-1,dj-1,ax,ay);
@@ -2533,6 +2554,10 @@ layout(std430,binding=4) buffer EffBlend{float effB[];};
 // per output pixel of the strip (slot 10, free once the strip is merged): x, y.x = the ultrashort colour (half floats), y.y = the
 // weight (< 0: no ultrashort colour), z, w.x = its gain (stage 2), w.y = its cover + 8 x the colours at its own clip
 layout(std430,binding=10) buffer BlendScratch{uvec4 bs[];};
+// P364: the same scratch as uints - behind the carry rows, per 16 x 16 output px tile of the strip the largest clip mark (x) and the
+// strip that wrote it (y, the stamp): stage 1 skips its disc where no tile within its reach holds a mark (blendTileU)
+layout(std430,binding=10) buffer BlendTiles{uint bt[];};
+uniform ivec4 blendTileU;  // x: bt index of the tile table, y: tiles a row, z: this strip's stamp, w: 1 = on
 uniform ivec4 blendCarryU; // x: index in bs of the two carry rows (the log gain of a strip's last row and whether that pixel
                            // blended with it, by the strip's parity y), z: 1 = the previous strip left one
 uniform int validPlanesU;  // per-ultrashort-frame validity planes after the weight plane (bentoValidate), then the edge rows plane
@@ -2757,6 +2782,14 @@ void regionStage(int i,int row,int ox,int rows,int ow,bool flags){
             float mc=nClipped?1.0:smoothstep(blendClipU.x,blendClipU.y,mxN),mb=smoothstep(blendGateU.x,blendGateU.y,mxN);
 #endif
             cflags[i]=(cfl&0xFFFFu)|(uint(mc*255.0+0.5)<<16)|(uint(mb*255.0+0.5)<<24);
+            // P364: the tile's largest clip mark of this strip (a stale entry of an earlier strip only ever reads as a mark: the
+            // check below then runs the disc as before)
+            uint mcb=uint(mc*255.0+0.5);
+            if(blendTileU.w!=0&&mcb>0u){
+                int t=blendTileU.x+4*((row>>4)*blendTileU.y+(ox>>4));
+                atomicMax(bt[t],mcb);
+                atomicExchange(bt[t+1],uint(blendTileU.z));
+            }
         }
         return;
     }
@@ -2773,6 +2806,17 @@ void regionStage(int i,int row,int ox,int rows,int ow,bool flags){
         own=float((cfl>>16)&255u)*(1.0/255.0);
         float gs=0.0,gw=0.0;
         int R=int(ceil(blendClipU.w));
+        // P364: no clip mark of this strip in any tile the disc reaches (rows of the strip only) and no cell weight: the disc would
+        // find no mark (reach 0) - the same «no ultrashort colour» as below, without its reads
+        if(blendTileU.w!=0&&aCell<=0.002&&row-R>=0&&row+R<rows){
+            bool any=false;
+            int tx0=max(ox-R,0)>>4,tx1=min(ox+R,ow-1)>>4,ty0=(row-R)>>4,ty1=(row+R)>>4;
+            for(int ty=ty0;ty<=ty1&&!any;ty++)for(int tx=tx0;tx<=tx1&&!any;tx++){
+                int t=blendTileU.x+4*(ty*blendTileU.y+tx);
+                any=bt[t+1]==uint(blendTileU.z)&&bt[t]>0u;
+            }
+            if(!any){bs[i]=uvec4(0u,packHalf2x16(vec2(0.0,-1.0)),0u,0u);return;}
+        }
         float kg=-0.5/max(blendGateU.z*blendGateU.z,0.01);
 #ifdef BLEND_OPTS
         // P350 bentoBlendScale: the disc read every blendStepU-th output px (the grid: one read per sensor px, whose 2x2-cell marks
@@ -4419,7 +4463,11 @@ struct HybridRowsSink {
     virtual void rows(float* data,int n)=0;
     virtual bool finish(float* data)=0;
     virtual void stop()=0;
+    virtual std::string text() const {return std::string();} // P364: the report of a finished consumer
 };
+// P364: the plain merge's chroma median on its rows while the GPU merges the next strips (MosaicChromaOverlap without an oscillation
+// map: the stream of mosaicChromaMedian's CPU path, the same floats); defined after it
+inline std::unique_ptr<HybridRowsSink> hybridPlainChromaSink(int width,int height,int block);
 
 // P268: the site-class gains as a smooth field over the sensor: zx x zy zones of zw x zh sensor px, 64 gains each (sensor class
 // (y & 7) * 8 + (x & 7), as the global set), bilinear between the zone centres and constant beyond the outer ones. kHybNatAccess's
@@ -5071,7 +5119,8 @@ public:
         std::array<float,3> blendWb{1.f,1.f,1.f};       // P350 bentoBlendSatWb: white balance gains of the blend's coloured test
         float rampK=0.f; // P309: the ramp mask's K (share = m / (m + K (1 - m))); 0 = the previous mask
         std::vector<const std::vector<float>*> maskValid; // bentoValidate: per ultrashort frame in merge order, the validity factor per cell
-        std::function<void()> maskReady;                // P353: waits until mask / maskValid hold their data (the blend weight is made meanwhile)
+        std::function<void(int)> maskReady;             // P353: waits until mask / maskValid hold their data (the blend weight is made meanwhile);
+                                                        // P364: their cell rows [0, n) (n >= h / 2: all of it)
         std::vector<int> hotList;                       // normal frames of the fixed-pattern outlier test (base first); empty = off
         std::array<float,4> k61a{},k61b{},k61c{};      // Sabre 6.1 kernel uniforms (k61a[3] = 0: round-4 kernel)
         int mergeMode=0;                                // 1 per-frame 6.1 covariance, 2 6.1 window, 4 6.1 base widening
@@ -6303,11 +6352,16 @@ public:
                 glUseProgram(blendProgram);
                 glUniform1i(loc(blendProgram,"cy0"),cy0);glUniform1i(loc(blendProgram,"cy1"),cy1);glUniform1i(loc(blendProgram,"ry0"),ry0);
                 // the blend's scratch (the guide is used up) and, behind the longest strip's rows, two carry rows of the gain
-                if(in.maskReady)in.maskReady();
+                if(in.maskReady)in.maskReady(std::min(h2,cy1+1)); // P364: the rows fillMask reads (the edge row below included)
                 fillMask();
                 const int carryAt=2*stripCells*g*ow;
-                reserve(10,std::max(size_t(ry1-ry0)*w2*16,(size_t(carryAt)+size_t(2)*ow)*16));
+                // P364: the clip-mark tiles behind the carry rows (SCAM_BLEND_TILES_OFF: every disc read, as before)
+                const bool tilesOn=!std::getenv("SCAM_BLEND_TILES_OFF");
+                const int tw=(ow+15)/16,th=(rows2+15)/16;
+                const size_t tileAt=size_t(carryAt)+size_t(2)*ow;
+                reserve(10,std::max(size_t(ry1-ry0)*w2*16,(tileAt+(tilesOn?size_t(tw)*th:0))*16));
                 glUniform4i(loc(blendProgram,"blendCarryU"),carryAt,stripIndex&1,stripIndex>0?1:0,0);
+                glUniform4i(loc(blendProgram,"blendTileU"),int(4*tileAt),tw,stripIndex+1,tilesOn?1:0);
                 for(int stage=0;stage<4;++stage){
                     if(stage)glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
                     glUniform1i(loc(blendProgram,"blendStageU"),stage);
@@ -8049,7 +8103,9 @@ inline HybridUsRegister hybridUsRegister(const uint16_t* base,const uint16_t* us
                                          HybridUsRegisterBase* shared=nullptr){
     HybridUsRegister r;
     const int qw=w/2,qh=h/2;
-    if(!base||!us||qw<64||qh<64||!(expected>0.f)||!(white>0.f)){r.why="no frames";return r;}
+    // P364: us null with a shared base: only the base's side is made (ahead, while the corner tracker aligns)
+    const bool baseOnly=us==nullptr&&shared!=nullptr;
+    if(!base||(!us&&!baseOnly)||qw<64||qh<64||!(white>0.f)||(!baseOnly&&!(expected>0.f))){r.why="no frames";return r;}
     const double sb=double(black[0])+black[1]+black[2]+black[3],den=std::max(4.0*white-sb,1.0);
     const float clipQ=0.95f*white;
     HybridUsRegisterBase own;
@@ -8057,11 +8113,14 @@ inline HybridUsRegister hybridUsRegister(const uint16_t* base,const uint16_t* us
     const bool makeBase=!bs.made;
     if(makeBase){bs.B.resize(size_t(qw)*qh);bs.cb.resize(size_t(qw)*qh);}
     std::vector<float>& B=bs.B;std::vector<uint8_t>& cb=bs.cb;
-    std::vector<float> U(size_t(qw)*qh);std::vector<uint8_t> cu(size_t(qw)*qh);
+    if(baseOnly&&!makeBase)return r;
+    std::vector<float> U(baseOnly?0:size_t(qw)*qh);std::vector<uint8_t> cu(baseOnly?0:size_t(qw)*qh);
     mergeRowBands(qh,[&](int y0,int y1){
         for(int y=y0;y<y1;++y)for(int x=0;x<qw;++x){
-            const size_t i=size_t(y)*qw+x;const uint16_t* pb=base+size_t(2*y)*w+2*x;const uint16_t* pu=us+size_t(2*y)*w+2*x;
+            const size_t i=size_t(y)*qw+x;const uint16_t* pb=base+size_t(2*y)*w+2*x;
             if(makeBase){B[i]=float((double(pb[0])+pb[1]+pb[w]+pb[w+1]-sb)/den);cb[i]=std::max({pb[0],pb[1],pb[w],pb[w+1]})>=clipQ;}
+            if(baseOnly)continue;
+            const uint16_t* pu=us+size_t(2*y)*w+2*x;
             U[i]=float((double(pu[0])+pu[1]+pu[w]+pu[w+1]-sb)/den/expected);
             cu[i]=std::max({pu[0],pu[1],pu[w],pu[w+1]})>=clipQ;
         }
@@ -8072,20 +8131,35 @@ inline HybridUsRegister hybridUsRegister(const uint16_t* base,const uint16_t* us
         mergeRowBands(qh,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<qw;++x){uint8_t v=0;for(int k=std::max(0,y-R);k<=std::min(qh-1,y+R)&&!v;++k)v=t[size_t(k)*qw+x];m[size_t(y)*qw+x]=v;}});
     };
     if(makeBase)dilate(cb,3);
-    dilate(cu,3);
+    if(!baseOnly)dilate(cu,3);
     auto blurred=[&](const std::vector<float>& src,float sg){
         const int R=std::max(1,int(std::ceil(3.f*sg)));std::vector<float> k(size_t(2*R+1));float ks=0;
         for(int i=-R;i<=R;++i){k[size_t(i+R)]=std::exp(-0.5f*float(i*i)/(sg*sg));ks+=k[size_t(i+R)];}
         for(float& v:k)v/=ks;
         std::vector<float> t(src.size()),o(src.size());
-        mergeRowBands(qh,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<qw;++x){float a=0;for(int i=-R;i<=R;++i)a+=k[size_t(i+R)]*src[size_t(y)*qw+std::clamp(x+i,0,qw-1)];t[size_t(y)*qw+x]=a;}});
-        mergeRowBands(qh,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<qw;++x){float a=0;for(int i=-R;i<=R;++i)a+=k[size_t(i+R)]*t[size_t(std::clamp(y+i,0,qh-1))*qw+x];o[size_t(y)*qw+x]=a;}});
+        // P364: the same sums in the same order per pixel (bit-identical), without a clamp inside the row and the vertical pass row
+        // by row (it read a column per pixel): 206 -> ~60 ms for the base's two blurs and one frame's on the OPPO
+        mergeRowBands(qh,[&](int y0,int y1){
+            for(int y=y0;y<y1;++y){
+                const float* row=src.data()+size_t(y)*qw;float* out=t.data()+size_t(y)*qw;
+                auto edge=[&](int x){float a=0;for(int i=-R;i<=R;++i)a+=k[size_t(i+R)]*row[std::clamp(x+i,0,qw-1)];out[x]=a;};
+                for(int x=0;x<std::min(R,qw);++x)edge(x);
+                for(int x=R;x<qw-R;++x){float a=0;for(int i=-R;i<=R;++i)a+=k[size_t(i+R)]*row[x+i];out[x]=a;}
+                for(int x=std::max(R,qw-R);x<qw;++x)edge(x);
+            }
+        });
+        mergeRowBands(qh,[&](int y0,int y1){
+            std::vector<float> acc(static_cast<size_t>(qw));
+            for(int y=y0;y<y1;++y){
+                std::fill(acc.begin(),acc.end(),0.f);
+                for(int i=-R;i<=R;++i){
+                    const float kk=k[size_t(i+R)];const float* r=t.data()+size_t(std::clamp(y+i,0,qh-1))*qw;
+                    for(int x=0;x<qw;++x)acc[size_t(x)]+=kk*r[x];
+                }
+                std::copy(acc.begin(),acc.end(),o.begin()+std::ptrdiff_t(size_t(y)*qw));
+            }
+        });
         return o;
-    };
-    auto bil=[&](const std::vector<float>& m,float x,float y){
-        const int x0=int(std::floor(x)),y0=int(std::floor(y));const float tx=x-float(x0),ty=y-float(y0);
-        auto at=[&](int xx,int yy){return m[size_t(std::clamp(yy,0,qh-1))*qw+std::clamp(xx,0,qw-1)];};
-        return (at(x0,y0)*(1-tx)+at(x0+1,y0)*tx)*(1-ty)+(at(x0,y0+1)*(1-tx)+at(x0+1,y0+1)*tx)*ty;
     };
     // the ultrashort quad position of every sampled base quad at the current transform (the cell's top-left site, as bayerOrigin)
     const int st=2,sw=qw/st,sh=qh/st;
@@ -8094,21 +8168,49 @@ inline HybridUsRegister hybridUsRegister(const uint16_t* base,const uint16_t* us
         for(int j=j0;j<j1;++j)for(int i=0;i<sw;++i){const DonorPoint o=H.bayerOrigin(2*i*st,2*j*st);px[size_t(j)*sw+i]=o.x*0.5f;py[size_t(j)*sw+i]=o.y*0.5f;}
     });
     float dx=0,dy=0,g=1;
+    // P364: the samples a pass can use at all (not clipped in the base, the base level 0.01 .. 0.85 of this blur), listed once per
+    // blur level instead of tested in every one of up to 26 passes: per row, in order (the same sums, the same order)
+    struct Sample { uint32_t i;uint32_t bi; };
+    auto listed=[&](const std::vector<float>& Bb){
+        std::vector<std::vector<Sample>> out(static_cast<size_t>(sh));
+        mergeRowBands(sh,[&](int j0,int j1){
+            for(int j=j0;j<j1;++j){
+                std::vector<Sample>& row=out[size_t(j)];
+                for(int i=0;i<sw;++i){
+                    const size_t bi=size_t(j*st)*qw+size_t(i*st);
+                    if(cb[bi])continue;
+                    const float bvv=Bb[bi];if(bvv<0.01f||bvv>0.85f)continue;
+                    row.push_back({uint32_t(i),uint32_t(bi)});
+                }
+            }
+        });
+        return out;
+    };
+    // P364: the bilinear value and both central differences from one set of weights: bil(Ub, x +- 1, y) - ... is the bilinear of
+    // the difference image (the samples stay inside [2, qw - 3] x [2, qh - 3], no clamping): 12 reads instead of 20
+    auto bil3=[&](const std::vector<float>& m,float x,float y,float& v,float& gxo,float& gyo){
+        const int x0=int(std::floor(x)),y0=int(std::floor(y));const float tx=x-float(x0),ty=y-float(y0);
+        const float* r0=m.data()+size_t(y0)*qw+x0;const float* r1=r0+qw;const float* rm=r0-qw;const float* r2=r1+qw;
+        const float w00=(1-tx)*(1-ty),w10=tx*(1-ty),w01=(1-tx)*ty,w11=tx*ty;
+        v=r0[0]*w00+r0[1]*w10+r1[0]*w01+r1[1]*w11;
+        gxo=0.5f*((r0[1]-r0[-1])*w00+(r0[2]-r0[0])*w10+(r1[1]-r1[-1])*w01+(r1[2]-r1[0])*w11);
+        gyo=0.5f*((r1[0]-rm[0])*w00+(r1[1]-rm[1])*w10+(r2[0]-r0[0])*w01+(r2[1]-r0[1])*w11);
+    };
     // one pass: robust cost and normal equations at (dx, dy, g); per-row sums added in order (deterministic)
     struct Row { double A[6],b[3],c,n; };
-    auto pass=[&](const std::vector<float>& Bb,const std::vector<float>& Ub,float scale,bool solve,double& cost,long& n,double* A,double* bv){
+    auto pass=[&](const std::vector<std::vector<Sample>>& list,const std::vector<float>& Bb,const std::vector<float>& Ub,float scale,
+                  bool solve,double& cost,long& n,double* A,double* bv){
         std::vector<Row> rows(static_cast<size_t>(sh));
         mergeRowBands(sh,[&](int j0,int j1){
             for(int j=j0;j<j1;++j){
                 Row q{};
-                for(int i=0;i<sw;++i){
-                    const int bx=i*st,by=j*st;const size_t bi=size_t(by)*qw+bx;
-                    if(cb[bi])continue;
-                    const float bvv=Bb[bi];if(bvv<0.01f||bvv>0.85f)continue;
+                for(const Sample& smp:list[size_t(j)]){
+                    const int i=int(smp.i);const size_t bi=smp.bi;
+                    const float bvv=Bb[bi];
                     const float ux=px[size_t(j)*sw+i]+dx,uy=py[size_t(j)*sw+i]+dy;
                     if(ux<2||uy<2||ux>qw-3||uy>qh-3)continue;
                     if(cu[size_t(int(uy+0.5f))*qw+int(ux+0.5f)])continue;
-                    const float u=bil(Ub,ux,uy),gx=0.5f*(bil(Ub,ux+1,uy)-bil(Ub,ux-1,uy)),gy=0.5f*(bil(Ub,ux,uy+1)-bil(Ub,ux,uy-1));
+                    float u,gx,gy;bil3(Ub,ux,uy,u,gx,gy);
                     const float res=g*u-bvv,sg=scale*(0.01f+0.05f*bvv);   // relative scale: the frames' noise and flicker grow with the level
                     const float a=std::abs(res)/sg,wt=a<=1.f?1.f:1.f/a;   // Huber
                     q.c+=a<=1.f?0.5*a*a:a-0.5;q.n+=1;
@@ -8128,13 +8230,16 @@ inline HybridUsRegister hybridUsRegister(const uint16_t* base,const uint16_t* us
     // P353: each blur once (the 0.75 pair served the first cost, the second scale and the last cost: three times before); the
     // base's two from the shot's shared base
     if(makeBase){bs.B075=blurred(B,0.75f);bs.B150=blurred(B,1.5f);bs.made=true;}
+    if(baseOnly){r.why="base";return r;}
     const std::vector<float> U075=blurred(U,0.75f);
-    pass(bs.B075,U075,1.f,false,c0,n0,A,bv);
+    const auto list075=listed(bs.B075),list150=listed(bs.B150);
+    pass(list075,bs.B075,U075,1.f,false,c0,n0,A,bv);
     for(float sg:{1.5f,0.75f}){
         const std::vector<float> U150=sg>1.f?blurred(U,sg):std::vector<float>();
         const std::vector<float>& Bb=sg>1.f?bs.B150:bs.B075;const std::vector<float>& Ub=sg>1.f?U150:U075;
+        const auto& list=sg>1.f?list150:list075;
         for(int it=0;it<12;++it){
-            double c;long n;pass(Bb,Ub,1.f,true,c,n,A,bv);
+            double c;long n;pass(list,Bb,Ub,1.f,true,c,n,A,bv);
             if(n<200){r.why="too few unclipped textured quads ("+std::to_string(n)+")";return r;}
             // 3 x 3 solve (Cramer), damped
             const double a=A[0]+1e-6,b2=A[1],c2=A[2],d=A[3]+1e-6,e=A[4],f=A[5]+1e-6;
@@ -8148,7 +8253,7 @@ inline HybridUsRegister hybridUsRegister(const uint16_t* base,const uint16_t* us
         }
     }
     double c1=0;long n1=0;
-    pass(bs.B075,U075,1.f,false,c1,n1,A,bv);
+    pass(list075,bs.B075,U075,1.f,false,c1,n1,A,bv);
     r.dx=2.f*dx;r.dy=2.f*dy;r.gain=g;r.samples=n1;r.cost0=c0;r.cost1=c1;
     if(n1<200){r.why="too few quads at the result";return r;}
     if(std::hypot(r.dx,r.dy)>maxShift){r.why="beyond the limit";return r;}
@@ -8532,6 +8637,15 @@ inline float hybridUsFlicker(const std::vector<HybridUsCheck>& cs){
 // returned input points the corrected frames at `own` (kept alive by the caller) and leaves the refused ones out; frames whose
 // rows agree are untouched (the merge as before).
 constexpr int64_t kPlainUsCopyPixels=int64_t(64)<<20;
+// P364: a plain burst's ultrashort check run beside the merge (HybridInput::usPending): the checked input, its copies, its lines.
+struct HybridUsPending {
+    std::future<HybridInput> checked;
+    HybridInput result; // the checked input once joined (a restart merges it)
+    std::vector<std::vector<uint16_t>> own;
+    std::mutex lock;std::vector<std::string> lines;
+};
+// P364: the check changed the ultrashort frames (row correction, a refusal): the speculative merge stops, the check's input merges.
+struct HybridUsRestart : std::exception { const char* what() const noexcept override {return "ultrashort check changed the frames";} };
 inline HybridInput hybridPlainUsRows(const HybridInput& input,const HybridTuning& t,std::vector<std::vector<uint16_t>>& own,
                                      const std::function<void(const std::string&)>& report){
     HybridInput out=input;out.usRowsChecked=true;
@@ -8845,17 +8959,66 @@ inline std::array<float,3> hybridBlendWb(const HybridInput& input,const HybridTu
     if(sum[0]<=0.0||sum[1]<=0.0||sum[2]<=0.0)return {1.f,1.f,1.f};
     return {float(std::clamp(sum[1]/sum[0],0.1,10.0)),1.f,float(std::clamp(sum[1]/sum[2],0.1,10.0))};
 }
-inline std::vector<float> hybridBlendWeight(const HybridInput& input,const HybridTuning& t,
-                                            const std::vector<const std::vector<float>*>& valid){
+// P364: the separable gaussian of hybridBlendWeight and the blend's check planes: per pixel the same sums in the same order (the
+// clamped taps only near the borders, the vertical pass row by row with the taps outer as each row's sum goes: tap order kept per
+// pixel), rows on all cores. v: w x h, k: 2r + 1 taps.
+inline void hybridGaussRows(std::vector<float>& v,int w,int h,const std::vector<float>& k){
+    const int r=int(k.size()/2);
+    std::vector<float> tmp(v.size());
+    mergeRowBands(h,[&](int y0,int y1){
+        for(int y=y0;y<y1;++y){
+            const float* row=v.data()+size_t(y)*w;float* out=tmp.data()+size_t(y)*w;
+            auto edge=[&](int x){float s=0;for(int i=-r;i<=r;++i)s+=k[size_t(i+r)]*row[std::clamp(x+i,0,w-1)];out[x]=s;};
+            for(int x=0;x<std::min(r,w);++x)edge(x);
+            for(int x=r;x<w-r;++x){float s=0;for(int i=-r;i<=r;++i)s+=k[size_t(i+r)]*row[x+i];out[x]=s;}
+            for(int x=std::max(r,w-r);x<w;++x)edge(x);
+        }
+    });
+    mergeRowBands(h,[&](int y0,int y1){
+        std::vector<float> acc(static_cast<size_t>(w));
+        for(int y=y0;y<y1;++y){
+            std::fill(acc.begin(),acc.end(),0.f);
+            for(int i=-r;i<=r;++i){
+                const float kk=k[size_t(i+r)];const float* src=tmp.data()+size_t(std::clamp(y+i,0,h-1))*w;
+                for(int x=0;x<w;++x)acc[size_t(x)]+=kk*src[x];
+            }
+            std::copy(acc.begin(),acc.end(),v.begin()+std::ptrdiff_t(size_t(y)*w));
+        }
+    });
+}
+// P364: the blend weight's rows made so far (a task publishes them band by band; finish() on every way out of it)
+struct HybridBlendProgress {
+    std::mutex lock;std::condition_variable cv;int rows=0;bool done=false;
+    void publish(int r){{std::lock_guard<std::mutex> l(lock);rows=std::max(rows,r);}cv.notify_all();}
+    void finish(){{std::lock_guard<std::mutex> l(lock);done=true;}cv.notify_all();}
+    // true: rows [0, r) are made; false: the task ended before them (or failed)
+    bool wait(int r){std::unique_lock<std::mutex> l(lock);cv.wait(l,[&]{return rows>=r||done;});return rows>=r;}
+};
+// element loops of hybridBlendWeight on all cores (each element on its own: the same values)
+template<class F> inline void hybridCellsParallel(size_t cells,const F& f){
+    mergeRowBands(int((cells+4095)/4096),[&](int k0,int k1){for(size_t i=size_t(k0)*4096;i<std::min(cells,size_t(k1)*4096);++i)f(i);});
+}
+// P364: kHybridBlendHalo rows above and below a band of the weight: more than the 13 rows its steps reach (the level's gaussian 3,
+// the diamond 2, the gaussian of bentoBlendSigma 1.5: 5, the last one 3; tuned sigmas up to 2 / 4 dilation steps stay within it):
+// the band's rows get the values of the whole image
+constexpr int kHybridBlendHalo=16;
+inline bool hybridBlendBanded(const HybridTuning& t){
+    auto reach=[](float sg){return sg<=0.05f?0:std::max(1,int(std::ceil(3.f*sg)));};
+    return reach(t.bentoBlendCellMode>=2?1.f:0.f)+std::clamp(t.bentoBlendDilate,0,16)+reach(t.bentoBlendSigma)+reach(0.75f)<kHybridBlendHalo;
+}
+// The weight's rows [y0, y1) into out (w/2 x h/2), computed on the rows [y0 - halo, y1 + halo) (the whole image: halo h)
+inline void hybridBlendWeightRows(const HybridInput& input,const HybridTuning& t,const std::vector<const std::vector<float>*>& valid,
+                                  int y0,int y1,int halo,std::vector<float>& out){
     const int w2=input.w/2,h2=input.h/2;
-    const size_t cells=size_t(w2)*h2;
+    const int wa=std::max(0,y0-halo),wb=std::min(h2,y1+halo),wh=wb-wa;
+    const size_t cells=size_t(w2)*wh;
     std::vector<float> lvl(cells,0.f);
     const uint16_t* raw=input.frames[0].raw;
     float inv[4];for(int k=0;k<4;++k)inv[k]=1.f/std::max(input.white-input.black[k],1.f);
     // canonical (RGGB-origin) cells as the GPU and the check planes use them: the CFA shift, the last column / row reflected
     const int sx=input.cfa&1,sy=input.cfa>>1;
-    mergeRowBands(h2,[&](int y0,int y1){
-        for(int cy=y0;cy<y1;++cy)for(int cx=0;cx<w2;++cx){
+    mergeRowBands(wh,[&](int r0,int r1){
+        for(int cy=wa+r0;cy<wa+r1;++cy)for(int cx=0;cx<w2;++cx){
             float m=0.f;
             for(int p=0;p<4;++p){
                 int X=2*cx+(p&1)+sx,Y=2*cy+(p>>1)+sy;
@@ -8865,7 +9028,7 @@ inline std::vector<float> hybridBlendWeight(const HybridInput& input,const Hybri
                 const float v=(float(raw[size_t(Y)*input.w+X])-input.black[q])*inv[q];
                 m=std::max(m,v);
             }
-            lvl[size_t(cy)*w2+cx]=m;
+            lvl[size_t(cy-wa)*w2+cx]=m;
         }
     });
     auto smooth=[](float a,float b,float x){const float u=std::clamp((x-a)/std::max(b-a,1e-6f),0.f,1.f);return u*u*(3.f-2.f*u);};
@@ -8875,41 +9038,29 @@ inline std::vector<float> hybridBlendWeight(const HybridInput& input,const Hybri
         std::vector<float> k(size_t(2*r+1));float sum=0;
         for(int i=-r;i<=r;++i){k[size_t(i+r)]=std::exp(-0.5f*float(i*i)/(sigma*sigma));sum+=k[size_t(i+r)];}
         for(float& x:k)x/=sum;
-        std::vector<float> tmp(cells);
-        mergeRowBands(h2,[&](int y0,int y1){
-            for(int y=y0;y<y1;++y)for(int x=0;x<w2;++x){
-                float s=0;for(int i=-r;i<=r;++i)s+=k[size_t(i+r)]*v[size_t(y)*w2+std::clamp(x+i,0,w2-1)];
-                tmp[size_t(y)*w2+x]=s;
-            }
-        });
-        mergeRowBands(h2,[&](int y0,int y1){
-            for(int y=y0;y<y1;++y)for(int x=0;x<w2;++x){
-                float s=0;for(int i=-r;i<=r;++i)s+=k[size_t(i+r)]*tmp[size_t(std::clamp(y+i,0,h2-1))*w2+x];
-                v[size_t(y)*w2+x]=s;
-            }
-        });
+        hybridGaussRows(v,w2,wh,k); // P364 (the same sums)
     };
     std::vector<float> a(cells),near(cells);
     std::vector<uint8_t> core(cells);
     if(t.bentoBlendCellMode==1){ // P350 F3: only truly clipped cells (the brightest site at the clip), dilated and blurred below
-        for(size_t i=0;i<cells;++i){core[i]=lvl[i]>=0.98f;a[i]=core[i]?1.f:0.f;near[i]=smooth(0.70f,0.88f,lvl[i]);}
+        hybridCellsParallel(cells,[&](size_t i){core[i]=lvl[i]>=0.98f;a[i]=core[i]?1.f:0.f;near[i]=smooth(0.70f,0.88f,lvl[i]);});
     } else if(t.bentoBlendCellMode>=2){ // P350 F3: the ramp of a denoised level (a gaussian of 1 cell: no noise peaks of one
         // frame's brightest site), a clipped cell always 1
-        for(size_t i=0;i<cells;++i)core[i]=lvl[i]>=0.98f;
+        hybridCellsParallel(cells,[&](size_t i){core[i]=lvl[i]>=0.98f;});
         gauss(lvl,1.f);
-        for(size_t i=0;i<cells;++i){a[i]=core[i]?1.f:smooth(t.bentoBlendLo,t.bentoBlendHi,lvl[i]);near[i]=core[i]?1.f:smooth(0.70f,0.88f,lvl[i]);}
+        hybridCellsParallel(cells,[&](size_t i){a[i]=core[i]?1.f:smooth(t.bentoBlendLo,t.bentoBlendHi,lvl[i]);near[i]=core[i]?1.f:smooth(0.70f,0.88f,lvl[i]);});
     } else
-    for(size_t i=0;i<cells;++i){a[i]=smooth(t.bentoBlendLo,t.bentoBlendHi,lvl[i]);near[i]=smooth(0.70f,0.88f,lvl[i]);core[i]=lvl[i]>=0.98f;}
+    hybridCellsParallel(cells,[&](size_t i){a[i]=smooth(t.bentoBlendLo,t.bentoBlendHi,lvl[i]);near[i]=smooth(0.70f,0.88f,lvl[i]);core[i]=lvl[i]>=0.98f;});
     std::vector<float>().swap(lvl);
     for(int it=0;it<std::clamp(t.bentoBlendDilate,0,16);++it){ // diamond: one 4-neighbour max per step
         std::vector<float> d(a);
-        mergeRowBands(h2,[&](int y0,int y1){
-            for(int y=y0;y<y1;++y)for(int x=0;x<w2;++x){
+        mergeRowBands(wh,[&](int r0,int r1){
+            for(int y=r0;y<r1;++y)for(int x=0;x<w2;++x){
                 const size_t i=size_t(y)*w2+x;float m=a[i];
                 if(x>0)m=std::max(m,a[i-1]);
                 if(x+1<w2)m=std::max(m,a[i+1]);
                 if(y>0)m=std::max(m,a[i-w2]);
-                if(y+1<h2)m=std::max(m,a[i+w2]);
+                if(y+1<wh)m=std::max(m,a[i+w2]);
                 d[i]=m;
             }
         });
@@ -8919,27 +9070,61 @@ inline std::vector<float> hybridBlendWeight(const HybridInput& input,const Hybri
     gauss(near,t.bentoBlendSigma);
     std::vector<float> best(cells,valid.empty()?1.f:0.f);
     for(const auto* v:valid){
-        if(!v||v->size()!=cells){std::fill(best.begin(),best.end(),1.f);break;}
-        for(size_t i=0;i<cells;++i)best[i]=std::max(best[i],(*v)[i]);
+        if(!v||v->size()!=size_t(w2)*h2){std::fill(best.begin(),best.end(),1.f);break;}
+        const float* vr=v->data()+size_t(wa)*w2;
+        hybridCellsParallel(cells,[&](size_t i){best[i]=std::max(best[i],vr[i]);});
     }
     // the validity only where the base has data: on its clipped cells nothing better than the ultrashort frames exists (their 2-3 px
     // residual on an LED line made the check refuse whole edges, the N frames' clipped steps then showed)
     if(t.bentoBlendCellMode>0||t.bentoBlendValidOnce>0){
         // P350: F3 - the near-clip gate not on a clipped cell itself (a single clipped cell, a glint, kept its weight); F7
         // bentoBlendValidOnce - the validity left to the shader's best frame (it scaled the weight twice)
-        for(size_t i=0;i<cells;++i){
+        hybridCellsParallel(cells,[&](size_t i){
             const float v=core[i]||t.bentoBlendValidOnce>0?1.f:std::clamp(best[i],0.f,1.f);
             const float gate=core[i]&&t.bentoBlendCellMode>0?1.f:smooth(0.08f,0.45f,near[i]);
             a[i]=std::clamp(a[i]*gate*v,0.f,1.f);
-        }
+        });
     } else
-    for(size_t i=0;i<cells;++i){
+    hybridCellsParallel(cells,[&](size_t i){
         const float v=core[i]?1.f:std::clamp(best[i],0.f,1.f);
         a[i]=std::clamp(a[i]*smooth(0.08f,0.45f,near[i])*v,0.f,1.f);
-    }
+    });
     gauss(a,0.75f);
-    for(float& v:a)v=v<0.002f?0.f:std::min(v,1.f);
-    return a;
+    float* o=out.data()+size_t(y0)*w2;const float* src=a.data()+size_t(y0-wa)*w2;
+    hybridCellsParallel(size_t(y1-y0)*w2,[&](size_t i){o[i]=src[i]<0.002f?0.f:std::min(src[i],1.f);});
+}
+inline std::vector<float> hybridBlendWeight(const HybridInput& input,const HybridTuning& t,
+                                            const std::vector<const std::vector<float>*>& valid){
+    const int w2=input.w/2,h2=input.h/2;
+    std::vector<float> out(size_t(w2)*h2);
+    hybridBlendWeightRows(input,t,valid,0,h2,h2,out);
+    return out;
+}
+// P364: rows [s0, s1) of the gaussian of plane src (w x h) into dst, as hybridGaussRows gives them for the whole plane
+inline void hybridGaussPlaneRows(const std::vector<float>& src,std::vector<float>& dst,int w,int h,const std::vector<float>& k,int s0,int s1){
+    const int r=int(k.size()/2),wa=std::max(0,s0-r),wb=std::min(h,s1+r);
+    if(s1<=s0)return;
+    std::vector<float> tmp(size_t(wb-wa)*w);
+    mergeRowBands(wb-wa,[&](int r0,int r1){
+        for(int y=wa+r0;y<wa+r1;++y){
+            const float* row=src.data()+size_t(y)*w;float* outp=tmp.data()+size_t(y-wa)*w;
+            auto edge=[&](int x){float a=0;for(int i=-r;i<=r;++i)a+=k[size_t(i+r)]*row[std::clamp(x+i,0,w-1)];outp[x]=a;};
+            for(int x=0;x<std::min(r,w);++x)edge(x);
+            for(int x=r;x<w-r;++x){float a=0;for(int i=-r;i<=r;++i)a+=k[size_t(i+r)]*row[x+i];outp[x]=a;}
+            for(int x=std::max(r,w-r);x<w;++x)edge(x);
+        }
+    });
+    mergeRowBands(s1-s0,[&](int r0,int r1){
+        std::vector<float> acc(static_cast<size_t>(w));
+        for(int y=s0+r0;y<s0+r1;++y){
+            std::fill(acc.begin(),acc.end(),0.f);
+            for(int i=-r;i<=r;++i){
+                const float kk=k[size_t(i+r)];const float* sp=tmp.data()+size_t(std::clamp(y+i,0,h-1)-wa)*w;
+                for(int x=0;x<w;++x)acc[size_t(x)]+=kk*sp[x];
+            }
+            std::copy(acc.begin(),acc.end(),dst.begin()+std::ptrdiff_t(size_t(y)*w));
+        }
+    });
 }
 
 // Lab stage view: the stage maps of the last merge to <hybridStageDir()>/stages.bin. Records, little-endian int32: 'STG1',
@@ -9175,7 +9360,18 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         if(block>1&&tune.mosaicPath==1)report("HYBRID MOSAIC NATIVE: Tetra stays on the sub-frame split (mosaicTetra 0)");
         if(block>1)return hybridReconstructMosaic(input,block,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags);
     }
+    // (P364: before the checks below, so that they run once: nothing of them reads bentoRamp)
+    if(tune.bentoBlend>0&&tune.bentoRamp>0.f&&native==nullptr){
+        // P310: on the plain merge the blend replaces the P309 ramp (its share and K weights belong to the merge's own mixing of
+        // the frames; the app sends the blend's softness from the same setting as bentoBlendSigma). The native colour-block merge
+        // keeps the ramp (no blend pass there).
+        HybridTuning t2=tune;t2.bentoRamp=0.f;
+        t2.mosaicBlock=1; // a block above 1 has returned before here: no second detection when the header said 0
+        return hybridReconstruct(input,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
+    }
     // P339 (usNeedClip): no base site at the clip - the ultrashort frames leave the plain merge before anything reads them
+    // P364: decided once (the merges below get usNeedClip 0: the same base frame, the same answer)
+    bool needClipSeen=false;
     if(tune.usNeedClip&&!native&&!preset&&input.subFrames<=1&&!input.frames.empty()&&input.frames[0].raw){
         int us=0;
         for(size_t f=1;f<input.frames.size();++f)us+=input.frames[f].role==kRoleUltrashort;
@@ -9208,26 +9404,42 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 HybridTuning t2=tune;t2.usNeedClip=0;
                 return hybridReconstruct(lean,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
             }
+            needClipSeen=true;
         }
     }
+    HybridTuning seenTune=tune;if(needClipSeen)seenTune.usNeedClip=0;
     // Owner, 2026-10-19 («исправь это во всех режимах»): a plain Bayer burst's ultrashort frames through the row check as the mosaic
     // paths' (their binned / native / split merges arrive here checked or with their own preset / native data)
     if(!input.usRowsChecked&&!native&&!preset&&input.subFrames<=1&&tune.mosaicUsRows){
         bool anyUs=false;
         for(size_t f=1;f<input.frames.size();++f)anyUs|=input.frames[f].role==kRoleUltrashort;
         if(anyUs){
+            // P364: beside the merge (the check took ~0.35 s before the alignment on the OPPO): the merge goes on with the frames as
+            // captured and joins the check after the alignment; only a check that changes the frames costs the merge again.
+            // SCAM_US_CHECK_FIRST: the check first, as before.
+            if(!std::getenv("SCAM_US_CHECK_FIRST")){
+                auto pending=std::make_shared<HybridUsPending>();
+                HybridUsPending* pp=pending.get();
+                bool started=false;
+                try{
+                    pending->checked=std::async(std::launch::async,[pp,&input,&tune]{
+                        return hybridPlainUsRows(input,tune,pp->own,[pp](const std::string& line){std::lock_guard<std::mutex> l(pp->lock);pp->lines.push_back(line);});
+                    });
+                    started=true;
+                }catch(const std::system_error&){} // no thread: the check first below
+                if(started){
+                    HybridInput spec=input;spec.usRowsChecked=true;spec.usPending=pending;
+                    try{return hybridReconstruct(spec,seenTune,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);}
+                    catch(const HybridUsRestart&){
+                        report("HYBRID PLAIN: the ultrashort check changed the frames: merged again with them");
+                        return hybridReconstruct(pending->result,seenTune,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
+                    }
+                }
+            }
             std::vector<std::vector<uint16_t>> own;
             const HybridInput checked=hybridPlainUsRows(input,tune,own,report);
-            return hybridReconstruct(checked,tune,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
+            return hybridReconstruct(checked,seenTune,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
         }
-    }
-    if(tune.bentoBlend>0&&tune.bentoRamp>0.f&&native==nullptr){
-        // P310: on the plain merge the blend replaces the P309 ramp (its share and K weights belong to the merge's own mixing of
-        // the frames; the app sends the blend's softness from the same setting as bentoBlendSigma). The native colour-block merge
-        // keeps the ramp (no blend pass there).
-        HybridTuning t2=tune;t2.bentoRamp=0.f;
-        t2.mosaicBlock=1; // a block above 1 has returned before here: no second detection when the header said 0
-        return hybridReconstruct(input,t2,alignment,report,mergedDng,effMap,statsOut,clipFlags,preset,native);
     }
     using Clock=std::chrono::steady_clock;
     const auto started=Clock::now();
@@ -9258,7 +9470,13 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const bool laCpuStreams=tune.laStream!=0&&input.subFrames<=1&&!hybridAuto2x(input,tune,native?hybridRequestedGrid(input,tune)==2*std::max(1,native->block)
                                                                                   :hybridRequestedGrid(input,tune)==2)
         &&!std::getenv("SCAM_NO_PREFETCH")&&(!large||!std::getenv("SCAM_NO_LARGE_F6_STREAM"))&&!std::getenv("SCAM_LA_DUMP")&&!std::getenv("SCAM_NO_F6_STREAM");
-    bool laGpuUse=tune.localAlign>0&&n>1&&(tune.laGpu==1||(tune.laGpu==2&&!laCpuStreams));
+    // P364: auto on an Adreno (the Qualcomm GPU driver's device) takes the GPU field as well: the same field to the driver's
+    // rounding (merge factors equal on lamp2324, b175757, x7u_1x, isz2, led1934; PSNR 115 dB) and the CPU free for the
+    // alignment and the checks beside it (the streamed CPU field took ~3.5 s of CPU time in a shot on the OPPO, the GPU field
+    // 0.06 - 0.3 s less wall time on 4 of 5 replays, ~0.2 - 0.4 GB less memory). Elsewhere (Mali: its compiler history) auto as
+    // before. SCAM_LA_AUTO_CPU: auto as before everywhere.
+    const bool adrenoAuto=tune.laGpu==2&&access("/dev/kgsl-3d0",F_OK)==0&&!std::getenv("SCAM_LA_AUTO_CPU");
+    bool laGpuUse=tune.localAlign>0&&n>1&&(tune.laGpu==1||(tune.laGpu==2&&(!laCpuStreams||adrenoAuto)));
     if(laGpuUse&&large){
         // the GPU field holds ~11.5 B per RAW pixel from the alignment to the F6 stage (two RAW uploads, the base and donor levels):
         // within a quarter of MemAvailable as the CPU field's large path, else the CPU field
@@ -9317,6 +9535,50 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             return gpu;
         });}catch(const std::exception&){}
     }
+    // P364: Mochi on the early context as soon as the corner tracker has aligned every group (the bracketed frames' homographies are
+    // final then; the GPU is idle while the CPU registers the ultrashort frames and checks Bento), not before the merge's strips
+    // (~0.25 s there on the OPPO). The merge takes a frame's result only when every input it reads is the one it would pass now.
+    // SCAM_MOCHI_LATE: before the strips, as before.
+    struct MochiAheadFrame {
+        const uint16_t* raw=nullptr;const uint16_t* base=nullptr;BackwardHomography H;float gain=0,ns=0,no=0;
+        std::vector<uint16_t> out;HybridGpu::MochiStats st;bool ok=false;
+    };
+    struct MochiAhead { std::unique_ptr<HybridGpu> gpu;std::vector<MochiAheadFrame> frames;float bs=0,bo=0,clip=0; } mochiAhead;
+    std::future<void> mochiAheadJob;
+    struct MochiAheadJoin { std::future<void>& f; ~MochiAheadJoin(){if(f.valid())f.wait();} } mochiAheadJoin{mochiAheadJob};
+    auto launchMochiAhead=[&](const std::vector<BackwardHomography>& Hs,const std::vector<bool>& alignedNow){
+        if(tune.mochi<=0||native||!earlyGpu.valid()||std::getenv("SCAM_MOCHI_LATE"))return;
+        mochiAhead.bs=std::max(input.frames[0].slope,1e-9f);mochiAhead.bo=std::max(input.frames[0].offset,0.f);mochiAhead.clip=tune.clipLevel;
+        for(int f=1;f<n;++f){
+            if(input.frames[f].role!=kRoleBracketed||!alignedNow[size_t(f)]||Hs[size_t(f)].upRatio!=1.f||!(input.frames[f].exposure>0.f))continue;
+            MochiAheadFrame m;m.raw=input.frames[f].raw;m.base=input.frames[0].raw;m.H=Hs[size_t(f)];m.gain=1.f/input.frames[f].exposure;
+            m.ns=std::max(input.frames[f].slope,1e-9f);m.no=std::max(input.frames[f].offset,0.f);
+            mochiAhead.frames.push_back(std::move(m));
+        }
+        if(mochiAhead.frames.empty())return;
+        try{mochiAheadJob=std::async(std::launch::async,[&]{
+            std::unique_ptr<HybridGpu> g;
+            try{g=earlyGpu.get();}catch(const std::exception&){g.reset();}
+            if(!g){for(auto& m:mochiAhead.frames)m.ok=false;return;}
+            try{
+                g->acquire();
+                HybridGpu::Frames mf;mf.w=w;mf.h=h;mf.cfa=input.cfa;
+                for(int k=0;k<4;++k){mf.black[k]=input.black[k];mf.inv[k]=1.f/(input.white-input.black[k]);}
+                mf.phaseColor={0,1,1,2};mf.baseSlope=mochiAhead.bs;mf.baseOffset=mochiAhead.bo;mf.white=input.white;
+                mf.homography.resize(2);mf.gain={1.f,1.f};mf.noiseSlope={mochiAhead.bs,1e-9f};mf.noiseOffset={mochiAhead.bo,0.f};
+                for(auto& m:mochiAhead.frames){
+                    mf.frames={m.base,m.raw};mf.homography[1]=m.H;mf.gain[1]=m.gain;mf.noiseSlope[1]=m.ns;mf.noiseOffset[1]=m.no;
+                    m.ok=g->mochi(mf,1,mochiAhead.clip,m.out,m.st);
+                }
+                g->release();
+            }catch(const std::exception&){
+                for(auto& m:mochiAhead.frames){m.ok=false;std::vector<uint16_t>().swap(m.out);}
+                while(glGetError()!=GL_NO_ERROR){}
+                g.reset(); // the merge builds its own context
+            }
+            mochiAhead.gpu=std::move(g);
+        });}catch(const std::exception&){mochiAhead.frames.clear();}
+    };
     // W1.2: the CRE groups' guides (the prefetch drops what the groups did not take after the last group, or on an exception)
     struct PrefetchDrop { bool on=false; ~PrefetchDrop(){if(on&&scamAlignmentPrefetch())scamAlignmentPrefetch()(nullptr,{});} } prefetchDrop;
     if(ahead&&alignment&&!presetAlignment&&n>1&&scamAlignmentPrefetch()){
@@ -9468,14 +9730,41 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         LaStream::Job job;job.f=f;job.raw=input.frames[f].raw;job.gain=1.f/input.frames[f].exposure;job.H=H[f];
         laStream->add(job);
     };
+    // P364: the ultrashort check that runs beside the alignment, joined as soon as it is done (polled before each CRE group) and at
+    // the latest after the alignment: its lines then, its tile deviation for the blend gain; frames it changed (a correction or a
+    // refusal) start the merge again with them - early, so a changing check costs little more than when it ran first
+    float usFlicker=input.usFlicker;
+    auto usCheckJoin=[&](bool wait){
+        if(!input.usPending||!input.usPending->checked.valid())return;
+        if(!wait&&input.usPending->checked.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
+        const HybridInput checked=input.usPending->checked.get();
+        {std::lock_guard<std::mutex> l(input.usPending->lock);for(const std::string& line:input.usPending->lines)report(line);}
+        bool same=checked.frames.size()==input.frames.size();
+        for(size_t f=0;same&&f<input.frames.size();++f)same=checked.frames[f].raw==input.frames[f].raw&&checked.frames[f].role==input.frames[f].role;
+        if(!same){input.usPending->result=checked;throw HybridUsRestart();}
+        usFlicker=checked.usFlicker;
+    };
     const auto alignStarted=Clock::now();
     scam_progress::pass("align",n-1); // P220: the frames aligned (a CRE group of up to 6 at a time)
+    // P364: the registration's base side (the base frame's quads, clip mask and two blurs, ~0.3 s) made from the start of the
+    // alignment on a thread of its own, under the lock the registrations take: the first ultrashort frame no longer makes it after
+    // the last CRE group (its frames waited for it). The same base, the same registration. SCAM_US_BASE_LATE: as before.
+    std::future<void> usBaseAhead;
+    struct UsBaseJoin { std::future<void>& f; ~UsBaseJoin(){if(f.valid())f.wait();} } usBaseJoin{usBaseAhead};
+    if(tune.bentoUsRegister>0&&!std::getenv("SCAM_US_BASE_LATE")){
+        bool anyUs=false;for(int f=1;f<n;++f)anyUs|=input.frames[f].role==kRoleUltrashort;
+        if(anyUs)try{usBaseAhead=std::async(std::launch::async,[&]{
+            std::lock_guard<std::mutex> lock(usRegBaseMutex);
+            if(!usRegBase.made)hybridUsRegister(input.frames[0].raw,nullptr,w,h,input.black,input.white,0.f,BackwardHomography{},0.f,&usRegBase);
+        });}catch(const std::exception&){}
+    }
 
     if(presetAlignment){
         H=preset->h;aligned=preset->aligned; // the mosaic sub-frames: binned alignment plus the known site offsets
     } else if(alignment){
         std::vector<Guide> fallbackRef; // base pyramid of the translation fallback, built on the first failed group
         for(int first=1;first<n;first+=6){
+            usCheckJoin(false); // P364
             Burst group=b;
             const int count=std::min(6,n-first);
             struct Done{int k;~Done(){scam_progress::step(k);}} done{count}; // P220: the group, aligned or by the fallback
@@ -9523,6 +9812,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 if(!usRegLater(first+j))streamFeed(first+j); // P33 W2.1: its F6 phase 1 now (P353: a registered ultrashort frame later)
             }
         }
+        launchMochiAhead(H,aligned); // P364 (the ultrashort registrations below change only their own frames' homographies)
         for(auto& [f,done]:usAsync){done.get();streamFeed(f);} // P353: the registered ultrashort frames to F6, in order
         usAsync.clear();
         if(prefetchDrop.on){scamAlignmentPrefetch()(nullptr,{});prefetchDrop.on=false;}
@@ -9686,6 +9976,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         if(!gains[f].valid())continue;
         report(hybridGainCheckLine(f,input.frames[f].role,input.frames[f].exposure,gains[f].get()));
     }
+    usCheckJoin(true);
     // ---- Shasta: bracketed frames softer than the base are dropped; too long a ratio drops them all
     std::vector<bool> keep(n,true);
     std::vector<double> sharpShare(n,1.0); // P335: a bracketed frame's sharpness against the base (Shasta's score), 1 = not measured
@@ -9723,6 +10014,18 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 return hybridSharpnessPair(*baseGuide,one,1,frame.exposure,baseSlope,baseOffset,frame.slope,frame.offset,std::clamp(tune.shastaSat,0.05f,0.95f));
             });
         }
+        // P364: the forced Shasta frames' motion checks side by side (each reads only its frame, the base and its homography;
+        // decided and reported in frame order below as before)
+        std::vector<std::future<ShastaMotion>> motions(static_cast<size_t>(n));
+        if(tune.shastaForce&&tune.shastaMotionMax<100.f&&tune.shastaEnable)
+            for(int f=1;f<n;++f){
+                const auto& fr=input.frames[f];
+                if(fr.role!=kRoleBracketed||!aligned[f])continue;
+                try{motions[size_t(f)]=std::async(std::launch::async,[&b,&fr,h=H[f],baseSlope,baseOffset]{
+                    Burst one=b;one.raw[1]=fr.raw;one.exposure[1]=fr.exposure;
+                    return shastaMotion(one,1,h,fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,0.95f);
+                });}catch(const std::exception&){} // no thread: in the loop below
+            }
         for(int f=1;f<n;++f){
             const auto& fr=input.frames[f];
             if(fr.role!=kRoleBracketed)continue;
@@ -9736,7 +10039,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 // P68 forced Shasta: no sharpness gate, no ratio limit; the frame falls back only on motion (as Bento)
                 if(tune.shastaMotionMax<100.f){
                     Burst one=b;one.raw[1]=fr.raw;one.exposure[1]=fr.exposure;
-                    const ShastaMotion m=shastaMotion(one,1,H[f],fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,0.95f);
+                    const ShastaMotion m=motions[size_t(f)].valid()?motions[size_t(f)].get()
+                        :shastaMotion(one,1,H[f],fr.exposure,baseSlope,baseOffset,fr.slope,fr.offset,0.95f);
                     const bool drop=m.share()>tune.shastaMotionMax;
                     report("HYBRID SHASTA motion frame="+std::to_string(f)+" moved="+std::to_string(m.moved)+" of "+std::to_string(m.blocks)
                         +" blocks ("+std::to_string(m.share())+" %"+(drop?" > "+std::to_string(tune.shastaMotionMax)+" %: dropped)":", forced)"));
@@ -10013,7 +10317,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 char tail[160];
                 std::snprintf(tail,sizeof(tail),": context, programs and base %.0f ms from the alignment on; %d frames, %d of them done before this stage, waited %.0f ms for the rest",
                     baseMs,int(jobs.size()),early,waitedMs);
-                laGpuNote=std::string("HYBRID LOCAL ALIGN: GPU")+(tune.laGpu==2?" (auto: the CPU field would come whole before the merge)":"")+" ("+gpuName+")"+tail;
+                laGpuNote=std::string("HYBRID LOCAL ALIGN: GPU")+(tune.laGpu==2?(laCpuStreams?" (auto: Adreno)":" (auto: the CPU field would come whole before the merge)"):"")+" ("+gpuName+")"+tail;
             }catch(const std::exception& e){
                 laGpuWorker.reset();
                 for(int f:jobs){laFields[f].clear();laMotions[f].clear();fstats[f]=LaFrameStats();}
@@ -10246,6 +10550,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     std::vector<float> blendWeight;
     std::vector<std::vector<float>> blendValids;
     std::shared_future<std::array<double,3>> blendMade; // P353: cells > 0.01, full cells, ms
+    auto blendProgress=std::make_shared<HybridBlendProgress>(); // P364: the weight's rows made so far
     // joined before the planes and the weight go (an exception on the way out included)
     struct BlendJoin { std::shared_future<std::array<double,3>>& f; ~BlendJoin(){if(f.valid())f.wait();} } blendJoin{blendMade};
     if(bento.active&&tune.bentoBlend>0&&native==nullptr){
@@ -10259,25 +10564,39 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const std::vector<const std::vector<float>*> planes=in.maskValid;
         // P353: the smooth planes and the weight on the CPU while the GPU merges: the merge reads them only in the strips' blend
         // pass (in.maskReady waits there). They took 308 ms in front of the merge on the X200 Ultra (450 on the OPPO). The same values.
-        auto make=[&input,&tune,&blendValids,&blendWeight,sources,planes,w2,h2]{
+        // P364: in bands of cell rows (hybridBlendWeightRows, the same values): the strips' blend pass waits for the rows it reads
+        // only (in.maskReady(rows)), the first strip no longer for the whole weight (~0.3 s at the merge start on the OPPO).
+        // The planes and the weight are sized here, before any thread reads them. SCAM_BLEND_WHOLE: in one band.
+        for(size_t k=0;k<sources.size();++k)if(sources[k]&&sources[k]->size()==size_t(w2)*h2)blendValids[k].assign(size_t(w2)*h2,0.f);
+        blendWeight.assign(size_t(w2)*h2,0.f);
+        const int bandRows=hybridBlendBanded(tune)&&!std::getenv("SCAM_BLEND_WHOLE")?64:h2;
+        auto progress=blendProgress;
+        auto make=[&input,&tune,&blendValids,&blendWeight,sources,planes,w2,h2,bandRows,progress]{
             const auto t0=Clock::now();
-            for(size_t k=0;k<sources.size();++k){
-                const auto* v=sources[k];
-                if(!v||v->size()!=size_t(w2)*h2)continue;
-                std::vector<float> sm(*v),tmp(sm.size());
-                const float sg=std::max(0.f,tune.bentoBlendValidSigma);
-                if(sg>0.05f){
-                    const int r=std::max(1,int(std::ceil(3.f*sg)));
-                    std::vector<float> kk(size_t(2*r+1));float ks=0;
-                    for(int i=-r;i<=r;++i){kk[size_t(i+r)]=std::exp(-0.5f*float(i*i)/(sg*sg));ks+=kk[size_t(i+r)];}
-                    for(float& q:kk)q/=ks;
-                    mergeRowBands(h2,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<w2;++x){float a=0;for(int i=-r;i<=r;++i)a+=kk[size_t(i+r)]*sm[size_t(y)*w2+std::clamp(x+i,0,w2-1)];tmp[size_t(y)*w2+x]=a;}});
-                    mergeRowBands(h2,[&](int y0,int y1){for(int y=y0;y<y1;++y)for(int x=0;x<w2;++x){float a=0;for(int i=-r;i<=r;++i)a+=kk[size_t(i+r)]*tmp[size_t(std::clamp(y+i,0,h2-1))*w2+x];sm[size_t(y)*w2+x]=a;}});
-                }
-                blendValids[k]=std::move(sm);
+            struct Publish { const std::shared_ptr<HybridBlendProgress>& p; ~Publish(){p->finish();mergeRowBandsSerial()=false;} } publish{progress};
+            mergeRowBandsSerial()=bandRows<h2; // the bands on this thread alone (the other cores merge and take the chroma median)
+            const float sg=std::max(0.f,tune.bentoBlendValidSigma);
+            std::vector<float> kk;
+            if(sg>0.05f){
+                const int r=std::max(1,int(std::ceil(3.f*sg)));
+                kk.resize(size_t(2*r+1));float ks=0;
+                for(int i=-r;i<=r;++i){kk[size_t(i+r)]=std::exp(-0.5f*float(i*i)/(sg*sg));ks+=kk[size_t(i+r)];}
+                for(float& q:kk)q/=ks;
             }
-            // P310: the ultrashort frames' blend weight per cell (see HybridTuning::bentoBlend); the merge itself runs without them
-            blendWeight=hybridBlendWeight(input,tune,planes);
+            int planesDone=0;
+            for(int y0=0;y0<h2;y0+=bandRows){
+                const int y1=std::min(h2,y0+bandRows),need=bandRows>=h2?h2:std::min(h2,y1+kHybridBlendHalo);
+                for(size_t k=0;k<sources.size();++k){
+                    const auto* v=sources[k];
+                    if(!v||v->size()!=size_t(w2)*h2)continue;
+                    if(!kk.empty())hybridGaussPlaneRows(*v,blendValids[k],w2,h2,kk,planesDone,need);
+                    else std::copy(v->begin()+std::ptrdiff_t(size_t(planesDone)*w2),v->begin()+std::ptrdiff_t(size_t(need)*w2),blendValids[k].begin()+std::ptrdiff_t(size_t(planesDone)*w2));
+                }
+                planesDone=need;
+                // P310: the ultrashort frames' blend weight per cell (see HybridTuning::bentoBlend); the merge itself runs without them
+                hybridBlendWeightRows(input,tune,planes,y0,y1,bandRows>=h2?h2:kHybridBlendHalo,blendWeight);
+                progress->publish(y1);
+            }
             double on=0,full=0;for(float v:blendWeight){on+=v>0.01f;full+=v>0.99f;}
             return std::array<double,3>{on,full,std::chrono::duration<double,std::milli>(Clock::now()-t0).count()};
         };
@@ -10294,20 +10613,21 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         }
         // the gain only where the ultrashort frames saw the lights in other levels / colours than the N frames (the tile check);
         // unmeasured (too few tiles: a dark scene of lamps): on
-        if(input.usFlicker>=0.f){
-            const float u=std::clamp((input.usFlicker-tune.bentoBlendGainFlickerLo)/std::max(tune.bentoBlendGainFlickerHi-tune.bentoBlendGainFlickerLo,0.01f),0.f,1.f);
+        if(usFlicker>=0.f){
+            const float u=std::clamp((usFlicker-tune.bentoBlendGainFlickerLo)/std::max(tune.bentoBlendGainFlickerHi-tune.bentoBlendGainFlickerLo,0.01f),0.f,1.f);
             in.blendGain=u*u*(3.f-2.f*u);
         }
         if(tune.bentoBlendGainMin>0.f)in.blendGain=std::max(in.blendGain,std::min(tune.bentoBlendGainMin,1.f)); // P350
         // the line once, when the merge first needs the weight (ms: the task's own time, beside the merge)
-        in.maskReady=[blendMade,&report,&tune,&in,&input,reported=std::make_shared<bool>(false)]{
+        in.maskReady=[blendMade,blendProgress,&report,&tune,&in,usFlicker,h2=h/2,reported=std::make_shared<bool>(false)](int rows){
+            if(rows<h2&&blendProgress->wait(rows))return; // P364: those rows made (a failed task: get() below throws)
             const std::array<double,3> r=blendMade.get();
             if(*reported)return;
             *reported=true;
             char line[260];
             std::snprintf(line,sizeof(line),"HYBRID BENTO BLEND: ultrashort RGB blended after the merge by region (the N clip spread %.0f..%.0f px,"
                 " at least the base cells' weight: %.0f cells > 0.01, %.0f full), gain against N x%.2f (tile check %.2f) (%.0f ms beside the merge)",
-                tune.bentoBlendNear,tune.bentoBlendFar,r[0],r[1],in.blendGain,input.usFlicker,r[2]);
+                tune.bentoBlendNear,tune.bentoBlendFar,r[0],r[1],in.blendGain,usFlicker,r[2]);
             report(line);
         };
     }
@@ -10396,13 +10716,22 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const int outW=w*grid,outH=h*grid;
     // P353: the plain chroma median's GPU context built during the merge (as the mosaic paths do): it was made after the merge,
     // on the critical path (init 67 - 123 ms on the OPPO)
-    if(!native&&tune.plainChromaMedian>0&&tune.chromaGpu>0&&chromaGpuPossible(int64_t(outW)*outH))chromaPrewarm();
+    if(!native&&tune.plainChromaMedian>0&&tune.chromaGpu>0&&chromaGpuPossible(int64_t(outW)*outH)&&!(tune.chromaOverlap>0&&tune.plainChromaHand>=1.f))
+        chromaPrewarm();
     in.large=large;
     // P213c: the native merge's rows to its consumer (native->rowsSink: the CPU chroma median) as they are read back, where nothing
     // between the merge and the shift to the RGGB origin below changes them: no R / B resample (P19), no merged DNG from these rows,
     // no 2x resize of a coarse grid (P118). The consumer shifts the rows itself (the same copies as shiftOrigin), so the output leaves
     // here shifted and consumed. The guard (after out: it goes first) stops the consumer on every way out, before out goes.
-    HybridRowsSink* const sink=native&&native->rowsSink&&!caModel.ok&&!(mergedDng&&input.mergedDng)&&up2x==1?native->rowsSink:nullptr;
+    // P364 (chromaOverlap 1): the plain merge's chroma median the same way, on the CPU (the GPU median after the merge took 0.25 s of
+    // the shot on the OPPO; its result differs from the CPU's at float rounding, as when memory sends it to the CPU), where the whole
+    // median is kept (plainChromaHand 1: no blend with the unfiltered R / B)
+    std::unique_ptr<HybridRowsSink> plainSink;
+    // (after the R / B resample of P19, which runs on the same rows first: the median gets the rows it finished)
+    if(!native&&tune.plainChromaMedian>0&&tune.chromaOverlap>0&&tune.plainChromaHand>=1.f&&!(mergedDng&&input.mergedDng)&&up2x==1){
+        try{plainSink=hybridPlainChromaSink(outW,outH,std::max(1,tune.plainChromaMedian)*grid);}catch(const std::exception&){plainSink.reset();}
+    }
+    HybridRowsSink* const sink=native&&native->rowsSink&&!caModel.ok&&!(mergedDng&&input.mergedDng)&&up2x==1?native->rowsSink:plainSink.get();
     struct SinkStop {HybridRowsSink* sink;~SinkStop(){if(sink)sink->stop();}} sinkStop{sink};
     bool sunk=false;
     // P31 (W1.7): the context goes to a helper thread after the merge (its buffers and programs take 19-57 ms to destroy), joined
@@ -10428,19 +10757,24 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     auto gpuMerge=[&](bool withLocalAlign){
         const auto gpuStarted=Clock::now();
         scam_progress::pass("gpu"); // P220: the context and its programs (each program a tick), then Mochi and the strips
-        if(caModel.ok){
-            caBands=std::make_unique<HybridCaBands>(w*grid,h*grid,grid,caModel);caBandsMs=0;
-            in.rowsDone=[&](std::vector<float>& rgb,int rows){const auto t0=Clock::now();caBands->advance(rgb,rows);caBandsMs+=millis(Clock::now()-t0);};
-        }
         if(sink){ // P213c: a new consumer for every attempt (begin stops the one of a failed attempt before the merge writes out again)
             sink->begin(outW,outH,(input.cfa&1)*grid,(input.cfa>>1)*grid);
             in.rowsDone=[sink](std::vector<float>& rgb,int rows){sink->rows(rgb.data(),rows);};
         }
+        if(caModel.ok){ // P364: with a consumer (only the plain one here) it gets the rows the resample finished
+            caBands=std::make_unique<HybridCaBands>(w*grid,h*grid,grid,caModel);caBandsMs=0;
+            in.rowsDone=[&,sink](std::vector<float>& rgb,int rows){
+                const auto t0=Clock::now();caBands->advance(rgb,rows);caBandsMs+=millis(Clock::now()-t0);
+                if(sink&&caBands->done()>0)sink->rows(rgb.data(),caBands->done());
+            };
+        }
         const bool blendPass=bento.active&&in.blend;
         const bool bentoPass=bento.active&&!in.blend&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
         std::unique_ptr<HybridGpu> held;std::string built;
-        if(earlyGpu.valid()){ // P31 (W1.7): the context built during the front end, when it holds the programs this merge needs
-            try{held=earlyGpu.get();}catch(const std::exception&){held.reset();} // built again below, as before
+        if(mochiAheadJob.valid())mochiAheadJob.get(); // P364: it catches its errors (a failed one leaves no context)
+        const bool aheadGpu=mochiAhead.gpu!=nullptr;
+        if(earlyGpu.valid()||aheadGpu){ // P31 (W1.7): the context built during the front end, when it holds the programs this merge needs
+            try{held=aheadGpu?std::move(mochiAhead.gpu):earlyGpu.get();}catch(const std::exception&){held.reset();} // built again below, as before
             {std::lock_guard<std::mutex> l(earlyLog->lock);for(const auto& line:earlyLog->lines)report(line);earlyLog->lines.clear();}
             if(held&&(held->localAlign!=withLocalAlign||(bentoPass&&!held->hasBentoPass())||(blendPass&&!held->hasBlendPass())
                       ||held->dcg!=hybridDcgZones(input)||held->rejSpec!=hybridRejSpec(tune)
@@ -10468,8 +10802,19 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                     if(in.role[i]!=kRoleBracketed)continue;
                     struct Done{~Done(){scam_progress::step();}} done; // P220: each bracketed frame, corrected or not
                     HybridGpu::MochiStats st;mochiRaw.emplace_back();
+                    // P364: the frame's result made ahead, when it was made from exactly these inputs
+                    MochiAheadFrame* pre=nullptr;
+                    for(auto& m:mochiAhead.frames){
+                        if(!m.ok||m.raw!=in.frames[i]||m.base!=in.frames[0]||m.gain!=in.gain[i]||m.ns!=in.noiseSlope[i]||m.no!=in.noiseOffset[i])continue;
+                        if(m.H.h!=in.homography[i].h||m.H.upRatio!=in.homography[i].upRatio)continue;
+                        if(mochiAhead.bs!=in.baseSlope||mochiAhead.bo!=in.baseOffset||mochiAhead.clip!=tune.clipLevel)continue;
+                        bool same=in.w==w&&in.h==h;
+                        for(int k=0;k<4&&same;++k)same=in.black[k]==input.black[k]&&in.inv[k]==1.f/(input.white-input.black[k]);
+                        if(same){pre=&m;break;}
+                    }
                     try{
-                        if(!gpu.mochi(in,int(i),tune.clipLevel,mochiRaw.back(),st)){
+                        if(pre){mochiRaw.back()=std::move(pre->out);st=pre->st;pre->ok=false;}
+                        else if(!gpu.mochi(in,int(i),tune.clipLevel,mochiRaw.back(),st)){
                             report("HYBRID MOCHI: frame "+std::to_string(index[i])+" not corrected (scaled homography or rows beyond the storage block)");
                             mochiRaw.pop_back();continue;
                         }
@@ -10510,7 +10855,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         if(movedH.size()>1) // P335: for the plain chroma median's share (any cellClip setting)
             stillSeen=hybridStillBurst(hybridMovedDonors(movedH,w,h,tune.staticShift>0.f?tune.staticShift:0.75f),int(movedH.size())-1)?1:0;
         gpu.merge(in,mergeTune,kernel,bento.active,out,effective,share,grid,clipFlags?&flagsRaw:nullptr,effMap!=nullptr);
-        if(in.maskReady)in.maskReady(); // P353: the blend weight complete (and reported) even where no strip blended
+        if(in.maskReady)in.maskReady(1<<30); // P353: the blend weight complete (and reported) even where no strip blended
         hybridWriteStages(gpu,in,index,out,outW,outH,grid,report);
         if(gpu.profile){
             report(gpu.programReport());
@@ -10598,16 +10943,21 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             gpuMerge(false);
         }
     } else gpuMerge(false);
-    if(sink){sunk=sink->finish(out.data());in.rowsDone=nullptr;} // P213c: the last rows (the consumer reports its wait itself)
-    scam_progress::pass("finish"); // P220: CA, the DNG RAW, the maps and flags of the merged result
-    if(caModel.ok){ // P19: R and B of the merged RGB moved onto G (the frames all carry the lens's CA, the merge keeps it)
+    // P19: R and B of the merged RGB moved onto G (the frames all carry the lens's CA, the merge keeps it); P364: before the
+    // consumer's last rows when the plain chroma median runs on them
+    bool caFinished=false;
+    auto finishCa=[&]{
         const auto caStarted=Clock::now();
         const int during=caBands?caBands->done():0;
         if(caBands)caBands->advance(out,outH); else hybridCorrectCa(out,outW,outH,grid,caModel);
-        in.rowsDone=nullptr;caBands.reset();
+        in.rowsDone=nullptr;caBands.reset();caFinished=true;
         report("HYBRID RAW CA: R / B resampled on the "+std::to_string(outW)+"x"+std::to_string(outH)+" result in "+std::to_string(int(millis(Clock::now()-caStarted)+caBandsMs))
             +" ms ("+std::to_string(during)+" rows during the merge, "+std::to_string(int(millis(Clock::now()-caStarted)))+" ms after it)");
-    }
+    };
+    if(sink&&caModel.ok)finishCa();
+    if(sink){sunk=sink->finish(out.data());in.rowsDone=nullptr;} // P213c: the last rows (the consumer reports its wait itself)
+    scam_progress::pass("finish"); // P220: CA, the DNG RAW, the maps and flags of the merged result
+    if(caModel.ok&&!caFinished)finishCa();
     if(grid==2&&mergedDng&&input.mergedDng){ // sensor-grid RGB for the DNG: mean of the 2x2 sub-positions
         sensorRgb.assign(size_t(w)*h*3,0.f);
         mergeRowBands(h,[&](int y0,int y1){
@@ -10641,6 +10991,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     std::vector<float>().swap(sensorRgb); // the output stage holds no more than it needs (any RAW size: ~16 B per output pixel)
     // CFA phase shift to the canonical RGGB origin, in output-grid pixels (P213c: done by the consumer of the rows when it took them)
     if(!sunk)shiftOrigin(out,outW,outH,3,(input.cfa&1)*grid,(input.cfa>>1)*grid);
+    if(sunk&&plainSink)report("HYBRID PLAIN: chroma median (block "+std::to_string(tune.plainChromaMedian)+", cpu "+plainSink->text()+")");
     if(!sunk&&!native&&tune.plainChromaMedian>0){
         const auto t0=Clock::now();std::string how;
         // P335: a hand-held burst (its donors moved) samples every colour phase at sub-pixel offsets: its colour is real down to
@@ -11749,6 +12100,7 @@ class MosaicChromaOverlap final : public HybridRowsSink {
     static constexpr int kFeed=128;
     const int w,h,b;
     const MosaicOscSource src;
+    const bool plain=false; // P364: no oscillation map (src empty: makeOsc never makes a row)
     int all=1,during=1;
     // one attempt (begin .. stop)
     std::unique_ptr<MosaicChromaStream> stream;
@@ -11853,6 +12205,11 @@ public:
         :w(std::max(0,width)),h(std::max(0,height)),b(std::max(1,block)),src(oscillation){
         all=std::max(1,mosaicChromaThreads());during=std::max(1,(all+1)/2);
     }
+    // P364: the plain merge's median (mosaicChromaMedian with osc null): no oscillation map, its rows never made
+    MosaicChromaOverlap(int width,int height,int block)
+        :w(std::max(0,width)),h(std::max(0,height)),b(std::max(1,block)),src(),plain(true){
+        all=std::max(1,mosaicChromaThreads());during=std::max(1,(all+1)/2);
+    }
     ~MosaicChromaOverlap() override {stop();}
     MosaicChromaOverlap(const MosaicChromaOverlap&)=delete;
     MosaicChromaOverlap& operator=(const MosaicChromaOverlap&)=delete;
@@ -11865,7 +12222,7 @@ public:
         complete=touched=failed=exited=false;ready=stripRows=0;data=nullptr;why="the merge failed";
         passes=MosaicChromaPasses();shiftMs=oscMs=waitMs=lastMs=0;feeds=rowsBeforeLast=0;bytes=0;doneRows.store(0);
         if(width!=w||height!=h||w<=0||h<=0){why="the merge's grid "+std::to_string(width)+"x"+std::to_string(height)+" is not the chroma's";return;}
-        if(src.bw!=w/b||src.bh!=h/b||src.bw<=0||src.bh<=0||src.block<1||src.block>8||(!src.quad&&(!src.raw||!src.gain))){why="no oscillation map of this grid";return;}
+        if(!plain&&(src.bw!=w/b||src.bh!=h/b||src.bw<=0||src.bh<=0||src.block<1||src.block>8||(!src.quad&&(!src.raw||!src.gain)))){why="no oscillation map of this grid";return;}
         dx=std::max(0,shiftX);dy=std::max(0,shiftY);
         try{
             passes.rssBefore=hybridRssMB();
@@ -11877,7 +12234,7 @@ public:
 #ifdef SCAM_CHROMA_RING_CHECK
             fTags.assign(size_t(fCap),-1);
 #endif
-            stream->oscRing(oscRows.data(),oscCap,oscTags.data());
+            if(plain)stream->oscRing(nullptr,0); else stream->oscRing(oscRows.data(),oscCap,oscTags.data());
             if(dx||dy)shiftRing.assign(size_t(dy+1)*w*3,0.f); else std::vector<float>().swap(shiftRing);
             bytes=passes.bytes+(oscRows.size()+fRows.size()+shiftRing.size())*sizeof(float);
             consumer=std::thread([this]{run();});
@@ -11920,7 +12277,7 @@ public:
         stopping=false;active=false;
     }
     // the report of a finished overlap (the line "chroma median CPU")
-    std::string text() const {
+    std::string text() const override {
         char line[480];
         std::snprintf(line,sizeof(line),"during the merge (%d of %d rows done before its last readback), %d feeds of up to %d rows on %d threads "
             "(the last rows on %d): shift to the RGGB origin %.0f ms (%d, %d px), oscillation rows %.0f ms, the last rows %.0f ms after the "
@@ -11929,6 +12286,9 @@ public:
         return line+passes.text();
     }
 };
+inline std::unique_ptr<HybridRowsSink> hybridPlainChromaSink(int width,int height,int block){
+    return std::make_unique<MosaicChromaOverlap>(width,height,block);
+}
 // Frames the sub-frame split picks of n: kHybridGpuFrames / b^2 (per = b^2 sub-frames each) and mosaicFrames. Any RAW size (avail =
 // MemAvailable above kHybridClassicPixels, else 0): the worker copies every picked frame (its b^2 sub-frames, 2 B per stream pixel,
 // and the binned frame of the alignment, 2/b^2 B); the sub-frame merge then adds ~20 B per stream pixel (RGB, coverage, flags,
@@ -12496,7 +12856,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     // P80: the chroma median's GPU context builds during the merge. P219: only for a result the median takes on the GPU (ow x oh
     // below: Quad / T1 W x H, 4x that on the natively merged 2x grid, T2 a quarter), not for every 50 MP Quad merge
     const int k2Out=gridAsked==2&&!t2&&tune.mosaicNative2x!=0?2:1;
-    if(tune.chromaGpu>0&&chromaGpuPossible(t2?int64_t(W)*Ht/4:int64_t(W)*Ht*k2Out*k2Out))chromaPrewarm();
+    if(tune.chromaGpu>0&&chromaGpuPossible(t2?int64_t(W)*Ht/4:int64_t(W)*Ht*k2Out*k2Out)&&!(tune.mosaicChroma&&tune.chromaOverlap>0))chromaPrewarm(); // P364: none for the overlap
     // P73: Tetra T1 by day has its own scale (the Quad kernel in sensor px)
     const float kernelScale=std::clamp(mb==4&&tune.mosaicTetraKernelScale>0.f?tune.mosaicTetraKernelScale:tune.mosaicKernelScale,0.1f,4.f);
     const float ksG=std::clamp(tune.mosaicKernelG,0.25f,4.f),ksRB=std::clamp(tune.mosaicKernelRB,0.25f,4.f);
@@ -12705,7 +13065,8 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     // own test; the GPU path and a GPU refused for memory stay after the merge). hybridReconstruct feeds it only where nothing
     // between its merge and its shift to the RGGB origin changes the rows (else it is left unused and the chroma runs below).
     std::unique_ptr<MosaicChromaOverlap> overlap;
-    if(tune.mosaicChroma&&tune.chromaOverlap>0&&!(tune.chromaGpu>0&&int64_t(ow)*oh<=int64_t(16800000))){
+    // P364: also where the GPU would take it (its median after the merge took ~0.35 s of an ISZ shot on the OPPO): the CPU's floats
+    if(tune.mosaicChroma&&tune.chromaOverlap>0){
         overlap=std::make_unique<MosaicChromaOverlap>(ow,oh,mb*k2,oscSource);
         nat.rowsSink=overlap.get();
     }
@@ -12718,7 +13079,7 @@ inline std::vector<float> hybridReconstructMosaicNativeMerge(const HybridInput& 
     const auto mergeDone=Clock::now();
     decltype(binned)().swap(binned);
     if(tune.mosaicChroma&&overlap&&overlap->done()){
-        const std::string how=tune.chromaGpu>0?"cpu (size)":"cpu";
+        const std::string how="cpu";
         report("HYBRID MOSAIC NATIVE: chroma median (dual 5-point, taps "+std::to_string(std::max(1,mb*k2/2))+" px of the "+std::to_string(ow)+"x"+std::to_string(oh)+" result, "+how
             +", during the merge) "+std::to_string(int(overlap->waitMs))+" ms after it");
         report("HYBRID MOSAIC NATIVE: chroma median CPU: "+overlap->text());

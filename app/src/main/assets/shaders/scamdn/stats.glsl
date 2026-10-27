@@ -26,12 +26,62 @@ uniform float kneeU;             // the zone switch in Y (> 0)
 out uvec4 Output;
 
 float median16(float v[16]) {
-    for (int i = 1; i < 16; i++) {
-        float x = v[i];
-        int j = i - 1;
-        while (j >= 0 && v[j] > x) { v[j + 1] = v[j]; j--; }
-        v[j + 1] = x;
-    }
+    // P364: an odd-even merge sorting network (min / max, no branches), only its comparators that reach elements 7 and 8: the
+    // same middle pair as the insertion sort for numbers
+    float t;
+    t = min(v[0], v[1]); v[1] = max(v[0], v[1]); v[0] = t;
+    t = min(v[2], v[3]); v[3] = max(v[2], v[3]); v[2] = t;
+    t = min(v[0], v[2]); v[2] = max(v[0], v[2]); v[0] = t;
+    t = min(v[1], v[3]); v[3] = max(v[1], v[3]); v[1] = t;
+    t = min(v[1], v[2]); v[2] = max(v[1], v[2]); v[1] = t;
+    t = min(v[4], v[5]); v[5] = max(v[4], v[5]); v[4] = t;
+    t = min(v[6], v[7]); v[7] = max(v[6], v[7]); v[6] = t;
+    t = min(v[4], v[6]); v[6] = max(v[4], v[6]); v[4] = t;
+    t = min(v[5], v[7]); v[7] = max(v[5], v[7]); v[5] = t;
+    t = min(v[5], v[6]); v[6] = max(v[5], v[6]); v[5] = t;
+    t = min(v[0], v[4]); v[4] = max(v[0], v[4]); v[0] = t;
+    t = min(v[2], v[6]); v[6] = max(v[2], v[6]); v[2] = t;
+    t = min(v[2], v[4]); v[4] = max(v[2], v[4]); v[2] = t;
+    t = min(v[1], v[5]); v[5] = max(v[1], v[5]); v[1] = t;
+    t = min(v[3], v[7]); v[7] = max(v[3], v[7]); v[3] = t;
+    t = min(v[3], v[5]); v[5] = max(v[3], v[5]); v[3] = t;
+    t = min(v[1], v[2]); v[2] = max(v[1], v[2]); v[1] = t;
+    t = min(v[3], v[4]); v[4] = max(v[3], v[4]); v[3] = t;
+    t = min(v[5], v[6]); v[6] = max(v[5], v[6]); v[5] = t;
+    t = min(v[8], v[9]); v[9] = max(v[8], v[9]); v[8] = t;
+    t = min(v[10], v[11]); v[11] = max(v[10], v[11]); v[10] = t;
+    t = min(v[8], v[10]); v[10] = max(v[8], v[10]); v[8] = t;
+    t = min(v[9], v[11]); v[11] = max(v[9], v[11]); v[9] = t;
+    t = min(v[9], v[10]); v[10] = max(v[9], v[10]); v[9] = t;
+    t = min(v[12], v[13]); v[13] = max(v[12], v[13]); v[12] = t;
+    t = min(v[14], v[15]); v[15] = max(v[14], v[15]); v[14] = t;
+    t = min(v[12], v[14]); v[14] = max(v[12], v[14]); v[12] = t;
+    t = min(v[13], v[15]); v[15] = max(v[13], v[15]); v[13] = t;
+    t = min(v[13], v[14]); v[14] = max(v[13], v[14]); v[13] = t;
+    t = min(v[8], v[12]); v[12] = max(v[8], v[12]); v[8] = t;
+    t = min(v[10], v[14]); v[14] = max(v[10], v[14]); v[10] = t;
+    t = min(v[10], v[12]); v[12] = max(v[10], v[12]); v[10] = t;
+    t = min(v[9], v[13]); v[13] = max(v[9], v[13]); v[9] = t;
+    t = min(v[11], v[15]); v[15] = max(v[11], v[15]); v[11] = t;
+    t = min(v[11], v[13]); v[13] = max(v[11], v[13]); v[11] = t;
+    t = min(v[9], v[10]); v[10] = max(v[9], v[10]); v[9] = t;
+    t = min(v[11], v[12]); v[12] = max(v[11], v[12]); v[11] = t;
+    t = min(v[13], v[14]); v[14] = max(v[13], v[14]); v[13] = t;
+    t = min(v[0], v[8]); v[8] = max(v[0], v[8]); v[0] = t;
+    t = min(v[4], v[12]); v[12] = max(v[4], v[12]); v[4] = t;
+    t = min(v[4], v[8]); v[8] = max(v[4], v[8]); v[4] = t;
+    t = min(v[2], v[10]); v[10] = max(v[2], v[10]); v[2] = t;
+    t = min(v[6], v[14]); v[14] = max(v[6], v[14]); v[6] = t;
+    t = min(v[6], v[10]); v[10] = max(v[6], v[10]); v[6] = t;
+    t = min(v[6], v[8]); v[8] = max(v[6], v[8]); v[6] = t;
+    t = min(v[1], v[9]); v[9] = max(v[1], v[9]); v[1] = t;
+    t = min(v[5], v[13]); v[13] = max(v[5], v[13]); v[5] = t;
+    t = min(v[5], v[9]); v[9] = max(v[5], v[9]); v[5] = t;
+    t = min(v[3], v[11]); v[11] = max(v[3], v[11]); v[3] = t;
+    t = min(v[7], v[15]); v[15] = max(v[7], v[15]); v[7] = t;
+    t = min(v[7], v[11]); v[11] = max(v[7], v[11]); v[7] = t;
+    t = min(v[7], v[9]); v[9] = max(v[7], v[9]); v[7] = t;
+    t = min(v[7], v[8]); v[8] = max(v[7], v[8]); v[7] = t;
     return 0.5 * (v[7] + v[8]);
 }
 

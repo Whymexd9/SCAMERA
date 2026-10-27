@@ -7719,3 +7719,100 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   fade / rise; the menu sheet's rows stagger in; the save card fades in and scales up with an overshoot. EditSlider: the thumb
   grows with a halo and takes the accent while dragged, a value bubble rises over it (label / value dim under it), a double
   tap glides the value to the default in 240 ms (the picture follows, one undo step at the end).
+
+### P362 - RawTherapee «Inpaint opposed» for highlights without ultrashort frames (owner, 2026-10-27: «верни для пересветов там, где коротких кадров нет: одиночные кадры, «Движение», сцены, где Bento отказывается»; «считай на гпу»): DONE (host + OPPO), committed locally, not pushed.
+- Before: the PhotonCamera port of opposed inpainting went with HighlightRecovery in P129 (a dead field rawClipLevel stayed);
+  SHDR recovered every highlight with ScamRgb's per-channel recovery.
+- Source: RawTherapee rtengine/hilite_recon.cc, highlight_recovery_opposed (GPL-3 like SCAMERA; THIRD_PARTY_NOTICES). RT's
+  chrominance sum compares with its tmp buffer, which holds the pixel's own value for an unclipped channel: always 0. Ported
+  as darktable does it (the opposed reference at every counted pixel).
+- GPU: hlrecovery/opposed (compute, 16 x 16 groups, a 3-pixel halo tile in shared memory, ~9.7 kB): white-balanced values,
+  clip 0.987 of the channel's white-balanced clip, masks dilated by RT's pattern (|dx|, |dy| <= 3 without the corners),
+  reference = the other two channels' 3x3 means in cube-root space, chrominance per channel from the pixels between clipdark
+  (0.03 / 0.125 / 0.03) and the clip; group sums + packed counts to an SSBO, added on the CPU (ScamRgb.opposedMeans); tiles
+  without a clipped channel skip it. scamhdr/scamrgb oppU: a clipped channel = max(value, reference + chrominance) on pixels
+  without ultrashort content (clip flags bits 4 / 5 clear; without flags only when no ultrashort level), nothing else of the
+  SCAM recovery there; plus the never-magenta rule (a clipped G at least min(R, B)): without it the blown lamp cores went
+  lavender (G 1.78 vs R / B 1.86).
+- Runs only when the clip flags hold such pixels (ScamRgb.opposedPixels on the side thread) or with no ultrashort level at
+  all; a lab fragment takes the whole frame's chrominance (LabFrame.oppChroma). scam_dev.txt "hybrid_highlight_opposed 0" =
+  the SCAM recovery there as before (DevKeys, post group).
+- Checks: tools/check_highlight_opposed.py (in CI): GPU chrominance = numpy reference to 1e-7, reconstruction = reference
+  (2e-3), Bento pixels and oppU 0 bit-identical, never lavender, warm lamp keeps R > B; synthetic lamp core error vs truth 0.51
+  (SCAM 0.55, none 0.64). check_highlight_neutral / recovery / one_channel_off / signed_rgb PASS, glslc, fp16 check,
+  ScamRgbOpposedTest. OPPO (31170 - 31172): the compute pass runs on Adreno 750 (125 -> 56 ms before the skip); on the lamp
+  scene every clip had ultrashort content (opposedPixels 0): skipped. Real-data picture: lamp2324 merged with bento 0, its
+  highlights through the shaders (deliverables/p362/opposed_lamp_no_ultrashort.png): neutral, like SCAM.
+- Not shot on a phone without ultrashort frames (single frame / «Движение» need the UI).
+
+### P363 - the lab cannot read a shot of an earlier installation (owner, 2026-10-27 screenshot: «Снимок не читается: /storage/emulated/0/Download/SCAMERA/Lab/2026-10-21_18-40-36/meta.json»): DONE in code, not phone-tried.
+- Cause: after a reinstall (another uid: a CI APK over a local one and back) Android 11+ denies the File API reads of files the
+  earlier installation wrote in Download/SCAMERA; Files.readAllBytes throws AccessDeniedException with the path as its whole
+  message (the same as the OPPO's scam_dev.txt).
+- Fix: processing/opengl/postpipeline/LabFiles - every read of a lab shot or kept series (meta.json, burst header and transport,
+  the burst's descriptor for the worker, preview.jpg, frame.json, sandbox.json, source.txt, kept-series sidecars, header / grey
+  world / base noise of an import) tries the File API, then the lasting grant of Download/SCAMERA (ScameraFolder.grantedPath,
+  as scam_dev.txt); deletes the same way (DocumentsContract.deleteDocument). Without the grant LabFiles.Unreadable says why and
+  the lab shows «Открыть доступ к папке Download/SCAMERA» (OpenDocumentTree at Download/SCAMERA, persisted) on the shot page
+  and under the list when a shot could not be read; a template shot it cannot read is skipped.
+- Tests: ScamLabSeriesTest (grant path mapping), lab tests green.
+
+### P364 - processing as fast as the reference app, without losing quality (owner, 2026-10-27: «закончи с ускорением обработки ... цель максимально приблизиться к Арк камере по скорости обработки ... у нас меньше кадров ... должны быть даже быстрее»; «не потеряв в качестве»; «попробуй ускорить сделав своё выравнивание как второй вариант, но главное чтобы оно не уступало по качеству»; no push, decide alone; then «когда всё закончишь заливай на гит»): DONE (round closed, pushed).
+- Replays had the GL program cache off (rp.sh never made its directory: cache 0/0, 1.9 s compiling); the app hits 13/13. Fixed in
+  the session's rp.sh; all numbers below are with the cache. OPPO lamp2324, app tuning + P358 set, 26 frames: worker 4.35 s.
+- Critical path (SCAM_LOG_MS): ultrashort row / tile tests 77 -> 422 ms (tile test ~0.3 s a frame, its grid field), CRE 422 -> 671,
+  ultrashort registration until 929 (its base made by the first frame, the others waited), Shasta / Bento checks until 1220,
+  GPU merge 1220 -> 3500 (blend ~0.44 s of it), plain chroma median ~0.23 s, output 0.1 s.
+- Part 1 (md5-identical on lamp2324 73c811b0, b175757 90236115, x7u_1x 4f293aa9, isz2 6bd33bf4, led1934 ac3b0bed):
+  - hybridUsRegister: the base's side made ahead from the alignment start (usRegBase under its lock; SCAM_US_BASE_LATE = before),
+    blurs without a clamp inside the row and the vertical pass by rows (same sums, same order), sample lists per blur level,
+    bilinear value + central differences from one set of weights (difference images: 12 reads instead of 20).
+  - kHybUsBlend: stage 0 keeps per 16 x 16 output px tile the strip's largest clip mark (tile table behind the carry rows in slot
+    10, stamped by the strip); stage 1 returns «no ultrashort colour» at once where no tile its disc reaches holds a mark and the cell
+    weight is 0 - what the disc would have found (SCAM_BLEND_TILES_OFF = every disc read). Merge 2.23 -> 1.96 s.
+  - Worker 4.35 -> 3.50 s (-0.85 s).
+- Part 2: the forced Shasta frames' motion checks side by side (md5 as before; the GPU starts ~0.17 s earlier). F6 «auto» takes
+  the GPU field on an Adreno (/dev/kgsl-3d0; SCAM_LA_AUTO_CPU = before): merge factors equal on all five bursts (lamp 0.7973,
+  b175757 0.7241, x7u_1x 0.9353, isz2 0.8969, led1934 0.6191), PSNR 115 dB against the CPU field, 0.06 - 0.3 s faster on 4 of
+  5 replays, 0.2 - 0.4 GB less memory, and the ~3.5 s of CPU time the streamed CPU field took in a shot left to the rest.
+- Tried, no gain (reverted): the ultrashort frames in the first CRE group (md5 the same, registration CPU-bound beside CRE).
+- Alignment: the existing SCAMERA tile alignment (SCAM_NO_CRE: global translation + F6) is worse than CRE (lamp merge factor
+  0.7854 vs 0.7973) and not faster; CRE takes ~0.25 s of a replay, 0.6 - 0.7 s in a shot. CRE runs on the OPPO (bundled
+  libvivo_nice_cre.so + stubs; «STOCK MOTION» lines in the app's log); where it cannot load the worker falls back to that tile
+  alignment.
+- Part 3: the plain path's ultrashort row / tile check (~0.35 s before the alignment) runs beside the merge (HybridInput::usPending):
+  the merge goes on with the frames as captured, joins the check as soon as it is done (polled before each CRE group) or after
+  the alignment; a check that changes the frames (row correction, refusal: led1934) throws HybridUsRestart and the checked input
+  merges as before (its lines then; SCAM_US_CHECK_FIRST = before). md5 as before on all five bursts (led1934 through the restart);
+  CRE starts at ~0.12 s instead of ~0.4 s; lamp -0.07..-0.14 s, led1934 equal within the noise.
+- Part 4 (md5 as before on all five bursts: lamp2324 bf3fe915, b175757 6b9d2c91, x7u_1x beee6e3d, isz2 a7aac142, led1934 060e0e3b):
+  - kHybReject (Adreno, pooled tests on): the donor's 4 x 4 cells read once, the 3 x 3 taken from them (16 reads a cell, not 25):
+    reject 790 -> ~530 ms on lamp2324. A shared donor tile per group (16 x 16 cells) was slower (800 ms): not kept.
+  - kHybCells: the fine tensor read straight from shared memory (the 64 floats copied per cell spilled): cells ~325 -> ~260 ms.
+  - Post denoise (ScamDenoise laps under post_sync 1, «scam-denoise laps ms»): chromadn/noiseest holds three rows of its window
+    (26 -> 5.5 ms, same bits on the OPPO), scamdn/stats medians by a pruned sorting network (61 -> 51 ms, same bits), the CPU
+    sorts of estimateNoise / ScamDenoiseTables.reduce by selection (ShotSpeedBitExactTest: same bits as the sorts).
+  - Two md5 of one worker on lamp2324 (bf3fe915 / aa6ad969, also 73c811b0 / 99fdf91f before P364): the plain chroma median runs on
+    the GPU or, when free memory is short, on the CPU («cpu (size)»); not a race. chromaGpu 0 always gives aa6ad969.
+  - Shots (31177, thermal none): total 5.1 - 5.4 s (31172: 6.42 s), merge 3.81 - 3.87 s (4.86), post 0.63 - 0.79 s, denoise
+    0.21 - 0.31 s. The reference app: ~2.7 s.
+- Part 5: the chroma median on the merged rows while the GPU merges (MosaicChromaOverlap without an oscillation map, fed after the
+  RAW CA bands; the native mosaic path's overlap also where the GPU median ran): lamp2324 -0.33 s, isz2 -0.28 s. The CPU median's
+  floats (as when memory sent it to the CPU before): CPU refs lamp2324 aa6ad969, b175757 b92ac70b, x7u_1x 6a66b0eb, isz2 61090d2e,
+  led1934 1bbdbb29 (two md5 per burst before P364 = this GPU / CPU choice, not a race).
+- Part 6 (md5 = the CPU refs): Mochi on the early context right after the corner tracker; the ultrashort blend weight 510 -> 350 ms
+  (blurs without clamps, element loops on all cores), then in bands of 64 cell rows with a 16-row halo on one thread (the strips
+  wait only for their rows); the bentoRamp recursion before the checks, usNeedClip scanned once. ~-0.2 s.
+- Part 7 / 8: the worker's and the post pipeline's GPU contexts at medium priority (P57's low one: the shot's merge ~0.45 s slower
+  than a replay). Shot merge 3.67-3.99 -> 3.46-3.54 s; viewfinder during the merge ~20 -> ~12 fps (largest gap ~0.25 s).
+  SCAM_GPU_LOW_PRIORITY=1 / gpu_low_priority 1: low.
+- Tried, not kept: the ultrashort frames' registration side made ahead (CRE slowed by as much: the CPU is saturated during the
+  alignment), a shared donor tile in kHybReject (slower), dilate terms in shared memory and the base noise terms of rejPool 2 in
+  shared memory (other md5, no gain), stats sub-block texels in registers (slower).
+- Shots 31179 (OPPO, thermal moderate): total 4.80 - 5.12 s (31172: 6.42 s), merge 3.46 - 3.54 s, post 0.67 - 0.81 s.
+- Where the rest goes (shot 31178): capture 0.38-0.40 s; worker start and checks 0.18 s; CRE + ultrashort registration + Shasta /
+  Bento 0.9 s (CPU-bound, all cores busy); GPU merge ~2.0 s (merge kernel 0.55 s - not to be edited -, rejection 0.5, cells 0.26,
+  blend 0.23, dilate 0.15, guide / chroma 0.14); post 0.65 s (denoise 0.25-0.3, WHY stats + early sharpen 0.14, ScamRgb 0.13-0.18,
+  combine 0.08, fusion 0.06). The reference app: ~2.7 s. The gap is the per-pixel merge on 26 frames and the CPU front end; closing
+  it without a quality change needs the merge kernel itself (P364 rule: untouched) or a GPU registration / Shasta.
+- Status: DONE for this round (pushed with P362 / P363).

@@ -33,9 +33,12 @@ inline float fastNegExp(float x) {
     return table.v[i]+(table.v[i+1]-table.v[i])*f;
 }
 
+// P364: true on a thread whose mergeRowBands calls run their rows in place, one after the other (the blend weight's bands beside the
+// merge: small bands, where starting 8 threads per call cost more than the rows); every row is computed by the same body
+inline bool& mergeRowBandsSerial(){thread_local bool serial=false;return serial;}
 inline void mergeRowBands(int h,const std::function<void(int,int)>& body) {
     const int threads=std::max(1u,std::min(8u,std::thread::hardware_concurrency()));
-    if(threads<=1||h<64){body(0,h);return;}
+    if(threads<=1||h<64||mergeRowBandsSerial()){body(0,h);return;}
     // Small chunks handed out dynamically: the work per row depends on the scene
     // (robust frames, clipped areas), and equal static bands left cores idle.
     const int chunk=std::max(4,h/(threads*16));

@@ -29,7 +29,8 @@ final class ScamLabBurst implements ScamTransport {
     ScamLabBurst(File file, int[] crop, String burstTuning) throws IOException {
         this.file = file;
         final ByteBuffer h = ByteBuffer.allocate(HEADER).order(ByteOrder.LITTLE_ENDIAN);
-        try (FileChannel in = new FileInputStream(file).getChannel()) {
+        // P363: a burst of an earlier installation through the folder grant
+        try (FileChannel in = LabFiles.channel(file)) {
             while (h.hasRemaining()) if (in.read(h, h.position()) < 0) throw new IOException("short NCH header");
         }
         if (h.getInt(0) != MAGIC) throw new IOException("not an NCH burst");
@@ -83,7 +84,7 @@ final class ScamLabBurst implements ScamTransport {
     @Override public android.os.ParcelFileDescriptor sharedBurst() {
         if (crop != null || (flags & 3) != 0) return null;
         try {
-            return android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+            return LabFiles.open(file);
         } catch (IOException e) {
             return null;
         }
@@ -94,7 +95,7 @@ final class ScamLabBurst implements ScamTransport {
     }
 
     @Override public void write(FileChannel out) throws IOException {
-        try (FileChannel in = new FileInputStream(file).getChannel()) { write(in, out); }
+        try (FileChannel in = LabFiles.channel(file)) { write(in, out); }
     }
 
     /**

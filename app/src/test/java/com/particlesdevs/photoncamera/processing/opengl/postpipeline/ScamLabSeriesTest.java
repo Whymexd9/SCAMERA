@@ -51,6 +51,15 @@ public class ScamLabSeriesTest {
     }
 
     @Test
+    public void anEarlierInstallationsFileMapsToItsGrantPath() {
+        // P363: the document under the Download/SCAMERA grant
+        assertEquals("Download/SCAMERA/Lab/2026-10-21_18-40-36/meta.json",
+                LabFiles.relative(new File("/storage/emulated/0/Download/SCAMERA/Lab/2026-10-21_18-40-36/meta.json")));
+        assertEquals("Download/SCAMERA/x.bin", LabFiles.relative(new File("/sdcard/Download/SCAMERA/x.bin")));
+        assertNull(LabFiles.relative(new File("/data/user/0/com.scamera.app/files/x")));
+    }
+
+    @Test
     public void greyWorldOfABayerPlane() {
         // RGGB (cfa 0), black 64, white 1023: R 0.2, G 0.4, B 0.3 of the range -> neutral 0.5, 1, 0.75
         final int w = 64, h = 64;

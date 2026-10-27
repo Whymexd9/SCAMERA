@@ -24,6 +24,9 @@ uniform sampler2D Chroma128;
 uniform int blockU;               // output pixels per Chroma8 texel
 uniform float chromaLimitU;       // deviation of the local chroma from neutral where it stops being trusted (0: 0.35)
 uniform float defringeU;          // clip-border colour suppression 0..1 (0 = unset: 0.85; < 0: off)
+// P362: «Inpaint opposed» (RawTherapee / darktable, hlrecovery/opposed) where the pixel holds no ultrashort content.
+uniform int oppU;                 // 1: on
+uniform vec3 oppChromaU;          // the global chrominance correction per channel (white-balanced)
 // 1 (SCAM Hybrid): the worker's signed values pass on. The merge keeps its noise signed and clips once; a per-pixel
 // max(0) here lifted the mean of every channel near zero by up to half its noise - x1.5 red along the frame edge of a dark
 // teal curtain, where fewer donors overlap (OPPO X8U 2026-10-07), and red mottling of dark saturated colours once the WHY
@@ -168,6 +171,43 @@ void main(){
             if (w > 0.0) {
                 vec3 q = localLight(ivec2(gl_FragCoord.xy)).rgb;
                 c = mix(c, q * dot(c, vec3(1.0 / 3.0)), w);
+            }
+        }
+        // P362 (owner, 2026-10-27: «верни для пересветов там, где коротких кадров нет: одиночные кадры, «Движение», сцены, где
+        // Bento отказывается»): RawTherapee's «Inpaint opposed» on the pixels without ultrashort content (clip flag bits 4 and 5
+        // clear, or no ultrashort level without flags) - a clipped channel (at 0.987 of its white-balanced clip, as RT) becomes
+        // max(value, reference + chrominance): the reference the mean of the other two channels' 3x3 means in cube-root
+        // space, the chrominance measured around the clips (hlrecovery/opposed). As RT, nothing else touches those pixels.
+        if (oppU != 0 && L.g > 0.0) {
+            uint fo = clipFlagsU != 0 ? uint(texelFetch(ClipFlags, p, 0).r * 255.0 + 0.5) : 0u;
+            bool us = clipFlagsU != 0 ? (fo & 48u) != 0u : clipHiU.g > 0.0;
+            if (!us) {
+                vec3 Lc = clipLoU.g > 0.0 ? clipLoU : clipHiU;
+                vec3 clipW = 0.987 * Lc * gains / max(whitePoint, vec3(1.0e-6));
+                bvec3 clipped = greaterThanEqual(c, clipW);
+                if (any(clipped)) {
+                    ivec2 last = textureSize(InputBuffer, 0) - ivec2(1);
+                    vec3 m = vec3(0.0);
+                    for (int dy = -1; dy <= 1; dy++)
+                        for (int dx = -1; dx <= 1; dx++) {
+                            vec3 v = texelFetch(InputBuffer, clamp(p + ivec2(dx, dy), ivec2(0), last), 0).rgb;
+                            v = vec3(isnan(v.r) || isinf(v.r) ? 0.0 : v.r, isnan(v.g) || isinf(v.g) ? 0.0 : v.g,
+                                     isnan(v.b) || isinf(v.b) ? 0.0 : v.b);
+                            m += max(v, vec3(0.0)) * gains / max(whitePoint, vec3(1.0e-6));
+                        }
+                    m = pow(max(m / 9.0, vec3(0.0)), vec3(1.0 / 3.0));
+                    vec3 ref = pow(0.5 * vec3(m.g + m.b, m.r + m.b, m.r + m.g), vec3(3.0)) + oppChromaU;
+                    vec3 r = mix(c, max(c, ref), vec3(clipped));
+                    // never magenta (owner, 2026-10-19: «никогда не было фиолетовых засветов»): a clipped G is a lower bound and the
+                    // channel a white light clips first; the opposed chrominance of a fully blown lamp (G below R and B around
+                    // it) left its core lavender (lamp2324 without ultrashort frames: G 1.78 against R / B 1.86) - G comes up to
+                    // the lower of R and B, as in the SCAM recovery
+                    if (clipped.g) r.g = max(r.g, min(r.r, r.b));
+                    Output = mix(c, r, clamp(hlStrengthU, 0.0, 1.0));
+                    return;
+                }
+                Output = c;
+                return;
             }
         }
         if (L.g <= 0.0) { Output = c; return; }

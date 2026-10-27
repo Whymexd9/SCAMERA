@@ -49,6 +49,16 @@ The band centres of the colour mixer, its raised-cosine band weights and the sha
 Lightcraft, <https://github.com/storytold/lightcraft>, available under the MIT License or the Apache License 2.0 at your
 option. No Lightcraft source code is included; the implementation is SCAMERA's own.
 
+## RawTherapee «Inpaint opposed» highlight reconstruction (P362)
+
+The highlight reconstruction of `assets/shaders/hlrecovery/opposed.glsl` (its chrominance correction, on the GPU) and the
+opposed branch of `assets/shaders/scamhdr/scamrgb.glsl` are ported from RawTherapee, <https://github.com/RawTherapee/RawTherapee>,
+`rtengine/hilite_recon.cc` (`RawImageSource::highlight_recovery_opposed`, `test_dilate`, `dilating`) at commit
+`b2ee504c47e5e6d5e054395aa12bf1fe43bd1c3c`: Copyright (c) 2008-2011 Emil Martinec, (c) 2019 Ingo Weyrich, (c) 2022 darktable developers (the
+opposed reconstruction by Hanno Schwalm, with Iain and garagecoder from G'MIC), under the GNU General Public License
+version 3 or later - the licence of SCAMERA itself (LICENSE). The chrominance is taken against the opposed reference at
+every counted pixel, as in darktable (RawTherapee's buffer there holds the pixel's own value, so its sum is 0).
+
 ## LibRaw 0.21.3 (camera RAW in the gallery and its editor, P352)
 
 `libscameraRaw.so` statically links LibRaw 0.21.3 (<https://www.libraw.org>, <https://github.com/LibRaw/LibRaw>, tag

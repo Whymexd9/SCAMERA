@@ -216,15 +216,17 @@ public class GLContext implements AutoCloseable {
      * P57: the processing context at low GPU priority (EGL_IMG_context_priority), so the GPU preempts the post pipeline for the
      * viewfinder's draws; a driver without the extension, or one that refuses the hint, gets the context as before. scam_dev.txt
      * "gpu_low_priority 0" keeps the normal priority. Rendering results are unchanged.
+     * P364: medium by default (gpu_low_priority 2; 1 = low as since P57), as the merge worker's contexts: the post pipeline of a
+     * shot ran beside the viewfinder at low priority.
      */
     private static android.opengl.EGLContext createProcessingContext(android.opengl.EGLDisplay display, EGLConfig config) {
         final String ext = android.opengl.EGL14.eglQueryString(display, android.opengl.EGL14.EGL_EXTENSIONS);
-        final boolean low = ext != null && ext.contains("EGL_IMG_context_priority")
-                && com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevNumber("gpu_low_priority", 1f) != 0f;
+        final float mode = com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevNumber("gpu_low_priority", 2f);
+        final boolean low = ext != null && ext.contains("EGL_IMG_context_priority") && mode != 0f;
         if (low) {
             android.opengl.EGLContext c = eglCreateContext(display, config, EGL_NO_CONTEXT, new int[]{
                     android.opengl.EGL14.EGL_CONTEXT_CLIENT_VERSION, 3,
-                    EGL_CONTEXT_PRIORITY_LEVEL_IMG, EGL_CONTEXT_PRIORITY_LOW_IMG,
+                    EGL_CONTEXT_PRIORITY_LEVEL_IMG, mode == 1f ? EGL_CONTEXT_PRIORITY_LOW_IMG : EGL_CONTEXT_PRIORITY_MEDIUM_IMG,
                     android.opengl.EGL14.EGL_NONE}, 0);
             if (c != null && c != EGL_NO_CONTEXT) return c;
             android.opengl.EGL14.eglGetError();
@@ -232,5 +234,5 @@ public class GLContext implements AutoCloseable {
         return eglCreateContext(display, config, EGL_NO_CONTEXT, GLDrawParams.contextAttributeList, 0);
     }
 
-    static final int EGL_CONTEXT_PRIORITY_LEVEL_IMG = 0x3100, EGL_CONTEXT_PRIORITY_LOW_IMG = 0x3103;
+    static final int EGL_CONTEXT_PRIORITY_LEVEL_IMG = 0x3100, EGL_CONTEXT_PRIORITY_MEDIUM_IMG = 0x3102, EGL_CONTEXT_PRIORITY_LOW_IMG = 0x3103;
 }

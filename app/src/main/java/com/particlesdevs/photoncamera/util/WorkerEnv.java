@@ -22,7 +22,7 @@ public final class WorkerEnv {
         return env.toArray(new String[0]);
     }
 
-    /** P242: scam_dev worker_gpu_normal_priority 1 - the merge worker's GPU contexts at the normal priority (default 0: low, P57). */
+    /** P242: scam_dev worker_gpu_normal_priority 1 - the merge worker's GPU contexts at the normal priority (default 0: medium, P364). */
     public static boolean gpuNormalPriority() {
         try {
             return com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("worker_gpu_normal_priority", false);

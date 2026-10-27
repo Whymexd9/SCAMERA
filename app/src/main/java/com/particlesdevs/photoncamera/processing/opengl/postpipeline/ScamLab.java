@@ -137,7 +137,7 @@ public final class ScamLab {
     static LabFrame frameFile(File f) {
         if (!f.isFile()) return null;
         try {
-            return LabFrame.fromJson(new JSONObject(new String(java.nio.file.Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8)));
+            return LabFrame.fromJson(new JSONObject(new String(LabFiles.read(f), StandardCharsets.UTF_8)));
         } catch (Exception e) {
             Log.w("SCAM_LAB", "lab frame statistics not read: " + e);
             return null;
@@ -313,7 +313,7 @@ public final class ScamLab {
         if (own.isFile()) return own;
         final File source = new File(dir, SOURCE);
         if (source.isFile()) try {
-            final String path = new String(java.nio.file.Files.readAllBytes(source.toPath()), StandardCharsets.UTF_8).trim();
+            final String path = new String(LabFiles.read(source), StandardCharsets.UTF_8).trim();
             if (!path.isEmpty()) return new File(path);
         } catch (IOException e) {
             Log.w("SCAM_LAB", "lab source not read: " + e);
@@ -340,11 +340,12 @@ public final class ScamLab {
     /** A lab folder and the files the lab made in it (nothing else, nothing outside Lab: an imported series stays). */
     public static boolean remove(File dir) {
         if (dir == null || !root().equals(dir.getParentFile())) return false;
-        for (String name : new String[]{BURST, META, PREVIEW, FRAME, SOURCE, NOW, FRAME_NOW, "sandbox.json"}) new File(dir, name).delete();
+        // P363: an earlier installation's files through the folder grant
+        for (String name : new String[]{BURST, META, PREVIEW, FRAME, SOURCE, NOW, FRAME_NOW, "sandbox.json"}) LabFiles.delete(new File(dir, name));
         // P355: the JPEGs of B the lab saved there
         final File[] saved = dir.listFiles(f -> f.getName().startsWith("B_") && f.getName().endsWith(".jpg"));
-        if (saved != null) for (File f : saved) f.delete();
-        return dir.delete();
+        if (saved != null) for (File f : saved) LabFiles.delete(f);
+        return dir.delete() || LabFiles.delete(dir);
     }
 
     // ───── P359: kept RAW series (Download/SCAMERA) opened in the lab ─────
@@ -353,9 +354,9 @@ public final class ScamLab {
     @Nullable
     static int[] header(File f) {
         if (f == null || !f.isFile() || f.length() < 128) return null;
-        try (RandomAccessFile r = new RandomAccessFile(f, "r")) {
+        try (java.nio.channels.FileChannel r = LabFiles.channel(f)) {
             final byte[] b = new byte[128];
-            r.readFully(b);
+            LabFiles.readFully(r, 0, b);
             final java.nio.ByteBuffer h = java.nio.ByteBuffer.wrap(b).order(java.nio.ByteOrder.LITTLE_ENDIAN);
             final int version = h.getInt(4);
             if (h.getInt(0) != ScamLabBurst.MAGIC || (version != 11 && version != 12)) return null;
@@ -401,7 +402,7 @@ public final class ScamLab {
         boolean templated = false;
         try {
             final File own = keptMeta(burst);
-            if (own != null) meta = new JSONObject(new String(java.nio.file.Files.readAllBytes(own.toPath()), StandardCharsets.UTF_8));
+            if (own != null) meta = new JSONObject(new String(LabFiles.read(own), StandardCharsets.UTF_8));
             else {
                 meta = template(h, burst);
                 if (meta == null) throw new IOException(com.particlesdevs.photoncamera.util.Lang.t(
@@ -424,7 +425,7 @@ public final class ScamLab {
             write(new File(named, SOURCE), burst.getAbsolutePath().getBytes(StandardCharsets.UTF_8));
             for (String[] pair : new String[][]{{".jpg", PREVIEW}, {".frame.json", FRAME}}) {
                 final File side = sidecar(burst, pair[0]);
-                if (side.isFile()) write(new File(named, pair[1]), java.nio.file.Files.readAllBytes(side.toPath()));
+                if (side.isFile()) write(new File(named, pair[1]), LabFiles.read(side));
             }
             // an older series has only the template's settings: the lab renders it with the settings of now
             if (templated) settingsNow(named, true);
@@ -450,7 +451,12 @@ public final class ScamLab {
         for (File[] m : metas) {
             final int[] other = header(m[1]);
             if (other == null || other[0] != h[0] || other[1] != h[1] || other[2] != h[2] || other[4] != h[4] || other[5] != h[5]) continue;
-            final JSONObject meta = new JSONObject(new String(java.nio.file.Files.readAllBytes(m[0].toPath()), StandardCharsets.UTF_8));
+            final JSONObject meta;
+            try {
+                meta = new JSONObject(new String(LabFiles.read(m[0]), StandardCharsets.UTF_8));
+            } catch (IOException unreadable) {
+                continue; // an earlier installation's shot without the folder grant: the next template
+            }
             final JSONObject params = meta.optJSONObject("params");
             if (params == null) continue;
             final float[] white = greyWorld(burst, h);
@@ -475,10 +481,9 @@ public final class ScamLab {
     /** The base frame's {measured ISO, noise slope, noise offset} from the burst's frame table, null when unreadable. */
     @Nullable
     static float[] baseNoise(File burst) {
-        try (RandomAccessFile r = new RandomAccessFile(burst, "r")) {
+        try (java.nio.channels.FileChannel r = LabFiles.channel(burst)) {
             final byte[] e = new byte[32];
-            r.seek(128);
-            r.readFully(e);
+            LabFiles.readFully(r, 128, e);
             final java.nio.ByteBuffer b = java.nio.ByteBuffer.wrap(e).order(java.nio.ByteOrder.LITTLE_ENDIAN);
             final int iso = b.getInt(8);
             final float slope = b.getFloat(12), offset = b.getFloat(16);
@@ -495,16 +500,16 @@ public final class ScamLab {
      */
     @Nullable
     static float[] greyWorld(File burst, int[] h) {
-        try (RandomAccessFile r = new RandomAccessFile(burst, "r")) {
+        try (java.nio.channels.FileChannel r = LabFiles.channel(burst)) {
             final byte[] head = new byte[128 + 32 * h[3]];
-            r.readFully(head);
+            LabFiles.readFully(r, 0, head);
             final java.nio.ByteBuffer hb = java.nio.ByteBuffer.wrap(head).order(java.nio.ByteOrder.LITTLE_ENDIAN);
             final int version = hb.getInt(4), w = h[0], hh = h[1];
             final float white = hb.getFloat(24);
             final float[] black = {hb.getFloat(28), hb.getFloat(32), hb.getFloat(36), hb.getFloat(40)};
             final java.nio.ByteBuffer table = java.nio.ByteBuffer.wrap(head, 128, 32 * h[3]).slice().order(java.nio.ByteOrder.LITTLE_ENDIAN);
             final long plane = ScamLabBurst.planeOffset(version, table, h[3], 0, w, hh);
-            return greyWorld(r.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_ONLY, plane, (long) w * hh * 2)
+            return greyWorld(r.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, plane, (long) w * hh * 2)
                     .order(java.nio.ByteOrder.LITTLE_ENDIAN), w, hh, h[2], Math.max(1, h[5]), black, white);
         } catch (IOException | RuntimeException e) {
             Log.w("SCAM_LAB", "grey world of " + burst + ": " + e);

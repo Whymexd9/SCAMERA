@@ -143,6 +143,24 @@ public final class ScamDenoise extends Node {
         return Math.max(1f, Math.min(gainMax, sceneGain));
     }
 
+    /**
+     * P364: scam_dev.txt "post_sync 1" (PostGlMode.syncNodes): the GPU time of each stage of this node - a glFinish at every
+     * stage end, logged as "scam-denoise laps ms". Off (every normal shot): nothing is synced or logged.
+     */
+    static final class Laps {
+        final boolean on = com.particlesdevs.photoncamera.processing.opengl.PostGlMode.syncNodes();
+        final StringBuilder text = new StringBuilder();
+        private long at = System.nanoTime();
+
+        void lap(String stage) {
+            if (!on) return;
+            android.opengl.GLES30.glFinish();
+            final long now = System.nanoTime();
+            text.append(' ').append(stage).append('=').append((now - at) / 1_000_000);
+            at = now;
+        }
+    }
+
     /** Reads an RGBA32UI statistics texture back as 8 floats per block. */
     private static float[] readStats(GLTexture t) {
         int w = t.mSize.x, h = t.mSize.y;
@@ -206,7 +224,7 @@ public final class ScamDenoise extends Node {
      * {@link ScamDenoiseTables#reduce}. The same passes, read-backs and reductions, so the same gains; rawOut gets level 0.
      */
     private static float[][] levelNoiseBatch(GLProg glProg, List<GLTexture> owned, GLTexture[] levels, int block, float sY, float rY,
-                                             float[] dcg, float[][] rawOut) {
+                                             float[] dcg, float[][] rawOut, Laps laps) {
         final int n = levels.length;
         final GLTexture[] st = new GLTexture[n];
         final int[] counts = new int[n];
@@ -221,6 +239,7 @@ public final class ScamDenoise extends Node {
                 glProg.setVar("blockU", block);
                 glProg.drawBlocks(st[i]);
             }
+            laps.lap("statsDraw");
             for (int i = 0; i < n; i++) {
                 raws[i] = readStats(st[i]);
                 release(owned, st[i]);
@@ -229,9 +248,11 @@ public final class ScamDenoise extends Node {
         } finally {
             for (GLTexture t : st) release(owned, t);
         }
+        laps.lap("statsRead");
         if (rawOut != null) rawOut[0] = raws[0];
         final float[][] out = new float[n][];
         com.particlesdevs.photoncamera.util.ParallelWork.forEach(n, i -> out[i] = ScamDenoiseTables.reduce(raws[i], counts[i], 0.8f));
+        laps.lap("statsReduce");
         return out;
     }
 
@@ -492,6 +513,8 @@ public final class ScamDenoise extends Node {
 
     static GLTexture process(GLProg glProg, PostPipeline pipeline, GLTexture input) {
         final long started = System.nanoTime();
+        final Laps laps = new Laps();
+        laps.lap("before"); // the GPU work queued by the nodes before this one
         lastMainTaken = false;
         lastInputReleased = false;
         final Parameters par = pipeline.mParameters;
@@ -609,7 +632,9 @@ public final class ScamDenoise extends Node {
             glProg.setVar("offsetC", offsetC);
             glProg.setVar("signedU", 0); // the noise estimate as before (the program may hold ScamHdrDenoise's value)
             glProg.drawBlocks(noisy);
+            laps.lap("lumaU");
             final float sigmaU = ScamHdrDenoise.estimateNoise(glProg, noisy, 1);
+            laps.lap("noiseEst");
             pipeline.scamNoiseSigma = sigmaU;
             release(owned, noisy);
             GLTexture clean = base;
@@ -621,11 +646,13 @@ public final class ScamDenoise extends Node {
                 glProg.setVar("offsetC", offsetC);
                 glProg.setVar("pxStepU", 1);
                 glProg.drawBlocks(clean);
+                laps.lap("despeckle");
             }
             GLTexture x0 = tex(owned, size0, GLFormat.DataType.FLOAT_16, 4, GL_LINEAR);
             glProg.useAssetProgram("scamdn/yuv", false);
             glProg.setTexture("InputBuffer", clean);
             glProg.drawBlocks(x0);
+            laps.lap("yuv");
             if (clean != base) release(owned, clean);
             if (s == 1) base = null; // the 1x output is built from the denoised YUV alone
             // P179 (200 MP: LOW_MEMORY in the pipeline): on the sensor grid nothing reads the input after x0 - above 100 MP its
@@ -652,6 +679,7 @@ public final class ScamDenoise extends Node {
                 glProg.setTexture("InputBuffer", XC[L - 1]);
                 glProg.drawBlocks(XC[L]);
             }
+            laps.lap("pyramids");
             tPrep = System.nanoTime();
 
             // ---- measured noise per level and stride (luma pyramid: Y; chroma pyramid: Y, U, V)
@@ -668,7 +696,7 @@ public final class ScamDenoise extends Node {
                 GLTexture[] levels = new GLTexture[2 * ScamDenoiseTables.LEVELS - 1];
                 levels[0] = x0;
                 for (int L = 1; L < ScamDenoiseTables.LEVELS; L++) { levels[2 * L - 1] = Y[L]; levels[2 * L] = XC[L]; }
-                float[][] g = levelNoiseBatch(glProg, owned, levels, 16, sY, rY, dcgPass, raw0);
+                float[][] g = levelNoiseBatch(glProg, owned, levels, 16, sY, rY, dcgPass, raw0, laps);
                 gL[0] = gC[0] = g[0];
                 for (int L = 1; L < ScamDenoiseTables.LEVELS; L++) { gL[L] = g[2 * L - 1]; gC[L] = g[2 * L]; }
             }
@@ -770,6 +798,7 @@ public final class ScamDenoise extends Node {
                             + (lsc != null ? "+lsc(cap=" + lsc[1] + ",peak=" + round(lsc[2]) + ")" : "");
                 } else if ("frames".equals(mapMode)) mapState = "uniform(no map)";
             }
+            laps.lap("strmap");
             tStats = System.nanoTime();
 
             // ---- luma: levels 3 .. 0
@@ -834,6 +863,7 @@ public final class ScamDenoise extends Node {
                 x0p = delta;
             }
             for (int L = 1; L <= ScamDenoiseTables.LEVELS; L++) release(owned, Y[L]);
+            laps.lap("luma");
             tLuma = System.nanoTime();
 
             // ---- chroma on the luma-denoised YUV: levels 3 .. 0
@@ -925,7 +955,9 @@ public final class ScamDenoise extends Node {
                 glProg.drawBlocks(output);
                 if (huge) log.append(" huge(2x2 means, fine=").append(hugeFine).append(" sigmaFull=").append(sigmaFull).append(')');
             }
+            laps.lap("chroma");
             final long done = System.nanoTime();
+            if (laps.on) Log.i("SCAM_PIPELINE", "scam-denoise laps ms:" + laps.text);
             log.append(" snr=").append(round(snr)).append(snrFixed > 0f ? "(fixed)" : "")
                .append(" mu=").append(mu).append(" gain=").append(round(gain)).append(" p50=").append(p50)
                .append(" g01=").append(round(GY[0][0])).append(" rho=").append(rhoS).append('/').append(rhoR)

@@ -772,11 +772,15 @@ void main(){
 // the merge for the viewfinder's and the compositor's draws (owner: the viewfinder stuttered heavily while a photo was processed;
 // the X7 Ultra merge submits strips of ~1.4 s). The attribute is a hint: a driver without the extension, or one that refuses
 // it, gets the context as before (and SCAM_GPU_NORMAL_PRIORITY=1 keeps it as before for comparisons). Results are unchanged.
+// P364 (owner, 2026-10-27: processing as fast as the reference app): medium, not low. In a shot on the OPPO Find X7 Ultra the
+// low context's merge took ~0.45 s longer than a replay without the viewfinder; medium: the merge 3.67-3.99 -> 3.46-3.54 s, the
+// viewfinder during it ~20 -> ~12 fps (largest gap ~0.1 -> ~0.25 s, not the 1.4 s stalls of P57). SCAM_GPU_LOW_PRIORITY=1: low.
 inline EGLContext scamProcessingContext(EGLDisplay display,EGLConfig config){
     const char* ext=eglQueryString(display,EGL_EXTENSIONS);
     if(ext&&std::strstr(ext,"EGL_IMG_context_priority")&&!std::getenv("SCAM_GPU_NORMAL_PRIORITY")){
+        const EGLint level=std::getenv("SCAM_GPU_LOW_PRIORITY")?0x3103 /*EGL_CONTEXT_PRIORITY_LOW_IMG*/:0x3102 /*EGL_CONTEXT_PRIORITY_MEDIUM_IMG*/;
         const EGLint low[]={EGL_CONTEXT_CLIENT_VERSION,3,EGL_CONTEXT_MINOR_VERSION,1,0x3100 /*EGL_CONTEXT_PRIORITY_LEVEL_IMG*/,
-                            0x3103 /*EGL_CONTEXT_PRIORITY_LOW_IMG*/,EGL_NONE};
+                            level,EGL_NONE};
         EGLContext c=eglCreateContext(display,config,EGL_NO_CONTEXT,low);
         if(c!=EGL_NO_CONTEXT)return c;
         eglGetError();

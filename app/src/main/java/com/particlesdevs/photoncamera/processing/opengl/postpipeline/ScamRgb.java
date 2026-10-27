@@ -546,6 +546,8 @@ public final class ScamRgb extends Node {
     private static final class InputStats {
         ChannelClip cc;
         float[] clip;
+        /** P362: pixels with a clipped channel and no ultrashort content (clip flags), -1: no flags. */
+        long oppPixels = -1;
         java.nio.ByteBuffer decimated;
         long statMs, decimateMs;
     }
@@ -575,6 +577,82 @@ public final class ScamRgb extends Node {
         try { await(task); } catch (RuntimeException | Error ignored) {}
     }
 
+    /**
+     * P362: the «Inpaint opposed» chrominance correction per channel (white-balanced; hlrecovery/opposed): the mean of value -
+     * opposed reference over the unclipped pixels around the clips of that channel. Null when the compute pass fails (the
+     * caller uses 0). One 16 x 16 group per tile writes its sums and counts, added here.
+     */
+    private float[] opposedChroma(GLTexture input,GLTexture gainMap,GLTexture flagsTex,float[] whitePoint,ChannelClip cc,Point size,int ox,int oy){
+        final long t0=System.currentTimeMillis();
+        final int gx=(size.x+15)/16,gy=(size.y+15)/16;
+        while(android.opengl.GLES31.glGetError()!=android.opengl.GLES31.GL_NO_ERROR){
+            // drain: only the pass below decides
+        }
+        try(com.particlesdevs.photoncamera.processing.opengl.GLBuffer sums=new com.particlesdevs.photoncamera.processing.opengl.GLBuffer(6*gx*gy,
+                new GLFormat(GLFormat.DataType.UNSIGNED_32))){
+            glProg.setLayout(16,16,1);
+            glProg.useAssetProgram("hlrecovery/opposed",true);
+            glProg.setTexture("InputBuffer",input);glProg.setTexture("GainMap",gainMap);
+            if(flagsTex!=null)glProg.setTexture("ClipFlags",flagsTex);
+            glProg.setVar("whitePoint",whitePoint);
+            glProg.setVar("inverseSize",1f/size.x,1f/size.y);
+            glProg.setVar("cropOffset",ox,oy);
+            glProg.setVar("sizeU",size.x,size.y);
+            glProg.setVar("clipLoU",cc.lo);glProg.setVar("clipHiU",cc.hi);
+            glProg.setVar("clipHiUnflaggedU",cc.hiUnflagged?1:0);
+            glProg.setVar("clipFlagsU",flagsTex!=null?1:0);
+            glProg.setBufferCompute("oppSums",sums);
+            glProg.computeManual(gx,gy,1);
+            final int[] v=sums.readBufferIntegers(false);
+            final int error=android.opengl.GLES31.glGetError();
+            if(error!=android.opengl.GLES31.GL_NO_ERROR||v==null||v.length<6*gx*gy){
+                com.particlesdevs.photoncamera.util.Log.w("SCAM_PIPELINE","highlight opposed: GL error 0x"+Integer.toHexString(error)+", chrominance 0");
+                return null;
+            }
+            final float[] chroma=opposedMeans(v,gx*gy);
+            com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","highlight opposed (RawTherapee inpaint opposed): chrominance "
+                    +java.util.Arrays.toString(chroma)+" ms="+(System.currentTimeMillis()-t0));
+            return chroma;
+        }catch(RuntimeException e){
+            com.particlesdevs.photoncamera.util.Log.w("SCAM_PIPELINE","highlight opposed: "+e+", chrominance 0");
+            return null;
+        }
+    }
+
+    /** P362: the pixels «Inpaint opposed» reconstructs: a clipped-mean channel (flag bits 0-2) and no ultrashort content (4, 5). */
+    static long opposedPixels(java.nio.ByteBuffer flags){
+        final java.nio.ByteBuffer f=flags.duplicate();
+        final int n=f.capacity();
+        final long[] counts=new long[Math.max(1,ParallelWork.threads())];
+        final int parts=counts.length,step=(n+parts-1)/parts;
+        ParallelWork.forEach(parts,k->{
+            long c=0;
+            for(int i=k*step,e=Math.min(n,i+step);i<e;i++){
+                final int v=f.get(i)&0xFF;
+                if((v&7)!=0&&(v&48)==0)c++;
+            }
+            counts[k]=c;
+        });
+        long t=0;for(long c:counts)t+=c;
+        return t;
+    }
+
+    /** P362: per channel the sum over the groups' sums (float bits) by their counts; 0 for a channel with no pixel counted. */
+    static float[] opposedMeans(int[] v,int groups){
+        final double[] sum=new double[3];
+        final long[] n=new long[3];
+        for(int g=0;g<groups;g++){
+            for(int c=0;c<3;c++){
+                final float s=Float.intBitsToFloat(v[6*g+c]);
+                if(Float.isFinite(s))sum[c]+=s;
+                n[c]+=v[6*g+3+c]&0xFFFFFFFFL;
+            }
+        }
+        final float[] out=new float[3];
+        for(int c=0;c<3;c++)out[c]=n[c]>0?(float)(sum[c]/n[c]):0f;
+        return out;
+    }
+
     @Override public void Run(){
         final java.nio.ByteBuffer flags=lastClipFlags;lastClipFlags=null;
         try{run(flags);}finally{freeClipFlags(flags);} // P187: uploaded, ignored, unused by this shot, or a failure
@@ -600,6 +678,7 @@ public final class ScamRgb extends Node {
         final boolean bento=ScamHybridBurst.lastBentoApplied;
         final float bentoK=ScamHybridBurst.lastBentoFactor,bentoUs=ScamHybridBurst.lastBentoUsClipped;
         final boolean withFlags=flags!=null;
+        final java.nio.ByteBuffer flagsIn=flags;
         // P80: the worker's half-float RGB (6 B a pixel); its size confirms it
         final boolean half=big!=null&&halfInput(hybrid,ScamHybridBurst.lastRgbHalf,size.x,size.y,big.limit());
         if(hybrid)strength=Math.max(0f,Math.min(1f,PreferenceKeys.hybridValue("highlight_recovery",100f)/100f));
@@ -607,6 +686,7 @@ public final class ScamRgb extends Node {
             InputStats s=new InputStats();
             final long t0=System.currentTimeMillis();
             if(hybrid)s.cc=channelClip(big,bento,bentoK,bentoUs,withFlags,ParallelWork.threads(),half); else s.clip=clipLevels(big);
+            if(hybrid&&flagsIn!=null)s.oppPixels=opposedPixels(flagsIn);
             final long t1=System.currentTimeMillis();
             // P187: the later nodes only ask whether the worker RGB is there (ScamDenoise.enabledFor; above 100 MP not even
             // that): one sample stands for the 40 MB copy there
@@ -659,7 +739,7 @@ public final class ScamRgb extends Node {
             com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","highlight recovery per channel: strength="+strength
                     +" bento="+bento+" k="+bentoK+" usClipped="+bentoUs
                     +" flags="+withFlags+" "+cc.log+" nearClip="+cc.nearClip+" clipWhite="+white
-                    +" ms="+stats.statMs);
+                    +" ms="+stats.statMs+" opposedPixels="+stats.oppPixels);
         } else {
             lastClipWhite=0f;
             clip=stats.clip;
@@ -746,6 +826,21 @@ public final class ScamRgb extends Node {
                     glProg.drawBlocks(chromaHuge);
                 }
             }
+            // P362 (owner, 2026-10-27: «верни для пересветов там, где коротких кадров нет», «считай на гпу»): RawTherapee's
+            // «Inpaint opposed» on the pixels without ultrashort content; its chrominance correction measured on the GPU
+            // (hlrecovery/opposed), a lab fragment taking the whole frame's. scam_dev.txt "hybrid_highlight_opposed 0" = the
+            // SCAM recovery there as before.
+            float[] oppChroma=null;
+            // without clip flags every pixel of a Bento shot holds ultrashort content: nothing for it to do
+            // with flags: only when some pixel has a clipped channel and no ultrashort content (the side thread counted them)
+            final boolean opposed=perChannel&&cc.nearClip&&(flagsTex!=null?stats.oppPixels>0:cc.hi[1]<=0f)
+                    &&PreferenceKeys.hybridValue("highlight_opposed",1f)>0f;
+            if(opposed){
+                final LabFrame fz=p.frozen;
+                if(fz!=null&&fz.oppChroma!=null)oppChroma=fz.oppChroma.clone();
+                else oppChroma=opposedChroma(input,p.GainMap,flagsTex,p.mParameters.whitePoint,cc,size,ox,oy);
+                if(p.record!=null&&oppChroma!=null)p.record.oppChroma=oppChroma.clone();
+            }
             glProg.useAssetProgram("scamhdr/scamrgb");glProg.setTexture("InputBuffer",input);glProg.setTexture("GainMap",p.GainMap);
             glProg.setVar("whitePoint",p.mParameters.whitePoint);
             final boolean signed=signedInput(hybrid);
@@ -764,6 +859,10 @@ public final class ScamRgb extends Node {
                 glProg.setVar("chromaLimitU",chromaLimit);
                 float defringe=PreferenceKeys.hybridValue("highlight_defringe",0.85f);
                 glProg.setVar("defringeU",defringe>0f?defringe:-1f);
+                glProg.setVar("oppU",opposed?1:0);
+                // a failed measurement: chrominance 0 (RawTherapee's own result: its sum is always 0, see hlrecovery/opposed)
+                final float[] oc=oppChroma!=null?oppChroma:new float[3];
+                glProg.setVar("oppChromaU",oc[0],oc[1],oc[2]);
             } else {
                 // SCAM HDR: neutralise at the plateau; hybrid with the recovery off: plain WB and lens shading.
                 if(clip==null)clip=new float[]{1e30f,1e30f,1e30f};

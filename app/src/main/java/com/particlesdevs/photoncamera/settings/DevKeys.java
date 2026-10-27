@@ -240,8 +240,11 @@ public final class DevKeys {
         k.add(n(merge, "worker_watchdog", "2", Lang.t("Сторож воркера склейки: нет хода дольше max(90 с, 4× самый долгий шаг) — 2: воркер останавливается (без повтора, если он ждал GPU), 1: только строка в логе, 0: выкл (ждать до 14 мин)",
                 "Merge worker watchdog: no progress for longer than max(90 s, 4x the slowest step) - 2: the worker is stopped (no retry when it waited for the GPU), 1: a log line only, 0: off (wait up to 14 min)")));
         // processing
+        // P362: RawTherapee's «Inpaint opposed» where no ultrashort frame holds the highlight
+        k.add(s(post, "hybrid_highlight_opposed", true, Lang.t("Пересветы без коротких кадров (одиночные кадры, «Движение», отказ Bento): «Inpaint opposed» из RawTherapee (выкл — восстановление SCAM)",
+                "Highlights without ultrashort frames (single frames, Motion, Bento refused): RawTherapee's «Inpaint opposed» (off: the SCAM recovery)")));
         k.add(n(post, "post_priority", null, Lang.t("Приоритет потока обработки (nice; пусто — не менять)", "Priority of the processing thread (nice; empty: unchanged)")));
-        k.add(n(post, "gpu_low_priority", "1", Lang.t("Низкий приоритет GPU-контекста обработки (0 — обычный)", "Low priority of the processing GPU context (0: normal)")));
+        k.add(n(post, "gpu_low_priority", "2", Lang.t("Приоритет GPU-контекста обработки: 2 — средний, 1 — низкий, 0 — обычный", "Priority of the processing GPU context: 2 medium, 1 low, 0 normal")));
         k.add(s(post, "post_shared_context", true, Lang.t("Один GPU-контекст обработки на всё время работы: программы шейдеров не загружаются заново на каждый снимок (выкл — новый контекст на каждый снимок)",
                 "One processing GPU context for the whole run: the shader programs are not loaded again for every shot (off: a new context every shot)")));
         k.add(s(post, "effmap_real", true, Lang.t("Карта числа кадров для шумоподавления — реальная (выкл — старая)", "Frame-count map for the denoise: the real one (off: the old one)")));
@@ -362,8 +365,8 @@ public final class DevKeys {
         k.add(s(post, "gl_warm_up", true, Lang.t("Шейдеры обработки, которых нет в кэше на диске (после обновления драйвера, вытеснения), компилируются в фоне через 4 с после открытия камеры, пока она не снимает. Выкл — только при снимке, как до P237",
                 "Processing shaders missing from the disk cache (after a driver update, eviction) are compiled in the background 4 s after the camera opens, while it is idle. Off: only at a shot, as before P237")));
         // P242: the merge worker's GPU priority (A/B, WorkerSpawn.environment)
-        k.add(s(merge, "worker_gpu_normal_priority", false, Lang.t("Склейка в воркере с обычным приоритетом GPU (сравнение A/B: может склеивать быстрее, видоискатель может подтормаживать). Выкл — низкий приоритет, как с P57",
-                "The merge worker at the normal GPU priority (A/B: the merge may run faster, the viewfinder may stutter). Off: the low priority, as since P57")));
+        k.add(s(merge, "worker_gpu_normal_priority", false, Lang.t("Склейка в воркере с обычным приоритетом GPU (сравнение A/B: может склеивать быстрее, видоискатель может подтормаживать). Выкл — средний приоритет (P364)",
+                "The merge worker at the normal GPU priority (A/B: the merge may run faster, the viewfinder may stutter). Off: the medium priority (P364)")));
         // P243: the DNG's colour tags from the JPEG's render (DngColour)
         k.add(s(post, "dng_colour_jpeg", true, Lang.t("DNG открывается в Lightroom/ACR в цвете JPEG: в DNG записаны баланс белого и цветовая матрица, с которыми сделан JPEG. Выкл — общий профиль камеры (два иллюминанта), как до P243",
                 "The DNG opens in Lightroom / ACR in the JPEG's colour: it carries the white balance and colour matrix the JPEG was made with. Off: the camera's generic two-illuminant profile, as before P243")));

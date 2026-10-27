@@ -138,8 +138,40 @@ public class ScamLabFragment extends ModuleConceptFragment {
     private String showStage = ScamMergeStages.ROBUST;
     private int showFrame = -1;
     private final Handler main = new Handler(Looper.getMainLooper());
+    /**
+     * P363: the lasting grant of Download/SCAMERA - the shots of an earlier installation of the app are read through it (LabFiles);
+     * offered where one cannot be read.
+     */
+    private final androidx.activity.result.ActivityResultLauncher<android.net.Uri> folderGrant = registerForActivityResult(
+            new androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(), uri -> {
+                if (uri == null || getContext() == null) return;
+                try {
+                    requireContext().getContentResolver().takePersistableUriPermission(uri,
+                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION | android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                } catch (RuntimeException e) {
+                    com.particlesdevs.photoncamera.util.Log.w("SCAM_LAB", "folder grant not kept: " + e);
+                }
+                final boolean ok = com.particlesdevs.photoncamera.processing.opengl.postpipeline.LabFiles.grantPresent();
+                Toast.makeText(requireContext(), ok ? Lang.t(getContext(), "Папка открыта: снимки прошлой установки читаются", "Folder open: the earlier installation's shots can be read")
+                        : Lang.t(getContext(), "Это не папка Download/SCAMERA", "This is not the Download/SCAMERA folder"), Toast.LENGTH_LONG).show();
+                ScamLabRun.forget();
+                thumbs.evictAll();
+                shotPhotoPath = null;
+                if (root != null) render();
+            });
+
+    /** P363: the «open the folder» button under a note that a shot cannot be read (none once the grant is there). */
+    private void grantButton() {
+        if (com.particlesdevs.photoncamera.processing.opengl.postpipeline.LabFiles.grantPresent()) return;
+        TextView b = button(Lang.t(getContext(), "Открыть доступ к папке Download/SCAMERA", "Open the Download/SCAMERA folder"), true,
+                () -> folderGrant.launch(com.particlesdevs.photoncamera.util.ScameraFolder.grantHint()));
+        b.setTag("lab_folder_grant");
+        body.addView(b, space(-1, -2, 8));
+    }
     /** P294: a render is running; a slider is under a finger; a stage redraw waits for its release. */
     private boolean rendering, dragging, redrawWaiting;
+    /** P363: a shot of the list could not be read without the folder grant. */
+    private boolean unreadable;
 
     public static ScamLabFragment list() {
         return new ScamLabFragment();
@@ -192,6 +224,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
                         + "A as shot, B with another value. Compare them with a border and a magnifier, see the difference and the merge's frame map."));
         labSwitch();
         final List<File> shots = ScamLab.shots();
+        unreadable = false;
         caption(Lang.t(getContext(), "Снимки · Download/SCAMERA/Lab", "Shots · Download/SCAMERA/Lab"));
         if (shots.isEmpty()) {
             note(Lang.t(getContext(), "Пока нет снимков. Включите переключатель выше и сделайте снимок SHDR.", "No shots yet. Turn on the switch above and take an SHDR shot."));
@@ -204,6 +237,11 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 card.addView(shotRow(dir));
             }
             note(Lang.t(getContext(), "Удерживайте снимок, чтобы удалить его (серия, параметры и превью).", "Hold a shot to delete it (burst, parameters and preview)."));
+            if (unreadable) {
+                note(Lang.t(getContext(), "Часть снимков записана прошлой установкой приложения: Android не даёт их прочитать, пока приложению не открыта папка Download/SCAMERA.",
+                        "Some shots were written by an earlier installation of the app: Android does not let them be read until the app has the Download/SCAMERA folder."));
+                grantButton();
+            }
         }
         keptSeries();
     }
@@ -318,6 +356,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
                     + (s.now ? Lang.t(getContext(), " · текущие настройки", " · settings of now") : "");
         } catch (Exception e) {
             sub = Lang.t(getContext(), "Не читается: ", "Unreadable: ") + e.getMessage();
+            if (e instanceof com.particlesdevs.photoncamera.processing.opengl.postpipeline.LabFiles.Unreadable) unreadable = true;
         }
         TextView st = text(sub, 12, SettingsStyle.SUMMARY);
         labels.addView(st, space(-1, -2, 6));
@@ -363,7 +402,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
         if (b != null) return b;
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inSampleSize = 8;
-        b = BitmapFactory.decodeFile(file.getAbsolutePath(), o);
+        b = com.particlesdevs.photoncamera.processing.opengl.postpipeline.LabFiles.decode(file, o);
         if (b != null) thumbs.put(file.getAbsolutePath(), b);
         return b;
     }
@@ -380,6 +419,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
             return ScamLabRun.Shot.load(new File(arg(DIR)));
         } catch (Exception e) {
             note(Lang.t(getContext(), "Снимок не читается: ", "The shot cannot be read: ") + e.getMessage());
+            if (e instanceof com.particlesdevs.photoncamera.processing.opengl.postpipeline.LabFiles.Unreadable) grantButton();
             return null;
         }
     }
@@ -387,7 +427,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
     private Bitmap photo(ScamLabRun.Shot s) {
         final String path = new File(s.dir, ScamLab.PREVIEW).getAbsolutePath();
         if (!path.equals(shotPhotoPath)) {
-            shotPhoto = BitmapFactory.decodeFile(path);
+            shotPhoto = com.particlesdevs.photoncamera.processing.opengl.postpipeline.LabFiles.decode(new File(path), null);
             shotPhotoPath = path;
         }
         return shotPhoto;
@@ -1612,7 +1652,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
         final java.util.TreeMap<String, Object> box = new java.util.TreeMap<>();
         if (!f.isFile()) return box;
         try {
-            final org.json.JSONObject o = new org.json.JSONObject(new String(java.nio.file.Files.readAllBytes(f.toPath()), java.nio.charset.StandardCharsets.UTF_8));
+            final org.json.JSONObject o = new org.json.JSONObject(new String(com.particlesdevs.photoncamera.processing.opengl.postpipeline.LabFiles.read(f), java.nio.charset.StandardCharsets.UTF_8));
             for (java.util.Iterator<String> it = o.keys(); it.hasNext(); ) {
                 final String k = it.next();
                 final org.json.JSONArray e = o.getJSONArray(k);

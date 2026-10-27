@@ -70,6 +70,38 @@ public class ShotSpeedBitExactTest {
         assertNull(ScamDenoiseTables.reduceLegacy(few, 10, 0.8f));
     }
 
+    /** P364: the selections give the sorted array's elements (medians, the n/4 noise element, the m lowest keys) bit for bit. */
+    @Test public void selectionsEqualTheSorts() {
+        Random r = new Random(20261027);
+        float[] special = {-0.0f, 0.0f, Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.MIN_VALUE};
+        for (int n = 1; n <= 300; n += (n < 40 ? 1 : 37)) {
+            for (int kind = 0; kind < 4; kind++) {
+                float[] a = new float[n];
+                for (int i = 0; i < n; i++) {
+                    a[i] = kind == 0 ? r.nextFloat() : kind == 1 ? r.nextInt(5) * 0.25f : kind == 2 ? (float) r.nextGaussian()
+                            : r.nextInt(4) == 0 ? special[r.nextInt(special.length)] : r.nextInt(3) - 1f;
+                }
+                float[] keep = a.clone();
+                assertEquals("median n " + n + " kind " + kind, Float.floatToIntBits(ScamDenoiseTables.median(a, n)),
+                        Float.floatToIntBits(ScamDenoiseTables.medianSelect(a, n)));
+                float[] sorted = a.clone();
+                java.util.Arrays.sort(sorted);
+                for (int k : new int[]{0, n / 4, n / 2, n - 1})
+                    assertEquals("select n " + n + " k " + k, Float.floatToIntBits(sorted[k]),
+                            Float.floatToIntBits(ScamDenoiseTables.selectFloat(a, n, k)));
+                assertSameBits("input unchanged", keep, a);
+                long[] keys = new long[n];
+                for (int i = 0; i < n; i++) keys[i] = ((long) ScamDenoiseTables.sortableBits(a[i]) << 32) | i;
+                long[] all = keys.clone();
+                java.util.Arrays.sort(all);
+                int m = Math.max(1, n / 4);
+                ScamDenoiseTables.selectSmallest(keys, n, m);
+                java.util.Arrays.sort(keys, 0, m);
+                for (int i = 0; i < m; i++) assertEquals("smallest n " + n + " i " + i, all[i], keys[i]);
+            }
+        }
+    }
+
     @Test public void sortableBitsKeepTheFloatCompareOrder() {
         float[] v = {Float.NEGATIVE_INFINITY, -Float.MAX_VALUE, -1f, -Float.MIN_NORMAL, -Float.MIN_VALUE, -0.0f, 0.0f,
                 Float.MIN_VALUE, Float.MIN_NORMAL, 1f, Float.MAX_VALUE, Float.POSITIVE_INFINITY, Float.NaN};

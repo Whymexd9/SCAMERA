@@ -221,15 +221,17 @@ final class ScamDenoiseTables {
         // are distinct, so any sort gives the order of the stable sort, element by element.
         final long[] keys = new long[n];
         for (int i = 0; i < n; i++) keys[i] = ((long) sortableBits(blocks[8 * valid[i] + 1]) << 32) | i;
-        Arrays.sort(keys);
-        final int[] byT = new int[n];
-        for (int i = 0; i < n; i++) byT[i] = valid[(int) keys[i]];
         int m = Math.max(16, n / 4);
+        // P364: only the m lowest keys are read - selected (O(n)), then sorted: the same first m as the whole sort
+        selectSmallest(keys, n, m);
+        Arrays.sort(keys, 0, m);
+        final int[] byT = new int[m];
+        for (int i = 0; i < m; i++) byT[i] = valid[(int) keys[i]];
         float[] out = new float[11];
         float[] tmp = new float[m];
         for (int k = 0; k < 6; k++) {
             for (int i = 0; i < m; i++) tmp[i] = blocks[8 * byT[i] + 2 + k];
-            out[k] = median(tmp, m);
+            out[k] = medianSelect(tmp, m);
         }
         final long[] keysY = new long[m];
         for (int i = 0; i < m; i++) keysY[i] = ((long) sortableBits(blocks[8 * byT[i]]) << 32) | i;
@@ -244,11 +246,83 @@ final class ScamDenoiseTables {
                     int o = 8 * byY[i];
                     r[i] = blocks[o + 2 + s] / Math.max(blocks[o + 4 + 2 * c + s], 1e-6f);
                 }
-                out[6 + 2 * c + s] = (float) Math.sqrt(Math.max(median(r, d), 1e-4f));
+                out[6 + 2 * c + s] = (float) Math.sqrt(Math.max(medianSelect(r, d), 1e-4f));
             }
         }
         out[10] = m;
         return out;
+    }
+
+    /**
+     * P364: {@link #median} without the sort - the middle element(s) of a[0..n) in Arrays.sort's order (Float.compare: the
+     * order of {@link #sortableBits}) by selection. The same value, bit for bit (a is not changed).
+     */
+    static float medianSelect(float[] a, int n) {
+        final int[] c = new int[n];
+        for (int i = 0; i < n; i++) c[i] = sortableBits(a[i]);
+        final float hi = floatOfSortable(selectInt(c, n, n / 2));
+        if ((n & 1) == 1) return hi;
+        int lo = c[0]; // c[0 .. n/2) holds the n/2 smallest: the largest of them is the element below the middle
+        for (int i = 1; i < n / 2; i++) lo = Math.max(lo, c[i]);
+        return 0.5f * (floatOfSortable(lo) + hi);
+    }
+
+    /** P364: the element at k of a[0..n) in Arrays.sort's order (Float.compare), by selection (a is not changed). */
+    static float selectFloat(float[] a, int n, int k) {
+        final int[] c = new int[n];
+        for (int i = 0; i < n; i++) c[i] = sortableBits(a[i]);
+        return floatOfSortable(selectInt(c, n, k));
+    }
+
+    /** The inverse of {@link #sortableBits} (NaN: the canonical NaN). */
+    static float floatOfSortable(int key) {
+        return Float.intBitsToFloat(key ^ ((key >> 31) & 0x7fffffff));
+    }
+
+    /** Quickselect: a[0..n) reordered so that a[k] is the k-th smallest, a[0..k) <= a[k] <= a[k+1..n); returns a[k]. */
+    static int selectInt(int[] a, int n, int k) {
+        int lo = 0, hi = n - 1;
+        while (hi > lo) {
+            final int mid = (lo + hi) >>> 1;
+            // median of three as the pivot (sorted into a[lo], a[mid], a[hi])
+            if (a[mid] < a[lo]) { int t = a[mid]; a[mid] = a[lo]; a[lo] = t; }
+            if (a[hi] < a[lo]) { int t = a[hi]; a[hi] = a[lo]; a[lo] = t; }
+            if (a[hi] < a[mid]) { int t = a[hi]; a[hi] = a[mid]; a[mid] = t; }
+            final int pivot = a[mid];
+            int i = lo, j = hi;
+            while (i <= j) {
+                while (a[i] < pivot) i++;
+                while (a[j] > pivot) j--;
+                if (i <= j) { int t = a[i]; a[i] = a[j]; a[j] = t; i++; j--; }
+            }
+            if (k <= j) hi = j;
+            else if (k >= i) lo = i;
+            else break; // j < k < i: a[k] equals the pivot, in place
+        }
+        return a[k];
+    }
+
+    /** Quickselect on distinct-or-not long keys: a[0..n) reordered so that a[0..m) are its m smallest (in any order). */
+    static void selectSmallest(long[] a, int n, int m) {
+        if (m <= 0 || m >= n) return;
+        final int k = m - 1;
+        int lo = 0, hi = n - 1;
+        while (hi > lo) {
+            final int mid = (lo + hi) >>> 1;
+            if (a[mid] < a[lo]) { long t = a[mid]; a[mid] = a[lo]; a[lo] = t; }
+            if (a[hi] < a[lo]) { long t = a[hi]; a[hi] = a[lo]; a[lo] = t; }
+            if (a[hi] < a[mid]) { long t = a[hi]; a[hi] = a[mid]; a[mid] = t; }
+            final long pivot = a[mid];
+            int i = lo, j = hi;
+            while (i <= j) {
+                while (a[i] < pivot) i++;
+                while (a[j] > pivot) j--;
+                if (i <= j) { long t = a[i]; a[i] = a[j]; a[j] = t; i++; j--; }
+            }
+            if (k <= j) hi = j;
+            else if (k >= i) lo = i;
+            else break;
+        }
     }
 
     /**
