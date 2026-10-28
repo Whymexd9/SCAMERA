@@ -76,7 +76,11 @@ final class ScamLabBurst implements ScamTransport {
     }
     @Override public boolean hybrid() { return true; }
     @Override public boolean rgbHalfTransport() { return half; }
-    @Override public String burstTuning() { return burstTuning; }
+    /** The burst's own lines, then the same-result GPU variants this phone's driver died on (P377: the result stays the shot's). */
+    @Override public String burstTuning() {
+        final String learned = ScamHybridBurst.sameResultTuning();
+        return learned.isEmpty() ? burstTuning : burstTuning + (burstTuning.isEmpty() || burstTuning.endsWith("\n") ? "" : "\n") + learned;
+    }
     @Override public boolean keepable() { return false; }
     @Override public boolean stages() { return true; }
 

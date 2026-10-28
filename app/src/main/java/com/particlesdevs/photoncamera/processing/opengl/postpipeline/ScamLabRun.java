@@ -468,6 +468,7 @@ public final class ScamLabRun {
         ByteBuffer rgb = null;
         Parameters p = null;
         try {
+            ScamHybridBurst.loadLearned(context); // P377: the same-result variants this driver died on, before the burst's tuning
             final ScamLabBurst burst = new ScamLabBurst(ScamLab.burstOf(shot.dir), crop, shot.meta.optString("tuningBurst", ""));
             // what the worker merges with: the tuning file (the burst's own lines last, the last value of a name wins) and the CRE
             // source, a job marker beside it (ScamNeuralClient)

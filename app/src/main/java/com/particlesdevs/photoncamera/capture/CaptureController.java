@@ -5803,6 +5803,33 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private final Ettr mEttr = new Ettr();
     /** P356: why the boost is held now (logged once a change), null while it runs. */
     private String mEttrHeld = "off";
+    /** P377: the ISO was set by hand at the last meter (a change starts the boost over). */
+    private boolean mEttrIsoByHand;
+    /** P377: the boost or why there is none, for the stamp (MergeStamp's ETTR line: "+1.0", "✗ man" ...). */
+    private volatile String mEttrNote = "✗ wait";
+    /** P377: when the meter last logged its reading (one line every 2 s while ETTR runs). */
+    private long mEttrLoggedAtNs;
+    /** P377: the hold last said on the screen (null: none since ETTR ran or was switched off). */
+    private static String sEttrTold;
+    /** P377 (review): the frames whose shutter held within 3 % of the one before (the ISO by hand: metered once it is still). */
+    private int mEttrStill;
+    private double mEttrLastProduct;
+    /** More than the viewfinder loop's step interval (0.2 s and more): an exposure this still has arrived. */
+    static final int ETTR_STILL_FRAMES = 12;
+
+    /**
+     * P377 (review): whether a frame's exposure has settled for the ETTR meter - the camera's AE converged (AE on; a HAL that
+     * reports no state: still), or the exposure still for ETTR_STILL_FRAMES frames (AE off: the viewfinder loop; the ISO set by
+     * hand: the panel's free shutter).
+     */
+    private boolean ettrSettled(CaptureResult result, boolean isoByHand) {
+        final boolean still = mEttrStill >= ETTR_STILL_FRAMES;
+        if (isoByHand) return still;
+        final Integer aeMode = result.get(CaptureResult.CONTROL_AE_MODE), aeState = result.get(CaptureResult.CONTROL_AE_STATE);
+        if (aeMode == null || aeMode == CaptureResult.CONTROL_AE_MODE_OFF || aeState == null) return still;
+        return aeState == CaptureResult.CONTROL_AE_STATE_CONVERGED || aeState == CaptureResult.CONTROL_AE_STATE_LOCKED
+                || aeState == CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED;
+    }
 
     /**
      * P356: the exposure compensation index of the request: the user's {@code userIndex} plus the ETTR boost of {@code cc}, in
@@ -5819,24 +5846,62 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         return Ettr.index(userIndex, ettr.ev(), step.floatValue(), range.getLower(), range.getUpper());
     }
 
+    /** P377: the ETTR boost in force (EV, 0 none): ParamController's software loop brightens by it. */
+    public static float ettrEv(CaptureController cc) {
+        return cc == null || cc.mEttr == null || !PreferenceKeys.isEttr() ? 0f : cc.mEttr.ev();
+    }
+
+    /** P377: the shot's ETTR for its plan (the stamp's line), null with the switch off. */
+    @Nullable
+    private String ettrNote() {
+        return PreferenceKeys.isEttr() ? " | ETTR " + mEttrNote : null;
+    }
+
     /**
-     * P356 ETTR: meters a live RAW frame now and then and moves the boost (Ettr); the request gets the user's compensation plus it,
-     * the ISP viewfinder the matching display gain. The frames of a live RAW session (onMatchedLiveRaw) and of the plain ZSL
-     * session (the RAW viewfinder off: the ISP viewfinder shows the display gain). Off (Ettr.hold: the switch, a hand-set ISO /
-     * shutter, the «Движение» shutter ceiling, the own native AE, a vivo SDK session; a shot in progress): no boost.
+     * P356 / P377 ETTR: meters a live RAW frame now and then and moves the boost (Ettr) - the frames of a live RAW session
+     * (onMatchedLiveRaw) and of the plain ZSL session (the RAW viewfinder off). The automatic exposure gets it as light: shutter
+     * priority (ParamController.setEttrShutter) at the AE's own shutter x 2^boost and the compensation plus it, so the AE keeps its
+     * ISO; with the ISO set by hand the compensation alone, which the panel's free shutter takes. The ISP viewfinder shows the
+     * matching display gain. Off (Ettr.hold: the switch, a hand-set shutter, the «Движение» mode, the own native AE, a vivo SDK
+     * session, the forced stabilisation; a shot in progress): no boost.
      */
     private void ettrMeter(Image img, TotalCaptureResult result) {
+        final boolean isoByHand = paramController.manualIsoValue() != 0;
         final String held = Ettr.hold(PreferenceKeys.isEttr(), mNativeAe != null, mVivoSdkCapture != null,
-                paramController.motionCeilingActive(),
-                paramController.manualIsoValue() != 0 || paramController.manualPreviewShutterNs() != 0);
+                com.particlesdevs.photoncamera.settings.MotionMode.on() || paramController.motionCeilingActive(),
+                paramController.manualPreviewShutterNs() != 0, previewAeOffUnsafe());
         if (held != null && !held.equals(mEttrHeld)) Log.i("SCAM_AE", "ETTR held: " + held);
+        // said once per reason: not again at every lens or session (they start from "off"), again after the switch was off
+        if (held == null || "off".equals(held)) sEttrTold = null;
+        else if (!held.equals(sEttrTold)) {
+            sEttrTold = held;
+            ettrHeldMessage(held);
+        }
         mEttrHeld = held;
         if (held != null) {
-            if (mEttr.reset()) ettrApply(held);
+            mEttrNote = "✗ " + Ettr.holdCode(held);
+            ettrStop(held);
             return;
         }
+        // the panel's exposure changed under the boost (the ISO set by hand or back to auto): from 0 again
+        if (isoByHand != mEttrIsoByHand) {
+            mEttrIsoByHand = isoByHand;
+            ettrStop(isoByHand ? "ISO set by hand" : "ISO automatic again");
+        }
+        // something dropped the ETTR shutter behind the boost (the manual console closed), or wrote AE on over the viewfinder
+        // loop's AE-off request (a tap's metering, the 3A reset after a shot; review): from the AE again, which meters it
+        if (!isoByHand && mEttr.ev() > 0f && paramController.ettrShutterNs() == 0) ettrStop("the shutter priority was dropped");
+        if (!isoByHand && paramController.ettrLoopOverridden()) ettrStop("AE on over the ETTR loop (a tap or a 3A reset)");
+        // P377 (review): the exposure takes the boost on its own time (the viewfinder loop moves two thirds of the way 0.2 s apart,
+        // the camera's AE converges): only a settled frame is metered - a frame on its way asked for more again (pumping)
+        final Long frameShutter = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        final Integer frameIso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+        final double product = frameShutter == null || frameIso == null ? 0 : (double) frameShutter * frameIso;
+        mEttrStill = product > 0 && mEttrLastProduct > 0 && Math.abs(product / mEttrLastProduct - 1) <= 0.03 ? mEttrStill + 1 : 0;
+        mEttrLastProduct = product;
         if (mShotInProgress) return; // the series keeps the boost of the press
         if (!mEttr.due()) return;
+        if (!ettrSettled(result, isoByHand)) return;
         try {
             CameraCharacteristics c = mCameraCharacteristicsMap.get(physicalID);
             if (c == null) c = mCameraCharacteristics;
@@ -5847,22 +5912,110 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // P365 (review): the plain 16-bit samples - a RAW10 / RAW12 frame unpacked (meterSamples), never read as 16-bit
             final java.nio.ByteBuffer samples = meterSamples(img);
             if (samples == null) return;
-            final float p = Ettr.p999(samples, img.getWidth(), img.getHeight(), mMeterStride, black, levels.white, 4);
+            // P377: with the ultrashort frames the merge carries what the N frames clip: the brightest 0.5 % may pass the target
+            final float share = Ettr.tail(HybridPlan.bentoMode() > 0);
+            final float p = Ettr.tail(samples, img.getWidth(), img.getHeight(), mMeterStride, black, levels.white, 4, share);
             if (Float.isNaN(p)) return;
+            final Long shutter = result.get(CaptureResult.SENSOR_EXPOSURE_TIME);
             final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
-            final Range<Integer> isoRange = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
-            // headroom: the stops the AE still lengthens the shutter without the boost (below 4x the base ISO; above it a boost
-            // would only raise the ISO, no light) - judged on the un-boosted ISO, the boost kept within it (no 0 / +1 EV pumping)
-            final float headroom = Ettr.headroomEv(iso, isoRange == null ? null : isoRange.getLower(), mEttr.ev());
-            final boolean room = headroom > 0f;
+            final long cap = ettrCapNs(result);
+            final float before = mEttr.ev();
+            final String reading;
+            final String why;
+            boolean apply = false;
+            if (isoByHand) {
+                // the panel's ISO priority: the compensation goes into its free shutter, judged without the boost (no 0 / +1 EV
+                // pumping), within one ring frame
+                final float headroom = Ettr.shutterHeadroomEv(shutter, cap, before);
+                reading = String.format(java.util.Locale.ROOT, "tail %.1f%% %.3f, shutter %s ISO %s (ISO by hand), ceiling %.2f ms, room %.2f EV",
+                        100 * share, p, shutter, iso, cap / 1e6, headroom);
+                apply = mEttr.update(p, headroom);
+                why = mEttr.ev() > 0f ? null : !(headroom > 0f) ? "room" : p >= Ettr.CLIPPED ? "clip" : "hi";
+            } else {
+                // the automatic exposure: the AE's own shutter (a settled frame of the AE without a boost) grows by the boost - not
+                // one still on its way back from a boost just dropped (the next one would start from the boosted shutter)
+                final Integer aeMode = result.get(CaptureResult.CONTROL_AE_MODE);
+                if (shutter != null && iso != null && aeMode != null && aeMode != CaptureResult.CONTROL_AE_MODE_OFF) mEttr.learnRef(shutter, iso);
+                final long ref = mEttr.refNs();
+                if (ref <= 0) {
+                    mEttrNote = "✗ wait";
+                    return;
+                }
+                final float headroom = cap > ref ? (float) (Math.log((double) cap / ref) / Math.log(2)) : 0f;
+                // a settled frame has the boost in force: the AE keeps its brightness at it (a darker scene raises its ISO, the
+                // boost stays the light over what the AE alone gives)
+                final float want = mEttr.wanted(p, headroom);
+                long s = Ettr.shutterNs(ref, want, cap);
+                float got = Ettr.boostOf(s, ref);
+                if (got < Ettr.MIN_STEP_EV) { // not worth taking the AE over (whole half periods of the mains left none)
+                    got = 0f;
+                    s = 0;
+                }
+                reading = String.format(java.util.Locale.ROOT, "tail %.1f%% %.3f, shutter %s ISO %s, AE shutter %.2f ms, ceiling %.2f ms, wants %+.2f EV",
+                        100 * share, p, shutter, iso, ref / 1e6, cap / 1e6, want);
+                // review: a ceiling that came down (the HAL reports motion) is a hard limit, not a change under the minimal step
+                final boolean overCap = before > 0f && paramController.ettrShutterNs() > cap;
+                if (Math.abs(want - before) >= Ettr.MIN_STEP_EV || overCap) {
+                    final boolean changed = mEttr.deliver(got);
+                    if (changed || overCap) {
+                        // the compensation first when the boost grows (review: the priority AE would otherwise cut the ISO for a frame
+                        // or two at the longer shutter), the shutter first when it shrinks
+                        if (got > before) ettrApply(reading + String.format(java.util.Locale.ROOT, " -> %.2f ms", s / 1e6));
+                        paramController.setEttrShutter(s, mEttr.refProduct());
+                        if (got <= before) ettrApply(reading + (s > 0 ? String.format(java.util.Locale.ROOT, " -> %.2f ms", s / 1e6) : " -> the AE"));
+                    }
+                }
+                why = mEttr.ev() > 0f ? null : !(headroom > 0f) ? "room" : p >= Ettr.CLIPPED ? "clip"
+                        : want >= Ettr.MIN_STEP_EV ? "band" : "hi";
+            }
+            // a boost to apply, or a compensation something else wrote over it (the console's EV reset)
             final CaptureRequest.Builder b = mPreviewRequestBuilder;
             final Integer now = b == null ? null : b.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
-            final boolean changed = mEttr.update(p, headroom);
-            if (changed || now == null || now != ettrIndex(this, paramController.effectiveEv()))
-                ettrApply(String.format(java.util.Locale.ROOT, "p99.9 %.3f iso %s room %b (%.2f EV)", p, iso, room, headroom));
+            if (apply || now == null || now != ettrIndex(this, paramController.effectiveEv())) ettrApply(reading);
+            mEttrNote = why == null ? String.format(java.util.Locale.ROOT, "+%.1f", mEttr.ev()) : "✗ " + why;
+            final long t = System.nanoTime();
+            if (t - mEttrLoggedAtNs > 2_000_000_000L) {
+                mEttrLoggedAtNs = t;
+                Log.i("SCAM_AE", String.format(java.util.Locale.ROOT, "ETTR meter: %s; boost %+.2f EV (%s)", reading, mEttr.ev(), mEttrNote));
+            }
         } catch (RuntimeException e) {
             Log.w("SCAM_AE", "ETTR meter: " + e);
         }
+    }
+
+    /** P377: the boost back to 0 and the AE free again (the shutter priority dropped); logged and applied when it changed. */
+    private void ettrStop(String why) {
+        final boolean changed = mEttr.reset();
+        paramController.setEttrShutter(0);
+        if (changed) ettrApply(why);
+    }
+
+    /** P377: a hold the owner can change, said once on the screen (the switch was on and nothing happened: the bug). */
+    private static void ettrHeldMessage(String held) {
+        final String text;
+        switch (held) {
+            case "hand-set shutter":
+                text = Lang.t("ETTR: выдержка задана вручную — ETTR не добавит света", "ETTR: the shutter is set by hand, ETTR cannot add light");
+                break;
+            case "the motion mode (short shutters)":
+                text = Lang.t("ETTR: в режиме «Движение» выдержка короткая — ETTR ждёт", "ETTR: the Motion mode keeps short shutters, ETTR waits");
+                break;
+            case "forced stabilisation":
+                text = Lang.t("ETTR: недоступен при принудительной стабилизации", "ETTR: unavailable under the forced stabilisation");
+                break;
+            default:
+                return;
+        }
+        com.particlesdevs.photoncamera.util.UiMessages.info(text);
+    }
+
+    /** P377: the longest ETTR shutter: one ring frame (the viewfinder's AE range), shorter while the HAL reports motion. */
+    private long ettrCapNs(@Nullable CaptureResult r) {
+        final CaptureRequest.Builder b = mPreviewRequestBuilder;
+        final Range<Integer> fps = b == null ? null : b.get(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE);
+        final long frame = fps != null && fps.getUpper() != null && fps.getUpper() > 0 ? 1_000_000_000L / fps.getUpper() : 33_333_333L;
+        final long motion = HalMotion.motionCapNs(r);
+        return motion > 0 ? Math.min(frame, motion) : frame;
     }
 
     /**
@@ -5885,11 +6038,13 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     /**
      * P356: no boost and no ETTR display gain from now on - the camera closed or a new session (each meters its own from 0; a
      * session that never meters - video, a burst - kept the last one: its ISP frames x2^-boost, the boost added to every EV
-     * change). Before the session's request is built (setupPreview reads ettrIndex).
+     * change). Before the session's request is built (setupPreview reads ettrIndex). P377: the ETTR shutter priority with it.
      */
     private void resetEttr() {
         mEttr.reset();
         mEttrHeld = "off";
+        mEttrNote = "✗ wait";
+        paramController.clearEttr();
         com.particlesdevs.photoncamera.ui.camera.views.viewfinder.ViewfinderGain.setDisplayEv(0f);
     }
 
@@ -7317,7 +7472,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             HybridPlan.setMotionCap(0);
         }
         // P219: every ultrashort frame of the plan, one long frame (HybridPlan.fullResLongFrames)
-        plan = plan.withLongFrames(HybridPlan.fullResLongFrames(true, Math.max(1, profile.nativeBlock), PreferenceKeys.isHybridMosaicRemosaic()));
+        plan = plan.withLongFrames(HybridPlan.fullResLongFrames(true, Math.max(1, profile.nativeBlock), PreferenceKeys.isHybridMosaicRemosaic()))
+                .withNote(ettrNote()); // P377
         // P198: a ring smaller than the frames asked (96 MB a frame: 4-10 of them) takes the rest of the N right after the shutter -
         // the merge keeps the frame count of the series before P198 (fewer frames left more lattice and noise), the first frames
         // still come from before the press. P232 (speed-ux A2): that top-up is sized by the caller after the memory budget
@@ -7373,7 +7529,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 }
             }
             // P219: every ultrashort frame of the plan, one long frame (HybridPlan.fullResLongFrames); the N take the slots freed
-            plan = plan.withLongFrames(HybridPlan.fullResLongFrames(true, block, PreferenceKeys.isHybridMosaicRemosaic()));
+            plan = plan.withLongFrames(HybridPlan.fullResLongFrames(true, block, PreferenceKeys.isHybridMosaicRemosaic())).withNote(ettrNote()); // P377
             final int extras = plan.requests.size();
             final int frames = budget.applyAsInt(Math.max(1, requested) + extras);
             plan = plan.withLeadingNormals(Math.max(1, frames - extras));
@@ -8123,6 +8279,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // P219: a full-resolution session (Pixel / Snapdragon MAXIMUM_RESOLUTION) asks for one long frame; its colour block
                 // is the stream's (0 here: «Наш ремозаик» off keeps every frame for the binned merge)
                 if(mFullResSession) plan=plan.withLongFrames(HybridPlan.fullResLongFrames(true,0,PreferenceKeys.isHybridMosaicRemosaic()));
+                plan=plan.withNote(ettrNote()); // P377: the shot's ETTR (the stamp's line, the log)
                 hybridPlanHolder[0]=plan;
                 Log.i("SCAM_CAPTURE",plan.description);
                 for(ImageFrame normal:mPendingZslNormalFrames) {

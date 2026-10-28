@@ -363,6 +363,11 @@ public final class HybridPlan {
         return new HybridPlan(out, nShutterNs, nIso, description + " | FULLRES: " + max + " of " + longs + " long frames");
     }
 
+    /** P377: this plan with {@code note} after its description (null: this plan). */
+    public HybridPlan withNote(@androidx.annotation.Nullable String note) {
+        return note == null || note.isEmpty() ? this : new HybridPlan(requests, nShutterNs, nIso, description + note);
+    }
+
     /**
      * P198: this plan with {@code n} more N frames (its N exposure) ahead of its own requests: a 50 MP ZSL shot whose ring holds
      * fewer N frames than asked takes the rest right after the shutter (the plan's roles keep their order after them).

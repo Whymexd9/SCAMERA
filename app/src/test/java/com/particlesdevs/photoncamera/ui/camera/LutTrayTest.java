@@ -282,4 +282,51 @@ public class LutTrayTest {
     private static org.robolectric.shadows.ShadowSeekBar shadowOf(android.widget.SeekBar seek) {
         return org.robolectric.Shadows.shadowOf(seek);
     }
+
+    /**
+     * Owner's video 2026-10-28 («мигает при открытии и закрытии»): camera_container animates its children's visibility changes
+     * (animateLayoutChanges) - its own 300 ms fade ran over the tray's: the closed tray came back in full and faded again, the
+     * opening pane faded in empty. The tray's own show / hide never starts the parent's transition; the parent keeps it.
+     */
+    @Test
+    public void openingAndClosingSkipTheParentsLayoutTransition() {
+        // the parent's transition as ViewGroup calls it on a child's visibility change: which fades it would run, per child
+        final java.util.List<String> fades = new java.util.ArrayList<>();
+        android.animation.LayoutTransition transition = new android.animation.LayoutTransition() {
+            @Override public void showChild(ViewGroup parent, View child, int oldVisibility) {
+                if (isTransitionTypeEnabled(APPEARING)) fades.add("appear:" + child.getTag());
+                super.showChild(parent, child, oldVisibility);
+            }
+            @Override public void hideChild(ViewGroup parent, View child, int newVisibility) {
+                if (isTransitionTypeEnabled(DISAPPEARING)) fades.add("disappear:" + child.getTag());
+                super.hideChild(parent, child, newVisibility);
+            }
+        };
+        android.app.Activity activity = org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
+        FrameLayout root = new FrameLayout(context);
+        root.setLayoutTransition(transition);
+        TextView pill = new TextView(context);
+        pill.setTag("pill");
+        LinearLayout box = new LinearLayout(context);
+        box.setTag("tray");
+        box.setVisibility(View.GONE);
+        root.addView(pill, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        root.addView(box, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        activity.setContentView(root);
+        LutTray tray = new LutTray(pill, box, null, () -> { });
+        tray.setOpen(true);
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(1, java.util.concurrent.TimeUnit.SECONDS);
+        assertEquals(View.VISIBLE, box.getVisibility());
+        tray.setOpen(false);
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(1, java.util.concurrent.TimeUnit.SECONDS);
+        assertEquals(View.GONE, box.getVisibility());
+        assertTrue("the parent ran no fade of its own on the tray: " + fades, fades.isEmpty());
+        assertSame("the parent keeps its transition", transition, root.getLayoutTransition());
+        assertTrue(transition.isTransitionTypeEnabled(android.animation.LayoutTransition.APPEARING));
+        assertTrue(transition.isTransitionTypeEnabled(android.animation.LayoutTransition.DISAPPEARING));
+        assertEquals("closed and at rest: shown in full next time", 1f, box.getAlpha(), 0f);
+        // the parent's other children keep its fades
+        pill.setVisibility(View.GONE);
+        assertEquals(java.util.Collections.singletonList("disappear:pill"), fades);
+    }
 }

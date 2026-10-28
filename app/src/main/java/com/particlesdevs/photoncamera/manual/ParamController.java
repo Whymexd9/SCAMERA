@@ -96,9 +96,11 @@ public class ParamController implements Observer {
             return;
         }
         final boolean isoManual = manualIso(), shutterManual = manualShutter();
-        final int mode = ExposurePriority.mode(isoManual, shutterManual);
+        // P377: ETTR's shutter (the automatic exposure only): shutter priority at it, the AE's compensation keeps the ISO
+        final boolean ettr = !isoManual && !shutterManual && ettrShutterNs > 0;
+        final int mode = ExposurePriority.mode(isoManual, shutterManual || ettr);
         final int iso = isoManual ? (int) manualParamModel.getCurrentISOValue() : 0;
-        final long shutter = shutterManual ? previewShutter((long) manualParamModel.getCurrentExposureValue()) : 0;
+        final long shutter = shutterManual ? previewShutter((long) manualParamModel.getCurrentExposureValue()) : ettr ? ettrShutterNs : 0;
         if (mode == ExposurePriority.NONE) {
             stopPriority(builder);
             if (!isoManual) {
@@ -109,7 +111,7 @@ public class ParamController implements Observer {
                 builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, shutter);
             }
         } else if (ExposurePriority.halSupports(availablePriorityModes(), mode) && !halRefused[mode]) {
-            if (!halPriority || priority != mode) Log.i(TAG, "priority " + modeName(mode) + ": the camera's priority AE");
+            if (!halPriority || priority != mode) Log.i(TAG, "priority " + modeName(mode) + ": the camera's priority AE" + (ettr ? " (ETTR)" : ""));
             loop = null;
             SceneLuma.setWanted(false);
             if (qcomPriority) setQcomPriorityOff(builder);
@@ -123,7 +125,7 @@ public class ParamController implements Observer {
         } else if (qcomPriorityAvailable() && !qcomRefused[mode]) {
             // P87: the Qualcomm vendor priority (as MotionCam's "vendor priority fallback"): AE on, select_priority 0 = ISO
             // (use_iso_exp_priority and use_iso_value = the ISO), 1 = exposure time (use_iso_exp_priority = ns, use_iso_value 0)
-            if (!qcomPriority || priority != mode) Log.i(TAG, "priority " + modeName(mode) + ": the Qualcomm vendor priority");
+            if (!qcomPriority || priority != mode) Log.i(TAG, "priority " + modeName(mode) + ": the Qualcomm vendor priority" + (ettr ? " (ETTR)" : ""));
             loop = null;
             SceneLuma.setWanted(false);
             if (halPriority) setHalPriorityOff(builder);
@@ -144,9 +146,10 @@ public class ParamController implements Observer {
             halPriority = false;
             if (loop == null || loop.mode != mode) {
                 // from the camera's AE (its last values) or from the other priority (its learned brightness)
+                loopFresh = loop == null;
                 loop = loop == null ? new ExposurePriority.Loop(mode, Math.max(1, captureController.mPreviewIso),
                         Math.max(1, captureController.mPreviewExposureTime)) : new ExposurePriority.Loop(mode, loop);
-                Log.i(TAG, "priority " + modeName(mode) + ": viewfinder loop from ISO " + loop.iso() + " " + loop.shutterNs() + " ns");
+                Log.i(TAG, "priority " + modeName(mode) + ": viewfinder loop from ISO " + loop.iso() + " " + loop.shutterNs() + " ns" + (ettr ? " (ETTR)" : ""));
             }
             loop.setFixed(iso, shutter, isoMin(), isoMax(), shutterMin(), shutterMax());
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
@@ -202,7 +205,19 @@ public class ParamController implements Observer {
             }
             lumaSource = source;
         }
-        if (loop.measured(luma, evStops(), isoMin(), isoMax(), shutterMin(), shutterMax())) {
+        // P377: plus the ETTR boost - after a new loop's first measurement, which learns the target at the exposure in force (the
+        // AE's, never boosted yet: the loop's shutter took the boost at the same exposure, an ISO priority's EV boost comes from here);
+        // a target learned again (another meter, P212h) is learned at the boosted exposure, with the boost (review: twice else)
+        final double ev;
+        final boolean ettrLoop = ettrShutterNs > 0 && !manualIso() && !manualShutter() && ettrAeProduct > 0;
+        if (Double.isNaN(loop.targetLuma()) && ettrLoop) {
+            // learned at the exposure in force against the AE's own (review: the loop's start could not always keep it - the
+            // lowest ISO, frames already brightened): the boost the target already holds is counted, the rest comes from ettrEv
+            final double inForce = loop.iso() * (loop.shutterNs() / 1e9);
+            ev = evStops() + Math.log(inForce / ettrAeProduct) / Math.log(2);
+        } else ev = evStops() + (Double.isNaN(loop.targetLuma()) && loopFresh ? 0 : CaptureController.ettrEv(captureController));
+        loopFresh = false;
+        if (loop.measured(luma, ev, isoMin(), isoMax(), shutterMin(), shutterMax())) {
             builder.set(CaptureRequest.SENSOR_SENSITIVITY, loop.iso());
             builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, loop.shutterNs());
             appliedAtNs = System.nanoTime();
@@ -223,6 +238,70 @@ public class ParamController implements Observer {
     /** The ceiling holds the viewfinder request (AE off for the camera AE, not a hand-set exposure). */
     public boolean motionCeilingActive() {
         return motionActive;
+    }
+
+    /** P377: ETTR's shutter of the automatic exposure (0: none): shutter priority at it (CaptureController's ETTR meter). */
+    private volatile long ettrShutterNs;
+
+    public long ettrShutterNs() {
+        return ettrShutterNs;
+    }
+
+    /**
+     * P377 (review): the viewfinder loop holds ETTR's shutter (AE off) but the request has AE on again - a tap's metering, the 3A
+     * reset after a shot, unlockFocus: the compensation alone would act, as gain (the bug). The ETTR meter starts over then.
+     */
+    public synchronized boolean ettrLoopOverridden() {
+        if (ettrShutterNs <= 0 || loop == null || halPriority || qcomPriority || manualIso() || manualShutter()) return false;
+        final CaptureRequest.Builder b = captureController.mPreviewRequestBuilder;
+        final Integer ae = b == null ? null : b.get(CaptureRequest.CONTROL_AE_MODE);
+        return ae != null && ae != CaptureRequest.CONTROL_AE_MODE_OFF;
+    }
+
+    /**
+     * P377: ETTR lengthens the automatic exposure's shutter to {@code ns} (0: the AE alone again): shutter priority at it, as a
+     * hand-set shutter (the camera's priority AE, the Qualcomm vendor priority, else the viewfinder loop), the compensation the
+     * boost so the AE keeps its ISO. Nothing while ISO or shutter is set by hand: the panel owns the exposure then.
+     */
+    public synchronized void setEttrShutter(long ns) {
+        setEttrShutter(ns, 0);
+    }
+
+    /**
+     * {@code aeProduct}: the AE's own exposure the boost is measured from (ISO x s; 0 unknown) - the viewfinder loop learns its target
+     * against it (review: a loop started at the AE's lowest ISO, which could not drop by the boost, or from frames already brightened
+     * by the compensation, learned the boosted brightness as the AE's and added the boost again: clipped, then pumping).
+     */
+    public synchronized void setEttrShutter(long ns, double aeProduct) {
+        final long next = Math.max(0, ns);
+        ettrAeProduct = next > 0 ? Math.max(0, aeProduct) : 0;
+        if (next == ettrShutterNs) return;
+        ettrShutterNs = next;
+        if (!manualIso() && !manualShutter()) applyExposure();
+    }
+
+    /** P377: the AE's exposure behind the ETTR shutter in force (ISO x s, 0: unknown or none). */
+    private volatile double ettrAeProduct;
+
+    /**
+     * P377: a new session or the camera closing: no ETTR shutter, and its priority state gone without a request (the session
+     * builds its own; the panel's own priority stays).
+     */
+    public synchronized void clearEttr() {
+        if (ettrShutterNs == 0) return;
+        ettrShutterNs = 0;
+        ettrAeProduct = 0;
+        if (manualIso() || manualShutter()) return;
+        final CaptureRequest.Builder b = captureController.mPreviewRequestBuilder;
+        if (b != null) {
+            stopPriority(b);
+            captureController.resetPreviewAEMode();
+        } else {
+            halPriority = qcomPriority = false;
+            loop = null;
+            SceneLuma.setWanted(false);
+        }
+        priority = ExposurePriority.NONE;
     }
 
     /**
@@ -573,6 +652,8 @@ public class ParamController implements Observer {
     private int halMisses;
     private ExposurePriority.Loop loop;
     private long appliedAtNs, lumaUsedNs;
+    /** P377: the loop has not measured yet since it was made (its exposure is the AE's: its target is learned without a boost). */
+    private boolean loopFresh;
     /** P212h: the SceneLuma source the loop's target was learned on (-1: none yet). */
     private int lumaSource = -1;
 
@@ -661,9 +742,10 @@ public class ParamController implements Observer {
         if (builder == null || model == null) return;
         final boolean isoManual = model.getCurrentISOValue() != ManualParamModel.ISO_AUTO,
                 shutterManual = model.getCurrentExposureValue() != ManualParamModel.EXPOSURE_AUTO;
+        final boolean ettr = !isoManual && !shutterManual && ettrShutterNs > 0; // P377
         final ExposurePriority.Loop softLoop = loop;
-        if (isoManual || shutterManual) {
-            if (ExposurePriority.mode(isoManual, shutterManual) == ExposurePriority.NONE) {
+        if (isoManual || shutterManual || ettr) {
+            if (ExposurePriority.mode(isoManual, shutterManual || ettr) == ExposurePriority.NONE) {
                 builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
                 builder.set(CaptureRequest.SENSOR_SENSITIVITY, (int) model.getCurrentISOValue());
                 builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, previewShutter((long) model.getCurrentExposureValue()));
@@ -731,6 +813,8 @@ public class ParamController implements Observer {
                     halPriority = qcomPriority = false;
                     loop = null;
                     SceneLuma.setWanted(false);
+                    ettrShutterNs = 0; // P377: the ETTR meter starts over (it sees the shutter dropped)
+                    ettrAeProduct = 0;
                 }
                 whiteBalanceKelvin=0;
                 applyWhiteBalance(captureController.mPreviewRequestBuilder);

@@ -2,6 +2,7 @@ package com.particlesdevs.photoncamera.ui.camera;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.animation.LayoutTransition;
 import android.animation.TimeInterpolator;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
@@ -73,7 +74,7 @@ final class TrayMotion {
         final Object prev = tray.getTag(R_TAG_LIFT);
         if (prev instanceof ValueAnimator) ((ValueAnimator) prev).cancel(); // a leaving tray called back
         tray.animate().cancel();
-        tray.setVisibility(View.VISIBLE);
+        setShown(tray, true);
         if (!tray.isAttachedToWindow() || !ValueAnimator.areAnimatorsEnabled()) { // nothing on screen to move: the end state
             rest(tray);
             return;
@@ -99,20 +100,44 @@ final class TrayMotion {
         });
         tray.setTag(R_TAG_LIFT, lift);
         lift.start();
+        // the sections rise with the pane, one after another but from its first frame (owner's video 2026-10-28: a pane that
+        // came in before its sections read as an empty plate flashing)
         final float rise = UiScale.dpF(c, 10);
         for (int i = 0; i < tray.getChildCount(); i++) {
             final View child = tray.getChildAt(i);
             child.animate().cancel();
             child.setAlpha(0f);
             child.setTranslationY(rise);
-            child.animate().alpha(1f).translationY(0f).setStartDelay(40L + 28L * i).setDuration(360).setInterpolator(EASE_OUT).start();
+            child.animate().alpha(1f).translationY(0f).setStartDelay(24L * i).setDuration(300).setInterpolator(EASE_OUT).start();
         }
     }
 
     /**
-     * The tray leaves (owner, 2026-10-28: the exit was too short to be seen): its sections go first, the lowest first, then the
-     * pane sinks, shrinks toward its bottom and fades - the entry played backwards, a little quicker (~0.3 s). {@code gone} runs at
-     * its end unless it was opened again meanwhile.
+     * The tray shown or hidden without its parent's layout transition (owner's video 2026-10-28: «мигает при открытии и
+     * закрытии»): camera_container animates its children's visibility changes (animateLayoutChanges) with a 300 ms fade of its
+     * own on top of this motion - the closed tray, put back to rest for its next entry, came back in full and faded a second time,
+     * and the opening pane faded in empty. Only the tray's own change skips it; the parent's transition stays for the others.
+     */
+    static void setShown(View tray, boolean shown) {
+        final int v = shown ? View.VISIBLE : View.GONE;
+        if (tray.getVisibility() == v) return;
+        final ViewGroup parent = tray.getParent() instanceof ViewGroup ? (ViewGroup) tray.getParent() : null;
+        final LayoutTransition t = parent == null ? null : parent.getLayoutTransition();
+        final int[] types = {LayoutTransition.APPEARING, LayoutTransition.DISAPPEARING, LayoutTransition.CHANGE_APPEARING,
+                LayoutTransition.CHANGE_DISAPPEARING};
+        final boolean[] was = new boolean[types.length];
+        if (t != null) for (int i = 0; i < types.length; i++) {
+            was[i] = t.isTransitionTypeEnabled(types[i]);
+            if (was[i]) t.disableTransitionType(types[i]);
+        }
+        tray.setVisibility(v);
+        if (t != null) for (int i = 0; i < types.length; i++) if (was[i]) t.enableTransitionType(types[i]);
+    }
+
+    /**
+     * The tray leaves (owner, 2026-10-28: the exit was too short to be seen): the pane with its sections sinks, shrinks toward its
+     * bottom and fades as one (~0.3 s; sections fading first left an empty plate that read as a flash, owner's video 2026-10-28).
+     * {@code gone} runs at its end unless it was opened again meanwhile.
      */
     static void disappear(ViewGroup tray, Runnable gone) {
         final Object lift = tray.getTag(R_TAG_LIFT);
@@ -125,14 +150,6 @@ final class TrayMotion {
         final Context c = tray.getContext();
         tray.setPivotX(tray.getWidth() / 2f);
         tray.setPivotY(tray.getHeight());
-        // the sections: fade and drop a little, bottom-up, 20 ms apart
-        final int n = tray.getChildCount();
-        final float drop = UiScale.dpF(c, 8);
-        for (int i = 0; i < n; i++) {
-            final View child = tray.getChildAt(i);
-            if (child.getVisibility() != View.VISIBLE) continue;
-            child.animate().alpha(0f).translationY(drop).setStartDelay(20L * (n - 1 - i)).setDuration(150).setInterpolator(EASE_IN).start();
-        }
         // the pane: sinks and shrinks on one animator (from where it is now: an exit during the entry carries on smoothly)
         final float y0 = tray.getTranslationY(), s0 = tray.getScaleX(), sink = UiScale.dpF(c, 28);
         final ValueAnimator down = ValueAnimator.ofFloat(0f, 1f);
@@ -149,7 +166,7 @@ final class TrayMotion {
         down.start();
         // its fade a little later, so the motion is seen before it goes
         tray.animate().cancel();
-        tray.animate().alpha(0f).setDuration(220).setStartDelay(90).setInterpolator(EASE_IN)
+        tray.animate().alpha(0f).setDuration(240).setStartDelay(60).setInterpolator(EASE_IN)
                 .setListener(new AnimatorListenerAdapter() {
                     private boolean cancelled;
                     @Override public void onAnimationCancel(Animator a) { cancelled = true; }

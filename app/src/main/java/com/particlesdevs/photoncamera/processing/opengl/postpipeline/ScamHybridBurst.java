@@ -936,7 +936,19 @@ public final class ScamHybridBurst implements ScamTransport {
     static final String STEP_OUTLIERS = "outlier tests", STEP_RIM = "rim pass", STEP_BENTO = "Bento colour pass",
             STEP_CHROMA = "chroma pass", STEP_CRE = "CRE motion", STEP_BLEND = "Bento blend", STEP_US_FILL = "ultrashort fill",
             /** The cells pass's P364 build (kHybCells): the vivo X200 Pro's Mali-G925 compiler died on it; kHybCellsPlain instead. */
-            STEP_CELLS = "own-quad cells";
+            STEP_CELLS = "own-quad cells",
+            /** P377: the ultrashort blend's per-stage programs (blend0 - blend4): one program with the stage uniform instead. */
+            STEP_BLEND_STAGES = "blend stage programs",
+            /** P377: the blend's GPU-built tile lists (its indirect dispatches): every pixel instead. */
+            STEP_BLEND_LISTS = "blend tile lists";
+    /**
+     * P377 (owner, 2026-10-28: «всё что работает на адрено на гпу, на мали тоже должно работать на гпу. При этом чтобы никто из них не
+     * пострадал и результат не ухудшился»): the GPU variants P364 kept to Adreno (the own-quad cells, the blend's stage programs and
+     * tile lists) run on every GPU; each has a variant with the same result (md5) to fall back to. A driver that dies on one leaves
+     * it out for good on this build of the phone and of the app ({@link #storeLearned}): a crash once, not at every start.
+     */
+    static final java.util.Set<String> SAME_RESULT_STEPS = new java.util.HashSet<>(java.util.Arrays.asList(STEP_CELLS,
+            STEP_BLEND_STAGES, STEP_BLEND_LISTS));
     /** Crash site that leaves no GPU merge (a required program, the context): the session goes to the CPU fallback. */
     static final String STEP_GPU = "GPU";
 
@@ -951,6 +963,8 @@ public final class ScamHybridBurst implements ScamTransport {
         if (avoidedSteps.contains(STEP_US_FILL)) t.append("mosaicUsFill 0\n");
         if (avoidedSteps.contains(STEP_CHROMA)) t.append("chromaDiff 0\n");
         if (avoidedSteps.contains(STEP_CELLS)) t.append("cellsPlain 1\n");
+        if (avoidedSteps.contains(STEP_BLEND_STAGES)) t.append("blendStages 0\n");
+        if (avoidedSteps.contains(STEP_BLEND_LISTS)) t.append("blendLists 0\n");
         return t.toString();
     }
 
@@ -971,7 +985,8 @@ public final class ScamHybridBurst implements ScamTransport {
             // a thread without a stage of its own (a driver's compiler thread): the GPU program being compiled, nothing else
             if (stage.equals("-") && l > s) {
                 String last = line.substring(l + 6).trim();
-                stage = last.startsWith("GPU compile ") ? last : "-";
+                // P377 (review): the blend's lists run on the driver's threads too (Mali's command threads die with stage=-)
+                stage = last.startsWith("GPU compile ") || last.startsWith("GPU merge (blend lists)") ? last : "-";
             }
             return stage.isEmpty() || stage.equals("-") ? null : stage;
         }
@@ -997,6 +1012,8 @@ public final class ScamHybridBurst implements ScamTransport {
                 case "rim": return STEP_RIM;
                 case "bento": return STEP_BENTO;
                 case "blend": return STEP_BLEND;
+                // P377: one of the blend's stage programs (the blend itself stays, as one program)
+                case "blend0": case "blend1": case "blend2": case "blend3": case "blend4": return STEP_BLEND_STAGES;
                 case "mosaicUs": case "mosaicUsT": return STEP_US_FILL;
                 case "chroma": return STEP_CHROMA;
                 // the same pass without the own-quad fill (owner's log 2026-10-28: a Mali compiler crash); cellsPlain itself is required
@@ -1005,6 +1022,7 @@ public final class ScamHybridBurst implements ScamTransport {
             }
         }
         if (stage.startsWith("GPU context") || stage.startsWith("GPU init") || stage.startsWith("EGL")) return STEP_GPU;
+        if (stage.startsWith("GPU merge (blend lists)")) return STEP_BLEND_LISTS; // P377: the worker marks their dispatches
         return null;
     }
 
@@ -1024,6 +1042,76 @@ public final class ScamHybridBurst implements ScamTransport {
         if (report.contains("WORKER EXIT: signal 9 ")) return false; // a low-memory kill: the ordinary retry
         final String stage = crashStage(report);
         return stage == null || STEP_GPU.equals(stepOf(stage));
+    }
+
+    /**
+     * P377 (review): the tuning lines of the same-result steps left out (the lab's re-merges: a burst recorded before the driver's
+     * crash was learned carries none, and its «now» run would die on the variant again).
+     */
+    static String sameResultTuning() {
+        StringBuilder t = new StringBuilder();
+        if (avoidedSteps.contains(STEP_CELLS)) t.append("cellsPlain 1\n");
+        if (avoidedSteps.contains(STEP_BLEND_STAGES)) t.append("blendStages 0\n");
+        if (avoidedSteps.contains(STEP_BLEND_LISTS)) t.append("blendLists 0\n");
+        return t.toString();
+    }
+
+    /** The preferences of the steps learned for good ({@link #SAME_RESULT_STEPS}) and the build they hold for. */
+    private static final String LEARNED_PREFS = "scam_gpu_learned", LEARNED_BUILD = "build", LEARNED_STEPS = "steps";
+    private static volatile boolean learnedLoaded;
+
+    /** The phone's and the app's build: a new driver (a system update) or new programs (an update of the app) try again. */
+    static String learnedBuild(android.content.Context context) {
+        long version = 0;
+        try {
+            version = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(
+                    context.getPackageManager().getPackageInfo(context.getPackageName(), 0));
+        } catch (Exception ignored) {
+        }
+        return android.os.Build.FINGERPRINT + "|" + version;
+    }
+
+    /** P377: the same-result steps learned on this build before (once a process; nothing when the build changed). */
+    static void loadLearned(android.content.Context context) {
+        if (learnedLoaded || context == null) return;
+        learnedLoaded = true;
+        try {
+            final android.content.SharedPreferences prefs = context.getSharedPreferences(LEARNED_PREFS, android.content.Context.MODE_PRIVATE);
+            if (!learnedBuild(context).equals(prefs.getString(LEARNED_BUILD, null))) return;
+            for (String step : prefs.getStringSet(LEARNED_STEPS, java.util.Collections.emptySet()))
+                if (SAME_RESULT_STEPS.contains(step) && avoidedSteps.add(step))
+                    Log.i("SCAM_HDR", "Hybrid: " + step + " off on this build (a driver crash learned before)");
+        } catch (RuntimeException e) {
+            Log.w("SCAM_HDR", "Hybrid: learned GPU steps not read: " + e);
+        }
+    }
+
+    /** P377: the same-result steps left out now, kept for this build. */
+    static void storeLearned(android.content.Context context) {
+        if (context == null) return;
+        final java.util.Set<String> keep = new java.util.HashSet<>();
+        for (String step : avoidedSteps) if (SAME_RESULT_STEPS.contains(step)) keep.add(step);
+        if (keep.isEmpty()) return;
+        try {
+            context.getSharedPreferences(LEARNED_PREFS, android.content.Context.MODE_PRIVATE).edit()
+                    .putString(LEARNED_BUILD, learnedBuild(context)).putStringSet(LEARNED_STEPS, keep).apply();
+        } catch (RuntimeException e) {
+            Log.w("SCAM_HDR", "Hybrid: learned GPU steps not kept: " + e);
+        }
+    }
+
+    /**
+     * P377: the prewarm worker (ScamNeuralClient.prewarmHybridGpu) died: a same-result step it names is left out before the first
+     * shot needs it (the shot no longer pays the crash and the retry); anything else is the shot's to learn. True when learned.
+     */
+    static boolean learnFromPrewarm(android.content.Context context, String report) {
+        final String step = stepOf(crashStage(report));
+        if (step == null || !SAME_RESULT_STEPS.contains(step)) return false;
+        loadLearned(context);
+        final boolean added = avoidedSteps.add(step);
+        Log.w("SCAM_HDR", "Hybrid: the prewarm died in " + crashStage(report) + "; " + step + " off" + (added ? "" : " (already off)"));
+        storeLearned(context);
+        return added;
     }
 
     /** Learns from a failed worker: true when this crash named a step the next attempt can leave out (or the GPU is unusable). */
@@ -1052,6 +1140,7 @@ public final class ScamHybridBurst implements ScamTransport {
      * CPU (bilinear demosaic in the worker's units).
      */
     public static ByteBuffer process(Context context, List<ImageFrame> frames, Parameters p, boolean mergedDng) throws Exception {
+        loadLearned(context); // P377: before the first tuning text of the process
         seriesNotice = null;
         lastDngMosaic = 1;
         lastStreamBlock = 1;
@@ -1213,6 +1302,7 @@ public final class ScamHybridBurst implements ScamTransport {
                 return cpuSingle(burst);
             }
             learnFromCrash(report);
+            storeLearned(context); // P377: a same-result variant the driver died on stays off on this build
             if (gpuUnusable != null) return cpuSingle(burst);
             if (!retry) Log.w("SCAM_HDR", "Hybrid conservative retry skipped (" + (first instanceof WorkerWatchdog.StalledException
                     ? "the worker hung waiting for the GPU" : "the worker timed out") + ")");
@@ -1238,7 +1328,9 @@ public final class ScamHybridBurst implements ScamTransport {
                         Log.e("SCAM_HDR", "Hybrid conservative merge failed too: " + second.getMessage());
                         previous = ScamNeuralClient.lastJobReport;
                         previousWhy = String.valueOf(second.getMessage());
-                        if (!conservativeRetry(second) || !learnFromCrash(previous) || gpuUnusable != null) break;
+                        final boolean learned = learnFromCrash(previous);
+                        storeLearned(context);
+                        if (!conservativeRetry(second) || !learned || gpuUnusable != null) break;
                     } finally {
                         ScamNeuralClient.carryReport = null;
                     }

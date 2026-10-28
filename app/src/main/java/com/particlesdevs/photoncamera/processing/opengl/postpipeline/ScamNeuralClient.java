@@ -196,7 +196,10 @@ public final class ScamNeuralClient {
         final String tuning;
         try{
             if(!com.particlesdevs.photoncamera.util.WorkerSpawn.available(app))return;
-            tuning=com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText();
+            // P377: the variants a driver died on before (this build) left out here too: the prewarm builds what the shot will use
+            ScamHybridBurst.loadLearned(app);
+            final String base=com.particlesdevs.photoncamera.settings.PreferenceKeys.hybridTuningText(),avoided=ScamHybridBurst.avoidedTuning();
+            tuning=avoided.isEmpty()?base:base+(base.isEmpty()||base.endsWith("\n")?"":"\n")+avoided;
         }catch(RuntimeException e){Log.w("SCAM_HDR","HYBRID PREWARM: "+e);return;}
         if(!prewarmed.add(b+"|"+tuning.hashCode()))return;
         final long started=android.os.SystemClock.elapsedRealtime();
@@ -212,10 +215,20 @@ public final class ScamNeuralClient {
             java.util.Collections.addAll(args,"--gpu-prewarm",dir.getAbsolutePath(),String.valueOf(b));
             child=com.particlesdevs.photoncamera.util.WorkerSpawn.start(app,args,com.particlesdevs.photoncamera.util.WorkerSpawn.environment(app,dir));
             String result="no report";
+            // P377: the worker's lines kept (bounded) for a crash: the variant it died on is learned before the first shot
+            final StringBuilder report=new StringBuilder();
             try(BufferedReader lines=new BufferedReader(new InputStreamReader(child.output))){
-                String line;while((line=lines.readLine())!=null)if(line.startsWith("HYBRID PREWARM"))result=line;
+                String line;while((line=lines.readLine())!=null){
+                    if(line.startsWith("HYBRID PREWARM"))result=line;
+                    if(report.length()<16000)report.append(line).append('\n');
+                }
             }
             if(!child.waitFor(60000)){child.destroy();result="timed out";}
+            else if(child.exitValue()>128){
+                result="died on signal "+(child.exitValue()-128);
+                report.append("WORKER EXIT: signal ").append(child.exitValue()-128).append('\n');
+                if(ScamHybridBurst.learnFromPrewarm(app,report.toString()))prewarmed.remove(b+"|"+tuning.hashCode());
+            }
             Log.i("SCAM_HDR",result+" (worker "+(android.os.SystemClock.elapsedRealtime()-started)+" ms)");
         }catch(Exception e){
             if(child!=null)child.destroy();

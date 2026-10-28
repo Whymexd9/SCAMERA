@@ -249,7 +249,7 @@ public final class LutTray {
             bindPill();
             bindTabs();
         });
-        tray.setVisibility(View.GONE);
+        TrayMotion.setShown(tray, false);
         bindPill();
     }
 
@@ -675,7 +675,7 @@ public final class LutTray {
             main.removeCallbacks(hideHint);
             TrayMotion.disappear(tray, () -> {
                 if (open) return;
-                tray.setVisibility(View.GONE);
+                TrayMotion.setShown(tray, false);
                 TrayMotion.rest(tray);
                 hideHintNow();
             });

@@ -73,6 +73,20 @@ public class MergeStampTest {
         assertArrayEquals(new String[]{"ES ✗ nomrg", "L ✗ nomrg"}, MergeStamp.lines(PLAN, -1, -1, -1, -1, null));
     }
 
+    /** P377: with ETTR on the plan carries its boost or why there is none - a third line; without it two, as before. */
+    @Test
+    public void ettrLine() {
+        assertArrayEquals(new String[]{"ES ✓3", "L ✓3", "ETTR +1.0"}, MergeStamp.lines(PLAN + " | ETTR +1.0", 3, 3, 3, 3, APPLIED));
+        assertEquals("ETTR ✗ man", MergeStamp.ettrLine(PLAN + " | ETTR ✗ man"));
+        assertEquals("the 50 MP plan's suffix after it", "ETTR ✗ sdk", MergeStamp.ettrLine(PLAN + " | ETTR ✗ sdk + 4 N after the shutter"));
+        assertEquals(null, MergeStamp.ettrLine(PLAN));
+        assertEquals(null, MergeStamp.ettrLine(null));
+        assertEquals(2, MergeStamp.lines(PLAN, 3, 3, 3, 3, APPLIED).length);
+        // the note does not read as a reason of the ES / L lines
+        assertEquals(MergeStamp.esLine(PLAN, 0, 0, APPLIED), MergeStamp.esLine(PLAN + " | ETTR ✗ clip", 0, 0, APPLIED));
+        assertEquals(MergeStamp.longLine(PLAN, 0, 0, APPLIED), MergeStamp.longLine(PLAN + " | ETTR ✗ clip", 0, 0, APPLIED));
+    }
+
     @Test
     public void drawnIntoTheTopRightCorner() {
         final Bitmap photo = Bitmap.createBitmap(400, 300, Bitmap.Config.ARGB_8888);

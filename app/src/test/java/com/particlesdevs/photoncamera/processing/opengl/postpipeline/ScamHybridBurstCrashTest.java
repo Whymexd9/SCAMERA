@@ -118,6 +118,43 @@ public class ScamHybridBurstCrashTest {
      * cells: glCompileShader») and the session went to the base frame alone (a pink blown lamp). The next attempt takes the plain
      * build (cellsPlain 1) instead of turning the GPU merge off; only a crash on that one leaves no GPU merge.
      */
+    /**
+     * P377: the blend's stage programs and tile lists run on every GPU now (Adreno only before); a crash on one leaves only it out -
+     * the blend as one program / on every pixel, the same result - never the blend or the GPU merge.
+     */
+    @Test public void aCrashOnABlendVariantTakesItsSameResultBuild() {
+        for (String stage : new String[]{"blend0", "blend1", "blend2", "blend3", "blend4"})
+            assertEquals(stage, ScamHybridBurst.STEP_BLEND_STAGES, ScamHybridBurst.stepOf("GPU compile " + stage + ": glCompileShader"));
+        assertEquals("the blend program itself", ScamHybridBurst.STEP_BLEND, ScamHybridBurst.stepOf("GPU compile blend: glCompileShader"));
+        assertEquals(ScamHybridBurst.STEP_BLEND_LISTS, ScamHybridBurst.stepOf("GPU merge (blend lists)"));
+        assertNull(ScamHybridBurst.stepOf("GPU merge"));
+        final String report = X200_PRO_REPORT.replace("WORKER EXIT:",
+                "WORKER CRASH: signal 11 SIGSEGV code=1 addr=0x8 tid=1 thread=libscamera_work stage=GPU merge (blend lists) last=GPU merge"
+                + " (blend lists)\nWORKER EXIT:");
+        assertEquals("GPU merge (blend lists)", ScamHybridBurst.crashStage(report));
+        assertFalse(ScamHybridBurst.gpuInitDeath(12_000_000L, report));
+        // review: the driver runs the indirect dispatches on its own threads (Mali's command threads die with stage=-)
+        final String driverThread = X200_PRO_REPORT.replace("WORKER EXIT:",
+                "WORKER CRASH: signal 11 SIGSEGV code=1 addr=0x8 tid=9 thread=mali-cmar stage=- last=GPU merge (blend lists)\nWORKER EXIT:");
+        assertEquals(ScamHybridBurst.STEP_BLEND_LISTS, ScamHybridBurst.stepOf(ScamHybridBurst.crashStage(driverThread)));
+        // a driver thread after another stage still names none
+        assertNull(ScamHybridBurst.crashStage(driverThread.replace("last=GPU merge (blend lists)", "last=GPU merge")));
+        ScamHybridBurst.avoidedSteps.clear();
+        try {
+            ScamHybridBurst.avoidedSteps.add(ScamHybridBurst.STEP_BLEND_STAGES);
+            assertEquals("blendStages 0\n", ScamHybridBurst.avoidedTuning());
+            ScamHybridBurst.avoidedSteps.add(ScamHybridBurst.STEP_BLEND_LISTS);
+            assertEquals("blendStages 0\nblendLists 0\n", ScamHybridBurst.avoidedTuning());
+            // review: the lab's re-merges take the same-result lines (and only those: a step that changes the photo stays out)
+            ScamHybridBurst.avoidedSteps.add(ScamHybridBurst.STEP_RIM);
+            assertEquals("blendStages 0\nblendLists 0\n", ScamHybridBurst.sameResultTuning());
+        } finally {
+            ScamHybridBurst.avoidedSteps.clear();
+        }
+        assertTrue(ScamHybridBurst.SAME_RESULT_STEPS.contains(ScamHybridBurst.STEP_CELLS));
+        assertFalse("a step that changes the photo is not kept for good", ScamHybridBurst.SAME_RESULT_STEPS.contains(ScamHybridBurst.STEP_BLEND));
+    }
+
     @Test public void aCrashOnTheCellsPassTakesThePlainBuild() {
         final String report = X200_PRO_REPORT.replace("WORKER EXIT:",
                 "WORKER CRASH: signal 11 SIGSEGV code=1 addr=0x8 tid=28996 thread=libscamera_work stage=GPU compile cells: glCompileShader"

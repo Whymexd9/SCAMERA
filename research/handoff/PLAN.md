@@ -8299,3 +8299,119 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   indoors); C7 B2 on real LEDs (backlight, fan ring: hue kept, no seam, B&W grey); C8 a tungsten DNG in Lightroom reads As Shot
   ~2850 - 3200 K; C9 X8U camera 4 with isp_ccm 0 / SCAM off no longer ~40 % desaturated; C10 manual-Kelvin matrix (follow the chosen
   white or the measured light) - owner A/B under tungsten.
+
+### P377 - ETTR as light, not gain; the tray's open / close without the parent's fades (owner, 2026-10-28: a video «Исправь анимацию открытия и закрытия подменю … Оно мигает при открытии и закрытии»; «ETTR вообще не работает, разницы никакой нет что в ручных, что в авто»; log c03f8767, X200 Ultra build f118c571): DONE in code (host), not tried on a phone
+- Tray: camera_container (and textureHolder) has animateLayoutChanges: its LayoutTransition faded the tray in on VISIBLE (an empty
+  plate flashed before TrayMotion's own rise) and out on GONE after TrayMotion's exit (the content went, the empty plate sank, the
+  whole tray came back and faded again). TrayMotion.setShown switches the tray's visibility with the parent's four transition types
+  off for that one change (on again at once: the rest of the screen keeps its fades); the exit is one fade of the tray (sink,
+  shrink, fade) instead of per-child fades followed by the tray's. LutTrayTest.openingAndClosingSkipTheParentsLayoutTransition
+  (a LayoutTransition recording showChild / hideChild; fails on the old code with [appear:tray, disappear:tray]).
+- ETTR, the owner's log (13:29:43-51, ETTR on, one shot): the AE at 8.333 ms ISO 1883 throughout, the plan N=8.333ms*ISO1883, no
+  "ETTR boost" line, only "ETTR held: off" at the end. Causes: (1) the boost was an exposure compensation only - the vivo HAL's AE
+  keeps 1/120 s indoors and answers it with gain (no light; the 4x-base-ISO rule meant to stop that read the declared base 1144 of
+  the X200 Ultra, so it did not); (2) the tail metered was the 99.9th percentile of the brightest channel: a lamp in the frame
+  clipped it and every meter put the boost at 0 (P356's own OPPO note: «indoor lamp scene p99.9 0.997-1.000 -> boost 0 as
+  intended»; for this scene not provable - (4)); (3) a hand-set ISO held it entirely; (4) nothing logged the meter's reading.
+- DONE: capture/Ettr + CaptureController.ettrMeter + ParamController. The automatic exposure: the AE's own shutter (a settled AE
+  frame without a boost, Ettr.learnRef) x 2^boost - at most one ring frame (1e9 / the viewfinder AE range's top: 33.3 ms at [20, 30])
+  and the HAL's motion-safe exposure (HalMotion), whole mains half periods where the AE's shutter is one (8333326 ns -> 16.67 / 25 /
+  33.3 ms, 10 ms -> 20 / 30 ms), boosts under 0.3 EV not taken - as shutter priority (ParamController.setEttrShutter: the camera's
+  priority AE, the Qualcomm vendor priority, else the P82 viewfinder loop, each with its miss fallback), the compensation +boost so
+  the AE keeps the ISO; the loop learns its target at the AE's exposure and brightens by the boost after (evStops + ettrEv). A
+  clipped tail starts over from the AE (a new reference). With the ISO set by hand: the compensation, which the panel's free shutter
+  takes, within one ring frame judged without the boost (Ettr.shutterHeadroomEv; the capture-ettr-oscillation test re-done on it).
+  Held (Ettr.hold): the switch, the own native AE, a vivo SDK session, «Движение» (mode or ceiling), a hand-set shutter, the forced
+  stabilisation; a hold the owner can change said once on the screen (Lang.t). The tail: the brightest 0.5 % of the quads with the
+  ultrashort frames planned (bento != 0), else 0.1 %. Every 2 s while it runs a "ETTR meter:" line (tail, shutter, ISO, AE shutter,
+  ceiling, wanted / in force). A new session, the camera closing and the console hiding drop the ETTR shutter (clearEttr / the panel's
+  reset; the meter starts over). The stamp: the shot's plan carries " | ETTR +1.0" / " | ETTR ✗ code" (HybridPlan.withNote, the hybrid
+  and 50 MP plans), MergeStamp's third line (codes man / mm / nae / sdk / stab / room / clip / hi / band / wait).
+- Review round (an independent read of the diff): (1) the viewfinder loop brings the boost late (learn, then 2/3 steps 0.2 s apart):
+  metered against the boost asked for, a frame not yet brightened asked for more, overshoot, clip, 0 - pumping; now the auto path
+  judges a frame by its own exposure (Ettr.actualEv: shutter x ISO against the AE reference's), the ISO-by-hand path meters only
+  once the free shutter held still for ETTR_STILL_FRAMES (12); (2) a tap / the 3A reset / unlockFocus wrote AE on over the loop's
+  AE-off request (the compensation alone, as gain): ParamController.ettrLoopOverridden -> the meter starts over; (3) the reference
+  goes with a boost dropped to 0 (and with the ISO kept: a scene darker or brighter moves the shutter); (4) a target learned again
+  under the boost (the RAW / ISP meter switch) learns with it (loopFresh), not twice; the compensation is set before a longer
+  shutter, after a shorter one. Not done: the 50 MP PSL plan's no-plan branch carries no ETTR note (a vivo SDK session holds ETTR).
+- Second review round (a workflow: four reviewers, each finding put to a skeptic; 12 found, 7 held): (a) the viewfinder loop at the
+  AE's lowest ISO (its start cannot lower the ISO by the boost) or started from frames the compensation had brightened learned the
+  boosted brightness as the AE's and added the boost again - clipped, then pumping: ParamController.setEttrShutter takes the AE's
+  exposure (Ettr.refProduct) and a new / relearning ETTR loop learns its target with the boost it already holds counted; (b) judged
+  by its own exposure, the AE's answer to a darker scene (its ISO) went into the boost and the compensation both (+2, clipped) or a
+  brighter one stuck a stop under the target: the frame's own exposure (actualEv) is gone, only settled frames are metered
+  (ettrSettled: the AE converged, or the exposure still 12 frames - the loop, the ISO set by hand) and judged against the boost in
+  force; (c) a ceiling that came down under the boost (the HAL's motion-safe exposure, the range) is enforced under the minimal step
+  too. Tests: the lowest-ISO loop (no second boost), frames on their way with a moving ISO not metered, a darker scene keeps +1, a
+  lower ceiling enforced, the range's 60 fps ceiling (16.67 ms: the test no longer passes with a hard-coded 33.3 ms), a moving free
+  shutter not metered with the ISO set by hand.
+- Tests: EttrTest (the owner's 8.33 ms scene -> 16.67 ms +1 EV, half periods, the ring-frame cap, the shutter headroom without the
+  boost and its no-pumping run, the 0.5 % tail past a lamp, the holds), EttrSessionTest (the plain session's shutter priority and the
+  AE again when off / closed, one ring frame, the owner's scene and a lamp switched on, the loop brightening by the boost, ISO by hand
+  through the compensation, a hand-set shutter held), MergeStampTest.ettrLine.
+- Needs a phone: does the X200 Ultra honour the Qualcomm shutter priority (log "priority shutter: the Qualcomm vendor priority
+  (ETTR)" without "gives ... the next way") or does the loop hold it; the ring frames at 16.7 - 33 ms indoors (hand shake per frame,
+  the merge's sharpness); the viewfinder's brightness with the boost (ISP: display gain; RAW: its own meter); the photo's noise with
+  ETTR on / off in the same scene.
+
+### P378 - the sky's tone like the reference app's (owner, 2026-10-28: «Добавь в план, исправить тонмапинг чтобы у нас небо было схожее с фото с Арк камеры. при этом чтобы в остальных сценариях ничего не сломалось»; zip 44dcd82c-xx.zip): OPEN (planned)
+- The zip holds two of our photos only (SCA_20261028_113851 / _114230, OPPO Find X8 Ultra, ISO 100, 1/3100 and 1/3900 s, 8.67 mm,
+  an overcast autumn sky over a block of flats; the second with the ES / L stamp «ES ✗ align», «L ✓3»). Then (same day): the
+  reference app's photo beside ours of the same view, a sun shot of ours, SCAMERA-debug_2.txt (build f118c571, OPPO PKJ110 = Find X8
+  Ultra, camera 0) and a Google Drive link to the burst (drive file 1REmnCewg22LxN2rMsxQsswa-S3JrXBUs, shared by the owner after a
+  sign-in wall): NCH v12, 1.66 GB, 4096 x 3072 RGGB, white 1023 / black 64, 26 frames - 20 N at ISO 100 (ring, -633 .. 0 ms), 3
+  long x2 at ISO 200, 3 ultrashort x0.175 at ISO 100. Host replay (llvmpipe, app tuning): «HYBRID BENTO: applied (success)», md5
+  635a02c2 - the input for this item's lab / host A/B (the WHY tone and its sky term on it, before / after).
+- Side by side (reference first): its clouds neutral grey-white with modelled darker bases, the blue gaps a medium blue, the sky
+  as a whole darker than ours; the buildings, trees and ground clearly brighter (shadows lifted, lower global contrast), colours
+  neutral. Ours: clouds cream / lavender-pink (the top left lavender, the right warm), flat and bright, a softened glow over them,
+  the blue paler; the ground much darker. I.e. our tone spends the range on the sky's brightness and leaves the shadows low; the
+  reference keeps the sky down (cloud modelling) and lifts the shadows.
+- The sun shot (debug_2, 11:56:55): «hybrid plan: N=0.113ms*ISO100 clip=0.0061 ... us skipped (sensor floor)» - the N frames at
+  the sensor's shortest exposure, no ultrashort frames possible (stamp «ES ✗ floor | L ✓3»); WHY: p50 0.0098, p98 1.35, p995 4.0,
+  ae 1.985, deficit 2.52. The sun's disc and its halo clipped in every frame: a pink / orange ring around the sun (the clipped
+  halo's colour inpainted from its warm rim and the lens flare). Part of this item: a clipped region with no ultrashort data at
+  all (the floor, a refused Bento) keeps a neutral core and a neutral ramp out of it (P376's eased core, wider), not a hue.
+- Ours, measured (sky = the top 2 - 30 % of the frame, linear Y): median 0.62 / 0.47, 95th percentile 0.81 / 0.83 - a bright, flat
+  sky (64 px block std of Y 0.011 - 0.013: little cloud modelling); the bright clouds warm (sRGB R-G +0.04 / +0.05, B-G -0.04 / -0.05:
+  a cream / lavender cast at the top left), the blue gaps pale (0.65 / 0.72 / 0.80). The ground dark under it (the WHY tone holds
+  the sky up and leaves the shadows low).
+- Approach (to verify against the reference photo first): a sky term in the WHY tone - a soft sky mask (bright, low texture, upper
+  frame, connected to the top edge; no faces, no lamps) that lowers the sky's tone (more of the highlight range for the clouds),
+  local contrast in the clouds (the pyramid fusion's highlight band), clouds held neutral (the warm / lavender cast: the white
+  balance and the matrix on near-clipped cloud whites, see the opposed-highlight path of P368 / P376), the blue gaps' saturation;
+  and «ES ✗ align» checked on this shot (why the ultrashort frames did not reach the merge on a bright sky - the sky's highlights
+  then come from the N frames alone).
+- Gate: nothing changes without a detected sky (the mask empty: the tone bit-identical on the lab's non-sky references - night,
+  indoor, lamps, portraits, film on); the lab's before / after on sky shots; check_tone_ops and the WHY host checks.
+
+### P379 - Mali: every GPU pass of Adreno on the GPU too, the same result (owner, 2026-10-28: «По поводу обработки на мали, всё что работает на адрено на гпу, на мали тоже должно работать на гпу. При этом чтобы никто из них не пострадал и результат не ухудшился»): DONE in code (host), not tried on a phone
+- Audit: no vendor or SoC gate sends a stage to the CPU. The worker's renderer branches (scam-hybrid.h) chose GPU variants only:
+  kHybCells (P364 own-quad fill) vs kHybCellsPlain, the blend's per-stage programs (P364), the blend's GPU-built tile lists (P364),
+  the shared-memory reject / dilate (P76 SHARED_TILES); the F6 field is on the GPU everywhere since P364 (auto); the app side's
+  RGBA32F upload (P48) is a format choice. Logs: X300 Pro (Mali-G1-Ultra, e8100faa, 15 shots) every merge program compiled and ran,
+  «HYBRID LOCAL ALIGN: GPU», «stats=gpu» - the same stages as the X200 Ultra's Adreno 830; the chroma median's CPU / GPU split is
+  the shot's (still vs hand-held, P364), not the vendor's. The only Mali CPU path was P376's: the G925 compiler's crash -> the GPU
+  merge off -> «cpu-single».
+- DONE: kHybCells, the blend's stage programs (named blend0 - blend4 now) and its tile lists on every GPU (tuning cellsPlain 1 /
+  blendStages 0 / blendLists 0: the same-result builds). The shared-memory reject / dilate stay Adreno-only: P77's Mali-G57 timings
+  with them: dilate +20 %, reject slower - the plain ones are Mali's faster GPU code (no CPU, same result to float rounding, P76).
+  A driver death on a same-result variant (ScamHybridBurst.SAME_RESULT_STEPS: «own-quad cells», «blend stage programs», «blend tile
+  lists»; the worker marks «GPU merge (blend lists)» around their dispatches) leaves that variant out for good on this build of the
+  phone and the app (prefs scam_gpu_learned: Build.FINGERPRINT + versionCode; a system or app update tries again), and the prewarm
+  worker learns it before any shot (ScamNeuralClient.prewarmRun: a signal exit -> learnFromPrewarm; its tuning carries what was
+  learned): the X200 Pro pays the cells crash once in the background, not a shot's retry at every start.
+- Host (llvmpipe = the non-Adreno path): the 7 control bursts and 3 synthetic ultrashort bursts (sbr / sff / sfl: Bento applied,
+  the blend's 5 stage programs and lists ran) md5-identical against HEAD (the old Mali path: cellsPlain, one blend program, every
+  pixel), the fallback tuning likewise; and the owner's real 26-frame sky burst of P378 (OPPO Find X8 Ultra 4096 x 3072, 20 N + 3
+  long + 3 ultrashort, «HYBRID BENTO: applied», blend0 - blend4 compiled) 635a02c2 on both. ScamHybridBurstCrashTest (blend stages / lists steps), ScamHybridLearnedTest (kept for the
+  build, another build tries again, a prewarm crash elsewhere is the shot's to learn).
+- Review round: a blend-list crash on a driver thread (stage=- last=GPU merge (blend lists): Mali's command threads) is learned
+  (crashStage takes that last too), and the worker keeps that mark until the last strip is read back (the driver runs the indirect
+  dispatches later); the lab's re-merges carry the same-result lines learned on this phone (ScamLabBurst.burstTuning +
+  ScamHybridBurst.sameResultTuning; an X200 Pro burst recorded before would else die on kHybCells in every «now» run).
+- Not measured: the Mali speed of the three variants (no Mali here; the Arm offline compiler was downloaded but running it was
+  refused by this session's permissions). Phone: the X200 Pro's log - «compile cells», then «own-quad cells off on this build» once;
+  the X300 Pro's - blend0 - blend4 compiled; «hybrid_profile 1» per-pass times before / after on both.
+

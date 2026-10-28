@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
  * nclip (too little clipping), hole (a large inpainting hole), usclip (the ES frame itself clipped), mv12% (motion in the mask),
  * nshort (not the shortest), tune (off in the tuning), align (not aligned); L: sh28% (the sharpest share of the base below the
  * gate), tet (the exposure ratio above the limit), mv (motion), align. nomrg: no merge for this photo; ?: the report says
- * nothing.
+ * nothing. P377: a third line «ETTR +1.0» / «ETTR ✗ code» with ETTR on ({@link #ettrLine}).
  */
 public final class MergeStamp {
     /** The switch (Система → Диагностика); a debug key: one for every lens (ModuleProfiles.isLocal). */
@@ -46,9 +46,30 @@ public final class MergeStamp {
         }
     }
 
-    /** Both lines of a shot: its plan's description, the burst's ES / L frames captured and sent (-1: no merge), the report. */
+    /**
+     * Both lines of a shot: its plan's description, the burst's ES / L frames captured and sent (-1: no merge), the report; P377 a
+     * third with ETTR on ({@link #ettrLine}).
+     */
     public static String[] lines(@Nullable String plan, int esCaptured, int esSent, int longCaptured, int longSent, @Nullable String report) {
-        return new String[]{esLine(plan, esCaptured, esSent, report), longLine(plan, longCaptured, longSent, report)};
+        final String es = esLine(plan, esCaptured, esSent, report), l = longLine(plan, longCaptured, longSent, report);
+        final String ettr = ettrLine(plan);
+        return ettr == null ? new String[]{es, l} : new String[]{es, l, ettr};
+    }
+
+    /**
+     * P377 (owner, 2026-10-28: «ETTR вообще не работает»): the shot's ETTR from its plan (CaptureController writes " | ETTR +1.0"
+     * or " | ETTR ✗ code"), null with the switch off. Codes: man (the shutter set by hand), mm («Движение»), nae / sdk / stab (the
+     * own native AE, a vivo SDK session, the forced stabilisation), room (the shutter at one ring frame or the HAL's motion-safe
+     * one), clip (the brightest quads clipped: from the AE again), hi (they are at the target already), band (the mains half
+     * periods leave no whole step), wait (not metered yet).
+     */
+    @Nullable
+    static String ettrLine(@Nullable String plan) {
+        final int at = plan == null ? -1 : plan.indexOf(" | ETTR ");
+        if (at < 0) return null;
+        final String[] words = plan.substring(at + " | ETTR ".length()).trim().split("\\s+");
+        if (words.length == 0 || words[0].isEmpty()) return "ETTR ?";
+        return words[0].equals("✗") ? "ETTR ✗ " + (words.length > 1 ? words[1] : "?") : "ETTR " + words[0];
     }
 
     /** The ES line: {@code plan} the plan's description (null: none), {@code captured} / {@code sent} the burst's ES frames. */

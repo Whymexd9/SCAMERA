@@ -451,8 +451,13 @@ struct HybridTuning {
                                  // the centre) merges with cellClip 0; 0 = never (cellClip as set)
     float hotSigma=5.f;          // fixed-pattern (hot/warm/dead) sites: deviation from the median of the 8 same-colour neighbours in
                                  // the mean of hotFrames normal frames at the same SENSOR site, in sigma of that mean; 0 = off
-    int cellsPlain=0;            // 1: the cells pass without P364's own-quad tile fill (kHybCellsPlain) on every GPU; off Adreno it is
-                                 // always that one (the vivo X200 Pro's Mali-G925 compiler died on kHybCells, owner's log 2026-10-28)
+    int cellsPlain=0;            // 1: the cells pass without P364's own-quad tile fill (kHybCellsPlain); the app's step after a GPU
+                                 // compiler died on kHybCells (the vivo X200 Pro's Mali-G925, owner's log 2026-10-28). P377 (owner:
+                                 // «всё что работает на адрено на гпу, на мали тоже должно работать на гпу»): kHybCells on every GPU
+    int blendStages=1;           // P377: the ultrashort blend as one program per stage (P364, Adreno only before) on every GPU; 0: one
+                                 // program with the stage uniform (the app's step after a compiler died on a stage program)
+    int blendLists=1;            // P377: the blend's stages 1 - 3 on the GPU-built tile lists (P364, Adreno only before) on every GPU;
+                                 // 0: every pixel (the app's step after a worker died in that dispatch)
     int hotFrames=8;             // normal frames averaged for the fixed-pattern test (base included)
     float hotBaseSigma=7.f;      // transient (RTS) outliers of the base frame alone (it skips rejection), sigma of one frame; 0 = off
     float hotCross=0.35f;        // a real point or line also lifts the adjacent sites of the other colours: above this share of the
@@ -940,6 +945,9 @@ inline bool hybridAuto2x(const HybridInput& input,const HybridTuning& tune,bool 
 
 // The job's «cellsPlain 1» (the app's step after a worker died compiling kHybCells): HybridGpu takes kHybCellsPlain on Adreno too.
 inline bool& hybridCellsPlain(){static bool on=false;return on;}
+// P377: the job's «blendStages 0» (the app's step after a compiler died on a blend stage program): one blend program, the stage a
+// uniform - the same result
+inline bool& hybridBlendStagesOff(){static bool off=false;return off;}
 
 inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::function<void(const std::string&)>& report) {
     HybridTuning t;
@@ -986,7 +994,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSharpLo",&t.shastaSharpLo)||set("shastaSharpHi",&t.shastaSharpHi)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
-            ||set("cellClip",nullptr,&t.cellClip)||set("staticShift",&t.staticShift)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("cellsPlain",nullptr,&t.cellsPlain)||set("hotBaseSigma",&t.hotBaseSigma)
+            ||set("cellClip",nullptr,&t.cellClip)||set("staticShift",&t.staticShift)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("cellsPlain",nullptr,&t.cellsPlain)||set("blendStages",nullptr,&t.blendStages)||set("blendLists",nullptr,&t.blendLists)||set("hotBaseSigma",&t.hotBaseSigma)
             ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("hotCap",&t.hotCap)||set("bentoScam",nullptr,&t.bentoScam)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
             ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)||set("s61Fine",&t.s61Fine)||set("s61NightScale",&t.s61NightScale)||set("s61NightKeyLo",&t.s61NightKeyLo)||set("s61NightKeyHi",&t.s61NightKeyHi)
             ||set("s61TensorNoise",&t.s61TensorNoise)||set("s61GdNoise",&t.s61GdNoise)||set("s61MinMotion",&t.s61MinMotion)
@@ -1023,6 +1031,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
         break;
     }
     hybridCellsPlain()=t.cellsPlain!=0;
+    hybridBlendStagesOff()=t.blendStages==0;
     return t;
 }
 
@@ -1739,8 +1748,8 @@ void main(){
 // SIGSEGV in glCompileShader on kHybCells, every worker of the session, and every shot went to the base frame alone): the tile
 // filled by sabreQuad61 and the cell by cellU, as before P364 - the values P364 takes from the sites it read are the same
 // (sabreQuad61 / cellU of those sites, the same expressions in the same order), without the array argument the function
-// changes, the out bool and the nested index arithmetic. Off Adreno always (P76: the other tiles are Adreno-only too); on Adreno
-// after such a crash (cellsPlain 1). The rows and the CELL_FINE build as kHybCells.
+// changes, the out bool and the nested index arithmetic. On any GPU after such a crash (cellsPlain 1: the app's step; P377 - before,
+// every GPU but Adreno took it always). The rows and the CELL_FINE build as kHybCells.
 static const char* kHybCellsPlain=R"(
 uniform int cellFrameU; // first donor of this dispatch - 1
 uniform int dcovU;      // 1: DCov holds every donor cell and gets the 6.1 precision (kHybCells)
@@ -5081,7 +5090,7 @@ class HybridGpu {
     GLuint natMeanProgram=0,natFlagsProgram=0,natMarkProgram=0,mosaicProgram=0,natTable[2]{};
     // P364: the other kHybCells build (cellsProgram is the one without the fine tensor until a merge needs it, cellsFine)
     GLuint cellsOther=0;bool cellsFine=false;
-    // kHybCells, or kHybCellsPlain off Adreno and after a crash compiling kHybCells (cellsPlain 1); its name in the reports
+    // kHybCells, or kHybCellsPlain after a crash compiling kHybCells (cellsPlain 1; P377: every GPU the same); its name in the reports
     const char* cellsSource=nullptr;const char* cellsName="cells";
     // P214k: the plausibility cap of the fixed-pattern test (kHybFlagCap / kHybFlagPrune; compiled with the outlier programs)
     GLuint capProgram=0,pruneProgram=0;
@@ -5411,7 +5420,7 @@ public:
     double passMs[8]{};            // flags, guide, cells, reject, dilate, merge, readback, mark
     std::string renderer,limits,compileMs;size_t maxStorageBlock=0;
     int64_t maxGroupsX=0;          // GL_MAX_COMPUTE_WORK_GROUP_COUNT[0] (>= 65535): every dispatch's x extent / 8 must stay within it
-    bool adrenoGpu=false;          // P364: the renderer is an Adreno (the ultrashort blend's tile lists)
+    bool adrenoGpu=false;          // P364: the renderer is an Adreno (P377: the shared-memory reject / dilate only, P76 / P78)
     std::function<void(const std::string&)> trace;
     struct Frames {
         int w=0,h=0,cfa=0;
@@ -5537,7 +5546,8 @@ public:
             } else if(early)early("HYBRID GPU: outlier tests off, mean / flags programs not compiled");
             markProgram=timed("mark",kHybMark,true);
             guideProgram=timed("guide",dcg?hybridDcgSources().guide.c_str():kHybGuide); // P320: the zone's texture floor
-            if(!adreno||hybridCellsPlain()){cellsSource=kHybCellsPlain;cellsName="cellsPlain";} else cellsSource=kHybCells;
+            // P377: kHybCells on every GPU (md5 as kHybCellsPlain); kHybCellsPlain after a compiler died on it (cellsPlain 1)
+            if(hybridCellsPlain()){cellsSource=kHybCellsPlain;cellsName="cellsPlain";} else cellsSource=kHybCells;
             cellsProgram=timed(cellsName,cellsSource);
             // P76: the shared-memory variants (Adreno only; debugging: SCAM_HYB_NO_TILES=1 builds the Mali variants anywhere)
             const std::string tiles=std::string(adreno&&!std::getenv("SCAM_HYB_NO_TILES")?"#define SHARED_TILES 1\n":"");
@@ -5567,8 +5577,10 @@ public:
             if(rimPass){const std::string body=std::string("#define RIM_STATS 1\n")+blendDefs+mergeCommon()+kHybRim;rimProgram=timed("rim",body.c_str());}
             if(bentoPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+mergeCommon()+kHybBento;bentoProgram=timed("bento",body.c_str());}
             if(blendPass){const std::string body=std::string("#define RIM_STATS 1\n#define BENTO_PASS 1\n")+blendDefs+mergeCommon()+kHybUsBlend; // P310
-                if(adreno&&!std::getenv("SCAM_BLEND_STAGES_OFF")){ // P364: one program per stage (stage 1's registers kept out of the others)
-                    const char* names[5]={"blend0","blend","blend2","blend3","blend4"};
+                // P364: one program per stage (stage 1's registers kept out of the others); P377: on every GPU, the stages named apart
+                // (blend0 - blend4: a compiler crash on one takes the single program, «blend» alone is the blend itself)
+                if(!hybridBlendStagesOff()&&!std::getenv("SCAM_BLEND_STAGES_OFF")){
+                    const char* names[5]={"blend0","blend1","blend2","blend3","blend4"};
                     for(int s=0;s<5;++s)blendStages[s]=timed(names[s],(std::string("#define BLEND_STAGE ")+std::to_string(s)+"\n"+body).c_str());
                     blendProgram=blendStages[1];
                 } else blendProgram=timed("blend",body.c_str());}
@@ -6742,11 +6754,12 @@ public:
                 const size_t tileAt=size_t(carryAt)+size_t(2)*ow;
                 reserve(10,std::max(size_t(ry1-ry0)*w2*16,(tileAt+(tilesOn?size_t(tw)*th:0))*16));
                 // P364: stages 2 and 3 only on the 16 x 16 tiles where stage 1 left a blended pixel: the list stage 1 builds behind the
-                // tile table (room for the longest strip), read by an indirect dispatch. Adreno (one dispatch per stage and strip);
-                // SCAM_BLEND_LIST_OFF, a debug view or a debug frame: every pixel, as before.
+                // tile table (room for the longest strip), read by an indirect dispatch. P377: every GPU (Adreno only before; md5 the
+                // same); blendLists 0 (the app's step after a worker died in it), SCAM_BLEND_LIST_OFF, a debug view or a debug frame:
+                // every pixel, as before.
                 const int thAll=(2*stripCells*g+15)/16;
                 const size_t listAt=tileAt+size_t(tw)*thAll,list1At=listAt+1+size_t(tw)*thAll;
-                const bool listOn=adrenoGpu&&!std::getenv("SCAM_BLEND_LIST_OFF")&&tune.bentoBlendDebug==0&&tune.debugFrame<0
+                const bool listOn=tune.blendLists!=0&&!std::getenv("SCAM_BLEND_LIST_OFF")&&tune.bentoBlendDebug==0&&tune.debugFrame<0
                     &&int64_t(4)*tw*thAll<=std::min<int64_t>(maxGroupsX,65535);
                 // P364: stage 1 alike on the tiles where a pixel can pass its skip (stage 4's list; needs the clip flags and the mark
                 // tiles; SCAM_BLEND_LIST1_OFF: stage 1 on every pixel)
@@ -6758,6 +6771,9 @@ public:
                     glUniform4i(loc(bp,"blendTileU"),int(4*tileAt),tw,stripIndex+1,tilesOn?1:0);
                     glUniform4i(loc(bp,"blendListU"),int(4*listAt),listOn?1:0,int(4*list1At),list1On?1:0);
                 }
+                // P377: a crash from here takes the blend without its lists - kept until the last strip is read back (the driver runs
+                // the indirect dispatches later, on its own threads: review)
+                if(listOn)worker_crash::mark("GPU merge (blend lists)");
                 for(int k=0;k<5;++k){
                     const int stage=k==0?0:k==1?4:k-1; // P364: 0, the tile pass (4), 1, 2, 3
                     if(stage==4&&!list1On)continue;
@@ -6785,6 +6801,7 @@ public:
          readStrip(pending);
          if(doneRows>0)scam_progress::at(doneRows);
          if(doneRows>0&&in.rowsDone)in.rowsDone(out,doneRows);}
+        worker_crash::mark("GPU merge"); // P377: the blend lists' strips are all read back
         if(stripsShrunk&&trace)trace("HYBRID GPU: "+std::to_string(stripsShrunk)+" of "+std::to_string(stripIndex)+" strips shrunk to fit the storage block / memory budget (smallest "
             +std::to_string(smallestStrip)+" cells; first: "+shrinkWhy+")");
         std::vector<GLuint> sums(zeros.size());
