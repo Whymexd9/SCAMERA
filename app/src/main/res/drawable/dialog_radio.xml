@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The radio of a dialog's single-choice list: the settings' radio (SettingsStyle.radio) - an accent ring with a dot when
+     chosen, a muted ring otherwise. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true" android:drawable="@drawable/dialog_radio_on" />
+    <item android:drawable="@drawable/dialog_radio_off" />
+</selector>

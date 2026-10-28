@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The box of a dialog's multi-choice list: the settings' check mark (ModuleConceptFragment.mark) - a muted outline, or the
+     accent fill with a dark tick when chosen. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true" android:drawable="@drawable/dialog_check_on" />
+    <item android:drawable="@drawable/dialog_check_off" />
+</selector>

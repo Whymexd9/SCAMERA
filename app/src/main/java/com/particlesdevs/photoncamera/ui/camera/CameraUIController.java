@@ -177,15 +177,13 @@ final class CameraUIController implements CameraUIEventsListener,
     @Override
     public void onAuxButtonClicked(String id) {
         Log.d(TAG, "onAuxButtonClicked() called with: id = [" + id + "]");
+        // A service camera (a vivo teleconverter profile, MONO / NIR) opens too: it is on a button only when the user gave a
+        // module its Camera ID - the automatic list leaves them out (owner, 2026-10-28: «нам наоборот надо чтобы служебные
+        // камеры работали»; the X300 Ultra's camera 9 turns the picture for the telephoto extender).
         android.content.Context context = cameraFragment.getContext();
         if (context != null && com.particlesdevs.photoncamera.api.CameraManager2.isAuxiliarySensor(
-                (android.hardware.camera2.CameraManager) context.getSystemService(android.content.Context.CAMERA_SERVICE), id)) {
-            // Not opened: the camera stays on the current module (see CameraManager2.isAuxiliarySensor).
-            Log.w(TAG, "camera " + id + " is an auxiliary stream (MONO / NIR or no lens / gain / exposure), not opened");
-            cameraFragment.showSnackBar(Lang.t(context, "Камера " + id + " — служебный поток, снимать с неё нельзя",
-                    "Camera " + id + " is an auxiliary stream and cannot take photos"));
-            return;
-        }
+                (android.hardware.camera2.CameraManager) context.getSystemService(android.content.Context.CAMERA_SERVICE), id))
+            Log.i(TAG, "camera " + id + " is a service camera (vivo profile / MONO / NIR): opened as the module asks");
         cameraFragment.onLensSwitch();
         setID(id);
         this.restartCamera();

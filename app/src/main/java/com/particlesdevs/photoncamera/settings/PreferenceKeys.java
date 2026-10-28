@@ -169,6 +169,16 @@ public class PreferenceKeys {
     }
 
     public static void setActivityTheme(Activity activity) {
+        SettingsManager sm = preferenceKeys.settingsManager;
+        String theme = sm.getString("default_scope", Key.KEY_THEME_ACCENT, activity.getResources().getString(R.string.pref_theme_accent_default_value));
+        if (theme != null) {
+            activity.getTheme().applyStyle(accentStyle(theme), true);
+        }
+    }
+
+    /** The theme overlay of an accent value of «Акцент» (setActivityTheme; DialogStyle for its dialogs), 0 when unknown. */
+    public static int accentStyle(String theme) {
+        if (theme == null) return 0;
         Map<String, Integer> map = new HashMap<>();
         // P130: «Из системы» (and the default) - the phone's accent on Android 12+ (values-v31), lavender before
         map.put("default", R.style.SystemAccentTheme);
@@ -183,12 +193,8 @@ public class PreferenceKeys {
         map.put("cyan", Integer.valueOf(R.style.CyanTheme));
         map.put("teal", Integer.valueOf(R.style.TealTheme));
         map.put("white", Integer.valueOf(R.style.WhiteTheme));
-        SettingsManager sm = preferenceKeys.settingsManager;
-        String theme = sm.getString("default_scope", Key.KEY_THEME_ACCENT, activity.getResources().getString(R.string.pref_theme_accent_default_value));
-        if (theme != null) {
-            Integer themeRes = map.get(theme.toLowerCase());
-            activity.getTheme().applyStyle(themeRes != null ? themeRes.intValue() : 0, true);
-        }
+        Integer themeRes = map.get(theme.toLowerCase());
+        return themeRes != null ? themeRes.intValue() : 0;
     }
 
     /** «Название фото» (P119): the file name template of new photos (processing.FileNamePattern). */

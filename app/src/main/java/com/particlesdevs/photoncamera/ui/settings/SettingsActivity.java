@@ -482,7 +482,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 return;
             }
             final CharSequence title = screen.getTitle();
-            new android.app.AlertDialog.Builder(c)
+            DialogStyle.builder(c)
                     .setTitle(Lang.t(c, "Сбросить страницу?", "Reset this page?"))
                     .setMessage(Lang.t(c, "Все параметры страницы «" + title + "» вернутся к значениям по умолчанию. Вложенные страницы не затрагиваются.",
                             "Every setting of «" + title + "» goes back to its default. Pages inside it stay as they are."))
@@ -934,7 +934,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
 
                 resetButton.setOnPreferenceClickListener(preference -> {
                     String slot=sensorSelection!=null?sensorSelection.selected():com.particlesdevs.photoncamera.settings.ModuleRegistry.active();
-                    new androidx.appcompat.app.AlertDialog.Builder(mContext)
+                    DialogStyle.builder(mContext)
                         .setTitle(Lang.t(getContext(),"Сбросить настройки модуля?","Reset the module settings?"))
                         .setMessage(com.particlesdevs.photoncamera.settings.ModuleRegistry.label(slot)+" · ID "+com.particlesdevs.photoncamera.settings.ModuleRegistry.camera(slot))
                         .setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null)

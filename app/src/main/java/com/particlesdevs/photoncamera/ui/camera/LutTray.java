@@ -23,6 +23,7 @@ import com.particlesdevs.photoncamera.circularbarlib.ui.UiScale;
 import com.particlesdevs.photoncamera.processing.color.FilmLooks;
 import com.particlesdevs.photoncamera.processing.color.FilmLut;
 import com.particlesdevs.photoncamera.processing.color.LensFilters;
+import com.particlesdevs.photoncamera.settings.ParamHelp;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.ui.camera.views.settingsbar.ShadeStyle;
@@ -44,6 +45,9 @@ import java.util.List;
  * P228 / P287: under the strength a second row of the lens filters («Нет» and the reference's four diffusion filters) by
  * name; a card is the settings' pref_lens_filter. The pill names the filter after the
  * LUT («Кино 500 · Pro-Mist»).
+ * Owner, 2026-10-28: the sections as tabs of one segmented control («LUT · Фильтр · Плёнка · Цвет», the last one kept), the
+ * chosen filter's and film's adjustments in their pages (TrayAdjust), a long press on a parameter shows what it does (ParamHelp),
+ * «Все ›» opens the shown section's settings page.
  */
 public final class LutTray {
     /**
@@ -55,6 +59,16 @@ public final class LutTray {
     static final int CHIP_FILL = 0x17FFFFFF, CHIP_LINE = 0x12FFFFFF;
     /** The warmth / tint tracks: cool -> warm, green -> magenta (as a photo editor shows them). */
     static final int[] WARMTH_TRACK = {0xFF5AA0FF, 0xFFB9C2CC, 0xFFFFB04A}, TINT_TRACK = {0xFF57D07A, 0xFFB9C2CC, 0xFFE46AD6};
+    /**
+     * Owner, 2026-10-28 («дай возможность настраивать луты, фильтры и пленки прямо в этом подменю. Делай так чтобы оно не
+     * получалось слишком массивным»): the tray's four sections as tabs of one segmented control - only the chosen section's page
+     * shows, with the chosen filter's / film's adjustments (TrayAdjust: parameter chips and one slider) under its chips.
+     */
+    static final int TAB_LUT = 0, TAB_FILTER = 1, TAB_FILM = 2, TAB_COLOUR = 3;
+    static final String[] TAB_IDS = {"lut", "filter", "film", "colour"};
+    /** The tab shown last (kept while the app runs). */
+    static int lastTab = TAB_LUT;
+    private String[] tabTitles;
     private final TextView pill;
     private final LinearLayout tray;
     private final LinearLayout row;
@@ -62,19 +76,27 @@ public final class LutTray {
     private final TextView strengthValue;
     @Nullable private final SurfaceView preview;
     private final Runnable openAll;
+    /** Opens a settings page (its key, the row to show) for «Все ›» of the filter and film tabs; null: the LUT page. */
+    @Nullable private java.util.function.BiConsumer<String, String> pageOpener;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<String> values = new ArrayList<>();
     private final LinearLayout filterRow;
-    /** P281: the film simulation's stocks (FilmSim), the tray's first row. */
+    /** P281: the film simulation's stocks (FilmSim). */
     private final LinearLayout filmRow;
-    /** The sections' current choices, after their titles. */
-    private final TextView lutNow, filterNow, filmNow;
+    private final TrayMotion.ChipRow tabs;
+    private final LinearLayout pages;
+    private final TextView all, hint;
+    private final TrayAdjust filterAdjust, filmAdjust;
+    private int tab = -1;
+    /** The tray's height animation (a tab, an adjust strip or the description changed what it holds). */
+    @Nullable private android.animation.ValueAnimator resizing;
+    private final Runnable hideHint = this::hideHint;
     /**
      * P319 (user report 2026-10-22: «Много лишнего, в том числе того, что должно быть только в видоискателе (фильтр на объектив,
      * тепло, и т.п.)»): «Тепло» and «Оттенок» of «Цвет» in the tray too, the same settings (pref_scam_hybrid_colour_warmth /
      * _tint, -100..100); the RAW viewfinder shows them at once, the photo always.
      */
-    static final String WARMTH_KEY = "pref_scam_hybrid_colour_warmth", TINT_KEY = "pref_scam_hybrid_colour_tint";
+    static final String WARMTH_KEY = ParamHelp.WARMTH_KEY, TINT_KEY = ParamHelp.TINT_KEY;
     private final SeekBar warmth, tint;
     private final TextView warmthValue, tintValue;
     @Nullable private Runnable onOpen;
@@ -100,10 +122,8 @@ public final class LutTray {
         plp.height = UiScale.dp(c, 28);
         pill.setLayoutParams(plp);
         UiScale.textFixed(pill, 12);
-        // the tray (owner, 2026-10-20: «сделай красивый интерфейс»): three titled sections - LUT with its strength, the lens
-        // filter, the film - each a title with the current choice and a row of chips, the chosen chip in the accent
         tray.setOrientation(LinearLayout.VERTICAL);
-        tray.setPadding(UiScale.dp(c, 14), UiScale.dp(c, 12), UiScale.dp(c, 14), UiScale.dp(c, 14));
+        tray.setPadding(UiScale.dp(c, 12), UiScale.dp(c, 12), UiScale.dp(c, 12), UiScale.dp(c, 12));
         GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{TRAY_TOP, TRAY_FILL});
         bg.setStroke(Math.max(1, Math.round(c.getResources().getDisplayMetrics().density)), TRAY_EDGE);
         bg.setCornerRadius(UiScale.dpF(c, 24));
@@ -112,20 +132,58 @@ public final class LutTray {
         tray.setOutlineProvider(android.view.ViewOutlineProvider.BACKGROUND);
         tray.setClickable(true);
         tray.removeAllViews();
-        // LUT: the title with «Все LUT ›», the chips, the strength
-        TextView all = text(c, Lang.t(c, "Все LUT ›", "All LUTs ›"), 12, accent);
+        // the head: the segmented control of the sections and «Все ›» to the chosen section's settings page
+        LinearLayout head = new LinearLayout(c);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setTag("lut_tray_head");
+        tabs = new TrayMotion.ChipRow(c, accent, UiScale.dpF(c, 13));
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        tabs.setTag("lut_tray_tabs");
+        GradientDrawable track = new GradientDrawable();
+        track.setCornerRadius(UiScale.dpF(c, 15));
+        track.setColor(CHIP_FILL);
+        track.setStroke(Math.max(1, UiScale.dp(c, 1)), CHIP_LINE);
+        tabs.setBackground(track);
+        tabs.setPadding(UiScale.dp(c, 2), UiScale.dp(c, 2), UiScale.dp(c, 2), UiScale.dp(c, 2));
+        final String[] titles = tabTitles = new String[]{"LUT", Lang.t(c, "Фильтр", "Filter"), Lang.t(c, "Плёнка", "Film"), Lang.t(c, "Цвет", "Colour")};
+        for (int i = 0; i < titles.length; i++) {
+            final int t = i;
+            TextView chip = text(c, titles[i], 12.5f, ShadeStyle.TEXT);
+            chip.setGravity(Gravity.CENTER);
+            chip.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+            chip.setTag("lut_tray_tab_" + TAB_IDS[i]);
+            chip.setContentDescription(titles[i]);
+            chip.setOnClickListener(v -> { if (tab != t) TrayMotion.tick(v); showTab(t, true); });
+            TrayMotion.pressable(chip);
+            tabs.addView(chip, new LinearLayout.LayoutParams(0, UiScale.dp(c, 28), 1f));
+        }
+        head.addView(tabs, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        all = text(c, Lang.t(c, "Все ›", "All ›"), 12, accent);
+        all.setTag("lut_tray_all");
         all.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-        all.setPaddingRelative(UiScale.dp(c, 10), UiScale.dp(c, 4), UiScale.dp(c, 2), UiScale.dp(c, 4));
+        all.setPaddingRelative(UiScale.dp(c, 10), UiScale.dp(c, 6), UiScale.dp(c, 4), UiScale.dp(c, 6));
         all.setBackground(ShadeStyle.ripple(c, 10));
-        all.setOnClickListener(v -> { setOpen(false); openAll.run(); });
-        lutNow = section(c, "LUT", all, 0);
-        row = chipRow(c, "lut_tray_luts", 17);
-        // the strength row: «Сила» · slider · value
+        all.setOnClickListener(v -> openPage());
+        head.addView(all);
+        tray.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // the pages, one shown
+        pages = new LinearLayout(c);
+        pages.setOrientation(LinearLayout.VERTICAL);
+        pages.setTag("lut_tray_pages");
+        LinearLayout.LayoutParams pgp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pgp.topMargin = UiScale.dp(c, 6);
+        tray.addView(pages, pgp);
+        // LUT: the chips and the strength
+        LinearLayout lutPage = page(c, TAB_LUT);
+        row = chipRow(c, lutPage, "lut_tray_luts", 17);
         LinearLayout lr = new LinearLayout(c);
         lr.setOrientation(LinearLayout.HORIZONTAL);
         lr.setGravity(Gravity.CENTER_VERTICAL);
         lr.setTag("lut_tray_strength");
         TextView label = text(c, Lang.t(c, "Сила", "Strength"), 12, ShadeStyle.MUTED);
+        label.setMinWidth(UiScale.dp(c, 64));
+        helpOnHold(label, label.getText().toString(), FilmLut.STRENGTH_KEY);
         lr.addView(label);
         strength = new SeekBar(c);
         strength.setMax(100);
@@ -134,58 +192,260 @@ public final class LutTray {
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         lr.addView(strength, slp);
         strengthValue = text(c, "", 12, ShadeStyle.TEXT);
-        strengthValue.setMinWidth(UiScale.dp(c, 40));
+        strengthValue.setMinWidth(UiScale.dp(c, 54));
         strengthValue.setGravity(Gravity.END);
         strengthValue.setFontFeatureSettings("tnum");
         lr.addView(strengthValue);
         LinearLayout.LayoutParams lrp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lrp.topMargin = UiScale.dp(c, 2);
-        tray.addView(lr, lrp);
-        // P228: the lens filters
-        filterNow = section(c, Lang.t(c, "Фильтр объектива", "Lens filter"), null, 6);
-        filterRow = chipRow(c, "lut_tray_filters", 17);
-        // P281: the film simulation's stocks
-        filmNow = section(c, Lang.t(c, "Плёнка", "Film"), null, 10);
-        filmRow = chipRow(c, "lut_tray_films", 14);
+        lrp.topMargin = UiScale.dp(c, 4);
+        lutPage.addView(lr, lrp);
+        // P228: the lens filters, with the chosen filter's strength, own parameter and fine controls
+        LinearLayout filterPage = page(c, TAB_FILTER);
+        filterRow = chipRow(c, filterPage, "lut_tray_filters", 17);
+        filterAdjust = new TrayAdjust(c, "lut_tray_filter_adjust");
+        filterPage.addView(filterAdjust.view);
+        // P281: the film simulation's stocks, with the chosen film's strength, grain, halation, softness, exposures, contrast
+        LinearLayout filmPage = page(c, TAB_FILM);
+        filmRow = chipRow(c, filmPage, "lut_tray_films", 14);
+        filmAdjust = new TrayAdjust(c, "lut_tray_film_adjust");
+        filmPage.addView(filmAdjust.view);
+        for (TrayAdjust a : new TrayAdjust[]{filterAdjust, filmAdjust}) {
+            a.setOnChange(() -> { bindPill(); bindTabs(); });
+            a.setOnHelp(this::showHint);
+        }
         // P319: the colour's warmth and tint
-        section(c, Lang.t(c, "Цвет", "Colour"), null, 10);
+        LinearLayout colourPage = page(c, TAB_COLOUR);
         warmthValue = text(c, "", 12, ShadeStyle.TEXT);
-        warmth = colourSlider(c, Lang.t(c, "Тепло", "Warmth"), WARMTH_KEY, warmthValue, "lut_tray_warmth", WARMTH_TRACK);
+        warmth = colourSlider(c, colourPage, Lang.t(c, "Тепло", "Warmth"), WARMTH_KEY, warmthValue, "lut_tray_warmth", WARMTH_TRACK);
         tintValue = text(c, "", 12, ShadeStyle.TEXT);
-        tint = colourSlider(c, Lang.t(c, "Оттенок", "Tint"), TINT_KEY, tintValue, "lut_tray_tint", TINT_TRACK);
+        tint = colourSlider(c, colourPage, Lang.t(c, "Оттенок", "Tint"), TINT_KEY, tintValue, "lut_tray_tint", TINT_TRACK);
+        // the description of a parameter held (owner, 2026-10-28: «добавь описание для параметров по длинному зажатию»)
+        hint = text(c, "", 12.5f, ShadeStyle.TEXT);
+        hint.setTag("lut_tray_hint");
+        hint.setMaxLines(6);
+        hint.setLineSpacing(UiScale.dp(c, 2), 1f);
+        hint.setPadding(UiScale.dp(c, 12), UiScale.dp(c, 9), UiScale.dp(c, 12), UiScale.dp(c, 10));
+        GradientDrawable hb = new GradientDrawable();
+        hb.setCornerRadius(UiScale.dpF(c, 14));
+        hb.setColor(CHIP_FILL);
+        hint.setBackground(hb);
+        hint.setVisibility(View.GONE);
+        hint.setOnClickListener(v -> hideHint());
+        LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hlp.topMargin = UiScale.dp(c, 8);
+        tray.addView(hint, hlp);
         strength.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int p, boolean user) {
                 strengthValue.setText(p + " %");
                 if (user) settings().set(SettingsManager.SCOPE_GLOBAL, FilmLut.STRENGTH_KEY, String.valueOf(p));
             }
             @Override public void onStartTrackingTouch(SeekBar s) { }
-            @Override public void onStopTrackingTouch(SeekBar s) { bindPill(); }
+            @Override public void onStopTrackingTouch(SeekBar s) { bindPill(); bindTabs(); }
         });
         // P357: a double tap puts the default back (the settings' 100 %)
         com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(strength, () -> {
             strength.setProgress(100);
             settings().set(SettingsManager.SCOPE_GLOBAL, FilmLut.STRENGTH_KEY, "100");
             bindPill();
+            bindTabs();
         });
         tray.setVisibility(View.GONE);
         bindPill();
     }
 
+    /** A section's page in the pages' box (shown by its tab). */
+    private LinearLayout page(Context c, int t) {
+        LinearLayout p = new LinearLayout(c);
+        p.setOrientation(LinearLayout.VERTICAL);
+        p.setTag("lut_tray_page_" + TAB_IDS[t]);
+        p.setVisibility(View.GONE);
+        pages.addView(p, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return p;
+    }
+
+    /** «Все ›» opens the settings page of the shown section (the LUT's through the camera's own route). */
+    public void setPageOpener(@Nullable java.util.function.BiConsumer<String, String> opener) {
+        pageOpener = opener;
+    }
+
+    private void openPage() {
+        setOpen(false);
+        if (tab == TAB_FILTER && pageOpener != null) pageOpener.accept("lens_filter_screen", LensFilters.KEY);
+        else if (tab == TAB_FILM && pageOpener != null)
+            pageOpener.accept("film_sim_screen", com.particlesdevs.photoncamera.processing.color.FilmSim.STOCK_KEY);
+        else openAll.run();
+    }
+
+    /** A long press on {@code v} shows {@code key}'s description (ParamHelp) under the page. */
+    private void helpOnHold(View v, String title, String key) {
+        v.setOnLongClickListener(x -> {
+            String text = ParamHelp.of(x.getContext(), key);
+            if (text == null) return false;
+            showHint(title, text);
+            return true;
+        });
+    }
+
+    /** The description line: the parameter's name, then what it does; it stays 8 s, a tap on it closes it. */
+    void showHint(String title, String text) {
+        Context c = tray.getContext();
+        android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder(title);
+        b.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, title.length(), 0);
+        b.append("  ");
+        int at = b.length();
+        b.append(text);
+        b.setSpan(new android.text.style.ForegroundColorSpan(ShadeStyle.MUTED), at, b.length(), 0);
+        main.removeCallbacks(hideHint);
+        if (hint.getVisibility() == View.VISIBLE) {
+            hint.setText(b);
+        } else {
+            resize(() -> { hint.setText(b); hint.setVisibility(View.VISIBLE); });
+            hint.setAlpha(0f);
+            hint.animate().alpha(1f).setStartDelay(60).setDuration(200).setInterpolator(TrayMotion.EASE_OUT).start();
+        }
+        hint.setContentDescription(title + ". " + text);
+        main.postDelayed(hideHint, 8000);
+    }
+
+    private void hideHint() {
+        main.removeCallbacks(hideHint);
+        if (hint.getVisibility() != View.VISIBLE) return;
+        hint.animate().cancel();
+        resize(() -> hint.setVisibility(View.GONE));
+    }
+
+    /**
+     * Runs {@code change} (what the tray holds) and lets the tray's height follow on the glide spring instead of jumping
+     * (the tray is anchored at its bottom: it grows and shrinks at its top edge).
+     */
+    private void resize(Runnable change) {
+        final int h0 = tray.getHeight();
+        if (resizing != null) resizing.cancel();
+        change.run();
+        if (!open || h0 == 0 || !tray.isAttachedToWindow() || !android.animation.ValueAnimator.areAnimatorsEnabled()) return;
+        tray.measure(View.MeasureSpec.makeMeasureSpec(tray.getWidth(), View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        final int h1 = tray.getMeasuredHeight();
+        if (h1 == h0) return;
+        final ViewGroup.LayoutParams lp = tray.getLayoutParams();
+        lp.height = h0;
+        tray.setLayoutParams(lp);
+        final android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
+        a.setDuration(TrayMotion.GLIDE.durationMs);
+        a.setInterpolator(TrayMotion.GLIDE);
+        a.addUpdateListener(v -> {
+            lp.height = Math.round(h0 + (h1 - h0) * (float) v.getAnimatedValue());
+            tray.setLayoutParams(lp);
+        });
+        a.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator x) {
+                lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                tray.setLayoutParams(lp);
+                if (resizing == a) resizing = null;
+            }
+        });
+        resizing = a;
+        a.start();
+    }
+
+    /** Shows tab {@code t}'s page: the pill glides to its tab, the page slides in from the side it lies on, the height follows. */
+    private void showTab(int t, boolean animate) {
+        final int from = tab;
+        tab = t;
+        lastTab = t;
+        if (from != t) hideHintNow();
+        for (int i = 0; i < tabs.getChildCount(); i++) {
+            TextView chip = (TextView) tabs.getChildAt(i);
+            chip.setActivated(i == t);
+            fade(chip, i == t ? ShadeStyle.INK : ShadeStyle.TEXT, animate && from >= 0);
+            if (i == t) tabs.moveTo(chip, animate && from >= 0);
+        }
+        bindTabs();
+        all.setVisibility(t == TAB_COLOUR ? View.INVISIBLE : View.VISIBLE);
+        final View in = pages.getChildAt(t);
+        final Runnable change = () -> { for (int i = 0; i < pages.getChildCount(); i++) pages.getChildAt(i).setVisibility(i == t ? View.VISIBLE : View.GONE); };
+        in.animate().cancel();
+        if (!animate || from < 0 || from == t) {
+            change.run();
+            in.setAlpha(1f);
+            in.setTranslationX(0f);
+            return;
+        }
+        resize(change);
+        in.setAlpha(0f);
+        in.setTranslationX(UiScale.dpF(tray.getContext(), 18) * (t > from ? 1 : -1));
+        in.animate().alpha(1f).translationX(0f).setStartDelay(30).setDuration(260).setInterpolator(TrayMotion.EASE_OUT).start();
+    }
+
+    private void hideHintNow() {
+        main.removeCallbacks(hideHint);
+        hint.animate().cancel();
+        hint.setVisibility(View.GONE);
+    }
+
+    /** A tab whose section is on (a LUT, a filter, a film, a colour shift) carries a small dot, INK on the pill, accent off it. */
+    private void bindTabs() {
+        Context c = tray.getContext();
+        final boolean[] on = {
+                !PreferenceKeys.filmLut().isEmpty() && PreferenceKeys.filmLutStrength() > 0f,
+                !PreferenceKeys.lensFilter().isEmpty() && PreferenceKeys.lensFilterStrength() > 0f,
+                com.particlesdevs.photoncamera.processing.color.FilmSim.current() != null,
+                colourValue(WARMTH_KEY) != 0 || colourValue(TINT_KEY) != 0};
+        for (int i = 0; i < tabs.getChildCount(); i++) {
+            TextView chip = (TextView) tabs.getChildAt(i);
+            if (!on[i]) {
+                chip.setText(tabTitles[i]);
+                continue;
+            }
+            // the dot right after the title (a compound drawable sits at the tab's edge, half off the selected pill)
+            android.text.SpannableString t = new android.text.SpannableString(tabTitles[i] + " ");
+            t.setSpan(new DotSpan(i == tab ? ShadeStyle.INK : ShadeStyle.accent(c), UiScale.dpF(c, 2.5f), UiScale.dpF(c, 4)),
+                    t.length() - 1, t.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            chip.setText(t);
+        }
+    }
+
+    /** A tab's «something is on here» dot: a small circle {@code gap} after the title, at the middle of its letters. */
+    private static final class DotSpan extends android.text.style.ReplacementSpan {
+        private final int color;
+        private final float r, gap;
+
+        DotSpan(int color, float r, float gap) {
+            this.color = color;
+            this.r = r;
+            this.gap = gap;
+        }
+
+        @Override
+        public int getSize(android.graphics.Paint p, CharSequence text, int start, int end, @Nullable android.graphics.Paint.FontMetricsInt fm) {
+            return Math.round(gap + 2 * r);
+        }
+
+        @Override
+        public void draw(android.graphics.Canvas cv, CharSequence text, int start, int end, float x, int top, int y, int bottom, android.graphics.Paint p) {
+            final int old = p.getColor();
+            p.setColor(color);
+            cv.drawCircle(x + gap + r, y + p.ascent() * .36f, r, p);
+            p.setColor(old);
+        }
+    }
+
     /** P319: a «label · slider · value» row of a -100..100 colour setting, written as the settings page writes it. */
-    private SeekBar colourSlider(Context c, String label, String key, TextView value, String tag, int[] track) {
+    private SeekBar colourSlider(Context c, LinearLayout parent, String label, String key, TextView value, String tag, int[] track) {
         LinearLayout r = new LinearLayout(c);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
         r.setTag(tag);
         TextView l = text(c, label, 12, ShadeStyle.MUTED);
         l.setMinWidth(UiScale.dp(c, 64));
+        helpOnHold(l, label, key);
         r.addView(l);
         SeekBar bar = new SeekBar(c);
         bar.setMax(200);
         styleSlider(c, bar, 0, track);
         bar.setContentDescription(label);
         r.addView(bar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        value.setMinWidth(UiScale.dp(c, 40));
+        value.setMinWidth(UiScale.dp(c, 54));
         value.setGravity(Gravity.END);
         value.setFontFeatureSettings("tnum");
         r.addView(value);
@@ -198,14 +458,22 @@ public final class LutTray {
                 }
             }
             @Override public void onStartTrackingTouch(SeekBar s) { }
-            @Override public void onStopTrackingTouch(SeekBar s) { }
+            @Override public void onStopTrackingTouch(SeekBar s) { bindTabs(); }
         });
         // P357: a double tap puts the default (0) back
         com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(bar, () -> {
             bar.setProgress(100);
             settings().set(SettingsManager.SCOPE_GLOBAL, key, "0");
+            bindTabs();
         });
-        tray.addView(r, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // a long press on the slider: what it does
+        bar.setOnLongClickListener(x -> {
+            String text = ParamHelp.of(x.getContext(), key);
+            if (text == null) return false;
+            showHint(label, text);
+            return true;
+        });
+        parent.addView(r, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return bar;
     }
 
@@ -236,34 +504,10 @@ public final class LutTray {
     }
 
     /**
-     * A section's title row: the title in small capitals, then the current choice in the accent (returned), {@code end}
-     * at the row's end.
-     */
-    private TextView section(Context c, String title, @Nullable View end, int topDp) {
-        LinearLayout r = new LinearLayout(c);
-        r.setOrientation(LinearLayout.HORIZONTAL);
-        r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setMinimumHeight(UiScale.dp(c, 24));
-        TextView t = text(c, title.toUpperCase(java.util.Locale.getDefault()), 10.5f, ShadeStyle.MUTED);
-        t.setLetterSpacing(.08f);
-        t.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-        r.addView(t);
-        TextView now = text(c, "", 12, ShadeStyle.accent(c));
-        now.setEllipsize(TextUtils.TruncateAt.END);
-        now.setPaddingRelative(UiScale.dp(c, 8), 0, UiScale.dp(c, 4), 0);
-        r.addView(now, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        if (end != null) r.addView(end);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = UiScale.dp(c, topDp);
-        tray.addView(r, lp);
-        return now;
-    }
-
-    /**
      * A section's horizontal row of chips in its scroll, added to the tray: the row draws its selection pill under the chips
      * (TrayMotion.ChipRow), which glides to the chosen chip; the row's ends fade into the tray.
      */
-    private LinearLayout chipRow(Context c, String tag, float radiusDp) {
+    private LinearLayout chipRow(Context c, LinearLayout parent, String tag, float radiusDp) {
         HorizontalScrollView scroll = new HorizontalScrollView(c);
         scroll.setHorizontalScrollBarEnabled(false);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -275,7 +519,7 @@ public final class LutTray {
         scroll.addView(r, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.topMargin = UiScale.dp(c, 4);
-        tray.addView(scroll, lp);
+        parent.addView(scroll, lp);
         return r;
     }
 
@@ -419,17 +663,21 @@ public final class LutTray {
     public void setOpen(boolean value) {
         if (value == open) return;
         open = value;
+        if (resizing != null) resizing.cancel(); // its end puts the height back to wrap the content
         if (open) {
             if (onOpen != null) onOpen.run();
             tray.animate().setListener(null);
+            hideHintNow();
             rebuild();
             // visible at once (the state), rising into place on a spring (the motion)
             TrayMotion.appear(tray);
         } else {
+            main.removeCallbacks(hideHint);
             TrayMotion.disappear(tray, () -> {
                 if (open) return;
                 tray.setVisibility(View.GONE);
                 TrayMotion.rest(tray);
+                hideHintNow();
             });
         }
         bindPill(true);
@@ -544,11 +792,12 @@ public final class LutTray {
         bindLutState(chosen, false);
         // the chosen chip scrolled to the centre
         centre(row, selected);
+        tab = -1;
+        showTab(lastTab, false);
     }
 
-    /** The strength row and the section's current choice for the LUT {@code chosen}. */
+    /** The strength row for the LUT {@code chosen}. */
     private void bindLutState(String chosen, boolean animate) {
-        Context c = tray.getContext();
         int s = Math.round(PreferenceKeys.filmLutStrength() * 100);
         strength.setProgress(s);
         strengthValue.setText(s + " %");
@@ -557,10 +806,9 @@ public final class LutTray {
         float alpha = chosen.isEmpty() ? .4f : 1f;
         if (animate) strengthRow.animate().alpha(alpha).setDuration(200).setStartDelay(0).setInterpolator(TrayMotion.EASE_OUT).start();
         else strengthRow.setAlpha(alpha);
-        lutNow.setText(chosen.isEmpty() ? "" : name(c, chosen));
     }
 
-    /** P228: «Нет» and the 12 lens filters as cards, the chosen one in the accent. */
+    /** P228: «Нет» and the 12 lens filters as cards, the chosen one in the accent, and the chosen filter's adjustments. */
     private void rebuildFilters() {
         Context c = tray.getContext();
         filterRow.removeAllViews();
@@ -585,8 +833,90 @@ public final class LutTray {
             if (on) selected = card;
         }
         select(filterRow, filterValues.indexOf(chosen), 17, false);
-        filterNow.setText(chosen.isEmpty() ? "" : LensFilters.name(c, chosen));
+        bindFilterAdjust(chosen);
         centre(filterRow, selected);
+    }
+
+    /** The chosen filter's adjustments (none without a filter): its strength, own parameter and fine controls. */
+    private void bindFilterAdjust(String id) {
+        if (id.isEmpty()) {
+            filterAdjust.view.setVisibility(View.GONE);
+            return;
+        }
+        filterAdjust.setParams(filterParams(tray.getContext(), id));
+        filterAdjust.view.setVisibility(View.VISIBLE);
+    }
+
+    /**
+     * A filter's parameters as its settings page has them (LensFilterPreference): the strength (0..100, 50), its own parameter
+     * and its fine controls (0..100, the middle as designed: LensFilters.Tune) - written as that page writes them.
+     */
+    static List<TrayAdjust.Param> filterParams(Context c, String id) {
+        final List<TrayAdjust.Param> out = new ArrayList<>();
+        out.add(new TrayAdjust.Param("strength", Lang.t(c, "Сила", "Strength"), ParamHelp.of(c, LensFilters.STRENGTH_KEY),
+                0, 100, 1, 50, " %", true,
+                () -> PreferenceKeys.lensFilterStrength() * 100f,
+                v -> settings().set(SettingsManager.SCOPE_GLOBAL, LensFilters.STRENGTH_KEY, String.valueOf(Math.round(v)))));
+        final String pn = LensFilters.paramName(c, id);
+        if (pn != null) {
+            final int colon = pn.indexOf(':');
+            out.add(new TrayAdjust.Param("param", colon > 0 ? pn.substring(0, colon) : pn, ParamHelp.filterParam(c, id),
+                    0, 100, 1, Math.round(LensFilters.defaultParam(id) * 100f), "", true,
+                    () -> PreferenceKeys.lensFilterTune(id).param * 100f,
+                    v -> {
+                        LensFilters.Tune t = PreferenceKeys.lensFilterTune(id);
+                        t.param = Math.round(v) / 100f;
+                        settings().set(SettingsManager.SCOPE_GLOBAL, LensFilters.tuneKey(id), t.serialize());
+                    }));
+        }
+        final int fine = LensFilters.tunable(id);
+        for (int control : LensFilters.CONTROLS) {
+            if ((fine & control) == 0) continue;
+            out.add(new TrayAdjust.Param("tune_" + control, LensFilters.controlName(c, id, control), ParamHelp.filterControl(c, id, control),
+                    0, 100, 1, 50, "", true,
+                    () -> PreferenceKeys.lensFilterTune(id).get(control) * 100f,
+                    v -> {
+                        LensFilters.Tune t = PreferenceKeys.lensFilterTune(id);
+                        t.set(control, Math.round(v) / 100f);
+                        settings().set(SettingsManager.SCOPE_GLOBAL, LensFilters.tuneKey(id), t.serialize());
+                    }));
+        }
+        return out;
+    }
+
+    /**
+     * A film's parameters as the film page has them (FilmSimPreference, the same keys, ranges, steps and defaults): the
+     * simulation's strength (written as it moves: the viewfinder mixes it), grain, halation, softness, the film's exposure, its
+     * contrast (the measured colour stocks: our black-and-white model has none) and the print's exposure (not for a slide or a
+     * reversal film, which are not printed) - the rest stays on the page («Все ›»).
+     */
+    static List<TrayAdjust.Param> filmParams(Context c, @Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Stock st) {
+        final List<TrayAdjust.Param> out = new ArrayList<>();
+        out.add(filmParam(c, "strength", Lang.t(c, "Сила", "Strength"), com.particlesdevs.photoncamera.processing.color.FilmSim.STRENGTH_KEY, 0, 100, 1, 100, " %", true));
+        out.add(filmParam(c, "grain", Lang.t(c, "Зерно", "Grain"), com.particlesdevs.photoncamera.processing.color.FilmSim.GRAIN_KEY, 0, 200, 1, 100, " %", false));
+        out.add(filmParam(c, "halation", Lang.t(c, "Ореол", "Halation"), com.particlesdevs.photoncamera.processing.color.FilmSim.HALATION_KEY, 0, 400, 1, 100, " %", false));
+        out.add(filmParam(c, "softness", Lang.t(c, "Мягкость", "Softness"), com.particlesdevs.photoncamera.processing.color.FilmSim.SOFTNESS_KEY, 0, 300, 1, 100, " %", false));
+        out.add(filmParam(c, "exposure", Lang.t(c, "Экспозиция", "Exposure"), com.particlesdevs.photoncamera.processing.color.FilmSim.EXPOSURE_KEY, -2, 2, .1f, 0, " EV", false));
+        // only what acts on this stock: the curve's steepness on the measured (colour) stocks, the print on what is printed
+        if (st == null || st.spectral != null)
+            out.add(filmParam(c, "contrast", Lang.t(c, "Контраст", "Contrast"), com.particlesdevs.photoncamera.processing.color.FilmSim.TONE_KEY, -100, 100, 1, 0, "", false));
+        if (st == null || st.type != com.particlesdevs.photoncamera.processing.color.FilmSim.SLIDE && st.type != com.particlesdevs.photoncamera.processing.color.FilmSim.BW_REVERSAL)
+            out.add(filmParam(c, "print", Lang.t(c, "Печать", "Print"), com.particlesdevs.photoncamera.processing.color.FilmSim.PRINT_EV_KEY, -1, 1, .05f, 0, " EV", false));
+        return out;
+    }
+
+    private static TrayAdjust.Param filmParam(Context c, String id, String title, String key, float min, float max, float step, float def,
+                                              String unit, boolean live) {
+        return new TrayAdjust.Param(id, title, ParamHelp.of(c, key), min, max, step, def, unit, live,
+                () -> {
+                    try {
+                        return Float.parseFloat(settings().getString(SettingsManager.SCOPE_GLOBAL, key, String.valueOf(def)).replace(',', '.'));
+                    } catch (RuntimeException e) {
+                        return def;
+                    }
+                },
+                // as the film page stores it (FilmSimPreference.slider)
+                v -> settings().set(SettingsManager.SCOPE_GLOBAL, key, step < 1 ? String.format(java.util.Locale.ROOT, "%.2f", v) : String.valueOf(Math.round(v))));
     }
 
     /** «Без фильтра» and every filter, in the user's order (P279). */
@@ -626,21 +956,31 @@ public final class LutTray {
             card.setOnClickListener(v -> {
                 TrayMotion.tick(v);
                 settings().set(SettingsManager.SCOPE_GLOBAL, com.particlesdevs.photoncamera.processing.color.FilmSim.STOCK_KEY, id);
-                // in place: the pill glides to the stock, the row is not built again
+                // in place: the pill glides to the stock, the row is not built again; its adjustments follow (the height too)
                 select(filmRow, filmValues.indexOf(id), 14, open);
-                com.particlesdevs.photoncamera.processing.color.FilmSim.Stock picked = com.particlesdevs.photoncamera.processing.color.FilmSim.stock(id);
-                filmNow.setText(id.isEmpty() || picked == null ? "" : picked.name);
+                resize(() -> bindFilmAdjust(id));
                 centre(filmRow, v);
                 bindPill();
+                bindTabs();
             });
             TrayMotion.pressable(card);
             filmRow.addView(card, chipParams(c, filmRow, 42));
             if (on) selected = card;
         }
         select(filmRow, filmValues.indexOf(chosen), 14, false);
-        com.particlesdevs.photoncamera.processing.color.FilmSim.Stock now = com.particlesdevs.photoncamera.processing.color.FilmSim.stock(chosen);
-        filmNow.setText(chosen.isEmpty() || now == null ? "" : now.name);
+        bindFilmAdjust(chosen);
         centre(filmRow, selected);
+    }
+
+    /** The chosen film's adjustments (none without a film). */
+    private void bindFilmAdjust(String id) {
+        final com.particlesdevs.photoncamera.processing.color.FilmSim.Stock st = com.particlesdevs.photoncamera.processing.color.FilmSim.stock(id);
+        if (id.isEmpty() || st == null) {
+            filmAdjust.view.setVisibility(View.GONE);
+            return;
+        }
+        filmAdjust.setParams(filmParams(tray.getContext(), st));
+        filmAdjust.view.setVisibility(View.VISIBLE);
     }
 
     /** A filter card tapped: that filter becomes the camera's (the settings' state). */
@@ -650,12 +990,13 @@ public final class LutTray {
             settings().set(SettingsManager.SCOPE_GLOBAL, LensFilters.STRENGTH_KEY, "50");
         int i = filterValues.indexOf(id);
         if (open && i >= 0 && filterRow.getChildCount() == filterValues.size() && filterValues.equals(java.util.Arrays.asList(filterIds()))) {
-            // in place: the pill glides to the filter
+            // in place: the pill glides to the filter, its adjustments follow (the height too)
             select(filterRow, i, 17, true);
-            filterNow.setText(id.isEmpty() ? "" : LensFilters.name(tray.getContext(), id));
+            resize(() -> bindFilterAdjust(id));
             centre(filterRow, filterRow.getChildAt(i));
         } else rebuildFilters();
         bindPill();
+        bindTabs();
     }
 
     /** A card tapped: that LUT becomes the camera's (the settings' state), the tray shows it chosen. */
@@ -671,6 +1012,7 @@ public final class LutTray {
             centre(row, row.getChildAt(i));
         } else rebuild();
         bindPill();
+        bindTabs();
     }
 
     /** The next / previous LUT (a horizontal swipe on the viewfinder); returns its name for the message band. */
@@ -691,6 +1033,7 @@ public final class LutTray {
     public void release() {
         main.removeCallbacksAndMessages(null);
         open = false;
+        if (resizing != null) resizing.cancel();
         tray.animate().cancel();
         TrayMotion.rest(tray);
     }

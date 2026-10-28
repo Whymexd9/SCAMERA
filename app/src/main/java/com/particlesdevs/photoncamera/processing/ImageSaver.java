@@ -55,6 +55,10 @@ public class ImageSaver {
     public float zoomResidual = 1f;
     /** The camera of the shot (Settings.mCameraID at the press; null: the one open when the processing starts). */
     public String cameraIdAtPress;
+    /** The shot's capture plan as logged (HybridPlan.description; null: none): MergeStamp's «why no ES / L». */
+    public String planNote;
+    /** Owner, 2026-10-28: the lens filter the viewfinder showed at the press (LensFilter.Choice.now; null: the settings when processed). */
+    public com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice lensFilterAtPress;
 
     public void setFrameCount(int desiredFrameCount){
         this.desiredFrameCount = desiredFrameCount;
@@ -99,6 +103,8 @@ public class ImageSaver {
         saver.ownedMosaicWb = mosaicWbAtPress;
         saver.ownedZoomResidual = zoomResidual;
         saver.ownedCameraId = cameraIdAtPress;
+        saver.ownedPlanNote = planNote;
+        saver.ownedLensFilter = lensFilterAtPress;
         saver.ownedFrames = new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
         saver.ownedPairs = new ArrayList<>(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.fullpairs);
         SaverImplementation.IMAGE_BUFFER.clear();
@@ -161,6 +167,8 @@ public class ImageSaver {
         implementation.iszAspect4x3 = iszAspect4x3;
         implementation.zoomResidual = zoomResidual;
         implementation.cameraIdAtPress = cameraIdAtPress;
+        implementation.planNote = planNote;
+        implementation.lensFilterAtPress = lensFilterAtPress;
         implementation.runRaw(imageFormat,characteristics,captureResult, captureRequest,burstShakiness,cameraRotation, exposures);
     }
 

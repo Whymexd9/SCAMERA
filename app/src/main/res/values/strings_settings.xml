@@ -434,6 +434,8 @@
     <string name="prefs_scam_hybrid_why_vibrance_green_title">Greenery vibrance</string>
     <string name="prefs_scam_hybrid_why_vibrance_green_summary">Vibrance of greenery. Higher: richer greens; lower: paler.</string>
     <string name="prefs_scam_hybrid_diagnostics_title">Save processing stages</string>
+    <string name="prefs_debug_merge_stamp_title">ES / L stamp on the photo</string>
+    <string name="prefs_debug_merge_stamp_summary">The top right corner of the photo says whether the ultrashort (ES) and long (L) frames went into it, or a short code why not.</string>
     <string name="prefs_keep_raw_burst_title">Save the RAW burst</string>
     <string name="prefs_keep_raw_burst_summary">Each SHDR shot saves its RAW burst to Download/SCAMERA/scam_burst-&lt;time&gt;.bin for analysing the merge. The files are large (50 MP: up to a few GB a shot); delete them after sending.</string>
     <string name="prefs_scam_lab_screen_title">Lab</string>

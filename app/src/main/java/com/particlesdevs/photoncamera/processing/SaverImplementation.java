@@ -29,6 +29,10 @@ public class SaverImplementation {
     /** The shot's digital-zoom crop and camera at the press (ImageSaver.zoomResidual / cameraIdAtPress). */
     public float zoomResidual = 1f;
     public String cameraIdAtPress;
+    /** The shot's capture plan as logged (HybridPlan.description; null: none) for MergeStamp. */
+    public String planNote;
+    /** The shot's lens filter at the press (ImageSaver.lensFilterAtPress). */
+    public com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice lensFilterAtPress;
     private int imageFormat;
     public final ProcessingEventsListener processingEventsListener;
 

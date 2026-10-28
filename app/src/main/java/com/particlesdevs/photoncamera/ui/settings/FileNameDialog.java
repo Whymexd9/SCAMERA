@@ -1,7 +1,6 @@
 package com.particlesdevs.photoncamera.ui.settings;
 
 import android.content.Context;
-import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
@@ -28,12 +27,12 @@ final class FileNameDialog {
 
     static void show(Context context, Runnable onSaved) {
         final float dp = context.getResources().getDisplayMetrics().density;
-        final int pad = Math.round(20 * dp), gap = Math.round(8 * dp);
+        final int pad = Math.round(24 * dp), gap = Math.round(8 * dp);
         final LinearLayout box = new LinearLayout(context);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(pad, gap, pad, 0);
+        box.setPadding(pad, Math.round(12 * dp), pad, gap / 2);
 
-        final EditText field = new EditText(context);
+        final EditText field = DialogStyle.field(new EditText(context));
         field.setSingleLine(true);
         field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         field.setHint(Lang.t(context, "Шаблон, например SCA_yyyyMMdd_HHmmss", "Template, e.g. SCA_yyyyMMdd_HHmmss"));
@@ -43,7 +42,8 @@ final class FileNameDialog {
 
         final TextView preview = new TextView(context);
         preview.setPadding(Math.round(14 * dp), Math.round(10 * dp), Math.round(14 * dp), Math.round(10 * dp));
-        preview.setBackground(rounded(0x33808080, 14 * dp));
+        preview.setBackground(SettingsStyle.shape(context, SettingsStyle.SHEET, 0, 14));
+        preview.setTextColor(SettingsStyle.MUTED);
         preview.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         final LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -77,7 +77,7 @@ final class FileNameDialog {
             });
         }
 
-        final AlertDialog dialog = new AlertDialog.Builder(context)
+        final AlertDialog dialog = DialogStyle.builder(context)
                 .setTitle(Lang.t(context, "Название фото", "Photo file name"))
                 .setView(box)
                 .setNeutralButton(Lang.t(context, "Сбросить", "Reset"), null)
@@ -98,7 +98,9 @@ final class FileNameDialog {
     private static TextView label(Context context, String text, int gap) {
         final TextView t = new TextView(context);
         t.setText(text);
-        t.setPadding(0, 2 * gap, 0, gap / 2);
+        t.setTextColor(SettingsStyle.MUTED);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        t.setPadding(0, 2 * gap, 0, gap);
         return t;
     }
 
@@ -117,8 +119,11 @@ final class FileNameDialog {
         t.setText(text);
         t.setGravity(Gravity.CENTER);
         t.setMinWidth(Math.round(48 * dp));
-        t.setPadding(Math.round(14 * dp), Math.round(10 * dp), Math.round(14 * dp), Math.round(10 * dp));
-        t.setBackground(rounded(0x1F808080, 12 * dp));
+        t.setPadding(Math.round(14 * dp), Math.round(9 * dp), Math.round(14 * dp), Math.round(9 * dp));
+        // an unselected chip of the settings: a pill with a faint outline
+        t.setBackground(SettingsStyle.shape(context, 0, SettingsStyle.LINE, 18));
+        t.setTextColor(SettingsStyle.TEXT);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         t.setClickable(true);
         t.setFocusable(true);
         t.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
@@ -130,12 +135,5 @@ final class FileNameDialog {
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.rightMargin = gap;
         return lp;
-    }
-
-    private static GradientDrawable rounded(int color, float radius) {
-        final GradientDrawable g = new GradientDrawable();
-        g.setColor(color);
-        g.setCornerRadius(radius);
-        return g;
     }
 }

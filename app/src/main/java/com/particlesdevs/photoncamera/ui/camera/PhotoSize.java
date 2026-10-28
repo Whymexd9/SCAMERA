@@ -115,7 +115,7 @@ public final class PhotoSize {
         String status = com.particlesdevs.photoncamera.capture.FullResTrials.status(camera);
         if (status == null) status = Lang.t(c, "FULLRES недоступен на этой камере", "FULLRES is not available on this camera");
         Log.i("PhotoSize", "camera " + camera + " FULLRES trials shown (" + size + " MP off)");
-        new androidx.appcompat.app.AlertDialog.Builder(c)
+        com.particlesdevs.photoncamera.ui.settings.DialogStyle.builder(c)
                 .setTitle(Lang.t(c, label(size) + " выключен", label(size) + " is off"))
                 .setMessage(status + "\n\n" + Lang.t(c,
                         "«Попробовать снова» забывает эти пробы: режимы этой камеры проверяются заново с первого.",

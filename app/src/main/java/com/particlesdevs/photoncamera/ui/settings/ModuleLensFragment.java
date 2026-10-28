@@ -3,7 +3,6 @@ import android.os.Bundle;
 import android.content.Context;
 import android.hardware.camera2.*;
 import android.widget.*;
-import androidx.appcompat.app.AlertDialog;
 import com.particlesdevs.photoncamera.settings.*;
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.util.Lang;
@@ -14,8 +13,8 @@ public class ModuleLensFragment extends ModuleConceptFragment {
     /** P21: the page of one module (button): every module setting is edited here and nowhere else. */
     public static ModuleLensFragment module(String slot){ModuleLensFragment f=new ModuleLensFragment();Bundle b=new Bundle();b.putString("slot",slot);f.setArguments(b);return f;}
     private void rename(String slot){
-        EditText input=new EditText(requireContext());input.setSingleLine(true);input.setText(ModuleRegistry.label(slot));
-        new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Название модуля","Module name")).setView(input).setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(d,w)->{
+        EditText input=DialogStyle.field(new EditText(requireContext()));input.setSingleLine(true);input.setText(ModuleRegistry.label(slot));
+        DialogStyle.builder(requireContext()).setTitle(Lang.t(getContext(),"Название модуля","Module name")).setView(DialogStyle.body(requireContext(),input)).setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(d,w)->{
             ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit().putString("module_name_"+slot,input.getText().toString().trim()).apply();render();
         }).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show();
     }
@@ -46,7 +45,7 @@ public class ModuleLensFragment extends ModuleConceptFragment {
         navigation("⧉",Lang.t(getContext(),"Сделать копию с кропом","Make a copy with a crop"),Lang.t(getContext(),"Ещё одна кнопка на этом объективе: свой кроп (например, 1.3×), свои реквесты и профиль","Another button on this lens: its own crop (e.g. 1.3×), requests and profile"),()->
             cropSheet(slot,1f,crop->copyWithCrop(slot,crop)));
         if(source!=null)navigation("✕",Lang.t(getContext(),"Удалить копию","Delete copy"),Lang.t(getContext(),"Кнопка, её реквесты и настройки сенсора удаляются; исходный модуль остаётся","The button, its requests and sensor settings are deleted; the original module stays"),()->
-            new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Удалить «"+ModuleRegistry.label(slot)+"»?","Delete “"+ModuleRegistry.label(slot)+"”?")).setPositiveButton(Lang.t(getContext(),"Удалить","Delete"),(d,w)->{ModuleRegistry.remove(slot);back();}).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show());
+            DialogStyle.builder(requireContext()).setTitle(Lang.t(getContext(),"Удалить «"+ModuleRegistry.label(slot)+"»?","Delete “"+ModuleRegistry.label(slot)+"”?")).setPositiveButton(Lang.t(getContext(),"Удалить","Delete"),(d,w)->{ModuleRegistry.remove(slot);back();}).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show());
         else note(Lang.t(getContext(),"Исходный модуль объектива удалить нельзя — его можно скрыть.","The original module of a lens can't be deleted, only hidden."));
         caption(Lang.t(getContext(),"Для опытных","Advanced"));
         navigation("▣","Camera ID",ModuleRegistry.camera(slot)+(ScameraApp.getSettingsManagerStatic().getDefaultPreferences().getString("module_id_"+slot,"").isEmpty()?Lang.t(getContext()," · авто"," · auto"):Lang.t(getContext()," · вручную"," · manual")),this::choose);
@@ -72,12 +71,12 @@ public class ModuleLensFragment extends ModuleConceptFragment {
     }
     /** Zoom ratio of the module button and whether its frame is already cropped on the sensor. */
     private void zoomDialog(String slot){
-        LinearLayout box=new LinearLayout(requireContext());box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(20),dp(8),dp(20),0);
-        EditText ratio=new EditText(requireContext());ratio.setSingleLine(true);ratio.setHint(Lang.t(getContext(),"Например: 0.6, 1, 3, 6","For example: 0.6, 1, 3, 6"));
+        EditText ratio=DialogStyle.field(new EditText(requireContext()));ratio.setSingleLine(true);ratio.setHint(Lang.t(getContext(),"Например: 0.6, 1, 3, 6","For example: 0.6, 1, 3, 6"));
         ratio.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        ratio.setText(String.format(java.util.Locale.US,"%.2f",ModuleRegistry.zoom(slot)).replaceAll("\\.?0+$",""));box.addView(ratio);
-        CheckBox crop=new CheckBox(requireContext());crop.setText(Lang.t(getContext(),"Кроп на сенсоре (кадр уже обрезан режимом сенсора)","Sensor crop (the sensor mode already crops the frame)"));crop.setChecked(ModuleRegistry.sensorCrop(slot));box.addView(crop);
-        new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Зум · ","Zoom · ")+ModuleRegistry.label(slot)+" · ID "+ModuleRegistry.camera(slot)).setView(box)
+        ratio.setText(String.format(java.util.Locale.US,"%.2f",ModuleRegistry.zoom(slot)).replaceAll("\\.?0+$",""));
+        CheckBox crop=DialogStyle.check(new CheckBox(requireContext()));crop.setText(Lang.t(getContext(),"Кроп на сенсоре (кадр уже обрезан режимом сенсора)","Sensor crop (the sensor mode already crops the frame)"));crop.setChecked(ModuleRegistry.sensorCrop(slot));
+        LinearLayout box=DialogStyle.body(requireContext(),ratio,crop);
+        DialogStyle.builder(requireContext()).setTitle(Lang.t(getContext(),"Зум · ","Zoom · ")+ModuleRegistry.label(slot)+" · ID "+ModuleRegistry.camera(slot)).setView(box)
             .setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(d,w)->{
                 var e=ScameraApp.getSettingsManagerStatic().getDefaultPreferences().edit();
                 String text=ratio.getText().toString().trim().replace(',','.');
@@ -90,10 +89,11 @@ public class ModuleLensFragment extends ModuleConceptFragment {
         List<String> values=new ArrayList<>(),labels=new ArrayList<>();values.add("");labels.add(Lang.t(getContext(),"Авто","Auto"));values.add("manual");labels.add(Lang.t(getContext(),"Ввести Camera ID вручную","Enter Camera ID manually"));
         try{CameraManager cm=(CameraManager)requireContext().getSystemService(Context.CAMERA_SERVICE);Set<String> ids=new LinkedHashSet<>(Arrays.asList(cm.getCameraIdList()));
             if(android.os.Build.VERSION.SDK_INT>=28)for(String id:new ArrayList<>(ids))for(String physical:cm.getCameraCharacteristics(id).getPhysicalCameraIds())if(!physical.equals(id))ids.add(id+"-"+physical);
-            for(String key:ids){String desc="ID "+key;try{CameraCharacteristics c=cm.getCameraCharacteristics(key.contains("-")?key.substring(key.indexOf("-")+1):key);desc+=Lang.t(getContext(),"\nФокусное: ","\nFocal length: ")+Arrays.toString(c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS))+Lang.t(getContext()," мм"," mm");desc+="\nISO: "+c.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);if(android.os.Build.VERSION.SDK_INT>=28)desc+=c.getPhysicalCameraIds().isEmpty()?Lang.t(getContext()," · физическая/самостоятельная"," · physical/standalone"):Lang.t(getContext()," · логическая "," · logical ")+c.getPhysicalCameraIds();}catch(Exception ignored){}values.add(key);labels.add(desc);}
+            for(String key:ids){String desc="ID "+key;try{CameraCharacteristics c=cm.getCameraCharacteristics(key.contains("-")?key.substring(key.indexOf("-")+1):key);desc+=Lang.t(getContext(),"\nФокусное: ","\nFocal length: ")+Arrays.toString(c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS))+Lang.t(getContext()," мм"," mm");desc+="\nISO: "+c.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);if(android.os.Build.VERSION.SDK_INT>=28)desc+=c.getPhysicalCameraIds().isEmpty()?Lang.t(getContext()," · физическая/самостоятельная"," · physical/standalone"):Lang.t(getContext()," · логическая "," · logical ")+c.getPhysicalCameraIds();
+                if(com.particlesdevs.photoncamera.api.CameraManager2.isAuxiliarySensor(c))desc+=Lang.t(getContext(),"\nСлужебный профиль (например, телеэкстендер vivo): в автоматический список не входит, но работает, если выбрать","\nA service profile (e.g. the vivo telephoto extender): not in the automatic list, but works when chosen");}catch(Exception ignored){}values.add(key);labels.add(desc);}
         }catch(Exception ignored){}
-        new AlertDialog.Builder(requireContext()).setTitle("Camera ID · "+ModuleRegistry.label(page)).setItems(labels.toArray(new String[0]),(d,i)->{
-            if(i==1){EditText input=new EditText(requireContext());input.setSingleLine(true);input.setHint(Lang.t(getContext(),"Например: 3","For example: 3"));new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Ручной Camera ID","Manual Camera ID")).setView(input).setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(a,b)->assign(input.getText().toString().trim())).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show();}
+        DialogStyle.builder(requireContext()).setTitle("Camera ID · "+ModuleRegistry.label(page)).setItems(labels.toArray(new String[0]),(d,i)->{
+            if(i==1){EditText input=DialogStyle.field(new EditText(requireContext()));input.setSingleLine(true);input.setHint(Lang.t(getContext(),"Например: 3","For example: 3"));DialogStyle.builder(requireContext()).setTitle(Lang.t(getContext(),"Ручной Camera ID","Manual Camera ID")).setView(DialogStyle.body(requireContext(),input)).setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(a,b)->assign(input.getText().toString().trim())).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show();}
             else assign(values.get(i));
         }).show();
     }

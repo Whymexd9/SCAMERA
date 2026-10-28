@@ -7964,6 +7964,43 @@ Owner, same day: «сделай гпу выравнивание и дай воз
 - Host: full :app:testDebugUnitTest on the merged branch 2016 tests / 345 classes, 0 failures. Phone: split screen and
   pause / resume under a translucent activity, a zoomed FULLRES shot against its viewfinder, ETTR on the plain session.
 
+### P375 - the tray's own adjustments, long-press help, the app's dialogs, the RAW viewfinder's zoom, service cameras, the ES / L stamp (owner, 2026-10-28: «У подменю ты не сделал анимацию закрытия. Также дай возможность настраивать луты, фильтры и пленки прямо в этом подменю. Делай так чтобы оно не получалось слишком массивным»; «добавь описание для параметров по длинному зажатию»; «исправь стиль всех таких меню которые выбиваются из нашего стиля приложения»; a log and a video of the 3.5x tele dialled to 14x; «нам наоборот надо чтобы служебные камеры работали»; «Исправь так же "фильтры объектива", в видоискателе вижу эффект, на конечном фото нет»; «Добавь опцию … использовался ли сверхкороткий и длинный кадры на итоговом … причина … очень коротко»): DONE in code (host), not tried on a phone
+- Tray (LutTray, TrayAdjust, TrayMotion): tabs LUT / Filter / Film / Colour (one page shown, the last tab kept), the chosen filter's and film's
+  parameters in a compact strip (a row of small chips + one slider, the settings page's keys, ranges, steps and defaults; strength live,
+  the rest on release; double tap = default); film: strength, grain, halation, softness, exposure, contrast (colour stocks only), print
+  (not slides / B&W reversal); filter: strength, its own parameter, the fine controls. Height animates on the GLIDE spring; «Все ›» opens
+  the full page; a tab's dot (a span right after the title) = something on there. Close: staggered sinking exit (~0.3 s, EXIT curve).
+- Help on long press (ParamHelp: one text per key, Lang.t): the tray's hint line, FilmSimPreference's help sheet. Checked on the model
+  (FilmSimTest.theParameterDescriptionsHoldOnTheModel): tone + is denser / darker / more saturated / more highlight contrast; the B&W
+  model ignores tone; slides and B&W reversal ignore the print exposure. Fix: the B&W negative's film exposure was a no-op (the print
+  was timed for the exposed grey) - now timed at normal exposure as FilmSpectral, so exposure shows on Tri-X / T-Max / HP5.
+- Dialogs (DialogStyle, AlertDialogTheme): all 22 builders in 13 files and the preference dialogs on the androidx / Material dialog in
+  the app's look (card #1B2023, 24 dp, no all-caps, quiet cancel, filled accent confirm, the stored accent); a source guard test.
+- RAW viewfinder zoom (owner's video: 3.5x tele dialled to 14x showed 3.5x, the photo came out 14x): with CONTROL_ZOOM_RATIO the
+  result's SCALER_CROP_REGION is the zoomed field (the whole array) and the RAW is never cropped by the ratio; CroppedRaw.viewCrop
+  shrinks it by the ratio about the centre, relative to the HAL's raw crop on CROPPED_RAW sessions (no double crop). The over-zoomed
+  flash on the lens switch was the ISP fallback of the tele (zoomed) while the RAW viewfinder was not - the same fix.
+- Service cameras (owner: a user's X300 Ultra camera 9, the telephoto extender profile, works there): a camera given to a module by hand
+  opens whatever its type (no refusal); the automatic list still leaves them out; the Camera ID list labels them. CameraManager2: a
+  user lens's zoom against the scan's main lens (the whole-map recompute took the first lens of a map loaded in any order: 0.4x
+  ultra-wide -> main 2.5x, tele 6.1x), save() no longer keeps a lens's old JSON line beside the new one.
+- Lens filter on the photo (owner's log 2026-10-28: the viewfinder showed the filter at 10:10:01-10:10:11, the 10:10:10 shot's pipeline -
+  built after the merge at 10:10:15 - had no LensFilter node; the 10:11:42 shot had glimmer): the photo took the filter as the settings
+  stood ~5 s after the press. LensFilter.Choice taken at the press (CaptureController mShutterLensFilter, both savers -> ImageSaver.
+  lensFilterAtPress -> DefaultSaver / ScamProcessor -> PostPipeline.lensFilterOfShot; the lab and a pipeline without one read the
+  settings). The live shader still drew P287's removed extras (Glimmerglass's star, Pro-Mist's pastel): gone, the viewfinder shows the
+  diffusion the photo gets (strength and PSF size were already the same: p 0.2275 at 50 %, both sized to the frame's long side).
+  Not covered: film, LUT, warmth and tint are still read at processing time (the same window). LensFilterAtPressTest, LiveLensFilterTest.
+- ES / L stamp (MergeStamp, pref_debug_merge_stamp in Diagnostics; global, off in the lab's renders): two lines top right, «ES ✓3» /
+  «L ✓1/3 sh28%» / «… ✗ code»; codes in MergeStamp's Javadoc (plan: off, nc 0.04%, floor, dcg, r9.0, ring; capture: lost, hal; merge:
+  nclip, hole, usclip, mvN%, nshort, tune, align, shN%, tet, mv; nomrg, ?). Inputs: the plan's description (ImageSaver.planNote ->
+  ScamProcessor), the burst's ES / L captured and sent (ScamHybridBurst), the worker's report (ScamNeuralClient). Logged every shot as
+  «SCAM_PIPELINE: merge stamp: …».
+- Tests: LutTrayTest (tabs, film / filter pages, long press), FilmSimTest, CameraAuxModuleTest, CroppedRawTest (viewCrop),
+  MergeStampTest, DialogStyleTest, SettingsDialogsTest, CameraDialogsTest, LensFilterAtPressTest; the full suite (2137) green.
+- Phone: the tray on the X200 Ultra / X300 Ultra (spring, heights, the hint), the dialogs under OriginOS / ColorOS / HyperOS, the 14x
+  RAW viewfinder against the photo, camera 9 with the extender, the stamp's codes in real scenes.
+
 ### P369 - our algorithms out of the film simulation's way (owner, 2026-10-27: «Убедись что при включении симуляций плёнки наши алгоритмы не будут мешать симуляциям и в итоге у нас получался "Look" такой какой должен быть с ними»; «решай и делай всё сам»): DONE in code (host), not shot on a phone
 - Audit (31 verified findings, the lead's plan A1-A11; owner decisions B1-B14 taken by the lead): the film took our display output
   through a fixed inverse (FilmSim.scene: display white = +5.5 EV, not three stops), so it got +0.3 .. +1.5 EV too much in the mid

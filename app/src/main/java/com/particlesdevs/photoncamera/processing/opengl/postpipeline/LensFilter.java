@@ -2,6 +2,8 @@ package com.particlesdevs.photoncamera.processing.opengl.postpipeline;
 
 import android.graphics.Point;
 
+import androidx.annotation.Nullable;
+
 import com.particlesdevs.photoncamera.processing.color.DiffusionGauss;
 import com.particlesdevs.photoncamera.processing.color.LensFilters;
 import com.particlesdevs.photoncamera.processing.opengl.GLFormat;
@@ -37,12 +39,42 @@ public final class LensFilter extends Node {
         this.tune = tune;
     }
 
-    /** The node for the current settings, null when no filter is chosen (the pipeline skips it). */
-    public static LensFilter fromSettings() {
-        final String id = PreferenceKeys.lensFilter();
-        final float s = PreferenceKeys.lensFilterStrength();
-        if (LensFilters.index(id) <= 0 || s <= 0f) return null;
-        return new LensFilter(id, s, PreferenceKeys.lensFilterTune(id));
+    /**
+     * Owner, 2026-10-28 («"фильтры объектива": в видоискателе вижу эффект, на конечном фото нет»): a shot's filter as the
+     * viewfinder showed it at the press (CaptureController takes it with the press, the shot's saver carries it to the
+     * processing). The pipeline used to read the settings after the merge, seconds later: a filter changed in the tray meanwhile
+     * (or a module's profile loaded) was the photo's - the owner's shot got none.
+     */
+    public static final class Choice {
+        /** No filter (none chosen or strength 0). */
+        public static final Choice NONE = new Choice("", 0f, null);
+        public final String id;
+        public final float strength;
+        @Nullable public final LensFilters.Tune tune;
+
+        Choice(String id, float strength, @Nullable LensFilters.Tune tune) {
+            this.id = id;
+            this.strength = strength;
+            this.tune = tune;
+        }
+
+        /** The settings now, as the viewfinder reads them (LiveLensFilter.read). */
+        public static Choice now() {
+            final String id = PreferenceKeys.lensFilter();
+            final float s = PreferenceKeys.lensFilterStrength();
+            if (LensFilters.index(id) <= 0 || s <= 0f) return NONE;
+            return new Choice(id, s, PreferenceKeys.lensFilterTune(id));
+        }
+
+        @Override public String toString() {
+            return tune == null ? "none" : id + String.format(java.util.Locale.ROOT, " %.2f ", strength) + tune.serialize();
+        }
+    }
+
+    /** The node of {@code choice}, null for none (the pipeline skips it). */
+    @Nullable
+    public static LensFilter of(Choice choice) {
+        return choice.tune == null ? null : new LensFilter(choice.id, choice.strength, choice.tune);
     }
 
     @Override

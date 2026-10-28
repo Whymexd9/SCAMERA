@@ -4,7 +4,6 @@ import android.os.Bundle;
 import android.view.*;
 import android.widget.*;
 import androidx.preference.*;
-import androidx.appcompat.app.AlertDialog;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.*;
@@ -70,7 +69,7 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
         PreferenceGroup group=current();boolean home=path.isEmpty();page(home?Lang.t(getContext(),"Копирование настроек","Copy settings"):String.valueOf(group.getTitle()),home?null:Lang.t(getContext(),"Выбор параметров для копирования","Choose the parameters to copy"));
         if(home){
             caption(Lang.t(getContext(),"Источник","Source"));LinearLayout sourceCard=card(),r=row();r.setPadding(dp(14),dp(12),dp(14),dp(12));r.setMinimumHeight(dp(48));ImageView camera=icon("▣");camera.setPadding(0,0,dp(12),0);r.addView(camera,new LinearLayout.LayoutParams(dp(38),dp(26)));r.addView(text(Lang.t(getContext(),"Источник: ","Source: ")+label(source),15,TEXT),new LinearLayout.LayoutParams(0,-2,1));r.addView(text("⌄",20,MUTED));r.setTag("source_module");
-            r.setOnClickListener(v->new AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Источник","Source")).setItems(ids.stream().map(this::label).toArray(String[]::new),(d,i)->{source=ids.get(i);targets.remove(source);render();}).show());sourceCard.addView(r);
+            r.setOnClickListener(v->DialogStyle.builder(requireContext()).setTitle(Lang.t(getContext(),"Источник","Source")).setItems(ids.stream().map(this::label).toArray(String[]::new),(d,i)->{source=ids.get(i);targets.remove(source);render();}).show());sourceCard.addView(r);
             caption(Lang.t(getContext(),"Целевые модули","Target modules"));LinearLayout line=null;int index=0;
             for(String id:ids){if(id.equals(source))continue;if(index++%2==0){line=row();body.addView(line,space(-1,-2,8));}
                 boolean on=targets.contains(id);LinearLayout chip=row();chip.setPadding(dp(2),dp(2),dp(8),dp(2));chip.setBackground(shape(on?((accent&0xFFFFFF)|0x28000000):CARD,on?accent:LINE,12));
@@ -93,7 +92,7 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
             note(Lang.t(getContext(),"Общие параметры помечены внутри групп","Shared parameters are marked inside the groups"));
             primary(Lang.t(getContext(),"Копировать в "+targets.size()+" "+(targets.size()==1?"модуль":targets.size()<5?"модуля":"модулей"),"Copy to "+targets.size()+(targets.size()==1?" module":" modules")),!targets.isEmpty()&&!selected.isEmpty(),()->{
                 PreferenceKeys.profiles().copy(source,targets,selected);if(ScameraApp.getSettings()!=null)ScameraApp.getSettings().loadCache();
-                new AlertDialog.Builder(requireContext()).setMessage(Lang.t(getContext(),"Выбранные настройки скопированы","The selected settings are copied")).setPositiveButton(Lang.t(getContext(),"Готово","Done"),null).show();
+                DialogStyle.builder(requireContext()).setMessage(Lang.t(getContext(),"Выбранные настройки скопированы","The selected settings are copied")).setPositiveButton(Lang.t(getContext(),"Готово","Done"),null).show();
             });
         }else{
             // Each actual submenu becomes a card; deeper categories remain visible as headings.

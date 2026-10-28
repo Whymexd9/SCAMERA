@@ -115,10 +115,11 @@ vec3 lensFilter(vec2 uv, vec3 display, vec2 px, vec2 py, vec2 screen) {
             if (w.r + w.g + w.b > 1e-5) o += w * lfLevel(uLfLinTex, p, k - 1, 4.0);
         }
     }
-    if (uLf == 9 || uLf == 3) {                        // Streak (screen x) / Glimmerglass (the diagonals)
+    // Owner, 2026-10-28 («в видоискателе вижу эффект, на конечном фото нет»): the diffusion filters are the diffusion alone, as
+    // on the photo (LensFilter) and in the settings (P287: Glimmerglass's star and Pro-Mist's pastel were ours, not offered)
+    if (uLf == 9) {                                    // Streak (screen x)
         float len = uLfStreak;                         // a share of the width
-        vec2 dA = uLf == 9 ? vec2(1.0, 0.0) : vec2(0.7071, 0.7071 * view.x / view.y);
-        vec2 dB = vec2(0.7071, -0.7071 * view.x / view.y);
+        vec2 dA = vec2(1.0, 0.0);
         // 16 taps a side; each tap blurred over about its spacing (a mip level), so the taps join into a line
         float spacing = len / 16.0 * 0.5 * view.x;     // in half-size texels
         float lod = clamp(log2(max(spacing, 1.0)), 0.0, 5.0);
@@ -129,13 +130,8 @@ vec3 lensFilter(vec2 uv, vec3 display, vec2 px, vec2 py, vec2 screen) {
             float o1 = len * float(i) / 16.0;
             st += w * (textureLod(uLfHiTex, p + o1 * dA, lod).rgb + textureLod(uLfHiTex, p - o1 * dA, lod).rgb);
             norm += 2.0 * w;
-            if (uLf == 3) {
-                st += w * (textureLod(uLfHiTex, p + o1 * dB, lod).rgb + textureLod(uLfHiTex, p - o1 * dB, lod).rgb);
-                norm += 2.0 * w;
-            }
         }
-        o += s * (uLf == 9 ? 4.0 : 1.6) * lfDec(st / norm, 4.0) * uLfTint;
+        o += s * 4.0 * lfDec(st / norm, 4.0) * uLfTint;
     }
-    if (uLf == 4) o += 0.12 * s * (vec3(lfLuma(o)) - o);   // Pearlescent: pastel
     return lfOut(o);
 }

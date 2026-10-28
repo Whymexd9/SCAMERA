@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A row of a dialog's multi-choice list: the settings' option row with its accent check box (dialog_check). -->
+<CheckedTextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/text1"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="52dp"
+    android:gravity="center_vertical|start"
+    android:textAlignment="viewStart"
+    android:paddingStart="22dp"
+    android:paddingEnd="?attr/dialogPreferredPadding"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp"
+    android:checkMark="@null"
+    android:drawableStart="@drawable/dialog_check"
+    android:drawablePadding="14dp"
+    android:textColor="@color/settings_text"
+    android:textSize="16sp"
+    android:lineSpacingExtra="2sp"
+    android:ellipsize="marquee" />

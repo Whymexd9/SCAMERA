@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A quiet (text) button of a dialog, «Отмена»: the settings' text colour, dimmed while disabled. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false" android:alpha="0.45" android:color="@color/settings_text" />
+    <item android:color="@color/settings_text" />
+</selector>

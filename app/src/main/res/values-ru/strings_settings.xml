@@ -434,6 +434,8 @@
     <string name="prefs_scam_hybrid_why_vibrance_green_title">Сочность зелени</string>
     <string name="prefs_scam_hybrid_why_vibrance_green_summary">Сочность зелени. Больше — зелень насыщеннее, меньше — бледнее.</string>
     <string name="prefs_scam_hybrid_diagnostics_title">Сохранять этапы обработки</string>
+    <string name="prefs_debug_merge_stamp_title">Отметка ES / L на фото</string>
+    <string name="prefs_debug_merge_stamp_summary">В правом верхнем углу фото: вошли ли в него сверхкороткие (ES) и длинные (L) кадры, а если нет — короткий код причины.</string>
     <string name="prefs_keep_raw_burst_title">Сохранять RAW-серию</string>
     <string name="prefs_keep_raw_burst_summary">Каждый снимок SHDR сохраняет свою RAW-серию в Download/SCAMERA/scam_burst-&lt;время&gt;.bin для разбора склейки. Файлы большие (50 Мп: до нескольких ГБ за снимок); после отправки их удаляйте.</string>
     <string name="prefs_scam_lab_screen_title">Лаборатория</string>

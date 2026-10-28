@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A row of a dialog's plain list (setItems): the settings' option row - 16sp in the text colour, at least 52dp. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/text1"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="52dp"
+    android:gravity="center_vertical|start"
+    android:textAlignment="viewStart"
+    android:paddingStart="?attr/dialogPreferredPadding"
+    android:paddingEnd="?attr/dialogPreferredPadding"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp"
+    android:textColor="@color/settings_text"
+    android:textSize="16sp"
+    android:lineSpacingExtra="2sp"
+    android:ellipsize="marquee" />

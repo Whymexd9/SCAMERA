@@ -131,6 +131,13 @@ public class PostPipeline extends GLBasePipeline {
     public boolean filmTaken;
     public String filmUserLut = "";
     public float filmUserStrength;
+    /**
+     * Owner, 2026-10-28 («в видоискателе вижу эффект, на конечном фото нет»): the shot's lens filter as the viewfinder showed it
+     * at the press (ScamProcessor sets it from the shot's saver); null: none taken, the settings now (the lab's renders, under
+     * their overlay).
+     */
+    @androidx.annotation.Nullable
+    public LensFilter.Choice lensFilter;
 
     public PostPipeline() {
         super("PostPipeline");
@@ -149,6 +156,11 @@ public class PostPipeline extends GLBasePipeline {
             Log.w("SCAM_PIPELINE", "film data unreadable (" + film.stock.id + "): the photo without the film");
             film = null;
         }
+    }
+
+    /** The shot's lens filter: the press's ({@link #lensFilter}), else the settings now. */
+    public LensFilter.Choice lensFilterOfShot() {
+        return lensFilter != null ? lensFilter : LensFilter.Choice.now();
     }
 
     /**
@@ -852,9 +864,13 @@ public class PostPipeline extends GLBasePipeline {
         add(new ScamRgb());
         // P129: HighlightRecovery is gone (SCAM HDR's; SHDR recovers the highlights per channel in ScamRgb)
         add(new ScamHdrDenoise());
-        // P228: the lens filter on the linear RGB (highlights with their headroom), before the tone; none: no node at all
-        final LensFilter lensFilter = LensFilter.fromSettings();
-        if (lensFilter != null) add(lensFilter);
+        // P228: the lens filter on the linear RGB (highlights with their headroom), before the tone; none: no node at all.
+        // Owner, 2026-10-28: the one of the press, not of the settings after the merge
+        final LensFilter.Choice shotFilter = lensFilterOfShot(), filterNow = lensFilter != null ? LensFilter.Choice.now() : shotFilter;
+        if (!filterNow.toString().equals(shotFilter.toString()))
+            Log.i("SCAM_PIPELINE", "lens filter of the press: " + shotFilter + " (the settings now: " + filterNow + ")");
+        final LensFilter lensFilterNode = LensFilter.of(shotFilter);
+        if (lensFilterNode != null) add(lensFilterNode);
         // P281: the film simulation's halation, on the linear light too (none: no node); P369: of the shot's film snapshot
         final FilmHalation halation = FilmHalation.from(film);
         if (halation != null) add(halation);

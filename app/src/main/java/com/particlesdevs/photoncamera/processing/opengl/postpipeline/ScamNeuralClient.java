@@ -564,6 +564,7 @@ public final class ScamNeuralClient {
                 final String rep;
                 synchronized(report){ScamHybridBurst.lastEffectiveMedian=effMedian[0];rep=report.toString();}
                 ScamHybridBurst.lastBentoApplied=rep.indexOf("HYBRID BENTO: applied")>=0;
+                ScamHybridBurst.lastReport=rep; // MergeStamp
                 ScamHybridBurst.lastBentoFactor=reportNumber(rep,"HYBRID BENTO: applied","factor=",1f);
                 ScamHybridBurst.lastMergedDngHeadroom=Math.max(1f,reportNumber(rep,"HYBRID DNG:","headroom=",1f));
                 ScamHybridBurst.lastMergeFrames=com.particlesdevs.photoncamera.processing.DngMetadata.mergeFrames(rep); // P214c

@@ -456,6 +456,7 @@ public final class ScamLabRun {
         m.put("pref_scam_hybrid_diagnostics", false);
         m.put("pref_keep_raw_burst", false);
         m.put(ScamLab.PREF, false);
+        m.put(com.particlesdevs.photoncamera.processing.MergeStamp.KEY, false);
         return m;
     }
 

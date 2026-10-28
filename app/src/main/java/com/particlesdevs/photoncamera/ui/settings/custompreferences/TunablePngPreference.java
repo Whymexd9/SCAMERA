@@ -1,6 +1,5 @@
 package com.particlesdevs.photoncamera.ui.settings.custompreferences;
 
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.BitmapFactory;
@@ -10,11 +9,13 @@ import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceManager;
 import androidx.preference.PreferenceViewHolder;
 
 import com.particlesdevs.photoncamera.app.ScameraApp;
+import com.particlesdevs.photoncamera.ui.settings.DialogStyle;
 import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.util.Log;
 
@@ -83,7 +84,7 @@ public class TunablePngPreference extends Preference {
         Context context = getContext();
         if (context == null) return;
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        AlertDialog.Builder builder = DialogStyle.builder(context);
         builder.setTitle(getTitle());
 
         final List<String> availablePngs = getAvailablePngs(context);
@@ -132,7 +133,7 @@ public class TunablePngPreference extends Preference {
                 listView.setOnItemLongClickListener((parent, view, position, id) -> {
                     if (position == 0) return true; // Cannot remove "None"
                     final String pngName = items.get(position);
-                    new AlertDialog.Builder(context)
+                    DialogStyle.builder(context)
                             .setTitle(Lang.t(context, "Удалить PNG", "Remove PNG"))
                             .setMessage(Lang.t(context, "Удалить " + pngName + "?", "Remove " + pngName + "?"))
                             .setPositiveButton(Lang.t(context, "Удалить", "Remove"), (d2, w2) -> {

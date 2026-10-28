@@ -33,6 +33,10 @@ public class DefaultSaver extends SaverImplementation {
     /** The queued shot's digital-zoom crop (null: not queued) and camera at the press (ImageSaver.zoomResidual / cameraIdAtPress). */
     Float ownedZoomResidual;
     String ownedCameraId;
+    /** The queued shot's capture plan (ImageSaver.planNote). */
+    String ownedPlanNote;
+    /** The queued shot's lens filter at the press (ImageSaver.lensFilterAtPress). */
+    com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice ownedLensFilter;
 
     public DefaultSaver(ProcessingEventsListener processingEventsListener) {
         super(processingEventsListener);
@@ -45,8 +49,12 @@ public class DefaultSaver extends SaverImplementation {
         ownedIszAspect4x3 = null;
         scamProcessor.ownedZoomResidual = ownedZoomResidual != null ? ownedZoomResidual : zoomResidual;
         scamProcessor.ownedCameraId = ownedFrames != null ? ownedCameraId : cameraIdAtPress;
+        scamProcessor.ownedPlanNote = ownedFrames != null ? ownedPlanNote : planNote;
+        scamProcessor.ownedLensFilter = ownedFrames != null ? ownedLensFilter : lensFilterAtPress;
         ownedZoomResidual = null;
         ownedCameraId = null;
+        ownedPlanNote = null;
+        ownedLensFilter = null;
         if (ownedFrames != null) {
             // Queued shot: frames and exposure pairs were detached from the
             // shared buffers on the camera thread when the burst completed.

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The window background of the dialogs androidx builds without DialogStyle (the preference library's backup, restore and
+     reset): the same card at the same insets as DialogStyle.builder's (Scamera.Dialog backgroundInset*). -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/dialog_surface"
+    android:insetLeft="@dimen/dialog_inset_horizontal"
+    android:insetRight="@dimen/dialog_inset_horizontal"
+    android:insetTop="@dimen/dialog_inset_vertical"
+    android:insetBottom="@dimen/dialog_inset_vertical" />

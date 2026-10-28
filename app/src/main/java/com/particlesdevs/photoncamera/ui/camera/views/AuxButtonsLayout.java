@@ -20,7 +20,6 @@
 
 package com.particlesdevs.photoncamera.ui.camera.views;
 
-import android.app.AlertDialog;
 import android.content.Context;
 import com.particlesdevs.photoncamera.settings.ModuleRegistry;
 import android.util.AttributeSet;
@@ -34,6 +33,7 @@ import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.ui.camera.binding.CustomBinding;
 import com.particlesdevs.photoncamera.ui.camera.data.CameraLensData;
 import com.particlesdevs.photoncamera.ui.camera.model.AuxButtonsModel;
+import com.particlesdevs.photoncamera.ui.settings.DialogStyle;
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
 import com.particlesdevs.photoncamera.util.Lang;
@@ -407,7 +407,7 @@ public AuxButtonsLayout(Context context, @Nullable AttributeSet attrs) {
                     + ModuleRegistry.camera(slot));
         }
         if (buttons.size() <= 1) return false;
-        new AlertDialog.Builder(getContext()).setTitle(Lang.t(getContext(), "Модули", "Modules"))
+        DialogStyle.builder(getContext()).setTitle(Lang.t(getContext(), "Модули", "Modules"))
                 .setItems(labels.toArray(new String[0]), (dialog, which) -> {
                     View button = buttons.get(which);
                     String slot = auxButtonsMap.get(button.getId());

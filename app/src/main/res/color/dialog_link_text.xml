@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The side (neutral) button of a dialog: accent text, as the settings' «Сбросить все ползунки» link; dimmed while disabled. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false" android:alpha="0.45" android:color="?attr/colorPrimary" />
+    <item android:color="?attr/colorPrimary" />
+</selector>

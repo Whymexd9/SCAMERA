@@ -107,10 +107,10 @@ public abstract class ModuleConceptFragment extends Fragment {
         tags[CROPS.length]="crop_custom";labels[CROPS.length]=Lang.t(getContext(),"Своё значение…","Custom value…");
         SettingsStyle.optionSheet(requireContext(),Lang.t(getContext(),"Кроп копии «"+com.particlesdevs.photoncamera.settings.ModuleRegistry.label(source)+"»","Copy crop of “"+com.particlesdevs.photoncamera.settings.ModuleRegistry.label(source)+"”"),labels,tags,selected,accent,i->{
             if(i<CROPS.length){onCrop.accept(CROPS[i]);return;}
-            android.widget.EditText input=new android.widget.EditText(requireContext());input.setSingleLine(true);input.setTag("crop_value");
+            android.widget.EditText input=DialogStyle.field(new android.widget.EditText(requireContext()));input.setSingleLine(true);input.setTag("crop_value");
             input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
             input.setHint(Lang.t(getContext(),"От 1 до 10, например 1.3","1 to 10, e.g. 1.3"));input.setText(cropText(current));
-            new androidx.appcompat.app.AlertDialog.Builder(requireContext()).setTitle(Lang.t(getContext(),"Кроп копии","Copy crop")).setView(input)
+            DialogStyle.builder(requireContext()).setTitle(Lang.t(getContext(),"Кроп копии","Copy crop")).setView(DialogStyle.body(requireContext(),input))
                 .setPositiveButton(Lang.t(getContext(),"Сохранить","Save"),(d,w)->{
                     try{float c=Float.parseFloat(input.getText().toString().trim().replace(',','.'));if(c>=1f&&c<=10f)onCrop.accept(c);}catch(NumberFormatException bad){}
                 }).setNegativeButton(Lang.t(getContext(),"Отмена","Cancel"),null).show();

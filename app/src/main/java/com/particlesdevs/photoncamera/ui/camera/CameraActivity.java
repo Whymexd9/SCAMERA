@@ -17,7 +17,6 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
 import androidx.preference.PreferenceManager;
 
@@ -26,6 +25,7 @@ import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.app.base.BaseActivity;
 import com.particlesdevs.photoncamera.settings.MigrationManager;
 import com.particlesdevs.photoncamera.settings.PreferenceKeys;
+import com.particlesdevs.photoncamera.ui.settings.DialogStyle;
 import com.anggrayudi.storage.contract.RequestStorageAccessContract;
 import com.anggrayudi.storage.contract.RequestStorageAccessResult;
 import com.anggrayudi.storage.file.StorageType;
@@ -183,7 +183,7 @@ public class CameraActivity extends BaseActivity {
             title = getString(R.string.perm_settings_title);
             message = getString(R.string.perm_settings_message, String.join(", ", names));
         }
-        new AlertDialog.Builder(this)
+        DialogStyle.builder(this)
                 .setTitle(title)
                 .setMessage(message)
                 .setPositiveButton(R.string.perm_open_settings, (dialog, which) -> openAppSettings())
@@ -221,7 +221,7 @@ public class CameraActivity extends BaseActivity {
     }
 
     private void showDcimFailedDialog() {
-        new AlertDialog.Builder(this)
+        DialogStyle.builder(this)
                 .setTitle(R.string.perm_rationale_dcim_title)
                 .setMessage(R.string.perm_dcim_failed)
                 .setPositiveButton(R.string.perm_retry, (dialog, which) -> {

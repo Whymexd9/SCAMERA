@@ -400,8 +400,30 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
         com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(bar, reset);
         com.particlesdevs.photoncamera.ui.controls.DoubleTapReset.attach(row, reset);
         sliderResets.add(reset);
+        // owner, 2026-10-28 («добавь описание для параметров по длинному зажатию»): a long press tells what it does
+        final String help = com.particlesdevs.photoncamera.settings.ParamHelp.of(c, key);
+        if (help != null) {
+            final View.OnLongClickListener explain = held -> { showHelp(c, title, help); return true; };
+            row.setOnLongClickListener(explain);
+            bar.setOnLongClickListener(explain);
+        }
         final LinearLayout.LayoutParams lp = margin(c, 8);
         content.addView(row, lp);
+    }
+
+    /** A parameter's description in the settings' help sheet (SettingHelp's look). */
+    static void showHelp(Context c, CharSequence title, String text) {
+        final LinearLayout body = SettingsStyle.sheetBody(c, title, null);
+        body.setTag("film_param_help");
+        final TextView t = SettingsStyle.text(c, text, 15, UiTokens.TEXT);
+        t.setLineSpacing(0, 1.15f);
+        t.setPadding(UiTokens.dp(c, 4), UiTokens.dp(c, 4), UiTokens.dp(c, 4), UiTokens.dp(c, 8));
+        body.addView(t);
+        final TextView tip = SettingsStyle.text(c, Lang.t(c, "Двойное касание ползунка возвращает значение по умолчанию.",
+                "A double tap on the slider puts the default back."), 13, UiTokens.MUTED);
+        tip.setPadding(UiTokens.dp(c, 4), 0, UiTokens.dp(c, 4), UiTokens.dp(c, 4));
+        body.addView(tip);
+        SettingsStyle.sheet(c, body).show();
     }
 
     /** The preview: the sample, and the sample through the simulation and the chosen LUT. */

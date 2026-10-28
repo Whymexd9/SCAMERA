@@ -106,17 +106,34 @@ public final class CameraManager2 {
                 } catch (Exception ignored) {
                     characteristics = cameraManager.getCameraCharacteristics(physicalId);
                 }
+                // a service stream too (a vivo teleconverter profile, MONO / NIR): the user chose it (owner, 2026-10-28: the
+                // X300 Ultra's camera 9 turns the picture for the telephoto extender)
                 CameraLensData data = createNewCameraLensData(id, characteristics);
                 mAllCameraIDsSet.add(id);
                 mCameraLensDataMap.put(id, data);
+                // against the scan's main lens of its side: findLensZoomFactor over the whole map took the first lens of a map
+                // loaded from a saved set (any order) as the main one - the 0.4x ultra-wide made the main 2.5x and the tele 6.1x
+                // (owner's log 2026-10-28, vivo V2562)
+                data.setZoomFactor(zoomAgainstMain(data));
                 added = true;
             } catch (Exception ignored) {
             }
         }
-        if (added) {
-            findLensZoomFactor(mCameraLensDataMap);
-            save();
+        if (added) save();
+    }
+
+    /** A lens added after the scan: its zoom against the lens of its side the scan made 1x (else the first of its side). */
+    private float zoomAgainstMain(CameraLensData lens) {
+        CameraLensData main = null;
+        for (CameraLensData c : mCameraLensDataMap.values()) {
+            if (c == lens || c.getFacing() != lens.getFacing()) continue;
+            if (Math.abs(c.getZoomFactor() - 1f) < 1e-3f) {
+                main = c;
+                break;
+            }
+            if (main == null) main = c;
         }
+        return main == null ? 1f : lens.getCamera35mmFocalLength() / main.getCamera35mmFocalLength();
     }
 
     private boolean isLoaded(){
@@ -317,6 +334,8 @@ public final class CameraManager2 {
     }
 
     private void save() {
+        // the set from loadFromSave would keep each lens's old line beside its new one (two zooms of one camera)
+        mCameraLensDataJSONSet = new LinkedHashSet<>();
         mSettingsManager.set(_CAMERAS, CAMERA_COUNT_KEY, mAllCameraIDsSet.size());
         mSettingsManager.set(_CAMERAS, ALL_CAMERA_IDS_KEY, mAllCameraIDsSet);
 

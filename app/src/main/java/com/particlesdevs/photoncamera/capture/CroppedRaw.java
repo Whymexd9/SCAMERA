@@ -84,6 +84,23 @@ public final class CroppedRaw {
         return crop == null || active == null ? 1f : factor(active.width(), crop.width());
     }
 
+    /**
+     * The part of a RAW frame the viewfinder shows, {left, top, width, height} as fractions of the frame: the result's crop
+     * region is in the zoom ratio's field (API 30: with CONTROL_ZOOM_RATIO it is the whole active array while only the ratio
+     * zooms), so it shrinks by the ratio about the array's centre; the frame holds the active array, or {@code rawCrop} when
+     * the HAL zoomed the RAW itself (CROPPED_RAW, a factor of at least MIN_FACTOR). Owner's video 2026-10-28: the 3.5x tele
+     * dialled to 14x stayed at 3.5x in the RAW viewfinder while the photo came out at 14x.
+     */
+    static float[] viewCrop(Rect active, Rect resultCrop, float zoomRatio, @Nullable Rect rawCrop) {
+        final float z = zoomRatio > 1.001f ? zoomRatio : 1f;
+        final float cx = active.exactCenterX(), cy = active.exactCenterY();
+        final Rect frame = rawCrop != null && factor(rawCrop, active) > 1f ? rawCrop : active;
+        final float l = Math.max(frame.left, cx + (resultCrop.left - cx) / z), t = Math.max(frame.top, cy + (resultCrop.top - cy) / z);
+        final float r = Math.min(frame.right, cx + (resultCrop.right - cx) / z), b = Math.min(frame.bottom, cy + (resultCrop.bottom - cy) / z);
+        if (r <= l || b <= t) return new float[]{0f, 0f, 1f, 1f};
+        return new float[]{(l - frame.left) / frame.width(), (t - frame.top) / frame.height(), (r - l) / frame.width(), (b - t) / frame.height()};
+    }
+
     /** Whether two frames hold the same part of the sensor (both unknown counts as the same). */
     public static boolean same(@Nullable Rect a, @Nullable Rect b) {
         if (a == null || b == null) return a == b;

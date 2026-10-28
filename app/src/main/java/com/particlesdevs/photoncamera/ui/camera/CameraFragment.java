@@ -22,7 +22,6 @@ package com.particlesdevs.photoncamera.ui.camera;
 import android.graphics.Bitmap;
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -361,6 +360,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             // SIMPLE_UI §1: the LUT pill and tray; Pro and the tray close each other
             lutTray = new LutTray(cameraFragmentBinding.layoutViewfinder.lutPill, cameraFragmentBinding.lutTray,
                     cameraFragmentBinding.layoutViewfinder.texture, this::openLutSettings);
+            lutTray.setPageOpener(this::openSettingsPage);
             // P293 (owner, 2026-10-20: «одновременно открытые шторка и меню фильтров налазят друг на друга»): the tray closes Pro
             // and the quick sheet; the sheet, at any level reached in any way (finger, «Ещё», a swipe, the model), closes the tray
             lutTray.setOnOpen(() -> {
@@ -731,12 +731,17 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
 
     /** «Все LUT ›»: the settings at the film LUT row. */
     private void openLutSettings() {
+        openSettingsPage("film_lut_screen", com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+    }
+
+    /** A settings page ({@code page}, scrolled to {@code key}) from the camera, as the LUT tray's «Все ›» opens its section's. */
+    private void openSettingsPage(String page, String key) {
         levelBeforeSettings = cameraFragmentViewModel.getSheetLevel();
         watchSessionSettings();
         Intent intent = new Intent(activity, SettingsActivity.class);
         intent.setAction(SettingsActivity.ACTION_OPEN_PAGE);
-        intent.putExtra(SettingsActivity.EXTRA_PAGE, "film_lut_screen");
-        intent.putExtra(SettingsActivity.EXTRA_KEY, com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
+        intent.putExtra(SettingsActivity.EXTRA_PAGE, page);
+        intent.putExtra(SettingsActivity.EXTRA_KEY, key);
         intent.putExtra("camera_mode", PreferenceKeys.getCameraModeOrdinal());
         startActivity(intent);
     }
@@ -1841,7 +1846,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         public Dialog onCreateDialog(Bundle savedInstanceState) {
             final Activity activity = getActivity();
             assert getArguments() != null;
-            return new AlertDialog.Builder(activity)
+            return com.particlesdevs.photoncamera.ui.settings.DialogStyle.builder(activity)
                     .setMessage(getArguments().getString(ARG_MESSAGE))
                     .setPositiveButton(android.R.string.ok, (dialogInterface, i) -> {
                         if (activity != null) {

@@ -589,8 +589,10 @@ public final class FilmSim {
             }
             for (int c = 0; c < 3; c++) paper[c] = new Curve(p.gamma, p.dmax - PAPER_DMIN, p.toe, p.shoulder, p.mid - PAPER_DMIN);
             // the printing balance: a mid-grey negative exposes each paper layer to 1 (the enlarger's filtration), then the
-            // print exposure and the tone (warmer: more exposure of the blue-sensitive layer, less of the red one)
-            final float[] t = transmittance(filmDensity(new double[]{.18, .18, .18}));
+            // print exposure and the tone (warmer: more exposure of the blue-sensitive layer, less of the red one). The print is
+            // timed for the film's mid grey at its normal exposure, as the reference model's (FilmSpectral.Engine): a denser
+            // negative prints lighter, so «Экспозиция плёнки» shows on a negative (timed for the exposed grey it cancelled out)
+            final float[] t = transmittance(filmDensity(new double[]{.18, .18, .18}, reversal ? exposure : 0));
             for (int c = 0; c < 3; c++) {
                 double q = 0;
                 for (int k = 0; k < BINS; k++) q += LAMP[k] * t[k] * (mono ? paperSens[0][k] + paperSens[1][k] + paperSens[2][k] : paperSens[c][k]);
@@ -625,6 +627,12 @@ public final class FilmSim {
 
         /** The film's three dye amounts (density above the base) for scene light {@code rgb} (linear, 0.18 = mid grey). */
         double[] filmDensity(double[] rgb) {
+            return filmDensity(rgb, exposure);
+        }
+
+        /** As {@link #filmDensity(double[])} at the film exposure {@code ev} (log10). */
+        double[] filmDensity(double[] rgb, double ev) {
+            final double exposure = ev;
             if (mono) {
                 double e = 0;
                 for (int j = 0; j < 3; j++) e += (j == 0 ? .30 : j == 1 ? .55 : .15) * rgb[j];

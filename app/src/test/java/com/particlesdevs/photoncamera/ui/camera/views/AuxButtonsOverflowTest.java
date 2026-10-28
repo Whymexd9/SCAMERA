@@ -1,7 +1,6 @@
 package com.particlesdevs.photoncamera.ui.camera.views;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -31,7 +30,7 @@ import org.mockito.MockedStatic;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
-import org.robolectric.shadows.ShadowAlertDialog;
+import org.robolectric.shadows.ShadowDialog;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -97,8 +96,13 @@ public class AuxButtonsOverflowTest {
         activity.getWindow().getDecorView().dispatchWindowFocusChanged(true);
     }
 
+    /** The module list (DialogStyle: the app's androidx dialog, not the framework's), null when none was shown. */
+    private static androidx.appcompat.app.AlertDialog latest() {
+        return (androidx.appcompat.app.AlertDialog) ShadowDialog.getLatestDialog();
+    }
+
     @After public void cleanup() {
-        AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
+        androidx.appcompat.app.AlertDialog dialog = latest();
         if (dialog != null) dialog.dismiss();
         activity.finish();
         vivo.close();
@@ -122,8 +126,9 @@ public class AuxButtonsOverflowTest {
         Dcg14Mode.setMode(Dcg14Mode.DCG);
         String json = prefs.getString("pref_sensorconfig_back8_tunablekeys", "");
         assertTrue(strip.getChildAt(0).performLongClick());
-        AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
+        androidx.appcompat.app.AlertDialog dialog = latest();
         assertNotNull(dialog);
+        assertEquals("Modules", ((android.widget.TextView) dialog.findViewById(androidx.appcompat.R.id.alertTitle)).getText().toString());
         assertEquals(9, dialog.getListView().getAdapter().getCount());
         String item = dialog.getListView().getAdapter().getItem(8).toString();
         assertTrue(item.contains("9.6x (remosaic)") && item.contains("camera 5"));
@@ -151,7 +156,7 @@ public class AuxButtonsOverflowTest {
         strip.dispatchTouchEvent(down);
         assertTrue("the visible lens received DOWN", first.isPressed());
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1000));
-        assertNotNull(ShadowAlertDialog.getLatestAlertDialog());
+        assertNotNull(latest());
         assertEquals("back0", ModuleRegistry.active());
         assertTrue(selected.isEmpty());
         down.recycle();
@@ -160,11 +165,11 @@ public class AuxButtonsOverflowTest {
     @Test public void fittingOrDisabledStripsDoNotOpenTheOverflowDialog() {
         size(3000);
         assertFalse(strip.getChildAt(0).performLongClick());
-        assertNull(ShadowAlertDialog.getLatestAlertDialog());
+        assertNull(latest());
         size(NARROW);
         model.setEnabled(false);
         assertFalse(strip.getChildAt(0).performLongClick());
-        assertNull(ShadowAlertDialog.getLatestAlertDialog());
+        assertNull(latest());
     }
 
     /**
@@ -183,10 +188,10 @@ public class AuxButtonsOverflowTest {
             assertTrue("shrunk", tile.fit() < 1f);
         }
         assertFalse("nothing clipped: no module list", strip.getChildAt(0).performLongClick());
-        assertNull(ShadowAlertDialog.getLatestAlertDialog());
+        assertNull(latest());
         size(90);   // SIMPLE_UI: the concept's 34dp lenses still fit 150 px shrunk
         assertTrue("too narrow even shrunk: the module list", strip.getChildAt(0).performLongClick());
-        assertNotNull(ShadowAlertDialog.getLatestAlertDialog());
+        assertNotNull(latest());
     }
 
     @Test public void continuousDragStillZoomsAndDoesNotSelectAnotherModuleOrOpenADialog() {
@@ -200,7 +205,7 @@ public class AuxButtonsOverflowTest {
         assertEquals(Arrays.asList(40f), drag);
         assertEquals("back0", ModuleRegistry.active());
         assertTrue(selected.isEmpty());
-        assertNull(ShadowAlertDialog.getLatestAlertDialog());
+        assertNull(latest());
         down.recycle();
         move.recycle();
     }

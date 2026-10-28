@@ -1,6 +1,5 @@
 package com.particlesdevs.photoncamera.ui.settings.custompreferences;
 
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.text.InputType;

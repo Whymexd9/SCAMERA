@@ -16,7 +16,6 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.appcompat.widget.Toolbar;
@@ -25,6 +24,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.SettingsManager;
+import com.particlesdevs.photoncamera.ui.settings.DialogStyle;
 import com.particlesdevs.photoncamera.util.Log;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -388,22 +388,17 @@ public class LensDiscoveryActivity extends AppCompatActivity {
 
     /* JADX INFO: Access modifiers changed from: private */
     public void showLensEditDialog(final LensInfo info, final int position) {
-        LinearLayout fields = new LinearLayout(this);
-        fields.setOrientation(1);
-        int pad = (int) (getResources().getDisplayMetrics().density * 20.0f);
-        fields.setPadding(pad, pad / 2, pad, 0);
-        final EditText name = new EditText(this);
+        final EditText name = DialogStyle.field(new EditText(this));
         name.setHint(R.string.lens_edit_name_hint);
         name.setSingleLine(true);
         name.setText(this.settingsManager.getString("default_scope", "lens_name_" + info.f381id, ""));
-        final EditText order = new EditText(this);
+        final EditText order = DialogStyle.field(new EditText(this));
         order.setHint(R.string.lens_edit_order_hint);
         order.setSingleLine(true);
         order.setInputType(2);
         order.setText(this.settingsManager.getString("default_scope", "lens_order_" + info.f381id, String.valueOf(position)));
-        fields.addView(name);
-        fields.addView(order);
-        new AlertDialog.Builder(this).setTitle(R.string.lens_edit_title).setView(fields).setNegativeButton(android.R.string.cancel, (DialogInterface.OnClickListener) null).setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() { // from class: com.particlesdevs.photoncamera.ui.camera.LensDiscoveryActivity$$ExternalSyntheticLambda6
+        LinearLayout fields = DialogStyle.body(this, name, order);
+        DialogStyle.builder(this).setTitle(R.string.lens_edit_title).setView(fields).setNegativeButton(android.R.string.cancel, (DialogInterface.OnClickListener) null).setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() { // from class: com.particlesdevs.photoncamera.ui.camera.LensDiscoveryActivity$$ExternalSyntheticLambda6
             @Override // android.content.DialogInterface.OnClickListener
             public final void onClick(DialogInterface dialogInterface, int i) throws NumberFormatException {
                 LensDiscoveryActivity.this.lambda$showLensEditDialog$7(info, name, position, order, dialogInterface, i);

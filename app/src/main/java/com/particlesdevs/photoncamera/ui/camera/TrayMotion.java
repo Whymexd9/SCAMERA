@@ -33,6 +33,8 @@ final class TrayMotion {
     static final TimeInterpolator EASE_IN = new PathInterpolator(0.4f, 0f, 1f, 1f);
     /** The ease of an entry (Material's emphasised decelerate, close to iOS' default curve). */
     static final TimeInterpolator EASE_OUT = new PathInterpolator(0.05f, 0.7f, 0.1f, 1f);
+    /** The ease of the tray's exit (an emphasised accelerate: it starts moving at once and gathers speed, so it reads as a motion). */
+    static final TimeInterpolator EXIT = new PathInterpolator(0.3f, 0f, 0.8f, 0.15f);
 
     /**
      * A damped spring from 0 to 1 over {@link Spring#durationMs}: x(t) = 1 - e^(-z w t) (cos(wd t) + z w / wd sin(wd t)), w = 2 pi /
@@ -68,6 +70,8 @@ final class TrayMotion {
     /** The tray appears from below: lifted, scaled up a little and faded in; its rows follow one after another. */
     static void appear(ViewGroup tray) {
         final Context c = tray.getContext();
+        final Object prev = tray.getTag(R_TAG_LIFT);
+        if (prev instanceof ValueAnimator) ((ValueAnimator) prev).cancel(); // a leaving tray called back
         tray.animate().cancel();
         tray.setVisibility(View.VISIBLE);
         if (!tray.isAttachedToWindow() || !ValueAnimator.areAnimatorsEnabled()) { // nothing on screen to move: the end state
@@ -80,7 +84,7 @@ final class TrayMotion {
         tray.setTranslationY(UiScale.dpF(c, 22));
         tray.setScaleX(.94f);
         tray.setScaleY(.94f);
-        tray.animate().alpha(1f).setDuration(220).setInterpolator(EASE_OUT).start();
+        tray.animate().alpha(1f).setDuration(220).setStartDelay(0).setInterpolator(EASE_OUT).start();
         // the lift and the scale on the spring (one animator, so they move together)
         final ValueAnimator lift = ValueAnimator.ofFloat(0f, 1f);
         lift.setDuration(OPEN.durationMs);
@@ -105,7 +109,11 @@ final class TrayMotion {
         }
     }
 
-    /** The tray leaves: a short fall and fade; {@code gone} runs at its end unless it was opened again meanwhile. */
+    /**
+     * The tray leaves (owner, 2026-10-28: the exit was too short to be seen): its sections go first, the lowest first, then the
+     * pane sinks, shrinks toward its bottom and fades - the entry played backwards, a little quicker (~0.3 s). {@code gone} runs at
+     * its end unless it was opened again meanwhile.
+     */
     static void disappear(ViewGroup tray, Runnable gone) {
         final Object lift = tray.getTag(R_TAG_LIFT);
         if (lift instanceof ValueAnimator) ((ValueAnimator) lift).cancel();
@@ -114,11 +122,34 @@ final class TrayMotion {
             gone.run();
             return;
         }
+        final Context c = tray.getContext();
         tray.setPivotX(tray.getWidth() / 2f);
         tray.setPivotY(tray.getHeight());
+        // the sections: fade and drop a little, bottom-up, 20 ms apart
+        final int n = tray.getChildCount();
+        final float drop = UiScale.dpF(c, 8);
+        for (int i = 0; i < n; i++) {
+            final View child = tray.getChildAt(i);
+            if (child.getVisibility() != View.VISIBLE) continue;
+            child.animate().alpha(0f).translationY(drop).setStartDelay(20L * (n - 1 - i)).setDuration(150).setInterpolator(EASE_IN).start();
+        }
+        // the pane: sinks and shrinks on one animator (from where it is now: an exit during the entry carries on smoothly)
+        final float y0 = tray.getTranslationY(), s0 = tray.getScaleX(), sink = UiScale.dpF(c, 28);
+        final ValueAnimator down = ValueAnimator.ofFloat(0f, 1f);
+        down.setDuration(300);
+        down.setInterpolator(EXIT);
+        down.addUpdateListener(a -> {
+            final float k = (float) a.getAnimatedValue();
+            tray.setTranslationY(y0 + (sink - y0) * k);
+            final float s = s0 + (.92f - s0) * k;
+            tray.setScaleX(s);
+            tray.setScaleY(s);
+        });
+        tray.setTag(R_TAG_LIFT, down);
+        down.start();
+        // its fade a little later, so the motion is seen before it goes
         tray.animate().cancel();
-        tray.animate().alpha(0f).translationY(UiScale.dpF(tray.getContext(), 14)).scaleX(.97f).scaleY(.97f)
-                .setDuration(170).setStartDelay(0).setInterpolator(EASE_IN)
+        tray.animate().alpha(0f).setDuration(220).setStartDelay(90).setInterpolator(EASE_IN)
                 .setListener(new AnimatorListenerAdapter() {
                     private boolean cancelled;
                     @Override public void onAnimationCancel(Animator a) { cancelled = true; }

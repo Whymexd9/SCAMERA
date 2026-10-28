@@ -56,6 +56,7 @@ public class LutTrayTest {
         camera.when(ScameraApp::getSettings).thenReturn(mock(com.particlesdevs.photoncamera.api.Settings.class));
         PreferenceKeys.initialise(manager);
         manager.set(SettingsManager.SCOPE_GLOBAL, FilmLut.KEY, "");
+        LutTray.lastTab = LutTray.TAB_LUT;
     }
 
     @After
@@ -150,6 +151,127 @@ public class LutTrayTest {
         box.findViewWithTag("lut_tray_filter_").performClick();
         assertEquals("", PreferenceKeys.lensFilter());
         assertEquals("LUT", pill.getText().toString());
+    }
+
+    /** Owner, 2026-10-28: the sections are tabs - one page shows, the tab chosen last opens again. */
+    @Test
+    public void theTabsShowOnePageAndAreRemembered() {
+        TextView pill = new TextView(context);
+        LinearLayout box = new LinearLayout(context);
+        LutTray tray = tray(pill, box);
+        tray.setOpen(true);
+        assertEquals(View.VISIBLE, box.findViewWithTag("lut_tray_page_lut").getVisibility());
+        for (String t : new String[]{"filter", "film", "colour"}) assertEquals(t, View.GONE, box.findViewWithTag("lut_tray_page_" + t).getVisibility());
+        assertTrue(box.findViewWithTag("lut_tray_tab_lut").isActivated());
+        box.findViewWithTag("lut_tray_tab_film").performClick();
+        settle();
+        assertEquals(View.VISIBLE, box.findViewWithTag("lut_tray_page_film").getVisibility());
+        assertEquals(View.GONE, box.findViewWithTag("lut_tray_page_lut").getVisibility());
+        assertTrue(box.findViewWithTag("lut_tray_tab_film").isActivated());
+        assertFalse(box.findViewWithTag("lut_tray_tab_lut").isActivated());
+        tray.setOpen(false);
+        settle();
+        tray.setOpen(true);
+        assertEquals("the film tab again", View.VISIBLE, box.findViewWithTag("lut_tray_page_film").getVisibility());
+        // the colour tab: no settings page of its own behind «Все ›»
+        box.findViewWithTag("lut_tray_tab_colour").performClick();
+        assertEquals(View.INVISIBLE, box.findViewWithTag("lut_tray_all").getVisibility());
+        assertEquals(View.VISIBLE, box.findViewWithTag("lut_tray_warmth").getVisibility());
+    }
+
+    /** The chosen film's parameters in its page, written as the film page writes them; none without a film, no print for a slide. */
+    @Test
+    public void theFilmPageAdjustsTheChosenFilm() {
+        TextView pill = new TextView(context);
+        LinearLayout box = new LinearLayout(context);
+        LutTray tray = tray(pill, box);
+        tray.setOpen(true);
+        box.findViewWithTag("lut_tray_tab_film").performClick();
+        View adjust = box.findViewWithTag("lut_tray_film_adjust");
+        assertEquals("no film: nothing to adjust", View.GONE, adjust.getVisibility());
+        box.findViewWithTag("lut_tray_film_kodak_portra_400").performClick();
+        assertEquals(View.VISIBLE, adjust.getVisibility());
+        for (String p : new String[]{"strength", "grain", "halation", "softness", "exposure", "contrast", "print"})
+            assertNotNull(p, box.findViewWithTag("lut_tray_film_adjust_param_" + p));
+        android.widget.SeekBar seek = box.findViewWithTag("lut_tray_film_adjust_seek");
+        assertEquals("the strength first: 0..100 at 100", 100, seek.getMax());
+        assertEquals(100, seek.getProgress());
+        box.findViewWithTag("lut_tray_film_adjust_param_grain").performClick();
+        assertEquals(200, seek.getMax());
+        assertEquals(100, seek.getProgress());
+        seek.setProgress(150);
+        shadowOf(seek).getOnSeekBarChangeListener().onProgressChanged(seek, 150, true);
+        shadowOf(seek).getOnSeekBarChangeListener().onStopTrackingTouch(seek);
+        assertEquals("150", manager.getString(SettingsManager.SCOPE_GLOBAL, com.particlesdevs.photoncamera.processing.color.FilmSim.GRAIN_KEY, ""));
+        assertEquals("150 %", ((TextView) box.findViewWithTag("lut_tray_film_adjust_value")).getText().toString());
+        box.findViewWithTag("lut_tray_film_adjust_param_exposure").performClick();
+        assertEquals("-2 .. +2 EV in 0.1", 40, seek.getMax());
+        seek.setProgress(25);
+        shadowOf(seek).getOnSeekBarChangeListener().onProgressChanged(seek, 25, true);
+        shadowOf(seek).getOnSeekBarChangeListener().onStopTrackingTouch(seek);
+        assertEquals("0.50", manager.getString(SettingsManager.SCOPE_GLOBAL, com.particlesdevs.photoncamera.processing.color.FilmSim.EXPOSURE_KEY, ""));
+        assertEquals("+0.5 EV", ((TextView) box.findViewWithTag("lut_tray_film_adjust_value")).getText().toString());
+        // a slide is not printed
+        String slide = null;
+        for (com.particlesdevs.photoncamera.processing.color.FilmSim.Stock st : com.particlesdevs.photoncamera.processing.color.FilmSim.STOCKS)
+            if (st.type == com.particlesdevs.photoncamera.processing.color.FilmSim.SLIDE) { slide = st.id; break; }
+        assertNotNull(slide);
+        box.findViewWithTag("lut_tray_film_" + slide).performClick();
+        assertNull(box.findViewWithTag("lut_tray_film_adjust_param_print"));
+        assertNotNull(box.findViewWithTag("lut_tray_film_adjust_param_grain"));
+        box.findViewWithTag("lut_tray_film_").performClick();
+        assertEquals(View.GONE, adjust.getVisibility());
+    }
+
+    /** The chosen filter's strength and fine controls in its page, stored as the filter page stores them. */
+    @Test
+    public void theFilterPageAdjustsTheChosenFilter() {
+        TextView pill = new TextView(context);
+        LinearLayout box = new LinearLayout(context);
+        LutTray tray = tray(pill, box);
+        tray.setOpen(true);
+        View adjust = box.findViewWithTag("lut_tray_filter_adjust");
+        assertEquals(View.GONE, adjust.getVisibility());
+        box.findViewWithTag("lut_tray_filter_bpm").performClick();
+        assertEquals(View.VISIBLE, adjust.getVisibility());
+        android.widget.SeekBar seek = box.findViewWithTag("lut_tray_filter_adjust_seek");
+        assertEquals("the strength at its 50 %", 50, seek.getProgress());
+        shadowOf(seek).getOnSeekBarChangeListener().onProgressChanged(seek, 80, true);
+        assertEquals("written as it moves", .8f, PreferenceKeys.lensFilterStrength(), 1e-6f);
+        View radius = box.findViewWithTag("lut_tray_filter_adjust_param_tune_" + com.particlesdevs.photoncamera.processing.color.LensFilters.T_RADIUS);
+        assertNotNull("Black Pro-Mist's fine controls", radius);
+        radius.performClick();
+        assertEquals(50, seek.getProgress());
+        shadowOf(seek).getOnSeekBarChangeListener().onProgressChanged(seek, 70, true);
+        assertEquals(.7f, PreferenceKeys.lensFilterTune("bpm").radius, 1e-6f);
+        assertEquals("the other controls as designed", .5f, PreferenceKeys.lensFilterTune("bpm").knee, 1e-6f);
+    }
+
+    /** Owner, 2026-10-28: a long press on a parameter shows what it does, under the page; a tap on it closes it. */
+    @Test
+    public void aLongPressDescribesTheParameter() {
+        TextView pill = new TextView(context);
+        LinearLayout box = new LinearLayout(context);
+        LutTray tray = tray(pill, box);
+        tray.setOpen(true);
+        TextView hint = box.findViewWithTag("lut_tray_hint");
+        assertEquals(View.GONE, hint.getVisibility());
+        ViewGroup strengthRow = box.findViewWithTag("lut_tray_strength");
+        assertTrue(strengthRow.getChildAt(0).performLongClick());
+        assertEquals(View.VISIBLE, hint.getVisibility());
+        assertTrue(hint.getText().toString().contains(com.particlesdevs.photoncamera.settings.ParamHelp.of(context, FilmLut.STRENGTH_KEY)));
+        box.findViewWithTag("lut_tray_film_kodak_portra_400").performClick();
+        assertTrue(box.findViewWithTag("lut_tray_film_adjust_param_halation").performLongClick());
+        assertTrue(hint.getText().toString().startsWith("Ореол"));
+        assertTrue(hint.getText().toString().contains(com.particlesdevs.photoncamera.settings.ParamHelp.of(context,
+                com.particlesdevs.photoncamera.processing.color.FilmSim.HALATION_KEY)));
+        hint.performClick();
+        settle();
+        assertEquals(View.GONE, hint.getVisibility());
+        // every film parameter of the tray has a description
+        for (TrayAdjust.Param p : LutTray.filmParams(context, com.particlesdevs.photoncamera.processing.color.FilmSim.stock("kodak_portra_400")))
+            assertNotNull(p.id, p.help);
+        for (TrayAdjust.Param p : LutTray.filterParams(context, "bpm")) assertNotNull(p.id, p.help);
     }
 
     /** The tray's and the pill's animations run to their end (Robolectric's paused main looper). */

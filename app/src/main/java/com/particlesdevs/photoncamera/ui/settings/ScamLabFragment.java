@@ -322,7 +322,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
                     } catch (Exception e) {
                         main.post(() -> {
                             if (getContext() == null) return;
-                            new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                            DialogStyle.builder(requireContext())
                                     .setTitle(Lang.t(getContext(), "Серию не открыть", "The series cannot be opened"))
                                     .setMessage(String.valueOf(e.getMessage()))
                                     .setPositiveButton(android.R.string.ok, null).show();
@@ -403,7 +403,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
             open(of(a));
         });
         r.setOnLongClickListener(v -> {
-            new androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            DialogStyle.builder(requireContext())
                     .setTitle(Lang.t(getContext(), "Удалить снимок?", "Delete the shot?"))
                     .setMessage(when(dir.getName()) + "\n" + Lang.t(getContext(), "Серия, параметры и превью будут удалены из Download/SCAMERA/Lab.", "The burst, parameters and preview are deleted from Download/SCAMERA/Lab."))
                     .setNegativeButton(Lang.t(getContext(), "Отмена", "Cancel"), null)

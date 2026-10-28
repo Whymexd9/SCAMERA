@@ -67,6 +67,20 @@ public class LiveLensFilterTest {
         assertTrue(prep.contains("layout(location = 1) out vec4 LinOut"));
     }
 
+    /**
+     * Owner, 2026-10-28 («в видоискателе вижу эффект, на конечном фото нет»): the offered filters are the diffusion alone in the
+     * viewfinder too - Glimmerglass (uLf 3) drew a star of diagonal streaks and Pro-Mist (uLf 4) a pastel the photo never has.
+     */
+    @Test public void theDiffusionFiltersShowNoStarOrPastelThePhotoLacks() throws Exception {
+        assertEquals(3, LensFilters.index(LensFilters.GLIMMERGLASS));
+        assertEquals(4, LensFilters.index(LensFilters.PEARLESCENT));
+        String live = new String(Files.readAllBytes(new File("src/main/assets/shaders/preview/lensfilter_live.glsl").toPath()), StandardCharsets.UTF_8);
+        assertFalse("no Glimmerglass star", live.contains("uLf == 3"));
+        assertFalse("no Pro-Mist pastel", live.contains("uLf == 4"));
+        for (String id : LensFilters.IDS) assertTrue(id, com.particlesdevs.photoncamera.processing.color.DiffusionModel.diffuses(id));
+        assertTrue("the diffusion of every offered filter", live.contains("if (uLf <= 6) {"));
+    }
+
     /** P300: the RAW viewfinder's filter pass reads the developed frame as a 2D texture with the same shaders. */
     @Test public void theRawViewfinderGetsTheSameShadersOnA2dTexture() throws Exception {
         for (String name : new String[]{"main_fs.glsl", "lensfilter_prep.glsl"}) {

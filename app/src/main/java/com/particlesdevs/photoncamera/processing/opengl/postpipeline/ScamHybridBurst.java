@@ -372,6 +372,7 @@ public final class ScamHybridBurst implements ScamTransport {
         // Ultrashort: the short frame closest to base/8 and, with bento_frames 2, one more at the same exposure (within x1.3);
         // a short frame that came back at the N exposure is an N frame (P27); others are dropped.
         int ultrashort = 0;
+        final int shortsCaptured = shorts.size();
         for (Iterator<ImageFrame> it = shorts.iterator(); it.hasNext();) {
             ImageFrame f = it.next();
             double r = product(f) / ref;
@@ -393,6 +394,11 @@ public final class ScamHybridBurst implements ScamTransport {
                 if (add(us, ROLE_ULTRASHORT, ref, newest)) ultrashort++;
             }
         }
+        // MergeStamp: the ES / L frames the shot brought and the ones the merge gets
+        lastEsCaptured = shortsCaptured;
+        lastEsSent = ultrashort;
+        lastLongCaptured = bracketed.size();
+        lastLongSent = bracketedCount;
         Log.i("SCAM_HDR", "hybrid burst: frames=" + frames.size() + " base=" + base.number + " sharpness=" + base.sharpness
                 + " normals=" + normals + " bracketed=" + bracketedCount
                 + " ultrashort=" + ultrashort + " noise=" + noiseSource + " base slope=" + noise.get(0)[0] + " offset=" + noise.get(0)[1]
@@ -866,6 +872,18 @@ public final class ScamHybridBurst implements ScamTransport {
 
     /** True when the worker applied Bento in the last shot: the highlights are real data from the ultrashort frame. */
     public static volatile boolean lastBentoApplied;
+    /**
+     * MergeStamp («Отметка ES / L на фото»): the shot's ultrashort / long frames captured and handed to the merge (-1: no
+     * hybrid burst for this shot) and the worker's report at its completion line (null: none). Reset per shot (resetStamp).
+     */
+    public static volatile int lastEsCaptured = -1, lastEsSent = -1, lastLongCaptured = -1, lastLongSent = -1;
+    public static volatile String lastReport;
+
+    /** A new shot: no burst and no report yet (ScamProcessor.start). */
+    public static void resetStamp() {
+        lastEsCaptured = lastEsSent = lastLongCaptured = lastLongSent = -1;
+        lastReport = null;
+    }
     /** Bento factor k of the last shot (the ultrashort content saturates at k in base-frame units) and the share of the mask where the ultrashort itself was clipped. */
     public static volatile float lastBentoFactor = 1f, lastBentoUsClipped = 0f;
     /**

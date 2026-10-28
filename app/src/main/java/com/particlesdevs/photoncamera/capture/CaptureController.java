@@ -498,6 +498,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private android.hardware.camera2.params.RggbChannelVector mShutterManualWb;
     /** P212g (W6 = M6): the mosaic white balance's route at the press (the vivo native route, P208's still-only one; null: none). */
     private com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mShutterMosaicWb;
+    /** Owner, 2026-10-28: the lens filter the viewfinder showed at the press (a change in the tray during the merge stays out). */
+    private com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice mShutterLensFilter;
     /** P212g (W6): the still-only session's viewfinder neutrals (its normal mode), and whether this session feeds them. */
     private final com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Ring mVfNeutrals =
             new com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Ring();
@@ -4334,6 +4336,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     mPreviewCaptureResult, physicalID, logicalID, mCroppedRawSession);
             mShutterManualWb = paramController.manualWhiteBalanceGains(); // P212f: a later switch to Auto stays out of the shot
             mShutterMosaicWb = mosaicWbAtPress(); // P212g (W6 = M6)
+            mShutterLensFilter = com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice.now();
             if (mVivoSdkRawSession != null) {
                 mBackgroundHandler.post(this::captureVivoSdkFullRes);
                 return true;
@@ -6316,13 +6319,16 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Rect active = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
             // P41b: on the Xiaomi logical camera the result's crop region is the logical stream's, not the tele RAW frame's
             Rect sensorCrop = colorResult == null || XiaomiTeleZoom.routed() ? null : colorResult.get(CaptureResult.SCALER_CROP_REGION);
-            if (active != null && sensorCrop != null && active.width()>0 && active.height()>0) {
-                Rect clipped = new Rect(sensorCrop);
-                if (clipped.intersect(active)) {
-                    crop = new float[]{(clipped.left-active.left)/(float)active.width(),
-                        (clipped.top-active.top)/(float)active.height(), clipped.width()/(float)active.width(),
-                        clipped.height()/(float)active.height()};
+            if (active != null && sensorCrop != null && active.width()>0 && active.height()>0 && Rect.intersects(sensorCrop, active)) {
+                // the digital zoom by CONTROL_ZOOM_RATIO crops the ISP streams only: the RAW frame is cropped here (the Xiaomi
+                // tele's ratio is its previewCrop below)
+                float ratio = 1f;
+                if (Build.VERSION.SDK_INT >= 30 && !XiaomiTeleZoom.active()) {
+                    Float z = colorResult.get(CaptureResult.CONTROL_ZOOM_RATIO);
+                    if (z != null) ratio = z;
                 }
+                crop = CroppedRaw.viewCrop(active, sensorCrop, ratio,
+                        mCroppedRawSession ? CroppedRaw.of(colorResult, physicalID, logicalID) : null);
             }
             // P41: the Xiaomi tele's preview crop (zoomRatio against the claimed optics) is not in SCALER_CROP_REGION
             final float teleCrop = XiaomiTeleZoom.active() ? XiaomiTeleZoom.previewCrop() : 1f;
@@ -7490,6 +7496,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         saver.dcgShot = dcgShotNow();
         saver.zoomResidual = com.particlesdevs.photoncamera.control.ZoomController.shotResidual(); // marked at the press (above)
         saver.cameraIdAtPress = ScameraApp.getSettings().mCameraID;
+        saver.planNote = pslPlan != null ? pslPlan.description : zsl != null ? zsl.plan.description : null;
+        saver.lensFilterAtPress = mShutterLensFilter;
         saver.setFrameCount(count);
         saver.fullResSeries = seriesMode ? total : 0; // P190: the merge keeps a series whole
         saver.fullResRequested = requested;
@@ -8203,6 +8211,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             // next press's
             mImageSaver.zoomResidual = com.particlesdevs.photoncamera.control.ZoomController.shotResidual();
             mImageSaver.cameraIdAtPress = ScameraApp.getSettings().mCameraID;
+            mImageSaver.planNote = hybridPlanHolder[0] != null ? hybridPlanHolder[0].description : null;
+            mImageSaver.lensFilterAtPress = mShutterLensFilter;
             final ScamCaptureSequence scamSequence = hybridPlanHolder[0]!=null
                         ? (hybridZsl ? ScamCaptureSequence.hybridZsl(captures,mPendingZslNormalFrames,scamZslShutterTimestamp)
                                      : ScamCaptureSequence.hybridFuture(captures,scamZslShutterTimestamp))

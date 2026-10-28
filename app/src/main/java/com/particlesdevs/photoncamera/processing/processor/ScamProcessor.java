@@ -102,6 +102,12 @@ public class ScamProcessor extends ProcessorBase {
     private float zoomResidual = 1f;
     public String ownedCameraId;
     private String cameraIdAtPress;
+    /** The shot's capture plan (ImageSaver.planNote) for MergeStamp; null: none. */
+    public String ownedPlanNote;
+    private String planNote;
+    /** Owner, 2026-10-28: the lens filter the viewfinder showed at the press (ImageSaver.lensFilterAtPress; null: the settings). */
+    public com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice ownedLensFilter;
+    private com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice lensFilterAtPress;
     /** P212g (W6 = M6): the mosaic white balance's route at the press of the queued shot (null: none). */
     public com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press ownedMosaicWb;
     private com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mosaicWb;
@@ -147,6 +153,11 @@ public class ScamProcessor extends ProcessorBase {
         com.particlesdevs.photoncamera.control.ZoomController.beginProcessing(zoomResidual);
         this.cameraIdAtPress = ownedCameraId;
         ownedCameraId = null;
+        this.planNote = ownedPlanNote;
+        ownedPlanNote = null;
+        com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.resetStamp();
+        this.lensFilterAtPress = ownedLensFilter;
+        ownedLensFilter = null;
         this.scamCapture = PreferenceKeys.isScamEnabled();
         // The route of the shot fixes the settings profile of its whole processing: pref_scam_hybrid_* for a hybrid shot,
         // the SCAM HDR keys otherwise (PreferenceKeys.isHybridShot), even if the route changes meanwhile.
@@ -923,6 +934,8 @@ public class ScamProcessor extends ProcessorBase {
         pipeline.p3Output = colourSpace == com.particlesdevs.photoncamera.processing.color.OutputColour.Space.DISPLAY_P3;
         // P369: the shot's film snapshot, before the teardown decision and the pipeline (every film gate of the shot reads it)
         pipeline.takeFilm();
+        // owner, 2026-10-28: the lens filter of the press (the tray may have changed it during the merge)
+        pipeline.lensFilter = lensFilterAtPress;
         // W1.3: at 16 MP or less without Ultra HDR the GL teardown waits until the JPEG is saved (finishDeferredTeardown).
         pipeline.deferTeardown = PostPipeline.canDeferTeardown(processingParameters, pipeline.film);
         if (pipeline.deferTeardown) { deferredPipeline = pipeline; openPipeline = null; }
@@ -1040,6 +1053,18 @@ public class ScamProcessor extends ProcessorBase {
 
         final Bitmap withDebug = overlay(img, pipeline.debugData.toArray(new Bitmap[0]));
         if (withDebug != img) { img.recycle(); img = withDebug; }
+        // «Отметка ES / L на фото»: whether the ultrashort and long frames went into this photo, or a short code why not
+        final String[] stamp = com.particlesdevs.photoncamera.processing.MergeStamp.lines(planNote,
+                com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastEsCaptured,
+                com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastEsSent,
+                com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastLongCaptured,
+                com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastLongSent,
+                com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastReport);
+        Log.i("SCAM_PIPELINE", "merge stamp: " + stamp[0] + " | " + stamp[1]);
+        if (com.particlesdevs.photoncamera.processing.MergeStamp.on()) {
+            final Bitmap stamped = com.particlesdevs.photoncamera.processing.MergeStamp.draw(img, stamp);
+            if (stamped != img) { img.recycle(); img = stamped; }
+        }
         // The EGL context and the rest of the GL state are not needed for the encoding: release them before it, unless the
         // teardown waits for the end of the encode (W1.3, 16 MP or less).
         if (deferredPipeline == null) try {

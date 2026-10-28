@@ -11,6 +11,15 @@
     <color name="settings_field">#FF121417</color>
     <color name="settings_sheet">#FF202428</color>
     <color name="settings_warn">#FFFFB4A8</color>
+    <!-- text and icons on an accent fill (UiTokens.INK): the confirm pill of a dialog -->
+    <color name="settings_ink">#FF17141F</color>
+    <!-- the press ripple of a dialog's rows and quiet buttons on the card -->
+    <color name="settings_ripple">#1FFFFFFF</color>
+    <!-- The alert dialogs (DialogStyle, AlertDialogTheme): 24dp corners, the card 16dp inside the window's sides (26dp from
+         a 392dp screen's edge at the window's 95 %) and 24dp above and below. -->
+    <dimen name="dialog_radius">24dp</dimen>
+    <dimen name="dialog_inset_horizontal">16dp</dimen>
+    <dimen name="dialog_inset_vertical">24dp</dimen>
     <dimen name="settings_card_radius">12dp</dimen>
     <dimen name="settings_card_gap">10dp</dimen>
     <dimen name="settings_icon">27dp</dimen>

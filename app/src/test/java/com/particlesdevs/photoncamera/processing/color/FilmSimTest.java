@@ -214,4 +214,43 @@ public class FilmSimTest {
             System.out.println(b);
         }
     }
+
+    /**
+     * Owner, 2026-10-28 («описание для параметров по длинному зажатию»): the directions ParamHelp states hold on the model -
+     * the film's exposure up prints lighter, the print's exposure up prints darker, contrast up spreads the tones, and a slide
+     * (not printed) ignores the print's exposure.
+     */
+    @Test public void theParameterDescriptionsHoldOnTheModel() {
+        final FilmSim.Stock portra = FilmSim.stock("kodak_portra_400");
+        final FilmSim.Print endura = FilmSim.print("kodak_portra_endura");
+        final FilmSim.Format f135 = FilmSim.format("135");
+        final FilmSim.Settings base = new FilmSim.Settings(portra, endura, f135, 1, 1, 1, 0, 0, 0, 1);
+        final float grey = luma(FilmSim.applyScene(base, .184, .184, .184));
+        final float up = luma(FilmSim.applyScene(new FilmSim.Settings(portra, endura, f135, 1, 1, 1, 1, 0, 0, 1), .184, .184, .184));
+        assertTrue("film exposure +1: a lighter print (" + grey + " -> " + up + ")", up > grey + .02f);
+        final float printUp = luma(FilmSim.applyScene(new FilmSim.Settings(portra, endura, f135, 1, 1, 1, 0, .5f, 0, 1), .184, .184, .184));
+        assertTrue("print exposure +0.5: a darker print (" + grey + " -> " + printUp + ")", printUp < grey - .02f);
+        // contrast up: denser (a darker grey), more saturated, more contrast in the highlights
+        final FilmSim.Settings hard = new FilmSim.Settings(portra, endura, f135, 1, 1, 1, 0, 0, .6f, 1);
+        assertTrue("contrast +60: darker", luma(FilmSim.applyScene(hard, .184, .184, .184)) < grey - .05f);
+        final float[] red = FilmSim.applyScene(base, .3, .12, .08), hardRed = FilmSim.applyScene(hard, .3, .12, .08);
+        assertTrue("contrast +60: more saturated", (hardRed[0] - hardRed[2]) / hardRed[0] > (red[0] - red[2]) / red[0] + .05f);
+        final float lights = luma(FilmSim.applyScene(base, 1.6, 1.6, 1.6)) - luma(FilmSim.applyScene(base, .4, .4, .4));
+        final float hardLights = luma(FilmSim.applyScene(hard, 1.6, 1.6, 1.6)) - luma(FilmSim.applyScene(hard, .4, .4, .4));
+        assertTrue("contrast +60: more contrast in the highlights", hardLights > lights + .05f);
+        for (FilmSim.Stock st : FilmSim.STOCKS) {
+            final FilmSim.Print p = FilmSim.print("", st);
+            final float a = luma(FilmSim.applyScene(new FilmSim.Settings(st, p, f135, 1, 1, 1, 0, 0, 0, 1), .184, .184, .184));
+            final float ev = luma(FilmSim.applyScene(new FilmSim.Settings(st, p, f135, 1, 1, 1, 1, 0, 0, 1), .184, .184, .184));
+            assertTrue(st.id + ": the film's exposure +1 is lighter on every stock (" + a + " -> " + ev + ")", ev > a + .02f);
+            final float pr = luma(FilmSim.applyScene(new FilmSim.Settings(st, p, f135, 1, 1, 1, 0, .5f, 0, 1), .184, .184, .184));
+            if (st.type == FilmSim.SLIDE || st.type == FilmSim.BW_REVERSAL)
+                assertEquals(st.id + ": not printed, the print's exposure does nothing", a, pr, 1e-6f);
+            else assertTrue(st.id + ": the print's exposure +0.5 is darker", pr < a - .02f);
+            if (st.spectral == null) {
+                final float tone = luma(FilmSim.applyScene(new FilmSim.Settings(st, p, f135, 1, 1, 1, 0, 0, .6f, 1), .184, .184, .184));
+                assertEquals(st.id + ": black and white: the contrast row does nothing (the tray leaves it out)", a, tone, 1e-6f);
+            }
+        }
+    }
 }
