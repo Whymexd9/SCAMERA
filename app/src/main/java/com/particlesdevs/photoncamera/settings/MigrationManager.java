@@ -24,9 +24,10 @@ public class MigrationManager {
             camerasPreference.edit().clear().apply();
             settingsManager.set(KEY_PREF_VERSION.mValue, KEY_PREF_VERSION, PREFERENCES_VERSION);
             readAgain = true;
-            // This reset also runs on a fresh install (no stored version), after SettingsManager wrote the route: write it
-            // again now (hybrid on a fresh install).
-            SettingsMigration.migrateScamHybrid(settingsManager.getContext(), defaultPreferences);
+            // This reset also runs on a fresh install (no stored version), after SettingsManager wrote the route and the
+            // one-time markers: write them again now (hybrid on a fresh install; on the empty store the migrations write only
+            // their markers and the device defaults).
+            settingsManager.runOneTimeMigrations();
         }
     }
 }

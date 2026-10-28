@@ -51,6 +51,10 @@ public class ImageSaver {
     public android.hardware.camera2.params.RggbChannelVector manualWbAtPress;
     /** P212g (W6 = M6): the mosaic white balance's route at the press (MosaicNeutralResolver; null: none). */
     public com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mosaicWbAtPress;
+    /** The digital zoom's crop of the shot (ZoomController.shotResidual at the press; the next press marks its own). */
+    public float zoomResidual = 1f;
+    /** The camera of the shot (Settings.mCameraID at the press; null: the one open when the processing starts). */
+    public String cameraIdAtPress;
 
     public void setFrameCount(int desiredFrameCount){
         this.desiredFrameCount = desiredFrameCount;
@@ -93,6 +97,8 @@ public class ImageSaver {
         saver.ownedDcgShot = dcgShot;
         saver.ownedManualWb = manualWbAtPress;
         saver.ownedMosaicWb = mosaicWbAtPress;
+        saver.ownedZoomResidual = zoomResidual;
+        saver.ownedCameraId = cameraIdAtPress;
         saver.ownedFrames = new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
         saver.ownedPairs = new ArrayList<>(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.fullpairs);
         SaverImplementation.IMAGE_BUFFER.clear();
@@ -153,6 +159,8 @@ public class ImageSaver {
 
     public void runRaw(CameraCharacteristics characteristics, CaptureResult captureResult, CaptureRequest captureRequest, ArrayList<GyroBurst> burstShakiness, int cameraRotation, HashMap<Long, Double> exposures) {
         implementation.iszAspect4x3 = iszAspect4x3;
+        implementation.zoomResidual = zoomResidual;
+        implementation.cameraIdAtPress = cameraIdAtPress;
         implementation.runRaw(imageFormat,characteristics,captureResult, captureRequest,burstShakiness,cameraRotation, exposures);
     }
 
@@ -302,15 +310,41 @@ public class ImageSaver {
             // Replace it with a neutral map instead of writing mismatched geometry.
             dngCreator.setGainMap(new float[]{1f, 1f, 1f, 1f}, 0, 0, width, height, 1, 1);
             dngCreator.setCompression(false);
-            try (OutputStream outputStream = Files.newOutputStream(dngFilePath)) {
-                dngCreator.writeBuffer(outputStream, buffer, width, height);
-                return true;
-            } catch (IOException | RuntimeException e) {
-                Log.e(TAG, "Synthetic mosaic DNG save failed: " + Log.getStackTraceString(e));
-                return false;
+            try {
+                return writeDng(dngFilePath, out -> dngCreator.writeBuffer(out, buffer, width, height), "Synthetic mosaic DNG");
             } finally {
                 dngCreator.close();
             }
+        }
+
+        /** Writes one DNG's bytes (the stream is the caller's file). */
+        interface DngWrite {
+            void to(OutputStream out) throws IOException;
+        }
+
+        /**
+         * The DNG at {@code dngFilePath}; false (logged) on an I/O error or a DngCreator RuntimeException. A file not written to
+         * its end is deleted, an OutOfMemoryError's too (it still goes up to the caller): a truncated DNG stayed next to the photo.
+         */
+        static boolean writeDng(Path dngFilePath, DngWrite write, String what) {
+            boolean ok = false;
+            try {
+                try (OutputStream outputStream = Files.newOutputStream(dngFilePath)) {
+                    write.to(outputStream);
+                }
+                ok = true;
+            } catch (IOException | RuntimeException e) {
+                Log.e(TAG, what + " save failed: " + Log.getStackTraceString(e));
+            } finally {
+                if (!ok && dngFilePath != null) {
+                    try {
+                        Files.deleteIfExists(dngFilePath);
+                    } catch (IOException | RuntimeException e) {
+                        Log.e(TAG, what + ": the partial file stays: " + e);
+                    }
+                }
+            }
+            return ok;
         }
         public static boolean saveSingleRaw(Path dngFilePath,
                                             ImageFrame image,
@@ -346,16 +380,12 @@ public class ImageSaver {
             dngCreator.setCompression(!uncompressed && com.particlesdevs.photoncamera.settings.PreferenceKeys.isDngLossless());
             //dngCreator.setBinning(true);
             // P27: a DNG that cannot be written (I/O, or a DngCreator RuntimeException) costs only the DNG, never the JPEG.
-            try (OutputStream outputStream = Files.newOutputStream(dngFilePath)) {
-                dngCreator.writeBuffer(outputStream, buffer, parameters.rawSize.x, parameters.rawSize.y);
-            } catch (IOException | RuntimeException e) {
-                Log.e(TAG, "DNG save failed: " + Log.getStackTraceString(e));
-                return false;
+            try {
+                return writeDng(dngFilePath, out -> dngCreator.writeBuffer(out, buffer, parameters.rawSize.x, parameters.rawSize.y), "DNG");
             } finally {
                 // P187: its image (the whole RAW again, 0.4-0.54 GB at 200 MP) now, not when a GC runs the finalizer
                 dngCreator.close();
             }
-            return true;
         }
     }
 }

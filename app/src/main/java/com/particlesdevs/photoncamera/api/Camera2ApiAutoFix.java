@@ -41,7 +41,6 @@ import static android.hardware.camera2.CaptureRequest.STATISTICS_HOT_PIXEL_MAP_M
 import static android.hardware.camera2.CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE;
 import static android.hardware.camera2.CaptureRequest.TONEMAP_MODE;
 import static android.hardware.camera2.CaptureResult.COLOR_CORRECTION_GAINS;
-import static android.hardware.camera2.CaptureResult.COLOR_CORRECTION_TRANSFORM;
 import static android.hardware.camera2.CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL;
 import static android.hardware.camera2.CaptureResult.SENSOR_NEUTRAL_COLOR_POINT;
 import static android.hardware.camera2.CaptureResult.SHADING_MODE;
@@ -75,12 +74,21 @@ public class Camera2ApiAutoFix {
     }
 
     //private static double oldWL = -1.0;
-    public static void ApplyRes(CaptureResult captureResult) {
+    /**
+     * Fixes of the shot's result before processing. P370 (A4): only into {@code captureResult} itself - the viewfinder's neutral and
+     * colour transform (CaptureController.mPreviewTemp / mColorSpaceTransform) were written into the static
+     * CaptureController.mCaptureResult here at processing time: a single-frame or no-N shot whose reference frame was that object
+     * rendered with the viewfinder's colour (possibly the 1.01 / 1.01 / 1.01 placeholder), and a queued shot's metadata could be
+     * rewritten by a later shot. The neutral and the transform are the result's own (Parameters.ReCalcColor reads them).
+     * P370 (review): the black-level pattern of {@code shot} - the characteristics the shot was captured with (ScamProcessor's),
+     * not the camera open at its processing (a shot queued behind a merge, then a lens switch); null: the open camera's.
+     */
+    public static void ApplyRes(CaptureResult captureResult, @androidx.annotation.Nullable CameraCharacteristics shot) {
+        if (captureResult == null) return;
         Camera2ApiAutoFix fix = new Camera2ApiAutoFix(captureResult);
+        fix.characteristics = shot != null ? shot : CaptureController.mCameraCharacteristics;
         //fix.gains();
         fix.BL();
-        fix.whitePoint();
-        fix.CCM();
         /*Camera2ApiAutoFix.WhiteLevel(CameraFragment.mCaptureResult, (int)oldWL);
         Camera2ApiAutoFix.BlackLevel(CameraFragment.mCaptureResult, ScameraApp.getParameters().blackLevel, 1.f);
         oldWL = -1.0;*/
@@ -93,14 +101,6 @@ public class Camera2ApiAutoFix {
             Camera2ApiAutoFix.BlackLevel(null, ScameraApp.getParameters().blackLevel, (float) (65535) / ScameraApp.getParameters().whiteLevel);
             oldWL = ScameraApp.getParameters().whiteLevel;
         }*/
-    }
-
-    private void whitePoint() {
-        CameraReflectionApi.set(SENSOR_NEUTRAL_COLOR_POINT, ScameraApp.getCaptureController().mPreviewTemp);
-    }
-
-    private void CCM() {
-        CameraReflectionApi.set(COLOR_CORRECTION_TRANSFORM, ScameraApp.getCaptureController().mColorSpaceTransform);
     }
 
     public void curve() {
@@ -224,8 +224,9 @@ public class Camera2ApiAutoFix {
     }*/
 
     public static void WhiteLevel(CaptureResult res, int whitelevel) {
+        // P370 (A4): the given result's own key, never the static CaptureController.mCaptureResult
         if (res != null)
-            CameraReflectionApi.set(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL, whitelevel);
+            CameraReflectionApi.set(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL, whitelevel, res);
         CameraReflectionApi.set(CaptureController.mCameraCharacteristics, CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL, whitelevel);
     }
 
@@ -289,7 +290,7 @@ public class Camera2ApiAutoFix {
         if (WB == null) return;
         RggbChannelVector rggbChannelVector = result.get(COLOR_CORRECTION_GAINS);
         if (rggbChannelVector == null) {
-            CameraReflectionApi.set(COLOR_CORRECTION_GAINS, new RggbChannelVector(WB[0].floatValue() * 1.3f, WB[1].floatValue() / 1.78f, WB[1].floatValue() / 1.78f, WB[2].floatValue() * 2f));
+            CameraReflectionApi.set(COLOR_CORRECTION_GAINS, new RggbChannelVector(WB[0].floatValue() * 1.3f, WB[1].floatValue() / 1.78f, WB[1].floatValue() / 1.78f, WB[2].floatValue() * 2f), result);
         }
         Log.d(TAG, "Initial channelVector:" + rggbChannelVector.toString());
         if (checkdouble(rggbChannelVector.getRed()) && checkdouble(rggbChannelVector.getGreenEven()) && checkdouble(rggbChannelVector.getGreenOdd()) && checkdouble(rggbChannelVector.getBlue()))
@@ -306,25 +307,30 @@ public class Camera2ApiAutoFix {
                 field = rggbChannelVector.getClass().getDeclaredField("mBlue");
                 field.setAccessible(true);
                 field.set(rggbChannelVector, 1f / WB[2].floatValue());
-                CameraReflectionApi.set(COLOR_CORRECTION_GAINS, null);
-                CameraReflectionApi.set(COLOR_CORRECTION_GAINS, rggbChannelVector);
+                CameraReflectionApi.set(COLOR_CORRECTION_GAINS, null, result);
+                CameraReflectionApi.set(COLOR_CORRECTION_GAINS, rggbChannelVector, result);
             } catch (IllegalAccessException | NoSuchFieldException e) {
                 e.printStackTrace();
             }
         Log.d(TAG, "Overrided channelVector:" + rggbChannelVector.toString());
     }
 
+    /**
+     * A result without SENSOR_DYNAMIC_BLACK_LEVEL gets the camera's static pattern - P370 (A4): into this result only; P370 (review):
+     * the pattern of the characteristics ApplyRes was given (the shot's).
+     */
     @SuppressLint("NewApi")
     public void BL() {
         float[] level = result.get(SENSOR_DYNAMIC_BLACK_LEVEL);
-        BlackLevelPattern ptr = CaptureController.mCameraCharacteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
+        CameraCharacteristics c = characteristics != null ? characteristics : CaptureController.mCameraCharacteristics;
+        BlackLevelPattern ptr = c == null ? null : c.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
         if (ptr == null) return;
         if (level == null) {
             level = new float[4];
             for (int i = 0; i < 4; i++) {
                 level[i] = ptr.getOffsetForIndex(i % 2, i / 2);
             }
-            CameraReflectionApi.set(SENSOR_DYNAMIC_BLACK_LEVEL, level);
+            CameraReflectionApi.set(SENSOR_DYNAMIC_BLACK_LEVEL, level, result);
         }
     }
 

@@ -1,5 +1,7 @@
 package com.particlesdevs.photoncamera.util;
 
+import com.particlesdevs.photoncamera.settings.PreferenceValue;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -31,7 +33,9 @@ public final class ParallelWork {
                 if (p == null) {
                     final AtomicInteger number = new AtomicInteger();
                     p = Executors.newFixedThreadPool(Math.max(1, THREADS - 1), r -> {
-                        Thread t = new Thread(() -> { INSIDE.set(true); r.run(); }, "SCAMERA-parallel-" + number.incrementAndGet());
+                        // a pool thread keeps no lab scope of the thread that made it (each item brings its caller's)
+                        Thread t = new Thread(() -> { INSIDE.set(true); PreferenceValue.adoptScope(null); r.run(); },
+                                "SCAMERA-parallel-" + number.incrementAndGet());
                         t.setDaemon(true);
                         // Not the creator's priority (the shot's processing thread runs at NORM_PRIORITY - 1): it waits for them.
                         t.setPriority(Thread.NORM_PRIORITY);
@@ -86,7 +90,8 @@ public final class ParallelWork {
                     if (p == null) {
                         final AtomicInteger number = new AtomicInteger();
                         p = Executors.newFixedThreadPool(Math.max(1, threads - 1), r -> {
-                            Thread t = new Thread(() -> { INSIDE.set(true); r.run(); }, name + "-" + number.incrementAndGet());
+                            Thread t = new Thread(() -> { INSIDE.set(true); PreferenceValue.adoptScope(null); r.run(); },
+                                    name + "-" + number.incrementAndGet());
                             t.setDaemon(true);
                             t.setPriority(Thread.NORM_PRIORITY);
                             return t;
@@ -110,9 +115,19 @@ public final class ParallelWork {
         final Runnable drain = () -> {
             for (int i = next.getAndIncrement(); i < count; i = next.getAndIncrement()) body.accept(i);
         };
+        // audit 2026-10-27 (lab-app-3): the items of a lab render read its overlays on the pool threads too, nobody else's do
+        final Object scope = PreferenceValue.scope();
+        final Runnable helper = () -> {
+            PreferenceValue.adoptScope(scope);
+            try {
+                drain.run();
+            } finally {
+                PreferenceValue.adoptScope(null);
+            }
+        };
         final List<Future<?>> futures = new ArrayList<>(helpers);
         final ExecutorService p = own != null ? own.pool() : pool();
-        for (int h = 0; h < helpers; h++) futures.add(p.submit(drain));
+        for (int h = 0; h < helpers; h++) futures.add(p.submit(helper));
         Throwable failure = null;
         try {
             drain.run();

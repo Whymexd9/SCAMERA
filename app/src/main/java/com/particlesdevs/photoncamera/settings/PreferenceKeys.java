@@ -761,7 +761,7 @@ public class PreferenceKeys {
     public static boolean cropShot() {
         try {
             final String slot = ModuleRegistry.active();
-            return com.particlesdevs.photoncamera.control.ZoomController.shotResidual() > 1.005f
+            return com.particlesdevs.photoncamera.control.ZoomController.processingResidual() > 1.005f
                     || ModuleRegistry.crop(slot) > 1.0001f || ModuleRegistry.sensorCrop(slot);
         } catch (RuntimeException e) {
             return false;
@@ -1131,11 +1131,13 @@ public class PreferenceKeys {
      * P277 lab (owner, 2026-10-21: «проверь что все настройки рабочие»): while ScamLabRun renders a side, the scam_dev.txt lines
      * read as this map (the shot's lines, without the lines of the settings compared, with the side's own developer lines)
      * instead of the file, as PreferenceValue.overlay does for the preferences: a line of the compared setting no longer gives
-     * A = B, and side A has the shot's lines, not today's file. Null: the file.
+     * A = B, and side A has the shot's lines, not today's file. Null: the file. Only the render's own threads read it
+     * (PreferenceValue.inScope, audit 2026-10-27): a shot taken meanwhile reads the file.
      */
     private static volatile java.util.Map<String, Float> labDev;
 
     public static void labDevOverlay(java.util.Map<String, Float> lines) {
+        if (lines != null) PreferenceValue.enterScope();
         labDev = lines == null ? null : java.util.Collections.unmodifiableMap(new HashMap<>(lines));
     }
 
@@ -1147,7 +1149,7 @@ public class PreferenceKeys {
 
     private static Float scamDevValue(String key) {
         final java.util.Map<String, Float> lab = labDev;
-        if (lab != null) return lab.get(key);
+        if (lab != null && PreferenceValue.inScope()) return lab.get(key);
         refreshScamDevInBackground();
         return scamDevValues.get(key);
     }

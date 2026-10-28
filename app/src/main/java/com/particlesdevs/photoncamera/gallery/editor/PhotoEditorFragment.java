@@ -781,6 +781,11 @@ public class PhotoEditorFragment extends Fragment implements EditPanels.Host {
         leave(true);
     }
 
+    /** Edits not saved yet, or «Сохранить копию» still running: the gallery must not close itself when the user leaves it. */
+    public boolean hasUnsavedWork() {
+        return vm != null && (vm.exporting() || (vm.history != null && vm.history.changed()));
+    }
+
     /** Leaving (asks first with unsaved edits); {@code systemBack}: P367 - the first back returns a zoomed picture to the fit. */
     private void onBack(boolean systemBack) {
         if (vm.exporting()) return;

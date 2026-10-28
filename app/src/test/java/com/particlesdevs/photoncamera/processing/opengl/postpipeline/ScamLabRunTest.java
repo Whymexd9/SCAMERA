@@ -95,6 +95,62 @@ public class ScamLabRunTest {
         assertEquals(6f, PreferenceKeys.hybridValue("boost_value", 6f), 0f);
     }
 
+    /**
+     * Audit 2026-10-27 (lab-app-3): the overlay of a side is the render's own - the camera thread, the settings and every other
+     * thread read the file meanwhile; the render's thread and the threads it starts read the overlay.
+     */
+    @Test public void theLabOverlayIsTheRendersOwn() throws Exception {
+        final java.util.concurrent.ExecutorService camera = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            // a thread that runs before the render (the camera's)
+            assertEquals(6f, camera.submit(() -> PreferenceKeys.hybridValue("boost_value", 6f)).get(), 0f);
+            PreferenceKeys.labDevOverlay(Collections.singletonMap("hybrid_boost_value", 3f));
+            assertEquals("the render's thread", 3f, PreferenceKeys.hybridValue("boost_value", 6f), 0f);
+            assertEquals("another thread reads the file", 6f, camera.submit(() -> PreferenceKeys.hybridValue("boost_value", 6f)).get(), 0f);
+            final float[] helper = new float[1];
+            final Thread t = new Thread(() -> helper[0] = PreferenceKeys.hybridValue("boost_value", 6f));
+            t.start();
+            t.join();
+            assertEquals("a thread the render starts", 3f, helper[0], 0f);
+        } finally {
+            PreferenceKeys.labDevOverlay(null);
+            camera.shutdownNow();
+        }
+        assertEquals(6f, PreferenceKeys.hybridValue("boost_value", 6f), 0f);
+    }
+
+    /**
+     * Audit 2026-10-27: forget() runs on the main thread (the lab's taps); it waited on the class's monitor, which run() and
+     * pipeline() hold for a whole render (an ANR).
+     */
+    @Test public void forgetDoesNotWaitForARender() throws Exception {
+        assertFalse(java.lang.reflect.Modifier.isSynchronized(ScamLabRun.class.getMethod("forget").getModifiers()));
+        final java.util.concurrent.CountDownLatch held = new java.util.concurrent.CountDownLatch(1), release = new java.util.concurrent.CountDownLatch(1);
+        final Thread render = new Thread(() -> {
+            synchronized (ScamLabRun.class) {
+                held.countDown();
+                try {
+                    release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        });
+        render.start();
+        try {
+            assertTrue(held.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            final java.util.concurrent.ExecutorService main = java.util.concurrent.Executors.newSingleThreadExecutor();
+            try {
+                main.submit(ScamLabRun::forget).get(500, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } finally {
+                main.shutdownNow();
+            }
+        } finally {
+            release.countDown();
+            render.join(5000);
+        }
+    }
+
     @Test public void theBurstsOwnLinesNameTheSettingsTheyFixed() {
         // a conservative retry (ScamHybridBurst.CONSERVATIVE_TUNING) after the remosaic line, then the steps a crashed worker died in
         final String burst = "mosaicRemosaic 1\nlocalAlign 0\nsabre61 0\nrimRatio 0\nchromaDiff 0\nhotSigma 0\nhotBaseSigma 0\n"

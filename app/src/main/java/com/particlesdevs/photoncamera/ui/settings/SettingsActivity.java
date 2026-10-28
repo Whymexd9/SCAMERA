@@ -143,7 +143,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         Log.d("SettingsActivity", "onPreferenceStartScreen called for key: " + preferenceScreen.getKey());
         
         String key = preferenceScreen.getKey();
-        if (ModulePageFilter.HUB.equals(key)) { openModuleProfiles("module_profiles"); return true; }
         if (ScamLabFragment.SCREEN.equals(key)) { openLab(); return true; }
         // P189: inside a module's group every page stays the module's (the sensor page is its slot's)
         String module = preferenceFragmentCompat instanceof SettingsFragment ? ((SettingsFragment) preferenceFragmentCompat).moduleProfile() : null;
@@ -157,7 +156,7 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     .replace(R.id.settings_container, next, key).addToBackStack(key).commit();
             return true;
         }
-        if("camera_settings_screen".equals(preferenceScreen.getKey())){
+        if(ModulePageFilter.CAMERAS.equals(preferenceScreen.getKey())){
             getSupportFragmentManager().beginTransaction().replace(R.id.settings_container,new ModuleSettingsFragment()).addToBackStack("modules").commit();return true;
         }
         // Note: Tunable preferences are already generated in onPreferenceTreeClick before reaching here
@@ -175,13 +174,13 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         return true;
     }
 
-    /** P277: «Гайд и лаборатория» (the root row and the search). */
+    /** P277: the lab («Лаборатория», «Гайд и лаборатория» before 2026-10-27; the root row and the search). */
     void openLab() {
         getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, ScamLabFragment.list())
                 .addToBackStack(ScamLabFragment.SCREEN).commit();
     }
 
-    /** P189: «Настройки по модулям» (the root row and the search; P218: no longer from «Камеры и сенсоры»). */
+    /** P189: «Камеры и модули» with the modules' own settings, found by the search (P218: no longer from «Камеры и сенсоры»). */
     void openModuleProfiles(String name) {
         // P319: «Настройки по модулям» is a part of «Камеры и модули» now
         getSupportFragmentManager().beginTransaction().replace(R.id.settings_container, new ModuleSettingsFragment())
@@ -200,7 +199,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
     }
 
     void openSearchResult(SettingsSearchFragment.Entry entry) {
-        if (ModulePageFilter.HUB.equals(entry.page)) { openModuleProfiles("search_result"); return; }
+        // 2026-10-27: «Камеры и модули» (the modules and their own settings) is found by its row; it opens the group's page
+        if (ModulePageFilter.CAMERAS.equals(entry.key)) { openModuleProfiles("search_result"); return; }
         if (ScamLabFragment.SCREEN.equals(entry.page) || ScamLabFragment.SCREEN.equals(entry.key)) { openLab(); return; }
         SettingsFragment page = new SettingsFragment();
         Bundle args = new Bundle();
@@ -223,6 +223,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         static final String ARG_MODULE = "module_profile";
         /** P189: the rows {@link ModulePageFilter} hid on this module page (applyAvailability keeps them hidden). */
         private java.util.Set<String> moduleHidden = java.util.Collections.emptySet();
+        /**
+         * 2026-10-27: the rows this page's code hid (the two sound switches behind «Звуки»); applyAvailability keeps them hidden
+         * (it used to show every row it did not hide itself, on every change and resume).
+         */
+        private final java.util.Set<String> codeHidden = new java.util.HashSet<>();
         /** Argument of the sensor page: the module it shows (a module page opens its own; the chip changes it). */
         static final String ARG_SENSOR_SLOT = "sensor_slot";
         private Activity activity;
@@ -316,9 +321,6 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (module != null) moduleHidden = ModulePageFilter.apply(getPreferenceScreen(), module, rootKey == null);
             setupPhotoFormat();
             setupSounds();
-            // P319: «Настройки по модулям» lives on «Камеры и модули»; its row stays for search and the links, not on the page
-            Preference hub = findPreference(ModulePageFilter.HUB);
-            if (hub != null && rootKey == null) hub.setVisible(false);
             setupCaptureReport();
             SettingsStyle.apply(getPreferenceScreen());
         }
@@ -362,10 +364,13 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (sounds == null) return;
             if (shutter == null || timer == null) {
                 sounds.setVisible(false);
+                codeHidden.add(sounds.getKey());
                 return;
             }
             shutter.setVisible(false);
             timer.setVisible(false);
+            codeHidden.add(shutter.getKey());
+            codeHidden.add(timer.getKey());
             sounds.setPersistent(false);
             sounds.setValue(soundsValue(shutter.isChecked(), timer.isChecked()));
             sounds.setOnPreferenceChangeListener((preference, value) -> {
@@ -401,6 +406,16 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 android.widget.LinearLayout.LayoutParams sp = new android.widget.LinearLayout.LayoutParams(-1, -2);
                 sp.bottomMargin = SettingsStyle.dp(c, 8);
                 page.addView(SettingsStyle.searchPill(c, this::openSearch), sp);
+                // 2026-10-27 (owner: settings anyone can set up alone): the two gestures that explain a setting and put its
+                // default back (DoubleTapReset: the long press of a slider row reaches its help too)
+                android.widget.TextView tips = SettingsStyle.text(c, Lang.t(c,
+                        "Удерживайте пункт, чтобы узнать, что он делает. Двойной тап по ползунку — значение по умолчанию.",
+                        "Hold a row to see what it does. Double-tap a slider to restore its default."), 12.5f, SettingsStyle.MUTED);
+                tips.setTag("settings_tips");
+                android.widget.LinearLayout.LayoutParams tp = new android.widget.LinearLayout.LayoutParams(-1, -2);
+                tp.bottomMargin = SettingsStyle.dp(c, 8);
+                tp.leftMargin = SettingsStyle.dp(c, 4);
+                page.addView(tips, tp);
             }
             chipBox = new android.widget.LinearLayout(c);
             page.addView(chipBox, new android.widget.LinearLayout.LayoutParams(-1, -2));
@@ -472,7 +487,11 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                     .setMessage(Lang.t(c, "Все параметры страницы «" + title + "» вернутся к значениям по умолчанию. Вложенные страницы не затрагиваются.",
                             "Every setting of «" + title + "» goes back to its default. Pages inside it stay as they are."))
                     .setPositiveButton(Lang.t(c, "Сбросить", "Reset"), (d, w) -> {
-                        final int n = PageReset.reset(c, screen);
+                        int n = PageReset.reset(c, screen);
+                        // the developer rows write scam_dev.txt, not the preferences
+                        if (DeveloperPreferences.SCREEN.equals(screen.getKey()))
+                            n += DeveloperPreferences.resetAll(fullPreferenceScreen != null ? fullPreferenceScreen : screen,
+                                    getPreferenceManager().getContext());
                         android.widget.Toast.makeText(c, n == 0 ? Lang.t(c, "Всё уже по умолчанию", "Everything is at its default already")
                                 : Lang.t(c, "Сброшено параметров: " + n, "Settings reset: " + n), android.widget.Toast.LENGTH_SHORT).show();
                     })
@@ -492,10 +511,14 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             boolean picker = false, modulePicker = false;
             String module = moduleProfile();
             if (module == null) {
-                // P189: the root row says whether the modules have their own settings now
-                Preference hub = findPreference(ModulePageFilter.HUB);
-                if (hub != null) hub.setSummary(PreferenceKeys.isPerLensSettingsOn() ? getString(R.string.prefs_module_profiles_screen_summary)
-                        : Lang.t(getContext(), "Сейчас у всех модулей общие настройки", "All modules share the settings now"));
+                // P189: the row of «Камеры и модули» says whether the modules have their own settings now (2026-10-27: the
+                // separate «Настройки по модулям» row is gone; this page holds the modules' settings)
+                Preference cameras = findPreference(ModulePageFilter.CAMERAS);
+                if (cameras != null) cameras.setSummary(getString(R.string.prefs_camera_settings_screen_summary) + ". "
+                        + (PreferenceKeys.isPerLensSettingsOn()
+                        ? Lang.t(getContext(), "Каждый объектив и его снимки FULLRES 50 / 200 Мп со своими настройками",
+                                "Each lens and its FULLRES 50 / 200 MP shots with their own settings")
+                        : Lang.t(getContext(), "Сейчас у всех модулей общие настройки", "All modules share the settings now")));
             }
             if (module != null) {
                 // P189: a page of the module's group: the profile it edits, fixed (no picker)
@@ -697,9 +720,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                         if (uri != null) {
                             String error = TunablePngPreference.handleImportResult(mContext, uri);
                             if (error != null) {
-                                ScameraApp.showToast("PNG import failed: " + error);
+                                ScameraApp.showToast(Lang.t(mContext, "PNG не загружен: ", "PNG import failed: ") + error);
                             } else {
-                                ScameraApp.showToast("PNG imported successfully");
+                                ScameraApp.showToast(Lang.t(mContext, "PNG загружен", "PNG imported"));
                             }
                             TunablePngPreference.refreshActivePreference();
                         }
@@ -1148,7 +1171,8 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
                 String key = p.getKey();
                 if (key == null) continue;
                 // Rows of a photo format that is not chosen are hidden, not explained (SettingsAvailability.hidden).
-                boolean hidden = state.hidden(key) || moduleHidden.contains(key); // P189: shared rows stay off module pages
+                // P189: shared rows stay off module pages; 2026-10-27: a row the page's code hid stays hidden
+                boolean hidden = state.hidden(key) || moduleHidden.contains(key) || codeHidden.contains(key);
                 if (p.isVisible() == hidden) p.setVisible(!hidden);
                 String reason = state.reason(key);
                 if (p.getClass() != Preference.class) p.setEnabled(reason == null);
@@ -1376,21 +1400,12 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             if (PreferenceKeys.Key.KEY_THEME_ACCENT.mValue.equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new AccentSettingsFragment()).addToBackStack("accent").commit();return true;
             }
-            // SIMPLE_UI §4: «Стиль снимка → Плёночный LUT» opens the LUT page
-            if ("photo_style_lut".equals(preference.getKey()) && activity instanceof SettingsActivity) {
-                ((SettingsActivity) activity).openPageAt("film_lut_screen", com.particlesdevs.photoncamera.processing.color.FilmLut.KEY);
-                return true;
-            }
             if ("pref_dcp_profile_key".equals(preference.getKey())) {
                 getParentFragmentManager().beginTransaction().replace(R.id.settings_container,new DcpSettingsFragment()).addToBackStack("dcp").commit();return true;
             }
             // P189: an empty PreferenceScreen does not navigate by itself (androidx returns at once without children)
             if (ScamLabFragment.SCREEN.equals(preference.getKey()) && activity instanceof SettingsActivity) {
                 ((SettingsActivity) activity).openLab();
-                return true;
-            }
-            if (ModulePageFilter.HUB.equals(preference.getKey()) && activity instanceof SettingsActivity) {
-                ((SettingsActivity) activity).openModuleProfiles("module_profiles");
                 return true;
             }
             if ("module_copy_settings".equals(preference.getKey())) {

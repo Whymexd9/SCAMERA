@@ -80,4 +80,36 @@ public class ScamHybridBurstCrashTest {
             ScamHybridBurst.avoidedSteps.clear();
         }
     }
+
+    /**
+     * processing-gpu-init-misclass: Adreno buffers the early GPU context's lines until the merge takes the context, so no early
+     * death writes "HYBRID GPU:". A CRE crash or a low-memory kill turned the GPU merge off for the session (every later 12 MP shot
+     * the base frame alone) and never reached learnFromCrash; a death at the GPU context still does.
+     */
+    @Test public void adrenoEarlyDeathIsNotGpuInit() {
+        final String adreno = "SCAM WARMUP: CRE ready in 41 ms, joined after 41 ms\n"
+                + "HYBRID GPU ALIGN f=1 dx=0.42 dy=-0.13 ms=12\n"
+                + "WORKER CRASH: signal 11 SIGSEGV code=1 addr=0x0 tid=1 thread=scam-neural-wor stage=CRE track last=CRE track\n"
+                + "WORKER EXIT: signal 11 SIGSEGV, no completion line\n";
+        assertFalse(ScamHybridBurst.gpuInitDeath(12_000_000L, adreno));
+        assertEquals(ScamHybridBurst.STEP_CRE, ScamHybridBurst.stepOf(ScamHybridBurst.crashStage(adreno)));
+        // the merge's own thread, and a GPU alignment thread once the worker names its stage: the conservative retry
+        assertFalse(ScamHybridBurst.gpuInitDeath(12_000_000L, adreno.replace("stage=CRE track last=CRE track",
+                "stage=hybrid merge last=hybrid merge")));
+        assertFalse(ScamHybridBurst.gpuInitDeath(12_000_000L, adreno.replace("tid=1 thread=scam-neural-wor stage=CRE track last=CRE track",
+                "tid=9 thread=scam-neural-wor stage=GPU align (F6) last=hybrid merge")));
+        // a low-memory kill takes the ordinary retry
+        assertFalse(ScamHybridBurst.gpuInitDeath(12_000_000L,
+                "HYBRID GPU ALIGN f=1 dx=0.42 dy=-0.13 ms=12\nWORKER EXIT: signal 9 SIGKILL (low memory or killed), no completion line\n"));
+        // a crash in the GPU context, or a signal with nothing naming the site: the GPU is unusable as before
+        assertTrue(ScamHybridBurst.gpuInitDeath(12_000_000L, adreno.replace("stage=CRE track last=CRE track",
+                "stage=GPU context (EGL) last=eglCreateContext")));
+        assertTrue(ScamHybridBurst.gpuInitDeath(12_000_000L, "HYBRID GPU ALIGN f=1 dx=0.42 dy=-0.13 ms=12\n"
+                + "WORKER EXIT: signal 11 SIGSEGV, no completion line\n"));
+        // a stream above 16 MP never; the context's own line (Mali) or no signal: not a GPU-init death
+        assertFalse(ScamHybridBurst.gpuInitDeath(50_000_000L, "WORKER EXIT: signal 11 SIGSEGV, no completion line\n"));
+        assertFalse(ScamHybridBurst.gpuInitDeath(12_000_000L, X200_PRO_REPORT));
+        assertFalse(ScamHybridBurst.gpuInitDeath(12_000_000L, "WORKER EXIT: code 1, no completion line\n"));
+        assertFalse(ScamHybridBurst.gpuInitDeath(12_000_000L, null));
+    }
 }

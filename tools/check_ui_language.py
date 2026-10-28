@@ -9,7 +9,11 @@ The interface is Russian on a Russian system and English on any other (util/Lang
       values-ru entry, a translatable="false" default has none, arrays keep their item count and both languages
       use the same format placeholders; no locale folders other than the default (English) and values-ru;
   (d) Java string and char literals with Cyrillic under <module>/src/main/java are only the Russian argument of
-      Lang.t(ru, en) / Lang.t(context, ru, en), text of a Log call, or on the ALLOW list below (with the reason).
+      Lang.t(ru, en) / Lang.t(context, ru, en), text of a Log call, or on the ALLOW list below (with the reason);
+  (e) under the settings code (ui/settings/**, settings/**) a Latin literal passed to a toast, a snackbar, setTitle,
+      setSummary or setMessage goes through Lang.t / getString / a translating lookup (title, description), or is on
+      the ALLOW_LATIN list below (technical text, the same in both languages): an English-only message is not shown
+      to a Russian UI (settings audit 2026-10-27).
 
 Run from anywhere: python3 tools/check_ui_language.py
 """
@@ -90,6 +94,24 @@ ALLOW = {
          ['Профиль DCP', ' · только матрицы']),
     ],
 }
+
+# (e) Latin literals of the settings code shown as they are in both languages: file -> [(reason, literals)].
+ALLOW_LATIN = {
+    'com/particlesdevs/photoncamera/ui/settings/ModuleLensFragment.java': [
+        ('the camera id label (Camera ID is the term of the Russian text too)', [' · ID ', 'Camera ID · ']),
+    ],
+    'com/particlesdevs/photoncamera/ui/settings/SettingsActivity.java': [
+        ('the camera id label (Camera ID is the term of the Russian text too)', [' · ID ']),
+        ('the photo file extension of the file name preview', ['.jpg']),
+    ],
+}
+LATIN_SCOPE = ('com/particlesdevs/photoncamera/ui/settings/', 'com/particlesdevs/photoncamera/settings/')
+LATIN_SHOWN = {'setTitle', 'setSummary', 'setMessage', 'showToast'}
+LATIN_SHOWN_CALLS = {'Toast.makeText', 'Snackbar.make'}
+# Calls whose result is the UI text in the UI language (a lookup of the English / Russian key)
+LATIN_TRANSLATED = {'title', 'description', 'getString', 'getText'}
+ESCAPE = re.compile(r'\\(?:u[0-9a-fA-F]{4}|.)')
+LATIN = re.compile('[A-Za-z]')
 
 errors = []
 
@@ -335,11 +357,63 @@ def check_java(module):
     return seen
 
 
+def check_latin(module):
+    """(e) English-only messages of the settings code."""
+    base = ROOT / module / 'src/main/java'
+    if not base.is_dir():
+        return
+    seen = set()
+    for path in sorted(base.rglob('*.java')):
+        rel = path.relative_to(base).as_posix()
+        if not rel.startswith(LATIN_SCOPE):
+            continue
+        toks = tokens(path.read_text(encoding='utf-8'))
+        # the open brackets around every token
+        stack, frame_of = [], [None] * len(toks)
+        for i, (kind, text, _) in enumerate(toks):
+            if kind == 'punct' and text in '([{':
+                stack.append((i, text))
+            elif kind == 'punct' and text in ')]}':
+                if stack:
+                    stack.pop()
+            frame_of[i] = list(stack)
+        for i, (kind, text, line) in enumerate(toks):
+            if kind != 'string':
+                continue
+            literal = text[1:-1]
+            if CYRILLIC.search(literal) or not LATIN.search(ESCAPE.sub('', literal)):
+                continue
+            for open_index, bracket in reversed(frame_of[i]):
+                if bracket != '(':
+                    continue
+                name = callee(toks, open_index)
+                last = name.split('.')[-1]
+                if LOG_CALL.search(name) or name == 'Lang.t' or name.endswith('.Lang.t') or last in LATIN_TRANSLATED:
+                    break
+                if name in LATIN_SHOWN_CALLS or last in LATIN_SHOWN:
+                    allowed = False
+                    for reason, literals in ALLOW_LATIN.get(rel, []):
+                        if literal in literals:
+                            allowed = True
+                            seen.add((rel, literal))
+                    if not allowed:
+                        error(path, line, f'English-only text shown by {name} (through Lang.t(ru, en) or resources): "{literal}"')
+                    break
+    for rel, entries in ALLOW_LATIN.items():
+        if not (base / rel).is_file():
+            continue
+        for reason, literals in entries:
+            for literal in literals:
+                if (rel, literal) not in seen:
+                    error(base / rel, 0, f'stale ALLOW_LATIN entry ({reason}): "{literal}" not found')
+
+
 def main():
     listing = '--list' in sys.argv
     for module in MODULES:
         check_resources(module)
         seen = check_java(module)
+        check_latin(module)
         if listing and seen:
             for (rel, reason), literals in sorted(seen.items()):
                 print(f'{module}/{rel}: {reason}: {len(literals)} literal(s)')
@@ -351,7 +425,7 @@ def main():
             print('  ' + e)
         sys.exit(1)
     print('UI language PASS: English defaults, Russian only in values-ru, Java UI text through Lang.t, '
-          'Cyrillic Java literals only in Lang.t / Log / the allow list')
+          'Cyrillic Java literals only in Lang.t / Log / the allow list, no English-only settings messages')
 
 
 if __name__ == '__main__':

@@ -486,17 +486,20 @@ public class CameraResumeTest {
         com.particlesdevs.photoncamera.processing.color.PlainColourMemoryAccess.useStore(prefs,"vivo/V2562/V2562:16/1");
         try {
             put(controller,"physicalID","3");
-            var matrix=CaptureController.class.getDeclaredMethod("nativeViewfinderMatrix",CameraCharacteristics.class,CaptureResult.class,float[].class);
+            // P370 (A2): the viewfinder's matrix of every RAW stream (the identity transform of a native mosaic stream here)
+            var matrix=CaptureController.class.getDeclaredMethod("viewfinderMatrix",CameraCharacteristics.class,CaptureResult.class,
+                    float[].class,float[].class,boolean.class);
             matrix.setAccessible(true);
             CameraCharacteristics c=mock(CameraCharacteristics.class);
             float[] gains={1f/0.48f,1f,1f/0.60f}; // the neutral 0.48 / 0.60
-            assertNull("no plain table yet: the identity",matrix.invoke(controller,c,null,gains));
+            float[] identity={1,0,0,0,1,0,0,0,1};
+            assertNull("no plain table yet: the identity",matrix.invoke(controller,c,null,gains,identity,true));
             float[] plain={1.30f,-0.29f,-0.01f,-0.15f,1.21f,-0.06f,0.02f,-0.46f,1.44f};
             for(int i=0;i<4;i++)com.particlesdevs.photoncamera.processing.color.PlainColourMemory.offer("3",0.48f,0.60f,plain,6200,10_000L+1_000L*i);
-            assertNull("the same session keeps its lookup",matrix.invoke(controller,c,null,gains));
+            assertNull("the same session keeps its lookup",matrix.invoke(controller,c,null,gains,identity,true));
             var session=CaptureController.class.getDeclaredField("mVfCcmSession");session.setAccessible(true);
             session.setInt(controller,session.getInt(controller)+1); // onConfigured of the next session
-            float[] next=(float[])matrix.invoke(controller,c,null,gains);
+            float[] next=(float[])matrix.invoke(controller,c,null,gains,identity,true);
             assertNotNull("the next session takes the table",next);
             assertEquals("column-major",plain[3],next[1],2e-3f);
         } finally {

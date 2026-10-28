@@ -466,6 +466,14 @@ public class DngCreator {
     }
 
     /** P215: every value finite (the native writer drops a tag with a NaN / infinity silently); logs the tag otherwise. */
+    /** P370 (review): a finite, non-zero, invertible colour matrix (Parameters.dngColourMatrixUsable); logged when it is not. */
+    static boolean colourMatrix(String tag, float[] values) {
+        if (!finite(tag, values)) return false;
+        if (com.particlesdevs.photoncamera.processing.render.Parameters.dngColourMatrixUsable(values)) return true;
+        com.particlesdevs.photoncamera.util.Log.e(TAG, "DNG: " + tag + " all zero or singular, not written: " + java.util.Arrays.toString(values));
+        return false;
+    }
+
     static boolean finite(String tag, float[] values) {
         if (values == null) {
             com.particlesdevs.photoncamera.util.Log.e(TAG, "DNG: " + tag + " missing");
@@ -555,17 +563,24 @@ public class DngCreator {
             setForwardMatrix1(toDouble(jpegColour.forwardMatrix1));
             com.particlesdevs.photoncamera.util.Log.i(TAG, "DNG: the JPEG's colour: " + jpegColour);
         } else {
-            if (finite("ColorMatrix1", parameters.ColorMatrix1)) setColorMatrix1(toDouble(parameters.ColorMatrix1));
-            if (finite("ColorMatrix2", parameters.ColorMatrix2)) setColorMatrix2(toDouble(parameters.ColorMatrix2));
-            if (finite("ForwardMatrix1", parameters.ForwardTransform1)) setForwardMatrix1(toDouble(parameters.ForwardTransform1));
-            if (finite("ForwardMatrix2", parameters.ForwardTransform2)) setForwardMatrix2(toDouble(parameters.ForwardTransform2));
+            // P370 (review): no all-zero (a camera without colour matrices, A5) or singular ColorMatrix: an invalid profile
+            if (colourMatrix("ColorMatrix1", parameters.ColorMatrix1)) setColorMatrix1(toDouble(parameters.ColorMatrix1));
+            if (colourMatrix("ColorMatrix2", parameters.ColorMatrix2)) setColorMatrix2(toDouble(parameters.ColorMatrix2));
+            // P370 (A3): placeholder forward matrices (sRGB -> XYZ) beside real colour matrices are not written
+            final boolean forward = parameters.dngForwardMatrices();
+            if (!forward) com.particlesdevs.photoncamera.util.Log.i(TAG, "DNG: the forward matrices are the sRGB -> XYZ placeholder: not written (the ColorMatrix renders)");
+            if (forward && finite("ForwardMatrix1", parameters.ForwardTransform1)) setForwardMatrix1(toDouble(parameters.ForwardTransform1));
+            if (forward && finite("ForwardMatrix2", parameters.ForwardTransform2)) setForwardMatrix2(toDouble(parameters.ForwardTransform2));
             if (finite("CameraCalibration1", parameters.calibrationTransform1)) setCameraCalibration1(toDouble(parameters.calibrationTransform1));
             if (finite("CameraCalibration2", parameters.calibrationTransform2)) setCameraCalibration2(toDouble(parameters.calibrationTransform2));
         }
         if (finite("AsShotNeutral", parameters.whitePoint) && positive(parameters.whitePoint)) setAsShotNeutral(toDouble(parameters.whitePoint));
         else com.particlesdevs.photoncamera.util.Log.e(TAG, "DNG: AsShotNeutral not written: " + java.util.Arrays.toString(parameters.whitePoint));
+        // P370 (B1): the ForwardMatrix1 the file holds (the JPEG's own with P243, else the camera's)
         com.particlesdevs.photoncamera.util.Log.i(TAG, "DNG: AsShotNeutral " + java.util.Arrays.toString(parameters.whitePoint)
-                + " ForwardMatrix1 " + java.util.Arrays.toString(parameters.ForwardTransform1));
+                + " ForwardMatrix1 " + (jpegColour != null ? java.util.Arrays.toString(jpegColour.forwardMatrix1)
+                : parameters.dngForwardMatrices() ? java.util.Arrays.toString(parameters.ForwardTransform1) : "none")
+                + (jpegColour != null ? " (the JPEG's colour)" : " (the camera's profile)"));
         setCFAPattern(parameters.baseCfaPattern);
         setOrientation(parameters.cameraRotation/90);
         // the stored image as (xmin, ymin, xmax, ymax): the active array's (top, left, bottom, right) went in here before (P118)

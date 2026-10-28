@@ -92,7 +92,9 @@ public class LutTrayTest {
         assertEquals("Кино 500", pill.getText().toString());
         assertEquals(ShadeStyle.INK, pill.getCurrentTextColor());
         tray.setOpen(false);
+        settle(); // the pill's colours cross-fade (TrayMotion): the state after the fade
         assertEquals(ShadeStyle.accent(context), pill.getCurrentTextColor());
+        assertEquals("the tray hides once it has left", View.GONE, box.getVisibility());
         // a swipe steps round the list with a short message
         assertEquals("LUT: Ч/Б 400", tray.step(1));
         assertEquals(FilmLooks.values()[4], PreferenceKeys.filmLut());
@@ -142,11 +144,17 @@ public class LutTrayTest {
         assertEquals(.5f, PreferenceKeys.lensFilterStrength(), 1e-6f);
         assertEquals("LUT · Pro-Mist", pill.getText().toString());
         tray.setOpen(false);
+        settle();
         assertEquals("a filter alone lights the pill", ShadeStyle.accent(context), pill.getCurrentTextColor());
         tray.setOpen(true);
         box.findViewWithTag("lut_tray_filter_").performClick();
         assertEquals("", PreferenceKeys.lensFilter());
         assertEquals("LUT", pill.getText().toString());
+    }
+
+    /** The tray's and the pill's animations run to their end (Robolectric's paused main looper). */
+    private static void settle() {
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(1, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     private static org.robolectric.shadows.ShadowSeekBar shadowOf(android.widget.SeekBar seek) {

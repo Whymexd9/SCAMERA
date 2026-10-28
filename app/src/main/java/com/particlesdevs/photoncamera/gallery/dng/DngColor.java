@@ -50,6 +50,48 @@ public final class DngColor {
                 p.cameraCalibration2, p.analogBalance, p.illuminant1, p.illuminant2, p.asShotNeutral, p.asShotWhiteXY);
     }
 
+    /**
+     * P370 (A1): the white estimate of a camera's characteristics (Parameters.ReCalcColor): ColorMatrix1 / 2 (XYZ -> camera,
+     * row-major, null: absent), CameraCalibration1 / 2 (null: identity) and the two illuminant codes, no forward matrix (the
+     * ColorMatrix route of {@link #cameraToXyzD50}) and no as-shot neutral. Each colour matrix is normalised the DNG SDK's way
+     * ({@link #sdkNormalised}: one scale for the whole matrix), never row by row - the row normalisation moved every white
+     * toward the D65 calibration (PHY110 camera 2: 2856 K read as 5068 K).
+     */
+    public static DngColor forCamera(double[] cm1, double[] cm2, double[] cc1, double[] cc2, int illuminant1, int illuminant2) {
+        return new DngColor(sdkNormalised(cm1), sdkNormalised(cm2), null, null, cc1, cc2, null, illuminant1, illuminant2,
+                null, null);
+    }
+
+    /**
+     * The DNG SDK's NormalizeColorMatrix: the matrix divided by the largest component of ColorMatrix x D50 when that is outside
+     * 0.99 .. 1.01 (a no-op for a normal DNG file); null and non-positive maxima stay as they are.
+     */
+    public static double[] sdkNormalised(double[] cm) {
+        if (cm == null || cm.length < 9) return cm;
+        final double[] d50 = xyToXyz(D50);
+        final double[] v = apply(cm, d50);
+        final double max = Math.max(v[0], Math.max(v[1], v[2]));
+        if (!(max > 0) || (max >= 0.99 && max <= 1.01)) return cm.clone();
+        final double[] out = new double[9];
+        for (int i = 0; i < 9; i++) out[i] = cm[i] / max;
+        return out;
+    }
+
+    /**
+     * P370 (A1, A5): the matrices give a white estimate - finite, and XYZ -> camera invertible at both calibrations (a singular or
+     * absent ColorMatrix gives none; xyForNeutral would fall back to D50 without a word).
+     */
+    public boolean usable() {
+        if (cm1 == null) return false;
+        for (double[] m : new double[][]{cm1, cm2, cc1, cc2}) if (m != null) for (double v : m) if (!Double.isFinite(v)) return false;
+        return Math.abs(det(xyzToCamera(t1))) > 1e-9 && Math.abs(det(xyzToCamera(t2))) > 1e-9;
+    }
+
+    /** The weight of calibration 2 at {@code cct} (Parameters' interpolation factor: Converter lerps calibration 1 -> 2). */
+    public double weight2(double cct) {
+        return 1 - weight1(cct);
+    }
+
     /** Whether the file carries a ColorMatrix (else the editor balances the camera RGB with plain gains). */
     public boolean hasMatrices() {
         return cm1 != null;
@@ -59,24 +101,25 @@ public final class DngColor {
         return m != null && m.length >= 9 ? new double[]{m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8]} : null;
     }
 
-    /** EXIF LightSource -> kelvin (the DNG SDK's table); 0 / unknown -> {@code fallback}. */
-    static double illuminantTemperature(int code, double fallback) {
+    /**
+     * EXIF LightSource -> kelvin (the DNG SDK's table); 0 / unknown -> {@code fallback}. P370 (A5): public, the one table of the
+     * camera's white estimate (Parameters) and of an unknown code in Converter.
+     */
+    public static double illuminantTemperature(int code, double fallback) {
+        // P370 (review): the DNG SDK's IlluminantToTemperature values (dng_camera_profile.cpp) - the fluorescent classes at the
+        // middle of their ranges, B 5500, C / D65 6500, D75 7500, D50 5000 (this table had 4875, 6775, 6504, 7504, 5003 ...)
         switch (code) {
-            case 1: case 4: case 9: case 20: return 5500;
-            case 2: case 14: return 4150;
-            case 3: case 17: return 2850;
-            case 10: return 6500;
-            case 11: return 7500;
-            case 12: return 6430;
-            case 13: return 5000;
-            case 15: return 3450;
-            case 16: return 2940;
-            case 18: return 4875;
-            case 19: return 6775;
-            case 21: return 6504;
-            case 22: return 7504;
-            case 23: return 5003;
-            case 24: return 3200;
+            case 1: case 4: case 9: case 18: case 20: return 5500;   // daylight, flash, fine weather, standard light B, D55
+            case 2: case 14: return 4150;                            // fluorescent, cool white fluorescent (3800 - 4500)
+            case 3: case 17: return 2850;                            // tungsten, standard light A
+            case 10: case 19: case 21: return 6500;                  // cloudy, standard light C, D65
+            case 11: case 22: return 7500;                           // shade, D75
+            case 12: return 6400;                                    // daylight fluorescent (5700 - 7100)
+            case 13: return 5050;                                    // day white fluorescent (4600 - 5500)
+            case 15: return 3525;                                    // white fluorescent (3250 - 3800)
+            case 16: return 2925;                                    // warm white fluorescent (2600 - 3250)
+            case 23: return 5000;                                    // D50
+            case 24: return 3200;                                    // ISO studio tungsten
             default: return fallback;
         }
     }
@@ -117,15 +160,24 @@ public final class DngColor {
         return normalise(apply(xyzToCamera(cctDuv(xy)[0]), xyz));
     }
 
-    /** The chromaticity whose camera neutral is {@code neutral} (the DNG SDK's iteration). */
+    /** The chromaticity whose camera neutral is {@code neutral} (the DNG SDK's iteration); D50 where it cannot be placed. */
     public double[] xyForNeutral(double[] neutral) {
+        final double[] xy = estimateXy(neutral);
+        return xy != null ? xy : D50.clone();
+    }
+
+    /**
+     * {@link #xyForNeutral}'s iteration without its D50 stand-in: null when a step's matrix is singular or the white's XYZ sums to
+     * <= 0 (P370 review: the white estimate then says it has no light instead of reading D50 as "the DNG estimate", 5000 K).
+     */
+    public double[] estimateXy(double[] neutral) {
         double[] xy = D50.clone();
         for (int i = 0; i < 40; i++) {
             double[] m = xyzToCamera(cctDuv(xy)[0]);
-            if (Math.abs(det(m)) < 1e-12) return D50.clone();
+            if (Math.abs(det(m)) < 1e-12) return null;
             double[] xyz = apply(DngPreview.inverse(m), neutral);
             double s = xyz[0] + xyz[1] + xyz[2];
-            if (s <= 1e-12) return D50.clone();
+            if (s <= 1e-12) return null;
             double[] next = {xyz[0] / s, xyz[1] / s};
             if (Math.abs(next[0] - xy[0]) + Math.abs(next[1] - xy[1]) < 1e-9) return next;
             xy = next;
@@ -141,28 +193,39 @@ public final class DngColor {
         if (!hasMatrices()) {
             return new double[]{1 / n[0], 0, 0, 0, 1 / n[1], 0, 0, 0, 1 / n[2]};
         }
-        double[] xy = xyForNeutral(n);
-        double cct = cctDuv(xy)[0];
-        double w = weight1(cct);
-        double[] fm = mix(fm1, fm2, w);
-        double[] abcc = abcc(cct);
-        double[] camToXyz50;
-        if (fm != null) {
-            double[] inv = DngPreview.inverse(abcc);
-            double[] ref = apply(inv, n);
-            double[] d = {1 / Math.max(ref[0], 1e-9), 0, 0, 0, 1 / Math.max(ref[1], 1e-9), 0, 0, 0, 1 / Math.max(ref[2], 1e-9)};
-            camToXyz50 = DngPreview.mul(fm, DngPreview.mul(d, inv));
-        } else {
-            double[] camToXyz = DngPreview.inverse(xyzToCamera(cct));
-            camToXyz50 = DngPreview.mul(adaptation(xyToXyz(xy), xyToXyz(D50)), camToXyz);
-        }
-        double[] m = DngPreview.mul(XYZ50_TO_SRGB, camToXyz50);
+        double[] m = DngPreview.mul(XYZ50_TO_SRGB, cameraToXyzD50(n));
         double[] out = apply(m, n);
         for (int r = 0; r < 3; r++) {
             double s = out[r] > 1e-9 ? 1 / out[r] : 1;
             for (int c = 0; c < 3; c++) m[r * 3 + c] *= s;
         }
         return m;
+    }
+
+    /**
+     * Camera RGB -> XYZ D50 for the camera neutral {@code n} (cameraToSrgb's chain before the sRGB matrix and the row scaling):
+     * ForwardMatrix x diag(1 / ((AB CC)^-1 n)) x (AB CC)^-1 when the file has one, else the inverse colour matrix adapted (Bradford)
+     * from the white to D50. P370 (A3): Parameters' ColorMatrix-only route, there scaled to the forward route's white.
+     */
+    public double[] cameraToXyzD50(double[] n) {
+        double[] xy = xyForNeutral(n);
+        double cct = cctDuv(xy)[0];
+        double w = weight1(cct);
+        double[] fm = mix(fm1, fm2, w);
+        double[] abcc = abcc(cct);
+        if (fm != null) {
+            double[] inv = DngPreview.inverse(abcc);
+            double[] ref = apply(inv, n);
+            double[] d = {1 / Math.max(ref[0], 1e-9), 0, 0, 0, 1 / Math.max(ref[1], 1e-9), 0, 0, 0, 1 / Math.max(ref[2], 1e-9)};
+            return DngPreview.mul(fm, DngPreview.mul(d, inv));
+        }
+        double[] camToXyz = DngPreview.inverse(xyzToCamera(cct));
+        return DngPreview.mul(adaptation(xyToXyz(xy), xyToXyz(D50)), camToXyz);
+    }
+
+    /** The camera-specific part AB x CC at {@code cct} (P370: Parameters' ColorMatrix-only route scales its white with it). */
+    public double[] cameraPartAt(double cct) {
+        return abcc(cct);
     }
 
     // ---------------------------------------------------------------- CCT / Duv

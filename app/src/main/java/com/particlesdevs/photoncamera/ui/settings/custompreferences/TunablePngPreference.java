@@ -15,6 +15,7 @@ import androidx.preference.PreferenceManager;
 import androidx.preference.PreferenceViewHolder;
 
 import com.particlesdevs.photoncamera.app.ScameraApp;
+import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.util.Log;
 
 import java.io.File;
@@ -87,7 +88,7 @@ public class TunablePngPreference extends Preference {
 
         final List<String> availablePngs = getAvailablePngs(context);
         final List<String> items = new ArrayList<>();
-        items.add("None");
+        items.add(Lang.t(context, "Нет", "None"));
         items.addAll(availablePngs);
 
         String currentValue = getPersistedString(mDefaultValue);
@@ -113,16 +114,16 @@ public class TunablePngPreference extends Preference {
             dialog.dismiss();
         });
 
-        builder.setNeutralButton("Import new PNG", (dialog, which) -> {
+        builder.setNeutralButton(Lang.t(context, "Загрузить PNG", "Import new PNG"), (dialog, which) -> {
             if (sImportLauncher != null) {
                 sImportLauncher.launch(new String[]{"image/png"});
             } else {
                 Log.w(TAG, "No import launcher set");
-                ScameraApp.showToast("Cannot open file picker");
+                ScameraApp.showToast(Lang.t(context, "Не удалось открыть выбор файла", "Cannot open file picker"));
             }
         });
 
-        builder.setNegativeButton("Cancel", null);
+        builder.setNegativeButton(Lang.t(context, "Отмена", "Cancel"), null);
 
         AlertDialog dialog = builder.create();
         dialog.setOnShowListener(d -> {
@@ -132,9 +133,9 @@ public class TunablePngPreference extends Preference {
                     if (position == 0) return true; // Cannot remove "None"
                     final String pngName = items.get(position);
                     new AlertDialog.Builder(context)
-                            .setTitle("Remove PNG")
-                            .setMessage("Remove " + pngName + "?")
-                            .setPositiveButton("Remove", (d2, w2) -> {
+                            .setTitle(Lang.t(context, "Удалить PNG", "Remove PNG"))
+                            .setMessage(Lang.t(context, "Удалить " + pngName + "?", "Remove " + pngName + "?"))
+                            .setPositiveButton(Lang.t(context, "Удалить", "Remove"), (d2, w2) -> {
                                 removePng(context, pngName);
                                 String selected = getPersistedString(mDefaultValue);
                                 if (pngName.equals(selected)) {
@@ -144,7 +145,7 @@ public class TunablePngPreference extends Preference {
                                 dialog.dismiss();
                                 showPngDialog();
                             })
-                            .setNegativeButton("Cancel", null)
+                            .setNegativeButton(Lang.t(context, "Отмена", "Cancel"), null)
                             .show();
                     return true;
                 });
@@ -156,7 +157,7 @@ public class TunablePngPreference extends Preference {
     private String getCurrentSummaryText() {
         String currentValue = getPersistedString(mDefaultValue);
         if (currentValue == null || currentValue.isEmpty()) {
-            return "None selected";
+            return Lang.t(getContext(), "Не выбран", "None selected");
         } else {
             return currentValue;
         }
@@ -174,7 +175,7 @@ public class TunablePngPreference extends Preference {
         TunablePngPreference pref = sActivePreference.get();
         if (pref == null) {
             Log.w(TAG, "No active preference for import result");
-            return "No active preference";
+            return Lang.t(context, "нет открытого пункта", "No active preference");
         }
         return pref.importPng(context, uri);
     }
@@ -192,7 +193,7 @@ public class TunablePngPreference extends Preference {
 
     private String importPng(Context context, Uri uri) {
         if (uri == null) {
-            return "No file selected";
+            return Lang.t(context, "файл не выбран", "No file selected");
         }
 
         String fileName = getFileName(context, uri);
@@ -210,18 +211,18 @@ public class TunablePngPreference extends Preference {
             BitmapFactory.decodeStream(is, null, options);
         } catch (IOException e) {
             Log.e(TAG, "Failed to read image bounds", e);
-            return "Failed to read image: " + e.getMessage();
+            return Lang.t(context, "не удалось прочитать картинку: ", "Failed to read image: ") + e.getMessage();
         }
 
         int width = options.outWidth;
         int height = options.outHeight;
 
         if (width <= 0 || height <= 0) {
-            return "Invalid image file";
+            return Lang.t(context, "это не картинка", "Invalid image file");
         }
 
         if (width != height) {
-            return "PNG must be square. Current size: " + width + "x" + height;
+            return Lang.t(context, "PNG должен быть квадратным. Сейчас: ", "PNG must be square. Current size: ") + width + "x" + height;
         }
 
         // Validate against allowed sizes
@@ -243,7 +244,8 @@ public class TunablePngPreference extends Preference {
                 if (i > 0) sizesStr.append(", ");
                 sizesStr.append(sorted.get(i)).append("x").append(sorted.get(i));
             }
-            return "PNG size " + width + "x" + height + " is not supported. Allowed sizes: " + sizesStr;
+            return Lang.t(context, "размер PNG " + width + "x" + height + " не подходит. Подходят: " + sizesStr,
+                    "PNG size " + width + "x" + height + " is not supported. Allowed sizes: " + sizesStr);
         }
 
         // Copy to private storage
@@ -256,7 +258,7 @@ public class TunablePngPreference extends Preference {
         try (InputStream is = context.getContentResolver().openInputStream(uri);
              FileOutputStream fos = new FileOutputStream(destFile)) {
             if (is == null) {
-                return "Failed to open input stream";
+                return Lang.t(context, "не удалось открыть файл", "Failed to open input stream");
             }
             byte[] buffer = new byte[8192];
             int length;
@@ -265,7 +267,7 @@ public class TunablePngPreference extends Preference {
             }
         } catch (IOException e) {
             Log.e(TAG, "Failed to copy PNG file", e);
-            return "Failed to copy file: " + e.getMessage();
+            return Lang.t(context, "не удалось скопировать файл: ", "Failed to copy file: ") + e.getMessage();
         }
 
         // Auto-select the imported PNG

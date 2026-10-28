@@ -32,6 +32,12 @@ precision highp int;
 // clamp per tap lifted the mean of a channel near zero (red mottling of a dark teal curtain under the shadow lift).
 // 0 (unset: SCAM HDR, the hybrid after the SCAM denoise): per tap as before. The taps can be negative there as well (a
 // saturated colour outside sRGB after the colour matrix); clamping those after the interpolation would move colour edges.
+// P370 signedHueU 1 (WhyCombine, LiveWhyTone; scam_dev ccm_signed_hue, default 1): a colour the camera matrix put outside
+// sRGB (a negative channel: LEDs, neon, a deep sky) takes its OKLab lightness and hue from the signed colour
+// (origS, the same interpolation without the clamp), not from the per-channel clip (470 nm read +27 deg, 505 nm -20 deg): the
+// hue direction, the hue lock and the gamut compression then act on the colour the matrix made, and its final gamut mapping
+// fades the chroma cut in (fromOklabInGamutSoft). A pixel with no negative channel and no clipped tap, monochrome, and the
+// whole shader with signedHueU 0 / unset are as before, bit for bit.
 // P3_OUT 1 (P46 «Цветовое пространство» Display P3, WhyCombine sets it): the working colour stays linear sRGB / Rec.709
 // coordinates, but nothing clamps it at the sRGB gamut - the clamps at 0 act on the P3 coordinates (clampP3), AgX takes the
 // colour with its OKLab chroma reduced into the positive sRGB range and the chroma lost there comes back afterwards
@@ -70,6 +76,11 @@ precision highp int;
 #define RAW_SOURCE 0
 // P349 SUN_BLOOM 1: the glow round fully clipped cores (SunBloom); 0: the shader before P349, token for token.
 #define SUN_BLOOM 0
+// P369 FILM_SIM 1 (WhyCombine and LiveWhyTone set it with a film simulation, never with FILM_LUT): the film is fed the exposed
+// scene light - the colour source x ae before the fusion's gain, the shoulders, OKLab, AgX and the display chain, with the
+// full-size detail as a luminance ratio - through a log-encoded table of the model (FilmChain.scene), and its print replaces our
+// output (mixed by the simulation's strength below 1). FILM_SIM 0: every block below drops out (tools/check_film_sim.py).
+#define FILM_SIM 0
 #import interpolation
 uniform sampler2D InputBuffer;      // full-size white-balanced linear camera RGB (the merge after denoising)
 uniform sampler2D GainMap;          // lens shading gains
@@ -85,6 +96,7 @@ uniform float inScaleU;             // <= 0 -> 1
 uniform int fU;                     // whyLow box factor (2 at 1x, 4 on the 2x grid; 1 = same size, kernel bypass); <= 0 -> 2
 uniform int colourFU;               // box factor of the colour source; <= 0 -> fU
 uniform int signedColourU;          // 1: B-spline colour clamped after the interpolation (signed input); 0: per tap
+uniform int signedHueU;             // P370: 1 = OKLab of a colour outside sRGB from its signed value; 0 / unset = from the clip
 uniform float aeU;                  // <= 0 -> 1
 uniform float clipU;                // data ceiling; <= 0 -> 1
 uniform float toeU;                 // ACES toe; <= 0 -> 0.05
@@ -161,6 +173,13 @@ uniform vec2 lutU;                  // x strength 0..1, y LUT size N (texel cent
 uniform vec3 lutMinU;               // the file's DOMAIN_MIN
 uniform vec3 lutScaleU;             // 1 / (DOMAIN_MAX - DOMAIN_MIN)
 #endif
+#if FILM_SIM == 1
+precision highp sampler3D;
+uniform highp sampler3D FilmLut;    // P369: the film's print (encoded sRGB) of scene light, per channel on a log grid
+uniform vec2 lutU;                  // x the simulation's strength 0..1 (1: the film alone), y the table's size N
+uniform float filmExpU;             // the film's exposure over ae: the highlight overflow's cut undone x 0.184 / AE target
+uniform vec2 filmLogU;              // the grid: node 0 at 0.184 x 2^x, y stops across (FilmSim.LOG_LO, LOG_SPAN)
+#endif
 out vec4 Output;
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -185,6 +204,13 @@ vec3 sceneLinear(ivec2 xy, ivec2 size) {
 }
 
 float max3(vec3 v) { return max(v.r, max(v.g, v.b)); }
+#if FILM_SIM == 1
+#if P3_OUT == 1
+// P369: the film's sRGB print to the P3 file (whose transfer is the sRGB curve): decode, P3 primaries, encode
+vec3 filmDec(vec3 v) { return mix(v / 12.92, pow((v + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), v)); }
+vec3 filmEnc(vec3 y) { y = clamp(y, 0.0, 1.0); return mix(12.92 * y, 1.055 * pow(y, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), y)); }
+#endif
+#endif
 #if POINT_FUSED == 1
 // P314: the fused luma of exposed linear colour c: the guide of why/gf.glsl prepare() (I = max(Y709, max / 2); every layer
 // meters I x em, so a pixel's own weights and lumas depend on I alone) through the tabulated curve, linear between entries
@@ -387,6 +413,39 @@ vec3 toOklab(vec3 c) {
                 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s);
 }
 
+// P370 (B2): OKLab of a signed colour (outside sRGB after the camera matrix): the cube root keeps its sign (= toOklab for
+// LMS >= 0).
+vec3 toOklabSigned(vec3 c) {
+    vec3 lms = vec3(0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b,
+                    0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b,
+                    0.0883024619 * c.r + 0.2817188376 * c.g + 0.6299787005 * c.b);
+    lms = sign(lms) * vec3(cbrtp(abs(lms.x)), cbrtp(abs(lms.y)), cbrtp(abs(lms.z)));
+    return vec3(0.2104542553 * lms.x + 0.7936177850 * lms.y - 0.0040720468 * lms.z,
+                1.9779984951 * lms.x - 2.4285922050 * lms.y + 0.4505937099 * lms.z,
+                0.0259040371 * lms.x + 0.7827717662 * lms.y - 0.8086757660 * lms.z);
+}
+
+// P370 (B2): the share of the signed colour's OKLab: 0 while no channel is negative and the clip changed nothing (a colour
+// inside sRGB is the former one bit for bit), all of it from a channel at -1 % of the largest (a 600 nm LED at -3 % read
+// 6 deg off with a ramp to 8 %). What the clip took off the clamped colour o counts as well: at an LED's rim on a lighter
+// ground the signed mean lies inside sRGB while clipped taps went into o (a 1 - 2 px rim of the clipped hue). No luminance
+// gate (review): a light changed its hue along its own falloff and a gradient stepped by 36 codes; the B-spline colour's
+// shadow chroma noise stays within x1.005, the per-pixel viewfinder's within x1.05 (tools/check_ccm_gamut.py).
+// P3_OUT 1: the channels of the P3 render (a colour inside P3 is kept by clampP3 already; its round trip, 1e-4 of the largest
+// channel, is no clip).
+float signedHueWeight(vec3 s, vec3 o) {
+#if P3_OUT == 1
+    vec3 g = SRGB_TO_P3 * s;
+    vec3 d = SRGB_TO_P3 * (o - s);
+#else
+    vec3 g = s;
+    vec3 d = o - s;
+#endif
+    float top = max(max(g.r, max(g.g, g.b)), 0.000001);
+    float neg = max(-min(g.r, min(g.g, g.b)), max(max(d.r, max(d.g, d.b)) - 0.0001 * top, 0.0)) / top;
+    return smoothstep(0.0, 0.01, neg);
+}
+
 // OKLab -> linear sRGB without the final clamp (the kernel clamps or floors at the call site).
 vec3 fromOklab(vec3 lab);
 
@@ -403,6 +462,16 @@ vec3 fromOklabInGamutP3(vec3 lab) {
         if (all(greaterThanEqual(t, vec3(-0.0005))) && all(lessThanEqual(t, vec3(1.0005)))) lo = mid; else hi = mid;
     }
     return P3_TO_SRGB * clamp(SRGB_TO_P3 * fromOklab(vec3(lab.x, lab.yz * lo)), 0.0, 1.0);
+}
+
+// P370 (B2, review): fromOklabInGamutP3 for a pixel that took the signed colour (w: its share): the chroma cut fades in over an
+// overshoot of the P3 channels of 0.0005 .. 0.004 (fromOklabInGamutSoft); w 0 is fromOklabInGamutP3.
+vec3 fromOklabInGamutP3Soft(vec3 lab, float w) {
+    lab.x = clamp(lab.x, 0.0, 1.0);
+    vec3 c = SRGB_TO_P3 * fromOklab(lab);
+    float over = max(max(-min(c.r, min(c.g, c.b)), max(c.r, max(c.g, c.b)) - 1.0), 0.0);
+    vec3 cut = fromOklabInGamutP3(lab);
+    return mix(cut, mix(P3_TO_SRGB * clamp(c, 0.0, 1.0), cut, smoothstep(0.0005, 0.004, over)), w);
 }
 
 // The colour with its OKLab chroma reduced (L and hue kept) until no sRGB channel is negative - AgX's inset and log take
@@ -435,6 +504,17 @@ vec3 fromOklabInGamut(vec3 lab) {
         if (all(greaterThanEqual(t, vec3(-0.0005))) && all(lessThanEqual(t, vec3(1.0005)))) lo = mid; else hi = mid;
     }
     return clamp(fromOklab(vec3(lab.x, lab.yz * lo)), 0.0, 1.0);
+}
+
+// P370 (B2, review): fromOklabInGamut for a pixel that took the signed colour (w: its share): the chroma cut fades in over an
+// overshoot of 0.0005 .. 0.004 instead of switching on at 0.0005 (a channel at -0.00048 kept the full chroma, at -0.00054 0.85
+// of it: a 36-code step along an LED's glow); w 0 is fromOklabInGamut.
+vec3 fromOklabInGamutSoft(vec3 lab, float w) {
+    lab.x = clamp(lab.x, 0.0, 1.0);
+    vec3 c = fromOklab(lab);
+    float over = max(max(-min(c.r, min(c.g, c.b)), max(c.r, max(c.g, c.b)) - 1.0), 0.0);
+    vec3 cut = fromOklabInGamut(lab);
+    return mix(cut, mix(clamp(c, 0.0, 1.0), cut, smoothstep(0.0005, 0.004, over)), w);
 }
 
 vec3 fromOklab(vec3 lab) {
@@ -544,6 +624,7 @@ void main() {
 
     // === 1. B-spline colour, fused luma and Y_low [:1450-1497] ===
     vec3 orig = vec3(0.0);
+    vec3 origS = vec3(0.0);     // P370: the same colour signed (finite taps, no clamp), for signedHueU
     float fused = 0.0;
     float yLow = 0.0;
     float yRef = 0.0;
@@ -559,7 +640,9 @@ void main() {
         // same size as the low grid: the kernel's full-resolution bypass (no interpolation)
 #if RAW_SOURCE == 1
         // P365: the pixel's linear colour from the RAW frame (the linear frame's value at xy)
-        vec3 rawLin = vfLinear(texCoord);
+        vec3 rawSigned = vfLinearSigned(texCoord);
+        vec3 rawLin = max(rawSigned, vec3(0.0));
+        origS = finiteTap(rawSigned);
 #if P3_OUT == 1
         orig = clampP3(finiteTap(rawLin));
 #else
@@ -571,6 +654,7 @@ void main() {
 #else
         orig = sanitize(texelFetch(WhyColour, xy, 0).rgb);
 #endif
+        origS = finiteTap(texelFetch(WhyColour, xy, 0).rgb);
 #endif
 #if POINT_FUSED == 1
         // P314 (review): the colour of the 3 x 3 neighbourhood at the pixel's own luminance - a mosaic's cell means take R, G and B
@@ -582,11 +666,13 @@ void main() {
             // the grid as before), with the pixel's lens-shading gain; the pixel itself is the linear value above
             vec3 rawGain = vfShading(texCoord);
             vec3 acc = vec3(0.0);
+            vec3 accS = vec3(0.0);
             for (int dy = -1; dy <= 1; dy++)
                 for (int dx = -1; dx <= 1; dx++) {
                     vec2 d = vec2(clamp(xy + ivec2(dx, dy), ivec2(0), size - ivec2(1)) - xy);
                     vec3 tap = rawLin;
                     if (d != vec2(0.0)) tap = color_transform * (vfColour(texCoord + d.x * rawDx + d.y * rawDy) * rawGain);
+                    accS += finiteTap(d != vec2(0.0) ? tap : rawSigned);
 #if P3_OUT == 1
                     acc += clampP3(finiteTap(tap));
 #else
@@ -596,6 +682,7 @@ void main() {
 #else
             ivec2 lastC = textureSize(WhyColour, 0) - ivec2(1);
             vec3 acc = vec3(0.0);
+            vec3 accS = vec3(0.0);
             for (int dy = -1; dy <= 1; dy++)
                 for (int dx = -1; dx <= 1; dx++) {
 #if P3_OUT == 1
@@ -603,13 +690,16 @@ void main() {
 #else
                     acc += sanitize(texelFetch(WhyColour, clamp(xy + ivec2(dx, dy), ivec2(0), lastC), 0).rgb);
 #endif
+                    accS += finiteTap(texelFetch(WhyColour, clamp(xy + ivec2(dx, dy), ivec2(0), lastC), 0).rgb);
                 }
 #endif
             acc *= 1.0 / 9.0;
             float yc = max(dot(orig, LUMA), 0.0), ya = dot(acc, LUMA);
             if (ya > 1.0e-6) orig = acc * (yc / ya);
+            if (ya > 1.0e-6) origS = accS * (1.0 / 9.0) * (yc / ya);
         }
         orig *= inScaleU > 0.0 ? inScaleU : 1.0;
+        origS *= inScaleU > 0.0 ? inScaleU : 1.0;
         fused = pointFused(orig * ae);
 #else
         fused = max(texelFetch(WhyFused, xy, 0).r, 0.0);
@@ -656,6 +746,7 @@ void main() {
 #else
                 orig += (signedColourU != 0 ? finiteTap(tap) : sanitize(tap)) * (wx[dx + 1] * wy[dy + 1]);
 #endif
+                origS += finiteTap(tap) * (wx[dx + 1] * wy[dy + 1]);
             }
         }
 #if P3_OUT == 1
@@ -670,6 +761,7 @@ void main() {
     float origLuma = max(max(dot(orig, LUMA), max3(orig) * 0.5), 0.0001);
     float gain = targetLin / max(origLuma * ae, 0.0001);
     vec3 lin = orig * ae * gain;
+    float linScale = ae * gain;  // P370: every scale lin takes before OKLab, for the signed colour
     // Saturation of the light (0 neutral .. 1 one channel): the shoulders below act on the max channel for low-saturation
     // colours (as the kernel) and on the luminance for saturated ones, so a saturated light keeps its tonal separation
     // instead of being pinned at its max channel (P11: the LED wall band of the X9 Ultra collapsed to one flat colour).
@@ -688,6 +780,7 @@ void main() {
         if (mf > 1.0) {
             float ex = mf - 1.0;
             lin *= (1.0 + ex * 0.35 / (ex + 0.35)) / mf;
+            linScale *= (1.0 + ex * 0.35 / (ex + 0.35)) / mf;
         }
     }
 
@@ -737,12 +830,58 @@ void main() {
         }
     }
 
+#if FILM_SIM == 1
+    // P369: the film's scene light - the colour source at the luminance of the delta's own base (whyLow's B-spline on the 2x
+    // grid, where the colour is whyMid's: the band between them counted once), the full-size detail as the luminance ratio the
+    // delta stands for (its guards included, before the compression scaling below: cbrt domain, ((l0 + delta) / l0)^3), x ae
+    // x filmExpU (the AE's grey at the film's mid grey)
+    vec3 filmLin;
+    {
+        vec3 c = max(orig, vec3(0.0));
+        float cy = max(dot(c, LUMA), 0.000001);
+        float baseY = fc == f ? cy : max(yLow, 0.000001);
+        if (!(baseY < 1.0e30)) baseY = cy; // a non-finite whyLow tap (unsanitised, unlike whyMid's): the colour's own
+        float yt = baseY;
+        if (detailGainU != 0.0) {
+            float l0 = lRef > 0.0 ? lRef : cbrtp(max((f == 1 ? cy : yLow) * ae, 0.000001));
+            float rr = max(l0 + delta, 0.0) / l0;
+            yt *= rr * rr * rr;
+            if (bounded) {
+                // the ratio is measured on the bounded reference (min(m Y, 1), with our P311 / P349 rim guards) while the base is
+                // the unbounded mean: where the footprint holds light above the bound (or a light), a dark edge or a 2 px bar took
+                // the bright side's energy (+7 .. +67 L* against the film model). There the pixel's own luminance: exact below
+                // the bound, the full-size merge's (or the ratio's) at and above it
+                float yP = sharpU == 1 ? max(texelFetch(WhyLumaS, xy, 0).r, 0.0) : min(dot(sceneLinear(xy, size), LUMA) * ae, 1.0);
+                float yPix = yP / refDomain;
+                float g = max(max(smoothstep(0.005, 0.03, 1.0 - yRef / max(yLow * refDomain, 0.000001)), smoothstep(0.5, 0.7, brightMax)),
+                              step(0.000001, lightW));
+                if (g > 0.0) {
+                    float yTop = fullInputU == 1 ? max(dot(sceneLinear(xy, size), LUMA), yPix) : max(yt, yPix);
+                    yt = mix(yt, mix(yPix, yTop, smoothstep(0.7, 1.0, yP)), g);
+                }
+            }
+        }
+        filmLin = c * (yt / cy) * (ae * filmExpU);
+    }
+#endif
+
     // === OKLab grading [:1599-1658] ===
 #if COLOUR_LOOK == 1
     // Monochrome through a colour filter: the luminance of the filtered light (a neutral grey keeps its own).
     if (monoU != vec3(0.0)) lin = vec3(max(dot(lin, LUMA * monoU) / dot(LUMA, monoU), 0.0));
 #endif
     vec3 lab = toOklab(lin);
+    // P370 (B2): the colour as the matrix made it where it lies outside sRGB (monochrome keeps its grey); a branch, so a pixel
+    // with no such channel is the former one bit for bit
+    float signedW = 0.0;
+#if COLOUR_LOOK == 1
+    if (signedHueU != 0 && monoU == vec3(0.0)) {
+#else
+    if (signedHueU != 0) {
+#endif
+        signedW = signedHueWeight(origS, orig);
+        if (signedW > 0.0) lab = mix(lab, toOklabSigned(origS * linScale), signedW);
+    }
     if (abs(macro - 1.0) > 0.001) lab.x = max(0.40 + (lab.x - 0.40) * macro, 0.0001);
     float sat = max(length(lab.yz), 0.0001);
     float protect = max(1.0 - sat * 2.0, 0.0);
@@ -941,9 +1080,9 @@ void main() {
 #if P3_OUT == 1
     vec3 gradedLab = toOklab(max(graded, vec3(0.0)));
     gradedLab.yz *= chromaBack;
-    graded = fromOklabInGamutP3(gradedLab);
+    graded = signedW > 0.0 ? fromOklabInGamutP3Soft(gradedLab, signedW) : fromOklabInGamutP3(gradedLab);
 #else
-    graded = fromOklabInGamut(toOklab(max(graded, vec3(0.0))));
+    graded = signedW > 0.0 ? fromOklabInGamutSoft(toOklab(max(graded, vec3(0.0))), signedW) : fromOklabInGamut(toOklab(max(graded, vec3(0.0))));
 #endif
 
     // === hue lock and post-tone detail [:1763-1802] ===
@@ -1004,9 +1143,9 @@ void main() {
     // a, b with L there (a uniform linear scale of the colour) keeps the hue and the relative chroma instead.
     if (deltaChromaU > 0.0 && post.x < lBefore) post.yz *= mix(1.0, post.x / max(lBefore, 0.0001), clamp(deltaChromaU, 0.0, 1.0));
 #if P3_OUT == 1
-    graded = fromOklabInGamutP3(post);
+    graded = signedW > 0.0 ? fromOklabInGamutP3Soft(post, signedW) : fromOklabInGamutP3(post);
 #else
-    graded = fromOklabInGamut(post);
+    graded = signedW > 0.0 ? fromOklabInGamutSoft(post, signedW) : fromOklabInGamut(post);
 #endif
 
     // === display: power 1/gamma, film toe [:1805-1825], dither [:1836-1843] ===
@@ -1085,6 +1224,18 @@ void main() {
         vec3 c = clamp((clamp(outRgb, 0.0, 1.0) - lutMinU) * lutScaleU, 0.0, 1.0);
         vec3 l = texture(FilmLut, c * ((lutU.y - 1.0) / lutU.y) + 0.5 / lutU.y).rgb;
         outRgb = mix(outRgb, l, clamp(lutU.x, 0.0, 1.0));
+    }
+#endif
+#if FILM_SIM == 1
+    {
+        // P369: the film's print of the scene light (trilinear on the per-channel log grid, texel centres as FILM_LUT's); at
+        // strength 1 the print alone (nothing of our tone, not even a NaN of it, reaches the photo), below it mixed with ours
+        vec3 u = clamp((log2(max(filmLin, vec3(1.0e-7)) / 0.184) - filmLogU.x) / filmLogU.y, 0.0, 1.0);
+        vec3 film = texture(FilmLut, u * ((lutU.y - 1.0) / lutU.y) + 0.5 / lutU.y).rgb;
+#if P3_OUT == 1
+        film = filmEnc(SRGB_TO_P3 * filmDec(film));
+#endif
+        outRgb = lutU.x >= 1.0 ? film : mix(outRgb, film, clamp(lutU.x, 0.0, 1.0));
     }
 #endif
     if (ditherU == 1) {

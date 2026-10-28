@@ -396,6 +396,10 @@ public final class ScamHdrDenoise extends Node {
                 glProg.setVar("tolerance", Math.max(0.004f, 3.5f * sigma));
                 glProg.drawBlocks(coarse);
             }
+            // The output (a main, made again on its next use above 100 MP or with early release) is taken before the samplers
+            // are bound: a new texture binds itself on unit 1 + its name, which may be a sampler's unit (the pass then read its
+            // own output).
+            final GLTexture out = pipeline.getMain();
             glProg.useAssetProgram("chromadn/apply", false);
             glProg.setTexture("InputBuffer", input);
             bindEffectiveFrames(effMap);
@@ -421,7 +425,7 @@ public final class ScamHdrDenoise extends Node {
             glProg.setVar("darkFade", 0.0008f, 0.003f);
             glProg.setVar("darkChroma", darkChroma[0], darkChroma[1]);
             glProg.setVar("signedU", signed ? 1 : 0);
-            WorkingTexture = pipeline.getMain();
+            WorkingTexture = out;
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;
             pipeline.signedRgb = signed; // chromadn/apply writes >= 0 unless its input is signed

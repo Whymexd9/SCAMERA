@@ -62,6 +62,14 @@ public final class WhyLumaSharpen extends Node {
     }
 
     /**
+     * P369 (texture-sharpen): an amount of our look (the guided filter's local contrast, the sharpening's grain) under a film:
+     * x (1 - the simulation's strength), none at 100 %; without a film the amount itself, bit for bit.
+     */
+    static float filmShare(float amount, @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
+        return film == null ? amount : amount * (1f - film.strength);
+    }
+
+    /**
      * P214e R1 (owner, 2026-10-18: yes to quality.md 15; PLAN "Research 2026-10-17"): a mosaic shot - a Quad / Tetra stream the
      * worker merged on its mosaic (the ISZ modules, FULLRES native mosaic: Parameters.mosaicBlock 2 or 4) - is sharpened on the
      * 3x3 binomial of Ya (why/sharp_r1.glsl): every pass reads B(Ya) and Ya + S(B(Ya)) - B(Ya) goes to the combine. The merge's
@@ -310,8 +318,10 @@ public final class WhyLumaSharpen extends Node {
         float protectHighlights = clamp01(WhyTone.value("sharp_protect_highlights", 100f) / 100f);
         int gfRadius = Math.round(WhyTone.value("sharp_gf_radius", 8f));
         float gfEps = Math.max(WhyTone.value("sharp_gf_eps_e3", 10f) * 0.001f, 1e-6f);
-        float gfLc = WhyTone.value("sharp_gf_lc", 0.25f) * lowLight;
-        float grain = WhyTone.value("sharp_film_grain", 0f) / 255f;
+        // P369 (texture-sharpen): with a film (any, B10) the guided filter's local contrast and the sharpening's own grain - our
+        // look - only on the share the simulation's strength leaves; USM, bilateral and RL (they restore the merge's blur) stay
+        float gfLc = filmShare(WhyTone.value("sharp_gf_lc", 0.25f) * lowLight, pipeline.film);
+        float grain = filmShare(WhyTone.value("sharp_film_grain", 0f) / 255f, pipeline.film);
         float rlHalo = clamp01(WhyTone.value("sharp_rl_halo_control", 100f) / 100f);
         float rlMargin = WhyTone.value("sharp_rl_halo_margin", 0.15f);
         float rlMacro = WhyTone.value("sharp_rl_halo_macro", 0.4f);
@@ -487,6 +497,7 @@ public final class WhyLumaSharpen extends Node {
         st.sharpMul = mul;
         Log.i("SCAM_PIPELINE", "WHY luma sharpen grid=" + size.x + "x" + size.y + " scale=" + s + " domain=" + (gClean ? "G_CLEAN" : "ae")
                 + " mul=" + mul + " bil=" + (bil ? bilAmount * scaleComp(s, SCALE2_BIL) : 0f) + " gf=" + (gf ? gfLc + "@r" + gfBox + "/" + gfDown : "off")
+                + (pipeline.film != null ? " film x(1-s)" : "")
                 + " usm=" + (usm ? usmAmount + "@" + usmRadius * s : "off") + stages + " ms=" + (System.currentTimeMillis() - started)
                 + (early ? " (issued before the AE)" : "") + (released ? " imageReleased" : ""));
     }

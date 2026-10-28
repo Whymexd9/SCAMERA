@@ -172,6 +172,9 @@ public class GLPreview extends GLSurfaceView {
     public void onPause() {
         fireOnSurfaceTextureDestroyed(getSurfaceTexture());
         // mRenderer.onPause();
+        // the EGL context goes with the pause (it is not preserved): the renderer makes a new SurfaceTexture in onSurfaceCreated on
+        // resume and releases this one, so the camera must not open against it (resumeCamera waits for the new one instead)
+        surfaceReady = false;
         super.onPause();
     }
 

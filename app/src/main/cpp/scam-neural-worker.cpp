@@ -6,6 +6,7 @@
 #include "scam-tone-probe.h"
 #include "scam-stock-motion.h"
 #include "scam-crash.h"
+#include "scam-stream-out.h"
 #include <memory>
 #include <cerrno>
 #include <cstdlib>
@@ -20,6 +21,7 @@ static int integer(const char* text) {
     if(errno || !text[0] || *end || v<0 || v>16000000)throw std::runtime_error("Invalid integer argument");
     return static_cast<int>(v);
 }
+
 int main(int argc,char** argv) {
     // P31 (W1.0): worker stage times for the shot timeline (SCAM WORKER TIMELINE), ms since the worker started
     const auto mainStarted=std::chrono::steady_clock::now();
@@ -197,6 +199,9 @@ int main(int argc,char** argv) {
             std::vector<uint8_t> effMap,clipFlags;
             bool noEffMap=false; // P187: header flag 16 (or SCAM_NO_EFFMAP in an offline replay): no effective-frame map
             std::vector<float> result;
+            // P371: the RGB halves into the app's memfd during the merge (scam-stream-out.h); the hook is cleared before it goes
+            std::unique_ptr<scam::StreamOut> streamOut;
+            struct HookClear{~HookClear(){scam::hybridFinalRowsHook()=nullptr;}} hookClear;
             // SCAM Hybrid merge (Sabre 6.1 kernel + SCAM 9.6 front end, Bento, Shasta; any GPU, no model):
             // requested by the app with the job marker, or SCAM_HYBRID=1 for an offline replay.
             bool hybrid=hybridBurst.hybrid||access((std::string(argv[2])+"/hybrid-merge").c_str(),F_OK)==0||std::getenv("SCAM_HYBRID");
@@ -237,6 +242,14 @@ int main(int argc,char** argv) {
                 scam::hybridStageDir()=access((std::string(argv[2])+"/stage-dump").c_str(),F_OK)==0?argv[2]:"";
                 worker_crash::mark("hybrid merge");
                 scam_progress::pass("prepare"); // P220: the merge's front end (gain / noise checks, mosaic) until its own stages
+                if(requestedHalf&&std::string(outputPath).rfind("fd:",0)==0&&!std::getenv("SCAM_NO_STREAM_OUT")&&!std::getenv("SCAM_NO_MAP_WRITE")){
+                    const int dup=scam::openArgument(outputPath,O_WRONLY);
+                    if(dup>=0){
+                        streamOut=std::make_unique<scam::StreamOut>(dup);
+                        scam::StreamOut* const s=streamOut.get();
+                        scam::hybridFinalRowsHook()=[s](const float* rows,int w,int h,int y0,int y1){s->event(rows,w,h,y0,y1);};
+                    }
+                }
                 result=scam::hybridReconstruct(hin,tuning,alignment,report,&mergedDng,noEffMap?nullptr:&effMap,nullptr,wantClipFlags?&clipFlags:nullptr);
             } else {
             const auto& input=mapped->burst;
@@ -258,16 +271,23 @@ int main(int argc,char** argv) {
             // latest it lands before the result lines, never in front of "SCAM CAPTURE OK" (the app matches that line exactly).
             joinCreWarm();
             // P30: the log line's mean and max on all cores (the sum was ~60 ms on one core at 12 MP, 4x that on the 2x grid).
+            // P371 (speed): with the half output they come from the conversion's own pass over the floats (a second read of the
+            // 150 MB result for a log line only: 16 ms on the X8U); the line follows the fill. SCAM_RGB_STATS_PASS: a pass of
+            // their own, as before.
             double sum=0;float maximum=0;
-            {
-                std::mutex lock;
+            std::mutex statsLock;
+            const bool halfOut=hybrid&&requestedHalf;
+            const bool statsInFill=halfOut&&!std::getenv("SCAM_RGB_STATS_PASS");
+            auto addStats=[&](double s,float m){std::lock_guard<std::mutex> guard(statsLock);sum+=s;maximum=std::max(maximum,m);};
+            auto reportStats=[&]{report("SCAM RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));};
+            if(!statsInFill){
                 scam::mergeRowBands(int((result.size()+65535)/65536),[&](int b0,int b1){
                     double s=0;float m=0;
                     for(size_t i=size_t(b0)*65536;i<std::min(result.size(),size_t(b1)*65536);++i){s+=result[i];m=std::max(m,result[i]);}
-                    std::lock_guard<std::mutex> guard(lock);sum+=s;maximum=std::max(maximum,m);
+                    addStats(s,m);
                 });
+                reportStats();
             }
-            report("SCAM RGB: mean="+std::to_string(sum/result.size())+" max="+std::to_string(maximum));
             worker_crash::mark("output write");
             scam_progress::pass("write");
             // write-only: a file (root worker, replay) is written with write(), faster than a mapping on f2fs (P153, 50 MP: 1.5 s
@@ -285,20 +305,12 @@ int main(int argc,char** argv) {
             // texture is sampled into RGBA16F). The trailers stay as they are.
             std::vector<uint16_t> half; // (scam::floatToHalf: portable, the host checks build this file with g++ on x86 too)
             auto toHalf=[&](uint16_t* dst,size_t i0,size_t i1){
-                size_t i=i0;
-#if defined(__aarch64__)
-                // P153: FCVT (round to nearest even, the default FPCR): the same halves as floatToHalf for every one of the 2^32
-                // float bit patterns (checked on the X200 Ultra), eight at a time
-                for(;i+8<=i1;i+=8){
-                    const float16x4_t a=vcvt_f16_f32(vld1q_f32(result.data()+i)),c=vcvt_f16_f32(vld1q_f32(result.data()+i+4));
-                    vst1q_u16(dst+i,vreinterpretq_u16_f16(vcombine_f16(a,c)));
-                }
-#endif
-                for(;i<i1;++i)dst[i]=scam::floatToHalf(result[i]);
+                double s=0;float m=0; // P371: the log line's sum and max on the way (statsInFill)
+                scam::halvesOf(result.data()+i0,dst+i0,i1-i0,statsInFill,s,m);
+                if(statsInFill)addStats(s,m);
             };
             // P153: the halves go straight into the mapped output (below): no 1.2 GB half copy of a 200 MP 2x grid and one pass less;
             // a null source marks that part. Only the plain write path (no mapping) still converts into `half` first.
-            const bool halfOut=hybrid&&requestedHalf;
             if(halfOut){
                 parts[0]={nullptr,result.size()*sizeof(uint16_t)};
                 report("SCAM RGB: written as half floats ("+std::to_string(result.size()*2>>20)+" MB)");
@@ -318,6 +330,17 @@ int main(int argc,char** argv) {
             // the reservation, SCAM_NO_MAP_WRITE) is written as before.
             bool mappedWrite=false;
             const double writeStarted=sinceStart();double filledAt=0;
+            // P371: the RGB halves already in the memfd (StreamOut): only the trailers are left; else it is empty again
+            bool streamed=false;
+            if(streamOut){
+                double s=0;float m=0;
+                streamed=halfOut&&streamOut->take(result,s,m);
+                if(streamed&&statsInFill)addStats(s,m);
+                if(!streamed)report("SCAM OUTPUT STREAM: not used ("+(halfOut?streamOut->reason():std::string("no half output"))+", "
+                    +std::to_string(streamOut->rows())+" rows came)");
+                scam::hybridFinalRowsHook()=nullptr;
+                streamOut.reset();
+            }
             // P179 (200 MP: the app was killed for LOW_MEMORY around here): an output above 1 GiB is not reserved at once - the
             // file is sized (sparse) and its pages come as they are filled, while the source pages already written go back
             // (madvise DONTNEED, page-aligned inside the source): the FP32 RGB slice by slice, each trailer after its copy. The
@@ -331,13 +354,14 @@ int main(int argc,char** argv) {
                 size_t total=0;for(const auto& part:parts)total+=part.second;
                 const bool sparse=total>(size_t(1)<<30);
                 struct stat st{};
-                if(total>0&&fstat(out,&st)==0&&S_ISREG(st.st_mode)&&st.st_size==0&&lseek(out,0,SEEK_CUR)==0
+                if(total>0&&fstat(out,&st)==0&&S_ISREG(st.st_mode)&&st.st_size==(streamed?off_t(parts[0].second):0)&&lseek(out,0,SEEK_CUR)==0
                         &&(sparse?ftruncate(out,off_t(total)):fallocate(out,0,0,off_t(total)))==0){
                     void* map=mmap(nullptr,total,PROT_READ|PROT_WRITE,MAP_SHARED,out,0);
                     if(map!=MAP_FAILED){
                         char* dst=static_cast<char*>(map);
                         for(const auto& part:parts){
                             const char* src=static_cast<const char*>(part.first);const size_t bytes=part.second;
+                            if(!src&&streamed){dst+=bytes;continue;} // P371: there already
                             if(!src){ // P153: the RGB as halves, converted into the mapping on all cores
                                 uint16_t* h=reinterpret_cast<uint16_t*>(dst);const size_t n=result.size();
                                 constexpr size_t kElems=size_t(1)<<20;
@@ -377,11 +401,12 @@ int main(int argc,char** argv) {
                 for(const auto& part:parts)writeAll(part.first,part.second);
             }
             if(close(out))throw std::runtime_error("Incomplete SCAM output");
+            if(statsInFill)reportStats(); // P371 (above)
             {
                 size_t total=0;for(const auto& part:parts)total+=part.second;
                 char line[200]; // P153: where the output write spends its time (filled = the mapping filled; the rest unmap / close)
-                std::snprintf(line,sizeof(line),"SCAM OUTPUT: %zu MB %s in %.0f ms (filled %.0f ms)",total>>20,mappedWrite?"mapped":"written",
-                    sinceStart()-writeStarted,filledAt>0?filledAt-writeStarted:0.0);
+                std::snprintf(line,sizeof(line),"SCAM OUTPUT: %zu MB %s in %.0f ms (filled %.0f ms%s)",total>>20,mappedWrite?"mapped":"written",
+                    sinceStart()-writeStarted,filledAt>0?filledAt-writeStarted:0.0,streamed?", the RGB streamed during the merge":"");
                 report(line);
             }
             {
@@ -392,6 +417,10 @@ int main(int argc,char** argv) {
                     long(usage.ru_maxrss/1024));
                 report(line);
             }
+            // P371 (speed): the app takes the result at the completion line and no longer waits for this process to exit (its
+            // teardown, ~90 ms at 2.8 GB): a burst still being kept is written before it, so the app may hand the arena's slots
+            // back to the ZSL ring at once (the KeepWriter reads them)
+            if(keepWriter.t.joinable())keepWriter.t.join();
             heartbeat.stop(); // P220: no heartbeat after the completion line
             alarm(0);report("SCAM CAPTURE OK");return 0;
         }

@@ -145,6 +145,29 @@ public class DngRawTest {
         return b.array();
     }
 
+    /**
+     * P370 (review): a GainMap whose point count overflows an int (5 x 214748365: x 4 bytes wrapped to 4) is skipped, not an
+     * OutOfMemoryError from a 1-billion-float array; the decode goes on without it.
+     */
+    @Test
+    public void anOverflowingGainMapIsSkipped() throws IOException {
+        ByteBuffer b = ByteBuffer.allocate(4 + 16 + 76 + 4 * 4).order(ByteOrder.BIG_ENDIAN);
+        b.putInt(1);
+        b.putInt(9).putInt(0x01030000).putInt(0).putInt(76 + 16);
+        b.putInt(0).putInt(0).putInt(H).putInt(W).putInt(0).putInt(1).putInt(1).putInt(1).putInt(5).putInt(214748365);
+        b.putDouble(1).putDouble(1).putDouble(0).putDouble(0).putInt(1);
+        for (int i = 0; i < 4; i++) b.putFloat(2f);
+        final byte[] ops = b.array();
+        assertTrue(DngRaw.parseGainMaps(ops).isEmpty());
+        int[] raw = DngPreviewTest.scene(N, 64, 1023);
+        DngPreviewTest.Tiff t = bayer(raw, 64, 1023);
+        t.blob(0xC740, 7, ops.length, ops);
+        DngRaw.Image img = DngRaw.decode(ByteBuffer.wrap(t.build()), 1);
+        assertTrue(!img.info.gainMap);
+        assertEquals(0.3, at(img, 1, 0), 3e-3);
+        assertTrue(DngPreview.read(ByteBuffer.wrap(t.build()), W / 2, H / 2).argb != null);
+    }
+
     @Test
     public void gainMapScalesSamples() throws IOException {
         int[] raw = DngPreviewTest.scene(N, 64, 1023);

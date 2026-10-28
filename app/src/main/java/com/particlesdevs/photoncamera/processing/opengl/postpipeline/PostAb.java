@@ -35,11 +35,11 @@ public final class PostAb {
      */
     static volatile boolean forceRgbUpload;
 
-    /** post_ab is on and this shot can take it. */
-    public static boolean wanted(Parameters p) {
+    /** post_ab is on and this shot can take it ({@code film}: the shot's film snapshot, whose photo builds no gain map). */
+    public static boolean wanted(Parameters p, @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
         if (!PreferenceKeys.scamDevSwitch("post_ab", false)) return false;
         final boolean fits = p != null && p.scamRgb != null && p.scamRgbOwned && p.rawSize != null
-                && (long) p.rawSize.x * p.rawSize.y <= 16_000_000L && !ScameraApp.getSettings().gainMapPass();
+                && (long) p.rawSize.x * p.rawSize.y <= 16_000_000L && !PostPipeline.gainMapWanted(ScameraApp.getSettings().gainMapPass(), film);
         if (!fits) Log.i("SCAM_PIPELINE", "POST AB skipped: needs the owned worker RGB of 16 MP or less without Ultra HDR");
         return fits;
     }
@@ -62,6 +62,13 @@ public final class PostAb {
         final PostPipeline old = new PostPipeline();
         old.tenBitOutput = pipeline.tenBitOutput; // the same output format in both runs
         old.p3Output = pipeline.p3Output; // and the same colour space (P46)
+        if (pipeline.filmTaken) {
+            // P369: and the shot's film snapshot
+            old.film = pipeline.film;
+            old.filmUserLut = pipeline.filmUserLut;
+            old.filmUserStrength = pipeline.filmUserStrength;
+            old.filmTaken = true;
+        }
         final boolean uploadOnly = PreferenceKeys.scamDevSwitch("post_ab_upload", false);
         if (uploadOnly) forceRgbUpload = true; else PostGlMode.setLegacy(true);
         try {

@@ -30,6 +30,9 @@ public class DefaultSaver extends SaverImplementation {
     android.hardware.camera2.params.RggbChannelVector ownedManualWb;
     /** P212g (W6 = M6): the mosaic white balance's route at the press of the queued shot (null: none). */
     com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press ownedMosaicWb;
+    /** The queued shot's digital-zoom crop (null: not queued) and camera at the press (ImageSaver.zoomResidual / cameraIdAtPress). */
+    Float ownedZoomResidual;
+    String ownedCameraId;
 
     public DefaultSaver(ProcessingEventsListener processingEventsListener) {
         super(processingEventsListener);
@@ -40,6 +43,10 @@ public class DefaultSaver extends SaverImplementation {
         super.runRaw(imageFormat, characteristics, captureResult,captureRequest, burstShakiness, cameraRotation, exposures);
         scamProcessor.ownedIszAspect4x3 = ownedIszAspect4x3 != null ? ownedIszAspect4x3 : iszAspect4x3;
         ownedIszAspect4x3 = null;
+        scamProcessor.ownedZoomResidual = ownedZoomResidual != null ? ownedZoomResidual : zoomResidual;
+        scamProcessor.ownedCameraId = ownedFrames != null ? ownedCameraId : cameraIdAtPress;
+        ownedZoomResidual = null;
+        ownedCameraId = null;
         if (ownedFrames != null) {
             // Queued shot: frames and exposure pairs were detached from the
             // shared buffers on the camera thread when the burst completed.

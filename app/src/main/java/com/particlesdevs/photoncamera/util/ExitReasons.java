@@ -61,26 +61,47 @@ public final class ExitReasons {
     }
 
     /**
-     * The last report of SCAMERA-crash.log (at most 8 KB of it): P191 Download/SCAMERA first, then the package's external
-     * files, where ScameraCrashReporter writes only when the Download write failed.
+     * The last report of SCAMERA-crash.log (at most 8 KB of it): P191 Download/SCAMERA, this install's own file beside it
+     * (written when the Download file is an earlier install's, which the File API cannot open: audit 2026-10-27, lab-app-5),
+     * and the package's external files, where ScameraCrashReporter writes only when both failed. The newest file that can be
+     * read gives the report; "crash file not read" only when none of them can.
      */
     static String lastCrashReport(Context context) {
+        final java.util.List<java.io.File> files = new java.util.ArrayList<>();
         try {
-            java.io.File f = ScameraFiles.file("SCAMERA-crash.log");
-            if (!f.isFile()) f = ScameraFiles.legacy(context, "SCAMERA-crash.log");
-            if (f == null || !f.isFile()) return "";
-            long len = f.length(), from = Math.max(0, len - 8192);
-            byte[] buf = new byte[(int) (len - from)];
-            try (java.io.RandomAccessFile r = new java.io.RandomAccessFile(f, "r")) {
-                r.seek(from);
-                r.readFully(buf);
-            }
-            String text = new String(buf, java.nio.charset.StandardCharsets.UTF_8);
-            int at = text.lastIndexOf("SCAMERA crash report");
-            return at >= 0 ? text.substring(at).trim() : text.trim();
+            final String stem = RotatingLogFile.installStem(context, ScameraCrashReporter.STEM);
+            if (stem != null) files.add(ScameraFiles.file(stem + ScameraCrashReporter.EXTENSION));
+            files.add(ScameraFiles.file("SCAMERA-crash.log"));
+            final java.io.File legacy = ScameraFiles.legacy(context, "SCAMERA-crash.log");
+            if (legacy != null) files.add(legacy);
         } catch (Throwable t) {
             return "crash file not read: " + t;
         }
+        return lastCrashReport(files);
+    }
+
+    /** The report of the newest of {@code files} that reads ("" when none exists). */
+    static String lastCrashReport(java.util.List<java.io.File> files) {
+        final java.util.List<java.io.File> found = new java.util.ArrayList<>();
+        for (java.io.File f : files) if (f != null && f.isFile()) found.add(f);
+        found.sort((x, y) -> Long.compare(y.lastModified(), x.lastModified()));
+        Throwable failure = null;
+        for (java.io.File f : found) {
+            try {
+                long len = f.length(), from = Math.max(0, len - 8192);
+                byte[] buf = new byte[(int) (len - from)];
+                try (java.io.RandomAccessFile r = new java.io.RandomAccessFile(f, "r")) {
+                    r.seek(from);
+                    r.readFully(buf);
+                }
+                String text = new String(buf, java.nio.charset.StandardCharsets.UTF_8);
+                int at = text.lastIndexOf("SCAMERA crash report");
+                return at >= 0 ? text.substring(at).trim() : text.trim();
+            } catch (Throwable t) {
+                if (failure == null) failure = t;
+            }
+        }
+        return failure == null ? "" : "crash file not read: " + failure;
     }
 
     private static String trace(ApplicationExitInfo e) {

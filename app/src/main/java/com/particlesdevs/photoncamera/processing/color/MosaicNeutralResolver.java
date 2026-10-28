@@ -250,31 +250,78 @@ public final class MosaicNeutralResolver {
     @Nullable
     public static String ispIdle(@Nullable java.util.List<CaptureResult> results) {
         if (results == null) return null;
-        final java.util.ArrayList<double[]> gains = new java.util.ArrayList<>(); // {ln R/G, ln B/G, timestamp}
-        final java.util.HashSet<Long> seen = new java.util.HashSet<>();
-        long first = Long.MAX_VALUE, last = Long.MIN_VALUE;
-        try {
-            for (CaptureResult r : results) {
-                if (r == null) continue;
-                final Long ts = r.get(CaptureResult.SENSOR_TIMESTAMP);
-                if (ts == null || !seen.add(ts)) continue;
+        final java.util.ArrayList<IdleSample> samples = new java.util.ArrayList<>(results.size());
+        for (CaptureResult r : results) samples.add(r == null ? null : IdleSample.of(r));
+        return ispIdleOf(samples);
+    }
+
+    /**
+     * P370 (review): what {@link #ispIdle} reads of one result - its timestamp, whether it passes (AWB AUTO, the identity transform
+     * without an OPPO matrix, positive gains) and its ln R / G, ln B / G - so a viewfinder keeps these instead of a second of
+     * CaptureResults (ViewfinderMosaicWb).
+     */
+    public static final class IdleSample {
+        @Nullable final Long ts;
+        /** The timestamp could not be read (the whole test then says nothing, as a result that throws did). */
+        final boolean tsFailed;
+        /** It passes the per-result conditions (false: AWB not AUTO, no or another transform, an OPPO matrix, no gains, a throw). */
+        final boolean passes;
+        final double lnR, lnB;
+
+        private IdleSample(@Nullable Long ts, boolean tsFailed, boolean passes, double lnR, double lnB) {
+            this.ts = ts;
+            this.tsFailed = tsFailed;
+            this.passes = passes;
+            this.lnR = lnR;
+            this.lnB = lnB;
+        }
+
+        public static IdleSample of(CaptureResult r) {
+            final Long ts;
+            try {
+                ts = r.get(CaptureResult.SENSOR_TIMESTAMP);
+            } catch (RuntimeException e) {
+                return new IdleSample(null, true, false, 0, 0);
+            }
+            try {
                 final Integer awb = r.get(CaptureResult.CONTROL_AWB_MODE);
-                if (awb == null || awb != CaptureResult.CONTROL_AWB_MODE_AUTO) return null;
+                if (awb == null || awb != CaptureResult.CONTROL_AWB_MODE_AUTO) return new IdleSample(ts, false, false, 0, 0);
                 final android.hardware.camera2.params.ColorSpaceTransform t = r.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
-                if (t == null) return null;
+                if (t == null) return new IdleSample(ts, false, false, 0, 0);
                 final float[] m = new float[9];
                 for (int row = 0; row < 3; row++) for (int c = 0; c < 3; c++) m[row * 3 + c] = t.getElement(c, row).floatValue();
-                if (!OplusCcm.identity(m) || oplusCcm(r)) return null;
+                if (!OplusCcm.identity(m) || oplusCcm(r)) return new IdleSample(ts, false, false, 0, 0);
                 final android.hardware.camera2.params.RggbChannelVector g = r.get(CaptureResult.COLOR_CORRECTION_GAINS);
-                if (g == null) return null;
+                if (g == null) return new IdleSample(ts, false, false, 0, 0);
                 final double green = 0.5 * (g.getGreenEven() + g.getGreenOdd());
-                if (!(green > 0) || !(g.getRed() > 0) || !(g.getBlue() > 0)) return null;
-                gains.add(new double[]{Math.log(g.getRed() / green), Math.log(g.getBlue() / green)});
-                first = Math.min(first, ts);
-                last = Math.max(last, ts);
+                if (!(green > 0) || !(g.getRed() > 0) || !(g.getBlue() > 0)) return new IdleSample(ts, false, false, 0, 0);
+                return new IdleSample(ts, false, true, Math.log(g.getRed() / green), Math.log(g.getBlue() / green));
+            } catch (RuntimeException e) {
+                return new IdleSample(ts, false, false, 0, 0);
             }
-        } catch (RuntimeException e) {
-            return null;
+        }
+
+        @Nullable public Long timestamp() {
+            return ts;
+        }
+    }
+
+    /** {@link #ispIdle} on the results' samples (in their order; a null sample is skipped as a null result). */
+    @Nullable
+    public static String ispIdleOf(@Nullable Iterable<IdleSample> samples) {
+        if (samples == null) return null;
+        final java.util.ArrayList<double[]> gains = new java.util.ArrayList<>(); // {ln R/G, ln B/G}
+        final java.util.HashSet<Long> seen = new java.util.HashSet<>();
+        long first = Long.MAX_VALUE, last = Long.MIN_VALUE;
+        for (IdleSample s : samples) {
+            if (s == null) continue;
+            if (s.tsFailed) return null;
+            final Long ts = s.ts;
+            if (ts == null || !seen.add(ts)) continue;
+            if (!s.passes) return null;
+            gains.add(new double[]{s.lnR, s.lnB});
+            first = Math.min(first, ts);
+            last = Math.max(last, ts);
         }
         if (gains.size() < IDLE_RESULTS || last - first < IDLE_SPAN_NS) return null;
         final double[] lr = new double[gains.size()], lb = new double[gains.size()];

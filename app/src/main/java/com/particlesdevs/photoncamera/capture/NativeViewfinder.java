@@ -14,7 +14,8 @@ import androidx.annotation.Nullable;
  * <li>Colour: the X7 Ultra's native result transform is the identity (and the plain one too, so OppoNativeFullRes.complete fills
  * none) while the photo renders with OppoTunedColor: its {@code previewMatrix} at the frame's neutral; another OPPO phone or a vivo
  * identity transform takes the camera's plain-session matrix at that light (W7 PlainColourMemory, as the mosaic photo), else the
- * frame's com.oplus.custom.ccm (OPPO). Recomputed only when the neutral moves by more than {@link #MOVE_LN} ln.</li>
+ * frame's com.oplus.custom.ccm (OPPO). Recomputed only when the neutral moves by more than {@link #MOVE_LN} ln. P370 (A2): every RAW
+ * viewfinder stream, by the photo's rules (processing.color.PhotoMatrix).</li>
  * </ul>
  */
 final class NativeViewfinder {

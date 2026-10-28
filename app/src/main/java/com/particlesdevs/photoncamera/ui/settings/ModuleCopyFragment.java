@@ -22,7 +22,6 @@ public class ModuleCopyFragment extends ModuleConceptFragment {
         super.onCreate(state);
         PreferenceManager pm=new PreferenceManager(requireContext());pm.setSharedPreferencesName("module_copy_catalog");
         tree=pm.inflateFromResource(requireContext(),R.xml.preferences,null);pm.setPreferences(tree);
-        Preference hub=tree.findPreference(ModulePageFilter.HUB);if(hub!=null)hub.setVisible(false); // P189: a row, not a group of values
         TunableSettingsManager.ensureTunableClassesRegistered();
         for(Class<?> cls:TunableRegistry.TUNABLE_CLASSES)TunablePreferenceGenerator.registerTunableClass(cls);
         TunablePreferenceGenerator.generatePreferences(requireContext(),tree);

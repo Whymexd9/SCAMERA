@@ -46,10 +46,15 @@ import java.util.List;
  * LUT («Кино 500 · Pro-Mist»).
  */
 public final class LutTray {
-    /** The concept's tray: the sheet colour at 94 %. */
-    static final int TRAY_FILL = 0xF015191C, PILL_FILL = 0x9E0D0F12;
+    /**
+     * The tray as a pane of dark glass (owner, 2026-10-27: «более красиво ... аля iOS / Mac OS»): a vertical gradient of the sheet
+     * colour at 95 %, a hairline edge lit a little more at the top, 24dp corners and a soft shadow.
+     */
+    static final int TRAY_FILL = 0xF214171B, TRAY_TOP = 0xF21E2228, TRAY_EDGE = 0x24FFFFFF, PILL_FILL = 0x9E0D0F12;
     /** An unchosen chip: a faint glass fill with a faint edge. */
-    static final int CHIP_FILL = 0x1AFFFFFF, CHIP_LINE = 0x14FFFFFF;
+    static final int CHIP_FILL = 0x17FFFFFF, CHIP_LINE = 0x12FFFFFF;
+    /** The warmth / tint tracks: cool -> warm, green -> magenta (as a photo editor shows them). */
+    static final int[] WARMTH_TRACK = {0xFF5AA0FF, 0xFFB9C2CC, 0xFFFFB04A}, TINT_TRACK = {0xFF57D07A, 0xFFB9C2CC, 0xFFE46AD6};
     private final TextView pill;
     private final LinearLayout tray;
     private final LinearLayout row;
@@ -74,6 +79,11 @@ public final class LutTray {
     private final TextView warmthValue, tintValue;
     @Nullable private Runnable onOpen;
     private boolean open;
+    /** The values the filter and film chips stand for (the chips are updated in place, the row's pill glides). */
+    private final List<String> filterValues = new ArrayList<>(), filmValues = new ArrayList<>();
+    /** The pill's colours as last drawn (its change animates). */
+    @Nullable private GradientDrawable pillBg;
+    private int pillFill, pillInk;
 
     public LutTray(TextView pill, LinearLayout tray, @Nullable SurfaceView preview, Runnable openAll) {
         this.pill = pill;
@@ -93,12 +103,13 @@ public final class LutTray {
         // the tray (owner, 2026-10-20: «сделай красивый интерфейс»): three titled sections - LUT with its strength, the lens
         // filter, the film - each a title with the current choice and a row of chips, the chosen chip in the accent
         tray.setOrientation(LinearLayout.VERTICAL);
-        tray.setPadding(UiScale.dp(c, 12), UiScale.dp(c, 10), UiScale.dp(c, 12), UiScale.dp(c, 12));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(TRAY_FILL);
-        bg.setStroke(Math.max(1, Math.round(c.getResources().getDisplayMetrics().density)), ShadeStyle.LINE);
-        bg.setCornerRadius(UiScale.dpF(c, 22));
+        tray.setPadding(UiScale.dp(c, 14), UiScale.dp(c, 12), UiScale.dp(c, 14), UiScale.dp(c, 14));
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{TRAY_TOP, TRAY_FILL});
+        bg.setStroke(Math.max(1, Math.round(c.getResources().getDisplayMetrics().density)), TRAY_EDGE);
+        bg.setCornerRadius(UiScale.dpF(c, 24));
         tray.setBackground(bg);
+        tray.setElevation(UiScale.dpF(c, 18));
+        tray.setOutlineProvider(android.view.ViewOutlineProvider.BACKGROUND);
         tray.setClickable(true);
         tray.removeAllViews();
         // LUT: the title with «Все LUT ›», the chips, the strength
@@ -108,7 +119,7 @@ public final class LutTray {
         all.setBackground(ShadeStyle.ripple(c, 10));
         all.setOnClickListener(v -> { setOpen(false); openAll.run(); });
         lutNow = section(c, "LUT", all, 0);
-        row = chipRow(c, "lut_tray_luts");
+        row = chipRow(c, "lut_tray_luts", 17);
         // the strength row: «Сила» · slider · value
         LinearLayout lr = new LinearLayout(c);
         lr.setOrientation(LinearLayout.HORIZONTAL);
@@ -118,9 +129,7 @@ public final class LutTray {
         lr.addView(label);
         strength = new SeekBar(c);
         strength.setMax(100);
-        strength.setProgressTintList(ColorStateList.valueOf(accent));
-        strength.setThumbTintList(ColorStateList.valueOf(accent));
-        strength.setProgressBackgroundTintList(ColorStateList.valueOf(0x40FFFFFF));
+        styleSlider(c, strength, accent, null);
         strength.setContentDescription(Lang.t(c, "Сила LUT", "LUT strength"));
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         lr.addView(strength, slp);
@@ -134,16 +143,16 @@ public final class LutTray {
         tray.addView(lr, lrp);
         // P228: the lens filters
         filterNow = section(c, Lang.t(c, "Фильтр объектива", "Lens filter"), null, 6);
-        filterRow = chipRow(c, "lut_tray_filters");
+        filterRow = chipRow(c, "lut_tray_filters", 17);
         // P281: the film simulation's stocks
         filmNow = section(c, Lang.t(c, "Плёнка", "Film"), null, 10);
-        filmRow = chipRow(c, "lut_tray_films");
+        filmRow = chipRow(c, "lut_tray_films", 14);
         // P319: the colour's warmth and tint
         section(c, Lang.t(c, "Цвет", "Colour"), null, 10);
         warmthValue = text(c, "", 12, ShadeStyle.TEXT);
-        warmth = colourSlider(c, Lang.t(c, "Тепло", "Warmth"), WARMTH_KEY, warmthValue, "lut_tray_warmth", accent);
+        warmth = colourSlider(c, Lang.t(c, "Тепло", "Warmth"), WARMTH_KEY, warmthValue, "lut_tray_warmth", WARMTH_TRACK);
         tintValue = text(c, "", 12, ShadeStyle.TEXT);
-        tint = colourSlider(c, Lang.t(c, "Оттенок", "Tint"), TINT_KEY, tintValue, "lut_tray_tint", accent);
+        tint = colourSlider(c, Lang.t(c, "Оттенок", "Tint"), TINT_KEY, tintValue, "lut_tray_tint", TINT_TRACK);
         strength.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int p, boolean user) {
                 strengthValue.setText(p + " %");
@@ -163,7 +172,7 @@ public final class LutTray {
     }
 
     /** P319: a «label · slider · value» row of a -100..100 colour setting, written as the settings page writes it. */
-    private SeekBar colourSlider(Context c, String label, String key, TextView value, String tag, int accent) {
+    private SeekBar colourSlider(Context c, String label, String key, TextView value, String tag, int[] track) {
         LinearLayout r = new LinearLayout(c);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
@@ -173,9 +182,7 @@ public final class LutTray {
         r.addView(l);
         SeekBar bar = new SeekBar(c);
         bar.setMax(200);
-        bar.setProgressTintList(ColorStateList.valueOf(accent));
-        bar.setThumbTintList(ColorStateList.valueOf(accent));
-        bar.setProgressBackgroundTintList(ColorStateList.valueOf(0x40FFFFFF));
+        styleSlider(c, bar, 0, track);
         bar.setContentDescription(label);
         r.addView(bar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         value.setMinWidth(UiScale.dp(c, 40));
@@ -185,7 +192,10 @@ public final class LutTray {
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int p, boolean user) {
                 value.setText(signed(p - 100));
-                if (user) settings().set(SettingsManager.SCOPE_GLOBAL, key, String.valueOf(p - 100));
+                if (user) {
+                    settings().set(SettingsManager.SCOPE_GLOBAL, key, String.valueOf(p - 100));
+                    if (p == 100) TrayMotion.tick(s); // the neutral middle is felt
+                }
             }
             @Override public void onStartTrackingTouch(SeekBar s) { }
             @Override public void onStopTrackingTouch(SeekBar s) { }
@@ -249,12 +259,17 @@ public final class LutTray {
         return now;
     }
 
-    /** A section's horizontal row of chips in its scroll, added to the tray. */
-    private LinearLayout chipRow(Context c, String tag) {
+    /**
+     * A section's horizontal row of chips in its scroll, added to the tray: the row draws its selection pill under the chips
+     * (TrayMotion.ChipRow), which glides to the chosen chip; the row's ends fade into the tray.
+     */
+    private LinearLayout chipRow(Context c, String tag, float radiusDp) {
         HorizontalScrollView scroll = new HorizontalScrollView(c);
         scroll.setHorizontalScrollBarEnabled(false);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        LinearLayout r = new LinearLayout(c);
+        scroll.setHorizontalFadingEdgeEnabled(true);
+        scroll.setFadingEdgeLength(UiScale.dp(c, 18));
+        TrayMotion.ChipRow r = new TrayMotion.ChipRow(c, ShadeStyle.accent(c), UiScale.dpF(c, radiusDp));
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setTag(tag);
         scroll.addView(r, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -264,11 +279,14 @@ public final class LutTray {
         return r;
     }
 
-    /** A chip's look: the accent fill when chosen, the glass fill and edge otherwise; a ripple bounded by its shape. */
+    /**
+     * A chip's look: clear when chosen (the row's selection pill in the accent lies under it), the glass fill and edge otherwise;
+     * a ripple bounded by its shape.
+     */
     static android.graphics.drawable.Drawable chipBackground(Context c, boolean on, int accent, float radiusDp) {
         GradientDrawable fill = new GradientDrawable();
         fill.setCornerRadius(UiScale.dpF(c, radiusDp));
-        fill.setColor(on ? accent : CHIP_FILL);
+        fill.setColor(on ? 0x00000000 : CHIP_FILL);
         if (!on) fill.setStroke(Math.max(1, UiScale.dp(c, 1)), CHIP_LINE);
         GradientDrawable mask = new GradientDrawable();
         mask.setCornerRadius(UiScale.dpF(c, radiusDp));
@@ -283,15 +301,100 @@ public final class LutTray {
         t.setEllipsize(TextUtils.TruncateAt.END);
         t.setMaxWidth(UiScale.dp(c, 150));
         t.setPadding(UiScale.dp(c, 14), 0, UiScale.dp(c, 14), 0);
-        if (on) t.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        t.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
         t.setBackground(chipBackground(c, on, accent, 17));
+        t.setActivated(on);
+        TrayMotion.pressable(t);
         return t;
+    }
+
+    /**
+     * A row's chips show {@code chosen} (an index of the row, -1 none): the chosen chip clear over the selection pill, its texts in
+     * INK, the others on glass - the colours cross-fade and the pill glides when {@code animate}, else they are set at once.
+     */
+    private void select(LinearLayout row, int chosen, float radiusDp, boolean animate) {
+        Context c = row.getContext();
+        int accent = ShadeStyle.accent(c);
+        View target = null;
+        for (int i = 0; i < row.getChildCount(); i++) {
+            View chip = row.getChildAt(i);
+            boolean on = i == chosen;
+            if (on) target = chip;
+            if (chip.isActivated() == on && chip.getBackground() != null && animate) continue;
+            chip.setActivated(on);
+            chip.setBackground(chipBackground(c, on, accent, radiusDp));
+            recolour(chip, on, animate);
+        }
+        if (!(row instanceof TrayMotion.ChipRow)) return;
+        TrayMotion.ChipRow chips = (TrayMotion.ChipRow) row;
+        if (target == null) chips.hide();
+        else chips.moveTo(target, animate);
+    }
+
+    /** A chip's texts: INK on the pill, TEXT (and the brand line MUTED) on glass; cross-faded over 180 ms when {@code animate}. */
+    private static void recolour(View chip, boolean on, boolean animate) {
+        if (chip instanceof TextView) {
+            fade((TextView) chip, on ? ShadeStyle.INK : ShadeStyle.TEXT, animate);
+        } else if (chip instanceof ViewGroup && ((ViewGroup) chip).getChildCount() == 2) {
+            ViewGroup g = (ViewGroup) chip;
+            fade((TextView) g.getChildAt(0), on ? (ShadeStyle.INK & 0x00FFFFFF) | 0xB3000000 : ShadeStyle.MUTED, animate);
+            fade((TextView) g.getChildAt(1), on ? ShadeStyle.INK : ShadeStyle.TEXT, animate);
+        }
+    }
+
+    private static void fade(TextView t, int to, boolean animate) {
+        final int from = t.getCurrentTextColor();
+        t.setTextColor(to); // the state at once; the animator's first frame (before the next draw) starts from the old colour
+        if (!animate || from == to) return;
+        android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
+        a.setDuration(180);
+        a.setInterpolator(TrayMotion.EASE_OUT);
+        a.addUpdateListener(v -> t.setTextColor(TrayMotion.mix(from, to, (float) v.getAnimatedValue())));
+        a.start();
+    }
+
+    /**
+     * An iOS-like slider: a 4dp rounded track (the accent over a faint line, or {@code track}'s colours across the whole length for
+     * the warmth / tint, whose value is the thumb's place) and a white 20dp thumb with a hairline edge.
+     */
+    static void styleSlider(Context c, SeekBar bar, int accent, @Nullable int[] track) {
+        float r = UiScale.dpF(c, 2);
+        GradientDrawable back = track != null ? new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, track) : new GradientDrawable();
+        if (track == null) back.setColor(0x33FFFFFF);
+        back.setCornerRadius(r);
+        GradientDrawable fill = new GradientDrawable();
+        fill.setColor(track != null ? 0x00000000 : accent);
+        fill.setCornerRadius(r);
+        android.graphics.drawable.ClipDrawable clip = new android.graphics.drawable.ClipDrawable(fill, Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL);
+        android.graphics.drawable.LayerDrawable layers = new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{back, clip});
+        layers.setId(0, android.R.id.background);
+        layers.setId(1, android.R.id.progress);
+        int h = UiScale.dp(c, 4);
+        layers.setLayerHeight(0, h);
+        layers.setLayerHeight(1, h);
+        layers.setLayerGravity(0, Gravity.CENTER_VERTICAL);
+        layers.setLayerGravity(1, Gravity.CENTER_VERTICAL);
+        bar.setProgressDrawable(layers);
+        bar.setProgressTintList(null);
+        bar.setProgressBackgroundTintList(null);
+        GradientDrawable thumb = new GradientDrawable();
+        thumb.setShape(GradientDrawable.OVAL);
+        thumb.setColor(0xFFFFFFFF);
+        thumb.setStroke(Math.max(1, UiScale.dp(c, 1) / 2), 0x33000000);
+        int t = UiScale.dp(c, 20);
+        thumb.setSize(t, t);
+        bar.setThumb(thumb);
+        bar.setThumbTintList(null);
+        bar.setThumbOffset(t / 2);
+        bar.setSplitTrack(false);
+        bar.setMinimumHeight(UiScale.dp(c, 32));
+        bar.setPadding(t / 2 + UiScale.dp(c, 2), 0, t / 2 + UiScale.dp(c, 2), 0);
     }
 
     /** A chip's place in its row: {@code heightDp} high, 6dp after the previous. */
     private static LinearLayout.LayoutParams chipParams(Context c, ViewGroup row, int heightDp) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, UiScale.dp(c, heightDp));
-        if (row.getChildCount() > 0) lp.setMarginStart(UiScale.dp(c, 6));
+        if (row.getChildCount() > 0) lp.setMarginStart(UiScale.dp(c, 8));
         return lp;
     }
 
@@ -318,12 +421,18 @@ public final class LutTray {
         open = value;
         if (open) {
             if (onOpen != null) onOpen.run();
+            tray.animate().setListener(null);
             rebuild();
-            tray.setVisibility(View.VISIBLE);
+            // visible at once (the state), rising into place on a spring (the motion)
+            TrayMotion.appear(tray);
         } else {
-            tray.setVisibility(View.GONE);
+            TrayMotion.disappear(tray, () -> {
+                if (open) return;
+                tray.setVisibility(View.GONE);
+                TrayMotion.rest(tray);
+            });
         }
-        bindPill();
+        bindPill(true);
     }
 
     /** The current LUT's name, «LUT» with none. */
@@ -341,6 +450,11 @@ public final class LutTray {
 
     /** The pill's label and colours from the settings (also after the settings screen changed them). */
     public void bindPill() {
+        bindPill(false);
+    }
+
+    /** As {@link #bindPill()}; {@code animate}: the pill's colours cross-fade and it gives a little under the change (the tray opening). */
+    private void bindPill(boolean animate) {
         Context c = pill.getContext();
         String value = PreferenceKeys.filmLut();
         String filter = PreferenceKeys.lensFilter();
@@ -353,6 +467,11 @@ public final class LutTray {
         pill.setText(filterOn ? label + " · " + filterShort(c, filter) : label);
         pill.setEllipsize(TextUtils.TruncateAt.END);
         int fg = open ? ShadeStyle.INK : on ? accent : 0xFFFFFFFF;
+        final int fill = open ? accent : PILL_FILL;
+        final int fromFg = pillInk, fromFill = pillFill;
+        final boolean fadeIn = animate && pillBg != null && (fromFg != fg || fromFill != fill);
+        pillInk = fg;
+        pillFill = fill;
         pill.setTextColor(fg);
         android.graphics.drawable.Drawable icon = c.getDrawable(R.drawable.ui_ic_film);
         if (icon != null) {
@@ -363,9 +482,31 @@ public final class LutTray {
         }
         pill.setCompoundDrawablesRelative(icon, null, null, null);
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(open ? accent : PILL_FILL);
+        bg.setColor(fill);
         bg.setCornerRadius(UiScale.dpF(c, 14));
         pill.setBackground(bg);
+        pillBg = bg;
+        if (fadeIn) {
+            // the final colours are set above; the animator's first frame (before the next draw) starts from the old ones
+            final android.graphics.drawable.Drawable[] icons = pill.getCompoundDrawablesRelative();
+            android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(0f, 1f);
+            a.setDuration(200);
+            a.setInterpolator(TrayMotion.EASE_OUT);
+            a.addUpdateListener(v -> {
+                float k = (float) v.getAnimatedValue();
+                if (pillBg != bg) return; // a newer bind took over
+                bg.setColor(TrayMotion.mix(fromFill, fill, k));
+                int ink = TrayMotion.mix(fromFg, fg, k);
+                pill.setTextColor(ink);
+                if (icons[0] != null) icons[0].setTint(ink);
+            });
+            a.start();
+            // the pill gives a little and springs back
+            pill.animate().cancel();
+            pill.setScaleX(.92f);
+            pill.setScaleY(.92f);
+            pill.animate().scaleX(1f).scaleY(1f).setDuration(TrayMotion.RELEASE.durationMs).setStartDelay(0).setInterpolator(TrayMotion.RELEASE).start();
+        }
         pill.setContentDescription(Lang.t(c, "Плёнка (LUT): ", "Film (LUT): ") + name(c, value)
                 + (filterOn ? Lang.t(c, ", фильтр: ", ", filter: ") + LensFilters.name(c, filter) : ""));
         pill.setActivated(open);
@@ -385,7 +526,7 @@ public final class LutTray {
             // owner, 2026-10-19 («Убираем маленькие живые превью в видоискателе»): the chips are the names
             TextView card = textChip(c, name(c, value), on, accent);
             card.setContentDescription(name(c, value));
-            card.setOnClickListener(v -> choose(value));
+            card.setOnClickListener(v -> { TrayMotion.tick(v); choose(value); });
             // P279: hold and drag a card to move it; the settings' strip shows the same order
             com.particlesdevs.photoncamera.ui.settings.StripReorder.attach(card, row.getChildCount(), (from, to) -> {
                 com.particlesdevs.photoncamera.settings.ItemOrder.store(com.particlesdevs.photoncamera.settings.ItemOrder.LUT_KEY, new ArrayList<>(values), from, to);
@@ -394,19 +535,29 @@ public final class LutTray {
             row.addView(card, chipParams(c, row, 34));
             if (on) selected = card;
         }
+        select(row, values.indexOf(chosen), 17, false);
         rebuildFilters();
         rebuildFilms();
         // P319: the colour sliders follow the settings (also after the settings page changed them)
         warmth.setProgress(colourValue(WARMTH_KEY) + 100);
         tint.setProgress(colourValue(TINT_KEY) + 100);
+        bindLutState(chosen, false);
+        // the chosen chip scrolled to the centre
+        centre(row, selected);
+    }
+
+    /** The strength row and the section's current choice for the LUT {@code chosen}. */
+    private void bindLutState(String chosen, boolean animate) {
+        Context c = tray.getContext();
         int s = Math.round(PreferenceKeys.filmLutStrength() * 100);
         strength.setProgress(s);
         strengthValue.setText(s + " %");
         // without a LUT the strength has nothing to act on: dimmed
-        ((View) strength.getParent()).setAlpha(chosen.isEmpty() ? .4f : 1f);
+        View strengthRow = (View) strength.getParent();
+        float alpha = chosen.isEmpty() ? .4f : 1f;
+        if (animate) strengthRow.animate().alpha(alpha).setDuration(200).setStartDelay(0).setInterpolator(TrayMotion.EASE_OUT).start();
+        else strengthRow.setAlpha(alpha);
         lutNow.setText(chosen.isEmpty() ? "" : name(c, chosen));
-        // the chosen chip scrolled to the centre
-        centre(row, selected);
     }
 
     /** P228: «Нет» and the 12 lens filters as cards, the chosen one in the accent. */
@@ -416,13 +567,15 @@ public final class LutTray {
         String chosen = PreferenceKeys.lensFilter();
         int accent = ShadeStyle.accent(c);
         View selected = null;
-        for (String id : filterIds()) {
+        filterValues.clear();
+        java.util.Collections.addAll(filterValues, filterIds());
+        for (String id : filterValues) {
             boolean on = id.equals(chosen);
             // owner, 2026-10-19: no live previews of the lens filters - the chips are their names
             TextView card = textChip(c, id.isEmpty() ? Lang.t(c, "Без фильтра", "No filter") : LensFilters.name(c, id), on, accent);
             card.setContentDescription(Lang.t(c, "Фильтр: ", "Filter: ") + LensFilters.name(c, id));
             card.setTag("lut_tray_filter_" + id);
-            card.setOnClickListener(v -> chooseFilter(id));
+            card.setOnClickListener(v -> { TrayMotion.tick(v); chooseFilter(id); });
             // P279: the filters' order, shared with the settings' strip
             com.particlesdevs.photoncamera.ui.settings.StripReorder.attach(card, filterRow.getChildCount(), (from, to) -> {
                 com.particlesdevs.photoncamera.settings.ItemOrder.store(com.particlesdevs.photoncamera.settings.ItemOrder.FILTER_KEY, java.util.Arrays.asList(filterIds()), from, to);
@@ -431,6 +584,7 @@ public final class LutTray {
             filterRow.addView(card, chipParams(c, filterRow, 34));
             if (on) selected = card;
         }
+        select(filterRow, filterValues.indexOf(chosen), 17, false);
         filterNow.setText(chosen.isEmpty() ? "" : LensFilters.name(c, chosen));
         centre(filterRow, selected);
     }
@@ -448,32 +602,42 @@ public final class LutTray {
         final int accent = ShadeStyle.accent(c);
         final int count = com.particlesdevs.photoncamera.processing.color.FilmSim.STOCKS.length + 1;
         View selected = null;
+        filmValues.clear();
         for (int i = 0; i < count; i++) {
             final com.particlesdevs.photoncamera.processing.color.FilmSim.Stock st = i == 0 ? null : com.particlesdevs.photoncamera.processing.color.FilmSim.STOCKS[i - 1];
             final String id = st == null ? "" : st.id;
+            filmValues.add(id);
             final boolean on = id.equals(chosen);
             LinearLayout card = new LinearLayout(c);
             card.setOrientation(LinearLayout.VERTICAL);
             card.setGravity(Gravity.CENTER_VERTICAL);
             card.setPadding(UiScale.dp(c, 12), 0, UiScale.dp(c, 12), 0);
             card.setBackground(chipBackground(c, on, accent, 14));
+            card.setActivated(on);
             TextView brand = text(c, st == null ? Lang.t(c, "Плёнка", "Film") : st.brand.toUpperCase(java.util.Locale.ROOT), 8.5f,
                     on ? (ShadeStyle.INK & 0x00FFFFFF) | 0xB3000000 : ShadeStyle.MUTED);
             brand.setLetterSpacing(.06f);
             card.addView(brand);
             TextView name = text(c, st == null ? Lang.t(c, "Нет", "None") : st.name, 12, on ? ShadeStyle.INK : ShadeStyle.TEXT);
-            if (on) name.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+            name.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
             card.addView(name);
             card.setContentDescription(st == null ? Lang.t(c, "Без плёнки", "No film") : st.brand + " " + st.name);
             card.setTag("lut_tray_film_" + id);
             card.setOnClickListener(v -> {
+                TrayMotion.tick(v);
                 settings().set(SettingsManager.SCOPE_GLOBAL, com.particlesdevs.photoncamera.processing.color.FilmSim.STOCK_KEY, id);
-                rebuildFilms();
+                // in place: the pill glides to the stock, the row is not built again
+                select(filmRow, filmValues.indexOf(id), 14, open);
+                com.particlesdevs.photoncamera.processing.color.FilmSim.Stock picked = com.particlesdevs.photoncamera.processing.color.FilmSim.stock(id);
+                filmNow.setText(id.isEmpty() || picked == null ? "" : picked.name);
+                centre(filmRow, v);
                 bindPill();
             });
-            filmRow.addView(card, chipParams(c, filmRow, 40));
+            TrayMotion.pressable(card);
+            filmRow.addView(card, chipParams(c, filmRow, 42));
             if (on) selected = card;
         }
+        select(filmRow, filmValues.indexOf(chosen), 14, false);
         com.particlesdevs.photoncamera.processing.color.FilmSim.Stock now = com.particlesdevs.photoncamera.processing.color.FilmSim.stock(chosen);
         filmNow.setText(chosen.isEmpty() || now == null ? "" : now.name);
         centre(filmRow, selected);
@@ -484,7 +648,13 @@ public final class LutTray {
         settings().set(SettingsManager.SCOPE_GLOBAL, LensFilters.KEY, id);
         if (!id.isEmpty() && PreferenceKeys.lensFilterStrength() <= 0f)
             settings().set(SettingsManager.SCOPE_GLOBAL, LensFilters.STRENGTH_KEY, "50");
-        rebuildFilters();
+        int i = filterValues.indexOf(id);
+        if (open && i >= 0 && filterRow.getChildCount() == filterValues.size() && filterValues.equals(java.util.Arrays.asList(filterIds()))) {
+            // in place: the pill glides to the filter
+            select(filterRow, i, 17, true);
+            filterNow.setText(id.isEmpty() ? "" : LensFilters.name(tray.getContext(), id));
+            centre(filterRow, filterRow.getChildAt(i));
+        } else rebuildFilters();
         bindPill();
     }
 
@@ -493,7 +663,13 @@ public final class LutTray {
         settings().set(SettingsManager.SCOPE_GLOBAL, FilmLut.KEY, value);
         if (!value.isEmpty() && PreferenceKeys.filmLutStrength() <= 0f)
             settings().set(SettingsManager.SCOPE_GLOBAL, FilmLut.STRENGTH_KEY, "100");
-        rebuild();
+        int i = values.indexOf(value);
+        if (open && i >= 0 && row.getChildCount() == values.size()) {
+            // in place: the pill glides to the LUT, the strength row follows
+            select(row, i, 17, true);
+            bindLutState(value, true);
+            centre(row, row.getChildAt(i));
+        } else rebuild();
         bindPill();
     }
 
@@ -515,5 +691,7 @@ public final class LutTray {
     public void release() {
         main.removeCallbacksAndMessages(null);
         open = false;
+        tray.animate().cancel();
+        TrayMotion.rest(tray);
     }
 }

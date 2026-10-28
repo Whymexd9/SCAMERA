@@ -26,6 +26,9 @@ public class SaverImplementation {
     public volatile com.particlesdevs.photoncamera.util.ShotArena shotArena;
     public int frameCount = 0;
     public boolean iszAspect4x3;
+    /** The shot's digital-zoom crop and camera at the press (ImageSaver.zoomResidual / cameraIdAtPress). */
+    public float zoomResidual = 1f;
+    public String cameraIdAtPress;
     private int imageFormat;
     public final ProcessingEventsListener processingEventsListener;
 

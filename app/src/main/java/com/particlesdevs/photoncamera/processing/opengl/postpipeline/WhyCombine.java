@@ -42,6 +42,15 @@ public final class WhyCombine extends Node {
     }
 
     /**
+     * The detail gain of the sharpened luma: «sharp_gain» x {@link #detailBoost}. P369 (texture-detail-boost): with a film (any, B10)
+     * the boost - our look, not the film's - only on the share the simulation's strength leaves (none at 100 %: the film gets the
+     * merge's own detail); without one the expression as before, bit for bit.
+     */
+    static float detailGain(float sharpGain, float snr, @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
+        return film == null ? sharpGain * detailBoost(snr) : sharpGain * (1f + (detailBoost(snr) - 1f) * (1f - film.strength));
+    }
+
+    /**
      * Bounded reference of the detail delta (review_whytone F1): box mean of min(m * Y, 1) on the whyLow grid (m = ae, or the
      * domain of WhyLumaSharpen). The unbounded delta of a light edge reached -0.7 in OKLab L and drew black rings around lamps.
      * P187: drawn here, or by WhyLumaSharpen right after its own read of the image when the image goes back early.
@@ -80,16 +89,27 @@ public final class WhyCombine extends Node {
         // the Sabre luminance with the former default gain 2 only if no sharpened luma arrived (defensive fallback).
         final boolean sharp = st.lumaS != null;
         final float sharpMul = st.sharpMul;
-        final float detail = sharp ? WhyTone.value("sharp_gain", 1.0f) * detailBoost(pipeline.mParameters.finishSnr) : 2.0f;
+        // P369: the shot's film snapshot (PostPipeline.takeFilm); null: no film, every expression as before
+        final com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film = pipeline.film;
+        final float detail = sharp ? detailGain(WhyTone.value("sharp_gain", 1.0f), pipeline.mParameters.finishSnr, film) : 2.0f;
         // P134 «Цвет»: COLOUR_LOOK only when a colour setting is off its default (else the shader before P134)
         final com.particlesdevs.photoncamera.processing.color.ColourLook look = WhyTone.colourLook();
         final boolean colourOn = !look.shaderNeutral();
         final int toneOp = WhyTone.toneOperator();
+        // P369: with a film the scene-referred table (FILM_SIM: the film fed the exposed scene light, the chosen LUT on its print);
+        // a film whose data cannot be read gives the photo no film (never the display table)
+        final com.particlesdevs.photoncamera.processing.color.FilmChain.Scene scene = film == null ? null
+                : com.particlesdevs.photoncamera.processing.color.FilmChain.scene(com.particlesdevs.photoncamera.app.ScameraApp.getAppContext(),
+                film, pipeline.filmUserLut, pipeline.filmUserStrength);
+        // P369: the film alone at 100 % - our highlight landing and sun bloom (only in our share) are not drawn
+        final boolean filmOnly = scene != null && film.strength >= 1f;
+        final float filmExp = WhyAe.filmAe(r) / Math.max(r.ae, 1e-6f) * com.particlesdevs.photoncamera.processing.color.FilmSim.METER_TO_FILM;
         // P134 «Плёночный LUT»: the chosen .cube on the display-encoded output (FILM_LUT), only with a strength above 0
-        // P281: the film simulation (FilmSim) and the LUT as one table (FilmChain)
-        final com.particlesdevs.photoncamera.processing.color.FilmChain.State chain = com.particlesdevs.photoncamera.processing.color.FilmChain.current();
-        final float lutStrength = chain.strength;
-        final String lutName = chain.key;
+        // P281: the film simulation (FilmSim) and the LUT as one table (FilmChain); P369: without a film only (of the snapshot)
+        final com.particlesdevs.photoncamera.processing.color.FilmChain.State chain = scene != null ? null
+                : com.particlesdevs.photoncamera.processing.color.FilmChain.current(null, pipeline.filmUserLut, pipeline.filmUserStrength);
+        final float lutStrength = chain != null ? chain.strength : 0f;
+        final String lutName = chain != null ? chain.key : "";
         final com.particlesdevs.photoncamera.processing.color.FilmLut lut = lutStrength > 0f && !lutName.isEmpty()
                 ? com.particlesdevs.photoncamera.processing.color.FilmChain.lut(com.particlesdevs.photoncamera.app.ScameraApp.getAppContext(), lutName) : null;
         int lutTexture = 0;
@@ -116,7 +136,7 @@ public final class WhyCombine extends Node {
             // P154: the highlight landing and the upward path to white (HL_LANDING 0 = the shader before P154)
             final float hlSoft = Math.max(0f, Math.min(0.9f, WhyTone.value("hl_soft", 0.7f)));
             final boolean realClip = ScamRgb.lastRealClip || ScamHybridBurst.lastBentoUsClipped > 0f;
-            if (hlSoft > 0f && realClip) {
+            if (hlSoft > 0f && realClip && !filmOnly) {
                 // the blurred share of the ceiling on the whyLow grid (why/hlmask.glsl): max channel / ceiling, then a gaussian of
                 // 1.2 % of the width along x and y
                 final Point hlSize = st.low.mSize;
@@ -151,18 +171,25 @@ public final class WhyCombine extends Node {
             // P144: ACES / Uchimura / the own curve instead of AgX (TONE_OP 0, the AgX shader, otherwise)
             if (toneOp != com.particlesdevs.photoncamera.processing.color.ToneCurve.AGX) glProg.setDefine("TONE_OP", 1);
             if (lut != null) glProg.setDefine("FILM_LUT", 1);
+            // P369: the film's scene feed (never with FILM_LUT: the chosen LUT is in the scene table then)
+            if (scene != null) glProg.setDefine("FILM_SIM", 1);
             // P216: real Bento headroom above the capped clip (without it the shader is the one before P216, token for token)
             if (r.hr > 0f) glProg.setDefine("HEADROOM_WIDE", 1);
             // P349: the sun bloom round fully clipped cores (ScamRgb.sunBloom), on the image those flags covered
             sunBloom = pipeline.sunBloom;
             pipeline.sunBloom = null;
             final Point bloomSize = pipeline.sunBloomSize;
-            if (sunBloom != null && (bloomSize == null || bloomSize.x * input.mSize.y != bloomSize.y * input.mSize.x)) {
+            if (sunBloom != null && (filmOnly || bloomSize == null || bloomSize.x * input.mSize.y != bloomSize.y * input.mSize.x)) {
                 sunBloom.close();
                 sunBloom = null;
             }
             if (sunBloom != null) glProg.setDefine("SUN_BLOOM", 1);
             sunBloomOn = sunBloom != null;
+            // P187: above 100 MP the 1.6 GB output is made only after the GPU has finished with the fusion's and the mask's
+            // temporaries (their storage is freed when the GPU is done with them). Made before the combine's samplers are bound:
+            // a new texture binds itself on unit 1 + its name, which may be a sampler's unit (the pass then read its own output).
+            if (st.inputReleased) android.opengl.GLES30.glFinish();
+            WorkingTexture = pipeline.getMain();
             glProg.useAssetProgram("why/combine", false);
             if (sunBloom != null) {
                 final int block = Math.max(1, Math.round(Math.min(bloomSize.x, bloomSize.y) / 192f));
@@ -177,6 +204,16 @@ public final class WhyCombine extends Node {
                 glProg.setVar("lutMinU", lut.domainMin);
                 glProg.setVar("lutScaleU", 1f / (lut.domainMax[0] - lut.domainMin[0]), 1f / (lut.domainMax[1] - lut.domainMin[1]),
                         1f / (lut.domainMax[2] - lut.domainMin[2]));
+            }
+            if (scene != null) {
+                // P369: the film's exposure is the meter's before the highlight overflow's cut (ae x deficit, B1); the noise
+                // clamp and the Bento hold stay in ae
+                lutTexture = scene.lut.upload();
+                glProg.setTexture3D("FilmLut", lutTexture);
+                glProg.setVar("lutU", scene.strength, (float) scene.lut.size);
+                glProg.setVar("filmExpU", filmExp);
+                glProg.setVar("filmLogU", com.particlesdevs.photoncamera.processing.color.FilmSim.LOG_LO,
+                        com.particlesdevs.photoncamera.processing.color.FilmSim.LOG_SPAN);
             }
             // P187: with WhyCam's sharpened luma (sharpU 1) the shader reads nothing of InputBuffer but its size; once the
             // image is given back, the same-size lumaS stands in (the image's texture name may be another texture's now)
@@ -196,6 +233,7 @@ public final class WhyCombine extends Node {
             glProg.setVar("fU", st.factor);
             glProg.setVar("colourFU", colourFactor);
             glProg.setVar("signedColourU", pipeline.signedRgb ? 1 : 0);
+            glProg.setVar("signedHueU", WhyTone.signedHue() ? 1 : 0);   // P370 (B2): a colour outside sRGB keeps its hue
             glProg.setVar("aeU", r.ae);
             glProg.setVar("clipU", r.clip);
             // P216: real Bento headroom above the capped clip - WhyCam 1.58's shoulder, the landing on the real ceiling and the
@@ -247,10 +285,6 @@ public final class WhyCombine extends Node {
                 glProg.setVar("gradeAU", grade[0]);
                 glProg.setVar("gradeBU", grade[1]);
             }
-            // P187: above 100 MP the 1.6 GB output is made only after the GPU has finished with the fusion's and the mask's
-            // temporaries (their storage is freed when the GPU is done with them)
-            if (st.inputReleased) android.opengl.GLES30.glFinish();
-            WorkingTexture = pipeline.getMain();
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;
         } finally {
@@ -267,6 +301,9 @@ public final class WhyCombine extends Node {
                 + (sharp ? " (WhyLumaS, mul " + sharpMul + ")" : " (Sabre Y, bounded ref)")
                 + (sunBloomOn ? " sunBloom=" + WhyTone.sunBloom()[0] + "@" + WhyTone.sunBloom()[1] : "")
                 + (pipeline.p3Output ? " output=DisplayP3" : "") + (colourOn ? " colourLook" : "")
-                + (lut != null ? " filmLut=" + lutName + " " + lut.size + "^3 x" + lutStrength : lutStrength > 0f && !lutName.isEmpty() ? " filmLut=" + lutName + " unreadable" : "") + " ms=" + (System.currentTimeMillis() - started));
+                + (lut != null ? " filmLut=" + lutName + " " + lut.size + "^3 x" + lutStrength : lutStrength > 0f && !lutName.isEmpty() ? " filmLut=" + lutName + " unreadable" : "")
+                + (scene != null ? " filmSim=" + scene.key + " x" + scene.strength + " exp=" + filmExp + (filmOnly ? " (film only)" : "")
+                : film != null ? " filmSim=" + film.lutKey() + " film data unreadable: no film" : "")
+                + " ms=" + (System.currentTimeMillis() - started));
     }
 }

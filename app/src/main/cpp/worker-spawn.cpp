@@ -4,7 +4,10 @@
 #include <jni.h>
 #include <android/api-level.h>
 #include <cerrno>
+#include <climits>
 #include <csignal>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <string>
@@ -67,9 +70,18 @@ Java_com_particlesdevs_photoncamera_util_WorkerSpawn_spawn(JNIEnv* env,jclass,jo
     rlimit files{};
     const int maxFd=getrlimit(RLIMIT_NOFILE,&files)==0 && files.rlim_cur!=RLIM_INFINITY && files.rlim_cur<=65536
             ?int(files.rlim_cur):32768;
+    // P371 (speed): the worker's nice value from its environment (WorkerEnv: SCAM_WORKER_NICE, scam_dev worker_nice), set in the
+    // child before execve so its loader, its static init and every thread it starts have it; without the line it keeps the
+    // spawning thread's (the processing thread at Java priority 4: nice 10). Read here: the child calls async-signal-safe code only.
+    int workerNice=INT32_MIN;
+    for(const auto& e:envStrings)if(e.rfind("SCAM_WORKER_NICE=",0)==0){
+        char* end=nullptr;const long v=std::strtol(e.c_str()+17,&end,10);
+        if(end&&*end==0&&end!=e.c_str()+17&&v>=-8&&v<=19)workerNice=int(v);
+    }
     const pid_t pid=fork();
     if(pid==0) {
         // Child: async-signal-safe calls only.
+        if(workerNice!=INT32_MIN&&setpriority(PRIO_PROCESS,0,workerNice)!=0){} // the calling (only) thread; best effort
         if(devNull>=0)dup2(devNull,0);
         dup2(pipeFds[1],1);dup2(pipeFds[1],2);
         for(size_t i=0;i<high.size();++i)dup2(high[i],3+int(i));

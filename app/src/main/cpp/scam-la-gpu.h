@@ -12,8 +12,10 @@
 #include <EGL/egl.h>
 #include <GLES3/gl31.h>
 #include "scam-superres-gpu.h" // scamProcessingContext (P57: a low-priority context, the viewfinder first)
+#include "scam-crash.h"         // the thread's crash stage (ScamHybridBurst.gpuInitDeath reads it)
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -561,6 +563,16 @@ struct LaGpuTune { float mu=0.1f,kappa=2.f,maxShift=6.f;int iters=3,itersCoarse=
 struct LaGpuResult { std::vector<float> field,motion;std::vector<uint32_t> flags;float median=0,p90=0,maxAbsY=0,accepted=0,fromCoarse=0;double ms=0; };
 // P364: a donor's GPU homography (base canonical RAW px -> donor canonical RAW px, h33 = 1)
 struct LaGpuHom { bool ok=false;std::array<float,8> h{1,0,0,0,1,0,0,0};int corners=0,tracked=0,inliers=0;float rms=0,coarseX=0,coarseY=0;double ms=0,msGray=0,msCoarse=0,msKlt=0,msRansac=0;std::string why; };
+// The GPU field's memory per RAW pixel from the alignment to the F6 stage, as the merge's memory guard counts it: two RAW uploads
+// and the base and donor levels (field); P364, with the GPU homography: two more RAW uploads, the L0..L3 levels of two donors in
+// flight and the base's L2 / L3 as well (homography: 18.51 B measured with the tile buffers by LaGpu::bytesHeld in
+// check_la_gpu_errors, counted as 18.75)
+constexpr double kLaGpuFieldBytesPerPixel=11.5,kLaGpuHomBytesPerPixel=18.75;
+#ifdef SCAM_LA_GPU_FAULTS
+// tools/check_hybrid_gpu_align: the field pass this many calls from now fails (1 = the next one; in any LaGpu, the merge builds its
+// own), as a GL error there does; 0 = none
+inline std::atomic<int> laGpuFaultField{0};
+#endif
 
 // P364: the homography of point pairs (base, donor; canonical RAW px): RANSAC of 4-point DLTs (deterministic: seeded by the
 // frame), then least squares on the inliers twice. Normalised coordinates, h33 = 1, double precision.
@@ -654,6 +666,7 @@ class LaGpu {
            kTV2, kTV3, kTE0, kTE1, kTE2, kTE3,               // P364: the base's L2 / L3, the homography donor's L0..L3 (r32f)
            kTF0, kTF1, kTF2, kTF3, kTextures };              // and those of the second homography in flight
     GLuint tex[kTextures]{};
+    size_t texBytes[kTextures]{}; // the textures' storage (bytesHeld)
     LaGpuBurst burst;
     LaGpuGrid g0,g1;
     LaGpuTune tune;
@@ -764,6 +777,7 @@ class LaGpu {
     void texture(int t,GLenum format,int w,int h){
         glBindTexture(GL_TEXTURE_2D,tex[t]);
         glTexStorage2D(GL_TEXTURE_2D,1,format,w,h);
+        texBytes[t]=size_t(w)*size_t(h)*(format==GL_RGBA32F?16:4); // rgba32f or r32f, the two formats used
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
     }
@@ -902,6 +916,12 @@ private:
 public:
     std::string renderer;
     std::string cacheNote() const {return cacheDir.empty()?std::string():" (programs "+std::to_string(cacheHits)+" of 8 from the cache)";}
+    // the storage buffers and level textures this context holds (the merge's GPU field memory guard counts them per RAW pixel:
+    // kLaGpuFieldBytesPerPixel / kLaGpuHomBytesPerPixel, check_la_gpu_errors measures them)
+    size_t bytesHeld() const {size_t s=0;for(size_t c:cap)s+=c;for(size_t t:texBytes)s+=t;return s;}
+#ifdef SCAM_LA_GPU_FAULTS
+    int faultHomReadbacks=0; // tools/check_la_gpu_errors: the next this many homography readbacks fail, as a NULL map does
+#endif
     // cache: the program binary cache directory ("" = compile every program)
     explicit LaGpu(const std::string& cache=""){
         cacheDir=cache;
@@ -987,11 +1007,15 @@ public:
     LaGpuHom homCollect(){
         if(homCollected>=homSubmitted)throw std::runtime_error("LA GPU: no homography in flight");
         const int p=homCollected&1;
+        const int frame=homFrame[p];
+        ++homCollected; // the slot is consumed even when its readback throws: the next collect is the next frame's
         LaGpuHom out;
+#ifdef SCAM_LA_GPU_FAULTS
+        if(faultHomReadbacks>0){--faultHomReadbacks;throw std::runtime_error("LA GPU readback failed (injected)");}
+#endif
         std::vector<float> tracked;read(kTracked+p,tracked,size_t(cornerCount+1)*4);
         check("homography readback");
-        const int frame=homFrame[p];
-        ++homCollected;homLastSlot=p;
+        homLastSlot=p; // its levels only after a good readback (submitFromHomography reads them)
         const float* st=tracked.data()+size_t(cornerCount)*4;
         out.coarseX=16.f*st[0];out.coarseY=16.f*st[1]; // RAW px
         out.msKlt=std::chrono::duration<double,std::milli>(Clock::now()-homAt[p]).count();
@@ -1068,6 +1092,9 @@ public:
         // this frame's outputs, out of the way of the next one
         copy(kR0,kOutField+p,size_t(n0)*8);copy(kZ,kOutZ+p,size_t(n0)*4);copy(kFlags,kOutFlags+p,size_t(n0)*4);
         barrier();
+#ifdef SCAM_LA_GPU_FAULTS
+        if(laGpuFaultField>0&&--laGpuFaultField==0)throw std::runtime_error("LA GPU frame GL error (injected)");
+#endif
         check("frame");
         glFlush();
         ++submitted;
@@ -1199,6 +1226,9 @@ private:
     void run(const Build& build){
         const auto t0=std::chrono::steady_clock::now();
         std::unique_ptr<LaGpu> gpu;
+        // a crash on this thread names its stage: the conservative retry, not a GPU-init death that turns the session's GPU merge
+        // off (ScamHybridBurst.gpuInitDeath: a thread without a stage counts as one)
+        worker_crash::Stage stage("GPU align (F6)");
         try{gpu=build();}
         catch(const std::exception& e){std::lock_guard<std::mutex> l(m);failed=true;failure=e.what();failHoms(failure);cv.notify_all();return;}
         {
@@ -1233,7 +1263,7 @@ private:
                     catch(const std::exception& e){r=LaGpuHom{};r.why=std::string("GPU error: ")+e.what();while(glGetError()!=GL_NO_ERROR){}}
                     // P364: the frame's field right away on the levels the homography just used (the alignment hands it over with this
                     // homography: add() then finds it fed), before the next homography takes that slot
-                    if(collected&&r.ok&&done.field){
+                    if(collected&&r.ok&&done.field)try{
                         Job fj;fj.f=done.f;fj.raw=done.raw;fj.gain=done.gain;fj.h=r.h;fj.up=1.f;
                         if(inflight.size()>=2){ // a slot first
                             LaGpuResult fr=gpu->collect();
@@ -1249,6 +1279,9 @@ private:
                             } else fj.f=-1;
                         }
                         if(fj.f>=0){gpu->submitFromHomography(fj.h.data(),fj.up);inflight.push_back(fj);}
+                    }catch(...){ // the popped job is answered here (failHoms below no longer sees it): the alignment keeps its
+                                 // homography, the worker fails and the F6 stage takes the CPU field
+                        done.pr->set_value(r);cv.notify_all();throw;
                     }
                     done.pr->set_value(r);
                     cv.notify_all();

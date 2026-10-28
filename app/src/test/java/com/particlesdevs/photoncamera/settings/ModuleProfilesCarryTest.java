@@ -109,6 +109,30 @@ public class ModuleProfilesCarryTest {
         perLens(false);
     }
 
+    /**
+     * Audit 2026-10-27 (lab-app-7): «Сохранять снимки для лаборатории» and «Сохранять RAW-серию» are switches of the app, not of a
+     * module: with per-module settings on, a module switch loaded a profile without them and lab shots stopped on that lens.
+     */
+    @Test
+    public void labKeepSwitchIsGlobal() {
+        final String[] keys = {com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.PREF, "pref_keep_raw_burst"};
+        for (String key : keys) {
+            assertTrue(key, ModuleProfiles.isGlobal(key));
+            assertFalse(key, ModuleProfiles.isLocal(key));
+        }
+        perLens(true);
+        PreferenceKeys.profiles().activate("back0");
+        for (String key : keys) {
+            prefs.edit().putBoolean(key, true).commit();
+            PreferenceKeys.profiles().changed(key);
+        }
+        PreferenceKeys.profiles().activate("back1");
+        assertEquals("back1", PreferenceKeys.profiles().editing());
+        for (String key : keys) assertTrue("on another module: " + key, prefs.getBoolean(key, false));
+        PreferenceKeys.profiles().activate("back1@full200");
+        for (String key : keys) assertTrue("in a FULLRES profile: " + key, prefs.getBoolean(key, false));
+    }
+
     @Test
     public void aSettingChangedWhileOffReachesEveryModuleAndFullResProfile() {
         earlierPerModuleRound();

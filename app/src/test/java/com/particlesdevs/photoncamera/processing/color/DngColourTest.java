@@ -51,6 +51,25 @@ public class DngColourTest {
         assertEquals(DngColour.ILLUMINANT_LABEL, p.illuminant);
     }
 
+    /**
+     * P243 / P370: the profile's ColorMatrix1 read back the DNG SDK's way (the gallery's DngColor, as Lightroom / ACR) gives the
+     * sceneCct it was made with as the As-Shot temperature (the profile's own step; DngColour is unchanged by P370). That sceneCct
+     * is A1's estimate: ParametersSceneCctTest.theDngAsShotIsTheEstimatedLight runs the whole chain from a tungsten neutral.
+     */
+    @Test public void theAsShotTemperatureIsTheSceneLight() {
+        final float[] s2p = {1 / NEUTRAL[0], 0, 0, 0, 1 / NEUTRAL[1], 0, 0, 0, 1 / NEUTRAL[2]};
+        final float[] i2s = {1.62f, -0.48f, -0.14f, -0.21f, 1.39f, -0.18f, 0.02f, -0.55f, 1.53f};
+        for (float cct : new float[]{2860f, 3600f, 5200f, 6504f}) {
+            final DngColour.Profile p = DngColour.jpegProfile(s2p, i2s, NEUTRAL, cct);
+            final double[] cm = DngColour.toDouble(p.colorMatrix1);
+            final double[] n = {NEUTRAL[0], NEUTRAL[1], NEUTRAL[2]};
+            final com.particlesdevs.photoncamera.gallery.dng.DngColor read =
+                    com.particlesdevs.photoncamera.gallery.dng.DngColor.fromCamera(cm, n);
+            final double asShot = com.particlesdevs.photoncamera.gallery.dng.DngColor.cctDuv(read.xyForNeutral(n))[0];
+            assertEquals("scene " + cct + " K", cct, asShot, 20);
+        }
+    }
+
     @Test public void theDngInterpolationCaseGivesBackItsForwardMatrix() {
         // sensorToProPhoto = XYZ->ProPhoto · FM · D (Converter.calculateCameraToXYZD50Transform, no calibration), the standard
         // ProPhoto -> sRGB: the profile's forward matrix is that normalised FM

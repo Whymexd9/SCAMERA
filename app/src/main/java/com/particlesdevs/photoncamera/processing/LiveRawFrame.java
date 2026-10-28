@@ -258,6 +258,11 @@ public final class LiveRawFrame {
         maxLongSide = px;
     }
 
+    /** Tests: the size cap's halving buffers (halfA / halfB / unpacked) are held. */
+    static synchronized boolean halvingBuffersHeld() {
+        return halfA != null || halfB != null || unpacked != null;
+    }
+
     /** How many halvings bring {@code w} x {@code h} to a longest side of at most {@code cap} (keeping both sides whole 4s). */
     static int halvings(int w, int h, int cap) {
         int n = 0;
@@ -465,6 +470,7 @@ public final class LiveRawFrame {
      */
     private static synchronized void releaseBinBuffers() {
         quadFull = quadBinned = null;
+        halfA = halfB = unpacked = null; // P266 / P316: the size cap's halvings go with the RAW viewfinder too (made again by the next frame)
         quadAtNs = 0;   // P314: the next session's first binned frame is not held back by this one's pacing
     }
 

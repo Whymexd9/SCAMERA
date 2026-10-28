@@ -293,6 +293,16 @@ public final class WhyAe {
     }
 
     /**
+     * P369 (B1): the film's exposure - the meter before the highlight overflow's cut (ae x deficit: the film keeps its own
+     * highlights) - within the noise clamp and the x9 cap our ae obeys (the cut undone must not lift a noisy night above them).
+     */
+    static float filmAe(Result r) {
+        float a = r.ae * r.deficit;
+        if (r.maxGainByNoise > 0f) a = Math.min(a, Math.max(r.ae, r.maxGainByNoise));
+        return Math.min(a, Math.max(r.ae, 9f));
+    }
+
+    /**
      * AGC noise-based gain clamp: noiseMax over the noise sigma at mid grey (0.5) of the model (slope S, offset O), at least 1.
      * P212h (A5 = M5): WhyStats hands it a model divided by N_eff^0.8 on a merged shot (WhyNoiseClamp).
      */

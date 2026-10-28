@@ -86,7 +86,7 @@
     <string name="prefs_scam_motion_on_title">Режим «Движение»</string>
     <string name="prefs_scam_motion_on_summary">Для движения: короткая выдержка и меньше кадров, чтобы объект был резким. Как значок в видоискателе.</string>
     <string name="prefs_scam_motion_screen_title">Движение</string>
-    <string name="prefs_scam_motion_screen_summary">Выдержка и число кадров для чётких движущихся объектов</string>
+    <string name="prefs_scam_motion_screen_summary">Значения режима «Движение» (кнопка в верхней панели): выдержка и число кадров для чётких движущихся объектов</string>
     <string name="prefs_scam_motion_shutter_title">Выдержка не длиннее</string>
     <string name="prefs_scam_motion_shutter_summary">%s. Самая длинная выдержка в режиме «Движение». Короче — чётче движение, но шумнее (камера поднимает чувствительность, ISO).</string>
     <string name="prefs_scam_motion_flicker_title">Без мерцания ламп</string>

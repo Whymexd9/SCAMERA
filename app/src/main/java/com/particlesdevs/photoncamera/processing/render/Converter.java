@@ -131,12 +131,14 @@ public class Converter {
     public static double findDngInterpolationFactor(int referenceIlluminant1,
                                                     int referenceIlluminant2, float[] calibrationTransform1, float[] calibrationTransform2,
                                                     float[] colorMatrix1, float[] colorMatrix2, float[/*3*/] neutralColorPoint) {
-        int colorTemperature1 = sStandardIlluminates.get(referenceIlluminant1, NO_ILLUMINANT);
+        // P370 (A5): a code this table lacks (3 tungsten, 10 cloudy, 24 ISO studio tungsten, ...) takes the DNG SDK's value
+        // (DngColor.illuminantTemperature) instead of failing the shot; only a code no table knows throws (ReCalcColor catches it)
+        int colorTemperature1 = illuminantTemperature(referenceIlluminant1);
         if (colorTemperature1 == NO_ILLUMINANT) {
             throw new IllegalArgumentException("No such illuminant for reference illuminant 1: " +
                     referenceIlluminant1);
         }
-        int colorTemperature2 = sStandardIlluminates.get(referenceIlluminant2, NO_ILLUMINANT);
+        int colorTemperature2 = illuminantTemperature(referenceIlluminant2);
         if (colorTemperature2 == NO_ILLUMINANT) {
             throw new IllegalArgumentException("No such illuminant for reference illuminant 2: " +
                     referenceIlluminant2);
@@ -211,6 +213,17 @@ public class Converter {
     }
 
     /**
+     * The legacy estimate's temperature of an illuminant code (its own values, scam_dev "dng_white_spec 0" keeps them), else the DNG
+     * SDK's; NO_ILLUMINANT for a code neither knows.
+     */
+    static int illuminantTemperature(int code) {
+        final int own = sStandardIlluminates.get(code, NO_ILLUMINANT);
+        if (own != NO_ILLUMINANT) return own;
+        final double sdk = com.particlesdevs.photoncamera.gallery.dng.DngColor.illuminantTemperature(code, -1);
+        return sdk > 0 ? (int) Math.round(sdk) : NO_ILLUMINANT;
+    }
+
+    /**
      * Calculate the x,y chromaticity coordinates in CIE 1931 x,y chromaticity space from the given
      * CIE XYZ coordinates.
      *
@@ -249,7 +262,7 @@ public class Converter {
      * @param m      matrix to invert.
      * @param output set the output to be the inverse of m.
      */
-    private static boolean invert(float[] m, /*out*/float[] output) {
+    static boolean invert(float[] m, /*out*/float[] output) {
         double a00 = m[0];
         double a01 = m[1];
         double a02 = m[2];

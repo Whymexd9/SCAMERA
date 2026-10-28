@@ -193,6 +193,177 @@ public class DngPreviewTest {
         assertEquals(6, r.orientation);
     }
 
+    /**
+     * A big-endian OpcodeList2 of four GainMaps (R, the two greens, B of an RGGB mosaic: pitch 2), 3 x 3 points: 1 at the
+     * centre, {@code corner[c]} at the corners, the mean of the two at the edge midpoints.
+     */
+    static byte[] cornerMaps(double[] corner) {
+        final int[][] sites = {{0, 0, 0}, {0, 1, 1}, {1, 0, 1}, {1, 1, 2}}; // top, left, colour
+        ByteBuffer b = ByteBuffer.allocate(4 + sites.length * (16 + 76 + 9 * 4)).order(ByteOrder.BIG_ENDIAN);
+        b.putInt(sites.length);
+        for (int[] s : sites) {
+            b.putInt(9).putInt(0x01030000).putInt(0).putInt(76 + 9 * 4);
+            b.putInt(s[0]).putInt(s[1]).putInt(H).putInt(W).putInt(0).putInt(1).putInt(2).putInt(2).putInt(3).putInt(3);
+            b.putDouble(0.5).putDouble(0.5).putDouble(0).putDouble(0).putInt(1);
+            final double k = corner[s[2]], e = (1 + k) / 2;
+            final double[] g = {k, e, k, e, 1, e, k, e, k};
+            for (double v : g) b.putFloat((float) v);
+        }
+        return b.array();
+    }
+
+    /**
+     * P370 (A10): a flat grey field shaded by the lens (corner gains R 2.6, G 2.4, B 2.2) renders flat through the file's GainMap:
+     * a corner equals the centre within 2 % (without the map the corner was about 1.25 EV darker and tinted).
+     */
+    @Test
+    public void theGainMapLiftsTheCorners() throws Exception {
+        final double[] n = {0.5, 1.0, 0.7}, corner = {2.6, 2.4, 2.2};
+        final byte[] ops = cornerMaps(corner);
+        final List<DngRaw.GainMap> maps = DngRaw.parseGainMaps(ops);
+        assertEquals(4, maps.size());
+        final int black = 64, white = 4095;
+        int[] raw = new int[W * H];
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x) {
+                final int c = (y & 1) == 0 ? ((x & 1) == 0 ? 0 : 1) : ((x & 1) == 0 ? 1 : 2);
+                final int m = ((y & 1) << 1) | (x & 1);
+                final double gain = maps.get(m).at((y + 0.5) / H, (x + 0.5) / W, 0);
+                raw[y * W + x] = (int) Math.round(black + 0.3 * n[c] / gain * (white - black));
+            }
+        final Tiff shaded = baseTags(16, 1, n, black, white), plain = baseTags(16, 1, n, black, white);
+        ByteBuffer d = ByteBuffer.allocate(2 * W * H).order(ByteOrder.LITTLE_ENDIAN);
+        for (int v : raw) d.putShort((short) v);
+        for (Tiff t : new Tiff[]{shaded, plain}) {
+            t.blob(0x111, 4, 1, d.array());
+            t.tag(0x117, 4, 1, 2 * W * H);
+        }
+        shaded.blob(0xC740, 7, ops.length, ops);
+        final DngPreview.Result r = DngPreview.read(ByteBuffer.wrap(shaded.build()), W / 2, H / 2);
+        final int[] centre = pixel(r, r.width / 2, r.height / 2);
+        for (int[] at : new int[][]{{0, 0}, {r.width - 1, 0}, {0, r.height - 1}, {r.width - 1, r.height - 1}}) {
+            final int[] p = pixel(r, at[0], at[1]);
+            for (int c = 0; c < 3; c++)
+                assertEquals("corner " + at[0] + "," + at[1] + " channel " + c, centre[c], p[c], Math.max(1.0, 0.02 * centre[c]));
+        }
+        // the former preview (no map): the corner well below the centre
+        final DngPreview.Result before = DngPreview.read(ByteBuffer.wrap(plain.build()), W / 2, H / 2);
+        final int[] c0 = pixel(before, before.width / 2, before.height / 2), k0 = pixel(before, 0, 0);
+        assertTrue("corner " + k0[1] + " centre " + c0[1], k0[1] < 0.8 * c0[1]);
+    }
+
+    /**
+     * P370 (review): the maps applied per output block (each CFA site's gain at its samples' mean position) render what shading
+     * every sample renders, within 0.5 % (1 code) - a textured scene, the green maps of the two sites apart, at four request sizes.
+     */
+    @Test
+    public void theBlockShadingIsTheSampleShading() throws Exception {
+        final double[] n = {0.5, 1.0, 0.7};
+        final byte[] ops = cornerMaps(new double[]{2.6, 2.4, 2.2});
+        // the second green site's map 3 % stronger at the corners than the first's
+        final ByteBuffer o = ByteBuffer.wrap(ops).order(ByteOrder.BIG_ENDIAN);
+        final int second = 4 + 2 * (16 + 76 + 9 * 4) + 16 + 76;
+        for (int i : new int[]{0, 2, 6, 8}) o.putFloat(second + 4 * i, o.getFloat(second + 4 * i) * 1.03f);
+        final java.util.Random rnd = new java.util.Random(370);
+        final int black = 64, white = 4095;
+        int[] raw = new int[W * H];
+        for (int y = 0; y < H; ++y)
+            for (int x = 0; x < W; ++x) {
+                final int c = (y & 1) == 0 ? ((x & 1) == 0 ? 0 : 1) : ((x & 1) == 0 ? 1 : 2);
+                final double tex = 0.25 + 0.15 * Math.sin(x * 0.7) * Math.cos(y * 0.45) + 0.05 * rnd.nextGaussian();
+                final double r2 = ((x - W / 2.0) * (x - W / 2.0) + (y - H / 2.0) * (y - H / 2.0)) / (W * W / 4.0);
+                raw[y * W + x] = (int) Math.round(black + Math.max(0, tex * n[c] / (1 + 1.5 * r2)) * (white - black));
+            }
+        final Tiff t = baseTags(16, 1, n, black, white);
+        ByteBuffer d = ByteBuffer.allocate(2 * W * H).order(ByteOrder.LITTLE_ENDIAN);
+        for (int v : raw) d.putShort((short) v);
+        t.blob(0x111, 4, 1, d.array());
+        t.tag(0x117, 4, 1, 2 * W * H);
+        t.blob(0xC740, 7, ops.length, ops);
+        final byte[] file = t.build();
+        for (int div : new int[]{1, 2, 4, 8}) {
+            final DngPreview.Result fast = DngPreview.read(ByteBuffer.wrap(file), W / div, H / div);
+            DngPreview.Result ref;
+            DngPreview.perSampleShadingForTest = true;
+            try {
+                ref = DngPreview.read(ByteBuffer.wrap(file), W / div, H / div);
+            } finally {
+                DngPreview.perSampleShadingForTest = false;
+            }
+            assertEquals(ref.width, fast.width);
+            int worst = 0;
+            for (int y = 0; y < ref.height; y++)
+                for (int x = 0; x < ref.width; x++) {
+                    final int[] a = pixel(ref, x, y), b = pixel(fast, x, y);
+                    for (int c = 0; c < 3; c++) {
+                        assertTrue("request 1/" + div + " pixel " + x + "," + y + " channel " + c + ": " + a[c] + " vs " + b[c],
+                                Math.abs(a[c] - b[c]) <= Math.max(1.0, 0.005 * a[c]));
+                        worst = Math.max(worst, Math.abs(a[c] - b[c]));
+                    }
+                }
+            assertTrue(worst <= 2);
+        }
+    }
+
+    /** P370 (A10): a dual-illuminant DNG at a daylight neutral renders with DngColor's matrix, not ForwardMatrix1 alone. */
+    @Test
+    public void aDualIlluminantDngTakesTheEditorsMatrix() throws Exception {
+        final double[] n = {0.47, 1.0, 0.62};
+        final Tiff t = baseTags(16, 1, n, 64, 1023);
+        final double[] cm1 = {0.6892, 0.0196, -0.3223, -0.7131, 1.8376, -0.1520, -0.0884, 0.2258, 0.6427}; // A
+        final double[] cm2 = {0.6178, -0.1002, -0.0970, -0.4729, 1.4118, 0.0345, -0.0861, 0.2593, 0.4441}; // D65
+        final double[] fm1 = {0.7000, 0.1500, 0.1142, 0.2800, 0.8000, -0.0800, 0.0300, -0.2000, 0.9949};
+        final double[] fm2 = {0.6200, 0.2500, 0.0942, 0.3000, 0.6600, 0.0400, 0.0300, 0.1000, 0.6949};
+        t.blob(0xC621, 10, 9, DngRawTest.srationals(cm1));
+        t.blob(0xC622, 10, 9, DngRawTest.srationals(cm2));
+        t.blob(0xC714, 10, 9, DngRawTest.srationals(fm1));
+        t.blob(0xC715, 10, 9, DngRawTest.srationals(fm2));
+        t.blob(0xC623, 10, 9, DngRawTest.srationals(1.02, 0, 0, 0, 1, 0, 0, 0, 0.97));
+        t.blob(0xC624, 10, 9, DngRawTest.srationals(0.99, 0, 0, 0, 1, 0, 0, 0, 1.03));
+        t.tag(0xC65A, 3, 1, 17);
+        t.tag(0xC65B, 3, 1, 21);
+        final int[] raw = scene(n, 64, 1023);
+        ByteBuffer d = ByteBuffer.allocate(2 * W * H).order(ByteOrder.LITTLE_ENDIAN);
+        for (int v : raw) d.putShort((short) v);
+        t.blob(0x111, 4, 1, d.array());
+        t.tag(0x117, 4, 1, 2 * W * H);
+        final byte[] file = t.build();
+        final DngPreview p = DngPreview.parse(ByteBuffer.wrap(file));
+        final double[] m = p.previewMatrix(p.asShotNeutral);
+        final DngColor colour = DngColor.of(p);
+        final double[] want = colour.cameraToSrgb(colour.asShotNeutral);
+        double change = 0;
+        final double[] former = p.cameraToSrgb(p.asShotNeutral);
+        for (int i = 0; i < 9; i++) {
+            assertEquals("entry " + i, want[i], m[i], 1e-6);
+            change = Math.max(change, Math.abs(former[i] - m[i]));
+        }
+        assertTrue("the ForwardMatrix1 matrix differs by " + change, change > 0.02);
+        // the neutral stays white, the render grey
+        final double[] w = DngColor.apply(m, n);
+        for (int c = 0; c < 3; c++) assertEquals(1, w[c], 1e-3);
+        assertGreyAndRed(DngPreview.read(ByteBuffer.wrap(file), W / 2, H / 2));
+    }
+
+    /** P370 (A10): a single-profile DNG (P243: CM1 + FM1, one illuminant twice) keeps its former matrix within 1e-6. */
+    @Test
+    public void aSingleProfileDngKeepsItsMatrix() throws Exception {
+        final double[] n = {0.52, 1.0, 0.66};
+        final Tiff t = baseTags(16, 1, n, 64, 1023);
+        t.blob(0xC621, 10, 9, DngRawTest.srationals(0.6178, -0.1002, -0.0970, -0.4729, 1.4118, 0.0345, -0.0861, 0.2593, 0.4441));
+        t.blob(0xC714, 10, 9, DngRawTest.srationals(0.6200, 0.2500, 0.0942, 0.3000, 0.6600, 0.0400, 0.0300, 0.1000, 0.6949));
+        t.tag(0xC65A, 3, 1, 21);
+        t.tag(0xC65B, 3, 1, 21);
+        final int[] raw = scene(n, 64, 1023);
+        ByteBuffer d = ByteBuffer.allocate(2 * W * H).order(ByteOrder.LITTLE_ENDIAN);
+        for (int v : raw) d.putShort((short) v);
+        t.blob(0x111, 4, 1, d.array());
+        t.tag(0x117, 4, 1, 2 * W * H);
+        final DngPreview p = DngPreview.parse(ByteBuffer.wrap(t.build()));
+        final double[] m = p.previewMatrix(p.asShotNeutral), former = p.cameraToSrgb(p.asShotNeutral);
+        for (int i = 0; i < 9; i++) assertEquals("entry " + i, former[i], m[i], 1e-6);
+    }
+
     @Test
     public void tiffMagic() {
         assertFalse(DngPreview.isTiff(new byte[]{(byte) 0xFF, (byte) 0xD8, 0, 0}, 4));

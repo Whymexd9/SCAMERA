@@ -193,11 +193,14 @@ public class HybridSettingsTest {
         PreferenceScreen root=inflate();
         PreferenceScreen sharp=root.findPreference("scam_hybrid_why_sharp_screen");
         assertNotNull(sharp);
-        for(String kept:new String[]{"pref_scam_hybrid_why_sharp_note","pref_scam_hybrid_why_sharp_gain","pref_scam_hybrid_why_sharp_domain",
+        for(String kept:new String[]{"pref_scam_hybrid_why_sharp_note","pref_scam_hybrid_why_sharp_domain",
                 "pref_scam_hybrid_why_sharp_scale","pref_scam_hybrid_why_sharp_usm_amount","pref_scam_hybrid_why_sharp_bilateral_amount",
                 "pref_scam_hybrid_why_sharp_gf_lc","pref_scam_hybrid_why_sharp_film_grain","pref_scam_hybrid_why_sharp_rl1_amount",
                 "pref_scam_hybrid_why_sharp_halo_control"})
             assertNotNull(kept,sharp.findPreference(kept));
+        // 2026-10-27 (owner: settings anyone can set up alone): the overall strength is «Резкость» of «Снимок»
+        assertNotNull(((PreferenceGroup)root.findPreference("root_colour")).findPreference("pref_scam_hybrid_why_sharp_gain"));
+        assertNull(sharp.findPreference("pref_scam_hybrid_why_sharp_gain"));
         String[] gone={"pref_scam_hybrid_sharp_mode","sharp_settings_screen","unsharp_settings_screen","deconvolution_settings_screen",
                 "microcontrast_settings_screen","pref_sharp_usm_enabled_key","pref_sharp_radius_key","pref_sharp_deconv_enabled_key",
                 "pref_sharp_micro_enabled_key","pref_scam_hybrid_why_post_sharp","pref_scam_hybrid_why_sharp_guard",
@@ -674,8 +677,10 @@ public class HybridSettingsTest {
         prefs.edit().clear().commit();
         PreferenceScreen settings=inflate();
         assertNull(settings.findPreference("scam_hybrid_jsr_screen"));
-        PreferenceScreen photo=settings.findPreference("photo_size_screen");
-        assertNotNull("SIMPLE_UI §4: with the resolution in «Фото → Размер фото»",photo.findPreference("pref_scam_hybrid_auto2x"));
+        // 2026-10-27: Auto 2× is a fine setting of the size after the merge («Для опытных › Другие тонкие настройки»)
+        PreferenceScreen advanced=settings.findPreference("advanced_screen");
+        assertNotNull("in «Другие тонкие настройки › Сетка 2× и уменьшение»",advanced.findPreference("pref_scam_hybrid_auto2x"));
+        assertEquals("adv_output",((Preference)settings.findPreference("pref_scam_hybrid_auto2x")).getParent().getKey());
         assertTrue(prefs.getBoolean("pref_scam_hybrid_auto2x",false));
         String tuning=PreferenceKeys.hybridTuningText();
         assertTrue(tuning,tuning.contains("auto2x 1\n"));

@@ -78,6 +78,45 @@ public final class SettingsAvailability {
     }
 
     /**
+     * P369: a film simulation is set (FilmSim.current: a stock and a strength above 0, its default 100 %); {@code alone}: at
+     * 100 %, where the film's print replaces ours entirely.
+     */
+    private boolean film(boolean alone) {
+        if (text("pref_film_sim_stock", "").trim().isEmpty()) return false;
+        final double strength = PreferenceNumber.read(values.get("pref_film_sim_strength"), 100);
+        return alone ? strength >= 100 : strength > 0;
+    }
+
+    private static final String WHY = "pref_scam_hybrid_why_", COLOUR = "pref_scam_hybrid_colour_";
+
+    /**
+     * P369: rows of our tone and colour the film never sees (why/combine FILM_SIM: the film is fed the scene light x ae ahead of
+     * the fusion's gain, the shoulders, the OKLab grading, AgX / ACES / Uchimura / the own curve and the display chain; WhyLumaSharpen
+     * takes the guided filter's local contrast and its grain on ours only). The colour matrix's rows act on the film too: warmth,
+     * tint, the kept scene light and the calibration (WhyTone.colourMatrix), as do the exposure rows (ae x the overflow's cut).
+     */
+    static boolean filmBypassed(String key) {
+        if (key.startsWith(COLOUR)) {
+            final String k = key.substring(COLOUR.length());
+            return !(k.equals("warmth") || k.equals("tint") || k.equals("keep_warm") || k.equals("keep_cool") || k.startsWith("cal_"));
+        }
+        if (!key.startsWith(WHY)) return false;
+        final String k = key.substring(WHY.length());
+        if (k.startsWith("agx_") || k.startsWith("aces_") || k.startsWith("uchi_") || k.startsWith("curve_")) return true;
+        switch (k) {
+            case "macro_contrast": case "gamma": case "film_toe": case "contrast_boost": case "hl_soft": case "hl_white": case "ccm_sat":
+            case "vibrance": case "vibrance_sky": case "vibrance_green":
+            case "bright_thresh": case "dark_thresh": case "dark_pixel_thresh": case "hl_boost": case "shadow_str": case "highlight_str":
+            case "weight_dark2": case "weight_hl": case "weight_mid": case "weight_bright": case "weight_center": case "blend_smoothness":
+            case "ef_coarse":
+            case "sharp_gf_lc": case "sharp_film_grain":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /**
      * Rows that only belong to another choice and are hidden instead of explained: the settings of the photo formats that
      * are not chosen (HEIC quality / 10 bit, WebP quality / lossless, the AVIF rows, «HDR в HEIC / AVIF» outside HEIC / AVIF)
      * and «Также сохранять JPEG» while the format is JPEG («Цветовое пространство» serves every format); and the rows of what this phone does not have (the Xiaomi
@@ -103,19 +142,33 @@ public final class SettingsAvailability {
     }
 
     public String reason(String key) {
+        // P369: the film gates of the shot (PostPipeline.gainMapWanted, wantsLocalContrast: off with any film) and the rows the
+        // film's print replaces at 100 % (below it they act on the share without the film, so they stay open)
+        if (film(false)) {
+            if (key.equals("pref_ultrahdr_key"))
+                return Lang.t("С плёночной симуляцией фото сохраняется в SDR: HDR изменил бы отпечаток плёнки.",
+                        "With a film simulation the photo is saved in SDR: HDR would change the film's print.");
+            if (key.equals(WHY + "texture"))
+                return Lang.t("С плёночной симуляцией выключена: фактуру даёт плёнка.", "Off with a film simulation: the film gives the texture.");
+            if (film(true) && filmBypassed(key))
+                return Lang.t("С плёночной симуляцией на силе 100 % не действует: тон и цвет задаёт плёнка. При силе ниже 100 % действует на долю без плёнки.",
+                        "No effect with a film simulation at 100 %: the film sets the tone and colour. Below 100 % it acts on the share without the film.");
+        }
         // The denoise and watermark switches sit on a parent page of these rows (P6), so the rule replaces android:dependency.
         if ((key.startsWith("pref_scam_hybrid_dn_") || any(key, "pref_scam_hybrid_why_bracket_denoise", "pref_scam_hybrid_why_chroma_denoise"))
-                && !on("pref_scam_hybrid_denoise", true)) return Lang.t("Включите «Шумоподавление».", "Turn on “Noise reduction”.");
+                && !on("pref_scam_hybrid_denoise", true)) return Lang.t("Включите «Все шумодавы» (Для опытных › SHDR › Шумоподавление: подробно).",
+                "Turn on “All denoisers” (For experts › SHDR › Noise reduction: details).");
         // Denoise engine (pref_scam_hybrid_dn_engine): The reference finish (ScamDenoise) reads the dn_ rows, NLM (ScamHdrDenoise) its two strengths.
         boolean nlm = text("pref_scam_hybrid_dn_engine", "multiscale").trim().equals("nlm");
         if (key.startsWith("pref_scam_hybrid_dn_") && !key.equals("pref_scam_hybrid_dn_engine") && nlm)
-            return Lang.t("Только для многомасштабного шумодава в «Шумодав SHDR».", "Multiscale denoiser only (“SHDR denoiser”).");
+            return Lang.t("Только для многомасштабного шумодава в «Способ шумодава» (Для опытных › SHDR › Шумоподавление: подробно).",
+                    "Multiscale denoiser only (“Denoise method”, For experts › SHDR › Noise reduction: details).");
         if (any(key, "pref_scam_hybrid_post_luma", "pref_scam_hybrid_post_chroma") && !nlm)
-            return Lang.t("Только для шумодава NLM в «Шумодав SHDR».", "NLM denoiser only (“SHDR denoiser”).");
+            return Lang.t("Только для шумодава NLM в «Способ шумодава».", "NLM denoiser only (“Denoise method”).");
         // P306: a 200 MP shot never takes the NLM denoise (ScamHdrDenoise: with "nlm" it keeps the merge alone)
         if (any(key, "pref_scam_hybrid_post_luma", "pref_scam_hybrid_post_chroma") && editing200)
-            return Lang.t("На снимках 200 Мп NLM не работает: они остаются без шумодава. Выберите «Многомасштабный» в «Шумодав SHDR».",
-                    "NLM does not run on 200 MP shots: they keep no denoise. Choose “Multiscale” in “SHDR denoiser”.");
+            return Lang.t("На снимках 200 Мп NLM не работает: они остаются без шумодава. Выберите «Многомасштабный» в «Способ шумодава».",
+                    "NLM does not run on 200 MP shots: they keep no denoise. Choose “Multiscale” in “Denoise method”.");
         // the multiscale denoise boosts few-frame areas through its strength map only (ScamDenoise wantMap); NLM always does
         if (key.equals("pref_scam_hybrid_bento_denoise_max") && !nlm && text("pref_scam_hybrid_dn_strength_map", "auto").trim().equals("uniform"))
             return Lang.t("Только при «Карта силы» = «Авто»: при «Равномерно» многомасштабный шумодав не усиливает места из малого числа кадров.",
@@ -124,9 +177,11 @@ public final class SettingsAvailability {
         // then made with the downsampler (HybridFinalResize), 2x is kept as it is.
         String output = text("pref_scam_hybrid_output", "sensor").trim();
         if (key.equals("pref_scam_hybrid_downsampler") && !any(output, "12", "16", "20"))
-            return Lang.t("Только при «Разрешение» 12, 16 или 20 МП.", "Only with “Resolution” 12, 16 or 20 MP.");
+            return Lang.t("Только при «Разрешение» 12, 16 или 20 МП (Файл и размер › Размер фото).",
+                    "Only with “Resolution” 12, 16 or 20 MP (File and size › Photo size).");
         if (key.equals("pref_scam_hybrid_auto2x") && output.equals("sensor"))
-            return Lang.t("Только на сетке 2×: «Разрешение» 12, 16, 20 МП или 2×.", "2× grid only: “Resolution” 12, 16, 20 MP or 2×.");
+            return Lang.t("Только на сетке 2×: «Разрешение» 12, 16, 20 МП или 2× (Файл и размер › Размер фото).",
+                    "2× grid only: “Resolution” 12, 16, 20 MP or 2× (File and size › Photo size).");
         // P306: a 200 MP shot is denoised on its 2x2 means, the 2x grid path, whatever the resolution (ScamDenoise: s = 2)
         if (key.equals("pref_scam_hybrid_dn_chroma_2x_keep") && output.equals("sensor") && !fullRes200)
             return Lang.t("Только на сетке 2× («Разрешение» 12, 16, 20 МП или 2×) и в снимках 200 Мп.",
@@ -141,20 +196,22 @@ public final class SettingsAvailability {
         // ...and while it is on, the merge reads the mode's value of a merge row it replaces (MotionMode.DEFAULTS, read by
         // PreferenceKeys.hybridValue / hybridSwitch); it has no row for the base widening: always 0 there (P111)
         if (motion && any(key, "pref_scam_hybrid_motion_boost", "pref_scam_hybrid_boost_value", "pref_scam_hybrid_motion_threshold"))
-            return Lang.t("В режиме «Движение» действует его значение (страница «Движение»).", "In “Motion” mode its own value applies (the “Motion” page).");
+            return Lang.t("В режиме «Движение» действует его значение (страница «Движение»: Для опытных › Другие тонкие настройки › Кадры склейки).",
+                    "In “Motion” mode its own value applies (the “Motion” page: For experts › More fine settings › Merge frames).");
         if (motion && key.equals("pref_scam_hybrid_widen_below"))
             return Lang.t("В режиме «Движение» не действует: база там не расширяется.", "Not used in “Motion” mode: the base is never widened there.");
         // «Порог дисперсии для усиления» is not replaced by the mode: it acts with the boost switch in effect (the mode's own in the mode) and F6
         if (key.equals("pref_scam_hybrid_boost_threshold")
                 && !(motion ? on("pref_scam_hybrid_mm_motion_boost", true) : on("pref_scam_hybrid_motion_boost", true)))
-            return motion ? Lang.t("Включите «Против двоения» на странице «Движение».",
-                    "Turn on “Anti-ghosting” on the “Motion” page.")
+            return motion ? Lang.t("Включите «Против двоения» на странице «Движение» (Для опытных › Другие тонкие настройки › Кадры склейки).",
+                    "Turn on “Anti-ghosting” on the “Motion” page (For experts › More fine settings › Merge frames).")
                     : Lang.t("Включите «Против двоения».", "Turn on “Anti-ghosting”.");
         // Settings audit 2026-10-21 («Кадры светов и теней»): the mode replaces the photo rows of the ring's frame count and of the
         // highlight / shadow switches too (MotionMode.DEFAULTS), and the frames' rows act through the switch the shot reads - the
         // mode's own while it is on (the plan and the merge read it: PreferenceKeys.hybridValue / hybridSwitch)
         if (motion && any(key, "pref_scam_hybrid_zsl_frames", "pref_scam_hybrid_bento", "pref_scam_hybrid_shasta"))
-            return Lang.t("В режиме «Движение» действует его значение (страница «Движение»).", "In “Motion” mode its own value applies (the “Motion” page).");
+            return Lang.t("В режиме «Движение» действует его значение (страница «Движение»: Для опытных › Другие тонкие настройки › Кадры склейки).",
+                    "In “Motion” mode its own value applies (the “Motion” page: For experts › More fine settings › Merge frames).");
         // P320: a DCG shot takes no shadow frames (its high-gain read holds the shadows; HybridPlan, the worker's DCG tuning)
         if (dcg && !motion && any(key, "pref_scam_hybrid_shasta", "pref_scam_hybrid_shasta_mode", "pref_scam_hybrid_shasta_motion_max",
                 "pref_scam_hybrid_shasta_frames", "pref_scam_hybrid_shasta_ev", "pref_scam_hybrid_shasta_sharpness",
@@ -167,13 +224,15 @@ public final class SettingsAvailability {
         if (bento.equals("0") && any(key, "pref_scam_hybrid_bento_frames", "pref_scam_hybrid_bento_validate",
                 "pref_scam_hybrid_bento_motion_max", "pref_scam_hybrid_bento_factor", "pref_scam_hybrid_bento_trigger",
                 "pref_scam_hybrid_bento_sigma", "pref_scam_hybrid_bento_ramp", "pref_scam_hybrid_bento_chroma_sigma", "pref_scam_hybrid_bento_scam"))
-            return motion ? Lang.t("Включите «Кадры светов» на странице «Движение».", "Turn on “Highlight frames” on the “Motion” page.")
+            return motion ? Lang.t("Включите «Кадры светов» на странице «Движение» (Для опытных › Другие тонкие настройки › Кадры склейки).",
+                    "Turn on “Highlight frames” on the “Motion” page (For experts › More fine settings › Merge frames).")
                     : Lang.t("Включите «Кадры светов».", "Turn on “Highlight frames”.");
         // «Кадры теней» off: no long frame is planned. The whole category follows the switch in effect here, not by
         // android:dependency: in «Движение» the photo switch is greyed (the mode's own rules), which would grey its dependants too
         if (!shasta && any(key, "pref_scam_hybrid_shasta_mode", "pref_scam_hybrid_shasta_motion_max", "pref_scam_hybrid_shasta_frames",
                 "pref_scam_hybrid_shasta_ev", "pref_scam_hybrid_shasta_sharpness", "pref_scam_hybrid_shasta_max_ratio", "pref_scam_hybrid_lut_sigma"))
-            return motion ? Lang.t("Включите «Кадры теней» на странице «Движение».", "Turn on “Shadow frames” on the “Motion” page.")
+            return motion ? Lang.t("Включите «Кадры теней» на странице «Движение» (Для опытных › Другие тонкие настройки › Кадры склейки).",
+                    "Turn on “Shadow frames” on the “Motion” page (For experts › More fine settings › Merge frames).")
                     : Lang.t("Включите «Кадры теней».", "Turn on “Shadow frames”.");
         // the worker reads the motion limit of the long frames under shastaForce only («Всегда»)
         if (key.equals("pref_scam_hybrid_shasta_motion_max") && !text("pref_scam_hybrid_shasta_mode", "2").trim().equals("2"))
@@ -229,8 +288,8 @@ public final class SettingsAvailability {
         }
         // P134 «Цвет»: the AgX looks but «Custom» set their own saturation (WhyAe.LOOKS); a grading zone's hue needs its strength
         if (key.equals("pref_scam_hybrid_why_agx_sat") && !text("pref_scam_hybrid_why_agx_look", "4").equals("4"))
-            return Lang.t("Только при «Стиль AgX» = «Custom»: другие стили задают насыщенность сами.",
-                    "Only with “AgX look” = “Custom”: the other looks set their own saturation.");
+            return Lang.t("Только при «Стиль AgX» = «Свой» (Для опытных › SHDR › Тон Why › Кривая AgX и ACES): другие стили задают насыщенность сами.",
+                    "Only with “AgX look” = “Custom” (For experts › SHDR › Why tone › AgX and ACES curves): the other looks set their own saturation.");
         for (String zone : new String[]{"shadows", "mids", "highlights"})
             if (key.equals("pref_scam_hybrid_colour_grade_" + zone + "_hue") && PreferenceNumber.read(values.get("pref_scam_hybrid_colour_grade_" + zone + "_str"), 0) <= 0)
                 return Lang.t("Сначала задайте силу этой зоны.", "Set this zone's strength first.");
@@ -257,12 +316,13 @@ public final class SettingsAvailability {
             String other = on("pref_scam_hybrid_why_curve_on", false) ? Lang.t("своя кривая", "the own curve")
                     : on("pref_scam_hybrid_why_uchi_on", false) ? "Uchimura" : on("pref_scam_hybrid_why_aces_on", false) ? "ACES" : null;
             if (other != null)
-                return Lang.t("Сейчас вместо AgX работает " + other + " (в «Кривая AgX и ACES»).",
-                        "Now " + other + " works instead of AgX (in “AgX and ACES curve”).");
+                return Lang.t("Сейчас вместо AgX работает " + other + " (Для опытных › SHDR › Тон Why › Кривая AgX и ACES).",
+                        "Now " + other + " works instead of AgX (For experts › SHDR › Why tone › AgX and ACES curves).");
         }
         if (key.startsWith("pref_scam_hybrid_why_agx_") && !key.equals("pref_scam_hybrid_why_agx_look")
                 && !text("pref_scam_hybrid_why_agx_look", "4").equals("4"))
-            return Lang.t("Только в стиле AgX «Custom»: другие стили задают эти значения сами.", "AgX look “Custom” only: the other looks set these values themselves.");
+            return Lang.t("Только в стиле AgX «Свой» (Для опытных › SHDR › Тон Why › Кривая AgX и ACES): другие стили задают эти значения сами.",
+                    "AgX look “Custom” only (For experts › SHDR › Why tone › AgX and ACES curves): the other looks set these values themselves.");
         // ScamRgb: the colour prior, the defringe and the clip band act only inside the per-channel recovery (perChannel needs a
         // strength above 0; the merge sends the band's clip flags only then)
         if (any(key, "pref_scam_hybrid_highlight_chroma", "pref_scam_hybrid_highlight_defringe", "pref_scam_hybrid_highlight_band")
@@ -271,8 +331,8 @@ public final class SettingsAvailability {
         // why/combine: clarity and the flat-area protection scale the WHY detail delta, which is off at a detail strength of 0
         if (any(key, "pref_scam_hybrid_why_clarity", "pref_scam_hybrid_why_flat_protect")
                 && PreferenceNumber.read(values.get("pref_scam_hybrid_why_sharp_gain"), 1) == 0)
-            return Lang.t("Не действует при «Сила детали резкости Why» = 0: работает только с деталью Why.",
-                    "No effect with “Why sharpening detail strength” = 0: acts on the Why detail only.");
+            return Lang.t("Не действует при «Резкость» = 0 (группа «Снимок»): работает только с деталью Why.",
+                    "No effect with “Sharpness” = 0 (the “Picture” group): acts on the Why detail only.");
         if (key.startsWith("pref_watermark_") && !on("pref_show_watermark_key", true)) return Lang.t("Включите водяной знак.", "Turn on the watermark.");
         // «Формат фото»: Ultra HDR and the JPEG quality act on a JPEG, which a HEIC / WebP / AVIF shot writes only with «Также сохранять JPEG».
         if (!writesJpeg()) {

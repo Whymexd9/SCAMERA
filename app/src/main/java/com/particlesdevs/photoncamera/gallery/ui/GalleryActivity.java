@@ -20,6 +20,7 @@ import androidx.navigation.fragment.NavHostFragment;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.base.BaseActivity;
 import com.particlesdevs.photoncamera.databinding.ActivityGalleryBinding;
+import com.particlesdevs.photoncamera.gallery.editor.PhotoEditorFragment;
 import com.particlesdevs.photoncamera.gallery.files.GalleryFileOperations;
 import com.particlesdevs.photoncamera.gallery.files.ImageFile;
 import com.particlesdevs.photoncamera.gallery.helper.Constants;
@@ -57,41 +58,88 @@ public class GalleryActivity extends BaseActivity {
         activityGalleryBinding = DataBindingUtil.setContentView(this, R.layout.activity_gallery);
         viewModel = new ViewModelProvider(this).get(GalleryViewModel.class);
         
+        // A recreation (rotation, a theme change, process death): the NavHostFragment restored the back stack and each entry's
+        // arguments, so nothing navigates again (setGraph with another start popped it: the editor and its unsaved edits were lost,
+        // the launcher route went back to the library). The lists are read again only for a new GalleryViewModel (the first start,
+        // or after process death); a surviving one keeps the folder the viewer shows.
+        boolean fresh = savedInstanceState == null;
+        List<GalleryItem> shown = viewModel.getCurrentFolderImages().getValue();
+        boolean refill = fresh || shown == null || shown.isEmpty();
+        Bundle editArgs = null;
         // Check if this is a VIEW or REVIEW intent from another app (like HedgeCam2)
-        String action = intent.getAction();
-        if ((Intent.ACTION_VIEW.equals(action) || Constants.ACTION_REVIEW.equals(action)) 
-                && intent.getData() != null) {
-            handleExternalViewIntent(intent.getData());
-        } else if (Intent.ACTION_EDIT.equals(action) && intent.getData() != null) {
-            openEditorFor(intent.getData(), intent.getType());
-        } else {
+        if (isViewIntent(intent)) {
+            if (refill) handleExternalViewIntent(intent.getData(), fresh);
+        } else if (isEditIntent(intent)) {
+            externalUsage = true;
+            if (refill) editArgs = editorFor(intent.getData(), intent.getType());
+        } else if (refill) {
             // Normal gallery mode - show all media
             viewModel.fetchAllMedia();
             viewModel.setCurrentFolderImages(viewModel.getAllSelectedImageFolder().getValue());
-            if (Intent.ACTION_MAIN.equals(action) && intent.hasCategory(Intent.CATEGORY_LAUNCHER)) openLibraryFirst();
         }
+        NavHostFragment host = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.gallery_navigation_host);
+        if (host != null) startNavigation(host.getNavController(), intent, fresh, editArgs);
+    }
+
+    static boolean isViewIntent(Intent intent) {
+        String action = intent.getAction();
+        return (Intent.ACTION_VIEW.equals(action) || Constants.ACTION_REVIEW.equals(action)) && intent.getData() != null;
+    }
+
+    static boolean isEditIntent(Intent intent) {
+        return !isViewIntent(intent) && Intent.ACTION_EDIT.equals(intent.getAction()) && intent.getData() != null;
     }
 
     /**
-     * P347 (owner, 2026-10-26: «когда открывал галерею через иконку на рабочем столе открывалось не последнее фото, а открывался наш
+     * The start destination of a new gallery. P351: ACTION_EDIT from another app starts on the editor ({@code editArgs}). P347
+     * (owner, 2026-10-26: «когда открывал галерею через иконку на рабочем столе открывалось не последнее фото, а открывался наш
      * список по папкам как обычно»): the gallery's own launcher icon starts on the library (the folders and the photo grid); the
-     * camera's thumbnail still opens the viewer on the newest photo (the graph's start destination). Back from a photo opened there
-     * returns to the library.
+     * camera's thumbnail and VIEW / REVIEW still open the viewer (the graph's start destination). Back from a photo opened there
+     * returns to the library. When {@code fresh} is false (a recreation) the restored back stack stays and only the start
+     * destination is put back into the graph the NavHostFragment inflated again.
      */
-    private void openLibraryFirst() {
-        NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.gallery_navigation_host);
-        if (navHostFragment == null) return;
-        NavController navController = navHostFragment.getNavController();
-        androidx.navigation.NavGraph graph = navController.getNavInflater().inflate(R.navigation.gallery_nav_graph);
-        graph.setStartDestination(R.id.imageLibraryFragment);
-        navController.setGraph(graph, null);
+    static void startNavigation(NavController nav, Intent intent, boolean fresh, @Nullable Bundle editArgs) {
+        int start;
+        if (isEditIntent(intent)) start = R.id.photoEditorFragment;
+        else if (!isViewIntent(intent) && Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_LAUNCHER))
+            start = R.id.imageLibraryFragment;
+        else return;
+        if (!fresh) {
+            // the XML graph again (start: the viewer) under the restored back stack: navigateUp at the root library (or editor)
+            // relaunched the gallery on the viewer at the newest photo instead of leaving
+            nav.getGraph().setStartDestination(start);
+            return;
+        }
+        androidx.navigation.NavGraph graph = nav.getNavInflater().inflate(R.navigation.gallery_nav_graph);
+        graph.setStartDestination(start);
+        nav.setGraph(graph, start == R.id.photoEditorFragment ? editArgs : null);
     }
-    
+
+    /** The position of another app's photo in the gallery's list: by URI, absolute path, or display name and size; -1 for none. */
+    static int positionOf(List<GalleryItem> items, Uri uri, ImageFile external) {
+        String externalPath = uri.getPath();
+        String externalDisplayName = external.getDisplayName();
+        for (int i = 0; i < items.size(); i++) {
+            GalleryItem item = items.get(i);
+            if (item.getFile() == null) continue;
+            // Try to match by URI (most reliable for content:// URIs)
+            if (uri.equals(item.getFile().getFileUri())) return i;
+            // Try to match by absolute path (for file:// URIs)
+            if (externalPath != null && item.getFile().getAbsolutePath() != null && externalPath.equals(item.getFile().getAbsolutePath()))
+                return i;
+            // Try to match by display name and size as last resort
+            if (externalDisplayName != null && externalDisplayName.equals(item.getFile().getDisplayName())
+                    && external.getSize() == item.getFile().getSize()) return i;
+        }
+        return -1;
+    }
+
     /**
      * Handle VIEW intent from external apps (like HedgeCam2)
-     * Loads all gallery images but starts viewing at the selected image
+     * Loads all gallery images but starts viewing at the selected image ({@code select}: a new gallery; after process death the
+     * viewer's saved position applies)
      */
-    private void handleExternalViewIntent(Uri uri) {
+    private void handleExternalViewIntent(Uri uri, boolean select) {
         try {
             // Load all media from the gallery first
             viewModel.fetchAllMedia();
@@ -106,36 +154,11 @@ public class GalleryActivity extends BaseActivity {
             
             if (allImagesFolder != null && !allImagesFolder.getFiles().isEmpty()) {
                 List<GalleryItem> allImages = allImagesFolder.getFiles();
-                
+
                 // Try to find the external image in the existing gallery
                 // Match by URI, absolute path, or display name
-                int foundPosition = -1;
-                String externalPath = uri.getPath();
-                String externalDisplayName = externalImageFile.getDisplayName();
-                
-                for (int i = 0; i < allImages.size(); i++) {
-                    GalleryItem item = allImages.get(i);
-                    if (item.getFile() != null) {
-                        // Try to match by URI (most reliable for content:// URIs)
-                        if (uri.equals(item.getFile().getFileUri())) {
-                            foundPosition = i;
-                            break;
-                        }
-                        // Try to match by absolute path (for file:// URIs)
-                        if (externalPath != null && item.getFile().getAbsolutePath() != null 
-                                && externalPath.equals(item.getFile().getAbsolutePath())) {
-                            foundPosition = i;
-                            break;
-                        }
-                        // Try to match by display name and size as last resort
-                        if (externalDisplayName != null && externalDisplayName.equals(item.getFile().getDisplayName())
-                                && externalImageFile.getSize() == item.getFile().getSize()) {
-                            foundPosition = i;
-                            break;
-                        }
-                    }
-                }
-                
+                int foundPosition = positionOf(allImages, uri, externalImageFile);
+
                 if (foundPosition >= 0) {
                     // Image found in gallery, use its position
                     initialPosition = foundPosition;
@@ -156,20 +179,11 @@ public class GalleryActivity extends BaseActivity {
                 viewModel.getCurrentFolderImages().setValue(singleItemList);
             }
             
-            // Set up the navigation graph with initial arguments for the start destination
-            // This avoids creating a duplicate back stack entry
-            NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager()
-                    .findFragmentById(R.id.gallery_navigation_host);
-            if (navHostFragment != null) {
-                NavController navController = navHostFragment.getNavController();
-                Bundle bundle = new Bundle();
-                bundle.putInt(Constants.IMAGE_POSITION_KEY, initialPosition);
-                bundle.putString(Constants.EXTERNAL_URI_KEY, uri.toString());
-                
-                // Set the graph with default arguments instead of navigating
-                // Since imageViewerFragment is the start destination, this prevents duplicate back stack entries
-                navController.setGraph(R.navigation.gallery_nav_graph, bundle);
-            }
+            // The viewer (the graph's start, already created without arguments by the NavHostFragment) moves to the photo when it
+            // binds the list. A start position passed by setGraph with the same graph was dropped: the newest photo opened instead.
+            List<GalleryItem> shown = viewModel.getCurrentFolderImages().getValue();
+            if (select && shown != null && initialPosition < shown.size())
+                viewModel.selectNext(shown.get(initialPosition).getFile().getFileUri());
         } catch (Exception e) {
             e.printStackTrace();
             // Fallback to normal gallery mode if something goes wrong
@@ -179,24 +193,18 @@ public class GalleryActivity extends BaseActivity {
     }
     
     /**
-     * P351: another app asked this gallery to edit a photo (ACTION_EDIT): the editor alone (the graph starts there), the copy's
-     * URI returned with RESULT_OK; back without saving returns RESULT_CANCELED. A file outside MediaStore's DCIM / Pictures
-     * gets its copy in Pictures/SCAMERA.
+     * P351: another app asked this gallery to edit a photo (ACTION_EDIT): the editor alone (the graph starts there,
+     * {@link #startNavigation}), the copy's URI returned with RESULT_OK; back without saving returns RESULT_CANCELED. A file
+     * outside MediaStore's DCIM / Pictures gets its copy in Pictures/SCAMERA. Returns the editor's arguments.
      */
-    private void openEditorFor(Uri uri, @Nullable String type) {
-        externalUsage = true;
+    private Bundle editorFor(Uri uri, @Nullable String type) {
         ImageFile file = createImageFileFromUri(uri);
         List<GalleryItem> single = new ArrayList<>();
         single.add(new GalleryItem(file));
         viewModel.getCurrentFolderImages().setValue(single);
-        NavHostFragment host = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.gallery_navigation_host);
-        if (host == null) return;
-        NavController nav = host.getNavController();
-        androidx.navigation.NavGraph graph = nav.getNavInflater().inflate(R.navigation.gallery_nav_graph);
-        graph.setStartDestination(R.id.photoEditorFragment);
         // P367: the zoom test hook's extras (scam_edit_zoom / _cx / _cy) pass through; nothing when absent
-        nav.setGraph(graph, com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.withZoomHook(
-                com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.args(uri, file.getDisplayName(), null, type, true), getIntent()));
+        return com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.withZoomHook(
+                com.particlesdevs.photoncamera.gallery.editor.ExternalEdit.args(uri, file.getDisplayName(), null, type, true), getIntent());
     }
 
     /**
@@ -279,7 +287,21 @@ public class GalleryActivity extends BaseActivity {
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
-        if (!externalUsage && !childLaunch && !isFinishing()) finish();
+        if (finishOnLeave(externalUsage, childLaunch, isFinishing(), editorBusy())) finish();
+    }
+
+    /**
+     * P299, except while the editor holds unsaved edits or a running «Сохранить копию»: finishing then dropped them without a
+     * word (the editor asks before discarding edits on back); the camera's icon returns to the editor instead.
+     */
+    static boolean finishOnLeave(boolean externalUsage, boolean childLaunch, boolean finishing, boolean editorBusy) {
+        return !externalUsage && !childLaunch && !finishing && !editorBusy;
+    }
+
+    private boolean editorBusy() {
+        NavHostFragment host = (NavHostFragment) getSupportFragmentManager().findFragmentById(R.id.gallery_navigation_host);
+        Fragment top = host != null ? host.getChildFragmentManager().getPrimaryNavigationFragment() : null;
+        return top instanceof PhotoEditorFragment && ((PhotoEditorFragment) top).hasUnsavedWork();
     }
 
     @Override

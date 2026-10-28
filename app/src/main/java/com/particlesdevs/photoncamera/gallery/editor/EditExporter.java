@@ -1,6 +1,7 @@
 package com.particlesdevs.photoncamera.gallery.editor;
 
 import android.content.ContentResolver;
+import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
@@ -341,6 +342,21 @@ public final class EditExporter {
         }
     }
 
+    /**
+     * The inserted row in the form the gallery's lists use (content://media/external/images/media/ID): the insert into
+     * VOLUME_EXTERNAL_PRIMARY returns content://media/external_primary/..., which never equalled the listed row, so the copy was
+     * listed twice (a hand-made entry next to the real one). The same row, still valid for the ACTION_EDIT result.
+     */
+    static Uri galleryUri(Uri inserted) {
+        long id;
+        try {
+            id = ContentUris.parseId(inserted);
+        } catch (RuntimeException e) {
+            return inserted;
+        }
+        return id >= 0 ? ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id) : inserted;
+    }
+
     /** MediaStore insert with IS_PENDING (Android 10+), else a file next to the original (or in Pictures/SCAMERA) and a scan. */
     static Result insert(Context c, EditSource source, File jpeg) throws IOException {
         Result r = new Result();
@@ -371,7 +387,7 @@ public final class EditExporter {
             try (Cursor cur = resolver.query(uri, new String[]{MediaStore.Images.Media.DISPLAY_NAME}, null, null, null)) {
                 if (cur != null && cur.moveToFirst() && cur.getString(0) != null) r.displayName = cur.getString(0);
             }
-            r.uri = uri;
+            r.uri = galleryUri(uri);
             r.folder = folder;
             return r;
         }

@@ -53,8 +53,10 @@ public final class DevKeys {
      */
     static final Set<String> NOT_IN_LAB = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             "post_priority", "gpu_low_priority", "jpeg_threads", "rgba_upload", "gl_warm_up", "release_async", "worker_watchdog",
+            "gl_warm_up_recipes", "ok_read", "worker_nice", "worker_prespawn", "thermal_async", "black_scan_bulk", "zero_copy_read", // P371: speed only
             "hybrid_la_threads", "hybrid_la_stream", "hybrid_la_scam", "hybrid_rgb_half", "worker_gpu_normal_priority",
             "isp_preview_off_always", "hybrid_isp_ccm", "hybrid_clip_flags", "dng_colour_jpeg",
+            "dng_white_spec", // P370 (A1): the scene light and calibration weight of the shot's Parameters
             "hybrid_sharp_select", // P331: picks the frames of the saved burst at the shot
             // P306: no native Tetra merge is a night shot any more, nothing reads its night point
             "hybrid_mosaic_tetra_night_kernel_scale", "hybrid_mosaic_tetra_night_edge_scale", "hybrid_mosaic_tetra_night_flat_scale")));
@@ -65,7 +67,7 @@ public final class DevKeys {
 
     private DevKeys() {}
 
-    private static String mergeGroup() { return Lang.t("Склейка Hybrid (воркер)", "Hybrid merge (worker)"); }
+    private static String mergeGroup() { return Lang.t("Склейка SHDR (воркер)", "SHDR merge (worker)"); }
     private static String postGroup() { return Lang.t("Обработка", "Processing"); }
 
     /** The line {@code key} of {@link #all()}, null when the page has none. */
@@ -193,7 +195,9 @@ public final class DevKeys {
                 "OPPO FULLRES viewfinder gain - 1: only for the exposure the mode cannot give (an AE deficit above 0.3 EV), 2: the viewfinder's meter unless the exposure is hand-set, 0: none")));
         k.add(s(vf, "vf_native_ccm", true, Lang.t("FULLRES: цветовая матрица фото в видоискателе вместо единичной (OPPO X7 Ultra: тюнинг по цветовой температуре; другие OPPO и vivo: матрица обычного режима при этом свете или ISP). Выкл — единичная",
                 "FULLRES: the photo's colour matrix on the viewfinder instead of the identity (OPPO X7 Ultra: the tuning at the light's colour temperature; other OPPO and vivo: the plain mode's matrix at that light or the ISP's). Off: the identity")));
-        k.add(s(vf, "vf_raw_scene_luma", true, Lang.t("Приоритет выдержки / ISO: яркость сцены из RAW-видоискателя (без неё в FULLRES второй параметр не двигался). Выкл — только из видоискателя ISP",
+        k.add(s(vf, "vf_mosaic_wb", true, Lang.t("RAW-видоискатель мозаики (ISZ, режим сенсора), когда ISP не ведёт баланс белого: баланс белого фото по кадру видоискателя (выкл — замершие усиления HAL)",
+                "Mosaic RAW viewfinder (ISZ, a sensor mode) while the ISP runs no white balance: the photo's white balance from the viewfinder frame (off: the HAL's frozen gains)")));
+        k.add(s(vf, "vf_raw_scene_luma", true,Lang.t("Приоритет выдержки / ISO: яркость сцены из RAW-видоискателя (без неё в FULLRES второй параметр не двигался). Выкл — только из видоискателя ISP",
                 "Shutter / ISO priority: the scene brightness from the RAW viewfinder (without it the other value never moved in FULLRES). Off: from the ISP viewfinder only")));
         // P365: the RAW viewfinder with the reference viewfinder's resource requirements (one draw request, the ring slot, RAW10)
         k.add(s(vf, "vf_one_request", true, Lang.t("RAW-видоискатель: один запрос отрисовки на кадр (выкл — как раньше: второй запрос, лишняя перерисовка того же кадра)",
@@ -290,6 +294,11 @@ public final class DevKeys {
         k.add(n(post, "jpeg_threads", null, Lang.t("Потоков кодирования JPEG (1 — один поток, прогрессивный; пусто — все ядра)", "Threads of the JPEG encode (1: one thread, progressive; empty: every core)")));
         k.add(sAuto(post, "rgba_upload", Lang.t("Загрузка RGB в GPU как RGBA (по умолчанию решает приложение)", "RGB uploaded to the GPU as RGBA (default: chosen by the app)")));
         k.add(n(post, "hybrid_isp_ccm", "1", Lang.t("vivo: цветовая матрица ISP по кадру (0 — матрицы DNG)", "vivo: the ISP colour matrix of the frame (0: the DNG matrices)")));
+        // P370 (A1, B2): the DNG white estimate (fixed in the shot's Parameters: not in the lab) and the hue outside sRGB
+        k.add(s(post, "dng_white_spec", true, Lang.t("Цветовая температура сцены и вес калибровок DNG по оценке белого DNG SDK (выкл — прежняя оценка по матрицам с нормированными строками)",
+                "The scene's colour temperature and the DNG calibration weight from the DNG SDK's white estimate (off: the former estimate on row-normalised matrices)")));
+        k.add(s(post, "ccm_signed_hue", true, Lang.t("Цвет за пределами sRGB после матрицы камеры: тон и яркость OKLab по цвету без обрезки каналов (выкл — по обрезанному цвету, как раньше)",
+                "A colour the camera matrix puts outside sRGB: OKLab hue and lightness from the colour before the channel clamp (off: from the clamped colour, as before)")));
         k.add(n(post, "hybrid_dn_luma_grain", "0.5", Lang.t("Шумодав: доля убранного мелкого зерна яркости, которая возвращается (0 — как раньше)", "Denoise: share of the removed fine luma grain that comes back (0: as before)")));
         k.add(n(post, "hybrid_dn_chroma_day", "0.5", Lang.t("Шумодав цвета днём: множитель при SNR 80 и выше (1 — как раньше; до SNR 20 всегда 1)", "Daylight colour denoise: multiplier at SNR 80 and above (1: as before; up to SNR 20 always 1)")));
         k.add(n(post, "hybrid_dn_dark_chroma_hi", "4", Lang.t("Шумодав: цвет в тенях, верхний порог (x1e-4)", "Denoise: colour in the shadows, upper threshold (x1e-4)")));
@@ -392,6 +401,22 @@ public final class DevKeys {
         // P237: the idle compile of the post-pipeline programs missing from the disk cache (GLProg.warmUp)
         k.add(s(post, "gl_warm_up", true, Lang.t("Шейдеры обработки, которых нет в кэше на диске (после обновления драйвера, вытеснения), компилируются в фоне через 4 с после открытия камеры, пока она не снимает. Выкл — только при снимке, как до P237",
                 "Processing shaders missing from the disk cache (after a driver update, eviction) are compiled in the background 4 s after the camera opens, while it is idle. Off: only at a shot, as before P237")));
+        // P371: recipes of the post programs, made again from the installed APK by that warm-up (the first shot after an install)
+        k.add(s(post, "gl_warm_up_recipes", true, Lang.t("Рецепты шейдеров обработки (ассет и define-ы) сохраняются, и фоновый прогрев собирает их заново из установленного APK: первый снимок после обновления не компилирует ~46 шейдеров (~0,8 с). Выкл — как до P371",
+                "Recipes of the processing shaders (asset and defines) are kept and the background warm-up builds them again from the installed APK: the first shot after an update does not compile ~46 shaders (~0.8 s). Off: as before P371")));
+        // P371: the merge worker's result at its completion line, its CPU priority
+        k.add(s(merge, "ok_read", true, Lang.t("Результат воркера читается по строке завершения, его выход (~0,1 с) — в фоне (до 16 Мп). Выкл — ждать выхода процесса, как до P371",
+                "The worker's result is read at its completion line, its exit (~0.1 s) in the background (up to 16 MP). Off: wait for the process to exit, as before P371")));
+        k.add(s(merge, "worker_prespawn", false, Lang.t("Воркер склейки запускается при нажатии (до 16 Мп, без снимка в очереди): его старт и прогрев GPU идут во время съёмки серии (копия процесса камеры в эти 0,4 с; для замера на телефоне). Выкл — запуск после подготовки кадров, как до P371",
+                "The merge worker starts at the press (up to 16 MP, no shot queued): its start and GPU warm-up run during the series (a fork of the camera process in those 0.4 s; for a phone measurement). Off: started after the frames' preparation, as before P371")));
+        k.add(n(merge, "worker_nice", "10", Lang.t("Приоритет процессора воркера склейки (nice −8…19; 10 — приоритет потока обработки, как до P371; 0 — для замера на телефоне; вне диапазона — не менять)",
+                "CPU priority of the merge worker (nice -8..19; 10: the processing thread's, as before P371; 0: for a phone measurement; outside the range: unchanged)")));
+        k.add(s(merge, "zero_copy_read", true, Lang.t("Результат воркера (RGB и флаги клипа) читается на месте из его памяти (memfd), без копии в новые буферы (до 1 ГБ). Выкл — копия, как до P371",
+                "The worker's result (the RGB and the clip flags) is read in place from its memory (memfd), without a copy into fresh buffers (up to 1 GB). Off: copied, as before P371")));
+        k.add(s(post, "black_scan_bulk", true, Lang.t("Уровень чёрного по данным кадра: строки выборки копируются целиком (те же отсчёты, ~20 мс быстрее). Выкл — чтение по отсчёту, как до P371",
+                "The black level from the frame's data: the sampled rows copied whole (the same samples, ~20 ms faster). Off: a read per sample, as before P371")));
+        k.add(s(post, "thermal_async", true, Lang.t("Температурный статус после склейки запрашивается в фоне (вызов системы не задерживает обработку). Выкл — на потоке обработки, как до P371",
+                "The thermal status after the merge is read in the background (the system call does not hold the processing). Off: on the processing thread, as before P371")));
         // P242: the merge worker's GPU priority (A/B, WorkerSpawn.environment)
         k.add(s(merge, "worker_gpu_normal_priority", false, Lang.t("Склейка в воркере с обычным приоритетом GPU (сравнение A/B: может склеивать быстрее, видоискатель может подтормаживать). Выкл — средний приоритет (P364)",
                 "The merge worker at the normal GPU priority (A/B: the merge may run faster, the viewfinder may stutter). Off: the medium priority (P364)")));
@@ -446,6 +471,8 @@ public final class DevKeys {
         k.add(s(diag, "stab_trace", true, Lang.t("Журнал стабилизации в логе", "Stabilisation trace in the log")));
         k.add(sAuto(diag, "stab_trace_ois", Lang.t("Отсчёты OIS в журнале стабилизации (по умолчанию — на vivo)", "OIS samples in the stabilisation trace (default: on vivo)")));
         k.add(s(diag, "post_sync", false, Lang.t("Синхронные узлы обработки (замер времени)", "Synchronous processing nodes (timing)")));
+        k.add(s(diag, "diag_sync", false, Lang.t("Диагностика: превью этапов считаются и пишутся на потоке обработки, как до P371 (выкл — в фоне, снимок не ждёт)",
+                "Diagnostics: the stage previews are computed and written on the processing thread, as before P371 (off: in the background, the shot does not wait)")));
         k.add(s(diag, "post_ab", false, Lang.t("A/B обработки: старый и новый конвейер на одном снимке", "Processing A/B: old and new pipeline on one shot")));
         k.add(s(diag, "post_ab_clamp", false, Lang.t("A/B: прежнее ограничение входа", "A/B: the former input clamp")));
         k.add(s(diag, "early_release", false, Lang.t("Ранний возврат текстур обработки при любом размере (как выше 100 Мп; для A/B)",

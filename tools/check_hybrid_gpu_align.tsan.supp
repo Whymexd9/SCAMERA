@@ -1,0 +1,9 @@
+# ThreadSanitizer suppressions of tools/check_hybrid_gpu_align.cpp: Mesa's software GL (gallium / llvmpipe, its EGL and GL
+# dispatch) is not instrumented, and its contexts on the merge's threads (the GPU field and alignment, the merge's own) share its
+# compiler state; a report with any frame in these libraries is Mesa's, not the merge's.
+race:libgallium
+race:swrast_dri
+race:libEGL_mesa
+race:libglapi
+race:libGLESv2
+race:libLLVM

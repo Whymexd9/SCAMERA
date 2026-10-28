@@ -75,6 +75,17 @@ public final class SettingHelp {
         FAMILIES.put(Pattern.compile("pref_scam_hybrid_colour_cal_\\w+"), R.string.help_colour_calibration);
         EXACT.put("pref_color_method_key", R.string.help_colour_method);
         EXACT.put("backup_settings_screen", R.string.help_backup);
+        // 2026-10-27 (owner: settings anyone can set up alone): the rows of «Снимок», «Съёмка» and «Экран камеры» that came from
+        // the expert pages say what they do and where they were
+        EXACT.put("pref_scam_hybrid_why_ae_target", R.string.help_brightness);
+        EXACT.put("pref_scam_hybrid_why_macro_contrast", R.string.help_contrast);
+        EXACT.put("pref_scam_hybrid_why_agx_sat", R.string.help_saturation);
+        EXACT.put("pref_scam_hybrid_why_sharp_gain", R.string.help_sharpness);
+        EXACT.put("pref_scam_hybrid_dn_luma_mult", R.string.help_noise);
+        EXACT.put("pref_ettr", R.string.help_ettr);
+        EXACT.put("focus_screen", R.string.help_focus);
+        EXACT.put("pref_af_mode_key", R.string.help_af_mode);
+        EXACT.put("pref_show_afdata_key", R.string.help_info_overlay);
     }
 
     /** The help text of {@code key}, 0 without one of its own. */

@@ -41,9 +41,30 @@ namespace {
 // P91: slots, the views of each byte offset: the ZSL ring (one long-lived arena) reuses a slot only when no view of it is left
 // (a shot's frame stays pinned until the merge frees it).
 // P200: bytes, the length of the views of each offset (the slot's extent, for the holes punched when the arena is released).
+// P371: adopted, a memfd another process laid out (the merge worker's result, arenaAdopt): no transport header, no slots of
+// frames - its release punches nothing (its trailers are read after its views were made), only arenaPunch's explicit ranges.
 struct Arena { int id; int fd; uint8_t* base; size_t size; long refs; bool released; std::unordered_map<size_t, int> slots;
-               std::unordered_map<size_t, size_t> bytes; };
+               std::unordered_map<size_t, size_t> bytes; bool adopted = false; };
 std::mutex arenaLock;
+// P371 (review m1): the slow system calls of an arena change - punching holes into its memfd (11 ms for 72 MB of mapped shmem,
+// 44 ms for 302 MB), munmap and close - made once arenaLock is released (declared before the lock guard: destroyed after it), so
+// the ZSL ring's arenaSlotRefs / arenaView on the camera thread do not wait for them. The holes go through a duplicate of the
+// arena's fd (the arena itself may be unmapped and closed by another thread meanwhile); an arena unmapped here was erased from
+// `arenas` under the lock, so nothing else reaches its mapping or fd.
+struct ArenaWork {
+    int fd = -1; std::vector<std::pair<off_t, off_t>> holes;
+    std::vector<std::pair<void*, size_t>> maps; std::vector<int> closes;
+    void hole(int arenaFd, size_t offset, size_t bytes) {
+        if (fd < 0) fd = fcntl(arenaFd, F_DUPFD_CLOEXEC, 3);
+        if (fd >= 0) holes.emplace_back(off_t(offset), off_t(bytes));
+    }
+    ~ArenaWork() {
+        for (const auto& h : holes) fallocate(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, h.first, h.second);
+        if (fd >= 0) close(fd);
+        for (const auto& m : maps) munmap(m.first, m.second);
+        for (int c : closes) close(c);
+    }
+};
 std::vector<Arena> arenas;
 int nextArenaId = 1;
 // True when the last view of the slot went.
@@ -63,15 +84,16 @@ constexpr size_t kPunchBytes = size_t(64) << 20;
 // P200: only once the arena is released (the shot's frames, a ZSL ring that was closed): a live ring keeps its slots' pages, which
 // it writes again at once - a punched 96 MB slot of the 50 MP ring took every page fault again on its next copy (38-75 ms on the
 // camera thread per frame, the X300 / X7 Ultra viewfinder stuttered).
-void punchLocked(size_t index, size_t offset, size_t bytes) {
+void punchLocked(size_t index, size_t offset, size_t bytes, ArenaWork& work) {
     if (!arenas[index].released || bytes < kPunchBytes || offset + bytes > arenas[index].size) return;
-    fallocate(arenas[index].fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off_t(offset), off_t(bytes));
+    work.hole(arenas[index].fd, offset, bytes);
 }
 // P200: a released arena gives back at once the pages of its large slots no view holds (a closed 50 MP ring: up to 1.5 GB that
 // stayed resident while a shot's frames pinned the memfd). The first 64 KB (the transport header) are kept; holes of at least
 // kPunchBytes, page aligned.
-void punchFreeLocked(size_t index) {
+void punchFreeLocked(size_t index, ArenaWork& work) {
     Arena& a = arenas[index];
+    if (a.adopted) return; // P371 (review B1): not a shot's frames
     std::vector<std::pair<size_t, size_t>> held;
     for (const auto& s : a.slots) {
         auto b = a.bytes.find(s.first);
@@ -83,7 +105,7 @@ void punchFreeLocked(size_t index) {
     auto punch = [&](size_t lo, size_t hi) {
         lo = (lo + 4095) & ~size_t(4095);
         hi &= ~size_t(4095);
-        if (hi > lo && hi - lo >= kPunchBytes) fallocate(a.fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off_t(lo), off_t(hi - lo));
+        if (hi > lo && hi - lo >= kPunchBytes) work.hole(a.fd, lo, hi - lo);
     };
     for (const auto& h : held) {
         if (h.first > from) punch(from, h.first);
@@ -108,9 +130,9 @@ void copyBytes(uint8_t* dst, const uint8_t* src, size_t n) {
     memcpy(dst, src, std::min(n, part));
     for (int t = 0; t < started; ++t) pool[t].join();
 }
-void unmapLocked(size_t index) {
-    munmap(arenas[index].base, arenas[index].size);
-    close(arenas[index].fd);
+void unmapLocked(size_t index, ArenaWork& work) {
+    work.maps.emplace_back(arenas[index].base, arenas[index].size);
+    work.closes.push_back(arenas[index].fd);
     arenas.erase(arenas.begin() + long(index));
 }
 long findLocked(int id) {
@@ -157,10 +179,11 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaCopy(JNIEnv* env, jclass
     copyBytes(dst, static_cast<uint8_t*>(src) + originOffset, size_t(bytes));
     jobject view = env->NewDirectByteBuffer(dst, bytes);
     if (!view) {
+        ArenaWork work;
         std::lock_guard<std::mutex> lock(arenaLock);
         const long i = containingLocked(dst);
         if (i >= 0) slotUnrefLocked(size_t(i), size_t(dst - arenas[size_t(i)].base));
-        if (i >= 0 && --arenas[size_t(i)].refs == 0 && arenas[size_t(i)].released) unmapLocked(size_t(i));
+        if (i >= 0 && --arenas[size_t(i)].refs == 0 && arenas[size_t(i)].released) unmapLocked(size_t(i), work);
     }
     return view;
 }
@@ -195,6 +218,25 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaOf(JNIEnv* env, jclass, 
     return result;
 }
 
+// P371 (speed, zero_copy_read): a memfd another process filled (the merge worker's result) adopted as an arena of `bytes`: its
+// views (arenaView) read the pages in place - the client preads 85 MB into fresh malloc pages per 12 MP shot (36-54 ms on the
+// host, the first-touch faults included) - mapped with MAP_POPULATE, so the GL upload thread takes no faults either. The caller
+// keeps its fd (a duplicate is held); arenaRelease, then every view's free, unmaps it, as a shot's frames. Adopted: its release
+// punches no gaps (review B1: the trailers between its views are read after it); arenaPunch gives back what was read. 0 on any
+// failure.
+extern "C" JNIEXPORT jint JNICALL
+Java_com_particlesdevs_photoncamera_util_Allocator_arenaAdopt(JNIEnv*, jclass, jint fd, jlong bytes) {
+    if (fd < 0 || bytes <= 0) return 0;
+    const int own = fcntl(fd, F_DUPFD_CLOEXEC, 3);
+    if (own < 0) return 0;
+    void* base = mmap(nullptr, size_t(bytes), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, own, 0);
+    if (base == MAP_FAILED) { close(own); return 0; }
+    std::lock_guard<std::mutex> lock(arenaLock);
+    const int id = nextArenaId++;
+    arenas.push_back({id, own, static_cast<uint8_t*>(base), size_t(bytes), 0, false, {}, {}, true});
+    return id;
+}
+
 // A duplicate of the arena's memfd (the caller owns it), -1 when the arena is gone.
 extern "C" JNIEXPORT jint JNICALL
 Java_com_particlesdevs_photoncamera_util_Allocator_arenaFd(JNIEnv*, jclass, jint id) {
@@ -220,10 +262,11 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaView(JNIEnv* env, jclass
     }
     jobject view = env->NewDirectByteBuffer(p, bytes);
     if (!view) {
+        ArenaWork work;
         std::lock_guard<std::mutex> lock(arenaLock);
         const long i = containingLocked(p);
         if (i >= 0) slotUnrefLocked(size_t(i), size_t(p - arenas[size_t(i)].base));
-        if (i >= 0 && --arenas[size_t(i)].refs == 0 && arenas[size_t(i)].released) unmapLocked(size_t(i));
+        if (i >= 0 && --arenas[size_t(i)].refs == 0 && arenas[size_t(i)].released) unmapLocked(size_t(i), work);
     }
     return view;
 }
@@ -241,12 +284,34 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaSlotRefs(JNIEnv*, jclass
 // The shot hands out no more views; the arena goes once its views are freed.
 extern "C" JNIEXPORT void JNICALL
 Java_com_particlesdevs_photoncamera_util_Allocator_arenaRelease(JNIEnv*, jclass, jint id) {
+    ArenaWork work;
     std::lock_guard<std::mutex> lock(arenaLock);
     const long i = findLocked(id);
     if (i < 0) return;
     arenas[size_t(i)].released = true;
-    if (arenas[size_t(i)].refs <= 0) unmapLocked(size_t(i));
-    else punchFreeLocked(size_t(i));
+    if (arenas[size_t(i)].refs <= 0) unmapLocked(size_t(i), work);
+    else punchFreeLocked(size_t(i), work);
+}
+
+// P371 (review B1): the pages of {offset, bytes} of an adopted arena go back (a hole in the memfd: the client read those trailers
+// into buffers of their own), whole pages inside the range only, never a page a view holds. false: not an adopted arena, out of
+// its bounds, or a view overlaps the range.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_particlesdevs_photoncamera_util_Allocator_arenaPunch(JNIEnv*, jclass, jint id, jlong offset, jlong bytes) {
+    ArenaWork work;
+    std::lock_guard<std::mutex> lock(arenaLock);
+    const long i = findLocked(id);
+    if (i < 0 || offset < 0 || bytes <= 0) return JNI_FALSE;
+    const Arena& a = arenas[size_t(i)];
+    if (!a.adopted || size_t(offset) + size_t(bytes) > a.size) return JNI_FALSE;
+    const size_t lo = (size_t(offset) + 4095) & ~size_t(4095), hi = (size_t(offset) + size_t(bytes)) & ~size_t(4095);
+    for (const auto& v : a.slots) {
+        const auto b = a.bytes.find(v.first);
+        const size_t end = v.first + (b == a.bytes.end() ? size_t(1) : b->second);
+        if (v.first < size_t(offset) + size_t(bytes) && end > size_t(offset)) return JNI_FALSE;
+    }
+    if (hi > lo) work.hole(a.fd, lo, hi - lo);
+    return JNI_TRUE;
 }
 
 static float mosaicSrKernel(float x, int kernel) {
@@ -737,12 +802,13 @@ Java_com_particlesdevs_photoncamera_util_Allocator_free(JNIEnv *env, jclass claz
     }
 
     {   // an arena view: one reference less (P30)
+        ArenaWork work;
         std::lock_guard<std::mutex> lock(arenaLock);
         const long i = containingLocked(ptr);
         if (i >= 0) {
             const size_t offset = size_t(static_cast<uint8_t*>(ptr) - arenas[size_t(i)].base);
-            if (slotUnrefLocked(size_t(i), offset) && capacity > 0) punchLocked(size_t(i), offset, size_t(capacity));
-            if (--arenas[size_t(i)].refs <= 0 && arenas[size_t(i)].released) unmapLocked(size_t(i));
+            if (slotUnrefLocked(size_t(i), offset) && capacity > 0) punchLocked(size_t(i), offset, size_t(capacity), work);
+            if (--arenas[size_t(i)].refs <= 0 && arenas[size_t(i)].released) unmapLocked(size_t(i), work);
             return;
         }
     }
@@ -823,10 +889,11 @@ Java_com_particlesdevs_photoncamera_util_Allocator_arenaCopyUnpack(JNIEnv* env, 
     for (auto& t : pool) t.join();
     jobject view = env->NewDirectByteBuffer(dst, jlong(bytes));
     if (!view) {
+        ArenaWork work;
         std::lock_guard<std::mutex> lock(arenaLock);
         const long i = containingLocked(dst);
         if (i >= 0) slotUnrefLocked(size_t(i), size_t(dst - arenas[size_t(i)].base));
-        if (i >= 0 && --arenas[size_t(i)].refs == 0 && arenas[size_t(i)].released) unmapLocked(size_t(i));
+        if (i >= 0 && --arenas[size_t(i)].refs == 0 && arenas[size_t(i)].released) unmapLocked(size_t(i), work);
     }
     return view;
 }

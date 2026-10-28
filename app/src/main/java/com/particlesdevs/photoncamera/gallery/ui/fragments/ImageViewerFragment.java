@@ -108,15 +108,37 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
     };
     private int indexToDelete = -1;
     private GalleryViewModel viewModel;
+    /** The shown photo's position across a recreation (rotation, process death). */
+    static final String KEY_SEEK = "viewer_seek";
+
+    /**
+     * The position is taken once per fragment instance: the view is built again on the same instance when the editor or compare
+     * is left, and the arguments (the photo first tapped in the grid) then sent the viewer back to that photo, not to the one
+     * edited. A recreated instance starts at its saved position (it opened on the newest photo or the first-tapped one).
+     */
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        seek_position = startPosition(savedInstanceState, getArguments());
+    }
+
+    /** The position a new viewer instance starts at: its saved one, else the arguments' one, else the first photo. */
+    static int startPosition(@Nullable Bundle saved, @Nullable Bundle args) {
+        if (saved != null && saved.containsKey(KEY_SEEK)) return saved.getInt(KEY_SEEK, 0);
+        return args != null ? args.getInt(Constants.IMAGE_POSITION_KEY, 0) : 0;
+    }
+
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putInt(KEY_SEEK, viewPager != null ? viewPager.getCurrentItem() : seek_position);
+    }
 
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         Bundle bundle = getArguments();
-        if (bundle != null) {
-            mode = bundle.getString(Constants.MODE_KEY);
-            seek_position = bundle.getInt(Constants.IMAGE_POSITION_KEY, 0);
-        }
+        if (bundle != null) mode = bundle.getString(Constants.MODE_KEY);
         Context c = requireContext();
         viewModel = new ViewModelProvider(requireActivity()).get(GalleryViewModel.class);
         exifDialogViewModel = new ViewModelProvider(this).get(ExifDialogViewModel.class);
@@ -465,10 +487,15 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
     /** Back: to the grid (the library when the viewer was the start). */
     private void onGalleryButtonClick() {
         if (navController == null) return;
-        if (navController.getPreviousBackStackEntry() == null) {
+        toGrid(navController);
+    }
+
+    /** From the viewer back to the grid: up, or to the library when the viewer is the graph's start (navigateUp does nothing there). */
+    static void toGrid(NavController nav) {
+        if (nav.getPreviousBackStackEntry() == null) {
             Bundle none = new Bundle();
-            navController.navigate(R.id.action_imageViewFragment_to_imageLibraryFragment, none);
-        } else navController.navigateUp();
+            nav.navigate(R.id.action_imageViewFragment_to_imageLibraryFragment, none);
+        } else nav.navigateUp();
     }
 
     /**
@@ -760,7 +787,8 @@ public class ImageViewerFragment extends Fragment implements ImageAdapter.HdrSta
             indexToDelete = -1;
             if (galleryItems.isEmpty()) {
                 viewModel.setUpdatePending(true);
-                if (root != null && navController != null) navController.navigateUp();
+                // the grid: navigateUp alone did nothing for the viewer opened from the camera (the deleted photo stayed shown)
+                if (root != null && navController != null) onGalleryButtonClick();
             } else viewModel.setUpdatePending(true);
         } else if (getContext() != null) {
             Toast.makeText(getContext(), Lang.t("Не удалось удалить", "Deletion failed"), Toast.LENGTH_SHORT).show();

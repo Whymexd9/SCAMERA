@@ -20,4 +20,18 @@ public class WorkerEnvTest {
         assertEquals("SCAM_GPU_NORMAL_PRIORITY=1", normal[normal.length - 1]);
         assertArrayEquals(low, Arrays.copyOf(normal, low.length));
     }
+
+    /** P371: the worker's nice value (worker-spawn.cpp sets it before execve) only inside -8..19; KEEP_NICE: no line, as before. */
+    @Test public void theWorkerNiceIsOneMoreVariableWithinItsRange() {
+        final String[] keep = WorkerEnv.build("/data/app/lib", "/cache/job", false, WorkerEnv.KEEP_NICE);
+        assertArrayEquals(WorkerEnv.build("/data/app/lib", "/cache/job", false), keep);
+        final String[] zero = WorkerEnv.build("/data/app/lib", "/cache/job", false, 0);
+        assertEquals(keep.length + 1, zero.length);
+        assertEquals("SCAM_WORKER_NICE=0", zero[zero.length - 1]);
+        assertEquals("SCAM_WORKER_NICE=-8", WorkerEnv.build("l", "j", true, -8)[5]);
+        assertEquals("SCAM_GPU_NORMAL_PRIORITY=1", WorkerEnv.build("l", "j", true, 10)[4]);
+        assertEquals("SCAM_WORKER_NICE=10", WorkerEnv.build("l", "j", true, 10)[5]);
+        assertEquals(keep.length, WorkerEnv.build("/data/app/lib", "/cache/job", false, 20).length);
+        assertEquals(keep.length, WorkerEnv.build("/data/app/lib", "/cache/job", false, -9).length);
+    }
 }

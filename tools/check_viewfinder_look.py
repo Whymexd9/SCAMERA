@@ -7,7 +7,8 @@ A synthetic RGGB RAW of colour patches, greys and skin tones goes through the vi
 - the look on with every stage neutral renders the same;
 - neutral monochrome is grey; a shadow grading offset tints dark greys, not bright ones; skin protection holds back the
   mixer's saturation on skin; an identity LUT at full strength leaves the output alone (within the 8-bit sub-texel weights)
-  and a LUT's domain is honoured.
+  and a LUT's domain is honoured;
+- P370: u_signed_hue 1 (the shipped default, for the linear frame only) leaves the display viewfinder bit for bit.
 """
 import re
 import sys
@@ -83,7 +84,7 @@ def main():
         return t
     t_lut = lut_tex(lut_id)
 
-    def render(prog, look=None, lut=None, lut_range=(0.0, 1.0)):
+    def render(prog, look=None, lut=None, lut_range=(0.0, 1.0), extra=None):
         out = ctx.texture((cells, cells), 4, dtype='f4')
         fb = ctx.framebuffer([out])
         fb.use()
@@ -109,6 +110,7 @@ def main():
             vals.update({'u_look_on': 1, 'u_look_mono': (0.0, 0.0, 0.0), 'u_look_skin': (0.0, 0.0, 0.0), 'u_look_vib': (0.0, 0.0),
                          'u_look_mix_on': 0, 'u_look_grade_a': (0.0, 0.0, 0.0, 0.0), 'u_look_grade_b': (0.0, 0.0, 0.0, 0.5)})
             vals.update(look)
+        vals.update(extra or {})
         for k, v in vals.items():
             if k in prog:
                 prog[k].value = v
@@ -131,6 +133,12 @@ def main():
     check(d_neutral < 2e-6, 'the look on with neutral stages changes the viewfinder (%.2e)' % d_neutral)
     print('look off vs before P134: max %.1e (bit for bit %s); neutral look vs off: max %.1e (%d patches)'
           % (d_old, np.array_equal(base, base_old), d_neutral, n))
+    # P370 (review): u_signed_hue 1 (the shipped default; it acts on the linear frame of u_linear_out 1 only) leaves the
+    # display viewfinder and its look alone
+    signed_same = all(np.array_equal(render(prog_new, look, extra={'u_signed_hue': 1}), render(prog_new, look))
+                      for look in (None, {}, {'u_look_mono': (1.0, 1.0, 1.0)}))
+    print('u_signed_hue 1: the display viewfinder (look off, neutral, monochrome) bit for bit as with 0: %s' % signed_same)
+    check(signed_same, 'u_signed_hue 1 changes the display viewfinder')
     mono = render(prog_new, {'u_look_mono': (1.0, 1.0, 1.0)})
     spread = (mono.max(1) - mono.min(1)).max()
     print('monochrome neutral: max channel spread %.5f' % spread)

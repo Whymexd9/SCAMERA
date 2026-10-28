@@ -34,20 +34,39 @@ public final class EditorViewModel extends AndroidViewModel {
     EditState state = new EditState();
     /** The tone before a style was picked (the style's 0 %). */
     @Nullable EditState styleBase;
-    private boolean loading, exporting;
+    private volatile boolean loading;
+    /**
+     * The decoded source this ViewModel owns, set before it is posted to {@link #source}; {@code cleared} after onCleared;
+     * {@code exporting} while an export reads the source. Guarded by {@link #lock}: the source is closed exactly once - by
+     * onCleared, by the export that outlived it, or by the decode that finished after it (the full-size DNG copy in the cache
+     * and LibRaw's native image stayed until the process died).
+     */
+    private final Object lock = new Object();
+    @Nullable private EditSource opened;
+    private boolean cleared, exporting;
 
     public EditorViewModel(@NonNull Application app) {
         super(app);
     }
 
     void load(Uri uri, String name, @Nullable String mime, @Nullable String path) {
-        if (loading || source.getValue() != null) return;
-        loading = true;
+        synchronized (lock) {
+            // opened is set before loading is cleared: a recreated editor's load while the first source is still on its way to
+            // the main thread (source still null) decoded a second copy, and the first was never closed
+            if (loading || opened != null || cleared) return;
+            loading = true;
+        }
         Thread t = new Thread(() -> {
             try {
                 EditSource s = EditSource.open(getApplication(), uri, name, mime);
                 s.absolutePath = path;
-                source.postValue(s);
+                boolean drop;
+                synchronized (lock) {
+                    drop = cleared;
+                    if (!drop) opened = s;
+                }
+                if (drop) s.close(); // the editor was left while decoding
+                else source.postValue(s);
             } catch (Exception | OutOfMemoryError e) {
                 Log.e(TAG, "open " + name + ": " + e);
                 error.postValue(e.getMessage() != null ? e.getMessage() : e.toString());
@@ -59,7 +78,9 @@ public final class EditorViewModel extends AndroidViewModel {
     }
 
     boolean exporting() {
-        return exporting;
+        synchronized (lock) {
+            return exporting;
+        }
     }
 
     /**
@@ -68,8 +89,10 @@ public final class EditorViewModel extends AndroidViewModel {
      */
     void export(EditState s, @Nullable Future<?> ready) {
         EditSource src = source.getValue();
-        if (src == null || exporting) return;
-        exporting = true;
+        synchronized (lock) {
+            if (src == null || exporting || cleared) return;
+            exporting = true;
+        }
         exportProgress.setValue(0f);
         final EditState snapshot = s.copy();
         Thread t = new Thread(() -> {
@@ -89,7 +112,12 @@ public final class EditorViewModel extends AndroidViewModel {
                 Log.e(TAG, "export: " + e);
                 exportError.postValue(e.getMessage() != null ? e.getMessage() : e.toString());
             } finally {
-                exporting = false;
+                boolean close;
+                synchronized (lock) {
+                    exporting = false;
+                    close = cleared;
+                }
+                if (close) src.close(); // the editor was cleared while this export read the source
             }
         }, "EditorExport");
         t.setPriority(Thread.NORM_PRIORITY - 1);
@@ -98,8 +126,12 @@ public final class EditorViewModel extends AndroidViewModel {
 
     @Override
     protected void onCleared() {
-        EditSource s = source.getValue();
-        if (s != null && !exporting) s.close();
+        EditSource s;
+        synchronized (lock) {
+            cleared = true;
+            s = exporting ? null : opened; // a running export closes it when it ends
+        }
+        if (s != null) s.close();
         super.onCleared();
     }
 }

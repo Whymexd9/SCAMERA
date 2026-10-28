@@ -73,7 +73,11 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
         }
     }
     private void save(float requested, boolean reset) {
-        if (!isEnabled() || !Float.isFinite(requested)) return;
+        save(requested, reset, false);
+    }
+    /** {@code force}: also while the row is disabled (a page reset). */
+    private void save(float requested, boolean reset, boolean force) {
+        if (!force && !isEnabled() || !Float.isFinite(requested)) return;
         float value = PreferenceNumber.bounded(requested, mDefaultValue, mMin, mMax);
         if (!isFloat) value = Math.round(value);
         Object candidate = isFloat ? (Object) Float.valueOf(value) : Integer.valueOf(Math.round(value));
@@ -97,8 +101,13 @@ public class TunableSeekBarPreference extends Preference implements SeekBar.OnSe
 
     /** P357: the camera's own value back (the stored one goes); true when one was stored. */
     public boolean resetToDefault() {
-        if (!isChanged() || !isEnabled()) return false;
-        save(mDefaultValue, true);
+        return resetToDefault(false);
+    }
+
+    /** {@code force}: also while another setting disables the row (the page reset puts every row of its page back). */
+    public boolean resetToDefault(boolean force) {
+        if (!isChanged() || !force && !isEnabled()) return false;
+        save(mDefaultValue, true, force);
         return true;
     }
 

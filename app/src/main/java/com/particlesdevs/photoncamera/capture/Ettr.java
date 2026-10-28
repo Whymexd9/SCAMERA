@@ -11,8 +11,8 @@ import java.nio.ShortBuffer;
  * {@link #MAX_EV}. The N frames of the merge then collect up to 4x the light (less noise in the shadows); the photo's own AE (WHY)
  * brings it back to the same brightness and the ISP viewfinder shows it at the usual brightness (ViewfinderGain's display EV).
  * <p>
- * The boost only rises while the exposure has room: once the AE is past 4x the base ISO (indoors, night: a boost would raise the
- * ISO, not the light) it goes back to 0. A change waits for
+ * The boost only rises while the exposure has room: it stays within the stops the un-boosted exposure has below 4x the base ISO
+ * (indoors, night: a boost would raise the ISO, not the light), 0 once there are none. A change waits for
  * {@link #SETTLE_FRAMES} frames (the AE follows) and moves by at least {@link #MIN_STEP_EV}; a clipped frame lowers it at once.
  */
 final class Ettr {
@@ -56,15 +56,46 @@ final class Ettr {
      * false when the exposure is at its ceiling. True when the boost changed (the request is rebuilt).
      */
     boolean update(float p999, boolean room) {
+        return update(p999, room ? Float.POSITIVE_INFINITY : 0f);
+    }
+
+    /**
+     * The boost after a frame metered at the current one: {@code p999} its 99.9th percentile (fraction of white), {@code headroomEv}
+     * the stops the exposure has below its ceiling without any boost ({@link #headroomEv}; 0 or less: none). The boost never goes
+     * past the headroom: judged on the boosted ISO the ceiling dropped the boost, the ISO fell back and the boost came again,
+     * 0 / +1.1 EV every 16 frames (bug capture-ettr-oscillation). True when the boost changed (the request is rebuilt).
+     */
+    boolean update(float p999, float headroomEv) {
+        final boolean room = headroomEv > 0f;
         float next;
-        if (!room) next = Math.min(ev, 0f);
+        if (!room) next = 0f;
         else if (p999 >= 0.995f) next = ev - 1f; // clipped: down a stop at once
         else next = ev + (float) (Math.log(TARGET / Math.max(p999, 0.001f)) / Math.log(2));
-        next = Math.max(0f, Math.min(MAX_EV, next));
+        next = Math.max(0f, Math.min(room ? Math.min(MAX_EV, headroomEv) : 0f, next));
         if (Math.abs(next - ev) < MIN_STEP_EV && !(next == 0f && ev > 0f && !room)) return false;
         ev = next;
         settle = SETTLE_FRAMES;
         return true;
+    }
+
+    /**
+     * The stops below the exposure's ceiling (4x the base ISO: above it a boost raises the ISO, not the light) without the boost
+     * {@code boostEv} the frame was exposed with: log2(4 x base / (iso / 2^boost)); +infinity when the ISO or the base is unknown.
+     */
+    static float headroomEv(@androidx.annotation.Nullable Integer iso, @androidx.annotation.Nullable Integer baseIso, float boostEv) {
+        if (iso == null || baseIso == null || iso <= 0 || baseIso <= 0) return Float.POSITIVE_INFINITY;
+        return (float) (Math.log(4.0 * baseIso * Math.pow(2.0, Math.max(0f, boostEv)) / iso) / Math.log(2));
+    }
+
+    /**
+     * Why the boost is held (null: it runs): the switch off, the own native AE or a vivo SDK session (their own exposure), the
+     * «Движение» shutter ceiling (its request is AE off: the compensation does nothing there, the boost would climb to MAX_EV and
+     * land on the AE at once when the ceiling hands it back), a hand-set ISO or shutter.
+     */
+    @androidx.annotation.Nullable
+    static String hold(boolean on, boolean nativeAe, boolean vivoSdk, boolean motionCeiling, boolean handSet) {
+        return !on ? "off" : nativeAe ? "own native AE" : vivoSdk ? "vivo SDK"
+                : motionCeiling ? "the motion shutter ceiling (AE off)" : handSet ? "hand-set exposure" : null;
     }
 
     /** The compensation index for {@code userIndex} plus the boost, inside the camera's range. */

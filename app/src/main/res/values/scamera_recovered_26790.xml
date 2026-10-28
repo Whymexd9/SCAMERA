@@ -127,7 +127,7 @@
     <string name="peak_method_desc">Highlights sharp areas in the viewfinder. Auto: only during manual focus.</string>
     <string name="show_afdata_desc">What to show over the viewfinder: HUD (shutter, ISO, focus, white balance), histogram or AF / AE boxes.</string>
     <string name="cfa_desc">Order of the colour pixels of the sensor. Auto: as the camera reports; a wrong one breaks colours.</string>
-    <string name="color_method_desc">Where the colour matrix comes from: the camera calibration or each shot. Changes the colours.</string>
+    <string name="color_method_desc">Where the colour matrix comes from: the camera calibration or each shot. Changes the colours. Where the camera reports its ISP matrix (vivo, OPPO), 12 MP photos use it; the choice acts on mosaic shots with the app\'s own white balance.</string>
     <string name="horizon_desc">A level line in the viewfinder to keep the horizon straight.</string>
     <string name="theme_desc">Light or dark gallery. The camera and the settings are always dark.</string>
 </resources>

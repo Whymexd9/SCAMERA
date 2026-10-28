@@ -141,6 +141,50 @@ public class ColourSettingsTest {
         assertEquals("sRGB (standard)", en.getResources().getStringArray(R.array.photo_color_space_entries)[0]);
     }
 
+    /**
+     * P369 (film-audit A12, settings-5 / outputs-1): with a film simulation the rows it replaces say so at 100 % (below it they act
+     * on the share without the film and stay open), the gain map and «Текстура» say they are off with any film, and the colour
+     * matrix's rows (warmth, tint, the kept scene light, the calibration) and the exposure keep acting.
+     */
+    @Test
+    public void filmSimulationExplainsItsRows() throws java.io.IOException {
+        final String[] bypassed = {"pref_scam_hybrid_why_macro_contrast", "pref_scam_hybrid_why_agx_sat", "pref_scam_hybrid_why_agx_look",
+                "pref_scam_hybrid_why_aces_on", "pref_scam_hybrid_why_uchi_on", "pref_scam_hybrid_why_curve_on", "pref_scam_hybrid_why_gamma",
+                "pref_scam_hybrid_why_film_toe", "pref_scam_hybrid_why_contrast_boost", "pref_scam_hybrid_why_hl_soft",
+                "pref_scam_hybrid_why_hl_white", "pref_scam_hybrid_why_ccm_sat", "pref_scam_hybrid_why_vibrance",
+                "pref_scam_hybrid_why_vibrance_sky", "pref_scam_hybrid_why_vibrance_green", "pref_scam_hybrid_why_hl_boost",
+                "pref_scam_hybrid_why_shadow_str", "pref_scam_hybrid_why_highlight_str", "pref_scam_hybrid_why_weight_mid",
+                "pref_scam_hybrid_why_weight_center", "pref_scam_hybrid_why_blend_smoothness", "pref_scam_hybrid_why_ef_coarse",
+                "pref_scam_hybrid_why_sharp_gf_lc", "pref_scam_hybrid_why_sharp_film_grain", "pref_scam_hybrid_colour_mono",
+                "pref_scam_hybrid_colour_mix_red_hue", "pref_scam_hybrid_colour_grade_mids_str", "pref_scam_hybrid_colour_skin_protect",
+                "pref_scam_hybrid_colour_gamut", "pref_scam_hybrid_colour_hue_lock", "pref_scam_hybrid_colour_vib_shadows"};
+        final String[] acting = {"pref_scam_hybrid_colour_warmth", "pref_scam_hybrid_colour_tint", "pref_scam_hybrid_colour_keep_warm",
+                "pref_scam_hybrid_colour_keep_cool", "pref_scam_hybrid_colour_cal_red_hue", "pref_scam_hybrid_why_ae_target",
+                "pref_scam_hybrid_why_hl_overflow", "pref_scam_hybrid_why_sharp_gain", "pref_scam_hybrid_why_clarity",
+                "pref_scam_hybrid_why_sharp_usm_amount", "pref_film_lut", "pref_film_lut_strength"};
+        final String xml = new String(java.nio.file.Files.readAllBytes(new java.io.File("src/main/res/xml/preferences.xml").toPath()),
+                java.nio.charset.StandardCharsets.UTF_8);
+        for (String k : bypassed) assertTrue("a real row: " + k, xml.contains("android:key=\"" + k + "\""));
+        for (String k : acting) assertTrue("a real row: " + k, xml.contains("android:key=\"" + k + "\""));
+        final String texture = "pref_scam_hybrid_why_texture", hdr = PhotoFormat.KEY_HDR;
+        Map<String, Object> v = new HashMap<>();
+        for (String k : bypassed) assertNull("no film: " + k, new SettingsAvailability(v).reason(k));
+        assertNull(new SettingsAvailability(v).reason(texture));
+        assertNull(new SettingsAvailability(v).reason(hdr));
+        v.put(com.particlesdevs.photoncamera.processing.color.FilmSim.STOCK_KEY, com.particlesdevs.photoncamera.processing.color.FilmSim.STOCKS[0].id);
+        for (String k : bypassed) assertNotNull("film at 100 %: " + k, new SettingsAvailability(v).reason(k));
+        for (String k : acting) assertNull("acts on the film: " + k, new SettingsAvailability(v).reason(k));
+        assertNotNull(new SettingsAvailability(v).reason(texture));
+        assertTrue(new SettingsAvailability(v).reason(hdr).contains("SDR"));
+        v.put(com.particlesdevs.photoncamera.processing.color.FilmSim.STRENGTH_KEY, "60");
+        for (String k : bypassed) assertNull("below 100 % ours stays: " + k, new SettingsAvailability(v).reason(k));
+        assertNotNull("the gates: off with any film", new SettingsAvailability(v).reason(texture));
+        assertNotNull(new SettingsAvailability(v).reason(hdr));
+        v.put(com.particlesdevs.photoncamera.processing.color.FilmSim.STRENGTH_KEY, 0);
+        assertNull("0 % is no film", new SettingsAvailability(v).reason(texture));
+        assertNull(new SettingsAvailability(v).reason(hdr));
+    }
+
     @Test
     public void availability() {
         Map<String, Object> v = new HashMap<>();

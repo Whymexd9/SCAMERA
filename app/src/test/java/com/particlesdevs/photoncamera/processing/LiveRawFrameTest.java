@@ -157,6 +157,37 @@ public class LiveRawFrameTest {
         double sum=0;for(int y=0;y<block;y++)for(int x=0;x<block;x++)sum+=s.get((my*block+y)*rowPx+mx*block+x)&0xffff;
         return sum/(block*block);
     }
+    /**
+     * Bug viewfinder-ui-halving-buffers-kept: the «RAW Viewfinder Size» cap's halving buffers (halfA / halfB, and a packed frame's
+     * unpacked copy: 25 MB at 4096x3072) stayed for the rest of the process after the RAW viewfinder stopped, under the merges too.
+     */
+    @Test public void disableReleasesHalvingBuffers(){
+        LiveRawFrame.setEnabled(false);
+        try{
+            LiveRawFrame.setMaxLongSide(32);
+            LiveRawFrame.setEnabled(true);
+            final int w=64,h=48;
+            ByteBuffer plane=ByteBuffer.allocate(w*h*2).order(java.nio.ByteOrder.nativeOrder());
+            for(int i=0;i<w*h;i++)plane.putShort(i*2,(short)(64+i%900));
+            LiveRawFrame.publish(plane,w,h,w*2,0,1023,null,null,null,null,1,1,null,1,100,6400,true,0,0,android.graphics.ImageFormat.RAW_SENSOR);
+            LiveRawFrame.Frame f=LiveRawFrame.acquire();
+            assertNotNull(f);assertEquals("halved to the cap",w/2,f.width);
+            assertTrue(LiveRawFrame.halvingBuffersHeld());
+            LiveRawFrame.setEnabled(false);
+            assertFalse("released with the RAW viewfinder",LiveRawFrame.halvingBuffersHeld());
+            // a packed frame's unpacked copy too
+            LiveRawFrame.setMaxLongSide(8);
+            LiveRawFrame.setEnabled(true);
+            final int pw=16,ph=8,stride=20;
+            byte[] packed=new byte[stride*ph];
+            for(int i=0;i<packed.length;i++)packed[i]=(byte)(40+i%7);
+            LiveRawFrame.publish(ByteBuffer.wrap(packed),pw,ph,stride,0,1023,null,null,null,null,1,1,null,1,100,6400,true,0,0,android.graphics.ImageFormat.RAW10);
+            assertNotNull(LiveRawFrame.acquire());
+            assertTrue(LiveRawFrame.halvingBuffersHeld());
+            LiveRawFrame.setEnabled(false);
+            assertFalse(LiveRawFrame.halvingBuffersHeld());
+        }finally{LiveRawFrame.setMaxLongSide(0);LiveRawFrame.setEnabled(false);}
+    }
     @Test public void truncatedPlaneCannotReplaceAValidFrame(){
         LiveRawFrame.setEnabled(true);
         try{publish(9);int version=LiveRawFrame.getVersion();

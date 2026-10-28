@@ -18,7 +18,8 @@ import java.util.Locale;
  * <p>P191 (owner, 2026-10-17: «переноси всё туда чтобы в data ничего не хранилось»): the report goes to
  * {@code /Download/SCAMERA/SCAMERA-crash.log} only (ScameraFiles; the app writes its own files there without a
  * permission), next to SCAMERA-debug.txt. {@code /Android/data/<pkg>/files/SCAMERA-crash.log} is written only when
- * that write failed; ExitReasons reads the Download file first, then that fallback.
+ * that write failed; ExitReasons reads the Download file first, then that fallback. A Download file of an earlier install,
+ * which the File API cannot open, gives way to this install's own SCAMERA-crash-&lt;install time&gt;.log beside it.
  *
  * <p>P214b (engineering.md B4): every report names its build ({@link BuildIdentity}: version, package, commit, CI/local)
  * and its process; the :scam process (the last capture report screen) installs it too; the file is capped: at 1 MB it
@@ -60,11 +61,17 @@ public final class ScameraCrashReporter {
         });
     }
 
-    private static void write(Context context, Thread thread, Throwable throwable) {
+    static void write(Context context, Thread thread, Throwable throwable) {
         String report = report(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date()),
                 BuildIdentity.line(), processName(), context.getPackageName(), thread.getName(), throwable);
 
         if (append(ScameraFiles.file(FILE_NAME), report)) {
+            return;
+        }
+        // Audit 2026-10-27 (lab-app-5): the file of an earlier install (P363: the File API is denied it) - this install's own
+        // name beside it, as the debug and timing logs do (RotatingLogFile.installStem); ExitReasons reads it there
+        final String stem = RotatingLogFile.installStem(context, STEM);
+        if (stem != null && append(ScameraFiles.file(stem + EXTENSION), stem, report)) {
             return;
         }
         File privateDir = context.getExternalFilesDir(null);
@@ -104,9 +111,14 @@ public final class ScameraCrashReporter {
      * nor deleted is started again). False when it could not be written.
      */
     static boolean append(File file, String report) {
+        return append(file, STEM, report);
+    }
+
+    /** As {@link #append(File, String)} for a file named {@code stem} + {@link #EXTENSION} (its .1 is {@code stem}.1). */
+    static boolean append(File file, String stem, String report) {
         try {
             boolean full = file.length() >= CAP_BYTES;
-            if (full) RotatingLogFile.rotate(file.getParentFile(), STEM, EXTENSION, 2);
+            if (full) RotatingLogFile.rotate(file.getParentFile(), stem, EXTENSION, 2);
             try (FileOutputStream out = new FileOutputStream(file, !(full && file.exists()))) {
                 out.write(report.getBytes("UTF-8"));
                 out.flush();

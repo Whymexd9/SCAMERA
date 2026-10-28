@@ -252,8 +252,16 @@ public final class DngRaw {
         }
     }
 
-    /** OpcodeList2: big-endian {count; {id, version, flags, bytes, parameters}...}; GainMap (9) kept, the rest skipped. */
     private void parseOpcodes(byte[] list) {
+        gainMaps.addAll(parseGainMaps(list));
+    }
+
+    /**
+     * OpcodeList2: big-endian {count; {id, version, flags, bytes, parameters}...}; GainMap (9) kept, the rest skipped. P370 (A10):
+     * the gallery's DngPreview reads the same maps.
+     */
+    static List<GainMap> parseGainMaps(byte[] list) {
+        final List<GainMap> gainMaps = new ArrayList<>();
         try {
             ByteBuffer o = ByteBuffer.wrap(list).order(ByteOrder.BIG_ENDIAN);
             int n = o.getInt();
@@ -281,9 +289,10 @@ public final class DngRaw {
                     g.originV = o.getDouble();
                     g.originH = o.getDouble();
                     g.mapPlanes = Math.max(1, o.getInt());
-                    int count = g.pointsV * g.pointsH * g.mapPlanes;
+                    // P370 (review): the count in long - 5 x 214748365 points wrapped to a 4-byte count and an OutOfMemoryError
+                    final long count = (long) g.pointsV * g.pointsH * g.mapPlanes;
                     if (g.pointsV > 0 && g.pointsH > 0 && count > 0 && count * 4 <= bytes - 76) {
-                        g.gains = new float[count];
+                        g.gains = new float[(int) count];
                         for (int k = 0; k < count; k++) g.gains[k] = o.getFloat();
                         gainMaps.add(g);
                     }
@@ -293,6 +302,7 @@ public final class DngRaw {
         } catch (RuntimeException ignored) {
             // a damaged list: no shading correction
         }
+        return gainMaps;
     }
 
     // ---------------------------------------------------------------- decode

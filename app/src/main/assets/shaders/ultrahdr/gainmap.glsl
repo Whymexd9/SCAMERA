@@ -29,6 +29,8 @@ uniform int uDown;
 uniform float uScale;
 // OffsetSDR/OffsetHDR from the hdrgm XMP metadata (1/64)
 uniform float uEps;
+// P370 (B3): 1 = the base is Display P3 (PhotoOutput): its luminance takes the P3 weights; 0 / unset: sRGB (Rec.709)
+uniform int uP3;
 
 out vec4 Output;
 
@@ -60,7 +62,7 @@ void main() {
             vec3 l = max(texelFetch(LBuffer, p, 0).rgb, vec3(0.0));
 
             // SDR luminance in linear light.
-            float sL = lum709(srgbToLinear(s));
+            float sL = uP3 == 1 ? dot(srgbToLinear(s), vec3(0.2290, 0.6917, 0.0793)) : lum709(srgbToLinear(s));
             // Scene luminance is already linear; anchored to the render's top.
             float hL = lum709(l) * uAnchor;
 

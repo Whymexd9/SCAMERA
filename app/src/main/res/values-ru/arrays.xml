@@ -174,11 +174,11 @@
         <item>Точечный</item>
     </string-array>
     <string-array name="scam_hybrid_why_agx_look_entries">
-        <item>Default</item>
-        <item>Punchy</item>
-        <item>Soft</item>
-        <item>Golden</item>
-        <item>Custom</item>
+        <item>Стандарт</item>
+        <item>Сочный</item>
+        <item>Мягкий</item>
+        <item>Золотой</item>
+        <item>Свой</item>
     </string-array>
     <string-array name="scam_hybrid_why_sharp_domain_entries">
         <item>После экспозиции ae</item>

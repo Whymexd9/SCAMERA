@@ -22,11 +22,12 @@ public class GLTexture implements AutoCloseable {
     public final int mTextureID;
     public int mBuffer;
     public boolean isBuffered = false;
-    private static int count = 0;
     private static int created = 0;
     public final GLFormat mFormat;
-    private static boolean[] ids = new boolean[256];
-    private static int[] textures = new int[256];
+    /** The names this class made and has not deleted yet (closeAll); a texture frees its own slot (GLTextureSlots). */
+    private static final GLTextureSlots SLOTS = new GLTextureSlots(256);
+    /** This texture's slot in {@link #SLOTS} (0: not tracked, or closed). */
+    private int slot;
     public GLTexture(GLTexture in,GLFormat format) {
         this(in.mSize,new GLFormat(format),null,in.mFormat.filter,in.mFormat.wrap,0);
     }
@@ -81,18 +82,7 @@ public class GLTexture implements AutoCloseable {
         // Shot speed (W1.0): no log line per texture (two lines each pushed the shot over OPPO's log quota); the count of
         // textures per run is in the "runAll programs" line (takeCreated).
         created++;
-        for(int i = 1; i<ids.length;i++){
-            if(!ids[i]){
-                if(count < i){
-                    count = i;
-                    //glGenTextures(1,TexID,0);
-                }
-                //TexID[0] = i;
-                textures[i] = TexID[0];
-                ids[i] = true;
-                break;
-            }
-        }
+        slot = SLOTS.take(TexID[0]);
 
         mTextureID = TexID[0];
         //Log.d("GLTexture","Size:"+size+" ID:"+mTextureID);
@@ -121,18 +111,7 @@ public class GLTexture implements AutoCloseable {
         // Shot speed (W1.0): no log line per texture (two lines each pushed the shot over OPPO's log quota); the count of
         // textures per run is in the "runAll programs" line (takeCreated).
         created++;
-        for(int i = 1; i<ids.length;i++){
-            if(!ids[i]){
-                if(count < i){
-                    count = i;
-                    //glGenTextures(1,TexID,0);
-                }
-                //TexID[0] = i;
-                textures[i] = TexID[0];
-                ids[i] = true;
-                break;
-            }
-        }
+        slot = SLOTS.take(TexID[0]);
         mTextureID = TexID[0];
         //Log.d("GLTexture","Size:"+size+" ID:"+mTextureID);
         glActiveTexture(GL_TEXTURE1+mTextureID);
@@ -243,24 +222,12 @@ public class GLTexture implements AutoCloseable {
                 '}';
     }
     public static void notClosed(){
-        StringBuilder str = new StringBuilder();
-        for(int i =0; i<ids.length;i++){
-            if(ids[i]) {
-                str.append(i);
-                str.append(" ");
-            }
-        }
-        Log.d("GLTexture","notClosed:"+str.toString());
+        Log.d("GLTexture","notClosed:"+SLOTS.inUse());
     }
 
     public static void closeAll(){
-        for(int i =0; i<ids.length;i++){
-            if(ids[i]) {
-                glDeleteTextures(1,new int[]{textures[i]},0);
-                ids[i] = false;
-            }
-        }
-        count = 0;
+        final int[] open = SLOTS.takeAll();
+        if (open.length > 0) glDeleteTextures(open.length, open, 0);
         // W1.1: the framebuffers of the textures still open go with them; a texture attached to a framebuffer kept its
         // storage until the EGL context was destroyed. The old model left them to the context (PostGlMode.legacy).
         int[] fbos = takeFramebuffers();
@@ -289,7 +256,9 @@ public class GLTexture implements AutoCloseable {
     @Override
     public void close() {
         glDeleteTextures(1,new int[]{mTextureID},0);
-        ids[mTextureID] = false;
+        // its own slot, not the one its name would index (another texture's once a raw glGenTextures took a name: P369 film grain)
+        SLOTS.release(slot, mTextureID);
+        slot = 0;
         //Log.d("GLTexture","close ID:"+mTextureID);
         if(isBuffered) {
             untrackFramebuffer(mTextureID);

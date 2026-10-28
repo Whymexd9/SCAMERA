@@ -220,7 +220,7 @@ public final class ShadeCatalog {
         spec(OUTPUT, R.string.shade_t_output, R.array.shade_s_output, R.drawable.settings_ic_zoom);
         spec(DOWNSAMPLER, R.string.shade_t_downsampler, R.array.shade_s_downsampler, R.drawable.ic_sheet_downsampler);
         spec("pref_ultrahdr_key", R.string.shade_t_ultrahdr, 0, R.drawable.settings_ic_hdr);
-        spec("pref_wide169_key", R.string.shade_t_wide169, 0, R.drawable.settings_ic_ratio);
+        spec("pref_wide169_key", R.string.wide169, 0, R.drawable.settings_ic_ratio);
         spec("pref_show_watermark_key", R.string.shade_t_watermark, 0, R.drawable.settings_ic_water);
         spec("pref_scam_hybrid_bento", R.string.shade_t_bento, R.array.shade_s_bento, R.drawable.settings_ic_flash);
         spec("pref_scam_hybrid_bento_frames", R.string.shade_t_bento_frames, R.array.shade_s_bento_frames, R.drawable.settings_ic_frames);
@@ -504,7 +504,7 @@ public final class ShadeCatalog {
     }
 
     /** The settings root's wrapper page and groups of «Для опытных»: not in the section path. */
-    static final Set<String> PATH_SKIP = new HashSet<>(Arrays.asList("advanced_screen", "adv_processing", "adv_cameras", "adv_system"));
+    static final Set<String> PATH_SKIP = new HashSet<>(Arrays.asList("advanced_screen", "adv_cameras", "adv_system"));
 
     private void walk(Preference p, List<String> path, @Nullable Drawable.ConstantState inherited, boolean root) {
         if (!p.isVisible()) return;

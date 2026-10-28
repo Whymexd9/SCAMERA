@@ -33,6 +33,9 @@ uniform vec3 oppChromaU;          // the global chrominance correction per chann
 // tone lifted them. The clamp now follows the noise reduction (ScamDenoise / ScamHdrDenoise output) or an average (why/low,
 // why/combine). 0 (unset): clamp at zero (SCAM HDR route, whose stages expect it).
 uniform int signedU;
+// P368 clip guard (owner, 2026-10-27: «У нас нет блока который предотвращает умножение пересветов на коэффициенты CCM»): the white of
+// the Bento ultrashort frames in base-frame units (k, ScamHybridBurst.lastBentoFactor); <= 1 / unset: no ultrashort data, no guard.
+uniform float usWhiteU;
 out vec3 Output;
 
 // Clip level of every channel at this pixel (raw units); vec3(-1) = no channel can be clipped here.
@@ -56,6 +59,35 @@ vec3 levelAt(ivec2 p) {
     // error); their white (1.0) says nothing about a value that may exceed it.
     if ((f & 16u) != 0u) return hi ? clipHiU : vec3(-1.0);
     return lo ? clipLoU : clipHiU;
+}
+
+// P368 clip guard: the share of a pixel whose camera channels sit at one common ceiling above everything the base frames can
+// hold. That is a clip of the ultrashort frames under the worker's flag thresholds (OPPO X8U lamp, 2026-10-27: its ISO 100 frames
+// saturate at ~0.90 - 0.95 of the RAW white, under bentoHighlight / clipLevel 0.98 - usClipped 0, no flag bit 5 - and the flicker
+// tile field (P290) and the gain against N (P310) moved that clip to 6.0 - 7.1 of k = 8: camera R, G, B within 3 %, no level here).
+// The white balance (R x1.83, B x2.39) turned it magenta (11.6, 6.5, 15.3) and the colour matrix and the highlight landing more so.
+// Equal camera RGB is no light's colour: a neutral light keeps the white point's camera ratio (min / max 0.42 there), only a
+// lavender-magenta light (R / G = 1 / wp.r, B / G = 1 / wp.b after the white balance) is equal in camera RGB; where the white
+// point is near equal itself, so is that light, and the guard changes little. Ramps: camera min / max 0.65 .. 0.85 (a neutral
+// light: the white point's 0.35 - 0.53 on the shots of tools/check_highlight_*.py, 0.42 here) and 1.05 .. 1.3 x the base frames'
+// white (only ultrashort data reaches it): the core, and its rim where the merge mixed the clipped core with the dark edge (camera
+// min / max 0.6 - 0.95 at 1.5 - 5 x white on the bulb's edge). 0 for every other pixel (no Bento, base-frame data, a measured
+// colour): those pixels take the shader before P368, bit for bit.
+// Keep in sync with hlrecovery/chanprep.glsl.
+float ceilingShare(vec3 raw) {
+    if (usWhiteU <= 1.0) return 0.0;
+    float m = max(max(raw.r, raw.g), raw.b);
+    float base = clipLoU.g > 0.0 ? max(max(clipLoU.r, clipLoU.g), clipLoU.b) : 1.0;
+    if (m <= 1.05 * base) return 0.0;
+    return smoothstep(0.65, 0.85, min(min(raw.r, raw.g), raw.b) / m) * smoothstep(1.05, 1.30, m / base);
+}
+
+// P368: every channel at one ceiling - neutral white at the brightest white-balanced level (the light is at least that bright in
+// every channel), the ramp's share of it; the colour matrix leaves a neutral neutral, so nothing downstream tints it. P370 (B5):
+// every colour route keeps that (CCT.matrix . sensorToProPhoto . diag(neutral) maps white to white within 2e-3):
+// ParametersWhiteInvariantTest - a new route must pass it.
+vec3 ceilingGuard(vec3 c, float share) {
+    return mix(c, vec3(max(max(c.r, c.g), c.b)), share * clamp(hlStrengthU, 0.0, 1.0));
 }
 
 // The light around output pixel o (the statistics are on the output grid, the 16:9 crop offset is applied inside
@@ -210,7 +242,9 @@ void main(){
                 return;
             }
         }
-        if (L.g <= 0.0) { Output = c; return; }
+        // P368: no clip level here (no flag, no ultrashort level) - the clip guard on the camera RGB itself
+        float cs = ceilingShare(raw);
+        if (L.g <= 0.0) { Output = cs > 0.0 ? ceilingGuard(c, cs) : c; return; }
         // A clipped-mean channel close to its clip is a lower bound as well: it mixes real values of clipped cells with
         // saturated samples (the first rows inside a lamp: R 5.8, G 7.2, B 8 of k = 8 -> magenta). Its share of the
         // estimate fades in from 0.6 of the clip (a real colour far below, a red LED's G and B, is not touched).
@@ -224,7 +258,7 @@ void main(){
             vec3 below = vec3(lessThan(c, vec3(hiC * 0.98)));
             satR = max(satR, below * smoothstep(vec3(0.80), vec3(0.95), rel));
         }
-        if (max(max(satR.r, satR.g), satR.b) <= 0.0) { Output = c; return; }
+        if (max(max(satR.r, satR.g), satR.b) <= 0.0) { Output = cs > 0.0 ? ceilingGuard(c, cs) : c; return; }
         // A clipped channel is a lower bound. Its estimate scales a prior chromaticity to the unclipped channels (G of a
         // white highlight from R and B), and only ever raises it: a saturated single colour (neon, laser) keeps its
         // clipped channel because the estimate from its dark channels is lower.
@@ -303,6 +337,8 @@ void main(){
         // last channel approaches its clip (no grey plateau, no step).
         float all3 = sat.r * sat.g * sat.b;
         vec3 o = mix(r, vec3(max(max(max(r.r, r.g), r.b), top)), all3);
+        // P368: a level that does not reach the pixel's own ceiling (the ultrashort clip moved below clipHiU) - the guard
+        if (cs > 0.0) o = mix(o, vec3(max(max(o.r, o.g), o.b)), cs);
         Output = mix(c, o, clamp(hlStrengthU, 0.0, 1.0));
         return;
     }

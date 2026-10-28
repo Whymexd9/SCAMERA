@@ -29,6 +29,7 @@ import com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens;
 import com.particlesdevs.photoncamera.processing.color.LensFilters;
 import com.particlesdevs.photoncamera.settings.PreferenceNumber;
 import com.particlesdevs.photoncamera.settings.PreferenceValue;
+import com.particlesdevs.photoncamera.ui.settings.PageReset;
 import com.particlesdevs.photoncamera.ui.settings.SettingsStyle;
 import com.particlesdevs.photoncamera.util.Lang;
 
@@ -43,7 +44,7 @@ import java.util.concurrent.Executors;
  * redraws the preview at once, «Сбросить» brings the filter back as designed) and what the filter does. Stores the id
  * (pref_lens_filter), the strength 0..100 and, per filter, its LensFilters.Tune.
  */
-public class LensFilterPreference extends Preference {
+public class LensFilterPreference extends Preference implements PageReset.Resettable {
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "lens-filter-page");
         t.setDaemon(true);
@@ -80,6 +81,28 @@ public class LensFilterPreference extends Preference {
         if (prefs != null && id != null && !id.isEmpty() && strength(prefs) <= 0f)
             prefs.edit().putString(LensFilters.STRENGTH_KEY, "50").apply();
         notifyChanged();
+    }
+
+    /**
+     * The page reset (audit 2026-10-27: the chosen filter stayed): no filter, the strength and every filter's fine controls as
+     * designed (their stored values go); true when a filter was chosen or a value of its own was stored.
+     */
+    @Override
+    public boolean resetToDefault() {
+        final SharedPreferences prefs = getSharedPreferences();
+        if (prefs == null) return false;
+        boolean stored = false, any = !chosen().isEmpty();
+        final SharedPreferences.Editor e = prefs.edit();
+        for (String k : prefs.getAll().keySet()) {
+            if (!LensFilters.KEY.equals(k) && !LensFilters.STRENGTH_KEY.equals(k) && !k.startsWith(LensFilters.TUNE_PREFIX)) continue;
+            e.remove(k);
+            stored = true;
+            if (!LensFilters.KEY.equals(k)) any = true;
+        }
+        if (!stored) return false;
+        e.apply();
+        notifyChanged();
+        return any;
     }
 
     @Override

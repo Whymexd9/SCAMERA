@@ -1,5 +1,6 @@
 package com.particlesdevs.photoncamera.processing.color;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -73,6 +74,72 @@ public class FilmEffectsTest {
         for (int y = h / 2 - 4; y <= h / 2 + 4; y++) for (int x = w / 2 - 4; x <= w / 2 + 4; x++) dark[y * w + x] = 0xFFFFFFFF;
         final double atFull = diff(FilmEffects.light(dark, w, h, full), dark), atHalf = diff(FilmEffects.light(dark, w, h, half), dark);
         assertTrue("half " + atHalf + " full " + atFull, atHalf > 0 && atHalf < atFull * .8);
+    }
+
+    /**
+     * film/grain.glsl's grain field's standard deviation at a clump size (pixels): a smooth-step bilinear blend of unit lattice
+     * values (its variance averaged over the pixel's phase in the cell), x 1.37, plus the octave of half the size at half the
+     * weight, x 0.894 - from the shader's formulas, not from FilmEffects.
+     */
+    static double fieldSd(float cell) {
+        return Math.sqrt((blendVariance(cell, 0) * 1.37 * 1.37 + .25 * blendVariance(.5f * cell, .5f * cell) * 1.37 * 1.37) * .894 * .894);
+    }
+
+    private static double blendVariance(float size, float offset) {
+        final double c = Math.max(size, 1f);
+        double v = 0;
+        final int steps = 2000;
+        for (int i = 0; i < steps; i++) {
+            double q = (i + .5 + offset) / c;
+            double f = q - Math.floor(q);
+            f = f * f * (3 - 2 * f);
+            v += (1 - f) * (1 - f) + f * f;
+        }
+        v /= steps;
+        return v * v;
+    }
+
+    /**
+     * P369 (viewfinder-bw-preview): the black-and-white stocks' grain and film sharpness in the preview, as the photo's FilmGrain
+     * draws them: grain on every stock; on mid grey its density spread within 20 % of film/grain.glsl's (its sigma x the tonal
+     * weight x the field's spread); «Мягкость плёнки» 2 softens an edge, 0 leaves it.
+     */
+    @Test
+    public void theMonochromeStocksShowTheirGrainAndSoftness() {
+        final int w = 160, h = 120;
+        final int grey = 118;   // encoded 0.463: linear 0.181
+        final int[] flat = new int[w * h];
+        java.util.Arrays.fill(flat, 0xFF000000 | (grey << 16) | (grey << 8) | grey);
+        for (FilmSim.Stock st : FilmSim.STOCKS) {
+            if (st.spectral != null) continue;
+            final FilmSim.Settings s = new FilmSim.Settings(st, FilmSim.print(""), FilmSim.format("135"), 1, 0, 0, 0, 0, 0, 1);
+            final int[] g = FilmEffects.grain(flat, w, h, s);
+            assertTrue(st.id + " has grain", diff(g, flat) > 0.3);
+            final float um = FilmEffects.pixelUm(s);
+            final double y = FilmEffects.decode(grey);
+            final double stops = Math.log(y / .18) / Math.log(2);
+            final double wt = st.reversal() ? .25 + .75 * Math.exp(-Math.pow(Math.log(y / .04) / Math.log(2) / 2.5, 2))
+                    : .35 + .65 * Math.exp(-Math.pow(stops / 2.2, 2));
+            final double want = FilmSim.classicGrainSigma(s, um) * wt * fieldSd(FilmSim.classicGrainCell(s, um));
+            double sum = 0, sum2 = 0;
+            for (int px : g) {
+                final double d = Math.log10(Math.max(FilmEffects.decode((px >> 8) & 255), 1e-6) / y);
+                sum += d;
+                sum2 += d * d;
+            }
+            final double sd = Math.sqrt(Math.max(sum2 / g.length - (sum / g.length) * (sum / g.length), 0));
+            System.out.println(String.format(java.util.Locale.ROOT, "%s: grain density sd %.4f, film/grain.glsl %.4f", st.id, sd, want));
+            assertEquals(st.id + " grain on mid grey", want, sd, want * .2);
+        }
+        // softness: a black / white edge, no grain
+        final int[] edge = new int[w * h];
+        for (int i = 0; i < edge.length; i++) edge[i] = (i % w) < w / 2 ? 0xFF202020 : 0xFFE0E0E0;
+        final FilmSim.Stock trix = FilmSim.stock("trix400");
+        final int at = (h / 2) * w + w / 2 - 1;
+        final int[] soft = FilmEffects.grain(edge, w, h, new FilmSim.Settings(trix, FilmSim.print(""), FilmSim.format("135"), 0, 0, 2, 0, 0, 0, 1));
+        assertTrue("softness 2 blurs the edge: " + Integer.toHexString(soft[at]), (soft[at] & 255) > 0x20 + 8);
+        final int[] hard = FilmEffects.grain(edge, w, h, new FilmSim.Settings(trix, FilmSim.print(""), FilmSim.format("135"), 0, 0, 0, 0, 0, 0, 1));
+        assertArrayEquals("softness 0 and no grain: the picture as it was", edge, hard);
     }
 
     @Test

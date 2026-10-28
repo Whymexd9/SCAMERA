@@ -13,7 +13,8 @@ import androidx.annotation.Nullable;
  * double tap on a parameter's slider or row puts its default back. The taps are only watched (the slider still moves with its
  * first tap; the reset then wins); a row whose single tap does something else ({@code onTap}: the precise value dialog) gets it
  * once the second tap did not come, so the two never both run. A tap is a press shorter than the long-press time that stays
- * inside the touch slop; two taps make a double tap within the double-tap time and distance.
+ * inside the touch slop; two taps make a double tap within the double-tap time and distance. A view whose touches are ours keeps
+ * its long press (2026-10-27: a settings row's help): it never reaches the view's own touch handling, so it is watched here.
  */
 public final class DoubleTapReset {
     /** The main thread's queue (a view's own post waits for its window). */
@@ -38,7 +39,7 @@ public final class DoubleTapReset {
         // a row with its own single tap, or a plain container (else it never sees the taps' ends), is ours; a slider or a view
         // with its own click keeps its handling (the slider's drag)
         final boolean own = onTap != null || !(view instanceof android.widget.AbsSeekBar) && !view.isClickable();
-        final Taps taps = new Taps(view, onTap, reset);
+        final Taps taps = new Taps(view, onTap, reset, own);
         view.setOnTouchListener((v, e) -> {
             taps.on(e);
             if (!own) return false;
@@ -54,21 +55,28 @@ public final class DoubleTapReset {
         @Nullable final Runnable onTap;
         final Runnable reset;
         final int slop, doubleSlop;
+        /** Whether the view's touches are ours (its own long-press detection never runs then). */
+        final boolean own;
         float downX, downY, lastX, lastY;
         long downTime, lastUp = Long.MIN_VALUE / 2;
-        boolean moved, pendingTap;
-        final Runnable single;
+        boolean moved, pendingTap, longPressed;
+        final Runnable single, longPress;
 
-        Taps(View view, @Nullable Runnable onTap, Runnable reset) {
+        Taps(View view, @Nullable Runnable onTap, Runnable reset, boolean own) {
             this.view = view;
             this.onTap = onTap;
             this.reset = reset;
+            this.own = own;
             final ViewConfiguration vc = ViewConfiguration.get(view.getContext());
             slop = vc.getScaledTouchSlop();
             doubleSlop = vc.getScaledDoubleTapSlop();
             single = () -> {
                 pendingTap = false;
                 if (this.onTap != null) this.onTap.run();
+            };
+            // the press held still for the long-press time: the view's long click (a settings row's help); its end is no tap
+            longPress = () -> {
+                if (!moved && this.view.isLongClickable()) longPressed = this.view.performLongClick();
             };
         }
 
@@ -79,12 +87,19 @@ public final class DoubleTapReset {
                     downY = e.getY();
                     downTime = e.getEventTime();
                     moved = false;
+                    longPressed = false;
+                    MAIN.removeCallbacks(longPress);
+                    if (own && view.isLongClickable()) MAIN.postDelayed(longPress, ViewConfiguration.getLongPressTimeout());
                     break;
                 case MotionEvent.ACTION_MOVE:
-                    if (Math.abs(e.getX() - downX) > slop || Math.abs(e.getY() - downY) > slop) moved = true;
+                    if (Math.abs(e.getX() - downX) > slop || Math.abs(e.getY() - downY) > slop) {
+                        moved = true;
+                        MAIN.removeCallbacks(longPress);
+                    }
                     break;
                 case MotionEvent.ACTION_UP: {
-                    if (moved || e.getEventTime() - downTime > ViewConfiguration.getLongPressTimeout()) {
+                    MAIN.removeCallbacks(longPress);
+                    if (moved || longPressed || e.getEventTime() - downTime > ViewConfiguration.getLongPressTimeout()) {
                         lastUp = Long.MIN_VALUE / 2;
                         break;
                     }
@@ -116,6 +131,7 @@ public final class DoubleTapReset {
                 }
                 case MotionEvent.ACTION_CANCEL:
                     moved = true;
+                    MAIN.removeCallbacks(longPress);
                     break;
                 default:
                     break;

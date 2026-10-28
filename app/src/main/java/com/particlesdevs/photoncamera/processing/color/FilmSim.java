@@ -382,6 +382,22 @@ public final class FilmSim {
         public float pixelUm(int longPx) {
             return format.longMm <= 0 || longPx <= 0 ? 0f : format.longMm * 1000f / longPx;
         }
+
+        /**
+         * P369 (viewfinder-filmchain-cache-key): the settings a {@link #lutKey} stands for - the stock, the print and the five numbers
+         * the LUT depends on - at {@code strength}; no format, grain, halation or softness (the LUT does not depend on them). The
+         * leading fields of {@code key} are read (a chain key's further fields are left); null for a key of no known stock.
+         */
+        @Nullable
+        public static Settings forLut(@Nullable String key, float strength) {
+            if (key == null) return null;
+            final String[] p = key.split("\\|", -1);
+            if (p.length < 7) return null;
+            final Stock stock = stock(p[0]);
+            if (stock == null) return null;
+            return new Settings(stock, print(p[1].equals("-") ? "" : p[1], stock), FORMATS[0], 0f, 0f, 0f, number(p[2], 0f),
+                    number(p[3], 0f), number(p[4], 0f), number(p[5], 0f), number(p[6], 0f), strength);
+        }
     }
 
     private static String fmt(float v) {
@@ -712,8 +728,10 @@ public final class FilmSim {
 
     /**
      * The display colour (sRGB encoded, the tone's output) back to scene light, mid grey kept at 0.18: above it the tone's
-     * shoulder undone (white about three stops over), below it the stops brought closer ({@link #SHADOW_STOPS} of each: the
-     * tone already lifted the shadows, and the film and the print add their own contrast).
+     * shoulder undone (display white 1.0 maps to 8.38, about 5.5 stops over mid grey - P369: not the three stops this said), below
+     * it the stops brought closer ({@link #SHADOW_STOPS} of each: the tone already lifted the shadows, and the film and the print
+     * add their own contrast). P369: the photo and the RAW viewfinder feed the film scene light instead ({@link #lutScene}); this
+     * display-domain table stays for the ISP viewfinder, the RAW viewfinder's own look and the settings' preview.
      */
     static double scene(double v) {
         final double y = v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
@@ -782,6 +800,115 @@ public final class FilmSim {
             v[k++] = encode(o[2]);
         }
         return FilmLut.of(n, v, set.stock.brand + " " + set.stock.name);
+    }
+
+    // ───── P369: the scene-referred film table (why/combine FILM_SIM 1)
+
+    /** The reference model's mid grey (FilmSpectral.Engine.render: linear sRGB scene light, mid grey 0.184). */
+    public static final float FILM_GREY = .184f;
+    /**
+     * The scene table's log grid: node i of n at FILM_GREY x 2^(LOG_LO + LOG_SPAN i / (n - 1)) (-10 .. +10 stops around it). The
+     * model's colour goes on changing up to about +10 stops (a red light bleaches toward white from +6): a grid ending at +6 kept
+     * a saturated light's colour (Portra up to 89 / 255 off, p99 50); Bento data reach 16 x the clip, x ae x deficit up to 5.
+     */
+    public static final float LOG_LO = -10f, LOG_SPAN = 20f;
+    /** The scene table's points a side (FilmChain.scene): 41 keeps half a stop per node, as 33 did over 16 stops (in-grid max 2.4 / 255). */
+    public static final int SCENE_SIZE = 41;
+    /** The WHY AE's target (WhyAe ae_target, 0.15 of the exposed linear light) to the film's mid grey: the meter's grey prints as mid grey. */
+    public static final float METER_TO_FILM = .184f / .15f;
+
+    /**
+     * P369 (owner, 2026-10-27: «Убедись что при включении симуляций плёнки наши алгоритмы не будут мешать симуляциям и в итоге у
+     * нас получался "Look" такой какой должен быть с ними»): the simulation as a LUT of scene light, {@code n} points a side (red
+     * fastest), the grid logarithmic per channel ({@link #FILM_GREY}, {@link #LOG_LO}, {@link #LOG_SPAN}) - why/combine's FILM_SIM
+     * feed takes the exposed scene colour before our fusion, AgX and colour rows, as the model is made for (FilmSpectral.render), so
+     * the photo prints what the film prints. Out: encoded sRGB, clamped to 0..1. Our black-and-white model is rendered at its own
+     * mid grey 0.18 (x 0.18 / 0.184), so the AE's grey meets each model's own. Null when the reference model's data cannot be read
+     * (the photo then has no film: WhyCombine says so; it never falls back to the display table).
+     */
+    @Nullable
+    public static FilmLut lutScene(Settings set, int n) {
+        final double[] sc = new double[n];
+        for (int i = 0; i < n; i++) sc[i] = FILM_GREY * Math.pow(2, LOG_LO + LOG_SPAN * i / (double) (n - 1));
+        final float[] v = new float[n * n * n * 3];
+        int k = 0;
+        if (set.stock.spectral != null) {
+            final FilmSpectral.Engine e = engine(set);
+            if (e == null) return null;
+            final double[] o = new double[3];
+            for (int b = 0; b < n; b++) for (int g = 0; g < n; g++) for (int r = 0; r < n; r++) {
+                e.render(sc[r], sc[g], sc[b], o);
+                for (int c = 0; c < 3; c++) v[k++] = (float) Math.max(0, Math.min(1, o[c]));
+            }
+            return FilmLut.of(n, v, set.stock.brand + " " + set.stock.name);
+        }
+        final Model m = new Model(set.stock, MONO_PAPER, set.exposure, set.printEv, set.tone);
+        final double toModel = .18 / FILM_GREY;
+        final double[] rgb = new double[3];
+        for (int b = 0; b < n; b++) for (int g = 0; g < n; g++) for (int r = 0; r < n; r++) {
+            rgb[0] = sc[r] * toModel;
+            rgb[1] = sc[g] * toModel;
+            rgb[2] = sc[b] * toModel;
+            final float[] o = m.render(rgb);
+            v[k++] = encode(o[0]);
+            v[k++] = encode(o[1]);
+            v[k++] = encode(o[2]);
+        }
+        return FilmLut.of(n, v, set.stock.brand + " " + set.stock.name);
+    }
+
+    /**
+     * P369: one scene colour (linear sRGB, mid grey {@link #FILM_GREY}) through the simulation, as {@link #lutScene} renders a node
+     * (null when the reference model's data cannot be read).
+     */
+    @Nullable
+    public static float[] applyScene(Settings set, double r, double g, double b) {
+        if (set.stock.spectral != null) {
+            final FilmSpectral.Engine e = engine(set);
+            if (e == null) return null;
+            final double[] o = new double[3];
+            e.render(r, g, b, o);
+            return new float[]{(float) Math.max(0, Math.min(1, o[0])), (float) Math.max(0, Math.min(1, o[1])),
+                    (float) Math.max(0, Math.min(1, o[2]))};
+        }
+        final double toModel = .18 / FILM_GREY;
+        final float[] o = new Model(set.stock, MONO_PAPER, set.exposure, set.printEv, set.tone).render(
+                new double[]{r * toModel, g * toModel, b * toModel});
+        return new float[]{encode(o[0]), encode(o[1]), encode(o[2])};
+    }
+
+    // ───── the classic (black-and-white) stocks' sharpness and grain: FilmGrain on the photo, FilmEffects on the preview (P369)
+
+    /** Selwyn: sigma(a) = sigma(48 um aperture) x sqrt(area(48 um) / a^2) = RMS / 1000 x 42.5 / a. */
+    public static final float SELWYN = 42.5f;
+    /** Our calibration of a granularity to the density noise a scan shows. */
+    public static final float GRAIN_SCALE = .35f;
+    /** The film sharpness blur below this (pixels) is skipped. */
+    public static final float CLASSIC_BLUR_MIN_PX = .33f;
+
+    /** The density sigma of one pixel of {@code pixelUm} for granularity {@code rms} and grains of {@code grainUm}. */
+    public static float grainSigma(float rms, float grainUm, float pixelUm) {
+        return rms / 1000f * SELWYN / Math.max(1f, Math.max(pixelUm, grainUm));
+    }
+
+    /** A print sees the negative's grain through its own contrast; a projected film shows its own. */
+    public static float grainThrough(Settings set) {
+        return set.stock.reversal() ? 1f : set.print.film ? 3.0f : 2.7f;
+    }
+
+    /** film/grain.glsl's density sigma at mid grey (green layer) of a classic stock on pixels of {@code um}, x «Зерно» x the strength. */
+    public static float classicGrainSigma(Settings set, float um) {
+        return grainSigma(set.stock.rms, set.stock.grainUm, um) * grainThrough(set) * GRAIN_SCALE * set.grainApplied();
+    }
+
+    /** film/grain.glsl's grain clump size (pixels) of the green layer. */
+    public static float classicGrainCell(Settings set, float um) {
+        return Math.max(1f, set.stock.grainUm / um);
+    }
+
+    /** The classic stock's sharpness (its MTF sigma) in pixels of {@code um}, x «Мягкость плёнки» x the strength. */
+    public static float classicBlurPx(Settings set, float um) {
+        return set.stock.mtfUm / um * set.softnessApplied();
     }
 
     private static String grainKey;

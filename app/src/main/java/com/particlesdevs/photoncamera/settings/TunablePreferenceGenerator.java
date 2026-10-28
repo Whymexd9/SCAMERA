@@ -284,7 +284,7 @@ public class TunablePreferenceGenerator {
             if (!annotation.description().isEmpty()) {
                 pngPref.setSummary(description(annotation.description()));
             } else {
-                pngPref.setSummary("None selected");
+                pngPref.setSummary(Lang.t(context, "Не выбран", "None selected"));
             }
 
             category.addPreference(pngPref);

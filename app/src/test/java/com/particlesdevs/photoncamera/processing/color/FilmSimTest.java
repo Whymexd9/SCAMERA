@@ -108,6 +108,98 @@ public class FilmSimTest {
         assertEquals(8, com.particlesdevs.photoncamera.processing.opengl.postpipeline.FilmGrainAccess.level(5000f, 10));
     }
 
+    /** P369: the scene table at a scene colour, as why/combine FILM_SIM 1 looks it up (per-channel log coordinate, trilinear). */
+    static float[] sampleScene(FilmLut lut, double r, double g, double b) {
+        final double[] c = {r, g, b};
+        final float[] u = new float[3];
+        for (int i = 0; i < 3; i++)
+            u[i] = (float) Math.max(0, Math.min(1, (Math.log(Math.max(c[i], 1e-7) / 0.184) / Math.log(2) - FilmSim.LOG_LO) / FilmSim.LOG_SPAN));
+        return lut.sample(u[0], u[1], u[2]);
+    }
+
+    /**
+     * P369 (G11): the 41^3 log table against the model it tabulates (FilmSpectral.Engine.render) between the nodes: 400 colours
+     * from 0.003 to 6 (about -6 to +5 stops around mid grey), skin, sky, foliage and saturated light among them.
+     */
+    @Test public void sceneLutMatchesTheEngine() {
+        final FilmSim.Settings s = set("kodak_portra_400", "kodak_portra_endura");
+        final FilmLut lut = FilmSim.lutScene(s, FilmSim.SCENE_SIZE);
+        assertNotNull(lut);
+        assertEquals(FilmSim.SCENE_SIZE, lut.size);
+        final java.util.Random rnd = new java.util.Random(369);
+        double worst = 0, sum = 0;
+        int n = 0;
+        for (int i = 0; i < 400; i++) {
+            final double base = 0.003 * Math.pow(6 / 0.003, rnd.nextDouble());
+            final double r = base * (0.35 + 0.65 * rnd.nextDouble()), g = base * (0.35 + 0.65 * rnd.nextDouble()), b = base * (0.35 + 0.65 * rnd.nextDouble());
+            final float[] want = FilmSim.applyScene(s, r, g, b), got = sampleScene(lut, r, g, b);
+            for (int c = 0; c < 3; c++) {
+                final double d = Math.abs(got[c] - want[c]) * 255;
+                worst = Math.max(worst, d);
+                sum += d;
+                n++;
+            }
+        }
+        System.out.println(String.format(java.util.Locale.ROOT, "scene LUT 41^3 vs the engine: max %.2f / 255, mean %.3f / 255", worst, sum / n));
+        assertTrue("max " + worst, worst <= 2.5);
+        assertTrue("mean " + sum / n, sum / n <= 0.4);
+    }
+
+    /**
+     * P369 (the review's fidelity-2): saturated light far above mid grey - a red tail light, a blue LED, Bento highlights x ae x the
+     * overflow's cut - with one channel up to +9.5 stops and the others far below: the model bleaches such a light toward white up
+     * to about +10 stops, and a grid that ended at +6 kept its colour (Portra up to 89 / 255 off).
+     */
+    @Test public void saturatedLightAboveMidGreyMatchesTheEngine() {
+        for (String st : new String[]{"kodak_portra_400", "kodak_vision3_250d"}) {
+            final FilmSim.Settings s = set(st, "");
+            final FilmLut lut = FilmSim.lutScene(s, FilmSim.SCENE_SIZE);
+            assertNotNull(st, lut);
+            final java.util.Random rnd = new java.util.Random(370);
+            double worst = 0;
+            for (int i = 0; i < 300; i++) {
+                final double top = 0.184 * Math.pow(2, 4 + 5.5 * rnd.nextDouble());
+                final double[] c = new double[3];
+                final int lead = rnd.nextInt(3);
+                for (int k = 0; k < 3; k++) c[k] = k == lead ? top : top * Math.pow(10, -4 * rnd.nextDouble());
+                final float[] want = FilmSim.applyScene(s, c[0], c[1], c[2]), got = sampleScene(lut, c[0], c[1], c[2]);
+                for (int k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(got[k] - want[k]) * 255);
+            }
+            System.out.println(String.format(java.util.Locale.ROOT, "%s: saturated light +4 .. +9.5 stops, the table vs the engine max %.2f / 255", st, worst));
+            assertTrue(st + " max " + worst, worst <= 3);
+        }
+    }
+
+    /** P369 (B2): the AE's grey (WhyAe ae_target 0.15 x METER_TO_FILM) prints as the film's mid grey - a node of the table. */
+    @Test public void aeTargetPrintsTheFilmsMidGrey() {
+        for (String st : new String[]{"kodak_portra_400", "kodak_vision3_250d", "fujifilm_velvia_100", "kodak_gold_200"}) {
+            final FilmSim.Settings s = set(st, "");
+            final FilmLut lut = FilmSim.lutScene(s, FilmSim.SCENE_SIZE);
+            final double grey = 0.15 * FilmSim.METER_TO_FILM;
+            assertEquals(0.184, grey, 1e-6);
+            final float[] got = sampleScene(lut, grey, grey, grey), want = FilmSim.applyScene(s, .184, .184, .184);
+            for (int c = 0; c < 3; c++) assertEquals(st, want[c], got[c], 0.5f / 255);
+            System.out.println(String.format(java.util.Locale.ROOT, "%s: the AE target prints %.1f / %.1f / %.1f of 255", st,
+                    got[0] * 255, got[1] * 255, got[2] * 255));
+        }
+    }
+
+    /** P369 (G6): our black-and-white model is rendered at its own mid grey (0.18): the AE's grey prints its mid grey too. */
+    @Test public void theMonochromeModelsMidGreyNode() {
+        for (String st : new String[]{"trix400", "tmax100", "hp5", "trix7266"}) {
+            final FilmSim.Settings s = set(st, "");
+            final FilmLut lut = FilmSim.lutScene(s, FilmSim.SCENE_SIZE);
+            assertNotNull(st, lut);
+            final float[] got = sampleScene(lut, .184, .184, .184);
+            final float[] want = new FilmSim.Model(s.stock, FilmSim.MONO_PAPER, s.exposure, s.printEv, s.tone).render(new double[]{.18, .18, .18});
+            for (int c = 0; c < 3; c++) assertEquals(st, FilmSim.encode(want[c]), got[c], 0.5f / 255);
+            assertEquals(st + " grey", got[0], got[2], 1e-4f);
+            // the display table's own grey: the display colour 0.46 (scene 0.18) prints the same
+            final float[] display = FilmSim.apply(s, (float) FilmSim.encode(.18), (float) FilmSim.encode(.18), (float) FilmSim.encode(.18));
+            assertEquals(st + " the display table's mid grey", display[1], got[1], 2f / 255);
+        }
+    }
+
     /** Values for a look at the model (printed, not asserted). */
     @Test public void printSamples() {
         for (String st : new String[]{"portra400", "ektar100", "velvia50", "vision500t", "trix400", "trix7266"}) {

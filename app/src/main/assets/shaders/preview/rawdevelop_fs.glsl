@@ -25,6 +25,10 @@ uniform float u_auto_exposure;
 // P301 (owner, 2026-10-20: «Результат должен совпадать с итоговым фото»): 1 = the linear frame for the photo's WHY tone on the
 // viewfinder (LiveWhyTone): white-balanced, lens-shaded, through color_transform, before any exposure or tone; no LUT, no peaking
 uniform int u_linear_out;
+// P370 (B2): 1 = the linear frame keeps a colour outside sRGB signed (RGBA16F; why/low, the box means, the guided filter and
+// why/combine signedHueU take it as the photo's signed merge), so the viewfinder takes the photo's signed OKLab (the review: a
+// pull toward the luminance here read 470 nm +25 deg against the photo); 0 / unset = each channel clamped at 0 as before
+uniform int u_signed_hue;
 uniform int u_ef_enabled;
 uniform vec4 u_exp_mults;
 uniform vec4 u_layer_weights;
@@ -611,7 +615,8 @@ void main() {
         corner_gain = 1.0 + 1.5 * dot(ndc, ndc);
     }
     if (u_linear_out == 1) {
-        FragColor = vec4(max(color_transform * cC, vec3(0.0)), 1.0);
+        vec3 linOut = color_transform * cC;
+        FragColor = vec4(u_signed_hue == 1 ? linOut : max(linOut, vec3(0.0)), 1.0);
         return;
     }
     vec3 color = processPipeline(cC, corner_gain);

@@ -93,6 +93,10 @@ public final class ScamLocalContrast extends Node {
         // noise. The merge-only SoCs (8 Gen 3 etc.) have the noisier frames, where this band (gated by its own noise floor)
         // carries more of the detail: 1.5.
         float g0 = PreferenceKeys.routeInternalValue("texture_g0", PreferenceKeys.isScamNetSoc() ? 1.35f : 1.5f);
+        // The output (a main, made again on its next use above 100 MP or with early release) is taken before the samplers
+        // are bound: a new texture binds itself on unit 1 + its name, which may be a sampler's unit (the pass then read its
+        // own output as a band).
+        final GLTexture out = pipeline.getMain();
         glProg.useAssetProgram("scamlc/apply", false);
         glProg.setTexture("InputBuffer", WorkingTexture);
         // apply.glsl samples every band bilinearly by normalised position, so only the level choice moves with e
@@ -108,7 +112,7 @@ public final class ScamLocalContrast extends Node {
         glProg.setVar("floorE", floors[0], floors[1], floors[2], floors[3]);
         glProg.setVar("core", PreferenceKeys.routeInternalValue("texture_core0", 0.8f), PreferenceKeys.routeInternalValue("texture_core1", 1.8f));
         glProg.setVar("bmax", PreferenceKeys.routeInternalValue("texture_bmax", 0.12f));
-        WorkingTexture = pipeline.getMain();
+        WorkingTexture = out;
         glProg.drawBlocks(WorkingTexture);
         glProg.closed = true;
         for (GLTexture en : energy) en.close();

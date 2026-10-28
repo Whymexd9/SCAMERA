@@ -19,6 +19,7 @@ uniform int clipFlagsU;
 uniform sampler2D ClipFlags;
 uniform int blockU;              // output pixels per block (8 * outputScale)
 uniform int pxStepU;             // sample spacing in output pixels (outputScale; 1 when unset)
+uniform float usWhiteU;          // P368: as in scamhdr/scamrgb (the clip guard)
 out vec4 Output;
 
 // Same selection as scamhdr/scamrgb levelAt (keep in sync), plus the level the brightness is measured against.
@@ -33,6 +34,15 @@ vec3 levelAt(ivec2 p, out vec3 ref) {
     if ((f & 7u) != 0u) return lo ? clipLoU : clipHiU;
     if ((f & 16u) != 0u) return hi ? clipHiU : vec3(-1.0);  // border inside the Bento mask: ultrashort content
     return lo ? clipLoU : clipHiU;
+}
+
+// P368: scamhdr/scamrgb ceilingShare (keep in sync): every camera channel at one ceiling above the base white, no colour
+float ceilingShare(vec3 raw) {
+    if (usWhiteU <= 1.0) return 0.0;
+    float m = max(max(raw.r, raw.g), raw.b);
+    float base = clipLoU.g > 0.0 ? max(max(clipLoU.r, clipLoU.g), clipLoU.b) : 1.0;
+    if (m <= 1.05 * base) return 0.0;
+    return smoothstep(0.65, 0.85, min(min(raw.r, raw.g), raw.b) / m) * smoothstep(1.05, 1.30, m / base);
 }
 
 void main() {
@@ -53,6 +63,8 @@ void main() {
             vec3 rel = raw / max(ref, vec3(1.0e-6));
             float bright = smoothstep(0.08, 0.30, max(max(rel.r, rel.g), rel.b));
             float w = (1.0 - max(max(near.r, near.g), near.b)) * bright;
+            float cs = ceilingShare(raw);
+            if (cs > 0.0) w *= 1.0 - cs;           // P368: a clip the flags missed is no colour of the light
             if (w <= 0.0) continue;
             vec4 sites = texture(GainMap, vec2(p) * inverseSize);
             vec3 gains = vec3(sites.r, (sites.g + sites.b) * 0.5, sites.a);

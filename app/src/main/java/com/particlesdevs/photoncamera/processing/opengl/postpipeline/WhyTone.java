@@ -202,7 +202,20 @@ public final class WhyTone {
      * the tone put the match at 1.1. 1 = no compensation.
      */
     static float ccmSatComp(Parameters p) {
-        return p != null && p.oppoTunedCcm ? Math.max(value("ccm_sat", 1.1f), 0f) : 1f;
+        return ccmSatComp(p != null && p.oppoTunedCcm);
+    }
+
+    /**
+     * P370 (B2): why/combine signedHueU (and the RAW viewfinder's linear frame, rawdevelop_fs u_signed_hue): a colour the camera
+     * matrix put outside sRGB keeps the hue of its signed value; scam_dev.txt "ccm_signed_hue 0": the per-channel clip as before.
+     */
+    public static boolean signedHue() {
+        return PreferenceKeys.scamDevSwitch("ccm_signed_hue", true);
+    }
+
+    /** P370 (B4): {@link #ccmSatComp(Parameters)} of a frame the tuned matrix renders or not (the RAW viewfinder's). */
+    static float ccmSatComp(boolean tuned) {
+        return tuned ? Math.max(value("ccm_sat", 1.1f), 0f) : 1f;
     }
 
     /**
@@ -321,15 +334,28 @@ public final class WhyTone {
         State st = pipeline.why;
         if (st != null && st.colourMatrix != null) return st.colourMatrix;
         Parameters p = pipeline.mParameters;
-        float[] m = intermediateToSRGB(p);
         float[] white = colourLook().whiteMatrix(p.sceneCct);
+        float[] m = colourMatrixOf(p, white);
         if (white != null) {
-            m = ColourLook.mul(white, m);
             com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE", "colour: white matrix " + java.util.Arrays.toString(white)
                     + " scene " + p.sceneCct + " K");
         }
         if (st != null) st.colourMatrix = m;
         return m;
+    }
+
+    /**
+     * P370 (B1): the intermediateToSRGB uniform of a shot: the «Цвет» white matrix ({@code white}, null: none) after CCT.matrix -
+     * what {@link #colourMatrix(PostPipeline)} uploads and the diagnostic README prints.
+     */
+    static float[] colourMatrixOf(Parameters p, float[] white) {
+        float[] m = intermediateToSRGB(p);
+        return white != null ? ColourLook.mul(white, m) : m;
+    }
+
+    /** P370 (B1): {@link #colourMatrixOf} with the «Цвет» rows of now (the diagnostic README before the pipeline runs). */
+    static float[] colourMatrixNow(Parameters p) {
+        return colourMatrixOf(p, colourLook().whiteMatrix(p.sceneCct));
     }
 
     /** Colour uniforms of why/low.glsl and why/combine.glsl (sceneLinear): the chain of headroom/render.glsl. */

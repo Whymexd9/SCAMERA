@@ -46,6 +46,11 @@ public final class ScamLab {
      * marks a shot the lab renders with the settings of now instead of the shot's (its whole-frame statistics: FRAME_NOW).
      */
     public static final String SOURCE = "source.txt", NOW = "settings-now", FRAME_NOW = "frame-now.json";
+    /**
+     * The photo sidecar of a kept series (scam_burst-&lt;time&gt;.preview, a JPEG): audit 2026-10-27 (lab-app-8), no image extension,
+     * so it is no photo of the galleries (a series kept before it has the old .jpg, which the lab still reads).
+     */
+    static final String PREVIEW_SIDECAR = ".preview";
     /** A lab run and a shot's processing never overlap: one GL texture table, the worker's statics, one report. */
     public static final ReentrantLock LOCK = new ReentrantLock();
 
@@ -78,10 +83,33 @@ public final class ScamLab {
 
     /** A new folder under {@code root} named after {@code when} ("_2", "_3" ... when two shots share a second). */
     static File newFolder(File root, Date when) {
+        return newFolder(root, when, "");
+    }
+
+    /**
+     * A new folder under {@code root} named after {@code when} with {@code suffix} ("_2", "_3" ... before the suffix when the
+     * name is taken). Audit 2026-10-27 (lab-app-6): the names probed are the suffixed ones (two series of one second both got
+     * the same &lt;time&gt;_imp).
+     */
+    static File newFolder(File root, Date when, String suffix) {
         final String base = folderName(when);
-        File dir = new File(root, base);
-        for (int i = 2; dir.exists() && i < 100; i++) dir = new File(root, base + "_" + i);
+        File dir = new File(root, base + suffix);
+        for (int i = 2; dir.exists() && i < 100; i++) dir = new File(root, base + "_" + i + suffix);
         return dir;
+    }
+
+    /**
+     * Audit 2026-10-27 (lab-app-8): Lab/.nomedia - the lab's working photos (preview.jpg, the saved B_*.jpg) are no photos of the
+     * galleries (MediaStore indexed every lab folder as an album). The lab's list writes it too, for the folders of an earlier
+     * version.
+     */
+    public static void hideFromGalleries(File root) {
+        try {
+            final File marker = new File(root, ".nomedia");
+            if (!marker.exists() && !marker.createNewFile()) Log.w("SCAM_LAB", "lab .nomedia not made");
+        } catch (IOException | RuntimeException e) {
+            Log.w("SCAM_LAB", "lab .nomedia not made: " + e);
+        }
     }
 
     /** ScamProcessor, before the merge of a shot: its lab folder when the switch is on (hybrid shots only). */
@@ -93,8 +121,10 @@ public final class ScamLab {
         shotThumb = null;
         if (!hybrid || !wanted()) return;
         final File dir = newFolder(root(), new Date());
-        if (dir.mkdirs()) shotDir = dir;
-        else Log.w("SCAM_LAB", "lab folder not made: " + dir);
+        if (dir.mkdirs()) {
+            shotDir = dir;
+            hideFromGalleries(dir.getParentFile());
+        } else Log.w("SCAM_LAB", "lab folder not made: " + dir);
     }
 
     /** ScamProcessor: this shot is a lab shot with its metadata written (its pipeline records the whole frame's statistics). */
@@ -105,7 +135,7 @@ public final class ScamLab {
     /**
      * P359 (owner, 2026-10-27: «Дай возможность в лаборатории использовать старые бурсты с новой обработкой/пайплайном»):
      * ScamNeuralClient, a shot whose RAW series «Сохранять RAW-серию» keeps in Download/SCAMERA: the lab's metadata, photo and
-     * whole-frame statistics go beside it (scam_burst-&lt;time&gt;.json / .jpg / .frame.json), so the lab can open it later.
+     * whole-frame statistics go beside it (scam_burst-&lt;time&gt;.json / .preview / .frame.json), so the lab can open it later.
      */
     static void keeping(File burst) {
         if (shotDir == null) keptBurst = burst;
@@ -225,7 +255,7 @@ public final class ScamLab {
      * for the list and the lab's fragment, and how it lies over the sensor frame (meta "orient", ScamLabOrient).
      */
     public static void preview(Bitmap img, @Nullable LabFrame record) {
-        final File metaFile = target(META, ".json"), previewFile = target(PREVIEW, ".jpg"), frameFile = target(FRAME, ".frame.json");
+        final File metaFile = target(META, ".json"), previewFile = target(PREVIEW, PREVIEW_SIDECAR), frameFile = target(FRAME, ".frame.json");
         if (metaFile == null || img == null || !shotMeta) return;
         writeFrame(frameFile, record);
         final float[] thumb = shotThumb;
@@ -268,7 +298,8 @@ public final class ScamLab {
         keptBurst = null;
         if (dir == null) {
             // P359: a kept series the worker did not write takes its sidecars with it
-            if (kept != null && !kept.isFile()) for (String suffix : new String[]{".json", ".jpg", ".frame.json"}) sidecar(kept, suffix).delete();
+            if (kept != null && !kept.isFile())
+                for (String suffix : new String[]{".json", PREVIEW_SIDECAR, ".jpg", ".frame.json"}) sidecar(kept, suffix).delete();
             return;
         }
         final File burst = new File(dir, BURST);
@@ -331,7 +362,7 @@ public final class ScamLab {
         try {
             if (now) {
                 if (!f.isFile()) write(f, new byte[0]);
-            } else f.delete();
+            } else if (!LabFiles.delete(f)) Log.w("SCAM_LAB", "lab settings mode not stored: " + f); // P363: through the grant too
         } catch (IOException e) {
             Log.w("SCAM_LAB", "lab settings mode not stored: " + e);
         }
@@ -415,17 +446,19 @@ public final class ScamLab {
         } catch (org.json.JSONException e) {
             throw new IOException(e);
         }
-        final File dir = newFolder(root(), new Date(burst.lastModified()));
-        final File named = new File(dir.getParentFile(), dir.getName() + "_imp");
-        if (!named.mkdirs()) throw new IOException("lab folder not made: " + named);
+        final File named = newFolder(root(), new Date(burst.lastModified()), "_imp");
+        if (!named.mkdirs()) throw new IOException(com.particlesdevs.photoncamera.util.Lang.t("Не удалось создать папку лаборатории: ",
+                "Could not make the lab folder: ") + named);
+        hideFromGalleries(named.getParentFile());
         try {
             if (templated) meta.put("imported", true);
             meta.put("source", burst.getName());
             write(new File(named, META), meta.toString().getBytes(StandardCharsets.UTF_8));
             write(new File(named, SOURCE), burst.getAbsolutePath().getBytes(StandardCharsets.UTF_8));
-            for (String[] pair : new String[][]{{".jpg", PREVIEW}, {".frame.json", FRAME}}) {
-                final File side = sidecar(burst, pair[0]);
-                if (side.isFile()) write(new File(named, pair[1]), LabFiles.read(side));
+            // the photo: the .preview sidecar, or the .jpg of a series kept before it
+            for (String[] pair : new String[][]{{PREVIEW_SIDECAR, PREVIEW}, {".jpg", PREVIEW}, {".frame.json", FRAME}}) {
+                final File side = sidecar(burst, pair[0]), to = new File(named, pair[1]);
+                if (side.isFile() && !to.isFile()) write(to, LabFiles.read(side));
             }
             // an older series has only the template's settings: the lab renders it with the settings of now
             if (templated) settingsNow(named, true);
@@ -460,7 +493,7 @@ public final class ScamLab {
             final JSONObject params = meta.optJSONObject("params");
             if (params == null) continue;
             final float[] white = greyWorld(burst, h);
-            if (white != null) params.put("whitePoint", new org.json.JSONArray().put(white[0]).put(white[1]).put(white[2]));
+            if (white != null) retemplate(params, white);
             // the base frame's own ISO and noise (its table entry) for the denoise, not the template's
             final float[] noise = baseNoise(burst);
             if (noise != null) {
@@ -476,6 +509,57 @@ public final class ScamLab {
             return meta;
         }
         return null;
+    }
+
+    /**
+     * P370 (A8): a template's parameters at the white of {@code white} (the burst's grey world). The render multiplies the
+     * white-balanced input by the white point again before sensorToProPhoto (why/low), so a new white point alone cancelled out:
+     * every imported burst kept the template's cast. Column j of sensorToProPhoto is scaled by n_template[j] / n_new[j]
+     * (s2p' . n_new == s2p . n_template; the ISP routes' diag(1 / n) becomes diag(1 / n_new)). The scene light is the camera's
+     * plain-table label at the new white, else unknown (0: no As-Shot temperature, no keep warm / cool shift); on the ISP and
+     * plain-table routes the table's matrix at the new white replaces the template's. The lens shading map stays the
+     * template's (same lens and frame geometry; a flat map left the corners 1.2-2.2 EV dark): its colour shading is another
+     * light's, which the lab's note says.
+     */
+    static void retemplate(JSONObject params, float[] white) throws org.json.JSONException {
+        final float[] old = floats(params.optJSONArray("whitePoint"), 3), s2p = floats(params.optJSONArray("sensorToProPhoto"), 9);
+        params.put("whitePoint", new org.json.JSONArray().put(white[0]).put(white[1]).put(white[2]));
+        if (old != null && s2p != null && old[0] > 0f && old[1] > 0f && old[2] > 0f) {
+            final org.json.JSONArray scaled = new org.json.JSONArray();
+            for (int i = 0; i < 9; i++) scaled.put((double) (s2p[i] * (old[i % 3] / white[i % 3])));
+            params.put("sensorToProPhoto", scaled);
+        } else {
+            Log.w("SCAM_LAB", "template without a usable white point / sensorToProPhoto: the grey world's white alone");
+        }
+        final String route = params.optString("colourSource", "");
+        final com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup table =
+                com.particlesdevs.photoncamera.processing.color.PlainColourMemory.lookup(String.valueOf(params.optInt("physicalID", 0)), white);
+        params.put("sceneCct", table != null && table.cct > 0f ? (double) table.cct : 0.0);
+        params.put("sceneCctSource", table != null && table.cct > 0f ? "the plain-table label at the burst's grey world (lab template)"
+                : "unknown: a lab template at the burst's grey world");
+        if (table != null && table.ccm != null && (route.equals("ISP_CST") || route.equals("ISP_CST_PLACEHOLDER") || route.equals("PLAIN_TABLE"))) {
+            final float[] m = table.ccm.clone();
+            if (com.particlesdevs.photoncamera.processing.color.PhotoMatrix.normaliseRows(m)) {
+                final org.json.JSONArray a = new org.json.JSONArray();
+                for (float v : m) a.put((double) v);
+                params.put("CCT", new JSONObject().put("matrix", a));
+                params.put("colourSource", "PLAIN_TABLE");
+                params.put("colourSourceWhy", "lab template (" + route + ") at the burst's grey world: " + table.how);
+            }
+        }
+        Log.i("SCAM_LAB", "template white " + Arrays.toString(old) + " -> " + Arrays.toString(white) + ", scene "
+                + params.optDouble("sceneCct") + " K, route " + params.optString("colourSource"));
+    }
+
+    @Nullable
+    private static float[] floats(@Nullable org.json.JSONArray a, int n) {
+        if (a == null || a.length() != n) return null;
+        final float[] out = new float[n];
+        for (int i = 0; i < n; i++) {
+            out[i] = (float) a.optDouble(i, Double.NaN);
+            if (!Float.isFinite(out[i])) return null;
+        }
+        return out;
     }
 
     /** The base frame's {measured ISO, noise slope, noise offset} from the burst's frame table, null when unreadable. */

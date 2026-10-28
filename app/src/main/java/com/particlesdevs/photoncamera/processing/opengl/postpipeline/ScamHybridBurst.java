@@ -155,6 +155,8 @@ public final class ScamHybridBurst implements ScamTransport {
     /** P320: a DCG shot (header flag 32): the worker measures its two noise zones and merges it without exposure brackets. */
     private final boolean dcg;
     private final float dcgIsoScale;
+    /** The characteristics the shot was captured with (Parameters.shotCharacteristics; null: the open camera's). */
+    private final android.hardware.camera2.CameraCharacteristics shotCamera;
     /** P366: the base frame's EV100 for the worker (tuning usSceneEv, {@link #sceneEv100}); NaN when its exposure is unknown. */
     final float sceneEv;
 
@@ -169,6 +171,7 @@ public final class ScamHybridBurst implements ScamTransport {
         cfa = p.cfaPattern;
         dcg = p.dcgShot;
         dcgIsoScale = p.dcgShot && p.dcgIsoScale > 1f ? p.dcgIsoScale : 1f;
+        shotCamera = p.shotCharacteristics();
         this.conservative = conservative;
         series = conservative ? 0 : Math.max(0, p.fullResSeries);
         requested = p.fullResRequested;
@@ -507,9 +510,11 @@ public final class ScamHybridBurst implements ScamTransport {
         com.particlesdevs.photoncamera.processing.render.NoiseModelProfile profile =
                 com.particlesdevs.photoncamera.processing.render.NoiseModelProfile.byId(PreferenceKeys.getNoiseModelProfileId());
         if (profile != null) {
-            Integer maxAnalog = com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics == null ? null
-                    : com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics.get(
-                            android.hardware.camera2.CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY);
+            // the shot's camera (a lens switch while the shot waited replaces the open one)
+            final android.hardware.camera2.CameraCharacteristics camera = shotCamera != null ? shotCamera
+                    : com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics;
+            Integer maxAnalog = camera == null ? null
+                    : camera.get(android.hardware.camera2.CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY);
             // P320: a DCG mode's ISO is its range scale times the gain (dcgIsoScale); the profile is keyed by the gain
             final int iso = Math.max(1, Math.round(frame.measuredIso / dcgIsoScale));
             android.util.Pair<Double, Double>[] model = profile.evaluate(iso, maxAnalog == null ? iso : maxAnalog);
@@ -900,6 +905,10 @@ public final class ScamHybridBurst implements ScamTransport {
     public static volatile android.graphics.Point lastFinalSize;
     /** P27: the worker died at GPU init in this process (Mali, X200 Pro): further shots go straight to the CPU fallback. */
     private static volatile String gpuUnusable;
+    /** P371 (review M2c): the GPU merge is off for this session (every shot merges on the CPU: no worker to start ahead). */
+    static boolean gpuMergeUnusable() {
+        return gpuUnusable != null;
+    }
     /**
      * Optional worker steps a worker of this process died in (its crash report names the stage, or the last "HYBRID GPU: compile"
      * line before the exit): every later merge of the process leaves them out. vivo X200 Pro (Mali-G925, owner's log 2026-10-07):
@@ -976,6 +985,24 @@ public final class ScamHybridBurst implements ScamTransport {
         return null;
     }
 
+    /**
+     * The worker died at GPU init (the GPU merge is off for the session, every later shot the base frame alone): it died on a signal
+     * with no "HYBRID GPU:" line, not killed for memory, and its crash names no stage or a GPU one. Only a stream of 16 MP or less: a
+     * larger one runs memory-heavy CPU stages before the GPU context, where the low-memory killer can stop the worker; it takes the
+     * conservative retry instead. Adreno writes the early context's lines only when the merge takes the context (after the CRE,
+     * the alignment, Shasta and Bento), so a crash in those stages (named by WORKER CRASH) or a low-memory kill (signal 9) is not a
+     * GPU-init death: it goes to learnFromCrash (the step left out) and the conservative retry, as does a crash on the P364 GPU
+     * alignment's thread (LaGpuWorker names its stage "GPU align (F6)"). A crash on a thread without a stage of its own (a driver
+     * thread) names none and still counts as one.
+     */
+    static boolean gpuInitDeath(long pixels, String report) {
+        if (pixels > CLASSIC_INPUT_PIXELS || report == null || !report.contains("WORKER EXIT: signal") || report.contains("HYBRID GPU:"))
+            return false;
+        if (report.contains("WORKER EXIT: signal 9 ")) return false; // a low-memory kill: the ordinary retry
+        final String stage = crashStage(report);
+        return stage == null || STEP_GPU.equals(stepOf(stage));
+    }
+
     /** Learns from a failed worker: true when this crash named a step the next attempt can leave out (or the GPU is unusable). */
     private static boolean learnFromCrash(String report) {
         final String stage = crashStage(report);
@@ -1006,18 +1033,38 @@ public final class ScamHybridBurst implements ScamTransport {
         lastDngMosaic = 1;
         lastStreamBlock = 1;
         final ScamHybridBurst[] made = new ScamHybridBurst[1];
-        final ByteBuffer out = merge(context, frames, p, mergedDng, made);
+        final ByteBuffer out;
+        try {
+            out = merge(context, frames, p, mergedDng, made);
+        } finally {
+            ScamDiagnostics.inputsDone(); // P371: the diagnostic preview of the base frame read it beside the merge
+        }
         if (made[0] != null) lastStreamBlock = dngOnlyBlock(false, made[0].mosaicBlock, made[0].width, made[0].height);
         seriesNotice = notice(made[0], ScamNeuralClient.lastJobReport, lastMergeTier);
         // P238 (speed-ux D2): the thermal state at the merge's end (with the press's: GPU throttling or the merge itself, P200)
-        final com.particlesdevs.photoncamera.util.ThermalState.Sample thermal = com.particlesdevs.photoncamera.util.ThermalState.now();
-        com.particlesdevs.photoncamera.util.ThermalPolicy.observed(thermal);
-        Log.i("SCAM_HDR", "THERMAL at the merge end: " + thermal);
-        com.particlesdevs.photoncamera.processing.ShotTimeline.note("thermal_merge_end", thermal.toString());
+        // P371 (speed): its binder calls on a thread of their own (the status only paces the viewfinder and the press notice);
+        // the note lands on this shot's timeline. scam_dev thermal_async 0: here, as before.
+        final Object shot = com.particlesdevs.photoncamera.processing.ShotTimeline.processingShot();
+        final Runnable thermalSample = () -> {
+            final com.particlesdevs.photoncamera.util.ThermalState.Sample thermal = com.particlesdevs.photoncamera.util.ThermalState.now();
+            com.particlesdevs.photoncamera.util.ThermalPolicy.observed(thermal);
+            Log.i("SCAM_HDR", "THERMAL at the merge end: " + thermal);
+            com.particlesdevs.photoncamera.processing.ShotTimeline.noteOn(shot, "thermal_merge_end", thermal.toString());
+        };
+        if (com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("thermal_async", true)) {
+            try { THERMAL.execute(thermalSample); } catch (RuntimeException e) { thermalSample.run(); }
+        } else thermalSample.run();
         lastNormals = seriesNormals(lastNormals, ScamNeuralClient.lastJobReport); // P212h: a series the worker cut
         if (seriesNotice != null) Log.w("SCAM_HDR", "hybrid series notice: " + seriesNotice);
         return out;
     }
+
+    /** P371: the thermal sample at the merge's end (above). */
+    private static final java.util.concurrent.ExecutorService THERMAL = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        final Thread t = new Thread(r, "SCAMERA-thermal-sample");
+        t.setDaemon(true);
+        return t;
+    });
 
     /** P190: the notice of the last merge (a FULLRES series it cut), taken once; null when there is none. */
     private static volatile String seriesNotice;
@@ -1136,10 +1183,7 @@ public final class ScamHybridBurst implements ScamTransport {
             final String report = ScamNeuralClient.lastJobReport;
             final String why = String.valueOf(first.getMessage());
             final boolean retry = conservativeRetry(first);
-            // Only a stream of 16 MP or less marks the GPU unusable for the session: a larger one runs memory-heavy CPU stages
-            // before the GPU context, where the low-memory killer can stop the worker; it takes the conservative retry instead.
-            final boolean gpuInitDeath = (long) burst.width * burst.height <= CLASSIC_INPUT_PIXELS
-                    && report != null && report.contains("WORKER EXIT: signal") && !report.contains("HYBRID GPU:");
+            final boolean gpuInitDeath = gpuInitDeath((long) burst.width * burst.height, report);
             Log.e("SCAM_HDR", "Hybrid merge failed (" + why + ")" + (gpuInitDeath ? ", worker died before the GPU context" : ""));
             if (gpuInitDeath) {
                 gpuUnusable = "worker died at GPU init: " + lastLine(report, "WORKER EXIT:");

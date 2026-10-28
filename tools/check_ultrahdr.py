@@ -3,6 +3,12 @@
   python3 tools/check_ultrahdr.py [--strict] FILE.jpg ...    validate photos (e.g. pulled from the phone); --strict also
                                                               rejects the layout slack stock cameras use (see check_file)
   python3 tools/check_ultrahdr.py --self-test                 build samples with the app's own container code and validate them
+  python3 tools/check_ultrahdr.py --scene-luma                P370 (B3): the SHIPPED ultrahdr/sceneluma.glsl and gainmap.glsl on
+                                                              the GPU (numpy, moderngl; LIBGL_ALWAYS_SOFTWARE=1 headless): the scene
+                                                              plane's luminance is the render's (the colour matrix and white
+                                                              balance, PostPipeline.sceneLumaWeights) within 1 % on ColorChecker
+                                                              colours through the OPPO X8U and vivo X200U ISP matrices, a grey
+                                                              within 1e-6; a Display P3 base's luminance takes the P3 weights
 
 What a file must have (Ultra HDR image format v1.0, CIPA DC-007 MPF):
   * primary JPEG: SOI, an APP1 XMP packet with hdrgm:Version="1.0" and a GContainer directory (Container:Directory /
@@ -318,7 +324,116 @@ def self_test():
     print('Ultra HDR self-test PASS: streaming and in-memory containers valid, 5 broken variants rejected')
 
 
+def scene_luma():
+    """P370 (B3): ultrahdr/sceneluma.glsl with the render's luminance weights, ultrahdr/gainmap.glsl's P3 base."""
+    import numpy as np
+    import moderngl
+    sh = ROOT / 'app/src/main/assets/shaders'
+
+    def source(name):
+        out = ['#version 300 es']
+        for line in (sh / name).read_text(encoding='utf-8').splitlines():
+            m = re.match(r'\s*#import\s+(\S+)', line)
+            out.append((sh / 'utils' / ('import_' + m.group(1) + '.glsl')).read_text(encoding='utf-8') if m else line)
+        return '\n'.join(out)
+    try:
+        ctx = moderngl.create_standalone_context(backend='egl', require=430)
+    except Exception:
+        ctx = moderngl.create_standalone_context(require=430)
+    vs = '#version 300 es\nvoid main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));gl_Position=vec4(p*2.-1.,0,1);}'
+    luma = np.array([0.2126, 0.7152, 0.0722])
+
+    def rows1(m):
+        m = np.array(m, float).reshape(3, 3)
+        return m / m.sum(1, keepdims=True)
+    # the ISP routes (Parameters: CCT.matrix = the transform's rows normalised, sensorToProPhoto = diag(1 / n))
+    cams = {'X8U': (rows1([200, -62, -10, -17, 172, -27, 8, -70, 191]), np.array([0.54785156, 1, 0.41796875])),
+            'X200U': (rows1([153, -19, -6, -17, 175, -30, 0, -55, 184]), np.array([0.3945, 1, 0.6396]))}
+    # ColorChecker patches (sRGB 8-bit) and greys; the camera's white-balanced RGB of each through the inverse of the matrix
+    cc = np.array([[115, 82, 68], [194, 150, 130], [98, 122, 157], [87, 108, 67], [133, 128, 177], [103, 189, 170], [214, 126, 44],
+                   [80, 91, 166], [193, 90, 99], [94, 60, 108], [157, 188, 64], [224, 163, 46], [56, 61, 150], [70, 148, 73],
+                   [175, 54, 60], [231, 199, 31], [187, 86, 149], [8, 133, 161]]) / 255.0
+    lin = np.where(cc <= 0.04045, cc / 12.92, ((cc + 0.055) / 1.055) ** 2.4)
+    greys = np.repeat(np.array([[0.02], [0.18], [0.9], [3.0]]), 3, 1)
+    failures = []
+
+    def draw(prog, size, textures, uniforms):
+        out = ctx.texture(size, 4, dtype='f4')
+        fb = ctx.framebuffer([out])
+        fb.use()
+        ctx.viewport = (0, 0) + size
+        for i, (k, t) in enumerate(textures.items()):
+            t.use(i)
+            if k in prog:
+                prog[k].value = i
+        for k, v in uniforms.items():
+            if k in prog:
+                prog[k].value = v
+        ctx.vertex_array(prog, []).render(vertices=3)
+        r = np.frombuffer(out.read(), np.float32).reshape(size[1], size[0], 4).astype(np.float64)
+        fb.release()
+        out.release()
+        return r
+
+    def tex(a, dtype='f4'):
+        a = np.ascontiguousarray(a, np.float32 if dtype == 'f4' else np.uint8)
+        t = ctx.texture((a.shape[1], a.shape[0]), 4, a.tobytes(), dtype=dtype)
+        t.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        return t
+    prog = ctx.program(vertex_shader=vs, fragment_shader=source('ultrahdr/sceneluma.glsl'))
+    gain = tex(np.ones((2, 2, 4)))
+    for name, (cct, n) in cams.items():
+        s2p = np.diag(1 / n)
+        m = cct @ s2p
+        w = (luma @ m) * n                        # PostPipeline.sceneLumaWeights
+        cam = np.concatenate([lin @ np.linalg.inv(cct).T, greys])   # white-balanced camera RGB the plane reads
+        k = len(cam)
+        img = np.zeros((1, k, 4))
+        img[0, :, :3] = cam
+        img[0, :, 3] = 1
+        res = draw(prog, (k, 1), {'InputBuffer': tex(img), 'GainMap': gain},
+                   {'rotate': 4, 'mirror': False, 'cropSize': (k, 1), 'rawSize': (k, 1), 'wU': tuple(w)})[0, :, 0]
+        want = (cam * n) @ m.T @ luma            # Y of the render's linear sRGB
+        err = np.abs(res[:len(lin)] / want[:len(lin)] - 1).max()
+        gerr = np.abs(res[len(lin):] - greys[:, 0]).max() / greys[:, 0].max()
+        old = draw(prog, (k, 1), {'InputBuffer': tex(img), 'GainMap': gain},
+                   {'rotate': 4, 'mirror': False, 'cropSize': (k, 1), 'rawSize': (k, 1), 'wU': (0.0, 0.0, 0.0)})[0, :, 0]
+        ev = np.log2(old[:len(lin)] / want[:len(lin)])
+        print('%s: scene plane = the render\'s luminance within %.4f %% on %d ColorChecker colours, greys within %.1e; Rec.709 on '
+              'camera RGB was %+.2f .. %+.2f EV (blue %+.2f, orange %+.2f)' % (name, 100 * err, len(lin), gerr, ev.min(), ev.max(),
+                                                                         ev[12], ev[6]))
+        if err > 0.01:
+            failures.append('%s: the scene plane misses the render\'s luminance by %.2f %%' % (name, 100 * err))
+        if gerr > 1e-6:
+            failures.append('%s: a grey moved (%.1e)' % (name, gerr))
+    # gainmap.glsl: the SDR luminance of a Display P3 base with the P3 weights (uP3 1), Rec.709 otherwise
+    gprog = ctx.program(vertex_shader=vs, fragment_shader=source('ultrahdr/gainmap.glsl'))
+    base = np.zeros((1, 3, 4), np.uint8)
+    base[0, :, :3] = [[230, 60, 40], [40, 200, 60], [50, 70, 220]]
+    base[0, :, 3] = 255
+    decoded = base[0, :, :3] / 255.0
+    lin_b = np.where(decoded <= 0.04045, decoded / 12.92, ((decoded + 0.055) / 1.055) ** 2.4)
+    scene = np.full((1, 3, 4), 0.6)
+    for p3, weights in ((1, np.array([0.2290, 0.6917, 0.0793])), (0, luma)):
+        r = draw(gprog, (3, 1), {'InputBuffer': tex(base / 255.0), 'LBuffer': tex(scene)},
+                 {'uAnchor': 1.0, 'uDown': 1, 'uScale': 4.0, 'uEps': 1 / 64, 'uP3': p3})[0, :, 0]
+        sl = lin_b @ weights
+        want = np.round(np.clip(np.log2((0.6 + 1 / 64) / (sl + 1 / 64)) * np.clip(((sl) / 0.02), 0, 1) ** 2 * (3 - 2 * np.clip(sl / 0.02, 0, 1)) / 4.0, 0, 1) * 255) / 255
+        if np.abs(r - want).max() > 1.5 / 255:
+            failures.append('gainmap.glsl uP3 %d: the SDR luminance is not the %s one (%s against %s)' % (p3, 'P3' if p3 else 'Rec.709', r, want))
+    print('gainmap.glsl: the SDR luminance of a Display P3 base takes the P3 weights (uP3 1), of an sRGB base Rec.709')
+    ctx.release()
+    for f in failures:
+        print('FAIL: ' + f)
+    if failures:
+        raise SystemExit('Ultra HDR scene luma FAIL (%d)' % len(failures))
+    print('Ultra HDR scene luma PASS')
+
+
 def main(argv):
+    if argv == ['--scene-luma']:
+        scene_luma()
+        return 0
     if not argv or argv == ['--self-test']:
         self_test()
         return 0

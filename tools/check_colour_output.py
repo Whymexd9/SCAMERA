@@ -8,7 +8,8 @@
     python3 tools/check_colour_output.py --files    the app's ICC / JPEG / WebP / HEIF code (javac) on files of Pillow,
                                                     libwebp and libheif, read back by them; the HLG maths against an
                                                     independent BT.2100 implementation (needs android.jar: $ANDROID_HOME)
-    add --strict to fail instead of skipping a part whose tools are missing.
+    add --strict to fail instead of skipping a part whose tools are missing; SIGNED_HUE=1 in the environment renders --gl
+    with the P370 signed hue on (the shipped default; the colours outside sRGB are then not compared with the old shader).
 
 Needs numpy; --gl moderngl (LIBGL_ALWAYS_SOFTWARE=1 on a headless Linux); --files Pillow (WebP, littlecms2), pillow-heif,
 a JDK.
@@ -36,6 +37,9 @@ JAVA = ROOT / 'app/src/main/java/com/particlesdevs/photoncamera/processing'
 # #import expanded, comments dropped.
 BASELINE_COMBINE_TOKENS = '4649ce9ff089ae8244e629a4c8ecbb77b5e5072cb1fae675225f8d7c75a5bee0'  # P319: a3e94db under the Why names
 BASELINE_COMMIT = 'a3e94db'
+# P370 (review): the --gl renders' signedHueU - 0 (unset, the shader before P370) by default, SIGNED_HUE=1 in the environment
+# renders the shipped default (CI runs both)
+SIGNED_HUE = int(os.environ.get('SIGNED_HUE', '0'))
 
 
 def why_names(src: str) -> str:
@@ -322,6 +326,62 @@ def without_p349(src: str) -> str:
     return P349_BLOCK.sub('', src.replace(P349_DEFINE, '', 1)).replace(P349_GAIN_NEW, P349_GAIN_OLD, 1)
 
 
+# P370 (B2): a colour the camera matrix put outside sRGB takes its OKLab lightness and hue from its signed value (signedHueU;
+# 0 / unset = off, the branch does nothing): the uniform, the two functions, the signed colour beside the clamped one and the
+# blend. The token comparison takes them out (shader_part and check_vf_fused check that they are there); the renders here set
+# no signedHueU (off), tools/check_ccm_gamut.py renders it on.
+SIGNED_HUE_LINES = (
+    'uniform int signedHueU;             // P370: 1 = OKLab of a colour outside sRGB from its signed value; 0 / unset = from the clip\n',
+    '    vec3 origS = vec3(0.0);     // P370: the same colour signed (finite taps, no clamp), for signedHueU\n',
+    '        origS = finiteTap(texelFetch(WhyColour, xy, 0).rgb);\n',
+    '                    accS += finiteTap(d != vec2(0.0) ? tap : rawSigned);\n',
+    '                    accS += finiteTap(texelFetch(WhyColour, clamp(xy + ivec2(dx, dy), ivec2(0), lastC), 0).rgb);\n',
+    '            if (ya > 1.0e-6) origS = accS * (1.0 / 9.0) * (yc / ya);\n',
+    '        origS *= inScaleU > 0.0 ? inScaleU : 1.0;\n',
+    '                origS += finiteTap(tap) * (wx[dx + 1] * wy[dy + 1]);\n',
+    '    float linScale = ae * gain;  // P370: every scale lin takes before OKLab, for the signed colour\n',
+    '            linScale *= (1.0 + ex * 0.35 / (ex + 0.35)) / mf;\n')
+SIGNED_HUE_ACCS = '            vec3 accS = vec3(0.0);\n'
+SIGNED_HUE_RAW = ('        vec3 rawSigned = vfLinearSigned(texCoord);\n        vec3 rawLin = max(rawSigned, vec3(0.0));\n'
+                  '        origS = finiteTap(rawSigned);\n', '        vec3 rawLin = vfLinear(texCoord);\n')
+SIGNED_HUE_FUNCTIONS = re.compile(r'// P370 \(B2\): OKLab of a signed colour.*?\n}\n\n// P370 \(B2\): the share of the signed colour.*?\n}\n\n', re.S)
+SIGNED_HUE_BLOCK = re.compile(r'    // P370 \(B2\): the colour as the matrix made it.*?\n    float signedW = 0\.0;\n#if COLOUR_LOOK == 1\n'
+                              r'    if \(signedHueU != 0 && monoU == vec3\(0\.0\)\) \{\n'
+                              r'#else\n    if \(signedHueU != 0\) \{\n#endif\n        signedW = signedHueWeight\(origS, orig\);\n'
+                              r'        if \(signedW > 0\.0\) lab = mix\(lab, toOklabSigned\(origS \* linScale\), signedW\);\n    \}\n', re.S)
+# P370 (review): a pixel that took the signed colour fades the final gamut mapping's chroma cut in (the soft variants, sRGB and
+# P3, and their four call sites; signedW 0 calls the former function)
+SIGNED_HUE_SOFT = re.compile(r'// P370 \(B2, review\): fromOklabInGamut(?:P3)? for a pixel that took the signed colour.*?\n}\n\n', re.S)
+SIGNED_HUE_MAPS = (
+    ('    graded = signedW > 0.0 ? fromOklabInGamutP3Soft(gradedLab, signedW) : fromOklabInGamutP3(gradedLab);\n',
+     '    graded = fromOklabInGamutP3(gradedLab);\n'),
+    ('    graded = signedW > 0.0 ? fromOklabInGamutSoft(toOklab(max(graded, vec3(0.0))), signedW) : '
+     'fromOklabInGamut(toOklab(max(graded, vec3(0.0))));\n', '    graded = fromOklabInGamut(toOklab(max(graded, vec3(0.0))));\n'),
+    ('    graded = signedW > 0.0 ? fromOklabInGamutP3Soft(post, signedW) : fromOklabInGamutP3(post);\n',
+     '    graded = fromOklabInGamutP3(post);\n'),
+    ('    graded = signedW > 0.0 ? fromOklabInGamutSoft(post, signedW) : fromOklabInGamut(post);\n',
+     '    graded = fromOklabInGamut(post);\n'))
+
+
+def has_signed_hue(src: str) -> bool:
+    src = src.replace('\r\n', '\n')
+    return (all(line in src for line in SIGNED_HUE_LINES) and src.count(SIGNED_HUE_ACCS) == 2 and SIGNED_HUE_RAW[0] in src
+            and SIGNED_HUE_FUNCTIONS.search(src) is not None and SIGNED_HUE_BLOCK.search(src) is not None
+            and len(SIGNED_HUE_SOFT.findall(src)) == 2 and all(src.count(new) == 1 for new, _ in SIGNED_HUE_MAPS))
+
+
+def without_signed_hue(src: str) -> str:
+    """P370 (B2): the signed-hue code of why/combine.glsl taken back out for the token comparisons."""
+    src = src.replace('\r\n', '\n')
+    for line in SIGNED_HUE_LINES:
+        src = src.replace(line, '', 1)
+    src = src.replace(SIGNED_HUE_ACCS, '').replace(SIGNED_HUE_RAW[0], SIGNED_HUE_RAW[1], 1)
+    for new, old in SIGNED_HUE_MAPS:
+        src = src.replace(new, old, 1)
+    src = SIGNED_HUE_SOFT.sub('', src, count=2)
+    return SIGNED_HUE_BLOCK.sub('', SIGNED_HUE_FUNCTIONS.sub('', src, count=1), count=1)
+
+
 def shader_part(strict: bool) -> None:
     new = (SH / 'why/combine.glsl').read_text(encoding='utf-8')
     check(('\n' + P305_HIGHP_INT) in new.replace('\r\n', '\n'), 'combine.glsl lost "precision highp int;" (P305: fp16 dither streaks on Adreno)')
@@ -335,9 +395,10 @@ def shader_part(strict: bool) -> None:
           'combine.glsl lost the P341 light-tone vibrance or the darkening delta rule (a pale sunset sky, a rung lost in the glow)')
     check(P349_DEFINE in n and len(P349_BLOCK.findall(n)) == 2 and P349_GAIN_NEW in n and all(line in n for line in P349_FLOOR),
           'combine.glsl lost the P349 sun bloom or the small-delta detail gain (a flat sun disc, dark lines along edges)')
-    got = token_hash(without_p349(without_p341(without_p311_rim(without_p315_rails(without_p310_white(without_highp_int(n)))))))
+    check(has_signed_hue(n), 'combine.glsl lost the P370 signed hue (a colour outside sRGB takes the clipped hue: LEDs, neon, sky)')
+    got = token_hash(without_signed_hue(without_p349(without_p341(without_p311_rim(without_p315_rails(without_p310_white(without_highp_int(n))))))))
     print('combine.glsl P3_OUT 0 token stream (without the P305 highp int, the P311 rim rule, the P315 rail rule and the P341 '
-          'vibrance / delta rule, the P349 sun bloom / gain, the P310 AgX white gate as the scene gate): %s' % got)
+          'vibrance / delta rule, the P349 sun bloom / gain, the P370 signed hue, the P310 AgX white gate as the scene gate): %s' % got)
     check(got == BASELINE_COMBINE_TOKENS, 'combine.glsl (P3_OUT 0) differs from the pre-P46 shader: %s' % got)
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],
@@ -443,7 +504,8 @@ def gl_part(strict: bool) -> None:
         vals = {'sensorToIntermediate': eye, 'intermediateToSRGB': eye, 'neutralPointU': (1, 1, 1), 'inScaleU': 1.0,
                 'fU': 1, 'colourFU': 1, 'aeU': 1.0, 'clipU': 1.0, 'toeU': 0.05, 'gammaInvU': 1 / 2.2, 'macroU': 1.1,
                 'vibU': (0.0, 0.4, 0.2), 'detailGainU': 1.0, 'deltaChromaU': 1.0, 'filmToeU': 0.1, 'ditherU': 0,
-                'agxAU': (2.7, 1.35, 1.6, 1.0), 'agxBU': (-8.5, 3.5, 0.3, 4.0), 'headroomU': 0, 'hlWhiteU': 0.15}
+                'agxAU': (2.7, 1.35, 1.6, 1.0), 'agxBU': (-8.5, 3.5, 0.3, 4.0), 'headroomU': 0, 'hlWhiteU': 0.15,
+                'signedHueU': SIGNED_HUE}
         for k, v in vals.items():
             if k in prog:
                 prog[k].value = v
@@ -454,14 +516,18 @@ def gl_part(strict: bool) -> None:
         prog.release()
         return res
 
+    print('GPU: signedHueU %d (P370; environment SIGNED_HUE=1: the shipped default)' % SIGNED_HUE)
     srgb, p3 = render('0'), render('1')
     try:
         base = subprocess.run(['git', '-C', str(ROOT), 'show', BASELINE_COMMIT + ':app/src/main/assets/shaders/ark/combine.glsl'],
                               capture_output=True, check=True).stdout.decode('utf-8')
         base = why_names(base)  # P319
         before = render('0', expand_imports(with_p310_white(without_guard(base))))
-        check(np.array_equal(before, srgb), 'P3_OUT 0 renders differently from the %s shader' % BASELINE_COMMIT)
-        print('GPU: P3_OUT 0 = the %s shader with the P310 AgX white gate, bit for bit (%d colours)' % (BASELINE_COMMIT, n))
+        # signedHueU 1 changes the colours outside sRGB only (tools/check_ccm_gamut.py): those are compared with it off
+        cmp = slice(0, len(inside)) if SIGNED_HUE else slice(0, n)
+        check(np.array_equal(before[cmp], srgb[cmp]), 'P3_OUT 0 renders differently from the %s shader' % BASELINE_COMMIT)
+        print('GPU: P3_OUT 0 = the %s shader with the P310 AgX white gate, bit for bit (%d colours)' % (BASELINE_COMMIT,
+                                                                                                    len(range(n)[cmp])))
     except (subprocess.CalledProcessError, FileNotFoundError):
         print('GPU: (%s not in this checkout: the bit-exact comparison with it is skipped)' % BASELINE_COMMIT)
     # display-encoded (power 1/2.2) -> linear; the P3 picture in sRGB coordinates

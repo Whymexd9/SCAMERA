@@ -30,6 +30,8 @@ public final class CurveView extends View {
     private final GestureDetector taps;
     private List<float[]> pts = new ArrayList<>();
     private int colour = 0xFFFFFFFF, drag = -1;
+    /** The double tap (reported inside its second ACTION_DOWN) removed a point: that DOWN must not add one back. */
+    private boolean removedByDoubleTap;
     @Nullable private Listener listener;
 
     public CurveView(Context c) {
@@ -47,6 +49,7 @@ public final class CurveView extends View {
                 if (i > 0 && i < pts.size() - 1) {
                     pts.remove(i);
                     drag = -1;
+                    removedByDoubleTap = true;
                     changed(true);
                 }
                 return true;
@@ -135,6 +138,13 @@ public final class CurveView extends View {
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         taps.onTouchEvent(e);
+        if (e.getActionMasked() == MotionEvent.ACTION_DOWN && removedByDoubleTap) {
+            // the rest of this touch neither adds nor drags a point (it put a new one where the removed one was)
+            removedByDoubleTap = false;
+            drag = -1;
+            getParent().requestDisallowInterceptTouchEvent(true);
+            return true;
+        }
         float s = side(), l = left(), t = top();
         float x = Math.max(0, Math.min(1, (e.getX() - l) / s)), y = Math.max(0, Math.min(1, 1 - (e.getY() - t) / s));
         switch (e.getActionMasked()) {

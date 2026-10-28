@@ -29,6 +29,7 @@ import com.particlesdevs.photoncamera.processing.color.FilmLooks;
 import com.particlesdevs.photoncamera.processing.color.FilmLut;
 import com.particlesdevs.photoncamera.settings.PreferenceNumber;
 import com.particlesdevs.photoncamera.settings.PreferenceValue;
+import com.particlesdevs.photoncamera.ui.settings.PageReset;
 import com.particlesdevs.photoncamera.ui.settings.SettingsStyle;
 import com.particlesdevs.photoncamera.util.Lang;
 import com.particlesdevs.photoncamera.util.ScameraFolder;
@@ -48,7 +49,7 @@ import java.util.concurrent.Executors;
  * folder is granted, «Открыть папку» (files dropped there by another app are listed then). The strength row and «Что
  * меняется» (LutChangesPreference) follow on the page; all of them redraw when the choice or the strength changes.
  */
-public class FilmLutPreference extends Preference implements SharedPreferences.OnSharedPreferenceChangeListener {
+public class FilmLutPreference extends Preference implements SharedPreferences.OnSharedPreferenceChangeListener, PageReset.Resettable {
     public interface Files {
         String[] list(Context context);
     }
@@ -99,6 +100,14 @@ public class FilmLutPreference extends Preference implements SharedPreferences.O
         if (prefs != null && name != null && !name.isEmpty() && strength(prefs) <= 0f)
             prefs.edit().putString(FilmLut.STRENGTH_KEY, "100").apply();
         notifyChanged();
+    }
+
+    /** The page reset (audit 2026-10-27: the chosen LUT stayed): «Нет» again; true when a LUT was chosen. */
+    @Override
+    public boolean resetToDefault() {
+        if (chosen().isEmpty()) return false;
+        choose("");
+        return true;
     }
 
     @Override

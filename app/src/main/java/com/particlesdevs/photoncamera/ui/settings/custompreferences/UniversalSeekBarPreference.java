@@ -151,6 +151,11 @@ public class UniversalSeekBarPreference extends Preference implements SeekBar.On
     @Override
     protected Object onGetDefaultValue(TypedArray a, int index) {
         fallback_value = a.getString(index);
+        // this device's factory value is the default of the double tap, the «changed» mark and the page reset (the full reset
+        // applies it again); androidx reads the key before the default
+        final Object device = getKey() == null ? null
+                : com.particlesdevs.photoncamera.settings.DeviceDefaults.factory(getContext()).get(getKey());
+        if (device != null) fallback_value = String.valueOf(device);
         log("onGetDefaultValue : " + fallback_value);
         return a.getString(index);
     }

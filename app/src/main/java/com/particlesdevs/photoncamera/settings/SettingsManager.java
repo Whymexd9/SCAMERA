@@ -100,6 +100,15 @@ public class SettingsManager {
         // P55: settings written before the SCAM rename get their new names before anything reads them.
         BrandMigration.migrateAll(mContext);
         mDefaultPreferences = PreferenceManager.getDefaultSharedPreferences(mContext);
+        runOneTimeMigrations();
+    }
+
+    /**
+     * The one-time migrations and their markers, the device defaults included. MigrationManager runs them again after its reset
+     * of the preferences (a fresh install, the full reset): that reset cleared the markers written here, so the next start ran
+     * the migrations on the user's values (the flicker list's «Авто» became «Выкл.»).
+     */
+    void runOneTimeMigrations() {
         SettingsMigration.migrateMultiFrame(mDefaultPreferences);
         SettingsMigration.migrateAntibanding(mDefaultPreferences);
         DeviceDefaults.applyOnce(mContext, mDefaultPreferences);

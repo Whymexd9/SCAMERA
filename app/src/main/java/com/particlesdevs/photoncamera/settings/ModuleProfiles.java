@@ -32,21 +32,28 @@ public final class ModuleProfiles {
      * The one list behind {@link #isLocal}. Sounds, grid, the photo format with every
      * format / quality option (JPEG, HEIC, HEIC 10 bit, WebP, AVIF, «Также сохранять JPEG», the RAW save mode, Ultra HDR), the
      * watermark and its caption, Root, the camera package spoof, face detection and tracking AF, the gallery icon and theme,
-     * the flicker frequency and the merge route. Processing, tuning and sensor settings stay per module.
+     * the flicker frequency and the merge route. Processing, tuning and sensor settings stay per module. «Сохранять RAW-серию»
+     * too (audit 2026-10-27: a module switch loaded a profile without it, and the series stopped there).
      */
     static final Set<String> GLOBAL_KEYS=Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             "pref_camera_sounds_key","pref_timer_sound_key","pref_show_grid_key",
-            "pref_save_raw_key","pref_ultrahdr_key","pref_show_watermark_key",
+            "pref_save_raw_key","pref_ultrahdr_key","pref_show_watermark_key","pref_keep_raw_burst",
             "pref_root_enabled","pref_camera_package_spoof_enabled","pref_oplus_spoof_package_key","pref_generic_spoof_package_key",
             "pref_binder_spoof_package_key","pref_face_detect_mode","pref_tracking_af_mode","pref_hide_gallery_icon_key",
             "pref_antibanding_hz_key","pref_file_name_pattern",ScamHybridKeys.ROUTE,MotionMode.PREF,
             com.particlesdevs.photoncamera.capture.HiddenFeatures.PREF_LOW_LIGHT_BOOST)));
+    /**
+     * Shared switches without a row in the settings tree: «Сохранять снимки для лаборатории» (the lab's own page; audit
+     * 2026-10-27: per module, lab shots silently stopped on the other lenses).
+     */
+    static final Set<String> GLOBAL_SWITCHES=Collections.unmodifiableSet(new HashSet<>(Collections.singletonList(
+            com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.PREF)));
     /** Key prefixes of {@link #GLOBAL_KEYS}: the photo format rows (pref_photo_format, pref_photo_also_jpeg, the qualities, AVIF), the caption, the theme. */
     static final String[] GLOBAL_PREFIXES={"pref_photo_","pref_jpeg_","pref_heic_","pref_webp_","pref_avif_","pref_watermark_","pref_theme"};
-    /** A setting shared by every lens ({@link #GLOBAL_KEYS}). */
+    /** A setting shared by every lens ({@link #GLOBAL_KEYS}, {@link #GLOBAL_SWITCHES}). */
     public static boolean isGlobal(String key){
         if(key==null)return false;
-        if(GLOBAL_KEYS.contains(key))return true;
+        if(GLOBAL_KEYS.contains(key)||GLOBAL_SWITCHES.contains(key))return true;
         for(String prefix:GLOBAL_PREFIXES)if(key.startsWith(prefix))return true;
         return false;
     }
@@ -140,7 +147,13 @@ public final class ModuleProfiles {
         // once, at the first camera start, so it held that start's defaults and turned the owner's settings back to them.
         return new HashMap<>(file("common").getAll());
     }
-    public synchronized void activate(String id){if(!PreferenceKeys.isPerLensSettingsOn()||id.equals(active))return;save(active);active=id;restore(snapshotStored(id));save(id);meta.edit().putString("active",id).apply();}
+    /**
+     * The main settings hold profile {@code id}. Not while the app is about to restart (P156, as ModuleRegistry.syncProfile;
+     * audit 2026-10-27: the restart waits for a shot now, and a lens switch meanwhile wrote the imported or reset main settings
+     * into the old module's profile file).
+     */
+    public synchronized void activate(String id){if(com.particlesdevs.photoncamera.app.ScameraApp.restarting)return;
+        if(!PreferenceKeys.isPerLensSettingsOn()||id.equals(active))return;save(active);active=id;restore(snapshotStored(id));save(id);meta.edit().putString("active",id).apply();}
     public synchronized void copy(String source, Collection<String> targets, Set<String> keys){
         // P181: the sensor settings are the module's (a FULLRES profile shares its module's): copied between modules only
         Set<String> sensorTargets=new LinkedHashSet<>();

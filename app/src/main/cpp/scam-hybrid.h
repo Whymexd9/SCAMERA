@@ -4647,7 +4647,17 @@ struct HybridRowsSink {
     virtual bool finish(float* data)=0;
     virtual void stop()=0;
     virtual std::string text() const {return std::string();} // P364: the report of a finished consumer
+    // P371: this sink's finished rows are the merge's result (the plain merge of the burst itself): hybridFinalRowsHook gets them
+    virtual void emitFinal(bool) {}
 };
+// P371 (speed, the worker's output): set by the worker's main for the plain merge of the burst itself (not large):
+//   (null, w, h, 0, 0)   an attempt starts (the merge thread; a retry or a restarted merge gives every row again);
+//   (rows, w, h, y0, y1) rows [y0, y1) of the w x h RGB at rows are final (the plain chroma median's consumer thread: its stream
+//                        finished them, nothing changes them after it);
+//   (rows, w, h, -1, -1) rows is the result hybridReconstruct returns, unchanged since its rows were given (the merge thread, last).
+// Any other event after the last one voids it. A caller of hybridReconstruct that changes such a result before it returns it must
+// send (null, 0, 0, 0, 0) first (today every caller returns it as it is). The hook must not throw.
+inline std::function<void(const float*,int,int,int,int)>& hybridFinalRowsHook(){static std::function<void(const float*,int,int,int,int)> f;return f;}
 // P364: the plain merge's chroma median on its rows while the GPU merges the next strips (MosaicChromaOverlap without an oscillation
 // map: the stream of mosaicChromaMedian's CPU path, the same floats); defined after it
 inline std::unique_ptr<HybridRowsSink> hybridPlainChromaSink(int width,int height,int block);
@@ -5662,9 +5672,24 @@ public:
         // The widest dispatch runs (ow + 7) / 8 work groups in x (the output passes; the site passes w).
         if(maxGroupsX>0&&(int64_t(std::max(ow,w))+7)/8>maxGroupsX)
             throw std::runtime_error("HYBRID GPU: output row "+std::to_string(std::max(ow,w))+" px > work-group limit "+std::to_string(maxGroupsX*8)+" px");
-        out.assign(size_t(ow)*h*g*3,0.f);robustShare.assign(frames,1.0);
-        if(wantEffective)effective.assign(size_t(ow)*h*g,1.f); else std::vector<float>().swap(effective);
-        if(clipFlags)clipFlags->assign(size_t(ow)*h*g,0);
+        robustShare.assign(frames,1.0);
+        if(!wantEffective)std::vector<float>().swap(effective);
+        // P371 (speed): the output planes (12 MP: 150 + 50 + 12.6 MB of fresh pages, 100-135 ms of faults and fills on one core)
+        // are sized on a helper while this thread starts the GPU; every element is written by the strips' readbacks (readStrip
+        // joins the helper first) before anything reads it. Not where the strips are sized from MemAvailable (large / native:
+        // the strip partition is part of the arithmetic). SCAM_OUT_SYNC: here, as before.
+        auto sizeOutputs=[&out,&effective,clipFlags,ow,h,g,wantEffective]{
+            out.assign(size_t(ow)*h*g*3,0.f);
+            if(wantEffective)effective.assign(size_t(ow)*h*g,1.f);
+            if(clipFlags)clipFlags->assign(size_t(ow)*h*g,0);
+        };
+        // (review m2: a failure there - bad_alloc - is rethrown on this thread after the join, as when it ran here)
+        std::thread outSizer;std::exception_ptr outSizerError;
+        if(!in.large&&in.native==nullptr&&!std::getenv("SCAM_OUT_SYNC"))try{
+            outSizer=std::thread([&sizeOutputs,&outSizerError]{try{sizeOutputs();}catch(...){outSizerError=std::current_exception();}});
+        }catch(const std::exception&){}
+        if(!outSizer.joinable())sizeOutputs();
+        struct OutJoin { std::thread& t; ~OutJoin(){if(t.joinable())t.join();} } outJoin{outSizer};
         // Uniforms common to all programs.
         std::vector<float> a(size_t(frames)*4),b(size_t(frames)*4),up(frames,1.f);
         for(int f=0;f<frames;++f){
@@ -6137,6 +6162,7 @@ public:
         PendingStrip pending;
         auto readStrip=[&](PendingStrip& p){
             if(!p.active)return;
+            if(outSizer.joinable()){outSizer.join();if(outSizerError)std::rethrow_exception(outSizerError);} // P371: the output planes sized (above)
             const auto readStarted=std::chrono::steady_clock::now();
             bool waited=false;
             scam_progress::stallAt(p.index); // P220: SCAM_STALL_STRIP (replay test of the app's watchdog) only
@@ -9084,6 +9110,9 @@ struct HybridUsPending {
     HybridInput result; // the checked input once joined (a restart merges it)
     std::vector<std::vector<uint16_t>> own;
     std::mutex lock;std::vector<std::string> lines;
+    // the check thread writes own / lines under lock until it returns: a merge that throws before it joins the check (anything but
+    // HybridUsRestart) drops the last reference here, and the members go only after the thread (`checked` is destroyed last)
+    ~HybridUsPending(){if(checked.valid())checked.wait();}
 };
 // P364: the check changed the ultrashort frames (row correction, a refusal): the speculative merge stops, the check's input merges.
 struct HybridUsRestart : std::exception { const char* what() const noexcept override {return "ultrashort check changed the frames";} };
@@ -9916,6 +9945,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 bool started=false;
                 try{
                     pending->checked=std::async(std::launch::async,[pp,&input,&tune]{
+                        // P371 (replays): SCAM_US_CHECK_DELAY_MS holds the check back - the paths of a merge that waits for it
+                        if(const char* d=std::getenv("SCAM_US_CHECK_DELAY_MS"))std::this_thread::sleep_for(std::chrono::milliseconds(std::max(0,std::atoi(d))));
                         return hybridPlainUsRows(input,tune,pp->own,[pp](const std::string& line){std::lock_guard<std::mutex> l(pp->lock);pp->lines.push_back(line);});
                     });
                     started=true;
@@ -9972,9 +10003,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     const bool gpuAuto=tune.laGpu==2&&(!std::getenv("SCAM_LA_AUTO_CPU")||access("/dev/kgsl-3d0",F_OK)==0);
     bool laGpuUse=tune.localAlign>0&&n>1&&(tune.laGpu==1||(tune.laGpu==2&&(!laCpuStreams||gpuAuto)));
     if(laGpuUse&&large){
-        // the GPU field holds ~11.5 B per RAW pixel from the alignment to the F6 stage (two RAW uploads, the base and donor levels):
-        // within a quarter of MemAvailable as the CPU field's large path, else the CPU field
-        const uint64_t need=uint64_t(11.5*double(w)*double(h)),avail=hybridMemAvailable();
+        // the GPU field holds ~11.5 B per RAW pixel from the alignment to the F6 stage (two RAW uploads, the base and donor levels),
+        // ~18.75 B with the GPU homography (P364: two more RAW uploads and the levels of two donors, kept to the F6 stage as well):
+        // within a quarter of MemAvailable as the CPU field's large path, else the CPU field. SCAM_LA_GPU_MEMAVAIL_MB stands in
+        // for MemAvailable in this decision only (as SCAM_F6_MEMAVAIL_MB below; tools/check_hybrid_gpu_align)
+        const bool gpuHom=tune.gpuAlign==1&&!presetAlignment&&n>1&&!std::getenv("SCAM_NO_GPU_ALIGN"); // gpuAlignOn below
+        const uint64_t need=uint64_t((gpuHom?kLaGpuHomBytesPerPixel:kLaGpuFieldBytesPerPixel)*double(w)*double(h));
+        uint64_t avail=hybridMemAvailable();
+        if(const char* fake=std::getenv("SCAM_LA_GPU_MEMAVAIL_MB"))avail=uint64_t(std::max(0L,std::atol(fake)))<<20;
         if(avail>0&&need>avail/4){
             laGpuUse=false;
             report("HYBRID LOCAL ALIGN: GPU field skipped ("+hybridMB(need)+" MB > a quarter of MemAvailable "+hybridMB(avail)+" MB): the CPU field");
@@ -10039,9 +10075,12 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         const uint16_t* raw=nullptr;const uint16_t* base=nullptr;BackwardHomography H;float gain=0,ns=0,no=0;
         std::vector<uint16_t> out;HybridGpu::MochiStats st;bool ok=false;
     };
+    // P371: set when this merge unwinds (a HybridUsRestart above all) with the job still running: it skips its remaining frames
+    std::atomic<bool> mochiAheadCancel{false};
     struct MochiAhead { std::unique_ptr<HybridGpu> gpu;std::vector<MochiAheadFrame> frames;float bs=0,bo=0,clip=0; } mochiAhead;
     std::future<void> mochiAheadJob;
     struct MochiAheadJoin { std::future<void>& f; ~MochiAheadJoin(){if(f.valid())f.wait();} } mochiAheadJoin{mochiAheadJob};
+    struct MochiAheadStop { std::atomic<bool>& c; ~MochiAheadStop(){c=true;} } mochiAheadStop{mochiAheadCancel}; // (before the join)
     auto launchMochiAhead=[&](const std::vector<BackwardHomography>& Hs,const std::vector<bool>& alignedNow){
         if(tune.mochi<=0||native||!earlyGpu.valid()||std::getenv("SCAM_MOCHI_LATE"))return;
         mochiAhead.bs=std::max(input.frames[0].slope,1e-9f);mochiAhead.bo=std::max(input.frames[0].offset,0.f);mochiAhead.clip=tune.clipLevel;
@@ -10063,6 +10102,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 mf.phaseColor={0,1,1,2};mf.baseSlope=mochiAhead.bs;mf.baseOffset=mochiAhead.bo;mf.white=input.white;
                 mf.homography.resize(2);mf.gain={1.f,1.f};mf.noiseSlope={mochiAhead.bs,1e-9f};mf.noiseOffset={mochiAhead.bo,0.f};
                 for(auto& m:mochiAhead.frames){
+                    if(mochiAheadCancel){m.ok=false;continue;} // P371: nobody takes it (the merge unwinds)
                     mf.frames={m.base,m.raw};mf.homography[1]=m.H;mf.gain[1]=m.gain;mf.noiseSlope[1]=m.ns;mf.noiseOffset[1]=m.no;
                     m.ok=g->mochi(mf,1,mochiAhead.clip,m.out,m.st);
                 }
@@ -10152,6 +10192,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // P350 F10 (bentoUsRegister): each ultrashort frame registered once, before anything reads its transform (Bento's check, the
     // F6 jobs, the merge); the lines are reported after the alignment (the no-CRE path calls this on its worker threads)
     std::vector<uint8_t> usRegDone(static_cast<size_t>(n),0);std::vector<std::string> usRegLine(static_cast<size_t>(n));
+    // main thread only: the registration was not needed (a good GPU homography); usRegLine of a frame registered on a thread of its
+    // own (usRegLater) is that thread's until it is joined
+    std::vector<uint8_t> usRegSkipped(static_cast<size_t>(n),0);
     HybridUsRegisterBase usRegBase;std::mutex usRegBaseMutex;
     auto usRegRun=[&](int f){
         const auto regStarted=Clock::now();
@@ -10247,13 +10290,20 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // the last CRE group (its frames waited for it). The same base, the same registration. SCAM_US_BASE_LATE: as before.
     std::future<void> usBaseAhead;
     struct UsBaseJoin { std::future<void>& f; ~UsBaseJoin(){if(f.valid())f.wait();} } usBaseJoin{usBaseAhead};
-    if(tune.bentoUsRegister>0&&!std::getenv("SCAM_US_BASE_LATE")){
+    auto startUsBase=[&]{
+        if(usBaseAhead.valid()||tune.bentoUsRegister<=0||std::getenv("SCAM_US_BASE_LATE"))return;
         bool anyUs=false;for(int f=1;f<n;++f)anyUs|=input.frames[f].role==kRoleUltrashort;
         if(anyUs)try{usBaseAhead=std::async(std::launch::async,[&]{
             std::lock_guard<std::mutex> lock(usRegBaseMutex);
             if(!usRegBase.made)hybridUsRegister(input.frames[0].raw,nullptr,w,h,input.black,input.white,0.f,BackwardHomography{},0.f,&usRegBase);
         });}catch(const std::exception&){}
-    }
+    };
+    // P371 (speed, worker-front): with the GPU alignment a good homography skips the registration (gpuAlignUsRegister 0), so the
+    // base side (~50-80 ms on all cores beside the front's checks) is made only once an ultrashort frame will register (or its
+    // registration makes it itself) or the corner tracker takes the burst. SCAM_US_BASE_EAGER: from the start, as before.
+    const bool usBaseLazy=tune.gpuAlign==1&&laGpuWorker&&!presetAlignment&&n>1&&!std::getenv("SCAM_NO_GPU_ALIGN")
+        &&tune.gpuAlignUsRegister==0&&!std::getenv("SCAM_US_BASE_EAGER");
+    if(!usBaseLazy)startUsBase();
 
     // P364 gpuAlign: the homography of every donor on the GPU (asked for all at once: the worker estimates them in order, the CPU
     // takes each as it comes), the corner tracker's fallbacks as in its branch below
@@ -10300,12 +10350,41 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             gpuAlignOn=false;
         }
     }
+    if(!gpuAlignOn)startUsBase(); // P371 (lazy above: the GPU alignment did not take the burst)
     if(presetAlignment){
         H=preset->h;aligned=preset->aligned; // the mosaic sub-frames: binned alignment plus the known site offsets
     } else if(gpuAlignOn){
         std::vector<Guide> fallbackRef;
+        // P371 (speed): an ultrashort frame whose GPU homography failed no longer registers inline on this thread (0.28-0.35 s a
+        // frame on the X8U, while the estimates of the other frames waited and the check beside it took 1.4 s instead of ~0.35):
+        // with the ultrashort check still running it waits for it (a check that changes the frames restarts the merge before any
+        // registration ran), otherwise it registers on a thread of its own; either way after the loop it is kept or dropped and
+        // handed to F6 exactly as the inline branch decided. SCAM_US_FALLBACK_INLINE: inline, as before.
+        const bool usFallbackInline=std::getenv("SCAM_US_FALLBACK_INLINE")!=nullptr;
+        std::vector<int> usFallbackWait;
+        std::vector<std::pair<int,std::future<bool>>> usFallback;
+        std::shared_future<std::vector<Guide>> usFallbackRef;
+        auto usFallbackStart=[&](int f){
+            startUsBase(); // (lazy: the registrations' base side from here)
+            usRegDone[size_t(f)]=1; // (as usReg: registered once)
+            if(!usFallbackRef.valid())usFallbackRef=std::async(std::launch::async,[&b]{return guides(b,0);}).share();
+            usFallback.emplace_back(f,std::async(std::launch::async,[&,f,ref=usFallbackRef]{
+                Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
+                const Shift t=globalShift(ref.get(),guides(one,1),input.frames[f].exposure);
+                BackwardHomography m;m.h={1,0,t.x,0,1,t.y,0,0};H[f]=m;
+                return usRegRun(f);
+            }));
+        };
+        // P371 (speed, worker-front): Mochi on the early context as soon as every ultrashort and bracketed homography is in (they
+        // come first; the merge checks every input of a result it takes) - it ran before the first strip (~0.16-0.27 s).
+        // SCAM_MOCHI_GPU_LATE (or SCAM_MOCHI_LATE): before the strips, as before.
+        const bool mochiEarly=!std::getenv("SCAM_MOCHI_GPU_LATE");
+        bool mochiLaunched=false;
         for(int f:order){
             usCheckJoin(false); // P364
+            if(mochiEarly&&!mochiLaunched&&input.frames[f].role!=kRoleUltrashort&&input.frames[f].role!=kRoleBracketed){
+                mochiLaunched=true;launchMochiAhead(H,aligned);
+            }
             const LaGpuHom r=est[size_t(f)].get();
             gpuHomLine(f,r);
             struct Done{~Done(){scam_progress::step(1);}} done;
@@ -10314,7 +10393,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 // the ultrashort registration corrected the corner tracker's 1-2 px; after a GPU homography of many tracks it moved
                 // the frames by <= 0.2 px (lamp2324) at ~0.5 s of CPU: skipped there (the same picture; gpuAlignUsRegister 1: kept)
                 if(input.frames[f].role==kRoleUltrashort&&tune.gpuAlignUsRegister==0&&r.inliers>=100&&r.rms<=1.2f&&f<int(usRegDone.size())&&!usRegDone[size_t(f)]){
-                    usRegDone[size_t(f)]=1;
+                    usRegDone[size_t(f)]=1;usRegSkipped[size_t(f)]=1;
                     char line[200];std::snprintf(line,sizeof(line),"HYBRID US REGISTER (P350): frame %d not needed: GPU homography of %d inliers, rms %.2f px",f,r.inliers,r.rms);
                     usRegLine[size_t(f)]=line;
                 }
@@ -10323,7 +10402,26 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 // as a frame the corner tracker refused: a normal one from its coarse translation with F6 (left out of the motion
                 // tests), an ultrashort one from the global translation when its registration accepts it, the others dropped
                 const auto role=input.frames[f].role;
-                if(role==kRoleNormal&&tune.localAlign>0){BackwardHomography m;m.h={1,0,r.coarseX,0,1,r.coarseY,0,0};H[f]=m;idStart[f]=true;aligned[f]=true;}
+                // no GPU answer at all (the worker failed after the first frame, e.g. a GL error in a field; this frame's upload or
+                // readback threw): no coarse translation either (a normal frame started from the identity, out of F6's reach past
+                // laMaxShift; a bracketed one was dropped). A normal or bracketed frame is aligned by the global translation of the
+                // guide pyramids as a CRE failure aligns its group; an ultrashort one as below (it takes that translation already).
+                const bool noGpu=r.why.rfind("GPU",0)==0||r.why=="closed";
+                if(noGpu&&role!=kRoleUltrashort){
+                    if(fallbackRef.empty())fallbackRef=guides(b,0);
+                    Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
+                    const Shift t=globalShift(fallbackRef,guides(one,1),input.frames[f].exposure);
+                    BackwardHomography m;m.h={1,0,t.x,0,1,t.y,0,0};H[f]=m;aligned[f]=true;
+                    char line[160];std::snprintf(line,sizeof(line),"HYBRID GPU ALIGN f=%d: no GPU homography: global translation (%+.2f, %+.2f) px",f,t.x,t.y);
+                    report(line);
+                }
+                else if(role==kRoleNormal&&tune.localAlign>0){BackwardHomography m;m.h={1,0,r.coarseX,0,1,r.coarseY,0,0};H[f]=m;idStart[f]=true;aligned[f]=true;}
+                else if(tune.bentoUsRegister>=2&&role==kRoleUltrashort&&!usFallbackInline&&!usRegDone[size_t(f)]){
+                    aligned[f]=false; // P371: decided after the loop (above)
+                    if(input.usPending&&input.usPending->checked.valid())usFallbackWait.push_back(f);
+                    else try{usFallbackStart(f);}catch(const std::system_error&){usFallbackWait.push_back(f);} // no thread: after the loop
+                    continue;
+                }
                 else if(tune.bentoUsRegister>=2&&role==kRoleUltrashort){
                     if(fallbackRef.empty())fallbackRef=guides(b,0);
                     Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
@@ -10334,6 +10432,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 }
                 else aligned[f]=false;
             }
+            if(aligned[f]&&input.frames[f].role==kRoleUltrashort&&!usRegDone[size_t(f)])startUsBase(); // P371: it registers
             if(aligned[f]&&!usRegLater(f))streamFeed(f);
             if(!earlyChecks||!aligned[f])continue;
             const auto role=input.frames[f].role;
@@ -10350,13 +10449,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
             // (no registration pending): mode 0 for the shortest, 2 for the validation of the others, as the Bento block runs them
             if(role==kRoleUltrashort&&tune.bento>0&&bentoAhead.valid()){
                 size_t pos=0;while(pos<order.size()&&order[pos]!=f)++pos;
-                const bool lastUs=pos+1>=order.size()||input.frames[order[pos+1]].role!=kRoleUltrashort;
+                const bool lastUs=(pos+1>=order.size()||input.frames[order[pos+1]].role!=kRoleUltrashort)
+                    &&usFallbackWait.empty()&&usFallback.empty(); // P371: a registration still to come, as one inline (not final)
                 int us0=-1;
                 for(int g=1;g<n;++g)if(input.frames[g].role==kRoleUltrashort&&aligned[g]&&(us0<0||input.frames[g].exposure<input.frames[us0].exposure))us0=g;
                 bool allFinal=lastUs&&us0>=0&&input.frames[us0].exposure<1.f;
                 for(int g=1;g<n&&allFinal;++g)
                     if(input.frames[g].role==kRoleUltrashort&&aligned[g]&&g<int(usRegDone.size())&&usRegDone[size_t(g)]
-                       &&usRegLine[size_t(g)].find("not needed")==std::string::npos)allFinal=false;
+                       &&!usRegSkipped[size_t(g)])allFinal=false;
                 if(allFinal){
                     const HybridTuning mt=bentoTuneOf();
                     for(int g=1;g<n;++g){
@@ -10377,6 +10477,28 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 }
             }
         }
+        if(mochiEarly&&!mochiLaunched)launchMochiAhead(H,aligned); // P371 (no normal frame after them)
+        if(!usFallbackWait.empty()){ // P371: the failed ultrashort frames' registrations once the check is joined
+            report("HYBRID GPU ALIGN: "+std::to_string(usFallbackWait.size())+" ultrashort frame(s) without a GPU homography register after the ultrashort check");
+            usCheckJoin(true); // a check that changes the frames restarts the merge here, before any registration ran
+            for(int f:usFallbackWait){
+                try{usFallbackStart(f);}
+                catch(const std::system_error&){ // no thread: here
+                    usRegDone[size_t(f)]=1;
+                    if(fallbackRef.empty())fallbackRef=guides(b,0);
+                    Burst one=b;one.raw[1]=input.frames[f].raw;one.exposure[1]=input.frames[f].exposure;
+                    const Shift t=globalShift(fallbackRef,guides(one,1),input.frames[f].exposure);
+                    BackwardHomography m;m.h={1,0,t.x,0,1,t.y,0,0};H[f]=m;
+                    std::promise<bool> here;here.set_value(usRegRun(f));usFallback.emplace_back(f,here.get_future());
+                }
+            }
+            usFallbackWait.clear();
+        }
+        for(auto& [f,done]:usFallback){ // in frame order, as the inline branch decided
+            if(done.get()){aligned[f]=true;usRegLine[size_t(f)]+=" (GPU alignment failed: from the global translation)";streamFeed(f);}
+            else{aligned[f]=false;H[f]=BackwardHomography{};usRegLine[size_t(f)]+=" (GPU alignment failed: dropped)";}
+        }
+        usFallback.clear();
         for(auto& [f,done]:usAsync){done.get();streamFeed(f);}
         usAsync.clear();
     } else if(alignment){
@@ -10895,6 +11017,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     stats.bento=bento.active;
     // ---- F6: tile-local refinement of the homographies (frames that are merged; the ultrashort frame keeps its homography)
     std::vector<std::vector<float>> laFields(n),laMotions(n);std::vector<float> laMaxY(n,0.f);
+    // P371 (speed, worker-front): the GPU F6 worker closed after its last field frees its context and buffers (~230 MB, ~20 ms)
+    // on its own thread beside the statistics and the weights; joined when the merge's context is taken
+    std::unique_ptr<LaGpuWorker> laGpuRetired;
     LaGrid laG0;bool laOn=false;
     if(tune.localAlign>0&&n>1){
         const auto laStarted=Clock::now();
@@ -10934,7 +11059,9 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
                 std::vector<LaGpuResult> taken(jobs.size());
                 for(size_t i=0;i<jobs.size();++i)taken[i]=laGpuWorker->take(jobs[i]);
                 const std::string gpuName=laGpuWorker->renderer();
-                laGpuWorker.reset(); // its thread ends, the context and buffers are freed before the merge
+                // P371: closed (nothing more to come) - it frees them on its thread; SCAM_LA_TEARDOWN_SYNC: here, as before
+                if(!large&&!std::getenv("SCAM_LA_TEARDOWN_SYNC")){laGpuWorker->close();laGpuRetired=std::move(laGpuWorker);}
+                else laGpuWorker.reset(); // its thread ends, the context and buffers are freed before the merge
                 { // the frames' statistics on the cores (each frame alone, as laFrameField takes them)
                     std::atomic<size_t> next{0};
                     auto work=[&]{for(size_t i=next++;i<taken.size();i=next++)LaGpu::stats(taken[i]);};
@@ -11369,9 +11496,14 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
     // the shot on the OPPO; its result differs from the CPU's at float rounding, as when memory sends it to the CPU), where the whole
     // median is kept (plainChromaHand 1: no blend with the unfiltered R / B)
     std::unique_ptr<HybridRowsSink> plainSink;
+    bool finalRowsOut=false; // P371: hybridFinalRowsHook gets the plain sink's rows
     // (after the R / B resample of P19, which runs on the same rows first: the median gets the rows it finished)
     if(!native&&tune.plainChromaMedian>0&&tune.chromaOverlap>0&&tune.plainChromaHand>=1.f&&!(mergedDng&&input.mergedDng)&&up2x==1){
         try{plainSink=hybridPlainChromaSink(outW,outH,std::max(1,tune.plainChromaMedian)*grid);}catch(const std::exception&){plainSink.reset();}
+        // P371: the burst's own merge (not a mosaic split's sub-frames; up to 16 MP: the output's pages come during the merge, which
+        // sizes nothing by MemAvailable there): its finished rows are the result the worker writes out
+        finalRowsOut=plainSink&&!preset&&input.subFrames<=1&&!large&&!std::getenv("SCAM_NO_STREAM_OUT");
+        if(finalRowsOut)plainSink->emitFinal(true);
     }
     HybridRowsSink* const sink=native&&native->rowsSink&&!caModel.ok&&!(mergedDng&&input.mergedDng)&&up2x==1?native->rowsSink:plainSink.get();
     struct SinkStop {HybridRowsSink* sink;~SinkStop(){if(sink)sink->stop();}} sinkStop{sink};
@@ -11412,6 +11544,7 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         }
         const bool blendPass=bento.active&&in.blend;
         const bool bentoPass=bento.active&&!in.blend&&tune.bentoChromaSigma>0.f&&tune.bentoChroma>0.f;
+        laGpuRetired.reset(); // P371: the F6 context gone before this one is taken (one EGL display; Mesa does not count eglTerminate)
         std::unique_ptr<HybridGpu> held;std::string built;
         if(mochiAheadJob.valid())mochiAheadJob.get(); // P364: it catches its errors (a failed one leaves no context)
         const bool aheadGpu=mochiAhead.gpu!=nullptr;
@@ -11745,6 +11878,8 @@ inline std::vector<float> hybridReconstruct(const HybridInput& input,const Hybri
         report("HYBRID SABRE 2X: merged "+std::to_string(outW)+"x"+std::to_string(outH)+", resized to "+std::to_string(W2)+"x"+std::to_string(H2));
     }
     if(statsOut)*statsOut=stats;
+    // P371: the result as the plain sink gave its rows (shifted and consumed there; nothing above changed it after finish)
+    if(finalRowsOut&&sunk&&sink==plainSink.get())if(const auto& hook=hybridFinalRowsHook())hook(out.data(),outW,outH,-1,-1);
     return out;
 }
 
@@ -12743,6 +12878,7 @@ class MosaicChromaOverlap final : public HybridRowsSink {
     const int w,h,b;
     const MosaicOscSource src;
     const bool plain=false; // P364: no oscillation map (src empty: makeOsc never makes a row)
+    bool finalRows=false; // P371: its finished rows go to hybridFinalRowsHook (emitFinal)
     int all=1,during=1;
     // one attempt (begin .. stop)
     std::unique_ptr<MosaicChromaStream> stream;
@@ -12801,7 +12937,7 @@ class MosaicChromaOverlap final : public HybridRowsSink {
     }
     void run(){
         try{
-            int fed=0;
+            int fed=0,emitted=0;
             for(bool more=true;more;){
                 int r=0,strip=0;
                 {
@@ -12822,6 +12958,10 @@ class MosaicChromaOverlap final : public HybridRowsSink {
                     makeOsc(to>=h?src.bh:(to-1)/b+1,n); // the block rows of the result rows this advance may finish
                     oscMs+=millis(Clock::now()-t1);
                     stream->threads(n);stream->advance(to);doneRows.store(stream->done(),std::memory_order_relaxed);
+                    if(finalRows&&stream->done()>emitted){ // P371: the rows it finished are the result's
+                        if(const auto& hook=hybridFinalRowsHook())hook(data,w,h,emitted,stream->done());
+                        emitted=stream->done();
+                    }
                     // the block rows ahead as far as the ring keeps those the next advance reads (from its first unfinished row on):
                     // the rows after the merge's last readback find them made
                     if(to<h){const auto t2=Clock::now();makeOsc(stream->done()/b+oscCap,n);oscMs+=millis(Clock::now()-t2);}
@@ -12859,8 +12999,10 @@ public:
     void threads(int whileMerging,int last){during=std::max(1,whileMerging);all=std::max(1,last);}
     // true after a finish() that returned the result
     bool done() const {return complete&&!active;}
+    void emitFinal(bool on) override {finalRows=on&&plain;}
     void begin(int width,int height,int shiftX,int shiftY) override {
         stop();
+        if(finalRows)if(const auto& hook=hybridFinalRowsHook())hook(nullptr,w,h,0,0); // P371: an attempt starts
         complete=touched=failed=exited=false;ready=stripRows=0;data=nullptr;why="the merge failed";
         passes=MosaicChromaPasses();shiftMs=oscMs=waitMs=lastMs=0;feeds=rowsBeforeLast=0;bytes=0;doneRows.store(0);
         if(width!=w||height!=h||w<=0||h<=0){why="the merge's grid "+std::to_string(width)+"x"+std::to_string(height)+" is not the chroma's";return;}

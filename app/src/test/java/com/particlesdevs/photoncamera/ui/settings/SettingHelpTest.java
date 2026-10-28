@@ -30,7 +30,11 @@ public class SettingHelpTest {
         // the ordinary rows of «Фото», «Съёмка», «Экран камеры», «Цвет и стиль» with a text of their own
         for (String key : new String[]{"photo_size_screen", "pref_scam_hybrid_output", "pref_wide169_key", "pref_ultrahdr_key",
                 "pref_motion_mode", "pref_antibanding_hz_key", "pref_show_grid_key", "pref_horizon", "pref_peak_method_key",
-                "pref_scam_hybrid_colour_warmth", "pref_scam_hybrid_colour_tint", "backup_settings_screen"})
+                "pref_scam_hybrid_colour_warmth", "pref_scam_hybrid_colour_tint", "backup_settings_screen",
+                // 2026-10-27: the rows the simple groups took over from the expert pages, and the focus page
+                "pref_scam_hybrid_why_ae_target", "pref_scam_hybrid_why_macro_contrast", "pref_scam_hybrid_why_agx_sat",
+                "pref_scam_hybrid_why_sharp_gain", "pref_scam_hybrid_dn_luma_mult", "pref_ettr", "focus_screen",
+                "pref_af_mode_key", "pref_show_afdata_key"})
             assertNotEquals(key, 0, SettingHelp.helpRes(key));
         assertEquals(R.string.help_colour_mixer, SettingHelp.helpRes("pref_scam_hybrid_colour_mix_aqua_sat"));
         assertEquals(R.string.help_colour_grading, SettingHelp.helpRes("pref_scam_hybrid_colour_grade_mids_hue"));

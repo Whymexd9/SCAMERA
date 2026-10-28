@@ -12,9 +12,10 @@ import java.util.List;
  *
  * <p>Either an embedded preview (a JPEG of the reduced-resolution IFDs, large enough for the request) or a render of the
  * raw data: uncompressed 8..16-bit (strips or tiles, rows byte-padded), or lossless JPEG (compression 7, {@link Lj92Decoder});
- * the linearisation table, black / white levels, any CFA repeat pattern (2x2 Bayer, 4x4 Quad), each output pixel the box
- * mean of its block per colour; white balance from AsShotNeutral, camera to sRGB through ForwardMatrix1 (else the inverse of
- * ColorMatrix1), BaselineExposure, an automatic lift for dark raw data, a soft highlight shoulder and the sRGB curve.
+ * the linearisation table, black / white levels, the OpcodeList2 GainMap (lens shading, P370), any CFA repeat pattern (2x2
+ * Bayer, 4x4 Quad), each output pixel the box mean of its block per colour; white balance and camera to sRGB as the editor's
+ * {@link DngColor} (P370; ForwardMatrix1 / the inverse of ColorMatrix1 before), BaselineExposure, an automatic lift for dark raw
+ * data, a soft highlight shoulder and the sRGB curve.
  * Pure Java on a {@link ByteBuffer} (a mapped file): no Android classes, testable on the JVM.
  */
 public final class DngPreview {
@@ -259,12 +260,109 @@ public final class DngPreview {
     private int bRows, bCols;
     private float[] sum;
     private int[] cnt;
+    // P370 (A10): the OpcodeList2 lens shading (DngRaw's GainMap parser; null: none) and the active area its maps are relative to
+    private Shade[] shading;
+    private int aaTop, aaLeft, aaW, aaH;
+
+    /**
+     * P370 (A10): one GainMap of a CFA plane (DngRaw.GainMap.at, the editor's shading) with the row of the map interpolated once a
+     * raw row: the preview reads every sample, a thumbnail too.
+     */
+    private static final class Shade {
+        final DngRaw.GainMap g;
+        final double[] row;
+        int rowY = Integer.MIN_VALUE;
+
+        Shade(DngRaw.GainMap g) {
+            this.g = g;
+            row = new double[g.pointsH];
+        }
+
+        double at(int ax, int ay, int aaW, int aaH) {
+            if (ay < g.top || ay >= g.bottom || ax < g.left || ax >= g.right) return 1;
+            if ((ay - g.top) % g.rowPitch != 0 || (ax - g.left) % g.colPitch != 0) return 1;
+            if (0 < g.plane || 0 >= g.plane + g.planes) return 1;
+            if (ay != rowY) {
+                rowY = ay;
+                for (int h = 0; h < g.pointsH; h++) row[h] = g.at((ay + 0.5) / aaH, g.originH + h * g.spacingH, 0);
+            }
+            double mh = ((ax + 0.5) / aaW - g.originH) / Math.max(g.spacingH, 1e-12);
+            mh = Math.max(0, Math.min(g.pointsH - 1, mh));
+            final int h0 = (int) mh, h1 = Math.min(g.pointsH - 1, h0 + 1);
+            return row[h0] + (row[h1] - row[h0]) * (mh - h0);
+        }
+
+        /**
+         * P370 (review): the gain of a CFA site's samples in an output block - at their mean position (mx, my), active-area
+         * relative; (sx, sy) one of the site's positions (its pitch phase): 1 where the map does not apply to the site.
+         */
+        double atSite(double mx, double my, int sx, int sy, int aaW, int aaH) {
+            if (my < g.top || my >= g.bottom || mx < g.left || mx >= g.right) return 1;
+            if (Math.floorMod(sy - g.top, g.rowPitch) != 0 || Math.floorMod(sx - g.left, g.colPitch) != 0) return 1;
+            if (0 < g.plane || 0 >= g.plane + g.planes) return 1;
+            return g.at((my + 0.5) / aaH, (mx + 0.5) / aaW, 0);
+        }
+    }
+
+    /**
+     * P370 (review): tests only - shade every sample (the reference) instead of each output block's CFA sites (the per-sample path
+     * cost a 12 MP DNG's thumbnail 3.9 x the time: four maps looked up for each of 50 M samples).
+     */
+    static boolean perSampleShadingForTest;
+
+    /** Each map's pitch divides the CFA repeat: a site's samples in a block share the maps that apply to them. */
+    private static boolean sitesShadable(Shade[] maps, int rows, int cols) {
+        for (Shade s : maps) if (rows % s.g.rowPitch != 0 || cols % s.g.colPitch != 0) return false;
+        return true;
+    }
+
+    /**
+     * P370 (review): the lens shading of the unshaded block sums - each colour's sum times the mean gain of that colour's CFA
+     * sites, each site's gain at its samples' mean position in the block (a smooth map: within 0.5 % of shading every sample).
+     */
+    private void shadeBlocks(Shade[] maps) {
+        final int k = blockX / rc;
+        final double[] g = new double[3];
+        final int[] n = new int[3];
+        for (int oy = 0; oy < outH; oy++) {
+            for (int ox = 0; ox < outW; ox++) {
+                g[0] = g[1] = g[2] = 0;
+                n[0] = n[1] = n[2] = 0;
+                for (int py = 0; py < rr; py++) {
+                    for (int px = 0; px < rc; px++) {
+                        final int c = cfa[py * rc + px];
+                        if (c < 0 || c > 2) continue;
+                        final double mx = ox * blockX + px + rc * (k - 1) / 2.0 - aaLeft, my = oy * blockY + py + rr * (k - 1) / 2.0 - aaTop;
+                        double s = 1;
+                        for (Shade m : maps) s *= m.atSite(mx, my, px - aaLeft, py - aaTop, aaW, aaH);
+                        g[c] += s;
+                        n[c]++;
+                    }
+                }
+                final int i = (oy * outW + ox) * 3;
+                for (int c = 0; c < 3; c++) if (n[c] > 0) sum[i + c] = (float) (sum[i + c] * (g[c] / n[c]));
+            }
+        }
+    }
 
     private void render(Ifd f, int reqW, int reqH, Result r) throws IOException {
         if (f.spp != 1 || f.planar != 1) throw new IOException("DNG: raw with " + f.spp + " samples per pixel");
         final int bits = f.bps.length > 0 ? f.bps[0] : 16;
         if (bits < 8 || bits > 16) throw new IOException("DNG: raw of " + bits + " bits");
         W = f.width; H = f.height;
+        // P370 (A10): our DNGs carry the lens shading as OpcodeList2 GainMaps and embed no preview: without them every thumbnail's
+        // corners came out about 1.25 EV dark and tinted (corner gain 2.386 in the owner's log)
+        final List<DngRaw.GainMap> maps = f.opcodeList2 != null ? DngRaw.parseGainMaps(f.opcodeList2) : new ArrayList<>();
+        shading = null;
+        if (!maps.isEmpty()) {
+            shading = new Shade[maps.size()];
+            for (int i = 0; i < shading.length; i++) shading[i] = new Shade(maps.get(i));
+        }
+        final int[] aa = f.activeArea != null && f.activeArea.length >= 4 ? f.activeArea : new int[]{0, 0, H, W};
+        aaTop = Math.max(0, Math.min(H - 1, aa[0]));
+        aaLeft = Math.max(0, Math.min(W - 1, aa[1]));
+        aaH = Math.max(aaTop + 1, Math.min(H, aa[2])) - aaTop;
+        aaW = Math.max(aaLeft + 1, Math.min(W, aa[3])) - aaLeft;
         rr = Math.max(1, f.cfaRows); rc = Math.max(1, f.cfaCols);
         cfa = f.cfa != null && f.cfa.length >= rr * rc ? f.cfa : new byte[]{0, 1, 1, 2};
         if (f.cfa == null) { rr = 2; rc = 2; }
@@ -279,9 +377,17 @@ public final class DngPreview {
         outW = Math.max(1, W / blockX); outH = Math.max(1, H / blockY);
         sum = new float[outW * outH * 3];
         cnt = new int[outW * outH * 3];
+        // P370 (review): the maps per output block where each map's pitch divides the CFA repeat (our DNGs: one map per Bayer site),
+        // else per sample
+        Shade[] blockShading = null;
+        if (shading != null && !perSampleShadingForTest && sitesShadable(shading, rr, rc)) {
+            blockShading = shading;
+            shading = null;
+        }
         if (f.compression == 1) uncompressed(f, bits);
         else if (f.compression == 7) lossless(f);
         else throw new IOException("DNG: raw compression " + f.compression);
+        if (blockShading != null) shadeBlocks(blockShading);
         double white = f.white > 0 ? f.white : (lin != null ? 65535 : (1 << bits) - 1);
         finish(white, r);
     }
@@ -294,7 +400,12 @@ public final class DngPreview {
         if (c < 0 || c > 2) return;
         double bl = black[(y % bRows) * bCols + (x % bCols)];
         int i = (oy * outW + ox) * 3 + c;
-        sum[i] += (float) (value - bl);
+        if (shading == null) sum[i] += (float) (value - bl);
+        else {
+            double s = value - bl;
+            for (Shade g : shading) s *= g.at(x - aaLeft, y - aaTop, aaW, aaH);
+            sum[i] += (float) s;
+        }
         cnt[i]++;
     }
 
@@ -368,7 +479,7 @@ public final class DngPreview {
         final double range = Math.max(1, white - bl);
         // white balance and camera -> linear sRGB
         double[] n = asShotNeutral != null && asShotNeutral.length >= 3 ? asShotNeutral : new double[]{1, 1, 1};
-        double[] m = cameraToSrgb(n);
+        double[] m = previewMatrix(n);
         double gain = Math.pow(2, baselineExposure);
         float[] rgb = new float[outW * outH * 3];
         float[] luma = new float[outW * outH];
@@ -405,7 +516,26 @@ public final class DngPreview {
         r.height = outH;
     }
 
-    private double[] cameraToSrgb(double[] neutral) {
+    /**
+     * P370 (A10): camera RGB -> linear sRGB of the preview: the editor's colour (DngColor at its as-shot neutral - AsShotNeutral,
+     * else AsShotWhiteXY, else 1, 1, 1 -: both calibrations interpolated at the white, CameraCalibration and AnalogBalance, the
+     * ColorMatrix route adapted to D50), the neutral to white. ForwardMatrix1 alone (else the unadapted inverse ColorMatrix1)
+     * before; a single-profile DNG (P243: CM1 + FM1) gives the same matrix. Without a ColorMatrix, or when the matrices give no
+     * finite result, the former matrix at {@code n} (the AsShotNeutral, else 1, 1, 1).
+     */
+    double[] previewMatrix(double[] n) {
+        final DngColor colour = DngColor.of(this);
+        if (colour.hasMatrices()) {
+            final double[] m = colour.cameraToSrgb(colour.asShotNeutral);
+            boolean finite = true;
+            for (double v : m) finite &= Double.isFinite(v);
+            if (finite) return m;
+        }
+        return cameraToSrgb(n);
+    }
+
+    /** The former preview matrix (ForwardMatrix1, else the inverse ColorMatrix1): {@link #previewMatrix}'s fallback. */
+    double[] cameraToSrgb(double[] neutral) {
         // XYZ (D50) -> linear sRGB (Bradford-adapted)
         final double[] xyzToSrgb = {3.1338561, -1.6168667, -0.4906146, -0.9787684, 1.9161415, 0.0334540, 0.0719453, -0.2289914, 1.4052427};
         double[] wb = {1 / Math.max(neutral[0], 1e-6), 1 / Math.max(neutral[1], 1e-6), 1 / Math.max(neutral[2], 1e-6)};

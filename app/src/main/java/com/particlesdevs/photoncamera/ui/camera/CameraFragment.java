@@ -999,7 +999,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
      * P345 (owner, 2026-10-26, X200 Ultra screen recording: back from the gallery the viewfinder was black ~1.5 s): the camera closes
      * in onPause and reopens in onResume, and until the new session's first frame the viewfinder is cleared. The last frame is kept
      * here (half size, PixelCopy of the composited viewfinder, waited for at most 80 ms) and shown over the viewfinder from onResume
-     * until a new camera frame is drawn (MainRenderer.shownTimestamp moves), or 4 s; older than a minute it is not shown.
+     * until a new camera frame is drawn (MainRenderer.shownTimestamp or, RAW-only sessions, rawDraws moves), or 4 s; older than a
+     * minute (real time, FrozenViewfinder) it is not shown.
      */
     private android.graphics.Bitmap frozenVf;
     private long frozenVfAtMs;
@@ -1023,7 +1024,8 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
             t.quitSafely();
             if (in && ok[0]) {
                 frozenVf = bmp;
-                frozenVfAtMs = android.os.SystemClock.uptimeMillis();
+                // the real time (deep sleep counted): uptime stops while the screen is off, an hour-old frame looked fresh
+                frozenVfAtMs = android.os.SystemClock.elapsedRealtime();
             }
         } catch (RuntimeException | InterruptedException e) {
             Log.d(TAG, "viewfinder freeze failed: " + e);
@@ -1036,7 +1038,7 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         if (cameraFragmentBinding == null) return;
         final android.widget.ImageView freeze = cameraFragmentBinding.layoutViewfinder.vfFreeze;
         if (freeze == null) return;
-        if (bmp == null || android.os.SystemClock.uptimeMillis() - frozenVfAtMs > 60_000) {
+        if (bmp == null || FrozenViewfinder.tooOld(frozenVfAtMs, android.os.SystemClock.elapsedRealtime())) {
             freeze.setVisibility(View.GONE);
             freeze.setImageDrawable(null);
             return;
@@ -1046,13 +1048,17 @@ public class CameraFragment extends Fragment implements BaseActivity.BackPressed
         freeze.setAlpha(1f);
         freeze.setVisibility(View.VISIBLE);
         final long shownBefore = com.particlesdevs.photoncamera.ui.camera.views.viewfinder.MainRenderer.shownTimestamp();
+        final long rawBefore = com.particlesdevs.photoncamera.ui.camera.views.viewfinder.MainRenderer.rawDraws();
         final long startedMs = android.os.SystemClock.uptimeMillis();
         freeze.postDelayed(new Runnable() {
             @Override
             public void run() {
                 if (freeze.getVisibility() != View.VISIBLE) return;
-                boolean fresh = com.particlesdevs.photoncamera.ui.camera.views.viewfinder.MainRenderer.shownTimestamp() != shownBefore;
-                if (fresh || android.os.SystemClock.uptimeMillis() - startedMs > 4000 || !isResumed()) {
+                // an ISP frame latched or (a RAW-only session: no ISP frame ever) a developed RAW frame drawn
+                boolean fresh = FrozenViewfinder.fresh(shownBefore,
+                        com.particlesdevs.photoncamera.ui.camera.views.viewfinder.MainRenderer.shownTimestamp(), rawBefore,
+                        com.particlesdevs.photoncamera.ui.camera.views.viewfinder.MainRenderer.rawDraws());
+                if (fresh || android.os.SystemClock.uptimeMillis() - startedMs > FrozenViewfinder.MAX_SHOWN_MS || !isResumed()) {
                     freeze.animate().alpha(0f).setDuration(fresh ? 120 : 0).withEndAction(() -> {
                         freeze.setVisibility(View.GONE);
                         freeze.setImageDrawable(null);

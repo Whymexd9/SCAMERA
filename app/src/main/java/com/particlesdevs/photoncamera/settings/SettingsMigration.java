@@ -72,7 +72,7 @@ public final class SettingsMigration {
     }
 
     static String antibandingEntry(double hz) {
-        if (!Double.isFinite(hz) || hz == 120) return "-1";
+        if (!Double.isFinite(hz) || hz == 120 || hz < 0) return "-1"; // -1 is «Авто» already (a list value, not a number)
         if (hz <= 0) return "0";
         if (hz <= 70) hz *= 2; // the mains frequency typed instead of the flicker
         return hz < 110 ? "100" : "120";

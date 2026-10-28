@@ -13,6 +13,7 @@ import androidx.preference.PreferenceScreen;
 import androidx.preference.TwoStatePreference;
 
 import com.particlesdevs.photoncamera.R;
+import com.particlesdevs.photoncamera.settings.DeviceDefaults;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.TunableSeekBarPreference;
 import com.particlesdevs.photoncamera.ui.settings.custompreferences.UniversalSeekBarPreference;
 import com.particlesdevs.photoncamera.util.Log;
@@ -26,8 +27,10 @@ import java.util.Map;
  * P357 (owner, 2026-10-27: «добавь кнопку сброса всех настроек. сделай это для всех»): the rows of one settings page back to their
  * defaults (the header's reset button; the root page's button is the full reset of «Сбросить настройки»). Each row is reset
  * through the preference itself, so a module page writes its module's profile as an edit there would: the sliders by their own
- * default, the switches / lists / text rows by the android:defaultValue of preferences.xml. The rows of the page's own sub-pages,
- * rows without an XML default and the non-persistent rows (they write elsewhere) stay as they are.
+ * default, the switches / lists / text rows by the android:defaultValue of preferences.xml (this device's factory value where
+ * DeviceDefaults has one, as after the full reset). A row that keeps its state in keys of its own (the film, LUT, lens filter and
+ * style pages) resets itself ({@link Resettable}); a row disabled by another setting is reset too. The rows of the page's own
+ * sub-pages, rows without an XML default and the other non-persistent rows (they write elsewhere) stay as they are.
  */
 public final class PageReset {
     private static final String TAG = "PageReset";
@@ -35,6 +38,12 @@ public final class PageReset {
     private static Map<String, String> defaults;
 
     private PageReset() {}
+
+    /** A row that keeps its state in keys of its own (not one value of its key): it puts its defaults back itself. */
+    public interface Resettable {
+        /** Back to its default; true when anything changed. */
+        boolean resetToDefault();
+    }
 
     /** The rows of {@code page} (not of its sub-pages) back to their defaults; the number of rows that changed. */
     public static int reset(Context context, PreferenceGroup page) {
@@ -58,14 +67,17 @@ public final class PageReset {
 
     /** One row back to its default; true when its value changed. */
     static boolean resetRow(Preference p, @Nullable String def) {
-        if (p.getKey() == null || !p.isPersistent() || !p.isEnabled() || !p.isVisible()) return false;
+        // a disabled row too: the «Движение» rows while the mode is off, the dependents of a switch reset just before
+        if (p.getKey() == null || !p.isVisible()) return false;
+        if (p instanceof Resettable) return ((Resettable) p).resetToDefault();
+        if (!p.isPersistent()) return false;
         if (p instanceof UniversalSeekBarPreference) {
             final UniversalSeekBarPreference u = (UniversalSeekBarPreference) p;
             if (!u.isChanged()) return false;
             u.resetToDefault();
             return true;
         }
-        if (p instanceof TunableSeekBarPreference) return ((TunableSeekBarPreference) p).resetToDefault();
+        if (p instanceof TunableSeekBarPreference) return ((TunableSeekBarPreference) p).resetToDefault(true);
         if (def == null) return false;
         if (p instanceof TwoStatePreference) {
             final TwoStatePreference t = (TwoStatePreference) p;
@@ -89,7 +101,10 @@ public final class PageReset {
         return false;
     }
 
-    /** android:key -> android:defaultValue (resources resolved) of every row of preferences.xml. */
+    /**
+     * android:key -> android:defaultValue (resources resolved) of every row of preferences.xml, with this device's factory values
+     * (DeviceDefaults) in their place.
+     */
     static synchronized Map<String, String> defaults(Context context) {
         if (defaults != null) return defaults;
         final Map<String, String> out = new HashMap<>();
@@ -103,6 +118,8 @@ public final class PageReset {
         } catch (Exception e) {
             Log.w(TAG, "preferences.xml defaults: " + e);
         }
+        // the full reset applies them again (it clears their marker): a page reset gives the same values
+        for (Map.Entry<String, Object> e : DeviceDefaults.factory(context).entrySet()) out.put(e.getKey(), String.valueOf(e.getValue()));
         defaults = out;
         return out;
     }

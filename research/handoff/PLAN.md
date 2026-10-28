@@ -7885,3 +7885,357 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   0.02 not met; projection 0.10-0.13) - hence only the idle-ISP case by default (mosaic_awb_teacher_use 1).
 - Checks: MosaicIszNoonTest 8/8, colour / render packages 372 tests, check_hybrid_us_daylight + 17 C++ checks on the OPPO, md5 of
   the five reference bursts unchanged (led1934 changes only when given a daylight EV, as intended). Not checked on the X200U.
+
+### P368 - a clip the flags missed is not multiplied into a colour by the white balance and the colour matrix (owner, 2026-10-27, OPPO Find X8 Ultra build 31132, a frosted ceiling bulb: a flat magenta disc with a blue halo in 03-WhyCombine; «У нас нет блока который предотвращает умножение пересветов на коэффициенты CCM»): DONE in code (host + the owner's dump), not shot again on a phone
+- Cause: the bulb clipped in every frame, the ultrashort ones included, but their ISO 100 RAW saturates at ~0.90 - 0.95 of the
+  white, under the worker's 0.98 thresholds (BENTO usClipped 0, CLIP FLAGS ultrashort=0); the flicker tile field and the gain
+  against N moved that clip to 6.0 - 7.1 of k = 8. Camera R, G, B of the core within 3 % and no clip level for ScamRgb: the
+  white balance (x1.83 / x1 / x2.39) made it (11.6, 6.5, 15.3), the colour matrix and the highlight landing a magenta disc. The
+  halo is real cool light amplified by the matrix (x1.5) and P341's vibrance_hl (x1.6 - 2): left to the colour-matrix work (P370).
+- scamrgb.glsl / hlrecovery/chanprep.glsl ceilingShare (uniform usWhiteU = the Bento k, 0 without Bento): camera RGB at one
+  common ceiling (min / max 0.65 .. 0.85) above the base frames' white (1.05 .. 1.3 x) goes neutral at its brightest
+  white-balanced channel (ceilingGuard, x hlStrength) at every exit of the per-channel recovery; such pixels leave the
+  local-light statistics. A neutral stays neutral through the colour matrix (rows normalised), AgX and the landing. Every
+  other pixel is bit-identical (no Bento, base-frame data, a measured colour).
+- Host: tools/check_highlight_ceiling.py (CI) fails before, passes after; the owner's dump: core chroma 0.197 -> 0.004, rim
+  627 -> 7 lavender px of 651. Highlight / colour / LUT checks pass, shader fp16 PASS.
+- Known limit: a light whose G alone clips in the ultrashort frames without a flag needs the worker to flag the ultrashort
+  frames' own saturation (burst on the phone: Download/SCAMERA/scam_burst-20261027-175141.bin). Phone: the same bulb again.
+
+### P372 - the LUT / filter / film / colour tray with iOS / macOS-like motion (owner, 2026-10-27, a screenshot of the tray: «оформить это подменю более красиво с красивыми и плавными анимациями аля iOS/Mac OS»): DONE in code (Robolectric render), not tried on a phone
+- LutTray: a pane of dark glass (vertical gradient 0xF21E2228 -> 0xF214171B, hairline edge, 24 dp corners, 18 dp shadow);
+  TrayMotion: damped springs as UIKit / SwiftUI define them (response, damping ratio: x(t) = 1 - e^(-z w t)(cos wd t +
+  z w / wd sin wd t); OPEN 0.42 / 0.82, GLIDE 0.34 / 0.78, RELEASE 0.3 / 0.6), the tray rising from below (scale .94 -> 1, the
+  sections one after another, 40 + 28 i ms), a 170 ms fall and fade on leaving; ChipRow draws the accent selection pill under
+  its chips and glides it to the chosen one (its width following); choices update the chips in place (no rebuild), texts
+  cross-fade; chips give under the finger (.95) and spring back, a CLOCK_TICK haptic on a choice; sliders with a 4 dp track
+  and a white thumb, warmth / tint on cool -> warm and green -> magenta tracks.
+- The state is set at once and the motion follows it; the system's animator scale (and «remove animations») applies; a
+  detached tray takes its end state directly. LutTrayTest waits for the fade and checks the tray hides once it has left.
+- Phone: the motion's feel at 120 Hz, the pill on long names, a tray opened during a shot.
+
+### P373 - settings for everyone: everyday controls first, every fine setting in one expert group (owner, 2026-10-27: «Подумай как мы можем упростить навигацию в настройках, и в целом настройку камеры для обычного не разбирающегося пользователя и реализуй»; «я разрешаю тебе полностью поменять расположение настроек»; «Упрости так чтобы даже тупой человек смог разобраться в настройках и настроить камеру сам»; «но функционал теряться не должен при упрощении»): DONE in code (Robolectric renders), not tried on a phone
+- Root order: «Снимок» (style and film, «Яркость», «Контраст», «Насыщенность», «Тепло», «Резкость», «Шумоподавление», fine
+  colour), «Файл и размер», «Съёмка» (motion, the new «Фокус» page, ETTR, sounds, flicker), «Экран камеры», «Приложение»,
+  «Для опытных» (SHDR, «Другие тонкие настройки», the lab), «О приложении». Supersedes P319's root order.
+- The six everyday sliders are the same keys as before (why_ae_target, why_macro_contrast, why_agx_sat, colour_warmth,
+  why_sharp_gain, dn_luma_mult), moved from 4 - 5 taps deep to the root; plain titles and summaries, the details in the
+  long-press help, which names the old titles and paths; search also matches the help text; a gesture tip on the root.
+- Nothing lost: 372 of 373 rows keep their key and every attribute (SettingsMovesKeepValuesTest against a frozen table);
+  only photo_style_lut (a link to a page now in the same category) and the duplicate module_profiles_screen hub went.
+- Page reset (P357) scope: a page puts back the rows it shows now. The six root sliders are on the root, whose button is the
+  full reset («Сбросить настройки»), so no page reset holds them any more; each still goes back by a double tap.
+- Fixed on the way: rows hidden by code (the two sound switches) came back after any settings change; a long press on a
+  slider row never opened its help (DoubleTapReset forwards a held press).
+- With P369 A12 the rows a film replaces explain it (SettingsAvailability).
+
+### P374 - a camera-wide bug audit and its fixes (owner, 2026-10-27: «запусти аудит/агентов по исправлению всех ошибок, багов и неисправностей в камере»; «решай и делай всё сам»): DONE in code (host), not tried on a phone
+- Audit: five readers per area, every finding verified adversarially: 46 confirmed + 13 found by the verifiers. Each group
+  was fixed on its own branch, reviewed independently and polished; every fix has a test that fails with the fix undone.
+- Native worker (worker-cpp-1..5): HybridUsPending waits for its check thread before its state goes (use after free on a
+  restart); LaGpuWorker answers its promise on a throw (a lost merge); homCollect's slot order (a frame got another's
+  homography / was refused); usRegSkipped instead of a racy string read (TSan); the GPU memory guard counts 18.75 B/px with
+  the GPU homography (measured 18.51); frames a failed GPU worker left take the global translation instead of the identity;
+  the GPU alignment's thread names its crash stage (a crash there no longer turns the GPU merge off for the session). New
+  checks: check_hybrid_us_pending (ASan + TSan), check_la_gpu_errors (-DSCAM_LA_GPU_FAULTS), check_hybrid_gpu_align (TSan,
+  a GPU field fault mid-merge). Replay md5 of the 7 control bursts unchanged.
+- Gallery / editor (15 + 2): the editor kept on rotation and on Home, the viewer keeps its photo on rotation, VIEW / PICK
+  intents open the photo asked for, no double copy on export, leaks of the editor's DNG copies, back from the root library
+  after a recreation leaves instead of relaunching, VIEW of video/* no longer claimed (no player), IMAGE_CAPTURE /
+  STILL_IMAGE_CAMERA_SECURE entries checked.
+- Capture / viewfinder (14 + 2): ETTR on the plain ZSL session (not only with the RAW viewfinder), reset per session and
+  camera, held under the Motion mode's ceiling, the 4x-base-ISO ceiling judged on the un-boosted ISO (no oscillation); a
+  queued shot keeps its press's rotation, characteristics, camera id and zoom crop (Parameters.camera(), cameraIdAtPress,
+  ImageSaver.zoomResidual; FULLRES shots develop with their own session's characteristics, logged under SCAM_CAPTURE); the
+  camera reopens after onDisconnected (split screen, a 3 s guard); the frozen viewfinder ends on the first RAW draw and
+  ages by elapsedRealtime; latchIsp without an EGL context; the old SurfaceTexture released; the RAW viewfinder's halving
+  buffers freed; the horizon stops polling when the window is hidden.
+- Processing (5 + 2): GLTexture slots by slot (GLTextureSlots), the gain map's context no longer leaks Run()'s, a failed
+  post pipeline above 16 MP / with HDR is closed, a low-memory kill or a crash in a named non-GPU stage is not a GPU-init
+  death, a failed optional DNG leaves no partial file (the photo is still saved, a snackbar says so), the reference RAW is
+  freed when a shot fails after the merge, a pass's output is taken before its samplers are bound (FilmHalation,
+  ScamLocalContrast, ScamHdrDenoise).
+- Settings / lab / app (5 + 8 + 3): antibanding «Авто» survives the second start (one-time migrations rerun after a
+  reset); page reset covers the film / LUT / filter / style rows, disabled rows and the developer page; resets use the
+  phone's factory values; every settings message via Lang.t (check_ui_language rule (e)); the lab: a failed render shows its
+  own error with «Повторить», a restart after a config load waits for a running shot (at most 5 min), the lab's overlays
+  stay on the lab's threads, crash reports per install, two series from the same second import apart, the lab folder hidden
+  from galleries (.nomedia), no delete during a render, one import at a time.
+- Host: full :app:testDebugUnitTest on the merged branch 2016 tests / 345 classes, 0 failures. Phone: split screen and
+  pause / resume under a translucent activity, a zoomed FULLRES shot against its viewfinder, ETTR on the plain session.
+
+### P369 - our algorithms out of the film simulation's way (owner, 2026-10-27: «Убедись что при включении симуляций плёнки наши алгоритмы не будут мешать симуляциям и в итоге у нас получался "Look" такой какой должен быть с ними»; «решай и делай всё сам»): DONE in code (host), not shot on a phone
+- Audit (31 verified findings, the lead's plan A1-A11; owner decisions B1-B14 taken by the lead): the film took our display output
+  through a fixed inverse (FilmSim.scene: display white = +5.5 EV, not three stops), so it got +0.3 .. +1.5 EV too much in the mid
+  and upper tones and on top our fusion, AgX, macro, vibrance (vibrance_hl), film toe, HL landing, sun bloom, gamma, TONE_OP,
+  contrast_boost / ccm_sat; our detail boost, clarity, digital luma grain and «Текстура» stacked on the film's own; the gain map
+  undid its highlights; zoom / ISZ / lab fragments sized its grain for the uncropped field; the settings were read live per stage.
+- A1: one film snapshot per shot (PostPipeline.takeFilm, before canDeferTeardown and Run; the lab's sides take it in Run under their
+  overlay): FilmHalation.from / FilmGrain.from / WhyCombine / the gain map read it, never FilmSim.current() again.
+- A2 (the core): why/combine FILM_SIM 1 - the film is fed scene light: the colour source at the luminance of the delta's base
+  (whyLow's B-spline on the 2x grid), the full-size detail as the luminance ratio the delta stands for (its P311 / P315 / P349 guards
+  kept, before the compression scaling), x ae x deficit x 0.184 / 0.15 (B1: the meter before the overflow cut; the AE grey at the
+  film's mid grey), through FilmChain.scene (FilmSim.lutScene: 41^3 per-channel log grid, -10 .. +10 stops around 0.184; the B&W model
+  at its own 0.18; the user .cube on the film's print; its own cache) - the print replaces our output (strength 1: outright; below
+  it mix(ours, film, s)); under P3_OUT the sRGB print goes to P3 primaries (sRGB transfer). Also the RAW viewfinder (LiveWhyTone:
+  FILM_SIM in the point / local / fused passes, the table in the P319 reuse key); the ISP viewfinder, the own-look RAW viewfinder,
+  the settings' preview and the tray keep the display chain (B6). FILM_SIM unset: the shader token for token (check_film_sim 1).
+  With the film alone (100 %) WhyCombine skips our highlight mask and sun bloom. Film data unreadable: PostPipeline.takeFilm builds
+  the table and drops the film from the snapshot (logged), so the whole shot takes the path without a film (our look, the .cube,
+  the gain map).
+- A3 detail boost x (1 - s); A4 the guided filter's local contrast and the sharpening grain x (1 - s) (USM / bilateral / RL kept);
+  A5 the digital luma grain x (1 - s) when the film adds grain; A6 «Текстура» off with a film; B10: any film. A7: the zoom's crop
+  read once before the pipeline, Parameters.filmFrameScale (ISZ 4:3 share / zoom crop, set before the lab's snapshot and kept in
+  it, so a lab render sizes the effects as the photo had them) and the lab
+  fragment's whole-shot size -> FilmHalation.filmLongPx (the effects keep their size in the photo). A8: no gain map with a film
+  (SDR file, "HDR off: film simulation"; post_ab follows the same gate). A9: the RAW viewfinder sets vibHlU (P301 parity; changes the
+  viewfinder without a film too, not photos), and the P319 tone-reuse key holds the table, so a reused tone redraws once when a
+  chosen LUT loads or its strength changes (without a film too). A10: FilmChain.lut builds a chain from its key (FilmSim.Settings.forLut), never from the settings now. A11: the
+  preview shows the B&W stocks' grain and softness (FilmEffects.classic, FilmSim.SELWYN / GRAIN_SCALE / grainThrough shared with
+  FilmGrain); its note says «примерно».
+- Host (moderngl + the reference model, Portra 400 / Endura): grey ramp -8 .. +5 EV = the model at the nodes (0.00 / 255), the AE
+  target prints 117.5 / 255 (the model's mid grey; Vision3 250D 117.4, Velvia 118.0 G, Gold 200 117.6), 10 colour patches max 1.21 /
+  255; detail at f 2 (-1.9 / 0 / +1.5 EV bands): texture RMS 1.93 / 3.04 / 2.08 L* against the model's 1.96 / 3.08 / 2.04, mean
+  within 0.16 L*; 2x grid 3.66 against 3.71 (a colour-grid base 5.08); above white +3 / +3.5 EV 0.21 / 0.08 against 0.38 / 0.20 (B12,
+  left); P3 = sRGB for in-gamut colours; the table vs the engine max 2.03 / 255, mean 0.27 / 255. A7 (numpy model): the grain's
+  autocorrelation half width at a 2x zoom crop + Lanczos-2 upscale +4.2 % against 1x (+101 % sized for the uncropped field).
+- Checks: check_film_sim.py 7/7 (CI GPU step), check_shader_fp16 81 PASS, check_colour_output --shader --strict / --gl,
+  check_film_lut, check_vf_fused, check_colour_look, check_tone_ops, check_why_sharpen, check_luma_grain, check_settings_model,
+  check_ui_language PASS; :app:testDebugUnitTest 1889 tests, 0 failures (new FilmChainTest, FilmGatesTest,
+  WhyCombineUniformParityTest in the CI list).
+- Risks (the owner sees them): film photos print what the model prints - the AE grey at 117 / 255, upper mids up to ~11 L* darker
+  than before, no HDR flattening (B3), our «Цвет» rows bypassed (B4); s < 1 with a user .cube: the .cube on the film share only;
+  outside-sRGB colours clipped in the film share under P3; the ISP viewfinder differs more from the photo (B6).
+- Review (three independent reviews: no-film identity - 512 define sets token-identical to d343cf9e -, film fidelity, routes) and
+  fixes:
+  - edges (blocker): the delta's ratio is measured on the bounded reference (min(m Y, 1), with the P311 / P349 rim guards) while the
+    film's base is the unbounded mean, so a dark edge or a 2 px bar next to light above the bound (any Bento sky, window, lamp,
+    saturated LED) printed +7 .. +67 L* too bright against the model; the FILM_SIM tap now takes the pixel's own luminance there
+    (exact below the bound, the full-size merge's at and above it): edges and bars <= 0.3 L*, above-white texture 0.41 / 0.21 against
+    the model's 0.38 / 0.20 (B12 resolved); check_film_sim part 7 (dark edge / 2 px bar against 1.5 / 3 / 8 x the bound, sharpU 0 / 1,
+    fullInput 0 / 1, f 2 and f 4: 0.9 % max; the old tap fails it 178 times); a non-finite whyLow tap takes the colour's own.
+  - grid (major): -10 .. +6 stops kept a saturated light's colour above +6 that the model bleaches (Portra up to 89 / 255 off, p99 50);
+    now -10 .. +10 at 41 points (half a stop a node as before): Portra / Vision3 all colours max 2.4 / 2.5 / 255, above +6 0.8 / 1.3;
+    FilmSimTest.saturatedLightAboveMidGreyMatchesTheEngine. Build 0.37 -> 0.63 s (host), table 0.41 MB.
+  - B1: WhyAe.filmAe - the film's exposure (ae x deficit) within the noise clamp and the x9 cap our ae obeys.
+  - the RAW viewfinder eases the film's exposure as its own ae (a cut that came and went pumped the film by up to +0.7 EV);
+    FilmChain caches the film's own table apart from the .cube (a LUT-strength step only composes); queued viewfinder loads of
+    settings already left return at once.
+- A12: SettingsAvailability - with a film at 100 % the rows it replaces are greyed with «С плёночной симуляцией на силе 100 % не
+  действует …» (below 100 % they act on our share and stay open): macro contrast, AgX (incl. «Насыщенность») / ACES / Uchimura /
+  own curve, gamma, film toe, contrast_boost, hl_soft / hl_white, ccm_sat, vibrance, the fusion rows (smart / weights /
+  centre / smoothness / coarse), the guided filter's local contrast and grain, every «Цвет» row but warmth, tint, the kept scene
+  light and the calibration (the colour matrix: they act on the film); «HDR-фото» and «Текстура» say they are off with any film.
+  PhotoStyle: a stock is «Плёнка» (before the B&W filter, whose look the print replaces); «Обычный» / «Ч/б» take the stock off and
+  remember it; «Плёнка» brings back the last stock with the LUT it had (or the last LUT alone, as before). ColourSettingsTest,
+  PhotoStyleTest.
+- Not done (decided not now): B7's «Ч/б» = the last B&W stock, B8 (scan USM), B9, B14; A4's host MTF check (camera blur + scatter +
+  sharpening at gfLc 0); A11 (b). The RAW viewfinder runs WhyAe without the Bento hold, so in bright Bento scenes a film photo can
+  print up to log2(1 / aeC) brighter than the viewfinder showed (as ours). Phone: film shots (Portra / Vision3, daylight, interior,
+  sunset, night, lamps and LEDs at night) against the settings' preview and the RAW viewfinder.
+
+### P371 - processing another ~2 s faster without a quality change (owner, 2026-10-27: «Очень внимательно изучи нашу камеру и пойми как мы можем ускорить обработку ещё на 2 секунды, при этом чтобы это не влияло на качество»): DONE in code (branch speed-2s; host md5 + tests), not phone-tried
+- Where the time went (owner's X8U log of 31132, the first shot after an install, ultrashort restart, diagnostics on: 6.98 s;
+  the OPPO X7U in steady state, P365: 4.16 - 4.32 s): failed ultrashort homographies registered inline on the alignment thread
+  (354 + 276 ms) while the ultrashort check beside them took 1.38 s and then restarted the merge; Mochi of the 3 L frames before
+  the first strip (0.16 - 0.27 s: launchMochiAhead was not called on the GPU-alignment branch); 46 post programs compiled at the
+  first shot after an install (836 ms); diagnostics on the processing thread (begin 182 ms, 02-after-ivst ~90 ms); the app waiting
+  for the worker's exit (89 - 105 ms) and then a pread of the result (36 - 54 ms on the host); the worker spawned only after the
+  frames' preparation (~50 ms + its GPU set-up); the output planes' fresh pages on one core at the merge entry (100 - 135 ms on
+  the host) and the whole RGB's half fill after the merge (44 ms of output write at 12 MP on the X8U).
+- Done (every item has a switch; worker env SCAM_* for replays, scam_dev keys in DevKeys for the app):
+  - first shot after an install: the post programs' recipes (asset + defines) kept with their binaries, rebuilt from the installed
+    APK by the idle warm-up; one compile per key in flight (gl_warm_up_recipes 0). ~0.78 s (X8U: 46 compiled in 836 ms).
+  - a failed ultrashort homography no longer registers inline: with the check pending it waits for it (a check that changes the
+    frames restarts the merge before any registration ran), else on a thread of its own; kept / dropped and handed to F6 exactly
+    as before after the loop (SCAM_US_FALLBACK_INLINE). 0.5 - 0.9 s on a restart shot, 0.25 - 0.4 s on a failed-US one.
+  - diagnostics off the processing thread: begin()'s Bayer preview on a helper during the merge, buffer()'s conversion on the
+    export thread (diag_sync 1). 0.2 - 0.3 s with diagnostics on.
+  - Mochi on the early context as soon as the ultrashort / bracketed homographies are in (the merge checks every input of the
+    result it takes), cancelled when the merge unwinds (SCAM_MOCHI_GPU_LATE; SCAM_MOCHI_LATE: none ahead). 0.12 - 0.24 s.
+  - the result read at «SCAM CAPTURE OK», the worker reaped off the path (WorkerCompletion; the burst kept before the line)
+    (ok_read 0). 60 - 100 ms.
+  - the worker spawned at the shutter for the shot's arena, its go byte after the header: OFF by default after the review
+    (worker_prespawn 1 turns it on for a phone measurement). 50 - 170 ms when on, 0 as shipped.
+  - the output planes sized on a helper while the GPU starts (up to 16 MP, not native; SCAM_OUT_SYNC). 40 - 80 ms.
+  - the RGB halves streamed into the app's memfd during the merge: the plain sink's finished rows (hybridFinalRowsHook, a commit
+    event for the very result returned; scam-stream-out.h), only the trailers after the merge (up to 16 MP / 160 MB; a file
+    output, no half output or SCAM_NO_STREAM_OUT: as before). ~30 - 40 ms at 12 MP (host 2048x1536: output write 77 - 96 ->
+    1 - 2 ms).
+  - the worker's CPU priority as a switch: default 10 after the review (the processing thread's, as before P371; worker_nice 0
+    for a phone A/B). 0 as shipped (0 - 150 ms at nice 0, unmeasured).
+  - the result read in place: the memfd adopted as an arena, the RGB and the clip flags its views (Allocator.arenaAdopt), the
+    read trailers' pages given back (arenaPunch) (zero_copy_read 0). 15 - 38 ms (host pread 36 - 54 ms, mapping 3 - 6).
+  - small: the RGB log stats folded into the half fill (SCAM_RGB_STATS_PASS, 10 - 16 ms), the F6 context freed on its thread
+    (SCAM_LA_TEARDOWN_SYNC, 5 - 25 ms), the ultrashort registration's base side only when a frame registers (SCAM_US_BASE_EAGER,
+    0 - 40 ms), the black scan copying its sampled rows whole (black_scan_bulk 0, 15 - 20 ms), the thermal status off the path
+    (thermal_async 0), the shot timeline's w_align mark.
+- Same output: worker md5 on the 7 control bursts (a1921da3 99c25c7e af3a514a b518082e e67454a5 76cb68c5 b6661d94) and 3 new
+  synthetic 2048x1536 role / flicker bursts (tools/replay_synth_burst.py: sbr 8737daa9 - Mochi ahead used, sff 3f8e8d1d and sfl
+  6ee16ebf - ultrashort restart) with every switch on, all off, SCAM_US_CHECK_FIRST, the check held back 4 s
+  (SCAM_US_CHECK_DELAY_MS: the deferred registrations, e193420); the app's output path (memfd, halves, effective map, clip flags)
+  byte-identical to the base worker with and without the stream; the post's floats are not touched (the same bytes reach ScamRgb).
+- Checks: tools/check_stream_out.cpp (new: halves, the commit protocol, the real plain sink with retries / stops; ASan/UBSan and
+  TSan), tools/check_allocator_adopt.cpp (new), the worker's 17 C++ checks under ASan/UBSan, a TSan worker on the restart /
+  deferred / Mochi bursts (only Mesa-internal reports, as the base worker's), the arm64 build (NDK, -Wall -Wextra: no warning) and
+  its NEON half conversion under qemu (168 M float patterns = floatToHalf), unit tests (new: GLProgramRecipesTest,
+  WorkerCompletionTest, WorkerStandbyTest, ParametersBlockScanTest; WorkerEnvTest, DevKeysCoverageTest) and the full
+  :app:testDebugUnitTest (2034 tests).
+- Merged with the owner's branch at 61fbd24d (the worker fixes, the film work, the gallery, capture, processing, settings and lab
+  fixes): in the gpuAlign loop a frame with no GPU answer takes the global translation (the fix) ahead of the postponed
+  ultrashort fallback. The merged worker's md5 = 61fbd24d's = the refs above (file and memfd replays, every switch on / off, the
+  check held back); check_hybrid_us_pending (ASan, TSan), check_la_gpu_errors, check_hybrid_gpu_align (TSan, faults) and the 17
+  worker checks pass on the merged tree.
+- Review round (an independent review of e1b24eec, lens crash / hang / leak / corruption; REVIEW.md in the session scratchpad):
+  - B1 (blocker): zero_copy_read released the adopted arena right after making its two views, and the release punched every gap
+    no view held (P200's punchFreeLocked) - the merged DNG and the effective map between the RGB and the clip flags, read after it,
+    were zeros once they reached 64 MB (RAW saving from ~21 MP, a 2x grid from ~10.7 MP). Fixed: an adopted arena's release never
+    punches (Arena.adopted), the client releases it after every trailer is read (in a finally that frees the views on an error)
+    and gives back the read trailers' pages explicitly (arenaPunch: refused over a view). check_allocator_adopt's new case (80 MB
+    of trailers between the views, released before the reads) fails on e1b24eec's allocator (83,886,080 bytes changed), passes now.
+  - M1: worker_nice back to 10 by default (the camera thread, the viewfinder and the worker's own driver compiles at nice 10 run
+    beside it; P365's viewfinder stutter lists the worker's priority); the prespawn thread at the processing thread's priority.
+  - M2: worker_prespawn off by default (it forks the camera app during the 0.4 s bracket capture: fork of 1 GB written private
+    memory 32.6 ms with the mmap lock held, +262 ms of write-protect faults in the parent after; 2 GB 75 ms, +539 ms - host).
+    Fixed anyway: a standby that died is not taken (its lines go to the report), a go byte that fails (EPIPE) falls back to a
+    worker spawned at once, the lines of a standby a job took but never attached reach its report, no standby while the GPU
+    merge is unusable (cpuSingle), and closeCamera discards a standby waiting or still starting (it held the ZSL ring's memfd).
+  - m1: the arena's punches, munmaps and closes after arenaLock (the camera thread's arenaSlotRefs / arenaView do not wait: 11 ms
+    for a 72 MB punch, 44 ms for 302 MB); m2: a failure of the output-planes helper is rethrown on the merge thread (it terminated
+    the worker); m3: the standby's fds closed when a job throws before its memfds took them; m4: the reaped worker on a thread of
+    its own, killed after 5 s (it held 1.4 - 2.8 GB for 30 s); m5: a shot waiting for the warm-up's compile lifts that thread to
+    the default priority, and the recipes recorded per process are bounded (256, of them 48 Java-generated sources).
+  - After the fixes (merged with the owner's branch at bbe7c372): worker md5 = bbe7c372's = the refs above on the 7 control and 3
+    synthetic bursts (file replays with every switch on / off and the check held back; memfd replays with halves, effective map
+    and clip flags; the reviewer's memfd_run.py), check_allocator_adopt (ASan, TSan), check_stream_out (ASan, TSan), the three
+    worker bug-fix checks as the CI builds them and the 17 worker checks pass; the full :app:testDebugUnitTest 2035 / 2035.
+- Expected with the defaults shipped (zero_copy_read on, worker_nice 10, worker_prespawn off; ranges from the logs - the host's
+  timings are not representative, llvmpipe on a loaded machine): steady state with diagnostics off ~0.30 - 0.62 s (central ~0.4:
+  4.2 -> ~3.8 s on the X7U); the first shot after an install + ~0.78 s; a restart shot + 0.5 - 0.9 s; diagnostics on + 0.2 -
+  0.3 s. The owner's logged shot (all four): ~1.8 - 2.6 s (6.98 -> ~4.4 - 5.2 s). The 2 s hold only for that shot: in steady
+  state the rest is the GPU merge itself (kernel 0.55 s, rejection 0.5 s), which stays. A phone A/B of worker_nice 0 and
+  worker_prespawn 1 may add 0.05 - 0.3 s.
+- Needs a phone: every timing above; Mochi ahead beside the alignment's GPU feeder; the exiting worker beside the post start;
+  nice 0 against the viewfinder (VF_DRAW gaps, STAB_TRACE drops); the prespawn's driver load during the series (hold must not
+  move); whether the idle warm-up finishes before the first shot; the restart check's time without the registrations; the
+  streamed output's «the RGB streamed during the merge» line and the plain chroma's «the last rows ... after the last readback»
+  not growing; peak memory (the RGB's pages come during the merge: +72 MB at 12 MP).
+- Follow-ups: the worker spawned with vfork / clone(CLONE_VM | CLONE_VFORK) instead of fork (the review's numbers above; not
+  now), then the phone A/B of worker_prespawn 1 and worker_nice 0 (VF_DRAW, STAB_TRACE, the hold).
+- Not done: trailers made during the merge (the effective map's code scale is the whole map's median; ~15 - 20 ms, in readStrip
+  where the worker fixes of another branch go); a restart that keeps the 22 N / L homographies and F6 fields (-0.2 - 0.4 s on a
+  restart shot, needs the LaGpuWorker across HybridUsRestart: scam-la-gpu.h); unsafe or md5-changing ideas (a texture pool, the
+  strip partition, kernel / rejection edits, black from the ES frames, a 60 fps series = another sensor mode).
+
+### P370 - the colour correction matrix: study, fixes and improvements (owner, 2026-10-27: «займись в целом изучения работы с color correction matrix, займись исправлением и улучшением его работы»; «решай и делай всё сам»): DONE in code (host), not shot on a phone
+- Kept as intended (not a defect): the ISP route's diagonal sensorToProPhoto = diag(1 / n) with CCT.matrix = the HAL transform's rows
+  normalised; P368's clip guard (scamrgb / chanprep ceilingShare / ceilingGuard) works on white-balanced camera RGB upstream of every
+  matrix, so a route only has to map white to white (B5).
+- B1: README.txt of a diagnostic capture and the log name the colour chain: the uploaded intermediateToSRGB, cameraToLinearSRGB,
+  Parameters.colourSource (enum, set on every branch) and why, sceneCct with its source and Duv, the colour frame's ts / ISO /
+  AWBFrameControlCCT / transform / det, the newest N frame's neutral and transform, the camera's DNG colour tags as rationals and the
+  placeholder flag; DngCreator logs the ForwardMatrix1 it writes. tools/check_ccm_chain.py: the shipped why/low.glsl on the owner's
+  X8U block means, p90 0.0017 / 0.0012 ln (without the matrix 0.06 / 0.12).
+- A5: ReCalcColor never loses a shot on missing / singular tags (no illuminant 1: D65; one calibration: the first CM / CC / FM; a
+  zero FM: the other; the estimate and the chain in try/catch: unknown light, the shape-tested transform or the white balance alone,
+  IDENTITY_FALLBACK); the legacy FM1 == FM2 / «Захват» branch refuses only a transform with a row summing to about 0 (|sum| < 0.25:
+  inf after the row normalisation; review: the colour-matrix shape test refused HAL transforms with a folded-in gain it took
+  before); normalize() keeps a row summing to ~0; the neutral read with green 1; Converter takes the DNG SDK's kelvin for a code it
+  lacks; DcpProfile reads code 1 (daylight) as 5500 K (was 6504 K: a DCP labelled 1 renders with the 5500 K calibration now).
+- A1: the scene light and the FM / CC weight from the DNG SDK's white estimate (DngColor.forCamera: each ColorMatrix normalised as one,
+  xy iteration, CCT / Duv, the SDK's illuminant kelvins). |Duv| > 0.025: the scene light is unknown (0); the calibration keeps the
+  estimate's weight (review: the daylight one switched the chain at the guard; the DNG SDK has no guard). A white the matrices cannot
+  place (singular step, XYZ sum <= 0) is "no light", not a silent D50 read as 5000 K. Both colour matrices placeholders (the Pixel 7:
+  CM2 = XYZ -> sRGB, CM1 x XYZ(A) = 1, 1, 1; the spec estimate gives |Duv| 0.033 - 0.038 at real neutrals): the former estimate, said
+  in its source. PHY110 camera 2: 2856 / 3200 / 4000 / 5000 / 6504 K read 2861 / 3202 / 3999 / 5009 / 6505 K (row-normalised before:
+  5068 / 5508 / 6455 / 6503); X200U tungsten 2855 K. The X8U: its matrices as the old log printed them (row-normalised, the artefact
+  A1 removes) give Duv 0.054, no light; what the phone's raw matrices give is not known (their row scales: the B1 "DNG colour tags"
+  line, C1) - the DNG estimate if they pass the guard, else the AWB label (B7), else D50. ISP-route matrices bit for bit (61fbd24d's
+  golden arrays); scam_dev dng_white_spec 0 = before. The daylight weight (daylightWeight2) only where the estimate fails.
+- A3: placeholder (sRGB -> XYZ) forward matrices (X8U cameras 2 / 4, Pixel 7) known on every shot: a shot ending on them takes the
+  shape-tested result transform, the plain table, the frame's OPPO matrix, the colour matrices alone (DNG_CM_ONLY), else the
+  placeholder with a warning; the DNG camera profile drops placeholder FMs beside real CMs.
+- A6: «Источник цвета» is disabled (with its reason) only where the choice never acts - the X7U's tuned matrix, placeholder forward
+  matrices; on vivo / any phone whose preview transform is an ISP matrix it stays enabled (review: the choice acts on mosaic shots
+  with the app's own white balance and on «Захват»; a saved 0 / 2 could not be changed back) and its summary says the 12 MP photos
+  take the ISP matrix. Its default stays 1 (settings_rows_frozen.tsv: the same value, the renamed resource). A7: SceneIlluminant gets
+  the physical camera.
+- A4: Camera2ApiAutoFix.ApplyRes no longer writes the viewfinder's neutral / transform into CaptureController.mCaptureResult (a
+  single-frame or no-N shot rendered with the viewfinder's colour; a queued shot's metadata could be rewritten); its missing dynamic
+  black level is the shot's characteristics' pattern (ScamProcessor's), not the camera open at processing (review).
+- A2 / B4 / B6 (viewfinder only): every RAW viewfinder stream takes the photo's matrix rules (processing/color/PhotoMatrix: rows
+  normalised, the X7U tuned matrix, the frame's com.oplus.custom.ccm, the plain table on mosaic streams); its «Цвет» look takes the
+  frame's scene light and the tuned AgX saturation 1.1; a mosaic stream whose ISP runs no 3A (X200U ISZ lease, frozen R 2.434 /
+  B 1.569) shows the photo's own neutral (ViewfinderMosaicWb, scam_dev vf_mosaic_wb, default 1; HAL gains logged every 5 s). Review:
+  no arrays per frame on the camera thread (a non-identity transform's matrix is reused while it and the neutral hold), and the idle
+  test keeps a small sample per result (MosaicNeutralResolver.IdleSample: ts, pass, ln gains), not a second of CaptureResults.
+- B2: why/combine takes OKLab lightness and hue of a colour the matrix puts outside sRGB from the signed colour (scam_dev
+  ccm_signed_hue, default 1): fully from a channel at -1 % of the largest, or where the clip changed a tap by that much (review: a
+  1 - 2 px rim of the clipped hue at an LED on a lighter ground), at any exposure (review: the 0.03 - 0.08 luminance gate turned a
+  light's hue along its own falloff - 470 nm -96 -> -124 deg - and stepped a gradient by 36 codes); such a pixel's final gamut mapping
+  fades its chroma cut in over 0.0005 - 0.004 overshoot (fromOklabInGamutSoft; the hard cut at 0.0005 was a 36-39-code step). The
+  two-pass RAW viewfinder's linear frame keeps the colour signed (u_signed_hue 1; the review: pulling it to its luminance read 470 nm
+  +25 deg against the photo), so viewfinder = photo. Host: LEDs / X8U / X200U camera colours within 0.23 deg (sRGB) / 0.56 deg (P3)
+  (before: 480 nm +41, 470 nm +28, 505 nm -20, 525 nm -14, X8U blue +18 deg); a luminance sweep at fU 1 / 2 within 0.62 deg at an
+  exposed Y >= 0.03 (below, up to 9.2 deg at 505 nm in the deep shadow, where an in-gamut green-cyan drifts 5.9 deg too - the shadow
+  tone's, not P370's; the clip gave 25); a 4000-step ramp's largest step 5.4 codes (the gate: 36); LED rims within 0.22 deg of the
+  signed mean (before 14 - 28); 310 colours and textures inside sRGB bit for bit at fU 1 and 2 (sRGB, P3); shadow chroma noise x1.046
+  (fU 1, dark red; bound 1.05) / x1.029 (fU 2); check_vf_fused one pass vs two with the switch on: p99 1, max 11 codes. A film below
+  strength 1 (DOC, review): its share is fed max(orig, 0) and keeps the clipped hue, ours the signed one, so an LED mixes two hues up
+  to 28 deg apart (strength 1: 0 codes changed). tools/check_ccm_gamut.py (CI); the GL checks render both switch states (SIGNED_HUE=1).
+- B3 (Ultra HDR only): the scene plane's luminance weights are the render's (LUMA^T . intermediateToSRGB . sensorToProPhoto . diag(n),
+  PostPipeline.sceneLumaWeights, SceneLumaWeightsTest); the gain map takes a P3 base's own luminance. check_ultrahdr.py --scene-luma:
+  the render's luminance within 0.0000 % on 18 ColorChecker colours (X8U / X200U matrices), greys 3e-8; Rec.709 on camera RGB was
+  -0.14 .. +0.41 EV (X8U).
+- B7: an unknown light takes the frame's AWBFrameControlCCT (PlainColourMemory.label filter: 1500 - 15000 K, not 3745 K) - only the
+  DNG ColorMatrix1's As-Shot temperature and keep warm / cool read it; the label is logged beside the estimate on every shot. Review:
+  not on a mosaic shot with the app's own neutral (the ISP read the mosaic as Bayer or ran no 3A: the ISZ lease's frozen label).
+- A8: a lab series opened with a template's parameters renders at its own grey-world white (sensorToProPhoto column j x n_t[j] /
+  n_new[j]; before, the new white point cancelled out); sceneCct = the plain-table label at the new white, else 0; on the ISP and
+  table routes the table's matrix. Deviation: the lens shading map stays the template's (a flat map leaves the corners 1.2 - 2.2 EV
+  dark); the lab note says its colour part is another light's. A9: «pref_mosaic_wb_corrections» is fixed at the shot in the lab.
+- A10: the gallery's DNG render applies the OpcodeList2 GainMaps (DngRaw's parser; corners were ~1.25 EV dark and tinted) and the
+  editor's DngColor matrix; a P243 single-profile DNG keeps its matrix within 1e-6, a DNG without a GainMap its samples bit for bit.
+  Review: the maps per output block (each CFA site's gain at its samples' mean position; per sample only where a map's pitch does not
+  divide the CFA repeat) - the per-sample path made a 12 MP thumbnail 3.9 x slower; it equals the per-sample render within 0.5 %
+  (1 code) at four request sizes. A GainMap whose point count overflows an int is skipped (it was an OutOfMemoryError).
+- DNG writer (review): no all-zero (a camera without colour-matrix tags) or singular ColorMatrix is written; such a shot carries the
+  JPEG's profile (DngColour) even with dng_colour_jpeg 0. DngCreatorColourTagsTest: placeholder FMs left out, real ones written.
+- B5: ParametersWhiteInvariantTest - white stays white within 2e-3 on every route (ISP, computed incl. R / G 1.25, DCP, table, OPPO
+  tuned, the A3 / A5 fallbacks, the viewfinder resolver): largest 4.5e-4; named beside ceilingGuard in scamrgb.glsl.
+- scam_dev lines on «Для разработчика» (DevKeys): dng_white_spec (A1; not in the lab: fixed in the shot's Parameters), ccm_signed_hue
+  (B2), vf_mosaic_wb (B6), each default 1. Merged with the owner's bug-fix branch (61fbd24d): the B1 colour tags read the shot's
+  characteristics (Parameters.camera()); ParametersShotCameraTest shadows the native Allocator (A5: ReCalcColor no longer throws there).
+- Photos without a film that change (on purpose): DNG-route cameras whose FM1 != FM2 under non-D65 light (A1: the FM / CC weight;
+  PHY110 non-tuned cameras, any phone off the ISP route); the DNG As-Shot temperature and keep warm / cool (sceneCct: the DNG estimate,
+  else the AWB label, else D50 - which one the X8U takes on its ISP route depends on its raw matrices, C1; the Pixel 7 keeps its
+  former estimate); placeholder-FM cameras on an FM route (A3: X8U cameras 2 / 4 with isp_ccm 0 or SCAM off, Pixel 7); single-frame /
+  no-N shots that read the viewfinder's colour (A4); missing-tag shots (A5); DCP-route photos with a DCP labelled illuminant 1
+  (5500 K); every phone and route, pixels with a negative channel after the matrix or a clipped tap (B2, at any exposure, and their
+  final gamut mapping); Ultra HDR gain maps (B3); the RAW viewfinder (A2 / B4 / B6, the two-pass one now = the photo under B2), lab
+  template imports (A8), gallery DNG thumbnails (A10). With a film at strength 1 and with ccm_signed_hue 0: as before (check_film_sim.py
+  --strict, both switch states; check_colour_output's token streams).
+- Host: check_colour_output --shader --strict / --gl --strict (SIGNED_HUE 0 and 1), check_colour_look (0 and 1), check_vf_fused (both
+  inside), check_highlight_ceiling (both inside) and the highlight checks, check_film_sim --strict (both inside), check_signed_rgb,
+  check_ultrahdr (+ --self-test, --scene-luma), check_shader_fp16 81, check_ccm_chain, check_ccm_gamut, check_viewfinder_look (both),
+  check_gainmap_gpu, check_tone_ops, check_highlight_landing, check_film_lut, check_ui_language, check_settings_model PASS;
+  :app:testDebugUnitTest 2080 tests, 0 failures. New JUnit classes in the CI list (ScamDiagnosticsReadmeTest, DngWhiteTest,
+  ParametersSceneCctTest, ParametersSingleCalibrationTest, ParametersPlaceholderFmTest, ParametersColourMethodTest,
+  DeviceAvailabilityColourTest, Camera2ApiAutoFixTest, ViewfinderColourTest, ViewfinderMosaicWbTest, ScamLabTemplateTest,
+  ParametersWhiteInvariantTest, SceneLumaWeightsTest, DngCreatorColourTagsTest).
+- Review round (two independent read-only reviews of c84babf3, the lead's DO / DOC; merged with the owner's bbe7c372 first): every DO
+  item above (shader: the viewfinder's signed linear frame, no luminance gate, the clip measure, the soft gamut mapping inside the
+  signed path, the DNG preview's block shading and the GainMap overflow, the GL checks in both switch states, the camera thread's
+  allocations; Java: the X8U claim reworded and its tests named for row-normalised matrices, «Источник цвета» enabled where it acts,
+  B7 off mosaic shots with their own neutral, the Pixel 7's placeholder CMs, the guard keeps the calibration weight, no silent D50,
+  the SDK's illuminant kelvins, the legacy branch's row test, ApplyRes on the shot's characteristics, no all-zero ColorMatrix in a
+  DNG, the test gaps: an end-to-end As-Shot test, a DNG-writer test, phy110()'s real forward matrices, golden arrays pinned); DOC: a
+  film below strength 1 (B2 above).
+- Needs a phone (not done): C1 the raw CM / FM / CC rationals (B1 log) of X8U cameras 2 / 3 / 4 and X200U 3 / 4 / 5 / front - does A1
+  pass the Duv guard there, spec estimate or AWB label first on Qualcomm ISP-route phones, can SceneIlluminant / the vivo prior retire;
+  C2 does the ISP CCM shrink in low light (ISO 100 / 800 / 3200 / 6400 sweep, det(CST)); C3 do the X200U ISZ lease's frozen gains ever
+  move (B6's smoothing); C4 colour from the oldest ring frame (recompose daylight -> tungsten within 0.5 s); C5 AWBFrameControlCCT
+  against the real light (X8U, X200U); C6 the viewfinder against the saved photo after A2 / B4 / B6 (X7U plain, X200U 2x / 4x ISZ
+  indoors); C7 B2 on real LEDs (backlight, fan ring: hue kept, no seam, B&W grey); C8 a tungsten DNG in Lightroom reads As Shot
+  ~2850 - 3200 K; C9 X8U camera 4 with isp_ccm 0 / SCAM off no longer ~40 % desaturated; C10 manual-Kelvin matrix (follow the chosen
+  white or the measured light) - owner A/B under tungsten.

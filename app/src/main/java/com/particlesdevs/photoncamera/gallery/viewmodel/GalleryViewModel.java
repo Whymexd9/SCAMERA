@@ -52,8 +52,32 @@ public class GalleryViewModel extends AndroidViewModel {
             allSelectedImagesFolder.setValue(ALL_Folder);
 
             allFolders.add(0, ALL_Folder);
+        } else {
+            // every selected folder is empty: no stale «ALL» (its deleted photos came back in the grid and the viewer)
+            GalleryItem none = GalleryItem.createEmpty();
+            none.setDisplayName("ALL");
+            allSelectedImagesFolder.setValue(none);
         }
         selectedDisplayFolders.setValue(allFolders);
+    }
+
+    /**
+     * The media lists read again and the folder named {@code keep} shown again («ALL» when it is gone or null), so the library's
+     * grid and the viewer use the same list after a delete or a folders change. Returns the name of the folder shown (the first
+     * chip when {@code keep} is gone), null without folders.
+     */
+    @androidx.annotation.Nullable
+    public String refreshKeeping(@androidx.annotation.Nullable String keep) {
+        fetchAllMedia();
+        List<GalleryItem> folders = selectedDisplayFolders.getValue();
+        GalleryItem shown = null;
+        if (folders != null && keep != null) for (GalleryItem f : folders) if (keep.equals(f.getDisplayName())) shown = f;
+        if (shown == null) {
+            shown = allSelectedImagesFolder.getValue();
+            keep = folders == null || folders.isEmpty() ? null : folders.get(0).getDisplayName();
+        }
+        setCurrentFolderImages(shown);
+        return keep;
     }
 
     public LiveData<GalleryItem> getAllSelectedImageFolder() {
@@ -73,6 +97,17 @@ public class GalleryViewModel extends AndroidViewModel {
     @androidx.annotation.Nullable private String currentFolderName;
     /** P351: the photo the viewer moves to when it next binds its list (the editor's new copy), null for none. */
     @androidx.annotation.Nullable private android.net.Uri pendingSelect;
+
+    /** The folder shown now («ALL» for every selected folder), null for a list built by hand. */
+    @androidx.annotation.Nullable
+    public String getCurrentFolderName() {
+        return currentFolderName;
+    }
+
+    /** The photo the viewer moves to when it next binds its list (the photo another app asked to view), null for none. */
+    public void selectNext(@androidx.annotation.Nullable android.net.Uri uri) {
+        pendingSelect = uri;
+    }
 
     @androidx.annotation.Nullable
     public android.net.Uri takePendingSelect() {
@@ -102,14 +137,30 @@ public class GalleryViewModel extends AndroidViewModel {
             list = new ArrayList<>(currentFolderImages.getValue() != null ? currentFolderImages.getValue() : new ArrayList<>());
         }
         boolean found = false;
-        if (list != null) for (GalleryItem i : list) if (copy.getFileUri().equals(i.getFile().getFileUri())) found = true;
+        android.net.Uri select = copy.getFileUri();
+        if (list != null)
+            for (GalleryItem i : list)
+                if (sameMedia(copy, i.getFile())) {
+                    found = true;
+                    select = i.getFile().getFileUri(); // the list's own form of the row's URI (the viewer matches it)
+                }
         if (!found && list != null) {
             list = new ArrayList<>(list);
             list.add(0, new GalleryItem(copy));
             currentFolderImages.setValue(list);
         }
-        pendingSelect = copy.getFileUri();
+        pendingSelect = select;
         setUpdatePending(true);
+    }
+
+    /**
+     * The same MediaStore row: equal URIs, or equal row ids (content://media/external_primary/images/media/42 is the gallery's
+     * content://media/external/images/media/42).
+     */
+    static boolean sameMedia(ImageFile a, @androidx.annotation.Nullable com.particlesdevs.photoncamera.gallery.files.MediaFile b) {
+        if (b == null) return false;
+        if (a.getFileUri() != null && a.getFileUri().equals(b.getFileUri())) return true;
+        return a.getId() >= 0 && b instanceof ImageFile && a.getId() == b.getId();
     }
 
     public MutableLiveData<List<GalleryItem>> getSelectedDisplayFolders() {

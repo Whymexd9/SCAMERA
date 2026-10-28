@@ -131,7 +131,8 @@ public class ScamLabFragmentTest {
             assertFalse(key, ScamLabFragment.AT_SHOT.contains(key));
         // the capture plan and the shot's Parameters
         for (String key : new String[]{H + "bento_factor", H + "bento_trigger", H + "shasta_frames", H + "shasta_ev", H + "mm_shutter",
-                H + "mm_flicker", H + "mm_zsl_frames", "pref_color_method_key", "pref_noise_model_profile_key", "pref_crop_upscale"})
+                H + "mm_flicker", H + "mm_zsl_frames", "pref_color_method_key", "pref_noise_model_profile_key", "pref_crop_upscale",
+                "pref_mosaic_wb_corrections"}) // P370 (A9): the mosaic white balance is in the saved white point
             assertTrue(key, ScamLabFragment.AT_SHOT.contains(key));
     }
 

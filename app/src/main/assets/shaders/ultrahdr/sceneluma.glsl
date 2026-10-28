@@ -17,6 +17,10 @@ uniform int rotate;
 uniform bool mirror;
 uniform ivec2 cropSize;
 uniform ivec2 rawSize;
+// P370 (B3): the luminance weights of the white-balanced camera RGB the plane reads - LUMA^T . intermediateToSRGB .
+// sensorToProPhoto . diag(neutral) (PostPipeline: the render's own colour matrix): Rec.709 weights on camera RGB gave the
+// HDR boost by hue (the X8U's blue +0.41 EV, orange -0.14 EV). Unset (0): Rec.709 on the input as before.
+uniform vec3 wU;
 
 out vec4 Output;
 
@@ -69,6 +73,6 @@ void main() {
     vec4 gains = textureBicubicHardware(GainMap, vec2(srcCoord) / vec2(rawSize));
     gains.rgb = vec3(gains.r, (gains.g + gains.b) / 2.0, gains.a);
     float gainsVal = dot(gains.rgb, vec3(1.0 / 3.0));
-    float l = lum709(max(c, vec3(0.0))) * gainsVal;
+    float l = (wU == vec3(0.0) ? lum709(max(c, vec3(0.0))) : max(dot(wU, c), 0.0)) * gainsVal;
     Output = vec4(l, l, l, 1.0);
 }

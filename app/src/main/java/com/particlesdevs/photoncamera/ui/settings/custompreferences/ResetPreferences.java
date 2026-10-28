@@ -12,6 +12,7 @@ import com.google.android.material.snackbar.Snackbar;
 import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.app.ScameraApp;
 import com.particlesdevs.photoncamera.settings.BackupRestoreUtil;
+import com.particlesdevs.photoncamera.util.Lang;
 
 public class ResetPreferences extends DialogPreference {
     public ResetPreferences(Context context, AttributeSet attributeSet) {
@@ -37,7 +38,7 @@ public class ResetPreferences extends DialogPreference {
                 if (getContext() != null && getActivity() != null) {
                     String status = getString(R.string.app_will_restart);
                     if (!BackupRestoreUtil.resetPreferences(getContext()))
-                        status = "Failed";
+                        status = Lang.t(getContext(), "Не удалось сбросить настройки", "Reset failed");
                     Snackbar.make(getActivity().findViewById(android.R.id.content), status, Snackbar.LENGTH_SHORT).show();
                     ScameraApp.restartWithDelay(getContext(), 1000);
                 }

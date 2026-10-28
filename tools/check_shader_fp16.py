@@ -92,6 +92,16 @@ def units() -> list[tuple[str, str, str]]:
         out.append((label, 'frag', '#version 310 es\n#line 1\n' + text.replace(OES, '').replace('samplerExternalOES', 'sampler2D')))
     raw = read(SH / 'preview/rawdevelop_fs.glsl').replace('#version 300 es', '#version 310 es', 1)
     out.append(('preview/rawdevelop_fs.glsl', 'frag', raw))
+    # P369: why/combine's film feed (FILM_SIM 1: the photo, its Display P3 form, the RAW viewfinder's point tone and fused pass -
+    # the RAW viewfinder is on by default on Mali / Immortalis): the default defines above leave every FILM_SIM block out
+    combine = read(SH / 'why/combine.glsl')
+    for defines in (('FILM_SIM',), ('FILM_SIM', 'P3_OUT'), ('FILM_SIM', 'POINT_FUSED'), ('FILM_SIM', 'POINT_FUSED', 'RAW_SOURCE'),
+                    ('FILM_SIM', 'POINT_FUSED', 'RAW_SOURCE', 'P3_OUT')):
+        src = combine
+        for name in defines:
+            src = '\n'.join(('#define %s 1' % name) if ('#define' in l and (' ' + name + ' ') in l + ' ') else l for l in src.split('\n'))
+        out.append(('why/combine.glsl (' + ' + '.join(d + ' 1' for d in defines) + ')', 'frag',
+                    '#version 310 es\n#line 1\n' + expand_imports(src)))
     return out
 
 

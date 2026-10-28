@@ -53,6 +53,17 @@ public final class ShotTimeline {
         if (processing != null && !processing.notes.containsKey(name)) processing.notes.put(name, value);
     }
 
+    /** P371: the shot being processed now (null without one), for a note made later on another thread ({@link #noteOn}). */
+    public static synchronized Object processingShot() {
+        return processing;
+    }
+
+    /** P371: a value of the shot {@code shot} ({@link #processingShot}), not of a later one; nothing once it is printed. */
+    public static synchronized void noteOn(Object shot, String name, String value) {
+        if (shot instanceof ShotTimeline && shot == processing && !((ShotTimeline) shot).notes.containsKey(name))
+            ((ShotTimeline) shot).notes.put(name, value);
+    }
+
     /** P236: a stage of the shot being processed that ended at {@code nanos} (elapsedRealtimeNanos), from a worker's own times. */
     public static synchronized void markAt(String name, long nanos) {
         if (processing == null) processing = new ShotTimeline();
@@ -124,6 +135,8 @@ public final class ShotTimeline {
         else if (line.startsWith("HYBRID SHASTA")) name = "w_shasta";
         else if (line.startsWith("HYBRID BENTO")) name = "w_bento";
         else if (line.startsWith("HYBRID LOCAL ALIGN")) name = "w_f6";
+        // P371: the GPU alignment's lines are its start (they took w_gpu, the merge's context, since P364's gpuAlign)
+        else if (line.startsWith("HYBRID GPU ALIGN")) name = "w_align";
         else if (line.startsWith("HYBRID GPU")) name = "w_gpu";
         else if (line.startsWith("HYBRID RAW CA")) name = "w_rawca";
         else if (line.startsWith("HYBRID STAGES")) name = "w_stages";

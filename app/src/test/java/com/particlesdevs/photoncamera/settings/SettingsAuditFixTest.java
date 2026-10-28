@@ -165,6 +165,51 @@ public class SettingsAuditFixTest {
         assertEquals(0,PreferenceKeys.getAntibandingHz());
     }
 
+    /**
+     * Audit 2026-10-27: the reset of a fresh install (and of the full reset) cleared the one-time markers right after SettingsManager
+     * wrote them, so the next start migrated the stored «Авто» (-1) into «Выкл.» (0) and a first-session 60 Hz (120) into «Авто»;
+     * the device defaults were missing for the whole first session.
+     */
+    @Test public void freshInstallKeepsAutoFlickerAndMarkers() {
+        assertEquals("-1",SettingsMigration.antibandingEntry(-1));
+        for(boolean fullReset:new boolean[]{false,true})
+            for(String chosen:new String[]{"-1","120","100","0"}){
+                if(fullReset)BackupRestoreUtil.resetPreferences(context);
+                else{
+                    context.getSharedPreferences(context.getPackageName()+PreferenceKeys.Key.KEY_PREF_VERSION.mValue,Context.MODE_PRIVATE)
+                            .edit().clear().commit();
+                    prefs.edit().clear().commit();
+                }
+                boolean readAgain=MigrationManager.readAgain;
+                try{MigrationManager.migrate(new SettingsManager(context));}finally{MigrationManager.readAgain=readAgain;}
+                for(String marker:new String[]{"settings_antibanding_list_v1","settings_zsl_capacity_v2",SettingsMigration.SIMPLE_UI_TILES,"device_defaults_version"})
+                    assertTrue(marker,prefs.contains(marker));
+                assertTrue("the device defaults (SM8750) from the first session on",prefs.getBoolean("pref_live_viewfinder_raw_key",false));
+                PreferenceManager.setDefaultValues(context,R.xml.preferences,true);
+                assertEquals("the XML default is «Авто»","-1",prefs.getString("pref_antibanding_hz_key",null));
+                prefs.edit().putString("pref_antibanding_hz_key",chosen).commit(); // the first session's choice
+                new SettingsManager(context); // the next start
+                assertEquals((fullReset?"after the full reset: ":"fresh install: ")+chosen,chosen,prefs.getString("pref_antibanding_hz_key",null));
+            }
+    }
+
+    /** The same reset of a fresh install: the Find X7 Ultra's camera package spoof (5 cameras) from the first session on. */
+    @Test public void freshInstallHasTheDeviceDefaultsAtOnce() {
+        org.robolectric.shadows.ShadowBuild.setManufacturer("OPPO");
+        org.robolectric.shadows.ShadowBuild.setModel("PHY110");
+        context.getSharedPreferences(context.getPackageName()+PreferenceKeys.Key.KEY_PREF_VERSION.mValue,Context.MODE_PRIVATE).edit().clear().commit();
+        prefs.edit().clear().commit();
+        boolean readAgain=MigrationManager.readAgain;
+        try{MigrationManager.migrate(new SettingsManager(context));}finally{MigrationManager.readAgain=readAgain;}
+        assertTrue(prefs.getBoolean("pref_camera_package_spoof_enabled",false));
+        assertEquals("raw10",prefs.getString("pref_raw_stream_format",null));
+        // a choice of the first session survives the next start
+        prefs.edit().putBoolean("pref_camera_package_spoof_enabled",false).putString("pref_zsl_buffer_count_key","30").commit();
+        new SettingsManager(context);
+        assertFalse(prefs.getBoolean("pref_camera_package_spoof_enabled",true));
+        assertEquals("30",prefs.getString("pref_zsl_buffer_count_key",null));
+    }
+
     /** S1 (owner): the shared settings are one list, never per module; processing / tuning / sensor settings stay per module. */
     @Test public void sharedSettingsAreNeverPerModule() {
         String[] global={PreferenceKeys.ROUTE_KEY,"pref_camera_sounds_key","pref_timer_sound_key","pref_show_grid_key","pref_photo_format",
@@ -216,6 +261,33 @@ public class SettingsAuditFixTest {
         assertEquals("TWO",prefs.getString("pref_watermark_line1",""));
         assertFalse(PreferenceKeys.profiles().snapshot("back1").containsKey(PreferenceKeys.ROUTE_KEY));
         assertEquals("0.9",String.valueOf(PreferenceKeys.profiles().snapshot("back1").get("pref_scam_hybrid_cdm")));
+    }
+
+    /**
+     * P156 / audit 2026-10-27: while the restart after an import or a reset waits for a shot, a lens switch moves no profile:
+     * the written main settings stay, and the old module's file does not take them.
+     */
+    @Test public void lensSwitchWaitsForTheRestart() {
+        for(int i=0;i<2;i++)prefs.edit().putString("module_auto_back"+i,""+(3+i)).putString("module_label_back"+i,new String[]{"1×","0.6×"}[i])
+                .putBoolean("module_visible_back"+i,true).commit();
+        prefs.edit().putString("module_active","back0").putString("pref_scam_hybrid_cdm","0.5").commit();
+        String perLens=PreferenceKeys.Key.KEY_SAVE_PER_LENS_SETTINGS.mValue;
+        prefs.edit().putBoolean(perLens,true).commit();PreferenceKeys.profiles().changed(perLens);
+        PreferenceKeys.profiles().activate("back1");
+        prefs.edit().putString("pref_scam_hybrid_cdm","0.7").commit();PreferenceKeys.profiles().changed("pref_scam_hybrid_cdm");
+        PreferenceKeys.profiles().activate("back0");
+        assertEquals("0.5",prefs.getString("pref_scam_hybrid_cdm",""));
+        // an imported config wrote the main settings; the restart waits for the shot being processed
+        prefs.edit().putString("pref_scam_hybrid_cdm","0.9").commit();
+        ScameraApp.restarting=true;
+        try{
+            PreferenceKeys.profiles().activate("back1");
+            assertEquals("back0",PreferenceKeys.profiles().editing());
+            assertEquals("0.9",prefs.getString("pref_scam_hybrid_cdm",""));
+            assertEquals("the old module's file keeps its values","0.5",
+                    context.getSharedPreferences("module_profile_v2_back0",Context.MODE_PRIVATE).getString("pref_scam_hybrid_cdm",""));
+            assertEquals("0.7",context.getSharedPreferences("module_profile_v2_back1",Context.MODE_PRIVATE).getString("pref_scam_hybrid_cdm",""));
+        }finally{ScameraApp.restarting=false;}
     }
 
     /** Owner: the upstream rows (about page, contributors, Telegram, device list, config download) are gone. */
@@ -284,8 +356,9 @@ public class SettingsAuditFixTest {
         // Robolectric is no vivo / OPPO: no tuned or ISP matrix replaces the colour method, the OPPO saturation row is hidden
         assertNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
         assertTrue(DeviceAvailability.of(values).hidden("pref_scam_hybrid_why_ccm_sat"));
+        // P370 (review): vivo's 12 MP photos take the ISP matrix, but the choice acts on its mosaic shots: the row stays enabled
         org.robolectric.shadows.ShadowBuild.setManufacturer("vivo");
-        assertNotNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
+        assertNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
         org.robolectric.shadows.ShadowBuild.setManufacturer("OPPO");org.robolectric.shadows.ShadowBuild.setModel("PHY110");
         assertNotNull(DeviceAvailability.of(values).reason("pref_color_method_key"));
     }
@@ -336,9 +409,12 @@ public class SettingsAuditFixTest {
             assertNotNull(key+" shows a named value",l.getEntry());
         }
         assertEquals("1",((ListPreference)screen.findPreference("pref_scam_hybrid_why_metering")).getValue());
-        // P118: only the WHY sharpening stays; the RawTherapee page is gone everywhere.
+        // P118: only the WHY sharpening stays; the RawTherapee page is gone everywhere. 2026-10-27: its strength («Резкость») is
+        // a row of «Снимок», the rest of it stays on the sharpening page.
         PreferenceGroup sharp=screen.findPreference("scam_hybrid_sharp_category");
-        assertNotNull(sharp.findPreference("pref_scam_hybrid_why_sharp_gain"));assertNull(screen.findPreference("sharp_settings_screen"));
+        assertNotNull(sharp.findPreference("pref_scam_hybrid_why_sharp_domain"));
+        assertEquals("root_colour",((Preference)screen.findPreference("pref_scam_hybrid_why_sharp_gain")).getParent().getKey());
+        assertNull(screen.findPreference("sharp_settings_screen"));
     }
 
     /** S5: inherited keys without a row that api/Settings still read are dropped; the AF data key they aliased stays. */

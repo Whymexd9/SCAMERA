@@ -151,6 +151,11 @@ public final class LiveWhyTone {
     private FloatBuffer aePixels;
     private WhyAe.Result ae;
     private float aeShown;
+    /**
+     * P369: the film's exposure (WhyAe.filmAe: the meter before the highlight overflow's cut) eased as {@link #aeShown} is, so a
+     * cut that comes and goes with a bright window does not pump the film's grey while ours eases in.
+     */
+    private float filmAeShown;
     private int frames;
     /** P314: the fusion's curve (vf_why 1): its texture (R32F FusedCurve.SIZE x 1), values, and the AE result it was filled for. */
     private int curveTex;
@@ -168,14 +173,34 @@ public final class LiveWhyTone {
     private int toneOp;
     private float[] lw = WhyTone.LAYER_WEIGHTS.clone();
     private float center, smooth, gammaInv, toe, eps, mono, inScale, macro, hlWhite, filmToe, deltaChroma, clarity, flatProtect;
+    /** P369 (viewfinder-vibhl): the light-tone vibrance (P341), as WhyCombine sets it. */
+    private float vibHl;
     private float[] vib = new float[3];
     private int radius;
     /** P314: the box radius of this draw (vf_why 2): radius scaled from the viewport to the tone size, the same footprint. */
     private int boxRadius = 1;
+    /** A table the loader built: its key (lutWanted when it was asked for) and whether it is the film's scene table (P369). */
+    private static final class Loaded {
+        final String key;
+        final FilmLut lut;
+        final boolean scene;
+
+        Loaded(String key, FilmLut lut, boolean scene) {
+            this.key = key;
+            this.lut = lut;
+            this.scene = scene;
+        }
+    }
+
     private volatile String lutWanted = "";
-    private volatile FilmLut lutReady;
+    private volatile Loaded lutLoaded;
     private FilmLut lutShown;
+    /** P369: the table shown is the film's scene table (FILM_SIM 1), not the chosen LUT's (FILM_LUT 1). */
+    private boolean lutShownScene;
     private float lutStrength;
+    /** P369: the film simulation of the settings now (null: none) and its strength (the shader's mix). */
+    private com.particlesdevs.photoncamera.processing.color.FilmSim.Settings filmNow;
+    private float filmStrength;
 
     /** A new GL context: everything made in the old one is gone with it. */
     public void onContextCreated() {
@@ -312,7 +337,7 @@ public final class LiveWhyTone {
             refreshSettings();
             final FilmLut lut = lutNow();
             final boolean lutOn = lutTex != 0 && lut != null;
-            final int p = program("why/combine", combineDefines(lutOn, true, true));
+            final int p = program("why/combine", combineDefines(lutOn, lutShownScene, true, true));
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, outFbo);
             GLES20.glViewport(x, y, w, h);
             if (!raw.bind(p)) return false;
@@ -394,6 +419,8 @@ public final class LiveWhyTone {
         final android.hardware.camera2.CameraCharacteristics camera = com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics;
         settings.dcg = com.particlesdevs.photoncamera.capture.Dcg14Mode.frames(camera);
         settings.dcgIsoScale = settings.dcg ? liveDcgIsoScale(camera) : 1f;
+        // P370 (B4): the photo's AgX saturation of the OPPO tuned matrix when the tuned matrix renders this viewfinder (PhotoMatrix)
+        settings.ccmSat = WhyTone.ccmSatComp(com.particlesdevs.photoncamera.processing.color.PhotoMatrix.viewfinderTuned);
         look = WhyTone.colourLook();
         colourOn = !look.shaderNeutral();
         toneOp = WhyTone.toneOperator();
@@ -413,22 +440,56 @@ public final class LiveWhyTone {
         deltaChroma = Math.max(0f, Math.min(1f, WhyTone.value("delta_chroma", 1f)));
         clarity = WhyTone.value("clarity", 0f);
         flatProtect = WhyTone.value("flat_protect", 0f);
+        vibHl = WhyTone.vibranceHl();
         try {
+            final float userStrength = PreferenceKeys.filmLutStrength();
+            final String user = userStrength > 0f ? PreferenceKeys.filmLut() : "";
+            final com.particlesdevs.photoncamera.processing.color.FilmSim.Settings sim =
+                    com.particlesdevs.photoncamera.processing.color.FilmSim.current();
+            filmNow = sim;
+            filmStrength = sim != null ? sim.strength : 0f;
+            if (sim != null) {
+                // P369: the photo's scene feed (FILM_SIM): the film's scene table with the chosen LUT on its print
+                lutStrength = 0f;
+                final String key = com.particlesdevs.photoncamera.processing.color.FilmChain.sceneKey(sim, user, userStrength);
+                if (!key.equals(lutWanted)) {
+                    lutWanted = key;
+                    lutLoaded = null;
+                    LUT_LOADER.execute(() -> {
+                        if (!key.equals(lutWanted)) return; // settings moved on while queued: no table nobody waits for
+                        final com.particlesdevs.photoncamera.processing.color.FilmChain.Scene scene =
+                                com.particlesdevs.photoncamera.processing.color.FilmChain.scene(ScameraApp.getAppContext(), sim, user, userStrength);
+                        if (key.equals(lutWanted)) lutLoaded = new Loaded(key, scene != null ? scene.lut : null, true);
+                    });
+                }
+                return;
+            }
             final com.particlesdevs.photoncamera.processing.color.FilmChain.State chain =
-                    com.particlesdevs.photoncamera.processing.color.FilmChain.current();
+                    com.particlesdevs.photoncamera.processing.color.FilmChain.current(null, user, userStrength);
             lutStrength = chain.strength;
             final String name = lutStrength > 0f ? chain.key : "";
             if (!name.equals(lutWanted)) {
                 lutWanted = name;
-                lutReady = null;
+                lutLoaded = null;
                 if (!name.isEmpty()) LUT_LOADER.execute(() -> {
                     FilmLut lut = com.particlesdevs.photoncamera.processing.color.FilmChain.lut(ScameraApp.getAppContext(), name);
-                    if (name.equals(lutWanted)) lutReady = lut;
+                    if (name.equals(lutWanted)) lutLoaded = new Loaded(name, lut, false);
                 });
             }
         } catch (RuntimeException e) {
             lutStrength = 0f;
+            filmNow = null;
+            filmStrength = 0f;
         }
+    }
+
+    /**
+     * P369: what the viewfinder's look depends on beyond the frame (MainRenderer's P319 tone reuse): the table loaded for the
+     * settings (a film's scene table or the chosen LUT, once it is ready) and the strengths.
+     */
+    public int lookKey() {
+        final Loaded l = lutLoaded;
+        return 31 * (31 * (l == null ? 0 : System.identityHashCode(l)) + Float.floatToIntBits(lutStrength)) + Float.floatToIntBits(filmStrength);
     }
 
     /**
@@ -454,6 +515,8 @@ public final class LiveWhyTone {
         aePixels.position(0);
         mergedNoise(noiseS, noiseO);
         final WhyAe.Result r = WhyAe.smartHdr(aePixels, 4, aw, ah, settings, iso, maxIso);
+        final float filmAe = WhyAe.filmAe(r);
+        filmAeShown = ae == null ? filmAe : filmAeShown + (filmAe - filmAeShown) * AE_SMOOTH;
         aeShown = ae == null ? r.ae : aeShown + (r.ae - aeShown) * AE_SMOOTH;
         ae = r;
         return true;
@@ -496,6 +559,8 @@ public final class LiveWhyTone {
         mergedNoise(f.noiseS, f.noiseO);
         final WhyAe.Result r = meter.measure(v, inScale, settings, f.iso, f.maxAnalogIso);
         if (r == null) return ae != null;
+        final float filmAe = WhyAe.filmAe(r);
+        filmAeShown = ae == null ? filmAe : filmAeShown + (filmAe - filmAeShown) * AE_SMOOTH;
         aeShown = ae == null ? r.ae : aeShown + (r.ae - aeShown) * AE_SMOOTH;
         ae = r;
         final long now = SystemClock.uptimeMillis();
@@ -575,7 +640,7 @@ public final class LiveWhyTone {
     private void combine(WhyAe.Result r, float aeNow, int outFbo, int w, int h, boolean point) {
         final FilmLut lut = lutNow();
         final boolean lutOn = lutTex != 0 && lut != null;
-        int p = program("why/combine", combineDefines(lutOn, point, false));
+        int p = program("why/combine", combineDefines(lutOn, lutShownScene, point, false));
         use(p);
         final int colourSource = point ? lin.id : low.id;
         texture(p, "InputBuffer", 0, lin.id);
@@ -590,14 +655,20 @@ public final class LiveWhyTone {
         quad(p);
     }
 
-    /** The film LUT of the settings, uploaded when it changed (lutTex; null: none). */
+    /**
+     * The film LUT of the settings, uploaded when it changed (lutTex; null: none). P369: with a film its scene table
+     * ({@link #lutShownScene}); a table is taken only for the key it was asked for (a late load of an older key is not shown).
+     */
     private FilmLut lutNow() {
-        FilmLut lut = lutStrength > 0f ? lutReady : null;
+        final Loaded l = lutLoaded;
+        final boolean match = l != null && l.key.equals(lutWanted);
+        FilmLut lut = (filmNow != null || lutStrength > 0f) && match ? l.lut : null;
         if (lut != lutShown) {
             if (lutTex != 0) GLES20.glDeleteTextures(1, new int[]{lutTex}, 0);
             lutTex = lut != null ? lut.upload() : 0;
             lutShown = lut;
         }
+        lutShownScene = lut != null && l.scene;
         return lut;
     }
 
@@ -614,6 +685,7 @@ public final class LiveWhyTone {
             GLES20.glUniform2f(loc(p, "fusedCurveU"), FusedCurve.LOG2_MIN, FusedCurve.PER_EV);
         }
         set(p, "signedColourU", 0);
+        set(p, "signedHueU", WhyTone.signedHue() ? 1 : 0); // P370 (B2): the photo's hue of a colour outside sRGB
         set(p, "aeU", aeNow);
         set(p, "clipU", r.clip);
         set(p, "toeU", toe);
@@ -644,6 +716,8 @@ public final class LiveWhyTone {
         set(p, "ditherU", 1);
         set(p, "headroomU", 0);
         set(p, "hlWhiteU", hlWhite);
+        // P369 (viewfinder-vibhl): the light-tone vibrance, as the photo (P301 parity)
+        set(p, "vibHlU", vibHl);
         if (colourOn) {
             float[] skin = look.skinUniform(), vibL = look.vibUniform(), monoF = look.monoUniform();
             GLES20.glUniform3f(loc(p, "skinU"), skin[0], skin[1], skin[2]);
@@ -657,7 +731,14 @@ public final class LiveWhyTone {
             GLES20.glUniform4f(loc(p, "gradeAU"), grade[0][0], grade[0][1], grade[0][2], grade[0][3]);
             GLES20.glUniform4f(loc(p, "gradeBU"), grade[1][0], grade[1][1], grade[1][2], grade[1][3]);
         }
-        if (lutOn) {
+        if (lutOn && lutShownScene) {
+            // P369: the photo's film feed (WhyCombine): the film's strength, its exposure over the shown ae (the meter before the
+            // highlight overflow's cut, eased as the shown ae, at the film's mid grey) and the log grid
+            GLES20.glUniform2f(loc(p, "lutU"), filmStrength, (float) lut.size);
+            set(p, "filmExpU", filmAeShown / Math.max(aeNow, 1e-6f) * com.particlesdevs.photoncamera.processing.color.FilmSim.METER_TO_FILM);
+            GLES20.glUniform2f(loc(p, "filmLogU"), com.particlesdevs.photoncamera.processing.color.FilmSim.LOG_LO,
+                    com.particlesdevs.photoncamera.processing.color.FilmSim.LOG_SPAN);
+        } else if (lutOn) {
             GLES20.glUniform2f(loc(p, "lutU"), lutStrength, (float) lut.size);
             GLES20.glUniform3f(loc(p, "lutMinU"), lut.domainMin[0], lut.domainMin[1], lut.domainMin[2]);
             GLES20.glUniform3f(loc(p, "lutScaleU"), 1f / (lut.domainMax[0] - lut.domainMin[0]), 1f / (lut.domainMax[1] - lut.domainMin[1]),
@@ -716,15 +797,16 @@ public final class LiveWhyTone {
 
     /**
      * The defines of why/combine for the current settings and film LUT (P314: {@code point}, the per-pixel fusion; P365
-     * {@code fused}: from the RAW frame in one pass).
+     * {@code fused}: from the RAW frame in one pass; P369 {@code scene}: the table is a film's scene table).
      */
-    private String[][] combineDefines(boolean lutOn, boolean point, boolean fused) {
+    private String[][] combineDefines(boolean lutOn, boolean scene, boolean point, boolean fused) {
         ArrayList<String[]> defs = new ArrayList<>();
         if (point) defs.add(new String[]{"POINT_FUSED", "1"});
         if (point && fused) defs.add(new String[]{"RAW_SOURCE", "1"});
         if (colourOn) defs.add(new String[]{"COLOUR_LOOK", "1"});
         if (toneOp != ToneCurve.AGX) defs.add(new String[]{"TONE_OP", "1"});
-        if (lutOn) defs.add(new String[]{"FILM_LUT", "1"});
+        // P369: a film's scene table (FILM_SIM) or the chosen LUT (FILM_LUT), never both
+        if (lutOn) defs.add(new String[]{scene ? "FILM_SIM" : "FILM_LUT", "1"});
         return defs.toArray(new String[0][]);
     }
 
@@ -744,8 +826,9 @@ public final class LiveWhyTone {
             for (int mode = 0; mode <= 1; mode++) out.add(new Object[]{"why/ab", new String[][]{{"MODE", String.valueOf(mode)}}});
             out.add(new Object[]{"why/box", null});
         }
-        out.add(new Object[]{"why/combine", combineDefines(false, point, fused)});
-        if (lutStrength > 0f) out.add(new Object[]{"why/combine", combineDefines(true, point, fused)});
+        out.add(new Object[]{"why/combine", combineDefines(false, false, point, fused)});
+        // P369: with a film its FILM_SIM variant
+        if (lutStrength > 0f || filmNow != null) out.add(new Object[]{"why/combine", combineDefines(true, filmNow != null, point, fused)});
         return out;
     }
 

@@ -20,6 +20,7 @@ import com.particlesdevs.photoncamera.R;
 import com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens;
 import com.particlesdevs.photoncamera.processing.color.FilmLut;
 import com.particlesdevs.photoncamera.settings.PhotoStyle;
+import com.particlesdevs.photoncamera.ui.settings.PageReset;
 import com.particlesdevs.photoncamera.ui.settings.SettingsStyle;
 import com.particlesdevs.photoncamera.util.Lang;
 
@@ -28,7 +29,7 @@ import com.particlesdevs.photoncamera.util.Lang;
  * Чёрно-белый (monochrome), Плёнка (the film LUT's colours) - over the black-and-white filter and the film LUT (PhotoStyle).
  * The row of the colour page shows the style as its value.
  */
-public class PhotoStylePreference extends Preference implements SharedPreferences.OnSharedPreferenceChangeListener {
+public class PhotoStylePreference extends Preference implements SharedPreferences.OnSharedPreferenceChangeListener, PageReset.Resettable {
     @Nullable private LinearLayout card;
 
     public PhotoStylePreference(Context context, AttributeSet attrs) {
@@ -40,6 +41,15 @@ public class PhotoStylePreference extends Preference implements SharedPreference
 
     public PhotoStylePreference(Context context) {
         this(context, null);
+    }
+
+    /** The page reset (audit 2026-10-27: a non-persistent row, it was skipped): «Обычный» again; true when another style was on. */
+    @Override
+    public boolean resetToDefault() {
+        final SharedPreferences prefs = getSharedPreferences();
+        if (prefs == null || PhotoStyle.current(prefs) == PhotoStyle.NORMAL) return false;
+        PhotoStyle.apply(prefs, PhotoStyle.NORMAL);
+        return true;
     }
 
     @Override

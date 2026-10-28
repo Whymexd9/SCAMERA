@@ -342,15 +342,24 @@ final class LiveLensFilter {
         }
         try {
             // P281: the film simulation and the LUT as one table (FilmChain)
-            final com.particlesdevs.photoncamera.processing.color.FilmChain.State chain = com.particlesdevs.photoncamera.processing.color.FilmChain.current();
+            final float userStrength = com.particlesdevs.photoncamera.settings.PreferenceKeys.filmLutStrength();
+            final String user = userStrength > 0f ? com.particlesdevs.photoncamera.settings.PreferenceKeys.filmLut() : "";
+            final com.particlesdevs.photoncamera.processing.color.FilmSim.Settings sim = com.particlesdevs.photoncamera.processing.color.FilmSim.current();
+            final com.particlesdevs.photoncamera.processing.color.FilmChain.State chain =
+                    com.particlesdevs.photoncamera.processing.color.FilmChain.current(sim, user, userStrength);
             lutStrength = chain.strength;
             final String name = lutStrength > 0f ? chain.key : "";
             if (name.equals(lutWanted)) return;
             lutWanted = name;
             lutReady = null;
             if (!name.isEmpty()) LUT_LOADER.execute(() -> {
+                if (!name.equals(lutWanted)) return; // settings moved on while queued
                 FilmLut lut = com.particlesdevs.photoncamera.processing.color.FilmChain.lut(ScameraApp.getAppContext(), name);
                 if (name.equals(lutWanted)) lutReady = lut;
+                // P369: the photo's scene table of the same settings built ahead (WhyCombine takes it from FilmChain's cache: the
+                // first film shot of an ISP-viewfinder session does not build it); not for settings already left
+                if (sim != null && name.equals(lutWanted))
+                    com.particlesdevs.photoncamera.processing.color.FilmChain.scene(ScameraApp.getAppContext(), sim, user, userStrength);
             });
         } catch (RuntimeException e) {
             lutStrength = 0f;   // no settings yet

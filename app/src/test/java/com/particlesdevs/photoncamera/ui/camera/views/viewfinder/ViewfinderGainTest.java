@@ -23,6 +23,17 @@ public class ViewfinderGainTest {
         assertEquals(1f, ViewfinderGain.gainFor(0L), 0f);
     }
 
+    /** P356: the ETTR display gain goes back to 1 with the boost (the camera closes, a new session: CaptureController.resetEttr). */
+    @Test
+    public void displayEvZeroRestoresUnitGain() {
+        ViewfinderGain.setDisplayEv(1.5f);
+        assertEquals((float) Math.pow(2, -1.5), ViewfinderGain.gainFor(0L), 1e-6f);
+        assertEquals((float) Math.pow(2, -1.5), ViewfinderGain.gainFor(77L), 1e-6f);
+        ViewfinderGain.setDisplayEv(0f);
+        assertEquals(1f, ViewfinderGain.gainFor(0L), 0f);
+        assertEquals(1f, ViewfinderGain.gainFor(77L), 0f);
+    }
+
     @Test
     public void withoutAReferenceNothingIsScaled() {
         ViewfinderGain.record(1000L, 0.1);

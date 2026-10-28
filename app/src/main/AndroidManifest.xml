@@ -69,12 +69,8 @@
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
-            <intent-filter>
-                <action android:name="android.media.action.IMAGE_CAPTURE" />
-                <action android:name="android.media.action.STILL_IMAGE_CAMERA_SECURE" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-
+            <!-- No IMAGE_CAPTURE / STILL_IMAGE_CAMERA_SECURE: the camera has no capture-for-result mode (EXTRA_OUTPUT, setResult)
+                 and no lock-screen mode, so the calling app got RESULT_CANCELED at once. Only with such a mode. -->
             <intent-filter>
                 <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -97,27 +93,10 @@
                 <data android:scheme="content" />
                 <data android:mimeType="image/*" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="com.android.camera.action.REVIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="file" />
-                <data android:scheme="content" />
-                <data android:mimeType="video/*" />
-            </intent-filter>
-            
-            <!-- PICK intent - For selecting images/videos -->
-            <intent-filter>
-                <action android:name="android.intent.action.PICK" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/*" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.PICK" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="video/*" />
-            </intent-filter>
-            
-            <!-- VIEW intent - View specific images/videos from other apps -->
+            <!-- No video/* (the gallery cannot play a video: it showed one frame) and no PICK / GET_CONTENT (it has no pick mode
+                 and never returns a photo: the calling app got RESULT_CANCELED). Only with such a mode. -->
+
+            <!-- VIEW intent - View specific images from other apps -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -126,29 +105,7 @@
                 <data android:scheme="content" />
                 <data android:mimeType="image/*" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="file" />
-                <data android:scheme="content" />
-                <data android:mimeType="video/*" />
-            </intent-filter>
-            
-            <!-- GET_CONTENT intent - Select content from gallery -->
-            <intent-filter>
-                <action android:name="android.intent.action.GET_CONTENT" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.OPENABLE" />
-                <data android:mimeType="image/*" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.GET_CONTENT" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.OPENABLE" />
-                <data android:mimeType="video/*" />
-            </intent-filter>
-            
+
             <!-- Gallery app intent - Registers as a gallery app -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

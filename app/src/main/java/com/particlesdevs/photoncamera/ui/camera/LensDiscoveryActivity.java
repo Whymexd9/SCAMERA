@@ -140,7 +140,8 @@ public class LensDiscoveryActivity extends AppCompatActivity {
                 super.onBackPressed();
                 return;
             } else {
-                ScameraApp.restartApp(this);
+                // not while a shot is still processed (audit 2026-10-27: the exit lost it)
+                ScameraApp.restartWithDelay(this, 0);
                 return;
             }
         }

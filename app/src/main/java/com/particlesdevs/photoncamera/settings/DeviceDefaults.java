@@ -80,6 +80,15 @@ public final class DeviceDefaults {
         return out;
     }
 
+    /**
+     * This device's factory values (every defaults version; empty when it has none): the default a page reset, a slider's double
+     * tap and its «changed» mark take in place of the XML one, as the full reset applies them again.
+     */
+    public static Map<String, Object> factory(Context context) {
+        final Map<String, Object> m = forDevice(context, 0);
+        return m == null ? java.util.Collections.emptyMap() : java.util.Collections.unmodifiableMap(m);
+    }
+
     /** P365: the OPPO Find X7 Ultra (PHY110). */
     public static boolean findX7Ultra() {
         return "OPPO".equalsIgnoreCase(Build.MANUFACTURER) && "PHY110".equalsIgnoreCase(Build.MODEL);

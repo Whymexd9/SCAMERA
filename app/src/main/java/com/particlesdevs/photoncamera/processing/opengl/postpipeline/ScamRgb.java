@@ -812,6 +812,10 @@ public final class ScamRgb extends Node {
             final int s=Math.max(1,Math.round(p.mParameters.outputScale));
             final int block=8*s;
             final float chromaLimit=PreferenceKeys.hybridValue("highlight_chroma",0.35f);
+            // P368 clip guard (owner, 2026-10-27: «У нас нет блока который предотвращает умножение пересветов на коэффициенты CCM»):
+            // the ultrashort frames' white k for scamrgb / chanprep ceilingShare - camera RGB at one common ceiling above the base
+            // white (an ultrashort clip the worker did not flag) goes neutral before the white balance and the colour matrix; 0: off
+            final float usWhite=bento&&bentoK>1f?bentoK:0f;
             final long gpuStart=System.currentTimeMillis();
             if(perChannel){
                 if(cc.nearClip){
@@ -831,6 +835,7 @@ public final class ScamRgb extends Node {
                     glProg.setVar("clipHiUnflaggedU",cc.hiUnflagged?1:0);
                     glProg.setVar("clipFlagsU",flagsTex!=null?1:0);
                     glProg.setVar("blockU",block);glProg.setVar("pxStepU",s);
+                    glProg.setVar("usWhiteU",usWhite);
                     glProg.drawBlocks(chromaNear);
                     // 32- and 128-blocks: the inside of a large clipped area still finds the colour of its light
                     glProg.useAssetProgram("hlrecovery/reduce",false);
@@ -878,6 +883,7 @@ public final class ScamRgb extends Node {
                 // a failed measurement: chrominance 0 (RawTherapee's own result: its sum is always 0, see hlrecovery/opposed)
                 final float[] oc=oppChroma!=null?oppChroma:new float[3];
                 glProg.setVar("oppChromaU",oc[0],oc[1],oc[2]);
+                glProg.setVar("usWhiteU",usWhite);
             } else {
                 // SCAM HDR: neutralise at the plateau; hybrid with the recovery off: plain WB and lens shading.
                 if(clip==null)clip=new float[]{1e30f,1e30f,1e30f};
@@ -930,7 +936,7 @@ public final class ScamRgb extends Node {
             if(hybrid)com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","scamrgb input "+(signed?"signed (clamped after the noise reduction or the WHY colour averages)":"clamped per pixel (post_ab_clamp)"));
             if(perChannel)com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE","highlight recovery per channel: chroma="
                     +chromaLog
-                    +" limit="+chromaLimit+" band="+band+(early?" early release"+(inputIsMain2?" (input as main2)":""):"")
+                    +" limit="+chromaLimit+" band="+band+" clipGuard k="+usWhite+(early?" early release"+(inputIsMain2?" (input as main2)":""):"")
                     +" gpu ms="+(System.currentTimeMillis()-gpuStart));
         }catch(RuntimeException|Error failure){
             if(largeTwoX){

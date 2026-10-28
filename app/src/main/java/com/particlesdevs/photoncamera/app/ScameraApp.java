@@ -125,9 +125,52 @@ public class ScameraApp extends Application {
     /** P156: a restart is on its way (an imported config or a reset): nothing may move the module profiles meanwhile. */
     public static volatile boolean restarting;
 
+    /** The process's end of a restart (tests replace it). */
+    static Runnable exit = () -> System.exit(0);
+    /** How often a restart waiting for a shot looks again, ms. */
+    static final long RESTART_POLL_MS = 500;
+    /**
+     * The longest a restart waits for a shot, ms: the config or reset is already written, and a busy flag that never clears
+     * must not keep the old settings (and {@link #restarting}) for the rest of the process.
+     */
+    static final long RESTART_MAX_WAIT_MS = 5 * 60_000L;
+
+    /**
+     * The app restarted after {@code delayMs} (an imported config, a reset). Audit 2026-10-27 (lab-app-2): never while a shot is
+     * captured, queued or processed (ProcessingKeepAlive.busy): the exit killed its merge and the photo was lost. It waits for
+     * the shot and says so once; after {@link #RESTART_MAX_WAIT_MS} it restarts anyway.
+     */
     public static void restartWithDelay(Context context, long delayMs) {
         restarting = true;
-        getMainHandler().postDelayed(() -> restartApp(context), delayMs);
+        final Context app = context.getApplicationContext() != null ? context.getApplicationContext() : context;
+        final Handler main = sApp != null && sApp.mainThreadHandler != null ? sApp.mainThreadHandler : new Handler(Looper.getMainLooper());
+        final boolean[] told = {false};
+        final long until = android.os.SystemClock.uptimeMillis() + Math.max(0, delayMs) + RESTART_MAX_WAIT_MS;
+        main.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                boolean busy;
+                try {
+                    busy = com.particlesdevs.photoncamera.processing.ProcessingKeepAlive.busy.getAsBoolean();
+                } catch (RuntimeException e) {
+                    busy = false;
+                }
+                if (busy && android.os.SystemClock.uptimeMillis() >= until) {
+                    Log.w("ScameraApp", "restart: a shot still processed after " + RESTART_MAX_WAIT_MS / 1000 + " s, restarting anyway");
+                    busy = false;
+                }
+                if (busy) {
+                    if (!told[0]) {
+                        told[0] = true;
+                        Toast.makeText(app, com.particlesdevs.photoncamera.util.Lang.t(app, "Перезапуск после сохранения снимка",
+                                "Restarting once the photo is saved"), Toast.LENGTH_LONG).show();
+                    }
+                    main.postDelayed(this, RESTART_POLL_MS);
+                    return;
+                }
+                restartApp(app);
+            }
+        }, delayMs);
     }
 
     public static void restartApp(Context context) {
@@ -136,7 +179,7 @@ public class ScameraApp extends Application {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
         context.startActivity(intent);
-        System.exit(0);
+        exit.run();
     }
 
     public static void showToast(String msg) {

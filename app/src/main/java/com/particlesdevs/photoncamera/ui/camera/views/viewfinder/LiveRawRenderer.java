@@ -61,7 +61,8 @@ final class LiveRawRenderer {
         lookAt=now;
         try{
             ColourLook c=WhyTone.colourLook();
-            lookWhite=c.whiteMatrix(0f);
+            // P370 (B4): the scene light of the frame's matrix (PhotoMatrix: keep warm / cool as in the photo), 0 = unknown
+            lookWhite=c.whiteMatrix(com.particlesdevs.photoncamera.processing.color.PhotoMatrix.viewfinderSceneCct);
             lookOn=!c.shaderNeutral();
             lookSkin=c.skinUniform();lookVib=c.vibUniform();lookMix=c.mixUniform();lookMixOn=c.mixerOn();lookMono=c.monoUniform();
             float[][] grade=c.gradeUniforms();lookGradeA=grade[0];lookGradeB=grade[1];
@@ -254,6 +255,7 @@ final class LiveRawRenderer {
             number("u_auto_exposure",meter.exposure);number("u_contrast_boost",meter.contrast);
             GLES20.glUniform4fv(loc("u_exp_mults"),1,meter.multipliers,0);
             integer("mirror",mirror?1:0);integer("peaking_enabled",peaking);integer("u_linear_out",linear?1:0);
+            integer("u_signed_hue",com.particlesdevs.photoncamera.processing.opengl.postpipeline.WhyTone.signedHue()?1:0); // P370 (B2)
             if(linear)lastView=new com.particlesdevs.photoncamera.processing.LiveWhyMeter.View(f,crop[0],crop[1],crop[2],crop[3],transform);
             GLES20.glUniform3f(loc("peaking_color"),1,.8f,0);
             GLES20.glUniformMatrix4fv(loc("texRotate"),1,false,rotation,0);

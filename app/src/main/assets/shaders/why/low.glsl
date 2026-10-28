@@ -18,8 +18,11 @@ precision highp sampler2D;
 #import interpolation
 uniform sampler2D InputBuffer;      // white-balanced linear camera RGB (ScamRgb .. ScamHdrDenoise), output grid
 uniform sampler2D GainMap;          // lens shading gains (r, g_even, g_odd, b)
-uniform mat3 sensorToIntermediate;  // sensor -> ProPhoto
-uniform mat3 intermediateToSRGB;    // ProPhoto -> linear sRGB / Rec.709
+// The pair is Parameters' sensorToProPhoto and WhyTone.colourMatrix. On the DNG route (forward matrices) they are camera ->
+// ProPhoto and ProPhoto -> linear sRGB; on the ISP / plain-table / DCP routes the first is the white balance alone,
+// diag(1 / neutral), and the second the camera's colour matrix (CCT.matrix) with the «Цвет» white matrix after it.
+uniform mat3 sensorToIntermediate;  // camera RGB -> ProPhoto, or the white balance (see above)
+uniform mat3 intermediateToSRGB;    // ProPhoto -> linear sRGB / Rec.709, or the camera's colour matrix (see above)
 uniform vec3 neutralPointU;         // white point (NEUTRALPOINT of render.glsl); unset -> 1
 uniform float inScaleU;             // one multiplier to the G_CLEAN scale (why_input_ev); <= 0 -> 1
 uniform int factorU;                // box size in output pixels; <= 0 -> 2

@@ -67,7 +67,8 @@ public final class DcpProfile {
         if(p<0 || n<0 || p>limit || n>limit-p)throw invalid(Lang.t("Данные за границей файла","data beyond the end of the file"));return (int)p;
     }
     private static int temperature(int light)throws IOException{
-        switch(light){case 1:case 21:return 6504;case 17:case 3:return 2856;case 18:return 4874;
+        // P370 (A5): code 1 (daylight) is 5500 K, the DNG SDK's value (DngColor.illuminantTemperature); 21 is D65
+        switch(light){case 1:return 5500;case 21:return 6504;case 17:case 3:return 2856;case 18:return 4874;
             case 19:return 6774;case 20:return 5503;case 22:return 7504;case 23:return 5003;
             case 9:return 5500;case 10:return 6500;case 11:return 7500;case 12:return 6430;
             case 13:return 5000;case 14:return 4230;case 15:return 3450;case 16:return 2925;

@@ -329,8 +329,12 @@ public final class ScamLabRun {
     /** The last sides rendered (shot | fragment | key = value): turning one control renders only its side again. */
     private static final android.util.LruCache<String, Side> sides = new android.util.LruCache<>(3);
 
-    /** Forgets the rendered sides (another fragment, a deleted shot). */
-    public static synchronized void forget() {
+    /**
+     * Forgets the rendered sides (another fragment, a deleted shot). Not on the class's monitor (audit 2026-10-27): run and
+     * pipeline hold it for a whole render, and the lab's taps call this on the main thread (it froze until the render ended,
+     * an ANR); the LruCache locks itself, and a side's id names its fragment and values, so none is reused for another.
+     */
+    public static void forget() {
         sides.evictAll();
     }
 

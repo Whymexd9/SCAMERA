@@ -21,8 +21,7 @@ import java.util.Set;
  * the shared ones (format, quality, sounds, grid, watermark...) stay on the usual pages.
  */
 final class ModulePageFilter {
-    /** The root row that opens the group (ModuleProfilesFragment). */
-    static final String HUB = "module_profiles_screen";
+    /** «Камеры и модули»: its row (and its search hit) opens the group's page; SENSOR_PAGE is a module's sensor page. */
     static final String CAMERAS = "camera_settings_screen", SENSOR_PAGE = "pref_sensor_config_submenu";
     /**
      * SIMPLE_UI §4: the groups a module page never shows (the root is now groups of rows): «Система» has per-module rows by

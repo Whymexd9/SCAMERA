@@ -59,6 +59,18 @@ public class ScamProcessor extends ProcessorBase {
     public Boolean ownedHybridRoute;
     /** W1.3: the post pipeline whose GL teardown waits until the JPEG is saved (null: none pending). */
     private PostPipeline deferredPipeline;
+    /**
+     * The post pipeline of this shot until it is closed or deferred (null: none open): when the shot fails in between, Run()'s finally
+     * tears it down. Above 16 MP or with the gain-map pass nothing did, so the kept context stayed taken and its textures (GBs at
+     * 50 / 200 MP) stayed allocated.
+     */
+    private PostPipeline openPipeline;
+    /**
+     * The reference RAW the shot took from its frame (an arena view up to 16 MP, its own copy above) until its frees below (null:
+     * freed or handed on): when the shot fails after the merge, Run()'s finally frees it. Its frame's buffer is null by then, so the
+     * frames' close skipped it and the view kept the whole shot arena mapped, or a ZSL ring slot pinned, for the process lifetime.
+     */
+    private ByteBuffer referenceRaw;
 
 
     public ScamProcessor(ProcessingEventsListener processingEventsListener) {
@@ -85,6 +97,11 @@ public class ScamProcessor extends ProcessorBase {
     /** P212f (W2 = M3): the hand-set white balance's gains at the press of the queued shot (null: automatic). */
     public android.hardware.camera2.params.RggbChannelVector ownedManualWb;
     private android.hardware.camera2.params.RggbChannelVector manualWb;
+    /** The shot's digital-zoom crop and camera at the press (ImageSaver.zoomResidual / cameraIdAtPress; null id: the open one). */
+    public float ownedZoomResidual = 1f;
+    private float zoomResidual = 1f;
+    public String ownedCameraId;
+    private String cameraIdAtPress;
     /** P212g (W6 = M6): the mosaic white balance's route at the press of the queued shot (null: none). */
     public com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press ownedMosaicWb;
     private com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mosaicWb;
@@ -124,6 +141,12 @@ public class ScamProcessor extends ProcessorBase {
         ownedManualWb = null;
         this.mosaicWb = ownedMosaicWb;
         ownedMosaicWb = null;
+        this.zoomResidual = ownedZoomResidual;
+        ownedZoomResidual = 1f;
+        // the crop the processing of this shot reads (the cropShot decision, the mosaic statistic): SCAM_PROCESSING is one thread
+        com.particlesdevs.photoncamera.control.ZoomController.beginProcessing(zoomResidual);
+        this.cameraIdAtPress = ownedCameraId;
+        ownedCameraId = null;
         this.scamCapture = PreferenceKeys.isScamEnabled();
         // The route of the shot fixes the settings profile of its whole processing: pref_scam_hybrid_* for a hybrid shot,
         // the SCAM HDR keys otherwise (PreferenceKeys.isHybridShot), even if the route changes meanwhile.
@@ -145,7 +168,7 @@ public class ScamProcessor extends ProcessorBase {
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.LOCK.lock();
         try {
             processingStage = "camera metadata";
-            Camera2ApiAutoFix.ApplyRes(captureResult);
+            Camera2ApiAutoFix.ApplyRes(captureResult, characteristics); // P370 (review): the shot's black-level pattern
             if (CaptureController.isRawFormat(imageFormat)) {
                 processBurst();
             } else {
@@ -178,7 +201,12 @@ public class ScamProcessor extends ProcessorBase {
          } finally {
           try {
             com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.endShot();
+            releaseOpenPipeline();
             finishDeferredTeardown();
+            // after the GL teardown: nothing reads it any more
+            final ByteBuffer reference = referenceRaw;
+            referenceRaw = null;
+            if (reference != null) Allocator.free(reference);
             com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamDiagnostics.finish();
             if (scamOwnedOutput != null) {
                 // ScamRgb may already have freed the big buffer after the GL upload (then scamRgb is a small copy).
@@ -198,6 +226,26 @@ public class ScamProcessor extends ProcessorBase {
           } finally {
             com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.LOCK.unlock();
           }
+        }
+    }
+
+    /**
+     * The pipeline a failed shot left open ({@link #openPipeline}): its textures go with its context current (glFinish, closeAll),
+     * then the context is released (the kept one) or destroyed, as a deferred teardown.
+     */
+    private void releaseOpenPipeline() {
+        final PostPipeline open = openPipeline;
+        openPipeline = null;
+        releaseFailedPipeline(open);
+    }
+
+    static void releaseFailedPipeline(PostPipeline open) {
+        if (open == null) return;
+        try {
+            open.deferTeardown = true;
+            open.finishDeferredTeardown();
+        } catch (RuntimeException e) {
+            Log.e(TAG, "failed PostPipeline teardown: " + e);
         }
     }
 
@@ -241,6 +289,22 @@ public class ScamProcessor extends ProcessorBase {
     /** The app log's stack trace for an Exception (as before); an Error (OutOfMemoryError) through android.util.Log. */
     private static String stackTrace(Throwable t) {
         return t instanceof Exception ? Log.getStackTraceString((Exception) t) : android.util.Log.getStackTraceString(t);
+    }
+
+    /**
+     * The DNG's saved status goes to the listener when it is saved, or when it is the shot (RAW only, the merged mosaic DNG alone).
+     * A failed optional DNG is a notice: its «could not be saved» card said the photo was lost while the JPEG was saved after it.
+     */
+    static void reportDng(ProcessingEventsListener listener, boolean saved, int saveRAW, boolean mosaicDngOnly, Path dngFile) {
+        if (saved || saveRAW == 2 || mosaicDngOnly) {
+            listener.notifyImageSavedStatus(saved, dngFile);
+            return;
+        }
+        try {
+            listener.onProcessingChanged(Lang.t("DNG не сохранён; фото сохраняется", "DNG not saved; the photo is still being saved"));
+        } catch (RuntimeException e) {
+            Log.d(TAG, "DNG notice: " + e);
+        }
     }
 
     /**
@@ -395,7 +459,9 @@ public class ScamProcessor extends ProcessorBase {
             processingParameters.rawCropSensorShiftY = rawCrop.sensorShiftY;
         }
         processingParameters.scamHdrMode = PreferenceKeys.isScamHdrEnabled();
+        processingParameters.cameraIdAtPress = cameraIdAtPress;
         processingParameters.FillConstParameters(characteristics, new Point(width, height));
+        logShotCamera(processingParameters, width, height);
         // Every shot is merged by the SCAM Hybrid or SCAM HDR (the legacy merge routes are gone).
         if (!scamCapture) throw new IllegalStateException("no merge route: Hybrid or SCAM HDR needs the ZSL RAW stream");
         // sort by timestamp first
@@ -657,7 +723,9 @@ public class ScamProcessor extends ProcessorBase {
         }
         ImageFrame ref=images.get(0);
         ByteBuffer output=ref.buffer;ref.buffer=null;
+        referenceRaw = output;
         if ((long) width * height > 16_000_000L) output = outOfArena(output);
+        referenceRaw = output;
         com.particlesdevs.photoncamera.processing.ShotTimeline.mark("ref_copy"); // P236
         releaseFrames(images);
         ByteBuffer scamMergedDng=com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.lastMergedDng;
@@ -666,8 +734,10 @@ public class ScamProcessor extends ProcessorBase {
         if (mosaicDngOnly || ((saveRAW >= 1) && alignAlgorithm != 2)) {
             boolean imageSaved = false;
             // P243: the DNG carries the JPEG's white balance and colour matrix (DngColour); scam_dev dng_colour_jpeg 0: the camera's
-            // dual-illuminant profile as before
-            if (PreferenceKeys.scamDevSwitch("dng_colour_jpeg", true) && processingParameters.CCT != null) {
+            // dual-illuminant profile as before. P370 (review): a camera whose own ColorMatrix a DNG cannot carry (all zero without
+            // the tags, singular) gets the JPEG's profile with dng_colour_jpeg 0 too
+            if ((PreferenceKeys.scamDevSwitch("dng_colour_jpeg", true) || !processingParameters.dngColourMatrices())
+                    && processingParameters.CCT != null) {
                 processingParameters.dngColour = com.particlesdevs.photoncamera.processing.color.DngColour.jpegProfile(
                         processingParameters.sensorToProPhoto, processingParameters.CCT.matrix, processingParameters.whitePoint,
                         processingParameters.sceneCct);
@@ -762,7 +832,7 @@ public class ScamProcessor extends ProcessorBase {
             } finally {
                 processingParameters.dngColour = null; // P243: only these DNG writes
             }
-            processingEventsListener.notifyImageSavedStatus(imageSaved, dngFile);
+            reportDng(processingEventsListener, imageSaved, saveRAW, mosaicDngOnly, dngFile);
             if (mosaicDngOnly) {
                 try {
                     processingEventsListener.onProcessingChanged(Lang.t("«Наш ремозаик» выключен: сохранён только DNG склеенной мозаики",
@@ -772,6 +842,7 @@ public class ScamProcessor extends ProcessorBase {
             if (saveRAW == 2 || mosaicDngOnly) {
                 processingEventsListener.onProcessingFinished("RAW processing finished");
                 callback.onFinished();
+                referenceRaw = null;
                 Allocator.free(output);
                 Allocator.getMemoryCount();
                 return;
@@ -800,7 +871,9 @@ public class ScamProcessor extends ProcessorBase {
         // P179 (200 MP: LOW_MEMORY): the hybrid's pipeline takes the merged RGB (scamRgbOwned), not the reference RAW, which is
         // only held for the post_ab comparison now: above 16 MP it goes before the pipeline (401 MB at 200 MP).
         if (hybridShot && processingParameters.scamRgbOwned && (long) width * height > 16_000_000L
-                && !com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostAb.wanted(processingParameters)) {
+                && !com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostAb.wanted(processingParameters,
+                        com.particlesdevs.photoncamera.processing.color.FilmSim.current())) {
+            referenceRaw = null;
             Allocator.free(output);
             output = null;
         }
@@ -828,8 +901,16 @@ public class ScamProcessor extends ProcessorBase {
             processingParameters.outputScale = sx;
             Log.i("SCAM_HDR", "hybrid output " + hybridOut.x + "x" + hybridOut.y + " (scale " + sx + "): pipeline runs at the merged size");
         }
+        // P369 (texture-zoom, outputs-3): the digital zoom's crop of this shot (taken at its press: ImageSaver.zoomResidual), and
+        // the share of the image the photo keeps - the film's frame: the zoom's crop and the ISZ 4:3 crop below come after the
+        // film's grain, scatter and halation. Before the lab's snapshot, which keeps it: a lab render of the uncropped field sizes
+        // the film's effects as the photo had them, then and now alike.
+        final float zoomCrop = zoomResidual;
+        processingParameters.filmFrameScale = com.particlesdevs.photoncamera.processing.opengl.postpipeline.FilmHalation.filmFrameScale(
+                zoomCrop, iszAspect4x3, processingParameters.rawSize);
         if (hybridShot) com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.snapshot(processingParameters, String.valueOf(processingParameters.physicalID)); // P277
         PostPipeline pipeline = new PostPipeline();
+        openPipeline = pipeline;
         // P277: a lab shot's pipeline records the whole frame's statistics (the lab's fragments use them)
         if (hybridShot && com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamLab.recording()) pipeline.record = new com.particlesdevs.photoncamera.processing.opengl.postpipeline.LabFrame();
         // «HEIC 10 бит»: the final image comes out RGBA_1010102 for the HEVC Main10 HEIC; every 8-bit file of the shot gets an
@@ -840,10 +921,12 @@ public class ScamProcessor extends ProcessorBase {
         // P46 «Цветовое пространство»: Display P3 renders the final image in P3 primaries; every file of the shot says so.
         final com.particlesdevs.photoncamera.processing.color.OutputColour.Space colourSpace = ScameraApp.getSettings().colourSpace;
         pipeline.p3Output = colourSpace == com.particlesdevs.photoncamera.processing.color.OutputColour.Space.DISPLAY_P3;
+        // P369: the shot's film snapshot, before the teardown decision and the pipeline (every film gate of the shot reads it)
+        pipeline.takeFilm();
         // W1.3: at 16 MP or less without Ultra HDR the GL teardown waits until the JPEG is saved (finishDeferredTeardown).
-        pipeline.deferTeardown = PostPipeline.canDeferTeardown(processingParameters);
-        if (pipeline.deferTeardown) deferredPipeline = pipeline;
-        final boolean postAb = com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostAb.wanted(processingParameters);
+        pipeline.deferTeardown = PostPipeline.canDeferTeardown(processingParameters, pipeline.film);
+        if (pipeline.deferTeardown) { deferredPipeline = pipeline; openPipeline = null; }
+        final boolean postAb = com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostAb.wanted(processingParameters, pipeline.film);
         final int priorityBefore = raisePostPriority();
         Bitmap img;
         try {
@@ -863,7 +946,9 @@ public class ScamProcessor extends ProcessorBase {
         // and the digital zoom crop was skipped with Ultra HDR on. Now the map follows the resize and the crop instead.
         // Must run before the raw frame buffer is freed.
         PostPipeline.GainMapRaw gm = null;
-        if (ScameraApp.getSettings().gainMapPass()) {
+        // P369 (outputs-1): no gain map with a film - the photo is saved in SDR
+        if (ScameraApp.getSettings().gainMapPass() && pipeline.film != null) Log.i(TAG, "HDR off: film simulation " + pipeline.film.stock.id);
+        if (PostPipeline.gainMapWanted(ScameraApp.getSettings().gainMapPass(), pipeline.film)) {
             processingStage = "Ultra HDR gain map";
             try {
                 gm = pipeline.RunHDRGainMap(jpegInput, processingParameters, img,
@@ -879,7 +964,7 @@ public class ScamProcessor extends ProcessorBase {
         // P226 «Увеличивать кадр с кропом» (owner, 2026-10-19: «настройка ... не работает»): the digital zoom's crop was taken
         // after the resize to the photo size and never brought back - the switch changed nothing. On, the crop comes first
         // (on the merge's full image, the 2x grid's detail kept) and the cropped image goes to the photo size, up if need be.
-        final float zoomCrop = com.particlesdevs.photoncamera.control.ZoomController.shotResidual();
+        // P369: zoomCrop is the shot's, read before the pipeline
         final Point cropTarget = zoomCrop > 1.005f && PreferenceKeys.cropUpscale() ? photoSize(img, hybridFinal) : null;
         if (cropTarget == null && hybridFinal != null && (long) hybridFinal.x * hybridFinal.y < (long) img.getWidth() * img.getHeight()) {
             final double s = Math.sqrt((double) hybridFinal.x * hybridFinal.y / ((double) img.getWidth() * img.getHeight()));
@@ -940,6 +1025,7 @@ public class ScamProcessor extends ProcessorBase {
         final long tailFree = System.nanoTime(); // P33: where post_done -> encode goes (log only)
         // P33: the last reference of the shot arena unmaps it (~0.9 GB at 30 frames: 150-200 ms on the OPPO): up to 16 MP on a
         // helper thread while the JPEG is encoded (nothing reads these buffers any more); above it here, as before (memory).
+        referenceRaw = null; // freed here
         if ((long) width * height <= 16_000_000L) {
             final ByteBuffer freeInput = jpegInput, freeOutput = jpegInput != output ? output : null;
             BUFFER_FREE.execute(() -> {
@@ -957,6 +1043,7 @@ public class ScamProcessor extends ProcessorBase {
         // The EGL context and the rest of the GL state are not needed for the encoding: release them before it, unless the
         // teardown waits for the end of the encode (W1.3, 16 MP or less).
         if (deferredPipeline == null) try {
+            openPipeline = null;
             pipeline.close();
         } catch (Exception e) {
             Log.e(TAG, "PostPipeline close failed (non-fatal): " + Log.getStackTraceString(e));
@@ -1195,6 +1282,27 @@ public class ScamProcessor extends ProcessorBase {
         }
     }
 
+    /** The shot / open camera pairs (and sizes) whose characteristics this process has compared (logShotCamera). */
+    private static final java.util.Set<String> SHOT_CAMERA_LOGGED = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
+    /**
+     * A shot develops with the characteristics it was captured with (Parameters.camera()), no longer the open camera's: where that
+     * is another object - a FULLRES shot merged in the plain session, a lens switch while it waited - the static keys that differ
+     * are logged once per camera pair and size (log only; nothing in the photo changes here).
+     */
+    private void logShotCamera(Parameters p, int width, int height) {
+        try {
+            final String diff = Parameters.shotCameraDiff(characteristics, CaptureController.mCameraCharacteristics);
+            if (diff == null) return;
+            final String pair = p.cameraID + "/" + ScameraApp.getSettings().mCameraID + " " + width + "x" + height;
+            if (!SHOT_CAMERA_LOGGED.add(pair)) return;
+            Log.i("SCAM_CAPTURE", "shot camera " + pair + ": its own characteristics, not the open camera's object: "
+                    + (diff.isEmpty() ? "the levels and colour matrices agree" : "differ in " + diff));
+        } catch (RuntimeException e) {
+            Log.w(TAG, "shot camera comparison: " + e);
+        }
+    }
+
     /** P212f: the cameras whose curve this process has logged. */
     private static final java.util.Set<String> CURVE_LOGGED = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     /** P212f (W4): the N frames the mosaic statistic reads (the reference first). */
@@ -1210,7 +1318,7 @@ public class ScamProcessor extends ProcessorBase {
             java.util.List<ImageFrame> frames, int block, boolean aspect4x3) {
         final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Setup setup =
                 new com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Setup()
-                        .crop(ref.width, ref.height, com.particlesdevs.photoncamera.control.ZoomController.shotResidual(), aspect4x3);
+                        .crop(ref.width, ref.height, com.particlesdevs.photoncamera.control.ZoomController.processingResidual(), aspect4x3);
         if (p.hasGainMap && p.gainMap != null && p.mapSize != null && p.mapSize.x > 1 && p.mapSize.y > 1) {
             setup.gains = p.gainMap;
             setup.gainCols = p.mapSize.x;

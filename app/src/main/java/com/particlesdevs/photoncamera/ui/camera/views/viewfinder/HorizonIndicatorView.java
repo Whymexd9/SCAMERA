@@ -35,6 +35,8 @@ public class HorizonIndicatorView extends View {
     private int currentDisplayRotation = 0;
     private Gyro gyro;
     private boolean isVisible = true;
+    /** The window is shown: a stopped camera activity (Home, the gallery, the settings) keeps its views attached, hidden. */
+    private boolean windowShown = true;
     private boolean level;
 
     public HorizonIndicatorView(Context context, @Nullable AttributeSet attrs) {
@@ -91,7 +93,7 @@ public class HorizonIndicatorView extends View {
     // Gyro poll at ~30 Hz while shown, instead of an invalidate loop.
     private final Runnable gyroTick = new Runnable() {
         @Override public void run() {
-            if (isVisible && isAttachedToWindow()) {
+            if (isVisible && windowShown && isAttachedToWindow()) {
                 updateFromGyro();
                 postDelayed(this, 33);
             }
@@ -109,6 +111,15 @@ public class HorizonIndicatorView extends View {
     protected void onDetachedFromWindow() {
         removeCallbacks(gyroTick);
         super.onDetachedFromWindow();
+    }
+
+    /** No 30 Hz poll of a hidden window (the gyro is unregistered in the camera's onPause: its values are stale anyway). */
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        windowShown = visibility == VISIBLE;
+        removeCallbacks(gyroTick);
+        if (windowShown && isVisible && isAttachedToWindow()) post(gyroTick);
     }
 
     /**

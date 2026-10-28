@@ -78,22 +78,25 @@ public class ScamLabFragment extends ModuleConceptFragment {
      * The settings pages the lab offers, in the settings' order (owner, 2026-10-21: «в лаборатории у нас не все пункты есть»): every
      * SHDR page - «Кадры светов и теней» too: the saved burst holds its highlight and shadow frames and the worker merges them
      * again with the side's values (its rows that only plan the capture are in {@link #AT_SHOT}) -, the noise model and the
-     * photo size (their rows fixed at the shot said so, the downsampler and Sabre 2x re-run), the «Движение» mode's merge
-     * values and the whole «Цвет и стиль» (its warmth and saturation sit beside its pages).
+     * photo size (their rows fixed at the shot said so), the size after the merge (the downsampler and Sabre 2x re-run, in
+     * «Другие тонкие настройки» since 2026-10-27), the «Движение» mode's merge values, the whole «Снимок» (its brightness,
+     * contrast, saturation, warmth, sharpness and noise reduction sit beside its pages) and the camera's colour (profile,
+     * colour method and calibration, in «Другие тонкие настройки» since 2026-10-27).
      */
     static final String[] GROUPS = {"scam_hybrid_photo_screen", "scam_hybrid_why_sharp_screen", "scam_hybrid_why_tone_screen",
-            "scam_hybrid_capture_screen", "scam_hybrid_merge_screen", "noise_model_screen", "photo_size_screen",
-            "scam_hybrid_motion_screen", "root_colour"};
+            "scam_hybrid_capture_screen", "scam_hybrid_merge_screen", "noise_model_screen", "photo_size_screen", "adv_output",
+            "scam_hybrid_motion_screen", "root_colour", "colour_expert_category"};
     /**
      * Settings fixed at the shot: what the capture plan took (the exposures and counts of the highlight / shadow frames, the
      * «Движение» shutter, flicker and ring frames), what the burst holds (its noise model, its grid and output size, the crop
-     * kept, the remosaic) and the colour transform the shot's Parameters were built with («Цветовой метод»): offered, said so.
+     * kept, the remosaic) and the colour transform the shot's Parameters were built with («Цветовой метод»; P370 (A9): the mosaic
+     * white balance too - its neutral is in the saved white point, mosaicWbAtPress is not kept): offered, said so.
      */
     static final java.util.Set<String> AT_SHOT = new java.util.HashSet<>(java.util.Arrays.asList("pref_scam_hybrid_output",
             "pref_crop_upscale", "pref_scam_hybrid_noise_photon", "pref_scam_hybrid_noise_readout", "pref_noise_model_profile_key",
             "pref_scam_hybrid_mosaic_remosaic", "pref_scam_hybrid_bento_factor", "pref_scam_hybrid_bento_trigger",
             "pref_scam_hybrid_shasta_frames", "pref_scam_hybrid_shasta_ev", "pref_scam_hybrid_mm_shutter",
-            "pref_scam_hybrid_mm_flicker", "pref_scam_hybrid_mm_zsl_frames", "pref_color_method_key"));
+            "pref_scam_hybrid_mm_flicker", "pref_scam_hybrid_mm_zsl_frames", "pref_color_method_key", "pref_mosaic_wb_corrections"));
     /**
      * Settings that plan the highlight / shadow frames at the shot and are applied again in the merge (worker bento, bentoFrames,
      * shastaEnable, shastaForce, shastaMaxRatio): on a saved burst they can only drop or limit the frames it holds - a value that
@@ -127,10 +130,28 @@ public class ScamLabFragment extends ModuleConceptFragment {
     private static Bitmap shotPhoto;
     private static String shotPhotoPath;
 
-    /** The comparison being rendered, the one asked for meanwhile (rendered next), and the last one rendered. */
-    private static Job running, next, shown;
+    /**
+     * The comparison being rendered, the one asked for meanwhile (rendered next), the last one rendered (its result is
+     * {@link #shownResult}) and the last one that failed ({@link #runError} is its message). Audit 2026-10-27 (lab-app-1): a
+     * failure no longer takes the place of the shown job, so another job's pictures never appear under it, and «Повторить»
+     * runs it again.
+     */
+    private static Job running, next, shown, failed;
     private static ScamLabRun.Result shownResult;
     private static volatile String runError, runStage;
+    /**
+     * The lab page on screen (the last one rendered): the render thread redraws it, not the page that started the job (audit
+     * 2026-10-27: a page opened again meanwhile kept «Подготовка…» after its result was ready).
+     */
+    private static volatile ScamLabFragment live;
+
+    /** What renders a job (tests put their own): the lab's merge and pipeline of the shot. */
+    interface Runner {
+        ScamLabRun.Result run(Context app, Job job, ScamLabRun.Progress progress) throws Exception;
+    }
+
+    static Runner runner = (app, j, progress) -> j.page.endsWith("|" + ScamLabFragment.PIPELINE) ? ScamLabRun.pipeline(app, j.shot, j.crop, progress)
+            : ScamLabRun.run(app, j.shot, j.crop, j.a, j.b, progress);
     private int showMode;
     /** P307: the side the single view shows (0 = A, 1 = B). */
     private int showSide;
@@ -198,6 +219,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
             return;
         }
         rendering = true;
+        live = this;
         // the page's sliders are replaced: none is under a finger any more, a waiting redraw is this one
         dragging = false;
         redrawWaiting = false;
@@ -217,13 +239,16 @@ public class ScamLabFragment extends ModuleConceptFragment {
     // ───── The shots ─────
 
     private void renderList() {
-        page(Lang.t(getContext(), "Гайд и лаборатория", "Guide and lab"), Lang.t(getContext(), "Настройки на ваших RAW-сериях", "The settings on your own RAW bursts"));
+        // 2026-10-27: the page has its row's name («Лаборатория»; «Гайд и лаборатория» before)
+        page(Lang.t(getContext(), "Лаборатория", "Lab"), Lang.t(getContext(), "Настройки на ваших RAW-сериях", "The settings on your own RAW bursts"));
         note(Lang.t(getContext(), "Снимите серию с переключателем ниже, откройте её здесь и выберите настройку. Лаборатория склеит и обработает ту же серию дважды: "
                         + "A — как снято, B — с другим значением. Результаты можно сравнить шторкой и лупой, посмотреть разницу и карту кадров склейки.",
                 "Take a burst with the switch below, open it here and pick a setting. The lab merges and processes the same burst twice: "
                         + "A as shot, B with another value. Compare them with a border and a magnifier, see the difference and the merge's frame map."));
         labSwitch();
         final List<File> shots = ScamLab.shots();
+        // lab-app-8: the folders of an earlier version leave the galleries now, not at the next lab shot
+        if (!shots.isEmpty()) ScamLab.hideFromGalleries(ScamLab.root());
         unreadable = false;
         caption(Lang.t(getContext(), "Снимки · Download/SCAMERA/Lab", "Shots · Download/SCAMERA/Lab"));
         if (shots.isEmpty()) {
@@ -275,11 +300,18 @@ public class ScamLabFragment extends ModuleConceptFragment {
             r.setTag("lab_series_" + f.getName());
             r.setFocusable(true);
             r.setOnClickListener(v -> {
+                // lab-app-6: a double tap opens the series once (the second import found the folder taken and failed)
+                if (!beginImport(f)) return;
                 final Context app = requireContext().getApplicationContext();
                 Toast.makeText(app, Lang.t(app, "Открываю серию…", "Opening the series…"), Toast.LENGTH_SHORT).show();
                 new Thread(() -> {
                     try {
-                        final File dir = ScamLab.importSeries(f);
+                        final File dir;
+                        try {
+                            dir = ScamLab.importSeries(f);
+                        } finally {
+                            endImport(f);
+                        }
                         main.post(() -> {
                             if (root == null || !isAdded()) return;
                             Bundle a = new Bundle();
@@ -376,6 +408,11 @@ public class ScamLabFragment extends ModuleConceptFragment {
                     .setMessage(when(dir.getName()) + "\n" + Lang.t(getContext(), "Серия, параметры и превью будут удалены из Download/SCAMERA/Lab.", "The burst, parameters and preview are deleted from Download/SCAMERA/Lab."))
                     .setNegativeButton(Lang.t(getContext(), "Отмена", "Cancel"), null)
                     .setPositiveButton(Lang.t(getContext(), "Удалить", "Delete"), (d, w) -> {
+                        if (!deletable(dir)) {
+                            Toast.makeText(requireContext(), Lang.t(getContext(), "Снимок сейчас обрабатывается в лаборатории: удалите его, когда обработка закончится",
+                                    "The lab is rendering this shot: delete it once the render ends"), Toast.LENGTH_LONG).show();
+                            return;
+                        }
                         ScamLabRun.forget();
                         if (!ScamLab.remove(dir)) Toast.makeText(requireContext(), Lang.t(getContext(), "Не удалось удалить", "Could not delete"), Toast.LENGTH_SHORT).show();
                         if (root != null) render();
@@ -513,8 +550,8 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 : Lang.t(getContext(), "A и B начинаются с настроек, с которыми сделан снимок. Склейка и обработка — всегда этой версии приложения, так что старая серия проходит через новый пайплайн.",
                 "A and B start from the settings the shot was taken with. The merge and processing are always this version's, so an old series goes through the new pipeline."));
         if (s.templated)
-            note(Lang.t(getContext(), "Серия сохранена без параметров своего снимка: цвет и геометрия взяты у снимка «" + s.meta.optString("template") + "», баланс белого — серый мир по самой серии. Цвет может отличаться от снятого.",
-                    "The series was kept without its shot's parameters: the colour and geometry come from the shot «" + s.meta.optString("template") + "», the white balance from the grey world of the series. The colour may differ from the shot's."));
+            note(Lang.t(getContext(), "Серия сохранена без параметров своего снимка: цвет и геометрия взяты у снимка «" + s.meta.optString("template") + "», баланс белого — серый мир по самой серии (матрица цвета пересчитана под него). Карта виньетирования — того снимка, её цветовая часть снята при другом свете: углы могут чуть отличаться по цвету. Цвет может отличаться от снятого.",
+                    "The series was kept without its shot's parameters: the colour and geometry come from the shot «" + s.meta.optString("template") + "», the white balance from the grey world of the series (the colour matrix follows it). The lens shading map is that shot's, its colour part taken under another light: the corners may differ slightly in colour. The colour may differ from the shot's."));
         if (new File(s.dir, ScamLab.PREVIEW).isFile())
             navigation("⇄", Lang.t(getContext(), "Тогда и сейчас", "Then and now"), Lang.t(getContext(),
                     "Фото снимка (обработка той версии) рядом с той же серией, склеенной и обработанной сейчас", "The shot's photo (that version's processing) beside the same series merged and processed now"),
@@ -562,20 +599,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
             r = shown != null && shown.id.equals(job.id) ? shownResult : null;
         }
         if (r == null) {
-            LinearLayout box = column();
-            box.setGravity(Gravity.CENTER);
-            box.setPadding(0, dp(40), 0, dp(40));
-            if (runError == null) {
-                ProgressBar bar = new ProgressBar(requireContext());
-                bar.setIndeterminateTintList(ColorStateList.valueOf(accent));
-                box.addView(bar, new LinearLayout.LayoutParams(dp(48), dp(48)));
-            }
-            TextView st = text(runError != null ? runError : runStage == null ? Lang.t(getContext(), "Подготовка…", "Preparing…") : runStage, 14,
-                    runError != null ? SettingsStyle.WARN : MUTED);
-            st.setGravity(Gravity.CENTER);
-            st.setTag("lab_status");
-            box.addView(st, space(-2, -2, 14));
-            body.addView(box, new LinearLayout.LayoutParams(-1, -2));
+            waiting(errorOf(job), Lang.t(getContext(), "Подготовка…", "Preparing…"));
         } else {
             final String aText = Lang.t(getContext(), "A · тогда (фото снимка)", "A · then (the shot's photo)"), bText = Lang.t(getContext(), "B · сейчас", "B · now");
             LabCompareView compare = new LabCompareView(requireContext());
@@ -1267,7 +1291,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
     /** P355: the key of the sandbox page's comparison. */
     static final String SANDBOX_KEY = "lab:sandbox";
 
-    private static final class Job {
+    static final class Job {
         final String id, page;
         final ScamLabRun.Shot shot;
         @Nullable final int[] crop;
@@ -1469,21 +1493,9 @@ public class ScamLabFragment extends ModuleConceptFragment {
             // the last result of this page (shot, fragment, setting) stays on screen while the new values render
             r = seen != null && seen.page.equals(job.page) ? shownResult : null;
         }
+        final String err = errorOf(job);
         if (r == null) {
-            LinearLayout box = column();
-            box.setGravity(Gravity.CENTER);
-            box.setPadding(0, dp(40), 0, dp(40));
-            if (runError == null) {
-                ProgressBar bar = new ProgressBar(requireContext());
-                bar.setIndeterminateTintList(ColorStateList.valueOf(accent));
-                box.addView(bar, new LinearLayout.LayoutParams(dp(48), dp(48)));
-            }
-            TextView st = text(runError != null ? runError : runStage == null ? Lang.t(getContext(), "Подготовка…", "Preparing…") : runStage, 14,
-                    runError != null ? SettingsStyle.WARN : MUTED);
-            st.setGravity(Gravity.CENTER);
-            st.setTag("lab_status");
-            box.addView(st, space(-2, -2, 14));
-            body.addView(box, new LinearLayout.LayoutParams(-1, -2));
+            waiting(err, Lang.t(getContext(), "Подготовка…", "Preparing…"));
         } else {
             final String aText = "A · " + label(main, seenValue(seen, "a", main)), bText = "B · " + label(main, seenValue(seen, "b", main));
             LabCompareView compare = new LabCompareView(requireContext());
@@ -1493,9 +1505,9 @@ public class ScamLabFragment extends ModuleConceptFragment {
             final int height = Math.round(getResources().getDisplayMetrics().heightPixels * .48f);
             FrameLayout frame = new FrameLayout(requireContext());
             frame.addView(compare, new FrameLayout.LayoutParams(-1, height));
-            if (busy || runError != null || !seen.id.equals(job.id)) {
-                TextView st = text(runError != null ? runError : runStage == null ? Lang.t(getContext(), "Пересчёт…", "Updating…") : runStage, 13,
-                        runError != null ? SettingsStyle.WARN : TEXT);
+            if (busy || err != null || !seen.id.equals(job.id)) {
+                TextView st = text(err != null ? err : runStage == null ? Lang.t(getContext(), "Пересчёт…", "Updating…") : runStage, 13,
+                        err != null ? SettingsStyle.WARN : TEXT);
                 st.setTag("lab_status");
                 st.setPadding(dp(10), dp(6), dp(10), dp(6));
                 st.setBackground(shape(0xCC000000, 0, 10));
@@ -1504,6 +1516,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
                 frame.addView(st, lp);
             }
             body.addView(frame, space(-1, height, 6));
+            if (err != null) retry(body);
             modes(r, compare, aText, bText);
         }
         for (String k : pageKeys(key, s)) {
@@ -1669,10 +1682,11 @@ public class ScamLabFragment extends ModuleConceptFragment {
         SANDBOXES.put(s.dir.getAbsolutePath(), box);
         final File f = new File(s.dir, SANDBOX_FILE);
         try {
-            if (box.isEmpty()) {
-                f.delete();
-                return;
-            }
+            // P363: an earlier installation's file only goes through the folder grant (File.delete / an overwrite fail silently);
+            // a new file in the folder is this installation's own
+            if (!com.particlesdevs.photoncamera.processing.opengl.postpipeline.LabFiles.delete(f))
+                com.particlesdevs.photoncamera.util.Log.w("SCAM_LAB", "old sandbox not deleted: " + f);
+            if (box.isEmpty()) return;
             final org.json.JSONObject o = new org.json.JSONObject();
             for (Map.Entry<String, Object> e : box.entrySet()) {
                 final Object v = e.getValue();
@@ -1757,20 +1771,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
             r = shown != null && shown.id.equals(job.id) ? shownResult : null;
         }
         if (r == null) {
-            LinearLayout wait = column();
-            wait.setGravity(Gravity.CENTER);
-            wait.setPadding(0, dp(40), 0, dp(40));
-            if (runError == null) {
-                ProgressBar bar = new ProgressBar(requireContext());
-                bar.setIndeterminateTintList(ColorStateList.valueOf(accent));
-                wait.addView(bar, new LinearLayout.LayoutParams(dp(48), dp(48)));
-            }
-            TextView st = text(runError != null ? runError : runStage == null ? Lang.t(getContext(), "Подготовка…", "Preparing…") : runStage, 14,
-                    runError != null ? SettingsStyle.WARN : MUTED);
-            st.setGravity(Gravity.CENTER);
-            st.setTag("lab_status");
-            wait.addView(st, space(-2, -2, 14));
-            body.addView(wait, new LinearLayout.LayoutParams(-1, -2));
+            waiting(errorOf(job), Lang.t(getContext(), "Подготовка…", "Preparing…"));
         } else {
             final String aText = Lang.t(getContext(), "A · как снято", "A · as shot"), bText = Lang.t(getContext(), "B · песочница", "B · sandbox");
             LabCompareView compare = new LabCompareView(requireContext());
@@ -2341,30 +2342,29 @@ public class ScamLabFragment extends ModuleConceptFragment {
      */
     private void start(Job job) {
         synchronized (ScamLabFragment.class) {
-            if (shown != null && shown.id.equals(job.id)) return;
+            // the job on screen, or the one that just failed (it runs again only through «Повторить», not at every redraw)
+            if (shown != null && shown.id.equals(job.id) || failed != null && failed.id.equals(job.id)) return;
             if (running != null) {
                 next = running.id.equals(job.id) ? null : job;
                 return;
             }
-            runError = null;
             runStage = null;
             running = job;
         }
         final Context app = requireContext().getApplicationContext();
+        final Runner render = runner;
         new Thread(() -> {
             Job j = job;
             while (j != null) {
                 try {
                     final ScamLabRun.Progress progress = text -> {
                         runStage = text;
-                        redraw();
+                        redrawLive();
                     };
-                    final ScamLabRun.Result r = j.page.endsWith("|" + PIPELINE) ? ScamLabRun.pipeline(app, j.shot, j.crop, progress)
-                            : ScamLabRun.run(app, j.shot, j.crop, j.a, j.b, progress);
-                    synchronized (ScamLabFragment.class) { shown = j; shownResult = r; runError = null; }
+                    final ScamLabRun.Result r = render.run(app, j, progress);
+                    synchronized (ScamLabFragment.class) { shown = j; shownResult = r; failed = null; runError = null; }
                 } catch (Throwable e) {
-                    runError = Lang.t(app, "Не получилось: ", "Failed: ") + e.getMessage();
-                    synchronized (ScamLabFragment.class) { shown = j; }
+                    synchronized (ScamLabFragment.class) { failed = j; runError = Lang.t(app, "Не получилось: ", "Failed: ") + e.getMessage(); }
                 }
                 runStage = null;
                 synchronized (ScamLabFragment.class) {
@@ -2372,9 +2372,91 @@ public class ScamLabFragment extends ModuleConceptFragment {
                     next = null;
                     running = j;
                 }
-                redraw();
+                redrawLive();
             }
         }, "scam-lab").start();
+    }
+
+    /** The error of {@code job}'s last run, null when it did not fail (another job's error is not this page's). */
+    @Nullable
+    private static String errorOf(Job job) {
+        synchronized (ScamLabFragment.class) {
+            return failed != null && failed.id.equals(job.id) ? runError : null;
+        }
+    }
+
+    /** No result yet: the progress and the stage, or the job's error with «Повторить». */
+    private void waiting(@Nullable String err, String preparing) {
+        LinearLayout box = column();
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(0, dp(40), 0, dp(40));
+        if (err == null) {
+            ProgressBar bar = new ProgressBar(requireContext());
+            bar.setIndeterminateTintList(ColorStateList.valueOf(accent));
+            box.addView(bar, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        }
+        final String stage = runStage;
+        TextView st = text(err != null ? err : stage == null ? preparing : stage, 14, err != null ? SettingsStyle.WARN : MUTED);
+        st.setGravity(Gravity.CENTER);
+        st.setTag("lab_status");
+        box.addView(st, space(-2, -2, 14));
+        if (err != null) retry(box);
+        body.addView(box, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    /** «Повторить» under a failed job's error (a shot was being processed, say): the page renders it again. */
+    private void retry(LinearLayout parent) {
+        TextView b = button(Lang.t(getContext(), "Повторить", "Retry"), true, () -> {
+            synchronized (ScamLabFragment.class) {
+                failed = null;
+                runError = null;
+            }
+            render();
+        });
+        b.setTag("lab_retry");
+        parent.addView(b, space(-2, -2, 12));
+    }
+
+    /** The lab page on screen, drawn again (a stage, a result). */
+    private static void redrawLive() {
+        final ScamLabFragment f = live;
+        if (f != null) f.redraw();
+    }
+
+    /**
+     * Whether the shot in {@code dir} may be deleted: not while its job renders (it reads the burst; audit 2026-10-27: the delete
+     * no longer waits for the render, which then failed and left a half-deleted folder). A job of it waiting to run is dropped.
+     */
+    static boolean deletable(File dir) {
+        final File d = dir.getAbsoluteFile();
+        synchronized (ScamLabFragment.class) {
+            if (running != null && running.shot.dir.getAbsoluteFile().equals(d)) return false;
+            if (next != null && next.shot.dir.getAbsoluteFile().equals(d)) next = null;
+            return true;
+        }
+    }
+
+    /** The kept series being opened (ScamLab.importSeries): a second tap on «Открыть» meanwhile starts no second import. */
+    private static final java.util.Set<String> IMPORTING = new java.util.HashSet<>();
+
+    /** False while an import of {@code series} runs; else this one is registered until {@link #endImport} and true. */
+    static boolean beginImport(File series) {
+        synchronized (IMPORTING) {
+            return IMPORTING.add(series.getAbsolutePath());
+        }
+    }
+
+    static void endImport(File series) {
+        synchronized (IMPORTING) {
+            IMPORTING.remove(series.getAbsolutePath());
+        }
+    }
+
+    /** Tests: no job is rendered or waiting. */
+    static boolean labIdle() {
+        synchronized (ScamLabFragment.class) {
+            return running == null && next == null;
+        }
     }
 
     private void redraw() {
@@ -2392,6 +2474,7 @@ public class ScamLabFragment extends ModuleConceptFragment {
 
     @Override public void onDestroyView() {
         main.removeCallbacksAndMessages(null);
+        if (live == this) live = null;
         super.onDestroyView();
     }
 }

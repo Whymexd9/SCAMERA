@@ -85,6 +85,24 @@ public class SettingsSearchFragment extends Fragment {
         }
         return words;
     }
+    /**
+     * 2026-10-27 (owner: settings anyone can set up alone, nothing lost): the words a row is found by besides its shown ones -
+     * its words in the other UI language ({@link #otherLanguage}) and its help text ({@link SettingHelp}), which names a moved
+     * row's former title and place, so «Базовая экспозиция AE» still finds «Яркость».
+     */
+    public static HashMap<String,String> searchWords(Context context, Iterable<Entry> entries) {
+        HashMap<String,String> words=otherLanguage(context);
+        if(context==null || entries==null) return words;
+        for(Entry e:entries) {
+            int help=SettingHelp.helpRes(e.key);
+            if(help==0) continue;
+            String text;
+            try { text=context.getString(help); } catch(RuntimeException missing) { continue; }
+            String known=words.get(e.key);
+            words.put(e.key, known==null ? text : known+" "+text);
+        }
+        return words;
+    }
     private static String attribute(Resources res, XmlResourceParser xml, int index) {
         int id=xml.getAttributeResourceValue(index, 0);
         if(id!=0) {
@@ -121,7 +139,7 @@ public class SettingsSearchFragment extends Fragment {
     }
     private String query="";
     private ArrayList<Entry> entries;
-    private HashMap<String,String> other=new HashMap<>(); // the words of the other UI language, by key
+    private HashMap<String,String> other=new HashMap<>(); // the other UI language's words and the help text, by key
     private final ArrayList<Entry> results=new ArrayList<>();
     private EditText input;
     private TextView count;
@@ -136,7 +154,7 @@ public class SettingsSearchFragment extends Fragment {
         entries=(ArrayList<Entry>)requireArguments().getSerializable("entries");
         if(entries==null) entries=new ArrayList<>();
         if(state!=null) query=state.getString("query", "");
-        other=otherLanguage(getContext());
+        other=searchWords(getContext(), entries);
     }
     @Override public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup parent, Bundle state) {
         LinearLayout root=new LinearLayout(requireContext());root.setOrientation(LinearLayout.VERTICAL);

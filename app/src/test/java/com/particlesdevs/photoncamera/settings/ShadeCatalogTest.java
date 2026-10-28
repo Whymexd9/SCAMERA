@@ -310,6 +310,30 @@ public class ShadeCatalogTest {
         searchFindsTitlesSectionsAndTheOtherLanguage("For experts", "SHDR › Highlight and shadow frames");
     }
 
+    /**
+     * Audit 2026-10-27 (settings-reset-ignores-device-defaults): a shade slider's default (its double tap) is this phone's factory
+     * value, as the settings' sliders and the resets take it, not the XML default its «changed» mark would count as a change.
+     */
+    @Test
+    public void aSliderDefaultIsThePhonesFactoryValue() {
+        final String rl3 = "pref_scam_hybrid_why_sharp_rl3_amount";
+        ShadeCatalog.Entry plain = catalog.entry(rl3);
+        assertNotNull(plain);
+        assertEquals(ShadeCatalog.SLIDER, plain.kind);
+        assertEquals("no device value here: the XML's", 1f, ((Number) plain.defaultValue).floatValue(), 1e-6f);
+
+        org.robolectric.shadows.ShadowBuild.setManufacturer("Xiaomi");
+        org.robolectric.shadows.ShadowBuild.setDevice("viva"); // Redmi Note 11 Pro: RL 3 at 1.5, 12 frames
+        ShadeCatalog note = new ShadeCatalog(context, prefs);
+        ShadeCatalog.Entry e = note.entry(rl3);
+        assertEquals(DeviceDefaults.NOTE11PRO_RL3, ((Number) e.defaultValue).floatValue(), 1e-6f);
+        assertEquals(DeviceDefaults.NOTE11PRO_RL3, (float) PreferenceNumber.read(note.defaultOf(e), 0), 1e-6f);
+        prefs.edit().putString(rl3, String.valueOf(DeviceDefaults.NOTE11PRO_RL3)).commit();
+        assertFalse("the factory value is no change", note.changed(e));
+        prefs.edit().putString(rl3, "1").commit();
+        assertTrue(note.changed(e));
+    }
+
     /** The process-wide catalog follows a language change (the activity is recreated, the process is not). */
     @Test
     public void processCatalogIsRebuiltAfterALanguageChange() {

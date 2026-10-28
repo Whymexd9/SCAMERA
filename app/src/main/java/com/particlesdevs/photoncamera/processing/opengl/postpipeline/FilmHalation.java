@@ -6,6 +6,7 @@ import com.particlesdevs.photoncamera.processing.color.FilmSim;
 import com.particlesdevs.photoncamera.processing.opengl.GLFormat;
 import com.particlesdevs.photoncamera.processing.opengl.GLTexture;
 import com.particlesdevs.photoncamera.processing.opengl.nodes.Node;
+import com.particlesdevs.photoncamera.processing.render.Parameters;
 import com.particlesdevs.photoncamera.util.Log;
 
 import java.util.ArrayList;
@@ -33,14 +34,38 @@ public final class FilmHalation extends Node {
         this.set = set;
     }
 
-    /** The node for the settings now, null without a simulation, a format or halation. */
-    public static FilmHalation fromSettings() {
-        final FilmSim.Settings s = FilmSim.current();
+    /** The node for the shot's film snapshot (P369: PostPipeline.film), null without a simulation, a format or halation. */
+    public static FilmHalation from(@androidx.annotation.Nullable FilmSim.Settings s) {
         if (s == null || s.format.longMm <= 0) return null;
         final float[] h = s.stock.halation;
         final boolean halo = s.halation > 0f && h[0] + h[1] + h[2] > 0f, scatter = s.stock.spectral != null && s.softness > 0f;
         if (!halo && !scatter) return null;
         return new FilmHalation(s);
+    }
+
+    /**
+     * P369 (texture-zoom, outputs-3, texture-lab, outputs-4): the long side of the film's frame in pixels of an image
+     * {@code imageLong} pixels long. The film covers the photo as saved: the digital zoom's crop and the ISZ 4:3 crop come after
+     * the film effects (Parameters.filmFrameScale: their share of the image's long side), and a lab fragment stands for its whole
+     * shot (labWholeSize over rawSize), so the grain, the scatter and the halation keep their size in the photo. imageLong itself
+     * when neither applies (a film shot without zoom: as before, bit for bit).
+     */
+    public static int filmLongPx(int imageLong, @androidx.annotation.Nullable Parameters p) {
+        if (p == null) return imageLong;
+        final float frame = p.filmFrameScale > 0f ? p.filmFrameScale : 1f;
+        final float lab = p.labWholeSize != null && p.rawSize != null && Math.max(p.rawSize.x, p.rawSize.y) > 0
+                ? Math.max(p.labWholeSize.x, p.labWholeSize.y) / (float) Math.max(p.rawSize.x, p.rawSize.y) : 1f;
+        if (frame == 1f && lab == 1f) return imageLong;
+        return Math.max(1, Math.round(imageLong * frame * lab));
+    }
+
+    /**
+     * P369: Parameters.filmFrameScale of a shot - the ISZ 4:3 crop's share of the long side ({@code iszAspect4x3}, of the
+     * pipeline's {@code rawSize}) over the digital zoom's crop {@code zoomCrop} (ScamProcessor's rule: a crop above 1.005).
+     */
+    public static float filmFrameScale(float zoomCrop, boolean iszAspect4x3, @androidx.annotation.Nullable android.graphics.Point rawSize) {
+        final float isz = iszAspect4x3 && rawSize != null ? com.particlesdevs.photoncamera.processing.IszAspectCrop.longRatio(rawSize.x, rawSize.y) : 1f;
+        return zoomCrop > 1.005f ? isz / zoomCrop : isz;
     }
 
     /** The pyramid level whose blur is about {@code sigmaPx} (a gaussdown level k blurs about 0.8 * 2^k). */
@@ -57,7 +82,7 @@ public final class FilmHalation extends Node {
         final GLTexture in = previousNode.WorkingTexture;
         WorkingTexture = in;
         final long started = System.currentTimeMillis();
-        final float um = set.pixelUm(Math.max(in.mSize.x, in.mSize.y));
+        final float um = set.pixelUm(filmLongPx(Math.max(in.mSize.x, in.mSize.y), basePipeline.mParameters));
         if (um <= 0f) return;
         final GLFormat rgba = new GLFormat(GLFormat.DataType.FLOAT_16, 4);
         final List<GLTexture> temp = new ArrayList<>();
@@ -126,11 +151,15 @@ public final class FilmHalation extends Node {
             glProg.setTexture("B2", bounce[1]);
             glProg.setTexture("B3", bounce[2]);
             glProg.drawBlocks(haloTex);
+            // The output (a main, made again on its next use above 100 MP or with early release) is taken before the samplers
+            // are bound: a new texture binds itself on unit 1 + its name, which may be a sampler's unit (the pass then read its
+            // own output as Halo).
+            final GLTexture out = basePipeline.getMain();
             glProg.useAssetProgram("film/halation", false);
             glProg.setTexture("InputBuffer", e1);
             glProg.setTexture("Halo", haloTex);
             glProg.setVar("amount", a[0], a[1], a[2]);
-            WorkingTexture = basePipeline.getMain();
+            WorkingTexture = out;
             glProg.drawBlocks(WorkingTexture);
             glProg.closed = true;
             Log.i("SCAM_PIPELINE", "film halation " + set.stock.id + " " + set.format.id + String.format(java.util.Locale.ROOT,

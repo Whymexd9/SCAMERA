@@ -118,7 +118,7 @@
     <string name="prefs_scam_motion_on_title">Motion mode</string>
     <string name="prefs_scam_motion_on_summary">For motion: short shutter and fewer frames so the subject stays sharp. Same as the viewfinder icon.</string>
     <string name="prefs_scam_motion_screen_title">Motion</string>
-    <string name="prefs_scam_motion_screen_summary">Shutter and frame count for sharp moving subjects</string>
+    <string name="prefs_scam_motion_screen_summary">The values of the “Motion” mode (the top bar button): shutter and frame count for sharp moving subjects</string>
     <string name="prefs_scam_motion_shutter_title">Shutter at most</string>
     <string name="prefs_scam_motion_shutter_summary">%s. Longest shutter in Motion mode. Shorter: sharper motion but more noise (the camera raises the sensitivity, ISO).</string>
     <string name="prefs_scam_motion_flicker_title">No lamp flicker</string>

@@ -72,7 +72,7 @@ public final class SettingsStyle {
     static final Set<String> TILES = new HashSet<>();
     /** Plain preferences that open a page (handled in SettingsFragment.onPreferenceTreeClick): a chevron, not an action. */
     static final Set<String> NAVIGATION = new HashSet<>(Arrays.asList("pref_dcp_profile_key", "pref_theme_accent_key",
-            "pref_file_name_pattern", "photo_style_lut"));
+            "pref_file_name_pattern"));
 
     public static int dp(Context c, float v) { return UiTokens.dp(c, v); }
 
@@ -439,7 +439,7 @@ public final class SettingsStyle {
         if ("photo_style_screen".equals(p.getKey()) && p.getSharedPreferences() != null)
             return com.particlesdevs.photoncamera.settings.PhotoStyle.name(p.getContext(),
                     com.particlesdevs.photoncamera.settings.PhotoStyle.current(p.getSharedPreferences()));
-        if (("film_lut_screen".equals(p.getKey()) || "photo_style_lut".equals(p.getKey())) && p.getSharedPreferences() != null)
+        if ("film_lut_screen".equals(p.getKey()) && p.getSharedPreferences() != null)
             return com.particlesdevs.photoncamera.ui.settings.custompreferences.FilmLutPreference.displayName(p.getContext(),
                     p.getSharedPreferences().getString(com.particlesdevs.photoncamera.processing.color.FilmLut.KEY, ""));
         if ("lens_filter_screen".equals(p.getKey()) && p.getSharedPreferences() != null)

@@ -311,7 +311,13 @@ vec3 vfColour(vec2 texPos) {
     return even && max(cfa_block_size, 1) == 1 ? vfFastQuad(mx & ~1, my & ~1) : getFastColor(mx, my);
 }
 
+// P370 (B2): the linear frame's value at the pixel before the clamp at 0 (a colour the matrix put outside sRGB keeps its
+// negative channel: why/combine signedHueU)
+vec3 vfLinearSigned(vec2 texPos) {
+    return color_transform * (vfColour(texPos) * vfShading(texPos));
+}
+
 // the linear frame's value at the pixel (rawdevelop_fs u_linear_out 1)
 vec3 vfLinear(vec2 texPos) {
-    return max(color_transform * (vfColour(texPos) * vfShading(texPos)), vec3(0.0));
+    return max(vfLinearSigned(texPos), vec3(0.0));
 }

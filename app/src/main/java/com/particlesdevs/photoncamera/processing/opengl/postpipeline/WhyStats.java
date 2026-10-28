@@ -140,10 +140,10 @@ public final class WhyStats extends Node {
         return -1;
     }
 
-    /** SENSOR_MAX_ANALOG_SENSITIVITY of the camera; the mod uses 10000 without it. */
-    static int maxAnalogIso() {
+    /** SENSOR_MAX_ANALOG_SENSITIVITY of the shot's camera ({@code p}'s; the open one without it); the mod uses 10000 without it. */
+    static int maxAnalogIso(com.particlesdevs.photoncamera.processing.render.Parameters p) {
         try {
-            CameraCharacteristics c = CaptureController.mCameraCharacteristics;
+            CameraCharacteristics c = p != null ? p.camera() : CaptureController.mCameraCharacteristics;
             Integer v = c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY);
             return v != null && v > 0 ? v : 10000;
         } catch (RuntimeException e) {
@@ -182,7 +182,7 @@ public final class WhyStats extends Node {
             glProg.closed = true;
             st.low.BufferLoad();
             final boolean legacy = com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy();
-            int iso = pipeline.mParameters.iso, maxIso = maxAnalogIso();
+            int iso = pipeline.mParameters.iso, maxIso = maxAnalogIso(pipeline.mParameters);
             WhyAe.Settings settings = WhyTone.settings();
             settings.noiseS = pipeline.noiseS;
             settings.noiseO = pipeline.noiseO;

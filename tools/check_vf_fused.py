@@ -13,7 +13,8 @@ linear frame, then why/combine.glsl POINT_FUSED 1 on it (LiveWhyTone.draw), both
   sharp saturated edges, a lens-shading map, white balance and a colour matrix, portrait and landscape rotations, the front
   mirror, a viewport origin off (0, 0) and a black level of its own at each CFA site (the order of u_black_level):
   mean |fused - P314| <= 1/255, its 99th percentile <= 3/255 and its maximum <= 12/255 of the 8-bit output in every case, and a
-  flat frame within 1/255 everywhere. What differs: the linear frame's half floats, the lens-shading gain of the 3 x 3 colour
+  flat frame within 1/255 everywhere - every case with the P370 signed hue off and on (signedHueU / u_signed_hue 0 and the
+  shipped default 1, where the two-pass linear frame keeps a colour outside sRGB signed). What differs: the linear frame's half floats, the lens-shading gain of the 3 x 3 colour
   neighbourhood (the pixel's, not each neighbour's), and a neighbour's frame position from the derivatives of texCoord instead
   of the rasteriser's own value (~1e-4 px apart). A pixel centre exactly on a quad's border (every 15th row and column at
   1440 x 1920 of 3072 x 4096) takes the quad after it in both passes (import_vfraw VF_TIE = rawdevelop_fs RAW_TIE, checked
@@ -168,6 +169,11 @@ def function(src: str, name: str) -> str | None:
 
 def source_part() -> None:
     combine = read(SH / 'why/combine.glsl')
+    # P370 (B2): the signed hue (signedHueU, off when unset) is taken out as check_colour_output.py does, after checking it is there
+    sys.path.insert(0, str(ROOT / 'tools'))
+    from check_colour_output import has_signed_hue, without_signed_hue
+    check(has_signed_hue(combine), 'combine.glsl lost the P370 signed hue')
+    combine = without_signed_hue(combine)
     check('#define RAW_SOURCE 0' in combine, 'combine.glsl has no "#define RAW_SOURCE 0"')
     hashes = {p: token_hash(combine, p) for p in ('0', '1')}
     for p, h in hashes.items():
@@ -411,7 +417,7 @@ def gpu_part() -> None:
                 'color_transform': tuple(ccm.T.flatten()), 'u_lsc_intensity': 1.0, 'mirror': mirror, 'texRotate': rot,
                 'u_ldc_enabled': 0}
 
-    def p314(f, t_raw, w, h, crop, rot, mirror, origin):
+    def p314(f, t_raw, w, h, crop, rot, mirror, origin, signed):
         """LiveWhyTone.draw (vf_why 1): rawdevelop_fs u_linear_out 1 into the RGBA16F linear frame, why/combine into RGBA8. The
         linear frame is rasterised at the fused pass's viewport origin: a pixel centre on a quad's border (every 15th row and
         column at 1440 x 1920 of 3072 x 4096) takes the quad the rasteriser's rounding gives it, which depends on the origin -
@@ -423,7 +429,7 @@ def gpu_part() -> None:
         ctx.viewport = (ox, oy, w, h)
         t_raw.use(2)
         t_lsc.use(3)
-        put(prog_lin, dict(raw_vals(f, crop, rot, mirror), sTexture16=2, u_lsc_map=3, u_linear_out=1, peaking_enabled=0,
+        put(prog_lin, dict(raw_vals(f, crop, rot, mirror), sTexture16=2, u_lsc_map=3, u_linear_out=1, u_signed_hue=signed, peaking_enabled=0,
                            u_auto_exposure=1.0, u_ef_enabled=1, u_lut_enabled=0, u_look_on=0))
         vao_lin.render(moderngl.TRIANGLE_STRIP)
         part = np.frombuffer(big.read(), np.float16).reshape(h + oy + 2, w + ox + 3, 4)[oy:oy + h, ox:ox + w]
@@ -441,14 +447,14 @@ def gpu_part() -> None:
                 prog_tone[name].value = i
         ones.use(7)
         t_curve.use(8)
-        put(prog_tone, dict(tone_vals, GainMap=7))
+        put(prog_tone, dict(tone_vals, GainMap=7, signedHueU=signed))
         ctx.vertex_array(prog_tone, []).render(vertices=3)
         res = np.frombuffer(out.read(), np.uint8).reshape(h, w, 4)[..., :3].astype(np.int16)
         for o in (fb2, lin, out):
             o.release()
         return res
 
-    def fused(f, t_raw, w, h, crop, rot, mirror, origin):
+    def fused(f, t_raw, w, h, crop, rot, mirror, origin, signed):
         """LiveWhyTone.drawFused: why/combine RAW_SOURCE 1 into a w x h viewport at origin of a larger 8-bit target."""
         ox, oy = origin
         out = ctx.texture((w + ox + 3, h + oy + 2), 4)
@@ -462,7 +468,7 @@ def gpu_part() -> None:
         t_curve.use(8)
         t_raw.use(9)
         t_lsc.use(10)
-        put(prog_fused, dict(tone_vals, **raw_vals(f, crop, rot, mirror), GainMap=7, InputBuffer=0, WhyLow=1, WhyColour=2,
+        put(prog_fused, dict(tone_vals, **raw_vals(f, crop, rot, mirror), signedHueU=signed, GainMap=7, InputBuffer=0, WhyLow=1, WhyColour=2,
                              WhyFused=3, WhyDetailRef=4, WhyLumaS=5, sTexture16=9, u_lsc_map=10, vpOriginU=(ox, oy), vpSizeU=(w, h)))
         vao_fused.render(moderngl.TRIANGLE_STRIP)
         res = np.frombuffer(out.read(), np.uint8).reshape(h + oy + 2, w + ox + 3, 4)[oy:oy + h, ox:ox + w, :3].astype(np.int16)
@@ -470,7 +476,6 @@ def gpu_part() -> None:
         out.release()
         return res
 
-    rng = np.random.default_rng(365)
     # name, frame w x h, CFA, block, cfa_mode (1: plain Bayer, 0: one colour per 2 x 2 macro pixels), viewport, rotation,
     # mirror, viewport origin, flat
     cases = [('1x RGGB portrait', 1024, 768, 0, 1, 1, (360, 480), 180, 0, (0, 0), False),
@@ -483,7 +488,12 @@ def gpu_part() -> None:
              ('Quad cell means (2x ISZ)', 512, 384, 3, 1, 0, (360, 480), 180, 0, (0, 0), False),
              ('Quad cell means, mirror', 512, 384, 0, 1, 0, (360, 480), 0, 1, (0, 0), False),
              ('Quad block 2', 1024, 768, 3, 2, 0, (360, 480), 180, 0, (0, 0), False)]
-    for name, fw, fh, cfa, block, mode, vp, deg, mirror, origin, flat in cases:
+    # P370 (B2, review): both passes with the signed hue off (signedHueU / u_signed_hue 0, the shaders before P370) and on (the
+    # shipped default, scam_dev ccm_signed_hue 1: the linear frame keeps a colour outside sRGB signed), the same frames
+    for signed, name, fw, fh, cfa, block, mode, vp, deg, mirror, origin, flat in [(sg,) + c for sg in (0, 1) for c in cases]:
+        if name == cases[0][0]:
+            rng = np.random.default_rng(365)
+        name = '%s%s' % (name, ', signed hue' if signed else '')
         img = scene(fh, fw, rng, flat)
         raw = mosaic(img, cfa, block, rng, black, noise=not flat)
         t_raw = ctx.texture((fw, fh), 1, raw.tobytes(), dtype='u2')
@@ -494,8 +504,8 @@ def gpu_part() -> None:
         crop0 = visible_crop(fw, fh, block, vp[0], vp[1], quarter)
         w, h = tone_size(vp[0], vp[1], crop0[2], crop0[3], 1 if mode == 0 and block == 1 else block, quarter)
         crop = visible_crop(fw, fh, block, w, h, quarter)
-        old = p314(f, t_raw, w, h, crop, rot, mirror, origin)
-        new = fused(f, t_raw, w, h, crop, rot, mirror, origin)
+        old = p314(f, t_raw, w, h, crop, rot, mirror, origin, signed)
+        new = fused(f, t_raw, w, h, crop, rot, mirror, origin, signed)
         d = np.abs(new - old)
         mean, p99, mx = d.mean(), np.percentile(d, 99), d.max()
         direct = (w, h) == vp

@@ -38,7 +38,8 @@ public class BackupPreferences extends EditTextPreference {
             for (int i = end - 1; i >= start; i--) {
                 char currentChar = source.charAt(i);
                 if (!isAcceptedCharacter(currentChar)) {
-                    Toast.makeText(getContext(), "Invalid '" + currentChar + "'", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), Lang.t(getContext(), "Недопустимый символ «" + currentChar + "»",
+                            "Invalid character «" + currentChar + "»"), Toast.LENGTH_SHORT).show();
                     sourceAsSpannableBuilder.delete(i, i + 1);
                 }
             }
@@ -50,7 +51,8 @@ public class BackupPreferences extends EditTextPreference {
                 if (isAcceptedCharacter(currentChar)) {
                     filteredStringBuilder.append(currentChar);
                 } else {
-                    Toast.makeText(getContext(), "Invalid '" + currentChar + "'", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), Lang.t(getContext(), "Недопустимый символ «" + currentChar + "»",
+                            "Invalid character «" + currentChar + "»"), Toast.LENGTH_SHORT).show();
                 }
             }
             return filteredStringBuilder.toString();

@@ -39,6 +39,48 @@ public class ScameraCrashReporterTest {
                 "p", "p", "main", new RuntimeException()).contains("build     : " + BuildIdentity.line() + "\n"));
     }
 
+    /**
+     * Audit 2026-10-27 (lab-app-5): after a reinstall the shared SCAMERA-crash.log is an earlier install's, which the File API cannot
+     * write or read (P363); the report goes to this install's own file beside it, and ExitReasons reads it there.
+     */
+    @Test public void unwritableSharedFileFallsBackToInstallStem() throws Exception {
+        final android.content.Context c = org.robolectric.RuntimeEnvironment.getApplication();
+        org.robolectric.Shadows.shadowOf(c.getPackageManager()).getInternalMutablePackageInfo(c.getPackageName()).firstInstallTime = 1_792_000_000_000L;
+        final String stem = RotatingLogFile.installStem(c, ScameraCrashReporter.STEM);
+        assertTrue(stem, stem != null && stem.startsWith("SCAMERA-crash-"));
+        final File shared = ScameraFiles.file("SCAMERA-crash.log"), own = ScameraFiles.file(stem + ScameraCrashReporter.EXTENSION);
+        own.delete();
+        assertTrue("a path the File API cannot write", shared.mkdirs() || shared.isDirectory());
+        try {
+            ScameraCrashReporter.write(c, Thread.currentThread(), new IllegalStateException("after a reinstall"));
+            final String text = new String(Files.readAllBytes(own.toPath()), StandardCharsets.UTF_8);
+            assertTrue(text, text.startsWith("SCAMERA crash report\n"));
+            assertTrue(text, text.contains("java.lang.IllegalStateException: after a reinstall"));
+            final String read = ExitReasons.lastCrashReport(c);
+            assertTrue(read, read.startsWith("SCAMERA crash report"));
+            assertTrue(read, read.contains("after a reinstall"));
+        } finally {
+            own.delete();
+            shared.delete();
+        }
+    }
+
+    /** Audit 2026-10-27: a newer file that shows but cannot be read gives way to the next one (it was "crash file not read"). */
+    @Test public void lastCrashReportSkipsAnUnreadableFile() throws Exception {
+        File dir = tmp.newFolder("reports");
+        File readable = new File(dir, "SCAMERA-crash-20261027-100000.log");
+        Files.write(readable.toPath(), "old text\nSCAMERA crash report\nthe stack\n".getBytes(StandardCharsets.UTF_8));
+        // an earlier install's file: listed (isFile), newest, but the File API cannot open it
+        File denied = new File(dir, "SCAMERA-crash.log") {
+            @Override public boolean isFile() { return true; }
+            @Override public long lastModified() { return Long.MAX_VALUE; }
+            @Override public long length() { return 100; }
+        };
+        assertEquals("SCAMERA crash report\nthe stack", ExitReasons.lastCrashReport(Arrays.asList(denied, readable)));
+        assertTrue(ExitReasons.lastCrashReport(Arrays.asList(denied)).startsWith("crash file not read: "));
+        assertEquals("", ExitReasons.lastCrashReport(Arrays.asList(new File(dir, "none.log"))));
+    }
+
     @Test public void theFileIsCappedAndTheNewestReportStaysInIt() throws Exception {
         File dir = tmp.newFolder("SCAMERA");
         File crash = new File(dir, "SCAMERA-crash.log");

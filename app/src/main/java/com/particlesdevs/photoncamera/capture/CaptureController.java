@@ -651,6 +651,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 // P187: the plain session of a running 200 MP merge takes no shot (captureStillPicture refuses it), so its
                 // frames stay out of the ZSL ring: 125 MB of memfd less under the merge and the pipeline
                 if (mClosedForProcessing) { img.close(); return; }
+                // P356: ETTR with the RAW viewfinder off too (before the ring copy closes img); not under a merge (no shot there,
+                // the camera reopens after it: no meter, no request rebuild)
+                ettrPlain(img);
                 synchronized (mZslBufferLock) {
                     if (!isCameraResumed || reader != mImageReaderRaw) { img.close(); return; }
                     final long copyStart = android.os.SystemClock.elapsedRealtimeNanos();
@@ -1054,6 +1057,9 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mCameraOpening.set(false);
             cameraDevice.close();
             mCameraDevice = null;
+            // another client took the camera (split screen, a pop-up window) or the camera service dropped it: nothing reopened
+            // it while the activity stayed resumed (no onResume follows) - the viewfinder froze until a module switch
+            if (isCameraResumed) awaitCameraBack(cameraDevice.getId());
         }
 
         @Override
@@ -1551,6 +1557,102 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         main.postDelayed(() -> { if (mAwaitCallback == callback) stopAwaitingRequestedCamera(); }, AWAIT_REQUESTED_MS);
     }
 
+    /** The one-shot wait for the camera after onDisconnected (awaitCameraBack), null without one. */
+    private volatile CameraManager.AvailabilityCallback mCameraBackCallback;
+    /** When awaitCameraBack last reopened the camera (elapsedRealtime ms; 0: never). */
+    private volatile long mCameraBackAtMs;
+    /**
+     * At most one such reopen per this time (no open / disconnect loop): one due sooner waits for the rest of it, the wait staying
+     * registered (a disconnect right after a reopen is waited for too - the user tapping back and forth in split screen).
+     */
+    static final long CAMERA_BACK_MIN_MS = 3000;
+    /** The window focus looked at again this long after a priorities change found it unfocused. */
+    static final long CAMERA_BACK_FOCUS_MS = 300;
+
+    /**
+     * After onDisconnected while the camera screen stays resumed: the camera reopens (restartCamera, on the main thread) once it is
+     * available again (the other client closed it, the service came back) or the camera access priorities changed while this
+     * window has the focus (the user tapped back into it: it is the top one again). One shot; closeCamera ends it.
+     */
+    private void awaitCameraBack(String id) {
+        stopAwaitingCameraBack();
+        final CameraManager manager = mCameraManager;
+        if (manager == null || id == null) return;
+        final Handler main = new Handler(Looper.getMainLooper());
+        final CameraManager.AvailabilityCallback callback = new CameraManager.AvailabilityCallback() {
+            /** The camera reported available and not taken again since (the registration reports its state at once). */
+            private boolean available;
+            /** A reopen held back by CAMERA_BACK_MIN_MS is posted. */
+            private boolean held;
+
+            @Override
+            public void onCameraAvailable(@NonNull String cameraId) {
+                if (!id.equals(cameraId)) return;
+                available = true;
+                reopen("camera " + cameraId + " available again");
+            }
+
+            @Override
+            public void onCameraUnavailable(@NonNull String cameraId) {
+                if (id.equals(cameraId)) available = false;
+            }
+
+            @Override
+            public void onCameraAccessPrioritiesChanged() {
+                // only for the focused window: an open without the priority fails with «camera in use»
+                if (focused()) { reopen("camera access priorities changed"); return; }
+                // the window focus and the priorities reach the main thread separately, in no fixed order (in split screen the
+                // other app keeps the camera when it loses the focus: no onCameraAvailable follows): looked at again shortly
+                // (reopen ignores a callback that is no longer the wait)
+                main.postDelayed(() -> { if (focused()) reopen("camera access priorities changed"); }, CAMERA_BACK_FOCUS_MS);
+            }
+
+            private boolean focused() {
+                final Activity a = activity;
+                return a != null && a.hasWindowFocus();
+            }
+
+            private void reopen(String why) {
+                if (mCameraBackCallback != this) return;
+                final long wait = mCameraBackAtMs == 0 ? 0
+                        : CAMERA_BACK_MIN_MS - (SystemClock.elapsedRealtime() - mCameraBackAtMs);
+                if (wait > 0) {
+                    // held back, still waiting: then it reopens if the camera is still available or this window has the focus
+                    // (an open without the priority fails with «camera in use»), else at the next change
+                    if (held) return;
+                    held = true;
+                    Log.i(TAG, "camera " + id + " reopen (" + why + ") held back " + wait + " ms after the last one");
+                    main.postDelayed(() -> {
+                        held = false;
+                        if (available || focused()) reopen(why);
+                    }, wait);
+                    return;
+                }
+                stopAwaitingCameraBack();
+                if (!isCameraResumed || mCameraDevice != null || mCameraOpening.get()) return;
+                Log.i(TAG, "camera " + id + " disconnected while resumed: reopened (" + why + ")");
+                mCameraBackAtMs = SystemClock.elapsedRealtime();
+                restartCamera();
+            }
+        };
+        mCameraBackCallback = callback;
+        try {
+            manager.registerAvailabilityCallback(callback, main);
+        } catch (RuntimeException e) {
+            mCameraBackCallback = null;
+            Log.w(TAG, "no wait for camera " + id + " after the disconnect: " + e);
+        }
+    }
+
+    private void stopAwaitingCameraBack() {
+        final CameraManager.AvailabilityCallback callback = mCameraBackCallback;
+        mCameraBackCallback = null;
+        final CameraManager manager = mCameraManager;
+        if (callback != null && manager != null) {
+            try { manager.unregisterAvailabilityCallback(callback); } catch (RuntimeException ignored) {}
+        }
+    }
+
     private void stopAwaitingRequestedCamera() {
         CameraManager.AvailabilityCallback callback = mAwaitCallback;
         mAwaitCallback = null;
@@ -1948,11 +2050,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     public void closeCamera() {
+        stopAwaitingCameraBack();
         boolean wasOpening = mCameraOpening.get();
         VivoSdkFullResCapture sdkCapture = mVivoSdkCapture;
         mVivoSdkCapture = null;
         if (sdkCapture != null) sdkCapture.cancel();
         rescueInFlightShot("camera closed");
+        // P371 (review M2d): a merge worker started at the shutter and not taken by its job yet holds the ZSL ring's memfd
+        com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamNeuralClient.discardStandby("camera closed");
         releaseZslRing();
         mStabTrace.stop();
         mPreviewSessionStartMs = 0;
@@ -1972,6 +2077,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         }
         clearZslPreviewFrames();
         mMeterUnpacked = null; // P365 (review): the meters' unpacked frame (meterSamples), made again when a meter needs it
+        resetEttr(); // P356: the next camera meters its own boost (the ISP viewfinder's display gain goes with it)
         LiveRawFrame.setEnabled(false);
         LiveRawFrame.setMosaicPreview(false);
         mLiveRawSession = false;
@@ -3462,6 +3568,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                     || mIspPreviewOff);
             LiveRawFrame.setMaxLongSide(rawViewfinder); // P266
             LiveRawFrame.setEnabled(false); // invalidate the previous session even when RAW remains enabled
+            resetEttr(); // P356: each session meters its own boost (before setupPreview reads ettrIndex)
             LiveRawFrame.setEnabled(mLiveRawSession);
             // P13: a module whose stream was measured as a mosaic before starts on the RAW viewfinder at once
             mMosaicMeasure = PreferenceKeys.scamDevSwitch("mosaic_preview", true);
@@ -5698,7 +5805,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     public static int ettrIndex(CaptureController cc, int userIndex) {
         final Ettr ettr = cc == null ? null : cc.mEttr;
         final CameraCharacteristics c = cc == null ? null : cc.mCameraCharacteristics;
-        if (ettr == null || c == null || ettr.ev() <= 0f) return userIndex;
+        // the switch turned off where nothing meters (the boost is cleared by the next meter or session): nothing added
+        if (ettr == null || c == null || ettr.ev() <= 0f || !PreferenceKeys.isEttr()) return userIndex;
         final Range<Integer> range = c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE);
         final android.util.Rational step = c.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP);
         if (range == null || step == null) return userIndex;
@@ -5707,12 +5815,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
 
     /**
      * P356 ETTR: meters a live RAW frame now and then and moves the boost (Ettr); the request gets the user's compensation plus it,
-     * the ISP viewfinder the matching display gain. Off (the switch, a hand-set ISO / shutter, the own native AE, a vivo SDK
-     * session, a shot in progress): no boost.
+     * the ISP viewfinder the matching display gain. The frames of a live RAW session (onMatchedLiveRaw) and of the plain ZSL
+     * session (the RAW viewfinder off: the ISP viewfinder shows the display gain). Off (Ettr.hold: the switch, a hand-set ISO /
+     * shutter, the «Движение» shutter ceiling, the own native AE, a vivo SDK session; a shot in progress): no boost.
      */
     private void ettrMeter(Image img, TotalCaptureResult result) {
-        final String held = !PreferenceKeys.isEttr() ? "off" : mNativeAe != null ? "own native AE" : mVivoSdkCapture != null ? "vivo SDK"
-                : paramController.manualIsoValue() != 0 || paramController.manualPreviewShutterNs() != 0 ? "hand-set exposure" : null;
+        final String held = Ettr.hold(PreferenceKeys.isEttr(), mNativeAe != null, mVivoSdkCapture != null,
+                paramController.motionCeilingActive(),
+                paramController.manualIsoValue() != 0 || paramController.manualPreviewShutterNs() != 0);
         if (held != null && !held.equals(mEttrHeld)) Log.i("SCAM_AE", "ETTR held: " + held);
         mEttrHeld = held;
         if (held != null) {
@@ -5735,16 +5845,46 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (Float.isNaN(p)) return;
             final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
             final Range<Integer> isoRange = c == null ? null : c.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
-            // room: the AE still lengthens the shutter (below 4x the base ISO; above it a boost would only raise the ISO, no light)
-            final boolean room = iso == null || isoRange == null || iso < 4 * isoRange.getLower();
+            // headroom: the stops the AE still lengthens the shutter without the boost (below 4x the base ISO; above it a boost
+            // would only raise the ISO, no light) - judged on the un-boosted ISO, the boost kept within it (no 0 / +1 EV pumping)
+            final float headroom = Ettr.headroomEv(iso, isoRange == null ? null : isoRange.getLower(), mEttr.ev());
+            final boolean room = headroom > 0f;
             final CaptureRequest.Builder b = mPreviewRequestBuilder;
             final Integer now = b == null ? null : b.get(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION);
-            final boolean changed = mEttr.update(p, room);
+            final boolean changed = mEttr.update(p, headroom);
             if (changed || now == null || now != ettrIndex(this, paramController.effectiveEv()))
-                ettrApply(String.format(java.util.Locale.ROOT, "p99.9 %.3f iso %s room %b", p, iso, room));
+                ettrApply(String.format(java.util.Locale.ROOT, "p99.9 %.3f iso %s room %b (%.2f EV)", p, iso, room, headroom));
         } catch (RuntimeException e) {
             Log.w("SCAM_AE", "ETTR meter: " + e);
         }
+    }
+
+    /**
+     * P356: the plain ZSL session's frame (the RAW viewfinder off - the default off the flagship SoCs: no live RAW session, so
+     * onMatchedLiveRaw never metered and the switch did nothing) metered for ETTR with its own result; one that has not arrived
+     * yet is newer than the latest completed result, which stands for it (as passModeBarrier). Off with no boost to clear (the
+     * switch is no session key: turned off in the shade, ettrMeter's hold clears a boost), the plain frames cost nothing. A frame
+     * that is no plain RAW (a bad or packed-as-16-bit payload: as plainMeter) is not metered.
+     */
+    private void ettrPlain(Image img) {
+        if (!PreferenceKeys.isEttr() && mEttr.ev() <= 0f) return;
+        if (img == null || !isRawFormat(img.getFormat()) || mPayloadBad || !mPreviewLayouts.isEmpty()) return;
+        TotalCaptureResult r;
+        synchronized (mZslBufferLock) { r = mHexZslResults.get(img.getTimestamp()); }
+        final CaptureResult latest = mPreviewCaptureResult;
+        if (r == null && latest instanceof TotalCaptureResult) r = (TotalCaptureResult) latest;
+        if (r != null && !isNativeIsoProbe(r)) ettrMeter(img, r);
+    }
+
+    /**
+     * P356: no boost and no ETTR display gain from now on - the camera closed or a new session (each meters its own from 0; a
+     * session that never meters - video, a burst - kept the last one: its ISP frames x2^-boost, the boost added to every EV
+     * change). Before the session's request is built (setupPreview reads ettrIndex).
+     */
+    private void resetEttr() {
+        mEttr.reset();
+        mEttrHeld = "off";
+        com.particlesdevs.photoncamera.ui.camera.views.viewfinder.ViewfinderGain.setDisplayEv(0f);
     }
 
     private void ettrApply(String why) {
@@ -6131,13 +6271,30 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if(overrideWhite>0)white=overrideWhite;
             if(overrideBlack>=0&&overrideBlack<white)java.util.Arrays.fill(black,overrideBlack);
             LiveRawFrame.setBlackFromData(overrideBlack < 0 && PreferenceKeys.isRawBlackFromData()); // P315: a stream without its pedestal
+            // P108: the Pixel's full-resolution RAW is Quad-Bayer (measured block 2), binned for the viewfinder
+            // P208: the still-only route's viewfinder is the normal mode's stream
+            final int block = stillOnlyFullRes() ? Math.max(1, com.particlesdevs.photoncamera.processing.MosaicStream.block())
+                    : nativeVivoFullRes() ? VivoSdkFullRes.profile(mVivoSdkCameraId).nativeBlock
+                    : mFullResSession ? 2 : com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1
+                    ? com.particlesdevs.photoncamera.processing.MosaicStream.block() : PreferenceKeys.mosaicBlock();
+            // P370 (A2): the photo's matrix rules by stream - a colour-block mosaic (an ISZ lease, a picked sensor mode, FULLRES, a
+            // native session) or plain Bayer (PhotoMatrix)
+            final boolean mosaicStream = block > 1 || mIszLease != null || SensorModePick.session() != null || nativeVivoFullRes()
+                    || mFullResSession || VivoPd2454NativeRaw.active(physicalID);
+            // P370 (B6): a mosaic stream whose ISP runs no 3A shows the photo's own neutral, not the HAL's frozen gains
+            if (com.particlesdevs.photoncamera.processing.color.ViewfinderMosaicWb.on()) {
+                final float[] own = viewfinderMosaicNeutral(img, c, colorResult, cfa, white, black, block, mosaicStream);
+                if (own != null) gains = com.particlesdevs.photoncamera.processing.color.ViewfinderMosaicWb.gains(own);
+            } else mVfMosaicWb.reset();
             float[] dcpMatrix = com.particlesdevs.photoncamera.processing.color.DcpProfiles.previewMatrix(gains);
             if (dcpMatrix != null) ccm = dcpMatrix;
             // P212h (A6 = M11): a native FULLRES viewfinder whose result transform is the identity (the X7 Ultra's, a vivo mosaic
-            // result's) shows the photo's matrix at its neutral (NativeViewfinder; scam_dev.txt "vf_native_ccm 0": the identity)
-            else if (nativeVivoFullRes() && com.particlesdevs.photoncamera.processing.color.OplusCcm.identity(ccm)
-                    && PreferenceKeys.scamDevSwitch("vf_native_ccm", true)) {
-                final float[] photo = nativeViewfinderMatrix(c, colorResult, gains);
+            // result's) shows the photo's matrix at its neutral (NativeViewfinder; scam_dev.txt "vf_native_ccm 0": the identity).
+            // P370 (A2): every RAW viewfinder stream, the photo's rules (PhotoMatrix): an identity transform takes the tuned matrix,
+            // the frame's OPPO matrix (plain Bayer) or the plain-session table then the OPPO matrix (mosaic); any other transform its
+            // rows normalised as the photo's
+            else if (PreferenceKeys.scamDevSwitch("vf_native_ccm", true)) {
+                final float[] photo = viewfinderMatrix(c, colorResult, gains, ccm, mosaicStream);
                 if (photo != null) ccm = photo;
             }
             float[] shading=null;int sw=1,sh=1;
@@ -6211,12 +6368,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             m.shadingWidth = sw;
             m.shadingHeight = sh;
             m.crop = crop;
-            // P108: the Pixel's full-resolution RAW is Quad-Bayer (measured block 2), binned for the viewfinder
-            // P208: the still-only route's viewfinder is the normal mode's stream
-            m.block = stillOnlyFullRes() ? Math.max(1, com.particlesdevs.photoncamera.processing.MosaicStream.block())
-                    : nativeVivoFullRes() ? VivoSdkFullRes.profile(mVivoSdkCameraId).nativeBlock
-                    : mFullResSession ? 2 : com.particlesdevs.photoncamera.processing.MosaicStream.block() > 1
-                    ? com.particlesdevs.photoncamera.processing.MosaicStream.block() : PreferenceKeys.mosaicBlock();
+            m.block = block;
             m.sensorIso = colorResult.get(CaptureResult.SENSOR_SENSITIVITY);
             m.analogIso = c == null ? null : c.get(CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY);
             m.automatic = automatic;
@@ -6238,6 +6390,14 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private float mVfCcmLnR = Float.NaN, mVfCcmLnB = Float.NaN;
     @Nullable private float[] mVfCcm;
     @Nullable private String mVfCcmHow;
+    /** P370 (A2): the stream kind (mosaic) and whether the transform was the identity, of the cached pick. */
+    private boolean mVfCcmMosaic, mVfCcmIdentity;
+    /** P370 (review): the reported transform (column-major) the cached matrix of a non-identity transform was made from. */
+    private final float[] mVfCcmReported = new float[9];
+    /** P370 (B4): the scene light of the cached pick (K, 0 unknown) and the camera of the DNG white estimate below. */
+    private float mVfCct;
+    @Nullable private String mVfDngCamera;
+    @Nullable private com.particlesdevs.photoncamera.gallery.dng.DngColor mVfDng;
     /**
      * P212z (review): counted up by every configured session (onConfigured), so a session never reuses the last one's cached matrix
      * - a cached null too: a cold start into FULLRES had no plain table, a plain session in between taught it this light (or the
@@ -6247,14 +6407,18 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private int mVfCcmSessionSeen = -1;
 
     /**
-     * P212h (A6 = M11): the photo's colour matrix for a native FULLRES viewfinder frame with an identity transform, column-major as the
-     * viewfinder takes it, at the frame's neutral (the inverse of its white-balance gains, which the OPPO session fills with its own):
-     * the X7 Ultra's tuned matrix (OppoTunedColor.previewMatrix, the photo's math), else the camera's plain-session matrix at that
-     * light (PlainColourMemory, as a mosaic photo without an ISP matrix), else on OPPO the frame's com.oplus.custom.ccm. Null: none
-     * (the identity stays). Recomputed when the neutral moves by more than 0.01 ln; a change of source is logged once.
+     * P212h (A6 = M11): the photo's colour matrix for a viewfinder frame, column-major as the viewfinder takes it, at the frame's
+     * neutral (the inverse of its white-balance gains, which the OPPO session fills with its own). P370 (A2): every RAW viewfinder
+     * stream by the photo's rules (PhotoMatrix.viewfinder): a transform that is no identity, its rows normalised (per frame); an
+     * identity, the X7 Ultra's tuned matrix (OppoTunedColor.previewMatrix, any session), on a plain Bayer stream the frame's
+     * com.oplus.custom.ccm, on a mosaic stream the camera's plain-session matrix at that light (PlainColourMemory) then the OPPO
+     * matrix. Null: none (the identity stays). The pick is looked up again when the neutral moves by more than 0.01 ln, the stream
+     * kind changes or a session starts; a change of source is logged once. P370 (B4): its scene light and the tuned flag go to the
+     * viewfinder's look (PhotoMatrix.viewfinderSceneCct / viewfinderTuned).
      */
     @Nullable
-    private float[] nativeViewfinderMatrix(@Nullable CameraCharacteristics c, @Nullable CaptureResult result, float[] gains) {
+    private float[] viewfinderMatrix(@Nullable CameraCharacteristics c, @Nullable CaptureResult result, float[] gains,
+                                     float[] reportedColumnMajor, boolean mosaic) {
         if (c == null || gains == null || !(gains[0] > 0f) || !(gains[1] > 0f) || !(gains[2] > 0f)) return null;
         final float[] neutral = {gains[1] / gains[0], 1f, gains[1] / gains[2]};
         final float lnR = (float) Math.log(neutral[0]), lnB = (float) Math.log(neutral[2]);
@@ -6266,44 +6430,147 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mVfCcmCamera = null;
             mVfCcmHow = "";
         }
-        if (camera.equals(mVfCcmCamera) && !NativeViewfinder.moved(mVfCcmLnR, mVfCcmLnB, lnR, lnB)) return mVfCcm;
-        float[] rowMajor = null;
-        String how = null;
-        try {
-            if (VivoSdkFullRes.oppo() && com.particlesdevs.photoncamera.processing.render.OppoTunedColor.applies()) {
-                rowMajor = com.particlesdevs.photoncamera.processing.render.OppoTunedColor.previewMatrix(c, neutral, camera);
-                if (rowMajor != null) how = "the OPPO tuned matrix";
-            }
-            if (rowMajor == null) {
-                final com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup table =
-                        com.particlesdevs.photoncamera.processing.color.PlainColourMemory.lookup(camera, neutral);
-                if (table != null) {
-                    rowMajor = table.ccm;
-                    how = "the plain-session matrix";
-                }
-            }
-            if (rowMajor == null && VivoSdkFullRes.oppo() && result != null) {
-                final float[] oplus = com.particlesdevs.photoncamera.processing.color.OplusCcm.parse(result.get(new CaptureResult.Key<>(
-                        com.particlesdevs.photoncamera.processing.color.OplusCcm.TAG_NAME, byte[].class)));
-                if (oplus != null && !com.particlesdevs.photoncamera.processing.color.OplusCcm.identity(oplus)) {
-                    rowMajor = oplus;
-                    how = "the frame's OPPO ISP matrix";
-                }
-            }
-        } catch (RuntimeException e) {
-            rowMajor = null;
-            how = null;
+        // the transpose of an identity is one (OplusCcm.identity tests each element against the identity's)
+        final boolean identity = com.particlesdevs.photoncamera.processing.color.OplusCcm.identity(reportedColumnMajor);
+        final boolean cached = camera.equals(mVfCcmCamera) && mosaic == mVfCcmMosaic && identity == mVfCcmIdentity
+                && !NativeViewfinder.moved(mVfCcmLnR, mVfCcmLnB, lnR, lnB);
+        if (!identity) {
+            // the result's own transform, rows normalised; its scene light with the neutral. P370 (review): the same transform at a
+            // cached neutral returns the matrix made for it - no arrays and no Pick per frame on the camera thread
+            if (cached && mVfCcm != null && java.util.Arrays.equals(reportedColumnMajor, mVfCcmReported)) return mVfCcm;
+            final float[] reported = NativeViewfinder.columnMajor(reportedColumnMajor); // the transpose: row-major
+            final com.particlesdevs.photoncamera.processing.color.PhotoMatrix.Pick pick =
+                    com.particlesdevs.photoncamera.processing.color.PhotoMatrix.viewfinder(reported, null, Float.NaN, mosaic, null, null);
+            final float[] out = NativeViewfinder.columnMajor(pick.rowMajor);
+            if (!cached) remember(c, result, camera, neutral, lnR, lnB, mosaic, false, pick, out);
+            else mVfCcm = out;
+            System.arraycopy(reportedColumnMajor, 0, mVfCcmReported, 0, 9);
+            return out;
         }
+        if (cached) return mVfCcm;
+        com.particlesdevs.photoncamera.processing.color.PhotoMatrix.Pick pick;
+        try {
+            float[] tuned = null;
+            float tunedCct = Float.NaN;
+            if (com.particlesdevs.photoncamera.processing.render.OppoTunedColor.applies()) {
+                tuned = com.particlesdevs.photoncamera.processing.render.OppoTunedColor.previewMatrix(c, neutral, camera);
+                if (tuned != null) tunedCct = com.particlesdevs.photoncamera.processing.render.OppoTunedColor.previewCct(c, neutral, camera);
+            }
+            final com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup table = tuned == null && mosaic
+                    ? com.particlesdevs.photoncamera.processing.color.PlainColourMemory.lookup(camera, neutral) : null;
+            float[] oplus = null;
+            if (tuned == null && table == null && result != null && PreferenceKeys.scamDevSwitch("oplus_ccm", true)) {
+                try {
+                    oplus = com.particlesdevs.photoncamera.processing.color.OplusCcm.parse(result.get(new CaptureResult.Key<>(
+                            com.particlesdevs.photoncamera.processing.color.OplusCcm.TAG_NAME, byte[].class)));
+                } catch (RuntimeException noTag) {
+                    oplus = null;
+                }
+            }
+            pick = com.particlesdevs.photoncamera.processing.color.PhotoMatrix.viewfinder(null, tuned, tunedCct, mosaic, table, oplus);
+        } catch (RuntimeException e) {
+            pick = com.particlesdevs.photoncamera.processing.color.PhotoMatrix.viewfinder(null, null, Float.NaN, mosaic, null, null);
+        }
+        remember(c, result, camera, neutral, lnR, lnB, mosaic, true, pick,
+                pick.rowMajor == null ? null : NativeViewfinder.columnMajor(pick.rowMajor));
+        return mVfCcm;
+    }
+
+    /** P370 (A2, B4): the cache of {@link #viewfinderMatrix}, its scene light for the look, the log line of a new source. */
+    private void remember(CameraCharacteristics c, @Nullable CaptureResult result, String camera, float[] neutral, float lnR, float lnB,
+                          boolean mosaic, boolean identity, com.particlesdevs.photoncamera.processing.color.PhotoMatrix.Pick pick,
+                          @Nullable float[] columnMajor) {
         mVfCcmCamera = camera;
         mVfCcmLnR = lnR;
         mVfCcmLnB = lnB;
-        mVfCcm = rowMajor == null ? null : NativeViewfinder.columnMajor(rowMajor);
+        mVfCcmMosaic = mosaic;
+        mVfCcmIdentity = identity;
+        mVfCcm = columnMajor;
+        if (!camera.equals(mVfDngCamera)) {
+            mVfDngCamera = camera;
+            try {
+                mVfDng = com.particlesdevs.photoncamera.processing.color.PhotoMatrix.dngWhite(c);
+            } catch (RuntimeException e) {
+                mVfDng = null;
+            }
+        }
+        int label = 0;
+        try {
+            label = result == null ? 0 : com.particlesdevs.photoncamera.processing.color.PlainColourMemory.label(result.get(AWB_CCT_LABEL));
+        } catch (RuntimeException noTag) {
+            label = 0;
+        }
+        mVfCct = com.particlesdevs.photoncamera.processing.color.PhotoMatrix.sceneCct(pick, camera, neutral, mVfDng, label);
+        com.particlesdevs.photoncamera.processing.color.PhotoMatrix.viewfinderSceneCct = mVfCct;
+        com.particlesdevs.photoncamera.processing.color.PhotoMatrix.viewfinderTuned = pick.tuned;
+        final String how = pick.how + (mosaic ? " (mosaic stream)" : "");
         if (!Objects.equals(how, mVfCcmHow)) {
             mVfCcmHow = how;
-            Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT, "native viewfinder colour camera %s: %s (neutral %.3f / %.3f)", camera,
-                    how == null ? "the identity (no matrix for this light)" : how, neutral[0], neutral[2]));
+            Log.i("SCAM_CAPTURE", String.format(java.util.Locale.ROOT, "viewfinder colour camera %s: %s (neutral %.3f / %.3f, scene %.0f K)",
+                    camera, how, neutral[0], neutral[2], mVfCct));
         }
-        return mVfCcm;
+    }
+
+    /** P370 (B6): the mosaic viewfinder's own white balance (an ISP that runs no 3A), its cameras of the same sensor. */
+    private final com.particlesdevs.photoncamera.processing.color.ViewfinderMosaicWb mVfMosaicWb =
+            new com.particlesdevs.photoncamera.processing.color.ViewfinderMosaicWb();
+    @Nullable private String mVfSameSensorCamera;
+    @Nullable private java.util.List<String> mVfSameSensor;
+
+    /**
+     * P370 (B6): the neutral {R/G, 1, B/G} a mosaic viewfinder frame shows when its ISP runs no 3A (ViewfinderMosaicWb: the photo's
+     * teacher / locus on the frame's statistic, every 12th frame, smoothed), null for the HAL's gains (a plain stream, a running ISP,
+     * nothing measured).
+     */
+    @Nullable
+    private float[] viewfinderMosaicNeutral(Image img, @Nullable CameraCharacteristics c, @Nullable CaptureResult result, int cfa,
+                                            float white, float[] black, int block, boolean mosaic) {
+        final String id = physicalID == null ? null : physicalID.substring(physicalID.lastIndexOf('/') + 1);
+        if (!mosaic || result == null || id == null || c == null || cfa < 0 || cfa > 3) return mVfMosaicWb.frame(id, mVfCcmSession, null, false, null, null, null, 0L);
+        try {
+            com.particlesdevs.photoncamera.processing.color.MosaicNeutral.init(ScameraApp.getAppContext());
+            com.particlesdevs.photoncamera.processing.color.MosaicTeacher.init(ScameraApp.getAppContext());
+            final com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Prior prior =
+                    com.particlesdevs.photoncamera.processing.color.MosaicNeutral.prior(c, id);
+            if (!id.equals(mVfSameSensorCamera)) {
+                mVfSameSensorCamera = id;
+                mVfSameSensor = com.particlesdevs.photoncamera.processing.color.MosaicTeacher.sameSensor(id, c, other -> {
+                    try {
+                        return mCameraManager == null ? null : mCameraManager.getCameraCharacteristics(other);
+                    } catch (Exception e) {
+                        return null;
+                    }
+                });
+            }
+            final int effBlock = Math.max(1, block);
+            final com.particlesdevs.photoncamera.processing.color.ViewfinderMosaicWb.Measure measure =
+                    new com.particlesdevs.photoncamera.processing.color.ViewfinderMosaicWb.Measure() {
+                        private java.nio.ByteBuffer samples;
+                        private java.nio.ByteBuffer samples() {
+                            if (samples == null) samples = meterSamples(img);
+                            return samples;
+                        }
+                        @Override public com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Stat stat() {
+                            final java.nio.ByteBuffer s = samples();
+                            return s == null ? null : com.particlesdevs.photoncamera.processing.color.MosaicNeutral.measure2(s, img.getWidth(),
+                                    img.getHeight(), mMeterStride, cfa, black, white, effBlock, mosaicSetup(c, result));
+                        }
+                        @Override public com.particlesdevs.photoncamera.processing.color.MosaicNeutral.Result own() {
+                            final java.nio.ByteBuffer s = samples();
+                            return s == null ? null : com.particlesdevs.photoncamera.processing.color.MosaicNeutral.estimate(id, s, img.getWidth(),
+                                    img.getHeight(), mMeterStride, cfa, black, white, effBlock, prior);
+                        }
+                        @Override public float[] hal() {
+                            final android.util.Rational[] n = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
+                            if (n == null || n.length < 3 || !(n[1].floatValue() > 0f)) return null;
+                            return new float[]{n[0].floatValue() / n[1].floatValue(), 1f, n[2].floatValue() / n[1].floatValue()};
+                        }
+                    };
+            return mVfMosaicWb.frame(id, mVfCcmSession, result, true, measure, prior, mVfSameSensor, android.os.SystemClock.elapsedRealtime());
+        } catch (RuntimeException e) {
+            Log.w("SCAM_CAPTURE", "mosaic viewfinder white balance: " + e);
+            return null;
+        }
     }
 
     /**
@@ -7111,6 +7378,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     }
 
     private void captureVivoSdkFullResChecked() {
+        // the FULLRES shot's own digital-zoom crop (it never marked one: the last 12 MP shot's was used, or none)
+        com.particlesdevs.photoncamera.control.ZoomController.markShot();
         final VivoSdkRawSession sdk = mVivoSdkRawSession;
         final CameraCaptureSession session = mCaptureSession;
         // P238 (speed-ux D2): a FULLRES press on a hot phone is told why it will take longer (at most every 5 min)
@@ -7219,6 +7488,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         saver.manualWbAtPress = mShutterManualWb;
         saver.mosaicWbAtPress = mShutterMosaicWb;
         saver.dcgShot = dcgShotNow();
+        saver.zoomResidual = com.particlesdevs.photoncamera.control.ZoomController.shotResidual(); // marked at the press (above)
+        saver.cameraIdAtPress = ScameraApp.getSettings().mCameraID;
         saver.setFrameCount(count);
         saver.fullResSeries = seriesMode ? total : 0; // P190: the merge keeps a series whole
         saver.fullResRequested = requested;
@@ -7628,6 +7899,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             Camera2ApiAutoFix.resetTileSize();
             applyZoom(captureBuilder, false);
             cameraRotation = ScameraApp.getGravity().getCameraRotation(mSensorOrientation);
+            // the shot's own rotation and camera, as the FULLRES path keeps them: its processing runs later (queued behind earlier
+            // merges, after the gyro wait), when the next press has turned the field and a lens switch replaced the static
+            final int shotRotation = cameraRotation;
+            final CameraCharacteristics pressCharacteristics = mCameraCharacteristics;
 
             //captureBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
             //setCaptureAEMode(captureBuilder);
@@ -7924,6 +8199,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mImageSaver.iszAspect4x3 = mShutterIszAspect4x3;
             mImageSaver.manualWbAtPress = mShutterManualWb;
             mImageSaver.dcgShot = dcgShotNow();
+            // the shot's digital-zoom crop (after the drain: rawCropOfShot is in it) and camera, read by its processing, not the
+            // next press's
+            mImageSaver.zoomResidual = com.particlesdevs.photoncamera.control.ZoomController.shotResidual();
+            mImageSaver.cameraIdAtPress = ScameraApp.getSettings().mCameraID;
             final ScamCaptureSequence scamSequence = hybridPlanHolder[0]!=null
                         ? (hybridZsl ? ScamCaptureSequence.hybridZsl(captures,mPendingZslNormalFrames,scamZslShutterTimestamp)
                                      : ScamCaptureSequence.hybridFuture(captures,scamZslShutterTimestamp))
@@ -8258,7 +8537,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 if (scamSequence != null && shotSaver.bufferSize() != scamSequence.presentCount())
                                     Log.w("SCAM_CAPTURE", "RAWs in the saver " + shotSaver.bufferSize() + ", in the series " + scamSequence.presentCount());
                                 final ImageSaver saver = shotSaver;
-                                final CameraCharacteristics shotCharacteristics = mCameraCharacteristics;
+                                final CameraCharacteristics shotCharacteristics = pressCharacteristics;
                                 final CaptureResult shotResult = baseMetadata;
                                 final CaptureRequest shotRequest = baseMetadata.getRequest() != null ? baseMetadata.getRequest() : mCaptureRequest;
                                 final ArrayList<GyroBurst> shotShakiness = new ArrayList<>(BurstShakiness);
@@ -8277,7 +8556,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                         try {
                                             com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey(shotMosaicKey, shotDeclaredBlock);
                                             saver.runRaw(shotCharacteristics, shotResult, shotRequest,
-                                                    shotShakiness, cameraRotation, shotExposures);
+                                                    shotShakiness, shotRotation, shotExposures);
                                         } catch (Exception e) {
                                             Log.e(TAG, "runRaw:" + Log.getStackTraceString(e));
                                             cameraEventsListener.onProcessingError(e.getLocalizedMessage());
@@ -8291,7 +8570,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                                 } else {
                                     com.particlesdevs.photoncamera.processing.MosaicBlockStore.setShotKey(shotMosaicKey, shotDeclaredBlock);
                                     saver.runRaw(shotCharacteristics, shotResult, shotRequest,
-                                            shotShakiness, cameraRotation, shotExposures);
+                                            shotShakiness, shotRotation, shotExposures);
                                 }
                             }
                             } catch (Exception e){
@@ -8373,6 +8652,12 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
                 if (previousGap != null) Log.i(PreviewGapMeter.TAG, previousGap + " (closed early by the next shot)");
             }
             com.particlesdevs.photoncamera.processing.ShotTimeline.capture("submit");
+            // P371 (speed, worker_prespawn): the merge worker starts now for this shot's arena (on a thread of its own) and warms up
+            // during the capture; only with no shot waiting for its merge (the worker of that one would compete with it), up to 16 MP
+            if (scamHybridShot && shotArena != null && sScamPending.get() == 0 && mImageReaderRaw != null
+                    && (long) mImageReaderRaw.getWidth() * mImageReaderRaw.getHeight()
+                            <= com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.CLASSIC_INPUT_PIXELS)
+                com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamNeuralClient.prespawn(ScameraApp.getAppContext(), shotArena.id());
             mStabTrace.markShot("submit requests=" + captures.size() + " flush=" + flushQueue + " previewKept=" + mScamRouted);
             if (!captures.isEmpty()) {
                 mStabTrace.seriesRequest(captures.get(0), 0);
@@ -8875,9 +9160,10 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             if (mTextureView == null)
                 mTextureView = new GLPreview(activity);
             if (mTextureView.isAvailable()) {
-                // The GL surface survived backgrounding (no onSurfaceCreated will
-                // fire on resume), so open the camera directly against the
-                // existing SurfaceTexture instead of waiting for a callback.
+                // The renderer's SurfaceTexture is live (a restart without a pause,
+                // or the one onSurfaceCreated already made after the pause: a pause
+                // drops the old one, GLPreview.onPause), so open the camera directly
+                // against it instead of waiting for a callback.
                 CameraCharacteristics chars = requestedCharacteristics();
                 if (chars == null) return;
                 Size optimal = getPreviewOutputSize(getSafeDisplay(), chars,

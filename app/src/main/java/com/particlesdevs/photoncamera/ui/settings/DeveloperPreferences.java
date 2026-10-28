@@ -72,6 +72,21 @@ final class DeveloperPreferences {
         }
     }
 
+    /**
+     * The page reset of this page (audit 2026-10-27: its rows are not stored as preferences, so it changed nothing): every line of
+     * this page out of scam_dev.txt, as its own «Сбросить всё по умолчанию» row does, and the rows rebuilt; the lines removed.
+     */
+    static int resetAll(PreferenceScreen root, Context context) {
+        if (root == null || context == null) return 0;
+        final Context app = context.getApplicationContext();
+        final Map<String, String> values = ScamDevFile.snapshot(app);
+        int set = 0;
+        for (String key : DevKeys.keys()) if (values.containsKey(key)) set++;
+        if (set > 0 && !ScamDevFile.removeAll(app, DevKeys.keys())) set = 0;
+        populate(root, context);
+        return set;
+    }
+
     private static Preference switchRow(Context context, Context app, DevKeys.Key k, String cur) {
         SwitchPreferenceCompat p = new SwitchPreferenceCompat(context);
         p.setKey("dev_" + k.key);

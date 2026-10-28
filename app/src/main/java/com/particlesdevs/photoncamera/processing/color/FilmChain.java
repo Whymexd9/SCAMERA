@@ -6,6 +6,8 @@ import androidx.annotation.Nullable;
  * P281: the one 3D LUT the photo (WhyCombine, FILM_LUT) and the viewfinder apply - the film simulation (FilmSim) followed by
  * the chosen LUT (FilmLut, «Плёночный LUT»), each at its own strength, baked into one table; without a simulation it is the
  * chosen LUT as before (its strength then applied by the shader, unchanged).
+ * P369: with a simulation the photo and the RAW viewfinder take {@link #scene} instead (scene light into the film, why/combine
+ * FILM_SIM 1); this display-domain chain stays for the ISP viewfinder, the RAW viewfinder's own look and the settings' preview.
  */
 public final class FilmChain {
     private FilmChain() {}
@@ -27,7 +29,14 @@ public final class FilmChain {
     public static State current() {
         final float lutStrength = com.particlesdevs.photoncamera.settings.PreferenceKeys.filmLutStrength();
         final String lut = lutStrength > 0f ? com.particlesdevs.photoncamera.settings.PreferenceKeys.filmLut() : "";
-        final FilmSim.Settings sim = FilmSim.current();
+        return current(FilmSim.current(), lut, lutStrength);
+    }
+
+    /**
+     * P369: the chain of a film snapshot {@code sim} (null: none) and the chosen LUT {@code lut} ("" = none) at {@code lutStrength} -
+     * {@link #current()} of those settings, without reading them again (the photo's PostPipeline.film).
+     */
+    public static State current(@Nullable FilmSim.Settings sim, String lut, float lutStrength) {
         if (sim == null) return new State(lut, lutStrength);
         return new State(PREFIX + sim.lutKey() + "|" + String.format(java.util.Locale.ROOT, "%.2f", sim.strength) + "|" + lut
                 + "|" + String.format(java.util.Locale.ROOT, "%.2f", lut.isEmpty() ? 0f : lutStrength), 1f);
@@ -36,27 +45,101 @@ public final class FilmChain {
     private static String cachedKey;
     private static FilmLut cached;
 
-    /** The LUT of a key of {@link #current} (a chain is built once per key); null: none. */
+    /**
+     * The LUT of a key of {@link #current} (a chain is built once per key); null: none. P369 (viewfinder-filmchain-cache-key): a
+     * chain is built from the settings its key stands for (FilmSim.Settings.forLut), never from the settings now - a key asked for
+     * after the settings moved on was cached with the newer settings' table and kept it, and the viewfinder asks again only when the
+     * key changes.
+     */
     @Nullable
     public static synchronized FilmLut lut(android.content.Context context, String key) {
         if (key == null || key.isEmpty()) return null;
         if (!key.startsWith(PREFIX)) return FilmLut.chosen(context, key);
         if (key.equals(cachedKey)) return cached;
-        final FilmSim.Settings sim = FilmSim.current();
+        final String body = key.substring(PREFIX.length());
+        final String[] parts = body.split("\\|", -1);
+        // lutKey's seven fields, the simulation's strength, the chosen LUT and its strength
+        final FilmSim.Settings sim = parts.length >= 10 ? FilmSim.Settings.forLut(body, FilmSim.number(parts[7], 1f)) : null;
         FilmLut out = null;
         if (sim != null) {
             final FilmLut film = FilmSim.lut(sim, FilmLooks.SIZE);
-            final State st = current();
-            final String[] parts = key.split("\\|", -1);
-            final String lutName = parts.length >= 2 ? parts[parts.length - 2] : "";
+            final String lutName = parts[parts.length - 2];
             final float lutStrength = lutName.isEmpty() ? 0f : FilmSim.number(parts[parts.length - 1], 0f);
             final FilmLut user = lutName.isEmpty() ? null : FilmLut.chosen(context, lutName);
             out = compose(film, sim.strength, user, lutStrength);
-            if (!st.key.equals(key)) com.particlesdevs.photoncamera.util.Log.d("FilmChain", "settings moved while building " + key);
         }
         cachedKey = key;
         cached = out;
         return out;
+    }
+
+    // ───── P369: the scene-referred table of the photo and the RAW viewfinder (why/combine FILM_SIM 1)
+
+    /** The scene table to apply: the table (FilmSim.lutScene, then the chosen LUT), the shader's film strength and its key. */
+    public static final class Scene {
+        public final FilmLut lut;
+        public final float strength;
+        public final String key;
+
+        Scene(FilmLut lut, float strength, String key) {
+            this.lut = lut;
+            this.strength = strength;
+            this.key = key;
+        }
+    }
+
+    /**
+     * What the scene table of {@code sim} with the chosen LUT {@code user} at {@code userStrength} depends on (not the simulation's
+     * strength, the shader's mix; not the format, grain, halation or softness): FilmSim.Settings.lutKey, the LUT, its strength and the
+     * log grid.
+     */
+    public static String sceneKey(FilmSim.Settings sim, String user, float userStrength) {
+        return "scene:" + sim.lutKey() + "|" + user + "|" + String.format(java.util.Locale.ROOT, "%.2f", user.isEmpty() ? 0f : userStrength)
+                + "|" + FilmSim.LOG_LO + "|" + FilmSim.LOG_SPAN;
+    }
+
+    private static String sceneCachedKey;
+    private static FilmLut sceneCached;
+    /** The film's own scene table (FilmSim.lutScene) under its key alone: a .cube or its strength changed only composes again. */
+    private static String filmCachedKey;
+    private static FilmLut filmCached;
+
+    /** Both tables forgotten (the tests; the next ask builds them again). */
+    static synchronized void forget() {
+        cachedKey = null;
+        cached = null;
+        sceneCachedKey = null;
+        sceneCached = null;
+        filmCachedKey = null;
+        filmCached = null;
+    }
+
+    /**
+     * The scene table of a film snapshot {@code sim} (the shot's, or the viewfinder's settings now) followed by the chosen LUT
+     * {@code user} ("" none) at {@code userStrength}: film strength 1 in the table - the film, then the .cube on its print - and
+     * the film's own strength mixed by the shader (mix(ours, film, s)). Built only from {@code sim} (race-free), once per
+     * {@link #sceneKey} in its own cache (apart from the display chain's: a phone on the ISP viewfinder would rebuild either on every
+     * shot). Null when the film's data cannot be read.
+     */
+    @Nullable
+    public static synchronized Scene scene(android.content.Context context, FilmSim.Settings sim, String user, float userStrength) {
+        final String key = sceneKey(sim, user, userStrength);
+        if (!key.equals(sceneCachedKey)) {
+            final String filmKey = "scene:" + sim.lutKey() + "|" + FilmSim.LOG_LO + "|" + FilmSim.LOG_SPAN;
+            if (!filmKey.equals(filmCachedKey)) {
+                filmCached = FilmSim.lutScene(sim, FilmSim.SCENE_SIZE);
+                filmCachedKey = filmKey;
+            }
+            final FilmLut film = filmCached;
+            FilmLut table = null;
+            if (film != null) {
+                final FilmLut userLut = user.isEmpty() || !(userStrength > 0f) ? null : FilmLut.chosen(context, user);
+                table = userLut == null ? film : compose(film, 1f, userLut, userStrength);
+            }
+            sceneCachedKey = key;
+            sceneCached = table;
+        }
+        return sceneCached == null ? null : new Scene(sceneCached, sim.strength, key);
     }
 
     /**

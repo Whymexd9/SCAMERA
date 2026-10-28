@@ -37,6 +37,10 @@ public class Allocator{
     public native static boolean arenaWrite(int id, long offset, ByteBuffer origin);
     public native static long[] arenaOf(ByteBuffer buffer);
     public native static int arenaFd(int id);
+    /** P371: {@code bytes} of the memfd {@code fd} (the merge worker's result; the caller keeps the fd) as an arena; 0: failed. */
+    public native static int arenaAdopt(int fd, long bytes);
+    /** P371 (review B1): the pages of {offset, bytes} of an adopted arena go back (read already); false: refused (a view, bounds). */
+    public native static boolean arenaPunch(int id, long offset, long bytes);
     public native static void arenaRelease(int id);
     /** P91: one more view of a slot (a ring frame handed to a shot); the slot stays pinned until the view is freed. */
     public native static ByteBuffer arenaView(int id, long offset, int bytes);

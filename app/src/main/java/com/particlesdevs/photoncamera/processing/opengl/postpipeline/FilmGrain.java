@@ -20,26 +20,32 @@ import com.particlesdevs.photoncamera.util.Log;
  */
 public final class FilmGrain extends Node {
     private final FilmSim.Settings set;
-    /** Selwyn: sigma(a) = sigma(48 um aperture) x sqrt(area(48 um) / a^2) = RMS / 1000 x 42.5 / a. */
-    static final float SELWYN = 42.5f;
-    /** Our calibration of a granularity to the density noise a scan shows. */
-    static final float GRAIN_SCALE = .35f;
 
     FilmGrain(FilmSim.Settings set) {
         super("", "FilmGrain");
         this.set = set;
     }
 
-    /** The node for the settings now, null without a simulation or a format, or with neither grain nor softness. */
-    public static FilmGrain fromSettings() {
-        final FilmSim.Settings s = FilmSim.current();
+    /**
+     * The node for the shot's film snapshot (P369: PostPipeline.film), null without a simulation or a format, or with neither grain
+     * nor softness.
+     */
+    public static FilmGrain from(@androidx.annotation.Nullable FilmSim.Settings s) {
         if (s == null || s.format.longMm <= 0 || (s.grain <= 0f && (s.softness <= 0f || s.stock.spectral != null))) return null;
         return new FilmGrain(s);
     }
 
-    /** The density sigma of one pixel of {@code pixelUm} for granularity {@code rms} and grains of {@code grainUm}. */
+    /**
+     * P369 (texture-double-grain): the node adds grain - a format and «Зерно» above 0 (ScamDenoise then puts back only the part of
+     * its digital luma grain the film's strength leaves).
+     */
+    public static boolean addsGrain(@androidx.annotation.Nullable FilmSim.Settings s) {
+        return s != null && s.format.longMm > 0 && s.grain > 0f;
+    }
+
+    /** The density sigma of one pixel of {@code pixelUm} for granularity {@code rms} and grains of {@code grainUm} (FilmSim.grainSigma). */
     static float sigma(float rms, float grainUm, float pixelUm) {
-        return rms / 1000f * SELWYN / Math.max(1f, Math.max(pixelUm, grainUm));
+        return FilmSim.grainSigma(rms, grainUm, pixelUm);
     }
 
     @Override
@@ -100,15 +106,15 @@ public final class FilmGrain extends Node {
         final GLTexture in = previousNode.WorkingTexture;
         WorkingTexture = in;
         final long started = System.currentTimeMillis();
-        final float um = set.pixelUm(Math.max(in.mSize.x, in.mSize.y));
+        final float um = set.pixelUm(FilmHalation.filmLongPx(Math.max(in.mSize.x, in.mSize.y), basePipeline.mParameters));
         if (um <= 0f) return;
         GLTexture cur = in;
         if (set.stock.spectral != null) {
             runReference(in, um, started);
             return;
         }
-        final float blur = set.stock.mtfUm / um * set.softnessApplied(); // x the simulation's strength, as the grain
-        if (blur >= .33f) {
+        final float blur = FilmSim.classicBlurPx(set, um); // x the simulation's strength, as the grain
+        if (blur >= FilmSim.CLASSIC_BLUR_MIN_PX) {
             final GLTexture h = new GLTexture(in.mSize, in.mFormat);
             glProg.useAssetProgram("film/blur", false);
             glProg.setTexture("InputBuffer", cur);
@@ -128,10 +134,9 @@ public final class FilmGrain extends Node {
         float s = 0f;
         if (set.grain > 0f) {
             final FilmSim.Stock st = set.stock;
-            // a print sees the negative's grain through its own contrast; a projected film shows its own
-            final float through = st.reversal() ? 1f : set.print.film ? 3.0f : 2.7f;
-            s = sigma(st.rms, st.grainUm, um) * through * GRAIN_SCALE * set.grainApplied();
-            final float cell = Math.max(1f, st.grainUm / um);
+            // P369: FilmSim's (the settings' preview, FilmEffects, takes the same)
+            s = FilmSim.classicGrainSigma(set, um);
+            final float cell = FilmSim.classicGrainCell(set, um);
             final GLTexture out = new GLTexture(in.mSize, in.mFormat);
             glProg.useAssetProgram("film/grain", false);
             glProg.setTexture("InputBuffer", cur);
@@ -149,6 +154,6 @@ public final class FilmGrain extends Node {
         WorkingTexture = cur;
         Log.i("SCAM_PIPELINE", "film grain " + set.stock.id + " " + set.format.id + String.format(java.util.Locale.ROOT,
                 " pixel %.2f um blur %.2f px grain sigma %.4f cell %.2f px ms=%d", um, blur, s,
-                Math.max(1f, set.stock.grainUm / um), System.currentTimeMillis() - started));
+                FilmSim.classicGrainCell(set, um), System.currentTimeMillis() - started));
     }
 }

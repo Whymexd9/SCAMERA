@@ -155,18 +155,25 @@ public class ModuleProfilesPageTest {
         return all;
     }
 
-    @Test public void rootRowAndSearchOpenTheGroup() {
+    /**
+     * 2026-10-27 (owner: settings anyone can set up alone): the separate «Настройки по модулям» row is gone; «Камеры и модули»
+     * holds the modules and their own settings - its row and its search hit open the group, and its row says whether the
+     * modules have their own settings now.
+     */
+    @Test public void camerasRowAndSearchOpenTheGroup() {
         try (ActivityController<SettingsActivity> controller = Robolectric.buildActivity(SettingsActivity.class)) {
             controller.setup();
             SettingsActivity activity = controller.get();
             FragmentManager fm = activity.getSupportFragmentManager();
             SettingsActivity.SettingsFragment root = (SettingsActivity.SettingsFragment) top(activity);
-            Preference hub = root.findPreference(ModulePageFilter.HUB);
-            assertNotNull(hub);
-            assertTrue(hub.isVisible());
-            assertEquals(context.getString(R.string.prefs_module_profiles_screen_summary), String.valueOf(hub.getSummary()));
-            // the real click of the empty screen row (androidx does not navigate it by itself)
-            hub.performClick();
+            assertNull(root.findPreference("module_profiles_screen"));
+            Preference cameras = root.findPreference(ModulePageFilter.CAMERAS);
+            assertNotNull(cameras);
+            assertTrue(cameras.isVisible());
+            assertEquals(context.getString(R.string.prefs_camera_settings_screen_summary) + ". Each lens and its FULLRES 50 / 200 MP shots with their own settings",
+                    String.valueOf(cameras.getSummary()));
+            // the real click of the row
+            cameras.performClick();
             assertTrue(top(activity) instanceof ModuleProfilesFragment);
             assertEquals(1, fm.getBackStackEntryCount());
             back(activity);
@@ -176,8 +183,9 @@ public class ModuleProfilesPageTest {
 
             SettingsSearchFragment.Entry entry = null;
             for (SettingsSearchFragment.Entry e : SettingsSearchFragment.index(root.getPreferenceScreen()))
-                if (ModulePageFilter.HUB.equals(e.key)) entry = e;
+                if (ModulePageFilter.CAMERAS.equals(e.key)) entry = e;
             assertNotNull("the search finds the group", entry);
+            assertTrue("found by the old row's words", entry.matches("settings per module") && entry.matches("FULLRES"));
             activity.openSearchResult(entry);
             assertTrue(top(activity) instanceof ModuleProfilesFragment);
             back(activity);
@@ -392,7 +400,8 @@ public class ModuleProfilesPageTest {
             controller.setup();
             SettingsActivity activity = controller.get();
             SettingsActivity.SettingsFragment root = (SettingsActivity.SettingsFragment) top(activity);
-            assertEquals("All modules share the settings now", String.valueOf(root.findPreference(ModulePageFilter.HUB).getSummary()));
+            assertEquals(context.getString(R.string.prefs_camera_settings_screen_summary) + ". All modules share the settings now",
+                    String.valueOf(root.findPreference(ModulePageFilter.CAMERAS).getSummary()));
             ModuleProfilesFragment group = openGroup(activity);
             View row = group.requireView().findViewWithTag("profile_back1");
             assertEquals(.55f, row.getAlpha(), 1e-3);
@@ -461,7 +470,7 @@ public class ModuleProfilesPageTest {
             ModuleCopyFragment copy = new ModuleCopyFragment();
             fm.beginTransaction().replace(R.id.settings_container, copy).commitNow();
             assertNotNull(copy.requireView().findViewWithTag("group_root_photo"));
-            assertNull(copy.requireView().findViewWithTag("group_" + ModulePageFilter.HUB));
+            assertNull(copy.requireView().findViewWithTag("group_module_profiles_screen"));
         }
     }
 }

@@ -51,6 +51,15 @@ public final class ScamDenoise extends Node {
      */
     static final float LUMA_GRAIN = 0.5f;
 
+    /**
+     * P369 (texture-double-grain, night shots): the luma grain put back under a film that adds grain (FilmGrain.addsGrain: a
+     * format and «Зерно» above 0) - x (1 - the simulation's strength), none at 100 % (the film's own grain stands for it); the
+     * value itself, bit for bit, without a film or with a film that adds none.
+     */
+    static float lumaGrainUnderFilm(float lumaGrain, @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
+        return film != null && FilmGrain.addsGrain(film) ? lumaGrain * (1f - film.strength) : lumaGrain;
+    }
+
     /** Noise reduction engine of the hybrid: "multiscale" (this node, default) or "nlm" ({@link ScamHdrDenoise}). */
     static String engine() {
         String v = PreferenceKeys.hybridString("dn_engine", "multiscale");
@@ -619,7 +628,9 @@ public final class ScamDenoise extends Node {
         final boolean darkFade = PreferenceKeys.hybridSwitch("dn_dark_fade", true);
         final float[] darkChroma = darkChroma(pipeline.signedRgb);
         final float rhoS = clamp(PreferenceKeys.hybridValue("dn_model_shot", 1.2f), 0.25f, 4f);
-        final float lumaGrain = clamp(PreferenceKeys.hybridValue("dn_luma_grain", LUMA_GRAIN), 0f, 1f);
+        // P369 (texture-double-grain): with a film that adds its own grain, the digital luma grain put back only on the share the
+        // simulation's strength leaves (the tiers of the denoise unchanged)
+        final float lumaGrain = lumaGrainUnderFilm(clamp(PreferenceKeys.hybridValue("dn_luma_grain", LUMA_GRAIN), 0f, 1f), pipeline.film);
         // P330: 2 (was 6). G is the noise measured on the merge itself, so rho_r = 6 filtered the shadows for 2.45 x their real sigma
         // (strict threshold ~3.5-4 sigma, soft ~7-8): low-contrast shadow texture went with the noise
         final float rhoR = clamp(PreferenceKeys.hybridValue("dn_model_read", 2f), 0.25f, 16f);

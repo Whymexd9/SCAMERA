@@ -105,6 +105,16 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         return sShownTimestamp;
     }
 
+    /**
+     * P345: developed RAW frames drawn so far (GL thread the only writer): a RAW-only session (ISZ, FULLRES without an ISP stream)
+     * never latches an ISP frame, so its viewfinder's first frame ends the frozen picture by this count, not shownTimestamp.
+     */
+    private static volatile long sRawDraws;
+
+    public static long rawDraws() {
+        return sRawDraws;
+    }
+
     /** P319: the key of the tone in rawFbo (Long.MIN_VALUE: none), when it was drawn, and the redraws that reused it. */
     private long mToneKey = Long.MIN_VALUE, mToneAtNs, mToneReused;
     /** P319: the VF_RAW line every 2 s while the tone draws: new toned frames, reused redraws, frames the hand-off dropped. */
@@ -169,7 +179,10 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
                 && holdsSeries(com.particlesdevs.photoncamera.settings.PreferenceKeys.scamDevSwitch("vf_series_hold", true), true, since);
     }
 
-    /** P319: the RAW frame (session, version), the tone target and the geometry the WHY tone in rawFbo was drawn for. */
+    /**
+     * P319: the RAW frame (session, version), the tone target and the geometry the WHY tone in rawFbo was drawn for; P369: and the
+     * look's table (a film's scene table or the chosen LUT once it is loaded, the strengths: LiveWhyTone.lookKey).
+     */
     private long toneKey() {
         long k = ((long) com.particlesdevs.photoncamera.processing.LiveRawFrame.currentSession() << 32)
                 ^ (com.particlesdevs.photoncamera.processing.LiveRawFrame.getVersion() & 0xffffffffL);
@@ -177,6 +190,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         k = 31 * k + rawH;
         k = 31 * k + rawFbo;
         k = 31 * k + java.util.Arrays.hashCode(mTexRotateMatrix);
+        k = 31 * k + mWhyTone.lookKey();
         return 31 * k + (mMirrorPreview ? 1 : 0);
     }
 
@@ -312,6 +326,7 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         com.particlesdevs.photoncamera.control.subject.SubjectFrames.setRawDisplayed(rawActive);
         mRawShownNs = rawActive ? System.nanoTime() : Long.MIN_VALUE / 2;
         if (rawActive) {
+            sRawDraws++; // P345: a RAW-only session's frames end the frozen viewfinder too
             mSubjectGrabber.afterDraw();
             GLES20.glUseProgram(hProgramHandle);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
@@ -387,6 +402,13 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         mSceneMeter.onContextCreated();
         mSubjectGrabber.onContextCreated();
         initTex();
+        // the previous context's SurfaceTexture (its context is gone; the camera was closed before the pause and opens again on
+        // the new one): released, not left to the finalizer with its BufferQueue and last preview buffer
+        final SurfaceTexture old = mSTexture;
+        if (old != null) {
+            old.setOnFrameAvailableListener(null);
+            old.release();
+        }
         mSTexture = new SurfaceTexture(hTex[0]);
         // P90: frame callbacks on their own thread, not the main looper (a SurfaceTexture made on the GL thread, which has no
         // looper, posts them to the main thread: every busy moment of the UI during processing held the viewfinder back)
@@ -633,10 +655,26 @@ public class MainRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private volatile long mRawShownNs = Long.MIN_VALUE / 2;
     static final long RAW_SHOWN_NS = 300_000_000L;
 
+    /**
+     * Whether the pending ISP frame can be latched: one is pending, the context is set up and current - a latch queued by
+     * onFrameAvailable (queueEvent) runs even while the GL thread is paused (GLThread takes its events before the pause check),
+     * with no context: updateTexImage threw there, on the GL thread.
+     */
+    static boolean latchable(boolean update, boolean glInit, boolean contextCurrent) {
+        return update && glInit && contextCurrent;
+    }
+
     /** The pending ISP frame onto the texture (GL thread). */
     private synchronized void latchIsp() {
-        if (!mUpdateST || !mGLInit) return;
-        mSTexture.updateTexImage();
+        // no context: mUpdateST stays, the next draw latches the frame
+        if (!latchable(mUpdateST, mGLInit, !android.opengl.EGL14.EGL_NO_CONTEXT.equals(android.opengl.EGL14.eglGetCurrentContext())))
+            return;
+        try {
+            mSTexture.updateTexImage();
+        } catch (RuntimeException e) {
+            Log.w("MainRenderer", "ISP latch skipped: " + e);
+            return;
+        }
         mUpdateST = false;
         mHaveFrame = true;
         mIspLatchNs = System.nanoTime();

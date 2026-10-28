@@ -36,7 +36,7 @@ public final class WorkerSpawn {
     /** Library search paths for the worker: its runtime first, then the job directory. */
     public static String[] environment(Context context, File jobDir) {
         String libs = nativeDir(context).getAbsolutePath(), job = jobDir.getAbsolutePath();
-        return WorkerEnv.build(libs, job, WorkerEnv.gpuNormalPriority()); // P242: the GPU priority A/B
+        return WorkerEnv.build(libs, job, WorkerEnv.gpuNormalPriority(), WorkerEnv.workerNice()); // P242: the GPU priority A/B; P371: nice
     }
 
     /** A running worker: spawned directly, or a root (su) process. */

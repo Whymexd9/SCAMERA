@@ -72,6 +72,13 @@ public class Parameters {
     public Point rawSize;
     /** P306: the whole shot's size when these are a lab fragment's (null otherwise): the 200 MP denoise is decided on it. */
     public Point labWholeSize;
+    /**
+     * P369: the share of the pipeline image's long side the saved photo keeps (the digital zoom's crop, the ISZ 4:3 crop: both
+     * after the pipeline), 1 = all of it - the frame the film's grain, scatter and halation are sized for (FilmHalation.filmLongPx).
+     * Set by ScamProcessor per shot, before the lab's snapshot: a lab render of the (uncropped) field sizes the effects as the
+     * photo had them; a lab shot of an older build has none (FilmHalation reads 0 as 1).
+     */
+    public float filmFrameScale = 1f;
     /** P27: linear factor the RAW frames were binned by (RawBin) before the merge; 1 = as captured. Set before FillConstParameters. */
     public int rawBinning = 1;
     /**
@@ -102,6 +109,36 @@ public class Parameters {
     public float[] whitePoint = new float[3];
     /** Correlated colour temperature of the scene light (K): the DNG estimate, or the neutral-based one on the OPPO HAL. */
     public float sceneCct = 6504f;
+    /** P370 (B1): where {@link #sceneCct} came from (log, README), and the Duv of the DNG estimate (NaN: not computed). */
+    public String sceneCctSource = "";
+    public float sceneDuv = Float.NaN;
+    /**
+     * P370 (B1): the route that rendered the shot's colour, one of {@link ColourSource} by name ("" before ReCalcColor), and why
+     * when it is a fallback.
+     */
+    public String colourSource = "";
+    public String colourSourceWhy = "";
+    /** P370 (B1): the colour routes ReCalcColor can take (README colourSource=). */
+    public enum ColourSource {
+        /** the active DCP profile */ DCP,
+        /** the OPPO PHY110 tuned forward matrix per CCT */ OPPO_TUNED,
+        /** the camera's plain-session matrix at the neutral (PlainColourMemory) */ PLAIN_TABLE,
+        /** the result's COLOR_CORRECTION_TRANSFORM (rows normalised) */ ISP_CST,
+        /** the result's transform because the DNG forward matrices are the sRGB -> XYZ placeholder */ ISP_CST_PLACEHOLDER,
+        /** the legacy FM1 == FM2 / «Источник цвета» «Захват» branch */ LEGACY_CAPTURED,
+        /** the frame's com.oplus.custom.ccm in place of an identity transform */ OPLUS_CCM,
+        /** the DNG forward matrices interpolated at the neutral */ DNG_FM,
+        /** the DNG colour matrices alone (inverse, Bradford to D50) */ DNG_CM_ONLY,
+        /** placeholder forward matrices and nothing better: camera RGB taken as sRGB */ IDENTITY_PLACEHOLDER,
+        /** the colour metadata could not be used: the white balance alone */ IDENTITY_FALLBACK
+    }
+    /** P370 (B1): timestamp, ISO and the Qualcomm AWB label (K, 0: none) of the result that supplied the colour. */
+    public long colourFrameTimestamp;
+    public int colourFrameIso, awbLabelK;
+    /** P370 (B1): that result's COLOR_CORRECTION_TRANSFORM as reported (row-major, null: none). */
+    public float[] resultCst;
+    /** P370 (B1): the camera's DNG colour tags as rationals and the placeholder flags (README). */
+    public String colourTags = "";
     public int whiteLevel = 1023;
     /** P127: bit depth of the shot's RAW stream (RawLevels) and where its black / white came from. */
     public int levelBits;
@@ -169,6 +206,56 @@ public class Parameters {
     public String cameraID = ScameraApp.getSettings().mCameraID;
     public int physicalID = 0;
     public int logicalID = 0;
+    /**
+     * The shot's camera (Settings.mCameraID at its press, ImageSaver.cameraIdAtPress; null: the one open now) and the
+     * characteristics it was captured with (FillConstParameters'): a shot queued behind a merge is processed after a lens switch
+     * replaced the open camera (CaptureController.mCameraCharacteristics) - its levels, matrices and module settings stay its
+     * own. Transient: not in a lab shot's parameters.
+     */
+    public transient String cameraIdAtPress;
+    transient CameraCharacteristics shotCharacteristics;
+
+    /** The characteristics the shot was captured with (null: none given). */
+    public CameraCharacteristics shotCharacteristics() {
+        return shotCharacteristics;
+    }
+
+    /** The shot's camera characteristics (the open camera's when none were given). */
+    public CameraCharacteristics camera() {
+        return shotCharacteristics != null ? shotCharacteristics : CaptureController.mCameraCharacteristics;
+    }
+
+    /**
+     * The static keys the development reads from {@code shot} (the characteristics a shot was captured with: the levels, the colour
+     * matrices, the noise model's analogue limit) whose values differ from {@code open}'s (the camera open at its processing,
+     * which they were read from before), as "key shot=... open=..."; "" when all agree, null for the same object or a missing one.
+     * A FULLRES shot merged in the plain session has the SDK session's object, the open one is re-read without the lease: where
+     * they agree, the photo is what it was.
+     */
+    public static String shotCameraDiff(CameraCharacteristics shot, CameraCharacteristics open) {
+        if (shot == null || open == null || shot == open) return null;
+        final CameraCharacteristics.Key<?>[] keys = {
+                CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL, CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN,
+                CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT1, CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT2,
+                CameraCharacteristics.SENSOR_CALIBRATION_TRANSFORM1, CameraCharacteristics.SENSOR_CALIBRATION_TRANSFORM2,
+                CameraCharacteristics.SENSOR_COLOR_TRANSFORM1, CameraCharacteristics.SENSOR_COLOR_TRANSFORM2,
+                CameraCharacteristics.SENSOR_FORWARD_MATRIX1, CameraCharacteristics.SENSOR_FORWARD_MATRIX2,
+                CameraCharacteristics.SENSOR_MAX_ANALOG_SENSITIVITY};
+        final StringBuilder out = new StringBuilder();
+        for (CameraCharacteristics.Key<?> key : keys) {
+            final Object a, b;
+            try {
+                a = shot.get(key);
+                b = open.get(key);
+            } catch (RuntimeException e) {
+                continue;
+            }
+            if (java.util.Objects.equals(a, b)) continue;
+            if (out.length() > 0) out.append("; ");
+            out.append(key.getName()).append(" shot=").append(a).append(" open=").append(b);
+        }
+        return out.toString();
+    }
 
     @Tunable(title = "Use Dynamic Black Level", category = "Parameters", defaultValue = 0, min = 0, max = 1, step = 1,
             description = "Уровень чёрного из метаданных каждого кадра (что сообщает камера), а не из её паспорта. Оценка по пикселям — «Уровень чёрного по кадру». На части телефонов работает нестабильно."
@@ -202,7 +289,8 @@ public class Parameters {
 
     public void FillConstParameters(CameraCharacteristics characteristics, Point size) {
         com.particlesdevs.photoncamera.settings.TunableInjector.inject(this);
-        cameraID = ScameraApp.getSettings().mCameraID;
+        shotCharacteristics = characteristics;
+        cameraID = cameraIdAtPress != null ? cameraIdAtPress : ScameraApp.getSettings().mCameraID;
         // Split x-y, x - logical, y - physical
         if(cameraID.contains("-")){
             String[] ids = cameraID.split("-");
@@ -328,7 +416,7 @@ public class Parameters {
         // Missing tags must not retain another frame's dynamic calibration.
         usedDynamic = false;
         hasGainMap = false;
-        Integer staticWhite = CaptureController.mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
+        Integer staticWhite = camera().get(CameraCharacteristics.SENSOR_INFO_WHITE_LEVEL);
         if (staticWhite != null) whiteLevel = staticWhite;
         declaredWhite = staticWhite == null ? 0 : staticWhite;
         Integer sensivity = result.get(CaptureResult.SENSOR_SENSITIVITY);
@@ -350,7 +438,7 @@ public class Parameters {
         exposureTime = ExposureIndex.time2sec(exposure);
 
         int[] blarr = new int[4];
-        BlackLevelPattern level = CaptureController.mCameraCharacteristics.get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
+        BlackLevelPattern level = camera().get(CameraCharacteristics.SENSOR_BLACK_LEVEL_PATTERN);
         if (result != null) {
             boolean isHuawei = Build.BRAND.equals("Huawei");
 
@@ -388,7 +476,7 @@ public class Parameters {
             } catch (Exception e){
                 Log.d(TAG, "Error retrieving lens shading map, disabling gain map: " + Log.getStackTraceString(e));
             }
-            if (hasGainMap && rawShadingAlreadyApplied(CaptureController.mCameraCharacteristics)) {
+            if (hasGainMap && rawShadingAlreadyApplied(camera())) {
                 // The HAL delivered RAW with lens shading already corrected; applying the
                 // map again brightens the edges up to ~5x and lifts their blacks.
                 Log.i(TAG, "RAW lens shading already applied by HAL, gain map skipped");
@@ -504,36 +592,11 @@ public class Parameters {
         for (float b : blackLevel) reportedMin = Math.min(reportedMin, b);
         final float paddingBelow = reportedMin > 4f ? reportedMin * 0.25f : -1f;
         final int blocks = bw * bh;
-        final float[][] means = new float[4][blocks];
-        final boolean[][] low = new boolean[4][blocks], zero = new boolean[4][blocks];
-        int padding = 0, max = 0, max2 = 0;
-        float lowest = Float.MAX_VALUE;
-        for (int c = 0; c < 4; c++) {
-            int ox = c % 2, oy = c / 2;
-            for (int by = 0; by < bh; by++) for (int bx = 0; bx < bw; bx++) {
-                // Every 4th sample of the block both ways (64 per block): the block mean
-                // stays well below 1 DN of noise, at 1/16 of the full-frame read cost.
-                long sum = 0;
-                boolean padded = false, allZero = true;
-                for (int y = 0; y < bs; y += 4) {
-                    int row = (by * bs + y) * 2 + oy;
-                    int base = row * width + bx * bs * 2 + ox;
-                    for (int x = 0; x < bs; x += 4) {
-                        int v = data.get(base + x * 2) & 0xffff;
-                        sum += v;
-                        if (v > max) { max2 = max; max = v; } else if (v > max2) max2 = v;
-                        padded |= v < paddingBelow; // a block on the border of the padding: its mean is half signal
-                        allZero &= v == 0;
-                    }
-                }
-                final int i = by * bw + bx;
-                means[c][i] = sum / (float) ((bs / 4) * (bs / 4));
-                if (!allZero) lowest = Math.min(lowest, means[c][i]);
-                low[c][i] = padded;
-                zero[c][i] = allZero;
-                if (padded) padding++;
-            }
-        }
+        final BlockScan scan = BlockScan.of(data, width, bw, bh, paddingBelow, PreferenceKeys.scamDevSwitch("black_scan_bulk", true));
+        final float[][] means = scan.means;
+        final boolean[][] low = scan.low, zero = scan.zero;
+        final int padding = scan.padding, max2 = scan.max2;
+        final float lowest = scan.lowest;
         // P127: the frame's own samples beyond its white: a wider stream than the session had shown (black and white rescaled; the
         // padding test below depends on the black, so the blocks are read again at the new levels)
         final float darkest = lowest == Float.MAX_VALUE ? -1f : lowest;
@@ -572,6 +635,75 @@ public class Parameters {
         if (estimate == Float.MAX_VALUE) return;
         blackFloorEstimate = estimate;
         applyBlackFloor(estimate);
+    }
+
+    /**
+     * The 32x32-sample blocks of {@link #refineBlackLevel} per CFA channel: every 4th sample of a block both ways (64 per block,
+     * the block mean well below 1 DN of noise at 1/16 of the full-frame read cost). P371 (speed): {@code bulk} copies each sampled
+     * row of a block row into an array first - the 786 k single reads through the frame's ShortBuffer view took ~20 ms of the
+     * shot's Java prep (X8U 41.600 -> 41.620) - and visits the same samples: the same sums, blocks, padding and largest values
+     * (none of them depends on the order). scam_dev black_scan_bulk 0: a read per sample, as before.
+     */
+    static final class BlockScan {
+        static final int BS = 32;
+        final float[][] means;
+        final boolean[][] low, zero;
+        int padding, max, max2;
+        float lowest = Float.MAX_VALUE;
+
+        private BlockScan(int blocks) {
+            means = new float[4][blocks];
+            low = new boolean[4][blocks];
+            zero = new boolean[4][blocks];
+        }
+
+        static BlockScan of(java.nio.ShortBuffer data, int width, int bw, int bh, float paddingBelow, boolean bulk) {
+            final int bs = BS, blocks = bw * bh;
+            final BlockScan s = new BlockScan(blocks);
+            final short[] row = bulk ? new short[bw * bs * 2] : null;
+            final java.nio.ShortBuffer view = bulk ? data.duplicate() : null;
+            final long[] sums = new long[bw];
+            final boolean[] padded = new boolean[bw], allZero = new boolean[bw];
+            for (int c = 0; c < 4; c++) {
+                final int ox = c % 2, oy = c / 2;
+                for (int by = 0; by < bh; by++) {
+                    java.util.Arrays.fill(sums, 0L);
+                    java.util.Arrays.fill(padded, false);
+                    java.util.Arrays.fill(allZero, true);
+                    for (int y = 0; y < bs; y += 4) {
+                        final int rowIndex = (by * bs + y) * 2 + oy;
+                        if (bulk) {
+                            view.position(rowIndex * width);
+                            view.get(row, 0, bw * bs * 2);
+                        }
+                        for (int bx = 0; bx < bw; bx++) {
+                            final int base = bx * bs * 2 + ox;
+                            long sum = 0;
+                            boolean pad = false, zeros = true;
+                            for (int x = 0; x < bs; x += 4) {
+                                final int v = (bulk ? row[base + x * 2] : data.get(rowIndex * width + base + x * 2)) & 0xffff;
+                                sum += v;
+                                if (v > s.max) { s.max2 = s.max; s.max = v; } else if (v > s.max2) s.max2 = v;
+                                pad |= v < paddingBelow; // a block on the border of the padding: its mean is half signal
+                                zeros &= v == 0;
+                            }
+                            sums[bx] += sum;
+                            padded[bx] |= pad;
+                            allZero[bx] &= zeros;
+                        }
+                    }
+                    for (int bx = 0; bx < bw; bx++) {
+                        final int i = by * bw + bx;
+                        s.means[c][i] = sums[bx] / (float) ((bs / 4) * (bs / 4));
+                        if (!allZero[bx]) s.lowest = Math.min(s.lowest, s.means[c][i]);
+                        s.low[c][i] = padded[bx];
+                        s.zero[c][i] = allZero[bx];
+                        if (padded[bx]) s.padding++;
+                    }
+                }
+            }
+            return s;
+        }
     }
 
     /**
@@ -770,10 +902,11 @@ public class Parameters {
     }
 
     public void ReCalcColor(boolean customNeutr, CaptureResult result) {
-        CameraCharacteristics characteristics = CaptureController.mCameraCharacteristics;
+        CameraCharacteristics characteristics = camera();
         Rational[] neutralR = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT);
         Integer awb = result.get(CaptureResult.CONTROL_AWB_MODE);
         android.hardware.camera2.params.RggbChannelVector manualGains = result.get(CaptureResult.COLOR_CORRECTION_GAINS);
+        colourFrame(result);
         if (!customNeutr) {
             if (neutralR != null)
                 for (int i = 0; i < neutralR.length && i < whitePoint.length; i++) {
@@ -798,7 +931,15 @@ public class Parameters {
             if(green>0 && manualGains.getRed()>0 && manualGains.getBlue()>0)
                 whitePoint=new float[]{green/manualGains.getRed(),1,green/manualGains.getBlue()};
         }
-        int ref1 = characteristics.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT1);
+        // P370 (A5): the neutral with green 1 (the HALs report it so; the white estimate and the white balance read it so)
+        if (whitePoint != null && whitePoint.length >= 3 && whitePoint[1] > 0f && whitePoint[1] != 1f && Float.isFinite(whitePoint[1])) {
+            Log.i(TAG, "the neutral " + Arrays.toString(whitePoint) + " is normalised to green 1");
+            whitePoint = new float[]{whitePoint[0] / whitePoint[1], 1f, whitePoint[2] / whitePoint[1]};
+        }
+        // P370 (A5): a missing tag never loses the shot - no illuminant 1: D65; no second calibration: the first one (CM, CC);
+        // a missing or zero forward matrix takes the other one, never the identity
+        final Integer refTag1 = characteristics.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT1);
+        int ref1 = refTag1 != null ? refTag1 : CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT1_D65;
         int ref2;
         Object ref2obj = characteristics.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT2);
         if (ref2obj != null) {
@@ -815,70 +956,127 @@ public class Parameters {
         ColorSpaceTransform colorMat2 = characteristics.get(CameraCharacteristics.SENSOR_COLOR_TRANSFORM2);
         ColorSpaceTransform forwardt1 = characteristics.get(CameraCharacteristics.SENSOR_FORWARD_MATRIX1);
         ColorSpaceTransform forwardt2 = characteristics.get(CameraCharacteristics.SENSOR_FORWARD_MATRIX2);
-
-        // Check if forward matrices have each component non-zero, otherwise replace with identity
-        boolean invertible = true;
-        for (int i = 0; i < 3; i++) {
-            float sum = 0.0f;
-            for (int j = 0; j < 3; j++) {
-                if (forwardt1 != null)
-                    sum += Math.abs(forwardt1.getElement(i, j).floatValue());
-            }
-            if(sum == 0.0f) invertible = false;
+        final StringBuilder missing = new StringBuilder(refTag1 == null ? " illuminant 1 (D65 taken)" : "");
+        if (calibration1 == null) {
+            calibration1 = calibration2 != null ? calibration2 : identityTransform();
+            missing.append(" CC1");
         }
-        if(!invertible) {
-            Log.d(TAG, "Forward matrix 1 is not invertible, using identity");
-            forwardt1 = new ColorSpaceTransform(new Rational[]{
-                    new Rational(1,1), new Rational(0,1), new Rational(0,1),
-                    new Rational(0,1), new Rational(1,1), new Rational(0,1),
-                    new Rational(0,1), new Rational(0,1), new Rational(1,1)
-            });
+        if (calibration2 == null) {
+            calibration2 = calibration1;
+            missing.append(" CC2");
         }
-        invertible = true;
-        for (int i = 0; i < 3; i++) {
-            float sum = 0.0f;
-            for (int j = 0; j < 3; j++) {
-                if (forwardt2 != null)
-                    sum += Math.abs(forwardt2.getElement(i, j).floatValue());
-            }
-            if(sum == 0.0f) invertible = false;
+        if (colorMat1 == null && colorMat2 != null) {
+            colorMat1 = colorMat2;
+            missing.append(" CM1");
         }
-        if(!invertible) {
-            Log.d(TAG, "Forward matrix 1 is not invertible, using identity");
-            forwardt2 = new ColorSpaceTransform(new Rational[]{
-                    new Rational(1,1), new Rational(0,1), new Rational(0,1),
-                    new Rational(0,1), new Rational(1,1), new Rational(0,1),
-                    new Rational(0,1), new Rational(0,1), new Rational(1,1)
-            });
+        if (colorMat2 == null && colorMat1 != null) {
+            colorMat2 = colorMat1;
+            missing.append(" CM2");
         }
+        if (colorMat1 == null) missing.append(" CM1 CM2");
+        final boolean forward1 = usableForward(forwardt1), forward2 = usableForward(forwardt2);
+        // the legacy FM1 == FM2 test reads the tags as reported (both missing compared equal as two identities, as before)
+        final boolean sameForward = !forward1 && !forward2 || forward1 && forward2
+                && forwardt1.getElement(0, 0).floatValue() == forwardt2.getElement(0, 0).floatValue()
+                && forwardt1.getElement(1, 1).floatValue() == forwardt2.getElement(1, 1).floatValue()
+                && forwardt1.getElement(2, 2).floatValue() == forwardt2.getElement(2, 2).floatValue()
+                && forwardt1.getElement(1, 2).floatValue() == forwardt2.getElement(1, 2).floatValue();
+        if (forward1 && !forward2) {
+            forwardt2 = forwardt1;
+            missing.append(" FM2");
+        } else if (forward2 && !forward1) {
+            forwardt1 = forwardt2;
+            missing.append(" FM1");
+        }
+        final boolean noForward = !forward1 && !forward2;
+        if (noForward) {
+            Log.d(TAG, "Forward matrices are not invertible, using identity");
+            forwardt1 = forwardt2 = identityTransform();
+            missing.append(" FM1 FM2");
+        }
+        if (missing.length() > 0) Log.w(TAG, "camera colour tags missing or unusable:" + missing + " (the other calibration stands in)");
 
         Converter.convertColorspaceTransform(calibration1, calibrationTransform1);
         Converter.convertColorspaceTransform(calibration2, calibrationTransform2);
         Converter.convertColorspaceTransform(forwardt1, ForwardTransform1);
         Converter.convertColorspaceTransform(forwardt2, ForwardTransform2);
-        Converter.convertColorspaceTransform(colorMat1, ColorMatrix1);
-        Converter.convertColorspaceTransform(colorMat2, ColorMatrix2);
+        if (colorMat1 != null) {
+            Converter.convertColorspaceTransform(colorMat1, ColorMatrix1);
+            Converter.convertColorspaceTransform(colorMat2, ColorMatrix2);
+        } else {
+            Arrays.fill(ColorMatrix1, 0f);
+            Arrays.fill(ColorMatrix2, 0f);
+        }
 
         float[] normalizedForwardTransform1 = ForwardTransform1.clone();
-        float[] normalizedColorMatrix1 = ColorMatrix1.clone();
-        float[] normalizedColorMatrix2 = ColorMatrix2.clone();
         float[] normalizedForwardTransform2 = ForwardTransform2.clone();
-
         Converter.normalizeFM(normalizedForwardTransform1);
         Converter.normalizeFM(normalizedForwardTransform2);
-
-        Converter.normalizeFM(normalizedColorMatrix1);
-        Converter.normalizeFM(normalizedColorMatrix2);
         float[] sensorToXYZ = new float[9];
-        Log.d("Parameters", "calibrationTransform1: " + Arrays.toString(calibrationTransform1) + " calibrationTransform2: " + Arrays.toString(calibrationTransform2) + " normalizedColorMatrix1: " + Arrays.toString(normalizedColorMatrix1) + " normalizedColorMatrix2: " + Arrays.toString(normalizedColorMatrix2));
-        double interpolationFactor = Converter.findDngInterpolationFactor(ref1,
-                ref2, calibrationTransform1, calibrationTransform2,
-                normalizedColorMatrix1, normalizedColorMatrix2, whitePoint);
-        Log.d("Parameters", "Interpolation factor: " + interpolationFactor);
-        {
-            float mired1 = 1e6f / OppoTunedColor.cct(ref1), mired2 = 1e6f / OppoTunedColor.cct(ref2);
-            sceneCct = 1e6f / (mired1 + (float) interpolationFactor * (mired2 - mired1));
+        // P370 (A1): the scene light and the interpolation weight from the DNG SDK's white estimate (DngColor: each ColorMatrix
+        // normalised as one, the xy iteration, CCT and Duv off the Planckian locus); a white more than DUV_GUARD off the locus is
+        // the matrices' artefact, not a light: unknown (scene light 0, the daylight calibration). scam_dev "dng_white_spec 0": the
+        // former estimate (row-normalised matrices, Converter's McCamy iteration, the mired lerp of the factor).
+        // P370 (A5): an estimate that fails (no or singular matrices) gives the daylight calibration and an unknown light.
+        double interpolationFactor = 0;
+        sceneDuv = Float.NaN;
+        String colourFailure = null;
+        com.particlesdevs.photoncamera.gallery.dng.DngColor dngWhite = null;
+        // P370 (review): both colour matrices placeholders (the Pixel 7: CM2 is XYZ -> sRGB, CM1 x XYZ(A) = 1.001 / 1 / 0.998): the
+        // spec estimate reads no light off them (|Duv| 0.033 - 0.038 at real neutrals), the former estimate gave the phone its light
+        final boolean placeholderCms = colorMat1 != null && placeholderColorMatrix(ColorMatrix1, ref1)
+                && placeholderColorMatrix(ColorMatrix2, ref2);
+        try {
+            if (colorMat1 == null) throw new IllegalArgumentException("no colour matrix");
+            if (whiteSpec() && !placeholderCms) {
+                dngWhite = dngWhite(ref1, ref2);
+                if (!dngWhite.usable()) throw new IllegalArgumentException("singular or non-finite colour matrices");
+                // P370 (review): no silent D50 for a white the matrices cannot place (an XYZ sum <= 0, a singular step)
+                final double[] xy = dngWhite.estimateXy(toDouble(whitePoint));
+                if (xy == null) throw new IllegalArgumentException("no chromaticity for the neutral " + Arrays.toString(whitePoint));
+                final double[] cd = com.particlesdevs.photoncamera.gallery.dng.DngColor.cctDuv(xy);
+                if (!(cd[0] > 0) || !Double.isFinite(cd[0]) || !Double.isFinite(cd[1]))
+                    throw new IllegalArgumentException("no colour temperature for the neutral " + Arrays.toString(whitePoint));
+                sceneDuv = (float) cd[1];
+                if (Math.abs(cd[1]) > DUV_GUARD) {
+                    // P370 (review): the calibration keeps the spec's weight (the DNG SDK has no such guard: the colour chain would
+                    // switch at |Duv| 0.025 from the A calibration to the daylight one); only the scene light is unknown
+                    interpolationFactor = dngWhite.weight2(cd[0]);
+                    sceneCct = 0f;
+                    sceneCctSource = String.format(java.util.Locale.ROOT, "unknown: the DNG estimate %.0f K is Duv %.4f off the locus (> %.3f)",
+                            cd[0], cd[1], DUV_GUARD);
+                    Log.w(TAG, "scene light " + sceneCctSource + ": the calibration weight of the estimate kept");
+                } else {
+                    interpolationFactor = dngWhite.weight2(cd[0]);
+                    sceneCct = (float) cd[0];
+                    sceneCctSource = "the DNG estimate";
+                }
+                Log.d(TAG, String.format(java.util.Locale.ROOT, "DNG white: %.0f K Duv %.4f, calibration 2 weight %.4f (illuminants %d / %d)",
+                        cd[0], cd[1], interpolationFactor, ref1, ref2));
+            } else {
+                float[] normalizedColorMatrix1 = ColorMatrix1.clone();
+                float[] normalizedColorMatrix2 = ColorMatrix2.clone();
+                Converter.normalizeFM(normalizedColorMatrix1);
+                Converter.normalizeFM(normalizedColorMatrix2);
+                Log.d("Parameters", "calibrationTransform1: " + Arrays.toString(calibrationTransform1) + " calibrationTransform2: " + Arrays.toString(calibrationTransform2) + " normalizedColorMatrix1: " + Arrays.toString(normalizedColorMatrix1) + " normalizedColorMatrix2: " + Arrays.toString(normalizedColorMatrix2));
+                interpolationFactor = Converter.findDngInterpolationFactor(ref1,
+                        ref2, calibrationTransform1, calibrationTransform2,
+                        normalizedColorMatrix1, normalizedColorMatrix2, whitePoint);
+                float mired1 = 1e6f / OppoTunedColor.cct(ref1), mired2 = 1e6f / OppoTunedColor.cct(ref2);
+                sceneCct = 1e6f / (mired1 + (float) interpolationFactor * (mired2 - mired1));
+                sceneCctSource = placeholderCms && whiteSpec()
+                        ? "the former DNG estimate (row-normalised matrices): both colour matrices are placeholders"
+                        : "the DNG estimate (row-normalised matrices, dng_white_spec 0)";
+            }
+        } catch (RuntimeException e) {
+            interpolationFactor = daylightWeight2(ref1, ref2);
+            sceneCct = 0f;
+            sceneDuv = Float.NaN;
+            colourFailure = "the white estimate failed (" + e.getMessage() + ")";
+            sceneCctSource = "unknown: " + colourFailure;
+            Log.w(TAG, colourFailure);
         }
+        Log.d("Parameters", "Interpolation factor: " + interpolationFactor);
         boolean oppoTuned = false;
         if (OppoTunedColor.applies()) {
             // P212g (W7 = M12 item 4): a sensor without a measured 6500 K anchor (22.36 mm, 3.23 mm) takes the one its plain table learned
@@ -892,6 +1090,7 @@ public class Parameters {
                         OppoTunedColor.describeAnchor(f0, camera), cctK));
             }
             sceneCct = cctK;
+            sceneCctSource = "the OPPO tuned estimate";
             float[] tunedForward = OppoTunedColor.forwardAt(characteristics, cctK);
             if (tunedForward != null) {
                 normalizedForwardTransform1 = tunedForward.clone();
@@ -904,14 +1103,30 @@ public class Parameters {
         }
         Log.d("Parameters", "normalizedForwardTransform1:" + Arrays.toString(normalizedForwardTransform1) +
                 " normalizedForwardTransform2:" + Arrays.toString(normalizedForwardTransform2));
-        Converter.calculateCameraToXYZD50Transform(normalizedForwardTransform1, normalizedForwardTransform2,
-                calibrationTransform1, calibrationTransform2, whitePoint,
-                interpolationFactor, /*out*/sensorToXYZ);
-        Log.d("Parameters", "sensorToXYZ: " + Arrays.toString(sensorToXYZ));
-        Converter.multiply(Converter.sXYZtoProPhoto, sensorToXYZ, /*out*/sensorToProPhoto);
+        // P370 (A5): a calibration that cannot be inverted (or a non-finite chain) never loses the shot: the fallback below
+        boolean chainFailed = false;
+        try {
+            Converter.calculateCameraToXYZD50Transform(normalizedForwardTransform1, normalizedForwardTransform2,
+                    calibrationTransform1, calibrationTransform2, whitePoint,
+                    interpolationFactor, /*out*/sensorToXYZ);
+            for (float v : sensorToXYZ)
+                if (!Float.isFinite(v)) throw new IllegalArgumentException("non-finite camera -> XYZ " + Arrays.toString(sensorToXYZ));
+            Log.d("Parameters", "sensorToXYZ: " + Arrays.toString(sensorToXYZ));
+            Converter.multiply(Converter.sXYZtoProPhoto, sensorToXYZ, /*out*/sensorToProPhoto);
+        } catch (RuntimeException e) {
+            chainFailed = true;
+            colourFailure = (colourFailure == null ? "" : colourFailure + "; ") + "camera -> XYZ failed (" + e.getMessage() + ")";
+            if (!oppoTuned) {
+                sceneCct = 0f;
+                sceneCctSource = "unknown: " + colourFailure;
+            }
+            Log.w(TAG, colourFailure);
+        }
         //ColorSpaceTransform CST = ScameraApp.getCaptureController().mColorSpaceTransform;//= result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
         ColorSpaceTransform CST = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
+        final ColorSpaceTransform reportedCst = CST;
         CST = oplusCcmInstead(CST, result);
+        final boolean oplusCst = CST != reportedCst;
         Log.d(TAG, "result colorCorrection transform=" + CST + " gains=" + result.get(CaptureResult.COLOR_CORRECTION_GAINS));
         // P212g (W7 = M12): a mosaic shot without a usable ISP matrix for its neutral takes the camera's plain-session matrix at that
         // neutral (PlainColourMemory) - the colour the ISP renders that light with in the normal mode - instead of the generic DNG
@@ -922,8 +1137,9 @@ public class Parameters {
         // P212z (review): FULLRES photos only with "mosaic_ccm_table 1"; P366 (owner, 2026-10-27: «вот такие фото получаю с исз,
         // исправь»): the 12 MP ISZ modules' mosaic photos as well by default (2) - the generic DNG matrices rendered them green
         // P315: a camera whose DNG forward matrices are the sRGB -> XYZ placeholder (X8U camera 2) never renders a mosaic shot through
-        // them: the plain-session table off FULLRES as well, else the ISP's matrix even with our own neutral
-        final boolean placeholderFm = mosaicShot && OppoTunedColor.placeholderForward(ForwardTransform1)
+        // them: the plain-session table off FULLRES as well, else the ISP's matrix even with our own neutral. P370 (A3): known on
+        // every shot (a 12 MP shot that would end on them takes the fallbacks below)
+        final boolean placeholderFm = OppoTunedColor.placeholderForward(ForwardTransform1)
                 && OppoTunedColor.placeholderForward(ForwardTransform2);
         if (placeholderFm) Log.i(TAG, "the DNG forward matrices are the sRGB -> XYZ placeholder: the plain-session table or the ISP matrix (P315)");
         final boolean plainTableWanted = com.particlesdevs.photoncamera.processing.color.PlainColourMemory.wanted(fullResRequested > 0)
@@ -933,20 +1149,14 @@ public class Parameters {
             plainTable = com.particlesdevs.photoncamera.processing.color.PlainColourMemory.lookup(String.valueOf(physicalID), whitePoint);
             if (plainTable != null) CST = plainTable.transform();
         }
-        assert calibration2 != null;
-        assert forwardt1 != null;
-        assert forwardt2 != null;
         CCT = new ColorCorrectionTransform();
-        boolean wrongCalibration =
-                forwardt1.getElement(0, 0).floatValue() == forwardt2.getElement(0, 0).floatValue() &&
-                        forwardt1.getElement(1, 1).floatValue() == forwardt2.getElement(1, 1).floatValue() &&
-                        forwardt1.getElement(2, 2).floatValue() == forwardt2.getElement(2, 2).floatValue() &&
-                        forwardt1.getElement(1, 2).floatValue() == forwardt2.getElement(1, 2).floatValue();
+        boolean wrongCalibration = sameForward;
+        final int colorMethod = ScameraApp.getSettings().colorMethod;
         Rational[] rat = new Rational[9];
-        if (ScameraApp.getSettings().colorMethod == 1){
+        if (colorMethod == 1){
             wrongCalibration = false;
         }
-        if (ScameraApp.getSettings().colorMethod == 2){
+        if (colorMethod == 2){
             wrongCalibration = true;
         }
         if (CST != null) {
@@ -958,15 +1168,73 @@ public class Parameters {
             if (cnt <= 4) wrongCalibration = false;
         } else wrongCalibration = false;
         if (oppoTuned) wrongCalibration = false;
+        // P370 (A5): the legacy branch (FM1 == FM2, «Источник цвета» «Захват») refuses a transform whose row sums near 0 (inf after
+        // the row normalisation). Review: only that (rowsNormalisable) - the colour-matrix shape test also refused a HAL transform
+        // with a gain folded in, which this branch took before, and dropped the user's 0 / 2 to the DNG route without a word
+        if (wrongCalibration && !rowsNormalisable(CST)) {
+            wrongCalibration = false;
+            Log.w(TAG, "the result's transform " + CST + " has a row summing to about 0 (|sum| < 0.25): not taken");
+        }
         // vivo X200 Ultra: the DNG matrices in the characteristics are generic (the interpolation always lands near D65), but the
         // HAL reports the colour transform its ISP tuning uses at the scene's colour temperature, together with the
         // matching white balance gains. SCAM HDR renders with that matrix (the same idea as the OPPO tuned CCM per CCT).
+        ColourSource route = oppoTuned ? ColourSource.OPPO_TUNED : ColourSource.DNG_FM;
+        String why = "";
+        boolean ispBranch = false;
         if (!oppoTuned && (plainTable != null || (!ownNeutral || placeholderFm) && ispUsable)) {
             wrongCalibration = true;
+            ispBranch = true;
+            route = plainTable != null ? ColourSource.PLAIN_TABLE : oplusCst ? ColourSource.OPLUS_CCM
+                    : ownNeutral && placeholderFm ? ColourSource.ISP_CST_PLACEHOLDER : ColourSource.ISP_CST;
             Log.d(TAG, plainTable != null ? "Using the camera's plain-session colour matrix (mosaic shot)"
-                    : "Using the ISP colour transform of the capture result (vivo)");
+                    : "Using the ISP colour transform of the capture result (camera " + physicalID + ")");
         }
-        if (wrongCalibration) {
+        if (wrongCalibration && !ispBranch) route = ColourSource.LEGACY_CAPTURED;
+        final float[] dcpXyz = com.particlesdevs.photoncamera.processing.color.DcpProfiles.activeToXyz(whitePoint);
+        float[] cmOnly = null;
+        if (chainFailed && !wrongCalibration && dcpXyz == null) {
+            // P370 (A5): the DNG chain failed: the result's transform when its shape is a colour matrix's, else the white balance alone
+            why = colourFailure;
+            if (CST != null && ispCcmShape(CST)) {
+                wrongCalibration = true;
+                route = oplusCst ? ColourSource.OPLUS_CCM : ColourSource.ISP_CST;
+            } else {
+                route = ColourSource.IDENTITY_FALLBACK;
+            }
+            Log.w(TAG, "colour: " + route + " (" + why + ")");
+        } else if (!chainFailed && !wrongCalibration && !oppoTuned && dcpXyz == null && (placeholderFm || noForward)) {
+            // P370 (A3): the forward matrices are the sRGB -> XYZ placeholder (X8U cameras 2 and 4, Pixel 7) or absent, and the shot
+            // would end on them (isp_ccm 0, SCAM off, «Источник цвета» «Характеристики», an identity transform without an OPPO ISP
+            // matrix): camera RGB would be taken as sRGB (0.50-0.71 of the chroma). In order: the result's transform when its shape
+            // is a colour matrix's (the gates aside), the camera's plain-session matrix, the frame's OPPO ISP matrix, the colour
+            // matrices alone (not placeholders, the white on the locus), else the placeholder with a warning.
+            why = noForward ? "no forward matrix" : "the forward matrices are the sRGB -> XYZ placeholder";
+            if (colorMethod == 1) Log.w(TAG, "«Источник цвета» «Характеристики» refused: " + why);
+            com.particlesdevs.photoncamera.processing.color.PlainColourMemory.Lookup table = null;
+            if (CST != null && !oplusCst && ispCcmShape(CST)) {
+                wrongCalibration = true;
+                route = ColourSource.ISP_CST_PLACEHOLDER;
+                why += ": the result's transform (isp_ccm / SCAM / the colour source setting set aside)";
+            } else if ((table = com.particlesdevs.photoncamera.processing.color.PlainColourMemory.lookup(String.valueOf(physicalID), whitePoint)) != null) {
+                plainTable = table;
+                CST = table.transform();
+                wrongCalibration = true;
+                route = ColourSource.PLAIN_TABLE;
+                why += ": " + table.how;
+            } else if (oplusCst && rowsNormalisable(CST)) {
+                wrongCalibration = true;
+                route = ColourSource.OPLUS_CCM;
+                why += ": the frame's OPPO ISP matrix";
+            } else if ((cmOnly = colourMatrixRoute(ref1, ref2, dngWhite)) != null) {
+                route = ColourSource.DNG_CM_ONLY;
+                why += ": the colour matrices alone";
+            } else {
+                route = ColourSource.IDENTITY_PLACEHOLDER;
+                why += ": nothing better, camera RGB taken as sRGB";
+            }
+            Log.w(TAG, "colour: " + route + " (" + why + ")");
+        }
+        if (wrongCalibration || route == ColourSource.IDENTITY_FALLBACK) {
             sensorToProPhoto[0] = 1.0f / whitePoint[0];
             sensorToProPhoto[1] = 0.0f;
             sensorToProPhoto[2] = 0.0f;
@@ -979,10 +1247,13 @@ public class Parameters {
             sensorToProPhoto[7] = 0.0f;
             sensorToProPhoto[8] = 1.0f / whitePoint[2];
             Log.d(TAG, "Using captured color correction transform");
+        } else if (cmOnly != null) {
+            System.arraycopy(cmOnly, 0, sensorToProPhoto, 0, 9);
+            Log.d(TAG, "Using the colour matrices alone");
         } else {
             Log.d(TAG, "Using calculated color correction transform");
         }
-        Log.d(TAG, Arrays.toString(sensorToProPhoto) + ScameraApp.getSettings().colorMethod);
+        Log.d(TAG, "sensorToProPhoto " + Arrays.toString(sensorToProPhoto));
         Converter.multiply(Converter.sXYZtoSRGB, Converter.sProPhotoToXYZ, /*out*/proPhotoToSRGB);
         if (CST != null && wrongCalibration) {
             Rational[] temp = new Rational[9];
@@ -991,40 +1262,310 @@ public class Parameters {
                 proPhotoToSRGB[i] = temp[i].floatValue();
             }
             //Normalize CST result
-            normalize(proPhotoToSRGB);
+            if (!normalize(proPhotoToSRGB)) Log.w(TAG, "a row of the transform sums to about 0: kept as it is " + Arrays.toString(proPhotoToSRGB));
+        } else if (route == ColourSource.IDENTITY_FALLBACK) {
+            proPhotoToSRGB = new float[]{1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f};
         }
 
         CCT.matrix = proPhotoToSRGB;
-        float[] dcpXyz = com.particlesdevs.photoncamera.processing.color.DcpProfiles.activeToXyz(whitePoint);
         if (dcpXyz != null) {
             Converter.multiply(Converter.sXYZtoProPhoto, dcpXyz, sensorToProPhoto);
             Converter.multiply(Converter.sXYZtoSRGB, Converter.sProPhotoToXYZ, proPhotoToSRGB);
             CCT = new ColorCorrectionTransform();
             CCT.matrix = proPhotoToSRGB;
+            route = ColourSource.DCP;
+            why = "";
         }
+        colourSource = route.name();
+        colourSourceWhy = why == null ? "" : why;
         // vivo: the DNG estimate above lands on a reference illuminant for every scene; the white balance of the shot
         // against the camera's daylight white gives the real colour temperature (the warm cast kept in the render,
         // the warm-light hue look).
         // P212g (W7): a mosaic shot on the plain-session matrix takes the colour temperature of its AWB labels at that light
+        // P370 (A7): SceneIlluminant knows the physical camera ("0-3" of a logical-physical pair is no camera of its table)
+        final String physical = String.valueOf(physicalID);
         if (!oppoTuned && dcpXyz == null && wrongCalibration) {
             if (plainTable != null && plainTable.cct > 0f) {
-                Log.d(TAG, "Scene light from the plain-session AWB labels: " + plainTable.cct + " K (DNG estimate " + sceneCct + " K, camera " + cameraID + ")");
+                Log.d(TAG, "Scene light from the plain-session AWB labels: " + plainTable.cct + " K (DNG estimate " + sceneCct + " K, camera " + physical + ")");
                 sceneCct = plainTable.cct;
+                sceneCctSource = "the plain-session AWB labels";
             } else {
-                float wbCct = com.particlesdevs.photoncamera.processing.color.SceneIlluminant.cct(cameraID, whitePoint, CCT.matrix);
+                float wbCct = com.particlesdevs.photoncamera.processing.color.SceneIlluminant.cct(physical, whitePoint, CCT.matrix);
                 if (wbCct > 0f) {
-                    Log.d(TAG, "Scene light from the white balance: " + wbCct + " K (DNG estimate " + sceneCct + " K, camera " + cameraID + ")");
+                    Log.d(TAG, "Scene light from the white balance: " + wbCct + " K (DNG estimate " + sceneCct + " K, camera " + physical + ")");
                     sceneCct = wbCct;
+                    sceneCctSource = "the white balance against the camera's daylight neutral (SceneIlluminant)";
                 }
             }
         }
+        // P370 (B7): a light the estimate cannot tell (off the locus, failed) takes the frame's Qualcomm AWB label - only the DNG's
+        // ColorMatrix1 (its As-Shot temperature) and keep warm / cool read sceneCct; the summary logs the label beside it always.
+        // Review: not a mosaic shot with the app's own neutral - the ISP read that mosaic as Bayer (P121) or ran no 3A at all (the
+        // X200U ISZ lease, MosaicNeutralResolver.ispIdle: its label is the frozen one)
+        if (!(sceneCct > 0f) && awbLabelK > 0 && !(mosaicShot && ownNeutral)) {
+            sceneCct = awbLabelK;
+            sceneCctSource = "the AWB label (AWBFrameControlCCT; " + sceneCctSource + ")";
+        }
+        Log.i(TAG, colourSummary());
         if (mosaicShot) {
             // P315: what the branch above rendered with (the placeholder case takes the ISP transform with our own neutral too)
             final boolean ispRendered = wrongCalibration && plainTable == null && (!ownNeutral || placeholderFm) && ispUsable;
-            mosaicMatrixSource = mosaicMatrixSource(dcpXyz != null, oppoTuned, plainTable, ispRendered, ownNeutral && placeholderFm,
+            final boolean fallback = !why.isEmpty() || route == ColourSource.LEGACY_CAPTURED;
+            mosaicMatrixSource = fallback && route != ColourSource.PLAIN_TABLE
+                    ? (route == ColourSource.LEGACY_CAPTURED ? "the result's transform (LEGACY_CAPTURED: FM1 == FM2 or colour source 2, capture)"
+                    : route + " (" + why + ")")
+                    : mosaicMatrixSource(dcpXyz != null, oppoTuned, plainTable, ispRendered, ownNeutral && placeholderFm,
                     plainTableAsked, plainTableWanted, String.valueOf(physicalID), whitePoint);
             Log.i(TAG, "mosaic colour matrix: " + mosaicMatrixSource + String.format(java.util.Locale.ROOT, ", scene %.0f K", sceneCct));
         }
+    }
+
+    /** P370 (A1): |Duv| above which the DNG white estimate is the matrices' artefact (real X200U shot 0.012; the artefact 0.054-0.057). */
+    static final float DUV_GUARD = 0.025f;
+    /** P370 (A1): the light an unknown estimate takes its calibration weight at. */
+    static final double DAYLIGHT_K = 6504.0;
+    /** The identity as a ColorSpaceTransform (made when needed: a plain JVM test loads this class without Android). */
+    private static ColorSpaceTransform identityTransform() {
+        return new ColorSpaceTransform(new int[]{1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1});
+    }
+
+    /**
+     * P370 (A1): the weight of calibration 2 at daylight (DAYLIGHT_K, 1/T between the two illuminants' DNG SDK kelvin, clamped):
+     * what an unknown light renders with - calibration 1 on the phones whose first illuminant is D65 (vivo, OPPO), not the tungsten
+     * one of a phone whose first is standard A (Pixel).
+     */
+    static double daylightWeight2(int ref1, int ref2) {
+        final double t1 = com.particlesdevs.photoncamera.gallery.dng.DngColor.illuminantTemperature(ref1, 2850);
+        final double t2 = com.particlesdevs.photoncamera.gallery.dng.DngColor.illuminantTemperature(ref2, 6500);
+        if (t1 == t2) return 0;
+        final double lo = Math.min(t1, t2), hi = Math.max(t1, t2), t = Math.max(lo, Math.min(hi, DAYLIGHT_K));
+        final double low = (1 / t - 1 / hi) / (1 / lo - 1 / hi); // the weight of the low-temperature calibration
+        return t2 <= t1 ? low : 1 - low;
+    }
+
+    /** P370 (A1): scam_dev.txt "dng_white_spec" (default 1): the DNG SDK's white estimate; 0 the former row-normalised one. */
+    static boolean whiteSpec() {
+        return PreferenceKeys.scamDevSwitch("dng_white_spec", true);
+    }
+
+    /** P370 (A1): the DNG white estimate of the camera's colour matrices and calibrations as read (DngColor.forCamera). */
+    private com.particlesdevs.photoncamera.gallery.dng.DngColor dngWhite(int ref1, int ref2) {
+        return com.particlesdevs.photoncamera.gallery.dng.DngColor.forCamera(toDouble(ColorMatrix1), toDouble(ColorMatrix2),
+                toDouble(calibrationTransform1), toDouble(calibrationTransform2), ref1, ref2);
+    }
+
+    static double[] toDouble(float[] f) {
+        final double[] d = new double[f.length];
+        for (int i = 0; i < f.length; i++) d[i] = f[i];
+        return d;
+    }
+
+    /** A forward matrix with every column non-zero (the former "invertible" test); null: none. */
+    private static boolean usableForward(@androidx.annotation.Nullable ColorSpaceTransform fm) {
+        if (fm == null) return false;
+        for (int i = 0; i < 3; i++) {
+            float sum = 0.0f;
+            for (int j = 0; j < 3; j++) sum += Math.abs(fm.getElement(i, j).floatValue());
+            if (sum == 0.0f) return false;
+        }
+        return true;
+    }
+
+    /**
+     * P370 (A3): camera RGB -> ProPhoto through the colour matrices alone (the DNG route without a forward matrix: the inverse of
+     * the interpolated ColorMatrix, Bradford from the white to D50), its white at the forward route's level (Y of the white = the
+     * largest component of CC^-1 n); null when a matrix is a placeholder (CM . XYZ of its light = 1, 1, 1 or CM = XYZ -> sRGB),
+     * the estimate is unusable or its white is more than DUV_GUARD off the locus.
+     */
+    @androidx.annotation.Nullable
+    private float[] colourMatrixRoute(int ref1, int ref2, @androidx.annotation.Nullable com.particlesdevs.photoncamera.gallery.dng.DngColor dc) {
+        try {
+            if (placeholderColorMatrix(ColorMatrix1, ref1) || placeholderColorMatrix(ColorMatrix2, ref2)) return null;
+            if (dc == null) dc = dngWhite(ref1, ref2);
+            if (!dc.usable()) return null;
+            final double[] n = toDouble(whitePoint);
+            final double[] xy = dc.estimateXy(n);
+            if (xy == null) return null;
+            final double[] cd = com.particlesdevs.photoncamera.gallery.dng.DngColor.cctDuv(xy);
+            if (!(Math.abs(cd[1]) <= DUV_GUARD)) return null;
+            final double[] c2x = dc.cameraToXyzD50(n);
+            final float[] cc = new float[9], ccInv = new float[9];
+            final double[] part = dc.cameraPartAt(cd[0]);
+            for (int i = 0; i < 9; i++) cc[i] = (float) part[i];
+            if (!Converter.invert(cc, ccInv)) return null;
+            double target = 0;
+            for (int r = 0; r < 3; r++) target = Math.max(target, ccInv[r * 3] * n[0] + ccInv[r * 3 + 1] * n[1] + ccInv[r * 3 + 2] * n[2]);
+            final double y = c2x[3] * n[0] + c2x[4] * n[1] + c2x[5] * n[2];
+            if (!(y > 1e-9) || !(target > 0)) return null;
+            final float[] toXyz = new float[9], out = new float[9];
+            for (int i = 0; i < 9; i++) toXyz[i] = (float) (c2x[i] * target / y);
+            Converter.multiply(Converter.sXYZtoProPhoto, toXyz, out);
+            for (float v : out) if (!Float.isFinite(v)) return null;
+            return out;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "the colour matrices alone: " + e);
+            return null;
+        }
+    }
+
+    /** XYZ (Y 1) of the standard illuminants the placeholder test knows; others on the Planckian locus at the DNG SDK's kelvin. */
+    private static double[] illuminantXyz(int code) {
+        switch (code) {
+            case 21: return new double[]{0.95047, 1, 1.08883};
+            case 17: case 3: return new double[]{1.09850, 1, 0.35585};
+            case 23: return new double[]{0.96422, 1, 0.82521};
+            case 20: return new double[]{0.95682, 1, 0.92149};
+            case 22: return new double[]{0.94972, 1, 1.22638};
+            default: {
+                final double t = com.particlesdevs.photoncamera.gallery.dng.DngColor.illuminantTemperature(code, 6504);
+                final double[] xy = com.particlesdevs.photoncamera.gallery.dng.DngColor.xyFromCctDuv(t, 0);
+                return new double[]{xy[0] / xy[1], 1, (1 - xy[0] - xy[1]) / xy[1]};
+            }
+        }
+    }
+
+    /** XYZ (D65) -> linear sRGB, the matrix a placeholder ColorMatrix copies. */
+    private static final double[] XYZ_TO_SRGB_D65 = {3.2404542, -1.5371385, -0.4985314, -0.9692660, 1.8760108, 0.0415560,
+            0.0556434, -0.2040259, 1.0572252};
+
+    /**
+     * P370 (A3): a ColorMatrix that describes no sensor: it maps the white of its own illuminant to (1, 1, 1) within 2 % (camera
+     * RGB taken as white-balanced sRGB), or it is XYZ -> sRGB itself (D65 or the D50-adapted one, within 0.01 a component).
+     * An absent (all zero) matrix counts as one.
+     */
+    static boolean placeholderColorMatrix(@androidx.annotation.Nullable float[] cm, int illuminant) {
+        if (cm == null || cm.length < 9) return true;
+        boolean zero = true;
+        for (float v : cm) zero &= v == 0f;
+        if (zero) return true;
+        final double[] xyz = illuminantXyz(illuminant);
+        final double[] v = new double[3];
+        for (int r = 0; r < 3; r++) v[r] = cm[r * 3] * xyz[0] + cm[r * 3 + 1] * xyz[1] + cm[r * 3 + 2] * xyz[2];
+        final double lo = Math.min(v[0], Math.min(v[1], v[2])), hi = Math.max(v[0], Math.max(v[1], v[2]));
+        if (lo > 0 && hi / lo <= 1.02) return true;
+        boolean d65 = true, d50 = true;
+        for (int i = 0; i < 9; i++) {
+            d65 &= Math.abs(cm[i] - XYZ_TO_SRGB_D65[i]) < 0.01;
+            d50 &= Math.abs(cm[i] - Converter.sXYZtoSRGB[i]) < 0.01;
+        }
+        return d65 || d50;
+    }
+
+    /**
+     * P370 (A3): the DNG camera profile (no JPEG colour, P243 off) carries the forward matrices - not when they are the sRGB -> XYZ
+     * placeholder and the colour matrices are real (a raw converter then renders through the ColorMatrix, as the DNG spec does
+     * without a ForwardMatrix, instead of taking camera RGB as sRGB).
+     */
+    public boolean dngForwardMatrices() {
+        return !(OppoTunedColor.placeholderForward(ForwardTransform1) && OppoTunedColor.placeholderForward(ForwardTransform2)
+                && !placeholderColorMatrix(ColorMatrix1, calibrationIlluminant1) && !placeholderColorMatrix(ColorMatrix2, calibrationIlluminant2));
+    }
+
+    /**
+     * P370 (review): a colour matrix the DNG may carry - finite, not all zero (a camera without SENSOR_COLOR_TRANSFORM1 / 2 leaves
+     * them zero, A5) and invertible; DngCreator writes no other, and the shot then carries the JPEG's own profile (DngColour).
+     */
+    public static boolean dngColourMatrixUsable(@androidx.annotation.Nullable float[] cm) {
+        if (cm == null || cm.length < 9) return false;
+        for (float v : cm) if (!Float.isFinite(v)) return false;
+        final double det = (double) cm[0] * ((double) cm[4] * cm[8] - (double) cm[5] * cm[7])
+                - (double) cm[1] * ((double) cm[3] * cm[8] - (double) cm[5] * cm[6])
+                + (double) cm[2] * ((double) cm[3] * cm[7] - (double) cm[4] * cm[6]);
+        return Math.abs(det) > 1e-9 && Double.isFinite(det);
+    }
+
+    /** P370 (review): the camera's ColorMatrix1 is one a DNG may carry ({@link #dngColourMatrixUsable}). */
+    public boolean dngColourMatrices() {
+        return dngColourMatrixUsable(ColorMatrix1);
+    }
+
+    /** Every row of the matrix sums to at least 0.25 in magnitude (Parameters.normalize scales it). */
+    private static boolean rowsNormalisable(@androidx.annotation.Nullable ColorSpaceTransform cst) {
+        if (cst == null) return false;
+        final float[] m = rowMajor(cst);
+        for (int r = 0; r < 3; r++) {
+            final float s = m[r * 3] + m[r * 3 + 1] + m[r * 3 + 2];
+            if (!(Math.abs(s) >= 0.25f) || !Float.isFinite(s)) return false;
+        }
+        return true;
+    }
+
+    /** P370 (B1): the Qualcomm AWB colour temperature label of a result (vivo and OPPO report it). */
+    static final CaptureResult.Key<int[]> AWB_CCT_LABEL =
+            new CaptureResult.Key<>("org.quic.camera2.statsconfigs.AWBFrameControlCCT", int[].class);
+    /** P370 (B1): the cameras whose DNG colour tags were logged in this process. */
+    private static final java.util.Set<String> TAGS_LOGGED = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
+    /**
+     * P370 (B1): what the README and the log say about the result that supplies the colour: its timestamp, ISO, AWB label, its
+     * transform as reported (row-major) and the camera's DNG colour tags as rationals (logged once per camera).
+     */
+    private void colourFrame(CaptureResult result) {
+        final Long ts = result.get(CaptureResult.SENSOR_TIMESTAMP);
+        final Integer iso = result.get(CaptureResult.SENSOR_SENSITIVITY);
+        colourFrameTimestamp = ts == null ? 0L : ts;
+        colourFrameIso = iso == null ? 0 : iso;
+        int[] label;
+        try {
+            label = result.get(AWB_CCT_LABEL);
+        } catch (RuntimeException noTag) {
+            label = null;
+        }
+        awbLabelK = com.particlesdevs.photoncamera.processing.color.PlainColourMemory.label(label);
+        final ColorSpaceTransform cst = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM);
+        resultCst = cst == null ? null : rowMajor(cst);
+        final CameraCharacteristics c = camera(); // the shot's characteristics (ReCalcColor's)
+        if (c == null) return;
+        final StringBuilder t = new StringBuilder();
+        t.append("illuminants ").append(c.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT1)).append(" / ")
+                .append(c.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT2));
+        final Object[][] tags = {{"CM1", CameraCharacteristics.SENSOR_COLOR_TRANSFORM1}, {"CM2", CameraCharacteristics.SENSOR_COLOR_TRANSFORM2},
+                {"FM1", CameraCharacteristics.SENSOR_FORWARD_MATRIX1}, {"FM2", CameraCharacteristics.SENSOR_FORWARD_MATRIX2},
+                {"CC1", CameraCharacteristics.SENSOR_CALIBRATION_TRANSFORM1}, {"CC2", CameraCharacteristics.SENSOR_CALIBRATION_TRANSFORM2}};
+        boolean placeholderFm = true;
+        for (Object[] tag : tags) {
+            @SuppressWarnings("unchecked") final ColorSpaceTransform m = c.get((CameraCharacteristics.Key<ColorSpaceTransform>) tag[1]);
+            t.append(' ').append(tag[0]).append(' ').append(m == null ? "none" : rationals(m));
+            if (((String) tag[0]).startsWith("FM")) placeholderFm &= m != null && OppoTunedColor.placeholderForward(rowMajor(m));
+        }
+        t.append(placeholderFm ? "; forward matrices: the sRGB -> XYZ placeholder" : "");
+        colourTags = t.toString();
+        if (TAGS_LOGGED.add(physicalID + "|" + colourTags)) Log.i(TAG, "camera " + physicalID + " DNG colour tags: " + colourTags);
+    }
+
+    private static float[] rowMajor(ColorSpaceTransform m) {
+        final float[] out = new float[9];
+        for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) out[r * 3 + c] = m.getElement(c, r).floatValue();
+        return out;
+    }
+
+    private static String rationals(ColorSpaceTransform m) {
+        final Rational[] r = new Rational[9];
+        m.copyElements(r, 0);
+        final StringBuilder s = new StringBuilder("[");
+        for (int i = 0; i < 9; i++) s.append(i == 0 ? "" : i % 3 == 0 ? "; " : ", ").append(r[i].getNumerator()).append('/').append(r[i].getDenominator());
+        return s.append(']').toString();
+    }
+
+    /**
+     * P370 (B1): camera RGB -> linear sRGB of the render before the «Цвет» look, row-major: CCT.matrix x sensorToProPhoto (the
+     * shaders multiply the white-balanced input by the neutral first: camera RGB = ScamRgb x whitePoint). Null before
+     * ReCalcColor. SceneIlluminant keeps the post-white-balance CCT.matrix (this product would apply the white balance twice).
+     */
+    @androidx.annotation.Nullable
+    public float[] cameraToSrgb() {
+        if (CCT == null || CCT.matrix == null) return null;
+        final float[] out = new float[9];
+        Converter.multiply(CCT.matrix, sensorToProPhoto, out);
+        return out;
+    }
+
+    /** P370 (B1): one line of the shot's colour route (log). */
+    public String colourSummary() {
+        return String.format(java.util.Locale.ROOT, "colour: %s%s, scene %.0f K (%s%s), neutral %s, frame ts %d ISO %d AWB label %d K",
+                colourSource, colourSourceWhy.isEmpty() ? "" : " (" + colourSourceWhy + ")", sceneCct, sceneCctSource,
+                Float.isNaN(sceneDuv) ? "" : String.format(java.util.Locale.ROOT, ", Duv %.4f", sceneDuv), Arrays.toString(whitePoint),
+                colourFrameTimestamp, colourFrameIso, awbLabelK);
     }
 
     /** P212g (W7): the log text of where a mosaic shot's colour matrix came from. */
@@ -1078,7 +1619,20 @@ public class Parameters {
      * (the plain-session colour table takes what this branch would).
      */
     public static boolean ispCcmUsable(ColorSpaceTransform cst) {
-        if (cst == null || !PreferenceKeys.isScamEnabled() || PreferenceKeys.routeInternalValue("isp_ccm", 1f) <= 0f) return false;
+        return cst != null && ispCcmGates() && ispCcmShape(cst);
+    }
+
+    /** P370 (A3): the switches the ISP branch obeys: SCAM on and scam_dev "isp_ccm" not 0. */
+    public static boolean ispCcmGates() {
+        return PreferenceKeys.isScamEnabled() && PreferenceKeys.routeInternalValue("isp_ccm", 1f) > 0f;
+    }
+
+    /**
+     * P370 (A3): a transform shaped as an ISP colour matrix - at least 7 non-zero elements, each row summing to 0.85 .. 1.15 (white
+     * stays white), each diagonal element at least 0.8. False for null.
+     */
+    public static boolean ispCcmShape(@androidx.annotation.Nullable ColorSpaceTransform cst) {
+        if (cst == null) return false;
         Rational[] r = new Rational[9];
         cst.copyElements(r, 0);
         int nonZero = 0;
@@ -1091,19 +1645,13 @@ public class Parameters {
         return true;
     }
 
-    private void normalize(float[] in) {
-        float avr = in[0] + in[1] + in[2];
-        in[0] /= avr;
-        in[1] /= avr;
-        in[2] /= avr;
-        avr = in[3] + in[4] + in[5];
-        in[3] /= avr;
-        in[4] /= avr;
-        in[5] /= avr;
-        avr = in[6] + in[7] + in[8];
-        in[6] /= avr;
-        in[7] /= avr;
-        in[8] /= avr;
+    /**
+     * Every row scaled to sum to 1 (white stays white). P370 (A5): a row summing to less than 0.25 in magnitude (or not finite) is
+     * kept as it is - its division gave inf - and the result is false.
+     */
+    static boolean normalize(float[] in) {
+        // P370 (A2): the rule the RAW viewfinder shares (PhotoMatrix)
+        return com.particlesdevs.photoncamera.processing.color.PhotoMatrix.normaliseRows(in);
     }
 
     private static void PrintMat(float[] mat) {
@@ -1158,6 +1706,8 @@ public class Parameters {
         params.focalLength = focalLength;
         params.cameraRotation = cameraRotation;
         params.CCT = CCT;
+        params.shotCharacteristics = shotCharacteristics;
+        params.cameraIdAtPress = cameraIdAtPress;
         return params;
     }
 

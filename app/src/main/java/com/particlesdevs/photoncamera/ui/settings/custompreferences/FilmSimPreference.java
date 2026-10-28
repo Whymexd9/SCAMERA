@@ -26,6 +26,7 @@ import com.particlesdevs.photoncamera.circularbarlib.ui.UiTokens;
 import com.particlesdevs.photoncamera.processing.color.FilmLut;
 import com.particlesdevs.photoncamera.processing.color.FilmSim;
 import com.particlesdevs.photoncamera.settings.PreferenceValue;
+import com.particlesdevs.photoncamera.ui.settings.PageReset;
 import com.particlesdevs.photoncamera.ui.settings.SettingsStyle;
 import com.particlesdevs.photoncamera.util.Lang;
 
@@ -40,7 +41,7 @@ import java.util.concurrent.Executors;
  * «Эффекты» (grain, halation, softness, the film's and the print's exposure, the print's tone, the strength). Every choice is
  * stored at once and redraws the preview; the photo and the viewfinder take it at the next frame (FilmChain).
  */
-public class FilmSimPreference extends Preference implements SharedPreferences.OnSharedPreferenceChangeListener {
+public class FilmSimPreference extends Preference implements SharedPreferences.OnSharedPreferenceChangeListener, PageReset.Resettable {
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "film-sim-page");
         t.setDaemon(true);
@@ -77,6 +78,31 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
     private void store(String key, String value) {
         final SharedPreferences p = getSharedPreferences();
         if (p != null) p.edit().putString(key, value).apply();
+    }
+
+    /**
+     * The page reset (audit 2026-10-27: it changed nothing here and said «Всё уже по умолчанию»): the film, the print, the format
+     * and every effect's slider back to their defaults (their stored values go); true when one was stored.
+     */
+    @Override
+    public boolean resetToDefault() {
+        final SharedPreferences p = getSharedPreferences();
+        if (p == null) return false;
+        boolean stored = false, any = false;
+        final java.util.Map<String, ?> all = p.getAll();
+        final SharedPreferences.Editor e = p.edit();
+        for (String k : FilmSim.KEYS) {
+            if (!all.containsKey(k)) continue;
+            e.remove(k);
+            stored = true;
+            // «no film» stored is the default already
+            if (!FilmSim.STOCK_KEY.equals(k) || !String.valueOf(all.get(k)).isEmpty()) any = true;
+        }
+        if (!stored) return false;
+        e.apply();
+        fill();
+        redrawPreview();
+        return any;
     }
 
     @Override
@@ -262,8 +288,9 @@ public class FilmSimPreference extends Preference implements SharedPreferences.O
                     redrawPreview();
                 });
                 content.addView(all);
-                note(c, Lang.t(c, "Превью показывает зерно, ореол и мягкость как на фото в полном размере (кусок кадра 1:1). В видоискателе — только цвет и тон плёнки.",
-                        "The preview shows the grain, halation and softness as on the full-size photo (a 1:1 crop). The viewfinder shows the film's colour and tone only."));
+                // P369: approximate - the preview's film works on a finished sample picture, the photo's on the scene light
+                note(c, Lang.t(c, "Превью показывает зерно, ореол и мягкость примерно как на фото в полном размере (кусок кадра 1:1). В видоискателе — только цвет и тон плёнки.",
+                        "The preview shows the grain, halation and softness roughly as on the full-size photo (a 1:1 crop). The viewfinder shows the film's colour and tone only."));
             }
         }
     }

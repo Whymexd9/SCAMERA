@@ -47,9 +47,13 @@ public final class ZoomController {
     public static float residual() { ensureInitialized(); return effective(residual, streamCrop); }
     /** The crop the session's stream already holds ({@link #setStreamCrop}). */
     public static float streamCrop() { return streamCrop; }
-    /** Centre-crop factor of the frame being processed (recorded at the shutter). */
+    /** Centre-crop factor of the shot just pressed (recorded at the shutter; the shot's saver keeps its own: ImageSaver.zoomResidual). */
     public static float shotResidual() { return shotResidual; }
     public static void markShot() { shotResidual = effective(residual, streamCrop); }
+    /** The centre-crop factor of the shot being processed (its press's: ScamProcessor.start); the next press marks its own meanwhile. */
+    private static volatile float processingResidual = 1f;
+    public static void beginProcessing(float crop) { processingResidual = Math.max(1f, crop); }
+    public static float processingResidual() { return processingResidual; }
     /**
      * P100: the shot's RAW already holds an in-sensor zoom of {@code factor} (CROPPED_RAW): the photo's own crop is divided by it
      * (never below 1). Only the photo: the viewfinder's zoom is unchanged.

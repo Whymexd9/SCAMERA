@@ -450,7 +450,7 @@ public class ShadeUiTest {
                 .putString("pref_scam_hybrid_downsampler", "bilinear").commit();
         layoutFull();
         assertEquals(longest, sheet.pinnedKeys());
-        assertEquals("Даунсемплер", catalog.entry("pref_scam_hybrid_downsampler").shortTitle.toString());
+        assertEquals("Уменьшение", catalog.entry("pref_scam_hybrid_downsampler").shortTitle.toString());
         RecyclerView grid = grid();
         assertEquals("twelve tiles and «Добавить» (P167: no limit)", 13, grid.getChildCount());
         for (int i = 0; i < grid.getChildCount(); i++) assertTileTextFits((ShadeTileView) grid.getChildAt(i));
@@ -669,6 +669,63 @@ public class ShadeUiTest {
         assertEquals("slides as before", 2, sheet.zoomRuns);
         assertEquals(1f, sheet.getScaleX(), 0f);
         assertEquals(SettingsBarLayout.LEVEL_PEEK, sheet.getSheetLevel());
+    }
+
+    /**
+     * Audit 2026-10-27 (settings-reset-ignores-device-defaults): a double tap on a shade slider puts this phone's factory value
+     * back (Redmi Note 11 Pro: RL 3 at 1.5), not the XML default (1).
+     */
+    @Test
+    public void aSliderDoubleTapPutsThePhonesDefaultBack() {
+        final String rl3 = "pref_scam_hybrid_why_sharp_rl3_amount";
+        org.robolectric.shadows.ShadowBuild.setManufacturer("Xiaomi");
+        org.robolectric.shadows.ShadowBuild.setDevice("viva");
+        final ShadeCatalog note = new ShadeCatalog(activity, prefs);
+        final List<Object> picks = new ArrayList<>();
+        final ShadeRows rows = new ShadeRows(activity, note, new ShadeRows.Actions() {
+            @Override public void pick(ShadeCatalog.Entry entry, Object value) {
+                if (rl3.equals(entry.key)) picks.add(value);
+            }
+            @Override public void togglePin(String key) {}
+            @Override public boolean pinned(String key) { return false; }
+            @Override public void openList(ShadeCatalog.Entry entry) {}
+            @Override public void blocked(String reason) {}
+        });
+        final android.widget.LinearLayout into = new android.widget.LinearLayout(activity);
+        into.setOrientation(android.widget.LinearLayout.VERTICAL);
+        rows.build(into, java.util.Collections.emptyList(), java.util.Collections.singletonList(rl3));
+        final View card = rows.rowView(rl3);
+        assertNotNull(card);
+        final android.widget.SeekBar bar = seekBar(card);
+        assertNotNull(bar);
+        into.measure(View.MeasureSpec.makeMeasureSpec(dp(360), View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(dp(2000), View.MeasureSpec.AT_MOST));
+        into.layout(0, 0, dp(360), into.getMeasuredHeight());
+        final long t = android.os.SystemClock.uptimeMillis();
+        final float y = bar.getHeight() / 2f;
+        tap(bar, t, dp(60), y);
+        tap(bar, t + 120, dp(60) + 2, y);
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        assertFalse(picks.isEmpty());
+        assertEquals("the phone's factory value", 1.5f, ((Number) picks.get(picks.size() - 1)).floatValue(), 1e-6f);
+    }
+
+    private static android.widget.SeekBar seekBar(View v) {
+        if (v instanceof android.widget.SeekBar) return (android.widget.SeekBar) v;
+        if (!(v instanceof ViewGroup)) return null;
+        for (int i = 0; i < ((ViewGroup) v).getChildCount(); i++) {
+            final android.widget.SeekBar b = seekBar(((ViewGroup) v).getChildAt(i));
+            if (b != null) return b;
+        }
+        return null;
+    }
+
+    private static void tap(View v, long t, float x, float y) {
+        final android.view.MotionEvent down = android.view.MotionEvent.obtain(t, t, android.view.MotionEvent.ACTION_DOWN, x, y, 0);
+        v.dispatchTouchEvent(down);
+        down.recycle();
+        final android.view.MotionEvent up = android.view.MotionEvent.obtain(t, t + 40, android.view.MotionEvent.ACTION_UP, x, y, 0);
+        v.dispatchTouchEvent(up);
+        up.recycle();
     }
 
     /**

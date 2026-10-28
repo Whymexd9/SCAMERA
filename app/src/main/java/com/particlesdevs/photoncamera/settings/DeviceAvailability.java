@@ -51,17 +51,40 @@ public final class DeviceAvailability {
     }
 
     /**
-     * Why «Цветовой метод» does not act on this phone, or null. Parameters picks the colour transform from the choice, then
-     * the OPPO Find X7 Ultra's tuned matrix (per colour temperature) forces «Характеристики», and the ISP matrix that vivo
-     * reports with every capture result forces «Захват» (unless scam_dev.txt turns isp_ccm off).
+     * Why «Цветовой метод» cannot act on this phone, or null (the row stays enabled). Parameters picks the colour transform from the
+     * choice; the OPPO Find X7 Ultra's tuned matrix (per colour temperature) replaces it on every shot, and a camera whose DNG forward
+     * matrices are the sRGB -> XYZ placeholder never renders through them (Parameters' A3 route: the ISP matrix, the plain-session
+     * table or the colour matrices alone, whatever the choice). P370 (review): only those disable the row - where the capture
+     * result's ISP matrix renders the 12 MP photos (vivo, a preview transform shaped as a colour matrix) the choice still acts on
+     * mosaic shots with the app's own white balance and on «Захват» with the ISP branch off, so the row stays enabled (a saved
+     * 0 or 2 can be changed back) and its summary says what it acts on.
      */
     static String colorMethodOverride() {
         if (com.particlesdevs.photoncamera.processing.render.OppoTunedColor.applies())
             return Lang.t("На этом OPPO цвет задаёт настроенная матрица OPPO по цветовой температуре: выбор не действует.",
                     "On this OPPO the tuned OPPO matrix for the colour temperature sets the colour: the choice has no effect.");
-        if ("vivo".equalsIgnoreCase(Build.MANUFACTURER) && PreferenceKeys.routeInternalValue("isp_ccm", 1f) > 0f)
-            return Lang.t("На vivo цвет задаёт матрица ISP из каждого кадра: выбор не действует.",
-                    "On vivo the ISP matrix of each frame sets the colour: the choice has no effect.");
+        if (placeholderForward())
+            return Lang.t("Матрицы DNG этой камеры — заглушка sRGB: цвет задаёт матрица ISP или таблица обычной сессии, выбор не действует.",
+                    "This camera's DNG forward matrices are an sRGB placeholder: the ISP matrix or the plain-session table sets the colour; the choice has no effect.");
         return null;
+    }
+
+    /** P370 (A6): the running camera's DNG forward matrices are both the sRGB -> XYZ placeholder. */
+    static boolean placeholderForward() {
+        try {
+            final android.hardware.camera2.CameraCharacteristics c = com.particlesdevs.photoncamera.capture.CaptureController.mCameraCharacteristics;
+            if (c == null) return false;
+            return placeholder(c.get(android.hardware.camera2.CameraCharacteristics.SENSOR_FORWARD_MATRIX1))
+                    && placeholder(c.get(android.hardware.camera2.CameraCharacteristics.SENSOR_FORWARD_MATRIX2));
+        } catch (RuntimeException unknown) {
+            return false;
+        }
+    }
+
+    private static boolean placeholder(android.hardware.camera2.params.ColorSpaceTransform m) {
+        if (m == null) return false;
+        final float[] f = new float[9];
+        for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) f[r * 3 + c] = m.getElement(c, r).floatValue();
+        return com.particlesdevs.photoncamera.processing.render.OppoTunedColor.placeholderForward(f);
     }
 }

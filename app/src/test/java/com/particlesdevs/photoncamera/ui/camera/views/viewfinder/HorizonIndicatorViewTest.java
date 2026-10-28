@@ -89,6 +89,34 @@ public class HorizonIndicatorViewTest {
         return b;
     }
 
+    /**
+     * Bug viewfinder-ui-horizon-polls-in-background: a stopped camera activity (Home, the gallery, the settings) keeps its views
+     * attached - the level polled the (unregistered) gyro 30 times a second on the main thread until the window came back.
+     */
+    @Test
+    public void noPollWhileTheWindowIsHidden() {
+        final android.app.Activity activity = org.robolectric.Robolectric.buildActivity(android.app.Activity.class).setup().get();
+        final HorizonIndicatorView v = new HorizonIndicatorView(activity, null);
+        final int[] reads = {0};
+        v.setGyro(new com.particlesdevs.photoncamera.control.Gyro(
+                (android.hardware.SensorManager) activity.getSystemService(android.content.Context.SENSOR_SERVICE)) {
+            @Override public float getRoll() { reads[0]++; return 0f; }
+        });
+        activity.setContentView(v);
+        v.setVisible(true);
+        final org.robolectric.shadows.ShadowLooper main = Shadows.shadowOf(android.os.Looper.getMainLooper());
+        main.idleFor(java.time.Duration.ofMillis(500));
+        assertTrue("polls while shown", reads[0] > 5);
+        v.dispatchWindowVisibilityChanged(View.GONE);
+        main.idle();
+        final int hidden = reads[0];
+        main.idleFor(java.time.Duration.ofSeconds(1));
+        assertEquals("no poll while the window is hidden", hidden, reads[0]);
+        v.dispatchWindowVisibilityChanged(View.VISIBLE);
+        main.idleFor(java.time.Duration.ofMillis(500));
+        assertTrue("polls again once shown", reads[0] > hidden + 5);
+    }
+
     /** P245: one pulse on the way in (half a degree), none while it stays level, again only after it left beyond a degree. */
     @Test
     public void theHysteresisAndTheSoftPulse() {

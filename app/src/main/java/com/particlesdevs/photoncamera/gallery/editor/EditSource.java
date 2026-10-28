@@ -139,7 +139,12 @@ public final class EditSource implements Closeable {
                 Log.w(TAG, "ImageDecoder route failed for " + name + ": " + e);
             }
         }
-        s.openGlide(context);
+        try {
+            s.openGlide(context);
+        } catch (IOException | RuntimeException | OutOfMemoryError e) {
+            s.close(); // every route failed: the DNG's cache copy (openRaw) goes too
+            throw e;
+        }
         return s;
     }
 

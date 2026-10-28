@@ -103,6 +103,12 @@ public class PostPipeline extends GLBasePipeline {
     public boolean deferTeardown;
     private boolean teardownPending;
     /**
+     * The processing {@link #Run} worked on, left by {@link #RunHDRGainMap} for a context of its own; {@link #close} closes it after
+     * the gain-map one. Nothing closed it: the context kept for the process (P353) stayed taken for good, and every later HDR shot
+     * leaked its own context (EGL context, pbuffer, tile target and programs).
+     */
+    private GLCoreBlockProcessing retiredProcessing;
+    /**
      * 10-bit HEIC / AVIF (heif.Heic10Support.wanted, avif.AvifEncoder.tenBitImageWanted, set by the caller before
      * {@link #Run}): the last pass renders into an RGB10_A2 target and Run returns an RGBA_1010102 bitmap. Off: the RGBA8
      * target and ARGB_8888 bitmap as always.
@@ -113,9 +119,52 @@ public class PostPipeline extends GLBasePipeline {
      * Display P3 primaries (why/combine.glsl with P3_OUT 1). Off: the sRGB shader exactly as before (the define is not set).
      */
     public boolean p3Output;
+    /**
+     * P369 (owner, 2026-10-27: «Убедись что при включении симуляций плёнки наши алгоритмы не будут мешать симуляциям»): the shot's
+     * film simulation (FilmSim.current(): null without a stock or at strength 0) and the chosen LUT with its strength
+     * (FilmChain.current()'s plain state), taken once per shot by {@link #takeFilm} - before the teardown decision and the
+     * pipeline - so every film gate of the shot (the nodes, the scene feed of WhyCombine, the gain map) reads one snapshot, never
+     * the settings again while the shot is processed.
+     */
+    @androidx.annotation.Nullable
+    public com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film;
+    public boolean filmTaken;
+    public String filmUserLut = "";
+    public float filmUserStrength;
 
     public PostPipeline() {
         super("PostPipeline");
+    }
+
+    /** P369: the shot's film snapshot ({@link #film}, the LUT and its strength), from the settings now (the lab's overlay too). */
+    public void takeFilm() {
+        film = com.particlesdevs.photoncamera.processing.color.FilmSim.current();
+        filmUserStrength = PreferenceKeys.filmLutStrength();
+        filmUserLut = filmUserStrength > 0f ? PreferenceKeys.filmLut() : "";
+        filmTaken = true;
+        // the film's table now (FilmChain.scene caches it for WhyCombine): film data that cannot be read gives the whole shot the
+        // path without a film - our look, the chosen LUT, the gain map - instead of the film's gates with no film drawn
+        if (film != null && com.particlesdevs.photoncamera.processing.color.FilmChain.scene(
+                com.particlesdevs.photoncamera.app.ScameraApp.getAppContext(), film, filmUserLut, filmUserStrength) == null) {
+            Log.w("SCAM_PIPELINE", "film data unreadable (" + film.stock.id + "): the photo without the film");
+            film = null;
+        }
+    }
+
+    /**
+     * P369 (outputs-1): the gain map (Ultra HDR, the HDR HEIC / AVIF) only without a film: its scene-anchored boost undoes the
+     * film's highlight rendering and divides out its grain on an HDR screen, so a film photo is saved in SDR.
+     */
+    public static boolean gainMapWanted(boolean setting, @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
+        return setting && film == null;
+    }
+
+    /**
+     * P369 (texture-local-contrast, settings-6): «Текстура» (ScamLocalContrast) runs after WhyCombine, on the film's print: it
+     * boosted the print's 1 - 16 px bands by 25 - 50 %. Not with a film.
+     */
+    static boolean wantsLocalContrast(boolean texture, @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
+        return texture && film == null;
     }
 
     public int getRotation() {
@@ -197,7 +246,10 @@ public class PostPipeline extends GLBasePipeline {
         mSettings = ScameraApp.getSettings();
         workSize = new Point(mParameters.rawSize.x, mParameters.rawSize.y);
         computeNoise(parameters);
-        captureDemosaic = mSettings.gainMapPass();
+        // P369: the film snapshot (ScamProcessor takes it before the teardown decision; the lab's sides take it here, under their
+        // own overlay)
+        if (!filmTaken) takeFilm();
+        captureDemosaic = gainMapWanted(mSettings.gainMapPass(), film);
         mCaptured = false;
         linearDisplayGain = 1.0f;
         scamNoiseSigma = 0f;
@@ -244,7 +296,7 @@ public class PostPipeline extends GLBasePipeline {
         if (tenBitOutput) Log.i("PostPipeline", "final image " + res.getWidth() + "x" + res.getHeight() + " " + res.getConfig()
                 + (res.getConfig() == Bitmap.Config.ARGB_8888 ? " (10-bit target unavailable)" : " for the 10-bit HEIC / AVIF"));
         if (!legacyRun) com.particlesdevs.photoncamera.processing.ShotTimeline.mark("post_readback");
-        if (deferTeardown && canDeferTeardown(parameters)) {
+        if (deferTeardown && canDeferTeardown(parameters, film)) {
             // W1.3: released after the encode (finishDeferredTeardown), off the press-to-saved path.
             teardownPending = true;
             return res;
@@ -259,9 +311,12 @@ public class PostPipeline extends GLBasePipeline {
         return res;
     }
 
-    /** W1.3: the GL teardown may wait until the JPEG is saved: 16 MP or less, no Ultra HDR pass, not the old model of post_ab. */
-    public static boolean canDeferTeardown(Parameters parameters) {
-        return parameters != null && parameters.rawSize != null && !ScameraApp.getSettings().gainMapPass()
+    /**
+     * W1.3: the GL teardown may wait until the JPEG is saved: 16 MP or less, no Ultra HDR pass, not the old model of post_ab.
+     * P369: the gain-map pass as the shot's film snapshot decides it ({@link #gainMapWanted}).
+     */
+    public static boolean canDeferTeardown(Parameters parameters, @androidx.annotation.Nullable com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film) {
+        return parameters != null && parameters.rawSize != null && !gainMapWanted(ScameraApp.getSettings().gainMapPass(), film)
                 && (long) parameters.rawSize.x * parameters.rawSize.y <= 16_000_000L
                 && !com.particlesdevs.photoncamera.processing.opengl.PostGlMode.legacy();
     }
@@ -432,11 +487,10 @@ public class PostPipeline extends GLBasePipeline {
         // GLImage/GLCoreBlockProcessing null-guards prevent the NPE.
         GLImage output = new GLImage(rotatedSize, format, false);
         GLCoreBlockProcessing glproc = new GLCoreBlockProcessing(rotatedSize, output, format, GLDrawParams.Allocate.Direct);
-        // Do not destroy the previous EGL context here: PostPipeline historically
-        // leaked the first context until final pipeline.close(), and destroying
-        // it before GLTexture re-creation caused SEGV_MAPERR on waffle/Adreno.
-        // The leaked context is reclaimed at final pipeline.close().
-        glint = new GLInterface(glproc);
+        // Do not destroy the previous EGL context here: destroying it before
+        // GLTexture re-creation caused SEGV_MAPERR on waffle/Adreno. It is
+        // closed at the final pipeline.close(), after this one.
+        useGainMapContext(glproc);
         stackFrame = inBuffer;
         glint.parameters = parameters;
 
@@ -500,6 +554,9 @@ public class PostPipeline extends GLBasePipeline {
             prog.setVar("mirror", parameters.mirror ? 1 : 0);
             prog.setVar("cropSize", cropSize);
             prog.setVar("rawSize", base);
+            // P370 (B3): the scene's luminance as the render sees it (its colour matrix and white balance), not Rec.709 on camera RGB
+            final float[] w = sceneLumaWeights(WhyTone.colourMatrix(this), parameters.sensorToProPhoto, parameters.whitePoint);
+            prog.setVar("wU", w[0], w[1], w[2]);
             GLES30.glDisable(GLES30.GL_SCISSOR_TEST);
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, lTex.mBuffer);
             GLES30.glViewport(0, 0, rotatedSize.x, rotatedSize.y);
@@ -537,6 +594,7 @@ public class PostPipeline extends GLBasePipeline {
             prog.setVar("uDown", down);
             prog.setVar("uScale", scale);
             prog.setVar("uEps", GainMapComputer.DECODE_OFFSET);
+            prog.setVar("uP3", p3Output ? 1 : 0); // P370 (B3): a Display P3 base's own luminance
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, outTex.mBuffer);
             GLES30.glViewport(0, 0, gw, gh);
             prog.draw();
@@ -596,6 +654,12 @@ public class PostPipeline extends GLBasePipeline {
         }
     }
 
+    /** RunHDRGainMap's context takes over from Run()'s, which is kept for {@link #close} ({@link #retiredProcessing}). */
+    void useGainMapContext(GLCoreBlockProcessing glproc) {
+        if (glint != null && glint.glProcessing != null && glint.glProcessing != glproc) retiredProcessing = glint.glProcessing;
+        glint = new GLInterface(glproc);
+    }
+
     @Override
     public void close() {
         if (teardownPending) {
@@ -606,6 +670,16 @@ public class PostPipeline extends GLBasePipeline {
         // Safety net for paths where the gain-map pass never ran.
         releaseDemosaicLinear();
         super.close();
+        // Run()'s context after the gain-map one: made current, its tile target deleted, then released (the kept context) or destroyed
+        final GLCoreBlockProcessing retired = retiredProcessing;
+        retiredProcessing = null;
+        if (retired != null) {
+            try {
+                retired.close();
+            } catch (Exception e) {
+                Log.e("PostPipeline", "retired GL context close failed: " + e);
+            }
+        }
     }
 
     private void checkGlError(String what) {
@@ -643,6 +717,22 @@ public class PostPipeline extends GLBasePipeline {
             if (acc > threshold) return (float) i / (float) (histSize - 1);
         }
         return 1f;
+    }
+
+    /**
+     * P370 (B3): the Ultra HDR scene plane's luminance weights of white-balanced camera RGB (ultrahdr/sceneluma wU): Rec.709
+     * of the render's linear sRGB, LUMA^T . intermediateToSRGB . sensorToProPhoto . diag(neutral) (why/low.glsl: the input times
+     * the neutral, then the two matrices). A white maps to the render's white: 1 on the ISP routes.
+     */
+    static float[] sceneLumaWeights(float[] intermediateToSRGB, float[] sensorToProPhoto, float[] neutral) {
+        final float[] luma = {0.2126f, 0.7152f, 0.0722f}, m = new float[9], w = new float[3];
+        com.particlesdevs.photoncamera.processing.render.Converter.multiply(intermediateToSRGB, sensorToProPhoto, m);
+        for (int c = 0; c < 3; c++) {
+            float s = 0f;
+            for (int r = 0; r < 3; r++) s += luma[r] * m[r * 3 + c];
+            w[c] = s * neutral[c];
+        }
+        return w;
     }
 
     private static float srgbToLinear(float c) {
@@ -765,8 +855,8 @@ public class PostPipeline extends GLBasePipeline {
         // P228: the lens filter on the linear RGB (highlights with their headroom), before the tone; none: no node at all
         final LensFilter lensFilter = LensFilter.fromSettings();
         if (lensFilter != null) add(lensFilter);
-        // P281: the film simulation's halation, on the linear light too (none: no node)
-        final FilmHalation halation = FilmHalation.fromSettings();
+        // P281: the film simulation's halation, on the linear light too (none: no node); P369: of the shot's film snapshot
+        final FilmHalation halation = FilmHalation.from(film);
         if (halation != null) add(halation);
         // The WhyCam 1.23 photo tone (tone_port.md 7.1): its own AE, fusion and AgX. LinearExposure only keeps the
         // Ultra HDR linear snapshot.
@@ -784,11 +874,12 @@ public class PostPipeline extends GLBasePipeline {
         add(new WhyCombine());
         // Texture only on request (WhyCam has no mid-frequency boost).
         final boolean texture = PreferenceKeys.hybridSwitch("why_texture", false);
-        Log.i("SCAM_PIPELINE", "WHY tail: sharpen=why (WhyLumaSharpen) texture=" + texture);
-        if (texture) add(new ScamLocalContrast());
+        Log.i("SCAM_PIPELINE", "WHY tail: sharpen=why (WhyLumaSharpen) texture=" + texture
+                + (texture && film != null ? " (off: film simulation)" : ""));
+        if (wantsLocalContrast(texture, film)) add(new ScamLocalContrast());
         if (finalSize != null) add(new HybridFinalResize(finalSize, PreferenceKeys.hybridDownsampler()));
-        // P281: the film's sharpness and grain on the finished picture, at its final size (none: no node)
-        final FilmGrain grain = FilmGrain.fromSettings();
+        // P281: the film's sharpness and grain on the finished picture, at its final size (none: no node); P369: of the snapshot
+        final FilmGrain grain = FilmGrain.from(film);
         if (grain != null) add(grain);
         add(new RotateWatermark(getRotation()));
     }

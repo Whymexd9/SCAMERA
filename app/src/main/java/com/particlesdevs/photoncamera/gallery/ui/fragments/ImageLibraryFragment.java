@@ -20,6 +20,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.navigation.NavBackStackEntry;
 import androidx.navigation.NavController;
 import androidx.navigation.fragment.NavHostFragment;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -154,7 +155,9 @@ public class ImageLibraryFragment extends Fragment implements LibraryAdapter.Hos
             @Override
             public void handleOnBackPressed() {
                 if (selecting()) clearSelection();
-                else if (!navController.navigateUp()) requireActivity().finish();
+                else if (leavesGallery(navController.getPreviousBackStackEntry(),
+                        viewModel != null ? viewModel.getCurrentFolderImages().getValue() : null) || !navController.navigateUp())
+                    requireActivity().finish();
             }
         };
         requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), back);
@@ -169,13 +172,22 @@ public class ImageLibraryFragment extends Fragment implements LibraryAdapter.Hos
         viewModel.getSelectedDisplayFolders().observe(getViewLifecycleOwner(), this::showFolders);
         viewModel.getUpdatePending().observe(getViewLifecycleOwner(), pending -> {
             if (pending) {
-                viewModel.fetchAllMedia();
-                viewModel.setCurrentFolderImages(viewModel.getAllSelectedImageFolder().getValue());
-                activeFolder = null;
+                // the chip's folder read again (ALL when it is gone): the grid and the viewer then show the same list (the grid kept
+                // the old folder while the viewer got ALL, so a tap opened another photo)
+                activeFolder = viewModel.refreshKeeping(activeFolder);
+                renderChips();
                 viewModel.setUpdatePending(false);
             }
         });
         applyChipsVisibility();
+    }
+
+    /**
+     * Back from the grid to a viewer with nothing to show (its last photo deleted, or an empty gallery opened from the camera)
+     * leaves the gallery: that viewer sends the user straight back to the grid, so back never left it.
+     */
+    static boolean leavesGallery(@Nullable NavBackStackEntry previous, @Nullable List<GalleryItem> shown) {
+        return previous != null && previous.getDestination().getId() == R.id.imageViewerFragment && shown != null && shown.isEmpty();
     }
 
     private void showItems(List<GalleryItem> items) {
@@ -188,7 +200,12 @@ public class ImageLibraryFragment extends Fragment implements LibraryAdapter.Hos
 
     private void showFolders(List<GalleryItem> list) {
         folders = list != null ? list : new ArrayList<>();
-        if (activeFolder == null && !folders.isEmpty()) activeFolder = folders.get(0).getDisplayName();
+        if (activeFolder == null && !folders.isEmpty()) {
+            // a new library (or one recreated by a rotation) highlights the folder the list shows, else the first chip
+            String current = viewModel != null ? viewModel.getCurrentFolderName() : null;
+            activeFolder = folders.get(0).getDisplayName();
+            for (GalleryItem f : folders) if (f.getDisplayName().equals(current)) activeFolder = current;
+        }
         renderChips();
     }
 
@@ -306,12 +323,10 @@ public class ImageLibraryFragment extends Fragment implements LibraryAdapter.Hos
         if (isDeleted) {
             List<GalleryItem> removed = pendingDelete.isEmpty() ? new ArrayList<>(selection.getSelectedItems()) : pendingDelete;
             int n = removed.size();
-            List<GalleryItem> items = new ArrayList<>(adapter.items());
-            items.removeAll(removed);
             pendingDelete = new ArrayList<>();
             clearSelection();
+            // the refresh puts the folder read again into the grid (MediaStore deletes are done by now)
             viewModel.setUpdatePending(true);
-            adapter.setItems(items);
             if (root != null) Snackbar.make(root, Lang.t("Удалено: ", "Deleted: ") + GalleryUi.shots(n), Snackbar.LENGTH_SHORT).show();
         } else if (root != null) {
             Snackbar.make(root, Lang.t("Не удалось удалить", "Deletion failed"), Snackbar.LENGTH_SHORT).show();

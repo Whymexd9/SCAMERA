@@ -278,6 +278,11 @@ public final class OppoTunedColor {
         return focal == null || focal.length == 0 ? null : previewMatrix(focal[0], neutral, camera);
     }
 
+    /** P370 (B4): the colour temperature the tuned matrix of {@link #previewMatrix} is taken at (the photo's sceneCct on this phone). */
+    public static float previewCct(CameraCharacteristics characteristics, float[] neutral, @androidx.annotation.Nullable String camera) {
+        return estimateCct(characteristics, neutral, camera);
+    }
+
     @androidx.annotation.Nullable
     static float[] previewMatrix(float focal, float[] neutral, @androidx.annotation.Nullable String camera) {
         if (neutral == null || neutral.length < 3 || !(neutral[0] > 0f) || !(neutral[1] > 0f) || !(neutral[2] > 0f)

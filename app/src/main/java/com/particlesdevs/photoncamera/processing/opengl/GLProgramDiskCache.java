@@ -35,6 +35,9 @@ final class GLProgramDiskCache {
     /** P237: sources kept for the idle warm-up (a post pipeline has ~40 programs, a few KB each). */
     static final int MAX_SOURCES = 160;
     static final long MAX_SOURCE_BYTES = 16L << 20;
+    /** P371: recipes of the programs (GLProg.recipe: how each source was made), driver- and build-independent. */
+    static final int MAX_RECIPES = 192;
+    static final long MAX_RECIPE_BYTES = 16L << 20;
     private final File dir;
     /** P237: counted since the last {@link #takeStats}. */
     private int hits, misses, damaged, written, evicted;
@@ -64,6 +67,56 @@ final class GLProgramDiskCache {
     /** P237: the driver-independent name of a program's kept source. */
     static String sourceName(String key) {
         return "gls-" + name("", key).substring(4, 36) + ".src";
+    }
+
+    /** P371: the name of a kept recipe. */
+    static String recipeName(String recipe) {
+        return "glr-" + name("\u0003", recipe).substring(4, 36) + ".rcp";
+    }
+
+    /** P371: whether the binary of {@code key} for {@code driver} is on disk (not counted in the shot's line). */
+    boolean has(String driver, String key) {
+        return driver != null && new File(dir, name(driver, key)).isFile();
+    }
+
+    /** P371: a recipe kept once (fsync'ed, on the writer thread); one kept already is only touched (LRU). */
+    void keepRecipe(String recipe) {
+        writer.execute(() -> {
+            if (!dir.isDirectory() && !dir.mkdirs()) return;
+            final File f = new File(dir, recipeName(recipe));
+            if (f.isFile()) { f.setLastModified(System.currentTimeMillis()); return; }
+            final File tmp = new File(dir, f.getName() + ".tmp");
+            try (FileOutputStream out = new FileOutputStream(tmp)) {
+                out.write(recipe.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                out.getFD().sync();
+            } catch (IOException e) {
+                tmp.delete();
+                return;
+            }
+            if (!tmp.renameTo(f)) { tmp.delete(); return; }
+            evict("glr-", ".rcp", MAX_RECIPES, MAX_RECIPE_BYTES, false);
+        });
+    }
+
+    /** P371: the kept recipes, newest first, at most {@code limit}; damaged ones are deleted. */
+    java.util.List<String> recipes(int limit) {
+        final java.util.List<String> out = new java.util.ArrayList<>();
+        File[] files = dir.listFiles((d, n) -> n.startsWith("glr-") && n.endsWith(".rcp"));
+        if (files == null) return out;
+        Arrays.sort(files, Comparator.comparingLong(File::lastModified).reversed());
+        for (File f : files) {
+            if (out.size() >= limit) break;
+            final String recipe;
+            try {
+                recipe = new String(java.nio.file.Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
+            } catch (IOException | RuntimeException e) {
+                continue;
+            }
+            if (!recipeName(recipe).equals(f.getName())) { f.delete(); continue; } // damaged
+            out.add(recipe);
+        }
+        return out;
     }
 
     /** P237: "disk H hit / M miss / D damaged / W written / E evicted" since the last call. */

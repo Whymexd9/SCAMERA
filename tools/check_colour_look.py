@@ -7,7 +7,9 @@
 - each block does what its row says: monochrome (neutral / filters), skin protection of vibrance and of the AgX saturation
   above 1, the mixer (hue,
   saturation, lightness of one band only), the grading zones, the hue-lock modes, the gamut compression, the skin hue.
-The white-balance rows are a CPU matrix (processing.color.ColourLook, ColourLookTest)."""
+The white-balance rows are a CPU matrix (processing.color.ColourLook, ColourLookTest). SIGNED_HUE=1 in the environment renders
+with the P370 signed hue on (signedHueU 1, the shipped default; CI runs both)."""
+import os
 import sys
 from pathlib import Path
 
@@ -15,6 +17,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_colour_output import SH, expand_imports, oklab, set_define  # noqa: E402
+
+SIGNED_HUE = int(os.environ.get('SIGNED_HUE', '0'))
 
 failures = []
 
@@ -98,7 +102,8 @@ def main():
         vals = {'sensorToIntermediate': eye, 'intermediateToSRGB': eye, 'neutralPointU': (1, 1, 1), 'inScaleU': 1.0,
                 'fU': 1, 'colourFU': 1, 'aeU': 1.0, 'clipU': 1.0, 'toeU': 0.05, 'gammaInvU': 1 / 2.2, 'macroU': 1.1,
                 'vibU': vib, 'detailGainU': 0.0, 'deltaChromaU': 1.0, 'filmToeU': 0.1, 'ditherU': 0,
-                'agxAU': (2.7, 1.35, 1.6, agx_sat), 'agxBU': (-8.5, 3.5, 0.3, 4.0), 'headroomU': 0, 'hlWhiteU': 0.15}
+                'agxAU': (2.7, 1.35, 1.6, agx_sat), 'agxBU': (-8.5, 3.5, 0.3, 4.0), 'headroomU': 0, 'hlWhiteU': 0.15,
+                'signedHueU': SIGNED_HUE}
         if look is not None:
             vals.update(neutral)
             vals.update(look)
