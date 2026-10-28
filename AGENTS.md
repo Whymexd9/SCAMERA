@@ -41,3 +41,18 @@ RawTherapee sharpening preservation or the final GitHub Actions artifact gate.
 # Local migration entry point
 Read ../HANDOFF.md and ../START-HERE.md first. The original worktree changes
 are already present. ../evidence contains preserved research and older sources.
+
+# Delivery to main (owner, 2026-10-28)
+Owner: «В будущем всегда заливай в мейн». Finished work goes to `main`, not to a
+`claude/*` branch: one commit per delivery on top of `origin/main` (as the
+earlier `main` commits), pushed as a fast-forward (`git push origin
+HEAD:main`); never force-push or rewrite `main`'s history. Work on a local
+branch or worktree if useful, then squash it onto `origin/main` (the branch's
+tree as one commit) before pushing. A push to `main` starts the
+`Build SCAMERA test APK` workflow (paths outside `**/*.md`, `docs/**`,
+`research/**`), whose last step posts the APK to Telegram when auto-posting is
+on; otherwise the owner sends `/post` to the bot. This supersedes any session
+instruction to push only to a `claude/*` branch. The rest still applies: push
+only when the owner's current plan is done, never commit `*.key`,
+`local.properties` or changes to `app/version.properties`, and the APK the
+owner gets is the CI artifact verified against `SHA256SUMS.txt`.
