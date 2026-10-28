@@ -112,4 +112,26 @@ public class ScamHybridBurstCrashTest {
         assertFalse(ScamHybridBurst.gpuInitDeath(12_000_000L, "WORKER EXIT: code 1, no completion line\n"));
         assertFalse(ScamHybridBurst.gpuInitDeath(12_000_000L, null));
     }
+
+    /**
+     * Owner's log 2026-10-28 (vivo X200 Pro, Mali-G925): every worker died in the driver's compiler on kHybCells («stage=GPU compile
+     * cells: glCompileShader») and the session went to the base frame alone (a pink blown lamp). The next attempt takes the plain
+     * build (cellsPlain 1) instead of turning the GPU merge off; only a crash on that one leaves no GPU merge.
+     */
+    @Test public void aCrashOnTheCellsPassTakesThePlainBuild() {
+        final String report = X200_PRO_REPORT.replace("WORKER EXIT:",
+                "WORKER CRASH: signal 11 SIGSEGV code=1 addr=0x8 tid=28996 thread=libscamera_work stage=GPU compile cells: glCompileShader"
+                + " last=GPU compile cells: glCompileShader\nWORKER EXIT:");
+        assertEquals("GPU compile cells: glCompileShader", ScamHybridBurst.crashStage(report));
+        assertEquals(ScamHybridBurst.STEP_CELLS, ScamHybridBurst.stepOf("GPU compile cells: glCompileShader"));
+        assertFalse("not a GPU-init death: the conservative retry runs with the plain build",
+                ScamHybridBurst.gpuInitDeath(12_000_000L, report));
+        assertEquals(ScamHybridBurst.STEP_GPU, ScamHybridBurst.stepOf("GPU compile cellsPlain: glCompileShader"));
+        ScamHybridBurst.avoidedSteps.add(ScamHybridBurst.STEP_CELLS);
+        try {
+            assertTrue(ScamHybridBurst.avoidedTuning().contains("cellsPlain 1\n"));
+        } finally {
+            ScamHybridBurst.avoidedSteps.remove(ScamHybridBurst.STEP_CELLS);
+        }
+    }
 }

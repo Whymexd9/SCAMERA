@@ -7964,6 +7964,29 @@ Owner, same day: «сделай гпу выравнивание и дай воз
 - Host: full :app:testDebugUnitTest on the merged branch 2016 tests / 345 classes, 0 failures. Phone: split screen and
   pause / resume under a translucent activity, a zoomed FULLRES shot against its viewfinder, ETTR on the plain session.
 
+### P376 - the vivo X200 Pro's GPU merge (Mali compiler crash on kHybCells) and white blown cores on the base frame alone (owner, 2026-10-28: a pink ceiling lamp next to ArkCam's white one, «Вот такой артефакт на последней версии, нам нужно исправить»; log + SCAMERA-debug + diagnostics zip, build e8100faa): DONE in code (host), not tried on a phone
+- Cause: «WORKER CRASH: signal 11 SIGSEGV ... stage=GPU compile cells: glCompileShader» - the Mali-G925 (Dimensity 9400) driver's
+  compiler (cmpbe_v2_compile_multiple_shaders, null dereference) died on kHybCells (P364's own-quad fill: an array argument the
+  function changes, an out bool, nested index ternaries; 57 -> 105 lines in c0b75a60), in the prewarm and in every job; stepOf put
+  «cells» with the required programs -> «GPU merge off for this session» -> every shot «Hybrid fallback=cpu-single» (base frame
+  alone: no Bento, no flags) -> the blown lamp got RT's «Inpaint opposed» chrominance from its lavender rim (0.58 / -0.14 / 0.26):
+  pink.
+- kHybCellsPlain: the tile by sabreQuad61, the cell by cellU (as before P364; the rows and CELL_FINE as kHybCells), off Adreno always
+  (P76's other tiles are Adreno-only too), on Adreno after a crash on kHybCells (STEP_CELLS -> «cellsPlain 1» in the tuning, the
+  conservative retry instead of the GPU off; a crash on cellsPlain itself is STEP_GPU). Host (llvmpipe, the non-Adreno path): the 7
+  control bursts md5-identical against HEAD.
+- scamrgb.glsl's opposed branch: a pixel with every channel at its clip is neutral at its brightest level (as the P368 guard), eased
+  in from 0.85 of the clip in its lowest channel; check_highlight_opposed.py: the numpy reference likewise and a lavender-rimmed
+  blown white lamp (chrominance 0.52 / -0.22 / 0.20, core neutral; FAIL on the old shader: 17 % spread). The other highlight checks
+  PASS. ScamHybridBurstCrashTest.aCrashOnTheCellsPassTakesThePlainBuild.
+- The look of the press (owner, 2026-10-28: «плёнка, LUT, теплота и оттенок по-прежнему читаются при обработке, а не в момент
+  нажатия … добавь в план»): ShotLook (FilmSim.current, the LUT and its strength, WhyTone.colourLook) taken with the lens filter at
+  the press (CaptureController mShutterLook, both savers, the queue -> ScamProcessor -> PostPipeline.look, set before takeFilm);
+  takeFilm, colourMatrix and WhyCombine read it (WhyTone.colourLook(pipeline)), the A/B's old side too; no press (the lab): the
+  settings as before. ShotLookAtPressTest.
+- Phone: the X200 Pro's shots should log «HYBRID GPU: compile cellsPlain» and a merge (not cpu-single); if another program crashes
+  next, its stage names it.
+
 ### P375 - the tray's own adjustments, long-press help, the app's dialogs, the RAW viewfinder's zoom, service cameras, the ES / L stamp (owner, 2026-10-28: «У подменю ты не сделал анимацию закрытия. Также дай возможность настраивать луты, фильтры и пленки прямо в этом подменю. Делай так чтобы оно не получалось слишком массивным»; «добавь описание для параметров по длинному зажатию»; «исправь стиль всех таких меню которые выбиваются из нашего стиля приложения»; a log and a video of the 3.5x tele dialled to 14x; «нам наоборот надо чтобы служебные камеры работали»; «Исправь так же "фильтры объектива", в видоискателе вижу эффект, на конечном фото нет»; «Добавь опцию … использовался ли сверхкороткий и длинный кадры на итоговом … причина … очень коротко»): DONE in code (host), not tried on a phone
 - Tray (LutTray, TrayAdjust, TrayMotion): tabs LUT / Filter / Film / Colour (one page shown, the last tab kept), the chosen filter's and film's
   parameters in a compact strip (a row of small chips + one slider, the settings page's keys, ranges, steps and defaults; strength live,

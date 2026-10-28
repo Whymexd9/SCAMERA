@@ -500,6 +500,8 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
     private com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mShutterMosaicWb;
     /** Owner, 2026-10-28: the lens filter the viewfinder showed at the press (a change in the tray during the merge stays out). */
     private com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice mShutterLensFilter;
+    /** The film, LUT and «Цвет» at the press (ShotLook.now), carried to the shot's processing as its lens filter. */
+    private com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotLook mShutterLook;
     /** P212g (W6): the still-only session's viewfinder neutrals (its normal mode), and whether this session feeds them. */
     private final com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Ring mVfNeutrals =
             new com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Ring();
@@ -4337,6 +4339,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mShutterManualWb = paramController.manualWhiteBalanceGains(); // P212f: a later switch to Auto stays out of the shot
             mShutterMosaicWb = mosaicWbAtPress(); // P212g (W6 = M6)
             mShutterLensFilter = com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice.now();
+            mShutterLook = com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotLook.now();
             if (mVivoSdkRawSession != null) {
                 mBackgroundHandler.post(this::captureVivoSdkFullRes);
                 return true;
@@ -7498,6 +7501,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
         saver.cameraIdAtPress = ScameraApp.getSettings().mCameraID;
         saver.planNote = pslPlan != null ? pslPlan.description : zsl != null ? zsl.plan.description : null;
         saver.lensFilterAtPress = mShutterLensFilter;
+        saver.lookAtPress = mShutterLook;
         saver.setFrameCount(count);
         saver.fullResSeries = seriesMode ? total : 0; // P190: the merge keeps a series whole
         saver.fullResRequested = requested;
@@ -8213,6 +8217,7 @@ public class CaptureController implements MediaRecorder.OnInfoListener {
             mImageSaver.cameraIdAtPress = ScameraApp.getSettings().mCameraID;
             mImageSaver.planNote = hybridPlanHolder[0] != null ? hybridPlanHolder[0].description : null;
             mImageSaver.lensFilterAtPress = mShutterLensFilter;
+            mImageSaver.lookAtPress = mShutterLook;
             final ScamCaptureSequence scamSequence = hybridPlanHolder[0]!=null
                         ? (hybridZsl ? ScamCaptureSequence.hybridZsl(captures,mPendingZslNormalFrames,scamZslShutterTimestamp)
                                      : ScamCaptureSequence.hybridFuture(captures,scamZslShutterTimestamp))

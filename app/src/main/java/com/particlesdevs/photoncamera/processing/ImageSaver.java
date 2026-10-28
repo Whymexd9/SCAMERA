@@ -59,6 +59,8 @@ public class ImageSaver {
     public String planNote;
     /** Owner, 2026-10-28: the lens filter the viewfinder showed at the press (LensFilter.Choice.now; null: the settings when processed). */
     public com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice lensFilterAtPress;
+    /** The film, LUT and «Цвет» at the press (ShotLook.now; null: the settings when processed). */
+    public com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotLook lookAtPress;
 
     public void setFrameCount(int desiredFrameCount){
         this.desiredFrameCount = desiredFrameCount;
@@ -105,6 +107,7 @@ public class ImageSaver {
         saver.ownedCameraId = cameraIdAtPress;
         saver.ownedPlanNote = planNote;
         saver.ownedLensFilter = lensFilterAtPress;
+        saver.ownedLook = lookAtPress;
         saver.ownedFrames = new ArrayList<>(SaverImplementation.IMAGE_BUFFER);
         saver.ownedPairs = new ArrayList<>(com.particlesdevs.photoncamera.processing.parameters.IsoExpoSelector.fullpairs);
         SaverImplementation.IMAGE_BUFFER.clear();
@@ -169,6 +172,7 @@ public class ImageSaver {
         implementation.cameraIdAtPress = cameraIdAtPress;
         implementation.planNote = planNote;
         implementation.lensFilterAtPress = lensFilterAtPress;
+        implementation.lookAtPress = lookAtPress;
         implementation.runRaw(imageFormat,characteristics,captureResult, captureRequest,burstShakiness,cameraRotation, exposures);
     }
 

@@ -235,6 +235,12 @@ void main(){
                     // it) left its core lavender (lamp2324 without ultrashort frames: G 1.78 against R / B 1.86) - G comes up to
                     // the lower of R and B, as in the SCAM recovery
                     if (clipped.g) r.g = max(r.g, min(r.r, r.b));
+                    // every channel at its clip holds no colour (owner's log 2026-10-28, vivo X200 Pro, a ceiling lamp on the base
+                    // frame alone: the chrominance around it came from its lavender rim, chrominance 0.58 / -0.14 / 0.26, and filled
+                    // the blown core pink): neutral at its brightest level, as the P368 guard; eased in from 0.85 of the clip in
+                    // the lowest channel, so a lamp's coloured rim (a channel well below its clip) keeps RT's reconstruction
+                    float full = smoothstep(0.85, 1.0, min(min(c.r / max(clipW.r, 1.0e-6), c.g / max(clipW.g, 1.0e-6)), c.b / max(clipW.b, 1.0e-6)));
+                    r = mix(r, vec3(max(max(r.r, r.g), r.b)), full);
                     Output = mix(c, r, clamp(hlStrengthU, 0.0, 1.0));
                     return;
                 }

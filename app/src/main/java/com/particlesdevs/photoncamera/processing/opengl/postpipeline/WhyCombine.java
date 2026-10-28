@@ -93,7 +93,7 @@ public final class WhyCombine extends Node {
         final com.particlesdevs.photoncamera.processing.color.FilmSim.Settings film = pipeline.film;
         final float detail = sharp ? detailGain(WhyTone.value("sharp_gain", 1.0f), pipeline.mParameters.finishSnr, film) : 2.0f;
         // P134 «Цвет»: COLOUR_LOOK only when a colour setting is off its default (else the shader before P134)
-        final com.particlesdevs.photoncamera.processing.color.ColourLook look = WhyTone.colourLook();
+        final com.particlesdevs.photoncamera.processing.color.ColourLook look = WhyTone.colourLook(pipeline);
         final boolean colourOn = !look.shaderNeutral();
         final int toneOp = WhyTone.toneOperator();
         // P369: with a film the scene-referred table (FILM_SIM: the film fed the exposed scene light, the chosen LUT on its print);

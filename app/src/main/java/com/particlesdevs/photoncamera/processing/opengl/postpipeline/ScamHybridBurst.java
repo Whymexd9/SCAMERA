@@ -934,7 +934,9 @@ public final class ScamHybridBurst implements ScamTransport {
      */
     static final java.util.Set<String> avoidedSteps = java.util.concurrent.ConcurrentHashMap.newKeySet();
     static final String STEP_OUTLIERS = "outlier tests", STEP_RIM = "rim pass", STEP_BENTO = "Bento colour pass",
-            STEP_CHROMA = "chroma pass", STEP_CRE = "CRE motion", STEP_BLEND = "Bento blend", STEP_US_FILL = "ultrashort fill";
+            STEP_CHROMA = "chroma pass", STEP_CRE = "CRE motion", STEP_BLEND = "Bento blend", STEP_US_FILL = "ultrashort fill",
+            /** The cells pass's P364 build (kHybCells): the vivo X200 Pro's Mali-G925 compiler died on it; kHybCellsPlain instead. */
+            STEP_CELLS = "own-quad cells";
     /** Crash site that leaves no GPU merge (a required program, the context): the session goes to the CPU fallback. */
     static final String STEP_GPU = "GPU";
 
@@ -948,6 +950,7 @@ public final class ScamHybridBurst implements ScamTransport {
         // P313: the native mosaic merge's ultrashort fill (its own program variant) left out: Bento by its mask inside the merge
         if (avoidedSteps.contains(STEP_US_FILL)) t.append("mosaicUsFill 0\n");
         if (avoidedSteps.contains(STEP_CHROMA)) t.append("chromaDiff 0\n");
+        if (avoidedSteps.contains(STEP_CELLS)) t.append("cellsPlain 1\n");
         return t.toString();
     }
 
@@ -996,7 +999,9 @@ public final class ScamHybridBurst implements ScamTransport {
                 case "blend": return STEP_BLEND;
                 case "mosaicUs": case "mosaicUsT": return STEP_US_FILL;
                 case "chroma": return STEP_CHROMA;
-                default: return STEP_GPU; // mark, guide, cells, reject, dilate, merge: every merge needs them
+                // the same pass without the own-quad fill (owner's log 2026-10-28: a Mali compiler crash); cellsPlain itself is required
+                case "cells": return STEP_CELLS;
+                default: return STEP_GPU; // mark, guide, cellsPlain, reject, dilate, merge: every merge needs them
             }
         }
         if (stage.startsWith("GPU context") || stage.startsWith("GPU init") || stage.startsWith("EGL")) return STEP_GPU;

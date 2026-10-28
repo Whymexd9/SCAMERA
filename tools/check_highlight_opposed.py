@@ -13,7 +13,9 @@ Checks:
   half-float output), the unclipped channels and unclipped pixels white balance only;
 - pixels inside the Bento patch and the whole frame with oppU 0 are bit-identical to the SCAM recovery;
 - the reconstruction is not darker than the clip and keeps the lamp warm (R > B) where two channels are left;
-- never magenta: a clipped G is at least the lower of R and B (owner's rule, as the SCAM recovery).
+- never magenta: a clipped G is at least the lower of R and B (owner's rule, as the SCAM recovery);
+- a pixel with every channel at its clip is neutral (eased in from 0.85 of the clip in its lowest channel): a blown white
+  lamp with a lavender rim stays white (owner's log 2026-10-28, vivo X200 Pro, the base frame alone: a pink lamp).
 Usage: check_highlight_opposed.py [--report]
 """
 from pathlib import Path
@@ -81,7 +83,7 @@ def opposed_gpu(textures, uniforms, w, h):
     return np.where(n > 0, s / np.maximum(n, 1), 0.0).astype(np.float32), n
 
 
-def scene():
+def scene(lavender=False):
     h, w = 96, 128
     wp = np.array([0.5, 1.0, 0.6], np.float32)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
@@ -90,7 +92,11 @@ def scene():
     for cy, cx, r in ((40, 40, 10), (40, 98, 9)):
         d = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
         lvl = 4.0 * np.exp(-np.maximum(d - r * 0.3, 0) ** 2 / (2 * (r * 0.6) ** 2)) + 0.6 * np.exp(-d ** 2 / (2 * (3 * r) ** 2))
-        true += lvl[..., None] * np.array([1.3, 1.0, 0.7], np.float32)
+        if lavender:  # a white lamp far above the clip, its rim lavender after the white balance (the X200 Pro's ceiling lamp)
+            rim = 0.9 * np.exp(-(d - 1.6 * r) ** 2 / (2 * (0.5 * r) ** 2))
+            true += (4.0 * (d < 1.4 * r))[..., None] * np.ones(3, np.float32) + rim[..., None] * np.array([1.6, 1.0, 1.4], np.float32)
+        else:
+            true += lvl[..., None] * np.array([1.3, 1.0, 0.7], np.float32)
     raw_true = true * wp                                   # camera RGB, base-frame white = 1
     raw = np.minimum(raw_true, 1.0)
     flags = np.zeros((h, w), np.uint8)
@@ -128,6 +134,9 @@ def reference(raw, flags, wp):
     out = np.where(clipped, np.maximum(c, ref + chroma), c)
     g = clipped[..., 1]
     out[..., 1] = np.where(g, np.maximum(out[..., 1], np.minimum(out[..., 0], out[..., 2])), out[..., 1])  # never magenta
+    t = np.clip((np.min(c / clipw, -1) - 0.85) / 0.15, 0.0, 1.0)
+    full = (t * t * (3 - 2 * t))[..., None] * clipped.any(-1)[..., None]   # every channel at its clip: neutral
+    out = out + (np.max(out, -1, keepdims=True) - out) * full
     return chroma.astype(np.float32), out, clipped, take.sum((0, 1))
 
 
@@ -176,6 +185,7 @@ def main():
     if warm.any() and not (on[warm][:, 0] > on[warm][:, 2]).all():
         print('a warm lamp with two channels left lost R > B')
         ok = False
+    ok = lavender_lamp(common) and ok
     if REPORT:
         t = true[core]
         print('chrominance GPU', gpu_chroma, 'reference', ref_chroma, 'counted', gpu_n)
@@ -185,6 +195,37 @@ def main():
         t.release()
     print('highlight opposed ' + ('PASS' if ok else 'FAIL'))
     return 0 if ok else 1
+
+
+def lavender_lamp(common):
+    """The blown white lamp with a lavender rim: its core (every channel clipped) neutral, as the numpy reference."""
+    raw, flags, wp, _ = scene(lavender=True)
+    h, w = flags.shape
+    inp, gm, ft = texture(raw), texture(np.ones((1, 1, 4), np.float16), 'f2', linear=True), texture(flags, 'f1')
+    gpu_chroma, _ = opposed_gpu({'InputBuffer': inp, 'GainMap': gm, 'ClipFlags': ft}, dict(common, sizeU=(w, h)), w, h)
+    _, ref_out, clipped, _ = reference(raw, flags, wp)
+    base = dict(common, hlModeU=1, hlStrengthU=1.0, chromaU=0, blockU=8, chromaLimitU=0.35, defringeU=-1.0, signedU=1)
+    on = draw('scamhdr/scamrgb.glsl', (w, h), {'InputBuffer': inp, 'GainMap': gm, 'ClipFlags': ft},
+              dict(base, oppU=1, oppChromaU=tuple(map(float, gpu_chroma))))
+    for t in (inp, gm, ft):
+        t.release()
+    ok = True
+    blown = clipped.all(-1) & ((flags & 48) == 0)
+    if not blown.any() or gpu_chroma[0] <= gpu_chroma[1] or gpu_chroma[2] <= gpu_chroma[1]:
+        print('lavender lamp: the scene has no blown core or no lavender chrominance (%s)' % gpu_chroma)
+        ok = False
+    spread = (on[blown].max(-1) - on[blown].min(-1)) / np.maximum(on[blown].max(-1), 1e-6)
+    if spread.max() > 2e-3:
+        print('lavender lamp: blown core not neutral (max relative spread %.4f)' % spread.max())
+        ok = False
+    opp = ((flags & 15) != 0) & ((flags & 48) == 0)
+    err = np.abs(on - ref_out) / np.maximum(np.abs(ref_out), 1e-3)
+    if err[opp].max() > 2e-3:
+        print('lavender lamp: reconstruction off the reference by %.4f' % err[opp].max())
+        ok = False
+    if REPORT:
+        print('lavender lamp: chrominance', gpu_chroma, 'blown pixels', int(blown.sum()), 'max spread %.5f' % spread.max())
+    return ok
 
 
 if __name__ == '__main__':

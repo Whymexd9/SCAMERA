@@ -70,6 +70,7 @@ public final class PostAb {
             old.filmTaken = true;
         }
         old.lensFilter = pipeline.lensFilter; // and its lens filter of the press
+        old.look = pipeline.look; // and its film, LUT and «Цвет» of the press
         final boolean uploadOnly = PreferenceKeys.scamDevSwitch("post_ab_upload", false);
         if (uploadOnly) forceRgbUpload = true; else PostGlMode.setLegacy(true);
         try {

@@ -108,6 +108,9 @@ public class ScamProcessor extends ProcessorBase {
     /** Owner, 2026-10-28: the lens filter the viewfinder showed at the press (ImageSaver.lensFilterAtPress; null: the settings). */
     public com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice ownedLensFilter;
     private com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice lensFilterAtPress;
+    /** The film, LUT and «Цвет» at the press (ImageSaver.lookAtPress; null: the settings). */
+    public com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotLook ownedLook;
+    private com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotLook lookAtPress;
     /** P212g (W6 = M6): the mosaic white balance's route at the press of the queued shot (null: none). */
     public com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press ownedMosaicWb;
     private com.particlesdevs.photoncamera.processing.color.MosaicNeutralResolver.Press mosaicWb;
@@ -158,6 +161,8 @@ public class ScamProcessor extends ProcessorBase {
         com.particlesdevs.photoncamera.processing.opengl.postpipeline.ScamHybridBurst.resetStamp();
         this.lensFilterAtPress = ownedLensFilter;
         ownedLensFilter = null;
+        this.lookAtPress = ownedLook;
+        ownedLook = null;
         this.scamCapture = PreferenceKeys.isScamEnabled();
         // The route of the shot fixes the settings profile of its whole processing: pref_scam_hybrid_* for a hybrid shot,
         // the SCAM HDR keys otherwise (PreferenceKeys.isHybridShot), even if the route changes meanwhile.
@@ -883,7 +888,7 @@ public class ScamProcessor extends ProcessorBase {
         // only held for the post_ab comparison now: above 16 MP it goes before the pipeline (401 MB at 200 MP).
         if (hybridShot && processingParameters.scamRgbOwned && (long) width * height > 16_000_000L
                 && !com.particlesdevs.photoncamera.processing.opengl.postpipeline.PostAb.wanted(processingParameters,
-                        com.particlesdevs.photoncamera.processing.color.FilmSim.current())) {
+                        lookAtPress != null ? lookAtPress.film : com.particlesdevs.photoncamera.processing.color.FilmSim.current())) {
             referenceRaw = null;
             Allocator.free(output);
             output = null;
@@ -932,10 +937,11 @@ public class ScamProcessor extends ProcessorBase {
         // P46 «Цветовое пространство»: Display P3 renders the final image in P3 primaries; every file of the shot says so.
         final com.particlesdevs.photoncamera.processing.color.OutputColour.Space colourSpace = ScameraApp.getSettings().colourSpace;
         pipeline.p3Output = colourSpace == com.particlesdevs.photoncamera.processing.color.OutputColour.Space.DISPLAY_P3;
-        // P369: the shot's film snapshot, before the teardown decision and the pipeline (every film gate of the shot reads it)
-        pipeline.takeFilm();
-        // owner, 2026-10-28: the lens filter of the press (the tray may have changed it during the merge)
+        // owner, 2026-10-28: the lens filter, film, LUT and «Цвет» of the press (the tray may have changed them during the merge)
         pipeline.lensFilter = lensFilterAtPress;
+        pipeline.look = lookAtPress;
+        // P369: the shot's film snapshot (the press's), before the teardown decision and the pipeline (every film gate reads it)
+        pipeline.takeFilm();
         // W1.3: at 16 MP or less without Ultra HDR the GL teardown waits until the JPEG is saved (finishDeferredTeardown).
         pipeline.deferTeardown = PostPipeline.canDeferTeardown(processingParameters, pipeline.film);
         if (pipeline.deferTeardown) { deferredPipeline = pipeline; openPipeline = null; }

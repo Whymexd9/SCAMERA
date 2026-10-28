@@ -451,6 +451,8 @@ struct HybridTuning {
                                  // the centre) merges with cellClip 0; 0 = never (cellClip as set)
     float hotSigma=5.f;          // fixed-pattern (hot/warm/dead) sites: deviation from the median of the 8 same-colour neighbours in
                                  // the mean of hotFrames normal frames at the same SENSOR site, in sigma of that mean; 0 = off
+    int cellsPlain=0;            // 1: the cells pass without P364's own-quad tile fill (kHybCellsPlain) on every GPU; off Adreno it is
+                                 // always that one (the vivo X200 Pro's Mali-G925 compiler died on kHybCells, owner's log 2026-10-28)
     int hotFrames=8;             // normal frames averaged for the fixed-pattern test (base included)
     float hotBaseSigma=7.f;      // transient (RTS) outliers of the base frame alone (it skips rejection), sigma of one frame; 0 = off
     float hotCross=0.35f;        // a real point or line also lifts the adjacent sites of the other colours: above this share of the
@@ -936,6 +938,9 @@ inline bool hybridAuto2x(const HybridInput& input,const HybridTuning& tune,bool 
     return tune.auto2x>0&&fine2x&&!input.strict2x;
 }
 
+// The job's «cellsPlain 1» (the app's step after a worker died compiling kHybCells): HybridGpu takes kHybCellsPlain on Adreno too.
+inline bool& hybridCellsPlain(){static bool on=false;return on;}
+
 inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::function<void(const std::string&)>& report) {
     HybridTuning t;
     const std::string paths[]={jobDir+"/hybrid_tuning.txt","/sdcard/Download/SCAMERA/hybrid_tuning.txt","/data/local/tmp/hybrid_tuning.txt"};
@@ -981,7 +986,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
             ||set("bentoUsWeight",&t.bentoUsWeight)||set("bentoUsSigma",&t.bentoUsSigma)||set("bentoFrames",nullptr,&t.bentoFrames)||set("bentoValidate",nullptr,&t.bentoValidate)||set("bentoMotionMax",&t.bentoMotionMax)
             ||set("bentoChromaSigma",&t.bentoChromaSigma)||set("bentoChroma",&t.bentoChroma)||set("dayKernelScale",&t.dayKernelScale)||set("shastaSharpness",&t.shastaSharpness)||set("shastaSharpLo",&t.shastaSharpLo)||set("shastaSharpHi",&t.shastaSharpHi)||set("shastaSat",&t.shastaSat)||set("shastaMaxRatio",&t.shastaMaxRatio)
             ||set("shastaEnable",nullptr,&t.shastaEnable)||set("shastaForce",nullptr,&t.shastaForce)||set("shastaMotionMax",&t.shastaMotionMax)||set("snr",nullptr,&t.snrFixed)||set("snrScale",&t.snrScale)||set("debugFrame",nullptr,&t.debugFrame)
-            ||set("cellClip",nullptr,&t.cellClip)||set("staticShift",&t.staticShift)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("hotBaseSigma",&t.hotBaseSigma)
+            ||set("cellClip",nullptr,&t.cellClip)||set("staticShift",&t.staticShift)||set("hotSigma",&t.hotSigma)||set("hotFrames",nullptr,&t.hotFrames)||set("cellsPlain",nullptr,&t.cellsPlain)||set("hotBaseSigma",&t.hotBaseSigma)
             ||set("hotCross",&t.hotCross)||set("hotMaxLevel",&t.hotMaxLevel)||set("hotCap",&t.hotCap)||set("bentoScam",nullptr,&t.bentoScam)||set("bentoInvalid",&t.bentoInvalid)||set("bentoInpaintMiddle",&t.bentoInpaintMiddle)
             ||set("bentoInpaintMin",&t.bentoInpaintMin)||set("clipFlags",nullptr,&t.clipFlags)||set("sabre61",nullptr,&t.sabre61)||set("s61Fine",&t.s61Fine)||set("s61NightScale",&t.s61NightScale)||set("s61NightKeyLo",&t.s61NightKeyLo)||set("s61NightKeyHi",&t.s61NightKeyHi)
             ||set("s61TensorNoise",&t.s61TensorNoise)||set("s61GdNoise",&t.s61GdNoise)||set("s61MinMotion",&t.s61MinMotion)
@@ -1017,6 +1022,7 @@ inline HybridTuning loadHybridTuning(const std::string& jobDir,const std::functi
         if(report&&!applied.empty())report("HYBRID TUNING FILE "+path+":"+applied);
         break;
     }
+    hybridCellsPlain()=t.cellsPlain!=0;
     return t;
 }
 
@@ -1729,6 +1735,72 @@ void main(){
     }
 }
 )";
+// The cells pass without P364's own-quad fill (owner's log 2026-10-28, vivo X200 Pro, Mali-G925: the driver's compiler died with
+// SIGSEGV in glCompileShader on kHybCells, every worker of the session, and every shot went to the base frame alone): the tile
+// filled by sabreQuad61 and the cell by cellU, as before P364 - the values P364 takes from the sites it read are the same
+// (sabreQuad61 / cellU of those sites, the same expressions in the same order), without the array argument the function
+// changes, the out bool and the nested index arithmetic. Off Adreno always (P76: the other tiles are Adreno-only too); on Adreno
+// after such a crash (cellsPlain 1). The rows and the CELL_FINE build as kHybCells.
+static const char* kHybCellsPlain=R"(
+uniform int cellFrameU; // first donor of this dispatch - 1
+uniform int dcovU;      // 1: DCov holds every donor cell and gets the 6.1 precision (kHybCells)
+uniform ivec4 cellRowsU; // P364: the rows this dispatch computes and the rows that get the 6.1 precision (kHybCells)
+shared vec2 cellQuad[100];
+#ifdef CELL_FINE
+shared float cellSite[484];
+vec3 sabreFine61S(int i,int j,int s0){
+    float dxx=0.0,dyy=0.0,dxy=0.0,n=0.0;
+    for(int y=1;y<7;y++)for(int x=1;x<7;x++){
+        if(phaseColor[(((2*j-3+y)&1)<<1)|((2*i-3+x)&1)]!=1)continue;
+        float c=cellSite[s0+y*22+x],du=cellSite[s0+(y+1)*22+x+1]-c,dv=cellSite[s0+(y-1)*22+x+1]-c;
+        dxx+=du*du;dyy+=dv*dv;dxy+=du*dv;n+=1.0;
+    }
+    return vec3(dxx,dyy,dxy)*(2.0/max(n,1.0));
+}
+#endif
+void main(){
+    int w2=size.x/2;
+    int f=int(gl_GlobalInvocationID.z)+1+cellFrameU;
+    int fs=clamp(f,0,frameCount-1); // the whole group has one frame (local size z = 1): every branch below is uniform for it
+    bool cov=dcovU!=0&&k61aU.w>0.0&&fParam[fs].y>0.0&&int(fParam[fs].w)!=5;
+    int bx=int(gl_WorkGroupID.x)*8-1,by=fCells[fs].x+chunkU+int(gl_WorkGroupID.y)*8-1;
+    bool covAll=cellRowsU.w<=cellRowsU.z;
+    if(!covAll&&(by+8<cellRowsU.z||by+1>=cellRowsU.w))cov=false;
+    int cx=int(gl_GlobalInvocationID.x),cy=fCells[fs].x+chunkU+int(gl_GlobalInvocationID.y);
+    bool own=f<frameCount&&cx<w2&&cy<fCells[fs].x+fCells[fs].y&&(cellRowsU.y<=cellRowsU.x||cy<cellRowsU.y);
+    uint idx=uint(fCells[fs].z)+uint((cy-fCells[fs].x)*w2+cx);
+    if(cov)for(int k=int(gl_LocalInvocationIndex);k<100;k+=64)cellQuad[k]=sabreQuad61(fs,bx+k%10,by+k/10);
+    if(own){bool cl;float gd;vec3 u=cellU(fs,cx,cy,cl,gd);cells[idx]=vec4(u,cl?1.0:0.0);}
+#ifdef CELL_FINE
+    bool fine=cov&&k61cU.y>0.0;
+    if(fine){
+        float g=fParam[fs].x;
+        for(int k=int(gl_LocalInvocationIndex);k<484;k+=64){
+            int X=2*bx-1+k%22,Z=2*by-1+k/22;
+            cellSite[k]=phaseColor[((Z&1)<<1)|(X&1)]==1?sqrt(max(sampleRawM(fs,X,Z)*g,0.0)):0.0;
+        }
+    }
+#endif
+    barrier();
+    if(!own)return;
+    if(cov&&(covAll||(cy>=cellRowsU.z&&cy<cellRowsU.w))){
+        float Y[9];float qd=0.0,lum=0.0;
+        int q0=(cy-by-1)*10+(cx-bx-1);
+        for(int dj=-1;dj<=1;dj++)for(int di=-1;di<=1;di++){
+            vec2 q=cellQuad[q0+(dj+1)*10+di+1];
+            float w=(di==0?0.5:0.25)*(dj==0?0.5:0.25);
+            Y[(dj+1)*3+di+1]=q.x;qd+=q.y*w;lum+=q.x*w;
+        }
+        vec3 fineT=vec3(-1.0);
+#ifdef CELL_FINE
+        if(fine)fineT=sabreFine61S(cx,cy,(2*(cy-by)-2)*22+2*(cx-bx)-2); // site (2cx-3, 2cy-3) in cellSite
+#endif
+        vec3 P=sabreCov61Q(f,Y,qd,lum,fineT);
+        dcov[idx]=uvec2(packHalf2x16(P.xy),packHalf2x16(vec2(P.z,0.0)));
+    }
+}
+)";
+
 
 // Rejection per donor frame and base cell (SCAM 9.6 rejection.cl, REJECTION_ONLY path).
 static const char* kHybReject=R"(
@@ -5009,6 +5081,8 @@ class HybridGpu {
     GLuint natMeanProgram=0,natFlagsProgram=0,natMarkProgram=0,mosaicProgram=0,natTable[2]{};
     // P364: the other kHybCells build (cellsProgram is the one without the fine tensor until a merge needs it, cellsFine)
     GLuint cellsOther=0;bool cellsFine=false;
+    // kHybCells, or kHybCellsPlain off Adreno and after a crash compiling kHybCells (cellsPlain 1); its name in the reports
+    const char* cellsSource=nullptr;const char* cellsName="cells";
     // P214k: the plausibility cap of the fixed-pattern test (kHybFlagCap / kHybFlagPrune; compiled with the outlier programs)
     GLuint capProgram=0,pruneProgram=0;
     // P34: the fast native merge (kHybNatNorm + kHybMergeMosaicFast [block Quad / Tetra][window r][marked][fill], compiled when
@@ -5463,7 +5537,8 @@ public:
             } else if(early)early("HYBRID GPU: outlier tests off, mean / flags programs not compiled");
             markProgram=timed("mark",kHybMark,true);
             guideProgram=timed("guide",dcg?hybridDcgSources().guide.c_str():kHybGuide); // P320: the zone's texture floor
-            cellsProgram=timed("cells",kHybCells);
+            if(!adreno||hybridCellsPlain()){cellsSource=kHybCellsPlain;cellsName="cellsPlain";} else cellsSource=kHybCells;
+            cellsProgram=timed(cellsName,cellsSource);
             // P76: the shared-memory variants (Adreno only; debugging: SCAM_HYB_NO_TILES=1 builds the Mali variants anywhere)
             const std::string tiles=std::string(adreno&&!std::getenv("SCAM_HYB_NO_TILES")?"#define SHARED_TILES 1\n":"");
             const std::string rejDefs=tiles+(rejOpts?"#define REJ_OPTS 1\n":""); // P344
@@ -5721,8 +5796,8 @@ public:
         if((in.k61c[1]>0.f)!=cellsFine){ // P364: kHybCells with the fine tensor (CELL_FINE) exactly when k61cU.y > 0 can use it
             if(!cellsOther){
                 const auto t0=std::chrono::steady_clock::now();
-                compileName="cells";
-                cellsOther=compile((std::string(cellsFine?"":"#define CELL_FINE 1\n")+kHybCells).c_str());
+                compileName=cellsName;
+                cellsOther=compile((std::string(cellsFine?"":"#define CELL_FINE 1\n")+cellsSource).c_str());
                 compileMs+=" cellsFine="+std::to_string(int(std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count()));
             }
             std::swap(cellsProgram,cellsOther);cellsFine=!cellsFine;

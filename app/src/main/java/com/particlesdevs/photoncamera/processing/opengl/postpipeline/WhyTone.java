@@ -294,6 +294,12 @@ public final class WhyTone {
      * P134 «Цвет»: the colour settings of the shot (pref_scam_hybrid_colour_*; scam_dev.txt "hybrid_colour_<key>" overrides).
      * Every default is «no change».
      */
+    /** The «Цвет» rows of a shot: its press's (PostPipeline.look), else the settings now (the lab's renders). */
+    static ColourLook colourLook(PostPipeline pipeline) {
+        final ShotLook l = pipeline == null ? null : pipeline.look;
+        return l != null ? l.colour : colourLook();
+    }
+
     /** The «Цвет» rows of the current module (also the RAW viewfinder's look, P134). */
     public static ColourLook colourLook() {
         ColourLook c = new ColourLook();
@@ -334,7 +340,7 @@ public final class WhyTone {
         State st = pipeline.why;
         if (st != null && st.colourMatrix != null) return st.colourMatrix;
         Parameters p = pipeline.mParameters;
-        float[] white = colourLook().whiteMatrix(p.sceneCct);
+        float[] white = colourLook(pipeline).whiteMatrix(p.sceneCct);
         float[] m = colourMatrixOf(p, white);
         if (white != null) {
             com.particlesdevs.photoncamera.util.Log.i("SCAM_PIPELINE", "colour: white matrix " + java.util.Arrays.toString(white)

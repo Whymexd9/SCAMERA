@@ -33,6 +33,8 @@ public class SaverImplementation {
     public String planNote;
     /** The shot's lens filter at the press (ImageSaver.lensFilterAtPress). */
     public com.particlesdevs.photoncamera.processing.opengl.postpipeline.LensFilter.Choice lensFilterAtPress;
+    /** The shot's film, LUT and «Цвет» at the press (ImageSaver.lookAtPress). */
+    public com.particlesdevs.photoncamera.processing.opengl.postpipeline.ShotLook lookAtPress;
     private int imageFormat;
     public final ProcessingEventsListener processingEventsListener;
 

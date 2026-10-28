@@ -138,17 +138,29 @@ public class PostPipeline extends GLBasePipeline {
      */
     @androidx.annotation.Nullable
     public LensFilter.Choice lensFilter;
+    /** The shot's film, LUT and «Цвет» at the press (ShotLook; ScamProcessor sets it); null: the settings now (the lab's renders). */
+    @androidx.annotation.Nullable
+    public ShotLook look;
 
     public PostPipeline() {
         super("PostPipeline");
     }
 
-    /** P369: the shot's film snapshot ({@link #film}, the LUT and its strength), from the settings now (the lab's overlay too). */
+    /**
+     * P369: the shot's film snapshot ({@link #film}, the LUT and its strength): the press's ({@link #look}), else the settings now
+     * (the lab's overlay too).
+     */
     public void takeFilm() {
-        film = com.particlesdevs.photoncamera.processing.color.FilmSim.current();
-        filmUserStrength = PreferenceKeys.filmLutStrength();
-        filmUserLut = filmUserStrength > 0f ? PreferenceKeys.filmLut() : "";
+        final ShotLook l = look;
+        film = l != null ? l.film : com.particlesdevs.photoncamera.processing.color.FilmSim.current();
+        filmUserStrength = l != null ? l.lutStrength : PreferenceKeys.filmLutStrength();
+        filmUserLut = l != null ? l.lut : filmUserStrength > 0f ? PreferenceKeys.filmLut() : "";
         filmTaken = true;
+        if (l != null) {
+            final ShotLook now = ShotLook.now();
+            if (!now.toString().equals(l.toString()))
+                Log.i("SCAM_PIPELINE", "look of the press: " + l + " (the settings now: " + now + ")");
+        }
         // the film's table now (FilmChain.scene caches it for WhyCombine): film data that cannot be read gives the whole shot the
         // path without a film - our look, the chosen LUT, the gain map - instead of the film's gates with no film drawn
         if (film != null && com.particlesdevs.photoncamera.processing.color.FilmChain.scene(
