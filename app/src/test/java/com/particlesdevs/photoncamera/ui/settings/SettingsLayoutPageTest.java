@@ -118,8 +118,7 @@ public class SettingsLayoutPageTest {
 
     /** The rows the list shows under {@code group} (up to the next root group). */
     private static List<String> section(List<String> keys, String group) {
-        List<String> roots = Arrays.asList("root_colour", "root_photo", "root_shoot", "root_modules", "root_view", "root_app",
-                "root_expert", "root_about");
+        List<String> roots = Arrays.asList("root_colour", "root_photo", "root_shoot", "root_view", "root_app", "root_expert", "root_about");
         int a = keys.indexOf(group);
         assertTrue(group + " in " + keys, a >= 0);
         int b = a + 1;
@@ -205,18 +204,19 @@ public class SettingsLayoutPageTest {
             SettingsLayoutFragment f = openEditor(activity);
             // «Группы»: the page's groups as cards
             assertEquals("group:root_colour", f.cards().get(0));
-            assertTrue(f.cards().toString(), f.cards().contains("group:root_modules"));
+            assertFalse("P390: the modules are a row of «Съёмка»", f.cards().contains("group:root_modules"));
             assertTrue(act(f, "group:root_view", "Move up"));
-            assertTrue(stored(), stored().startsWith("prefscreen=root_colour,root_photo,root_shoot,root_view,root_modules,"));
+            assertTrue(stored(), stored().startsWith("prefscreen=root_colour,root_photo,root_view,root_shoot,"));
             // «Пункты»: a group's first row goes up into the group above (both share rows)
             text(f.requireView(), "Rows").performClick();
             idle();
             assertTrue(f.cards().toString(), f.cards().contains("header:root_shoot"));
             assertEquals("header:root_colour", f.cards().get(0));
-            assertTrue(act(f, "row:pref_motion_mode", "Move up"));
-            assertTrue(stored(), SettingsLayout.parse(stored()).get("root_photo").contains("pref_motion_mode"));
-            assertFalse(stored(), SettingsLayout.parse(stored()).get("root_shoot").contains("pref_motion_mode"));
-            int at = f.cards().indexOf("row:pref_motion_mode");
+            // (P390: «Съёмка» starts with «Камеры и модули»; «Экран камеры» is above it now)
+            assertTrue(act(f, "row:modules_screen", "Move up"));
+            assertTrue(stored(), SettingsLayout.parse(stored()).get("root_view").contains("modules_screen"));
+            assertFalse(stored(), SettingsLayout.parse(stored()).get("root_shoot").contains("modules_screen"));
+            int at = f.cards().indexOf("row:modules_screen");
             assertEquals("header:root_shoot", f.cards().get(at + 1));
             // «Приложение» keeps its rows (a module page hides it whole)
             String now = stored();
@@ -230,8 +230,8 @@ public class SettingsLayoutPageTest {
             // back on the page: the new order, the rest as it was
             back(activity);
             List<String> keys = listed(page(activity));
-            assertTrue(keys.toString(), keys.indexOf("root_view") > keys.indexOf("root_shoot"));
-            assertTrue(section(keys, "root_photo").toString(), section(keys, "root_photo").contains("pref_motion_mode"));
+            assertTrue(keys.toString(), keys.indexOf("root_view") < keys.indexOf("root_shoot"));
+            assertTrue(section(keys, "root_view").toString(), section(keys, "root_view").contains("modules_screen"));
             assertEquals(before.size(), keys.size());
         }
     }

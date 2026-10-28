@@ -213,18 +213,12 @@ final class CameraIdSheet {
     /** {@link CameraIdCheck#check} against this phone's cameras. */
     static CameraIdCheck.Result check(Context c, String typed) {
         final CameraManager cm = c.getSystemService(CameraManager.class);
-        List<String> listed;
-        try {
-            listed = cm == null ? Collections.emptyList() : Arrays.asList(cm.getCameraIdList());
-        } catch (Exception e) {
-            listed = Collections.emptyList();
-        }
-        final List<String> list = listed;
+        final List<String> list = phoneIds(cm);
         return CameraIdCheck.check(typed, list, id -> describe(c, cm, id), id -> logicalOf(cm, list, id));
     }
 
     @Nullable
-    private static String logicalOf(@Nullable CameraManager cm, List<String> listed, String id) {
+    private static String logicalOf(@Nullable CameraManager cm, java.util.Collection<String> listed, String id) {
         if (cm == null || android.os.Build.VERSION.SDK_INT < 28) return null;
         for (String logical : listed) {
             try {
@@ -253,17 +247,56 @@ final class CameraIdSheet {
         }
     }
 
-    /** The phone's cameras for the list: every listed id, then (Android 9+) each logical camera's physical ones as pairs. */
+    /** The phone's camera ids (CameraIdCheck.available), probed once per camera service: the cameras do not change while it runs. */
+    @Nullable private static volatile List<String> probed;
+    @Nullable private static volatile CameraManager probedBy;
+
+    /**
+     * Every camera the phone opens: its list, the ids it leaves out but describes (probed as CameraManager2's scan probes them: a vivo
+     * lists 0 and 1, its modules open 3, 4, 5), then the logical cameras' physical ones as pairs.
+     */
+    static List<String> phoneIds(@Nullable CameraManager cm) {
+        if (cm == null) return Collections.emptyList();
+        List<String> ids = probed;
+        if (ids != null && probedBy == cm) return ids;
+        List<String> listed;
+        try {
+            listed = Arrays.asList(cm.getCameraIdList());
+        } catch (Exception e) {
+            listed = Collections.emptyList();
+        }
+        ids = Collections.unmodifiableList(CameraIdCheck.available(listed, CameraIdCheck.PROBE_MAX, id -> {
+            try {
+                return cm.getCameraCharacteristics(id) != null;
+            } catch (Exception | LinkageError e) {
+                return false;
+            }
+        }, id -> {
+            if (android.os.Build.VERSION.SDK_INT < 28) return null;
+            try {
+                return cm.getCameraCharacteristics(id).getPhysicalCameraIds();
+            } catch (Exception | LinkageError e) {
+                return null;
+            }
+        }));
+        probed = ids;
+        probedBy = cm;
+        return ids;
+    }
+
+    /** The phone's cameras for the list (phoneIds), each with its facing, focal length, ISO and what kind of camera it is. */
     private static List<Camera> cameras(Context c) {
         final List<Camera> out = new ArrayList<>();
         final CameraManager cm = c.getSystemService(CameraManager.class);
         if (cm == null) return out;
         try {
-            final Set<String> ids = new LinkedHashSet<>(Arrays.asList(cm.getCameraIdList()));
-            if (android.os.Build.VERSION.SDK_INT >= 28)
-                for (String id : new ArrayList<>(ids))
-                    for (String physical : cm.getCameraCharacteristics(id).getPhysicalCameraIds())
-                        if (!physical.equals(id)) ids.add(id + "-" + physical);
+            final List<String> ids = phoneIds(cm);
+            Set<String> listed;
+            try {
+                listed = new LinkedHashSet<>(Arrays.asList(cm.getCameraIdList()));
+            } catch (Exception e) {
+                listed = Collections.emptySet();
+            }
             for (String id : ids) {
                 final String part = id.contains("-") ? id.substring(id.indexOf('-') + 1) : id;
                 final String text = describe(c, cm, part);
@@ -274,9 +307,11 @@ final class CameraIdSheet {
                     if (iso != null) sub = "ISO " + iso.getLower() + "–" + iso.getUpper();
                     if (android.os.Build.VERSION.SDK_INT >= 28 && !ch.getPhysicalCameraIds().isEmpty())
                         sub += (sub.isEmpty() ? "" : " · ") + c.getString(R.string.camera_id_logical, new ArrayList<>(ch.getPhysicalCameraIds()).toString());
-                    if (id.contains("-"))
-                        sub += (sub.isEmpty() ? "" : " · ") + c.getString(R.string.camera_id_physical_of, id.substring(0, id.indexOf('-')));
+                    final String logical = id.contains("-") ? id.substring(0, id.indexOf('-')) : logicalOf(cm, listed, id);
+                    if (logical != null)
+                        sub += (sub.isEmpty() ? "" : " · ") + c.getString(R.string.camera_id_physical_of, logical);
                     if (CameraManager2.isAuxiliarySensor(ch)) sub += (sub.isEmpty() ? "" : "\n") + c.getString(R.string.camera_id_service);
+                    else if (!id.contains("-") && !listed.contains(id)) sub += (sub.isEmpty() ? "" : "\n") + c.getString(R.string.camera_id_hidden);
                 } catch (Exception | LinkageError ignored) { }
                 out.add(new Camera(id, text == null ? c.getString(R.string.module_id_value, id) : c.getString(R.string.camera_id_option, id, text), sub));
             }

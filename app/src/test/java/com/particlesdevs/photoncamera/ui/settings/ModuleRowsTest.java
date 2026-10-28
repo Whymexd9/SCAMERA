@@ -62,6 +62,7 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 /**
+ * P390: since «Положи эти настройки в одну группу» on their own page «Камеры и модули» (root() opens it).
  * P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран, переделай это меню по-своему чтобы им было очень
  * легко и просто пользоваться… Сделай это меню красивым с плавными анимациями и красивыми иконками»): the camera groups of the
  * settings' main page - the module cards (one open at a time, its rows written to the same module keys as the module pages
@@ -146,13 +147,38 @@ public class ModuleRowsTest {
         for (long t = 0; t < ms; t += 16) idleFor(Math.min(16, ms - t));
     }
 
+    /**
+     * The page of the camera groups: P390 «Камеры и модули», opened by its row on the main page (P384 had them on the main page);
+     * after a recreate the page is back by itself.
+     */
     private static SettingsActivity.SettingsFragment root(SettingsActivity activity) {
+        SettingsActivity.SettingsFragment f = shown(activity);
+        if (!ModuleRows.PAGE.equals(f.requireArguments().getString(androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT))) {
+            Preference row = f.findPreference(ModuleRows.PAGE);
+            assertNotNull("one row on the main page", row);
+            assertNull("P390: the groups are not on the main page", visibleOnPage(f));
+            row.performClick();
+            f = shown(activity);
+        }
+        assertEquals(ModuleRows.PAGE, f.requireArguments().getString(androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT));
+        return f;
+    }
+
+    /** The settings page shown now. */
+    private static SettingsActivity.SettingsFragment shown(SettingsActivity activity) {
         FragmentManager fm = activity.getSupportFragmentManager();
         fm.executePendingTransactions();
         idle();
         Fragment f = fm.findFragmentById(R.id.settings_container);
         assertTrue(String.valueOf(f), f instanceof SettingsActivity.SettingsFragment);
         return (SettingsActivity.SettingsFragment) f;
+    }
+
+    /** The camera groups' keys the main page's list holds (none since P390), null for none. */
+    private static String visibleOnPage(SettingsActivity.SettingsFragment page) {
+        List<String> keys = listed(page);
+        for (String k : new String[]{ModuleRows.GROUP, ModuleRows.IDS, ModuleRows.SENSOR}) if (keys.contains(k)) return k;
+        return null;
     }
 
     private static PreferenceGroupAdapter adapter(SettingsActivity.SettingsFragment root) {
@@ -197,7 +223,7 @@ public class ModuleRowsTest {
             // back by zoom (the hidden module at its place, dimmed), then the front; the untouched fillers are no card
             assertEquals(Arrays.asList("module_card_back2", "module_card_back0", "module_card_back4", "module_card_back3",
                     "module_card_back1", "module_card_front0", "module_actions", "module_row_add_copy", "module_row_per_lens",
-                    "module_copy_settings"), between(keys, "root_modules", "root_view"));
+                    "module_copy_settings"), between(keys, "root_modules", "expert_module_ids"));
             for (String filler : new String[]{"back5", "back6", "back7"}) assertNull(filler, root.findPreference(ModuleRows.CARD + filler));
             assertTrue(String.valueOf(root.findPreference(ModuleRows.ADD).getSummary()),
                     String.valueOf(root.findPreference(ModuleRows.ADD).getSummary()).endsWith(" · free places: 3"));
@@ -277,7 +303,7 @@ public class ModuleRowsTest {
             controller.setup();
             SettingsActivity.SettingsFragment root = root(controller.get());
             tap(card(root, "back0"));
-            List<String> before = between(listed(root), "root_modules", "root_view");
+            List<String> before = between(listed(root), "root_modules", "expert_module_ids");
             // the viewfinder button: module_visible_
             SwitchPreferenceCompat button = root.findPreference("module_row_button_back0");
             assertTrue("starts from the module's state, not off", button.isChecked());
@@ -285,7 +311,7 @@ public class ModuleRowsTest {
             tap(button);
             assertFalse(prefs.getBoolean("module_visible_back0", true));
             assertTrue(ModuleRows.cardSummary(context, "back0"), String.valueOf(card(root, "back0").getSummary()).contains("hidden in the viewfinder"));
-            assertEquals("the card stays where it was", before, between(listed(root), "root_modules", "root_view"));
+            assertEquals("the card stays where it was", before, between(listed(root), "root_modules", "expert_module_ids"));
             tap(button);
             assertTrue(prefs.getBoolean("module_visible_back0", false));
             // the name: module_name_
@@ -394,8 +420,11 @@ public class ModuleRowsTest {
             assertTrue(events.toString(), events.contains("removed " + (header + 1) + " 5"));
             assertFalse(events.toString(), events.contains("changed"));
             // an inner page keeps the plain rebind
-            activity.onPreferenceStartScreen(root, root.findPreference("photo_style_screen"));
-            SettingsActivity.SettingsFragment inner = root(activity);
+            activity.getOnBackPressedDispatcher().onBackPressed();
+            SettingsActivity.SettingsFragment main = shown(activity);
+            activity.onPreferenceStartScreen(main, main.findPreference("photo_style_screen"));
+            SettingsActivity.SettingsFragment inner = shown(activity);
+            assertEquals("photo_style_screen", inner.requireArguments().getString(androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT));
             assertNull(inner.getPreferenceManager().getPreferenceComparisonCallback());
             assertFalse(inner.getListView().getItemAnimator() instanceof SettingsMotion.ItemAnimator);
         }
@@ -733,7 +762,7 @@ public class ModuleRowsTest {
             SettingsActivity activity = controller.get();
             SettingsActivity.SettingsFragment root = root(activity);
             tap(root.findPreference("module_row_profile_back1"));
-            SettingsActivity.SettingsFragment page = root(activity);
+            SettingsActivity.SettingsFragment page = shown(activity);
             assertEquals("back1", page.moduleProfile());
             shotAt(page, "root_expert", "p384-profile-root-ru");
             activity.getOnBackPressedDispatcher().onBackPressed();

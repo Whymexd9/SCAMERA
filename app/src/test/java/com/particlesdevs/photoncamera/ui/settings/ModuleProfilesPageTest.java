@@ -536,9 +536,11 @@ public class ModuleProfilesPageTest {
             fm.beginTransaction().replace(R.id.settings_container, copy).commitNow();
             assertNotNull(copy.requireView().findViewWithTag("group_root_photo"));
             assertNull(copy.requireView().findViewWithTag("group_module_profiles_screen"));
-            // P384: the main page's module cards hold nothing to copy; the module's sensor settings under «Сенсор по модулям»
+            // P384: the module cards hold nothing to copy; the module's sensor settings under «Сенсор по модулям» (P390: on «Съёмка ›
+            // Камеры и модули»)
             assertNull(copy.requireView().findViewWithTag("group_root_modules"));
-            copy.requireView().findViewWithTag("group_root_expert").performClick();
+            copy.requireView().findViewWithTag("group_root_shoot").performClick();
+            assertNull(copy.requireView().findViewWithTag("group_root_modules"));
             assertTrue(text(copy.requireView()), text(copy.requireView()).contains("Sensor per module"));
             assertNotNull(copy.requireView().findViewWithTag("parameter_sensor_copy_blackleveloverride"));
             assertNotNull(copy.requireView().findViewWithTag("parameter_sensor_copy_tunablekeys"));

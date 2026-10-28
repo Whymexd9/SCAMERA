@@ -8721,3 +8721,16 @@ Owner, same day: «сделай гпу выравнивание и дай воз
   - Green ghost: a lens reflection of the sun (in every raw frame, moves against the scene); SunGhost (fit + subtract before WB)
     dE 19.8 -> 2.5 on this burst; a new stage, held for a phone check.
   - Violet fringes: a numpy prototype only.
+
+### P390 - the module groups on one page, every Camera ID in the sheet (owner, 2026-10-28, two screenshots of «Модули камеры» and «Camera ID модулей»: «Положи эти настройки в одну группу чтобы они все разом не были на главном экране настроек»; a screenshot of the sheet «Camera ID · 0.4×» offering ID 0, 1, 0-3, 0-4: «у нас так же не определяет автоматом все доступные айди модулей, исправь»): DONE in code (host), not tried on a phone
+- DONE: «Модули камеры», «Camera ID модулей» and «Сенсор по модулям» on one page «Камеры и модули» (modules_screen), the first row
+  of «Съёмка» on the main page (P384 had the three groups on the main page). The page builds the rows as the main page did
+  (ModuleRows, the sensor chips, the animated cards); the main page builds them too (search); sensorPage opens the new page; a
+  module profile's root shows the row with its own sensor only. Tests: ModuleRowsTest / SettingsMenuTest / SettingsLayoutPageTest /
+  ModuleProfilesPageTest open the page by its row.
+- Found: CameraIdSheet offered getCameraIdList (vivo: 0, 1) and the logical cameras' physical pairs; the hidden cameras the scan
+  probes (CameraManager2: 0 .. 120 by getCameraCharacteristics; the X200 Ultra's modules open 3, 4, 5) were missing, and a typed «3»
+  was saved as «0-3». DONE: CameraIdCheck.available - the listed ids and every bare id the phone opens up to 120, in number order,
+  then physical pairs only where the bare id does not open; probed once per camera service; the sheet marks a hidden camera
+  («скрытая: телефон не показывает её в списке, но открывает») and a physical one («физическая у 0»); the typed check uses the
+  same list. Test: CameraIdCheckTest.theSheetOffersEveryCameraThePhoneOpens.

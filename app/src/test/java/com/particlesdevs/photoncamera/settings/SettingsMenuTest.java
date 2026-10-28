@@ -454,11 +454,15 @@ public class SettingsMenuTest {
             // the camera's colour (the RawTherapee sharpening left in the settings audit and is gone since P118, the curves are
             // gone, P64): the DCP profile
             assertNotNull(tags(copy.requireView()),copy.requireView().findViewWithTag("parameter_pref_dcp_profile_key"));
-            // P384: the module's sensor settings are copied from «Сенсор по модулям» (the main page's module cards hold no value)
-            assertNotNull(tags(copy.requireView()),copy.requireView().findViewWithTag("parameter_sensor_copy_blackleveloverride"));
-            assertTrue(shownText(copy.requireView(),context.getString(R.string.prefs_expert_module_sensor_title)));
+            assertNull("P390: the sensors left «Для опытных»",copy.requireView().findViewWithTag("parameter_sensor_copy_blackleveloverride"));
             activity.getOnBackPressedDispatcher().onBackPressed();
             assertNotNull(copy.requireView().findViewWithTag("group_root_expert"));
+            // P384: the module's sensor settings are copied from «Сенсор по модулям» (the module cards hold no value); P390: on the page
+            // «Камеры и модули» of «Съёмка»
+            android.view.View shooting=copy.requireView().findViewWithTag("group_root_shoot");
+            assertNotNull(tags(copy.requireView()),shooting);assertTrue(shooting.performClick());
+            assertNotNull(tags(copy.requireView()),copy.requireView().findViewWithTag("parameter_sensor_copy_blackleveloverride"));
+            assertTrue(shownText(copy.requireView(),context.getString(R.string.prefs_expert_module_sensor_title)));
         }
     }
 
@@ -469,6 +473,18 @@ public class SettingsMenuTest {
             if(v instanceof android.view.ViewGroup)for(int i=0;i<((android.view.ViewGroup)v).getChildCount();i++)queue.add(((android.view.ViewGroup)v).getChildAt(i));}
         return out.toString();
     }
+    /** P390: «Камеры и модули», opened by its row on the main page. */
+    private static com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment modulesPage(com.particlesdevs.photoncamera.ui.settings.SettingsActivity activity){
+        var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+        ((Preference)root.findPreference("modules_screen")).performClick();
+        fm.executePendingTransactions();org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+        var page=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+        assertEquals("modules_screen",page.requireArguments().getString(androidx.preference.PreferenceFragmentCompat.ARG_PREFERENCE_ROOT));
+        return page;
+    }
+
     private void renderPage(android.view.View view,String name) throws Exception {
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
         int exact=android.view.View.MeasureSpec.EXACTLY;
@@ -1443,8 +1459,10 @@ public class SettingsMenuTest {
         PreferenceScreen screen=inflate();
         // 2026-10-27 (owner: «Упрости так чтобы даже тупой человек смог разобраться в настройках и настроить камеру сам»; this
         // order supersedes P319's): the picture first, then the file, the shooting, the camera screen, the app, the experts, about
-        // P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран»): «Модули камеры» after «Съёмка»
-        String[] order={"root_colour","root_photo","root_shoot","root_modules","root_view","root_app","root_expert","root_about"};
+        // P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран»): «Модули камеры» after «Съёмка»; P390 (owner,
+        // the same day: «Положи эти настройки в одну группу чтобы они все разом не были на главном экране настроек»): the module
+        // cards, Camera IDs and sensors on one page «Камеры и модули», the first row of «Съёмка»
+        String[] order={"root_colour","root_photo","root_shoot","root_view","root_app","root_expert","root_about"};
         assertEquals(order.length,screen.getPreferenceCount());
         for(int i=0;i<order.length;i++)assertEquals(order[i],screen.getPreference(i).getKey());
         // «Снимок»: the style page, the six everyday sliders, the fine colour page
@@ -1471,18 +1489,19 @@ public class SettingsMenuTest {
         assertEquals(Arrays.asList("pref_scam_hybrid_output","pref_crop_upscale"),keys(screen.findPreference("photo_size_expert")));
         // «Съёмка» (the mirror row is appended by TunablePreferenceGenerator) and its «Фокус» page
         List<String> shooting=keys(screen.findPreference("root_shoot"));
-        assertEquals(Arrays.asList("pref_motion_mode","focus_screen","pref_ettr","pref_camera_sounds_all","pref_camera_sounds_key",
-                "pref_timer_sound_key","pref_antibanding_hz_key"),shooting.subList(0,7));
-        assertEquals(ShadeCatalog.MIRROR,shooting.get(7));assertEquals(8,shooting.size());
+        assertEquals(Arrays.asList("modules_screen","pref_motion_mode","focus_screen","pref_ettr","pref_camera_sounds_all","pref_camera_sounds_key",
+                "pref_timer_sound_key","pref_antibanding_hz_key"),shooting.subList(0,8));
+        assertEquals(ShadeCatalog.MIRROR,shooting.get(8));assertEquals(9,shooting.size());
+        assertEquals(Arrays.asList("root_modules","expert_module_ids","expert_module_sensor"),keys(screen.findPreference("modules_screen")));
         assertEquals(Arrays.asList("pref_af_mode_key","pref_face_detect_mode","pref_tracking_af_mode","pref_split_af_ae","pref_peak_method_key"),
                 keys(screen.findPreference("focus_screen")));
         // «Экран камеры»
         assertEquals(Arrays.asList("pref_show_grid_key","pref_horizon","pref_show_afdata_key","pref_low_light_boost","pref_show_roundedge_key"),
                 keys(screen.findPreference("root_view")));
         // «Для опытных»: SHDR, «Другие тонкие настройки», and the lab (P277: a row that opens ScamLabFragment, no page of its own);
-        // P384: the modules' Camera IDs and sensors, two groups of their own (built in code: empty in the XML)
+        // P384: the modules' groups are built in code (empty in the XML); P390: on «Камеры и модули»
         androidx.preference.PreferenceGroup expert=screen.findPreference("root_expert");
-        assertEquals(Arrays.asList("scam_hybrid_screen","advanced_screen","scam_lab_screen","expert_module_ids","expert_module_sensor"),keys(expert));
+        assertEquals(Arrays.asList("scam_hybrid_screen","advanced_screen","scam_lab_screen"),keys(expert));
         for(String group:new String[]{"root_modules","expert_module_ids","expert_module_sensor"})
             assertEquals(group,0,((androidx.preference.PreferenceGroup)screen.findPreference(group)).getPreferenceCount());
         assertEquals(0,((PreferenceScreen)expert.getPreference(2)).getPreferenceCount());
@@ -1628,12 +1647,19 @@ public class SettingsMenuTest {
             var fm=controller.get().getSupportFragmentManager();fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
-            for(String group:new String[]{"root_colour","root_photo","root_shoot","root_modules","root_view","root_app","root_about"}){
+            for(String group:new String[]{"root_colour","root_photo","root_shoot","root_view","root_app","root_about"}){
                 androidx.preference.PreferenceGroup g=root.findPreference(group);assertNotNull(group,g);
                 List<String> shown=new ArrayList<>();
                 for(int i=0;i<g.getPreferenceCount();i++)if(g.getPreference(i).isVisible())shown.add(g.getPreference(i).getKey());
                 assertTrue(group+" shows "+shown,shown.size()<=8&&!shown.isEmpty());
             }
+            // P390: the main page shows one row of the modules, their page the cards
+            androidx.preference.PreferenceGroupAdapter rootAdapter=(androidx.preference.PreferenceGroupAdapter)root.getListView().getAdapter();
+            List<String> rootKeys=new ArrayList<>();
+            for(int i=0;i<rootAdapter.getItemCount();i++)rootKeys.add(rootAdapter.getItem(i).getKey());
+            assertTrue(rootKeys.toString(),rootKeys.contains("modules_screen"));
+            for(String group:new String[]{"root_modules","expert_module_ids","expert_module_sensor"})assertFalse(group,rootKeys.contains(group));
+            root=modulesPage(controller.get());
             assertEquals(Arrays.asList("module_card_back1","module_card_back0","module_card_back2","module_actions"),
                     visibleKeys((androidx.preference.PreferenceGroup)root.findPreference("root_modules")));
             // no module card is open at the start: the list holds none of a card's rows
@@ -1976,7 +2002,7 @@ public class SettingsMenuTest {
         try(var controller=org.robolectric.Robolectric.buildActivity(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.class)){
             controller.setup();var activity=controller.get();var fm=activity.getSupportFragmentManager();fm.executePendingTransactions();
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
-            var root=(com.particlesdevs.photoncamera.ui.settings.SettingsActivity.SettingsFragment)fm.findFragmentById(R.id.settings_container);
+            var root=modulesPage(activity);
             for(String slot:new String[]{"back0","back1","back2"})assertNotNull(slot,root.findPreference("module_card_"+slot));
             for(int i=3;i<8;i++)assertNull("untouched filler slots are a count, not modules",root.findPreference("module_card_back"+i));
             assertTrue(String.valueOf(((Preference)root.findPreference("module_row_add_copy")).getSummary()),

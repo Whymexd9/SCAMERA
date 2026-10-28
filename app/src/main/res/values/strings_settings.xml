@@ -817,6 +817,8 @@
     <string name="prefs_adv_output_title">2× grid and downscaling</string>
     <string name="prefs_focus_screen_summary">Autofocus, faces, tracking, focus peaking</string>
     <!-- P384 (owner, 2026-10-28): the camera modules on the settings' main page -->
+    <string name="prefs_modules_screen_title">Cameras and modules</string>
+    <string name="prefs_modules_screen_summary">Zoom buttons, Camera IDs and each module\'s sensor</string>
     <string name="prefs_root_modules_title">Camera modules</string>
     <string name="prefs_root_modules_summary">The zoom buttons of the viewfinder. Tap a module to change it</string>
     <string name="prefs_expert_module_ids_title">Module camera IDs</string>
@@ -900,6 +902,7 @@
     <string name="camera_id_logical">logical %s</string>
     <string name="camera_id_physical_of">physical of %s</string>
     <string name="camera_id_service">service: not in the automatic list, but works</string>
+    <string name="camera_id_hidden">hidden: the phone leaves it out of its list but opens it</string>
     <string name="camera_id_manual">Enter Camera ID manually</string>
     <string name="camera_id_hint">For example: 3 or 0-3</string>
     <string name="camera_id_ok">Camera %1$s: %2$s</string>

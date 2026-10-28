@@ -78,6 +78,8 @@ public final class ModuleRows {
     }
 
     static final String GROUP = "root_modules", IDS = "expert_module_ids", SENSOR = SensorConfigPreferenceGenerator.GROUP_KEY;
+    /** P390 (owner, 2026-10-28: «Положи эти настройки в одну группу»): the page of the three groups, one row on the main page. */
+    static final String PAGE = "modules_screen";
     /** The open card's slot ("" for none), in the page's arguments. */
     static final String ARG_OPEN_MODULE = "modules_open";
     static final String CARD = "module_card_", NAME = "module_row_name_", ZOOM = "module_row_zoom_", BUTTON = "module_row_button_",

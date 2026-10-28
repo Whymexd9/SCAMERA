@@ -144,6 +144,15 @@
     <Preference android:key="pref_file_name_pattern" android:title="@string/prefs_file_name_title" android:summary="@string/prefs_file_name_summary" android:icon="@drawable/settings_ic_edit" app:iconSpaceReserved="false" />
   </PreferenceCategory>
   <PreferenceCategory android:key="root_shoot" android:title="@string/prefs_root_shoot_title" app:iconSpaceReserved="false">
+    <!-- P384 (owner, 2026-10-28): the modules (one card per module, ModuleRows), each module's Camera ID and its sensor (mode, RAW
+         levels, stabilisation, session, camera keys; for experts), built in code from ModuleRegistry. P390 (owner, the same day:
+         «Положи эти настройки в одну группу чтобы они все разом не были на главном экране настроек»): one page of their own, one row
+         on the main page -->
+    <PreferenceScreen android:key="modules_screen" android:title="@string/prefs_modules_screen_title" android:summary="@string/prefs_modules_screen_summary" android:icon="@drawable/settings_ic_lenses" app:iconSpaceReserved="false">
+      <PreferenceCategory android:key="root_modules" android:title="@string/prefs_root_modules_title" android:summary="@string/prefs_root_modules_summary" app:iconSpaceReserved="false" />
+      <PreferenceCategory android:key="expert_module_ids" android:title="@string/prefs_expert_module_ids_title" android:summary="@string/prefs_expert_module_ids_summary" app:iconSpaceReserved="false" />
+      <PreferenceCategory android:key="expert_module_sensor" android:title="@string/prefs_expert_module_sensor_title" android:summary="@string/prefs_expert_module_sensor_summary" app:iconSpaceReserved="false" />
+    </PreferenceScreen>
     <SwitchPreferenceCompat android:key="pref_motion_mode" android:title="@string/prefs_scam_motion_on_title" android:defaultValue="false" android:icon="@drawable/settings_ic_motion" android:summary="@string/prefs_scam_motion_on_summary" />
     <PreferenceScreen android:key="focus_screen" android:title="@string/prefs_focus_screen_title" android:summary="@string/prefs_focus_screen_summary" android:icon="@drawable/settings_ic_focus" app:iconSpaceReserved="false">
       <ListPreference android:icon="@drawable/settings_ic_aperture" android:entries="@array/af_mode_entries" android:title="@string/af_mode" android:key="@string/pref_af_mode_key" android:summary="@string/af_mode_desc" android:defaultValue="@string/pref_af_mode_default_value" android:entryValues="@array/af_mode_entryvalues" />
@@ -158,10 +167,6 @@
     <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference android:icon="@drawable/settings_ic_sound" android:title="@string/prefs_timer_sound_title" android:key="@string/pref_timer_sound_key" android:summary="@string/prefs_timer_sound_summary" android:defaultValue="true" />
     <ListPreference android:key="pref_antibanding_hz_key" android:title="@string/antibanding_hz" android:summary="@string/antibanding_hz_summary" android:defaultValue="-1" android:entries="@array/antibanding_entries" android:entryValues="@array/antibanding_values" android:icon="@drawable/settings_ic_flash" />
   </PreferenceCategory>
-  <!-- P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран, переделай это меню по-своему чтобы им было очень
-       легко и просто пользоваться»): the modules on the main page - one card per module (ModuleRows), then adding a copy, per-module
-       settings, copying them; built in code from ModuleRegistry -->
-  <PreferenceCategory android:key="root_modules" android:title="@string/prefs_root_modules_title" android:summary="@string/prefs_root_modules_summary" app:iconSpaceReserved="false" />
   <PreferenceCategory android:key="root_view" android:title="@string/prefs_root_view_title" app:iconSpaceReserved="false">
     <ListPreference android:icon="@drawable/settings_ic_grid" android:entries="@array/vf_grid_entries" android:title="@string/turn_on_grid" android:key="@string/pref_show_grid_key" android:summary="@string/show_grid_desc" android:defaultValue="@string/pref_show_grid_default" android:entryValues="@array/vf_grid_entryvalues" />
     <com.particlesdevs.photoncamera.ui.settings.custompreferences.ManagedSwitchPreference android:icon="@drawable/settings_ic_diag" android:title="@string/show_horizon_on_preview" android:key="@string/pref_horizon" android:summary="@string/horizon_desc" android:defaultValue="false" />
@@ -595,11 +600,6 @@
       </PreferenceCategory>
     </PreferenceScreen>
     <PreferenceScreen android:key="scam_lab_screen" android:title="@string/prefs_scam_lab_screen_title" android:summary="@string/prefs_scam_lab_screen_summary" android:icon="@drawable/settings_ic_eye" app:iconSpaceReserved="false" />
-    <!-- P384 («Предлагаю сделать отдельную группу где можно будет вписывать айди модулей… А то что на третьем скриншоте сделать как
-         отдельную группу настроек на главной странице разделенную по модулям»): each module's Camera ID and its sensor (mode, RAW
-         levels, stabilisation, session, camera keys), for experts; built in code (ModuleRows, SensorConfigPreferenceGenerator) -->
-    <PreferenceCategory android:key="expert_module_ids" android:title="@string/prefs_expert_module_ids_title" android:summary="@string/prefs_expert_module_ids_summary" app:iconSpaceReserved="false" />
-    <PreferenceCategory android:key="expert_module_sensor" android:title="@string/prefs_expert_module_sensor_title" android:summary="@string/prefs_expert_module_sensor_summary" app:iconSpaceReserved="false" />
   </PreferenceCategory>
   <PreferenceCategory android:key="root_about" android:title="@string/prefs_root_about_title" app:iconSpaceReserved="false">
     <Preference android:icon="@drawable/settings_ic_info" android:title="@string/app_name" android:key="@string/pref_app_key" android:summary="@string/app_summary" android:selectable="false" />

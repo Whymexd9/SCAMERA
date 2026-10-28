@@ -239,12 +239,13 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
         };
 
         /**
-         * One module's sensor settings and camera keys: P384 - the main page with that module chosen in «Сенсор по модулям» (was a
-         * page of its own).
+         * One module's sensor settings and camera keys: P384 - «Сенсор по модулям» with that module chosen (was a page of its own;
+         * P390: on «Камеры и модули»).
          */
         public static SettingsFragment sensorPage(String slot) {
             SettingsFragment page = new SettingsFragment();
             Bundle args = new Bundle();
+            args.putString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT, ModuleRows.PAGE);
             args.putString(ARG_SENSOR_SLOT, slot);
             args.putString("search_target", com.particlesdevs.photoncamera.settings.SensorConfigPreferenceGenerator.CATEGORY_PREFIX + slot);
             page.setArguments(args);
@@ -305,9 +306,10 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             com.particlesdevs.photoncamera.settings.SettingsMigration.prepare(requireContext(), mSettingsManager.getDefaultPreferences());
             setPreferencesFromResource(R.xml.preferences, null);
             generateTunablePreferences();
-            if (rootKey == null) {
-                // P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран»): the camera groups live on the root
-                // page; its rows open and close in place, so the list animates the difference (inner pages keep their full rebind)
+            if (rootKey == null || ModuleRows.PAGE.equals(rootKey)) {
+                // P384: the camera groups, built from ModuleRegistry (P390: on their own page «Камеры и модули»; the root builds them
+                // too, for the search); their rows open and close in place, so the list animates the difference (the other pages
+                // keep their full rebind)
                 generateSensorConfigPreferences();
                 moduleRows = ModuleRows.build(moduleHost, getPreferenceScreen(), module, sensorSelection);
                 getPreferenceManager().setPreferenceComparisonCallback(new PreferenceManager.SimplePreferenceComparisonCallback());
@@ -452,8 +454,9 @@ public class SettingsActivity extends BaseActivity implements PreferenceFragment
             list.setVerticalScrollBarEnabled(false);
             // SIMPLE_UI §4: the rows of a group share one card (the concept's .card / .row)
             list.addItemDecoration(new SettingsCardDecoration(requireContext(), SettingsStyle::standalone));
-            // P384: the root page's module cards open and close in place: rows fade in with a small rise, the rows below glide
-            if (getArguments() == null || getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) == null)
+            // P384: the module cards open and close in place: rows fade in with a small rise, the rows below glide
+            if (getArguments() == null || getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT) == null
+                    || ModuleRows.PAGE.equals(getArguments().getString(PreferenceFragmentCompat.ARG_PREFERENCE_ROOT)))
                 list.setItemAnimator(new SettingsMotion.ItemAnimator(requireContext()));
             return list;
         }

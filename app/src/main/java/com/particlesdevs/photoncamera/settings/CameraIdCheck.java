@@ -2,8 +2,13 @@ package com.particlesdevs.photoncamera.settings;
 
 import androidx.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
@@ -64,5 +69,40 @@ public final class CameraIdCheck {
         final String known = describe.apply(physical);
         if (known != null || listed.contains(physical)) return new Result(State.KNOWN, id, known);
         return new Result(State.UNKNOWN, id, null);
+    }
+
+    /** The ids probed past the phone's list, as CameraManager2's scan probes them (0 .. 120). */
+    public static final int PROBE_MAX = 120;
+
+    /**
+     * The cameras of the sheet (owner, 2026-10-28: «у нас так же не определяет автоматом все доступные айди модулей»: a vivo lists 0
+     * and 1, its modules open 3, 4, 5 and the scan finds more): every listed id and every bare id up to {@code max} the phone opens
+     * though it leaves it out, in number order (names after, as listed), then each logical camera's physical ones as pairs where
+     * the bare id does not open by itself.
+     */
+    public static List<String> available(Collection<String> listed, int max, Predicate<String> opens,
+                                         Function<String, Collection<String>> physicalOf) {
+        final Set<String> bare = new LinkedHashSet<>();
+        final List<String> named = new ArrayList<>();
+        for (String id : listed) if (!isNumber(id)) named.add(id);
+        for (int n = 0; n <= max; n++) {
+            final String id = String.valueOf(n);
+            if (listed.contains(id) || opens.test(id)) bare.add(id);
+        }
+        for (String id : listed) if (isNumber(id) && Integer.parseInt(id) > max) bare.add(id);
+        final List<String> out = new ArrayList<>(bare);
+        out.addAll(named);
+        for (String logical : new ArrayList<>(out)) {
+            final Collection<String> physical = physicalOf.apply(logical);
+            if (physical == null) continue;
+            for (String p : physical) if (!p.equals(logical) && !out.contains(p) && !out.contains(logical + "-" + p)) out.add(logical + "-" + p);
+        }
+        return out;
+    }
+
+    private static boolean isNumber(String id) {
+        if (id.isEmpty() || id.length() > 9) return false;
+        for (int i = 0; i < id.length(); i++) if (!Character.isDigit(id.charAt(i))) return false;
+        return true;
     }
 }

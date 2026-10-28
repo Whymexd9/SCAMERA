@@ -90,6 +90,7 @@ public final class SettingHelp {
         // P384 (owner, 2026-10-28: «Переместить эту группу настроек на главный экран»): the camera groups of the main page; each
         // text names the old place, so the search still finds the old words
         EXACT.put("root_modules", R.string.help_modules_group);
+        EXACT.put("modules_screen", R.string.help_modules_group);
         EXACT.put("expert_module_ids", R.string.help_module_ids);
         EXACT.put("expert_module_sensor", R.string.help_module_sensor);
         EXACT.put("module_sensor_picker", R.string.help_module_sensor);

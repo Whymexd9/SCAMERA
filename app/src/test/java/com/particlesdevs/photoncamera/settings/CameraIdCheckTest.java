@@ -85,4 +85,26 @@ public class CameraIdCheckTest {
         assertEquals(CameraIdCheck.State.UNKNOWN, check("0-9").state);
         assertEquals("letters too: some HALs name cameras", CameraIdCheck.State.UNKNOWN, check("tele_a").state);
     }
+
+    /**
+     * Owner, 2026-10-28 (vivo X200 Ultra: the sheet offered 0, 1, 0-3, 0-4 while the modules open 3, 4, 5): every camera the phone
+     * opens is offered - the listed ones, the hidden ones it opens up to the probe's end, then the physical pairs of a logical
+     * camera only where the bare id does not open.
+     */
+    @Test
+    public void theSheetOffersEveryCameraThePhoneOpens() {
+        final List<String> listed = Arrays.asList("0", "1");
+        final List<String> opens = Arrays.asList("0", "1", "2", "3", "4", "5", "9", "120");
+        final Map<String, List<String>> physical = new HashMap<>();
+        physical.put("0", Arrays.asList("3", "4", "7"));
+        final List<String> ids = CameraIdCheck.available(listed, CameraIdCheck.PROBE_MAX, opens::contains, physical::get);
+        assertEquals(Arrays.asList("0", "1", "2", "3", "4", "5", "9", "120", "0-7"), ids);
+        // what the phone lists stays even where the probe fails (a named camera, a listed one past the probe)
+        assertEquals(Arrays.asList("0", "200", "tele_a"),
+                CameraIdCheck.available(Arrays.asList("tele_a", "200", "0"), CameraIdCheck.PROBE_MAX, id -> false, id -> null));
+        // a typed hidden camera that opens by itself is that camera, not its logical one's pair
+        CameraIdCheck.Result three = CameraIdCheck.check("3", ids, DESCRIBED::get, LOGICAL_OF);
+        assertEquals(CameraIdCheck.State.KNOWN, three.state);
+        assertEquals("3", three.id);
+    }
 }

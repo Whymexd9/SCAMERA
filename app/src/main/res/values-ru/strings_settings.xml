@@ -817,6 +817,8 @@
     <string name="prefs_adv_output_title">Сетка 2× и уменьшение</string>
     <string name="prefs_focus_screen_summary">Автофокус, лица, слежение, подсветка резкости</string>
     <!-- P384 (owner, 2026-10-28): the camera modules on the settings' main page -->
+    <string name="prefs_modules_screen_title">Камеры и модули</string>
+    <string name="prefs_modules_screen_summary">Кнопки зума, Camera ID и сенсор каждого модуля</string>
     <string name="prefs_root_modules_title">Модули камеры</string>
     <string name="prefs_root_modules_summary">Кнопки зума в видоискателе. Нажмите модуль, чтобы изменить его</string>
     <string name="prefs_expert_module_ids_title">Camera ID модулей</string>
@@ -899,6 +901,7 @@
     <string name="camera_id_logical">логическая %s</string>
     <string name="camera_id_physical_of">физическая у %s</string>
     <string name="camera_id_service">служебная: в авто-список не входит, но работает</string>
+    <string name="camera_id_hidden">скрытая: телефон не показывает её в списке, но открывает</string>
     <string name="camera_id_manual">Ввести Camera ID вручную</string>
     <string name="camera_id_hint">Например: 3 или 0-3</string>
     <string name="camera_id_ok">Камера %1$s: %2$s</string>
